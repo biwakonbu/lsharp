@@ -282,6 +282,35 @@ fn compiler_mode_source_pair_chunked_roots_function_accumulator_states() {
 }
 
 #[test]
+fn compiler_mode_compile_file_functions_roots_chunked_result_before_cleanup() {
+    let source = std::fs::read_to_string(workspace_root().join("selfhost/src/App/CompilerMode.ls"))
+        .expect("CompilerMode.ls を読めること");
+    let body = source
+        .split("(defn compile-file-functions-with-cache ")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-file-functions-payload-with-cache")
+                .next()
+        })
+        .expect("compile-file-functions-with-cache が存在すること");
+
+    let result_pos = body
+        .find("functions (compile-all-src-decl-pairs-chunked")
+        .expect("compile-file-functions-with-cache は chunked compile result を持つこと");
+    let root_pos = body
+        .find("(root_push functions)")
+        .expect("compile-file-functions-with-cache は functions result を root すること");
+    let first_pop_pos = body
+        .find("(root_pop)")
+        .expect("compile-file-functions-with-cache は cleanup root_pop を持つこと");
+
+    assert!(
+        result_pos < root_pos && root_pos < first_pop_pos,
+        "compile-file-functions-with-cache は chunked compile result を cleanup 前に root するべき"
+    );
+}
+
+#[test]
 fn compiler_with_source_compile_step_roots_next_functions_before_state_alloc() {
     let source =
         std::fs::read_to_string(workspace_root().join("selfhost/src/Backend/Wasm/Compiler.ls"))
