@@ -2117,7 +2117,7 @@
     (root_push pairs)
     (root_push ftable)
     (root_push data-ref)
-    (root_push functions)
+    (let [functions-root (root_push functions)]
     (let [state0 (compile-src-decl-pairs-step-64 pairs idx n ftable data-ref functions)]
       (do
         (root_push state0)
@@ -2126,13 +2126,14 @@
             (root_push state1)
             (let [result (vector-get state1 2)]
               (do
+                (root_set functions-root result)
                 (root_pop)
                 (root_pop)
                 (root_pop)
                 (root_pop)
                 (root_pop)
                 (root_pop)
-                result))))))))
+                result)))))))))
 (defn compile-all-src-decl-pairs [pairs idx n ftable data-ref functions]
   (if (>= idx n)
     functions

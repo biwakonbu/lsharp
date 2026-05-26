@@ -283,8 +283,10 @@ fn compiler_mode_source_pair_chunked_roots_function_accumulator_states() {
             && chunked.contains("state1 (continue-compile-src-decl-pairs-step-64")
             && chunked.contains("(root_push state1)")
             && chunked.contains("result (vector-get state1 2)")
+            && chunked.contains("functions-root (root_push functions)")
+            && chunked.contains("(root_set functions-root result)")
             && !chunked.contains("(vector-get\n    (continue-compile-src-decl-pairs-step-64"),
-        "compile-all-src-decl-pairs-chunked は stage2 x86 native の state local 崩れを避けるため state を root してから result を取り出すべき"
+        "compile-all-src-decl-pairs-chunked は stage2 x86 native の state local/return 崩れを避けるため state と result slot を root してから cleanup するべき"
     );
 }
 
