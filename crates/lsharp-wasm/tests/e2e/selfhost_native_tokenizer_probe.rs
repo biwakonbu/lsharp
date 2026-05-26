@@ -418,6 +418,62 @@ fn compiler_mode_parse_pair_progress_splits_parse_pair_and_cache_storage() {
 }
 
 #[test]
+fn parser_parse_program_step_progress_splits_expr_append_and_state_storage() {
+    let source = std::fs::read_to_string(workspace_root().join("selfhost/src/Syntax/Parser.ls"))
+        .expect("Parser.ls を読めること");
+    let step = source
+        .split("(defn parse-program-step-v3 [spans pos-ref src result]")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn parse-program-step-64-loop-bounded")
+                .next()
+        })
+        .expect("parse-program-step-v3 が存在すること");
+
+    let gate_pos = step
+        .find("parse-program-progress-mode (if (> (string-length (command-line-arg 8)) 0) 1 0)")
+        .expect("parse-program-step-v3 の診断は progress arg で gated すること");
+    let expr_pos = step
+        .find("expr (parse-expr-v3 spans pos-ref src)")
+        .expect("parse-program-step-v3 は parse-expr の戻りを保持すること");
+    let expr_diag_pos = step
+        .find("(print 221)")
+        .expect("parse-program-step-v3 は parse-expr 直後の expr 診断を持つこと");
+    let append_pos = step
+        .find("next-result (vector-push-single-rooted-v3 result expr)")
+        .expect("parse-program-step-v3 は expr を result に append すること");
+    let append_diag_pos = step
+        .find("(print 222)")
+        .expect("parse-program-step-v3 は vector append 直後の result 診断を持つこと");
+    let state_pos = step
+        .find("state (do")
+        .expect("parse-program-step-v3 は next-result を state 化すること");
+    let state_diag_pos = step
+        .find("(print 223)")
+        .expect("parse-program-step-v3 は state 格納後の result 診断を持つこと");
+
+    assert!(
+        gate_pos < expr_pos
+            && expr_pos < expr_diag_pos
+            && expr_diag_pos < append_pos
+            && append_pos < append_diag_pos
+            && append_diag_pos < state_pos
+            && state_pos < state_diag_pos,
+        "parse-program-step-v3 は parse-expr / append / state 格納の順に tag を診断できるべき"
+    );
+    assert!(
+        step.contains("before-pos (ref-get pos-ref)")
+            && step.contains("before-kind (p-current spans pos-ref)")
+            && step.contains("result-len (vector-length result)")
+            && step.contains("(print (vector-get expr 0))")
+            && step.contains("(print (vector-length expr))")
+            && step.contains("(print (vector-get (vector-get next-result result-len) 0))")
+            && step.contains("(print (vector-get (vector-get (vector-get state 1) result-len) 0))"),
+        "parse-program-step-v3 の 221/222/223 は位置、入力 token kind、expr tag、append 後 tag、state 後 tag を揃えて出すべき"
+    );
+}
+
+#[test]
 fn compiler_mode_compile_file_functions_roots_chunked_result_before_cleanup() {
     let source = std::fs::read_to_string(workspace_root().join("selfhost/src/App/CompilerMode.ls"))
         .expect("CompilerMode.ls を読めること");

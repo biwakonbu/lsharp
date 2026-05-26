@@ -2254,18 +2254,52 @@
   (if (== (p-current spans pos-ref) 99)
     (make-parse-loop-state 1 result)
     (do
-      (let [result-slot (root_push result)
+      (let [parse-program-progress-mode (if (> (string-length (command-line-arg 8)) 0) 1 0)
+        result-slot (root_push result)
+        before-pos (ref-get pos-ref)
+        before-kind (p-current spans pos-ref)
+        result-len (vector-length result)
         expr (parse-expr-v3 spans pos-ref src)]
         (do
           (root_push expr)
-          (let [next-result (vector-push-single-rooted-v3 result expr)
-            state (do
-              (root_set result-slot next-result)
-              (make-parse-loop-state 0 next-result))]
+          (if (= parse-program-progress-mode 1)
             (do
-              (root_pop)
-              (root_pop)
-              state)))))))
+              (print 221)
+              (print before-pos)
+              (print before-kind)
+              (print (ref-get pos-ref))
+              (print (vector-get expr 0))
+              (print (vector-length expr)))
+            (do))
+          (let [next-result (vector-push-single-rooted-v3 result expr)]
+            (do
+              (if (= parse-program-progress-mode 1)
+                (do
+                  (print 222)
+                  (print before-pos)
+                  (print before-kind)
+                  (print (ref-get pos-ref))
+                  (print (vector-length next-result))
+                  (print (vector-get (vector-get next-result result-len) 0)))
+                (do))
+              (let [state (do
+                (root_set result-slot next-result)
+                (make-parse-loop-state 0 next-result))]
+                (do
+                  (if (= parse-program-progress-mode 1)
+                    (do
+                      (root_push state)
+                      (print 223)
+                      (print before-pos)
+                      (print before-kind)
+                      (print (ref-get pos-ref))
+                      (print (vector-length (vector-get state 1)))
+                      (print (vector-get (vector-get (vector-get state 1) result-len) 0))
+                      (root_pop))
+                    (do))
+                  (root_pop)
+                  (root_pop)
+                  state)))))))))
 
 (defn parse-program-step-64-loop-bounded [spans pos-ref src result remaining]
   (do
