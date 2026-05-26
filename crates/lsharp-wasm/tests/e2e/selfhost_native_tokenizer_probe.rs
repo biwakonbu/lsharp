@@ -501,8 +501,8 @@ fn parser_parse_defn_body_branch_balances_local_roots_only() {
     );
     let root_pop_count = body_branch.matches("(root_pop)").count();
     assert_eq!(
-        root_pop_count, 4,
-        "parse-defn-v3 の通常 body branch は result / with-params / defn-node / body の 4 local roots だけを pop し、caller root を pop してはいけない"
+        root_pop_count, 5,
+        "parse-defn-v3 の通常 body branch は progress marker 用 parsed root と result / with-params / defn-node / body の local roots だけを pop し、caller root を pop してはいけない"
     );
 }
 
@@ -598,6 +598,43 @@ fn parser_finalize_defn_wrapper_marks_pre_and_post_cleanup_handoff() {
             && finalize_body.contains("(print (vector-get (ref-get parsed-ref) 0))")
             && finalize_body.contains("(print (vector-length (ref-get parsed-ref)))"),
         "finalize-defn-parsed-body-v3 は cleanup 前後で body / parsed / parsed-ref を比較できる marker 226 を出すべき"
+    );
+}
+
+#[test]
+fn parser_parse_defn_roots_finalize_result_before_progress_marker() {
+    let source = std::fs::read_to_string(workspace_root().join("selfhost/src/Syntax/Parser.ls"))
+        .expect("Parser.ls を読めること");
+    let parse_defn = source
+        .split("(defn parse-defn-v3 [spans pos-ref src]")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn parse-defmacro-v3").next())
+        .expect("parse-defn-v3 が存在すること");
+    let body_branch = parse_defn
+        .split("(let [body (parse-expr-v3 spans pos-ref src)]")
+        .nth(1)
+        .expect("parse-defn-v3 は通常 body branch を持つこと");
+
+    let parsed_pos = body_branch
+        .find("parsed (finalize-defn-parsed-body-v3 spans pos-ref defn-node param-count body)")
+        .expect("parse-defn-v3 は wrapper の戻り値を parsed に受けること");
+    let root_parsed_pos = body_branch[parsed_pos..]
+        .find("(root_push parsed)")
+        .map(|pos| parsed_pos + pos)
+        .expect("parse-defn-v3 は progress marker 前に parsed を root すること");
+    let marker_pos = body_branch
+        .find("(print 224)")
+        .expect("parse-defn-v3 は handoff marker 224 を持つこと");
+    let first_pop_after_marker = body_branch[marker_pos..]
+        .find("(root_pop)")
+        .map(|pos| marker_pos + pos)
+        .expect("marker 224 後に parsed root を外す root_pop が存在すること");
+
+    assert!(
+        parsed_pos < root_parsed_pos
+            && root_parsed_pos < marker_pos
+            && marker_pos < first_pop_after_marker,
+        "parse-defn-v3 は progress mode の command-line-arg/print allocation で parsed local を壊さないよう、marker 224 の前後だけ parsed を root するべき"
     );
 }
 

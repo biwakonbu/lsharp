@@ -1886,6 +1886,7 @@
                             (root_push body)
                             (let [parsed (finalize-defn-parsed-body-v3 spans pos-ref defn-node param-count body)]
                               (do
+                                (root_push parsed)
                                 (if (> (string-length (command-line-arg 8)) 0)
                                   (do
                                     (print 224)
@@ -1898,6 +1899,7 @@
                                     (print (vector-length parsed))
                                     (print (ref-get pos-ref)))
                                   (do))
+                                (root_pop)
                                 (root_pop)
                                 (root_pop)
                                 (root_pop)
