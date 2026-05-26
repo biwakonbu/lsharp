@@ -337,6 +337,24 @@ fn compiler_mode_source_pair_chunked_roots_function_accumulator_states() {
             && pair_step.contains("(print (decl-tag-or-minus-one decls 3))"),
         "compile-src-decl-pairs-step は failing pair を source/module に対応付ける 170 診断を持つべき"
     );
+    let updated_functions_pos = pair_step
+        .find("updated-functions (compile-source-defn-functions-chunked")
+        .expect("compile-src-decl-pairs-step は source-aware compile を呼ぶこと");
+    let src_root_pos = pair_step
+        .find("src-slot (root_push src)")
+        .expect("compile-src-decl-pairs-step は source compile 前に src を root すること");
+    let decls_root_pos = pair_step
+        .find("decls-slot (root_push decls)")
+        .expect("compile-src-decl-pairs-step は source compile 前に decls を root すること");
+    let pre_diag_pos = pair_step
+        .find("(print 171)")
+        .expect("compile-src-decl-pairs-step は source compile 前の pair identity 診断を持つこと");
+    assert!(
+        src_root_pos < updated_functions_pos
+            && decls_root_pos < updated_functions_pos
+            && pre_diag_pos < updated_functions_pos,
+        "compile-src-decl-pairs-step は source compile 中の GC で pair source/decls local が stale にならないよう、呼び出し前に root と pre 診断を置くべき"
+    );
 }
 
 #[test]
