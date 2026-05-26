@@ -465,9 +465,10 @@ fn compiler_with_source_compile_step_roots_next_functions_before_state_alloc() {
         body.contains("functions-slot (root_push functions)")
             && body.contains("next-functions (push-object-vector functions compiled-fn)")
             && body.contains("(root_set functions-slot next-functions)")
+            && body.matches("(root_set functions-slot result)").count() >= 2
             && body.contains("(make-compile-step-state 0 (+ idx 1) next-functions)")
             && !body.contains("compile-defn-functions-step-finish functions compiled-fn idx"),
-        "compile-defn-functions-step-with-source は stage2 x86 native の local 保持崩れを避けるため next-functions を state allocation 前に root slot へ戻すべき"
+        "compile-defn-functions-step-with-source は stage2 x86 native の local 保持崩れを避けるため next-functions と result state を root slot へ戻すべき"
     );
 }
 
