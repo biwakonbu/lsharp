@@ -254,6 +254,17 @@ fn compiler_mode_source_pair_chunked_roots_function_accumulator_states() {
         .nth(1)
         .and_then(|tail| tail.split("(defn compile-all-src-decl-pairs ").next())
         .expect("compile-all-src-decl-pairs-chunked が存在すること");
+    let chunked_diag_gate_pos = chunked
+        .find("chunked-progress-mode (if (> (string-length (command-line-arg 8)) 0) 1 0)")
+        .expect(
+            "compile-all-src-decl-pairs-chunked の state 診断は progress arg で gated すること",
+        );
+    let state0_diag_pos = chunked
+        .find("(print 167)")
+        .expect("compile-all-src-decl-pairs-chunked は state0 accumulator 診断 marker を持つこと");
+    let state1_diag_pos = chunked
+        .find("(print 168)")
+        .expect("compile-all-src-decl-pairs-chunked は state1 accumulator 診断 marker を持つこと");
 
     for (name, body) in [
         ("continue step", continue_step),
@@ -285,8 +296,18 @@ fn compiler_mode_source_pair_chunked_roots_function_accumulator_states() {
             && chunked.contains("result (vector-get state1 2)")
             && chunked.contains("functions-root (root_push functions)")
             && chunked.contains("(root_set functions-root result)")
+            && chunked.contains("(print (vector-get state0 0))")
+            && chunked.contains("(print (vector-get state0 1))")
+            && chunked.contains("(print (vector-length (vector-get state0 2)))")
+            && chunked.contains("(print (vector-get state1 0))")
+            && chunked.contains("(print (vector-get state1 1))")
+            && chunked.contains("(print (vector-length (vector-get state1 2)))")
             && !chunked.contains("(vector-get\n    (continue-compile-src-decl-pairs-step-64"),
         "compile-all-src-decl-pairs-chunked は stage2 x86 native の state local/return 崩れを避けるため state と result slot を root してから cleanup するべき"
+    );
+    assert!(
+        chunked_diag_gate_pos < state0_diag_pos && state0_diag_pos < state1_diag_pos,
+        "compile-all-src-decl-pairs-chunked の 167/168 診断は progress gate 後、state0 から state1 の順で出すべき"
     );
 }
 

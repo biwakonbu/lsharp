@@ -2113,27 +2113,42 @@
                   (root_pop)
                   result)))))))))
 (defn compile-all-src-decl-pairs-chunked [pairs idx n ftable data-ref functions]
-  (do
-    (root_push pairs)
-    (root_push ftable)
-    (root_push data-ref)
-    (let [functions-root (root_push functions)]
-    (let [state0 (compile-src-decl-pairs-step-64 pairs idx n ftable data-ref functions)]
-      (do
-        (root_push state0)
-        (let [state1 (continue-compile-src-decl-pairs-step-64 pairs n ftable data-ref state0)]
+  (let [chunked-progress-mode (if (> (string-length (command-line-arg 8)) 0) 1 0)]
+    (do
+      (root_push pairs)
+      (root_push ftable)
+      (root_push data-ref)
+      (let [functions-root (root_push functions)]
+        (let [state0 (compile-src-decl-pairs-step-64 pairs idx n ftable data-ref functions)]
           (do
-            (root_push state1)
-            (let [result (vector-get state1 2)]
+            (root_push state0)
+            (if (= chunked-progress-mode 1)
               (do
-                (root_set functions-root result)
-                (root_pop)
-                (root_pop)
-                (root_pop)
-                (root_pop)
-                (root_pop)
-                (root_pop)
-                result)))))))))
+                (print 167)
+                (print (vector-get state0 0))
+                (print (vector-get state0 1))
+                (print (vector-length (vector-get state0 2))))
+              (do))
+            (let [state1 (continue-compile-src-decl-pairs-step-64 pairs n ftable data-ref state0)]
+              (do
+                (root_push state1)
+                (if (= chunked-progress-mode 1)
+                  (do
+                    (print 168)
+                    (print (vector-get state1 0))
+                    (print (vector-get state1 1))
+                    (print (vector-length (vector-get state1 2))))
+                  (do))
+                (let [result (vector-get state1 2)]
+                  (do
+                    (root_set functions-root result)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    result))))))))))
 (defn compile-all-src-decl-pairs [pairs idx n ftable data-ref functions]
   (if (>= idx n)
     functions
