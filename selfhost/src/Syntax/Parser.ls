@@ -833,9 +833,31 @@
       (let [parsed (finalize-defn-body-v3 defn-node param-count body)]
         (do
           (ref-set parsed-ref parsed)
+          (if (> (string-length (command-line-arg 8)) 0)
+            (do
+              (print 226)
+              (print 0)
+              (print (vector-get body 0))
+              (print (vector-length body))
+              (print (vector-get parsed 0))
+              (print (vector-length parsed))
+              (print (vector-get (ref-get parsed-ref) 0))
+              (print (vector-length (ref-get parsed-ref))))
+            (do))
           (root_pop)
           (root_pop)
           (root_pop)
+          (if (> (string-length (command-line-arg 8)) 0)
+            (do
+              (print 226)
+              (print 1)
+              (print (vector-get body 0))
+              (print (vector-length body))
+              (print (vector-get parsed 0))
+              (print (vector-length parsed))
+              (print (vector-get (ref-get parsed-ref) 0))
+              (print (vector-length (ref-get parsed-ref))))
+            (do))
           (ref-get parsed-ref))))))
 
 (defn parse-defn-bodyless-or-body-v3 [spans pos-ref src defn-node param-count]

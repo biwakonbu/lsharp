@@ -563,6 +563,45 @@ fn parser_parse_defn_progress_splits_finalize_body_handoff() {
 }
 
 #[test]
+fn parser_finalize_defn_wrapper_marks_pre_and_post_cleanup_handoff() {
+    let source = std::fs::read_to_string(workspace_root().join("selfhost/src/Syntax/Parser.ls"))
+        .expect("Parser.ls を読めること");
+    let finalize_body = source
+        .split("(defn finalize-defn-parsed-body-v3 [spans pos-ref defn-node param-count body]")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn parse-defn-bodyless-or-body-v3").next())
+        .expect("finalize-defn-parsed-body-v3 が存在すること");
+
+    let ref_set_pos = finalize_body
+        .find("(ref-set parsed-ref parsed)")
+        .expect("wrapper は parsed を parsed-ref に退避すること");
+    let first_marker_pos = finalize_body
+        .find("(print 226)")
+        .expect("wrapper は cleanup 前の handoff marker 226 を持つこと");
+    let second_marker_pos = finalize_body
+        .rfind("(print 226)")
+        .expect("wrapper は cleanup 後の handoff marker 226 を持つこと");
+    let return_pos = finalize_body
+        .rfind("(ref-get parsed-ref)")
+        .expect("wrapper は parsed-ref を返すこと");
+
+    assert!(
+        ref_set_pos < first_marker_pos
+            && first_marker_pos < second_marker_pos
+            && second_marker_pos < return_pos
+            && finalize_body.contains("(print 0)")
+            && finalize_body.contains("(print 1)")
+            && finalize_body.contains("(print (vector-get body 0))")
+            && finalize_body.contains("(print (vector-length body))")
+            && finalize_body.contains("(print (vector-get parsed 0))")
+            && finalize_body.contains("(print (vector-length parsed))")
+            && finalize_body.contains("(print (vector-get (ref-get parsed-ref) 0))")
+            && finalize_body.contains("(print (vector-length (ref-get parsed-ref)))"),
+        "finalize-defn-parsed-body-v3 は cleanup 前後で body / parsed / parsed-ref を比較できる marker 226 を出すべき"
+    );
+}
+
+#[test]
 fn compiler_mode_compile_file_functions_roots_chunked_result_before_cleanup() {
     let source = std::fs::read_to_string(workspace_root().join("selfhost/src/App/CompilerMode.ls"))
         .expect("CompilerMode.ls を読めること");
