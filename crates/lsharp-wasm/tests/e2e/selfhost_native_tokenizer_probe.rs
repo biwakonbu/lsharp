@@ -539,6 +539,14 @@ fn compiler_source_chunked_roots_next_functions_between_step_helpers() {
                 .next()
         })
         .expect("continue-compile-defn-functions-step-with-source が存在すること");
+    let continue_times = source
+        .split("(defn continue-compile-defn-functions-step-times-with-source")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-defn-functions-step-8-with-source")
+                .next()
+        })
+        .expect("continue-compile-defn-functions-step-times-with-source が存在すること");
     let step8 = source
         .split("(defn compile-defn-functions-step-8-with-source")
         .nth(1)
@@ -593,6 +601,16 @@ fn compiler_source_chunked_roots_next_functions_between_step_helpers() {
             "{name} wrapper は初回 step 呼び出し前に functions accumulator を root するべき"
         );
     }
+
+    assert!(
+        continue_times.contains("next-state-root (root_push next-state)")
+            && continue_times.contains("(root_set next-state-root result)")
+            && step64.contains("state-root (root_push state)")
+            && step64.contains("(root_set state-root result)")
+            && continue64.contains("next-state-root (root_push next-state)")
+            && continue64.contains("(root_set next-state-root result)"),
+        "source 64-step state wrappers は x86 native の cleanup/return 境界で result state を root slot に戻すべき"
+    );
 }
 
 #[test]

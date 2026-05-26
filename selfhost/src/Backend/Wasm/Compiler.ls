@@ -1413,16 +1413,17 @@
         (root_push state)
         (let [next-state (continue-compile-defn-functions-step-with-source decls n source ftable data-ref state)]
           (do
-            (root_push next-state)
+            (let [next-state-root (root_push next-state)]
             (let [result (continue-compile-defn-functions-step-times-with-source decls n source ftable data-ref (- remaining 1) next-state)]
               (do
+                (root_set next-state-root result)
                 (root_pop)
                 (root_pop)
                 (root_pop)
                 (root_pop)
                 (root_pop)
                 (root_pop)
-                result))))))))
+                result)))))))))
 
 (defn compile-defn-functions-step-8-with-source [decls idx n source ftable data-ref functions]
   (do
@@ -1476,16 +1477,17 @@
     (root_push functions)
     (let [state (compile-defn-functions-step-with-source decls idx n source ftable data-ref functions)]
       (do
-        (root_push state)
+        (let [state-root (root_push state)]
         (let [result (continue-compile-defn-functions-step-times-with-source decls n source ftable data-ref 63 state)]
           (do
+            (root_set state-root result)
             (root_pop)
             (root_pop)
             (root_pop)
             (root_pop)
             (root_pop)
             (root_pop)
-            result))))))
+            result)))))))
 
 (defn continue-compile-defn-functions-step-64-with-source [decls n source ftable data-ref state]
   (if (= (vector-get state 0) 1)
@@ -1502,9 +1504,10 @@
           (root_push next-functions)
           (let [next-state (compile-defn-functions-step-64-with-source decls next-idx n source ftable data-ref next-functions)]
             (do
-              (root_push next-state)
+              (let [next-state-root (root_push next-state)]
               (let [result (continue-compile-defn-functions-step-64-with-source decls n source ftable data-ref next-state)]
                 (do
+                  (root_set next-state-root result)
                   (root_pop)
                   (root_pop)
                   (root_pop)
@@ -1512,7 +1515,7 @@
                   (root_pop)
                   (root_pop)
                   (root_pop)
-                  result)))))))))
+                  result))))))))))
 
 (defn compile-source-defn-functions-chunked [decls idx n source ftable data-ref functions]
   (do
