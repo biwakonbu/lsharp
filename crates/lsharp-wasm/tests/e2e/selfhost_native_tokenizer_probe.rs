@@ -487,15 +487,50 @@ fn compiler_with_source_skip_decl_roots_functions_until_state_alloc() {
             "Compiler.ls に compile-defn-functions-step-with-source-body-impl-3 が存在すること",
         );
 
+    let state_alloc_pos = body
+        .find("(let [result (make-compile-step-state 0 (+ idx 1) functions)]")
+        .expect("skip branch は state allocation を result binding として持つべき");
+    let first_pop_after_state = body[state_alloc_pos..]
+        .find("(root_pop)")
+        .map(|pos| state_alloc_pos + pos)
+        .expect("skip branch は state allocation 後に root を解放するべき");
+
     assert!(
-        body.contains(
-            "(let [result (make-compile-step-state 0 (+ idx 1) functions)]\n            (do\n              (root_pop)"
-        )
-            && body.contains("              result)))))))")
+        state_alloc_pos < first_pop_after_state
+            && body.contains("              result))))))))")
             && !body.contains(
                 "(root_pop)\n          (root_pop)\n          (root_pop)\n          (root_pop)\n          (root_pop)\n          (make-compile-step-state 0 (+ idx 1) functions)"
             ),
         "compile-defn-functions-step-with-source の non-defn skip branch は functions を root したまま state allocation するべき"
+    );
+}
+
+#[test]
+fn compiler_source_step_body_progress_marks_single_step_state() {
+    let source =
+        std::fs::read_to_string(workspace_root().join("selfhost/src/Backend/Wasm/Compiler.ls"))
+            .expect("Compiler.ls を読めること");
+    let body = source
+        .split("(defn compile-defn-functions-step-with-source-body-impl-3")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-let-with-ftable-impl-body-impl-3")
+                .next()
+        })
+        .expect(
+            "Compiler.ls に compile-defn-functions-step-with-source-body-impl-3 が存在すること",
+        );
+
+    assert!(
+        body.contains(
+            "source-step-progress-mode (if (> (string-length (command-line-arg 8)) 0) 1 0)"
+        ) && body.contains("(print 215)")
+            && body.contains("(print (vector-length next-functions))")
+            && body.contains("(print (vector-get result 1))")
+            && body.contains("(print (vector-length (vector-get result 2)))")
+            && body.contains("(print 216)")
+            && body.contains("(print (vector-length functions))"),
+        "compile-defn-functions-step-with-source-body-impl-3 は source chunk state の破損点を single-step result で観測できるべき"
     );
 }
 

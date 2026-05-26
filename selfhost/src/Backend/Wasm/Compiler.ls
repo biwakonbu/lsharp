@@ -2098,42 +2098,66 @@
         (root_pop)
         result))))
 (defn compile-defn-functions-step-with-source-body-impl-3 [decls idx n source ftable data-ref functions]
-  (if (>= idx n)
-    (make-compile-step-state 1 idx functions)
-    (let [decls-slot (root_push decls)
-      source-slot (root_push source)
-      ftable-slot (root_push ftable)
-      data-slot (root_push data-ref)
-      functions-slot (root_push functions)
-      decl (vector-get decls idx)]
-      (if (= (vector-get decl 0) 20)
-        (do
-          (root_push decl)
-          (let [compiled-fn (compile-defn-function-with-source decl source ftable data-ref)]
-            (do
-              (root_push compiled-fn)
-              (let [next-functions (push-object-vector functions compiled-fn)]
-                (do
-                  (root_set functions-slot next-functions)
-                  (let [result (make-compile-step-state 0 (+ idx 1) next-functions)]
+  (let [source-step-progress-mode (if (> (string-length (command-line-arg 8)) 0) 1 0)]
+    (if (>= idx n)
+      (make-compile-step-state 1 idx functions)
+      (let [decls-slot (root_push decls)
+        source-slot (root_push source)
+        ftable-slot (root_push ftable)
+        data-slot (root_push data-ref)
+        functions-slot (root_push functions)
+        decl (vector-get decls idx)]
+        (if (= (vector-get decl 0) 20)
+          (do
+            (root_push decl)
+            (let [compiled-fn (compile-defn-function-with-source decl source ftable data-ref)]
+              (do
+                (root_push compiled-fn)
+                (let [next-functions (push-object-vector functions compiled-fn)]
+                  (do
+                    (root_set functions-slot next-functions)
+                    (let [result (make-compile-step-state 0 (+ idx 1) next-functions)]
+                      (do
+                        (if (= source-step-progress-mode 1)
+                          (if (< (vector-length functions) 128)
+                            (do
+                              (print 215)
+                              (print idx)
+                              (print (vector-length functions))
+                              (print (vector-length next-functions))
+                              (print (vector-get result 0))
+                              (print (vector-get result 1))
+                              (print (vector-length (vector-get result 2))))
+                            (do))
+                          (do))
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        result)))))))
+          (do
+            (let [result (make-compile-step-state 0 (+ idx 1) functions)]
+              (do
+                (if (= source-step-progress-mode 1)
+                  (if (< (vector-length functions) 128)
                     (do
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                      result)))))))
-        (do
-          (let [result (make-compile-step-state 0 (+ idx 1) functions)]
-            (do
-              (root_pop)
-              (root_pop)
-              (root_pop)
-              (root_pop)
-              (root_pop)
-              result)))))))
+                      (print 216)
+                      (print idx)
+                      (print (vector-length functions))
+                      (print (vector-get result 0))
+                      (print (vector-get result 1))
+                      (print (vector-length (vector-get result 2))))
+                    (do))
+                  (do))
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result))))))))
 (defn compile-let-with-ftable-impl-body-impl-3 [node env ftable instrs]
   (let [name-hash (vector-get node 1)
     init-expr (vector-get node 2)
