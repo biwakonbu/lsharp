@@ -1389,16 +1389,18 @@
   (if (= (vector-get state 0) 1)
     state
     (do
-      (root_push state)
-      (let [next-idx (vector-get state 1)
-        next-functions (vector-get state 2)]
+      (let [state-slot (root_push state)]
         (do
-          (root_push next-functions)
-          (let [result (compile-defn-functions-step-with-source decls next-idx n source ftable data-ref next-functions)]
+          (let [next-idx (vector-get state 1)
+            next-functions (vector-get state 2)]
             (do
-              (root_pop)
-              (root_pop)
-              result)))))))
+              (root_push next-functions)
+              (let [result (compile-defn-functions-step-with-source decls next-idx n source ftable data-ref next-functions)]
+                (do
+                  (root_set state-slot result)
+                  (root_pop)
+                  (root_pop)
+                  result)))))))))
 
 (defn continue-compile-defn-functions-step-times-with-source [decls n source ftable data-ref remaining state]
   (if (= remaining 0)
@@ -1406,116 +1408,123 @@
     (if (= (vector-get state 0) 1)
       state
       (do
-        (root_push decls)
-        (root_push source)
-        (root_push ftable)
-        (root_push data-ref)
-        (root_push state)
-        (let [next-state (continue-compile-defn-functions-step-with-source decls n source ftable data-ref state)]
+        (let [decls-slot (root_push decls)]
           (do
-            (let [next-state-root (root_push next-state)]
-            (let [result (continue-compile-defn-functions-step-times-with-source decls n source ftable data-ref (- remaining 1) next-state)]
+            (root_push source)
+            (root_push ftable)
+            (root_push data-ref)
+            (root_push state)
+            (let [next-state (continue-compile-defn-functions-step-with-source decls n source ftable data-ref state)]
               (do
-                (root_set next-state-root result)
-                (root_pop)
-                (root_pop)
-                (root_pop)
-                (root_pop)
-                (root_pop)
-                (root_pop)
-                result)))))))))
+                (root_push next-state)
+                (let [result (continue-compile-defn-functions-step-times-with-source decls n source ftable data-ref (- remaining 1) next-state)]
+                  (do
+                    (root_set decls-slot result)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    result))))))))))
 
 (defn compile-defn-functions-step-8-with-source [decls idx n source ftable data-ref functions]
   (do
-    (root_push decls)
-    (root_push source)
-    (root_push ftable)
-    (root_push data-ref)
-    (root_push functions)
-    (let [state (compile-defn-functions-step-with-source decls idx n source ftable data-ref functions)]
+    (let [decls-slot (root_push decls)]
       (do
-        (root_push state)
-        (let [result (continue-compile-defn-functions-step-times-with-source decls n source ftable data-ref 7 state)]
+        (root_push source)
+        (root_push ftable)
+        (root_push data-ref)
+        (root_push functions)
+        (let [state (compile-defn-functions-step-with-source decls idx n source ftable data-ref functions)]
           (do
-            (root_pop)
-            (root_pop)
-            (root_pop)
-            (root_pop)
-            (root_pop)
-            (root_pop)
-            result))))))
+            (root_push state)
+            (let [result (continue-compile-defn-functions-step-times-with-source decls n source ftable data-ref 7 state)]
+              (do
+                (root_set decls-slot result)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result))))))))
 
 (defn continue-compile-defn-functions-step-8-with-source [decls n source ftable data-ref state]
   (if (= (vector-get state 0) 1)
     state
     (do
-      (root_push decls)
-      (root_push source)
-      (root_push ftable)
-      (root_push data-ref)
-      (root_push state)
-      (let [next-idx (vector-get state 1)
-        next-functions (vector-get state 2)]
+      (let [decls-slot (root_push decls)]
         (do
-          (root_push next-functions)
-          (let [result (compile-defn-functions-step-8-with-source decls next-idx n source ftable data-ref next-functions)]
+          (root_push source)
+          (root_push ftable)
+          (root_push data-ref)
+          (root_push state)
+          (let [next-idx (vector-get state 1)
+            next-functions (vector-get state 2)]
             (do
-              (root_pop)
-              (root_pop)
-              (root_pop)
-              (root_pop)
-              (root_pop)
-              (root_pop)
-              result)))))))
+              (root_push next-functions)
+              (let [result (compile-defn-functions-step-8-with-source decls next-idx n source ftable data-ref next-functions)]
+                (do
+                  (root_set decls-slot result)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  result)))))))))
 
 (defn compile-defn-functions-step-64-with-source [decls idx n source ftable data-ref functions]
   (do
-    (root_push decls)
-    (root_push source)
-    (root_push ftable)
-    (root_push data-ref)
-    (root_push functions)
-    (let [state (compile-defn-functions-step-with-source decls idx n source ftable data-ref functions)]
+    (let [decls-slot (root_push decls)]
       (do
-        (let [state-root (root_push state)]
-        (let [result (continue-compile-defn-functions-step-times-with-source decls n source ftable data-ref 63 state)]
+        (root_push source)
+        (root_push ftable)
+        (root_push data-ref)
+        (root_push functions)
+        (let [state (compile-defn-functions-step-with-source decls idx n source ftable data-ref functions)]
           (do
-            (root_set state-root result)
-            (root_pop)
-            (root_pop)
-            (root_pop)
-            (root_pop)
-            (root_pop)
-            (root_pop)
-            result)))))))
+            (root_push state)
+            (let [result (continue-compile-defn-functions-step-times-with-source decls n source ftable data-ref 63 state)]
+              (do
+                (root_set decls-slot result)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result))))))))
 
 (defn continue-compile-defn-functions-step-64-with-source [decls n source ftable data-ref state]
   (if (= (vector-get state 0) 1)
     state
     (do
-      (root_push decls)
-      (root_push source)
-      (root_push ftable)
-      (root_push data-ref)
-      (root_push state)
-      (let [next-idx (vector-get state 1)
-        next-functions (vector-get state 2)]
+      (let [decls-slot (root_push decls)]
         (do
-          (root_push next-functions)
-          (let [next-state (compile-defn-functions-step-64-with-source decls next-idx n source ftable data-ref next-functions)]
+          (root_push source)
+          (root_push ftable)
+          (root_push data-ref)
+          (root_push state)
+          (let [next-idx (vector-get state 1)
+            next-functions (vector-get state 2)]
             (do
-              (let [next-state-root (root_push next-state)]
-              (let [result (continue-compile-defn-functions-step-64-with-source decls n source ftable data-ref next-state)]
+              (root_push next-functions)
+              (let [next-state (compile-defn-functions-step-64-with-source decls next-idx n source ftable data-ref next-functions)]
                 (do
-                  (root_set next-state-root result)
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  result))))))))))
+                  (root_push next-state)
+                  (let [result (continue-compile-defn-functions-step-64-with-source decls n source ftable data-ref next-state)]
+                    (do
+                      (root_set decls-slot result)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      result)))))))))))
 
 (defn compile-source-defn-functions-chunked [decls idx n source ftable data-ref functions]
   (let [source-chunk-progress-mode (if (> (string-length (command-line-arg 8)) 0) 1 0)]

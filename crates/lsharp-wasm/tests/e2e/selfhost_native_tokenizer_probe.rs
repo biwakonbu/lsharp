@@ -652,13 +652,22 @@ fn compiler_source_chunked_roots_next_functions_between_step_helpers() {
     }
 
     assert!(
-        continue_times.contains("next-state-root (root_push next-state)")
-            && continue_times.contains("(root_set next-state-root result)")
-            && step64.contains("state-root (root_push state)")
-            && step64.contains("(root_set state-root result)")
-            && continue64.contains("next-state-root (root_push next-state)")
-            && continue64.contains("(root_set next-state-root result)"),
-        "source 64-step state wrappers は x86 native の cleanup/return 境界で result state を root slot に戻すべき"
+        continue_step.contains("state-slot (root_push state)")
+            && continue_step.contains("(root_set state-slot result)")
+            && continue_times.contains("decls-slot (root_push decls)")
+            && continue_times.contains("(root_set decls-slot result)")
+            && step8.contains("decls-slot (root_push decls)")
+            && step8.contains("(root_set decls-slot result)")
+            && continue8.contains("decls-slot (root_push decls)")
+            && continue8.contains("(root_set decls-slot result)")
+            && step64.contains("decls-slot (root_push decls)")
+            && step64.contains("(root_set decls-slot result)")
+            && continue64.contains("decls-slot (root_push decls)")
+            && continue64.contains("(root_set decls-slot result)")
+            && !continue_times.contains("next-state-root (root_push next-state)")
+            && !step64.contains("state-root (root_push state)")
+            && !continue64.contains("next-state-root (root_push next-state)"),
+        "source step wrappers は x86 native の cleanup/return 境界で result state を bottom 側 root slot に戻すべき"
     );
 }
 
