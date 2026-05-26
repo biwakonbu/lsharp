@@ -358,6 +358,66 @@ fn compiler_mode_source_pair_chunked_roots_function_accumulator_states() {
 }
 
 #[test]
+fn compiler_mode_parse_pair_progress_splits_parse_pair_and_cache_storage() {
+    let source = std::fs::read_to_string(workspace_root().join("selfhost/src/App/CompilerMode.ls"))
+        .expect("CompilerMode.ls を読めること");
+    let parse_pair = source
+        .split("(defn parse-src-decl-pair [src]")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn load-src-decl-pair-with-cache").next())
+        .expect("parse-src-decl-pair が存在すること");
+    let load_pair = source
+        .split("(defn load-src-decl-pair-with-cache [path cache-ref parse-count-ref]")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn make-pairs-step-state").next())
+        .expect("load-src-decl-pair-with-cache が存在すること");
+
+    let parse_progress_gate_pos = parse_pair
+        .find("parse-pair-progress-mode (if (> (string-length (command-line-arg 8)) 0) 1 0)")
+        .expect("parse-src-decl-pair の診断は progress arg で gated すること");
+    let parse_program_pos = parse_pair
+        .find("decls (parse-program src)")
+        .expect("parse-src-decl-pair は parse-program の戻りを decls に保持すること");
+    let parse_result_diag_pos = parse_pair
+        .find("(print 217)")
+        .expect("parse-src-decl-pair は parse-program 直後の decl tag 診断を持つこと");
+    let pair_result_diag_pos = parse_pair
+        .find("(print 218)")
+        .expect("parse-src-decl-pair は make-src-decl-pair 後の decl tag 診断を持つこと");
+    let make_pair_pos = parse_pair
+        .find("pair (make-src-decl-pair src decls)")
+        .expect("parse-src-decl-pair は src/decls pair を作ること");
+    assert!(
+        parse_progress_gate_pos < parse_program_pos
+            && parse_program_pos < parse_result_diag_pos
+            && parse_result_diag_pos < make_pair_pos
+            && make_pair_pos < pair_result_diag_pos,
+        "parse-src-decl-pair は parse result と pair result の境界を順序付き marker で分けるべき"
+    );
+    assert!(
+        parse_pair.contains("(print (string-length src))")
+            && parse_pair.contains("(print (vector-length decls))")
+            && parse_pair.contains("(print (decl-tag-or-minus-one decls 0))")
+            && parse_pair.contains("(print (decl-tag-or-minus-one decls 3))"),
+        "parse-src-decl-pair の 217/218 は source 長、decl 長、先頭 decl tag を同じ形で出すべき"
+    );
+
+    let cache_entry_pos = load_pair
+        .find("entry (make-src-decl-cache-entry fingerprint pair)")
+        .expect("load-src-decl-pair-with-cache は fresh pair を cache entry 化すること");
+    let cache_diag_pos = load_pair.find("(print 219)").expect(
+        "load-src-decl-pair-with-cache は cache storage 直前の pair decl tag 診断を持つこと",
+    );
+    assert!(
+        cache_entry_pos < cache_diag_pos
+            && load_pair.contains("(print (vector-length (vector-get pair 1)))")
+            && load_pair.contains("(print (decl-tag-or-minus-one (vector-get pair 1) 0))")
+            && load_pair.contains("(print (decl-tag-or-minus-one (vector-get pair 1) 3))"),
+        "load-src-decl-pair-with-cache は cache entry 作成後、保存前の pair decl tag を診断できるべき"
+    );
+}
+
+#[test]
 fn compiler_mode_compile_file_functions_roots_chunked_result_before_cleanup() {
     let source = std::fs::read_to_string(workspace_root().join("selfhost/src/App/CompilerMode.ls"))
         .expect("CompilerMode.ls を読めること");
