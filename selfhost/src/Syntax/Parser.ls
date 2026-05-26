@@ -2258,6 +2258,7 @@
         result-slot (root_push result)
         before-pos (ref-get pos-ref)
         before-kind (p-current spans pos-ref)
+        head-kind (if (== before-kind 0) (span-kind spans (+ before-pos 1)) -1)
         result-len (vector-length result)
         expr (parse-expr-v3 spans pos-ref src)]
         (do
@@ -2267,6 +2268,7 @@
               (print 221)
               (print before-pos)
               (print before-kind)
+              (print head-kind)
               (print (ref-get pos-ref))
               (print (vector-get expr 0))
               (print (vector-length expr)))

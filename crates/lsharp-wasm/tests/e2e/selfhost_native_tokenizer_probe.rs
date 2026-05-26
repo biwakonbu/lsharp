@@ -464,12 +464,45 @@ fn parser_parse_program_step_progress_splits_expr_append_and_state_storage() {
     assert!(
         step.contains("before-pos (ref-get pos-ref)")
             && step.contains("before-kind (p-current spans pos-ref)")
+            && step.contains(
+                "head-kind (if (== before-kind 0) (span-kind spans (+ before-pos 1)) -1)"
+            )
             && step.contains("result-len (vector-length result)")
+            && step.contains("(print head-kind)")
             && step.contains("(print (vector-get expr 0))")
             && step.contains("(print (vector-length expr))")
             && step.contains("(print (vector-get (vector-get next-result result-len) 0))")
             && step.contains("(print (vector-get (vector-get (vector-get state 1) result-len) 0))"),
         "parse-program-step-v3 の 221/222/223 は位置、入力 token kind、expr tag、append 後 tag、state 後 tag を揃えて出すべき"
+    );
+}
+
+#[test]
+fn parser_parse_defn_body_branch_balances_local_roots_only() {
+    let source = std::fs::read_to_string(workspace_root().join("selfhost/src/Syntax/Parser.ls"))
+        .expect("Parser.ls を読めること");
+    let parse_defn = source
+        .split("(defn parse-defn-v3 [spans pos-ref src]")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn parse-defmacro-v3").next())
+        .expect("parse-defn-v3 が存在すること");
+    let body_branch = parse_defn
+        .split("body (parse-expr-v3 spans pos-ref src)")
+        .nth(1)
+        .and_then(|tail| tail.split("parsed))))").next())
+        .expect("parse-defn-v3 は通常 body branch を持つこと");
+
+    assert!(
+        body_branch.contains("(root_push body)")
+            && body_branch.contains(
+                "parsed (finalize-defn-parsed-body-v3 spans pos-ref defn-node param-count body)"
+            ),
+        "parse-defn-v3 の通常 body branch は body を root して finalize すること"
+    );
+    let root_pop_count = body_branch.matches("(root_pop)").count();
+    assert_eq!(
+        root_pop_count, 4,
+        "parse-defn-v3 の通常 body branch は result / with-params / defn-node / body の 4 local roots だけを pop し、caller root を pop してはいけない"
     );
 }
 
