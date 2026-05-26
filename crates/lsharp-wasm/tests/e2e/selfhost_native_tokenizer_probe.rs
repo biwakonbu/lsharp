@@ -328,6 +328,15 @@ fn compiler_mode_source_pair_chunked_roots_function_accumulator_states() {
             && pair_step.contains("(print (vector-length (ref-get data-ref)))"),
         "compile-src-decl-pairs-step は payload helper 内の source compile return と state allocation の境界を 169 で診断できるべき"
     );
+    assert!(
+        pair_step.contains("(print 170)")
+            && pair_step.contains("(print (string-length src))")
+            && pair_step.contains("(print (text-char-or-minus-one src 8))")
+            && pair_step.contains("(print (text-char-or-minus-one src 19))")
+            && pair_step.contains("(print (decl-tag-or-minus-one decls 0))")
+            && pair_step.contains("(print (decl-tag-or-minus-one decls 3))"),
+        "compile-src-decl-pairs-step は failing pair を source/module に対応付ける 170 診断を持つべき"
+    );
 }
 
 #[test]
