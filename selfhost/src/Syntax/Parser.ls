@@ -805,6 +805,15 @@
           (root_push node-with-placeholder)
           (let [parsed (vector-set-at-rooted-v3 node-with-placeholder body-idx body)]
             (do
+              (if (> (string-length (command-line-arg 8)) 0)
+                (do
+                  (print 225)
+                  (print body-idx)
+                  (print (vector-get node-with-placeholder 0))
+                  (print (vector-length node-with-placeholder))
+                  (print (vector-get parsed 0))
+                  (print (vector-length parsed)))
+                (do))
               (root_pop)
               (root_pop)
               parsed)))))))
@@ -1851,6 +1860,18 @@
                             (root_push body)
                             (let [parsed (finalize-defn-parsed-body-v3 spans pos-ref defn-node param-count body)]
                               (do
+                                (if (> (string-length (command-line-arg 8)) 0)
+                                  (do
+                                    (print 224)
+                                    (print param-count)
+                                    (print (vector-get defn-node 0))
+                                    (print (vector-length defn-node))
+                                    (print (vector-get body 0))
+                                    (print (vector-length body))
+                                    (print (vector-get parsed 0))
+                                    (print (vector-length parsed))
+                                    (print (ref-get pos-ref)))
+                                  (do))
                                 (root_pop)
                                 (root_pop)
                                 (root_pop)

@@ -507,6 +507,62 @@ fn parser_parse_defn_body_branch_balances_local_roots_only() {
 }
 
 #[test]
+fn parser_parse_defn_progress_splits_finalize_body_handoff() {
+    let source = std::fs::read_to_string(workspace_root().join("selfhost/src/Syntax/Parser.ls"))
+        .expect("Parser.ls を読めること");
+    let finalize_body = source
+        .split("(defn finalize-defn-body-v3 [defn-node param-count body]")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn maybe-append-defn-meta-v3").next())
+        .expect("finalize-defn-body-v3 が存在すること");
+    let parse_defn = source
+        .split("(defn parse-defn-v3 [spans pos-ref src]")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn parse-defmacro-v3").next())
+        .expect("parse-defn-v3 が存在すること");
+    let body_branch = parse_defn
+        .split("body (parse-expr-v3 spans pos-ref src)")
+        .nth(1)
+        .and_then(|tail| tail.split("parsed))))").next())
+        .expect("parse-defn-v3 は通常 body branch を持つこと");
+
+    let finalize_set_pos = finalize_body
+        .find("parsed (vector-set-at-rooted-v3 node-with-placeholder body-idx body)")
+        .expect("finalize-defn-body-v3 は placeholder 後に body を set すること");
+    let finalize_diag_pos = finalize_body
+        .find("(print 225)")
+        .expect("finalize-defn-body-v3 は parsed 作成直後の defn body 診断を持つこと");
+    assert!(
+        finalize_set_pos < finalize_diag_pos
+            && finalize_body.contains("(print body-idx)")
+            && finalize_body.contains("(print (vector-get node-with-placeholder 0))")
+            && finalize_body.contains("(print (vector-length node-with-placeholder))")
+            && finalize_body.contains("(print (vector-get parsed 0))")
+            && finalize_body.contains("(print (vector-length parsed))"),
+        "finalize-defn-body-v3 の 225 は body slot set 直後の tag/len を出すべき"
+    );
+
+    let parsed_pos = body_branch
+        .find("parsed (finalize-defn-parsed-body-v3 spans pos-ref defn-node param-count body)")
+        .expect("parse-defn-v3 は通常 body branch で parsed を作ること");
+    let parsed_diag_pos = body_branch
+        .find("(print 224)")
+        .expect("parse-defn-v3 は finalize 後の parsed handoff 診断を持つこと");
+    assert!(
+        parsed_pos < parsed_diag_pos
+            && body_branch.contains("(print param-count)")
+            && body_branch.contains("(print (vector-get defn-node 0))")
+            && body_branch.contains("(print (vector-length defn-node))")
+            && body_branch.contains("(print (vector-get body 0))")
+            && body_branch.contains("(print (vector-length body))")
+            && body_branch.contains("(print (vector-get parsed 0))")
+            && body_branch.contains("(print (vector-length parsed))")
+            && body_branch.contains("(print (ref-get pos-ref))"),
+        "parse-defn-v3 の 224 は finalize 後の defn/body/parsed tag と pos を出すべき"
+    );
+}
+
+#[test]
 fn compiler_mode_compile_file_functions_roots_chunked_result_before_cleanup() {
     let source = std::fs::read_to_string(workspace_root().join("selfhost/src/App/CompilerMode.ls"))
         .expect("CompilerMode.ls を読めること");
