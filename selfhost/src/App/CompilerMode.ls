@@ -1971,12 +1971,13 @@
 (defn compile-src-decl-pairs-step [pairs idx n ftable data-ref functions]
   (if (>= idx n)
     (make-pairs-step-state 1 idx functions)
-    (do
-      (root_push pairs)
-      (root_push ftable)
-      (root_push data-ref)
-      (root_push functions)
-      (let [pair (vector-get pairs idx)]
+    (let [pair-step-progress-mode (if (> (string-length (command-line-arg 8)) 0) 1 0)]
+      (do
+        (root_push pairs)
+        (root_push ftable)
+        (root_push data-ref)
+        (root_push functions)
+        (let [pair (vector-get pairs idx)]
         (do
           (root_push pair)
           (let [src (vector-get pair 0)
@@ -1984,6 +1985,15 @@
             updated-functions (compile-source-defn-functions-chunked decls 0 (vector-length decls) src ftable data-ref functions)]
             (do
               (root_push updated-functions)
+              (if (= pair-step-progress-mode 1)
+                (do
+                  (print 169)
+                  (print idx)
+                  (print (vector-length decls))
+                  (print (vector-length functions))
+                  (print (vector-length updated-functions))
+                  (print (vector-length (ref-get data-ref))))
+                (do))
               (let [next-state (make-pairs-step-state 0 (+ idx 1) updated-functions)]
                 (do
                   (root_pop)
@@ -1992,7 +2002,7 @@
                   (root_pop)
                   (root_pop)
                   (root_pop)
-                  next-state)))))))))
+                  next-state))))))))))
 (defn continue-compile-src-decl-pairs-step [pairs n ftable data-ref state]
   (if (= (vector-get state 0) 1)
     state

@@ -220,6 +220,14 @@ fn compiler_mode_source_pair_chunked_roots_function_accumulator_states() {
         .nth(1)
         .and_then(|tail| tail.split("(defn compile-src-decl-pairs-step-8").next())
         .expect("continue-compile-src-decl-pairs-step が存在すること");
+    let pair_step = source
+        .split("(defn compile-src-decl-pairs-step ")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn continue-compile-src-decl-pairs-step")
+                .next()
+        })
+        .expect("compile-src-decl-pairs-step が存在すること");
     let step8 = source
         .split("(defn compile-src-decl-pairs-step-8")
         .nth(1)
@@ -308,6 +316,17 @@ fn compiler_mode_source_pair_chunked_roots_function_accumulator_states() {
     assert!(
         chunked_diag_gate_pos < state0_diag_pos && state0_diag_pos < state1_diag_pos,
         "compile-all-src-decl-pairs-chunked の 167/168 診断は progress gate 後、state0 から state1 の順で出すべき"
+    );
+    assert!(
+        pair_step.contains(
+            "pair-step-progress-mode (if (> (string-length (command-line-arg 8)) 0) 1 0)"
+        ) && pair_step.contains("(print 169)")
+            && pair_step.contains("(print idx)")
+            && pair_step.contains("(print (vector-length decls))")
+            && pair_step.contains("(print (vector-length functions))")
+            && pair_step.contains("(print (vector-length updated-functions))")
+            && pair_step.contains("(print (vector-length (ref-get data-ref)))"),
+        "compile-src-decl-pairs-step は payload helper 内の source compile return と state allocation の境界を 169 で診断できるべき"
     );
 }
 
