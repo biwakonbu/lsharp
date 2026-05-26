@@ -1858,7 +1858,8 @@
                         (let [body (parse-expr-v3 spans pos-ref src)]
                           (do
                             (root_push body)
-                            (let [parsed (finalize-defn-parsed-body-v3 spans pos-ref defn-node param-count body)]
+                            (p-expect spans pos-ref 1) ;; ) を消費
+                            (let [parsed (finalize-defn-body-v3 defn-node param-count body)]
                               (do
                                 (if (> (string-length (command-line-arg 8)) 0)
                                   (do

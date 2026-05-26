@@ -494,10 +494,9 @@ fn parser_parse_defn_body_branch_balances_local_roots_only() {
 
     assert!(
         body_branch.contains("(root_push body)")
-            && body_branch.contains(
-                "parsed (finalize-defn-parsed-body-v3 spans pos-ref defn-node param-count body)"
-            ),
-        "parse-defn-v3 の通常 body branch は body を root して finalize すること"
+            && body_branch.contains("(p-expect spans pos-ref 1)")
+            && body_branch.contains("parsed (finalize-defn-body-v3 defn-node param-count body)"),
+        "parse-defn-v3 の通常 body branch は body を root し、wrapper cleanup を挟まず direct finalize すること"
     );
     let root_pop_count = body_branch.matches("(root_pop)").count();
     assert_eq!(
@@ -543,7 +542,7 @@ fn parser_parse_defn_progress_splits_finalize_body_handoff() {
     );
 
     let parsed_pos = body_branch
-        .find("parsed (finalize-defn-parsed-body-v3 spans pos-ref defn-node param-count body)")
+        .find("parsed (finalize-defn-body-v3 defn-node param-count body)")
         .expect("parse-defn-v3 は通常 body branch で parsed を作ること");
     let parsed_diag_pos = body_branch
         .find("(print 224)")
@@ -963,13 +962,15 @@ fn parser_parse_defn_uses_direct_tail_sequence_without_ref_roundtrip() {
             && parse_defn.contains("(skip-optional-where-v3 spans pos-ref src)")
             && parse_defn.contains("(parse-defn-bodyless-or-body-with-meta-v3")
             && parse_defn.contains("(let [body (parse-expr-v3 spans pos-ref src)]")
-            && parse_defn.contains(
+            && parse_defn.contains("(p-expect spans pos-ref 1)")
+            && parse_defn.contains("(finalize-defn-body-v3 defn-node param-count body)")
+            && !parse_defn.contains(
                 "(finalize-defn-parsed-body-v3 spans pos-ref defn-node param-count body)"
             )
             && !parse_defn.contains("(parse-defn-tail-v3 spans pos-ref src defn-node param-count)")
             && !parse_defn.contains("(parse-defn-bodyless-or-body-v3\n")
             && !parse_defn.contains("parsed-ref"),
-        "parse-defn-v3 は x86 stage2 の helper return 崩れを避けるため non-meta body parse を direct に持つべき"
+        "parse-defn-v3 は x86 stage2 の wrapper cleanup/return 崩れを避けるため non-meta body finalize を direct に持つべき"
     );
 }
 
