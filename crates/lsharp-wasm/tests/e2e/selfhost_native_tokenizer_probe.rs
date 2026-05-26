@@ -494,9 +494,10 @@ fn parser_parse_defn_body_branch_balances_local_roots_only() {
 
     assert!(
         body_branch.contains("(root_push body)")
-            && body_branch.contains("(p-expect spans pos-ref 1)")
-            && body_branch.contains("parsed (finalize-defn-body-v3 defn-node param-count body)"),
-        "parse-defn-v3 の通常 body branch は body を root し、wrapper cleanup を挟まず direct finalize すること"
+            && body_branch.contains(
+                "parsed (finalize-defn-parsed-body-v3 spans pos-ref defn-node param-count body)"
+            ),
+        "parse-defn-v3 の通常 body branch は body を root して ref-backed wrapper finalize すること"
     );
     let root_pop_count = body_branch.matches("(root_pop)").count();
     assert_eq!(
@@ -542,7 +543,7 @@ fn parser_parse_defn_progress_splits_finalize_body_handoff() {
     );
 
     let parsed_pos = body_branch
-        .find("parsed (finalize-defn-body-v3 defn-node param-count body)")
+        .find("parsed (finalize-defn-parsed-body-v3 spans pos-ref defn-node param-count body)")
         .expect("parse-defn-v3 は通常 body branch で parsed を作ること");
     let parsed_diag_pos = body_branch
         .find("(print 224)")
@@ -948,7 +949,7 @@ fn parser_defn_body_finalize_uses_small_rooted_helper() {
 }
 
 #[test]
-fn parser_parse_defn_uses_direct_tail_sequence_without_ref_roundtrip() {
+fn parser_parse_defn_uses_ref_backed_finalize_wrapper_without_tail_refactor() {
     let source = std::fs::read_to_string(workspace_root().join("selfhost/src/Syntax/Parser.ls"))
         .expect("Parser.ls を読めること");
     let parse_defn = source
@@ -962,34 +963,33 @@ fn parser_parse_defn_uses_direct_tail_sequence_without_ref_roundtrip() {
             && parse_defn.contains("(skip-optional-where-v3 spans pos-ref src)")
             && parse_defn.contains("(parse-defn-bodyless-or-body-with-meta-v3")
             && parse_defn.contains("(let [body (parse-expr-v3 spans pos-ref src)]")
-            && parse_defn.contains("(p-expect spans pos-ref 1)")
-            && parse_defn.contains("(finalize-defn-body-v3 defn-node param-count body)")
-            && !parse_defn.contains(
+            && parse_defn.contains(
                 "(finalize-defn-parsed-body-v3 spans pos-ref defn-node param-count body)"
             )
             && !parse_defn.contains("(parse-defn-tail-v3 spans pos-ref src defn-node param-count)")
             && !parse_defn.contains("(parse-defn-bodyless-or-body-v3\n")
             && !parse_defn.contains("parsed-ref"),
-        "parse-defn-v3 は x86 stage2 の wrapper cleanup/return 崩れを避けるため non-meta body finalize を direct に持つべき"
+        "parse-defn-v3 は tail/refactor を戻さず、non-meta body finalize を wrapper に委譲するべき"
     );
 }
 
 #[test]
-fn parser_parse_defn_returns_explicit_parsed_after_root_pops_without_ref_roundtrip() {
+fn parser_finalize_defn_parsed_body_uses_ref_backed_return_after_cleanup() {
     let source = std::fs::read_to_string(workspace_root().join("selfhost/src/Syntax/Parser.ls"))
         .expect("Parser.ls を読めること");
-    let parse_defn = source
-        .split("(defn parse-defn-v3 [spans pos-ref src]")
+    let finalize_body = source
+        .split("(defn finalize-defn-parsed-body-v3 [spans pos-ref defn-node param-count body]")
         .nth(1)
-        .and_then(|tail| tail.split("(defn parse-defmacro-v3").next())
-        .expect("Parser.ls に parse-defn-v3 が存在すること");
+        .and_then(|tail| tail.split("(defn parse-defn-bodyless-or-body-v3").next())
+        .expect("Parser.ls に finalize-defn-parsed-body-v3 が存在すること");
 
     assert!(
-        parse_defn.contains("(root_push result)")
-            && parse_defn.contains("(root_pop)\n                                parsed")
-            && !parse_defn.contains("result-slot")
-            && !parse_defn.contains("(root_set result-slot")
-            && !parse_defn.contains("parsed-ref"),
-        "parse-defn-v3 は root_pop/root_set の戻り値に依存せず、root cleanup 後に explicit parsed を返すべき"
+        finalize_body.contains("parsed-ref (ref-new (make-int-node 0))")
+            && finalize_body.contains("(root_push parsed-ref)")
+            && finalize_body.contains("(ref-set parsed-ref parsed)")
+            && finalize_body.contains("(ref-get parsed-ref)")
+            && !finalize_body.contains("result-slot")
+            && !finalize_body.contains("(root_set result-slot"),
+        "finalize-defn-parsed-body-v3 は helper return を parsed-ref に退避し、cleanup 後に ref-get で返すべき"
     );
 }

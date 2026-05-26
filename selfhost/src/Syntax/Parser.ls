@@ -824,15 +824,19 @@
     node))
 
 (defn finalize-defn-parsed-body-v3 [spans pos-ref defn-node param-count body]
-  (do
-    (root_push defn-node)
-    (root_push body)
-    (p-expect spans pos-ref 1) ;; ) を消費
-    (let [parsed (finalize-defn-body-v3 defn-node param-count body)]
-      (do
-        (root_pop)
-        (root_pop)
-        parsed))))
+  (let [parsed-ref (ref-new (make-int-node 0))]
+    (do
+      (root_push parsed-ref)
+      (root_push defn-node)
+      (root_push body)
+      (p-expect spans pos-ref 1) ;; ) を消費
+      (let [parsed (finalize-defn-body-v3 defn-node param-count body)]
+        (do
+          (ref-set parsed-ref parsed)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (ref-get parsed-ref))))))
 
 (defn parse-defn-bodyless-or-body-v3 [spans pos-ref src defn-node param-count]
   (if (== (p-current spans pos-ref) 1)
@@ -1858,8 +1862,7 @@
                         (let [body (parse-expr-v3 spans pos-ref src)]
                           (do
                             (root_push body)
-                            (p-expect spans pos-ref 1) ;; ) を消費
-                            (let [parsed (finalize-defn-body-v3 defn-node param-count body)]
+                            (let [parsed (finalize-defn-parsed-body-v3 spans pos-ref defn-node param-count body)]
                               (do
                                 (if (> (string-length (command-line-arg 8)) 0)
                                   (do
