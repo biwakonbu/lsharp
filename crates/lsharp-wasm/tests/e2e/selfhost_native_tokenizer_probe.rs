@@ -521,6 +521,18 @@ fn compiler_source_chunked_roots_step_states_before_result_extract() {
             && body.contains("result (vector-get state1 2)")
             && body.contains("functions-root (root_push functions)")
             && body.contains("(root_set functions-root result)")
+            && body.contains(
+                "source-chunk-progress-mode (if (> (string-length (command-line-arg 8)) 0) 1 0)"
+            )
+            && body.contains("(print 213)")
+            && body.contains("(print (vector-length functions))")
+            && body.contains("(print (vector-get state0 0))")
+            && body.contains("(print (vector-get state0 1))")
+            && body.contains("(print (vector-length (vector-get state0 2)))")
+            && body.contains("(print 214)")
+            && body.contains("(print (vector-get state1 0))")
+            && body.contains("(print (vector-get state1 1))")
+            && body.contains("(print (vector-length (vector-get state1 2)))")
             && !body.contains("(vector-get (continue-compile-defn-functions-step-64-with-source"),
         "compile-source-defn-functions-chunked は stage2 x86 native の state local 崩れを避けるため step/continue state を root してから result を取り出すべき"
     );

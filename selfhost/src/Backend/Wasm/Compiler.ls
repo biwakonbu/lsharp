@@ -1518,29 +1518,45 @@
                   result))))))))))
 
 (defn compile-source-defn-functions-chunked [decls idx n source ftable data-ref functions]
-  (do
-    (root_push decls)
-    (root_push source)
-    (root_push ftable)
-    (root_push data-ref)
-    (let [functions-root (root_push functions)]
-      (let [state0 (compile-defn-functions-step-64-with-source decls idx n source ftable data-ref functions)]
-        (do
-          (root_push state0)
-          (let [state1 (continue-compile-defn-functions-step-64-with-source decls n source ftable data-ref state0)]
-            (do
-              (root_push state1)
-              (let [result (vector-get state1 2)]
-                (do
-                  (root_set functions-root result)
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  result)))))))))
+  (let [source-chunk-progress-mode (if (> (string-length (command-line-arg 8)) 0) 1 0)]
+    (do
+      (root_push decls)
+      (root_push source)
+      (root_push ftable)
+      (root_push data-ref)
+      (let [functions-root (root_push functions)]
+        (let [state0 (compile-defn-functions-step-64-with-source decls idx n source ftable data-ref functions)]
+          (do
+            (root_push state0)
+            (if (= source-chunk-progress-mode 1)
+              (do
+                (print 213)
+                (print (vector-length functions))
+                (print (vector-get state0 0))
+                (print (vector-get state0 1))
+                (print (vector-length (vector-get state0 2))))
+              (do))
+            (let [state1 (continue-compile-defn-functions-step-64-with-source decls n source ftable data-ref state0)]
+              (do
+                (root_push state1)
+                (if (= source-chunk-progress-mode 1)
+                  (do
+                    (print 214)
+                    (print (vector-get state1 0))
+                    (print (vector-get state1 1))
+                    (print (vector-length (vector-get state1 2))))
+                  (do))
+                (let [result (vector-get state1 2)]
+                  (do
+                    (root_set functions-root result)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    result))))))))))
 (defn continue-compile-let-chain-step-with-source [source ftable state data-ref]
   (if (= (vector-get state 0) 1)
     state
