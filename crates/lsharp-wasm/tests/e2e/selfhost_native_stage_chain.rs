@@ -902,6 +902,7 @@ fn test_linux_x86_representative_seed_roots_slot_layout_accumulators() {
 
     assert!(
         source.contains("starts-ref (ref-new (vector-new 8))")
+            && source.contains("len-ref (ref-new len)")
             && source.contains("offset-ref (ref-new offset)")
             && source.contains("(ref-set starts-ref next-starts)")
             && source.contains("(ref-get starts-ref)")
@@ -6764,9 +6765,11 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
       (root_push functions)
       (root_push starts-ref)
       (let [idx-ref (ref-new idx)
+            len-ref (ref-new len)
             offset-ref (ref-new offset)]
         (do
           (root_push idx-ref)
+          (root_push len-ref)
           (root_push offset-ref)
           (let [func-meta (vector-get functions (ref-get idx-ref))]
             (do
@@ -6776,8 +6779,9 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
                   (root_push next-starts)
                   (ref-set starts-ref next-starts)
                   (let [next-offset (+ (ref-get offset-ref) (x86-function-slot-size func-meta functions))]
-                    (let [final (collect-callable-function-slot-starts-x86-loop functions (+ (ref-get idx-ref) 1) len starts-ref next-offset)]
+                    (let [final (collect-callable-function-slot-starts-x86-loop functions (+ (ref-get idx-ref) 1) (ref-get len-ref) starts-ref next-offset)]
                       (do
+                        (root_pop)
                         (root_pop)
                         (root_pop)
                         (root_pop)
@@ -6804,17 +6808,20 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
     (do
       (root_push functions)
       (root_push total-ref)
-      (let [idx-ref (ref-new idx)]
+      (let [idx-ref (ref-new idx)
+            len-ref (ref-new len)]
         (do
           (root_push idx-ref)
+          (root_push len-ref)
           (let [func-meta (vector-get functions (ref-get idx-ref))]
             (do
               (root_push func-meta)
               (let [next-total (+ (ref-get total-ref) (x86-function-slot-size func-meta functions))]
                 (do
                   (ref-set total-ref next-total)
-                  (let [final (callable-user-total-slot-size-x86-loop functions (+ (ref-get idx-ref) 1) len total-ref)]
+                  (let [final (callable-user-total-slot-size-x86-loop functions (+ (ref-get idx-ref) 1) (ref-get len-ref) total-ref)]
                     (do
+                      (root_pop)
                       (root_pop)
                       (root_pop)
                       (root_pop)
