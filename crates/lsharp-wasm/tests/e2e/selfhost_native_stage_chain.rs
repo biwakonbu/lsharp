@@ -18273,6 +18273,164 @@ fn host_target_nested_three_arg_call_preserves_outer_values_code_bytes() -> Vec<
     )
 }
 
+fn host_target_three_arg_object_call_then_root_pop_pairs_code_bytes() -> Vec<u8> {
+    run_native_codegen_host_bytes_harness(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn main []
+  (let [caller-ir (vector-push
+                    (vector-push
+                      (vector-push
+                        (vector-push
+                          (vector-push
+                            (vector-push
+                              (vector-push
+                                (vector-push
+                                  (vector-push
+                                    (vector-push
+                                      (vector-push (vector-new 11) (make-instr 3 40))
+                                      (make-instr 3 2))
+                                    (make-instr 3 5))
+                                  (make-call 1))
+                                (make-instr 75 0))
+                              (make-instr 44 0))
+                            (make-instr 75 0))
+                          (make-instr 44 0))
+                        (make-instr 11 0))
+                      (make-local-get 0))
+                    (make-instr 52 0))
+        callee-ir (vector-push
+                    (vector-push
+                      (vector-push
+                        (vector-push
+                          (vector-push
+                            (vector-push
+                              (vector-push
+                                (vector-push (vector-new 8) (make-instr 3 3))
+                                (make-instr 54 0))
+                              (make-local-get 0))
+                            (make-instr 55 0))
+                          (make-local-get 1))
+                        (make-instr 55 0))
+                      (make-local-get 2))
+                    (make-instr 55 0))
+        caller (make-function-meta 0 16 caller-ir)
+        callee (make-function-meta 3 0 callee-ir)
+        functions (vector-push (vector-push (vector-new 2) caller) callee)
+        target (host-target)
+        code (emit-native-function-meta-bundle functions target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    )
+}
+
+fn host_target_param_frame_three_arg_object_call_then_root_pop_pairs_code_bytes() -> Vec<u8> {
+    run_native_codegen_host_bytes_harness(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn main []
+  (let [entry-ir (vector-push
+                   (vector-push
+                     (vector-push
+                       (vector-push
+                         (vector-push
+                           (vector-push
+                             (vector-push
+                               (vector-push (vector-new 8) (make-instr 3 1))
+                               (make-instr 3 2))
+                             (make-instr 3 3))
+                           (make-instr 3 4))
+                         (make-instr 3 5))
+                       (make-instr 3 6))
+                     (make-instr 3 7))
+                   (make-call 1))
+        caller-ir (vector-push
+                    (vector-push
+                      (vector-push
+                        (vector-push
+                          (vector-push
+                            (vector-push
+                              (vector-push
+                                (vector-push
+                                  (vector-push
+                                    (vector-push
+                                      (vector-push (vector-new 11) (make-instr 3 40))
+                                      (make-instr 3 2))
+                                    (make-instr 3 5))
+                                  (make-call 2))
+                                (make-instr 75 0))
+                              (make-instr 44 0))
+                            (make-instr 75 0))
+                          (make-instr 44 0))
+                        (make-instr 11 21))
+                      (make-local-get 21))
+                    (make-instr 52 0))
+        callee-ir (vector-push
+                    (vector-push
+                      (vector-push
+                        (vector-push
+                          (vector-push
+                            (vector-push
+                              (vector-push
+                                (vector-push (vector-new 8) (make-instr 3 3))
+                                (make-instr 54 0))
+                              (make-local-get 0))
+                            (make-instr 55 0))
+                          (make-local-get 1))
+                        (make-instr 55 0))
+                      (make-local-get 2))
+                    (make-instr 55 0))
+        entry (make-function-meta 0 0 entry-ir)
+        caller (make-function-meta 7 16 caller-ir)
+        callee (make-function-meta 3 0 callee-ir)
+        functions (vector-push
+                    (vector-push
+                      (vector-push (vector-new 3) entry)
+                      caller)
+                    callee)
+        target (host-target)
+        code (emit-native-function-meta-bundle functions target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    )
+}
+
 fn host_target_nested_two_arg_call_preserves_outer_value_code_bytes() -> Vec<u8> {
     run_native_codegen_host_bytes_harness(
         r#"(module Main)
@@ -32968,6 +33126,64 @@ fn test_e2e_native_host_binary_nested_three_arg_call_preserves_outer_values() {
         exit_code,
         162,
         "host binary nested three-arg direct call preserve: exit code 162 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01j4: 3 引数 object return call の直後に root_pop/drop pair が入っても戻り値を保持できること。
+#[test]
+#[ignore]
+fn test_e2e_native_host_binary_three_arg_object_call_survives_root_pop_pairs() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_three_arg_object_call_then_root_pop_pairs_code_bytes();
+
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: three-arg object call root-pop preserve bundle host target 向けコードバイト列が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary(&code_bytes)
+        .expect("three-arg object call root-pop preserve host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        3,
+        "host binary three-arg object call root-pop preserve: vector length 3 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01j5: 7 param + 16 local frame の高い local slot でも object return を保持できること。
+#[test]
+#[ignore]
+fn test_e2e_native_host_binary_three_arg_object_call_survives_param_frame_root_pop_pairs() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_param_frame_three_arg_object_call_then_root_pop_pairs_code_bytes();
+
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: param-frame three-arg object call root-pop preserve bundle host target 向けコードバイト列が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary(&code_bytes)
+        .expect("param-frame three-arg object call root-pop preserve host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        3,
+        "host binary param-frame three-arg object call root-pop preserve: vector length 3 を期待したが {} を得た\n\
          bytes ({} bytes): {:?}",
         exit_code,
         code_bytes.len(),
