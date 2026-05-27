@@ -2106,6 +2106,43 @@ fn test_selfhost_compiler_source_step_impl3_uses_high_branch_handoff_markers() {
 }
 
 #[test]
+fn test_selfhost_compiler_source_step_impl3_skip_branch_uses_distinct_result_binding() {
+    let source = selfhost_module("Compiler.ls");
+    let step_body = source
+        .split("(defn compile-defn-functions-step-with-source-body-impl-3")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-let-with-ftable-impl-body-impl-3")
+                .next()
+        })
+        .expect(
+            "Compiler.ls に compile-defn-functions-step-with-source-body-impl-3 が存在すること",
+        );
+    let skip_branch = step_body
+        .split("(let [next-skip-idx (+ idx 1)]")
+        .nth(1)
+        .expect("impl-3 は non-defn skip branch で next-skip-idx を束縛すること");
+
+    assert!(
+        skip_branch.contains("[skip-result (make-compile-step-state 0 next-skip-idx functions)]"),
+        "skip branch は defn branch の result local と衝突しない skip-result を使うべき"
+    );
+    assert!(
+        skip_branch.contains("[skip-result-root (root_push skip-result)]"),
+        "skip branch の progress 診断は skip-result を root して読むべき"
+    );
+    assert!(
+        skip_branch.contains("(root_set functions-slot skip-result)"),
+        "skip branch は functions-slot に skip-result を保存してから cleanup するべき"
+    );
+    assert!(
+        !skip_branch.contains("[result (make-compile-step-state 0 next-skip-idx functions)]")
+            && !skip_branch.contains("[result-root (root_push result)]"),
+        "skip branch に stale local と衝突しやすい result/result-root binding を残さない"
+    );
+}
+
+#[test]
 fn test_selfhost_compile_let_step_finish_uses_reloaded_body_without_extra_root() {
     let source = selfhost_module("Compiler.ls");
     let finish_body = source

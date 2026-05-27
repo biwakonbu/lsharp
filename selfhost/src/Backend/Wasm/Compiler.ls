@@ -2251,29 +2251,29 @@
                           result))))))))
           (do
             (let [next-skip-idx (+ idx 1)]
-              (let [result (make-compile-step-state 0 next-skip-idx functions)]
+              (let [skip-result (make-compile-step-state 0 next-skip-idx functions)]
                 (do
                   (if (= source-step-progress-mode 1)
                     (if (< (vector-length functions) 128)
-                      (let [result-root (root_push result)]
+                      (let [skip-result-root (root_push skip-result)]
                         (do
                           (do
                             (print 9000000078)
                             (print idx)
                             (print (vector-length functions))
-                            (print (vector-get result 0))
-                            (print (vector-get result 1))
-                            (print (vector-length (vector-get result 2))))
+                            (print (vector-get skip-result 0))
+                            (print (vector-get skip-result 1))
+                            (print (vector-length (vector-get skip-result 2))))
                           (root_pop)))
                       (do))
                     (do))
-                  (root_set functions-slot result)
+                  (root_set functions-slot skip-result)
                   (root_pop)
                   (root_pop)
                   (root_pop)
                   (root_pop)
                   (root_pop)
-                  result)))))))))
+                  skip-result)))))))))
 (defn compile-let-with-ftable-impl-body-impl-3 [node env ftable instrs]
   (let [name-hash (vector-get node 1)
     init-expr (vector-get node 2)

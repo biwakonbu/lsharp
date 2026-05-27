@@ -816,7 +816,8 @@ fn compiler_with_source_compile_step_roots_next_functions_before_state_alloc() {
         body.contains("functions-slot (root_push functions)")
             && body.contains("next-functions (push-object-vector functions compiled-fn)")
             && body.contains("(root_set functions-slot next-functions)")
-            && body.matches("(root_set functions-slot result)").count() >= 2
+            && body.contains("(root_set functions-slot result)")
+            && body.contains("(root_set functions-slot skip-result)")
             && body.contains("next-defn-idx (+ idx 1)")
             && body.contains("(make-compile-step-state 0 next-defn-idx next-functions)")
             && !body.contains("compile-defn-functions-step-finish functions compiled-fn idx"),
@@ -1172,11 +1173,12 @@ fn compiler_source_step_binds_next_idx_before_state_allocation() {
             && body
                 .contains("(let [result (make-compile-step-state 0 next-defn-idx next-functions)]")
             && body.contains("(let [next-skip-idx (+ idx 1)]")
-            && body.contains("(let [result (make-compile-step-state 0 next-skip-idx functions)]")
+            && body
+                .contains("(let [skip-result (make-compile-step-state 0 next-skip-idx functions)]")
             && !body.contains("(make-compile-step-state 0 (+ idx 1) next-functions)")
             && !body.contains("(make-compile-step-state 0 (+ idx 1) functions)")
             && !body.contains("next-defn-idx (+ idx 1)\n                      result")
-            && !body.contains("next-skip-idx (+ idx 1)\n              result"),
+            && !body.contains("next-skip-idx (+ idx 1)\n              skip-result"),
         "compile-defn-functions-step-with-source は x86 native の argument-list value-window 破損を避けるため next idx 計算と state allocation を別 let に分けるべき"
     );
 }
