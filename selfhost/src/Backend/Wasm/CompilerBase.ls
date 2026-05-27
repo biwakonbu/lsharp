@@ -486,18 +486,42 @@
 (defn make-compile-step-state [done next-idx next-value]
   (do
     (root_push next-value)
-    (let [base0 (push-int-vector (vector-new 3) done)]
+    (let [compile-step-state-progress-mode (if (> (string-length (command-line-arg 8)) 0) 1 0)]
       (do
-        (root_push base0)
-        (let [base1 (push-int-vector base0 next-idx)]
+        (if (= compile-step-state-progress-mode 1)
+          (if (< (vector-length next-value) 128)
+            (do
+              (print 9000000076)
+              (print 0)
+              (print done)
+              (print next-idx)
+              (print (vector-length next-value)))
+            (do))
+          (do))
+        (let [base0 (push-int-vector (vector-new 3) done)]
           (do
-            (root_push base1)
-            (let [state (push-object-vector base1 next-value)]
+            (root_push base0)
+            (let [base1 (push-int-vector base0 next-idx)]
               (do
-                (root_pop)
-                (root_pop)
-                (root_pop)
-                state))))))))
+                (root_push base1)
+                (let [state (push-object-vector base1 next-value)]
+                  (do
+                    (if (= compile-step-state-progress-mode 1)
+                      (if (< (vector-length next-value) 128)
+                        (let [state-root (root_push state)]
+                          (do
+                            (print 9000000076)
+                            (print 1)
+                            (print (vector-get state 0))
+                            (print (vector-get state 1))
+                            (print (vector-length (vector-get state 2)))
+                            (root_pop)))
+                        (do))
+                      (do))
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    state))))))))))
 (defn string-literal-data-base [] 1024)
 (defn append-byte-vector-step [dst src idx count]
   (if (>= idx count)

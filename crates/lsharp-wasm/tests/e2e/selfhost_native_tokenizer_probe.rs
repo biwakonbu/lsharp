@@ -1125,6 +1125,33 @@ fn compiler_source_step_wrapper_chain_marks_return_handoff() {
 }
 
 #[test]
+fn compiler_base_step_state_marks_entry_and_result_handoff() {
+    let source =
+        std::fs::read_to_string(workspace_root().join("selfhost/src/Backend/Wasm/CompilerBase.ls"))
+            .expect("CompilerBase.ls を読めること");
+    let body = source
+        .split("(defn make-compile-step-state [done next-idx next-value]")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn ").next())
+        .expect("CompilerBase.ls に make-compile-step-state が存在すること");
+
+    assert!(
+        body.contains("compile-step-state-progress-mode")
+            && body.contains("(print 9000000076)")
+            && body.contains("(print 0)")
+            && body.contains("(print done)")
+            && body.contains("(print next-idx)")
+            && body.contains("(print (vector-length next-value))")
+            && body.contains("(print 1)")
+            && body.contains("(print (vector-get state 0))")
+            && body.contains("(print (vector-get state 1))")
+            && body.contains("(print (vector-length (vector-get state 2)))")
+            && body.contains("state-root (root_push state)"),
+        "make-compile-step-state は x86 native の argument handoff と constructed state を同じ high marker で比較できるべき"
+    );
+}
+
+#[test]
 fn compiler_source_step_binds_next_idx_before_state_allocation() {
     let source =
         std::fs::read_to_string(workspace_root().join("selfhost/src/Backend/Wasm/Compiler.ls"))
