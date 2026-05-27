@@ -850,12 +850,15 @@ fn compiler_with_source_skip_decl_roots_functions_until_state_alloc() {
 
     assert!(
         state_alloc_pos < first_pop_after_state
-            && body.contains("(make-compile-step-state 0 next-skip-idx functions)")
+            && body.contains("skip-state0 (push-int-vector (vector-new 3) 0)")
+            && body.contains("skip-state1 (push-int-vector skip-state0 next-skip-idx)")
+            && body.contains("result (push-object-vector skip-state1 functions)")
             && body.contains("              result))))))))")
+            && !body.contains("(make-compile-step-state 0 next-skip-idx functions)")
             && !body.contains(
                 "(root_pop)\n          (root_pop)\n          (root_pop)\n          (root_pop)\n          (root_pop)\n          (make-compile-step-state 0 (+ idx 1) functions)"
             ),
-        "compile-defn-functions-step-with-source の non-defn skip branch は functions を root したまま state allocation するべき"
+        "compile-defn-functions-step-with-source の non-defn skip branch は make-compile-step-state の object return handoff を避け、caller 内で state を組むべき"
     );
 }
 
@@ -1172,7 +1175,8 @@ fn compiler_source_step_binds_next_idx_before_state_allocation() {
             && body
                 .contains("(let [result (make-compile-step-state 0 next-defn-idx next-functions)]")
             && body.contains("(let [next-skip-idx (+ idx 1)]")
-            && body.contains("(let [result (make-compile-step-state 0 next-skip-idx functions)]")
+            && body.contains("skip-state1 (push-int-vector skip-state0 next-skip-idx)")
+            && body.contains("result (push-object-vector skip-state1 functions)")
             && !body.contains("(make-compile-step-state 0 (+ idx 1) next-functions)")
             && !body.contains("(make-compile-step-state 0 (+ idx 1) functions)")
             && !body.contains("next-defn-idx (+ idx 1)\n                      result")
