@@ -1110,13 +1110,16 @@ fn compiler_source_step_binds_next_idx_before_state_allocation() {
         );
 
     assert!(
-        body.contains("next-defn-idx (+ idx 1)")
-            && body.contains("(make-compile-step-state 0 next-defn-idx next-functions)")
-            && body.contains("next-skip-idx (+ idx 1)")
-            && body.contains("(make-compile-step-state 0 next-skip-idx functions)")
+        body.contains("(let [next-defn-idx (+ idx 1)]")
+            && body
+                .contains("(let [result (make-compile-step-state 0 next-defn-idx next-functions)]")
+            && body.contains("(let [next-skip-idx (+ idx 1)]")
+            && body.contains("(let [result (make-compile-step-state 0 next-skip-idx functions)]")
             && !body.contains("(make-compile-step-state 0 (+ idx 1) next-functions)")
-            && !body.contains("(make-compile-step-state 0 (+ idx 1) functions)"),
-        "compile-defn-functions-step-with-source は x86 native の argument-list value-window 破損を避けるため next idx を state allocation 前に local 化するべき"
+            && !body.contains("(make-compile-step-state 0 (+ idx 1) functions)")
+            && !body.contains("next-defn-idx (+ idx 1)\n                      result")
+            && !body.contains("next-skip-idx (+ idx 1)\n              result"),
+        "compile-defn-functions-step-with-source は x86 native の argument-list value-window 破損を避けるため next idx 計算と state allocation を別 let に分けるべき"
     );
 }
 
