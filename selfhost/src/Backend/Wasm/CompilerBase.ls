@@ -522,24 +522,6 @@
                     (root_pop)
                     (root_pop)
                     state))))))))))
-(defn set-compile-step-state-ref [state-ref done next-idx next-value]
-  (do
-    (root_push next-value)
-    (root_push state-ref)
-    (let [base0 (push-int-vector (vector-new 3) done)]
-      (do
-        (root_push base0)
-        (let [base1 (push-int-vector base0 next-idx)]
-          (do
-            (root_push base1)
-            (let [state (push-object-vector base1 next-value)]
-              (do
-                (ref-set state-ref state)
-                (root_pop)
-                (root_pop)
-                (root_pop)
-                (root_pop)
-                0))))))))
 (defn string-literal-data-base [] 1024)
 (defn append-byte-vector-step [dst src idx count]
   (if (>= idx count)

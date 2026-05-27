@@ -818,8 +818,7 @@ fn compiler_with_source_compile_step_roots_next_functions_before_state_alloc() {
             && body.contains("(root_set functions-slot next-functions)")
             && body.matches("(root_set functions-slot result)").count() >= 2
             && body.contains("next-defn-idx (+ idx 1)")
-            && body
-                .contains("(set-compile-step-state-ref state-ref 0 next-defn-idx next-functions)")
+            && body.contains("(make-compile-step-state 0 next-defn-idx next-functions)")
             && !body.contains("compile-defn-functions-step-finish functions compiled-fn idx"),
         "compile-defn-functions-step-with-source は stage2 x86 native の local 保持崩れを避けるため next-functions と result state を root slot へ戻すべき"
     );
@@ -851,8 +850,8 @@ fn compiler_with_source_skip_decl_roots_functions_until_state_alloc() {
 
     assert!(
         state_alloc_pos < first_pop_after_state
-            && body.contains("(set-compile-step-state-ref state-ref 0 next-skip-idx functions)")
-            && body.contains("result (ref-get state-ref)")
+            && body.contains("(make-compile-step-state 0 next-skip-idx functions)")
+            && body.contains("              result))))))))")
             && !body.contains(
                 "(root_pop)\n          (root_pop)\n          (root_pop)\n          (root_pop)\n          (root_pop)\n          (make-compile-step-state 0 (+ idx 1) functions)"
             ),
@@ -1153,29 +1152,6 @@ fn compiler_base_step_state_marks_entry_and_result_handoff() {
 }
 
 #[test]
-fn compiler_base_step_state_ref_helper_sets_state_without_object_return() {
-    let source =
-        std::fs::read_to_string(workspace_root().join("selfhost/src/Backend/Wasm/CompilerBase.ls"))
-            .expect("CompilerBase.ls を読めること");
-    let body = source
-        .split("(defn set-compile-step-state-ref [state-ref done next-idx next-value]")
-        .nth(1)
-        .and_then(|tail| tail.split("(defn ").next())
-        .expect("CompilerBase.ls に set-compile-step-state-ref が存在すること");
-
-    assert!(
-        body.contains("root_push next-value")
-            && body.contains("root_push state-ref")
-            && body.contains("base0 (push-int-vector (vector-new 3) done)")
-            && body.contains("base1 (push-int-vector base0 next-idx)")
-            && body.contains("state (push-object-vector base1 next-value)")
-            && body.contains("(ref-set state-ref state)")
-            && body.contains("0"),
-        "set-compile-step-state-ref は object return に頼らず、state を出力 ref に格納するべき"
-    );
-}
-
-#[test]
 fn compiler_source_step_binds_next_idx_before_state_allocation() {
     let source =
         std::fs::read_to_string(workspace_root().join("selfhost/src/Backend/Wasm/Compiler.ls"))
@@ -1194,41 +1170,14 @@ fn compiler_source_step_binds_next_idx_before_state_allocation() {
     assert!(
         body.contains("(let [next-defn-idx (+ idx 1)]")
             && body
-                .contains("(set-compile-step-state-ref state-ref 0 next-defn-idx next-functions)")
+                .contains("(let [result (make-compile-step-state 0 next-defn-idx next-functions)]")
             && body.contains("(let [next-skip-idx (+ idx 1)]")
-            && body.contains("(set-compile-step-state-ref state-ref 0 next-skip-idx functions)")
+            && body.contains("(let [result (make-compile-step-state 0 next-skip-idx functions)]")
             && !body.contains("(make-compile-step-state 0 (+ idx 1) next-functions)")
             && !body.contains("(make-compile-step-state 0 (+ idx 1) functions)")
             && !body.contains("next-defn-idx (+ idx 1)\n                      result")
             && !body.contains("next-skip-idx (+ idx 1)\n              result"),
         "compile-defn-functions-step-with-source は x86 native の argument-list value-window 破損を避けるため next idx 計算と state allocation を別 let に分けるべき"
-    );
-}
-
-#[test]
-fn compiler_source_step_impl3_uses_ref_backed_step_state() {
-    let source =
-        std::fs::read_to_string(workspace_root().join("selfhost/src/Backend/Wasm/Compiler.ls"))
-            .expect("Compiler.ls を読めること");
-    let body = source
-        .split("(defn compile-defn-functions-step-with-source-body-impl-3")
-        .nth(1)
-        .and_then(|tail| {
-            tail.split("(defn compile-let-with-ftable-impl-body-impl-3")
-                .next()
-        })
-        .expect(
-            "Compiler.ls に compile-defn-functions-step-with-source-body-impl-3 が存在すること",
-        );
-
-    assert!(
-        body.matches("state-ref (ref-new 0)").count() >= 3
-            && body.contains("(set-compile-step-state-ref state-ref 1 idx functions)")
-            && body
-                .contains("(set-compile-step-state-ref state-ref 0 next-defn-idx next-functions)")
-            && body.contains("(set-compile-step-state-ref state-ref 0 next-skip-idx functions)")
-            && body.matches("result (ref-get state-ref)").count() >= 3,
-        "with-source impl-3 は make-compile-step-state の object return ではなく ref-backed state handoff を使うべき"
     );
 }
 
