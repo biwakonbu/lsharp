@@ -487,15 +487,15 @@ fn parser_parse_defn_body_branch_balances_local_roots_only() {
         .and_then(|tail| tail.split("(defn parse-defmacro-v3").next())
         .expect("parse-defn-v3 が存在すること");
     let body_branch = parse_defn
-        .split("body (parse-expr-v3 spans pos-ref src)")
+        .split("parsed-body (parse-expr-v3 spans pos-ref src)")
         .nth(1)
-        .and_then(|tail| tail.split("parsed))))").next())
+        .and_then(|tail| tail.split("parsed-defn))))").next())
         .expect("parse-defn-v3 は通常 body branch を持つこと");
 
     assert!(
-        body_branch.contains("(root_push body)")
+        body_branch.contains("(root_push parsed-body)")
             && body_branch.contains(
-                "parsed (finalize-defn-parsed-body-v3 spans pos-ref defn-node param-count body)"
+                "parsed-defn (finalize-defn-parsed-body-v3 spans pos-ref defn-node param-count parsed-body)"
             ),
         "parse-defn-v3 の通常 body branch は body を root して ref-backed wrapper finalize すること"
     );
@@ -521,9 +521,9 @@ fn parser_parse_defn_progress_splits_finalize_body_handoff() {
         .and_then(|tail| tail.split("(defn parse-defmacro-v3").next())
         .expect("parse-defn-v3 が存在すること");
     let body_branch = parse_defn
-        .split("body (parse-expr-v3 spans pos-ref src)")
+        .split("parsed-body (parse-expr-v3 spans pos-ref src)")
         .nth(1)
-        .and_then(|tail| tail.split("parsed))))").next())
+        .and_then(|tail| tail.split("parsed-defn))))").next())
         .expect("parse-defn-v3 は通常 body branch を持つこと");
 
     let finalize_set_pos = finalize_body
@@ -543,7 +543,7 @@ fn parser_parse_defn_progress_splits_finalize_body_handoff() {
     );
 
     let parsed_pos = body_branch
-        .find("parsed (finalize-defn-parsed-body-v3 spans pos-ref defn-node param-count body)")
+        .find("parsed-defn (finalize-defn-parsed-body-v3 spans pos-ref defn-node param-count parsed-body)")
         .expect("parse-defn-v3 は通常 body branch で parsed を作ること");
     let parsed_diag_pos = body_branch
         .find("(print 224)")
@@ -553,10 +553,10 @@ fn parser_parse_defn_progress_splits_finalize_body_handoff() {
             && body_branch.contains("(print param-count)")
             && body_branch.contains("(print (vector-get defn-node 0))")
             && body_branch.contains("(print (vector-length defn-node))")
-            && body_branch.contains("(print (vector-get body 0))")
-            && body_branch.contains("(print (vector-length body))")
-            && body_branch.contains("(print (vector-get parsed 0))")
-            && body_branch.contains("(print (vector-length parsed))")
+            && body_branch.contains("(print (vector-get parsed-body 0))")
+            && body_branch.contains("(print (vector-length parsed-body))")
+            && body_branch.contains("(print (vector-get parsed-defn 0))")
+            && body_branch.contains("(print (vector-length parsed-defn))")
             && body_branch.contains("(print (ref-get pos-ref))"),
         "parse-defn-v3 の 224 は finalize 後の defn/body/parsed tag と pos を出すべき"
     );
@@ -611,15 +611,15 @@ fn parser_parse_defn_roots_finalize_result_before_progress_marker() {
         .and_then(|tail| tail.split("(defn parse-defmacro-v3").next())
         .expect("parse-defn-v3 が存在すること");
     let body_branch = parse_defn
-        .split("(let [body (parse-expr-v3 spans pos-ref src)]")
+        .split("(let [parsed-body (parse-expr-v3 spans pos-ref src)]")
         .nth(1)
         .expect("parse-defn-v3 は通常 body branch を持つこと");
 
     let parsed_pos = body_branch
-        .find("parsed (finalize-defn-parsed-body-v3 spans pos-ref defn-node param-count body)")
+        .find("parsed-defn (finalize-defn-parsed-body-v3 spans pos-ref defn-node param-count parsed-body)")
         .expect("parse-defn-v3 は wrapper の戻り値を parsed に受けること");
     let root_parsed_pos = body_branch[parsed_pos..]
-        .find("(root_push parsed)")
+        .find("(root_push parsed-defn)")
         .map(|pos| parsed_pos + pos)
         .expect("parse-defn-v3 は progress marker 前に parsed を root すること");
     let marker_pos = body_branch
@@ -635,6 +635,49 @@ fn parser_parse_defn_roots_finalize_result_before_progress_marker() {
             && root_parsed_pos < marker_pos
             && marker_pos < first_pop_after_marker,
         "parse-defn-v3 は progress mode の command-line-arg/print allocation で parsed local を壊さないよう、marker 224 の前後だけ parsed を root するべき"
+    );
+}
+
+#[test]
+fn parser_parse_defn_uses_branch_unique_body_bindings_for_x86_env_isolation() {
+    let source = std::fs::read_to_string(workspace_root().join("selfhost/src/Syntax/Parser.ls"))
+        .expect("Parser.ls を読めること");
+    let parse_defn = source
+        .split("(defn parse-defn-v3 [spans pos-ref src]")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn parse-defmacro-v3").next())
+        .expect("Parser.ls に parse-defn-v3 が存在すること");
+    let helper = source
+        .split("(defn parse-defn-bodyless-or-body-v3 [spans pos-ref src defn-node param-count]")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn parse-defn-bodyless-or-body-with-meta-v3")
+                .next()
+        })
+        .expect("Parser.ls に parse-defn-bodyless-or-body-v3 が存在すること");
+
+    assert!(
+        parse_defn.contains("empty-body (make-int-node 0)")
+            && parse_defn.contains("empty-parsed (finalize-defn-body-v3 defn-node param-count empty-body)")
+            && parse_defn.contains("parsed-body (parse-expr-v3 spans pos-ref src)")
+            && parse_defn.contains(
+                "parsed-defn (finalize-defn-parsed-body-v3 spans pos-ref defn-node param-count parsed-body)"
+            )
+            && !parse_defn.contains("(let [body (make-int-node 0)]")
+            && !parse_defn.contains("(let [body (parse-expr-v3 spans pos-ref src)]")
+            && !parse_defn.contains("parsed (finalize-defn-parsed-body-v3 spans pos-ref defn-node param-count body)"),
+        "parse-defn-v3 は sibling branch の mutable env 汚染を避けるため body/parsed binding 名を再利用しない"
+    );
+    assert!(
+        helper.contains("bodyless-body (make-int-node 0)")
+            && helper.contains("bodyless-parsed (finalize-defn-body-v3 defn-node param-count bodyless-body)")
+            && helper.contains("helper-body (parse-expr-v3 spans pos-ref src)")
+            && helper.contains(
+                "helper-parsed (finalize-defn-parsed-body-v3 spans pos-ref defn-node param-count helper-body)"
+            )
+            && !helper.contains("(let [body (make-int-node 0)]")
+            && !helper.contains("(let [body (parse-expr-v3 spans pos-ref src)]"),
+        "parse-defn helper も body/parsed binding 名を branch 間で再利用しない"
     );
 }
 
@@ -1015,9 +1058,9 @@ fn parser_defn_body_finalize_uses_small_rooted_helper() {
         .expect("Parser.ls に parse-defn-bodyless-or-body-v3 が存在すること");
 
     assert!(
-        body.contains("(finalize-defn-body-v3 defn-node param-count body)")
+        body.contains("(finalize-defn-body-v3 defn-node param-count bodyless-body)")
             && body.contains(
-                "(finalize-defn-parsed-body-v3 spans pos-ref defn-node param-count body)"
+                "(finalize-defn-parsed-body-v3 spans pos-ref defn-node param-count helper-body)"
             )
             && !body.contains("node-with-placeholder"),
         "parse-defn body finalize は x86 stage2 の local 保持崩れを避けるため小さい rooted helper に委譲するべき"
@@ -1038,9 +1081,9 @@ fn parser_parse_defn_uses_ref_backed_finalize_wrapper_without_tail_refactor() {
         parse_defn.contains("(skip-optional-type-sig-v3 spans pos-ref src)")
             && parse_defn.contains("(skip-optional-where-v3 spans pos-ref src)")
             && parse_defn.contains("(parse-defn-bodyless-or-body-with-meta-v3")
-            && parse_defn.contains("(let [body (parse-expr-v3 spans pos-ref src)]")
+            && parse_defn.contains("(let [parsed-body (parse-expr-v3 spans pos-ref src)]")
             && parse_defn.contains(
-                "(finalize-defn-parsed-body-v3 spans pos-ref defn-node param-count body)"
+                "(finalize-defn-parsed-body-v3 spans pos-ref defn-node param-count parsed-body)"
             )
             && !parse_defn.contains("(parse-defn-tail-v3 spans pos-ref src defn-node param-count)")
             && !parse_defn.contains("(parse-defn-bodyless-or-body-v3\n")
