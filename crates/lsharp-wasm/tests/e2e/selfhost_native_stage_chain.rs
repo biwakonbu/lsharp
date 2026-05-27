@@ -880,6 +880,20 @@ fn test_linux_x86_file_segmented_harness_writes_segments_from_append_emit_vector
 }
 
 #[test]
+fn test_linux_x86_representative_seed_separates_target_and_native_callables_bindings() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+
+    assert!(
+        !source.contains(
+            "let [target (make-target 3)\n                    native-callables"
+        ) && source.contains(
+            "(let [target (make-target 3)]\n                (do\n                  (root_push target)\n                  (let [native-callables (normalize-selfhost-native-function-metas-for-target callables target)]"
+        ),
+        "Linux x86 segmented seed は target descriptor が native-callables local を潰さないよう target/native-callables を同一 let binding list に置かない"
+    );
+}
+
+#[test]
 fn test_linux_x86_representative_seed_copy_slice_uses_bounded_steps() {
     let source = linux_x86_representative_actual_stage23_seed_source();
 
@@ -8023,23 +8037,24 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
           (let [callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))]
             (do
               (root_push callables)
-              (let [target {target_expr}
-                    native-callables (normalize-selfhost-native-function-metas-for-target callables target)]
+              (let [target {target_expr}]
                 (do
-                  (root_push native-callables)
                   (root_push target)
-                  (let [{code_binding_expr}]
+                  (let [native-callables (normalize-selfhost-native-function-metas-for-target callables target)]
                     (do
-                      (root_push code)
+                      (root_push native-callables)
+                      (let [{code_binding_expr}]
+                        (do
+                          (root_push code)
   {main_body}
-                      (root_pop)
-                      (root_pop)
-                      (root_pop)
-                      (root_pop)
-                      (root_pop)
-                      (root_pop)
-                      (root_pop)
-                      0)))))))))))"#,
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          0)))))))))))))"#,
         payload_expr = payload_expr,
         code_binding_expr = code_binding_expr,
         target_expr = target_expr,
