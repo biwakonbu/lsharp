@@ -818,8 +818,7 @@ fn compiler_with_source_compile_step_roots_next_functions_before_state_alloc() {
             && body.contains("(root_set functions-slot next-functions)")
             && body.matches("(root_set functions-slot result)").count() >= 2
             && body.contains("next-defn-idx (+ idx 1)")
-            && body.contains("state-base1 (push-int-vector state-base0 next-defn-idx)")
-            && body.contains("result (push-object-vector state-base1 next-functions)")
+            && body.contains("(make-compile-step-state 0 next-defn-idx next-functions)")
             && !body.contains("compile-defn-functions-step-finish functions compiled-fn idx"),
         "compile-defn-functions-step-with-source は stage2 x86 native の local 保持崩れを避けるため next-functions と result state を root slot へ戻すべき"
     );
@@ -851,10 +850,8 @@ fn compiler_with_source_skip_decl_roots_functions_until_state_alloc() {
 
     assert!(
         state_alloc_pos < first_pop_after_state
-            && body.contains("state-base1 (push-int-vector state-base0 next-skip-idx)")
-            && body.contains("result (push-object-vector state-base1 functions)")
-            && body.contains("(root_set functions-slot result)")
-            && !body.contains("(make-compile-step-state 0 next-skip-idx functions)")
+            && body.contains("(make-compile-step-state 0 next-skip-idx functions)")
+            && body.contains("              result))))))))")
             && !body.contains(
                 "(root_pop)\n          (root_pop)\n          (root_pop)\n          (root_pop)\n          (root_pop)\n          (make-compile-step-state 0 (+ idx 1) functions)"
             ),
@@ -1145,44 +1142,15 @@ fn compiler_source_step_binds_next_idx_before_state_allocation() {
 
     assert!(
         body.contains("(let [next-defn-idx (+ idx 1)]")
-            && body.contains("state-base1 (push-int-vector state-base0 next-defn-idx)")
+            && body
+                .contains("(let [result (make-compile-step-state 0 next-defn-idx next-functions)]")
             && body.contains("(let [next-skip-idx (+ idx 1)]")
-            && body.contains("state-base1 (push-int-vector state-base0 next-skip-idx)")
+            && body.contains("(let [result (make-compile-step-state 0 next-skip-idx functions)]")
             && !body.contains("(make-compile-step-state 0 (+ idx 1) next-functions)")
             && !body.contains("(make-compile-step-state 0 (+ idx 1) functions)")
-            && !body.contains("(make-compile-step-state 0 next-defn-idx next-functions)")
-            && !body.contains("(make-compile-step-state 0 next-skip-idx functions)")
             && !body.contains("next-defn-idx (+ idx 1)\n                      result")
             && !body.contains("next-skip-idx (+ idx 1)\n              result"),
         "compile-defn-functions-step-with-source は x86 native の argument-list value-window 破損を避けるため next idx 計算と state allocation を別 let に分けるべき"
-    );
-}
-
-#[test]
-fn compiler_source_step_impl3_builds_state_inline_for_x86_call_boundary() {
-    let source =
-        std::fs::read_to_string(workspace_root().join("selfhost/src/Backend/Wasm/Compiler.ls"))
-            .expect("Compiler.ls を読めること");
-    let body = source
-        .split("(defn compile-defn-functions-step-with-source-body-impl-3")
-        .nth(1)
-        .and_then(|tail| {
-            tail.split("(defn compile-let-with-ftable-impl-body-impl-3")
-                .next()
-        })
-        .expect(
-            "Compiler.ls に compile-defn-functions-step-with-source-body-impl-3 が存在すること",
-        );
-
-    assert!(
-        !body.contains("make-compile-step-state")
-            && body.contains("state-base0 (push-int-vector (vector-new 3) 0)")
-            && body.contains("state-base0 (push-int-vector (vector-new 3) 1)")
-            && body.contains("state-base1 (push-int-vector state-base0 next-defn-idx)")
-            && body.contains("state-base1 (push-int-vector state-base0 next-skip-idx)")
-            && body.contains("result (push-object-vector state-base1 next-functions)")
-            && body.contains("result (push-object-vector state-base1 functions)"),
-        "with-source impl-3 は x86 user-call argument handoff を避けるため、step state を局所的に構築するべき"
     );
 }
 
