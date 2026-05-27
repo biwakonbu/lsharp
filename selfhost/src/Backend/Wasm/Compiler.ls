@@ -1388,16 +1388,29 @@
 (defn continue-compile-defn-functions-step-with-source [decls n source ftable data-ref state]
   (if (= (vector-get state 0) 1)
     state
-    (do
+    (let [continue-step-progress-mode (if (> (string-length (command-line-arg 8)) 0) 1 0)]
       (let [state-slot (root_push state)]
         (do
           (let [next-idx (vector-get state 1)
             next-functions (vector-get state 2)]
             (do
               (root_push next-functions)
+              (if (= continue-step-progress-mode 1)
+                (do
+                  (print 9000000070)
+                  (print next-idx)
+                  (print (vector-length next-functions)))
+                (do))
               (let [result (compile-defn-functions-step-with-source decls next-idx n source ftable data-ref next-functions)]
                 (do
                   (root_set state-slot result)
+                  (if (= continue-step-progress-mode 1)
+                    (do
+                      (print 9000000071)
+                      (print (vector-get result 0))
+                      (print (vector-get result 1))
+                      (print (vector-length (vector-get result 2))))
+                    (do))
                   (root_pop)
                   (root_pop)
                   result)))))))))
@@ -1407,7 +1420,7 @@
     state
     (if (= (vector-get state 0) 1)
       state
-      (do
+      (let [continue-times-progress-mode (if (> (string-length (command-line-arg 8)) 0) 1 0)]
         (let [decls-slot (root_push decls)]
           (do
             (root_push source)
@@ -1417,6 +1430,17 @@
             (let [next-state (continue-compile-defn-functions-step-with-source decls n source ftable data-ref state)]
               (do
                 (root_push next-state)
+                (if (= continue-times-progress-mode 1)
+                  (do
+                    (print 9000000072)
+                    (print remaining)
+                    (print (vector-get state 0))
+                    (print (vector-get state 1))
+                    (print (vector-length (vector-get state 2)))
+                    (print (vector-get next-state 0))
+                    (print (vector-get next-state 1))
+                    (print (vector-length (vector-get next-state 2))))
+                  (do))
                 (let [result (continue-compile-defn-functions-step-times-with-source decls n source ftable data-ref (- remaining 1) next-state)]
                   (do
                     (root_set decls-slot result)
@@ -1477,7 +1501,8 @@
 
 (defn compile-defn-functions-step-64-with-source [decls idx n source ftable data-ref functions]
   (do
-    (let [decls-slot (root_push decls)]
+    (let [step64-progress-mode (if (> (string-length (command-line-arg 8)) 0) 1 0)
+      decls-slot (root_push decls)]
       (do
         (root_push source)
         (root_push ftable)
@@ -1489,6 +1514,16 @@
             (let [result (continue-compile-defn-functions-step-times-with-source decls n source ftable data-ref 63 state)]
               (do
                 (root_set decls-slot result)
+                (if (= step64-progress-mode 1)
+                  (do
+                    (print 9000000073)
+                    (print (vector-get state 0))
+                    (print (vector-get state 1))
+                    (print (vector-length (vector-get state 2)))
+                    (print (vector-get result 0))
+                    (print (vector-get result 1))
+                    (print (vector-length (vector-get result 2))))
+                  (do))
                 (root_pop)
                 (root_pop)
                 (root_pop)
@@ -1500,7 +1535,7 @@
 (defn continue-compile-defn-functions-step-64-with-source [decls n source ftable data-ref state]
   (if (= (vector-get state 0) 1)
     state
-    (do
+    (let [continue64-progress-mode (if (> (string-length (command-line-arg 8)) 0) 1 0)]
       (let [decls-slot (root_push decls)]
         (do
           (root_push source)
@@ -1517,6 +1552,16 @@
                   (let [result (continue-compile-defn-functions-step-64-with-source decls n source ftable data-ref next-state)]
                     (do
                       (root_set decls-slot result)
+                      (if (= continue64-progress-mode 1)
+                        (do
+                          (print 9000000074)
+                          (print (vector-get next-state 0))
+                          (print (vector-get next-state 1))
+                          (print (vector-length (vector-get next-state 2)))
+                          (print (vector-get result 0))
+                          (print (vector-get result 1))
+                          (print (vector-length (vector-get result 2))))
+                        (do))
                       (root_pop)
                       (root_pop)
                       (root_pop)

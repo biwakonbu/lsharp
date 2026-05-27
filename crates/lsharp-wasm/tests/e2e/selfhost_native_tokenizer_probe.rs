@@ -1024,6 +1024,74 @@ fn compiler_source_chunked_roots_next_functions_between_step_helpers() {
 }
 
 #[test]
+fn compiler_source_chunked_high_markers_split_step_vs_continue_state_loss() {
+    let source =
+        std::fs::read_to_string(workspace_root().join("selfhost/src/Backend/Wasm/Compiler.ls"))
+            .expect("Compiler.ls を読めること");
+    let continue_step = source
+        .split("(defn continue-compile-defn-functions-step-with-source")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn continue-compile-defn-functions-step-times-with-source")
+                .next()
+        })
+        .expect("continue-compile-defn-functions-step-with-source が存在すること");
+    let continue_times = source
+        .split("(defn continue-compile-defn-functions-step-times-with-source")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-defn-functions-step-8-with-source")
+                .next()
+        })
+        .expect("continue-compile-defn-functions-step-times-with-source が存在すること");
+    let step64 = source
+        .split("(defn compile-defn-functions-step-64-with-source")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn continue-compile-defn-functions-step-64-with-source")
+                .next()
+        })
+        .expect("compile-defn-functions-step-64-with-source が存在すること");
+    let continue64 = source
+        .split("(defn continue-compile-defn-functions-step-64-with-source")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-source-defn-functions-chunked")
+                .next()
+        })
+        .expect("continue-compile-defn-functions-step-64-with-source が存在すること");
+
+    assert!(
+        continue_step.contains("continue-step-progress-mode")
+            && continue_step.contains("(print 9000000070)")
+            && continue_step.contains("(print (vector-length next-functions))")
+            && continue_step.contains("(print 9000000071)")
+            && continue_step.contains("(print (vector-get result 0))")
+            && continue_step.contains("(print (vector-length (vector-get result 2)))"),
+        "continue-compile-defn-functions-step-with-source は単発 step の入力 accumulator と result state を高い sentinel で分離して観測できるべき"
+    );
+    assert!(
+        continue_times.contains("continue-times-progress-mode")
+            && continue_times.contains("(print 9000000072)")
+            && continue_times.contains("(print remaining)")
+            && continue_times.contains("(print (vector-length (vector-get state 2)))")
+            && continue_times.contains("(print (vector-length (vector-get next-state 2)))"),
+        "continue-compile-defn-functions-step-times-with-source は times recursion の state handoff を高い sentinel で観測できるべき"
+    );
+    assert!(
+        step64.contains("step64-progress-mode")
+            && step64.contains("(print 9000000073)")
+            && step64.contains("(print (vector-length (vector-get state 2)))")
+            && step64.contains("(print (vector-length (vector-get result 2)))")
+            && continue64.contains("continue64-progress-mode")
+            && continue64.contains("(print 9000000074)")
+            && continue64.contains("(print (vector-length (vector-get next-state 2)))")
+            && continue64.contains("(print (vector-length (vector-get result 2)))"),
+        "step-64 / continue-64 wrappers は 64 境界で functions accumulator が落ちるかを高い sentinel で観測できるべき"
+    );
+}
+
+#[test]
 fn parser_program_step_delegates_expr_append_to_rooted_helper() {
     let source = std::fs::read_to_string(workspace_root().join("selfhost/src/Syntax/Parser.ls"))
         .expect("Parser.ls を読めること");
