@@ -817,7 +817,8 @@ fn compiler_with_source_compile_step_roots_next_functions_before_state_alloc() {
             && body.contains("next-functions (push-object-vector functions compiled-fn)")
             && body.contains("(root_set functions-slot next-functions)")
             && body.matches("(root_set functions-slot result)").count() >= 2
-            && body.contains("(make-compile-step-state 0 (+ idx 1) next-functions)")
+            && body.contains("next-defn-idx (+ idx 1)")
+            && body.contains("(make-compile-step-state 0 next-defn-idx next-functions)")
             && !body.contains("compile-defn-functions-step-finish functions compiled-fn idx"),
         "compile-defn-functions-step-with-source は stage2 x86 native の local 保持崩れを避けるため next-functions と result state を root slot へ戻すべき"
     );
@@ -840,8 +841,8 @@ fn compiler_with_source_skip_decl_roots_functions_until_state_alloc() {
         );
 
     let state_alloc_pos = body
-        .find("(let [result (make-compile-step-state 0 (+ idx 1) functions)]")
-        .expect("skip branch は state allocation を result binding として持つべき");
+        .find("(let [next-skip-idx (+ idx 1)")
+        .expect("skip branch は next idx を local 化してから state allocation するべき");
     let first_pop_after_state = body[state_alloc_pos..]
         .find("(root_pop)")
         .map(|pos| state_alloc_pos + pos)
@@ -849,6 +850,7 @@ fn compiler_with_source_skip_decl_roots_functions_until_state_alloc() {
 
     assert!(
         state_alloc_pos < first_pop_after_state
+            && body.contains("(make-compile-step-state 0 next-skip-idx functions)")
             && body.contains("              result))))))))")
             && !body.contains(
                 "(root_pop)\n          (root_pop)\n          (root_pop)\n          (root_pop)\n          (root_pop)\n          (make-compile-step-state 0 (+ idx 1) functions)"
@@ -1088,6 +1090,33 @@ fn compiler_source_chunked_high_markers_split_step_vs_continue_state_loss() {
             && continue64.contains("(print (vector-length (vector-get next-state 2)))")
             && continue64.contains("(print (vector-length (vector-get result 2)))"),
         "step-64 / continue-64 wrappers は 64 境界で functions accumulator が落ちるかを高い sentinel で観測できるべき"
+    );
+}
+
+#[test]
+fn compiler_source_step_binds_next_idx_before_state_allocation() {
+    let source =
+        std::fs::read_to_string(workspace_root().join("selfhost/src/Backend/Wasm/Compiler.ls"))
+            .expect("Compiler.ls を読めること");
+    let body = source
+        .split("(defn compile-defn-functions-step-with-source-body-impl-3")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-let-with-ftable-impl-body-impl-3")
+                .next()
+        })
+        .expect(
+            "Compiler.ls に compile-defn-functions-step-with-source-body-impl-3 が存在すること",
+        );
+
+    assert!(
+        body.contains("next-defn-idx (+ idx 1)")
+            && body.contains("(make-compile-step-state 0 next-defn-idx next-functions)")
+            && body.contains("next-skip-idx (+ idx 1)")
+            && body.contains("(make-compile-step-state 0 next-skip-idx functions)")
+            && !body.contains("(make-compile-step-state 0 (+ idx 1) next-functions)")
+            && !body.contains("(make-compile-step-state 0 (+ idx 1) functions)"),
+        "compile-defn-functions-step-with-source は x86 native の argument-list value-window 破損を避けるため next idx を state allocation 前に local 化するべき"
     );
 }
 

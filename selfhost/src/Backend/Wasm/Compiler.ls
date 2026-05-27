@@ -2170,7 +2170,8 @@
                 (let [next-functions (push-object-vector functions compiled-fn)]
                   (do
                     (root_set functions-slot next-functions)
-                    (let [result (make-compile-step-state 0 (+ idx 1) next-functions)]
+                    (let [next-defn-idx (+ idx 1)
+                      result (make-compile-step-state 0 next-defn-idx next-functions)]
                       (do
                         (if (= source-step-progress-mode 1)
                           (if (< (vector-length functions) 128)
@@ -2197,7 +2198,8 @@
                         (root_pop)
                         result)))))))
           (do
-            (let [result (make-compile-step-state 0 (+ idx 1) functions)]
+            (let [next-skip-idx (+ idx 1)
+              result (make-compile-step-state 0 next-skip-idx functions)]
               (do
                 (if (= source-step-progress-mode 1)
                   (if (< (vector-length functions) 128)
