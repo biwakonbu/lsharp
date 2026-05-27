@@ -1094,6 +1094,37 @@ fn compiler_source_chunked_high_markers_split_step_vs_continue_state_loss() {
 }
 
 #[test]
+fn compiler_source_step_wrapper_chain_marks_return_handoff() {
+    let source =
+        std::fs::read_to_string(workspace_root().join("selfhost/src/Backend/Wasm/Compiler.ls"))
+            .expect("Compiler.ls を読めること");
+
+    for (name, marker_id) in [
+        ("compile-defn-functions-step-with-source", "0"),
+        ("compile-defn-functions-step-with-source-body", "1"),
+        ("compile-defn-functions-step-with-source-body-impl", "2"),
+        ("compile-defn-functions-step-with-source-body-impl-2", "3"),
+    ] {
+        let body = source
+            .split(&format!("(defn {name}"))
+            .nth(1)
+            .and_then(|tail| tail.split("(defn ").next())
+            .unwrap_or_else(|| panic!("Compiler.ls に {name} が存在すること"));
+
+        assert!(
+            body.contains("source-step-wrapper-progress-mode")
+                && body.contains("(print 9000000075)")
+                && body.contains(&format!("(print {marker_id})"))
+                && body.contains("(print (vector-get result 0))")
+                && body.contains("(print (vector-get result 1))")
+                && body.contains("(print (vector-length (vector-get result 2)))")
+                && body.contains("result-root (root_push result)"),
+            "{name} は source step wrapper return handoff を high marker で観測できるべき"
+        );
+    }
+}
+
+#[test]
 fn compiler_source_step_binds_next_idx_before_state_allocation() {
     let source =
         std::fs::read_to_string(workspace_root().join("selfhost/src/Backend/Wasm/Compiler.ls"))

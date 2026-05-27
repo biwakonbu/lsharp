@@ -2099,11 +2099,37 @@
   (compile-expr-with-ftable-dispatch-impl-body node env ftable instrs))
 
 (defn compile-defn-functions-step-with-source [decls idx n source ftable data-ref functions]
-  (compile-defn-functions-step-with-source-body decls idx n source ftable data-ref functions))
+  (let [source-step-wrapper-progress-mode (if (> (string-length (command-line-arg 8)) 0) 1 0)
+    result (compile-defn-functions-step-with-source-body decls idx n source ftable data-ref functions)]
+    (do
+      (if (= source-step-wrapper-progress-mode 1)
+        (let [result-root (root_push result)]
+          (do
+            (print 9000000075)
+            (print 0)
+            (print (vector-get result 0))
+            (print (vector-get result 1))
+            (print (vector-length (vector-get result 2)))
+            (root_pop)))
+        (do))
+      result)))
 (defn compile-let-chain-step-with-source [node source env ftable instrs data-ref rooted-count]
   (compile-let-chain-step-with-source-body node source env ftable instrs data-ref rooted-count))
 (defn compile-defn-functions-step-with-source-body [decls idx n source ftable data-ref functions]
-  (compile-defn-functions-step-with-source-body-impl decls idx n source ftable data-ref functions))
+  (let [source-step-wrapper-progress-mode (if (> (string-length (command-line-arg 8)) 0) 1 0)
+    result (compile-defn-functions-step-with-source-body-impl decls idx n source ftable data-ref functions)]
+    (do
+      (if (= source-step-wrapper-progress-mode 1)
+        (let [result-root (root_push result)]
+          (do
+            (print 9000000075)
+            (print 1)
+            (print (vector-get result 0))
+            (print (vector-get result 1))
+            (print (vector-length (vector-get result 2)))
+            (root_pop)))
+        (do))
+      result)))
 (defn compile-if-with-source-impl [node source env ftable instrs data-ref]
   (compile-if-with-source-impl-body node source env ftable instrs data-ref))
 (defn compile-let-with-ftable-impl-body [node env ftable instrs]
@@ -2115,7 +2141,20 @@
 (defn compile-let-chain-step-with-source-body [node source env ftable instrs data-ref rooted-count]
   (compile-let-chain-step-with-source-body-impl node source env ftable instrs data-ref rooted-count))
 (defn compile-defn-functions-step-with-source-body-impl [decls idx n source ftable data-ref functions]
-  (compile-defn-functions-step-with-source-body-impl-2 decls idx n source ftable data-ref functions))
+  (let [source-step-wrapper-progress-mode (if (> (string-length (command-line-arg 8)) 0) 1 0)
+    result (compile-defn-functions-step-with-source-body-impl-2 decls idx n source ftable data-ref functions)]
+    (do
+      (if (= source-step-wrapper-progress-mode 1)
+        (let [result-root (root_push result)]
+          (do
+            (print 9000000075)
+            (print 2)
+            (print (vector-get result 0))
+            (print (vector-get result 1))
+            (print (vector-length (vector-get result 2)))
+            (root_pop)))
+        (do))
+      result)))
 (defn compile-if-with-source-impl-body [node source env ftable instrs data-ref]
   (compile-if-with-source-impl-body-impl node source env ftable instrs data-ref))
 (defn compile-let-with-ftable-impl-body-impl [node env ftable instrs]
@@ -2124,7 +2163,20 @@
 (defn compile-let-chain-step-with-source-body-impl [node source env ftable instrs data-ref rooted-count]
   (compile-let-chain-step-with-source-body-impl-2 node source env ftable instrs data-ref rooted-count))
 (defn compile-defn-functions-step-with-source-body-impl-2 [decls idx n source ftable data-ref functions]
-  (compile-defn-functions-step-with-source-body-impl-3 decls idx n source ftable data-ref functions))
+  (let [source-step-wrapper-progress-mode (if (> (string-length (command-line-arg 8)) 0) 1 0)
+    result (compile-defn-functions-step-with-source-body-impl-3 decls idx n source ftable data-ref functions)]
+    (do
+      (if (= source-step-wrapper-progress-mode 1)
+        (let [result-root (root_push result)]
+          (do
+            (print 9000000075)
+            (print 3)
+            (print (vector-get result 0))
+            (print (vector-get result 1))
+            (print (vector-length (vector-get result 2)))
+            (root_pop)))
+        (do))
+      result)))
 (defn compile-let-with-ftable-impl-body-impl-2 [node env ftable instrs]
   (compile-let-with-ftable-impl-body-impl-3 node env ftable instrs))
 
