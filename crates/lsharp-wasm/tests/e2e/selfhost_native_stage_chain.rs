@@ -902,13 +902,21 @@ fn test_linux_x86_representative_seed_roots_slot_layout_accumulators() {
 
     assert!(
         source.contains("starts-ref (ref-new (vector-new 8))")
-            && source.contains("len-ref (ref-new len)")
-            && source.contains("offset-ref (ref-new offset)")
+            && source.contains("(defn make-x86-slot-layout-context")
+            && source.contains("(defn collect-callable-function-slot-starts-x86-loop [ctx]")
+            && source.contains("(collect-callable-function-slot-starts-x86-loop ctx)")
+            && !source.contains("collect-callable-function-slot-starts-x86-loop functions (+")
+            && source.contains("idx-ref (ref-new import-count)")
+            && source.contains("len-ref (ref-new (vector-length functions))")
+            && source.contains("offset-ref (ref-new 0)")
+            && source.contains("(ref-set idx-ref (+ (ref-get idx-ref) 1))")
+            && source.contains("(ref-set offset-ref (+ (ref-get offset-ref) slot-size))")
             && source.contains("(ref-set starts-ref next-starts)")
             && source.contains("(ref-get starts-ref)")
             && source.contains("total-ref (ref-new 0)")
-            && source.contains("(ref-set total-ref next-total)")
-            && source.contains("(ref-get total-ref)"),
+            && source.contains("(defn callable-user-total-slot-size-x86-loop [ctx]")
+            && source.contains("(callable-user-total-slot-size-x86-loop ctx)")
+            && source.contains("(ref-get (x86-slot-layout-context-offset-ref ctx))"),
         "Linux x86 segmented seed は starts/user-total 計算中の vector-push/native-function-size-x86 で accumulator local を壊さないよう ref slot で保持するべき"
     );
 }
@@ -6758,28 +6766,26 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
 (defn x86-function-slot-size [func-meta functions]
   (+ (native-function-size-x86 func-meta functions) 2048))
 
-(defn collect-callable-function-slot-starts-x86-loop [functions idx len starts-ref offset]
-  (if (>= idx len)
-    (ref-get starts-ref)
-    (do
-      (root_push functions)
-      (root_push starts-ref)
-      (let [idx-ref (ref-new idx)
-            len-ref (ref-new len)
-            offset-ref (ref-new offset)]
-        (do
-          (root_push idx-ref)
-          (root_push len-ref)
-          (root_push offset-ref)
-          (let [func-meta (vector-get functions (ref-get idx-ref))]
-            (do
-              (root_push func-meta)
-              (let [next-starts (vector-push (ref-get starts-ref) (ref-get offset-ref))]
-                (do
-                  (root_push next-starts)
-                  (ref-set starts-ref next-starts)
-                  (let [next-offset (+ (ref-get offset-ref) (x86-function-slot-size func-meta functions))]
-                    (let [final (collect-callable-function-slot-starts-x86-loop functions (+ (ref-get idx-ref) 1) (ref-get len-ref) starts-ref next-offset)]
+(defn make-x86-slot-layout-context [functions starts-ref idx-ref len-ref offset-ref]
+  (do
+    (root_push functions)
+    (root_push starts-ref)
+    (root_push idx-ref)
+    (root_push len-ref)
+    (root_push offset-ref)
+    (let [base0 (vector-push (vector-new 5) functions)]
+      (do
+        (root_push base0)
+        (let [base1 (vector-push base0 starts-ref)]
+          (do
+            (root_push base1)
+            (let [base2 (vector-push base1 idx-ref)]
+              (do
+                (root_push base2)
+                (let [base3 (vector-push base2 len-ref)]
+                  (do
+                    (root_push base3)
+                    (let [ctx (vector-push base3 offset-ref)]
                       (do
                         (root_pop)
                         (root_pop)
@@ -6788,57 +6794,135 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
                         (root_pop)
                         (root_pop)
                         (root_pop)
-                        final))))))))))))
+                        (root_pop)
+                        (root_pop)
+                        ctx))))))))))))
+
+(defn x86-slot-layout-context-functions [ctx] (vector-get ctx 0))
+(defn x86-slot-layout-context-starts-ref [ctx] (vector-get ctx 1))
+(defn x86-slot-layout-context-idx-ref [ctx] (vector-get ctx 2))
+(defn x86-slot-layout-context-len-ref [ctx] (vector-get ctx 3))
+(defn x86-slot-layout-context-offset-ref [ctx] (vector-get ctx 4))
+
+(defn collect-callable-function-slot-starts-x86-loop [ctx]
+  (let [idx-ref (x86-slot-layout-context-idx-ref ctx)
+        len-ref (x86-slot-layout-context-len-ref ctx)]
+    (if (>= (ref-get idx-ref) (ref-get len-ref))
+      (ref-get (x86-slot-layout-context-starts-ref ctx))
+      (do
+        (root_push ctx)
+        (root_push idx-ref)
+        (root_push len-ref)
+        (let [functions (x86-slot-layout-context-functions ctx)
+              starts-ref (x86-slot-layout-context-starts-ref ctx)
+              offset-ref (x86-slot-layout-context-offset-ref ctx)]
+          (do
+            (root_push functions)
+            (root_push starts-ref)
+            (root_push offset-ref)
+            (let [func-meta (vector-get functions (ref-get idx-ref))]
+              (do
+                (root_push func-meta)
+                (let [next-starts (vector-push (ref-get starts-ref) (ref-get offset-ref))]
+                  (do
+                    (root_push next-starts)
+                    (ref-set starts-ref next-starts)
+                    (let [slot-size (x86-function-slot-size func-meta functions)]
+                      (do
+                        (ref-set offset-ref (+ (ref-get offset-ref) slot-size))
+                        (ref-set idx-ref (+ (ref-get idx-ref) 1))
+                        (let [final (collect-callable-function-slot-starts-x86-loop ctx)]
+                          (do
+                            (root_pop)
+                            (root_pop)
+                            (root_pop)
+                            (root_pop)
+                            (root_pop)
+                            (root_pop)
+                            (root_pop)
+                            (root_pop)
+                            final))))))))))))))
 
 (defn collect-callable-function-slot-starts-x86 [functions import-count]
   (do
     (root_push functions)
-    (let [starts-ref (ref-new (vector-new 8))]
+    (let [starts-ref (ref-new (vector-new 8))
+          idx-ref (ref-new import-count)
+          len-ref (ref-new (vector-length functions))
+          offset-ref (ref-new 0)]
       (do
         (root_push starts-ref)
-        (let [result (collect-callable-function-slot-starts-x86-loop functions import-count (vector-length functions) starts-ref 0)]
+        (root_push idx-ref)
+        (root_push len-ref)
+        (root_push offset-ref)
+        (let [ctx (make-x86-slot-layout-context functions starts-ref idx-ref len-ref offset-ref)]
           (do
-            (root_pop)
-            (root_pop)
-            result))))))
+            (root_push ctx)
+            (let [result (collect-callable-function-slot-starts-x86-loop ctx)]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result))))))))
 
-(defn callable-user-total-slot-size-x86-loop [functions idx len total-ref]
-  (if (>= idx len)
-    (ref-get total-ref)
-    (do
-      (root_push functions)
-      (root_push total-ref)
-      (let [idx-ref (ref-new idx)
-            len-ref (ref-new len)]
-        (do
-          (root_push idx-ref)
-          (root_push len-ref)
-          (let [func-meta (vector-get functions (ref-get idx-ref))]
-            (do
-              (root_push func-meta)
-              (let [next-total (+ (ref-get total-ref) (x86-function-slot-size func-meta functions))]
-                (do
-                  (ref-set total-ref next-total)
-                  (let [final (callable-user-total-slot-size-x86-loop functions (+ (ref-get idx-ref) 1) (ref-get len-ref) total-ref)]
-                    (do
-                      (root_pop)
-                      (root_pop)
-                      (root_pop)
-                      (root_pop)
-                      (root_pop)
-                      final)))))))))))
+(defn callable-user-total-slot-size-x86-loop [ctx]
+  (let [idx-ref (x86-slot-layout-context-idx-ref ctx)
+        len-ref (x86-slot-layout-context-len-ref ctx)]
+    (if (>= (ref-get idx-ref) (ref-get len-ref))
+      (ref-get (x86-slot-layout-context-offset-ref ctx))
+      (do
+        (root_push ctx)
+        (root_push idx-ref)
+        (root_push len-ref)
+        (let [functions (x86-slot-layout-context-functions ctx)
+              offset-ref (x86-slot-layout-context-offset-ref ctx)]
+          (do
+            (root_push functions)
+            (root_push offset-ref)
+            (let [func-meta (vector-get functions (ref-get idx-ref))]
+              (do
+                (root_push func-meta)
+                (let [slot-size (x86-function-slot-size func-meta functions)]
+                  (do
+                    (ref-set offset-ref (+ (ref-get offset-ref) slot-size))
+                    (ref-set idx-ref (+ (ref-get idx-ref) 1))
+                    (let [final (callable-user-total-slot-size-x86-loop ctx)]
+                      (do
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        final))))))))))))
 
 (defn callable-user-total-slot-size-x86 [functions import-count]
   (do
     (root_push functions)
-    (let [total-ref (ref-new 0)]
+    (let [starts-ref (ref-new (vector-new 0))
+          idx-ref (ref-new import-count)
+          len-ref (ref-new (vector-length functions))
+          total-ref (ref-new 0)]
       (do
+        (root_push starts-ref)
+        (root_push idx-ref)
+        (root_push len-ref)
         (root_push total-ref)
-        (let [result (callable-user-total-slot-size-x86-loop functions import-count (vector-length functions) total-ref)]
+        (let [ctx (make-x86-slot-layout-context functions starts-ref idx-ref len-ref total-ref)]
           (do
-            (root_pop)
-            (root_pop)
-            result))))))
+            (root_push ctx)
+            (let [result (callable-user-total-slot-size-x86-loop ctx)]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result))))))))
 
 (defn x86-function-slot-size-from-starts [starts import-stub-offset idx function-start]
   (if (< (+ idx 1) (vector-length starts))
