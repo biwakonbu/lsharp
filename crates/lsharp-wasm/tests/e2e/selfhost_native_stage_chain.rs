@@ -2058,6 +2058,30 @@ fn test_selfhost_compile_let_step_reloads_body_after_init_compile() {
 }
 
 #[test]
+fn test_selfhost_compiler_source_step_impl3_uses_high_branch_handoff_markers() {
+    let source = selfhost_module("Compiler.ls");
+    let step_body = source
+        .split("(defn compile-defn-functions-step-with-source-body-impl-3")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-let-with-ftable-impl-body-impl-3")
+                .next()
+        })
+        .expect(
+            "Compiler.ls に compile-defn-functions-step-with-source-body-impl-3 が存在すること",
+        );
+
+    assert!(
+        step_body.contains("(print 9000000077)") && step_body.contains("(print 9000000078)"),
+        "impl-3 branch diagnostic は numeric payload と衝突しにくい high marker を使うべき"
+    );
+    assert!(
+        !step_body.contains("(print 215)") && !step_body.contains("(print 216)"),
+        "impl-3 branch diagnostic は低値 marker 215/216 を残さない"
+    );
+}
+
+#[test]
 fn test_selfhost_compile_let_step_finish_uses_reloaded_body_without_extra_root() {
     let source = selfhost_module("Compiler.ls");
     let finish_body = source

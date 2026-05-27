@@ -879,12 +879,12 @@ fn compiler_source_step_body_progress_marks_single_step_state() {
         body.contains(
             "source-step-progress-mode (if (> (string-length (command-line-arg 8)) 0) 1 0)"
         ) && body.contains("result-root (root_push result)")
-            && body.find("result-root (root_push result)") < body.find("(print 215)")
-            && body.contains("(print 215)")
+            && body.find("result-root (root_push result)") < body.find("(print 9000000077)")
+            && body.contains("(print 9000000077)")
             && body.contains("(print (vector-length next-functions))")
             && body.contains("(print (vector-get result 1))")
             && body.contains("(print (vector-length (vector-get result 2)))")
-            && body.contains("(print 216)")
+            && body.contains("(print 9000000078)")
             && body.contains("(print (vector-length functions))"),
         "compile-defn-functions-step-with-source-body-impl-3 は source chunk state の破損点を single-step result で観測できるべき"
     );

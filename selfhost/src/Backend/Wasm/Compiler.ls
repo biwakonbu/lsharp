@@ -2230,7 +2230,7 @@
                               (let [result-root (root_push result)]
                                 (do
                                   (do
-                                    (print 215)
+                                    (print 9000000077)
                                     (print idx)
                                     (print (vector-length functions))
                                     (print (vector-length next-functions))
@@ -2258,7 +2258,7 @@
                       (let [result-root (root_push result)]
                         (do
                           (do
-                            (print 216)
+                            (print 9000000078)
                             (print idx)
                             (print (vector-length functions))
                             (print (vector-get result 0))
