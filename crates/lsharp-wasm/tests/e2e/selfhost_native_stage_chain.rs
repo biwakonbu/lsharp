@@ -323,7 +323,7 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
         "      (let [functions (vector-get payload 0)\n            data (vector-get payload 1)]",
         "      (let [payload-observed payload]",
     );
-    source.replace(
+    let source = source.replace(
         "callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))",
         r#"callables (let [pre-callable-progress (if (= (if (> (string-length (command-line-arg 8)) 0) 1 0) 1)
                           (do
@@ -334,6 +334,10 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                             (print (+ 9 (vector-length functions))))
                           0)]
                     (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions)))"#,
+    );
+    source.replace(
+        "native-callables (normalize-selfhost-native-function-metas-for-target callables target)",
+        "native-callables callables",
     )
 }
 
@@ -368,12 +372,12 @@ fn test_linux_x86_representative_seed_uses_layout_emit_for_segmented_native_code
         "Linux x86 segmented seed は native 実行時に壊れやすい 6 引数 loop call を直接使わない"
     );
     assert!(
-        source.contains("normalize-selfhost-native-function-metas-for-target callables target"),
-        "Linux x86 segmented seed は target-aware selfhost 正規化を使い、x86 の 1-based local slot を保持するべき"
+        source.contains("native-callables callables"),
+        "Linux x86 segmented seed は既知 x86 target では target-aware normalizer call を避け、x86 の 1-based local slot を直接保持するべき"
     );
     assert!(
-        !source.contains("native-callables (normalize-selfhost-native-function-metas callables)"),
-        "Linux x86 segmented seed は x86 param spill と矛盾する aarch64 用 local slot 正規化を直接使わない"
+        !source.contains("native-callables (normalize-selfhost-native-function-metas"),
+        "Linux x86 segmented seed は x86 param spill と矛盾する selfhost local slot 正規化を直接使わない"
     );
     assert!(
         source.contains("pad-byte-vector-to-length"),
@@ -887,7 +891,7 @@ fn test_linux_x86_representative_seed_separates_target_and_native_callables_bind
         !source.contains(
             "let [target (make-target 3)\n                    native-callables"
         ) && source.contains(
-            "(let [target (make-target 3)]\n                (do\n                  (root_push target)\n                  (let [native-callables (normalize-selfhost-native-function-metas-for-target callables target)]"
+            "(let [target (make-target 3)]\n                (do\n                  (root_push target)\n                  (let [native-callables callables]"
         ),
         "Linux x86 segmented seed は target descriptor が native-callables local を潰さないよう target/native-callables を同一 let binding list に置かない"
     );
