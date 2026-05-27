@@ -2206,7 +2206,20 @@
 (defn compile-defn-functions-step-with-source-body-impl-3 [decls idx n source ftable data-ref functions]
   (let [source-step-progress-mode (if (> (string-length (command-line-arg 8)) 0) 1 0)]
     (if (>= idx n)
-      (make-compile-step-state 1 idx functions)
+      (do
+        (root_push functions)
+        (let [state-base0 (push-int-vector (vector-new 3) 1)]
+          (do
+            (root_push state-base0)
+            (let [state-base1 (push-int-vector state-base0 idx)]
+              (do
+                (root_push state-base1)
+                (let [result (push-object-vector state-base1 functions)]
+                  (do
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    result)))))))
       (let [decls-slot (root_push decls)
         source-slot (root_push source)
         ftable-slot (root_push ftable)
@@ -2223,17 +2236,58 @@
                   (do
                     (root_set functions-slot next-functions)
                     (let [next-defn-idx (+ idx 1)]
-                      (let [result (make-compile-step-state 0 next-defn-idx next-functions)]
+                      (let [state-base0 (push-int-vector (vector-new 3) 0)]
+                        (do
+                          (root_push state-base0)
+                          (let [state-base1 (push-int-vector state-base0 next-defn-idx)]
+                            (do
+                              (root_push state-base1)
+                              (let [result (push-object-vector state-base1 next-functions)]
+                                (do
+                                  (if (= source-step-progress-mode 1)
+                                    (if (< (vector-length functions) 128)
+                                      (let [result-root (root_push result)]
+                                        (do
+                                          (do
+                                            (print 215)
+                                            (print idx)
+                                            (print (vector-length functions))
+                                            (print (vector-length next-functions))
+                                            (print (vector-get result 0))
+                                            (print (vector-get result 1))
+                                            (print (vector-length (vector-get result 2))))
+                                          (root_pop)))
+                                      (do))
+                                    (do))
+                                  (root_set functions-slot result)
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  result))))))))))))
+          (do
+            (let [next-skip-idx (+ idx 1)]
+              (let [state-base0 (push-int-vector (vector-new 3) 0)]
+                (do
+                  (root_push state-base0)
+                  (let [state-base1 (push-int-vector state-base0 next-skip-idx)]
+                    (do
+                      (root_push state-base1)
+                      (let [result (push-object-vector state-base1 functions)]
                         (do
                           (if (= source-step-progress-mode 1)
                             (if (< (vector-length functions) 128)
                               (let [result-root (root_push result)]
                                 (do
                                   (do
-                                    (print 215)
+                                    (print 216)
                                     (print idx)
                                     (print (vector-length functions))
-                                    (print (vector-length next-functions))
                                     (print (vector-get result 0))
                                     (print (vector-get result 1))
                                     (print (vector-length (vector-get result 2))))
@@ -2248,32 +2302,7 @@
                           (root_pop)
                           (root_pop)
                           (root_pop)
-                          result))))))))
-          (do
-            (let [next-skip-idx (+ idx 1)]
-              (let [result (make-compile-step-state 0 next-skip-idx functions)]
-                (do
-                  (if (= source-step-progress-mode 1)
-                    (if (< (vector-length functions) 128)
-                      (let [result-root (root_push result)]
-                        (do
-                          (do
-                            (print 216)
-                            (print idx)
-                            (print (vector-length functions))
-                            (print (vector-get result 0))
-                            (print (vector-get result 1))
-                            (print (vector-length (vector-get result 2))))
-                          (root_pop)))
-                      (do))
-                    (do))
-                  (root_set functions-slot result)
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  result)))))))))
+                          result)))))))))))))
 (defn compile-let-with-ftable-impl-body-impl-3 [node env ftable instrs]
   (let [name-hash (vector-get node 1)
     init-expr (vector-get node 2)
