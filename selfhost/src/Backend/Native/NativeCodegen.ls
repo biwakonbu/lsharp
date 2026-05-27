@@ -9894,24 +9894,37 @@
   (let [
     part1 (byte-vector-4 83 72 137 211)
     part2 (byte-vector-4 72 133 219 121)
-    part3 (byte-vector-4 48 72 15 186)
+    part3 (byte-vector-4 91 72 15 186)
     part4 (byte-vector-4 243 63 68 139)
     part5 (byte-vector-4 83 8 76 141)
-    part6 (byte-vector-4 91 16 73 193)
-    part7 (byte-vector-4 226 4 77 1)
-    part8 (byte-vector-4 211 73 137 11)
-    part9 (byte-vector-4 73 137 67 8)
-    part10 (byte-vector-4 73 193 234 4)
-    part11 (byte-vector-4 65 255 194 68)
-    part12 (byte-vector-4 137 83 8 72)
-    part13 (byte-vector-4 137 216 72 15)
-    part14 (byte-vector-4 186 232 63 91)
-    part15 (byte-vector-4 195 49 192 91)
-    part16 (byte-vector-1 195)
+    part6 (byte-vector-4 91 16 69 49)
+    part7 (byte-vector-4 201 69 57 209)
+    part8 (byte-vector-4 115 35 77 137)
+    part9 (byte-vector-4 200 73 193 224)
+    part10 (byte-vector-4 4 79 141 4)
+    part11 (byte-vector-4 3 73 57 8)
+    part12 (byte-vector-4 116 5 65 255)
+    part13 (byte-vector-4 193 235 230 73)
+    part14 (byte-vector-4 137 64 8 72)
+    part15 (byte-vector-4 137 216 72 15)
+    part16 (byte-vector-4 186 232 63 91)
+    part17 (byte-vector-4 195 77 137 208)
+    part18 (byte-vector-4 73 193 224 4)
+    part19 (byte-vector-4 79 141 4 3)
+    part20 (byte-vector-4 73 137 8 73)
+    part21 (byte-vector-4 137 64 8 65)
+    part22 (byte-vector-4 255 194 68 137)
+    part23 (byte-vector-4 83 8 72 137)
+    part24 (byte-vector-4 216 72 15 186)
+    part25 (byte-vector-4 232 63 91 195)
+    part26 (byte-vector-4 49 192 91 195)
     group1 (concat-five-byte-vectors-rooted part1 part2 part3 part4 part5)
     group2 (concat-five-byte-vectors-rooted part6 part7 part8 part9 part10)
-    group3 (concat-five-byte-vectors-rooted part11 part12 part13 part14 part15)]
-    (concat-four-byte-vectors-rooted group1 group2 group3 part16)))
+    group3 (concat-five-byte-vectors-rooted part11 part12 part13 part14 part15)
+    group4 (concat-five-byte-vectors-rooted part16 part17 part18 part19 part20)
+    group5 (concat-five-byte-vectors-rooted part21 part22 part23 part24 part25)
+    head (concat-five-byte-vectors-rooted group1 group2 group3 group4 group5)]
+    (concat-byte-vectors-rooted head part26)))
 
 (defn emit-x86-selfhost-map-get-helper []
   (let [
@@ -10246,7 +10259,7 @@
   17)
 
 (defn x86-selfhost-map-insert-helper-size []
-  61)
+  104)
 
 (defn x86-selfhost-map-get-helper-size []
   62)
@@ -10331,10 +10344,10 @@
   (+ (x86-helper-base-offset import-stub-offset import-count) 1378))
 
 (defn x86-selfhost-map-get-helper-offset [import-stub-offset import-count]
-  (+ (x86-helper-base-offset import-stub-offset import-count) 1439))
+  (+ (x86-helper-base-offset import-stub-offset import-count) 1482))
 
 (defn x86-selfhost-file-exists-helper-offset [import-stub-offset import-count]
-  (+ (x86-helper-base-offset import-stub-offset import-count) 1501))
+  (+ (x86-helper-base-offset import-stub-offset import-count) 1544))
 
 (defn is-selfhost-runtime-opcode-x86 [opcode]
   (if (= opcode 64)
@@ -13521,7 +13534,7 @@
           (append-native-bytes-rooted result (emit-x86-selfhost-string-concat-helper) 195)
           (append-native-bytes-rooted result (emit-x86-selfhost-map-new-helper) 72)
           (append-native-bytes-rooted result (emit-x86-selfhost-map-size-helper) 17)
-          (append-native-bytes-rooted result (emit-x86-selfhost-map-insert-helper) 61)
+          (append-native-bytes-rooted result (emit-x86-selfhost-map-insert-helper) 104)
           (append-native-bytes-rooted result (emit-x86-selfhost-map-get-helper) 62)
           (append-native-bytes-rooted result (emit-x86-selfhost-file-exists-helper) 84)
           (ref-get result))]

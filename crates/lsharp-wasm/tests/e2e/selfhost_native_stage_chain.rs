@@ -1605,6 +1605,30 @@ fn test_native_codegen_x86_map_insert_runtime_call_direct_appends_in_stage1() {
 }
 
 #[test]
+fn test_native_codegen_x86_map_insert_helper_overwrites_existing_key() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let helper = source
+        .split("(defn emit-x86-selfhost-map-insert-helper []")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn emit-x86-selfhost-map-get-helper []")
+                .next()
+        })
+        .expect("NativeCodegen.ls に x86 map-insert helper が存在すること");
+
+    assert!(
+        helper.contains("(byte-vector-4 201 69 57 209)")
+            && helper.contains("(byte-vector-4 3 73 57 8)")
+            && helper.contains("(byte-vector-4 137 64 8 72)")
+            && source.contains("(defn x86-selfhost-map-insert-helper-size []\n  104)")
+            && source.contains("(append-native-bytes-rooted result (emit-x86-selfhost-map-insert-helper) 104)")
+            && source.contains("(defn x86-selfhost-map-get-helper-offset [import-stub-offset import-count]\n  (+ (x86-helper-base-offset import-stub-offset import-count) 1482)")
+            && source.contains("(defn x86-selfhost-file-exists-helper-offset [import-stub-offset import-count]\n  (+ (x86-helper-base-offset import-stub-offset import-count) 1544)"),
+        "x86 selfhost map-insert helper は既存キーを検索して値だけを上書きし、重複 key append で古い env binding を残さないこと"
+    );
+}
+
+#[test]
 fn test_native_codegen_x86_substring_runtime_call_direct_appends_in_stage1() {
     let source = selfhost_module("NativeCodegen.ls");
     let control_loop = source
@@ -15420,6 +15444,23 @@ fn linux_x86_selfhost_map_insert_get_object_bytes() -> Vec<u8> {
     )
 }
 
+fn linux_x86_selfhost_map_insert_overwrite_get_object_bytes() -> Vec<u8> {
+    linux_x86_selfhost_function_meta_object_bytes(
+        &[
+            (60, 0),
+            (3, 7),
+            (3, 42),
+            (62, 0),
+            (3, 7),
+            (3, 99),
+            (62, 0),
+            (3, 7),
+            (63, 0),
+        ],
+        0,
+    )
+}
+
 fn linux_x86_selfhost_map_insert_size_object_bytes() -> Vec<u8> {
     linux_x86_selfhost_function_meta_object_bytes(&[(60, 0), (3, 7), (3, 42), (62, 0), (61, 0)], 0)
 }
@@ -29109,6 +29150,42 @@ fn test_e2e_native_linux_x86_host_generates_map_insert_get_elf_object_artifact()
     );
 }
 
+/// NATIVE-LINUX-X86-02j2: host 側 selfhost map-insert helper が同一 key の値を上書きできること。
+#[test]
+#[ignore]
+fn test_e2e_native_linux_x86_host_generates_map_insert_overwrite_get_elf_object_artifact() {
+    let artifact_path =
+        std::env::var_os("LSHARP_NATIVE_LINUX_X86_MAP_OVERWRITE_OBJECT_ARTIFACT").expect(
+            "LSHARP_NATIVE_LINUX_X86_MAP_OVERWRITE_OBJECT_ARTIFACT に Linux x86_64 map overwrite object artifact path を指定すること",
+        );
+    let artifact_path = std::path::PathBuf::from(artifact_path);
+    if let Some(parent) = artifact_path.parent() {
+        std::fs::create_dir_all(parent)
+            .expect("Linux x86_64 map overwrite object artifact dir 作成に失敗");
+    }
+
+    let object_bytes = linux_x86_selfhost_map_insert_overwrite_get_object_bytes();
+    assert!(
+        object_bytes.len() > 64,
+        "Linux x86_64 map overwrite ELF object は ELF64 section table を持つこと"
+    );
+    assert!(
+        object_bytes
+            .windows("generated".len())
+            .any(|window| window == b"generated"),
+        "Linux x86_64 map overwrite ELF object は generated symbol を持つこと"
+    );
+
+    std::fs::write(&artifact_path, &object_bytes)
+        .expect("Linux x86_64 map overwrite object artifact 書き込みに失敗");
+    let written = std::fs::read(&artifact_path)
+        .expect("Linux x86_64 map overwrite object artifact 読み戻しに失敗");
+    assert_eq!(
+        written, object_bytes,
+        "Linux x86_64 map overwrite object artifact は生成 ELF object をそのまま保存すること"
+    );
+}
+
 /// NATIVE-LINUX-X86-02k: host 側 selfhost が map-size helper を含む Linux ELF artifact を生成すること。
 #[test]
 #[ignore]
@@ -30761,6 +30838,34 @@ fn test_e2e_native_linux_x86_selfhost_elf_object_links_and_executes() {
     assert_eq!(
         exit_code, 42,
         "Linux x86_64 selfhost ELF object 実行は exit code 42 を返すこと"
+    );
+}
+
+/// NATIVE-LINUX-X86-04-map-overwrite: Linux x86_64 selfhost map-insert helper は同一 key を上書きして最新値を返すこと。
+#[test]
+#[ignore]
+fn test_e2e_native_linux_x86_selfhost_map_insert_overwrite_get_links_and_executes() {
+    if !linux_x86_native_exec_supported() {
+        return;
+    }
+
+    let object_bytes = linux_x86_selfhost_map_insert_overwrite_get_object_bytes();
+    assert!(
+        object_bytes.len() > 64,
+        "Linux x86_64 map overwrite ELF object は ELF64 header と section table を持つこと: len={}",
+        object_bytes.len()
+    );
+    assert_eq!(
+        &object_bytes[0..4],
+        &[0x7f, b'E', b'L', b'F'],
+        "Linux x86_64 map overwrite object は ELF magic を持つこと"
+    );
+
+    let exit_code = link_and_run_linux_x86_generated_object(&object_bytes)
+        .expect("Linux x86_64 map overwrite ELF object の link/run に失敗");
+    assert_eq!(
+        exit_code, 99,
+        "Linux x86_64 selfhost map-insert overwrite 実行は exit code 99 を返すこと"
     );
 }
 
