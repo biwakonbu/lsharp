@@ -229,6 +229,7 @@ limactl shell "${VM_NAME}" -- env \
   LSHARP_NATIVE_LINUX_X86_VM_REPLAY_LOCK_DIR="${LSHARP_NATIVE_LINUX_X86_VM_REPLAY_LOCK_DIR:-/tmp/lsharp-native-linux-x86-hostgen-vm-replay.lock}" \
   LSHARP_NATIVE_LINUX_X86_STAGE2_METADATA_START="${LSHARP_NATIVE_LINUX_X86_STAGE2_METADATA_START:-}" \
   LSHARP_NATIVE_LINUX_X86_STAGE2_METADATA_END="${LSHARP_NATIVE_LINUX_X86_STAGE2_METADATA_END:-}" \
+  LSHARP_NATIVE_LINUX_X86_STAGE2_METADATA_PREFIX_LIMIT="${LSHARP_NATIVE_LINUX_X86_STAGE2_METADATA_PREFIX_LIMIT:-}" \
   LSHARP_NATIVE_LINUX_X86_STAGE3_PROGRESS="${LSHARP_NATIVE_LINUX_X86_STAGE3_PROGRESS:-}" \
   LSHARP_NATIVE_LINUX_X86_STAGE3_PROGRESS_ONLY="${LSHARP_NATIVE_LINUX_X86_STAGE3_PROGRESS_ONLY:-}" \
   bash -s -- "${VM_WORK_DIR}" <<'VM_SCRIPT'
@@ -1110,6 +1111,7 @@ ACTUAL_CHUNK_SIZE="${LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_SIZE:-8}"
 ACTUAL_CHUNK_RETRIES="${LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_RETRIES:-1}"
 STAGE2_METADATA_START="${LSHARP_NATIVE_LINUX_X86_STAGE2_METADATA_START:-}"
 STAGE2_METADATA_END="${LSHARP_NATIVE_LINUX_X86_STAGE2_METADATA_END:-}"
+STAGE2_METADATA_PREFIX_LIMIT="${LSHARP_NATIVE_LINUX_X86_STAGE2_METADATA_PREFIX_LIMIT:-}"
 STAGE3_PROGRESS="${LSHARP_NATIVE_LINUX_X86_STAGE3_PROGRESS:-}"
 STAGE3_PROGRESS_ONLY="${LSHARP_NATIVE_LINUX_X86_STAGE3_PROGRESS_ONLY:-}"
 VM_REPLAY_LOCK_DIR="${LSHARP_NATIVE_LINUX_X86_VM_REPLAY_LOCK_DIR:-/tmp/lsharp-native-linux-x86-hostgen-vm-replay.lock}"
@@ -1289,6 +1291,7 @@ run_actual_stage_chunked() {
 collect_stage2_metadata_range() {
   local metadata_start="${STAGE2_METADATA_START}"
   local metadata_end="${STAGE2_METADATA_END}"
+  local metadata_prefix_limit="${STAGE2_METADATA_PREFIX_LIMIT}"
   local metadata_exit_code=0
   if [[ -z "${metadata_start}" ]]; then
     return 0
@@ -1296,8 +1299,11 @@ collect_stage2_metadata_range() {
   if [[ -z "${metadata_end}" ]]; then
     metadata_end="$((metadata_start + 1))"
   fi
+  if [[ -z "${metadata_prefix_limit}" ]]; then
+    metadata_prefix_limit=8
+  fi
   set +e
-  (cd actual-stage1 && timeout "${ACTUAL_TIMEOUT}" ./program.native src/App/Seed.ls "${metadata_start}" "${metadata_end}" 0 0 metadata >"../actual-stage2-metadata.txt" 2>"../actual-stage2-metadata-stderr.txt")
+  (cd actual-stage1 && timeout "${ACTUAL_TIMEOUT}" ./program.native src/App/Seed.ls "${metadata_start}" "${metadata_end}" 0 0 metadata "${metadata_prefix_limit}" >"../actual-stage2-metadata.txt" 2>"../actual-stage2-metadata-stderr.txt")
   metadata_exit_code=$?
   set -e
   if [[ "${metadata_exit_code}" -ne 0 ]]; then

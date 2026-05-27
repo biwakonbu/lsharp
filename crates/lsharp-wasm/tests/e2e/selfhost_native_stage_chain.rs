@@ -726,10 +726,11 @@ fn test_native_linux_x86_hostgen_vm_script_can_collect_stage2_metadata_range() {
     assert!(
         script.contains("LSHARP_NATIVE_LINUX_X86_STAGE2_METADATA_START")
             && script.contains("LSHARP_NATIVE_LINUX_X86_STAGE2_METADATA_END")
+            && script.contains("LSHARP_NATIVE_LINUX_X86_STAGE2_METADATA_PREFIX_LIMIT")
             && script.contains("actual-stage2-metadata.txt")
-            && script.contains(r#"./program.native src/App/Seed.ls "${metadata_start}" "${metadata_end}" 0 0 metadata"#)
+            && script.contains(r#"./program.native src/App/Seed.ls "${metadata_start}" "${metadata_end}" 0 0 metadata "${metadata_prefix_limit}""#)
             && script.contains("actual-stage2-metadata-stderr.txt"),
-        "hostgen VM script は env 指定時だけ actual-stage1 native compiler の function metadata range を artifact 化できるべき"
+        "hostgen VM script は env 指定時だけ actual-stage1 native compiler の function metadata range と prefix limit を artifact 化できるべき"
     );
 }
 
