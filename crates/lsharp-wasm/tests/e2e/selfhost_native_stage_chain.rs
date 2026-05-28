@@ -163,6 +163,25 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                                                        (print (native-function-size-x86 (vector-get native-callables 10) native-callables))
                                                        (print (x86-function-slot-size (vector-get native-callables 10) native-callables)))
                                                      0)
+                    progress-after-direct-state-helper-probe (if (= progress-mode 1)
+                                                               (do
+                                                                 (root_push native-callables)
+                                                                 (print 9000000050)
+                                                                 (let [vector-state (make-callable-object-offset-state 0 1 native-callables 3)]
+                                                                   (do
+                                                                     (print (vector-get vector-state 0))
+                                                                     (print (vector-get vector-state 1))
+                                                                     (print (vector-length (vector-get vector-state 2)))
+                                                                     (print (vector-get vector-state 3))
+                                                                     (let [numeric-state (make-callable-object-offset-state 0 1 1 1)]
+                                                                       (do
+                                                                         (print (vector-get numeric-state 0))
+                                                                         (print (vector-get numeric-state 1))
+                                                                         (print (vector-get numeric-state 2))
+                                                                         (print (vector-get numeric-state 3))
+                                                                         (root_pop)
+                                                                         0)))))
+                                                               0)
                     progress-after-first-max-depth-step (if (= progress-mode 1)
                                                           (do
                                                             (root_push native-callables)
@@ -1095,6 +1114,7 @@ fn test_linux_x86_representative_seed_can_print_stage_progress_markers() {
         "9000000047",
         "9000000048",
         "9000000049",
+        "9000000050",
         "9000000032",
         "9000000033",
         "9000000034",
@@ -1257,6 +1277,39 @@ fn test_linux_x86_representative_seed_prints_first_stack_component_probe() {
     assert!(
         !body.contains("(root_push first-ir)"),
         "Linux x86 segmented seed は 0048 の numeric locals を壊さないよう、first-ir を後から root しない"
+    );
+}
+
+#[test]
+fn test_linux_x86_representative_seed_prints_direct_state_helper_probe() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+    let body = source
+        .split("progress-after-direct-state-helper-probe")
+        .nth(1)
+        .and_then(|tail| tail.split("progress-after-first-max-depth-step").next())
+        .expect("direct state helper probe body が存在すること");
+
+    assert!(
+        source.contains("progress-after-direct-state-helper-probe")
+            && source.contains("(print 9000000050)")
+            && body.contains(
+                "vector-state (make-callable-object-offset-state 0 1 native-callables 3)",
+            )
+            && body.contains("(print (vector-get vector-state 0))")
+            && body.contains("(print (vector-get vector-state 1))")
+            && body.contains("(print (vector-length (vector-get vector-state 2)))")
+            && body.contains("(print (vector-get vector-state 3))")
+            && body.contains("numeric-state (make-callable-object-offset-state 0 1 1 1)")
+            && body.contains("(print (vector-get numeric-state 0))")
+            && body.contains("(print (vector-get numeric-state 1))")
+            && body.contains("(print (vector-get numeric-state 2))")
+            && body.contains("(print (vector-get numeric-state 3))"),
+        "Linux x86 segmented seed は max-depth step の前に state helper へ vector/numeric field を直接渡して 0 化の発生源を切れるべき"
+    );
+    assert!(
+        source.find("progress-after-direct-state-helper-probe")
+            < source.find("progress-after-first-max-depth-step"),
+        "Linux x86 segmented seed は max-depth step の前に direct state helper probe を実行するべき"
     );
 }
 
