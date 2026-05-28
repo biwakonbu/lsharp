@@ -201,6 +201,26 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                                                                     (root_pop)
                                                                     0)))
                                                               0)
+                    progress-after-state-helper-call-ir-probe (if (= progress-mode 1)
+                                                                (do
+                                                                  (root_push native-callables)
+                                                                  (let [main-meta (vector-get native-callables bounded-main-func-idx)]
+                                                                    (do
+                                                                      (root_push main-meta)
+                                                                      (let [main-ir (native-function-ir main-meta)]
+                                                                        (do
+                                                                          (root_push main-ir)
+                                                                          (print 9000000053)
+                                                                          (print (vector-length main-ir))
+                                                                          (print (linux-x86-call-after-marker main-ir 9000000051))
+                                                                          (print (linux-x86-call-after-marker main-ir 9000000052))
+                                                                          (print (linux-x86-call-after-marker main-ir 9000000050))
+                                                                          (print bounded-main-func-idx)
+                                                                          (root_pop)
+                                                                          (root_pop)
+                                                                          (root_pop)
+                                                                          0)))))
+                                                                0)
                     progress-after-direct-state-helper-probe (if (= progress-mode 1)
                                                                (do
                                                                  (root_push native-callables)
@@ -503,6 +523,25 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                     (root_pop)
                     (root_pop)
                     state))))))))))
+
+(defn linux-x86-call-after-marker-loop [ir idx len marker seen]
+  (if (>= idx len)
+    -1
+    (let [instr (vector-get ir idx)
+          opcode (vector-get instr 0)
+          operand (vector-get instr 1)]
+      (if (= seen 1)
+        (if (= opcode 40)
+          operand
+          (linux-x86-call-after-marker-loop ir (+ idx 1) len marker 1))
+        (if (= opcode 1)
+          (if (= operand marker)
+            (linux-x86-call-after-marker-loop ir (+ idx 1) len marker 1)
+            (linux-x86-call-after-marker-loop ir (+ idx 1) len marker 0))
+          (linux-x86-call-after-marker-loop ir (+ idx 1) len marker 0))))))
+
+(defn linux-x86-call-after-marker [ir marker]
+  (linux-x86-call-after-marker-loop ir 0 (vector-length ir) marker 0))
 
 (defn main []"#,
         1,
@@ -1181,6 +1220,7 @@ fn test_linux_x86_representative_seed_can_print_stage_progress_markers() {
         "9000000050",
         "9000000051",
         "9000000052",
+        "9000000053",
         "9000000032",
         "9000000033",
         "9000000034",
@@ -1442,6 +1482,40 @@ fn test_linux_x86_representative_seed_prints_local_state_helper_probe() {
             && source.find("progress-after-local-state-helper-probe")
                 < source.find("progress-after-direct-state-helper-probe"),
         "Linux x86 segmented seed は inline construction、local helper、imported helper の順で state 0 化を切るべき"
+    );
+}
+
+#[test]
+fn test_linux_x86_representative_seed_prints_state_helper_call_operand_probe() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+    let body = source
+        .split("progress-after-state-helper-call-ir-probe")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("progress-after-direct-state-helper-probe")
+                .next()
+        })
+        .expect("state helper call IR probe body が存在すること");
+
+    assert!(
+        source.contains("(defn linux-x86-call-after-marker")
+            && source.contains("(defn linux-x86-call-after-marker-loop")
+            && source.contains("progress-after-state-helper-call-ir-probe")
+            && source.contains("(print 9000000053)")
+            && body.contains("main-meta (vector-get native-callables bounded-main-func-idx)")
+            && body.contains("main-ir (native-function-ir main-meta)")
+            && body.contains("(linux-x86-call-after-marker main-ir 9000000051)")
+            && body.contains("(linux-x86-call-after-marker main-ir 9000000052)")
+            && body.contains("(linux-x86-call-after-marker main-ir 9000000050)")
+            && body.contains("(print bounded-main-func-idx)"),
+        "Linux x86 segmented seed は local/imported state helper call の IR operand を stage2 progress で比較できるべき"
+    );
+    assert!(
+        source.find("progress-after-local-state-helper-probe")
+            < source.find("progress-after-state-helper-call-ir-probe")
+            && source.find("progress-after-state-helper-call-ir-probe")
+                < source.find("progress-after-direct-state-helper-probe"),
+        "IR operand probe は local helper call 後、imported helper call 前に走るべき"
     );
 }
 
