@@ -273,42 +273,13 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                                                            0)
                     progress-after-first-stack-components (if (= progress-mode 1)
                                                            (do
-                                                             (root_push native-callables)
-                                                             (let [first-func (vector-get native-callables 10)
-                                                                   first-ir (native-function-ir first-func)
-                                                                   first-param-count (native-function-param-count first-func)
-                                                                   first-local-count (native-function-local-count first-func)
-                                                                   first-param-local-count (+ first-param-count first-local-count)
-                                                                   first-min-slot-count (+ first-param-local-count 1)]
-                                                               (do
-                                                                 (print 9000000048)
-                                                                 (print first-param-count)
-                                                                 (print first-local-count)
-                                                                 (print first-param-local-count)
-                                                                 (print first-min-slot-count)
-                                                                 (let [first-frame-slots (native-frame-base-slot-count first-ir first-min-slot-count)]
-                                                                   (do
-                                                                     (print first-frame-slots)
-                                                                     (root_pop)
-                                                                     0)))))
+                                                             (print 9000000048)
+                                                             0)
                                                            0)
                     progress-after-first-size-components (if (= progress-mode 1)
                                                           (do
-                                                            (root_push native-callables)
-                                                            (let [first-func (vector-get native-callables 10)
-                                                                  first-ir (native-function-ir first-func)
-                                                                  first-param-count (native-function-param-count first-func)
-                                                                  first-local-count (native-function-local-count first-func)]
-                                                              (do
-                                                                (print 9000000047)
-                                                                (print (vector-length first-func))
-                                                                (print first-param-count)
-                                                                (print first-local-count)
-                                                                (print (vector-length first-ir))
-                                                                (print (vector-get (vector-get first-ir 0) 0))
-                                                                (print (vector-get (vector-get first-ir 0) 1))
-                                                                (root_pop)
-                                                                0)))
+                                                            (print 9000000047)
+                                                            0)
                                                           0)
                     main-func-idx bounded-main-func-idx
                     entrypoint-func-idx bounded-main-func-idx
@@ -1305,7 +1276,7 @@ fn test_linux_x86_representative_seed_prints_first_size_component_probe() {
     let body = source
         .split("progress-after-first-size-components")
         .nth(1)
-        .and_then(|tail| tail.split("progress-after-first-stack-components").next())
+        .and_then(|tail| tail.split("main-func-idx").next())
         .expect("first size component probe body が存在すること");
     let marker = source
         .find("(print 9000000047)")
@@ -1317,29 +1288,17 @@ fn test_linux_x86_representative_seed_prints_first_size_component_probe() {
     assert!(
         source.contains("progress-after-first-size-components")
             && source.contains("(print 9000000047)")
-            && source.contains("(root_push native-callables)")
-            && source.contains("first-param-count (native-function-param-count first-func)")
-            && source.contains("first-local-count (native-function-local-count first-func)")
-            && source.contains("(print (vector-get (vector-get first-ir 0) 0))")
-            && !source
-                .contains("first-stack-bytes (native-local-stack-bytes-with-window-x86 first-ir")
-            && !source.contains(
-                "first-body-bytes (native-function-body-size-x86-loop-with-context first-body-size-ctx 0 0 0)",
-            ),
-        "Linux x86 segmented seed は first callable metadata 診断で stack/body の危険な評価を先に実行しないべき"
+            && !body.contains("first-func (vector-get native-callables 10)")
+            && !body.contains("first-ir (native-function-ir first-func)")
+            && !body.contains("native-function-param-count")
+            && !body.contains("native-function-local-count")
+            && !body.contains("native-local-stack-bytes-with-window-x86")
+            && !body.contains("native-function-body-size-x86-loop-with-context"),
+        "Linux x86 segmented seed は 0049 で必要な metadata/max-depth 証跡を取れた後、0047 を marker-only にして診断汚染を避けるべき"
     );
     assert!(
         stack_component_marker < marker,
-        "Linux x86 segmented seed は metadata print が stack component 診断を汚さないよう 0048 を先に実行するべき"
-    );
-    assert!(
-        body.find("(root_push native-callables)")
-            < body.find("first-func (vector-get native-callables 10)"),
-        "Linux x86 segmented seed は print 前に native-callables が壊れないよう、first-func を読む前に root するべき"
-    );
-    assert!(
-        !body.contains("(root_push first-func)") && !body.contains("(root_push first-ir)"),
-        "Linux x86 segmented seed は root_push が numeric locals を壊さないよう、metadata probe で first-func/first-ir を後から root しない"
+        "Linux x86 segmented seed は 0048/0047 marker order を保ちつつ、危険な追加評価をしない"
     );
 }
 
@@ -1355,34 +1314,20 @@ fn test_linux_x86_representative_seed_prints_first_stack_component_probe() {
     assert!(
         source.contains("progress-after-first-stack-components")
             && source.contains("(print 9000000048)")
-            && source.contains("first-min-slot-count (+ first-param-local-count 1)")
-            && source.contains("(root_push native-callables)")
-            && source.contains("(print first-param-count)")
-            && source.contains("(print first-local-count)")
-            && source.contains("first-param-local-count (+ first-param-count first-local-count)")
-            && source.contains("(print first-param-local-count)")
-            && source.contains(
-                "first-frame-slots (native-frame-base-slot-count first-ir first-min-slot-count)",
-            )
-            && source.contains("(print first-frame-slots)")
+            && !body.contains("first-func (vector-get native-callables 10)")
+            && !body.contains("first-ir (native-function-ir first-func)")
+            && !body.contains("native-function-param-count")
+            && !body.contains("native-function-local-count")
+            && !body.contains("native-frame-base-slot-count")
             && !body.contains("native-value-window-spill-slot-count-x86"),
-        "Linux x86 segmented seed は 0048 で frame base までを採取し、crash する spill/max-depth 評価を 0049 へ分離するべき"
-    );
-    assert!(
-        body.find("(root_push native-callables)")
-            < body.find("first-func (vector-get native-callables 10)"),
-        "Linux x86 segmented seed は 0048 の numeric locals が root_push で壊れないよう、native-callables を first-func 読み出し前に root するべき"
+        "Linux x86 segmented seed は 0049 後に first callable を再読せず、0048 を marker-only にして診断汚染を避けるべき"
     );
     assert!(
         source.find("progress-after-first-max-depth-step")
             < source.find("progress-after-first-stack-components")
             && source.find("progress-after-first-stack-components")
                 < source.find("progress-after-first-size-components"),
-        "Linux x86 segmented seed は 0049 を first callable probe の先頭に置き、0048/0047 の影響を避けて max-depth step を採るべき"
-    );
-    assert!(
-        !body.contains("(root_push first-ir)"),
-        "Linux x86 segmented seed は 0048 の numeric locals を壊さないよう、first-ir を後から root しない"
+        "Linux x86 segmented seed は 0049 の後に retired 0048/0047 marker を出して progress の位置だけを保つべき"
     );
 }
 
