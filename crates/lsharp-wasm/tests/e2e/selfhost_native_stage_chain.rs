@@ -183,9 +183,15 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                                                                  first-ir (native-function-ir first-func)
                                                                  first-param-count (native-function-param-count first-func)
                                                                  first-local-count (native-function-local-count first-func)
-                                                                 first-min-slot-count (+ (+ first-param-count first-local-count) 1)]
+                                                                 first-param-local-count (+ first-param-count first-local-count)
+                                                                 first-min-slot-count (+ first-param-local-count 1)]
                                                              (do
+                                                               (root_push first-ir)
+                                                               (root_push native-callables)
                                                                (print 9000000048)
+                                                               (print first-param-count)
+                                                               (print first-local-count)
+                                                               (print first-param-local-count)
                                                                (print first-min-slot-count)
                                                                (let [first-frame-slots (native-frame-base-slot-count first-ir first-min-slot-count)]
                                                                  (do
@@ -194,7 +200,10 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                                                                      (do
                                                                        (print first-spill-slots)
                                                                        (print (+ first-frame-slots first-spill-slots))
-                                                                       (print (align-16 (* (+ first-frame-slots first-spill-slots) 8)))))))))
+                                                                       (print (align-16 (* (+ first-frame-slots first-spill-slots) 8)))
+                                                                       (root_pop)
+                                                                       (root_pop)
+                                                                       0))))))
                                                            0)
                     main-func-idx bounded-main-func-idx
                     entrypoint-func-idx bounded-main-func-idx
@@ -1171,7 +1180,13 @@ fn test_linux_x86_representative_seed_prints_first_stack_component_probe() {
     assert!(
         source.contains("progress-after-first-stack-components")
             && source.contains("(print 9000000048)")
-            && source.contains("first-min-slot-count (+ (+ first-param-count first-local-count) 1)")
+            && source.contains("first-min-slot-count (+ first-param-local-count 1)")
+            && source.contains("(root_push first-ir)")
+            && source.contains("(root_push native-callables)")
+            && source.contains("(print first-param-count)")
+            && source.contains("(print first-local-count)")
+            && source.contains("first-param-local-count (+ first-param-count first-local-count)")
+            && source.contains("(print first-param-local-count)")
             && source.contains(
                 "first-frame-slots (native-frame-base-slot-count first-ir first-min-slot-count)",
             )
