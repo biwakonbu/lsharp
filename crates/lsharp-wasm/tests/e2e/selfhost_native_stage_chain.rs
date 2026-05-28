@@ -157,6 +157,12 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                                                       (print (vector-length native-callables))
                                                       (print (+ 9 (vector-length functions))))
                                                     0)
+                    progress-after-first-slot-size (if (= progress-mode 1)
+                                                     (do
+                                                       (print 9000000045)
+                                                       (print (native-function-size-x86 (vector-get native-callables 10) native-callables))
+                                                       (print (x86-function-slot-size (vector-get native-callables 10) native-callables)))
+                                                     0)
                     main-func-idx bounded-main-func-idx
                     entrypoint-func-idx bounded-main-func-idx
                     starts (collect-callable-function-slot-starts-x86 native-callables 10)
@@ -1015,6 +1021,7 @@ fn test_linux_x86_representative_seed_can_print_stage_progress_markers() {
         "9000000042",
         "9000000043",
         "9000000044",
+        "9000000045",
         "9000000032",
         "9000000033",
         "9000000034",
@@ -1040,6 +1047,7 @@ fn test_linux_x86_representative_seed_can_print_stage_progress_markers() {
             && source.contains("compile-file-mode-cache-compile-pair-progress-probe")
             && source.contains("progress-after-payload")
             && source.contains("progress-after-native-callables")
+            && source.contains("progress-after-first-slot-size")
             && source.contains("(print (vector-length payload))")
             && source.contains("(print (vector-length functions))")
             && source.contains("(print (vector-length callables))")
@@ -1076,6 +1084,19 @@ fn test_linux_x86_representative_seed_prints_start_value_probe_after_starts() {
             && source.contains("(print (- entrypoint-func-idx 10))")
             && source.contains("(print (vector-get starts (- entrypoint-func-idx 10)))"),
         "Linux x86 segmented seed は starts len 復帰後に starts の先頭/末尾/entrypoint 値を progress marker で採取できるべき"
+    );
+}
+
+#[test]
+fn test_linux_x86_representative_seed_prints_first_slot_size_probe() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+
+    assert!(
+        source.contains("progress-after-first-slot-size")
+            && source.contains("(print 9000000045)")
+            && source.contains("(print (native-function-size-x86 (vector-get native-callables 10) native-callables))")
+            && source.contains("(print (x86-function-slot-size (vector-get native-callables 10) native-callables))"),
+        "Linux x86 segmented seed は starts[1] 破損を切るため、最初の callable の native/slot size を progress marker で採取できるべき"
     );
 }
 
