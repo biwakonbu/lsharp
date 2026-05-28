@@ -167,20 +167,23 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                                                           (let [first-func (vector-get native-callables 10)
                                                                 first-ir (native-function-ir first-func)
                                                                 first-param-count (native-function-param-count first-func)
-                                                                first-local-count (native-function-local-count first-func)
-                                                                first-stack-bytes (native-local-stack-bytes-with-window-x86 first-ir (+ (+ first-param-count first-local-count) 1) native-callables)
-                                                                first-body-size-ctx (make-x86-body-size-context first-ir native-callables (vector-length first-ir))
-                                                                first-body-bytes (native-function-body-size-x86-loop-with-context first-body-size-ctx 0 0 0)]
+                                                                first-local-count (native-function-local-count first-func)]
                                                             (do
-                                                              (print 9000000046)
+                                                              (print 9000000047)
                                                               (print (vector-length first-func))
                                                               (print first-param-count)
                                                               (print first-local-count)
                                                               (print (vector-length first-ir))
                                                               (print (vector-get (vector-get first-ir 0) 0))
                                                               (print (vector-get (vector-get first-ir 0) 1))
-                                                              (print first-stack-bytes)
-                                                              (print first-body-bytes)))
+                                                              (let [first-stack-bytes (native-local-stack-bytes-with-window-x86 first-ir (+ (+ first-param-count first-local-count) 1) native-callables)]
+                                                                (do
+                                                                  (print first-stack-bytes)
+                                                                  (let [first-body-size-ctx (make-x86-body-size-context first-ir native-callables (vector-length first-ir))
+                                                                        first-body-bytes (native-function-body-size-x86-loop-with-context first-body-size-ctx 0 0 0)]
+                                                                    (do
+                                                                      (print first-body-bytes)
+                                                                      0))))))
                                                           0)
                     main-func-idx bounded-main-func-idx
                     entrypoint-func-idx bounded-main-func-idx
@@ -1041,7 +1044,7 @@ fn test_linux_x86_representative_seed_can_print_stage_progress_markers() {
         "9000000043",
         "9000000044",
         "9000000045",
-        "9000000046",
+        "9000000047",
         "9000000032",
         "9000000033",
         "9000000034",
@@ -1123,10 +1126,16 @@ fn test_linux_x86_representative_seed_prints_first_slot_size_probe() {
 #[test]
 fn test_linux_x86_representative_seed_prints_first_size_component_probe() {
     let source = linux_x86_representative_actual_stage23_seed_source();
+    let marker = source
+        .find("(print 9000000047)")
+        .expect("first size component marker が存在すること");
+    let stack_probe = source
+        .find("first-stack-bytes")
+        .expect("first stack byte probe が存在すること");
 
     assert!(
         source.contains("progress-after-first-size-components")
-            && source.contains("(print 9000000046)")
+            && source.contains("(print 9000000047)")
             && source.contains("first-param-count (native-function-param-count first-func)")
             && source.contains("first-local-count (native-function-local-count first-func)")
             && source.contains(
@@ -1139,6 +1148,10 @@ fn test_linux_x86_representative_seed_prints_first_size_component_probe() {
             && source.contains("(print first-stack-bytes)")
             && source.contains("(print first-body-bytes)"),
         "Linux x86 segmented seed は first callable size 破損を stack/body component へ分解して採取できるべき"
+    );
+    assert!(
+        marker < stack_probe,
+        "Linux x86 segmented seed は stack/body component で落ちても安全な meta 値を残せるよう marker を危険な計算より前に出すべき"
     );
 }
 
