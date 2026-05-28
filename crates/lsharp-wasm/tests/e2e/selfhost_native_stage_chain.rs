@@ -163,24 +163,6 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                                                        (print (native-function-size-x86 (vector-get native-callables 10) native-callables))
                                                        (print (x86-function-slot-size (vector-get native-callables 10) native-callables)))
                                                      0)
-                    progress-after-first-size-components (if (= progress-mode 1)
-                                                          (do
-                                                            (root_push native-callables)
-                                                            (let [first-func (vector-get native-callables 10)
-                                                                  first-ir (native-function-ir first-func)
-                                                                  first-param-count (native-function-param-count first-func)
-                                                                  first-local-count (native-function-local-count first-func)]
-                                                              (do
-                                                                (print 9000000047)
-                                                                (print (vector-length first-func))
-                                                                (print first-param-count)
-                                                                (print first-local-count)
-                                                                (print (vector-length first-ir))
-                                                                (print (vector-get (vector-get first-ir 0) 0))
-                                                                (print (vector-get (vector-get first-ir 0) 1))
-                                                                (root_pop)
-                                                                0)))
-                                                          0)
                     progress-after-first-stack-components (if (= progress-mode 1)
                                                            (do
                                                              (root_push native-callables)
@@ -207,6 +189,24 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                                                                          (root_pop)
                                                                          0)))))))
                                                            0)
+                    progress-after-first-size-components (if (= progress-mode 1)
+                                                          (do
+                                                            (root_push native-callables)
+                                                            (let [first-func (vector-get native-callables 10)
+                                                                  first-ir (native-function-ir first-func)
+                                                                  first-param-count (native-function-param-count first-func)
+                                                                  first-local-count (native-function-local-count first-func)]
+                                                              (do
+                                                                (print 9000000047)
+                                                                (print (vector-length first-func))
+                                                                (print first-param-count)
+                                                                (print first-local-count)
+                                                                (print (vector-length first-ir))
+                                                                (print (vector-get (vector-get first-ir 0) 0))
+                                                                (print (vector-get (vector-get first-ir 0) 1))
+                                                                (root_pop)
+                                                                0)))
+                                                          0)
                     main-func-idx bounded-main-func-idx
                     entrypoint-func-idx bounded-main-func-idx
                     starts (collect-callable-function-slot-starts-x86 native-callables 10)
@@ -1176,8 +1176,8 @@ fn test_linux_x86_representative_seed_prints_first_size_component_probe() {
         "Linux x86 segmented seed は first callable metadata 診断で stack/body の危険な評価を先に実行しないべき"
     );
     assert!(
-        marker < stack_component_marker,
-        "Linux x86 segmented seed は first stack component 診断へ進む前に安全な metadata 値だけを残すべき"
+        stack_component_marker < marker,
+        "Linux x86 segmented seed は metadata print が stack component 診断を汚さないよう 0048 を先に実行するべき"
     );
     assert!(
         body.find("(root_push native-callables)")
@@ -1223,6 +1223,11 @@ fn test_linux_x86_representative_seed_prints_first_stack_component_probe() {
         body.find("(root_push native-callables)")
             < body.find("first-func (vector-get native-callables 10)"),
         "Linux x86 segmented seed は 0048 の numeric locals が root_push で壊れないよう、native-callables を first-func 読み出し前に root するべき"
+    );
+    assert!(
+        source.find("progress-after-first-stack-components")
+            < source.find("progress-after-first-size-components"),
+        "Linux x86 segmented seed は 0047 の metadata print が 0048 の stack component 診断を汚さないよう、0048 を先に実行するべき"
     );
     assert!(
         !body.contains("(root_push first-ir)"),
