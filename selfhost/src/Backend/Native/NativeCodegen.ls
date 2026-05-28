@@ -891,23 +891,6 @@
       0
       next-depth)))
 
-(defn make-native-max-depth-state [done next-idx next-depth next-max]
-  (let [base0 (vector-push (vector-new 4) done)]
-    (do
-      (root_push base0)
-      (let [base1 (vector-push base0 next-idx)]
-        (do
-          (root_push base1)
-          (let [base2 (vector-push base1 next-depth)]
-            (do
-              (root_push base2)
-              (let [state (vector-push base2 next-max)]
-                (do
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  state)))))))))
-
 (defn native-max-stack-depth-loop [ir-func function-metas idx len current-depth max-depth]
   (if (>= idx len)
     max-depth
@@ -920,13 +903,13 @@
 
 (defn native-max-stack-depth-step [ir-func function-metas idx len current-depth max-depth]
   (if (>= idx len)
-    (make-native-max-depth-state 1 idx current-depth max-depth)
+    (make-callable-object-offset-state 1 idx current-depth max-depth)
     (let [instr (vector-get ir-func idx)
       opcode (vector-get instr 0)
       operand (vector-get instr 1)
       next-depth (apply-stack-delta current-depth (opcode-stack-delta opcode operand function-metas))
       next-max (if (> next-depth max-depth) next-depth max-depth)]
-      (make-native-max-depth-state 0 (+ idx 1) next-depth next-max))))
+      (make-callable-object-offset-state 0 (+ idx 1) next-depth next-max))))
 
 (defn native-max-stack-depth-step-64-loop-bounded [ir-func function-metas idx len current-depth max-depth remaining]
   (do

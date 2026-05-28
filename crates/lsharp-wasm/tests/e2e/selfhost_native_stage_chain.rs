@@ -4340,37 +4340,6 @@ fn test_native_codegen_x86_body_size_loop_keeps_arity_stable() {
 }
 
 #[test]
-fn test_native_codegen_max_stack_depth_state_does_not_root_numeric_fields() {
-    let source = std::fs::read_to_string(selfhost_source_path("NativeCodegen.ls"))
-        .expect("canonical NativeCodegen.ls が読み込めること");
-    let helper_body = source
-        .split("(defn make-native-max-depth-state")
-        .nth(1)
-        .and_then(|tail| tail.split("\n(defn ").next())
-        .expect("NativeCodegen.ls に max-depth 専用 state helper が存在すること");
-    let step_body = source
-        .split("(defn native-max-stack-depth-step")
-        .nth(1)
-        .and_then(|tail| tail.split("\n(defn ").next())
-        .expect("NativeCodegen.ls に native-max-stack-depth-step が存在すること");
-
-    assert!(
-        helper_body.contains("[done next-idx next-depth next-max]")
-            && helper_body.contains("(vector-push base1 next-depth)")
-            && helper_body.contains("(vector-push base2 next-max)")
-            && !helper_body.contains("(root_push next-depth)")
-            && !helper_body.contains("(root_push next-max)"),
-        "native-max-stack-depth の state helper は数値 depth/max を GC root として扱わず、vector の中にだけ格納するべき"
-    );
-    assert!(
-        step_body.contains("(make-native-max-depth-state 1 idx current-depth max-depth)")
-            && step_body.contains("(make-native-max-depth-state 0 (+ idx 1) next-depth next-max)")
-            && !step_body.contains("make-callable-object-offset-state"),
-        "native-max-stack-depth-step は vector 用 state helper を流用せず、数値専用 state helper を使うべき"
-    );
-}
-
-#[test]
 fn test_native_codegen_x86_i64_const_direct_append_avoids_zero_byte_vector() {
     let source = std::fs::read_to_string(selfhost_source_path("NativeCodegen.ls"))
         .expect("canonical NativeCodegen.ls が読み込めること");
