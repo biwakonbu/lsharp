@@ -4305,14 +4305,10 @@ fn test_native_codegen_x86_stack_frame_uses_conservative_spill_window_floor() {
 
     assert!(
         source.contains("(defn native-value-window-spill-slot-count-x86")
-            && source.contains("x86-spill-depth-upper-bound (vector-length ir-func)")
-            && source.contains(
-                "(if (< x86-spill-depth-upper-bound 128) 128 x86-spill-depth-upper-bound)"
-            )
-            && !source
-                .contains("actual (native-value-window-spill-slot-count ir-func function-metas)")
+            && source.contains("(if (< actual 128) 128 actual)")
+            && !source.contains("(if (= actual 0)")
             && source.contains("(native-local-stack-bytes-with-window-x86"),
-        "x86 backend は actual native stage の max-depth drift/crash を避けるため、IR 長を上限にした conservative spill window を使うべき"
+        "x86 backend は actual native stage の max-depth undercount で return address を壊さないよう、x86 専用の conservative spill window floor を使うべき"
     );
 
     let x86_size_body = source
