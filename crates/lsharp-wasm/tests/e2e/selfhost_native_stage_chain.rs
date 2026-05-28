@@ -4122,6 +4122,22 @@ fn test_native_slot_count_scan_uses_wide_chunks_to_limit_native_stack() {
 }
 
 #[test]
+fn test_native_codegen_callable_offset_state_helper_is_registered_before_x86_stack_walk_use() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let helper_pos = source
+        .find("(defn make-callable-object-offset-state")
+        .expect("NativeCodegen.ls に callable offset state helper が存在すること");
+    let stack_step_pos = source
+        .find("(defn native-max-stack-depth-step ")
+        .expect("NativeCodegen.ls に x86 stack depth step が存在すること");
+
+    assert!(
+        helper_pos < stack_step_pos,
+        "make-callable-object-offset-state は stage2 selfhost parser/register の ftable 欠落を避けるため、最初の x86 stack walk 使用より前に置くべき"
+    );
+}
+
+#[test]
 fn test_native_codegen_x86_param_spill_preserves_selfhost_scratch_slot_zero() {
     let source = selfhost_module("NativeCodegen.ls");
     let generate_body = source

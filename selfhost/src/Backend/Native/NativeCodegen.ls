@@ -891,6 +891,26 @@
       0
       next-depth)))
 
+(defn make-callable-object-offset-state [done next-idx next-values next-offset]
+  (do
+    (root_push next-values)
+    (let [base0 (vector-push (vector-new 4) done)]
+      (do
+        (root_push base0)
+        (let [base1 (vector-push base0 next-idx)]
+          (do
+            (root_push base1)
+            (let [with-values (vector-push base1 next-values)]
+              (do
+                (root_push with-values)
+                (let [state (vector-push with-values next-offset)]
+                  (do
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    state))))))))))
+
 (defn native-max-stack-depth-loop [ir-func function-metas idx len current-depth max-depth]
   (if (>= idx len)
     max-depth
@@ -17115,26 +17135,6 @@
                 (root_pop)
                 (root_pop)
                 state))))))))
-
-(defn make-callable-object-offset-state [done next-idx next-values next-offset]
-  (do
-    (root_push next-values)
-    (let [base0 (vector-push (vector-new 4) done)]
-      (do
-        (root_push base0)
-        (let [base1 (vector-push base0 next-idx)]
-          (do
-            (root_push base1)
-            (let [with-values (vector-push base1 next-values)]
-              (do
-                (root_push with-values)
-                (let [state (vector-push with-values next-offset)]
-                  (do
-                    (root_pop)
-                    (root_pop)
-                    (root_pop)
-                    (root_pop)
-                    state))))))))))
 
 (defn make-callable-sum-state [done next-idx total]
   (let [base0 (vector-push (vector-new 3) done)]
