@@ -185,6 +185,24 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                                                                       (print first-body-bytes)
                                                                       0))))))
                                                           0)
+                    progress-after-first-stack-components (if (= progress-mode 1)
+                                                           (let [first-func (vector-get native-callables 10)
+                                                                 first-ir (native-function-ir first-func)
+                                                                 first-param-count (native-function-param-count first-func)
+                                                                 first-local-count (native-function-local-count first-func)
+                                                                 first-min-slot-count (+ (+ first-param-count first-local-count) 1)]
+                                                             (do
+                                                               (print 9000000048)
+                                                               (print first-min-slot-count)
+                                                               (let [first-frame-slots (native-frame-base-slot-count first-ir first-min-slot-count)]
+                                                                 (do
+                                                                   (print first-frame-slots)
+                                                                   (let [first-spill-slots (native-value-window-spill-slot-count-x86 first-ir native-callables)]
+                                                                     (do
+                                                                       (print first-spill-slots)
+                                                                       (print (+ first-frame-slots first-spill-slots))
+                                                                       (print (align-16 (* (+ first-frame-slots first-spill-slots) 8)))))))))
+                                                           0)
                     main-func-idx bounded-main-func-idx
                     entrypoint-func-idx bounded-main-func-idx
                     starts (collect-callable-function-slot-starts-x86 native-callables 10)
@@ -1045,6 +1063,7 @@ fn test_linux_x86_representative_seed_can_print_stage_progress_markers() {
         "9000000044",
         "9000000045",
         "9000000047",
+        "9000000048",
         "9000000032",
         "9000000033",
         "9000000034",
@@ -1152,6 +1171,27 @@ fn test_linux_x86_representative_seed_prints_first_size_component_probe() {
     assert!(
         marker < stack_probe,
         "Linux x86 segmented seed は stack/body component で落ちても安全な meta 値を残せるよう marker を危険な計算より前に出すべき"
+    );
+}
+
+#[test]
+fn test_linux_x86_representative_seed_prints_first_stack_component_probe() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+
+    assert!(
+        source.contains("progress-after-first-stack-components")
+            && source.contains("(print 9000000048)")
+            && source.contains("first-min-slot-count (+ (+ first-param-count first-local-count) 1)")
+            && source.contains(
+                "first-frame-slots (native-frame-base-slot-count first-ir first-min-slot-count)",
+            )
+            && source.contains(
+                "first-spill-slots (native-value-window-spill-slot-count-x86 first-ir native-callables)",
+            )
+            && source.contains("(print first-frame-slots)")
+            && source.contains("(print first-spill-slots)")
+            && source.contains("(print (align-16 (* (+ first-frame-slots first-spill-slots) 8)))"),
+        "Linux x86 segmented seed は first callable stack size 破損を frame/spill component へ分解して採取できるべき"
     );
 }
 
