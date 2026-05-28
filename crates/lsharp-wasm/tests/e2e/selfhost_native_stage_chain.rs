@@ -163,6 +163,31 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                                                        (print (native-function-size-x86 (vector-get native-callables 10) native-callables))
                                                        (print (x86-function-slot-size (vector-get native-callables 10) native-callables)))
                                                      0)
+                    progress-after-inline-state-construction-probe (if (= progress-mode 1)
+                                                                     (do
+                                                                       (root_push native-callables)
+                                                                       (print 9000000051)
+                                                                       (let [inline-base0 (vector-push (vector-new 4) 0)]
+                                                                         (do
+                                                                           (root_push inline-base0)
+                                                                           (let [inline-base1 (vector-push inline-base0 1)]
+                                                                             (do
+                                                                               (root_push inline-base1)
+                                                                               (let [inline-base2 (vector-push inline-base1 native-callables)]
+                                                                                 (do
+                                                                                   (root_push inline-base2)
+                                                                                   (let [inline-state (vector-push inline-base2 3)]
+                                                                                     (do
+                                                                                       (print (vector-get inline-state 0))
+                                                                                       (print (vector-get inline-state 1))
+                                                                                       (print (vector-length (vector-get inline-state 2)))
+                                                                                       (print (vector-get inline-state 3))
+                                                                                       (root_pop)
+                                                                                       (root_pop)
+                                                                                       (root_pop)
+                                                                                       (root_pop)
+                                                                                       0)))))))))
+                                                                     0)
                     progress-after-direct-state-helper-probe (if (= progress-mode 1)
                                                                (do
                                                                  (root_push native-callables)
@@ -1115,6 +1140,7 @@ fn test_linux_x86_representative_seed_can_print_stage_progress_markers() {
         "9000000048",
         "9000000049",
         "9000000050",
+        "9000000051",
         "9000000032",
         "9000000033",
         "9000000034",
@@ -1310,6 +1336,38 @@ fn test_linux_x86_representative_seed_prints_direct_state_helper_probe() {
         source.find("progress-after-direct-state-helper-probe")
             < source.find("progress-after-first-max-depth-step"),
         "Linux x86 segmented seed は max-depth step の前に direct state helper probe を実行するべき"
+    );
+}
+
+#[test]
+fn test_linux_x86_representative_seed_prints_inline_state_construction_probe() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+    let body = source
+        .split("progress-after-inline-state-construction-probe")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("progress-after-direct-state-helper-probe")
+                .next()
+        })
+        .expect("inline state construction probe body が存在すること");
+
+    assert!(
+        source.contains("progress-after-inline-state-construction-probe")
+            && source.contains("(print 9000000051)")
+            && body.contains("inline-base0 (vector-push (vector-new 4) 0)")
+            && body.contains("inline-base1 (vector-push inline-base0 1)")
+            && body.contains("inline-base2 (vector-push inline-base1 native-callables)")
+            && body.contains("inline-state (vector-push inline-base2 3)")
+            && body.contains("(print (vector-get inline-state 0))")
+            && body.contains("(print (vector-get inline-state 1))")
+            && body.contains("(print (vector-length (vector-get inline-state 2)))")
+            && body.contains("(print (vector-get inline-state 3))"),
+        "Linux x86 segmented seed は state helper call の前に同型 vector construction を inline で検査できるべき"
+    );
+    assert!(
+        source.find("progress-after-inline-state-construction-probe")
+            < source.find("progress-after-direct-state-helper-probe"),
+        "Linux x86 segmented seed は helper call より前に inline state construction probe を実行するべき"
     );
 }
 
