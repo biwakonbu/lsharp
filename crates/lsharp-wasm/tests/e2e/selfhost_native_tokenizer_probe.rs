@@ -797,6 +797,51 @@ fn compiler_mode_payload_with_cache_roots_payload_result_before_cleanup() {
 }
 
 #[test]
+fn compiler_mode_payload_with_cache_prints_state_helper_ftable_probe() {
+    let source = std::fs::read_to_string(workspace_root().join("selfhost/src/App/CompilerMode.ls"))
+        .expect("CompilerMode.ls を読めること");
+    let body = source
+        .split("(defn compile-file-functions-payload-with-cache ")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn compile-file-mode-cache-probe").next())
+        .expect("compile-file-functions-payload-with-cache が存在すること");
+
+    let register_diag_pos = body
+        .find("(print 166)")
+        .expect("register 直後の既存診断 marker が存在すること");
+    let ftable_probe_pos = body
+        .find("(print 9000000055)")
+        .expect("state helper ftable lookup 診断 marker が存在すること");
+    let compile_pos = body
+        .find("functions (compile-all-src-decl-pairs-chunked")
+        .expect("payload 作成前の直接 compile が存在すること");
+
+    assert!(
+        body.contains("helper-hash (name-hash \"make-callable-object-offset-state\" 0 33)")
+            && body.contains(
+                "local-state-hash (name-hash \"linux-x86-probe-callable-object-offset-state\" 0 44)"
+            )
+            && body.contains("call-after-hash (name-hash \"linux-x86-call-after-marker\" 0 27)")
+            && body.contains("main-hash (name-hash \"main\" 0 4)")
+            && body.contains("(print helper-hash)")
+            && body.contains("(print (ftable-lookup ftable helper-hash))")
+            && body.contains("(print local-state-hash)")
+            && body.contains("(print (ftable-lookup ftable local-state-hash))")
+            && body.contains("(print call-after-hash)")
+            && body.contains("(print (ftable-lookup ftable call-after-hash))")
+            && body.contains("(print main-hash)")
+            && body.contains("(print (ftable-lookup ftable main-hash))")
+            && body.contains("(print (vector-get reg-result 1))")
+            && body.contains("(print (vector-length ftable))"),
+        "payload helper は register 直後に imported/local/call-after/main の ftable lookup を出すべき"
+    );
+    assert!(
+        register_diag_pos < ftable_probe_pos && ftable_probe_pos < compile_pos,
+        "ftable lookup 診断は register-all-pairs 後、compile 前に出すべき"
+    );
+}
+
+#[test]
 fn compiler_with_source_compile_step_roots_next_functions_before_state_alloc() {
     let source =
         std::fs::read_to_string(workspace_root().join("selfhost/src/Backend/Wasm/Compiler.ls"))

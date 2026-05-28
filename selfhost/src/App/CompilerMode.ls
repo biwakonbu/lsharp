@@ -1139,7 +1139,23 @@
                 (do
                   (print 166)
                   (print n)
-                  (print (vector-length reg-result)))
+                  (print (vector-length reg-result))
+                  (let [helper-hash (name-hash "make-callable-object-offset-state" 0 33)
+                    local-state-hash (name-hash "linux-x86-probe-callable-object-offset-state" 0 44)
+                    call-after-hash (name-hash "linux-x86-call-after-marker" 0 27)
+                    main-hash (name-hash "main" 0 4)]
+                    (do
+                      (print 9000000055)
+                      (print helper-hash)
+                      (print (ftable-lookup ftable helper-hash))
+                      (print local-state-hash)
+                      (print (ftable-lookup ftable local-state-hash))
+                      (print call-after-hash)
+                      (print (ftable-lookup ftable call-after-hash))
+                      (print main-hash)
+                      (print (ftable-lookup ftable main-hash))
+                      (print (vector-get reg-result 1))
+                      (print (vector-length ftable)))))
                 (do))
               (let [functions0 (vector-new 8)]
                 (do
