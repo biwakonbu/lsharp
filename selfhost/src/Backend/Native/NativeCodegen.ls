@@ -906,7 +906,7 @@
                   (root_pop)
                   (root_pop)
                   (root_pop)
-                  state))))))))
+                  state)))))))))
 
 (defn native-max-stack-depth-loop [ir-func function-metas idx len current-depth max-depth]
   (if (>= idx len)
