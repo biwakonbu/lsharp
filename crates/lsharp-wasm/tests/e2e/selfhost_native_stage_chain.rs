@@ -176,14 +176,7 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                                                               (print (vector-length first-ir))
                                                               (print (vector-get (vector-get first-ir 0) 0))
                                                               (print (vector-get (vector-get first-ir 0) 1))
-                                                              (let [first-stack-bytes (native-local-stack-bytes-with-window-x86 first-ir (+ (+ first-param-count first-local-count) 1) native-callables)]
-                                                                (do
-                                                                  (print first-stack-bytes)
-                                                                  (let [first-body-size-ctx (make-x86-body-size-context first-ir native-callables (vector-length first-ir))
-                                                                        first-body-bytes (native-function-body-size-x86-loop-with-context first-body-size-ctx 0 0 0)]
-                                                                    (do
-                                                                      (print first-body-bytes)
-                                                                      0))))))
+                                                              0))
                                                           0)
                     progress-after-first-stack-components (if (= progress-mode 1)
                                                            (let [first-func (vector-get native-callables 10)
@@ -1148,29 +1141,26 @@ fn test_linux_x86_representative_seed_prints_first_size_component_probe() {
     let marker = source
         .find("(print 9000000047)")
         .expect("first size component marker が存在すること");
-    let stack_probe = source
-        .find("first-stack-bytes")
-        .expect("first stack byte probe が存在すること");
+    let stack_component_marker = source
+        .find("progress-after-first-stack-components")
+        .expect("first stack component marker が存在すること");
 
     assert!(
         source.contains("progress-after-first-size-components")
             && source.contains("(print 9000000047)")
             && source.contains("first-param-count (native-function-param-count first-func)")
             && source.contains("first-local-count (native-function-local-count first-func)")
-            && source.contains(
-                "first-stack-bytes (native-local-stack-bytes-with-window-x86 first-ir",
-            )
-            && source.contains(
-                "first-body-bytes (native-function-body-size-x86-loop-with-context first-body-size-ctx 0 0 0)",
-            )
             && source.contains("(print (vector-get (vector-get first-ir 0) 0))")
-            && source.contains("(print first-stack-bytes)")
-            && source.contains("(print first-body-bytes)"),
-        "Linux x86 segmented seed は first callable size 破損を stack/body component へ分解して採取できるべき"
+            && !source
+                .contains("first-stack-bytes (native-local-stack-bytes-with-window-x86 first-ir")
+            && !source.contains(
+                "first-body-bytes (native-function-body-size-x86-loop-with-context first-body-size-ctx 0 0 0)",
+            ),
+        "Linux x86 segmented seed は first callable metadata 診断で stack/body の危険な評価を先に実行しないべき"
     );
     assert!(
-        marker < stack_probe,
-        "Linux x86 segmented seed は stack/body component で落ちても安全な meta 値を残せるよう marker を危険な計算より前に出すべき"
+        marker < stack_component_marker,
+        "Linux x86 segmented seed は first stack component 診断へ進む前に安全な metadata 値だけを残すべき"
     );
 }
 
