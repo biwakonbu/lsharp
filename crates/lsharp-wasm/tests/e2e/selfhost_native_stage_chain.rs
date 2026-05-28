@@ -188,6 +188,19 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                                                                                        (root_pop)
                                                                                        0)))))))))
                                                                      0)
+                    progress-after-local-state-helper-probe (if (= progress-mode 1)
+                                                              (do
+                                                                (root_push native-callables)
+                                                                (print 9000000052)
+                                                                (let [local-state (linux-x86-probe-callable-object-offset-state 0 1 native-callables 3)]
+                                                                  (do
+                                                                    (print (vector-get local-state 0))
+                                                                    (print (vector-get local-state 1))
+                                                                    (print (vector-length (vector-get local-state 2)))
+                                                                    (print (vector-get local-state 3))
+                                                                    (root_pop)
+                                                                    0)))
+                                                              0)
                     progress-after-direct-state-helper-probe (if (= progress-mode 1)
                                                                (do
                                                                  (root_push native-callables)
@@ -464,9 +477,35 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                           0)]
                     (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions)))"#,
     );
-    source.replace(
+    let source = source.replace(
         "native-callables (normalize-selfhost-native-function-metas-for-target callables target)",
         "native-callables callables",
+    );
+    source.replacen(
+        "\n(defn main []",
+        r#"
+(defn linux-x86-probe-callable-object-offset-state [done next-idx next-values next-offset]
+  (do
+    (root_push next-values)
+    (let [base0 (vector-push (vector-new 4) done)]
+      (do
+        (root_push base0)
+        (let [base1 (vector-push base0 next-idx)]
+          (do
+            (root_push base1)
+            (let [with-values (vector-push base1 next-values)]
+              (do
+                (root_push with-values)
+                (let [state (vector-push with-values next-offset)]
+                  (do
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    state))))))))))
+
+(defn main []"#,
+        1,
     )
 }
 
@@ -1141,6 +1180,7 @@ fn test_linux_x86_representative_seed_can_print_stage_progress_markers() {
         "9000000049",
         "9000000050",
         "9000000051",
+        "9000000052",
         "9000000032",
         "9000000033",
         "9000000034",
@@ -1368,6 +1408,40 @@ fn test_linux_x86_representative_seed_prints_inline_state_construction_probe() {
         source.find("progress-after-inline-state-construction-probe")
             < source.find("progress-after-direct-state-helper-probe"),
         "Linux x86 segmented seed は helper call より前に inline state construction probe を実行するべき"
+    );
+}
+
+#[test]
+fn test_linux_x86_representative_seed_prints_local_state_helper_probe() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+    let body = source
+        .split("progress-after-local-state-helper-probe")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("progress-after-direct-state-helper-probe")
+                .next()
+        })
+        .expect("local state helper probe body が存在すること");
+
+    assert!(
+        source.contains("(defn linux-x86-probe-callable-object-offset-state")
+            && source.contains("progress-after-local-state-helper-probe")
+            && source.contains("(print 9000000052)")
+            && body.contains(
+                "local-state (linux-x86-probe-callable-object-offset-state 0 1 native-callables 3)",
+            )
+            && body.contains("(print (vector-get local-state 0))")
+            && body.contains("(print (vector-get local-state 1))")
+            && body.contains("(print (vector-length (vector-get local-state 2)))")
+            && body.contains("(print (vector-get local-state 3))"),
+        "Linux x86 segmented seed は imported state helper call の前に同型 local 4 引数 helper call を検査できるべき"
+    );
+    assert!(
+        source.find("progress-after-inline-state-construction-probe")
+            < source.find("progress-after-local-state-helper-probe")
+            && source.find("progress-after-local-state-helper-probe")
+                < source.find("progress-after-direct-state-helper-probe"),
+        "Linux x86 segmented seed は inline construction、local helper、imported helper の順で state 0 化を切るべき"
     );
 }
 
