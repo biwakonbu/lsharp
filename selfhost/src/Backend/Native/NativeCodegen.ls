@@ -988,8 +988,7 @@
       (align-16 (* slot-count 8)))))
 
 (defn native-value-window-spill-slot-count-x86 [ir-func function-metas]
-  (let [actual (native-value-window-spill-slot-count ir-func function-metas)]
-    (if (< actual 128) 128 actual)))
+  128)
 
 (defn native-total-slot-count-with-window-x86 [ir-func min-slot-count function-metas]
   (+ (native-frame-base-slot-count ir-func min-slot-count)
