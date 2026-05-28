@@ -165,6 +165,15 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                                              (print 9000000033)
                                              (print (vector-length starts)))
                                            0)
+                    progress-after-start-values (if (= progress-mode 1)
+                                                  (do
+                                                    (print 9000000044)
+                                                    (print (vector-get starts 0))
+                                                    (print (vector-get starts 1))
+                                                    (print (vector-get starts (- (vector-length starts) 1)))
+                                                    (print (- entrypoint-func-idx 10))
+                                                    (print (vector-get starts (- entrypoint-func-idx 10))))
+                                                  0)
                     user-total (callable-user-total-slot-size-x86 native-callables 10)
                     progress-after-user-total (if (= progress-mode 1)
                                                (do
@@ -1005,6 +1014,7 @@ fn test_linux_x86_representative_seed_can_print_stage_progress_markers() {
         "9000000041",
         "9000000042",
         "9000000043",
+        "9000000044",
         "9000000032",
         "9000000033",
         "9000000034",
@@ -1039,6 +1049,7 @@ fn test_linux_x86_representative_seed_can_print_stage_progress_markers() {
             && source.contains("(print 9000000043)")
             && source.contains("(print (vector-length (vector-get payload-base 0)))")
             && source.contains("progress-after-starts")
+            && source.contains("progress-after-start-values")
             && source.contains("progress-after-user-total")
             && source.contains("progress-after-code-len")
             && source.contains("(if (= progress-mode 1)")
@@ -1049,6 +1060,22 @@ fn test_linux_x86_representative_seed_can_print_stage_progress_markers() {
             && source.contains("(print data-len)")
             && source.contains("metadata-mode (if (> (string-length (command-line-arg 6)) 0) 1 0)"),
         "Linux x86 segmented seed は通常/metadata transport を残したまま、arg8 で setup progress だけを出せるべき"
+    );
+}
+
+#[test]
+fn test_linux_x86_representative_seed_prints_start_value_probe_after_starts() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+
+    assert!(
+        source.contains("progress-after-start-values")
+            && source.contains("(print 9000000044)")
+            && source.contains("(print (vector-get starts 0))")
+            && source.contains("(print (vector-get starts 1))")
+            && source.contains("(print (vector-get starts (- (vector-length starts) 1)))")
+            && source.contains("(print (- entrypoint-func-idx 10))")
+            && source.contains("(print (vector-get starts (- entrypoint-func-idx 10)))"),
+        "Linux x86 segmented seed は starts len 復帰後に starts の先頭/末尾/entrypoint 値を progress marker で採取できるべき"
     );
 }
 
