@@ -159,9 +159,40 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                                                     0)
                     progress-after-first-slot-size (if (= progress-mode 1)
                                                      (do
-                                                       (print 9000000045)
-                                                       (print (native-function-size-x86 (vector-get native-callables 10) native-callables))
-                                                       (print (x86-function-slot-size (vector-get native-callables 10) native-callables)))
+                                                       (root_push native-callables)
+                                                       (let [first-func (vector-get native-callables 10)]
+                                                         (do
+                                                           (root_push first-func)
+                                                           (let [first-param-count (native-function-param-count first-func)
+                                                                 first-local-count (native-function-local-count first-func)
+                                                                 first-ir (native-function-ir first-func)]
+                                                             (do
+                                                               (root_push first-ir)
+                                                               (let [first-stack-bytes (native-local-stack-bytes-with-window-x86 first-ir (+ (+ first-param-count first-local-count) 1) native-callables)
+                                                                     first-frame-bytes (if (> first-stack-bytes 0) 14 0)
+                                                                     first-param-spill-bytes (x86-param-spill-prefix-size first-param-count)
+                                                                     first-body-size-ctx (make-x86-body-size-context first-ir native-callables (vector-length first-ir))]
+                                                                 (do
+                                                                   (root_push first-body-size-ctx)
+                                                                   (let [first-body-bytes (native-function-body-size-x86-loop-with-context first-body-size-ctx 0 0 0)]
+                                                                     (do
+                                                                       (print 9000000045)
+                                                                       (print (native-function-size-x86 first-func native-callables))
+                                                                       (print (x86-function-slot-size first-func native-callables))
+                                                                       (print 9000000056)
+                                                                       (print first-param-count)
+                                                                       (print first-local-count)
+                                                                       (print (vector-length first-ir))
+                                                                       (print first-stack-bytes)
+                                                                       (print first-frame-bytes)
+                                                                       (print first-param-spill-bytes)
+                                                                       (print first-body-bytes)
+                                                                       (print (+ (+ (+ 6 first-frame-bytes) first-param-spill-bytes) first-body-bytes))
+                                                                       (root_pop)
+                                                                       (root_pop)
+                                                                       (root_pop)
+                                                                       (root_pop)
+                                                                       0))))))))
                                                      0)
                     progress-after-inline-state-construction-probe (if (= progress-mode 1)
                                                                      (do
@@ -1264,9 +1295,11 @@ fn test_linux_x86_representative_seed_prints_first_slot_size_probe() {
     assert!(
         source.contains("progress-after-first-slot-size")
             && source.contains("(print 9000000045)")
-            && source.contains("(print (native-function-size-x86 (vector-get native-callables 10) native-callables))")
-            && source.contains("(print (x86-function-slot-size (vector-get native-callables 10) native-callables))"),
-        "Linux x86 segmented seed は starts[1] 破損を切るため、最初の callable の native/slot size を progress marker で採取できるべき"
+            && source.contains("(print (native-function-size-x86 first-func native-callables))")
+            && source.contains("(print (x86-function-slot-size first-func native-callables))")
+            && source.contains("(print 9000000056)")
+            && source.contains("first-body-bytes (native-function-body-size-x86-loop-with-context first-body-size-ctx 0 0 0)"),
+        "Linux x86 segmented seed は starts[1] 破損を切るため、最初の callable の native/slot size と size component を progress marker で採取できるべき"
     );
 }
 
