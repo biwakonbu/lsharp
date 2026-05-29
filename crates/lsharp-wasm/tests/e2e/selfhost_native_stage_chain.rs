@@ -323,6 +323,18 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                                        (print 9000000036)
                                        (print entrypoint-offset))
                                      0)
+          progress-after-layout-consistency (if (= progress-mode 1)
+                                             (do
+                                               (print 9000000057)
+                                               (print (if (= entrypoint-offset (vector-get starts (- entrypoint-func-idx 10))) 1 0))
+                                               (print (if (= code-len (+ user-total (x86-selfhost-helper-trailer-size 10))) 1 0))
+                                               (print (if (< entrypoint-offset code-len) 1 0))
+                                               (print (if (< user-total code-len) 1 0))
+                                               (print (% entrypoint-offset 1000000))
+                                               (print (% code-len 1000000))
+                                               (print (% user-total 1000000))
+                                               (print (x86-selfhost-helper-trailer-size 10)))
+                                             0)
           metadata-mode (if (> (string-length (command-line-arg 6)) 0) 1 0)
           metadata-prefix-limit (if (> (string-length (command-line-arg 7)) 0)
                                   (parse-positive-int (command-line-arg 7))
@@ -1255,6 +1267,7 @@ fn test_linux_x86_representative_seed_can_print_stage_progress_markers() {
         "9000000051",
         "9000000052",
         "9000000053",
+        "9000000057",
         "9000000032",
         "9000000033",
         "9000000034",
@@ -1301,6 +1314,34 @@ fn test_linux_x86_representative_seed_can_print_stage_progress_markers() {
             && source.contains("(print data-len)")
             && source.contains("metadata-mode (if (> (string-length (command-line-arg 6)) 0) 1 0)"),
         "Linux x86 segmented seed は通常/metadata transport を残したまま、arg8 で setup progress だけを出せるべき"
+    );
+}
+
+#[test]
+fn test_linux_x86_representative_seed_prints_layout_consistency_probe() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+    let body = source
+        .split("progress-after-layout-consistency")
+        .nth(1)
+        .and_then(|tail| tail.split("metadata-mode").next())
+        .expect("layout consistency probe body が存在すること");
+
+    assert!(
+        source.contains("progress-after-layout-consistency")
+            && body.contains("(print 9000000057)")
+            && body.contains(
+                "(if (= entrypoint-offset (vector-get starts (- entrypoint-func-idx 10))) 1 0)"
+            )
+            && body.contains(
+                "(if (= code-len (+ user-total (x86-selfhost-helper-trailer-size 10))) 1 0)"
+            )
+            && body.contains("(if (< entrypoint-offset code-len) 1 0)")
+            && body.contains("(if (< user-total code-len) 1 0)")
+            && body.contains("(print (% entrypoint-offset 1000000))")
+            && body.contains("(print (% code-len 1000000))")
+            && body.contains("(print (% user-total 1000000))")
+            && body.contains("(print (x86-selfhost-helper-trailer-size 10))"),
+        "Linux x86 segmented seed は transport header 出力前に layout 計算の小さい predicate/modulo 診断を出せるべき"
     );
 }
 
