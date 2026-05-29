@@ -159,40 +159,9 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                                                     0)
                     progress-after-first-slot-size (if (= progress-mode 1)
                                                      (do
-                                                       (root_push native-callables)
-                                                       (let [first-func (vector-get native-callables 10)]
-                                                         (do
-                                                           (root_push first-func)
-                                                           (let [first-param-count (native-function-param-count first-func)
-                                                                 first-local-count (native-function-local-count first-func)
-                                                                 first-ir (native-function-ir first-func)]
-                                                             (do
-                                                               (root_push first-ir)
-                                                               (let [first-stack-bytes (native-local-stack-bytes-with-window-x86 first-ir (+ (+ first-param-count first-local-count) 1) native-callables)
-                                                                     first-frame-bytes (if (> first-stack-bytes 0) 14 0)
-                                                                     first-param-spill-bytes (x86-param-spill-prefix-size first-param-count)
-                                                                     first-body-size-ctx (make-x86-body-size-context first-ir native-callables (vector-length first-ir))]
-                                                                 (do
-                                                                   (root_push first-body-size-ctx)
-                                                                   (let [first-body-bytes (native-function-body-size-x86-loop-with-context first-body-size-ctx 0 0 0)]
-                                                                     (do
-                                                                       (print 9000000045)
-                                                                       (print (native-function-size-x86 first-func native-callables))
-                                                                       (print (x86-function-slot-size first-func native-callables))
-                                                                       (print 9000000056)
-                                                                       (print first-param-count)
-                                                                       (print first-local-count)
-                                                                       (print (vector-length first-ir))
-                                                                       (print first-stack-bytes)
-                                                                       (print first-frame-bytes)
-                                                                       (print first-param-spill-bytes)
-                                                                       (print first-body-bytes)
-                                                                       (print (+ (+ (+ 6 first-frame-bytes) first-param-spill-bytes) first-body-bytes))
-                                                                       (root_pop)
-                                                                       (root_pop)
-                                                                       (root_pop)
-                                                                       (root_pop)
-                                                                       0))))))))
+                                                       (print 9000000045)
+                                                       (print (native-function-size-x86 (vector-get native-callables 10) native-callables))
+                                                       (print (x86-function-slot-size (vector-get native-callables 10) native-callables)))
                                                      0)
                     progress-after-inline-state-construction-probe (if (= progress-mode 1)
                                                                      (do
@@ -1008,6 +977,69 @@ fn test_native_linux_x86_hostgen_vm_script_cleans_vm_work_dir_before_run() {
 }
 
 #[test]
+fn test_native_linux_x86_hostgen_vm_script_bounds_local_build_outputs() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+
+    assert!(
+        script.contains(
+            r#"HOSTGEN_CARGO_TARGET_DIR="${LSHARP_NATIVE_LINUX_X86_CARGO_TARGET_DIR:-/tmp/lsharp-native-linux-x86-hostgen-vm-cargo-target}""#
+        ) && script.contains(r#"cleanup_hostgen_cargo_target()"#)
+            && script.contains(r#"rm -rf "${HOSTGEN_CARGO_TARGET_DIR}""#)
+            && script.contains(r#"trap cleanup_hostgen_cargo_target EXIT"#)
+            && script.contains(r#"CARGO_TARGET_DIR="${HOSTGEN_CARGO_TARGET_DIR}" cargo test"#),
+        "hostgen VM script は repo 直下 target を肥大化させないよう、一時 CARGO_TARGET_DIR を使いデフォルトで掃除するべき"
+    );
+}
+
+#[test]
+fn test_native_linux_x86_hostgen_vm_script_cleans_vm_work_dir_after_artifact_copy() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+
+    let cleanup_fn_pos = script
+        .find("cleanup_vm_work_dir()")
+        .expect("hostgen VM script は VM work dir cleanup 関数を持つこと");
+    let debug_copy_pos = script
+        .find("copy_actual_stage_debug_artifact actual-stage3 stage3-debug")
+        .expect("hostgen VM script は stage3 debug artifact を回収すること");
+    let cleanup_call_pos = script
+        .find("\ncleanup_vm_work_dir\n")
+        .expect("hostgen VM script は artifact 回収後に VM work dir cleanup を呼ぶこと");
+
+    assert!(
+        cleanup_fn_pos < debug_copy_pos
+            && debug_copy_pos < cleanup_call_pos
+            && script.contains(r#"LSHARP_NATIVE_LINUX_X86_KEEP_VM_WORK_DIR:-0"#)
+            && script.contains(r#"limactl shell "${VM_NAME}" -- rm -rf "${VM_WORK_DIR}""#),
+        "hostgen VM script は debug artifact 回収後、opt-in keep がない限り VM 内の巨大 work dir を掃除するべき"
+    );
+}
+
+#[test]
+fn test_native_linux_x86_lima_config_uses_bounded_disk() {
+    let config_path = selfhost_project_root().join("scripts/ci/lima/lsharp-linux-x86.yaml");
+    let config = std::fs::read_to_string(&config_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", config_path.display()));
+
+    assert!(
+        config.contains("arch: x86_64")
+            && config.contains("vmType: qemu")
+            && config.contains("memory: 24GiB")
+            && config.contains("disk: 30GiB")
+            && config.contains("build-essential")
+            && config.contains("python3")
+            && config.contains("rm -rf /var/lib/apt/lists/*")
+            && !config.contains("disk: 60GiB"),
+        "local Linux x86 Lima VM は storage を圧迫しない 30GiB disk config と最小 link/runtime tool を正本にするべき"
+    );
+}
+
+#[test]
 fn test_native_linux_x86_hostgen_vm_script_propagates_split_chunk_failures() {
     let script_path =
         selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
@@ -1291,15 +1323,24 @@ fn test_linux_x86_representative_seed_prints_start_value_probe_after_starts() {
 #[test]
 fn test_linux_x86_representative_seed_prints_first_slot_size_probe() {
     let source = linux_x86_representative_actual_stage23_seed_source();
+    let body = source
+        .split("progress-after-first-slot-size")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("progress-after-inline-state-construction-probe")
+                .next()
+        })
+        .expect("first slot size probe body が存在すること");
 
     assert!(
         source.contains("progress-after-first-slot-size")
             && source.contains("(print 9000000045)")
-            && source.contains("(print (native-function-size-x86 first-func native-callables))")
-            && source.contains("(print (x86-function-slot-size first-func native-callables))")
-            && source.contains("(print 9000000056)")
-            && source.contains("first-body-bytes (native-function-body-size-x86-loop-with-context first-body-size-ctx 0 0 0)"),
-        "Linux x86 segmented seed は starts[1] 破損を切るため、最初の callable の native/slot size と size component を progress marker で採取できるべき"
+            && source.contains("(print (native-function-size-x86 (vector-get native-callables 10) native-callables))")
+            && source.contains("(print (x86-function-slot-size (vector-get native-callables 10) native-callables))")
+            && !body.contains("(print 9000000056)")
+            && !body.contains("native-local-stack-bytes-with-window-x86")
+            && !body.contains("native-function-body-size-x86-loop-with-context"),
+        "Linux x86 segmented seed は first slot size だけを軽量 progress marker で採取し、stage2 decode を壊した重い component probe は含めない"
     );
 }
 

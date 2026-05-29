@@ -6,6 +6,7 @@ ARTIFACT_ID="${NATIVE_LINUX_X86_HOSTGEN_VM_ARTIFACT_ID:-local}"
 ARTIFACT_DIR_INPUT="${LSHARP_NATIVE_LINUX_X86_HOSTGEN_VM_ARTIFACT_DIR:-ci-artifacts/native-linux-x86-hostgen-vm/${ARTIFACT_ID}}"
 VM_NAME="${LSHARP_NATIVE_LINUX_X86_VM_NAME:-lsharp-linux-x86}"
 VM_WORK_DIR="${LSHARP_NATIVE_LINUX_X86_VM_WORK_DIR:-/tmp/lsharp-native-linux-x86-hostgen-vm-${ARTIFACT_ID}}"
+HOSTGEN_CARGO_TARGET_DIR="${LSHARP_NATIVE_LINUX_X86_CARGO_TARGET_DIR:-/tmp/lsharp-native-linux-x86-hostgen-vm-cargo-target}"
 
 if [[ "${ARTIFACT_DIR_INPUT}" = /* ]]; then
   if [[ "${ARTIFACT_DIR_INPUT}" != "${ROOT_DIR}"/* ]]; then
@@ -19,10 +20,29 @@ fi
 
 cd "${ROOT_DIR}"
 
+cleanup_hostgen_cargo_target() {
+  if [[ "${LSHARP_NATIVE_LINUX_X86_KEEP_CARGO_TARGET:-0}" = "1" ]]; then
+    return 0
+  fi
+  if [[ -n "${HOSTGEN_CARGO_TARGET_DIR}" && "${HOSTGEN_CARGO_TARGET_DIR}" != "/" ]]; then
+    rm -rf "${HOSTGEN_CARGO_TARGET_DIR}"
+  fi
+}
+
+trap cleanup_hostgen_cargo_target EXIT
+cleanup_hostgen_cargo_target
+
 if ! command -v limactl >/dev/null 2>&1; then
   echo "ERROR: limactl is required for hostgen->VM Linux x86_64 native execution smoke" >&2
   exit 1
 fi
+
+cleanup_vm_work_dir() {
+  if [[ "${LSHARP_NATIVE_LINUX_X86_KEEP_VM_WORK_DIR:-0}" = "1" ]]; then
+    return 0
+  fi
+  limactl shell "${VM_NAME}" -- rm -rf "${VM_WORK_DIR}" >/dev/null 2>&1 || true
+}
 
 rm -rf "${ARTIFACT_DIR}"
 mkdir -p "${ARTIFACT_DIR}"
@@ -47,7 +67,7 @@ echo "VM: ${VM_NAME}"
 echo "scope: host-side selfhost-generated Linux x86_64 code artifact linked and executed inside local VM."
 
 LSHARP_NATIVE_LINUX_X86_CODE_ARTIFACT="${CODE_ARTIFACT}" \
-  cargo test -q -p lsharp-wasm --test e2e \
+  CARGO_TARGET_DIR="${HOSTGEN_CARGO_TARGET_DIR}" cargo test -q -p lsharp-wasm --test e2e \
   e2e::selfhost_native_stage_chain::test_e2e_native_linux_x86_host_generates_const_42_code_artifact \
   -- --exact --ignored
 
@@ -57,7 +77,7 @@ if [[ ! -s "${CODE_ARTIFACT}" ]]; then
 fi
 
 LSHARP_NATIVE_LINUX_X86_OBJECT_ARTIFACT="${OBJECT_ARTIFACT}" \
-  cargo test -q -p lsharp-wasm --test e2e \
+  CARGO_TARGET_DIR="${HOSTGEN_CARGO_TARGET_DIR}" cargo test -q -p lsharp-wasm --test e2e \
   e2e::selfhost_native_stage_chain::test_e2e_native_linux_x86_host_generates_selfhost_elf_object_artifact \
   -- --exact --ignored
 
@@ -67,7 +87,7 @@ if [[ ! -s "${OBJECT_ARTIFACT}" ]]; then
 fi
 
 LSHARP_NATIVE_LINUX_X86_ARGV_OBJECT_ARTIFACT="${ARGV_OBJECT_ARTIFACT}" \
-  cargo test -q -p lsharp-wasm --test e2e \
+  CARGO_TARGET_DIR="${HOSTGEN_CARGO_TARGET_DIR}" cargo test -q -p lsharp-wasm --test e2e \
   e2e::selfhost_native_stage_chain::test_e2e_native_linux_x86_host_generates_argv_string_length_elf_object_artifact \
   -- --exact --ignored
 
@@ -77,7 +97,7 @@ if [[ ! -s "${ARGV_OBJECT_ARTIFACT}" ]]; then
 fi
 
 LSHARP_NATIVE_LINUX_X86_ARGV_CHAR_OBJECT_ARTIFACT="${ARGV_CHAR_OBJECT_ARTIFACT}" \
-  cargo test -q -p lsharp-wasm --test e2e \
+  CARGO_TARGET_DIR="${HOSTGEN_CARGO_TARGET_DIR}" cargo test -q -p lsharp-wasm --test e2e \
   e2e::selfhost_native_stage_chain::test_e2e_native_linux_x86_host_generates_argv_string_char_at_elf_object_artifact \
   -- --exact --ignored
 
@@ -87,7 +107,7 @@ if [[ ! -s "${ARGV_CHAR_OBJECT_ARTIFACT}" ]]; then
 fi
 
 LSHARP_NATIVE_LINUX_X86_PRINT_OBJECT_ARTIFACT="${PRINT_OBJECT_ARTIFACT}" \
-  cargo test -q -p lsharp-wasm --test e2e \
+  CARGO_TARGET_DIR="${HOSTGEN_CARGO_TARGET_DIR}" cargo test -q -p lsharp-wasm --test e2e \
   e2e::selfhost_native_stage_chain::test_e2e_native_linux_x86_host_generates_print_elf_object_artifact \
   -- --exact --ignored
 
@@ -97,7 +117,7 @@ if [[ ! -s "${PRINT_OBJECT_ARTIFACT}" ]]; then
 fi
 
 LSHARP_NATIVE_LINUX_X86_VECTOR_OBJECT_ARTIFACT="${VECTOR_OBJECT_ARTIFACT}" \
-  cargo test -q -p lsharp-wasm --test e2e \
+  CARGO_TARGET_DIR="${HOSTGEN_CARGO_TARGET_DIR}" cargo test -q -p lsharp-wasm --test e2e \
   e2e::selfhost_native_stage_chain::test_e2e_native_linux_x86_host_generates_vector_elf_object_artifact \
   -- --exact --ignored
 
@@ -107,7 +127,7 @@ if [[ ! -s "${VECTOR_OBJECT_ARTIFACT}" ]]; then
 fi
 
 LSHARP_NATIVE_LINUX_X86_REF_OBJECT_ARTIFACT="${REF_OBJECT_ARTIFACT}" \
-  cargo test -q -p lsharp-wasm --test e2e \
+  CARGO_TARGET_DIR="${HOSTGEN_CARGO_TARGET_DIR}" cargo test -q -p lsharp-wasm --test e2e \
   e2e::selfhost_native_stage_chain::test_e2e_native_linux_x86_host_generates_ref_elf_object_artifact \
   -- --exact --ignored
 
@@ -117,7 +137,7 @@ if [[ ! -s "${REF_OBJECT_ARTIFACT}" ]]; then
 fi
 
 LSHARP_NATIVE_LINUX_X86_SUBSTRING_OBJECT_ARTIFACT="${SUBSTRING_OBJECT_ARTIFACT}" \
-  cargo test -q -p lsharp-wasm --test e2e \
+  CARGO_TARGET_DIR="${HOSTGEN_CARGO_TARGET_DIR}" cargo test -q -p lsharp-wasm --test e2e \
   e2e::selfhost_native_stage_chain::test_e2e_native_linux_x86_host_generates_substring_elf_object_artifact \
   -- --exact --ignored
 
@@ -127,7 +147,7 @@ if [[ ! -s "${SUBSTRING_OBJECT_ARTIFACT}" ]]; then
 fi
 
 LSHARP_NATIVE_LINUX_X86_STRING_CONCAT_OBJECT_ARTIFACT="${STRING_CONCAT_OBJECT_ARTIFACT}" \
-  cargo test -q -p lsharp-wasm --test e2e \
+  CARGO_TARGET_DIR="${HOSTGEN_CARGO_TARGET_DIR}" cargo test -q -p lsharp-wasm --test e2e \
   e2e::selfhost_native_stage_chain::test_e2e_native_linux_x86_host_generates_string_concat_elf_object_artifact \
   -- --exact --ignored
 
@@ -137,7 +157,7 @@ if [[ ! -s "${STRING_CONCAT_OBJECT_ARTIFACT}" ]]; then
 fi
 
 LSHARP_NATIVE_LINUX_X86_MAP_OBJECT_ARTIFACT="${MAP_OBJECT_ARTIFACT}" \
-  cargo test -q -p lsharp-wasm --test e2e \
+  CARGO_TARGET_DIR="${HOSTGEN_CARGO_TARGET_DIR}" cargo test -q -p lsharp-wasm --test e2e \
   e2e::selfhost_native_stage_chain::test_e2e_native_linux_x86_host_generates_map_insert_get_elf_object_artifact \
   -- --exact --ignored
 
@@ -147,7 +167,7 @@ if [[ ! -s "${MAP_OBJECT_ARTIFACT}" ]]; then
 fi
 
 LSHARP_NATIVE_LINUX_X86_MAP_SIZE_OBJECT_ARTIFACT="${MAP_SIZE_OBJECT_ARTIFACT}" \
-  cargo test -q -p lsharp-wasm --test e2e \
+  CARGO_TARGET_DIR="${HOSTGEN_CARGO_TARGET_DIR}" cargo test -q -p lsharp-wasm --test e2e \
   e2e::selfhost_native_stage_chain::test_e2e_native_linux_x86_host_generates_map_size_elf_object_artifact \
   -- --exact --ignored
 
@@ -157,7 +177,7 @@ if [[ ! -s "${MAP_SIZE_OBJECT_ARTIFACT}" ]]; then
 fi
 
 LSHARP_NATIVE_LINUX_X86_FILE_EXISTS_OBJECT_ARTIFACT="${FILE_EXISTS_OBJECT_ARTIFACT}" \
-  cargo test -q -p lsharp-wasm --test e2e \
+  CARGO_TARGET_DIR="${HOSTGEN_CARGO_TARGET_DIR}" cargo test -q -p lsharp-wasm --test e2e \
   e2e::selfhost_native_stage_chain::test_e2e_native_linux_x86_host_generates_file_exists_elf_object_artifact \
   -- --exact --ignored
 
@@ -167,7 +187,7 @@ if [[ ! -s "${FILE_EXISTS_OBJECT_ARTIFACT}" ]]; then
 fi
 
 LSHARP_NATIVE_LINUX_X86_ACTUAL_STAGE1_ARTIFACT_DIR="${ACTUAL_STAGE1_ARTIFACT_DIR}" \
-  cargo test -q -p lsharp-wasm --test e2e \
+  CARGO_TARGET_DIR="${HOSTGEN_CARGO_TARGET_DIR}" cargo test -q -p lsharp-wasm --test e2e \
   e2e::selfhost_native_stage_chain::test_e2e_native_linux_x86_host_generates_actual_selfregen_stage1_bundle_artifact \
   -- --exact --ignored
 
@@ -1457,6 +1477,7 @@ copy_actual_stage_debug_artifact() {
 copy_actual_stage_debug_artifact actual-stage1 stage1-debug
 copy_actual_stage_debug_artifact actual-stage2 stage2-debug
 copy_actual_stage_debug_artifact actual-stage3 stage3-debug
+cleanup_vm_work_dir
 
 if [[ "${vm_exec_status}" -ne 0 ]]; then
   echo "ERROR: native Linux x86_64 hostgen -> VM exec smoke failed with status ${vm_exec_status}" >&2

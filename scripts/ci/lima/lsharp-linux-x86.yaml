@@ -1,0 +1,24 @@
+minimumLimaVersion: 2.0.0
+
+images:
+  - location: https://cloud-images.ubuntu.com/releases/noble/release/ubuntu-24.04-server-cloudimg-amd64.img
+    arch: x86_64
+
+vmType: qemu
+arch: x86_64
+cpus: 4
+memory: 24GiB
+disk: 30GiB
+
+mounts: []
+
+provision:
+  - mode: system
+    script: |
+      apt-get update
+      DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        python3
+      apt-get clean
+      rm -rf /var/lib/apt/lists/*
