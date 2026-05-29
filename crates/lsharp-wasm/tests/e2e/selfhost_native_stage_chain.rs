@@ -43440,6 +43440,21 @@ struct X86UserCallDirectReplayRow {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+struct X86UserCallStageCodeRel32Correlation {
+    instr_idx: i64,
+    opcode: i64,
+    operand: i64,
+    depth: i64,
+    stage_code_call_offset: usize,
+    call_offset_in_row: usize,
+    relative_target: i64,
+    absolute_target: i64,
+    direct_target: i64,
+    call_rel: i64,
+    bytes: [u8; 5],
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct LinuxX86FunctionSegmentMetadataRow {
     function_start: i64,
     function_size: i64,
@@ -44109,6 +44124,133 @@ fn x86_metadata_row_rel32_call_offset(row: &LinuxX86FunctionSegmentMetadataRow) 
         return None;
     }
     (0..=size - 5).find(|offset| row.bytes[*offset] == 0xe8)
+}
+
+fn assert_x86_user_call_direct_rows_match_stage_code(
+    stage_code: &[u8],
+    metadata_rows: &[LinuxX86FunctionSegmentMetadataRow],
+    direct_rows: &[X86UserCallDirectReplayRow],
+    label: &str,
+) -> Vec<X86UserCallStageCodeRel32Correlation> {
+    assert!(
+        !direct_rows.is_empty(),
+        "{label}: opcode 40 direct replay row が無い"
+    );
+    let mut correlations = Vec::new();
+    for direct_row in direct_rows {
+        assert_eq!(
+            direct_row.opcode, 40,
+            "{label}: opcode 40 以外の direct row"
+        );
+        assert!(
+            direct_row.function_start_base >= 0 && direct_row.offset >= 0 && direct_row.size >= 5,
+            "{label}: stage code window を取れない direct row: {direct_row:?}"
+        );
+        assert_eq!(
+            direct_row.call_rel,
+            direct_row.target_offset - (direct_row.offset + direct_row.call_next_offset),
+            "{label}: opcode 40 direct replay row の call-rel が target/current offset と一致しない: row={direct_row:?}"
+        );
+        assert_eq!(
+            direct_row.direct_target, direct_row.target_offset,
+            "{label}: opcode 40 direct replay row の rel32 target が target-offset と一致しない: row={direct_row:?}"
+        );
+        assert_eq!(
+            direct_row.direct_len, direct_row.size,
+            "{label}: opcode 40 direct replay length が metadata size と一致しない: row={direct_row:?}"
+        );
+
+        let metadata_row = metadata_rows
+            .iter()
+            .find(|row| {
+                row.instr_idx == direct_row.instr_idx
+                    && row.function_start == direct_row.function_start_base
+                    && row.opcode == direct_row.opcode
+                    && row.operand == direct_row.operand
+                    && row.depth == direct_row.depth
+                    && row.offset == direct_row.offset
+                    && row.size == direct_row.size
+            })
+            .unwrap_or_else(|| {
+                panic!(
+                    "{label}: opcode 40 direct replay row に対応する metadata row が無い: row={direct_row:?}"
+                )
+            });
+
+        let row_abs = usize::try_from(direct_row.function_start_base + direct_row.offset)
+            .unwrap_or_else(|_| {
+                panic!("{label}: row absolute offset が usize 範囲外: {direct_row:?}")
+            });
+        let size = usize::try_from(direct_row.size)
+            .unwrap_or_else(|_| panic!("{label}: row size が usize 範囲外: {direct_row:?}"));
+        assert!(
+            row_abs + size <= stage_code.len(),
+            "{label}: opcode 40 stage code window が code 範囲外: row_abs={row_abs} size={size} code_len={} row={direct_row:?}",
+            stage_code.len()
+        );
+
+        let prefix_len = size.min(metadata_row.bytes.len());
+        assert_eq!(
+            &stage_code[row_abs..row_abs + prefix_len],
+            &metadata_row.bytes[..prefix_len],
+            "{label}: metadata row bytes と stage code prefix が一致しない: row={metadata_row:?} code_window={}",
+            byte_window_hex(stage_code, row_abs, 0, size.min(32))
+        );
+        assert_eq!(
+            &stage_code[row_abs..row_abs + prefix_len],
+            &direct_row.bytes[..prefix_len],
+            "{label}: direct replay bytes と stage code prefix が一致しない: row={direct_row:?} code_window={}",
+            byte_window_hex(stage_code, row_abs, 0, size.min(32))
+        );
+
+        let call_offsets = (0..=size - 5)
+            .filter(|offset| stage_code[row_abs + *offset] == 0xe8)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            call_offsets.len(),
+            1,
+            "{label}: opcode 40 stage code window 内の rel32 call opcode 数が 1 でない: row={direct_row:?} call_offsets={call_offsets:?} code_window={}",
+            byte_window_hex(stage_code, row_abs, 0, size.min(48))
+        );
+        let call_offset_in_row = call_offsets[0];
+        assert_eq!(
+            direct_row.call_next_offset,
+            call_offset_in_row as i64 + 5,
+            "{label}: opcode 40 call_next_offset が actual e8 offset と一致しない: row={direct_row:?} call_offset_in_row={call_offset_in_row}"
+        );
+
+        let call_site = decode_x86_rel32_call_at(stage_code, row_abs + call_offset_in_row);
+        let relative_target =
+            direct_row.offset + call_offset_in_row as i64 + 5 + call_site.rel32 as i64;
+        let absolute_target = direct_row.function_start_base + relative_target;
+        assert_eq!(
+            relative_target, direct_row.direct_target,
+            "{label}: actual stage code rel32 target と direct replay target が一致しない: row={direct_row:?} call={call_site:?}"
+        );
+        assert_eq!(
+            call_site.rel32 as i64, direct_row.call_rel,
+            "{label}: actual stage code rel32 と direct replay call_rel が一致しない: row={direct_row:?} call={call_site:?}"
+        );
+        assert!(
+            absolute_target >= 0 && absolute_target < stage_code.len() as i64,
+            "{label}: opcode 40 actual rel32 absolute target が stage code 範囲外: absolute_target={absolute_target} code_len={} row={direct_row:?}",
+            stage_code.len()
+        );
+        correlations.push(X86UserCallStageCodeRel32Correlation {
+            instr_idx: direct_row.instr_idx,
+            opcode: direct_row.opcode,
+            operand: direct_row.operand,
+            depth: direct_row.depth,
+            stage_code_call_offset: call_site.call_offset,
+            call_offset_in_row,
+            relative_target,
+            absolute_target,
+            direct_target: direct_row.direct_target,
+            call_rel: direct_row.call_rel,
+            bytes: call_site.bytes,
+        });
+    }
+    correlations
 }
 
 fn find_x86_runtime_helper_rel32_targets_outside_relative_range(
@@ -45118,6 +45260,30 @@ fn test_e2e_linux_x86_actual_function_metadata_user_call_rel32_correlation() {
         "Linux x86 function metadata の opcode 40 rows に first-8-byte rel32 call が無く、emitted/direct target を比較できなかった: path={} rows={direct_rows:?}",
         metadata_path.display()
     );
+
+    if let Some(stage2_dir) = std::env::var_os("LSHARP_NATIVE_LINUX_X86_STAGE2_ARTIFACT_DIR") {
+        let stage2_dir = workspace_root_relative_path(std::path::PathBuf::from(stage2_dir));
+        let stage2_bundle = read_linux_x86_stage_code_artifact_bundle(
+            &stage2_dir,
+            &["stage-code.bin", "stage2-code.bin"],
+            &["stage-data.bin", "stage2-data.bin"],
+        );
+        let correlations = assert_x86_user_call_direct_rows_match_stage_code(
+            &stage2_bundle.code_bytes,
+            &metadata_rows,
+            &direct_rows,
+            "Linux x86 stage2 entrypoint opcode40 metadata/stage-code correlation",
+        );
+        println!(
+            "Linux x86 user call metadata/stage-code rel32 correlated: metadata={} stage2_dir={} correlations={correlations:?}",
+            metadata_path.display(),
+            stage2_dir.display()
+        );
+    } else {
+        println!(
+            "Linux x86 stage2 code artifact 未指定: LSHARP_NATIVE_LINUX_X86_STAGE2_ARTIFACT_DIR を指定すると opcode 40 metadata row / actual emitted bytes / rel32 target を stage-code.bin 上で照合する"
+        );
+    }
 }
 
 #[test]
@@ -45331,6 +45497,83 @@ fn test_linux_x86_function_metadata_parses_user_call_direct_rel32_row() {
             bytes: [232, 42, 3, 0, 0, 72, 139, 133],
         }]
     );
+}
+
+#[test]
+fn test_linux_x86_user_call_direct_metadata_correlates_stage_code_rel32_rows() {
+    let metadata = "\
+9000000020
+10
+20
+1000
+100
+4
+2
+16
+0
+28
+32
+3
+9000000021
+0
+40
+17
+4
+32
+25
+72
+137
+202
+72
+139
+181
+176
+253
+9000000046
+0
+40
+17
+4
+32
+25
+1000
+4
+25
+900
+843
+25
+900
+72
+137
+202
+72
+139
+181
+176
+253
+";
+    let mut stage_code = vec![0u8; 2000];
+    let row_abs = 1000 + 32;
+    let window = [
+        0x48, 0x89, 0xca, 0x48, 0x8b, 0xb5, 0xb0, 0xfd, 0xff, 0xff, 0x48, 0x8b, 0xbd, 0xa8, 0xfd,
+        0xff, 0xff, 0x48, 0x89, 0xc1, 0xe8, 0x4b, 0x03, 0x00, 0x00,
+    ];
+    stage_code[row_abs..row_abs + window.len()].copy_from_slice(&window);
+
+    let metadata_rows = parse_linux_x86_function_segment_metadata_rows(metadata);
+    let user_call_rows = parse_x86_user_call_direct_replay_rows(metadata);
+    let correlations = assert_x86_user_call_direct_rows_match_stage_code(
+        &stage_code,
+        &metadata_rows,
+        &user_call_rows,
+        "synthetic-stage2",
+    );
+
+    assert_eq!(correlations.len(), 1);
+    assert_eq!(correlations[0].instr_idx, 0);
+    assert_eq!(correlations[0].stage_code_call_offset, row_abs + 20);
+    assert_eq!(correlations[0].relative_target, 900);
+    assert_eq!(correlations[0].absolute_target, 1900);
 }
 
 fn assert_linux_x86_entry_map_ref_ref_prefix(
