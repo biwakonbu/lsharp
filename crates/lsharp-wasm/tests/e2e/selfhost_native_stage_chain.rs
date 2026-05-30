@@ -3533,11 +3533,49 @@ fn test_e2e_selfhost_main_linux_x86_actual_seed_named_function_indices_diagnosti
 (import Backend.Wasm.CompilerBase)
 (import Syntax.Parser)
 
-(defn print-named-index [ftable name]
-  (let [hash (name-hash name 0 (string-length name))]
+(defn make-owner-result [pair-idx decl-idx decl-hash next-func-idx]
+  (vector-push
+    (vector-push
+      (vector-push
+        (vector-push (vector-new 4) pair-idx)
+        decl-idx)
+      decl-hash)
+    next-func-idx))
+
+(defn find-owner-decl-loop [decls decl-idx decl-len current-func-idx target-func-idx pair-idx]
+  (if (>= decl-idx decl-len)
+    (make-owner-result -1 -1 -1 current-func-idx)
+    (let [decl (vector-get decls decl-idx)]
+      (if (= (vector-get decl 0) 20)
+        (if (= current-func-idx target-func-idx)
+          (make-owner-result pair-idx decl-idx (vector-get decl 1) (+ current-func-idx 1))
+          (find-owner-decl-loop decls (+ decl-idx 1) decl-len (+ current-func-idx 1) target-func-idx pair-idx))
+        (find-owner-decl-loop decls (+ decl-idx 1) decl-len current-func-idx target-func-idx pair-idx)))))
+
+(defn find-owner-pair-loop [pairs pair-idx pair-len current-func-idx target-func-idx]
+  (if (>= pair-idx pair-len)
+    (make-owner-result -1 -1 -1 current-func-idx)
+    (let [pair (vector-get pairs pair-idx)
+          decls (vector-get pair 1)
+          owner (find-owner-decl-loop decls 0 (vector-length decls) current-func-idx target-func-idx pair-idx)
+          owner-pair (vector-get owner 0)
+          next-func-idx (vector-get owner 3)]
+      (if (>= owner-pair 0)
+        owner
+        (find-owner-pair-loop pairs (+ pair-idx 1) pair-len next-func-idx target-func-idx)))))
+
+(defn print-named-index [pairs ftable functions-len reg-next-func-idx name]
+  (let [hash (name-hash name 0 (string-length name))
+        func-idx (ftable-lookup ftable hash)
+        emitted-limit (+ 10 functions-len)
+        owner (find-owner-pair-loop pairs 0 (vector-length pairs) 10 func-idx)]
     (do
       (print hash)
-      (print (ftable-lookup ftable hash)))))
+      (print func-idx)
+      (print (if (< func-idx emitted-limit) 1 0))
+      (print (vector-get owner 0))
+      (print (vector-get owner 1))
+      (print (vector-get owner 2)))))
 
 (defn main []
   (let [cache-ref (ref-new (map-new))
@@ -3545,16 +3583,22 @@ fn test_e2e_selfhost_main_linux_x86_actual_seed_named_function_indices_diagnosti
         _ (write-file "src/App/Seed.ls" "{escaped_seed_source}")
         pairs (compile-file-pairs-with-cache "src/App/Seed.ls" cache-ref parse-count-ref)
         reg-result (register-all-pairs pairs 0 (vector-length pairs) (ftable-new) 10)
-        ftable (vector-get reg-result 0)]
+        ftable (vector-get reg-result 0)
+        reg-next-func-idx (vector-get reg-result 1)
+        data-ref (ref-new (vector-new 8))
+        functions (compile-all-src-decl-pairs-chunked pairs 0 (vector-length pairs) ftable data-ref (vector-new 8))
+        functions-len (vector-length functions)]
     (do
       (print (vector-length pairs))
-      (print-named-index ftable "native-function-size-x86")
-      (print-named-index ftable "native-function-body-size-x86-loop-with-context")
-      (print-named-index ftable "native-local-stack-bytes-with-window-x86")
-      (print-named-index ftable "native-total-slot-count-with-window-x86")
-      (print-named-index ftable "native-value-window-spill-slot-count-x86")
-      (print-named-index ftable "native-instr-size-x86")
-      (print-named-index ftable "opcode-stack-delta")
+      (print functions-len)
+      (print reg-next-func-idx)
+      (print-named-index pairs ftable functions-len reg-next-func-idx "native-function-size-x86")
+      (print-named-index pairs ftable functions-len reg-next-func-idx "native-function-body-size-x86-loop-with-context")
+      (print-named-index pairs ftable functions-len reg-next-func-idx "native-local-stack-bytes-with-window-x86")
+      (print-named-index pairs ftable functions-len reg-next-func-idx "native-total-slot-count-with-window-x86")
+      (print-named-index pairs ftable functions-len reg-next-func-idx "native-value-window-spill-slot-count-x86")
+      (print-named-index pairs ftable functions-len reg-next-func-idx "native-instr-size-x86")
+      (print-named-index pairs ftable functions-len reg-next-func-idx "opcode-stack-delta")
       0)))"#,
         escaped_seed_source = escaped_seed_source
     );
@@ -3571,15 +3615,34 @@ fn test_e2e_selfhost_main_linux_x86_actual_seed_named_function_indices_diagnosti
     let lines = parse_numeric_lines(&output);
     println!("Linux x86 actual seed named function index lines: {lines:?}");
     assert!(
-        lines.len() >= 15,
+        lines.len() >= 45,
         "Linux x86 actual seed named function indices diagnostic 出力が不足: {lines:?}"
     );
-    for pair in lines[1..].chunks_exact(2) {
+    let functions_len = lines[1];
+    let reg_next_func_idx = lines[2];
+    assert!(functions_len > 0, "functions-len が 0: {lines:?}");
+    assert!(
+        reg_next_func_idx >= 10,
+        "reg-next-func-idx が import prefix 未満: {lines:?}"
+    );
+    for pair in lines[3..].chunks_exact(6) {
         assert!(
             pair[1] >= 10,
             "named function が ftable に見つからない: hash={} index={} lines={lines:?}",
             pair[0],
             pair[1]
+        );
+        assert!(
+            pair[2] == 0 || pair[2] == 1,
+            "emitted 範囲 flag が 0/1 ではない: chunk={pair:?} lines={lines:?}"
+        );
+        assert!(
+            pair[3] >= 0 && pair[4] >= 0,
+            "named function owner pair/decl が見つからない: chunk={pair:?} lines={lines:?}"
+        );
+        assert_eq!(
+            pair[5], pair[0],
+            "named function owner hash が lookup hash と一致しない: chunk={pair:?} lines={lines:?}"
         );
     }
 }
@@ -3601,8 +3664,12 @@ fn test_linux_x86_named_function_indices_diagnostic_covers_size_helpers() {
             && diagnostic_body.contains("native-local-stack-bytes-with-window-x86")
             && diagnostic_body.contains("native-instr-size-x86")
             && diagnostic_body.contains("ftable-lookup")
-            && diagnostic_body.contains("name-hash"),
-        "Linux x86 named function indices diagnostic は size/layout helper の actual function index を出力できるべき"
+            && diagnostic_body.contains("name-hash")
+            && diagnostic_body.contains("compile-all-src-decl-pairs-chunked")
+            && diagnostic_body.contains("find-owner-pair-loop")
+            && diagnostic_body.contains("reg-next-func-idx")
+            && diagnostic_body.contains("functions-len"),
+        "Linux x86 named function indices diagnostic は size/layout helper の actual function index と emitted function vector 範囲を同時に出力できるべき"
     );
 }
 
