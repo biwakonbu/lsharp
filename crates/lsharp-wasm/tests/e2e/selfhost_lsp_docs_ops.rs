@@ -2558,7 +2558,7 @@ fn test_e2e_native_ops03_official_native_only_replacement_backlog_contract() {
         "target matrix status",
         "actual self-regeneration complete",
         "Mac + Lima VM local gate",
-        "release artifact layout pending",
+        "stable 既定導線",
         "COFF/PE runtime/link/smoke pending",
     ] {
         assert!(

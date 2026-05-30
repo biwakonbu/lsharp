@@ -4,7 +4,7 @@
 >
 > V2-08〜V2-10 で Darwin arm64 の actual native self-regeneration と experimental native-only RC は完了した。V2-13a では Linux x86_64 server priority track の actual native self-regeneration を Mac + Lima VM の local gate として固定した。
 > 次の目標は native-only official replacement track として、host launcher + embedded guest component 配布を rollback compatibility へ降格し、native-only を公式配布へ完全置換すること。
-> ただし Tier1 target matrix には未完了 blocker が残るため、V2-13〜V2-15 を TODO.md の正本に積む。
+> ただし Tier1 target matrix には target-specific blocker が残るため、V2-13〜V2-15 の完了証跡と残る target-specific blocker は TODO.md の正本で追跡する。
 > 詳細は `TODO.md` の現在の残タスク一覧、`docs/development/planning/v2-designs/v2-08-native-backend-self-regeneration.md`、`docs/development/planning/v2-designs/v2-09-wasm-native-differential-zero.md`、`docs/development/planning/v2-designs/v2-10-native-only-rc-distribution.md` および `backend-boundary.md` を参照。
 
 ## 目的
@@ -51,13 +51,13 @@ v1 で対象とするターゲットは次のとおりである。
 - `aarch64-apple-darwin`
 - `x86_64-unknown-linux-gnu`
 
-Native-only official replacement track で公式 Tier1 置換に必要な target matrix status は次のとおりである。V2-13 の範囲では target ごとの execution coverage と後続 blocker の境界を正本化し、release artifact layout / stable smoke / rollback は V2-14/V2-15 に残す。
+Native-only official replacement track で公式 Tier1 置換に必要な target matrix status は次のとおりである。V2-13 で target ごとの execution coverage と後続 blocker の境界を正本化し、V2-14/V2-15 で release artifact layout / stable smoke / rollback anchor を stable 既定導線へ昇格した。以後は target-specific execution blocker だけを残す。
 
 | target | 現状 | 置換 blocker |
 |---|---|---|
-| `aarch64-apple-darwin` | actual self-regeneration complete / experimental RC 完了 | release artifact layout pending、stable 公式導線への昇格 |
+| `aarch64-apple-darwin` | actual self-regeneration complete / native-only release evidence 完了 | なし |
 | `x86_64-apple-darwin` | spec 対象、実行 artifact coverage は未完了 | actual self-regeneration complete 未達、release smoke pending |
-| `x86_64-unknown-linux-gnu` | Linux x86_64 server priority track の actual self-regeneration complete。Mac + Lima VM local gate で証跡化 | release artifact layout pending、release smoke pending |
+| `x86_64-unknown-linux-gnu` | Linux x86_64 server priority track の actual self-regeneration complete。Mac + Lima VM local gate で証跡化 | tag release 前の Mac + Lima VM local gate 再実行 |
 | `x86_64-pc-windows-msvc` | **BLOCKED** | COFF/PE runtime/link/smoke pending と Authenticode gate |
 
 ### Linux x86_64 server priority track
