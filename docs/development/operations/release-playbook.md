@@ -146,7 +146,7 @@ native-only を公式配布へ完全置換する作業は V2-13〜V2-15 の acti
 
 現時点では以下が native-only replacement blocker である。
 
-1. actual native self-regeneration は `aarch64-apple-darwin` と Linux x86_64 server priority track で完了している。Linux x86_64 は tag release 時に `native-linux-x86-selfregen-release-gate` が `scripts/ci/native-linux-x86-selfregen.sh` を実行し、GitHub Release 作成前に stage2/stage3 compare 証跡を要求する。`x86_64-apple-darwin` / `x86_64-pc-windows-msvc` の Tier1 official gate は未完了。
+1. actual native self-regeneration は `aarch64-apple-darwin` と Linux x86_64 server priority track で完了している。Linux x86_64 は tag release 前に Mac + Lima VM 上で `NATIVE_LINUX_X86_HOSTGEN_VM_ARTIFACT_ID=<release-id> scripts/ci/native-linux-x86-selfregen.sh` を実行し、stage2/stage3 compare 証跡を local artifact として残す。`x86_64-apple-darwin` / `x86_64-pc-windows-msvc` の Tier1 official gate は未完了。
 2. `x86_64-pc-windows-msvc` は native backend spec 上 BLOCKED で、COFF/PE runtime/link/smoke と Authenticode gate が必要。
 3. `scripts/release.sh` / `scripts/ci/release-smoke.sh` / `.github/workflows/release.yml` は現行 stable 配布として host launcher + embedded guest component を前提にしている。
 

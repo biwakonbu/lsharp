@@ -199,31 +199,6 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
-  native-linux-x86-selfregen-release-gate:
-    name: Native Linux x86 selfregen release gate
-    runs-on: [self-hosted, linux, x64, lsharp-linux-x86-selfregen]
-    needs: verify
-    timeout-minutes: 180
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - name: native-linux-x86-selfregen.sh
-        shell: bash
-        env:
-          NATIVE_LINUX_X86_HOSTGEN_VM_ARTIFACT_ID: ${{ github.ref_name }}
-          LSHARP_NATIVE_LINUX_X86_REJECT_DIRTY_STAGE1_SEED: "1"
-          LSHARP_NATIVE_LINUX_X86_ACTUAL_TIMEOUT: "1200"
-        run: bash scripts/ci/native-linux-x86-selfregen.sh
-      - name: Linux x86 selfregen artifact のアップロード
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: native-linux-x86-selfregen-${{ github.ref_name }}
-          path: ci-artifacts/native-linux-x86-hostgen-vm/${{ github.ref_name }}/
-          retention-days: 30
-          if-no-files-found: warn
-
   # build 済み archive を download し、Rust toolchain 無しで release smoke を再実行
   release-smoke:
     name: Release smoke (downloaded artifacts)
@@ -254,7 +229,6 @@ jobs:
     needs:
       - release-smoke
       - experimental-native-rc
-      - native-linux-x86-selfregen-release-gate
     permissions:
       contents: write
     steps:

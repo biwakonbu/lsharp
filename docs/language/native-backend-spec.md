@@ -2,7 +2,7 @@
 
 > **Status: Native-only official replacement track active (2026-05-09)**
 >
-> V2-08〜V2-10 で Darwin arm64 の actual native self-regeneration と experimental native-only RC は完了した。V2-13a では Linux x86_64 server priority track の actual native self-regeneration を required CI / release gate へ昇格した。
+> V2-08〜V2-10 で Darwin arm64 の actual native self-regeneration と experimental native-only RC は完了した。V2-13a では Linux x86_64 server priority track の actual native self-regeneration を Mac + Lima VM の local gate として固定した。
 > 次の目標は native-only official replacement track として、host launcher + embedded guest component 配布を rollback compatibility へ降格し、native-only を公式配布へ完全置換すること。
 > ただし Tier1 target matrix には未完了 blocker が残るため、V2-13〜V2-15 を TODO.md の正本に積む。
 > 詳細は `TODO.md` の現在の残タスク一覧、`docs/development/planning/v2-designs/v2-08-native-backend-self-regeneration.md`、`docs/development/planning/v2-designs/v2-09-wasm-native-differential-zero.md`、`docs/development/planning/v2-designs/v2-10-native-only-rc-distribution.md` および `backend-boundary.md` を参照。
@@ -62,11 +62,11 @@ Native-only official replacement track で公式 Tier1 置換に必要な target
 
 ### Linux x86_64 server priority track
 
-サーバー用途を優先するため、`x86_64-unknown-linux-gnu` は full Tier1 公式置換より先に V2-13a として切り出す。GitHub Actions `ubuntu-latest` runner では `NativeTarget` descriptor、ELF object emitter、x86_64 codegen exact-byte smoke を `native-linux-x86-smoke` で required CI に固定する。actual self-regeneration は `limactl` と `lsharp-linux-x86` VM を持つ専用 self-hosted Linux x64 runner (`lsharp-linux-x86-selfregen`) で `native-linux-x86-selfregen` required job として実行する。
+サーバー用途を優先するため、`x86_64-unknown-linux-gnu` は full Tier1 公式置換より先に V2-13a として切り出す。GitHub Actions `ubuntu-latest` runner では `NativeTarget` descriptor、ELF object emitter、x86_64 codegen exact-byte smoke を `native-linux-x86-smoke` で required CI に固定する。actual self-regeneration は GitHub required CI には載せず、Mac + Lima VM 上の `scripts/ci/native-linux-x86-selfregen.sh` local gate で実行する。
 
 開発中の inner loop は GitHub Actions ではなくローカル VM で回す。`scripts/ci/native-linux-x86-local-vm-smoke.sh` は Linux x86_64 VM 上で descriptor / ELF emitter と canonical `program.o` / `runtime.o` / `linker-response.txt` / `program.native` runtime-link smoke を短時間で確認する。QEMU x86_64 VM では selfhost exact-byte suite が重いため、local smoke には含めず、actual native self-regeneration の調査へ進む前の fast gate として扱う。
 
-host 側の selfhost `emit-native` で生成した Linux x86_64 code artifact を VM 内でリンク・実行する split smoke は `scripts/ci/native-linux-x86-hostgen-vm-exec.sh` で固定する。このスクリプトは `LSHARP_NATIVE_LINUX_X86_CODE_ARTIFACT` を指定して host-side selfhost artifact generation test を実行し、`limactl` 経由で Ubuntu x86_64 VM に `code.bin` を渡し、VM 内で `program.native` の `actual_exit_code` を確認する。CI / release gate では wrapper `scripts/ci/native-linux-x86-selfregen.sh` が clean seed rejection、isolated `CARGO_TARGET_DIR`、VM lock、artifact upload 対象の `actual-selfregen-summary.json`、stage2/stage3 stdout hash と code length の一致を検証する。
+host 側の selfhost `emit-native` で生成した Linux x86_64 code artifact を VM 内でリンク・実行する split smoke は `scripts/ci/native-linux-x86-hostgen-vm-exec.sh` で固定する。このスクリプトは `LSHARP_NATIVE_LINUX_X86_CODE_ARTIFACT` を指定して host-side selfhost artifact generation test を実行し、`limactl` 経由で Ubuntu x86_64 VM に `code.bin` を渡し、VM 内で `program.native` の `actual_exit_code` を確認する。local gate wrapper `scripts/ci/native-linux-x86-selfregen.sh` は clean seed rejection、isolated `CARGO_TARGET_DIR`、VM lock、local artifact の `actual-selfregen-summary.json`、stage2/stage3 stdout hash と code length の一致を検証する。
 
 full actual Linux native self-regeneration は、AArch64 actual stage23 と同等の **x86 selfhost runtime helper parity**、argc/argv と linear memory/data image を seed する **Linux runtime trampoline**、release artifact として link 可能な **real ELF object/link artifact**、および stage2/stage3 byte-for-byte compare を required gate として扱う。const-42 VM link/run は x86 codegen と Linux 実行環境の接続確認に留め、full self-regeneration 完了証跡とは分ける。
 

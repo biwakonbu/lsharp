@@ -2607,7 +2607,7 @@ fn test_e2e_native_ops04_linux_x86_server_target_contract() {
         "Linux runtime trampoline",
         "real ELF object/link artifact",
         "V2-13a-5e",
-        "required CI / release gate",
+        "Mac VM local gate",
     ] {
         assert!(
             current_remaining_section.contains(expected),
@@ -2623,6 +2623,7 @@ fn test_e2e_native_ops04_linux_x86_server_target_contract() {
         "Linux x86_64 server priority track",
         "`x86_64-unknown-linux-gnu` | Linux x86_64 server priority track",
         "Ubuntu x86_64 VM",
+        "Mac + Lima VM",
         "native-linux-x86-selfregen",
         "scripts/ci/native-linux-x86-local-vm-smoke.sh",
         "scripts/ci/native-linux-x86-hostgen-vm-exec.sh",
@@ -2648,17 +2649,12 @@ fn test_e2e_native_ops04_linux_x86_server_target_contract() {
     );
     for expected in [
         "native-linux-x86-selfregen:",
-        "name: Native Linux x86 selfregen",
-        "runs-on: [self-hosted, linux, x64, lsharp-linux-x86-selfregen]",
-        "needs: [native-linux-x86-smoke]",
-        "bash scripts/ci/native-linux-x86-selfregen.sh",
-        "name: native-linux-x86-selfregen-${{ github.sha }}",
-        "path: ci-artifacts/native-linux-x86-hostgen-vm/${{ github.sha }}/",
         "native-linux-x86-selfregen.result",
+        "lsharp-linux-x86-selfregen",
     ] {
         assert!(
-            ci_workflow_content.contains(expected),
-            "ci.yml は actual Linux x86_64 selfregen required gate `{}` を含むこと",
+            !ci_workflow_content.contains(expected),
+            "ci.yml は actual Linux x86_64 selfregen を GitHub required gate に戻さないこと: `{}`",
             expected
         );
     }
@@ -2668,16 +2664,12 @@ fn test_e2e_native_ops04_linux_x86_server_target_contract() {
         std::fs::read_to_string(&release_workflow).expect("release.yml の読み込みに失敗");
     for expected in [
         "native-linux-x86-selfregen-release-gate:",
-        "name: Native Linux x86 selfregen release gate",
-        "runs-on: [self-hosted, linux, x64, lsharp-linux-x86-selfregen]",
-        "needs: verify",
-        "bash scripts/ci/native-linux-x86-selfregen.sh",
         "name: native-linux-x86-selfregen-${{ github.ref_name }}",
         "native-linux-x86-selfregen-release-gate",
     ] {
         assert!(
-            release_workflow_content.contains(expected),
-            "release.yml は actual Linux x86_64 selfregen release gate `{}` を含むこと",
+            !release_workflow_content.contains(expected),
+            "release.yml は actual Linux x86_64 selfregen を GitHub release gate に戻さないこと: `{}`",
             expected
         );
     }
@@ -2687,10 +2679,14 @@ fn test_e2e_native_ops04_linux_x86_server_target_contract() {
         std::fs::read_to_string(&ci_graph).expect("ci-gate-v2-job-graph.md の読み込みに失敗");
     assert!(
         ci_graph_content.contains("native-linux-x86-smoke")
-            && ci_graph_content.contains("native-linux-x86-selfregen")
-            && ci_graph_content.contains("actual Linux native self-regeneration")
             && ci_graph_content.contains("Linux x86_64 native server target"),
-        "ci-gate-v2-job-graph.md は Linux x86_64 native smoke / selfregen gates を記述すること"
+        "ci-gate-v2-job-graph.md は Linux x86_64 native smoke gate を記述すること"
+    );
+    assert!(
+        !ci_graph_content.contains("native-linux-x86-selfregen ┤")
+            && !ci_graph_content.contains("| 12 | **native-linux-x86-selfregen**")
+            && !ci_graph_content.contains("required 13"),
+        "ci-gate-v2-job-graph.md は actual selfregen を required CI graph に含めないこと"
     );
 
     let artifact_policy = project_root.join("docs/development/operations/artifact-policy.md");
@@ -2698,10 +2694,14 @@ fn test_e2e_native_ops04_linux_x86_server_target_contract() {
         std::fs::read_to_string(&artifact_policy).expect("artifact-policy.md の読み込みに失敗");
     assert!(
         artifact_policy_content.contains("native-linux-x86-{commit_sha}")
-            && artifact_policy_content.contains("native-linux-x86-selfregen-{commit_sha}")
-            && artifact_policy_content.contains("ci-artifacts/native-linux-x86-hostgen-vm/{commit_sha}/actual-selfregen-summary.json")
+            && artifact_policy_content.contains("ci-artifacts/native-linux-x86-hostgen-vm/{artifact_id}/actual-selfregen-summary.json")
             && artifact_policy_content.contains("x86_64-unknown-linux-gnu"),
-        "artifact-policy.md は Linux x86_64 native smoke / selfregen artifacts を定義すること"
+        "artifact-policy.md は Linux x86_64 native smoke と local selfregen artifact を定義すること"
+    );
+    assert!(
+        !artifact_policy_content.contains("native-linux-x86-selfregen-{commit_sha}")
+            && !artifact_policy_content.contains("native-linux-x86-selfregen-{version}"),
+        "artifact-policy.md は local selfregen artifact を GitHub upload artifact 名として扱わないこと"
     );
 
     let selfregen_ci = project_root.join("scripts/ci/native-linux-x86-selfregen.sh");
@@ -2712,7 +2712,8 @@ fn test_e2e_native_ops04_linux_x86_server_target_contract() {
     let selfregen_ci_content = std::fs::read_to_string(&selfregen_ci)
         .expect("native-linux-x86-selfregen.sh の読み込みに失敗");
     for expected in [
-        "requires Linux/x86_64",
+        "Mac + Lima VM",
+        "requires macOS or Linux with limactl",
         "DEFAULT_REJECT_DIRTY_STAGE1_SEED=1",
         "LSHARP_NATIVE_LINUX_X86_REJECT_DIRTY_STAGE1_SEED",
         "NATIVE_LINUX_X86_HOSTGEN_VM_ARTIFACT_ID",
@@ -2725,7 +2726,7 @@ fn test_e2e_native_ops04_linux_x86_server_target_contract() {
     ] {
         assert!(
             selfregen_ci_content.contains(expected),
-            "native-linux-x86-selfregen.sh は required selfregen gate contract `{}` を固定すること",
+            "native-linux-x86-selfregen.sh は local Mac VM selfregen gate contract `{}` を固定すること",
             expected
         );
     }

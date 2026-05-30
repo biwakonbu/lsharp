@@ -20,8 +20,8 @@ cd "${ROOT_DIR}"
 
 HOST_OS="$(uname -s)"
 HOST_ARCH="$(uname -m)"
-if [[ "${HOST_OS}" != "Linux" || "${HOST_ARCH}" != "x86_64" ]]; then
-  echo "ERROR: native-linux-x86-selfregen.sh requires Linux/x86_64; got ${HOST_OS}/${HOST_ARCH}" >&2
+if [[ "${HOST_OS}" != "Darwin" && "${HOST_OS}" != "Linux" ]]; then
+  echo "ERROR: native-linux-x86-selfregen.sh requires macOS or Linux with limactl; got ${HOST_OS}/${HOST_ARCH}" >&2
   exit 1
 fi
 
@@ -33,6 +33,7 @@ fi
 echo "=== native Linux x86_64 actual self-regeneration gate ==="
 echo "artifact id: ${ARTIFACT_ID}"
 echo "artifact dir: ${ARTIFACT_DIR}"
+echo "scope: local Mac + Lima VM self-regeneration gate; not a GitHub required CI job."
 
 NATIVE_LINUX_X86_HOSTGEN_VM_ARTIFACT_ID="${ARTIFACT_ID}" \
 LSHARP_NATIVE_LINUX_X86_REJECT_DIRTY_STAGE1_SEED="${LSHARP_NATIVE_LINUX_X86_REJECT_DIRTY_STAGE1_SEED:-${DEFAULT_REJECT_DIRTY_STAGE1_SEED}}" \
