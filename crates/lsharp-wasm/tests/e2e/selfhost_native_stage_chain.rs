@@ -283,7 +283,8 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                                                           0)
                     main-func-idx bounded-main-func-idx
                     entrypoint-func-idx bounded-main-func-idx
-                    starts (collect-callable-function-slot-starts-x86 native-callables 10)
+                    slot-layout (collect-callable-function-slot-layout-x86 native-callables 10)
+                    starts (vector-get slot-layout 0)
                     progress-after-starts (if (= progress-mode 1)
                                            (do
                                              (print 9000000033)
@@ -298,7 +299,7 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                                                     (print (- entrypoint-func-idx 10))
                                                     (print (vector-get starts (- entrypoint-func-idx 10))))
                                                   0)
-                    user-total (callable-user-total-slot-size-x86 native-callables 10)
+                    user-total (vector-get slot-layout 1)
                     progress-after-user-total (if (= progress-mode 1)
                                                (do
                                                  (print 9000000034)
@@ -742,7 +743,7 @@ fn test_native_linux_x86_hostgen_vm_script_forwards_actual_chunk_env_to_guest() 
 
     for assignment in [
         r#"LSHARP_NATIVE_LINUX_X86_ACTUAL_TIMEOUT="${LSHARP_NATIVE_LINUX_X86_ACTUAL_TIMEOUT:-900}""#,
-        r#"LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_SIZE="${LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_SIZE:-8}""#,
+        r#"LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_SIZE="${LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_SIZE:-256}""#,
         r#"LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_RETRIES="${LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_RETRIES:-1}""#,
         r#"LSHARP_NATIVE_LINUX_X86_ACTUAL_HEAP_BYTES="${LSHARP_NATIVE_LINUX_X86_ACTUAL_HEAP_BYTES:-4294967296}""#,
     ] {
@@ -1185,6 +1186,14 @@ fn test_linux_x86_representative_seed_roots_slot_layout_accumulators() {
             )
             && source.contains("(defn linux-x86-native-function-size-bounded")
             && source.contains("(linux-x86-native-function-size-bounded func-meta functions)")
+            && source.contains("(defn collect-callable-function-slot-layout-x86")
+            && source.contains(
+                "slot-layout (collect-callable-function-slot-layout-x86 native-callables 10)"
+            )
+            && source.contains("starts (vector-get slot-layout 0)")
+            && source.contains("user-total (vector-get slot-layout 1)")
+            && !source
+                .contains("user-total (callable-user-total-slot-size-x86 native-callables 10)")
             && source.contains("(defn collect-callable-function-slot-starts-x86-loop [ctx]")
             && source.contains(
                 "(defn collect-callable-function-slot-starts-x86-loop-bounded [ctx remaining]"
@@ -7725,7 +7734,19 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
       result
       (collect-callable-function-slot-starts-x86-loop ctx))))
 
-(defn collect-callable-function-slot-starts-x86 [functions import-count]
+(defn make-x86-slot-layout-result [starts total]
+  (do
+    (root_push starts)
+    (let [base0 (vector-push (vector-new 2) starts)]
+      (do
+        (root_push base0)
+        (let [result (vector-push base0 total)]
+          (do
+            (root_pop)
+            (root_pop)
+            result))))))
+
+(defn collect-callable-function-slot-layout-x86 [functions import-count]
   (do
     (root_push functions)
     (let [starts-ref (ref-new (vector-new 8))
@@ -7740,7 +7761,9 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
         (let [ctx (make-x86-slot-layout-context functions starts-ref idx-ref len-ref offset-ref)]
           (do
             (root_push ctx)
-            (let [result (collect-callable-function-slot-starts-x86-loop ctx)]
+            (let [starts (collect-callable-function-slot-starts-x86-loop ctx)
+                  total (ref-get offset-ref)
+                  result (make-x86-slot-layout-result starts total)]
               (do
                 (root_pop)
                 (root_pop)
@@ -7749,6 +7772,9 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
                 (root_pop)
                 (root_pop)
                 result))))))))
+
+(defn collect-callable-function-slot-starts-x86 [functions import-count]
+  (vector-get (collect-callable-function-slot-layout-x86 functions import-count) 0))
 
 (defn callable-user-total-slot-size-x86-loop-bounded [ctx remaining]
   (let [idx-ref (x86-slot-layout-context-idx-ref ctx)
