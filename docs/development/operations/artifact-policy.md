@@ -24,8 +24,8 @@ CI / CD パイプラインで生成される **workflow-local artifact** と、�
 
 | アセット | 命名パターン | ソース | 説明 |
 |---|---|---|---|
-| Release archive | `lsharp-{version}-{target}.{ext}` | `.github/workflows/release.yml` `release` | tag に添付されるユーザー向け配布ファイル |
-| Guest component sidecar | `lsharp-{version}-{target}.component.wasm` | `.github/workflows/release.yml` `release` | host launcher archive と同じ tag に添付される検証/rollback 用 guest component |
+| Native-only release archive | `lsharp-{version}-{target}.{ext}` | `.github/workflows/release.yml` `release` | tag に添付されるユーザー向け配布ファイル。archive 内の正本 entry は `program.native` |
+| Rollback compatibility asset | `lsharp-{version}-{target}-host-launcher.{ext}` / `lsharp-{version}-{target}.component.wasm` | 手動 rollback compatibility build | host launcher + embedded guest component へ戻すための互換資産 |
 
 ### 命名規則の詳細
 
@@ -36,7 +36,7 @@ CI / CD パイプラインで生成される **workflow-local artifact** と、�
 
 `lsharp-{version}-{target}` は **workflow-local artifact name** であり、`actions/download-artifact`
 が参照する論理名である。実際にユーザーが取得する **GitHub Release asset** は
-`lsharp-{version}-{target}.{ext}` と `lsharp-{version}-{target}.component.wasm` であり、拡張子付きのファイル名を正本とする。
+`lsharp-{version}-{target}.{ext}` であり、archive 内の `program.native`、`manifest.json`、`checksums.txt` を正本 payload とする。
 
 将来 `bootstrap-stages-*` / `native-binaries-*` / `benchmark-*` のような新しい artifact 名を
 追加する場合も、この文書へ先に placeholder を書くのではなく、workflow とテストを追加した時点で
@@ -55,7 +55,7 @@ active contract として追記する。
 | `shadow-oracle-results` | 14 日 | 14 日 | - | non-blocking differential 補助証跡 |
 | `lsharp-{version}-{target}` | - | - | 30 日 | release workflow 中の workflow-local artifact |
 | `lsharp-{version}-{target}.{ext}` | - | - | 永続 | GitHub Release asset として公開 |
-| `lsharp-{version}-{target}.component.wasm` | - | - | 永続 | GitHub Release asset として公開 |
+| rollback compatibility asset | - | - | 永続 | LKG rollback anchor に記録された場合のみ GitHub Release asset として公開 |
 
 ### CI での設定
 
@@ -98,7 +98,7 @@ bash scripts/checksum.sh dist > dist/checksums.txt
 - `gc-metrics-{commit_sha}` は `ci-artifacts/gc-metrics/{commit_sha}/` directory を正本とし、`collect-gc-metrics.sh` が `summary.json` と sibling `collector-proof.json` を常に揃えた上で PR では 5 日、main では 30 日保持する
 - `native-proxy-{commit_sha}` は `ci-artifacts/native-proxy/{commit_sha}/` directory を正本とし、`scripts/ci/build-native.sh` が `stage1-native` / `stage2-native` / `stage3-native` canonical bundle、top-level `manifest.json`、および representative build entry の actual blocker report `actual-stage23-gap.json` を揃えた上で PR では 5 日、main では 30 日保持する
 - `native-linux-x86-{commit_sha}` は `ci-artifacts/native-linux-x86/{commit_sha}/` directory を正本とし、`scripts/ci/native-linux-x86-smoke.sh` が Ubuntu x86_64 上で `x86_64-unknown-linux-gnu` の target descriptor / ELF emitter / x86_64 codegen smoke を実行し、`summary.json` を揃えた上で PR では 5 日、main では 30 日保持する
-- release workflow の `lsharp-{version}-{target}` は **workflow-local artifact** であり、ユーザー向け名称は GitHub Release asset `lsharp-{version}-{target}.{ext}` と `lsharp-{version}-{target}.component.wasm` として別に扱う
+- release workflow の `lsharp-{version}-{target}` は **workflow-local artifact** であり、ユーザー向け名称は GitHub Release asset `lsharp-{version}-{target}.{ext}` として別に扱う。host launcher + `lsharp.component.wasm` は rollback compatibility 資産であり、native-only stable payload には含めない
 - actual Linux x86_64 self-regeneration は GitHub upload artifact ではなく local gate artifact として扱う。`scripts/ci/native-linux-x86-selfregen.sh` は Mac + Lima VM 上で `ci-artifacts/native-linux-x86-hostgen-vm/{artifact_id}/actual-selfregen-summary.json` を生成し、`status=pass`、stage2/stage3 stdout hash 一致、stage2/stage3 code length 一致を検証する。
 
 ## GC metrics artifact の受理 / 却下

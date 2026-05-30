@@ -80,7 +80,7 @@ extract_archive() {
 
 find_release_root() {
   dir="$1"
-  found="$(find "$dir" -mindepth 1 -maxdepth 3 -type f \( -name lsharp -o -name lsharp.exe \) -print -quit)"
+  found="$(find "$dir" -mindepth 1 -maxdepth 3 -type f \( -name program.native -o -name lsharp -o -name lsharp.exe \) -print -quit)"
   [ -n "$found" ] || return 1
   dirname "$found"
 }
@@ -103,7 +103,10 @@ install_packaged_release() {
   root="$1"
   mkdir -p "$INSTALL_DIR"
 
-  if [ -f "$root/lsharp.exe" ]; then
+  if [ -f "$root/program.native" ]; then
+    lsharp_bin="$root/program.native"
+    lsp_bin=""
+  elif [ -f "$root/lsharp.exe" ]; then
     lsharp_bin="$root/lsharp.exe"
     lsp_bin="$root/lsharp-lsp.exe"
   else
@@ -112,14 +115,20 @@ install_packaged_release() {
   fi
 
   [ -f "$lsharp_bin" ] || fail "lsharp binary not found in release archive"
-  [ -f "$lsp_bin" ] || fail "lsharp-lsp binary not found in release archive"
-  [ -f "$root/lsharp.component.wasm" ] || fail "lsharp.component.wasm not found in release archive"
+  if [ -n "$lsp_bin" ]; then
+    [ -f "$lsp_bin" ] || fail "lsharp-lsp binary not found in release archive"
+  fi
 
   cp "$lsharp_bin" "$INSTALL_DIR/lsharp"
-  cp "$lsp_bin" "$INSTALL_DIR/lsharp-lsp"
-  cp "$root/lsharp.component.wasm" "$INSTALL_DIR/lsharp.component.wasm"
-  chmod 755 "$INSTALL_DIR/lsharp" "$INSTALL_DIR/lsharp-lsp"
-  chmod 644 "$INSTALL_DIR/lsharp.component.wasm"
+  chmod 755 "$INSTALL_DIR/lsharp"
+  if [ -n "$lsp_bin" ]; then
+    cp "$lsp_bin" "$INSTALL_DIR/lsharp-lsp"
+    chmod 755 "$INSTALL_DIR/lsharp-lsp"
+  fi
+  if [ -f "$root/lsharp.component.wasm" ]; then
+    cp "$root/lsharp.component.wasm" "$INSTALL_DIR/lsharp.component.wasm"
+    chmod 644 "$INSTALL_DIR/lsharp.component.wasm"
+  fi
 }
 
 install_experimental_native_rc() {

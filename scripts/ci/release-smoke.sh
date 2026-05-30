@@ -46,7 +46,7 @@ find_archive_root() {
   fi
 
   local candidate
-  candidate="$(find "$extract_dir" -mindepth 1 -maxdepth 2 -type f \( -name 'lsharp' -o -name 'lsharp.exe' \) -print -quit)"
+  candidate="$(find "$extract_dir" -mindepth 1 -maxdepth 2 -type f \( -name 'program.native' -o -name 'lsharp' -o -name 'lsharp.exe' \) -print -quit)"
   if [[ -n "$candidate" ]]; then
     dirname "$candidate"
     return 0
@@ -83,13 +83,17 @@ case "$ARCHIVE_PATH" in
 esac
 
 ARCHIVE_ROOT="$(find_archive_root "$EXTRACT_DIR")" || {
-  echo "ERROR: extracted archive root containing lsharp binary not found" >&2
+  echo "ERROR: extracted archive root containing program.native or lsharp binary not found" >&2
   exit 1
 }
 
+PROGRAM_NATIVE="$ARCHIVE_ROOT/program.native"
 LSHARP_BIN="$ARCHIVE_ROOT/lsharp"
 if [[ ! -e "$LSHARP_BIN" && -e "$ARCHIVE_ROOT/lsharp.exe" ]]; then
   LSHARP_BIN="$ARCHIVE_ROOT/lsharp.exe"
+fi
+if [[ ! -e "$LSHARP_BIN" && -e "$PROGRAM_NATIVE" ]]; then
+  LSHARP_BIN="$PROGRAM_NATIVE"
 fi
 
 LSHARP_LSP_BIN="$ARCHIVE_ROOT/lsharp-lsp"
@@ -98,7 +102,7 @@ if [[ ! -e "$LSHARP_LSP_BIN" && -e "$ARCHIVE_ROOT/lsharp-lsp.exe" ]]; then
 fi
 
 if [[ ! -e "$LSHARP_BIN" ]]; then
-  echo "ERROR: packaged lsharp binary not found under $ARCHIVE_ROOT" >&2
+  echo "ERROR: packaged program.native or lsharp binary not found under $ARCHIVE_ROOT" >&2
   exit 1
 fi
 
@@ -109,20 +113,41 @@ for required in README.md LICENSE checksums.txt; do
   fi
 done
 
-if [[ ! -e "$LSHARP_LSP_BIN" ]]; then
-  echo "ERROR: packaged lsharp-lsp binary not found under $ARCHIVE_ROOT" >&2
-  exit 1
-fi
+NATIVE_ONLY=0
+if [[ -f "$PROGRAM_NATIVE" ]]; then
+  NATIVE_ONLY=1
+  if [[ ! -x "$PROGRAM_NATIVE" ]]; then
+    echo "ERROR: native-only program.native is not executable: $PROGRAM_NATIVE" >&2
+    exit 1
+  fi
+  if [[ ! -f "$ARCHIVE_ROOT/manifest.json" ]]; then
+    echo "ERROR: native-only manifest.json not found under $ARCHIVE_ROOT" >&2
+    exit 1
+  fi
+  if ! grep -q '"entry_binary"[[:space:]]*:[[:space:]]*"program.native"' "$ARCHIVE_ROOT/manifest.json"; then
+    echo "ERROR: native-only manifest.json missing entry_binary program.native" >&2
+    exit 1
+  fi
+  if ! grep -q 'rollback' "$ARCHIVE_ROOT/manifest.json"; then
+    echo "ERROR: native-only manifest.json missing rollback anchor" >&2
+    exit 1
+  fi
+else
+  if [[ ! -e "$LSHARP_LSP_BIN" ]]; then
+    echo "ERROR: packaged lsharp-lsp binary not found under $ARCHIVE_ROOT" >&2
+    exit 1
+  fi
 
-COMPONENT_SIDECAR="$ARCHIVE_ROOT/lsharp.component.wasm"
-if [[ ! -f "$COMPONENT_SIDECAR" ]]; then
-  echo "ERROR: packaged guest component sidecar not found under $ARCHIVE_ROOT" >&2
-  exit 1
-fi
+  COMPONENT_SIDECAR="$ARCHIVE_ROOT/lsharp.component.wasm"
+  if [[ ! -f "$COMPONENT_SIDECAR" ]]; then
+    echo "ERROR: rollback compatibility guest component sidecar not found under $ARCHIVE_ROOT" >&2
+    exit 1
+  fi
 
-if ! xxd -p -l 4 "$COMPONENT_SIDECAR" | grep -qi '^0061736d$'; then
-  echo "ERROR: packaged guest component sidecar is not a Wasm binary: $COMPONENT_SIDECAR" >&2
-  exit 1
+  if ! xxd -p -l 4 "$COMPONENT_SIDECAR" | grep -qi '^0061736d$'; then
+    echo "ERROR: rollback compatibility guest component sidecar is not a Wasm binary: $COMPONENT_SIDECAR" >&2
+    exit 1
+  fi
 fi
 
 for optional in CHANGELOG.md; do
@@ -169,7 +194,9 @@ EOF
 
 echo "=== release-smoke: packaged binary ==="
 "$LSHARP_BIN" --version >/dev/null
-"$LSHARP_LSP_BIN" --version >/dev/null
+if [[ "$NATIVE_ONLY" != "1" ]]; then
+  "$LSHARP_LSP_BIN" --version >/dev/null
+fi
 "$LSHARP_BIN" check "$SMOKE_SOURCE" >/dev/null
 "$LSHARP_BIN" fmt "$SMOKE_SOURCE" >/dev/null
 "$LSHARP_BIN" compile "$SMOKE_SOURCE" -o "$SMOKE_WASM" >/dev/null

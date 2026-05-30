@@ -59,6 +59,7 @@ jobs:
         env:
           VERSION: ${{ github.ref_name }}
           TARGET: ${{ matrix.target }}
+          NATIVE_ONLY_RELEASE: "1"
         run: bash scripts/release.sh
       - name: macOS signing / notarization hook
         if: runner.os == 'macOS'
@@ -80,7 +81,8 @@ jobs:
             exit 0
           fi
 
-          for binary_path in "${archive_dir}/lsharp" "${archive_dir}/lsharp-lsp"; do
+          for binary_path in "${archive_dir}/program.native" "${archive_dir}/lsharp"; do
+            [[ -f "${binary_path}" ]] || continue
             codesign --force --sign "${APPLE_CODESIGN_IDENTITY}" --options runtime --timestamp "${binary_path}"
             codesign --verify --deep --strict "${binary_path}"
             spctl --assess -vv "${binary_path}"
@@ -127,8 +129,11 @@ jobs:
           Set-Alias signtool $signtoolPath
           [System.IO.File]::WriteAllBytes($certPath, [System.Convert]::FromBase64String($env:WINDOWS_SIGN_CERT_PFX_BASE64))
 
-          foreach ($binaryName in @("lsharp.exe", "lsharp-lsp.exe")) {
+          foreach ($binaryName in @("program.native", "lsharp.exe", "lsharp")) {
             $binaryPath = Join-Path $archiveDir $binaryName
+            if (-not (Test-Path $binaryPath)) {
+              continue
+            }
             signtool sign /f $certPath /p $env:WINDOWS_SIGN_CERT_PASSWORD /tr $env:WINDOWS_TIMESTAMP_URL /td sha256 /fd sha256 $binaryPath
             signtool verify /pa $binaryPath
           }
@@ -152,17 +157,13 @@ jobs:
           name: lsharp-${{ github.ref_name }}-${{ matrix.target }}
           path: |
             dist/lsharp-${{ github.ref_name }}-${{ matrix.target }}.${{ matrix.archive_ext }}
-            dist/lsharp-${{ github.ref_name }}-${{ matrix.target }}.component.wasm
           retention-days: 30
-          if-no-files-found: warn
+          if-no-files-found: error
 
-  # native-only replacement blocker:
-  # - official Tier1 replacement is tracked by TODO.md V2-13/V2-14/V2-15.
-  # - until x86_64 macOS/Linux and Windows native artifacts are covered, this remains an experimental RC.
-  # - host launcher + embedded guest component stays as rollback compatibility / current stable distribution.
-  # experimental native-only RC。公式 host launcher + embedded guest component 配布はまだ置き換えない。
+  # native-only release evidence job. Stable archives are native-only; the
+  # legacy host launcher + embedded guest component is rollback compatibility.
   experimental-native-rc:
-    name: Experimental native-only RC (aarch64-apple-darwin)
+    name: Native-only release evidence (aarch64-apple-darwin)
     runs-on: macos-14
     needs: verify
     steps:

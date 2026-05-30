@@ -1,6 +1,6 @@
 # ロールバック手順
 
-selfhost コンパイラまたは配布物に致命的な問題が発生した場合の、**host launcher + embedded guest component** を対象とした緊急ロールバック手順。
+selfhost コンパイラまたは native-only official 配布物に致命的な問題が発生した場合の、**rollback compatibility として保持する host launcher + embedded guest component** への緊急ロールバック手順。
 
 > **関連ドキュメント**
 > - ADR (配布モデル転換・前提条件): [`docs/development/operations/adr-rust-removal.md`](./adr-rust-removal.md)
@@ -11,7 +11,7 @@ selfhost コンパイラまたは配布物に致命的な問題が発生した�
 
 | 種類 | タイミング | 前提 |
 |------|-----------|------|
-| **A: リリース切替中の即時ロールバック** | host launcher / component の切替 PR 中に問題が発見された場合 | `git revert` で復元可能 |
+| **A: リリース切替中の即時ロールバック** | native-only official archive の切替 PR 中に問題が発見された場合 | `git revert` で復元可能 |
 | **B: 公開済み配布物の巻き戻し** | 公開済みリリースに深刻な問題が発生した場合 | last-known-good release tag または package が存在すること |
 | **C: component 再埋め込み / 再パッケージ** | launcher は正常だが guest component のみ壊れている場合 | 正常な component artifact が存在すること |
 
@@ -22,9 +22,10 @@ selfhost コンパイラまたは配布物に致命的な問題が発生した�
 stable release の rollback 先は、GitHub Release notes に記録した `Rollback anchor` を正本とする。
 
 - `last-known-good release tag`: 前回正常な stable tag (`vX.Y.Z`)
-- `host launcher assets`: その tag に添付した host launcher archive 群
-- `guest component assets`: 同じ tag に添付した companion sidecar `lsharp-{version}-{target}.component.wasm`
+- `native-only assets`: その tag に添付した `program.native` 入り archive 群
+- `rollback compatibility assets`: 同じ tag に紐づく host launcher archive / companion sidecar `lsharp-{version}-{target}.component.wasm`
 - `checksum`: 同じ release の checksum file
+- archive 内 `manifest.json` の `rollback_anchor`: rollback compatibility asset 名
 
 package manager package は二次配布のため、LKG 判定や rollback 復元元には使わない。必ず GitHub Release 上の tag + asset set を使う。
 
@@ -37,7 +38,7 @@ package manager package は二次配布のため、LKG 判定や rollback 復元
 
 ### A: リリース切替中の即時ロールバック
 
-host launcher / component の切替中に問題が発見された場合:
+native-only official archive の切替中に問題が発見された場合:
 
 ```bash
 git revert <cutover-commit>
@@ -56,11 +57,11 @@ git log --oneline -5
 git status
 ```
 
-同時に GitHub Release notes の `Rollback anchor` から以下を控える。
+同時に GitHub Release notes と native-only archive 内 `manifest.json` の `rollback_anchor` から以下を控える。
 
 - `last-known-good release tag`
-- host launcher asset 名
-- guest component asset 名（例: `lsharp-v0.2.0-x86_64-unknown-linux-gnu.component.wasm`）
+- native-only archive asset 名
+- rollback compatibility asset 名（host launcher archive と、必要に応じて `lsharp-v0.2.0-x86_64-unknown-linux-gnu.component.wasm`）
 - checksum file 名
 
 #### B-2. ロールバックブランチの作成

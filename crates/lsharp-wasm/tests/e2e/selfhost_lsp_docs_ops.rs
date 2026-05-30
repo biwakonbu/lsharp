@@ -2189,9 +2189,8 @@ fn test_e2e_ops02_artifact_policy() {
         "release.yml は配布 asset ファイル名も固定すること"
     );
     assert!(
-        release_content
-            .contains("dist/lsharp-${{ github.ref_name }}-${{ matrix.target }}.component.wasm"),
-        "release.yml は guest component sidecar asset も扱うこと"
+        release_content.contains("NATIVE_ONLY_RELEASE: \"1\""),
+        "release.yml は native-only official archive を stable release の既定にすること"
     );
     // アーティファクトポリシードキュメントが存在すること
     let policy_doc = project_root.join("docs/development/operations/artifact-policy.md");
@@ -2209,7 +2208,8 @@ fn test_e2e_ops02_artifact_policy() {
         "shadow-oracle-results",
         "lsharp-{version}-{target}",
         "lsharp-{version}-{target}.{ext}",
-        "lsharp-{version}-{target}.component.wasm",
+        "program.native",
+        "rollback compatibility",
     ] {
         assert!(
             policy_content.contains(documented_pattern),
@@ -2534,13 +2534,11 @@ fn test_e2e_native_ops03_official_native_only_replacement_backlog_contract() {
             .contains("- [x] `V2-13` Native-only official replacement target matrix"),
         "TODO.md の V2-13 target matrix は正本化済みとして完了扱いにすること"
     );
-    for expected in ["- [ ] `V2-15` Native-only official release smoke and rollback"] {
-        assert!(
-            current_remaining_section.contains(expected),
-            "TODO.md の正本に native-only 完全置換 task `{}` が必要",
-            expected
-        );
-    }
+    assert!(
+        current_remaining_section
+            .contains("- [x] `V2-15` Native-only official release smoke and rollback"),
+        "TODO.md の V2-15 native-only official release smoke and rollback は完了扱いにすること"
+    );
     assert!(
         current_remaining_section
             .contains("- [x] `V2-14` Native-only official release artifact layout"),
@@ -2584,6 +2582,8 @@ fn test_e2e_native_ops03_official_native_only_replacement_backlog_contract() {
         "program.native",
         "manifest.json",
         "checksums.txt",
+        "native-only release smoke",
+        "rollback anchor",
         "Linux x86_64 server priority track",
         "x86_64-pc-windows-msvc",
     ] {
@@ -2602,6 +2602,8 @@ fn test_e2e_native_ops03_official_native_only_replacement_backlog_contract() {
         "V2-14",
         "V2-15",
         "native-only official archive layout",
+        "native-only release smoke",
+        "rollback anchor",
         "program.native",
         "host launcher + embedded guest component",
         "Mac + Lima VM",
@@ -2617,9 +2619,10 @@ fn test_e2e_native_ops03_official_native_only_replacement_backlog_contract() {
     let release_workflow_content =
         std::fs::read_to_string(&release_workflow).expect("release.yml の読み込みに失敗");
     assert!(
-        release_workflow_content.contains("native-only replacement blocker")
-            && release_workflow_content.contains("experimental-native-rc"),
-        "release.yml は native-only 完全置換の blocker と現行 experimental RC の境界を明記すること"
+        release_workflow_content.contains("NATIVE_ONLY_RELEASE: \"1\"")
+            && release_workflow_content.contains("Native-only release evidence")
+            && release_workflow_content.contains("rollback compatibility"),
+        "release.yml は native-only official release と rollback compatibility の境界を明記すること"
     );
 }
 
@@ -3687,12 +3690,15 @@ fn test_e2e_ops06_release_smoke_contract() {
         "release.yml は attached release-level checksum asset `dist/checksums.txt` も扱うこと"
     );
     assert!(
-        workflow_content.contains(".component.wasm"),
-        "release.yml は attached guest component sidecar asset も扱うこと"
+        workflow_content.contains("NATIVE_ONLY_RELEASE")
+            && workflow_content.contains("native-only release"),
+        "release.yml は native-only release を stable build path として扱うこと"
     );
     assert!(
-        release_script_content.contains(".component.wasm"),
-        "release.sh は guest component sidecar asset を生成すること"
+        release_script_content.contains("program.native")
+            && release_script_content.contains("manifest.json")
+            && release_script_content.contains("NATIVE_ONLY_RELEASE"),
+        "release.sh は native-only official archive payload を生成すること"
     );
 
     let playbook_doc = project_root.join("docs/development/operations/release-playbook.md");
@@ -3709,13 +3715,10 @@ fn test_e2e_ops06_release_smoke_contract() {
         "release-smoke.sh は README.md / LICENSE / checksums.txt を required payload として扱うこと"
     );
     assert!(
-        smoke_content.contains(".component.wasm"),
-        "release-smoke.sh は packaged guest component sidecar も検証すること"
-    );
-    assert!(
-        smoke_content.contains("packaged lsharp-lsp binary not found")
-            || smoke_content.contains("LSHARP_LSP_BIN"),
-        "release-smoke.sh は packaged `lsharp-lsp` binary の存在も検証すること"
+        smoke_content.contains("program.native")
+            && smoke_content.contains("manifest.json")
+            && smoke_content.contains("rollback"),
+        "release-smoke.sh は native-only official archive payload と rollback anchor を検証すること"
     );
     assert!(
         smoke_content.contains(" doc ")
@@ -3749,9 +3752,11 @@ fn test_e2e_ops06_release_smoke_contract() {
         "release-distribution-signing.md は release-level checksum asset 契約を明記すること"
     );
     assert!(
-        playbook_content.contains(".component.wasm")
-            && release_distribution_content.contains(".component.wasm"),
-        "release/playbook/signing docs は guest component sidecar asset 契約も案内すること"
+        playbook_content.contains("program.native")
+            && release_distribution_content.contains("program.native")
+            && playbook_content.contains("rollback compatibility")
+            && release_distribution_content.contains("rollback compatibility"),
+        "release/playbook/signing docs は native-only payload と rollback compatibility 契約を案内すること"
     );
 }
 
@@ -3771,7 +3776,7 @@ fn test_e2e_ops06_release_curl_installer_contract() {
         "$HOME/.local/bin",
         "https://github.com/${REPO}/releases/download",
         "lsharp-${VERSION}-${TARGET}",
-        "lsharp.component.wasm",
+        "program.native",
         "curl -fsSL",
         "shasum -a 256",
         "sha256sum",
@@ -3964,7 +3969,7 @@ fn test_e2e_ops06_release_smoke_script_runs_fixture_archive() {
     let archive_root = temp_root.join("lsharp-v0.0.0-test-x86_64-unknown-linux-gnu");
     std::fs::create_dir_all(&archive_root).expect("fixture archive root の作成に失敗");
 
-    let fake_lsharp = archive_root.join("lsharp");
+    let fake_lsharp = archive_root.join("program.native");
     std::fs::write(
         &fake_lsharp,
         r#"#!/usr/bin/env bash
@@ -4035,35 +4040,15 @@ esac
     perms.set_mode(0o755);
     std::fs::set_permissions(&fake_lsharp, perms).expect("fake lsharp permission の設定に失敗");
 
-    let fake_lsp = archive_root.join("lsharp-lsp");
-    std::fs::write(
-        &fake_lsp,
-        r#"#!/usr/bin/env bash
-set -euo pipefail
-if [[ "${1:-}" == "--version" ]]; then
-  echo "lsharp-lsp 0.0.0-test"
-else
-  echo "lsharp-lsp help"
-fi
-"#,
-    )
-    .expect("fake lsharp-lsp の書き込みに失敗");
-    let mut lsp_perms = std::fs::metadata(&fake_lsp)
-        .expect("fake lsharp-lsp metadata の取得に失敗")
-        .permissions();
-    lsp_perms.set_mode(0o755);
-    std::fs::set_permissions(&fake_lsp, lsp_perms)
-        .expect("fake lsharp-lsp permission の設定に失敗");
-
     std::fs::write(archive_root.join("README.md"), "# fixture\n")
         .expect("README fixture 書き込み失敗");
     std::fs::write(archive_root.join("LICENSE"), "fixture license\n")
         .expect("LICENSE fixture 書き込み失敗");
     std::fs::write(
-        archive_root.join("lsharp.component.wasm"),
-        b"\0asmfixture-component",
+        archive_root.join("manifest.json"),
+        r#"{"schema_version":1,"archive_kind":"native-only official archive","target":"x86_64-unknown-linux-gnu","entry_binary":"program.native","rollback_anchor":{"kind":"rollback compatibility","asset":"lsharp-v0.0.0-test-x86_64-unknown-linux-gnu-host-launcher.tar.gz"},"smoke":{"kind":"native-only release smoke","binary":"program.native"}}"#,
     )
-    .expect("component sidecar fixture 書き込み失敗");
+    .expect("native-only manifest fixture 書き込み失敗");
 
     let checksum_output = Command::new("bash")
         .arg(&checksum_script)
@@ -4080,11 +4065,6 @@ fi
         .expect("checksums.txt の書き込みに失敗");
 
     let archive_path = temp_root.join("lsharp-v0.0.0-test-x86_64-unknown-linux-gnu.tar.gz");
-    std::fs::write(
-        temp_root.join("lsharp-v0.0.0-test-x86_64-unknown-linux-gnu.component.wasm"),
-        b"\0asmfixture-component",
-    )
-    .expect("release sidecar asset fixture 書き込み失敗");
     let tar_output = Command::new("tar")
         .arg("-czf")
         .arg(&archive_path)
@@ -4320,7 +4300,7 @@ fn test_e2e_ops07_test_fresh_clone_script_runs_binary_only_fixture_archive() {
     let archive_root = temp_root.join("lsharp-v0.0.0-test-x86_64-unknown-linux-gnu");
     std::fs::create_dir_all(&archive_root).expect("fixture archive root の作成に失敗");
 
-    let fake_lsharp = archive_root.join("lsharp");
+    let fake_lsharp = archive_root.join("program.native");
     std::fs::write(
         &fake_lsharp,
         r#"#!/usr/bin/env bash
@@ -4483,35 +4463,15 @@ esac
     perms.set_mode(0o755);
     std::fs::set_permissions(&fake_lsharp, perms).expect("fake lsharp permission の設定に失敗");
 
-    let fake_lsp = archive_root.join("lsharp-lsp");
-    std::fs::write(
-        &fake_lsp,
-        r#"#!/usr/bin/env bash
-set -euo pipefail
-if [[ "${1:-}" == "--version" ]]; then
-  echo "lsharp-lsp 0.0.0-test"
-else
-  echo "lsharp-lsp help"
-fi
-"#,
-    )
-    .expect("fake lsharp-lsp の書き込みに失敗");
-    let mut lsp_perms = std::fs::metadata(&fake_lsp)
-        .expect("fake lsharp-lsp metadata の取得に失敗")
-        .permissions();
-    lsp_perms.set_mode(0o755);
-    std::fs::set_permissions(&fake_lsp, lsp_perms)
-        .expect("fake lsharp-lsp permission の設定に失敗");
-
     std::fs::write(archive_root.join("README.md"), "# fixture\n")
         .expect("README fixture 書き込み失敗");
     std::fs::write(archive_root.join("LICENSE"), "fixture license\n")
         .expect("LICENSE fixture 書き込み失敗");
     std::fs::write(
-        archive_root.join("lsharp.component.wasm"),
-        b"\0asmfixture-component",
+        archive_root.join("manifest.json"),
+        r#"{"schema_version":1,"archive_kind":"native-only official archive","target":"x86_64-unknown-linux-gnu","entry_binary":"program.native","rollback_anchor":{"kind":"rollback compatibility","asset":"lsharp-v0.0.0-test-x86_64-unknown-linux-gnu-host-launcher.tar.gz"},"smoke":{"kind":"native-only release smoke","binary":"program.native"}}"#,
     )
-    .expect("component sidecar fixture 書き込み失敗");
+    .expect("native-only manifest fixture 書き込み失敗");
 
     let checksum_output = Command::new("bash")
         .arg(&checksum_script)

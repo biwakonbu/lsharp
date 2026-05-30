@@ -31,14 +31,15 @@ version bump
 
 native-only を公式配布へ完全置換する方針を後続トラックとして開始する。完了後は native-only archive を stable / nightly の正本にし、host launcher + embedded guest component は rollback compatibility 用の互換成果物へ降格する。
 
-V2-13 target matrix status は `docs/language/native-backend-spec.md` に正本化済み。現時点の native-only replacement blocker は V2-14/V2-15 の release artifact layout / smoke / rollback に残る。
+V2-13 target matrix status は `docs/language/native-backend-spec.md` に正本化済み。V2-14/V2-15 で native-only official archive layout / native-only release smoke / rollback anchor の stable 既定導線を正本化した。
+以後の native-only replacement blocker は target-specific blocker として扱う。
 
 1. target matrix status: `aarch64-apple-darwin` と Linux x86_64 server priority track は actual self-regeneration complete。Linux x86_64 は GitHub release workflow ではなく Mac + Lima VM の local gate `scripts/ci/native-linux-x86-selfregen.sh` で release 前に検証する。
 2. `x86_64-pc-windows-msvc` は native backend spec 上 BLOCKED で、COFF/PE runtime/link/smoke が未実装。
-3. `scripts/release.sh` と `scripts/ci/release-smoke.sh` は `lsharp.component.wasm` を公式 archive の必須 payload として扱う。
-4. `.github/workflows/release.yml` は host launcher matrix を公式 build とし、native-only は `experimental-native-rc` に留めている。
+3. `scripts/release.sh` と `scripts/ci/release-smoke.sh` は `program.native` / `manifest.json` / `checksums.txt` を native-only official archive の必須 payload として扱う。
+4. `.github/workflows/release.yml` は stable build path で `NATIVE_ONLY_RELEASE=1` を渡し、native-only release archive を GitHub Release asset として扱う。
 
-V2-14/V2-15 が完了するまで、stable release は現行の host launcher + embedded guest component を維持し、native-only artifact は rollback compatibility ではなく replacement candidate として検証する。
+stable release は native-only official archive を既定導線にする。host launcher + embedded guest component は rollback compatibility asset として保持し、default payload の `lsharp.component.wasm` companion sidecar には戻さない。
 
 ### native-only official archive layout
 
@@ -57,7 +58,7 @@ V2-14 で定義する native-only official archive layout は、host launcher + 
 - host launcher + embedded guest component archive は native-only official archive の rollback compatibility asset へ降格する
 - `lsharp.component.wasm` companion sidecar は stable 既定 payload から外し、rollback compatibility / investigation 用 asset として扱う
 
-V2-14 は layout の正本化までを完了条件にする。`scripts/release.sh` / `scripts/ci/release-smoke.sh` / `.github/workflows/release.yml` をこの layout へ切り替える実装、native-only smoke、checksum/signing/rollback anchor の最終 gate は V2-15 で扱う。
+V2-15 では `scripts/release.sh` / `scripts/ci/release-smoke.sh` / `.github/workflows/release.yml` をこの layout へ切り替え、native-only release smoke、checksum/signing/rollback anchor を stable 既定 gate にした。
 
 ## last-known-good (LKG) rollback anchor
 
@@ -65,8 +66,8 @@ V2-14 は layout の正本化までを完了条件にする。`scripts/release.s
 - rollback anchor の正本は **GitHub Release 上の stable tag + asset set** とし、package manager package は二次配布なので anchor にはしない。
 - anchor に最低限含める情報は以下の 3 点:
   1. `last-known-good release tag` (`vX.Y.Z`)
-  2. 同じ tag に紐づく host launcher archive / guest component sidecar (`lsharp-{version}-{target}.component.wasm`) の asset 名
-  3. 同じ release に添付した checksum file 名
+  2. 同じ tag に紐づく native-only archive (`program.native` を含む) と rollback compatibility asset 名
+  3. 同じ release に添付した checksum file 名、および archive 内 `manifest.json` の `rollback_anchor`
 - stable release は GitHub Release notes に `Rollback anchor` セクションを追記し、上記 3 点を明記してから完了扱いにする。
 - nightly は継続検証チャネルであり、LKG anchor は更新しない。
 

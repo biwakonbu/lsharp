@@ -60,9 +60,9 @@ compile_representative_slices() {
 resolve_packaged_lsharp_bin() {
   local extract_dir="$1"
   local candidate
-  candidate="$(find "$extract_dir" -mindepth 1 -maxdepth 3 -type f \( -name 'lsharp' -o -name 'lsharp.exe' \) -print -quit)"
+  candidate="$(find "$extract_dir" -mindepth 1 -maxdepth 3 -type f \( -name 'program.native' -o -name 'lsharp' -o -name 'lsharp.exe' \) -print -quit)"
   if [[ -z "$candidate" ]]; then
-    echo "ERROR: packaged lsharp binary not found under $extract_dir" >&2
+    echo "ERROR: packaged program.native or lsharp binary not found under $extract_dir" >&2
     exit 1
   fi
   printf '%s\n' "$candidate"
