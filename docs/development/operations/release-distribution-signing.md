@@ -31,14 +31,14 @@ version bump
 
 native-only を公式配布へ完全置換する方針を後続トラックとして開始する。完了後は native-only archive を stable / nightly の正本にし、host launcher + embedded guest component は rollback compatibility 用の互換成果物へ降格する。
 
-現時点の native-only replacement blocker は次のとおり。
+V2-13 target matrix status は `docs/language/native-backend-spec.md` に正本化済み。現時点の native-only replacement blocker は V2-14/V2-15 の release artifact layout / smoke / rollback に残る。
 
-1. Tier1 target matrix の native execution coverage が揃っていない。actual native self-regeneration は `aarch64-apple-darwin` と Linux x86_64 server priority track で完了しているが、Linux x86_64 は GitHub release workflow ではなく Mac + Lima VM の local gate `scripts/ci/native-linux-x86-selfregen.sh` で release 前に検証する。
+1. target matrix status: `aarch64-apple-darwin` と Linux x86_64 server priority track は actual self-regeneration complete。Linux x86_64 は GitHub release workflow ではなく Mac + Lima VM の local gate `scripts/ci/native-linux-x86-selfregen.sh` で release 前に検証する。
 2. `x86_64-pc-windows-msvc` は native backend spec 上 BLOCKED で、COFF/PE runtime/link/smoke が未実装。
 3. `scripts/release.sh` と `scripts/ci/release-smoke.sh` は `lsharp.component.wasm` を公式 archive の必須 payload として扱う。
 4. `.github/workflows/release.yml` は host launcher matrix を公式 build とし、native-only は `experimental-native-rc` に留めている。
 
-V2-13〜V2-15 が完了するまで、stable release は現行の host launcher + embedded guest component を維持し、native-only artifact は rollback compatibility ではなく replacement candidate として検証する。
+V2-14/V2-15 が完了するまで、stable release は現行の host launcher + embedded guest component を維持し、native-only artifact は rollback compatibility ではなく replacement candidate として検証する。
 
 ## last-known-good (LKG) rollback anchor
 

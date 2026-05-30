@@ -2529,8 +2529,12 @@ fn test_e2e_native_ops03_official_native_only_replacement_backlog_contract() {
         .nth(1)
         .and_then(|rest| rest.split("## Phase 11: Rust 完全撤去").next())
         .expect("TODO.md の現在の残タスク一覧 section が見つからない");
+    assert!(
+        current_remaining_section
+            .contains("- [x] `V2-13` Native-only official replacement target matrix"),
+        "TODO.md の V2-13 target matrix は正本化済みとして完了扱いにすること"
+    );
     for expected in [
-        "- [ ] `V2-13` Native-only official replacement target matrix",
         "- [ ] `V2-14` Native-only official release artifact layout",
         "- [ ] `V2-15` Native-only official release smoke and rollback",
     ] {
@@ -2551,6 +2555,11 @@ fn test_e2e_native_ops03_official_native_only_replacement_backlog_contract() {
         "x86_64-unknown-linux-gnu",
         "x86_64-pc-windows-msvc",
         "BLOCKED",
+        "target matrix status",
+        "actual self-regeneration complete",
+        "Mac + Lima VM local gate",
+        "release artifact layout pending",
+        "COFF/PE runtime/link/smoke pending",
     ] {
         assert!(
             native_spec_content.contains(expected),
@@ -2568,10 +2577,30 @@ fn test_e2e_native_ops03_official_native_only_replacement_backlog_contract() {
         "host launcher + embedded guest component",
         "rollback compatibility",
         "native-only replacement blocker",
+        "target matrix status",
+        "Linux x86_64 server priority track",
+        "x86_64-pc-windows-msvc",
     ] {
         assert!(
             release_policy_content.contains(expected),
             "release-distribution-signing.md は native-only 置換方針 `{}` を記述すること",
+            expected
+        );
+    }
+
+    let playbook = project_root.join("docs/development/operations/release-playbook.md");
+    let playbook_content =
+        std::fs::read_to_string(&playbook).expect("release-playbook.md の読み込みに失敗");
+    for expected in [
+        "V2-13 target matrix",
+        "V2-14",
+        "V2-15",
+        "host launcher + embedded guest component",
+        "Mac + Lima VM",
+    ] {
+        assert!(
+            playbook_content.contains(expected),
+            "release-playbook.md は native-only 置換残件境界 `{}` を記述すること",
             expected
         );
     }

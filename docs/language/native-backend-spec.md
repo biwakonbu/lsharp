@@ -51,14 +51,14 @@ v1 で対象とするターゲットは次のとおりである。
 - `aarch64-apple-darwin`
 - `x86_64-unknown-linux-gnu`
 
-Native-only official replacement track で公式 Tier1 置換に必要な target matrix は次のとおりである。
+Native-only official replacement track で公式 Tier1 置換に必要な target matrix status は次のとおりである。V2-13 の範囲では target ごとの execution coverage と後続 blocker の境界を正本化し、release artifact layout / stable smoke / rollback は V2-14/V2-15 に残す。
 
 | target | 現状 | 置換 blocker |
 |---|---|---|
-| `aarch64-apple-darwin` | actual native self-regeneration / experimental RC 完了 | stable 公式導線への昇格 |
-| `x86_64-apple-darwin` | spec 対象、実行 artifact coverage は未完了 | actual native self-regeneration と release smoke |
-| `x86_64-unknown-linux-gnu` | Linux x86_64 server priority track の actual self-regeneration required gate 完了 | official native-only archive layout / release smoke |
-| `x86_64-pc-windows-msvc` | **BLOCKED** | COFF/PE runtime/link/smoke と Authenticode gate |
+| `aarch64-apple-darwin` | actual self-regeneration complete / experimental RC 完了 | release artifact layout pending、stable 公式導線への昇格 |
+| `x86_64-apple-darwin` | spec 対象、実行 artifact coverage は未完了 | actual self-regeneration complete 未達、release smoke pending |
+| `x86_64-unknown-linux-gnu` | Linux x86_64 server priority track の actual self-regeneration complete。Mac + Lima VM local gate で証跡化 | release artifact layout pending、release smoke pending |
+| `x86_64-pc-windows-msvc` | **BLOCKED** | COFF/PE runtime/link/smoke pending と Authenticode gate |
 
 ### Linux x86_64 server priority track
 
