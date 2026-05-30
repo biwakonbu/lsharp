@@ -1174,7 +1174,25 @@ fn test_linux_x86_representative_seed_roots_slot_layout_accumulators() {
     assert!(
         source.contains("starts-ref (ref-new (vector-new 8))")
             && source.contains("(defn make-x86-slot-layout-context")
+            && source.contains("(defn print-x86-slot-layout-progress [marker ctx]")
+            && source.contains("(print-x86-slot-layout-progress 9000000059 ctx)")
+            && source.contains("(print-x86-slot-layout-progress 9000000060 ctx)")
+            && source.contains("(print-x86-slot-layout-progress 9000000061 ctx)")
+            && source.contains("(print-x86-slot-layout-progress 9000000062 ctx)")
+            && source.contains("(defn linux-x86-native-function-body-size-loop-bounded")
+            && source.contains(
+                "(linux-x86-native-function-body-size-loop-bounded ctx idx total current-depth 64)"
+            )
+            && source.contains("(defn linux-x86-native-function-size-bounded")
+            && source.contains("(linux-x86-native-function-size-bounded func-meta functions)")
             && source.contains("(defn collect-callable-function-slot-starts-x86-loop [ctx]")
+            && source.contains(
+                "(defn collect-callable-function-slot-starts-x86-loop-bounded [ctx remaining]"
+            )
+            && source.contains("(collect-callable-function-slot-starts-x86-loop-bounded ctx 64)")
+            && source.contains(
+                "(collect-callable-function-slot-starts-x86-loop-bounded ctx (- remaining 1))"
+            )
             && source.contains("(collect-callable-function-slot-starts-x86-loop ctx)")
             && !source.contains("collect-callable-function-slot-starts-x86-loop functions (+")
             && source.contains("idx-ref (ref-new import-count)")
@@ -1186,9 +1204,14 @@ fn test_linux_x86_representative_seed_roots_slot_layout_accumulators() {
             && source.contains("(ref-get starts-ref)")
             && source.contains("total-ref (ref-new 0)")
             && source.contains("(defn callable-user-total-slot-size-x86-loop [ctx]")
+            && source
+                .contains("(defn callable-user-total-slot-size-x86-loop-bounded [ctx remaining]")
+            && source.contains("(callable-user-total-slot-size-x86-loop-bounded ctx 64)")
+            && source
+                .contains("(callable-user-total-slot-size-x86-loop-bounded ctx (- remaining 1))")
             && source.contains("(callable-user-total-slot-size-x86-loop ctx)")
             && source.contains("(ref-get (x86-slot-layout-context-offset-ref ctx))"),
-        "Linux x86 segmented seed は starts/user-total 計算中の vector-push/native-function-size-x86 で accumulator local を壊さないよう ref slot で保持するべき"
+        "Linux x86 segmented seed は starts/user-total 計算中の vector-push/native-function-size-x86 で accumulator local を壊さないよう ref slot で保持し、native stack overflow を避けるため bounded step で進めるべき"
     );
 }
 
@@ -2313,7 +2336,7 @@ fn test_native_codegen_x86_read_file_runtime_call_direct_appends_in_stage1() {
 }
 
 #[test]
-fn test_native_codegen_x86_read_file_helper_uses_128k_cap_for_selfhost_seed() {
+fn test_native_codegen_x86_read_file_helper_uses_2m_cap_for_native_codegen_source() {
     let source = selfhost_module("NativeCodegen.ls");
     let helper = source
         .split("(defn emit-x86-selfhost-read-file-helper []")
@@ -2333,11 +2356,11 @@ fn test_native_codegen_x86_read_file_helper_uses_128k_cap_for_selfhost_seed() {
         .expect("NativeCodegen.ls に x86 read-file helper size が存在すること");
 
     assert!(
-        source.contains("最大 128KiB")
-            && helper.contains("part23 (byte-vector-4 0 2 0 186)")
-            && helper.contains("part35 (byte-vector-4 0 0 2 0)")
+        source.contains("最大 2MiB")
+            && helper.contains("part23 (byte-vector-4 0 32 0 186)")
+            && helper.contains("part35 (byte-vector-4 0 0 32 0)")
             && helper_size.contains("207"),
-        "Linux x86 stage2 は 73,984 bytes の Seed.ls を read-file するため、x86 helper は 128KiB の mmap/read cap を同じ 207 bytes 内で持つべき"
+        "Linux x86 stage2 は約 1MiB の NativeCodegen.ls を read-file するため、x86 helper は 2MiB の mmap/read cap を同じ 207 bytes 内で持つべき"
     );
 }
 
@@ -7519,8 +7542,84 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
             (root_pop)
             final))))))
 
+(defn make-linux-x86-body-size-state [idx total current-depth]
+  (let [base0 (vector-push (vector-new 3) idx)]
+    (do
+      (root_push base0)
+      (let [base1 (vector-push base0 total)]
+        (do
+          (root_push base1)
+          (let [state (vector-push base1 current-depth)]
+            (do
+              (root_pop)
+              (root_pop)
+              state)))))))
+
+(defn linux-x86-native-function-body-size-loop-bounded [ctx idx total current-depth remaining]
+  (let [ir-func (vector-get ctx 0)
+        function-metas (vector-get ctx 1)
+        len (vector-get ctx 2)]
+    (if (>= idx len)
+      (make-linux-x86-body-size-state idx total current-depth)
+      (if (<= remaining 0)
+        (make-linux-x86-body-size-state idx total current-depth)
+        (do
+          (root_push ctx)
+          (let [instr (vector-get ir-func idx)
+                opcode (vector-get instr 0)
+                operand (vector-get instr 1)
+                next-total (+ total (native-instr-size-x86 opcode operand function-metas current-depth))
+                next-depth (apply-stack-delta current-depth (opcode-stack-delta opcode operand function-metas))]
+            (do
+              (let [result (linux-x86-native-function-body-size-loop-bounded ctx (+ idx 1) next-total next-depth (- remaining 1))]
+                (do
+                  (root_pop)
+                  result)))))))))
+
+(defn linux-x86-native-function-body-size-loop [ctx idx total current-depth]
+  (do
+    (root_push ctx)
+    (let [state (linux-x86-native-function-body-size-loop-bounded ctx idx total current-depth 64)
+          next-idx (vector-get state 0)
+          next-total (vector-get state 1)
+          next-depth (vector-get state 2)
+          len (vector-get ctx 2)]
+      (do
+        (let [result
+              (if (>= next-idx len)
+                next-total
+                (linux-x86-native-function-body-size-loop ctx next-idx next-total next-depth))]
+          (do
+            (root_pop)
+            result))))))
+
+(defn linux-x86-native-function-size-bounded [func-meta function-metas]
+  (let [param-count (native-function-param-count func-meta)
+        local-count (native-function-local-count func-meta)
+        ir-func (native-function-ir func-meta)
+        stack-bytes (native-local-stack-bytes-with-window-x86 ir-func (+ (+ param-count local-count) 1) function-metas)
+        frame-bytes (if (> stack-bytes 0) 14 0)
+        param-spill-bytes (if (>= param-count 20)
+                            (native-param-spill-bytes-x86-twenty-plus param-count)
+                            (if (> param-count 6)
+                              (+ 53 (* (- param-count 7) 11))
+                              (if (= param-count 6)
+                                42
+                                (if (= param-count 5)
+                                  35
+                                  (if (= param-count 4)
+                                    28
+                                    (if (= param-count 3)
+                                      21
+                                      (if (= param-count 2)
+                                        14
+                                        (if (= param-count 1) 7 0))))))))
+        body-size-ctx (make-x86-body-size-context ir-func function-metas (vector-length ir-func))
+        body-bytes (linux-x86-native-function-body-size-loop body-size-ctx 0 0 0)]
+    (+ (+ (+ 6 frame-bytes) param-spill-bytes) body-bytes)))
+
 (defn x86-function-slot-size [func-meta functions]
-  (+ (native-function-size-x86 func-meta functions) 2048))
+  (+ (linux-x86-native-function-size-bounded func-meta functions) 2048))
 
 (defn make-x86-slot-layout-context [functions starts-ref idx-ref len-ref offset-ref]
   (do
@@ -7560,44 +7659,71 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
 (defn x86-slot-layout-context-len-ref [ctx] (vector-get ctx 3))
 (defn x86-slot-layout-context-offset-ref [ctx] (vector-get ctx 4))
 
-(defn collect-callable-function-slot-starts-x86-loop [ctx]
+(defn print-x86-slot-layout-progress [marker ctx]
+  (if (> (string-length (command-line-arg 8)) 0)
+    (let [idx-ref (x86-slot-layout-context-idx-ref ctx)
+          len-ref (x86-slot-layout-context-len-ref ctx)
+          starts-ref (x86-slot-layout-context-starts-ref ctx)
+          offset-ref (x86-slot-layout-context-offset-ref ctx)]
+      (do
+        (print marker)
+        (print (ref-get idx-ref))
+        (print (ref-get len-ref))
+        (print (vector-length (ref-get starts-ref)))
+        (print (ref-get offset-ref))
+        0))
+    0))
+
+(defn collect-callable-function-slot-starts-x86-loop-bounded [ctx remaining]
   (let [idx-ref (x86-slot-layout-context-idx-ref ctx)
+        len-ref (x86-slot-layout-context-len-ref ctx)
+        starts-ref (x86-slot-layout-context-starts-ref ctx)]
+    (if (>= (ref-get idx-ref) (ref-get len-ref))
+      (ref-get starts-ref)
+      (if (<= remaining 0)
+        (ref-get starts-ref)
+        (do
+          (root_push ctx)
+          (root_push idx-ref)
+          (root_push len-ref)
+          (let [functions (x86-slot-layout-context-functions ctx)
+                offset-ref (x86-slot-layout-context-offset-ref ctx)]
+            (do
+              (root_push functions)
+              (root_push starts-ref)
+              (root_push offset-ref)
+              (let [func-meta (vector-get functions (ref-get idx-ref))]
+                (do
+                  (root_push func-meta)
+                  (let [next-starts (vector-push (ref-get starts-ref) (ref-get offset-ref))]
+                    (do
+                      (root_push next-starts)
+                      (ref-set starts-ref next-starts)
+                      (let [slot-size (x86-function-slot-size func-meta functions)]
+                        (do
+                          (ref-set offset-ref (+ (ref-get offset-ref) slot-size))
+                          (ref-set idx-ref (+ (ref-get idx-ref) 1))
+                          (let [final (collect-callable-function-slot-starts-x86-loop-bounded ctx (- remaining 1))]
+                            (do
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              final)))))))))))))))
+
+(defn collect-callable-function-slot-starts-x86-loop [ctx]
+  (let [_before (print-x86-slot-layout-progress 9000000059 ctx)
+        result (collect-callable-function-slot-starts-x86-loop-bounded ctx 64)
+        _after (print-x86-slot-layout-progress 9000000060 ctx)
+        idx-ref (x86-slot-layout-context-idx-ref ctx)
         len-ref (x86-slot-layout-context-len-ref ctx)]
     (if (>= (ref-get idx-ref) (ref-get len-ref))
-      (ref-get (x86-slot-layout-context-starts-ref ctx))
-      (do
-        (root_push ctx)
-        (root_push idx-ref)
-        (root_push len-ref)
-        (let [functions (x86-slot-layout-context-functions ctx)
-              starts-ref (x86-slot-layout-context-starts-ref ctx)
-              offset-ref (x86-slot-layout-context-offset-ref ctx)]
-          (do
-            (root_push functions)
-            (root_push starts-ref)
-            (root_push offset-ref)
-            (let [func-meta (vector-get functions (ref-get idx-ref))]
-              (do
-                (root_push func-meta)
-                (let [next-starts (vector-push (ref-get starts-ref) (ref-get offset-ref))]
-                  (do
-                    (root_push next-starts)
-                    (ref-set starts-ref next-starts)
-                    (let [slot-size (x86-function-slot-size func-meta functions)]
-                      (do
-                        (ref-set offset-ref (+ (ref-get offset-ref) slot-size))
-                        (ref-set idx-ref (+ (ref-get idx-ref) 1))
-                        (let [final (collect-callable-function-slot-starts-x86-loop ctx)]
-                          (do
-                            (root_pop)
-                            (root_pop)
-                            (root_pop)
-                            (root_pop)
-                            (root_pop)
-                            (root_pop)
-                            (root_pop)
-                            (root_pop)
-                            final))))))))))))))
+      result
+      (collect-callable-function-slot-starts-x86-loop ctx))))
 
 (defn collect-callable-function-slot-starts-x86 [functions import-count]
   (do
@@ -7624,36 +7750,48 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
                 (root_pop)
                 result))))))))
 
-(defn callable-user-total-slot-size-x86-loop [ctx]
+(defn callable-user-total-slot-size-x86-loop-bounded [ctx remaining]
   (let [idx-ref (x86-slot-layout-context-idx-ref ctx)
         len-ref (x86-slot-layout-context-len-ref ctx)]
     (if (>= (ref-get idx-ref) (ref-get len-ref))
       (ref-get (x86-slot-layout-context-offset-ref ctx))
-      (do
-        (root_push ctx)
-        (root_push idx-ref)
-        (root_push len-ref)
-        (let [functions (x86-slot-layout-context-functions ctx)
-              offset-ref (x86-slot-layout-context-offset-ref ctx)]
-          (do
-            (root_push functions)
-            (root_push offset-ref)
-            (let [func-meta (vector-get functions (ref-get idx-ref))]
-              (do
-                (root_push func-meta)
-                (let [slot-size (x86-function-slot-size func-meta functions)]
-                  (do
-                    (ref-set offset-ref (+ (ref-get offset-ref) slot-size))
-                    (ref-set idx-ref (+ (ref-get idx-ref) 1))
-                    (let [final (callable-user-total-slot-size-x86-loop ctx)]
-                      (do
-                        (root_pop)
-                        (root_pop)
-                        (root_pop)
-                        (root_pop)
-                        (root_pop)
-                        (root_pop)
-                        final))))))))))))
+      (if (<= remaining 0)
+        (ref-get (x86-slot-layout-context-offset-ref ctx))
+        (do
+          (root_push ctx)
+          (root_push idx-ref)
+          (root_push len-ref)
+          (let [functions (x86-slot-layout-context-functions ctx)
+                offset-ref (x86-slot-layout-context-offset-ref ctx)]
+            (do
+              (root_push functions)
+              (root_push offset-ref)
+              (let [func-meta (vector-get functions (ref-get idx-ref))]
+                (do
+                  (root_push func-meta)
+                  (let [slot-size (x86-function-slot-size func-meta functions)]
+                    (do
+                      (ref-set offset-ref (+ (ref-get offset-ref) slot-size))
+                      (ref-set idx-ref (+ (ref-get idx-ref) 1))
+                      (let [final (callable-user-total-slot-size-x86-loop-bounded ctx (- remaining 1))]
+                        (do
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          final)))))))))))))
+
+(defn callable-user-total-slot-size-x86-loop [ctx]
+  (let [_before (print-x86-slot-layout-progress 9000000061 ctx)
+        result (callable-user-total-slot-size-x86-loop-bounded ctx 64)
+        _after (print-x86-slot-layout-progress 9000000062 ctx)
+        idx-ref (x86-slot-layout-context-idx-ref ctx)
+        len-ref (x86-slot-layout-context-len-ref ctx)]
+    (if (>= (ref-get idx-ref) (ref-get len-ref))
+      result
+      (callable-user-total-slot-size-x86-loop ctx))))
 
 (defn callable-user-total-slot-size-x86 [functions import-count]
   (do
