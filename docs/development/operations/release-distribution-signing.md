@@ -40,6 +40,25 @@ V2-13 target matrix status は `docs/language/native-backend-spec.md` に正本�
 
 V2-14/V2-15 が完了するまで、stable release は現行の host launcher + embedded guest component を維持し、native-only artifact は rollback compatibility ではなく replacement candidate として検証する。
 
+### native-only official archive layout
+
+V2-14 で定義する native-only official archive layout は、host launcher + embedded guest component 配布から独立した target-native payload を正本にする。
+
+必須 payload:
+
+- `program.native`: target native executable。stable 既定導線へ昇格後は `lsharp` CLI の実体として扱う
+- `manifest.json`: target triple、archive schema version、source commit、native backend evidence、entry binary、rollback compatibility asset への参照を記録する
+- `checksums.txt`: archive 内 payload の SHA-256 一覧
+- `README.md` / `LICENSE`: 配布物の利用条件と最小実行手順
+- target metadata: object format、execution gate、signing/notarization status、known blocker を `manifest.json` 内に保持する
+
+互換 payload:
+
+- host launcher + embedded guest component archive は native-only official archive の rollback compatibility asset へ降格する
+- `lsharp.component.wasm` companion sidecar は stable 既定 payload から外し、rollback compatibility / investigation 用 asset として扱う
+
+V2-14 は layout の正本化までを完了条件にする。`scripts/release.sh` / `scripts/ci/release-smoke.sh` / `.github/workflows/release.yml` をこの layout へ切り替える実装、native-only smoke、checksum/signing/rollback anchor の最終 gate は V2-15 で扱う。
+
 ## last-known-good (LKG) rollback anchor
 
 - stable release は毎回 1 つの **rollback anchor** を持つ。

@@ -142,13 +142,15 @@ experimental archive には top-level `manifest.json` / `actual-stage23-gap.json
 
 ### 9. Native-only official replacement track
 
-native-only を公式配布へ完全置換する作業のうち、V2-13 target matrix は完了済みである。残る active backlog は V2-14/V2-15 の native-only official archive layout / release smoke / rollback anchor で、完了後は native-only archive を stable / nightly の正本にし、host launcher + embedded guest component は rollback compatibility 用の互換成果物へ降格する。
+native-only を公式配布へ完全置換する作業のうち、V2-13 target matrix と V2-14 native-only official archive layout は完了済みである。残る active backlog は V2-15 の release smoke / rollback anchor で、完了後は native-only archive を stable / nightly の正本にし、host launcher + embedded guest component は rollback compatibility 用の互換成果物へ降格する。
+
+V2-14 の native-only official archive layout は `program.native`、`manifest.json`、`checksums.txt`、README/LICENSE、target metadata を必須 payload とする。`program.native` は target native executable、`manifest.json` は target triple / archive schema version / source commit / native backend evidence / rollback compatibility asset 参照を持つ。現行の host launcher + embedded guest component archive と `lsharp.component.wasm` companion sidecar は stable 既定 payload ではなく rollback compatibility asset へ降格する。
 
 現時点では以下が native-only replacement blocker である。
 
 1. actual native self-regeneration は `aarch64-apple-darwin` と Linux x86_64 server priority track で完了している。Linux x86_64 は tag release 前に Mac + Lima VM 上で `NATIVE_LINUX_X86_HOSTGEN_VM_ARTIFACT_ID=<release-id> scripts/ci/native-linux-x86-selfregen.sh` を実行し、stage2/stage3 compare 証跡を local artifact として残す。`x86_64-apple-darwin` / `x86_64-pc-windows-msvc` の Tier1 official gate は未完了。
 2. `x86_64-pc-windows-msvc` は native backend spec 上 BLOCKED で、COFF/PE runtime/link/smoke と Authenticode gate が必要。
-3. `scripts/release.sh` / `scripts/ci/release-smoke.sh` / `.github/workflows/release.yml` は現行 stable 配布として host launcher + embedded guest component を前提にしている。
+3. `scripts/release.sh` / `scripts/ci/release-smoke.sh` / `.github/workflows/release.yml` は現行 stable 配布として host launcher + embedded guest component を前提にしている。これらを native-only official archive layout に切り替える実装は V2-15 で扱う。
 
 この track を再開する場合は、V2-13 target matrix の正本である `docs/language/native-backend-spec.md` を確認し、次に native-only official archive layout / release smoke / rollback anchor を `release-distribution-signing.md` と workflow に同期する。
 

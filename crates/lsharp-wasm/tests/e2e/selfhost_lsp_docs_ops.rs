@@ -2534,16 +2534,18 @@ fn test_e2e_native_ops03_official_native_only_replacement_backlog_contract() {
             .contains("- [x] `V2-13` Native-only official replacement target matrix"),
         "TODO.md の V2-13 target matrix は正本化済みとして完了扱いにすること"
     );
-    for expected in [
-        "- [ ] `V2-14` Native-only official release artifact layout",
-        "- [ ] `V2-15` Native-only official release smoke and rollback",
-    ] {
+    for expected in ["- [ ] `V2-15` Native-only official release smoke and rollback"] {
         assert!(
             current_remaining_section.contains(expected),
             "TODO.md の正本に native-only 完全置換 task `{}` が必要",
             expected
         );
     }
+    assert!(
+        current_remaining_section
+            .contains("- [x] `V2-14` Native-only official release artifact layout"),
+        "TODO.md の V2-14 native-only official release artifact layout は完了扱いにすること"
+    );
 
     let native_spec = project_root.join("docs/language/native-backend-spec.md");
     let native_spec_content =
@@ -2578,6 +2580,10 @@ fn test_e2e_native_ops03_official_native_only_replacement_backlog_contract() {
         "rollback compatibility",
         "native-only replacement blocker",
         "target matrix status",
+        "native-only official archive layout",
+        "program.native",
+        "manifest.json",
+        "checksums.txt",
         "Linux x86_64 server priority track",
         "x86_64-pc-windows-msvc",
     ] {
@@ -2595,6 +2601,8 @@ fn test_e2e_native_ops03_official_native_only_replacement_backlog_contract() {
         "V2-13 target matrix",
         "V2-14",
         "V2-15",
+        "native-only official archive layout",
+        "program.native",
         "host launcher + embedded guest component",
         "Mac + Lima VM",
     ] {
