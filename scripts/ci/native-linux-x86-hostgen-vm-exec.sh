@@ -44,6 +44,18 @@ cleanup_vm_work_dir() {
   limactl shell "${VM_NAME}" -- rm -rf "${VM_WORK_DIR}" >/dev/null 2>&1 || true
 }
 
+ensure_vm_running() {
+  local status
+  status="$(limactl list "${VM_NAME}" --format '{{.Status}}' 2>/dev/null || true)"
+  if [[ "${status}" = "Running" ]]; then
+    return 0
+  fi
+  echo "Starting Lima VM ${VM_NAME} (current status: ${status:-unknown})"
+  limactl start --tty=false "${VM_NAME}"
+}
+
+ensure_vm_running
+
 rm -rf "${ARTIFACT_DIR}"
 mkdir -p "${ARTIFACT_DIR}"
 
@@ -245,7 +257,7 @@ limactl shell "${VM_NAME}" -- env \
   LSHARP_NATIVE_LINUX_X86_ACTUAL_TIMEOUT="${LSHARP_NATIVE_LINUX_X86_ACTUAL_TIMEOUT:-900}" \
   LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_SIZE="${LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_SIZE:-256}" \
   LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_RETRIES="${LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_RETRIES:-1}" \
-  LSHARP_NATIVE_LINUX_X86_ACTUAL_HEAP_BYTES="${LSHARP_NATIVE_LINUX_X86_ACTUAL_HEAP_BYTES:-4294967296}" \
+  LSHARP_NATIVE_LINUX_X86_ACTUAL_HEAP_BYTES="${LSHARP_NATIVE_LINUX_X86_ACTUAL_HEAP_BYTES:-2147483648}" \
   LSHARP_NATIVE_LINUX_X86_VM_REPLAY_LOCK_DIR="${LSHARP_NATIVE_LINUX_X86_VM_REPLAY_LOCK_DIR:-/tmp/lsharp-native-linux-x86-hostgen-vm-replay.lock}" \
   LSHARP_NATIVE_LINUX_X86_STAGE2_METADATA_START="${LSHARP_NATIVE_LINUX_X86_STAGE2_METADATA_START:-}" \
   LSHARP_NATIVE_LINUX_X86_STAGE2_METADATA_END="${LSHARP_NATIVE_LINUX_X86_STAGE2_METADATA_END:-}" \

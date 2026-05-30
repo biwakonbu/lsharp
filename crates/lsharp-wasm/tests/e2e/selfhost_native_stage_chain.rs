@@ -382,43 +382,9 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                          (print-packed-code-bytes-loop data 0 data-len))
                        0)))
                  (root_pop))))))"#;
-    let payload_expr = r#"(let [payload-progress-mode (if (> (string-length (command-line-arg 8)) 0) 1 0)]
-      (do
-        (if (= payload-progress-mode 1)
-          (do
-            (print 9000000030)
-            (if (> (string-length (command-line-arg 9)) 0)
-              (compile-file-mode-entry-shape-progress-probe)
-              (print (string-length (command-line-arg 1)))))
-          0)
-        (let [progress-after-pairs-probe (if (= payload-progress-mode 1)
-                                         (do
-                                           (print 9000000039)
-                                           (compile-file-mode-cache-pairs-progress-probe)
-                                           (print 9000000040))
-                                         0)
-              progress-after-compile-probe (if (= payload-progress-mode 1)
-                                            (do
-                                              (print 9000000041)
-                                              (compile-file-mode-cache-compile-pair-progress-probe)
-                                              (print 9000000042))
-                                            0)
-              payload-base (compile-file-functions-payload-with-cache (command-line-arg 1) 10 cache-ref parse-count-ref)
-              payload-root (root_push payload-base)
-              functions (vector-get payload-base 0)
-              data (vector-get payload-base 1)
-              bounded-main-func-idx (+ 9 (vector-length functions))
-              progress-after-payload (if (= payload-progress-mode 1)
-                                      (do
-                                        (print 9000000031)
-                                        (print (vector-length functions))
-                                        (print (vector-length data))
-                                        (print bounded-main-func-idx)
-                                        (print (vector-length payload-base))
-                                        (print (vector-length (vector-get payload-base 0)))
-                                        (print (vector-length (vector-get payload-base 1))))
-                                      0)]
-          payload-base)))"#;
+    let payload_expr = r#"(let [payload-base (compile-file-functions-payload-with-cache (command-line-arg 1) 10 cache-ref parse-count-ref)
+      payload-root (root_push payload-base)]
+      payload-base)"#;
     let source = actual_stage23_seed_source_with_payload_and_code_binding_and_target(
         payload_expr,
         code_binding_expr,
@@ -426,60 +392,18 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
         main_body,
     );
     let source = strip_linux_x86_unused_base64_helpers(source);
-    let payload_bindings = r#"payload-progress-mode (if (> (string-length (command-line-arg 8)) 0) 1 0)
-         progress-after-payload-start (if (= payload-progress-mode 1)
-          (do
-            (print 9000000030)
-            (if (> (string-length (command-line-arg 9)) 0)
-              (compile-file-mode-entry-shape-progress-probe)
-              (print (string-length (command-line-arg 1)))))
-          0)
-         progress-after-pairs-probe (if (= payload-progress-mode 1)
-                                         (do
-                                           (print 9000000039)
-                                           (compile-file-mode-cache-pairs-progress-probe)
-                                           (print 9000000040))
-                                         0)
-         progress-after-compile-probe (if (= payload-progress-mode 1)
-                                            (do
-                                              (print 9000000041)
-                                              (compile-file-mode-cache-compile-pair-progress-probe)
-                                              (print 9000000042))
-                                            0)
-         payload-base (compile-file-functions-payload-with-cache (command-line-arg 1) 10 cache-ref parse-count-ref)
+    let payload_bindings = r#"payload-base (compile-file-functions-payload-with-cache (command-line-arg 1) 10 cache-ref parse-count-ref)
          payload-root (root_push payload-base)
          payload payload-base
          functions (vector-get payload-base 0)
          data (vector-get payload-base 1)
          bounded-main-func-idx (+ 9 (vector-length functions))
          functions-root (root_push functions)
-         data-root (root_push data)
-         progress-after-payload (if (= payload-progress-mode 1)
-                                      (do
-                                        (print 9000000031)
-                                        (print (vector-length functions))
-                                        (print (vector-length data))
-                                        (print bounded-main-func-idx)
-                                        (print (vector-length payload-base))
-                                        (print (vector-length (vector-get payload-base 0)))
-                                        (print (vector-length (vector-get payload-base 1))))
-                                      0)"#;
+         data-root (root_push data)"#;
     let source = source.replace(&format!("payload {payload_expr}"), payload_bindings);
     let source = source.replace(
         "      (let [functions (vector-get payload 0)\n            data (vector-get payload 1)]",
         "      (let [payload-observed payload]",
-    );
-    let source = source.replace(
-        "callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))",
-        r#"callables (let [pre-callable-progress (if (= (if (> (string-length (command-line-arg 8)) 0) 1 0) 1)
-                          (do
-                            (print 9000000043)
-                            (print (vector-length payload))
-                            (print (vector-length functions))
-                            (print (vector-length data))
-                            (print (+ 9 (vector-length functions))))
-                          0)]
-                    (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions)))"#,
     );
     let source = source.replace(
         "native-callables (normalize-selfhost-native-function-metas-for-target callables target)",
@@ -600,8 +524,9 @@ fn test_linux_x86_representative_seed_uses_layout_emit_for_segmented_native_code
     );
     assert!(
         source.contains("(defn x86-function-slot-size")
-            && source.contains("(+ (native-function-size-x86 func-meta functions) 2048)")
-            && source.contains("(collect-callable-function-slot-starts-x86 native-callables 10)"),
+            && source
+                .contains("(+ (linux-x86-native-function-size-bounded func-meta functions) 2048)")
+            && source.contains("(collect-callable-function-slot-layout-x86 native-callables 10)"),
         "Linux x86 segmented seed は actual native stage の function-size undercount で helper 境界を壊さないよう、guard bytes 付き slot layout を使うべき"
     );
     assert!(
@@ -638,8 +563,8 @@ fn test_linux_x86_representative_seed_uses_layout_emit_for_segmented_native_code
         !source.contains("defn build-callables-with-imports"),
         !source.contains("defn decls-module-hash-or-minus-one"),
         !source.contains("defn find-module-pair-index"),
-        source.contains("pre-callable-progress"),
-        source.contains("pre-callable-progress (if (= (if (> (string-length (command-line-arg 8)) 0) 1 0) 1)"),
+        !source.contains("pre-callable-progress"),
+        !source.contains("pre-callable-progress (if (= (if (> (string-length (command-line-arg 8)) 0) 1 0) 1)"),
         source.contains("append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions)"),
         source.contains("main-func-idx bounded-main-func-idx"),
         source.contains("entrypoint-func-idx bounded-main-func-idx"),
@@ -745,7 +670,7 @@ fn test_native_linux_x86_hostgen_vm_script_forwards_actual_chunk_env_to_guest() 
         r#"LSHARP_NATIVE_LINUX_X86_ACTUAL_TIMEOUT="${LSHARP_NATIVE_LINUX_X86_ACTUAL_TIMEOUT:-900}""#,
         r#"LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_SIZE="${LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_SIZE:-256}""#,
         r#"LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_RETRIES="${LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_RETRIES:-1}""#,
-        r#"LSHARP_NATIVE_LINUX_X86_ACTUAL_HEAP_BYTES="${LSHARP_NATIVE_LINUX_X86_ACTUAL_HEAP_BYTES:-4294967296}""#,
+        r#"LSHARP_NATIVE_LINUX_X86_ACTUAL_HEAP_BYTES="${LSHARP_NATIVE_LINUX_X86_ACTUAL_HEAP_BYTES:-2147483648}""#,
     ] {
         assert!(
             vm_exec.contains(assignment),
@@ -1034,6 +959,37 @@ fn test_native_linux_x86_hostgen_vm_script_cleans_vm_work_dir_after_artifact_cop
 }
 
 #[test]
+fn test_native_linux_x86_hostgen_vm_script_starts_stopped_vm_before_host_generation() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+    let ensure_body = shell_function_body(&script, "ensure_vm_running");
+
+    assert!(
+        ensure_body.contains(r#"limactl list "${VM_NAME}" --format '{{.Status}}'"#)
+            && ensure_body.contains(r#"[[ "${status}" = "Running" ]]"#)
+            && ensure_body.contains(r#"limactl start --tty=false "${VM_NAME}""#),
+        "hostgen VM script は stopped VM で長い hostgen 後に落ちないよう、実行前に VM 状態を見て起動するべき"
+    );
+
+    let limactl_check_pos = script
+        .find("command -v limactl")
+        .expect("limactl availability check が必要");
+    let ensure_call_pos = script
+        .find("\nensure_vm_running\n")
+        .expect("hostgen 開始前の VM 起動確認呼び出しが必要");
+    let first_hostgen_pos = script
+        .find("LSHARP_NATIVE_LINUX_X86_CODE_ARTIFACT")
+        .expect("最初の hostgen cargo test が必要");
+
+    assert!(
+        limactl_check_pos < ensure_call_pos && ensure_call_pos < first_hostgen_pos,
+        "VM 起動確認は limactl availability check 後、長い hostgen cargo test の前に実行するべき"
+    );
+}
+
+#[test]
 fn test_native_linux_x86_lima_config_uses_bounded_disk() {
     let config_path = selfhost_project_root().join("scripts/ci/lima/lsharp-linux-x86.yaml");
     let config = std::fs::read_to_string(&config_path)
@@ -1042,15 +998,17 @@ fn test_native_linux_x86_lima_config_uses_bounded_disk() {
     assert!(
         config.contains("arch: x86_64")
             && config.contains("vmType: qemu")
-            && config.contains("memory: 8GiB")
+            && config.contains("memory: 16GiB")
             && config.contains("disk: 12GiB")
             && config.contains("build-essential")
             && config.contains("python3")
             && config.contains("rm -rf /var/lib/apt/lists/*")
+            && !config.contains("memory: 8GiB")
+            && !config.contains("memory: 12GiB")
             && !config.contains("memory: 24GiB")
             && !config.contains("disk: 30GiB")
             && !config.contains("disk: 60GiB"),
-        "local Linux x86 Lima VM は storage を圧迫しない 12GiB disk / 8GiB memory config と最小 link/runtime tool を正本にするべき"
+        "local Linux x86 Lima VM は storage を圧迫しない 12GiB disk と actual replay が OOM しない 16GiB memory config を正本にするべき"
     );
 }
 
@@ -1285,13 +1243,6 @@ fn test_linux_x86_representative_seed_can_print_stage_progress_markers() {
         .expect("Linux x86 segmented seed source は progress helper 追加後も parse できること");
 
     for marker in [
-        "9000000030",
-        "9000000031",
-        "9000000039",
-        "9000000040",
-        "9000000041",
-        "9000000042",
-        "9000000043",
         "9000000044",
         "9000000045",
         "9000000047",
@@ -1318,14 +1269,6 @@ fn test_linux_x86_representative_seed_can_print_stage_progress_markers() {
 
     assert!(
         source.contains("progress-mode (if (> (string-length (command-line-arg 8)) 0) 1 0)")
-            && source.contains(
-                "payload-progress-mode (if (> (string-length (command-line-arg 8)) 0) 1 0)"
-            )
-            && source.contains("progress-after-pairs-probe")
-            && source.contains("compile-file-mode-cache-pairs-progress-probe")
-            && source.contains("progress-after-compile-probe")
-            && source.contains("compile-file-mode-cache-compile-pair-progress-probe")
-            && source.contains("progress-after-payload")
             && source.contains("progress-after-native-callables")
             && source.contains("progress-after-first-slot-size")
             && source.contains("(print (vector-length payload))")
@@ -1333,9 +1276,6 @@ fn test_linux_x86_representative_seed_can_print_stage_progress_markers() {
             && source.contains("(print (vector-length callables))")
             && source.contains("(print (+ 9 (vector-length functions)))")
             && source.contains("(print (+ 9 (vector-length functions)))")
-            && source.contains("pre-callable-progress")
-            && source.contains("(print 9000000043)")
-            && source.contains("(print (vector-length (vector-get payload-base 0)))")
             && source.contains("progress-after-starts")
             && source.contains("progress-after-start-values")
             && source.contains("progress-after-user-total")
@@ -1347,7 +1287,34 @@ fn test_linux_x86_representative_seed_can_print_stage_progress_markers() {
             && source.contains("(print code-len)")
             && source.contains("(print data-len)")
             && source.contains("metadata-mode (if (> (string-length (command-line-arg 6)) 0) 1 0)"),
-        "Linux x86 segmented seed は通常/metadata transport を残したまま、arg8 で setup progress だけを出せるべき"
+        "Linux x86 segmented seed は retired payload debug probe を戻さず、通常/metadata transport を残したまま arg8 で setup progress だけを出せるべき"
+    );
+}
+
+#[test]
+fn test_linux_x86_representative_seed_omits_retired_payload_debug_probes() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+    lsharp_syntax::parse(&source)
+        .expect("Linux x86 segmented seed source は clean seed 化後も parse できること");
+
+    for marker in [
+        "payload-progress-mode",
+        "pre-callable-progress",
+        "command-line-arg 9",
+        "9000000030",
+    ] {
+        assert!(
+            !source.contains(marker),
+            "Linux x86 actual stage1 seed は pass 後の required path で retired payload debug marker を含めないこと: {marker}"
+        );
+    }
+    assert!(
+        source.contains(
+            "payload-base (compile-file-functions-payload-with-cache (command-line-arg 1) 10 cache-ref parse-count-ref)"
+        ) && source.contains("payload payload-base")
+            && source.contains("functions (vector-get payload-base 0)")
+            && source.contains("data (vector-get payload-base 1)"),
+        "Linux x86 actual stage1 seed は payload debug probe を外しても payload/functions/data の正本 binding を維持すること"
     );
 }
 
@@ -1658,24 +1625,15 @@ fn test_linux_x86_representative_seed_prints_first_max_depth_step_probe() {
 }
 
 #[test]
-fn test_linux_x86_representative_seed_can_run_entry_shape_probe_from_first_binding() {
+fn test_linux_x86_representative_seed_retires_entry_shape_probe_from_first_binding() {
     let source = linux_x86_representative_actual_stage23_seed_source();
 
-    let first_marker = source
-        .find("progress-after-payload-start")
-        .expect("Linux x86 seed に payload start progress binding が存在すること");
-    let pair_probe = source
-        .find("progress-after-pairs-probe")
-        .expect("Linux x86 seed に pairs progress binding が存在すること");
-    let shape_probe = source
-        .find("compile-file-mode-entry-shape-progress-probe")
-        .expect("Linux x86 seed は first binding 内から entry shape probe を起動できること");
-
     assert!(
-        source.contains("(print 9000000030)\n            (if (> (string-length (command-line-arg 9)) 0)\n              (compile-file-mode-entry-shape-progress-probe)\n              (print (string-length (command-line-arg 1))))")
-            && first_marker < shape_probe
-            && shape_probe < pair_probe,
-        "stage2 main が first binding 初期化子で縮退しても AST/IR shape を切れるよう、arg9 gated probe は 9000000030 と同じ do 内にあるべき"
+        !source.contains("progress-after-payload-start")
+            && !source.contains("progress-after-pairs-probe")
+            && !source.contains("command-line-arg 9")
+            && !source.contains("(print 9000000030)"),
+        "Linux x86 actual stage1 seed は stage2 first binding 診断で使った arg9 payload entry-shape probe を required path へ戻さない"
     );
 }
 
