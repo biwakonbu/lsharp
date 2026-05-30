@@ -2599,13 +2599,15 @@ fn test_e2e_native_ops04_linux_x86_server_target_contract() {
         .and_then(|rest| rest.split("## Phase 11: Rust 完全撤去").next())
         .expect("TODO.md の現在の残タスク一覧 section が見つからない");
     assert!(
-        current_remaining_section.contains("- [ ] `V2-13a` Linux x86_64 native server target"),
+        current_remaining_section.contains("`V2-13a` Linux x86_64 native server target"),
         "TODO.md の正本に Linux x86_64 server target の優先 task が必要"
     );
     for expected in [
         "x86 selfhost runtime helper parity",
         "Linux runtime trampoline",
         "real ELF object/link artifact",
+        "V2-13a-5e",
+        "required CI / release gate",
     ] {
         assert!(
             current_remaining_section.contains(expected),
@@ -2619,8 +2621,9 @@ fn test_e2e_native_ops04_linux_x86_server_target_contract() {
         std::fs::read_to_string(&native_spec).expect("native-backend-spec.md の読み込みに失敗");
     for expected in [
         "Linux x86_64 server priority track",
-        "`x86_64-unknown-linux-gnu` | active priority",
+        "`x86_64-unknown-linux-gnu` | Linux x86_64 server priority track",
         "Ubuntu x86_64 VM",
+        "native-linux-x86-selfregen",
         "scripts/ci/native-linux-x86-local-vm-smoke.sh",
         "scripts/ci/native-linux-x86-hostgen-vm-exec.sh",
         "x86 selfhost runtime helper parity",
@@ -2643,14 +2646,51 @@ fn test_e2e_native_ops04_linux_x86_server_target_contract() {
             && ci_workflow_content.contains("scripts/ci/native-linux-x86-smoke.sh"),
         "ci.yml は Ubuntu 上の native-linux-x86-smoke job を持つこと"
     );
+    for expected in [
+        "native-linux-x86-selfregen:",
+        "name: Native Linux x86 selfregen",
+        "runs-on: [self-hosted, linux, x64, lsharp-linux-x86-selfregen]",
+        "needs: [native-linux-x86-smoke]",
+        "bash scripts/ci/native-linux-x86-selfregen.sh",
+        "name: native-linux-x86-selfregen-${{ github.sha }}",
+        "path: ci-artifacts/native-linux-x86-hostgen-vm/${{ github.sha }}/",
+        "native-linux-x86-selfregen.result",
+    ] {
+        assert!(
+            ci_workflow_content.contains(expected),
+            "ci.yml は actual Linux x86_64 selfregen required gate `{}` を含むこと",
+            expected
+        );
+    }
+
+    let release_workflow = project_root.join(".github/workflows/release.yml");
+    let release_workflow_content =
+        std::fs::read_to_string(&release_workflow).expect("release.yml の読み込みに失敗");
+    for expected in [
+        "native-linux-x86-selfregen-release-gate:",
+        "name: Native Linux x86 selfregen release gate",
+        "runs-on: [self-hosted, linux, x64, lsharp-linux-x86-selfregen]",
+        "needs: verify",
+        "bash scripts/ci/native-linux-x86-selfregen.sh",
+        "name: native-linux-x86-selfregen-${{ github.ref_name }}",
+        "native-linux-x86-selfregen-release-gate",
+    ] {
+        assert!(
+            release_workflow_content.contains(expected),
+            "release.yml は actual Linux x86_64 selfregen release gate `{}` を含むこと",
+            expected
+        );
+    }
 
     let ci_graph = project_root.join("docs/development/operations/ci-gate-v2-job-graph.md");
     let ci_graph_content =
         std::fs::read_to_string(&ci_graph).expect("ci-gate-v2-job-graph.md の読み込みに失敗");
     assert!(
         ci_graph_content.contains("native-linux-x86-smoke")
+            && ci_graph_content.contains("native-linux-x86-selfregen")
+            && ci_graph_content.contains("actual Linux native self-regeneration")
             && ci_graph_content.contains("Linux x86_64 native server target"),
-        "ci-gate-v2-job-graph.md は Linux x86_64 native smoke を記述すること"
+        "ci-gate-v2-job-graph.md は Linux x86_64 native smoke / selfregen gates を記述すること"
     );
 
     let artifact_policy = project_root.join("docs/development/operations/artifact-policy.md");
@@ -2658,9 +2698,37 @@ fn test_e2e_native_ops04_linux_x86_server_target_contract() {
         std::fs::read_to_string(&artifact_policy).expect("artifact-policy.md の読み込みに失敗");
     assert!(
         artifact_policy_content.contains("native-linux-x86-{commit_sha}")
+            && artifact_policy_content.contains("native-linux-x86-selfregen-{commit_sha}")
+            && artifact_policy_content.contains("ci-artifacts/native-linux-x86-hostgen-vm/{commit_sha}/actual-selfregen-summary.json")
             && artifact_policy_content.contains("x86_64-unknown-linux-gnu"),
-        "artifact-policy.md は Linux x86_64 native smoke artifact を定義すること"
+        "artifact-policy.md は Linux x86_64 native smoke / selfregen artifacts を定義すること"
     );
+
+    let selfregen_ci = project_root.join("scripts/ci/native-linux-x86-selfregen.sh");
+    assert!(
+        selfregen_ci.is_file(),
+        "scripts/ci/native-linux-x86-selfregen.sh が存在しない"
+    );
+    let selfregen_ci_content = std::fs::read_to_string(&selfregen_ci)
+        .expect("native-linux-x86-selfregen.sh の読み込みに失敗");
+    for expected in [
+        "requires Linux/x86_64",
+        "DEFAULT_REJECT_DIRTY_STAGE1_SEED=1",
+        "LSHARP_NATIVE_LINUX_X86_REJECT_DIRTY_STAGE1_SEED",
+        "NATIVE_LINUX_X86_HOSTGEN_VM_ARTIFACT_ID",
+        "limactl",
+        "scripts/ci/native-linux-x86-hostgen-vm-exec.sh",
+        "actual-selfregen-summary.json",
+        "\"status\": \"pass\"",
+        "stage2_stdout_sha256",
+        "stage3_stdout_sha256",
+    ] {
+        assert!(
+            selfregen_ci_content.contains(expected),
+            "native-linux-x86-selfregen.sh は required selfregen gate contract `{}` を固定すること",
+            expected
+        );
+    }
 
     let local_vm_smoke = project_root.join("scripts/ci/native-linux-x86-local-vm-smoke.sh");
     let local_vm_smoke_content = std::fs::read_to_string(&local_vm_smoke)
@@ -2735,7 +2803,7 @@ fn test_e2e_native_ops04_linux_x86_server_target_contract() {
         "substring_expected_exit_code=3",
         "decode_packed_payload",
         "decode_packed_payload_at",
-        "code, idx = decode_packed_payload_at(idx, code_len, 9000000003)",
+        "code, idx, code_segments = decode_packed_payload_at(idx, code_len, 9000000003)",
         "write_actual_selfregen_failure_summary",
         "copy_actual_stage_debug_artifact",
         "stage1-debug",
@@ -2744,7 +2812,7 @@ fn test_e2e_native_ops04_linux_x86_server_target_contract() {
         "stage-entry-ir-trace.txt",
         "LSHARP_NATIVE_LINUX_X86_ACTUAL_HEAP_BYTES",
         "LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_SIZE",
-        "ACTUAL_CHUNK_SIZE=\"${LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_SIZE:-8}\"",
+        "ACTUAL_CHUNK_SIZE=\"${LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_SIZE:-256}\"",
         "LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_RETRIES",
         "run_actual_stage_chunked",
         "run_actual_stage_range",

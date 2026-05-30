@@ -7,6 +7,7 @@ Phase 11 の `CP-06`（CI / release cutover）で、GitHub 上の **Branch prote
 - [ ] `cargo test` / `cargo clippy` がローカルまたは該当 PR で green
 - [ ] 追加した E2E や `lsharp-wasm` のフィルタテスト名が、仕様書・`TODO.md` の証跡と一致している
 - [ ] `scripts/ci/test-fresh-clone.sh`（または同等の no-Rust / fresh-clone ジョブ）がワークフロー定義と手順書で同じパスを指している
+- [ ] `native-linux-x86-selfregen` 用の self-hosted runner が `self-hosted`, `linux`, `x64`, `lsharp-linux-x86-selfregen` labels を持ち、`limactl` と `lsharp-linux-x86` VM を利用できる
 - [ ] リリース artifact 名が `docs/development/operations/artifact-policy.md` と一致
 - [ ] required check の対応表が `.github/workflows/ci.yml` / `CI.md` / `ci-gate-v2-job-graph.md` / このチェックリストで一致している（job id: `ci-gate-v2`, Actions 表示名: `CI Gate v2`）
 

@@ -33,7 +33,7 @@ native-only を公式配布へ完全置換する方針を後続トラックと�
 
 現時点の native-only replacement blocker は次のとおり。
 
-1. Tier1 target matrix の native execution coverage が揃っていない。actual native self-regeneration は `aarch64-apple-darwin` のみ完了。
+1. Tier1 target matrix の native execution coverage が揃っていない。actual native self-regeneration は `aarch64-apple-darwin` と Linux x86_64 server priority track で完了し、Linux x86_64 は `native-linux-x86-selfregen-release-gate` で release 作成前に blocking 検証する。
 2. `x86_64-pc-windows-msvc` は native backend spec 上 BLOCKED で、COFF/PE runtime/link/smoke が未実装。
 3. `scripts/release.sh` と `scripts/ci/release-smoke.sh` は `lsharp.component.wasm` を公式 archive の必須 payload として扱う。
 4. `.github/workflows/release.yml` は host launcher matrix を公式 build とし、native-only は `experimental-native-rc` に留めている。
