@@ -3523,6 +3523,90 @@ fn test_linux_x86_owner_decl_diagnostic_is_env_driven() {
 }
 
 #[test]
+#[ignore]
+fn test_e2e_selfhost_main_linux_x86_actual_seed_named_function_indices_diagnostic() {
+    let seed_source = linux_x86_representative_actual_stage23_seed_source();
+    let escaped_seed_source = escape_lsharp_string(&seed_source);
+    let harness = format!(
+        r#"(module App.HarnessMain)
+(import App.CompilerMode)
+(import Backend.Wasm.CompilerBase)
+(import Syntax.Parser)
+
+(defn print-named-index [ftable name]
+  (let [hash (name-hash name 0 (string-length name))]
+    (do
+      (print hash)
+      (print (ftable-lookup ftable hash)))))
+
+(defn main []
+  (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        _ (write-file "src/App/Seed.ls" "{escaped_seed_source}")
+        pairs (compile-file-pairs-with-cache "src/App/Seed.ls" cache-ref parse-count-ref)
+        reg-result (register-all-pairs pairs 0 (vector-length pairs) (ftable-new) 10)
+        ftable (vector-get reg-result 0)]
+    (do
+      (print (vector-length pairs))
+      (print-named-index ftable "native-function-size-x86")
+      (print-named-index ftable "native-function-body-size-x86-loop-with-context")
+      (print-named-index ftable "native-local-stack-bytes-with-window-x86")
+      (print-named-index ftable "native-total-slot-count-with-window-x86")
+      (print-named-index ftable "native-value-window-spill-slot-count-x86")
+      (print-named-index ftable "native-instr-size-x86")
+      (print-named-index ftable "opcode-stack-delta")
+      0)))"#,
+        escaped_seed_source = escaped_seed_source
+    );
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
+            "linux-x86-actual-seed-named-function-indices-diagnostic",
+            SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+            "src/App/HarnessMain.ls",
+            &harness,
+            &[],
+        )
+    })
+    .expect("Linux x86 actual seed named function indices diagnostic 実行に失敗");
+    let lines = parse_numeric_lines(&output);
+    println!("Linux x86 actual seed named function index lines: {lines:?}");
+    assert!(
+        lines.len() >= 15,
+        "Linux x86 actual seed named function indices diagnostic 出力が不足: {lines:?}"
+    );
+    for pair in lines[1..].chunks_exact(2) {
+        assert!(
+            pair[1] >= 10,
+            "named function が ftable に見つからない: hash={} index={} lines={lines:?}",
+            pair[0],
+            pair[1]
+        );
+    }
+}
+
+#[test]
+fn test_linux_x86_named_function_indices_diagnostic_covers_size_helpers() {
+    let source = include_str!("selfhost_native_stage_chain.rs");
+    let diagnostic_body = source
+        .split(
+            "\nfn test_e2e_selfhost_main_linux_x86_actual_seed_named_function_indices_diagnostic",
+        )
+        .nth(1)
+        .and_then(|tail| tail.split("#[test]").next())
+        .expect("Linux x86 named function indices diagnostic が存在すること");
+
+    assert!(
+        diagnostic_body.contains("native-function-size-x86")
+            && diagnostic_body.contains("native-function-body-size-x86-loop-with-context")
+            && diagnostic_body.contains("native-local-stack-bytes-with-window-x86")
+            && diagnostic_body.contains("native-instr-size-x86")
+            && diagnostic_body.contains("ftable-lookup")
+            && diagnostic_body.contains("name-hash"),
+        "Linux x86 named function indices diagnostic は size/layout helper の actual function index を出力できるべき"
+    );
+}
+
+#[test]
 fn test_linux_x86_seed_entry_ir_segment_probe_reports_expected_rel32_targets() {
     let source = include_str!("selfhost_native_stage_chain.rs");
     let test_body = source
