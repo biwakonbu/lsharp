@@ -1042,13 +1042,15 @@ fn test_native_linux_x86_lima_config_uses_bounded_disk() {
     assert!(
         config.contains("arch: x86_64")
             && config.contains("vmType: qemu")
-            && config.contains("memory: 24GiB")
-            && config.contains("disk: 30GiB")
+            && config.contains("memory: 8GiB")
+            && config.contains("disk: 12GiB")
             && config.contains("build-essential")
             && config.contains("python3")
             && config.contains("rm -rf /var/lib/apt/lists/*")
+            && !config.contains("memory: 24GiB")
+            && !config.contains("disk: 30GiB")
             && !config.contains("disk: 60GiB"),
-        "local Linux x86 Lima VM は storage を圧迫しない 30GiB disk config と最小 link/runtime tool を正本にするべき"
+        "local Linux x86 Lima VM は storage を圧迫しない 12GiB disk / 8GiB memory config と最小 link/runtime tool を正本にするべき"
     );
 }
 
