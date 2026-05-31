@@ -2649,6 +2649,8 @@ fn test_e2e_native_ops04_linux_x86_server_target_contract() {
         "real ELF object/link artifact",
         "V2-13a-5e",
         "Mac VM local gate",
+        "release-preflight-20260531152957",
+        "stage2/stage3 stdout byte-for-byte compare",
     ] {
         assert!(
             current_remaining_section.contains(expected),
@@ -2656,6 +2658,10 @@ fn test_e2e_native_ops04_linux_x86_server_target_contract() {
             expected
         );
     }
+    assert!(
+        !current_remaining_section.contains("disk: 30GiB"),
+        "TODO.md の V2-13a は古い Lima disk 30GiB 記述を残さないこと"
+    );
 
     let native_spec = project_root.join("docs/language/native-backend-spec.md");
     let native_spec_content =
@@ -2671,6 +2677,8 @@ fn test_e2e_native_ops04_linux_x86_server_target_contract() {
         "x86 selfhost runtime helper parity",
         "Linux runtime trampoline",
         "real ELF object/link artifact",
+        "substring-object-program.native seedling` が exit 3",
+        "release-preflight-20260531152957",
     ] {
         assert!(
             native_spec_content.contains(expected),
