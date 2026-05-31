@@ -249,7 +249,7 @@ fn parser_defn_body_finalize_uses_small_rooted_helper() {
 }
 
 #[test]
-fn parser_parse_defn_uses_direct_tail_sequence_without_ref_roundtrip() {
+fn parser_parse_defn_uses_body_helper_with_result_slot_without_ref_roundtrip() {
     let source = std::fs::read_to_string(workspace_root().join("selfhost/src/Syntax/Parser.ls"))
         .expect("Parser.ls を読めること");
     let parse_defn = source
@@ -262,14 +262,12 @@ fn parser_parse_defn_uses_direct_tail_sequence_without_ref_roundtrip() {
         parse_defn.contains("(skip-optional-type-sig-v3 spans pos-ref src)")
             && parse_defn.contains("(skip-optional-where-v3 spans pos-ref src)")
             && parse_defn.contains("(parse-defn-bodyless-or-body-with-meta-v3")
-            && parse_defn.contains("(let [body (parse-expr-v3 spans pos-ref src)]")
             && parse_defn.contains(
-                "(finalize-defn-parsed-body-v3 spans pos-ref defn-node param-count body)"
+                "(parse-defn-bodyless-or-body-v3 spans pos-ref src defn-node param-count)"
             )
             && !parse_defn.contains("(parse-defn-tail-v3 spans pos-ref src defn-node param-count)")
-            && !parse_defn.contains("(parse-defn-bodyless-or-body-v3\n")
             && !parse_defn.contains("parsed-ref"),
-        "parse-defn-v3 は x86 stage2 の helper return 崩れを避けるため non-meta body parse を direct に持つべき"
+        "parse-defn-v3 は final parsed を result slot に退避しつつ non-meta body parse を小さい helper に戻すべき"
     );
 }
 
@@ -284,11 +282,12 @@ fn parser_parse_defn_returns_explicit_parsed_after_root_pops_without_ref_roundtr
         .expect("Parser.ls に parse-defn-v3 が存在すること");
 
     assert!(
-        parse_defn.contains("(root_push result)")
-            && parse_defn.contains("(root_pop)\n                                parsed")
-            && !parse_defn.contains("result-slot")
-            && !parse_defn.contains("(root_set result-slot")
+        parse_defn.contains(
+            "(let [result-slot (root_push result)\n                  with-params (parse-params-v3 spans pos-ref src result 0)]"
+        )
+            && parse_defn.contains("(root_set result-slot parsed)")
+            && parse_defn.contains("parsed))")
             && !parse_defn.contains("parsed-ref"),
-        "parse-defn-v3 は root_pop/root_set の戻り値に依存せず、root cleanup 後に explicit parsed を返すべき"
+        "parse-defn-v3 は final parsed を result root slot に退避してから root cleanup 後に explicit parsed を返すべき"
     );
 }

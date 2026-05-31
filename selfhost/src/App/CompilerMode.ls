@@ -1782,7 +1782,7 @@
             (let [with-ftable (push-object-vector base1 next-ftable)]
               (do
                 (root_push with-ftable)
-                (let [state (push-int-vector-local with-ftable next-func-idx)]
+                (let [state (vector-push with-ftable next-func-idx)]
                   (do
                     (root_pop)
                     (root_pop)

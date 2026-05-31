@@ -897,6 +897,120 @@ fn test_selfhost_compile_file_payload_roots_inputs_before_data_ref_alloc() {
 }
 
 #[test]
+fn test_selfhost_register_states_push_final_func_idx_without_int_helper_after_object_slot() {
+    let compiler_mode = std::fs::read_to_string(workspace_root_relative_path(
+        std::path::PathBuf::from("selfhost/src/App/CompilerMode.ls"),
+    ))
+    .expect("CompilerMode.ls を読めること");
+    let register_pairs_state_body = compiler_mode
+        .split("(defn make-register-pairs-state")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn register-all-pairs-step").next())
+        .expect("make-register-pairs-state body を取り出せること");
+    let register_all_pairs_body = compiler_mode
+        .split("(defn register-all-pairs [pairs idx n ftable func-idx]")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn compile-src-decl-pairs-step").next())
+        .expect("register-all-pairs body を取り出せること");
+    let compiler_base = std::fs::read_to_string(workspace_root_relative_path(
+        std::path::PathBuf::from("selfhost/src/Backend/Wasm/CompilerBase.ls"),
+    ))
+    .expect("CompilerBase.ls を読めること");
+    let register_state_body = compiler_base
+        .split("(defn make-register-state")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn make-compile-step-state").next())
+        .expect("make-register-state body を取り出せること");
+
+    assert!(
+        register_pairs_state_body.contains("(let [state (vector-push with-ftable next-func-idx)]")
+            && !register_pairs_state_body
+                .contains("(let [state (push-int-vector-local with-ftable next-func-idx)]"),
+        "make-register-pairs-state は object slot 後の next-func-idx を helper call なしで積むべき"
+    );
+    assert!(
+        register_state_body.contains("(let [state (vector-push with-ftable next-func-idx)]")
+            && !register_state_body
+                .contains("(let [state (push-int-vector with-ftable next-func-idx)]"),
+        "make-register-state は object slot 後の next-func-idx を helper call なしで積むべき"
+    );
+    assert!(
+        register_all_pairs_body.contains("(let [result (vector-push with-ftable next-func-idx)]")
+            && !register_all_pairs_body
+                .contains("(let [result (push-int-vector-local with-ftable next-func-idx)]"),
+        "register-all-pairs final result も rooted with-ftable に直接 next-func-idx を積むべき"
+    );
+}
+
+#[test]
+fn test_selfhost_parse_defn_body_branch_returns_finalized_node_without_outer_root_pop() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/Syntax/Parser.ls",
+    )))
+    .expect("Parser.ls を読めること");
+    let finalize_body = source
+        .split("(defn finalize-defn-body-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn maybe-append-defn-meta-v3").next())
+        .expect("finalize-defn-body-v3 body を取り出せること");
+    let parse_body = source
+        .split("(defn parse-defn-bodyless-or-body-v3")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn parse-defn-bodyless-or-body-with-meta-v3")
+                .next()
+        })
+        .expect("parse-defn-bodyless-or-body-v3 body を取り出せること");
+
+    assert!(
+        finalize_body.contains("(root_push defn-node)")
+            && finalize_body.contains("(root_push body)"),
+        "finalize-defn-body-v3 は caller の外側 body root に頼らず defn/body を自分で root するべき"
+    );
+    assert!(
+        parse_body.contains(
+            "(let [body (parse-expr-v3 spans pos-ref src)]\n      (finalize-defn-parsed-body-v3 spans pos-ref defn-node param-count body))"
+        ) && !parse_body.contains(
+            "(let [body (parse-expr-v3 spans pos-ref src)]\n      (do\n        (root_push body)"
+        ),
+        "parse-defn-bodyless-or-body-v3 の body branch は finalized node を外側 root_pop 後に返さない"
+    );
+}
+
+#[test]
+fn test_selfhost_parse_program_step_dispatches_top_level_defn_without_parse_expr_wrapper() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/Syntax/Parser.ls",
+    )))
+    .expect("Parser.ls を読めること");
+    let step = source
+        .split("(defn parse-program-step-v3")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn parse-program-step-64-loop-bounded")
+                .next()
+        })
+        .expect("parse-program-step-v3 body を取り出せること");
+    let helper = source
+        .split("(defn parse-program-step-expr-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn parse-program-step-v3").next())
+        .expect("parse-program-step-expr-v3 body を取り出せること");
+
+    assert!(
+        helper.contains("expr (parse-expr-v3 spans pos-ref src)")
+            && step.contains("(== next-kind 30)")
+            && step.contains("(p-advance pos-ref)")
+            && step.contains("let [expr (parse-defn-v3 spans pos-ref src)]")
+            && step.contains("result-slot (root_push result)")
+            && step.contains("next-result (vector-push result expr)")
+            && step.contains("(parse-program-step-expr-v3 spans pos-ref src result)")
+            && !step.contains("let [result-slot (root_push result)\n              expr (parse-defn-v3 spans pos-ref src)]"),
+        "parse-program-step-v3 は top-level defn を parse-expr wrapper 経由にせず同じ関数内で direct parse-defn して append するべき"
+    );
+}
+
+#[test]
 fn test_linux_x86_metadata_correlates_i64_ge_expected_emitted_bytes() {
     let source = linux_x86_representative_actual_stage23_seed_source();
     assert!(
@@ -1684,7 +1798,7 @@ fn test_selfhost_parser_defn_params_metadata_loop_uses_chunked_steps() {
 }
 
 #[test]
-fn test_selfhost_parser_parse_defn_v3_avoids_root_set_slot_return_path() {
+fn test_selfhost_parser_parse_defn_v3_preserves_return_with_result_slot() {
     let source = selfhost_module("Parser.ls");
     let parse_defn_body = source
         .split("(defn parse-defn-v3")
@@ -1693,9 +1807,10 @@ fn test_selfhost_parser_parse_defn_v3_avoids_root_set_slot_return_path() {
         .expect("Parser.ls に parse-defn-v3 が存在すること");
 
     assert!(
-        !parse_defn_body.contains("result-slot")
-            && !parse_defn_body.contains("(root_set result-slot"),
-        "parse-defn-v3 は Linux x86 stage2 native の defn return 退避を壊さないよう、root_set slot 経由ではなく parsed を直接返すべき"
+        parse_defn_body.contains("result-slot")
+            && parse_defn_body.contains("(root_set result-slot parsed)")
+            && !parse_defn_body.contains("parsed-ref"),
+        "parse-defn-v3 は Linux x86 stage2 native の defn return を保つため parsed を result root slot に退避するべき"
     );
 }
 
