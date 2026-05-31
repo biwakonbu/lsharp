@@ -112,7 +112,7 @@ V2-15 では `scripts/release.sh` / `scripts/ci/release-smoke.sh` / `.github/wor
   1. `Developer ID Application` 証明書が release 用 secret / secure storage にある
   2. notarization 用の Apple ID credential / app-specific password もしくは API key が使える
 - 手順:
-  1. archive 展開前の host launcher binary に `codesign --options runtime --timestamp` を適用
+  1. archive 展開後の `program.native` / `lsharp` alias に `codesign --options runtime --timestamp` を適用
   2. notarization 提出用の zip / pkg / dmg を生成
   3. `xcrun notarytool submit --wait` で Apple notarization へ提出
   4. pkg / dmg を使う場合は `xcrun stapler staple` で ticket を添付

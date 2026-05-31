@@ -3782,6 +3782,17 @@ fn test_e2e_ops06_release_playbook() {
         playbook_doc.is_file(),
         "docs/development/operations/release-playbook.md が存在しない"
     );
+    let playbook_content =
+        std::fs::read_to_string(&playbook_doc).expect("release-playbook.md の読み込みに失敗");
+    assert!(
+        playbook_content.contains("native-only archive")
+            && playbook_content.contains("rollback compatibility asset")
+            && !playbook_content.contains(
+                "配布モデルは **Wasmtime embedding + guest Wasm component + host launcher single binary**"
+            )
+            && !playbook_content.contains("host launcher / component package 生成"),
+        "release-playbook.md 冒頭は stable native-only 配布モデルを説明すること"
+    );
     // tag push による自動リリース workflow が存在すること (OPS-06 tag-push automation)
     let release_workflow = project_root.join(".github/workflows/release.yml");
     assert!(

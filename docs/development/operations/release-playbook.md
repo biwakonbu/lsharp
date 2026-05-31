@@ -1,11 +1,11 @@
 # リリースプレイブック
 
-L# の **手元実行手順** を定義する。配布チャネル、tier1/tier2、署名、package manager 方針の正本は [`release-distribution-signing.md`](./release-distribution-signing.md)。このページは自動化スクリプト `scripts/release-playbook.sh` と並走するオペレーター向け runbook に絞る。配布モデルは **Wasmtime embedding + guest Wasm component + host launcher single binary** を前提とする。
+L# の **手元実行手順** を定義する。配布チャネル、tier1/tier2、署名、package manager 方針の正本は [`release-distribution-signing.md`](./release-distribution-signing.md)。このページは自動化スクリプト `scripts/release-playbook.sh` と並走するオペレーター向け runbook に絞る。stable の配布モデルは **native-only archive** を正本とし、host launcher + guest component は rollback compatibility asset として扱う。
 
 ## 概要
 
 ```
-バージョンバンプ → CI 検証 → host launcher / component package 生成 → チェックサム → タグ作成 → GitHub Release
+バージョンバンプ → CI 検証 → native-only archive 生成 → チェックサム → タグ作成 → GitHub Release
 ```
 
 - channel / target matrix は `release-distribution-signing.md`
@@ -39,8 +39,8 @@ vim Cargo.toml   # version = "0.x.y"
 | 2 | `cargo test` | 全テスト実行 |
 | 3 | `cargo clippy -- -D warnings` | リント |
 | 4 | `cargo fmt --check` | フォーマット検証 |
-| 5 | `LSHARP_BIN=target/release/lsharp bash scripts/ci/compile-phase11-inputs.sh` | release host launcher で selfhost / stdlib / examples の固定入力セットを検証 |
-| 6 | `LSHARP_BIN=target/release/lsharp bash scripts/ci/default-path-smoke.sh` + `scripts/smoke_test_readme.sh` | release host launcher + guest component の smoke + README smoke |
+| 5 | `LSHARP_BIN=target/release/lsharp bash scripts/ci/compile-phase11-inputs.sh` | local release binary で selfhost / stdlib / examples の固定入力セットを検証 |
+| 6 | `LSHARP_BIN=target/release/lsharp bash scripts/ci/default-path-smoke.sh` + `scripts/smoke_test_readme.sh` | local release binary smoke + README smoke |
 | 7 | `bash scripts/ci/release-smoke.sh dist/lsharp-<version>-<target>.<ext>` | 生成済み release archive を展開し、checksum 検証と packaged binary smoke を行う |
 | 8 | チェックサム生成 | `scripts/checksum.sh` |
 
@@ -67,7 +67,7 @@ release workflow では `scripts/ci/build-native.sh` で actual native `stage3-n
 bash scripts/checksum.sh
 ```
 
-全リリースアーティファクトに SHA-256 チェックサムを付与する。single-binary host launcher と sidecar component を併売する場合は、両方に個別チェックサムを付ける。
+全リリースアーティファクトに SHA-256 チェックサムを付与する。native-only archive と rollback compatibility asset を同じ release に添付する場合は、両方に個別チェックサムを付ける。
 
 ### 5. タグ作成と自動リリース
 
@@ -104,8 +104,8 @@ stable release を publish したら、同じ GitHub Release notes に以下の 
 ```text
 Rollback anchor
 - last-known-good release tag: v<version>
-- host launcher assets: <attached asset names>
-- guest component assets: lsharp-<version>-<target>.component.wasm
+- native-only archive assets: <attached asset names>
+- rollback compatibility assets: <attached asset names>
 - checksum: <attached checksum file>
 ```
 
