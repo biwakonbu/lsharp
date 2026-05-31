@@ -2,29 +2,32 @@
 
 ## ステータス
 
-提案 (レビュー待ち)
+Superseded by native-only official replacement (2026-05-31)
 
 > **関連ドキュメント**
 > - Phase 13 移行前ゲート定義: [`docs/development/planning/completion-criteria.md` § P11-2e-3](../planning/completion-criteria.md)
 > - ロールバック手順詳細: [`docs/development/operations/rollback-procedure.md`](./rollback-procedure.md)
 > - 配布・署名: [`docs/development/operations/release-distribution-signing.md`](./release-distribution-signing.md)
+> - 現行の配布正本: [`docs/development/operations/release-playbook.md`](./release-playbook.md)
 
 ## コンテキスト
 
-当初は、L# セルフホストコンパイラが Phase 11 完了基準を満たした後に Rust 実装を物理撤去する方針だった。しかし 2026-03-30 の Component Model pivot により、正式配布モデルは **Wasmtime embedding + guest Wasm component + host launcher single binary** に変更された。これに伴い、Rust workspace は host launcher / component tooling context として継続利用し、物理削除を完了条件から外す必要がある。
+当初は、L# セルフホストコンパイラが Phase 11 完了基準を満たした後に Rust 実装を物理撤去する方針だった。2026-03-30 の Component Model pivot では host launcher + guest component を暫定配布モデルとして採用したが、その後 V2-13〜V2-15 で stable 配布正本は **native-only archive** へ置き換わった。
+
+この ADR は「Rust workspace の物理撤去を完了条件から外す」という判断を保持するための履歴である。現在の配布境界では `program.native` を含む native-only archive が stable / nightly の正本であり、host launcher + guest component は rollback compatibility asset として扱う。
 
 ## 決定
 
-### 方針転換の前提条件
+### 方針転換の前提条件 (historical)
 
-以下の全条件を満たした後に、新配布モデルへの運用移行を正式化する。各条件の現在ステータスを示す。
+以下は Component Model pivot 当時の前提条件である。native-only official replacement により配布モデル自体は superseded されたため、現在の release blocker は `release-distribution-signing.md` と `native-backend-spec.md` を正本にする。
 
 | # | 条件 | ステータス | 備考 |
 |---|------|-----------|------|
-| 1 | `ci-gate-v2` が host launcher + component パイプラインで 2 週間安定 | **PENDING** | 安定期間未開始 |
-| 2 | fresh clone テスト（OPS-07）がエンドユーザー視点で Rust 無しで pass | **PENDING** | 現行 OPS-07 は clean checkout smoke の暫定 gate |
-| 3 | host launcher 経由の component smoke が release gate に固定 | **PENDING** | release / README smoke の更新途中 |
-| 4 | ステークホルダーによる ADR レビュー完了 | **PENDING** | レビュー証跡なし (下記「レビュー記録」参照) |
+| 1 | `ci-gate-v2` が host launcher + component パイプラインで 2 週間安定 | **SUPERSEDED** | native-only archive が stable 正本になった |
+| 2 | fresh clone テスト（OPS-07）がエンドユーザー視点で Rust 無しで pass | **PARTIAL** | workflow-local rollback compatibility archive gate は接続済み。true stage0 fetch は future-state |
+| 3 | host launcher 経由の component smoke が release gate に固定 | **SUPERSEDED** | native-only release smoke が stable gate |
+| 4 | ステークホルダーによる ADR レビュー完了 | **SUPERSEDED** | native-only replacement docs を正本にする |
 | 5 | rollback 手順が「embedded compiler component の巻き戻し」として確定 | **DONE** | GitHub Release notes の `Rollback anchor` を last-known-good release tag / host asset / guest component sidecar asset (`lsharp-{version}-{target}.component.wasm`) / checksum の正本として固定済み |
 
 > ※ 上記は `completion-criteria.md` の P11-2e-3 ゲートと対応する。条件が満たされた時点で各行を更新し、evidence (CI run URL / tag URL / reviewer) を追記する。
@@ -34,7 +37,7 @@
 以下の前提は **withdrawn** とする。
 
 - Phase 11 の完了が Rust workspace の物理削除を含む
-- fresh clone / release / rollback の主経路が native-only artifact である
+- Rust workspace の撤去が stable native-only archive の前提条件である
 - rollback の最終到達点が「Rust 実装の復元」である
 
 ### 維持スコープ
@@ -53,9 +56,9 @@
 
 各ステップで以下を実施する:
 
-1. host launcher + embedded component を正本配布物として扱う
+1. native-only archive を正本配布物として扱う
 2. fresh clone / release / rollback / verification 文書を同じ用語で揃える
-3. CI ジョブが component smoke を blocking で実行することを確認
+3. host launcher + embedded component は rollback compatibility asset としてのみ扱う
 4. コミット・プッシュ
 
 Rust workspace 自体は削除しないため、最終ステップは「workspace の責務を host launcher / component tooling へ限定したことの確認」とする。

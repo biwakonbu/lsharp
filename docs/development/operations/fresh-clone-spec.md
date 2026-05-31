@@ -1,10 +1,10 @@
 # Rust 非必須 Fresh Clone 仕様
 
-Rust ツールチェーンを必要としない、L# プロジェクトの fresh clone から **host launcher + guest Wasm component** の取得・検証・配布へ至る導線を定義する。
+Rust ツールチェーンを必要としない、L# プロジェクトの fresh clone から **native-only official archive** の取得・検証へ至る導線を定義する。現行 CI では native-only archive を生成できない Ubuntu path に限り、workflow-local の **rollback compatibility archive** を binary-only smoke の代替入力として使う。
 
 ## 目的
 
-Phase 11 / Phase 13 移行後、エンドユーザーは Rust をインストールせずに L# コンパイラを取得・利用できるようにする。Rust workspace は削除せず、開発者向け host launcher / component tooling context として残存する。
+Phase 11 / Phase 13 移行後、エンドユーザーは Rust をインストールせずに L# コンパイラを取得・利用できるようにする。Rust workspace は削除せず、開発者向け stage0 / native backend / rollback compatibility tooling context として残存する。
 
 ## 現行の closest viable binary-only gate
 
@@ -47,7 +47,7 @@ release workflow では build 済み archive を `actions/download-artifact` で
 
 この gate は **Rust 非依存化の完了を主張しない**。あくまで `test-fresh-clone` と役割分担しながら、current mainline の regressions を捕捉するための暫定措置である。
 
-## 手元 stage0 scaffold
+## 手元 future stage0 scaffold
 
 以下の 3 script は **手元で current release asset / stage bundle を試すための scaffold** として利用できる。
 ただし mainline CI / required check は依然として workflow-local artifact ベースの `test-fresh-clone` が正本であり、
@@ -56,13 +56,14 @@ GitHub Releases 直結の true no-Rust end-state を mainline で完了扱いに
 ### 1. Stage0 パッケージ取得
 
 ```bash
-# プリビルト stage0 host launcher package を GitHub Releases から取得
+# プリビルト stage0 archive を GitHub Releases から取得
 ./scripts/fetch-stage0.sh
 ```
 
 - OS / アーキテクチャを自動検出する
 - `stage0/lsharp` として配置する
-- stage0 package には起動可能な host launcher と、その launcher が実行する guest compiler component を含める
+- future stage0 package は native-only official archive を正本とする
+- rollback compatibility archive を使う場合だけ、host launcher と guest compiler component の組を互換入力として扱う
 - チェックサム検証を実施する
 - `STAGE0_VERSION=<tag>` / `STAGE0_TARGET=<triple>` / `STAGE0_RELEASE_BASE_URL=<url>` で取得先を上書きできる
 
@@ -75,19 +76,19 @@ GitHub Releases 直結の true no-Rust end-state を mainline で完了扱いに
 
 | ステージ | 入力 | 出力 | 説明 |
 |----------|------|------|------|
-| stage0 → stage1 | `selfhost/src/App/EmbeddedCli.ls` | `stage1/lsharp.component.wasm` | release package と同じ embedded guest entry を、adjacent `lsharp.component.wasm` を優先する host launcher 経由で再コンパイル |
-| stage1 → stage2 | `selfhost/src/App/EmbeddedCli.ls` | `stage2/lsharp.component.wasm` | stage1 component を隣接 sidecar として載せた launcher で再コンパイル |
-| stage2 検証 | — | — | stage1 と stage2 の component 出力が一致することを確認 |
+| stage0 → stage1 | `selfhost/src/App/EmbeddedCli.ls` | `stage1/lsharp.component.wasm` または native stage artifact | stage0 archive の compiler entry で再コンパイル |
+| stage1 → stage2 | `selfhost/src/App/EmbeddedCli.ls` | `stage2/lsharp.component.wasm` または native stage artifact | stage1 output を入力に再コンパイル |
+| stage2 検証 | — | — | stage1 と stage2 の出力が一致することを確認 |
 
-### 3. Host launcher パッケージ生成
+### 3. stage bundle 生成
 
 ```bash
-# host launcher に guest component を埋め込んだ配布パッケージを生成
+# stage artifact から検証用 bundle を生成
 ./scripts/release-bundle.sh
 ```
 
-- 主要成果物は `dist/lsharp`（single-binary host launcher）
-- 必要に応じて検証・再埋め込み用の `dist/lsharp.component.wasm` を sidecar として同梱してよいが、主配布物は host launcher とする
+- native-only official archive では `program.native` / `manifest.json` / `checksums.txt` を必須 payload とする
+- rollback compatibility archive を生成する場合だけ `lsharp` host launcher と `lsharp.component.wasm` sidecar を互換 payload として同梱する
 
 ### 4. テスト実行
 
@@ -97,7 +98,7 @@ GitHub Releases 直結の true no-Rust end-state を mainline で完了扱いに
 ```
 
 - selfhost テストランナーによるテスト実行
-- smoke の主眼は、配布物に含まれる guest component が host launcher 経由で正常起動すること
+- smoke の主眼は、配布物に含まれる compiler artifact が Rust toolchain 無しで正常起動すること
 - Rust の `cargo test` は使用しない
 
 ### 5. 配布パッケージ生成
@@ -107,8 +108,8 @@ GitHub Releases 直結の true no-Rust end-state を mainline で完了扱いに
 ./scripts/release-bundle.sh
 ```
 
-- `dist/lsharp-<version>-<os>-<arch>.tar.gz` を生成
-- アーカイブには single-binary host launcher を含める
+- `dist/lsharp-<version>-<target>.tar.gz` を生成
+- native-only archive には `program.native` と `lsharp` alias を含める
 - SHA-256 チェックサムを付与
 
 ## 将来の true no-Rust end-state
@@ -185,7 +186,7 @@ test-fresh-clone:
 
 | 条件 | 依存タスク | 説明 |
 |------|-----------|------|
-| stage0 パッケージ配布 | BOOT-04 | GitHub Releases で OS / arch 別 host launcher package を配布済み |
+| stage0 パッケージ配布 | BOOT-04 | GitHub Releases で target 別 native-only official archive を配布済み |
 | ブートストラップ閉包 | BOOT-04 | stage0 → stage1 → stage2 の component 生成が完全に閉じている |
 | host launcher packaging | P13-3 | guest component の埋め込みまたは package 化パイプラインが動作 |
 | テストランナー | CLI-02 | `lsharp test` コマンドが機能 |
@@ -194,7 +195,7 @@ test-fresh-clone:
 
 2026 年時点では以下の制約がある:
 
-- stage0 host launcher package の GitHub Releases 配布は未実装
+- stage0 native-only official archive の GitHub Releases 配布は未実装
 - ブートストラップの完全閉包（BOOT-04）は proxy 段階
 - `test-fresh-clone` は workflow-local downloaded artifact を使う closest viable binary-only gate までは接続されたが、GitHub Releases / stage0 fetch を起点とする true no-Rust end-state ではない
 - `fresh-clone-smoke` は clean checkout の smoke を継続検知する暫定 gate として並走する

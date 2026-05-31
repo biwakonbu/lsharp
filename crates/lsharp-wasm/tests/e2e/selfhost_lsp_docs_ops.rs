@@ -2662,6 +2662,11 @@ fn test_e2e_native_ops04_linux_x86_server_target_contract() {
         !current_remaining_section.contains("disk: 30GiB"),
         "TODO.md の V2-13a は古い Lima disk 30GiB 記述を残さないこと"
     );
+    assert!(
+        !current_remaining_section.contains("selfhost compiler determinism を修正する必要がある")
+            && !current_remaining_section.contains("code-section fingerprint を返す兆候"),
+        "TODO.md の正本は検証済み selfhost determinism を stale blocker として残さないこと"
+    );
 
     let native_spec = project_root.join("docs/language/native-backend-spec.md");
     let native_spec_content =
@@ -4516,6 +4521,18 @@ fn test_e2e_ops07_fresh_clone_no_rust() {
         "fresh-clone-spec.md は current binary-only gate と future-state を見出しレベルで分離すること"
     );
     assert!(
+        fresh_clone_doc_content.contains("native-only official archive")
+            && fresh_clone_doc_content.contains("rollback compatibility archive")
+            && fresh_clone_doc_content.contains("future stage0"),
+        "fresh-clone-spec.md は native-only 正本、rollback compatibility、future stage0 scaffold を分離して説明すること"
+    );
+    assert!(
+        !fresh_clone_doc_content.contains("プリビルト stage0 host launcher package")
+            && !fresh_clone_doc_content.contains("主配布物は host launcher とする")
+            && !fresh_clone_doc_content.contains("single-binary host launcher を含める"),
+        "fresh-clone-spec.md は stale な host launcher 主配布物前提を残さないこと"
+    );
+    assert!(
         fresh_clone_doc_content.contains("./scripts/fetch-stage0.sh")
             && fresh_clone_doc_content.contains("./scripts/bootstrap.sh")
             && fresh_clone_doc_content.contains("./scripts/release-bundle.sh"),
@@ -4907,6 +4924,18 @@ fn test_e2e_ops08_rollback_lkg_contract() {
             || rollback_adr_text.contains("GitHub Release notes")
             || rollback_adr_text.contains("last-known-good release tag"),
         "adr-rust-removal.md が LKG rollback anchor 契約を参照していない"
+    );
+    assert!(
+        rollback_adr_text.contains("Superseded by native-only official replacement")
+            && rollback_adr_text.contains("native-only archive")
+            && rollback_adr_text.contains("rollback compatibility"),
+        "adr-rust-removal.md は native-only official replacement に superseded された ADR として現在の配布境界を明記すること"
+    );
+    assert!(
+        !rollback_adr_text.contains(
+            "正式配布モデルは **Wasmtime embedding + guest Wasm component + host launcher single binary**"
+        ) && !rollback_adr_text.contains("host launcher + embedded component を正本配布物として扱う"),
+        "adr-rust-removal.md は host launcher/component を current stable 配布正本として説明しないこと"
     );
     assert!(
         !rollback_adr_text.contains("| 5 | rollback 手順が「embedded compiler component の巻き戻し」として確定 | **PENDING** |"),
