@@ -1,0 +1,206 @@
+title = "L# Documentation"
+description = "L# の利用者向けガイド、言語仕様、実装読み物、標準ライブラリ API をまとめる公開ドキュメントサイト。"
+source = "docs/site.toml"
+base_url = "https://biwakonbu.github.io/lsharp/"
+
+[[sections]]
+id = "start"
+title = "L# を使う"
+description = "L# でプログラムを書く人向けの最短導線。"
+
+[[sections.pages]]
+title = "Quick Start"
+source = "docs/guides/quick-start.md"
+output = "guides/quick-start.html"
+summary = "Hello World から module までの 5 分チュートリアル。"
+audience = "L# を初めて使う開発者"
+
+[[sections.pages]]
+title = "Language Reference"
+source = "docs/guides/language-reference.md"
+output = "guides/language-reference.html"
+summary = "構文、型、module、metadata、stdlib、MCP の利用者向けリファレンス。"
+audience = "L# の構文や型を確認したい開発者"
+
+[[sections.pages]]
+title = "Package Layout"
+source = "docs/guides/package-layout.md"
+output = "guides/package-layout.html"
+summary = "パッケージ標準レイアウトと module 解決規約。"
+audience = "L# package を作る開発者"
+
+[[sections]]
+id = "language"
+title = "言語仕様"
+description = "v1 契約として扱う言語、runtime、backend の仕様。"
+
+[[sections.pages]]
+title = "Language Contracts"
+source = "docs/language/README.md"
+output = "language/index.html"
+summary = "言語仕様ディレクトリの入口。"
+audience = "仕様と実装境界を確認する開発者"
+
+[[sections.pages]]
+title = "Runtime Spec"
+source = "docs/language/runtime-spec.md"
+output = "language/runtime-spec.html"
+summary = "runtime と実行時機能の契約。"
+audience = "runtime 変更や backend 連携を行う開発者"
+
+[[sections.pages]]
+title = "Backend Boundary"
+source = "docs/language/backend-boundary.md"
+output = "language/backend-boundary.html"
+summary = "frontend / IR / backend の境界契約。"
+audience = "compiler pipeline を変更する開発者"
+
+[[sections.pages]]
+title = "Component Model Spec"
+source = "docs/language/component-model-spec.md"
+output = "language/component-model-spec.html"
+summary = "WASI component model と host launcher の接続契約。"
+audience = "配布・host integration を扱う開発者"
+
+[[sections.pages]]
+title = "Native Backend Spec"
+source = "docs/language/native-backend-spec.md"
+output = "language/native-backend-spec.html"
+summary = "native backend の現状仕様と target contract。"
+audience = "native backend を実装・検証する開発者"
+
+[[sections]]
+id = "book"
+title = "言語と実装を読む"
+description = "L# コンパイラ実装を通じて言語設計を理解する読み物。"
+
+[[sections.pages]]
+title = "はじめに"
+source = "book/ch01-introduction.md"
+output = "book/introduction.html"
+summary = "L# の目的、前提知識、最初のビルド手順。"
+audience = "L# の背景を理解したい読者"
+
+[[sections.pages]]
+title = "字句解析"
+source = "book/ch02-lexer.md"
+output = "book/lexer.html"
+summary = "ソースコードを token 列へ分解する設計と実装。"
+audience = "compiler frontend を読む開発者"
+
+[[sections.pages]]
+title = "構文解析"
+source = "book/ch03-parser.md"
+output = "book/parser.html"
+summary = "S 式 parser と AST 構築の解説。"
+audience = "syntax 実装を読む開発者"
+
+[[sections.pages]]
+title = "型推論"
+source = "book/ch04-type-inference.md"
+output = "book/type-inference.html"
+summary = "Hindley-Milner 型推論と統合の解説。"
+audience = "type system を読む開発者"
+
+[[sections.pages]]
+title = "IR"
+source = "book/ch05-ir.md"
+output = "book/ir.html"
+summary = "AST から backend 入力へ lowering する中間表現。"
+audience = "compiler pipeline を読む開発者"
+
+[[sections.pages]]
+title = "コード生成"
+source = "book/ch06-codegen.md"
+output = "book/codegen.html"
+summary = "IR から WebAssembly を生成する backend 実装。"
+audience = "Wasm backend を読む開発者"
+
+[[sections.pages]]
+title = "レコード型"
+source = "book/ch07-record-types.md"
+output = "book/record-types.html"
+summary = "record 型と構造化データ表現。"
+audience = "言語機能を理解したい開発者"
+
+[[sections.pages]]
+title = "型エイリアスと制約付き型"
+source = "book/ch08-type-aliases.md"
+output = "book/type-aliases.html"
+summary = "型に名前と制約を載せる設計。"
+audience = "型機能を理解したい開発者"
+
+[[sections.pages]]
+title = "モジュールシステム"
+source = "book/ch09-modules.md"
+output = "book/modules.html"
+summary = "module / import / dependency graph の解説。"
+audience = "package と module を扱う開発者"
+
+[[sections.pages]]
+title = "トレイト"
+source = "book/ch10-traits.md"
+output = "book/traits.html"
+summary = "trait と静的ディスパッチの設計。"
+audience = "多相性と interface を理解したい開発者"
+
+[[sections.pages]]
+title = "高度な型機能"
+source = "book/ch11-advanced-types.md"
+output = "book/advanced-types.html"
+summary = "高カインド型、GADT、computation expressions の探索。"
+audience = "発展的な型設計を読む開発者"
+
+[[sections.pages]]
+title = "エラー報告"
+source = "book/ch12-error-reporting.md"
+output = "book/error-reporting.html"
+summary = "Span、miette、diagnostics の設計。"
+audience = "developer experience を改善する開発者"
+
+[[sections.pages]]
+title = "テスト戦略"
+source = "book/ch13-testing.md"
+output = "book/testing.html"
+summary = "compiler の unit / snapshot / E2E テスト戦略。"
+audience = "検証方針を読む開発者"
+
+[[sections.pages]]
+title = "標準ライブラリ"
+source = "book/ch14-stdlib.md"
+output = "book/stdlib.html"
+summary = "stdlib の設計と API 方針。"
+audience = "stdlib を使う・拡張する開発者"
+
+[[sections.pages]]
+title = "セルフホスティング"
+source = "book/ch15-selfhosting.md"
+output = "book/selfhosting.html"
+summary = "selfhost compiler と bootstrap の読み方。"
+audience = "selfhost pipeline を読む開発者"
+
+[[sections.pages]]
+title = "LSP"
+source = "book/ch16-lsp.md"
+output = "book/lsp.html"
+summary = "LSP server と IDE 連携。"
+audience = "editor integration を扱う開発者"
+
+[[sections.pages]]
+title = "文法リファレンス"
+source = "book/appendix-a-grammar.md"
+output = "book/grammar.html"
+summary = "L# 文法、token、builtin の付録。"
+audience = "構文の正本を確認する開発者"
+
+[[sections]]
+id = "operations"
+title = "公開と運用"
+description = "ドキュメントサイトの生成、検証、公開手順。"
+
+[[sections.pages]]
+title = "Documentation Site Operations"
+source = "docs/development/operations/documentation-site.md"
+output = "operations/documentation-site.html"
+summary = "SSOT、ローカル生成、CI、GitHub Pages 公開の運用手順。"
+audience = "ドキュメントサイトを公開・保守する人"

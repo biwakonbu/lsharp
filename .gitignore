@@ -18,6 +18,7 @@ editors/vscode/*.vsix
 
 # ビルド成果物 / 一時ファイル
 /dist/
+/_site/
 /selfhost/target/
 /crates/lsharp-wasm/target/
 /stage0/

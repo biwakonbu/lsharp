@@ -179,6 +179,7 @@ L# source (.ls)
 
 ## Learn More
 
+- 公開ドキュメントサイト生成: [`docs/site.toml`](docs/site.toml), [`docs/development/operations/documentation-site.md`](docs/development/operations/documentation-site.md)
 - 利用者向けの導線: [`docs/guides/quick-start.md`](docs/guides/quick-start.md), [`docs/guides/language-reference.md`](docs/guides/language-reference.md)
 - 言語の背景と実装の読み物: [`book/ch01-introduction.md`](book/ch01-introduction.md), [`book/ch10-traits.md`](book/ch10-traits.md), [`book/ch11-advanced-types.md`](book/ch11-advanced-types.md), [`book/ch15-selfhosting.md`](book/ch15-selfhosting.md)
 - compiler / backend の契約: [`docs/language/README.md`](docs/language/README.md)
