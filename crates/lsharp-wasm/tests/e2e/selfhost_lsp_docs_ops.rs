@@ -2944,8 +2944,12 @@ fn test_e2e_native_ops05_macos_x86_rosetta_smoke_contract() {
         std::fs::read_to_string(&playbook).expect("release-playbook.md の読み込みに失敗");
     assert!(
         playbook_content.contains("scripts/ci/native-macos-x86-local-smoke.sh")
-            && playbook_content.contains("Rosetta local smoke"),
-        "release-playbook.md は x86_64 macOS Rosetta local smoke を release 前確認として示すこと"
+            && playbook_content.contains("Rosetta local smoke")
+            && playbook_content.contains("selfhost linkable Mach-O object smoke")
+            && playbook_content.contains(
+                "test_e2e_native_macos_x86_selfhost_macho_object_links_and_executes_under_rosetta"
+            ),
+        "release-playbook.md は x86_64 macOS Rosetta local smoke と selfhost object smoke を release 前確認として示すこと"
     );
 
     let smoke = project_root.join("scripts/ci/native-macos-x86-local-smoke.sh");
