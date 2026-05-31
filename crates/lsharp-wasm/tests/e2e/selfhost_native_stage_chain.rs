@@ -244,7 +244,9 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
         main_body,
     );
     let source = strip_linux_x86_unused_base64_helpers(source);
-    let payload_bindings = r#"payload-base (compile-file-functions-payload-with-cache (command-line-arg 1) 10 cache-ref parse-count-ref)
+    let payload_bindings = r#"source-path (command-line-arg 1)
+         source-path-root (root_push source-path)
+         payload-base (compile-file-functions-payload-with-cache source-path 10 cache-ref parse-count-ref)
          payload payload-base
          functions (vector-get payload-base 0)
          data (vector-get payload-base 1)
@@ -353,7 +355,12 @@ fn test_linux_x86_representative_seed_uses_layout_emit_for_segmented_native_code
     );
     let entrypoint_checks = [
         !source.contains("emitted-main-func-idx"),
+        source.contains("source-path (command-line-arg 1)"),
+        source.contains("source-path-root (root_push source-path)"),
         source.contains(
+            "payload-base (compile-file-functions-payload-with-cache source-path 10 cache-ref parse-count-ref)",
+        ),
+        !source.contains(
             "payload-base (compile-file-functions-payload-with-cache (command-line-arg 1) 10 cache-ref parse-count-ref)",
         ),
         source.contains("payload-root (root_push payload-base)"),
@@ -842,6 +849,50 @@ fn test_selfhost_compiler_mode_has_entry_shape_progress_probe() {
             && source.contains("(tokenize-spans-step-512 src 0 src-len tokens0)")
             && source.contains("(let [spans (tokenize-with-spans src)]"),
         "CompilerMode は stage2 first binding から read-file/tokenize step 境界を段階的に出せる診断を持つべき"
+    );
+}
+
+#[test]
+fn test_selfhost_compile_file_payload_roots_inputs_before_data_ref_alloc() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/App/CompilerMode.ls",
+    )))
+    .expect("CompilerMode.ls を読めること");
+    let body = source
+        .split("(defn compile-file-functions-payload-with-cache")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn compile-file-mode-cache-probe").next())
+        .expect("compile-file-functions-payload-with-cache body を取り出せること");
+
+    let path_root = body
+        .find("(root_push path)")
+        .expect("payload helper は path を root してから allocation するべき");
+    let cache_root = body
+        .find("(root_push cache-ref)")
+        .expect("payload helper は cache-ref を root してから allocation するべき");
+    let parse_root = body
+        .find("(root_push parse-count-ref)")
+        .expect("payload helper は parse-count-ref を root してから allocation するべき");
+    let data_alloc = body
+        .find("data-ref (ref-new (vector-new 8))")
+        .expect("payload helper は data-ref を確保するべき");
+    let data_root = body[data_alloc..]
+        .find("(root_push data-ref)")
+        .map(|offset| offset + data_alloc)
+        .expect("payload helper は compile call 前に data-ref を root するべき");
+    let compile_call = body
+        .find(
+            "functions (compile-file-functions-with-cache path func-idx cache-ref parse-count-ref data-ref)",
+        )
+        .expect("payload helper は compile-file-functions-with-cache に data-ref を渡すべき");
+
+    assert!(
+        path_root < data_alloc
+            && cache_root < data_alloc
+            && parse_root < data_alloc
+            && data_alloc < data_root
+            && data_root < compile_call,
+        "payload helper は input refs -> data-ref alloc -> data-ref root -> compile call の順で GC root を固定するべき"
     );
 }
 
