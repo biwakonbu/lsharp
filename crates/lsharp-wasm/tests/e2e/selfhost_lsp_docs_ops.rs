@@ -2881,6 +2881,137 @@ fn test_e2e_native_ops04_linux_x86_server_target_contract() {
     }
 }
 
+/// TEST-NATIVE-OPS-05: x86_64 macOS は Rosetta local smoke で実行 coverage の入口を固定する。
+#[test]
+fn test_e2e_native_ops05_macos_x86_rosetta_smoke_contract() {
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let todo = project_root.join("TODO.md");
+    let todo_content = std::fs::read_to_string(&todo).expect("TODO.md の読み込みに失敗");
+    let current_remaining_section = todo_content
+        .split("## 現在の残タスク一覧（正本）")
+        .nth(1)
+        .and_then(|rest| rest.split("## Phase 11: Rust 完全撤去").next())
+        .expect("TODO.md の現在の残タスク一覧 section が見つからない");
+    for expected in [
+        "`V2-13b` x86_64 macOS Rosetta native smoke",
+        "`x86_64-apple-darwin`",
+        "Rosetta local smoke",
+        "actual self-regeneration / release smoke pending",
+    ] {
+        assert!(
+            current_remaining_section.contains(expected),
+            "TODO.md の正本は x86_64 macOS smoke contract `{}` を明記すること",
+            expected
+        );
+    }
+
+    let native_spec = project_root.join("docs/language/native-backend-spec.md");
+    let native_spec_content =
+        std::fs::read_to_string(&native_spec).expect("native-backend-spec.md の読み込みに失敗");
+    for expected in [
+        "`x86_64-apple-darwin` | spec 対象、Rosetta local const-42 smoke complete",
+        "scripts/ci/native-macos-x86-local-smoke.sh",
+        "actual self-regeneration complete 未達",
+    ] {
+        assert!(
+            native_spec_content.contains(expected),
+            "native-backend-spec.md は x86_64 macOS local smoke `{}` を明記すること",
+            expected
+        );
+    }
+
+    let playbook = project_root.join("docs/development/operations/release-playbook.md");
+    let playbook_content =
+        std::fs::read_to_string(&playbook).expect("release-playbook.md の読み込みに失敗");
+    assert!(
+        playbook_content.contains("scripts/ci/native-macos-x86-local-smoke.sh")
+            && playbook_content.contains("Rosetta local smoke"),
+        "release-playbook.md は x86_64 macOS Rosetta local smoke を release 前確認として示すこと"
+    );
+
+    let smoke = project_root.join("scripts/ci/native-macos-x86-local-smoke.sh");
+    assert!(
+        smoke.is_file(),
+        "scripts/ci/native-macos-x86-local-smoke.sh が存在しない"
+    );
+    let smoke_content =
+        std::fs::read_to_string(&smoke).expect("native-macos-x86-local-smoke.sh の読み込みに失敗");
+    for expected in [
+        "requires Darwin",
+        "arch -x86_64",
+        "-arch",
+        "x86_64",
+        "program.o",
+        "runtime.o",
+        "linker-response.txt",
+        "program.native",
+        "\"target\": \"x86_64-apple-darwin\"",
+        "\"expected_exit_code\": 42",
+        "Mach-O",
+    ] {
+        assert!(
+            smoke_content.contains(expected),
+            "native-macos-x86-local-smoke.sh は Rosetta smoke contract `{}` を固定すること",
+            expected
+        );
+    }
+}
+
+/// TEST-NATIVE-OPS-05b: Rosetta が使える Mac では x86_64 macOS smoke script が実行できること。
+#[test]
+fn test_e2e_native_ops05_macos_x86_rosetta_smoke_script_runs_when_supported() {
+    if !cfg!(target_os = "macos") {
+        return;
+    }
+
+    let rosetta = std::process::Command::new("arch")
+        .args(["-x86_64", "/usr/bin/true"])
+        .output();
+    if !rosetta
+        .map(|output| output.status.success())
+        .unwrap_or(false)
+    {
+        return;
+    }
+
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let artifact_id = format!("test-{}", std::process::id());
+    let artifact_dir = project_root
+        .join("ci-artifacts/native-macos-x86-local-smoke")
+        .join(&artifact_id);
+    let _ = std::fs::remove_dir_all(&artifact_dir);
+
+    let output = std::process::Command::new("bash")
+        .arg("scripts/ci/native-macos-x86-local-smoke.sh")
+        .env("NATIVE_MACOS_X86_ARTIFACT_ID", &artifact_id)
+        .current_dir(&project_root)
+        .output()
+        .expect("native-macos-x86-local-smoke.sh を起動できない");
+
+    assert!(
+        output.status.success(),
+        "native-macos-x86-local-smoke.sh failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let summary_path = artifact_dir.join("summary.json");
+    let summary = std::fs::read_to_string(&summary_path).expect("summary.json の読み込みに失敗");
+    for expected in [
+        "\"target\": \"x86_64-apple-darwin\"",
+        "\"status\": \"pass\"",
+        "\"actual_exit_code\": 42",
+    ] {
+        assert!(
+            summary.contains(expected),
+            "summary.json は Rosetta smoke result `{}` を含むこと",
+            expected
+        );
+    }
+
+    let _ = std::fs::remove_dir_all(&artifact_dir);
+}
+
 /// TEST-OPS-03b: 手動診断用 `test_debug_*` は full `cargo test` の通常 gate に入れないこと
 #[test]
 fn test_e2e_ops03b_debug_tests_are_ignored() {
@@ -3794,6 +3925,12 @@ fn test_e2e_ops06_release_smoke_contract() {
             && release_distribution_content.contains("rollback compatibility"),
         "release/playbook/signing docs は native-only payload と rollback compatibility 契約を案内すること"
     );
+    assert!(
+        !release_distribution_content.contains("host launcher archive and companion sidecar")
+            && !release_distribution_content
+                .contains("companion sidecar `lsharp-{version}-{target}.component.wasm`"),
+        "release-distribution-signing.md は host launcher/component sidecar を stable 公開対象として説明しないこと"
+    );
 }
 
 /// TEST-OPS-06e: curl で ~/.local/bin に release archive を install できること
@@ -3816,6 +3953,9 @@ fn test_e2e_ops06_release_curl_installer_contract() {
         "curl -fsSL",
         "shasum -a 256",
         "sha256sum",
+        "x86_64-apple-darwin native-only archive is not published yet",
+        "LSHARP_ARCHIVE_URL",
+        "LSHARP_ALLOW_UNPUBLISHED_TARGET",
     ] {
         assert!(
             install_content.contains(expected),
@@ -3823,6 +3963,24 @@ fn test_e2e_ops06_release_curl_installer_contract() {
             expected
         );
     }
+
+    let output = std::process::Command::new("bash")
+        .arg("scripts/install.sh")
+        .env("LSHARP_TARGET", "x86_64-apple-darwin")
+        .env("LSHARP_VERSION", "v0.0.0-test")
+        .current_dir(&project_root)
+        .output()
+        .expect("install.sh を起動できない");
+    assert!(
+        !output.status.success(),
+        "install.sh は unpublished x86_64-apple-darwin stable archive を黙って download しないこと"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("x86_64-apple-darwin native-only archive is not published yet")
+            && stderr.contains("LSHARP_ARCHIVE_URL"),
+        "install.sh は unpublished target の理由と明示 override を案内すること: {stderr}"
+    );
 
     let readme = project_root.join("README.md");
     let readme_content = std::fs::read_to_string(&readme).expect("README.md の読み込みに失敗");
@@ -4224,9 +4382,36 @@ fn test_e2e_ops07_fresh_clone_no_rust() {
             && release_bundle_script.is_file(),
         "OPS-07 stage0 future-state script 群が揃っていること"
     );
+    let fetch_stage0_content =
+        std::fs::read_to_string(&fetch_stage0_script).expect("fetch-stage0.sh の読み込みに失敗");
+    for expected in [
+        "x86_64-apple-darwin stage0 archive is not published yet",
+        "STAGE0_RELEASE_BASE_URL",
+        "STAGE0_ALLOW_UNPUBLISHED_TARGET",
+    ] {
+        assert!(
+            fetch_stage0_content.contains(expected),
+            "fetch-stage0.sh は unpublished x86_64-apple-darwin stage0 contract `{}` を固定すること",
+            expected
+        );
+    }
 
     let ci_path = project_root.join(".github/workflows/ci.yml");
     let ci_content = std::fs::read_to_string(&ci_path).expect("ci.yml の読み込みに失敗");
+    let artifact_job_start = ci_content
+        .find("fresh-clone-artifact:")
+        .expect("ci.yml に fresh-clone-artifact job が存在しない");
+    let artifact_job_end = ci_content[artifact_job_start + 1..]
+        .find("\n  test-fresh-clone:")
+        .map(|offset| artifact_job_start + 1 + offset)
+        .unwrap_or(ci_content.len());
+    let fresh_clone_artifact_section = &ci_content[artifact_job_start..artifact_job_end];
+    assert!(
+        fresh_clone_artifact_section.contains("NATIVE_ONLY_RELEASE: \"0\"")
+            && fresh_clone_artifact_section.contains("rollback compatibility"),
+        "fresh-clone-artifact job は native-only program 未生成の Ubuntu CI では rollback compatibility archive を明示して作ること"
+    );
+
     let test_job_start = ci_content
         .find("test-fresh-clone:")
         .expect("ci.yml に test-fresh-clone job が存在しない");
@@ -4301,8 +4486,10 @@ fn test_e2e_ops07_fresh_clone_no_rust() {
     assert!(
         fresh_clone_doc_content.contains("test-fresh-clone")
             && fresh_clone_doc_content.contains("download")
-            && fresh_clone_doc_content.contains("smoke_test_readme.sh"),
-        "fresh-clone-spec.md は mainline binary-only test-fresh-clone job を説明すること"
+            && fresh_clone_doc_content.contains("smoke_test_readme.sh")
+            && fresh_clone_doc_content.contains("NATIVE_ONLY_RELEASE=0")
+            && fresh_clone_doc_content.contains("rollback compatibility archive"),
+        "fresh-clone-spec.md は mainline binary-only test-fresh-clone job と rollback compatibility archive の境界を説明すること"
     );
     assert!(
         fresh_clone_doc_content.contains("現行の closest viable binary-only gate")

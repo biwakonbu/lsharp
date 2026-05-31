@@ -104,10 +104,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: build release-style archive
+      - name: build rollback compatibility release-style archive
         shell: bash
         env:
           VERSION: ci-${{ github.sha }}
+          NATIVE_ONLY_RELEASE: "0"
         run: rm -rf dist && bash scripts/release.sh
       - name: artifact 保存
         uses: actions/upload-artifact@v4

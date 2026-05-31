@@ -131,7 +131,9 @@ fresh-clone-artifact:
   steps:
     - uses: actions/checkout@v4
     - uses: dtolnay/rust-toolchain@stable
-    - run: bash scripts/release.sh
+    - env:
+        NATIVE_ONLY_RELEASE: "0"
+      run: bash scripts/release.sh
     - uses: actions/upload-artifact@v4
       with:
         name: fresh-clone-archive-${{ github.sha }}
@@ -152,7 +154,7 @@ test-fresh-clone:
       run: bash scripts/ci/test-fresh-clone.sh dist/<archive>.tar.gz
 ```
 
-- `fresh-clone-artifact` が Linux 用 release-style archive を同一 workflow で作成し、`test-fresh-clone` はそれを download して検証する
+- `fresh-clone-artifact` が Linux 用 rollback compatibility archive を同一 workflow で作成し、`test-fresh-clone` はそれを download して検証する。Ubuntu CI では actual native `program.native` を生成しないため、native-only official archive ではなく `NATIVE_ONLY_RELEASE=0` を明示して host launcher + guest component の rollback compatibility archive を使う。
 - `test-fresh-clone` 側は Rust ツールチェーン無し runner を維持する（`dtolnay/rust-toolchain` ステップなし）
 - `scripts/ci/test-fresh-clone.sh <archive>` が `scripts/ci/release-smoke.sh` / `scripts/ci/default-path-smoke.sh` / `scripts/smoke_test_readme.sh` を順に再利用し、downloaded artifact だけで `verify checksum -> packaged binary smoke -> default path smoke -> README Quick Start smoke` を通す
 - これは stage0 package 配布前の **closest viable binary-only gate** であり、true no-Rust end-state では GitHub Releases / stage0 fetch に置き換える

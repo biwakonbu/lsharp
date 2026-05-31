@@ -46,6 +46,15 @@ detect_target() {
   esac
 }
 
+guard_unpublished_target() {
+  target="$1"
+  if [ "$target" = "x86_64-apple-darwin" ] &&
+     [ -z "$ARCHIVE_URL" ] &&
+     [ "${LSHARP_ALLOW_UNPUBLISHED_TARGET:-0}" != "1" ]; then
+    fail "x86_64-apple-darwin native-only archive is not published yet; set LSHARP_ARCHIVE_URL to an explicit archive or LSHARP_ALLOW_UNPUBLISHED_TARGET=1 for a private mirror"
+  fi
+}
+
 resolve_latest_version() {
   curl -fsSL "https://api.github.com/repos/${REPO}/releases" \
     | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' \
@@ -156,6 +165,7 @@ need_cmd uname
 need_cmd tar
 
 [ -n "$TARGET" ] || TARGET="$(detect_target)"
+guard_unpublished_target "$TARGET"
 case "$TARGET" in
   *windows*) EXT="zip" ;;
   *) EXT="tar.gz" ;;

@@ -50,6 +50,16 @@ detect_archive_ext() {
   fi
 }
 
+guard_unpublished_target() {
+  local target="$1"
+  if [[ "$target" == "x86_64-apple-darwin" &&
+        -z "$RELEASE_BASE_URL" &&
+        "${STAGE0_ALLOW_UNPUBLISHED_TARGET:-0}" != "1" ]]; then
+    echo "ERROR: x86_64-apple-darwin stage0 archive is not published yet; set STAGE0_RELEASE_BASE_URL to an explicit mirror or STAGE0_ALLOW_UNPUBLISHED_TARGET=1 for a private release set" >&2
+    exit 1
+  fi
+}
+
 extract_archive() {
   local archive_path="$1"
   local extract_dir="$2"
@@ -130,6 +140,7 @@ if [[ -z "$VERSION" ]]; then
 fi
 
 TARGET="$(detect_target)"
+guard_unpublished_target "$TARGET"
 ARCHIVE_EXT="$(detect_archive_ext "$TARGET")"
 ARCHIVE_NAME="lsharp-${VERSION}-${TARGET}.${ARCHIVE_EXT}"
 if [[ -z "$RELEASE_BASE_URL" ]]; then

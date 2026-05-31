@@ -148,7 +148,7 @@ V2-14 の native-only official archive layout は `program.native`、`manifest.j
 
 現時点で残る target-specific blocker は以下である。
 
-1. actual native self-regeneration は `aarch64-apple-darwin` と Linux x86_64 server priority track で完了している。Linux x86_64 は tag release 前に Mac + Lima VM 上で `NATIVE_LINUX_X86_HOSTGEN_VM_ARTIFACT_ID=<release-id> scripts/ci/native-linux-x86-selfregen.sh` を実行し、stage2/stage3 compare 証跡を local artifact として残す。`x86_64-apple-darwin` / `x86_64-pc-windows-msvc` の Tier1 official gate は未完了。
+1. actual native self-regeneration は `aarch64-apple-darwin` と Linux x86_64 server priority track で完了している。Linux x86_64 は tag release 前に Mac + Lima VM 上で `NATIVE_LINUX_X86_HOSTGEN_VM_ARTIFACT_ID=<release-id> scripts/ci/native-linux-x86-selfregen.sh` を実行し、stage2/stage3 compare 証跡を local artifact として残す。`x86_64-apple-darwin` は `scripts/ci/native-macos-x86-local-smoke.sh` の Rosetta local smoke で const-42 実行 coverage の入口だけを確認し、actual self-regeneration / release smoke は未完了として扱う。`x86_64-pc-windows-msvc` の Tier1 official gate は未完了。
 2. `x86_64-pc-windows-msvc` は native backend spec 上 BLOCKED で、COFF/PE runtime/link/smoke と Authenticode gate が必要。
 3. `scripts/release.sh` / `scripts/ci/release-smoke.sh` / `.github/workflows/release.yml` は native-only official archive layout を stable release path として扱う。host launcher + embedded guest component は rollback compatibility asset としてのみ扱う。
 

@@ -95,7 +95,7 @@ V2-15 では `scripts/release.sh` / `scripts/ci/release-smoke.sh` / `.github/wor
 
 - artifact 名・保持期間の正本は [`artifact-policy.md`](./artifact-policy.md)。
 - 配布物のファイル名は `lsharp-{version}-{target}.{ext}` を基本形とし、target ごとの圧縮形式は release workflow で固定する。
-- checksum は配布物と同時に生成し、release asset と同じ公開単位で扱う。現行 workflow では `release` job が top-level `dist/checksums.txt` を release-level checksum asset として生成・添付し、build job は host launcher archive と companion sidecar `lsharp-{version}-{target}.component.wasm` を公開対象に含める。
+- checksum は配布物と同時に生成し、release asset と同じ公開単位で扱う。現行 workflow では `release` job が top-level `dist/checksums.txt` を release-level checksum asset として生成・添付し、build job は native-only archive を stable 公開対象にする。host launcher + guest component は rollback compatibility asset としてのみ扱う。
 
 ## 署名ポリシー
 
@@ -107,7 +107,7 @@ V2-15 では `scripts/release.sh` / `scripts/ci/release-smoke.sh` / `.github/wor
 
 ### macOS notarization
 
-- 対象: `macos-arm64`, `macos-x86_64` の host launcher archive
+- 対象: `macos-arm64`, `macos-x86_64` の native-only archive
 - 前提:
   1. `Developer ID Application` 証明書が release 用 secret / secure storage にある
   2. notarization 用の Apple ID credential / app-specific password もしくは API key が使える
@@ -124,8 +124,8 @@ codesign --verify --deep --strict lsharp
 spctl --assess -vv lsharp
 ```
 
-- embedded guest component (`.component.wasm`) は実行ファイルではないため、notarization 対象ではなく checksum / release asset 管理の対象として扱う。現行 stable release では companion sidecar `lsharp-{version}-{target}.component.wasm` として GitHub Release に添付する。
-- release workflow は macOS runner 上で `APPLE_CODESIGN_IDENTITY` と `APPLE_NOTARY_KEYCHAIN_PROFILE` が両方ある場合にだけ signing / notarization hook を実行し、`codesign --verify --deep --strict` / `spctl --assess -vv` / `xcrun notarytool submit --wait` を通す。credential 未設定時は skip し、host launcher archive / sidecar / checksum 契約だけを維持する。
+- embedded guest component (`.component.wasm`) は stable native-only archive の既定 payload ではない。rollback compatibility asset や investigation 用 asset として添付する場合だけ checksum / release asset 管理の対象にする。
+- release workflow は macOS runner 上で `APPLE_CODESIGN_IDENTITY` と `APPLE_NOTARY_KEYCHAIN_PROFILE` が両方ある場合にだけ signing / notarization hook を実行し、`codesign --verify --deep --strict` / `spctl --assess -vv` / `xcrun notarytool submit --wait` を通す。credential 未設定時は skip し、native-only archive / rollback compatibility / checksum 契約だけを維持する。
 
 ### Windows Authenticode
 
