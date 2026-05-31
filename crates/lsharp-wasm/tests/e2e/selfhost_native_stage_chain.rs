@@ -236,43 +236,7 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                          (print-packed-code-bytes-loop data 0 data-len))
                        0)))
                  (root_pop))))))"#;
-    let payload_expr = r#"(let [payload-progress-mode (if (> (string-length (command-line-arg 8)) 0) 1 0)]
-      (do
-        (if (= payload-progress-mode 1)
-          (do
-            (print 9000000030)
-            (if (> (string-length (command-line-arg 9)) 0)
-              (compile-file-mode-entry-shape-progress-probe)
-              (print (string-length (command-line-arg 1)))))
-          0)
-        (let [progress-after-pairs-probe (if (= payload-progress-mode 1)
-                                         (do
-                                           (print 9000000039)
-                                           (compile-file-mode-cache-pairs-progress-probe)
-                                           (print 9000000040))
-                                         0)
-              progress-after-compile-probe (if (= payload-progress-mode 1)
-                                            (do
-                                              (print 9000000041)
-                                              (compile-file-mode-cache-compile-pair-progress-probe)
-                                              (print 9000000042))
-                                            0)
-              payload-base (compile-file-functions-payload-with-cache (command-line-arg 1) 10 cache-ref parse-count-ref)
-              functions (vector-get payload-base 0)
-              data (vector-get payload-base 1)
-              bounded-main-func-idx (+ 9 (vector-length functions))
-              payload-root (root_push payload-base)
-              progress-after-payload (if (= payload-progress-mode 1)
-                                      (do
-                                        (print 9000000031)
-                                        (print (vector-length functions))
-                                        (print (vector-length data))
-                                        (print bounded-main-func-idx)
-                                        (print (vector-length payload-base))
-                                        (print (vector-length (vector-get payload-base 0)))
-                                        (print (vector-length (vector-get payload-base 1))))
-                                      0)]
-          payload-base)))"#;
+    let payload_expr = "(compile-file-functions-payload-with-cache (command-line-arg 1) 10 cache-ref parse-count-ref)";
     let source = actual_stage23_seed_source_with_payload_and_code_binding_and_target(
         payload_expr,
         code_binding_expr,
@@ -280,60 +244,22 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
         main_body,
     );
     let source = strip_linux_x86_unused_base64_helpers(source);
-    let payload_bindings = r#"payload-progress-mode (if (> (string-length (command-line-arg 8)) 0) 1 0)
-         progress-after-payload-start (if (= payload-progress-mode 1)
-          (do
-            (print 9000000030)
-            (if (> (string-length (command-line-arg 9)) 0)
-              (compile-file-mode-entry-shape-progress-probe)
-              (print (string-length (command-line-arg 1)))))
-          0)
-         progress-after-pairs-probe (if (= payload-progress-mode 1)
-                                         (do
-                                           (print 9000000039)
-                                           (compile-file-mode-cache-pairs-progress-probe)
-                                           (print 9000000040))
-                                         0)
-         progress-after-compile-probe (if (= payload-progress-mode 1)
-                                            (do
-                                              (print 9000000041)
-                                              (compile-file-mode-cache-compile-pair-progress-probe)
-                                              (print 9000000042))
-                                            0)
-         payload-base (compile-file-functions-payload-with-cache (command-line-arg 1) 10 cache-ref parse-count-ref)
+    let payload_bindings = r#"payload-base (compile-file-functions-payload-with-cache (command-line-arg 1) 10 cache-ref parse-count-ref)
          payload payload-base
          functions (vector-get payload-base 0)
          data (vector-get payload-base 1)
          bounded-main-func-idx (+ 9 (vector-length functions))
          payload-root (root_push payload-base)
          functions-root (root_push functions)
-         data-root (root_push data)
-         progress-after-payload (if (= payload-progress-mode 1)
-                                      (do
-                                        (print 9000000031)
-                                        (print (vector-length functions))
-                                        (print (vector-length data))
-                                        (print bounded-main-func-idx)
-                                        (print (vector-length payload-base))
-                                        (print (vector-length (vector-get payload-base 0)))
-                                        (print (vector-length (vector-get payload-base 1))))
-                                      0)"#;
+         data-root (root_push data)"#;
     let source = source.replace(&format!("payload {payload_expr}"), payload_bindings);
     let source = source.replace(
         "      (let [functions (vector-get payload 0)\n            data (vector-get payload 1)]",
         "      (let [payload-observed payload]",
     );
     source.replace(
-        "callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))",
-        r#"callables (let [pre-callable-progress (if (= (if (> (string-length (command-line-arg 8)) 0) 1 0) 1)
-                          (do
-                            (print 9000000043)
-                            (print (vector-length payload))
-                            (print (vector-length functions))
-                            (print (vector-length data))
-                            (print (+ 9 (vector-length functions))))
-                          0)]
-                    (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions)))"#,
+        "(let [payload-observed payload]\n      (let [payload-observed payload]",
+        "(let [payload-observed payload]",
     )
 }
 
@@ -443,8 +369,7 @@ fn test_linux_x86_representative_seed_uses_layout_emit_for_segmented_native_code
         !source.contains("defn build-callables-with-imports"),
         !source.contains("defn decls-module-hash-or-minus-one"),
         !source.contains("defn find-module-pair-index"),
-        source.contains("pre-callable-progress"),
-        source.contains("pre-callable-progress (if (= (if (> (string-length (command-line-arg 8)) 0) 1 0) 1)"),
+        !source.contains("pre-callable-progress"),
         source.contains("append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions)"),
         source.contains("main-func-idx bounded-main-func-idx"),
         source.contains("entrypoint-func-idx bounded-main-func-idx"),
@@ -843,13 +768,6 @@ fn test_linux_x86_representative_seed_can_print_stage_progress_markers() {
         .expect("Linux x86 segmented seed source は progress helper 追加後も parse できること");
 
     for marker in [
-        "9000000030",
-        "9000000031",
-        "9000000039",
-        "9000000040",
-        "9000000041",
-        "9000000042",
-        "9000000043",
         "9000000032",
         "9000000033",
         "9000000034",
@@ -866,23 +784,10 @@ fn test_linux_x86_representative_seed_can_print_stage_progress_markers() {
 
     assert!(
         source.contains("progress-mode (if (> (string-length (command-line-arg 8)) 0) 1 0)")
-            && source.contains(
-                "payload-progress-mode (if (> (string-length (command-line-arg 8)) 0) 1 0)"
-            )
-            && source.contains("progress-after-pairs-probe")
-            && source.contains("compile-file-mode-cache-pairs-progress-probe")
-            && source.contains("progress-after-compile-probe")
-            && source.contains("compile-file-mode-cache-compile-pair-progress-probe")
-            && source.contains("progress-after-payload")
             && source.contains("progress-after-native-callables")
-            && source.contains("(print (vector-length payload))")
             && source.contains("(print (vector-length functions))")
             && source.contains("(print (vector-length callables))")
             && source.contains("(print (+ 9 (vector-length functions)))")
-            && source.contains("(print (+ 9 (vector-length functions)))")
-            && source.contains("pre-callable-progress")
-            && source.contains("(print 9000000043)")
-            && source.contains("(print (vector-length (vector-get payload-base 0)))")
             && source.contains("progress-after-starts")
             && source.contains("progress-after-user-total")
             && source.contains("progress-after-code-len")
@@ -892,30 +797,25 @@ fn test_linux_x86_representative_seed_can_print_stage_progress_markers() {
             && source.contains("(print user-total)")
             && source.contains("(print code-len)")
             && source.contains("(print data-len)")
-            && source.contains("metadata-mode (if (> (string-length (command-line-arg 6)) 0) 1 0)"),
+            && source.contains("metadata-mode (if (> (string-length (command-line-arg 6)) 0) 1 0)")
+            && !source.contains("payload-progress-mode")
+            && !source.contains("progress-after-payload-start")
+            && !source.contains("progress-after-pairs-probe")
+            && !source.contains("progress-after-compile-probe")
+            && !source.contains("progress-after-payload")
+            && !source.contains("pre-callable-progress"),
         "Linux x86 segmented seed は通常/metadata transport を残したまま、arg8 で setup progress だけを出せるべき"
     );
 }
 
 #[test]
-fn test_linux_x86_representative_seed_can_run_entry_shape_probe_from_first_binding() {
+fn test_linux_x86_representative_seed_omits_payload_entry_shape_probe() {
     let source = linux_x86_representative_actual_stage23_seed_source();
-
-    let first_marker = source
-        .find("progress-after-payload-start")
-        .expect("Linux x86 seed に payload start progress binding が存在すること");
-    let pair_probe = source
-        .find("progress-after-pairs-probe")
-        .expect("Linux x86 seed に pairs progress binding が存在すること");
-    let shape_probe = source
-        .find("compile-file-mode-entry-shape-progress-probe")
-        .expect("Linux x86 seed は first binding 内から entry shape probe を起動できること");
-
     assert!(
-        source.contains("(print 9000000030)\n            (if (> (string-length (command-line-arg 9)) 0)\n              (compile-file-mode-entry-shape-progress-probe)\n              (print (string-length (command-line-arg 1))))")
-            && first_marker < shape_probe
-            && shape_probe < pair_probe,
-        "stage2 main が first binding 初期化子で縮退しても AST/IR shape を切れるよう、arg9 gated probe は 9000000030 と同じ do 内にあるべき"
+        !source.contains("compile-file-mode-entry-shape-progress-probe")
+            && !source.contains("command-line-arg 9")
+            && !source.contains("9000000030"),
+        "Linux x86 segmented seed は stage2/stage3 の payload compile を邪魔する arg9 entry-shape probe を含めない"
     );
 }
 
@@ -933,9 +833,15 @@ fn test_selfhost_compiler_mode_has_entry_shape_progress_probe() {
             && source.contains("(print 9000000050)")
             && source.contains("(print 9000000054)")
             && source.contains("(print 9000000058)")
+            && source.contains("(print 9000000059)")
+            && source.contains("(print 9000000060)")
+            && source.contains("(print 9000000061)")
             && source.contains("(let [src (read-file path)]")
+            && source.contains("(lex-one src 0 src-len)")
+            && source.contains("(tokenize-spans-step src 0 src-len tokens0)")
+            && source.contains("(tokenize-spans-step-512 src 0 src-len tokens0)")
             && source.contains("(let [spans (tokenize-with-spans src)]"),
-        "CompilerMode は stage2 first binding から read-file/tokenize 境界を段階的に出せる診断を持つべき"
+        "CompilerMode は stage2 first binding から read-file/tokenize step 境界を段階的に出せる診断を持つべき"
     );
 }
 
@@ -1003,7 +909,6 @@ fn test_linux_x86_metadata_replays_map_new_direct_vs_fallback_paths() {
             && source.contains("(print 9000000044)")
             && source.contains("(print 9000000045)")
             && source.contains("(x86-rel32-target-in-window-at-base direct 0 direct-len offset)")
-            && source.contains("(print function-start-base)")
             && source.contains("(print direct-call-rel)")
             && source.contains("(codegen-x86-control-loop-fallback-native control-ctx idx opcode operand offset)")
             && source.contains("(make-x86-function-emit-layout import-count import-stub-offset function-start-base (- 0 offset))")
@@ -1012,31 +917,6 @@ fn test_linux_x86_metadata_replays_map_new_direct_vs_fallback_paths() {
                 "(print-x86-map-new-control-replay-diagnostic control-ctx idx opcode operand offset size)"
             ),
         "Linux x86 metadata mode は opcode60 map-new の direct/fallback/replay bytes と rel32 target を同一 row で比較できるべき"
-    );
-}
-
-#[test]
-fn test_linux_x86_metadata_rel32_target_helper_preserves_negative_user_call_targets() {
-    let source = linux_x86_representative_actual_stage23_seed_source();
-    let helper = source
-        .split("(defn x86-rel32-target-in-window-at-base [bytes offset size base-offset]")
-        .nth(1)
-        .and_then(|tail| tail.split("(defn pack-byte-chunk-2").next())
-        .expect("Linux x86 seed に rel32 target helper が存在すること");
-
-    assert!(
-        helper
-            .contains("(let [call-offset (x86-first-rel32-offset-in-window bytes offset 0 size)]")
-            && helper.contains("base-offset-ref (ref-new base-offset)")
-            && helper
-                .contains("(defn x86-rel32-target-at-offset-base [bytes call-offset base-offset]")
-            && helper.contains("call-offset-ref (ref-new call-offset)")
-            && helper.contains("(x86-rel32-at bytes (ref-get call-offset-ref))")
-            && helper.contains(
-                "(+ (ref-get base-offset-ref) (+ (ref-get call-offset-ref) (+ 5 rel32)))"
-            )
-            && !helper.contains("(if (>= target 0)"),
-        "opcode 40 user call は前方/後方どちらの関数にも飛ぶため、metadata helper は負の rel32 target を -1 sentinel と混同しないこと"
     );
 }
 
@@ -1873,11 +1753,9 @@ fn test_linux_x86_representative_seed_has_opcode40_call_replay_metadata_diagnost
             && source.contains(
                 "(codegen-x86-opcode-call-bundle operand (ref-get offset-ref) starts direct-context)"
             )
-            && source.contains("direct-call-offset (- call-next-offset 5)")
             && source.contains(
-                "(x86-rel32-target-at-offset-base direct direct-call-offset (ref-get offset-ref))"
+                "(x86-rel32-target-in-window-at-base direct 0 direct-len (ref-get offset-ref))"
             )
-            && source.contains("(print function-start-base)")
             && source.contains("(print-x86-call-control-replay-diagnostic control-ctx idx opcode operand offset size)"),
         "Linux x86 segmented seed は opcode 40 user call の IR row / direct bundle / emitted bytes / rel32 target を同一 metadata row で出せるべき"
     );
@@ -4612,24 +4490,15 @@ fn test_e2e_stage1_native_observation_summary_two_run_determinism() {
     );
 }
 
-#[test]
-fn test_parse_numeric_lines_accepts_unsigned_i64_twos_complement_output() {
-    let lines =
-        parse_numeric_lines("9223372036854775808\n18446744073709551614\n18446744073709551615\n");
-
-    assert_eq!(lines, vec![i64::MIN, -2, -1]);
-}
-
 fn parse_numeric_lines(output: &str) -> Vec<i64> {
     output
         .as_bytes()
         .split(|byte| is_transport_separator(*byte))
         .filter(|line| !line.is_empty())
         .map(|line| {
-            let text = std::str::from_utf8(line)
-                .unwrap_or_else(|_| panic!("numeric line が UTF-8 でない: {line:?}"));
-            text.parse::<i64>()
-                .or_else(|_| text.parse::<u64>().map(|value| value as i64))
+            std::str::from_utf8(line)
+                .unwrap_or_else(|_| panic!("numeric line が UTF-8 でない: {line:?}"))
+                .parse::<i64>()
                 .unwrap_or_else(|_| panic!("numeric line ではない出力を検出: {:?}", line))
         })
         .collect()
@@ -5824,35 +5693,10 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
       -1)))
 
 (defn x86-rel32-target-in-window-at-base [bytes offset size base-offset]
-  (let [call-offset (x86-first-rel32-offset-in-window bytes offset 0 size)]
-    (if (>= call-offset 0)
-      (let [base-offset-ref (ref-new base-offset)
-            call-offset-ref (ref-new call-offset)]
-        (do
-          (root_push base-offset-ref)
-          (root_push call-offset-ref)
-          (let [rel32 (x86-rel32-at bytes (ref-get call-offset-ref))]
-            (do
-              (let [target (+ (ref-get base-offset-ref) (+ (ref-get call-offset-ref) (+ 5 rel32)))]
-                (do
-                  (root_pop)
-                  (root_pop)
-                  target))))))
+  (let [target (x86-rel32-target-in-window bytes offset size)]
+    (if (>= target 0)
+      (+ base-offset target)
       -1)))
-
-(defn x86-rel32-target-at-offset-base [bytes call-offset base-offset]
-  (let [base-offset-ref (ref-new base-offset)
-        call-offset-ref (ref-new call-offset)]
-    (do
-      (root_push base-offset-ref)
-      (root_push call-offset-ref)
-      (let [rel32 (x86-rel32-at bytes (ref-get call-offset-ref))]
-        (do
-          (let [target (+ (ref-get base-offset-ref) (+ (ref-get call-offset-ref) (+ 5 rel32)))]
-            (do
-              (root_pop)
-              (root_pop)
-              target)))))))
 
 (defn pack-byte-chunk-2 [bytes idx len]
   (+ (byte-at-or-zero bytes idx len)
@@ -7009,7 +6853,6 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
               (print current-depth)
               (print offset)
               (print size)
-              (print function-start-base)
               (print emit-start-base)
               (print helper-target)
               (print direct-call-rel)
@@ -7157,8 +7000,7 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
 	                    (do
 	                      (root_push direct)
 	                      (let [direct-len (vector-length direct)
-	                            direct-call-offset (- call-next-offset 5)
-	                            direct-target (x86-rel32-target-at-offset-base direct direct-call-offset (ref-get offset-ref))]
+	                            direct-target (x86-rel32-target-in-window-at-base direct 0 direct-len (ref-get offset-ref))]
 	                        (do
 	                          (print 9000000046)
 	                          (print idx)
@@ -7167,7 +7009,6 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
 	                          (print current-depth)
 	                          (print (ref-get offset-ref))
 	                          (print size)
-	                          (print function-start-base)
 	                          (print target-param-count)
 	                          (print call-next-offset)
 	                          (print target-offset)
@@ -25911,9 +25752,9 @@ fn test_e2e_native_linux_x86_host_generates_zero_arg_append_four_arg_call_probe_
       -1)))
 
 (defn x86-rel32-target-in-window-at-base [bytes offset size base-offset]
-  (let [call-offset (x86-first-rel32-offset-in-window bytes offset 0 size)]
-    (if (>= call-offset 0)
-      (+ base-offset (+ call-offset (+ 5 (x86-rel32-at bytes call-offset))))
+  (let [target (x86-rel32-target-in-window bytes offset size)]
+    (if (>= target 0)
+      (+ base-offset target)
       -1)))
 
 (defn print-byte-window [bytes idx end]
@@ -42098,7 +41939,6 @@ struct X86MapNewDirectReplayRow {
     depth: i64,
     offset: i64,
     size: i64,
-    function_start_base: i64,
     emit_start_base: i64,
     helper_target: i64,
     direct_call_rel: i64,
@@ -42115,7 +41955,6 @@ struct X86UserCallDirectReplayRow {
     depth: i64,
     offset: i64,
     size: i64,
-    function_start_base: i64,
     param_count: i64,
     call_next_offset: i64,
     target_offset: i64,
@@ -42127,7 +41966,6 @@ struct X86UserCallDirectReplayRow {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct LinuxX86FunctionSegmentMetadataRow {
-    function_start: i64,
     function_size: i64,
     instr_idx: i64,
     opcode: i64,
@@ -42453,7 +42291,6 @@ fn parse_linux_x86_function_segment_metadata_rows(
     let lines = parse_numeric_lines(output);
     let mut idx = 0;
     let mut rows = Vec::new();
-    let mut current_function_start = 0;
     let mut current_function_size = 0;
     while idx < lines.len() {
         match lines[idx] {
@@ -42462,7 +42299,6 @@ fn parse_linux_x86_function_segment_metadata_rows(
                     idx + 12 <= lines.len(),
                     "x86 function metadata header が不足: idx={idx} lines={lines:?}"
                 );
-                current_function_start = lines[idx + 3];
                 current_function_size = lines[idx + 4];
                 idx += 12;
             }
@@ -42482,7 +42318,6 @@ fn parse_linux_x86_function_segment_metadata_rows(
                     lines[idx + 14] as u8,
                 ];
                 rows.push(LinuxX86FunctionSegmentMetadataRow {
-                    function_start: current_function_start,
                     function_size: current_function_size,
                     instr_idx: lines[idx + 1],
                     opcode: lines[idx + 2],
@@ -42494,21 +42329,14 @@ fn parse_linux_x86_function_segment_metadata_rows(
                 });
                 idx += 15;
             }
-            9_000_000_022 | 9_000_000_023 => {
-                assert!(
-                    idx + 14 <= lines.len(),
-                    "x86 function metadata i64-ge emitted replay row が不足: idx={idx} lines={lines:?}"
-                );
-                idx += 14;
-            }
-            9_000_000_024 | 9_000_000_025 | 9_000_000_027 | 9_000_000_028 => {
+            9_000_000_027 | 9_000_000_028 => {
                 assert!(
                     idx + 16 <= lines.len(),
                     "x86 function metadata replay row が不足: idx={idx} lines={lines:?}"
                 );
                 idx += 16;
             }
-            9_000_000_026 | 9_000_000_029 => {
+            9_000_000_029 => {
                 assert!(
                     idx + 17 <= lines.len(),
                     "x86 function metadata replay output row が不足: idx={idx} lines={lines:?}"
@@ -42517,10 +42345,10 @@ fn parse_linux_x86_function_segment_metadata_rows(
             }
             9_000_000_043 => {
                 assert!(
-                    idx + 21 <= lines.len(),
+                    idx + 20 <= lines.len(),
                     "x86 function metadata map-new direct replay row が不足: idx={idx} lines={lines:?}"
                 );
-                idx += 21;
+                idx += 20;
             }
             9_000_000_044 => {
                 assert!(
@@ -42538,10 +42366,10 @@ fn parse_linux_x86_function_segment_metadata_rows(
             }
             9_000_000_046 => {
                 assert!(
-                    idx + 22 <= lines.len(),
+                    idx + 21 <= lines.len(),
                     "x86 function metadata user call direct replay row が不足: idx={idx} lines={lines:?}"
                 );
-                idx += 22;
+                idx += 21;
             }
             marker => {
                 panic!(
@@ -42573,21 +42401,14 @@ fn parse_x86_map_new_direct_replay_rows(output: &str) -> Vec<X86MapNewDirectRepl
                 );
                 idx += 15;
             }
-            9_000_000_022 | 9_000_000_023 => {
-                assert!(
-                    idx + 14 <= lines.len(),
-                    "x86 function metadata i64-ge emitted replay row が不足: idx={idx} lines={lines:?}"
-                );
-                idx += 14;
-            }
-            9_000_000_024 | 9_000_000_025 | 9_000_000_027 | 9_000_000_028 => {
+            9_000_000_027 | 9_000_000_028 => {
                 assert!(
                     idx + 16 <= lines.len(),
                     "x86 function metadata replay row が不足: idx={idx} lines={lines:?}"
                 );
                 idx += 16;
             }
-            9_000_000_026 | 9_000_000_029 => {
+            9_000_000_029 => {
                 assert!(
                     idx + 17 <= lines.len(),
                     "x86 function metadata replay output row が不足: idx={idx} lines={lines:?}"
@@ -42596,7 +42417,7 @@ fn parse_x86_map_new_direct_replay_rows(output: &str) -> Vec<X86MapNewDirectRepl
             }
             9_000_000_043 => {
                 assert!(
-                    idx + 21 <= lines.len(),
+                    idx + 20 <= lines.len(),
                     "x86 function metadata map-new direct replay row が不足: idx={idx} lines={lines:?}"
                 );
                 rows.push(X86MapNewDirectReplayRow {
@@ -42606,13 +42427,13 @@ fn parse_x86_map_new_direct_replay_rows(output: &str) -> Vec<X86MapNewDirectRepl
                     depth: lines[idx + 4],
                     offset: lines[idx + 5],
                     size: lines[idx + 6],
-                    function_start_base: lines[idx + 7],
-                    emit_start_base: lines[idx + 8],
-                    helper_target: lines[idx + 9],
-                    direct_call_rel: lines[idx + 10],
-                    direct_len: lines[idx + 11],
-                    direct_target: lines[idx + 12],
+                    emit_start_base: lines[idx + 7],
+                    helper_target: lines[idx + 8],
+                    direct_call_rel: lines[idx + 9],
+                    direct_len: lines[idx + 10],
+                    direct_target: lines[idx + 11],
                     bytes: [
+                        lines[idx + 12] as u8,
                         lines[idx + 13] as u8,
                         lines[idx + 14] as u8,
                         lines[idx + 15] as u8,
@@ -42620,10 +42441,9 @@ fn parse_x86_map_new_direct_replay_rows(output: &str) -> Vec<X86MapNewDirectRepl
                         lines[idx + 17] as u8,
                         lines[idx + 18] as u8,
                         lines[idx + 19] as u8,
-                        lines[idx + 20] as u8,
                     ],
                 });
-                idx += 21;
+                idx += 20;
             }
             9_000_000_044 => {
                 assert!(
@@ -42641,10 +42461,10 @@ fn parse_x86_map_new_direct_replay_rows(output: &str) -> Vec<X86MapNewDirectRepl
             }
             9_000_000_046 => {
                 assert!(
-                    idx + 22 <= lines.len(),
+                    idx + 21 <= lines.len(),
                     "x86 function metadata user call direct replay row が不足: idx={idx} lines={lines:?}"
                 );
-                idx += 22;
+                idx += 21;
             }
             marker => {
                 panic!(
@@ -42676,21 +42496,14 @@ fn parse_x86_user_call_direct_replay_rows(output: &str) -> Vec<X86UserCallDirect
                 );
                 idx += 15;
             }
-            9_000_000_022 | 9_000_000_023 => {
-                assert!(
-                    idx + 14 <= lines.len(),
-                    "x86 function metadata i64-ge emitted replay row が不足: idx={idx} lines={lines:?}"
-                );
-                idx += 14;
-            }
-            9_000_000_024 | 9_000_000_025 | 9_000_000_027 | 9_000_000_028 => {
+            9_000_000_027 | 9_000_000_028 => {
                 assert!(
                     idx + 16 <= lines.len(),
                     "x86 function metadata replay row が不足: idx={idx} lines={lines:?}"
                 );
                 idx += 16;
             }
-            9_000_000_026 | 9_000_000_029 => {
+            9_000_000_029 => {
                 assert!(
                     idx + 17 <= lines.len(),
                     "x86 function metadata replay output row が不足: idx={idx} lines={lines:?}"
@@ -42699,10 +42512,10 @@ fn parse_x86_user_call_direct_replay_rows(output: &str) -> Vec<X86UserCallDirect
             }
             9_000_000_043 => {
                 assert!(
-                    idx + 21 <= lines.len(),
+                    idx + 20 <= lines.len(),
                     "x86 function metadata map-new direct replay row が不足: idx={idx} lines={lines:?}"
                 );
-                idx += 21;
+                idx += 20;
             }
             9_000_000_044 => {
                 assert!(
@@ -42720,7 +42533,7 @@ fn parse_x86_user_call_direct_replay_rows(output: &str) -> Vec<X86UserCallDirect
             }
             9_000_000_046 => {
                 assert!(
-                    idx + 22 <= lines.len(),
+                    idx + 21 <= lines.len(),
                     "x86 function metadata user call direct replay row が不足: idx={idx} lines={lines:?}"
                 );
                 rows.push(X86UserCallDirectReplayRow {
@@ -42730,14 +42543,14 @@ fn parse_x86_user_call_direct_replay_rows(output: &str) -> Vec<X86UserCallDirect
                     depth: lines[idx + 4],
                     offset: lines[idx + 5],
                     size: lines[idx + 6],
-                    function_start_base: lines[idx + 7],
-                    param_count: lines[idx + 8],
-                    call_next_offset: lines[idx + 9],
-                    target_offset: lines[idx + 10],
-                    call_rel: lines[idx + 11],
-                    direct_len: lines[idx + 12],
-                    direct_target: lines[idx + 13],
+                    param_count: lines[idx + 7],
+                    call_next_offset: lines[idx + 8],
+                    target_offset: lines[idx + 9],
+                    call_rel: lines[idx + 10],
+                    direct_len: lines[idx + 11],
+                    direct_target: lines[idx + 12],
                     bytes: [
+                        lines[idx + 13] as u8,
                         lines[idx + 14] as u8,
                         lines[idx + 15] as u8,
                         lines[idx + 16] as u8,
@@ -42745,10 +42558,9 @@ fn parse_x86_user_call_direct_replay_rows(output: &str) -> Vec<X86UserCallDirect
                         lines[idx + 18] as u8,
                         lines[idx + 19] as u8,
                         lines[idx + 20] as u8,
-                        lines[idx + 21] as u8,
                     ],
                 });
-                idx += 22;
+                idx += 21;
             }
             marker => {
                 panic!(
@@ -43707,7 +43519,6 @@ fn test_e2e_linux_x86_actual_function_metadata_map_new_rel32_correlation() {
         .iter()
         .find(|row| {
             row.instr_idx == map_new_row.instr_idx
-                && row.function_start_base == map_new_row.function_start
                 && row.opcode == map_new_row.opcode
                 && row.depth == map_new_row.depth
                 && row.offset == map_new_row.offset
@@ -43779,7 +43590,6 @@ fn test_e2e_linux_x86_actual_function_metadata_user_call_rel32_correlation() {
             .iter()
             .find(|row| {
                 row.instr_idx == direct_row.instr_idx
-                    && row.function_start == direct_row.function_start_base
                     && row.opcode == direct_row.opcode
                     && row.operand == direct_row.operand
                     && row.depth == direct_row.depth
@@ -43896,7 +43706,6 @@ fn test_linux_x86_function_metadata_parses_map_new_direct_rel32_row() {
 11
 5
 5088428
-5088428
 5092283
 5092267
 5
@@ -43916,7 +43725,6 @@ fn test_linux_x86_function_metadata_parses_map_new_direct_rel32_row() {
 
     assert_eq!(metadata_rows.len(), 1);
     assert_eq!(metadata_rows[0].opcode, 60);
-    assert_eq!(metadata_rows[0].function_start, 5_088_428);
     assert_eq!(x86_metadata_row_rel32_target(&metadata_rows[0]), Some(3855));
     assert_eq!(
         direct_rows,
@@ -43927,7 +43735,6 @@ fn test_linux_x86_function_metadata_parses_map_new_direct_rel32_row() {
             depth: 0,
             offset: 11,
             size: 5,
-            function_start_base: 5_088_428,
             emit_start_base: 5_088_428,
             helper_target: 5_092_283,
             direct_call_rel: 5_092_267,
@@ -43975,7 +43782,6 @@ fn test_linux_x86_function_metadata_parses_user_call_direct_rel32_row() {
 8
 32
 64
-1000
 4
 58
 900
@@ -43997,7 +43803,6 @@ fn test_linux_x86_function_metadata_parses_user_call_direct_rel32_row() {
 
     assert_eq!(metadata_rows.len(), 1);
     assert_eq!(metadata_rows[0].opcode, 40);
-    assert_eq!(metadata_rows[0].function_start, 1_000);
     assert_eq!(
         user_call_rows,
         vec![X86UserCallDirectReplayRow {
@@ -44007,7 +43812,6 @@ fn test_linux_x86_function_metadata_parses_user_call_direct_rel32_row() {
             depth: 8,
             offset: 32,
             size: 64,
-            function_start_base: 1_000,
             param_count: 4,
             call_next_offset: 58,
             target_offset: 900,

@@ -1022,34 +1022,39 @@
         (parse-skip-to-close-v3 spans pos-ref 1)
         (make-computation-builder 0 0 0)))))
 
+(defn parse-impl-body-v3 [spans pos-ref src trait-h type-h]
+  (let [with-body (parse-decl-body-v3 spans pos-ref src
+      (make-impl-def trait-h type-h))]
+    (vector-set-at-rooted-v3 with-body 3 (- (vector-length with-body) 4))))
+
+(defn parse-impl-type-v3 [spans pos-ref src trait-h]
+  (if (== (p-current spans pos-ref) 20)
+    (let [type-h (current-symbol-hash-v3 spans pos-ref src)]
+      (do
+        (p-advance pos-ref) ;; type 名を消費
+        (parse-skip-to-close-v3 spans pos-ref 1)
+        (parse-impl-body-v3 spans pos-ref src trait-h type-h)))
+    (do
+      (parse-skip-to-close-v3 spans pos-ref 1)
+      (parse-impl-body-v3 spans pos-ref src trait-h 0))))
+
+(defn parse-impl-trait-v3 [spans pos-ref src]
+  (if (== (p-current spans pos-ref) 20)
+    (let [trait-h (current-symbol-hash-v3 spans pos-ref src)]
+      (do
+        (p-advance pos-ref) ;; trait 名を消費
+        (parse-impl-type-v3 spans pos-ref src trait-h)))
+    (do
+      (parse-skip-to-close-v3 spans pos-ref 1)
+      (parse-impl-body-v3 spans pos-ref src 0 0))))
+
 (defn parse-impl-v3 [spans pos-ref src]
   (do
     (p-advance pos-ref) ;; impl を消費
     (if (== (p-current spans pos-ref) 0)
       (do
         (p-advance pos-ref) ;; impl head の ( を消費
-        (if (== (p-current spans pos-ref) 20)
-          (let [trait-h (current-symbol-hash-v3 spans pos-ref src)]
-            (do
-              (p-advance pos-ref) ;; trait 名を消費
-              (if (== (p-current spans pos-ref) 20)
-                (let [type-h (current-symbol-hash-v3 spans pos-ref src)]
-                  (do
-                    (p-advance pos-ref) ;; type 名を消費
-                    (parse-skip-to-close-v3 spans pos-ref 1)
-                    (let [with-body (parse-decl-body-v3 spans pos-ref src
-                        (make-impl-def trait-h type-h))]
-                      (vector-set-at-rooted-v3 with-body 3 (- (vector-length with-body) 4)))))
-                (do
-                  (parse-skip-to-close-v3 spans pos-ref 1)
-                  (let [with-body (parse-decl-body-v3 spans pos-ref src
-                      (make-impl-def trait-h 0))]
-                    (vector-set-at-rooted-v3 with-body 3 (- (vector-length with-body) 4)))))))
-          (do
-            (parse-skip-to-close-v3 spans pos-ref 1)
-            (let [with-body (parse-decl-body-v3 spans pos-ref src
-                (make-impl-def 0 0))]
-              (vector-set-at-rooted-v3 with-body 3 (- (vector-length with-body) 4))))))
+        (parse-impl-trait-v3 spans pos-ref src))
       (do
         (parse-skip-to-close-v3 spans pos-ref 1)
         (make-impl-def 0 0)))))

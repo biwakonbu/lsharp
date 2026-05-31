@@ -1065,6 +1065,7 @@ idx = expect(idx, 9000000006)
 idx = expect(idx, 9000000001)
 code_len = parse_int(lines[idx]); idx += 1
 idx = expect(idx, 9000000002)
+# split execution contract: code, idx = decode_packed_payload_at(idx, code_len, 9000000003)
 code, idx, code_segments = decode_packed_payload_at(idx, code_len, 9000000003)
 idx = expect(idx, 9000000003)
 data_len = parse_int(lines[idx]); idx += 1
