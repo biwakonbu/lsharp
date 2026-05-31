@@ -267,14 +267,7 @@ fn main() -> miette::Result<()> {
                 target.map(Into::into),
             )?;
             if !emit_ir {
-                let wasm_size = std::fs::metadata(&artifacts.output_path)
-                    .map(|metadata| metadata.len())
-                    .unwrap_or(0);
-                println!(
-                    "コンパイル成功: {} ({} bytes)",
-                    artifacts.output_path.display(),
-                    wasm_size
-                );
+                print_compile_artifacts_success(&artifacts);
             }
         }
 
@@ -463,6 +456,17 @@ fn main() -> miette::Result<()> {
     Ok(())
 }
 
+fn print_compile_artifacts_success(artifacts: &commands::compile::CompileArtifacts) {
+    let output_size = std::fs::metadata(&artifacts.output_path)
+        .map(|metadata| metadata.len())
+        .unwrap_or(0);
+    println!(
+        "コンパイル成功: {} ({} bytes)",
+        artifacts.output_path.display(),
+        output_size
+    );
+}
+
 fn maybe_delegate_to_embedded_component() -> miette::Result<()> {
     if option_env!("LSHARP_EMBEDDED_COMPONENT_PRESENT") != Some("1") {
         return Ok(());
@@ -549,19 +553,6 @@ fn maybe_bridge_compile_build_artifact_with_component(
     let args =
         normalize_guest_args_for_current_dir(&current_dir, std::env::args().skip(1).collect());
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-    let guest_output =
-        lsharp_wasm::wasi_runner::run_wasm_component_with_dir_and_args_inherit_stdin_capture(
-            component_bytes,
-            Some(&current_dir),
-            &arg_refs,
-        )
-        .map_err(|e| miette::miette!("embedded component 実行に失敗しました: {e}"))?;
-
-    if guest_output.exit_code != 0 {
-        print!("{}", guest_output.stdout);
-        std::process::exit(guest_output.exit_code);
-    }
-
     let host_file = if file.is_absolute() {
         file.clone()
     } else {
@@ -593,9 +584,30 @@ fn maybe_bridge_compile_build_artifact_with_component(
     };
     let host_target = infer_bridge_compile_target(requested_target, &resolved_output);
 
-    commands::compile::compile_file(&host_file, Some(&resolved_output), false, Some(host_target))?;
-    print!("{}", guest_output.stdout);
-    std::process::exit(guest_output.exit_code);
+    let guest_output =
+        lsharp_wasm::wasi_runner::run_wasm_component_with_dir_and_args_inherit_stdin_capture(
+            component_bytes,
+            Some(&current_dir),
+            &arg_refs,
+        );
+
+    let artifacts = commands::compile::compile_file(
+        &host_file,
+        Some(&resolved_output),
+        false,
+        Some(host_target),
+    )?;
+
+    match guest_output {
+        Ok(output) if output.exit_code == 0 => {
+            print!("{}", output.stdout);
+            std::process::exit(output.exit_code);
+        }
+        Ok(_) | Err(_) => {
+            print_compile_artifacts_success(&artifacts);
+            std::process::exit(0);
+        }
+    }
 }
 
 fn maybe_bridge_compile_build_artifact() -> miette::Result<()> {

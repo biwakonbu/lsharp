@@ -1755,10 +1755,15 @@ fn test_constraint_valid_returns_bool() {
         .iter()
         .find(|f| f.name == "Natural.valid?")
         .unwrap();
-    // 最初の命令は I64Const(1) (true で初期化)
+    // 最初の命令は I32Const(1) (true で初期化)。
+    // Wasm の i32.and と整合するよう、最後に i64 へ拡張する。
     assert!(matches!(
         valid_func.body.first(),
-        Some(Instruction::I64Const(1))
+        Some(Instruction::I32Const(1))
+    ));
+    assert!(matches!(
+        valid_func.body.last(),
+        Some(Instruction::I64ExtendI32S)
     ));
     // Unreachable は含まれない (valid? はトラップしない)
     assert!(

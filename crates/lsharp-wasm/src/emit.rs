@@ -27,9 +27,27 @@ pub fn emit_instructions_common<F>(
 where
     F: FnMut(&mut wasm_encoder::Function, u32) -> Result<(), CodegenError>,
 {
+    emit_instructions_common_with_handler(func, instructions, &mut call_handler, |_, _| Ok(false))
+}
+
+/// IR 命令列を Wasm 命令に変換する。
+/// バックエンド固有の命令は `custom_handler` が true を返して差し替えられる。
+pub fn emit_instructions_common_with_handler<F, H>(
+    func: &mut wasm_encoder::Function,
+    instructions: &[Instruction],
+    mut call_handler: F,
+    mut custom_handler: H,
+) -> Result<(), CodegenError>
+where
+    F: FnMut(&mut wasm_encoder::Function, u32) -> Result<(), CodegenError>,
+    H: FnMut(&mut wasm_encoder::Function, &Instruction) -> Result<bool, CodegenError>,
+{
     use wasm_encoder::Instruction as W;
 
     for instr in instructions {
+        if custom_handler(func, instr)? {
+            continue;
+        }
         match instr {
             // 定数
             Instruction::I64Const(n) => {
