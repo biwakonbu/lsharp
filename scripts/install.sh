@@ -39,10 +39,15 @@ detect_target() {
   arch="$(uname -m)"
   case "$os:$arch" in
     Darwin:arm64|Darwin:aarch64) echo "aarch64-apple-darwin" ;;
-    Darwin:x86_64) echo "x86_64-apple-darwin" ;;
     Linux:x86_64) echo "x86_64-unknown-linux-gnu" ;;
-    Linux:arm64|Linux:aarch64) echo "aarch64-unknown-linux-gnu" ;;
-    *) fail "unsupported host target: $os/$arch; set LSHARP_TARGET explicitly" ;;
+    *) fail "unsupported host target: $os/$arch; supported release targets: aarch64-apple-darwin, x86_64-unknown-linux-gnu" ;;
+  esac
+}
+
+validate_target() {
+  case "$1" in
+    aarch64-apple-darwin|x86_64-unknown-linux-gnu) ;;
+    *) fail "unsupported release target: $1; supported release targets: aarch64-apple-darwin, x86_64-unknown-linux-gnu" ;;
   esac
 }
 
@@ -147,10 +152,8 @@ need_cmd uname
 need_cmd tar
 
 [ -n "$TARGET" ] || TARGET="$(detect_target)"
-case "$TARGET" in
-  *windows*) EXT="zip" ;;
-  *) EXT="tar.gz" ;;
-esac
+validate_target "$TARGET"
+EXT="tar.gz"
 
 if [ -z "$VERSION" ]; then
   VERSION="$(resolve_latest_version)"

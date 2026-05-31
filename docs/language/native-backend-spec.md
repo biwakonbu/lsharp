@@ -4,7 +4,8 @@
 >
 > V2-08〜V2-10 で Darwin arm64 の actual native self-regeneration と experimental native-only RC は完了した。
 > 次の目標は native-only official replacement track として、host launcher + embedded guest component 配布を rollback compatibility へ降格し、native-only を公式配布へ完全置換すること。
-> ただし Tier1 target matrix には未完了 blocker が残るため、V2-13〜V2-15 を TODO.md の正本に積む。
+> Supported product/release targets は Mac Apple Silicon (`aarch64-apple-darwin`) と Linux x86_64 (`x86_64-unknown-linux-gnu`) の 2 つに固定する。`x86_64-apple-darwin` と Windows (`x86_64-pc-windows-msvc`) は support scope 外であり、公式置換 blocker として扱わない。
+> V2-13〜V2-15 はこの 2 target を正本として TODO.md に積む。
 > 詳細は `TODO.md` の現在の残タスク一覧、`docs/development/planning/v2-designs/v2-08-native-backend-self-regeneration.md`、`docs/development/planning/v2-designs/v2-09-wasm-native-differential-zero.md`、`docs/development/planning/v2-designs/v2-10-native-only-rc-distribution.md` および `backend-boundary.md` を参照。
 
 ## 目的
@@ -22,13 +23,13 @@ native backend は既存の `LoweredModule` を入力として受け取り、tar
 - object emitter と linker 連携
 - 決定的コード生成の要件
 
-以下は v1 の対象外だったが、Native-only official replacement track では Tier1 完全置換 blocker として扱う。
+以下は native backend の初期対象外であり、supported product/release targets の blocker として扱わない。
 
 - tail call 最適化
 - デバッグ情報の完全サポート
 - C ABI を越えた汎用 FFI 面の拡張
 - JIT や動的ロード
-- Windows 向けネイティブ成果物 (**BLOCKED**: `x86_64-pc-windows-msvc` の object/link/runtime 契約が未実装)
+- Windows 向けネイティブ成果物 (`x86_64-pc-windows-msvc` は out of support scope)
 
 ## パイプライン上の位置づけ
 
@@ -45,24 +46,24 @@ IR の意味を変える必要がある場合は、backend 内で吸収せず `b
 
 ## 対象ターゲット
 
-v1 で対象とするターゲットは次のとおりである。
-
-- `x86_64-apple-darwin`
-- `aarch64-apple-darwin`
-- `x86_64-unknown-linux-gnu`
-
-Native-only official replacement track で公式 Tier1 置換に必要な target matrix は次のとおりである。
+Native-only official replacement track で公式配布として扱う Supported product/release targets は次の 2 つである。
 
 | target | 現状 | 置換 blocker |
 |---|---|---|
-| `aarch64-apple-darwin` | actual native self-regeneration / experimental RC 完了 | stable 公式導線への昇格 |
-| `x86_64-apple-darwin` | spec 対象、実行 artifact coverage は未完了 | actual native self-regeneration と release smoke |
-| `x86_64-unknown-linux-gnu` | active priority: Linux x86_64 server priority track で先行検証中 | actual Linux native self-regeneration / runtime-link smoke |
-| `x86_64-pc-windows-msvc` | **BLOCKED** | COFF/PE runtime/link/smoke と Authenticode gate |
+| `aarch64-apple-darwin` | Mac Apple Silicon。actual native self-regeneration / experimental RC 完了 | stable 公式導線への昇格 |
+| `x86_64-unknown-linux-gnu` | Linux x86_64。server priority track で先行検証中 | actual Linux native self-regeneration / runtime-link smoke |
+
+Unsupported product/release targets は次のとおりである。既存の internal diagnostic や historical design は残せるが、公式配布や release blocker には含めない。
+
+| target | 扱い |
+|---|---|
+| `x86_64-apple-darwin` | out of support scope。Rosetta / Mach-O smoke は internal diagnostic のみ |
+| `x86_64-pc-windows-msvc` | out of support scope。COFF/PE / Authenticode は公式配布 blocker ではない |
+| `aarch64-unknown-linux-gnu` | out of support scope。Linux ARM は tier2 ではなく将来再評価事項 |
 
 ### Linux x86_64 server priority track
 
-サーバー用途を優先するため、`x86_64-unknown-linux-gnu` は full Tier1 公式置換より先に V2-13a として切り出す。Ubuntu x86_64 VM / GitHub Actions `ubuntu-latest` runner を正本の実行環境とし、まず `NativeTarget` descriptor、ELF object emitter、x86_64 codegen exact-byte smoke を `native-linux-x86-smoke` で required CI に固定する。
+サーバー用途を優先するため、`x86_64-unknown-linux-gnu` は Mac Apple Silicon と並ぶ supported product/release target として V2-13a で先行固定する。Ubuntu x86_64 VM / GitHub Actions `ubuntu-latest` runner を正本の実行環境とし、まず `NativeTarget` descriptor、ELF object emitter、x86_64 codegen exact-byte smoke を `native-linux-x86-smoke` で required CI に固定する。
 
 開発中の inner loop は GitHub Actions ではなくローカル VM で回す。`scripts/ci/native-linux-x86-local-vm-smoke.sh` は Linux x86_64 VM 上で descriptor / ELF emitter と canonical `program.o` / `runtime.o` / `linker-response.txt` / `program.native` runtime-link smoke を短時間で確認する。QEMU x86_64 VM では selfhost exact-byte suite が重いため、local smoke には含めず、actual native self-regeneration の調査へ進む前の fast gate として扱う。
 

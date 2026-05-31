@@ -462,11 +462,11 @@
 <a id="native-01-target-descriptors"></a>
 ### NATIVE-01 Target descriptors
 
-- Goal: tier1 native target ごとの差分を descriptor に閉じ込める。
+- Goal: supported product/release target ごとの差分を descriptor に閉じ込める。
 - Current state: `selfhost/src/Backend/Native/NativeTarget.ls` に skeleton はあるが、descriptor は `arch`, `os`, `obj-format`, `triple-id` の narrow slice に留まる。
 - Rust source: `docs/language/native-backend-spec.md`
 - L# target: `selfhost/src/Backend/Native/NativeTarget.ls`
-- Implementation direction: `x86_64-apple-darwin`, `aarch64-apple-darwin`, `x86_64-unknown-linux-gnu` の target descriptor を `abi`, `section names`, `relocation types`, `linker flavor`, `runtime artifact policy` の 5 項目で定義する。
+- Implementation direction: supported product/release targets (`aarch64-apple-darwin`, `x86_64-unknown-linux-gnu`) の target descriptor を `abi`, `section names`, `relocation types`, `linker flavor`, `runtime artifact policy` の 5 項目で定義する。`x86_64-apple-darwin` は internal diagnostic descriptor としてのみ残す。
 - Dependencies: `IR-06`
 - Acceptance: target 固有条件分岐が codegen 本体ではなく descriptor 参照だけになる。
 - Evidence: `selfhost/src/Backend/Native/NativeTarget.ls`
@@ -793,7 +793,7 @@
 ### OPS-06 Release playbook
 
 - Goal: host launcher + embedded guest component 配布の build/sign/checksum/changelog を自動化する。
-- Current state: `scripts/release-playbook.sh` は release binary を作り、`compile-phase11-inputs.sh` / `default-path-smoke.sh` を再利用して smoke まで回せる。`.github/workflows/release.yml` も `v*` tag push 起点の `verify` / `build` / `release-smoke` / `release` まで接続済みで、build job は host launcher archive に加えて companion sidecar `lsharp-{version}-{target}.component.wasm` も生成し、`scripts/ci/release-smoke.sh` で生成済み archive の required payload (`README.md` / `LICENSE` / `checksums.txt` / `lsharp-lsp` / `lsharp.component.wasm`) 検証、checksum 検証、packaged binary smoke を実行する。`release` job は build artifact download 後に `bash scripts/checksum.sh dist > dist/checksums.txt` を実行し、archive 群と sidecar component、attached release-level checksum asset を GitHub Release に添付する。`release-smoke` job は Ubuntu 上で実行可能な Linux x86_64 archive を Rust toolchain 無しで再検証する current middle gate として運用する。さらに host-backed `doc` ownership として `release-smoke.sh` は packaged `lsharp` の `doc` / `doc --json` と `lsharp-lsp --version` を通し、`scripts/smoke_test_readme.sh` も inline Quick Start fixture に対する checksum / compile / test / doc smoke を README/fresh-clone gate に含めるようになった。macOS notarization / Windows Authenticode も secret-gated workflow hook までは接続し、credential 未設定時は skip する。**ただし** 実際の署名完了は credential 未投入のため blocked。
+- Current state: `scripts/release-playbook.sh` は release binary を作り、`compile-phase11-inputs.sh` / `default-path-smoke.sh` を再利用して smoke まで回せる。`.github/workflows/release.yml` も `v*` tag push 起点の `verify` / `build` / `release-smoke` / `release` まで接続済みで、build job は supported product/release targets (`aarch64-apple-darwin`, `x86_64-unknown-linux-gnu`) の host launcher archive と companion sidecar `lsharp-{version}-{target}.component.wasm` を生成し、`scripts/ci/release-smoke.sh` で生成済み archive の required payload (`README.md` / `LICENSE` / `checksums.txt` / `lsharp-lsp` / `lsharp.component.wasm`) 検証、checksum 検証、packaged binary smoke を実行する。`release` job は build artifact download 後に `bash scripts/checksum.sh dist > dist/checksums.txt` を実行し、archive 群と sidecar component、attached release-level checksum asset を GitHub Release に添付する。`release-smoke` job は Ubuntu 上で実行可能な Linux x86_64 archive を Rust toolchain 無しで再検証する current middle gate として運用する。さらに host-backed `doc` ownership として `release-smoke.sh` は packaged `lsharp` の `doc` / `doc --json` と `lsharp-lsp --version` を通し、`scripts/smoke_test_readme.sh` も inline Quick Start fixture に対する checksum / compile / test / doc smoke を README/fresh-clone gate に含めるようになった。Mac Apple Silicon notarization は secret-gated workflow hook まで接続し、credential 未設定時は skip する。Windows Authenticode は archived / out of support scope とする。**ただし** 実際の署名完了は credential 未投入のため blocked。
 - Rust source: `docs/development/operations/release-playbook.md`, `docs/development/operations/release-distribution-signing.md`
 - L# target: release workflow, `scripts/release-playbook.sh`, `scripts/release.sh`, `scripts/checksum.sh`, `scripts/ci/release-smoke.sh`
 - Implementation direction: stable/nightly の 2 チャネルを固定し、release は `version bump -> CI -> host-launcher artifact -> checksum -> signing -> smoke -> tag -> GitHub Release` の順に自動化する。
@@ -864,15 +864,15 @@
 - Evidence: formula/manifests, release notes
 
 <a id="v2-04-linux-aarch64-tier2-distribution"></a>
-### V2-04 Linux aarch64 tier2 distribution
+### V2-04 Linux aarch64 archived design
 
-- Goal: Linux aarch64 を tier2 常設へ上げる。
-- Current state: v1 tier1 対象外。
+- Goal: Linux aarch64 を将来再導入する場合の archived design を保持する。
+- Current state: out of support scope。
 - Rust source: `docs/development/operations/release-distribution-signing.md`
 - L# target: release workflow
-- Implementation direction: cross build descriptor と smoke test を追加し、artifact 名と checksum 規則は tier1 と同一にする。
+- Implementation direction: support scope を変更した上で cross build descriptor と smoke test を追加し、artifact 名と checksum 規則を supported target と同期する。
 - Dependencies: `PKG-01`
-- Acceptance: linux-aarch64 artifact が nightly/stable の両方で生成される。
+- Acceptance: support scope を再変更した場合のみ、linux-aarch64 artifact が nightly/stable の両方で生成される。
 - Evidence: release workflow, artifacts
 
 <a id="v2-05-windows-authenticode-signing"></a>

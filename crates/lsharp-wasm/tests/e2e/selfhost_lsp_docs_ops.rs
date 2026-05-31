@@ -2546,18 +2546,26 @@ fn test_e2e_native_ops03_official_native_only_replacement_backlog_contract() {
         std::fs::read_to_string(&native_spec).expect("native-backend-spec.md の読み込みに失敗");
     for expected in [
         "Native-only official replacement track",
+        "Supported product/release targets",
         "aarch64-apple-darwin",
-        "x86_64-apple-darwin",
         "x86_64-unknown-linux-gnu",
+        "Mac Apple Silicon",
+        "Linux x86_64",
+        "Unsupported product/release targets",
+        "x86_64-apple-darwin",
         "x86_64-pc-windows-msvc",
-        "BLOCKED",
+        "out of support scope",
     ] {
         assert!(
             native_spec_content.contains(expected),
-            "native-backend-spec.md は native-only 完全置換 blocker `{}` を明記すること",
+            "native-backend-spec.md は support scope `{}` を明記すること",
             expected
         );
     }
+    assert!(
+        !native_spec_content.contains("x86_64-pc-windows-msvc` | **BLOCKED**"),
+        "Windows は blocker ではなく support scope 外として扱うこと"
+    );
 
     let release_policy =
         project_root.join("docs/development/operations/release-distribution-signing.md");
@@ -2565,14 +2573,44 @@ fn test_e2e_native_ops03_official_native_only_replacement_backlog_contract() {
         .expect("release-distribution-signing.md の読み込みに失敗");
     for expected in [
         "Native-only official replacement track",
+        "Supported product/release targets",
+        "aarch64-apple-darwin",
+        "x86_64-unknown-linux-gnu",
+        "out of support scope",
         "host launcher + embedded guest component",
         "rollback compatibility",
-        "native-only replacement blocker",
     ] {
         assert!(
             release_policy_content.contains(expected),
-            "release-distribution-signing.md は native-only 置換方針 `{}` を記述すること",
+            "release-distribution-signing.md は support scope `{}` を記述すること",
             expected
+        );
+    }
+    assert!(
+        !release_policy_content
+            .contains("`macos-arm64`, `macos-x86_64`, `linux-x86_64`, `windows-x86_64`"),
+        "release-distribution-signing.md は旧 4 target Tier1 を正式配布対象として残さないこと"
+    );
+
+    for doc in [
+        "docs/development/validation/verification-spec.md",
+        "docs/development/planning/toolchain-parity-spec.md",
+        "docs/development/planning/completion-criteria.md",
+    ] {
+        let doc_path = project_root.join(doc);
+        let doc_content =
+            std::fs::read_to_string(&doc_path).expect("support scope doc read failed");
+        assert!(
+            doc_content.contains("Mac Apple Silicon")
+                && doc_content.contains("Linux x86_64")
+                && doc_content.contains("out of support scope"),
+            "{} は supported target scope を明記すること",
+            doc
+        );
+        assert!(
+            !doc_content.contains("macOS arm64, macOS x86_64, Linux x86_64, Windows x86_64"),
+            "{} は旧 4 target support scope を残さないこと",
+            doc
         );
     }
 
@@ -2580,9 +2618,13 @@ fn test_e2e_native_ops03_official_native_only_replacement_backlog_contract() {
     let release_workflow_content =
         std::fs::read_to_string(&release_workflow).expect("release.yml の読み込みに失敗");
     assert!(
-        release_workflow_content.contains("native-only replacement blocker")
+        release_workflow_content.contains("supported product/release targets")
+            && release_workflow_content.contains("target: x86_64-unknown-linux-gnu")
+            && release_workflow_content.contains("target: aarch64-apple-darwin")
+            && !release_workflow_content.contains("target: x86_64-apple-darwin")
+            && !release_workflow_content.contains("target: x86_64-pc-windows-msvc")
             && release_workflow_content.contains("experimental-native-rc"),
-        "release.yml は native-only 完全置換の blocker と現行 experimental RC の境界を明記すること"
+        "release.yml は supported target のみを build matrix に置き、experimental RC の境界を明記すること"
     );
 }
 
@@ -2619,7 +2661,8 @@ fn test_e2e_native_ops04_linux_x86_server_target_contract() {
         std::fs::read_to_string(&native_spec).expect("native-backend-spec.md の読み込みに失敗");
     for expected in [
         "Linux x86_64 server priority track",
-        "`x86_64-unknown-linux-gnu` | active priority",
+        "`x86_64-unknown-linux-gnu` | Linux x86_64",
+        "supported product/release target",
         "Ubuntu x86_64 VM",
         "scripts/ci/native-linux-x86-local-vm-smoke.sh",
         "scripts/ci/native-linux-x86-hostgen-vm-exec.sh",
@@ -3663,6 +3706,9 @@ fn test_e2e_ops06_release_curl_installer_contract() {
     for expected in [
         "LSHARP_INSTALL_DIR",
         "$HOME/.local/bin",
+        "supported release targets",
+        "aarch64-apple-darwin",
+        "x86_64-unknown-linux-gnu",
         "https://github.com/${REPO}/releases/download",
         "lsharp-${VERSION}-${TARGET}",
         "lsharp.component.wasm",
@@ -3676,6 +3722,11 @@ fn test_e2e_ops06_release_curl_installer_contract() {
             expected
         );
     }
+    assert!(
+        !install_content.contains("Darwin:x86_64) echo \"x86_64-apple-darwin\"")
+            && !install_content.contains("Linux:arm64|Linux:aarch64) echo"),
+        "install.sh は macOS Intel / Linux arm64 を supported default target として扱わないこと"
+    );
 
     let readme = project_root.join("README.md");
     let readme_content = std::fs::read_to_string(&readme).expect("README.md の読み込みに失敗");
@@ -3688,7 +3739,7 @@ fn test_e2e_ops06_release_curl_installer_contract() {
     );
 }
 
-/// TEST-OPS-06d: release workflow に macOS / Windows signing hook が存在すること
+/// TEST-OPS-06d: release workflow に supported target の macOS signing hook だけが存在すること
 #[test]
 fn test_e2e_ops06_release_signing_workflow_hook() {
     let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
@@ -3708,11 +3759,9 @@ fn test_e2e_ops06_release_signing_workflow_hook() {
         "release.yml は macOS notarization hook も secret 経由で配線すること"
     );
     assert!(
-        workflow_content.contains("WINDOWS_SIGN_CERT_PFX_BASE64")
-            && workflow_content.contains("WINDOWS_SIGN_CERT_PASSWORD")
-            && workflow_content.contains("WINDOWS_TIMESTAMP_URL")
-            && workflow_content.contains("signtool verify /pa"),
-        "release.yml は Windows Authenticode signing / verify hook を持つこと"
+        !workflow_content.contains("WINDOWS_SIGN_CERT_PFX_BASE64")
+            && !workflow_content.contains("signtool verify /pa"),
+        "release.yml は support scope 外の Windows signing hook を release path に残さないこと"
     );
 
     let signing_doc =
@@ -3721,8 +3770,10 @@ fn test_e2e_ops06_release_signing_workflow_hook() {
         .expect("release-distribution-signing.md の読み込みに失敗");
     assert!(
         signing_doc_content.contains("APPLE_CODESIGN_IDENTITY")
-            && signing_doc_content.contains("WINDOWS_SIGN_CERT_PFX_BASE64"),
-        "release-distribution-signing.md は workflow hook の secret 名を正本として案内すること"
+            && signing_doc_content.contains("Mac Apple Silicon")
+            && signing_doc_content.contains("Windows")
+            && signing_doc_content.contains("out of support scope"),
+        "release-distribution-signing.md は supported macOS signing と Windows support scope 外を正本として案内すること"
     );
     assert!(
         signing_doc_content.contains("credential 未設定時は skip")
@@ -3736,9 +3787,9 @@ fn test_e2e_ops06_release_signing_workflow_hook() {
     let windows_design_content = std::fs::read_to_string(&windows_design)
         .expect("v2-05-windows-authenticode-signing.md の読み込みに失敗");
     assert!(
-        windows_design_content.contains("release.yml")
-            && windows_design_content.contains("WINDOWS_SIGN_CERT_PFX_BASE64"),
-        "Windows Authenticode design は release workflow hook へ接続した current state を反映すること"
+        windows_design_content.contains("out of support scope")
+            && !windows_design_content.contains("release.yml の secret-gated hook"),
+        "Windows Authenticode design は support scope 外の archived design として扱うこと"
     );
 }
 

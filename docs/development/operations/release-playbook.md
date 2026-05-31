@@ -56,7 +56,7 @@ vim Cargo.toml   # version = "0.x.y"
 | release playbook 検証成果物 | `target/release-playbook/` 以下の bootstrap / smoke 出力 |
 | チェックサム | SHA-256 チェックサムファイル |
 
-配布対象の tier1 / tier2 切り分けと命名規則は `release-distribution-signing.md` と `artifact-policy.md` を参照。
+配布対象の supported product/release target 切り分けと命名規則は `release-distribution-signing.md` と `artifact-policy.md` を参照。
 
 release workflow では `scripts/release.sh` の直後に `scripts/ci/release-smoke.sh dist/lsharp-<version>-<target>.<ext>` を実行し、展開済み archive 上で `README.md` / `LICENSE` / `checksums.txt` / `lsharp-lsp` / `lsharp.component.wasm` の存在確認、`checksums.txt` 検証、packaged `lsharp` binary の `--version` / `check` / `fmt` / `compile` / `test` / `doc` smoke を通す。README / fresh-clone 側でも `scripts/smoke_test_readme.sh` が inline Quick Start fixture を使って checksum / compile / test / doc の導線を再確認し、host-backed `doc` distribution ownership を二重化して確認する。
 
@@ -87,7 +87,7 @@ git push origin v<version>
 | ジョブ | 内容 |
 |------|------|
 | `verify` | `cargo test` + `cargo clippy` + `cargo fmt --check` |
-| `build` | Tier1 の 4 プラットフォームで `cargo build --release` + `scripts/release.sh` で host launcher archive / guest component sidecar を作成 |
+| `build` | supported product/release targets (`aarch64-apple-darwin`, `x86_64-unknown-linux-gnu`) で `cargo build --release` + `scripts/release.sh` により host launcher archive / guest component sidecar を作成 |
 | `release-smoke` | Ubuntu 上で Linux x86_64 archive (`lsharp-{version}-x86_64-unknown-linux-gnu.tar.gz`) を download し、`scripts/ci/release-smoke.sh` を Rust toolchain 無しで再実行 |
 | `release` | `softprops/action-gh-release` で GitHub Release を作成し、全 archive / sidecar component / `dist/checksums.txt` を添付 |
 
@@ -144,11 +144,12 @@ experimental archive には top-level `manifest.json` / `actual-stage23-gap.json
 
 native-only を公式配布へ完全置換する作業は V2-13〜V2-15 の active backlog として扱う。完了後は native-only archive を stable / nightly の正本にし、host launcher + embedded guest component は rollback compatibility 用の互換成果物へ降格する。
 
+Supported product/release targets は Mac Apple Silicon (`aarch64-apple-darwin`) と Linux x86_64 (`x86_64-unknown-linux-gnu`) の 2 つである。`x86_64-apple-darwin` と Windows (`x86_64-pc-windows-msvc`) は out of support scope であり、Rosetta / Mach-O smoke や archived Authenticode design は公式配布 blocker にしない。
+
 現時点では以下が native-only replacement blocker である。
 
-1. actual native self-regeneration は `aarch64-apple-darwin` のみ完了しており、`x86_64-apple-darwin` / `x86_64-unknown-linux-gnu` / `x86_64-pc-windows-msvc` の Tier1 official gate が未完了。
-2. `x86_64-pc-windows-msvc` は native backend spec 上 BLOCKED で、COFF/PE runtime/link/smoke と Authenticode gate が必要。
-3. `scripts/release.sh` / `scripts/ci/release-smoke.sh` / `.github/workflows/release.yml` は現行 stable 配布として host launcher + embedded guest component を前提にしている。
+1. Linux x86_64 の actual native self-regeneration / runtime-link smoke が未完了。
+2. `scripts/release.sh` / `scripts/ci/release-smoke.sh` / `.github/workflows/release.yml` は現行 stable 配布として host launcher + embedded guest component を前提にしている。
 
 この track を再開する場合は、まず `docs/language/native-backend-spec.md` の target matrix を更新し、次に native-only official archive layout / release smoke / rollback anchor を `release-distribution-signing.md` と workflow に同期する。
 

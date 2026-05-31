@@ -92,11 +92,12 @@ Wasmtime embedding + Component Model を正式配布モデルに据える方針�
 - representative input set に対して exit code / stdout / stderr / artifact hash を比較する
 - actual native executable 経由では `stage2-native` / `stage3-native` の artifact observation と transport payload を比較する
 
-### tier1 target matrix
+### supported product/release target matrix
 
-- `x86_64-apple-darwin`
 - `aarch64-apple-darwin`
 - `x86_64-unknown-linux-gnu`
+
+`x86_64-apple-darwin` は Rosetta / Mach-O smoke 用の internal diagnostic descriptor としてのみ残し、product/release support target には含めない。
 
 ## 正本参照
 

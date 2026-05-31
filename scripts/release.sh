@@ -6,12 +6,9 @@
 # 使用法:
 #   ./scripts/release.sh [--target <os-arch>] [--version <version>]
 #
-# 対応ターゲット:
-#   - x86_64-apple-darwin (macOS Intel)
-#   - aarch64-apple-darwin (macOS ARM)
+# Supported product/release targets:
+#   - aarch64-apple-darwin (Mac Apple Silicon)
 #   - x86_64-unknown-linux-gnu (Linux x86_64)
-#   - aarch64-unknown-linux-gnu (Linux ARM)
-#   - x86_64-pc-windows-msvc (Windows x86_64)
 #
 # 同梱物 (AC-504):
 #   - lsharp (CLI バイナリ)
@@ -26,6 +23,14 @@ VERSION="${VERSION:-$(git describe --tags --always 2>/dev/null || echo "dev")}"
 TARGET="${TARGET:-$(rustc -Vv 2>/dev/null | grep host | cut -d' ' -f2 || echo "unknown")}"
 DIST_DIR="dist"
 ARCHIVE_NAME="lsharp-${VERSION}-${TARGET}"
+
+case "$TARGET" in
+  aarch64-apple-darwin|x86_64-unknown-linux-gnu) ;;
+  *)
+    echo "ERROR: unsupported release target: ${TARGET}. Supported release targets: aarch64-apple-darwin, x86_64-unknown-linux-gnu." >&2
+    exit 1
+    ;;
+esac
 
 echo "=== L# Release Build ==="
 echo "Version: ${VERSION}"
@@ -111,15 +116,7 @@ echo "Generating checksums..."
 
 # アーカイブ作成
 echo "Creating archive..."
-case "${TARGET}" in
-  *windows*)
-    # Windows: .zip 形式 (AC-502)
-    cd "${DIST_DIR}" && zip -r "${ARCHIVE_NAME}.zip" "${ARCHIVE_NAME}/" 2>/dev/null || true
-    ;;
-  *)
-    # macOS/Linux: .tar.gz 形式 (AC-500/AC-501)
-    cd "${DIST_DIR}" && tar czf "${ARCHIVE_NAME}.tar.gz" "${ARCHIVE_NAME}/" 2>/dev/null || true
-    ;;
-esac
+# Mac Apple Silicon / Linux x86_64: .tar.gz 形式
+cd "${DIST_DIR}" && tar czf "${ARCHIVE_NAME}.tar.gz" "${ARCHIVE_NAME}/" 2>/dev/null || true
 
 echo "=== Release complete: ${ARCHIVE_NAME} ==="

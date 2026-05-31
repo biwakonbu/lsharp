@@ -5,7 +5,7 @@
 #
 # 使用法:
 #   ./scripts/checksum.sh <directory>
-#   ./scripts/checksum.sh dist/lsharp-v1.0.0-x86_64-apple-darwin
+#   ./scripts/checksum.sh dist/lsharp-v1.0.0-aarch64-apple-darwin
 #
 # 出力形式:
 #   <sha256hash>  <filename>
