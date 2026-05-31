@@ -157,13 +157,20 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                                                       (print (vector-length native-callables))
                                                       (print (+ 9 (vector-length functions))))
                                                     0)
+                    progress-after-slot-sample (if (= progress-mode 1)
+                                                (print-x86-slot-size-progress native-callables 0 4)
+                                                0)
                     main-func-idx bounded-main-func-idx
                     entrypoint-func-idx bounded-main-func-idx
                     starts (collect-callable-function-slot-starts-x86 native-callables 10)
                     progress-after-starts (if (= progress-mode 1)
                                            (do
                                              (print 9000000033)
-                                             (print (vector-length starts)))
+                                             (print (vector-length starts))
+                                             (print (if (> (vector-length starts) 0) (vector-get starts 0) -1))
+                                             (print (if (> (vector-length starts) 1) (vector-get starts 1) -1))
+                                             (print (if (> (vector-length starts) 2) (vector-get starts 2) -1))
+                                             (print (if (> (vector-length starts) 0) (vector-get starts (- (vector-length starts) 1)) -1)))
                                            0)
                     user-total (callable-user-total-slot-size-x86 native-callables 10)
                     progress-after-user-total (if (= progress-mode 1)
@@ -266,6 +273,72 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
     source.replace(
         "native-callables (normalize-selfhost-native-function-metas-for-target callables target)",
         "native-callables callables",
+    )
+    .replace(
+        "(defn x86-function-slot-size [func-meta functions]\n  (+ (native-function-size-x86 func-meta functions) 2048))",
+        r#"(defn x86-function-slot-size [func-meta functions]
+  (+ (native-function-size-x86 func-meta functions) 2048))
+
+(defn print-x86-slot-size-progress-sample [functions idx]
+  (do
+    (root_push functions)
+    (let [actual-idx (+ idx 10)
+          func-meta (vector-get functions actual-idx)]
+      (do
+        (root_push func-meta)
+        (let [size (x86-function-slot-size func-meta functions)]
+          (do
+            (print 9000000039)
+            (print idx)
+            (print actual-idx)
+            (print size)
+            (print (native-function-param-count func-meta))
+            (print (native-function-local-count func-meta))
+            (print (vector-length (native-function-ir func-meta)))
+            (root_pop)
+            (root_pop)
+            0))))))
+
+(defn print-x86-first-large-slot-size [functions idx len limit]
+  (if (>= idx len)
+    (do
+      (print 9000000040)
+      (print -1)
+      (print -1)
+      (print -1)
+      (print -1)
+      (print -1)
+      (print -1))
+    (do
+      (root_push functions)
+      (let [actual-idx (+ idx 10)
+            func-meta (vector-get functions actual-idx)]
+        (do
+          (root_push func-meta)
+          (let [size (x86-function-slot-size func-meta functions)]
+            (if (> size limit)
+              (do
+                (print 9000000040)
+                (print idx)
+                (print actual-idx)
+                (print size)
+                (print (native-function-param-count func-meta))
+                (print (native-function-local-count func-meta))
+                (print (vector-length (native-function-ir func-meta)))
+                (root_pop)
+                (root_pop)
+                0)
+              (do
+                (root_pop)
+                (root_pop)
+                (print-x86-first-large-slot-size functions (+ idx 1) len limit)))))))))
+
+(defn print-x86-slot-size-progress [functions idx sample-end]
+  (if (>= idx sample-end)
+    (print-x86-first-large-slot-size functions 0 (- (vector-length functions) 10) 1000000)
+    (do
+      (print-x86-slot-size-progress-sample functions idx)
+      (print-x86-slot-size-progress functions (+ idx 1) sample-end))))"#,
     )
 }
 
@@ -787,6 +860,8 @@ fn test_linux_x86_representative_seed_can_print_stage_progress_markers() {
         "9000000036",
         "9000000037",
         "9000000038",
+        "9000000039",
+        "9000000040",
     ] {
         assert!(
             source.contains(marker),
@@ -800,6 +875,8 @@ fn test_linux_x86_representative_seed_can_print_stage_progress_markers() {
             && source.contains("(print (vector-length functions))")
             && source.contains("(print (vector-length callables))")
             && source.contains("(print (+ 9 (vector-length functions)))")
+            && source.contains("progress-after-slot-sample")
+            && source.contains("(defn print-x86-slot-size-progress")
             && source.contains("progress-after-starts")
             && source.contains("progress-after-user-total")
             && source.contains("progress-after-code-len")
@@ -3897,6 +3974,41 @@ fn test_native_codegen_x86_body_size_loop_keeps_arity_stable() {
 }
 
 #[test]
+fn test_linux_x86_representative_slot_start_helpers_root_live_metadata() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+    let starts_body = source
+        .split("(defn collect-callable-function-slot-starts-x86-loop")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("Linux x86 representative seed に slot starts loop が存在すること");
+    let total_body = source
+        .split("(defn callable-user-total-slot-size-x86-loop")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("Linux x86 representative seed に slot total loop が存在すること");
+
+    assert!(
+        starts_body.contains("(root_push functions)")
+            && starts_body.contains("(root_push starts)")
+            && starts_body.contains("(root_push func-meta)")
+            && starts_body.contains("(root_push next-starts)")
+            && starts_body.contains("(root_pop)")
+            && starts_body.contains(
+                "(collect-callable-function-slot-starts-x86-loop functions (+ idx 1) len next-starts next-offset)",
+            ),
+        "Linux x86 slot starts loop は native-function-size-x86 中の GC で starts / func-meta を壊さないよう root するべき"
+    );
+    assert!(
+        total_body.contains("(root_push functions)")
+            && total_body.contains("(root_push func-meta)")
+            && total_body.contains(
+                "(callable-user-total-slot-size-x86-loop functions (+ idx 1) len next-total)",
+            ),
+        "Linux x86 slot total loop は native-function-size-x86 中の GC で func-meta を壊さないよう root するべき"
+    );
+}
+
+#[test]
 fn test_native_codegen_x86_i64_const_direct_append_avoids_zero_byte_vector() {
     let source = std::fs::read_to_string(selfhost_source_path("NativeCodegen.ls"))
         .expect("canonical NativeCodegen.ls が読み込めること");
@@ -6562,10 +6674,22 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
 (defn collect-callable-function-slot-starts-x86-loop [functions idx len starts offset]
   (if (>= idx len)
     starts
-    (let [func-meta (vector-get functions idx)
-          next-starts (vector-push starts offset)
-          next-offset (+ offset (x86-function-slot-size func-meta functions))]
-      (collect-callable-function-slot-starts-x86-loop functions (+ idx 1) len next-starts next-offset))))
+    (do
+      (root_push functions)
+      (root_push starts)
+      (let [func-meta (vector-get functions idx)]
+        (do
+          (root_push func-meta)
+          (let [next-starts (vector-push starts offset)]
+            (do
+              (root_push next-starts)
+              (let [next-offset (+ offset (x86-function-slot-size func-meta functions))]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (collect-callable-function-slot-starts-x86-loop functions (+ idx 1) len next-starts next-offset))))))))))
 
 (defn collect-callable-function-slot-starts-x86 [functions import-count]
   (collect-callable-function-slot-starts-x86-loop functions import-count (vector-length functions) (vector-new 8) 0))
@@ -6573,9 +6697,16 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
 (defn callable-user-total-slot-size-x86-loop [functions idx len total]
   (if (>= idx len)
     total
-    (let [func-meta (vector-get functions idx)
-          next-total (+ total (x86-function-slot-size func-meta functions))]
-      (callable-user-total-slot-size-x86-loop functions (+ idx 1) len next-total))))
+    (do
+      (root_push functions)
+      (let [func-meta (vector-get functions idx)]
+        (do
+          (root_push func-meta)
+          (let [next-total (+ total (x86-function-slot-size func-meta functions))]
+            (do
+              (root_pop)
+              (root_pop)
+              (callable-user-total-slot-size-x86-loop functions (+ idx 1) len next-total))))))))
 
 (defn callable-user-total-slot-size-x86 [functions import-count]
   (callable-user-total-slot-size-x86-loop functions import-count (vector-length functions) 0))
