@@ -259,9 +259,13 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
         "      (let [functions (vector-get payload 0)\n            data (vector-get payload 1)]",
         "      (let [payload-observed payload]",
     );
-    source.replace(
+    let source = source.replace(
         "(let [payload-observed payload]\n      (let [payload-observed payload]",
         "(let [payload-observed payload]",
+    );
+    source.replace(
+        "native-callables (normalize-selfhost-native-function-metas-for-target callables target)",
+        "native-callables callables",
     )
 }
 
@@ -296,12 +300,13 @@ fn test_linux_x86_representative_seed_uses_layout_emit_for_segmented_native_code
         "Linux x86 segmented seed は native 実行時に壊れやすい 6 引数 loop call を直接使わない"
     );
     assert!(
-        source.contains("normalize-selfhost-native-function-metas-for-target callables target"),
-        "Linux x86 segmented seed は target-aware selfhost 正規化を使い、x86 の 1-based local slot を保持するべき"
+        source.contains("native-callables callables"),
+        "Linux x86 segmented seed は x86 の 1-based local slot を保持するため native-callables を callables identity にするべき"
     );
     assert!(
-        !source.contains("native-callables (normalize-selfhost-native-function-metas callables)"),
-        "Linux x86 segmented seed は x86 param spill と矛盾する aarch64 用 local slot 正規化を直接使わない"
+        !source.contains("native-callables (normalize-selfhost-native-function-metas-for-target callables target)")
+            && !source.contains("native-callables (normalize-selfhost-native-function-metas callables)"),
+        "Linux x86 segmented seed は native stage2 で壊れる target-aware wrapper や、x86 param spill と矛盾する aarch64 用 local slot 正規化を直接使わない"
     );
     assert!(
         source.contains("pad-byte-vector-to-length"),
