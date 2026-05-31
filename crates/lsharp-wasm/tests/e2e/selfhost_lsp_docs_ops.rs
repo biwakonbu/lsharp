@@ -2438,9 +2438,10 @@ fn test_e2e_native_ops02_native_only_rc_contract() {
     let playbook_content =
         std::fs::read_to_string(&playbook).expect("release-playbook.md の読み込みに失敗");
     assert!(
-        playbook_content.contains("native-only RC")
+        (playbook_content.contains("native-only release evidence")
+            || playbook_content.contains("native-only RC"))
             && playbook_content.contains("scripts/ci/native-only-rc-smoke.sh"),
-        "release-playbook.md は experimental native-only RC smoke 手順を案内すること"
+        "release-playbook.md は native-only release evidence smoke 手順を案内すること"
     );
 
     let release_workflow = project_root.join(".github/workflows/release.yml");
@@ -3691,14 +3692,49 @@ fn test_e2e_ops06_release_smoke_contract() {
     );
     assert!(
         workflow_content.contains("NATIVE_ONLY_RELEASE")
+            && workflow_content.contains("NATIVE_ONLY_PROGRAM")
+            && workflow_content.contains("stage3-native/program.native")
             && workflow_content.contains("native-only release"),
-        "release.yml は native-only release を stable build path として扱うこと"
+        "release.yml は native-only release 用の actual native executable を解決してから stable build path へ渡すこと"
     );
+    let build_job_start = workflow_content
+        .find("  build:")
+        .expect("release.yml に build job が存在しない");
+    let evidence_job_start = workflow_content[build_job_start + 1..]
+        .find("\n  experimental-native-rc:")
+        .map(|offset| build_job_start + 1 + offset)
+        .unwrap_or(workflow_content.len());
+    let build_job_section = &workflow_content[build_job_start..evidence_job_start];
+    assert!(
+        build_job_section.contains("target: aarch64-apple-darwin"),
+        "release.yml の stable native-only build は Actions 内で actual native program を生成できる target を含むこと"
+    );
+    for blocked_target in [
+        "target: x86_64-apple-darwin",
+        "target: x86_64-unknown-linux-gnu",
+        "target: x86_64-pc-windows-msvc",
+    ] {
+        assert!(
+            !build_job_section.contains(blocked_target),
+            "release.yml の stable native-only build は target-specific blocker が残る `{}` を自動 publish しないこと",
+            blocked_target
+        );
+    }
     assert!(
         release_script_content.contains("program.native")
             && release_script_content.contains("manifest.json")
             && release_script_content.contains("NATIVE_ONLY_RELEASE"),
         "release.sh は native-only official archive payload を生成すること"
+    );
+    assert!(
+        release_script_content.contains("NATIVE_ONLY_PROGRAM is required"),
+        "release.sh は native-only official archive で明示された native executable だけを program.native にすること"
+    );
+    assert!(
+        !release_script_content.contains("cargo build --release -p lsharp-driver")
+            && !release_script_content
+                .contains("program_source=\"$(resolve_required_binary_path \"lsharp\")\""),
+        "release.sh は Rust host launcher を native-only program.native として代用しないこと"
     );
 
     let playbook_doc = project_root.join("docs/development/operations/release-playbook.md");
@@ -3918,10 +3954,9 @@ fn test_e2e_ops07_release_download_smoke_job() {
         "release-smoke job は Rust toolchain setup 無しで走ること"
     );
     assert!(
-        release_smoke_section.contains("x86_64-unknown-linux-gnu")
-            || release_smoke_section.contains("linux-x86_64")
-            || release_smoke_section.contains("linux archive"),
-        "release-smoke job は Ubuntu 上で実行可能な Linux release archive だけを smoke すること"
+        release_smoke_section.contains("aarch64-apple-darwin")
+            && release_smoke_section.contains("macos-14"),
+        "release-smoke job は stable native-only archive を実行できる runner/target で smoke すること"
     );
     assert!(
         !release_smoke_section.contains("for archive in \"${archives[@]}\"; do"),
@@ -3953,6 +3988,40 @@ fn ops06_unique_temp_dir(label: &str) -> std::path::PathBuf {
     ));
     std::fs::create_dir_all(&dir).expect("temp dir の作成に失敗");
     dir
+}
+
+/// TEST-OPS-06c-guard: native-only release は明示 native executable なしで package しないこと。
+#[cfg(unix)]
+#[test]
+fn test_e2e_ops06_release_script_rejects_missing_native_only_program() {
+    use std::process::Command;
+
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let release_script = project_root.join("scripts/release.sh");
+    let temp_root = ops06_unique_temp_dir("release-script-native-only-guard");
+
+    let output = Command::new("bash")
+        .arg(&release_script)
+        .env("VERSION", "v0.0.0-test")
+        .env("TARGET", "aarch64-apple-darwin")
+        .env("NATIVE_ONLY_RELEASE", "1")
+        .current_dir(&temp_root)
+        .output()
+        .expect("release.sh の実行に失敗");
+
+    std::fs::remove_dir_all(&temp_root).ok();
+
+    assert!(
+        !output.status.success(),
+        "release.sh は NATIVE_ONLY_PROGRAM 未指定で成功してはいけない"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("NATIVE_ONLY_PROGRAM is required")
+            && stderr.contains("refusing to package the Rust host launcher as program.native"),
+        "release.sh は native-only program guard の理由を stderr に出すこと: {}",
+        stderr
+    );
 }
 
 /// TEST-OPS-06c: release-smoke.sh が展開済み archive と packaged binary だけで smoke を通せること

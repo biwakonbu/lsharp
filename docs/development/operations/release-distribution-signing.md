@@ -162,7 +162,7 @@ signtool verify /pa lsharp.exe
 |---|---|
 | `scripts/release-playbook.sh` | release binary を作り、bootstrap / default-path / README smoke まで実行可能 |
 | tag push 起点の自動 release workflow | `verify` / `build` / `release-smoke` / `release` まで接続済み |
-| checksum / sidecar 自動生成 | `scripts/release.sh` が archive 内 `checksums.txt` と `lsharp.component.wasm` を生成し、同じ guest component を `dist/lsharp-{version}-{target}.component.wasm` として companion release asset にも出力、`release` job が `bash scripts/checksum.sh dist > dist/checksums.txt` で attached checksum asset を追加、`scripts/ci/release-smoke.sh` が packaged sidecar を workflow build job で検証 |
+| checksum / native-only archive 自動生成 | `scripts/ci/build-native.sh` が actual native `stage3-native/program.native` を生成し、`scripts/release.sh` が `NATIVE_ONLY_PROGRAM` から archive 内 `program.native` / `lsharp` alias / `manifest.json` / `checksums.txt` を生成、`release` job が `bash scripts/checksum.sh dist > dist/checksums.txt` で attached checksum asset を追加、`scripts/ci/release-smoke.sh` が native-only payload と rollback anchor を workflow build job で検証 |
 | macOS notarization | secret-gated workflow hook まで接続済み。credential 未設定時は skip |
 | Windows 署名 | secret-gated workflow hook まで接続済み。credential 未設定時は skip |
 | package manager 配布 | 未実装 |

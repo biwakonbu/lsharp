@@ -97,9 +97,11 @@ assemble_native_only_release() {
   local cli_dest="${DIST_DIR}/${ARCHIVE_NAME}/lsharp"
 
   if [[ -z "$program_source" ]]; then
-    program_source="$(resolve_required_binary_path "lsharp")"
+    echo "ERROR: NATIVE_ONLY_PROGRAM is required for native-only official archive" >&2
+    echo "ERROR: refusing to package the Rust host launcher as program.native" >&2
+    exit 1
   fi
-  if [[ ! -f "$program_source" ]]; then
+  if [[ ! -s "$program_source" ]]; then
     echo "ERROR: native-only program source not found: $program_source" >&2
     exit 1
   fi
@@ -141,10 +143,6 @@ generate_guest_component_sidecar() {
 
 echo "Assembling release artifacts..."
 if [[ "$NATIVE_ONLY_RELEASE" == "1" ]]; then
-  if [[ -z "$NATIVE_ONLY_PROGRAM" ]]; then
-    echo "Building native-only release source binary..."
-    cargo build --release -p lsharp-driver
-  fi
   assemble_native_only_release
 else
   echo "Building host launcher binaries..."

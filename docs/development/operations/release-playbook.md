@@ -50,15 +50,15 @@ vim Cargo.toml   # version = "0.x.y"
 
 | アーティファクト | 説明 |
 |---|---|
-| `lsharp` host launcher | `target/release/lsharp` |
-| `lsharp-lsp` language server | `target/release/lsharp-lsp` |
-| guest component sidecar | `dist/lsharp-<version>-<target>.component.wasm`（archive 内には `lsharp.component.wasm` として同梱） |
+| native-only CLI body | `ci-artifacts/native-proxy/<version>-aarch64-apple-darwin/stage3-native/program.native` |
+| native-only archive alias | archive 内 `lsharp`（`program.native` と同一 bytes） |
+| rollback compatibility asset | host launcher archive / `lsharp.component.wasm` companion sidecar |
 | release playbook 検証成果物 | `target/release-playbook/` 以下の bootstrap / smoke 出力 |
 | チェックサム | SHA-256 チェックサムファイル |
 
 配布対象の tier1 / tier2 切り分けと命名規則は `release-distribution-signing.md` と `artifact-policy.md` を参照。
 
-release workflow では `scripts/release.sh` の直後に `scripts/ci/release-smoke.sh dist/lsharp-<version>-<target>.<ext>` を実行し、展開済み archive 上で `README.md` / `LICENSE` / `checksums.txt` / `lsharp-lsp` / `lsharp.component.wasm` の存在確認、`checksums.txt` 検証、packaged `lsharp` binary の `--version` / `check` / `fmt` / `compile` / `test` / `doc` smoke を通す。README / fresh-clone 側でも `scripts/smoke_test_readme.sh` が inline Quick Start fixture を使って checksum / compile / test / doc の導線を再確認し、host-backed `doc` distribution ownership を二重化して確認する。
+release workflow では `scripts/ci/build-native.sh` で actual native `stage3-native/program.native` を生成し、`NATIVE_ONLY_PROGRAM` として `scripts/release.sh` に渡した直後に `scripts/ci/release-smoke.sh dist/lsharp-<version>-<target>.<ext>` を実行する。展開済み archive 上では `program.native` / `manifest.json` / `README.md` / `LICENSE` / `checksums.txt`、manifest の `rollback_anchor`、`checksums.txt`、packaged `lsharp` alias の `--version` / `check` / `fmt` / `compile` / `test` / `doc` smoke を通す。README / fresh-clone 側でも `scripts/smoke_test_readme.sh` が inline Quick Start fixture を使って checksum / compile / test / doc の導線を再確認する。
 
 ### 4. チェックサム生成
 
@@ -87,12 +87,12 @@ git push origin v<version>
 | ジョブ | 内容 |
 |------|------|
 | `verify` | `cargo test` + `cargo clippy` + `cargo fmt --check` |
-| `build` | Tier1 の 4 プラットフォームで `cargo build --release` + `scripts/release.sh` で host launcher archive / guest component sidecar を作成 |
-| `release-smoke` | Ubuntu 上で Linux x86_64 archive (`lsharp-{version}-x86_64-unknown-linux-gnu.tar.gz`) を download し、`scripts/ci/release-smoke.sh` を Rust toolchain 無しで再実行 |
-| `release` | `softprops/action-gh-release` で GitHub Release を作成し、全 archive / sidecar component / `dist/checksums.txt` を添付 |
+| `build` | Actions 内で actual native program を生成できる `aarch64-apple-darwin` を対象に `build-native.sh` → `NATIVE_ONLY_PROGRAM=<.../stage3-native/program.native>` → `scripts/release.sh` で native-only archive を作成 |
+| `release-smoke` | macOS arm64 runner 上で `aarch64-apple-darwin` archive (`lsharp-{version}-aarch64-apple-darwin.tar.gz`) を download し、`scripts/ci/release-smoke.sh` を Rust toolchain 無しで再実行 |
+| `release` | `softprops/action-gh-release` で GitHub Release を作成し、native-only archive / `dist/checksums.txt` を添付 |
 
-- `release-smoke` job は Ubuntu 上で実行可能な downloaded artifact に絞るため、Linux x86_64 archive を 1 本だけ再検証する
-- `build` job の workflow-local artifact には host launcher archive と companion sidecar `lsharp-{version}-{target}.component.wasm` を同梱する
+- `release-smoke` job は downloaded artifact を実行できる runner に絞るため、現時点では `aarch64-apple-darwin` archive を macOS arm64 runner で再検証する
+- `build` job の workflow-local artifact は native-only archive のみを同梱する。host launcher + companion sidecar は rollback compatibility asset として別扱いにする
 - `release` job は build 済み archive を download した後、`bash scripts/checksum.sh dist > dist/checksums.txt` で release-level checksum asset を生成してから公開する
 - バージョン文字列にハイフンが含まれる場合 (例: `v0.2.0-rc1`) はプレリリースとして公開
 - `release_notes` は GitHub の自動生成を使用
@@ -127,9 +127,9 @@ Rollback anchor
 
 stable / nightly の扱い、署名順序、package manager 更新順は `release-distribution-signing.md` を参照。
 
-### 8. experimental native-only RC（公式配布外）
+### 8. native-only release evidence
 
-native-only RC は stable / nightly の host launcher + embedded guest component 配布を置き換えない。Darwin arm64 の actual native self-regeneration artifact を調査用に固める experimental channel としてのみ扱う。
+Darwin arm64 の actual native self-regeneration artifact は stable native-only archive の source program として扱う。workflow 内の `experimental-native-rc` job 名は互換上残るが、内容は `Native-only release evidence` として `build-native.sh` / `native-only-rc-smoke.sh` の証跡を保存する。
 
 ```bash
 NATIVE_PROXY_ARTIFACT_ID=<version>-aarch64-apple-darwin bash scripts/ci/build-native.sh
@@ -138,7 +138,7 @@ tar -C ci-artifacts/native-proxy -czf dist/experimental-native-rc-<version>-aarc
 bash scripts/checksum.sh dist > dist/checksums.txt
 ```
 
-experimental archive には top-level `manifest.json` / `actual-stage23-gap.json` と、`stage1-native` / `stage2-native` / `stage3-native` の `program.o`, `runtime.o`, `linker-response.txt`, `program.native`, `stdout.txt`, `stderr.txt`, `summary.json` を含める。release notes には `experimental native-only RC`、`host launcher + embedded guest component distribution を置き換えない`、`scripts/ci/native-only-rc-smoke.sh` の結果を明記する。
+evidence archive には top-level `manifest.json` / `actual-stage23-gap.json` と、`stage1-native` / `stage2-native` / `stage3-native` の `program.o`, `runtime.o`, `linker-response.txt`, `program.native`, `stdout.txt`, `stderr.txt`, `summary.json` を含める。release notes には stable native-only archive の source evidence として `scripts/ci/native-only-rc-smoke.sh` の結果を明記する。
 
 ### 9. Native-only official replacement track
 
