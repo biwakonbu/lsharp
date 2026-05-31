@@ -5790,6 +5790,24 @@ fn linux_x86_native_exec_supported() -> bool {
     cfg!(all(target_os = "linux", target_arch = "x86_64"))
 }
 
+fn macos_x86_rosetta_exec_supported() -> bool {
+    if !cfg!(target_os = "macos") {
+        return false;
+    }
+    let clang = std::process::Command::new("clang")
+        .arg("--version")
+        .output();
+    if !clang.map(|output| output.status.success()).unwrap_or(false) {
+        return false;
+    }
+    let rosetta = std::process::Command::new("arch")
+        .args(["-x86_64", "/usr/bin/true"])
+        .output();
+    rosetta
+        .map(|output| output.status.success())
+        .unwrap_or(false)
+}
+
 fn write_native_host_bundle_artifact(
     root_dir: &std::path::Path,
     label: &str,
@@ -16268,6 +16286,57 @@ fn linux_x86_selfhost_const_42_object_bytes() -> Vec<u8> {
         .collect::<Vec<u8>>()
 }
 
+fn macos_x86_selfhost_const_42_object_bytes() -> Vec<u8> {
+    let output = run_native_pipeline_harness(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import Backend.Native.NativeEmit)
+(import IR.IR)
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn main []
+  (let [instr (vector-push (vector-push (vector-new 2) 1) 42)
+        ir (vector-push (vector-new 1) instr)
+        target (make-target 1)
+        code (emit-native ir target)
+        object (emit-object code target)]
+    (do
+      (print-bytes object 0 (vector-length object))
+      0)))"#,
+    );
+    output
+        .trim()
+        .lines()
+        .map(|line| {
+            line.parse::<u8>()
+                .unwrap_or_else(|_| panic!("Mach-O object byte parse 失敗: {line}"))
+        })
+        .collect::<Vec<u8>>()
+}
+
+fn read_le_u32(bytes: &[u8], offset: usize) -> u32 {
+    u32::from_le_bytes(
+        bytes[offset..offset + 4]
+            .try_into()
+            .expect("u32 read 範囲外"),
+    )
+}
+
+fn read_le_u64(bytes: &[u8], offset: usize) -> u64 {
+    u64::from_le_bytes(
+        bytes[offset..offset + 8]
+            .try_into()
+            .expect("u64 read 範囲外"),
+    )
+}
+
 fn linux_x86_selfhost_command_line_arg_string_length_object_bytes(arg_index: u32) -> Vec<u8> {
     let output = run_native_pipeline_harness(&format!(
         r#"(module Main)
@@ -25646,6 +25715,78 @@ fn link_and_run_linux_x86_generated_object(program_object: &[u8]) -> Result<i32,
     result
 }
 
+fn link_and_run_macos_x86_generated_object(program_object: &[u8]) -> Result<i32, String> {
+    if !macos_x86_rosetta_exec_supported() {
+        return Err(
+            "x86_64-apple-darwin Rosetta execution は macOS + clang + Rosetta でのみサポート"
+                .to_string(),
+        );
+    }
+
+    let id = NATIVE_HOST_EXEC_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let dir = target_fixture_dir("e2e-native-fixtures", "native-macos-x86-object-exec", id);
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+
+    let result = (|| {
+        std::fs::write(dir.join("program.o"), program_object)
+            .map_err(|e| format!("program.o 書き込み失敗: {e}"))?;
+        std::fs::write(
+            dir.join("runtime.s"),
+            ".section __TEXT,__text\n\
+             .extern _generated\n\
+             .globl _main\n\
+             _main:\n\
+                 pushq %rbp\n\
+                 movq %rsp, %rbp\n\
+                 callq _generated\n\
+                 popq %rbp\n\
+                 retq\n",
+        )
+        .map_err(|e| format!("runtime.s 書き込み失敗: {e}"))?;
+
+        let runtime_result = std::process::Command::new("clang")
+            .args(["-arch", "x86_64", "-c", "runtime.s", "-o", "runtime.o"])
+            .current_dir(&dir)
+            .output()
+            .map_err(|e| format!("runtime.o 生成失敗: {e}"))?;
+        if !runtime_result.status.success() {
+            return Err(format!(
+                "x86_64 macOS runtime.o 生成失敗:\nstdout: {}\nstderr: {}",
+                String::from_utf8_lossy(&runtime_result.stdout),
+                String::from_utf8_lossy(&runtime_result.stderr),
+            ));
+        }
+
+        let response_text = "-o\nprogram.native\nprogram.o\nruntime.o\n";
+        std::fs::write(dir.join("linker-response.txt"), response_text)
+            .map_err(|e| format!("linker-response.txt 書き込み失敗: {e}"))?;
+        let link_result = std::process::Command::new("clang")
+            .args(["-arch", "x86_64", "-Wl,-stack_size,0x08000000"])
+            .arg("@linker-response.txt")
+            .current_dir(&dir)
+            .output()
+            .map_err(|e| format!("clang 実行失敗: {e}"))?;
+        if !link_result.status.success() {
+            return Err(format!(
+                "x86_64 macOS object link 失敗:\nstdout: {}\nstderr: {}",
+                String::from_utf8_lossy(&link_result.stdout),
+                String::from_utf8_lossy(&link_result.stderr),
+            ));
+        }
+
+        let run_result = std::process::Command::new("arch")
+            .arg("-x86_64")
+            .arg(dir.join("program.native"))
+            .output()
+            .map_err(|e| format!("program.native Rosetta 実行失敗: {e}"))?;
+
+        Ok(run_result.status.code().unwrap_or(-1))
+    })();
+
+    let _ = std::fs::remove_dir_all(&dir);
+    result
+}
+
 fn link_and_run_native_host_binary_with_args(code: &[u8], args: &[&str]) -> Result<i32, String> {
     Ok(link_and_run_native_host_binary_capture_with_args(code, args)?.exit_code)
 }
@@ -26743,6 +26884,117 @@ fn test_e2e_native_linux_x86_host_generates_selfhost_elf_object_artifact() {
     assert_eq!(
         written, object_bytes,
         "Linux x86_64 object artifact は生成 ELF object をそのまま保存すること"
+    );
+}
+
+/// NATIVE-MACOS-X86-02: selfhost emit-object が linkable x86_64 Mach-O artifact を生成すること。
+#[test]
+fn test_e2e_native_macos_x86_selfhost_macho_object_links_and_executes_under_rosetta() {
+    if !macos_x86_rosetta_exec_supported() {
+        return;
+    }
+
+    let object_bytes = macos_x86_selfhost_const_42_object_bytes();
+    assert!(
+        object_bytes.len() > 208,
+        "x86_64 Mach-O object は mach_header_64 / load commands / __text / symtab を持つこと"
+    );
+    assert_eq!(
+        &object_bytes[..4],
+        &[207, 250, 237, 254],
+        "x86_64 Mach-O object は MH_MAGIC_64 little-endian で始まること"
+    );
+    assert!(
+        object_bytes
+            .windows("_generated".len())
+            .any(|window| window == b"_generated"),
+        "x86_64 Mach-O object は _generated external symbol を持つこと"
+    );
+    assert_eq!(
+        read_le_u32(&object_bytes, 16),
+        3,
+        "x86_64 Mach-O object は LC_SEGMENT_64 / LC_SYMTAB / LC_BUILD_VERSION を持つこと"
+    );
+    assert_eq!(
+        read_le_u32(&object_bytes, 20),
+        200,
+        "x86_64 Mach-O object の sizeofcmds は 3 load commands 分と一致すること"
+    );
+    assert_eq!(
+        read_le_u32(&object_bytes, 32),
+        25,
+        "先頭 load command は LC_SEGMENT_64 であること"
+    );
+    assert_eq!(
+        read_le_u32(&object_bytes, 36),
+        152,
+        "LC_SEGMENT_64 cmdsize は section_64 1 個分を含むこと"
+    );
+    let text_offset = read_le_u32(&object_bytes, 152) as usize;
+    let text_align = read_le_u32(&object_bytes, 156) as usize;
+    assert_eq!(
+        text_offset, 232,
+        "__text section offset が text payload を指すこと"
+    );
+    assert_eq!(
+        read_le_u64(&object_bytes, 144),
+        16,
+        "__text section size は const-42 native payload 長と一致すること"
+    );
+    assert_eq!(
+        text_offset % (1usize << text_align),
+        0,
+        "__text section offset は Mach-O section align field と整合すること"
+    );
+    assert_eq!(
+        read_le_u32(&object_bytes, 184),
+        2,
+        "2 番目の load command は LC_SYMTAB であること"
+    );
+    assert_eq!(
+        read_le_u32(&object_bytes, 192),
+        248,
+        "LC_SYMTAB symoff は native payload 後の nlist_64 を指すこと"
+    );
+    assert_eq!(
+        read_le_u32(&object_bytes, 196),
+        1,
+        "LC_SYMTAB nsyms は _generated 1 件であること"
+    );
+    assert_eq!(
+        read_le_u32(&object_bytes, 200),
+        264,
+        "LC_SYMTAB stroff は string table を指すこと"
+    );
+    assert_eq!(
+        read_le_u32(&object_bytes, 204),
+        12,
+        "LC_SYMTAB strsize は NUL + _generated + NUL と一致すること"
+    );
+    assert_eq!(
+        read_le_u32(&object_bytes, 208),
+        50,
+        "3 番目の load command は LC_BUILD_VERSION であること"
+    );
+    assert_eq!(
+        object_bytes[252], 15,
+        "_generated nlist_64 は external section symbol であること"
+    );
+    assert_eq!(
+        object_bytes[253], 1,
+        "_generated nlist_64 は __text section を指すこと"
+    );
+    assert_eq!(
+        read_le_u64(&object_bytes, 256),
+        0,
+        "_generated n_value は __text 先頭を指すこと"
+    );
+
+    let exit_code = link_and_run_macos_x86_generated_object(&object_bytes)
+        .expect("x86_64 Mach-O object の Rosetta link/run に失敗");
+    assert_eq!(
+        exit_code, 42,
+        "x86_64 Mach-O object は Rosetta 実行で const 42 を返すこと"
     );
 }
 
@@ -43566,7 +43818,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_e
                       (root_pop)
                       (root_pop)
                       (root_pop)
-                      0))))))))))"#;
+                      0)))))))))))"#;
     assert_representative_override_main_matches_selfhost(
         "native-stage23-pipeline-smoke-emit-object-only",
         main_source,
@@ -43611,7 +43863,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_e
                       (root_pop)
                       (root_pop)
                       (root_pop)
-                      0))))))))))"#;
+                      0)))))))))))"#;
     assert_representative_override_main_matches_selfhost(
         "native-stage23-pipeline-smoke-emit-object-aarch64-only",
         main_source,

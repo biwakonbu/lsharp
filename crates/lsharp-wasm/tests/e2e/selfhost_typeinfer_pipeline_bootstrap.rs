@@ -501,7 +501,10 @@ fn test_e2e_selfhost_main_native_pipeline_summary() {
     let aarch64_multi_response_object2_byte: i64 = lines[70].parse().unwrap();
 
     assert_eq!(native_len, 16, "tiny native payload は 16 bytes であるべき");
-    assert_eq!(object_len, 32, "tiny Mach-O object は 32 bytes であるべき");
+    assert_eq!(
+        object_len, 276,
+        "tiny x86_64 Mach-O object は linkable object として 276 bytes であるべき"
+    );
     assert_eq!(
         link_response_len, 6,
         "単一 object の linker response は 6 bytes であるべき"
@@ -604,8 +607,8 @@ fn test_e2e_selfhost_main_native_pipeline_summary() {
         "Darwin response file は output id=99 を含む"
     );
     assert_eq!(
-        darwin_response_object_byte, 32,
-        "Darwin response file は Mach-O object size=32 を含む"
+        darwin_response_object_byte, 276,
+        "Darwin response file は x86_64 Mach-O object size=276 を含む"
     );
     assert_eq!(
         linux_response_output_byte, 99,
@@ -624,8 +627,8 @@ fn test_e2e_selfhost_main_native_pipeline_summary() {
         "aarch64 response file は Mach-O object size=24 を含む (AArch64)"
     );
     assert_eq!(
-        darwin_multi_response_object2_byte, 32,
-        "Darwin multi-object response は 2 個目の Mach-O size=32 を含む"
+        darwin_multi_response_object2_byte, 276,
+        "Darwin multi-object response は 2 個目の x86_64 Mach-O size=276 を含む"
     );
     assert_eq!(
         linux_multi_response_object2_byte, 600,

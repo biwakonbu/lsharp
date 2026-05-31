@@ -92,6 +92,111 @@
 (defn append-zeroes-until [bytes target-len]
   (append-zeroes bytes (- target-len (vector-length bytes))))
 
+(defn append-macho-sectname-text [bytes]
+  (append-zeroes
+    (vector-push
+      (vector-push
+        (vector-push
+          (vector-push
+            (vector-push
+              (vector-push bytes 95) ;; _
+              95) ;; _
+            116) ;; t
+          101) ;; e
+        120) ;; x
+      116) ;; t
+    10))
+
+(defn append-macho-segname-text [bytes]
+  (append-zeroes
+    (vector-push
+      (vector-push
+        (vector-push
+          (vector-push
+            (vector-push
+              (vector-push bytes 95) ;; _
+              95) ;; _
+            84) ;; T
+          69) ;; E
+        88) ;; X
+      84) ;; T
+    10))
+
+(defn append-macho-strtab-generated [bytes]
+  (let [b0 (vector-push bytes 0)
+    b1 (vector-push b0 95) ;; _
+    b2 (vector-push b1 103) ;; g
+    b3 (vector-push b2 101) ;; e
+    b4 (vector-push b3 110) ;; n
+    b5 (vector-push b4 101) ;; e
+    b6 (vector-push b5 114) ;; r
+    b7 (vector-push b6 97) ;; a
+    b8 (vector-push b7 116) ;; t
+    b9 (vector-push b8 101) ;; e
+    b10 (vector-push b9 100)] ;; d
+    (vector-push b10 0)))
+
+(defn append-macho-header-x86-64 [bytes sizeofcmds]
+  (let [with-magic (append-u32-le bytes 4277009103)
+    with-cpu (append-u32-le with-magic 16777223)
+    with-subtype (append-u32-le with-cpu 3)
+    with-filetype (append-u32-le with-subtype 1)
+    with-ncmds (append-u32-le with-filetype 3)
+    with-sizeofcmds (append-u32-le with-ncmds sizeofcmds)
+    with-flags (append-u32-le with-sizeofcmds 0)]
+    (append-u32-le with-flags 0)))
+
+(defn append-macho-section-text-x86-64 [bytes text-offset code-len]
+  (let [with-sectname (append-macho-sectname-text bytes)
+    with-segname (append-macho-segname-text with-sectname)
+    with-addr (append-u64-le with-segname 0)
+    with-size (append-u64-le with-addr code-len)
+    with-offset (append-u32-le with-size text-offset)
+    with-align (append-u32-le with-offset 3)
+    with-reloff (append-u32-le with-align 0)
+    with-nreloc (append-u32-le with-reloff 0)
+    with-flags (append-u32-le with-nreloc 2147484672)
+    with-reserved1 (append-u32-le with-flags 0)
+    with-reserved2 (append-u32-le with-reserved1 0)]
+    (append-u32-le with-reserved2 0)))
+
+(defn append-macho-segment-command-x86-64 [bytes text-offset code-len]
+  (let [with-cmd (append-u32-le bytes 25)
+    with-cmdsize (append-u32-le with-cmd 152)
+    with-segname (append-zeroes with-cmdsize 16)
+    with-vmaddr (append-u64-le with-segname 0)
+    with-vmsize (append-u64-le with-vmaddr code-len)
+    with-fileoff (append-u64-le with-vmsize text-offset)
+    with-filesize (append-u64-le with-fileoff code-len)
+    with-maxprot (append-u32-le with-filesize 7)
+    with-initprot (append-u32-le with-maxprot 5)
+    with-nsects (append-u32-le with-initprot 1)
+    with-flags (append-u32-le with-nsects 0)]
+    (append-macho-section-text-x86-64 with-flags text-offset code-len)))
+
+(defn append-macho-symtab-command [bytes symtab-offset strtab-offset strtab-size]
+  (let [with-cmd (append-u32-le bytes 2)
+    with-cmdsize (append-u32-le with-cmd 24)
+    with-symoff (append-u32-le with-cmdsize symtab-offset)
+    with-nsyms (append-u32-le with-symoff 1)
+    with-stroff (append-u32-le with-nsyms strtab-offset)]
+    (append-u32-le with-stroff strtab-size)))
+
+(defn append-macho-build-version-command [bytes]
+  (let [with-cmd (append-u32-le bytes 50)
+    with-cmdsize (append-u32-le with-cmd 24)
+    with-platform (append-u32-le with-cmdsize 1)
+    with-minos (append-u32-le with-platform 720896)
+    with-sdk (append-u32-le with-minos 0)]
+    (append-u32-le with-sdk 0)))
+
+(defn append-macho-symbol-generated [bytes]
+  (let [with-name (append-u32-le bytes 1)
+    with-type (vector-push with-name 15)
+    with-sect (vector-push with-type 1)
+    with-desc (append-u16-le with-sect 0)]
+    (append-u64-le with-desc 0)))
+
 (defn append-elf-ident [bytes]
   (append-zeroes
     (vector-push
@@ -231,12 +336,45 @@
 ;; Mach-O オブジェクトファイルを生成
 ;; native-code: 機械語バイト列
 ;; target: ターゲット記述子
-;; 戻り値: Mach-O バイト列 (ヘッダー + コード)
+;; 戻り値: Mach-O バイト列 (x86_64 は linkable object、aarch64 は簡易ヘッダー + コード)
 (defn emit-macho [native-code target]
-  (let [header (emit-macho-header target)
-    result (ref-new header)
-    n (vector-length native-code)]
-    (append-native-object-bytes result native-code 0 n)))
+  (if (= (target-arch target) (arch-x86-64))
+    (emit-macho-x86-64 native-code)
+    (let [header (emit-macho-header target)
+      result (ref-new header)
+      n (vector-length native-code)]
+      (append-native-object-bytes result native-code 0 n))))
+
+;; x86_64 Darwin 向け linkable Mach-O 64-bit relocatable object を生成する。
+(defn emit-macho-x86-64 [native-code]
+  (do
+    (root_push native-code)
+    (let [code-len (vector-length native-code)
+      sizeofcmds 200
+      text-offset (+ 32 sizeofcmds)
+      symtab-offset (align-to (+ text-offset code-len) 8)
+      strtab-offset (+ symtab-offset 16)
+      strtab-size 12
+      header (append-macho-build-version-command
+        (append-macho-symtab-command
+          (append-macho-segment-command-x86-64
+            (append-macho-header-x86-64 (vector-new 32) sizeofcmds)
+            text-offset
+            code-len)
+          symtab-offset
+          strtab-offset
+          strtab-size))]
+      (do
+        (root_push header)
+        (let [result (ref-new header)]
+          (do
+            (ref-set result (append-native-object-bytes result native-code 0 code-len))
+            (ref-set result (append-zeroes-until (ref-get result) symtab-offset))
+            (ref-set result (append-macho-symbol-generated (ref-get result)))
+            (ref-set result (append-macho-strtab-generated (ref-get result)))
+            (root_pop)
+            (root_pop)
+            (ref-get result)))))))
 
 ;; ELF オブジェクトファイルを生成
 ;; native-code: 機械語バイト列
@@ -286,7 +424,7 @@
     obj-mac (emit-object code target-mac)
     obj-linux (emit-object code target-linux)]
     (do
-      ;; Mach-O: ヘッダー 16バイト + コード 2バイト = 18
+      ;; x86_64 Mach-O: linkable relocatable object + コード 2バイト
       (print (vector-length obj-mac))
       ;; ELF: linkable ELF64 relocatable object
       (print (vector-length obj-linux))

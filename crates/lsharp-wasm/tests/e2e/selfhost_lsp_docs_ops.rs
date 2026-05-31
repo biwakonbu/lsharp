@@ -2910,6 +2910,8 @@ fn test_e2e_native_ops05_macos_x86_rosetta_smoke_contract() {
         "`V2-13b` x86_64 macOS Rosetta native smoke",
         "`x86_64-apple-darwin`",
         "Rosetta local smoke",
+        "selfhost `emit-object` 由来の linkable x86_64 Mach-O relocatable object",
+        "test_e2e_native_macos_x86_selfhost_macho_object_links_and_executes_under_rosetta",
         "actual self-regeneration / release smoke pending",
     ] {
         assert!(
@@ -2923,8 +2925,11 @@ fn test_e2e_native_ops05_macos_x86_rosetta_smoke_contract() {
     let native_spec_content =
         std::fs::read_to_string(&native_spec).expect("native-backend-spec.md の読み込みに失敗");
     for expected in [
-        "`x86_64-apple-darwin` | spec 対象、Rosetta local const-42 smoke complete",
+        "`x86_64-apple-darwin` | spec 対象、Rosetta local const-42 smoke + selfhost linkable Mach-O object smoke complete",
         "scripts/ci/native-macos-x86-local-smoke.sh",
+        "LC_SEGMENT_64",
+        "_generated",
+        "test_e2e_native_macos_x86_selfhost_macho_object_links_and_executes_under_rosetta",
         "actual self-regeneration complete 未達",
     ] {
         assert!(

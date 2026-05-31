@@ -11930,10 +11930,10 @@ fn test_native_emit_object_keeps_full_native_payload() {
       (print (vector-get obj 1))
       (print (vector-get obj 2))
       (print (vector-get obj 3))
-      (print (vector-get obj 16))
-      (print (vector-get obj 17))
-      (print (vector-get obj 30))
-      (print (vector-get obj 31))
+      (print (vector-get obj 232))
+      (print (vector-get obj 233))
+      (print (vector-get obj 246))
+      (print (vector-get obj 247))
       0)))"#,
     );
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -11948,8 +11948,8 @@ fn test_native_emit_object_keeps_full_native_payload() {
         "const native payload は 16 bytes であるべき"
     );
     assert_eq!(
-        lines[1], "32",
-        "Mach-O header 16 + native payload 16 = 32 bytes であるべき"
+        lines[1], "276",
+        "x86_64 Mach-O object は linkable header/load commands/symtab + native payload を持つべき"
     );
     assert_eq!(lines[2], "207", "object 先頭は Mach-O magic 0xCF");
     assert_eq!(lines[3], "250", "object 2 byte 目は Mach-O magic 0xFA");
@@ -12037,8 +12037,8 @@ fn test_native_emit_object_headers_cover_all_three_targets() {
         target (make-target triple-id)
         native (emit-native ir target)
         obj (emit-object native target)
-        tail-idx (if (= triple-id 1) 30 (if (= triple-id 3) 78 22))
-        last-idx (if (= triple-id 1) 31 (if (= triple-id 3) 79 23))]
+        tail-idx (if (= triple-id 1) 246 (if (= triple-id 3) 78 22))
+        last-idx (if (= triple-id 1) 247 (if (= triple-id 3) 79 23))]
     (do
       (print (vector-length obj))
       (print (vector-get obj 0))
@@ -12060,7 +12060,10 @@ fn test_native_emit_object_headers_cover_all_three_targets() {
         "3 target object summary 出力が不足: {:?}",
         lines
     );
-    assert_eq!(lines[0], "32", "target 1 Mach-O object は 32 bytes");
+    assert_eq!(
+        lines[0], "276",
+        "target 1 x86_64 Mach-O object は linkable object として 276 bytes"
+    );
     assert_eq!(lines[1], "207", "target 1 先頭 byte は Mach-O magic 0xCF");
     assert_eq!(lines[2], "7", "target 1 cpu byte は x86_64=0x07");
     assert_eq!(
@@ -12222,8 +12225,8 @@ fn test_native_linker_multi_object_response_consistency_across_three_targets() {
 
 (defn main []
   (do
-    (emit-summary 1 32)
-    (emit-summary 2 32)
+    (emit-summary 1 276)
+    (emit-summary 2 24)
     (emit-summary 3 600)
     0))"#,
     );
@@ -12236,21 +12239,21 @@ fn test_native_linker_multi_object_response_consistency_across_three_targets() {
     );
     assert_eq!(lines[0], "8", "target 1 multi response len は 8 bytes");
     assert_eq!(
-        lines[1], "32",
-        "target 1 multi response は object 1 size=32 を含む"
+        lines[1], "276",
+        "target 1 multi response は object 1 size=276 を含む"
     );
     assert_eq!(
-        lines[2], "32",
-        "target 1 multi response は object 2 size=32 を含む"
+        lines[2], "276",
+        "target 1 multi response は object 2 size=276 を含む"
     );
     assert_eq!(lines[3], "8", "target 2 multi response len も 8 bytes");
     assert_eq!(
-        lines[4], "32",
-        "target 2 multi response は object 1 size=32 を含む"
+        lines[4], "24",
+        "target 2 multi response は object 1 size=24 を含む"
     );
     assert_eq!(
-        lines[5], "32",
-        "target 2 multi response は object 2 size=32 を含む"
+        lines[5], "24",
+        "target 2 multi response は object 2 size=24 を含む"
     );
     assert_eq!(lines[6], "8", "target 3 multi response len も 8 bytes");
     assert_eq!(
@@ -12282,8 +12285,8 @@ fn test_native_emit_object_is_deterministic_across_three_targets() {
         target (make-target triple-id)
         obj-a (emit-object (emit-native ir target) target)
         obj-b (emit-object (emit-native ir target) target)
-        tail-idx (if (= triple-id 1) 30 (if (= triple-id 3) 78 22))
-        last-idx (if (= triple-id 1) 31 (if (= triple-id 3) 79 23))]
+        tail-idx (if (= triple-id 1) 246 (if (= triple-id 3) 78 22))
+        last-idx (if (= triple-id 1) 247 (if (= triple-id 3) 79 23))]
     (do
       (print (vector-length obj-a))
       (print (vector-length obj-b))
@@ -12332,7 +12335,7 @@ fn test_native_emit_object_is_deterministic_across_three_targets() {
             "object tail が repeated emission で変化した"
         );
     }
-    assert_eq!(lines[0], "32", "target 1 object len は 32 bytes");
+    assert_eq!(lines[0], "276", "target 1 object len は 276 bytes");
     assert_eq!(lines[10], "24", "target 2 object len は 24 bytes (AArch64)");
     assert_eq!(lines[20], "600", "target 3 object len は 600 bytes");
 }
@@ -12364,9 +12367,9 @@ fn test_native_linker_response_is_deterministic_across_three_targets() {
 
 (defn main []
   (do
-    (emit-summary 1 32)
-    (emit-summary 2 32)
-    (emit-summary 3 24)
+    (emit-summary 1 276)
+    (emit-summary 2 24)
+    (emit-summary 3 600)
     0))"#,
     );
     let lines: Vec<&str> = output.trim().lines().collect();

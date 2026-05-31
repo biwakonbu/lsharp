@@ -56,13 +56,15 @@ Native-only official replacement track で公式 Tier1 置換に必要な target
 | target | 現状 | 置換 blocker |
 |---|---|---|
 | `aarch64-apple-darwin` | actual self-regeneration complete / native-only release evidence 完了 | なし |
-| `x86_64-apple-darwin` | spec 対象、Rosetta local const-42 smoke complete | actual self-regeneration complete 未達、release smoke pending |
+| `x86_64-apple-darwin` | spec 対象、Rosetta local const-42 smoke + selfhost linkable Mach-O object smoke complete | actual self-regeneration complete 未達、release smoke pending |
 | `x86_64-unknown-linux-gnu` | Linux x86_64 server priority track の actual self-regeneration complete。Mac + Lima VM local gate で証跡化 | tag release 前の Mac + Lima VM local gate 再実行 |
 | `x86_64-pc-windows-msvc` | **BLOCKED** | COFF/PE runtime/link/smoke pending と Authenticode gate |
 
 ### x86_64 macOS local smoke
 
 `x86_64-apple-darwin` は target descriptor / Mach-O object policy / x86_64 codegen path を持つが、full actual self-regeneration と release smoke は未完了である。Intel Mac 実機を前提にせず、macOS arm64 + Rosetta の local gate として `scripts/ci/native-macos-x86-local-smoke.sh` を使い、x86_64 Mach-O の `program.o` / `runtime.o` / `linker-response.txt` / `program.native` を生成して `arch -x86_64` で const-42 executable smoke を行う。
+
+selfhost `emit-object` の x86_64 Mach-O path は `LC_SEGMENT_64` / `__TEXT,__text` / `LC_SYMTAB` / `LC_BUILD_VERSION` を持つ relocatable object を生成し、`_generated` external symbol を runtime object から参照できる。`test_e2e_native_macos_x86_selfhost_macho_object_links_and_executes_under_rosetta` は selfhost が生成した object を `clang -arch x86_64` で runtime object とリンクし、Rosetta 実行で exit 42 を確認する。
 
 この smoke は `x86_64-apple-darwin` の実行 coverage 入口に限る。`actual self-regeneration complete 未達` と `release smoke pending` は target-specific blocker として残るため、stable release workflow には含めない。
 
