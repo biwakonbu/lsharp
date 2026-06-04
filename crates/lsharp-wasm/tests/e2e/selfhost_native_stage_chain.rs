@@ -42631,6 +42631,27 @@ fn parse_linux_x86_function_segment_metadata_rows(
                 });
                 idx += 15;
             }
+            9_000_000_022 | 9_000_000_023 => {
+                assert!(
+                    idx + 14 <= lines.len(),
+                    "x86 function metadata i64-ge byte diagnostic row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 14;
+            }
+            9_000_000_024 | 9_000_000_025 => {
+                assert!(
+                    idx + 16 <= lines.len(),
+                    "x86 function metadata i64-ge control diagnostic row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 16;
+            }
+            9_000_000_026 => {
+                assert!(
+                    idx + 17 <= lines.len(),
+                    "x86 function metadata i64-ge replay diagnostic row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 17;
+            }
             9_000_000_027 | 9_000_000_028 => {
                 assert!(
                     idx + 16 <= lines.len(),
@@ -42702,6 +42723,27 @@ fn parse_x86_map_new_direct_replay_rows(output: &str) -> Vec<X86MapNewDirectRepl
                     "x86 function metadata row が不足: idx={idx} lines={lines:?}"
                 );
                 idx += 15;
+            }
+            9_000_000_022 | 9_000_000_023 => {
+                assert!(
+                    idx + 14 <= lines.len(),
+                    "x86 function metadata i64-ge byte diagnostic row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 14;
+            }
+            9_000_000_024 | 9_000_000_025 => {
+                assert!(
+                    idx + 16 <= lines.len(),
+                    "x86 function metadata i64-ge control diagnostic row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 16;
+            }
+            9_000_000_026 => {
+                assert!(
+                    idx + 17 <= lines.len(),
+                    "x86 function metadata i64-ge replay diagnostic row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 17;
             }
             9_000_000_027 | 9_000_000_028 => {
                 assert!(
@@ -42797,6 +42839,27 @@ fn parse_x86_user_call_direct_replay_rows(output: &str) -> Vec<X86UserCallDirect
                     "x86 function metadata row が不足: idx={idx} lines={lines:?}"
                 );
                 idx += 15;
+            }
+            9_000_000_022 | 9_000_000_023 => {
+                assert!(
+                    idx + 14 <= lines.len(),
+                    "x86 function metadata i64-ge byte diagnostic row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 14;
+            }
+            9_000_000_024 | 9_000_000_025 => {
+                assert!(
+                    idx + 16 <= lines.len(),
+                    "x86 function metadata i64-ge control diagnostic row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 16;
+            }
+            9_000_000_026 => {
+                assert!(
+                    idx + 17 <= lines.len(),
+                    "x86 function metadata i64-ge replay diagnostic row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 17;
             }
             9_000_000_027 | 9_000_000_028 => {
                 assert!(
@@ -44143,6 +44206,140 @@ fn test_linux_x86_function_metadata_derives_entry_ir_call_trace_rows() {
             target_offset: 2219,
         }]
     );
+}
+
+#[test]
+fn test_linux_x86_function_metadata_skips_i64_ge_diagnostic_rows() {
+    let metadata = "\
+9000000020
+1790
+1800
+5757119
+29121
+8
+19
+28
+1248
+64
+75
+637
+9000000021
+2
+35
+0
+2
+95
+9
+72
+57
+193
+15
+157
+192
+15
+182
+9000000022
+2
+35
+0
+2
+9
+72
+57
+193
+15
+157
+192
+15
+182
+9000000023
+2
+35
+0
+2
+9
+72
+57
+193
+15
+157
+192
+15
+182
+9000000024
+2
+35
+0
+2
+95
+9
+9
+72
+57
+193
+15
+157
+192
+15
+182
+9000000025
+2
+35
+0
+2
+95
+9
+9
+72
+57
+193
+15
+157
+192
+15
+182
+9000000026
+2
+35
+0
+2
+95
+9
+0
+9
+72
+57
+193
+15
+157
+192
+15
+182
+9000000021
+3
+41
+0
+1
+104
+8
+133
+192
+15
+132
+15
+0
+0
+0
+";
+    let rows = parse_linux_x86_function_segment_metadata_rows(metadata);
+
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0].instr_idx, 2);
+    assert_eq!(rows[0].opcode, 35);
+    assert_eq!(rows[1].instr_idx, 3);
+    assert_eq!(rows[1].opcode, 41);
+    assert!(parse_x86_map_new_direct_replay_rows(metadata).is_empty());
+    assert!(parse_x86_user_call_direct_replay_rows(metadata).is_empty());
 }
 
 #[test]
