@@ -289,6 +289,17 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
     let source = strip_linux_x86_unused_base64_helpers(source);
     let payload_bindings = r#"source-path (command-line-arg 1)
          source-path-root (root_push source-path)
+         pre-payload-progress-mode (if (> (string-length (command-line-arg 8)) 0) 1 0)
+         pre-payload-progress-start (if (= pre-payload-progress-mode 1) (print 9000000030) 0)
+         pre-payload-source (if (= pre-payload-progress-mode 1) (read-file source-path) "")
+         pre-payload-source-root (if (= pre-payload-progress-mode 1) (root_push pre-payload-source) 0)
+         pre-payload-progress-read (if (= pre-payload-progress-mode 1)
+                                    (do
+                                      (print 9000000031)
+                                      (print (string-length pre-payload-source))
+                                      (print (if (> (string-length pre-payload-source) 0) (string-char-at pre-payload-source 0) -1)))
+                                    0)
+         pre-payload-source-pop (if (= pre-payload-progress-mode 1) (root_pop) 0)
          payload-base (compile-file-functions-payload-with-cache source-path 10 cache-ref parse-count-ref)
          payload payload-base
          functions (vector-get payload-base 0)
@@ -1031,6 +1042,8 @@ fn test_linux_x86_representative_seed_can_print_stage_progress_markers() {
         .expect("Linux x86 segmented seed source は progress helper 追加後も parse できること");
 
     for marker in [
+        "9000000030",
+        "9000000031",
         "9000000032",
         "9000000033",
         "9000000034",
@@ -1047,41 +1060,55 @@ fn test_linux_x86_representative_seed_can_print_stage_progress_markers() {
         );
     }
 
-    assert!(
-        source.contains("progress-mode (if (> (string-length (command-line-arg 8)) 0) 1 0)")
-            && source.contains("progress-after-native-callables")
-            && source.contains("(print (vector-length functions))")
-            && source.contains("(print (vector-length callables))")
-            && source.contains("(print (+ 9 (vector-length functions)))")
-            && source.contains("progress-after-slot-sample")
-            && source.contains("slot-sample-start (if (= progress-mode 1)")
-            && source.contains("slot-sample-end-arg (if (= progress-mode 1)")
-            && source
-                .contains("slot-sample-end (if (= slot-sample-end-arg 0) 4 slot-sample-end-arg)")
-            && source.contains(
-                "print-x86-slot-size-progress native-callables slot-sample-start slot-sample-end"
-            )
-            && source.contains("(defn print-x86-slot-size-progress")
-            && source.contains("(print sample-end)")
-            && !source.contains("print-x86-first-large-slot-size functions 0")
-            && source.contains("progress-after-starts")
-            && source.contains("progress-after-user-total")
-            && source.contains("progress-after-code-len")
-            && source.contains("(if (= progress-mode 1)")
-            && source.contains("(print 9000000038)")
-            && source.contains("(print entrypoint-offset)")
-            && source.contains("(print user-total)")
-            && source.contains("(print code-len)")
-            && source.contains("(print data-len)")
-            && source.contains("metadata-mode (if (> (string-length (command-line-arg 6)) 0) 1 0)")
-            && !source.contains("payload-progress-mode")
-            && !source.contains("progress-after-payload-start")
-            && !source.contains("progress-after-pairs-probe")
-            && !source.contains("progress-after-compile-probe")
-            && !source.contains("progress-after-payload")
-            && !source.contains("pre-callable-progress"),
-        "Linux x86 segmented seed は通常/metadata transport を残したまま、arg8 で setup progress だけを出せるべき"
-    );
+    for token in [
+        "progress-mode (if (> (string-length (command-line-arg 8)) 0) 1 0)",
+        "pre-payload-progress-mode",
+        "pre-payload-progress-start",
+        "pre-payload-progress-read",
+        "read-file source-path",
+        "string-length pre-payload-source",
+        "string-char-at pre-payload-source 0",
+        "progress-after-native-callables",
+        "(print (vector-length functions))",
+        "(print (vector-length callables))",
+        "(print (+ 9 (vector-length functions)))",
+        "progress-after-slot-sample",
+        "slot-sample-start (if (= progress-mode 1)",
+        "slot-sample-end-arg (if (= progress-mode 1)",
+        "slot-sample-end (if (= slot-sample-end-arg 0) 4 slot-sample-end-arg)",
+        "print-x86-slot-size-progress native-callables slot-sample-start slot-sample-end",
+        "(defn print-x86-slot-size-progress",
+        "(print sample-end)",
+        "progress-after-starts",
+        "progress-after-user-total",
+        "progress-after-code-len",
+        "(if (= progress-mode 1)",
+        "(print 9000000038)",
+        "(print entrypoint-offset)",
+        "(print user-total)",
+        "(print code-len)",
+        "(print data-len)",
+        "metadata-mode (if (> (string-length (command-line-arg 6)) 0) 1 0)",
+    ] {
+        assert!(
+            source.contains(token),
+            "Linux x86 segmented seed は通常/metadata transport を残したまま、arg8 で setup progress token {token} を含むべき"
+        );
+    }
+
+    for token in [
+        "print-x86-first-large-slot-size functions 0",
+        "progress-after-payload-start",
+        "progress-after-pairs-probe",
+        "progress-after-compile-probe",
+        "progress-after-payload",
+        "pre-callable-progress",
+    ] {
+        assert!(
+            !source.contains(token),
+            "Linux x86 segmented seed は旧 progress probe token {token} を含めない"
+        );
+    }
 }
 
 #[test]
@@ -1089,8 +1116,7 @@ fn test_linux_x86_representative_seed_omits_payload_entry_shape_probe() {
     let source = linux_x86_representative_actual_stage23_seed_source();
     assert!(
         !source.contains("compile-file-mode-entry-shape-progress-probe")
-            && !source.contains("command-line-arg 9")
-            && !source.contains("9000000030"),
+            && !source.contains("command-line-arg 9"),
         "Linux x86 segmented seed は stage2/stage3 の payload compile を邪魔する arg9 entry-shape probe を含めない"
     );
 }
