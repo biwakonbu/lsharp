@@ -147,6 +147,19 @@ fn representative_actual_stage23_seed_source() -> String {
 
 fn linux_x86_representative_actual_stage23_seed_source() -> String {
     let code_binding_expr = r#"progress-mode (if (> (string-length (command-line-arg 8)) 0) 1 0)
+                    raw-functions-mode (if (> (string-length (command-line-arg 10)) 0) 1 0)
+                    raw-pairs (if (= raw-functions-mode 1)
+                                (compile-file-pairs-with-cache source-path cache-ref parse-count-ref)
+                                (vector-new 0))
+                    raw-pairs-root (if (= raw-functions-mode 1) (root_push raw-pairs) 0)
+                    raw-reg-result (if (= raw-functions-mode 1)
+                                     (register-all-pairs raw-pairs 0 (vector-length raw-pairs) (ftable-new) 10)
+                                     (vector-new 0))
+                    raw-reg-root (if (= raw-functions-mode 1) (root_push raw-reg-result) 0)
+                    raw-ftable (if (= raw-functions-mode 1)
+                                 (vector-get raw-reg-result 0)
+                                 (ftable-new))
+                    raw-ftable-root (if (= raw-functions-mode 1) (root_push raw-ftable) 0)
                     progress-after-native-callables (if (= progress-mode 1)
                                                     (do
                                                       (print 9000000032)
@@ -162,7 +175,9 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                                                 0)
                     main-func-idx bounded-main-func-idx
                     entrypoint-func-idx bounded-main-func-idx
-                    starts (collect-callable-function-slot-starts-x86 native-callables 10)
+                    starts (if (= raw-functions-mode 1)
+                              (vector-new 0)
+                              (collect-callable-function-slot-starts-x86 native-callables 10))
                     progress-after-starts (if (= progress-mode 1)
                                            (do
                                              (print 9000000033)
@@ -172,20 +187,26 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                                              (print (if (> (vector-length starts) 2) (vector-get starts 2) -1))
                                              (print (if (> (vector-length starts) 0) (vector-get starts (- (vector-length starts) 1)) -1)))
                                            0)
-                    user-total (callable-user-total-slot-size-x86 native-callables 10)
+                    user-total (if (= raw-functions-mode 1)
+                                 0
+                                 (callable-user-total-slot-size-x86 native-callables 10))
                     progress-after-user-total (if (= progress-mode 1)
                                                (do
                                                  (print 9000000034)
                                                  (print user-total))
                                                0)
-                    code-len (+ user-total (x86-selfhost-helper-trailer-size 10))
+                    code-len (if (= raw-functions-mode 1)
+                               0
+                               (+ user-total (x86-selfhost-helper-trailer-size 10)))
                     progress-after-code-len (if (= progress-mode 1)
                                              (do
                                                (print 9000000035)
                                                (print code-len))
                                              0)
                     code (vector-new 0)
-                    entrypoint-offset (vector-get starts (- entrypoint-func-idx 10))"#;
+                    entrypoint-offset (if (= raw-functions-mode 1)
+                                        0
+                                        (vector-get starts (- entrypoint-func-idx 10)))"#;
     let main_body = r#"      (let [data-len (vector-length data)
           range-start (parse-positive-int (command-line-arg 2))
           range-end-arg (parse-positive-int (command-line-arg 3))
@@ -202,47 +223,49 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                                   (parse-positive-int (command-line-arg 7))
                                   8)]
          (do
-           (if (= progress-mode 1)
-             (do
-               (print 9000000037)
-               (print (vector-length starts))
-               (print user-total)
-               (print code-len)
-               (print data-len)
+           (if (= raw-functions-mode 1)
+             (print-x86-function-ir-owner-window functions raw-ftable range-start range-end)
+             (if (= progress-mode 1)
+               (do
+                 (print 9000000037)
+                 (print (vector-length starts))
+                 (print user-total)
+                 (print code-len)
+                 (print data-len)
+                 (let [segment-ctx (make-x86-code-segment-context native-callables starts 10 user-total)]
+                   (do
+                     (root_push segment-ctx)
+                     (print 9000000038)
+                     (print entrypoint-func-idx)
+                     (print entrypoint-offset)
+                     (root_pop))))
                (let [segment-ctx (make-x86-code-segment-context native-callables starts 10 user-total)]
                  (do
                    (root_push segment-ctx)
-                   (print 9000000038)
-                   (print entrypoint-func-idx)
-                   (print entrypoint-offset)
-                   (root_pop))))
-             (let [segment-ctx (make-x86-code-segment-context native-callables starts 10 user-total)]
-               (do
-                 (root_push segment-ctx)
-                 (if (= metadata-mode 1)
-                   (print-x86-function-segment-metadata-loop segment-ctx range-start range-end metadata-prefix-limit)
-                   (do
-                     (if (= include-header 1)
-                       (do
-                      (print 9000000005)
-                      (print (vector-length starts))
-                      (print entrypoint-func-idx)
-                      (print entrypoint-offset)
-                      (print 9000000006)
-                       (print 9000000001)
-                      (print code-len)
-                        (print 9000000002))
-                       0)
-                     (print-x86-function-code-segments-loop segment-ctx range-start range-end)
-                     (if (= include-tail 1)
-                       (do
-                         (print-x86-code-trailer-segments 10)
-                       (print 9000000003)
-                      (print data-len)
-                      (print 9000000004)
-                         (print-packed-code-bytes-loop data 0 data-len))
-                       0)))
-                 (root_pop))))))"#;
+                   (if (= metadata-mode 1)
+                     (print-x86-function-segment-metadata-loop segment-ctx range-start range-end metadata-prefix-limit)
+                     (do
+                       (if (= include-header 1)
+                         (do
+                        (print 9000000005)
+                        (print (vector-length starts))
+                        (print entrypoint-func-idx)
+                        (print entrypoint-offset)
+                        (print 9000000006)
+                         (print 9000000001)
+                        (print code-len)
+                          (print 9000000002))
+                         0)
+                       (print-x86-function-code-segments-loop segment-ctx range-start range-end)
+                       (if (= include-tail 1)
+                         (do
+                           (print-x86-code-trailer-segments 10)
+                         (print 9000000003)
+                        (print data-len)
+                        (print 9000000004)
+                           (print-packed-code-bytes-loop data 0 data-len))
+                         0)))
+                   (root_pop)))))))"#;
     let payload_expr = "(compile-file-functions-payload-with-cache (command-line-arg 1) 10 cache-ref parse-count-ref)";
     let source = actual_stage23_seed_source_with_payload_and_code_binding_and_target(
         payload_expr,
@@ -263,6 +286,36 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
          data-root (root_push data)"#;
     let source = source.replace(&format!("payload {payload_expr}"), payload_bindings);
     let source = source.replace(
+        "(defn append-vector-loop [dst src idx len]",
+        r#"(defn append-one-import-placeholder [result]
+  (do
+    (root_push result)
+    (let [placeholder (make-function-meta 0 0 (vector-new 0))]
+      (do
+        (root_push placeholder)
+        (let [next-result (vector-push result placeholder)]
+          (do
+            (root_pop)
+            (root_pop)
+            next-result))))))
+
+(defn make-x86-import-placeholders-10 []
+  (let [p0 (vector-new 32)
+        p1 (append-one-import-placeholder p0)
+        p2 (append-one-import-placeholder p1)
+        p3 (append-one-import-placeholder p2)
+        p4 (append-one-import-placeholder p3)
+        p5 (append-one-import-placeholder p4)
+        p6 (append-one-import-placeholder p5)
+        p7 (append-one-import-placeholder p6)
+        p8 (append-one-import-placeholder p7)
+        p9 (append-one-import-placeholder p8)
+        p10 (append-one-import-placeholder p9)]
+    p10))
+
+(defn append-vector-loop [dst src idx len]"#,
+    );
+    let source = source.replace(
         "      (let [functions (vector-get payload 0)\n            data (vector-get payload 1)]",
         "      (let [payload-observed payload]",
     );
@@ -273,6 +326,10 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
     source.replace(
         "native-callables (normalize-selfhost-native-function-metas-for-target callables target)",
         "native-callables callables",
+    )
+    .replace(
+        "callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))",
+        "callables (append-vector-loop (make-x86-import-placeholders-10) functions 0 (vector-length functions))",
     )
     .replace(
         "(defn x86-function-slot-size [func-meta functions]\n  (+ (native-function-size-x86 func-meta functions) 2048))",
@@ -338,7 +395,63 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
     (print-x86-first-large-slot-size functions 0 (- (vector-length functions) 10) 1000000)
     (do
       (print-x86-slot-size-progress-sample functions idx)
-      (print-x86-slot-size-progress functions (+ idx 1) sample-end))))"#,
+      (print-x86-slot-size-progress functions (+ idx 1) sample-end))))
+
+(defn x86-ftable-hash-for-func-loop [ftable idx len target]
+  (if (>= idx len)
+    0
+    (if (= (vector-get ftable (+ idx 1)) target)
+      (vector-get ftable idx)
+      (x86-ftable-hash-for-func-loop ftable (+ idx 2) len target))))
+
+(defn x86-ftable-hash-for-func [ftable target]
+  (x86-ftable-hash-for-func-loop ftable 0 (vector-length ftable) target))
+
+(defn print-x86-function-ir-owner-window [functions ftable idx len]
+  (if (>= idx len)
+    0
+    (do
+      (root_push functions)
+      (root_push ftable)
+      (let [func-meta (vector-get functions idx)]
+        (do
+          (root_push func-meta)
+          (let [ir (native-function-ir func-meta)]
+            (do
+              (root_push ir)
+              (let [actual-idx (+ idx 10)
+                    current-hash (x86-ftable-hash-for-func ftable actual-idx)
+                    current-lookup (ftable-lookup ftable current-hash)]
+                (do
+                  (print 9000000048)
+                  (print idx)
+                  (print actual-idx)
+                  (print current-hash)
+                  (print current-lookup)
+                  (print (native-function-param-count func-meta))
+                  (print (native-function-local-count func-meta))
+                  (print (vector-length ir))
+                  (if (> (vector-length ir) 73)
+                    (let [instr (vector-get ir 73)]
+                      (do
+                        (root_push instr)
+                        (print (vector-get instr 0))
+                        (print (vector-get instr 1))
+                        (print (x86-ftable-hash-for-func ftable (vector-get instr 1)))
+                        (print (ftable-lookup ftable (x86-ftable-hash-for-func ftable (vector-get instr 1))))
+                        (root_pop)))
+                    (do
+                      (print -1)
+                      (print -1)
+                      (print 0)
+                      (print 0)))
+                  (root_pop)
+                  (root_pop)
+                  (let [final (print-x86-function-ir-owner-window functions ftable (+ idx 1) len)]
+                    (do
+                      (root_pop)
+                      (root_pop)
+                      final)))))))))))"#,
     )
 }
 
@@ -455,7 +568,9 @@ fn test_linux_x86_representative_seed_uses_layout_emit_for_segmented_native_code
         !source.contains("defn decls-module-hash-or-minus-one"),
         !source.contains("defn find-module-pair-index"),
         !source.contains("pre-callable-progress"),
-        source.contains("append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions)"),
+        source.contains("callables (append-vector-loop (make-x86-import-placeholders-10) functions 0 (vector-length functions))"),
+        source.contains("(defn make-x86-import-placeholders-10"),
+        !source.contains("callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))"),
         source.contains("main-func-idx bounded-main-func-idx"),
         source.contains("entrypoint-func-idx bounded-main-func-idx"),
         !source.contains("main-func-idx entrypoint-func-idx"),
@@ -2006,6 +2121,35 @@ fn test_linux_x86_representative_seed_has_opcode40_call_replay_metadata_diagnost
             )
             && source.contains("(print-x86-call-control-replay-diagnostic control-ctx idx opcode operand offset size)"),
         "Linux x86 segmented seed は opcode 40 user call の IR row / direct bundle / emitted bytes / rel32 target を同一 metadata row で出せるべき"
+    );
+}
+
+#[test]
+fn test_linux_x86_representative_seed_can_print_raw_function_ir_window_diagnostic() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+
+    assert!(
+        source.contains("(defn print-x86-function-ir-owner-window")
+            && source.contains("(defn x86-ftable-hash-for-func")
+            && source.contains("(print 9000000048)")
+            && source.contains(
+                "raw-functions-mode (if (> (string-length (command-line-arg 10)) 0) 1 0)"
+            )
+            && source.contains("raw-pairs (if (= raw-functions-mode 1)")
+            && source.contains("raw-ftable (if (= raw-functions-mode 1)")
+            && source.contains(
+                "(if (= raw-functions-mode 1)\n             (print-x86-function-ir-owner-window functions raw-ftable range-start range-end)"
+            )
+            && source.contains("starts (if (= raw-functions-mode 1)")
+            && source.contains("user-total (if (= raw-functions-mode 1)")
+            && source.contains("entrypoint-offset (if (= raw-functions-mode 1)")
+            && source.contains("current-hash (x86-ftable-hash-for-func ftable actual-idx)")
+            && source.contains("current-lookup (ftable-lookup ftable current-hash)")
+            && source.contains("instr (vector-get ir 73)")
+            && source.contains("(print (vector-get instr 0))")
+            && source.contains("(print (vector-get instr 1))")
+            && source.contains("(x86-ftable-hash-for-func ftable (vector-get instr 1))"),
+        "Linux x86 segmented seed は actual native stage1 の compile result と ftable lookup を codegen 前に同一診断行で切るべき"
     );
 }
 
@@ -3647,6 +3791,37 @@ fn test_wasm_compiler_user_call_resolves_function_index_before_arg_compilation()
                 && body.contains("local-func-hash")
                 && body.contains("ftable-lookup ftable local-func-hash"),
             "{name} は native high-arity call で壊れ得る func-hash 引数を信用せず node から再計算すること"
+        );
+    }
+}
+
+#[test]
+fn test_wasm_compiler_defn_function_reloads_param_count_after_ir_compilation() {
+    let source = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("canonical Compiler.ls が読み込めること");
+    for name in ["compile-defn-function-with-source", "compile-defn-function"] {
+        let body = source
+            .split(&format!("(defn {name}"))
+            .nth(1)
+            .and_then(|tail| tail.split("\n(defn ").next())
+            .unwrap_or_else(|| panic!("Compiler.ls に {name} が存在すること"));
+        let ir_root_pos = body
+            .find("(root_push ir)")
+            .unwrap_or_else(|| panic!("{name} は IR を root すること"));
+        let final_param_pos = body
+            .find("final-param-count (vector-get node 2)")
+            .unwrap_or_else(|| {
+                panic!("{name} は IR 生成後に param-count を node から読み直すこと")
+            });
+        assert!(
+            ir_root_pos < final_param_pos,
+            "{name} は native stage1 の scalar drift を避けるため IR 生成後に param-count を読み直すべき"
+        );
+        assert!(
+            body.contains(
+                "local-count (if (> local-max final-param-count) (- local-max final-param-count) 0)"
+            ) && body.contains("result (make-function-meta final-param-count local-count ir)"),
+            "{name} は再読込した param-count で local-count と function-meta を作ること"
         );
     }
 }

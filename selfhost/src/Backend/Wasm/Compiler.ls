@@ -1276,16 +1276,16 @@
     (root_push source)
     (root_push ftable)
     (root_push data-ref)
-    (let [param-count (vector-get node 2)
-      source-ir (compile-defn-with-source node source ftable data-ref)]
+    (let [source-ir (compile-defn-with-source node source ftable data-ref)]
       (do
         (root_push source-ir)
         (let [ir (if (> (vector-length source-ir) 0) source-ir (compile-defn-with-ftable node ftable))]
           (do
             (root_push ir)
             (let [local-max (max-local-slot ir 0 (vector-length ir) 0)
-              local-count (if (> local-max param-count) (- local-max param-count) 0)
-              result (make-function-meta param-count local-count ir)]
+              final-param-count (vector-get node 2)
+              local-count (if (> local-max final-param-count) (- local-max final-param-count) 0)
+              result (make-function-meta final-param-count local-count ir)]
               (do
                 (root_pop)
                 (root_pop)
@@ -1572,13 +1572,13 @@
   (do
     (root_push node)
     (root_push ftable)
-    (let [param-count (vector-get node 2)
-      ir (compile-defn-with-ftable node ftable)]
+    (let [ir (compile-defn-with-ftable node ftable)]
       (do
         (root_push ir)
         (let [local-max (max-local-slot ir 0 (vector-length ir) 0)
-          local-count (if (> local-max param-count) (- local-max param-count) 0)
-          result (make-function-meta param-count local-count ir)]
+          final-param-count (vector-get node 2)
+          local-count (if (> local-max final-param-count) (- local-max final-param-count) 0)
+          result (make-function-meta final-param-count local-count ir)]
           (do
             (root_pop)
             (root_pop)
