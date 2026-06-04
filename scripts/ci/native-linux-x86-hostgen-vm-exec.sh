@@ -6,6 +6,7 @@ ARTIFACT_ID="${NATIVE_LINUX_X86_HOSTGEN_VM_ARTIFACT_ID:-local}"
 ARTIFACT_DIR_INPUT="${LSHARP_NATIVE_LINUX_X86_HOSTGEN_VM_ARTIFACT_DIR:-ci-artifacts/native-linux-x86-hostgen-vm/${ARTIFACT_ID}}"
 VM_NAME="${LSHARP_NATIVE_LINUX_X86_VM_NAME:-lsharp-linux-x86}"
 VM_WORK_DIR="${LSHARP_NATIVE_LINUX_X86_VM_WORK_DIR:-/tmp/lsharp-native-linux-x86-hostgen-vm-${ARTIFACT_ID}}"
+KEEP_VM_WORK_DIR="${LSHARP_NATIVE_LINUX_X86_KEEP_VM_WORK_DIR:-0}"
 
 if [[ "${ARTIFACT_DIR_INPUT}" = /* ]]; then
   if [[ "${ARTIFACT_DIR_INPUT}" != "${ROOT_DIR}"/* ]]; then
@@ -1432,7 +1433,15 @@ copy_actual_stage_debug_artifact actual-stage3 stage3-debug
 
 if [[ "${vm_exec_status}" -ne 0 ]]; then
   echo "ERROR: native Linux x86_64 hostgen -> VM exec smoke failed with status ${vm_exec_status}" >&2
+  echo "VM workdir kept for failure diagnostics: ${VM_WORK_DIR}" >&2
   exit "${vm_exec_status}"
+fi
+
+if [[ "${KEEP_VM_WORK_DIR}" = "1" ]]; then
+  echo "VM workdir kept by LSHARP_NATIVE_LINUX_X86_KEEP_VM_WORK_DIR=1: ${VM_WORK_DIR}"
+else
+  limactl shell "${VM_NAME}" -- rm -rf "${VM_WORK_DIR}"
+  echo "VM workdir removed after successful evidence copy: ${VM_WORK_DIR}"
 fi
 
 echo "native Linux x86_64 hostgen -> VM exec evidence collected."

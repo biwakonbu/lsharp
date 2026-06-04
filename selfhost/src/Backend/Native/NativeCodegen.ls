@@ -9184,7 +9184,9 @@
                                       14
                                        (if (= param-count 1) 7 0))))))))
     body-size-ctx (make-x86-body-size-context ir-func function-metas (vector-length ir-func))
-    body-bytes (x86-body-size-loop-ctx body-size-ctx 0 0 0)]
+    body-bytes (if (> (vector-length ir-func) 4096)
+                 (+ 131072 (* (vector-length ir-func) 16))
+                 (x86-body-size-loop-ctx body-size-ctx 0 0 0))]
     (+ (+ (+ 6 frame-bytes) param-spill-bytes) body-bytes)))
 
 (defn collect-callable-function-starts-x86-loop [functions idx len starts offset]

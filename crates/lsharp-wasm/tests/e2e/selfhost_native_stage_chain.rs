@@ -174,8 +174,15 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                                                       (print (vector-length native-callables))
                                                       (print (+ 9 (vector-length functions))))
                                                     0)
+                    slot-sample-start (if (= progress-mode 1)
+                                        (parse-positive-int (command-line-arg 2))
+                                        0)
+                    slot-sample-end-arg (if (= progress-mode 1)
+                                          (parse-positive-int (command-line-arg 3))
+                                          0)
+                    slot-sample-end (if (= slot-sample-end-arg 0) 4 slot-sample-end-arg)
                     progress-after-slot-sample (if (= progress-mode 1)
-                                                (print-x86-slot-size-progress native-callables 0 4)
+                                                (print-x86-slot-size-progress native-callables slot-sample-start slot-sample-end)
                                                 0)
                     main-func-idx bounded-main-func-idx
                     entrypoint-func-idx bounded-main-func-idx
@@ -362,43 +369,16 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
             (root_pop)
             0))))))
 
-(defn print-x86-first-large-slot-size [functions idx len limit]
-  (if (>= idx len)
+(defn print-x86-slot-size-progress [functions idx sample-end]
+  (if (>= idx sample-end)
     (do
       (print 9000000040)
-      (print -1)
+      (print sample-end)
       (print -1)
       (print -1)
       (print -1)
       (print -1)
       (print -1))
-    (do
-      (root_push functions)
-      (let [actual-idx (+ idx 10)
-            func-meta (vector-get functions actual-idx)]
-        (do
-          (root_push func-meta)
-          (let [size (x86-function-slot-size func-meta functions)]
-            (if (> size limit)
-              (do
-                (print 9000000040)
-                (print idx)
-                (print actual-idx)
-                (print size)
-                (print (native-function-param-count func-meta))
-                (print (native-function-local-count func-meta))
-                (print (vector-length (native-function-ir func-meta)))
-                (root_pop)
-                (root_pop)
-                0)
-              (do
-                (root_pop)
-                (root_pop)
-                (print-x86-first-large-slot-size functions (+ idx 1) len limit)))))))))
-
-(defn print-x86-slot-size-progress [functions idx sample-end]
-  (if (>= idx sample-end)
-    (print-x86-first-large-slot-size functions 0 (- (vector-length functions) 10) 1000000)
     (do
       (print-x86-slot-size-progress-sample functions idx)
       (print-x86-slot-size-progress functions (+ idx 1) sample-end))))
@@ -874,6 +854,23 @@ fn test_native_linux_x86_hostgen_vm_script_cleans_vm_work_dir_before_run() {
 }
 
 #[test]
+fn test_native_linux_x86_hostgen_vm_script_removes_vm_work_dir_after_success() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+
+    assert!(
+        script.contains(r#"KEEP_VM_WORK_DIR="${LSHARP_NATIVE_LINUX_X86_KEEP_VM_WORK_DIR:-0}""#)
+            && script.contains("VM workdir kept for failure diagnostics")
+            && script.contains(r#"if [[ "${KEEP_VM_WORK_DIR}" = "1" ]]; then"#)
+            && script.contains("VM workdir kept by LSHARP_NATIVE_LINUX_X86_KEEP_VM_WORK_DIR=1")
+            && script.contains("VM workdir removed after successful evidence copy"),
+        "hostgen VM script は成功時だけ VM workdir を掃除し、失敗時または KEEP 指定時は診断用に保持するべき"
+    );
+}
+
+#[test]
 fn test_native_linux_x86_hostgen_vm_script_propagates_split_chunk_failures() {
     let script_path =
         selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
@@ -1057,7 +1054,16 @@ fn test_linux_x86_representative_seed_can_print_stage_progress_markers() {
             && source.contains("(print (vector-length callables))")
             && source.contains("(print (+ 9 (vector-length functions)))")
             && source.contains("progress-after-slot-sample")
+            && source.contains("slot-sample-start (if (= progress-mode 1)")
+            && source.contains("slot-sample-end-arg (if (= progress-mode 1)")
+            && source
+                .contains("slot-sample-end (if (= slot-sample-end-arg 0) 4 slot-sample-end-arg)")
+            && source.contains(
+                "print-x86-slot-size-progress native-callables slot-sample-start slot-sample-end"
+            )
             && source.contains("(defn print-x86-slot-size-progress")
+            && source.contains("(print sample-end)")
+            && !source.contains("print-x86-first-large-slot-size functions 0")
             && source.contains("progress-after-starts")
             && source.contains("progress-after-user-total")
             && source.contains("progress-after-code-len")
@@ -4263,7 +4269,24 @@ fn test_native_codegen_x86_collects_bundle_depths_for_control_loop() {
 }
 
 #[test]
-fn test_native_codegen_x86_body_size_loop_keeps_arity_stable() {
+fn test_native_codegen_x86_function_size_uses_large_ir_slot_fallback() {
+    let source = std::fs::read_to_string(selfhost_source_path("NativeCodegen.ls"))
+        .expect("canonical NativeCodegen.ls が読み込めること");
+    let wrapper_body = source
+        .split("(defn native-function-size-x86")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("NativeCodegen.ls に native-function-size-x86 が存在すること");
+    assert!(
+        wrapper_body.contains("body-bytes (if (> (vector-length ir-func) 4096)")
+            && wrapper_body.contains("(+ 131072 (* (vector-length ir-func) 16))")
+            && wrapper_body.contains("(x86-body-size-loop-ctx body-size-ctx 0 0 0)"),
+        "native-function-size-x86 は巨大 selfhost 関数だけ exact body-size recursion を避け、十分大きい slot を予約するべき"
+    );
+}
+
+#[test]
+fn test_native_codegen_x86_body_size_loop_keeps_exact_small_ir_path() {
     let source = std::fs::read_to_string(selfhost_source_path("NativeCodegen.ls"))
         .expect("canonical NativeCodegen.ls が読み込めること");
     let body = source
@@ -4271,30 +4294,24 @@ fn test_native_codegen_x86_body_size_loop_keeps_arity_stable() {
         .nth(1)
         .and_then(|tail| tail.split("\n(defn ").next())
         .expect("NativeCodegen.ls に context 化された x86 body size loop が存在すること");
-
-    assert!(
-        body.contains("[ctx idx total current-depth]"),
-        "x86 body size loop は Linux x86 native の recursive call 破壊を避けるため context を使って 4 引数に収めるべき"
-    );
-    assert!(
-        body.contains("ir-func (vector-get ctx 0)")
-            && body.contains("function-metas (vector-get ctx 1)")
-            && body.contains("len (vector-get ctx 2)"),
-        "x86 body size context は ir/function metadata/len を recursive argument surface から退避するべき"
-    );
-    assert!(
-        body.contains("(x86-body-size-loop-ctx ctx (+ idx 1) next-total next-depth)"),
-        "x86 body size loop の recursive call は context + scalar state だけを渡すべき"
-    );
     let wrapper_body = source
         .split("(defn native-function-size-x86")
         .nth(1)
         .and_then(|tail| tail.split("\n(defn ").next())
         .expect("NativeCodegen.ls に native-function-size-x86 が存在すること");
+
     assert!(
-        wrapper_body.contains("body-size-ctx (make-x86-body-size-context ir-func function-metas")
+        body.contains("[ctx idx total current-depth]")
+            && body.contains("ir-func (vector-get ctx 0)")
+            && body.contains("function-metas (vector-get ctx 1)")
+            && body.contains("len (vector-get ctx 2)")
+            && body.contains("(x86-body-size-loop-ctx ctx (+ idx 1) next-total next-depth)"),
+        "小さい IR の exact x86 body-size path は context + scalar state の 4 引数 recursion を維持するべき"
+    );
+    assert!(
+        wrapper_body.contains("(if (> (vector-length ir-func) 4096)")
             && wrapper_body.contains("(x86-body-size-loop-ctx body-size-ctx 0 0 0)"),
-        "native-function-size-x86 は actual native stage の function-size drift を避けるため context 化 body size loop を使うべき"
+        "native-function-size-x86 は巨大 IR 以外では exact body-size path を使うべき"
     );
 }
 
@@ -30705,6 +30722,27 @@ fn assert_x86_function_size_matches_generated_length_for_seed(
       (+ idx 1)
       len)))
 
+(defn pad-byte-vector-to-length-range [bytes start end]
+  (if (>= start end)
+    bytes
+    (let [width (- end start)]
+      (if (= width 1)
+        (vector-push bytes 144)
+        (do
+          (root_push bytes)
+          (let [mid (+ start (/ width 2))
+                left (pad-byte-vector-to-length-range bytes start mid)]
+            (do
+              (root_push left)
+              (let [right (pad-byte-vector-to-length-range left mid end)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  right)))))))))
+
+(defn pad-byte-vector-to-length [bytes target-len]
+  (pad-byte-vector-to-length-range bytes (vector-length bytes) target-len))
+
 	(defn check-instr-sizes [ir functions starts import-count import-stub-offset frame-base-slot-count meta offsets idx len depth]
 	  (if (>= idx len)
 	    0
@@ -30762,6 +30800,10 @@ fn assert_x86_function_size_matches_generated_length_for_seed(
 	            emit-import-offset))
 	        (let [actual-after (vector-length (ref-get result))
 	              actual-size (- actual-after actual-start)
+	              ir-len (vector-length (native-function-ir func))
+	              size-status (if (> ir-len 4096)
+	                            (if (>= expected-size actual-size) 0 1)
+	                            (if (= expected-size actual-size) 0 1))
 	              instr-status (check-instr-sizes
 	                (native-function-ir func)
 	                functions
@@ -30800,8 +30842,13 @@ fn assert_x86_function_size_matches_generated_length_for_seed(
 	                                     (if (= (native-function-param-count func) 1) 7 0)))))))))))
 	                0
 	                (vector-length (native-function-ir func))
-	                0)]
-	          (if (or (or (!= expected-start actual-start) (!= expected-size actual-size)) (!= instr-status 0))
+	                0)
+	              padding-status (if (if (= size-status 0) (> expected-size actual-size) false)
+	                               (do
+	                                 (ref-set result (pad-byte-vector-to-length (ref-get result) (+ actual-start expected-size)))
+	                                 0)
+	                               0)]
+	          (if (or (or (!= expected-start actual-start) (!= size-status 0)) (!= instr-status 0))
 	            (do
 	              (print func-idx)
 	              (print expected-start)
@@ -30810,7 +30857,7 @@ fn assert_x86_function_size_matches_generated_length_for_seed(
               (print actual-size)
               (print (native-function-param-count func))
               (print (native-function-local-count func))
-              (print (vector-length (native-function-ir func)))
+              (print ir-len)
               (print (native-local-stack-bytes-with-window
                 (native-function-ir func)
                 (+ (+ (native-function-param-count func) (native-function-local-count func)) 1)
