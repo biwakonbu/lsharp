@@ -1045,6 +1045,27 @@
                   (root_pop)
                   (root_pop)
                   payload2)))))))))
+(defn compile-file-functions-payload-with-cache-progress [path func-idx cache-ref parse-count-ref]
+  (do
+    (print 9000000041)
+    (let [src (read-file path)]
+      (do
+        (root_push src)
+        (print 9000000042)
+        (print (string-length src))
+        (print (if (> (string-length src) 0) (string-char-at src 0) -1))
+        (print 9000000043)
+        (let [fingerprint (source-fingerprint src)]
+          (do
+            (print fingerprint)
+            (let [decls (parse-program src)]
+              (do
+                (root_push decls)
+                (print 9000000044)
+                (print (vector-length decls))
+                (root_pop)
+                (root_pop)
+                (compile-file-functions-payload-with-cache path func-idx cache-ref parse-count-ref)))))))))
 (defn compile-file-mode-cache-probe []
   (let [path (command-line-arg 1)
     cache-ref (ref-new (map-new))

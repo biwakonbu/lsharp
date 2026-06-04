@@ -300,7 +300,9 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                                       (print (if (> (string-length pre-payload-source) 0) (string-char-at pre-payload-source 0) -1)))
                                     0)
          pre-payload-source-pop (if (= pre-payload-progress-mode 1) (root_pop) 0)
-         payload-base (compile-file-functions-payload-with-cache source-path 10 cache-ref parse-count-ref)
+         payload-base (if (= pre-payload-progress-mode 1)
+                        (compile-file-functions-payload-with-cache-progress source-path 10 cache-ref parse-count-ref)
+                        (compile-file-functions-payload-with-cache source-path 10 cache-ref parse-count-ref))
          payload payload-base
          functions (vector-get payload-base 0)
          data (vector-get payload-base 1)
@@ -1068,6 +1070,7 @@ fn test_linux_x86_representative_seed_can_print_stage_progress_markers() {
         "read-file source-path",
         "string-length pre-payload-source",
         "string-char-at pre-payload-source 0",
+        "compile-file-functions-payload-with-cache-progress source-path 10 cache-ref parse-count-ref",
         "progress-after-native-callables",
         "(print (vector-length functions))",
         "(print (vector-length callables))",
@@ -1119,6 +1122,32 @@ fn test_linux_x86_representative_seed_omits_payload_entry_shape_probe() {
             && !source.contains("command-line-arg 9"),
         "Linux x86 segmented seed は stage2/stage3 の payload compile を邪魔する arg9 entry-shape probe を含めない"
     );
+}
+
+#[test]
+fn test_selfhost_compiler_mode_has_payload_progress_probe() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/App/CompilerMode.ls",
+    )))
+    .expect("CompilerMode.ls を読めること");
+
+    for token in [
+        "(defn compile-file-functions-payload-with-cache-progress",
+        "(print 9000000041)",
+        "(print 9000000042)",
+        "(print (string-length src))",
+        "(print (if (> (string-length src) 0) (string-char-at src 0) -1))",
+        "(print 9000000043)",
+        "fingerprint (source-fingerprint src)",
+        "(print 9000000044)",
+        "decls (parse-program src)",
+        "compile-file-functions-payload-with-cache path func-idx cache-ref parse-count-ref",
+    ] {
+        assert!(
+            source.contains(token),
+            "CompilerMode payload progress probe は token {token} を含むべき"
+        );
+    }
 }
 
 #[test]
