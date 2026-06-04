@@ -2712,10 +2712,7 @@ fn test_native_codegen_x86_root_opcodes_emit_real_bytes_and_sizes() {
     let size_body = source
         .split("(defn native-instr-size-x86")
         .nth(1)
-        .and_then(|tail| {
-            tail.split("(defn native-function-body-size-x86-loop-with-context")
-                .next()
-        })
+        .and_then(|tail| tail.split("(defn x86-body-size-loop-ctx").next())
         .expect("NativeCodegen.ls に x86 size calculator が存在すること");
     let root_set_body = source
         .split("(defn emit-root-set-bundle-x86")
@@ -3944,7 +3941,7 @@ fn test_native_codegen_x86_body_size_loop_keeps_arity_stable() {
     let source = std::fs::read_to_string(selfhost_source_path("NativeCodegen.ls"))
         .expect("canonical NativeCodegen.ls が読み込めること");
     let body = source
-        .split("(defn native-function-body-size-x86-loop-with-context")
+        .split("(defn x86-body-size-loop-ctx")
         .nth(1)
         .and_then(|tail| tail.split("\n(defn ").next())
         .expect("NativeCodegen.ls に context 化された x86 body size loop が存在すること");
@@ -3960,9 +3957,7 @@ fn test_native_codegen_x86_body_size_loop_keeps_arity_stable() {
         "x86 body size context は ir/function metadata/len を recursive argument surface から退避するべき"
     );
     assert!(
-        body.contains(
-            "(native-function-body-size-x86-loop-with-context ctx (+ idx 1) next-total next-depth)",
-        ),
+        body.contains("(x86-body-size-loop-ctx ctx (+ idx 1) next-total next-depth)"),
         "x86 body size loop の recursive call は context + scalar state だけを渡すべき"
     );
     let wrapper_body = source
@@ -3972,8 +3967,7 @@ fn test_native_codegen_x86_body_size_loop_keeps_arity_stable() {
         .expect("NativeCodegen.ls に native-function-size-x86 が存在すること");
     assert!(
         wrapper_body.contains("body-size-ctx (make-x86-body-size-context ir-func function-metas")
-            && wrapper_body
-                .contains("(native-function-body-size-x86-loop-with-context body-size-ctx 0 0 0)"),
+            && wrapper_body.contains("(x86-body-size-loop-ctx body-size-ctx 0 0 0)"),
         "native-function-size-x86 は actual native stage の function-size drift を避けるため context 化 body size loop を使うべき"
     );
 }
@@ -44351,13 +44345,13 @@ fn test_e2e_linux_x86_actual_body_size_metadata_recursive_call_targets_self() {
     assert_eq!(
         recursive_row.operand,
         target_function_idx,
-        "native-function-body-size-x86-loop-with-context の自己再帰 call operand は current function を指すべき: metadata={} header={header:?} row={recursive_row:?}",
+        "x86-body-size-loop-ctx の自己再帰 call operand は current function を指すべき: metadata={} header={header:?} row={recursive_row:?}",
         metadata_path.display()
     );
     assert_eq!(
         recursive_row.target_offset,
         0,
-        "native-function-body-size-x86-loop-with-context の自己再帰 call target は current function start 相対 0 を指すべき: metadata={} header={header:?} row={recursive_row:?}",
+        "x86-body-size-loop-ctx の自己再帰 call target は current function start 相対 0 を指すべき: metadata={} header={header:?} row={recursive_row:?}",
         metadata_path.display()
     );
 }

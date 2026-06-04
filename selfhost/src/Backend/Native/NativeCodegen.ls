@@ -8944,7 +8944,7 @@
       function-metas)
     len))
 
-(defn native-function-body-size-x86-loop-with-context [ctx idx total current-depth]
+(defn x86-body-size-loop-ctx [ctx idx total current-depth]
   (let [ir-func (vector-get ctx 0)
     function-metas (vector-get ctx 1)
     len (vector-get ctx 2)]
@@ -8955,11 +8955,11 @@
       operand (vector-get instr 1)
       next-total (+ total (native-instr-size-x86 opcode operand function-metas current-depth))
       next-depth (apply-stack-delta current-depth (opcode-stack-delta opcode operand function-metas))]
-      (native-function-body-size-x86-loop-with-context ctx (+ idx 1) next-total next-depth)))))
+      (x86-body-size-loop-ctx ctx (+ idx 1) next-total next-depth)))))
 
 (defn native-function-body-size-x86-loop [ir-func function-metas idx len total current-depth]
   (let [ctx (make-x86-body-size-context ir-func function-metas len)]
-    (native-function-body-size-x86-loop-with-context ctx idx total current-depth)))
+    (x86-body-size-loop-ctx ctx idx total current-depth)))
 
 (defn native-param-spill-bytes-x86-twenty-to-twenty-two [param-count]
   (if (= param-count 22)
@@ -9184,7 +9184,7 @@
                                       14
                                        (if (= param-count 1) 7 0))))))))
     body-size-ctx (make-x86-body-size-context ir-func function-metas (vector-length ir-func))
-    body-bytes (native-function-body-size-x86-loop-with-context body-size-ctx 0 0 0)]
+    body-bytes (x86-body-size-loop-ctx body-size-ctx 0 0 0)]
     (+ (+ (+ 6 frame-bytes) param-spill-bytes) body-bytes)))
 
 (defn collect-callable-function-starts-x86-loop [functions idx len starts offset]
