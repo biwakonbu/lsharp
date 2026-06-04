@@ -42886,6 +42886,40 @@ fn x86_metadata_row_rel32_target(row: &LinuxX86FunctionSegmentMetadataRow) -> Op
     Some(row.offset + call_offset as i64 + 5 + rel32 as i64)
 }
 
+fn x86_metadata_rows_to_ir_call_trace_rows(
+    rows: &[LinuxX86FunctionSegmentMetadataRow],
+) -> Vec<X86IrCallTraceRow> {
+    rows.iter()
+        .filter_map(|row| {
+            let call_offset = x86_metadata_row_rel32_call_offset(row)?;
+            let target_offset = x86_metadata_row_rel32_target(row)?;
+            Some(X86IrCallTraceRow {
+                instr_idx: row.instr_idx,
+                opcode: row.opcode,
+                operand: row.operand,
+                depth: row.depth,
+                offset: row.offset + call_offset as i64,
+                size: row.size,
+                param_count: -1,
+                target_offset,
+            })
+        })
+        .collect()
+}
+
+fn read_x86_ir_call_trace_rows_from_metadata(path: &std::path::Path) -> Vec<X86IrCallTraceRow> {
+    let metadata = std::fs::read_to_string(path)
+        .unwrap_or_else(|e| panic!("x86 entry metadata 読み込み失敗 ({}): {e}", path.display()));
+    let metadata_rows = parse_linux_x86_function_segment_metadata_rows(&metadata);
+    let trace_rows = x86_metadata_rows_to_ir_call_trace_rows(&metadata_rows);
+    assert!(
+        !trace_rows.is_empty(),
+        "x86 entry metadata に first-8-byte rel32 call row が無い: path={} metadata_rows={metadata_rows:?}",
+        path.display()
+    );
+    trace_rows
+}
+
 fn find_zeroed_x86_runtime_helper_call_rows(
     rows: &[LinuxX86FunctionSegmentMetadataRow],
 ) -> Vec<&LinuxX86FunctionSegmentMetadataRow> {
@@ -44048,6 +44082,70 @@ fn test_linux_x86_function_metadata_parses_map_new_direct_rel32_row() {
 }
 
 #[test]
+fn test_linux_x86_function_metadata_derives_entry_ir_call_trace_rows() {
+    let metadata = "\
+9000000020
+1098
+1108
+3340574
+5792
+0
+21
+22
+1200
+0
+11
+358
+9000000021
+138
+60
+12
+1
+1110
+7
+80
+232
+79
+4
+0
+0
+89
+72
+9000000021
+139
+1
+0
+1
+1200
+1
+184
+0
+0
+0
+0
+0
+0
+0
+";
+    let metadata_rows = parse_linux_x86_function_segment_metadata_rows(metadata);
+    let trace_rows = x86_metadata_rows_to_ir_call_trace_rows(&metadata_rows);
+
+    assert_eq!(
+        trace_rows,
+        vec![X86IrCallTraceRow {
+            instr_idx: 138,
+            opcode: 60,
+            operand: 12,
+            depth: 1,
+            offset: 1111,
+            size: 7,
+            param_count: -1,
+            target_offset: 2219,
+        }]
+    );
+}
+
+#[test]
 fn test_linux_x86_function_metadata_parses_user_call_direct_rel32_row() {
     let metadata = "\
 9000000020
@@ -44217,8 +44315,29 @@ fn test_e2e_linux_x86_actual_stage2_entrypoint_call_windows_diagnostic() {
                 .map(|dir| dir.join("stage-entry-ir-trace.txt"))
                 .filter(|path| path.exists())
         });
-    if let Some(trace_path) = trace_path {
-        let trace_rows = read_x86_ir_call_trace_rows(&trace_path);
+    let metadata_path = std::env::var_os("LSHARP_NATIVE_LINUX_X86_STAGE2_ENTRY_METADATA")
+        .map(std::path::PathBuf::from)
+        .map(workspace_root_relative_path)
+        .or_else(|| {
+            stage2_dir
+                .parent()
+                .map(|dir| dir.join("actual-stage2-metadata.txt"))
+                .filter(|path| path.exists())
+        });
+    let trace_rows_with_source = if let Some(trace_path) = trace_path {
+        Some((
+            format!("trace:{}", trace_path.display()),
+            read_x86_ir_call_trace_rows(&trace_path),
+        ))
+    } else {
+        metadata_path.map(|metadata_path| {
+            (
+                format!("metadata:{}", metadata_path.display()),
+                read_x86_ir_call_trace_rows_from_metadata(&metadata_path),
+            )
+        })
+    };
+    if let Some((trace_source, trace_rows)) = trace_rows_with_source {
         assert_x86_ir_call_trace_matches_entry_calls(&stage2_bundle, &trace_rows);
         assert_x86_call_targets_do_not_skip_rex_stack_restore_prefix(
             "Linux x86 stage2 entrypoint rel32 target diagnostic",
@@ -44227,8 +44346,7 @@ fn test_e2e_linux_x86_actual_stage2_entrypoint_call_windows_diagnostic() {
             &trace_rows,
         );
         println!(
-            "Linux x86 stage2 IR opcode/bytes/rel32 trace correlated: path={} rows={trace_rows:?}",
-            trace_path.display()
+            "Linux x86 stage2 IR opcode/metadata bytes/rel32 trace correlated: source={trace_source} rows={trace_rows:?}"
         );
     } else {
         assert_x86_call_targets_do_not_skip_rex_stack_restore_prefix(
@@ -44238,7 +44356,7 @@ fn test_e2e_linux_x86_actual_stage2_entrypoint_call_windows_diagnostic() {
             &[],
         );
         println!(
-            "Linux x86 stage2 IR trace 未指定: LSHARP_NATIVE_LINUX_X86_STAGE2_ENTRY_IR_TRACE を指定すると opcode 40/60/56 などの rel32 row / emitted bytes / rel32 target を同一 window で照合する"
+            "Linux x86 stage2 IR trace/entry metadata 未指定: LSHARP_NATIVE_LINUX_X86_STAGE2_ENTRY_IR_TRACE または LSHARP_NATIVE_LINUX_X86_STAGE2_ENTRY_METADATA を指定すると opcode 40/60/56 などの rel32 row / emitted bytes / rel32 target を同一 window で照合する"
         );
     }
 }
