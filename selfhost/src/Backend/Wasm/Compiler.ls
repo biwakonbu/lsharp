@@ -443,30 +443,30 @@
     data-slot (root_push data-ref)
     func-node (vector-get node 1)
     local-func-hash (if (= (vector-get func-node 0) 4) (vector-get func-node 1) func-hash)
-    func-idx-ref (ref-new (ftable-lookup ftable local-func-hash))
-    func-idx-ref-slot (root_push func-idx-ref)
-    arg-instrs-list (compile-user-call-arg-instrs-with-source node source env ftable 0 arg-count (vector-new 8) data-ref)]
+    call-instrs (emit-to (vector-new 1) 40 (ftable-lookup ftable local-func-hash))]
     (do
-      (root_push arg-instrs-list)
-      (let [temp-base (max-root-temp-base-list env arg-instrs-list arg-count)
-        instrs1 (emit-user-call-args node arg-instrs-list 0 arg-count temp-base instrs)
-        instrs2 (emit-user-call-arg-gets 0 arg-count temp-base instrs1)
-        func-idx (ref-get func-idx-ref)
-        instrs3 (emit-to instrs2 40 func-idx)]
+      (root_push call-instrs)
+      (let [arg-instrs-list (compile-user-call-arg-instrs-with-source node source env ftable 0 arg-count (vector-new 8) data-ref)]
         (do
-          (root_push instrs3)
-          (let [result (emit-user-call-root-pops node (- arg-count 1) instrs3)]
+          (root_push arg-instrs-list)
+          (let [temp-base (max-root-temp-base-list env arg-instrs-list arg-count)
+            instrs1 (emit-user-call-args node arg-instrs-list 0 arg-count temp-base instrs)
+            instrs2 (emit-user-call-arg-gets 0 arg-count temp-base instrs1)
+            instrs3 (append-instr-vector instrs2 call-instrs)]
             (do
-              (root_pop)
-              (root_pop)
-              (root_pop)
-              (root_pop)
-              (root_pop)
-              (root_pop)
-              (root_pop)
-              (root_pop)
-              (root_pop)
-              result)))))))
+              (root_push instrs3)
+              (let [result (emit-user-call-root-pops node (- arg-count 1) instrs3)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  result)))))))))
 
 (defn compile-user-call-with-ftable [node env ftable instrs func-hash arg-count]
   (let [node-slot (root_push node)
@@ -474,27 +474,27 @@
     instrs-slot (root_push instrs)
     func-node (vector-get node 1)
     local-func-hash (if (= (vector-get func-node 0) 4) (vector-get func-node 1) func-hash)
-    func-idx-ref (ref-new (ftable-lookup ftable local-func-hash))
-    func-idx-ref-slot (root_push func-idx-ref)
-    arg-instrs-list (compile-user-call-arg-instrs-with-ftable node env ftable 0 arg-count (vector-new 8))]
+    call-instrs (emit-to (vector-new 1) 40 (ftable-lookup ftable local-func-hash))]
     (do
-      (root_push arg-instrs-list)
-      (let [temp-base (max-root-temp-base-list env arg-instrs-list arg-count)
-        instrs1 (emit-user-call-args node arg-instrs-list 0 arg-count temp-base instrs)
-        instrs2 (emit-user-call-arg-gets 0 arg-count temp-base instrs1)
-        func-idx (ref-get func-idx-ref)
-        instrs3 (emit-to instrs2 40 func-idx)]
+      (root_push call-instrs)
+      (let [arg-instrs-list (compile-user-call-arg-instrs-with-ftable node env ftable 0 arg-count (vector-new 8))]
         (do
-          (root_push instrs3)
-          (let [result (emit-user-call-root-pops node (- arg-count 1) instrs3)]
+          (root_push arg-instrs-list)
+          (let [temp-base (max-root-temp-base-list env arg-instrs-list arg-count)
+            instrs1 (emit-user-call-args node arg-instrs-list 0 arg-count temp-base instrs)
+            instrs2 (emit-user-call-arg-gets 0 arg-count temp-base instrs1)
+            instrs3 (append-instr-vector instrs2 call-instrs)]
             (do
-              (root_pop)
-              (root_pop)
-              (root_pop)
-              (root_pop)
-              (root_pop)
-              (root_pop)
-              result)))))))
+              (root_push instrs3)
+              (let [result (emit-user-call-root-pops node (- arg-count 1) instrs3)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  result)))))))))
 
 (defn source-builtin-map-op [bop] (if (= bop 62) true (if (= bop 63) true (if (= bop 65) true (= bop 66)))))
 (defn map-insert-op [bop] (= bop 62))

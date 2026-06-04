@@ -3627,18 +3627,23 @@ fn test_wasm_compiler_user_call_resolves_function_index_before_arg_compilation()
             .and_then(|tail| tail.split("\n(defn ").next())
             .unwrap_or_else(|| panic!("Compiler.ls に {name} が存在すること"));
         let lookup_pos = body
-            .find("func-idx-ref (ref-new (ftable-lookup ftable local-func-hash))")
-            .unwrap_or_else(|| panic!("{name} は func-idx を ftable から ref に退避すること"));
+            .find("call-instrs (emit-to (vector-new 1) 40 (ftable-lookup ftable local-func-hash))")
+            .unwrap_or_else(|| {
+                panic!("{name} は user call 命令を arg compilation 前に構築すること")
+            });
+        let root_pos = body.find("(root_push call-instrs)").unwrap_or_else(|| {
+            panic!("{name} は user call 命令を arg compilation 中 root すること")
+        });
         let args_pos = body
             .find("arg-instrs-list (compile-user-call-arg-instrs")
             .unwrap_or_else(|| panic!("{name} は user call args をコンパイルすること"));
         assert!(
-            lookup_pos < args_pos,
-            "{name} は native 実行時の func-hash local 破壊を避けるため arg compilation 前に func-idx を解決するべき"
+            lookup_pos < root_pos && root_pos < args_pos,
+            "{name} は native 実行時の func-hash/local/ref 破壊を避けるため arg compilation 前に call 命令を構築して root するべき"
         );
         assert!(
-            body.contains("func-idx (ref-get func-idx-ref)"),
-            "{name} は arg compilation 後に退避済み func-idx を ref から復元すること"
+            body.contains("instrs3 (append-instr-vector instrs2 call-instrs)"),
+            "{name} は arg compilation 後に root 済み call 命令を append すること"
         );
         assert!(
             body.contains("func-node (vector-get node 1)")
@@ -4785,6 +4790,24 @@ fn parse_numeric_lines(output: &str) -> Vec<i64> {
                 .unwrap_or_else(|_| panic!("numeric line ではない出力を検出: {:?}", line))
         })
         .collect()
+}
+
+fn parse_numeric_lines_i128(output: &str) -> Vec<i128> {
+    output
+        .as_bytes()
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            std::str::from_utf8(line)
+                .unwrap_or_else(|_| panic!("numeric line が UTF-8 でない: {line:?}"))
+                .parse::<i128>()
+                .unwrap_or_else(|_| panic!("numeric line ではない出力を検出: {:?}", line))
+        })
+        .collect()
+}
+
+fn numeric_i128_to_i64(value: i128, context: &str) -> i64 {
+    i64::try_from(value).unwrap_or_else(|_| panic!("{context} が i64 範囲外: value={value}"))
 }
 
 fn parse_direct_summaries(lines: &[i64]) -> [NativeTargetSummary; 3] {
@@ -42267,6 +42290,23 @@ struct X86UserCallDirectReplayRow {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+struct X86UserCallDirectReplayWideRow {
+    instr_idx: i128,
+    opcode: i128,
+    operand: i128,
+    depth: i128,
+    offset: i128,
+    size: i128,
+    param_count: i128,
+    call_next_offset: i128,
+    target_offset: i128,
+    call_rel: i128,
+    direct_len: i128,
+    direct_target: i128,
+    bytes: [i128; 8],
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct LinuxX86FunctionSegmentMetadataRow {
     function_size: i64,
     instr_idx: i64,
@@ -42276,6 +42316,21 @@ struct LinuxX86FunctionSegmentMetadataRow {
     offset: i64,
     size: i64,
     bytes: [u8; 8],
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct LinuxX86FunctionSegmentMetadataHeader {
+    segment_index: i64,
+    function_idx: i64,
+    function_start: i64,
+    function_size: i64,
+    param_count: i64,
+    local_count: i64,
+    frame_base_slot_count: i64,
+    stack_bytes: i64,
+    param_spill_bytes: i64,
+    body_offset: i64,
+    ir_len: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -42704,6 +42759,117 @@ fn parse_linux_x86_function_segment_metadata_rows(
     rows
 }
 
+fn parse_linux_x86_function_segment_metadata_headers(
+    output: &str,
+) -> Vec<LinuxX86FunctionSegmentMetadataHeader> {
+    let lines = parse_numeric_lines_i128(output);
+    let mut idx = 0;
+    let mut headers = Vec::new();
+    while idx < lines.len() {
+        match lines[idx] {
+            9_000_000_020 => {
+                assert!(
+                    idx + 12 <= lines.len(),
+                    "x86 function metadata header が不足: idx={idx} lines={lines:?}"
+                );
+                headers.push(LinuxX86FunctionSegmentMetadataHeader {
+                    segment_index: numeric_i128_to_i64(lines[idx + 1], "segment_index"),
+                    function_idx: numeric_i128_to_i64(lines[idx + 2], "function_idx"),
+                    function_start: numeric_i128_to_i64(lines[idx + 3], "function_start"),
+                    function_size: numeric_i128_to_i64(lines[idx + 4], "function_size"),
+                    param_count: numeric_i128_to_i64(lines[idx + 5], "param_count"),
+                    local_count: numeric_i128_to_i64(lines[idx + 6], "local_count"),
+                    frame_base_slot_count: numeric_i128_to_i64(
+                        lines[idx + 7],
+                        "frame_base_slot_count",
+                    ),
+                    stack_bytes: numeric_i128_to_i64(lines[idx + 8], "stack_bytes"),
+                    param_spill_bytes: numeric_i128_to_i64(lines[idx + 9], "param_spill_bytes"),
+                    body_offset: numeric_i128_to_i64(lines[idx + 10], "body_offset"),
+                    ir_len: numeric_i128_to_i64(lines[idx + 11], "ir_len"),
+                });
+                idx += 12;
+            }
+            9_000_000_021 => {
+                assert!(
+                    idx + 15 <= lines.len(),
+                    "x86 function metadata row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 15;
+            }
+            9_000_000_022 | 9_000_000_023 => {
+                assert!(
+                    idx + 14 <= lines.len(),
+                    "x86 function metadata i64-ge byte diagnostic row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 14;
+            }
+            9_000_000_024 | 9_000_000_025 => {
+                assert!(
+                    idx + 16 <= lines.len(),
+                    "x86 function metadata i64-ge control diagnostic row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 16;
+            }
+            9_000_000_026 => {
+                assert!(
+                    idx + 17 <= lines.len(),
+                    "x86 function metadata i64-ge replay diagnostic row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 17;
+            }
+            9_000_000_027 | 9_000_000_028 => {
+                assert!(
+                    idx + 16 <= lines.len(),
+                    "x86 function metadata replay row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 16;
+            }
+            9_000_000_029 => {
+                assert!(
+                    idx + 17 <= lines.len(),
+                    "x86 function metadata replay output row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 17;
+            }
+            9_000_000_043 => {
+                assert!(
+                    idx + 20 <= lines.len(),
+                    "x86 function metadata map-new direct replay row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 20;
+            }
+            9_000_000_044 => {
+                assert!(
+                    idx + 17 <= lines.len(),
+                    "x86 function metadata map-new fallback replay row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 17;
+            }
+            9_000_000_045 => {
+                assert!(
+                    idx + 18 <= lines.len(),
+                    "x86 function metadata map-new control replay row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 18;
+            }
+            9_000_000_046 => {
+                assert!(
+                    idx + 21 <= lines.len(),
+                    "x86 function metadata user call direct replay row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 21;
+            }
+            marker => {
+                panic!(
+                    "未知の x86 function metadata marker: marker={marker} idx={idx} lines={lines:?}"
+                );
+            }
+        }
+    }
+    headers
+}
+
 fn parse_x86_map_new_direct_replay_rows(output: &str) -> Vec<X86MapNewDirectReplayRow> {
     let lines = parse_numeric_lines(output);
     let mut idx = 0;
@@ -42923,6 +43089,125 @@ fn parse_x86_user_call_direct_replay_rows(output: &str) -> Vec<X86UserCallDirect
                         lines[idx + 18] as u8,
                         lines[idx + 19] as u8,
                         lines[idx + 20] as u8,
+                    ],
+                });
+                idx += 21;
+            }
+            marker => {
+                panic!(
+                    "未知の x86 function metadata marker: marker={marker} idx={idx} lines={lines:?}"
+                );
+            }
+        }
+    }
+    rows
+}
+
+fn parse_x86_user_call_direct_replay_wide_rows(
+    output: &str,
+) -> Vec<X86UserCallDirectReplayWideRow> {
+    let lines = parse_numeric_lines_i128(output);
+    let mut idx = 0;
+    let mut rows = Vec::new();
+    while idx < lines.len() {
+        match lines[idx] {
+            9_000_000_020 => {
+                assert!(
+                    idx + 12 <= lines.len(),
+                    "x86 function metadata header が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 12;
+            }
+            9_000_000_021 => {
+                assert!(
+                    idx + 15 <= lines.len(),
+                    "x86 function metadata row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 15;
+            }
+            9_000_000_022 | 9_000_000_023 => {
+                assert!(
+                    idx + 14 <= lines.len(),
+                    "x86 function metadata i64-ge byte diagnostic row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 14;
+            }
+            9_000_000_024 | 9_000_000_025 => {
+                assert!(
+                    idx + 16 <= lines.len(),
+                    "x86 function metadata i64-ge control diagnostic row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 16;
+            }
+            9_000_000_026 => {
+                assert!(
+                    idx + 17 <= lines.len(),
+                    "x86 function metadata i64-ge replay diagnostic row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 17;
+            }
+            9_000_000_027 | 9_000_000_028 => {
+                assert!(
+                    idx + 16 <= lines.len(),
+                    "x86 function metadata replay row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 16;
+            }
+            9_000_000_029 => {
+                assert!(
+                    idx + 17 <= lines.len(),
+                    "x86 function metadata replay output row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 17;
+            }
+            9_000_000_043 => {
+                assert!(
+                    idx + 20 <= lines.len(),
+                    "x86 function metadata map-new direct replay row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 20;
+            }
+            9_000_000_044 => {
+                assert!(
+                    idx + 17 <= lines.len(),
+                    "x86 function metadata map-new fallback replay row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 17;
+            }
+            9_000_000_045 => {
+                assert!(
+                    idx + 18 <= lines.len(),
+                    "x86 function metadata map-new control replay row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 18;
+            }
+            9_000_000_046 => {
+                assert!(
+                    idx + 21 <= lines.len(),
+                    "x86 function metadata user call direct replay row が不足: idx={idx} lines={lines:?}"
+                );
+                rows.push(X86UserCallDirectReplayWideRow {
+                    instr_idx: lines[idx + 1],
+                    opcode: lines[idx + 2],
+                    operand: lines[idx + 3],
+                    depth: lines[idx + 4],
+                    offset: lines[idx + 5],
+                    size: lines[idx + 6],
+                    param_count: lines[idx + 7],
+                    call_next_offset: lines[idx + 8],
+                    target_offset: lines[idx + 9],
+                    call_rel: lines[idx + 10],
+                    direct_len: lines[idx + 11],
+                    direct_target: lines[idx + 12],
+                    bytes: [
+                        lines[idx + 13],
+                        lines[idx + 14],
+                        lines[idx + 15],
+                        lines[idx + 16],
+                        lines[idx + 17],
+                        lines[idx + 18],
+                        lines[idx + 19],
+                        lines[idx + 20],
                     ],
                 });
                 idx += 21;
@@ -44016,6 +44301,68 @@ fn test_e2e_linux_x86_actual_function_metadata_user_call_rel32_correlation() {
 }
 
 #[test]
+#[ignore = "diagnostic: V2-13a-5 Linux x86 body-size recursive user-call target"]
+fn test_e2e_linux_x86_actual_body_size_metadata_recursive_call_targets_self() {
+    let metadata_path = std::env::var_os("LSHARP_NATIVE_LINUX_X86_FUNCTION_METADATA").expect(
+        "LSHARP_NATIVE_LINUX_X86_FUNCTION_METADATA に body-size function metadata txt を指定すること",
+    );
+    let metadata_path = workspace_root_relative_path(std::path::PathBuf::from(metadata_path));
+    let target_function_idx: i128 =
+        std::env::var("LSHARP_NATIVE_LINUX_X86_BODY_SIZE_FUNCTION_INDEX")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(1802);
+    let recursive_instr_idx: i128 =
+        std::env::var("LSHARP_NATIVE_LINUX_X86_BODY_SIZE_RECURSIVE_INSTR_INDEX")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(73);
+    let metadata = std::fs::read_to_string(&metadata_path).unwrap_or_else(|e| {
+        panic!(
+            "Linux x86 body-size metadata 読み込み失敗 ({}): {e}",
+            metadata_path.display()
+        )
+    });
+    let headers = parse_linux_x86_function_segment_metadata_headers(&metadata);
+    let header = headers
+        .iter()
+        .find(|header| header.function_idx as i128 == target_function_idx)
+        .unwrap_or_else(|| {
+            panic!(
+                "body-size metadata に target function header が無い: target={target_function_idx} path={} headers={headers:?}",
+                metadata_path.display()
+            )
+        });
+    let direct_rows = parse_x86_user_call_direct_replay_wide_rows(&metadata);
+    let recursive_row = direct_rows
+        .iter()
+        .find(|row| row.instr_idx == recursive_instr_idx && row.opcode == 40)
+        .unwrap_or_else(|| {
+            panic!(
+                "body-size metadata に recursive opcode 40 row が無い: instr={recursive_instr_idx} path={} rows={direct_rows:?}",
+                metadata_path.display()
+            )
+        });
+
+    println!(
+        "Linux x86 body-size recursive call diagnostic: metadata={} header={header:?} row={recursive_row:?}",
+        metadata_path.display()
+    );
+    assert_eq!(
+        recursive_row.operand,
+        target_function_idx,
+        "native-function-body-size-x86-loop-with-context の自己再帰 call operand は current function を指すべき: metadata={} header={header:?} row={recursive_row:?}",
+        metadata_path.display()
+    );
+    assert_eq!(
+        recursive_row.target_offset,
+        0,
+        "native-function-body-size-x86-loop-with-context の自己再帰 call target は current function start 相対 0 を指すべき: metadata={} header={header:?} row={recursive_row:?}",
+        metadata_path.display()
+    );
+}
+
+#[test]
 fn test_linux_x86_actual_transport_segment_table_maps_absolute_offsets() {
     let stdout = b"9000000005\n2\n11\n8\n9000000006\n9000000001\n5\n9000000002\n9000000010\n3\n513\n9000000010\n2\n1027\n9000000003\n0\n9000000004\n";
     let (layout, code_len, segments) = decode_linux_x86_actual_transport_code_segments(stdout);
@@ -44418,6 +44765,93 @@ fn test_linux_x86_function_metadata_parses_user_call_direct_rel32_row() {
             bytes: [232, 42, 3, 0, 0, 72, 139, 133],
         }]
     );
+}
+
+#[test]
+fn test_linux_x86_function_metadata_wide_user_call_parser_skips_unsigned_diagnostics() {
+    let metadata = "\
+9000000020
+1792
+1802
+5874987
+2699
+4
+4
+9
+1104
+28
+39
+82
+9000000046
+30
+40
+1788
+4
+271
+25
+4
+25
+18446744073708832629
+18446744073708832333
+25
+18446744073709551615
+72
+137
+202
+72
+139
+181
+176
+255
+9000000046
+73
+40
+1803
+1
+586
+10
+1
+9
+2699
+2104
+10
+2700
+72
+137
+199
+81
+232
+56
+8
+0
+";
+
+    let headers = parse_linux_x86_function_segment_metadata_headers(metadata);
+    let user_call_rows = parse_x86_user_call_direct_replay_wide_rows(metadata);
+
+    assert_eq!(
+        headers,
+        vec![LinuxX86FunctionSegmentMetadataHeader {
+            segment_index: 1792,
+            function_idx: 1802,
+            function_start: 5_874_987,
+            function_size: 2699,
+            param_count: 4,
+            local_count: 4,
+            frame_base_slot_count: 9,
+            stack_bytes: 1104,
+            param_spill_bytes: 28,
+            body_offset: 39,
+            ir_len: 82,
+        }]
+    );
+    assert_eq!(user_call_rows.len(), 2);
+    assert_eq!(user_call_rows[0].target_offset, 18_446_744_073_708_832_629);
+    assert_eq!(user_call_rows[0].direct_target, 18_446_744_073_709_551_615);
+    assert_eq!(user_call_rows[1].instr_idx, 73);
+    assert_eq!(user_call_rows[1].operand, 1803);
+    assert_eq!(user_call_rows[1].target_offset, 2699);
+    assert_eq!(user_call_rows[1].direct_target, 2700);
 }
 
 fn assert_linux_x86_entry_map_ref_ref_prefix(
