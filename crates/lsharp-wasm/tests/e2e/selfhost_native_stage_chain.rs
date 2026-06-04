@@ -148,8 +148,12 @@ fn representative_actual_stage23_seed_source() -> String {
 fn linux_x86_representative_actual_stage23_seed_source() -> String {
     let code_binding_expr = r#"progress-mode (if (> (string-length (command-line-arg 8)) 0) 1 0)
                     raw-functions-mode (if (> (string-length (command-line-arg 10)) 0) 1 0)
+                    raw-cache-ref (if (= raw-functions-mode 1) (ref-new (map-new)) cache-ref)
+                    raw-parse-count-ref (if (= raw-functions-mode 1) (ref-new 0) parse-count-ref)
+                    raw-cache-root (if (= raw-functions-mode 1) (root_push raw-cache-ref) 0)
+                    raw-parse-root (if (= raw-functions-mode 1) (root_push raw-parse-count-ref) 0)
                     raw-pairs (if (= raw-functions-mode 1)
-                                (compile-file-pairs-with-cache source-path cache-ref parse-count-ref)
+                                (compile-file-pairs-with-cache source-path raw-cache-ref raw-parse-count-ref)
                                 (vector-new 0))
                     raw-pairs-root (if (= raw-functions-mode 1) (root_push raw-pairs) 0)
                     raw-reg-result (if (= raw-functions-mode 1)
@@ -224,7 +228,9 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                                   8)]
          (do
            (if (= raw-functions-mode 1)
-             (print-x86-function-ir-owner-window functions raw-ftable range-start range-end)
+             (do
+               (print-x86-known-ftable-lookups raw-ftable)
+               (print-x86-function-ir-owner-window functions raw-ftable raw-pairs range-start range-end))
              (if (= progress-mode 1)
                (do
                  (print 9000000037)
@@ -397,6 +403,41 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
       (print-x86-slot-size-progress-sample functions idx)
       (print-x86-slot-size-progress functions (+ idx 1) sample-end))))
 
+(defn make-x86-owner-state [found pair-idx decl-idx defn-ordinal decl-hash lookup]
+  (vector-push
+    (vector-push
+      (vector-push
+        (vector-push
+          (vector-push
+            (vector-push (vector-new 6) found)
+            pair-idx)
+          decl-idx)
+        defn-ordinal)
+      decl-hash)
+    lookup))
+
+(defn find-x86-owner-in-decls [decls idx len ftable target defn-ordinal]
+  (if (>= idx len)
+    (make-x86-owner-state 0 -1 -1 defn-ordinal 0 0)
+    (let [decl (vector-get decls idx)]
+      (if (= (vector-get decl 0) 20)
+        (let [decl-hash (vector-get decl 1)
+              func-idx (ftable-lookup ftable decl-hash)]
+          (if (= func-idx target)
+            (make-x86-owner-state 1 0 idx defn-ordinal decl-hash func-idx)
+            (find-x86-owner-in-decls decls (+ idx 1) len ftable target (+ defn-ordinal 1))))
+        (find-x86-owner-in-decls decls (+ idx 1) len ftable target defn-ordinal)))))
+
+(defn find-x86-owner-in-pairs [pairs pair-idx len ftable target]
+  (if (>= pair-idx len)
+    (make-x86-owner-state 0 -1 -1 -1 0 0)
+    (let [pair (vector-get pairs pair-idx)
+          decls (vector-get pair 1)
+          owner (find-x86-owner-in-decls decls 0 (vector-length decls) ftable target 0)]
+      (if (= (vector-get owner 0) 1)
+        (make-x86-owner-state 1 pair-idx (vector-get owner 2) (vector-get owner 3) (vector-get owner 4) (vector-get owner 5))
+        (find-x86-owner-in-pairs pairs (+ pair-idx 1) len ftable target)))))
+
 (defn x86-ftable-hash-for-func-loop [ftable idx len target]
   (if (>= idx len)
     0
@@ -407,12 +448,27 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
 (defn x86-ftable-hash-for-func [ftable target]
   (x86-ftable-hash-for-func-loop ftable 0 (vector-length ftable) target))
 
-(defn print-x86-function-ir-owner-window [functions ftable idx len]
+(defn x86-body-size-loop-ctx-hash [] (name-hash "x86-body-size-loop-ctx" 0 22))
+(defn x86-native-function-body-size-loop-hash [] (name-hash "native-function-body-size-x86-loop" 0 34))
+(defn x86-native-function-size-hash [] (name-hash "native-function-size-x86" 0 24))
+
+(defn print-x86-known-ftable-lookups [ftable]
+  (do
+    (print 9000000049)
+    (print (x86-body-size-loop-ctx-hash))
+    (print (ftable-lookup ftable (x86-body-size-loop-ctx-hash)))
+    (print (x86-native-function-body-size-loop-hash))
+    (print (ftable-lookup ftable (x86-native-function-body-size-loop-hash)))
+    (print (x86-native-function-size-hash))
+    (print (ftable-lookup ftable (x86-native-function-size-hash)))))
+
+(defn print-x86-function-ir-owner-window [functions ftable pairs idx len]
   (if (>= idx len)
     0
     (do
       (root_push functions)
       (root_push ftable)
+      (root_push pairs)
       (let [func-meta (vector-get functions idx)]
         (do
           (root_push func-meta)
@@ -421,13 +477,21 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
               (root_push ir)
               (let [actual-idx (+ idx 10)
                     current-hash (x86-ftable-hash-for-func ftable actual-idx)
-                    current-lookup (ftable-lookup ftable current-hash)]
+                    current-lookup (ftable-lookup ftable current-hash)
+                    owner (find-x86-owner-in-pairs pairs 0 (vector-length pairs) ftable actual-idx)]
                 (do
+                  (root_push owner)
                   (print 9000000048)
                   (print idx)
                   (print actual-idx)
                   (print current-hash)
                   (print current-lookup)
+                  (print (vector-get owner 0))
+                  (print (vector-get owner 1))
+                  (print (vector-get owner 2))
+                  (print (vector-get owner 3))
+                  (print (vector-get owner 4))
+                  (print (vector-get owner 5))
                   (print (native-function-param-count func-meta))
                   (print (native-function-local-count func-meta))
                   (print (vector-length ir))
@@ -447,8 +511,10 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                       (print 0)))
                   (root_pop)
                   (root_pop)
-                  (let [final (print-x86-function-ir-owner-window functions ftable (+ idx 1) len)]
+                  (root_pop)
+                  (let [final (print-x86-function-ir-owner-window functions ftable pairs (+ idx 1) len)]
                     (do
+                      (root_pop)
                       (root_pop)
                       (root_pop)
                       final)))))))))))"#,
@@ -1805,7 +1871,7 @@ fn test_native_codegen_x86_read_file_runtime_call_direct_appends_in_stage1() {
 }
 
 #[test]
-fn test_native_codegen_x86_read_file_helper_uses_128k_cap_for_selfhost_seed() {
+fn test_native_codegen_x86_read_file_helper_uses_2m_cap_for_selfhost_sources() {
     let source = selfhost_module("NativeCodegen.ls");
     let helper = source
         .split("(defn emit-x86-selfhost-read-file-helper []")
@@ -1825,11 +1891,11 @@ fn test_native_codegen_x86_read_file_helper_uses_128k_cap_for_selfhost_seed() {
         .expect("NativeCodegen.ls に x86 read-file helper size が存在すること");
 
     assert!(
-        source.contains("最大 128KiB")
-            && helper.contains("part23 (byte-vector-4 0 2 0 186)")
-            && helper.contains("part35 (byte-vector-4 0 0 2 0)")
+        source.contains("最大 2MiB")
+            && helper.contains("part23 (byte-vector-4 0 32 0 186)")
+            && helper.contains("part35 (byte-vector-4 0 0 32 0)")
             && helper_size.contains("207"),
-        "Linux x86 stage2 は 73,984 bytes の Seed.ls を read-file するため、x86 helper は 128KiB の mmap/read cap を同じ 207 bytes 内で持つべき"
+        "Linux x86 stage2 は約 1MiB の NativeCodegen.ls を read-file するため、x86 helper は 2MiB の mmap/read cap を同じ 207 bytes 内で持つべき"
     );
 }
 
@@ -2130,21 +2196,38 @@ fn test_linux_x86_representative_seed_can_print_raw_function_ir_window_diagnosti
 
     assert!(
         source.contains("(defn print-x86-function-ir-owner-window")
+            && source.contains("(defn make-x86-owner-state")
+            && source.contains("(defn find-x86-owner-in-pairs")
             && source.contains("(defn x86-ftable-hash-for-func")
+            && source.contains("(defn x86-body-size-loop-ctx-hash [] (name-hash \"x86-body-size-loop-ctx\" 0 22))")
+            && source.contains("(defn x86-native-function-body-size-loop-hash [] (name-hash \"native-function-body-size-x86-loop\" 0 34))")
+            && source.contains("(defn x86-native-function-size-hash [] (name-hash \"native-function-size-x86\" 0 24))")
+            && !source.contains("(defn x86-body-size-loop-ctx-hash [] -7044977549765796714)")
+            && source.contains("(defn print-x86-known-ftable-lookups")
             && source.contains("(print 9000000048)")
+            && source.contains("(print 9000000049)")
             && source.contains(
                 "raw-functions-mode (if (> (string-length (command-line-arg 10)) 0) 1 0)"
             )
+            && source.contains("raw-cache-ref (if (= raw-functions-mode 1) (ref-new (map-new)) cache-ref)")
+            && source.contains("raw-parse-count-ref (if (= raw-functions-mode 1) (ref-new 0) parse-count-ref)")
+            && source.contains("raw-cache-root (if (= raw-functions-mode 1) (root_push raw-cache-ref) 0)")
+            && source.contains("raw-parse-root (if (= raw-functions-mode 1) (root_push raw-parse-count-ref) 0)")
             && source.contains("raw-pairs (if (= raw-functions-mode 1)")
+            && source.contains("(compile-file-pairs-with-cache source-path raw-cache-ref raw-parse-count-ref)")
             && source.contains("raw-ftable (if (= raw-functions-mode 1)")
+            && source.contains("(print-x86-known-ftable-lookups raw-ftable)")
             && source.contains(
-                "(if (= raw-functions-mode 1)\n             (print-x86-function-ir-owner-window functions raw-ftable range-start range-end)"
+                "(if (= raw-functions-mode 1)\n             (do\n               (print-x86-known-ftable-lookups raw-ftable)"
             )
             && source.contains("starts (if (= raw-functions-mode 1)")
             && source.contains("user-total (if (= raw-functions-mode 1)")
             && source.contains("entrypoint-offset (if (= raw-functions-mode 1)")
             && source.contains("current-hash (x86-ftable-hash-for-func ftable actual-idx)")
             && source.contains("current-lookup (ftable-lookup ftable current-hash)")
+            && source.contains("owner (find-x86-owner-in-pairs pairs 0 (vector-length pairs) ftable actual-idx)")
+            && source.contains("(print (vector-get owner 1))")
+            && source.contains("(print (vector-get owner 3))")
             && source.contains("instr (vector-get ir 73)")
             && source.contains("(print (vector-get instr 0))")
             && source.contains("(print (vector-get instr 1))")
@@ -3824,6 +3907,74 @@ fn test_wasm_compiler_defn_function_reloads_param_count_after_ir_compilation() {
             "{name} は再読込した param-count で local-count と function-meta を作ること"
         );
     }
+}
+
+#[test]
+fn test_wasm_compiler_ftable_register_snapshots_scalars_across_vector_push() {
+    let source = std::fs::read_to_string(selfhost_source_path("CompilerBase.ls"))
+        .expect("canonical CompilerBase.ls が読み込めること");
+    let body = source
+        .split("(defn ftable-register")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("CompilerBase.ls に ftable-register が存在すること");
+
+    let name_ref_pos = body
+        .find("name-hash-ref (ref-new name-hash)")
+        .expect("ftable-register は name-hash を allocation 前に snapshot すること");
+    let func_ref_pos = body
+        .find("func-idx-ref (ref-new func-idx)")
+        .expect("ftable-register は func-idx を allocation 前に snapshot すること");
+    let with_name_pos = body
+        .find("with-name (vector-push ftable (ref-get name-hash-ref))")
+        .expect("ftable-register は snapshot した name-hash を登録すること");
+    let result_pos = body
+        .find("result (vector-push with-name (ref-get func-idx-ref))")
+        .expect("ftable-register は snapshot した func-idx を登録すること");
+
+    assert!(
+        name_ref_pos < func_ref_pos && func_ref_pos < with_name_pos && with_name_pos < result_pos,
+        "Linux x86 native stage1 では ftable-register の scalar が vector-push allocation を跨いで崩れないよう ref snapshot してから登録するべき"
+    );
+}
+
+#[test]
+fn test_wasm_compiler_register_state_builders_snapshot_scalar_fields() {
+    let compiler_base = std::fs::read_to_string(selfhost_source_path("CompilerBase.ls"))
+        .expect("canonical CompilerBase.ls が読み込めること");
+    let register_state = compiler_base
+        .split("(defn make-register-state")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("CompilerBase.ls に make-register-state が存在すること");
+    assert!(
+        register_state.contains("done-ref (ref-new done)")
+            && register_state.contains("next-idx-ref (ref-new next-idx)")
+            && register_state.contains("next-func-idx-ref (ref-new next-func-idx)")
+            && register_state.contains("(push-int-vector (vector-new 4) (ref-get done-ref))")
+            && register_state.contains("(push-int-vector base0 (ref-get next-idx-ref))")
+            && register_state.contains("(vector-push with-ftable (ref-get next-func-idx-ref))"),
+        "register-defns state は native stage1 の ftable carry を壊さないよう scalar fields を ref snapshot してから vector 化するべき"
+    );
+
+    let compiler_mode = selfhost_module("CompilerMode.ls");
+    let register_pairs_state = compiler_mode
+        .split("(defn make-register-pairs-state")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("CompilerMode.ls に make-register-pairs-state が存在すること");
+    assert!(
+        register_pairs_state.contains("done-ref (ref-new done)")
+            && register_pairs_state.contains("next-idx-ref (ref-new next-idx)")
+            && register_pairs_state.contains("next-func-idx-ref (ref-new next-func-idx)")
+            && register_pairs_state
+                .contains("(push-int-vector-local (vector-new 4) (ref-get done-ref))")
+            && register_pairs_state
+                .contains("(push-int-vector-local base0 (ref-get next-idx-ref))")
+            && register_pairs_state
+                .contains("(vector-push with-ftable (ref-get next-func-idx-ref))"),
+        "register-all-pairs state は pair 間 ftable carry を壊さないよう scalar fields を ref snapshot してから vector 化するべき"
+    );
 }
 
 #[test]

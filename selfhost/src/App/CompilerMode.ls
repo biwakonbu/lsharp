@@ -1772,23 +1772,33 @@
                   0)))))))))
 (defn make-register-pairs-state [done next-idx next-ftable next-func-idx]
   (do
-    (root_push next-ftable)
-    (let [base0 (push-int-vector-local (vector-new 4) done)]
+    (let [done-ref (ref-new done)
+      next-idx-ref (ref-new next-idx)
+      next-func-idx-ref (ref-new next-func-idx)]
       (do
-        (root_push base0)
-        (let [base1 (push-int-vector-local base0 next-idx)]
+        (root_push done-ref)
+        (root_push next-idx-ref)
+        (root_push next-func-idx-ref)
+        (root_push next-ftable)
+        (let [base0 (push-int-vector-local (vector-new 4) (ref-get done-ref))]
           (do
-            (root_push base1)
-            (let [with-ftable (push-object-vector base1 next-ftable)]
+            (root_push base0)
+            (let [base1 (push-int-vector-local base0 (ref-get next-idx-ref))]
               (do
-                (root_push with-ftable)
-                (let [state (vector-push with-ftable next-func-idx)]
+                (root_push base1)
+                (let [with-ftable (push-object-vector base1 next-ftable)]
                   (do
-                    (root_pop)
-                    (root_pop)
-                    (root_pop)
-                    (root_pop)
-                    state))))))))))
+                    (root_push with-ftable)
+                    (let [state (vector-push with-ftable (ref-get next-func-idx-ref))]
+                      (do
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        state))))))))))))
 (defn register-all-pairs-step [pairs idx n ftable func-idx]
   (if (>= idx n)
     (make-register-pairs-state 1 idx ftable func-idx)

@@ -357,14 +357,21 @@
 (defn ftable-register [ftable name-hash func-idx]
   (do
     (root_push ftable)
-    (let [with-name (vector-push ftable name-hash)]
+    (let [name-hash-ref (ref-new name-hash)
+      func-idx-ref (ref-new func-idx)]
       (do
-        (root_push with-name)
-        (let [result (vector-push with-name func-idx)]
+        (root_push name-hash-ref)
+        (root_push func-idx-ref)
+        (let [with-name (vector-push ftable (ref-get name-hash-ref))]
           (do
-            (root_pop)
-            (root_pop)
-            result))))))
+            (root_push with-name)
+            (let [result (vector-push with-name (ref-get func-idx-ref))]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result))))))))
 (defn ftable-lookup-loop [ftable idx name-hash]
   (if (< idx 0)
     0
@@ -1025,20 +1032,30 @@
                 result))))))))
 (defn make-register-state [done next-idx next-ftable next-func-idx]
   (do
-    (root_push next-ftable)
-    (let [base0 (push-int-vector (vector-new 4) done)]
+    (let [done-ref (ref-new done)
+      next-idx-ref (ref-new next-idx)
+      next-func-idx-ref (ref-new next-func-idx)]
       (do
-        (root_push base0)
-        (let [base1 (push-int-vector base0 next-idx)]
+        (root_push done-ref)
+        (root_push next-idx-ref)
+        (root_push next-func-idx-ref)
+        (root_push next-ftable)
+        (let [base0 (push-int-vector (vector-new 4) (ref-get done-ref))]
           (do
-            (root_push base1)
-            (let [with-ftable (push-object-vector base1 next-ftable)]
+            (root_push base0)
+            (let [base1 (push-int-vector base0 (ref-get next-idx-ref))]
               (do
-                (root_push with-ftable)
-                (let [state (vector-push with-ftable next-func-idx)]
+                (root_push base1)
+                (let [with-ftable (push-object-vector base1 next-ftable)]
                   (do
-                    (root_pop)
-                    (root_pop)
-                    (root_pop)
-                    (root_pop)
-                    state))))))))))
+                    (root_push with-ftable)
+                    (let [state (vector-push with-ftable (ref-get next-func-idx-ref))]
+                      (do
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        state))))))))))))
