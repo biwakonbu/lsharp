@@ -265,7 +265,23 @@
         cache-key (src-decl-cache-key path)
         cached-entry (ref-map-get-safe cache-ref cache-key)
         result
-          (if (= 0 cached-entry)
+        (if (= 0 cached-entry)
+          (let [pair (parse-src-decl-pair src)
+            entry (make-src-decl-cache-entry fingerprint pair)]
+            (do
+              (root_push pair)
+              (root_push entry)
+              (ref-set parse-count-ref (+ (ref-get parse-count-ref) 1))
+              (ref-set cache-ref (ref-map-insert-object-safe cache-ref cache-key entry))
+              (root_pop)
+              (root_pop)
+              pair))
+          (if (= (src-decl-cache-entry-fingerprint cached-entry) fingerprint)
+            (let [pair (src-decl-cache-entry-pair cached-entry)]
+              (do
+                (root_push pair)
+                (root_pop)
+                pair))
             (let [pair (parse-src-decl-pair src)
               entry (make-src-decl-cache-entry fingerprint pair)]
               (do
@@ -275,23 +291,7 @@
                 (ref-set cache-ref (ref-map-insert-object-safe cache-ref cache-key entry))
                 (root_pop)
                 (root_pop)
-                pair))
-            (if (= (src-decl-cache-entry-fingerprint cached-entry) fingerprint)
-              (let [pair (src-decl-cache-entry-pair cached-entry)]
-                (do
-                  (root_push pair)
-                  (root_pop)
-                  pair))
-              (let [pair (parse-src-decl-pair src)
-                entry (make-src-decl-cache-entry fingerprint pair)]
-                (do
-                  (root_push pair)
-                  (root_push entry)
-                  (ref-set parse-count-ref (+ (ref-get parse-count-ref) 1))
-                  (ref-set cache-ref (ref-map-insert-object-safe cache-ref cache-key entry))
-                  (root_pop)
-                  (root_pop)
-                  pair))))]
+                pair))))]
         (do
           (root_pop)
           result)))))
@@ -1588,28 +1588,28 @@
       (root_push src)
       (root_push program)
       (root_push pair)
-       (root_push entry)
-       (root_push seen-ref)
-       (root_push cache-ctx)
-       (ref-set parse-count-ref (+ (ref-get parse-count-ref) 1))
-       (ref-set cache-ref (ref-map-insert-object-safe cache-ref cache-key entry))
-       (let [pairs0 (vector-new 8)]
-         (do
-           (root_push pairs0)
-           (let [imported-pairs
-             (load-imports-from-decls-with-cache-progress program src 0 (vector-length program) seen-ref pairs0 cache-ctx)]
-             (do
-               (print 85)
-               (print (ref-get parse-count-ref))
-               (print (vector-length imported-pairs))
-               (root_pop)
-               (root_pop)
-               (root_pop)
-               (root_pop)
-               (root_pop)
-               (root_pop)
-               (root_pop)
-               0)))))))
+      (root_push entry)
+      (root_push seen-ref)
+      (root_push cache-ctx)
+      (ref-set parse-count-ref (+ (ref-get parse-count-ref) 1))
+      (ref-set cache-ref (ref-map-insert-object-safe cache-ref cache-key entry))
+      (let [pairs0 (vector-new 8)]
+        (do
+          (root_push pairs0)
+          (let [imported-pairs
+            (load-imports-from-decls-with-cache-progress program src 0 (vector-length program) seen-ref pairs0 cache-ctx)]
+            (do
+              (print 85)
+              (print (ref-get parse-count-ref))
+              (print (vector-length imported-pairs))
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              0)))))))
 (defn compile-file-mode-cache-compile-progress-probe []
   (let [path (command-line-arg 1)
     cache-ref (ref-new (map-new))
@@ -1798,21 +1798,21 @@
                           (root_pop)
                           0))))
                   0)]
-              (let [functions0 (vector-new 8)]
-                (do
-                  (root_push functions0)
-                  (let [functions (compile-all-src-decl-pairs-chunked-progress all-pairs 0 n ftable data-ref functions0)]
-                    (do
-                      (root_push functions)
-                      (print 153)
-                      (print (vector-length functions))
-                      (print 154)
-                      (print (vector-length (ref-get data-ref)))
-                      (root_pop)
-                      (root_pop)
-                      (root_pop)
-                      (root_pop)
-                      first-pair-debug))))))))))))
+                (let [functions0 (vector-new 8)]
+                  (do
+                    (root_push functions0)
+                    (let [functions (compile-all-src-decl-pairs-chunked-progress all-pairs 0 n ftable data-ref functions0)]
+                      (do
+                        (root_push functions)
+                        (print 153)
+                        (print (vector-length functions))
+                        (print 154)
+                        (print (vector-length (ref-get data-ref)))
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        first-pair-debug))))))))))))
 (defn compile-file-mode-ast-chunked-step-progress-probe []
   (let [path (command-line-arg 1)
     cache-ref (ref-new (map-new))
@@ -2002,46 +2002,47 @@
         (root_push next-ftable)
         (let [base (vector-new 4)]
           (do
-            (let [base-slot (root_push base)
-              with-done (vector-push base (ref-get done-ref))]
+            (let [base-slot (root_push base)]
               (do
-                (root_set base-slot with-done)
-                (print 9000000111)
-                (print (vector-length with-done))
-                (print (vector-get with-done 0))
-                (let [with-idx (vector-push with-done (ref-get next-idx-ref))]
+                (let [with-done (vector-push base (ref-get done-ref))]
                   (do
-                    (root_set base-slot with-idx)
-                    (print 9000000112)
-                    (print (vector-length with-idx))
-                    (print (vector-get with-idx 0))
-                    (print (vector-get with-idx 1))
-                    (let [with-ftable (vector-push with-idx next-ftable)]
+                    (root_set base-slot with-done)
+                    (print 9000000111)
+                    (print (vector-length with-done))
+                    (print (vector-get with-done 0))
+                    (let [with-idx (vector-push with-done (ref-get next-idx-ref))]
                       (do
-                        (root_set base-slot with-ftable)
-                        (print 9000000113)
-                        (print (vector-length with-ftable))
-                        (print (vector-get with-ftable 0))
-                        (print (vector-get with-ftable 1))
-                        (print (vector-length (vector-get with-ftable 2)))
-                        (let [state (vector-push with-ftable (ref-get next-func-idx-ref))]
+                        (root_set base-slot with-idx)
+                        (print 9000000112)
+                        (print (vector-length with-idx))
+                        (print (vector-get with-idx 0))
+                        (print (vector-get with-idx 1))
+                        (let [with-ftable (vector-push with-idx next-ftable)]
                           (do
-                            (print 9000000114)
-                            (print (vector-length state))
-                            (print (vector-get state 0))
-                            (print (vector-get state 1))
-                            (print (vector-get state 3))
-                            (print (vector-length (vector-get state 2)))
-                            (print 9000000115)
-                            (print (ref-get done-ref))
-                            (print (ref-get next-idx-ref))
-                            (print (ref-get next-func-idx-ref))
-                            (root_pop)
-                            (root_pop)
-                            (root_pop)
-                            (root_pop)
-                            (root_pop)
-                            state))))))))))))
+                            (root_set base-slot with-ftable)
+                            (print 9000000113)
+                            (print (vector-length with-ftable))
+                            (print (vector-get with-ftable 0))
+                            (print (vector-get with-ftable 1))
+                            (print (vector-length (vector-get with-ftable 2)))
+                            (let [state (vector-push with-ftable (ref-get next-func-idx-ref))]
+                              (do
+                                (print 9000000114)
+                                (print (vector-length state))
+                                (print (vector-get state 0))
+                                (print (vector-get state 1))
+                                (print (vector-get state 3))
+                                (print (vector-length (vector-get state 2)))
+                                (print 9000000115)
+                                (print (ref-get done-ref))
+                                (print (ref-get next-idx-ref))
+                                (print (ref-get next-func-idx-ref))
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                state))))))))))))))))
 
 (defn register-defns-step-progress [decls idx n ftable func-idx]
   (if (>= idx n)
@@ -2537,59 +2538,59 @@
         (print-instr-vector-probe instrs (+ idx 1) count)))))
 (defn compile-user-call-with-source-probe [node source env ftable instrs data-ref func-hash arg-count]
   (do
-  (print 210)
-  (print arg-count)
-  (let [node-slot (root_push node)
-    source-slot (root_push source)
-    env-slot (root_push env)
-    ftable-slot (root_push ftable)
-    instrs-slot (root_push instrs)
-    data-slot (root_push data-ref)
-    func-idx (ftable-lookup ftable func-hash)]
-    (do
-    (print 211)
-    (print func-idx)
-    (let [
-    arg-instrs-list (compile-user-call-arg-instrs-with-source node source env ftable 0 arg-count (vector-new 8) data-ref)]
-    (do
-      (print 212)
-      (print (vector-length arg-instrs-list))
-      (root_push arg-instrs-list)
-      0
-      (let [temp-base (max-root-temp-base-list env arg-instrs-list arg-count)]
-        (do
-          (print 204)
-          (print temp-base)
-          (let [instrs1 (emit-user-call-args node arg-instrs-list 0 arg-count temp-base instrs)]
-            (do
-              (root_push instrs1)
-              (print 199)
-              (print (vector-length instrs1))
-              (let [instrs2 (emit-user-call-arg-gets 0 arg-count temp-base instrs1)]
-                (do
-                  (root_push instrs2)
-                  (print 200)
-                  (print (vector-length instrs2))
-                  (let [instrs3 (emit-to instrs2 (op-call) func-idx)]
-                    (do
-                      (root_push instrs3)
-                      (print 201)
-                      (print (vector-length instrs3))
-                      (let [result (emit-user-call-root-pops node (- arg-count 1) instrs3)]
-                        (do
-                          (print 202)
-                          (print (vector-length result))
-                          (root_pop)
-                          (root_pop)
-                          (root_pop)
-                          (root_pop)
-                          (root_pop)
-                          (root_pop)
-                          (root_pop)
-                          (root_pop)
-                          (root_pop)
-                          (root_pop)
-                          result)))))))))))))
+    (print 210)
+    (print arg-count)
+    (let [node-slot (root_push node)
+      source-slot (root_push source)
+      env-slot (root_push env)
+      ftable-slot (root_push ftable)
+      instrs-slot (root_push instrs)
+      data-slot (root_push data-ref)
+      func-idx (ftable-lookup ftable func-hash)]
+      (do
+        (print 211)
+        (print func-idx)
+        (let [
+          arg-instrs-list (compile-user-call-arg-instrs-with-source node source env ftable 0 arg-count (vector-new 8) data-ref)]
+          (do
+            (print 212)
+            (print (vector-length arg-instrs-list))
+            (root_push arg-instrs-list)
+            0
+            (let [temp-base (max-root-temp-base-list env arg-instrs-list arg-count)]
+              (do
+                (print 204)
+                (print temp-base)
+                (let [instrs1 (emit-user-call-args node arg-instrs-list 0 arg-count temp-base instrs)]
+                  (do
+                    (root_push instrs1)
+                    (print 199)
+                    (print (vector-length instrs1))
+                    (let [instrs2 (emit-user-call-arg-gets 0 arg-count temp-base instrs1)]
+                      (do
+                        (root_push instrs2)
+                        (print 200)
+                        (print (vector-length instrs2))
+                        (let [instrs3 (emit-to instrs2 (op-call) func-idx)]
+                          (do
+                            (root_push instrs3)
+                            (print 201)
+                            (print (vector-length instrs3))
+                            (let [result (emit-user-call-root-pops node (- arg-count 1) instrs3)]
+                              (do
+                                (print 202)
+                                (print (vector-length result))
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                result)))))))))))))
     )))
 (defn compile-apply-with-source-probe [node source env ftable instrs data-ref rooted-count]
   (let [func-node (vector-get node 1)
@@ -2651,21 +2652,21 @@
         (print body-idx)
         (root_push body-expr)
         (let [env (bind-node-params node 3 0 param-count (env-new) 1)]
-        (do
-        (root_push env)
-        (print 183)
-        (let [instrs0 (vector-new 8)
-          result (compile-expr-with-source-probe body-expr source env ftable instrs0 data-ref 0)]
           (do
-            (print 184)
-            (print (vector-length result))
-            (root_pop)
-            (root_pop)
-            (root_pop)
-            (root_pop)
-            (root_pop)
-            (root_pop)
-            result))))))))
+            (root_push env)
+            (print 183)
+            (let [instrs0 (vector-new 8)
+              result (compile-expr-with-source-probe body-expr source env ftable instrs0 data-ref 0)]
+              (do
+                (print 184)
+                (print (vector-length result))
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result))))))))
 (defn compile-defn-functions-chunked-step-progress-debug [decls idx n src ftable data-ref functions]
   (if (>= idx n)
     functions
@@ -3423,14 +3424,14 @@
                                           (root_pop)
                                           (root_pop)
                                           (root_pop)
-                                            (root_pop)
-                                            (root_pop)
-                                            (root_pop)
-                                            (root_pop)
-                                            (root_pop)
-                                            (root_pop)
-                                            (root_pop)
-                                            0)))))))))))))))))))))
+                                          (root_pop)
+                                          (root_pop)
+                                          (root_pop)
+                                          (root_pop)
+                                          (root_pop)
+                                          (root_pop)
+                                          (root_pop)
+                                          0)))))))))))))))))))))
 (defn compile-file-mode-token-debug []
   (let [path (command-line-arg 1)
     src (read-file path)]
