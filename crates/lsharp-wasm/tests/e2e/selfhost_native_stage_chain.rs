@@ -1141,7 +1141,15 @@ fn test_selfhost_compiler_mode_has_payload_progress_probe() {
         "fingerprint (source-fingerprint src)",
         "(print 9000000044)",
         "decls (parse-program src)",
-        "compile-file-functions-payload-with-cache path func-idx cache-ref parse-count-ref",
+        "(print 9000000069)",
+        "(print 9000000070)",
+        "(print 9000000071)",
+        "(print 9000000072)",
+        "(print 9000000073)",
+        "(print 9000000074)",
+        "all-pairs (compile-file-pairs-with-cache path cache-ref parse-count-ref)",
+        "reg-result (register-all-pairs all-pairs 0 n (ftable-new) func-idx)",
+        "compile-all-src-decl-pairs-chunked-progress all-pairs 0 n ftable data-ref functions0",
     ] {
         assert!(
             source.contains(token),

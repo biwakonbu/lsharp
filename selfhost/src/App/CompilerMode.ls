@@ -1065,7 +1065,60 @@
                 (print (vector-length decls))
                 (root_pop)
                 (root_pop)
-                (compile-file-functions-payload-with-cache path func-idx cache-ref parse-count-ref)))))))))
+                (print 9000000069)
+                (let [path-slot (root_push path)
+                  cache-slot (root_push cache-ref)
+                  parse-count-slot (root_push parse-count-ref)
+                  data-ref (ref-new (vector-new 8))
+                  data-slot (root_push data-ref)
+                  all-pairs (compile-file-pairs-with-cache path cache-ref parse-count-ref)]
+                  (do
+                    (root_push all-pairs)
+                    (root_push data-ref)
+                    (print 9000000070)
+                    (print (vector-length all-pairs))
+                    (print (ref-get parse-count-ref))
+                    (let [n (vector-length all-pairs)
+                      reg-result (register-all-pairs all-pairs 0 n (ftable-new) func-idx)
+                      ftable (vector-get reg-result 0)]
+                      (do
+                        (root_push reg-result)
+                        (print 9000000071)
+                        (print n)
+                        (print (vector-length reg-result))
+                        (let [functions0 (vector-new 8)]
+                          (do
+                            (root_push functions0)
+                            (print 9000000072)
+                            (print (vector-length functions0))
+                            (let [functions (compile-all-src-decl-pairs-chunked-progress all-pairs 0 n ftable data-ref functions0)]
+                              (do
+                                (root_push functions)
+                                (print 9000000073)
+                                (print (vector-length functions))
+                                (let [data (ref-get data-ref)]
+                                  (do
+                                    (root_push data)
+                                    (let [payload1 (vector-push (vector-new 2) functions)]
+                                      (do
+                                        (root_push payload1)
+                                        (let [payload2 (vector-push payload1 data)]
+                                          (do
+                                            (print 9000000074)
+                                            (print (vector-length data))
+                                            (print (vector-length payload2))
+                                            (root_pop)
+                                            (root_pop)
+                                            (root_pop)
+                                            (root_pop)
+                                            (root_pop)
+                                            (root_pop)
+                                            (root_pop)
+                                            (root_pop)
+                                            (root_pop)
+                                            (root_pop)
+                                            (root_pop)
+                                            payload2))))))))))))))))))))))
 (defn compile-file-mode-cache-probe []
   (let [path (command-line-arg 1)
     cache-ref (ref-new (map-new))
