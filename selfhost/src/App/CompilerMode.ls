@@ -1079,46 +1079,52 @@
                     (print (vector-length all-pairs))
                     (print (ref-get parse-count-ref))
                     (let [n (vector-length all-pairs)
-                      reg-result (register-all-pairs all-pairs 0 n (ftable-new) func-idx)
-                      ftable (vector-get reg-result 0)]
+                      start-ftable (ftable-new)]
                       (do
-                        (root_push reg-result)
-                        (print 9000000071)
+                        (root_push start-ftable)
+                        (print 9000000075)
                         (print n)
-                        (print (vector-length reg-result))
-                        (let [functions0 (vector-new 8)]
+                        (let [reg-result (register-all-pairs-progress all-pairs 0 n start-ftable func-idx)
+                          ftable (vector-get reg-result 0)]
                           (do
-                            (root_push functions0)
-                            (print 9000000072)
-                            (print (vector-length functions0))
-                            (let [functions (compile-all-src-decl-pairs-chunked-progress all-pairs 0 n ftable data-ref functions0)]
+                            (root_push reg-result)
+                            (print 9000000071)
+                            (print n)
+                            (print (vector-length reg-result))
+                            (let [functions0 (vector-new 8)]
                               (do
-                                (root_push functions)
-                                (print 9000000073)
-                                (print (vector-length functions))
-                                (let [data (ref-get data-ref)]
+                                (root_push functions0)
+                                (print 9000000072)
+                                (print (vector-length functions0))
+                                (let [functions (compile-all-src-decl-pairs-chunked-progress all-pairs 0 n ftable data-ref functions0)]
                                   (do
-                                    (root_push data)
-                                    (let [payload1 (vector-push (vector-new 2) functions)]
+                                    (root_push functions)
+                                    (print 9000000073)
+                                    (print (vector-length functions))
+                                    (let [data (ref-get data-ref)]
                                       (do
-                                        (root_push payload1)
-                                        (let [payload2 (vector-push payload1 data)]
+                                        (root_push data)
+                                        (let [payload1 (vector-push (vector-new 2) functions)]
                                           (do
-                                            (print 9000000074)
-                                            (print (vector-length data))
-                                            (print (vector-length payload2))
-                                            (root_pop)
-                                            (root_pop)
-                                            (root_pop)
-                                            (root_pop)
-                                            (root_pop)
-                                            (root_pop)
-                                            (root_pop)
-                                            (root_pop)
-                                            (root_pop)
-                                            (root_pop)
-                                            (root_pop)
-                                            payload2))))))))))))))))))))))
+                                            (root_push payload1)
+                                            (let [payload2 (vector-push payload1 data)]
+                                              (do
+                                                (print 9000000074)
+                                                (print (vector-length data))
+                                                (print (vector-length payload2))
+                                                (root_pop)
+                                                (root_pop)
+                                                (root_pop)
+                                                (root_pop)
+                                                (root_pop)
+                                                (root_pop)
+                                                (root_pop)
+                                                (root_pop)
+                                                (root_pop)
+                                                (root_pop)
+                                                (root_pop)
+                                                (root_pop)
+                                                payload2)))))))))))))))))))))))
 (defn compile-file-mode-cache-probe []
   (let [path (command-line-arg 1)
     cache-ref (ref-new (map-new))
@@ -1979,6 +1985,73 @@
               (root_pop)
               (root_pop)
               result)))))))
+(defn register-all-pairs-step-progress [pairs idx n ftable func-idx]
+  (if (>= idx n)
+    (do
+      (print 9000000080)
+      (print idx)
+      (print n)
+      (make-register-pairs-state 1 idx ftable func-idx))
+    (do
+      (root_push pairs)
+      (root_push ftable)
+      (print 9000000081)
+      (print idx)
+      (print n)
+      (let [pair (vector-get pairs idx)]
+        (do
+          (root_push pair)
+          (print 9000000082)
+          (print (vector-length pair))
+          (let [decls (vector-get pair 1)]
+            (do
+              (root_push decls)
+              (print 9000000083)
+              (print (vector-length decls))
+              (let [result (register-defns-chunked decls 0 (vector-length decls) ftable func-idx)]
+                (do
+                  (root_push result)
+                  (print 9000000084)
+                  (print (vector-length result))
+                  (print (vector-get result 1))
+                  (print (vector-get result 3))
+                  (let [next-ftable (vector-get result 2)
+                    next-func-idx (vector-get result 3)
+                    next-state (make-register-pairs-state 0 (+ idx 1) next-ftable next-func-idx)]
+                    (do
+                      (root_push next-state)
+                      (print 9000000085)
+                      (print (vector-get next-state 0))
+                      (print (vector-get next-state 1))
+                      (print (vector-get next-state 3))
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      next-state)))))))))))
+
+(defn register-all-pairs-progress [pairs idx n ftable func-idx]
+  (do
+    (root_push pairs)
+    (root_push ftable)
+    (print 9000000086)
+    (print idx)
+    (print n)
+    (let [state0 (register-all-pairs-step-progress pairs idx n ftable func-idx)]
+      (do
+        (root_push state0)
+        (print 9000000087)
+        (print (vector-get state0 0))
+        (print (vector-get state0 1))
+        (print (vector-get state0 3))
+        (let [result (register-all-pairs pairs (vector-get state0 1) n (vector-get state0 2) (vector-get state0 3))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            result))))))
 (defn register-all-pairs [pairs idx n ftable func-idx]
   (let [state (continue-register-all-pairs-step-64 pairs n (register-all-pairs-step-64 pairs idx n ftable func-idx))]
     (do
