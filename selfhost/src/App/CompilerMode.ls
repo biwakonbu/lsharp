@@ -2118,6 +2118,30 @@
                       (root_pop)
                       next-state)))))))))))
 
+(defn register-all-pairs-progress-loop [pairs n state]
+  (if (= (vector-get state 0) 1)
+    state
+    (do
+      (root_push pairs)
+      (root_push state)
+      (print 9000000100)
+      (print (vector-get state 1))
+      (print n)
+      (print (vector-get state 3))
+      (let [next-state (register-all-pairs-step-progress pairs (vector-get state 1) n (vector-get state 2) (vector-get state 3))]
+        (do
+          (root_push next-state)
+          (print 9000000101)
+          (print (vector-get next-state 0))
+          (print (vector-get next-state 1))
+          (print (vector-get next-state 3))
+          (let [result (register-all-pairs-progress-loop pairs n next-state)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              result)))))))
+
 (defn register-all-pairs-progress [pairs idx n ftable func-idx]
   (do
     (root_push pairs)
@@ -2132,12 +2156,25 @@
         (print (vector-get state0 0))
         (print (vector-get state0 1))
         (print (vector-get state0 3))
-        (let [result (register-all-pairs pairs (vector-get state0 1) n (vector-get state0 2) (vector-get state0 3))]
+        (let [final-state (register-all-pairs-progress-loop pairs n state0)]
           (do
-            (root_pop)
-            (root_pop)
-            (root_pop)
-            result))))))
+            (root_push final-state)
+            (let [next-ftable (vector-get final-state 2)
+              next-func-idx (vector-get final-state 3)]
+              (do
+                (root_push next-ftable)
+                (let [with-ftable (push-object-vector (vector-new 2) next-ftable)]
+                  (do
+                    (root_push with-ftable)
+                    (let [result (vector-push with-ftable next-func-idx)]
+                      (do
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        result))))))))))))
 (defn register-all-pairs [pairs idx n ftable func-idx]
   (let [state (continue-register-all-pairs-step-64 pairs n (register-all-pairs-step-64 pairs idx n ftable func-idx))]
     (do

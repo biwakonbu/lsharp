@@ -1158,6 +1158,9 @@ fn test_selfhost_compiler_mode_has_payload_progress_probe() {
         "(print 9000000085)",
         "(print 9000000086)",
         "(print 9000000087)",
+        "(defn register-all-pairs-progress-loop",
+        "(print 9000000100)",
+        "(print 9000000101)",
         "(defn register-defns-step-progress",
         "(defn register-defns-chunked-progress",
         "(print 9000000090)",
@@ -1173,6 +1176,7 @@ fn test_selfhost_compiler_mode_has_payload_progress_probe() {
         "all-pairs (compile-file-pairs-with-cache path cache-ref parse-count-ref)",
         "start-ftable (ftable-new)",
         "reg-result (register-all-pairs-progress all-pairs 0 n start-ftable func-idx)",
+        "final-state (register-all-pairs-progress-loop pairs n state0)",
         "result (register-defns-chunked-progress decls 0 (vector-length decls) ftable func-idx)",
         "compile-all-src-decl-pairs-chunked-progress all-pairs 0 n ftable data-ref functions0",
     ] {
