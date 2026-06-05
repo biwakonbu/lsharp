@@ -1985,6 +1985,92 @@
               (root_pop)
               (root_pop)
               result)))))))
+(defn register-defns-step-progress [decls idx n ftable func-idx]
+  (if (>= idx n)
+    (do
+      (print 9000000090)
+      (print idx)
+      (print n)
+      (print func-idx)
+      (make-register-state 1 idx ftable func-idx))
+    (do
+      (root_push decls)
+      (root_push ftable)
+      (print 9000000091)
+      (print idx)
+      (print n)
+      (print func-idx)
+      (let [decl (vector-get decls idx)]
+        (do
+          (root_push decl)
+          (print 9000000092)
+          (print (vector-get decl 0))
+          (print (vector-length decl))
+          (if (= (vector-get decl 0) 20)
+            (let [name-hash (vector-get decl 1)]
+              (do
+                (print 9000000093)
+                (print name-hash)
+                (print func-idx)
+                (let [next-ftable (ftable-register ftable name-hash func-idx)]
+                  (do
+                    (root_push next-ftable)
+                    (print 9000000094)
+                    (print name-hash)
+                    (let [state (make-register-state 0 (+ idx 1) next-ftable (+ func-idx 1))]
+                      (do
+                        (root_push state)
+                        (print 9000000095)
+                        (print (vector-get state 0))
+                        (print (vector-get state 1))
+                        (print (vector-get state 3))
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        state))))))
+            (let [state (make-register-state 0 (+ idx 1) ftable func-idx)]
+              (do
+                (root_push state)
+                (print 9000000096)
+                (print (vector-get state 0))
+                (print (vector-get state 1))
+                (print (vector-get state 3))
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                state))))))))
+
+(defn register-defns-chunked-progress [decls idx n ftable func-idx]
+  (do
+    (root_push decls)
+    (root_push ftable)
+    (print 9000000097)
+    (print idx)
+    (print n)
+    (print func-idx)
+    (let [state0 (register-defns-step-progress decls idx n ftable func-idx)]
+      (do
+        (root_push state0)
+        (print 9000000098)
+        (print (vector-get state0 0))
+        (print (vector-get state0 1))
+        (print (vector-get state0 3))
+        (let [result (register-defns-chunked decls (vector-get state0 1) n (vector-get state0 2) (vector-get state0 3))]
+          (do
+            (root_push result)
+            (print 9000000099)
+            (print (vector-length result))
+            (print (vector-get result 1))
+            (print (vector-get result 3))
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            result))))))
+
 (defn register-all-pairs-step-progress [pairs idx n ftable func-idx]
   (if (>= idx n)
     (do
@@ -2008,7 +2094,7 @@
               (root_push decls)
               (print 9000000083)
               (print (vector-length decls))
-              (let [result (register-defns-chunked decls 0 (vector-length decls) ftable func-idx)]
+              (let [result (register-defns-chunked-progress decls 0 (vector-length decls) ftable func-idx)]
                 (do
                   (root_push result)
                   (print 9000000084)
