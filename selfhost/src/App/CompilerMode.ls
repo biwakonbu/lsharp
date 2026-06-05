@@ -2000,49 +2000,48 @@
         (root_push next-idx-ref)
         (root_push next-func-idx-ref)
         (root_push next-ftable)
-        (let [base0 (push-int-vector (vector-new 4) (ref-get done-ref))]
+        (let [base (vector-new 4)]
           (do
-            (root_push base0)
-            (print 9000000111)
-            (print (vector-length base0))
-            (print (vector-get base0 0))
-            (let [base1 (push-int-vector base0 (ref-get next-idx-ref))]
+            (let [base-slot (root_push base)
+              with-done (vector-push base (ref-get done-ref))]
               (do
-                (root_push base1)
-                (print 9000000112)
-                (print (vector-length base1))
-                (print (vector-get base1 0))
-                (print (vector-get base1 1))
-                (let [with-ftable (push-object-vector base1 next-ftable)]
+                (root_set base-slot with-done)
+                (print 9000000111)
+                (print (vector-length with-done))
+                (print (vector-get with-done 0))
+                (let [with-idx (vector-push with-done (ref-get next-idx-ref))]
                   (do
-                    (root_push with-ftable)
-                    (print 9000000113)
-                    (print (vector-length with-ftable))
-                    (print (vector-get with-ftable 0))
-                    (print (vector-get with-ftable 1))
-                    (print (vector-length (vector-get with-ftable 2)))
-                    (let [state (vector-push with-ftable (ref-get next-func-idx-ref))]
+                    (root_set base-slot with-idx)
+                    (print 9000000112)
+                    (print (vector-length with-idx))
+                    (print (vector-get with-idx 0))
+                    (print (vector-get with-idx 1))
+                    (let [with-ftable (vector-push with-idx next-ftable)]
                       (do
-                        (root_push state)
-                        (print 9000000114)
-                        (print (vector-length state))
-                        (print (vector-get state 0))
-                        (print (vector-get state 1))
-                        (print (vector-get state 3))
-                        (print (vector-length (vector-get state 2)))
-                        (print 9000000115)
-                        (print (ref-get done-ref))
-                        (print (ref-get next-idx-ref))
-                        (print (ref-get next-func-idx-ref))
-                        (root_pop)
-                        (root_pop)
-                        (root_pop)
-                        (root_pop)
-                        (root_pop)
-                        (root_pop)
-                        (root_pop)
-                        (root_pop)
-                        state))))))))))))
+                        (root_set base-slot with-ftable)
+                        (print 9000000113)
+                        (print (vector-length with-ftable))
+                        (print (vector-get with-ftable 0))
+                        (print (vector-get with-ftable 1))
+                        (print (vector-length (vector-get with-ftable 2)))
+                        (let [state (vector-push with-ftable (ref-get next-func-idx-ref))]
+                          (do
+                            (print 9000000114)
+                            (print (vector-length state))
+                            (print (vector-get state 0))
+                            (print (vector-get state 1))
+                            (print (vector-get state 3))
+                            (print (vector-length (vector-get state 2)))
+                            (print 9000000115)
+                            (print (ref-get done-ref))
+                            (print (ref-get next-idx-ref))
+                            (print (ref-get next-func-idx-ref))
+                            (root_pop)
+                            (root_pop)
+                            (root_pop)
+                            (root_pop)
+                            (root_pop)
+                            state))))))))))))
 
 (defn register-defns-step-progress [decls idx n ftable func-idx]
   (if (>= idx n)

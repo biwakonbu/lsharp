@@ -1168,6 +1168,14 @@ fn test_selfhost_compiler_mode_has_payload_progress_probe() {
         "(print 9000000113)",
         "(print 9000000114)",
         "(print 9000000115)",
+        "base-slot (root_push base)",
+        "with-done (vector-push base (ref-get done-ref))",
+        "(root_set base-slot with-done)",
+        "with-idx (vector-push with-done (ref-get next-idx-ref))",
+        "(root_set base-slot with-idx)",
+        "with-ftable (vector-push with-idx next-ftable)",
+        "(root_set base-slot with-ftable)",
+        "state (vector-push with-ftable (ref-get next-func-idx-ref))",
         "(defn register-defns-step-progress",
         "(defn register-defns-chunked-progress",
         "(print 9000000090)",
@@ -1288,17 +1296,19 @@ fn test_selfhost_register_states_push_final_func_idx_without_int_helper_after_ob
     let register_state_body = compiler_base
         .split("(defn make-register-state")
         .nth(1)
-        .and_then(|tail| tail.split("(defn make-compile-step-state").next())
+        .and_then(|tail| tail.split("\n(defn ").next())
         .expect("make-register-state body を取り出せること");
 
     assert!(
-        register_pairs_state_body.contains("(let [state (vector-push with-ftable next-func-idx)]")
+        register_pairs_state_body
+            .contains("(let [state (vector-push with-ftable (ref-get next-func-idx-ref))]")
             && !register_pairs_state_body
                 .contains("(let [state (push-int-vector-local with-ftable next-func-idx)]"),
         "make-register-pairs-state は object slot 後の next-func-idx を helper call なしで積むべき"
     );
     assert!(
-        register_state_body.contains("(let [state (vector-push with-ftable next-func-idx)]")
+        register_state_body
+            .contains("(let [state (vector-push with-ftable (ref-get next-func-idx-ref))]")
             && !register_state_body
                 .contains("(let [state (push-int-vector with-ftable next-func-idx)]"),
         "make-register-state は object slot 後の next-func-idx を helper call なしで積むべき"
@@ -4057,10 +4067,19 @@ fn test_wasm_compiler_register_state_builders_snapshot_scalar_fields() {
         register_state.contains("done-ref (ref-new done)")
             && register_state.contains("next-idx-ref (ref-new next-idx)")
             && register_state.contains("next-func-idx-ref (ref-new next-func-idx)")
-            && register_state.contains("(push-int-vector (vector-new 4) (ref-get done-ref))")
-            && register_state.contains("(push-int-vector base0 (ref-get next-idx-ref))")
-            && register_state.contains("(vector-push with-ftable (ref-get next-func-idx-ref))"),
-        "register-defns state は native stage1 の ftable carry を壊さないよう scalar fields を ref snapshot してから vector 化するべき"
+            && register_state.contains("base (vector-new 4)")
+            && register_state.contains("base-slot (root_push base)")
+            && register_state.contains("with-done (vector-push base (ref-get done-ref))")
+            && register_state.contains("(root_set base-slot with-done)")
+            && register_state.contains("with-idx (vector-push with-done (ref-get next-idx-ref))")
+            && register_state.contains("(root_set base-slot with-idx)")
+            && register_state.contains("with-ftable (vector-push with-idx next-ftable)")
+            && register_state.contains("(root_set base-slot with-ftable)")
+            && register_state
+                .contains("state (vector-push with-ftable (ref-get next-func-idx-ref))")
+            && !register_state.contains("push-int-vector")
+            && !register_state.contains("push-object-vector"),
+        "register-defns state は native stage1 の return/root-pop 境界で壊れないよう root_set base slot 更新で vector 化するべき"
     );
 
     let compiler_mode = selfhost_module("CompilerMode.ls");

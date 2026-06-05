@@ -1040,22 +1040,23 @@
         (root_push next-idx-ref)
         (root_push next-func-idx-ref)
         (root_push next-ftable)
-        (let [base0 (push-int-vector (vector-new 4) (ref-get done-ref))]
+        (let [base (vector-new 4)]
           (do
-            (root_push base0)
-            (let [base1 (push-int-vector base0 (ref-get next-idx-ref))]
+            (let [base-slot (root_push base)
+              with-done (vector-push base (ref-get done-ref))]
               (do
-                (root_push base1)
-                (let [with-ftable (push-object-vector base1 next-ftable)]
+                (root_set base-slot with-done)
+                (let [with-idx (vector-push with-done (ref-get next-idx-ref))]
                   (do
-                    (root_push with-ftable)
-                    (let [state (vector-push with-ftable (ref-get next-func-idx-ref))]
+                    (root_set base-slot with-idx)
+                    (let [with-ftable (vector-push with-idx next-ftable)]
                       (do
-                        (root_pop)
-                        (root_pop)
-                        (root_pop)
-                        (root_pop)
-                        (root_pop)
-                        (root_pop)
-                        (root_pop)
-                        state))))))))))))
+                        (root_set base-slot with-ftable)
+                        (let [state (vector-push with-ftable (ref-get next-func-idx-ref))]
+                          (do
+                            (root_pop)
+                            (root_pop)
+                            (root_pop)
+                            (root_pop)
+                            (root_pop)
+                            state))))))))))))))
