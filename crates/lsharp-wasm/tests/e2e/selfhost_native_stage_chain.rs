@@ -16277,6 +16277,160 @@ fn linux_x86_selfhost_ref_param_five_arg_state_set_get_object_bytes() -> Vec<u8>
         .collect::<Vec<u8>>()
 }
 
+fn linux_x86_selfhost_ref_param_rooted_state_set_get_object_bytes() -> Vec<u8> {
+    let output = run_native_pipeline_harness(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import Backend.Native.NativeEmit)
+(import IR.IR)
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn main []
+  (let [main-ir0 (vector-push (vector-new 20) (make-instr 3 0))
+        main-ir1 (vector-push main-ir0 (make-instr 56 0))
+        main-ir2 (vector-push main-ir1 (make-instr 11 0))
+        main-ir3 (vector-push main-ir2 (make-instr 10 0))
+        main-ir4 (vector-push main-ir3 (make-instr 74 0))
+        main-ir5 (vector-push main-ir4 (make-instr 44 0))
+        main-ir6 (vector-push main-ir5 (make-instr 3 0))
+        main-ir7 (vector-push main-ir6 (make-instr 54 0))
+        main-ir8 (vector-push main-ir7 (make-instr 11 1))
+        main-ir9 (vector-push main-ir8 (make-instr 10 0))
+        main-ir10 (vector-push main-ir9 (make-instr 3 0))
+        main-ir11 (vector-push main-ir10 (make-instr 3 1))
+        main-ir12 (vector-push main-ir11 (make-instr 10 1))
+        main-ir13 (vector-push main-ir12 (make-instr 3 10))
+        main-ir14 (vector-push main-ir13 (make-call 1))
+        main-ir15 (vector-push main-ir14 (make-instr 44 0))
+        main-ir16 (vector-push main-ir15 (make-instr 10 0))
+        main-ir17 (vector-push main-ir16 (make-instr 57 0))
+        main-ir18 (vector-push main-ir17 (make-instr 3 3))
+        main-ir (vector-push main-ir18 (make-instr 53 0))
+        helper-ir0 (vector-push (vector-new 87) (make-instr 10 1))
+        helper-ir1 (vector-push helper-ir0 (make-instr 74 0))
+        helper-ir2 (vector-push helper-ir1 (make-instr 44 0))
+        helper-ir3 (vector-push helper-ir2 (make-instr 3 4))
+        helper-ir4 (vector-push helper-ir3 (make-instr 54 0))
+        helper-ir5 (vector-push helper-ir4 (make-instr 11 6))
+        helper-ir6 (vector-push helper-ir5 (make-instr 10 6))
+        helper-ir7 (vector-push helper-ir6 (make-instr 74 0))
+        helper-ir8 (vector-push helper-ir7 (make-instr 11 7))
+        helper-ir9 (vector-push helper-ir8 (make-instr 10 2))
+        helper-ir10 (vector-push helper-ir9 (make-instr 56 0))
+        helper-ir11 (vector-push helper-ir10 (make-instr 11 8))
+        helper-ir12 (vector-push helper-ir11 (make-instr 10 3))
+        helper-ir13 (vector-push helper-ir12 (make-instr 56 0))
+        helper-ir14 (vector-push helper-ir13 (make-instr 11 9))
+        helper-ir15 (vector-push helper-ir14 (make-instr 10 5))
+        helper-ir16 (vector-push helper-ir15 (make-instr 56 0))
+        helper-ir17 (vector-push helper-ir16 (make-instr 11 10))
+        helper-ir18 (vector-push helper-ir17 (make-instr 10 8))
+        helper-ir19 (vector-push helper-ir18 (make-instr 74 0))
+        helper-ir20 (vector-push helper-ir19 (make-instr 44 0))
+        helper-ir21 (vector-push helper-ir20 (make-instr 10 9))
+        helper-ir22 (vector-push helper-ir21 (make-instr 74 0))
+        helper-ir23 (vector-push helper-ir22 (make-instr 44 0))
+        helper-ir24 (vector-push helper-ir23 (make-instr 10 10))
+        helper-ir25 (vector-push helper-ir24 (make-instr 74 0))
+        helper-ir26 (vector-push helper-ir25 (make-instr 44 0))
+        helper-ir27 (vector-push helper-ir26 (make-instr 10 4))
+        helper-ir28 (vector-push helper-ir27 (make-instr 74 0))
+        helper-ir29 (vector-push helper-ir28 (make-instr 44 0))
+        helper-ir30 (vector-push helper-ir29 (make-instr 10 6))
+        helper-ir31 (vector-push helper-ir30 (make-instr 10 8))
+        helper-ir32 (vector-push helper-ir31 (make-instr 57 0))
+        helper-ir33 (vector-push helper-ir32 (make-instr 55 0))
+        helper-ir34 (vector-push helper-ir33 (make-instr 11 11))
+        helper-ir35 (vector-push helper-ir34 (make-instr 10 7))
+        helper-ir36 (vector-push helper-ir35 (make-instr 10 11))
+        helper-ir37 (vector-push helper-ir36 (make-instr 76 0))
+        helper-ir38 (vector-push helper-ir37 (make-instr 44 0))
+        helper-ir39 (vector-push helper-ir38 (make-instr 10 11))
+        helper-ir40 (vector-push helper-ir39 (make-instr 10 9))
+        helper-ir41 (vector-push helper-ir40 (make-instr 57 0))
+        helper-ir42 (vector-push helper-ir41 (make-instr 55 0))
+        helper-ir43 (vector-push helper-ir42 (make-instr 11 12))
+        helper-ir44 (vector-push helper-ir43 (make-instr 10 7))
+        helper-ir45 (vector-push helper-ir44 (make-instr 10 12))
+        helper-ir46 (vector-push helper-ir45 (make-instr 76 0))
+        helper-ir47 (vector-push helper-ir46 (make-instr 44 0))
+        helper-ir48 (vector-push helper-ir47 (make-instr 10 12))
+        helper-ir49 (vector-push helper-ir48 (make-instr 10 4))
+        helper-ir50 (vector-push helper-ir49 (make-instr 55 0))
+        helper-ir51 (vector-push helper-ir50 (make-instr 11 13))
+        helper-ir52 (vector-push helper-ir51 (make-instr 10 7))
+        helper-ir53 (vector-push helper-ir52 (make-instr 10 13))
+        helper-ir54 (vector-push helper-ir53 (make-instr 76 0))
+        helper-ir55 (vector-push helper-ir54 (make-instr 44 0))
+        helper-ir56 (vector-push helper-ir55 (make-instr 10 13))
+        helper-ir57 (vector-push helper-ir56 (make-instr 10 10))
+        helper-ir58 (vector-push helper-ir57 (make-instr 57 0))
+        helper-ir59 (vector-push helper-ir58 (make-instr 55 0))
+        helper-ir60 (vector-push helper-ir59 (make-instr 11 14))
+        helper-ir61 (vector-push helper-ir60 (make-instr 10 7))
+        helper-ir62 (vector-push helper-ir61 (make-instr 10 14))
+        helper-ir63 (vector-push helper-ir62 (make-instr 76 0))
+        helper-ir64 (vector-push helper-ir63 (make-instr 44 0))
+        helper-ir65 (vector-push helper-ir64 (make-instr 10 1))
+        helper-ir66 (vector-push helper-ir65 (make-instr 10 14))
+        helper-ir67 (vector-push helper-ir66 (make-instr 58 0))
+        helper-ir68 (vector-push helper-ir67 (make-instr 44 0))
+        helper-ir69 (vector-push helper-ir68 (make-instr 10 1))
+        helper-ir70 (vector-push helper-ir69 (make-instr 57 0))
+        helper-ir71 (vector-push helper-ir70 (make-instr 3 3))
+        helper-ir72 (vector-push helper-ir71 (make-instr 53 0))
+        helper-ir73 (vector-push helper-ir72 (make-instr 44 0))
+        helper-ir74 (vector-push helper-ir73 (make-instr 75 0))
+        helper-ir75 (vector-push helper-ir74 (make-instr 44 0))
+        helper-ir76 (vector-push helper-ir75 (make-instr 75 0))
+        helper-ir77 (vector-push helper-ir76 (make-instr 44 0))
+        helper-ir78 (vector-push helper-ir77 (make-instr 75 0))
+        helper-ir79 (vector-push helper-ir78 (make-instr 44 0))
+        helper-ir80 (vector-push helper-ir79 (make-instr 75 0))
+        helper-ir81 (vector-push helper-ir80 (make-instr 44 0))
+        helper-ir82 (vector-push helper-ir81 (make-instr 75 0))
+        helper-ir83 (vector-push helper-ir82 (make-instr 44 0))
+        helper-ir84 (vector-push helper-ir83 (make-instr 75 0))
+        helper-ir85 (vector-push helper-ir84 (make-instr 44 0))
+        helper-ir86 (vector-push helper-ir85 (make-instr 3 0))
+        helper-ir helper-ir86
+        main-meta (make-function-meta 0 2 main-ir)
+        helper-meta (make-function-meta 5 9 helper-ir)
+        functions (vector-push
+                    (vector-push (vector-new 2) main-meta)
+                    helper-meta)
+        target (make-target 3)
+        native (emit-native-function-meta-bundle functions target)
+        object (emit-object native target)]
+    (do
+      (print-bytes object 0 (vector-length object))
+      0)))"#,
+    );
+    output
+        .trim()
+        .lines()
+        .map(|line| {
+            line.parse::<u8>().unwrap_or_else(|_| {
+                panic!("Linux x86_64 rooted ref state ELF object byte parse 失敗: {line}")
+            })
+        })
+        .collect::<Vec<u8>>()
+}
+
 fn host_target_plain_program_code_bytes(instrs: &[(u32, i64)]) -> Vec<u8> {
     let instr_bindings = instrs
         .iter()
@@ -26492,6 +26646,43 @@ fn test_e2e_native_linux_x86_host_generates_ref_param_five_arg_state_set_get_elf
     assert_eq!(
         written, object_bytes,
         "Linux x86_64 five-arg ref state object artifact は生成 ELF object をそのまま保存すること"
+    );
+}
+
+/// NATIVE-LINUX-X86-02ge: actual writer に近い rooted helper 経由で caller-owned Ref に state vector を書き戻せる Linux ELF artifact を生成すること。
+#[test]
+#[ignore]
+fn test_e2e_native_linux_x86_host_generates_ref_param_rooted_state_set_get_elf_object_artifact() {
+    let artifact_path =
+        std::env::var_os("LSHARP_NATIVE_LINUX_X86_REF_PARAM_ROOTED_STATE_OBJECT_ARTIFACT")
+            .expect(
+                "LSHARP_NATIVE_LINUX_X86_REF_PARAM_ROOTED_STATE_OBJECT_ARTIFACT に Linux x86_64 rooted ref state object artifact path を指定すること",
+            );
+    let artifact_path = std::path::PathBuf::from(artifact_path);
+    if let Some(parent) = artifact_path.parent() {
+        std::fs::create_dir_all(parent)
+            .expect("Linux x86_64 rooted ref state object artifact dir 作成に失敗");
+    }
+
+    let object_bytes = linux_x86_selfhost_ref_param_rooted_state_set_get_object_bytes();
+    assert!(
+        object_bytes.len() > 64,
+        "Linux x86_64 rooted ref state ELF object は ELF64 section table を持つこと"
+    );
+    assert!(
+        object_bytes
+            .windows("generated".len())
+            .any(|window| window == b"generated"),
+        "Linux x86_64 rooted ref state ELF object は generated symbol を持つこと"
+    );
+
+    std::fs::write(&artifact_path, &object_bytes)
+        .expect("Linux x86_64 rooted ref state object artifact 書き込みに失敗");
+    let written = std::fs::read(&artifact_path)
+        .expect("Linux x86_64 rooted ref state object artifact 読み戻しに失敗");
+    assert_eq!(
+        written, object_bytes,
+        "Linux x86_64 rooted ref state object artifact は生成 ELF object をそのまま保存すること"
     );
 }
 
