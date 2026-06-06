@@ -4277,17 +4277,59 @@ fn test_wasm_compiler_register_defns_step_uses_caller_owned_state_ref() {
         .expect("Compiler.ls に register-defns-step が存在すること");
 
     assert!(
-        step.contains("state-ref (ref-new 0)")
-            && step.contains("(root_push state-ref)")
-            && step.contains("(write-register-state-ref state-ref 1 idx ftable func-idx)")
+        step.contains("done-state-ref (ref-new 0)")
+            && step.contains("(root_push done-state-ref)")
+            && step.contains("(write-register-state-ref done-state-ref 1 idx ftable func-idx)")
+            && step.contains("done-state (ref-get done-state-ref)")
+            && step.contains("defn-state-ref (ref-new 0)")
+            && step.contains("(root_push defn-state-ref)")
             && step.contains(
-                "(write-register-state-ref state-ref 0 (+ idx 1) next-ftable (+ func-idx 1))"
+                "(write-register-state-ref defn-state-ref 0 (+ idx 1) next-ftable (+ func-idx 1))"
             )
-            && step.contains("(write-register-state-ref state-ref 0 (+ idx 1) ftable func-idx)")
-            && step.contains("state (ref-get state-ref)")
+            && step.contains("defn-state (ref-get defn-state-ref)")
+            && step.contains("non-defn-state-ref (ref-new 0)")
+            && step.contains("(root_push non-defn-state-ref)")
+            && step.contains(
+                "(write-register-state-ref non-defn-state-ref 0 (+ idx 1) ftable func-idx)"
+            )
+            && step.contains("non-defn-state (ref-get non-defn-state-ref)")
+            && !step.contains("[state-ref (ref-new 0)")
             && !step.contains("make-register-state 1")
             && !step.contains("make-register-state 0"),
-        "register-defns-step は state vector を helper return で受け取らず、rooted state-ref から ref-get するべき"
+        "register-defns-step は caller-owned ref を使いつつ、branch 間の同名 state-ref shadow で selfhost lowering の local 解決を壊さないよう固有名を使うべき"
+    );
+}
+
+#[test]
+fn test_selfhost_compiler_mode_register_defns_progress_uses_branch_unique_state_refs() {
+    let compiler_mode = selfhost_module("CompilerMode.ls");
+    let step = compiler_mode
+        .split("(defn register-defns-step-progress")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("CompilerMode.ls に register-defns-step-progress が存在すること");
+
+    assert!(
+        step.contains("done-state-ref (ref-new 0)")
+            && step.contains("(root_push done-state-ref)")
+            && step.contains(
+                "(write-register-state-progress-ref done-state-ref 1 idx ftable func-idx)"
+            )
+            && step.contains("done-state (ref-get done-state-ref)")
+            && step.contains("defn-state-ref (ref-new 0)")
+            && step.contains("(root_push defn-state-ref)")
+            && step.contains(
+                "(write-register-state-progress-ref defn-state-ref 0 (+ idx 1) next-ftable (+ func-idx 1))"
+            )
+            && step.contains("defn-state (ref-get defn-state-ref)")
+            && step.contains("non-defn-state-ref (ref-new 0)")
+            && step.contains("(root_push non-defn-state-ref)")
+            && step.contains(
+                "(write-register-state-progress-ref non-defn-state-ref 0 (+ idx 1) ftable func-idx)"
+            )
+            && step.contains("non-defn-state (ref-get non-defn-state-ref)")
+            && !step.contains("[state-ref (ref-new 0)"),
+        "register-defns-step-progress は branch ごとに固有の state ref 名を使い、actual Linux x86 metadata で ref-new local と writer call local がずれないようにするべき"
     );
 }
 

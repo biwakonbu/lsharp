@@ -1587,14 +1587,14 @@
 
 (defn register-defns-step [decls idx n ftable func-idx]
   (if (>= idx n)
-    (let [state-ref (ref-new 0)]
+    (let [done-state-ref (ref-new 0)]
       (do
-        (root_push state-ref)
-        (write-register-state-ref state-ref 1 idx ftable func-idx)
-        (let [state (ref-get state-ref)]
+        (root_push done-state-ref)
+        (write-register-state-ref done-state-ref 1 idx ftable func-idx)
+        (let [done-state (ref-get done-state-ref)]
           (do
             (root_pop)
-            state))))
+            done-state))))
     (do
       (root_push decls)
       (root_push ftable)
@@ -1606,29 +1606,29 @@
               next-ftable (ftable-register ftable name-hash func-idx)]
                 (do
                   (root_push next-ftable)
-                  (let [state-ref (ref-new 0)]
+                  (let [defn-state-ref (ref-new 0)]
                     (do
-                      (root_push state-ref)
-                      (write-register-state-ref state-ref 0 (+ idx 1) next-ftable (+ func-idx 1))
-                      (let [state (ref-get state-ref)]
+                      (root_push defn-state-ref)
+                      (write-register-state-ref defn-state-ref 0 (+ idx 1) next-ftable (+ func-idx 1))
+                      (let [defn-state (ref-get defn-state-ref)]
                         (do
                           (root_pop)
                           (root_pop)
                           (root_pop)
                           (root_pop)
                           (root_pop)
-                          state))))))
-            (let [state-ref (ref-new 0)]
+                          defn-state))))))
+            (let [non-defn-state-ref (ref-new 0)]
               (do
-                (root_push state-ref)
-                (write-register-state-ref state-ref 0 (+ idx 1) ftable func-idx)
-                (let [state (ref-get state-ref)]
+                (root_push non-defn-state-ref)
+                (write-register-state-ref non-defn-state-ref 0 (+ idx 1) ftable func-idx)
+                (let [non-defn-state (ref-get non-defn-state-ref)]
                   (do
                     (root_pop)
                     (root_pop)
                     (root_pop)
                     (root_pop)
-                    state))))))))))
+                    non-defn-state))))))))))
 
 (defn continue-register-defns-step [decls n state]
   (if (= (vector-get state 0) 1)
