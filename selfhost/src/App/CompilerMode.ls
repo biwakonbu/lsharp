@@ -1992,6 +1992,9 @@
     (print next-idx)
     (print next-func-idx)
     (print (vector-length next-ftable))
+    (print 9000000117)
+    (print state-ref)
+    (print (ref-get state-ref))
     (root_push state-ref)
     (let [base (vector-new 4)]
       (do
@@ -2040,6 +2043,14 @@
                                 (print (ref-get next-func-idx-ref))
                                 (root_set base-slot state)
                                 (ref-set state-ref state)
+                                (print 9000000118)
+                                (print state-ref)
+                                (print (ref-get state-ref))
+                                (print (vector-length (ref-get state-ref)))
+                                (print (vector-get (ref-get state-ref) 0))
+                                (print (vector-get (ref-get state-ref) 1))
+                                (print (vector-get (ref-get state-ref) 3))
+                                (print (vector-length (vector-get (ref-get state-ref) 2)))
                                 (root_pop)
                                 (root_pop)
                                 (root_pop)
@@ -2074,7 +2085,18 @@
       (let [state-ref (ref-new 0)]
         (do
           (root_push state-ref)
+          (print 9000000102)
+          (print state-ref)
+          (print (ref-get state-ref))
           (write-register-state-progress-ref state-ref 1 idx ftable func-idx)
+          (print 9000000103)
+          (print state-ref)
+          (print (ref-get state-ref))
+          (print (vector-length (ref-get state-ref)))
+          (print (vector-get (ref-get state-ref) 0))
+          (print (vector-get (ref-get state-ref) 1))
+          (print (vector-get (ref-get state-ref) 3))
+          (print (vector-length (vector-get (ref-get state-ref) 2)))
           (let [state (ref-get state-ref)]
             (do
               (root_pop)
@@ -2106,7 +2128,18 @@
                     (let [state-ref (ref-new 0)]
                       (do
                         (root_push state-ref)
+                        (print 9000000104)
+                        (print state-ref)
+                        (print (ref-get state-ref))
                         (write-register-state-progress-ref state-ref 0 (+ idx 1) next-ftable (+ func-idx 1))
+                        (print 9000000105)
+                        (print state-ref)
+                        (print (ref-get state-ref))
+                        (print (vector-length (ref-get state-ref)))
+                        (print (vector-get (ref-get state-ref) 0))
+                        (print (vector-get (ref-get state-ref) 1))
+                        (print (vector-get (ref-get state-ref) 3))
+                        (print (vector-length (vector-get (ref-get state-ref) 2)))
                         (let [state (ref-get state-ref)]
                           (do
                             (root_push state)
@@ -2124,7 +2157,18 @@
             (let [state-ref (ref-new 0)]
               (do
                 (root_push state-ref)
+                (print 9000000106)
+                (print state-ref)
+                (print (ref-get state-ref))
                 (write-register-state-progress-ref state-ref 0 (+ idx 1) ftable func-idx)
+                (print 9000000107)
+                (print state-ref)
+                (print (ref-get state-ref))
+                (print (vector-length (ref-get state-ref)))
+                (print (vector-get (ref-get state-ref) 0))
+                (print (vector-get (ref-get state-ref) 1))
+                (print (vector-get (ref-get state-ref) 3))
+                (print (vector-length (vector-get (ref-get state-ref) 2)))
                 (let [state (ref-get state-ref)]
                   (do
                     (root_push state)

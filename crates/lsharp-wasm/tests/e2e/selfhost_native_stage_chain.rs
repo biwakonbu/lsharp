@@ -1161,6 +1161,12 @@ fn test_selfhost_compiler_mode_has_payload_progress_probe() {
         "(defn register-all-pairs-progress-loop",
         "(print 9000000100)",
         "(print 9000000101)",
+        "(print 9000000102)",
+        "(print 9000000103)",
+        "(print 9000000104)",
+        "(print 9000000105)",
+        "(print 9000000106)",
+        "(print 9000000107)",
         "(defn make-register-state-progress",
         "(print 9000000110)",
         "(print 9000000111)",
@@ -1169,6 +1175,15 @@ fn test_selfhost_compiler_mode_has_payload_progress_probe() {
         "(print 9000000114)",
         "(print 9000000115)",
         "(print 9000000116)",
+        "(print 9000000117)",
+        "(print 9000000118)",
+        "(print state-ref)",
+        "(print (ref-get state-ref))",
+        "(print (vector-length (ref-get state-ref)))",
+        "(print (vector-get (ref-get state-ref) 0))",
+        "(print (vector-get (ref-get state-ref) 1))",
+        "(print (vector-get (ref-get state-ref) 3))",
+        "(print (vector-length (vector-get (ref-get state-ref) 2)))",
         "base-slot (root_push base)",
         "with-done (vector-push base (ref-get done-ref))",
         "(root_set base-slot with-done)",
@@ -16164,6 +16179,82 @@ fn linux_x86_selfhost_ref_param_vector_set_get_object_bytes() -> Vec<u8> {
         .collect::<Vec<u8>>()
 }
 
+fn linux_x86_selfhost_ref_param_five_arg_state_set_get_object_bytes() -> Vec<u8> {
+    let output = run_native_pipeline_harness(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import Backend.Native.NativeEmit)
+(import IR.IR)
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn main []
+  (let [main-ir0 (vector-push (vector-new 17) (make-instr 3 0))
+        main-ir1 (vector-push main-ir0 (make-instr 56 0))
+        main-ir2 (vector-push main-ir1 (make-instr 11 0))
+        main-ir3 (vector-push main-ir2 (make-instr 3 0))
+        main-ir4 (vector-push main-ir3 (make-instr 54 0))
+        main-ir5 (vector-push main-ir4 (make-instr 11 1))
+        main-ir6 (vector-push main-ir5 (make-instr 10 0))
+        main-ir7 (vector-push main-ir6 (make-instr 3 0))
+        main-ir8 (vector-push main-ir7 (make-instr 3 1))
+        main-ir9 (vector-push main-ir8 (make-instr 10 1))
+        main-ir10 (vector-push main-ir9 (make-instr 3 10))
+        main-ir11 (vector-push main-ir10 (make-call 1))
+        main-ir12 (vector-push main-ir11 (make-instr 44 0))
+        main-ir13 (vector-push main-ir12 (make-instr 10 0))
+        main-ir14 (vector-push main-ir13 (make-instr 57 0))
+        main-ir15 (vector-push main-ir14 (make-instr 3 3))
+        main-ir (vector-push main-ir15 (make-instr 53 0))
+        helper-ir0 (vector-push (vector-new 13) (make-instr 10 1))
+        helper-ir1 (vector-push helper-ir0 (make-instr 3 4))
+        helper-ir2 (vector-push helper-ir1 (make-instr 54 0))
+        helper-ir3 (vector-push helper-ir2 (make-instr 10 2))
+        helper-ir4 (vector-push helper-ir3 (make-instr 55 0))
+        helper-ir5 (vector-push helper-ir4 (make-instr 10 3))
+        helper-ir6 (vector-push helper-ir5 (make-instr 55 0))
+        helper-ir7 (vector-push helper-ir6 (make-instr 10 4))
+        helper-ir8 (vector-push helper-ir7 (make-instr 55 0))
+        helper-ir9 (vector-push helper-ir8 (make-instr 10 5))
+        helper-ir10 (vector-push helper-ir9 (make-instr 55 0))
+        helper-ir11 (vector-push helper-ir10 (make-instr 58 0))
+        helper-ir (vector-push helper-ir11 (make-instr 3 0))
+        main-meta (make-function-meta 0 2 main-ir)
+        helper-meta (make-function-meta 5 0 helper-ir)
+        functions (vector-push
+                    (vector-push (vector-new 2) main-meta)
+                    helper-meta)
+        target (make-target 3)
+        native (emit-native-function-meta-bundle functions target)
+        object (emit-object native target)]
+    (do
+      (print-bytes object 0 (vector-length object))
+      0)))"#,
+    );
+    output
+        .trim()
+        .lines()
+        .map(|line| {
+            line.parse::<u8>().unwrap_or_else(|_| {
+                panic!("Linux x86_64 five-arg ref state ELF object byte parse 失敗: {line}")
+            })
+        })
+        .collect::<Vec<u8>>()
+}
+
 fn host_target_plain_program_code_bytes(instrs: &[(u32, i64)]) -> Vec<u8> {
     let instr_bindings = instrs
         .iter()
@@ -26343,6 +26434,42 @@ fn test_e2e_native_linux_x86_host_generates_ref_param_vector_set_get_elf_object_
     assert_eq!(
         written, object_bytes,
         "Linux x86_64 ref param/vector object artifact は生成 ELF object をそのまま保存すること"
+    );
+}
+
+/// NATIVE-LINUX-X86-02gd: 5 引数 helper 経由で caller-owned Ref に state vector を書き戻せる Linux ELF artifact を生成すること。
+#[test]
+#[ignore]
+fn test_e2e_native_linux_x86_host_generates_ref_param_five_arg_state_set_get_elf_object_artifact() {
+    let artifact_path =
+        std::env::var_os("LSHARP_NATIVE_LINUX_X86_REF_PARAM_FIVE_ARG_OBJECT_ARTIFACT").expect(
+            "LSHARP_NATIVE_LINUX_X86_REF_PARAM_FIVE_ARG_OBJECT_ARTIFACT に Linux x86_64 five-arg ref state object artifact path を指定すること",
+        );
+    let artifact_path = std::path::PathBuf::from(artifact_path);
+    if let Some(parent) = artifact_path.parent() {
+        std::fs::create_dir_all(parent)
+            .expect("Linux x86_64 five-arg ref state object artifact dir 作成に失敗");
+    }
+
+    let object_bytes = linux_x86_selfhost_ref_param_five_arg_state_set_get_object_bytes();
+    assert!(
+        object_bytes.len() > 64,
+        "Linux x86_64 five-arg ref state ELF object は ELF64 section table を持つこと"
+    );
+    assert!(
+        object_bytes
+            .windows("generated".len())
+            .any(|window| window == b"generated"),
+        "Linux x86_64 five-arg ref state ELF object は generated symbol を持つこと"
+    );
+
+    std::fs::write(&artifact_path, &object_bytes)
+        .expect("Linux x86_64 five-arg ref state object artifact 書き込みに失敗");
+    let written = std::fs::read(&artifact_path)
+        .expect("Linux x86_64 five-arg ref state object artifact 読み戻しに失敗");
+    assert_eq!(
+        written, object_bytes,
+        "Linux x86_64 five-arg ref state object artifact は生成 ELF object をそのまま保存すること"
     );
 }
 
