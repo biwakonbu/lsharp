@@ -1985,13 +1985,14 @@
               (root_pop)
               (root_pop)
               result)))))))
-(defn make-register-state-progress [done next-idx next-ftable next-func-idx]
+(defn write-register-state-progress-ref [state-ref done next-idx next-ftable next-func-idx]
   (do
     (print 9000000110)
     (print done)
     (print next-idx)
     (print next-func-idx)
     (print (vector-length next-ftable))
+    (root_push state-ref)
     (let [base (vector-new 4)]
       (do
         (let [base-slot (root_push base)]
@@ -2038,6 +2039,7 @@
                                 (print (ref-get next-idx-ref))
                                 (print (ref-get next-func-idx-ref))
                                 (root_set base-slot state)
+                                (ref-set state-ref state)
                                 (root_pop)
                                 (root_pop)
                                 (root_pop)
@@ -2049,7 +2051,18 @@
                                 (print (vector-get state 1))
                                 (print (vector-get state 3))
                                 (print (vector-length (vector-get state 2)))
-                                state))))))))))))))))
+                                (root_pop)
+                                0))))))))))))))))
+
+(defn make-register-state-progress [done next-idx next-ftable next-func-idx]
+  (let [state-ref (ref-new 0)]
+    (do
+      (root_push state-ref)
+      (write-register-state-progress-ref state-ref done next-idx next-ftable next-func-idx)
+      (let [state (ref-get state-ref)]
+        (do
+          (root_pop)
+          state)))))
 
 (defn register-defns-step-progress [decls idx n ftable func-idx]
   (if (>= idx n)
@@ -2058,7 +2071,14 @@
       (print idx)
       (print n)
       (print func-idx)
-      (make-register-state-progress 1 idx ftable func-idx))
+      (let [state-ref (ref-new 0)]
+        (do
+          (root_push state-ref)
+          (write-register-state-progress-ref state-ref 1 idx ftable func-idx)
+          (let [state (ref-get state-ref)]
+            (do
+              (root_pop)
+              state)))))
     (do
       (root_push decls)
       (root_push ftable)
@@ -2083,31 +2103,41 @@
                     (root_push next-ftable)
                     (print 9000000094)
                     (print name-hash)
-                    (let [state (make-register-state-progress 0 (+ idx 1) next-ftable (+ func-idx 1))]
+                    (let [state-ref (ref-new 0)]
                       (do
-                        (root_push state)
-                        (print 9000000095)
-                        (print (vector-get state 0))
-                        (print (vector-get state 1))
-                        (print (vector-get state 3))
-                        (root_pop)
-                        (root_pop)
-                        (root_pop)
-                        (root_pop)
-                        (root_pop)
-                        state))))))
-            (let [state (make-register-state-progress 0 (+ idx 1) ftable func-idx)]
+                        (root_push state-ref)
+                        (write-register-state-progress-ref state-ref 0 (+ idx 1) next-ftable (+ func-idx 1))
+                        (let [state (ref-get state-ref)]
+                          (do
+                            (root_push state)
+                            (print 9000000095)
+                            (print (vector-get state 0))
+                            (print (vector-get state 1))
+                            (print (vector-get state 3))
+                            (root_pop)
+                            (root_pop)
+                            (root_pop)
+                            (root_pop)
+                            (root_pop)
+                            (root_pop)
+                            state))))))))
+            (let [state-ref (ref-new 0)]
               (do
-                (root_push state)
-                (print 9000000096)
-                (print (vector-get state 0))
-                (print (vector-get state 1))
-                (print (vector-get state 3))
-                (root_pop)
-                (root_pop)
-                (root_pop)
-                (root_pop)
-                state))))))))
+                (root_push state-ref)
+                (write-register-state-progress-ref state-ref 0 (+ idx 1) ftable func-idx)
+                (let [state (ref-get state-ref)]
+                  (do
+                    (root_push state)
+                    (print 9000000096)
+                    (print (vector-get state 0))
+                    (print (vector-get state 1))
+                    (print (vector-get state 3))
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    state))))))))))
 
 (defn register-defns-chunked-progress [decls idx n ftable func-idx]
   (do

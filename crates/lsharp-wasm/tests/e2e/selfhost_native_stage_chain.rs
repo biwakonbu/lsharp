@@ -1195,11 +1195,14 @@ fn test_selfhost_compiler_mode_has_payload_progress_probe() {
         "state0-next-func-idx (vector-get state0 3)",
         "(root_push state0-ftable)",
         "result (register-defns-chunked decls state0-next-idx n state0-ftable state0-next-func-idx)",
+        "(defn write-register-state-progress-ref",
+        "state-ref (ref-new 0)",
+        "(write-register-state-progress-ref state-ref 0 (+ idx 1) ftable func-idx)",
+        "state (ref-get state-ref)",
         "all-pairs (compile-file-pairs-with-cache path cache-ref parse-count-ref)",
         "start-ftable (ftable-new)",
         "reg-result (register-all-pairs-progress all-pairs 0 n start-ftable func-idx)",
         "final-state (register-all-pairs-progress-loop pairs n state0)",
-        "state (make-register-state-progress 0 (+ idx 1) ftable func-idx)",
         "result (register-defns-chunked-progress decls 0 (vector-length decls) ftable func-idx)",
         "compile-all-src-decl-pairs-chunked-progress all-pairs 0 n ftable data-ref functions0",
     ] {
@@ -1301,10 +1304,10 @@ fn test_selfhost_register_states_push_final_func_idx_without_int_helper_after_ob
     ))
     .expect("CompilerBase.ls を読めること");
     let register_state_body = compiler_base
-        .split("(defn make-register-state")
+        .split("(defn write-register-state-ref")
         .nth(1)
         .and_then(|tail| tail.split("\n(defn ").next())
-        .expect("make-register-state body を取り出せること");
+        .expect("write-register-state-ref body を取り出せること");
 
     assert!(
         register_pairs_state_body
@@ -1318,7 +1321,7 @@ fn test_selfhost_register_states_push_final_func_idx_without_int_helper_after_ob
             .contains("(let [state (vector-push with-ftable (ref-get next-func-idx-ref))]")
             && !register_state_body
                 .contains("(let [state (push-int-vector with-ftable next-func-idx)]"),
-        "make-register-state は object slot 後の next-func-idx を helper call なしで積むべき"
+        "write-register-state-ref は object slot 後の next-func-idx を helper call なしで積むべき"
     );
     assert!(
         register_all_pairs_body.contains("(let [result (vector-push with-ftable next-func-idx)]")
@@ -4066,10 +4069,10 @@ fn test_wasm_compiler_register_state_builders_snapshot_scalar_fields() {
     let compiler_base = std::fs::read_to_string(selfhost_source_path("CompilerBase.ls"))
         .expect("canonical CompilerBase.ls が読み込めること");
     let register_state = compiler_base
-        .split("(defn make-register-state")
+        .split("(defn write-register-state-ref")
         .nth(1)
         .and_then(|tail| tail.split("\n(defn ").next())
-        .expect("CompilerBase.ls に make-register-state が存在すること");
+        .expect("CompilerBase.ls に write-register-state-ref が存在すること");
     assert!(
         register_state.contains("done-ref (ref-new done)")
             && register_state.contains("next-idx-ref (ref-new next-idx)")
@@ -4091,38 +4094,40 @@ fn test_wasm_compiler_register_state_builders_snapshot_scalar_fields() {
     );
     let base_slot_pos = register_state
         .find("base-slot (root_push base)")
-        .expect("make-register-state は base-slot を root すること");
+        .expect("write-register-state-ref は base-slot を root すること");
     let done_ref_pos = register_state
         .find("done-ref (ref-new done)")
-        .expect("make-register-state は done を ref snapshot すること");
+        .expect("write-register-state-ref は done を ref snapshot すること");
     let next_ftable_root_pos = register_state
         .find("(root_push next-ftable)")
-        .expect("make-register-state は next-ftable を root すること");
+        .expect("write-register-state-ref は next-ftable を root すること");
     let final_state_root_set_pos = register_state
         .find("(root_set base-slot state)")
-        .expect("make-register-state は final state を base-slot に root_set すること");
+        .expect("write-register-state-ref は final state を base-slot に root_set すること");
     assert!(
         base_slot_pos < done_ref_pos
             && done_ref_pos < next_ftable_root_pos
             && next_ftable_root_pos < final_state_root_set_pos,
-        "make-register-state は state root slot を scalar/object temp roots より下に置き、final state をその slot に更新するべき"
+        "write-register-state-ref は state root slot を scalar/object temp roots より下に置き、final state をその slot に更新するべき"
     );
 
     let compiler_mode = selfhost_module("CompilerMode.ls");
     let register_state_progress = compiler_mode
-        .split("(defn make-register-state-progress")
+        .split("(defn write-register-state-progress-ref")
         .nth(1)
         .and_then(|tail| tail.split("\n(defn ").next())
-        .expect("CompilerMode.ls に make-register-state-progress が存在すること");
+        .expect("CompilerMode.ls に write-register-state-progress-ref が存在すること");
     let progress_base_slot_pos = register_state_progress
         .find("base-slot (root_push base)")
-        .expect("make-register-state-progress は base-slot を root すること");
+        .expect("write-register-state-progress-ref は base-slot を root すること");
     let progress_done_ref_pos = register_state_progress
         .find("done-ref (ref-new done)")
-        .expect("make-register-state-progress は done を ref snapshot すること");
+        .expect("write-register-state-progress-ref は done を ref snapshot すること");
     let progress_final_state_root_set_pos = register_state_progress
         .find("(root_set base-slot state)")
-        .expect("make-register-state-progress は final state を base-slot に root_set すること");
+        .expect(
+            "write-register-state-progress-ref は final state を base-slot に root_set すること",
+        );
     assert!(
         progress_base_slot_pos < progress_done_ref_pos
             && progress_done_ref_pos < progress_final_state_root_set_pos,
@@ -4213,6 +4218,39 @@ fn test_wasm_compiler_register_defns_continuations_snapshot_state_slots() {
                 "(continue-register-defns-step-64 decls n (register-defns-step-64 decls idx n ftable func-idx))"
             ),
         "register-defns-chunked は initial state を root してから 64-step continuation に渡すべき"
+    );
+}
+
+#[test]
+fn test_wasm_compiler_register_defns_step_uses_caller_owned_state_ref() {
+    let compiler_base = std::fs::read_to_string(selfhost_source_path("CompilerBase.ls"))
+        .expect("canonical CompilerBase.ls が読み込めること");
+    assert!(
+        compiler_base.contains("(defn write-register-state-ref")
+            && compiler_base.contains("(ref-set state-ref state)"),
+        "register state builder は object return boundary を避けるため caller-owned ref へ state を書き込む helper を持つべき"
+    );
+
+    let source = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("canonical Compiler.ls が読み込めること");
+    let step = source
+        .split("(defn register-defns-step")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("Compiler.ls に register-defns-step が存在すること");
+
+    assert!(
+        step.contains("state-ref (ref-new 0)")
+            && step.contains("(root_push state-ref)")
+            && step.contains("(write-register-state-ref state-ref 1 idx ftable func-idx)")
+            && step.contains(
+                "(write-register-state-ref state-ref 0 (+ idx 1) next-ftable (+ func-idx 1))"
+            )
+            && step.contains("(write-register-state-ref state-ref 0 (+ idx 1) ftable func-idx)")
+            && step.contains("state (ref-get state-ref)")
+            && !step.contains("make-register-state 1")
+            && !step.contains("make-register-state 0"),
+        "register-defns-step は state vector を helper return で受け取らず、rooted state-ref から ref-get するべき"
     );
 }
 

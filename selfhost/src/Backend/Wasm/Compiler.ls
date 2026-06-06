@@ -1587,7 +1587,14 @@
 
 (defn register-defns-step [decls idx n ftable func-idx]
   (if (>= idx n)
-    (make-register-state 1 idx ftable func-idx)
+    (let [state-ref (ref-new 0)]
+      (do
+        (root_push state-ref)
+        (write-register-state-ref state-ref 1 idx ftable func-idx)
+        (let [state (ref-get state-ref)]
+          (do
+            (root_pop)
+            state))))
     (do
       (root_push decls)
       (root_push ftable)
@@ -1599,19 +1606,29 @@
               next-ftable (ftable-register ftable name-hash func-idx)]
                 (do
                   (root_push next-ftable)
-                  (let [state (make-register-state 0 (+ idx 1) next-ftable (+ func-idx 1))]
+                  (let [state-ref (ref-new 0)]
                     (do
-                      (root_pop)
-                      (root_pop)
-                      (root_pop)
-                      (root_pop)
-                      state))))
-            (let [state (make-register-state 0 (+ idx 1) ftable func-idx)]
+                      (root_push state-ref)
+                      (write-register-state-ref state-ref 0 (+ idx 1) next-ftable (+ func-idx 1))
+                      (let [state (ref-get state-ref)]
+                        (do
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          state))))))
+            (let [state-ref (ref-new 0)]
               (do
-                (root_pop)
-                (root_pop)
-                (root_pop)
-                state))))))))
+                (root_push state-ref)
+                (write-register-state-ref state-ref 0 (+ idx 1) ftable func-idx)
+                (let [state (ref-get state-ref)]
+                  (do
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    state))))))))))
 
 (defn continue-register-defns-step [decls n state]
   (if (= (vector-get state 0) 1)

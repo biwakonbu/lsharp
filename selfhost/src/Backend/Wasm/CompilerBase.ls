@@ -1030,8 +1030,9 @@
                 (root_pop)
                 (root_pop)
                 result))))))))
-(defn make-register-state [done next-idx next-ftable next-func-idx]
+(defn write-register-state-ref [state-ref done next-idx next-ftable next-func-idx]
   (do
+    (root_push state-ref)
     (let [base (vector-new 4)]
       (do
         (let [base-slot (root_push base)]
@@ -1056,9 +1057,20 @@
                             (let [state (vector-push with-ftable (ref-get next-func-idx-ref))]
                               (do
                                 (root_set base-slot state)
+                                (ref-set state-ref state)
                                 (root_pop)
                                 (root_pop)
                                 (root_pop)
                                 (root_pop)
                                 (root_pop)
-                                state))))))))))))))))
+                                (root_pop)
+                                0))))))))))))))))
+(defn make-register-state [done next-idx next-ftable next-func-idx]
+  (let [state-ref (ref-new 0)]
+    (do
+      (root_push state-ref)
+      (write-register-state-ref state-ref done next-idx next-ftable next-func-idx)
+      (let [state (ref-get state-ref)]
+        (do
+          (root_pop)
+          state)))))
