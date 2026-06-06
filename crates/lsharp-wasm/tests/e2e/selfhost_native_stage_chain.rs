@@ -4169,6 +4169,28 @@ fn test_wasm_compiler_register_state_builders_snapshot_scalar_fields() {
 }
 
 #[test]
+fn test_selfhost_compiler_mode_probe_uses_literal_var_tag_for_builtin_detection() {
+    let compiler_mode = selfhost_module("CompilerMode.ls");
+    let apply_probe = compiler_mode
+        .split("(defn compile-apply-with-source-probe")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-expr-with-source-probe-dispatch")
+                .next()
+        })
+        .expect("CompilerMode.ls に compile-apply-with-source-probe が存在すること");
+
+    assert!(
+        apply_probe.contains("func-hash (if (= func-tag 4)"),
+        "CompilerMode source probe は canonical Compiler と同じ literal var tag 判定を使うべき"
+    );
+    assert!(
+        !apply_probe.contains("(tag-var)"),
+        "CompilerMode source probe は builtin 判定前に tag-var の 0 引数 call を挟むべきではない"
+    );
+}
+
+#[test]
 fn test_wasm_compiler_register_defns_continuations_snapshot_state_slots() {
     let source = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
         .expect("canonical Compiler.ls が読み込めること");

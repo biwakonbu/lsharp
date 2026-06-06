@@ -1100,6 +1100,51 @@ fn test_e2e_selfhost_compiler_ref_new_builtin_lowering() {
     assert_eq!(lines[4], "1", "補助 local base index は 1 であること");
 }
 
+/// selfhost Compiler.ls: ref-set を builtin として lowering し、補助 local を metadata に反映すること
+#[test]
+fn test_e2e_selfhost_compiler_ref_set_builtin_lowering() {
+    let harness = r#"
+(defn main []
+  (let [program (parse-program "(defn set1 [r v] (ref-set r v)) (defn main [] 0)")
+        pair (compile-program-functions program)
+        functions (vector-get pair 1)
+        set-fn (vector-get functions 0)
+        set-ir (vector-get set-fn 2)
+        last-instr (vector-get set-ir 2)]
+    (do
+      (print (vector-get set-fn 0))
+      (print (vector-get set-fn 1))
+      (print (vector-length set-ir))
+      (print (vector-get last-instr 0))
+      (print (vector-get last-instr 1))
+      0)))
+"#;
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("IR.ls"),
+        selfhost_module("Compiler.ls"),
+        harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert!(lines.len() >= 5, "ref-set lowering 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "2", "set1 は 2 引数関数であること");
+    assert_eq!(lines[1], "1", "ref-set lowering 用の補助 local が 1 個必要");
+    assert_eq!(
+        lines[2], "3",
+        "body は local.get / local.get / ref-set の 3 命令であること"
+    );
+    assert_eq!(
+        lines[3], "58",
+        "末尾命令は ref-set builtin opcode であること"
+    );
+    assert_eq!(lines[4], "3", "補助 local index は 3 であること");
+}
+
 /// selfhost Compiler.ls: map-new を builtin として lowering し、alloc 用 locals を metadata に反映すること
 #[test]
 fn test_e2e_selfhost_compiler_map_new_builtin_lowering() {

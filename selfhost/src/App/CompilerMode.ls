@@ -2683,7 +2683,7 @@
   (let [func-node (vector-get node 1)
     arg-count (vector-get node 2)]
     (let [func-tag (vector-get func-node 0)
-      func-hash (if (= func-tag (tag-var)) (vector-get func-node 1) 0)]
+      func-hash (if (= func-tag 4) (vector-get func-node 1) 0)]
       (let [bop (builtin-opcode func-hash)]
         (do
           (print 197)
