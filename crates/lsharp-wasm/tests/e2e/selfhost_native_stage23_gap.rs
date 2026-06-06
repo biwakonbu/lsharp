@@ -421,6 +421,28 @@ fn test_native_codegen_x86_vector_and_ref_helper_call_sites_resolve_offsets() {
 }
 
 #[test]
+fn test_native_codegen_x86_local_get_preserves_depth_one_stack_value() {
+    let lines = run_x86_selfhost_runtime_helper_harness(
+        "native-stage23-x86-local-get-depth-one-preserve",
+        r#"  (let [frame-base-slot-count 2
+        current-depth 1
+        local-bytes (codegen-ir-instr-bundle-x86-with-import-count 10 0 2048 (vector-new 0) (vector-new 0) 10 4096 frame-base-slot-count current-depth)
+        local-size (native-instr-size-x86 10 0 (vector-new 0) current-depth)]
+    (do
+      (print local-size)
+      (print (vector-length local-bytes))
+      (print-bytes-loop local-bytes 0 (vector-length local-bytes))
+      0))"#,
+    );
+
+    assert_eq!(
+        &lines[..5],
+        &[10, 10, 72, 137, 193],
+        "x86_64 LocalGet at stack depth 1 must preserve the previous top value in rcx before loading the local"
+    );
+}
+
+#[test]
 fn test_native_codegen_x86_string_slice_concat_helper_call_sites_resolve_offsets() {
     let lines = run_x86_selfhost_runtime_helper_harness(
         "native-stage23-x86-string-slice-concat-helper-call-sites",
