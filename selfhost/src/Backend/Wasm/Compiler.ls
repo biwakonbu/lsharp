@@ -1619,11 +1619,17 @@
     (do
       (root_push decls)
       (root_push state)
-      (let [result (register-defns-step decls (vector-get state 1) n (vector-get state 2) (vector-get state 3))]
+      (let [next-idx (vector-get state 1)
+        next-ftable (vector-get state 2)
+        next-func-idx (vector-get state 3)]
         (do
-          (root_pop)
-          (root_pop)
-          result)))))
+          (root_push next-ftable)
+          (let [result (register-defns-step decls next-idx n next-ftable next-func-idx)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              result)))))))
 
 (defn continue-register-defns-step-times [decls n remaining state]
   (if (= remaining 0)
@@ -1661,11 +1667,17 @@
     (do
       (root_push decls)
       (root_push state)
-      (let [result (register-defns-step-8 decls (vector-get state 1) n (vector-get state 2) (vector-get state 3))]
+      (let [next-idx (vector-get state 1)
+        next-ftable (vector-get state 2)
+        next-func-idx (vector-get state 3)]
         (do
-          (root_pop)
-          (root_pop)
-          result)))))
+          (root_push next-ftable)
+          (let [result (register-defns-step-8 decls next-idx n next-ftable next-func-idx)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              result)))))))
 
 (defn register-defns-step-64 [decls idx n ftable func-idx]
   (do
@@ -1685,18 +1697,36 @@
     (do
       (root_push decls)
       (root_push state)
-      (let [next-state (register-defns-step-64 decls (vector-get state 1) n (vector-get state 2) (vector-get state 3))]
+      (let [next-idx (vector-get state 1)
+        next-ftable (vector-get state 2)
+        next-func-idx (vector-get state 3)]
         (do
-          (root_push next-state)
-          (let [result (continue-register-defns-step-64 decls n next-state)]
+          (root_push next-ftable)
+          (let [next-state (register-defns-step-64 decls next-idx n next-ftable next-func-idx)]
             (do
-              (root_pop)
-              (root_pop)
-              (root_pop)
-              result)))))))
+              (root_push next-state)
+              (let [result (continue-register-defns-step-64 decls n next-state)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  result)))))))))
 
 (defn register-defns-chunked [decls idx n ftable func-idx]
-  (continue-register-defns-step-64 decls n (register-defns-step-64 decls idx n ftable func-idx)))
+  (do
+    (root_push decls)
+    (root_push ftable)
+    (let [state (register-defns-step-64 decls idx n ftable func-idx)]
+      (do
+        (let [state-slot (root_push state)]
+          (do
+            (let [result (continue-register-defns-step-64 decls n state)]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result))))))))
 
 (defn register-defns [decls idx n ftable func-idx]
   (if (>= idx n)

@@ -1176,6 +1176,7 @@ fn test_selfhost_compiler_mode_has_payload_progress_probe() {
         "with-ftable (vector-push with-idx next-ftable)",
         "(root_set base-slot with-ftable)",
         "state (vector-push with-ftable (ref-get next-func-idx-ref))",
+        "(root_set base-slot state)",
         "(defn register-defns-step-progress",
         "(defn register-defns-chunked-progress",
         "(print 9000000090)",
@@ -1188,6 +1189,11 @@ fn test_selfhost_compiler_mode_has_payload_progress_probe() {
         "(print 9000000097)",
         "(print 9000000098)",
         "(print 9000000099)",
+        "state0-next-idx (vector-get state0 1)",
+        "state0-ftable (vector-get state0 2)",
+        "state0-next-func-idx (vector-get state0 3)",
+        "(root_push state0-ftable)",
+        "result (register-defns-chunked decls state0-next-idx n state0-ftable state0-next-func-idx)",
         "all-pairs (compile-file-pairs-with-cache path cache-ref parse-count-ref)",
         "start-ftable (ftable-new)",
         "reg-result (register-all-pairs-progress all-pairs 0 n start-ftable func-idx)",
@@ -4077,12 +4083,51 @@ fn test_wasm_compiler_register_state_builders_snapshot_scalar_fields() {
             && register_state.contains("(root_set base-slot with-ftable)")
             && register_state
                 .contains("state (vector-push with-ftable (ref-get next-func-idx-ref))")
+            && register_state.contains("(root_set base-slot state)")
             && !register_state.contains("push-int-vector")
             && !register_state.contains("push-object-vector"),
         "register-defns state は native stage1 の return/root-pop 境界で壊れないよう root_set base slot 更新で vector 化するべき"
     );
+    let base_slot_pos = register_state
+        .find("base-slot (root_push base)")
+        .expect("make-register-state は base-slot を root すること");
+    let done_ref_pos = register_state
+        .find("done-ref (ref-new done)")
+        .expect("make-register-state は done を ref snapshot すること");
+    let next_ftable_root_pos = register_state
+        .find("(root_push next-ftable)")
+        .expect("make-register-state は next-ftable を root すること");
+    let final_state_root_set_pos = register_state
+        .find("(root_set base-slot state)")
+        .expect("make-register-state は final state を base-slot に root_set すること");
+    assert!(
+        base_slot_pos < done_ref_pos
+            && done_ref_pos < next_ftable_root_pos
+            && next_ftable_root_pos < final_state_root_set_pos,
+        "make-register-state は state root slot を scalar/object temp roots より下に置き、final state をその slot に更新するべき"
+    );
 
     let compiler_mode = selfhost_module("CompilerMode.ls");
+    let register_state_progress = compiler_mode
+        .split("(defn make-register-state-progress")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("CompilerMode.ls に make-register-state-progress が存在すること");
+    let progress_base_slot_pos = register_state_progress
+        .find("base-slot (root_push base)")
+        .expect("make-register-state-progress は base-slot を root すること");
+    let progress_done_ref_pos = register_state_progress
+        .find("done-ref (ref-new done)")
+        .expect("make-register-state-progress は done を ref snapshot すること");
+    let progress_final_state_root_set_pos = register_state_progress
+        .find("(root_set base-slot state)")
+        .expect("make-register-state-progress は final state を base-slot に root_set すること");
+    assert!(
+        progress_base_slot_pos < progress_done_ref_pos
+            && progress_done_ref_pos < progress_final_state_root_set_pos,
+        "progress mirror も final state を下位 base-slot で最後まで root するべき"
+    );
+
     let register_pairs_state = compiler_mode
         .split("(defn make-register-pairs-state")
         .nth(1)
@@ -4099,6 +4144,74 @@ fn test_wasm_compiler_register_state_builders_snapshot_scalar_fields() {
             && register_pairs_state
                 .contains("(vector-push with-ftable (ref-get next-func-idx-ref))"),
         "register-all-pairs state は pair 間 ftable carry を壊さないよう scalar fields を ref snapshot してから vector 化するべき"
+    );
+}
+
+#[test]
+fn test_wasm_compiler_register_defns_continuations_snapshot_state_slots() {
+    let source = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("canonical Compiler.ls が読み込めること");
+    let continue_step = source
+        .split("(defn continue-register-defns-step")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("Compiler.ls に continue-register-defns-step が存在すること");
+    let continue_step8 = source
+        .split("(defn continue-register-defns-step-8")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("Compiler.ls に continue-register-defns-step-8 が存在すること");
+    let continue_step64 = source
+        .split("(defn continue-register-defns-step-64")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("Compiler.ls に continue-register-defns-step-64 が存在すること");
+    let chunked = source
+        .split("(defn register-defns-chunked")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("Compiler.ls に register-defns-chunked が存在すること");
+
+    for (name, body, callee) in [
+        (
+            "continue-register-defns-step",
+            continue_step,
+            "register-defns-step",
+        ),
+        (
+            "continue-register-defns-step-8",
+            continue_step8,
+            "register-defns-step-8",
+        ),
+        (
+            "continue-register-defns-step-64",
+            continue_step64,
+            "register-defns-step-64",
+        ),
+    ] {
+        assert!(
+            body.contains("next-idx (vector-get state 1)")
+                && body.contains("next-ftable (vector-get state 2)")
+                && body.contains("next-func-idx (vector-get state 3)")
+                && body.contains("(root_push next-ftable)")
+                && body.contains(&format!(
+                    "({callee} decls next-idx n next-ftable next-func-idx)"
+                ))
+                && !body.contains(&format!(
+                    "({callee} decls (vector-get state 1) n (vector-get state 2) (vector-get state 3))"
+                )),
+            "{name} は state slot を call 引数内で再取得せず、ftable を root した snapshot から継続するべき"
+        );
+    }
+
+    assert!(
+        chunked.contains("state (register-defns-step-64 decls idx n ftable func-idx)")
+            && chunked.contains("state-slot (root_push state)")
+            && chunked.contains("result (continue-register-defns-step-64 decls n state)")
+            && !chunked.contains(
+                "(continue-register-defns-step-64 decls n (register-defns-step-64 decls idx n ftable func-idx))"
+            ),
+        "register-defns-chunked は initial state を root してから 64-step continuation に渡すべき"
     );
 }
 

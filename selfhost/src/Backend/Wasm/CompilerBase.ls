@@ -1032,18 +1032,18 @@
                 result))))))))
 (defn make-register-state [done next-idx next-ftable next-func-idx]
   (do
-    (let [done-ref (ref-new done)
-      next-idx-ref (ref-new next-idx)
-      next-func-idx-ref (ref-new next-func-idx)]
+    (let [base (vector-new 4)]
       (do
-        (root_push done-ref)
-        (root_push next-idx-ref)
-        (root_push next-func-idx-ref)
-        (root_push next-ftable)
-        (let [base (vector-new 4)]
+        (let [base-slot (root_push base)]
           (do
-            (let [base-slot (root_push base)]
+            (let [done-ref (ref-new done)
+              next-idx-ref (ref-new next-idx)
+              next-func-idx-ref (ref-new next-func-idx)]
               (do
+                (root_push done-ref)
+                (root_push next-idx-ref)
+                (root_push next-func-idx-ref)
+                (root_push next-ftable)
                 (let [with-done (vector-push base (ref-get done-ref))]
                   (do
                     (root_set base-slot with-done)
@@ -1055,6 +1055,7 @@
                             (root_set base-slot with-ftable)
                             (let [state (vector-push with-ftable (ref-get next-func-idx-ref))]
                               (do
+                                (root_set base-slot state)
                                 (root_pop)
                                 (root_pop)
                                 (root_pop)

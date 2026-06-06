@@ -1992,18 +1992,18 @@
     (print next-idx)
     (print next-func-idx)
     (print (vector-length next-ftable))
-    (let [done-ref (ref-new done)
-      next-idx-ref (ref-new next-idx)
-      next-func-idx-ref (ref-new next-func-idx)]
+    (let [base (vector-new 4)]
       (do
-        (root_push done-ref)
-        (root_push next-idx-ref)
-        (root_push next-func-idx-ref)
-        (root_push next-ftable)
-        (let [base (vector-new 4)]
+        (let [base-slot (root_push base)]
           (do
-            (let [base-slot (root_push base)]
+            (let [done-ref (ref-new done)
+              next-idx-ref (ref-new next-idx)
+              next-func-idx-ref (ref-new next-func-idx)]
               (do
+                (root_push done-ref)
+                (root_push next-idx-ref)
+                (root_push next-func-idx-ref)
+                (root_push next-ftable)
                 (let [with-done (vector-push base (ref-get done-ref))]
                   (do
                     (root_set base-slot with-done)
@@ -2037,6 +2037,7 @@
                                 (print (ref-get done-ref))
                                 (print (ref-get next-idx-ref))
                                 (print (ref-get next-func-idx-ref))
+                                (root_set base-slot state)
                                 (root_pop)
                                 (root_pop)
                                 (root_pop)
@@ -2117,18 +2118,24 @@
         (print (vector-get state0 0))
         (print (vector-get state0 1))
         (print (vector-get state0 3))
-        (let [result (register-defns-chunked decls (vector-get state0 1) n (vector-get state0 2) (vector-get state0 3))]
+        (let [state0-next-idx (vector-get state0 1)
+          state0-ftable (vector-get state0 2)
+          state0-next-func-idx (vector-get state0 3)]
           (do
-            (root_push result)
-            (print 9000000099)
-            (print (vector-length result))
-            (print (vector-get result 1))
-            (print (vector-get result 3))
-            (root_pop)
-            (root_pop)
-            (root_pop)
-            (root_pop)
-            result))))))
+            (root_push state0-ftable)
+            (let [result (register-defns-chunked decls state0-next-idx n state0-ftable state0-next-func-idx)]
+              (do
+                (root_push result)
+                (print 9000000099)
+                (print (vector-length result))
+                (print (vector-get result 1))
+                (print (vector-get result 3))
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result))))))))
 
 (defn register-all-pairs-step-progress [pairs idx n ftable func-idx]
   (if (>= idx n)
