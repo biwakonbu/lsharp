@@ -245,9 +245,24 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                  (print user-total)
                  (print code-len)
                  (print data-len)
-                 (let [segment-ctx (make-x86-code-segment-context native-callables starts 10 user-total)]
+                 (let [starts-size-sample-idx slot-sample-start
+                       starts-size-sample-next-idx (+ starts-size-sample-idx 1)
+                       starts-size-sample-start (if (< starts-size-sample-idx (vector-length starts)) (vector-get starts starts-size-sample-idx) -1)
+                       starts-size-sample-next (if (< starts-size-sample-next-idx (vector-length starts)) (vector-get starts starts-size-sample-next-idx) user-total)
+                       starts-size-sample-size (if (< starts-size-sample-start 0) -1 (- starts-size-sample-next starts-size-sample-start))
+                       segment-ctx (make-x86-code-segment-context native-callables starts 10 user-total)]
                    (do
                      (root_push segment-ctx)
+                     (print 9000000120)
+                     (print starts-size-sample-idx)
+                     (print (+ starts-size-sample-idx 10))
+                     (print (vector-length starts))
+                     (print starts-size-sample-start)
+                     (print starts-size-sample-next)
+                     (print user-total)
+                     (print starts-size-sample-size)
+                     (print 9000000121)
+                     (print slot-sample-end)
                      (print 9000000038)
                      (print entrypoint-func-idx)
                      (print entrypoint-offset)
@@ -1055,6 +1070,8 @@ fn test_linux_x86_representative_seed_can_print_stage_progress_markers() {
         "9000000038",
         "9000000039",
         "9000000040",
+        "9000000120",
+        "9000000121",
     ] {
         assert!(
             source.contains(marker),
@@ -1084,6 +1101,11 @@ fn test_linux_x86_representative_seed_can_print_stage_progress_markers() {
         "(print sample-end)",
         "progress-after-starts",
         "progress-after-user-total",
+        "starts-size-sample-idx slot-sample-start",
+        "starts-size-sample-size (if (< starts-size-sample-start 0) -1 (- starts-size-sample-next starts-size-sample-start))",
+        "(print 9000000120)",
+        "(print starts-size-sample-size)",
+        "(print 9000000121)",
         "progress-after-code-len",
         "(if (= progress-mode 1)",
         "(print 9000000038)",
