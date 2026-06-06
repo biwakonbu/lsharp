@@ -2043,6 +2043,12 @@
                                 (root_pop)
                                 (root_pop)
                                 (root_pop)
+                                (print 9000000116)
+                                (print (vector-length state))
+                                (print (vector-get state 0))
+                                (print (vector-get state 1))
+                                (print (vector-get state 3))
+                                (print (vector-length (vector-get state 2)))
                                 state))))))))))))))))
 
 (defn register-defns-step-progress [decls idx n ftable func-idx]

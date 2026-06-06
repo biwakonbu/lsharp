@@ -1168,6 +1168,7 @@ fn test_selfhost_compiler_mode_has_payload_progress_probe() {
         "(print 9000000113)",
         "(print 9000000114)",
         "(print 9000000115)",
+        "(print 9000000116)",
         "base-slot (root_push base)",
         "with-done (vector-push base (ref-get done-ref))",
         "(root_set base-slot with-done)",
