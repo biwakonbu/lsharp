@@ -16431,6 +16431,219 @@ fn linux_x86_selfhost_ref_param_rooted_state_set_get_object_bytes() -> Vec<u8> {
         .collect::<Vec<u8>>()
 }
 
+fn lsharp_ir_instruction_expr(opcode: u32, operand: i64) -> String {
+    if opcode == 40 {
+        format!("(make-call {operand})")
+    } else {
+        format!("(make-instr {opcode} {operand})")
+    }
+}
+
+fn lsharp_ir_vector_bindings(prefix: &str, instrs: &[(u32, i64)]) -> String {
+    assert!(
+        !instrs.is_empty(),
+        "IR vector binding helper は 1 命令以上を要求する"
+    );
+    let mut bindings = String::new();
+    for (idx, (opcode, operand)) in instrs.iter().copied().enumerate() {
+        let expr = lsharp_ir_instruction_expr(opcode, operand);
+        if idx == 0 {
+            bindings.push_str(&format!(
+                "        {prefix}0 (vector-push (vector-new {len}) {expr})\n",
+                len = instrs.len()
+            ));
+        } else {
+            bindings.push_str(&format!(
+                "        {prefix}{idx} (vector-push {prefix}{prev} {expr})\n",
+                prev = idx - 1
+            ));
+        }
+    }
+    bindings.push_str(&format!(
+        "        {prefix} {prefix}{last}\n",
+        last = instrs.len() - 1
+    ));
+    bindings
+}
+
+fn linux_x86_selfhost_ref_param_rooted_state_print_set_get_object_bytes() -> Vec<u8> {
+    let main_instrs = [
+        (3, 0),
+        (56, 0),
+        (11, 0),
+        (10, 0),
+        (74, 0),
+        (44, 0),
+        (3, 0),
+        (54, 0),
+        (11, 1),
+        (10, 0),
+        (3, 0),
+        (3, 1),
+        (10, 1),
+        (3, 10),
+        (40, 1),
+        (44, 0),
+        (10, 0),
+        (57, 0),
+        (3, 3),
+        (53, 0),
+    ];
+    let mut helper_instrs = vec![
+        (10, 1),
+        (74, 0),
+        (44, 0),
+        (3, 4),
+        (54, 0),
+        (11, 6),
+        (10, 6),
+        (74, 0),
+        (11, 7),
+        (10, 2),
+        (56, 0),
+        (11, 8),
+        (10, 3),
+        (56, 0),
+        (11, 9),
+        (10, 5),
+        (56, 0),
+        (11, 10),
+        (10, 8),
+        (74, 0),
+        (44, 0),
+        (10, 9),
+        (74, 0),
+        (44, 0),
+        (10, 10),
+        (74, 0),
+        (44, 0),
+        (10, 4),
+        (74, 0),
+        (44, 0),
+        (10, 6),
+        (10, 8),
+        (57, 0),
+        (55, 0),
+        (11, 11),
+        (10, 7),
+        (10, 11),
+        (76, 0),
+        (44, 0),
+        (10, 11),
+        (10, 9),
+        (57, 0),
+        (55, 0),
+        (11, 12),
+        (10, 7),
+        (10, 12),
+        (76, 0),
+        (44, 0),
+        (10, 12),
+        (10, 4),
+        (55, 0),
+        (11, 13),
+        (10, 7),
+        (10, 13),
+        (76, 0),
+        (44, 0),
+        (10, 13),
+        (10, 10),
+        (57, 0),
+        (55, 0),
+        (11, 14),
+        (10, 7),
+        (10, 14),
+        (76, 0),
+        (44, 0),
+        (1, 9000000114),
+        (59, 0),
+        (44, 0),
+        (10, 14),
+        (52, 0),
+        (59, 0),
+        (44, 0),
+        (10, 14),
+        (3, 0),
+        (53, 0),
+        (59, 0),
+        (44, 0),
+        (10, 1),
+        (59, 0),
+        (44, 0),
+        (10, 1),
+        (57, 0),
+        (59, 0),
+        (44, 0),
+        (10, 1),
+        (10, 14),
+        (58, 0),
+        (44, 0),
+        (1, 9000000118),
+        (59, 0),
+        (44, 0),
+        (10, 1),
+        (59, 0),
+        (44, 0),
+        (10, 1),
+        (57, 0),
+        (3, 3),
+        (53, 0),
+        (44, 0),
+    ];
+    for _ in 0..6 {
+        helper_instrs.push((75, 0));
+        helper_instrs.push((44, 0));
+    }
+    helper_instrs.push((3, 0));
+
+    let main_bindings = lsharp_ir_vector_bindings("main-ir", &main_instrs);
+    let helper_bindings = lsharp_ir_vector_bindings("helper-ir", &helper_instrs);
+    let output = run_native_pipeline_harness(&format!(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import Backend.Native.NativeEmit)
+(import IR.IR)
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn main []
+  (let [
+{main_bindings}{helper_bindings}        main-meta (make-function-meta 0 2 main-ir)
+        helper-meta (make-function-meta 5 9 helper-ir)
+        functions (vector-push
+                    (vector-push (vector-new 2) main-meta)
+                    helper-meta)
+        target (make-target 3)
+        native (emit-native-function-meta-bundle functions target)
+        object (emit-object native target)]
+    (do
+      (print-bytes object 0 (vector-length object))
+      0)))"#
+    ));
+    output
+        .trim()
+        .lines()
+        .map(|line| {
+            line.parse::<u8>().unwrap_or_else(|_| {
+                panic!("Linux x86_64 rooted ref state print ELF object byte parse 失敗: {line}")
+            })
+        })
+        .collect::<Vec<u8>>()
+}
+
 fn host_target_plain_program_code_bytes(instrs: &[(u32, i64)]) -> Vec<u8> {
     let instr_bindings = instrs
         .iter()
@@ -26683,6 +26896,44 @@ fn test_e2e_native_linux_x86_host_generates_ref_param_rooted_state_set_get_elf_o
     assert_eq!(
         written, object_bytes,
         "Linux x86_64 rooted ref state object artifact は生成 ELF object をそのまま保存すること"
+    );
+}
+
+/// NATIVE-LINUX-X86-02gf: print helper 呼び出しを挟んだ rooted writer が caller-owned Ref を更新できる Linux ELF artifact を生成すること。
+#[test]
+#[ignore]
+fn test_e2e_native_linux_x86_host_generates_ref_param_rooted_state_print_set_get_elf_object_artifact()
+ {
+    let artifact_path =
+        std::env::var_os("LSHARP_NATIVE_LINUX_X86_REF_PARAM_ROOTED_STATE_PRINT_OBJECT_ARTIFACT")
+            .expect(
+                "LSHARP_NATIVE_LINUX_X86_REF_PARAM_ROOTED_STATE_PRINT_OBJECT_ARTIFACT に Linux x86_64 rooted ref state print object artifact path を指定すること",
+            );
+    let artifact_path = std::path::PathBuf::from(artifact_path);
+    if let Some(parent) = artifact_path.parent() {
+        std::fs::create_dir_all(parent)
+            .expect("Linux x86_64 rooted ref state print object artifact dir 作成に失敗");
+    }
+
+    let object_bytes = linux_x86_selfhost_ref_param_rooted_state_print_set_get_object_bytes();
+    assert!(
+        object_bytes.len() > 64,
+        "Linux x86_64 rooted ref state print ELF object は ELF64 section table を持つこと"
+    );
+    assert!(
+        object_bytes
+            .windows("generated".len())
+            .any(|window| window == b"generated"),
+        "Linux x86_64 rooted ref state print ELF object は generated symbol を持つこと"
+    );
+
+    std::fs::write(&artifact_path, &object_bytes)
+        .expect("Linux x86_64 rooted ref state print object artifact 書き込みに失敗");
+    let written = std::fs::read(&artifact_path)
+        .expect("Linux x86_64 rooted ref state print object artifact 読み戻しに失敗");
+    assert_eq!(
+        written, object_bytes,
+        "Linux x86_64 rooted ref state print object artifact は生成 ELF object をそのまま保存すること"
     );
 }
 
