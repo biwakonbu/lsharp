@@ -713,31 +713,32 @@
               (let [text-len (string-length text)
                 bytes (string-to-byte-vector text 0 text-len (vector-new 8))
                 offset (+ (string-literal-data-base) (vector-length (ref-get data-ref)))]
-                (let [header (write-i32-le (write-i32-le (vector-new 8) 1) text-len)]
-                  (do
-                    (root_push bytes)
-                    (root_push header)
-                    (let [data-with-header (append-byte-vector (ref-get data-ref) header 0 8)]
-                      (do
-                        (root_push data-with-header)
-                        (let [updated-data (append-byte-vector data-with-header bytes 0 (vector-length bytes))]
-                          (do
-                            (root_push updated-data)
-                            (let [result (emit-to instrs 1 offset)]
-                              (do
-                                (root_push result)
-                                (ref-set data-ref updated-data)
-                                (root_pop)
-                                (root_pop)
-                                (root_pop)
-                                (root_pop)
-                                (root_pop)
-                                (root_pop)
-                                (root_pop)
-                                (root_pop)
-                                (root_pop)
-                                (root_pop)
-                                result))))))))))))))))
+                (do
+                  (root_push bytes)
+                  (let [header (write-i32-le (write-i32-le (vector-new 8) 1) text-len)]
+                    (do
+                      (root_push header)
+                      (let [data-with-header (append-byte-vector (ref-get data-ref) header 0 8)]
+                        (do
+                          (root_push data-with-header)
+                          (let [updated-data (append-byte-vector data-with-header bytes 0 (vector-length bytes))]
+                            (do
+                              (root_push updated-data)
+                              (let [result (emit-to instrs 1 offset)]
+                                (do
+                                  (root_push result)
+                                  (ref-set data-ref updated-data)
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  result)))))))))))))))))
 (defn string-key-hash-step [source pos end acc]
   (if (>= pos end)
     (make-loop-step-state 1 pos acc)

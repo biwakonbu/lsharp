@@ -3961,6 +3961,32 @@ fn test_wasm_compiler_base_builtin_dispatch_uses_literal_constants() {
 }
 
 #[test]
+fn test_wasm_compiler_string_literal_roots_bytes_before_header_allocation() {
+    let source = std::fs::read_to_string(selfhost_source_path("CompilerBase.ls"))
+        .expect("canonical CompilerBase.ls が読み込めること");
+    let body = source
+        .split("(defn compile-string-literal-with-source")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("CompilerBase.ls に compile-string-literal-with-source が存在すること");
+
+    let bytes_pos = body
+        .find("bytes (string-to-byte-vector text 0 text-len (vector-new 8))")
+        .expect("string literal compiler は text bytes を生成すること");
+    let root_bytes_pos = body
+        .find("(root_push bytes)")
+        .expect("string literal compiler は bytes を root すること");
+    let header_pos = body
+        .find("header (write-i32-le")
+        .expect("string literal compiler は string object header を生成すること");
+
+    assert!(
+        bytes_pos < root_bytes_pos && root_bytes_pos < header_pos,
+        "compile-string-literal-with-source は header allocation 前に bytes を root して data section への literal bytes を保持するべき"
+    );
+}
+
+#[test]
 fn test_wasm_compiler_env_bind_returns_updated_environment_after_root_pop() {
     let source = std::fs::read_to_string(selfhost_source_path("CompilerBase.ls"))
         .expect("canonical CompilerBase.ls が読み込めること");
