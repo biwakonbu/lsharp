@@ -249,10 +249,8 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                        starts-size-sample-next-idx (+ starts-size-sample-idx 1)
                        starts-size-sample-start (if (< starts-size-sample-idx (vector-length starts)) (vector-get starts starts-size-sample-idx) -1)
                        starts-size-sample-next (if (< starts-size-sample-next-idx (vector-length starts)) (vector-get starts starts-size-sample-next-idx) user-total)
-                       starts-size-sample-size (if (< starts-size-sample-start 0) -1 (- starts-size-sample-next starts-size-sample-start))
-                       segment-ctx (make-x86-code-segment-context native-callables starts 10 user-total)]
+                       starts-size-sample-size (if (< starts-size-sample-start 0) -1 (- starts-size-sample-next starts-size-sample-start))]
                    (do
-                     (root_push segment-ctx)
                      (print 9000000120)
                      (print starts-size-sample-idx)
                      (print (+ starts-size-sample-idx 10))
@@ -265,13 +263,9 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                      (print slot-sample-end)
                      (print 9000000038)
                      (print entrypoint-func-idx)
-                     (print entrypoint-offset)
-                     (root_pop))))
-               (let [segment-ctx (make-x86-code-segment-context native-callables starts 10 user-total)]
-                 (do
-                   (root_push segment-ctx)
-                   (if (= metadata-mode 1)
-                     (print-x86-function-segment-metadata-loop segment-ctx range-start range-end metadata-prefix-limit)
+                     (print entrypoint-offset))))
+               (if (= metadata-mode 1)
+                     (print-x86-function-segment-metadata-loop native-callables starts 10 user-total range-start range-end metadata-prefix-limit)
                      (do
                        (if (= include-header 1)
                          (do
@@ -284,7 +278,7 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                         (print code-len)
                           (print 9000000002))
                          0)
-                       (print-x86-function-code-segments-loop segment-ctx range-start range-end)
+                       (print-x86-function-code-segments-loop native-callables starts 10 user-total range-start range-end)
                        (if (= include-tail 1)
                          (do
                            (print-x86-code-trailer-segments 10)
@@ -292,8 +286,7 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                         (print data-len)
                         (print 9000000004)
                            (print-packed-code-bytes-loop data 0 data-len))
-                         0)))
-                   (root_pop)))))))"#;
+                         0)))))))"#;
     let payload_expr = "(compile-file-functions-payload-with-cache (command-line-arg 1) 10 cache-ref parse-count-ref)";
     let source = actual_stage23_seed_source_with_payload_and_code_binding_and_target(
         payload_expr,
@@ -554,10 +547,10 @@ fn test_linux_x86_representative_seed_uses_layout_emit_for_segmented_native_code
         "Linux x86 segmented seed は native 実行時に壊れやすい 7 引数 wrapper を直接呼ばない"
     );
     assert!(
-        !source.contains(
-            "(print-x86-function-code-segments-loop functions starts import-count import-stub-offset"
-        ),
-        "Linux x86 segmented seed は native 実行時に壊れやすい 6 引数 loop call を直接使わない"
+        source.contains(
+            "(print-x86-function-code-segments-loop native-callables starts 10 user-total range-start range-end"
+        ) && !source.contains("(print-x86-function-code-segments-loop segment-ctx"),
+        "Linux x86 segmented seed は stage2 native で壊れる segment ctx scalar を経由せず transport loop に直接 scalar を渡すべき"
     );
     assert!(
         source.contains("native-callables callables"),
@@ -613,18 +606,19 @@ fn test_linux_x86_representative_seed_uses_layout_emit_for_segmented_native_code
             && source.contains("range-end-arg (parse-positive-int (command-line-arg 3))")
             && source.contains("include-header (if (= range-end-arg 0) 1 (parse-positive-int (command-line-arg 4)))")
             && source.contains("include-tail (if (= range-end-arg 0) 1 (parse-positive-int (command-line-arg 5)))")
-            && source.contains("(print-x86-function-code-segments-loop segment-ctx range-start range-end)")
+            && source.contains("(print-x86-function-code-segments-loop native-callables starts 10 user-total range-start range-end)")
             && source.contains("(if (= include-tail 1)")
-            && !source.contains("(print-x86-code-segments native-callables starts 10 user-total)"),
+            && !source.contains("(print-x86-code-segments native-callables starts 10 user-total)")
+            && !source.contains("segment-ctx (make-x86-code-segment-context"),
         "Linux x86 segmented seed は native heap OOM を避けるため function range を複数 process で出力できるべき"
     );
     let entrypoint_checks = [
         !source.contains("emitted-main-func-idx"),
         source.contains("source-path (command-line-arg 1)"),
         source.contains("source-path-root (root_push source-path)"),
-        source.contains(
-            "payload-base (compile-file-functions-payload-with-cache source-path 10 cache-ref parse-count-ref)",
-        ),
+        source.contains("payload-base (if (= pre-payload-progress-mode 1)")
+            && source
+                .contains("(compile-file-functions-payload-with-cache source-path 10 cache-ref parse-count-ref)"),
         !source.contains(
             "payload-base (compile-file-functions-payload-with-cache (command-line-arg 1) 10 cache-ref parse-count-ref)",
         ),
@@ -1012,7 +1006,7 @@ fn test_linux_x86_representative_seed_releases_function_segment_before_next_segm
         .find("(print-packed-code-segment-with-length padded-segment function-size)")
         .expect("function segment を packed segment として出力すること");
     let recur_pos = body[print_pos..]
-        .find("(print-x86-function-code-segments-loop ctx (+ idx 1) len)")
+        .find("(print-x86-function-code-segments-loop functions starts import-count import-stub-offset (+ idx 1) len)")
         .map(|pos| print_pos + pos)
         .expect("function segment loop は次 segment へ進むこと");
     let release_pos = body[print_pos..recur_pos]
@@ -1032,10 +1026,10 @@ fn test_linux_x86_representative_seed_can_print_function_segment_metadata() {
     lsharp_syntax::parse(&source)
         .expect("Linux x86 segmented seed source は metadata helper 追加後も parse できること");
     assert!(
-        source.contains("(defn print-x86-function-segment-metadata-loop [ctx idx len prefix-limit]")
+        source.contains("(defn print-x86-function-segment-metadata-loop [functions starts import-count import-stub-offset idx len prefix-limit]")
             && source.contains("metadata-mode (if (> (string-length (command-line-arg 6)) 0) 1 0)")
             && source.contains(
-                "(print-x86-function-segment-metadata-loop segment-ctx range-start range-end metadata-prefix-limit)"
+                "(print-x86-function-segment-metadata-loop native-callables starts 10 user-total range-start range-end metadata-prefix-limit)"
             )
             && source.contains("(print (native-function-param-count func-meta))")
             && source.contains("(print (native-function-local-count func-meta))")
@@ -1046,7 +1040,7 @@ fn test_linux_x86_representative_seed_can_print_function_segment_metadata() {
             && source.contains("command-line-arg 7")
             && source.contains("(print 9000000021)")
             && source.contains(
-                "(let [final (print-x86-function-segment-metadata-loop ctx (+ idx 1) len prefix-limit)]"
+                "(let [final (print-x86-function-segment-metadata-loop functions starts import-count import-stub-offset (+ idx 1) len prefix-limit)]"
             ),
         "Linux x86 segmented seed は通常 transport を変えず、任意 range の function metadata を native stage1 実行から出せるべき"
     );
@@ -1539,26 +1533,14 @@ fn test_linux_x86_representative_seed_keeps_main_as_last_parseable_defn() {
 }
 
 #[test]
-fn test_linux_x86_representative_seed_roots_code_segment_context_inputs() {
+fn test_linux_x86_representative_seed_avoids_segment_context_for_transport_scalars() {
     let source = linux_x86_representative_actual_stage23_seed_source();
-    let body = source
-        .split("(defn make-x86-code-segment-context")
-        .nth(1)
-        .and_then(|tail| {
-            tail.split("(defn x86-code-segment-context-functions")
-                .next()
-        })
-        .expect("Linux x86 segmented seed に make-x86-code-segment-context が存在すること");
 
     assert!(
-        body.contains("(root_push functions)")
-            && body.contains("(root_push starts)")
-            && body.contains("(root_push base0)")
-            && body.contains("(root_push base1)")
-            && body.contains("(root_push base2)")
-            && body.contains("(let [ctx (vector-push base2 import-stub-offset)]")
-            && body.matches("(root_pop)").count() >= 5,
-        "Linux x86 segmented seed の segment context は stage1 native 実行中の vector-push GC で functions/starts を壊さないよう root-safe に構築するべき"
+        !source.contains("segment-ctx (make-x86-code-segment-context")
+            && source.contains("(defn print-x86-function-code-segments-loop [functions starts import-count import-stub-offset idx len]")
+            && source.contains("(defn print-x86-function-segment-metadata-loop [functions starts import-count import-stub-offset idx len prefix-limit]"),
+        "Linux x86 segmented seed は stage2 native 実行で segment ctx の scalar field が 0 化するため、transport scalar を ctx 経由にせず直接 loop に渡すべき"
     );
 }
 
@@ -7475,48 +7457,41 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
 (defn x86-code-segment-context-import-count [ctx] (vector-get ctx 2))
 (defn x86-code-segment-context-import-stub-offset [ctx] (vector-get ctx 3))
 
-(defn print-x86-function-code-segments-loop [ctx idx len]
+(defn print-x86-function-code-segments-loop [functions starts import-count import-stub-offset idx len]
   (if (>= idx len)
     0
     (do
-      (let [functions (x86-code-segment-context-functions ctx)
-            starts (x86-code-segment-context-starts ctx)
-            import-count (x86-code-segment-context-import-count ctx)
-            import-stub-offset (x86-code-segment-context-import-stub-offset ctx)]
-        (do
-          (root_push ctx)
       (root_push functions)
       (root_push starts)
       (let [actual-idx (+ idx import-count)
-             func-meta (vector-get functions actual-idx)
-             function-start (vector-get starts idx)]
+            func-meta (vector-get functions actual-idx)
+            function-start (vector-get starts idx)]
         (do
           (root_push func-meta)
-		          (let [function-size (x86-function-slot-size-from-starts starts import-stub-offset idx function-start)
-		                result (ref-new (vector-new 0))]
-		            (do
-		              (root_push result)
-		              (let [layout (make-x86-function-emit-layout import-count import-stub-offset function-start 0)]
-		                (do
-		                   (root_push layout)
-		                   (generate-native-function-x86-64-bundle-with-layout func-meta result starts functions layout)
-		                   (let [segment (ref-get result)
-		                         padded-segment (pad-byte-vector-to-length segment function-size)]
-	                     (do
-	                       (root_push segment)
-	                       (root_push padded-segment)
-	                       (print-packed-code-segment-with-length padded-segment function-size)
-			                       (root_pop)
-			                       (root_pop)
-		                           (root_pop)
-		                           (root_pop)
-		                           (root_pop)
-	                           (root_pop)
-	                           (root_pop)
-		                        (let [final (print-x86-function-code-segments-loop ctx (+ idx 1) len)]
-	                        (do
-	                           (root_pop)
-                            final)))))))))))))))
+          (let [function-size (x86-function-slot-size-from-starts starts import-stub-offset idx function-start)
+                result (ref-new (vector-new 0))]
+            (do
+              (root_push result)
+              (let [layout (make-x86-function-emit-layout import-count import-stub-offset function-start 0)]
+                (do
+                  (root_push layout)
+                  (generate-native-function-x86-64-bundle-with-layout func-meta result starts functions layout)
+                  (let [segment (ref-get result)
+                        padded-segment (pad-byte-vector-to-length segment function-size)]
+                    (do
+                      (root_push segment)
+                      (root_push padded-segment)
+                      (print-packed-code-segment-with-length padded-segment function-size)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (let [final (print-x86-function-code-segments-loop functions starts import-count import-stub-offset (+ idx 1) len)]
+                        (do
+                          (root_pop)
+                          (root_pop)
+                          final)))))))))))))
 
 (defn x86-param-spill-prefix-size [param-count]
   (if (>= param-count 20)
@@ -8108,18 +8083,13 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
           len
           (apply-stack-delta depth (opcode-stack-delta opcode operand functions)))))))
 
-(defn print-x86-function-segment-metadata-loop [ctx idx len prefix-limit]
+(defn print-x86-function-segment-metadata-loop [functions starts import-count import-stub-offset idx len prefix-limit]
   (if (>= idx len)
     0
-    (let [functions (x86-code-segment-context-functions ctx)
-          starts (x86-code-segment-context-starts ctx)
-          import-count (x86-code-segment-context-import-count ctx)
-          import-stub-offset (x86-code-segment-context-import-stub-offset ctx)]
-      (do
-        (root_push ctx)
-        (root_push functions)
-        (root_push starts)
-        (let [actual-idx (+ idx import-count)
+    (do
+      (root_push functions)
+      (root_push starts)
+      (let [actual-idx (+ idx import-count)
               func-meta (vector-get functions actual-idx)
               function-start (vector-get starts idx)]
           (do
@@ -8194,22 +8164,17 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
                     (root_pop)
                     (root_pop)
                     (root_pop)
-                    (root_pop)
-                    (root_pop)
-                    (let [final (print-x86-function-segment-metadata-loop ctx (+ idx 1) len prefix-limit)]
+                    (let [final (print-x86-function-segment-metadata-loop functions starts import-count import-stub-offset (+ idx 1) len prefix-limit)]
                       (do
                         (root_pop)
-                        final))))))))))))
+                        (root_pop)
+                        final)))))))))))
 
 (defn print-x86-code-segments [functions starts import-count import-stub-offset]
   (do
     (root_push functions)
     (root_push starts)
-    (let [ctx (make-x86-code-segment-context functions starts import-count import-stub-offset)]
-      (do
-        (root_push ctx)
-        (print-x86-function-code-segments-loop ctx 0 (vector-length starts))
-        (root_pop)))
+    (print-x86-function-code-segments-loop functions starts import-count import-stub-offset 0 (vector-length starts))
     (print-x86-code-trailer-segments import-count)
     (root_pop)
     (root_pop)
