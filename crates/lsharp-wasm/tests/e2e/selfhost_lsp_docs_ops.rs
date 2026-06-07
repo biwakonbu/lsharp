@@ -2787,7 +2787,7 @@ fn test_e2e_native_ops04_linux_x86_server_target_contract() {
         "stage-entry-ir-trace.txt",
         "LSHARP_NATIVE_LINUX_X86_ACTUAL_HEAP_BYTES",
         "LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_SIZE",
-        "ACTUAL_CHUNK_SIZE=\"${LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_SIZE:-8}\"",
+        "ACTUAL_CHUNK_SIZE=\"${LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_SIZE:-4}\"",
         "LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_RETRIES",
         "run_actual_stage_chunked",
         "run_actual_stage_range",
