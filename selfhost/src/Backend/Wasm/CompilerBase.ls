@@ -724,10 +724,10 @@
                           (let [updated-data (append-byte-vector data-with-header bytes 0 (vector-length bytes))]
                             (do
                               (root_push updated-data)
+                              (ref-set data-ref updated-data)
                               (let [result (emit-to instrs 1 offset)]
                                 (do
                                   (root_push result)
-                                  (ref-set data-ref updated-data)
                                   (root_pop)
                                   (root_pop)
                                   (root_pop)

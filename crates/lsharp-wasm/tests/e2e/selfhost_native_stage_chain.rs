@@ -3987,6 +3987,32 @@ fn test_wasm_compiler_string_literal_roots_bytes_before_header_allocation() {
 }
 
 #[test]
+fn test_wasm_compiler_string_literal_updates_data_ref_before_result_emit() {
+    let source = std::fs::read_to_string(selfhost_source_path("CompilerBase.ls"))
+        .expect("canonical CompilerBase.ls が読み込めること");
+    let body = source
+        .split("(defn compile-string-literal-with-source")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("CompilerBase.ls に compile-string-literal-with-source が存在すること");
+
+    let updated_data_pos = body
+        .find("updated-data (append-byte-vector data-with-header bytes 0 (vector-length bytes))")
+        .expect("string literal compiler は updated-data を生成すること");
+    let ref_set_pos = body
+        .find("(ref-set data-ref updated-data)")
+        .expect("string literal compiler は data-ref を更新すること");
+    let emit_result_pos = body
+        .find("result (emit-to instrs 1 offset)")
+        .expect("string literal compiler は literal offset IR を emit すること");
+
+    assert!(
+        updated_data_pos < ref_set_pos && ref_set_pos < emit_result_pos,
+        "compile-string-literal-with-source は emit-to の allocation 前に data-ref を更新して stage2 native の data section を保持するべき"
+    );
+}
+
+#[test]
 fn test_wasm_compiler_env_bind_returns_updated_environment_after_root_pop() {
     let source = std::fs::read_to_string(selfhost_source_path("CompilerBase.ls"))
         .expect("canonical CompilerBase.ls が読み込めること");
