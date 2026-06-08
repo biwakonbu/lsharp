@@ -1099,6 +1099,9 @@
                                 (let [functions (compile-all-src-decl-pairs-chunked-progress all-pairs 0 n ftable data-ref functions0)]
                                   (do
                                     (root_push functions)
+                                    (print 9000000132)
+                                    (print (vector-length functions))
+                                    (print (vector-length (ref-get data-ref)))
                                     (print 9000000073)
                                     (print (vector-length functions))
                                     (let [data (ref-get data-ref)]
@@ -2446,11 +2449,19 @@
               (print 160)
               (print idx)
               (print (vector-length decls))
+              (print 9000000130)
+              (print idx)
+              (print (vector-length decls))
+              (print (vector-length (ref-get data-ref)))
               (let [updated-functions (compile-source-defn-functions-chunked decls 0 (vector-length decls) src ftable data-ref functions)]
                 (do
                   (print 161)
                   (print idx)
                   (print (vector-length updated-functions))
+                  (print 9000000131)
+                  (print idx)
+                  (print (vector-length updated-functions))
+                  (print (vector-length (ref-get data-ref)))
                   (root_push updated-functions)
                   (let [result (compile-all-src-decl-pairs-chunked-progress pairs (+ idx 1) n ftable data-ref updated-functions)]
                     (do

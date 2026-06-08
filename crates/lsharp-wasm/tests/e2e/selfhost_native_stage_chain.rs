@@ -1164,6 +1164,9 @@ fn test_selfhost_compiler_mode_has_payload_progress_probe() {
         "(print 9000000073)",
         "(print 9000000074)",
         "(print 9000000075)",
+        "(print 9000000130)",
+        "(print 9000000131)",
+        "(print 9000000132)",
         "(defn register-all-pairs-step-progress",
         "(defn register-all-pairs-progress",
         "(print 9000000080)",
@@ -1228,7 +1231,9 @@ fn test_selfhost_compiler_mode_has_payload_progress_probe() {
         "result (register-defns-chunked decls state0-next-idx n state0-ftable state0-next-func-idx)",
         "(defn write-register-state-progress-ref",
         "state-ref (ref-new 0)",
-        "(write-register-state-progress-ref state-ref 0 (+ idx 1) ftable func-idx)",
+        "(write-register-state-progress-ref done-state-ref 1 idx ftable func-idx)",
+        "(write-register-state-progress-ref defn-state-ref 0 (+ idx 1) next-ftable (+ func-idx 1))",
+        "(write-register-state-progress-ref non-defn-state-ref 0 (+ idx 1) ftable func-idx)",
         "state (ref-get state-ref)",
         "all-pairs (compile-file-pairs-with-cache path cache-ref parse-count-ref)",
         "start-ftable (ftable-new)",
@@ -1236,6 +1241,7 @@ fn test_selfhost_compiler_mode_has_payload_progress_probe() {
         "final-state (register-all-pairs-progress-loop pairs n state0)",
         "result (register-defns-chunked-progress decls 0 (vector-length decls) ftable func-idx)",
         "compile-all-src-decl-pairs-chunked-progress all-pairs 0 n ftable data-ref functions0",
+        "(print (vector-length (ref-get data-ref)))",
     ] {
         assert!(
             source.contains(token),
