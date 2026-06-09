@@ -2492,7 +2492,7 @@
                                 (root_pop)
                                 (root_pop)
                                 (root_pop)
-                                result))))))))))
+                                result)))))))))))
           (do
             (print 171)
             (print idx)
@@ -2504,7 +2504,7 @@
                 (root_pop)
                 (root_pop)
                 (root_pop)
-                result)))))))
+                result))))))))
 (defn continue-compile-defn-functions-step-progress-probe [decls n src ftable data-ref state]
   (if (= (vector-get state 0) 1)
     state
@@ -2565,7 +2565,7 @@
           (root_pop)
           (root_pop)
           (root_pop)
-          result))))))
+          result)))))
 (defn compile-source-defn-functions-chunked-progress-probe [decls idx n src ftable data-ref functions]
   (vector-get
     (continue-compile-defn-functions-step-64-progress-probe
