@@ -2453,7 +2453,7 @@
               (print idx)
               (print (vector-length decls))
               (print (vector-length (ref-get data-ref)))
-              (let [updated-functions (compile-source-defn-functions-chunked decls 0 (vector-length decls) src ftable data-ref functions)]
+              (let [updated-functions (compile-defn-functions-chunked-step-progress-debug decls 0 (vector-length decls) src ftable data-ref functions)]
                 (do
                   (print 161)
                   (print idx)
@@ -2472,6 +2472,26 @@
                       (root_pop)
                       (root_pop)
                       result)))))))))))
+(defn compile-string-literal-with-source-probe [node source instrs data-ref]
+  (do
+    (root_push node)
+    (root_push source)
+    (root_push instrs)
+    (root_push data-ref)
+    (print 9000000140)
+    (print (vector-length (ref-get data-ref)))
+    (let [result (compile-string-literal-with-source node source instrs data-ref)]
+      (do
+        (root_push result)
+        (print 9000000141)
+        (print (vector-length result))
+        (print (vector-length (ref-get data-ref)))
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        result))))
 (defn compile-let-chain-with-source-probe [node source env ftable instrs data-ref rooted-count]
   (do
     (root_push node)
@@ -2720,13 +2740,15 @@
                             (compile-simple-builtin-with-source-probe node source env ftable instrs data-ref bop rooted-count)))))))))
             (compile-user-call-with-source-probe node source env ftable instrs data-ref func-hash arg-count)))))))
 (defn compile-expr-with-source-probe-dispatch [node source env ftable instrs data-ref rooted-count]
-  (if (= (vector-get node 0) (tag-let))
-    (compile-let-chain-with-source-probe node source env ftable instrs data-ref rooted-count)
-    (if (= (vector-get node 0) (tag-if))
-      (compile-if-with-source-probe node source env ftable instrs data-ref rooted-count)
-      (if (= (vector-get node 0) (tag-apply))
-        (compile-apply-with-source-probe node source env ftable instrs data-ref rooted-count)
-        (compile-expr-with-source node source env ftable instrs data-ref)))))
+  (if (= (vector-get node 0) (tag-lit-string))
+    (compile-string-literal-with-source-probe node source instrs data-ref)
+    (if (= (vector-get node 0) (tag-let))
+      (compile-let-chain-with-source-probe node source env ftable instrs data-ref rooted-count)
+      (if (= (vector-get node 0) (tag-if))
+        (compile-if-with-source-probe node source env ftable instrs data-ref rooted-count)
+        (if (= (vector-get node 0) (tag-apply))
+          (compile-apply-with-source-probe node source env ftable instrs data-ref rooted-count)
+          (compile-expr-with-source node source env ftable instrs data-ref))))))
 (defn compile-expr-with-source-probe [node source env ftable instrs data-ref rooted-count]
   (do
     (print 185)
