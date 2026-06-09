@@ -2432,6 +2432,150 @@
                   (root_pop)
                   (root_pop)
                   result)))))))))
+(defn compile-defn-functions-step-progress-probe [decls idx n src ftable data-ref functions]
+  (if (>= idx n)
+    (make-compile-step-state 1 idx functions)
+    (let [decls-slot (root_push decls)
+      src-slot (root_push src)
+      ftable-slot (root_push ftable)
+      data-slot (root_push data-ref)
+      functions-slot (root_push functions)
+      decl (vector-get decls idx)]
+      (do
+        (print 170)
+        (print idx)
+        (print (vector-get decl 0))
+        (if (= (vector-get decl 0) 20)
+          (do
+            (root_push decl)
+            (print 172)
+            (print idx)
+            (print 175)
+            (print idx)
+            (let [source-ir (compile-defn-with-source-probe decl src ftable data-ref)]
+              (do
+                (root_push source-ir)
+                (print 176)
+                (print idx)
+                (print (vector-length source-ir))
+                (let [ir (if (> (vector-length source-ir) 0) source-ir (compile-defn-with-ftable decl ftable))]
+                  (do
+                    (root_push ir)
+                    (print 177)
+                    (print idx)
+                    (print (vector-length ir))
+                    (let [local-max (max-local-slot ir 0 (vector-length ir) 0)
+                      final-param-count (vector-get decl 2)
+                      local-count (if (> local-max final-param-count) (- local-max final-param-count) 0)
+                      compiled-fn (make-function-meta final-param-count local-count ir)]
+                      (do
+                        (root_push compiled-fn)
+                        (print 173)
+                        (print idx)
+                        (let [next-functions (push-object-vector functions compiled-fn)]
+                          (do
+                            (root_push next-functions)
+                            (print 174)
+                            (print idx)
+                            (print 171)
+                            (print idx)
+                            (print (vector-length next-functions))
+                            (let [result (make-compile-step-state 0 (+ idx 1) next-functions)]
+                              (do
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                result))))))))))
+          (do
+            (print 171)
+            (print idx)
+            (print (vector-length functions))
+            (let [result (make-compile-step-state 0 (+ idx 1) functions)]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result)))))))
+(defn continue-compile-defn-functions-step-progress-probe [decls n src ftable data-ref state]
+  (if (= (vector-get state 0) 1)
+    state
+    (compile-defn-functions-step-progress-probe decls (vector-get state 1) n src ftable data-ref (vector-get state 2))))
+(defn continue-compile-defn-functions-step-times-progress-probe [decls n src ftable data-ref remaining state]
+  (if (= remaining 0)
+    state
+    (if (= (vector-get state 0) 1)
+      state
+      (do
+        (root_push decls)
+        (root_push src)
+        (root_push ftable)
+        (root_push data-ref)
+        (root_push state)
+        (let [next-state (continue-compile-defn-functions-step-progress-probe decls n src ftable data-ref state)]
+          (do
+            (root_push next-state)
+            (let [result (continue-compile-defn-functions-step-times-progress-probe decls n src ftable data-ref (- remaining 1) next-state)]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result))))))))
+(defn compile-defn-functions-step-64-progress-probe [decls idx n src ftable data-ref functions]
+  (do
+    (root_push decls)
+    (root_push src)
+    (root_push ftable)
+    (root_push data-ref)
+    (let [state (compile-defn-functions-step-progress-probe decls idx n src ftable data-ref functions)]
+      (do
+        (root_push state)
+        (let [result (continue-compile-defn-functions-step-times-progress-probe decls n src ftable data-ref 63 state)]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            result))))))
+(defn continue-compile-defn-functions-step-64-progress-probe [decls n src ftable data-ref state]
+  (if (= (vector-get state 0) 1)
+    state
+    (do
+      (root_push decls)
+      (root_push src)
+      (root_push ftable)
+      (root_push data-ref)
+      (root_push state)
+      (let [result (compile-defn-functions-step-64-progress-probe decls (vector-get state 1) n src ftable data-ref (vector-get state 2))]
+        (do
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          result))))))
+(defn compile-source-defn-functions-chunked-progress-probe [decls idx n src ftable data-ref functions]
+  (vector-get
+    (continue-compile-defn-functions-step-64-progress-probe
+      decls
+      n
+      src
+      ftable
+      data-ref
+      (compile-defn-functions-step-64-progress-probe decls idx n src ftable data-ref functions))
+    2))
 (defn compile-all-src-decl-pairs-chunked-progress [pairs idx n ftable data-ref functions]
   (if (>= idx n)
     functions
@@ -2453,8 +2597,9 @@
               (print idx)
               (print (vector-length decls))
               (print (vector-length (ref-get data-ref)))
-              (let [updated-functions (compile-defn-functions-chunked-step-progress-debug decls 0 (vector-length decls) src ftable data-ref functions)]
+              (let [updated-functions (compile-source-defn-functions-chunked-progress-probe decls 0 (vector-length decls) src ftable data-ref functions)]
                 (do
+                  (root_push updated-functions)
                   (print 161)
                   (print idx)
                   (print (vector-length updated-functions))
@@ -2462,7 +2607,6 @@
                   (print idx)
                   (print (vector-length updated-functions))
                   (print (vector-length (ref-get data-ref)))
-                  (root_push updated-functions)
                   (let [result (compile-all-src-decl-pairs-chunked-progress pairs (+ idx 1) n ftable data-ref updated-functions)]
                     (do
                       (root_pop)

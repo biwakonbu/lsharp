@@ -1170,7 +1170,9 @@ fn test_selfhost_compiler_mode_has_payload_progress_probe() {
         "(defn compile-string-literal-with-source-probe",
         "(print 9000000140)",
         "(print 9000000141)",
-        "compile-defn-functions-chunked-step-progress-debug decls 0",
+        "(defn compile-defn-functions-step-progress-probe",
+        "(defn compile-source-defn-functions-chunked-progress-probe",
+        "compile-source-defn-functions-chunked-progress-probe decls 0",
         "(defn register-all-pairs-step-progress",
         "(defn register-all-pairs-progress",
         "(print 9000000080)",
@@ -1252,6 +1254,22 @@ fn test_selfhost_compiler_mode_has_payload_progress_probe() {
             "CompilerMode payload progress probe は token {token} を含むべき"
         );
     }
+
+    let compile_idx = source
+        .find("compile-source-defn-functions-chunked-progress-probe decls 0")
+        .expect("payload progress probe は chunked progress probe 呼び出しを含むべき");
+    let root_idx = source[compile_idx..]
+        .find("(root_push updated-functions)")
+        .map(|idx| compile_idx + idx)
+        .expect("payload progress probe は updated-functions を root するべき");
+    let marker_idx = source[compile_idx..]
+        .find("(print 9000000131)")
+        .map(|idx| compile_idx + idx)
+        .expect("payload progress probe は 9000000131 marker を含むべき");
+    assert!(
+        root_idx < marker_idx,
+        "payload progress probe は 9000000131 前に updated-functions を root するべき"
+    );
 }
 
 #[test]
