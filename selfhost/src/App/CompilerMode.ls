@@ -2558,14 +2558,18 @@
       (root_push ftable)
       (root_push data-ref)
       (root_push state)
-      (let [result (compile-defn-functions-step-64-progress-probe decls (vector-get state 1) n src ftable data-ref (vector-get state 2))]
+      (let [next-state (compile-defn-functions-step-64-progress-probe decls (vector-get state 1) n src ftable data-ref (vector-get state 2))]
         (do
-          (root_pop)
-          (root_pop)
-          (root_pop)
-          (root_pop)
-          (root_pop)
-          result)))))
+          (root_push next-state)
+          (let [result (continue-compile-defn-functions-step-64-progress-probe decls n src ftable data-ref next-state)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              result)))))))
 (defn compile-source-defn-functions-chunked-progress-probe [decls idx n src ftable data-ref functions]
   (vector-get
     (continue-compile-defn-functions-step-64-progress-probe

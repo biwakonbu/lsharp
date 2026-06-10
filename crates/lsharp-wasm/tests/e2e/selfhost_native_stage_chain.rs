@@ -1270,6 +1270,25 @@ fn test_selfhost_compiler_mode_has_payload_progress_probe() {
         root_idx < marker_idx,
         "payload progress probe は 9000000131 前に updated-functions を root するべき"
     );
+
+    let step64_continue = source
+        .split("(defn continue-compile-defn-functions-step-64-progress-probe")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-source-defn-functions-chunked-progress-probe")
+                .next()
+        })
+        .expect("payload progress probe は step-64 continue body を持つべき");
+    for token in [
+        "next-state (compile-defn-functions-step-64-progress-probe",
+        "(root_push next-state)",
+        "result (continue-compile-defn-functions-step-64-progress-probe decls n src ftable data-ref next-state)",
+    ] {
+        assert!(
+            step64_continue.contains(token),
+            "payload progress probe の step-64 continue は token {token} を含むべき"
+        );
+    }
 }
 
 #[test]
