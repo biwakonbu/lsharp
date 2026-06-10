@@ -1170,6 +1170,8 @@ fn test_selfhost_compiler_mode_has_payload_progress_probe() {
         "(defn compile-string-literal-with-source-probe",
         "(print 9000000140)",
         "(print 9000000141)",
+        "(print 9000000142)",
+        "(print 9000000143)",
         "(defn compile-defn-functions-step-progress-probe",
         "(defn compile-source-defn-functions-chunked-progress-probe",
         "compile-source-defn-functions-chunked-progress-probe decls 0",

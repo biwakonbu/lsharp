@@ -2897,7 +2897,19 @@
         (compile-if-with-source-probe node source env ftable instrs data-ref rooted-count)
         (if (= (vector-get node 0) (tag-apply))
           (compile-apply-with-source-probe node source env ftable instrs data-ref rooted-count)
-          (compile-expr-with-source node source env ftable instrs data-ref))))))
+          (do
+            (print 9000000142)
+            (print (vector-get node 0))
+            (print (vector-length (ref-get data-ref)))
+            (let [result (compile-expr-with-source node source env ftable instrs data-ref)]
+              (do
+                (root_push result)
+                (print 9000000143)
+                (print (vector-get node 0))
+                (print (vector-length result))
+                (print (vector-length (ref-get data-ref)))
+                (root_pop)
+                result))))))))
 (defn compile-expr-with-source-probe [node source env ftable instrs data-ref rooted-count]
   (let [node-slot (root_push node)
     source-slot (root_push source)
