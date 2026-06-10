@@ -2737,6 +2737,7 @@
                             (root_pop)
                             (root_pop)
                             (root_pop)
+                            (root_pop)
                             result))))))))))))))
 (defn compile-simple-builtin-with-source-probe [node source env ftable instrs data-ref bop rooted-count]
   (do
@@ -2898,11 +2899,25 @@
           (compile-apply-with-source-probe node source env ftable instrs data-ref rooted-count)
           (compile-expr-with-source node source env ftable instrs data-ref))))))
 (defn compile-expr-with-source-probe [node source env ftable instrs data-ref rooted-count]
-  (do
-    (print 185)
-    (print rooted-count)
-    (print (vector-get node 0))
-    (compile-expr-with-source-probe-dispatch node source env ftable instrs data-ref rooted-count)))
+  (let [node-slot (root_push node)
+    source-slot (root_push source)
+    env-slot (root_push env)
+    ftable-slot (root_push ftable)
+    instrs-slot (root_push instrs)
+    data-slot (root_push data-ref)]
+    (do
+      (print 185)
+      (print rooted-count)
+      (print (vector-get node 0))
+      (let [result (compile-expr-with-source-probe-dispatch node source env ftable instrs data-ref rooted-count)]
+        (do
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          result)))))
 (defn compile-defn-with-source-probe [node source ftable data-ref]
   (do
     (print 180)

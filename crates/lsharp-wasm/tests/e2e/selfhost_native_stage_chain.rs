@@ -1289,6 +1289,40 @@ fn test_selfhost_compiler_mode_has_payload_progress_probe() {
             "payload progress probe の step-64 continue は token {token} を含むべき"
         );
     }
+
+    let if_probe = source
+        .split("(defn compile-if-with-source-probe")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-simple-builtin-with-source-probe")
+                .next()
+        })
+        .expect("payload progress probe は if probe body を持つべき");
+    assert_eq!(
+        if_probe.matches("(root_push").count(),
+        if_probe.matches("(root_pop)").count(),
+        "compile-if-with-source-probe は root_push/root_pop の数を揃えるべき"
+    );
+
+    let expr_probe = source
+        .split("(defn compile-expr-with-source-probe [")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn compile-defn-with-source-probe").next())
+        .expect("payload progress probe は expression probe wrapper を持つべき");
+    for token in [
+        "node-slot (root_push node)",
+        "source-slot (root_push source)",
+        "env-slot (root_push env)",
+        "ftable-slot (root_push ftable)",
+        "instrs-slot (root_push instrs)",
+        "data-slot (root_push data-ref)",
+        "result (compile-expr-with-source-probe-dispatch node source env ftable instrs data-ref rooted-count)",
+    ] {
+        assert!(
+            expr_probe.contains(token),
+            "compile-expr-with-source-probe は token {token} を含むべき"
+        );
+    }
 }
 
 #[test]
