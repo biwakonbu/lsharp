@@ -2943,6 +2943,7 @@
       decl-len (vector-length node)
       body-expr (if (> decl-len body-idx) (vector-get node body-idx) 0)]
       (do
+        (root_push body-expr)
         (print 182)
         (print param-count)
         (print body-idx)
@@ -2951,7 +2952,6 @@
         (print body-idx)
         (print decl-len)
         (print (if (> decl-len body-idx) (vector-get body-expr 0) -1))
-        (root_push body-expr)
         (let [env (bind-node-params node 3 0 param-count (env-new) 1)]
           (do
             (root_push env)

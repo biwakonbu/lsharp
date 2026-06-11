@@ -1355,6 +1355,20 @@ fn test_selfhost_compiler_mode_defn_probe_reports_decl_body_shape() {
             "compile-defn-with-source-probe は decl/body shape 診断 token {token} を含むべき"
         );
     }
+
+    let body_root_idx = defn_probe
+        .find("(root_push body-expr)")
+        .expect("compile-defn-with-source-probe は body-expr を root するべき");
+    let marker_idx = defn_probe
+        .find("(print 9000000144)")
+        .expect("compile-defn-with-source-probe は 9000000144 marker を含むべき");
+    let tag_idx = defn_probe
+        .find("(vector-get body-expr 0)")
+        .expect("compile-defn-with-source-probe は body tag を出力するべき");
+    assert!(
+        body_root_idx < marker_idx && body_root_idx < tag_idx,
+        "compile-defn-with-source-probe は body shape 診断で GC が走っても body を失わないよう print 前に body-expr を root するべき"
+    );
 }
 
 #[test]
