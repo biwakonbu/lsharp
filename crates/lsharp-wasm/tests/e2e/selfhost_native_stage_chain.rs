@@ -1328,6 +1328,36 @@ fn test_selfhost_compiler_mode_has_payload_progress_probe() {
 }
 
 #[test]
+fn test_selfhost_compiler_mode_defn_probe_reports_decl_body_shape() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/App/CompilerMode.ls",
+    )))
+    .expect("CompilerMode.ls を読めること");
+    let defn_probe = source
+        .split("(defn compile-defn-with-source-probe")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-defn-functions-chunked-step-progress-debug")
+                .next()
+        })
+        .expect("CompilerMode.ls に compile-defn-with-source-probe が存在すること");
+
+    for token in [
+        "(print 9000000144)",
+        "decl-len (vector-length node)",
+        "body-expr (if (> decl-len body-idx)",
+        "(print decl-len)",
+        "(print (if (> decl-len body-idx)",
+        "(vector-get body-expr 0)",
+    ] {
+        assert!(
+            defn_probe.contains(token),
+            "compile-defn-with-source-probe は decl/body shape 診断 token {token} を含むべき"
+        );
+    }
+}
+
+#[test]
 fn test_selfhost_compiler_mode_has_entry_shape_progress_probe() {
     let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
         "selfhost/src/App/CompilerMode.ls",
