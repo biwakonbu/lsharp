@@ -1481,6 +1481,27 @@ fn test_selfhost_parse_defn_body_branch_returns_finalized_node_without_outer_roo
 }
 
 #[test]
+fn test_selfhost_finalize_defn_body_appends_body_without_placeholder_set() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/Syntax/Parser.ls",
+    )))
+    .expect("Parser.ls を読めること");
+    let finalize_body = source
+        .split("(defn finalize-defn-body-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn maybe-append-defn-meta-v3").next())
+        .expect("finalize-defn-body-v3 body を取り出せること");
+
+    assert!(
+        finalize_body.contains("(vector-push-single-rooted-v3 defn-node body)")
+            && !finalize_body.contains("placeholder")
+            && !finalize_body.contains("node-with-placeholder")
+            && !finalize_body.contains("vector-set-at-rooted-v3"),
+        "finalize-defn-body-v3 は x86 stage2 で body slot が 0 に戻らないよう body を直接 root 済み append するべき"
+    );
+}
+
+#[test]
 fn test_selfhost_parse_program_step_dispatches_top_level_defn_without_parse_expr_wrapper() {
     let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
         "selfhost/src/Syntax/Parser.ls",

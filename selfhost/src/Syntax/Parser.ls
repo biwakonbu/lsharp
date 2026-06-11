@@ -799,20 +799,11 @@
   (do
     (root_push defn-node)
     (root_push body)
-    (let [body-idx (+ 3 param-count)
-      placeholder (make-int-node 0)]
+    (let [parsed (vector-push-single-rooted-v3 defn-node body)]
       (do
-        (root_push placeholder)
-        (let [node-with-placeholder (vector-push defn-node placeholder)]
-          (do
-            (root_push node-with-placeholder)
-            (let [parsed (vector-set-at-rooted-v3 node-with-placeholder body-idx body)]
-              (do
-                (root_pop)
-                (root_pop)
-                (root_pop)
-                (root_pop)
-                parsed))))))))
+        (root_pop)
+        (root_pop)
+        parsed))))
 
 (defn maybe-append-defn-meta-v3 [node meta]
   (if (= (defn-metadata-present-v3 meta) 1)
