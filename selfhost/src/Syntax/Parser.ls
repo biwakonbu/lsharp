@@ -797,8 +797,8 @@
 
 (defn finalize-defn-body-v3 [defn-node param-count body]
   (do
-    (root_push defn-node)
     (root_push body)
+    (root_push defn-node)
     (let [parsed (vector-push-single-rooted-v3 defn-node body)]
       (do
         (root_pop)
@@ -812,8 +812,8 @@
 
 (defn finalize-defn-parsed-body-v3 [spans pos-ref defn-node param-count body]
   (do
-    (root_push defn-node)
     (root_push body)
+    (root_push defn-node)
     (p-expect spans pos-ref 1) ;; ) を消費
     (let [parsed (finalize-defn-body-v3 defn-node param-count body)]
       (do

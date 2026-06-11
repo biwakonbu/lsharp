@@ -1546,6 +1546,40 @@ fn test_selfhost_finalize_defn_body_appends_body_without_placeholder_set() {
 }
 
 #[test]
+fn test_selfhost_finalize_defn_roots_body_before_defn_node() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/Syntax/Parser.ls",
+    )))
+    .expect("Parser.ls を読めること");
+    let finalize_body = source
+        .split("(defn finalize-defn-body-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn maybe-append-defn-meta-v3").next())
+        .expect("finalize-defn-body-v3 body を取り出せること");
+    let finalize_parsed_body = source
+        .split("(defn finalize-defn-parsed-body-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn parse-defn-bodyless-or-body-v3").next())
+        .expect("finalize-defn-parsed-body-v3 body を取り出せること");
+
+    for (name, body) in [
+        ("finalize-defn-body-v3", finalize_body),
+        ("finalize-defn-parsed-body-v3", finalize_parsed_body),
+    ] {
+        let body_root_idx = body
+            .find("(root_push body)")
+            .unwrap_or_else(|| panic!("{name} は body を root するべき"));
+        let defn_root_idx = body
+            .find("(root_push defn-node)")
+            .unwrap_or_else(|| panic!("{name} は defn-node を root するべき"));
+        assert!(
+            body_root_idx < defn_root_idx,
+            "{name} は Linux x86 stage2 native の GC 境界で body 引数を失わないよう defn-node より先に body を root するべき"
+        );
+    }
+}
+
+#[test]
 fn test_selfhost_parse_program_step_dispatches_top_level_defn_without_parse_expr_wrapper() {
     let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
         "selfhost/src/Syntax/Parser.ls",
