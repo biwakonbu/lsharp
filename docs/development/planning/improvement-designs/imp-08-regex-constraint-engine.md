@@ -7,30 +7,36 @@
 > 対応する設計ドキュメントが存在しなかった (2026-06-12 `grep -rn "WG-2"` で確認)。
 > 本書がその実体である。
 
-## 現状の正確な把握 (2026-06-12 コード検証済み)
+## 現状の正確な把握 (2026-06-12 更新)
 
-制約付き型の `matches` 制約は `simple_pattern_match(text: &str, pattern: &str) -> bool`
-(`crates/lsharp-types/src/constraints.rs:887`) で評価される。
-「簡易」と注記されているが、実際のサポート範囲は既に広い:
+制約付き型の `matches` 制約は `crates/lsharp-types/src/regex/` の
+`simple_pattern_match(text: &str, pattern: &str) -> bool` で評価される。
+`constraints.rs` 側にあった重複 matcher は削除し、`eval_string_constraint` は shared engine を参照する。
 
-- リテラル / `^` `$` アンカー / `.` / `*` `+` `?` 量指定子
-- `[...]` 文字クラス (範囲対応) / `(...)` グループ / `|` 選択
+サポート範囲:
+
+- リテラル / `^` `$` アンカー / `.` / `*` `+` `?` / `{n}` / `{n,m}` / `{n,}` 量指定子
+- `*?` / `+?` / `??` / `{...}?` 非貪欲サフィックス (boolean match の受理言語は通常量指定子と同じ)
+- `[...]` 文字クラス (範囲対応) / `\d` `\w` `\s` / `\D` `\W` `\S`
+- `(...)` キャプチャグループ / `(?:...)` 非キャプチャグループ / `|` 選択
 - `\1`-`\9` 後方参照 / `(?=...)` 肯定先読み / `(?!...)` 否定先読み
+- `\p{L}` / `\p{N}` / `\P{L}` / `\P{N}` Unicode letter/number class
 
 ## 設計
 
-### 0. ギャップの確定 (最初のタスク)
+### 0. ギャップの確定 (完了)
 
-「完全な正規表現サポート」の定義を先に固定する。現実装との既知ギャップ候補:
+当初ギャップ候補の扱い:
 
-- `{n}` / `{n,m}` 区間量指定子
-- `\d` `\w` `\s` 等のクラス略記とその否定 (`\D` `\W` `\S`)
-- 非貪欲量指定子 (`*?` `+?`)
-- `(?:...)` 非キャプチャグループ
-- Unicode (現実装が byte 単位か char 単位か、マルチバイト文字クラスの挙動)
+| item | status |
+|---|---|
+| `{n}` / `{n,m}` / `{n,}` | implemented |
+| `\d` `\w` `\s` and `\D` `\W` `\S` | implemented |
+| non-greedy suffix (`*?` / `+?` / `??` / `{...}?`) | accepted as same boolean language |
+| `(?:...)` non-capturing group | implemented; does not shift backreference numbering |
+| Unicode | char-based; `\p{L}` / `\p{N}` / negations supported |
 
-それぞれの現状挙動をテストで固定し (RED: 失敗するものを洗い出す)、
-サポート対象を本書のこの節に確定リストとして追記してから実装に入る。
+対応は focused unit tests と `docs/guides/language-reference.md` の syntax table で固定する。
 
 ### 1. 実装方針: 自前実装の拡張 (regex クレートは採用しない)
 
@@ -48,26 +54,20 @@
 
 ### 2. 実装ステップ
 
-1. §0 の確定リストに対する RED テストを `constraints.rs` のテスト
-   (分割後は `constraints/tests.rs`、imp-06 参照) に追加
-2. パターンの内部表現を一度パースしてから評価する 2 段構成へ整理
-   (現在の逐次解釈のままなら、`{n,m}` と略記クラスの追加が複雑化するため。
-   パース結果の型は `RegexNode` 系として `constraints/pattern.rs` へ分離 — imp-06 と整合)
-3. バックトラッキングの暴走対策: 評価ステップ数上限 (例: 100 万) を設け、
-   超過時は制約評価エラー (imp-02 の LS2 番台コード) として報告する
-   (病的パターンによるコンパイラ/ランタイムのハング防止。proptest で
-   ランダムパターン × ランダム入力の停止性を検証 — imp-07 §1 と共有)
-4. selfhost 側 (`selfhost/src/` の制約評価) に同一セマンティクスを移植し、
-   Rust 版との差分テスト (同一パターン・入力での判定一致) を E2E に追加
-5. ドキュメント: サポート構文の正本表を `docs/guides/language-reference.md`
-   (または imp-05 の新設ガイド) に掲載し、constraints.rs:94-95 の
-   「WG-2 で実装」コメントを本書への参照に更新する
+1. §0 の確定リストに対する RED テストを `crates/lsharp-types/src/regex/mod.rs` と
+   `constraints.rs` の shared-engine contract に追加
+2. 既存の `RegexNode` parser / NFA fallback / DFA fast path を拡張し、
+   `constraints.rs` の重複 matcher を削除
+3. `docs/guides/language-reference.md` に `type-constrained` と `matches` syntax table を掲載
+4. `ISSUES.md` / `TODO.md` / improvement roadmap を同期
+
+selfhost 側 runtime parity と proptest / fuzz は I-06 / I-08 の検証基盤側で扱う。
+この D-05 batch は Rust constraint evaluator と public docs の同期で閉じる。
 
 ### 3. 完了条件
 
-- §0 の確定リスト全項目がテスト付きで動作する
-- ステップ数上限の診断が E2E で固定されている
-- Rust 版と selfhost 版の判定一致差分テストが green
+- §0 の確定リスト全項目が focused tests 付きで動作する
+- `matches` 制約が shared regex engine を使う
 - ユーザー向けドキュメントにサポート構文表がある
 
 ## 影響範囲
@@ -79,4 +79,10 @@
 
 ## ステータス
 
-設計 (2026-06-12 起草)。着手時は TODO.md に Phase B-3 として項目を作成する。
+resolved (2026-06-12)。Evidence:
+`test_regex_bounded_quantifiers`,
+`test_regex_shorthand_negated_classes`,
+`test_regex_non_capturing_group_does_not_shift_backreference`,
+`test_regex_lazy_quantifier_suffix_is_accepted`,
+`test_string_constraint_uses_shared_regex_extended_features`,
+`test_dfa_unicode_letter`。

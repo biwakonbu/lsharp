@@ -40,7 +40,7 @@ B 以降は依存が薄いものから並行着手してよい。
 | D-02 | GADT 実行未検証 | B | imp-01 | D-01 依存 |
 | D-03 | HKT 実行未対応 | B | imp-01 | D-01 依存 |
 | D-04 | Computation Expression MVP | B | imp-01 | D-01 依存 |
-| D-05 | 正規表現制約が簡易版 | B | [imp-08](improvement-designs/imp-08-regex-constraint-engine.md) | WG-2 の実体化 |
+| D-05 | 正規表現制約が簡易版 | B | [imp-08](improvement-designs/imp-08-regex-constraint-engine.md) | resolved |
 | D-06 | 動的ディスパッチなし | B | imp-01 | D-01 依存 |
 | D-09 | selfhost ADT 整数タグ表現 | B | imp-01 | D-01 依存 |
 | D-10 | GC sentinel edge case (G1) | B | imp-03 | documented limitation 維持、精密判別は任意 |
@@ -89,11 +89,12 @@ A-2 と A-3 は独立に並行可。
 |---|------|-----------|------|
 | B-1 | WasmGC バックエンド実装 (v2-07 の段階移行: Records/ADT → Strings → Closures)。i64 フォールバック TODO (emit.rs) の解消 | D-01, D-02, D-03, D-04, D-06, D-09 | imp-01 |
 | B-2 | GC フリーリストのサイズクラス化 (線形探索の解消) | I-04 | imp-03 |
-| B-3 | 正規表現エンジン (WG-2) による `matches` 制約の完全化 | D-05 | imp-08 |
+| B-3 | 正規表現エンジン (WG-2) による `matches` 制約の完全化 | D-05 | imp-08 (done) |
 | B-4 | GC rooting 規約の明文化と lint 化: 「heap 値を helper 呼び出しを跨いで保持する場合は root する」規律を selfhost コード規約 + 契約テストとして固定 | I-07 | imp-07 |
 | B-5 | (任意) G1 precise discrimination の再評価 | D-10 | imp-03 |
 
 **Exit criteria**:
+- [done] `matches` 制約が shared regex engine を使い、bounded quantifier / shorthand negation / non-capturing group / lazy suffix / Unicode class を docs と focused tests で固定。Evidence: `test_regex_bounded_quantifiers`, `test_string_constraint_uses_shared_regex_extended_features`
 - [pending] `--backend=wasmgc` で examples/gadt.ls, hkt.ls, computation.ls が「型チェックのみ」注記なしで実行され、期待出力を返す E2E がある
 - [pending] `crates/lsharp-wasm/src/emit.rs` の「WasmGC 本格実装時に削除」TODO が 0 件
 - [pending] トレイトの動的ディスパッチ (vtable) の最小ケースが E2E で通る

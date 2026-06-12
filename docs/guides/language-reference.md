@@ -18,6 +18,39 @@ L# の利用者向けリファレンスです。実装詳細ではなく、日�
 - 型推論: Hindley-Milner
 - 多相型: `(Option a)`, `(Result a e)`
 
+## Constrained Types
+
+`type-constrained` は値の意味的な制約を型定義に載せます。
+
+```lisp
+(type-constrained Email String
+  :constraints [(min-length 3)
+                (matches "^[^@]+@[^@]+\\.[^@]+$")])
+```
+
+| constraint | target | example |
+|---|---|---|
+| `>=` / `<=` / `range` | `Int` | `(range 1 65535)` |
+| `one-of` | `Int` | `(one-of [1 2 3])` |
+| `min-length` / `max-length` | `String` | `(min-length 3)` |
+| `matches` | `String` | `(matches "^\\w{3}\\d{3}$")` |
+| `satisfies` | runtime predicate | `(satisfies even?)` |
+
+`matches` は L# 内蔵の regex engine で評価します。Rust の `regex` crate ではなく、
+後方参照と先読みを含む L# 側の semantics を保つための実装です。
+
+| syntax | meaning |
+|---|---|
+| literal, `.`, `^`, `$` | literal match, any char, start/end anchors |
+| `*`, `+`, `?`, `{n}`, `{n,m}`, `{n,}` | quantifiers |
+| `*?`, `+?`, `??`, `{n,m}?` | non-greedy suffix accepted; boolean match language is unchanged |
+| `[abc]`, `[a-z]`, `[^a-z]` | character classes and negated classes |
+| `\d`, `\w`, `\s`, `\D`, `\W`, `\S` | digit, word, whitespace shorthand classes and negations |
+| `(abc)`, `(?:abc)`, `a|b` | capturing group, non-capturing group, alternation |
+| `\1` ... `\9` | backreferences to capturing groups |
+| `(?=...)`, `(?!...)` | positive and negative lookahead |
+| `\p{L}`, `\p{N}`, `\P{L}`, `\P{N}` | Unicode letter/number classes and negations |
+
 ## Data Definitions
 
 ### ADT

@@ -27,7 +27,7 @@
 | [D-02](#d-02) | GADT が型チェックのみで実行未検証 | 中-高 | in-design | imp-01 |
 | [D-03](#d-03) | HKT が型チェックのみで実行未対応 | 中 | in-design | imp-01 |
 | [D-04](#d-04) | Computation Expression がビルダー登録のみの MVP | 中 | in-design | imp-01 |
-| [D-05](#d-05) | 正規表現制約が簡易パターンのみ | 低-中 | in-design | [imp-08](docs/development/planning/improvement-designs/imp-08-regex-constraint-engine.md) |
+| [D-05](#d-05) | 正規表現制約が簡易パターンのみ | 低-中 | resolved | [imp-08](docs/development/planning/improvement-designs/imp-08-regex-constraint-engine.md) |
 | [D-06](#d-06) | トレイトが静的ディスパッチのみ (vtable なし) | 中 | in-design | imp-01 |
 | [D-07](#d-07) | 相互再帰モジュールが一括型推論前提 | 中 | in-design | [imp-04](docs/development/planning/improvement-designs/imp-04-module-system-strengthening.md) |
 | [D-08](#d-08) | Native backend 未完 (stage3 SIGSEGV 等) | 中-高 | deferred | V2-08 / V2-13 |
@@ -109,16 +109,22 @@
 <a id="d-05"></a>
 ### D-05: 正規表現制約が簡易パターンのみ
 
-- **影響度**: 低-中 / **状態**: in-design
-- **内容**: 制約付き型の `matches` 制約は `simple_pattern_match`
-  (`crates/lsharp-types/src/constraints.rs:887`) による正規表現サブセット
-  (アンカー / `.` / 量指定子 / 文字クラス / グループ / 選択 / 後方参照 / 先読み) で評価され、
-  完全な正規表現エンジンは未実装。なお参照先の「WG-2」はコード内コメントにのみ存在し、
-  対応する設計ドキュメント・TODO 項目はリポジトリに存在しない (2026-06-12 `grep -rn "WG-2"` で確認)。
-- **根拠**:
-  - `crates/lsharp-types/src/constraints.rs:94-95` -- 「MVP: 簡易パターンマッチ（正規表現エンジン完成前のフォールバック）/ 完全な正規表現サポートは WG-2 で実装」
-  - `crates/lsharp-types/src/constraints.rs:196` -- 「簡易パターンマッチ（正規表現のサブセット）」
-- **関連**: 改善設計は [imp-08](docs/development/planning/improvement-designs/imp-08-regex-constraint-engine.md) (WG-2 の実体化)。
+- **影響度**: 低-中 / **状態**: resolved
+- **内容**: 制約付き型の `matches` 制約は `crates/lsharp-types/src/regex/` の共有 engine で評価する。
+  `constraints.rs` 側の重複 matcher は削除し、`{n}` / `{n,m}` / `{n,}`、否定 shorthand class、
+  non-capturing group、lazy quantifier suffix、Unicode letter/number class を利用者向け reference に明記した。
+- **解消根拠**:
+  - `crates/lsharp-types/src/regex/mod.rs` -- bounded quantifier、否定 shorthand、non-capturing group、lazy suffix を実装
+  - `crates/lsharp-types/src/regex/dfa.rs` -- bounded repeat / non-capturing group を DFA 側の NFA fragment へ接続
+  - `crates/lsharp-types/src/constraints.rs` -- `matches` 制約が shared regex engine を参照
+  - `docs/guides/language-reference.md` -- `type-constrained` と `matches` regex syntax の利用者向け表
+- **検証**:
+  - `test_regex_bounded_quantifiers`
+  - `test_regex_shorthand_negated_classes`
+  - `test_regex_non_capturing_group_does_not_shift_backreference`
+  - `test_regex_lazy_quantifier_suffix_is_accepted`
+  - `test_string_constraint_uses_shared_regex_extended_features`
+- **関連**: 改善設計は [imp-08](docs/development/planning/improvement-designs/imp-08-regex-constraint-engine.md)。
 
 <a id="d-06"></a>
 ### D-06: トレイトが静的ディスパッチのみ (動的ディスパッチなし)
