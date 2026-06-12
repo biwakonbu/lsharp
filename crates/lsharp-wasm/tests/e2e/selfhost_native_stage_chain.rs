@@ -1437,6 +1437,48 @@ fn test_selfhost_compiler_mode_defn_probe_reports_first_ir_and_data_shape() {
 }
 
 #[test]
+fn test_selfhost_parser_defn_body_branch_reports_current_and_body_shape() {
+    let source = selfhost_module("Parser.ls");
+    let parse_body = source
+        .split("(defn parse-defn-bodyless-or-body-v3")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn parse-defn-bodyless-or-body-with-meta-v3")
+                .next()
+        })
+        .expect("Parser.ls に parse-defn-bodyless-or-body-v3 が存在すること");
+
+    for token in [
+        "(print 9000000146)",
+        "current-kind (p-current spans pos-ref)",
+        "current-pos (ref-get pos-ref)",
+        "(print current-kind)",
+        "(print current-pos)",
+        "(print param-count)",
+        "(print 9000000147)",
+        "(print (vector-get body 0))",
+        "(print (vector-length body))",
+        "(print (if (> (vector-length body) 1) (vector-get body 1) -1))",
+    ] {
+        assert!(
+            parse_body.contains(token),
+            "parse-defn-bodyless-or-body-v3 は body branch 診断 token {token} を含むべき"
+        );
+    }
+
+    let body_root_idx = parse_body
+        .find("(root_push body)")
+        .expect("parse-defn-bodyless-or-body-v3 は parsed body を root するべき");
+    let parsed_body_marker_idx = parse_body
+        .find("(print 9000000147)")
+        .expect("parse-defn-bodyless-or-body-v3 は parsed body marker を含むべき");
+    assert!(
+        body_root_idx < parsed_body_marker_idx,
+        "parse-defn-bodyless-or-body-v3 は parsed body 診断前に body を root するべき"
+    );
+}
+
+#[test]
 fn test_selfhost_compiler_mode_has_entry_shape_progress_probe() {
     let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
         "selfhost/src/App/CompilerMode.ls",
