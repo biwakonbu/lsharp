@@ -27,7 +27,7 @@
 | [D-02](#d-02) | GADT が型チェックのみで実行未検証 | 中-高 | in-design | imp-01 |
 | [D-03](#d-03) | HKT が型チェックのみで実行未対応 | 中 | in-design | imp-01 |
 | [D-04](#d-04) | Computation Expression がビルダー登録のみの MVP | 中 | in-design | imp-01 |
-| [D-05](#d-05) | 正規表現制約が簡易パターンのみ | 低-中 | open | -- |
+| [D-05](#d-05) | 正規表現制約が簡易パターンのみ | 低-中 | in-design | [imp-08](docs/development/planning/improvement-designs/imp-08-regex-constraint-engine.md) |
 | [D-06](#d-06) | トレイトが静的ディスパッチのみ (vtable なし) | 中 | in-design | imp-01 |
 | [D-07](#d-07) | 相互再帰モジュールが一括型推論前提 | 中 | in-design | [imp-04](docs/development/planning/improvement-designs/imp-04-module-system-strengthening.md) |
 | [D-08](#d-08) | Native backend 未完 (stage3 SIGSEGV 等) | 中-高 | deferred | V2-08 / V2-13 |
@@ -42,10 +42,10 @@
 | [I-02](#i-02) | エラーハンドリング不統一 (miette が driver 限定) | 高 | in-design | [imp-02](docs/development/planning/improvement-designs/imp-02-error-handling-unification.md) |
 | [I-03](#i-03) | GC メモリレイアウトの固定スロット上限 | 高 | in-design | imp-03 |
 | [I-04](#i-04) | GC フリーリストが線形探索 | 中 | in-design | imp-03 |
-| [I-05](#i-05) | モジュールグラフがコンパイルごとに再構築 | 中 | in-design | imp-04 |
-| [I-06](#i-06) | Fuzz / メモリリーク / 性能限界テストの欠落 | 中 | open | -- |
-| [I-07](#i-07) | selfhost parser の rooting 修正が頻発 | 中 | open | -- |
-| [I-08](#i-08) | テストカバレッジの偏り (lsharp-wasm に集中) | 中 | open | -- |
+| [I-05](#i-05) | CLI コンパイル経路が解析キャッシュ未使用・SCC 検出なし | 中 | in-design | imp-04 |
+| [I-06](#i-06) | Fuzz / メモリリーク / 性能限界テストの欠落 | 中 | in-design | [imp-07](docs/development/planning/improvement-designs/imp-07-test-verification-infrastructure.md) |
+| [I-07](#i-07) | selfhost parser の rooting 修正が頻発 | 中 | in-design | imp-07 |
+| [I-08](#i-08) | テストカバレッジの偏り (lsharp-wasm に集中) | 中 | in-design | imp-07 |
 
 ### ドキュメント (DOC)
 
@@ -109,23 +109,28 @@
 <a id="d-05"></a>
 ### D-05: 正規表現制約が簡易パターンのみ
 
-- **影響度**: 低-中 / **状態**: open
-- **内容**: 制約付き型の `matches` 制約は正規表現のサブセットによる簡易パターンマッチで、
-  完全な正規表現エンジンは未実装。複雑な文字列検証が表現できない。
+- **影響度**: 低-中 / **状態**: in-design
+- **内容**: 制約付き型の `matches` 制約は `simple_pattern_match`
+  (`crates/lsharp-types/src/constraints.rs:887`) による正規表現サブセット
+  (アンカー / `.` / 量指定子 / 文字クラス / グループ / 選択 / 後方参照 / 先読み) で評価され、
+  完全な正規表現エンジンは未実装。なお参照先の「WG-2」はコード内コメントにのみ存在し、
+  対応する設計ドキュメント・TODO 項目はリポジトリに存在しない (2026-06-12 `grep -rn "WG-2"` で確認)。
 - **根拠**:
   - `crates/lsharp-types/src/constraints.rs:94-95` -- 「MVP: 簡易パターンマッチ（正規表現エンジン完成前のフォールバック）/ 完全な正規表現サポートは WG-2 で実装」
   - `crates/lsharp-types/src/constraints.rs:196` -- 「簡易パターンマッチ（正規表現のサブセット）」
-- **関連**: WG-2 (正規表現エンジン)。
+- **関連**: 改善設計は [imp-08](docs/development/planning/improvement-designs/imp-08-regex-constraint-engine.md) (WG-2 の実体化)。
 
 <a id="d-06"></a>
 ### D-06: トレイトが静的ディスパッチのみ (動的ディスパッチなし)
 
 - **影響度**: 中 / **状態**: in-design
-- **内容**: トレイトは辞書引数による静的ディスパッチのみで、vtable による動的ディスパッチ・
-  存在型 (trait object 相当) が表現できない。WasmGC vtable による動的ディスパッチは未実装と
-  book にも明記されている。
+- **内容**: トレイトメソッド呼び出しは lowering 時にマングル名
+  (`TraitName_TypeName_methodName` 形式) で具象実装関数へ静的に解決される。
+  vtable による動的ディスパッチ・存在型 (trait object 相当) が表現できない。
+  WasmGC vtable による動的ディスパッチは未実装と book にも明記されている。
 - **根拠**:
   - `book/ch10-traits.md:3` -- WasmGC vtable による動的ディスパッチは未実装
+  - lowering のマングル名解決 (crates/lsharp-ir/src/lower/ のトレイト処理、2026-06-12 確認)
 - **関連**: D-01 (WasmGC struct が実装基盤)。imp-01 参照。
 
 <a id="d-07"></a>
@@ -217,11 +222,15 @@
 - **影響度**: 高 / **状態**: in-design
 - **内容**: miette によるリッチ診断は lsharp-driver の最上層のみで、下層クレート
   (lsharp-syntax / lsharp-types / lsharp-ir / lsharp-wasm) の src には miette 利用が存在しない
-  (thiserror ベースのエラー型のみ)。さらに本番経路にファイル I/O 失敗で panic する箇所がある。
+  (thiserror ベースのエラー型のみ)。エラー型間で span 保持も不揃いで、`LowerError` と
+  `CodegenError` は span 情報を一切持たない。本番経路にファイル I/O 失敗で panic する箇所があり、
+  LSP のエラー診断はソース位置を持たず固定 `Range(0,0)` で報告される。
   エラーコード体系も整備されていない (DOC-06 と関連)。
 - **根拠**:
   - `crates/lsharp-ir/src/lib.rs:3609`, `:3611` -- `unwrap_or_else(|err| panic!("{} を読めませんでした: {err}", ...))` によるファイル I/O panic
   - 下層 4 クレートの `src/` に対する `grep -rn "miette"` がヒットなし (2026-06-12 確認)
+  - `crates/lsharp-ir/src/lower/mod.rs:19-25` (LowerError)、`crates/lsharp-wasm/src/codegen.rs:11-14` (CodegenError) -- span フィールドなし
+  - `crates/lsharp-lsp/src/util.rs:356-364` -- `diagnostic_error` が固定 `Range::new(Position::new(0,0), Position::new(0,0))` を設定、`Diagnostic.code` は未設定
 - **関連**: DOC-06 (エラーコード)。改善設計は [imp-02](docs/development/planning/improvement-designs/imp-02-error-handling-unification.md)。
 
 <a id="i-03"></a>
@@ -248,13 +257,23 @@
 - **関連**: I-03 と同じレイアウトに依存。imp-03 参照。
 
 <a id="i-05"></a>
-### I-05: モジュールグラフがコンパイルごとに再構築される
+### I-05: CLI コンパイル経路が解析キャッシュを使わず、モジュールグラフに SCC 検出がない
 
 - **影響度**: 中 / **状態**: in-design
-- **内容**: モジュール依存グラフ (`crates/lsharp-ir/src/module_graph.rs`) がコンパイル実行ごとに
-  再構築され、変更のないモジュールの解析結果を再利用できない。LSP の応答性と
-  インクリメンタルコンパイル導入のボトルネック。
-- **根拠**: `crates/lsharp-ir/src/module_graph.rs` (1597 行) にグラフキャッシュ機構なし。D-07 の一括型推論制約と複合。
+- **内容**: インクリメンタル解析キャッシュ自体は実装済みで
+  (`CompilationCache` + `SourceFingerprint`、LSP は `analyze_single_file_incremental` 経由で利用)、
+  問題は次の 2 点に絞られる:
+  1. CLI の `compile_multi_file` (`crates/lsharp-ir/src/lib.rs:1777`) はキャッシュを受け取らず、
+     実行ごとに `ModuleGraph::build_from_entry` でグラフ構築と全モジュール再解析を行う
+  2. `ModuleGraph` は DFS トポロジカルソート (`module_graph.rs:221-243`) と循環検出
+     (`module_graph.rs:168-216`) のみで SCC 検出がなく、相互再帰モジュール (D-07) は
+     一括 merged 推論への特別扱いで処理される
+- **根拠**:
+  - `crates/lsharp-ir/src/cache.rs:215-256` -- `CompilationCache` (実装済み)
+  - `crates/lsharp-ir/src/lib.rs:1792-1820` -- `analyze_single_file_incremental` (fingerprint 一致で再解析スキップ)
+  - `crates/lsharp-lsp/src/lib.rs:37-38` -- LSP がキャッシュを保持
+  - `crates/lsharp-ir/src/lib.rs:1777` -- `compile_multi_file(entry_file: &Path) -> Result<Module, String>` はキャッシュ非対応
+- **注記**: 本台帳の初版 (2026-06-12) は「キャッシュ機構なし」と記載していたが、再調査で訂正した。
 - **関連**: D-07 / V2-01 (LSP incremental sync)。imp-04 参照。
 
 <a id="i-06"></a>
@@ -265,8 +284,9 @@
   (1) パーサー・型推論へのファズ入力、(2) 長時間運転でのメモリリーク検出、
   (3) 固定スロット上限 (I-03) や再帰深度などのスケール限界を計測するテストが存在しない。
   unification の occur check 性能 (深いネスト型・巨大レコードでの計算量) も未測定。
-- **根拠**: リポジトリ内に cargo-fuzz / proptest 等の fuzz ターゲット定義なし (2026-06-12 確認)。
-- **関連**: I-03 (限界値が未知のまま固定されている)。
+- **根拠**: リポジトリ内に cargo-fuzz / proptest / quickcheck の依存・ターゲット定義なし
+  (2026-06-12 確認)。ベンチは criterion (`crates/lsharp-wasm/benches/compiler_pipeline.rs`) のみ。
+- **関連**: I-03 (限界値が未知のまま固定されている)。改善設計は [imp-07](docs/development/planning/improvement-designs/imp-07-test-verification-infrastructure.md)。
 
 <a id="i-07"></a>
 ### I-07: selfhost parser / x86 backend の GC rooting 修正が頻発
@@ -278,7 +298,9 @@
   「GC 中に値が回収されないよう手動で root する」規律がコード規約として明文化されておらず、
   同型のバグが繰り返し発生する構造になっている。
 - **根拠**: `git log --oneline -20` (2026-06-12) -- 上記コミット群。
-- **関連**: D-08 (x86 backend 診断の継続)。rooting 規約の明文化は improvement-roadmap Phase B で扱う。
+  selfhost 側の rooting イディオムは `root_push` / `root_pop` / `root_set`
+  (生成コード側ランタイム関数、`crates/lsharp-wasm/src/wasi.rs:154-156` 周辺)。
+- **関連**: D-08 (x86 backend 診断の継続)。改善設計は [imp-07](docs/development/planning/improvement-designs/imp-07-test-verification-infrastructure.md) (rooting 規約の明文化と guard test 拡張)。
 
 <a id="i-08"></a>
 ### I-08: テストカバレッジの偏り
@@ -289,7 +311,8 @@
   E2E の失敗からレイヤ単体の原因へ切り分けるコストが高い。
 - **根拠**: `wc -l` 実測 -- `crates/lsharp-wasm/tests/e2e/selfhost_native_stage_chain.rs` 48941 行、
   `selfhost_native_differential.rs` 12409 行、`selfhost_bootstrap_four_layer.rs` 11750 行 ほか。
-- **関連**: I-01 (テストのインライン配置がファイル肥大の一因)。imp-06 で分割方針を扱う。
+- **関連**: I-01 (テストのインライン配置がファイル肥大の一因)。
+  改善設計は [imp-07](docs/development/planning/improvement-designs/imp-07-test-verification-infrastructure.md) (増強方針) と imp-06 (分割方針)。
 
 ---
 

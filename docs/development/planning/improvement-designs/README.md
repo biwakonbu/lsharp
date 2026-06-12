@@ -24,9 +24,15 @@ imp-01 は補遺として現行コードからの移行手順のみを扱う。
 | [imp-04](imp-04-module-system-strengthening.md) | モジュールシステム強化 (SCC 推論・キャッシュ) | D-07, I-05 | Phase C-1 / C-2 |
 | [imp-05](imp-05-docs-restructure.md) | ドキュメント再構成 (ユーザー導線) | DOC-01〜DOC-05 | Phase D-1 / D-2 |
 | [imp-06](imp-06-large-file-decomposition.md) | 大規模ファイル分割 (Rust 側) | I-01, I-08 (一部) | Phase A-2 / D-4 |
+| [imp-07](imp-07-test-verification-infrastructure.md) | テスト・検証基盤強化 (fuzz / 限界値 / rooting 規約) | I-06, I-07, I-08 | Phase B-4 / D-3 / D-4 |
+| [imp-08](imp-08-regex-constraint-engine.md) | 正規表現制約エンジン (WG-2 の実体化) | D-05 | Phase B-3 |
 
-設計 doc を持たない issue (D-05, D-08, I-06, I-07, I-08 の主要部) の扱いは
-improvement-roadmap.md のマッピング表を参照。
+設計 doc を持たない issue は D-08 (V2-08/V2-09/V2-13 へ委譲済み、TODO.md が正本) のみ。
+扱いは improvement-roadmap.md のマッピング表を参照。
+
+各設計は 2026-06-12 のコード検証 (型名・関数名・行番号の実測) に基づいて
+「現状の正確な把握」節を持ち、引き継ぎ時はその節の記載と実コードの一致を
+確認してから着手する。
 
 ## 運用規則
 

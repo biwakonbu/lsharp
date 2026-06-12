@@ -3,94 +3,111 @@
 > 対象 issue: [I-02](../../../../ISSUES.md#i-02) (エラーハンドリング不統一)、[DOC-06](../../../../ISSUES.md#doc-06) (エラーコード体系未定義)
 > ロードマップ: [improvement-roadmap.md](../improvement-roadmap.md) Phase A-1
 
-## 概要
+## 現状の正確な把握 (2026-06-12 コード検証済み)
 
-エラーハンドリングの方針を全クレートで統一する。現状は:
+### エラー型の現状一覧
 
-- miette のリッチ診断 (ソーススパン付き) は lsharp-driver の最上層のみ
-- 下層クレート (syntax / types / ir / wasm) は thiserror ベースのエラー型のみで、span 情報の伝播が層ごとに途切れる
-- 本番経路に panic がある (`crates/lsharp-ir/src/lib.rs:3609`, `:3611` のファイル I/O panic)
-- エラーコード体系が存在せず、MCP の `lsharp_errors` は E0001〜E0005 のハードコード (`crates/lsharp-driver/src/mcp_server.rs:438-462`)
+| 型 | 場所 | バリアント | thiserror | span 保持 |
+|----|------|-----------|-----------|-----------|
+| `LexError` | `crates/lsharp-syntax/src/lexer.rs:6-15` | UnexpectedChar / UnterminatedString / InvalidNumber | あり | 全バリアント |
+| `ParseError` | `crates/lsharp-syntax/src/parser.rs:7-23` | Unexpected / UnexpectedEof / UnknownForm / Multiple | あり | Unexpected, UnknownForm のみ |
+| `TypeError` | `crates/lsharp-types/src/infer.rs:21-99` | Mismatch / InfiniteType / UndefinedVar / UndefinedConstructor / ArityMismatch / UndefinedRecord / UndefinedField / RecursiveAlias / UndefinedAlias / UndefinedTrait / MissingImpl / MismatchWithAlias / KindMismatch (13 個) | あり | ほぼ全バリアント |
+| `LowerError` | `crates/lsharp-ir/src/lower/mod.rs:19-25` | Unsupported / UndefinedFunction | あり | **なし** |
+| `ModuleGraphError` | `crates/lsharp-ir/src/module_graph.rs:84-102` | CyclicDependency / ModuleNotFound / ModuleNotExported / DuplicateModule | あり | **なし** |
+| `CodegenError` | `crates/lsharp-wasm/src/codegen.rs:11-14` | Error(msg: String) の 1 個のみ | あり | **なし** |
+| `LsharpError` | `crates/lsharp-driver/src/error.rs:10-39` | 上記を `#[from]` で集約 | あり | -- |
 
-これを「全層 Diagnostic 貫通 + LS#### コード体系」へ統一する。
+### フロントエンドの現状
+
+- **CLI**: `main()` は `miette::Result<()>` (`main.rs:238`)。ただし変換は
+  `.map_err(|e| miette::miette!("{}: {}", file.display(), e))?` (main.rs:283, 310, 356 等) の
+  **文字列化**であり、span 情報が `miette::miette!` の時点で失われている
+- **LSP**: `diagnostic_error` (`crates/lsharp-lsp/src/util.rs:356-364`) が
+  固定 `Range::new(Position::new(0,0), Position::new(0,0))` を設定し、`Diagnostic.code` は未設定。
+  ParseError/TypeError は `format!("{e}")` で文字列化されて渡る (util.rs:367, 430)。
+  span → Range の変換ロジック自体は util.rs:349 付近に存在するが、エラー診断経路で使われていない
+- **MCP**: `check_tool` (`mcp_server.rs:260-270`) は `{ok, diagnostics: [{message, severity}]}` を返す
+  (コードなし)。`lsharp_errors` は E0001〜E0005 をハードコード (`mcp_server.rs:438-462`)
+- **panic**: `crates/lsharp-ir/src/lib.rs:3609, :3611` がファイル I/O / parse 失敗で panic
 
 ## 設計
 
-### 1. エラー型の層別方針
+### 1. エラーコードの単一ソース
 
-| 層 | エラー型 | 方針 |
-|----|---------|------|
-| lsharp-syntax | `ParseError` | 既存 thiserror 型に `#[derive(Diagnostic)]` を追加し、`#[diagnostic(code(...))]` で LS コードを付与 |
-| lsharp-types | `TypeError` | 同上 |
-| lsharp-ir | `LowerError` | 同上。ファイル I/O 系 panic は `LowerError::Io` バリアントへ置換 |
-| lsharp-wasm | `CodegenError` / ランタイムエラー | 同上。wasmtime 実行エラーは exit code + 診断メッセージへ整形 |
-| lsharp-driver | `miette::Report` | 既存どおり最上層で集約。変更最小 |
+新規ファイル `crates/lsharp-syntax/src/error_codes.rs` ではなく、**依存の最下層に置けない**
+(コードは全層に必要) ため、新クレートは作らず以下とする:
 
-実装は miette の `Diagnostic` derive を下層クレートに追加するだけで済み、
-既存の `thiserror::Error` 定義と共存できる (miette は thiserror の上に被せられる)。
-既存のエラーバリアント名・メッセージは変更しない (スナップショットテストへの影響を最小化)。
+- 各エラー型の **バリアントに 1 コードを割り当て**、各クレートに
+  `impl XxxError { pub fn code(&self) -> &'static str }` を実装する (依存追加なし)
+- コード ↔ 説明 ↔ 対処の対応表は `crates/lsharp-driver/src/error_codes.rs` に
+  `pub const ERROR_CODES: &[(&str, &str, &str, &str)]` (code, summary, detail, fix) として置き、
+  MCP `lsharp_errors` / CLI `--explain` (任意) / docs 生成が共有する
+- docs 側の正本は `docs/guides/error-reference.md` (imp-05)。
+  対応表とドキュメントの一致は契約テスト (ERROR_CODES の全コードが md に出現する) で固定する
 
-### 2. panic 許容基準
+### 2. LS#### コード割り当て (初期セット)
 
-| 区分 | panic | 備考 |
-|------|-------|------|
-| テストコード (`#[cfg(test)]`, tests/) | 許容 | `expect("理由")` を推奨 |
-| コンパイラ内部不変条件 (到達不能分岐) | `unreachable!("不変条件の説明")` のみ許容 | 入力起因で到達し得る分岐は不可 |
-| 入力起因の失敗 (I/O、パース、型、codegen) | 禁止 | `Result` で伝播する |
+| コード | バリアント |
+|--------|-----------|
+| LS0001-LS0003 | LexError::UnexpectedChar / UnterminatedString / InvalidNumber |
+| LS0101-LS0104 | ParseError::Unexpected / UnexpectedEof / UnknownForm / Multiple |
+| LS1001-LS1013 | TypeError の 13 バリアント (UndefinedVar=LS1001, Mismatch=LS1002, InfiniteType=LS1003, ArityMismatch=LS1004, UndefinedConstructor=LS1005, UndefinedRecord=LS1006, UndefinedField=LS1007, RecursiveAlias=LS1008, UndefinedAlias=LS1009, UndefinedTrait=LS1010, MissingImpl=LS1011, MismatchWithAlias=LS1012, KindMismatch=LS1013) |
+| LS2001+ | 制約・メタデータ検証 (constraints.rs / metadata_check.rs のエラー) |
+| LS3001-LS3002 | LowerError::Unsupported / UndefinedFunction |
+| LS3101-LS3104 | ModuleGraphError の 4 バリアント |
+| LS4001 | CodegenError::Error |
+| LS4002 | GC 容量超過 (imp-03 の grow 失敗診断、新設) |
+| LS5001+ | driver 固有 (lsharp.toml 不正、パッケージ解決失敗 等) |
 
-`crates/lsharp-ir/src/lib.rs:3609-3611` の `unwrap_or_else(|err| panic!(...))` は
-入力起因 (ファイル読み込み・パース失敗) のため `LowerError` への置換対象。
+規則: 一度割り当てたコードの意味は変えない。欠番は再利用しない。
+既存 MCP の E0001〜E0005 への対応: E0001→LS1001, E0002/E0003→LS1002 (if 系は Mismatch の
+文脈表示で区別), E0004→LS1004, E0005→LS1003。1 リリースの間 `lsharp_errors` 応答に
+`legacy_code` として併記する。
 
-機械検査: `grep -rn "panic!\|\.unwrap()\|\.expect(" crates/*/src --include="*.rs"` の結果から
-`#[cfg(test)]` ブロックを除いた残数を CI で監視する (まず現状値を固定し、増加を禁止 →
-段階的にゼロへ)。
+### 3. span の貫通と panic 排除
 
-### 3. LS#### エラーコード体系
+1. `LowerError` に `span: Option<Span>` を追加 (AST ノードは span を保持しているため
+   lowering 時に引き渡すだけ)。`Unsupported` の発生箇所すべてで span を埋める
+2. `LowerError::Io { path: String, source: std::io::Error }` バリアントを追加し、
+   `lib.rs:3609, :3611` の panic を `Result` 伝播へ置換
+   (呼び出し元 `compile_multi_file` 系は既に `Result<_, String>` のため伝播可能)
+3. `CodegenError` は内部不変条件違反が主のため span なしを許容。ただし
+   メッセージに関数名を含める
+4. panic 許容基準: テストコード内は許容 (`expect("理由")` 推奨)。
+   到達不能分岐は `unreachable!("不変条件の説明")` のみ許容。入力起因の失敗は禁止
+5. 残数監視: `scripts/` に panic/unwrap カウントスクリプトを置き、現状値を固定して
+   増加を CI で fail にする (段階的にゼロへ)
 
-既存 MCP の `E0001`〜`E0005` は L# 固有であることが分かりにくく、Rust の `E####` と紛らわしい。
-プレフィックスを `LS` とし、層ごとに番台を割り当てる:
+### 4. フロントエンドへの配線
 
-| 範囲 | 層 | 例 |
-|------|----|----|
-| LS0001-LS0999 | 字句・構文 (lsharp-syntax) | LS0001 予期しないトークン / LS0002 予期しない EOF / LS0003 未知のフォーム |
-| LS1001-LS1999 | 型 (lsharp-types) | LS1001 未定義の識別子 / LS1002 型不一致 / LS1003 無限型 / LS1004 if 条件が Bool でない / LS1005 引数型不一致 |
-| LS2001-LS2999 | 制約・メタデータ (lsharp-types) | LS2001 制約不成立 / LS2002 :example 失敗 |
-| LS3001-LS3999 | lowering / モジュール (lsharp-ir) | LS3001 未サポート構文 / LS3002 未定義関数 / LS3003 モジュール解決失敗 / LS3004 ソース読込失敗 |
-| LS4001-LS4999 | codegen / ランタイム (lsharp-wasm) | LS4001 codegen 失敗 / LS4002 GC 容量超過 (imp-03 の grow 失敗診断) |
-| LS5001-LS5999 | CLI / プロジェクト (lsharp-driver) | LS5001 lsharp.toml 不正 / LS5002 パッケージ解決失敗 |
-
-運用規則:
-
-- コードは一度割り当てたら意味を変えない (欠番は再利用しない)
-- 正本一覧は `docs/guides/error-reference.md` (imp-05 で新設するページ) に置き、
-  コード・説明・対処を 1 コード 1 節で記載する
-- 既存 `E0001`〜`E0005` は対応表 (E0001→LS1001 等) を 1 リリースの間 MCP 応答に併記して移行する
-
-### 4. CLI / LSP / MCP の診断統一
-
-3 つのフロントエンドが同じ診断ソースから同じコードを返すようにする:
-
-- **CLI**: miette のレンダリングに `code` が含まれる (derive の `#[diagnostic(code(...))]` で自動)
-- **LSP**: `Diagnostic.code` フィールドに LS コードを設定 (`crates/lsharp-lsp/src/lib.rs` の診断変換部)
-- **MCP**: `lsharp_errors` のハードコード表を廃止し、エラーコード定義の単一ソース
-  (例: `crates/lsharp-driver/src/error_codes.rs` に定数表) から引く。
-  `lsharp_check` 等の応答にも LS コードを含める
+- **CLI**: `miette::miette!("{e}")` の文字列化をやめ、各エラー型に
+  `#[derive(miette::Diagnostic)]` + `#[diagnostic(code(...))]` を追加して
+  `Into<miette::Report>` で渡す。`NamedSource` + span でソース抜粋付き表示になる
+  (下層クレートに miette 依存が増えるが workspace 管理で統一)
+- **LSP**: `diagnostic_error` を `diagnostic_from_error(err, source) -> Diagnostic` に置換。
+  util.rs:349 付近の既存 span→Range 変換を使い、`Diagnostic.code = Some(NumberOrString::String(err.code()))`
+  を設定する。**これにより固定 Range(0,0) 問題も同時に解消する**
+- **MCP**: `check_tool` の diagnostics 要素に `code` フィールドを追加。
+  `lsharp_errors` のハードコード表を `ERROR_CODES` 参照へ置換
 
 ### 5. 実装順序 (TDD)
 
-1. エラーコード定数表 + 対応表のユニットテスト (RED → GREEN)
-2. lsharp-syntax へ Diagnostic derive + LS コード付与 (スナップショット維持確認)
-3. lsharp-types → lsharp-ir → lsharp-wasm の順に同様
-4. ir/lib.rs の panic 置換 (E2E で診断出力を検証)
-5. LSP / MCP の code 配線
-6. panic 残数の CI 監視テスト追加
+1. RED: `XxxError::code()` のユニットテスト (全バリアント網羅、コード重複なし) →
+   GREEN: code() 実装 (syntax → types → ir → wasm の順)
+2. RED: ir/lib.rs:3609 相当の不正パス入力で Err が返るテスト → GREEN: panic 置換
+3. RED: LowerError の span 保持テスト → GREEN: span 追加
+4. LSP: 既知エラーソースで Diagnostic.range が実位置・code が LS#### になるテスト → 実装
+5. MCP: lsharp_errors が ERROR_CODES 全件を返すテスト → 実装
+6. CLI: スナップショットテストで診断表示に LS#### が含まれることを固定
+7. panic 残数監視スクリプト + CI 組み込み
 
 ## 影響範囲
 
-- 下層クレートに `miette` 依存が追加される (workspace 依存は既存)
-- エラーメッセージ文言は不変のため、既存スナップショットは原則無変更
-- MCP の `lsharp_errors` 応答形式に `ls_code` フィールドが増える (後方互換)
+- 既存エラーメッセージ文言 (`#[error("...")]`) は不変。表示に code が追加されるため、
+  CLI 出力のスナップショットは更新が必要 (insta review で一括)
+- LSP の診断 range が 0,0 から実位置に変わる — クライアント側の見え方が改善する変更で、
+  既存 LSP テスト (`crates/lsharp-lsp/` のテスト群) の期待値更新が必要
 
 ## ステータス
 
-設計のみ (2026-06-12 起草)。着手時は TODO.md に Phase A-1 として項目を作成する。
+設計 (2026-06-12 起草、同日コード検証に基づき具体化)。着手時は TODO.md に Phase A-1 として項目を作成する。

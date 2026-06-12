@@ -40,22 +40,22 @@ B 以降は依存が薄いものから並行着手してよい。
 | D-02 | GADT 実行未検証 | B | imp-01 | D-01 依存 |
 | D-03 | HKT 実行未対応 | B | imp-01 | D-01 依存 |
 | D-04 | Computation Expression MVP | B | imp-01 | D-01 依存 |
-| D-05 | 正規表現制約が簡易版 | B | -- | WG-2 で実装 (既存計画) |
+| D-05 | 正規表現制約が簡易版 | B | [imp-08](improvement-designs/imp-08-regex-constraint-engine.md) | WG-2 の実体化 |
 | D-06 | 動的ディスパッチなし | B | imp-01 | D-01 依存 |
 | D-09 | selfhost ADT 整数タグ表現 | B | imp-01 | D-01 依存 |
 | D-10 | GC sentinel edge case (G1) | B | imp-03 | documented limitation 維持、精密判別は任意 |
 | I-04 | GC フリーリスト線形探索 | B | imp-03 | |
-| I-07 | rooting 修正の頻発 | B | -- | rooting 規約の明文化 (下記 B-4) |
+| I-07 | rooting 修正の頻発 | B | [imp-07](improvement-designs/imp-07-test-verification-infrastructure.md) | rooting 規約の明文化 (下記 B-4) |
 | D-07 | 相互再帰モジュール一括推論 | C | [imp-04](improvement-designs/imp-04-module-system-strengthening.md) | |
-| I-05 | モジュールグラフ毎回再構築 | C | imp-04 | V2-01 と接続 |
+| I-05 | CLI 経路の未キャッシュ・SCC なし | C | imp-04 | V2-01 と接続 |
 | D-08 | Native backend 未完 | C | -- | V2-08/V2-09/V2-13 へ委譲済み、追跡のみ |
 | DOC-01 | ユーザーガイド不足 | D | [imp-05](improvement-designs/imp-05-docs-restructure.md) | |
 | DOC-02 | book/ 読者層混在 | D | imp-05 | |
 | DOC-03 | doc-status 未運用 | D | imp-05 | |
 | DOC-04 | examples 連携不足 | D | imp-05 | |
 | DOC-05 | language-guide 二重管理 | D | imp-05 | |
-| I-06 | fuzz/リーク/限界テスト欠落 | D | -- | 下記 D-3 |
-| I-08 | テストカバレッジ偏り | D | imp-06 | テスト分割と同時 |
+| I-06 | fuzz/リーク/限界テスト欠落 | D | imp-07 | 下記 D-3 |
+| I-08 | テストカバレッジ偏り | D | imp-07, imp-06 | テスト分割と同時 |
 
 ---
 
@@ -89,8 +89,8 @@ A-2 と A-3 は独立に並行可。
 |---|------|-----------|------|
 | B-1 | WasmGC バックエンド実装 (v2-07 の段階移行: Records/ADT → Strings → Closures)。i64 フォールバック TODO (emit.rs) の解消 | D-01, D-02, D-03, D-04, D-06, D-09 | imp-01 |
 | B-2 | GC フリーリストのサイズクラス化 (線形探索の解消) | I-04 | imp-03 |
-| B-3 | 正規表現エンジン (WG-2) による `matches` 制約の完全化 | D-05 | 既存 WG-2 計画 |
-| B-4 | GC rooting 規約の明文化と lint 化: 「heap 値を helper 呼び出しを跨いで保持する場合は root する」規律を selfhost コード規約 + 契約テストとして固定 | I-07 | -- |
+| B-3 | 正規表現エンジン (WG-2) による `matches` 制約の完全化 | D-05 | imp-08 |
+| B-4 | GC rooting 規約の明文化と lint 化: 「heap 値を helper 呼び出しを跨いで保持する場合は root する」規律を selfhost コード規約 + 契約テストとして固定 | I-07 | imp-07 |
 | B-5 | (任意) G1 precise discrimination の再評価 | D-10 | imp-03 |
 
 **Exit criteria**:
@@ -124,8 +124,8 @@ A-2 と A-3 は独立に並行可。
 |---|------|-----------|------|
 | D-1 | docs/guides/ 拡張: metadata 仕様 / IDE セットアップ / デプロイターゲット / stdlib ガイド / エラーコードリファレンス (LS#### 体系、imp-02 の出力) の 5 ページ追加と site.toml 登録 | DOC-01, DOC-06 | imp-05 |
 | D-2 | book/ 読者層分離、examples ↔ 機能マトリクス整備、language-guide テンプレートの正本一本化、doc-status の CI 運用開始 | DOC-02, DOC-03, DOC-04, DOC-05 | imp-05 |
-| D-3 | テスト体系強化: パーサー/型推論の fuzz ターゲット導入、GC リーク検出テスト、スロット上限・再帰深度の限界値テスト、occur check 性能計測 | I-06 | -- |
-| D-4 | テスト配置の再編: 巨大インラインテストの分離、syntax/types のユニットテスト増強 | I-08 | imp-06 |
+| D-3 | テスト体系強化: パーサー/型推論の property-based テスト (proptest) 導入、GC リーク検出テスト、スロット上限・再帰深度の限界値テスト、occur check 性能計測 | I-06 | imp-07 |
+| D-4 | テスト配置の再編: 巨大インラインテストの分離、syntax/types のユニットテスト増強 | I-08 | imp-06, imp-07 |
 
 **Exit criteria**:
 - [pending] docs/guides/ に上記 5 ページが存在し、site.toml 経由で公開サイトに載る

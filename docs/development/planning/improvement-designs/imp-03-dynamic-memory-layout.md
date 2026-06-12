@@ -8,71 +8,90 @@
 > runtime 安定性の判定は `docs/development/planning/runtime-stability-spec.md` を正本とする。
 > 本書は容量・性能の改善設計のみを扱い、仕様固定済みの項目 (ADR-158 系) を変更しない。
 
-## 概要
+## 現状の正確な把握 (2026-06-12 コード検証済み)
 
-リニアメモリ GC ランタイムの容量がコンパイル時定数で固定されている:
+ランタイムは `crates/lsharp-wasm/src/wasi.rs` の `emit_wasm_wasi()` (`:102`、component 版は `:742`)
+が生成コードに直接埋め込む。容量はコンパイル時定数:
 
 ```
-crates/lsharp-wasm/src/wasi.rs:21  const ROOT_STACK_SLOT_CAPACITY: i32 = 32768;
-crates/lsharp-wasm/src/wasi.rs:23  const GC_OBJECT_SLOT_CAPACITY: i32 = 4096;
-crates/lsharp-wasm/src/wasi.rs:26  const GC_FREE_LIST_SLOT_CAPACITY: i32 = 4096;
+wasi.rs:21  const ROOT_STACK_SLOT_CAPACITY: i32 = 32768;
+wasi.rs:23  const GC_OBJECT_SLOT_CAPACITY: i32 = 4096;
+wasi.rs:26  const GC_FREE_LIST_SLOT_CAPACITY: i32 = 4096;
 ```
 
-同時生存オブジェクトが 4096 を超える、または root の深さが 32768 を超えるワークロードで
-容量が枯渇し、上限はユーザーから調整できない。またフリーリストが単一リストの線形探索のため、
-割り当て頻度が高いとアロケーションが O(n) に劣化する (I-04)。
+ランタイム関数 (生成モジュール内の内部関数として emit される):
+
+- rooting: `root_push` / `root_pop` / `root_set` (関数インデックス WASI_IMPORT_COUNT+13〜15、
+  `wasi.rs:154-156` のインデックスマップと `:184-186` の定義)
+- 回収: `__gc_collect` (WASI_IMPORT_COUNT+16)、export 名は
+  `__lsharp_gc_collect` / `__lsharp_gc_collection_count` (`wasi.rs:53-55`)
+- 割り当て: `__alloc` 系がフリーリストを **first-fit 線形走査**して再利用、なければ bump
+- メトリクス: `gc_live_alloc_count` / `gc_freed_count` / `gc_collection_count` カウンタが
+  契約テスト (`crates/lsharp-wasm/tests/e2e/gc_metrics_contract.rs` ほか) と
+  CI artifact (`ci-artifacts/gc-metrics/`) で観測される
+
+mark-sweep は 3 状態マーク (UNMARKED → PENDING → SCANNED)。
+tagged handle 判別は上位 1 bit (`TAGGED_POINTER_MASK = 1<<63`、
+`runtime-stability-spec.md:246` 周辺) で、G1 edge case の正本整理は同 spec :278-282。
 
 ## 設計
 
 ### 1. 容量の grow 戦略 (Phase A-3)
 
-レイアウトの「位置」を固定したまま「容量」を可変にする:
+方針: **テーブル基底アドレスと容量を「定数」から「ランタイムヘッダ経由の間接参照」に変える。**
 
-- **テーブルの末尾配置**: GC オブジェクトテーブル / フリーリスト / root stack を
-  ヒープ末尾側へ移し、`memory.grow` で線形メモリを拡張したとき各テーブルが
-  倍々で伸長できる配置にする (ヒープ本体とテーブルが互いに衝突しない方向に伸ばす)
-- **間接化**: テーブル基底アドレスと容量をグローバル (または固定アドレスのヘッダ) に持たせ、
-  生成コードは定数ではなくヘッダ経由で参照する。grow 時はテーブルを新領域へコピーして
-  ヘッダを差し替える
-- **失敗時の挙動**: `memory.grow` が失敗した場合は trap ではなく、診断コード
-  `LS4002` (GC 容量超過、imp-02 の体系) を持つランタイムエラーとして報告する
-- **初期値**: 既存定数を初期容量として維持し、既存ワークロードの挙動 (GC メトリクス) を
-  変えない。grow が起きない限り現行とバイト互換の動きにする
+1. 線形メモリ先頭の予約領域 (既存の I/O バッファ群の後ろ) に runtime header を新設:
+   `{root_stack_base, root_stack_capacity, obj_table_base, obj_table_capacity, free_list_base, free_list_capacity}` (i32 x 6)
+2. 生成コードの該当箇所 (root_push/pop/set、__alloc、mark/sweep のテーブル走査) は
+   定数 `*_CAPACITY` の直接埋め込みをやめ、ヘッダの load に置き換える。
+   変更点は wasi.rs 内で上記ランタイム関数を emit している関数群に閉じる
+3. grow 手順 (容量到達時):
+   - `memory.grow` で新領域を確保 → 旧テーブルを新領域へコピー (`memory.copy`) →
+     ヘッダの base/capacity を更新。テーブルは相互に独立なので個別に倍々で grow できる
+   - root stack は「アドレスを保持される」性質がない (インデックス参照のみ) ため
+     コピー移動して安全。オブジェクトテーブルも同様にスロットインデックスで参照されるため
+     移動可能 (ヒープ本体のオブジェクトは動かさない — 既存の非ムーブ GC を維持)
+4. 失敗時: `memory.grow` が -1 を返したら trap ではなく診断付きエラー
+   (imp-02 の `LS4002`) として終了コードとメッセージを出す
+5. 初期容量は既存定数のまま。**grow が発生しない限り、生成コードの動作・GC メトリクスは
+   現行と一致する** (無回帰の根拠)
 
 ### 2. フリーリストのサイズクラス化 (Phase B-2)
 
-- 単一フリーリストを、サイズクラス別 (例: 16/32/64/128/256/512/1024/それ以上) の
-  複数リストへ分割し、割り当ては該当クラスの先頭 pop (O(1)) にする
-- クラス外の大きな割り当てのみ従来の探索へフォールバック
-- 効果測定: 既存の GC メトリクス artifact (`ci-artifacts/gc-metrics/`) に
-  割り当て探索ステップ数のカウンタを追加し、改善前後で比較する
+- 現行: 単一フリーリストの first-fit 線形走査 (worst O(n))
+- 変更: サイズクラス別リスト (16/32/64/128/256/512/1024/それ超) へ分割。
+  割り当ては該当クラス先頭の pop (O(1))、クラス超過サイズのみ従来走査へフォールバック
+- ヘッダにクラス別リスト先頭インデックスの配列を追加 (1. の header 拡張)
+- 計測: alloc 時の走査ステップ数カウンタを追加し、`ci-artifacts/gc-metrics/` の
+  summary に載せて改善前後を比較する
 
 ### 3. G1 precise discrimination の再評価 (Phase B-5、任意)
 
-G1 (`i64::MIN + N` を意図的に計算した値が false-mark される理論的 edge case、
-`runtime-stability-spec.md:278-282`) は documented limitation の整理を維持する。
-本設計の間接化 (テーブルヘッダ導入) が完了すると、tagged handle の判別ビット拡張など
-runtime-stability-spec.md に列挙された将来選択肢の実装コストが下がるため、
-その時点で「documented limitation 継続」か「精密判別の実装」かを再評価する。
-判定の正本は runtime-stability-spec.md のまま動かさない。
+G1 (意図的に heap range へ入る i64 値の false-mark) は documented limitation を維持する。
+1. のヘッダ間接化が入ると判別ビット拡張等の実装コストが下がるため、その完了時点で
+「継続」か「精密判別実装」かを再評価する。判定の正本は runtime-stability-spec.md。
 
 ### 4. テスト戦略 (TDD)
 
-1. RED: 同時生存オブジェクト 4096 超 / root 深度 32768 超を作る E2E を追加し、
-   現行実装での失敗 (またはその一歩手前の挙動) を固定する
-2. GREEN: grow 実装後、同テストが green になることを確認
-3. 既存の GC 契約テスト (`gc_metrics_contract` 系、collector telemetry 系) の全件 green を維持
-4. grow 発生時の GC メトリクス (collection count / freed count) が単調性を保つことを
-   メトリクス契約テストへ追加
-5. 限界値テスト (I-06 の一部): grow 上限到達時に LS4002 診断が返ることを E2E で固定
+1. RED: 同時生存オブジェクト > 4096 を作る E2E (深い cons リスト構築等) と
+   root 深度 > 32768 の E2E を追加し、現行の失敗挙動を固定
+2. GREEN: grow 実装で green 化
+3. 既存 GC 契約テスト (gc_metrics_contract、collector telemetry、
+   `test_e2e_alloc_metrics_ci_artifact_payload` 等) の全件 green を維持
+4. grow 発生時のメトリクス単調性 (collection_count / freed_count) を契約テストへ追加
+5. grow 上限到達時に LS4002 診断が返る E2E
+6. bootstrap 固定点: 生成コードが変わるため stage chain の再生成・一致検証を実施
 
 ## 影響範囲
 
-- 生成コードのテーブル参照が定数 → ヘッダ間接参照になるため、コードサイズと
-  実行コストがわずかに増える (ベンチで定量化する)
-- bootstrap 固定点 (stage chain) はコード生成が変わるため再生成・再検証が必要
-- native backend (V2-13 系) のメモリレイアウトは別系統であり本書のスコープ外
+- 定数 → ヘッダ load の間接化で生成コードのサイズ・実行コストがわずかに増える
+  (criterion ベンチ `crates/lsharp-wasm/benches/compiler_pipeline.rs` と
+  GC メトリクスで定量化する)
+- bootstrap 固定点の再生成が必要 (上記テスト 6)
+- native backend (V2-13 系) のメモリレイアウトは別系統でありスコープ外
+- wasmgc backend (imp-01) が完成すればこのランタイム自体が不要になる経路もあるが、
+  linear backend がデフォルトである間は本改善が有効
 
 ## ステータス
 
-設計のみ (2026-06-12 起草)。着手時は TODO.md に Phase A-3 / B-2 として項目を作成する。
+設計 (2026-06-12 起草、同日コード検証に基づき具体化)。着手時は TODO.md に Phase A-3 / B-2 として項目を作成する。

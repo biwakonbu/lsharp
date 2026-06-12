@@ -28,12 +28,14 @@
 
 ### 2. 主要ファイルの分割軸
 
-| 対象 | 行数 | 分割案 |
-|------|------|--------|
-| `crates/lsharp-wasm/src/wasi.rs` | 4175 | `wasi/layout.rs` (メモリレイアウト定数・ヘッダ)、`wasi/gc_runtime.rs` (root stack / mark / sweep / free list)、`wasi/io.rs` (fd_write 系 WASI 連携)、`wasi/emit.rs` (関数本体生成)、`wasi/tests.rs` |
-| `crates/lsharp-driver/src/main.rs` | 3928 | `cli.rs` (clap 定義)、`commands/<command>.rs` (compile / test / review / doc / package 系をコマンド単位)、`main.rs` はディスパッチのみ |
-| `crates/lsharp-types/src/infer.rs` | 3783 | `infer/unify.rs` (単一化 + occur check)、`infer/generalize.rs` (一般化・インスタンス化)、`infer/expr.rs` (式推論)、`infer/decl.rs` (宣言・モジュール)、`infer/tests.rs` |
-| `crates/lsharp-ir/src/lib.rs` | 3640 | `ir.rs` (Module / Function / Instruction 型定義)、`compile.rs` (compile_multi_file 系)、`cache.rs` (キャッシュ、imp-04 と接続)、`tests.rs` |
+セクション境界は 2026-06-12 に実測済み。分割線はこの境界に沿って引く:
+
+| 対象 | 行数 | 実測セクション境界 | 分割案 |
+|------|------|--------------------|--------|
+| `crates/lsharp-wasm/src/wasi.rs` | 4175 | :1-100 定数・構造体 / :102 `emit_wasm_wasi()` / :742 `emit_wasm_wasi_p2()` | `wasi/layout.rs` (メモリレイアウト定数・ヘッダ)、`wasi/gc_runtime.rs` (root_push/pop/set・mark・sweep・free list の emit)、`wasi/io.rs` (fd_write 系 WASI 連携)、`wasi/emit_p1.rs` / `wasi/emit_p2.rs` (preview1 / component 入口)、`wasi/tests.rs` |
+| `crates/lsharp-driver/src/main.rs` | 3928 | :1-237 CLI 定義 / :238 `main()` / :246-461 Command マッチ | `cli.rs` (clap 定義)、`commands/<command>.rs` (compile / test / review / doc / package 系をコマンド単位)、`main.rs` はディスパッチのみ |
+| `crates/lsharp-types/src/infer.rs` | 3783 | :21-99 TypeError / :177-245 Infer struct / :308-435 `infer_program` / :2500-2621 instantiate・generalize・unify / :2652 tests 開始 (約 1130 行 = 30%) | `infer/error.rs` (TypeError)、`infer/unify.rs` (unify + occur check)、`infer/generalize.rs`、`infer/expr.rs` (式推論)、`infer/decl.rs` (`infer_program` と宣言処理)、`infer/tests.rs` |
+| `crates/lsharp-ir/src/lib.rs` | 3640 | :1-441 構造体定義 / :442 `link_modules()` / :1647 `compile_multi_file_with_mode` / :1777 `compile_multi_file` / :1792 incremental 系 / :2211 tests 開始 (約 1430 行 = 39%) | `ir.rs` (Module / Function / Instruction / IrType 定義)、`linker.rs` (`link_modules`)、`compile.rs` (compile_multi_file 系 + incremental 系、imp-04 と接続)、`tests.rs` |
 | `crates/lsharp-syntax/src/parser.rs` | 2242 | `parser/expr.rs` / `parser/decl.rs` / `parser/tests.rs` |
 | `crates/lsharp-types/src/constraints.rs` | 1961 | `constraints/def.rs` (定義・登録)、`constraints/eval.rs` (評価)、`constraints/pattern.rs` (簡易正規表現)、`constraints/tests.rs` |
 | `crates/lsharp-ir/src/lower/expr.rs` | 1897 | パターンマッチ lowering / 計算式 lowering を切り出し |

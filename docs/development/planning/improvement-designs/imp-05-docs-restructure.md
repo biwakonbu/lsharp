@@ -30,7 +30,14 @@ metadata 駆動開発・IDE 統合・デプロイターゲット選択・stdlib�
 
 合わせて `docs/guides/README.md` を導線ハブへ拡張する
 (「最初に読む順序」「book のどの章がユーザー向けか」を明記)。
-公開サイトに載せるページは `docs/site.toml` (公開ページの正本) への登録を忘れない。
+
+**site.toml への登録方法** (2026-06-12 検証済み形式): `docs/site.toml` は
+`[[sections]]` (id/title/description) と `[[sections.pages]]`
+(title/source/output/summary/audience) の TOML。既存 guides 3 ページは
+`id = "start"` セクションに登録されている。新設 5 ページは同セクション
+(または新 section) に同形式で 1 ページ 1 エントリ追加し、
+`cargo run -p lsharp-driver -- doc-site --output _site` でビルド確認する。
+公開は `.github/workflows/docs.yml` (Docs Site workflow) が担うため CI 変更は不要。
 
 ### 2. book/ の読者層分離 (DOC-02, Phase D-2)
 
@@ -66,12 +73,23 @@ docs/guides/ の二重管理を避ける方針:
 
 ### 5. doc-status の運用開始 (DOC-03, Phase D-2)
 
-実装済みの鮮度追跡 (`lsharp review` / `doc-ack` / `doc-check`、
-`crates/lsharp-driver/src/main.rs:286` 付近) を自プロジェクトで運用する:
+実装済みの鮮度追跡を自プロジェクトで運用する。利用可能な API
+(2026-06-12 検証済み、`crates/lsharp-docs/src/tracker.rs`):
+
+- `compute_ast_hash(source) -> u64` (:45) / `compute_doc_hash(doc) -> u64` (:60)
+- `load_doc_status(path) -> DocStatus` (:67) / `save_doc_status(&DocStatus, path)` (:75)
+- `update_freshness(&mut DocStatus, name, current_ast_hash)` (:81)
+- `acknowledge(&mut DocStatus, name, reviewer)` (:91)
+
+CLI 側の参照点は `crates/lsharp-driver/src/main.rs:286-332`
+(review / doc-ack / doc-check が `.lsharp-doc-status` を読み書きする)。
+
+運用手順:
 
 1. `.lsharp-doc-status` を生成してコミットし、selfhost/stdlib の `:doc` 群を初回 ack する
-2. CI に `lsharp doc-check` ジョブを追加し、コード変更でドキュメントが Stale になったら
-   fail (または warning) にする
+2. CI への組み込み: `.github/workflows/ci.yml` に `doc-check` ステップを追加する
+   (`cargo run -p lsharp-driver -- doc-check` を実行し、Stale 検出で fail。
+   導入初期は warning 運用とし、初回 ack 完了後に fail へ昇格)
 3. 運用手順 (ack のタイミング、Stale 時のフロー) を `docs/development/operations/` に 1 ページ追加する
 
 ### 6. 実装順序
