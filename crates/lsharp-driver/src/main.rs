@@ -2839,6 +2839,41 @@ mod tests {
     }
 
     #[test]
+    fn test_repo_doc_status_dogfooding_is_wired_for_metadata_fixture() {
+        let repo_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let status_path = repo_root.join(".lsharp-doc-status");
+        assert!(status_path.exists(), ".lsharp-doc-status を repo で運用するべき");
+
+        let status = lsharp_docs::tracker::load_doc_status(&status_path);
+        let abs = status
+            .entries
+            .get("abs")
+            .expect("examples/metadata.ls の abs は doc-status で追跡するべき");
+        assert_eq!(abs.freshness, lsharp_docs::tracker::Freshness::Fresh);
+        assert_eq!(abs.reviewed_by.as_deref(), Some("docs-maintainers"));
+        assert!(
+            abs.last_reviewed.is_some(),
+            "初回 ack の日時を保持するべき"
+        );
+
+        let ci = std::fs::read_to_string(repo_root.join(".github/workflows/ci.yml")).unwrap();
+        assert!(
+            ci.contains("scripts/ci/doc-status-check.sh"),
+            "CI は doc-status check script を実行するべき"
+        );
+
+        let operation_doc =
+            repo_root.join("docs/development/operations/documentation-freshness.md");
+        assert!(operation_doc.exists(), "doc-status 運用手順が必要");
+
+        let site_manifest = std::fs::read_to_string(repo_root.join("docs/site.toml")).unwrap();
+        assert!(
+            site_manifest.contains("docs/development/operations/documentation-freshness.md"),
+            "doc-status 運用手順は docs site に公開するべき"
+        );
+    }
+
+    #[test]
     fn test_has_metadata_errors_detects_lowercase_error_diagnostics() {
         let diagnostics = vec![
             "[warning] add: doc note".to_string(),

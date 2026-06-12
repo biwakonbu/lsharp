@@ -133,7 +133,7 @@ A-2 と A-3 は独立に並行可。
 - [done] book/ の読者層がコンパイラ実装を読む開発者向けに分離され、docs/guides/ が利用者向け入口として明示される。Evidence: `test_doc_site_manifest_separates_user_guides_from_implementation_book`
 - [done] examples の全 .ls がドキュメントの機能マトリクスから参照され、「型チェックのみ」サンプルが明示される。Evidence: `test_doc_site_manifest_exposes_examples_matrix`
 - [done] language-guide テンプレートが docs/guides/ と docs/site.toml を SSOT として明記する。Evidence: `test_lsharp_language_guide_template_points_to_docs_guides_as_ssot`
-- [pending] `.lsharp-doc-status` がリポジトリで運用され、CI で doc-check が走る
+- [done] `.lsharp-doc-status` がリポジトリで運用され、CI で doc-check が走る。Evidence: `test_repo_doc_status_dogfooding_is_wired_for_metadata_fixture`, `scripts/ci/doc-status-check.sh`
 - [pending] fuzz ターゲットが CI (または定期ジョブ) で実行される
 - [pending] I-06 記載の限界値 (GC スロット / 再帰深度) が計測され、ドキュメント化される
 

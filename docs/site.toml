@@ -239,3 +239,10 @@ source = "docs/development/operations/documentation-site.md"
 output = "operations/documentation-site.html"
 summary = "SSOT、ローカル生成、CI、GitHub Pages 公開の運用手順。"
 audience = "ドキュメントサイトを公開・保守する人"
+
+[[sections.pages]]
+title = "Documentation Freshness"
+source = "docs/development/operations/documentation-freshness.md"
+output = "operations/documentation-freshness.html"
+summary = ".lsharp-doc-status と doc-check CI によるドキュメント鮮度管理。"
+audience = "ドキュメント鮮度を review する人"

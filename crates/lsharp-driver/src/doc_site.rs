@@ -785,6 +785,10 @@ mod tests {
             output.join("operations/documentation-site.html").exists(),
             "documentation-site.html が必要"
         );
+        assert!(
+            output.join("operations/documentation-freshness.html").exists(),
+            "documentation-freshness.html が必要"
+        );
 
         let index = std::fs::read_to_string(output.join("index.html")).unwrap();
         assert!(index.contains("data-source=\"docs/site.toml\""));

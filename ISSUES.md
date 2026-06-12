@@ -53,7 +53,7 @@
 |----|------|--------|------|----------|
 | [DOC-01](#doc-01) | ユーザーガイドの主要範囲不足 | 高 | resolved | [imp-05](docs/development/planning/improvement-designs/imp-05-docs-restructure.md) |
 | [DOC-02](#doc-02) | book/ がユーザー向けと実装者向けの混在 | 中 | resolved | imp-05 |
-| [DOC-03](#doc-03) | ドキュメント鮮度追跡 (.lsharp-doc-status) が未運用 | 中 | in-design | imp-05 |
+| [DOC-03](#doc-03) | ドキュメント鮮度追跡 (.lsharp-doc-status) が未運用 | 中 | resolved | imp-05 |
 | [DOC-04](#doc-04) | examples/ とドキュメントの連携不足 | 低-中 | resolved | imp-05 |
 | [DOC-05](#doc-05) | language-guide テンプレートと docs/ の二重管理リスク | 低 | resolved | imp-05 |
 | [DOC-06](#doc-06) | エラーコード体系が docs 未定義 (MCP に E0001-E0005 のみ) | 中 | in-design | imp-02 |
@@ -359,14 +359,23 @@
 <a id="doc-03"></a>
 ### DOC-03: ドキュメント鮮度追跡 (.lsharp-doc-status) が実装済みだが未運用
 
-- **影響度**: 中 / **状態**: in-design
-- **内容**: `lsharp review` / `doc-ack` / `doc-check` は `.lsharp-doc-status` による
-  鮮度追跡 (Fresh/Stale/Unreviewed) を実装しているが、リポジトリに `.lsharp-doc-status` が
-  存在せず、CI にも組み込まれていない。自プロジェクトのドキュメント鮮度管理に
-  自前機構が使われていない (dogfooding 不全)。
-- **根拠**:
-  - `crates/lsharp-driver/src/main.rs:286-287`, `:306-307`, `:331-332` -- `load_doc_status(".lsharp-doc-status")` の参照
-  - リポジトリルートに `.lsharp-doc-status` 不在 (2026-06-12 確認)
+- **影響度**: 中 / **状態**: resolved
+- **内容**: `.lsharp-doc-status` を repo root に追加し、`examples/metadata.ls` の `abs`
+  metadata entry を初回 Fresh ack 済みの代表 fixture として登録した。CI には
+  `scripts/ci/doc-status-check.sh` を追加し、`lsharp doc-check examples/metadata.ls --emit-trailers`
+  が `.lsharp-doc-status` から reviewer を読んで `Doc-Reviewed-By: docs-maintainers` を返すことを
+  gate 化した。運用手順も docs site の operations section へ公開対象として追加した。
+- **解消根拠**:
+  - `.lsharp-doc-status` -- `abs` entry を `Fresh` / `docs-maintainers` で登録
+  - `scripts/ci/doc-status-check.sh` -- CI で `doc-check --emit-trailers` を実行
+  - `.github/workflows/ci.yml` -- `Documentation freshness` job を追加
+  - `docs/development/operations/documentation-freshness.md` -- ack / check / 更新手順
+  - `docs/site.toml` -- operations page として公開対象へ追加
+- **検証**:
+  - `test_repo_doc_status_dogfooding_is_wired_for_metadata_fixture`
+  - `bash scripts/ci/doc-status-check.sh`
+  - `test_cmd_doc_site_generates_manifest_pages_and_publish_assets`
+  - `git diff --check`
 - **関連**: imp-05 (運用フロー設計)。
 
 <a id="doc-04"></a>
