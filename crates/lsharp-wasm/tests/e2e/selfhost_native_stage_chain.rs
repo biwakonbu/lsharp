@@ -1490,7 +1490,7 @@ fn test_selfhost_register_states_push_final_func_idx_without_int_helper_after_ob
 }
 
 #[test]
-fn test_selfhost_parse_defn_body_branch_returns_finalized_node_without_outer_root_pop() {
+fn test_selfhost_parse_defn_body_branch_roots_body_before_finalize() {
     let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
         "selfhost/src/Syntax/Parser.ls",
     )))
@@ -1516,11 +1516,34 @@ fn test_selfhost_parse_defn_body_branch_returns_finalized_node_without_outer_roo
     );
     assert!(
         parse_body.contains(
-            "(let [body (parse-expr-v3 spans pos-ref src)]\n      (finalize-defn-parsed-body-v3 spans pos-ref defn-node param-count body))"
-        ) && !parse_body.contains(
-            "(let [body (parse-expr-v3 spans pos-ref src)]\n      (do\n        (root_push body)"
-        ),
-        "parse-defn-bodyless-or-body-v3 の body branch は finalized node を外側 root_pop 後に返さない"
+            "(do\n      (root_push spans)\n      (root_push pos-ref)\n      (root_push src)\n      (let [body (parse-expr-v3 spans pos-ref src)]\n        (do\n          (root_push body)\n          (let [parsed (finalize-defn-body-v3 defn-node param-count body)]\n            (do\n              (root_push parsed)\n              (p-expect spans pos-ref 1) ;; ) を消費\n              (root_pop)\n              (root_pop)\n              (root_pop)\n              (root_pop)\n              (root_pop)\n              parsed)))))"
+        ) && !parse_body.contains("finalize-defn-parsed-body-v3"),
+        "parse-defn-bodyless-or-body-v3 の body branch は parser state と body を caller 側で root してから p-expect 前に finalize-defn-body-v3 へ渡し、第5引数 handoff と p-expect 後の body local 再利用を避けるべき"
+    );
+}
+
+#[test]
+fn test_selfhost_compiler_mode_direct_defn_probe_avoids_parsed_body_handoff() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/App/CompilerMode.ls",
+    )))
+    .expect("CompilerMode.ls を読めること");
+    let direct_probe = source
+        .split("(defn print-direct-defn-build-progress-probe")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn print-direct-defn-return-cleanup-progress-probe")
+                .next()
+        })
+        .expect("print-direct-defn-build-progress-probe body を取り出せること");
+
+    assert!(
+        direct_probe.contains(
+            "(let [body (parse-expr-v3 spans pos-ref src)]\n                          (do\n                            (root_push body)\n                            (print 188)"
+        ) && direct_probe.contains(
+            "(let [parsed (finalize-defn-body-v3 defn-node param-count body)]\n                              (do\n                                (root_push parsed)\n                                (p-expect spans pos-ref 1)"
+        ) && !direct_probe.contains("finalize-defn-parsed-body-v3"),
+        "progress 用 direct defn probe も body を caller 側で root し、p-expect 前に finalize-defn-body-v3 へ渡すべき"
     );
 }
 

@@ -827,8 +827,23 @@
       (p-advance pos-ref) ;; bodyless defn の ) を消費
       (let [body (make-int-node 0)]
         (finalize-defn-body-v3 defn-node param-count body)))
-    (let [body (parse-expr-v3 spans pos-ref src)]
-      (finalize-defn-parsed-body-v3 spans pos-ref defn-node param-count body))))
+    (do
+      (root_push spans)
+      (root_push pos-ref)
+      (root_push src)
+      (let [body (parse-expr-v3 spans pos-ref src)]
+        (do
+          (root_push body)
+          (let [parsed (finalize-defn-body-v3 defn-node param-count body)]
+            (do
+              (root_push parsed)
+              (p-expect spans pos-ref 1) ;; ) を消費
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              parsed)))))))
 
 (defn parse-defn-bodyless-or-body-with-meta-v3 [spans pos-ref src defn-node param-count meta]
   (maybe-append-defn-meta-v3

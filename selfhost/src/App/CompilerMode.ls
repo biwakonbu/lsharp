@@ -1490,9 +1490,10 @@
                             (print (vector-get body 0))
                             (print (vector-length body))
                             (print (ref-get pos-ref))
-                            (let [parsed (finalize-defn-parsed-body-v3 spans pos-ref defn-node param-count body)]
+                            (let [parsed (finalize-defn-body-v3 defn-node param-count body)]
                               (do
                                 (root_push parsed)
+                                (p-expect spans pos-ref 1)
                                 (print 189)
                                 (print (vector-get parsed 0))
                                 (print (vector-length parsed))
