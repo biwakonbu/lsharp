@@ -1045,6 +1045,44 @@
                   (root_pop)
                   (root_pop)
                   payload2)))))))))
+(defn print-progress-decl-body-shape [marker collection-count decl]
+  (do
+    (root_push decl)
+    (let [decl-len (vector-length decl)
+      param-count (if (> decl-len 2) (vector-get decl 2) 0)
+      body-idx (+ 3 param-count)
+      body-expr (if (> decl-len body-idx) (vector-get decl body-idx) 0)
+      body-len (if (> decl-len body-idx) (vector-length body-expr) -1)
+      body-slot1 (if (> body-len 1) (vector-get body-expr 1) -1)]
+      (do
+        (root_push body-expr)
+        (print marker)
+        (print collection-count)
+        (print decl-len)
+        (print param-count)
+        (print body-idx)
+        (print (if (> decl-len body-idx) (vector-get body-expr 0) -1))
+        (print body-len)
+        (print body-slot1)
+        (root_pop)
+        (root_pop)
+        0))))
+(defn print-progress-pairs-body-shape [pairs]
+  (let [pair-count (vector-length pairs)
+    first-pair (if (> pair-count 0) (vector-get pairs 0) (vector-new 0))]
+    (do
+      (root_push first-pair)
+      (let [first-pair-decls (if (> (vector-length first-pair) 1) (vector-get first-pair 1) (vector-new 0))]
+        (do
+          (root_push first-pair-decls)
+          (let [first-pair-decl (if (> (vector-length first-pair-decls) 0) (vector-get first-pair-decls 0) (vector-new 0))]
+            (do
+              (root_push first-pair-decl)
+              (print-progress-decl-body-shape 9000000147 pair-count first-pair-decl)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              0)))))))
 (defn compile-file-functions-payload-with-cache-progress [path func-idx cache-ref parse-count-ref]
   (do
     (print 9000000041)
@@ -1063,6 +1101,10 @@
                 (root_push decls)
                 (print 9000000044)
                 (print (vector-length decls))
+                (print-progress-decl-body-shape
+                  9000000146
+                  (vector-length decls)
+                  (if (> (vector-length decls) 0) (vector-get decls 0) (vector-new 0)))
                 (root_pop)
                 (root_pop)
                 (print 9000000069)
@@ -1078,6 +1120,7 @@
                     (print 9000000070)
                     (print (vector-length all-pairs))
                     (print (ref-get parse-count-ref))
+                    (print-progress-pairs-body-shape all-pairs)
                     (let [n (vector-length all-pairs)
                       start-ftable (ftable-new)]
                       (do
@@ -1483,17 +1526,9 @@
                         (print 187)
                         (print (ref-get pos-ref))
                         (print (p-current spans pos-ref))
-                        (print 9000000146)
-                        (print (p-current spans pos-ref))
-                        (print (ref-get pos-ref))
-                        (print param-count)
                         (let [body (parse-expr-v3 spans pos-ref src)]
                           (do
                             (root_push body)
-                            (print 9000000147)
-                            (print (vector-get body 0))
-                            (print (vector-length body))
-                            (print (if (> (vector-length body) 1) (vector-get body 1) -1))
                             (print 188)
                             (print (vector-get body 0))
                             (print (vector-length body))

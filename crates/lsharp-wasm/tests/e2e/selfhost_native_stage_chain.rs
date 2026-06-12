@@ -1437,53 +1437,68 @@ fn test_selfhost_compiler_mode_defn_probe_reports_first_ir_and_data_shape() {
 }
 
 #[test]
-fn test_selfhost_compiler_mode_direct_defn_probe_reports_current_and_body_shape() {
+fn test_selfhost_compiler_mode_progress_reports_parse_and_pair_body_shape() {
     let source = selfhost_module("CompilerMode.ls");
-    let direct_probe = source
-        .split("(defn print-direct-defn-build-progress-probe")
+    let decl_shape_helper = source
+        .split("(defn print-progress-decl-body-shape")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn print-progress-pairs-body-shape").next())
+        .expect("CompilerMode.ls に print-progress-decl-body-shape が存在すること");
+    let pair_shape_helper = source
+        .split("(defn print-progress-pairs-body-shape")
         .nth(1)
         .and_then(|tail| {
-            tail.split("(defn print-direct-defn-return-cleanup-progress-probe")
+            tail.split("(defn compile-file-functions-payload-with-cache-progress")
                 .next()
         })
-        .expect("CompilerMode.ls に print-direct-defn-build-progress-probe が存在すること");
+        .expect("CompilerMode.ls に print-progress-pairs-body-shape が存在すること");
+    let progress_body = source
+        .split("(defn compile-file-functions-payload-with-cache-progress")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-file-functions-payload-with-cache")
+                .next()
+        })
+        .expect(
+            "CompilerMode.ls に compile-file-functions-payload-with-cache-progress が存在すること",
+        );
 
     for token in [
-        "(print 9000000146)",
-        "(print (p-current spans pos-ref))",
-        "(print (ref-get pos-ref))",
-        "(print param-count)",
-        "(print 9000000147)",
-        "(print (vector-get body 0))",
-        "(print (vector-length body))",
-        "(print (if (> (vector-length body) 1) (vector-get body 1) -1))",
+        "(print marker)",
+        "9000000146",
+        "body-idx (+ 3 param-count)",
+        "(print decl-len)",
+        "(print (if (> decl-len body-idx) (vector-get body-expr 0) -1))",
+        "9000000147",
+        "first-pair (if (> pair-count 0) (vector-get pairs 0) (vector-new 0))",
+        "first-pair-decls (if (> (vector-length first-pair) 1) (vector-get first-pair 1) (vector-new 0))",
+        "(print-progress-decl-body-shape 9000000147 pair-count first-pair-decl)",
     ] {
         assert!(
-            direct_probe.contains(token),
-            "print-direct-defn-build-progress-probe は body branch 診断 token {token} を含むべき"
+            decl_shape_helper.contains(token)
+                || pair_shape_helper.contains(token)
+                || progress_body.contains(token),
+            "CompilerMode progress body shape 診断 token {token} を含むべき"
         );
     }
 
-    let branch_marker_idx = direct_probe
-        .find("(print 9000000146)")
-        .expect("direct defn probe は branch marker を含むべき");
-    let body_parse_idx = direct_probe
-        .find("(let [body (parse-expr-v3 spans pos-ref src)]")
-        .expect("direct defn probe は body を parse するべき");
+    let parse_marker_idx = progress_body
+        .find("(print-progress-decl-body-shape")
+        .expect("progress path は parse body shape helper を呼ぶべき");
+    let cache_idx = progress_body
+        .find("all-pairs (compile-file-pairs-with-cache path cache-ref parse-count-ref)")
+        .expect("progress path は cache pair 生成を含むべき");
     assert!(
-        branch_marker_idx < body_parse_idx,
-        "direct defn probe は body parse 前に current token / pos を出力するべき"
+        parse_marker_idx < cache_idx,
+        "progress path は cache/pair 経路へ入る前に parse-program 直後の body shape を出力するべき"
     );
 
-    let body_root_idx = direct_probe
-        .find("(root_push body)")
-        .expect("direct defn probe は parsed body を root するべき");
-    let parsed_body_marker_idx = direct_probe
-        .find("(print 9000000147)")
-        .expect("direct defn probe は parsed body marker を含むべき");
+    let pair_marker_idx = progress_body
+        .find("(print-progress-pairs-body-shape all-pairs)")
+        .expect("progress path は pair body shape helper を呼ぶべき");
     assert!(
-        body_root_idx < parsed_body_marker_idx,
-        "direct defn probe は parsed body 診断前に body を root するべき"
+        cache_idx < pair_marker_idx,
+        "progress path は cache/pair 生成後に pair 内 body shape を出力するべき"
     );
 }
 
