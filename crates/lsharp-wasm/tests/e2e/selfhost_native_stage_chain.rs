@@ -1437,23 +1437,21 @@ fn test_selfhost_compiler_mode_defn_probe_reports_first_ir_and_data_shape() {
 }
 
 #[test]
-fn test_selfhost_parser_defn_body_branch_reports_current_and_body_shape() {
-    let source = selfhost_module("Parser.ls");
-    let parse_body = source
-        .split("(defn parse-defn-bodyless-or-body-v3")
+fn test_selfhost_compiler_mode_direct_defn_probe_reports_current_and_body_shape() {
+    let source = selfhost_module("CompilerMode.ls");
+    let direct_probe = source
+        .split("(defn print-direct-defn-build-progress-probe")
         .nth(1)
         .and_then(|tail| {
-            tail.split("(defn parse-defn-bodyless-or-body-with-meta-v3")
+            tail.split("(defn print-direct-defn-return-cleanup-progress-probe")
                 .next()
         })
-        .expect("Parser.ls に parse-defn-bodyless-or-body-v3 が存在すること");
+        .expect("CompilerMode.ls に print-direct-defn-build-progress-probe が存在すること");
 
     for token in [
         "(print 9000000146)",
-        "current-kind (p-current spans pos-ref)",
-        "current-pos (ref-get pos-ref)",
-        "(print current-kind)",
-        "(print current-pos)",
+        "(print (p-current spans pos-ref))",
+        "(print (ref-get pos-ref))",
         "(print param-count)",
         "(print 9000000147)",
         "(print (vector-get body 0))",
@@ -1461,20 +1459,31 @@ fn test_selfhost_parser_defn_body_branch_reports_current_and_body_shape() {
         "(print (if (> (vector-length body) 1) (vector-get body 1) -1))",
     ] {
         assert!(
-            parse_body.contains(token),
-            "parse-defn-bodyless-or-body-v3 は body branch 診断 token {token} を含むべき"
+            direct_probe.contains(token),
+            "print-direct-defn-build-progress-probe は body branch 診断 token {token} を含むべき"
         );
     }
 
-    let body_root_idx = parse_body
+    let branch_marker_idx = direct_probe
+        .find("(print 9000000146)")
+        .expect("direct defn probe は branch marker を含むべき");
+    let body_parse_idx = direct_probe
+        .find("(let [body (parse-expr-v3 spans pos-ref src)]")
+        .expect("direct defn probe は body を parse するべき");
+    assert!(
+        branch_marker_idx < body_parse_idx,
+        "direct defn probe は body parse 前に current token / pos を出力するべき"
+    );
+
+    let body_root_idx = direct_probe
         .find("(root_push body)")
-        .expect("parse-defn-bodyless-or-body-v3 は parsed body を root するべき");
-    let parsed_body_marker_idx = parse_body
+        .expect("direct defn probe は parsed body を root するべき");
+    let parsed_body_marker_idx = direct_probe
         .find("(print 9000000147)")
-        .expect("parse-defn-bodyless-or-body-v3 は parsed body marker を含むべき");
+        .expect("direct defn probe は parsed body marker を含むべき");
     assert!(
         body_root_idx < parsed_body_marker_idx,
-        "parse-defn-bodyless-or-body-v3 は parsed body 診断前に body を root するべき"
+        "direct defn probe は parsed body 診断前に body を root するべき"
     );
 }
 

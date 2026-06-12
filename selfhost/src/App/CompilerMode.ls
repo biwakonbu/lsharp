@@ -1483,9 +1483,17 @@
                         (print 187)
                         (print (ref-get pos-ref))
                         (print (p-current spans pos-ref))
+                        (print 9000000146)
+                        (print (p-current spans pos-ref))
+                        (print (ref-get pos-ref))
+                        (print param-count)
                         (let [body (parse-expr-v3 spans pos-ref src)]
                           (do
                             (root_push body)
+                            (print 9000000147)
+                            (print (vector-get body 0))
+                            (print (vector-length body))
+                            (print (if (> (vector-length body) 1) (vector-get body 1) -1))
                             (print 188)
                             (print (vector-get body 0))
                             (print (vector-length body))

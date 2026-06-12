@@ -822,39 +822,28 @@
         parsed))))
 
 (defn parse-defn-bodyless-or-body-v3 [spans pos-ref src defn-node param-count]
-  (let [current-kind (p-current spans pos-ref)
-    current-pos (ref-get pos-ref)]
+  (if (== (p-current spans pos-ref) 1)
     (do
-      (print 9000000146)
-      (print current-kind)
-      (print current-pos)
-      (print param-count)
-      (if (== current-kind 1)
+      (p-advance pos-ref) ;; bodyless defn の ) を消費
+      (let [body (make-int-node 0)]
+        (finalize-defn-body-v3 defn-node param-count body)))
+    (do
+      (root_push spans)
+      (root_push pos-ref)
+      (root_push src)
+      (let [body (parse-expr-v3 spans pos-ref src)]
         (do
-          (p-advance pos-ref) ;; bodyless defn の ) を消費
-          (let [body (make-int-node 0)]
-            (finalize-defn-body-v3 defn-node param-count body)))
-        (do
-          (root_push spans)
-          (root_push pos-ref)
-          (root_push src)
-          (let [body (parse-expr-v3 spans pos-ref src)]
+          (root_push body)
+          (let [parsed (finalize-defn-body-v3 defn-node param-count body)]
             (do
-              (root_push body)
-              (print 9000000147)
-              (print (vector-get body 0))
-              (print (vector-length body))
-              (print (if (> (vector-length body) 1) (vector-get body 1) -1))
-              (let [parsed (finalize-defn-body-v3 defn-node param-count body)]
-                (do
-                  (root_push parsed)
-                  (p-expect spans pos-ref 1) ;; ) を消費
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  parsed)))))))))
+              (root_push parsed)
+              (p-expect spans pos-ref 1) ;; ) を消費
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              parsed)))))))
 
 (defn parse-defn-bodyless-or-body-with-meta-v3 [spans pos-ref src defn-node param-count meta]
   (maybe-append-defn-meta-v3
