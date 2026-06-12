@@ -1167,6 +1167,47 @@ write_actual_selfregen_failure_summary() {
 JSON
 }
 
+parse_complete_actual_stage_segments() {
+  local chunk_stdout="$1"
+  local chunk_clean="$2"
+  python3 - "${chunk_stdout}" "${chunk_clean}" <<'PY'
+import pathlib
+import sys
+
+src = pathlib.Path(sys.argv[1])
+clean = pathlib.Path(sys.argv[2])
+lines = [line for line in src.read_bytes().replace(b"\0", b"\n").splitlines() if line]
+vals = []
+for line in lines:
+    try:
+        vals.append(int(line.decode("utf-8")))
+    except Exception:
+        vals.append(None)
+
+idx = 0
+complete = 0
+saw_tail = False
+while idx < len(vals):
+    if vals[idx] == 9000000003:
+        saw_tail = True
+        idx += 1
+        break
+    if vals[idx] != 9000000010 or idx + 1 >= len(vals):
+        break
+    segment_len = vals[idx + 1]
+    if segment_len is None or segment_len < 0:
+        break
+    packed_count = (segment_len + 7) // 8
+    if idx + 2 + packed_count > len(vals):
+        break
+    idx += 2 + packed_count
+    complete += 1
+
+clean.write_bytes((b"\n".join(lines[:idx]) + b"\n") if idx > 0 else b"")
+print(f"{complete} {1 if saw_tail else 0} {len(lines)} {idx}")
+PY
+}
+
 run_actual_stage_range() {
   local stage_dir="$1"
   local stdout_file="$2"
@@ -1180,6 +1221,14 @@ run_actual_stage_range() {
   local chunk_stderr=""
   local chunk_exit_code=0
   local split_mid=0
+  local chunk_clean=""
+  local chunk_parse=""
+  local chunk_progress_segments=0
+  local chunk_saw_tail=0
+  local chunk_total_lines=0
+  local chunk_usable_index=0
+  local chunk_stderr_bytes=0
+  local next_start=0
 
   if [[ "${chunk_end}" -le "${chunk_start}" ]]; then
     return 0
@@ -1197,6 +1246,28 @@ run_actual_stage_range() {
       cat "${chunk_stderr}" >>"${stderr_file}"
       rm -f "${chunk_stdout}" "${chunk_stderr}"
       return 0
+    fi
+    if [[ "${include_header}" -eq 0 ]]; then
+      chunk_clean="${chunk_stdout}.clean"
+      chunk_parse="$(parse_complete_actual_stage_segments "${chunk_stdout}" "${chunk_clean}")"
+      chunk_progress_segments="$(printf '%s' "${chunk_parse}" | awk '{print $1}')"
+      chunk_saw_tail="$(printf '%s' "${chunk_parse}" | awk '{print $2}')"
+      chunk_total_lines="$(printf '%s' "${chunk_parse}" | awk '{print $3}')"
+      chunk_usable_index="$(printf '%s' "${chunk_parse}" | awk '{print $4}')"
+      chunk_stderr_bytes="$(wc -c <"${chunk_stderr}" 2>/dev/null || echo 0)"
+      if [[ "${chunk_progress_segments}" -gt 0 || "${chunk_saw_tail}" -eq 1 ]]; then
+        cat "${chunk_clean}" >>"${stdout_file}"
+        cat "${chunk_stderr}" >>"${stderr_file}"
+        next_start=$((chunk_start + chunk_progress_segments))
+        echo "WARN: harvested complete native segments for ${stage_dir} ${chunk_start}-${chunk_end} after exit ${chunk_exit_code}: complete=${chunk_progress_segments} saw_tail=${chunk_saw_tail} total_lines=${chunk_total_lines} usable_index=${chunk_usable_index} stderr_bytes=${chunk_stderr_bytes}" >&2
+        rm -f "${chunk_stdout}" "${chunk_stderr}" "${chunk_clean}"
+        if [[ "${chunk_saw_tail}" -eq 1 || "${next_start}" -ge "${chunk_end}" ]]; then
+          return 0
+        fi
+        run_actual_stage_range "${stage_dir}" "${stdout_file}" "${stderr_file}" "${next_start}" "${chunk_end}" 0 "${include_tail}" || return $?
+        return 0
+      fi
+      rm -f "${chunk_clean}"
     fi
     if [[ "${chunk_attempt}" -lt "${ACTUAL_CHUNK_RETRIES}" ]]; then
       echo "WARN: retrying chunked native run for ${stage_dir} ${chunk_start}-${chunk_end} after exit ${chunk_exit_code}" >&2

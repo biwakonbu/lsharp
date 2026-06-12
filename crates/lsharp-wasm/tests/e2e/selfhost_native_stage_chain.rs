@@ -907,6 +907,24 @@ fn test_native_linux_x86_hostgen_vm_script_propagates_split_chunk_failures() {
     );
 }
 
+#[test]
+fn test_native_linux_x86_hostgen_vm_script_harvests_complete_segments_before_splitting() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+    let body = shell_function_body(&script, "run_actual_stage_range");
+
+    assert!(
+        script.contains("parse_complete_actual_stage_segments")
+            && body.contains("chunk_progress_segments")
+            && body.contains(r#"cat "${chunk_clean}" >>"${stdout_file}""#)
+            && body.contains(r#"next_start=$((chunk_start + chunk_progress_segments))"#)
+            && body.contains(r#"run_actual_stage_range "${stage_dir}" "${stdout_file}" "${stderr_file}" "${next_start}" "${chunk_end}" 0 "${include_tail}""#),
+        "actual stage chunk が timeout / SIGTERM しても、完全に出力済みの segment は捨てずに回収して残り range だけを再実行するべき"
+    );
+}
+
 fn assert_shell_function_declares_locals(script: &str, function_name: &str, vars: &[&str]) {
     let body = shell_function_body(script, function_name);
     for var in vars {
