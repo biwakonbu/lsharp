@@ -7,6 +7,8 @@
 >
 > P8-9 (T4-4/T4-5) → ADR-148, P9-6b → ADR-149, P9-6c → ADR-150, P9-6d → ADR-151
 > P12 → ADR-166, P13 → ADR-167, STR-01~03 → ADR-168, DOC-02 → ADR-169, V2-01~07+P11-2e-2 → ADR-170
+>
+> **問題台帳**: 設計・実装・ドキュメントの既知問題は [ISSUES.md](ISSUES.md) を参照（タスク正本は本ファイル。台帳の issue を着手する際は本ファイルに項目を作る）。改善方針は `docs/development/planning/improvement-roadmap.md`。
 
 ---
 

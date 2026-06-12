@@ -10,6 +10,7 @@
 | コンパイラや backend を実装・変更する人 | [`language/`](./language/)（v1 契約）→ 必要に応じて [`development/`](./development/) |
 | Phase / CI / リリースに関わる人 | [`development/`](./development/)（計画・検証・運用） |
 | 意思決定の経緯を追いたい人 | [`adr/`](./adr/)（JSONL 形式の意思決定ログ） |
+| 既知の問題と改善計画を知りたい人 | リポジトリ直下の [`ISSUES.md`](../ISSUES.md)（問題台帳）→ [`development/planning/improvement-roadmap.md`](./development/planning/improvement-roadmap.md)（改善方針）|
 | ドキュメント生成・スキーマを触る人 | [`schemas/`](./schemas/)（JSON Schema。`lsharp-docs` 等から参照） |
 
 ## 公開ドキュメントサイト
