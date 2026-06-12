@@ -606,6 +606,28 @@ mod tests {
             output.join("guides/package-layout.html").exists(),
             "package-layout.html が必要"
         );
+        assert!(
+            output
+                .join("guides/metadata-driven-development.html")
+                .exists(),
+            "metadata-driven-development.html が必要"
+        );
+        assert!(
+            output.join("guides/ide-setup.html").exists(),
+            "ide-setup.html が必要"
+        );
+        assert!(
+            output.join("guides/deployment-targets.html").exists(),
+            "deployment-targets.html が必要"
+        );
+        assert!(
+            output.join("guides/stdlib-guide.html").exists(),
+            "stdlib-guide.html が必要"
+        );
+        assert!(
+            output.join("guides/examples.html").exists(),
+            "examples.html が必要"
+        );
         assert!(output.join("api/Core.html").exists(), "Core.html が必要");
         assert!(
             output.join("api/stdlib.json").exists(),
@@ -615,6 +637,7 @@ mod tests {
         let index = std::fs::read_to_string(output.join("index.html")).unwrap();
         assert!(index.contains("Quick Start"));
         assert!(index.contains("Package Layout"));
+        assert!(index.contains("Examples Matrix"));
         assert!(index.contains("Core"));
 
         let api = std::fs::read_to_string(output.join("api/stdlib.json")).unwrap();
@@ -650,6 +673,92 @@ mod tests {
                 == "docs/development/operations/documentation-site.md"
                 && page.output == "operations/documentation-site.html"),
             "公開運用手順も manifest から生成対象になるべき"
+        );
+    }
+
+    #[test]
+    fn test_doc_site_manifest_exposes_examples_matrix() {
+        let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let manifest = load_site_manifest(&repo_root).expect("docs/site.toml should load");
+        let pages = manifest.all_pages();
+
+        assert!(
+            pages.iter().any(|page| page.title == "Examples Matrix"
+                && page.source == "docs/guides/examples.md"
+                && page.output == "guides/examples.html"),
+            "examples matrix は公開 guide として manifest から生成対象になるべき"
+        );
+    }
+
+    #[test]
+    fn test_doc_site_manifest_exposes_user_guide_expansion() {
+        let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let manifest = load_site_manifest(&repo_root).expect("docs/site.toml should load");
+        let pages = manifest.all_pages();
+
+        for (title, source, output) in [
+            (
+                "Metadata-Driven Development",
+                "docs/guides/metadata-driven-development.md",
+                "guides/metadata-driven-development.html",
+            ),
+            (
+                "IDE and LSP Setup",
+                "docs/guides/ide-setup.md",
+                "guides/ide-setup.html",
+            ),
+            (
+                "Deployment Targets",
+                "docs/guides/deployment-targets.md",
+                "guides/deployment-targets.html",
+            ),
+            (
+                "Stdlib Guide",
+                "docs/guides/stdlib-guide.md",
+                "guides/stdlib-guide.html",
+            ),
+        ] {
+            assert!(
+                pages.iter().any(|page| page.title == title
+                    && page.source == source
+                    && page.output == output),
+                "{title} は公開 guide として manifest から生成対象になるべき"
+            );
+        }
+    }
+
+    #[test]
+    fn test_doc_site_manifest_separates_user_guides_from_implementation_book() {
+        let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let manifest = load_site_manifest(&repo_root).expect("docs/site.toml should load");
+
+        let start_section = manifest
+            .sections
+            .iter()
+            .find(|section| section.id == "start")
+            .expect("start section が必要");
+        assert!(
+            start_section
+                .pages
+                .iter()
+                .all(|page| page.audience.contains("L# を使う開発者")
+                    || page.audience.contains("L# でアプリやライブラリを書く開発者")
+                    || page.audience.contains("L# package を作る開発者")
+                    || page.audience.contains("既存サンプルから L# を学ぶ開発者")),
+            "guides は利用者向け audience に揃えるべき"
+        );
+
+        let book_section = manifest
+            .sections
+            .iter()
+            .find(|section| section.id == "book")
+            .expect("book section が必要");
+        assert!(
+            book_section
+                .pages
+                .iter()
+                .all(|page| page.audience.contains("コンパイラ実装を読む開発者")),
+            "book はコンパイラ実装を読む開発者向け audience に揃えるべき"
         );
     }
 

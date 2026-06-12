@@ -95,6 +95,9 @@ lsharp lsp
 
 # AI 向け
 lsharp mcp-server
+
+# L# 開発者向けの Claude Skill / language guide Markdown を表示
+lsharp language-guide
 ```
 
 公開 CLI は `compile` を中心に整理しており、`parse` / `check` / `fmt` は LSP / MCP の内部 API として扱います。AST・型情報・formatting の詳細確認は、CLI を直叩きする代わりに `lsharp lsp` / `lsharp mcp-server` を経由する想定です。

@@ -228,6 +228,9 @@ enum Command {
         output: PathBuf,
     },
 
+    /// L# 開発者向けの Claude Skill / language guide Markdown を標準出力へ表示
+    LanguageGuide,
+
     /// Claude Code へ MCP 設定と L# Skill をインストール
     ClaudePlugin,
 }
@@ -446,6 +449,10 @@ fn main() -> miette::Result<()> {
 
         Command::DocSite { output } => {
             doc_site::cmd_doc_site(&output)?;
+        }
+
+        Command::LanguageGuide => {
+            print!("{}", claude_plugin::language_guide_markdown());
         }
 
         Command::ClaudePlugin => {
@@ -2516,6 +2523,7 @@ mod tests {
         let commands = command_names_from_help(&help);
 
         assert!(commands.contains(&"compile"));
+        assert!(commands.contains(&"language-guide"));
         assert!(!commands.contains(&"parse"));
         assert!(!commands.contains(&"check"));
         assert!(!commands.contains(&"fmt"));

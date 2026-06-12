@@ -13,14 +13,14 @@ title = "Quick Start"
 source = "docs/guides/quick-start.md"
 output = "guides/quick-start.html"
 summary = "Hello World から module までの 5 分チュートリアル。"
-audience = "L# を初めて使う開発者"
+audience = "L# を使う開発者"
 
 [[sections.pages]]
 title = "Language Reference"
 source = "docs/guides/language-reference.md"
 output = "guides/language-reference.html"
 summary = "構文、型、module、metadata、stdlib、MCP の利用者向けリファレンス。"
-audience = "L# の構文や型を確認したい開発者"
+audience = "L# を使う開発者"
 
 [[sections.pages]]
 title = "Package Layout"
@@ -28,6 +28,41 @@ source = "docs/guides/package-layout.md"
 output = "guides/package-layout.html"
 summary = "パッケージ標準レイアウトと module 解決規約。"
 audience = "L# package を作る開発者"
+
+[[sections.pages]]
+title = "Metadata-Driven Development"
+source = "docs/guides/metadata-driven-development.md"
+output = "guides/metadata-driven-development.html"
+summary = "metadata をテスト、ドキュメント、review の入力として使う手順。"
+audience = "L# でアプリやライブラリを書く開発者"
+
+[[sections.pages]]
+title = "IDE and LSP Setup"
+source = "docs/guides/ide-setup.md"
+output = "guides/ide-setup.html"
+summary = "lsharp lsp と editor / AI tool 連携の利用者向けセットアップ。"
+audience = "L# でアプリやライブラリを書く開発者"
+
+[[sections.pages]]
+title = "Deployment Targets"
+source = "docs/guides/deployment-targets.md"
+output = "guides/deployment-targets.html"
+summary = "wasi-component / wasi-preview1 / web-wasm / native の使い分け。"
+audience = "L# でアプリやライブラリを書く開発者"
+
+[[sections.pages]]
+title = "Stdlib Guide"
+source = "docs/guides/stdlib-guide.md"
+output = "guides/stdlib-guide.html"
+summary = "stdlib module の探し方、generated API、MCP での参照方法。"
+audience = "L# でアプリやライブラリを書く開発者"
+
+[[sections.pages]]
+title = "Examples Matrix"
+source = "docs/guides/examples.md"
+output = "guides/examples.html"
+summary = "examples/*.ls と言語機能、実行状態、関連ガイドの対応表。"
+audience = "既存サンプルから L# を学ぶ開発者"
 
 [[sections]]
 id = "language"
@@ -79,119 +114,119 @@ title = "はじめに"
 source = "book/ch01-introduction.md"
 output = "book/introduction.html"
 summary = "L# の目的、前提知識、最初のビルド手順。"
-audience = "L# の背景を理解したい読者"
+audience = "コンパイラ実装を読む開発者"
 
 [[sections.pages]]
 title = "字句解析"
 source = "book/ch02-lexer.md"
 output = "book/lexer.html"
 summary = "ソースコードを token 列へ分解する設計と実装。"
-audience = "compiler frontend を読む開発者"
+audience = "コンパイラ実装を読む開発者"
 
 [[sections.pages]]
 title = "構文解析"
 source = "book/ch03-parser.md"
 output = "book/parser.html"
 summary = "S 式 parser と AST 構築の解説。"
-audience = "syntax 実装を読む開発者"
+audience = "コンパイラ実装を読む開発者"
 
 [[sections.pages]]
 title = "型推論"
 source = "book/ch04-type-inference.md"
 output = "book/type-inference.html"
 summary = "Hindley-Milner 型推論と統合の解説。"
-audience = "type system を読む開発者"
+audience = "コンパイラ実装を読む開発者"
 
 [[sections.pages]]
 title = "IR"
 source = "book/ch05-ir.md"
 output = "book/ir.html"
 summary = "AST から backend 入力へ lowering する中間表現。"
-audience = "compiler pipeline を読む開発者"
+audience = "コンパイラ実装を読む開発者"
 
 [[sections.pages]]
 title = "コード生成"
 source = "book/ch06-codegen.md"
 output = "book/codegen.html"
 summary = "IR から WebAssembly を生成する backend 実装。"
-audience = "Wasm backend を読む開発者"
+audience = "コンパイラ実装を読む開発者"
 
 [[sections.pages]]
 title = "レコード型"
 source = "book/ch07-record-types.md"
 output = "book/record-types.html"
 summary = "record 型と構造化データ表現。"
-audience = "言語機能を理解したい開発者"
+audience = "コンパイラ実装を読む開発者"
 
 [[sections.pages]]
 title = "型エイリアスと制約付き型"
 source = "book/ch08-type-aliases.md"
 output = "book/type-aliases.html"
 summary = "型に名前と制約を載せる設計。"
-audience = "型機能を理解したい開発者"
+audience = "コンパイラ実装を読む開発者"
 
 [[sections.pages]]
 title = "モジュールシステム"
 source = "book/ch09-modules.md"
 output = "book/modules.html"
 summary = "module / import / dependency graph の解説。"
-audience = "package と module を扱う開発者"
+audience = "コンパイラ実装を読む開発者"
 
 [[sections.pages]]
 title = "トレイト"
 source = "book/ch10-traits.md"
 output = "book/traits.html"
 summary = "trait と静的ディスパッチの設計。"
-audience = "多相性と interface を理解したい開発者"
+audience = "コンパイラ実装を読む開発者"
 
 [[sections.pages]]
 title = "高度な型機能"
 source = "book/ch11-advanced-types.md"
 output = "book/advanced-types.html"
 summary = "高カインド型、GADT、computation expressions の探索。"
-audience = "発展的な型設計を読む開発者"
+audience = "コンパイラ実装を読む開発者"
 
 [[sections.pages]]
 title = "エラー報告"
 source = "book/ch12-error-reporting.md"
 output = "book/error-reporting.html"
 summary = "Span、miette、diagnostics の設計。"
-audience = "developer experience を改善する開発者"
+audience = "コンパイラ実装を読む開発者"
 
 [[sections.pages]]
 title = "テスト戦略"
 source = "book/ch13-testing.md"
 output = "book/testing.html"
 summary = "compiler の unit / snapshot / E2E テスト戦略。"
-audience = "検証方針を読む開発者"
+audience = "コンパイラ実装を読む開発者"
 
 [[sections.pages]]
 title = "標準ライブラリ"
 source = "book/ch14-stdlib.md"
 output = "book/stdlib.html"
 summary = "stdlib の設計と API 方針。"
-audience = "stdlib を使う・拡張する開発者"
+audience = "コンパイラ実装を読む開発者"
 
 [[sections.pages]]
 title = "セルフホスティング"
 source = "book/ch15-selfhosting.md"
 output = "book/selfhosting.html"
 summary = "selfhost compiler と bootstrap の読み方。"
-audience = "selfhost pipeline を読む開発者"
+audience = "コンパイラ実装を読む開発者"
 
 [[sections.pages]]
 title = "LSP"
 source = "book/ch16-lsp.md"
 output = "book/lsp.html"
 summary = "LSP server と IDE 連携。"
-audience = "editor integration を扱う開発者"
+audience = "コンパイラ実装を読む開発者"
 
 [[sections.pages]]
 title = "文法リファレンス"
 source = "book/appendix-a-grammar.md"
 output = "book/grammar.html"
 summary = "L# 文法、token、builtin の付録。"
-audience = "構文の正本を確認する開発者"
+audience = "コンパイラ実装を読む開発者"
 
 [[sections]]
 id = "operations"

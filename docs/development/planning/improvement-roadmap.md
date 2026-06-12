@@ -122,15 +122,18 @@ A-2 と A-3 は独立に並行可。
 
 | # | 作業 | 対象 issue | 設計 |
 |---|------|-----------|------|
-| D-1 | docs/guides/ 拡張: metadata 仕様 / IDE セットアップ / デプロイターゲット / stdlib ガイド / エラーコードリファレンス (LS#### 体系、imp-02 の出力) の 5 ページ追加と site.toml 登録 | DOC-01, DOC-06 | imp-05 |
+| D-1 | docs/guides/ 拡張: metadata 仕様 / IDE セットアップ / デプロイターゲット / stdlib ガイドを追加。エラーコードリファレンスは LS#### 体系導入後に DOC-06 として追加 | DOC-01, DOC-06 | imp-05 |
 | D-2 | book/ 読者層分離、examples ↔ 機能マトリクス整備、language-guide テンプレートの正本一本化、doc-status の CI 運用開始 | DOC-02, DOC-03, DOC-04, DOC-05 | imp-05 |
 | D-3 | テスト体系強化: パーサー/型推論の property-based テスト (proptest) 導入、GC リーク検出テスト、スロット上限・再帰深度の限界値テスト、occur check 性能計測 | I-06 | imp-07 |
 | D-4 | テスト配置の再編: 巨大インラインテストの分離、syntax/types のユニットテスト増強 | I-08 | imp-06, imp-07 |
 
 **Exit criteria**:
-- [pending] docs/guides/ に上記 5 ページが存在し、site.toml 経由で公開サイトに載る
+- [done] docs/guides/ に metadata / IDE / deployment / stdlib guide が存在し、site.toml 経由で公開サイトに載る。Evidence: `test_doc_site_manifest_exposes_user_guide_expansion`, `test_cmd_doc_site_generates_guides_and_api_site`
+- [pending] error-reference.md が LS#### 体系導入後に DOC-06 / imp-02 と同期して追加される
+- [done] book/ の読者層がコンパイラ実装を読む開発者向けに分離され、docs/guides/ が利用者向け入口として明示される。Evidence: `test_doc_site_manifest_separates_user_guides_from_implementation_book`
+- [done] examples の全 .ls がドキュメントの機能マトリクスから参照され、「型チェックのみ」サンプルが明示される。Evidence: `test_doc_site_manifest_exposes_examples_matrix`
+- [done] language-guide テンプレートが docs/guides/ と docs/site.toml を SSOT として明記する。Evidence: `test_lsharp_language_guide_template_points_to_docs_guides_as_ssot`
 - [pending] `.lsharp-doc-status` がリポジトリで運用され、CI で doc-check が走る
-- [pending] examples の全 .ls がドキュメントの機能マトリクスから参照され、「型チェックのみ」サンプルが明示される
 - [pending] fuzz ターゲットが CI (または定期ジョブ) で実行される
 - [pending] I-06 記載の限界値 (GC スロット / 再帰深度) が計測され、ドキュメント化される
 

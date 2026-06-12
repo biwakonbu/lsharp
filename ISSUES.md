@@ -51,11 +51,11 @@
 
 | ID | 問題 | 影響度 | 状態 | 設計 doc |
 |----|------|--------|------|----------|
-| [DOC-01](#doc-01) | ユーザーガイドの量・範囲不足 (4 文書 238 行) | 高 | in-design | [imp-05](docs/development/planning/improvement-designs/imp-05-docs-restructure.md) |
-| [DOC-02](#doc-02) | book/ がユーザー向けと実装者向けの混在 | 中 | in-design | imp-05 |
+| [DOC-01](#doc-01) | ユーザーガイドの主要範囲不足 | 高 | resolved | [imp-05](docs/development/planning/improvement-designs/imp-05-docs-restructure.md) |
+| [DOC-02](#doc-02) | book/ がユーザー向けと実装者向けの混在 | 中 | resolved | imp-05 |
 | [DOC-03](#doc-03) | ドキュメント鮮度追跡 (.lsharp-doc-status) が未運用 | 中 | in-design | imp-05 |
-| [DOC-04](#doc-04) | examples/ とドキュメントの連携不足 | 低-中 | in-design | imp-05 |
-| [DOC-05](#doc-05) | language-guide テンプレートと docs/ の二重管理リスク | 低 | in-design | imp-05 |
+| [DOC-04](#doc-04) | examples/ とドキュメントの連携不足 | 低-中 | resolved | imp-05 |
+| [DOC-05](#doc-05) | language-guide テンプレートと docs/ の二重管理リスク | 低 | resolved | imp-05 |
 | [DOC-06](#doc-06) | エラーコード体系が docs 未定義 (MCP に E0001-E0005 のみ) | 中 | in-design | imp-02 |
 
 ---
@@ -319,29 +319,41 @@
 ## ドキュメント上の問題
 
 <a id="doc-01"></a>
-### DOC-01: ユーザーガイドの量・範囲不足
+### DOC-01: ユーザーガイドの主要範囲不足
 
-- **影響度**: 高 / **状態**: in-design
-- **内容**: `docs/guides/` はユーザー向けの正面玄関だが、4 文書合計 238 行
-  (quick-start 83 / language-reference 81 / package-layout 59 / README 15) のみ。
-  以下の主要トピックのガイドが存在しない:
-  - metadata (`:doc` / `:example` / `:invariant` 等) のフォーマット仕様と駆動開発の手順
-  - IDE / LSP セットアップ (エディタ別)
-  - デプロイメントターゲット選択 (wasi-component / preview1 / web-wasm / native)
-  - stdlib API の探し方・使い方
-  - エラーコードリファレンス (DOC-06)
-- **根拠**: `wc -l docs/guides/*.md` 実測 (2026-06-12)。
-- **関連**: 改善設計は [imp-05](docs/development/planning/improvement-designs/imp-05-docs-restructure.md)。
+- **影響度**: 高 / **状態**: resolved
+- **内容**: `docs/guides/` に利用者向けの主要 guide を追加し、metadata 駆動開発、
+  IDE / LSP セットアップ、デプロイメントターゲット選択、stdlib API の探し方を
+  公開サイトの `start` section へ登録した。エラーコードリファレンスは `LS####`
+  体系導入に依存するため、引き続き DOC-06 の範囲として扱う。
+- **解消根拠**:
+  - `docs/guides/metadata-driven-development.md`
+  - `docs/guides/ide-setup.md`
+  - `docs/guides/deployment-targets.md`
+  - `docs/guides/stdlib-guide.md`
+  - `docs/site.toml` -- 新規 guide を `guides/*.html` として公開対象へ追加
+  - `docs/guides/README.md` -- guide hub と読む順序を更新
+- **検証**:
+  - `test_doc_site_manifest_exposes_user_guide_expansion`
+  - `test_cmd_doc_site_generates_guides_and_api_site`
+  - `git diff --check`
+- **関連**: 改善設計は [imp-05](docs/development/planning/improvement-designs/imp-05-docs-restructure.md)。エラーコードは DOC-06 / imp-02。
 
 <a id="doc-02"></a>
 ### DOC-02: book/ がユーザー向けと実装者向けの混在
 
-- **影響度**: 中 / **状態**: in-design
-- **内容**: book/ (全 16 章) は言語入門とコンパイラ内部実装 (lexer/parser/IR/codegen/selfhost) が
-  区別なく並んでおり、言語を学びたいユーザーが実装詳細の章に直面する。公開 CLI では
-  `parse` / `check` / `fmt` を内部 API 扱いとする方針 (README) と、book がそれらを詳説する構成も
-  読者層の整理がないままになっている。
-- **根拠**: `book/` 章構成 (ch02-lexer 〜 ch06-codegen, ch15-selfhosting, ch16-lsp が実装詳細)。
+- **影響度**: 中 / **状態**: resolved
+- **内容**: `book/` は L# コンパイラ実装を読む開発者向けの読み物として位置付け、
+  `docs/guides/` を L# でアプリやライブラリを書く利用者向けの正面玄関として分離した。
+  `docs/site.toml` の book section audience も「コンパイラ実装を読む開発者」に統一した。
+- **解消根拠**:
+  - `book/preface.md` -- book の読者層と `docs/guides/` との分担を明記
+  - `docs/site.toml` -- book section の audience を実装読者向けに統一
+  - `docs/guides/README.md` -- 利用者向け guide と book の境界を明記
+- **検証**:
+  - `test_doc_site_manifest_separates_user_guides_from_implementation_book`
+  - `test_cmd_doc_site_generates_guides_and_api_site`
+  - `git diff --check`
 - **関連**: imp-05 (読者層別の目次再構成)。
 
 <a id="doc-03"></a>
@@ -360,24 +372,42 @@
 <a id="doc-04"></a>
 ### DOC-04: examples/ とドキュメントの連携不足
 
-- **影響度**: 低-中 / **状態**: in-design
-- **内容**: `examples/` には 15 個の .ls サンプルがあるが、各サンプルがどの言語機能を
-  デモするかの対応表がドキュメント側になく、ガイドからサンプルへの導線が欠けている。
-  また gadt/hkt/computation のように「型チェックのみ」のサンプルと実行可能サンプルの
-  区別が一覧化されていない。ビルド成果物 (.wasm 3 個) もソースと混在している。
-- **根拠**: `ls examples/` (2026-06-12) -- .ls 15 個 + .wasm 3 個。対応表は docs/ に不在。
+- **影響度**: 低-中 / **状態**: resolved
+- **内容**: `examples/` の tracked な 15 個の `.ls` サンプルは
+  `docs/guides/examples.md` の機能マトリクスに登録済み。各サンプルが示す言語機能、
+  実行状態、関連ドキュメントを一覧化し、`gadt.ls` / `hkt.ls` / `computation.ls` は
+  「型チェックのみ / stub main」、`metadata.ls` は metadata 用サンプルとして区別した。
+  `examples/README.md` からも同マトリクスへ導線を張り、`examples/*.wasm` は生成物で
+  `.gitignore` 対象であることを明示した。
+- **解消根拠**:
+  - `docs/guides/examples.md` -- tracked な `examples/*.ls` 15 件の機能マトリクス
+  - `examples/README.md` -- source directory 側からマトリクスへの導線
+  - `docs/site.toml` -- `Examples Matrix` を `guides/examples.html` として公開対象へ追加
+  - `docs/guides/README.md` -- 利用者向け guide hub からの導線
+  - `TODO.md` -- `DOC-04` 完了メモと focused test evidence
+- **検証**:
+  - `test_doc_site_manifest_exposes_examples_matrix`
+  - `test_cmd_doc_site_generates_guides_and_api_site`
+  - `git diff --check`
 - **関連**: imp-05 (examples ↔ 機能マトリクス)。
 
 <a id="doc-05"></a>
 ### DOC-05: language-guide テンプレートと docs/ の二重管理リスク
 
-- **影響度**: 低 / **状態**: in-design
-- **内容**: `crates/lsharp-driver/templates/lsharp-language-guide.md` (Claude Skill 用テンプレート、
-  作業ツリーで拡張中) は CLI ワークフロー・データモデリング・metadata 駆動開発・デプロイ
-  ターゲット等を網羅する一方、同内容のユーザー向けガイドは docs/guides/ に存在しない。
-  このままでは AI 向けテンプレートと人間向け docs が別経路で更新され、二重管理になる。
-- **根拠**: 作業ツリーの未コミット変更 (README.md / main.rs / claude_plugin.rs / templates/lsharp-language-guide.md、2026-06-12 時点)。
-- **関連**: imp-05 (正本一本化の方針)。本台帳は未コミット変更それ自体には手を入れない。
+- **影響度**: 低 / **状態**: resolved
+- **内容**: `docs/guides/` を人間向け guide の正本、`docs/site.toml` を公開サイト構成の
+  正本として明記し、`crates/lsharp-driver/templates/lsharp-language-guide.md` は AI セッション向けの
+  要約として扱う同期方針を追加した。`lsharp language-guide` はこの template を標準出力へ出す
+  公開 CLI として維持する。
+- **解消根拠**:
+  - `crates/lsharp-driver/templates/lsharp-language-guide.md` -- `docs/guides/` / `docs/site.toml` の SSOT を明記
+  - `crates/lsharp-driver/src/claude_plugin.rs` -- template の SSOT 文言と主要 guide path を focused test で固定
+  - `docs/guides/metadata-driven-development.md`, `docs/guides/deployment-targets.md`, `docs/guides/stdlib-guide.md` -- template と重複していた主要内容を利用者向け docs へ移動
+- **検証**:
+  - `test_lsharp_language_guide_template_points_to_docs_guides_as_ssot`
+  - `test_lsharp_language_guide_template_covers_user_development_workflows`
+  - `git diff --check`
+- **関連**: imp-05 (正本一本化の方針)。
 
 <a id="doc-06"></a>
 ### DOC-06: エラーコード体系が docs に未定義
