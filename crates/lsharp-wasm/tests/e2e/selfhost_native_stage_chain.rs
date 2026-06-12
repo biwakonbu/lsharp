@@ -1548,6 +1548,25 @@ fn test_selfhost_compiler_mode_direct_defn_probe_avoids_parsed_body_handoff() {
 }
 
 #[test]
+fn test_selfhost_parse_defn_v3_does_not_rewrite_result_root_after_body_parse() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/Syntax/Parser.ls",
+    )))
+    .expect("Parser.ls を読めること");
+    let parse_defn_body = source
+        .split("(defn parse-defn-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn parse-defmacro-v3").next())
+        .expect("parse-defn-v3 body を取り出せること");
+
+    assert!(
+        !parse_defn_body.contains("result-slot (root_push result)")
+            && !parse_defn_body.contains("root_set result-slot parsed"),
+        "parse-defn-v3 は body parse 後に初期 result root slot を parsed へ書き戻して stage2 native の body slot を壊すべきではない"
+    );
+}
+
+#[test]
 fn test_selfhost_finalize_defn_body_appends_body_without_placeholder_set() {
     let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
         "selfhost/src/Syntax/Parser.ls",
