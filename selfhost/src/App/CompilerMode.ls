@@ -2960,8 +2960,19 @@
             (let [instrs0 (vector-new 8)
               result (compile-expr-with-source-probe body-expr source env ftable instrs0 data-ref 0)]
               (do
+                (root_push result)
+                (let [first-instr (if (> (vector-length result) 0) (vector-get result 0) (vector-new 2))]
+                  (do
+                    (root_push first-instr)
+                    (print 9000000145)
+                    (print (vector-length result))
+                    (print (if (> (vector-length result) 0) (vector-get first-instr 0) -1))
+                    (print (if (> (vector-length result) 0) (vector-get first-instr 1) -1))
+                    (print (vector-length (ref-get data-ref)))
+                    (root_pop)))
                 (print 184)
                 (print (vector-length result))
+                (root_pop)
                 (root_pop)
                 (root_pop)
                 (root_pop)

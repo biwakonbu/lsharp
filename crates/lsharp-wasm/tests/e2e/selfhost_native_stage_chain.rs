@@ -1390,6 +1390,53 @@ fn test_selfhost_compiler_mode_defn_probe_reports_decl_body_shape() {
 }
 
 #[test]
+fn test_selfhost_compiler_mode_defn_probe_reports_first_ir_and_data_shape() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/App/CompilerMode.ls",
+    )))
+    .expect("CompilerMode.ls を読めること");
+    let defn_probe = source
+        .split("(defn compile-defn-with-source-probe")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-defn-functions-chunked-step-progress-debug")
+                .next()
+        })
+        .expect("CompilerMode.ls に compile-defn-with-source-probe が存在すること");
+
+    for token in [
+        "(print 9000000145)",
+        "first-instr (if (> (vector-length result) 0) (vector-get result 0) (vector-new 2))",
+        "(print (vector-length result))",
+        "(print (if (> (vector-length result) 0) (vector-get first-instr 0) -1))",
+        "(print (if (> (vector-length result) 0) (vector-get first-instr 1) -1))",
+        "(print (vector-length (ref-get data-ref)))",
+    ] {
+        assert!(
+            defn_probe.contains(token),
+            "compile-defn-with-source-probe は first IR/data 診断 token {token} を含むべき"
+        );
+    }
+
+    let result_root_idx = defn_probe
+        .find("(root_push result)")
+        .expect("compile-defn-with-source-probe は result を診断前に root するべき");
+    let marker_idx = defn_probe
+        .find("(print 9000000145)")
+        .expect("compile-defn-with-source-probe は 9000000145 marker を含むべき");
+    let instr_root_idx = defn_probe
+        .find("(root_push first-instr)")
+        .expect("compile-defn-with-source-probe は first-instr を operand 出力前に root するべき");
+    let operand_idx = defn_probe
+        .find("(vector-get first-instr 1)")
+        .expect("compile-defn-with-source-probe は first IR operand を出力するべき");
+    assert!(
+        result_root_idx < marker_idx && instr_root_idx < operand_idx,
+        "compile-defn-with-source-probe は first IR/data 診断中に result / first-instr を root するべき"
+    );
+}
+
+#[test]
 fn test_selfhost_compiler_mode_has_entry_shape_progress_probe() {
     let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
         "selfhost/src/App/CompilerMode.ls",
@@ -2448,7 +2495,7 @@ fn test_selfhost_parser_defn_params_metadata_loop_uses_chunked_steps() {
 }
 
 #[test]
-fn test_selfhost_parser_parse_defn_v3_preserves_return_with_result_slot() {
+fn test_selfhost_parser_parse_defn_v3_preserves_return_without_result_slot_rewrite() {
     let source = selfhost_module("Parser.ls");
     let parse_defn_body = source
         .split("(defn parse-defn-v3")
@@ -2457,10 +2504,15 @@ fn test_selfhost_parser_parse_defn_v3_preserves_return_with_result_slot() {
         .expect("Parser.ls に parse-defn-v3 が存在すること");
 
     assert!(
-        parse_defn_body.contains("result-slot")
-            && parse_defn_body.contains("(root_set result-slot parsed)")
+        parse_defn_body.contains("defn-node (vector-set-at-rooted-v3 with-params 2 param-count)")
+            && parse_defn_body.contains("(root_push defn-node)")
+            && parse_defn_body.contains(
+                "(parse-defn-bodyless-or-body-v3 spans pos-ref src defn-node param-count)"
+            )
+            && !parse_defn_body.contains("result-slot")
+            && !parse_defn_body.contains("(root_set result-slot parsed)")
             && !parse_defn_body.contains("parsed-ref"),
-        "parse-defn-v3 は Linux x86 stage2 native の defn return を保つため parsed を result root slot に退避するべき"
+        "parse-defn-v3 は Linux x86 stage2 native の defn body slot を保つため parsed を初期 result slot へ書き戻さず defn-node root 経由で返すべき"
     );
 }
 
