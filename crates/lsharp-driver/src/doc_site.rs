@@ -625,6 +625,10 @@ mod tests {
             "stdlib-guide.html が必要"
         );
         assert!(
+            output.join("guides/error-reference.html").exists(),
+            "error-reference.html が必要"
+        );
+        assert!(
             output.join("guides/examples.html").exists(),
             "examples.html が必要"
         );
@@ -716,6 +720,11 @@ mod tests {
                 "Stdlib Guide",
                 "docs/guides/stdlib-guide.md",
                 "guides/stdlib-guide.html",
+            ),
+            (
+                "Error Reference",
+                "docs/guides/error-reference.md",
+                "guides/error-reference.html",
             ),
         ] {
             assert!(

@@ -58,6 +58,13 @@ summary = "stdlib module の探し方、generated API、MCP での参照方法�
 audience = "L# でアプリやライブラリを書く開発者"
 
 [[sections.pages]]
+title = "Error Reference"
+source = "docs/guides/error-reference.md"
+output = "guides/error-reference.html"
+summary = "LS#### エラーコード体系、legacy code alias、MCP lookup の正本。"
+audience = "L# の診断を読んで修正する開発者"
+
+[[sections.pages]]
 title = "Examples Matrix"
 source = "docs/guides/examples.md"
 output = "guides/examples.html"

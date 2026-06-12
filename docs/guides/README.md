@@ -11,6 +11,7 @@
 - [`ide-setup.md`](./ide-setup.md) -- `lsharp lsp` と editor / AI tool 連携
 - [`deployment-targets.md`](./deployment-targets.md) -- `wasi-component` / `wasi-preview1` / `web-wasm` / `native` の選び方
 - [`stdlib-guide.md`](./stdlib-guide.md) -- stdlib API の探し方と generated docs / MCP での参照
+- [`error-reference.md`](./error-reference.md) -- `LS####` エラーコード体系と legacy code alias
 - [`examples.md`](./examples.md) -- `examples/*.ls` と言語機能、実行状態、関連ガイドの対応表
 
 読む順序に迷う場合は、`quick-start.md`、`language-reference.md`、`examples.md`、必要な個別 guide の順で確認する。
@@ -19,6 +20,6 @@
 
 コンパイラ実装や v1 契約は [`../language/`](../language/) と [`../development/`](../development/) の対象外（利用者向けではない）。
 
-エラーコードリファレンスは `DOC-06` / `imp-02` の `LS####` 体系導入後に追加する。
+CLI / LSP / MCP の全診断へ `LS####` を貫通させる作業は `I-02` / `imp-02` の範囲として扱う。
 
 公開サイトに載せる guide の一覧、表示順、出力先は [`../site.toml`](../site.toml) を正本とする。この directory に Markdown を追加しただけでは公開ページにはならない。

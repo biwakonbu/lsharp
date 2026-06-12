@@ -35,7 +35,7 @@ B 以降は依存が薄いものから並行着手してよい。
 | I-01 | ファイルサイズ規約超過 | A | [imp-06](improvement-designs/imp-06-large-file-decomposition.md) | |
 | I-02 | エラーハンドリング不統一 | A | [imp-02](improvement-designs/imp-02-error-handling-unification.md) | |
 | I-03 | GC 固定スロット上限 | A | [imp-03](improvement-designs/imp-03-dynamic-memory-layout.md) | |
-| DOC-06 | エラーコード体系未定義 | A | imp-02 | I-02 と同時設計 |
+| DOC-06 | エラーコード体系未定義 | A | imp-02 | error-reference / MCP lookup は完了、診断貫通は I-02 |
 | D-01 | WasmGC i64 フォールバック | B | [imp-01](improvement-designs/imp-01-wasmgc-full-migration.md) | v2-07 補遺 |
 | D-02 | GADT 実行未検証 | B | imp-01 | D-01 依存 |
 | D-03 | HKT 実行未対応 | B | imp-01 | D-01 依存 |
@@ -129,7 +129,7 @@ A-2 と A-3 は独立に並行可。
 
 **Exit criteria**:
 - [done] docs/guides/ に metadata / IDE / deployment / stdlib guide が存在し、site.toml 経由で公開サイトに載る。Evidence: `test_doc_site_manifest_exposes_user_guide_expansion`, `test_cmd_doc_site_generates_guides_and_api_site`
-- [pending] error-reference.md が LS#### 体系導入後に DOC-06 / imp-02 と同期して追加される
+- [done] error-reference.md が LS#### 体系導入後に DOC-06 / imp-02 と同期して追加される。Evidence: `test_error_reference_doc_mentions_all_mcp_error_codes`, `test_errors_tool_returns_ls_error_code_reference_and_legacy_alias`
 - [done] book/ の読者層がコンパイラ実装を読む開発者向けに分離され、docs/guides/ が利用者向け入口として明示される。Evidence: `test_doc_site_manifest_separates_user_guides_from_implementation_book`
 - [done] examples の全 .ls がドキュメントの機能マトリクスから参照され、「型チェックのみ」サンプルが明示される。Evidence: `test_doc_site_manifest_exposes_examples_matrix`
 - [done] language-guide テンプレートが docs/guides/ と docs/site.toml を SSOT として明記する。Evidence: `test_lsharp_language_guide_template_points_to_docs_guides_as_ssot`

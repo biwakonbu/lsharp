@@ -205,6 +205,7 @@ mod tests {
             "docs/guides/ide-setup.md",
             "docs/guides/deployment-targets.md",
             "docs/guides/stdlib-guide.md",
+            "docs/guides/error-reference.md",
             "docs/site.toml",
             "正本",
         ] {

@@ -9,6 +9,7 @@ mod claude_plugin;
 mod commands;
 mod config;
 mod doc_site;
+mod error_codes;
 #[cfg(test)]
 mod error;
 mod lockfile;

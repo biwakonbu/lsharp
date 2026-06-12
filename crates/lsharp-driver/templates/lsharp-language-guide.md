@@ -25,9 +25,10 @@ L# 0.1.0 は S 式構文、Hindley-Milner 型推論、ADT、record、pattern mat
 - `docs/guides/ide-setup.md`
 - `docs/guides/deployment-targets.md`
 - `docs/guides/stdlib-guide.md`
+- `docs/guides/error-reference.md`
 - `docs/guides/examples.md`
 
-エラーコードリファレンスは `DOC-06` / `imp-02` の `LS####` 体系導入後に `docs/guides/` へ追加する領域です。
+エラーコードリファレンスは `LS####` と legacy `E0001`-`E0005` alias の正本です。CLI / LSP / MCP の全診断へ `LS####` を貫通させる作業は `I-02` / `imp-02` の範囲として扱います。
 
 ## Quick Start
 

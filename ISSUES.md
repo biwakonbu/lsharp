@@ -56,7 +56,7 @@
 | [DOC-03](#doc-03) | ドキュメント鮮度追跡 (.lsharp-doc-status) が未運用 | 中 | resolved | imp-05 |
 | [DOC-04](#doc-04) | examples/ とドキュメントの連携不足 | 低-中 | resolved | imp-05 |
 | [DOC-05](#doc-05) | language-guide テンプレートと docs/ の二重管理リスク | 低 | resolved | imp-05 |
-| [DOC-06](#doc-06) | エラーコード体系が docs 未定義 (MCP に E0001-E0005 のみ) | 中 | in-design | imp-02 |
+| [DOC-06](#doc-06) | エラーコード体系が docs 未定義 (MCP に E0001-E0005 のみ) | 中 | resolved | imp-02 |
 
 ---
 
@@ -421,13 +421,23 @@
 <a id="doc-06"></a>
 ### DOC-06: エラーコード体系が docs に未定義
 
-- **影響度**: 中 / **状態**: in-design
-- **内容**: MCP サーバーの `lsharp_errors` ツールは E0001〜E0005 の 5 コードのみを
-  ハードコードで返し、それ以外は「未知のエラーコード」となる。エラーコードの正本一覧が
-  docs/ のどこにも存在せず、コンパイラ診断とコードの対応も未整備。CLI / LSP / MCP の
-  診断を貫くコード体系がない。
-- **根拠**: `crates/lsharp-driver/src/mcp_server.rs:438-462` -- E0001〜E0005 のハードコード定義と `_ => ("unknown", ...)` フォールバック。
-- **関連**: I-02 (診断統一と同時に設計)。改善設計は [imp-02](docs/development/planning/improvement-designs/imp-02-error-handling-unification.md) の `LS####` 体系。
+- **影響度**: 中 / **状態**: resolved
+- **内容**: `docs/guides/error-reference.md` を `LS####` error code reference の利用者向け正本として
+  追加し、MCP `lsharp_errors` も driver 内の共有 `ERROR_CODES` table から説明を返すようにした。
+  legacy `E0001`〜`E0005` は互換 alias として `LS1001` / `LS1002` / `LS1004` / `LS1003` へ解決する。
+  CLI / LSP / MCP の全診断へ `LS####` を貫通させる作業は引き続き I-02 / imp-02 の範囲に残す。
+- **解消根拠**:
+  - `docs/guides/error-reference.md` -- `LS####` range、legacy alias、code 一覧、MCP lookup を定義
+  - `crates/lsharp-driver/src/error_codes.rs` -- MCP と docs 契約の共有 table
+  - `crates/lsharp-driver/src/mcp_server.rs` -- `lsharp_errors` を共有 table 参照へ変更
+  - `docs/site.toml` / `docs/guides/README.md` -- error reference を公開 guide へ追加
+- **検証**:
+  - `test_errors_tool_returns_ls_error_code_reference_and_legacy_alias`
+  - `test_errors_tool_accepts_legacy_error_code_alias`
+  - `test_error_reference_doc_mentions_all_mcp_error_codes`
+  - `test_doc_site_manifest_exposes_user_guide_expansion`
+  - `git diff --check`
+- **関連**: I-02 (診断統一と `LS####` 貫通)。改善設計は [imp-02](docs/development/planning/improvement-designs/imp-02-error-handling-unification.md)。
 
 ---
 
