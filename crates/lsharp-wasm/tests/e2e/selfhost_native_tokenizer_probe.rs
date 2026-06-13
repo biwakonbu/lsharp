@@ -281,13 +281,18 @@ fn parser_parse_defn_returns_explicit_parsed_after_root_pops_without_ref_roundtr
         .and_then(|tail| tail.split("(defn parse-defmacro-v3").next())
         .expect("Parser.ls に parse-defn-v3 が存在すること");
 
+    let result_slot_idx = parse_defn
+        .find("result-slot (root_push result)")
+        .expect("parse-defn-v3 は params parse 前に result root slot を取るべき");
+    let params_idx = parse_defn
+        .find("with-params (parse-params-v3 spans pos-ref src result 0)")
+        .expect("parse-defn-v3 は rooted result で params parse に入るべき");
+
     assert!(
-        parse_defn.contains(
-            "(let [result-slot (root_push result)\n                  with-params (parse-params-v3 spans pos-ref src result 0)]"
-        )
-            && parse_defn.contains("(root_set result-slot parsed)")
+        result_slot_idx < params_idx
             && parse_defn.contains("parsed))")
+            && !parse_defn.contains("(root_set result-slot parsed)")
             && !parse_defn.contains("parsed-ref"),
-        "parse-defn-v3 は final parsed を result root slot に退避してから root cleanup 後に explicit parsed を返すべき"
+        "parse-defn-v3 は params parse 中だけ result を root し、final parsed を result root slot に書き戻さず explicit parsed を返すべき"
     );
 }
