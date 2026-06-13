@@ -2606,15 +2606,22 @@ fn test_selfhost_parser_parse_defn_v3_preserves_return_without_result_slot_rewri
     assert!(
         parse_defn_body.contains("defn-node (vector-set-at-rooted-v3 with-params 2 param-count)")
             && parse_defn_body.contains("(root_push defn-node)")
-            && parse_defn_body.contains(
-                "(parse-defn-bodyless-or-body-v3 spans pos-ref src defn-node param-count)"
-            )
+            && parse_defn_body.contains("(skip-optional-type-sig-v3 spans pos-ref src)")
+            && parse_defn_body.contains("(skip-optional-where-v3 spans pos-ref src)")
+            && parse_defn_body.contains("(parse-defn-bodyless-or-body-with-meta-v3")
+            && parse_defn_body.contains("(if (== (p-current spans pos-ref) 1)")
+            && parse_defn_body.contains("(let [body (parse-expr-v3 spans pos-ref src)]")
+            && parse_defn_body.contains("(finalize-defn-body-v3 defn-node param-count body)")
+            && parse_defn_body.contains("(p-expect spans pos-ref 1)")
             && parse_defn_body.contains("(root_push result)\n            (let [with-params")
             && parse_defn_body.contains("with-params (parse-params-v3 spans pos-ref src result 0)")
+            && !parse_defn_body.contains(
+                "(parse-defn-bodyless-or-body-v3 spans pos-ref src defn-node param-count)"
+            )
             && !parse_defn_body.contains("result-slot (root_push result)")
             && !parse_defn_body.contains("(root_set result-slot parsed)")
             && !parse_defn_body.contains("parsed-ref"),
-        "parse-defn-v3 は Linux x86 stage2 native の defn body slot を保つため params parse 中は result を root し、未使用 result-slot local と parsed 書き戻しなしに defn-node root 経由で返すべき"
+        "parse-defn-v3 は Linux x86 stage2 native の helper boundary body/local 崩れを避けるため、non-meta body branch を direct probe と同じ形で inline するべき"
     );
 }
 

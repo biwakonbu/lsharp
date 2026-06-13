@@ -1837,7 +1837,21 @@
                         (let [meta (parse-defn-metadata-v3 spans pos-ref src)]
                           (parse-defn-bodyless-or-body-with-meta-v3
                             spans pos-ref src defn-node param-count meta))
-                        (parse-defn-bodyless-or-body-v3 spans pos-ref src defn-node param-count))]
+                        (if (== (p-current spans pos-ref) 1)
+                          (do
+                            (p-advance pos-ref)
+                            (let [body (make-int-node 0)]
+                              (finalize-defn-body-v3 defn-node param-count body)))
+                          (let [body (parse-expr-v3 spans pos-ref src)]
+                            (do
+                              (root_push body)
+                              (let [parsed-body (finalize-defn-body-v3 defn-node param-count body)]
+                                (do
+                                  (root_push parsed-body)
+                                  (p-expect spans pos-ref 1)
+                                  (root_pop)
+                                  (root_pop)
+                                  parsed-body))))))]
                       (do
                         (root_pop)
                         (root_pop)

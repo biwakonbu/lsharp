@@ -249,7 +249,7 @@ fn parser_defn_body_finalize_uses_small_rooted_helper() {
 }
 
 #[test]
-fn parser_parse_defn_uses_body_helper_with_result_slot_without_ref_roundtrip() {
+fn parser_parse_defn_inlines_non_meta_body_after_rooted_param_parse() {
     let source = std::fs::read_to_string(workspace_root().join("selfhost/src/Syntax/Parser.ls"))
         .expect("Parser.ls を読めること");
     let parse_defn = source
@@ -259,15 +259,19 @@ fn parser_parse_defn_uses_body_helper_with_result_slot_without_ref_roundtrip() {
         .expect("Parser.ls に parse-defn-v3 が存在すること");
 
     assert!(
-        parse_defn.contains("(skip-optional-type-sig-v3 spans pos-ref src)")
+        parse_defn.contains("defn-node (vector-set-at-rooted-v3 with-params 2 param-count)")
+            && parse_defn.contains("(skip-optional-type-sig-v3 spans pos-ref src)")
             && parse_defn.contains("(skip-optional-where-v3 spans pos-ref src)")
             && parse_defn.contains("(parse-defn-bodyless-or-body-with-meta-v3")
-            && parse_defn.contains(
+            && parse_defn.contains("(if (== (p-current spans pos-ref) 1)")
+            && parse_defn.contains("(let [body (parse-expr-v3 spans pos-ref src)]")
+            && parse_defn.contains("(finalize-defn-body-v3 defn-node param-count body)")
+            && parse_defn.contains("(p-expect spans pos-ref 1)")
+            && !parse_defn.contains(
                 "(parse-defn-bodyless-or-body-v3 spans pos-ref src defn-node param-count)"
             )
-            && !parse_defn.contains("(parse-defn-tail-v3 spans pos-ref src defn-node param-count)")
             && !parse_defn.contains("parsed-ref"),
-        "parse-defn-v3 は final parsed を result slot に退避しつつ non-meta body parse を小さい helper に戻すべき"
+        "parse-defn-v3 は Linux x86 stage2 native の helper boundary body/local 崩れを避けるため、non-meta body branch を direct probe と同じ形で inline するべき"
     );
 }
 
