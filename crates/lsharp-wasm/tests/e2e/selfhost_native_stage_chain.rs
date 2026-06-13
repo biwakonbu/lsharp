@@ -1470,6 +1470,9 @@ fn test_selfhost_compiler_mode_progress_reports_parse_and_pair_body_shape() {
         "(print decl-len)",
         "(print (if (> decl-len body-idx) (vector-get body-expr 0) -1))",
         "9000000147",
+        "progress-spans (tokenize-with-spans src)",
+        "progress-first-defn-span (find-span-kind-index progress-spans 0 progress-span-count 30)",
+        "(print-direct-defn-build-progress-probe progress-spans progress-first-defn-span src)",
         "first-pair (if (> pair-count 0) (vector-get pairs 0) (vector-new 0))",
         "first-pair-decls (if (> (vector-length first-pair) 1) (vector-get first-pair 1) (vector-new 0))",
         "(print-progress-decl-body-shape 9000000147 pair-count first-pair-decl)",
@@ -1491,6 +1494,13 @@ fn test_selfhost_compiler_mode_progress_reports_parse_and_pair_body_shape() {
     assert!(
         parse_marker_idx < cache_idx,
         "progress path は cache/pair 経路へ入る前に parse-program 直後の body shape を出力するべき"
+    );
+    let direct_probe_idx = progress_body
+        .find("(print-direct-defn-build-progress-probe")
+        .expect("progress path は direct defn body branch probe を呼ぶべき");
+    assert!(
+        parse_marker_idx < direct_probe_idx && direct_probe_idx < cache_idx,
+        "progress path は parse-program 直後かつ cache/pair 生成前に direct defn probe を出力するべき"
     );
 
     let pair_marker_idx = progress_body

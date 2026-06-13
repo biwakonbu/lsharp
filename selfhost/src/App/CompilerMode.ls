@@ -1105,6 +1105,13 @@
                   9000000146
                   (vector-length decls)
                   (if (> (vector-length decls) 0) (vector-get decls 0) (vector-new 0)))
+                (let [progress-spans (tokenize-with-spans src)
+                  progress-span-count (/ (vector-length progress-spans) 3)
+                  progress-first-defn-span (find-span-kind-index progress-spans 0 progress-span-count 30)]
+                  (do
+                    (root_push progress-spans)
+                    (print-direct-defn-build-progress-probe progress-spans progress-first-defn-span src)
+                    (root_pop)))
                 (root_pop)
                 (root_pop)
                 (print 9000000069)
