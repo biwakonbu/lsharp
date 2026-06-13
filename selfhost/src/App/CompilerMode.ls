@@ -1130,6 +1130,75 @@
                     (root_pop)
                     (root_pop)
                     0))))))))))
+(defn print-program-defn-branch-progress-probe [spans src]
+  (do
+    (root_push spans)
+    (root_push src)
+    (let [pos-ref (ref-new 0)
+      result (vector-new 16)]
+      (do
+        (root_push pos-ref)
+        (root_push result)
+        (if (== (p-current spans pos-ref) 0)
+          (let [next-idx (+ (ref-get pos-ref) 1)
+            next-kind (span-kind spans next-idx)]
+            (if (== next-kind 30)
+              (do
+                (p-advance pos-ref)
+                (let [result-slot (root_push result)
+                  expr (parse-defn-v3 spans pos-ref src)]
+                  (do
+                    (root_push expr)
+                    (print-progress-decl-body-shape 9000000150 1 expr)
+                    (let [next-result (vector-push-single-rooted-v3 result expr)]
+                      (do
+                        (root_push next-result)
+                        (print-progress-decl-body-shape
+                          9000000151
+                          (vector-length next-result)
+                          (if (> (vector-length next-result) 0)
+                            (vector-get next-result 0)
+                            (vector-new 0)))
+                        (let [state (do
+                            (root_set result-slot next-result)
+                            (make-parse-loop-state 0 next-result))]
+                          (do
+                            (root_push state)
+                            (let [state-result (vector-get state 1)
+                              state-result-len (vector-length state-result)
+                              first-state-decl (if (> state-result-len 0)
+                                (vector-get state-result 0)
+                                (vector-new 0))]
+                              (do
+                                (root_push state-result)
+                                (root_push first-state-decl)
+                                (print-progress-decl-body-shape
+                                  9000000152
+                                  state-result-len
+                                  first-state-decl)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                0)))))))))
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                0)))
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            0))))))
 (defn compile-file-functions-payload-with-cache-progress [path func-idx cache-ref parse-count-ref]
   (do
     (print 9000000041)
@@ -1158,6 +1227,7 @@
                   (do
                     (root_push progress-spans)
                     (print-program-step-body-progress-probe progress-spans src)
+                    (print-program-defn-branch-progress-probe progress-spans src)
                     (print-direct-defn-build-progress-probe progress-spans progress-first-defn-span src)
                     (root_pop)))
                 (root_pop)

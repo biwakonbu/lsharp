@@ -1475,7 +1475,12 @@ fn test_selfhost_compiler_mode_progress_reports_parse_and_pair_body_shape() {
         "(defn print-program-step-body-progress-probe [spans src]",
         "9000000148",
         "9000000149",
+        "(defn print-program-defn-branch-progress-probe [spans src]",
+        "9000000150",
+        "9000000151",
+        "9000000152",
         "(print-program-step-body-progress-probe progress-spans src)",
+        "(print-program-defn-branch-progress-probe progress-spans src)",
         "(print-direct-defn-build-progress-probe progress-spans progress-first-defn-span src)",
         "first-pair (if (> pair-count 0) (vector-get pairs 0) (vector-new 0))",
         "first-pair-decls (if (> (vector-length first-pair) 1) (vector-get first-pair 1) (vector-new 0))",
@@ -1502,14 +1507,18 @@ fn test_selfhost_compiler_mode_progress_reports_parse_and_pair_body_shape() {
     let direct_probe_idx = progress_body
         .find("(print-direct-defn-build-progress-probe")
         .expect("progress path は direct defn body branch probe を呼ぶべき");
+    let branch_probe_idx = progress_body
+        .find("(print-program-defn-branch-progress-probe")
+        .expect("progress path は parse-program defn branch probe を呼ぶべき");
     let step_probe_idx = progress_body
         .find("(print-program-step-body-progress-probe")
         .expect("progress path は parse-program step body probe を呼ぶべき");
     assert!(
         parse_marker_idx < step_probe_idx
-            && step_probe_idx < direct_probe_idx
+            && step_probe_idx < branch_probe_idx
+            && branch_probe_idx < direct_probe_idx
             && direct_probe_idx < cache_idx,
-        "progress path は parse-program 直後かつ cache/pair 生成前に step probe と direct defn probe を出力するべき"
+        "progress path は parse-program 直後かつ cache/pair 生成前に step/branch/direct defn probe を出力するべき"
     );
 
     let pair_marker_idx = progress_body
