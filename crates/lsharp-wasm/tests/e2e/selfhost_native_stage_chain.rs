@@ -1795,12 +1795,10 @@ fn test_selfhost_parse_program_step_dispatches_top_level_defn_without_parse_expr
         helper.contains("expr (parse-expr-v3 spans pos-ref src)")
             && step.contains("(== next-kind 30)")
             && step.contains("(p-advance pos-ref)")
-            && step.contains("let [expr (parse-defn-v3 spans pos-ref src)]")
-            && step.contains("result-slot (root_push result)")
+            && step.contains("let [result-slot (root_push result)\n              expr (parse-defn-v3 spans pos-ref src)]")
             && step.contains("next-result (vector-push-single-rooted-v3 result expr)")
-            && step.contains("(parse-program-step-expr-v3 spans pos-ref src result)")
-            && !step.contains("let [result-slot (root_push result)\n              expr (parse-defn-v3 spans pos-ref src)]"),
-        "parse-program-step-v3 は top-level defn を parse-expr wrapper 経由にせず同じ関数内で direct parse-defn し、rooted append するべき"
+            && step.contains("(parse-program-step-expr-v3 spans pos-ref src result)"),
+        "parse-program-step-v3 は top-level defn を parse-expr wrapper 経由にせず同じ関数内で direct parse-defn し、parse-defn 中も result を root してから rooted append するべき"
     );
 }
 

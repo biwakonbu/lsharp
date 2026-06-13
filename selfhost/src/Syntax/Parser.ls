@@ -2258,11 +2258,11 @@
         (if (== next-kind 30)
           (do
             (p-advance pos-ref)
-            (let [expr (parse-defn-v3 spans pos-ref src)]
+            (let [result-slot (root_push result)
+              expr (parse-defn-v3 spans pos-ref src)]
               (do
                 (root_push expr)
-                (let [result-slot (root_push result)
-                  next-result (vector-push-single-rooted-v3 result expr)
+                (let [next-result (vector-push-single-rooted-v3 result expr)
                   state (do
                     (root_set result-slot next-result)
                     (make-parse-loop-state 0 next-result))]
