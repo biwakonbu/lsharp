@@ -276,7 +276,7 @@ fn parser_parse_defn_inlines_non_meta_body_after_rooted_param_parse() {
 }
 
 #[test]
-fn parser_parse_defn_returns_explicit_parsed_after_root_pops_without_ref_roundtrip() {
+fn parser_parse_defn_returns_popped_result_root_after_cleanup_without_ref_roundtrip() {
     let source = std::fs::read_to_string(workspace_root().join("selfhost/src/Syntax/Parser.ls"))
         .expect("Parser.ls を読めること");
     let parse_defn = source
@@ -286,18 +286,19 @@ fn parser_parse_defn_returns_explicit_parsed_after_root_pops_without_ref_roundtr
         .expect("Parser.ls に parse-defn-v3 が存在すること");
 
     let result_root_idx = parse_defn
-        .find("(root_push result)\n            (let [with-params")
-        .expect("parse-defn-v3 は params parse 前に result を root するべき");
+        .find("result-slot (root_push result)")
+        .expect("parse-defn-v3 は params parse 前に result slot を root するべき");
     let params_idx = parse_defn
         .find("with-params (parse-params-v3 spans pos-ref src result 0)")
         .expect("parse-defn-v3 は rooted result で params parse に入るべき");
 
     assert!(
         result_root_idx < params_idx
-            && parse_defn.contains("parsed))")
-            && !parse_defn.contains("result-slot (root_push result)")
-            && !parse_defn.contains("(root_set result-slot parsed)")
+            && parse_defn.contains("(root_set result-slot parsed)")
+            && parse_defn.contains(
+                "(root_set result-slot parsed)\n                        (root_pop)\n                        (root_pop)\n                        (root_pop)"
+            )
             && !parse_defn.contains("parsed-ref"),
-        "parse-defn-v3 は params parse 中だけ result を root し、未使用 result-slot local や parsed 書き戻しなしに explicit parsed を返すべき"
+        "parse-defn-v3 は Linux x86 stage2 native の cleanup 後 local 崩れを避けるため、parsed を result root slot に退避し最後の root_pop の戻り値として返すべき"
     );
 }

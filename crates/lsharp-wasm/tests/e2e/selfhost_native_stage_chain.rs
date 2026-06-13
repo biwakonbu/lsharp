@@ -1707,7 +1707,7 @@ fn test_selfhost_compiler_mode_direct_defn_probe_avoids_parsed_body_handoff() {
 }
 
 #[test]
-fn test_selfhost_parse_defn_v3_does_not_rewrite_result_root_after_body_parse() {
+fn test_selfhost_parse_defn_v3_returns_popped_result_root_after_body_parse() {
     let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
         "selfhost/src/Syntax/Parser.ls",
     )))
@@ -1719,17 +1719,19 @@ fn test_selfhost_parse_defn_v3_does_not_rewrite_result_root_after_body_parse() {
         .expect("parse-defn-v3 body を取り出せること");
 
     let result_root_idx = parse_defn_body
-        .find("(root_push result)\n            (let [with-params")
-        .expect("parse-defn-v3 は params parse 前に result を root するべき");
+        .find("result-slot (root_push result)")
+        .expect("parse-defn-v3 は params parse 前に result slot を root するべき");
     let params_idx = parse_defn_body
         .find("with-params (parse-params-v3 spans pos-ref src result 0)")
         .expect("parse-defn-v3 は rooted result で params parse に入るべき");
 
     assert!(
         result_root_idx < params_idx
-            && !parse_defn_body.contains("result-slot (root_push result)")
-            && !parse_defn_body.contains("root_set result-slot parsed"),
-        "parse-defn-v3 は params parse 中だけ初期 result を root し、未使用 result-slot local や parsed 書き戻しで stage2 native の body slot を壊すべきではない"
+            && parse_defn_body.contains("(root_set result-slot parsed)")
+            && parse_defn_body.contains(
+                "(root_set result-slot parsed)\n                        (root_pop)\n                        (root_pop)\n                        (root_pop)"
+            ),
+        "parse-defn-v3 は Linux x86 stage2 native の cleanup 後 local 崩れを避けるため、parsed を result root slot に退避し最後の root_pop の戻り値として返すべき"
     );
 }
 
@@ -2595,7 +2597,7 @@ fn test_selfhost_parser_defn_params_metadata_loop_uses_chunked_steps() {
 }
 
 #[test]
-fn test_selfhost_parser_parse_defn_v3_preserves_return_without_result_slot_rewrite() {
+fn test_selfhost_parser_parse_defn_v3_preserves_return_via_popped_result_slot() {
     let source = selfhost_module("Parser.ls");
     let parse_defn_body = source
         .split("(defn parse-defn-v3")
@@ -2613,15 +2615,17 @@ fn test_selfhost_parser_parse_defn_v3_preserves_return_without_result_slot_rewri
             && parse_defn_body.contains("(let [body (parse-expr-v3 spans pos-ref src)]")
             && parse_defn_body.contains("(finalize-defn-body-v3 defn-node param-count body)")
             && parse_defn_body.contains("(p-expect spans pos-ref 1)")
-            && parse_defn_body.contains("(root_push result)\n            (let [with-params")
+            && parse_defn_body.contains("result-slot (root_push result)")
             && parse_defn_body.contains("with-params (parse-params-v3 spans pos-ref src result 0)")
+            && parse_defn_body.contains("(root_set result-slot parsed)")
+            && parse_defn_body.contains(
+                "(root_set result-slot parsed)\n                        (root_pop)\n                        (root_pop)\n                        (root_pop)"
+            )
             && !parse_defn_body.contains(
                 "(parse-defn-bodyless-or-body-v3 spans pos-ref src defn-node param-count)"
             )
-            && !parse_defn_body.contains("result-slot (root_push result)")
-            && !parse_defn_body.contains("(root_set result-slot parsed)")
             && !parse_defn_body.contains("parsed-ref"),
-        "parse-defn-v3 は Linux x86 stage2 native の helper boundary body/local 崩れを避けるため、non-meta body branch を direct probe と同じ形で inline するべき"
+        "parse-defn-v3 は Linux x86 stage2 native の helper boundary と cleanup 後 local 崩れを避けるため、non-meta body branch を inline し parsed を result root slot 経由で返すべき"
     );
 }
 
