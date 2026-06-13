@@ -218,9 +218,9 @@ fn parser_program_step_delegates_expr_append_to_rooted_helper() {
         .expect("Parser.ls に parse-program-step-v3 が存在すること");
 
     assert!(
-        step.contains("(let [next-result (vector-push-single-rooted-v3 result expr)")
+        step.contains("next-result (vector-push-single-rooted-v3 result expr)")
             && step.contains("(root_set result-slot next-result)")
-            && !step.contains("(let [next-result (vector-push result expr)"),
+            && !step.contains("next-result (vector-push result expr)"),
         "parse-program-step-v3 は top-level AST node append を小さい rooted helper に委譲するべき"
     );
 }

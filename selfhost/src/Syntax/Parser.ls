@@ -2262,7 +2262,7 @@
               (do
                 (root_push expr)
                 (let [result-slot (root_push result)
-                  next-result (vector-push result expr)
+                  next-result (vector-push-single-rooted-v3 result expr)
                   state (do
                     (root_set result-slot next-result)
                     (make-parse-loop-state 0 next-result))]
