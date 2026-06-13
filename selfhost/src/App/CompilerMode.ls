@@ -1083,6 +1083,53 @@
               (root_pop)
               (root_pop)
               0)))))))
+(defn print-program-step-body-progress-probe [spans src]
+  (do
+    (root_push spans)
+    (root_push src)
+    (let [pos-ref (ref-new 0)
+      result (vector-new 16)]
+      (do
+        (root_push pos-ref)
+        (root_push result)
+        (let [step (parse-program-step-v3 spans pos-ref src result)]
+          (do
+            (root_push step)
+            (let [step-result (vector-get step 1)
+              step-result-len (vector-length step-result)
+              first-step-decl (if (> step-result-len 0) (vector-get step-result 0) (vector-new 0))]
+              (do
+                (root_push step-result)
+                (root_push first-step-decl)
+                (print-progress-decl-body-shape 9000000148 step-result-len first-step-decl)
+                (root_pop)
+                (root_pop)
+                (root_pop)))))
+        (let [pos-ref64 (ref-new 0)
+          result64 (vector-new 16)]
+          (do
+            (root_push pos-ref64)
+            (root_push result64)
+            (let [step64 (parse-program-step-64 spans pos-ref64 src result64)]
+              (do
+                (root_push step64)
+                (let [step64-result (vector-get step64 1)
+                  step64-result-len (vector-length step64-result)
+                  first-step64-decl (if (> step64-result-len 0) (vector-get step64-result 0) (vector-new 0))]
+                  (do
+                    (root_push step64-result)
+                    (root_push first-step64-decl)
+                    (print-progress-decl-body-shape 9000000149 step64-result-len first-step64-decl)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    0))))))))))
 (defn compile-file-functions-payload-with-cache-progress [path func-idx cache-ref parse-count-ref]
   (do
     (print 9000000041)
@@ -1110,6 +1157,7 @@
                   progress-first-defn-span (find-span-kind-index progress-spans 0 progress-span-count 30)]
                   (do
                     (root_push progress-spans)
+                    (print-program-step-body-progress-probe progress-spans src)
                     (print-direct-defn-build-progress-probe progress-spans progress-first-defn-span src)
                     (root_pop)))
                 (root_pop)
