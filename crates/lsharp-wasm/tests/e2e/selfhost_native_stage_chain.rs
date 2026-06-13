@@ -1462,6 +1462,16 @@ fn test_selfhost_compiler_mode_progress_reports_parse_and_pair_body_shape() {
         .expect(
             "CompilerMode.ls に compile-file-functions-payload-with-cache-progress が存在すること",
         );
+    let cleanup_probe_body = source
+        .split("(defn print-direct-defn-return-cleanup-progress-probe")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-file-mode-entry-shape-progress-probe")
+                .next()
+        })
+        .expect(
+            "CompilerMode.ls に print-direct-defn-return-cleanup-progress-probe が存在すること",
+        );
 
     for token in [
         "(print marker)",
@@ -1482,6 +1492,7 @@ fn test_selfhost_compiler_mode_progress_reports_parse_and_pair_body_shape() {
         "(print-program-step-body-progress-probe progress-spans src)",
         "(print-program-defn-branch-progress-probe progress-spans src)",
         "(print-direct-defn-build-progress-probe progress-spans progress-first-defn-span src)",
+        "(print-direct-defn-return-cleanup-progress-probe progress-spans progress-first-defn-span src)",
         "first-pair (if (> pair-count 0) (vector-get pairs 0) (vector-new 0))",
         "first-pair-decls (if (> (vector-length first-pair) 1) (vector-get first-pair 1) (vector-new 0))",
         "(print-progress-decl-body-shape 9000000147 pair-count first-pair-decl)",
@@ -1491,6 +1502,12 @@ fn test_selfhost_compiler_mode_progress_reports_parse_and_pair_body_shape() {
                 || pair_shape_helper.contains(token)
                 || progress_body.contains(token),
             "CompilerMode progress body shape 診断 token {token} を含むべき"
+        );
+    }
+    for token in ["9000000153", "9000000154", "9000000155", "9000000156"] {
+        assert!(
+            cleanup_probe_body.contains(token),
+            "cleanup progress probe は marker {token} を出力するべき"
         );
     }
 
@@ -1507,6 +1524,9 @@ fn test_selfhost_compiler_mode_progress_reports_parse_and_pair_body_shape() {
     let direct_probe_idx = progress_body
         .find("(print-direct-defn-build-progress-probe")
         .expect("progress path は direct defn body branch probe を呼ぶべき");
+    let cleanup_probe_idx = progress_body
+        .find("(print-direct-defn-return-cleanup-progress-probe")
+        .expect("progress path は direct defn cleanup probe を呼ぶべき");
     let branch_probe_idx = progress_body
         .find("(print-program-defn-branch-progress-probe")
         .expect("progress path は parse-program defn branch probe を呼ぶべき");
@@ -1517,8 +1537,9 @@ fn test_selfhost_compiler_mode_progress_reports_parse_and_pair_body_shape() {
         parse_marker_idx < step_probe_idx
             && step_probe_idx < branch_probe_idx
             && branch_probe_idx < direct_probe_idx
-            && direct_probe_idx < cache_idx,
-        "progress path は parse-program 直後かつ cache/pair 生成前に step/branch/direct defn probe を出力するべき"
+            && direct_probe_idx < cleanup_probe_idx
+            && cleanup_probe_idx < cache_idx,
+        "progress path は parse-program 直後かつ cache/pair 生成前に step/branch/direct/cleanup defn probe を出力するべき"
     );
 
     let pair_marker_idx = progress_body

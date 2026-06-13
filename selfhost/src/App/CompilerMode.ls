@@ -1229,6 +1229,7 @@
                     (print-program-step-body-progress-probe progress-spans src)
                     (print-program-defn-branch-progress-probe progress-spans src)
                     (print-direct-defn-build-progress-probe progress-spans progress-first-defn-span src)
+                    (print-direct-defn-return-cleanup-progress-probe progress-spans progress-first-defn-span src)
                     (root_pop)))
                 (root_pop)
                 (root_pop)
@@ -1689,8 +1690,8 @@
             (p-expect spans pos-ref 2)
             (let [result (vector-push-triple-rooted-v3 (vector-new 8) 20 nh 0)]
               (do
-                (let [result-slot (root_push result)
-                  with-params (parse-params-v3 spans pos-ref src result 0)]
+                (root_push result)
+                (let [with-params (parse-params-v3 spans pos-ref src result 0)]
                   (do
                     (root_push with-params)
                     (let [param-count (- (vector-length with-params) 3)
@@ -1704,22 +1705,31 @@
                             (let [meta (parse-defn-metadata-v3 spans pos-ref src)]
                               (parse-defn-bodyless-or-body-with-meta-v3
                                 spans pos-ref src defn-node param-count meta))
-                            (parse-defn-bodyless-or-body-v3
-                              spans pos-ref src defn-node param-count))]
+                            (if (== (p-current spans pos-ref) 1)
+                              (do
+                                (p-advance pos-ref)
+                                (let [body (make-int-node 0)]
+                                  (finalize-defn-body-v3 defn-node param-count body)))
+                              (let [body (parse-expr-v3 spans pos-ref src)]
+                                (do
+                                  (root_push body)
+                                  (let [parsed-body (finalize-defn-body-v3 defn-node param-count body)]
+                                    (do
+                                      (root_push parsed-body)
+                                      (p-expect spans pos-ref 1)
+                                      (root_pop)
+                                      (root_pop)
+                                      parsed-body))))))]
                           (do
                             (print 190)
-                            (print (vector-get parsed 0))
-                            (print (vector-length parsed))
-                            (print (ref-get pos-ref))
-                            (root_set result-slot parsed)
+                            (print-progress-decl-body-shape 9000000153 1 parsed)
                             (root_pop)
+                            (print-progress-decl-body-shape 9000000154 1 parsed)
                             (root_pop)
+                            (print-progress-decl-body-shape 9000000155 1 parsed)
                             (root_pop)
                             (print 191)
-                            (print (vector-get parsed 0))
-                            (print (vector-length parsed))
-                            (print (ref-get pos-ref))
-                            (root_pop)
+                            (print-progress-decl-body-shape 9000000156 1 parsed)
                             0))))))))))))))
 (defn compile-file-mode-entry-shape-progress-probe []
   (let [path (command-line-arg 1)]
