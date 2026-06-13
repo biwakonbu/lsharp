@@ -1822,8 +1822,8 @@
         (p-expect spans pos-ref 2) ;; [ を消費
         (let [result (vector-push-triple-rooted-v3 (vector-new 8) 20 nh 0)]
           (do
-            (let [result-slot (root_push result)
-              with-params (parse-params-v3 spans pos-ref src result 0)]
+            (root_push result)
+            (let [with-params (parse-params-v3 spans pos-ref src result 0)]
               (do
                 (root_push with-params)
                 (let [param-count (- (vector-length with-params) 3)
