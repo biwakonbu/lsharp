@@ -1708,20 +1708,20 @@
                             (if (== (p-current spans pos-ref) 1)
                               (do
                                 (p-advance pos-ref)
-                                (let [body (make-int-node 0)]
-                                  (finalize-defn-body-v3 body defn-node)))
-                              (let [body (parse-expr-v3 spans pos-ref src)]
+                                (let [cleanup-bodyless-body (make-int-node 0)]
+                                  (finalize-defn-body-v3 cleanup-bodyless-body defn-node)))
+                              (let [cleanup-parsed-body-source (parse-expr-v3 spans pos-ref src)]
                                 (do
-                                  (root_push body)
+                                  (root_push cleanup-parsed-body-source)
                                   (print 9000000161)
-                                  (print (vector-get body 0))
-                                  (print (vector-length body))
-                                  (print (if (> (vector-length body) 1) (vector-get body 1) -1))
+                                  (print (vector-get cleanup-parsed-body-source 0))
+                                  (print (vector-length cleanup-parsed-body-source))
+                                  (print (if (> (vector-length cleanup-parsed-body-source) 1) (vector-get cleanup-parsed-body-source 1) -1))
                                   (print 9000000162)
                                   (print (vector-get defn-node 0))
                                   (print (vector-length defn-node))
                                   (print (vector-get defn-node 2))
-                                  (let [parsed-body (finalize-defn-body-v3 body defn-node)]
+                                  (let [parsed-body (finalize-defn-body-v3 cleanup-parsed-body-source defn-node)]
                                     (do
                                       (root_push parsed-body)
                                       (print-progress-decl-body-shape 9000000157 1 parsed-body)

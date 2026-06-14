@@ -825,16 +825,16 @@
   (if (== (p-current spans pos-ref) 1)
     (do
       (p-advance pos-ref) ;; bodyless defn の ) を消費
-      (let [body (make-int-node 0)]
-        (finalize-defn-body-v3 body defn-node)))
+      (let [bodyless-defn-body (make-int-node 0)]
+        (finalize-defn-body-v3 bodyless-defn-body defn-node)))
     (do
       (root_push spans)
       (root_push pos-ref)
       (root_push src)
-      (let [body (parse-expr-v3 spans pos-ref src)]
+      (let [parsed-defn-body (parse-expr-v3 spans pos-ref src)]
         (do
-          (root_push body)
-          (let [parsed (finalize-defn-body-v3 body defn-node)]
+          (root_push parsed-defn-body)
+          (let [parsed (finalize-defn-body-v3 parsed-defn-body defn-node)]
             (do
               (root_push parsed)
               (p-expect spans pos-ref 1) ;; ) を消費
@@ -1840,12 +1840,12 @@
                         (if (== (p-current spans pos-ref) 1)
                           (do
                             (p-advance pos-ref)
-                            (let [body (make-int-node 0)]
-                              (finalize-defn-body-v3 body defn-node)))
-                          (let [body (parse-expr-v3 spans pos-ref src)]
+                            (let [bodyless-defn-body (make-int-node 0)]
+                              (finalize-defn-body-v3 bodyless-defn-body defn-node)))
+                          (let [parsed-defn-body (parse-expr-v3 spans pos-ref src)]
                             (do
-                              (root_push body)
-                              (let [parsed-body (finalize-defn-body-v3 body defn-node)]
+                              (root_push parsed-defn-body)
+                              (let [parsed-body (finalize-defn-body-v3 parsed-defn-body defn-node)]
                                 (do
                                   (root_push parsed-body)
                                   (p-expect spans pos-ref 1)

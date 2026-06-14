@@ -1547,6 +1547,13 @@ fn test_selfhost_compiler_mode_progress_reports_parse_and_pair_body_shape() {
             "cleanup progress probe は marker {token} を出力するべき"
         );
     }
+    assert!(
+        cleanup_probe_body.contains("cleanup-bodyless-body")
+            && cleanup_probe_body.contains("cleanup-parsed-body-source")
+            && !cleanup_probe_body.contains("(let [body (make-int-node 0)]")
+            && !cleanup_probe_body.contains("(let [body (parse-expr-v3 spans pos-ref src)]"),
+        "cleanup progress probe は Linux x86 stage2 selfhost lowering で if branch 間の同名 body shadow により local.set/get slot がずれないよう、branch 固有の body local 名を使うべき"
+    );
 
     let parse_marker_idx = progress_body
         .find("(print-progress-decl-body-shape")
@@ -2671,8 +2678,9 @@ fn test_selfhost_parser_parse_defn_v3_preserves_return_without_result_slot_rewri
             && parse_defn_body.contains("(skip-optional-where-v3 spans pos-ref src)")
             && parse_defn_body.contains("(parse-defn-bodyless-or-body-with-meta-v3")
             && parse_defn_body.contains("(if (== (p-current spans pos-ref) 1)")
-            && parse_defn_body.contains("(let [body (parse-expr-v3 spans pos-ref src)]")
-            && parse_defn_body.contains("(finalize-defn-body-v3 body defn-node)")
+            && parse_defn_body
+                .contains("(let [parsed-defn-body (parse-expr-v3 spans pos-ref src)]")
+            && parse_defn_body.contains("(finalize-defn-body-v3 parsed-defn-body defn-node)")
             && parse_defn_body.contains("(p-expect spans pos-ref 1)")
             && parse_defn_body.contains("(root_push result)\n            (let [with-params")
             && parse_defn_body.contains("with-params (parse-params-v3 spans pos-ref src result 0)")
@@ -2684,6 +2692,37 @@ fn test_selfhost_parser_parse_defn_v3_preserves_return_without_result_slot_rewri
             && !parse_defn_body.contains("parsed-ref"),
         "parse-defn-v3 は Linux x86 stage2 native の helper boundary body/local 崩れを避けるため、non-meta body branch を direct probe と同じ形で inline するべき"
     );
+}
+
+#[test]
+fn test_selfhost_parser_defn_body_branches_use_branch_unique_body_locals() {
+    let source = selfhost_module("Parser.ls");
+    let helper_body = source
+        .split("(defn parse-defn-bodyless-or-body-v3")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn parse-defn-bodyless-or-body-with-meta-v3")
+                .next()
+        })
+        .expect("Parser.ls に parse-defn-bodyless-or-body-v3 が存在すること");
+    let parse_defn_body = source
+        .split("(defn parse-defn-v3")
+        .nth(1)
+        .and_then(|tail| tail.split(";; === defmacro 宣言 ===").next())
+        .expect("Parser.ls に parse-defn-v3 が存在すること");
+
+    for (name, body) in [
+        ("parse-defn-bodyless-or-body-v3", helper_body),
+        ("parse-defn-v3", parse_defn_body),
+    ] {
+        assert!(
+            body.contains("bodyless-defn-body")
+                && body.contains("parsed-defn-body")
+                && !body.contains("(let [body (make-int-node 0)]")
+                && !body.contains("(let [body (parse-expr-v3 spans pos-ref src)]"),
+            "{name} は Linux x86 stage2 selfhost lowering で if branch 間の同名 body shadow により local.set/get slot がずれないよう、branch 固有の body local 名を使うべき"
+        );
+    }
 }
 
 #[test]
