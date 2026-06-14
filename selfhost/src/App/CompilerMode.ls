@@ -1716,9 +1716,13 @@
                                   (let [parsed-body (finalize-defn-body-v3 defn-node body)]
                                     (do
                                       (root_push parsed-body)
+                                      (print-progress-decl-body-shape 9000000157 1 parsed-body)
                                       (p-expect spans pos-ref 1)
+                                      (print-progress-decl-body-shape 9000000158 1 parsed-body)
                                       (root_pop)
+                                      (print-progress-decl-body-shape 9000000159 1 parsed-body)
                                       (root_pop)
+                                      (print-progress-decl-body-shape 9000000160 1 parsed-body)
                                       parsed-body))))))]
                           (do
                             (print 190)

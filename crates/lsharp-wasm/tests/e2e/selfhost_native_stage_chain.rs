@@ -1530,7 +1530,16 @@ fn test_selfhost_compiler_mode_progress_reports_parse_and_pair_body_shape() {
             "CompilerMode progress body shape 診断 token {token} を含むべき"
         );
     }
-    for token in ["9000000153", "9000000154", "9000000155", "9000000156"] {
+    for token in [
+        "9000000153",
+        "9000000154",
+        "9000000155",
+        "9000000156",
+        "9000000157",
+        "9000000158",
+        "9000000159",
+        "9000000160",
+    ] {
         assert!(
             cleanup_probe_body.contains(token),
             "cleanup progress probe は marker {token} を出力するべき"
