@@ -4610,6 +4610,51 @@ fn test_wasm_compiler_defn_function_reloads_param_count_after_ir_compilation() {
 }
 
 #[test]
+fn test_wasm_compiler_defn_compile_roots_results_before_root_pops() {
+    let source = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("canonical Compiler.ls が読み込めること");
+    let defn_body = source
+        .split("(defn compile-defn-with-source")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("Compiler.ls に compile-defn-with-source が存在すること");
+    let result_pos = defn_body
+        .find("result (compile-expr-with-source body-expr source env ftable instrs0 data-ref)")
+        .expect("compile-defn-with-source は body compile result を作ること");
+    let root_result_pos = defn_body
+        .find("(root_push result)")
+        .expect("compile-defn-with-source は root_pop 前に result を root すること");
+    let first_pop_pos = defn_body
+        .find("(root_pop)")
+        .expect("compile-defn-with-source は root_pop を持つこと");
+    assert!(
+        result_pos < root_result_pos && root_result_pos < first_pop_pos,
+        "compile-defn-with-source は native full payload path で IR result を失わないよう root_pop 前に result を root するべき"
+    );
+
+    for name in ["compile-defn-function-with-source", "compile-defn-function"] {
+        let body = source
+            .split(&format!("(defn {name}"))
+            .nth(1)
+            .and_then(|tail| tail.split("\n(defn ").next())
+            .unwrap_or_else(|| panic!("Compiler.ls に {name} が存在すること"));
+        let make_pos = body
+            .find("result (make-function-meta final-param-count local-count ir)")
+            .unwrap_or_else(|| panic!("{name} は function-meta result を作ること"));
+        let root_pos = body
+            .find("(root_push result)")
+            .unwrap_or_else(|| panic!("{name} は root_pop 前に result を root すること"));
+        let first_pop_pos = body
+            .find("(root_pop)")
+            .unwrap_or_else(|| panic!("{name} は root_pop を持つこと"));
+        assert!(
+            make_pos < root_pos && root_pos < first_pop_pos,
+            "{name} は native full payload path で function-meta result を失わないよう root_pop 前に result を root するべき"
+        );
+    }
+}
+
+#[test]
 fn test_wasm_compiler_ftable_register_snapshots_scalars_across_vector_push() {
     let source = std::fs::read_to_string(selfhost_source_path("CompilerBase.ls"))
         .expect("canonical CompilerBase.ls が読み込めること");

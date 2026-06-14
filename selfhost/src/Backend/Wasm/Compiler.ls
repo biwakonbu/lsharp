@@ -1263,6 +1263,8 @@
         (let [instrs0 (vector-new 8)
           result (compile-expr-with-source body-expr source env ftable instrs0 data-ref)]
           (do
+            (root_push result)
+            (root_pop)
             (root_pop)
             (root_pop)
             (root_pop)
@@ -1287,6 +1289,8 @@
               local-count (if (> local-max final-param-count) (- local-max final-param-count) 0)
               result (make-function-meta final-param-count local-count ir)]
               (do
+                (root_push result)
+                (root_pop)
                 (root_pop)
                 (root_pop)
                 (root_pop)
@@ -1580,6 +1584,8 @@
           local-count (if (> local-max final-param-count) (- local-max final-param-count) 0)
           result (make-function-meta final-param-count local-count ir)]
           (do
+            (root_push result)
+            (root_pop)
             (root_pop)
             (root_pop)
             (root_pop)
