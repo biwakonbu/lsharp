@@ -1666,6 +1666,44 @@ fn test_selfhost_compile_file_payload_roots_inputs_before_data_ref_alloc() {
 }
 
 #[test]
+fn test_selfhost_compile_file_functions_roots_start_ftable_before_registering_pairs() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/App/CompilerMode.ls",
+    )))
+    .expect("CompilerMode.ls を読めること");
+    let body = source
+        .split("(defn compile-file-functions-with-cache")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-file-functions-payload-with-cache")
+                .next()
+        })
+        .expect("compile-file-functions-with-cache body を取り出せること");
+
+    let start_alloc = body
+        .find("start-ftable (ftable-new)")
+        .expect("compile-file-functions-with-cache は initial ftable を local 化するべき");
+    let start_root = body[start_alloc..]
+        .find("(root_push start-ftable)")
+        .map(|offset| offset + start_alloc)
+        .expect(
+            "compile-file-functions-with-cache は register 前に initial ftable を root するべき",
+        );
+    let register_call = body
+        .find("reg-result (register-all-pairs all-pairs 0 n start-ftable func-idx)")
+        .expect("register-all-pairs は rooted start-ftable を受け取るべき");
+
+    assert!(
+        start_alloc < start_root && start_root < register_call,
+        "normal payload 経路は start-ftable allocation -> root -> register-all-pairs の順で GC root を固定するべき"
+    );
+    assert!(
+        !body.contains("reg-result (register-all-pairs all-pairs 0 n (ftable-new) func-idx)"),
+        "normal payload 経路は unrooted inline ftable-new を register-all-pairs に渡してはいけない"
+    );
+}
+
+#[test]
 fn test_selfhost_register_states_push_final_func_idx_without_int_helper_after_object_slot() {
     let compiler_mode = std::fs::read_to_string(workspace_root_relative_path(
         std::path::PathBuf::from("selfhost/src/App/CompilerMode.ls"),
