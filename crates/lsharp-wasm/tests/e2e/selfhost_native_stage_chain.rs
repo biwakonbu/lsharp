@@ -1539,6 +1539,8 @@ fn test_selfhost_compiler_mode_progress_reports_parse_and_pair_body_shape() {
         "9000000158",
         "9000000159",
         "9000000160",
+        "9000000161",
+        "9000000162",
     ] {
         assert!(
             cleanup_probe_body.contains(token),
@@ -19911,6 +19913,51 @@ fn host_target_direct_call_two_arg_bundle_code_bytes() -> Vec<u8> {
     )
 }
 
+fn linux_x86_selfhost_body_first_two_arg_local_handoff_code_bytes() -> Vec<u8> {
+    run_native_codegen_host_bytes_harness(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn main []
+  (let [caller-ir0 (vector-push (vector-new 7) (make-instr 3 2))
+        caller-ir1 (vector-push caller-ir0 (make-instr 11 1))
+        caller-ir2 (vector-push caller-ir1 (make-instr 3 4))
+        caller-ir3 (vector-push caller-ir2 (make-instr 11 2))
+        caller-ir4 (vector-push caller-ir3 (make-local-get 2))
+        caller-ir5 (vector-push caller-ir4 (make-local-get 1))
+        caller-ir (vector-push caller-ir5 (make-call 1))
+        callee-ir0 (vector-push (vector-new 5) (make-local-get 1))
+        callee-ir1 (vector-push callee-ir0 (make-instr 3 10))
+        callee-ir2 (vector-push callee-ir1 (make-instr 25 0))
+        callee-ir3 (vector-push callee-ir2 (make-local-get 2))
+        callee-ir (vector-push callee-ir3 (make-instr 24 0))
+        caller (make-function-meta 0 3 caller-ir)
+        callee (make-function-meta 2 3 callee-ir)
+        functions (vector-push (vector-push (vector-new 2) caller) callee)
+        target (make-target 3)
+        code (emit-native-function-meta-bundle functions target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    )
+}
+
 fn host_target_direct_call_three_arg_bundle_code_bytes() -> Vec<u8> {
     run_native_codegen_host_bytes_harness(
         r#"(module Main)
@@ -25964,6 +26011,89 @@ fn link_and_run_linux_x86_native_binary(code: &[u8]) -> Result<i32, String> {
 
     let _ = std::fs::remove_dir_all(&dir);
     result
+}
+
+fn link_and_run_linux_x86_native_binary_via_lima(code: &[u8]) -> Result<i32, String> {
+    let vm_name = std::env::var("LSHARP_NATIVE_LINUX_X86_LIMA_VM")
+        .unwrap_or_else(|_| "lsharp-linux-x86".to_string());
+    let id = NATIVE_HOST_EXEC_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let dir = target_fixture_dir("e2e-native-fixtures", "native-linux-x86-lima-exec", id);
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+
+    let byte_strs: Vec<String> = code.iter().map(|b| format!("0x{b:02x}")).collect();
+    let asm_content = format!(
+        ".text\n\
+         .globl generated\n\
+         generated:\n\
+             .byte {}\n\
+         .globl main\n\
+         main:\n\
+             push %rbp\n\
+             mov %rsp, %rbp\n\
+             call generated\n\
+             pop %rbp\n\
+             ret\n\
+         .section .note.GNU-stack,\"\",@progbits\n",
+        byte_strs.join(", ")
+    );
+    let host_asm = dir.join("prog.s");
+    std::fs::write(&host_asm, &asm_content).map_err(|e| format!("prog.s 書き込み失敗: {e}"))?;
+
+    let vm_work_dir = format!("/tmp/lsharp-linux-x86-e2e-{id}");
+    let setup = std::process::Command::new("limactl")
+        .args([
+            "shell",
+            &vm_name,
+            "--",
+            "bash",
+            "-lc",
+            &format!("rm -rf {vm_work_dir} && mkdir -p {vm_work_dir}"),
+        ])
+        .output()
+        .map_err(|e| format!("limactl setup 実行失敗: {e}"))?;
+    if !setup.status.success() {
+        return Err(format!(
+            "limactl setup 失敗: stdout={:?} stderr={:?}",
+            String::from_utf8_lossy(&setup.stdout),
+            String::from_utf8_lossy(&setup.stderr)
+        ));
+    }
+
+    let vm_asm = format!("{vm_name}:{vm_work_dir}/prog.s");
+    let copy = std::process::Command::new("limactl")
+        .arg("copy")
+        .arg(&host_asm)
+        .arg(&vm_asm)
+        .output()
+        .map_err(|e| format!("limactl copy 実行失敗: {e}"))?;
+    if !copy.status.success() {
+        return Err(format!(
+            "limactl copy 失敗: stdout={:?} stderr={:?}",
+            String::from_utf8_lossy(&copy.stdout),
+            String::from_utf8_lossy(&copy.stderr)
+        ));
+    }
+
+    let script = format!(
+        "set -euo pipefail\n\
+         cd {vm_work_dir}\n\
+         cc prog.s -o prog\n\
+         set +e\n\
+         ./prog >stdout.txt 2>stderr.txt\n\
+         code=$?\n\
+         cat stdout.txt\n\
+         cat stderr.txt >&2\n\
+         exit $code\n"
+    );
+    let output = std::process::Command::new("limactl")
+        .args(["shell", &vm_name, "--", "bash", "-lc", &script])
+        .output()
+        .map_err(|e| format!("limactl link/run 実行失敗: {e}"))?;
+    let _ = std::process::Command::new("limactl")
+        .args(["shell", &vm_name, "--", "rm", "-rf", &vm_work_dir])
+        .output();
+
+    Ok(output.status.code().unwrap_or(-1))
 }
 
 fn link_and_run_linux_x86_generated_object(program_object: &[u8]) -> Result<i32, String> {
@@ -34774,6 +34904,38 @@ fn test_e2e_native_host_binary_direct_call_two_arg_bundle_link_and_execute() {
         exit_code,
         42,
         "host binary direct call two-arg bundle: exit code 42 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-LINUX-X86-SELFHOST-02: body-first 2 引数 call が x86 selfhost local slots へ渡ること。
+#[test]
+#[ignore]
+fn test_e2e_native_linux_x86_selfhost_body_first_two_arg_local_handoff_link_and_execute() {
+    let code_bytes = linux_x86_selfhost_body_first_two_arg_local_handoff_code_bytes();
+
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: Linux x86_64 body-first two-arg handoff 向けコードバイト列が空"
+    );
+
+    let exit_code = if linux_x86_native_exec_supported() {
+        link_and_run_linux_x86_native_binary(&code_bytes)
+            .expect("Linux x86_64 body-first two-arg handoff 実行に失敗")
+    } else if std::env::var_os("LSHARP_NATIVE_LINUX_X86_RUN_LIMA").is_some() {
+        link_and_run_linux_x86_native_binary_via_lima(&code_bytes)
+            .expect("Lima Linux x86_64 body-first two-arg handoff 実行に失敗")
+    } else {
+        return;
+    };
+
+    assert_eq!(
+        exit_code,
+        42,
+        "Linux x86_64 body-first two-arg handoff: exit code 42 を期待したが {} を得た\n\
          bytes ({} bytes): {:?}",
         exit_code,
         code_bytes.len(),

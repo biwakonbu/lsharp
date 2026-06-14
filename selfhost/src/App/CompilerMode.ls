@@ -1713,6 +1713,14 @@
                               (let [body (parse-expr-v3 spans pos-ref src)]
                                 (do
                                   (root_push body)
+                                  (print 9000000161)
+                                  (print (vector-get body 0))
+                                  (print (vector-length body))
+                                  (print (if (> (vector-length body) 1) (vector-get body 1) -1))
+                                  (print 9000000162)
+                                  (print (vector-get defn-node 0))
+                                  (print (vector-length defn-node))
+                                  (print (vector-get defn-node 2))
                                   (let [parsed-body (finalize-defn-body-v3 body defn-node)]
                                     (do
                                       (root_push parsed-body)
