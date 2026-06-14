@@ -1659,7 +1659,7 @@
                             (print (vector-get body 0))
                             (print (vector-length body))
                             (print (ref-get pos-ref))
-                            (let [parsed (finalize-defn-body-v3 defn-node param-count body)]
+                            (let [parsed (finalize-defn-body-v3 defn-node body)]
                               (do
                                 (root_push parsed)
                                 (p-expect spans pos-ref 1)
@@ -1709,11 +1709,11 @@
                               (do
                                 (p-advance pos-ref)
                                 (let [body (make-int-node 0)]
-                                  (finalize-defn-body-v3 defn-node param-count body)))
+                                  (finalize-defn-body-v3 defn-node body)))
                               (let [body (parse-expr-v3 spans pos-ref src)]
                                 (do
                                   (root_push body)
-                                  (let [parsed-body (finalize-defn-body-v3 defn-node param-count body)]
+                                  (let [parsed-body (finalize-defn-body-v3 defn-node body)]
                                     (do
                                       (root_push parsed-body)
                                       (p-expect spans pos-ref 1)

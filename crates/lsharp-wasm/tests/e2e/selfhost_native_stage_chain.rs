@@ -1690,13 +1690,15 @@ fn test_selfhost_parse_defn_body_branch_roots_body_before_finalize() {
         .expect("parse-defn-bodyless-or-body-v3 body を取り出せること");
 
     assert!(
-        finalize_body.contains("(root_push defn-node)")
+        finalize_body.contains("[defn-node body]")
+            && !finalize_body.contains("param-count")
+            && finalize_body.contains("(root_push defn-node)")
             && finalize_body.contains("(root_push body)"),
-        "finalize-defn-body-v3 は caller の外側 body root に頼らず defn/body を自分で root するべき"
+        "finalize-defn-body-v3 は未使用 param-count を受け取らず、caller の外側 body root に頼らず defn/body を自分で root するべき"
     );
     assert!(
         parse_body.contains(
-            "(do\n      (root_push spans)\n      (root_push pos-ref)\n      (root_push src)\n      (let [body (parse-expr-v3 spans pos-ref src)]\n        (do\n          (root_push body)\n          (let [parsed (finalize-defn-body-v3 defn-node param-count body)]\n            (do\n              (root_push parsed)\n              (p-expect spans pos-ref 1) ;; ) を消費\n              (root_pop)\n              (root_pop)\n              (root_pop)\n              (root_pop)\n              (root_pop)\n              parsed)))))"
+            "(do\n      (root_push spans)\n      (root_push pos-ref)\n      (root_push src)\n      (let [body (parse-expr-v3 spans pos-ref src)]\n        (do\n          (root_push body)\n          (let [parsed (finalize-defn-body-v3 defn-node body)]\n            (do\n              (root_push parsed)\n              (p-expect spans pos-ref 1) ;; ) を消費\n              (root_pop)\n              (root_pop)\n              (root_pop)\n              (root_pop)\n              (root_pop)\n              parsed)))))"
         ) && !parse_body.contains("finalize-defn-parsed-body-v3"),
         "parse-defn-bodyless-or-body-v3 の body branch は parser state と body を caller 側で root してから p-expect 前に finalize-defn-body-v3 へ渡し、第5引数 handoff と p-expect 後の body local 再利用を避けるべき"
     );
@@ -1721,7 +1723,7 @@ fn test_selfhost_compiler_mode_direct_defn_probe_avoids_parsed_body_handoff() {
         direct_probe.contains(
             "(let [body (parse-expr-v3 spans pos-ref src)]\n                          (do\n                            (root_push body)\n                            (print 188)"
         ) && direct_probe.contains(
-            "(let [parsed (finalize-defn-body-v3 defn-node param-count body)]\n                              (do\n                                (root_push parsed)\n                                (p-expect spans pos-ref 1)"
+            "(let [parsed (finalize-defn-body-v3 defn-node body)]\n                              (do\n                                (root_push parsed)\n                                (p-expect spans pos-ref 1)"
         ) && !direct_probe.contains("finalize-defn-parsed-body-v3"),
         "progress 用 direct defn probe も body を caller 側で root し、p-expect 前に finalize-defn-body-v3 へ渡すべき"
     );
@@ -2632,7 +2634,7 @@ fn test_selfhost_parser_parse_defn_v3_preserves_return_without_result_slot_rewri
             && parse_defn_body.contains("(parse-defn-bodyless-or-body-with-meta-v3")
             && parse_defn_body.contains("(if (== (p-current spans pos-ref) 1)")
             && parse_defn_body.contains("(let [body (parse-expr-v3 spans pos-ref src)]")
-            && parse_defn_body.contains("(finalize-defn-body-v3 defn-node param-count body)")
+            && parse_defn_body.contains("(finalize-defn-body-v3 defn-node body)")
             && parse_defn_body.contains("(p-expect spans pos-ref 1)")
             && parse_defn_body.contains("(root_push result)\n            (let [with-params")
             && parse_defn_body.contains("with-params (parse-params-v3 spans pos-ref src result 0)")
@@ -41457,7 +41459,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_f
 (defn main []
   (let [defn-node (vector-set-at-rooted-v3 (vector-push-triple-rooted-v3 (vector-new 8) 20 123 0) 2 0)
         body (make-var-node 456)
-        decl (finalize-defn-body-v3 defn-node 0 body)]
+        decl (finalize-defn-body-v3 defn-node body)]
     (do
       (print (vector-get decl 0))
       (print (vector-get (vector-get decl 3) 0))
@@ -41853,7 +41855,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_f
 (defn main []
   (let [defn-node (vector-push (vector-push (vector-push (vector-new 8) 20) 0) 0)
         body (make-int-node 42)
-        decl (finalize-defn-body-v3 defn-node 0 body)]
+        decl (finalize-defn-body-v3 defn-node body)]
     (do
       (print (vector-get decl 2))
       (print (vector-get (vector-get decl 3) 0))
