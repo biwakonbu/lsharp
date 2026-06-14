@@ -837,6 +837,32 @@ fn test_native_linux_x86_hostgen_vm_script_can_collect_stage3_progress_markers()
 }
 
 #[test]
+fn test_native_linux_x86_hostgen_vm_script_can_collect_stage1_progress_markers_before_harvest() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+    let vm_exec = script
+        .split(r#"limactl shell "${VM_NAME}" -- env"#)
+        .nth(1)
+        .and_then(|tail| tail.split("<<'VM_SCRIPT'").next())
+        .expect("VM 実行 heredoc は env 経由で actual stage1 progress 設定を渡すべき");
+
+    assert!(
+        vm_exec.contains("LSHARP_NATIVE_LINUX_X86_STAGE1_PROGRESS")
+            && script.contains("collect_stage1_progress_markers")
+            && script.contains("actual-stage1-progress.txt")
+            && script.contains("actual-stage1-progress-stderr.txt")
+            && script.contains(
+                "actual-stage1-progress.txt actual-stage1-progress-stderr.txt actual-stage2-stdout.txt",
+            )
+            && script.contains(r#"./program.native src/App/Seed.ls 0 1 1 0 "" "" progress"#)
+            && script.contains("write_actual_selfregen_failure_summary \"stage1-progress\""),
+        "hostgen VM script は heavy stage1->stage2 harvest 前に actual-stage1 progress marker を artifact 化できるべき"
+    );
+}
+
+#[test]
 fn test_native_linux_x86_hostgen_vm_script_copies_stage_debug_source_tree() {
     let script_path =
         selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
