@@ -2638,8 +2638,65 @@
                   (root_pop)
                   (root_pop)
                   next-state)))))))))
-(defn continue-compile-src-decl-pairs-step [pairs n ftable data-ref state] (if (= (vector-get state 0) 1) state (compile-src-decl-pairs-step pairs (vector-get state 1) n ftable data-ref (vector-get state 2))))
-(defn compile-src-decl-pairs-step-8 [pairs idx n ftable data-ref functions] (let [step1 (compile-src-decl-pairs-step pairs idx n ftable data-ref functions) step2 (continue-compile-src-decl-pairs-step pairs n ftable data-ref step1) step3 (continue-compile-src-decl-pairs-step pairs n ftable data-ref step2) step4 (continue-compile-src-decl-pairs-step pairs n ftable data-ref step3) step5 (continue-compile-src-decl-pairs-step pairs n ftable data-ref step4) step6 (continue-compile-src-decl-pairs-step pairs n ftable data-ref step5) step7 (continue-compile-src-decl-pairs-step pairs n ftable data-ref step6) step8 (continue-compile-src-decl-pairs-step pairs n ftable data-ref step7)] step8))
+(defn continue-compile-src-decl-pairs-step [pairs n ftable data-ref state]
+  (if (= (vector-get state 0) 1)
+    state
+    (do
+      (root_push pairs)
+      (root_push ftable)
+      (root_push data-ref)
+      (root_push state)
+      (let [next-idx (vector-get state 1)
+        next-functions (vector-get state 2)]
+        (do
+          (root_push next-functions)
+          (let [result (compile-src-decl-pairs-step pairs next-idx n ftable data-ref next-functions)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              result)))))))
+
+(defn continue-compile-src-decl-pairs-step-times [pairs n ftable data-ref remaining state]
+  (if (= remaining 0)
+    state
+    (if (= (vector-get state 0) 1)
+      state
+      (do
+        (root_push pairs)
+        (root_push ftable)
+        (root_push data-ref)
+        (root_push state)
+        (let [next-state (continue-compile-src-decl-pairs-step pairs n ftable data-ref state)]
+          (do
+            (root_push next-state)
+            (let [result (continue-compile-src-decl-pairs-step-times pairs n ftable data-ref (- remaining 1) next-state)]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result))))))))
+
+(defn compile-src-decl-pairs-step-8 [pairs idx n ftable data-ref functions]
+  (do
+    (root_push pairs)
+    (root_push ftable)
+    (root_push data-ref)
+    (let [state (compile-src-decl-pairs-step pairs idx n ftable data-ref functions)]
+      (do
+        (let [state-slot (root_push state)]
+          (do
+            (let [result (continue-compile-src-decl-pairs-step-times pairs n ftable data-ref 7 state)]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result))))))))
 (defn continue-compile-src-decl-pairs-step-8 [pairs n ftable data-ref state]
   (if (= (vector-get state 0) 1)
     state
@@ -2648,14 +2705,57 @@
       (root_push ftable)
       (root_push data-ref)
       (root_push state)
-      (let [result (compile-src-decl-pairs-step-8 pairs (vector-get state 1) n ftable data-ref (vector-get state 2))]
+      (let [next-idx (vector-get state 1)
+        next-functions (vector-get state 2)]
         (do
-          (root_pop)
-          (root_pop)
-          (root_pop)
-          (root_pop)
-          result)))))
-(defn compile-src-decl-pairs-step-64 [pairs idx n ftable data-ref functions] (let [step1 (compile-src-decl-pairs-step-8 pairs idx n ftable data-ref functions) step2 (continue-compile-src-decl-pairs-step-8 pairs n ftable data-ref step1) step3 (continue-compile-src-decl-pairs-step-8 pairs n ftable data-ref step2) step4 (continue-compile-src-decl-pairs-step-8 pairs n ftable data-ref step3) step5 (continue-compile-src-decl-pairs-step-8 pairs n ftable data-ref step4) step6 (continue-compile-src-decl-pairs-step-8 pairs n ftable data-ref step5) step7 (continue-compile-src-decl-pairs-step-8 pairs n ftable data-ref step6) step8 (continue-compile-src-decl-pairs-step-8 pairs n ftable data-ref step7)] step8))
+          (root_push next-functions)
+          (let [result (compile-src-decl-pairs-step-8 pairs next-idx n ftable data-ref next-functions)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              result)))))))
+
+(defn continue-compile-src-decl-pairs-step-8-times [pairs n ftable data-ref remaining state]
+  (if (= remaining 0)
+    state
+    (if (= (vector-get state 0) 1)
+      state
+      (do
+        (root_push pairs)
+        (root_push ftable)
+        (root_push data-ref)
+        (root_push state)
+        (let [next-state (continue-compile-src-decl-pairs-step-8 pairs n ftable data-ref state)]
+          (do
+            (root_push next-state)
+            (let [result (continue-compile-src-decl-pairs-step-8-times pairs n ftable data-ref (- remaining 1) next-state)]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result))))))))
+
+(defn compile-src-decl-pairs-step-64 [pairs idx n ftable data-ref functions]
+  (do
+    (root_push pairs)
+    (root_push ftable)
+    (root_push data-ref)
+    (let [state (compile-src-decl-pairs-step-8 pairs idx n ftable data-ref functions)]
+      (do
+        (let [state-slot (root_push state)]
+          (do
+            (let [result (continue-compile-src-decl-pairs-step-8-times pairs n ftable data-ref 7 state)]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result))))))))
 (defn continue-compile-src-decl-pairs-step-64 [pairs n ftable data-ref state]
   (if (= (vector-get state 0) 1)
     state

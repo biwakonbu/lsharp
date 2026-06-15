@@ -1921,6 +1921,26 @@ fn test_selfhost_compile_src_decl_pairs_continuations_snapshot_state_slots() {
         std::path::PathBuf::from("selfhost/src/App/CompilerMode.ls"),
     ))
     .expect("CompilerMode.ls を読めること");
+    let continue_step = compiler_mode
+        .split("(defn continue-compile-src-decl-pairs-step [pairs n ftable data-ref state]")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("continue-compile-src-decl-pairs-step body を取り出せること");
+    let step8 = compiler_mode
+        .split("(defn compile-src-decl-pairs-step-8 [pairs idx n ftable data-ref functions]")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("compile-src-decl-pairs-step-8 body を取り出せること");
+    let continue_step8 = compiler_mode
+        .split("(defn continue-compile-src-decl-pairs-step-8 [pairs n ftable data-ref state]")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("continue-compile-src-decl-pairs-step-8 body を取り出せること");
+    let step64 = compiler_mode
+        .split("(defn compile-src-decl-pairs-step-64 [pairs idx n ftable data-ref functions]")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("compile-src-decl-pairs-step-64 body を取り出せること");
     let continue_step64 = compiler_mode
         .split("(defn continue-compile-src-decl-pairs-step-64")
         .nth(1)
@@ -1931,6 +1951,54 @@ fn test_selfhost_compile_src_decl_pairs_continuations_snapshot_state_slots() {
         .nth(1)
         .and_then(|tail| tail.split("\n(defn ").next())
         .expect("compile-all-src-decl-pairs-chunked body を取り出せること");
+
+    assert!(
+        continue_step.contains("next-idx (vector-get state 1)")
+            && continue_step.contains("next-functions (vector-get state 2)")
+            && continue_step.contains("(root_push next-functions)")
+            && continue_step.contains(
+                "result (compile-src-decl-pairs-step pairs next-idx n ftable data-ref next-functions)",
+            )
+            && !continue_step.contains(
+                "compile-src-decl-pairs-step pairs (vector-get state 1) n ftable data-ref (vector-get state 2)",
+            ),
+        "continue-compile-src-decl-pairs-step は state slots を call 引数内で再取得せず、functions を root した snapshot から継続するべき"
+    );
+
+    assert!(
+        compiler_mode.contains("(defn continue-compile-src-decl-pairs-step-times")
+            && step8.contains("state (compile-src-decl-pairs-step pairs idx n ftable data-ref functions)")
+            && step8.contains("state-slot (root_push state)")
+            && step8.contains(
+                "result (continue-compile-src-decl-pairs-step-times pairs n ftable data-ref 7 state)",
+            )
+            && !step8.contains("step2 (continue-compile-src-decl-pairs-step"),
+        "compile-src-decl-pairs-step-8 は inline state chain ではなく rooted state + times continuation で unroll するべき"
+    );
+
+    assert!(
+        continue_step8.contains("next-idx (vector-get state 1)")
+            && continue_step8.contains("next-functions (vector-get state 2)")
+            && continue_step8.contains("(root_push next-functions)")
+            && continue_step8.contains(
+                "result (compile-src-decl-pairs-step-8 pairs next-idx n ftable data-ref next-functions)",
+            )
+            && !continue_step8.contains(
+                "compile-src-decl-pairs-step-8 pairs (vector-get state 1) n ftable data-ref (vector-get state 2)",
+            ),
+        "continue-compile-src-decl-pairs-step-8 は state slots を call 引数内で再取得せず、functions を root した snapshot から継続するべき"
+    );
+
+    assert!(
+        compiler_mode.contains("(defn continue-compile-src-decl-pairs-step-8-times")
+            && step64.contains("state (compile-src-decl-pairs-step-8 pairs idx n ftable data-ref functions)")
+            && step64.contains("state-slot (root_push state)")
+            && step64.contains(
+                "result (continue-compile-src-decl-pairs-step-8-times pairs n ftable data-ref 7 state)",
+            )
+            && !step64.contains("step2 (continue-compile-src-decl-pairs-step-8"),
+        "compile-src-decl-pairs-step-64 は inline state chain ではなく rooted state + times continuation で unroll するべき"
+    );
 
     assert!(
         continue_step64.contains("next-idx (vector-get state 1)")
