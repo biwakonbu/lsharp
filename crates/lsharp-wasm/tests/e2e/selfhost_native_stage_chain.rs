@@ -2118,6 +2118,64 @@ fn test_wasm_compiler_source_defn_continuations_snapshot_state_slots() {
 }
 
 #[test]
+fn test_selfhost_compile_src_decl_pairs_chunked_roots_functions_result_before_unwinding_state() {
+    let compiler_mode = std::fs::read_to_string(workspace_root_relative_path(
+        std::path::PathBuf::from("selfhost/src/App/CompilerMode.ls"),
+    ))
+    .expect("CompilerMode.ls を読めること");
+    let chunked = compiler_mode
+        .split("(defn compile-all-src-decl-pairs-chunked")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("compile-all-src-decl-pairs-chunked body を取り出せること");
+
+    let functions_pos = chunked
+        .find("functions-result (vector-get result 2)")
+        .expect("compile-all-src-decl-pairs-chunked は result から functions を取り出すこと");
+    let root_set_pos = chunked
+        .find("(root_set state-slot functions-result)")
+        .expect("compile-all-src-decl-pairs-chunked は返却 functions を state-slot に退避すること");
+    let first_pop_after_functions = chunked[functions_pos..]
+        .find("(root_pop)")
+        .map(|offset| offset + functions_pos)
+        .expect("compile-all-src-decl-pairs-chunked は roots を unwind すること");
+
+    assert!(
+        functions_pos < root_set_pos && root_set_pos < first_pop_after_functions,
+        "compile-all-src-decl-pairs-chunked は stage2 native の normal payload で functions-result を失わないよう、result/state root を pop する前に古い root slot へ退避するべき"
+    );
+}
+
+#[test]
+fn test_wasm_compiler_source_defn_chunked_roots_functions_result_before_unwinding_state() {
+    let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("Compiler.ls を読めること");
+    let chunked = compiler
+        .split("(defn compile-source-defn-functions-chunked")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("compile-source-defn-functions-chunked body を取り出せること");
+
+    let functions_pos = chunked
+        .find("functions-result (vector-get result 2)")
+        .expect("compile-source-defn-functions-chunked は result から functions を取り出すこと");
+    let root_set_pos = chunked
+        .find("(root_set state-slot functions-result)")
+        .expect(
+            "compile-source-defn-functions-chunked は返却 functions を state-slot に退避すること",
+        );
+    let first_pop_after_functions = chunked[functions_pos..]
+        .find("(root_pop)")
+        .map(|offset| offset + functions_pos)
+        .expect("compile-source-defn-functions-chunked は roots を unwind すること");
+
+    assert!(
+        functions_pos < root_set_pos && root_set_pos < first_pop_after_functions,
+        "compile-source-defn-functions-chunked は stage2 native の normal payload で functions-result を失わないよう、result/state root を pop する前に古い root slot へ退避するべき"
+    );
+}
+
+#[test]
 fn test_wasm_compiler_defn_skip_branch_keeps_functions_rooted_until_state_built() {
     let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
         .expect("Compiler.ls を読めること");

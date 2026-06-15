@@ -1527,6 +1527,7 @@
               (root_push result)
               (let [functions-result (vector-get result 2)]
                 (do
+                  (root_set state-slot functions-result)
                   (root_pop)
                   (root_pop)
                   functions-result)))))))))
