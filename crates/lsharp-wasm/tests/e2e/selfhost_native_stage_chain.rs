@@ -1868,6 +1868,41 @@ fn test_selfhost_compile_file_functions_roots_start_ftable_before_registering_pa
 }
 
 #[test]
+fn test_selfhost_compile_file_functions_roots_result_before_unwinding_state() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/App/CompilerMode.ls",
+    )))
+    .expect("CompilerMode.ls を読めること");
+    let body = source
+        .split("(defn compile-file-functions-with-cache")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-file-functions-payload-with-cache")
+                .next()
+        })
+        .expect("compile-file-functions-with-cache body を取り出せること");
+
+    let compile_call = body
+        .find("functions (compile-all-src-decl-pairs-chunked all-pairs 0 n ftable data-ref functions0)")
+        .expect("compile-file-functions-with-cache は functions を生成するべき");
+    let functions_root = body[compile_call..]
+        .find("(root_push functions)")
+        .map(|offset| offset + compile_call)
+        .expect(
+            "compile-file-functions-with-cache は返却 functions を root してから outer state を pop するべき",
+        );
+    let first_pop_after_compile = body[compile_call..]
+        .find("(root_pop)")
+        .map(|offset| offset + compile_call)
+        .expect("compile-file-functions-with-cache は outer roots を pop するべき");
+
+    assert!(
+        compile_call < functions_root && functions_root < first_pop_after_compile,
+        "normal payload 経路は stage2 native 実行中の GC で返却 functions を失わないよう、outer roots を pop する前に functions を root するべき"
+    );
+}
+
+#[test]
 fn test_selfhost_register_states_push_final_func_idx_without_int_helper_after_object_slot() {
     let compiler_mode = std::fs::read_to_string(workspace_root_relative_path(
         std::path::PathBuf::from("selfhost/src/App/CompilerMode.ls"),

@@ -1018,6 +1018,8 @@
                   (root_push functions0)
                   (let [functions (compile-all-src-decl-pairs-chunked all-pairs 0 n ftable data-ref functions0)]
                     (do
+                      (root_push functions)
+                      (root_pop)
                       (root_pop)
                       (root_pop)
                       (root_pop)
