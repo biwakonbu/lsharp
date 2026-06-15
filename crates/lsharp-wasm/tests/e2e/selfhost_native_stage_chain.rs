@@ -1957,6 +1957,64 @@ fn test_selfhost_compile_src_decl_pairs_continuations_snapshot_state_slots() {
 }
 
 #[test]
+fn test_wasm_compiler_source_defn_continuations_snapshot_state_slots() {
+    let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("Compiler.ls を読めること");
+    let continue_step = compiler
+        .split("(defn continue-compile-defn-functions-step-with-source")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("continue-compile-defn-functions-step-with-source body を取り出せること");
+    let continue_step64 = compiler
+        .split("(defn continue-compile-defn-functions-step-64-with-source")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("continue-compile-defn-functions-step-64-with-source body を取り出せること");
+    let chunked = compiler
+        .split("(defn compile-source-defn-functions-chunked")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("compile-source-defn-functions-chunked body を取り出せること");
+
+    assert!(
+        continue_step.contains("next-idx (vector-get state 1)")
+            && continue_step.contains("next-functions (vector-get state 2)")
+            && continue_step.contains("(root_push next-functions)")
+            && continue_step.contains(
+                "result (compile-defn-functions-step-with-source decls next-idx n source ftable data-ref next-functions)",
+            )
+            && !continue_step.contains(
+                "compile-defn-functions-step-with-source decls (vector-get state 1) n source ftable data-ref (vector-get state 2)",
+            ),
+        "source defn step continuation は state slots を snapshot し、functions を root してから次 step に渡すべき"
+    );
+    assert!(
+        continue_step64.contains("next-idx (vector-get state 1)")
+            && continue_step64.contains("next-functions (vector-get state 2)")
+            && continue_step64.contains("(root_push next-functions)")
+            && continue_step64.contains(
+                "next-state (compile-defn-functions-step-64-with-source decls next-idx n source ftable data-ref next-functions)",
+            )
+            && !continue_step64.contains(
+                "compile-defn-functions-step-64-with-source decls (vector-get state 1) n source ftable data-ref (vector-get state 2)",
+            ),
+        "source defn step-64 continuation は state slots を call 引数内で再取得せず、root 済み functions snapshot で継続するべき"
+    );
+    assert!(
+        chunked.contains(
+            "state (compile-defn-functions-step-64-with-source decls idx n source ftable data-ref functions)",
+        ) && chunked.contains("state-slot (root_push state)")
+            && chunked.contains(
+                "result (continue-compile-defn-functions-step-64-with-source decls n source ftable data-ref state)",
+            )
+            && !chunked.contains(
+                "(continue-compile-defn-functions-step-64-with-source decls n source ftable data-ref (compile-defn-functions-step-64-with-source decls idx n source ftable data-ref functions))",
+            ),
+        "compile-source-defn-functions-chunked は initial state を root してから continuation に渡すべき"
+    );
+}
+
+#[test]
 fn test_selfhost_parse_defn_body_branch_roots_body_before_finalize() {
     let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
         "selfhost/src/Syntax/Parser.ls",
