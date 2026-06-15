@@ -2083,6 +2083,43 @@ fn test_wasm_compiler_source_defn_continuations_snapshot_state_slots() {
 }
 
 #[test]
+fn test_wasm_compiler_defn_skip_branch_keeps_functions_rooted_until_state_built() {
+    let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("Compiler.ls を読めること");
+    let plain_step = compiler
+        .split("(defn compile-defn-functions-step [decls idx n ftable functions]")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn continue-compile-defn-functions-step")
+                .next()
+        })
+        .expect("compile-defn-functions-step body を取り出せること");
+    let source_step = compiler
+        .split("(defn compile-defn-functions-step-with-source-body-impl-3")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn compile-let-with-ftable-impl-body-impl-3")
+                .next()
+        })
+        .expect("compile-defn-functions-step-with-source-body-impl-3 body を取り出せること");
+
+    assert!(
+        plain_step.contains("(let [result (make-compile-step-state 0 (+ idx 1) functions)]")
+            && !plain_step.contains(
+                "(root_pop)\n          (root_pop)\n          (root_pop)\n          (make-compile-step-state 0 (+ idx 1) functions)",
+            ),
+        "non-source defn skip branch は functions root を残したまま state を作り、その後で roots を pop するべき"
+    );
+    assert!(
+        source_step.contains("(let [result (make-compile-step-state 0 (+ idx 1) functions)]")
+            && !source_step.contains(
+                "(root_pop)\n          (root_pop)\n          (root_pop)\n          (root_pop)\n          (root_pop)\n          (make-compile-step-state 0 (+ idx 1) functions)",
+            ),
+        "source defn skip branch は functions root を残したまま state を作り、その後で roots を pop するべき"
+    );
+}
+
+#[test]
 fn test_selfhost_parse_defn_body_branch_roots_body_before_finalize() {
     let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
         "selfhost/src/Syntax/Parser.ls",
