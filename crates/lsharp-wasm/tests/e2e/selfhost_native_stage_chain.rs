@@ -1882,6 +1882,47 @@ fn test_selfhost_register_states_push_final_func_idx_without_int_helper_after_ob
 }
 
 #[test]
+fn test_selfhost_compile_src_decl_pairs_continuations_snapshot_state_slots() {
+    let compiler_mode = std::fs::read_to_string(workspace_root_relative_path(
+        std::path::PathBuf::from("selfhost/src/App/CompilerMode.ls"),
+    ))
+    .expect("CompilerMode.ls を読めること");
+    let continue_step64 = compiler_mode
+        .split("(defn continue-compile-src-decl-pairs-step-64")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("continue-compile-src-decl-pairs-step-64 body を取り出せること");
+    let chunked = compiler_mode
+        .split("(defn compile-all-src-decl-pairs-chunked")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("compile-all-src-decl-pairs-chunked body を取り出せること");
+
+    assert!(
+        continue_step64.contains("next-idx (vector-get state 1)")
+            && continue_step64.contains("next-functions (vector-get state 2)")
+            && continue_step64.contains("(root_push next-functions)")
+            && continue_step64.contains(
+                "next-state (compile-src-decl-pairs-step-64 pairs next-idx n ftable data-ref next-functions)",
+            )
+            && !continue_step64.contains(
+                "compile-src-decl-pairs-step-64 pairs (vector-get state 1) n ftable data-ref (vector-get state 2)",
+            ),
+        "continue-compile-src-decl-pairs-step-64 は state slots を call 引数内で再取得せず、functions を root した snapshot から継続するべき"
+    );
+
+    assert!(
+        chunked.contains("state (compile-src-decl-pairs-step-64 pairs idx n ftable data-ref functions)")
+            && chunked.contains("state-slot (root_push state)")
+            && chunked.contains("result (continue-compile-src-decl-pairs-step-64 pairs n ftable data-ref state)")
+            && !chunked.contains(
+                "(continue-compile-src-decl-pairs-step-64 pairs n ftable data-ref (compile-src-decl-pairs-step-64 pairs idx n ftable data-ref functions))",
+            ),
+        "compile-all-src-decl-pairs-chunked は initial state を root してから continuation に渡すべき"
+    );
+}
+
+#[test]
 fn test_selfhost_parse_defn_body_branch_roots_body_before_finalize() {
     let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
         "selfhost/src/Syntax/Parser.ls",

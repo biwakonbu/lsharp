@@ -2587,21 +2587,35 @@
       (root_push ftable)
       (root_push data-ref)
       (root_push state)
-      (let [next-state (compile-src-decl-pairs-step-64 pairs (vector-get state 1) n ftable data-ref (vector-get state 2))]
+      (let [next-idx (vector-get state 1)
+        next-functions (vector-get state 2)]
         (do
-          (root_push next-state)
-          (let [result (continue-compile-src-decl-pairs-step-64 pairs n ftable data-ref next-state)]
+          (root_push next-functions)
+          (let [next-state (compile-src-decl-pairs-step-64 pairs next-idx n ftable data-ref next-functions)]
             (do
               (root_pop)
-              (root_pop)
-              (root_pop)
-              (root_pop)
-              (root_pop)
-              result)))))))
+              (root_push next-state)
+              (let [result (continue-compile-src-decl-pairs-step-64 pairs n ftable data-ref next-state)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  result)))))))))
 (defn compile-all-src-decl-pairs-chunked [pairs idx n ftable data-ref functions]
-  (vector-get
-    (continue-compile-src-decl-pairs-step-64 pairs n ftable data-ref (compile-src-decl-pairs-step-64 pairs idx n ftable data-ref functions))
-    2))
+  (let [state (compile-src-decl-pairs-step-64 pairs idx n ftable data-ref functions)]
+    (do
+      (let [state-slot (root_push state)]
+        (do
+          (let [result (continue-compile-src-decl-pairs-step-64 pairs n ftable data-ref state)]
+            (do
+              (root_push result)
+              (let [functions-result (vector-get result 2)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  functions-result)))))))))
 (defn compile-all-src-decl-pairs [pairs idx n ftable data-ref functions]
   (if (>= idx n)
     functions
