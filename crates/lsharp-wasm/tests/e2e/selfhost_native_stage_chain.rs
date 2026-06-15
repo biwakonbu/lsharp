@@ -164,6 +164,13 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                                  (vector-get raw-reg-result 0)
                                  (ftable-new))
                     raw-ftable-root (if (= raw-functions-mode 1) (root_push raw-ftable) 0)
+                    normal-transport-after-native-callables (if (= normal-transport-diagnostic-mode 1)
+                                                             (do
+                                                               (print 9000000174)
+                                                               (print (vector-length callables))
+                                                               (print (vector-length native-callables))
+                                                               (print (+ 9 (vector-length functions))))
+                                                             0)
                     progress-after-native-callables (if (= progress-mode 1)
                                                     (do
                                                       (print 9000000032)
@@ -189,6 +196,13 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                     starts (if (= raw-functions-mode 1)
                               (vector-new 0)
                               (collect-callable-function-slot-starts-x86 native-callables 10))
+                    normal-transport-after-starts (if (= normal-transport-diagnostic-mode 1)
+                                                   (do
+                                                     (print 9000000175)
+                                                     (print (vector-length starts))
+                                                     (print (if (> (vector-length starts) 0) (vector-get starts 0) -1))
+                                                     (print (if (> (vector-length starts) 0) (vector-get starts (- (vector-length starts) 1)) -1)))
+                                                   0)
                     progress-after-starts (if (= progress-mode 1)
                                            (do
                                              (print 9000000033)
@@ -209,6 +223,13 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                     code-len (if (= raw-functions-mode 1)
                                0
                                (+ user-total (x86-selfhost-helper-trailer-size 10)))
+                    normal-transport-after-size (if (= normal-transport-diagnostic-mode 1)
+                                                 (do
+                                                   (print 9000000176)
+                                                   (print user-total)
+                                                   (print code-len)
+                                                   (print (vector-length data)))
+                                                 0)
                     progress-after-code-len (if (= progress-mode 1)
                                              (do
                                                (print 9000000035)
@@ -217,7 +238,13 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                     code (vector-new 0)
                     entrypoint-offset (if (= raw-functions-mode 1)
                                         0
-                                        (vector-get starts (- entrypoint-func-idx 10)))"#;
+                                        (vector-get starts (- entrypoint-func-idx 10)))
+                    normal-transport-after-entrypoint (if (= normal-transport-diagnostic-mode 1)
+                                                       (do
+                                                         (print 9000000177)
+                                                         (print entrypoint-func-idx)
+                                                         (print entrypoint-offset))
+                                                       0)"#;
     let main_body = r#"      (let [data-len (vector-length data)
           range-start (parse-positive-int (command-line-arg 2))
           range-end-arg (parse-positive-int (command-line-arg 3))
@@ -234,7 +261,16 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                                   (parse-positive-int (command-line-arg 7))
                                   8)]
          (do
-           (if (= raw-functions-mode 1)
+           (if (= normal-transport-diagnostic-mode 1)
+             (do
+               (print 9000000178)
+               (print range-start)
+               (print range-end)
+               (print include-header)
+               (print include-tail)
+               (print metadata-mode)
+               0)
+             (if (= raw-functions-mode 1)
              (do
                (print-x86-known-ftable-lookups raw-ftable)
                (print-x86-function-ir-owner-window functions raw-ftable raw-pairs range-start range-end))
@@ -286,7 +322,7 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                         (print data-len)
                         (print 9000000004)
                            (print-packed-code-bytes-loop data 0 data-len))
-                         0)))))))"#;
+                         0))))))))"#;
     let payload_expr = "(compile-file-functions-payload-with-cache (command-line-arg 1) 10 cache-ref parse-count-ref)";
     let source = actual_stage23_seed_source_with_payload_and_code_binding_and_target(
         payload_expr,
@@ -297,17 +333,26 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
     let source = strip_linux_x86_unused_base64_helpers(source);
     let payload_bindings = r#"source-path (command-line-arg 1)
          source-path-root (root_push source-path)
+         normal-transport-diagnostic-mode (if (> (string-length (command-line-arg 11)) 0) 1 0)
          pre-payload-progress-mode (if (> (string-length (command-line-arg 8)) 0) 1 0)
+         normal-transport-before-payload (if (= normal-transport-diagnostic-mode 1) (print 9000000170) 0)
+         pre-payload-observe-mode (if (= normal-transport-diagnostic-mode 1) 1 pre-payload-progress-mode)
          pre-payload-progress-start (if (= pre-payload-progress-mode 1) (print 9000000030) 0)
-         pre-payload-source (if (= pre-payload-progress-mode 1) (read-file source-path) "")
-         pre-payload-source-root (if (= pre-payload-progress-mode 1) (root_push pre-payload-source) 0)
+         pre-payload-source (if (= pre-payload-observe-mode 1) (read-file source-path) "")
+         pre-payload-source-root (if (= pre-payload-observe-mode 1) (root_push pre-payload-source) 0)
+         normal-transport-after-read (if (= normal-transport-diagnostic-mode 1)
+                                      (do
+                                        (print 9000000171)
+                                        (print (string-length pre-payload-source))
+                                        (print (if (> (string-length pre-payload-source) 0) (string-char-at pre-payload-source 0) -1)))
+                                      0)
          pre-payload-progress-read (if (= pre-payload-progress-mode 1)
                                     (do
                                       (print 9000000031)
                                       (print (string-length pre-payload-source))
                                       (print (if (> (string-length pre-payload-source) 0) (string-char-at pre-payload-source 0) -1)))
                                     0)
-         pre-payload-source-pop (if (= pre-payload-progress-mode 1) (root_pop) 0)
+         pre-payload-source-pop (if (= pre-payload-observe-mode 1) (root_pop) 0)
          payload-base (if (= pre-payload-progress-mode 1)
                         (compile-file-functions-payload-with-cache-progress source-path 10 cache-ref parse-count-ref)
                         (compile-file-functions-payload-with-cache source-path 10 cache-ref parse-count-ref))
@@ -317,7 +362,18 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
          bounded-main-func-idx (+ 9 (vector-length functions))
          payload-root (root_push payload-base)
          functions-root (root_push functions)
-         data-root (root_push data)"#;
+         data-root (root_push data)
+         normal-transport-after-payload (if (= normal-transport-diagnostic-mode 1)
+                                         (do
+                                           (print 9000000172)
+                                           (print (vector-length payload-base)))
+                                         0)
+         normal-transport-after-payload-parts (if (= normal-transport-diagnostic-mode 1)
+                                               (do
+                                                 (print 9000000173)
+                                                 (print (vector-length functions))
+                                                 (print (vector-length data)))
+                                               0)"#;
     let source = source.replace(&format!("payload {payload_expr}"), payload_bindings);
     let source = source.replace(
         "(defn append-vector-loop [dst src idx len]",
@@ -837,6 +893,35 @@ fn test_native_linux_x86_hostgen_vm_script_can_collect_stage3_progress_markers()
 }
 
 #[test]
+fn test_native_linux_x86_hostgen_vm_script_can_collect_stage3_normal_setup_markers() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+    let vm_exec = script
+        .split(r#"limactl shell "${VM_NAME}" -- env"#)
+        .nth(1)
+        .and_then(|tail| tail.split("<<'VM_SCRIPT'").next())
+        .expect("VM 実行 heredoc は env 経由で normal setup 診断設定を渡すべき");
+    let failure_summary_call = "write_actual_selfregen_failure_summary \"stage3-normal-setup\"";
+
+    assert!(
+        vm_exec.contains("LSHARP_NATIVE_LINUX_X86_STAGE3_NORMAL_SETUP")
+            && vm_exec.contains("LSHARP_NATIVE_LINUX_X86_STAGE3_NORMAL_SETUP_ONLY")
+            && script.contains("STAGE3_NORMAL_SETUP_ONLY")
+            && script.contains("collect_stage3_normal_setup_markers")
+            && script.contains("actual-stage3-normal-setup.txt")
+            && script.contains("actual-stage3-normal-setup-stderr.txt")
+            && script.contains(
+                r#"./program.native src/App/Seed.ls 0 1 0 0 "" "" "" "" "" normal-setup"#,
+            )
+            && script.contains(r#""phase": "stage3-normal-setup""#)
+            && script.contains(failure_summary_call),
+        "hostgen VM script は env 指定時だけ actual-stage2 native compiler の通常 setup marker を artifact 化し、full transport 前で止められるべき"
+    );
+}
+
+#[test]
 fn test_native_linux_x86_hostgen_vm_script_can_collect_stage1_progress_markers_before_harvest() {
     let script_path =
         selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
@@ -1170,6 +1255,51 @@ fn test_linux_x86_representative_seed_can_print_stage_progress_markers() {
         assert!(
             !source.contains(token),
             "Linux x86 segmented seed は旧 progress probe token {token} を含めない"
+        );
+    }
+}
+
+#[test]
+fn test_linux_x86_representative_seed_can_print_normal_transport_setup_markers() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+    lsharp_syntax::parse(&source)
+        .expect("Linux x86 segmented seed source は normal setup 診断追加後も parse できること");
+
+    for marker in [
+        "9000000170",
+        "9000000171",
+        "9000000172",
+        "9000000173",
+        "9000000174",
+        "9000000175",
+        "9000000176",
+        "9000000177",
+        "9000000178",
+    ] {
+        assert!(
+            source.contains(marker),
+            "Linux x86 segmented seed は通常 transport setup marker {marker} を出せるべき"
+        );
+    }
+
+    for token in [
+        "normal-transport-diagnostic-mode (if (> (string-length (command-line-arg 11)) 0) 1 0)",
+        "pre-payload-observe-mode (if (= normal-transport-diagnostic-mode 1) 1 pre-payload-progress-mode)",
+        "payload-base (if (= pre-payload-progress-mode 1)",
+        "compile-file-functions-payload-with-cache source-path 10 cache-ref parse-count-ref",
+        "normal-transport-after-payload",
+        "normal-transport-after-payload-parts",
+        "normal-transport-after-native-callables",
+        "normal-transport-after-starts",
+        "normal-transport-after-size",
+        "normal-transport-after-entrypoint",
+        "(if (= normal-transport-diagnostic-mode 1)",
+        "(print range-start)",
+        "(print range-end)",
+    ] {
+        assert!(
+            source.contains(token),
+            "Linux x86 segmented seed は progress helper を使わない通常 setup 診断 token {token} を含むべき"
         );
     }
 }
