@@ -1437,16 +1437,16 @@
                 result))))))))
 
 (defn compile-defn-functions-step-8-with-source [decls idx n source ftable data-ref functions]
-  (do
-    (root_push decls)
-    (root_push source)
-    (root_push ftable)
-    (root_push data-ref)
+  (let [decls-slot (root_push decls)
+    source-slot (root_push source)
+    ftable-slot (root_push ftable)
+    data-slot (root_push data-ref)]
     (let [state (compile-defn-functions-step-with-source decls idx n source ftable data-ref functions)]
       (do
         (root_push state)
         (let [result (continue-compile-defn-functions-step-times-with-source decls n source ftable data-ref 7 state)]
           (do
+            (root_set decls-slot result)
             (root_pop)
             (root_pop)
             (root_pop)
@@ -1473,16 +1473,16 @@
           result)))))
 
 (defn compile-defn-functions-step-64-with-source [decls idx n source ftable data-ref functions]
-  (do
-    (root_push decls)
-    (root_push source)
-    (root_push ftable)
-    (root_push data-ref)
+  (let [decls-slot (root_push decls)
+    source-slot (root_push source)
+    ftable-slot (root_push ftable)
+    data-slot (root_push data-ref)]
     (let [state (compile-defn-functions-step-with-source decls idx n source ftable data-ref functions)]
       (do
         (root_push state)
         (let [result (continue-compile-defn-functions-step-times-with-source decls n source ftable data-ref 63 state)]
           (do
+            (root_set decls-slot result)
             (root_pop)
             (root_pop)
             (root_pop)
@@ -1814,6 +1814,7 @@
               (root_push compiled-fn)
               (let [result (compile-defn-functions-step-finish functions compiled-fn idx)]
                 (do
+                  (root_set functions-slot result)
                   (root_pop)
                   (root_pop)
                   (root_pop)
@@ -2139,6 +2140,7 @@
               (root_push compiled-fn)
               (let [result (compile-defn-functions-step-finish functions compiled-fn idx)]
                 (do
+                  (root_set functions-slot result)
                   (root_pop)
                   (root_pop)
                   (root_pop)

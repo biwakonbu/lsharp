@@ -982,11 +982,12 @@
 (defn compile-defn-functions-step-finish [functions compiled-fn idx]
   (let [updated-functions (push-object-vector functions compiled-fn)]
     (do
-      (root_push updated-functions)
+      (let [updated-slot (root_push updated-functions)]
       (let [next-state (make-compile-step-state 0 (+ idx 1) updated-functions)]
         (do
+          (root_set updated-slot next-state)
           (root_pop)
-          next-state)))))
+          next-state))))))
 (defn compile-let-with-ftable-prepare [name-hash init-root init-instrs env]
   (do
     (root_push env)

@@ -2618,11 +2618,10 @@
 (defn compile-src-decl-pairs-step [pairs idx n ftable data-ref functions]
   (if (>= idx n)
     (make-pairs-step-state 1 idx functions)
-    (do
-      (root_push pairs)
-      (root_push ftable)
-      (root_push data-ref)
-      (root_push functions)
+    (let [pairs-slot (root_push pairs)
+      ftable-slot (root_push ftable)
+      data-slot (root_push data-ref)
+      functions-slot (root_push functions)]
       (let [pair (vector-get pairs idx)]
         (do
           (root_push pair)
@@ -2633,6 +2632,7 @@
               (root_push updated-functions)
               (let [next-state (make-pairs-step-state 0 (+ idx 1) updated-functions)]
                 (do
+                  (root_set functions-slot next-state)
                   (root_pop)
                   (root_pop)
                   (root_pop)
@@ -2684,16 +2684,16 @@
                 result))))))))
 
 (defn compile-src-decl-pairs-step-8 [pairs idx n ftable data-ref functions]
-  (do
-    (root_push pairs)
-    (root_push ftable)
-    (root_push data-ref)
+  (let [pairs-slot (root_push pairs)
+    ftable-slot (root_push ftable)
+    data-slot (root_push data-ref)]
     (let [state (compile-src-decl-pairs-step pairs idx n ftable data-ref functions)]
       (do
         (let [state-slot (root_push state)]
           (do
             (let [result (continue-compile-src-decl-pairs-step-times pairs n ftable data-ref 7 state)]
               (do
+                (root_set pairs-slot result)
                 (root_pop)
                 (root_pop)
                 (root_pop)
@@ -2743,16 +2743,16 @@
                 result))))))))
 
 (defn compile-src-decl-pairs-step-64 [pairs idx n ftable data-ref functions]
-  (do
-    (root_push pairs)
-    (root_push ftable)
-    (root_push data-ref)
+  (let [pairs-slot (root_push pairs)
+    ftable-slot (root_push ftable)
+    data-slot (root_push data-ref)]
     (let [state (compile-src-decl-pairs-step-8 pairs idx n ftable data-ref functions)]
       (do
         (let [state-slot (root_push state)]
           (do
             (let [result (continue-compile-src-decl-pairs-step-8-times pairs n ftable data-ref 7 state)]
               (do
+                (root_set pairs-slot result)
                 (root_pop)
                 (root_pop)
                 (root_pop)
