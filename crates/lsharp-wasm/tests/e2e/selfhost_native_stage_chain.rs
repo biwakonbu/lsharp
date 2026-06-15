@@ -355,7 +355,9 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
          pre-payload-source-pop (if (= pre-payload-observe-mode 1) (root_pop) 0)
          payload-base (if (= pre-payload-progress-mode 1)
                         (compile-file-functions-payload-with-cache-progress source-path 10 cache-ref parse-count-ref)
-                        (compile-file-functions-payload-with-cache source-path 10 cache-ref parse-count-ref))
+                        (if (= normal-transport-diagnostic-mode 1)
+                          (compile-file-functions-payload-with-cache-normal-setup-diagnostic source-path 10 cache-ref parse-count-ref)
+                          (compile-file-functions-payload-with-cache source-path 10 cache-ref parse-count-ref)))
          payload payload-base
          functions (vector-get payload-base 0)
          data (vector-get payload-base 1)
@@ -1286,6 +1288,7 @@ fn test_linux_x86_representative_seed_can_print_normal_transport_setup_markers()
         "normal-transport-diagnostic-mode (if (> (string-length (command-line-arg 11)) 0) 1 0)",
         "pre-payload-observe-mode (if (= normal-transport-diagnostic-mode 1) 1 pre-payload-progress-mode)",
         "payload-base (if (= pre-payload-progress-mode 1)",
+        "compile-file-functions-payload-with-cache-normal-setup-diagnostic source-path 10 cache-ref parse-count-ref",
         "compile-file-functions-payload-with-cache source-path 10 cache-ref parse-count-ref",
         "normal-transport-after-payload",
         "normal-transport-after-payload-parts",
@@ -1300,6 +1303,37 @@ fn test_linux_x86_representative_seed_can_print_normal_transport_setup_markers()
         assert!(
             source.contains(token),
             "Linux x86 segmented seed は progress helper を使わない通常 setup 診断 token {token} を含むべき"
+        );
+    }
+}
+
+#[test]
+fn test_selfhost_compiler_mode_has_normal_setup_payload_diagnostic() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/App/CompilerMode.ls",
+    )))
+    .expect("CompilerMode.ls を読めること");
+
+    for token in [
+        "(defn compile-file-functions-with-cache-normal-setup-diagnostic",
+        "(defn compile-file-functions-payload-with-cache-normal-setup-diagnostic",
+        "(print 9000000180)",
+        "(print 9000000181)",
+        "(print 9000000182)",
+        "(print 9000000183)",
+        "(print 9000000184)",
+        "(print 9000000185)",
+        "(print 9000000186)",
+        "(print 9000000187)",
+        "(print 9000000188)",
+        "(print 9000000189)",
+        "functions (compile-file-functions-with-cache-normal-setup-diagnostic path func-idx cache-ref parse-count-ref data-ref)",
+        "reg-result (register-all-pairs all-pairs 0 n start-ftable func-idx)",
+        "functions (compile-all-src-decl-pairs-chunked all-pairs 0 n ftable data-ref functions0)",
+    ] {
+        assert!(
+            source.contains(token),
+            "CompilerMode.ls は通常 setup payload 内部診断 token {token} を含むべき"
         );
     }
 }
