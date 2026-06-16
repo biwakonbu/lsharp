@@ -2177,6 +2177,59 @@ fn test_wasm_compiler_source_defn_continuations_snapshot_state_slots() {
 }
 
 #[test]
+fn test_wasm_compiler_source_defn_single_continuations_root_returned_state_before_unwinding() {
+    let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("Compiler.ls を読めること");
+    let continue_step = compiler
+        .split("(defn continue-compile-defn-functions-step-with-source")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("continue-compile-defn-functions-step-with-source body を取り出せること");
+    let diagnostic_continue_step = compiler
+        .split("(defn continue-compile-defn-functions-step-with-source-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect(
+            "continue-compile-defn-functions-step-with-source-normal-setup-diagnostic body を取り出せること",
+        );
+
+    for (name, body, result_expr) in [
+        (
+            "continue-compile-defn-functions-step-with-source",
+            continue_step,
+            "result (compile-defn-functions-step-with-source decls next-idx n source ftable data-ref next-functions)",
+        ),
+        (
+            "continue-compile-defn-functions-step-with-source-normal-setup-diagnostic",
+            diagnostic_continue_step,
+            "result (compile-defn-functions-step-with-source-normal-setup-diagnostic decls next-idx n source ftable data-ref next-functions)",
+        ),
+    ] {
+        let state_root_pos = body
+            .find("state-slot (root_push state)")
+            .unwrap_or_else(|| panic!("{name} は state root slot を保持すること"));
+        let result_pos = body
+            .find(result_expr)
+            .unwrap_or_else(|| panic!("{name} は returned state を local 化すること"));
+        let root_set_pos = body[result_pos..]
+            .find("(root_set state-slot result)")
+            .map(|offset| offset + result_pos)
+            .unwrap_or_else(|| panic!("{name} は returned state を state slot に退避すること"));
+        let first_pop_after_result = body[result_pos..]
+            .find("(root_pop)")
+            .map(|offset| offset + result_pos)
+            .unwrap_or_else(|| panic!("{name} は roots を unwind すること"));
+
+        assert!(
+            state_root_pos < result_pos
+                && result_pos < root_set_pos
+                && root_set_pos < first_pop_after_result,
+            "{name} は source defn step が返した state を outer roots unwind 前に root slot へ退避するべき"
+        );
+    }
+}
+
+#[test]
 fn test_selfhost_compile_src_decl_pairs_chunked_roots_functions_result_before_unwinding_state() {
     let compiler_mode = std::fs::read_to_string(workspace_root_relative_path(
         std::path::PathBuf::from("selfhost/src/App/CompilerMode.ls"),
