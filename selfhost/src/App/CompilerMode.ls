@@ -4000,7 +4000,37 @@
                                                                       (print 66)
                                                                       (print (vector-length b7))
                                                                       b7)))))))))))))))))))))))))))))))))))
-(defn compile-file-mode [] (let [path (command-line-arg 1) cache-ref (ref-new (map-new)) parse-count-ref (ref-new 0) data-ref (ref-new (vector-new 8)) functions (compile-file-functions-with-cache path 10 cache-ref parse-count-ref data-ref) wasm-bytes (build-wasm-bytes-wasi functions (ref-get data-ref))] (print-wasm-module wasm-bytes)))
+(defn compile-file-mode []
+  (let [path (command-line-arg 1)
+    path-slot (root_push path)
+    cache-ref (ref-new (map-new))
+    cache-slot (root_push cache-ref)
+    parse-count-ref (ref-new 0)
+    parse-slot (root_push parse-count-ref)
+    data-ref (ref-new (vector-new 8))
+    data-ref-slot (root_push data-ref)
+    functions (compile-file-functions-with-cache path 10 cache-ref parse-count-ref data-ref)]
+    (do
+      (let [functions-slot (root_push functions)]
+        (do
+          (let [data (ref-get data-ref)]
+            (do
+              (let [data-slot (root_push data)]
+                (do
+                  (let [wasm-bytes (build-wasm-bytes-wasi functions data)]
+                    (do
+                      (let [wasm-slot (root_push wasm-bytes)]
+                        (do
+                          (let [result (print-wasm-module wasm-bytes)]
+                            (do
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              result)))))))))))))))
 (defn compile-file-mode-build-progress-debug [] (let [path (command-line-arg 1) cache-ref (ref-new (map-new)) parse-count-ref (ref-new 0) data-ref (ref-new (vector-new 8)) functions (compile-file-functions-with-cache path 10 cache-ref parse-count-ref data-ref) wasm-bytes (build-wasm-bytes-wasi-progress-debug functions (ref-get data-ref))] (do (print 67) (print (vector-length wasm-bytes)) 0)))
 (defn compile-file-mode-build-phase-probe []
   (let [path (command-line-arg 1)

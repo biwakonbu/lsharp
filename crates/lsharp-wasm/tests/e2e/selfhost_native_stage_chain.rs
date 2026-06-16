@@ -1962,6 +1962,85 @@ fn test_selfhost_compile_file_functions_roots_result_before_unwinding_state() {
 }
 
 #[test]
+fn test_selfhost_compile_file_mode_roots_payload_and_wasm_before_printing() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/App/CompilerMode.ls",
+    )))
+    .expect("CompilerMode.ls を読めること");
+    let body = source
+        .split("(defn compile-file-mode []")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-file-mode-build-progress-debug")
+                .next()
+        })
+        .expect("compile-file-mode body を取り出せること");
+
+    let path_root = body
+        .find("path-slot (root_push path)")
+        .expect("compile-file-mode は path を root してから cache を確保するべき");
+    let cache_alloc = body
+        .find("cache-ref (ref-new (map-new))")
+        .expect("compile-file-mode は cache-ref を確保するべき");
+    let cache_root = body
+        .find("cache-slot (root_push cache-ref)")
+        .expect("compile-file-mode は cache-ref を root するべき");
+    let parse_root = body
+        .find("parse-slot (root_push parse-count-ref)")
+        .expect("compile-file-mode は parse-count-ref を root するべき");
+    let data_ref_root = body
+        .find("data-ref-slot (root_push data-ref)")
+        .expect("compile-file-mode は data-ref を root するべき");
+    let compile_call = body
+        .find("functions (compile-file-functions-with-cache path 10 cache-ref parse-count-ref data-ref)")
+        .expect("compile-file-mode は compile-file-functions-with-cache を呼ぶべき");
+    let functions_root = body[compile_call..]
+        .find("functions-slot (root_push functions)")
+        .map(|offset| offset + compile_call)
+        .expect("compile-file-mode は build 前に functions を root するべき");
+    let data_get = body[functions_root..]
+        .find("data (ref-get data-ref)")
+        .map(|offset| offset + functions_root)
+        .expect("compile-file-mode は rooted data-ref から data を取り出すべき");
+    let data_root = body[data_get..]
+        .find("data-slot (root_push data)")
+        .map(|offset| offset + data_get)
+        .expect("compile-file-mode は build 前に data を root するべき");
+    let build_call = body[data_root..]
+        .find("wasm-bytes (build-wasm-bytes-wasi functions data)")
+        .map(|offset| offset + data_root)
+        .expect("compile-file-mode は rooted functions/data から wasm-bytes を生成するべき");
+    let wasm_root = body[build_call..]
+        .find("wasm-slot (root_push wasm-bytes)")
+        .map(|offset| offset + build_call)
+        .expect("compile-file-mode は print 前に wasm-bytes を root するべき");
+    let print_call = body[wasm_root..]
+        .find("result (print-wasm-module wasm-bytes)")
+        .map(|offset| offset + wasm_root)
+        .expect("compile-file-mode は rooted wasm-bytes を print するべき");
+    let first_pop_after_print = body[print_call..]
+        .find("(root_pop)")
+        .map(|offset| offset + print_call)
+        .expect("compile-file-mode は print 後に roots を unwind するべき");
+
+    assert!(
+        path_root < cache_alloc
+            && cache_alloc < cache_root
+            && cache_root < parse_root
+            && parse_root < data_ref_root
+            && data_ref_root < compile_call
+            && compile_call < functions_root
+            && functions_root < data_get
+            && data_get < data_root
+            && data_root < build_call
+            && build_call < wasm_root
+            && wasm_root < print_call
+            && print_call < first_pop_after_print,
+        "compile-file-mode は normal transport の GC で functions/data/wasm-bytes を失わない順序で root するべき"
+    );
+}
+
+#[test]
 fn test_selfhost_register_states_push_final_func_idx_without_int_helper_after_object_slot() {
     let compiler_mode = std::fs::read_to_string(workspace_root_relative_path(
         std::path::PathBuf::from("selfhost/src/App/CompilerMode.ls"),
