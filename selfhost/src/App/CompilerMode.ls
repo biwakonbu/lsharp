@@ -1078,7 +1078,7 @@
                     (root_push functions0)
                     (print 9000000188)
                     (print (vector-length functions0))
-                    (let [functions (compile-all-src-decl-pairs-chunked all-pairs 0 n ftable data-ref functions0)]
+                    (let [functions (compile-all-src-decl-pairs-chunked-normal-setup-diagnostic all-pairs 0 n ftable data-ref functions0)]
                       (do
                         (root_push functions)
                         (print 9000000189)
@@ -1091,6 +1091,49 @@
                         (root_pop)
                         (root_pop)
                         functions))))))))))))
+(defn print-normal-setup-pairs-state-marker [marker]
+  (if (= marker 9000000190)
+    (print 9000000190)
+    (if (= marker 9000000191)
+      (print 9000000191)
+      (if (= marker 9000000192)
+        (print 9000000192)
+        (print marker)))))
+(defn print-normal-setup-pairs-state-shape [marker n state data-ref]
+  (do
+    (root_push state)
+    (root_push data-ref)
+    (print-normal-setup-pairs-state-marker marker)
+    (print n)
+    (print (vector-length state))
+    (let [done (vector-get state 0)
+      next-idx (vector-get state 1)
+      functions (vector-get state 2)]
+      (do
+        (root_push functions)
+        (let [functions-len (vector-length functions)]
+          (do
+            (print done)
+            (print next-idx)
+            (print functions-len)
+            (if (> functions-len 0)
+              (let [first-fn (vector-get functions 0)
+                last-fn (vector-get functions (- functions-len 1))]
+                (do
+                  (root_push first-fn)
+                  (root_push last-fn)
+                  (print (vector-length first-fn))
+                  (print (vector-length last-fn))
+                  (root_pop)
+                  (root_pop)))
+              (do
+                (print -1)
+                (print -1)))
+            (print (vector-length (ref-get data-ref)))
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            0))))))
 (defn compile-file-functions-payload-with-cache-normal-setup-diagnostic [path func-idx cache-ref parse-count-ref]
   (do
     (print 9000000180)
@@ -1119,6 +1162,7 @@
                         (print 9000000183)
                         (print (vector-length data))
                         (print (vector-length payload2))
+                        (print-normal-setup-payload-shape payload2)
                         (root_pop)
                         (root_pop)
                         (root_pop)
@@ -1128,6 +1172,45 @@
                         (root_pop)
                         (root_pop)
                         payload2))))))))))))
+(defn print-normal-setup-payload-shape [payload]
+  (do
+    (root_push payload)
+    (print 9000000193)
+    (let [payload-len (vector-length payload)]
+      (do
+        (print payload-len)
+        (if (> payload-len 1)
+          (let [functions (vector-get payload 0)
+            data (vector-get payload 1)]
+            (do
+              (root_push functions)
+              (root_push data)
+              (let [functions-len (vector-length functions)]
+                (do
+                  (print functions-len)
+                  (print (vector-length data))
+                  (if (> functions-len 0)
+                    (let [first-fn (vector-get functions 0)
+                      last-fn (vector-get functions (- functions-len 1))]
+                      (do
+                        (root_push first-fn)
+                        (root_push last-fn)
+                        (print (vector-length first-fn))
+                        (print (vector-length last-fn))
+                        (root_pop)
+                        (root_pop)))
+                    (do
+                      (print -1)
+                      (print -1)))
+                  (root_pop)
+                  (root_pop)))))
+          (do
+            (print -1)
+            (print -1)
+            (print -1)
+            (print -1)))
+        (root_pop)
+        0))))
 (defn print-progress-decl-body-shape [marker collection-count decl]
   (do
     (root_push decl)
@@ -2793,6 +2876,23 @@
               (let [functions-result (vector-get result 2)]
                 (do
                   (root_set state-slot functions-result)
+                  (root_pop)
+                  (root_pop)
+                  functions-result)))))))))
+(defn compile-all-src-decl-pairs-chunked-normal-setup-diagnostic [pairs idx n ftable data-ref functions]
+  (let [state (compile-src-decl-pairs-step-64 pairs idx n ftable data-ref functions)]
+    (do
+      (let [state-slot (root_push state)]
+        (do
+          (print-normal-setup-pairs-state-shape 9000000190 n state data-ref)
+          (let [result (continue-compile-src-decl-pairs-step-64 pairs n ftable data-ref state)]
+            (do
+              (root_push result)
+              (print-normal-setup-pairs-state-shape 9000000191 n result data-ref)
+              (let [functions-result (vector-get result 2)]
+                (do
+                  (root_set state-slot functions-result)
+                  (print-normal-setup-pairs-state-shape 9000000192 n result data-ref)
                   (root_pop)
                   (root_pop)
                   functions-result)))))))))

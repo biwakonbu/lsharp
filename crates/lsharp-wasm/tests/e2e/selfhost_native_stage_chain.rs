@@ -1339,6 +1339,37 @@ fn test_selfhost_compiler_mode_has_normal_setup_payload_diagnostic() {
 }
 
 #[test]
+fn test_selfhost_normal_setup_diagnostic_correlates_compile_all_state_payload_shapes() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/App/CompilerMode.ls",
+    )))
+    .expect("CompilerMode.ls を読めること");
+
+    for token in [
+        "(defn print-normal-setup-pairs-state-shape",
+        "(defn print-normal-setup-payload-shape",
+        "(defn compile-all-src-decl-pairs-chunked-normal-setup-diagnostic",
+        "(print 9000000190)",
+        "(print 9000000191)",
+        "(print 9000000192)",
+        "(print 9000000193)",
+        "state (compile-src-decl-pairs-step-64 pairs idx n ftable data-ref functions)",
+        "result (continue-compile-src-decl-pairs-step-64 pairs n ftable data-ref state)",
+        "functions-result (vector-get result 2)",
+        "print-normal-setup-pairs-state-shape 9000000190 n state data-ref",
+        "print-normal-setup-pairs-state-shape 9000000191 n result data-ref",
+        "print-normal-setup-pairs-state-shape 9000000192 n result data-ref",
+        "functions (compile-all-src-decl-pairs-chunked-normal-setup-diagnostic all-pairs 0 n ftable data-ref functions0)",
+        "print-normal-setup-payload-shape payload2",
+    ] {
+        assert!(
+            source.contains(token),
+            "CompilerMode.ls は通常 setup の state/payload shape 診断 token {token} を含むべき"
+        );
+    }
+}
+
+#[test]
 fn test_linux_x86_representative_seed_omits_payload_entry_shape_probe() {
     let source = linux_x86_representative_actual_stage23_seed_source();
     assert!(
