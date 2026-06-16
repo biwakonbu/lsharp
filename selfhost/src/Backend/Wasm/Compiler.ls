@@ -1440,13 +1440,16 @@
   (let [decls-slot (root_push decls)
     source-slot (root_push source)
     ftable-slot (root_push ftable)
-    data-slot (root_push data-ref)]
+    data-slot (root_push data-ref)
+    functions-slot (root_push functions)]
     (let [state (compile-defn-functions-step-with-source decls idx n source ftable data-ref functions)]
       (do
         (root_push state)
         (let [result (continue-compile-defn-functions-step-times-with-source decls n source ftable data-ref 7 state)]
           (do
             (root_set decls-slot result)
+            (root_set functions-slot result)
+            (root_pop)
             (root_pop)
             (root_pop)
             (root_pop)
@@ -1476,13 +1479,16 @@
   (let [decls-slot (root_push decls)
     source-slot (root_push source)
     ftable-slot (root_push ftable)
-    data-slot (root_push data-ref)]
+    data-slot (root_push data-ref)
+    functions-slot (root_push functions)]
     (let [state (compile-defn-functions-step-with-source decls idx n source ftable data-ref functions)]
       (do
         (root_push state)
         (let [result (continue-compile-defn-functions-step-times-with-source decls n source ftable data-ref 63 state)]
           (do
             (root_set decls-slot result)
+            (root_set functions-slot result)
+            (root_pop)
             (root_pop)
             (root_pop)
             (root_pop)

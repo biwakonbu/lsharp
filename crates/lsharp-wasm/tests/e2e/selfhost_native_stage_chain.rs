@@ -2560,6 +2560,63 @@ fn test_selfhost_step_state_builders_root_final_state_before_unwinding_parts() {
 }
 
 #[test]
+fn test_wasm_compiler_source_defn_step_wrappers_root_input_functions_until_result() {
+    let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("Compiler.ls を読めること");
+    let step8 = compiler
+        .split("(defn compile-defn-functions-step-8-with-source")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("compile-defn-functions-step-8-with-source body を取り出せること");
+    let step64 = compiler
+        .split("(defn compile-defn-functions-step-64-with-source")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("compile-defn-functions-step-64-with-source body を取り出せること");
+
+    for (name, body, state_expr, result_expr) in [
+        (
+            "compile-defn-functions-step-8-with-source",
+            step8,
+            "state (compile-defn-functions-step-with-source decls idx n source ftable data-ref functions)",
+            "result (continue-compile-defn-functions-step-times-with-source decls n source ftable data-ref 7 state)",
+        ),
+        (
+            "compile-defn-functions-step-64-with-source",
+            step64,
+            "state (compile-defn-functions-step-with-source decls idx n source ftable data-ref functions)",
+            "result (continue-compile-defn-functions-step-times-with-source decls n source ftable data-ref 63 state)",
+        ),
+    ] {
+        let functions_root_pos = body
+            .find("functions-slot (root_push functions)")
+            .unwrap_or_else(|| panic!("{name} は input functions を root すること"));
+        let state_pos = body
+            .find(state_expr)
+            .unwrap_or_else(|| panic!("{name} は initial state を作ること"));
+        let result_pos = body
+            .find(result_expr)
+            .unwrap_or_else(|| panic!("{name} は continuation result を local 化すること"));
+        let root_set_pos = body[result_pos..]
+            .find("(root_set functions-slot result)")
+            .map(|offset| offset + result_pos)
+            .unwrap_or_else(|| panic!("{name} は返却 state を functions slot に退避すること"));
+        let first_pop_after_result = body[result_pos..]
+            .find("(root_pop)")
+            .map(|offset| offset + result_pos)
+            .unwrap_or_else(|| panic!("{name} は roots を unwind すること"));
+
+        assert!(
+            functions_root_pos < state_pos
+                && state_pos < result_pos
+                && result_pos < root_set_pos
+                && root_set_pos < first_pop_after_result,
+            "{name} は stage2 native normal path で source defn functions state を失わないよう、input functions を initial state 生成前から result unwind まで root するべき"
+        );
+    }
+}
+
+#[test]
 fn test_wasm_compiler_defn_skip_branch_keeps_functions_rooted_until_state_built() {
     let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
         .expect("Compiler.ls を読めること");
