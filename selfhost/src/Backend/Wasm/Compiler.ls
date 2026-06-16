@@ -1586,6 +1586,7 @@
         (do
           (let [result (make-compile-step-state 0 (+ idx 1) functions)]
             (do
+              (root_set functions-slot result)
               (root_pop)
               (root_pop)
               (root_pop)
@@ -1992,6 +1993,7 @@
         (do
           (let [result (make-compile-step-state 0 (+ idx 1) functions)]
             (do
+              (root_set functions-slot result)
               (root_pop)
               (root_pop)
               (root_pop)
@@ -2320,6 +2322,7 @@
         (do
           (let [result (make-compile-step-state 0 (+ idx 1) functions)]
             (do
+              (root_set functions-slot result)
               (root_pop)
               (root_pop)
               (root_pop)

@@ -2664,21 +2664,47 @@ fn test_wasm_compiler_defn_skip_branch_keeps_functions_rooted_until_state_built(
                 .next()
         })
         .expect("compile-defn-functions-step-with-source-body-impl-3 body を取り出せること");
+    let diagnostic_source_step = compiler
+        .split("(defn compile-defn-functions-step-with-source-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split(
+                "\n(defn continue-compile-defn-functions-step-with-source-normal-setup-diagnostic",
+            )
+            .next()
+        })
+        .expect(
+            "compile-defn-functions-step-with-source-normal-setup-diagnostic body を取り出せること",
+        );
 
-    assert!(
-        plain_step.contains("(let [result (make-compile-step-state 0 (+ idx 1) functions)]")
-            && !plain_step.contains(
-                "(root_pop)\n          (root_pop)\n          (root_pop)\n          (make-compile-step-state 0 (+ idx 1) functions)",
-            ),
-        "non-source defn skip branch は functions root を残したまま state を作り、その後で roots を pop するべき"
-    );
-    assert!(
-        source_step.contains("(let [result (make-compile-step-state 0 (+ idx 1) functions)]")
-            && !source_step.contains(
-                "(root_pop)\n          (root_pop)\n          (root_pop)\n          (root_pop)\n          (root_pop)\n          (make-compile-step-state 0 (+ idx 1) functions)",
-            ),
-        "source defn skip branch は functions root を残したまま state を作り、その後で roots を pop するべき"
-    );
+    for (name, body) in [
+        ("compile-defn-functions-step", plain_step),
+        (
+            "compile-defn-functions-step-with-source-body-impl-3",
+            source_step,
+        ),
+        (
+            "compile-defn-functions-step-with-source-normal-setup-diagnostic",
+            diagnostic_source_step,
+        ),
+    ] {
+        let result_pos = body
+            .find("(let [result (make-compile-step-state 0 (+ idx 1) functions)]")
+            .unwrap_or_else(|| panic!("{name} は skip state を local 化すること"));
+        let root_set_pos = body[result_pos..]
+            .find("(root_set functions-slot result)")
+            .map(|offset| offset + result_pos)
+            .unwrap_or_else(|| panic!("{name} は skip state を functions slot に退避すること"));
+        let first_pop_after_result = body[result_pos..]
+            .find("(root_pop)")
+            .map(|offset| offset + result_pos)
+            .unwrap_or_else(|| panic!("{name} は roots を unwind すること"));
+
+        assert!(
+            result_pos < root_set_pos && root_set_pos < first_pop_after_result,
+            "{name} の skip branch は先頭 non-defn decl を越えても functions vector を失わないよう、skip state を lower root slot へ退避してから roots を pop するべき"
+        );
+    }
 }
 
 #[test]
