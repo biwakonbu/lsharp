@@ -1037,12 +1037,13 @@
       (root_push functions)
       (let [data (ref-get data-ref)]
         (do
-          (root_push data)
+          (let [data-slot (root_push data)]
           (let [payload1 (vector-push (vector-new 2) functions)]
             (do
               (root_push payload1)
               (let [payload2 (vector-push payload1 data)]
                 (do
+                  (root_set data-slot payload2)
                   (root_pop)
                   (root_pop)
                   (root_pop)
@@ -1050,7 +1051,7 @@
                   (root_pop)
                   (root_pop)
                   (root_pop)
-                  payload2)))))))))
+                  payload2))))))))))
 (defn compile-file-functions-with-cache-normal-setup-diagnostic [path func-idx cache-ref parse-count-ref data-ref]
   (do
     (print 9000000184)

@@ -1889,6 +1889,44 @@ fn test_selfhost_compile_file_payload_roots_inputs_before_data_ref_alloc() {
 }
 
 #[test]
+fn test_selfhost_compile_file_payload_roots_result_before_unwinding_state() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/App/CompilerMode.ls",
+    )))
+    .expect("CompilerMode.ls を読めること");
+    let body = source
+        .split("(defn compile-file-functions-payload-with-cache")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-file-functions-with-cache-normal-setup-diagnostic")
+                .next()
+        })
+        .expect("compile-file-functions-payload-with-cache body を取り出せること");
+
+    let data_root = body
+        .find("data-slot (root_push data)")
+        .expect("payload helper は data root slot を保持するべき");
+    let payload2_pos = body
+        .find("payload2 (vector-push payload1 data)")
+        .expect("payload helper は payload2 を生成するべき");
+    let root_set_pos = body[payload2_pos..]
+        .find("(root_set data-slot payload2)")
+        .map(|offset| offset + payload2_pos)
+        .expect("payload helper は返却 payload2 を既存 root slot に退避するべき");
+    let first_pop_after_payload2 = body[payload2_pos..]
+        .find("(root_pop)")
+        .map(|offset| offset + payload2_pos)
+        .expect("payload helper は payload2 生成後に roots を unwind するべき");
+
+    assert!(
+        data_root < payload2_pos
+            && payload2_pos < root_set_pos
+            && root_set_pos < first_pop_after_payload2,
+        "payload helper は stage2 normal transport で payload2 の functions/data を失わないよう、unwind 前に payload2 を root slot へ退避するべき"
+    );
+}
+
+#[test]
 fn test_selfhost_compile_file_functions_roots_start_ftable_before_registering_pairs() {
     let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
         "selfhost/src/App/CompilerMode.ls",
