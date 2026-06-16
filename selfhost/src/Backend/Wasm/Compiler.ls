@@ -1537,6 +1537,168 @@
                   (root_pop)
                   (root_pop)
                   functions-result)))))))))
+(defn print-source-defn-normal-setup-finish-shape [idx functions compiled-fn result data-ref]
+  (do
+    (root_push functions)
+    (root_push compiled-fn)
+    (root_push result)
+    (root_push data-ref)
+    (print 9000000195)
+    (print idx)
+    (print (vector-length functions))
+    (print (vector-length compiled-fn))
+    (print (vector-get result 0))
+    (print (vector-get result 1))
+    (print (vector-length (vector-get result 2)))
+    (print (vector-length (ref-get data-ref)))
+    (root_pop)
+    (root_pop)
+    (root_pop)
+    (root_pop)
+    0))
+(defn compile-defn-functions-step-with-source-normal-setup-diagnostic [decls idx n source ftable data-ref functions]
+  (if (>= idx n)
+    (make-compile-step-state 1 idx functions)
+    (let [decls-slot (root_push decls)
+      source-slot (root_push source)
+      ftable-slot (root_push ftable)
+      data-slot (root_push data-ref)
+      functions-slot (root_push functions)
+      decl (vector-get decls idx)]
+      (if (= (vector-get decl 0) 20)
+        (do
+          (root_push decl)
+          (let [compiled-fn (compile-defn-function-with-source decl source ftable data-ref)]
+            (do
+              (root_push compiled-fn)
+              (let [result (compile-defn-functions-step-finish functions compiled-fn idx)]
+                (do
+                  (root_set functions-slot result)
+                  (print-source-defn-normal-setup-finish-shape idx functions compiled-fn result data-ref)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  result)))))
+        (do
+          (let [result (make-compile-step-state 0 (+ idx 1) functions)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              result)))))))
+(defn continue-compile-defn-functions-step-with-source-normal-setup-diagnostic [decls n source ftable data-ref state]
+  (if (= (vector-get state 0) 1)
+    state
+    (do
+      (root_push decls)
+      (root_push source)
+      (root_push ftable)
+      (root_push data-ref)
+      (root_push state)
+      (let [next-idx (vector-get state 1)
+        next-functions (vector-get state 2)]
+        (do
+          (root_push next-functions)
+          (let [result (compile-defn-functions-step-with-source-normal-setup-diagnostic decls next-idx n source ftable data-ref next-functions)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              result)))))))
+
+(defn continue-compile-defn-functions-step-times-with-source-normal-setup-diagnostic [decls n source ftable data-ref remaining state]
+  (if (= remaining 0)
+    state
+    (if (= (vector-get state 0) 1)
+      state
+      (do
+        (root_push decls)
+        (root_push source)
+        (root_push ftable)
+        (root_push data-ref)
+        (root_push state)
+        (let [next-state (continue-compile-defn-functions-step-with-source-normal-setup-diagnostic decls n source ftable data-ref state)]
+          (do
+            (root_push next-state)
+            (let [result (continue-compile-defn-functions-step-times-with-source-normal-setup-diagnostic decls n source ftable data-ref (- remaining 1) next-state)]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result))))))))
+(defn compile-defn-functions-step-64-with-source-normal-setup-diagnostic [decls idx n source ftable data-ref functions]
+  (let [decls-slot (root_push decls)
+    source-slot (root_push source)
+    ftable-slot (root_push ftable)
+    data-slot (root_push data-ref)
+    functions-slot (root_push functions)]
+    (let [state (compile-defn-functions-step-with-source-normal-setup-diagnostic decls idx n source ftable data-ref functions)]
+      (do
+        (root_push state)
+        (let [result (continue-compile-defn-functions-step-times-with-source-normal-setup-diagnostic decls n source ftable data-ref 63 state)]
+          (do
+            (root_set decls-slot result)
+            (root_set functions-slot result)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            result))))))
+
+(defn continue-compile-defn-functions-step-64-with-source-normal-setup-diagnostic [decls n source ftable data-ref state]
+  (if (= (vector-get state 0) 1)
+    state
+    (do
+      (root_push decls)
+      (root_push source)
+      (root_push ftable)
+      (root_push data-ref)
+      (root_push state)
+      (let [next-idx (vector-get state 1)
+        next-functions (vector-get state 2)]
+        (do
+          (root_push next-functions)
+          (let [next-state (compile-defn-functions-step-64-with-source-normal-setup-diagnostic decls next-idx n source ftable data-ref next-functions)]
+            (do
+              (root_pop)
+              (root_push next-state)
+              (let [result (continue-compile-defn-functions-step-64-with-source-normal-setup-diagnostic decls n source ftable data-ref next-state)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  result)))))))))
+(defn compile-source-defn-functions-chunked-normal-setup-diagnostic [decls idx n source ftable data-ref functions]
+  (let [state (compile-defn-functions-step-64-with-source-normal-setup-diagnostic decls idx n source ftable data-ref functions)]
+    (do
+      (let [state-slot (root_push state)]
+        (do
+          (let [result (continue-compile-defn-functions-step-64-with-source-normal-setup-diagnostic decls n source ftable data-ref state)]
+            (do
+              (root_push result)
+              (let [functions-result (vector-get result 2)]
+                (do
+                  (root_set state-slot functions-result)
+                  (root_pop)
+                  (root_pop)
+                  functions-result)))))))))
 (defn continue-compile-let-chain-step-with-source [source ftable state data-ref]
   (if (= (vector-get state 0) 1)
     state

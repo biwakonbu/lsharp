@@ -1134,6 +1134,40 @@
             (root_pop)
             (root_pop)
             0))))))
+(defn print-normal-setup-pair-compile-shape [marker idx decls functions updated-functions data-ref]
+  (do
+    (root_push decls)
+    (root_push functions)
+    (root_push updated-functions)
+    (root_push data-ref)
+    (print 9000000194)
+    (print idx)
+    (let [decls-len (vector-length decls)
+      before-len (vector-length functions)
+      after-len (vector-length updated-functions)]
+      (do
+        (print decls-len)
+        (print before-len)
+        (print after-len)
+        (if (> decls-len 0)
+          (let [first-decl (vector-get decls 0)
+            last-decl (vector-get decls (- decls-len 1))]
+            (do
+              (root_push first-decl)
+              (root_push last-decl)
+              (print (vector-get first-decl 0))
+              (print (vector-get last-decl 0))
+              (root_pop)
+              (root_pop)))
+          (do
+            (print -1)
+            (print -1)))
+        (print (vector-length (ref-get data-ref)))
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        0))))
 (defn compile-file-functions-payload-with-cache-normal-setup-diagnostic [path func-idx cache-ref parse-count-ref]
   (do
     (print 9000000180)
@@ -2871,6 +2905,180 @@
                   (root_pop)
                   (root_pop)
                   result)))))))))
+(defn compile-src-decl-pairs-step-normal-setup-diagnostic [pairs idx n ftable data-ref functions]
+  (if (>= idx n)
+    (make-pairs-step-state 1 idx functions)
+    (let [pairs-slot (root_push pairs)
+      ftable-slot (root_push ftable)
+      data-slot (root_push data-ref)
+      functions-slot (root_push functions)]
+      (let [pair (vector-get pairs idx)]
+        (do
+          (root_push pair)
+          (let [src (vector-get pair 0)
+            decls (vector-get pair 1)
+            updated-functions (compile-source-defn-functions-chunked-normal-setup-diagnostic decls 0 (vector-length decls) src ftable data-ref functions)]
+            (do
+              (root_push updated-functions)
+              (print-normal-setup-pair-compile-shape 9000000194 idx decls functions updated-functions data-ref)
+              (let [next-state (make-pairs-step-state 0 (+ idx 1) updated-functions)]
+                (do
+                  (root_set functions-slot next-state)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  next-state)))))))))
+(defn continue-compile-src-decl-pairs-step-normal-setup-diagnostic [pairs n ftable data-ref state]
+  (if (= (vector-get state 0) 1)
+    state
+    (do
+      (root_push pairs)
+      (root_push ftable)
+      (root_push data-ref)
+      (root_push state)
+      (let [next-idx (vector-get state 1)
+        next-functions (vector-get state 2)]
+        (do
+          (root_push next-functions)
+          (let [result (compile-src-decl-pairs-step-normal-setup-diagnostic pairs next-idx n ftable data-ref next-functions)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              result)))))))
+
+(defn continue-compile-src-decl-pairs-step-times-normal-setup-diagnostic [pairs n ftable data-ref remaining state]
+  (if (= remaining 0)
+    state
+    (if (= (vector-get state 0) 1)
+      state
+      (do
+        (root_push pairs)
+        (root_push ftable)
+        (root_push data-ref)
+        (root_push state)
+        (let [next-state (continue-compile-src-decl-pairs-step-normal-setup-diagnostic pairs n ftable data-ref state)]
+          (do
+            (root_push next-state)
+            (let [result (continue-compile-src-decl-pairs-step-times-normal-setup-diagnostic pairs n ftable data-ref (- remaining 1) next-state)]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result))))))))
+
+(defn compile-src-decl-pairs-step-8-normal-setup-diagnostic [pairs idx n ftable data-ref functions]
+  (let [pairs-slot (root_push pairs)
+    ftable-slot (root_push ftable)
+    data-slot (root_push data-ref)
+    functions-slot (root_push functions)]
+    (let [state (compile-src-decl-pairs-step-normal-setup-diagnostic pairs idx n ftable data-ref functions)]
+      (do
+        (let [state-slot (root_push state)]
+          (do
+            (let [result (continue-compile-src-decl-pairs-step-times-normal-setup-diagnostic pairs n ftable data-ref 7 state)]
+              (do
+                (root_set pairs-slot result)
+                (root_set functions-slot result)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result))))))))
+(defn continue-compile-src-decl-pairs-step-8-normal-setup-diagnostic [pairs n ftable data-ref state]
+  (if (= (vector-get state 0) 1)
+    state
+    (do
+      (root_push pairs)
+      (root_push ftable)
+      (root_push data-ref)
+      (root_push state)
+      (let [next-idx (vector-get state 1)
+        next-functions (vector-get state 2)]
+        (do
+          (root_push next-functions)
+          (let [result (compile-src-decl-pairs-step-8-normal-setup-diagnostic pairs next-idx n ftable data-ref next-functions)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              result)))))))
+
+(defn continue-compile-src-decl-pairs-step-8-times-normal-setup-diagnostic [pairs n ftable data-ref remaining state]
+  (if (= remaining 0)
+    state
+    (if (= (vector-get state 0) 1)
+      state
+      (do
+        (root_push pairs)
+        (root_push ftable)
+        (root_push data-ref)
+        (root_push state)
+        (let [next-state (continue-compile-src-decl-pairs-step-8-normal-setup-diagnostic pairs n ftable data-ref state)]
+          (do
+            (root_push next-state)
+            (let [result (continue-compile-src-decl-pairs-step-8-times-normal-setup-diagnostic pairs n ftable data-ref (- remaining 1) next-state)]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result))))))))
+
+(defn compile-src-decl-pairs-step-64-normal-setup-diagnostic [pairs idx n ftable data-ref functions]
+  (let [pairs-slot (root_push pairs)
+    ftable-slot (root_push ftable)
+    data-slot (root_push data-ref)
+    functions-slot (root_push functions)]
+    (let [state (compile-src-decl-pairs-step-8-normal-setup-diagnostic pairs idx n ftable data-ref functions)]
+      (do
+        (let [state-slot (root_push state)]
+          (do
+            (let [result (continue-compile-src-decl-pairs-step-8-times-normal-setup-diagnostic pairs n ftable data-ref 7 state)]
+              (do
+                (root_set pairs-slot result)
+                (root_set functions-slot result)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result))))))))
+(defn continue-compile-src-decl-pairs-step-64-normal-setup-diagnostic [pairs n ftable data-ref state]
+  (if (= (vector-get state 0) 1)
+    state
+    (do
+      (root_push pairs)
+      (root_push ftable)
+      (root_push data-ref)
+      (root_push state)
+      (let [next-idx (vector-get state 1)
+        next-functions (vector-get state 2)]
+        (do
+          (root_push next-functions)
+          (let [next-state (compile-src-decl-pairs-step-64-normal-setup-diagnostic pairs next-idx n ftable data-ref next-functions)]
+            (do
+              (root_pop)
+              (root_push next-state)
+              (let [result (continue-compile-src-decl-pairs-step-64-normal-setup-diagnostic pairs n ftable data-ref next-state)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  result)))))))))
 (defn compile-all-src-decl-pairs-chunked [pairs idx n ftable data-ref functions]
   (let [state (compile-src-decl-pairs-step-64 pairs idx n ftable data-ref functions)]
     (do
@@ -2886,12 +3094,12 @@
                   (root_pop)
                   functions-result)))))))))
 (defn compile-all-src-decl-pairs-chunked-normal-setup-diagnostic [pairs idx n ftable data-ref functions]
-  (let [state (compile-src-decl-pairs-step-64 pairs idx n ftable data-ref functions)]
+  (let [state (compile-src-decl-pairs-step-64-normal-setup-diagnostic pairs idx n ftable data-ref functions)]
     (do
       (let [state-slot (root_push state)]
         (do
           (print-normal-setup-pairs-state-shape 9000000190 n state data-ref)
-          (let [result (continue-compile-src-decl-pairs-step-64 pairs n ftable data-ref state)]
+          (let [result (continue-compile-src-decl-pairs-step-64-normal-setup-diagnostic pairs n ftable data-ref state)]
             (do
               (root_push result)
               (print-normal-setup-pairs-state-shape 9000000191 n result data-ref)

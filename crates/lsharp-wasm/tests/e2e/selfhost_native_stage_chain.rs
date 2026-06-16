@@ -1347,24 +1347,52 @@ fn test_selfhost_normal_setup_diagnostic_correlates_compile_all_state_payload_sh
 
     for token in [
         "(defn print-normal-setup-pairs-state-shape",
+        "(defn print-normal-setup-pair-compile-shape",
         "(defn print-normal-setup-payload-shape",
+        "(defn compile-src-decl-pairs-step-normal-setup-diagnostic",
         "(defn compile-all-src-decl-pairs-chunked-normal-setup-diagnostic",
         "(print 9000000190)",
         "(print 9000000191)",
         "(print 9000000192)",
         "(print 9000000193)",
-        "state (compile-src-decl-pairs-step-64 pairs idx n ftable data-ref functions)",
-        "result (continue-compile-src-decl-pairs-step-64 pairs n ftable data-ref state)",
+        "(print 9000000194)",
+        "state (compile-src-decl-pairs-step-64-normal-setup-diagnostic pairs idx n ftable data-ref functions)",
+        "result (continue-compile-src-decl-pairs-step-64-normal-setup-diagnostic pairs n ftable data-ref state)",
         "functions-result (vector-get result 2)",
         "print-normal-setup-pairs-state-shape 9000000190 n state data-ref",
         "print-normal-setup-pairs-state-shape 9000000191 n result data-ref",
         "print-normal-setup-pairs-state-shape 9000000192 n result data-ref",
+        "print-normal-setup-pair-compile-shape 9000000194 idx decls functions updated-functions data-ref",
+        "updated-functions (compile-source-defn-functions-chunked-normal-setup-diagnostic decls 0 (vector-length decls) src ftable data-ref functions)",
         "functions (compile-all-src-decl-pairs-chunked-normal-setup-diagnostic all-pairs 0 n ftable data-ref functions0)",
         "print-normal-setup-payload-shape payload2",
     ] {
         assert!(
             source.contains(token),
             "CompilerMode.ls は通常 setup の state/payload shape 診断 token {token} を含むべき"
+        );
+    }
+}
+
+#[test]
+fn test_wasm_compiler_source_defn_finish_normal_setup_diagnostic_reports_state_shape() {
+    let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("Compiler.ls を読めること");
+
+    for token in [
+        "(defn print-source-defn-normal-setup-finish-shape",
+        "(defn compile-defn-functions-step-with-source-normal-setup-diagnostic",
+        "(defn compile-source-defn-functions-chunked-normal-setup-diagnostic",
+        "(print 9000000195)",
+        "result (compile-defn-functions-step-finish functions compiled-fn idx)",
+        "print-source-defn-normal-setup-finish-shape idx functions compiled-fn result data-ref",
+        "state (compile-defn-functions-step-64-with-source-normal-setup-diagnostic decls idx n source ftable data-ref functions)",
+        "result (continue-compile-defn-functions-step-64-with-source-normal-setup-diagnostic decls n source ftable data-ref state)",
+        "functions-result (vector-get result 2)",
+    ] {
+        assert!(
+            compiler.contains(token),
+            "Compiler.ls は source defn normal setup finish 診断 token {token} を含むべき"
         );
     }
 }
