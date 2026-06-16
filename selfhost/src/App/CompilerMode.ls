@@ -296,8 +296,7 @@
           (root_pop)
           result)))))
 (defn make-pairs-step-state [done next-idx next-pairs]
-  (do
-    (root_push next-pairs)
+  (let [pairs-slot (root_push next-pairs)]
     (let [base0 (push-int-vector-local (vector-new 3) done)]
       (do
         (root_push base0)
@@ -306,6 +305,7 @@
             (root_push base1)
             (let [state (push-object-vector base1 next-pairs)]
               (do
+                (root_set pairs-slot state)
                 (root_pop)
                 (root_pop)
                 (root_pop)

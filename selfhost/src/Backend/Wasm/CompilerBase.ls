@@ -491,8 +491,7 @@
               (root_pop)
               result)))))))
 (defn make-compile-step-state [done next-idx next-value]
-  (do
-    (root_push next-value)
+  (let [value-slot (root_push next-value)]
     (let [base0 (push-int-vector (vector-new 3) done)]
       (do
         (root_push base0)
@@ -501,6 +500,7 @@
             (root_push base1)
             (let [state (push-object-vector base1 next-value)]
               (do
+                (root_set value-slot state)
                 (root_pop)
                 (root_pop)
                 (root_pop)

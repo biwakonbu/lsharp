@@ -2410,6 +2410,66 @@ fn test_selfhost_compile_src_decl_pairs_step_roots_next_state_before_pair_unwind
 }
 
 #[test]
+fn test_selfhost_step_state_builders_root_final_state_before_unwinding_parts() {
+    let compiler_base = std::fs::read_to_string(selfhost_source_path("CompilerBase.ls"))
+        .expect("CompilerBase.ls を読めること");
+    let compile_state = compiler_base
+        .split("(defn make-compile-step-state")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("make-compile-step-state body を取り出せること");
+    let compiler_mode = std::fs::read_to_string(workspace_root_relative_path(
+        std::path::PathBuf::from("selfhost/src/App/CompilerMode.ls"),
+    ))
+    .expect("CompilerMode.ls を読めること");
+    let pairs_state = compiler_mode
+        .split("(defn make-pairs-step-state")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("make-pairs-step-state body を取り出せること");
+
+    for (name, body, slot_expr, state_expr, root_set_expr) in [
+        (
+            "make-compile-step-state",
+            compile_state,
+            "value-slot (root_push next-value)",
+            "state (push-object-vector base1 next-value)",
+            "(root_set value-slot state)",
+        ),
+        (
+            "make-pairs-step-state",
+            pairs_state,
+            "pairs-slot (root_push next-pairs)",
+            "state (push-object-vector base1 next-pairs)",
+            "(root_set pairs-slot state)",
+        ),
+    ] {
+        let slot_pos = body
+            .find(slot_expr)
+            .unwrap_or_else(|| panic!("{name} は carry value を lower slot に root すること"));
+        let state_pos = body[slot_pos..]
+            .find(state_expr)
+            .map(|offset| offset + slot_pos)
+            .unwrap_or_else(|| panic!("{name} は state vector を生成すること"));
+        let root_set_pos = body[state_pos..]
+            .find(root_set_expr)
+            .map(|offset| offset + state_pos)
+            .unwrap_or_else(|| panic!("{name} は final state を lower slot に退避すること"));
+        let first_pop_after_state = body[state_pos..]
+            .find("(root_pop)")
+            .map(|offset| offset + state_pos)
+            .unwrap_or_else(|| panic!("{name} は roots を unwind すること"));
+
+        assert!(
+            slot_pos < state_pos
+                && state_pos < root_set_pos
+                && root_set_pos < first_pop_after_state,
+            "{name} は return/root-pop 境界で state slot 2 を失わないよう final state を lower slot へ退避してから unwind するべき"
+        );
+    }
+}
+
+#[test]
 fn test_wasm_compiler_defn_skip_branch_keeps_functions_rooted_until_state_built() {
     let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
         .expect("Compiler.ls を読めること");
