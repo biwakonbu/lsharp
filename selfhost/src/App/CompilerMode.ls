@@ -2976,7 +2976,9 @@
               (print-normal-setup-pair-compile-shape 9000000194 idx decls functions updated-functions data-ref)
               (let [next-state (make-pairs-step-state 0 (+ idx 1) updated-functions)]
                 (do
+                  (root_push next-state)
                   (root_set functions-slot next-state)
+                  (root_pop)
                   (root_pop)
                   (root_pop)
                   (root_pop)
@@ -3038,8 +3040,10 @@
           (do
             (let [result (continue-compile-src-decl-pairs-step-times-normal-setup-diagnostic pairs n ftable data-ref 7 state)]
               (do
+                (root_push result)
                 (root_set pairs-slot result)
                 (root_set functions-slot result)
+                (root_pop)
                 (root_pop)
                 (root_pop)
                 (root_pop)
@@ -3100,8 +3104,10 @@
           (do
             (let [result (continue-compile-src-decl-pairs-step-8-times-normal-setup-diagnostic pairs n ftable data-ref 7 state)]
               (do
+                (root_push result)
                 (root_set pairs-slot result)
                 (root_set functions-slot result)
+                (root_pop)
                 (root_pop)
                 (root_pop)
                 (root_pop)

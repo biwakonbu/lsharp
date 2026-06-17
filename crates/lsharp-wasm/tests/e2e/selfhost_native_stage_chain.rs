@@ -3291,6 +3291,95 @@ fn test_selfhost_compile_src_decl_pair_wrappers_root_result_before_root_set() {
 }
 
 #[test]
+fn test_selfhost_compile_src_decl_pairs_step_normal_setup_diagnostic_roots_next_state_before_root_set()
+ {
+    let compiler_mode = std::fs::read_to_string(workspace_root_relative_path(
+        std::path::PathBuf::from("selfhost/src/App/CompilerMode.ls"),
+    ))
+    .expect("CompilerMode.ls を読めること");
+    let body = compiler_mode
+        .split("(defn compile-src-decl-pairs-step-normal-setup-diagnostic [pairs idx n ftable data-ref functions]")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn continue-compile-src-decl-pairs-step-normal-setup-diagnostic")
+                .next()
+        })
+        .expect("compile-src-decl-pairs-step-normal-setup-diagnostic body を取り出せること");
+
+    let next_state_pos = body
+        .find("next-state (make-pairs-step-state 0 (+ idx 1) updated-functions)")
+        .expect("compile-src-decl-pairs-step-normal-setup-diagnostic は next-state を生成すること");
+    let next_state_root_pos = body[next_state_pos..]
+        .find("(root_push next-state)")
+        .map(|offset| offset + next_state_pos)
+        .expect("compile-src-decl-pairs-step-normal-setup-diagnostic は next-state を root_set 前に root すること");
+    let root_set_pos = body[next_state_pos..]
+        .find("(root_set functions-slot next-state)")
+        .map(|offset| offset + next_state_pos)
+        .expect("compile-src-decl-pairs-step-normal-setup-diagnostic は next-state を functions slot に退避すること");
+
+    assert!(
+        next_state_pos < next_state_root_pos && next_state_root_pos < root_set_pos,
+        "compile-src-decl-pairs-step-normal-setup-diagnostic は pair state を root_set に渡す前から root し、診断 probe 自体で functions carry を壊さないようにするべき"
+    );
+}
+
+#[test]
+fn test_selfhost_compile_src_decl_pair_normal_setup_diagnostic_wrappers_root_result_before_root_set()
+ {
+    let compiler_mode = std::fs::read_to_string(workspace_root_relative_path(
+        std::path::PathBuf::from("selfhost/src/App/CompilerMode.ls"),
+    ))
+    .expect("CompilerMode.ls を読めること");
+    let step8 = compiler_mode
+        .split("(defn compile-src-decl-pairs-step-8-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("compile-src-decl-pairs-step-8-normal-setup-diagnostic body を取り出せること");
+    let step64 = compiler_mode
+        .split("(defn compile-src-decl-pairs-step-64-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("compile-src-decl-pairs-step-64-normal-setup-diagnostic body を取り出せること");
+
+    for (name, body, result_expr) in [
+        (
+            "compile-src-decl-pairs-step-8-normal-setup-diagnostic",
+            step8,
+            "result (continue-compile-src-decl-pairs-step-times-normal-setup-diagnostic pairs n ftable data-ref 7 state)",
+        ),
+        (
+            "compile-src-decl-pairs-step-64-normal-setup-diagnostic",
+            step64,
+            "result (continue-compile-src-decl-pairs-step-8-times-normal-setup-diagnostic pairs n ftable data-ref 7 state)",
+        ),
+    ] {
+        let result_pos = body
+            .find(result_expr)
+            .unwrap_or_else(|| panic!("{name} は result state を local 化すること"));
+        let result_root_pos = body[result_pos..]
+            .find("(root_push result)")
+            .map(|offset| offset + result_pos)
+            .unwrap_or_else(|| panic!("{name} は result state を root_set 前に root すること"));
+        let pairs_root_set_pos = body[result_pos..]
+            .find("(root_set pairs-slot result)")
+            .map(|offset| offset + result_pos)
+            .unwrap_or_else(|| panic!("{name} は result state を pairs slot に退避すること"));
+        let functions_root_set_pos = body[result_pos..]
+            .find("(root_set functions-slot result)")
+            .map(|offset| offset + result_pos)
+            .unwrap_or_else(|| panic!("{name} は result state を functions slot に退避すること"));
+
+        assert!(
+            result_pos < result_root_pos
+                && result_root_pos < pairs_root_set_pos
+                && result_root_pos < functions_root_set_pos,
+            "{name} は result state を root_set に渡す前から root し、診断 probe 自体で state carry を壊さないようにするべき"
+        );
+    }
+}
+
+#[test]
 fn test_selfhost_step_state_builders_root_final_state_before_unwinding_parts() {
     let compiler_base = std::fs::read_to_string(selfhost_source_path("CompilerBase.ls"))
         .expect("CompilerBase.ls を読めること");
