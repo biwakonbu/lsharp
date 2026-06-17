@@ -1003,29 +1003,31 @@
 (defn compile-file-functions-with-cache [path func-idx cache-ref parse-count-ref data-ref]
   (let [all-pairs (compile-file-pairs-with-cache path cache-ref parse-count-ref)]
     (do
-      (root_push all-pairs)
-      (root_push data-ref)
-      (let [n (vector-length all-pairs)
-        start-ftable (ftable-new)]
+      (let [all-pairs-slot (root_push all-pairs)]
         (do
-          (root_push start-ftable)
-          (let [reg-result (register-all-pairs all-pairs 0 n start-ftable func-idx)
-            ftable (vector-get reg-result 0)]
+          (root_push data-ref)
+          (let [n (vector-length all-pairs)
+            start-ftable (ftable-new)]
             (do
-              (root_push reg-result)
-              (let [functions0 (vector-new 8)]
+              (root_push start-ftable)
+              (let [reg-result (register-all-pairs all-pairs 0 n start-ftable func-idx)
+                ftable (vector-get reg-result 0)]
                 (do
-                  (root_push functions0)
-                  (let [functions (compile-all-src-decl-pairs-chunked all-pairs 0 n ftable data-ref functions0)]
+                  (root_push reg-result)
+                  (let [functions0 (vector-new 8)]
                     (do
-                      (root_push functions)
-                      (root_pop)
-                      (root_pop)
-                      (root_pop)
-                      (root_pop)
-                      (root_pop)
-                      (root_pop)
-                      functions)))))))))))
+                      (root_push functions0)
+                      (let [functions (compile-all-src-decl-pairs-chunked all-pairs 0 n ftable data-ref functions0)]
+                        (do
+                          (root_push functions)
+                          (root_set all-pairs-slot functions)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          functions)))))))))))))
 (defn compile-file-functions-payload-with-cache [path func-idx cache-ref parse-count-ref]
   (let [path-slot (root_push path)
     cache-slot (root_push cache-ref)

@@ -2141,11 +2141,20 @@ fn test_selfhost_compile_file_functions_roots_result_before_unwinding_state() {
     let compile_call = body
         .find("functions (compile-all-src-decl-pairs-chunked all-pairs 0 n ftable data-ref functions0)")
         .expect("compile-file-functions-with-cache は functions を生成するべき");
+    let all_pairs_slot = body
+        .find("all-pairs-slot (root_push all-pairs)")
+        .expect("compile-file-functions-with-cache は最深 root slot を保持するべき");
     let functions_root = body[compile_call..]
         .find("(root_push functions)")
         .map(|offset| offset + compile_call)
         .expect(
             "compile-file-functions-with-cache は返却 functions を root してから outer state を pop するべき",
+        );
+    let root_set_pos = body[functions_root..]
+        .find("(root_set all-pairs-slot functions)")
+        .map(|offset| offset + functions_root)
+        .expect(
+            "compile-file-functions-with-cache は返却 functions を最深 root slot へ退避するべき",
         );
     let first_pop_after_compile = body[compile_call..]
         .find("(root_pop)")
@@ -2153,8 +2162,11 @@ fn test_selfhost_compile_file_functions_roots_result_before_unwinding_state() {
         .expect("compile-file-functions-with-cache は outer roots を pop するべき");
 
     assert!(
-        compile_call < functions_root && functions_root < first_pop_after_compile,
-        "normal payload 経路は stage2 native 実行中の GC で返却 functions を失わないよう、outer roots を pop する前に functions を root するべき"
+        all_pairs_slot < compile_call
+            && compile_call < functions_root
+            && functions_root < root_set_pos
+            && root_set_pos < first_pop_after_compile,
+        "normal payload 経路は stage2 native 実行中の GC で返却 functions を失わないよう、最深 root slot に退避してから outer roots を pop するべき"
     );
 }
 
