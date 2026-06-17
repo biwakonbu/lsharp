@@ -3160,6 +3160,97 @@ fn test_wasm_compiler_source_defn_step_roots_result_before_state_slot_update() {
 }
 
 #[test]
+fn test_wasm_compiler_source_defn_step_normal_setup_diagnostic_roots_result_before_state_slot_update()
+ {
+    let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("Compiler.ls を読めること");
+    let source_step = compiler
+        .split("(defn compile-defn-functions-step-with-source-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split(
+                "\n(defn continue-compile-defn-functions-step-with-source-normal-setup-diagnostic",
+            )
+            .next()
+        })
+        .expect(
+            "compile-defn-functions-step-with-source-normal-setup-diagnostic body を取り出せること",
+        );
+
+    for (branch_name, result_expr) in [
+        (
+            "defn branch",
+            "result (make-compile-step-state 0 (+ idx 1) next-functions)",
+        ),
+        (
+            "skip branch",
+            "(let [result (make-compile-step-state 0 (+ idx 1) functions)]",
+        ),
+    ] {
+        let result_pos = source_step
+            .find(result_expr)
+            .unwrap_or_else(|| panic!("{branch_name} は result state を local 化すること"));
+        let result_root_pos = source_step[result_pos..]
+            .find("(root_push result)")
+            .map(|offset| offset + result_pos)
+            .unwrap_or_else(|| {
+                panic!("{branch_name} は result state を root_set 前に root すること")
+            });
+        let root_set_pos = source_step[result_pos..]
+            .find("(root_set functions-slot result)")
+            .map(|offset| offset + result_pos)
+            .unwrap_or_else(|| {
+                panic!("{branch_name} は result state を functions slot に退避すること")
+            });
+
+        assert!(
+            result_pos < result_root_pos && result_root_pos < root_set_pos,
+            "{branch_name} は normal setup diagnostic でも result state を root_set 前から root し、診断 probe 自体で functions state を壊さないようにするべき"
+        );
+    }
+}
+
+#[test]
+fn test_wasm_compiler_source_defn_step_normal_setup_diagnostic_wrapper_roots_result_before_root_set()
+ {
+    let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("Compiler.ls を読めること");
+    let body = compiler
+        .split("(defn compile-defn-functions-step-64-with-source-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn continue-compile-defn-functions-step-64-with-source-normal-setup-diagnostic")
+                .next()
+        })
+        .expect(
+            "compile-defn-functions-step-64-with-source-normal-setup-diagnostic body を取り出せること",
+        );
+
+    let result_pos = body
+        .find("result (continue-compile-defn-functions-step-times-with-source-normal-setup-diagnostic decls n source ftable data-ref 63 state)")
+        .expect("compile-defn-functions-step-64-with-source-normal-setup-diagnostic は result state を local 化すること");
+    let result_root_pos = body[result_pos..]
+        .find("(root_push result)")
+        .map(|offset| offset + result_pos)
+        .expect("compile-defn-functions-step-64-with-source-normal-setup-diagnostic は result state を root_set 前に root すること");
+    let decls_root_set_pos = body[result_pos..]
+        .find("(root_set decls-slot result)")
+        .map(|offset| offset + result_pos)
+        .expect("compile-defn-functions-step-64-with-source-normal-setup-diagnostic は result state を decls slot に退避すること");
+    let functions_root_set_pos = body[result_pos..]
+        .find("(root_set functions-slot result)")
+        .map(|offset| offset + result_pos)
+        .expect("compile-defn-functions-step-64-with-source-normal-setup-diagnostic は result state を functions slot に退避すること");
+
+    assert!(
+        result_pos < result_root_pos
+            && result_root_pos < decls_root_set_pos
+            && result_root_pos < functions_root_set_pos,
+        "compile-defn-functions-step-64-with-source-normal-setup-diagnostic は result state を root_set 前から root し、診断 probe 自体で source-defn state carry を壊さないようにするべき"
+    );
+}
+
+#[test]
 fn test_selfhost_compile_src_decl_pairs_step_roots_next_state_before_pair_unwind() {
     let compiler_mode = std::fs::read_to_string(workspace_root_relative_path(
         std::path::PathBuf::from("selfhost/src/App/CompilerMode.ls"),
