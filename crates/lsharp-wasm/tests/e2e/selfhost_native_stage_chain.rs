@@ -371,6 +371,11 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
          normal-transport-diagnostic-mode (if (> (string-length (command-line-arg 11)) 0) 1 0)
          normal-payload-shape-mode (if (> (string-length (command-line-arg 12)) 0) 1 0)
          pre-payload-progress-mode (if (> (string-length (command-line-arg 8)) 0) 1 0)
+         normal-payload-shape-entry (if (= normal-payload-shape-mode 1)
+                                      (do
+                                        (print 9000000205)
+                                        (print (string-length source-path)))
+                                      0)
          normal-transport-before-payload (if (= normal-transport-diagnostic-mode 1) (print 9000000170) 0)
          pre-payload-observe-mode (if (= normal-transport-diagnostic-mode 1) 1 pre-payload-progress-mode)
          pre-payload-progress-start (if (= pre-payload-progress-mode 1) (print 9000000030) 0)
@@ -395,6 +400,12 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
 	         normal-payload-shape-direct-parse-root (if (= normal-payload-shape-mode 1) (root_push normal-payload-shape-direct-parse-count-ref) 0)
 	         normal-payload-shape-direct-data-ref (if (= normal-payload-shape-mode 1) (ref-new (vector-new 8)) cache-ref)
 	         normal-payload-shape-direct-data-root (if (= normal-payload-shape-mode 1) (root_push normal-payload-shape-direct-data-ref) 0)
+	         normal-payload-shape-before-direct-functions (if (= normal-payload-shape-mode 1)
+	                                                        (do
+	                                                          (print 9000000206)
+	                                                          (print (ref-get normal-payload-shape-direct-parse-count-ref))
+	                                                          (print (vector-length (ref-get normal-payload-shape-direct-data-ref))))
+	                                                        0)
 	         normal-payload-shape-direct-functions (if (= normal-payload-shape-mode 1)
 	                                                (compile-file-functions-with-cache source-path 10 normal-payload-shape-direct-cache-ref normal-payload-shape-direct-parse-count-ref normal-payload-shape-direct-data-ref)
 	                                                (vector-new 0))
@@ -414,6 +425,12 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
 	                                                               (print (if (> (vector-length normal-payload-shape-direct-functions) 0) (vector-length (vector-get normal-payload-shape-direct-functions 0)) -1))
                                                                (print (if (> (vector-length normal-payload-shape-direct-functions) 0) (vector-length (vector-get normal-payload-shape-direct-functions (- (vector-length normal-payload-shape-direct-functions) 1))) -1)))
 	                                                             0)
+	         normal-payload-shape-before-payload-base (if (= normal-payload-shape-mode 1)
+	                                                    (do
+	                                                      (print 9000000207)
+	                                                      (print (vector-length normal-payload-shape-direct-functions))
+	                                                      (print (vector-length normal-payload-shape-direct-data)))
+	                                                    0)
 	         payload-base (if (= pre-payload-progress-mode 1)
 	                        (compile-file-functions-payload-with-cache-progress source-path 10 cache-ref parse-count-ref)
 	                        (if (= normal-transport-diagnostic-mode 1)
@@ -1435,6 +1452,9 @@ fn test_linux_x86_representative_seed_can_print_normal_payload_shape_without_swi
     );
 
     for marker in [
+        "9000000205",
+        "9000000206",
+        "9000000207",
         "9000000196",
         "9000000197",
         "9000000198",
@@ -1450,6 +1470,9 @@ fn test_linux_x86_representative_seed_can_print_normal_payload_shape_without_swi
 
     for token in [
         "normal-payload-shape-mode (if (> (string-length (command-line-arg 12)) 0) 1 0)",
+        "normal-payload-shape-entry (if (= normal-payload-shape-mode 1)",
+        "normal-payload-shape-before-direct-functions",
+        "normal-payload-shape-before-payload-base",
         "payload-base (if (= pre-payload-progress-mode 1)",
         "normal-payload-shape-direct-functions",
         "compile-file-functions-with-cache source-path 10 normal-payload-shape-direct-cache-ref normal-payload-shape-direct-parse-count-ref normal-payload-shape-direct-data-ref",
