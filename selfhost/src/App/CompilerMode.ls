@@ -1069,7 +1069,7 @@
                             (root_pop)
                             (root_pop)
                             (root_pop)
-                            functions)))))))))))))))
+                            functions))))))))))))))
 (defn compile-file-functions-payload-with-cache [path func-idx cache-ref parse-count-ref]
   (let [path-slot (root_push path)
     cache-slot (root_push cache-ref)
