@@ -1579,18 +1579,24 @@
           (let [compiled-fn (compile-defn-function-with-source decl source ftable data-ref)]
             (do
               (root_push compiled-fn)
-              (let [result (compile-defn-functions-step-finish functions compiled-fn idx)]
+              (let [next-functions (push-object-vector functions compiled-fn)]
                 (do
-                  (root_set functions-slot result)
-                  (print-source-defn-normal-setup-finish-shape idx functions compiled-fn result data-ref)
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  result)))))
+                  (root_push next-functions)
+                  (let [result (make-compile-step-state 0 (+ idx 1) next-functions)]
+                    (do
+                      (root_push result)
+                      (root_set functions-slot result)
+                      (print-source-defn-normal-setup-finish-shape idx functions compiled-fn result data-ref)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      result)))))))
         (do
           (let [result (make-compile-step-state 0 (+ idx 1) functions)]
             (do
@@ -2320,19 +2326,23 @@
           (let [compiled-fn (compile-defn-function-with-source decl source ftable data-ref)]
             (do
               (root_push compiled-fn)
-              (let [result (compile-defn-functions-step-finish functions compiled-fn idx)]
+              (let [next-functions (push-object-vector functions compiled-fn)]
                 (do
-                  (root_push result)
-                  (root_set functions-slot result)
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  result)))))
+                  (root_push next-functions)
+                  (let [result (make-compile-step-state 0 (+ idx 1) next-functions)]
+                    (do
+                      (root_push result)
+                      (root_set functions-slot result)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      result)))))))
         (do
           (let [result (make-compile-step-state 0 (+ idx 1) functions)]
             (do

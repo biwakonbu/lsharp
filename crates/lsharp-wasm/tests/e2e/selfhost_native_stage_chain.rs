@@ -1579,7 +1579,8 @@ fn test_wasm_compiler_source_defn_finish_normal_setup_diagnostic_reports_state_s
         "(defn compile-defn-functions-step-with-source-normal-setup-diagnostic",
         "(defn compile-source-defn-functions-chunked-normal-setup-diagnostic",
         "(print 9000000195)",
-        "result (compile-defn-functions-step-finish functions compiled-fn idx)",
+        "next-functions (push-object-vector functions compiled-fn)",
+        "result (make-compile-step-state 0 (+ idx 1) next-functions)",
         "print-source-defn-normal-setup-finish-shape idx functions compiled-fn result data-ref",
         "state (compile-defn-functions-step-64-with-source-normal-setup-diagnostic decls idx n source ftable data-ref functions)",
         "result (continue-compile-defn-functions-step-64-with-source-normal-setup-diagnostic decls n source ftable data-ref state)",
@@ -2901,6 +2902,35 @@ fn test_wasm_compiler_defn_step_roots_finish_state_before_outer_unwind() {
                 .next()
         })
         .expect("compile-defn-functions-step body を取り出せること");
+
+    let functions_root_pos = plain_step
+        .find("functions-slot (root_push functions)")
+        .expect("compile-defn-functions-step は functions を root すること");
+    let result_pos = plain_step[functions_root_pos..]
+        .find("result (compile-defn-functions-step-finish functions compiled-fn idx)")
+        .map(|offset| offset + functions_root_pos)
+        .expect("compile-defn-functions-step は finish helper の result を local 化すること");
+    let root_set_pos = plain_step[result_pos..]
+        .find("(root_set functions-slot result)")
+        .map(|offset| offset + result_pos)
+        .expect("compile-defn-functions-step は finish state を functions slot に退避すること");
+    let first_pop_after_result = plain_step[result_pos..]
+        .find("(root_pop)")
+        .map(|offset| offset + result_pos)
+        .expect("compile-defn-functions-step は roots を unwind すること");
+
+    assert!(
+        functions_root_pos < result_pos
+            && result_pos < root_set_pos
+            && root_set_pos < first_pop_after_result,
+        "compile-defn-functions-step は defn branch の finish state を outer roots unwind 前に lower slot へ退避するべき"
+    );
+}
+
+#[test]
+fn test_wasm_compiler_source_defn_step_inlines_finish_state_for_native_stage2() {
+    let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("Compiler.ls を読めること");
     let source_step = compiler
         .split("(defn compile-defn-functions-step-with-source-body-impl-3")
         .nth(1)
@@ -2910,36 +2940,43 @@ fn test_wasm_compiler_defn_step_roots_finish_state_before_outer_unwind() {
         })
         .expect("compile-defn-functions-step-with-source-body-impl-3 body を取り出せること");
 
-    for (name, body) in [
-        ("compile-defn-functions-step", plain_step),
-        (
-            "compile-defn-functions-step-with-source-body-impl-3",
-            source_step,
-        ),
-    ] {
-        let functions_root_pos = body
-            .find("functions-slot (root_push functions)")
-            .unwrap_or_else(|| panic!("{name} は functions を root すること"));
-        let result_pos = body[functions_root_pos..]
-            .find("result (compile-defn-functions-step-finish functions compiled-fn idx)")
-            .map(|offset| offset + functions_root_pos)
-            .unwrap_or_else(|| panic!("{name} は finish helper の result を local 化すること"));
-        let root_set_pos = body[result_pos..]
-            .find("(root_set functions-slot result)")
-            .map(|offset| offset + result_pos)
-            .unwrap_or_else(|| panic!("{name} は finish state を functions slot に退避すること"));
-        let first_pop_after_result = body[result_pos..]
-            .find("(root_pop)")
-            .map(|offset| offset + result_pos)
-            .unwrap_or_else(|| panic!("{name} は roots を unwind すること"));
+    let functions_root_pos = source_step
+        .find("functions-slot (root_push functions)")
+        .expect("source defn step は functions を root すること");
+    let next_functions_pos = source_step[functions_root_pos..]
+        .find("next-functions (push-object-vector functions compiled-fn)")
+        .map(|offset| offset + functions_root_pos)
+        .expect("source defn step は compiled-fn を functions に inline 追加すること");
+    let next_functions_root_pos = source_step[next_functions_pos..]
+        .find("(root_push next-functions)")
+        .map(|offset| offset + next_functions_pos)
+        .expect("source defn step は next-functions を result 作成前に root すること");
+    let result_pos = source_step[next_functions_root_pos..]
+        .find("result (make-compile-step-state 0 (+ idx 1) next-functions)")
+        .map(|offset| offset + next_functions_root_pos)
+        .expect("source defn step は next-functions から state を inline で作ること");
+    let result_root_pos = source_step[result_pos..]
+        .find("(root_push result)")
+        .map(|offset| offset + result_pos)
+        .expect("source defn step は result state を root_set 前に root すること");
+    let root_set_pos = source_step[result_pos..]
+        .find("(root_set functions-slot result)")
+        .map(|offset| offset + result_pos)
+        .expect("source defn step は result state を functions slot に退避すること");
 
-        assert!(
-            functions_root_pos < result_pos
-                && result_pos < root_set_pos
-                && root_set_pos < first_pop_after_result,
-            "{name} は defn branch の finish state を outer roots unwind 前に lower slot へ退避するべき"
-        );
-    }
+    assert!(
+        functions_root_pos < next_functions_pos
+            && next_functions_pos < next_functions_root_pos
+            && next_functions_root_pos < result_pos
+            && result_pos < result_root_pos
+            && result_root_pos < root_set_pos,
+        "source defn step は native stage2 で helper return state をまたがず、compiled-fn 追加と state 作成を同一 root frame 内で完了するべき"
+    );
+    assert!(
+        !source_step
+            .contains("result (compile-defn-functions-step-finish functions compiled-fn idx)"),
+        "source defn step は stage2 native normal path では finish helper 呼び出しに戻り state を任せない"
+    );
 }
 
 #[test]
@@ -3010,7 +3047,7 @@ fn test_wasm_compiler_source_defn_step_roots_result_before_state_slot_update() {
     for (branch_name, result_expr) in [
         (
             "defn branch",
-            "result (compile-defn-functions-step-finish functions compiled-fn idx)",
+            "result (make-compile-step-state 0 (+ idx 1) next-functions)",
         ),
         (
             "skip branch",
