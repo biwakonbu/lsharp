@@ -358,11 +358,11 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                         (if (= normal-transport-diagnostic-mode 1)
                           (compile-file-functions-payload-with-cache-normal-setup-diagnostic source-path 10 cache-ref parse-count-ref)
                           (compile-file-functions-payload-with-cache source-path 10 cache-ref parse-count-ref)))
+         payload-root (root_push payload-base)
          payload payload-base
          functions (vector-get payload-base 0)
          data (vector-get payload-base 1)
          bounded-main-func-idx (+ 9 (vector-length functions))
-         payload-root (root_push payload-base)
          functions-root (root_push functions)
          data-root (root_push data)
          normal-transport-after-payload (if (= normal-transport-diagnostic-mode 1)
@@ -669,6 +669,21 @@ fn test_linux_x86_representative_seed_uses_layout_emit_for_segmented_native_code
             && !source.contains("(print-x86-code-segments native-callables starts 10 user-total)")
             && !source.contains("segment-ctx (make-x86-code-segment-context"),
         "Linux x86 segmented seed は native heap OOM を避けるため function range を複数 process で出力できるべき"
+    );
+    let payload_base_pos = source
+        .find("payload-base (if (= pre-payload-progress-mode 1)")
+        .expect("Linux x86 seed は payload-base を生成するべき");
+    let payload_root_pos = source[payload_base_pos..]
+        .find("payload-root (root_push payload-base)")
+        .map(|offset| offset + payload_base_pos)
+        .expect("Linux x86 seed は payload-base を root するべき");
+    let functions_from_payload_pos = source[payload_base_pos..]
+        .find("functions (vector-get payload-base 0)")
+        .map(|offset| offset + payload_base_pos)
+        .expect("Linux x86 seed は payload-base から functions を取り出すべき");
+    assert!(
+        payload_base_pos < payload_root_pos && payload_root_pos < functions_from_payload_pos,
+        "Linux x86 seed は normal transport の payload を失わないよう、payload-base を root してから functions/data を取り出すべき"
     );
     let entrypoint_checks = [
         !source.contains("emitted-main-func-idx"),
