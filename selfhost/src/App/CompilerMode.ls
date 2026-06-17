@@ -1056,7 +1056,7 @@
                         (root_push functions0)
                         (print 9000000212)
                         (print (vector-length functions0))
-                        (let [functions (compile-all-src-decl-pairs-chunked all-pairs 0 n ftable data-ref functions0)]
+                        (let [functions (compile-all-src-decl-pairs-chunked-normal-setup-diagnostic all-pairs 0 n ftable data-ref functions0)]
                           (do
                             (root_push functions)
                             (root_set all-pairs-slot functions)

@@ -1552,6 +1552,39 @@ fn test_selfhost_compiler_mode_has_normal_payload_function_boundary_diagnostic()
 }
 
 #[test]
+fn test_selfhost_normal_payload_diagnostic_enters_compile_all_shape_probe_after_boundary() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/App/CompilerMode.ls",
+    )))
+    .expect("CompilerMode.ls を読めること");
+    let body = source
+        .split("(defn compile-file-functions-with-cache-normal-payload-diagnostic")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-file-functions-payload-with-cache")
+                .next()
+        })
+        .expect("normal payload functions diagnostic body を取り出せること");
+
+    let boundary_pos = body
+        .find("(print 9000000212)")
+        .expect("normal payload diagnostic は compile-all 直前 marker を出すべき");
+    let compile_all_probe_pos = body[boundary_pos..]
+        .find("functions (compile-all-src-decl-pairs-chunked-normal-setup-diagnostic all-pairs 0 n ftable data-ref functions0)")
+        .map(|offset| offset + boundary_pos)
+        .expect("normal payload diagnostic は 0212 以降で compile-all shape probe を使うべき");
+    let finish_pos = body[compile_all_probe_pos..]
+        .find("(print 9000000213)")
+        .map(|offset| offset + compile_all_probe_pos)
+        .expect("normal payload diagnostic は compile-all 復帰後 marker を保持するべき");
+
+    assert!(
+        boundary_pos < compile_all_probe_pos && compile_all_probe_pos < finish_pos,
+        "normal payload diagnostic は 0212 で止まった crash を切り分けるため、0213 より前に compile-all shape probe を通るべき"
+    );
+}
+
+#[test]
 fn test_selfhost_compiler_mode_has_normal_setup_payload_diagnostic() {
     let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
         "selfhost/src/App/CompilerMode.ls",
