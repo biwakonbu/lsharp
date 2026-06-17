@@ -171,6 +171,13 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                                                                (print (vector-length native-callables))
                                                                (print (+ 9 (vector-length functions))))
                                                              0)
+                    normal-payload-shape-after-native-callables (if (= normal-payload-shape-mode 1)
+                                                                 (do
+                                                                   (print 9000000198)
+                                                                   (print (vector-length callables))
+                                                                   (print (vector-length native-callables))
+                                                                   (print (+ 9 (vector-length functions))))
+                                                                 0)
                     progress-after-native-callables (if (= progress-mode 1)
                                                     (do
                                                       (print 9000000032)
@@ -203,6 +210,13 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                                                      (print (if (> (vector-length starts) 0) (vector-get starts 0) -1))
                                                      (print (if (> (vector-length starts) 0) (vector-get starts (- (vector-length starts) 1)) -1)))
                                                    0)
+                    normal-payload-shape-after-starts (if (= normal-payload-shape-mode 1)
+                                                       (do
+                                                         (print 9000000199)
+                                                         (print (vector-length starts))
+                                                         (print (if (> (vector-length starts) 0) (vector-get starts 0) -1))
+                                                         (print (if (> (vector-length starts) 0) (vector-get starts (- (vector-length starts) 1)) -1)))
+                                                       0)
                     progress-after-starts (if (= progress-mode 1)
                                            (do
                                              (print 9000000033)
@@ -230,6 +244,13 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                                                    (print code-len)
                                                    (print (vector-length data)))
                                                  0)
+                    normal-payload-shape-after-code-len (if (= normal-payload-shape-mode 1)
+                                                         (do
+                                                           (print 9000000200)
+                                                           (print user-total)
+                                                           (print code-len)
+                                                           (print (vector-length data)))
+                                                         0)
                     progress-after-code-len (if (= progress-mode 1)
                                              (do
                                                (print 9000000035)
@@ -244,7 +265,13 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                                                          (print 9000000177)
                                                          (print entrypoint-func-idx)
                                                          (print entrypoint-offset))
-                                                       0)"#;
+                                                       0)
+                    normal-payload-shape-after-entrypoint (if (= normal-payload-shape-mode 1)
+                                                           (do
+                                                             (print 9000000201)
+                                                             (print entrypoint-func-idx)
+                                                             (print entrypoint-offset))
+                                                           0)"#;
     let main_body = r#"      (let [data-len (vector-length data)
           range-start (parse-positive-int (command-line-arg 2))
           range-end-arg (parse-positive-int (command-line-arg 3))
@@ -261,7 +288,15 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                                   (parse-positive-int (command-line-arg 7))
                                   8)]
          (do
-           (if (= normal-transport-diagnostic-mode 1)
+           (if (= normal-payload-shape-mode 1)
+             (do
+               (print 9000000202)
+               (print range-start)
+               (print range-end)
+               (print include-header)
+               (print include-tail)
+               0)
+             (if (= normal-transport-diagnostic-mode 1)
              (do
                (print 9000000178)
                (print range-start)
@@ -322,7 +357,7 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                         (print data-len)
                         (print 9000000004)
                            (print-packed-code-bytes-loop data 0 data-len))
-                         0))))))))"#;
+                         0)))))))))"#;
     let payload_expr = "(compile-file-functions-payload-with-cache (command-line-arg 1) 10 cache-ref parse-count-ref)";
     let source = actual_stage23_seed_source_with_payload_and_code_binding_and_target(
         payload_expr,
@@ -334,6 +369,7 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
     let payload_bindings = r#"source-path (command-line-arg 1)
          source-path-root (root_push source-path)
          normal-transport-diagnostic-mode (if (> (string-length (command-line-arg 11)) 0) 1 0)
+         normal-payload-shape-mode (if (> (string-length (command-line-arg 12)) 0) 1 0)
          pre-payload-progress-mode (if (> (string-length (command-line-arg 8)) 0) 1 0)
          normal-transport-before-payload (if (= normal-transport-diagnostic-mode 1) (print 9000000170) 0)
          pre-payload-observe-mode (if (= normal-transport-diagnostic-mode 1) 1 pre-payload-progress-mode)
@@ -359,12 +395,26 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                           (compile-file-functions-payload-with-cache-normal-setup-diagnostic source-path 10 cache-ref parse-count-ref)
                           (compile-file-functions-payload-with-cache source-path 10 cache-ref parse-count-ref)))
          payload-root (root_push payload-base)
+         normal-payload-shape-after-root (if (= normal-payload-shape-mode 1)
+                                          (do
+                                            (print 9000000196)
+                                            (print (vector-length payload-base))
+                                            (print (if (> (vector-length payload-base) 0) (vector-length (vector-get payload-base 0)) -1))
+                                            (print (if (> (vector-length payload-base) 1) (vector-length (vector-get payload-base 1)) -1)))
+                                          0)
          payload payload-base
          functions (vector-get payload-base 0)
          data (vector-get payload-base 1)
          bounded-main-func-idx (+ 9 (vector-length functions))
          functions-root (root_push functions)
          data-root (root_push data)
+         normal-payload-shape-after-parts (if (= normal-payload-shape-mode 1)
+                                           (do
+                                             (print 9000000197)
+                                             (print (vector-length functions))
+                                             (print (vector-length data))
+                                             (print bounded-main-func-idx))
+                                           0)
          normal-transport-after-payload (if (= normal-transport-diagnostic-mode 1)
                                          (do
                                            (print 9000000172)
@@ -939,6 +989,36 @@ fn test_native_linux_x86_hostgen_vm_script_can_collect_stage3_normal_setup_marke
 }
 
 #[test]
+fn test_native_linux_x86_hostgen_vm_script_can_collect_stage3_normal_payload_shape_markers() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+    let vm_exec = script
+        .split(r#"limactl shell "${VM_NAME}" -- env"#)
+        .nth(1)
+        .and_then(|tail| tail.split("<<'VM_SCRIPT'").next())
+        .expect("VM 実行 heredoc は env 経由で normal payload shape 診断設定を渡すべき");
+    let failure_summary_call =
+        "write_actual_selfregen_failure_summary \"stage3-normal-payload-shape\"";
+
+    assert!(
+        vm_exec.contains("LSHARP_NATIVE_LINUX_X86_STAGE3_NORMAL_PAYLOAD_SHAPE")
+            && vm_exec.contains("LSHARP_NATIVE_LINUX_X86_STAGE3_NORMAL_PAYLOAD_SHAPE_ONLY")
+            && script.contains("STAGE3_NORMAL_PAYLOAD_SHAPE_ONLY")
+            && script.contains("collect_stage3_normal_payload_shape_markers")
+            && script.contains("actual-stage3-normal-payload-shape.txt")
+            && script.contains("actual-stage3-normal-payload-shape-stderr.txt")
+            && script.contains(
+                r#"./program.native src/App/Seed.ls 0 1 0 0 "" "" "" "" "" "" normal-payload-shape"#,
+            )
+            && script.contains(r#""phase": "stage3-normal-payload-shape""#)
+            && script.contains(failure_summary_call),
+        "hostgen VM script は env 指定時だけ actual-stage2 native compiler の通常 payload shape marker を artifact 化し、full transport 前で止められるべき"
+    );
+}
+
+#[test]
 fn test_native_linux_x86_hostgen_vm_script_can_collect_stage1_progress_markers_before_harvest() {
     let script_path =
         selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
@@ -1320,6 +1400,70 @@ fn test_linux_x86_representative_seed_can_print_normal_transport_setup_markers()
             "Linux x86 segmented seed は progress helper を使わない通常 setup 診断 token {token} を含むべき"
         );
     }
+}
+
+#[test]
+fn test_linux_x86_representative_seed_can_print_normal_payload_shape_without_switching_helpers() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+    lsharp_syntax::parse(&source).expect(
+        "Linux x86 segmented seed source は normal payload shape 診断追加後も parse できること",
+    );
+
+    for marker in ["9000000196", "9000000197", "9000000198", "9000000199"] {
+        assert!(
+            source.contains(marker),
+            "Linux x86 segmented seed は通常 payload shape marker {marker} を出せるべき"
+        );
+    }
+
+    for token in [
+        "normal-payload-shape-mode (if (> (string-length (command-line-arg 12)) 0) 1 0)",
+        "payload-base (if (= pre-payload-progress-mode 1)",
+        "compile-file-functions-payload-with-cache source-path 10 cache-ref parse-count-ref",
+        "normal-payload-shape-after-root",
+        "normal-payload-shape-after-parts",
+        "normal-payload-shape-after-native-callables",
+        "normal-payload-shape-after-starts",
+        "normal-payload-shape-after-code-len",
+        "normal-payload-shape-after-entrypoint",
+        "(if (= normal-payload-shape-mode 1)",
+        "(print (vector-length payload-base))",
+        "(print (vector-length functions))",
+        "(print (vector-length data))",
+        "(print (vector-length callables))",
+        "(print (vector-length native-callables))",
+        "(print (vector-length starts))",
+        "(print code-len)",
+        "(print entrypoint-func-idx)",
+        "(print entrypoint-offset)",
+    ] {
+        assert!(
+            source.contains(token),
+            "Linux x86 segmented seed は通常 helper のまま payload shape 診断 token {token} を含むべき"
+        );
+    }
+
+    let payload_base_pos = source
+        .find("payload-base (if (= pre-payload-progress-mode 1)")
+        .expect("payload-base 生成が存在すること");
+    let payload_root_pos = source[payload_base_pos..]
+        .find("payload-root (root_push payload-base)")
+        .map(|pos| payload_base_pos + pos)
+        .expect("payload-base root が存在すること");
+    let shape_root_pos = source[payload_root_pos..]
+        .find("normal-payload-shape-after-root")
+        .map(|pos| payload_root_pos + pos)
+        .expect("payload root 後の shape 診断が存在すること");
+    let functions_pos = source[shape_root_pos..]
+        .find("functions (vector-get payload-base 0)")
+        .map(|pos| shape_root_pos + pos)
+        .expect("payload-base から functions を取り出すこと");
+    assert!(
+        payload_base_pos < payload_root_pos
+            && payload_root_pos < shape_root_pos
+            && shape_root_pos < functions_pos,
+        "normal payload shape 診断は payload-base を root した後、functions/data を取り出す前に最初の形を採取するべき"
+    );
 }
 
 #[test]
