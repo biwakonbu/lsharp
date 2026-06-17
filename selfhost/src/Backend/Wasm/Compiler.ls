@@ -1447,8 +1447,10 @@
         (root_push state)
         (let [result (continue-compile-defn-functions-step-times-with-source decls n source ftable data-ref 7 state)]
           (do
+            (root_push result)
             (root_set decls-slot result)
             (root_set functions-slot result)
+            (root_pop)
             (root_pop)
             (root_pop)
             (root_pop)
@@ -1486,8 +1488,10 @@
         (root_push state)
         (let [result (continue-compile-defn-functions-step-times-with-source decls n source ftable data-ref 63 state)]
           (do
+            (root_push result)
             (root_set decls-slot result)
             (root_set functions-slot result)
+            (root_pop)
             (root_pop)
             (root_pop)
             (root_pop)
@@ -2310,7 +2314,9 @@
               (root_push compiled-fn)
               (let [result (compile-defn-functions-step-finish functions compiled-fn idx)]
                 (do
+                  (root_push result)
                   (root_set functions-slot result)
+                  (root_pop)
                   (root_pop)
                   (root_pop)
                   (root_pop)
@@ -2322,7 +2328,9 @@
         (do
           (let [result (make-compile-step-state 0 (+ idx 1) functions)]
             (do
+              (root_push result)
               (root_set functions-slot result)
+              (root_pop)
               (root_pop)
               (root_pop)
               (root_pop)

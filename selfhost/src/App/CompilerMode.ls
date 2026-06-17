@@ -1045,7 +1045,9 @@
               (root_push payload1)
               (let [payload2 (vector-push payload1 data)]
                 (do
+                  (root_push payload2)
                   (root_set data-slot payload2)
+                  (root_pop)
                   (root_pop)
                   (root_pop)
                   (root_pop)
@@ -2752,7 +2754,9 @@
               (root_push updated-functions)
               (let [next-state (make-pairs-step-state 0 (+ idx 1) updated-functions)]
                 (do
+                  (root_push next-state)
                   (root_set functions-slot next-state)
+                  (root_pop)
                   (root_pop)
                   (root_pop)
                   (root_pop)
@@ -2814,8 +2818,10 @@
           (do
             (let [result (continue-compile-src-decl-pairs-step-times pairs n ftable data-ref 7 state)]
               (do
+                (root_push result)
                 (root_set pairs-slot result)
                 (root_set functions-slot result)
+                (root_pop)
                 (root_pop)
                 (root_pop)
                 (root_pop)
@@ -2876,8 +2882,10 @@
           (do
             (let [result (continue-compile-src-decl-pairs-step-8-times pairs n ftable data-ref 7 state)]
               (do
+                (root_push result)
                 (root_set pairs-slot result)
                 (root_set functions-slot result)
+                (root_pop)
                 (root_pop)
                 (root_pop)
                 (root_pop)

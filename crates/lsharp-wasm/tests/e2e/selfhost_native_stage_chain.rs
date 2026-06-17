@@ -382,18 +382,43 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                                         (print (string-length pre-payload-source))
                                         (print (if (> (string-length pre-payload-source) 0) (string-char-at pre-payload-source 0) -1)))
                                       0)
-         pre-payload-progress-read (if (= pre-payload-progress-mode 1)
-                                    (do
-                                      (print 9000000031)
-                                      (print (string-length pre-payload-source))
-                                      (print (if (> (string-length pre-payload-source) 0) (string-char-at pre-payload-source 0) -1)))
-                                    0)
-         pre-payload-source-pop (if (= pre-payload-observe-mode 1) (root_pop) 0)
-         payload-base (if (= pre-payload-progress-mode 1)
-                        (compile-file-functions-payload-with-cache-progress source-path 10 cache-ref parse-count-ref)
-                        (if (= normal-transport-diagnostic-mode 1)
-                          (compile-file-functions-payload-with-cache-normal-setup-diagnostic source-path 10 cache-ref parse-count-ref)
-                          (compile-file-functions-payload-with-cache source-path 10 cache-ref parse-count-ref)))
+	         pre-payload-progress-read (if (= pre-payload-progress-mode 1)
+	                                    (do
+	                                      (print 9000000031)
+	                                      (print (string-length pre-payload-source))
+	                                      (print (if (> (string-length pre-payload-source) 0) (string-char-at pre-payload-source 0) -1)))
+	                                    0)
+	         pre-payload-source-pop (if (= pre-payload-observe-mode 1) (root_pop) 0)
+	         normal-payload-shape-direct-cache-ref (if (= normal-payload-shape-mode 1) (ref-new (map-new)) cache-ref)
+	         normal-payload-shape-direct-cache-root (if (= normal-payload-shape-mode 1) (root_push normal-payload-shape-direct-cache-ref) 0)
+	         normal-payload-shape-direct-parse-count-ref (if (= normal-payload-shape-mode 1) (ref-new 0) parse-count-ref)
+	         normal-payload-shape-direct-parse-root (if (= normal-payload-shape-mode 1) (root_push normal-payload-shape-direct-parse-count-ref) 0)
+	         normal-payload-shape-direct-data-ref (if (= normal-payload-shape-mode 1) (ref-new (vector-new 8)) cache-ref)
+	         normal-payload-shape-direct-data-root (if (= normal-payload-shape-mode 1) (root_push normal-payload-shape-direct-data-ref) 0)
+	         normal-payload-shape-direct-functions (if (= normal-payload-shape-mode 1)
+	                                                (compile-file-functions-with-cache source-path 10 normal-payload-shape-direct-cache-ref normal-payload-shape-direct-parse-count-ref normal-payload-shape-direct-data-ref)
+	                                                (vector-new 0))
+	         normal-payload-shape-direct-functions-root (if (= normal-payload-shape-mode 1) (root_push normal-payload-shape-direct-functions) 0)
+	         normal-payload-shape-direct-data (if (= normal-payload-shape-mode 1) (ref-get normal-payload-shape-direct-data-ref) (vector-new 0))
+	         normal-payload-shape-direct-data-root (if (= normal-payload-shape-mode 1) (root_push normal-payload-shape-direct-data) 0)
+	         normal-payload-shape-after-direct-functions (if (= normal-payload-shape-mode 1)
+	                                                       (do
+	                                                         (print 9000000203)
+	                                                         (print (vector-length normal-payload-shape-direct-functions))
+	                                                         (print (vector-length normal-payload-shape-direct-data))
+	                                                         (print (ref-get normal-payload-shape-direct-parse-count-ref)))
+	                                                       0)
+	         normal-payload-shape-after-direct-function-edges (if (= normal-payload-shape-mode 1)
+	                                                             (do
+	                                                               (print 9000000204)
+	                                                               (print (if (> (vector-length normal-payload-shape-direct-functions) 0) (vector-length (vector-get normal-payload-shape-direct-functions 0)) -1))
+                                                               (print (if (> (vector-length normal-payload-shape-direct-functions) 0) (vector-length (vector-get normal-payload-shape-direct-functions (- (vector-length normal-payload-shape-direct-functions) 1))) -1)))
+	                                                             0)
+	         payload-base (if (= pre-payload-progress-mode 1)
+	                        (compile-file-functions-payload-with-cache-progress source-path 10 cache-ref parse-count-ref)
+	                        (if (= normal-transport-diagnostic-mode 1)
+	                          (compile-file-functions-payload-with-cache-normal-setup-diagnostic source-path 10 cache-ref parse-count-ref)
+	                          (compile-file-functions-payload-with-cache source-path 10 cache-ref parse-count-ref)))
          payload-root (root_push payload-base)
          normal-payload-shape-after-root (if (= normal-payload-shape-mode 1)
                                           (do
@@ -1409,7 +1434,14 @@ fn test_linux_x86_representative_seed_can_print_normal_payload_shape_without_swi
         "Linux x86 segmented seed source は normal payload shape 診断追加後も parse できること",
     );
 
-    for marker in ["9000000196", "9000000197", "9000000198", "9000000199"] {
+    for marker in [
+        "9000000196",
+        "9000000197",
+        "9000000198",
+        "9000000199",
+        "9000000203",
+        "9000000204",
+    ] {
         assert!(
             source.contains(marker),
             "Linux x86 segmented seed は通常 payload shape marker {marker} を出せるべき"
@@ -1419,6 +1451,10 @@ fn test_linux_x86_representative_seed_can_print_normal_payload_shape_without_swi
     for token in [
         "normal-payload-shape-mode (if (> (string-length (command-line-arg 12)) 0) 1 0)",
         "payload-base (if (= pre-payload-progress-mode 1)",
+        "normal-payload-shape-direct-functions",
+        "compile-file-functions-with-cache source-path 10 normal-payload-shape-direct-cache-ref normal-payload-shape-direct-parse-count-ref normal-payload-shape-direct-data-ref",
+        "normal-payload-shape-after-direct-functions",
+        "normal-payload-shape-after-direct-function-edges",
         "compile-file-functions-payload-with-cache source-path 10 cache-ref parse-count-ref",
         "normal-payload-shape-after-root",
         "normal-payload-shape-after-parts",
@@ -2082,6 +2118,39 @@ fn test_selfhost_compile_file_payload_roots_result_before_unwinding_state() {
             && payload2_pos < root_set_pos
             && root_set_pos < first_pop_after_payload2,
         "payload helper は stage2 normal transport で payload2 の functions/data を失わないよう、unwind 前に payload2 を root slot へ退避するべき"
+    );
+}
+
+#[test]
+fn test_selfhost_normal_payload_roots_payload2_before_root_set() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/App/CompilerMode.ls",
+    )))
+    .expect("CompilerMode.ls を読めること");
+    let body = source
+        .split("(defn compile-file-functions-payload-with-cache")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-file-functions-with-cache-normal-setup-diagnostic")
+                .next()
+        })
+        .expect("compile-file-functions-payload-with-cache body を取り出せること");
+
+    let payload2_pos = body
+        .find("payload2 (vector-push payload1 data)")
+        .expect("payload helper は payload2 を生成するべき");
+    let payload2_root_pos = body[payload2_pos..]
+        .find("(root_push payload2)")
+        .map(|offset| offset + payload2_pos)
+        .expect("payload helper は payload2 を root_set 前に root するべき");
+    let root_set_pos = body[payload2_pos..]
+        .find("(root_set data-slot payload2)")
+        .map(|offset| offset + payload2_pos)
+        .expect("payload helper は payload2 を data root slot に退避するべき");
+
+    assert!(
+        payload2_pos < payload2_root_pos && payload2_root_pos < root_set_pos,
+        "normal payload helper は payload2 を root_set に渡す前から root し、functions/data slot を失わないようにするべき"
     );
 }
 
@@ -2825,6 +2894,104 @@ fn test_wasm_compiler_defn_step_roots_finish_state_before_outer_unwind() {
 }
 
 #[test]
+fn test_wasm_compiler_source_defn_step_wrappers_root_result_before_root_set() {
+    let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("Compiler.ls を読めること");
+    let step8 = compiler
+        .split("(defn compile-defn-functions-step-8-with-source")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("compile-defn-functions-step-8-with-source body を取り出せること");
+    let step64 = compiler
+        .split("(defn compile-defn-functions-step-64-with-source")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("compile-defn-functions-step-64-with-source body を取り出せること");
+
+    for (name, body, result_expr) in [
+        (
+            "compile-defn-functions-step-8-with-source",
+            step8,
+            "result (continue-compile-defn-functions-step-times-with-source decls n source ftable data-ref 7 state)",
+        ),
+        (
+            "compile-defn-functions-step-64-with-source",
+            step64,
+            "result (continue-compile-defn-functions-step-times-with-source decls n source ftable data-ref 63 state)",
+        ),
+    ] {
+        let result_pos = body
+            .find(result_expr)
+            .unwrap_or_else(|| panic!("{name} は result state を local 化すること"));
+        let result_root_pos = body[result_pos..]
+            .find("(root_push result)")
+            .map(|offset| offset + result_pos)
+            .unwrap_or_else(|| panic!("{name} は result state を root_set 前に root すること"));
+        let decls_root_set_pos = body[result_pos..]
+            .find("(root_set decls-slot result)")
+            .map(|offset| offset + result_pos)
+            .unwrap_or_else(|| panic!("{name} は result state を decls slot に退避すること"));
+        let functions_root_set_pos = body[result_pos..]
+            .find("(root_set functions-slot result)")
+            .map(|offset| offset + result_pos)
+            .unwrap_or_else(|| panic!("{name} は result state を functions slot に退避すること"));
+
+        assert!(
+            result_pos < result_root_pos
+                && result_root_pos < decls_root_set_pos
+                && result_root_pos < functions_root_set_pos,
+            "{name} は source-defn wrapper result を root_set に渡す前から root し、normal payload の functions state を保つべき"
+        );
+    }
+}
+
+#[test]
+fn test_wasm_compiler_source_defn_step_roots_result_before_state_slot_update() {
+    let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("Compiler.ls を読めること");
+    let source_step = compiler
+        .split("(defn compile-defn-functions-step-with-source-body-impl-3")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn compile-let-with-ftable-impl-body-impl-3")
+                .next()
+        })
+        .expect("compile-defn-functions-step-with-source-body-impl-3 body を取り出せること");
+
+    for (branch_name, result_expr) in [
+        (
+            "defn branch",
+            "result (compile-defn-functions-step-finish functions compiled-fn idx)",
+        ),
+        (
+            "skip branch",
+            "(let [result (make-compile-step-state 0 (+ idx 1) functions)]",
+        ),
+    ] {
+        let result_pos = source_step
+            .find(result_expr)
+            .unwrap_or_else(|| panic!("{branch_name} は result state を local 化すること"));
+        let result_root_pos = source_step[result_pos..]
+            .find("(root_push result)")
+            .map(|offset| offset + result_pos)
+            .unwrap_or_else(|| {
+                panic!("{branch_name} は result state を root_set 前に root すること")
+            });
+        let root_set_pos = source_step[result_pos..]
+            .find("(root_set functions-slot result)")
+            .map(|offset| offset + result_pos)
+            .unwrap_or_else(|| {
+                panic!("{branch_name} は result state を functions slot に退避すること")
+            });
+
+        assert!(
+            result_pos < result_root_pos && result_root_pos < root_set_pos,
+            "{branch_name} は source-defn state を root_set に渡す前から root し、normal payload で functions slot を空にしないようにするべき"
+        );
+    }
+}
+
+#[test]
 fn test_selfhost_compile_src_decl_pairs_step_roots_next_state_before_pair_unwind() {
     let compiler_mode = std::fs::read_to_string(workspace_root_relative_path(
         std::path::PathBuf::from("selfhost/src/App/CompilerMode.ls"),
@@ -2866,6 +3033,93 @@ fn test_selfhost_compile_src_decl_pairs_step_roots_next_state_before_pair_unwind
             && root_set_pos < first_pop_after_state,
         "compile-src-decl-pairs-step は pair state の functions slot を失わないよう next-state を outer roots unwind 前に lower slot へ退避するべき"
     );
+}
+
+#[test]
+fn test_selfhost_compile_src_decl_pairs_step_roots_next_state_before_root_set() {
+    let compiler_mode = std::fs::read_to_string(workspace_root_relative_path(
+        std::path::PathBuf::from("selfhost/src/App/CompilerMode.ls"),
+    ))
+    .expect("CompilerMode.ls を読めること");
+    let body = compiler_mode
+        .split("(defn compile-src-decl-pairs-step [pairs idx n ftable data-ref functions]")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn continue-compile-src-decl-pairs-step")
+                .next()
+        })
+        .expect("compile-src-decl-pairs-step body を取り出せること");
+
+    let next_state_pos = body
+        .find("next-state (make-pairs-step-state 0 (+ idx 1) updated-functions)")
+        .expect("compile-src-decl-pairs-step は next-state を生成すること");
+    let next_state_root_pos = body[next_state_pos..]
+        .find("(root_push next-state)")
+        .map(|offset| offset + next_state_pos)
+        .expect("compile-src-decl-pairs-step は next-state を root_set 前に root すること");
+    let root_set_pos = body[next_state_pos..]
+        .find("(root_set functions-slot next-state)")
+        .map(|offset| offset + next_state_pos)
+        .expect("compile-src-decl-pairs-step は next-state を functions slot に退避すること");
+
+    assert!(
+        next_state_pos < next_state_root_pos && next_state_root_pos < root_set_pos,
+        "compile-src-decl-pairs-step は pair state を root_set に渡す前から root し、normal payload の functions carry を保つべき"
+    );
+}
+
+#[test]
+fn test_selfhost_compile_src_decl_pair_wrappers_root_result_before_root_set() {
+    let compiler_mode = std::fs::read_to_string(workspace_root_relative_path(
+        std::path::PathBuf::from("selfhost/src/App/CompilerMode.ls"),
+    ))
+    .expect("CompilerMode.ls を読めること");
+    let step8 = compiler_mode
+        .split("(defn compile-src-decl-pairs-step-8")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("compile-src-decl-pairs-step-8 body を取り出せること");
+    let step64 = compiler_mode
+        .split("(defn compile-src-decl-pairs-step-64")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("compile-src-decl-pairs-step-64 body を取り出せること");
+
+    for (name, body, result_expr) in [
+        (
+            "compile-src-decl-pairs-step-8",
+            step8,
+            "result (continue-compile-src-decl-pairs-step-times pairs n ftable data-ref 7 state)",
+        ),
+        (
+            "compile-src-decl-pairs-step-64",
+            step64,
+            "result (continue-compile-src-decl-pairs-step-8-times pairs n ftable data-ref 7 state)",
+        ),
+    ] {
+        let result_pos = body
+            .find(result_expr)
+            .unwrap_or_else(|| panic!("{name} は result state を local 化すること"));
+        let result_root_pos = body[result_pos..]
+            .find("(root_push result)")
+            .map(|offset| offset + result_pos)
+            .unwrap_or_else(|| panic!("{name} は result state を root_set 前に root すること"));
+        let pairs_root_set_pos = body[result_pos..]
+            .find("(root_set pairs-slot result)")
+            .map(|offset| offset + result_pos)
+            .unwrap_or_else(|| panic!("{name} は result state を pairs slot に退避すること"));
+        let functions_root_set_pos = body[result_pos..]
+            .find("(root_set functions-slot result)")
+            .map(|offset| offset + result_pos)
+            .unwrap_or_else(|| panic!("{name} は result state を functions slot に退避すること"));
+
+        assert!(
+            result_pos < result_root_pos
+                && result_root_pos < pairs_root_set_pos
+                && result_root_pos < functions_root_set_pos,
+            "{name} は result state を root_set に渡す前から root し、normal payload の state carry を保つべき"
+        );
+    }
 }
 
 #[test]
