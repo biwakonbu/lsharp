@@ -407,7 +407,7 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
 	                                                          (print (vector-length (ref-get normal-payload-shape-direct-data-ref))))
 	                                                        0)
 	         normal-payload-shape-direct-functions (if (= normal-payload-shape-mode 1)
-	                                                (compile-file-functions-with-cache source-path 10 normal-payload-shape-direct-cache-ref normal-payload-shape-direct-parse-count-ref normal-payload-shape-direct-data-ref)
+	                                                (compile-file-functions-with-cache-normal-payload-diagnostic source-path 10 normal-payload-shape-direct-cache-ref normal-payload-shape-direct-parse-count-ref normal-payload-shape-direct-data-ref)
 	                                                (vector-new 0))
 	         normal-payload-shape-direct-functions-root (if (= normal-payload-shape-mode 1) (root_push normal-payload-shape-direct-functions) 0)
 	         normal-payload-shape-direct-data (if (= normal-payload-shape-mode 1) (ref-get normal-payload-shape-direct-data-ref) (vector-new 0))
@@ -1475,7 +1475,7 @@ fn test_linux_x86_representative_seed_can_print_normal_payload_shape_without_swi
         "normal-payload-shape-before-payload-base",
         "payload-base (if (= pre-payload-progress-mode 1)",
         "normal-payload-shape-direct-functions",
-        "compile-file-functions-with-cache source-path 10 normal-payload-shape-direct-cache-ref normal-payload-shape-direct-parse-count-ref normal-payload-shape-direct-data-ref",
+        "compile-file-functions-with-cache-normal-payload-diagnostic source-path 10 normal-payload-shape-direct-cache-ref normal-payload-shape-direct-parse-count-ref normal-payload-shape-direct-data-ref",
         "normal-payload-shape-after-direct-functions",
         "normal-payload-shape-after-direct-function-edges",
         "compile-file-functions-payload-with-cache source-path 10 cache-ref parse-count-ref",
@@ -1523,6 +1523,32 @@ fn test_linux_x86_representative_seed_can_print_normal_payload_shape_without_swi
             && shape_root_pos < functions_pos,
         "normal payload shape 診断は payload-base を root した後、functions/data を取り出す前に最初の形を採取するべき"
     );
+}
+
+#[test]
+fn test_selfhost_compiler_mode_has_normal_payload_function_boundary_diagnostic() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/App/CompilerMode.ls",
+    )))
+    .expect("CompilerMode.ls を読めること");
+
+    for token in [
+        "(defn compile-file-functions-with-cache-normal-payload-diagnostic",
+        "(print 9000000208)",
+        "(print 9000000209)",
+        "(print 9000000210)",
+        "(print 9000000211)",
+        "(print 9000000212)",
+        "(print 9000000213)",
+        "all-pairs (compile-file-pairs-with-cache path cache-ref parse-count-ref)",
+        "reg-result (register-all-pairs all-pairs 0 n start-ftable func-idx)",
+        "functions (compile-all-src-decl-pairs-chunked all-pairs 0 n ftable data-ref functions0)",
+    ] {
+        assert!(
+            source.contains(token),
+            "CompilerMode.ls は normal payload direct functions 境界診断 token {token} を含むべき"
+        );
+    }
 }
 
 #[test]
