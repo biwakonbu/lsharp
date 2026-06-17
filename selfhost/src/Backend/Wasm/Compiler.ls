@@ -1403,7 +1403,9 @@
           (root_push next-functions)
           (let [result (compile-defn-functions-step-with-source decls next-idx n source ftable data-ref next-functions)]
             (do
+              (root_push result)
               (root_set state-slot result)
+              (root_pop)
               (root_pop)
               (root_pop)
               (root_pop)
@@ -1537,7 +1539,9 @@
               (root_push result)
               (let [functions-result (vector-get result 2)]
                 (do
+                  (root_push functions-result)
                   (root_set state-slot functions-result)
+                  (root_pop)
                   (root_pop)
                   (root_pop)
                   functions-result)))))))))
@@ -1611,7 +1615,9 @@
           (root_push next-functions)
           (let [result (compile-defn-functions-step-with-source-normal-setup-diagnostic decls next-idx n source ftable data-ref next-functions)]
             (do
+              (root_push result)
               (root_set state-slot result)
+              (root_pop)
               (root_pop)
               (root_pop)
               (root_pop)
@@ -1700,7 +1706,9 @@
               (root_push result)
               (let [functions-result (vector-get result 2)]
                 (do
+                  (root_push functions-result)
                   (root_set state-slot functions-result)
+                  (root_pop)
                   (root_pop)
                   (root_pop)
                   functions-result)))))))))

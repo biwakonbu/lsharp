@@ -3100,7 +3100,9 @@
               (root_push result)
               (let [functions-result (vector-get result 2)]
                 (do
+                  (root_push functions-result)
                   (root_set state-slot functions-result)
+                  (root_pop)
                   (root_pop)
                   (root_pop)
                   functions-result)))))))))
@@ -3116,8 +3118,10 @@
               (print-normal-setup-pairs-state-shape 9000000191 n result data-ref)
               (let [functions-result (vector-get result 2)]
                 (do
+                  (root_push functions-result)
                   (root_set state-slot functions-result)
                   (print-normal-setup-pairs-state-shape 9000000192 n result data-ref)
+                  (root_pop)
                   (root_pop)
                   (root_pop)
                   functions-result)))))))))

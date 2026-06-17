@@ -985,7 +985,9 @@
       (let [updated-slot (root_push updated-functions)]
       (let [next-state (make-compile-step-state 0 (+ idx 1) updated-functions)]
         (do
+          (root_push next-state)
           (root_set updated-slot next-state)
+          (root_pop)
           (root_pop)
           next-state))))))
 (defn compile-let-with-ftable-prepare [name-hash init-root init-instrs env]

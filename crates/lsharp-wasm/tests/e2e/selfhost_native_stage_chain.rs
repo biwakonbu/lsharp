@@ -2568,6 +2568,10 @@ fn test_wasm_compiler_source_defn_single_continuations_root_returned_state_befor
         let result_pos = body
             .find(result_expr)
             .unwrap_or_else(|| panic!("{name} は returned state を local 化すること"));
+        let result_root_pos = body[result_pos..]
+            .find("(root_push result)")
+            .map(|offset| offset + result_pos)
+            .unwrap_or_else(|| panic!("{name} は returned state を root_set 前に root すること"));
         let root_set_pos = body[result_pos..]
             .find("(root_set state-slot result)")
             .map(|offset| offset + result_pos)
@@ -2579,9 +2583,11 @@ fn test_wasm_compiler_source_defn_single_continuations_root_returned_state_befor
 
         assert!(
             state_root_pos < result_pos
+                && result_pos < result_root_pos
+                && result_root_pos < root_set_pos
                 && result_pos < root_set_pos
                 && root_set_pos < first_pop_after_result,
-            "{name} は source defn step が返した state を outer roots unwind 前に root slot へ退避するべき"
+            "{name} は source defn step が返した state を root_set 前から root し、outer roots unwind 前に root slot へ退避するべき"
         );
     }
 }
@@ -2592,56 +2598,94 @@ fn test_selfhost_compile_src_decl_pairs_chunked_roots_functions_result_before_un
         std::path::PathBuf::from("selfhost/src/App/CompilerMode.ls"),
     ))
     .expect("CompilerMode.ls を読めること");
-    let chunked = compiler_mode
+    let normal_chunked = compiler_mode
         .split("(defn compile-all-src-decl-pairs-chunked")
         .nth(1)
         .and_then(|tail| tail.split("\n(defn ").next())
         .expect("compile-all-src-decl-pairs-chunked body を取り出せること");
+    let diagnostic_chunked = compiler_mode
+        .split("(defn compile-all-src-decl-pairs-chunked-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("compile-all-src-decl-pairs-chunked-normal-setup-diagnostic body を取り出せること");
 
-    let functions_pos = chunked
-        .find("functions-result (vector-get result 2)")
-        .expect("compile-all-src-decl-pairs-chunked は result から functions を取り出すこと");
-    let root_set_pos = chunked
-        .find("(root_set state-slot functions-result)")
-        .expect("compile-all-src-decl-pairs-chunked は返却 functions を state-slot に退避すること");
-    let first_pop_after_functions = chunked[functions_pos..]
-        .find("(root_pop)")
-        .map(|offset| offset + functions_pos)
-        .expect("compile-all-src-decl-pairs-chunked は roots を unwind すること");
+    for (name, chunked) in [
+        ("compile-all-src-decl-pairs-chunked", normal_chunked),
+        (
+            "compile-all-src-decl-pairs-chunked-normal-setup-diagnostic",
+            diagnostic_chunked,
+        ),
+    ] {
+        let functions_pos = chunked
+            .find("functions-result (vector-get result 2)")
+            .unwrap_or_else(|| panic!("{name} は result から functions を取り出すこと"));
+        let functions_root_pos = chunked[functions_pos..]
+            .find("(root_push functions-result)")
+            .map(|offset| offset + functions_pos)
+            .unwrap_or_else(|| panic!("{name} は functions-result を root_set 前に root すること"));
+        let root_set_pos = chunked
+            .find("(root_set state-slot functions-result)")
+            .unwrap_or_else(|| panic!("{name} は返却 functions を state-slot に退避すること"));
+        let first_pop_after_functions = chunked[functions_pos..]
+            .find("(root_pop)")
+            .map(|offset| offset + functions_pos)
+            .unwrap_or_else(|| panic!("{name} は roots を unwind すること"));
 
-    assert!(
-        functions_pos < root_set_pos && root_set_pos < first_pop_after_functions,
-        "compile-all-src-decl-pairs-chunked は stage2 native の normal payload で functions-result を失わないよう、result/state root を pop する前に古い root slot へ退避するべき"
-    );
+        assert!(
+            functions_pos < functions_root_pos
+                && functions_root_pos < root_set_pos
+                && root_set_pos < first_pop_after_functions,
+            "{name} は stage2 native の normal payload で functions-result を失わないよう、root_set 前から root し、result/state root を pop する前に古い root slot へ退避するべき"
+        );
+    }
 }
 
 #[test]
 fn test_wasm_compiler_source_defn_chunked_roots_functions_result_before_unwinding_state() {
     let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
         .expect("Compiler.ls を読めること");
-    let chunked = compiler
+    let normal_chunked = compiler
         .split("(defn compile-source-defn-functions-chunked")
         .nth(1)
         .and_then(|tail| tail.split("\n(defn ").next())
         .expect("compile-source-defn-functions-chunked body を取り出せること");
-
-    let functions_pos = chunked
-        .find("functions-result (vector-get result 2)")
-        .expect("compile-source-defn-functions-chunked は result から functions を取り出すこと");
-    let root_set_pos = chunked
-        .find("(root_set state-slot functions-result)")
+    let diagnostic_chunked = compiler
+        .split("(defn compile-source-defn-functions-chunked-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
         .expect(
-            "compile-source-defn-functions-chunked は返却 functions を state-slot に退避すること",
+            "compile-source-defn-functions-chunked-normal-setup-diagnostic body を取り出せること",
         );
-    let first_pop_after_functions = chunked[functions_pos..]
-        .find("(root_pop)")
-        .map(|offset| offset + functions_pos)
-        .expect("compile-source-defn-functions-chunked は roots を unwind すること");
 
-    assert!(
-        functions_pos < root_set_pos && root_set_pos < first_pop_after_functions,
-        "compile-source-defn-functions-chunked は stage2 native の normal payload で functions-result を失わないよう、result/state root を pop する前に古い root slot へ退避するべき"
-    );
+    for (name, chunked) in [
+        ("compile-source-defn-functions-chunked", normal_chunked),
+        (
+            "compile-source-defn-functions-chunked-normal-setup-diagnostic",
+            diagnostic_chunked,
+        ),
+    ] {
+        let functions_pos = chunked
+            .find("functions-result (vector-get result 2)")
+            .unwrap_or_else(|| panic!("{name} は result から functions を取り出すこと"));
+        let functions_root_pos = chunked[functions_pos..]
+            .find("(root_push functions-result)")
+            .map(|offset| offset + functions_pos)
+            .unwrap_or_else(|| panic!("{name} は functions-result を root_set 前に root すること"));
+        let root_set_pos = chunked
+            .find("(root_set state-slot functions-result)")
+            .unwrap_or_else(|| panic!("{name} は返却 functions を state-slot に退避すること"));
+        let first_pop_after_functions = chunked[functions_pos..]
+            .find("(root_pop)")
+            .map(|offset| offset + functions_pos)
+            .unwrap_or_else(|| panic!("{name} は roots を unwind すること"));
+
+        assert!(
+            functions_pos < functions_root_pos
+                && functions_root_pos < root_set_pos
+                && root_set_pos < first_pop_after_functions,
+            "{name} は stage2 native の normal payload で functions-result を失わないよう、root_set 前から root し、result/state root を pop する前に古い root slot へ退避するべき"
+        );
+    }
 }
 
 #[test]
@@ -2822,6 +2866,10 @@ fn test_wasm_compiler_defn_step_finish_roots_return_state_before_unwinding_updat
         .find("next-state (make-compile-step-state 0 (+ idx 1) updated-functions)")
         .map(|offset| offset + updated_root_pos)
         .expect("compile-defn-functions-step-finish は next-state を作ること");
+    let state_root_pos = body[state_pos..]
+        .find("(root_push next-state)")
+        .map(|offset| offset + state_pos)
+        .expect("compile-defn-functions-step-finish は next-state を root_set 前に root すること");
     let root_set_pos = body[state_pos..]
         .find("(root_set updated-slot next-state)")
         .map(|offset| offset + state_pos)
@@ -2834,9 +2882,10 @@ fn test_wasm_compiler_defn_step_finish_roots_return_state_before_unwinding_updat
     assert!(
         updated_pos < updated_root_pos
             && updated_root_pos < state_pos
-            && state_pos < root_set_pos
+            && state_pos < state_root_pos
+            && state_root_pos < root_set_pos
             && root_set_pos < first_pop_after_state,
-        "compile-defn-functions-step-finish は updated-functions root を pop する前に next-state を同じ lower slot へ退避するべき"
+        "compile-defn-functions-step-finish は next-state を root_set 前から root し、updated-functions root を pop する前に同じ lower slot へ退避するべき"
     );
 }
 
