@@ -1585,8 +1585,8 @@
                   (let [result (make-compile-step-state 0 (+ idx 1) next-functions)]
                     (do
                       (root_push result)
-                      (root_set functions-slot result)
                       (print-source-defn-normal-setup-finish-shape idx functions compiled-fn result data-ref)
+                      (root_set functions-slot result)
                       (root_pop)
                       (root_pop)
                       (root_pop)

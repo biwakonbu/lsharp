@@ -3251,6 +3251,48 @@ fn test_wasm_compiler_source_defn_step_normal_setup_diagnostic_wrapper_roots_res
 }
 
 #[test]
+fn test_wasm_compiler_source_defn_normal_setup_diagnostic_prints_before_overwriting_functions_root()
+{
+    let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("Compiler.ls を読めること");
+    let source_step = compiler
+        .split("(defn compile-defn-functions-step-with-source-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split(
+                "\n(defn continue-compile-defn-functions-step-with-source-normal-setup-diagnostic",
+            )
+            .next()
+        })
+        .expect(
+            "compile-defn-functions-step-with-source-normal-setup-diagnostic body を取り出せること",
+        );
+
+    let result_pos = source_step
+        .find("result (make-compile-step-state 0 (+ idx 1) next-functions)")
+        .expect("defn branch は result state を local 化すること");
+    let result_root_pos = source_step[result_pos..]
+        .find("(root_push result)")
+        .map(|offset| offset + result_pos)
+        .expect("defn branch は result state を診断前から root すること");
+    let print_pos = source_step[result_pos..]
+        .find(
+            "print-source-defn-normal-setup-finish-shape idx functions compiled-fn result data-ref",
+        )
+        .map(|offset| offset + result_pos)
+        .expect("defn branch は source-defn 診断 marker を出すこと");
+    let root_set_pos = source_step[result_pos..]
+        .find("(root_set functions-slot result)")
+        .map(|offset| offset + result_pos)
+        .expect("defn branch は result state を functions slot に退避すること");
+
+    assert!(
+        result_pos < result_root_pos && result_root_pos < print_pos && print_pos < root_set_pos,
+        "source-defn normal setup diagnostic は input functions root を result で上書きする前に marker を出し、pair 1 の functions carry を probe 自体で壊さないようにするべき"
+    );
+}
+
+#[test]
 fn test_selfhost_compile_src_decl_pairs_step_roots_next_state_before_pair_unwind() {
     let compiler_mode = std::fs::read_to_string(workspace_root_relative_path(
         std::path::PathBuf::from("selfhost/src/App/CompilerMode.ls"),
