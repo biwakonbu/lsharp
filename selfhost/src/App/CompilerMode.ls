@@ -1215,6 +1215,18 @@
         (root_pop)
         (root_pop)
         0))))
+(defn print-normal-setup-source-call-shape [idx decls-len functions data-ref]
+  (do
+    (root_push functions)
+    (root_push data-ref)
+    (print 9000000214)
+    (print idx)
+    (print decls-len)
+    (print (vector-length functions))
+    (print (vector-length (ref-get data-ref)))
+    (root_pop)
+    (root_pop)
+    0))
 (defn compile-file-functions-payload-with-cache-normal-setup-diagnostic [path func-idx cache-ref parse-count-ref]
   (do
     (print 9000000180)
@@ -2970,7 +2982,9 @@
           (root_push pair)
           (let [src (vector-get pair 0)
             decls (vector-get pair 1)
-            updated-functions (compile-source-defn-functions-chunked-normal-setup-diagnostic decls 0 (vector-length decls) src ftable data-ref functions)]
+            decls-len (vector-length decls)
+            source-call-shape (print-normal-setup-source-call-shape idx decls-len functions data-ref)
+            updated-functions (compile-source-defn-functions-chunked-normal-setup-diagnostic decls 0 decls-len src ftable data-ref functions)]
             (do
               (root_push updated-functions)
               (print-normal-setup-pair-compile-shape 9000000194 idx decls functions updated-functions data-ref)

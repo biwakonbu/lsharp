@@ -1564,6 +1564,18 @@
     (root_pop)
     (root_pop)
     0))
+(defn print-source-defn-normal-setup-entry-shape [idx n functions data-ref]
+  (do
+    (root_push functions)
+    (root_push data-ref)
+    (print 9000000215)
+    (print idx)
+    (print n)
+    (print (vector-length functions))
+    (print (vector-length (ref-get data-ref)))
+    (root_pop)
+    (root_pop)
+    0))
 (defn compile-defn-functions-step-with-source-normal-setup-diagnostic [decls idx n source ftable data-ref functions]
   (if (>= idx n)
     (make-compile-step-state 1 idx functions)
@@ -1707,7 +1719,9 @@
                   (root_pop)
                   result)))))))))
 (defn compile-source-defn-functions-chunked-normal-setup-diagnostic [decls idx n source ftable data-ref functions]
-  (let [state (compile-defn-functions-step-64-with-source-normal-setup-diagnostic decls idx n source ftable data-ref functions)]
+  (do
+    (print-source-defn-normal-setup-entry-shape idx n functions data-ref)
+    (let [state (compile-defn-functions-step-64-with-source-normal-setup-diagnostic decls idx n source ftable data-ref functions)]
     (do
       (let [state-slot (root_push state)]
         (do
@@ -1721,7 +1735,7 @@
                   (root_pop)
                   (root_pop)
                   (root_pop)
-                  functions-result)))))))))
+                  functions-result))))))))))
 (defn continue-compile-let-chain-step-with-source [source ftable state data-ref]
   (if (= (vector-get state 0) 1)
     state

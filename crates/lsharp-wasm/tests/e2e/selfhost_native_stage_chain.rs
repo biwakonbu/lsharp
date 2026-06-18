@@ -1640,7 +1640,8 @@ fn test_selfhost_normal_setup_diagnostic_correlates_compile_all_state_payload_sh
         "print-normal-setup-pairs-state-shape 9000000191 n result data-ref",
         "print-normal-setup-pairs-state-shape 9000000192 n result data-ref",
         "print-normal-setup-pair-compile-shape 9000000194 idx decls functions updated-functions data-ref",
-        "updated-functions (compile-source-defn-functions-chunked-normal-setup-diagnostic decls 0 (vector-length decls) src ftable data-ref functions)",
+        "print-normal-setup-source-call-shape idx decls-len functions data-ref",
+        "updated-functions (compile-source-defn-functions-chunked-normal-setup-diagnostic decls 0 decls-len src ftable data-ref functions)",
         "functions (compile-all-src-decl-pairs-chunked-normal-setup-diagnostic all-pairs 0 n ftable data-ref functions0)",
         "print-normal-setup-payload-shape payload2",
     ] {
@@ -1673,6 +1674,86 @@ fn test_wasm_compiler_source_defn_finish_normal_setup_diagnostic_reports_state_s
             "Compiler.ls は source defn normal setup finish 診断 token {token} を含むべき"
         );
     }
+}
+
+#[test]
+fn test_selfhost_normal_setup_diagnostic_marks_source_call_before_seven_arg_boundary() {
+    let compiler_mode = std::fs::read_to_string(workspace_root_relative_path(
+        std::path::PathBuf::from("selfhost/src/App/CompilerMode.ls"),
+    ))
+    .expect("CompilerMode.ls を読めること");
+    let body = compiler_mode
+        .split("(defn compile-src-decl-pairs-step-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn continue-compile-src-decl-pairs-step-normal-setup-diagnostic")
+                .next()
+        })
+        .expect("compile-src-decl-pairs-step-normal-setup-diagnostic body を取り出せること");
+
+    for token in [
+        "(defn print-normal-setup-source-call-shape",
+        "(print 9000000214)",
+        "decls-len (vector-length decls)",
+        "print-normal-setup-source-call-shape idx decls-len functions data-ref",
+        "updated-functions (compile-source-defn-functions-chunked-normal-setup-diagnostic decls 0 decls-len src ftable data-ref functions)",
+    ] {
+        assert!(
+            compiler_mode.contains(token),
+            "CompilerMode.ls は source-defn 呼び出し境界診断 token {token} を含むべき"
+        );
+    }
+
+    let marker_pos = body
+        .find("print-normal-setup-source-call-shape idx decls-len functions data-ref")
+        .expect("source-defn 呼び出し直前 marker が存在すること");
+    let call_pos = body
+        .find("updated-functions (compile-source-defn-functions-chunked-normal-setup-diagnostic decls 0 decls-len src ftable data-ref functions)")
+        .expect("source-defn diagnostic 呼び出しは decls-len local を使うこと");
+
+    assert!(
+        marker_pos < call_pos,
+        "normal setup diagnostic は 7 引数 source-defn 呼び出し直前の functions-len を marker で採取するべき"
+    );
+}
+
+#[test]
+fn test_wasm_compiler_source_defn_normal_setup_diagnostic_marks_entry_arguments() {
+    let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("Compiler.ls を読めること");
+    let body = compiler
+        .split("(defn compile-source-defn-functions-chunked-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn continue-compile-let-chain-step-with-source")
+                .next()
+        })
+        .expect(
+            "compile-source-defn-functions-chunked-normal-setup-diagnostic body を取り出せること",
+        );
+
+    for token in [
+        "(defn print-source-defn-normal-setup-entry-shape",
+        "(print 9000000215)",
+        "print-source-defn-normal-setup-entry-shape idx n functions data-ref",
+    ] {
+        assert!(
+            compiler.contains(token),
+            "Compiler.ls は source-defn entry 境界診断 token {token} を含むべき"
+        );
+    }
+
+    let marker_pos = body
+        .find("print-source-defn-normal-setup-entry-shape idx n functions data-ref")
+        .expect("source-defn diagnostic entry marker が存在すること");
+    let state_pos = body
+        .find("state (compile-defn-functions-step-64-with-source-normal-setup-diagnostic decls idx n source ftable data-ref functions)")
+        .expect("source-defn diagnostic entry は step-64 を呼ぶこと");
+
+    assert!(
+        marker_pos < state_pos,
+        "source-defn diagnostic は step-64 に入る前の received functions-len を marker で採取するべき"
+    );
 }
 
 #[test]
