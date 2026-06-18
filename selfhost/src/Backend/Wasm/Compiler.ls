@@ -1576,6 +1576,22 @@
     (root_pop)
     (root_pop)
     0))
+(defn print-source-defn-normal-setup-skip-shape [idx functions result data-ref]
+  (do
+    (root_push functions)
+    (root_push result)
+    (root_push data-ref)
+    (print 9000000216)
+    (print idx)
+    (print (vector-length functions))
+    (print (vector-get result 0))
+    (print (vector-get result 1))
+    (print (vector-length (vector-get result 2)))
+    (print (vector-length (ref-get data-ref)))
+    (root_pop)
+    (root_pop)
+    (root_pop)
+    0))
 (defn compile-defn-functions-step-with-source-normal-setup-diagnostic [decls idx n source ftable data-ref functions]
   (if (>= idx n)
     (make-compile-step-state 1 idx functions)
@@ -1613,6 +1629,7 @@
           (let [result (make-compile-step-state 0 (+ idx 1) functions)]
             (do
               (root_push result)
+              (print-source-defn-normal-setup-skip-shape idx functions result data-ref)
               (root_set functions-slot result)
               (root_pop)
               (root_pop)

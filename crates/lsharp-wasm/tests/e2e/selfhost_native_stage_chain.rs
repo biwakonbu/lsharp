@@ -1757,6 +1757,56 @@ fn test_wasm_compiler_source_defn_normal_setup_diagnostic_marks_entry_arguments(
 }
 
 #[test]
+fn test_wasm_compiler_source_defn_normal_setup_diagnostic_marks_skip_state_shape() {
+    let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("Compiler.ls を読めること");
+    let body = compiler
+        .split("(defn compile-defn-functions-step-with-source-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split(
+                "\n(defn continue-compile-defn-functions-step-with-source-normal-setup-diagnostic",
+            )
+            .next()
+        })
+        .expect(
+            "compile-defn-functions-step-with-source-normal-setup-diagnostic body を取り出せること",
+        );
+
+    for token in [
+        "(defn print-source-defn-normal-setup-skip-shape",
+        "(print 9000000216)",
+        "print-source-defn-normal-setup-skip-shape idx functions result data-ref",
+    ] {
+        assert!(
+            compiler.contains(token),
+            "Compiler.ls は source-defn skip state 境界診断 token {token} を含むべき"
+        );
+    }
+
+    let result_pos = body
+        .find("(let [result (make-compile-step-state 0 (+ idx 1) functions)]")
+        .expect("skip branch は result state を生成すること");
+    let result_root_pos = body[result_pos..]
+        .find("(root_push result)")
+        .map(|offset| offset + result_pos)
+        .expect("skip branch は result state を marker 前から root すること");
+    let marker_pos = body[result_pos..]
+        .find("print-source-defn-normal-setup-skip-shape idx functions result data-ref")
+        .map(|offset| offset + result_pos)
+        .expect("skip branch は skip state shape marker を出すこと");
+    let root_set_pos = body[result_pos..]
+        .find("(root_set functions-slot result)")
+        .map(|offset| offset + result_pos)
+        .expect("skip branch は result state を functions slot に退避すること");
+
+    assert!(
+        result_pos < result_root_pos && result_root_pos < marker_pos && marker_pos < root_set_pos,
+        "source-defn normal setup diagnostic は skip state を生成直後かつ root_set 前に測り、state slot2 がどこで壊れるか切り分けるべき"
+    );
+}
+
+#[test]
 fn test_linux_x86_representative_seed_omits_payload_entry_shape_probe() {
     let source = linux_x86_representative_actual_stage23_seed_source();
     assert!(
