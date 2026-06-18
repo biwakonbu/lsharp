@@ -3661,6 +3661,17 @@ fn test_selfhost_step_state_builders_root_final_state_before_unwinding_parts() {
         .nth(1)
         .and_then(|tail| tail.split("\n(defn ").next())
         .expect("make-pairs-step-state body を取り出せること");
+    assert!(
+        compiler_base.contains("(defn push-int-vector-local [dst value]"),
+        "CompilerBase.ls は state builder の int slot を local root で push できる helper を持つべき"
+    );
+    assert!(
+        compile_state.contains("base0 (push-int-vector-local (vector-new 3) done)")
+            && compile_state.contains("base1 (push-int-vector-local base0 next-idx)")
+            && !compile_state.contains("base0 (push-int-vector (vector-new 3) done)")
+            && !compile_state.contains("base1 (push-int-vector base0 next-idx)"),
+        "make-compile-step-state は skip/continue state の int slot 0/1 を local root push で組むべき"
+    );
 
     for (name, body, slot_expr, state_expr, root_set_expr) in [
         (

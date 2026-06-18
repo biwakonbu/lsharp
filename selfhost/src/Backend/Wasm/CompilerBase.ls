@@ -219,6 +219,13 @@
       (do
         (root_pop)
         next-dst))))
+(defn push-int-vector-local [dst value]
+  (do
+    (root_push dst)
+    (let [next-dst (vector-push dst value)]
+      (do
+        (root_pop)
+        next-dst))))
 (defn emit-instr [opcode operand] (push-int-vector (push-int-vector (vector-new 2) opcode) operand))
 (defn push-object-vector [dst value]
   (do
@@ -492,10 +499,10 @@
               result)))))))
 (defn make-compile-step-state [done next-idx next-value]
   (let [value-slot (root_push next-value)]
-    (let [base0 (push-int-vector (vector-new 3) done)]
+    (let [base0 (push-int-vector-local (vector-new 3) done)]
       (do
         (root_push base0)
-        (let [base1 (push-int-vector base0 next-idx)]
+        (let [base1 (push-int-vector-local base0 next-idx)]
           (do
             (root_push base1)
             (let [state (push-object-vector base1 next-value)]
