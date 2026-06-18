@@ -1626,18 +1626,23 @@
                       (root_pop)
                       result)))))))
         (do
-          (let [result (make-compile-step-state 0 (+ idx 1) functions)]
+          (let [skip-state-ref (ref-new 0)]
             (do
-              (root_push result)
-              (print-source-defn-normal-setup-skip-shape idx functions result data-ref)
-              (root_set functions-slot result)
-              (root_pop)
-              (root_pop)
-              (root_pop)
-              (root_pop)
-              (root_pop)
-              (root_pop)
-              result)))))))
+              (root_push skip-state-ref)
+              (write-compile-step-state-ref skip-state-ref 0 (+ idx 1) functions)
+              (let [result (ref-get skip-state-ref)]
+                (do
+                  (root_push result)
+                  (print-source-defn-normal-setup-skip-shape idx functions result data-ref)
+                  (root_set functions-slot result)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  result)))))))))
 (defn continue-compile-defn-functions-step-with-source-normal-setup-diagnostic [decls n source ftable data-ref state]
   (if (= (vector-get state 0) 1)
     state
@@ -2044,13 +2049,18 @@
                   (root_pop)
                   result)))))
         (do
-          (let [result (make-compile-step-state 0 (+ idx 1) functions)]
+          (let [skip-state-ref (ref-new 0)]
             (do
-              (root_set functions-slot result)
-              (root_pop)
-              (root_pop)
-              (root_pop)
-              result)))))))
+              (root_push skip-state-ref)
+              (write-compile-step-state-ref skip-state-ref 0 (+ idx 1) functions)
+              (let [result (ref-get skip-state-ref)]
+                (do
+                  (root_set functions-slot result)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  result)))))))))
 
 (defn continue-compile-defn-functions-step [decls n ftable state]
   (if (= (vector-get state 0) 1)
@@ -2379,17 +2389,22 @@
                       (root_pop)
                       result)))))))
         (do
-          (let [result (make-compile-step-state 0 (+ idx 1) functions)]
+          (let [skip-state-ref (ref-new 0)]
             (do
-              (root_push result)
-              (root_set functions-slot result)
-              (root_pop)
-              (root_pop)
-              (root_pop)
-              (root_pop)
-              (root_pop)
-              (root_pop)
-              result)))))))
+              (root_push skip-state-ref)
+              (write-compile-step-state-ref skip-state-ref 0 (+ idx 1) functions)
+              (let [result (ref-get skip-state-ref)]
+                (do
+                  (root_push result)
+                  (root_set functions-slot result)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  result)))))))))
 (defn compile-let-with-ftable-impl-body-impl-3 [node env ftable instrs]
   (let [name-hash (vector-get node 1)
     init-expr (vector-get node 2)

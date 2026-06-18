@@ -497,6 +497,35 @@
               (root_pop)
               (root_pop)
               result)))))))
+(defn write-compile-step-state-ref [state-ref done next-idx next-value]
+  (do
+    (root_push state-ref)
+    (let [base (vector-new 3)]
+      (do
+        (let [base-slot (root_push base)]
+          (do
+            (let [done-ref (ref-new done)
+              next-idx-ref (ref-new next-idx)]
+              (do
+                (root_push done-ref)
+                (root_push next-idx-ref)
+                (root_push next-value)
+                (let [with-done (vector-push base (ref-get done-ref))]
+                  (do
+                    (root_set base-slot with-done)
+                    (let [with-idx (vector-push with-done (ref-get next-idx-ref))]
+                      (do
+                        (root_set base-slot with-idx)
+                        (let [state (vector-push with-idx next-value)]
+                          (do
+                            (root_set base-slot state)
+                            (ref-set state-ref state)
+                            (root_pop)
+                            (root_pop)
+                            (root_pop)
+                            (root_pop)
+                            (root_pop)
+                            0))))))))))))))
 (defn make-compile-step-state [done next-idx next-value]
   (let [value-slot (root_push next-value)]
     (let [base0 (push-int-vector-local (vector-new 3) done)]
