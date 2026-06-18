@@ -2055,7 +2055,9 @@
               (write-compile-step-state-ref skip-state-ref 0 (+ idx 1) functions)
               (let [result (ref-get skip-state-ref)]
                 (do
+                  (root_push result)
                   (root_set functions-slot result)
+                  (root_pop)
                   (root_pop)
                   (root_pop)
                   (root_pop)

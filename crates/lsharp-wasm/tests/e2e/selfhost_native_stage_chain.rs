@@ -3736,6 +3736,11 @@ fn test_selfhost_step_state_builders_root_final_state_before_unwinding_parts() {
         .nth(1)
         .and_then(|tail| tail.split("\n(defn ").next())
         .expect("make-compile-step-state body を取り出せること");
+    let write_state = compiler_base
+        .split("(defn write-compile-step-state-ref")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("write-compile-step-state-ref body を取り出せること");
     let compiler_mode = std::fs::read_to_string(workspace_root_relative_path(
         std::path::PathBuf::from("selfhost/src/App/CompilerMode.ls"),
     ))
@@ -3761,6 +3766,16 @@ fn test_selfhost_step_state_builders_root_final_state_before_unwinding_parts() {
             && !compile_state.contains("base0 (push-int-vector (vector-new 3) done)")
             && !compile_state.contains("base1 (push-int-vector base0 next-idx)"),
         "make-compile-step-state は skip/continue state の int slot 0/1 を local root push で組むべき"
+    );
+    assert!(
+        write_state.contains("with-done (push-int-vector-local base done)")
+            && write_state.contains("with-idx (push-int-vector-local with-done next-idx)")
+            && write_state.contains("state (push-object-vector with-idx next-value)")
+            && !write_state.contains("done-ref (ref-new done)")
+            && !write_state.contains("next-idx-ref (ref-new next-idx)")
+            && !write_state.contains("with-done (vector-push base")
+            && !write_state.contains("with-idx (vector-push with-done"),
+        "write-compile-step-state-ref も ref handoff 前に state slot 0/1 を local int push で組み、slot2 を object push で保持するべき"
     );
 
     for (name, body, slot_expr, state_expr, root_set_expr) in [
@@ -3905,9 +3920,21 @@ fn test_wasm_compiler_defn_skip_branch_keeps_functions_rooted_until_state_built(
             diagnostic_source_step,
         ),
     ] {
-        let result_pos = body
-            .find("(let [result (make-compile-step-state 0 (+ idx 1) functions)]")
-            .unwrap_or_else(|| panic!("{name} は skip state を local 化すること"));
+        let state_ref_pos = body.find("skip-state-ref (ref-new 0)").unwrap_or_else(|| {
+            panic!("{name} は skip branch 用 caller-owned state ref を作ること")
+        });
+        let write_pos = body[state_ref_pos..]
+            .find("(write-compile-step-state-ref skip-state-ref 0 (+ idx 1) functions)")
+            .map(|offset| offset + state_ref_pos)
+            .unwrap_or_else(|| panic!("{name} は writer helper で skip state を構築すること"));
+        let result_pos = body[write_pos..]
+            .find("result (ref-get skip-state-ref)")
+            .map(|offset| offset + write_pos)
+            .unwrap_or_else(|| panic!("{name} は state ref から result state を取り出すこと"));
+        let result_root_pos = body[result_pos..]
+            .find("(root_push result)")
+            .map(|offset| offset + result_pos)
+            .unwrap_or_else(|| panic!("{name} は skip state を root してから退避すること"));
         let root_set_pos = body[result_pos..]
             .find("(root_set functions-slot result)")
             .map(|offset| offset + result_pos)
@@ -3918,8 +3945,12 @@ fn test_wasm_compiler_defn_skip_branch_keeps_functions_rooted_until_state_built(
             .unwrap_or_else(|| panic!("{name} は roots を unwind すること"));
 
         assert!(
-            result_pos < root_set_pos && root_set_pos < first_pop_after_result,
-            "{name} の skip branch は先頭 non-defn decl を越えても functions vector を失わないよう、skip state を lower root slot へ退避してから roots を pop するべき"
+            state_ref_pos < write_pos
+                && write_pos < result_pos
+                && result_pos < result_root_pos
+                && result_root_pos < root_set_pos
+                && root_set_pos < first_pop_after_result,
+            "{name} の skip branch は先頭 non-defn decl を越えても functions vector を失わないよう、caller-owned state ref で受けた skip state を root し、lower root slot へ退避してから roots を pop するべき"
         );
     }
 }
