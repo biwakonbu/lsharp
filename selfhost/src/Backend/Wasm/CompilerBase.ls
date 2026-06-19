@@ -519,6 +519,49 @@
                         (root_pop)
                         (root_pop)
                         0))))))))))))
+(defn write-compile-step-state-ref-normal-setup-diagnostic [state-ref done next-idx next-value]
+  (do
+    (root_push state-ref)
+    (root_push next-value)
+    (print 9000000217)
+    (print done)
+    (print next-idx)
+    (print (vector-length next-value))
+    (let [base (vector-new 3)]
+      (do
+        (let [base-slot (root_push base)]
+          (do
+            (let [with-done (push-int-vector-local base done)]
+              (do
+                (root_set base-slot with-done)
+                (print 9000000218)
+                (print (vector-length with-done))
+                (print (vector-get with-done 0))
+                (let [with-idx (push-int-vector-local with-done next-idx)]
+                  (do
+                    (root_set base-slot with-idx)
+                    (print 9000000219)
+                    (print (vector-length with-idx))
+                    (print (vector-get with-idx 0))
+                    (print (vector-get with-idx 1))
+                    (let [state (push-object-vector with-idx next-value)]
+                      (do
+                        (root_set base-slot state)
+                        (print 9000000220)
+                        (print (vector-length state))
+                        (print (vector-get state 0))
+                        (print (vector-get state 1))
+                        (print (vector-length (vector-get state 2)))
+                        (ref-set state-ref state)
+                        (print 9000000221)
+                        (print (vector-length (ref-get state-ref)))
+                        (print (vector-get (ref-get state-ref) 0))
+                        (print (vector-get (ref-get state-ref) 1))
+                        (print (vector-length (vector-get (ref-get state-ref) 2)))
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        0))))))))))))
 (defn make-compile-step-state [done next-idx next-value]
   (let [value-slot (root_push next-value)]
     (let [base0 (push-int-vector-local (vector-new 3) done)]

@@ -1760,6 +1760,8 @@ fn test_wasm_compiler_source_defn_normal_setup_diagnostic_marks_entry_arguments(
 fn test_wasm_compiler_source_defn_normal_setup_diagnostic_marks_skip_state_shape() {
     let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
         .expect("Compiler.ls を読めること");
+    let compiler_base = std::fs::read_to_string(selfhost_source_path("CompilerBase.ls"))
+        .expect("CompilerBase.ls を読めること");
     let body = compiler
         .split("(defn compile-defn-functions-step-with-source-normal-setup-diagnostic")
         .nth(1)
@@ -1783,14 +1785,29 @@ fn test_wasm_compiler_source_defn_normal_setup_diagnostic_marks_skip_state_shape
             "Compiler.ls は source-defn skip state 境界診断 token {token} を含むべき"
         );
     }
+    for token in [
+        "(defn write-compile-step-state-ref-normal-setup-diagnostic",
+        "(print 9000000217)",
+        "(print 9000000218)",
+        "(print 9000000219)",
+        "(print 9000000220)",
+        "(print 9000000221)",
+    ] {
+        assert!(
+            compiler_base.contains(token),
+            "CompilerBase.ls は source-defn skip state writer 内部診断 token {token} を含むべき"
+        );
+    }
 
     let result_ref_pos = body
         .find("skip-state-ref (ref-new 0)")
         .expect("skip branch は caller-owned state ref を生成すること");
     let write_pos = body[result_ref_pos..]
-        .find("(write-compile-step-state-ref skip-state-ref 0 (+ idx 1) functions)")
+        .find(
+            "(write-compile-step-state-ref-normal-setup-diagnostic skip-state-ref 0 (+ idx 1) functions)",
+        )
         .map(|offset| offset + result_ref_pos)
-        .expect("skip branch は writer helper で result state を生成すること");
+        .expect("skip branch は diagnostic writer helper で result state を生成すること");
     let result_pos = body[write_pos..]
         .find("result (ref-get skip-state-ref)")
         .map(|offset| offset + write_pos)
@@ -1815,6 +1832,43 @@ fn test_wasm_compiler_source_defn_normal_setup_diagnostic_marks_skip_state_shape
             && result_root_pos < marker_pos
             && marker_pos < root_set_pos,
         "source-defn normal setup diagnostic は skip state を生成直後かつ root_set 前に測り、state slot2 がどこで壊れるか切り分けるべき"
+    );
+
+    let writer_body = compiler_base
+        .split("(defn write-compile-step-state-ref-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("diagnostic writer body を取り出せること");
+    let entry_pos = writer_body
+        .find("(print 9000000217)")
+        .expect("diagnostic writer は entry marker を出すこと");
+    let with_done_pos = writer_body[entry_pos..]
+        .find("(print 9000000218)")
+        .map(|offset| offset + entry_pos)
+        .expect("diagnostic writer は with-done marker を出すこと");
+    let with_idx_pos = writer_body[with_done_pos..]
+        .find("(print 9000000219)")
+        .map(|offset| offset + with_done_pos)
+        .expect("diagnostic writer は with-idx marker を出すこと");
+    let state_pos = writer_body[with_idx_pos..]
+        .find("(print 9000000220)")
+        .map(|offset| offset + with_idx_pos)
+        .expect("diagnostic writer は state marker を出すこと");
+    let ref_set_pos = writer_body[state_pos..]
+        .find("(ref-set state-ref state)")
+        .map(|offset| offset + state_pos)
+        .expect("diagnostic writer は state marker 後に ref-set すること");
+    let ref_after_pos = writer_body[ref_set_pos..]
+        .find("(print 9000000221)")
+        .map(|offset| offset + ref_set_pos)
+        .expect("diagnostic writer は ref-set 後 marker を出すこと");
+    assert!(
+        entry_pos < with_done_pos
+            && with_done_pos < with_idx_pos
+            && with_idx_pos < state_pos
+            && state_pos < ref_set_pos
+            && ref_set_pos < ref_after_pos,
+        "diagnostic writer は entry / with-done / with-idx / state / ref-set 後の順で shape を出すべき"
     );
 }
 
@@ -3394,9 +3448,11 @@ fn test_wasm_compiler_source_defn_step_normal_setup_diagnostic_roots_result_befo
         .find("skip-state-ref (ref-new 0)")
         .expect("normal setup diagnostic skip branch は caller-owned state ref を作ること");
     let skip_write_pos = source_step[skip_ref_pos..]
-        .find("(write-compile-step-state-ref skip-state-ref 0 (+ idx 1) functions)")
+        .find(
+            "(write-compile-step-state-ref-normal-setup-diagnostic skip-state-ref 0 (+ idx 1) functions)",
+        )
         .map(|offset| offset + skip_ref_pos)
-        .expect("normal setup diagnostic skip branch は writer helper で state を渡すこと");
+        .expect("normal setup diagnostic skip branch は diagnostic writer helper で state を渡すこと");
     let skip_result_pos = source_step[skip_write_pos..]
         .find("result (ref-get skip-state-ref)")
         .map(|offset| offset + skip_write_pos)

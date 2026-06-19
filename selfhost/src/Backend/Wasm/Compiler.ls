@@ -1629,7 +1629,7 @@
           (let [skip-state-ref (ref-new 0)]
             (do
               (root_push skip-state-ref)
-              (write-compile-step-state-ref skip-state-ref 0 (+ idx 1) functions)
+              (write-compile-step-state-ref-normal-setup-diagnostic skip-state-ref 0 (+ idx 1) functions)
               (let [result (ref-get skip-state-ref)]
                 (do
                   (root_push result)
