@@ -1246,6 +1246,40 @@
       (root_pop)
       (root_pop)
       result)))
+(defn compile-expr-with-source-normal-setup-diagnostic [node source env ftable instrs data-ref]
+  (let [node-slot (root_push node)
+    source-slot (root_push source)
+    env-slot (root_push env)
+    ftable-slot (root_push ftable)
+    instrs-slot (root_push instrs)
+    data-slot (root_push data-ref)
+    tag (vector-get node 0)]
+    (do
+      (print 9000000236)
+      (print tag)
+      (print (vector-length node))
+      (print (vector-length instrs))
+      (print (vector-length (ref-get data-ref)))
+      (let [result (compile-expr-with-source-dispatch-normal-setup-diagnostic node source env ftable instrs data-ref)]
+        (do
+          (root_push result)
+          (print 9000000242)
+          (print tag)
+          (print (vector-length result))
+          (print (vector-length (ref-get data-ref)))
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          result)))))
+(defn compile-expr-with-source-dispatch-normal-setup-diagnostic [node source env ftable instrs data-ref]
+  (let [tag (vector-get node 0)]
+    (if (= tag 7)
+      (compile-let-with-source-normal-setup-diagnostic node source env ftable instrs data-ref)
+      (compile-expr-with-source-dispatch node source env ftable instrs data-ref))))
 (defn compile-defn-with-source [node source ftable data-ref]
   (do
     (root_push node)
@@ -1324,7 +1358,7 @@
         (print (vector-length body-expr))
         (print (vector-length (ref-get data-ref)))
         (let [instrs0 (vector-new 8)
-          result (compile-expr-with-source body-expr source env ftable instrs0 data-ref)]
+          result (compile-expr-with-source-normal-setup-diagnostic body-expr source env ftable instrs0 data-ref)]
           (do
             (root_push result)
             (print 9000000235)
@@ -2003,6 +2037,93 @@
     step8))
 (defn compile-let-with-source [node source env ftable instrs data-ref]
   (compile-let-chain-with-source node source env ftable instrs data-ref 0))
+(defn compile-let-chain-step-with-source-normal-setup-diagnostic [node source env ftable instrs data-ref rooted-count]
+  (let [node-slot (root_push node)
+    source-slot (root_push source)
+    env-slot (root_push env)
+    ftable-slot (root_push ftable)
+    instrs-slot (root_push instrs)
+    data-slot (root_push data-ref)
+    name-hash (vector-get node 1)
+    init-expr (vector-get node 2)
+    init-root (alloc-root-needed init-expr)]
+    (do
+      (print 9000000238)
+      (print (vector-length node))
+      (print name-hash)
+      (print (vector-get init-expr 0))
+      (print (vector-length init-expr))
+      (print (vector-length (ref-get data-ref)))
+      (let [init-instrs (compile-expr-with-source init-expr source env ftable instrs data-ref)]
+        (do
+          (root_push init-instrs)
+          (print 9000000239)
+          (print (vector-length init-instrs))
+          (print init-root)
+          (print (vector-length (ref-get data-ref)))
+          (let [body-expr-after-init (vector-get node 3)
+            result (compile-let-chain-step-finish name-hash body-expr-after-init init-instrs env rooted-count init-root)]
+            (do
+              (root_push result)
+              (print 9000000240)
+              (print (vector-length result))
+              (print (vector-get result 0))
+              (print (vector-get result 1))
+              (print (vector-length (ref-get data-ref)))
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              result)))))))
+(defn compile-let-chain-with-source-normal-setup-diagnostic [node source env ftable instrs data-ref rooted-count]
+  (let [step (compile-let-chain-step-with-source-normal-setup-diagnostic node source env ftable instrs data-ref rooted-count)]
+    (do
+      (root_push step)
+      (let [next-value (vector-get step 2)]
+        (do
+          (root_push next-value)
+          (print 9000000241)
+          (print (vector-get step 0))
+          (print (vector-get step 1))
+          (print (vector-length next-value))
+          (print (vector-length (ref-get data-ref)))
+          (if (= (vector-get step 0) 1)
+            (let [body-expr (vector-get next-value 0)
+              next-env (vector-get next-value 1)
+              next-instrs (vector-get next-value 2)
+              body-instrs (compile-expr-with-source-normal-setup-diagnostic body-expr source next-env ftable next-instrs data-ref)]
+              (do
+                (root_push body-instrs)
+                (let [result (emit-root-pop-drops body-instrs (vector-get step 1))]
+                  (do
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    result))))
+            (let [result
+              (compile-let-chain-with-source
+                (vector-get next-value 0)
+                source
+                (vector-get next-value 1)
+                ftable
+                (vector-get next-value 2)
+                data-ref
+                (vector-get step 1))]
+              (do
+                (root_pop)
+                (root_pop)
+                result))))))))
+(defn compile-let-with-source-normal-setup-diagnostic [node source env ftable instrs data-ref]
+  (do
+    (print 9000000237)
+    (print (vector-length node))
+    (print (vector-length instrs))
+    (print (vector-length (ref-get data-ref)))
+    (compile-let-chain-with-source-normal-setup-diagnostic node source env ftable instrs data-ref 0)))
 (defn compile-defn-function [node ftable]
   (do
     (root_push node)

@@ -2075,9 +2075,9 @@ fn test_wasm_compiler_source_defn_normal_setup_diagnostic_marks_defn_function_in
         .map(|offset| offset + env_pos)
         .expect("diagnostic wrapper は env marker を出すこと");
     let compile_expr_pos = defn_body[env_marker_pos..]
-        .find("result (compile-expr-with-source body-expr source env ftable instrs0 data-ref)")
+        .find("result (compile-expr-with-source-normal-setup-diagnostic body-expr source env ftable instrs0 data-ref)")
         .map(|offset| offset + env_marker_pos)
-        .expect("diagnostic wrapper は compile-expr-with-source を呼ぶこと");
+        .expect("diagnostic wrapper は compile-expr-with-source-normal-setup-diagnostic を呼ぶこと");
     let result_marker_pos = defn_body[compile_expr_pos..]
         .find("(print 9000000235)")
         .map(|offset| offset + compile_expr_pos)
@@ -2127,6 +2127,127 @@ fn test_wasm_compiler_source_defn_normal_setup_diagnostic_marks_defn_function_in
             && ir_marker_pos < meta_pos
             && meta_pos < meta_marker_pos,
         "diagnostic function wrapper は entry / source-ir / ir / meta の境界を順に測るべき"
+    );
+}
+
+#[test]
+fn test_wasm_compiler_source_defn_normal_setup_diagnostic_marks_expr_let_internals() {
+    let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("Compiler.ls を読めること");
+    let plain_expr_body = compiler
+        .split("(defn compile-expr-with-source [")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("compile-expr-with-source body を取り出せること");
+    let plain_let_body = compiler
+        .split("(defn compile-let-with-source [")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("compile-let-with-source body を取り出せること");
+    for token in [
+        "(print 9000000236)",
+        "(print 9000000237)",
+        "(print 9000000238)",
+        "(print 9000000239)",
+        "(print 9000000240)",
+        "(print 9000000241)",
+        "(print 9000000242)",
+    ] {
+        assert!(
+            !plain_expr_body.contains(token) && !plain_let_body.contains(token),
+            "通常 expr/let compile path は host artifact gate の標準出力を汚さないよう診断 token {token} を含めない"
+        );
+    }
+
+    let defn_diag_body = compiler
+        .split("(defn compile-defn-with-source-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn compile-defn-function-with-source-normal-setup-diagnostic")
+                .next()
+        })
+        .expect("compile-defn-with-source-normal-setup-diagnostic body を取り出せること");
+    assert!(
+        defn_diag_body.contains(
+            "result (compile-expr-with-source-normal-setup-diagnostic body-expr source env ftable instrs0 data-ref)"
+        ),
+        "defn diagnostic wrapper は body compile を expr diagnostic wrapper へ閉じ込めるべき"
+    );
+
+    let expr_diag_body = compiler
+        .split("(defn compile-expr-with-source-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn compile-expr-with-source-dispatch-normal-setup-diagnostic")
+                .next()
+        })
+        .expect("compile-expr-with-source-normal-setup-diagnostic body を取り出せること");
+    let expr_dispatch_diag_body = compiler
+        .split("(defn compile-expr-with-source-dispatch-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn compile-defn-with-source").next())
+        .expect("compile-expr-with-source-dispatch-normal-setup-diagnostic body を取り出せること");
+    let let_diag_body = compiler
+        .split("(defn compile-let-chain-step-with-source-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn compile-let-chain-with-source-normal-setup-diagnostic")
+                .next()
+        })
+        .expect("compile-let-chain-step-with-source-normal-setup-diagnostic body を取り出せること");
+    let let_chain_diag_body = compiler
+        .split("(defn compile-let-chain-with-source-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn compile-let-with-source-normal-setup-diagnostic")
+                .next()
+        })
+        .expect("compile-let-chain-with-source-normal-setup-diagnostic body を取り出せること");
+    let let_entry_diag_body = compiler
+        .split("(defn compile-let-with-source-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("compile-let-with-source-normal-setup-diagnostic body を取り出せること");
+
+    for token in ["(print 9000000236)", "(print 9000000242)"] {
+        assert!(
+            expr_diag_body.contains(token),
+            "expr diagnostic wrapper は dispatch 前後の token {token} を含むべき"
+        );
+    }
+    assert!(
+        expr_diag_body.contains(
+            "result (compile-expr-with-source-dispatch-normal-setup-diagnostic node source env ftable instrs data-ref)"
+        ),
+        "expr diagnostic wrapper は diagnostic dispatch を呼ぶべき"
+    );
+    assert!(
+        expr_dispatch_diag_body.contains("(compile-let-with-source-normal-setup-diagnostic node source env ftable instrs data-ref)"),
+        "diagnostic dispatch は tag 7 let を let diagnostic wrapper へ送るべき"
+    );
+    assert!(
+        let_entry_diag_body.contains("(print 9000000237)")
+            && let_entry_diag_body.contains(
+                "compile-let-chain-with-source-normal-setup-diagnostic node source env ftable instrs data-ref 0",
+            ),
+        "let diagnostic wrapper は entry marker 後に diagnostic let chain を呼ぶべき"
+    );
+    for token in [
+        "(print 9000000238)",
+        "(print 9000000239)",
+        "(print 9000000240)",
+    ] {
+        assert!(
+            let_diag_body.contains(token),
+            "let step diagnostic wrapper は init/finish 境界 token {token} を含むべき"
+        );
+    }
+    assert!(
+        let_chain_diag_body.contains("(print 9000000241)")
+            && let_chain_diag_body.contains(
+                "body-instrs (compile-expr-with-source-normal-setup-diagnostic body-expr source next-env ftable next-instrs data-ref)",
+            ),
+        "let chain diagnostic wrapper は step result と body compile 境界を測るべき"
     );
 }
 
