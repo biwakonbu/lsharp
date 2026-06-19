@@ -1644,12 +1644,28 @@
       (if (= (vector-get decl 0) 20)
         (do
           (root_push decl)
+          (print 9000000226)
+          (print idx)
+          (print (vector-length functions))
+          (print (vector-get decl 0))
+          (print (vector-length (ref-get data-ref)))
           (let [compiled-fn (compile-defn-function-with-source decl source ftable data-ref)]
             (do
               (root_push compiled-fn)
+              (print 9000000227)
+              (print idx)
+              (print (vector-length functions))
+              (print (vector-length compiled-fn))
+              (print (vector-length (ref-get data-ref)))
               (let [next-functions (push-object-vector functions compiled-fn)]
                 (do
                   (root_push next-functions)
+                  (print 9000000228)
+                  (print idx)
+                  (print (vector-length functions))
+                  (print (vector-length compiled-fn))
+                  (print (vector-length next-functions))
+                  (print (vector-length (ref-get data-ref)))
                   (let [defn-result (make-compile-step-state 0 (+ idx 1) next-functions)]
                     (do
                       (root_push defn-result)

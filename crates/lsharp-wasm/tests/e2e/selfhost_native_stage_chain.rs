@@ -1915,6 +1915,72 @@ fn test_wasm_compiler_source_defn_normal_setup_diagnostic_marks_skip_state_shape
 }
 
 #[test]
+fn test_wasm_compiler_source_defn_normal_setup_diagnostic_marks_defn_handoff_shape() {
+    let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("Compiler.ls を読めること");
+    let body = compiler
+        .split("(defn compile-defn-functions-step-with-source-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split(
+                "\n(defn continue-compile-defn-functions-step-with-source-normal-setup-diagnostic",
+            )
+            .next()
+        })
+        .expect(
+            "compile-defn-functions-step-with-source-normal-setup-diagnostic body を取り出せること",
+        );
+
+    for token in [
+        "(print 9000000226)",
+        "(print 9000000227)",
+        "(print 9000000228)",
+    ] {
+        assert!(
+            body.contains(token),
+            "source-defn defn branch は compile entry/return/vector push 境界診断 token {token} を含むべき"
+        );
+    }
+
+    let branch_pos = body
+        .find("(if (= (vector-get decl 0) 20)")
+        .expect("normal setup diagnostic は defn branch を持つこと");
+    let before_compile_pos = body[branch_pos..]
+        .find("(print 9000000226)")
+        .map(|offset| offset + branch_pos)
+        .expect("defn branch は compile-defn-function-with-source 前 marker を出すこと");
+    let compile_pos = body[before_compile_pos..]
+        .find("(let [compiled-fn (compile-defn-function-with-source decl source ftable data-ref)]")
+        .map(|offset| offset + before_compile_pos)
+        .expect("defn branch は compile-defn-function-with-source を呼ぶこと");
+    let after_compile_pos = body[compile_pos..]
+        .find("(print 9000000227)")
+        .map(|offset| offset + compile_pos)
+        .expect("defn branch は compiled-fn return 直後 marker を出すこと");
+    let push_object_pos = body[after_compile_pos..]
+        .find("next-functions (push-object-vector functions compiled-fn)")
+        .map(|offset| offset + after_compile_pos)
+        .expect("defn branch は compiled-fn を functions に push すること");
+    let after_push_pos = body[push_object_pos..]
+        .find("(print 9000000228)")
+        .map(|offset| offset + push_object_pos)
+        .expect("defn branch は push-object-vector 直後 marker を出すこと");
+    let finish_marker_pos = body[after_push_pos..]
+        .find("print-source-defn-normal-setup-finish-shape idx functions compiled-fn defn-result data-ref")
+        .map(|offset| offset + after_push_pos)
+        .expect("defn branch は state finish marker を出すこと");
+
+    assert!(
+        before_compile_pos < compile_pos
+            && compile_pos < after_compile_pos
+            && after_compile_pos < push_object_pos
+            && push_object_pos < after_push_pos
+            && after_push_pos < finish_marker_pos,
+        "source-defn normal setup diagnostic は defn compile entry/return、vector push 後、state finish を順に分けて測るべき"
+    );
+}
+
+#[test]
 fn test_linux_x86_representative_seed_omits_payload_entry_shape_probe() {
     let source = linux_x86_representative_actual_stage23_seed_source();
     assert!(
