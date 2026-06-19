@@ -356,6 +356,10 @@
 (defn native-param-slot-offset-x86 [param-index]
   (local-slot-offset (+ param-index 1)))
 
+;; x86 bundle の IR local は scratch slot 0 の後ろに配置する
+(defn native-local-slot-offset-x86 [idx]
+  (local-slot-offset (+ idx 1)))
+
 
 ;; 16 byte alignment を満たす stack size に丸める
 (defn align-16 [value]
@@ -10621,9 +10625,9 @@
           (if (= (is-selfhost-runtime-opcode-x86 opcode) 1)
             (codegen-selfhost-runtime-bundle-x86 opcode current-offset import-stub-offset import-count frame-base-slot-count current-depth)
                 (if (= opcode 10)
-                  (emit-local-get-bundle-x86 (local-slot-offset operand) frame-base-slot-count current-depth)
+                  (emit-local-get-bundle-x86 (native-local-slot-offset-x86 operand) frame-base-slot-count current-depth)
                   (if (= opcode 11)
-                    (emit-local-set-bundle-x86 (local-slot-offset operand) frame-base-slot-count current-depth)
+                    (emit-local-set-bundle-x86 (native-local-slot-offset-x86 operand) frame-base-slot-count current-depth)
                   (if (= opcode 44)
                     (emit-drop-bundle-x86 frame-base-slot-count current-depth)
                     (if (= opcode 76)
@@ -10730,9 +10734,9 @@
             (if (= opcode 75)
               (emit-i32-const-bundle-x86 0 frame-base-slot-count current-depth)
               (if (= opcode 10)
-                (emit-local-get-bundle-x86 (local-slot-offset operand) frame-base-slot-count current-depth)
+                (emit-local-get-bundle-x86 (native-local-slot-offset-x86 operand) frame-base-slot-count current-depth)
                 (if (= opcode 11)
-                  (emit-local-set-bundle-x86 (local-slot-offset operand) frame-base-slot-count current-depth)
+                  (emit-local-set-bundle-x86 (native-local-slot-offset-x86 operand) frame-base-slot-count current-depth)
                   (if (= opcode 44)
                     (emit-drop-bundle-x86 frame-base-slot-count current-depth)
                     (if (= opcode 76)
@@ -10999,12 +11003,12 @@
                 (generate-native-control-instr-bundle-loop-x86-with-context ctx next-state)))
             (if (= (direct-append-x86-opcode opcode) 3)
               (do
-                (append-local-set-bundle-x86 result (local-slot-offset operand) frame-base-slot-count current-depth)
+                (append-local-set-bundle-x86 result (native-local-slot-offset-x86 operand) frame-base-slot-count current-depth)
                 (let [next-state (make-x86-control-loop-state (+ idx 1) (- remaining 1))]
                   (generate-native-control-instr-bundle-loop-x86-with-context ctx next-state)))
               (if (= (direct-append-x86-opcode opcode) 4)
                 (do
-                  (append-local-get-bundle-x86 result (local-slot-offset operand) frame-base-slot-count current-depth)
+                  (append-local-get-bundle-x86 result (native-local-slot-offset-x86 operand) frame-base-slot-count current-depth)
                   (let [next-state (make-x86-control-loop-state (+ idx 1) (- remaining 1))]
                     (generate-native-control-instr-bundle-loop-x86-with-context ctx next-state)))
                 (if (= (direct-append-x86-opcode opcode) 5)

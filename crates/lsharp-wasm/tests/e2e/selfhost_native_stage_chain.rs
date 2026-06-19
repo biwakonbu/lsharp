@@ -6684,6 +6684,15 @@ fn test_native_codegen_x86_param_spill_preserves_selfhost_scratch_slot_zero() {
         "selfhost IR は local slot 0 を scratch として予約するため、x86 param spill は param0 を slot1 へ退避するべき"
     );
     assert!(
+        source.contains("(defn native-local-slot-offset-x86 [idx]")
+            && source.contains("(native-local-slot-offset-x86 operand)")
+            && !source.contains("(emit-local-get-bundle-x86 (local-slot-offset operand) frame-base-slot-count current-depth)")
+            && !source.contains("(emit-local-set-bundle-x86 (local-slot-offset operand) frame-base-slot-count current-depth)")
+            && !source.contains("(append-local-get-bundle-x86 result (local-slot-offset operand) frame-base-slot-count current-depth)")
+            && !source.contains("(append-local-set-bundle-x86 result (local-slot-offset operand) frame-base-slot-count current-depth)"),
+        "x86 bundle local.get/set も scratch slot0 を避けるため native local slot helper を使うべき"
+    );
+    assert!(
         generate_body.contains("(spill-native-function-params-x86-loop 0 param-count result)")
             && generate_body.contains("(+ (+ param-count local-count) 1)")
             && !generate_body.contains("(emit-mov-local-from-rdi (local-slot-offset 0))"),
@@ -22495,6 +22504,51 @@ fn host_target_direct_call_four_arg_bundle_code_bytes() -> Vec<u8> {
     )
 }
 
+fn linux_x86_direct_call_four_arg_computed_third_local_fourth_code_bytes() -> Vec<u8> {
+    run_native_codegen_host_bytes_harness(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn main []
+  (let [caller-ir0 (vector-push (vector-new 11) (make-instr 3 13))
+        caller-ir1 (vector-push caller-ir0 (make-instr 11 0))
+        caller-ir2 (vector-push caller-ir1 (make-instr 3 77))
+        caller-ir3 (vector-push caller-ir2 (make-instr 11 1))
+        caller-ir4 (vector-push caller-ir3 (make-local-get 0))
+        caller-ir5 (vector-push caller-ir4 (make-instr 3 0))
+        caller-ir6 (vector-push caller-ir5 (make-local-get 0))
+        caller-ir7 (vector-push caller-ir6 (make-instr 3 1))
+        caller-ir8 (vector-push caller-ir7 (make-instr 24 0))
+        caller-ir9 (vector-push caller-ir8 (make-local-get 1))
+        caller-ir (vector-push caller-ir9 (make-call 1))
+        callee-ir (vector-push (vector-new 1) (make-local-get 3))
+        caller (make-function-meta 0 2 caller-ir)
+        callee (make-function-meta 4 0 callee-ir)
+        functions (vector-push (vector-push (vector-new 2) caller) callee)
+        target (make-target 3)
+        code (emit-native-function-meta-bundle functions target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    )
+}
+
 fn host_target_direct_call_five_arg_bundle_code_bytes() -> Vec<u8> {
     run_native_codegen_host_bytes_harness(
         r#"(module Main)
@@ -37405,6 +37459,38 @@ fn test_e2e_native_host_binary_direct_call_four_arg_bundle_link_and_execute() {
         exit_code,
         54,
         "host binary direct call four-arg bundle: exit code 54 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-LINUX-X86-SELFHOST-03: 4 引数 call の第 3 引数が計算式でも第 4 引数 local を保持できること。
+#[test]
+#[ignore]
+fn test_e2e_native_linux_x86_four_arg_call_computed_third_preserves_fourth_local() {
+    let code_bytes = linux_x86_direct_call_four_arg_computed_third_local_fourth_code_bytes();
+
+    assert!(
+        !code_bytes.is_empty(),
+        "Linux x86_64 four-arg computed-third/local-fourth 向けコードバイト列が空"
+    );
+
+    let exit_code = if linux_x86_native_exec_supported() {
+        link_and_run_linux_x86_native_binary(&code_bytes)
+            .expect("Linux x86_64 four-arg computed-third/local-fourth 実行に失敗")
+    } else if std::env::var_os("LSHARP_NATIVE_LINUX_X86_RUN_LIMA").is_some() {
+        link_and_run_linux_x86_native_binary_via_lima(&code_bytes)
+            .expect("Lima Linux x86_64 four-arg computed-third/local-fourth 実行に失敗")
+    } else {
+        return;
+    };
+
+    assert_eq!(
+        exit_code,
+        77,
+        "Linux x86_64 four-arg computed-third/local-fourth: 第4引数 local 77 を返すべきだが {} を得た\n\
          bytes ({} bytes): {:?}",
         exit_code,
         code_bytes.len(),
