@@ -1981,6 +1981,124 @@ fn test_wasm_compiler_source_defn_normal_setup_diagnostic_marks_defn_handoff_sha
 }
 
 #[test]
+fn test_wasm_compiler_source_defn_normal_setup_diagnostic_marks_defn_function_internals() {
+    let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("Compiler.ls を読めること");
+    let defn_body = compiler
+        .split("(defn compile-defn-with-source")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn compile-defn-function-with-source")
+                .next()
+        })
+        .expect("compile-defn-with-source body を取り出せること");
+    let function_body = compiler
+        .split("(defn compile-defn-function-with-source")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn compile-defn-functions-with-source")
+                .next()
+        })
+        .expect("compile-defn-function-with-source body を取り出せること");
+
+    for token in [
+        "(print 9000000233)",
+        "(print 9000000234)",
+        "(print 9000000235)",
+    ] {
+        assert!(
+            defn_body.contains(token),
+            "compile-defn-with-source は body/env/expr compile 境界診断 token {token} を含むべき"
+        );
+    }
+    for token in [
+        "(print 9000000229)",
+        "(print 9000000230)",
+        "(print 9000000231)",
+        "(print 9000000232)",
+    ] {
+        assert!(
+            function_body.contains(token),
+            "compile-defn-function-with-source は source-ir/ir/meta 境界診断 token {token} を含むべき"
+        );
+    }
+
+    let body_expr_pos = defn_body
+        .find("body-expr (vector-get node body-idx)")
+        .expect("compile-defn-with-source は body-expr を取り出すこと");
+    let body_root_pos = defn_body[body_expr_pos..]
+        .find("(root_push body-expr)")
+        .map(|offset| offset + body_expr_pos)
+        .expect("compile-defn-with-source は body-expr を root すること");
+    let body_marker_pos = defn_body[body_root_pos..]
+        .find("(print 9000000233)")
+        .map(|offset| offset + body_root_pos)
+        .expect("compile-defn-with-source は body shape marker を出すこと");
+    let env_pos = defn_body[body_marker_pos..]
+        .find("env (bind-node-params node 3 0 param-count (env-new) 1)")
+        .map(|offset| offset + body_marker_pos)
+        .expect("compile-defn-with-source は env を作ること");
+    let env_marker_pos = defn_body[env_pos..]
+        .find("(print 9000000234)")
+        .map(|offset| offset + env_pos)
+        .expect("compile-defn-with-source は env marker を出すこと");
+    let compile_expr_pos = defn_body[env_marker_pos..]
+        .find("result (compile-expr-with-source body-expr source env ftable instrs0 data-ref)")
+        .map(|offset| offset + env_marker_pos)
+        .expect("compile-defn-with-source は compile-expr-with-source を呼ぶこと");
+    let result_marker_pos = defn_body[compile_expr_pos..]
+        .find("(print 9000000235)")
+        .map(|offset| offset + compile_expr_pos)
+        .expect("compile-defn-with-source は result marker を出すこと");
+    assert!(
+        body_expr_pos < body_root_pos
+            && body_root_pos < body_marker_pos
+            && body_marker_pos < env_pos
+            && env_pos < env_marker_pos
+            && env_marker_pos < compile_expr_pos
+            && compile_expr_pos < result_marker_pos,
+        "compile-defn-with-source は body / env / expr result の境界を順に測るべき"
+    );
+
+    let entry_marker_pos = function_body
+        .find("(print 9000000229)")
+        .expect("compile-defn-function-with-source は entry marker を出すこと");
+    let source_ir_pos = function_body[entry_marker_pos..]
+        .find("source-ir (compile-defn-with-source node source ftable data-ref)")
+        .map(|offset| offset + entry_marker_pos)
+        .expect("compile-defn-function-with-source は source-ir を作ること");
+    let source_ir_marker_pos = function_body[source_ir_pos..]
+        .find("(print 9000000230)")
+        .map(|offset| offset + source_ir_pos)
+        .expect("compile-defn-function-with-source は source-ir marker を出すこと");
+    let ir_pos = function_body[source_ir_marker_pos..]
+        .find("ir (if (> (vector-length source-ir) 0) source-ir (compile-defn-with-ftable node ftable))")
+        .map(|offset| offset + source_ir_marker_pos)
+        .expect("compile-defn-function-with-source は fallback ir を選ぶこと");
+    let ir_marker_pos = function_body[ir_pos..]
+        .find("(print 9000000231)")
+        .map(|offset| offset + ir_pos)
+        .expect("compile-defn-function-with-source は ir marker を出すこと");
+    let meta_pos = function_body[ir_marker_pos..]
+        .find("result (make-function-meta final-param-count local-count ir)")
+        .map(|offset| offset + ir_marker_pos)
+        .expect("compile-defn-function-with-source は function meta を作ること");
+    let meta_marker_pos = function_body[meta_pos..]
+        .find("(print 9000000232)")
+        .map(|offset| offset + meta_pos)
+        .expect("compile-defn-function-with-source は function meta marker を出すこと");
+    assert!(
+        entry_marker_pos < source_ir_pos
+            && source_ir_pos < source_ir_marker_pos
+            && source_ir_marker_pos < ir_pos
+            && ir_pos < ir_marker_pos
+            && ir_marker_pos < meta_pos
+            && meta_pos < meta_marker_pos,
+        "compile-defn-function-with-source は entry / source-ir / ir / meta の境界を順に測るべき"
+    );
+}
+
+#[test]
 fn test_linux_x86_representative_seed_omits_payload_entry_shape_probe() {
     let source = linux_x86_representative_actual_stage23_seed_source();
     assert!(

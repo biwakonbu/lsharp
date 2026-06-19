@@ -1257,13 +1257,28 @@
       body-expr (vector-get node body-idx)]
       (do
         (root_push body-expr)
+        (print 9000000233)
+        (print param-count)
+        (print body-idx)
+        (print (vector-length body-expr))
+        (print (vector-get body-expr 0))
+        (print (vector-length (ref-get data-ref)))
         (let [env (bind-node-params node 3 0 param-count (env-new) 1)]
         (do
         (root_push env)
+        (print 9000000234)
+        (print param-count)
+        (print body-idx)
+        (print (vector-length body-expr))
+        (print (vector-length (ref-get data-ref)))
         (let [instrs0 (vector-new 8)
           result (compile-expr-with-source body-expr source env ftable instrs0 data-ref)]
           (do
             (root_push result)
+            (print 9000000235)
+            (print param-count)
+            (print (vector-length result))
+            (print (vector-length (ref-get data-ref)))
             (root_pop)
             (root_pop)
             (root_pop)
@@ -1278,18 +1293,35 @@
     (root_push source)
     (root_push ftable)
     (root_push data-ref)
+    (print 9000000229)
+    (print (vector-get node 2))
+    (print (vector-length node))
+    (print (vector-length (ref-get data-ref)))
     (let [source-ir (compile-defn-with-source node source ftable data-ref)]
       (do
         (root_push source-ir)
+        (print 9000000230)
+        (print (vector-get node 2))
+        (print (vector-length source-ir))
+        (print (vector-length (ref-get data-ref)))
         (let [ir (if (> (vector-length source-ir) 0) source-ir (compile-defn-with-ftable node ftable))]
           (do
             (root_push ir)
+            (print 9000000231)
+            (print (vector-get node 2))
+            (print (vector-length ir))
+            (print (vector-length (ref-get data-ref)))
             (let [local-max (max-local-slot ir 0 (vector-length ir) 0)
               final-param-count (vector-get node 2)
               local-count (if (> local-max final-param-count) (- local-max final-param-count) 0)
               result (make-function-meta final-param-count local-count ir)]
               (do
                 (root_push result)
+                (print 9000000232)
+                (print final-param-count)
+                (print local-count)
+                (print (vector-length ir))
+                (print (vector-length (ref-get data-ref)))
                 (root_pop)
                 (root_pop)
                 (root_pop)
