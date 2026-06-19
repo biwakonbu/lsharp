@@ -6684,13 +6684,12 @@ fn test_native_codegen_x86_param_spill_preserves_selfhost_scratch_slot_zero() {
         "selfhost IR は local slot 0 を scratch として予約するため、x86 param spill は param0 を slot1 へ退避するべき"
     );
     assert!(
-        source.contains("(defn native-local-slot-offset-x86 [idx]")
-            && source.contains("(native-local-slot-offset-x86 operand)")
-            && !source.contains("(emit-local-get-bundle-x86 (local-slot-offset operand) frame-base-slot-count current-depth)")
-            && !source.contains("(emit-local-set-bundle-x86 (local-slot-offset operand) frame-base-slot-count current-depth)")
-            && !source.contains("(append-local-get-bundle-x86 result (local-slot-offset operand) frame-base-slot-count current-depth)")
-            && !source.contains("(append-local-set-bundle-x86 result (local-slot-offset operand) frame-base-slot-count current-depth)"),
-        "x86 bundle local.get/set も scratch slot0 を避けるため native local slot helper を使うべき"
+        source.contains(
+            "(emit-local-get-bundle-x86 (local-slot-offset operand) frame-base-slot-count current-depth)"
+        ) && source.contains(
+            "(emit-local-set-bundle-x86 (local-slot-offset operand) frame-base-slot-count current-depth)"
+        ) && !source.contains("(defn native-local-slot-offset-x86 [idx]"),
+        "x86 bundle は selfhost 側の 1-based local operand をそのまま native slot に写すべき"
     );
     assert!(
         generate_body.contains("(spill-native-function-params-x86-loop 0 param-count result)")
@@ -22527,18 +22526,18 @@ fn linux_x86_direct_call_four_arg_computed_third_local_fourth_code_bytes() -> Ve
 
 (defn main []
   (let [caller-ir0 (vector-push (vector-new 11) (make-instr 3 13))
-        caller-ir1 (vector-push caller-ir0 (make-instr 11 0))
+        caller-ir1 (vector-push caller-ir0 (make-instr 11 1))
         caller-ir2 (vector-push caller-ir1 (make-instr 3 77))
-        caller-ir3 (vector-push caller-ir2 (make-instr 11 1))
-        caller-ir4 (vector-push caller-ir3 (make-local-get 0))
+        caller-ir3 (vector-push caller-ir2 (make-instr 11 2))
+        caller-ir4 (vector-push caller-ir3 (make-local-get 1))
         caller-ir5 (vector-push caller-ir4 (make-instr 3 0))
-        caller-ir6 (vector-push caller-ir5 (make-local-get 0))
+        caller-ir6 (vector-push caller-ir5 (make-local-get 1))
         caller-ir7 (vector-push caller-ir6 (make-instr 3 1))
         caller-ir8 (vector-push caller-ir7 (make-instr 24 0))
-        caller-ir9 (vector-push caller-ir8 (make-local-get 1))
+        caller-ir9 (vector-push caller-ir8 (make-local-get 2))
         caller-ir (vector-push caller-ir9 (make-call 1))
-        callee-ir (vector-push (vector-new 1) (make-local-get 3))
-        caller (make-function-meta 0 2 caller-ir)
+        callee-ir (vector-push (vector-new 1) (make-local-get 4))
+        caller (make-function-meta 0 3 caller-ir)
         callee (make-function-meta 4 0 callee-ir)
         functions (vector-push (vector-push (vector-new 2) caller) callee)
         target (make-target 3)
