@@ -1190,6 +1190,97 @@
     (if (= expr-count 0)
       instrs
       (compile-do-exprs-with-source node source env ftable 0 expr-count instrs data-ref))))
+(defn compile-do-exprs-step-with-source-normal-setup-diagnostic [node source env ftable idx expr-count instrs data-ref]
+  (if (>= idx expr-count)
+    (make-compile-step-state 1 idx instrs)
+    (let [expr (vector-get node (+ 2 idx))]
+      (do
+        (print 9000000244)
+        (print idx)
+        (print expr-count)
+        (print (vector-get expr 0))
+        (print (vector-length expr))
+        (print (vector-length instrs))
+        (print (vector-length (ref-get data-ref)))
+        (let [value-instrs (compile-expr-with-source-normal-setup-diagnostic expr source env ftable instrs data-ref)]
+          (do
+            (root_push value-instrs)
+            (print 9000000245)
+            (print idx)
+            (print (vector-length value-instrs))
+            (print (vector-length (ref-get data-ref)))
+            (let [state (finish-compile-do-exprs-step idx expr-count value-instrs)]
+              (do
+                (root_push state)
+                (print 9000000246)
+                (print idx)
+                (print (vector-get state 0))
+                (print (vector-get state 1))
+                (print (vector-length (vector-get state 2)))
+                (print (vector-length (ref-get data-ref)))
+                (root_pop)
+                (root_pop)
+                state))))))))
+
+(defn continue-compile-do-exprs-step-with-source-normal-setup-diagnostic [node source env ftable expr-count state data-ref]
+  (if (= (vector-get state 0) 1)
+    state
+    (compile-do-exprs-step-with-source-normal-setup-diagnostic node source env ftable (vector-get state 1) expr-count (vector-get state 2) data-ref)))
+
+(defn compile-do-exprs-step-8-with-source-normal-setup-diagnostic [node source env ftable idx expr-count instrs data-ref]
+  (let [step1 (compile-do-exprs-step-with-source-normal-setup-diagnostic node source env ftable idx expr-count instrs data-ref)
+    step2 (continue-compile-do-exprs-step-with-source-normal-setup-diagnostic node source env ftable expr-count step1 data-ref)
+    step3 (continue-compile-do-exprs-step-with-source-normal-setup-diagnostic node source env ftable expr-count step2 data-ref)
+    step4 (continue-compile-do-exprs-step-with-source-normal-setup-diagnostic node source env ftable expr-count step3 data-ref)
+    step5 (continue-compile-do-exprs-step-with-source-normal-setup-diagnostic node source env ftable expr-count step4 data-ref)
+    step6 (continue-compile-do-exprs-step-with-source-normal-setup-diagnostic node source env ftable expr-count step5 data-ref)
+    step7 (continue-compile-do-exprs-step-with-source-normal-setup-diagnostic node source env ftable expr-count step6 data-ref)
+    step8 (continue-compile-do-exprs-step-with-source-normal-setup-diagnostic node source env ftable expr-count step7 data-ref)]
+    step8))
+
+(defn continue-compile-do-exprs-step-8-with-source-normal-setup-diagnostic [node source env ftable expr-count state data-ref]
+  (if (= (vector-get state 0) 1)
+    state
+    (compile-do-exprs-step-8-with-source-normal-setup-diagnostic node source env ftable (vector-get state 1) expr-count (vector-get state 2) data-ref)))
+
+(defn compile-do-exprs-step-64-with-source-normal-setup-diagnostic [node source env ftable idx expr-count instrs data-ref]
+  (let [step1 (compile-do-exprs-step-8-with-source-normal-setup-diagnostic node source env ftable idx expr-count instrs data-ref)
+    step2 (continue-compile-do-exprs-step-8-with-source-normal-setup-diagnostic node source env ftable expr-count step1 data-ref)
+    step3 (continue-compile-do-exprs-step-8-with-source-normal-setup-diagnostic node source env ftable expr-count step2 data-ref)
+    step4 (continue-compile-do-exprs-step-8-with-source-normal-setup-diagnostic node source env ftable expr-count step3 data-ref)
+    step5 (continue-compile-do-exprs-step-8-with-source-normal-setup-diagnostic node source env ftable expr-count step4 data-ref)
+    step6 (continue-compile-do-exprs-step-8-with-source-normal-setup-diagnostic node source env ftable expr-count step5 data-ref)
+    step7 (continue-compile-do-exprs-step-8-with-source-normal-setup-diagnostic node source env ftable expr-count step6 data-ref)
+    step8 (continue-compile-do-exprs-step-8-with-source-normal-setup-diagnostic node source env ftable expr-count step7 data-ref)]
+    step8))
+
+(defn continue-compile-do-exprs-with-source-normal-setup-diagnostic [node source env ftable expr-count step data-ref]
+  (if (= (vector-get step 0) 1)
+    (vector-get step 2)
+    (compile-do-exprs-with-source-normal-setup-diagnostic node source env ftable (vector-get step 1) expr-count (vector-get step 2) data-ref)))
+
+(defn compile-do-exprs-with-source-normal-setup-diagnostic [node source env ftable idx expr-count instrs data-ref]
+  (continue-compile-do-exprs-with-source-normal-setup-diagnostic node source env ftable expr-count (compile-do-exprs-step-64-with-source-normal-setup-diagnostic node source env ftable idx expr-count instrs data-ref) data-ref))
+
+(defn compile-do-with-source-normal-setup-diagnostic [node source env ftable instrs data-ref]
+  (let [expr-count (vector-get node 1)]
+    (do
+      (print 9000000243)
+      (print expr-count)
+      (print (vector-length node))
+      (print (vector-length instrs))
+      (print (vector-length (ref-get data-ref)))
+      (if (= expr-count 0)
+        instrs
+        (let [result (compile-do-exprs-with-source-normal-setup-diagnostic node source env ftable 0 expr-count instrs data-ref)]
+          (do
+            (root_push result)
+            (print 9000000247)
+            (print expr-count)
+            (print (vector-length result))
+            (print (vector-length (ref-get data-ref)))
+            (root_pop)
+            result))))))
 (defn compile-lambda-with-source [node source env ftable instrs data-ref]
   (do
     (root_push node)
@@ -1279,7 +1370,9 @@
   (let [tag (vector-get node 0)]
     (if (= tag 7)
       (compile-let-with-source-normal-setup-diagnostic node source env ftable instrs data-ref)
-      (compile-expr-with-source-dispatch node source env ftable instrs data-ref))))
+      (if (= tag 9)
+        (compile-do-with-source-normal-setup-diagnostic node source env ftable instrs data-ref)
+        (compile-expr-with-source-dispatch node source env ftable instrs data-ref)))))
 (defn compile-defn-with-source [node source ftable data-ref]
   (do
     (root_push node)

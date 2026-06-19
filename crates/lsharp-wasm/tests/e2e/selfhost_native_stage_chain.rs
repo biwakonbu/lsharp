@@ -2252,6 +2252,85 @@ fn test_wasm_compiler_source_defn_normal_setup_diagnostic_marks_expr_let_interna
 }
 
 #[test]
+fn test_wasm_compiler_source_defn_normal_setup_diagnostic_marks_expr_do_internals() {
+    let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("Compiler.ls を読めること");
+    let plain_expr_body = compiler
+        .split("(defn compile-expr-with-source [")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("compile-expr-with-source body を取り出せること");
+    let plain_do_body = compiler
+        .split("(defn compile-do-with-source [")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("compile-do-with-source body を取り出せること");
+    for token in [
+        "(print 9000000243)",
+        "(print 9000000244)",
+        "(print 9000000245)",
+        "(print 9000000246)",
+        "(print 9000000247)",
+    ] {
+        assert!(
+            !plain_expr_body.contains(token) && !plain_do_body.contains(token),
+            "通常 expr/do compile path は host artifact gate の標準出力を汚さないよう診断 token {token} を含めない"
+        );
+    }
+
+    let expr_dispatch_diag_body = compiler
+        .split("(defn compile-expr-with-source-dispatch-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn compile-defn-with-source").next())
+        .expect("compile-expr-with-source-dispatch-normal-setup-diagnostic body を取り出せること");
+    assert!(
+        expr_dispatch_diag_body.contains(
+            "(compile-do-with-source-normal-setup-diagnostic node source env ftable instrs data-ref)"
+        ),
+        "diagnostic dispatch は tag 9 do を do diagnostic wrapper へ送るべき"
+    );
+
+    let do_step_diag_body = compiler
+        .split("(defn compile-do-exprs-step-with-source-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn continue-compile-do-exprs-step-with-source-normal-setup-diagnostic")
+                .next()
+        })
+        .expect("compile-do-exprs-step-with-source-normal-setup-diagnostic body を取り出せること");
+    for token in [
+        "(print 9000000244)",
+        "(print 9000000245)",
+        "(print 9000000246)",
+    ] {
+        assert!(
+            do_step_diag_body.contains(token),
+            "do step diagnostic wrapper は child compile / finish 境界 token {token} を含むべき"
+        );
+    }
+    assert!(
+        do_step_diag_body.contains(
+            "value-instrs (compile-expr-with-source-normal-setup-diagnostic expr source env ftable instrs data-ref)"
+        ),
+        "do step diagnostic wrapper は child expr を expr diagnostic wrapper で測るべき"
+    );
+
+    let do_entry_diag_body = compiler
+        .split("(defn compile-do-with-source-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("compile-do-with-source-normal-setup-diagnostic body を取り出せること");
+    assert!(
+        do_entry_diag_body.contains("(print 9000000243)")
+            && do_entry_diag_body.contains("(print 9000000247)")
+            && do_entry_diag_body.contains(
+                "compile-do-exprs-with-source-normal-setup-diagnostic node source env ftable 0 expr-count instrs data-ref",
+            ),
+        "do diagnostic wrapper は entry/final marker と diagnostic do expr chain を持つべき"
+    );
+}
+
+#[test]
 fn test_linux_x86_representative_seed_omits_payload_entry_shape_probe() {
     let source = linux_x86_representative_actual_stage23_seed_source();
     assert!(
