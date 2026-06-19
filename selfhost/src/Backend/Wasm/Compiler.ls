@@ -762,6 +762,58 @@
             (root_pop)
             result))))))
 
+(defn compile-map-builtin-with-ftable-normal-setup-diagnostic [node env ftable instrs bop data-ref]
+  (let [map-expr (vector-get node 3)
+    key-expr (vector-get node 4)]
+    (do
+      (print 9000000250)
+      (print bop)
+      (print (vector-get map-expr 0))
+      (print (vector-get key-expr 0))
+      (print (vector-length instrs))
+      (print (vector-length (ref-get data-ref)))
+      (let [map-instrs (compile-expr-with-ftable map-expr env ftable (vector-new 8))
+        map-root (alloc-root-needed map-expr)
+        map-simple (if (simple-map-operand map-expr) 1 0)]
+        (do
+          (root_push map-instrs)
+          (print 9000000251)
+          (print (vector-length map-instrs))
+          (print map-root)
+          (print map-simple)
+          (print (vector-length (ref-get data-ref)))
+          (let [key-instrs (compile-map-key-with-ftable key-expr env ftable)
+            key-root (map-key-root-needed-with-source key-expr)
+            simple-path (if (simple-map-operand map-expr) (simple-map-operand key-expr) false)]
+            (do
+              (root_push key-instrs)
+              (print 9000000252)
+              (print (vector-length key-instrs))
+              (print key-root)
+              (print (if simple-path 1 0))
+              (print (vector-length (ref-get data-ref)))
+              (if (= bop 62)
+                (let [result (compile-map-insert-builtin-with-ftable node env ftable instrs bop map-instrs key-instrs map-root key-root)]
+                  (do
+                    (root_push result)
+                    (print 9000000253)
+                    (print (vector-length result))
+                    (print (vector-length (ref-get data-ref)))
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    result))
+                (let [result (compile-map-lookup-builtin-with-ftable env instrs map-instrs key-instrs map-root key-root bop simple-path)]
+                  (do
+                    (root_push result)
+                    (print 9000000253)
+                    (print (vector-length result))
+                    (print (vector-length (ref-get data-ref)))
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    result))))))))))
+
 (defn compile-substring-instrs [env instrs src-instrs start-instrs end-instrs]
   (let [temp-base (max-root-temp-base3 env src-instrs start-instrs end-instrs)
     src-local temp-base
@@ -994,6 +1046,20 @@
             (compile-stateful-builtin-with-source node source env ftable instrs data-ref bop)
             (compile-builtin-apply-fallback-with-source node source env ftable instrs data-ref bop safe-ftable-path))))))))
 
+(defn compile-builtin-apply-with-source-normal-setup-diagnostic [node source env ftable instrs data-ref bop safe-ftable-path]
+  (let [result
+    (if (if safe-ftable-path (source-builtin-map-op bop) false)
+      (compile-map-builtin-with-ftable-normal-setup-diagnostic node env ftable instrs bop data-ref)
+      (compile-builtin-apply-with-source node source env ftable instrs data-ref bop))]
+    (do
+      (root_push result)
+      (print 9000000249)
+      (print bop)
+      (print (vector-length result))
+      (print (vector-length (ref-get data-ref)))
+      (root_pop)
+      result)))
+
 (defn compile-builtin-apply-simple-fallback-with-ftable [node env ftable instrs bop]
   (let [instrs1 (compile-expr-with-ftable (vector-get node 3) env ftable instrs)]
     (do
@@ -1139,6 +1205,33 @@
         (if (> bop 0)
           (compile-builtin-apply-with-source node source env ftable instrs data-ref bop)
           (compile-user-call-with-source node source env ftable instrs data-ref func-hash arg-count))))))
+(defn compile-apply-with-source-normal-setup-diagnostic [node source env ftable instrs data-ref]
+  (let [func-node (vector-get node 1)
+    arg-count (vector-get node 2)]
+    (let [func-tag (vector-get func-node 0)
+      func-hash (if (= func-tag 4) (vector-get func-node 1) 0)]
+      (let [bop (builtin-opcode func-hash)
+        safe-ftable-path (if (source-neutral-ftable-builtin-op bop) (apply-args-safe-for-ftable node 0 arg-count) false)]
+        (do
+          (print 9000000248)
+          (print arg-count)
+          (print func-tag)
+          (print bop)
+          (print (if safe-ftable-path 1 0))
+          (print (vector-length instrs))
+          (print (vector-length (ref-get data-ref)))
+          (let [result
+            (if (> bop 0)
+              (compile-builtin-apply-with-source-normal-setup-diagnostic node source env ftable instrs data-ref bop safe-ftable-path)
+              (compile-user-call-with-source node source env ftable instrs data-ref func-hash arg-count))]
+            (do
+              (root_push result)
+              (print 9000000249)
+              (print bop)
+              (print (vector-length result))
+              (print (vector-length (ref-get data-ref)))
+              (root_pop)
+              result)))))))
 (defn compile-do-exprs-step-with-source [node source env ftable idx expr-count instrs data-ref]
   (if (>= idx expr-count)
     (make-compile-step-state 1 idx instrs)
@@ -1372,7 +1465,9 @@
       (compile-let-with-source-normal-setup-diagnostic node source env ftable instrs data-ref)
       (if (= tag 9)
         (compile-do-with-source-normal-setup-diagnostic node source env ftable instrs data-ref)
-        (compile-expr-with-source-dispatch node source env ftable instrs data-ref)))))
+        (if (= tag 5)
+          (compile-apply-with-source-normal-setup-diagnostic node source env ftable instrs data-ref)
+          (compile-expr-with-source-dispatch node source env ftable instrs data-ref))))))
 (defn compile-defn-with-source [node source ftable data-ref]
   (do
     (root_push node)
@@ -2147,7 +2242,7 @@
       (print (vector-get init-expr 0))
       (print (vector-length init-expr))
       (print (vector-length (ref-get data-ref)))
-      (let [init-instrs (compile-expr-with-source init-expr source env ftable instrs data-ref)]
+      (let [init-instrs (compile-expr-with-source-normal-setup-diagnostic init-expr source env ftable instrs data-ref)]
         (do
           (root_push init-instrs)
           (print 9000000239)

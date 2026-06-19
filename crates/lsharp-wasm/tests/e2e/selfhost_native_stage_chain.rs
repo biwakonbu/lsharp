@@ -2249,6 +2249,12 @@ fn test_wasm_compiler_source_defn_normal_setup_diagnostic_marks_expr_let_interna
             ),
         "let chain diagnostic wrapper は step result と body compile 境界を測るべき"
     );
+    assert!(
+        let_diag_body.contains(
+            "init-instrs (compile-expr-with-source-normal-setup-diagnostic init-expr source env ftable instrs data-ref)",
+        ),
+        "let step diagnostic wrapper は init compile も expr diagnostic wrapper で測るべき"
+    );
 }
 
 #[test]
@@ -2327,6 +2333,102 @@ fn test_wasm_compiler_source_defn_normal_setup_diagnostic_marks_expr_do_internal
                 "compile-do-exprs-with-source-normal-setup-diagnostic node source env ftable 0 expr-count instrs data-ref",
             ),
         "do diagnostic wrapper は entry/final marker と diagnostic do expr chain を持つべき"
+    );
+}
+
+#[test]
+fn test_wasm_compiler_source_defn_normal_setup_diagnostic_marks_expr_apply_map_internals() {
+    let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("Compiler.ls を読めること");
+    let plain_apply_body = compiler
+        .split("(defn compile-apply-with-source [")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("compile-apply-with-source body を取り出せること");
+    let plain_map_ftable_body = compiler
+        .split("(defn compile-map-builtin-with-ftable [")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("compile-map-builtin-with-ftable body を取り出せること");
+    for token in [
+        "(print 9000000248)",
+        "(print 9000000249)",
+        "(print 9000000250)",
+        "(print 9000000251)",
+        "(print 9000000252)",
+        "(print 9000000253)",
+    ] {
+        assert!(
+            !plain_apply_body.contains(token) && !plain_map_ftable_body.contains(token),
+            "通常 apply/map ftable compile path は host artifact gate の標準出力を汚さないよう診断 token {token} を含めない"
+        );
+    }
+
+    let expr_dispatch_diag_body = compiler
+        .split("(defn compile-expr-with-source-dispatch-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn compile-defn-with-source").next())
+        .expect("compile-expr-with-source-dispatch-normal-setup-diagnostic body を取り出せること");
+    assert!(
+        expr_dispatch_diag_body.contains(
+            "(compile-apply-with-source-normal-setup-diagnostic node source env ftable instrs data-ref)"
+        ),
+        "diagnostic dispatch は tag 5 apply を apply diagnostic wrapper へ送るべき"
+    );
+
+    let apply_diag_body = compiler
+        .split("(defn compile-apply-with-source-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn compile-do-exprs-step-with-source")
+                .next()
+        })
+        .expect("compile-apply-with-source-normal-setup-diagnostic body を取り出せること");
+    assert!(
+        apply_diag_body.contains("(print 9000000248)")
+            && apply_diag_body.contains("(print 9000000249)")
+            && apply_diag_body.contains(
+                "compile-builtin-apply-with-source-normal-setup-diagnostic node source env ftable instrs data-ref bop safe-ftable-path",
+            ),
+        "apply diagnostic wrapper は builtin 判定と戻り instr shape を測るべき"
+    );
+
+    let builtin_diag_body = compiler
+        .split("(defn compile-builtin-apply-with-source-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn compile-apply-with-source-normal-setup-diagnostic")
+                .next()
+        })
+        .expect("compile-builtin-apply-with-source-normal-setup-diagnostic body を取り出せること");
+    assert!(
+        builtin_diag_body.contains(
+            "compile-map-builtin-with-ftable-normal-setup-diagnostic node env ftable instrs bop data-ref",
+        ),
+        "builtin diagnostic wrapper は safe ftable map path を map ftable diagnostic wrapper へ送るべき"
+    );
+
+    let map_diag_body = compiler
+        .split("(defn compile-map-builtin-with-ftable-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn compile-map-builtin-with-source").next())
+        .expect("compile-map-builtin-with-ftable-normal-setup-diagnostic body を取り出せること");
+    for token in [
+        "(print 9000000250)",
+        "(print 9000000251)",
+        "(print 9000000252)",
+        "(print 9000000253)",
+    ] {
+        assert!(
+            map_diag_body.contains(token),
+            "map ftable diagnostic wrapper は map/key/result 境界 token {token} を含むべき"
+        );
+    }
+    assert!(
+        map_diag_body.contains(
+            "result (compile-map-lookup-builtin-with-ftable env instrs map-instrs key-instrs map-root key-root bop simple-path)"
+        ),
+        "map ftable diagnostic wrapper は map-get lookup result 境界を測るべき"
     );
 }
 
