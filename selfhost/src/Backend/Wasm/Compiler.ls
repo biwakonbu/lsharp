@@ -1673,6 +1673,15 @@
               (print-source-defn-normal-setup-ref-after-write-shape idx functions skip-state-ref data-ref)
               (let [result (ref-get skip-state-ref)]
                 (do
+                  (print 9000000224)
+                  (print idx)
+                  (print (vector-length functions))
+                  (print result)
+                  (print (vector-length result))
+                  (print (vector-get result 0))
+                  (print (vector-get result 1))
+                  (print (vector-length (vector-get result 2)))
+                  (print (vector-length (ref-get data-ref)))
                   (root_push result)
                   (print-source-defn-normal-setup-result-after-root-shape idx functions result data-ref)
                   (print-source-defn-normal-setup-skip-shape idx functions result data-ref)

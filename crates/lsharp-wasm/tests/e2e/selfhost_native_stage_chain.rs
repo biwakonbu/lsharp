@@ -1782,6 +1782,7 @@ fn test_wasm_compiler_source_defn_normal_setup_diagnostic_marks_skip_state_shape
         "(print 9000000222)",
         "(defn print-source-defn-normal-setup-result-after-root-shape",
         "(print 9000000223)",
+        "(print 9000000224)",
         "print-source-defn-normal-setup-ref-after-write-shape idx functions skip-state-ref data-ref",
         "print-source-defn-normal-setup-result-after-root-shape idx functions result data-ref",
         "print-source-defn-normal-setup-skip-shape idx functions result data-ref",
@@ -1826,6 +1827,10 @@ fn test_wasm_compiler_source_defn_normal_setup_diagnostic_marks_skip_state_shape
         .find("(root_push result)")
         .map(|offset| offset + result_pos)
         .expect("skip branch は result state を marker 前から root すること");
+    let before_root_marker_pos = body[result_pos..]
+        .find("(print 9000000224)")
+        .map(|offset| offset + result_pos)
+        .expect("skip branch は result root 前の state shape marker を出すこと");
     let after_root_marker_pos = body[result_root_pos..]
         .find(
             "print-source-defn-normal-setup-result-after-root-shape idx functions result data-ref",
@@ -1846,11 +1851,12 @@ fn test_wasm_compiler_source_defn_normal_setup_diagnostic_marks_skip_state_shape
             && write_pos < after_write_marker_pos
             && after_write_marker_pos < result_pos
             && write_pos < result_pos
-            && result_pos < result_root_pos
+            && result_pos < before_root_marker_pos
+            && before_root_marker_pos < result_root_pos
             && result_root_pos < after_root_marker_pos
             && after_root_marker_pos < marker_pos
             && marker_pos < root_set_pos,
-        "source-defn normal setup diagnostic は writer return 直後、result root 直後、root_set 前を分けて測り、state slot2 がどこで壊れるか切り分けるべき"
+        "source-defn normal setup diagnostic は writer return 直後、result root 前後、root_set 前を分けて測り、state slot2 がどこで壊れるか切り分けるべき"
     );
 
     let writer_body = compiler_base
