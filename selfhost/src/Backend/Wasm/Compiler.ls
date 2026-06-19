@@ -1576,6 +1576,46 @@
     (root_pop)
     (root_pop)
     0))
+(defn print-source-defn-normal-setup-ref-after-write-shape [idx functions state-ref data-ref]
+  (do
+    (root_push functions)
+    (root_push state-ref)
+    (root_push data-ref)
+    (let [state (ref-get state-ref)]
+      (do
+        (root_push state)
+        (print 9000000222)
+        (print idx)
+        (print (vector-length functions))
+        (print state)
+        (print (vector-length state))
+        (print (vector-get state 0))
+        (print (vector-get state 1))
+        (print (vector-length (vector-get state 2)))
+        (print (vector-length (ref-get data-ref)))
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        0))))
+(defn print-source-defn-normal-setup-result-after-root-shape [idx functions result data-ref]
+  (do
+    (root_push functions)
+    (root_push result)
+    (root_push data-ref)
+    (print 9000000223)
+    (print idx)
+    (print (vector-length functions))
+    (print result)
+    (print (vector-length result))
+    (print (vector-get result 0))
+    (print (vector-get result 1))
+    (print (vector-length (vector-get result 2)))
+    (print (vector-length (ref-get data-ref)))
+    (root_pop)
+    (root_pop)
+    (root_pop)
+    0))
 (defn print-source-defn-normal-setup-skip-shape [idx functions result data-ref]
   (do
     (root_push functions)
@@ -1630,9 +1670,11 @@
             (do
               (root_push skip-state-ref)
               (write-compile-step-state-ref-normal-setup-diagnostic skip-state-ref 0 (+ idx 1) functions)
+              (print-source-defn-normal-setup-ref-after-write-shape idx functions skip-state-ref data-ref)
               (let [result (ref-get skip-state-ref)]
                 (do
                   (root_push result)
+                  (print-source-defn-normal-setup-result-after-root-shape idx functions result data-ref)
                   (print-source-defn-normal-setup-skip-shape idx functions result data-ref)
                   (root_set functions-slot result)
                   (root_pop)

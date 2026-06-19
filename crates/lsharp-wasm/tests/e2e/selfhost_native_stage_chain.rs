@@ -1778,6 +1778,12 @@ fn test_wasm_compiler_source_defn_normal_setup_diagnostic_marks_skip_state_shape
     for token in [
         "(defn print-source-defn-normal-setup-skip-shape",
         "(print 9000000216)",
+        "(defn print-source-defn-normal-setup-ref-after-write-shape",
+        "(print 9000000222)",
+        "(defn print-source-defn-normal-setup-result-after-root-shape",
+        "(print 9000000223)",
+        "print-source-defn-normal-setup-ref-after-write-shape idx functions skip-state-ref data-ref",
+        "print-source-defn-normal-setup-result-after-root-shape idx functions result data-ref",
         "print-source-defn-normal-setup-skip-shape idx functions result data-ref",
     ] {
         assert!(
@@ -1812,10 +1818,20 @@ fn test_wasm_compiler_source_defn_normal_setup_diagnostic_marks_skip_state_shape
         .find("result (ref-get skip-state-ref)")
         .map(|offset| offset + write_pos)
         .expect("skip branch は state ref から result state を取り出すこと");
+    let after_write_marker_pos = body[write_pos..]
+        .find("print-source-defn-normal-setup-ref-after-write-shape idx functions skip-state-ref data-ref")
+        .map(|offset| offset + write_pos)
+        .expect("skip branch は writer return 直後の state ref shape marker を出すこと");
     let result_root_pos = body[result_pos..]
         .find("(root_push result)")
         .map(|offset| offset + result_pos)
         .expect("skip branch は result state を marker 前から root すること");
+    let after_root_marker_pos = body[result_root_pos..]
+        .find(
+            "print-source-defn-normal-setup-result-after-root-shape idx functions result data-ref",
+        )
+        .map(|offset| offset + result_root_pos)
+        .expect("skip branch は result root 直後の state shape marker を出すこと");
     let marker_pos = body[result_pos..]
         .find("print-source-defn-normal-setup-skip-shape idx functions result data-ref")
         .map(|offset| offset + result_pos)
@@ -1827,11 +1843,14 @@ fn test_wasm_compiler_source_defn_normal_setup_diagnostic_marks_skip_state_shape
 
     assert!(
         result_ref_pos < write_pos
+            && write_pos < after_write_marker_pos
+            && after_write_marker_pos < result_pos
             && write_pos < result_pos
             && result_pos < result_root_pos
-            && result_root_pos < marker_pos
+            && result_root_pos < after_root_marker_pos
+            && after_root_marker_pos < marker_pos
             && marker_pos < root_set_pos,
-        "source-defn normal setup diagnostic は skip state を生成直後かつ root_set 前に測り、state slot2 がどこで壊れるか切り分けるべき"
+        "source-defn normal setup diagnostic は writer return 直後、result root 直後、root_set 前を分けて測り、state slot2 がどこで壊れるか切り分けるべき"
     );
 
     let writer_body = compiler_base
