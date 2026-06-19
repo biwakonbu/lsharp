@@ -1663,8 +1663,8 @@ fn test_wasm_compiler_source_defn_finish_normal_setup_diagnostic_reports_state_s
         "(defn compile-source-defn-functions-chunked-normal-setup-diagnostic",
         "(print 9000000195)",
         "next-functions (push-object-vector functions compiled-fn)",
-        "result (make-compile-step-state 0 (+ idx 1) next-functions)",
-        "print-source-defn-normal-setup-finish-shape idx functions compiled-fn result data-ref",
+        "defn-result (make-compile-step-state 0 (+ idx 1) next-functions)",
+        "print-source-defn-normal-setup-finish-shape idx functions compiled-fn defn-result data-ref",
         "state (compile-defn-functions-step-64-with-source-normal-setup-diagnostic decls idx n source ftable data-ref functions)",
         "result (continue-compile-defn-functions-step-64-with-source-normal-setup-diagnostic decls n source ftable data-ref state)",
         "functions-result (vector-get result 2)",
@@ -1783,9 +1783,12 @@ fn test_wasm_compiler_source_defn_normal_setup_diagnostic_marks_skip_state_shape
         "(defn print-source-defn-normal-setup-result-after-root-shape",
         "(print 9000000223)",
         "(print 9000000224)",
+        "(print 9000000225)",
+        "defn-result (make-compile-step-state 0 (+ idx 1) next-functions)",
+        "skip-result (ref-get skip-state-ref)",
         "print-source-defn-normal-setup-ref-after-write-shape idx functions skip-state-ref data-ref",
-        "print-source-defn-normal-setup-result-after-root-shape idx functions result data-ref",
-        "print-source-defn-normal-setup-skip-shape idx functions result data-ref",
+        "print-source-defn-normal-setup-result-after-root-shape idx functions skip-result data-ref",
+        "print-source-defn-normal-setup-skip-shape idx functions skip-result data-ref",
     ] {
         assert!(
             compiler.contains(token),
@@ -1815,48 +1818,62 @@ fn test_wasm_compiler_source_defn_normal_setup_diagnostic_marks_skip_state_shape
         )
         .map(|offset| offset + result_ref_pos)
         .expect("skip branch は diagnostic writer helper で result state を生成すること");
+    let ref_checkpoint_positions = body
+        .match_indices("(print 9000000225)")
+        .map(|(pos, _)| pos)
+        .collect::<Vec<_>>();
+    assert!(
+        ref_checkpoint_positions.len() >= 3,
+        "skip branch は writer 前、writer 後、caller ref-get 前に skip-state-ref raw marker を出すべき: {ref_checkpoint_positions:?}"
+    );
     let result_pos = body[write_pos..]
-        .find("result (ref-get skip-state-ref)")
+        .find("skip-result (ref-get skip-state-ref)")
         .map(|offset| offset + write_pos)
-        .expect("skip branch は state ref から result state を取り出すこと");
+        .expect("skip branch は state ref から skip-result state を取り出すこと");
     let after_write_marker_pos = body[write_pos..]
         .find("print-source-defn-normal-setup-ref-after-write-shape idx functions skip-state-ref data-ref")
         .map(|offset| offset + write_pos)
         .expect("skip branch は writer return 直後の state ref shape marker を出すこと");
     let result_root_pos = body[result_pos..]
-        .find("(root_push result)")
+        .find("(root_push skip-result)")
         .map(|offset| offset + result_pos)
-        .expect("skip branch は result state を marker 前から root すること");
+        .expect("skip branch は skip-result state を marker 前から root すること");
     let before_root_marker_pos = body[result_pos..]
         .find("(print 9000000224)")
         .map(|offset| offset + result_pos)
         .expect("skip branch は result root 前の state shape marker を出すこと");
     let after_root_marker_pos = body[result_root_pos..]
         .find(
-            "print-source-defn-normal-setup-result-after-root-shape idx functions result data-ref",
+            "print-source-defn-normal-setup-result-after-root-shape idx functions skip-result data-ref",
         )
         .map(|offset| offset + result_root_pos)
         .expect("skip branch は result root 直後の state shape marker を出すこと");
     let marker_pos = body[result_pos..]
-        .find("print-source-defn-normal-setup-skip-shape idx functions result data-ref")
+        .find("print-source-defn-normal-setup-skip-shape idx functions skip-result data-ref")
         .map(|offset| offset + result_pos)
         .expect("skip branch は skip state shape marker を出すこと");
     let root_set_pos = body[result_pos..]
-        .find("(root_set functions-slot result)")
+        .find("(root_set functions-slot skip-result)")
         .map(|offset| offset + result_pos)
-        .expect("skip branch は result state を functions slot に退避すること");
+        .expect("skip branch は skip-result state を functions slot に退避すること");
 
     assert!(
         result_ref_pos < write_pos
+            && result_ref_pos < ref_checkpoint_positions[0]
+            && ref_checkpoint_positions[0] < write_pos
             && write_pos < after_write_marker_pos
+            && write_pos < ref_checkpoint_positions[1]
+            && ref_checkpoint_positions[1] < after_write_marker_pos
             && after_write_marker_pos < result_pos
+            && after_write_marker_pos < ref_checkpoint_positions[2]
+            && ref_checkpoint_positions[2] < result_pos
             && write_pos < result_pos
             && result_pos < before_root_marker_pos
             && before_root_marker_pos < result_root_pos
             && result_root_pos < after_root_marker_pos
             && after_root_marker_pos < marker_pos
             && marker_pos < root_set_pos,
-        "source-defn normal setup diagnostic は writer return 直後、result root 前後、root_set 前を分けて測り、state slot2 がどこで壊れるか切り分けるべき"
+        "source-defn normal setup diagnostic は writer 前後の ref raw、result root 前後、root_set 前を分けて測り、state slot2 がどこで壊れるか切り分けるべき"
     );
 
     let writer_body = compiler_base
@@ -3211,11 +3228,11 @@ fn test_wasm_compiler_defn_step_roots_finish_state_before_outer_unwind() {
         .find("functions-slot (root_push functions)")
         .expect("compile-defn-functions-step は functions を root すること");
     let result_pos = plain_step[functions_root_pos..]
-        .find("result (compile-defn-functions-step-finish functions compiled-fn idx)")
+        .find("defn-result (compile-defn-functions-step-finish functions compiled-fn idx)")
         .map(|offset| offset + functions_root_pos)
-        .expect("compile-defn-functions-step は finish helper の result を local 化すること");
+        .expect("compile-defn-functions-step は finish helper の defn-result を local 化すること");
     let root_set_pos = plain_step[result_pos..]
-        .find("(root_set functions-slot result)")
+        .find("(root_set functions-slot defn-result)")
         .map(|offset| offset + result_pos)
         .expect("compile-defn-functions-step は finish state を functions slot に退避すること");
     let first_pop_after_result = plain_step[result_pos..]
@@ -3238,10 +3255,10 @@ fn test_wasm_compiler_defn_step_roots_finish_state_before_outer_unwind() {
         .map(|offset| offset + skip_ref_pos)
         .expect("compile-defn-functions-step の skip branch は writer helper で state を渡すこと");
     let skip_result_pos = plain_step[skip_write_pos..]
-        .find("result (ref-get skip-state-ref)")
+        .find("skip-result (ref-get skip-state-ref)")
         .map(|offset| offset + skip_write_pos)
         .expect(
-            "compile-defn-functions-step の skip branch は state ref から result を取り出すこと",
+            "compile-defn-functions-step の skip branch は state ref から skip-result を取り出すこと",
         );
     assert!(
         skip_ref_pos < skip_write_pos
@@ -3277,17 +3294,17 @@ fn test_wasm_compiler_source_defn_step_inlines_finish_state_for_native_stage2() 
         .map(|offset| offset + next_functions_pos)
         .expect("source defn step は next-functions を result 作成前に root すること");
     let result_pos = source_step[next_functions_root_pos..]
-        .find("result (make-compile-step-state 0 (+ idx 1) next-functions)")
+        .find("defn-result (make-compile-step-state 0 (+ idx 1) next-functions)")
         .map(|offset| offset + next_functions_root_pos)
         .expect("source defn step は next-functions から state を inline で作ること");
     let result_root_pos = source_step[result_pos..]
-        .find("(root_push result)")
+        .find("(root_push defn-result)")
         .map(|offset| offset + result_pos)
-        .expect("source defn step は result state を root_set 前に root すること");
+        .expect("source defn step は defn-result state を root_set 前に root すること");
     let root_set_pos = source_step[result_pos..]
-        .find("(root_set functions-slot result)")
+        .find("(root_set functions-slot defn-result)")
         .map(|offset| offset + result_pos)
-        .expect("source defn step は result state を functions slot に退避すること");
+        .expect("source defn step は defn-result state を functions slot に退避すること");
 
     assert!(
         functions_root_pos < next_functions_pos
@@ -3371,22 +3388,22 @@ fn test_wasm_compiler_source_defn_step_roots_result_before_state_slot_update() {
 
     for (branch_name, result_expr) in [(
         "defn branch",
-        "result (make-compile-step-state 0 (+ idx 1) next-functions)",
+        "defn-result (make-compile-step-state 0 (+ idx 1) next-functions)",
     )] {
         let result_pos = source_step
             .find(result_expr)
-            .unwrap_or_else(|| panic!("{branch_name} は result state を local 化すること"));
+            .unwrap_or_else(|| panic!("{branch_name} は defn-result state を local 化すること"));
         let result_root_pos = source_step[result_pos..]
-            .find("(root_push result)")
+            .find("(root_push defn-result)")
             .map(|offset| offset + result_pos)
             .unwrap_or_else(|| {
-                panic!("{branch_name} は result state を root_set 前に root すること")
+                panic!("{branch_name} は defn-result state を root_set 前に root すること")
             });
         let root_set_pos = source_step[result_pos..]
-            .find("(root_set functions-slot result)")
+            .find("(root_set functions-slot defn-result)")
             .map(|offset| offset + result_pos)
             .unwrap_or_else(|| {
-                panic!("{branch_name} は result state を functions slot に退避すること")
+                panic!("{branch_name} は defn-result state を functions slot に退避すること")
             });
 
         assert!(
@@ -3403,17 +3420,17 @@ fn test_wasm_compiler_source_defn_step_roots_result_before_state_slot_update() {
         .map(|offset| offset + skip_ref_pos)
         .expect("source defn skip branch は writer helper で state を渡すこと");
     let skip_result_pos = source_step[skip_write_pos..]
-        .find("result (ref-get skip-state-ref)")
+        .find("skip-result (ref-get skip-state-ref)")
         .map(|offset| offset + skip_write_pos)
-        .expect("source defn skip branch は state ref から result を取り出すこと");
+        .expect("source defn skip branch は state ref から skip-result を取り出すこと");
     let skip_root_pos = source_step[skip_result_pos..]
-        .find("(root_push result)")
+        .find("(root_push skip-result)")
         .map(|offset| offset + skip_result_pos)
-        .expect("source defn skip branch は result を root_set 前に root すること");
+        .expect("source defn skip branch は skip-result を root_set 前に root すること");
     let skip_root_set_pos = source_step[skip_result_pos..]
-        .find("(root_set functions-slot result)")
+        .find("(root_set functions-slot skip-result)")
         .map(|offset| offset + skip_result_pos)
-        .expect("source defn skip branch は result を functions slot に退避すること");
+        .expect("source defn skip branch は skip-result を functions slot に退避すること");
     assert!(
         skip_ref_pos < skip_write_pos
             && skip_write_pos < skip_result_pos
@@ -3445,22 +3462,22 @@ fn test_wasm_compiler_source_defn_step_normal_setup_diagnostic_roots_result_befo
 
     for (branch_name, result_expr) in [(
         "defn branch",
-        "result (make-compile-step-state 0 (+ idx 1) next-functions)",
+        "defn-result (make-compile-step-state 0 (+ idx 1) next-functions)",
     )] {
         let result_pos = source_step
             .find(result_expr)
-            .unwrap_or_else(|| panic!("{branch_name} は result state を local 化すること"));
+            .unwrap_or_else(|| panic!("{branch_name} は defn-result state を local 化すること"));
         let result_root_pos = source_step[result_pos..]
-            .find("(root_push result)")
+            .find("(root_push defn-result)")
             .map(|offset| offset + result_pos)
             .unwrap_or_else(|| {
-                panic!("{branch_name} は result state を root_set 前に root すること")
+                panic!("{branch_name} は defn-result state を root_set 前に root すること")
             });
         let root_set_pos = source_step[result_pos..]
-            .find("(root_set functions-slot result)")
+            .find("(root_set functions-slot defn-result)")
             .map(|offset| offset + result_pos)
             .unwrap_or_else(|| {
-                panic!("{branch_name} は result state を functions slot に退避すること")
+                panic!("{branch_name} は defn-result state を functions slot に退避すること")
             });
 
         assert!(
@@ -3479,21 +3496,25 @@ fn test_wasm_compiler_source_defn_step_normal_setup_diagnostic_roots_result_befo
         .map(|offset| offset + skip_ref_pos)
         .expect("normal setup diagnostic skip branch は diagnostic writer helper で state を渡すこと");
     let skip_result_pos = source_step[skip_write_pos..]
-        .find("result (ref-get skip-state-ref)")
+        .find("skip-result (ref-get skip-state-ref)")
         .map(|offset| offset + skip_write_pos)
-        .expect("normal setup diagnostic skip branch は state ref から result を取り出すこと");
+        .expect("normal setup diagnostic skip branch は state ref から skip-result を取り出すこと");
     let skip_root_pos = source_step[skip_result_pos..]
-        .find("(root_push result)")
+        .find("(root_push skip-result)")
         .map(|offset| offset + skip_result_pos)
-        .expect("normal setup diagnostic skip branch は result を root_set 前に root すること");
+        .expect(
+            "normal setup diagnostic skip branch は skip-result を root_set 前に root すること",
+        );
     let print_pos = source_step[skip_result_pos..]
-        .find("print-source-defn-normal-setup-skip-shape idx functions result data-ref")
+        .find("print-source-defn-normal-setup-skip-shape idx functions skip-result data-ref")
         .map(|offset| offset + skip_result_pos)
         .expect("normal setup diagnostic skip branch は skip state marker を出すこと");
     let skip_root_set_pos = source_step[skip_result_pos..]
-        .find("(root_set functions-slot result)")
+        .find("(root_set functions-slot skip-result)")
         .map(|offset| offset + skip_result_pos)
-        .expect("normal setup diagnostic skip branch は result を functions slot に退避すること");
+        .expect(
+            "normal setup diagnostic skip branch は skip-result を functions slot に退避すること",
+        );
     assert!(
         skip_ref_pos < skip_write_pos
             && skip_write_pos < skip_result_pos
@@ -3565,22 +3586,22 @@ fn test_wasm_compiler_source_defn_normal_setup_diagnostic_prints_before_overwrit
         );
 
     let result_pos = source_step
-        .find("result (make-compile-step-state 0 (+ idx 1) next-functions)")
-        .expect("defn branch は result state を local 化すること");
+        .find("defn-result (make-compile-step-state 0 (+ idx 1) next-functions)")
+        .expect("defn branch は defn-result state を local 化すること");
     let result_root_pos = source_step[result_pos..]
-        .find("(root_push result)")
+        .find("(root_push defn-result)")
         .map(|offset| offset + result_pos)
-        .expect("defn branch は result state を診断前から root すること");
+        .expect("defn branch は defn-result state を診断前から root すること");
     let print_pos = source_step[result_pos..]
         .find(
-            "print-source-defn-normal-setup-finish-shape idx functions compiled-fn result data-ref",
+            "print-source-defn-normal-setup-finish-shape idx functions compiled-fn defn-result data-ref",
         )
         .map(|offset| offset + result_pos)
         .expect("defn branch は source-defn 診断 marker を出すこと");
     let root_set_pos = source_step[result_pos..]
-        .find("(root_set functions-slot result)")
+        .find("(root_set functions-slot defn-result)")
         .map(|offset| offset + result_pos)
-        .expect("defn branch は result state を functions slot に退避すること");
+        .expect("defn branch は defn-result state を functions slot に退避すること");
 
     assert!(
         result_pos < result_root_pos && result_root_pos < print_pos && print_pos < root_set_pos,
@@ -3990,34 +4011,40 @@ fn test_wasm_compiler_defn_skip_branch_keeps_functions_rooted_until_state_built(
             "compile-defn-functions-step-with-source-normal-setup-diagnostic body を取り出せること",
         );
 
-    for (name, body) in [
-        ("compile-defn-functions-step", plain_step),
+    for (name, body, writer_call) in [
+        (
+            "compile-defn-functions-step",
+            plain_step,
+            "(write-compile-step-state-ref skip-state-ref 0 (+ idx 1) functions)",
+        ),
         (
             "compile-defn-functions-step-with-source-body-impl-3",
             source_step,
+            "(write-compile-step-state-ref skip-state-ref 0 (+ idx 1) functions)",
         ),
         (
             "compile-defn-functions-step-with-source-normal-setup-diagnostic",
             diagnostic_source_step,
+            "(write-compile-step-state-ref-normal-setup-diagnostic skip-state-ref 0 (+ idx 1) functions)",
         ),
     ] {
         let state_ref_pos = body.find("skip-state-ref (ref-new 0)").unwrap_or_else(|| {
             panic!("{name} は skip branch 用 caller-owned state ref を作ること")
         });
         let write_pos = body[state_ref_pos..]
-            .find("(write-compile-step-state-ref skip-state-ref 0 (+ idx 1) functions)")
+            .find(writer_call)
             .map(|offset| offset + state_ref_pos)
             .unwrap_or_else(|| panic!("{name} は writer helper で skip state を構築すること"));
         let result_pos = body[write_pos..]
-            .find("result (ref-get skip-state-ref)")
+            .find("skip-result (ref-get skip-state-ref)")
             .map(|offset| offset + write_pos)
-            .unwrap_or_else(|| panic!("{name} は state ref から result state を取り出すこと"));
+            .unwrap_or_else(|| panic!("{name} は state ref から skip-result state を取り出すこと"));
         let result_root_pos = body[result_pos..]
-            .find("(root_push result)")
+            .find("(root_push skip-result)")
             .map(|offset| offset + result_pos)
             .unwrap_or_else(|| panic!("{name} は skip state を root してから退避すること"));
         let root_set_pos = body[result_pos..]
-            .find("(root_set functions-slot result)")
+            .find("(root_set functions-slot skip-result)")
             .map(|offset| offset + result_pos)
             .unwrap_or_else(|| panic!("{name} は skip state を functions slot に退避すること"));
         let first_pop_after_result = body[result_pos..]
