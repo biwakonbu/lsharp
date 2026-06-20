@@ -1857,8 +1857,8 @@ fn test_selfhost_normal_payload_production_step64_diagnostic_keeps_real_inner_st
         .find("(print 9000000281)")
         .expect("production step64 diagnostic は 63-step continue 前 marker を出すべき");
     let continue_pos = body
-        .find("result (continue-compile-defn-functions-step-times-with-source decls n source ftable data-ref 63 state)")
-        .expect("production step64 diagnostic は production 63-step continue を直接呼ぶべき");
+        .find("result (continue-compile-defn-functions-step-times-with-source-production-diagnostic decls n source ftable data-ref 63 state)")
+        .expect("production step64 diagnostic は production 63-step continue diagnostic を呼ぶべき");
     let after_continue_pos = body
         .find("(print 9000000282)")
         .expect("production step64 diagnostic は 63-step continue 復帰後 marker を出すべき");
@@ -1875,9 +1875,6 @@ fn test_selfhost_normal_payload_production_step64_diagnostic_keeps_real_inner_st
         !body.contains("compile-defn-functions-step-with-source-normal-setup-diagnostic")
             && !body.contains(
                 "continue-compile-defn-functions-step-times-with-source-normal-setup-diagnostic"
-            )
-            && !body.contains(
-                "continue-compile-defn-functions-step-times-with-source-production-diagnostic"
             )
             && !body.contains("progress-probe"),
         "production step64 diagnostic は normal/progress probe ではなく production inner path を使うべき"
@@ -1908,15 +1905,15 @@ fn test_selfhost_normal_payload_production_continue_diagnostic_marks_recursive_b
 
     assert!(
         step64_body.contains(
-            "result (continue-compile-defn-functions-step-times-with-source decls n source ftable data-ref 63 state)"
+            "result (continue-compile-defn-functions-step-times-with-source-production-diagnostic decls n source ftable data-ref 63 state)"
         ),
-        "production step64 diagnostic は production continue-times を直接呼ぶべき"
+        "production step64 diagnostic は production continue-times diagnostic を呼ぶべき"
     );
     assert!(
         !step64_body.contains(
-            "result (continue-compile-defn-functions-step-times-with-source-production-diagnostic decls n source ftable data-ref 63 state)"
+            "result (continue-compile-defn-functions-step-times-with-source decls n source ftable data-ref 63 state)"
         ),
-        "production step64 diagnostic は v35 wrapper ではなく production continue-times fix を検証するべき"
+        "production step64 diagnostic は 0281 直後を切るため production continue-times wrapper を経由するべき"
     );
 
     let entry_pos = times_body
