@@ -744,21 +744,25 @@
     key-expr (vector-get node 4)
     map-instrs (compile-expr-with-ftable map-expr env ftable (vector-new 8))
     map-root (alloc-root-needed map-expr)]
-    (do
-      (root_push map-instrs)
+    (let [map-slot (root_push map-instrs)]
       (let [key-instrs (compile-map-key-with-ftable key-expr env ftable)
         key-root (map-key-root-needed-with-source key-expr)
         simple-path (if (simple-map-operand map-expr) (simple-map-operand key-expr) false)]
-        (do
-          (root_push key-instrs)
+        (let [key-slot (root_push key-instrs)]
           (if (= bop 62)
             (let [result (compile-map-insert-builtin-with-ftable node env ftable instrs bop map-instrs key-instrs map-root key-root)]
               (do
+                (root_push result)
+                (root_set map-slot result)
+                (root_pop)
                 (root_pop)
                 (root_pop)
                 result))
             (let [result (compile-map-lookup-builtin-with-ftable env instrs map-instrs key-instrs map-root key-root bop simple-path)]
               (do
+                (root_push result)
+                (root_set map-slot result)
+                (root_pop)
                 (root_pop)
                 (root_pop)
                 result))))))))
@@ -1165,13 +1169,11 @@
     key-expr (vector-get node 4)
     map-instrs (compile-expr-with-source map-expr source env ftable (vector-new 8) data-ref)
     map-root (alloc-root-needed map-expr)]
-    (do
-      (root_push map-instrs)
+    (let [map-slot (root_push map-instrs)]
       (let [key-instrs (compile-map-key-with-source key-expr source env ftable data-ref)
         key-root (map-key-root-needed-with-source key-expr)
         simple-path (if (simple-map-operand map-expr) (simple-map-operand key-expr) false)]
-        (do
-          (root_push key-instrs)
+        (let [key-slot (root_push key-instrs)]
           (if (= bop 62)
             (let [value-expr (vector-get node 5)
               value-instrs (compile-expr-with-source value-expr source env ftable (vector-new 8) data-ref)
@@ -1180,12 +1182,18 @@
                 (root_push value-instrs)
                 (let [result (compile-map-insert-builtin-instrs env instrs map-instrs key-instrs value-instrs map-root key-root value-root bop)]
                   (do
+                    (root_push result)
+                    (root_set map-slot result)
+                    (root_pop)
                     (root_pop)
                     (root_pop)
                     (root_pop)
                     result))))
             (let [result (compile-map-lookup-builtin-with-ftable env instrs map-instrs key-instrs map-root key-root bop simple-path)]
               (do
+                (root_push result)
+                (root_set map-slot result)
+                (root_pop)
                 (root_pop)
                 (root_pop)
                 result))))))))

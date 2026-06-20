@@ -2971,6 +2971,69 @@ fn test_selfhost_map_builtin_roots_map_instrs_before_key_compile() {
 }
 
 #[test]
+fn test_selfhost_map_builtin_keeps_result_rooted_while_popping_operands() {
+    let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("Compiler.ls を読めること");
+
+    let source_body = compiler
+        .split("(defn compile-map-builtin-with-source [")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn compile-expr-with-ftable").next())
+        .expect("compile-map-builtin-with-source body を取り出せること");
+    let source_lookup = source_body
+        .find("result (compile-map-lookup-builtin-with-ftable env instrs map-instrs key-instrs")
+        .expect("source map lookup result を作ること");
+    let source_lookup_result_root = source_body[source_lookup..]
+        .find("(root_push result)")
+        .map(|offset| source_lookup + offset)
+        .expect("source map lookup は operand root を外す前に result を root すること");
+    let source_lookup_result_set = source_body[source_lookup_result_root..]
+        .find("(root_set map-slot result)")
+        .map(|offset| source_lookup_result_root + offset)
+        .expect("source map lookup は map slot へ result を退避すること");
+    let source_lookup_first_pop = source_body[source_lookup_result_set..]
+        .find("(root_pop)")
+        .map(|offset| source_lookup_result_set + offset)
+        .expect("source map lookup は result 退避後に root を外すこと");
+    assert!(
+        source_lookup < source_lookup_result_root
+            && source_lookup_result_root < source_lookup_result_set
+            && source_lookup_result_set < source_lookup_first_pop,
+        "source map lookup は result を保持したまま map/key operand roots を外すべき"
+    );
+
+    let ftable_body = compiler
+        .split("(defn compile-map-builtin-with-ftable [")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn compile-map-builtin-with-ftable-normal-setup-diagnostic")
+                .next()
+        })
+        .expect("compile-map-builtin-with-ftable body を取り出せること");
+    let ftable_lookup = ftable_body
+        .find("result (compile-map-lookup-builtin-with-ftable env instrs map-instrs key-instrs")
+        .expect("ftable map lookup result を作ること");
+    let ftable_lookup_result_root = ftable_body[ftable_lookup..]
+        .find("(root_push result)")
+        .map(|offset| ftable_lookup + offset)
+        .expect("ftable map lookup は operand root を外す前に result を root すること");
+    let ftable_lookup_result_set = ftable_body[ftable_lookup_result_root..]
+        .find("(root_set map-slot result)")
+        .map(|offset| ftable_lookup_result_root + offset)
+        .expect("ftable map lookup は map slot へ result を退避すること");
+    let ftable_lookup_first_pop = ftable_body[ftable_lookup_result_set..]
+        .find("(root_pop)")
+        .map(|offset| ftable_lookup_result_set + offset)
+        .expect("ftable map lookup は result 退避後に root を外すこと");
+    assert!(
+        ftable_lookup < ftable_lookup_result_root
+            && ftable_lookup_result_root < ftable_lookup_result_set
+            && ftable_lookup_result_set < ftable_lookup_first_pop,
+        "ftable map lookup も result を保持したまま map/key operand roots を外すべき"
+    );
+}
+
+#[test]
 fn test_linux_x86_representative_seed_omits_payload_entry_shape_probe() {
     let source = linux_x86_representative_actual_stage23_seed_source();
     assert!(
