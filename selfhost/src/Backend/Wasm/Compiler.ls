@@ -1725,17 +1725,19 @@
     state
     (if (= (vector-get state 0) 1)
       state
-      (do
-        (root_push decls)
-        (root_push source)
-        (root_push ftable)
-        (root_push data-ref)
-        (root_push state)
+      (let [decls-slot (root_push decls)
+        source-slot (root_push source)
+        ftable-slot (root_push ftable)
+        data-slot (root_push data-ref)
+        state-slot (root_push state)]
         (let [next-state (continue-compile-defn-functions-step-with-source decls n source ftable data-ref state)]
           (do
             (root_push next-state)
             (let [result (continue-compile-defn-functions-step-times-with-source decls n source ftable data-ref (- remaining 1) next-state)]
               (do
+                (root_push result)
+                (root_set state-slot result)
+                (root_pop)
                 (root_pop)
                 (root_pop)
                 (root_pop)
@@ -2064,17 +2066,19 @@
     state
     (if (= (vector-get state 0) 1)
       state
-      (do
-        (root_push decls)
-        (root_push source)
-        (root_push ftable)
-        (root_push data-ref)
-        (root_push state)
+      (let [decls-slot (root_push decls)
+        source-slot (root_push source)
+        ftable-slot (root_push ftable)
+        data-slot (root_push data-ref)
+        state-slot (root_push state)]
         (let [next-state (continue-compile-defn-functions-step-with-source-normal-setup-diagnostic decls n source ftable data-ref state)]
           (do
             (root_push next-state)
             (let [result (continue-compile-defn-functions-step-times-with-source-normal-setup-diagnostic decls n source ftable data-ref (- remaining 1) next-state)]
               (do
+                (root_push result)
+                (root_set state-slot result)
+                (root_pop)
                 (root_pop)
                 (root_pop)
                 (root_pop)
