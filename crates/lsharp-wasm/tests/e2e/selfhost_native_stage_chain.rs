@@ -1713,6 +1713,11 @@ fn test_selfhost_compiler_mode_has_normal_payload_production_pair_diagnostic() {
         "(print 9000000276)",
         "(print 9000000277)",
         "(print 9000000278)",
+        "(defn compile-defn-functions-step-64-with-source-production-diagnostic",
+        "(print 9000000279)",
+        "(print 9000000280)",
+        "(print 9000000281)",
+        "(print 9000000282)",
         "updated-functions (compile-source-defn-functions-chunked-production-diagnostic decls 0 (vector-length decls) src ftable data-ref functions)",
         "state (compile-src-decl-pairs-step-64-production-diagnostic pairs idx n ftable data-ref functions)",
         "functions (compile-all-src-decl-pairs-chunked-production-diagnostic all-pairs 0 n ftable data-ref functions0)",
@@ -1782,8 +1787,8 @@ fn test_selfhost_normal_payload_production_source_diagnostic_wraps_real_step64_p
         .find("(print 9000000275)")
         .expect("production source diagnostic は entry marker を出すべき");
     let step64_pos = body
-        .find("state (compile-defn-functions-step-64-with-source decls idx n source ftable data-ref functions)")
-        .expect("production source diagnostic は production step64 を呼ぶべき");
+        .find("state (compile-defn-functions-step-64-with-source-production-diagnostic decls idx n source ftable data-ref functions)")
+        .expect("production source diagnostic は production step64 diagnostic を呼ぶべき");
     let after_step64_pos = body
         .find("(print 9000000276)")
         .expect("production source diagnostic は step64 復帰後 marker を出すべき");
@@ -1807,7 +1812,7 @@ fn test_selfhost_normal_payload_production_source_diagnostic_wraps_real_step64_p
             && continue_pos < after_continue_pos
             && after_continue_pos < functions_pos
             && functions_pos < finish_pos,
-        "production source diagnostic は entry -> production step64 -> production continue -> functions-result の順にするべき"
+        "production source diagnostic は entry -> production step64 diagnostic -> production continue -> functions-result の順にするべき"
     );
     assert!(
         !body.contains("compile-defn-functions-step-64-with-source-normal-setup-diagnostic")
@@ -1816,6 +1821,55 @@ fn test_selfhost_normal_payload_production_source_diagnostic_wraps_real_step64_p
             )
             && !body.contains("progress-probe"),
         "production source diagnostic は normal/progress probe ではなく production step64 path を使うべき"
+    );
+}
+
+#[test]
+fn test_selfhost_normal_payload_production_step64_diagnostic_keeps_real_inner_step_path() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/App/CompilerMode.ls",
+    )))
+    .expect("CompilerMode.ls を読めること");
+    let body = source
+        .split("(defn compile-defn-functions-step-64-with-source-production-diagnostic")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("production step64 diagnostic body を取り出せること");
+
+    let entry_pos = body
+        .find("(print 9000000279)")
+        .expect("production step64 diagnostic は entry marker を出すべき");
+    let step_pos = body
+        .find("state (compile-defn-functions-step-with-source decls idx n source ftable data-ref functions)")
+        .expect("production step64 diagnostic は production single step を呼ぶべき");
+    let after_step_pos = body
+        .find("(print 9000000280)")
+        .expect("production step64 diagnostic は single step 復帰後 marker を出すべき");
+    let before_continue_pos = body
+        .find("(print 9000000281)")
+        .expect("production step64 diagnostic は 63-step continue 前 marker を出すべき");
+    let continue_pos = body
+        .find("result (continue-compile-defn-functions-step-times-with-source decls n source ftable data-ref 63 state)")
+        .expect("production step64 diagnostic は production 63-step continue を呼ぶべき");
+    let after_continue_pos = body
+        .find("(print 9000000282)")
+        .expect("production step64 diagnostic は 63-step continue 復帰後 marker を出すべき");
+
+    assert!(
+        entry_pos < step_pos
+            && step_pos < after_step_pos
+            && after_step_pos < before_continue_pos
+            && before_continue_pos < continue_pos
+            && continue_pos < after_continue_pos,
+        "production step64 diagnostic は entry -> production single step -> 63-step continue の順にするべき"
+    );
+    assert!(
+        !body.contains("compile-defn-functions-step-with-source-normal-setup-diagnostic")
+            && !body.contains(
+                "continue-compile-defn-functions-step-times-with-source-normal-setup-diagnostic"
+            )
+            && !body.contains("progress-probe"),
+        "production step64 diagnostic は normal/progress probe ではなく production inner path を使うべき"
     );
 }
 

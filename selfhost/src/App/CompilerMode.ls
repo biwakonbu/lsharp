@@ -3054,6 +3054,54 @@
                   (root_pop)
                   (root_pop)
                   result)))))))))
+(defn compile-defn-functions-step-64-with-source-production-diagnostic [decls idx n source ftable data-ref functions]
+  (do
+    (print 9000000279)
+    (print idx)
+    (print n)
+    (print (vector-length functions))
+    (print (vector-length (ref-get data-ref)))
+    (let [decls-slot (root_push decls)
+      source-slot (root_push source)
+      ftable-slot (root_push ftable)
+      data-slot (root_push data-ref)
+      functions-slot (root_push functions)]
+      (let [state (compile-defn-functions-step-with-source decls idx n source ftable data-ref functions)]
+        (do
+          (root_push state)
+          (print 9000000280)
+          (print (vector-length state))
+          (print (vector-get state 0))
+          (print (vector-get state 1))
+          (print (vector-length (vector-get state 2)))
+          (print (vector-length (ref-get data-ref)))
+          (print 9000000281)
+          (print idx)
+          (print n)
+          (print (vector-get state 0))
+          (print (vector-get state 1))
+          (print (vector-length (vector-get state 2)))
+          (print (vector-length (ref-get data-ref)))
+          (let [result (continue-compile-defn-functions-step-times-with-source decls n source ftable data-ref 63 state)]
+            (do
+              (root_push result)
+              (print 9000000282)
+              (print (vector-length result))
+              (print (vector-get result 0))
+              (print (vector-get result 1))
+              (print (vector-length (vector-get result 2)))
+              (print (vector-length (ref-get data-ref)))
+              (root_set decls-slot result)
+              (root_set functions-slot result)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              result)))))))
+
 (defn compile-source-defn-functions-chunked-production-diagnostic [decls idx n source ftable data-ref functions]
   (do
     (print 9000000275)
@@ -3061,7 +3109,7 @@
     (print n)
     (print (vector-length functions))
     (print (vector-length (ref-get data-ref)))
-    (let [state (compile-defn-functions-step-64-with-source decls idx n source ftable data-ref functions)]
+    (let [state (compile-defn-functions-step-64-with-source-production-diagnostic decls idx n source ftable data-ref functions)]
       (do
         (let [state-slot (root_push state)]
           (do
