@@ -1560,7 +1560,7 @@ fn test_selfhost_compiler_mode_has_normal_payload_function_boundary_diagnostic()
         "(print 9000000213)",
         "all-pairs (compile-file-pairs-with-cache path cache-ref parse-count-ref)",
         "reg-result (register-all-pairs all-pairs 0 n start-ftable func-idx)",
-        "functions (compile-all-src-decl-pairs-chunked all-pairs 0 n ftable data-ref functions0)",
+        "functions (compile-all-src-decl-pairs-chunked-production-diagnostic all-pairs 0 n ftable data-ref functions0)",
     ] {
         assert!(
             source.contains(token),
@@ -1662,8 +1662,8 @@ fn test_selfhost_normal_payload_production_functions_diagnostic_wraps_real_compi
         .find("(print 9000000262)")
         .expect("production functions diagnostic は compile-all 前 marker を出すべき");
     let compile_all = body
-        .find("functions (compile-all-src-decl-pairs-chunked all-pairs 0 n ftable data-ref functions0)")
-        .expect("production functions diagnostic は通常 compile-all path を呼ぶべき");
+        .find("functions (compile-all-src-decl-pairs-chunked-production-diagnostic all-pairs 0 n ftable data-ref functions0)")
+        .expect("production functions diagnostic は production compile-all diagnostic path を呼ぶべき");
     let after_compile_all = body
         .find("(print 9000000263)")
         .expect("production functions diagnostic は compile-all 復帰後 marker を出すべき");
@@ -1676,11 +1676,88 @@ fn test_selfhost_normal_payload_production_functions_diagnostic_wraps_real_compi
             && after_register < before_compile_all
             && before_compile_all < compile_all
             && compile_all < after_compile_all,
-        "normal payload production functions 診断は entry -> pairs -> register -> real compile-all -> finish の順にするべき"
+        "normal payload production functions 診断は entry -> pairs -> register -> production compile-all diagnostic -> finish の順にするべき"
     );
     assert!(
-        !body.contains("compile-all-src-decl-pairs-chunked-normal-setup-diagnostic"),
-        "normal payload production functions 診断は normal setup probe ではなく production compile-all を使うべき"
+        !body.contains("compile-all-src-decl-pairs-chunked-normal-setup-diagnostic")
+            && !body.contains("compile-all-src-decl-pairs-chunked-progress"),
+        "normal payload production functions 診断は normal/progress probe ではなく production compile-all diagnostic を使うべき"
+    );
+}
+
+#[test]
+fn test_selfhost_compiler_mode_has_normal_payload_production_pair_diagnostic() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/App/CompilerMode.ls",
+    )))
+    .expect("CompilerMode.ls を読めること");
+
+    for token in [
+        "(defn compile-src-decl-pairs-step-production-diagnostic",
+        "(defn compile-src-decl-pairs-step-8-production-diagnostic",
+        "(defn compile-src-decl-pairs-step-64-production-diagnostic",
+        "(defn compile-all-src-decl-pairs-chunked-production-diagnostic",
+        "(print 9000000264)",
+        "(print 9000000265)",
+        "(print 9000000266)",
+        "(print 9000000267)",
+        "(print 9000000268)",
+        "(print 9000000269)",
+        "(print 9000000270)",
+        "(print 9000000271)",
+        "(print 9000000272)",
+        "(print 9000000273)",
+        "(print 9000000274)",
+        "updated-functions (compile-source-defn-functions-chunked decls 0 (vector-length decls) src ftable data-ref functions)",
+        "state (compile-src-decl-pairs-step-64-production-diagnostic pairs idx n ftable data-ref functions)",
+        "functions (compile-all-src-decl-pairs-chunked-production-diagnostic all-pairs 0 n ftable data-ref functions0)",
+    ] {
+        assert!(
+            source.contains(token),
+            "CompilerMode.ls は normal payload production pair 診断 token {token} を含むべき"
+        );
+    }
+}
+
+#[test]
+fn test_selfhost_normal_payload_production_pair_diagnostic_uses_real_source_compile_path() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/App/CompilerMode.ls",
+    )))
+    .expect("CompilerMode.ls を読めること");
+    let body = source
+        .split("(defn compile-src-decl-pairs-step-production-diagnostic")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("production pair diagnostic body を取り出せること");
+
+    let entry_pos = body
+        .find("(print 9000000264)")
+        .expect("production pair diagnostic は entry marker を出すべき");
+    let pair_pos = body
+        .find("pair (vector-get pairs idx)")
+        .expect("production pair diagnostic は pair を取得するべき");
+    let before_compile = body
+        .find("(print 9000000265)")
+        .expect("production pair diagnostic は source compile 前 marker を出すべき");
+    let source_compile = body
+        .find("updated-functions (compile-source-defn-functions-chunked decls 0 (vector-length decls) src ftable data-ref functions)")
+        .expect("production pair diagnostic は通常 compile-source-defn-functions-chunked を呼ぶべき");
+    let after_compile = body
+        .find("(print 9000000266)")
+        .expect("production pair diagnostic は source compile 後 marker を出すべき");
+
+    assert!(
+        entry_pos < pair_pos
+            && pair_pos < before_compile
+            && before_compile < source_compile
+            && source_compile < after_compile,
+        "production pair diagnostic は pair entry -> source compile 前 -> production source compile -> source compile 後の順にするべき"
+    );
+    assert!(
+        !body.contains("compile-source-defn-functions-chunked-normal-setup-diagnostic")
+            && !body.contains("compile-source-defn-functions-chunked-progress-probe"),
+        "production pair diagnostic は normal/progress probe ではなく production source compile を使うべき"
     );
 }
 
