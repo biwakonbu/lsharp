@@ -1603,6 +1603,88 @@ fn test_selfhost_normal_payload_diagnostic_enters_compile_all_shape_probe_after_
 }
 
 #[test]
+fn test_selfhost_compiler_mode_has_normal_payload_production_functions_diagnostic() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/App/CompilerMode.ls",
+    )))
+    .expect("CompilerMode.ls を読めること");
+
+    for token in [
+        "(defn compile-file-functions-with-cache-normal-payload-production-diagnostic",
+        "(print 9000000258)",
+        "(print 9000000259)",
+        "(print 9000000260)",
+        "(print 9000000261)",
+        "(print 9000000262)",
+        "(print 9000000263)",
+        "all-pairs (compile-file-pairs-with-cache path cache-ref parse-count-ref)",
+        "reg-result (register-all-pairs all-pairs 0 n start-ftable func-idx)",
+        "functions (compile-all-src-decl-pairs-chunked all-pairs 0 n ftable data-ref functions0)",
+    ] {
+        assert!(
+            source.contains(token),
+            "CompilerMode.ls は normal payload production functions 診断 token {token} を含むべき"
+        );
+    }
+}
+
+#[test]
+fn test_selfhost_normal_payload_production_functions_diagnostic_wraps_real_compile_all_path() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/App/CompilerMode.ls",
+    )))
+    .expect("CompilerMode.ls を読めること");
+    let body = source
+        .split("(defn compile-file-functions-with-cache-normal-payload-production-diagnostic")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-file-functions-payload-with-cache")
+                .next()
+        })
+        .expect("normal payload production functions diagnostic body を取り出せること");
+
+    let entry_pos = body
+        .find("(print 9000000258)")
+        .expect("production functions diagnostic は entry marker を出すべき");
+    let pairs_pos = body
+        .find("all-pairs (compile-file-pairs-with-cache path cache-ref parse-count-ref)")
+        .expect("production functions diagnostic は compile-file-pairs-with-cache を通るべき");
+    let after_pairs = body
+        .find("(print 9000000259)")
+        .expect("production functions diagnostic は pairs 後 marker を出すべき");
+    let before_register = body
+        .find("(print 9000000260)")
+        .expect("production functions diagnostic は register 前 marker を出すべき");
+    let after_register = body
+        .find("(print 9000000261)")
+        .expect("production functions diagnostic は register 後 marker を出すべき");
+    let before_compile_all = body
+        .find("(print 9000000262)")
+        .expect("production functions diagnostic は compile-all 前 marker を出すべき");
+    let compile_all = body
+        .find("functions (compile-all-src-decl-pairs-chunked all-pairs 0 n ftable data-ref functions0)")
+        .expect("production functions diagnostic は通常 compile-all path を呼ぶべき");
+    let after_compile_all = body
+        .find("(print 9000000263)")
+        .expect("production functions diagnostic は compile-all 復帰後 marker を出すべき");
+
+    assert!(
+        entry_pos < pairs_pos
+            && pairs_pos < after_pairs
+            && after_pairs < before_register
+            && before_register < after_register
+            && after_register < before_compile_all
+            && before_compile_all < compile_all
+            && compile_all < after_compile_all,
+        "normal payload production functions 診断は entry -> pairs -> register -> real compile-all -> finish の順にするべき"
+    );
+    assert!(
+        !body.contains("compile-all-src-decl-pairs-chunked-normal-setup-diagnostic"),
+        "normal payload production functions 診断は normal setup probe ではなく production compile-all を使うべき"
+    );
+}
+
+#[test]
 fn test_selfhost_compiler_mode_has_normal_payload_production_payload_diagnostic() {
     let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
         "selfhost/src/App/CompilerMode.ls",
@@ -1615,8 +1697,8 @@ fn test_selfhost_compiler_mode_has_normal_payload_production_payload_diagnostic(
         "(print 9000000255)",
         "(print 9000000256)",
         "(print 9000000257)",
+        "functions (compile-file-functions-with-cache-normal-payload-production-diagnostic path func-idx cache-ref parse-count-ref data-ref)",
         "data-ref (ref-new (vector-new 8))",
-        "functions (compile-file-functions-with-cache path func-idx cache-ref parse-count-ref data-ref)",
         "payload2 (vector-push payload1 data)",
         "(root_set data-slot payload2)",
     ] {
@@ -1654,8 +1736,8 @@ fn test_selfhost_normal_payload_production_payload_diagnostic_wraps_real_compile
         .find("(print 9000000255)")
         .expect("production payload diagnostic は compile 前 marker を出すべき");
     let compile_call = body
-        .find("functions (compile-file-functions-with-cache path func-idx cache-ref parse-count-ref data-ref)")
-        .expect("production payload diagnostic は通常 compile-file-functions-with-cache を呼ぶべき");
+        .find("functions (compile-file-functions-with-cache-normal-payload-production-diagnostic path func-idx cache-ref parse-count-ref data-ref)")
+        .expect("production payload diagnostic は通常 compile-all path を包む production functions diagnostic を呼ぶべき");
     let after_compile = body
         .find("(print 9000000256)")
         .expect("production payload diagnostic は compile 復帰後 marker を出すべき");
