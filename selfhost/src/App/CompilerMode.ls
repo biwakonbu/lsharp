@@ -1098,6 +1098,48 @@
                   (root_pop)
                   (root_pop)
                   payload2))))))))))
+(defn compile-file-functions-payload-with-cache-normal-payload-production-diagnostic [path func-idx cache-ref parse-count-ref]
+  (do
+    (print 9000000254)
+    (let [path-slot (root_push path)
+      cache-slot (root_push cache-ref)
+      parse-count-slot (root_push parse-count-ref)
+      data-ref (ref-new (vector-new 8))
+      data-slot (root_push data-ref)]
+      (do
+        (print 9000000255)
+        (print (ref-get parse-count-ref))
+        (print (vector-length (ref-get data-ref)))
+        (let [functions (compile-file-functions-with-cache path func-idx cache-ref parse-count-ref data-ref)]
+          (do
+            (root_push functions)
+            (print 9000000256)
+            (print (vector-length functions))
+            (print (vector-length (ref-get data-ref)))
+            (print (ref-get parse-count-ref))
+            (let [data (ref-get data-ref)]
+              (do
+                (let [data-slot (root_push data)]
+                (let [payload1 (vector-push (vector-new 2) functions)]
+                  (do
+                    (root_push payload1)
+                    (let [payload2 (vector-push payload1 data)]
+                      (do
+                        (root_push payload2)
+                        (root_set data-slot payload2)
+                        (print 9000000257)
+                        (print (vector-length payload2))
+                        (print (vector-length functions))
+                        (print (vector-length data))
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        payload2)))))))))))))
 (defn compile-file-functions-with-cache-normal-setup-diagnostic [path func-idx cache-ref parse-count-ref data-ref]
   (do
     (print 9000000184)

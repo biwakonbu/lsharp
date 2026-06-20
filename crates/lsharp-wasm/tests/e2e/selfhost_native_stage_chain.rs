@@ -432,10 +432,12 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
 	                                                      (print (vector-length normal-payload-shape-direct-data)))
 	                                                    0)
 	         payload-base (if (= pre-payload-progress-mode 1)
-	                        (compile-file-functions-payload-with-cache-progress source-path 10 cache-ref parse-count-ref)
-	                        (if (= normal-transport-diagnostic-mode 1)
-	                          (compile-file-functions-payload-with-cache-normal-setup-diagnostic source-path 10 cache-ref parse-count-ref)
-	                          (compile-file-functions-payload-with-cache source-path 10 cache-ref parse-count-ref)))
+		                        (compile-file-functions-payload-with-cache-progress source-path 10 cache-ref parse-count-ref)
+		                        (if (= normal-transport-diagnostic-mode 1)
+		                          (compile-file-functions-payload-with-cache-normal-setup-diagnostic source-path 10 cache-ref parse-count-ref)
+		                          (if (= normal-payload-shape-mode 1)
+		                            (compile-file-functions-payload-with-cache-normal-payload-production-diagnostic source-path 10 cache-ref parse-count-ref)
+		                            (compile-file-functions-payload-with-cache source-path 10 cache-ref parse-count-ref))))
          payload-root (root_push payload-base)
          normal-payload-shape-after-root (if (= normal-payload-shape-mode 1)
                                           (do
@@ -1478,6 +1480,7 @@ fn test_linux_x86_representative_seed_can_print_normal_payload_shape_without_swi
         "compile-file-functions-with-cache-normal-payload-diagnostic source-path 10 normal-payload-shape-direct-cache-ref normal-payload-shape-direct-parse-count-ref normal-payload-shape-direct-data-ref",
         "normal-payload-shape-after-direct-functions",
         "normal-payload-shape-after-direct-function-edges",
+        "compile-file-functions-payload-with-cache-normal-payload-production-diagnostic source-path 10 cache-ref parse-count-ref",
         "compile-file-functions-payload-with-cache source-path 10 cache-ref parse-count-ref",
         "normal-payload-shape-after-root",
         "normal-payload-shape-after-parts",
@@ -1522,6 +1525,21 @@ fn test_linux_x86_representative_seed_can_print_normal_payload_shape_without_swi
             && payload_root_pos < shape_root_pos
             && shape_root_pos < functions_pos,
         "normal payload shape 診断は payload-base を root した後、functions/data を取り出す前に最初の形を採取するべき"
+    );
+
+    let production_payload_probe_pos = source[payload_base_pos..payload_root_pos]
+        .find("compile-file-functions-payload-with-cache-normal-payload-production-diagnostic source-path 10 cache-ref parse-count-ref")
+        .map(|pos| payload_base_pos + pos)
+        .expect("normal-payload-shape mode は production payload probe helper を通すこと");
+    let normal_payload_pos = source[payload_base_pos..payload_root_pos]
+        .find("compile-file-functions-payload-with-cache source-path 10 cache-ref parse-count-ref")
+        .map(|pos| payload_base_pos + pos)
+        .expect("通常 mode は production payload helper を保持すること");
+    assert!(
+        payload_base_pos < production_payload_probe_pos
+            && production_payload_probe_pos < normal_payload_pos
+            && normal_payload_pos < payload_root_pos,
+        "normal-payload-shape mode のときだけ production payload probe helper を挟み、通常 payload helper は維持するべき"
     );
 }
 
@@ -1581,6 +1599,103 @@ fn test_selfhost_normal_payload_diagnostic_enters_compile_all_shape_probe_after_
     assert!(
         boundary_pos < compile_all_probe_pos && compile_all_probe_pos < finish_pos,
         "normal payload diagnostic は 0212 で止まった crash を切り分けるため、0213 より前に compile-all shape probe を通るべき"
+    );
+}
+
+#[test]
+fn test_selfhost_compiler_mode_has_normal_payload_production_payload_diagnostic() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/App/CompilerMode.ls",
+    )))
+    .expect("CompilerMode.ls を読めること");
+
+    for token in [
+        "(defn compile-file-functions-payload-with-cache-normal-payload-production-diagnostic",
+        "(print 9000000254)",
+        "(print 9000000255)",
+        "(print 9000000256)",
+        "(print 9000000257)",
+        "data-ref (ref-new (vector-new 8))",
+        "functions (compile-file-functions-with-cache path func-idx cache-ref parse-count-ref data-ref)",
+        "payload2 (vector-push payload1 data)",
+        "(root_set data-slot payload2)",
+    ] {
+        assert!(
+            source.contains(token),
+            "CompilerMode.ls は normal payload production payload 診断 token {token} を含むべき"
+        );
+    }
+}
+
+#[test]
+fn test_selfhost_normal_payload_production_payload_diagnostic_wraps_real_compile_path() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/App/CompilerMode.ls",
+    )))
+    .expect("CompilerMode.ls を読めること");
+    let body = source
+        .split(
+            "(defn compile-file-functions-payload-with-cache-normal-payload-production-diagnostic",
+        )
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-file-functions-with-cache-normal-setup-diagnostic")
+                .next()
+        })
+        .expect("normal payload production payload diagnostic body を取り出せること");
+
+    let entry_marker = body
+        .find("(print 9000000254)")
+        .expect("production payload diagnostic は entry marker を出すべき");
+    let data_alloc = body.find("data-ref (ref-new (vector-new 8))").expect(
+        "production payload diagnostic は production payload と同じ data-ref を確保するべき",
+    );
+    let before_compile = body
+        .find("(print 9000000255)")
+        .expect("production payload diagnostic は compile 前 marker を出すべき");
+    let compile_call = body
+        .find("functions (compile-file-functions-with-cache path func-idx cache-ref parse-count-ref data-ref)")
+        .expect("production payload diagnostic は通常 compile-file-functions-with-cache を呼ぶべき");
+    let after_compile = body
+        .find("(print 9000000256)")
+        .expect("production payload diagnostic は compile 復帰後 marker を出すべき");
+    let payload2_pos = body
+        .find("payload2 (vector-push payload1 data)")
+        .expect("production payload diagnostic は payload2 を生成するべき");
+    let root_set_pos = body[payload2_pos..]
+        .find("(root_set data-slot payload2)")
+        .map(|pos| payload2_pos + pos)
+        .expect("production payload diagnostic は payload2 を root slot に退避するべき");
+    let after_payload = body
+        .find("(print 9000000257)")
+        .expect("production payload diagnostic は payload assembly 後 marker を出すべき");
+
+    assert!(
+        entry_marker < data_alloc
+            && data_alloc < before_compile
+            && before_compile < compile_call
+            && compile_call < after_compile
+            && after_compile < payload2_pos
+            && payload2_pos < root_set_pos
+            && root_set_pos < after_payload,
+        "normal payload production payload 診断は entry -> data alloc -> before compile -> real compile -> after compile -> payload assembly の順にするべき"
+    );
+    assert!(
+        !body.contains("compile-file-functions-with-cache-normal-setup-diagnostic path func-idx cache-ref parse-count-ref data-ref"),
+        "normal payload production payload 診断は normal setup probe ではなく production compile path を使うべき"
+    );
+    let paren_balance = body.chars().fold(0_i64, |balance, ch| {
+        if ch == '(' {
+            balance + 1
+        } else if ch == ')' {
+            balance - 1
+        } else {
+            balance
+        }
+    });
+    assert_eq!(
+        paren_balance, -1,
+        "normal payload production payload 診断 helper は次の defn に閉じ括弧を借りてはいけない"
     );
 }
 
