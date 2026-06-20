@@ -743,24 +743,25 @@
   (let [map-expr (vector-get node 3)
     key-expr (vector-get node 4)
     map-instrs (compile-expr-with-ftable map-expr env ftable (vector-new 8))
-    key-instrs (compile-map-key-with-ftable key-expr env ftable)
-    map-root (alloc-root-needed map-expr)
-    key-root (map-key-root-needed-with-source key-expr)
-    simple-path (if (simple-map-operand map-expr) (simple-map-operand key-expr) false)]
+    map-root (alloc-root-needed map-expr)]
     (do
       (root_push map-instrs)
-      (root_push key-instrs)
-      (if (= bop 62)
-        (let [result (compile-map-insert-builtin-with-ftable node env ftable instrs bop map-instrs key-instrs map-root key-root)]
-          (do
-            (root_pop)
-            (root_pop)
-            result))
-        (let [result (compile-map-lookup-builtin-with-ftable env instrs map-instrs key-instrs map-root key-root bop simple-path)]
-          (do
-            (root_pop)
-            (root_pop)
-            result))))))
+      (let [key-instrs (compile-map-key-with-ftable key-expr env ftable)
+        key-root (map-key-root-needed-with-source key-expr)
+        simple-path (if (simple-map-operand map-expr) (simple-map-operand key-expr) false)]
+        (do
+          (root_push key-instrs)
+          (if (= bop 62)
+            (let [result (compile-map-insert-builtin-with-ftable node env ftable instrs bop map-instrs key-instrs map-root key-root)]
+              (do
+                (root_pop)
+                (root_pop)
+                result))
+            (let [result (compile-map-lookup-builtin-with-ftable env instrs map-instrs key-instrs map-root key-root bop simple-path)]
+              (do
+                (root_pop)
+                (root_pop)
+                result))))))))
 
 (defn compile-map-builtin-with-ftable-normal-setup-diagnostic [node env ftable instrs bop data-ref]
   (let [map-expr (vector-get node 3)
@@ -1163,30 +1164,31 @@
   (let [map-expr (vector-get node 3)
     key-expr (vector-get node 4)
     map-instrs (compile-expr-with-source map-expr source env ftable (vector-new 8) data-ref)
-    key-instrs (compile-map-key-with-source key-expr source env ftable data-ref)
-    map-root (alloc-root-needed map-expr)
-    key-root (map-key-root-needed-with-source key-expr)
-    simple-path (if (simple-map-operand map-expr) (simple-map-operand key-expr) false)]
+    map-root (alloc-root-needed map-expr)]
     (do
       (root_push map-instrs)
-      (root_push key-instrs)
-      (if (= bop 62)
-        (let [value-expr (vector-get node 5)
-          value-instrs (compile-expr-with-source value-expr source env ftable (vector-new 8) data-ref)
-          value-root (alloc-root-needed value-expr)]
-          (do
-            (root_push value-instrs)
-            (let [result (compile-map-insert-builtin-instrs env instrs map-instrs key-instrs value-instrs map-root key-root value-root bop)]
+      (let [key-instrs (compile-map-key-with-source key-expr source env ftable data-ref)
+        key-root (map-key-root-needed-with-source key-expr)
+        simple-path (if (simple-map-operand map-expr) (simple-map-operand key-expr) false)]
+        (do
+          (root_push key-instrs)
+          (if (= bop 62)
+            (let [value-expr (vector-get node 5)
+              value-instrs (compile-expr-with-source value-expr source env ftable (vector-new 8) data-ref)
+              value-root (alloc-root-needed value-expr)]
+              (do
+                (root_push value-instrs)
+                (let [result (compile-map-insert-builtin-instrs env instrs map-instrs key-instrs value-instrs map-root key-root value-root bop)]
+                  (do
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    result))))
+            (let [result (compile-map-lookup-builtin-with-ftable env instrs map-instrs key-instrs map-root key-root bop simple-path)]
               (do
                 (root_pop)
                 (root_pop)
-                (root_pop)
-                result))))
-        (let [result (compile-map-lookup-builtin-with-ftable env instrs map-instrs key-instrs map-root key-root bop simple-path)]
-          (do
-            (root_pop)
-            (root_pop)
-            result))))))
+                result))))))))
 (defn compile-expr-with-ftable-dispatch-complex-2-rest [tag node env ftable instrs]
   (if (= tag 8)
     (compile-lambda-with-ftable node env ftable instrs)

@@ -2900,6 +2900,77 @@ fn test_wasm_compiler_source_defn_normal_setup_diagnostic_marks_expr_apply_map_i
 }
 
 #[test]
+fn test_selfhost_map_builtin_roots_map_instrs_before_key_compile() {
+    let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("Compiler.ls を読めること");
+
+    let source_body = compiler
+        .split("(defn compile-map-builtin-with-source [")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn compile-expr-with-ftable").next())
+        .expect("compile-map-builtin-with-source body を取り出せること");
+    let source_map_compile = source_body
+        .find("map-instrs (compile-expr-with-source map-expr")
+        .expect("source map builtin は map expr を compile すること");
+    let source_map_root = source_body[source_map_compile..]
+        .find("(root_push map-instrs)")
+        .map(|offset| source_map_compile + offset)
+        .expect("source map builtin は map-instrs を root すること");
+    let source_key_compile = source_body
+        .find("key-instrs (compile-map-key-with-source key-expr")
+        .expect("source map builtin は key expr を compile すること");
+    let source_key_root = source_body[source_key_compile..]
+        .find("(root_push key-instrs)")
+        .map(|offset| source_key_compile + offset)
+        .expect("source map builtin は key-instrs を root すること");
+    let source_lookup = source_body
+        .find("compile-map-lookup-builtin-with-ftable env instrs map-instrs key-instrs")
+        .expect("source map builtin は map/key instrs を lookup helper へ渡すこと");
+
+    assert!(
+        source_map_compile < source_map_root
+            && source_map_root < source_key_compile
+            && source_key_compile < source_key_root
+            && source_key_root < source_lookup,
+        "source map builtin は key compile 中の GC で map-instrs を失わないよう、map-instrs を key-instrs compile 前に root するべき"
+    );
+
+    let ftable_body = compiler
+        .split("(defn compile-map-builtin-with-ftable [")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn compile-map-builtin-with-ftable-normal-setup-diagnostic")
+                .next()
+        })
+        .expect("compile-map-builtin-with-ftable body を取り出せること");
+    let ftable_map_compile = ftable_body
+        .find("map-instrs (compile-expr-with-ftable map-expr")
+        .expect("ftable map builtin は map expr を compile すること");
+    let ftable_map_root = ftable_body[ftable_map_compile..]
+        .find("(root_push map-instrs)")
+        .map(|offset| ftable_map_compile + offset)
+        .expect("ftable map builtin は map-instrs を root すること");
+    let ftable_key_compile = ftable_body
+        .find("key-instrs (compile-map-key-with-ftable key-expr")
+        .expect("ftable map builtin は key expr を compile すること");
+    let ftable_key_root = ftable_body[ftable_key_compile..]
+        .find("(root_push key-instrs)")
+        .map(|offset| ftable_key_compile + offset)
+        .expect("ftable map builtin は key-instrs を root すること");
+    let ftable_lookup = ftable_body
+        .find("compile-map-lookup-builtin-with-ftable env instrs map-instrs key-instrs")
+        .expect("ftable map builtin は map/key instrs を lookup helper へ渡すこと");
+
+    assert!(
+        ftable_map_compile < ftable_map_root
+            && ftable_map_root < ftable_key_compile
+            && ftable_key_compile < ftable_key_root
+            && ftable_key_root < ftable_lookup,
+        "ftable map builtin も key compile 中の GC で map-instrs を失わないよう、map-instrs を key-instrs compile 前に root するべき"
+    );
+}
+
+#[test]
 fn test_linux_x86_representative_seed_omits_payload_entry_shape_probe() {
     let source = linux_x86_representative_actual_stage23_seed_source();
     assert!(
