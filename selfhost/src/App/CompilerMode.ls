@@ -3054,6 +3054,44 @@
                   (root_pop)
                   (root_pop)
                   result)))))))))
+(defn compile-source-defn-functions-chunked-production-diagnostic [decls idx n source ftable data-ref functions]
+  (do
+    (print 9000000275)
+    (print idx)
+    (print n)
+    (print (vector-length functions))
+    (print (vector-length (ref-get data-ref)))
+    (let [state (compile-defn-functions-step-64-with-source decls idx n source ftable data-ref functions)]
+      (do
+        (let [state-slot (root_push state)]
+          (do
+            (print 9000000276)
+            (print (vector-length state))
+            (print (vector-get state 0))
+            (print (vector-get state 1))
+            (print (vector-length (vector-get state 2)))
+            (print (vector-length (ref-get data-ref)))
+            (let [result (continue-compile-defn-functions-step-64-with-source decls n source ftable data-ref state)]
+              (do
+                (root_push result)
+                (print 9000000277)
+                (print (vector-length result))
+                (print (vector-get result 0))
+                (print (vector-get result 1))
+                (print (vector-length (vector-get result 2)))
+                (print (vector-length (ref-get data-ref)))
+                (let [functions-result (vector-get result 2)]
+                  (do
+                    (root_push functions-result)
+                    (print 9000000278)
+                    (print (vector-length functions-result))
+                    (print (vector-length (ref-get data-ref)))
+                    (root_set state-slot functions-result)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    functions-result))))))))))
+
 (defn compile-src-decl-pairs-step-production-diagnostic [pairs idx n ftable data-ref functions]
   (do
     (print 9000000264)
@@ -3078,7 +3116,7 @@
                 (print (vector-length decls))
                 (print (vector-length functions))
                 (print (vector-length (ref-get data-ref)))
-                (let [updated-functions (compile-source-defn-functions-chunked decls 0 (vector-length decls) src ftable data-ref functions)]
+                (let [updated-functions (compile-source-defn-functions-chunked-production-diagnostic decls 0 (vector-length decls) src ftable data-ref functions)]
                   (do
                     (root_push updated-functions)
                     (print 9000000266)
