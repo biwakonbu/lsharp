@@ -1718,6 +1718,14 @@ fn test_selfhost_compiler_mode_has_normal_payload_production_pair_diagnostic() {
         "(print 9000000280)",
         "(print 9000000281)",
         "(print 9000000282)",
+        "(defn continue-compile-defn-functions-step-with-source-production-diagnostic",
+        "(defn continue-compile-defn-functions-step-times-with-source-production-diagnostic",
+        "(print 9000000283)",
+        "(print 9000000284)",
+        "(print 9000000285)",
+        "(print 9000000286)",
+        "(print 9000000287)",
+        "(print 9000000288)",
         "updated-functions (compile-source-defn-functions-chunked-production-diagnostic decls 0 (vector-length decls) src ftable data-ref functions)",
         "state (compile-src-decl-pairs-step-64-production-diagnostic pairs idx n ftable data-ref functions)",
         "functions (compile-all-src-decl-pairs-chunked-production-diagnostic all-pairs 0 n ftable data-ref functions0)",
@@ -1849,8 +1857,8 @@ fn test_selfhost_normal_payload_production_step64_diagnostic_keeps_real_inner_st
         .find("(print 9000000281)")
         .expect("production step64 diagnostic は 63-step continue 前 marker を出すべき");
     let continue_pos = body
-        .find("result (continue-compile-defn-functions-step-times-with-source decls n source ftable data-ref 63 state)")
-        .expect("production step64 diagnostic は production 63-step continue を呼ぶべき");
+        .find("result (continue-compile-defn-functions-step-times-with-source-production-diagnostic decls n source ftable data-ref 63 state)")
+        .expect("production step64 diagnostic は production 63-step continue diagnostic を呼ぶべき");
     let after_continue_pos = body
         .find("(print 9000000282)")
         .expect("production step64 diagnostic は 63-step continue 復帰後 marker を出すべき");
@@ -1870,6 +1878,70 @@ fn test_selfhost_normal_payload_production_step64_diagnostic_keeps_real_inner_st
             )
             && !body.contains("progress-probe"),
         "production step64 diagnostic は normal/progress probe ではなく production inner path を使うべき"
+    );
+}
+
+#[test]
+fn test_selfhost_normal_payload_production_continue_diagnostic_marks_recursive_boundaries() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/App/CompilerMode.ls",
+    )))
+    .expect("CompilerMode.ls を読めること");
+    let step64_body = source
+        .split("(defn compile-defn-functions-step-64-with-source-production-diagnostic")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("production step64 diagnostic body を取り出せること");
+    let times_body = source
+        .split("(defn continue-compile-defn-functions-step-times-with-source-production-diagnostic")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("production continue-times diagnostic body を取り出せること");
+    let single_body = source
+        .split("(defn continue-compile-defn-functions-step-with-source-production-diagnostic")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("production single-step diagnostic body を取り出せること");
+
+    assert!(
+        step64_body.contains(
+            "result (continue-compile-defn-functions-step-times-with-source-production-diagnostic decls n source ftable data-ref 63 state)"
+        ),
+        "production step64 diagnostic は production continue-times diagnostic wrapper を呼ぶべき"
+    );
+
+    let entry_pos = times_body
+        .find("(print 9000000283)")
+        .expect("continue-times diagnostic は entry marker を出すべき");
+    let single_pos = times_body
+        .find("next-state (continue-compile-defn-functions-step-with-source-production-diagnostic decls n source ftable data-ref state)")
+        .expect("continue-times diagnostic は single-step diagnostic wrapper を呼ぶべき");
+    let after_single_pos = times_body
+        .find("(print 9000000286)")
+        .expect("continue-times diagnostic は single-step 復帰後 marker を出すべき");
+    let recursive_pos = times_body
+        .find("result (continue-compile-defn-functions-step-times-with-source-production-diagnostic decls n source ftable data-ref (- remaining 1) next-state)")
+        .expect("continue-times diagnostic は recursive continue を呼ぶべき");
+    let after_recursive_pos = times_body
+        .find("(print 9000000287)")
+        .expect("continue-times diagnostic は recursive 復帰後 marker を出すべき");
+
+    assert!(
+        entry_pos < single_pos
+            && single_pos < after_single_pos
+            && after_single_pos < recursive_pos
+            && recursive_pos < after_recursive_pos,
+        "continue-times diagnostic は entry -> single-step -> single result -> recursive -> recursive result の順にするべき"
+    );
+    assert!(
+        single_body.contains("(print 9000000284)")
+            && single_body.contains("(print 9000000285)")
+            && times_body.contains("(print 9000000288)"),
+        "continue diagnostic は single-step entry/result と done/remaining=0 return shape を出すべき"
+    );
+    assert!(
+        !times_body.contains("normal-setup-diagnostic") && !times_body.contains("progress-probe"),
+        "production continue diagnostic は normal/progress probe ではなく production single step を使うべき"
     );
 }
 
