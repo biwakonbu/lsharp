@@ -3177,7 +3177,7 @@
           (print (vector-get state 1))
           (print (vector-length (vector-get state 2)))
           (print (vector-length (ref-get data-ref)))
-          (let [result (continue-compile-defn-functions-step-times-with-source-production-diagnostic decls n source ftable data-ref 63 state)]
+          (let [result (continue-compile-defn-functions-step-times-with-source decls n source ftable data-ref 63 state)]
             (do
               (root_push result)
               (print 9000000282)
