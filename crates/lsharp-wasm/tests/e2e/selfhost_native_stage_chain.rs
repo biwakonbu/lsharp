@@ -202,7 +202,9 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                     entrypoint-func-idx bounded-main-func-idx
                     starts (if (= raw-functions-mode 1)
                               (vector-new 0)
-                              (collect-callable-function-slot-starts-x86 native-callables 10))
+                              (if (= raw-payload-boundary-mode 1)
+                                (vector-new 0)
+                                (collect-callable-function-slot-starts-x86 native-callables 10)))
                     normal-transport-after-starts (if (= normal-transport-diagnostic-mode 1)
                                                    (do
                                                      (print 9000000175)
@@ -228,7 +230,9 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                                            0)
                     user-total (if (= raw-functions-mode 1)
                                  0
-                                 (callable-user-total-slot-size-x86 native-callables 10))
+                                 (if (= raw-payload-boundary-mode 1)
+                                   0
+                                   (callable-user-total-slot-size-x86 native-callables 10)))
                     progress-after-user-total (if (= progress-mode 1)
                                                (do
                                                  (print 9000000034)
@@ -236,7 +240,9 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                                                0)
                     code-len (if (= raw-functions-mode 1)
                                0
-                               (+ user-total (x86-selfhost-helper-trailer-size 10)))
+                               (if (= raw-payload-boundary-mode 1)
+                                 0
+                                 (+ user-total (x86-selfhost-helper-trailer-size 10))))
                     normal-transport-after-size (if (= normal-transport-diagnostic-mode 1)
                                                  (do
                                                    (print 9000000176)
@@ -259,7 +265,9 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                     code (vector-new 0)
                     entrypoint-offset (if (= raw-functions-mode 1)
                                         0
-                                        (vector-get starts (- entrypoint-func-idx 10)))
+                                        (if (= raw-payload-boundary-mode 1)
+                                          0
+                                          (vector-get starts (- entrypoint-func-idx 10))))
                     normal-transport-after-entrypoint (if (= normal-transport-diagnostic-mode 1)
                                                        (do
                                                          (print 9000000177)
@@ -288,7 +296,9 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                                   (parse-positive-int (command-line-arg 7))
                                   8)]
          (do
-           (if (= normal-payload-shape-mode 1)
+	           (if (= raw-payload-boundary-mode 1)
+	             0
+	             (if (= normal-payload-shape-mode 1)
              (do
                (print 9000000202)
                (print range-start)
@@ -357,7 +367,7 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                         (print data-len)
                         (print 9000000004)
                            (print-packed-code-bytes-loop data 0 data-len))
-                         0)))))))))"#;
+	                         0))))))))))"#;
     let payload_expr = "(compile-file-functions-payload-with-cache (command-line-arg 1) 10 cache-ref parse-count-ref)";
     let source = actual_stage23_seed_source_with_payload_and_code_binding_and_target(
         payload_expr,
@@ -367,13 +377,20 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
     );
     let source = strip_linux_x86_unused_base64_helpers(source);
     let payload_bindings = r#"source-path (command-line-arg 1)
-         source-path-root (root_push source-path)
-         normal-transport-diagnostic-mode (if (> (string-length (command-line-arg 11)) 0) 1 0)
-         normal-payload-shape-mode (if (> (string-length (command-line-arg 12)) 0) 1 0)
-         pre-payload-progress-mode (if (> (string-length (command-line-arg 8)) 0) 1 0)
-         normal-payload-shape-entry (if (= normal-payload-shape-mode 1)
-                                      (do
-                                        (print 9000000205)
+	         source-path-root (root_push source-path)
+	         normal-transport-diagnostic-mode (if (> (string-length (command-line-arg 11)) 0) 1 0)
+	         normal-payload-shape-mode (if (> (string-length (command-line-arg 12)) 0) 1 0)
+	         raw-payload-boundary-mode (if (> (string-length (command-line-arg 13)) 0) 1 0)
+	         pre-payload-progress-mode (if (> (string-length (command-line-arg 8)) 0) 1 0)
+	         raw-payload-boundary-entry (if (= raw-payload-boundary-mode 1)
+	                                      (do
+	                                        (print 9000000293)
+	                                        (print (string-length source-path))
+	                                        (print (ref-get parse-count-ref)))
+	                                      0)
+	         normal-payload-shape-entry (if (= normal-payload-shape-mode 1)
+	                                      (do
+	                                        (print 9000000205)
                                         (print (string-length source-path)))
                                       0)
          normal-transport-before-payload (if (= normal-transport-diagnostic-mode 1) (print 9000000170) 0)
@@ -431,17 +448,31 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
 	                                                      (print (vector-length normal-payload-shape-direct-functions))
 	                                                      (print (vector-length normal-payload-shape-direct-data)))
 	                                                    0)
-	         payload-base (if (= pre-payload-progress-mode 1)
-		                        (compile-file-functions-payload-with-cache-progress source-path 10 cache-ref parse-count-ref)
-		                        (if (= normal-transport-diagnostic-mode 1)
-		                          (compile-file-functions-payload-with-cache-normal-setup-diagnostic source-path 10 cache-ref parse-count-ref)
-		                          (if (= normal-payload-shape-mode 1)
-		                            (compile-file-functions-payload-with-cache-normal-payload-production-diagnostic source-path 10 cache-ref parse-count-ref)
-		                            (compile-file-functions-payload-with-cache source-path 10 cache-ref parse-count-ref))))
-         payload-root (root_push payload-base)
-         normal-payload-shape-after-root (if (= normal-payload-shape-mode 1)
-                                          (do
-                                            (print 9000000196)
+		         raw-payload-boundary-before-payload-base (if (= raw-payload-boundary-mode 1)
+		                                                    (do
+		                                                      (print 9000000294)
+		                                                      (print (ref-get parse-count-ref)))
+		                                                    0)
+		         payload-base (if (= raw-payload-boundary-mode 1)
+		                        (compile-file-functions-payload-with-cache source-path 10 cache-ref parse-count-ref)
+		                        (if (= pre-payload-progress-mode 1)
+			                        (compile-file-functions-payload-with-cache-progress source-path 10 cache-ref parse-count-ref)
+			                        (if (= normal-transport-diagnostic-mode 1)
+			                          (compile-file-functions-payload-with-cache-normal-setup-diagnostic source-path 10 cache-ref parse-count-ref)
+			                          (if (= normal-payload-shape-mode 1)
+			                            (compile-file-functions-payload-with-cache-normal-payload-production-diagnostic source-path 10 cache-ref parse-count-ref)
+			                            (compile-file-functions-payload-with-cache source-path 10 cache-ref parse-count-ref)))))
+	         payload-root (root_push payload-base)
+	         raw-payload-boundary-after-root (if (= raw-payload-boundary-mode 1)
+	                                          (do
+	                                            (print 9000000295)
+	                                            (print (vector-length payload-base))
+	                                            (print (if (> (vector-length payload-base) 0) (vector-length (vector-get payload-base 0)) -1))
+	                                            (print (if (> (vector-length payload-base) 1) (vector-length (vector-get payload-base 1)) -1)))
+	                                          0)
+	         normal-payload-shape-after-root (if (= normal-payload-shape-mode 1)
+	                                          (do
+	                                            (print 9000000196)
                                             (print (vector-length payload-base))
                                             (print (if (> (vector-length payload-base) 0) (vector-length (vector-get payload-base 0)) -1))
                                             (print (if (> (vector-length payload-base) 1) (vector-length (vector-get payload-base 1)) -1)))
@@ -450,11 +481,18 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
          functions (vector-get payload-base 0)
          data (vector-get payload-base 1)
          bounded-main-func-idx (+ 9 (vector-length functions))
-         functions-root (root_push functions)
-         data-root (root_push data)
-         normal-payload-shape-after-parts (if (= normal-payload-shape-mode 1)
-                                           (do
-                                             (print 9000000197)
+	         functions-root (root_push functions)
+	         data-root (root_push data)
+	         raw-payload-boundary-after-parts (if (= raw-payload-boundary-mode 1)
+	                                           (do
+	                                             (print 9000000296)
+	                                             (print (vector-length functions))
+	                                             (print (vector-length data))
+	                                             (print bounded-main-func-idx))
+	                                           0)
+	         normal-payload-shape-after-parts (if (= normal-payload-shape-mode 1)
+	                                           (do
+	                                             (print 9000000197)
                                              (print (vector-length functions))
                                              (print (vector-length data))
                                              (print bounded-main-func-idx))
@@ -513,10 +551,10 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
         "native-callables (normalize-selfhost-native-function-metas-for-target callables target)",
         "native-callables callables",
     )
-    .replace(
-        "callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))",
-        "callables (append-vector-loop (make-x86-import-placeholders-10) functions 0 (vector-length functions))",
-    )
+	    .replace(
+	        "callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))",
+	        "callables (if (= raw-payload-boundary-mode 1) (vector-new 0) (append-vector-loop (make-x86-import-placeholders-10) functions 0 (vector-length functions)))",
+	    )
     .replace(
         "(defn x86-function-slot-size [func-meta functions]\n  (+ (native-function-size-x86 func-meta functions) 2048))",
         r#"(defn x86-function-slot-size [func-meta functions]
@@ -765,7 +803,7 @@ fn test_linux_x86_representative_seed_uses_layout_emit_for_segmented_native_code
         "Linux x86 segmented seed は native heap OOM を避けるため function range を複数 process で出力できるべき"
     );
     let payload_base_pos = source
-        .find("payload-base (if (= pre-payload-progress-mode 1)")
+        .find("payload-base (if (= raw-payload-boundary-mode 1)")
         .expect("Linux x86 seed は payload-base を生成するべき");
     let payload_root_pos = source[payload_base_pos..]
         .find("payload-root (root_push payload-base)")
@@ -783,7 +821,7 @@ fn test_linux_x86_representative_seed_uses_layout_emit_for_segmented_native_code
         !source.contains("emitted-main-func-idx"),
         source.contains("source-path (command-line-arg 1)"),
         source.contains("source-path-root (root_push source-path)"),
-        source.contains("payload-base (if (= pre-payload-progress-mode 1)")
+        source.contains("payload-base (if (= raw-payload-boundary-mode 1)")
             && source
                 .contains("(compile-file-functions-payload-with-cache source-path 10 cache-ref parse-count-ref)"),
         !source.contains(
@@ -803,7 +841,7 @@ fn test_linux_x86_representative_seed_uses_layout_emit_for_segmented_native_code
         !source.contains("defn decls-module-hash-or-minus-one"),
         !source.contains("defn find-module-pair-index"),
         !source.contains("pre-callable-progress"),
-        source.contains("callables (append-vector-loop (make-x86-import-placeholders-10) functions 0 (vector-length functions))"),
+        source.contains("callables (if (= raw-payload-boundary-mode 1) (vector-new 0) (append-vector-loop (make-x86-import-placeholders-10) functions 0 (vector-length functions)))"),
         source.contains("(defn make-x86-import-placeholders-10"),
         !source.contains("callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))"),
         source.contains("main-func-idx bounded-main-func-idx"),
@@ -1059,6 +1097,36 @@ fn test_native_linux_x86_hostgen_vm_script_can_collect_stage3_normal_payload_sha
             && script.contains(r#""phase": "stage3-normal-payload-shape""#)
             && script.contains(failure_summary_call),
         "hostgen VM script は env 指定時だけ actual-stage2 native compiler の通常 payload shape marker を artifact 化し、full transport 前で止められるべき"
+    );
+}
+
+#[test]
+fn test_native_linux_x86_hostgen_vm_script_can_collect_stage3_raw_payload_boundary_markers() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+    let vm_exec = script
+        .split(r#"limactl shell "${VM_NAME}" -- env"#)
+        .nth(1)
+        .and_then(|tail| tail.split("<<'VM_SCRIPT'").next())
+        .expect("VM 実行 heredoc は env 経由で raw payload boundary 診断設定を渡すべき");
+    let failure_summary_call =
+        "write_actual_selfregen_failure_summary \"stage3-raw-payload-boundary\"";
+
+    assert!(
+        vm_exec.contains("LSHARP_NATIVE_LINUX_X86_STAGE3_RAW_PAYLOAD_BOUNDARY")
+            && vm_exec.contains("LSHARP_NATIVE_LINUX_X86_STAGE3_RAW_PAYLOAD_BOUNDARY_ONLY")
+            && script.contains("STAGE3_RAW_PAYLOAD_BOUNDARY_ONLY")
+            && script.contains("collect_stage3_raw_payload_boundary_markers")
+            && script.contains("actual-stage3-raw-payload-boundary.txt")
+            && script.contains("actual-stage3-raw-payload-boundary-stderr.txt")
+            && script.contains(
+                r#"./program.native src/App/Seed.ls 0 1 0 0 "" "" "" "" "" "" "" raw-payload-boundary"#,
+            )
+            && script.contains(r#""phase": "stage3-raw-payload-boundary""#)
+            && script.contains(failure_summary_call),
+        "hostgen VM script は env 指定時だけ actual-stage2 native compiler の raw payload boundary marker を artifact 化し、full transport 前で止められるべき"
     );
 }
 
@@ -1405,6 +1473,40 @@ fn test_linux_x86_representative_seed_can_print_stage_progress_markers() {
 }
 
 #[test]
+fn test_linux_x86_representative_seed_can_print_raw_payload_boundary_markers() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+    lsharp_syntax::parse(&source).expect(
+        "Linux x86 segmented seed source は raw payload boundary 診断追加後も parse できること",
+    );
+
+    for marker in ["9000000293", "9000000294", "9000000295", "9000000296"] {
+        assert!(
+            source.contains(marker),
+            "Linux x86 segmented seed は raw payload boundary marker {marker} を出せるべき"
+        );
+    }
+
+    for token in [
+        "raw-payload-boundary-mode (if (> (string-length (command-line-arg 13)) 0) 1 0)",
+        "raw-payload-boundary-entry",
+        "raw-payload-boundary-before-payload-base",
+        "payload-base (if (= raw-payload-boundary-mode 1)",
+        "compile-file-functions-payload-with-cache source-path 10 cache-ref parse-count-ref",
+        "raw-payload-boundary-after-root",
+        "raw-payload-boundary-after-parts",
+        "(if (= raw-payload-boundary-mode 1)",
+        "(print (vector-length payload-base))",
+        "(print (vector-length functions))",
+        "(print (vector-length data))",
+    ] {
+        assert!(
+            source.contains(token),
+            "Linux x86 segmented seed は helper 差し替えなしの raw payload boundary 診断 token {token} を含むべき"
+        );
+    }
+}
+
+#[test]
 fn test_linux_x86_representative_seed_can_print_normal_transport_setup_markers() {
     let source = linux_x86_representative_actual_stage23_seed_source();
     lsharp_syntax::parse(&source)
@@ -1430,7 +1532,7 @@ fn test_linux_x86_representative_seed_can_print_normal_transport_setup_markers()
     for token in [
         "normal-transport-diagnostic-mode (if (> (string-length (command-line-arg 11)) 0) 1 0)",
         "pre-payload-observe-mode (if (= normal-transport-diagnostic-mode 1) 1 pre-payload-progress-mode)",
-        "payload-base (if (= pre-payload-progress-mode 1)",
+        "payload-base (if (= raw-payload-boundary-mode 1)",
         "compile-file-functions-payload-with-cache-normal-setup-diagnostic source-path 10 cache-ref parse-count-ref",
         "compile-file-functions-payload-with-cache source-path 10 cache-ref parse-count-ref",
         "normal-transport-after-payload",
@@ -1479,7 +1581,7 @@ fn test_linux_x86_representative_seed_can_print_normal_payload_shape_without_swi
         "normal-payload-shape-entry (if (= normal-payload-shape-mode 1)",
         "normal-payload-shape-before-direct-functions",
         "normal-payload-shape-before-payload-base",
-        "payload-base (if (= pre-payload-progress-mode 1)",
+        "payload-base (if (= raw-payload-boundary-mode 1)",
         "normal-payload-shape-direct-functions",
         "compile-file-functions-with-cache-normal-payload-diagnostic source-path 10 normal-payload-shape-direct-cache-ref normal-payload-shape-direct-parse-count-ref normal-payload-shape-direct-data-ref",
         "normal-payload-shape-after-direct-functions",
@@ -1510,7 +1612,7 @@ fn test_linux_x86_representative_seed_can_print_normal_payload_shape_without_swi
     }
 
     let payload_base_pos = source
-        .find("payload-base (if (= pre-payload-progress-mode 1)")
+        .find("payload-base (if (= raw-payload-boundary-mode 1)")
         .expect("payload-base 生成が存在すること");
     let payload_root_pos = source[payload_base_pos..]
         .find("payload-root (root_push payload-base)")
@@ -1535,9 +1637,9 @@ fn test_linux_x86_representative_seed_can_print_normal_payload_shape_without_swi
         .find("compile-file-functions-payload-with-cache-normal-payload-production-diagnostic source-path 10 cache-ref parse-count-ref")
         .map(|pos| payload_base_pos + pos)
         .expect("normal-payload-shape mode は production payload probe helper を通すこと");
-    let normal_payload_pos = source[payload_base_pos..payload_root_pos]
+    let normal_payload_pos = source[production_payload_probe_pos..payload_root_pos]
         .find("compile-file-functions-payload-with-cache source-path 10 cache-ref parse-count-ref")
-        .map(|pos| payload_base_pos + pos)
+        .map(|pos| production_payload_probe_pos + pos)
         .expect("通常 mode は production payload helper を保持すること");
     assert!(
         payload_base_pos < production_payload_probe_pos

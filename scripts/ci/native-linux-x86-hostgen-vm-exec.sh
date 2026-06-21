@@ -221,6 +221,8 @@ limactl shell "${VM_NAME}" -- env \
   LSHARP_NATIVE_LINUX_X86_STAGE3_NORMAL_SETUP_ONLY="${LSHARP_NATIVE_LINUX_X86_STAGE3_NORMAL_SETUP_ONLY:-}" \
   LSHARP_NATIVE_LINUX_X86_STAGE3_NORMAL_PAYLOAD_SHAPE="${LSHARP_NATIVE_LINUX_X86_STAGE3_NORMAL_PAYLOAD_SHAPE:-}" \
   LSHARP_NATIVE_LINUX_X86_STAGE3_NORMAL_PAYLOAD_SHAPE_ONLY="${LSHARP_NATIVE_LINUX_X86_STAGE3_NORMAL_PAYLOAD_SHAPE_ONLY:-}" \
+  LSHARP_NATIVE_LINUX_X86_STAGE3_RAW_PAYLOAD_BOUNDARY="${LSHARP_NATIVE_LINUX_X86_STAGE3_RAW_PAYLOAD_BOUNDARY:-}" \
+  LSHARP_NATIVE_LINUX_X86_STAGE3_RAW_PAYLOAD_BOUNDARY_ONLY="${LSHARP_NATIVE_LINUX_X86_STAGE3_RAW_PAYLOAD_BOUNDARY_ONLY:-}" \
   bash -s -- "${VM_WORK_DIR}" <<'VM_SCRIPT'
 set -euo pipefail
 
@@ -1108,6 +1110,8 @@ STAGE3_NORMAL_SETUP="${LSHARP_NATIVE_LINUX_X86_STAGE3_NORMAL_SETUP:-}"
 STAGE3_NORMAL_SETUP_ONLY="${LSHARP_NATIVE_LINUX_X86_STAGE3_NORMAL_SETUP_ONLY:-}"
 STAGE3_NORMAL_PAYLOAD_SHAPE="${LSHARP_NATIVE_LINUX_X86_STAGE3_NORMAL_PAYLOAD_SHAPE:-}"
 STAGE3_NORMAL_PAYLOAD_SHAPE_ONLY="${LSHARP_NATIVE_LINUX_X86_STAGE3_NORMAL_PAYLOAD_SHAPE_ONLY:-}"
+STAGE3_RAW_PAYLOAD_BOUNDARY="${LSHARP_NATIVE_LINUX_X86_STAGE3_RAW_PAYLOAD_BOUNDARY:-}"
+STAGE3_RAW_PAYLOAD_BOUNDARY_ONLY="${LSHARP_NATIVE_LINUX_X86_STAGE3_RAW_PAYLOAD_BOUNDARY_ONLY:-}"
 VM_REPLAY_LOCK_DIR="${LSHARP_NATIVE_LINUX_X86_VM_REPLAY_LOCK_DIR:-/tmp/lsharp-native-linux-x86-hostgen-vm-replay.lock}"
 REPLAY_LOCK_ACQUIRED=0
 if [[ -n "${STAGE3_PROGRESS_ONLY}" ]]; then
@@ -1118,6 +1122,9 @@ if [[ -n "${STAGE3_NORMAL_SETUP_ONLY}" ]]; then
 fi
 if [[ -n "${STAGE3_NORMAL_PAYLOAD_SHAPE_ONLY}" ]]; then
   STAGE3_NORMAL_PAYLOAD_SHAPE=1
+fi
+if [[ -n "${STAGE3_RAW_PAYLOAD_BOUNDARY_ONLY}" ]]; then
+  STAGE3_RAW_PAYLOAD_BOUNDARY=1
 fi
 mkdir -p actual-stage2 actual-stage3
 cp -a actual-stage1/src actual-stage2/src
@@ -1439,6 +1446,21 @@ collect_stage3_normal_payload_shape_markers() {
   fi
 }
 
+collect_stage3_raw_payload_boundary_markers() {
+  local raw_payload_boundary_exit_code=0
+  if [[ -z "${STAGE3_RAW_PAYLOAD_BOUNDARY}" ]]; then
+    return 0
+  fi
+  set +e
+  (cd actual-stage2 && timeout "${ACTUAL_TIMEOUT}" ./program.native src/App/Seed.ls 0 1 0 0 "" "" "" "" "" "" "" raw-payload-boundary >"../actual-stage3-raw-payload-boundary.txt" 2>"../actual-stage3-raw-payload-boundary-stderr.txt")
+  raw_payload_boundary_exit_code=$?
+  set -e
+  if [[ "${raw_payload_boundary_exit_code}" -ne 0 ]]; then
+    echo "ERROR: actual stage3 raw payload boundary failed with status ${raw_payload_boundary_exit_code}" >&2
+    return "${raw_payload_boundary_exit_code}"
+  fi
+}
+
 acquire_actual_replay_lock
 python3 materialize-actual-bundle.py actual-stage1 stage1-code.bin entrypoint-offset.txt
 set +e
@@ -1499,6 +1521,28 @@ set -e
 if [[ "${actual_stage3_normal_payload_shape_exit_code}" -ne 0 ]]; then
   write_actual_selfregen_failure_summary "stage3-normal-payload-shape" "${actual_stage3_normal_payload_shape_exit_code}" actual-stage3-normal-payload-shape.txt actual-stage3-normal-payload-shape-stderr.txt
   exit "${actual_stage3_normal_payload_shape_exit_code}"
+fi
+set +e
+collect_stage3_raw_payload_boundary_markers
+actual_stage3_raw_payload_boundary_exit_code=$?
+set -e
+if [[ "${actual_stage3_raw_payload_boundary_exit_code}" -ne 0 ]]; then
+  write_actual_selfregen_failure_summary "stage3-raw-payload-boundary" "${actual_stage3_raw_payload_boundary_exit_code}" actual-stage3-raw-payload-boundary.txt actual-stage3-raw-payload-boundary-stderr.txt
+  exit "${actual_stage3_raw_payload_boundary_exit_code}"
+fi
+if [[ -n "${STAGE3_RAW_PAYLOAD_BOUNDARY_ONLY}" ]]; then
+  cat >actual-selfregen-summary.json <<JSON
+{
+  "target": "x86_64-unknown-linux-gnu",
+  "host_os": "${HOST_OS}",
+  "host_arch": "${HOST_ARCH}",
+  "status": "diagnostic",
+  "phase": "stage3-raw-payload-boundary",
+  "raw_payload_boundary_stdout_bytes": $(wc -c <actual-stage3-raw-payload-boundary.txt),
+  "raw_payload_boundary_stderr_bytes": $(wc -c <actual-stage3-raw-payload-boundary-stderr.txt)
+}
+JSON
+  exit 0
 fi
 if [[ -n "${STAGE3_NORMAL_PAYLOAD_SHAPE_ONLY}" ]]; then
   cat >actual-selfregen-summary.json <<JSON
