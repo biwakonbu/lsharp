@@ -3722,6 +3722,33 @@ fn test_selfhost_compiler_mode_has_raw_payload_boundary_diagnostic() {
 }
 
 #[test]
+fn test_selfhost_raw_payload_boundary_diagnostic_form_is_balanced() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/App/CompilerMode.ls",
+    )))
+    .expect("CompilerMode.ls を読めること");
+
+    let form = source
+        .split("(defn compile-file-functions-payload-with-cache-raw-boundary-diagnostic")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-file-functions-payload-with-cache-normal-payload-production-diagnostic")
+                .next()
+        })
+        .expect("raw payload boundary diagnostic form を取り出せること");
+    let balance = form.chars().fold(1_i32, |balance, ch| match ch {
+        '(' => balance + 1,
+        ')' => balance - 1,
+        _ => balance,
+    });
+
+    assert_eq!(
+        balance, 0,
+        "raw payload boundary diagnostic は次の defn を selfhost parser に飲み込ませないよう単体で閉じるべき"
+    );
+}
+
+#[test]
 fn test_selfhost_normal_payload_roots_payload2_before_root_set() {
     let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
         "selfhost/src/App/CompilerMode.ls",

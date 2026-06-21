@@ -1183,7 +1183,7 @@
                             (root_pop)
                             (root_pop)
                             (root_pop)
-                            payload2))))))))))))
+                            payload2))))))))))))))
 (defn compile-file-functions-payload-with-cache-normal-payload-production-diagnostic [path func-idx cache-ref parse-count-ref]
   (do
     (print 9000000254)
