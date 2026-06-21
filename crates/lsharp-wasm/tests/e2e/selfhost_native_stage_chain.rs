@@ -380,7 +380,9 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
 	         source-path-root (root_push source-path)
 	         normal-transport-diagnostic-mode (if (> (string-length (command-line-arg 11)) 0) 1 0)
 	         normal-payload-shape-mode (if (> (string-length (command-line-arg 12)) 0) 1 0)
-	         raw-payload-boundary-mode (if (> (string-length (command-line-arg 13)) 0) 1 0)
+	         raw-payload-boundary-arg (command-line-arg 13)
+	         raw-payload-production-boundary-mode (if (string-eq raw-payload-boundary-arg "raw-payload-production-boundary") 1 0)
+	         raw-payload-boundary-mode (if (> (string-length raw-payload-boundary-arg) 0) 1 0)
 	         pre-payload-progress-mode (if (> (string-length (command-line-arg 8)) 0) 1 0)
 	         raw-payload-boundary-entry (if (= raw-payload-boundary-mode 1)
 	                                      (do
@@ -453,15 +455,17 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
 		                                                      (print 9000000294)
 		                                                      (print (ref-get parse-count-ref)))
 		                                                    0)
-		         payload-base (if (= raw-payload-boundary-mode 1)
-		                        (compile-file-functions-payload-with-cache-raw-boundary-diagnostic source-path 10 cache-ref parse-count-ref)
-		                        (if (= pre-payload-progress-mode 1)
-			                        (compile-file-functions-payload-with-cache-progress source-path 10 cache-ref parse-count-ref)
-			                        (if (= normal-transport-diagnostic-mode 1)
-			                          (compile-file-functions-payload-with-cache-normal-setup-diagnostic source-path 10 cache-ref parse-count-ref)
-			                          (if (= normal-payload-shape-mode 1)
-			                            (compile-file-functions-payload-with-cache-normal-payload-production-diagnostic source-path 10 cache-ref parse-count-ref)
-			                            (compile-file-functions-payload-with-cache source-path 10 cache-ref parse-count-ref)))))
+		         payload-base (if (= raw-payload-production-boundary-mode 1)
+		                        (compile-file-functions-payload-with-cache-normal-payload-production-diagnostic source-path 10 cache-ref parse-count-ref)
+		                        (if (= raw-payload-boundary-mode 1)
+		                          (compile-file-functions-payload-with-cache-raw-boundary-diagnostic source-path 10 cache-ref parse-count-ref)
+		                          (if (= pre-payload-progress-mode 1)
+				                        (compile-file-functions-payload-with-cache-progress source-path 10 cache-ref parse-count-ref)
+				                        (if (= normal-transport-diagnostic-mode 1)
+				                          (compile-file-functions-payload-with-cache-normal-setup-diagnostic source-path 10 cache-ref parse-count-ref)
+				                          (if (= normal-payload-shape-mode 1)
+				                            (compile-file-functions-payload-with-cache-normal-payload-production-diagnostic source-path 10 cache-ref parse-count-ref)
+				                            (compile-file-functions-payload-with-cache source-path 10 cache-ref parse-count-ref))))))
 	         payload-root (root_push payload-base)
 	         raw-payload-boundary-after-root (if (= raw-payload-boundary-mode 1)
 	                                          (do
@@ -1131,6 +1135,37 @@ fn test_native_linux_x86_hostgen_vm_script_can_collect_stage3_raw_payload_bounda
 }
 
 #[test]
+fn test_native_linux_x86_hostgen_vm_script_can_collect_stage3_raw_payload_production_boundary_markers()
+ {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+    let vm_exec = script
+        .split(r#"limactl shell "${VM_NAME}" -- env"#)
+        .nth(1)
+        .and_then(|tail| tail.split("<<'VM_SCRIPT'").next())
+        .expect("VM 実行 heredoc は env 経由で raw payload production boundary 診断設定を渡すべき");
+    let failure_summary_call =
+        "write_actual_selfregen_failure_summary \"stage3-raw-payload-production-boundary\"";
+
+    assert!(
+        vm_exec.contains("LSHARP_NATIVE_LINUX_X86_STAGE3_RAW_PAYLOAD_PRODUCTION_BOUNDARY")
+            && vm_exec.contains("LSHARP_NATIVE_LINUX_X86_STAGE3_RAW_PAYLOAD_PRODUCTION_BOUNDARY_ONLY")
+            && script.contains("STAGE3_RAW_PAYLOAD_PRODUCTION_BOUNDARY_ONLY")
+            && script.contains("collect_stage3_raw_payload_production_boundary_markers")
+            && script.contains("actual-stage3-raw-payload-production-boundary.txt")
+            && script.contains("actual-stage3-raw-payload-production-boundary-stderr.txt")
+            && script.contains(
+                r#"./program.native src/App/Seed.ls 0 1 0 0 "" "" "" "" "" "" "" raw-payload-production-boundary"#,
+            )
+            && script.contains(r#""phase": "stage3-raw-payload-production-boundary""#)
+            && script.contains(failure_summary_call),
+        "hostgen VM script は env 指定時だけ actual-stage2 native compiler の raw payload production boundary marker を artifact 化し、full transport 前で止められるべき"
+    );
+}
+
+#[test]
 fn test_native_linux_x86_hostgen_vm_script_can_collect_stage1_progress_markers_before_harvest() {
     let script_path =
         selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
@@ -1487,10 +1522,11 @@ fn test_linux_x86_representative_seed_can_print_raw_payload_boundary_markers() {
     }
 
     for token in [
-        "raw-payload-boundary-mode (if (> (string-length (command-line-arg 13)) 0) 1 0)",
+        "raw-payload-boundary-arg (command-line-arg 13)",
+        "raw-payload-boundary-mode (if (> (string-length raw-payload-boundary-arg) 0) 1 0)",
         "raw-payload-boundary-entry",
         "raw-payload-boundary-before-payload-base",
-        "payload-base (if (= raw-payload-boundary-mode 1)",
+        "payload-base (if (= raw-payload-production-boundary-mode 1)",
         "compile-file-functions-payload-with-cache-raw-boundary-diagnostic source-path 10 cache-ref parse-count-ref",
         "raw-payload-boundary-after-root",
         "raw-payload-boundary-after-parts",
@@ -1502,6 +1538,29 @@ fn test_linux_x86_representative_seed_can_print_raw_payload_boundary_markers() {
         assert!(
             source.contains(token),
             "Linux x86 segmented seed は helper 差し替えなしの raw payload boundary 診断 token {token} を含むべき"
+        );
+    }
+}
+
+#[test]
+fn test_linux_x86_representative_seed_can_print_raw_payload_production_boundary_markers() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+    lsharp_syntax::parse(&source).expect(
+        "Linux x86 segmented seed source は raw payload production boundary 診断追加後も parse できること",
+    );
+
+    for token in [
+        "raw-payload-boundary-arg (command-line-arg 13)",
+        r#"raw-payload-production-boundary-mode (if (string-eq raw-payload-boundary-arg "raw-payload-production-boundary") 1 0)"#,
+        "payload-base (if (= raw-payload-production-boundary-mode 1)",
+        "compile-file-functions-payload-with-cache-normal-payload-production-diagnostic source-path 10 cache-ref parse-count-ref",
+        "raw-payload-boundary-before-payload-base",
+        "(if (= raw-payload-boundary-mode 1)",
+        "(print 9000000294)",
+    ] {
+        assert!(
+            source.contains(token),
+            "Linux x86 segmented seed は raw payload production boundary 診断 token {token} を含むべき"
         );
     }
 }
