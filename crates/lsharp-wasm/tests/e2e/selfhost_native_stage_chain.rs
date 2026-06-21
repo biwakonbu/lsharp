@@ -1305,6 +1305,10 @@ fn test_linux_x86_representative_seed_can_print_function_segment_metadata() {
             && source.contains("(print (native-function-local-count func-meta))")
             && source.contains("(print body-offset)")
             && source.contains("(print (vector-length ir-func))")
+            && source.contains("(print 9000000289)")
+            && source.contains("(print 9000000290)")
+            && source.contains("(print 9000000291)")
+            && source.contains("(print 9000000292)")
             && source.contains("(defn print-x86-function-ir-prefix-loop [segment ir offsets functions control-ctx idx len depth]")
             && source.contains("metadata-prefix-limit")
             && source.contains("command-line-arg 7")
@@ -12232,36 +12236,57 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
           (apply-stack-delta depth (opcode-stack-delta opcode operand functions)))))))
 
 (defn print-x86-function-segment-metadata-loop [functions starts import-count import-stub-offset idx len prefix-limit]
-  (if (>= idx len)
-    0
-    (do
-      (root_push functions)
-      (root_push starts)
-      (let [actual-idx (+ idx import-count)
-              func-meta (vector-get functions actual-idx)
-              function-start (vector-get starts idx)]
-          (do
-            (root_push func-meta)
-            (let [ir-func (native-function-ir func-meta)
-                  param-count (native-function-param-count func-meta)
-                  local-count (native-function-local-count func-meta)]
-              (do
-                (root_push ir-func)
-                (let [frame-base-slot-count
-                        (native-frame-base-slot-count ir-func (+ (+ param-count local-count) 1))
-                      stack-bytes
+	  (if (>= idx len)
+	    0
+	    (do
+	      (root_push functions)
+	      (root_push starts)
+	      (print 9000000289)
+	      (print idx)
+	      (print len)
+	      (print import-count)
+	      (print (vector-length functions))
+	      (print (vector-length starts))
+	      (let [actual-idx (+ idx import-count)
+	              func-meta (vector-get functions actual-idx)
+	              function-start (vector-get starts idx)]
+	          (do
+	            (print 9000000290)
+	            (print idx)
+	            (print actual-idx)
+	            (print function-start)
+	            (print (vector-length func-meta))
+	            (root_push func-meta)
+	            (let [ir-func (native-function-ir func-meta)
+	                  param-count (native-function-param-count func-meta)
+	                  local-count (native-function-local-count func-meta)]
+	              (do
+	                (print 9000000291)
+	                (print idx)
+	                (print param-count)
+	                (print local-count)
+	                (print (vector-length ir-func))
+	                (root_push ir-func)
+	                (let [frame-base-slot-count
+	                        (native-frame-base-slot-count ir-func (+ (+ param-count local-count) 1))
+	                      stack-bytes
                         (native-local-stack-bytes-with-window-x86
                           ir-func
                           (+ (+ param-count local-count) 1)
                           functions)
                       function-size (x86-function-slot-size-from-starts starts import-stub-offset idx function-start)
                       after-stack-offset (if (> stack-bytes 0) 11 4)
-                      param-spill-bytes (x86-param-spill-prefix-size param-count)
-                      body-offset (+ after-stack-offset param-spill-bytes)
-                      result (ref-new (vector-new function-size))]
-                  (do
-                    (root_push result)
-                    (print 9000000020)
+	                      param-spill-bytes (x86-param-spill-prefix-size param-count)
+	                      body-offset (+ after-stack-offset param-spill-bytes)
+	                      result (ref-new (vector-new function-size))]
+	                  (do
+	                    (root_push result)
+	                    (print 9000000292)
+	                    (print idx)
+	                    (print frame-base-slot-count)
+	                    (print stack-bytes)
+	                    (print function-size)
+	                    (print 9000000020)
                     (print idx)
                     (print actual-idx)
                     (print function-start)
