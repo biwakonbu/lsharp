@@ -3071,7 +3071,7 @@
           (print (vector-length next-functions))
           (print (vector-length (ref-get data-ref)))
           (root_push next-functions)
-          (let [result (compile-defn-functions-step-with-source decls next-idx n source ftable data-ref next-functions)]
+          (let [result (compile-defn-functions-step-with-source-normal-setup-diagnostic decls next-idx n source ftable data-ref next-functions)]
             (do
               (root_push result)
               (root_set state-slot result)
