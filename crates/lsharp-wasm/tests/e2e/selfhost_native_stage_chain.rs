@@ -454,7 +454,7 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
 		                                                      (print (ref-get parse-count-ref)))
 		                                                    0)
 		         payload-base (if (= raw-payload-boundary-mode 1)
-		                        (compile-file-functions-payload-with-cache source-path 10 cache-ref parse-count-ref)
+		                        (compile-file-functions-payload-with-cache-raw-boundary-diagnostic source-path 10 cache-ref parse-count-ref)
 		                        (if (= pre-payload-progress-mode 1)
 			                        (compile-file-functions-payload-with-cache-progress source-path 10 cache-ref parse-count-ref)
 			                        (if (= normal-transport-diagnostic-mode 1)
@@ -1491,7 +1491,7 @@ fn test_linux_x86_representative_seed_can_print_raw_payload_boundary_markers() {
         "raw-payload-boundary-entry",
         "raw-payload-boundary-before-payload-base",
         "payload-base (if (= raw-payload-boundary-mode 1)",
-        "compile-file-functions-payload-with-cache source-path 10 cache-ref parse-count-ref",
+        "compile-file-functions-payload-with-cache-raw-boundary-diagnostic source-path 10 cache-ref parse-count-ref",
         "raw-payload-boundary-after-root",
         "raw-payload-boundary-after-parts",
         "(if (= raw-payload-boundary-mode 1)",
@@ -3674,6 +3674,50 @@ fn test_selfhost_compile_file_payload_roots_result_before_unwinding_state() {
             && payload2_pos < root_set_pos
             && root_set_pos < first_pop_after_payload2,
         "payload helper は stage2 normal transport で payload2 の functions/data を失わないよう、unwind 前に payload2 を root slot へ退避するべき"
+    );
+}
+
+#[test]
+fn test_selfhost_compiler_mode_has_raw_payload_boundary_diagnostic() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/App/CompilerMode.ls",
+    )))
+    .expect("CompilerMode.ls を読めること");
+
+    for token in [
+        "(defn compile-file-functions-payload-with-cache-raw-boundary-diagnostic",
+        "(print 9000000297)",
+        "(print 9000000298)",
+        "(print 9000000299)",
+        "(print 9000000300)",
+        "(print 9000000301)",
+        "functions (compile-file-functions-with-cache path func-idx cache-ref parse-count-ref data-ref)",
+        "payload2 (vector-push payload1 data)",
+        "(root_set data-slot payload2)",
+    ] {
+        assert!(
+            source.contains(token),
+            "CompilerMode は raw payload helper 内部境界 diagnostic token {token} を含むべき"
+        );
+    }
+
+    let body = source
+        .split("(defn compile-file-functions-payload-with-cache-raw-boundary-diagnostic")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn compile-file-functions-payload-with-cache-normal-payload-production-diagnostic").next())
+        .expect("raw payload boundary diagnostic body を取り出せること");
+    let before_compile = body
+        .find("(print 9000000298)")
+        .expect("raw payload diagnostic は compile call 前 marker を出すべき");
+    let compile_call = body
+        .find("functions (compile-file-functions-with-cache path func-idx cache-ref parse-count-ref data-ref)")
+        .expect("raw payload diagnostic は production compile-file-functions-with-cache を呼ぶべき");
+    let after_compile = body
+        .find("(print 9000000299)")
+        .expect("raw payload diagnostic は compile call 後 marker を出すべき");
+    assert!(
+        before_compile < compile_call && compile_call < after_compile,
+        "raw payload diagnostic は production compile call の直前/直後だけを marker で挟むべき"
     );
 }
 
