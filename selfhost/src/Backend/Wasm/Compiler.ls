@@ -2798,7 +2798,7 @@
   (compile-expr-with-ftable-dispatch-impl-body node env ftable instrs))
 
 (defn compile-defn-functions-step-with-source [decls idx n source ftable data-ref functions]
-  (compile-defn-functions-step-with-source-body decls idx n source ftable data-ref functions))
+  (compile-defn-functions-step-with-source-body-impl-3 decls idx n source ftable data-ref functions))
 (defn compile-let-chain-step-with-source [node source env ftable instrs data-ref rooted-count]
   (compile-let-chain-step-with-source-body node source env ftable instrs data-ref rooted-count))
 (defn compile-defn-functions-step-with-source-body [decls idx n source ftable data-ref functions]

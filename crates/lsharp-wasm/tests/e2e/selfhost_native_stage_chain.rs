@@ -4800,6 +4800,42 @@ fn test_wasm_compiler_source_defn_step_wrappers_root_result_before_root_set() {
 }
 
 #[test]
+fn test_wasm_compiler_source_defn_public_step_uses_marker_free_stable_entry() {
+    let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("Compiler.ls を読めること");
+    let public_step = compiler
+        .split("(defn compile-defn-functions-step-with-source [decls idx n source ftable data-ref functions]")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn compile-let-chain-step-with-source").next())
+        .expect("compile-defn-functions-step-with-source public body を取り出せること");
+    let stable_step = compiler
+        .split("(defn compile-defn-functions-step-with-source-body-impl-3")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn compile-let-with-ftable-impl-body-impl-3")
+                .next()
+        })
+        .expect("compile-defn-functions-step-with-source-body-impl-3 body を取り出せること");
+
+    assert!(
+        public_step.contains(
+            "compile-defn-functions-step-with-source-body-impl-3 decls idx n source ftable data-ref functions",
+        ) && !public_step.contains(
+            "compile-defn-functions-step-with-source-body decls idx n source ftable data-ref functions",
+        ),
+        "source-defn public single-step は wrapper chain を通さず marker-free stable body へ直接入るべき"
+    );
+    assert!(
+        stable_step.contains("compile-defn-function-with-source decl source ftable data-ref")
+            && stable_step
+                .contains("(write-compile-step-state-ref skip-state-ref 0 (+ idx 1) functions)")
+            && !stable_step.contains("normal-setup-diagnostic")
+            && !stable_step.contains("(print 900000"),
+        "source-defn stable body は diagnostic marker や normal-setup helper に依存しない production body であるべき"
+    );
+}
+
+#[test]
 fn test_wasm_compiler_source_defn_step_roots_result_before_state_slot_update() {
     let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
         .expect("Compiler.ls を読めること");
