@@ -2927,6 +2927,57 @@ fn test_wasm_compiler_source_expr_roots_dispatch_result_before_unwinding() {
 }
 
 #[test]
+fn test_wasm_compiler_source_apply_roots_results_before_returning_to_expr() {
+    let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("Compiler.ls を読めること");
+
+    let apply_body = compiler
+        .split("(defn compile-apply-with-source [")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("compile-apply-with-source body を取り出せること");
+    let apply_result_pos = apply_body
+        .find("result\n          (if (> bop 0)")
+        .expect("compile-apply-with-source は apply result を local 化すること");
+    let apply_root_pos = apply_body[apply_result_pos..]
+        .find("(root_push result)")
+        .map(|offset| offset + apply_result_pos)
+        .expect("compile-apply-with-source は result を root すること");
+    let apply_pop_pos = apply_body[apply_result_pos..]
+        .find("(root_pop)")
+        .map(|offset| offset + apply_result_pos)
+        .expect("compile-apply-with-source は result root を unwind すること");
+    assert!(
+        apply_result_pos < apply_root_pos && apply_root_pos < apply_pop_pos,
+        "compile-apply-with-source は raw source-defn apply result を expr wrapper へ返す前に root するべき"
+    );
+
+    let builtin_body = compiler
+        .split("(defn compile-builtin-apply-with-source [")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn compile-builtin-apply-with-source-normal-setup-diagnostic")
+                .next()
+        })
+        .expect("compile-builtin-apply-with-source body を取り出せること");
+    let builtin_result_pos = builtin_body
+        .find("result\n      (if (= bop 70)")
+        .expect("compile-builtin-apply-with-source は builtin result を local 化すること");
+    let builtin_root_pos = builtin_body[builtin_result_pos..]
+        .find("(root_push result)")
+        .map(|offset| offset + builtin_result_pos)
+        .expect("compile-builtin-apply-with-source は result を root すること");
+    let builtin_pop_pos = builtin_body[builtin_result_pos..]
+        .find("(root_pop)")
+        .map(|offset| offset + builtin_result_pos)
+        .expect("compile-builtin-apply-with-source は result root を unwind すること");
+    assert!(
+        builtin_result_pos < builtin_root_pos && builtin_root_pos < builtin_pop_pos,
+        "compile-builtin-apply-with-source は raw source-defn builtin result を apply wrapper へ返す前に root するべき"
+    );
+}
+
+#[test]
 fn test_wasm_compiler_source_defn_normal_setup_diagnostic_marks_expr_do_internals() {
     let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
         .expect("Compiler.ls を読めること");

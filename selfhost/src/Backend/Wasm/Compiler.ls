@@ -1039,17 +1039,22 @@
 (defn compile-builtin-apply-with-source [node source env ftable instrs data-ref bop]
   (let [arg-count (vector-get node 2)
     safe-ftable-path (if (source-neutral-ftable-builtin-op bop) (apply-args-safe-for-ftable node 0 arg-count) false)]
-    (if (= bop 70)
-      (compile-string-family-builtin-with-source node source env ftable instrs data-ref bop)
-      (if (= bop 69)
+    (let [result
+      (if (= bop 70)
         (compile-string-family-builtin-with-source node source env ftable instrs data-ref bop)
-      (if (= bop 55)
-        (compile-stateful-builtin-with-source node source env ftable instrs data-ref bop)
-        (if (= bop 56)
+        (if (= bop 69)
+          (compile-string-family-builtin-with-source node source env ftable instrs data-ref bop)
+        (if (= bop 55)
           (compile-stateful-builtin-with-source node source env ftable instrs data-ref bop)
-          (if (= bop 76)
+          (if (= bop 56)
             (compile-stateful-builtin-with-source node source env ftable instrs data-ref bop)
-            (compile-builtin-apply-fallback-with-source node source env ftable instrs data-ref bop safe-ftable-path))))))))
+            (if (= bop 76)
+              (compile-stateful-builtin-with-source node source env ftable instrs data-ref bop)
+              (compile-builtin-apply-fallback-with-source node source env ftable instrs data-ref bop safe-ftable-path))))))]
+      (do
+        (root_push result)
+        (root_pop)
+        result))))
 
 (defn compile-builtin-apply-with-source-normal-setup-diagnostic [node source env ftable instrs data-ref bop safe-ftable-path]
   (let [result
@@ -1212,9 +1217,14 @@
     (let [func-tag (vector-get func-node 0)
       func-hash (if (= func-tag 4) (vector-get func-node 1) 0)]
       (let [bop (builtin-opcode func-hash)]
-        (if (> bop 0)
-          (compile-builtin-apply-with-source node source env ftable instrs data-ref bop)
-          (compile-user-call-with-source node source env ftable instrs data-ref func-hash arg-count))))))
+        (let [result
+          (if (> bop 0)
+            (compile-builtin-apply-with-source node source env ftable instrs data-ref bop)
+            (compile-user-call-with-source node source env ftable instrs data-ref func-hash arg-count))]
+          (do
+            (root_push result)
+            (root_pop)
+            result))))))
 (defn compile-apply-with-source-normal-setup-diagnostic [node source env ftable instrs data-ref]
   (let [func-node (vector-get node 1)
     arg-count (vector-get node 2)]
