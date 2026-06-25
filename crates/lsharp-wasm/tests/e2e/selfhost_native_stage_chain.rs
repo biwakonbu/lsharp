@@ -2168,12 +2168,47 @@ fn test_selfhost_normal_payload_production_inner_step_diagnostic_marks_defn_boun
     }
     assert!(
         inner_body.contains(
-            "compiled-fn (compile-defn-function-with-source decl source ftable data-ref)"
+            "compiled-fn (compile-defn-function-with-source-production-inner-diagnostic decl source ftable data-ref)"
         ) && inner_body.contains("next-functions (push-object-vector functions compiled-fn)")
             && inner_body
                 .contains("defn-result (make-compile-step-state 0 (+ idx 1) next-functions)")
             && !inner_body.contains("normal-setup-diagnostic"),
-        "production inner step diagnostic は normal setup ではなく raw compile-defn-function-with-source path を保持するべき"
+        "production inner step diagnostic は normal setup ではなく raw defn-function inner diagnostic path を保持するべき"
+    );
+}
+
+#[test]
+fn test_selfhost_normal_payload_production_defn_function_diagnostic_marks_ir_boundaries() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/App/CompilerMode.ls",
+    )))
+    .expect("CompilerMode.ls を読めること");
+    let body = source
+        .split("(defn compile-defn-function-with-source-production-inner-diagnostic")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-defn-functions-step-with-source-production-inner-diagnostic")
+                .next()
+        })
+        .expect("production defn-function diagnostic body を取り出せること");
+
+    for token in [
+        "(print 9000000310)",
+        "(print 9000000311)",
+        "(print 9000000312)",
+        "(print 9000000313)",
+    ] {
+        assert!(
+            body.contains(token),
+            "production defn-function diagnostic は source-ir / ir / meta 境界 token {token} を含むべき"
+        );
+    }
+    assert!(
+        body.contains("source-ir (compile-defn-with-source node source ftable data-ref)")
+            && body.contains("ir (if (> (vector-length source-ir) 0) source-ir (compile-defn-with-ftable node ftable))")
+            && body.contains("result (make-function-meta final-param-count local-count ir)")
+            && !body.contains("normal-setup-diagnostic"),
+        "production defn-function diagnostic は raw compile-defn-with-source path と raw fallback を保持するべき"
     );
 }
 

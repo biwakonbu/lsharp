@@ -3098,6 +3098,49 @@
 	                  (root_pop)
 	                  (root_pop)
 	                  result)))))))))
+	(defn compile-defn-function-with-source-production-inner-diagnostic [node source ftable data-ref]
+	  (do
+	    (root_push node)
+	    (root_push source)
+	    (root_push ftable)
+	    (root_push data-ref)
+	    (print 9000000310)
+	    (print (vector-get node 2))
+	    (print (vector-length node))
+	    (print (vector-length (ref-get data-ref)))
+	    (let [source-ir (compile-defn-with-source node source ftable data-ref)]
+	      (do
+	        (root_push source-ir)
+	        (print 9000000311)
+	        (print (vector-get node 2))
+	        (print (vector-length source-ir))
+	        (print (vector-length (ref-get data-ref)))
+	        (let [ir (if (> (vector-length source-ir) 0) source-ir (compile-defn-with-ftable node ftable))]
+	          (do
+	            (root_push ir)
+	            (print 9000000312)
+	            (print (vector-get node 2))
+	            (print (vector-length ir))
+	            (print (vector-length (ref-get data-ref)))
+	            (let [local-max (max-local-slot ir 0 (vector-length ir) 0)
+	              final-param-count (vector-get node 2)
+	              local-count (if (> local-max final-param-count) (- local-max final-param-count) 0)
+	              result (make-function-meta final-param-count local-count ir)]
+	              (do
+	                (root_push result)
+	                (print 9000000313)
+	                (print final-param-count)
+	                (print local-count)
+	                (print (vector-length ir))
+	                (print (vector-length (ref-get data-ref)))
+	                (root_pop)
+	                (root_pop)
+	                (root_pop)
+	                (root_pop)
+	                (root_pop)
+	                (root_pop)
+	                (root_pop)
+	                result))))))))
 	(defn compile-defn-functions-step-with-source-production-inner-diagnostic [decls idx n source ftable data-ref functions]
 	  (if (>= idx n)
 	    (make-compile-step-state 1 idx functions)
@@ -3118,7 +3161,7 @@
 	          (print (vector-get decl 2))
 	          (print (vector-length decl))
 	          (print (vector-length (ref-get data-ref)))
-	          (let [compiled-fn (compile-defn-function-with-source decl source ftable data-ref)]
+	          (let [compiled-fn (compile-defn-function-with-source-production-inner-diagnostic decl source ftable data-ref)]
 	            (do
 	              (root_push compiled-fn)
 	              (print 9000000301)
