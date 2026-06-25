@@ -2204,11 +2204,64 @@ fn test_selfhost_normal_payload_production_defn_function_diagnostic_marks_ir_bou
         );
     }
     assert!(
-        body.contains("source-ir (compile-defn-with-source node source ftable data-ref)")
+        body.contains(
+            "source-ir (compile-defn-with-source-production-inner-diagnostic node source ftable data-ref)"
+        )
             && body.contains("ir (if (> (vector-length source-ir) 0) source-ir (compile-defn-with-ftable node ftable))")
             && body.contains("result (make-function-meta final-param-count local-count ir)")
             && !body.contains("normal-setup-diagnostic"),
-        "production defn-function diagnostic は raw compile-defn-with-source path と raw fallback を保持するべき"
+        "production defn-function diagnostic は production defn source diagnostic path と raw fallback を保持するべき"
+    );
+}
+
+#[test]
+fn test_selfhost_normal_payload_production_defn_source_diagnostic_marks_expr_boundaries() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/App/CompilerMode.ls",
+    )))
+    .expect("CompilerMode.ls を読めること");
+    let function_body = source
+        .split("(defn compile-defn-function-with-source-production-inner-diagnostic")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-defn-functions-step-with-source-production-inner-diagnostic")
+                .next()
+        })
+        .expect("production defn-function diagnostic body を取り出せること");
+    let source_body = source
+        .split("(defn compile-defn-with-source-production-inner-diagnostic")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-defn-function-with-source-production-inner-diagnostic")
+                .next()
+        })
+        .expect("production defn source diagnostic body を取り出せること");
+
+    assert!(
+        function_body.contains(
+            "source-ir (compile-defn-with-source-production-inner-diagnostic node source ftable data-ref)"
+        ),
+        "production defn-function diagnostic は 0310 と 0311 の間を切るため defn source inner diagnostic を呼ぶべき"
+    );
+    for token in [
+        "(print 9000000320)",
+        "(print 9000000321)",
+        "(print 9000000322)",
+        "(print 9000000323)",
+    ] {
+        assert!(
+            source_body.contains(token),
+            "production defn source diagnostic は body/env/expr 境界 token {token} を含むべき"
+        );
+    }
+    assert!(
+        source_body.contains("body-expr (vector-get node body-idx)")
+            && source_body.contains("env (bind-node-params node 3 0 param-count (env-new) 1)")
+            && source_body.contains(
+                "result (compile-expr-with-source body-expr source env ftable instrs0 data-ref)"
+            )
+            && !source_body.contains("normal-setup-diagnostic"),
+        "production defn source diagnostic は normal setup ではなく raw compile-expr-with-source path を保持するべき"
     );
 }
 

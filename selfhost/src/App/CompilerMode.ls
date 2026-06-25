@@ -3098,17 +3098,66 @@
 	                  (root_pop)
 	                  (root_pop)
 	                  result)))))))))
-	(defn compile-defn-function-with-source-production-inner-diagnostic [node source ftable data-ref]
-	  (do
-	    (root_push node)
-	    (root_push source)
-	    (root_push ftable)
-	    (root_push data-ref)
+		(defn compile-defn-with-source-production-inner-diagnostic [node source ftable data-ref]
+		  (do
+		    (root_push node)
+		    (root_push source)
+		    (root_push ftable)
+		    (root_push data-ref)
+		    (let [param-count (vector-get node 2)
+		      body-idx (+ 3 param-count)
+		      body-expr (vector-get node body-idx)]
+		      (do
+		        (root_push body-expr)
+		        (print 9000000320)
+		        (print param-count)
+		        (print body-idx)
+		        (print (vector-length node))
+		        (print (vector-length body-expr))
+		        (print (vector-get body-expr 0))
+		        (print (vector-length (ref-get data-ref)))
+		        (let [env (bind-node-params node 3 0 param-count (env-new) 1)]
+		          (do
+		            (root_push env)
+		            (print 9000000321)
+		            (print param-count)
+		            (print body-idx)
+		            (print (vector-length body-expr))
+		            (print (vector-length (ref-get data-ref)))
+		            (let [instrs0 (vector-new 8)]
+		              (do
+		                (print 9000000322)
+		                (print param-count)
+		                (print body-idx)
+		                (print (vector-length body-expr))
+		                (print (vector-get body-expr 0))
+		                (print (vector-length (ref-get data-ref)))
+		                (let [result (compile-expr-with-source body-expr source env ftable instrs0 data-ref)]
+		                  (do
+		                    (root_push result)
+		                    (print 9000000323)
+		                    (print param-count)
+		                    (print (vector-length result))
+		                    (print (vector-length (ref-get data-ref)))
+		                    (root_pop)
+		                    (root_pop)
+		                    (root_pop)
+		                    (root_pop)
+		                    (root_pop)
+		                    (root_pop)
+		                    (root_pop)
+		                    result))))))))))
+		(defn compile-defn-function-with-source-production-inner-diagnostic [node source ftable data-ref]
+		  (do
+		    (root_push node)
+		    (root_push source)
+		    (root_push ftable)
+		    (root_push data-ref)
 	    (print 9000000310)
 	    (print (vector-get node 2))
 	    (print (vector-length node))
 	    (print (vector-length (ref-get data-ref)))
-	    (let [source-ir (compile-defn-with-source node source ftable data-ref)]
+		    (let [source-ir (compile-defn-with-source-production-inner-diagnostic node source ftable data-ref)]
 	      (do
 	        (root_push source-ir)
 	        (print 9000000311)
