@@ -3095,12 +3095,83 @@
                   (root_pop)
                   (root_pop)
                   (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  result)))))))))
-(defn continue-compile-defn-functions-step-with-source-production-diagnostic [decls n source ftable data-ref state]
-  (if (= (vector-get state 0) 1)
-    state
+	                  (root_pop)
+	                  (root_pop)
+	                  result)))))))))
+	(defn compile-defn-functions-step-with-source-production-inner-diagnostic [decls idx n source ftable data-ref functions]
+	  (if (>= idx n)
+	    (make-compile-step-state 1 idx functions)
+	    (let [decls-slot (root_push decls)
+	      source-slot (root_push source)
+	      ftable-slot (root_push ftable)
+	      data-slot (root_push data-ref)
+	      functions-slot (root_push functions)
+	      decl (vector-get decls idx)]
+	      (if (= (vector-get decl 0) 20)
+	        (do
+	          (root_push decl)
+	          (print 9000000300)
+	          (print idx)
+	          (print n)
+	          (print (vector-length functions))
+	          (print (vector-get decl 0))
+	          (print (vector-get decl 2))
+	          (print (vector-length decl))
+	          (print (vector-length (ref-get data-ref)))
+	          (let [compiled-fn (compile-defn-function-with-source decl source ftable data-ref)]
+	            (do
+	              (root_push compiled-fn)
+	              (print 9000000301)
+	              (print idx)
+	              (print (vector-length compiled-fn))
+	              (print (vector-get compiled-fn 0))
+	              (print (vector-get compiled-fn 1))
+	              (print (vector-length (vector-get compiled-fn 2)))
+	              (print (vector-length (ref-get data-ref)))
+	              (let [next-functions (push-object-vector functions compiled-fn)]
+	                (do
+	                  (root_push next-functions)
+	                  (let [defn-result (make-compile-step-state 0 (+ idx 1) next-functions)]
+	                    (do
+	                      (root_push defn-result)
+	                      (print 9000000302)
+	                      (print idx)
+	                      (print (vector-length next-functions))
+	                      (print (vector-get defn-result 0))
+	                      (print (vector-get defn-result 1))
+	                      (print (vector-length (vector-get defn-result 2)))
+	                      (print (vector-length (ref-get data-ref)))
+	                      (root_set functions-slot defn-result)
+	                      (root_pop)
+	                      (root_pop)
+	                      (root_pop)
+	                      (root_pop)
+	                      (root_pop)
+	                      (root_pop)
+	                      (root_pop)
+	                      (root_pop)
+	                      (root_pop)
+	                      defn-result)))))))
+	        (do
+	          (let [skip-state-ref (ref-new 0)]
+	            (do
+	              (root_push skip-state-ref)
+	              (write-compile-step-state-ref skip-state-ref 0 (+ idx 1) functions)
+	              (let [skip-result (ref-get skip-state-ref)]
+	                (do
+	                  (root_push skip-result)
+	                  (root_set functions-slot skip-result)
+	                  (root_pop)
+	                  (root_pop)
+	                  (root_pop)
+	                  (root_pop)
+	                  (root_pop)
+	                  (root_pop)
+	                  (root_pop)
+	                  skip-result)))))))))
+	(defn continue-compile-defn-functions-step-with-source-production-diagnostic [decls n source ftable data-ref state]
+	  (if (= (vector-get state 0) 1)
+	    state
     (let [decls-slot (root_push decls)
       source-slot (root_push source)
       ftable-slot (root_push ftable)
@@ -3112,12 +3183,12 @@
           (print 9000000284)
           (print next-idx)
           (print n)
-          (print (vector-length next-functions))
-          (print (vector-length (ref-get data-ref)))
-          (root_push next-functions)
-          (let [result (compile-defn-functions-step-with-source decls next-idx n source ftable data-ref next-functions)]
-            (do
-              (root_push result)
+	          (print (vector-length next-functions))
+	          (print (vector-length (ref-get data-ref)))
+	          (root_push next-functions)
+	          (let [result (compile-defn-functions-step-with-source-production-inner-diagnostic decls next-idx n source ftable data-ref next-functions)]
+	            (do
+	              (root_push result)
               (root_set state-slot result)
               (print 9000000285)
               (print (vector-length result))

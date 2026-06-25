@@ -2112,9 +2112,9 @@ fn test_selfhost_normal_payload_production_continue_diagnostic_marks_recursive_b
     );
     assert!(
         single_body.contains(
-            "result (compile-defn-functions-step-with-source decls next-idx n source ftable data-ref next-functions)"
+            "result (compile-defn-functions-step-with-source-production-inner-diagnostic decls next-idx n source ftable data-ref next-functions)"
         ),
-        "production continue diagnostic は v45 pass shape と raw single-step の差を切るため direct source-defn single step を呼ぶべき"
+        "production continue diagnostic は 0284 と 0285 の間を切るため raw inner step diagnostic を呼ぶべき"
     );
     assert!(
         !single_body.contains(
@@ -2125,6 +2125,55 @@ fn test_selfhost_normal_payload_production_continue_diagnostic_marks_recursive_b
     assert!(
         !times_body.contains("normal-setup-diagnostic") && !times_body.contains("progress-probe"),
         "production continue diagnostic は normal/progress probe ではなく production single step を使うべき"
+    );
+}
+
+#[test]
+fn test_selfhost_normal_payload_production_inner_step_diagnostic_marks_defn_boundaries() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/App/CompilerMode.ls",
+    )))
+    .expect("CompilerMode.ls を読めること");
+    let single_body = source
+        .split("(defn continue-compile-defn-functions-step-with-source-production-diagnostic")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("production single-step diagnostic body を取り出せること");
+    let inner_body = source
+        .split("(defn compile-defn-functions-step-with-source-production-inner-diagnostic")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split(
+                "(defn continue-compile-defn-functions-step-with-source-production-diagnostic",
+            )
+            .next()
+        })
+        .expect("production inner step diagnostic body を取り出せること");
+
+    assert!(
+        single_body.contains(
+            "result (compile-defn-functions-step-with-source-production-inner-diagnostic decls next-idx n source ftable data-ref next-functions)"
+        ),
+        "production single-step diagnostic は raw inner step diagnostic を呼び、0284 と 0285 の間をさらに切るべき"
+    );
+    for token in [
+        "(print 9000000300)",
+        "(print 9000000301)",
+        "(print 9000000302)",
+    ] {
+        assert!(
+            inner_body.contains(token),
+            "production inner step diagnostic は defn branch 境界 token {token} を含むべき"
+        );
+    }
+    assert!(
+        inner_body.contains(
+            "compiled-fn (compile-defn-function-with-source decl source ftable data-ref)"
+        ) && inner_body.contains("next-functions (push-object-vector functions compiled-fn)")
+            && inner_body
+                .contains("defn-result (make-compile-step-state 0 (+ idx 1) next-functions)")
+            && !inner_body.contains("normal-setup-diagnostic"),
+        "production inner step diagnostic は normal setup ではなく raw compile-defn-function-with-source path を保持するべき"
     );
 }
 
