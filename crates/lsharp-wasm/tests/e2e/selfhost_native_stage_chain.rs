@@ -2899,6 +2899,34 @@ fn test_wasm_compiler_source_defn_normal_setup_diagnostic_marks_expr_let_interna
 }
 
 #[test]
+fn test_wasm_compiler_source_expr_roots_dispatch_result_before_unwinding() {
+    let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("Compiler.ls を読めること");
+    let expr_body = compiler
+        .split("(defn compile-expr-with-source [")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("compile-expr-with-source body を取り出せること");
+
+    let result_pos = expr_body
+        .find("result (compile-expr-with-source-dispatch node source env ftable instrs data-ref)")
+        .expect("compile-expr-with-source は dispatch result を local 化すること");
+    let result_root_pos = expr_body[result_pos..]
+        .find("(root_push result)")
+        .map(|offset| offset + result_pos)
+        .expect("compile-expr-with-source は outer roots unwind 前に result を root すること");
+    let first_pop_pos = expr_body[result_pos..]
+        .find("(root_pop)")
+        .map(|offset| offset + result_pos)
+        .expect("compile-expr-with-source は outer roots を unwind すること");
+
+    assert!(
+        result_pos < result_root_pos && result_root_pos < first_pop_pos,
+        "compile-expr-with-source は raw source-defn path で dispatch result を失わないよう root_pop 前に result を root するべき"
+    );
+}
+
+#[test]
 fn test_wasm_compiler_source_defn_normal_setup_diagnostic_marks_expr_do_internals() {
     let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
         .expect("Compiler.ls を読めること");

@@ -1433,6 +1433,8 @@
     data-slot (root_push data-ref)
     result (compile-expr-with-source-dispatch node source env ftable instrs data-ref)]
     (do
+      (root_push result)
+      (root_pop)
       (root_pop)
       (root_pop)
       (root_pop)
