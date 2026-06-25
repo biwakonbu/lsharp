@@ -2112,15 +2112,15 @@ fn test_selfhost_normal_payload_production_continue_diagnostic_marks_recursive_b
     );
     assert!(
         single_body.contains(
-            "result (compile-defn-functions-step-with-source-normal-setup-diagnostic decls next-idx n source ftable data-ref next-functions)"
+            "result (compile-defn-functions-step-with-source decls next-idx n source ftable data-ref next-functions)"
         ),
-        "production continue diagnostic は idx 26 内部を切るため normal setup source-defn diagnostic step を呼ぶべき"
+        "production continue diagnostic は v45 pass shape と raw single-step の差を切るため direct source-defn single step を呼ぶべき"
     );
     assert!(
         !single_body.contains(
-            "result (compile-defn-functions-step-with-source decls next-idx n source ftable data-ref next-functions)"
+            "result (compile-defn-functions-step-with-source-normal-setup-diagnostic decls next-idx n source ftable data-ref next-functions)"
         ),
-        "production continue diagnostic は 0284 直後を再度潰さないため direct single step を呼ばないこと"
+        "production continue diagnostic は v46 A/B では normal setup source-defn diagnostic step を呼ばないこと"
     );
     assert!(
         !times_body.contains("normal-setup-diagnostic") && !times_body.contains("progress-probe"),
