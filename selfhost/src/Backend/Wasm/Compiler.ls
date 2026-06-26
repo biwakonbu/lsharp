@@ -2216,7 +2216,10 @@
     step6 (continue-compile-let-chain-step-with-source source ftable step5 data-ref)
     step7 (continue-compile-let-chain-step-with-source source ftable step6 data-ref)
     step8 (continue-compile-let-chain-step-with-source source ftable step7 data-ref)]
-    step8))
+    (do
+      (root_push step8)
+      (root_pop)
+      step8)))
 (defn continue-compile-let-chain-step-8-with-source [source ftable state data-ref]
   (do
     (root_push state)
@@ -2258,7 +2261,10 @@
     step6 (continue-compile-let-chain-step-8-with-source source ftable step5 data-ref)
     step7 (continue-compile-let-chain-step-8-with-source source ftable step6 data-ref)
     step8 (continue-compile-let-chain-step-8-with-source source ftable step7 data-ref)]
-    step8))
+    (do
+      (root_push step8)
+      (root_pop)
+      step8)))
 (defn compile-let-with-source [node source env ftable instrs data-ref]
   (compile-let-chain-with-source node source env ftable instrs data-ref 0))
 (defn compile-let-chain-step-with-source-normal-setup-diagnostic [node source env ftable instrs data-ref rooted-count]

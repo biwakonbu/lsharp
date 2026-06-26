@@ -7157,6 +7157,51 @@ fn test_selfhost_compile_let_chain_continuations_root_state_and_result() {
 }
 
 #[test]
+fn test_selfhost_compile_let_chain_step_chunks_root_final_state_before_return() {
+    let source = selfhost_module("Compiler.ls");
+    let step8_body = source
+        .split("(defn compile-let-chain-step-8-with-source")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn continue-compile-let-chain-step-8-with-source")
+                .next()
+        })
+        .expect("Compiler.ls に compile-let-chain-step-8-with-source が存在すること");
+    let step64_body = source
+        .split("(defn compile-let-chain-step-64-with-source")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn compile-let-with-source").next())
+        .expect("Compiler.ls に compile-let-chain-step-64-with-source が存在すること");
+
+    for (label, body) in [("step8", step8_body), ("step64", step64_body)] {
+        let final_state_pos = body
+            .find("step8 (continue-compile-let-chain-step")
+            .unwrap_or_else(|| panic!("{label} chunk は final step8 state を作ること"));
+        let result_root_pos = body[final_state_pos..]
+            .find("(root_push step8)")
+            .map(|pos| final_state_pos + pos)
+            .unwrap_or_else(|| {
+                panic!("{label} chunk は final step8 state を返却前に root すること")
+            });
+        let root_pop_pos = body[result_root_pos..]
+            .find("(root_pop)")
+            .map(|pos| result_root_pos + pos)
+            .unwrap_or_else(|| panic!("{label} chunk は final state root を pop してから返すこと"));
+        let return_pos = body[root_pop_pos..]
+            .find("step8")
+            .map(|pos| root_pop_pos + pos)
+            .unwrap_or_else(|| panic!("{label} chunk は final step8 state を返すこと"));
+
+        assert!(
+            final_state_pos < result_root_pos
+                && result_root_pos < root_pop_pos
+                && root_pop_pos < return_pos,
+            "{label} chunk は v54 single-step diagnostic と同じく返却 state を root してから caller へ渡すべき"
+        );
+    }
+}
+
+#[test]
 fn test_selfhost_compile_let_ftable_reloads_body_after_init_compile() {
     let source = selfhost_module("Compiler.ls");
     let ftable_body = source
