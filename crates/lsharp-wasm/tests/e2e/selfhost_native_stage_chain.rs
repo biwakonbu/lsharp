@@ -7024,6 +7024,70 @@ fn test_selfhost_compile_let_step_finish_uses_reloaded_body_without_extra_root()
 }
 
 #[test]
+fn test_selfhost_compile_let_chain_roots_step_and_body_results_before_unwind() {
+    let source = selfhost_module("Compiler.ls");
+    let chain_body = source
+        .split("(defn compile-let-chain-with-source [")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-expr-with-ftable-dispatch-impl-body-impl")
+                .next()
+        })
+        .expect("Compiler.ls に compile-let-chain-with-source が存在すること");
+    let step_pos = chain_body
+        .find("step (compile-let-chain-step-64-with-source node source env ftable instrs data-ref rooted-count)")
+        .expect("let-chain は 64-step chunk を実行すること");
+    let step_root_pos = chain_body[step_pos..]
+        .find("(root_push step)")
+        .map(|pos| step_pos + pos)
+        .expect("let-chain は step state を読む前に root すること");
+    let next_value_pos = chain_body
+        .find("next-value (vector-get step 2)")
+        .expect("let-chain は step state から next-value を読むこと");
+    let next_value_root_pos = chain_body[next_value_pos..]
+        .find("(root_push next-value)")
+        .map(|pos| next_value_pos + pos)
+        .expect("let-chain は next-value を branch 中に root すること");
+    let body_compile_pos = chain_body
+        .find("body-instrs (compile-expr-with-source body-expr source next-env ftable next-instrs data-ref)")
+        .expect("let-chain は final body を compile すること");
+    let body_root_pos = chain_body[body_compile_pos..]
+        .find("(root_push body-instrs)")
+        .map(|pos| body_compile_pos + pos)
+        .expect("let-chain は body-instrs を root-pop emit 前に root すること");
+    let emit_result_pos = chain_body
+        .find("result (emit-root-pop-drops body-instrs (vector-get step 1))")
+        .expect("let-chain は final body 後に root pop drops を emit すること");
+    let emit_result_root_pos = chain_body[emit_result_pos..]
+        .find("(root_push result)")
+        .map(|pos| emit_result_pos + pos)
+        .expect("let-chain は final result を outer roots unwind 前に root すること");
+    let recursive_call_pos = chain_body
+        .find("(compile-let-chain-with-source\n                (vector-get next-value 0)")
+        .expect("let-chain は recursive continuation を実行すること");
+    let recursive_result_pos = chain_body[..recursive_call_pos]
+        .rfind("(let [result")
+        .expect("let-chain は recursive continuation result を保持すること");
+    let recursive_result_root_pos = chain_body[recursive_result_pos..]
+        .find("(root_push result)")
+        .map(|pos| recursive_result_pos + pos)
+        .expect("let-chain は recursive result を outer roots unwind 前に root すること");
+
+    assert!(
+        step_pos < step_root_pos
+            && step_root_pos < next_value_pos
+            && next_value_pos < next_value_root_pos
+            && next_value_root_pos < body_compile_pos
+            && body_compile_pos < body_root_pos
+            && body_root_pos < emit_result_pos
+            && emit_result_pos < emit_result_root_pos
+            && next_value_root_pos < recursive_result_pos
+            && recursive_result_pos < recursive_result_root_pos,
+        "let-chain は v54 VM pass shape と同じく step/next-value/body/result を root してから outer roots を unwind するべき"
+    );
+}
+
+#[test]
 fn test_selfhost_compile_let_ftable_reloads_body_after_init_compile() {
     let source = selfhost_module("Compiler.ls");
     let ftable_body = source

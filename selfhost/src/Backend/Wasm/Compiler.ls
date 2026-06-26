@@ -2952,22 +2952,42 @@
           (root_pop)
           result)))))
 (defn compile-let-chain-with-source [node source env ftable instrs data-ref rooted-count]
-  (let [step (compile-let-chain-step-64-with-source node source env ftable instrs data-ref rooted-count)
-    next-value (vector-get step 2)]
-    (if (= (vector-get step 0) 1)
-      (let [body-expr (vector-get next-value 0)
-        next-env (vector-get next-value 1)
-        next-instrs (vector-get next-value 2)
-        body-instrs (compile-expr-with-source body-expr source next-env ftable next-instrs data-ref)]
-        (emit-root-pop-drops body-instrs (vector-get step 1)))
-      (compile-let-chain-with-source
-        (vector-get next-value 0)
-        source
-        (vector-get next-value 1)
-        ftable
-        (vector-get next-value 2)
-        data-ref
-        (vector-get step 1)))))
+  (let [step (compile-let-chain-step-64-with-source node source env ftable instrs data-ref rooted-count)]
+    (do
+      (root_push step)
+      (let [next-value (vector-get step 2)]
+        (do
+          (root_push next-value)
+          (if (= (vector-get step 0) 1)
+            (let [body-expr (vector-get next-value 0)
+              next-env (vector-get next-value 1)
+              next-instrs (vector-get next-value 2)
+              body-instrs (compile-expr-with-source body-expr source next-env ftable next-instrs data-ref)]
+              (do
+                (root_push body-instrs)
+                (let [result (emit-root-pop-drops body-instrs (vector-get step 1))]
+                  (do
+                    (root_push result)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    result))))
+            (let [result
+              (compile-let-chain-with-source
+                (vector-get next-value 0)
+                source
+                (vector-get next-value 1)
+                ftable
+                (vector-get next-value 2)
+                data-ref
+                (vector-get step 1))]
+              (do
+                (root_push result)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result))))))))
 (defn compile-expr-with-ftable-dispatch-impl-body-impl [node env ftable instrs]
   (compile-expr-with-ftable-dispatch-simple node env ftable instrs))
 
