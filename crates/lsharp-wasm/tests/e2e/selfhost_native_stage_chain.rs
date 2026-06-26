@@ -6964,13 +6964,29 @@ fn test_selfhost_compile_let_step_reloads_body_after_init_compile() {
     let body_reload_pos = step_body
         .find("body-expr-after-init (vector-get node 3)")
         .expect("let-chain step は init compile 後に body-expr を node から取り直すこと");
+    let init_root_pos = step_body[init_compile_pos..]
+        .find("(root_push init-instrs)")
+        .map(|pos| init_compile_pos + pos)
+        .expect("let-chain step は init-instrs を body reload 前に root すること");
     let finish_pos = step_body
         .find("(compile-let-chain-step-finish name-hash body-expr-after-init init-instrs env rooted-count init-root)")
         .expect("let-chain step は取り直した body-expr を finish へ渡すこと");
+    let result_root_pos = step_body[finish_pos..]
+        .find("(root_push result)")
+        .map(|pos| finish_pos + pos)
+        .expect("let-chain step は返却 state を unwind 前に root すること");
+    let first_pop_after_result = step_body[result_root_pos..]
+        .find("(root_pop)")
+        .map(|pos| result_root_pos + pos)
+        .expect("let-chain step は result root 後に roots を unwind すること");
 
     assert!(
-        init_compile_pos < body_reload_pos && body_reload_pos < finish_pos,
-        "let-chain step は init compile 中に stale になり得る body-expr を持ち越さず、root 済み node から後で取り直すべき"
+        init_compile_pos < init_root_pos
+            && init_root_pos < body_reload_pos
+            && body_reload_pos < finish_pos
+            && finish_pos < result_root_pos
+            && result_root_pos < first_pop_after_result,
+        "let-chain step は init compile 中に stale になり得る init/body/result を失わないよう、init-instrs と返却 state を root しつつ body-expr を root 済み node から後で取り直すべき"
     );
 }
 

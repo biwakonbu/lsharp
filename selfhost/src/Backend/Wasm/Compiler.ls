@@ -2847,21 +2847,25 @@
     env-slot (root_push env)
     ftable-slot (root_push ftable)
     instrs-slot (root_push instrs)
-    data-slot (root_push data-ref)
-    name-hash (vector-get node 1)
-    init-expr (vector-get node 2)
-    init-root (alloc-root-needed init-expr)
-    init-instrs (compile-expr-with-source init-expr source env ftable instrs data-ref)
-    body-expr-after-init (vector-get node 3)]
-    (let [result (compile-let-chain-step-finish name-hash body-expr-after-init init-instrs env rooted-count init-root)]
-      (do
-        (root_pop)
-        (root_pop)
-        (root_pop)
-        (root_pop)
-        (root_pop)
-        (root_pop)
-        result))))
+	    data-slot (root_push data-ref)
+	    name-hash (vector-get node 1)
+	    init-expr (vector-get node 2)
+	    init-root (alloc-root-needed init-expr)
+	    init-instrs (compile-expr-with-source init-expr source env ftable instrs data-ref)
+	    init-slot (root_push init-instrs)
+	    body-expr-after-init (vector-get node 3)]
+	    (let [result (compile-let-chain-step-finish name-hash body-expr-after-init init-instrs env rooted-count init-root)]
+	      (do
+	        (root_push result)
+	        (root_pop)
+	        (root_pop)
+	        (root_pop)
+	        (root_pop)
+	        (root_pop)
+	        (root_pop)
+	        (root_pop)
+	        (root_pop)
+	        result))))
 (defn compile-defn-functions-step-with-source-body-impl-3 [decls idx n source ftable data-ref functions]
   (if (>= idx n)
     (make-compile-step-state 1 idx functions)
