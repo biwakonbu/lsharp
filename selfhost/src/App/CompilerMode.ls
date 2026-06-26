@@ -3132,7 +3132,7 @@
 		                (print (vector-length body-expr))
 		                (print (vector-get body-expr 0))
 		                (print (vector-length (ref-get data-ref)))
-		                (let [result (compile-expr-with-source-raw-let-single-step-boundary-diagnostic body-expr source env ftable instrs0 data-ref)]
+		                (let [result (compile-expr-with-source body-expr source env ftable instrs0 data-ref)]
 		                  (do
 		                    (root_push result)
 		                    (print 9000000323)

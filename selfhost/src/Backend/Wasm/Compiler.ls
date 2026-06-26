@@ -2968,7 +2968,7 @@
           (root_pop)
           result)))))
 (defn compile-let-chain-with-source [node source env ftable instrs data-ref rooted-count]
-  (let [step (compile-let-chain-step-64-with-source node source env ftable instrs data-ref rooted-count)]
+  (let [step (compile-let-chain-step-with-source node source env ftable instrs data-ref rooted-count)]
     (do
       (root_push step)
       (let [next-value (vector-get step 2)]
@@ -3004,69 +3004,6 @@
                 (root_pop)
                 (root_pop)
                 result))))))))
-(defn compile-let-chain-with-source-single-step-boundary-diagnostic [node source env ftable instrs data-ref rooted-count]
-  (do
-    (print 9000000340)
-    (print rooted-count)
-    (print (vector-length node))
-    (print (vector-length instrs))
-    (print (vector-length (ref-get data-ref)))
-    (let [step (compile-let-chain-step-with-source node source env ftable instrs data-ref rooted-count)]
-      (do
-        (root_push step)
-        (let [next-value (vector-get step 2)]
-          (do
-            (root_push next-value)
-            (print 9000000341)
-            (print (vector-get step 0))
-            (print (vector-get step 1))
-            (print (vector-length next-value))
-            (print (vector-length (ref-get data-ref)))
-            (if (= (vector-get step 0) 1)
-              (let [body-expr (vector-get next-value 0)
-                next-env (vector-get next-value 1)
-                next-instrs (vector-get next-value 2)
-                body-instrs (compile-expr-with-source body-expr source next-env ftable next-instrs data-ref)]
-                (do
-                  (root_push body-instrs)
-                  (print 9000000342)
-                  (print 1)
-                  (print (vector-length body-instrs))
-                  (print (vector-length (ref-get data-ref)))
-                  (let [result (emit-root-pop-drops body-instrs (vector-get step 1))]
-                    (do
-                      (root_push result)
-                      (print 9000000343)
-                      (print (vector-length result))
-                      (print (vector-length (ref-get data-ref)))
-                      (root_pop)
-                      (root_pop)
-                      (root_pop)
-                      (root_pop)
-                      result))))
-              (let [result
-                (compile-let-chain-with-source-single-step-boundary-diagnostic
-                  (vector-get next-value 0)
-                  source
-                  (vector-get next-value 1)
-                  ftable
-                  (vector-get next-value 2)
-                  data-ref
-                  (vector-get step 1))]
-                (do
-                  (root_push result)
-                  (print 9000000342)
-                  (print 0)
-                  (print (vector-length result))
-                  (print (vector-length (ref-get data-ref)))
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  result)))))))))
-(defn compile-expr-with-source-raw-let-single-step-boundary-diagnostic [node source env ftable instrs data-ref]
-  (if (= (vector-get node 0) 7)
-    (compile-let-chain-with-source-single-step-boundary-diagnostic node source env ftable instrs data-ref 0)
-    (compile-expr-with-source node source env ftable instrs data-ref)))
 (defn compile-expr-with-ftable-dispatch-impl-body-impl [node env ftable instrs]
   (compile-expr-with-ftable-dispatch-simple node env ftable instrs))
 

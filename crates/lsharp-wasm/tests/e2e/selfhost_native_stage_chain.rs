@@ -2258,54 +2258,35 @@ fn test_selfhost_normal_payload_production_defn_source_diagnostic_marks_expr_bou
         source_body.contains("body-expr (vector-get node body-idx)")
             && source_body.contains("env (bind-node-params node 3 0 param-count (env-new) 1)")
             && source_body.contains(
-                "result (compile-expr-with-source-raw-let-single-step-boundary-diagnostic body-expr source env ftable instrs0 data-ref)"
+                "result (compile-expr-with-source body-expr source env ftable instrs0 data-ref)"
             )
             && !source_body.contains("normal-setup-diagnostic"),
-        "production defn source diagnostic は normal setup ではなく raw let single-step boundary diagnostic path を保持するべき"
+        "production defn source diagnostic は normal setup ではなく raw compile-expr-with-source path を保持するべき"
     );
 }
 
 #[test]
-fn test_selfhost_raw_payload_production_let_single_step_boundary_diagnostic_routes_tag7_only() {
+fn test_selfhost_compile_let_chain_production_uses_single_step_safe_path() {
     let source = selfhost_module("Compiler.ls");
-    let wrapper_body = source
-        .split("(defn compile-expr-with-source-raw-let-single-step-boundary-diagnostic")
+    let chain_body = source
+        .split("(defn compile-let-chain-with-source [")
         .nth(1)
-        .and_then(|tail| tail.split("(defn ").next())
-        .expect("Compiler.ls に raw let single-step boundary diagnostic wrapper が存在すること");
-    let let_body = source
-        .split("(defn compile-let-chain-with-source-single-step-boundary-diagnostic")
-        .nth(1)
-        .and_then(|tail| tail.split("(defn ").next())
-        .expect("Compiler.ls に let single-step boundary diagnostic が存在すること");
+        .and_then(|tail| {
+            tail.split("(defn compile-expr-with-ftable-dispatch-impl-body-impl")
+                .next()
+        })
+        .expect("Compiler.ls に compile-let-chain-with-source が存在すること");
 
     assert!(
-        wrapper_body.contains("(if (= (vector-get node 0) 7)")
-            && wrapper_body.contains(
-                "(compile-let-chain-with-source-single-step-boundary-diagnostic node source env ftable instrs data-ref 0)"
-            )
-            && wrapper_body.contains(
-                "(compile-expr-with-source node source env ftable instrs data-ref)"
-            ),
-        "raw boundary diagnostic は let tag 7 だけを single-step let-chain diagnostic に差し替え、それ以外は raw compile-expr-with-source を維持するべき"
-    );
-
-    for token in [
-        "(print 9000000340)",
-        "(print 9000000341)",
-        "(print 9000000342)",
-        "(print 9000000343)",
-    ] {
-        assert!(
-            let_body.contains(token),
-            "let single-step boundary diagnostic は step64 bypass の entry/result/final/recurse 境界 token {token} を含むべき"
-        );
-    }
-    assert!(
-        let_body.contains(
+        chain_body.contains(
             "step (compile-let-chain-step-with-source node source env ftable instrs data-ref rooted-count)"
-        ) && !let_body.contains("compile-let-chain-step-64-with-source"),
-        "let single-step boundary diagnostic は production step64 を bypass して raw single step から始めるべき"
+        ) && !chain_body.contains("compile-let-chain-step-64-with-source"),
+        "production let-chain は v58 VM pass shape と同じ single-step safe path から始め、step64 chunk 起点を避けるべき"
+    );
+    assert!(
+        !source.contains("compile-expr-with-source-raw-let-single-step-boundary-diagnostic")
+            && !source.contains("compile-let-chain-with-source-single-step-boundary-diagnostic"),
+        "v58 の一時 raw boundary diagnostic wrapper は production fix 後に残さないこと"
     );
 }
 
@@ -7079,8 +7060,8 @@ fn test_selfhost_compile_let_chain_roots_step_and_body_results_before_unwind() {
         })
         .expect("Compiler.ls に compile-let-chain-with-source が存在すること");
     let step_pos = chain_body
-        .find("step (compile-let-chain-step-64-with-source node source env ftable instrs data-ref rooted-count)")
-        .expect("let-chain は 64-step chunk を実行すること");
+        .find("step (compile-let-chain-step-with-source node source env ftable instrs data-ref rooted-count)")
+        .expect("let-chain は single-step safe path を実行すること");
     let step_root_pos = chain_body[step_pos..]
         .find("(root_push step)")
         .map(|pos| step_pos + pos)
@@ -7127,7 +7108,7 @@ fn test_selfhost_compile_let_chain_roots_step_and_body_results_before_unwind() {
             && emit_result_pos < emit_result_root_pos
             && next_value_root_pos < recursive_result_pos
             && recursive_result_pos < recursive_result_root_pos,
-        "let-chain は v54 VM pass shape と同じく step/next-value/body/result を root してから outer roots を unwind するべき"
+        "let-chain は v58 VM pass shape と同じく single-step state/next-value/body/result を root してから outer roots を unwind するべき"
     );
 }
 
