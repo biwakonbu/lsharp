@@ -1025,6 +1025,37 @@ fn test_native_linux_x86_hostgen_vm_script_can_collect_stage2_metadata_range() {
 }
 
 #[test]
+fn test_native_linux_x86_hostgen_vm_script_can_collect_stage3_metadata_range_only() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+    let vm_exec = script
+        .split(r#"limactl shell "${VM_NAME}" -- env"#)
+        .nth(1)
+        .and_then(|tail| tail.split("<<'VM_SCRIPT'").next())
+        .expect("VM 実行 heredoc は env 経由で stage3 metadata 診断設定を渡すべき");
+
+    assert!(
+        vm_exec.contains("LSHARP_NATIVE_LINUX_X86_STAGE3_METADATA_START")
+            && vm_exec.contains("LSHARP_NATIVE_LINUX_X86_STAGE3_METADATA_END")
+            && vm_exec.contains("LSHARP_NATIVE_LINUX_X86_STAGE3_METADATA_ONLY")
+            && script.contains("STAGE3_METADATA_START")
+            && script.contains("STAGE3_METADATA_END")
+            && script.contains("STAGE3_METADATA_ONLY")
+            && script.contains("collect_stage3_metadata_range")
+            && script.contains("actual-stage3-metadata.txt")
+            && script.contains("actual-stage3-metadata-stderr.txt")
+            && script.contains(r#"./program.native src/App/Seed.ls "${metadata_start}" "${metadata_end}" 0 0 metadata"#)
+            && script.contains("write_actual_selfregen_failure_summary \"stage3-metadata\"")
+            && script.contains(r#""phase": "stage3-metadata""#)
+            && script.contains("metadata_stdout_bytes")
+            && script.contains("metadata_stderr_bytes"),
+        "hostgen VM script は actual-stage2 native compiler の metadata range を full stage3 transport なしで artifact 化できるべき"
+    );
+}
+
+#[test]
 fn test_native_linux_x86_hostgen_vm_script_can_collect_stage3_progress_markers() {
     let script_path =
         selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
@@ -6052,6 +6083,29 @@ fn test_linux_x86_representative_seed_avoids_segment_context_for_transport_scala
             && source.contains("(defn print-x86-function-segment-metadata-loop [functions starts import-count import-stub-offset idx len prefix-limit]"),
         "Linux x86 segmented seed は stage2 native 実行で segment ctx の scalar field が 0 化するため、transport scalar を ctx 経由にせず直接 loop に渡すべき"
     );
+}
+
+#[test]
+fn test_linux_x86_metadata_can_trace_function_emit_progress_rows() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+
+    for expected in [
+        "(defn print-x86-function-emit-progress-row",
+        "(print 9000000344)",
+        "(print 9000000345)",
+        "(defn generate-native-control-instr-bundle-progress-loop-x86",
+        "(make-x86-control-loop-state idx 1)",
+        "(generate-native-control-instr-bundle-progress-loop-x86 control-ctx 0 n)",
+        "(x86-rel32-target-in-window-at-base segment offset size offset)",
+        "(defn generate-native-function-x86-64-bundle-with-layout-progress",
+        "(generate-native-function-x86-64-bundle-with-layout-progress func-meta result starts functions layout)",
+    ] {
+        assert!(
+            source.contains(expected),
+            "Linux x86 metadata mode は stage3 segment 生成クラッシュを phase/IR row 単位で切り分けられるべき: missing {expected}"
+        );
+    }
+    let _program = parse_for_pipeline(&source);
 }
 
 #[test]
@@ -12898,6 +12952,151 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
 	          (root_pop))))
     0))
 
+(defn print-x86-function-emit-progress-row [ctx idx]
+  (let [ir-func (vector-get ctx 0)
+        result (vector-get ctx 1)
+        offsets (vector-get ctx 3)
+        depths (vector-get ctx 4)
+        function-metas (vector-get ctx 6)
+        instr (vector-get ir-func idx)
+        opcode (vector-get instr 0)
+        operand (vector-get instr 1)
+        depth (vector-get depths idx)
+        offset (vector-get offsets idx)
+        size (native-instr-size-x86 opcode operand function-metas depth)
+        segment (ref-get result)
+        segment-len (vector-length segment)
+        rel32-target (x86-rel32-target-in-window-at-base segment offset size offset)]
+    (do
+      (root_push instr)
+      (root_push segment)
+      (print idx)
+      (print opcode)
+      (print operand)
+      (print depth)
+      (print offset)
+      (print size)
+      (print segment-len)
+      (print rel32-target)
+      (print (byte-at-or-zero segment offset segment-len))
+      (print (byte-at-or-zero segment (+ offset 1) segment-len))
+      (print (byte-at-or-zero segment (+ offset 2) segment-len))
+      (print (byte-at-or-zero segment (+ offset 3) segment-len))
+      (print (byte-at-or-zero segment (+ offset 4) segment-len))
+      (print (byte-at-or-zero segment (+ offset 5) segment-len))
+      (print (byte-at-or-zero segment (+ offset 6) segment-len))
+      (print (byte-at-or-zero segment (+ offset 7) segment-len))
+      (root_pop)
+      (root_pop))))
+
+(defn generate-native-control-instr-bundle-progress-loop-x86 [ctx idx len]
+  (if (>= idx len)
+    0
+    (do
+      (root_push ctx)
+      (print 9000000344)
+      (print-x86-function-emit-progress-row ctx idx)
+      (let [row-state (make-x86-control-loop-state idx 1)]
+        (do
+          (root_push row-state)
+          (generate-native-control-instr-bundle-loop-x86-with-context ctx row-state)
+          (print 9000000345)
+          (print-x86-function-emit-progress-row ctx idx)
+          (root_pop)
+          (let [final (generate-native-control-instr-bundle-progress-loop-x86 ctx (+ idx 1) len)]
+            (do
+              (root_pop)
+              final)))))))
+
+(defn generate-native-function-x86-64-bundle-with-layout-progress [func-meta result function-starts function-metas layout]
+  (let [import-count (vector-get layout 0)
+    import-stub-offset (vector-get layout 1)
+    function-start-base (vector-get layout 2)
+    emit-start-base (vector-get layout 3)
+    param-count (native-function-param-count func-meta)
+    local-count (native-function-local-count func-meta)
+    ir-func (native-function-ir func-meta)
+    frame-base-slot-count (native-frame-base-slot-count ir-func (+ (+ param-count local-count) 1))
+    stack-bytes (native-local-stack-bytes-with-window-x86 ir-func (+ (+ param-count local-count) 1) function-metas)
+    function-start 0
+    encoded-import-stub-offset (- import-stub-offset function-start-base)
+    encoded-function-start-base function-start-base
+    prologue-push (emit-push-rbp)
+    prologue-mov (emit-mov-rbp-rsp)
+    base-offset (+ function-start 4)
+    after-stack-offset (if (> stack-bytes 0) (+ base-offset 7) base-offset)
+    param-spill-bytes (x86-param-spill-prefix-size param-count)
+    body-offset (+ after-stack-offset param-spill-bytes)
+    n (vector-length ir-func)]
+    (do
+      (print 9000000346)
+      (print param-count)
+      (print local-count)
+      (print frame-base-slot-count)
+      (print stack-bytes)
+      (print param-spill-bytes)
+      (print body-offset)
+      (print n)
+      (root_push func-meta)
+      (root_push result)
+      (root_push function-starts)
+      (root_push function-metas)
+      (root_push layout)
+      (root_push ir-func)
+      (ref-set result (vector-push (ref-get result) (vector-get prologue-push 0)))
+      (ref-set result (vector-push (ref-get result) (vector-get prologue-mov 0)))
+      (ref-set result (vector-push (ref-get result) (vector-get prologue-mov 1)))
+      (ref-set result (vector-push (ref-get result) (vector-get prologue-mov 2)))
+      (if (> stack-bytes 0)
+        (append-native-bytes-loop result (emit-sub-rsp-imm32 stack-bytes) 0 7)
+        0)
+      (spill-native-function-params-x86-loop 0 param-count result)
+      (print 9000000347)
+      (print (vector-length (ref-get result)))
+      (print body-offset)
+      (let [control-meta (scan-control-flow-meta ir-func)]
+        (do
+          (root_push control-meta)
+          (let [offsets (collect-native-bundle-offsets-x86 ir-func function-metas body-offset)]
+            (do
+              (root_push offsets)
+              (let [depths (collect-native-bundle-depths-x86 ir-func function-metas)]
+                (do
+                  (root_push depths)
+                  (let [control-layout (make-x86-function-emit-layout import-count encoded-import-stub-offset encoded-function-start-base emit-start-base)]
+                    (do
+                      (root_push control-layout)
+                      (let [control-ctx (make-x86-control-bundle-context ir-func result control-meta offsets depths function-starts function-metas control-layout frame-base-slot-count)]
+                        (do
+                          (root_push control-ctx)
+                          (print 9000000348)
+                          (print n)
+                          (print (vector-length offsets))
+                          (print (vector-length depths))
+                          (print body-offset)
+                          (print emit-start-base)
+                          (generate-native-control-instr-bundle-progress-loop-x86 control-ctx 0 n)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)))))))))
+      (if (> stack-bytes 0)
+        (append-native-bytes-loop result (emit-add-rsp-imm32 stack-bytes) 0 7)
+        0)
+      (let [epilogue-pop (emit-pop-rbp)
+        epilogue-ret (emit-ret)]
+        (do
+          (ref-set result (vector-push (ref-get result) (vector-get epilogue-pop 0)))
+          (ref-set result (vector-push (ref-get result) (vector-get epilogue-ret 0)))
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+            0)))))))
+
 (defn print-x86-function-ir-prefix-loop [segment ir offsets functions control-ctx idx len depth]
   (if (>= idx len)
     0
@@ -13004,7 +13203,7 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
                     (let [layout (make-x86-function-emit-layout import-count import-stub-offset function-start function-start)]
                       (do
                         (root_push layout)
-                        (generate-native-function-x86-64-bundle-with-layout func-meta result starts functions layout)
+                        (generate-native-function-x86-64-bundle-with-layout-progress func-meta result starts functions layout)
                         (let [segment (ref-get result)
                               offsets (collect-native-bundle-offsets-x86 ir-func functions body-offset)]
                           (do
