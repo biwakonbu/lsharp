@@ -2176,32 +2176,37 @@
                   (root_pop)
                   functions-result))))))))))
 (defn continue-compile-let-chain-step-with-source [source ftable state data-ref]
-  (if (= (vector-get state 0) 1)
-    state
-    (do
-      (root_push source)
-      (root_push ftable)
-      (root_push state)
-      (root_push data-ref)
-      (let [next-value (vector-get state 2)]
-        (do
-          (root_push next-value)
-          (let [result
-            (compile-let-chain-step-with-source
-              (vector-get next-value 0)
-              source
-              (vector-get next-value 1)
-              ftable
-              (vector-get next-value 2)
-              data-ref
-              (vector-get state 1))]
-            (do
-              (root_pop)
-              (root_pop)
-              (root_pop)
-              (root_pop)
-              (root_pop)
-              result)))))))
+  (do
+    (root_push state)
+    (if (= (vector-get state 0) 1)
+      (do
+        (root_pop)
+        state)
+      (do
+        (root_push source)
+        (root_push ftable)
+        (root_push data-ref)
+        (let [next-value (vector-get state 2)]
+          (do
+            (root_push next-value)
+            (let [result
+              (compile-let-chain-step-with-source
+                (vector-get next-value 0)
+                source
+                (vector-get next-value 1)
+                ftable
+                (vector-get next-value 2)
+                data-ref
+                (vector-get state 1))]
+              (do
+                (root_push result)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result))))))))
 (defn compile-let-chain-step-8-with-source [node source env ftable instrs data-ref rooted-count]
   (let [step1 (compile-let-chain-step-with-source node source env ftable instrs data-ref rooted-count)
     step2 (continue-compile-let-chain-step-with-source source ftable step1 data-ref)
@@ -2213,32 +2218,37 @@
     step8 (continue-compile-let-chain-step-with-source source ftable step7 data-ref)]
     step8))
 (defn continue-compile-let-chain-step-8-with-source [source ftable state data-ref]
-  (if (= (vector-get state 0) 1)
-    state
-    (do
-      (root_push source)
-      (root_push ftable)
-      (root_push state)
-      (root_push data-ref)
-      (let [next-value (vector-get state 2)]
-        (do
-          (root_push next-value)
-          (let [result
-            (compile-let-chain-step-8-with-source
-              (vector-get next-value 0)
-              source
-              (vector-get next-value 1)
-              ftable
-              (vector-get next-value 2)
-              data-ref
-              (vector-get state 1))]
-            (do
-              (root_pop)
-              (root_pop)
-              (root_pop)
-              (root_pop)
-              (root_pop)
-              result)))))))
+  (do
+    (root_push state)
+    (if (= (vector-get state 0) 1)
+      (do
+        (root_pop)
+        state)
+      (do
+        (root_push source)
+        (root_push ftable)
+        (root_push data-ref)
+        (let [next-value (vector-get state 2)]
+          (do
+            (root_push next-value)
+            (let [result
+              (compile-let-chain-step-8-with-source
+                (vector-get next-value 0)
+                source
+                (vector-get next-value 1)
+                ftable
+                (vector-get next-value 2)
+                data-ref
+                (vector-get state 1))]
+              (do
+                (root_push result)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result))))))))
 (defn compile-let-chain-step-64-with-source [node source env ftable instrs data-ref rooted-count]
   (let [step1 (compile-let-chain-step-8-with-source node source env ftable instrs data-ref rooted-count)
     step2 (continue-compile-let-chain-step-8-with-source source ftable step1 data-ref)

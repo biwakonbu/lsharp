@@ -7088,6 +7088,75 @@ fn test_selfhost_compile_let_chain_roots_step_and_body_results_before_unwind() {
 }
 
 #[test]
+fn test_selfhost_compile_let_chain_continuations_root_state_and_result() {
+    let source = selfhost_module("Compiler.ls");
+    let single_body = source
+        .split("(defn continue-compile-let-chain-step-with-source")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-let-chain-step-8-with-source")
+                .next()
+        })
+        .expect("Compiler.ls に continue-compile-let-chain-step-with-source が存在すること");
+    let chunk_body = source
+        .split("(defn continue-compile-let-chain-step-8-with-source")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-let-chain-step-64-with-source")
+                .next()
+        })
+        .expect("Compiler.ls に continue-compile-let-chain-step-8-with-source が存在すること");
+
+    for (label, body, recursive_fn) in [
+        ("single", single_body, "(compile-let-chain-step-with-source"),
+        ("step8", chunk_body, "(compile-let-chain-step-8-with-source"),
+    ] {
+        let state_root_pos = body.find("(root_push state)").unwrap_or_else(|| {
+            panic!("{label} continuation は done 判定前に state を root すること")
+        });
+        let done_check_pos = body
+            .find("(if (= (vector-get state 0) 1)")
+            .unwrap_or_else(|| panic!("{label} continuation は state done 判定を持つこと"));
+        let done_pop_pos = body
+            .find("(do\n        (root_pop)\n        state)")
+            .unwrap_or_else(|| {
+                panic!("{label} continuation は done branch で state root を pop すること")
+            });
+        let recursive_call_pos = body
+            .find(recursive_fn)
+            .unwrap_or_else(|| panic!("{label} continuation は recursive call を実行すること"));
+        let recursive_arg_pos = body[recursive_call_pos..]
+            .find("(vector-get next-value 0)")
+            .map(|pos| recursive_call_pos + pos)
+            .unwrap_or_else(|| {
+                panic!("{label} continuation は next-value の node を recursive call へ渡すこと")
+            });
+        let result_root_pos = body[recursive_call_pos..]
+            .find("(root_push result)")
+            .map(|pos| recursive_call_pos + pos)
+            .unwrap_or_else(|| {
+                panic!("{label} continuation は recursive result を unwind 前に root すること")
+            });
+        let first_pop_after_result = body[result_root_pos..]
+            .find("(root_pop)")
+            .map(|pos| result_root_pos + pos)
+            .unwrap_or_else(|| {
+                panic!("{label} continuation は result root 後に roots を unwind すること")
+            });
+
+        assert!(
+            state_root_pos < done_check_pos
+                && done_check_pos < done_pop_pos
+                && done_check_pos < recursive_call_pos
+                && recursive_call_pos < recursive_arg_pos
+                && recursive_arg_pos < result_root_pos
+                && result_root_pos < first_pop_after_result,
+            "{label} continuation は state/result を GC-safe に保ったまま done/recursive branch を処理するべき"
+        );
+    }
+}
+
+#[test]
 fn test_selfhost_compile_let_ftable_reloads_body_after_init_compile() {
     let source = selfhost_module("Compiler.ls");
     let ftable_body = source
