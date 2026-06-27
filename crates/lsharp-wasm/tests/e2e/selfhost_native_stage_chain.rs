@@ -1425,6 +1425,37 @@ fn test_linux_x86_representative_seed_releases_function_segment_before_next_segm
 }
 
 #[test]
+fn test_linux_x86_representative_seed_roots_function_segment_before_padding() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+    let body = source
+        .split("(defn print-x86-function-code-segments-loop")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn print-x86-function-ir-prefix-loop").next())
+        .expect("Linux x86 segmented seed に print-x86-function-code-segments-loop が存在すること");
+
+    let segment_pos = body
+        .find("(let [segment (ref-get result)]")
+        .expect("function segment は padding 前に独立した let で取り出すこと");
+    let segment_root_pos = body[segment_pos..]
+        .find("(root_push segment)")
+        .map(|pos| segment_pos + pos)
+        .expect("function segment は padding 前に root すること");
+    let padding_pos = body[segment_pos..]
+        .find("padded-segment (pad-byte-vector-to-length segment function-size)")
+        .map(|pos| segment_pos + pos)
+        .expect("function segment は root 後に declared slot size まで padding すること");
+
+    assert!(
+        segment_pos < segment_root_pos
+            && segment_root_pos < padding_pos
+            && !body.contains(
+                "let [segment (ref-get result)\n                        padded-segment (pad-byte-vector-to-length segment function-size)"
+            ),
+        "Linux x86 segmented seed は pad-byte-vector-to-length 中の GC で segment を失わないよう、segment を root してから padding するべき"
+    );
+}
+
+#[test]
 fn test_linux_x86_representative_seed_can_print_function_segment_metadata() {
     let source = linux_x86_representative_actual_stage23_seed_source();
     lsharp_syntax::parse(&source)
@@ -9518,6 +9549,60 @@ fn test_native_codegen_x86_control_loop_chunks_deep_instruction_streams() {
 }
 
 #[test]
+fn test_native_codegen_x86_control_loop_roots_chunk_states_before_recursion() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let body = source
+        .split("(defn generate-native-control-instr-bundle-loop-x86-with-context")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split(
+                "(defn generate-native-control-instr-bundle-loop-x86-with-import-count-and-base",
+            )
+            .next()
+        })
+        .expect("NativeCodegen.ls に x86 control bundle loop が存在すること");
+    let chunk_branch = body
+        .split("(if (> remaining 64)\n        (do")
+        .nth(1)
+        .and_then(|tail| tail.split("(let [instr (vector-get ir-func idx)").next())
+        .expect("x86 control loop に 64-row chunk branch が存在すること");
+
+    let chunk_state_pos = chunk_branch
+        .find("chunk-state (make-x86-control-loop-state idx chunk-size)")
+        .expect("chunk branch は chunk-state を作ること");
+    let chunk_root_pos = chunk_branch[chunk_state_pos..]
+        .find("(root_push chunk-state)")
+        .map(|pos| chunk_state_pos + pos)
+        .expect("chunk branch は chunk-state を root すること");
+    let chunk_call_pos = chunk_branch[chunk_state_pos..]
+        .find("(generate-native-control-instr-bundle-loop-x86-with-context ctx chunk-state)")
+        .map(|pos| chunk_state_pos + pos)
+        .expect("chunk branch は chunk-state で再帰すること");
+    let tail_state_pos = chunk_branch
+        .find(
+            "tail-state (make-x86-control-loop-state (+ idx chunk-size) (- remaining chunk-size))",
+        )
+        .expect("chunk branch は tail-state を作ること");
+    let tail_root_pos = chunk_branch[tail_state_pos..]
+        .find("(root_push tail-state)")
+        .map(|pos| tail_state_pos + pos)
+        .expect("chunk branch は tail-state を root すること");
+    let tail_call_pos = chunk_branch[tail_state_pos..]
+        .find("(generate-native-control-instr-bundle-loop-x86-with-context ctx tail-state)")
+        .map(|pos| tail_state_pos + pos)
+        .expect("chunk branch は tail-state で再帰すること");
+
+    assert!(
+        chunk_state_pos < chunk_root_pos
+            && chunk_root_pos < chunk_call_pos
+            && chunk_call_pos < tail_state_pos
+            && tail_state_pos < tail_root_pos
+            && tail_root_pos < tail_call_pos,
+        "x86 control loop の 64-row chunk 分岐は stage3 normal transport の巨大関数生成中に state vector を GC から守るため、chunk-state/tail-state を再帰前に root するべき"
+    );
+}
+
+#[test]
 fn test_native_codegen_x86_control_loop_roots_next_state_before_tail_recursion() {
     let source = selfhost_module("NativeCodegen.ls");
     let body = source
@@ -12481,22 +12566,23 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
                 (do
                   (root_push layout)
                   (generate-native-function-x86-64-bundle-with-layout func-meta result starts functions layout)
-                  (let [segment (ref-get result)
-                        padded-segment (pad-byte-vector-to-length segment function-size)]
+                  (let [segment (ref-get result)]
                     (do
                       (root_push segment)
-                      (root_push padded-segment)
-                      (print-packed-code-segment-with-length padded-segment function-size)
-                      (root_pop)
-                      (root_pop)
-                      (root_pop)
-                      (root_pop)
-                      (root_pop)
-                      (let [final (print-x86-function-code-segments-loop functions starts import-count import-stub-offset (+ idx 1) len)]
+                      (let [padded-segment (pad-byte-vector-to-length segment function-size)]
                         (do
+                          (root_push padded-segment)
+                          (print-packed-code-segment-with-length padded-segment function-size)
                           (root_pop)
                           (root_pop)
-                          final)))))))))))))
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (let [final (print-x86-function-code-segments-loop functions starts import-count import-stub-offset (+ idx 1) len)]
+                            (do
+                              (root_pop)
+                              (root_pop)
+                              final)))))))))))))))
 
 (defn x86-param-spill-prefix-size [param-count]
   (if (>= param-count 20)

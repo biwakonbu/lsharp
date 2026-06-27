@@ -10793,9 +10793,13 @@
           (root_push function-metas)
           (let [chunk-state (make-x86-control-loop-state idx chunk-size)]
             (do
+              (root_push chunk-state)
               (generate-native-control-instr-bundle-loop-x86-with-context ctx chunk-state)
+              (root_pop)
               (let [tail-state (make-x86-control-loop-state (+ idx chunk-size) (- remaining chunk-size))]
-                (let [final (generate-native-control-instr-bundle-loop-x86-with-context ctx tail-state)]
+                (do
+                  (root_push tail-state)
+                  (let [final (generate-native-control-instr-bundle-loop-x86-with-context ctx tail-state)]
                   (do
                     (root_pop)
                     (root_pop)
@@ -10805,7 +10809,8 @@
                     (root_pop)
                     (root_pop)
                     (root_pop)
-                    final))))))
+                    (root_pop)
+                    final)))))))
         (let [instr (vector-get ir-func idx)
         opcode (vector-get instr 0)
 	        operand (vector-get instr 1)
