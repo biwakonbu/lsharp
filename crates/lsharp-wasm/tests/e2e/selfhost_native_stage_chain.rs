@@ -9636,6 +9636,40 @@ fn test_native_codegen_x86_function_bundle_roots_initial_control_state_before_lo
 }
 
 #[test]
+fn test_native_codegen_x86_function_bundle_uses_row_state_loop_for_large_ir_functions() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let body = source
+        .split("(defn generate-native-function-x86-64-bundle-with-layout")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn generate-native-function-x86-64-bundle-with-import-count-and-base")
+                .next()
+        })
+        .expect("NativeCodegen.ls に x86 function bundle emitter が存在すること");
+    let row_loop_body = source
+        .split("(defn generate-native-control-instr-bundle-row-loop-x86")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn generate-native-function-x86-64-bundle-with-layout")
+                .next()
+        })
+        .expect("NativeCodegen.ls に x86 row-state control loop helper が存在すること");
+
+    assert!(
+        body.contains("(if (> n 1024)")
+            && body.contains("(generate-native-control-instr-bundle-row-loop-x86 control-ctx 0 n)")
+            && row_loop_body.contains("row-state (make-x86-control-loop-state idx 1)")
+            && row_loop_body.contains("(root_push row-state)")
+            && row_loop_body.contains(
+                "(generate-native-control-instr-bundle-loop-x86-with-context ctx row-state)"
+            )
+            && !row_loop_body.contains("9000000344")
+            && !row_loop_body.contains("print-x86-function-emit-progress-row"),
+        "x86 normal function bundle は stage3 normal transport の巨大 IR 関数だけを、metadata と同じ row-state root 済み loop で出力なしに処理するべき"
+    );
+}
+
+#[test]
 fn test_native_codegen_x86_control_loop_roots_next_state_before_tail_recursion() {
     let source = selfhost_module("NativeCodegen.ls");
     let body = source

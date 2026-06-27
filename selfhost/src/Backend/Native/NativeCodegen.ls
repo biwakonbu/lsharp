@@ -13293,6 +13293,21 @@
 (defn x86-function-emit-layout-emit-start-base [layout]
   (vector-get layout 3))
 
+(defn generate-native-control-instr-bundle-row-loop-x86 [ctx idx len]
+  (if (>= idx len)
+    0
+    (do
+      (root_push ctx)
+      (let [row-state (make-x86-control-loop-state idx 1)]
+        (do
+          (root_push row-state)
+          (generate-native-control-instr-bundle-loop-x86-with-context ctx row-state)
+          (root_pop)
+          (let [final (generate-native-control-instr-bundle-row-loop-x86 ctx (+ idx 1) len)]
+            (do
+              (root_pop)
+              final)))))))
+
 (defn generate-native-function-x86-64-bundle-with-layout [func-meta result function-starts function-metas layout]
   (let [import-count (vector-get layout 0)
     import-stub-offset (vector-get layout 1)
@@ -13357,13 +13372,15 @@
                       (let [control-ctx (make-x86-control-bundle-context ir-func result control-meta offsets depths function-starts function-metas control-layout frame-base-slot-count)]
                         (do
                           (root_push control-ctx)
-                          (let [control-state (make-x86-control-loop-state 0 n)]
-                            (do
-                              (root_push control-state)
-                              (generate-native-control-instr-bundle-loop-x86-with-context
-                                control-ctx
-                                control-state)
-                              (root_pop)))
+                          (if (> n 1024)
+                            (generate-native-control-instr-bundle-row-loop-x86 control-ctx 0 n)
+                            (let [control-state (make-x86-control-loop-state 0 n)]
+                              (do
+                                (root_push control-state)
+                                (generate-native-control-instr-bundle-loop-x86-with-context
+                                  control-ctx
+                                  control-state)
+                                (root_pop))))
                           (root_pop)
                           (root_pop)
                           (root_pop)
