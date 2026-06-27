@@ -13383,13 +13383,15 @@
                           (root_push control-ctx)
                           (if (> n 1024)
                             (generate-native-control-instr-bundle-row-loop-x86 control-ctx 0 n)
-                            (let [control-state (make-x86-control-loop-state 0 n)]
-                              (do
-                                (root_push control-state)
-                                (generate-native-control-instr-bundle-loop-x86-with-context
-                                  control-ctx
-                                  control-state)
-                                (root_pop))))
+                            (if (< n 17)
+                              (generate-native-control-instr-bundle-row-loop-x86 control-ctx 0 n)
+                              (let [control-state (make-x86-control-loop-state 0 n)]
+                                (do
+                                  (root_push control-state)
+                                  (generate-native-control-instr-bundle-loop-x86-with-context
+                                    control-ctx
+                                    control-state)
+                                  (root_pop)))))
                           (root_pop)
                           (root_pop)
                           (root_pop)
