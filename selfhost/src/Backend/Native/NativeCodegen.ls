@@ -13358,9 +13358,12 @@
                         (do
                           (root_push control-ctx)
                           (let [control-state (make-x86-control-loop-state 0 n)]
-                            (generate-native-control-instr-bundle-loop-x86-with-context
-                              control-ctx
-                              control-state))
+                            (do
+                              (root_push control-state)
+                              (generate-native-control-instr-bundle-loop-x86-with-context
+                                control-ctx
+                                control-state)
+                              (root_pop)))
                           (root_pop)
                           (root_pop)
                           (root_pop)
