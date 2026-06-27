@@ -10861,6 +10861,8 @@
           (do
             (append-control-else-instr-x86 result meta offsets idx)
             (continue-native-control-instr-bundle-loop-x86 ctx idx remaining))
+        (if (= opcode 43)
+          (continue-native-control-instr-bundle-loop-x86 ctx idx remaining)
         (if (= (direct-append-x86-opcode opcode) 6)
           (do
             (append-i64-const-bundle-x86 result operand frame-base-slot-count current-depth)
@@ -11011,7 +11013,7 @@
                       native-len (vector-length native)]
                       (do
                         (append-native-bytes-loop result native 0 native-len)
-                        (continue-native-control-instr-bundle-loop-x86 ctx idx remaining)))))))))))))))))))))))))))))))))
+                        (continue-native-control-instr-bundle-loop-x86 ctx idx remaining))))))))))))))))))))))))))))))))))
 (defn generate-native-control-instr-bundle-loop-x86-with-import-count-and-base [ir-func result meta offsets function-starts function-metas import-count import-stub-offset function-start-base frame-base-slot-count current-depth idx len]
   (let [emit-start-base (vector-length (ref-get result))
     layout (make-x86-function-emit-layout import-count import-stub-offset function-start-base emit-start-base)]

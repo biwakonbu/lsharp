@@ -9583,6 +9583,37 @@ fn test_native_codegen_x86_control_loop_roots_next_state_before_tail_recursion()
 }
 
 #[test]
+fn test_native_codegen_x86_control_loop_treats_end_as_direct_noop_continue() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let body = source
+        .split("(defn generate-native-control-instr-bundle-loop-x86-with-context")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split(
+                "(defn generate-native-control-instr-bundle-loop-x86-with-import-count-and-base",
+            )
+            .next()
+        })
+        .expect("NativeCodegen.ls に x86 control bundle loop が存在すること");
+    let end_branch = body
+        .split("(if (= opcode 43)")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(if (= (direct-append-x86-opcode opcode) 6)")
+                .next()
+        })
+        .expect("x86 control loop は End を fallback 前に処理すること");
+
+    assert!(
+        end_branch.contains("(continue-native-control-instr-bundle-loop-x86 ctx idx remaining)")
+            && !end_branch.contains("codegen-x86-control-loop-fallback-native")
+            && body.find("(if (= opcode 43)")
+                < body.find("codegen-x86-control-loop-fallback-native"),
+        "x86 control loop の End は native bytes を出さないため、空 vector fallback を経由せず直接次 row へ進むべき"
+    );
+}
+
+#[test]
 fn test_native_codegen_x86_collects_bundle_depths_for_control_loop() {
     let source = std::fs::read_to_string(selfhost_source_path("NativeCodegen.ls"))
         .expect("canonical NativeCodegen.ls が読み込めること");
