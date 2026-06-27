@@ -6147,10 +6147,18 @@ fn test_linux_x86_metadata_progress_loop_releases_row_roots_before_next_row() {
         .split("(defn generate-native-control-instr-bundle-progress-row-x86")
         .nth(1)
         .and_then(|tail| {
-            tail.split("(defn generate-native-control-instr-bundle-progress-loop-x86")
+            tail.split("(defn generate-native-control-instr-bundle-progress-chunk-x86")
                 .next()
         })
         .expect("Linux x86 metadata seed に progress row helper が存在すること");
+    let row_chunk_body = source
+        .split("(defn generate-native-control-instr-bundle-progress-chunk-x86")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn generate-native-control-instr-bundle-progress-loop-x86")
+                .next()
+        })
+        .expect("Linux x86 metadata seed に progress chunk helper が存在すること");
     let row_loop_body = source
         .split("(defn generate-native-control-instr-bundle-progress-loop-x86")
         .nth(1)
@@ -6171,15 +6179,23 @@ fn test_linux_x86_metadata_progress_loop_releases_row_roots_before_next_row() {
                 "(generate-native-control-instr-bundle-loop-x86-with-context ctx row-state)"
             )
             && row_step_body.contains("(root_pop)\n        (root_pop)\n        0")
-            && row_loop_body.contains(
+            && row_chunk_body.contains("[ctx idx end]")
+            && row_chunk_body.contains(
                 "(let [_row (generate-native-control-instr-bundle-progress-row-x86 ctx idx)]"
             )
+            && row_chunk_body.contains(
+                "(generate-native-control-instr-bundle-progress-chunk-x86 ctx (+ idx 1) end)"
+            )
+            && row_loop_body.contains("chunk-end (if (> (+ idx 64) len) len (+ idx 64))")
             && row_loop_body.contains(
-                "(generate-native-control-instr-bundle-progress-loop-x86 ctx (+ idx 1) len)"
+                "_chunk (generate-native-control-instr-bundle-progress-chunk-x86 ctx idx chunk-end)"
+            )
+            && row_loop_body.contains(
+                "(generate-native-control-instr-bundle-progress-loop-x86 ctx chunk-end len)"
             )
             && !row_loop_body
                 .contains("let [final (generate-native-control-instr-bundle-progress-loop-x86"),
-        "Linux x86 metadata progress loop は巨大 IR 関数で root/call frame を溜めないよう、row helper で ctx/row-state roots を解放してから次 row へ進むべき"
+        "Linux x86 metadata progress loop は巨大 IR 関数で root/call frame を溜めないよう、row helper で roots を解放しつつ 64 row chunk で再帰深度を抑えるべき"
     );
 }
 
@@ -9720,10 +9736,18 @@ fn test_native_codegen_x86_row_loop_releases_row_roots_before_next_row() {
         .split("(defn generate-native-control-instr-bundle-row-step-x86")
         .nth(1)
         .and_then(|tail| {
-            tail.split("(defn generate-native-control-instr-bundle-row-loop-x86")
+            tail.split("(defn generate-native-control-instr-bundle-row-chunk-x86")
                 .next()
         })
         .expect("NativeCodegen.ls に x86 row-step helper が存在すること");
+    let row_chunk_body = source
+        .split("(defn generate-native-control-instr-bundle-row-chunk-x86")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn generate-native-control-instr-bundle-row-loop-x86")
+                .next()
+        })
+        .expect("NativeCodegen.ls に x86 row-chunk helper が存在すること");
     let row_loop_body = source
         .split("(defn generate-native-control-instr-bundle-row-loop-x86")
         .nth(1)
@@ -9742,14 +9766,21 @@ fn test_native_codegen_x86_row_loop_releases_row_roots_before_next_row() {
                 "(generate-native-control-instr-bundle-loop-x86-with-context ctx row-state)"
             )
             && row_step_body.contains("(root_pop)\n        (root_pop)\n        0")
-            && row_loop_body.contains(
+            && row_chunk_body.contains("[ctx idx end]")
+            && row_chunk_body.contains(
                 "(let [_row (generate-native-control-instr-bundle-row-step-x86 ctx idx)]"
             )
+            && row_chunk_body
+                .contains("(generate-native-control-instr-bundle-row-chunk-x86 ctx (+ idx 1) end)")
+            && row_loop_body.contains("chunk-end (if (> (+ idx 64) len) len (+ idx 64))")
+            && row_loop_body.contains(
+                "_chunk (generate-native-control-instr-bundle-row-chunk-x86 ctx idx chunk-end)"
+            )
             && row_loop_body
-                .contains("(generate-native-control-instr-bundle-row-loop-x86 ctx (+ idx 1) len)")
+                .contains("(generate-native-control-instr-bundle-row-loop-x86 ctx chunk-end len)")
             && !row_loop_body
                 .contains("let [final (generate-native-control-instr-bundle-row-loop-x86"),
-        "x86 row loop は巨大 IR 関数で root/call frame を溜めないよう、row helper で ctx/row-state roots を解放してから次 row へ進むべき"
+        "x86 row loop は巨大 IR 関数で root/call frame を溜めないよう、row helper で roots を解放しつつ 64 row chunk で再帰深度を抑えるべき"
     );
 }
 
@@ -13337,11 +13368,18 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
         (root_pop)
         0))))
 
+(defn generate-native-control-instr-bundle-progress-chunk-x86 [ctx idx end]
+  (if (>= idx end)
+    0
+    (let [_row (generate-native-control-instr-bundle-progress-row-x86 ctx idx)]
+      (generate-native-control-instr-bundle-progress-chunk-x86 ctx (+ idx 1) end))))
+
 (defn generate-native-control-instr-bundle-progress-loop-x86 [ctx idx len]
   (if (>= idx len)
     0
-    (let [_row (generate-native-control-instr-bundle-progress-row-x86 ctx idx)]
-      (generate-native-control-instr-bundle-progress-loop-x86 ctx (+ idx 1) len))))
+    (let [chunk-end (if (> (+ idx 64) len) len (+ idx 64))
+          _chunk (generate-native-control-instr-bundle-progress-chunk-x86 ctx idx chunk-end)]
+      (generate-native-control-instr-bundle-progress-loop-x86 ctx chunk-end len))))
 
 (defn generate-native-function-x86-64-bundle-with-layout-progress [func-meta result function-starts function-metas layout]
   (let [import-count (vector-get layout 0)

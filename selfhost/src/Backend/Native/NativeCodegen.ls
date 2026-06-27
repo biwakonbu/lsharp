@@ -13304,11 +13304,18 @@
         (root_pop)
         0))))
 
+(defn generate-native-control-instr-bundle-row-chunk-x86 [ctx idx end]
+  (if (>= idx end)
+    0
+    (let [_row (generate-native-control-instr-bundle-row-step-x86 ctx idx)]
+      (generate-native-control-instr-bundle-row-chunk-x86 ctx (+ idx 1) end))))
+
 (defn generate-native-control-instr-bundle-row-loop-x86 [ctx idx len]
   (if (>= idx len)
     0
-    (let [_row (generate-native-control-instr-bundle-row-step-x86 ctx idx)]
-      (generate-native-control-instr-bundle-row-loop-x86 ctx (+ idx 1) len))))
+    (let [chunk-end (if (> (+ idx 64) len) len (+ idx 64))
+      _chunk (generate-native-control-instr-bundle-row-chunk-x86 ctx idx chunk-end)]
+      (generate-native-control-instr-bundle-row-loop-x86 ctx chunk-end len))))
 
 (defn generate-native-function-x86-64-bundle-with-layout [func-meta result function-starts function-metas layout]
   (let [import-count (vector-get layout 0)
