@@ -6122,6 +6122,7 @@ fn test_linux_x86_metadata_can_trace_function_emit_progress_rows() {
 
     for expected in [
         "(defn print-x86-function-emit-progress-row",
+        "(defn generate-native-control-instr-bundle-progress-row-x86",
         "(print 9000000344)",
         "(print 9000000345)",
         "(defn generate-native-control-instr-bundle-progress-loop-x86",
@@ -6137,6 +6138,49 @@ fn test_linux_x86_metadata_can_trace_function_emit_progress_rows() {
         );
     }
     let _program = parse_for_pipeline(&source);
+}
+
+#[test]
+fn test_linux_x86_metadata_progress_loop_releases_row_roots_before_next_row() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+    let row_step_body = source
+        .split("(defn generate-native-control-instr-bundle-progress-row-x86")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn generate-native-control-instr-bundle-progress-loop-x86")
+                .next()
+        })
+        .expect("Linux x86 metadata seed に progress row helper が存在すること");
+    let row_loop_body = source
+        .split("(defn generate-native-control-instr-bundle-progress-loop-x86")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn generate-native-function-x86-64-bundle-with-layout-progress")
+                .next()
+        })
+        .expect("Linux x86 metadata seed に progress loop helper が存在すること");
+
+    assert!(
+        row_step_body.contains("[ctx idx]")
+            && row_step_body.contains("(root_push ctx)")
+            && row_step_body.contains("(print 9000000344)")
+            && row_step_body.contains("(print 9000000345)")
+            && row_step_body.contains("row-state (make-x86-control-loop-state idx 1)")
+            && row_step_body.contains("(root_push row-state)")
+            && row_step_body.contains(
+                "(generate-native-control-instr-bundle-loop-x86-with-context ctx row-state)"
+            )
+            && row_step_body.contains("(root_pop)\n        (root_pop)\n        0")
+            && row_loop_body.contains(
+                "(let [_row (generate-native-control-instr-bundle-progress-row-x86 ctx idx)]"
+            )
+            && row_loop_body.contains(
+                "(generate-native-control-instr-bundle-progress-loop-x86 ctx (+ idx 1) len)"
+            )
+            && !row_loop_body
+                .contains("let [final (generate-native-control-instr-bundle-progress-loop-x86"),
+        "Linux x86 metadata progress loop は巨大 IR 関数で root/call frame を溜めないよう、row helper で ctx/row-state roots を解放してから次 row へ進むべき"
+    );
 }
 
 #[test]
@@ -9666,6 +9710,46 @@ fn test_native_codegen_x86_function_bundle_uses_row_state_loop_for_large_ir_func
             && !row_loop_body.contains("9000000344")
             && !row_loop_body.contains("print-x86-function-emit-progress-row"),
         "x86 normal function bundle は stage3 normal transport の巨大 IR 関数だけを、metadata と同じ row-state root 済み loop で出力なしに処理するべき"
+    );
+}
+
+#[test]
+fn test_native_codegen_x86_row_loop_releases_row_roots_before_next_row() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let row_step_body = source
+        .split("(defn generate-native-control-instr-bundle-row-step-x86")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn generate-native-control-instr-bundle-row-loop-x86")
+                .next()
+        })
+        .expect("NativeCodegen.ls に x86 row-step helper が存在すること");
+    let row_loop_body = source
+        .split("(defn generate-native-control-instr-bundle-row-loop-x86")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn generate-native-function-x86-64-bundle-with-layout")
+                .next()
+        })
+        .expect("NativeCodegen.ls に x86 row-state control loop helper が存在すること");
+
+    assert!(
+        row_step_body.contains("[ctx idx]")
+            && row_step_body.contains("(root_push ctx)")
+            && row_step_body.contains("row-state (make-x86-control-loop-state idx 1)")
+            && row_step_body.contains("(root_push row-state)")
+            && row_step_body.contains(
+                "(generate-native-control-instr-bundle-loop-x86-with-context ctx row-state)"
+            )
+            && row_step_body.contains("(root_pop)\n        (root_pop)\n        0")
+            && row_loop_body.contains(
+                "(let [_row (generate-native-control-instr-bundle-row-step-x86 ctx idx)]"
+            )
+            && row_loop_body
+                .contains("(generate-native-control-instr-bundle-row-loop-x86 ctx (+ idx 1) len)")
+            && !row_loop_body
+                .contains("let [final (generate-native-control-instr-bundle-row-loop-x86"),
+        "x86 row loop は巨大 IR 関数で root/call frame を溜めないよう、row helper で ctx/row-state roots を解放してから次 row へ進むべき"
     );
 }
 
@@ -13238,24 +13322,26 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
       (root_pop)
       (root_pop))))
 
+(defn generate-native-control-instr-bundle-progress-row-x86 [ctx idx]
+  (do
+    (root_push ctx)
+    (print 9000000344)
+    (print-x86-function-emit-progress-row ctx idx)
+    (let [row-state (make-x86-control-loop-state idx 1)]
+      (do
+        (root_push row-state)
+        (generate-native-control-instr-bundle-loop-x86-with-context ctx row-state)
+        (print 9000000345)
+        (print-x86-function-emit-progress-row ctx idx)
+        (root_pop)
+        (root_pop)
+        0))))
+
 (defn generate-native-control-instr-bundle-progress-loop-x86 [ctx idx len]
   (if (>= idx len)
     0
-    (do
-      (root_push ctx)
-      (print 9000000344)
-      (print-x86-function-emit-progress-row ctx idx)
-      (let [row-state (make-x86-control-loop-state idx 1)]
-        (do
-          (root_push row-state)
-          (generate-native-control-instr-bundle-loop-x86-with-context ctx row-state)
-          (print 9000000345)
-          (print-x86-function-emit-progress-row ctx idx)
-          (root_pop)
-          (let [final (generate-native-control-instr-bundle-progress-loop-x86 ctx (+ idx 1) len)]
-            (do
-              (root_pop)
-              final)))))))
+    (let [_row (generate-native-control-instr-bundle-progress-row-x86 ctx idx)]
+      (generate-native-control-instr-bundle-progress-loop-x86 ctx (+ idx 1) len))))
 
 (defn generate-native-function-x86-64-bundle-with-layout-progress [func-meta result function-starts function-metas layout]
   (let [import-count (vector-get layout 0)

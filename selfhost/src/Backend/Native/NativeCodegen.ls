@@ -13293,20 +13293,22 @@
 (defn x86-function-emit-layout-emit-start-base [layout]
   (vector-get layout 3))
 
+(defn generate-native-control-instr-bundle-row-step-x86 [ctx idx]
+  (do
+    (root_push ctx)
+    (let [row-state (make-x86-control-loop-state idx 1)]
+      (do
+        (root_push row-state)
+        (generate-native-control-instr-bundle-loop-x86-with-context ctx row-state)
+        (root_pop)
+        (root_pop)
+        0))))
+
 (defn generate-native-control-instr-bundle-row-loop-x86 [ctx idx len]
   (if (>= idx len)
     0
-    (do
-      (root_push ctx)
-      (let [row-state (make-x86-control-loop-state idx 1)]
-        (do
-          (root_push row-state)
-          (generate-native-control-instr-bundle-loop-x86-with-context ctx row-state)
-          (root_pop)
-          (let [final (generate-native-control-instr-bundle-row-loop-x86 ctx (+ idx 1) len)]
-            (do
-              (root_pop)
-              final)))))))
+    (let [_row (generate-native-control-instr-bundle-row-step-x86 ctx idx)]
+      (generate-native-control-instr-bundle-row-loop-x86 ctx (+ idx 1) len))))
 
 (defn generate-native-function-x86-64-bundle-with-layout [func-meta result function-starts function-metas layout]
   (let [import-count (vector-get layout 0)
