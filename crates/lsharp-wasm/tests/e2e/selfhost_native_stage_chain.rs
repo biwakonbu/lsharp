@@ -7863,8 +7863,8 @@ fn test_native_codegen_x86_drop_direct_appends_before_late_selector() {
             && control_loop_body
                 .contains("(append-drop-bundle-x86 result frame-base-slot-count current-depth)")
             && !control_loop_body.contains("(if (if (= opcode 44) (<= current-depth 2) false)")
-            && control_loop_body.contains("(+ idx 1)")
-            && control_loop_body.contains("(- remaining 1)"),
+            && control_loop_body
+                .contains("(continue-native-control-instr-bundle-loop-x86 ctx idx remaining)"),
         "stage1 が stage2 を生成するとき、drop は深さに関係なく遅い selector へ戻さず早い direct append 分岐で処理するべき"
     );
 }
@@ -9509,11 +9509,76 @@ fn test_native_codegen_x86_control_loop_chunks_deep_instruction_streams() {
             && body.contains("chunk-size (if (> remaining 64) 64 remaining)")
             && body.contains("chunk-state (make-x86-control-loop-state idx chunk-size)")
             && body.contains("tail-state (make-x86-control-loop-state (+ idx chunk-size) (- remaining chunk-size))")
-            && body.contains("next-state (make-x86-control-loop-state (+ idx 1) (- remaining 1))")
-            && body.contains("(generate-native-control-instr-bundle-loop-x86-with-context ctx next-state)")
+            && source.contains("(defn continue-native-control-instr-bundle-loop-x86 [ctx idx remaining]")
+            && body.contains("(continue-native-control-instr-bundle-loop-x86 ctx idx remaining)")
             && !body.contains("next-depth (generate-native-control-instr-bundle-loop-x86-with-context")
             && !body.contains("generate-native-control-instr-bundle-loop-x86-with-context ctx next-state next-depth"),
         "x86 control loop は巨大 IR 関数で wasm/native stack を使い切らないよう 64 命令単位で chunk 化しつつ、native stage1 の recursive scalar drift を避けるため current-depth を depth vector から読むべき"
+    );
+}
+
+#[test]
+fn test_native_codegen_x86_control_loop_roots_next_state_before_tail_recursion() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let body = source
+        .split("(defn generate-native-control-instr-bundle-loop-x86-with-context")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split(
+                "(defn generate-native-control-instr-bundle-loop-x86-with-import-count-and-base",
+            )
+            .next()
+        })
+        .expect("NativeCodegen.ls に x86 control bundle loop が存在すること");
+    let continue_body = source
+        .split("(defn continue-native-control-instr-bundle-loop-x86")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn codegen-x86-control-loop-fallback-native")
+                .next()
+        })
+        .expect("NativeCodegen.ls に x86 control loop continue helper が存在すること");
+
+    let push_ctx = continue_body
+        .find("(root_push ctx)")
+        .expect("continue helper は ctx を root すること");
+    let make_state = continue_body
+        .find("next-state (make-x86-control-loop-state (+ idx 1) (- remaining 1))")
+        .expect("continue helper は次の state を作ること");
+    let push_state = continue_body
+        .find("(root_push next-state)")
+        .expect("continue helper は next-state を root すること");
+    let recurse = continue_body
+        .find("(generate-native-control-instr-bundle-loop-x86-with-context ctx next-state)")
+        .expect("continue helper は root 後に tail recursion へ進むこと");
+    let first_pop = continue_body[recurse..]
+        .find("(root_pop)")
+        .map(|offset| recurse + offset)
+        .expect("continue helper は再帰後に root を外すこと");
+    let second_pop = continue_body[first_pop + "(root_pop)".len()..]
+        .find("(root_pop)")
+        .map(|offset| first_pop + "(root_pop)".len() + offset)
+        .expect("continue helper は push 数と同じだけ root を外すこと");
+
+    assert!(
+        continue_body.contains("[ctx idx remaining]")
+            && continue_body.contains("(if (<= remaining 1)")
+            && continue_body.matches("(root_push ").count() == 2
+            && continue_body.matches("(root_pop)").count() == 2
+            && push_ctx < make_state
+            && make_state < push_state
+            && push_state < recurse
+            && recurse < first_pop
+            && first_pop < second_pop
+            && body
+                .matches("(continue-native-control-instr-bundle-loop-x86 ctx idx remaining)")
+                .count()
+                >= 20
+            && !body.contains("next-state (make-x86-control-loop-state (+ idx 1) (- remaining 1))")
+            && !body.contains(
+                "(generate-native-control-instr-bundle-loop-x86-with-context ctx next-state)"
+            ),
+        "x86 control loop は actual stage2 の row tail 再帰で next-state/ctx を GC から守るため continue helper 経由にするべき"
     );
 }
 
