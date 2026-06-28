@@ -8310,6 +8310,31 @@ fn test_native_codegen_x86_one_arg_user_call_avoids_rel_wrapper_call() {
 }
 
 #[test]
+fn test_native_codegen_x86_one_arg_call_core_roots_parts_before_concat() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let one_arg_core = source
+        .split("(defn emit-one-arg-call-x86-core-with-call-bytes")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn emit-three-arg-call-x86-core").next())
+        .expect("NativeCodegen.ls に one-arg x86 call core helper が存在すること");
+
+    assert!(
+        one_arg_core.contains("mov-rdi (emit-mov-rdi-rax)")
+            && one_arg_core.contains("push-rcx (emit-push-rcx)")
+            && one_arg_core.contains("pop-rcx (emit-pop-rcx)")
+            && one_arg_core.contains("(root_push mov-rdi)")
+            && one_arg_core.contains("(root_push push-rcx)")
+            && one_arg_core.contains("(root_push call-rel-bytes)")
+            && one_arg_core.contains("(root_push pop-rcx)")
+            && one_arg_core.contains(
+                "(concat-four-byte-vectors-rooted mov-rdi push-rcx call-rel-bytes pop-rcx)"
+            )
+            && !one_arg_core.contains("(concat-four-byte-vectors-rooted\n    (emit-mov-rdi-rax)"),
+        "x86 one-arg call core は native stage2 の opcode 40 row 生成中に引数評価で一時 byte vector を失わないよう、concat 前に全 part を root するべき"
+    );
+}
+
+#[test]
 fn test_native_codegen_x86_low_arity_call_branches_do_not_shadow_call_rel_bytes() {
     let source = selfhost_module("NativeCodegen.ls");
     let opcode_call_branch = source
