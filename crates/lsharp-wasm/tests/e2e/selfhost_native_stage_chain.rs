@@ -9663,7 +9663,7 @@ fn test_native_codegen_x86_control_loop_roots_chunk_states_before_recursion() {
 }
 
 #[test]
-fn test_native_codegen_x86_function_bundle_roots_initial_control_state_before_loop() {
+fn test_native_codegen_x86_function_bundle_avoids_initial_control_state_fallback() {
     let source = selfhost_module("NativeCodegen.ls");
     let body = source
         .split("(defn generate-native-function-x86-64-bundle-with-layout")
@@ -9673,30 +9673,17 @@ fn test_native_codegen_x86_function_bundle_roots_initial_control_state_before_lo
                 .next()
         })
         .expect("NativeCodegen.ls に x86 function bundle emitter が存在すること");
-    let state_pos = body
-        .find("control-state (make-x86-control-loop-state 0 n)")
-        .expect("x86 function bundle emitter は initial control-state を作ること");
-    let root_pos = body[state_pos..]
-        .find("(root_push control-state)")
-        .map(|pos| state_pos + pos)
-        .expect("x86 function bundle emitter は initial control-state を root すること");
-    let call_pos = body[state_pos..]
-        .find("(generate-native-control-instr-bundle-loop-x86-with-context")
-        .map(|pos| state_pos + pos)
-        .expect("x86 function bundle emitter は initial control-state で control loop を呼ぶこと");
-    let call_state_pos = body[call_pos..]
-        .find("control-state")
-        .map(|pos| call_pos + pos)
-        .expect("x86 function bundle emitter は control loop に initial control-state を渡すこと");
 
     assert!(
-        state_pos < root_pos && root_pos < call_pos && call_pos < call_state_pos,
-        "x86 normal function bundle は stage3 normal transport の巨大関数生成中に initial control-state を失わないよう、control loop 呼び出し前に root するべき"
+        body.contains("(generate-native-control-instr-bundle-row-loop-x86 control-ctx 0 n)")
+            && !body.contains("control-state (make-x86-control-loop-state 0 n)")
+            && !body.contains("(generate-native-control-instr-bundle-loop-x86-with-context\n                                    control-ctx"),
+        "x86 function bundle は medium IR 関数でも old chunked control-state fallback へ戻らず、metadata と同じ row-state loop を使うべき"
     );
 }
 
 #[test]
-fn test_native_codegen_x86_function_bundle_uses_row_state_loop_for_large_and_small_ir_functions() {
+fn test_native_codegen_x86_function_bundle_uses_row_state_loop_for_all_ir_functions() {
     let source = selfhost_module("NativeCodegen.ls");
     let body = source
         .split("(defn generate-native-function-x86-64-bundle-with-layout")
@@ -9716,9 +9703,9 @@ fn test_native_codegen_x86_function_bundle_uses_row_state_loop_for_large_and_sma
         .expect("NativeCodegen.ls に x86 row-step helper が存在すること");
 
     assert!(
-        body.contains("(if (> n 1024)")
-            && body.contains("(generate-native-control-instr-bundle-row-loop-x86 control-ctx 0 n)")
-            && body.contains("(if (< n 65)")
+        body.contains("(generate-native-control-instr-bundle-row-loop-x86 control-ctx 0 n)")
+            && !body.contains("(if (> n 1024)")
+            && !body.contains("(if (< n 65)")
             && row_step_body.contains("row-state (make-x86-control-loop-state idx 1)")
             && row_step_body.contains("(root_push row-state)")
             && row_step_body.contains(
@@ -9726,7 +9713,7 @@ fn test_native_codegen_x86_function_bundle_uses_row_state_loop_for_large_and_sma
             )
             && !row_step_body.contains("9000000344")
             && !row_step_body.contains("print-x86-function-emit-progress-row"),
-        "x86 normal function bundle は stage3 normal transport の巨大 IR 関数と small IR 関数を、metadata と同じ row-state root 済み loop で出力なしに処理するべき"
+        "x86 normal function bundle は stage3 normal transport の medium IR 関数でも、metadata と同じ row-state root 済み loop で出力なしに処理するべき"
     );
 }
 
