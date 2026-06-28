@@ -13383,7 +13383,7 @@
                           (root_push control-ctx)
                           (if (> n 1024)
                             (generate-native-control-instr-bundle-row-loop-x86 control-ctx 0 n)
-                            (if (< n 17)
+                            (if (< n 65)
                               (generate-native-control-instr-bundle-row-loop-x86 control-ctx 0 n)
                               (let [control-state (make-x86-control-loop-state 0 n)]
                                 (do
