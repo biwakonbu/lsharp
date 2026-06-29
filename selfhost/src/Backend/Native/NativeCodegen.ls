@@ -10860,17 +10860,20 @@
                                                current-depth)]
                             (do
                               (root_push call-context)
-                              (let [native (codegen-x86-opcode-call-bundle (ref-get operand-ref) (ref-get actual-current-offset-ref) function-starts call-context)
-                                native-len (vector-length native)]
-                                (do
-                                  (append-native-bytes-loop result native 0 native-len)
-                                  (root_pop)
-                                  (root_pop)
-                                  (root_pop)
-                                  (root_pop)
-                                  (root_pop)
-                                  (root_pop)
-                                  (continue-native-control-instr-bundle-loop-x86 ctx idx remaining)))))))))))))
+	                              (let [native (codegen-x86-opcode-call-bundle (ref-get operand-ref) (ref-get actual-current-offset-ref) function-starts call-context)]
+	                                (do
+	                                  (root_push native)
+	                                  (let [native-len (vector-length native)]
+	                                    (do
+	                                      (append-native-bytes-loop result native 0 native-len)
+	                                      (root_pop)
+	                                      (root_pop)
+	                                      (root_pop)
+	                                      (root_pop)
+	                                      (root_pop)
+	                                      (root_pop)
+	                                      (root_pop)
+	                                      (continue-native-control-instr-bundle-loop-x86 ctx idx remaining))))))))))))))
         (if (= opcode 44)
           (do
             (append-drop-bundle-x86 result frame-base-slot-count current-depth)

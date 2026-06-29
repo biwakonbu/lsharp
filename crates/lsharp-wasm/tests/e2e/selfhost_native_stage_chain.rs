@@ -9587,6 +9587,19 @@ fn test_native_codegen_x86_control_loop_stabilizes_segmented_offsets_before_call
             && call_branch.contains("(append-native-bytes-loop result native 0 native-len)"),
         "x86 opcode 40 branch は call-context allocation の前後で current/base/import offsets を ref 経由で使うべき"
     );
+    let native_bind_pos = call_branch
+        .find("native (codegen-x86-opcode-call-bundle")
+        .expect("x86 opcode 40 branch は native call bytes を local に置くこと");
+    let native_root_pos = call_branch
+        .find("(root_push native)")
+        .expect("x86 opcode 40 branch は append 前に native call bytes を root すること");
+    let append_pos = call_branch
+        .find("(append-native-bytes-loop result native 0 native-len)")
+        .expect("x86 opcode 40 branch は native call bytes を append すること");
+    assert!(
+        native_bind_pos < native_root_pos && native_root_pos < append_pos,
+        "x86 opcode 40 branch は append-native-bytes-loop の result allocation 中に call bytes を失わないよう、native を append 前に root するべき"
+    );
 }
 
 #[test]
