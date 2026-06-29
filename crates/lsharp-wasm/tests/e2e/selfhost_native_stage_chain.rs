@@ -8317,20 +8317,41 @@ fn test_native_codegen_x86_one_arg_call_core_roots_parts_before_concat() {
         .nth(1)
         .and_then(|tail| tail.split("(defn emit-three-arg-call-x86-core").next())
         .expect("NativeCodegen.ls に one-arg x86 call core helper が存在すること");
+    let mov_bind_pos = one_arg_core
+        .find("mov-rdi (emit-mov-rdi-rax)")
+        .expect("one-arg call core は mov-rdi bytes を local に置くこと");
+    let mov_root_pos = one_arg_core
+        .find("(root_push mov-rdi)")
+        .expect("one-arg call core は mov-rdi bytes を root すること");
+    let push_bind_pos = one_arg_core
+        .find("push-rcx (emit-push-rcx)")
+        .expect("one-arg call core は push-rcx bytes を local に置くこと");
+    let push_root_pos = one_arg_core
+        .find("(root_push push-rcx)")
+        .expect("one-arg call core は push-rcx bytes を root すること");
+    let call_root_pos = one_arg_core
+        .find("(root_push call-rel-bytes)")
+        .expect("one-arg call core は call-rel-bytes を root すること");
+    let pop_bind_pos = one_arg_core
+        .find("pop-rcx (emit-pop-rcx)")
+        .expect("one-arg call core は pop-rcx bytes を local に置くこと");
+    let pop_root_pos = one_arg_core
+        .find("(root_push pop-rcx)")
+        .expect("one-arg call core は pop-rcx bytes を root すること");
+    let concat_pos = one_arg_core
+        .find("(concat-four-byte-vectors-rooted mov-rdi push-rcx call-rel-bytes pop-rcx)")
+        .expect("one-arg call core は root 済み parts を concat すること");
 
     assert!(
-        one_arg_core.contains("mov-rdi (emit-mov-rdi-rax)")
-            && one_arg_core.contains("push-rcx (emit-push-rcx)")
-            && one_arg_core.contains("pop-rcx (emit-pop-rcx)")
-            && one_arg_core.contains("(root_push mov-rdi)")
-            && one_arg_core.contains("(root_push push-rcx)")
-            && one_arg_core.contains("(root_push call-rel-bytes)")
-            && one_arg_core.contains("(root_push pop-rcx)")
-            && one_arg_core.contains(
-                "(concat-four-byte-vectors-rooted mov-rdi push-rcx call-rel-bytes pop-rcx)"
-            )
+        mov_bind_pos < mov_root_pos
+            && mov_root_pos < push_bind_pos
+            && push_bind_pos < push_root_pos
+            && push_root_pos < call_root_pos
+            && call_root_pos < pop_bind_pos
+            && pop_bind_pos < pop_root_pos
+            && pop_root_pos < concat_pos
             && !one_arg_core.contains("(concat-four-byte-vectors-rooted\n    (emit-mov-rdi-rax)"),
-        "x86 one-arg call core は native stage2 の opcode 40 row 生成中に引数評価で一時 byte vector を失わないよう、concat 前に全 part を root するべき"
+        "x86 one-arg call core は native stage2 の opcode 40 row 生成中に後続 part 評価で一時 byte vector を失わないよう、各 part を生成直後に root するべき"
     );
 }
 
