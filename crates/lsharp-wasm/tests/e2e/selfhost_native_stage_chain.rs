@@ -6125,6 +6125,12 @@ fn test_linux_x86_metadata_can_trace_function_emit_progress_rows() {
         "(defn generate-native-control-instr-bundle-progress-row-x86",
         "(print 9000000344)",
         "(print 9000000345)",
+        "(defn print-x86-opcode40-call-append-progress-diagnostic",
+        "(print 9000000349)",
+        "(print 9000000350)",
+        "(append-native-bytes-loop probe-ref native 0 native-len)",
+        "(print 9000000351)",
+        "(print-x86-opcode40-call-append-progress-diagnostic ctx idx)",
         "(defn generate-native-control-instr-bundle-progress-loop-x86",
         "(make-x86-control-loop-state idx 1)",
         "(generate-native-control-instr-bundle-progress-loop-x86 control-ctx 0 n)",
@@ -13383,6 +13389,72 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
 	          (root_pop))))
     0))
 
+(defn print-x86-opcode40-call-append-progress-diagnostic [ctx idx]
+  (let [ir-func (vector-get ctx 0)
+        offsets (vector-get ctx 3)
+        depths (vector-get ctx 4)
+        starts (vector-get ctx 5)
+        functions (vector-get ctx 6)
+        layout (vector-get ctx 7)
+        frame-base-slot-count (vector-get ctx 8)
+        instr (vector-get ir-func idx)
+        opcode (vector-get instr 0)
+        operand (vector-get instr 1)]
+    (if (= opcode 40)
+      (do
+        (root_push ctx)
+        (root_push instr)
+        (root_push starts)
+        (root_push functions)
+        (root_push layout)
+        (let [offset (vector-get offsets idx)
+              current-depth (vector-get depths idx)
+              import-count (vector-get layout 0)
+              import-stub-offset (vector-get layout 1)
+              function-start-base (vector-get layout 2)
+              direct-context
+                (vector-push
+                  (vector-push
+                    (vector-push
+                      (vector-push
+                        (vector-push
+                          (vector-push (vector-new 6) functions)
+                          import-count)
+                        import-stub-offset)
+                      function-start-base)
+                    frame-base-slot-count)
+                  current-depth)]
+          (do
+            (root_push direct-context)
+            (print 9000000349)
+            (print idx)
+            (print opcode)
+            (print operand)
+            (print current-depth)
+            (print offset)
+            (let [native (codegen-x86-opcode-call-bundle operand offset starts direct-context)]
+              (do
+                (root_push native)
+                (let [native-len (vector-length native)
+                      probe-ref (ref-new (vector-new 0))]
+                  (do
+                    (root_push probe-ref)
+                    (print 9000000350)
+                    (print native-len)
+                    (append-native-bytes-loop probe-ref native 0 native-len)
+                    (print 9000000351)
+                    (print (vector-length (ref-get probe-ref)))
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    0)))))))
+      0)))
+
 (defn print-x86-function-emit-progress-row [ctx idx]
   (let [ir-func (vector-get ctx 0)
         result (vector-get ctx 1)
@@ -13425,6 +13497,7 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
     (root_push ctx)
     (print 9000000344)
     (print-x86-function-emit-progress-row ctx idx)
+    (print-x86-opcode40-call-append-progress-diagnostic ctx idx)
     (let [row-state (make-x86-control-loop-state idx 1)]
       (do
         (root_push row-state)
