@@ -8611,6 +8611,9 @@ fn test_native_codegen_x86_opcode_call_roots_function_starts_before_call_context
     let vector_new_pos = opcode40_branch
         .find("(vector-new 6)")
         .expect("x86 opcode 40 は call-context を構築すること");
+    let context_root_pos = opcode40_branch
+        .find("(root_push call-context)")
+        .expect("x86 opcode 40 は codegen-x86-opcode-call-bundle 呼び出し前に call-context を root すること");
     let call_pos = opcode40_branch
         .find(
             "(codegen-x86-opcode-call-bundle operand current-offset function-starts call-context)",
@@ -8618,8 +8621,10 @@ fn test_native_codegen_x86_opcode_call_roots_function_starts_before_call_context
         .expect("x86 opcode 40 は function-starts を使って call を emit すること");
 
     assert!(
-        root_push_pos < vector_new_pos && vector_new_pos < call_pos,
-        "function-starts は call-context 構築より前に root され、emit 中も保持されるべき"
+        root_push_pos < vector_new_pos
+            && vector_new_pos < context_root_pos
+            && context_root_pos < call_pos,
+        "function-starts は call-context 構築より前に root され、call-context は function-metas を保持したまま emit に渡すべき"
     );
 }
 

@@ -10619,8 +10619,10 @@
                            frame-base-slot-count)
                          current-depth)]
         (do
+          (root_push call-context)
           (let [result (codegen-x86-opcode-call-bundle operand current-offset function-starts call-context)]
             (do
+              (root_pop)
               (root_pop)
               result)))))
     (if (= opcode 1)
