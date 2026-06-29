@@ -8431,6 +8431,15 @@ fn test_native_codegen_x86_call_rel_uses_stable_operand_and_current_offset_refs(
     let function_starts_ref_pos = opcode_call_branch
         .find("function-starts-ref (ref-new function-starts)")
         .expect("x86 call helper は function-starts を ref に退避すること");
+    let operand_ref_root_pos = opcode_call_branch
+        .find("(root_push operand-ref)")
+        .expect("x86 call helper は operand-ref を次 allocation 前に root すること");
+    let current_offset_ref_root_pos = opcode_call_branch
+        .find("(root_push current-offset-ref)")
+        .expect("x86 call helper は current-offset-ref を次 allocation 前に root すること");
+    let function_starts_ref_root_pos = opcode_call_branch
+        .find("(root_push function-starts-ref)")
+        .expect("x86 call helper は function-starts-ref を target metadata 取得前に root すること");
     let target_meta_pos = opcode_call_branch
         .find("target-meta (vector-get function-metas (ref-get operand-ref))")
         .expect("target metadata は安定化した operand ref から取得すること");
@@ -8451,12 +8460,18 @@ fn test_native_codegen_x86_call_rel_uses_stable_operand_and_current_offset_refs(
         operand_ref_pos < target_meta_pos
             && current_offset_ref_pos < call_rel_pos
             && function_starts_ref_pos < target_starts_pos
+            && operand_ref_pos < operand_ref_root_pos
+            && operand_ref_root_pos < current_offset_ref_pos
+            && current_offset_ref_pos < current_offset_ref_root_pos
+            && current_offset_ref_root_pos < function_starts_ref_pos
+            && function_starts_ref_pos < function_starts_ref_root_pos
+            && function_starts_ref_root_pos < target_meta_pos
             && target_meta_pos < target_offset_pos
             && target_meta_pos < call_next_offset_pos
             && call_next_offset_pos < target_offset_pos
             && target_offset_pos <= target_starts_pos
             && target_offset_pos < call_rel_pos,
-        "x86 one-arg user call は native stage1 の local 破壊で rel=-9 self-call にならないよう operand/current-offset を ref 経由で固定するべき"
+        "x86 one-arg user call は native stage2 の opcode 40 row 生成中に ref object が次 allocation で失われないよう、operand/current-offset/function-starts を生成直後に root するべき"
     );
     assert!(
         !opcode_call_branch.contains("call-rel (native-call-rel-x86"),

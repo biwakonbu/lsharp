@@ -10510,15 +10510,17 @@
     import-stub-offset (vector-get context 2)
     function-start-base (vector-get context 3)
 	    frame-base-slot-count (vector-get context 4)
-	    current-depth (vector-get context 5)
-	    operand-ref (ref-new operand)
-	    current-offset-ref (ref-new current-offset)
-	    function-starts-ref (ref-new function-starts)]
+	    current-depth (vector-get context 5)]
+    (let [operand-ref (ref-new operand)]
 	    (do
 	      (root_push operand-ref)
-	      (root_push current-offset-ref)
-	      (root_push function-starts-ref)
-	      (let [target-meta (vector-get function-metas (ref-get operand-ref))
+        (let [current-offset-ref (ref-new current-offset)]
+	        (do
+	          (root_push current-offset-ref)
+            (let [function-starts-ref (ref-new function-starts)]
+	            (do
+	              (root_push function-starts-ref)
+	              (let [target-meta (vector-get function-metas (ref-get operand-ref))
 	        target-param-count (native-function-param-count target-meta)
 	        call-next-offset (native-call-rel-next-offset-x86 target-param-count current-depth)
 	        target-offset (if (< (ref-get operand-ref) import-count)
@@ -10597,11 +10599,11 @@
                                              (emit-call-bundle-x86-ten-to-nineteen target-param-count call-rel frame-base-slot-count)
                                              (vector-new 0)))))))))))))]
 	            (do
-	              (root_pop)
-	              (root_pop)
-	              (root_pop)
-	              (root_pop)
-	              result))))))))
+		              (root_pop)
+		              (root_pop)
+		              (root_pop)
+		              (root_pop)
+		              result))))))))))))
 
 (defn codegen-ir-instr-bundle-x86-with-import-count-and-base [opcode operand current-offset function-starts function-metas import-count import-stub-offset function-start-base frame-base-slot-count current-depth]
   (if (= opcode 40)
