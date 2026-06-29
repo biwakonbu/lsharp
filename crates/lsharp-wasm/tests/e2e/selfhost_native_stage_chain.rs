@@ -8343,15 +8343,15 @@ fn test_native_codegen_x86_one_arg_call_core_roots_parts_before_concat() {
         .expect("one-arg call core は root 済み parts を concat すること");
 
     assert!(
-        mov_bind_pos < mov_root_pos
+        call_root_pos < mov_bind_pos
+            && mov_bind_pos < mov_root_pos
             && mov_root_pos < push_bind_pos
             && push_bind_pos < push_root_pos
-            && push_root_pos < call_root_pos
-            && call_root_pos < pop_bind_pos
+            && push_root_pos < pop_bind_pos
             && pop_bind_pos < pop_root_pos
             && pop_root_pos < concat_pos
             && !one_arg_core.contains("(concat-four-byte-vectors-rooted\n    (emit-mov-rdi-rax)"),
-        "x86 one-arg call core は native stage2 の opcode 40 row 生成中に後続 part 評価で一時 byte vector を失わないよう、各 part を生成直後に root するべき"
+        "x86 one-arg call core は native stage2 の opcode 40 row 生成中に後続 part 評価で一時 byte vector を失わないよう、call-rel-bytes と各 part を次 allocation 前に root するべき"
     );
 }
 
