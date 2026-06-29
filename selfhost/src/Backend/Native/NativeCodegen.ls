@@ -10873,7 +10873,7 @@
 	                                      (root_pop)
 	                                      (root_pop)
 	                                      (root_pop)
-	                                      (continue-native-control-instr-bundle-loop-x86 ctx idx remaining))))))))))))))
+	                                      (continue-native-control-instr-bundle-loop-x86 ctx idx remaining)))))))))))))))
         (if (= opcode 44)
           (do
             (append-drop-bundle-x86 result frame-base-slot-count current-depth)
