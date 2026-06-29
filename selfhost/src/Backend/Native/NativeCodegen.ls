@@ -10603,7 +10603,7 @@
 		              (root_pop)
 		              (root_pop)
 		              (root_pop)
-		              result))))))))))))
+		              result)))))))))))))
 
 (defn codegen-ir-instr-bundle-x86-with-import-count-and-base [opcode operand current-offset function-starts function-metas import-count import-stub-offset function-start-base frame-base-slot-count current-depth]
   (if (= opcode 40)
