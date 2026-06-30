@@ -8486,6 +8486,44 @@ fn test_native_codegen_x86_call_rel_uses_stable_operand_and_current_offset_refs(
 }
 
 #[test]
+fn test_native_codegen_x86_call_bundle_keeps_result_rooted_while_unwinding_roots() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let opcode_call_branch = source
+        .split("(defn codegen-x86-opcode-call-bundle")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn codegen-ir-instr-bundle-x86-with-import-count-and-base")
+                .next()
+        })
+        .expect("NativeCodegen.ls に x86 opcode 40 call helper が存在すること");
+
+    let result_bind_pos = opcode_call_branch
+        .find("result (if (= target-param-count 0)")
+        .expect("x86 call helper は call byte result を local に置くこと");
+    let result_store_pos = opcode_call_branch
+        .find("(ref-set operand-ref result)")
+        .expect("x86 call helper は result を古い rooted ref に退避すること");
+    let first_pop_after_store_pos = result_store_pos
+        + opcode_call_branch[result_store_pos..]
+            .find("(root_pop)")
+            .expect("x86 call helper は inner roots を unwind すること");
+    let final_bind_pos = opcode_call_branch
+        .find("final-result (ref-get operand-ref)")
+        .expect("x86 call helper は rooted ref から返却値を取り直すこと");
+    let final_return_pos = opcode_call_branch
+        .rfind("final-result")
+        .expect("x86 call helper は final-result を返すこと");
+
+    assert!(
+        result_bind_pos < result_store_pos
+            && result_store_pos < first_pop_after_store_pos
+            && first_pop_after_store_pos < final_bind_pos
+            && final_bind_pos < final_return_pos,
+        "x86 opcode 40 call bundle は result vector header が root unwind 中に壊れないよう、result を古い rooted ref に退避してから pop し、ref から取り直して返すべき"
+    );
+}
+
+#[test]
 fn test_native_codegen_x86_two_arg_user_call_avoids_rel_wrapper_call() {
     let source = selfhost_module("NativeCodegen.ls");
     let opcode_call_branch = source

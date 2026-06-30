@@ -10599,11 +10599,14 @@
                                              (emit-call-bundle-x86-ten-to-nineteen target-param-count call-rel frame-base-slot-count)
                                              (vector-new 0)))))))))))))]
 	            (do
-		              (root_pop)
-		              (root_pop)
-		              (root_pop)
-		              (root_pop)
-		              result)))))))))))))
+                  (ref-set operand-ref result)
+			              (root_pop)
+			              (root_pop)
+			              (root_pop)
+                  (let [final-result (ref-get operand-ref)]
+                    (do
+			                  (root_pop)
+			                  final-result)))))))))))))
 
 (defn codegen-ir-instr-bundle-x86-with-import-count-and-base [opcode operand current-offset function-starts function-metas import-count import-stub-offset function-start-base frame-base-slot-count current-depth]
   (if (= opcode 40)
