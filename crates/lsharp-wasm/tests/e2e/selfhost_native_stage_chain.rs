@@ -6129,6 +6129,9 @@ fn test_linux_x86_metadata_can_trace_function_emit_progress_rows() {
         "(print 9000000349)",
         "(print 9000000352)",
         "(native-function-param-count target-meta)",
+        "(print 9000000353)",
+        "(emit-one-arg-call-x86-core-with-call-bytes call-rel-bytes)",
+        "(print 9000000354)",
         "(print 9000000350)",
         "(append-native-bytes-loop probe-ref native 0 native-len)",
         "(print 9000000351)",
@@ -13529,6 +13532,45 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
             (print offset)
             (print 9000000352)
             (print target-param-count)
+            (let [call-next-offset (native-call-rel-next-offset-x86 target-param-count current-depth)
+                  target-offset (if (< operand import-count)
+                                  (x86-import-ret-stub-offset import-stub-offset import-count operand)
+                                  (- (vector-get starts (- operand import-count)) function-start-base))
+                  call-rel (- target-offset (+ offset call-next-offset))
+                  call-rel-bytes (emit-call-rel32 call-rel)]
+              (do
+                (root_push call-rel-bytes)
+                (print 9000000353)
+                (print call-next-offset)
+                (print target-offset)
+                (print call-rel)
+                (let [call-rel-len (vector-length call-rel-bytes)]
+                  (do
+                    (print call-rel-len)
+                    (print (byte-at-or-zero call-rel-bytes 0 call-rel-len))
+                    (print (byte-at-or-zero call-rel-bytes 1 call-rel-len))
+                    (print (byte-at-or-zero call-rel-bytes 2 call-rel-len))
+                    (print (byte-at-or-zero call-rel-bytes 3 call-rel-len))
+                    (print (byte-at-or-zero call-rel-bytes 4 call-rel-len))))
+                (let [core-native (if (= target-param-count 1)
+                                    (emit-one-arg-call-x86-core-with-call-bytes call-rel-bytes)
+                                    (vector-new 0))]
+                  (do
+                    (root_push core-native)
+                    (let [core-len (vector-length core-native)]
+                      (do
+                        (print 9000000354)
+                        (print core-len)
+                        (print (byte-at-or-zero core-native 0 core-len))
+                        (print (byte-at-or-zero core-native 1 core-len))
+                        (print (byte-at-or-zero core-native 2 core-len))
+                        (print (byte-at-or-zero core-native 3 core-len))
+                        (print (byte-at-or-zero core-native 4 core-len))
+                        (print (byte-at-or-zero core-native 5 core-len))
+                        (print (byte-at-or-zero core-native 6 core-len))
+                        (print (byte-at-or-zero core-native 7 core-len))
+                        (root_pop)
+                        (root_pop)))))))
             (let [native (codegen-x86-opcode-call-bundle operand offset starts direct-context)]
               (do
                 (root_push native)
