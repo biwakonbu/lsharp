@@ -7133,8 +7133,7 @@
   (emit-twenty-plus-arg-call-x86 61 rel frame-base-slot-count))
 
 (defn emit-one-arg-call-x86-core-with-call-bytes [call-rel-bytes]
-  (do
-    (root_push call-rel-bytes)
+  (let [call-rel-slot (root_push call-rel-bytes)]
     (let [mov-rdi (emit-mov-rdi-rax)]
       (do
         (root_push mov-rdi)
@@ -7146,6 +7145,7 @@
                 (root_push pop-rcx)
                 (let [result (concat-four-byte-vectors-rooted mov-rdi push-rcx call-rel-bytes pop-rcx)]
                   (do
+                    (root_set call-rel-slot result)
                     (root_pop)
                     (root_pop)
                     (root_pop)

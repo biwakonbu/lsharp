@@ -8372,6 +8372,9 @@ fn test_native_codegen_x86_one_arg_call_core_roots_parts_before_concat() {
     let call_root_pos = one_arg_core
         .find("(root_push call-rel-bytes)")
         .expect("one-arg call core は call-rel-bytes を root すること");
+    let call_root_slot_pos = one_arg_core
+        .find("call-rel-slot (root_push call-rel-bytes)")
+        .expect("one-arg call core は call-rel-bytes の root slot を保持すること");
     let pop_bind_pos = one_arg_core
         .find("pop-rcx (emit-pop-rcx)")
         .expect("one-arg call core は pop-rcx bytes を local に置くこと");
@@ -8381,17 +8384,35 @@ fn test_native_codegen_x86_one_arg_call_core_roots_parts_before_concat() {
     let concat_pos = one_arg_core
         .find("(concat-four-byte-vectors-rooted mov-rdi push-rcx call-rel-bytes pop-rcx)")
         .expect("one-arg call core は root 済み parts を concat すること");
+    let result_bind_pos = one_arg_core
+        .find("result (concat-four-byte-vectors-rooted mov-rdi push-rcx call-rel-bytes pop-rcx)")
+        .expect("one-arg call core は concat result を local に置くこと");
+    let result_store_pos = one_arg_core
+        .find("(root_set call-rel-slot result)")
+        .expect("one-arg call core は result を既存 root slot に退避すること");
+    let first_pop_after_store_pos = result_store_pos
+        + one_arg_core[result_store_pos..]
+            .find("(root_pop)")
+            .expect("one-arg call core は roots を unwind すること");
+    let final_return_pos = one_arg_core
+        .rfind("result")
+        .expect("one-arg call core は result を返すこと");
 
     assert!(
-        call_root_pos < mov_bind_pos
+        call_root_slot_pos <= call_root_pos
+            && call_root_pos < mov_bind_pos
             && mov_bind_pos < mov_root_pos
             && mov_root_pos < push_bind_pos
             && push_bind_pos < push_root_pos
             && push_root_pos < pop_bind_pos
             && pop_bind_pos < pop_root_pos
             && pop_root_pos < concat_pos
+            && result_bind_pos < concat_pos
+            && concat_pos < result_store_pos
+            && result_store_pos < first_pop_after_store_pos
+            && first_pop_after_store_pos < final_return_pos
             && !one_arg_core.contains("(concat-four-byte-vectors-rooted\n    (emit-mov-rdi-rax)"),
-        "x86 one-arg call core は native stage2 の opcode 40 row 生成中に後続 part 評価で一時 byte vector を失わないよう、call-rel-bytes と各 part を次 allocation 前に root するべき"
+        "x86 one-arg call core は native stage2 の opcode 40 row 生成中に後続 part 評価と root unwind で一時 byte vector / result vector を失わないよう、call-rel-bytes と各 part を root し、result を既存 root slot に退避してから返すべき"
     );
 }
 
