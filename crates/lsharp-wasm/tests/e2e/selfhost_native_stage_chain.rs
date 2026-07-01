@@ -6149,6 +6149,38 @@ fn test_linux_x86_metadata_can_trace_function_emit_progress_rows() {
 }
 
 #[test]
+fn test_linux_x86_opcode40_diagnostic_defers_target_meta_lookup_until_opcode40_branch() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+    let body = source
+        .split("(defn print-x86-opcode40-call-append-progress-diagnostic")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn generate-native-control-instr-bundle-progress-row-x86")
+                .next()
+        })
+        .expect("Linux x86 metadata seed に opcode40 call append diagnostic が存在すること");
+    let before_opcode_guard = body
+        .split("(if (= opcode 40)")
+        .next()
+        .expect("opcode40 diagnostic body を guard 前後に分けられること");
+    let opcode_branch = body
+        .split("(if (= opcode 40)")
+        .nth(1)
+        .expect("opcode40 diagnostic body に opcode guard が存在すること");
+
+    assert!(
+        !before_opcode_guard.contains("target-meta")
+            && !before_opcode_guard.contains("target-param-count")
+            && opcode_branch.contains("target-meta (vector-get functions operand)")
+            && opcode_branch
+                .contains("target-param-count (native-function-param-count target-meta)")
+            && opcode_branch.contains("(print 9000000352)")
+            && opcode_branch.contains("(print target-param-count)"),
+        "opcode40 diagnostic は opcode 40 以外の row で巨大 operand を functions lookup しないよう、target metadata lookup を opcode 40 branch 内に遅延するべき"
+    );
+}
+
+#[test]
 fn test_linux_x86_metadata_progress_loop_releases_row_roots_before_next_row() {
     let source = linux_x86_representative_actual_stage23_seed_source();
     let row_step_body = source
@@ -13439,9 +13471,7 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
         frame-base-slot-count (vector-get ctx 8)
         instr (vector-get ir-func idx)
         opcode (vector-get instr 0)
-        operand (vector-get instr 1)
-        target-meta (vector-get functions operand)
-        target-param-count (native-function-param-count target-meta)]
+        operand (vector-get instr 1)]
     (if (= opcode 40)
       (do
         (root_push ctx)
@@ -13454,6 +13484,8 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
               import-count (vector-get layout 0)
               import-stub-offset (vector-get layout 1)
               function-start-base (vector-get layout 2)
+              target-meta (vector-get functions operand)
+              target-param-count (native-function-param-count target-meta)
               direct-context
                 (vector-push
                   (vector-push
