@@ -8379,16 +8379,22 @@ fn test_native_codegen_x86_one_arg_user_call_avoids_rel_wrapper_call() {
         .nth(1)
         .and_then(|tail| tail.split("(emit-zero-arg-call-x86").next())
         .expect("x86 1..9 helper に one-arg user call 専用分岐が存在すること");
+    let opcode_one_arg_branch = opcode_call_branch
+        .split("(if (= target-param-count 1)")
+        .nth(1)
+        .and_then(|tail| tail.split("(if (= target-param-count 2)").next())
+        .expect("x86 opcode 40 helper に one-arg user call 専用分岐が存在すること");
 
     assert!(
-        opcode_call_branch.contains(
-            "(emit-call-bundle-x86-one-to-nine 1 call-rel frame-base-slot-count current-depth)"
-        ) && one_arg_branch.contains("call-rel-bytes (emit-call-rel32 rel)")
+        opcode_one_arg_branch
+            .contains("(emit-one-arg-call-x86-core-with-call-bytes call-rel-bytes)")
+            && !opcode_one_arg_branch.contains("emit-call-bundle-x86-one-to-nine")
+            && one_arg_branch.contains("call-rel-bytes (emit-call-rel32 rel)")
             && one_arg_branch
                 .contains("(emit-one-arg-call-x86-core-with-call-bytes call-rel-bytes)")
             && !one_arg_branch.contains("target-offset")
             && !one_arg_branch.contains("(vector-new 10)"),
-        "x86 one-arg user call は巨大 opcode 40 dispatch ではなく小さい 1..9 helper 内で rel32 bytes を作り、root-safe core helper へ委譲するべき"
+        "x86 opcode 40 one-arg user call は本体側で outer root 済み call-rel-bytes を root-safe core helper へ直接渡し、1..9 helper の戻り値を跨いで result vector を壊さないようにするべき"
     );
 }
 
