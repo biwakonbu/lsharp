@@ -141,6 +141,19 @@ fn strip_linux_x86_unused_base64_helpers(source: String) -> String {
     format!("{}{}", &source[..start], &source[end..])
 }
 
+fn root_linux_x86_seed_function_meta_constructor(source: String) -> String {
+    source.replace(
+        r#"(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))"#,
+        r#"(defn make-function-meta [param-count local-count ir]
+  (vector-push-triple-rooted (vector-new 3) param-count local-count ir))"#,
+    )
+}
+
 fn representative_actual_stage23_seed_source() -> String {
     representative_actual_stage23_seed_source_for_target("(host-target)")
 }
@@ -376,6 +389,7 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
         main_body,
     );
     let source = strip_linux_x86_unused_base64_helpers(source);
+    let source = root_linux_x86_seed_function_meta_constructor(source);
     let payload_bindings = r#"source-path (command-line-arg 1)
 	         source-path-root (root_push source-path)
 	         normal-transport-diagnostic-mode (if (> (string-length (command-line-arg 11)) 0) 1 0)
@@ -856,6 +870,22 @@ fn test_linux_x86_representative_seed_uses_layout_emit_for_segmented_native_code
     assert!(
         entrypoint_checks.iter().all(|check| *check),
         "Linux x86 segmented seed は stage2/stage3 artifact の entrypoint を最後の callable ではなく対象 source の main defn に固定するべき: checks={entrypoint_checks:?}"
+    );
+}
+
+#[test]
+fn test_linux_x86_representative_seed_roots_function_meta_triple_push() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+    let body = source
+        .split("(defn make-function-meta [param-count local-count ir]")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn push-import-placeholders").next())
+        .expect("Linux x86 seed に make-function-meta が存在すること");
+
+    assert!(
+        body.contains("(vector-push-triple-rooted (vector-new 3) param-count local-count ir)")
+            && !body.contains("(vector-push\n    (vector-push"),
+        "Linux x86 seed の make-function-meta は stage3 初期 chunk での GC/root 破壊を避けるため rooted triple push を使うべき"
     );
 }
 
