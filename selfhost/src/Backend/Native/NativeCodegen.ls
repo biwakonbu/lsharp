@@ -9461,21 +9461,8 @@
                 (if (= target-param-count 2)
                   (emit-two-arg-call-x86 rel frame-base-slot-count current-depth)
                   (if (= target-param-count 1)
-                    (let [call-rel (emit-call-rel32 rel)
-                      push-rcx (emit-push-rcx)
-                      pop-rcx (emit-pop-rcx)
-                      bytes (vector-new 10)
-                      b1 (vector-push bytes 72)
-                      b2 (vector-push b1 137)
-                      b3 (vector-push b2 199)
-                      b4 (vector-push b3 (vector-get push-rcx 0))
-                      b5 (vector-push b4 (vector-get call-rel 0))
-                      b6 (vector-push b5 (vector-get call-rel 1))
-                      b7 (vector-push b6 (vector-get call-rel 2))
-                      b8 (vector-push b7 (vector-get call-rel 3))
-                      b9 (vector-push b8 (vector-get call-rel 4))
-                      b10 (vector-push b9 (vector-get pop-rcx 0))]
-                      b10)
+                    (let [call-rel-bytes (emit-call-rel32 rel)]
+                      (emit-one-arg-call-x86-core-with-call-bytes call-rel-bytes))
                     (emit-zero-arg-call-x86 rel frame-base-slot-count current-depth)))))))))))
 
 (defn emit-x86-selfhost-command-line-arg-helper []

@@ -8377,11 +8377,12 @@ fn test_native_codegen_x86_one_arg_user_call_avoids_rel_wrapper_call() {
     assert!(
         opcode_call_branch.contains(
             "(emit-call-bundle-x86-one-to-nine 1 call-rel frame-base-slot-count current-depth)"
-        ) && one_arg_branch.contains("(emit-call-rel32 rel)")
-            && one_arg_branch.contains("(vector-new 10)")
+        ) && one_arg_branch.contains("call-rel-bytes (emit-call-rel32 rel)")
+            && one_arg_branch
+                .contains("(emit-one-arg-call-x86-core-with-call-bytes call-rel-bytes)")
             && !one_arg_branch.contains("target-offset")
-            && !one_arg_branch.contains("call-rel-bytes"),
-        "x86 one-arg user call は巨大 opcode 40 dispatch 内で call-rel-bytes result を返さず、既存の小さい 1..9 helper に rel32 scalar で委譲するべき"
+            && !one_arg_branch.contains("(vector-new 10)"),
+        "x86 one-arg user call は巨大 opcode 40 dispatch ではなく小さい 1..9 helper 内で rel32 bytes を作り、root-safe core helper へ委譲するべき"
     );
 }
 
