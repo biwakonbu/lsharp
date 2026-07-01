@@ -1753,7 +1753,12 @@ copy_actual_stage_debug_artifact actual-stage3 stage3-debug
 
 if [[ "${vm_exec_status}" -ne 0 ]]; then
   echo "ERROR: native Linux x86_64 hostgen -> VM exec smoke failed with status ${vm_exec_status}" >&2
-  echo "VM workdir kept for failure diagnostics: ${VM_WORK_DIR}" >&2
+  if [[ "${KEEP_VM_WORK_DIR}" = "1" ]]; then
+    echo "VM workdir kept for failure diagnostics by LSHARP_NATIVE_LINUX_X86_KEEP_VM_WORK_DIR=1: ${VM_WORK_DIR}" >&2
+  else
+    limactl shell "${VM_NAME}" -- rm -rf "${VM_WORK_DIR}"
+    echo "VM workdir removed after failed evidence copy: ${VM_WORK_DIR}" >&2
+  fi
   exit "${vm_exec_status}"
 fi
 

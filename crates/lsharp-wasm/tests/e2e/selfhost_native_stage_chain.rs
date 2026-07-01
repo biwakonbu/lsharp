@@ -1292,7 +1292,7 @@ fn test_native_linux_x86_hostgen_vm_script_cleans_vm_work_dir_before_run() {
 }
 
 #[test]
-fn test_native_linux_x86_hostgen_vm_script_removes_vm_work_dir_after_success() {
+fn test_native_linux_x86_hostgen_vm_script_cleans_work_dir_by_default_after_run() {
     let script_path =
         selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
     let script = std::fs::read_to_string(&script_path)
@@ -1300,11 +1300,15 @@ fn test_native_linux_x86_hostgen_vm_script_removes_vm_work_dir_after_success() {
 
     assert!(
         script.contains(r#"KEEP_VM_WORK_DIR="${LSHARP_NATIVE_LINUX_X86_KEEP_VM_WORK_DIR:-0}""#)
-            && script.contains("VM workdir kept for failure diagnostics")
             && script.contains(r#"if [[ "${KEEP_VM_WORK_DIR}" = "1" ]]; then"#)
             && script.contains("VM workdir kept by LSHARP_NATIVE_LINUX_X86_KEEP_VM_WORK_DIR=1")
-            && script.contains("VM workdir removed after successful evidence copy"),
-        "hostgen VM script は成功時だけ VM workdir を掃除し、失敗時または KEEP 指定時は診断用に保持するべき"
+            && script.contains(
+                "VM workdir kept for failure diagnostics by LSHARP_NATIVE_LINUX_X86_KEEP_VM_WORK_DIR=1"
+            )
+            && script.contains("VM workdir removed after successful evidence copy")
+            && script.contains("VM workdir removed after failed evidence copy")
+            && !script.contains("VM workdir kept for failure diagnostics: ${VM_WORK_DIR}"),
+        "hostgen VM script は成功時と通常の失敗時に VM workdir を掃除し、KEEP 指定時だけ診断用に保持するべき"
     );
 }
 
