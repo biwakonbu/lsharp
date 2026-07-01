@@ -6127,6 +6127,8 @@ fn test_linux_x86_metadata_can_trace_function_emit_progress_rows() {
         "(print 9000000345)",
         "(defn print-x86-opcode40-call-append-progress-diagnostic",
         "(print 9000000349)",
+        "(print 9000000352)",
+        "(native-function-param-count target-meta)",
         "(print 9000000350)",
         "(append-native-bytes-loop probe-ref native 0 native-len)",
         "(print 9000000351)",
@@ -13437,7 +13439,9 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
         frame-base-slot-count (vector-get ctx 8)
         instr (vector-get ir-func idx)
         opcode (vector-get instr 0)
-        operand (vector-get instr 1)]
+        operand (vector-get instr 1)
+        target-meta (vector-get functions operand)
+        target-param-count (native-function-param-count target-meta)]
     (if (= opcode 40)
       (do
         (root_push ctx)
@@ -13470,6 +13474,8 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
             (print operand)
             (print current-depth)
             (print offset)
+            (print 9000000352)
+            (print target-param-count)
             (let [native (codegen-x86-opcode-call-bundle operand offset starts direct-context)]
               (do
                 (root_push native)
