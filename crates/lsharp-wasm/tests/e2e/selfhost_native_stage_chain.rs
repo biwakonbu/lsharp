@@ -6162,6 +6162,8 @@ fn test_linux_x86_metadata_can_trace_function_emit_progress_rows() {
         "(print 9000000353)",
         "(emit-one-arg-call-x86-core-with-call-bytes call-rel-bytes)",
         "(print 9000000354)",
+        "(print 9000000355)",
+        "(print 9000000356)",
         "(print 9000000350)",
         "(append-native-bytes-loop probe-ref native 0 native-len)",
         "(print 9000000351)",
@@ -13605,9 +13607,18 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
                         (print (byte-at-or-zero core-native 7 core-len))
                         (root_pop)
                         (root_pop)))))))
+            (print 9000000355)
+            (print operand)
+            (print offset)
+            (print (vector-length starts))
+            (print (vector-length functions))
+            (print (vector-length direct-context))
+            (print (vector-get direct-context 1))
+            (print (vector-get direct-context 5))
             (let [native (codegen-x86-opcode-call-bundle operand offset starts direct-context)]
               (do
                 (root_push native)
+                (print 9000000356)
                 (let [native-len (vector-length native)
                       probe-ref (ref-new (vector-new 0))]
                   (do
