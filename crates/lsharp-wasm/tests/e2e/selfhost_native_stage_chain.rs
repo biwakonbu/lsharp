@@ -8333,22 +8333,25 @@ fn test_native_codegen_x86_one_arg_user_call_avoids_rel_wrapper_call() {
                 .next()
         })
         .expect("NativeCodegen.ls に x86 opcode 40 call helper が存在すること");
-    let call_bytes_branch = opcode_call_branch
-        .split("(if (= target-param-count 0)")
+    let one_to_nine_helper = source
+        .split("(defn emit-call-bundle-x86-one-to-nine")
         .nth(1)
-        .expect("x86 opcode 40 branch に call-bytes 分岐が存在すること");
-    let one_arg_branch = call_bytes_branch
+        .and_then(|tail| tail.split("(defn codegen-x86-opcode-call-bundle").next())
+        .expect("NativeCodegen.ls に x86 1..9 call helper が存在すること");
+    let one_arg_branch = one_to_nine_helper
         .split("(if (= target-param-count 1)")
         .nth(1)
-        .and_then(|tail| tail.split("(if (= target-param-count 3)").next())
-        .expect("x86 opcode 40 branch に one-arg user call 専用分岐が存在すること");
+        .and_then(|tail| tail.split("(emit-zero-arg-call-x86").next())
+        .expect("x86 1..9 helper に one-arg user call 専用分岐が存在すること");
 
     assert!(
-        one_arg_branch.contains("call-rel-bytes")
-            && one_arg_branch.contains("call-rel-bytes")
+        opcode_call_branch.contains(
+            "(emit-call-bundle-x86-one-to-nine 1 call-rel frame-base-slot-count current-depth)"
+        ) && one_arg_branch.contains("(emit-call-rel32 rel)")
+            && one_arg_branch.contains("(vector-new 10)")
             && !one_arg_branch.contains("target-offset")
-            && !one_arg_branch.contains("emit-call-bundle-x86-one-to-nine"),
-        "x86 one-arg user call は outer root 済み rel32 bytes を使い、operand/rel local wrapper を避けるべき"
+            && !one_arg_branch.contains("call-rel-bytes"),
+        "x86 one-arg user call は巨大 opcode 40 dispatch 内で call-rel-bytes result を返さず、既存の小さい 1..9 helper に rel32 scalar で委譲するべき"
     );
 }
 

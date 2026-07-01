@@ -10549,7 +10549,7 @@
                              call-rel-bytes
                              (emit-pop-rcx)))))
                      (if (= target-param-count 1)
-                       (emit-one-arg-call-x86-core-with-call-bytes call-rel-bytes)
+                       (emit-call-bundle-x86-one-to-nine 1 call-rel frame-base-slot-count current-depth)
                        (if (= target-param-count 2)
                          (emit-two-arg-call-x86-with-call-bytes call-rel-bytes frame-base-slot-count current-depth)
                          (if (= target-param-count 3)
