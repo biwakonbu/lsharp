@@ -9004,6 +9004,34 @@ fn test_native_codegen_x86_four_arg_call_bundle_roots_rel_ref() {
 }
 
 #[test]
+fn test_native_codegen_x86_four_arg_call_core_keeps_result_rooted_while_unwinding() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let four_arg_core = source
+        .split("(defn emit-four-arg-call-x86-core-with-rel-ref")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn emit-four-arg-call-x86").next())
+        .expect("NativeCodegen.ls に emit-four-arg-call-x86-core-with-rel-ref が存在すること");
+
+    let slot_pos = four_arg_core
+        .find("call-rel-ref-slot (root_push call-rel-ref)")
+        .expect("4 引数 call core は rel ref の root slot を保持するべき");
+    let result_pos = four_arg_core
+        .find("(root_push result)")
+        .expect("4 引数 call core は返却 result を root_set 前から root するべき");
+    let set_pos = four_arg_core
+        .find("(root_set call-rel-ref-slot result)")
+        .expect("4 引数 call core は result を下位 root slot へ退避してから unwind するべき");
+    let final_pop_pos = four_arg_core
+        .rfind("(root_pop)")
+        .expect("4 引数 call core は最後の root_pop で退避 result を返すべき");
+
+    assert!(
+        slot_pos < result_pos && result_pos < set_pos && set_pos < final_pop_pos,
+        "4 引数 call core は call-rel-ref/setup/call-rel-bytes roots を pop する前に result を下位 slot へ退避するべき"
+    );
+}
+
+#[test]
 fn test_native_codegen_x86_three_arg_user_call_avoids_rel_wrapper_call() {
     let source = selfhost_module("NativeCodegen.ls");
     let opcode_call_branch = source
