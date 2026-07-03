@@ -10498,7 +10498,9 @@
     function-start-base (vector-get context 3)
 	    frame-base-slot-count (vector-get context 4)
 	    current-depth (vector-get context 5)]
-    (let [operand-ref (ref-new operand)]
+    (do
+      (root_push function-metas)
+      (let [operand-ref (ref-new operand)]
 	    (do
 	      (root_push operand-ref)
         (let [current-offset-ref (ref-new current-offset)]
@@ -10595,7 +10597,8 @@
                   (let [final-result (ref-get operand-ref)]
                     (do
 			                  (root_pop)
-				                  final-result)))))))))))))))
+			                  (root_pop)
+				                  final-result))))))))))))))))
 
 (defn codegen-ir-instr-bundle-x86-with-import-count-and-base [opcode operand current-offset function-starts function-metas import-count import-stub-offset function-start-base frame-base-slot-count current-depth]
   (if (= opcode 40)

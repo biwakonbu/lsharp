@@ -8620,6 +8620,50 @@ fn test_native_codegen_x86_call_rel_uses_stable_operand_and_current_offset_refs(
 }
 
 #[test]
+fn test_native_codegen_x86_call_bundle_roots_function_metas_before_ref_allocations() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let opcode_call_branch = source
+        .split("(defn codegen-x86-opcode-call-bundle")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn codegen-ir-instr-bundle-x86-with-import-count-and-base")
+                .next()
+        })
+        .expect("NativeCodegen.ls に x86 opcode 40 call helper が存在すること");
+
+    let function_metas_bind_pos = opcode_call_branch
+        .find("function-metas (vector-get context 0)")
+        .expect("x86 call helper は context から function-metas を取得すること");
+    let function_metas_root_pos = opcode_call_branch
+        .find("(root_push function-metas)")
+        .expect("x86 call helper は function-metas を ref allocation 前に root すること");
+    let operand_ref_pos = opcode_call_branch
+        .find("operand-ref (ref-new operand)")
+        .expect("x86 call helper は operand ref を作ること");
+    let target_meta_pos = opcode_call_branch
+        .find("target-meta (vector-get function-metas (ref-get operand-ref))")
+        .expect("x86 call helper は function-metas から target metadata を読むこと");
+    let final_result_pos = opcode_call_branch
+        .find("final-result (ref-get operand-ref)")
+        .expect("x86 call helper は final-result を取得すること");
+    let final_tail = &opcode_call_branch[final_result_pos..];
+    let final_return_rel_pos = final_tail
+        .rfind("final-result")
+        .expect("x86 call helper は final-result を返すこと");
+    let final_unwind_pop_count = final_tail[..final_return_rel_pos]
+        .matches("(root_pop)")
+        .count();
+
+    assert!(
+        function_metas_bind_pos < function_metas_root_pos
+            && function_metas_root_pos < operand_ref_pos
+            && operand_ref_pos < target_meta_pos
+            && final_unwind_pop_count == 2,
+        "x86 opcode 40 call helper は function-metas local が ref-new 連鎖で失われて target-param-count が empty branch に落ちないよう、context から取り出した直後に root するべき"
+    );
+}
+
+#[test]
 fn test_native_codegen_x86_call_bundle_keeps_result_rooted_while_unwinding_roots() {
     let source = selfhost_module("NativeCodegen.ls");
     let opcode_call_branch = source
