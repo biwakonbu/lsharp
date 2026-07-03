@@ -10586,10 +10586,12 @@
                                              (emit-call-bundle-x86-ten-to-nineteen target-param-count call-rel frame-base-slot-count)
                                              (vector-new 0)))))))))))))]
 	            (do
+                  (root_push result)
                   (ref-set operand-ref result)
 			              (root_pop)
 			              (root_pop)
 			              (root_pop)
+                  (root_pop)
                   (let [final-result (ref-get operand-ref)]
                     (do
 			                  (root_pop)

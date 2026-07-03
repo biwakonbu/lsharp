@@ -8466,6 +8466,36 @@ fn test_native_codegen_x86_one_arg_call_core_roots_parts_before_concat() {
 }
 
 #[test]
+fn test_native_codegen_x86_opcode_call_bundle_roots_result_before_ref_set() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let body = source
+        .split("(defn codegen-x86-opcode-call-bundle")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("NativeCodegen.ls に codegen-x86-opcode-call-bundle が存在すること");
+
+    let result_bind_pos = body
+        .find("(let [result (if (= target-param-count 0)")
+        .expect("x86 opcode call bundle は result を let に束縛すること");
+    let result_root_pos = body
+        .find("(root_push result)")
+        .expect("x86 opcode call bundle は result を ref-set 前に root すること");
+    let result_store_pos = body
+        .find("(ref-set operand-ref result)")
+        .expect("x86 opcode call bundle は operand-ref を返却 result slot として使うこと");
+    let final_result_pos = body
+        .find("final-result (ref-get operand-ref)")
+        .expect("x86 opcode call bundle は rooted ref から final result を取り出すこと");
+
+    assert!(
+        result_bind_pos < result_root_pos
+            && result_root_pos < result_store_pos
+            && result_store_pos < final_result_pos,
+        "x86 opcode 40 call helper は Linux x86 stage2 native の helper return 境界で one-arg call bytes が 0 化しないよう、result を ref-set 前に root するべき"
+    );
+}
+
+#[test]
 fn test_native_codegen_x86_low_arity_call_branches_do_not_shadow_call_rel_bytes() {
     let source = selfhost_module("NativeCodegen.ls");
     let opcode_call_branch = source
