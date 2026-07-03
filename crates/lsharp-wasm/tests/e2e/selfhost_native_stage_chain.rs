@@ -8466,7 +8466,7 @@ fn test_native_codegen_x86_one_arg_call_core_roots_parts_before_concat() {
 }
 
 #[test]
-fn test_native_codegen_x86_opcode_call_bundle_roots_result_before_root_set() {
+fn test_native_codegen_x86_opcode_call_bundle_roots_result_before_ref_set() {
     let source = selfhost_module("NativeCodegen.ls");
     let body = source
         .split("(defn codegen-x86-opcode-call-bundle")
@@ -8479,10 +8479,10 @@ fn test_native_codegen_x86_opcode_call_bundle_roots_result_before_root_set() {
         .expect("x86 opcode call bundle は result を let に束縛すること");
     let result_root_pos = body
         .find("(root_push result)")
-        .expect("x86 opcode call bundle は result を root-set 前に root すること");
+        .expect("x86 opcode call bundle は result を ref-set 前に root すること");
     let result_store_pos = body
-        .find("(root_set function-metas-slot result)")
-        .expect("x86 opcode call bundle は最下位の function-metas root slot を返却 result slot として使うこと");
+        .find("(ref-set operand-ref result)")
+        .expect("x86 opcode call bundle は root 済み operand-ref に result を退避すること");
     let first_pop_after_store_pos = result_store_pos
         + body[result_store_pos..]
             .find("(root_pop)")
@@ -8492,13 +8492,13 @@ fn test_native_codegen_x86_opcode_call_bundle_roots_result_before_root_set() {
         result_bind_pos < result_root_pos
             && result_root_pos < result_store_pos
             && result_store_pos < first_pop_after_store_pos
-            && !body.contains("(ref-set operand-ref result)"),
-        "x86 opcode 40 call helper は Linux x86 stage2 native の helper return 境界で one-arg call bytes が 0 化しないよう、result を root_set 前に root するべき"
+            && !body.contains("(root_set function-metas-slot result)"),
+        "x86 opcode 40 call helper は Linux x86 stage2 native の helper return 境界で one-arg call bytes が 0 化しないよう、result を rooted ref に退避してから unwind するべき"
     );
 }
 
 #[test]
-fn test_native_codegen_x86_opcode_call_bundle_uses_function_metas_root_slot_for_result() {
+fn test_native_codegen_x86_opcode_call_bundle_reads_result_from_operand_ref_after_unwind() {
     let source = selfhost_module("NativeCodegen.ls");
     let body = source
         .split("(defn codegen-x86-opcode-call-bundle")
@@ -8519,18 +8519,21 @@ fn test_native_codegen_x86_opcode_call_bundle_uses_function_metas_root_slot_for_
         .find("(root_push result)")
         .expect("x86 opcode call bundle は result を root すること");
     let result_store_pos = body
-        .find("(root_set function-metas-slot result)")
-        .expect("x86 opcode call bundle は result を最下位の既存 root slot に退避すること");
+        .find("(ref-set operand-ref result)")
+        .expect("x86 opcode call bundle は result を rooted operand-ref に退避すること");
     let first_pop_after_store_pos = result_store_pos
         + body[result_store_pos..]
             .find("(root_pop)")
             .expect("x86 opcode call bundle は result 退避後に roots を unwind すること");
+    let final_result_pos = body
+        .find("final-result (ref-get operand-ref)")
+        .expect("x86 opcode call bundle は operand-ref から final result を取り直すこと");
     let final_pop_pos = body
         .rfind("(root_pop)")
         .expect("x86 opcode call bundle は roots を unwind すること");
     let final_return_pos = body
-        .rfind("result")
-        .expect("x86 opcode call bundle は unwind 後に result を明示返却すること");
+        .rfind("final-result")
+        .expect("x86 opcode call bundle は unwind 後に final-result を明示返却すること");
 
     assert!(
         function_metas_slot_pos < call_rel_root_pos
@@ -8538,11 +8541,11 @@ fn test_native_codegen_x86_opcode_call_bundle_uses_function_metas_root_slot_for_
             && result_bind_pos < result_root_pos
             && result_root_pos < result_store_pos
             && result_store_pos < first_pop_after_store_pos
-            && first_pop_after_store_pos < final_pop_pos
+            && first_pop_after_store_pos < final_result_pos
+            && final_result_pos < final_pop_pos
             && final_pop_pos < final_return_pos
-            && !body.contains("(ref-set operand-ref result)")
-            && !body.contains("final-result (ref-get operand-ref)"),
-        "x86 opcode 40 call helper は stage1 native の root_pop 戻り値に依存せず、result を root 済み slot に退避して unwind した後で明示的に返すべき"
+            && !body.contains("(root_set function-metas-slot result)"),
+        "x86 opcode 40 call helper は stage1 native の root_pop 戻り値や unrooted result local に依存せず、rooted operand-ref から final-result を取り直して返すべき"
     );
 }
 
@@ -8697,12 +8700,15 @@ fn test_native_codegen_x86_call_bundle_roots_function_metas_before_ref_allocatio
         .find("target-meta (vector-get function-metas (ref-get operand-ref))")
         .expect("x86 call helper は function-metas から target metadata を読むこと");
     let result_store_pos = opcode_call_branch
-        .find("(root_set function-metas-slot result)")
-        .expect("x86 call helper は result を最下位の function-metas root slot へ退避すること");
+        .find("(ref-set operand-ref result)")
+        .expect("x86 call helper は result を root 済み operand-ref へ退避すること");
     let final_tail = &opcode_call_branch[result_store_pos..];
     let final_result_rel_pos = final_tail
-        .rfind("result")
-        .expect("x86 call helper は root unwind 後に result を明示返却すること");
+        .rfind("final-result")
+        .expect("x86 call helper は root unwind 後に final-result を明示返却すること");
+    let final_result_get_pos = final_tail
+        .find("final-result (ref-get operand-ref)")
+        .expect("x86 call helper は operand-ref から final-result を取り直すこと");
     let final_unwind_pop_count = final_tail[..final_result_rel_pos]
         .matches("(root_pop)")
         .count();
@@ -8711,8 +8717,10 @@ fn test_native_codegen_x86_call_bundle_roots_function_metas_before_ref_allocatio
         function_metas_bind_pos < function_metas_root_pos
             && function_metas_root_pos < operand_ref_pos
             && operand_ref_pos < target_meta_pos
-            && final_unwind_pop_count == 6,
-        "x86 opcode 40 call helper は function-metas local が ref-new 連鎖で失われて target-param-count が empty branch に落ちないよう、context から取り出した直後に root し、unwind 後は result を明示返却するべき"
+            && final_result_get_pos < final_result_rel_pos
+            && final_unwind_pop_count == 6
+            && !opcode_call_branch.contains("(root_set function-metas-slot result)"),
+        "x86 opcode 40 call helper は function-metas local が ref-new 連鎖で失われて target-param-count が empty branch に落ちないよう、context から取り出した直後に root し、返却 result は rooted operand-ref から取り直すべき"
     );
 }
 
@@ -8732,26 +8740,30 @@ fn test_native_codegen_x86_call_bundle_keeps_result_rooted_while_unwinding_roots
         .find("result (if (= target-param-count 0)")
         .expect("x86 call helper は call byte result を local に置くこと");
     let result_store_pos = opcode_call_branch
-        .find("(root_set function-metas-slot result)")
-        .expect("x86 call helper は result を最下位の古い root slot に退避すること");
+        .find("(ref-set operand-ref result)")
+        .expect("x86 call helper は result を root 済み operand-ref に退避すること");
     let first_pop_after_store_pos = result_store_pos
         + opcode_call_branch[result_store_pos..]
             .find("(root_pop)")
             .expect("x86 call helper は inner roots を unwind すること");
+    let final_result_pos = opcode_call_branch
+        .find("final-result (ref-get operand-ref)")
+        .expect("x86 call helper は roots を最後まで unwind する前に final-result を取り直すこと");
     let final_pop_pos = opcode_call_branch
         .rfind("(root_pop)")
         .expect("x86 call helper は roots を unwind すること");
     let final_return_pos = opcode_call_branch
-        .rfind("result")
-        .expect("x86 call helper は unwind 後に result を明示返却すること");
+        .rfind("final-result")
+        .expect("x86 call helper は unwind 後に final-result を明示返却すること");
 
     assert!(
         result_bind_pos < result_store_pos
             && result_store_pos < first_pop_after_store_pos
-            && first_pop_after_store_pos < final_pop_pos
+            && first_pop_after_store_pos < final_result_pos
+            && final_result_pos < final_pop_pos
             && final_pop_pos < final_return_pos
-            && !opcode_call_branch.contains("final-result (ref-get operand-ref)"),
-        "x86 opcode 40 call bundle は result vector header が root unwind 中に壊れないよう、result を最下位の古い root slot に退避してから明示的に result を返すべき"
+            && !opcode_call_branch.contains("(root_set function-metas-slot result)"),
+        "x86 opcode 40 call bundle は result vector header が root unwind 中に壊れないよう、result を rooted operand-ref に退避して final-result を返すべき"
     );
 }
 
@@ -8947,6 +8959,52 @@ fn test_native_codegen_x86_nine_arg_user_call_avoids_rel_wrapper_call() {
             && !nine_arg_branch.contains("target-offset")
             && !nine_arg_branch.contains("emit-call-bundle-x86-one-to-nine"),
         "x86 nine-arg user call は outer root 済み rel32 bytes を使い、operand/rel local wrapper を避けるべき"
+    );
+}
+
+#[test]
+fn test_native_codegen_x86_nine_arg_call_core_with_bytes_roots_intermediate_vectors() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let nine_arg_core = source
+        .split("(defn emit-nine-arg-call-x86-core-with-call-bytes")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn emit-nine-arg-call-x86").next())
+        .expect("NativeCodegen.ls に emit-nine-arg-call-x86-core-with-call-bytes が存在すること");
+
+    let setup1_pos = nine_arg_core
+        .find("setup1 (concat-four-byte-vectors-rooted")
+        .expect("9 引数 call core は最初の setup vector を rooted concat で構築するべき");
+    let setup1_root_pos = nine_arg_core
+        .find("(root_push setup1)")
+        .expect("9 引数 call core は setup1 を次の concat 前に root するべき");
+    let setup2_pos = nine_arg_core
+        .find("setup2 (concat-four-byte-vectors-rooted")
+        .expect("9 引数 call core は setup2 を rooted concat で構築するべき");
+    let setup2_root_pos = nine_arg_core
+        .find("(root_push setup2)")
+        .expect("9 引数 call core は setup2 を次の concat 前に root するべき");
+    let setup3_pos = nine_arg_core
+        .find("setup3 (concat-four-byte-vectors-rooted")
+        .expect("9 引数 call core は setup3 を rooted concat で構築するべき");
+    let setup3_root_pos = nine_arg_core
+        .find("(root_push setup3)")
+        .expect("9 引数 call core は setup3 を result concat 前に root するべき");
+    let result_pos = nine_arg_core
+        .find("result (concat-four-byte-vectors-rooted")
+        .expect("9 引数 call core は result を rooted concat で構築するべき");
+    let result_return_pos = nine_arg_core
+        .rfind("result")
+        .expect("9 引数 call core は root 解放後に result を明示返却するべき");
+
+    assert!(
+        setup1_pos < setup1_root_pos
+            && setup1_root_pos < setup2_pos
+            && setup2_pos < setup2_root_pos
+            && setup2_root_pos < setup3_pos
+            && setup3_pos < setup3_root_pos
+            && setup3_root_pos < result_pos
+            && result_pos < result_return_pos,
+        "9 引数 call core は setup1/setup2/setup3 を root したまま後続 concat を行い、root 解放後も result を返すべき"
     );
 }
 

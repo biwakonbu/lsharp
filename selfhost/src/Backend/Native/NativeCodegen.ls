@@ -7435,58 +7435,46 @@
     current-depth))
 
 (defn emit-nine-arg-call-x86-core [rel frame-base-slot-count]
-  (concat-byte-vectors
-    (concat-byte-vectors
-      (concat-byte-vectors
-        (concat-byte-vectors
-          (concat-byte-vectors
-            (concat-byte-vectors
-              (concat-byte-vectors
-                (concat-byte-vectors
-                  (concat-byte-vectors
-                    (concat-byte-vectors
-                      (concat-byte-vectors
-                        (concat-byte-vectors
-                          (emit-sub-rsp-imm32 32)
-                          (emit-mov-third-stack-from-rax))
-                        (emit-mov-second-stack-from-rcx))
-                      (emit-mov-r9-from-local (native-value-window-spill-offset frame-base-slot-count 0)))
-                    (emit-mov-top-stack-from-r9))
-                  (emit-mov-r9-from-local (native-value-window-spill-offset frame-base-slot-count 1)))
-                (emit-mov-r8-from-local (native-value-window-spill-offset frame-base-slot-count 2)))
-              (emit-mov-rcx-from-local (native-value-window-spill-offset frame-base-slot-count 3)))
-            (emit-mov-rdx-from-local (native-value-window-spill-offset frame-base-slot-count 4)))
-          (emit-mov-rsi-from-local (native-value-window-spill-offset frame-base-slot-count 5)))
-        (emit-mov-rdi-from-local (native-value-window-spill-offset frame-base-slot-count 6)))
-       (emit-call-rel32 rel))
-     (emit-add-rsp-imm32 32)))
+  (let [call-rel-bytes (emit-call-rel32 rel)]
+    (do
+      (root_push call-rel-bytes)
+      (let [result (emit-nine-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)]
+        (do
+          (root_pop)
+          result)))))
 
 (defn emit-nine-arg-call-x86-core-with-call-bytes [call-rel-bytes frame-base-slot-count]
-  (concat-byte-vectors
-    (concat-byte-vectors
-      (concat-byte-vectors
-        (concat-byte-vectors
-          (concat-byte-vectors
-            (concat-byte-vectors
-              (concat-byte-vectors
-                (concat-byte-vectors
-                  (concat-byte-vectors
-                    (concat-byte-vectors
-                      (concat-byte-vectors
-                        (concat-byte-vectors
-                          (emit-sub-rsp-imm32 32)
-                          (emit-mov-third-stack-from-rax))
-                        (emit-mov-second-stack-from-rcx))
-                      (emit-mov-r9-from-local (native-value-window-spill-offset frame-base-slot-count 0)))
-                    (emit-mov-top-stack-from-r9))
-                  (emit-mov-r9-from-local (native-value-window-spill-offset frame-base-slot-count 1)))
-                (emit-mov-r8-from-local (native-value-window-spill-offset frame-base-slot-count 2)))
-              (emit-mov-rcx-from-local (native-value-window-spill-offset frame-base-slot-count 3)))
-            (emit-mov-rdx-from-local (native-value-window-spill-offset frame-base-slot-count 4)))
-          (emit-mov-rsi-from-local (native-value-window-spill-offset frame-base-slot-count 5)))
-        (emit-mov-rdi-from-local (native-value-window-spill-offset frame-base-slot-count 6)))
-       call-rel-bytes)
-     (emit-add-rsp-imm32 32)))
+  (let [setup1 (concat-four-byte-vectors-rooted
+                 (emit-sub-rsp-imm32 32)
+                 (emit-mov-third-stack-from-rax)
+                 (emit-mov-second-stack-from-rcx)
+                 (emit-mov-r9-from-local (native-value-window-spill-offset frame-base-slot-count 0)))]
+    (do
+      (root_push setup1)
+      (let [setup2 (concat-four-byte-vectors-rooted
+                     setup1
+                     (emit-mov-top-stack-from-r9)
+                     (emit-mov-r9-from-local (native-value-window-spill-offset frame-base-slot-count 1))
+                     (emit-mov-r8-from-local (native-value-window-spill-offset frame-base-slot-count 2)))]
+        (do
+          (root_push setup2)
+          (let [setup3 (concat-four-byte-vectors-rooted
+                         setup2
+                         (emit-mov-rcx-from-local (native-value-window-spill-offset frame-base-slot-count 3))
+                         (emit-mov-rdx-from-local (native-value-window-spill-offset frame-base-slot-count 4))
+                         (emit-mov-rsi-from-local (native-value-window-spill-offset frame-base-slot-count 5)))]
+            (do
+              (root_push setup3)
+              (let [result (concat-four-byte-vectors-rooted
+                             setup3
+                             (emit-mov-rdi-from-local (native-value-window-spill-offset frame-base-slot-count 6))
+                             call-rel-bytes
+                             (emit-add-rsp-imm32 32))]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  result)))))))))
 
 (defn emit-nine-arg-call-x86 [rel frame-base-slot-count current-depth]
   (emit-consume-nine-produce-one-bundle-x86
@@ -10590,14 +10578,16 @@
                                              (vector-new 0)))))))))))))]
 			            (do
 		                  (root_push result)
-		                  (root_set function-metas-slot result)
+		                  (ref-set operand-ref result)
 						              (root_pop)
 						              (root_pop)
 					              (root_pop)
 					              (root_pop)
-					              (root_pop)
-					              (root_pop)
-					              result))))))))))))))
+					              (let [final-result (ref-get operand-ref)]
+						                (do
+						                  (root_pop)
+						                  (root_pop)
+						                  final-result))))))))))))))))
 
 (defn codegen-ir-instr-bundle-x86-with-import-count-and-base [opcode operand current-offset function-starts function-metas import-count import-stub-offset function-start-base frame-base-slot-count current-depth]
   (if (= opcode 40)
