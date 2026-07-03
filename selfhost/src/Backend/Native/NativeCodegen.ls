@@ -7216,7 +7216,8 @@
                 (root_pop)
                 (root_pop)
                 (root_pop)
-                (root_pop)))))))))
+                (root_pop)
+                result))))))))
 
 (defn emit-four-arg-call-x86 [rel frame-base-slot-count current-depth]
   (emit-consume-four-produce-one-bundle-x86
@@ -10590,12 +10591,13 @@
 			            (do
 		                  (root_push result)
 		                  (root_set function-metas-slot result)
+						              (root_pop)
+						              (root_pop)
 					              (root_pop)
 					              (root_pop)
-				              (root_pop)
-				              (root_pop)
-				              (root_pop)
-				              (root_pop)))))))))))))))
+					              (root_pop)
+					              (root_pop)
+					              result))))))))))))))
 
 (defn codegen-ir-instr-bundle-x86-with-import-count-and-base [opcode operand current-offset function-starts function-metas import-count import-stub-offset function-start-base frame-base-slot-count current-depth]
   (if (= opcode 40)
