@@ -10498,8 +10498,7 @@
     function-start-base (vector-get context 3)
 	    frame-base-slot-count (vector-get context 4)
 	    current-depth (vector-get context 5)]
-    (do
-      (root_push function-metas)
+    (let [function-metas-slot (root_push function-metas)]
       (let [operand-ref (ref-new operand)]
 	    (do
 	      (root_push operand-ref)
@@ -10516,9 +10515,10 @@
 	                        (x86-import-ret-stub-offset import-stub-offset import-count (ref-get operand-ref))
 	                        (- (vector-get (ref-get function-starts-ref) (- (ref-get operand-ref) import-count)) function-start-base))
 	        call-rel (- target-offset (+ (ref-get current-offset-ref) call-next-offset))]
-	        (let [call-rel-bytes (emit-call-rel32 call-rel)]
-	          (let [call-rel-slot (root_push call-rel-bytes)]
-	          (let [result (if (= target-param-count 0)
+		        (let [call-rel-bytes (emit-call-rel32 call-rel)]
+		          (do
+		            (root_push call-rel-bytes)
+		          (let [result (if (= target-param-count 0)
                      (if (= current-depth 0)
                        (concat-byte-vectors-rooted call-rel-bytes (vector-new 0))
                        (if (= current-depth 1)
@@ -10586,16 +10586,15 @@
                                            (if (>= target-param-count 10)
                                              (emit-call-bundle-x86-ten-to-nineteen target-param-count call-rel frame-base-slot-count)
                                              (vector-new 0)))))))))))))]
-		            (do
-	                  (root_push result)
-	                  (root_set call-rel-slot result)
+			            (do
+		                  (root_push result)
+		                  (root_set function-metas-slot result)
+					              (root_pop)
+					              (root_pop)
 				              (root_pop)
 				              (root_pop)
 				              (root_pop)
-				              (root_pop)
-				              (root_pop)
-				              (root_pop)
-					              result))))))))))))))
+				              (root_pop)))))))))))))))
 
 (defn codegen-ir-instr-bundle-x86-with-import-count-and-base [opcode operand current-offset function-starts function-metas import-count import-stub-offset function-start-base frame-base-slot-count current-depth]
   (if (= opcode 40)
