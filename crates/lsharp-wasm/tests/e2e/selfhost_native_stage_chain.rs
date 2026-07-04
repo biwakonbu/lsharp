@@ -141,17 +141,48 @@ fn strip_linux_x86_unused_base64_helpers(source: String) -> String {
     format!("{}{}", &source[..start], &source[end..])
 }
 
-fn strip_linux_x86_unused_print_byte_chunk_unroll_helpers(source: String) -> String {
-    let Some(start) = source.find("\n(defn print-byte-chunks-step-8 [bytes idx len]") else {
+fn strip_linux_x86_unused_byte_chunk_text_helpers(source: String) -> String {
+    let Some(start) = source.find("\n(defn print-byte-chunks-step [bytes idx len]") else {
         return source;
     };
-    let Some(relative_end) = source[start..]
-        .find("\n(defn continue-print-byte-chunks-step-times [bytes len remaining state]")
+    let Some(relative_end) = source[start..].find("\n(defn build-byte-chunks-step [bytes idx len]")
     else {
         return source;
     };
     let end = start + relative_end;
     format!("{}{}", &source[..start], &source[end..])
+}
+
+fn stabilize_linux_x86_append_vector_loop(source: String) -> String {
+    source.replace(
+        r#"(defn append-vector-loop [dst src idx len]
+  (if (>= idx len)
+    dst
+    (do
+      (root_push src)
+      (root_push dst)
+      (let [value (vector-get src idx)]
+        (do
+          (root_push value)
+          (let [next-dst (vector-push dst value)]
+            (do
+              (root_push next-dst)
+              (let [final (append-vector-loop next-dst src (+ idx 1) len)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  final)))))))))"#,
+        r#"(defn append-vector-loop [dst src idx len]
+  (if (>= idx len)
+    dst
+    (append-vector-loop
+      (vector-push dst (vector-get src idx))
+      src
+      (+ idx 1)
+      len)))"#,
+    )
 }
 
 fn root_linux_x86_seed_function_meta_constructor(source: String) -> String {
@@ -403,7 +434,8 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
     );
     let source = strip_linux_x86_unused_base64_helpers(source);
     let source = root_linux_x86_seed_function_meta_constructor(source);
-    let source = strip_linux_x86_unused_print_byte_chunk_unroll_helpers(source);
+    let source = strip_linux_x86_unused_byte_chunk_text_helpers(source);
+    let source = stabilize_linux_x86_append_vector_loop(source);
     let payload_bindings = r#"source-path (command-line-arg 1)
 	         source-path-root (root_push source-path)
 	         normal-transport-diagnostic-mode (if (> (string-length (command-line-arg 11)) 0) 1 0)
@@ -858,17 +890,38 @@ fn test_linux_x86_representative_seed_uses_layout_emit_for_segmented_native_code
 }
 
 #[test]
-fn test_linux_x86_representative_seed_strips_unused_print_byte_chunk_unroll_helpers() {
+fn test_linux_x86_representative_seed_uses_stage_stable_append_vector_loop() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+    let body = source
+        .split("(defn append-vector-loop [dst src idx len]")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn find-defn-index-by-hash").next())
+        .expect("Linux x86 seed に append-vector-loop が存在すること");
+
+    assert!(
+        body.contains("(append-vector-loop\n      (vector-push dst (vector-get src idx))\n      src\n      (+ idx 1)\n      len)")
+            && !body.contains("root_push src")
+            && !body.contains("next-dst")
+            && !body.contains("final (append-vector-loop"),
+        "Linux x86 seed の append-vector-loop は stage2 native compiler が IR len 1 へ縮めない tail-call 形に寄せるべき"
+    );
+}
+
+#[test]
+fn test_linux_x86_representative_seed_strips_unused_byte_chunk_text_helpers() {
     let source = linux_x86_representative_actual_stage23_seed_source();
 
     assert!(
-        source.contains("(defn continue-print-byte-chunks-step-times")
-            && source.contains("(defn print-byte-chunks-step-32768")
+        source.contains("(defn print-packed-code-segment-with-length [bytes segment-len]")
             && source
-                .contains("result (continue-print-byte-chunks-step-times bytes len 255 state)"),
-        "Linux x86 seed は byte chunk 出力の bounded loop を times continuation に寄せるべき"
+                .contains("(print-packed-code-segment-with-length padded-segment function-size)")
+            && source.contains("(print-packed-code-bytes-loop data 0 data-len)"),
+        "Linux x86 seed の active transport は packed code byte printer を使うべき"
     );
     for helper in [
+        "(defn print-byte-chunks-step [bytes idx len]",
+        "(defn continue-print-byte-chunks-step [bytes len state]",
+        "(defn continue-print-byte-chunks-step-times [bytes len remaining state]",
         "(defn print-byte-chunks-step-8 [bytes idx len]",
         "(defn continue-print-byte-chunks-step-8 [bytes len state]",
         "(defn print-byte-chunks-step-64 [bytes idx len]",
@@ -877,6 +930,16 @@ fn test_linux_x86_representative_seed_strips_unused_print_byte_chunk_unroll_help
         "(defn continue-print-byte-chunks-step-512 [bytes len state]",
         "(defn print-byte-chunks-step-4096 [bytes idx len]",
         "(defn continue-print-byte-chunks-step-4096 [bytes len state]",
+        "(defn print-byte-chunks-step-32768 [bytes idx len]",
+        "(defn print-byte-chunks [bytes idx len]",
+        "(defn print-byte-chunks-small-step [bytes idx len]",
+        "(defn continue-print-byte-chunks-small-step [bytes len state]",
+        "(defn print-byte-chunks-small-step-8 [bytes idx len]",
+        "(defn continue-print-byte-chunks-small-step-8 [bytes len state]",
+        "(defn print-byte-chunks-small-step-64 [bytes idx len]",
+        "(defn continue-print-byte-chunks-small-step-64 [bytes len state]",
+        "(defn print-byte-chunks-small-step-512 [bytes idx len]",
+        "(defn print-byte-chunks-small [bytes idx len]",
     ] {
         assert!(
             !source.contains(helper),
