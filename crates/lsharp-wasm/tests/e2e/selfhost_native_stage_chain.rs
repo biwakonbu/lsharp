@@ -8513,20 +8513,64 @@ fn test_native_codegen_x86_opcode_call_bundle_checks_one_arg_before_large_param_
     let one_arg_pos = body
         .find("(let [result (if (= target-param-count 1)")
         .expect("x86 opcode call bundle は one-arg branch を result chain の先頭で判定すること");
-    let zero_arg_pos = body
-        .find("(if (= target-param-count 0)")
-        .expect("x86 opcode call bundle は zero-arg branch を保持すること");
-    let two_arg_pos = body
-        .find("(if (= target-param-count 2)")
-        .expect("x86 opcode call bundle は two-arg branch を保持すること");
+    let rest_call_pos = body
+        .find("(codegen-x86-non-one-arg-call-bundle target-param-count call-rel call-rel-bytes frame-base-slot-count current-depth)")
+        .expect("x86 opcode call bundle は one-arg 以外を helper に委譲すること");
+    let result_root_pos = body
+        .find("(root_push result)")
+        .expect("x86 opcode call bundle は result を root すること");
 
     assert!(
-        one_arg_pos < zero_arg_pos
-            && zero_arg_pos < two_arg_pos
-            && body[one_arg_pos..zero_arg_pos]
+        one_arg_pos < rest_call_pos
+            && rest_call_pos < result_root_pos
+            && body[one_arg_pos..rest_call_pos]
                 .contains("(emit-one-arg-call-x86-core-with-call-bytes call-rel-bytes)"),
         "v101 metadata では minimal one-arg return-boundary helper が 10 bytes を返す一方、巨大な param-count chain 内の production helper だけ 0 bytes を返したため、one-arg branch は巨大 chain の前に切り出すべき"
     );
+}
+
+#[test]
+fn test_native_codegen_x86_opcode_call_bundle_delegates_non_one_arg_chain_to_helper() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let body = source
+        .split("(defn codegen-x86-opcode-call-bundle")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("NativeCodegen.ls に codegen-x86-opcode-call-bundle が存在すること");
+    let rest_helper = source
+        .split("(defn codegen-x86-non-one-arg-call-bundle")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn codegen-x86-opcode-call-bundle").next())
+        .expect("NativeCodegen.ls に non-one-arg call bundle helper が存在すること");
+
+    let one_arg_pos = body
+        .find("(let [result (if (= target-param-count 1)")
+        .expect("x86 opcode call bundle は one-arg branch を result chain の先頭で判定すること");
+    let rest_call_pos = body
+        .find("(codegen-x86-non-one-arg-call-bundle target-param-count call-rel call-rel-bytes frame-base-slot-count current-depth)")
+        .expect("x86 opcode call bundle は non-one-arg chain を helper に委譲すること");
+    let result_root_pos = body
+        .find("(root_push result)")
+        .expect("x86 opcode call bundle は result を root すること");
+
+    assert!(
+        one_arg_pos < rest_call_pos
+            && rest_call_pos < result_root_pos
+            && !body[one_arg_pos..result_root_pos].contains("(if (= target-param-count 0)")
+            && rest_helper.contains("(if (= target-param-count 0)")
+            && rest_helper.contains("(if (= target-param-count 2)")
+            && rest_helper.contains("(if (= target-param-count 9)")
+            && rest_helper.contains("(emit-call-bundle-x86-ten-to-nineteen target-param-count call-rel frame-base-slot-count)"),
+        "v102 では one-arg branch を chain 先頭に置いても巨大 else branch と同居する限り native-len=0 のため、one-arg path は non-one-arg dispatch 本体から分離するべき"
+    );
+}
+
+fn native_codegen_x86_non_one_arg_call_bundle_body(source: &str) -> &str {
+    source
+        .split("(defn codegen-x86-non-one-arg-call-bundle")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn codegen-x86-opcode-call-bundle").next())
+        .expect("NativeCodegen.ls に x86 non-one-arg call bundle helper が存在すること")
 }
 
 #[test]
@@ -8608,14 +8652,7 @@ fn test_native_codegen_x86_opcode_call_bundle_returns_operand_ref_after_final_un
 #[test]
 fn test_native_codegen_x86_low_arity_call_branches_do_not_shadow_call_rel_bytes() {
     let source = selfhost_module("NativeCodegen.ls");
-    let opcode_call_branch = source
-        .split("(defn codegen-x86-opcode-call-bundle")
-        .nth(1)
-        .and_then(|tail| {
-            tail.split("(defn codegen-ir-instr-bundle-x86-with-import-count-and-base")
-                .next()
-        })
-        .expect("NativeCodegen.ls に x86 opcode 40 call helper が存在すること");
+    let opcode_call_branch = native_codegen_x86_non_one_arg_call_bundle_body(&source);
     let call_bytes_branch = opcode_call_branch
         .split("(if (= target-param-count 0)")
         .nth(1)
@@ -8820,14 +8857,7 @@ fn test_native_codegen_x86_call_bundle_keeps_result_rooted_while_unwinding_roots
 #[test]
 fn test_native_codegen_x86_two_arg_user_call_avoids_rel_wrapper_call() {
     let source = selfhost_module("NativeCodegen.ls");
-    let opcode_call_branch = source
-        .split("(defn codegen-x86-opcode-call-bundle")
-        .nth(1)
-        .and_then(|tail| {
-            tail.split("(defn codegen-ir-instr-bundle-x86-with-import-count-and-base")
-                .next()
-        })
-        .expect("NativeCodegen.ls に x86 opcode 40 call helper が存在すること");
+    let opcode_call_branch = native_codegen_x86_non_one_arg_call_bundle_body(&source);
     let call_bytes_branch = opcode_call_branch
         .split("(if (= target-param-count 0)")
         .nth(1)
@@ -8850,14 +8880,7 @@ fn test_native_codegen_x86_two_arg_user_call_avoids_rel_wrapper_call() {
 #[test]
 fn test_native_codegen_x86_six_arg_user_call_avoids_rel_wrapper_call() {
     let source = selfhost_module("NativeCodegen.ls");
-    let opcode_call_branch = source
-        .split("(defn codegen-x86-opcode-call-bundle")
-        .nth(1)
-        .and_then(|tail| {
-            tail.split("(defn codegen-ir-instr-bundle-x86-with-import-count-and-base")
-                .next()
-        })
-        .expect("NativeCodegen.ls に x86 opcode 40 call helper が存在すること");
+    let opcode_call_branch = native_codegen_x86_non_one_arg_call_bundle_body(&source);
     let call_bytes_branch = opcode_call_branch
         .split("(if (= target-param-count 0)")
         .nth(1)
@@ -8881,14 +8904,7 @@ fn test_native_codegen_x86_six_arg_user_call_avoids_rel_wrapper_call() {
 #[test]
 fn test_native_codegen_x86_seven_arg_user_call_avoids_rel_wrapper_call() {
     let source = selfhost_module("NativeCodegen.ls");
-    let opcode_call_branch = source
-        .split("(defn codegen-x86-opcode-call-bundle")
-        .nth(1)
-        .and_then(|tail| {
-            tail.split("(defn codegen-ir-instr-bundle-x86-with-import-count-and-base")
-                .next()
-        })
-        .expect("NativeCodegen.ls に x86 opcode 40 call helper が存在すること");
+    let opcode_call_branch = native_codegen_x86_non_one_arg_call_bundle_body(&source);
     let call_bytes_branch = opcode_call_branch
         .split("(if (= target-param-count 0)")
         .nth(1)
@@ -8922,14 +8938,7 @@ fn test_native_codegen_x86_seven_arg_user_call_avoids_rel_wrapper_call() {
 #[test]
 fn test_native_codegen_x86_eight_arg_user_call_avoids_rel_wrapper_call() {
     let source = selfhost_module("NativeCodegen.ls");
-    let opcode_call_branch = source
-        .split("(defn codegen-x86-opcode-call-bundle")
-        .nth(1)
-        .and_then(|tail| {
-            tail.split("(defn codegen-ir-instr-bundle-x86-with-import-count-and-base")
-                .next()
-        })
-        .expect("NativeCodegen.ls に x86 opcode 40 call helper が存在すること");
+    let opcode_call_branch = native_codegen_x86_non_one_arg_call_bundle_body(&source);
     let call_bytes_branch = opcode_call_branch
         .split("(if (= target-param-count 0)")
         .nth(1)
@@ -8984,14 +8993,7 @@ fn test_native_codegen_x86_opcode_call_roots_function_starts_before_call_context
 #[test]
 fn test_native_codegen_x86_nine_arg_user_call_avoids_rel_wrapper_call() {
     let source = selfhost_module("NativeCodegen.ls");
-    let opcode_call_branch = source
-        .split("(defn codegen-x86-opcode-call-bundle")
-        .nth(1)
-        .and_then(|tail| {
-            tail.split("(defn codegen-ir-instr-bundle-x86-with-import-count-and-base")
-                .next()
-        })
-        .expect("NativeCodegen.ls に x86 opcode 40 call helper が存在すること");
+    let opcode_call_branch = native_codegen_x86_non_one_arg_call_bundle_body(&source);
     let call_bytes_branch = opcode_call_branch
         .split("(if (= target-param-count 0)")
         .nth(1)
@@ -9061,14 +9063,7 @@ fn test_native_codegen_x86_nine_arg_call_core_with_bytes_roots_intermediate_vect
 #[test]
 fn test_native_codegen_x86_four_arg_user_call_avoids_rel_wrapper_call() {
     let source = selfhost_module("NativeCodegen.ls");
-    let opcode_call_branch = source
-        .split("(defn codegen-x86-opcode-call-bundle")
-        .nth(1)
-        .and_then(|tail| {
-            tail.split("(defn codegen-ir-instr-bundle-x86-with-import-count-and-base")
-                .next()
-        })
-        .expect("NativeCodegen.ls に x86 opcode 40 call helper が存在すること");
+    let opcode_call_branch = native_codegen_x86_non_one_arg_call_bundle_body(&source);
     let call_bytes_branch = opcode_call_branch
         .split("(if (= target-param-count 0)")
         .nth(1)
@@ -9156,14 +9151,7 @@ fn test_native_codegen_x86_four_arg_call_core_keeps_result_rooted_while_unwindin
 #[test]
 fn test_native_codegen_x86_three_arg_user_call_avoids_rel_wrapper_call() {
     let source = selfhost_module("NativeCodegen.ls");
-    let opcode_call_branch = source
-        .split("(defn codegen-x86-opcode-call-bundle")
-        .nth(1)
-        .and_then(|tail| {
-            tail.split("(defn codegen-ir-instr-bundle-x86-with-import-count-and-base")
-                .next()
-        })
-        .expect("NativeCodegen.ls に x86 opcode 40 call helper が存在すること");
+    let opcode_call_branch = native_codegen_x86_non_one_arg_call_bundle_body(&source);
     let call_bytes_branch = opcode_call_branch
         .split("(if (= target-param-count 0)")
         .nth(1)
@@ -9186,14 +9174,7 @@ fn test_native_codegen_x86_three_arg_user_call_avoids_rel_wrapper_call() {
 #[test]
 fn test_native_codegen_x86_five_arg_user_call_avoids_rel_wrapper_call() {
     let source = selfhost_module("NativeCodegen.ls");
-    let opcode_call_branch = source
-        .split("(defn codegen-x86-opcode-call-bundle")
-        .nth(1)
-        .and_then(|tail| {
-            tail.split("(defn codegen-ir-instr-bundle-x86-with-import-count-and-base")
-                .next()
-        })
-        .expect("NativeCodegen.ls に x86 opcode 40 call helper が存在すること");
+    let opcode_call_branch = native_codegen_x86_non_one_arg_call_bundle_body(&source);
     let call_bytes_branch = opcode_call_branch
         .split("(if (= target-param-count 0)")
         .nth(1)

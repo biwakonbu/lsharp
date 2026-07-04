@@ -10479,7 +10479,75 @@
 	                                      (emit-x86-helper-call-preserving-rcx
 	                                        (- (x86-selfhost-file-exists-helper-offset import-stub-offset import-count)
 	                                           (+ current-offset 6)))
-                                      (vector-new 0))))))))))))))))))
+                              (vector-new 0))))))))))))))))))
+
+(defn codegen-x86-non-one-arg-call-bundle [target-param-count call-rel call-rel-bytes frame-base-slot-count current-depth]
+  (if (= target-param-count 0)
+    (if (= current-depth 0)
+      (concat-byte-vectors-rooted call-rel-bytes (vector-new 0))
+      (if (= current-depth 1)
+        (concat-byte-vectors-rooted
+          (concat-byte-vectors-rooted
+            (emit-push-rax)
+            call-rel-bytes)
+          (emit-pop-rcx))
+        (concat-byte-vectors
+          (concat-byte-vectors
+            (concat-byte-vectors
+              (shift-native-value-window-x86-loop frame-base-slot-count (- current-depth 3))
+              (emit-mov-local-from-rcx (native-value-window-spill-offset frame-base-slot-count 0)))
+            (emit-push-rax))
+          (concat-byte-vectors
+            call-rel-bytes
+            (emit-pop-rcx)))))
+    (if (= target-param-count 2)
+      (emit-two-arg-call-x86-with-call-bytes call-rel-bytes frame-base-slot-count current-depth)
+      (if (= target-param-count 3)
+        (emit-consume-three-produce-one-bundle-x86
+          (emit-three-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)
+          frame-base-slot-count
+          current-depth)
+        (if (= target-param-count 4)
+          (emit-consume-four-produce-one-bundle-x86
+            (let [call-rel-ref (ref-new call-rel)]
+              (do
+                (root_push call-rel-ref)
+                (let [result (emit-four-arg-call-x86-core-with-rel-ref call-rel-ref frame-base-slot-count)]
+                  (do
+                    (root_pop)
+                    result))))
+            frame-base-slot-count
+            current-depth)
+          (if (= target-param-count 5)
+            (emit-consume-five-produce-one-bundle-x86
+              (emit-five-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)
+              frame-base-slot-count
+              current-depth)
+            (if (= target-param-count 6)
+              (emit-consume-six-produce-one-bundle-x86
+                (emit-six-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)
+                frame-base-slot-count
+                current-depth)
+              (if (= target-param-count 7)
+                (emit-consume-seven-produce-one-bundle-x86
+                  (emit-seven-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)
+                  frame-base-slot-count
+                  current-depth)
+                (if (= target-param-count 8)
+                  (emit-consume-eight-produce-one-bundle-x86
+                    (emit-eight-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)
+                    frame-base-slot-count
+                    current-depth)
+                  (if (= target-param-count 9)
+                    (emit-consume-nine-produce-one-bundle-x86
+                      (emit-nine-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)
+                      frame-base-slot-count
+                      current-depth)
+                    (if (>= target-param-count 20)
+                      (emit-call-bundle-x86-twenty-to-sixty target-param-count call-rel frame-base-slot-count)
+                      (if (>= target-param-count 10)
+                        (emit-call-bundle-x86-ten-to-nineteen target-param-count call-rel frame-base-slot-count)
+                        (vector-new 0))))))))))))
 
 (defn codegen-x86-opcode-call-bundle [operand current-offset function-starts context]
   (let [function-metas (vector-get context 0)
@@ -10510,72 +10578,7 @@
 		            (root_push call-rel-bytes)
 		          (let [result (if (= target-param-count 1)
                      (emit-one-arg-call-x86-core-with-call-bytes call-rel-bytes)
-                     (if (= target-param-count 0)
-                       (if (= current-depth 0)
-                         (concat-byte-vectors-rooted call-rel-bytes (vector-new 0))
-                         (if (= current-depth 1)
-                           (concat-byte-vectors-rooted
-                             (concat-byte-vectors-rooted
-                               (emit-push-rax)
-                               call-rel-bytes)
-                             (emit-pop-rcx))
-                           (concat-byte-vectors
-                             (concat-byte-vectors
-                               (concat-byte-vectors
-                                 (shift-native-value-window-x86-loop frame-base-slot-count (- current-depth 3))
-                                 (emit-mov-local-from-rcx (native-value-window-spill-offset frame-base-slot-count 0)))
-                               (emit-push-rax))
-                             (concat-byte-vectors
-                               call-rel-bytes
-                               (emit-pop-rcx)))))
-                       (if (= target-param-count 2)
-                         (emit-two-arg-call-x86-with-call-bytes call-rel-bytes frame-base-slot-count current-depth)
-                         (if (= target-param-count 3)
-                           (emit-consume-three-produce-one-bundle-x86
-                             (emit-three-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)
-                             frame-base-slot-count
-                             current-depth)
-                           (if (= target-param-count 4)
-                             (emit-consume-four-produce-one-bundle-x86
-                               (let [call-rel-ref (ref-new call-rel)]
-                                 (do
-                                  (root_push call-rel-ref)
-                                  (let [result (emit-four-arg-call-x86-core-with-rel-ref call-rel-ref frame-base-slot-count)]
-                                   (do
-                                     (root_pop)
-                                     result))))
-                               frame-base-slot-count
-                               current-depth)
-                             (if (= target-param-count 5)
-                               (emit-consume-five-produce-one-bundle-x86
-                                 (emit-five-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)
-                                 frame-base-slot-count
-                                 current-depth)
-                               (if (= target-param-count 6)
-                                 (emit-consume-six-produce-one-bundle-x86
-                                   (emit-six-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)
-                                   frame-base-slot-count
-                                   current-depth)
-                                 (if (= target-param-count 7)
-                                   (emit-consume-seven-produce-one-bundle-x86
-                                     (emit-seven-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)
-                                     frame-base-slot-count
-                                     current-depth)
-                                   (if (= target-param-count 8)
-                                     (emit-consume-eight-produce-one-bundle-x86
-                                       (emit-eight-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)
-                                       frame-base-slot-count
-                                       current-depth)
-                                     (if (= target-param-count 9)
-                                       (emit-consume-nine-produce-one-bundle-x86
-                                         (emit-nine-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)
-                                         frame-base-slot-count
-                                         current-depth)
-                                         (if (>= target-param-count 20)
-                                           (emit-call-bundle-x86-twenty-to-sixty target-param-count call-rel frame-base-slot-count)
-                                           (if (>= target-param-count 10)
-                                             (emit-call-bundle-x86-ten-to-nineteen target-param-count call-rel frame-base-slot-count)
-                                             (vector-new 0)))))))))))))]
+                     (codegen-x86-non-one-arg-call-bundle target-param-count call-rel call-rel-bytes frame-base-slot-count current-depth))]
 			            (do
 		                  (root_push result)
 			                  (ref-set operand-ref result)
