@@ -208,6 +208,46 @@ fn stabilize_linux_x86_packed_code_byte_printer(source: String) -> String {
     format!("{}{}{}", &source[..start], replacement, &source[end..])
 }
 
+fn stabilize_linux_x86_padding_loop(source: String) -> String {
+    let Some(start) = source.find("\n(defn pad-byte-vector-to-length-range [bytes start end]")
+    else {
+        return source;
+    };
+    let Some(relative_end) = source[start..]
+        .find("\n(defn shift-x86-function-starts-loop [starts base idx len result result-slot]")
+    else {
+        return source;
+    };
+    let end = start + relative_end;
+    let replacement = r#"
+(defn continue-pad-byte-vector-to-length-step-times [bytes remaining]
+  (if (= remaining 0)
+    bytes
+    (continue-pad-byte-vector-to-length-step-times
+      (vector-push bytes 144)
+      (- remaining 1))))
+
+(defn pad-byte-vector-to-length-step-512 [bytes remaining]
+  (continue-pad-byte-vector-to-length-step-times bytes remaining))
+
+(defn pad-byte-vector-to-length-loop [bytes remaining]
+  (if (= remaining 0)
+    bytes
+    (if (< remaining 512)
+      (continue-pad-byte-vector-to-length-step-times bytes remaining)
+      (pad-byte-vector-to-length-loop
+        (pad-byte-vector-to-length-step-512 bytes 512)
+        (- remaining 512)))))
+
+(defn pad-byte-vector-to-length [bytes target-len]
+  (let [remaining (- target-len (vector-length bytes))]
+    (if (<= remaining 0)
+      bytes
+      (pad-byte-vector-to-length-loop bytes remaining))))
+"#;
+    format!("{}{}{}", &source[..start], replacement, &source[end..])
+}
+
 fn stabilize_linux_x86_append_vector_loop(source: String) -> String {
     source.replace(
         r#"(defn append-vector-loop [dst src idx len]
@@ -492,6 +532,7 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
     let source = strip_linux_x86_unused_byte_chunk_text_helpers(source);
     let source = strip_linux_x86_unused_regular_code_byte_printer(source);
     let source = stabilize_linux_x86_packed_code_byte_printer(source);
+    let source = stabilize_linux_x86_padding_loop(source);
     let source = stabilize_linux_x86_append_vector_loop(source);
     let payload_bindings = r#"source-path (command-line-arg 1)
 	         source-path-root (root_push source-path)
@@ -847,11 +888,13 @@ fn test_linux_x86_representative_seed_uses_layout_emit_for_segmented_native_code
         "Linux x86 segmented seed は native stage の実 segment 長が declared size より短い場合に layout を保つ padding を持つべき"
     );
     assert!(
-        source.contains("(defn pad-byte-vector-to-length-range")
-            && source.contains("left (pad-byte-vector-to-length-range bytes start mid)")
-            && source.contains("right (pad-byte-vector-to-length-range left mid end)")
-            && !source.contains("(pad-byte-vector-to-length next target-len)"),
-        "Linux x86 segmented seed の padding は巨大 function slot で stack overflow しないよう range split で進めるべき"
+        source.contains("(defn continue-pad-byte-vector-to-length-step-times [bytes remaining]")
+            && source.contains("(defn pad-byte-vector-to-length-step-512 [bytes remaining]")
+            && source.contains("(defn pad-byte-vector-to-length-loop [bytes remaining]")
+            && !source.contains("(defn pad-byte-vector-to-length-range")
+            && !source.contains("left (pad-byte-vector-to-length-range bytes start mid)")
+            && !source.contains("right (pad-byte-vector-to-length-range left mid end)"),
+        "Linux x86 segmented seed の padding は巨大 function slot で stage3 codegen を膨張させない bounded loop で進めるべき"
     );
     assert!(
         source.contains("padded-segment (pad-byte-vector-to-length segment function-size)"),
@@ -1055,6 +1098,22 @@ fn test_linux_x86_representative_seed_stabilizes_packed_byte_printer_loop() {
             "Linux x86 seed は active packed printer の {helper} を含めず stage2 native compiler の巨大 IR 差分を避けるべき"
         );
     }
+}
+
+#[test]
+fn test_linux_x86_representative_seed_stabilizes_padding_loop() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+
+    assert!(
+        source.contains("(defn continue-pad-byte-vector-to-length-step-times [bytes remaining]")
+            && source.contains("(defn pad-byte-vector-to-length-step-512 [bytes remaining]")
+            && source.contains("(defn pad-byte-vector-to-length-loop [bytes remaining]")
+            && source.contains("(pad-byte-vector-to-length-loop bytes remaining)")
+            && !source.contains("(defn pad-byte-vector-to-length-range [bytes start end]")
+            && !source.contains("left (pad-byte-vector-to-length-range bytes start mid)")
+            && !source.contains("right (pad-byte-vector-to-length-range left mid end)"),
+        "Linux x86 seed の padding は stage3 で巨大化しやすい二分再帰ではなく bounded loop に寄せるべき"
+    );
 }
 
 #[test]
