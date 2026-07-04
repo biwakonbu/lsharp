@@ -142,10 +142,25 @@ fn strip_linux_x86_unused_base64_helpers(source: String) -> String {
 }
 
 fn strip_linux_x86_unused_byte_chunk_text_helpers(source: String) -> String {
-    let Some(start) = source.find("\n(defn print-byte-chunks-step [bytes idx len]") else {
+    let Some(start) =
+        source.find("\n(defn build-byte-chunk-text-lines [bytes start line-count end]")
+    else {
         return source;
     };
-    let Some(relative_end) = source[start..].find("\n(defn build-byte-chunks-step [bytes idx len]")
+    let Some(relative_end) = source[start..].find("\n(defn make-print-step-state [done next-idx]")
+    else {
+        return source;
+    };
+    let end = start + relative_end;
+    format!("{}{}", &source[..start], &source[end..])
+}
+
+fn strip_linux_x86_unused_regular_code_byte_printer(source: String) -> String {
+    let Some(start) = source.find("\n(defn print-code-bytes-step [bytes idx count]") else {
+        return source;
+    };
+    let Some(relative_end) =
+        source[start..].find("\n(defn print-packed-code-bytes-step [bytes idx count]")
     else {
         return source;
     };
@@ -435,6 +450,7 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
     let source = strip_linux_x86_unused_base64_helpers(source);
     let source = root_linux_x86_seed_function_meta_constructor(source);
     let source = strip_linux_x86_unused_byte_chunk_text_helpers(source);
+    let source = strip_linux_x86_unused_regular_code_byte_printer(source);
     let source = stabilize_linux_x86_append_vector_loop(source);
     let payload_bindings = r#"source-path (command-line-arg 1)
 	         source-path-root (root_push source-path)
@@ -919,6 +935,9 @@ fn test_linux_x86_representative_seed_strips_unused_byte_chunk_text_helpers() {
         "Linux x86 seed の active transport は packed code byte printer を使うべき"
     );
     for helper in [
+        "(defn build-byte-chunk-text-lines [bytes start line-count end]",
+        "(defn build-byte-chunk-text [bytes start end]",
+        "(defn write-byte-chunks [bytes idx len chunk-idx]",
         "(defn print-byte-chunks-step [bytes idx len]",
         "(defn continue-print-byte-chunks-step [bytes len state]",
         "(defn continue-print-byte-chunks-step-times [bytes len remaining state]",
@@ -940,6 +959,27 @@ fn test_linux_x86_representative_seed_strips_unused_byte_chunk_text_helpers() {
         "(defn continue-print-byte-chunks-small-step-64 [bytes len state]",
         "(defn print-byte-chunks-small-step-512 [bytes idx len]",
         "(defn print-byte-chunks-small [bytes idx len]",
+        "(defn build-byte-chunks-step [bytes idx len]",
+        "(defn continue-build-byte-chunks-step [bytes len state]",
+        "(defn continue-build-byte-chunks-step-times [bytes len remaining state]",
+        "(defn build-byte-chunks-step-8 [bytes idx len]",
+        "(defn continue-build-byte-chunks-step-8 [bytes len state]",
+        "(defn build-byte-chunks-step-64 [bytes idx len]",
+        "(defn continue-build-byte-chunks-step-64 [bytes len state]",
+        "(defn build-byte-chunks-step-512 [bytes idx len]",
+        "(defn build-byte-chunks [bytes idx len]",
+        "(defn print-code-bytes-step [bytes idx count]",
+        "(defn continue-print-code-bytes-step [bytes count state]",
+        "(defn print-code-bytes-step-8 [bytes idx count]",
+        "(defn continue-print-code-bytes-step-8 [bytes count state]",
+        "(defn print-code-bytes-step-64 [bytes idx count]",
+        "(defn continue-print-code-bytes-step-64 [bytes count state]",
+        "(defn print-code-bytes-step-512 [bytes idx count]",
+        "(defn continue-print-code-bytes-step-512 [bytes count state]",
+        "(defn print-code-bytes-step-4096 [bytes idx count]",
+        "(defn continue-print-code-bytes-step-4096 [bytes count state]",
+        "(defn print-code-bytes-step-32768 [bytes idx count]",
+        "(defn print-code-bytes-loop [bytes idx count]",
     ] {
         assert!(
             !source.contains(helper),
