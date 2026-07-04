@@ -10547,7 +10547,7 @@
                       (emit-call-bundle-x86-twenty-to-sixty target-param-count call-rel frame-base-slot-count)
                       (if (>= target-param-count 10)
                         (emit-call-bundle-x86-ten-to-nineteen target-param-count call-rel frame-base-slot-count)
-                        (vector-new 0))))))))))))
+                        (vector-new 0)))))))))))))
 
 (defn codegen-x86-opcode-call-bundle [operand current-offset function-starts context]
   (let [function-metas (vector-get context 0)
