@@ -10508,26 +10508,26 @@
 		        (let [call-rel-bytes (emit-call-rel32 call-rel)]
 		          (do
 		            (root_push call-rel-bytes)
-		          (let [result (if (= target-param-count 0)
-                     (if (= current-depth 0)
-                       (concat-byte-vectors-rooted call-rel-bytes (vector-new 0))
-                       (if (= current-depth 1)
-                         (concat-byte-vectors-rooted
+		          (let [result (if (= target-param-count 1)
+                     (emit-one-arg-call-x86-core-with-call-bytes call-rel-bytes)
+                     (if (= target-param-count 0)
+                       (if (= current-depth 0)
+                         (concat-byte-vectors-rooted call-rel-bytes (vector-new 0))
+                         (if (= current-depth 1)
                            (concat-byte-vectors-rooted
-                             (emit-push-rax)
-                             call-rel-bytes)
-                           (emit-pop-rcx))
-                         (concat-byte-vectors
+                             (concat-byte-vectors-rooted
+                               (emit-push-rax)
+                               call-rel-bytes)
+                             (emit-pop-rcx))
                            (concat-byte-vectors
                              (concat-byte-vectors
-                               (shift-native-value-window-x86-loop frame-base-slot-count (- current-depth 3))
-                               (emit-mov-local-from-rcx (native-value-window-spill-offset frame-base-slot-count 0)))
-                             (emit-push-rax))
-                           (concat-byte-vectors
-                             call-rel-bytes
-                             (emit-pop-rcx)))))
-                     (if (= target-param-count 1)
-                       (emit-one-arg-call-x86-core-with-call-bytes call-rel-bytes)
+                               (concat-byte-vectors
+                                 (shift-native-value-window-x86-loop frame-base-slot-count (- current-depth 3))
+                                 (emit-mov-local-from-rcx (native-value-window-spill-offset frame-base-slot-count 0)))
+                               (emit-push-rax))
+                             (concat-byte-vectors
+                               call-rel-bytes
+                               (emit-pop-rcx)))))
                        (if (= target-param-count 2)
                          (emit-two-arg-call-x86-with-call-bytes call-rel-bytes frame-base-slot-count current-depth)
                          (if (= target-param-count 3)

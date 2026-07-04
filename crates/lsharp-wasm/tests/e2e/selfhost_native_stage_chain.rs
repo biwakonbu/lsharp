@@ -6167,6 +6167,10 @@ fn test_linux_x86_metadata_can_trace_function_emit_progress_rows() {
         "(emit-one-arg-call-x86-core-with-call-bytes call-rel-bytes)",
         "(print 9000000354)",
         "(print 9000000355)",
+        "(defn diagnose-x86-opcode40-call-bundle-return-boundary",
+        "(print 9000000357)",
+        "(print 9000000358)",
+        "(print 9000000359)",
         "(print 9000000356)",
         "(print 9000000350)",
         "(append-native-bytes-loop probe-ref native 0 native-len)",
@@ -8475,7 +8479,7 @@ fn test_native_codegen_x86_opcode_call_bundle_roots_result_before_ref_set() {
         .expect("NativeCodegen.ls に codegen-x86-opcode-call-bundle が存在すること");
 
     let result_bind_pos = body
-        .find("(let [result (if (= target-param-count 0)")
+        .find("(let [result (if (= target-param-count 1)")
         .expect("x86 opcode call bundle は result を let に束縛すること");
     let result_root_pos = body
         .find("(root_push result)")
@@ -8498,6 +8502,34 @@ fn test_native_codegen_x86_opcode_call_bundle_roots_result_before_ref_set() {
 }
 
 #[test]
+fn test_native_codegen_x86_opcode_call_bundle_checks_one_arg_before_large_param_chain() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let body = source
+        .split("(defn codegen-x86-opcode-call-bundle")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("NativeCodegen.ls に codegen-x86-opcode-call-bundle が存在すること");
+
+    let one_arg_pos = body
+        .find("(let [result (if (= target-param-count 1)")
+        .expect("x86 opcode call bundle は one-arg branch を result chain の先頭で判定すること");
+    let zero_arg_pos = body
+        .find("(if (= target-param-count 0)")
+        .expect("x86 opcode call bundle は zero-arg branch を保持すること");
+    let two_arg_pos = body
+        .find("(if (= target-param-count 2)")
+        .expect("x86 opcode call bundle は two-arg branch を保持すること");
+
+    assert!(
+        one_arg_pos < zero_arg_pos
+            && zero_arg_pos < two_arg_pos
+            && body[one_arg_pos..zero_arg_pos]
+                .contains("(emit-one-arg-call-x86-core-with-call-bytes call-rel-bytes)"),
+        "v101 metadata では minimal one-arg return-boundary helper が 10 bytes を返す一方、巨大な param-count chain 内の production helper だけ 0 bytes を返したため、one-arg branch は巨大 chain の前に切り出すべき"
+    );
+}
+
+#[test]
 fn test_native_codegen_x86_opcode_call_bundle_reads_result_from_operand_ref_after_unwind() {
     let source = selfhost_module("NativeCodegen.ls");
     let body = source
@@ -8513,7 +8545,7 @@ fn test_native_codegen_x86_opcode_call_bundle_reads_result_from_operand_ref_afte
         .find("(root_push call-rel-bytes)")
         .expect("x86 opcode call bundle は call-rel-bytes を root すること");
     let result_bind_pos = body
-        .find("(let [result (if (= target-param-count 0)")
+        .find("(let [result (if (= target-param-count 1)")
         .expect("x86 opcode call bundle は result を let に束縛すること");
     let result_root_pos = body
         .find("(root_push result)")
@@ -8758,7 +8790,7 @@ fn test_native_codegen_x86_call_bundle_keeps_result_rooted_while_unwinding_roots
         .expect("NativeCodegen.ls に x86 opcode 40 call helper が存在すること");
 
     let result_bind_pos = opcode_call_branch
-        .find("result (if (= target-param-count 0)")
+        .find("result (if (= target-param-count 1)")
         .expect("x86 call helper は call byte result を local に置くこと");
     let result_store_pos = opcode_call_branch
         .find("(ref-set operand-ref result)")
@@ -13769,6 +13801,53 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
 	          (root_pop))))
     0))
 
+(defn diagnose-x86-opcode40-call-bundle-return-boundary [operand current-offset function-starts context]
+  (let [function-metas (vector-get context 0)
+        import-count (vector-get context 1)
+        import-stub-offset (vector-get context 2)
+        function-start-base (vector-get context 3)
+        frame-base-slot-count (vector-get context 4)
+        current-depth (vector-get context 5)]
+    (do
+      (root_push function-metas)
+      (let [operand-ref (ref-new operand)]
+        (do
+          (root_push operand-ref)
+          (let [current-offset-ref (ref-new current-offset)]
+            (do
+              (root_push current-offset-ref)
+              (let [function-starts-ref (ref-new function-starts)]
+                (do
+                  (root_push function-starts-ref)
+                  (let [target-meta (vector-get function-metas (ref-get operand-ref))
+                        target-param-count (native-function-param-count target-meta)
+                        call-next-offset (native-call-rel-next-offset-x86 target-param-count current-depth)
+                        target-offset (if (< (ref-get operand-ref) import-count)
+                                        (x86-import-ret-stub-offset import-stub-offset import-count (ref-get operand-ref))
+                                        (- (vector-get (ref-get function-starts-ref) (- (ref-get operand-ref) import-count)) function-start-base))
+                        call-rel (- target-offset (+ (ref-get current-offset-ref) call-next-offset))]
+                    (let [call-rel-bytes (emit-call-rel32 call-rel)]
+                      (do
+                        (root_push call-rel-bytes)
+                        (let [result (if (= target-param-count 1)
+                                       (emit-one-arg-call-x86-core-with-call-bytes call-rel-bytes)
+                                       (vector-new 0))]
+                          (do
+                            (root_push result)
+                            (print 9000000357)
+                            (print target-param-count)
+                            (print (vector-length result))
+                            (ref-set operand-ref result)
+                            (print 9000000358)
+                            (print (vector-length (ref-get operand-ref)))
+                            (root_pop)
+                            (root_pop)
+                            (root_pop)
+                            (root_pop)
+                            (root_pop)
+                            (root_pop)
+                            (ref-get operand-ref)))))))))))))))
+
 (defn print-x86-opcode40-call-append-progress-diagnostic [ctx idx]
   (let [ir-func (vector-get ctx 0)
         offsets (vector-get ctx 3)
@@ -13863,6 +13942,12 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
             (print (vector-length direct-context))
             (print (vector-get direct-context 1))
             (print (vector-get direct-context 5))
+            (let [diagnostic-native (diagnose-x86-opcode40-call-bundle-return-boundary operand offset starts direct-context)]
+              (do
+                (root_push diagnostic-native)
+                (print 9000000359)
+                (print (vector-length diagnostic-native))
+                (root_pop)))
             (let [native (codegen-x86-opcode-call-bundle operand offset starts direct-context)]
               (do
                 (root_push native)
