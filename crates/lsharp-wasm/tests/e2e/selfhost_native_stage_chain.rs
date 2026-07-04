@@ -141,6 +141,19 @@ fn strip_linux_x86_unused_base64_helpers(source: String) -> String {
     format!("{}{}", &source[..start], &source[end..])
 }
 
+fn strip_linux_x86_unused_print_byte_chunk_unroll_helpers(source: String) -> String {
+    let Some(start) = source.find("\n(defn print-byte-chunks-step-8 [bytes idx len]") else {
+        return source;
+    };
+    let Some(relative_end) = source[start..]
+        .find("\n(defn continue-print-byte-chunks-step-times [bytes len remaining state]")
+    else {
+        return source;
+    };
+    let end = start + relative_end;
+    format!("{}{}", &source[..start], &source[end..])
+}
+
 fn root_linux_x86_seed_function_meta_constructor(source: String) -> String {
     source.replace(
         r#"(defn make-function-meta [param-count local-count ir]
@@ -390,6 +403,7 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
     );
     let source = strip_linux_x86_unused_base64_helpers(source);
     let source = root_linux_x86_seed_function_meta_constructor(source);
+    let source = strip_linux_x86_unused_print_byte_chunk_unroll_helpers(source);
     let payload_bindings = r#"source-path (command-line-arg 1)
 	         source-path-root (root_push source-path)
 	         normal-transport-diagnostic-mode (if (> (string-length (command-line-arg 11)) 0) 1 0)
@@ -528,36 +542,6 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                                                0)"#;
     let source = source.replace(&format!("payload {payload_expr}"), payload_bindings);
     let source = source.replace(
-        "(defn append-vector-loop [dst src idx len]",
-        r#"(defn append-one-import-placeholder [result]
-  (do
-    (root_push result)
-    (let [placeholder (make-function-meta 0 0 (vector-new 0))]
-      (do
-        (root_push placeholder)
-        (let [next-result (vector-push result placeholder)]
-          (do
-            (root_pop)
-            (root_pop)
-            next-result))))))
-
-(defn make-x86-import-placeholders-10 []
-  (let [p0 (vector-new 32)
-        p1 (append-one-import-placeholder p0)
-        p2 (append-one-import-placeholder p1)
-        p3 (append-one-import-placeholder p2)
-        p4 (append-one-import-placeholder p3)
-        p5 (append-one-import-placeholder p4)
-        p6 (append-one-import-placeholder p5)
-        p7 (append-one-import-placeholder p6)
-        p8 (append-one-import-placeholder p7)
-        p9 (append-one-import-placeholder p8)
-        p10 (append-one-import-placeholder p9)]
-    p10))
-
-(defn append-vector-loop [dst src idx len]"#,
-    );
-    let source = source.replace(
         "      (let [functions (vector-get payload 0)\n            data (vector-get payload 1)]",
         "      (let [payload-observed payload]",
     );
@@ -568,10 +552,10 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
     source.replace(
         "native-callables (normalize-selfhost-native-function-metas-for-target callables target)",
         "native-callables callables",
-    )
+	    )
 	    .replace(
 	        "callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))",
-	        "callables (if (= raw-payload-boundary-mode 1) (vector-new 0) (append-vector-loop (make-x86-import-placeholders-10) functions 0 (vector-length functions)))",
+	        "callables (if (= raw-payload-boundary-mode 1) (vector-new 0) (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions)))",
 	    )
     .replace(
         "(defn x86-function-slot-size [func-meta functions]\n  (+ (native-function-size-x86 func-meta functions) 2048))",
@@ -859,9 +843,9 @@ fn test_linux_x86_representative_seed_uses_layout_emit_for_segmented_native_code
         !source.contains("defn decls-module-hash-or-minus-one"),
         !source.contains("defn find-module-pair-index"),
         !source.contains("pre-callable-progress"),
-        source.contains("callables (if (= raw-payload-boundary-mode 1) (vector-new 0) (append-vector-loop (make-x86-import-placeholders-10) functions 0 (vector-length functions)))"),
-        source.contains("(defn make-x86-import-placeholders-10"),
-        !source.contains("callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))"),
+        source.contains("callables (if (= raw-payload-boundary-mode 1) (vector-new 0) (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions)))"),
+        !source.contains("(defn make-x86-import-placeholders-10"),
+        !source.contains("(defn append-one-import-placeholder"),
         source.contains("main-func-idx bounded-main-func-idx"),
         source.contains("entrypoint-func-idx bounded-main-func-idx"),
         !source.contains("main-func-idx entrypoint-func-idx"),
@@ -871,6 +855,34 @@ fn test_linux_x86_representative_seed_uses_layout_emit_for_segmented_native_code
         entrypoint_checks.iter().all(|check| *check),
         "Linux x86 segmented seed は stage2/stage3 artifact の entrypoint を最後の callable ではなく対象 source の main defn に固定するべき: checks={entrypoint_checks:?}"
     );
+}
+
+#[test]
+fn test_linux_x86_representative_seed_strips_unused_print_byte_chunk_unroll_helpers() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+
+    assert!(
+        source.contains("(defn continue-print-byte-chunks-step-times")
+            && source.contains("(defn print-byte-chunks-step-32768")
+            && source
+                .contains("result (continue-print-byte-chunks-step-times bytes len 255 state)"),
+        "Linux x86 seed は byte chunk 出力の bounded loop を times continuation に寄せるべき"
+    );
+    for helper in [
+        "(defn print-byte-chunks-step-8 [bytes idx len]",
+        "(defn continue-print-byte-chunks-step-8 [bytes len state]",
+        "(defn print-byte-chunks-step-64 [bytes idx len]",
+        "(defn continue-print-byte-chunks-step-64 [bytes len state]",
+        "(defn print-byte-chunks-step-512 [bytes idx len]",
+        "(defn continue-print-byte-chunks-step-512 [bytes len state]",
+        "(defn print-byte-chunks-step-4096 [bytes idx len]",
+        "(defn continue-print-byte-chunks-step-4096 [bytes len state]",
+    ] {
+        assert!(
+            !source.contains(helper),
+            "Linux x86 seed は未使用の {helper} を含めず stage2 native compiler の不要な IR 生成を避けるべき"
+        );
+    }
 }
 
 #[test]
