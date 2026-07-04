@@ -168,6 +168,46 @@ fn strip_linux_x86_unused_regular_code_byte_printer(source: String) -> String {
     format!("{}{}", &source[..start], &source[end..])
 }
 
+fn stabilize_linux_x86_packed_code_byte_printer(source: String) -> String {
+    let Some(start) =
+        source.find("\n(defn continue-print-packed-code-bytes-step [bytes count state]")
+    else {
+        return source;
+    };
+    let Some(relative_end) =
+        source[start..].find("\n(defn print-packed-code-segment-with-length [bytes segment-len]")
+    else {
+        return source;
+    };
+    let end = start + relative_end;
+    let replacement = r#"
+(defn continue-print-packed-code-bytes-step-times [bytes count remaining state]
+  (if (= remaining 0)
+    state
+    (if (= (vector-get state 0) 1)
+      state
+      (continue-print-packed-code-bytes-step-times
+        bytes
+        count
+        (- remaining 1)
+        (print-packed-code-bytes-step bytes (vector-get state 1) count)))))
+
+(defn print-packed-code-bytes-step-512 [bytes idx count]
+  (continue-print-packed-code-bytes-step-times
+    bytes
+    count
+    512
+    (make-print-step-state 0 idx)))
+
+(defn print-packed-code-bytes-loop [bytes idx count]
+  (let [step (print-packed-code-bytes-step-512 bytes idx count)]
+    (if (= (vector-get step 0) 1)
+      0
+      (print-packed-code-bytes-loop bytes (vector-get step 1) count))))
+"#;
+    format!("{}{}{}", &source[..start], replacement, &source[end..])
+}
+
 fn stabilize_linux_x86_append_vector_loop(source: String) -> String {
     source.replace(
         r#"(defn append-vector-loop [dst src idx len]
@@ -451,6 +491,7 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
     let source = root_linux_x86_seed_function_meta_constructor(source);
     let source = strip_linux_x86_unused_byte_chunk_text_helpers(source);
     let source = strip_linux_x86_unused_regular_code_byte_printer(source);
+    let source = stabilize_linux_x86_packed_code_byte_printer(source);
     let source = stabilize_linux_x86_append_vector_loop(source);
     let payload_bindings = r#"source-path (command-line-arg 1)
 	         source-path-root (root_push source-path)
@@ -984,6 +1025,34 @@ fn test_linux_x86_representative_seed_strips_unused_byte_chunk_text_helpers() {
         assert!(
             !source.contains(helper),
             "Linux x86 seed は未使用の {helper} を含めず stage2 native compiler の不要な IR 生成を避けるべき"
+        );
+    }
+}
+
+#[test]
+fn test_linux_x86_representative_seed_stabilizes_packed_byte_printer_loop() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+
+    assert!(
+        source.contains(
+            "(defn continue-print-packed-code-bytes-step-times [bytes count remaining state]"
+        ) && source.contains("(defn print-packed-code-bytes-step-512 [bytes idx count]")
+            && source.contains("step (print-packed-code-bytes-step-512 bytes idx count)"),
+        "Linux x86 seed の active packed printer は巨大 unroll ではなく bounded times continuation に寄せるべき"
+    );
+    for helper in [
+        "(defn continue-print-packed-code-bytes-step [bytes count state]",
+        "(defn print-packed-code-bytes-step-8 [bytes idx count]",
+        "(defn continue-print-packed-code-bytes-step-8 [bytes count state]",
+        "(defn print-packed-code-bytes-step-64 [bytes idx count]",
+        "(defn continue-print-packed-code-bytes-step-64 [bytes count state]",
+        "(defn print-packed-code-bytes-step-4096 [bytes idx count]",
+        "(defn continue-print-packed-code-bytes-step-4096 [bytes count state]",
+        "(defn print-packed-code-bytes-step-32768 [bytes idx count]",
+    ] {
+        assert!(
+            !source.contains(helper),
+            "Linux x86 seed は active packed printer の {helper} を含めず stage2 native compiler の巨大 IR 差分を避けるべき"
         );
     }
 }
