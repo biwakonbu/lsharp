@@ -219,33 +219,39 @@ fn stabilize_linux_x86_padding_loop(source: String) -> String {
         return source;
     };
     let end = start + relative_end;
-    let replacement = r#"
-(defn continue-pad-byte-vector-to-length-step-times [bytes remaining]
-  (if (= remaining 0)
-    bytes
-    (continue-pad-byte-vector-to-length-step-times
-      (vector-push bytes 144)
-      (- remaining 1))))
-
-(defn pad-byte-vector-to-length-step-512 [bytes remaining]
-  (continue-pad-byte-vector-to-length-step-times bytes remaining))
-
-(defn pad-byte-vector-to-length-loop [bytes remaining]
-  (if (= remaining 0)
-    bytes
-    (if (< remaining 512)
-      (continue-pad-byte-vector-to-length-step-times bytes remaining)
-      (pad-byte-vector-to-length-loop
-        (pad-byte-vector-to-length-step-512 bytes 512)
-        (- remaining 512)))))
-
-(defn pad-byte-vector-to-length [bytes target-len]
-  (let [remaining (- target-len (vector-length bytes))]
-    (if (<= remaining 0)
-      bytes
-      (pad-byte-vector-to-length-loop bytes remaining))))
-"#;
-    format!("{}{}{}", &source[..start], replacement, &source[end..])
+    let source = format!("{}{}", &source[..start], &source[end..]);
+    source.replace(
+        r#"(let [segment (ref-get result)]
+                    (do
+                      (root_push segment)
+                      (let [padded-segment (pad-byte-vector-to-length segment function-size)]
+                        (do
+                          (root_push padded-segment)
+                          (print-packed-code-segment-with-length padded-segment function-size)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (let [final (print-x86-function-code-segments-loop functions starts import-count import-stub-offset (+ idx 1) len)]
+                            (do
+                              (root_pop)
+                              (root_pop)
+                              final)))))))))))))))"#,
+        r#"(let [segment (ref-get result)]
+                    (do
+                      (root_push segment)
+                      (print-packed-code-segment-with-length segment function-size)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (let [final (print-x86-function-code-segments-loop functions starts import-count import-stub-offset (+ idx 1) len)]
+                        (do
+                          (root_pop)
+                          (root_pop)
+                          final)))))))))))))"#,
+    )
 }
 
 fn stabilize_linux_x86_append_vector_loop(source: String) -> String {
@@ -884,21 +890,22 @@ fn test_linux_x86_representative_seed_uses_layout_emit_for_segmented_native_code
         "Linux x86 segmented seed は native stage2 で壊れる target-aware wrapper や、x86 param spill と矛盾する aarch64 用 local slot 正規化を直接使わない"
     );
     assert!(
-        source.contains("pad-byte-vector-to-length"),
-        "Linux x86 segmented seed は native stage の実 segment 長が declared size より短い場合に layout を保つ padding を持つべき"
+        source.contains("print-packed-code-segment-with-length"),
+        "Linux x86 segmented seed は native stage の実 segment 長が declared size より短い場合に declared length transport を持つべき"
     );
     assert!(
-        source.contains("(defn continue-pad-byte-vector-to-length-step-times [bytes remaining]")
-            && source.contains("(defn pad-byte-vector-to-length-step-512 [bytes remaining]")
-            && source.contains("(defn pad-byte-vector-to-length-loop [bytes remaining]")
+        source.contains("(print-packed-code-segment-with-length segment function-size)")
+            && !source.contains("padded-segment")
+            && !source.contains("pad-byte-vector-to-length")
             && !source.contains("(defn pad-byte-vector-to-length-range")
+            && !source.contains("(defn continue-pad-byte-vector-to-length-step-times")
             && !source.contains("left (pad-byte-vector-to-length-range bytes start mid)")
             && !source.contains("right (pad-byte-vector-to-length-range left mid end)"),
-        "Linux x86 segmented seed の padding は巨大 function slot で stage3 codegen を膨張させない bounded loop で進めるべき"
+        "Linux x86 segmented seed は stage3 codegen を膨張させる padding vector materializer を持たず、declared length transport に任せるべき"
     );
     assert!(
-        source.contains("padded-segment (pad-byte-vector-to-length segment function-size)"),
-        "Linux x86 segmented seed は function start table と実 byte stream を一致させるため各 function segment を declared size まで padding するべき"
+        source.contains("(print-packed-code-segment-with-length segment function-size)"),
+        "Linux x86 segmented seed は function start table と実 byte stream を一致させるため各 function segment を declared size で出力するべき"
     );
     let segment_loop_body = source
         .split("(defn print-x86-function-code-segments-loop")
@@ -921,8 +928,7 @@ fn test_linux_x86_representative_seed_uses_layout_emit_for_segmented_native_code
     );
     assert!(
         source.contains("(defn print-packed-code-segment-with-length [bytes segment-len]")
-            && source
-                .contains("(print-packed-code-segment-with-length padded-segment function-size)"),
+            && source.contains("(print-packed-code-segment-with-length segment function-size)"),
         "Linux x86 segmented seed は native vector length drift を避けるため function segment を declared size で出力するべき"
     );
     assert!(
@@ -1013,8 +1019,7 @@ fn test_linux_x86_representative_seed_strips_unused_byte_chunk_text_helpers() {
 
     assert!(
         source.contains("(defn print-packed-code-segment-with-length [bytes segment-len]")
-            && source
-                .contains("(print-packed-code-segment-with-length padded-segment function-size)")
+            && source.contains("(print-packed-code-segment-with-length segment function-size)")
             && source.contains("(print-packed-code-bytes-loop data 0 data-len)"),
         "Linux x86 seed の active transport は packed code byte printer を使うべき"
     );
@@ -1101,18 +1106,20 @@ fn test_linux_x86_representative_seed_stabilizes_packed_byte_printer_loop() {
 }
 
 #[test]
-fn test_linux_x86_representative_seed_stabilizes_padding_loop() {
+fn test_linux_x86_representative_seed_omits_padding_materializer() {
     let source = linux_x86_representative_actual_stage23_seed_source();
 
     assert!(
-        source.contains("(defn continue-pad-byte-vector-to-length-step-times [bytes remaining]")
-            && source.contains("(defn pad-byte-vector-to-length-step-512 [bytes remaining]")
-            && source.contains("(defn pad-byte-vector-to-length-loop [bytes remaining]")
-            && source.contains("(pad-byte-vector-to-length-loop bytes remaining)")
+        source.contains("(print-packed-code-segment-with-length segment function-size)")
+            && !source.contains("padded-segment")
+            && !source.contains("pad-byte-vector-to-length")
+            && !source.contains("(defn continue-pad-byte-vector-to-length-step-times")
+            && !source.contains("(defn pad-byte-vector-to-length-step-512")
+            && !source.contains("(defn pad-byte-vector-to-length-loop")
             && !source.contains("(defn pad-byte-vector-to-length-range [bytes start end]")
             && !source.contains("left (pad-byte-vector-to-length-range bytes start mid)")
             && !source.contains("right (pad-byte-vector-to-length-range left mid end)"),
-        "Linux x86 seed の padding は stage3 で巨大化しやすい二分再帰ではなく bounded loop に寄せるべき"
+        "Linux x86 seed は stage3 で巨大化しやすい padding materializer を持たず declared length transport だけを使うべき"
     );
 }
 
@@ -1684,7 +1691,7 @@ fn test_linux_x86_representative_seed_releases_function_segment_before_next_segm
         .and_then(|tail| tail.split("(defn print-x86-function-ir-prefix-loop").next())
         .expect("Linux x86 segmented seed に print-x86-function-code-segments-loop が存在すること");
     let print_pos = body
-        .find("(print-packed-code-segment-with-length padded-segment function-size)")
+        .find("(print-packed-code-segment-with-length segment function-size)")
         .expect("function segment を packed segment として出力すること");
     let recur_pos = body[print_pos..]
         .find("(print-x86-function-code-segments-loop functions starts import-count import-stub-offset (+ idx 1) len)")
@@ -1702,7 +1709,7 @@ fn test_linux_x86_representative_seed_releases_function_segment_before_next_segm
 }
 
 #[test]
-fn test_linux_x86_representative_seed_roots_function_segment_before_padding() {
+fn test_linux_x86_representative_seed_roots_function_segment_before_declared_length_print() {
     let source = linux_x86_representative_actual_stage23_seed_source();
     let body = source
         .split("(defn print-x86-function-code-segments-loop")
@@ -1716,19 +1723,18 @@ fn test_linux_x86_representative_seed_roots_function_segment_before_padding() {
     let segment_root_pos = body[segment_pos..]
         .find("(root_push segment)")
         .map(|pos| segment_pos + pos)
-        .expect("function segment は padding 前に root すること");
-    let padding_pos = body[segment_pos..]
-        .find("padded-segment (pad-byte-vector-to-length segment function-size)")
+        .expect("function segment は declared length print 前に root すること");
+    let print_pos = body[segment_pos..]
+        .find("(print-packed-code-segment-with-length segment function-size)")
         .map(|pos| segment_pos + pos)
-        .expect("function segment は root 後に declared slot size まで padding すること");
+        .expect("function segment は root 後に declared slot size で出力すること");
 
     assert!(
         segment_pos < segment_root_pos
-            && segment_root_pos < padding_pos
-            && !body.contains(
-                "let [segment (ref-get result)\n                        padded-segment (pad-byte-vector-to-length segment function-size)"
-            ),
-        "Linux x86 segmented seed は pad-byte-vector-to-length 中の GC で segment を失わないよう、segment を root してから padding するべき"
+            && segment_root_pos < print_pos
+            && !body.contains("padded-segment")
+            && !body.contains("pad-byte-vector-to-length"),
+        "Linux x86 segmented seed は declared length print 中の GC で segment を失わないよう、segment を root してから出力するべき"
     );
 }
 
