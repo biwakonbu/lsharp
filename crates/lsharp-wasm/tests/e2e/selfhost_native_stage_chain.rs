@@ -7967,6 +7967,54 @@ fn test_selfhost_compile_if_with_source_roots_intermediate_instrs_between_branch
 }
 
 #[test]
+fn test_selfhost_normal_setup_diagnostic_dispatch_routes_if_explicitly() {
+    let source = selfhost_module("Compiler.ls");
+    let dispatch_body = source
+        .split("(defn compile-expr-with-source-dispatch-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn compile-defn-with-source").next())
+        .expect("Compiler.ls に normal setup diagnostic dispatch が存在すること");
+
+    let if_tag_pos = dispatch_body
+        .find("(if (= tag 6)")
+        .expect("normal setup diagnostic dispatch は if tag を明示分岐すること");
+    let if_call_pos = dispatch_body
+        .find("(compile-if-with-source-normal-setup-diagnostic node source env ftable instrs data-ref)")
+        .expect("normal setup diagnostic dispatch は if 専用 diagnostic を呼ぶこと");
+    let fallback_pos = dispatch_body
+        .find("(compile-expr-with-source-dispatch node source env ftable instrs data-ref)")
+        .expect("normal setup diagnostic dispatch は通常 dispatch fallback を保持すること");
+
+    assert!(
+        if_tag_pos < if_call_pos && if_call_pos < fallback_pos,
+        "if body の source IR len=1 を切り分けるため、normal setup diagnostic は fallback 前に if 専用 diagnostic を通すべき"
+    );
+
+    let if_body = source
+        .split("(defn compile-if-with-source-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-expr-with-source-dispatch-normal-setup-diagnostic")
+                .next()
+        })
+        .expect("Compiler.ls に if normal setup diagnostic が存在すること");
+    for marker in [
+        "9000000360",
+        "9000000361",
+        "9000000362",
+        "9000000363",
+        "9000000364",
+        "9000000365",
+        "9000000366",
+    ] {
+        assert!(
+            if_body.contains(marker),
+            "if normal setup diagnostic は marker {marker} を出すこと"
+        );
+    }
+}
+
+#[test]
 fn test_selfhost_compile_if_with_ftable_roots_branches_before_cond_compile() {
     let source = selfhost_module("Compiler.ls");
     let if_body = source
