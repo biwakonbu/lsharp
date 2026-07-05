@@ -8197,6 +8197,36 @@ fn test_selfhost_normal_setup_direct_module_parse_splits_defn_return_and_append_
 }
 
 #[test]
+fn test_selfhost_normal_setup_direct_module_parse_splits_body_parse_and_finalize_shape() {
+    let compiler_mode = std::fs::read_to_string(workspace_root_relative_path(
+        std::path::PathBuf::from("selfhost/src/App/CompilerMode.ls"),
+    ))
+    .expect("CompilerMode.ls を読めること");
+    let direct_module = compiler_mode
+        .split("(defn print-normal-setup-direct-module-defn3-parse-shape")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn print-normal-setup-direct-module-parse-body-shape")
+                .next()
+        })
+        .expect("direct defn3 normal setup diagnostic helper を取り出せること");
+
+    assert!(
+        direct_module.contains(
+            "(print-normal-setup-defn-body-finalize-shape spans module-src (ref-get pos-ref))"
+        ) && compiler_mode.contains("(defn print-normal-setup-defn-body-finalize-shape")
+            && compiler_mode.contains("(print 9000000373)")
+            && compiler_mode.contains("(print 9000000374)")
+            && compiler_mode.contains("(print-progress-decl-body-shape 9000000375 1 parsed-body)")
+            && compiler_mode.contains("(print-progress-decl-body-shape 9000000376 1 parsed-body)")
+            && compiler_mode.contains("parsed-defn-body (parse-expr-v3 spans pos-ref src)")
+            && compiler_mode
+                .contains("parsed-body (finalize-defn-body-v3 parsed-defn-body defn-node)"),
+        "v119 で parse-defn-v3 direct return が壊れていたため、body parse 直後と finalize 後のどちらで body slot が崩れるかを分けるべき"
+    );
+}
+
+#[test]
 fn test_selfhost_compile_if_with_ftable_roots_branches_before_cond_compile() {
     let source = selfhost_module("Compiler.ls");
     let if_body = source

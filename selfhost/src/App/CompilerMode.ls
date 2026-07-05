@@ -1388,6 +1388,63 @@
             (root_pop)
             (root_pop)
             0))))))
+(defn print-normal-setup-defn-body-finalize-shape [spans src defn-start-pos]
+  (do
+    (root_push spans)
+    (root_push src)
+    (let [pos-ref (ref-new defn-start-pos)]
+      (do
+        (root_push pos-ref)
+        (p-advance pos-ref)
+        (let [ns (p-start spans pos-ref)
+          ne (p-end spans pos-ref)
+          nh (name-hash src ns ne)]
+          (do
+            (p-advance pos-ref)
+            (p-expect spans pos-ref 2)
+            (let [result (vector-push-triple-rooted-v3 (vector-new 8) 20 nh 0)]
+              (do
+                (root_push result)
+                (let [with-params (parse-params-v3 spans pos-ref src result 0)]
+                  (do
+                    (root_push with-params)
+                    (let [param-count (- (vector-length with-params) 3)
+                      defn-node (vector-set-at-rooted-v3 with-params 2 param-count)]
+                      (do
+                        (root_push defn-node)
+                        (skip-optional-type-sig-v3 spans pos-ref src)
+                        (skip-optional-where-v3 spans pos-ref src)
+                        (print 9000000373)
+                        (print (ref-get pos-ref))
+                        (print (p-current spans pos-ref))
+                        (print param-count)
+                        (print (vector-length defn-node))
+                        (print (vector-get defn-node 0))
+                        (let [parsed-defn-body (parse-expr-v3 spans pos-ref src)]
+                          (do
+                            (root_push parsed-defn-body)
+                            (print 9000000374)
+                            (print (ref-get pos-ref))
+                            (print (vector-get parsed-defn-body 0))
+                            (print (vector-length parsed-defn-body))
+                            (print (if (> (vector-length parsed-defn-body) 1) (vector-get parsed-defn-body 1) -1))
+                            (print (if (> (vector-length parsed-defn-body) 2) (vector-get parsed-defn-body 2) -1))
+                            (print (if (> (vector-length parsed-defn-body) 3) (vector-get parsed-defn-body 3) -1))
+                            (let [parsed-body (finalize-defn-body-v3 parsed-defn-body defn-node)]
+                              (do
+                                (root_push parsed-body)
+                                (print-progress-decl-body-shape 9000000375 1 parsed-body)
+                                (p-expect spans pos-ref 1)
+                                (print-progress-decl-body-shape 9000000376 1 parsed-body)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                0))))))))))))))))
 (defn print-normal-setup-direct-module-defn3-parse-shape [module-src]
   (do
     (root_push module-src)
@@ -1417,6 +1474,7 @@
                                 (let [result3 (vector-get step2 1)]
                                   (do
                                     (root_push result3)
+                                    (print-normal-setup-defn-body-finalize-shape spans module-src (ref-get pos-ref))
                                     (p-advance pos-ref)
                                     (let [expr (parse-defn-v3 spans pos-ref module-src)]
                                       (do
