@@ -1229,6 +1229,7 @@
 (defn compile-file-functions-with-cache-normal-setup-diagnostic [path func-idx cache-ref parse-count-ref data-ref]
   (do
     (print 9000000184)
+    (print-normal-setup-direct-module-parse-body-shape path 3)
     (let [all-pairs (compile-file-pairs-with-cache path cache-ref parse-count-ref)]
       (do
         (root_push all-pairs)
@@ -1387,6 +1388,56 @@
             (root_pop)
             (root_pop)
             0))))))
+(defn print-normal-setup-direct-module-parse-body-shape [entry-path probe-idx]
+  (do
+    (root_push entry-path)
+    (let [source-root (resolve-source-root entry-path)]
+      (do
+        (root_push source-root)
+        (let [package-root (resolve-package-root entry-path)]
+          (do
+            (root_push package-root)
+            (let [module-name "App.ModuleResolver"]
+              (do
+                (root_push module-name)
+                (let [module-path (resolve-module-path module-name source-root package-root)]
+                  (do
+                    (root_push module-path)
+                    (let [module-src (read-file module-path)]
+                      (do
+                        (root_push module-src)
+                        (let [decls (parse-program module-src)]
+                          (do
+                            (root_push decls)
+                            (let [decls-len (vector-length decls)
+                              decl (if (> decls-len probe-idx) (vector-get decls probe-idx) (vector-new 0))]
+                              (do
+                                (root_push decl)
+                                (let [decl-len (vector-length decl)
+                                  param-count (if (> decl-len 2) (vector-get decl 2) -1)
+                                  body-idx (+ 3 param-count)
+                                  body-expr (if (> decl-len body-idx) (vector-get decl body-idx) (vector-new 0))]
+                                  (do
+                                    (root_push body-expr)
+                                    (print 9000000370)
+                                    (print (string-length module-src))
+                                    (print probe-idx)
+                                    (print decls-len)
+                                    (print decl-len)
+                                    (print param-count)
+                                    (print body-idx)
+                                    (print (if (> decl-len body-idx) (vector-get body-expr 0) -1))
+                                    (print (if (> decl-len body-idx) (vector-length body-expr) -1))
+                                    (root_pop)
+                                    (root_pop)
+                                    (root_pop)
+                                    (root_pop)
+                                    (root_pop)
+                                    (root_pop)
+                                    (root_pop)
+                                    (root_pop)
+                                    (root_pop)
+                                    0))))))))))))))))))
 (defn compile-file-functions-payload-with-cache-normal-setup-diagnostic [path func-idx cache-ref parse-count-ref]
   (do
     (print 9000000180)

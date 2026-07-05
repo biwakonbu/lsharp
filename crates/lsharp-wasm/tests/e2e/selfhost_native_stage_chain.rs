@@ -8128,6 +8128,46 @@ fn test_selfhost_normal_setup_source_chunk_entry_prints_probe_decl_body_shape() 
 }
 
 #[test]
+fn test_selfhost_normal_setup_direct_module_parse_prints_probe_decl_body_shape() {
+    let compiler_mode = std::fs::read_to_string(workspace_root_relative_path(
+        std::path::PathBuf::from("selfhost/src/App/CompilerMode.ls"),
+    ))
+    .expect("CompilerMode.ls を読めること");
+    let normal_setup = compiler_mode
+        .split("(defn compile-file-functions-with-cache-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn print-normal-setup-pairs-state-marker")
+                .next()
+        })
+        .expect("compile-file-functions-with-cache-normal-setup-diagnostic body を取り出せること");
+
+    let marker_pos = normal_setup
+        .find("(print-normal-setup-direct-module-parse-body-shape path 3)")
+        .expect(
+            "normal setup diagnostic は pair 生成前に direct module parse body shape を出すこと",
+        );
+    let pairs_pos = normal_setup
+        .find("all-pairs (compile-file-pairs-with-cache path cache-ref parse-count-ref)")
+        .expect("normal setup diagnostic は compile-file-pairs-with-cache を呼ぶこと");
+
+    assert!(
+        marker_pos < pairs_pos
+            && compiler_mode.contains("(defn print-normal-setup-direct-module-parse-body-shape")
+            && compiler_mode.contains("(print 9000000370)")
+            && compiler_mode.contains("module-name \"App.ModuleResolver\"")
+            && compiler_mode.contains("decls (parse-program module-src)")
+            && compiler_mode.contains(
+                "decl (if (> decls-len probe-idx) (vector-get decls probe-idx) (vector-new 0))"
+            )
+            && compiler_mode.contains(
+                "body-expr (if (> decl-len body-idx) (vector-get decl body-idx) (vector-new 0))"
+            ),
+        "v117 では pair caller 時点で decl[3] body が壊れていたため、normal setup は import/cache 経路へ入る前に App.ModuleResolver direct parse の body shape を採取するべき"
+    );
+}
+
+#[test]
 fn test_selfhost_compile_if_with_ftable_roots_branches_before_cond_compile() {
     let source = selfhost_module("Compiler.ls");
     let if_body = source
