@@ -8168,6 +8168,35 @@ fn test_selfhost_normal_setup_direct_module_parse_prints_probe_decl_body_shape()
 }
 
 #[test]
+fn test_selfhost_normal_setup_direct_module_parse_splits_defn_return_and_append_shape() {
+    let compiler_mode = std::fs::read_to_string(workspace_root_relative_path(
+        std::path::PathBuf::from("selfhost/src/App/CompilerMode.ls"),
+    ))
+    .expect("CompilerMode.ls を読めること");
+    let direct_module = compiler_mode
+        .split("(defn print-normal-setup-direct-module-parse-body-shape")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn compile-file-functions-payload-with-cache-normal-setup-diagnostic")
+                .next()
+        })
+        .expect("direct module normal setup diagnostic helper を取り出せること");
+
+    assert!(
+        direct_module.contains("(print-normal-setup-direct-module-defn3-parse-shape module-src)")
+            && compiler_mode.contains("(defn print-normal-setup-direct-module-defn3-parse-shape")
+            && compiler_mode.contains("step0 (parse-program-step-v3 spans pos-ref module-src result0)")
+            && compiler_mode.contains("step1 (parse-program-step-v3 spans pos-ref module-src result1)")
+            && compiler_mode.contains("step2 (parse-program-step-v3 spans pos-ref module-src result2)")
+            && compiler_mode.contains("expr (parse-defn-v3 spans pos-ref module-src)")
+            && compiler_mode.contains("next-result (vector-push-single-rooted-v3 result3 expr)")
+            && compiler_mode.contains("(print-progress-decl-body-shape 9000000371 3 expr)")
+            && compiler_mode.contains("(print-progress-decl-body-shape 9000000372 (vector-length next-result) appended-decl)"),
+        "v118 で direct parse final result も壊れていたため、次は parse-defn-v3 return と program append 後のどちらで decl[3] body が崩れるかを分けるべき"
+    );
+}
+
+#[test]
 fn test_selfhost_compile_if_with_ftable_roots_branches_before_cond_compile() {
     let source = selfhost_module("Compiler.ls");
     let if_body = source

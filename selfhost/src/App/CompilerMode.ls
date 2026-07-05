@@ -1388,6 +1388,61 @@
             (root_pop)
             (root_pop)
             0))))))
+(defn print-normal-setup-direct-module-defn3-parse-shape [module-src]
+  (do
+    (root_push module-src)
+    (let [spans (tokenize-with-spans module-src)]
+      (do
+        (root_push spans)
+        (let [pos-ref (ref-new 0)
+          result0 (vector-new 16)]
+          (do
+            (root_push pos-ref)
+            (root_push result0)
+            (let [step0 (parse-program-step-v3 spans pos-ref module-src result0)]
+              (do
+                (root_push step0)
+                (let [result1 (vector-get step0 1)]
+                  (do
+                    (root_push result1)
+                    (let [step1 (parse-program-step-v3 spans pos-ref module-src result1)]
+                      (do
+                        (root_push step1)
+                        (let [result2 (vector-get step1 1)]
+                          (do
+                            (root_push result2)
+                            (let [step2 (parse-program-step-v3 spans pos-ref module-src result2)]
+                              (do
+                                (root_push step2)
+                                (let [result3 (vector-get step2 1)]
+                                  (do
+                                    (root_push result3)
+                                    (p-advance pos-ref)
+                                    (let [expr (parse-defn-v3 spans pos-ref module-src)]
+                                      (do
+                                        (root_push expr)
+                                        (print-progress-decl-body-shape 9000000371 3 expr)
+                                        (let [next-result (vector-push-single-rooted-v3 result3 expr)]
+                                          (do
+                                            (root_push next-result)
+                                            (let [appended-decl (vector-get next-result 3)]
+                                              (do
+                                                (root_push appended-decl)
+                                                (print-progress-decl-body-shape 9000000372 (vector-length next-result) appended-decl)
+                                                (root_pop)
+                                                (root_pop)
+                                                (root_pop)
+                                                (root_pop)
+                                                (root_pop)
+                                                (root_pop)
+                                                (root_pop)
+                                                (root_pop)
+                                                (root_pop)
+                                                (root_pop)
+                                                (root_pop)
+                                                (root_pop)
+                                                (root_pop)
+                                                0))))))))))))))))))))))))
 (defn print-normal-setup-direct-module-parse-body-shape [entry-path probe-idx]
   (do
     (root_push entry-path)
@@ -1409,6 +1464,7 @@
                         (let [decls (parse-program module-src)]
                           (do
                             (root_push decls)
+                            (print-normal-setup-direct-module-defn3-parse-shape module-src)
                             (let [decls-len (vector-length decls)
                               decl (if (> decls-len probe-idx) (vector-get decls probe-idx) (vector-new 0))]
                               (do
