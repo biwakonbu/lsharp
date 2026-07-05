@@ -269,6 +269,37 @@ fn strip_linux_x86_unused_shift_start_helpers(source: String) -> String {
     format!("{}{}", &source[..start], &source[end..])
 }
 
+fn inline_linux_x86_slot_size_helper(source: String) -> String {
+    let source = source
+        .replace(
+            "(let [size (x86-function-slot-size func-meta functions)]",
+            "(let [size (+ (native-function-size-x86 func-meta functions) 2048)]",
+        )
+        .replace(
+            "next-offset (+ offset (x86-function-slot-size func-meta functions))",
+            "next-offset (+ offset (+ (native-function-size-x86 func-meta functions) 2048))",
+        )
+        .replace(
+            "next-total (+ total (x86-function-slot-size func-meta functions))",
+            "next-total (+ total (+ (native-function-size-x86 func-meta functions) 2048))",
+        );
+    let Some(start) = source.find("(defn x86-function-slot-size [func-meta functions]") else {
+        return source;
+    };
+    let Some(relative_end) =
+        source[start..].find("\n(defn print-x86-slot-size-progress-sample [functions idx]")
+    else {
+        return source;
+    };
+    let end = start + relative_end;
+    let trim_start = if start > 0 && source.as_bytes()[start - 1] == b'\n' {
+        start - 1
+    } else {
+        start
+    };
+    format!("{}{}", &source[..trim_start], &source[end..])
+}
+
 fn stabilize_linux_x86_append_vector_loop(source: String) -> String {
     source.replace(
         r#"(defn append-vector-loop [dst src idx len]
@@ -701,7 +732,7 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
         "(let [payload-observed payload]\n      (let [payload-observed payload]",
         "(let [payload-observed payload]",
     );
-    source.replace(
+    let source = source.replace(
         "native-callables (normalize-selfhost-native-function-metas-for-target callables target)",
         "native-callables callables",
 	    )
@@ -861,9 +892,10 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                     (do
                       (root_pop)
                       (root_pop)
-                      (root_pop)
-                      final)))))))))))"#,
-    )
+	        (root_pop)
+	                      final)))))))))))"#,
+    );
+    inline_linux_x86_slot_size_helper(source)
 }
 
 #[test]
@@ -937,10 +969,10 @@ fn test_linux_x86_representative_seed_uses_layout_emit_for_segmented_native_code
         "Linux x86 segmented seed は巨大 function-size prealloc を避け、空 vector へ emit してから declared slot size まで padding するべき"
     );
     assert!(
-        source.contains("(defn x86-function-slot-size")
-            && source.contains("(+ (native-function-size-x86 func-meta functions) 2048)")
-            && source.contains("(collect-callable-function-slot-starts-x86 native-callables 10)"),
-        "Linux x86 segmented seed は actual native stage の function-size undercount で helper 境界を壊さないよう、guard bytes 付き slot layout を使うべき"
+        !source.contains("(defn x86-function-slot-size [func-meta functions]")
+            && source.contains("(collect-callable-function-slot-starts-x86 native-callables 10)")
+            && source.contains("(+ (native-function-size-x86 func-meta functions) 2048)"),
+        "Linux x86 segmented seed は actual native stage の function-size undercount を guard bytes 付き slot layout で避けつつ、stage2 で不安定な slot-size wrapper を持たないべき"
     );
     assert!(
         source.contains("(defn print-packed-code-segment-with-length [bytes segment-len]")
@@ -1148,6 +1180,42 @@ fn test_linux_x86_representative_seed_strips_unused_shift_start_helpers() {
             && !source.contains("(defn shift-x86-function-starts [starts base]")
             && !source.contains("shift-x86-function-starts"),
         "Linux x86 seed は layout emit 移行後に未使用の shift-x86-function-starts helper を含めず、stage3 の巨大 slot-size drift を避けるべき"
+    );
+}
+
+#[test]
+fn test_linux_x86_representative_seed_inlines_slot_size_helper() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+    let starts_body = source
+        .split("(defn collect-callable-function-slot-starts-x86-loop")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("Linux x86 representative seed に slot starts loop が存在すること");
+    let total_body = source
+        .split("(defn callable-user-total-slot-size-x86-loop")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("Linux x86 representative seed に slot total loop が存在すること");
+
+    assert!(
+        !source.contains("(defn x86-function-slot-size [func-meta functions]"),
+        "Linux x86 seed は stage2 native で不安定な tiny slot-size wrapper defn を持たないべき"
+    );
+    assert!(
+        !source.contains("(x86-function-slot-size func-meta functions)"),
+        "Linux x86 seed は stage2 native で不安定な tiny slot-size wrapper call を経由しないべき"
+    );
+    assert!(
+        starts_body.contains(
+            "next-offset (+ offset (+ (native-function-size-x86 func-meta functions) 2048))",
+        ),
+        "Linux x86 seed は starts loop 内で guard 付き size を直接計算するべき"
+    );
+    assert!(
+        total_body.contains(
+            "next-total (+ total (+ (native-function-size-x86 func-meta functions) 2048))",
+        ),
+        "Linux x86 seed は total loop 内で guard 付き size を直接計算するべき"
     );
 }
 
