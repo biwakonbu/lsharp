@@ -1969,6 +1969,38 @@
     (root_pop)
     (root_pop)
     0))
+(defn print-source-defn-normal-setup-entry-body-shape [idx decls probe-idx functions data-ref]
+  (do
+    (root_push decls)
+    (root_push functions)
+    (root_push data-ref)
+    (let [decls-len (vector-length decls)
+      decl (if (> decls-len probe-idx) (vector-get decls probe-idx) (vector-new 0))]
+      (do
+        (root_push decl)
+        (let [decl-len (vector-length decl)
+          param-count (if (> decl-len 2) (vector-get decl 2) -1)
+          body-idx (+ 3 param-count)
+          body-expr (if (> decl-len body-idx) (vector-get decl body-idx) (vector-new 0))]
+          (do
+            (root_push body-expr)
+            (print 9000000369)
+            (print idx)
+            (print probe-idx)
+            (print decls-len)
+            (print decl-len)
+            (print param-count)
+            (print body-idx)
+            (print (if (> decl-len body-idx) (vector-get body-expr 0) -1))
+            (print (if (> decl-len body-idx) (vector-length body-expr) -1))
+            (print (vector-length functions))
+            (print (vector-length (ref-get data-ref)))
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            0))))))
 (defn print-source-defn-normal-setup-ref-after-write-shape [idx functions state-ref data-ref]
   (do
     (root_push functions)
@@ -2239,6 +2271,7 @@
 (defn compile-source-defn-functions-chunked-normal-setup-diagnostic [decls idx n source ftable data-ref functions]
   (do
     (print-source-defn-normal-setup-entry-shape idx n functions data-ref)
+    (print-source-defn-normal-setup-entry-body-shape idx decls 3 functions data-ref)
     (let [state (compile-defn-functions-step-64-with-source-normal-setup-diagnostic decls idx n source ftable data-ref functions)]
     (do
       (let [state-slot (root_push state)]

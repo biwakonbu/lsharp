@@ -8052,6 +8052,82 @@ fn test_selfhost_normal_setup_source_defn_diagnostic_prints_decl_body_shape() {
 }
 
 #[test]
+fn test_selfhost_normal_setup_pair_diagnostic_prints_probe_decl_body_shape() {
+    let compiler_mode = std::fs::read_to_string(workspace_root_relative_path(
+        std::path::PathBuf::from("selfhost/src/App/CompilerMode.ls"),
+    ))
+    .expect("CompilerMode.ls を読めること");
+    let pair_step = compiler_mode
+        .split("(defn compile-src-decl-pairs-step-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn continue-compile-src-decl-pairs-step-normal-setup-diagnostic")
+                .next()
+        })
+        .expect("compile-src-decl-pairs-step-normal-setup-diagnostic body を取り出せること");
+
+    let marker_pos = pair_step.find("(print-normal-setup-source-call-body-shape idx decls 3 functions data-ref)")
+        .expect("normal setup pair diagnostic は source-defn 呼び出し前に probe decl body shape を出すこと");
+    let compile_pos = pair_step
+        .find("updated-functions (compile-source-defn-functions-chunked-normal-setup-diagnostic decls 0 decls-len src ftable data-ref functions)")
+        .expect("normal setup pair diagnostic は source-defn chunked compile を呼ぶこと");
+
+    assert!(
+        marker_pos < compile_pos
+            && compiler_mode.contains("(defn print-normal-setup-source-call-body-shape")
+            && compiler_mode.contains("(print 9000000368)")
+            && compiler_mode.contains(
+                "decl (if (> decls-len probe-idx) (vector-get decls probe-idx) (vector-new 0))"
+            )
+            && compiler_mode.contains(
+                "body-expr (if (> decl-len body-idx) (vector-get decl body-idx) (vector-new 0))"
+            )
+            && compiler_mode
+                .contains("(print (if (> decl-len body-idx) (vector-get body-expr 0) -1))")
+            && compiler_mode
+                .contains("(print (if (> decl-len body-idx) (vector-length body-expr) -1))"),
+        "v116 は 0367 の時点で body shape が壊れていたため、pair caller 側でも decl[3] の shape を source-defn 呼び出し前に出すべき"
+    );
+}
+
+#[test]
+fn test_selfhost_normal_setup_source_chunk_entry_prints_probe_decl_body_shape() {
+    let source = selfhost_module("Compiler.ls");
+    let chunked = source
+        .split("(defn compile-source-defn-functions-chunked-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn continue-compile-let-chain-step-with-source")
+                .next()
+        })
+        .expect(
+            "compile-source-defn-functions-chunked-normal-setup-diagnostic body を取り出せること",
+        );
+
+    let marker_pos = chunked
+        .find("(print-source-defn-normal-setup-entry-body-shape idx decls 3 functions data-ref)")
+        .expect("source-defn chunk entry は probe decl body shape marker を出すこと");
+    let step64_pos = chunked
+        .find("state (compile-defn-functions-step-64-with-source-normal-setup-diagnostic decls idx n source ftable data-ref functions)")
+        .expect("source-defn chunk entry は step64 を呼ぶこと");
+
+    assert!(
+        marker_pos < step64_pos
+            && source.contains("(defn print-source-defn-normal-setup-entry-body-shape")
+            && source.contains("(print 9000000369)")
+            && source.contains(
+                "decl (if (> decls-len probe-idx) (vector-get decls probe-idx) (vector-new 0))"
+            )
+            && source.contains(
+                "body-expr (if (> decl-len body-idx) (vector-get decl body-idx) (vector-new 0))"
+            )
+            && source.contains("(print (if (> decl-len body-idx) (vector-get body-expr 0) -1))")
+            && source.contains("(print (if (> decl-len body-idx) (vector-length body-expr) -1))"),
+        "0367 が壊れているため、source-defn chunk entry でも decl[3] の shape を step64 前に採取して CompilerMode->Compiler 境界を切るべき"
+    );
+}
+
+#[test]
 fn test_selfhost_compile_if_with_ftable_roots_branches_before_cond_compile() {
     let source = selfhost_module("Compiler.ls");
     let if_body = source
