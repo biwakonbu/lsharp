@@ -254,6 +254,21 @@ fn stabilize_linux_x86_padding_loop(source: String) -> String {
     )
 }
 
+fn strip_linux_x86_unused_shift_start_helpers(source: String) -> String {
+    let Some(start) = source
+        .find("\n(defn shift-x86-function-starts-loop [starts base idx len result result-slot]")
+    else {
+        return source;
+    };
+    let Some(relative_end) =
+        source[start..].find("\n(defn x86-function-slot-size [func-meta functions]")
+    else {
+        return source;
+    };
+    let end = start + relative_end;
+    format!("{}{}", &source[..start], &source[end..])
+}
+
 fn stabilize_linux_x86_append_vector_loop(source: String) -> String {
     source.replace(
         r#"(defn append-vector-loop [dst src idx len]
@@ -539,6 +554,7 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
     let source = strip_linux_x86_unused_regular_code_byte_printer(source);
     let source = stabilize_linux_x86_packed_code_byte_printer(source);
     let source = stabilize_linux_x86_padding_loop(source);
+    let source = strip_linux_x86_unused_shift_start_helpers(source);
     let source = stabilize_linux_x86_append_vector_loop(source);
     let payload_bindings = r#"source-path (command-line-arg 1)
 	         source-path-root (root_push source-path)
@@ -1120,6 +1136,18 @@ fn test_linux_x86_representative_seed_omits_padding_materializer() {
             && !source.contains("left (pad-byte-vector-to-length-range bytes start mid)")
             && !source.contains("right (pad-byte-vector-to-length-range left mid end)"),
         "Linux x86 seed は stage3 で巨大化しやすい padding materializer を持たず declared length transport だけを使うべき"
+    );
+}
+
+#[test]
+fn test_linux_x86_representative_seed_strips_unused_shift_start_helpers() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+
+    assert!(
+        !source.contains("(defn shift-x86-function-starts-loop")
+            && !source.contains("(defn shift-x86-function-starts [starts base]")
+            && !source.contains("shift-x86-function-starts"),
+        "Linux x86 seed は layout emit 移行後に未使用の shift-x86-function-starts helper を含めず、stage3 の巨大 slot-size drift を避けるべき"
     );
 }
 
