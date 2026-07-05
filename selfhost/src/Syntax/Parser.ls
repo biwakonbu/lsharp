@@ -1813,6 +1813,9 @@
 
 (defn parse-defn-v3 [spans pos-ref src]
   (do
+    (root_push spans)
+    (root_push pos-ref)
+    (root_push src)
     (p-advance pos-ref) ;; defn を消費
     (let [ns (p-start spans pos-ref)
       ne (p-end spans pos-ref)
@@ -1853,6 +1856,9 @@
                                   (root_pop)
                                   parsed-body))))))]
                       (do
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
                         (root_pop)
                         (root_pop)
                         (root_pop)

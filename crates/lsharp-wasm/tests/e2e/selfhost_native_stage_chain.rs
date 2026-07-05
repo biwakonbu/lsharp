@@ -7321,6 +7321,24 @@ fn test_selfhost_parser_parse_defn_v3_preserves_return_without_result_slot_rewri
 }
 
 #[test]
+fn test_selfhost_parser_parse_defn_v3_roots_parser_inputs_across_body_parse() {
+    let source = selfhost_module("Parser.ls");
+    let parse_defn_body = source
+        .split("(defn parse-defn-v3")
+        .nth(1)
+        .and_then(|tail| tail.split(";; === defmacro 宣言 ===").next())
+        .expect("Parser.ls に parse-defn-v3 が存在すること");
+
+    assert!(
+        parse_defn_body.contains(
+            "(do\n    (root_push spans)\n    (root_push pos-ref)\n    (root_push src)\n    (p-advance pos-ref)"
+        ) && parse_defn_body.contains("(parse-expr-v3 spans pos-ref src)")
+            && parse_defn_body.contains("(finalize-defn-body-v3 parsed-defn-body defn-node)"),
+        "parse-defn-v3 は stage2 native の deep body parse 中に spans/pos-ref/src を失わないよう、parser input を root してから defn body を読むべき"
+    );
+}
+
+#[test]
 fn test_selfhost_parser_defn_body_branches_use_branch_unique_body_locals() {
     let source = selfhost_module("Parser.ls");
     let helper_body = source
@@ -7907,6 +7925,45 @@ fn test_selfhost_compile_if_with_source_roots_branches_before_cond_compile() {
             && then_compile_pos < else_compile_pos,
         "compile-if-with-source は cond compile 中の GC で then/else scalar が stale にならないよう先に branches を root するべき"
     );
+}
+
+#[test]
+fn test_selfhost_compile_if_with_source_roots_intermediate_instrs_between_branches() {
+    let source = selfhost_module("Compiler.ls");
+    let if_body = source
+        .split("(defn compile-if-with-source-impl-body-impl")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn compile-let-chain-with-source").next())
+        .expect("Compiler.ls に compile-if-with-source-impl-body-impl が存在すること");
+
+    for (binding, root) in [
+        (
+            "instrs1 (compile-expr-with-source cond-expr source env ftable instrs data-ref)",
+            "(root_push instrs1)",
+        ),
+        ("instrs2 (emit-to instrs1 41 0)", "(root_push instrs2)"),
+        (
+            "instrs3 (compile-expr-with-source then-expr source env ftable instrs2 data-ref)",
+            "(root_push instrs3)",
+        ),
+        ("instrs4 (emit-to instrs3 79 0)", "(root_push instrs4)"),
+        (
+            "instrs5 (compile-expr-with-source else-expr source env ftable instrs4 data-ref)",
+            "(root_push instrs5)",
+        ),
+    ] {
+        let binding_pos = if_body
+            .find(binding)
+            .unwrap_or_else(|| panic!("source if は {binding} を持つこと"));
+        let root_pos = if_body[binding_pos..]
+            .find(root)
+            .map(|offset| binding_pos + offset)
+            .unwrap_or_else(|| panic!("source if は {root} で中間 instr を root すること"));
+        assert!(
+            binding_pos < root_pos,
+            "compile-if-with-source は branch 間の再帰 compile/emit で {binding} が stale にならないよう直後に root するべき"
+        );
+    }
 }
 
 #[test]

@@ -2956,17 +2956,34 @@
       (root_push cond-expr)
       (root_push then-expr)
       (root_push else-expr)
-      (let [instrs1 (compile-expr-with-source cond-expr source env ftable instrs data-ref)
-        instrs2 (emit-to instrs1 41 0)
-        instrs3 (compile-expr-with-source then-expr source env ftable instrs2 data-ref)
-        instrs4 (emit-to instrs3 79 0)
-        instrs5 (compile-expr-with-source else-expr source env ftable instrs4 data-ref)
-        result (emit-to instrs5 43 0)]
+      (let [instrs1 (compile-expr-with-source cond-expr source env ftable instrs data-ref)]
         (do
-          (root_pop)
-          (root_pop)
-          (root_pop)
-          result)))))
+          (root_push instrs1)
+          (let [instrs2 (emit-to instrs1 41 0)]
+            (do
+              (root_push instrs2)
+              (let [instrs3 (compile-expr-with-source then-expr source env ftable instrs2 data-ref)]
+                (do
+                  (root_push instrs3)
+                  (let [instrs4 (emit-to instrs3 79 0)]
+                    (do
+                      (root_push instrs4)
+                      (let [instrs5 (compile-expr-with-source else-expr source env ftable instrs4 data-ref)]
+                        (do
+                          (root_push instrs5)
+                          (let [result (emit-to instrs5 43 0)]
+                            (do
+                              (root_push result)
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              result)))))))))))))))
 (defn compile-let-chain-with-source [node source env ftable instrs data-ref rooted-count]
   (let [step (compile-let-chain-step-with-source node source env ftable instrs data-ref rooted-count)]
     (do
