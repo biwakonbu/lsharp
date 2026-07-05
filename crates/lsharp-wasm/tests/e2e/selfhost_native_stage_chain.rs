@@ -8015,6 +8015,43 @@ fn test_selfhost_normal_setup_diagnostic_dispatch_routes_if_explicitly() {
 }
 
 #[test]
+fn test_selfhost_normal_setup_source_defn_diagnostic_prints_decl_body_shape() {
+    let source = selfhost_module("Compiler.ls");
+    let source_step = source
+        .split("(defn compile-defn-functions-step-with-source-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split(
+                "\n(defn continue-compile-defn-functions-step-with-source-normal-setup-diagnostic",
+            )
+            .next()
+        })
+        .expect(
+            "compile-defn-functions-step-with-source-normal-setup-diagnostic body を取り出せること",
+        );
+
+    let marker_pos = source_step.find("(print 9000000367)").expect(
+        "normal setup source-defn diagnostic は compile 前の decl/body shape marker を出すこと",
+    );
+    let compile_pos = source_step
+        .find("(let [compiled-fn (compile-defn-function-with-source-normal-setup-diagnostic decl source ftable data-ref)]")
+        .expect("normal setup source-defn diagnostic は defn を compile すること");
+
+    assert!(
+        marker_pos < compile_pos
+            && source_step.contains("decl-len (vector-length decl)")
+            && source_step.contains("param-count (vector-get decl 2)")
+            && source_step.contains("body-idx (+ 3 param-count)")
+            && source_step.contains("body-expr (if (> decl-len body-idx)")
+            && source_step
+                .contains("(print (if (> decl-len body-idx) (vector-get body-expr 0) -1))")
+            && source_step
+                .contains("(print (if (> decl-len body-idx) (vector-length body-expr) -1))"),
+        "v115 では body-expr が compile-if 前に壊れていたため、次の replay は compile boundary で decl len / param-count / body tag / body len を直接出すべき"
+    );
+}
+
+#[test]
 fn test_selfhost_compile_if_with_ftable_roots_branches_before_cond_compile() {
     let source = selfhost_module("Compiler.ls");
     let if_body = source

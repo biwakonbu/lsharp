@@ -2042,6 +2042,22 @@
           (print (vector-length functions))
           (print (vector-get decl 0))
           (print (vector-length (ref-get data-ref)))
+          (let [decl-len (vector-length decl)
+            param-count (vector-get decl 2)
+            body-idx (+ 3 param-count)
+            body-expr (if (> decl-len body-idx) (vector-get decl body-idx) (vector-new 0))]
+            (do
+              (root_push body-expr)
+              (print 9000000367)
+              (print idx)
+              (print (vector-length functions))
+              (print decl-len)
+              (print param-count)
+              (print body-idx)
+              (print (if (> decl-len body-idx) (vector-get body-expr 0) -1))
+              (print (if (> decl-len body-idx) (vector-length body-expr) -1))
+              (print (vector-length (ref-get data-ref)))
+              (root_pop)))
           (let [compiled-fn (compile-defn-function-with-source-normal-setup-diagnostic decl source ftable data-ref)]
             (do
               (root_push compiled-fn)
