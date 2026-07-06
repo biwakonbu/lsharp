@@ -8261,6 +8261,40 @@ fn test_selfhost_normal_setup_direct_module_parse_splits_expr_dispatch_and_let_s
 }
 
 #[test]
+fn test_selfhost_normal_setup_direct_module_parse_splits_parse_let_internals() {
+    let compiler_mode = std::fs::read_to_string(workspace_root_relative_path(
+        std::path::PathBuf::from("selfhost/src/App/CompilerMode.ls"),
+    ))
+    .expect("CompilerMode.ls を読めること");
+    let parse_let_diagnostic = compiler_mode
+        .split("(defn print-normal-setup-parse-let-internals")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn print-normal-setup-body-dispatch-shape")
+                .next()
+        })
+        .expect("parse-let normal setup diagnostic helper を取り出せること");
+
+    assert!(
+        compiler_mode.contains("(print-normal-setup-parse-let-internals spans src body-start-pos)")
+            && parse_let_diagnostic.contains("(print 9000000381)")
+            && parse_let_diagnostic.contains("(print 9000000382)")
+            && parse_let_diagnostic
+                .contains("(print-progress-expr-shape 9000000383 (ref-get pos-ref) init)")
+            && parse_let_diagnostic.contains("(print 9000000384)")
+            && parse_let_diagnostic
+                .contains("(print-progress-expr-shape 9000000385 (ref-get pos-ref) init2)")
+            && parse_let_diagnostic
+                .contains("(print-progress-expr-shape 9000000386 (ref-get pos-ref) rest-body)")
+            && parse_let_diagnostic
+                .contains("(print-progress-expr-shape 9000000387 (ref-get pos-ref) inner)")
+            && parse_let_diagnostic
+                .contains("(print-progress-expr-shape 9000000388 (ref-get pos-ref) result)"),
+        "v122 で direct parse-let-v3 が tag=0/len=126 を返したため、first binding init、second binding init、body parse、inner/final let assembly のどこで崩れるかを分けるべき"
+    );
+}
+
+#[test]
 fn test_selfhost_compile_if_with_ftable_roots_branches_before_cond_compile() {
     let source = selfhost_module("Compiler.ls");
     let if_body = source

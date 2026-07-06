@@ -1400,6 +1400,87 @@
     (print (if (> (vector-length expr) 3) (vector-get expr 3) -1))
     (root_pop)
     0))
+(defn print-normal-setup-parse-let-internals [spans src body-start-pos]
+  (do
+    (root_push spans)
+    (root_push src)
+    (let [pos-ref (ref-new body-start-pos)]
+      (do
+        (root_push pos-ref)
+        (p-advance pos-ref)
+        (print 9000000381)
+        (print (ref-get pos-ref))
+        (print (p-current spans pos-ref))
+        (p-advance pos-ref)
+        (p-expect spans pos-ref 2)
+        (print 9000000382)
+        (print (ref-get pos-ref))
+        (print (p-current spans pos-ref))
+        (let [ns (p-start spans pos-ref)
+          ne (p-end spans pos-ref)
+          nh (name-hash src ns ne)]
+          (do
+            (p-advance pos-ref)
+            (let [init (parse-expr-v3 spans pos-ref src)]
+              (do
+                (root_push init)
+                (print-progress-expr-shape 9000000383 (ref-get pos-ref) init)
+                (if (== (p-current spans pos-ref) 3)
+                  (do
+                    (print 9000000384)
+                    (print (ref-get pos-ref))
+                    (print (p-current spans pos-ref))
+                    (p-advance pos-ref)
+                    (let [body (parse-let-body-v3 spans pos-ref src)]
+                      (do
+                        (root_push body)
+                        (print-progress-expr-shape 9000000386 (ref-get pos-ref) body)
+                        (p-expect spans pos-ref 1)
+                        (let [result (vector-push-quad-rooted-v3 (vector-new 8) 7 nh init body)]
+                          (do
+                            (root_push result)
+                            (print-progress-expr-shape 9000000388 (ref-get pos-ref) result)
+                            (root_pop)
+                            (root_pop)
+                            (root_pop)
+                            (root_pop)
+                            (root_pop)
+                            (root_pop)
+                            0)))))
+                  (let [ns2 (p-start spans pos-ref)
+                    ne2 (p-end spans pos-ref)
+                    nh2 (name-hash src ns2 ne2)]
+                    (do
+                      (print 9000000384)
+                      (print (ref-get pos-ref))
+                      (print (p-current spans pos-ref))
+                      (p-advance pos-ref)
+                      (let [init2 (parse-expr-v3 spans pos-ref src)]
+                        (do
+                          (root_push init2)
+                          (print-progress-expr-shape 9000000385 (ref-get pos-ref) init2)
+                          (let [rest-body (parse-let-rest-v3 spans pos-ref src)]
+                            (do
+                              (root_push rest-body)
+                              (print-progress-expr-shape 9000000386 (ref-get pos-ref) rest-body)
+                              (let [inner (vector-push-quad-rooted-v3 (vector-new 8) 7 nh2 init2 rest-body)]
+                                (do
+                                  (root_push inner)
+                                  (print-progress-expr-shape 9000000387 (ref-get pos-ref) inner)
+                                  (p-expect spans pos-ref 1)
+                                  (let [result (vector-push-quad-rooted-v3 (vector-new 8) 7 nh init inner)]
+                                    (do
+                                      (root_push result)
+                                      (print-progress-expr-shape 9000000388 (ref-get pos-ref) result)
+                                      (root_pop)
+                                      (root_pop)
+                                      (root_pop)
+                                      (root_pop)
+                                      (root_pop)
+                                      (root_pop)
+                                      (root_pop)
+                                      (root_pop)
+                                      0)))))))))))))))))))
 (defn print-normal-setup-body-dispatch-shape [spans src body-start-pos]
   (do
     (root_push spans)
@@ -1417,6 +1498,7 @@
         (print 9000000378)
         (print (ref-get let-pos))
         (print (p-current spans let-pos))
+        (print-normal-setup-parse-let-internals spans src body-start-pos)
         (let [direct-let (parse-let-v3 spans let-pos src)]
           (do
             (root_push direct-let)
