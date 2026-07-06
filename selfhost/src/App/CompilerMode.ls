@@ -1437,16 +1437,15 @@
                         (print-progress-expr-shape 9000000386 (ref-get pos-ref) body)
                         (let [result (vector-push-quad-rooted-v3 (vector-new 8) 7 nh init body)]
                           (do
-                            (root_push result)
-                            (p-expect spans pos-ref 1)
-                            (print-progress-expr-shape 9000000388 (ref-get pos-ref) result)
-                            (root_pop)
-                            (root_pop)
-                            (root_pop)
-                            (root_pop)
-                            (root_pop)
-                            (root_pop)
-                            0)))))
+                            (let [final-result (finish-parse-let-result-after-expect-v3 spans pos-ref result)]
+                              (do
+                                (print-progress-expr-shape 9000000388 (ref-get pos-ref) final-result)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                0)))))))
                   (let [ns2 (p-start spans pos-ref)
                     ne2 (p-end spans pos-ref)
                     nh2 (name-hash src ns2 ne2)]
@@ -1469,18 +1468,17 @@
                                   (print-progress-expr-shape 9000000387 (ref-get pos-ref) inner)
                                   (let [result (vector-push-quad-rooted-v3 (vector-new 8) 7 nh init inner)]
                                     (do
-                                      (root_push result)
-                                      (p-expect spans pos-ref 1)
-                                      (print-progress-expr-shape 9000000388 (ref-get pos-ref) result)
-                                      (root_pop)
-                                      (root_pop)
-                                      (root_pop)
-                                      (root_pop)
-                                      (root_pop)
-                                      (root_pop)
-                                      (root_pop)
-                                      (root_pop)
-                                      0)))))))))))))))))))
+                                      (let [final-result (finish-parse-let-result-after-expect-v3 spans pos-ref result)]
+                                        (do
+                                          (print-progress-expr-shape 9000000388 (ref-get pos-ref) final-result)
+                                          (root_pop)
+                                          (root_pop)
+                                          (root_pop)
+                                          (root_pop)
+                                          (root_pop)
+                                          (root_pop)
+                                          (root_pop)
+                                          0)))))))))))))))))))))
 (defn print-normal-setup-body-dispatch-shape [spans src body-start-pos]
   (do
     (root_push spans)
