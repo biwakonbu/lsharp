@@ -7414,6 +7414,56 @@ fn test_selfhost_parser_parse_let_first_binding_roots_init_before_delegate() {
 }
 
 #[test]
+fn test_selfhost_parser_parse_let_roots_result_across_closing_paren_expect() {
+    let source = selfhost_module("Parser.ls");
+    let after_first_body = source
+        .split("(defn parse-let-after-first-binding-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn parse-let-v3").next())
+        .expect("Parser.ls に parse-let-after-first-binding-v3 が存在すること");
+
+    let single_branch = after_first_body
+        .split(";; 複数バインディング")
+        .next()
+        .expect("parse-let-after-first-binding-v3 の single binding branch を取り出せること");
+    let single_result_pos = single_branch
+        .find("result (vector-push-quad-rooted-v3 (vector-new 8) 7 nh init body)")
+        .expect("single binding branch は result let を作ること");
+    let single_root_pos = single_branch[single_result_pos..]
+        .find("(root_push result)")
+        .expect("single binding branch は result を p-expect 前に root すること")
+        + single_result_pos;
+    let single_expect_pos = single_branch[single_result_pos..]
+        .find("(p-expect spans pos-ref 1)")
+        .expect("single binding branch は closing paren を消費すること")
+        + single_result_pos;
+
+    let multi_branch = after_first_body
+        .split(";; 複数バインディング")
+        .nth(1)
+        .expect("parse-let-after-first-binding-v3 の multi binding branch を取り出せること");
+    let multi_result_pos = multi_branch
+        .find("result (vector-push-quad-rooted-v3 (vector-new 8) 7 nh init inner)")
+        .expect("multi binding branch は outer let result を作ること");
+    let multi_root_pos = multi_branch[multi_result_pos..]
+        .find("(root_push result)")
+        .expect("multi binding branch は result を p-expect 前に root すること")
+        + multi_result_pos;
+    let multi_expect_pos = multi_branch[multi_result_pos..]
+        .find("(p-expect spans pos-ref 1)")
+        .expect("multi binding branch は closing paren を消費すること")
+        + multi_result_pos;
+
+    assert!(
+        single_result_pos < single_root_pos
+            && single_root_pos < single_expect_pos
+            && multi_result_pos < multi_root_pos
+            && multi_root_pos < multi_expect_pos,
+        "parse-let-v3 は Linux x86 stage2 native で p-expect call 境界を跨いで final let vector が壊れないよう、closing paren 消費前に result を root するべき"
+    );
+}
+
+#[test]
 fn test_selfhost_lexer_tokenize_spans_loop_roots_batch_before_field_reads() {
     let source = selfhost_module("Lexer.ls");
     let tokenize_loop = source
@@ -8291,6 +8341,45 @@ fn test_selfhost_normal_setup_direct_module_parse_splits_parse_let_internals() {
             && parse_let_diagnostic
                 .contains("(print-progress-expr-shape 9000000388 (ref-get pos-ref) result)"),
         "v122 で direct parse-let-v3 が tag=0/len=126 を返したため、first binding init、second binding init、body parse、inner/final let assembly のどこで崩れるかを分けるべき"
+    );
+}
+
+#[test]
+fn test_selfhost_normal_setup_parse_let_diagnostic_roots_final_result_across_expect() {
+    let compiler_mode = std::fs::read_to_string(workspace_root_relative_path(
+        std::path::PathBuf::from("selfhost/src/App/CompilerMode.ls"),
+    ))
+    .expect("CompilerMode.ls を読めること");
+    let parse_let_diagnostic = compiler_mode
+        .split("(defn print-normal-setup-parse-let-internals")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn print-normal-setup-body-dispatch-shape")
+                .next()
+        })
+        .expect("parse-let normal setup diagnostic helper を取り出せること");
+
+    let multi_result_pos = parse_let_diagnostic
+        .find("result (vector-push-quad-rooted-v3 (vector-new 8) 7 nh init inner)")
+        .expect("normal setup parse-let diagnostic は outer let result を作ること");
+    let multi_root_pos = parse_let_diagnostic[multi_result_pos..]
+        .find("(root_push result)")
+        .expect("normal setup parse-let diagnostic は result を p-expect 前に root すること")
+        + multi_result_pos;
+    let multi_expect_pos = parse_let_diagnostic[multi_result_pos..]
+        .find("(p-expect spans pos-ref 1)")
+        .expect("normal setup parse-let diagnostic は closing paren を消費すること")
+        + multi_result_pos;
+    let multi_marker_pos = parse_let_diagnostic[multi_result_pos..]
+        .find("(print-progress-expr-shape 9000000388 (ref-get pos-ref) result)")
+        .expect("normal setup parse-let diagnostic は final result shape を出すこと")
+        + multi_result_pos;
+
+    assert!(
+        multi_result_pos < multi_root_pos
+            && multi_root_pos < multi_expect_pos
+            && multi_expect_pos < multi_marker_pos,
+        "v123 で inner let は正常、outer let final result だけが壊れたため、diagnostic helper も production と同じく result を root してから p-expect を跨ぐべき"
     );
 }
 

@@ -1340,9 +1340,11 @@
         (let [body (parse-let-body-v3 spans pos-ref src)]
           (do
             (root_push body)
-            (p-expect spans pos-ref 1) ;; ) を消費
             (let [result (vector-push-quad-rooted-v3 (vector-new 8) 7 nh init body)]
               (do
+                (root_push result)
+                (p-expect spans pos-ref 1) ;; ) を消費
+                (root_pop)
                 (root_pop)
                 (root_pop)
                 result)))))
@@ -1361,9 +1363,11 @@
                   (let [inner (vector-push-quad-rooted-v3 (vector-new 8) 7 nh2 init2 rest-body)]
                     (do
                       (root_push inner)
-                      (p-expect spans pos-ref 1) ;; ) を消費
                       (let [result (vector-push-quad-rooted-v3 (vector-new 8) 7 nh init inner)]
                         (do
+                          (root_push result)
+                          (p-expect spans pos-ref 1) ;; ) を消費
+                          (root_pop)
                           (root_pop)
                           (root_pop)
                           (root_pop)

@@ -1435,10 +1435,10 @@
                       (do
                         (root_push body)
                         (print-progress-expr-shape 9000000386 (ref-get pos-ref) body)
-                        (p-expect spans pos-ref 1)
                         (let [result (vector-push-quad-rooted-v3 (vector-new 8) 7 nh init body)]
                           (do
                             (root_push result)
+                            (p-expect spans pos-ref 1)
                             (print-progress-expr-shape 9000000388 (ref-get pos-ref) result)
                             (root_pop)
                             (root_pop)
@@ -1467,10 +1467,10 @@
                                 (do
                                   (root_push inner)
                                   (print-progress-expr-shape 9000000387 (ref-get pos-ref) inner)
-                                  (p-expect spans pos-ref 1)
                                   (let [result (vector-push-quad-rooted-v3 (vector-new 8) 7 nh init inner)]
                                     (do
                                       (root_push result)
+                                      (p-expect spans pos-ref 1)
                                       (print-progress-expr-shape 9000000388 (ref-get pos-ref) result)
                                       (root_pop)
                                       (root_pop)
