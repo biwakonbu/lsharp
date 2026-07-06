@@ -1388,6 +1388,50 @@
             (root_pop)
             (root_pop)
             0))))))
+(defn print-progress-expr-shape [marker label expr]
+  (do
+    (root_push expr)
+    (print marker)
+    (print label)
+    (print (vector-get expr 0))
+    (print (vector-length expr))
+    (print (if (> (vector-length expr) 1) (vector-get expr 1) -1))
+    (print (if (> (vector-length expr) 2) (vector-get expr 2) -1))
+    (print (if (> (vector-length expr) 3) (vector-get expr 3) -1))
+    (root_pop)
+    0))
+(defn print-normal-setup-body-dispatch-shape [spans src body-start-pos]
+  (do
+    (root_push spans)
+    (root_push src)
+    (let [sexp-pos (ref-new body-start-pos)
+      let-pos (ref-new body-start-pos)]
+      (do
+        (root_push sexp-pos)
+        (root_push let-pos)
+        (print 9000000377)
+        (print (ref-get sexp-pos))
+        (print (p-current spans sexp-pos))
+        (print (span-kind spans (+ (ref-get sexp-pos) 1)))
+        (p-advance let-pos)
+        (print 9000000378)
+        (print (ref-get let-pos))
+        (print (p-current spans let-pos))
+        (let [direct-let (parse-let-v3 spans let-pos src)]
+          (do
+            (root_push direct-let)
+            (print-progress-expr-shape 9000000379 (ref-get let-pos) direct-let)
+            (let [sexp-node (parse-sexp-v3 spans sexp-pos src)]
+              (do
+                (root_push sexp-node)
+                (print-progress-expr-shape 9000000380 (ref-get sexp-pos) sexp-node)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                0))))))))
 (defn print-normal-setup-defn-body-finalize-shape [spans src defn-start-pos]
   (do
     (root_push spans)
@@ -1421,6 +1465,7 @@
                         (print param-count)
                         (print (vector-length defn-node))
                         (print (vector-get defn-node 0))
+                        (print-normal-setup-body-dispatch-shape spans src (ref-get pos-ref))
                         (let [parsed-defn-body (parse-expr-v3 spans pos-ref src)]
                           (do
                             (root_push parsed-defn-body)

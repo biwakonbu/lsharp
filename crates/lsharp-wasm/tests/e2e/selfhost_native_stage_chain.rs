@@ -8229,6 +8229,38 @@ fn test_selfhost_normal_setup_direct_module_parse_splits_body_parse_and_finalize
 }
 
 #[test]
+fn test_selfhost_normal_setup_direct_module_parse_splits_expr_dispatch_and_let_shape() {
+    let compiler_mode = std::fs::read_to_string(workspace_root_relative_path(
+        std::path::PathBuf::from("selfhost/src/App/CompilerMode.ls"),
+    ))
+    .expect("CompilerMode.ls を読めること");
+    let body_finalize = compiler_mode
+        .split("(defn print-normal-setup-defn-body-finalize-shape")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn print-normal-setup-direct-module-defn3-parse-shape")
+                .next()
+        })
+        .expect("body finalize normal setup diagnostic helper を取り出せること");
+
+    assert!(
+        body_finalize
+            .contains("(print-normal-setup-body-dispatch-shape spans src (ref-get pos-ref))")
+            && compiler_mode.contains("(defn print-normal-setup-body-dispatch-shape")
+            && compiler_mode.contains("(defn print-progress-expr-shape")
+            && compiler_mode.contains("(print 9000000377)")
+            && compiler_mode.contains("(print 9000000378)")
+            && compiler_mode.contains("direct-let (parse-let-v3 spans let-pos src)")
+            && compiler_mode
+                .contains("(print-progress-expr-shape 9000000379 (ref-get let-pos) direct-let)")
+            && compiler_mode.contains("sexp-node (parse-sexp-v3 spans sexp-pos src)")
+            && compiler_mode
+                .contains("(print-progress-expr-shape 9000000380 (ref-get sexp-pos) sexp-node)"),
+        "v121 で body parse 直後に tag=0/len=126 へ崩れたため、parse-expr の S 式 dispatch と parse-let 直呼びのどちらで body shape が崩れるかを分けるべき"
+    );
+}
+
+#[test]
 fn test_selfhost_compile_if_with_ftable_roots_branches_before_cond_compile() {
     let source = selfhost_module("Compiler.ls");
     let if_body = source
