@@ -8221,7 +8221,9 @@ fn test_selfhost_normal_setup_direct_module_parse_splits_body_parse_and_finalize
             && compiler_mode.contains("(print-progress-decl-body-shape 9000000376 1 parsed-body)")
             && compiler_mode.contains("parsed-defn-body (parse-expr-v3 spans pos-ref src)")
             && compiler_mode
-                .contains("parsed-body (finalize-defn-body-v3 parsed-defn-body defn-node)"),
+                .contains("parsed-body (finalize-defn-body-v3 parsed-defn-body defn-node)")
+            && compiler_mode
+                .contains("(p-advance pos-ref)\n        (p-advance pos-ref)\n        (let [ns"),
         "v119 で parse-defn-v3 direct return が壊れていたため、body parse 直後と finalize 後のどちらで body slot が崩れるかを分けるべき"
     );
 }

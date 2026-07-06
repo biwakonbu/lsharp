@@ -1396,6 +1396,7 @@
       (do
         (root_push pos-ref)
         (p-advance pos-ref)
+        (p-advance pos-ref)
         (let [ns (p-start spans pos-ref)
           ne (p-end spans pos-ref)
           nh (name-hash src ns ne)]
