@@ -8829,6 +8829,90 @@ fn test_selfhost_parser_parse_let_reads_final_result_from_ref_after_expect() {
 }
 
 #[test]
+fn test_selfhost_parser_parse_let_roots_returned_result_before_unwinding_bindings() {
+    let source = selfhost_module("Parser.ls");
+    let after_first_body = source
+        .split("(defn parse-let-after-first-binding-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn parse-let-v3").next())
+        .expect("Parser.ls に parse-let-after-first-binding-v3 が存在すること");
+    let first_binding_body = source
+        .split("(defn parse-let-first-binding-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn parse-let-rest-rooted-v3").next())
+        .expect("Parser.ls に parse-let-first-binding-v3 が存在すること");
+
+    let init_slot_pos = after_first_body
+        .find("init-slot (root_push init)")
+        .expect("parse-let-after-first-binding は init root slot を保持すること");
+    for (branch_name, result_text) in [
+        (
+            "single binding",
+            "final-result (finish-parse-let-result-after-expect-v3 spans pos-ref result)",
+        ),
+        (
+            "multi binding",
+            "final-result (finish-parse-let-result-after-expect-v3 spans pos-ref result)",
+        ),
+    ] {
+        let result_pos = after_first_body.find(result_text).unwrap_or_else(|| {
+            panic!("parse-let {branch_name} は final-result を local 化すること")
+        });
+        let result_root_pos = after_first_body[result_pos..]
+            .find("(root_push final-result)")
+            .map(|offset| offset + result_pos)
+            .unwrap_or_else(|| {
+                panic!("parse-let {branch_name} は final-result を unwind 前に root すること")
+            });
+        let root_set_pos = after_first_body[result_pos..]
+            .find("(root_set init-slot final-result)")
+            .map(|offset| offset + result_pos)
+            .unwrap_or_else(|| {
+                panic!("parse-let {branch_name} は final-result を init slot に退避すること")
+            });
+        let first_pop_after_result = after_first_body[result_pos..]
+            .find("(root_pop)")
+            .map(|offset| offset + result_pos)
+            .unwrap_or_else(|| panic!("parse-let {branch_name} は roots を unwind すること"));
+
+        assert!(
+            init_slot_pos < result_pos
+                && result_pos < result_root_pos
+                && result_root_pos < root_set_pos
+                && root_set_pos < first_pop_after_result,
+            "parse-let {branch_name} は final-result を root slot に退避してから binding roots を unwind するべき"
+        );
+    }
+
+    let first_init_slot_pos = first_binding_body
+        .find("init-slot (root_push init)")
+        .expect("parse-let-first-binding は init root slot を保持すること");
+    let parsed_pos = first_binding_body
+        .find("parsed (parse-let-after-first-binding-v3 spans pos-ref src nh init)")
+        .expect("parse-let-first-binding は parsed let result を local 化すること");
+    let parsed_root_pos = first_binding_body[parsed_pos..]
+        .find("(root_push parsed)")
+        .map(|offset| offset + parsed_pos)
+        .expect("parse-let-first-binding は parsed result を unwind 前に root すること");
+    let parsed_root_set_pos = first_binding_body[parsed_pos..]
+        .find("(root_set init-slot parsed)")
+        .map(|offset| offset + parsed_pos)
+        .expect("parse-let-first-binding は parsed result を init slot に退避すること");
+    let first_pop_after_parsed = first_binding_body[parsed_pos..]
+        .find("(root_pop)")
+        .map(|offset| offset + parsed_pos)
+        .expect("parse-let-first-binding は roots を unwind すること");
+
+    assert!(
+        first_init_slot_pos < parsed_pos
+            && parsed_pos < parsed_root_pos
+            && parsed_root_pos < parsed_root_set_pos
+            && parsed_root_set_pos < first_pop_after_parsed,
+        "parse-let-first-binding は parse-let-after-first-binding の返却 AST を root slot に退避してから init root を unwind するべき"
+    );
+}
+
+#[test]
 fn test_selfhost_compile_if_with_ftable_roots_branches_before_cond_compile() {
     let source = selfhost_module("Compiler.ls");
     let if_body = source
