@@ -1314,6 +1314,87 @@ fn test_native_linux_x86_hostgen_vm_script_forwards_actual_chunk_env_to_guest() 
 }
 
 #[test]
+fn test_native_linux_x86_hostgen_vm_script_can_reuse_actual_stage1_artifact() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+    let vm_exec = script
+        .split(r#"limactl shell "${VM_NAME}" -- env"#)
+        .nth(1)
+        .and_then(|tail| tail.split("<<'VM_SCRIPT'").next())
+        .expect("VM 実行 heredoc は env 経由で actual stage1 reuse 設定を渡すべき");
+    let validate_body = shell_function_body(&script, "validate_actual_stage1_artifact");
+
+    assert!(
+        script.contains(
+            r#"REUSE_ACTUAL_STAGE1_ARTIFACT_DIR_INPUT="${LSHARP_NATIVE_LINUX_X86_REUSE_ACTUAL_STAGE1_ARTIFACT_DIR:-}""#
+        ),
+        "hostgen VM script は検証済み actual-stage1 artifact を再利用する env を受け付けるべき"
+    );
+    assert!(
+        script.contains(r#"ERROR: reusable actual stage1 artifact is under output artifact dir"#),
+        "reuse mode は出力 artifact dir 配下の input を rm -rf で巻き込まないよう拒否するべき"
+    );
+    assert!(
+        script.contains(r#"if [[ -n "${REUSE_ACTUAL_STAGE1_ARTIFACT_DIR_INPUT}" ]]; then"#)
+            && script.contains(r#"REUSE_ACTUAL_STAGE1=1"#)
+            && script.contains(
+                r#"validate_actual_stage1_artifact "${REUSE_ACTUAL_STAGE1_ARTIFACT_DIR}""#
+            )
+            && script.contains(
+                r#"cp "${REUSE_ACTUAL_STAGE1_ARTIFACT_DIR}/${file}" "${ACTUAL_STAGE1_ARTIFACT_DIR}/${file}""#
+            ),
+        "reuse mode は actual-stage1 artifact を再生成せず artifact dir へコピーするべき"
+    );
+    assert!(
+        script.contains(
+            "for file in stage1-code.bin stage1-data.bin entrypoint-offset.txt function-start-len.txt main-func-idx.txt manifest.json seed.ls;"
+        ),
+        "reuse mode は actual-stage1 artifact の allowlist だけをコピーするべき"
+    );
+    for file in [
+        "stage1-code.bin",
+        "stage1-data.bin",
+        "entrypoint-offset.txt",
+        "function-start-len.txt",
+        "main-func-idx.txt",
+        "manifest.json",
+        "seed.ls",
+    ] {
+        assert!(
+            script.contains(file),
+            "reuse mode は actual-stage1 artifact の必須ファイル {file} を検証するべき"
+        );
+    }
+    for check in [
+        r#"manifest.get("target") == "x86_64-unknown-linux-gnu""#,
+        r#"manifest.get("code_len") == code_len"#,
+        r#"manifest.get("data_len") == data_len"#,
+        r#"manifest.get("entrypoint_offset") == entrypoint_offset"#,
+        r#"manifest.get("function_start_len") == function_start_len"#,
+        r#"manifest.get("main_func_idx") == main_func_idx"#,
+        r#"0 <= entrypoint_offset < code_len"#,
+        r#"10 <= main_func_idx < 10 + function_start_len"#,
+    ] {
+        assert!(
+            validate_body.contains(check),
+            "actual-stage1 reuse は manifest と実ファイルの整合性を検証するべき: {check}"
+        );
+    }
+    assert!(
+        vm_exec.contains(r#"LSHARP_NATIVE_LINUX_X86_REUSE_ACTUAL_STAGE1="${REUSE_ACTUAL_STAGE1}""#),
+        "hostgen VM script は guest に actual-stage1 reuse mode を渡すべき"
+    );
+    assert!(
+        script.contains(
+            r#"if [[ -z "${REUSE_ACTUAL_STAGE1}" || "${REUSE_ACTUAL_STAGE1}" = "0" ]]; then"#
+        ) && script.contains(r#"bytes="$(od -An -tx1 -v code.bin"#),
+        "guest は reuse mode では host smoke link/execute を skip して actual replay へ進むべき"
+    );
+}
+
+#[test]
 fn test_native_linux_x86_hostgen_vm_script_guards_actual_replay_with_vm_side_lock() {
     let script_path =
         selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");

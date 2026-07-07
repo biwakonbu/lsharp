@@ -7,6 +7,8 @@ ARTIFACT_DIR_INPUT="${LSHARP_NATIVE_LINUX_X86_HOSTGEN_VM_ARTIFACT_DIR:-ci-artifa
 VM_NAME="${LSHARP_NATIVE_LINUX_X86_VM_NAME:-lsharp-linux-x86}"
 VM_WORK_DIR="${LSHARP_NATIVE_LINUX_X86_VM_WORK_DIR:-/tmp/lsharp-native-linux-x86-hostgen-vm-${ARTIFACT_ID}}"
 KEEP_VM_WORK_DIR="${LSHARP_NATIVE_LINUX_X86_KEEP_VM_WORK_DIR:-0}"
+REUSE_ACTUAL_STAGE1_ARTIFACT_DIR_INPUT="${LSHARP_NATIVE_LINUX_X86_REUSE_ACTUAL_STAGE1_ARTIFACT_DIR:-}"
+REUSE_ACTUAL_STAGE1=0
 
 if [[ "${ARTIFACT_DIR_INPUT}" = /* ]]; then
   if [[ "${ARTIFACT_DIR_INPUT}" != "${ROOT_DIR}"/* ]]; then
@@ -17,12 +19,29 @@ if [[ "${ARTIFACT_DIR_INPUT}" = /* ]]; then
 else
   ARTIFACT_DIR="${ROOT_DIR}/${ARTIFACT_DIR_INPUT}"
 fi
+if [[ -n "${REUSE_ACTUAL_STAGE1_ARTIFACT_DIR_INPUT}" ]]; then
+  if [[ "${REUSE_ACTUAL_STAGE1_ARTIFACT_DIR_INPUT}" = /* ]]; then
+    REUSE_ACTUAL_STAGE1_ARTIFACT_DIR="${REUSE_ACTUAL_STAGE1_ARTIFACT_DIR_INPUT}"
+  else
+    REUSE_ACTUAL_STAGE1_ARTIFACT_DIR="${ROOT_DIR}/${REUSE_ACTUAL_STAGE1_ARTIFACT_DIR_INPUT}"
+  fi
+else
+  REUSE_ACTUAL_STAGE1_ARTIFACT_DIR=""
+fi
 
 cd "${ROOT_DIR}"
 
 if ! command -v limactl >/dev/null 2>&1; then
   echo "ERROR: limactl is required for hostgen->VM Linux x86_64 native execution smoke" >&2
   exit 1
+fi
+if [[ -n "${REUSE_ACTUAL_STAGE1_ARTIFACT_DIR}" ]]; then
+  case "${REUSE_ACTUAL_STAGE1_ARTIFACT_DIR}/" in
+    "${ARTIFACT_DIR}/"*)
+      echo "ERROR: reusable actual stage1 artifact is under output artifact dir: ${REUSE_ACTUAL_STAGE1_ARTIFACT_DIR}" >&2
+      exit 1
+      ;;
+  esac
 fi
 
 rm -rf "${ARTIFACT_DIR}"
@@ -42,11 +61,62 @@ MAP_SIZE_OBJECT_ARTIFACT="${ARTIFACT_DIR}/map-size-program.o"
 FILE_EXISTS_OBJECT_ARTIFACT="${ARTIFACT_DIR}/file-exists-program.o"
 ACTUAL_STAGE1_ARTIFACT_DIR="${ARTIFACT_DIR}/actual-stage1"
 
+validate_actual_stage1_artifact() {
+  local artifact_dir="$1"
+  local file
+  for file in stage1-code.bin stage1-data.bin entrypoint-offset.txt function-start-len.txt main-func-idx.txt manifest.json seed.ls; do
+    if [[ ! -s "${artifact_dir}/${file}" ]]; then
+      echo "ERROR: actual stage1 artifact is missing: ${artifact_dir}/${file}" >&2
+      exit 1
+    fi
+  done
+  python3 - "${artifact_dir}" <<'PY'
+import json
+import pathlib
+import sys
+
+artifact_dir = pathlib.Path(sys.argv[1])
+manifest = json.loads((artifact_dir / "manifest.json").read_text())
+
+def read_int(name: str) -> int:
+    return int((artifact_dir / name).read_text().strip())
+
+code_len = (artifact_dir / "stage1-code.bin").stat().st_size
+data_len = (artifact_dir / "stage1-data.bin").stat().st_size
+entrypoint_offset = read_int("entrypoint-offset.txt")
+function_start_len = read_int("function-start-len.txt")
+main_func_idx = read_int("main-func-idx.txt")
+
+checks = [
+    (manifest.get("target") == "x86_64-unknown-linux-gnu", "target"),
+    (manifest.get("code_len") == code_len, "code_len"),
+    (manifest.get("data_len") == data_len, "data_len"),
+    (manifest.get("entrypoint_offset") == entrypoint_offset, "entrypoint_offset"),
+    (manifest.get("function_start_len") == function_start_len, "function_start_len"),
+    (manifest.get("main_func_idx") == main_func_idx, "main_func_idx"),
+    (0 <= entrypoint_offset < code_len, "entrypoint_offset_range"),
+    (10 <= main_func_idx < 10 + function_start_len, "main_func_idx_range"),
+]
+for ok, label in checks:
+    if not ok:
+        raise SystemExit(f"invalid actual stage1 artifact manifest: {label}")
+PY
+}
+
 echo "=== native Linux x86_64 hostgen -> VM exec smoke ==="
 echo "artifact dir: ${ARTIFACT_DIR}"
 echo "VM: ${VM_NAME}"
 echo "scope: host-side selfhost-generated Linux x86_64 code artifact linked and executed inside local VM."
 
+if [[ -n "${REUSE_ACTUAL_STAGE1_ARTIFACT_DIR_INPUT}" ]]; then
+  REUSE_ACTUAL_STAGE1=1
+  validate_actual_stage1_artifact "${REUSE_ACTUAL_STAGE1_ARTIFACT_DIR}"
+  mkdir -p "${ACTUAL_STAGE1_ARTIFACT_DIR}"
+  for file in stage1-code.bin stage1-data.bin entrypoint-offset.txt function-start-len.txt main-func-idx.txt manifest.json seed.ls; do
+    cp "${REUSE_ACTUAL_STAGE1_ARTIFACT_DIR}/${file}" "${ACTUAL_STAGE1_ARTIFACT_DIR}/${file}"
+  done
+  echo "reusing actual stage1 artifact: ${REUSE_ACTUAL_STAGE1_ARTIFACT_DIR}"
+else
 LSHARP_NATIVE_LINUX_X86_CODE_ARTIFACT="${CODE_ARTIFACT}" \
   cargo test -q -p lsharp-wasm --test e2e \
   e2e::selfhost_native_stage_chain::test_e2e_native_linux_x86_host_generates_const_42_code_artifact \
@@ -171,28 +241,32 @@ LSHARP_NATIVE_LINUX_X86_ACTUAL_STAGE1_ARTIFACT_DIR="${ACTUAL_STAGE1_ARTIFACT_DIR
   cargo test -q -p lsharp-wasm --test e2e \
   e2e::selfhost_native_stage_chain::test_e2e_native_linux_x86_host_generates_actual_selfregen_stage1_bundle_artifact \
   -- --exact --ignored
+fi
 
-for file in stage1-code.bin entrypoint-offset.txt seed.ls manifest.json; do
+for file in stage1-code.bin stage1-data.bin entrypoint-offset.txt function-start-len.txt main-func-idx.txt seed.ls manifest.json; do
   if [[ ! -s "${ACTUAL_STAGE1_ARTIFACT_DIR}/${file}" ]]; then
     echo "ERROR: actual stage1 artifact was not generated: ${ACTUAL_STAGE1_ARTIFACT_DIR}/${file}" >&2
     exit 1
   fi
 done
+validate_actual_stage1_artifact "${ACTUAL_STAGE1_ARTIFACT_DIR}"
 
 limactl shell "${VM_NAME}" -- rm -rf "${VM_WORK_DIR}"
 limactl shell "${VM_NAME}" -- mkdir -p "${VM_WORK_DIR}"
-limactl copy "${CODE_ARTIFACT}" "${VM_NAME}:${VM_WORK_DIR}/code.bin"
-limactl copy "${OBJECT_ARTIFACT}" "${VM_NAME}:${VM_WORK_DIR}/program.o"
-limactl copy "${ARGV_OBJECT_ARTIFACT}" "${VM_NAME}:${VM_WORK_DIR}/argv-program.o"
-limactl copy "${ARGV_CHAR_OBJECT_ARTIFACT}" "${VM_NAME}:${VM_WORK_DIR}/argv-char-program.o"
-limactl copy "${PRINT_OBJECT_ARTIFACT}" "${VM_NAME}:${VM_WORK_DIR}/print-program.o"
-limactl copy "${VECTOR_OBJECT_ARTIFACT}" "${VM_NAME}:${VM_WORK_DIR}/vector-program.o"
-limactl copy "${REF_OBJECT_ARTIFACT}" "${VM_NAME}:${VM_WORK_DIR}/ref-program.o"
-limactl copy "${SUBSTRING_OBJECT_ARTIFACT}" "${VM_NAME}:${VM_WORK_DIR}/substring-program.o"
-limactl copy "${STRING_CONCAT_OBJECT_ARTIFACT}" "${VM_NAME}:${VM_WORK_DIR}/string-concat-program.o"
-limactl copy "${MAP_OBJECT_ARTIFACT}" "${VM_NAME}:${VM_WORK_DIR}/map-program.o"
-limactl copy "${MAP_SIZE_OBJECT_ARTIFACT}" "${VM_NAME}:${VM_WORK_DIR}/map-size-program.o"
-limactl copy "${FILE_EXISTS_OBJECT_ARTIFACT}" "${VM_NAME}:${VM_WORK_DIR}/file-exists-program.o"
+if [[ "${REUSE_ACTUAL_STAGE1}" -ne 1 ]]; then
+  limactl copy "${CODE_ARTIFACT}" "${VM_NAME}:${VM_WORK_DIR}/code.bin"
+  limactl copy "${OBJECT_ARTIFACT}" "${VM_NAME}:${VM_WORK_DIR}/program.o"
+  limactl copy "${ARGV_OBJECT_ARTIFACT}" "${VM_NAME}:${VM_WORK_DIR}/argv-program.o"
+  limactl copy "${ARGV_CHAR_OBJECT_ARTIFACT}" "${VM_NAME}:${VM_WORK_DIR}/argv-char-program.o"
+  limactl copy "${PRINT_OBJECT_ARTIFACT}" "${VM_NAME}:${VM_WORK_DIR}/print-program.o"
+  limactl copy "${VECTOR_OBJECT_ARTIFACT}" "${VM_NAME}:${VM_WORK_DIR}/vector-program.o"
+  limactl copy "${REF_OBJECT_ARTIFACT}" "${VM_NAME}:${VM_WORK_DIR}/ref-program.o"
+  limactl copy "${SUBSTRING_OBJECT_ARTIFACT}" "${VM_NAME}:${VM_WORK_DIR}/substring-program.o"
+  limactl copy "${STRING_CONCAT_OBJECT_ARTIFACT}" "${VM_NAME}:${VM_WORK_DIR}/string-concat-program.o"
+  limactl copy "${MAP_OBJECT_ARTIFACT}" "${VM_NAME}:${VM_WORK_DIR}/map-program.o"
+  limactl copy "${MAP_SIZE_OBJECT_ARTIFACT}" "${VM_NAME}:${VM_WORK_DIR}/map-size-program.o"
+  limactl copy "${FILE_EXISTS_OBJECT_ARTIFACT}" "${VM_NAME}:${VM_WORK_DIR}/file-exists-program.o"
+fi
 limactl shell "${VM_NAME}" -- rm -rf "${VM_WORK_DIR}/actual-stage1"
 limactl shell "${VM_NAME}" -- mkdir -p "${VM_WORK_DIR}/actual-stage1/src/App"
 limactl copy "${ACTUAL_STAGE1_ARTIFACT_DIR}/stage1-code.bin" "${VM_NAME}:${VM_WORK_DIR}/actual-stage1/stage1-code.bin"
@@ -228,6 +302,7 @@ limactl shell "${VM_NAME}" -- env \
   LSHARP_NATIVE_LINUX_X86_STAGE3_RAW_PAYLOAD_BOUNDARY_ONLY="${LSHARP_NATIVE_LINUX_X86_STAGE3_RAW_PAYLOAD_BOUNDARY_ONLY:-}" \
   LSHARP_NATIVE_LINUX_X86_STAGE3_RAW_PAYLOAD_PRODUCTION_BOUNDARY="${LSHARP_NATIVE_LINUX_X86_STAGE3_RAW_PAYLOAD_PRODUCTION_BOUNDARY:-}" \
   LSHARP_NATIVE_LINUX_X86_STAGE3_RAW_PAYLOAD_PRODUCTION_BOUNDARY_ONLY="${LSHARP_NATIVE_LINUX_X86_STAGE3_RAW_PAYLOAD_PRODUCTION_BOUNDARY_ONLY:-}" \
+  LSHARP_NATIVE_LINUX_X86_REUSE_ACTUAL_STAGE1="${REUSE_ACTUAL_STAGE1}" \
   bash -s -- "${VM_WORK_DIR}" <<'VM_SCRIPT'
 set -euo pipefail
 
@@ -236,11 +311,13 @@ cd "${VM_WORK_DIR}"
 
 HOST_OS="$(uname -s)"
 HOST_ARCH="$(uname -m)"
+REUSE_ACTUAL_STAGE1="${LSHARP_NATIVE_LINUX_X86_REUSE_ACTUAL_STAGE1:-0}"
 if [[ "${HOST_OS}" != "Linux" || "${HOST_ARCH}" != "x86_64" ]]; then
   echo "ERROR: VM execution requires Linux/x86_64; got ${HOST_OS}/${HOST_ARCH}" >&2
   exit 1
 fi
 
+if [[ -z "${REUSE_ACTUAL_STAGE1}" || "${REUSE_ACTUAL_STAGE1}" = "0" ]]; then
 bytes="$(od -An -tx1 -v code.bin | tr -s '[:space:]' ' ' | sed 's/^ //; s/ $//; s/ /, 0x/g; s/^/0x/')"
 if [[ -z "${bytes}" ]]; then
   echo "ERROR: code.bin is empty" >&2
@@ -1102,6 +1179,7 @@ write_code_segment_table(out_dir / "stage-code-segments.tsv", code_segments, fun
     "}\n"
 )
 PY
+fi
 
 ACTUAL_TIMEOUT="${LSHARP_NATIVE_LINUX_X86_ACTUAL_TIMEOUT:-900}"
 ACTUAL_CHUNK_SIZE="${LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_SIZE:-4}"
