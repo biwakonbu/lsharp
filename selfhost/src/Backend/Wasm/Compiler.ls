@@ -1581,7 +1581,7 @@
                 (root_pop)
                 (root_pop)
                 (root_pop)
-                result)))))))))
+                result))))))))))
 (defn compile-defn-function-with-source [node source ftable data-ref]
   (do
     (root_push node)
@@ -1651,7 +1651,7 @@
                 (root_pop)
                 (root_pop)
                 (root_pop)
-                result)))))))))
+                result))))))))))
 (defn compile-defn-function-with-source-normal-setup-diagnostic [node source ftable data-ref]
   (do
     (root_push node)

@@ -10496,6 +10496,35 @@ fn test_wasm_compiler_defn_compile_roots_results_before_root_pops() {
         "compile-defn-with-source は native full payload path で initial instrs と IR result を失わないよう root するべき"
     );
 
+    let diagnostic_body = source
+        .split("(defn compile-defn-with-source-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("Compiler.ls に compile-defn-with-source-normal-setup-diagnostic が存在すること");
+    let diagnostic_result_pos = diagnostic_body
+        .find("result (compile-expr-with-source-normal-setup-diagnostic body-expr source env ftable instrs0 data-ref)")
+        .expect("compile-defn-with-source-normal-setup-diagnostic は body compile result を作ること");
+    let diagnostic_instrs0_pos = diagnostic_body.find("instrs0 (vector-new 8)").expect(
+        "compile-defn-with-source-normal-setup-diagnostic は initial instrs vector を作ること",
+    );
+    let diagnostic_root_instrs0_pos = diagnostic_body[diagnostic_instrs0_pos..]
+        .find("(root_push instrs0)")
+        .map(|offset| diagnostic_instrs0_pos + offset)
+        .expect("compile-defn-with-source-normal-setup-diagnostic は body compile 前に instrs0 を root すること");
+    let diagnostic_root_result_pos = diagnostic_body.find("(root_push result)").expect(
+        "compile-defn-with-source-normal-setup-diagnostic は root_pop 前に result を root すること",
+    );
+    let diagnostic_first_pop_pos = diagnostic_body
+        .find("(root_pop)")
+        .expect("compile-defn-with-source-normal-setup-diagnostic は root_pop を持つこと");
+    assert!(
+        diagnostic_instrs0_pos < diagnostic_root_instrs0_pos
+            && diagnostic_root_instrs0_pos < diagnostic_result_pos
+            && diagnostic_result_pos < diagnostic_root_result_pos
+            && diagnostic_root_result_pos < diagnostic_first_pop_pos,
+        "compile-defn-with-source-normal-setup-diagnostic は production path と同じ initial instrs/root result ordering を保つべき"
+    );
+
     for name in ["compile-defn-function-with-source", "compile-defn-function"] {
         let body = source
             .split(&format!("(defn {name}"))
