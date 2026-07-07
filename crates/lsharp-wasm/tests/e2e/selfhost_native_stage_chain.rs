@@ -10475,6 +10475,13 @@ fn test_wasm_compiler_defn_compile_roots_results_before_root_pops() {
     let result_pos = defn_body
         .find("result (compile-expr-with-source body-expr source env ftable instrs0 data-ref)")
         .expect("compile-defn-with-source は body compile result を作ること");
+    let instrs0_pos = defn_body
+        .find("instrs0 (vector-new 8)")
+        .expect("compile-defn-with-source は initial instrs vector を作ること");
+    let root_instrs0_pos = defn_body[instrs0_pos..]
+        .find("(root_push instrs0)")
+        .map(|offset| instrs0_pos + offset)
+        .expect("compile-defn-with-source は body compile 前に instrs0 を root すること");
     let root_result_pos = defn_body
         .find("(root_push result)")
         .expect("compile-defn-with-source は root_pop 前に result を root すること");
@@ -10482,8 +10489,11 @@ fn test_wasm_compiler_defn_compile_roots_results_before_root_pops() {
         .find("(root_pop)")
         .expect("compile-defn-with-source は root_pop を持つこと");
     assert!(
-        result_pos < root_result_pos && root_result_pos < first_pop_pos,
-        "compile-defn-with-source は native full payload path で IR result を失わないよう root_pop 前に result を root するべき"
+        instrs0_pos < root_instrs0_pos
+            && root_instrs0_pos < result_pos
+            && result_pos < root_result_pos
+            && root_result_pos < first_pop_pos,
+        "compile-defn-with-source は native full payload path で initial instrs と IR result を失わないよう root するべき"
     );
 
     for name in ["compile-defn-function-with-source", "compile-defn-function"] {

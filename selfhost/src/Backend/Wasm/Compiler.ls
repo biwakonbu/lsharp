@@ -1567,18 +1567,21 @@
         (let [env (bind-node-params node 3 0 param-count (env-new) 1)]
         (do
         (root_push env)
-        (let [instrs0 (vector-new 8)
-          result (compile-expr-with-source body-expr source env ftable instrs0 data-ref)]
+        (let [instrs0 (vector-new 8)]
           (do
-            (root_push result)
-            (root_pop)
-            (root_pop)
-            (root_pop)
-            (root_pop)
-            (root_pop)
-            (root_pop)
-            (root_pop)
-            result))))))))
+            (root_push instrs0)
+            (let [result (compile-expr-with-source body-expr source env ftable instrs0 data-ref)]
+              (do
+                (root_push result)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result)))))))))
 (defn compile-defn-function-with-source [node source ftable data-ref]
   (do
     (root_push node)
@@ -1630,22 +1633,25 @@
         (print body-idx)
         (print (vector-length body-expr))
         (print (vector-length (ref-get data-ref)))
-        (let [instrs0 (vector-new 8)
-          result (compile-expr-with-source-normal-setup-diagnostic body-expr source env ftable instrs0 data-ref)]
+        (let [instrs0 (vector-new 8)]
           (do
-            (root_push result)
-            (print 9000000235)
-            (print param-count)
-            (print (vector-length result))
-            (print (vector-length (ref-get data-ref)))
-            (root_pop)
-            (root_pop)
-            (root_pop)
-            (root_pop)
-            (root_pop)
-            (root_pop)
-            (root_pop)
-            result))))))))
+            (root_push instrs0)
+            (let [result (compile-expr-with-source-normal-setup-diagnostic body-expr source env ftable instrs0 data-ref)]
+              (do
+                (root_push result)
+                (print 9000000235)
+                (print param-count)
+                (print (vector-length result))
+                (print (vector-length (ref-get data-ref)))
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result)))))))))
 (defn compile-defn-function-with-source-normal-setup-diagnostic [node source ftable data-ref]
   (do
     (root_push node)
