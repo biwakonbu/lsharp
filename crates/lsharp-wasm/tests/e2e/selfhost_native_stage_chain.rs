@@ -8913,7 +8913,7 @@ fn test_selfhost_parser_parse_let_roots_returned_result_before_unwinding_binding
 }
 
 #[test]
-fn test_selfhost_parser_parse_let_returns_popped_root_slot_result_after_unwinding() {
+fn test_selfhost_parser_parse_let_returns_root_pop_directly_after_unwinding() {
     let source = selfhost_module("Parser.ls");
     let after_first_body = source
         .split("(defn parse-let-after-first-binding-v3")
@@ -8926,69 +8926,43 @@ fn test_selfhost_parser_parse_let_returns_popped_root_slot_result_after_unwindin
         .and_then(|tail| tail.split("(defn parse-let-rest-rooted-v3").next())
         .expect("Parser.ls に parse-let-first-binding-v3 が存在すること");
 
-    let mut search_from = 0;
-    for branch_name in ["single binding", "multi binding"] {
-        let result_pos = after_first_body[search_from..]
-            .find("final-result (finish-parse-let-result-after-expect-v3 spans pos-ref result)")
-            .map(|offset| offset + search_from)
-            .unwrap_or_else(|| {
-                panic!("parse-let {branch_name} は final-result を local 化すること")
-            });
-        let returned_bind_pos = after_first_body[result_pos..]
-            .find("returned (do")
-            .map(|offset| offset + result_pos)
-            .unwrap_or_else(|| {
-                panic!("parse-let {branch_name} は root slot から pop した値を返却用 local に保持すること")
-            });
-        let root_set_pos = after_first_body[returned_bind_pos..]
-            .find("(root_set init-slot final-result)")
-            .map(|offset| offset + returned_bind_pos)
-            .unwrap_or_else(|| {
-                panic!(
-                    "parse-let {branch_name} は返却前に final-result を init slot に退避すること"
-                )
-            });
-        let returned_return_pos = after_first_body[root_set_pos..]
-            .find("returned)")
-            .map(|offset| offset + root_set_pos)
-            .unwrap_or_else(|| {
-                panic!(
-                    "parse-let {branch_name} は stale local ではなく pop した returned を返すこと"
-                )
-            });
-
+    assert!(
+        !after_first_body.contains("returned (do"),
+        "parse-let-after-first-binding は root_pop result を stale 化しうる returned local に束縛しないこと"
+    );
+    for (branch_name, expected_tail) in [
+        (
+            "single binding",
+            "(root_set init-slot final-result)\n                        (root_pop)\n                        (root_pop)\n                        (root_pop)",
+        ),
+        (
+            "multi binding",
+            "(root_set init-slot final-result)\n                                  (root_pop)\n                                  (root_pop)\n                                  (root_pop)\n                                  (root_pop)\n                                  (root_pop)",
+        ),
+    ] {
         assert!(
-            result_pos < returned_bind_pos
-                && returned_bind_pos < root_set_pos
-                && root_set_pos < returned_return_pos,
-            "parse-let {branch_name} は binding roots unwind 後に root slot から pop した値を返すべき"
+            after_first_body.contains(expected_tail),
+            "parse-let {branch_name} は binding roots を unwind した最後の root_pop を直接返すべき"
         );
-        search_from = returned_return_pos;
     }
 
-    let parsed_pos = first_binding_body
-        .find("parsed (parse-let-after-first-binding-v3 spans pos-ref src nh init)")
-        .expect("parse-let-first-binding は parsed let result を local 化すること");
-    let returned_bind_pos = first_binding_body[parsed_pos..]
-        .find("returned (do")
-        .map(|offset| offset + parsed_pos)
-        .expect(
-            "parse-let-first-binding は root slot から pop した値を返却用 local に保持すること",
-        );
-    let root_set_pos = first_binding_body[returned_bind_pos..]
+    let parsed_root_set_pos = first_binding_body
         .find("(root_set init-slot parsed)")
-        .map(|offset| offset + returned_bind_pos)
-        .expect("parse-let-first-binding は返却前に parsed を init slot に退避すること");
-    let returned_return_pos = first_binding_body[root_set_pos..]
-        .find("returned)")
-        .map(|offset| offset + root_set_pos)
-        .expect("parse-let-first-binding は stale local ではなく pop した returned を返すこと");
+        .expect("parse-let-first-binding は parsed を init slot に退避すること");
+    let first_pop_pos = first_binding_body[parsed_root_set_pos..]
+        .find("(root_pop)")
+        .map(|offset| offset + parsed_root_set_pos)
+        .expect("parse-let-first-binding は parsed temp root を pop すること");
+    let second_pop_pos = first_binding_body[first_pop_pos + "(root_pop)".len()..]
+        .find("(root_pop)")
+        .map(|offset| offset + first_pop_pos + "(root_pop)".len())
+        .expect("parse-let-first-binding は init slot root を直接 pop して返すこと");
 
     assert!(
-        parsed_pos < returned_bind_pos
-            && returned_bind_pos < root_set_pos
-            && root_set_pos < returned_return_pos,
-        "parse-let-first-binding は init root slot から pop した parsed result を返すべき"
+        !first_binding_body.contains("returned (do")
+            && parsed_root_set_pos < first_pop_pos
+            && first_pop_pos < second_pop_pos,
+        "parse-let-first-binding は returned local を介さず、最後の root_pop で parsed result を直接返すべき"
     );
 }
 
