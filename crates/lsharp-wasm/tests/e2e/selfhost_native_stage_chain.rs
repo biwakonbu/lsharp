@@ -7616,6 +7616,57 @@ fn test_selfhost_parser_parse_if_roots_condition_and_then_before_later_parse() {
 }
 
 #[test]
+fn test_selfhost_parser_parse_if_reads_final_result_from_ref_after_expect() {
+    let source = selfhost_module("Parser.ls");
+    let parse_if_body = source
+        .split("(defn parse-if-v3")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn finish-parse-if-result-after-expect-v3")
+                .next()
+        })
+        .expect(
+            "Parser.ls の parse-if-v3 直後に finish-parse-if-result-after-expect-v3 が存在すること",
+        );
+    let finish_body = source
+        .split("(defn finish-parse-if-result-after-expect-v3")
+        .nth(1)
+        .and_then(|tail| tail.split(";; === let 式").next())
+        .expect("Parser.ls に finish-parse-if-result-after-expect-v3 が存在すること");
+
+    let result_pos = parse_if_body
+        .find("result (vector-push-quad-rooted-v3 (vector-new 8) 6 cond-node then-node else-node)")
+        .expect("parse-if-v3 は closing paren 消費前に if result を構築すること");
+    let finish_call_pos = parse_if_body[result_pos..]
+        .find("(finish-parse-if-result-after-expect-v3 spans pos-ref result)")
+        .map(|pos| result_pos + pos)
+        .expect("parse-if-v3 は result を finish helper へ渡すこと");
+    let direct_expect_pos = parse_if_body.find("(p-expect spans pos-ref 1)");
+
+    let finish_root_pos = finish_body
+        .find("(root_push result)")
+        .expect("finish helper は result を p-expect 前に root すること");
+    let finish_ref_pos = finish_body
+        .find("result-ref (ref-new result)")
+        .expect("finish helper は result を ref に退避すること");
+    let finish_expect_pos = finish_body
+        .find("(p-expect spans pos-ref 1)")
+        .expect("finish helper は closing paren を消費すること");
+    let finish_ref_get_pos = finish_body
+        .find("final-result (ref-get result-ref)")
+        .expect("finish helper は p-expect 後に ref から result を読み戻すこと");
+
+    assert!(
+        result_pos < finish_call_pos
+            && direct_expect_pos.is_none()
+            && finish_root_pos < finish_ref_pos
+            && finish_ref_pos < finish_expect_pos
+            && finish_expect_pos < finish_ref_get_pos,
+        "parse-if-v3 は Linux x86 stage2 native で p-expect call 境界を跨いで branch/result local が stale にならないよう、先に if result を組み ref から読み戻すべき"
+    );
+}
+
+#[test]
 fn test_selfhost_compile_let_step_reloads_body_after_init_compile() {
     let source = selfhost_module("Compiler.ls");
     let step_body = source

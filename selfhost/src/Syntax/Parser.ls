@@ -1306,13 +1306,27 @@
             (let [else-node (parse-expr-v3 spans pos-ref src)]
               (do
                 (root_push else-node)
-                (p-expect spans pos-ref 1) ;; ) を消費
-                (let [parsed (vector-push-quad-rooted-v3 (vector-new 8) 6 cond-node then-node else-node)]
+                (let [result (vector-push-quad-rooted-v3 (vector-new 8) 6 cond-node then-node else-node)]
                   (do
-                    (root_pop)
-                    (root_pop)
-                    (root_pop)
-                    parsed))))))))))
+                    (let [final-result (finish-parse-if-result-after-expect-v3 spans pos-ref result)]
+                      (do
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        final-result))))))))))))
+
+(defn finish-parse-if-result-after-expect-v3 [spans pos-ref result]
+  (do
+    (root_push result)
+    (let [result-ref (ref-new result)]
+      (do
+        (root_push result-ref)
+        (p-expect spans pos-ref 1) ;; ) を消費
+        (let [final-result (ref-get result-ref)]
+          (do
+            (root_pop)
+            (root_pop)
+            final-result))))))
 
 ;; === let 式 (複数バインディング対応) ===
 (defn parse-let-body-starts-let-v3 [spans pos-ref]
