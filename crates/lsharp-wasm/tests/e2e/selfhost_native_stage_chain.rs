@@ -9176,12 +9176,65 @@ fn test_native_codegen_x86_control_else_fallback_appends_in_helper() {
         .expect("NativeCodegen.ls に generate-native-control-instr-bundle-loop-x86-with-context が存在すること");
 
     assert!(
-        source.contains("(defn append-control-else-instr-x86 [result meta offsets idx]")
+        source.contains("(defn append-control-else-instr-x86 [result ir-func meta offsets idx]")
             && control_loop_body.contains("(if (= opcode 79)")
             && control_loop_body
-                .contains("(append-control-else-instr-x86 result meta offsets idx)")
+                .contains("(append-control-else-instr-x86 result ir-func meta offsets idx)")
             && !control_loop_body.contains("(if (= (direct-append-x86-opcode opcode) 13)"),
         "x86 else control fallback は direct selector を増やさず、小さい helper 内で生成+append するべき"
+    );
+}
+
+#[test]
+fn test_native_codegen_control_else_target_falls_back_to_forward_end_scan() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let else_scan_body = source
+        .split("(defn find-control-end-from-else [ir-func idx len depth]")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("Else fallback 用の control end 前方探索 helper が必要");
+    let else_target_body = source
+        .split("(defn control-else-target-offset [ir-func meta offsets else-idx]")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("Else target offset helper が必要");
+    let emit_else_body = source
+        .split("(defn emit-control-else-x86 [ir-func meta offsets idx]")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("x86 Else emit は ir-func を受け取るべき");
+    let aarch64_emit_body = source
+        .split("(defn emit-control-instr-aarch64 [ir-func meta offsets idx]")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("aarch64 control emit が必要");
+
+    assert!(
+        else_scan_body.contains("(if (= (is-control-start-opcode opcode) 1)")
+            && else_scan_body
+                .contains("(find-control-end-from-else ir-func (+ idx 1) len (+ depth 1))")
+            && else_scan_body.contains("(if (= opcode 43)")
+            && else_scan_body.contains("(if (= depth 0)")
+            && else_scan_body.contains("idx")
+            && else_scan_body
+                .contains("(find-control-end-from-else ir-func (+ idx 1) len (- depth 1))"),
+        "Else fallback は nested control を数えながら対応する End を前方探索するべき"
+    );
+    assert!(
+        else_target_body.contains("end-idx (map-get-index (control-flow-end-map meta) else-idx)")
+            && else_target_body.contains("(if (< end-idx 0)")
+            && else_target_body.contains(
+                "(find-control-end-from-else ir-func (+ else-idx 1) (vector-length ir-func) 0)"
+            )
+            && else_target_body.contains("(vector-get offsets (+ fallback-end-idx 1))")
+            && else_target_body.contains("(vector-get offsets (+ end-idx 1))"),
+        "Else target helper は end-map の else idx entry が欠けた場合だけ forward scan fallback を使うべき"
+    );
+    assert!(
+        emit_else_body
+            .contains("target-offset (control-else-target-offset ir-func meta offsets idx)")
+            && aarch64_emit_body.contains("(control-else-target-offset ir-func meta offsets idx)"),
+        "x86/aarch64 の Else emit は stage3 で end-map entry が欠けても target=offsets[0] に落ちない fallback helper を使うべき"
     );
 }
 

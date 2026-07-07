@@ -10874,7 +10874,7 @@
             (continue-native-control-instr-bundle-loop-x86 ctx idx remaining))
         (if (= opcode 79)
           (do
-            (append-control-else-instr-x86 result meta offsets idx)
+            (append-control-else-instr-x86 result ir-func meta offsets idx)
             (continue-native-control-instr-bundle-loop-x86 ctx idx remaining))
         (if (= opcode 43)
           (continue-native-control-instr-bundle-loop-x86 ctx idx remaining)
@@ -11340,8 +11340,8 @@
     native-len (vector-length native)]
     (append-native-bytes-rooted result native native-len)))
 
-(defn append-control-else-instr-x86 [result meta offsets idx]
-  (let [native (emit-control-else-x86 meta offsets idx)
+(defn append-control-else-instr-x86 [result ir-func meta offsets idx]
+  (let [native (emit-control-else-x86 ir-func meta offsets idx)
     native-len (vector-length native)]
     (append-native-bytes-rooted result native native-len)))
 
@@ -12175,15 +12175,35 @@
       (vector-get offsets (+ target-start 1))
       (control-end-target-offset meta offsets target-start))))
 
+(defn find-control-end-from-else [ir-func idx len depth]
+  (if (>= idx len)
+    -1
+    (let [instr (vector-get ir-func idx)
+      opcode (vector-get instr 0)]
+      (if (= (is-control-start-opcode opcode) 1)
+        (find-control-end-from-else ir-func (+ idx 1) len (+ depth 1))
+        (if (= opcode 43)
+          (if (= depth 0)
+            idx
+            (find-control-end-from-else ir-func (+ idx 1) len (- depth 1)))
+          (find-control-end-from-else ir-func (+ idx 1) len depth))))))
+
+(defn control-else-target-offset [ir-func meta offsets else-idx]
+  (let [end-idx (map-get-index (control-flow-end-map meta) else-idx)]
+    (if (< end-idx 0)
+      (let [fallback-end-idx (find-control-end-from-else ir-func (+ else-idx 1) (vector-length ir-func) 0)]
+        (vector-get offsets (+ fallback-end-idx 1)))
+      (vector-get offsets (+ end-idx 1)))))
+
 (defn emit-control-if-x86 [meta offsets idx]
   (let [current-offset (vector-get offsets idx)
     target-offset (control-if-false-target-offset meta offsets idx)
     disp (- target-offset (+ current-offset 8))]
     (concat-byte-vectors (emit-test-eax-eax) (emit-jz-rel32 disp))))
 
-(defn emit-control-else-x86 [meta offsets idx]
+(defn emit-control-else-x86 [ir-func meta offsets idx]
   (let [current-offset (vector-get offsets idx)
-    target-offset (control-end-target-offset meta offsets idx)
+    target-offset (control-else-target-offset ir-func meta offsets idx)
     disp (- target-offset (+ current-offset 5))]
     (emit-jmp-rel32 disp)))
 
@@ -12205,7 +12225,7 @@
     (if (= opcode 41)
       (emit-control-if-x86 meta offsets idx)
       (if (= opcode 79)
-        (emit-control-else-x86 meta offsets idx)
+        (emit-control-else-x86 ir-func meta offsets idx)
         (if (= opcode 80)
           (emit-control-branch-x86 ir-func meta offsets idx)
           (if (= opcode 81)
@@ -12221,7 +12241,7 @@
     (if (= opcode 41)
       (emit-aarch64-cbz-x0 (- (control-if-false-target-offset meta offsets idx) current-offset))
       (if (= opcode 79)
-        (emit-aarch64-b (- (control-end-target-offset meta offsets idx) current-offset))
+        (emit-aarch64-b (- (control-else-target-offset ir-func meta offsets idx) current-offset))
         (if (= opcode 80)
           (emit-aarch64-b (- (control-branch-target-offset ir-func meta offsets idx) current-offset))
           (if (= opcode 81)
