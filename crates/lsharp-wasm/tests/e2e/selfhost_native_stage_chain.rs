@@ -1392,6 +1392,11 @@ fn test_native_linux_x86_hostgen_vm_script_can_reuse_actual_stage1_artifact() {
         ) && script.contains(r#"bytes="$(od -An -tx1 -v code.bin"#),
         "guest は reuse mode では host smoke link/execute を skip して actual replay へ進むべき"
     );
+    assert!(
+        script.contains("fi\n\ncat >materialize-actual-bundle.py <<'PY'")
+            && script.contains("cat >decode-actual-transport.py <<'PY'"),
+        "actual replay 用 helper 生成は reuse mode でも必要なので quick smoke guard の外に置くべき"
+    );
 }
 
 #[test]

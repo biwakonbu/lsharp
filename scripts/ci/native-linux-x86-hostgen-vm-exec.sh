@@ -931,6 +931,7 @@ cat >file-exists-object-summary.json <<JSON
   ]
 }
 JSON
+fi
 
 cat >materialize-actual-bundle.py <<'PY'
 import os
@@ -1179,7 +1180,6 @@ write_code_segment_table(out_dir / "stage-code-segments.tsv", code_segments, fun
     "}\n"
 )
 PY
-fi
 
 ACTUAL_TIMEOUT="${LSHARP_NATIVE_LINUX_X86_ACTUAL_TIMEOUT:-900}"
 ACTUAL_CHUNK_SIZE="${LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_SIZE:-4}"
