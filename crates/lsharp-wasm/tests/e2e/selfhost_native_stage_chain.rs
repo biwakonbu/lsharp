@@ -1588,6 +1588,32 @@ fn test_native_linux_x86_hostgen_vm_script_can_collect_stage2_metadata_range() {
 }
 
 #[test]
+fn test_native_linux_x86_hostgen_vm_script_can_collect_stage2_metadata_range_only() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+    let vm_exec = script
+        .split(r#"limactl shell "${VM_NAME}" -- env"#)
+        .nth(1)
+        .and_then(|tail| tail.split("<<'VM_SCRIPT'").next())
+        .expect("VM 実行 heredoc は env 経由で stage2 metadata-only 診断設定を渡すべき");
+
+    assert!(
+        vm_exec.contains("LSHARP_NATIVE_LINUX_X86_STAGE2_METADATA_ONLY")
+            && script.contains("STAGE2_METADATA_ONLY")
+            && script.contains(r#"if [[ -n "${STAGE2_METADATA_ONLY}" ]]; then"#)
+            && script.contains("collect_stage2_metadata_range")
+            && script.contains(r#""phase": "stage2-metadata""#)
+            && script.contains("metadata_stdout_bytes")
+            && script.contains("metadata_stderr_bytes")
+            && script.contains("actual-stage2-metadata.txt")
+            && script.contains("actual-stage2-metadata-stderr.txt"),
+        "hostgen VM script は actual-stage1 native compiler の metadata range を stage1->stage2 full transport なしで artifact 化できるべき"
+    );
+}
+
+#[test]
 fn test_native_linux_x86_hostgen_vm_script_can_collect_stage3_metadata_range_only() {
     let script_path =
         selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");

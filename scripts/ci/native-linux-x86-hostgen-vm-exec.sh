@@ -47,6 +47,9 @@ fi
 if [[ -n "${LSHARP_NATIVE_LINUX_X86_STAGE2_METADATA_START:-}" || -n "${LSHARP_NATIVE_LINUX_X86_STAGE2_METADATA_END:-}" ]]; then
   STAGE2_METADATA_REQUESTED=1
 fi
+if [[ -n "${LSHARP_NATIVE_LINUX_X86_STAGE2_METADATA_ONLY:-}" ]]; then
+  STAGE2_METADATA_REQUESTED=1
+fi
 
 cd "${ROOT_DIR}"
 
@@ -411,6 +414,7 @@ limactl shell "${VM_NAME}" -- env \
   LSHARP_NATIVE_LINUX_X86_VM_REPLAY_LOCK_DIR="${LSHARP_NATIVE_LINUX_X86_VM_REPLAY_LOCK_DIR:-/tmp/lsharp-native-linux-x86-hostgen-vm-replay.lock}" \
   LSHARP_NATIVE_LINUX_X86_STAGE2_METADATA_START="${LSHARP_NATIVE_LINUX_X86_STAGE2_METADATA_START:-}" \
   LSHARP_NATIVE_LINUX_X86_STAGE2_METADATA_END="${LSHARP_NATIVE_LINUX_X86_STAGE2_METADATA_END:-}" \
+  LSHARP_NATIVE_LINUX_X86_STAGE2_METADATA_ONLY="${LSHARP_NATIVE_LINUX_X86_STAGE2_METADATA_ONLY:-}" \
   LSHARP_NATIVE_LINUX_X86_STAGE3_METADATA_START="${LSHARP_NATIVE_LINUX_X86_STAGE3_METADATA_START:-}" \
   LSHARP_NATIVE_LINUX_X86_STAGE3_METADATA_END="${LSHARP_NATIVE_LINUX_X86_STAGE3_METADATA_END:-}" \
   LSHARP_NATIVE_LINUX_X86_STAGE3_METADATA_ONLY="${LSHARP_NATIVE_LINUX_X86_STAGE3_METADATA_ONLY:-}" \
@@ -1314,6 +1318,7 @@ ACTUAL_CHUNK_RETRIES="${LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_RETRIES:-1}"
 STAGE1_PROGRESS="${LSHARP_NATIVE_LINUX_X86_STAGE1_PROGRESS:-}"
 STAGE2_METADATA_START="${LSHARP_NATIVE_LINUX_X86_STAGE2_METADATA_START:-}"
 STAGE2_METADATA_END="${LSHARP_NATIVE_LINUX_X86_STAGE2_METADATA_END:-}"
+STAGE2_METADATA_ONLY="${LSHARP_NATIVE_LINUX_X86_STAGE2_METADATA_ONLY:-}"
 STAGE3_METADATA_START="${LSHARP_NATIVE_LINUX_X86_STAGE3_METADATA_START:-}"
 STAGE3_METADATA_END="${LSHARP_NATIVE_LINUX_X86_STAGE3_METADATA_END:-}"
 STAGE3_METADATA_ONLY="${LSHARP_NATIVE_LINUX_X86_STAGE3_METADATA_ONLY:-}"
@@ -1727,6 +1732,28 @@ if [[ -z "${REUSE_ACTUAL_STAGE2}" || "${REUSE_ACTUAL_STAGE2}" = "0" ]]; then
   if [[ "${actual_stage1_progress_exit_code}" -ne 0 ]]; then
     write_actual_selfregen_failure_summary "stage1-progress" "${actual_stage1_progress_exit_code}" actual-stage1-progress.txt actual-stage1-progress-stderr.txt
     exit "${actual_stage1_progress_exit_code}"
+  fi
+  if [[ -n "${STAGE2_METADATA_ONLY}" ]]; then
+    set +e
+    collect_stage2_metadata_range
+    actual_stage2_metadata_exit_code=$?
+    set -e
+    if [[ "${actual_stage2_metadata_exit_code}" -ne 0 ]]; then
+      write_actual_selfregen_failure_summary "stage2-metadata" "${actual_stage2_metadata_exit_code}" actual-stage2-metadata.txt actual-stage2-metadata-stderr.txt
+      exit "${actual_stage2_metadata_exit_code}"
+    fi
+    cat >actual-selfregen-summary.json <<JSON
+{
+  "target": "x86_64-unknown-linux-gnu",
+  "host_os": "${HOST_OS}",
+  "host_arch": "${HOST_ARCH}",
+  "status": "diagnostic",
+  "phase": "stage2-metadata",
+  "metadata_stdout_bytes": $(wc -c <actual-stage2-metadata.txt 2>/dev/null || echo 0),
+  "metadata_stderr_bytes": $(wc -c <actual-stage2-metadata-stderr.txt 2>/dev/null || echo 0)
+}
+JSON
+    exit 0
   fi
   set +e
   run_actual_stage_chunked actual-stage1 actual-stage2-stdout.txt actual-stage2-stderr.txt
