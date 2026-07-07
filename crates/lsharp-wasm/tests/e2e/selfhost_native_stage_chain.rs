@@ -11531,6 +11531,47 @@ fn test_native_codegen_x86_control_loop_roots_next_state_before_tail_recursion()
 }
 
 #[test]
+fn test_native_codegen_control_flow_meta_inserts_else_end_index_through_helper() {
+    let source_path = selfhost_project_root().join("selfhost/src/Backend/Native/NativeCodegen.ls");
+    let source = std::fs::read_to_string(&source_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", source_path.display()));
+    let helper_body = source
+        .split("(defn control-flow-end-map-with-else-index [end-map else-idx end-idx]")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("control-flow end-map else-index helper が必要");
+    let recursive_end_body = source
+        .split("(defn scan-control-flow-meta-handle-end")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn scan-control-flow-meta-handle-branch")
+                .next()
+        })
+        .expect("recursive control-flow end handler が必要");
+    let step_body = source
+        .split("(defn scan-control-flow-meta-step ")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn scan-control-flow-meta-step-64-loop-bounded")
+                .next()
+        })
+        .expect("chunked control-flow step が必要");
+
+    assert!(
+        helper_body.contains("(if (< else-idx 0)")
+            && helper_body.contains("end-map")
+            && helper_body.contains("(map-insert-index end-map else-idx end-idx)"),
+        "control-flow helper は else が無い場合は end-map をそのまま返し、else がある場合は else idx -> end idx を挿入するべき"
+    );
+    assert!(
+        recursive_end_body
+            .contains("(control-flow-end-map-with-else-index end-map1 else-idx idx)",)
+            && step_body.contains("(control-flow-end-map-with-else-index end-map1 else-idx idx)"),
+        "recursive/step の end scan は stage3 で else idx 挿入を落とさないよう同じ helper を使うべき"
+    );
+}
+
+#[test]
 fn test_native_codegen_x86_control_loop_treats_end_as_direct_noop_continue() {
     let source = selfhost_module("NativeCodegen.ls");
     let body = source

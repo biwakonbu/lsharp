@@ -492,6 +492,11 @@
       -1
       (- value 1))))
 
+(defn control-flow-end-map-with-else-index [end-map else-idx end-idx]
+  (if (< else-idx 0)
+    end-map
+    (map-insert-index end-map else-idx end-idx)))
+
 (defn make-control-stack-entry [start-idx opcode]
   (vector-push (vector-push (vector-new 2) start-idx) opcode))
 
@@ -11422,9 +11427,7 @@
     end-map1 (map-insert-index end-map start-idx idx)]
     (do
       (root_push end-map1)
-      (let [end-map2 (if (< else-idx 0)
-                   end-map1
-                   (map-insert-index end-map1 else-idx idx))]
+      (let [end-map2 (control-flow-end-map-with-else-index end-map1 else-idx idx)]
         (do
           (root_push end-map2)
           (let [final (scan-control-flow-meta-loop ir-func (+ idx 1) len stack (- depth 1) end-map2 else-map branch-map)]
@@ -11517,9 +11520,7 @@
               end-map1 (map-insert-index end-map start-idx idx)]
               (do
                 (root_push end-map1)
-                (let [end-map2 (if (< else-idx 0)
-                             end-map1
-                             (map-insert-index end-map1 else-idx idx))]
+                (let [end-map2 (control-flow-end-map-with-else-index end-map1 else-idx idx)]
                   (do
                     (root_push end-map2)
                     (let [state (make-control-flow-scan-state 0 (+ idx 1) stack (- depth 1) end-map2 else-map branch-map)]
