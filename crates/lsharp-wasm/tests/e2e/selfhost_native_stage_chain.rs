@@ -5236,6 +5236,68 @@ fn test_wasm_compiler_source_defn_times_continuations_root_recursive_result_befo
 }
 
 #[test]
+fn test_wasm_compiler_source_defn_step64_continuations_root_recursive_result_before_unwinding() {
+    let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("Compiler.ls を読めること");
+    let continue_step64 = compiler
+        .split("(defn continue-compile-defn-functions-step-64-with-source")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("continue-compile-defn-functions-step-64-with-source body を取り出せること");
+    let diagnostic_continue_step64 = compiler
+        .split("(defn continue-compile-defn-functions-step-64-with-source-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect(
+            "continue-compile-defn-functions-step-64-with-source-normal-setup-diagnostic body を取り出せること",
+        );
+
+    for (name, body, recursive_expr) in [
+        (
+            "continue-compile-defn-functions-step-64-with-source",
+            continue_step64,
+            "result (continue-compile-defn-functions-step-64-with-source decls n source ftable data-ref next-state)",
+        ),
+        (
+            "continue-compile-defn-functions-step-64-with-source-normal-setup-diagnostic",
+            diagnostic_continue_step64,
+            "result (continue-compile-defn-functions-step-64-with-source-normal-setup-diagnostic decls n source ftable data-ref next-state)",
+        ),
+    ] {
+        let state_root_pos = body
+            .find("state-slot (root_push state)")
+            .unwrap_or_else(|| panic!("{name} は state root slot を保持すること"));
+        let next_state_root_pos = body
+            .find("(root_push next-state)")
+            .unwrap_or_else(|| panic!("{name} は next-state を recursive call 前に root すること"));
+        let recursive_pos = body
+            .find(recursive_expr)
+            .unwrap_or_else(|| panic!("{name} は recursive result を local 化すること"));
+        let result_root_pos = body[recursive_pos..]
+            .find("(root_push result)")
+            .map(|offset| offset + recursive_pos)
+            .unwrap_or_else(|| panic!("{name} は recursive result を unwind 前に root すること"));
+        let root_set_pos = body[recursive_pos..]
+            .find("(root_set state-slot result)")
+            .map(|offset| offset + recursive_pos)
+            .unwrap_or_else(|| panic!("{name} は recursive result を state slot に退避すること"));
+        let first_pop_after_result = body[recursive_pos..]
+            .find("(root_pop)")
+            .map(|offset| offset + recursive_pos)
+            .unwrap_or_else(|| panic!("{name} は roots を unwind すること"));
+
+        assert!(
+            state_root_pos < next_state_root_pos
+                && next_state_root_pos < recursive_pos
+                && recursive_pos < result_root_pos
+                && result_root_pos < root_set_pos
+                && root_set_pos < first_pop_after_result,
+            "{name} は 64-step recursive continuation が返した state を root してから outer roots を unwind するべき"
+        );
+    }
+}
+
+#[test]
 fn test_selfhost_compile_src_decl_pairs_chunked_roots_functions_result_before_unwinding_state() {
     let compiler_mode = std::fs::read_to_string(workspace_root_relative_path(
         std::path::PathBuf::from("selfhost/src/App/CompilerMode.ls"),

@@ -1909,24 +1909,27 @@
       (root_push source)
       (root_push ftable)
       (root_push data-ref)
-      (root_push state)
-      (let [next-idx (vector-get state 1)
-        next-functions (vector-get state 2)]
-        (do
-          (root_push next-functions)
-          (let [next-state (compile-defn-functions-step-64-with-source decls next-idx n source ftable data-ref next-functions)]
-            (do
-              (root_pop)
-              (root_push next-state)
-              (let [result (continue-compile-defn-functions-step-64-with-source decls n source ftable data-ref next-state)]
-                (do
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  result)))))))))
+      (let [state-slot (root_push state)]
+        (let [next-idx (vector-get state 1)
+          next-functions (vector-get state 2)]
+          (do
+            (root_push next-functions)
+            (let [next-state (compile-defn-functions-step-64-with-source decls next-idx n source ftable data-ref next-functions)]
+              (do
+                (root_pop)
+                (root_push next-state)
+                (let [result (continue-compile-defn-functions-step-64-with-source decls n source ftable data-ref next-state)]
+                  (do
+                    (root_push result)
+                    (root_set state-slot result)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    result))))))))))
 
 (defn compile-source-defn-functions-chunked [decls idx n source ftable data-ref functions]
   (let [state (compile-defn-functions-step-64-with-source decls idx n source ftable data-ref functions)]
@@ -2256,24 +2259,27 @@
       (root_push source)
       (root_push ftable)
       (root_push data-ref)
-      (root_push state)
-      (let [next-idx (vector-get state 1)
-        next-functions (vector-get state 2)]
-        (do
-          (root_push next-functions)
-          (let [next-state (compile-defn-functions-step-64-with-source-normal-setup-diagnostic decls next-idx n source ftable data-ref next-functions)]
-            (do
-              (root_pop)
-              (root_push next-state)
-              (let [result (continue-compile-defn-functions-step-64-with-source-normal-setup-diagnostic decls n source ftable data-ref next-state)]
-                (do
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  result)))))))))
+      (let [state-slot (root_push state)]
+        (let [next-idx (vector-get state 1)
+          next-functions (vector-get state 2)]
+          (do
+            (root_push next-functions)
+            (let [next-state (compile-defn-functions-step-64-with-source-normal-setup-diagnostic decls next-idx n source ftable data-ref next-functions)]
+              (do
+                (root_pop)
+                (root_push next-state)
+                (let [result (continue-compile-defn-functions-step-64-with-source-normal-setup-diagnostic decls n source ftable data-ref next-state)]
+                  (do
+                    (root_push result)
+                    (root_set state-slot result)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    result))))))))))
 (defn compile-source-defn-functions-chunked-normal-setup-diagnostic [decls idx n source ftable data-ref functions]
   (do
     (print-source-defn-normal-setup-entry-shape idx n functions data-ref)
