@@ -1400,6 +1400,107 @@ fn test_native_linux_x86_hostgen_vm_script_can_reuse_actual_stage1_artifact() {
 }
 
 #[test]
+fn test_native_linux_x86_hostgen_vm_script_can_reuse_actual_stage2_artifact() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+    let vm_exec = script
+        .split(r#"limactl shell "${VM_NAME}" -- env"#)
+        .nth(1)
+        .and_then(|tail| tail.split("<<'VM_SCRIPT'").next())
+        .expect("VM 実行 heredoc は env 経由で actual stage2 reuse 設定を渡すべき");
+    let validate_body = shell_function_body(&script, "validate_actual_stage2_artifact");
+
+    assert!(
+        script.contains(
+            r#"REUSE_ACTUAL_STAGE2_ARTIFACT_DIR_INPUT="${LSHARP_NATIVE_LINUX_X86_REUSE_ACTUAL_STAGE2_ARTIFACT_DIR:-}""#
+        ),
+        "hostgen VM script は検証済み actual-stage2 artifact root を再利用する env を受け付けるべき"
+    );
+    assert!(
+        script.contains(r#"ERROR: reusable actual stage2 artifact is under output artifact dir"#),
+        "stage2 reuse mode は出力 artifact dir 配下の input を rm -rf で巻き込まないよう拒否するべき"
+    );
+    assert!(
+        script.contains(r#"if [[ -n "${REUSE_ACTUAL_STAGE2_ARTIFACT_DIR_INPUT}" ]]; then"#)
+            && script.contains(r#"REUSE_ACTUAL_STAGE2=1"#)
+            && script.contains(
+                r#"validate_actual_stage2_artifact "${REUSE_ACTUAL_STAGE2_ARTIFACT_DIR}""#
+            )
+            && script.contains(
+                r#"cp "${REUSE_ACTUAL_STAGE2_ARTIFACT_DIR}/actual-stage2-stdout.txt" "${ARTIFACT_DIR}/actual-stage2-stdout.txt""#
+            )
+            && script.contains(
+                r#"cp "${REUSE_ACTUAL_STAGE2_ARTIFACT_DIR}/stage2-debug/${file}" "${ARTIFACT_DIR}/stage2-debug/${file}""#
+            ),
+        "stage2 reuse mode は previous artifact root から actual-stage2 stdout と stage2-debug bundle をコピーするべき"
+    );
+    for file in [
+        "stage-code.bin",
+        "stage-data.bin",
+        "entrypoint-offset.txt",
+        "function-start-len.txt",
+        "main-func-idx.txt",
+        "manifest.json",
+        "stage-code-segments.tsv",
+    ] {
+        assert!(
+            validate_body.contains(file),
+            "stage2 reuse は stage2-debug の必須ファイル {file} を検証するべき"
+        );
+    }
+    for check in [
+        r#"manifest.get("target") == "x86_64-unknown-linux-gnu""#,
+        r#"manifest.get("code_len") == code_len"#,
+        r#"manifest.get("data_len") == data_len"#,
+        r#"manifest.get("entrypoint_offset") == entrypoint_offset"#,
+        r#"manifest.get("function_start_len") == function_start_len"#,
+        r#"manifest.get("main_func_idx") == main_func_idx"#,
+        r#"0 <= entrypoint_offset < code_len"#,
+        r#"10 <= main_func_idx < 10 + function_start_len"#,
+    ] {
+        assert!(
+            validate_body.contains(check),
+            "actual-stage2 reuse は manifest と実ファイルの整合性を検証するべき: {check}"
+        );
+    }
+    assert!(
+        validate_body.contains("actual-stage2-stdout.txt")
+            && validate_body.contains("actual-stage2-stderr.txt")
+            && validate_body.contains(r#"stderr_path.stat().st_size != 0"#)
+            && validate_body.contains(r#""stage2-debug/src/App/Seed.ls""#),
+        "stage2 reuse は比較元 stdout、空 stderr、stage2 source tree を検証するべき"
+    );
+    assert!(
+        script.contains("stage2 reuse cannot collect stage1 progress or stage2 metadata")
+            && script.contains(r#""${STAGE1_PROGRESS_REQUESTED}" = "1""#)
+            && script.contains(r#""${STAGE2_METADATA_REQUESTED}" = "1""#),
+        "stage2 reuse は actual-stage1 が必要な stage1 progress / stage2 metadata と同時指定できないことを明示するべき"
+    );
+    assert!(
+        vm_exec.contains(r#"LSHARP_NATIVE_LINUX_X86_REUSE_ACTUAL_STAGE2="${REUSE_ACTUAL_STAGE2}""#),
+        "hostgen VM script は guest に actual-stage2 reuse mode を渡すべき"
+    );
+    assert!(
+        script.contains(r#"if [[ -z "${REUSE_ACTUAL_STAGE2}" || "${REUSE_ACTUAL_STAGE2}" = "0" ]]; then"#)
+            && script.contains(
+                "run_actual_stage_chunked actual-stage1 actual-stage2-stdout.txt actual-stage2-stderr.txt"
+            )
+            && script.contains(
+                "python3 decode-actual-transport.py actual-stage2-stdout.txt actual-stage2"
+            )
+            && script.contains(
+                r#"if [[ -n "${REUSE_ACTUAL_STAGE2}" && "${REUSE_ACTUAL_STAGE2}" != "0" ]]; then"#
+            )
+            && script.contains(
+                "python3 materialize-actual-bundle.py actual-stage2 stage-code.bin entrypoint-offset.txt"
+            ),
+        "guest は stage2 reuse mode では stage1->stage2 replay/decode を skip し、actual-stage2 materialize から stage3 run へ進むべき"
+    );
+}
+
+#[test]
 fn test_native_linux_x86_hostgen_vm_script_guards_actual_replay_with_vm_side_lock() {
     let script_path =
         selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");

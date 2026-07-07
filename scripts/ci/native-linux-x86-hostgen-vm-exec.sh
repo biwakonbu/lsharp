@@ -9,6 +9,10 @@ VM_WORK_DIR="${LSHARP_NATIVE_LINUX_X86_VM_WORK_DIR:-/tmp/lsharp-native-linux-x86
 KEEP_VM_WORK_DIR="${LSHARP_NATIVE_LINUX_X86_KEEP_VM_WORK_DIR:-0}"
 REUSE_ACTUAL_STAGE1_ARTIFACT_DIR_INPUT="${LSHARP_NATIVE_LINUX_X86_REUSE_ACTUAL_STAGE1_ARTIFACT_DIR:-}"
 REUSE_ACTUAL_STAGE1=0
+REUSE_ACTUAL_STAGE2_ARTIFACT_DIR_INPUT="${LSHARP_NATIVE_LINUX_X86_REUSE_ACTUAL_STAGE2_ARTIFACT_DIR:-}"
+REUSE_ACTUAL_STAGE2=0
+STAGE1_PROGRESS_REQUESTED=0
+STAGE2_METADATA_REQUESTED=0
 
 if [[ "${ARTIFACT_DIR_INPUT}" = /* ]]; then
   if [[ "${ARTIFACT_DIR_INPUT}" != "${ROOT_DIR}"/* ]]; then
@@ -28,6 +32,21 @@ if [[ -n "${REUSE_ACTUAL_STAGE1_ARTIFACT_DIR_INPUT}" ]]; then
 else
   REUSE_ACTUAL_STAGE1_ARTIFACT_DIR=""
 fi
+if [[ -n "${REUSE_ACTUAL_STAGE2_ARTIFACT_DIR_INPUT}" ]]; then
+  if [[ "${REUSE_ACTUAL_STAGE2_ARTIFACT_DIR_INPUT}" = /* ]]; then
+    REUSE_ACTUAL_STAGE2_ARTIFACT_DIR="${REUSE_ACTUAL_STAGE2_ARTIFACT_DIR_INPUT}"
+  else
+    REUSE_ACTUAL_STAGE2_ARTIFACT_DIR="${ROOT_DIR}/${REUSE_ACTUAL_STAGE2_ARTIFACT_DIR_INPUT}"
+  fi
+else
+  REUSE_ACTUAL_STAGE2_ARTIFACT_DIR=""
+fi
+if [[ -n "${LSHARP_NATIVE_LINUX_X86_STAGE1_PROGRESS:-}" ]]; then
+  STAGE1_PROGRESS_REQUESTED=1
+fi
+if [[ -n "${LSHARP_NATIVE_LINUX_X86_STAGE2_METADATA_START:-}" || -n "${LSHARP_NATIVE_LINUX_X86_STAGE2_METADATA_END:-}" ]]; then
+  STAGE2_METADATA_REQUESTED=1
+fi
 
 cd "${ROOT_DIR}"
 
@@ -39,6 +58,14 @@ if [[ -n "${REUSE_ACTUAL_STAGE1_ARTIFACT_DIR}" ]]; then
   case "${REUSE_ACTUAL_STAGE1_ARTIFACT_DIR}/" in
     "${ARTIFACT_DIR}/"*)
       echo "ERROR: reusable actual stage1 artifact is under output artifact dir: ${REUSE_ACTUAL_STAGE1_ARTIFACT_DIR}" >&2
+      exit 1
+      ;;
+  esac
+fi
+if [[ -n "${REUSE_ACTUAL_STAGE2_ARTIFACT_DIR}" ]]; then
+  case "${REUSE_ACTUAL_STAGE2_ARTIFACT_DIR}/" in
+    "${ARTIFACT_DIR}/"*)
+      echo "ERROR: reusable actual stage2 artifact is under output artifact dir: ${REUSE_ACTUAL_STAGE2_ARTIFACT_DIR}" >&2
       exit 1
       ;;
   esac
@@ -103,12 +130,95 @@ for ok, label in checks:
 PY
 }
 
+validate_actual_stage2_artifact() {
+  local artifact_dir="$1"
+  local file
+  if [[ ! -s "${artifact_dir}/actual-stage2-stdout.txt" ]]; then
+    echo "ERROR: actual stage2 artifact is missing: ${artifact_dir}/actual-stage2-stdout.txt" >&2
+    exit 1
+  fi
+  if [[ ! -e "${artifact_dir}/actual-stage2-stderr.txt" ]]; then
+    echo "ERROR: actual stage2 artifact is missing: ${artifact_dir}/actual-stage2-stderr.txt" >&2
+    exit 1
+  fi
+  if [[ -s "${artifact_dir}/actual-stage2-stderr.txt" ]]; then
+    echo "ERROR: actual stage2 artifact stderr is not empty: ${artifact_dir}/actual-stage2-stderr.txt" >&2
+    exit 1
+  fi
+  for file in stage-code.bin stage-data.bin entrypoint-offset.txt function-start-len.txt main-func-idx.txt manifest.json stage-code-segments.tsv; do
+    if [[ ! -s "${artifact_dir}/stage2-debug/${file}" ]]; then
+      echo "ERROR: actual stage2 debug artifact is missing: ${artifact_dir}/stage2-debug/${file}" >&2
+      exit 1
+    fi
+  done
+  if [[ ! -s "${artifact_dir}/stage2-debug/src/App/Seed.ls" ]]; then
+    echo "ERROR: actual stage2 debug source is missing: ${artifact_dir}/stage2-debug/src/App/Seed.ls" >&2
+    exit 1
+  fi
+  python3 - "${artifact_dir}" <<'PY'
+import json
+import pathlib
+import sys
+
+artifact_dir = pathlib.Path(sys.argv[1])
+debug_dir = artifact_dir / "stage2-debug"
+stdout_path = artifact_dir / "actual-stage2-stdout.txt"
+stderr_path = artifact_dir / "actual-stage2-stderr.txt"
+source_path = artifact_dir / "stage2-debug/src/App/Seed.ls"
+manifest = json.loads((debug_dir / "manifest.json").read_text())
+
+def read_int(name: str) -> int:
+    return int((debug_dir / name).read_text().strip())
+
+code_len = (debug_dir / "stage-code.bin").stat().st_size
+data_len = (debug_dir / "stage-data.bin").stat().st_size
+entrypoint_offset = read_int("entrypoint-offset.txt")
+function_start_len = read_int("function-start-len.txt")
+main_func_idx = read_int("main-func-idx.txt")
+
+if stderr_path.stat().st_size != 0:
+    raise SystemExit("invalid actual stage2 artifact manifest: actual-stage2-stderr.txt")
+
+checks = [
+    (stdout_path.stat().st_size > 0, "actual-stage2-stdout.txt"),
+    (source_path.is_file(), "stage2-debug/src/App/Seed.ls"),
+    (manifest.get("target") == "x86_64-unknown-linux-gnu", "target"),
+    (manifest.get("code_len") == code_len, "code_len"),
+    (manifest.get("data_len") == data_len, "data_len"),
+    (manifest.get("entrypoint_offset") == entrypoint_offset, "entrypoint_offset"),
+    (manifest.get("function_start_len") == function_start_len, "function_start_len"),
+    (manifest.get("main_func_idx") == main_func_idx, "main_func_idx"),
+    (0 <= entrypoint_offset < code_len, "entrypoint_offset_range"),
+    (10 <= main_func_idx < 10 + function_start_len, "main_func_idx_range"),
+]
+for ok, label in checks:
+    if not ok:
+        raise SystemExit(f"invalid actual stage2 artifact manifest: {label}")
+PY
+}
+
 echo "=== native Linux x86_64 hostgen -> VM exec smoke ==="
 echo "artifact dir: ${ARTIFACT_DIR}"
 echo "VM: ${VM_NAME}"
 echo "scope: host-side selfhost-generated Linux x86_64 code artifact linked and executed inside local VM."
 
-if [[ -n "${REUSE_ACTUAL_STAGE1_ARTIFACT_DIR_INPUT}" ]]; then
+if [[ -n "${REUSE_ACTUAL_STAGE2_ARTIFACT_DIR_INPUT}" ]]; then
+  if [[ "${STAGE1_PROGRESS_REQUESTED}" = "1" || "${STAGE2_METADATA_REQUESTED}" = "1" ]]; then
+    echo "ERROR: stage2 reuse cannot collect stage1 progress or stage2 metadata because actual-stage1 is skipped" >&2
+    exit 1
+  fi
+  REUSE_ACTUAL_STAGE2=1
+  validate_actual_stage2_artifact "${REUSE_ACTUAL_STAGE2_ARTIFACT_DIR}"
+  cp "${REUSE_ACTUAL_STAGE2_ARTIFACT_DIR}/actual-stage2-stdout.txt" "${ARTIFACT_DIR}/actual-stage2-stdout.txt"
+  cp "${REUSE_ACTUAL_STAGE2_ARTIFACT_DIR}/actual-stage2-stderr.txt" "${ARTIFACT_DIR}/actual-stage2-stderr.txt"
+  mkdir -p "${ARTIFACT_DIR}/stage2-debug"
+  for file in stage-code.bin stage-data.bin entrypoint-offset.txt function-start-len.txt main-func-idx.txt manifest.json stage-code-segments.tsv; do
+    cp "${REUSE_ACTUAL_STAGE2_ARTIFACT_DIR}/stage2-debug/${file}" "${ARTIFACT_DIR}/stage2-debug/${file}"
+  done
+  rm -rf "${ARTIFACT_DIR}/stage2-debug/src"
+  cp -a "${REUSE_ACTUAL_STAGE2_ARTIFACT_DIR}/stage2-debug/src" "${ARTIFACT_DIR}/stage2-debug/src"
+  echo "reusing actual stage2 artifact: ${REUSE_ACTUAL_STAGE2_ARTIFACT_DIR}"
+elif [[ -n "${REUSE_ACTUAL_STAGE1_ARTIFACT_DIR_INPUT}" ]]; then
   REUSE_ACTUAL_STAGE1=1
   validate_actual_stage1_artifact "${REUSE_ACTUAL_STAGE1_ARTIFACT_DIR}"
   mkdir -p "${ACTUAL_STAGE1_ARTIFACT_DIR}"
@@ -243,17 +353,19 @@ LSHARP_NATIVE_LINUX_X86_ACTUAL_STAGE1_ARTIFACT_DIR="${ACTUAL_STAGE1_ARTIFACT_DIR
   -- --exact --ignored
 fi
 
-for file in stage1-code.bin stage1-data.bin entrypoint-offset.txt function-start-len.txt main-func-idx.txt seed.ls manifest.json; do
-  if [[ ! -s "${ACTUAL_STAGE1_ARTIFACT_DIR}/${file}" ]]; then
-    echo "ERROR: actual stage1 artifact was not generated: ${ACTUAL_STAGE1_ARTIFACT_DIR}/${file}" >&2
-    exit 1
-  fi
-done
-validate_actual_stage1_artifact "${ACTUAL_STAGE1_ARTIFACT_DIR}"
+if [[ "${REUSE_ACTUAL_STAGE2}" -ne 1 ]]; then
+  for file in stage1-code.bin stage1-data.bin entrypoint-offset.txt function-start-len.txt main-func-idx.txt seed.ls manifest.json; do
+    if [[ ! -s "${ACTUAL_STAGE1_ARTIFACT_DIR}/${file}" ]]; then
+      echo "ERROR: actual stage1 artifact was not generated: ${ACTUAL_STAGE1_ARTIFACT_DIR}/${file}" >&2
+      exit 1
+    fi
+  done
+  validate_actual_stage1_artifact "${ACTUAL_STAGE1_ARTIFACT_DIR}"
+fi
 
 limactl shell "${VM_NAME}" -- rm -rf "${VM_WORK_DIR}"
 limactl shell "${VM_NAME}" -- mkdir -p "${VM_WORK_DIR}"
-if [[ "${REUSE_ACTUAL_STAGE1}" -ne 1 ]]; then
+if [[ "${REUSE_ACTUAL_STAGE2}" -ne 1 && "${REUSE_ACTUAL_STAGE1}" -ne 1 ]]; then
   limactl copy "${CODE_ARTIFACT}" "${VM_NAME}:${VM_WORK_DIR}/code.bin"
   limactl copy "${OBJECT_ARTIFACT}" "${VM_NAME}:${VM_WORK_DIR}/program.o"
   limactl copy "${ARGV_OBJECT_ARTIFACT}" "${VM_NAME}:${VM_WORK_DIR}/argv-program.o"
@@ -267,17 +379,28 @@ if [[ "${REUSE_ACTUAL_STAGE1}" -ne 1 ]]; then
   limactl copy "${MAP_SIZE_OBJECT_ARTIFACT}" "${VM_NAME}:${VM_WORK_DIR}/map-size-program.o"
   limactl copy "${FILE_EXISTS_OBJECT_ARTIFACT}" "${VM_NAME}:${VM_WORK_DIR}/file-exists-program.o"
 fi
-limactl shell "${VM_NAME}" -- rm -rf "${VM_WORK_DIR}/actual-stage1"
-limactl shell "${VM_NAME}" -- mkdir -p "${VM_WORK_DIR}/actual-stage1/src/App"
-limactl copy "${ACTUAL_STAGE1_ARTIFACT_DIR}/stage1-code.bin" "${VM_NAME}:${VM_WORK_DIR}/actual-stage1/stage1-code.bin"
-limactl copy "${ACTUAL_STAGE1_ARTIFACT_DIR}/stage1-data.bin" "${VM_NAME}:${VM_WORK_DIR}/actual-stage1/stage1-data.bin"
-limactl copy "${ACTUAL_STAGE1_ARTIFACT_DIR}/entrypoint-offset.txt" "${VM_NAME}:${VM_WORK_DIR}/actual-stage1/entrypoint-offset.txt"
-limactl copy "${ACTUAL_STAGE1_ARTIFACT_DIR}/function-start-len.txt" "${VM_NAME}:${VM_WORK_DIR}/actual-stage1/function-start-len.txt"
-limactl copy "${ACTUAL_STAGE1_ARTIFACT_DIR}/main-func-idx.txt" "${VM_NAME}:${VM_WORK_DIR}/actual-stage1/main-func-idx.txt"
-limactl copy "${ACTUAL_STAGE1_ARTIFACT_DIR}/manifest.json" "${VM_NAME}:${VM_WORK_DIR}/actual-stage1/manifest.json"
-limactl copy "${ACTUAL_STAGE1_ARTIFACT_DIR}/seed.ls" "${VM_NAME}:${VM_WORK_DIR}/actual-stage1/src/App/Seed.ls"
-tar -C "${ROOT_DIR}/selfhost" --exclude '._*' -cf - src | limactl shell "${VM_NAME}" -- tar -C "${VM_WORK_DIR}/actual-stage1" -xf -
-limactl copy "${ACTUAL_STAGE1_ARTIFACT_DIR}/seed.ls" "${VM_NAME}:${VM_WORK_DIR}/actual-stage1/src/App/Seed.ls"
+if [[ "${REUSE_ACTUAL_STAGE2}" -eq 1 ]]; then
+  limactl shell "${VM_NAME}" -- rm -rf "${VM_WORK_DIR}/actual-stage2"
+  limactl shell "${VM_NAME}" -- mkdir -p "${VM_WORK_DIR}/actual-stage2"
+  for file in stage-code.bin stage-data.bin entrypoint-offset.txt function-start-len.txt main-func-idx.txt manifest.json stage-code-segments.tsv; do
+    limactl copy "${ARTIFACT_DIR}/stage2-debug/${file}" "${VM_NAME}:${VM_WORK_DIR}/actual-stage2/${file}"
+  done
+  tar -C "${ARTIFACT_DIR}/stage2-debug" --exclude '._*' -cf - src | limactl shell "${VM_NAME}" -- tar -C "${VM_WORK_DIR}/actual-stage2" -xf -
+  limactl copy "${ARTIFACT_DIR}/actual-stage2-stdout.txt" "${VM_NAME}:${VM_WORK_DIR}/actual-stage2-stdout.txt"
+  limactl copy "${ARTIFACT_DIR}/actual-stage2-stderr.txt" "${VM_NAME}:${VM_WORK_DIR}/actual-stage2-stderr.txt"
+else
+  limactl shell "${VM_NAME}" -- rm -rf "${VM_WORK_DIR}/actual-stage1"
+  limactl shell "${VM_NAME}" -- mkdir -p "${VM_WORK_DIR}/actual-stage1/src/App"
+  limactl copy "${ACTUAL_STAGE1_ARTIFACT_DIR}/stage1-code.bin" "${VM_NAME}:${VM_WORK_DIR}/actual-stage1/stage1-code.bin"
+  limactl copy "${ACTUAL_STAGE1_ARTIFACT_DIR}/stage1-data.bin" "${VM_NAME}:${VM_WORK_DIR}/actual-stage1/stage1-data.bin"
+  limactl copy "${ACTUAL_STAGE1_ARTIFACT_DIR}/entrypoint-offset.txt" "${VM_NAME}:${VM_WORK_DIR}/actual-stage1/entrypoint-offset.txt"
+  limactl copy "${ACTUAL_STAGE1_ARTIFACT_DIR}/function-start-len.txt" "${VM_NAME}:${VM_WORK_DIR}/actual-stage1/function-start-len.txt"
+  limactl copy "${ACTUAL_STAGE1_ARTIFACT_DIR}/main-func-idx.txt" "${VM_NAME}:${VM_WORK_DIR}/actual-stage1/main-func-idx.txt"
+  limactl copy "${ACTUAL_STAGE1_ARTIFACT_DIR}/manifest.json" "${VM_NAME}:${VM_WORK_DIR}/actual-stage1/manifest.json"
+  limactl copy "${ACTUAL_STAGE1_ARTIFACT_DIR}/seed.ls" "${VM_NAME}:${VM_WORK_DIR}/actual-stage1/src/App/Seed.ls"
+  tar -C "${ROOT_DIR}/selfhost" --exclude '._*' -cf - src | limactl shell "${VM_NAME}" -- tar -C "${VM_WORK_DIR}/actual-stage1" -xf -
+  limactl copy "${ACTUAL_STAGE1_ARTIFACT_DIR}/seed.ls" "${VM_NAME}:${VM_WORK_DIR}/actual-stage1/src/App/Seed.ls"
+fi
 
 set +e
 limactl shell "${VM_NAME}" -- env \
@@ -303,6 +426,7 @@ limactl shell "${VM_NAME}" -- env \
   LSHARP_NATIVE_LINUX_X86_STAGE3_RAW_PAYLOAD_PRODUCTION_BOUNDARY="${LSHARP_NATIVE_LINUX_X86_STAGE3_RAW_PAYLOAD_PRODUCTION_BOUNDARY:-}" \
   LSHARP_NATIVE_LINUX_X86_STAGE3_RAW_PAYLOAD_PRODUCTION_BOUNDARY_ONLY="${LSHARP_NATIVE_LINUX_X86_STAGE3_RAW_PAYLOAD_PRODUCTION_BOUNDARY_ONLY:-}" \
   LSHARP_NATIVE_LINUX_X86_REUSE_ACTUAL_STAGE1="${REUSE_ACTUAL_STAGE1}" \
+  LSHARP_NATIVE_LINUX_X86_REUSE_ACTUAL_STAGE2="${REUSE_ACTUAL_STAGE2}" \
   bash -s -- "${VM_WORK_DIR}" <<'VM_SCRIPT'
 set -euo pipefail
 
@@ -312,12 +436,14 @@ cd "${VM_WORK_DIR}"
 HOST_OS="$(uname -s)"
 HOST_ARCH="$(uname -m)"
 REUSE_ACTUAL_STAGE1="${LSHARP_NATIVE_LINUX_X86_REUSE_ACTUAL_STAGE1:-0}"
+REUSE_ACTUAL_STAGE2="${LSHARP_NATIVE_LINUX_X86_REUSE_ACTUAL_STAGE2:-0}"
 if [[ "${HOST_OS}" != "Linux" || "${HOST_ARCH}" != "x86_64" ]]; then
   echo "ERROR: VM execution requires Linux/x86_64; got ${HOST_OS}/${HOST_ARCH}" >&2
   exit 1
 fi
 
 if [[ -z "${REUSE_ACTUAL_STAGE1}" || "${REUSE_ACTUAL_STAGE1}" = "0" ]]; then
+if [[ -z "${REUSE_ACTUAL_STAGE2}" || "${REUSE_ACTUAL_STAGE2}" = "0" ]]; then
 bytes="$(od -An -tx1 -v code.bin | tr -s '[:space:]' ' ' | sed 's/^ //; s/ $//; s/ /, 0x/g; s/^/0x/')"
 if [[ -z "${bytes}" ]]; then
   echo "ERROR: code.bin is empty" >&2
@@ -932,6 +1058,7 @@ cat >file-exists-object-summary.json <<JSON
 }
 JSON
 fi
+fi
 
 cat >materialize-actual-bundle.py <<'PY'
 import os
@@ -1218,8 +1345,11 @@ if [[ -n "${STAGE3_RAW_PAYLOAD_PRODUCTION_BOUNDARY_ONLY}" ]]; then
   STAGE3_RAW_PAYLOAD_PRODUCTION_BOUNDARY=1
 fi
 mkdir -p actual-stage2 actual-stage3
-cp -a actual-stage1/src actual-stage2/src
-cp -a actual-stage1/src actual-stage3/src
+if [[ -z "${REUSE_ACTUAL_STAGE2}" || "${REUSE_ACTUAL_STAGE2}" = "0" ]]; then
+  cp -a actual-stage1/src actual-stage2/src
+fi
+rm -rf actual-stage3/src
+cp -a actual-stage2/src actual-stage3/src
 
 release_actual_replay_lock() {
   local holder_pid=""
@@ -1588,38 +1718,54 @@ collect_stage3_raw_payload_production_boundary_markers() {
 }
 
 acquire_actual_replay_lock
-python3 materialize-actual-bundle.py actual-stage1 stage1-code.bin entrypoint-offset.txt
-set +e
-collect_stage1_progress_markers
-actual_stage1_progress_exit_code=$?
-set -e
-if [[ "${actual_stage1_progress_exit_code}" -ne 0 ]]; then
-  write_actual_selfregen_failure_summary "stage1-progress" "${actual_stage1_progress_exit_code}" actual-stage1-progress.txt actual-stage1-progress-stderr.txt
-  exit "${actual_stage1_progress_exit_code}"
+if [[ -z "${REUSE_ACTUAL_STAGE2}" || "${REUSE_ACTUAL_STAGE2}" = "0" ]]; then
+  python3 materialize-actual-bundle.py actual-stage1 stage1-code.bin entrypoint-offset.txt
+  set +e
+  collect_stage1_progress_markers
+  actual_stage1_progress_exit_code=$?
+  set -e
+  if [[ "${actual_stage1_progress_exit_code}" -ne 0 ]]; then
+    write_actual_selfregen_failure_summary "stage1-progress" "${actual_stage1_progress_exit_code}" actual-stage1-progress.txt actual-stage1-progress-stderr.txt
+    exit "${actual_stage1_progress_exit_code}"
+  fi
+  set +e
+  run_actual_stage_chunked actual-stage1 actual-stage2-stdout.txt actual-stage2-stderr.txt
+  actual_stage2_exit_code=$?
+  set -e
+  if [[ "${actual_stage2_exit_code}" -ne 0 ]]; then
+    write_actual_selfregen_failure_summary "stage2-run" "${actual_stage2_exit_code}" actual-stage2-stdout.txt actual-stage2-stderr.txt
+    exit "${actual_stage2_exit_code}"
+  fi
+  set +e
+  collect_stage2_metadata_range
+  actual_stage2_metadata_exit_code=$?
+  set -e
+  if [[ "${actual_stage2_metadata_exit_code}" -ne 0 ]]; then
+    write_actual_selfregen_failure_summary "stage2-metadata" "${actual_stage2_metadata_exit_code}" actual-stage2-metadata.txt actual-stage2-metadata-stderr.txt
+    exit "${actual_stage2_metadata_exit_code}"
+  fi
+  set +e
+  python3 decode-actual-transport.py actual-stage2-stdout.txt actual-stage2
+  actual_stage2_decode_exit_code=$?
+  set -e
+  if [[ "${actual_stage2_decode_exit_code}" -ne 0 ]]; then
+    write_actual_selfregen_failure_summary "stage2-decode" "${actual_stage2_decode_exit_code}" actual-stage2-stdout.txt actual-stage2-stderr.txt
+    exit "${actual_stage2_decode_exit_code}"
+  fi
 fi
-set +e
-run_actual_stage_chunked actual-stage1 actual-stage2-stdout.txt actual-stage2-stderr.txt
-actual_stage2_exit_code=$?
-set -e
-if [[ "${actual_stage2_exit_code}" -ne 0 ]]; then
-  write_actual_selfregen_failure_summary "stage2-run" "${actual_stage2_exit_code}" actual-stage2-stdout.txt actual-stage2-stderr.txt
-  exit "${actual_stage2_exit_code}"
-fi
-set +e
-collect_stage2_metadata_range
-actual_stage2_metadata_exit_code=$?
-set -e
-if [[ "${actual_stage2_metadata_exit_code}" -ne 0 ]]; then
-  write_actual_selfregen_failure_summary "stage2-metadata" "${actual_stage2_metadata_exit_code}" actual-stage2-metadata.txt actual-stage2-metadata-stderr.txt
-  exit "${actual_stage2_metadata_exit_code}"
-fi
-set +e
-python3 decode-actual-transport.py actual-stage2-stdout.txt actual-stage2
-actual_stage2_decode_exit_code=$?
-set -e
-if [[ "${actual_stage2_decode_exit_code}" -ne 0 ]]; then
-  write_actual_selfregen_failure_summary "stage2-decode" "${actual_stage2_decode_exit_code}" actual-stage2-stdout.txt actual-stage2-stderr.txt
-  exit "${actual_stage2_decode_exit_code}"
+if [[ -n "${REUSE_ACTUAL_STAGE2}" && "${REUSE_ACTUAL_STAGE2}" != "0" ]]; then
+  if [[ ! -s actual-stage2-stdout.txt ]]; then
+    echo "ERROR: reused actual-stage2 stdout is missing" >&2
+    exit 1
+  fi
+  if [[ -s actual-stage2-stderr.txt ]]; then
+    echo "ERROR: reused actual-stage2 stderr is not empty" >&2
+    exit 1
+  fi
+  if [[ ! -s actual-stage2/stage-code.bin || ! -s actual-stage2/stage-data.bin ]]; then
+    echo "ERROR: reused actual-stage2 bundle is incomplete" >&2
+    exit 1
+  fi
 fi
 cp actual-stage2/stage-code.bin actual-stage2/stage2-code.bin
 cp actual-stage2/stage-data.bin actual-stage2/stage2-data.bin
