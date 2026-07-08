@@ -3429,19 +3429,19 @@
 		    (root_push data-ref)
 		    (let [param-count (vector-get node 2)
 		      body-idx (+ 3 param-count)
-		      body-expr (vector-get node body-idx)]
+		      env (bind-node-params node 3 0 param-count (env-new) 1)]
 		      (do
-		        (root_push body-expr)
-		        (print 9000000320)
-		        (print param-count)
-		        (print body-idx)
-		        (print (vector-length node))
-		        (print (vector-length body-expr))
-		        (print (vector-get body-expr 0))
-		        (print (vector-length (ref-get data-ref)))
-		        (let [env (bind-node-params node 3 0 param-count (env-new) 1)]
+		        (root_push env)
+		        (let [body-expr (vector-get node body-idx)]
 		          (do
-		            (root_push env)
+		            (root_push body-expr)
+		            (print 9000000320)
+		            (print param-count)
+		            (print body-idx)
+		            (print (vector-length node))
+		            (print (vector-length body-expr))
+		            (print (vector-get body-expr 0))
+		            (print (vector-length (ref-get data-ref)))
 		            (print 9000000321)
 		            (print param-count)
 		            (print body-idx)

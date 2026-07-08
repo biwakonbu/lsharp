@@ -2942,6 +2942,21 @@ fn test_selfhost_normal_payload_production_defn_source_diagnostic_marks_expr_bou
             && !source_body.contains("normal-setup-diagnostic"),
         "production defn source diagnostic は normal setup ではなく raw compile-expr-with-source path を保持するべき"
     );
+    let env_pos = source_body
+        .find("env (bind-node-params node 3 0 param-count (env-new) 1)")
+        .expect("production defn source diagnostic は env を作ること");
+    let env_root_pos = source_body[env_pos..]
+        .find("(root_push env)")
+        .map(|pos| env_pos + pos)
+        .expect("production defn source diagnostic は env を root すること");
+    let body_expr_pos = source_body[env_root_pos..]
+        .find("body-expr (vector-get node body-idx)")
+        .map(|pos| env_root_pos + pos)
+        .expect("production defn source diagnostic は env root 後に body-expr を取り直すこと");
+    let body_expr_root_pos = source_body[body_expr_pos..]
+        .find("(root_push body-expr)")
+        .map(|pos| body_expr_pos + pos)
+        .expect("production defn source diagnostic は body-expr を root すること");
     let instrs0_pos = source_body
         .find("instrs0 (vector-new 8)")
         .expect("production defn source diagnostic は initial instrs vector を作ること");
@@ -2955,8 +2970,13 @@ fn test_selfhost_normal_payload_production_defn_source_diagnostic_marks_expr_bou
         .expect("production defn source diagnostic は rooted instrs0 を compile-expr へ渡すこと");
 
     assert!(
-        instrs0_pos < instrs0_root_pos && instrs0_root_pos < compile_pos,
-        "stage2 native の production defn source diagnostic は instrs0 が compile-expr 中に stale にならないよう、raw compile-expr call 前に root するべき"
+        env_pos < env_root_pos
+            && env_root_pos < body_expr_pos
+            && body_expr_pos < body_expr_root_pos
+            && body_expr_root_pos < instrs0_pos
+            && instrs0_pos < instrs0_root_pos
+            && instrs0_root_pos < compile_pos,
+        "stage2 native の production defn source diagnostic は canonical compile-defn と同じ env/body/instrs root ordering で raw compile-expr call を観測するべき"
     );
 }
 
