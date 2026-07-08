@@ -10928,6 +10928,21 @@ fn test_wasm_compiler_defn_compile_roots_results_before_root_pops() {
     let result_pos = defn_body
         .find("result (compile-expr-with-source body-expr source env ftable instrs0 data-ref)")
         .expect("compile-defn-with-source は body compile result を作ること");
+    let env_pos = defn_body
+        .find("env (bind-node-params node 3 0 param-count (env-new) 1)")
+        .expect("compile-defn-with-source は env を作ること");
+    let root_env_pos = defn_body[env_pos..]
+        .find("(root_push env)")
+        .map(|offset| env_pos + offset)
+        .expect("compile-defn-with-source は env を root すること");
+    let body_expr_pos = defn_body[root_env_pos..]
+        .find("body-expr (vector-get node body-idx)")
+        .map(|offset| root_env_pos + offset)
+        .expect("compile-defn-with-source は env root 後に body-expr を取り出すこと");
+    let root_body_pos = defn_body[body_expr_pos..]
+        .find("(root_push body-expr)")
+        .map(|offset| body_expr_pos + offset)
+        .expect("compile-defn-with-source は body-expr を root すること");
     let instrs0_pos = defn_body
         .find("instrs0 (vector-new 8)")
         .expect("compile-defn-with-source は initial instrs vector を作ること");
@@ -10942,11 +10957,15 @@ fn test_wasm_compiler_defn_compile_roots_results_before_root_pops() {
         .find("(root_pop)")
         .expect("compile-defn-with-source は root_pop を持つこと");
     assert!(
-        instrs0_pos < root_instrs0_pos
+        env_pos < root_env_pos
+            && root_env_pos < body_expr_pos
+            && body_expr_pos < root_body_pos
+            && root_body_pos < instrs0_pos
+            && instrs0_pos < root_instrs0_pos
             && root_instrs0_pos < result_pos
             && result_pos < root_result_pos
             && root_result_pos < first_pop_pos,
-        "compile-defn-with-source は native full payload path で initial instrs と IR result を失わないよう root するべき"
+        "compile-defn-with-source は native full payload path で env 構築 call 後に body-expr を取り直し、body / initial instrs / IR result を失わないよう root するべき"
     );
 
     let diagnostic_body = source
@@ -10957,6 +10976,21 @@ fn test_wasm_compiler_defn_compile_roots_results_before_root_pops() {
     let diagnostic_result_pos = diagnostic_body
         .find("result (compile-expr-with-source-normal-setup-diagnostic body-expr source env ftable instrs0 data-ref)")
         .expect("compile-defn-with-source-normal-setup-diagnostic は body compile result を作ること");
+    let diagnostic_env_pos = diagnostic_body
+        .find("env (bind-node-params node 3 0 param-count (env-new) 1)")
+        .expect("compile-defn-with-source-normal-setup-diagnostic は env を作ること");
+    let diagnostic_root_env_pos = diagnostic_body[diagnostic_env_pos..]
+        .find("(root_push env)")
+        .map(|offset| diagnostic_env_pos + offset)
+        .expect("compile-defn-with-source-normal-setup-diagnostic は env を root すること");
+    let diagnostic_body_expr_pos = diagnostic_body[diagnostic_root_env_pos..]
+        .find("body-expr (vector-get node body-idx)")
+        .map(|offset| diagnostic_root_env_pos + offset)
+        .expect("compile-defn-with-source-normal-setup-diagnostic は env root 後に body-expr を取り出すこと");
+    let diagnostic_root_body_pos = diagnostic_body[diagnostic_body_expr_pos..]
+        .find("(root_push body-expr)")
+        .map(|offset| diagnostic_body_expr_pos + offset)
+        .expect("compile-defn-with-source-normal-setup-diagnostic は body-expr を root すること");
     let diagnostic_instrs0_pos = diagnostic_body.find("instrs0 (vector-new 8)").expect(
         "compile-defn-with-source-normal-setup-diagnostic は initial instrs vector を作ること",
     );
@@ -10971,11 +11005,15 @@ fn test_wasm_compiler_defn_compile_roots_results_before_root_pops() {
         .find("(root_pop)")
         .expect("compile-defn-with-source-normal-setup-diagnostic は root_pop を持つこと");
     assert!(
-        diagnostic_instrs0_pos < diagnostic_root_instrs0_pos
+        diagnostic_env_pos < diagnostic_root_env_pos
+            && diagnostic_root_env_pos < diagnostic_body_expr_pos
+            && diagnostic_body_expr_pos < diagnostic_root_body_pos
+            && diagnostic_root_body_pos < diagnostic_instrs0_pos
+            && diagnostic_instrs0_pos < diagnostic_root_instrs0_pos
             && diagnostic_root_instrs0_pos < diagnostic_result_pos
             && diagnostic_result_pos < diagnostic_root_result_pos
             && diagnostic_root_result_pos < diagnostic_first_pop_pos,
-        "compile-defn-with-source-normal-setup-diagnostic は production path と同じ initial instrs/root result ordering を保つべき"
+        "compile-defn-with-source-normal-setup-diagnostic は production path と同じ env/body/instrs/root result ordering を保つべき"
     );
 
     for name in ["compile-defn-function-with-source", "compile-defn-function"] {
