@@ -3449,6 +3449,7 @@
 		            (print (vector-length (ref-get data-ref)))
 		            (let [instrs0 (vector-new 8)]
 		              (do
+		                (root_push instrs0)
 		                (print 9000000322)
 		                (print param-count)
 		                (print body-idx)
@@ -3462,6 +3463,7 @@
 		                    (print param-count)
 		                    (print (vector-length result))
 		                    (print (vector-length (ref-get data-ref)))
+		                    (root_pop)
 		                    (root_pop)
 		                    (root_pop)
 		                    (root_pop)

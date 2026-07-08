@@ -2917,6 +2917,22 @@ fn test_selfhost_normal_payload_production_defn_source_diagnostic_marks_expr_bou
             && !source_body.contains("normal-setup-diagnostic"),
         "production defn source diagnostic は normal setup ではなく raw compile-expr-with-source path を保持するべき"
     );
+    let instrs0_pos = source_body
+        .find("instrs0 (vector-new 8)")
+        .expect("production defn source diagnostic は initial instrs vector を作ること");
+    let instrs0_root_pos = source_body[instrs0_pos..]
+        .find("(root_push instrs0)")
+        .map(|pos| instrs0_pos + pos)
+        .expect("production defn source diagnostic は compile-expr 前に instrs0 を root すること");
+    let compile_pos = source_body[instrs0_pos..]
+        .find("result (compile-expr-with-source body-expr source env ftable instrs0 data-ref)")
+        .map(|pos| instrs0_pos + pos)
+        .expect("production defn source diagnostic は rooted instrs0 を compile-expr へ渡すこと");
+
+    assert!(
+        instrs0_pos < instrs0_root_pos && instrs0_root_pos < compile_pos,
+        "stage2 native の production defn source diagnostic は instrs0 が compile-expr 中に stale にならないよう、raw compile-expr call 前に root するべき"
+    );
 }
 
 #[test]
