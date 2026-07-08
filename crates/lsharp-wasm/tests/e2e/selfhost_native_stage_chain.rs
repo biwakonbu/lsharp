@@ -1786,6 +1786,31 @@ fn test_native_linux_x86_hostgen_vm_script_can_collect_stage3_raw_payload_produc
 }
 
 #[test]
+fn test_native_linux_x86_hostgen_vm_script_copies_raw_payload_boundary_evidence() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+    let evidence_copy_list = script
+        .split("for file in program.s runtime.s")
+        .nth(1)
+        .and_then(|tail| tail.split("; do").next())
+        .expect("VM evidence copy allowlist を取り出せること");
+
+    for file in [
+        "actual-stage3-raw-payload-boundary.txt",
+        "actual-stage3-raw-payload-boundary-stderr.txt",
+        "actual-stage3-raw-payload-production-boundary.txt",
+        "actual-stage3-raw-payload-production-boundary-stderr.txt",
+    ] {
+        assert!(
+            evidence_copy_list.contains(file),
+            "hostgen VM script は diagnostic summary が参照する {file} を VM workdir 削除前に artifact dir へコピーするべき"
+        );
+    }
+}
+
+#[test]
 fn test_native_linux_x86_hostgen_vm_script_can_collect_stage1_progress_markers_before_harvest() {
     let script_path =
         selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
