@@ -95,7 +95,7 @@ git push origin v<version>
 
 - `release-smoke` job は downloaded artifact を実行できる runner に絞るため、現時点では `aarch64-apple-darwin` archive を macOS arm64 runner で再検証する
 - `build` job の workflow-local artifact は native-only archive のみを同梱する。host launcher + companion sidecar は rollback compatibility asset として別扱いにする
-- Linux x86_64 (`x86_64-unknown-linux-gnu`) も supported product/release target だが、current workflow には Actions 内の native-only program 生成と publish wiring がない。local Lima replay を required CI に追加せず、target 用の自動生成経路を別途接続する
+- Linux x86_64 (`x86_64-unknown-linux-gnu`) の actual self-regeneration は local Lima VM で完了済み。current workflow には実 `App.Cli` native bundle を immutable release input として取り込む導線と publish wiring がないため、local Lima replay を required CI に追加せず release input / smoke / publish を別途接続する
 - `release` job は build 済み archive を download した後、`bash scripts/checksum.sh dist > dist/checksums.txt` で release-level checksum asset を生成してから公開する
 - バージョン文字列にハイフンが含まれる場合 (例: `v0.2.0-rc1`) はプレリリースとして公開
 - `release_notes` は GitHub の自動生成を使用
@@ -153,8 +153,8 @@ V2-14 の native-only official archive layout は `program.native`、`manifest.j
 
 現時点で残る target-specific blocker は以下である。
 
-1. actual native self-regeneration evidence は `aarch64-apple-darwin` と Linux x86_64 server priority track で保持する。Linux x86_64 は Mac + Lima VM 上で `NATIVE_LINUX_X86_HOSTGEN_VM_ARTIFACT_ID=<release-id> scripts/ci/native-linux-x86-selfregen.sh` を実行して local artifact を残すが、required GitHub Actions job にはしない。
-2. current `.github/workflows/release.yml` は Actions 内で actual native program を生成できる `aarch64-apple-darwin` だけを自動 publish する。Linux x86_64 の native-only program 生成 / smoke / publish wiring は supported-target gap として残る。
+1. actual native self-regeneration evidence は `aarch64-apple-darwin` と Linux x86_64 server priority track で保持する。Linux x86_64 は Mac + Lima VM 上で `NATIVE_LINUX_X86_HOSTGEN_VM_ARTIFACT_ID=<release-id> scripts/ci/native-linux-x86-selfregen.sh` を実行して local artifact を残すが、required GitHub Actions job にはしない。`stage23-map-insert-staged-merge-full-compare-v1` は stage2/stage3 byte-for-byte 一致と stderr 0 で pass 済み。
+2. current `.github/workflows/release.yml` は Actions 内で representative native evidence を生成できる `aarch64-apple-darwin` だけを自動 package する。両 supported target とも stable input は representative artifact ではなく実 `App.Cli` native bundle に切り替え、Linux x86_64 の archive / smoke / publish wiring を接続する必要がある。
 3. `scripts/release.sh` / `scripts/ci/release-smoke.sh` / `.github/workflows/release.yml` は native-only official archive layout を stable release path として扱う。host launcher + embedded guest component は rollback compatibility asset としてのみ扱う。
 
 この track を再開する場合は、V2-13 target matrix の正本である `docs/language/native-backend-spec.md` を確認し、target-specific blocker を解消したうえで native-only official archive layout / release smoke / rollback anchor を `release-distribution-signing.md` と workflow に同期する。

@@ -511,7 +511,7 @@
 ### NATIVE-05 Stage1-native self-regeneration
 
 - Goal: stage1-native が selfhost compiler を自分で再生成できるようにする。
-- Current state: Component Model pivot 後も native backend の canonical artifact / response file / deterministic stage observation / actual gap report を維持し、`test_e2e_stage23_actual_native_self_regeneration_harness_stage2_stage3_match` で representative `stage1-native -> stage2-native -> stage3-native` の artifact observation と transport payload 一致まで完了した。Darwin arm64 の representative actual self-regeneration は完了しており、Linux x86_64 の fixed-point 残件は Deferred の `V2-13a-5` で管理する。NATIVE-05 を Phase 11 blocker として reopen しない。
+- Current state: Component Model pivot 後も native backend の canonical artifact / response file / deterministic stage observation / actual gap report を維持し、`test_e2e_stage23_actual_native_self_regeneration_harness_stage2_stage3_match` で representative `stage1-native -> stage2-native -> stage3-native` の artifact observation と transport payload 一致まで完了した。Darwin arm64 の representative actual self-regeneration は完了している。Linux x86_64 の `V2-13a-5` は完了し、local Lima VM の stage2/stage3 byte-for-byte compare を証跡とする。Linux x86_64 の残件は `V2-15` の release input / smoke / publish wiringであり、NATIVE-05 を Phase 11 blocker として reopen しない。
 - Rust source: `docs/development/planning/completion-criteria.md`
 - L# target: `scripts/ci/build-native.sh`, `.github/workflows/ci.yml`
 - Implementation direction: `stage1-native` の build entry は `selfhost/src/App/Main.ls` compile で固定し、`stage1-native -> stage2-native -> stage3-native` の functional equivalence を gate にする。
@@ -915,7 +915,7 @@
 ### V2-08 Native backend self-regeneration
 
 - Goal: Deferred research track として native backend の true self-regeneration を成立させる。
-- Current state: `test_e2e_stage23_actual_native_self_regeneration_harness_stage2_stage3_match` により representative `stage1-native -> stage2-native -> stage3-native` の actual artifact observation / transport payload 一致を固定済みで、Darwin arm64 の representative actual self-regeneration は完了。Linux x86_64 の残件は `V2-13a-5` の function 12 fixed-point divergence と local Lima VM full compare gateに限定する。supported product/release targets は `aarch64-apple-darwin` と `x86_64-unknown-linux-gnu` で、Intel Mac / Windows / Linux ARM は release blocker に含めない。
+- Current state: `test_e2e_stage23_actual_native_self_regeneration_harness_stage2_stage3_match` により representative `stage1-native -> stage2-native -> stage3-native` の actual artifact observation / transport payload 一致を固定済みで、Darwin arm64 の representative actual self-regeneration は完了。Linux x86_64 の `V2-13a-5` は完了し、`stage23-map-insert-staged-merge-full-compare-v1` の stage2/stage3 stdout byte-for-byte 一致、同一 SHA-256、stderr 0 を証跡とする。Linux x86_64 の残件は `V2-15` の実 `App.Cli` native release input / smoke / publish wiring。supported product/release targets は `aarch64-apple-darwin` と `x86_64-unknown-linux-gnu` で、Intel Mac / Windows / Linux ARM は release blocker に含めない。
 - Rust source: `docs/language/native-backend-spec.md`, `docs/development/planning/completion-criteria.md`
 - L# target: `selfhost/src/Backend/Native/NativeTarget.ls`, `selfhost/src/Backend/Native/NativeCodegen.ls`, `selfhost/src/Backend/Native/NativeEmit.ls`, `scripts/ci/build-native.sh`
 - Implementation direction: representative build entry を `selfhost/src/App/Main.ls` compile に固定し、`actual-stage23-gap.json` の先頭 families (`Call` / i32 dataflow / memory / control flow) を順に潰しながら tier1 target ごとに `stage1-native -> stage2-native -> stage3-native` を走らせて exit/stdout/stderr/artifact hash の観測値を比較する。

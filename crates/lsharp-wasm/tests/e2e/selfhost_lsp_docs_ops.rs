@@ -2691,8 +2691,8 @@ fn test_e2e_native_ops04_linux_x86_server_target_contract() {
         .and_then(|rest| rest.split("## Phase 11: Rust 完全撤去").next())
         .expect("TODO.md の現在の残タスク一覧 section が見つからない");
     assert!(
-        current_remaining_section.contains("`V2-13a` Linux x86_64 native server target"),
-        "TODO.md の正本に Linux x86_64 server target の優先 task が必要"
+        current_remaining_section.contains("- [x] `V2-13a` Linux x86_64 native server target"),
+        "TODO.md の正本で Linux x86_64 server target を完了扱いにすること"
     );
     for expected in [
         "x86 selfhost runtime helper parity",
@@ -2701,9 +2701,11 @@ fn test_e2e_native_ops04_linux_x86_server_target_contract() {
         "V2-13a-5e",
         "Mac Apple Silicon 上の local Lima VM gate",
         "stage2/stage3 compare summary",
-        "`V2-13a-5` actual Linux x86_64 stage2/stage3 VM regeneration",
-        "function 12",
-        "stage3 は `param=2 local=0 stack=1056 ir_len=1`",
+        "[x] `V2-13a-5` actual Linux x86_64 stage2/stage3 VM regeneration",
+        "stage23-map-insert-staged-merge-full-compare-v1",
+        "9196a2e5ef859ddcfa93d8b898282f0b0b18d2d0ac9071a4a3e9e311ed7f4ff9",
+        "stage2/stage3 stdout byte-for-byte compare",
+        "stage2/stage3 stderr 0",
         "local VM release gate policy",
     ] {
         assert!(
@@ -2743,7 +2745,9 @@ fn test_e2e_native_ops04_linux_x86_server_target_contract() {
         "scripts/ci/lima/lsharp-linux-x86.yaml",
         "scripts/ci/native-linux-x86-local-vm-smoke.sh",
         "scripts/ci/native-linux-x86-hostgen-vm-exec.sh",
-        "stage2/stage3 function 12",
+        "stage23-map-insert-staged-merge-full-compare-v1",
+        "9196a2e5ef859ddcfa93d8b898282f0b0b18d2d0ac9071a4a3e9e311ed7f4ff9",
+        "stage2/stage3 stdout byte-for-byte",
     ] {
         assert!(
             native_spec_content.contains(expected),
@@ -2767,7 +2771,8 @@ fn test_e2e_native_ops04_linux_x86_server_target_contract() {
             "test_e2e_stage23_actual_native_self_regeneration_harness_stage2_stage3_match"
         ) && phase11_plan_content.contains(
             "Darwin arm64 の representative actual self-regeneration は完了"
-        ) && phase11_plan_content.contains("Linux x86_64 の残件は `V2-13a-5`")
+        ) && phase11_plan_content.contains("Linux x86_64 の `V2-13a-5` は完了")
+            && phase11_plan_content.contains("Linux x86_64 の残件は `V2-15`")
             && !phase11_plan_content.contains(
                 "true stage1-native -> stage2-native -> stage3-native の実バイナリ再生成・実行比較は未達"
             ),

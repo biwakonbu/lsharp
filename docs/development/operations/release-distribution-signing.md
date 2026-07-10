@@ -35,9 +35,9 @@ Supported product/release targets は Mac Apple Silicon (`aarch64-apple-darwin`)
 
 V2-13 target matrix status は `docs/language/native-backend-spec.md` に正本化済みで、V2-14/V2-15 では native-only official archive layout / native-only release smoke / rollback anchor を stable 既定導線にした。current contract は次のとおり。
 
-1. `aarch64-apple-darwin` と Linux x86_64 server priority track の actual self-regeneration evidence を保持する。Linux x86_64 の actual replay は Mac + Lima VM の local operator gate `scripts/ci/native-linux-x86-selfregen.sh` で扱い、GitHub Actions の required CI job や release workflow の `needs` には含めない。
+1. `aarch64-apple-darwin` と Linux x86_64 server priority track の actual self-regeneration evidence を保持する。Linux x86_64 の actual replay は Mac + Lima VM の local operator gate `scripts/ci/native-linux-x86-selfregen.sh` で扱い、GitHub Actions の required CI job や release workflow の `needs` には含めない。`stage23-map-insert-staged-merge-full-compare-v1` は stage2/stage3 byte-for-byte 一致、同一 SHA-256、stderr 0 で pass 済み。
 2. `scripts/release.sh` と `scripts/ci/release-smoke.sh` は `program.native` / `manifest.json` / `checksums.txt` を native-only official archive の必須 payload として扱う。
-3. `.github/workflows/release.yml` は stable build path で `NATIVE_ONLY_RELEASE=1` を渡す。current automated publish は Actions 内で actual native program を生成できる `aarch64-apple-darwin` に限定し、Linux x86_64 の publish wiring は supported-target gap として扱う。
+3. `.github/workflows/release.yml` は stable build path で `NATIVE_ONLY_RELEASE=1` を渡す。current automated path は representative evidence artifact を package しているため、stable input を実 `App.Cli` native bundle に置き換える必要がある。Linux x86_64 の archive / smoke / publish wiring と実在する rollback compatibility asset は supported-target gap として扱う。
 4. out of support scope の target に internal diagnostic coverage や archived design が残っていても、release blocker や必須 artifact にはしない。
 
 stable release は native-only official archive を既定導線にする。host launcher + embedded guest component は rollback compatibility asset として保持し、default payload の `lsharp.component.wasm` companion sidecar には戻さない。
