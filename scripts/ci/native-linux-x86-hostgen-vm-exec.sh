@@ -15,6 +15,9 @@ REUSE_ACTUAL_STAGE1=0
 REUSE_ACTUAL_STAGE2_ARTIFACT_DIR_INPUT="${LSHARP_NATIVE_LINUX_X86_REUSE_ACTUAL_STAGE2_ARTIFACT_DIR:-}"
 REUSE_ACTUAL_STAGE2=0
 STAGE3_SOURCE_OVERLAY_INPUT="${LSHARP_NATIVE_LINUX_X86_STAGE3_SOURCE_OVERLAY:-}"
+STAGE3_TARGET_SOURCE="${LSHARP_NATIVE_LINUX_X86_STAGE3_TARGET_SOURCE:-}"
+STAGE3_TARGET_ONLY_REQUESTED="${LSHARP_NATIVE_LINUX_X86_STAGE3_TARGET_ONLY:-}"
+STAGE3_SOURCE_TREE_SHA256=""
 STAGE1_PROGRESS_REQUESTED=0
 STAGE2_METADATA_REQUESTED=0
 HOST_VM_WORK_DIR_CREATED=0
@@ -173,8 +176,116 @@ validate_stage3_source_overlay_request() {
   fi
 }
 
+validate_stage3_target_request() {
+  if [[ -z "${STAGE3_TARGET_SOURCE}" && -z "${STAGE3_TARGET_ONLY_REQUESTED}" ]]; then
+    return 0
+  fi
+  if [[ -z "${REUSE_ACTUAL_STAGE2_ARTIFACT_DIR_INPUT}" ]]; then
+    echo "ERROR: stage3 target export requires actual stage2 artifact reuse" >&2
+    exit 1
+  fi
+  if [[ "${STAGE3_TARGET_ONLY_REQUESTED}" != "1" ]]; then
+    echo "ERROR: stage3 target export requires target-only mode" >&2
+    exit 1
+  fi
+  case "${STAGE3_TARGET_SOURCE}" in
+    src/*) ;;
+    *)
+      echo "ERROR: stage3 target source must be under src/: ${STAGE3_TARGET_SOURCE}" >&2
+      exit 1
+      ;;
+  esac
+  case "/${STAGE3_TARGET_SOURCE}/" in
+    */../*)
+      echo "ERROR: stage3 target source must not contain parent traversal: ${STAGE3_TARGET_SOURCE}" >&2
+      exit 1
+      ;;
+  esac
+  if [[ "${STAGE3_TARGET_SOURCE}" != "src/App/Cli.ls" ]]; then
+    echo "ERROR: stage3 target export requires src/App/Cli.ls: ${STAGE3_TARGET_SOURCE}" >&2
+    exit 1
+  fi
+  if [[ ! -s "${REUSE_ACTUAL_STAGE2_ARTIFACT_DIR}/stage2-debug/${STAGE3_TARGET_SOURCE}" ]]; then
+    echo "ERROR: stage3 target source is missing or empty in reusable stage2 source tree: ${STAGE3_TARGET_SOURCE}" >&2
+    exit 1
+  fi
+  if [[ -n "${STAGE3_SOURCE_OVERLAY_INPUT}" ]]; then
+    echo "ERROR: stage3 target export cannot use a diagnostic source overlay" >&2
+    exit 1
+  fi
+  STAGE3_SOURCE_TREE_SHA256="$(python3 - "${REUSE_ACTUAL_STAGE2_ARTIFACT_DIR}" "${ROOT_DIR}/selfhost/src" <<'PY'
+import hashlib
+import json
+import pathlib
+import sys
+
+artifact_dir = pathlib.Path(sys.argv[1])
+current_source_dir = pathlib.Path(sys.argv[2])
+summary_path = artifact_dir / "actual-selfregen-summary.json"
+if not summary_path.is_file():
+    raise SystemExit(f"reusable stage2 artifact is missing green fixed-point summary: {summary_path}")
+summary = json.loads(summary_path.read_text())
+checks = [
+    (summary.get("status") == "pass", "status"),
+    (summary.get("target") == "x86_64-unknown-linux-gnu", "target"),
+    (
+        isinstance(summary.get("stage2_stdout_sha256"), str)
+        and bool(summary.get("stage2_stdout_sha256"))
+        and summary.get("stage2_stdout_sha256") == summary.get("stage3_stdout_sha256"),
+        "stage2_stage3_sha256",
+    ),
+]
+for ok, label in checks:
+    if not ok:
+        raise SystemExit(f"reusable stage2 artifact is not a green fixed point: {label}")
+
+def source_tree_digest(root: pathlib.Path) -> str:
+    digest = hashlib.sha256()
+    files = sorted(root.rglob("*.ls"), key=lambda path: path.relative_to(root).as_posix())
+    if not files:
+        raise SystemExit(f"source tree has no .ls files: {root}")
+    for path in files:
+        relative = path.relative_to(root).as_posix().encode()
+        digest.update(relative)
+        digest.update(b"\0")
+        digest.update(path.read_bytes())
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+artifact_digest = source_tree_digest(artifact_dir / "stage2-debug/src")
+current_digest = source_tree_digest(current_source_dir)
+if artifact_digest != current_digest:
+    raise SystemExit(
+        "reusable stage2 source tree does not match current selfhost source tree: "
+        f"artifact={artifact_digest} current={current_digest}"
+    )
+print(current_digest)
+PY
+)"
+  if [[ -n "${LSHARP_NATIVE_LINUX_X86_STAGE1_PROGRESS:-}" \
+    || -n "${LSHARP_NATIVE_LINUX_X86_STAGE2_METADATA_START:-}" \
+    || -n "${LSHARP_NATIVE_LINUX_X86_STAGE2_METADATA_ONLY:-}" \
+    || -n "${LSHARP_NATIVE_LINUX_X86_STAGE3_METADATA_START:-}" \
+    || -n "${LSHARP_NATIVE_LINUX_X86_STAGE3_METADATA_ONLY:-}" \
+    || -n "${LSHARP_NATIVE_LINUX_X86_STAGE3_PROGRESS:-}" \
+    || -n "${LSHARP_NATIVE_LINUX_X86_STAGE3_PROGRESS_ONLY:-}" \
+    || -n "${LSHARP_NATIVE_LINUX_X86_STAGE3_NORMAL_SETUP:-}" \
+    || -n "${LSHARP_NATIVE_LINUX_X86_STAGE3_NORMAL_SETUP_ONLY:-}" \
+    || -n "${LSHARP_NATIVE_LINUX_X86_STAGE3_NORMAL_PAYLOAD_SHAPE:-}" \
+    || -n "${LSHARP_NATIVE_LINUX_X86_STAGE3_NORMAL_PAYLOAD_SHAPE_ONLY:-}" \
+    || -n "${LSHARP_NATIVE_LINUX_X86_STAGE3_RAW_PAYLOAD_BOUNDARY:-}" \
+    || -n "${LSHARP_NATIVE_LINUX_X86_STAGE3_RAW_PAYLOAD_BOUNDARY_ONLY:-}" \
+    || -n "${LSHARP_NATIVE_LINUX_X86_STAGE3_RAW_PAYLOAD_PRODUCTION_BOUNDARY:-}" \
+    || -n "${LSHARP_NATIVE_LINUX_X86_STAGE3_RAW_PAYLOAD_PRODUCTION_BOUNDARY_ONLY:-}" ]]; then
+    echo "ERROR: stage3 target export cannot be combined with diagnostic modes" >&2
+    exit 1
+  fi
+}
+
 validate_stage3_source_overlay_request
+validate_stage3_target_request
 cd "${ROOT_DIR}"
+SOURCE_COMMIT="$(git rev-parse HEAD)"
 
 trap cleanup_hostgen_cargo_target EXIT
 cleanup_hostgen_cargo_target
@@ -571,6 +682,10 @@ limactl shell "${VM_NAME}" -- env \
   LSHARP_NATIVE_LINUX_X86_STAGE3_RAW_PAYLOAD_BOUNDARY_ONLY="${LSHARP_NATIVE_LINUX_X86_STAGE3_RAW_PAYLOAD_BOUNDARY_ONLY:-}" \
   LSHARP_NATIVE_LINUX_X86_STAGE3_RAW_PAYLOAD_PRODUCTION_BOUNDARY="${LSHARP_NATIVE_LINUX_X86_STAGE3_RAW_PAYLOAD_PRODUCTION_BOUNDARY:-}" \
   LSHARP_NATIVE_LINUX_X86_STAGE3_RAW_PAYLOAD_PRODUCTION_BOUNDARY_ONLY="${LSHARP_NATIVE_LINUX_X86_STAGE3_RAW_PAYLOAD_PRODUCTION_BOUNDARY_ONLY:-}" \
+  LSHARP_NATIVE_LINUX_X86_STAGE3_TARGET_SOURCE="${STAGE3_TARGET_SOURCE}" \
+  LSHARP_NATIVE_LINUX_X86_STAGE3_TARGET_ONLY="${STAGE3_TARGET_ONLY_REQUESTED}" \
+  LSHARP_NATIVE_LINUX_X86_SOURCE_COMMIT="${SOURCE_COMMIT}" \
+  LSHARP_NATIVE_LINUX_X86_SOURCE_TREE_SHA256="${STAGE3_SOURCE_TREE_SHA256}" \
   LSHARP_NATIVE_LINUX_X86_REUSE_ACTUAL_STAGE1="${REUSE_ACTUAL_STAGE1}" \
   LSHARP_NATIVE_LINUX_X86_REUSE_ACTUAL_STAGE2="${REUSE_ACTUAL_STAGE2}" \
   bash -s -- "${VM_WORK_DIR}" <<'VM_SCRIPT'
@@ -583,6 +698,10 @@ HOST_OS="$(uname -s)"
 HOST_ARCH="$(uname -m)"
 REUSE_ACTUAL_STAGE1="${LSHARP_NATIVE_LINUX_X86_REUSE_ACTUAL_STAGE1:-0}"
 REUSE_ACTUAL_STAGE2="${LSHARP_NATIVE_LINUX_X86_REUSE_ACTUAL_STAGE2:-0}"
+STAGE3_TARGET_ONLY="${LSHARP_NATIVE_LINUX_X86_STAGE3_TARGET_ONLY:-}"
+ACTUAL_SOURCE_PATH="${LSHARP_NATIVE_LINUX_X86_STAGE3_TARGET_SOURCE:-src/App/Seed.ls}"
+SOURCE_COMMIT="${LSHARP_NATIVE_LINUX_X86_SOURCE_COMMIT:-unknown}"
+STAGE3_SOURCE_TREE_SHA256="${LSHARP_NATIVE_LINUX_X86_SOURCE_TREE_SHA256:-}"
 if [[ "${HOST_OS}" != "Linux" || "${HOST_ARCH}" != "x86_64" ]]; then
   echo "ERROR: VM execution requires Linux/x86_64; got ${HOST_OS}/${HOST_ARCH}" >&2
   exit 1
@@ -1216,6 +1335,7 @@ stage_dir = pathlib.Path(sys.argv[1])
 code_name = sys.argv[2]
 entrypoint = int((stage_dir / sys.argv[3]).read_text().strip())
 actual_heap_bytes = int(os.environ.get("LSHARP_NATIVE_LINUX_X86_ACTUAL_HEAP_BYTES", "4294967296"))
+skip_argv0 = os.environ.get("LSHARP_NATIVE_LINUX_X86_SKIP_ARGV0", "0") == "1"
 code_path = stage_dir / code_name
 code_len = code_path.stat().st_size
 data_name = "stage1-data.bin" if (stage_dir / "stage1-data.bin").exists() else "stage-data.bin"
@@ -1228,6 +1348,7 @@ if entrypoint < 0 or entrypoint >= code_len:
 
 prefix = f'    .incbin "{code_name}", 0, {entrypoint}\n' if entrypoint else ""
 suffix = f'    .incbin "{code_name}", {entrypoint}\n'
+argv_adjust = "    dec %r14\n    add $8, %r15\n" if skip_argv0 else ""
 program_asm = f""".text
 .extern calloc
 .extern malloc
@@ -1278,7 +1399,7 @@ main:
     inc %r13
     jmp .Largv_loop
 .Largv_done:
-    mov %r14, %r12
+{argv_adjust}    mov %r14, %r12
     movabs ${actual_heap_bytes}, %rdi
     mov $1, %rsi
     call calloc@PLT
@@ -1498,6 +1619,12 @@ if [[ -z "${REUSE_ACTUAL_STAGE2}" || "${REUSE_ACTUAL_STAGE2}" = "0" ]]; then
 fi
 rm -rf actual-stage3/src
 cp -a actual-stage2/src actual-stage3/src
+if [[ -n "${STAGE3_TARGET_ONLY}" && "${STAGE3_TARGET_ONLY}" != "0" ]]; then
+  if ! test -s "actual-stage2/${ACTUAL_SOURCE_PATH}"; then
+    echo "ERROR: stage3 target source is missing in VM source tree: ${ACTUAL_SOURCE_PATH}" >&2
+    exit 1
+  fi
+fi
 
 release_actual_replay_lock() {
   local holder_pid=""
@@ -1642,7 +1769,7 @@ run_actual_stage_range() {
     chunk_stdout="$(mktemp "${stage_dir}.chunk.${chunk_start}.XXXXXX.stdout")"
     chunk_stderr="$(mktemp "${stage_dir}.chunk.${chunk_start}.XXXXXX.stderr")"
     set +e
-    (cd "${stage_dir}" && timeout "${ACTUAL_TIMEOUT}" ./program.native src/App/Seed.ls "${chunk_start}" "${chunk_end}" "${include_header}" "${include_tail}" >"../${chunk_stdout}" 2>"../${chunk_stderr}")
+    (cd "${stage_dir}" && timeout "${ACTUAL_TIMEOUT}" ./program.native "${ACTUAL_SOURCE_PATH}" "${chunk_start}" "${chunk_end}" "${include_header}" "${include_tail}" >"../${chunk_stdout}" 2>"../${chunk_stderr}")
     chunk_exit_code=$?
     set -e
     if [[ "${chunk_exit_code}" -eq 0 ]]; then
@@ -2116,6 +2243,40 @@ if [[ -s actual-stage3-stderr.txt ]]; then
   echo "ERROR: actual self-regeneration stage3 stderr is not empty" >&2
   exit 1
 fi
+if [[ -n "${STAGE3_TARGET_ONLY}" && "${STAGE3_TARGET_ONLY}" != "0" ]]; then
+  LSHARP_NATIVE_LINUX_X86_SKIP_ARGV0=1 python3 materialize-actual-bundle.py actual-stage3 stage-code.bin entrypoint-offset.txt
+  set +e
+  (cd actual-stage3 && timeout "${ACTUAL_TIMEOUT}" ./program.native --version >../actual-stage3-target-smoke-stdout.txt 2>../actual-stage3-target-smoke-stderr.txt)
+  actual_stage3_target_smoke_exit_code=$?
+  set -e
+  if [[ "${actual_stage3_target_smoke_exit_code}" -ne 0 \
+    || -s actual-stage3-target-smoke-stderr.txt \
+    || "$(tr -d '\r' <actual-stage3-target-smoke-stdout.txt)" != "lsharp 0.1.0" ]]; then
+    write_actual_selfregen_failure_summary "stage3-target-smoke" "${actual_stage3_target_smoke_exit_code}" actual-stage3-target-smoke-stdout.txt actual-stage3-target-smoke-stderr.txt
+    echo "ERROR: materialized stage3 target did not pass --version smoke" >&2
+    exit 1
+  fi
+  actual_stage3_program_sha="$(sha256sum actual-stage3/program.native | awk '{print $1}')"
+  cat >actual-selfregen-summary.json <<JSON
+{
+  "target": "x86_64-unknown-linux-gnu",
+  "host_os": "${HOST_OS}",
+  "host_arch": "${HOST_ARCH}",
+  "status": "pass",
+  "artifact_kind": "native App.Cli release program",
+  "entry_module": "App.Cli",
+  "scope": "Linux x86_64 App.Cli native release bundle",
+  "source": "${ACTUAL_SOURCE_PATH}",
+  "source_commit": "${SOURCE_COMMIT}",
+  "source_tree_sha256": "${STAGE3_SOURCE_TREE_SHA256}",
+  "program_sha256": "${actual_stage3_program_sha}",
+  "code_len": $(wc -c <actual-stage3/stage-code.bin),
+  "stderr_bytes": $(wc -c <actual-stage3-stderr.txt)
+}
+JSON
+  exit 0
+fi
+
 if ! cmp -s actual-stage2-stdout.txt actual-stage3-stdout.txt; then
   write_actual_selfregen_failure_summary "stage2-stage3-compare" 1 actual-stage3-stdout.txt actual-stage3-stderr.txt
   echo "ERROR: actual stage2/stage3 transport payload mismatch" >&2
@@ -2141,7 +2302,7 @@ VM_SCRIPT
 vm_exec_status=$?
 set -e
 
-for file in program.s runtime.s program.o argv-program.o argv-char-program.o print-program.o vector-program.o ref-program.o substring-program.o string-concat-program.o map-program.o map-size-program.o file-exists-program.o code-program.o runtime.o linker-response.txt program.native stdout.txt stderr.txt summary.json object-runtime.s object-runtime.o object-linker-response.txt object-program.native object-stdout.txt object-stderr.txt object-summary.json argv-object-linker-response.txt argv-object-program.native argv-object-stdout.txt argv-object-stderr.txt argv-object-summary.json argv-char-object-linker-response.txt argv-char-object-program.native argv-char-object-stdout.txt argv-char-object-stderr.txt argv-char-object-summary.json print-object-linker-response.txt print-object-program.native print-object-stdout.txt print-object-stderr.txt print-object-summary.json vector-object-linker-response.txt vector-object-program.native vector-object-stdout.txt vector-object-stderr.txt vector-object-summary.json ref-object-linker-response.txt ref-object-program.native ref-object-stdout.txt ref-object-stderr.txt ref-object-summary.json substring-object-linker-response.txt substring-object-program.native substring-object-stdout.txt substring-object-stderr.txt substring-object-summary.json string-concat-object-linker-response.txt string-concat-object-program.native string-concat-object-stdout.txt string-concat-object-stderr.txt string-concat-object-summary.json map-object-linker-response.txt map-object-program.native map-object-stdout.txt map-object-stderr.txt map-object-summary.json map-size-object-linker-response.txt map-size-object-program.native map-size-object-stdout.txt map-size-object-stderr.txt map-size-object-summary.json file-exists-target.txt file-exists-object-linker-response.txt file-exists-object-program.native file-exists-object-stdout.txt file-exists-object-stderr.txt file-exists-object-summary.json actual-stage1-progress.txt actual-stage1-progress-stderr.txt actual-stage2-stdout.txt actual-stage2-stderr.txt actual-stage2-metadata.txt actual-stage2-metadata-stderr.txt actual-stage3-metadata.txt actual-stage3-metadata-stderr.txt actual-stage3-progress.txt actual-stage3-progress-stderr.txt actual-stage3-normal-setup.txt actual-stage3-normal-setup-stderr.txt actual-stage3-normal-payload-shape.txt actual-stage3-normal-payload-shape-stderr.txt actual-stage3-raw-payload-boundary.txt actual-stage3-raw-payload-boundary-stderr.txt actual-stage3-raw-payload-production-boundary.txt actual-stage3-raw-payload-production-boundary-stderr.txt actual-stage3-stdout.txt actual-stage3-stderr.txt actual-selfregen-summary.json; do
+for file in program.s runtime.s program.o argv-program.o argv-char-program.o print-program.o vector-program.o ref-program.o substring-program.o string-concat-program.o map-program.o map-size-program.o file-exists-program.o code-program.o runtime.o linker-response.txt program.native stdout.txt stderr.txt summary.json object-runtime.s object-runtime.o object-linker-response.txt object-program.native object-stdout.txt object-stderr.txt object-summary.json argv-object-linker-response.txt argv-object-program.native argv-object-stdout.txt argv-object-stderr.txt argv-object-summary.json argv-char-object-linker-response.txt argv-char-object-program.native argv-char-object-stdout.txt argv-char-object-stderr.txt argv-char-object-summary.json print-object-linker-response.txt print-object-program.native print-object-stdout.txt print-object-stderr.txt print-object-summary.json vector-object-linker-response.txt vector-object-program.native vector-object-stdout.txt vector-object-stderr.txt vector-object-summary.json ref-object-linker-response.txt ref-object-program.native ref-object-stdout.txt ref-object-stderr.txt ref-object-summary.json substring-object-linker-response.txt substring-object-program.native substring-object-stdout.txt substring-object-stderr.txt substring-object-summary.json string-concat-object-linker-response.txt string-concat-object-program.native string-concat-object-stdout.txt string-concat-object-stderr.txt string-concat-object-summary.json map-object-linker-response.txt map-object-program.native map-object-stdout.txt map-object-stderr.txt map-object-summary.json map-size-object-linker-response.txt map-size-object-program.native map-size-object-stdout.txt map-size-object-stderr.txt map-size-object-summary.json file-exists-target.txt file-exists-object-linker-response.txt file-exists-object-program.native file-exists-object-stdout.txt file-exists-object-stderr.txt file-exists-object-summary.json actual-stage1-progress.txt actual-stage1-progress-stderr.txt actual-stage2-stdout.txt actual-stage2-stderr.txt actual-stage2-metadata.txt actual-stage2-metadata-stderr.txt actual-stage3-metadata.txt actual-stage3-metadata-stderr.txt actual-stage3-progress.txt actual-stage3-progress-stderr.txt actual-stage3-normal-setup.txt actual-stage3-normal-setup-stderr.txt actual-stage3-normal-payload-shape.txt actual-stage3-normal-payload-shape-stderr.txt actual-stage3-raw-payload-boundary.txt actual-stage3-raw-payload-boundary-stderr.txt actual-stage3-raw-payload-production-boundary.txt actual-stage3-raw-payload-production-boundary-stderr.txt actual-stage3-stdout.txt actual-stage3-stderr.txt actual-stage3-target-smoke-stdout.txt actual-stage3-target-smoke-stderr.txt actual-selfregen-summary.json; do
   if limactl shell "${VM_NAME}" -- test -e "${VM_WORK_DIR}/${file}"; then
     limactl copy "${VM_NAME}:${VM_WORK_DIR}/${file}" "${ARTIFACT_DIR}/${file}"
   fi

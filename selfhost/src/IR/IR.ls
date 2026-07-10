@@ -86,6 +86,9 @@
 (defn ir-map-contains [] 65)
 (defn ir-map-remove [] 66)
 (defn ir-command-line-arg [] 67)
+(defn ir-command-line-args [] 86)
+(defn ir-print-string [] 87)
+(defn ir-proc-exit [] 88)
 
 ;; === 命令構築 ===
 

@@ -21,12 +21,21 @@ set -euo pipefail
 
 VERSION="${VERSION:-$(git describe --tags --always 2>/dev/null || echo "dev")}"
 TARGET="${TARGET:-$(rustc -Vv 2>/dev/null | grep host | cut -d' ' -f2 || echo "unknown")}"
-DIST_DIR="dist"
-ARCHIVE_NAME="lsharp-${VERSION}-${TARGET}"
+DIST_DIR="${DIST_DIR:-dist}"
 NATIVE_ONLY_RELEASE="${NATIVE_ONLY_RELEASE:-1}"
 NATIVE_ONLY_PROGRAM="${NATIVE_ONLY_PROGRAM:-}"
-ROLLBACK_COMPATIBILITY_ASSET="${ROLLBACK_COMPATIBILITY_ASSET:-lsharp-${VERSION}-${TARGET}-host-launcher.tar.gz}"
+NATIVE_ONLY_PROGRAM_MANIFEST="${NATIVE_ONLY_PROGRAM_MANIFEST:-}"
+ROLLBACK_COMPATIBILITY_ASSET_PATH="${ROLLBACK_COMPATIBILITY_ASSET_PATH:-}"
 SOURCE_COMMIT="${SOURCE_COMMIT:-$(git rev-parse --verify HEAD 2>/dev/null || echo "unknown")}"
+BASE_ARCHIVE_NAME="lsharp-${VERSION}-${TARGET}"
+if [[ "${NATIVE_ONLY_RELEASE}" == "1" ]]; then
+  ARCHIVE_NAME="${BASE_ARCHIVE_NAME}"
+else
+  ARCHIVE_NAME="${BASE_ARCHIVE_NAME}-host-launcher"
+fi
+ROLLBACK_COMPATIBILITY_ASSET=""
+ROLLBACK_COMPATIBILITY_SHA256=""
+NATIVE_ONLY_PROGRAM_INPUT_SHA256=""
 
 case "$TARGET" in
   aarch64-apple-darwin|x86_64-unknown-linux-gnu) ;;
@@ -75,6 +84,64 @@ copy_required_binary() {
   cp -f "$binary_path" "${DIST_DIR}/${ARCHIVE_NAME}/"
 }
 
+hash_file() {
+  local path="$1"
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$path" | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$path" | awk '{print $1}'
+  else
+    echo "ERROR: sha256sum or shasum not found" >&2
+    exit 1
+  fi
+}
+
+validate_native_release_inputs() {
+  if [[ -z "${NATIVE_ONLY_PROGRAM_MANIFEST}" || ! -s "${NATIVE_ONLY_PROGRAM_MANIFEST}" ]]; then
+    echo "ERROR: native App.Cli release program manifest is required" >&2
+    exit 1
+  fi
+  if [[ -z "${ROLLBACK_COMPATIBILITY_ASSET_PATH}" || ! -s "${ROLLBACK_COMPATIBILITY_ASSET_PATH}" ]]; then
+    echo "ERROR: rollback compatibility asset is required" >&2
+    exit 1
+  fi
+
+  NATIVE_ONLY_PROGRAM_INPUT_SHA256="$(hash_file "${NATIVE_ONLY_PROGRAM}")"
+  python3 - \
+    "${NATIVE_ONLY_PROGRAM_MANIFEST}" \
+    "${TARGET}" \
+    "${SOURCE_COMMIT}" \
+    "${NATIVE_ONLY_PROGRAM_INPUT_SHA256}" <<'PY'
+import json
+import pathlib
+import sys
+
+manifest_path = pathlib.Path(sys.argv[1])
+target = sys.argv[2]
+source_commit = sys.argv[3]
+program_sha256 = sys.argv[4]
+manifest = json.loads(manifest_path.read_text())
+
+if manifest.get("status") != "pass":
+    raise SystemExit("native App.Cli release program manifest status must be pass")
+if manifest.get("target") != target:
+    raise SystemExit("native App.Cli release program target mismatch")
+if manifest.get("entry_module") not in (None, "App.Cli"):
+    raise SystemExit("entry module must be App.Cli")
+if manifest.get("source") != "src/App/Cli.ls":
+    raise SystemExit("entry module must be App.Cli")
+if manifest.get("scope") != "Linux x86_64 App.Cli native release bundle" and manifest.get("artifact_kind") != "native App.Cli release program":
+    raise SystemExit("artifact kind must be native App.Cli release program")
+if manifest.get("source_commit") not in (None, source_commit):
+    raise SystemExit("native App.Cli release program source commit mismatch")
+if manifest.get("program_sha256") != program_sha256:
+    raise SystemExit("native program sha256 mismatch")
+PY
+
+  ROLLBACK_COMPATIBILITY_ASSET="$(basename "${ROLLBACK_COMPATIBILITY_ASSET_PATH}")"
+  ROLLBACK_COMPATIBILITY_SHA256="$(hash_file "${ROLLBACK_COMPATIBILITY_ASSET_PATH}")"
+}
+
 generate_native_manifest() {
   local manifest_path="${DIST_DIR}/${ARCHIVE_NAME}/manifest.json"
   cat > "$manifest_path" <<EOF
@@ -86,7 +153,12 @@ generate_native_manifest() {
   "entry_binary": "program.native",
   "rollback_anchor": {
     "kind": "rollback compatibility",
-    "asset": "${ROLLBACK_COMPATIBILITY_ASSET}"
+    "asset": "${ROLLBACK_COMPATIBILITY_ASSET}",
+    "rollback_sha256": "${ROLLBACK_COMPATIBILITY_SHA256}"
+  },
+  "native_program_input": {
+    "manifest": "native-program-manifest.json",
+    "input_sha256": "${NATIVE_ONLY_PROGRAM_INPUT_SHA256}"
   },
   "smoke": {
     "kind": "native-only release smoke",
@@ -110,6 +182,7 @@ assemble_native_only_release() {
     echo "ERROR: native-only program source not found: $program_source" >&2
     exit 1
   fi
+  validate_native_release_inputs
 
   cp -f "$program_source" "$program_dest"
   chmod 755 "$program_dest"
@@ -121,6 +194,7 @@ assemble_native_only_release() {
 
   copy_required_file "README.md"
   copy_required_file "LICENSE"
+  cp -f "${NATIVE_ONLY_PROGRAM_MANIFEST}" "${DIST_DIR}/${ARCHIVE_NAME}/native-program-manifest.json"
   generate_native_manifest
 }
 
@@ -149,6 +223,10 @@ generate_guest_component_sidecar() {
 echo "Assembling release artifacts..."
 if [[ "$NATIVE_ONLY_RELEASE" == "1" ]]; then
   assemble_native_only_release
+  rollback_dest="${DIST_DIR}/${ROLLBACK_COMPATIBILITY_ASSET}"
+  if [[ "${ROLLBACK_COMPATIBILITY_ASSET_PATH}" != "${rollback_dest}" ]]; then
+    cp -f "${ROLLBACK_COMPATIBILITY_ASSET_PATH}" "${rollback_dest}"
+  fi
 else
   echo "Building host launcher binaries..."
   cargo build --release
@@ -167,6 +245,13 @@ echo "Generating checksums..."
 # アーカイブ作成
 echo "Creating archive..."
 # Mac Apple Silicon / Linux x86_64: .tar.gz 形式
-cd "${DIST_DIR}" && tar czf "${ARCHIVE_NAME}.tar.gz" "${ARCHIVE_NAME}/" 2>/dev/null || true
+(
+  cd "${DIST_DIR}"
+  tar czf "${ARCHIVE_NAME}.tar.gz" "${ARCHIVE_NAME}/"
+)
+if [[ ! -s "${DIST_DIR}/${ARCHIVE_NAME}.tar.gz" ]]; then
+  echo "ERROR: release archive was not created: ${DIST_DIR}/${ARCHIVE_NAME}.tar.gz" >&2
+  exit 1
+fi
 
 echo "=== Release complete: ${ARCHIVE_NAME} ==="

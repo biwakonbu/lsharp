@@ -3955,6 +3955,26 @@ fn test_e2e_ops06_release_smoke_contract() {
         release_script_content.contains("NATIVE_ONLY_PROGRAM is required"),
         "release.sh は native-only official archive で明示された native executable だけを program.native にすること"
     );
+    for expected in [
+        "NATIVE_ONLY_PROGRAM_MANIFEST",
+        "native App.Cli release program manifest is required",
+        "entry module must be App.Cli",
+        "native program sha256 mismatch",
+        "ROLLBACK_COMPATIBILITY_ASSET_PATH",
+        "rollback compatibility asset is required",
+        "rollback_sha256",
+    ] {
+        assert!(
+            release_script_content.contains(expected),
+            "release.sh は immutable App.Cli input / rollback contract `{expected}` を持つこと"
+        );
+    }
+    assert!(
+        !release_script_content.contains(
+            "tar czf \"${ARCHIVE_NAME}.tar.gz\" \"${ARCHIVE_NAME}/\" 2>/dev/null || true"
+        ),
+        "release.sh は tar 作成失敗を成功扱いにしないこと"
+    );
     assert!(
         !release_script_content.contains("cargo build --release -p lsharp-driver")
             && !release_script_content
@@ -3980,6 +4000,13 @@ fn test_e2e_ops06_release_smoke_contract() {
             && smoke_content.contains("manifest.json")
             && smoke_content.contains("rollback"),
         "release-smoke.sh は native-only official archive payload と rollback anchor を検証すること"
+    );
+    assert!(
+        smoke_content.contains(r#"ROLLBACK_ARCHIVE_PATH="${2:-}""#)
+            && smoke_content.contains("rollback compatibility archive is required")
+            && smoke_content.contains("rollback compatibility asset checksum mismatch")
+            && smoke_content.contains("rollback_sha256"),
+        "release-smoke.sh は stable archive と実在 rollback archive の名前/hashを照合すること"
     );
     assert!(
         smoke_content.contains(" doc ")
@@ -4327,7 +4354,11 @@ case "$cmd" in
         shift
       fi
     done
-    printf '\0asm' > "${out:?missing output path}"
+    if [[ -n "$out" ]]; then
+      printf '\0asm' > "$out"
+    else
+      echo "wasm-size:42"
+    fi
     ;;
   doc)
     json=0
@@ -4348,10 +4379,14 @@ case "$cmd" in
           ;;
       esac
     done
-    if [[ "$json" == "1" ]]; then
-      printf '{"package":"fixture"}\n' > "${out:?missing output path}"
+    if [[ "$json" == "1" && -n "$out" ]]; then
+      printf '{"package":"fixture"}\n' > "$out"
+    elif [[ "$json" == "1" ]]; then
+      printf '{"package":"fixture"}\n'
+    elif [[ -n "$out" ]]; then
+      printf '<html><body>fixture doc</body></html>\n' > "$out"
     else
-      printf '<html><body>fixture doc</body></html>\n' > "${out:?missing output path}"
+      printf '<html><body>fixture doc</body></html>\n'
     fi
     ;;
   *)
@@ -4367,14 +4402,78 @@ esac
         .permissions();
     perms.set_mode(0o755);
     std::fs::set_permissions(&fake_lsharp, perms).expect("fake lsharp permission の設定に失敗");
+    std::fs::copy(&fake_lsharp, archive_root.join("lsharp"))
+        .expect("native-only lsharp alias fixture copy 失敗");
 
     std::fs::write(archive_root.join("README.md"), "# fixture\n")
         .expect("README fixture 書き込み失敗");
     std::fs::write(archive_root.join("LICENSE"), "fixture license\n")
         .expect("LICENSE fixture 書き込み失敗");
     std::fs::write(
+        archive_root.join("native-program-manifest.json"),
+        r#"{"status":"pass","target":"x86_64-unknown-linux-gnu","scope":"Linux x86_64 App.Cli native release bundle","source":"src/App/Cli.ls","program_sha256":"fixture"}"#,
+    )
+    .expect("native program manifest fixture 書き込み失敗");
+
+    let rollback_name = "lsharp-v0.0.0-test-x86_64-unknown-linux-gnu-host-launcher";
+    let rollback_root = temp_root.join(rollback_name);
+    std::fs::create_dir_all(&rollback_root).expect("rollback fixture root の作成に失敗");
+    std::fs::copy(&fake_lsharp, rollback_root.join("lsharp"))
+        .expect("rollback lsharp fixture copy 失敗");
+    std::fs::copy(&fake_lsharp, rollback_root.join("lsharp-lsp"))
+        .expect("rollback lsharp-lsp fixture copy 失敗");
+    std::fs::write(rollback_root.join("lsharp.component.wasm"), b"\0asm")
+        .expect("rollback component fixture 書き込み失敗");
+    std::fs::write(rollback_root.join("README.md"), "# rollback fixture\n")
+        .expect("rollback README fixture 書き込み失敗");
+    std::fs::write(rollback_root.join("LICENSE"), "rollback fixture license\n")
+        .expect("rollback LICENSE fixture 書き込み失敗");
+    let rollback_checksum_output = Command::new("bash")
+        .arg(&checksum_script)
+        .arg(&rollback_root)
+        .output()
+        .expect("rollback checksum.sh の実行に失敗");
+    assert!(
+        rollback_checksum_output.status.success(),
+        "rollback checksum.sh が失敗した: {}",
+        String::from_utf8_lossy(&rollback_checksum_output.stderr)
+    );
+    std::fs::write(
+        rollback_root.join("checksums.txt"),
+        rollback_checksum_output.stdout,
+    )
+    .expect("rollback checksums.txt の書き込みに失敗");
+    let rollback_path = temp_root.join(format!("{rollback_name}.tar.gz"));
+    let rollback_tar_output = Command::new("tar")
+        .arg("-czf")
+        .arg(&rollback_path)
+        .arg(rollback_name)
+        .current_dir(&temp_root)
+        .output()
+        .expect("rollback fixture archive 作成に失敗");
+    assert!(
+        rollback_tar_output.status.success(),
+        "rollback fixture archive 作成が失敗した: {}",
+        String::from_utf8_lossy(&rollback_tar_output.stderr)
+    );
+    let rollback_hash_output = Command::new("bash")
+        .arg("-c")
+        .arg("if command -v sha256sum >/dev/null 2>&1; then sha256sum \"$1\"; else shasum -a 256 \"$1\"; fi")
+        .arg("_")
+        .arg(&rollback_path)
+        .output()
+        .expect("rollback fixture hash の取得に失敗");
+    assert!(rollback_hash_output.status.success());
+    let rollback_sha256 = String::from_utf8_lossy(&rollback_hash_output.stdout)
+        .split_whitespace()
+        .next()
+        .expect("rollback fixture hash が空")
+        .to_string();
+    std::fs::write(
         archive_root.join("manifest.json"),
-        r#"{"schema_version":1,"archive_kind":"native-only official archive","target":"x86_64-unknown-linux-gnu","entry_binary":"program.native","rollback_anchor":{"kind":"rollback compatibility","asset":"lsharp-v0.0.0-test-x86_64-unknown-linux-gnu-host-launcher.tar.gz"},"smoke":{"kind":"native-only release smoke","binary":"program.native"}}"#,
+        format!(
+            r#"{{"schema_version":1,"archive_kind":"native-only official archive","target":"x86_64-unknown-linux-gnu","entry_binary":"program.native","rollback_anchor":{{"kind":"rollback compatibility","asset":"{rollback_name}.tar.gz","rollback_sha256":"{rollback_sha256}"}},"native_program_input":{{"manifest":"native-program-manifest.json","input_sha256":"fixture"}},"smoke":{{"kind":"native-only release smoke","binary":"program.native"}}}}"#
+        ),
     )
     .expect("native-only manifest fixture 書き込み失敗");
 
@@ -4411,6 +4510,7 @@ esac
     let output = Command::new("bash")
         .arg(&smoke_script)
         .arg(&archive_path)
+        .arg(&rollback_path)
         .env("WORK_DIR", &smoke_work_dir)
         .output()
         .expect("release-smoke.sh の実行に失敗");

@@ -54,6 +54,9 @@
 (defn op-root-push [] 74)
 (defn op-root-pop [] 75)
 (defn op-root-set [] 76)
+(defn op-command-line-args [] 86)
+(defn op-print-string [] 87)
+(defn op-proc-exit [] 88)
 (defn builtin-add [] 43)
 (defn builtin-sub [] 45)
 (defn builtin-mul [] 42)
@@ -81,6 +84,9 @@
 (defn builtin-map-remove [] 2967773956947477)
 (defn builtin-command-line-arg [] 4333701572691766591)
 (defn builtin-file-exists [] 2680668565995926546)
+(defn builtin-command-line-args [] 5217540237477903124)
+(defn builtin-print-string [] 2942060250258025265)
+(defn builtin-proc-exit [] 98761626082613)
 (defn builtin-root-push [] 100385403511895)
 (defn builtin-root-pop [] 3238238822772)
 (defn builtin-root-set [] 3238238825349)
@@ -157,7 +163,13 @@
       67
       (if (= name-hash 2680668565995926546)
         73
-        0))))
+        (if (= name-hash 5217540237477903124)
+          86
+          (if (= name-hash 2942060250258025265)
+            87
+            (if (= name-hash 98761626082613)
+              88
+              0)))))))
 
 (defn builtin-map-extra-opcode [name-hash]
   (if (= name-hash (- 0 3820778934353407281))
@@ -956,7 +968,13 @@
                                           true
                                           (if (= bop 71)
                                             true
-                                            (= bop 72)))))))))))))))))))))))
+                                            (if (= bop 72)
+                                              true
+                                              (if (= bop 86)
+                                                true
+                                                (if (= bop 87)
+                                                  true
+                                                  (= bop 88))))))))))))))))))))))))))
 (defn alloc-root-needed [expr]
   (let [tag (vector-get expr 0)]
     (if (= tag 1)

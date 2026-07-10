@@ -801,7 +801,9 @@
         1
         (if (= opcode 60)
           1
-          0)))))
+          (if (= opcode 86)
+            1
+            0))))))
 
 (defn is-one-pop-reducer-opcode [opcode]
   (if (= opcode 11)
@@ -8961,9 +8963,15 @@
                                                   (if (>= current-depth 3) (+ 12 (* (- current-depth 3) 14)) 5)
                                                   (if (= opcode 73)
                                                     7
-                                                    (if (= (x86-plain-two-to-one-needs-window-restore opcode) 1)
-                                                      (native-plain-two-to-one-bundle-size-x86 opcode operand current-depth)
-                                                      (native-plain-instr-size-x86 opcode operand)))))))))))))))))))))))))))))))
+                                                    (if (= opcode 86)
+                                                      (if (>= current-depth 2) (+ 14 (* (- current-depth 2) 14)) (if (= current-depth 1) 7 5))
+                                                      (if (= opcode 87)
+                                                        7
+                                                        (if (= opcode 88)
+                                                          7
+                                                          (if (= (x86-plain-two-to-one-needs-window-restore opcode) 1)
+                                                            (native-plain-two-to-one-bundle-size-x86 opcode operand current-depth)
+                                                            (native-plain-instr-size-x86 opcode operand))))))))))))))))))))))))))))))))))
 
 (defn make-x86-body-size-context [ir-func function-metas len]
   (vector-push
@@ -9490,6 +9498,28 @@
               (byte-vector-4 4 199 195 49)
               (byte-vector-2 192 195)))]
     (concat-byte-vectors-rooted part1 part2)))
+
+(defn emit-x86-selfhost-command-line-args-helper []
+  (byte-vector-4 76 137 240 195))
+
+(defn emit-x86-selfhost-print-string-helper []
+  (let [part1 (byte-vector-4 72 137 198 72)
+    part2 (byte-vector-4 15 186 246 63)
+    part3 (byte-vector-4 139 86 4 72)
+    part4 (byte-vector-4 131 198 8 191)
+    part5 (byte-vector-4 1 0 0 0)
+    part6 (byte-vector-4 184 1 0 0)
+    part7 (byte-vector-4 0 15 5 49)
+    part8 (byte-vector-2 192 195)]
+    (concat-byte-vectors-rooted
+      (concat-five-byte-vectors-rooted part1 part2 part3 part4 part5)
+      (concat-byte-vectors-rooted part6 (concat-byte-vectors-rooted part7 part8)))))
+
+(defn emit-x86-selfhost-proc-exit-helper []
+  (concat-three-byte-vectors-rooted
+    (byte-vector-4 72 137 199 184)
+    (byte-vector-4 60 0 0 0)
+    (byte-vector-4 15 5 15 11)))
 
 (defn emit-x86-selfhost-string-length-helper []
   (let [part1 (byte-vector-4 72 133 192 116)
@@ -10286,6 +10316,15 @@
 (defn x86-selfhost-file-exists-helper-size []
   84)
 
+(defn x86-selfhost-command-line-args-helper-size []
+  4)
+
+(defn x86-selfhost-print-string-helper-size []
+  30)
+
+(defn x86-selfhost-proc-exit-helper-size []
+  12)
+
 (defn x86-selfhost-helper-trailer-size [import-count]
   (+ (x86-import-stub-size import-count)
      (+ (x86-selfhost-command-line-arg-helper-size)
@@ -10306,7 +10345,10 @@
                                                    (+ (x86-selfhost-map-size-helper-size)
                                                       (+ (x86-selfhost-map-insert-helper-size)
                                                          (+ (x86-selfhost-map-get-helper-size)
-                                                             (x86-selfhost-file-exists-helper-size)))))))))))))))))))))
+                                                            (+ (x86-selfhost-file-exists-helper-size)
+                                                               (+ (x86-selfhost-command-line-args-helper-size)
+                                                                  (+ (x86-selfhost-print-string-helper-size)
+                                                                     (x86-selfhost-proc-exit-helper-size))))))))))))))))))))))))
 
 (defn x86-helper-base-offset [import-stub-offset import-count]
   (+ import-stub-offset (x86-import-stub-size import-count)))
@@ -10368,6 +10410,15 @@
 (defn x86-selfhost-file-exists-helper-offset [import-stub-offset import-count]
   (+ (x86-helper-base-offset import-stub-offset import-count) 1544))
 
+(defn x86-selfhost-command-line-args-helper-offset [import-stub-offset import-count]
+  (+ (x86-helper-base-offset import-stub-offset import-count) 1628))
+
+(defn x86-selfhost-print-string-helper-offset [import-stub-offset import-count]
+  (+ (x86-helper-base-offset import-stub-offset import-count) 1632))
+
+(defn x86-selfhost-proc-exit-helper-offset [import-stub-offset import-count]
+  (+ (x86-helper-base-offset import-stub-offset import-count) 1662))
+
 (defn is-selfhost-runtime-opcode-x86 [opcode]
   (if (= opcode 64)
     1
@@ -10407,16 +10458,32 @@
                                       1
                                       (if (= opcode 73)
                                         1
-                                        0))))))))))))))))))))
+                                        (if (= opcode 86)
+                                          1
+                                          (if (= opcode 87)
+                                            1
+                                            (if (= opcode 88)
+                                              1
+                                              0)))))))))))))))))))))))
 
 (defn codegen-selfhost-runtime-bundle-x86 [opcode current-offset import-stub-offset import-count frame-base-slot-count current-depth]
-  (if (if (= opcode 64) true (if (= opcode 67) true (= opcode 59)))
+  (if (= opcode 86)
+    (let [target-offset (x86-selfhost-command-line-args-helper-offset import-stub-offset import-count)
+      call-next-offset (native-call-rel-next-offset-x86 0 current-depth)
+      call-rel (- target-offset (+ current-offset call-next-offset))
+      call-rel-bytes (emit-call-rel32 call-rel)]
+      (codegen-x86-non-one-arg-call-bundle 0 call-rel call-rel-bytes frame-base-slot-count current-depth))
+  (if (if (= opcode 64) true (if (= opcode 67) true (if (= opcode 59) true (if (= opcode 87) true (= opcode 88)))))
     (emit-x86-helper-call-preserving-rcx
       (- (if (= opcode 64)
            (x86-selfhost-read-file-helper-offset import-stub-offset import-count)
            (if (= opcode 67)
              (x86-selfhost-command-line-arg-helper-offset import-stub-offset import-count)
-             (x86-selfhost-print-helper-offset import-stub-offset import-count)))
+             (if (= opcode 59)
+               (x86-selfhost-print-helper-offset import-stub-offset import-count)
+               (if (= opcode 87)
+                 (x86-selfhost-print-string-helper-offset import-stub-offset import-count)
+                 (x86-selfhost-proc-exit-helper-offset import-stub-offset import-count)))))
          (+ current-offset 6)))
       (if (= opcode 51)
         (emit-x86-helper-call-preserving-rcx
@@ -10519,7 +10586,7 @@
 	                                      (emit-x86-helper-call-preserving-rcx
 	                                        (- (x86-selfhost-file-exists-helper-offset import-stub-offset import-count)
 	                                           (+ current-offset 6)))
-                              (vector-new 0))))))))))))))))))
+	                              (vector-new 0)))))))))))))))))))
 
 (defn codegen-x86-non-one-arg-call-bundle [target-param-count call-rel call-rel-bytes frame-base-slot-count current-depth]
   (if (= target-param-count 0)
@@ -10946,7 +11013,17 @@
                 frame-base-slot-count
                 current-depth))
             (continue-native-control-instr-bundle-loop-x86 ctx idx remaining))
-        (if (if (= opcode 64) true (if (= opcode 67) true (= opcode 59)))
+        (if (= opcode 86)
+          (do
+            (append-zero-arg-call-bundle-x86
+              result
+              (- (x86-selfhost-command-line-args-helper-offset import-stub-offset import-count)
+                 (+ (x86-current-emitted-offset result emit-start-base)
+                    (native-call-rel-next-offset-x86 0 current-depth)))
+              frame-base-slot-count
+              current-depth)
+            (continue-native-control-instr-bundle-loop-x86 ctx idx remaining))
+        (if (if (= opcode 64) true (if (= opcode 67) true (if (= opcode 59) true (if (= opcode 87) true (= opcode 88)))))
           (do
             (append-x86-helper-call-preserving-rcx
               result
@@ -10954,7 +11031,11 @@
                    (x86-selfhost-read-file-helper-offset import-stub-offset import-count)
                    (if (= opcode 67)
                      (x86-selfhost-command-line-arg-helper-offset import-stub-offset import-count)
-                     (x86-selfhost-print-helper-offset import-stub-offset import-count)))
+                     (if (= opcode 59)
+                       (x86-selfhost-print-helper-offset import-stub-offset import-count)
+                       (if (= opcode 87)
+                         (x86-selfhost-print-string-helper-offset import-stub-offset import-count)
+                         (x86-selfhost-proc-exit-helper-offset import-stub-offset import-count)))))
                  (+ (x86-current-emitted-offset result emit-start-base) 6)))
             (continue-native-control-instr-bundle-loop-x86 ctx idx remaining))
         (if (if (= opcode 51) true (if (= opcode 52) true (= opcode 61)))
@@ -11063,7 +11144,7 @@
                       native-len (vector-length native)]
                       (do
                         (append-native-bytes-loop result native 0 native-len)
-                        (continue-native-control-instr-bundle-loop-x86 ctx idx remaining))))))))))))))))))))))))))))))))))
+                        (continue-native-control-instr-bundle-loop-x86 ctx idx remaining)))))))))))))))))))))))))))))))))))
 (defn generate-native-control-instr-bundle-loop-x86-with-import-count-and-base [ir-func result meta offsets function-starts function-metas import-count import-stub-offset function-start-base frame-base-slot-count current-depth idx len]
   (let [emit-start-base (vector-length (ref-get result))
     layout (make-x86-function-emit-layout import-count import-stub-offset function-start-base emit-start-base)]
@@ -13604,6 +13685,9 @@
           (append-native-bytes-rooted result (emit-x86-selfhost-map-insert-helper) 104)
           (append-native-bytes-rooted result (emit-x86-selfhost-map-get-helper) 62)
           (append-native-bytes-rooted result (emit-x86-selfhost-file-exists-helper) 84)
+          (append-native-bytes-rooted result (emit-x86-selfhost-command-line-args-helper) 4)
+          (append-native-bytes-rooted result (emit-x86-selfhost-print-string-helper) 30)
+          (append-native-bytes-rooted result (emit-x86-selfhost-proc-exit-helper) 12)
           (ref-get result))]
         (do
           (root_pop)
@@ -13733,6 +13817,47 @@
     (concat-byte-vectors
       (encode-u32-le 2854159328)
       (encode-u32-le 3596551104))))
+
+(defn emit-aarch64-selfhost-command-line-args-helper []
+  (concat-byte-vectors-rooted
+    (encode-u32-le 2853372896)
+    (encode-u32-le 3596551104)))
+
+(defn emit-aarch64-selfhost-print-string-helper []
+  (let [part1 (concat-four-byte-vectors-rooted
+                (encode-u32-le 2852127723)
+                (encode-u32-le 3019899467)
+                (encode-u32-le 3086483755)
+                (encode-u32-le 3944087935))
+    part2 (concat-four-byte-vectors-rooted
+            (encode-u32-le 1409286403)
+            (encode-u32-le 2852848609)
+            (encode-u32-le 3531603970)
+            (encode-u32-le 945973292))
+    part3 (concat-four-byte-vectors-rooted
+            (encode-u32-le 872415468)
+            (encode-u32-le 2432697410)
+            (encode-u32-le 402653181)
+            (encode-u32-le 2453731691))
+    part4 (concat-four-byte-vectors-rooted
+            (encode-u32-le 2332754603)
+            (encode-u32-le 3107980642)
+            (encode-u32-le 2432704865)
+            (encode-u32-le 3019899010))
+    part5 (concat-five-byte-vectors-rooted
+            (encode-u32-le 3531604000)
+            (encode-u32-le 3531604112)
+            (encode-u32-le 3556773889)
+            (encode-u32-le 2854159328)
+            (encode-u32-le 3596551104))]
+    (concat-five-byte-vectors-rooted part1 part2 part3 part4 part5)))
+
+(defn emit-aarch64-selfhost-proc-exit-helper []
+  (concat-four-byte-vectors-rooted
+    (encode-u32-le 3531604016)
+    (encode-u32-le 3556773889)
+    (encode-u32-le 2854159328)
+    (encode-u32-le 3596551104)))
 
 (defn emit-aarch64-selfhost-string-length-helper []
   (let [part1 (concat-four-byte-vectors-rooted
@@ -14996,8 +15121,17 @@
 (defn aarch64-selfhost-map-new-fixed-helper-offset [import-stub-offset import-count]
   (+ (aarch64-helper-base-offset import-stub-offset import-count) 2388))
 
+(defn aarch64-selfhost-command-line-args-helper-offset [import-stub-offset import-count]
+  (+ (aarch64-helper-base-offset import-stub-offset import-count) 2480))
+
+(defn aarch64-selfhost-print-string-helper-offset [import-stub-offset import-count]
+  (+ (aarch64-helper-base-offset import-stub-offset import-count) 2488))
+
+(defn aarch64-selfhost-proc-exit-helper-offset [import-stub-offset import-count]
+  (+ (aarch64-helper-base-offset import-stub-offset import-count) 2572))
+
 (defn aarch64-selfhost-helper-trailer-size [import-count]
-  (+ (aarch64-selfhost-map-new-fixed-helper-offset 0 import-count) 92))
+  (+ (aarch64-selfhost-proc-exit-helper-offset 0 import-count) 16))
 
 (defn aarch64-bundle-initial-capacity [import-stub-offset import-count]
   (+ import-stub-offset (aarch64-selfhost-helper-trailer-size import-count)))
@@ -16939,13 +17073,17 @@
             12
             (if (= opcode 59)
               12
-              (if (= opcode 54)
+              (if (= opcode 87)
                 12
-                (if (= opcode 52)
+                (if (= opcode 88)
                   12
-                  (if (= opcode 56)
+                  (if (= opcode 54)
                     12
-                    (if (= opcode 57) 12 0)))))))))))
+                    (if (= opcode 52)
+                      12
+                      (if (= opcode 56)
+                        12
+                        (if (= opcode 57) 12 0)))))))))))))
 
 (defn native-selfhost-runtime-helper-size-aarch64 [opcode current-depth]
   (if (= opcode 50)
@@ -16968,9 +17106,11 @@
                   (if (>= current-depth 2)
                     (+ 20 (* (- current-depth 2) 8))
                     (if (= current-depth 1) 16 12))
-                  (if (= opcode 61)
-                    12
-                    (native-selfhost-runtime-helper-tail-size-aarch64 opcode current-depth)))))))))))
+                  (if (= opcode 86)
+                    (native-produce-one-size-aarch64 12 current-depth)
+                    (if (= opcode 61)
+                      12
+                      (native-selfhost-runtime-helper-tail-size-aarch64 opcode current-depth))))))))))))
 
 (defn native-instr-size-aarch64 [opcode operand function-metas current-depth]
   (if (= (is-control-opcode opcode) 1)
@@ -17963,19 +18103,25 @@
             (if (= opcode 59)
               (emit-aarch64-helper-call-preserving-prev-and-lr
                 (- (aarch64-selfhost-print-helper-offset import-stub-offset import-count) (+ current-offset 4)))
-              (if (= opcode 54)
+              (if (= opcode 87)
                 (emit-aarch64-helper-call-preserving-prev-and-lr
-                  (- (aarch64-selfhost-vector-new-helper-offset import-stub-offset import-count) (+ current-offset 4)))
-                (if (= opcode 52)
+                  (- (aarch64-selfhost-print-string-helper-offset import-stub-offset import-count) (+ current-offset 4)))
+                (if (= opcode 88)
                   (emit-aarch64-helper-call-preserving-prev-and-lr
-                    (- (aarch64-selfhost-vector-length-helper-offset import-stub-offset import-count) (+ current-offset 4)))
-                  (if (= opcode 56)
+                    (- (aarch64-selfhost-proc-exit-helper-offset import-stub-offset import-count) (+ current-offset 4)))
+                  (if (= opcode 54)
                     (emit-aarch64-helper-call-preserving-prev-and-lr
-                      (- (aarch64-selfhost-ref-new-helper-offset import-stub-offset import-count) (+ current-offset 4)))
-                    (if (= opcode 57)
+                      (- (aarch64-selfhost-vector-new-helper-offset import-stub-offset import-count) (+ current-offset 4)))
+                    (if (= opcode 52)
                       (emit-aarch64-helper-call-preserving-prev-and-lr
-                        (- (aarch64-selfhost-ref-get-helper-offset import-stub-offset import-count) (+ current-offset 4)))
-                      (vector-new 0))))))))))))
+                        (- (aarch64-selfhost-vector-length-helper-offset import-stub-offset import-count) (+ current-offset 4)))
+                      (if (= opcode 56)
+                        (emit-aarch64-helper-call-preserving-prev-and-lr
+                          (- (aarch64-selfhost-ref-new-helper-offset import-stub-offset import-count) (+ current-offset 4)))
+                        (if (= opcode 57)
+                          (emit-aarch64-helper-call-preserving-prev-and-lr
+                            (- (aarch64-selfhost-ref-get-helper-offset import-stub-offset import-count) (+ current-offset 4)))
+                          (vector-new 0))))))))))))))
 
 (defn codegen-selfhost-runtime-bundle-aarch64 [opcode current-offset import-stub-offset import-count frame-base-slot-count current-depth]
   (if (= opcode 51)
@@ -18022,10 +18168,18 @@
                       (- (aarch64-selfhost-map-new-helper-offset import-stub-offset import-count) (+ current-offset 4)))
                     frame-base-slot-count
                     current-depth)
-                  (if (= opcode 61)
-                    (emit-aarch64-helper-call-preserving-prev-and-lr
-                      (- (aarch64-selfhost-map-size-helper-offset import-stub-offset import-count) (+ current-offset 4)))
-                    (codegen-selfhost-runtime-bundle-aarch64-tail opcode current-offset import-stub-offset import-count frame-base-slot-count current-depth)))))))))))
+                  (if (= opcode 86)
+                    (let [prefix-size (native-produce-one-prefix-size-aarch64 12 current-depth)]
+                      (emit-produce-one-bundle-aarch64
+                        (emit-aarch64-helper-call-preserving-prev-and-lr
+                          (- (aarch64-selfhost-command-line-args-helper-offset import-stub-offset import-count)
+                             (+ current-offset (+ prefix-size 4))))
+                        frame-base-slot-count
+                        current-depth))
+                    (if (= opcode 61)
+                      (emit-aarch64-helper-call-preserving-prev-and-lr
+                        (- (aarch64-selfhost-map-size-helper-offset import-stub-offset import-count) (+ current-offset 4)))
+                      (codegen-selfhost-runtime-bundle-aarch64-tail opcode current-offset import-stub-offset import-count frame-base-slot-count current-depth))))))))))))
 
 (defn codegen-ir-instr-bundle-aarch64-with-import-count [opcode operand current-offset function-starts function-metas import-count import-stub-offset frame-base-slot-count current-depth]
   (if (= opcode 40)
@@ -19424,6 +19578,9 @@
             (append-native-bytes-rooted result (emit-aarch64-selfhost-map-insert-helper) 96)
             (append-native-bytes-rooted result (emit-aarch64-selfhost-map-get-helper) 60)
             (append-native-bytes-rooted result (emit-aarch64-selfhost-map-new-fixed-helper) 92)
+            (append-native-bytes-rooted result (emit-aarch64-selfhost-command-line-args-helper) 8)
+            (append-native-bytes-rooted result (emit-aarch64-selfhost-print-string-helper) 84)
+            (append-native-bytes-rooted result (emit-aarch64-selfhost-proc-exit-helper) 16)
             (ref-get result))]
           (do
             (root_pop)

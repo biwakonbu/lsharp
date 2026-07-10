@@ -1501,6 +1501,102 @@ fn test_native_linux_x86_hostgen_vm_script_can_reuse_actual_stage2_artifact() {
 }
 
 #[test]
+fn test_native_linux_x86_hostgen_vm_script_can_export_reused_stage2_cli_bundle() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+    let validate_body = shell_function_body(&script, "validate_stage3_target_request");
+    let vm_exec = script
+        .split(r#"limactl shell "${VM_NAME}" -- env"#)
+        .nth(1)
+        .and_then(|tail| tail.split("<<'VM_SCRIPT'").next())
+        .expect("VM 実行 heredoc は env 経由で stage3 target 設定を渡すべき");
+    let range_body = shell_function_body(&script, "run_actual_stage_range");
+
+    for token in [
+        "LSHARP_NATIVE_LINUX_X86_STAGE3_TARGET_SOURCE",
+        "LSHARP_NATIVE_LINUX_X86_STAGE3_TARGET_ONLY",
+        "validate_stage3_target_request",
+    ] {
+        assert!(
+            script.contains(token),
+            "hostgen VM script は release target export contract `{token}` を持つべき"
+        );
+    }
+    assert!(
+        validate_body.contains("stage3 target export requires actual stage2 artifact reuse")
+            && validate_body.contains("stage3 target export requires target-only mode")
+            && validate_body.contains("stage3 target source must be under src/")
+            && validate_body.contains("stage3 target source must not contain parent traversal")
+            && validate_body.contains("stage3 target export requires src/App/Cli.ls"),
+        "stage3 target export は stage2 reuse / target-only / canonical App.Cli path を必須にするべき"
+    );
+    for provenance_check in [
+        "actual-selfregen-summary.json",
+        r#"summary.get("status") == "pass""#,
+        r#"summary.get("target") == "x86_64-unknown-linux-gnu""#,
+        r#"summary.get("stage2_stdout_sha256") == summary.get("stage3_stdout_sha256")"#,
+        "source_tree_digest",
+        "reusable stage2 source tree does not match current selfhost source tree",
+    ] {
+        assert!(
+            validate_body.contains(provenance_check),
+            "target-only export は green fixed-point/current source provenance `{provenance_check}` を検証するべき"
+        );
+    }
+    for diagnostic_flag in [
+        "LSHARP_NATIVE_LINUX_X86_STAGE3_PROGRESS_ONLY",
+        "LSHARP_NATIVE_LINUX_X86_STAGE3_NORMAL_SETUP_ONLY",
+        "LSHARP_NATIVE_LINUX_X86_STAGE3_NORMAL_PAYLOAD_SHAPE_ONLY",
+        "LSHARP_NATIVE_LINUX_X86_STAGE3_RAW_PAYLOAD_BOUNDARY_ONLY",
+        "LSHARP_NATIVE_LINUX_X86_STAGE3_RAW_PAYLOAD_PRODUCTION_BOUNDARY_ONLY",
+    ] {
+        assert!(
+            validate_body.contains(diagnostic_flag),
+            "target-only export は diagnostic-only flag `{diagnostic_flag}` と同時指定できないこと"
+        );
+    }
+    assert!(
+        vm_exec
+            .contains(r#"LSHARP_NATIVE_LINUX_X86_STAGE3_TARGET_SOURCE="${STAGE3_TARGET_SOURCE}""#)
+            && vm_exec.contains(
+                r#"LSHARP_NATIVE_LINUX_X86_STAGE3_TARGET_ONLY="${STAGE3_TARGET_ONLY_REQUESTED}""#
+            ),
+        "hostgen VM script は target source と target-only mode を guest に渡すべき"
+    );
+    assert!(
+        range_body.contains(r#"./program.native "${ACTUAL_SOURCE_PATH}""#),
+        "chunked transport は hard-coded Seed.ls ではなく検証済み target source を使うべき"
+    );
+    for expected in [
+        r#"test -s "actual-stage2/${ACTUAL_SOURCE_PATH}""#,
+        "LSHARP_NATIVE_LINUX_X86_SKIP_ARGV0=1 python3 materialize-actual-bundle.py actual-stage3 stage-code.bin entrypoint-offset.txt",
+        r#"./program.native --version"#,
+        r#"Linux x86_64 App.Cli native release bundle"#,
+        r#""artifact_kind": "native App.Cli release program""#,
+        r#""entry_module": "App.Cli""#,
+        r#""source_commit": "${SOURCE_COMMIT}""#,
+        r#""source_tree_sha256": "${STAGE3_SOURCE_TREE_SHA256}""#,
+        r#""source": "${ACTUAL_SOURCE_PATH}""#,
+        r#""program_sha256": "${actual_stage3_program_sha}""#,
+    ] {
+        assert!(
+            script.contains(expected),
+            "target-only mode は actual App.Cli bundle evidence `{expected}` を固定するべき"
+        );
+    }
+    assert!(
+        script.contains(
+            r#"if [[ -n "${STAGE3_TARGET_ONLY}" && "${STAGE3_TARGET_ONLY}" != "0" ]]; then"#
+        ) && script.contains(
+            "exit 0\nfi\n\nif ! cmp -s actual-stage2-stdout.txt actual-stage3-stdout.txt"
+        ),
+        "target-only mode は App.Cli payload を Seed payload と比較せず専用 summary で終了するべき"
+    );
+}
+
+#[test]
 fn test_native_linux_x86_hostgen_vm_script_can_overlay_reused_stage2_source_for_diagnostics_only() {
     let script_path =
         selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
@@ -26657,7 +26753,10 @@ fn host_target_i64_rem_code_bytes() -> Vec<u8> {
     )
 }
 
-fn host_target_single_arg_memory_program_bundle_code_bytes(instrs: &[(u32, u32)]) -> Vec<u8> {
+fn host_target_selfhost_program_bundle_code_bytes(
+    instrs: &[(u32, u32)],
+    param_count: u32,
+) -> Vec<u8> {
     let instr_bindings = instrs
         .iter()
         .enumerate()
@@ -26690,7 +26789,7 @@ fn host_target_single_arg_memory_program_bundle_code_bytes(instrs: &[(u32, u32)]
 (defn main []
   (let [{instr_bindings}
         ir {ir_expr}
-        func (make-function-meta 1 0 ir)
+        func (make-function-meta {param_count} 0 ir)
         functions (vector-push (vector-new 1) func)
         target (host-target)
         code (emit-native-function-meta-bundle functions target)]
@@ -26699,6 +26798,10 @@ fn host_target_single_arg_memory_program_bundle_code_bytes(instrs: &[(u32, u32)]
       0)))"#,
     );
     run_native_codegen_host_bytes_harness(&source)
+}
+
+fn host_target_single_arg_memory_program_bundle_code_bytes(instrs: &[(u32, u32)]) -> Vec<u8> {
+    host_target_selfhost_program_bundle_code_bytes(instrs, 1)
 }
 
 fn host_target_single_arg_memory_bundle_code_bytes(opcode: u32, offset: u32) -> Vec<u8> {
@@ -40590,6 +40693,41 @@ fn test_e2e_native_host_binary_selfhost_command_line_arg_string_length_reads_hos
         code_bytes.len(),
         code_bytes
     );
+}
+
+/// NATIVE-HOST-01d2g1: native CLI runtime builtin 3種が supported host target で実行できること。
+#[test]
+#[ignore]
+fn test_e2e_native_host_binary_selfhost_cli_runtime_builtins_execute() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let argc_code = host_target_selfhost_program_bundle_code_bytes(&[(86, 0)], 0);
+    let argc_exit = link_and_run_native_host_binary_with_args(&argc_code, &["abc"])
+        .expect("selfhost command-line-args host binary 実行に失敗");
+    assert_eq!(
+        argc_exit, 2,
+        "raw host runtime argc は argv0 を含む2であるべき"
+    );
+
+    let print_string_code =
+        host_target_selfhost_program_bundle_code_bytes(&[(3, 1), (67, 0), (87, 0)], 0);
+    let print_string_result =
+        link_and_run_native_host_binary_capture_with_args(&print_string_code, &["hello"])
+            .expect("selfhost print-string host binary 実行に失敗");
+    assert_eq!(print_string_result.exit_code, 0);
+    assert_eq!(print_string_result.stdout, b"hello");
+    assert!(
+        print_string_result.stderr.is_empty(),
+        "print-string stderr は空であるべき: {:?}",
+        String::from_utf8_lossy(&print_string_result.stderr)
+    );
+
+    let proc_exit_code = host_target_selfhost_program_bundle_code_bytes(&[(3, 7), (88, 0)], 0);
+    let proc_exit = link_and_run_native_host_binary(&proc_exit_code)
+        .expect("selfhost proc-exit host binary 実行に失敗");
+    assert_eq!(proc_exit, 7);
 }
 
 /// NATIVE-HOST-01d2ga: selfhost string-char-at (opcode 50) が AArch64 bundle path で argv 文字列から 1 byte を読めること。

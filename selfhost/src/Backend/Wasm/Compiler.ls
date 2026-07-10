@@ -499,11 +499,11 @@
 (defn source-builtin-map-op [bop] (if (= bop 62) true (if (= bop 63) true (if (= bop 65) true (= bop 66)))))
 (defn map-insert-op [bop] (= bop 62))
 
-(defn unary-builtin-op [bop] (if (= bop 51) true (if (= bop 52) true (if (= bop 57) true (if (= bop 61) true (if (= bop 59) true (if (= bop 64) true (if (= bop 67) true (if (= bop 73) true (if (= bop 74) true (if (= bop 54) true (= bop 56))))))))))))
+(defn unary-builtin-op [bop] (if (= bop 51) true (if (= bop 52) true (if (= bop 57) true (if (= bop 61) true (if (= bop 59) true (if (= bop 64) true (if (= bop 67) true (if (= bop 73) true (if (= bop 74) true (if (= bop 54) true (if (= bop 56) true (if (= bop 87) true (= bop 88))))))))))))))
 (defn alloc-builtin-op [bop] (if (= bop 54) true (= bop 56)))
 
 (defn env-slot-builtin-op [bop] (if (= bop 50) true (if (= bop 53) true (if (= bop 55) true (if (= bop 58) true (if (= bop 63) true (if (= bop 65) true (= bop 66))))))))
-(defn nullary-builtin-op [bop] (= bop 75))
+(defn nullary-builtin-op [bop] (if (= bop 75) true (= bop 86)))
 (defn ternary-builtin-op [bop] (= bop 69))
 
 (defn apply-args-safe-for-ftable [node arg-idx arg-count]

@@ -1333,6 +1333,52 @@ fn test_e2e_selfhost_compiler_command_line_arg_builtin_lowering() {
     );
 }
 
+/// selfhost Compiler.ls: native CLI runtime builtin を正しい arity で lowering できること
+#[test]
+fn test_e2e_selfhost_compiler_native_cli_runtime_builtin_lowering() {
+    let harness = r#"
+(defn compiled-main-ir [source]
+  (let [program (parse-program source)
+        pair (compile-program-functions program)
+        functions (vector-get pair 1)
+        main-fn (vector-get functions 0)]
+    (vector-get main-fn 2)))
+
+(defn print-ir-summary [source]
+  (let [ir (compiled-main-ir source)
+        last-instr (vector-get ir (- (vector-length ir) 1))]
+    (do
+      (print (vector-length ir))
+      (print (vector-get last-instr 0))
+      (print (vector-get last-instr 1)))))
+
+(defn main []
+  (do
+    (print-ir-summary "(defn main [] (command-line-args))")
+    (print-ir-summary "(defn main [] (print-string \"ok\"))")
+    (print-ir-summary "(defn main [] (proc-exit 7))")
+    0))
+"#;
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("IR.ls"),
+        selfhost_module("Compiler.ls"),
+        harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["1", "86", "0", "2", "87", "0", "2", "88", "0"],
+        "command-line-args/print-string/proc-exit は nullary/unary builtin として dedicated opcode に lower される必要がある"
+    );
+}
+
 /// selfhost Compiler.ls: file-exists? を builtin として lowering できること
 #[test]
 fn test_e2e_selfhost_compiler_file_exists_builtin_lowering() {

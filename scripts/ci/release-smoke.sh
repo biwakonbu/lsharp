@@ -4,6 +4,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 ARCHIVE_PATH="${1:-}"
+ROLLBACK_ARCHIVE_PATH="${2:-}"
 WORK_DIR="${WORK_DIR:-$ROOT/target/ci/release-smoke}"
 EXTRACT_DIR="$WORK_DIR/extract"
 SMOKE_DIR="$WORK_DIR/smoke"
@@ -17,7 +18,7 @@ cleanup() {
 trap cleanup EXIT
 
 usage() {
-  echo "Usage: $0 <release-archive>" >&2
+  echo "Usage: $0 <release-archive> [rollback-archive]" >&2
 }
 
 hash_file() {
@@ -173,6 +174,39 @@ while read -r expected relpath _; do
   fi
 done < "$ARCHIVE_ROOT/checksums.txt"
 
+if [[ "$NATIVE_ONLY" == "1" ]]; then
+  if [[ -z "$ROLLBACK_ARCHIVE_PATH" || ! -s "$ROLLBACK_ARCHIVE_PATH" ]]; then
+    echo "ERROR: rollback compatibility archive is required" >&2
+    exit 1
+  fi
+  rollback_name="$(basename "$ROLLBACK_ARCHIVE_PATH")"
+  rollback_sha256="$(hash_file "$ROLLBACK_ARCHIVE_PATH")"
+  python3 - "$ARCHIVE_ROOT/manifest.json" "$rollback_name" "$rollback_sha256" <<'PY'
+import json
+import pathlib
+import sys
+
+manifest = json.loads(pathlib.Path(sys.argv[1]).read_text())
+rollback_name = sys.argv[2]
+rollback_sha256 = sys.argv[3]
+anchor = manifest.get("rollback_anchor", {})
+if anchor.get("asset") != rollback_name:
+    raise SystemExit("rollback compatibility asset name mismatch")
+if anchor.get("rollback_sha256") != rollback_sha256:
+    raise SystemExit("rollback compatibility asset checksum mismatch")
+native_input = manifest.get("native_program_input", {})
+input_manifest = native_input.get("manifest")
+if not input_manifest or not (pathlib.Path(sys.argv[1]).parent / input_manifest).is_file():
+    raise SystemExit("native App.Cli input manifest is missing from archive")
+PY
+  for required_checksum in program.native lsharp manifest.json native-program-manifest.json; do
+    if ! awk '{print $2}' "$ARCHIVE_ROOT/checksums.txt" | grep -Fxq "$required_checksum"; then
+      echo "ERROR: native-only checksums.txt missing required entry: $required_checksum" >&2
+      exit 1
+    fi
+  done
+fi
+
 SMOKE_SOURCE="$SMOKE_DIR/quickstart.ls"
 SMOKE_METADATA_SOURCE="$SMOKE_DIR/quickstart-metadata.ls"
 SMOKE_WASM="$SMOKE_DIR/quickstart.wasm"
@@ -199,18 +233,27 @@ if [[ "$NATIVE_ONLY" != "1" ]]; then
 fi
 "$LSHARP_BIN" check "$SMOKE_SOURCE" >/dev/null
 "$LSHARP_BIN" fmt "$SMOKE_SOURCE" >/dev/null
-"$LSHARP_BIN" compile "$SMOKE_SOURCE" -o "$SMOKE_WASM" >/dev/null
 "$LSHARP_BIN" test "$SMOKE_METADATA_SOURCE" >/dev/null
-"$LSHARP_BIN" doc "$SMOKE_METADATA_SOURCE" -o "$SMOKE_DOC_HTML" >/dev/null
-"$LSHARP_BIN" doc "$SMOKE_METADATA_SOURCE" --json -o "$SMOKE_DOC_JSON" >/dev/null
-
-if [[ ! -s "$SMOKE_WASM" ]]; then
-  echo "ERROR: compile output is empty: $SMOKE_WASM" >&2
-  exit 1
-fi
-if ! xxd -p -l 4 "$SMOKE_WASM" | grep -qi '^0061736d$'; then
-  echo "ERROR: compile output is not a Wasm binary: $SMOKE_WASM" >&2
-  exit 1
+if [[ "$NATIVE_ONLY" == "1" ]]; then
+  "$LSHARP_BIN" compile "$SMOKE_SOURCE" >"$SMOKE_WASM"
+  "$LSHARP_BIN" doc "$SMOKE_METADATA_SOURCE" >"$SMOKE_DOC_HTML"
+  "$LSHARP_BIN" doc "$SMOKE_METADATA_SOURCE" --json >"$SMOKE_DOC_JSON"
+  if ! grep -Eq '^wasm-size:[0-9]+$' "$SMOKE_WASM"; then
+    echo "ERROR: native App.Cli compile summary is invalid: $SMOKE_WASM" >&2
+    exit 1
+  fi
+else
+  "$LSHARP_BIN" compile "$SMOKE_SOURCE" -o "$SMOKE_WASM" >/dev/null
+  "$LSHARP_BIN" doc "$SMOKE_METADATA_SOURCE" -o "$SMOKE_DOC_HTML" >/dev/null
+  "$LSHARP_BIN" doc "$SMOKE_METADATA_SOURCE" --json -o "$SMOKE_DOC_JSON" >/dev/null
+  if [[ ! -s "$SMOKE_WASM" ]]; then
+    echo "ERROR: compile output is empty: $SMOKE_WASM" >&2
+    exit 1
+  fi
+  if ! xxd -p -l 4 "$SMOKE_WASM" | grep -qi '^0061736d$'; then
+    echo "ERROR: compile output is not a Wasm binary: $SMOKE_WASM" >&2
+    exit 1
+  fi
 fi
 
 if [[ ! -s "$SMOKE_DOC_HTML" ]]; then
@@ -221,6 +264,11 @@ fi
 if [[ ! -s "$SMOKE_DOC_JSON" ]]; then
   echo "ERROR: doc JSON output is empty: $SMOKE_DOC_JSON" >&2
   exit 1
+fi
+
+if [[ "$NATIVE_ONLY" == "1" ]]; then
+  rollback_work_dir="${WORK_DIR}-rollback"
+  WORK_DIR="$rollback_work_dir" bash "$0" "$ROLLBACK_ARCHIVE_PATH"
 fi
 
 echo "release-smoke: OK"

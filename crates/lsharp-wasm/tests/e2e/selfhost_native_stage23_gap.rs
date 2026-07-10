@@ -189,6 +189,9 @@ fn selfhost_instruction_name(opcode: i64) -> String {
         83 => "If",
         84 => "Block",
         85 => "Loop",
+        86 => "CommandLineArgs",
+        87 => "PrintString",
+        88 => "ProcExit",
         _ => return format!("Opcode{opcode}"),
     }
     .to_string()
@@ -245,7 +248,10 @@ fn supported_selfhost_native_opcodes_x86_64() -> BTreeSet<&'static str> {
         "MapNew",
         "MapSize",
         "CommandLineArg",
+        "CommandLineArgs",
         "Print",
+        "PrintString",
+        "ProcExit",
         "ReadFile",
         "RefGet",
         "RefNew",
@@ -326,6 +332,32 @@ fn test_selfhost_ftable_uses_flat_vector_storage_for_large_tables() {
 }
 
 #[test]
+fn test_selfhost_compiler_maps_native_cli_runtime_builtins_to_dedicated_opcodes() {
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
+        "selfhost-native-cli-runtime-builtin-opcodes",
+        &["CompilerBase.ls"],
+        "Main.ls",
+        r#"(module Main)
+(import Backend.Wasm.CompilerBase)
+
+(defn main []
+  (do
+    (print (builtin-opcode 5217540237477903124))
+    (print (builtin-opcode 2942060250258025265))
+    (print (builtin-opcode 98761626082613))
+    0))"#,
+        &[],
+    )
+    .expect("native CLI runtime builtin opcode harness 実行に失敗");
+
+    assert_eq!(
+        parse_numeric_lines(&output),
+        vec![86, 87, 88],
+        "command-line-args/print-string/proc-exit は未使用の dedicated opcode に lower される必要がある"
+    );
+}
+
+#[test]
 fn test_native_codegen_x86_command_line_arg_and_read_file_call_sites_resolve_helper_offsets() {
     let lines = run_x86_selfhost_runtime_helper_harness(
         "native-stage23-x86-runtime-helper-call-sites",
@@ -367,6 +399,42 @@ fn test_native_codegen_x86_command_line_arg_and_read_file_call_sites_resolve_hel
     assert!(
         supported_selfhost_native_opcodes_x86_64().contains("CommandLineArg"),
         "selfhost x86_64 gap supported set から CommandLineArg を外したまま"
+    );
+}
+
+#[test]
+fn test_native_codegen_x86_cli_runtime_call_sites_resolve_helper_offsets() {
+    let lines = run_x86_selfhost_runtime_helper_harness(
+        "native-stage23-x86-cli-runtime-helper-call-sites",
+        r#"  (let [import-stub-offset 4096
+        import-count 10
+        current-offset 1024
+        argc-bytes (codegen-ir-instr-bundle-x86-with-import-count 86 0 current-offset (vector-new 0) (vector-new 0) import-count import-stub-offset 0 0)
+        print-string-bytes (codegen-ir-instr-bundle-x86-with-import-count 87 0 current-offset (vector-new 0) (vector-new 0) import-count import-stub-offset 0 1)
+        proc-exit-bytes (codegen-ir-instr-bundle-x86-with-import-count 88 0 current-offset (vector-new 0) (vector-new 0) import-count import-stub-offset 0 1)]
+    (do
+      (print (x86-selfhost-command-line-args-helper-offset import-stub-offset import-count))
+      (print (x86-selfhost-print-string-helper-offset import-stub-offset import-count))
+      (print (x86-selfhost-proc-exit-helper-offset import-stub-offset import-count))
+      (print (opcode-stack-delta 86 0 (vector-new 0)))
+      (print (opcode-stack-delta 87 0 (vector-new 0)))
+      (print (opcode-stack-delta 88 0 (vector-new 0)))
+      (print (vector-length argc-bytes))
+      (print-bytes-loop argc-bytes 0 (vector-length argc-bytes))
+      (print (vector-length print-string-bytes))
+      (print-bytes-loop print-string-bytes 0 (vector-length print-string-bytes))
+      (print (vector-length proc-exit-bytes))
+      (print-bytes-loop proc-exit-bytes 0 (vector-length proc-exit-bytes))
+      0))"#,
+    );
+
+    assert_eq!(
+        lines,
+        vec![
+            5725, 5729, 5759, 1, 0, 0, 5, 232, 88, 18, 0, 0, 7, 81, 232, 91, 18, 0, 0, 89, 7, 81,
+            232, 121, 18, 0, 0, 89,
+        ],
+        "x86_64 command-line-args/print-string/proc-exit call site は stack effect と trailer offset を一致させる必要がある"
     );
 }
 
@@ -569,6 +637,132 @@ fn test_native_codegen_x86_runtime_helper_emitters_return_executable_byte_vector
         supported_selfhost_native_opcodes_x86_64().contains("Print"),
         "selfhost x86_64 gap supported set から Print を外したまま"
     );
+}
+
+#[test]
+fn test_native_codegen_x86_cli_runtime_helper_emitters_return_linux_syscall_bytes() {
+    let lines = run_x86_selfhost_runtime_helper_harness(
+        "native-stage23-x86-cli-runtime-helper-bytes",
+        r#"  (let [argc-helper (emit-x86-selfhost-command-line-args-helper)
+        print-string-helper (emit-x86-selfhost-print-string-helper)
+        proc-exit-helper (emit-x86-selfhost-proc-exit-helper)]
+    (do
+      (print (vector-length argc-helper))
+      (print-bytes-loop argc-helper 0 (vector-length argc-helper))
+      (print (vector-length print-string-helper))
+      (print-bytes-loop print-string-helper 0 (vector-length print-string-helper))
+      (print (vector-length proc-exit-helper))
+      (print-bytes-loop proc-exit-helper 0 (vector-length proc-exit-helper))
+      0))"#,
+    );
+
+    assert_eq!(
+        lines,
+        vec![
+            4, 76, 137, 240, 195, 30, 72, 137, 198, 72, 15, 186, 246, 63, 139, 86, 4, 72, 131, 198,
+            8, 191, 1, 0, 0, 0, 184, 1, 0, 0, 0, 15, 5, 49, 192, 195, 12, 72, 137, 199, 184, 60, 0,
+            0, 0, 15, 5, 15, 11,
+        ],
+        "x86_64 CLI runtime helper は Linux write/exit syscall と argc register の実バイトを返す必要がある"
+    );
+}
+
+#[test]
+fn test_native_codegen_aarch64_cli_runtime_helpers_preserve_offsets_and_branch_targets() {
+    let lines = run_x86_selfhost_runtime_helper_harness(
+        "native-stage23-aarch64-cli-runtime-helpers",
+        r#"  (let [import-stub-offset 4096
+        import-count 10
+        current-offset 1024
+        argc-helper (emit-aarch64-selfhost-command-line-args-helper)
+        print-string-helper (emit-aarch64-selfhost-print-string-helper)
+        proc-exit-helper (emit-aarch64-selfhost-proc-exit-helper)
+        argc-depth0 (codegen-ir-instr-bundle-aarch64-with-import-count 86 0 current-offset (vector-new 0) (vector-new 0) import-count import-stub-offset 0 0)
+        argc-depth2 (codegen-ir-instr-bundle-aarch64-with-import-count 86 0 current-offset (vector-new 0) (vector-new 0) import-count import-stub-offset 0 2)]
+    (do
+      (print (aarch64-selfhost-command-line-args-helper-offset import-stub-offset import-count))
+      (print (aarch64-selfhost-print-string-helper-offset import-stub-offset import-count))
+      (print (aarch64-selfhost-proc-exit-helper-offset import-stub-offset import-count))
+      (print (aarch64-selfhost-helper-trailer-size import-count))
+      (print (native-instr-size-aarch64 86 0 (vector-new 0) 0))
+      (print (native-instr-size-aarch64 86 0 (vector-new 0) 1))
+      (print (native-instr-size-aarch64 86 0 (vector-new 0) 2))
+      (print (native-instr-size-aarch64 86 0 (vector-new 0) 5))
+      (print (native-instr-size-aarch64 87 0 (vector-new 0) 1))
+      (print (native-instr-size-aarch64 88 0 (vector-new 0) 1))
+      (print (vector-length argc-helper))
+      (print-bytes-loop argc-helper 0 (vector-length argc-helper))
+      (print (vector-length print-string-helper))
+      (print-bytes-loop print-string-helper 0 (vector-length print-string-helper))
+      (print (vector-length proc-exit-helper))
+      (print-bytes-loop proc-exit-helper 0 (vector-length proc-exit-helper))
+      (print (vector-length argc-depth0))
+      (print-bytes-loop argc-depth0 0 (vector-length argc-depth0))
+      (print (vector-length argc-depth2))
+      (print-bytes-loop argc-depth2 0 (vector-length argc-depth2))
+      0))"#,
+    );
+    let mut cursor = 0;
+    let scalars = &lines[cursor..cursor + 10];
+    cursor += 10;
+    assert_eq!(
+        scalars,
+        &[6616, 6624, 6708, 2628, 12, 16, 20, 44, 12, 12],
+        "AArch64 CLI runtime helper の offset/trailer/stack-depth size が不正"
+    );
+
+    let take_bytes = |values: &[i64], cursor: &mut usize| {
+        let len = values[*cursor] as usize;
+        *cursor += 1;
+        let bytes = values[*cursor..*cursor + len]
+            .iter()
+            .map(|value| *value as u8)
+            .collect::<Vec<_>>();
+        *cursor += len;
+        bytes
+    };
+    let argc_helper = take_bytes(&lines, &mut cursor);
+    let print_string_helper = take_bytes(&lines, &mut cursor);
+    let proc_exit_helper = take_bytes(&lines, &mut cursor);
+    let argc_depth0 = take_bytes(&lines, &mut cursor);
+    let argc_depth2 = take_bytes(&lines, &mut cursor);
+    assert_eq!(
+        cursor,
+        lines.len(),
+        "AArch64 helper harness に未消費出力がある"
+    );
+
+    assert_eq!(argc_helper, [224, 3, 19, 170, 192, 3, 95, 214]);
+    assert_eq!(
+        print_string_helper,
+        [
+            235, 3, 0, 170, 75, 2, 0, 180, 43, 1, 248, 183, 127, 1, 22, 235, 3, 1, 0, 84, 225, 3,
+            11, 170, 2, 0, 128, 210, 44, 104, 98, 56, 236, 0, 0, 52, 66, 4, 0, 145, 253, 255, 255,
+            23, 107, 249, 64, 146, 171, 2, 11, 139, 98, 5, 64, 185, 97, 33, 0, 145, 130, 0, 0, 180,
+            32, 0, 128, 210, 144, 0, 128, 210, 1, 16, 0, 212, 224, 3, 31, 170, 192, 3, 95, 214,
+        ],
+        "AArch64 print-string helper は Darwin write syscall の検証済み bytes と一致する必要がある"
+    );
+    assert_eq!(
+        proc_exit_helper,
+        [
+            48, 0, 128, 210, 1, 16, 0, 212, 224, 3, 31, 170, 192, 3, 95, 214
+        ]
+    );
+
+    let decode_bl_target = |bundle: &[u8], bundle_offset: usize, absolute_offset: i64| {
+        let word = u32::from_le_bytes(
+            bundle[bundle_offset..bundle_offset + 4]
+                .try_into()
+                .expect("BL instruction は4 bytes"),
+        );
+        assert_eq!(word >> 26, 0b100101, "対象 instruction は BL であるべき");
+        let imm26 = (word & 0x03ff_ffff) as i32;
+        let signed = (imm26 << 6) >> 6;
+        absolute_offset + bundle_offset as i64 + i64::from(signed) * 4
+    };
+    assert_eq!(decode_bl_target(&argc_depth0, 4, 1024), 6616);
+    assert_eq!(decode_bl_target(&argc_depth2, 12, 1024), 6616);
 }
 
 #[test]
