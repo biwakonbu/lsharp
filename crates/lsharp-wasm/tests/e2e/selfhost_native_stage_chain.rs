@@ -1302,7 +1302,7 @@ fn test_native_linux_x86_hostgen_vm_script_forwards_actual_chunk_env_to_guest() 
 
     for assignment in [
         r#"LSHARP_NATIVE_LINUX_X86_ACTUAL_TIMEOUT="${LSHARP_NATIVE_LINUX_X86_ACTUAL_TIMEOUT:-900}""#,
-        r#"LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_SIZE="${LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_SIZE:-4}""#,
+        r#"LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_SIZE="${LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_SIZE:-64}""#,
         r#"LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_RETRIES="${LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_RETRIES:-1}""#,
         r#"LSHARP_NATIVE_LINUX_X86_ACTUAL_HEAP_BYTES="${LSHARP_NATIVE_LINUX_X86_ACTUAL_HEAP_BYTES:-4294967296}""#,
     ] {
@@ -1893,6 +1893,173 @@ fn test_native_linux_x86_hostgen_vm_script_cleans_work_dir_by_default_after_run(
             && script.contains("VM workdir removed after failed evidence copy")
             && !script.contains("VM workdir kept for failure diagnostics: ${VM_WORK_DIR}"),
         "hostgen VM script は成功時と通常の失敗時に VM workdir を掃除し、KEEP 指定時だけ診断用に保持するべき"
+    );
+}
+
+#[test]
+fn test_native_linux_x86_hostgen_vm_script_cleans_vm_work_dir_from_host_exit_trap() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+    let cleanup_body = shell_function_body(&script, "cleanup_vm_work_dir_on_host_exit");
+    let mkdir_pos = script
+        .find(r#"limactl shell "${VM_NAME}" -- mkdir -p "${VM_WORK_DIR}""#)
+        .expect("hostgen VM script は VM workdir を作成すること");
+    let created_pos = script[mkdir_pos..]
+        .find("HOST_VM_WORK_DIR_CREATED=1")
+        .map(|pos| mkdir_pos + pos)
+        .expect("VM workdir 作成後に host cleanup 対象として記録すること");
+
+    assert!(
+        script.contains("HOST_VM_WORK_DIR_CREATED=0")
+            && script.contains("trap cleanup_vm_work_dir_on_host_exit EXIT")
+            && cleanup_body.contains(r#"if [[ "${HOST_VM_WORK_DIR_CREATED}" -ne 1 ]]"#)
+            && cleanup_body.contains(r#"if [[ "${KEEP_VM_WORK_DIR}" = "1" ]]"#)
+            && cleanup_body.contains(r#"limactl shell "${VM_NAME}" -- rm -rf "${VM_WORK_DIR}""#),
+        "host 側の signal/copy failure でも KEEP 指定がなければ EXIT trap で VM workdir を掃除するべき"
+    );
+    assert!(
+        created_pos > mkdir_pos,
+        "VM workdir を実際に作成してから cleanup 対象へ切り替えるべき"
+    );
+}
+
+#[test]
+fn test_native_linux_x86_hostgen_artifact_pruner_keeps_protected_generations() {
+    let root = std::env::temp_dir().join(format!(
+        "lsharp-native-linux-x86-artifact-pruner-{}-{}",
+        std::process::id(),
+        NATIVE_STAGE_CHAIN_COUNTER.fetch_add(1, Ordering::Relaxed)
+    ));
+    let current = root.join("protected-current");
+    let reuse = root.join("protected-reuse");
+    let newest = root.join("keep-newest");
+    let old = root.join("remove-old");
+    let oldest = root.join("remove-oldest");
+    for dir in [&current, &reuse, &newest, &old, &oldest] {
+        std::fs::create_dir_all(dir).unwrap_or_else(|e| panic!("{} 作成失敗: {e}", dir.display()));
+    }
+    let sentinel = root.join("README.txt");
+    std::fs::write(&sentinel, b"keep\n").expect("artifact root sentinel 作成失敗");
+    for (dir, timestamp) in [
+        (&current, "202607010101.01"),
+        (&reuse, "202607010102.01"),
+        (&oldest, "202607010103.01"),
+        (&old, "202607010104.01"),
+        (&newest, "202607010105.01"),
+    ] {
+        let status = std::process::Command::new("touch")
+            .args(["-t", timestamp])
+            .arg(dir)
+            .status()
+            .expect("artifact fixture mtime 設定失敗");
+        assert!(status.success(), "artifact fixture mtime 設定に失敗");
+    }
+
+    let script_path =
+        selfhost_project_root().join("scripts/ci/prune-native-linux-x86-hostgen-artifacts.sh");
+    let output = std::process::Command::new("bash")
+        .arg(&script_path)
+        .arg(&root)
+        .arg(&current)
+        .arg(&reuse)
+        .arg("")
+        .arg("1")
+        .output()
+        .unwrap_or_else(|e| panic!("{} 実行失敗: {e}", script_path.display()));
+
+    assert!(
+        output.status.success(),
+        "artifact pruner が失敗: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(current.is_dir(), "current artifact は常に保護するべき");
+    assert!(reuse.is_dir(), "reuse input artifact は常に保護するべき");
+    assert!(newest.is_dir(), "最新の非保護 artifact は保持するべき");
+    assert!(!old.exists(), "保持数を超えた artifact は削除するべき");
+    assert!(!oldest.exists(), "最古 artifact は削除するべき");
+    assert!(
+        sentinel.is_file(),
+        "artifact root 直下の通常 file は触らないこと"
+    );
+
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn test_native_linux_x86_hostgen_vm_script_prunes_local_artifact_generations() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+
+    assert!(
+        script.contains(
+            r#"ARTIFACT_RETENTION_COUNT="${LSHARP_NATIVE_LINUX_X86_ARTIFACT_RETENTION_COUNT:-8}""#
+        ) && script.contains("prune-native-linux-x86-hostgen-artifacts.sh")
+            && script.contains(r#""${REUSE_ACTUAL_STAGE1_ARTIFACT_DIR}""#)
+            && script.contains(r#""${REUSE_ACTUAL_STAGE2_ARTIFACT_DIR}""#),
+        "hostgen VM script は current/reuse artifact を保護しつつ local artifact 世代を既定8件へ制限するべき"
+    );
+}
+
+#[test]
+fn test_native_linux_x86_hostgen_vm_script_checks_vm_free_space_before_replay() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+    let check_body = shell_function_body(&script, "require_vm_free_space");
+    let check_call_pos = script
+        .find("\nrequire_vm_free_space\n")
+        .expect("hostgen VM script は replay 前に VM 空き容量を確認すること");
+    let create_pos = script
+        .find(r#"limactl shell "${VM_NAME}" -- mkdir -p "${VM_WORK_DIR}""#)
+        .expect("hostgen VM script は VM workdir を作成すること");
+
+    assert!(
+        script.contains(
+            r#"VM_MIN_FREE_BYTES="${LSHARP_NATIVE_LINUX_X86_VM_MIN_FREE_BYTES:-4294967296}""#
+        ) && check_body.contains("df -Pk /tmp")
+            && check_body.contains("VM free space is below required minimum"),
+        "hostgen VM script は既定4GiB未満の VM で長時間 replay を開始しないこと"
+    );
+    assert!(
+        check_call_pos < create_pos,
+        "VM 空き容量 gate は workdir 作成と artifact 転送より前に実行するべき"
+    );
+}
+
+#[test]
+fn test_native_linux_x86_lima_config_bounds_disk_and_avoids_mount_growth() {
+    let root = selfhost_project_root();
+    let config_path = root.join("scripts/ci/lima/lsharp-linux-x86.yaml");
+    let config = std::fs::read_to_string(&config_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", config_path.display()));
+    let docs_path = root.join("docs/language/native-backend-spec.md");
+    let docs = std::fs::read_to_string(&docs_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", docs_path.display()));
+
+    for required in [
+        "vmType: qemu",
+        "arch: x86_64",
+        "cpus: 4",
+        "memory: 20GiB",
+        "disk: 12GiB",
+        "mounts: []",
+        "apt-get clean",
+        "rm -rf /var/lib/apt/lists/*",
+    ] {
+        assert!(
+            config.contains(required),
+            "Linux x86 Lima config に容量制御 contract が不足: {required}"
+        );
+    }
+    assert!(
+        docs.contains("scripts/ci/lima/lsharp-linux-x86.yaml")
+            && docs.contains("limactl create --name lsharp-linux-x86"),
+        "native backend docs は repo 管理の12GiB Lima configから再作成する手順を示すべき"
     );
 }
 

@@ -7,12 +7,15 @@ ARTIFACT_DIR_INPUT="${LSHARP_NATIVE_LINUX_X86_HOSTGEN_VM_ARTIFACT_DIR:-ci-artifa
 VM_NAME="${LSHARP_NATIVE_LINUX_X86_VM_NAME:-lsharp-linux-x86}"
 VM_WORK_DIR="${LSHARP_NATIVE_LINUX_X86_VM_WORK_DIR:-/tmp/lsharp-native-linux-x86-hostgen-vm-${ARTIFACT_ID}}"
 KEEP_VM_WORK_DIR="${LSHARP_NATIVE_LINUX_X86_KEEP_VM_WORK_DIR:-0}"
+ARTIFACT_RETENTION_COUNT="${LSHARP_NATIVE_LINUX_X86_ARTIFACT_RETENTION_COUNT:-8}"
+VM_MIN_FREE_BYTES="${LSHARP_NATIVE_LINUX_X86_VM_MIN_FREE_BYTES:-4294967296}"
 REUSE_ACTUAL_STAGE1_ARTIFACT_DIR_INPUT="${LSHARP_NATIVE_LINUX_X86_REUSE_ACTUAL_STAGE1_ARTIFACT_DIR:-}"
 REUSE_ACTUAL_STAGE1=0
 REUSE_ACTUAL_STAGE2_ARTIFACT_DIR_INPUT="${LSHARP_NATIVE_LINUX_X86_REUSE_ACTUAL_STAGE2_ARTIFACT_DIR:-}"
 REUSE_ACTUAL_STAGE2=0
 STAGE1_PROGRESS_REQUESTED=0
 STAGE2_METADATA_REQUESTED=0
+HOST_VM_WORK_DIR_CREATED=0
 
 if [[ "${ARTIFACT_DIR_INPUT}" = /* ]]; then
   if [[ "${ARTIFACT_DIR_INPUT}" != "${ROOT_DIR}"/* ]]; then
@@ -51,12 +54,56 @@ if [[ -n "${LSHARP_NATIVE_LINUX_X86_STAGE2_METADATA_ONLY:-}" ]]; then
   STAGE2_METADATA_REQUESTED=1
 fi
 
+cleanup_vm_work_dir_on_host_exit() {
+  local exit_code=$?
+  local cleanup_exit_code=0
+  trap - EXIT
+  if [[ "${HOST_VM_WORK_DIR_CREATED}" -ne 1 ]]; then
+    exit "${exit_code}"
+  fi
+  if [[ "${KEEP_VM_WORK_DIR}" = "1" ]]; then
+    echo "VM workdir kept by LSHARP_NATIVE_LINUX_X86_KEEP_VM_WORK_DIR=1 after host exit: ${VM_WORK_DIR}" >&2
+    exit "${exit_code}"
+  fi
+  set +e
+  limactl shell "${VM_NAME}" -- rm -rf "${VM_WORK_DIR}"
+  cleanup_exit_code=$?
+  set -e
+  if [[ "${cleanup_exit_code}" -eq 0 ]]; then
+    echo "VM workdir removed by host EXIT cleanup: ${VM_WORK_DIR}" >&2
+  else
+    echo "WARNING: host EXIT cleanup could not remove VM workdir: ${VM_WORK_DIR}" >&2
+  fi
+  exit "${exit_code}"
+}
+
+require_vm_free_space() {
+  local available_kib=""
+  local available_bytes=0
+  if [[ ! "${VM_MIN_FREE_BYTES}" =~ ^[0-9]+$ ]]; then
+    echo "ERROR: LSHARP_NATIVE_LINUX_X86_VM_MIN_FREE_BYTES must be a non-negative integer: ${VM_MIN_FREE_BYTES}" >&2
+    return 1
+  fi
+  available_kib="$(limactl shell "${VM_NAME}" -- sh -lc "df -Pk /tmp | awk 'NR == 2 {print \$4}'" | tr -d '[:space:]')"
+  if [[ ! "${available_kib}" =~ ^[0-9]+$ ]]; then
+    echo "ERROR: could not read VM free space from df: ${available_kib}" >&2
+    return 1
+  fi
+  available_bytes=$((available_kib * 1024))
+  if (( available_bytes < VM_MIN_FREE_BYTES )); then
+    echo "ERROR: VM free space is below required minimum: available=${available_bytes} required=${VM_MIN_FREE_BYTES}" >&2
+    return 1
+  fi
+  echo "VM free space gate: available=${available_bytes} required=${VM_MIN_FREE_BYTES}"
+}
+
 cd "${ROOT_DIR}"
 
 if ! command -v limactl >/dev/null 2>&1; then
   echo "ERROR: limactl is required for hostgen->VM Linux x86_64 native execution smoke" >&2
   exit 1
 fi
+trap cleanup_vm_work_dir_on_host_exit EXIT
 if [[ -n "${REUSE_ACTUAL_STAGE1_ARTIFACT_DIR}" ]]; then
   case "${REUSE_ACTUAL_STAGE1_ARTIFACT_DIR}/" in
     "${ARTIFACT_DIR}/"*)
@@ -76,6 +123,12 @@ fi
 
 rm -rf "${ARTIFACT_DIR}"
 mkdir -p "${ARTIFACT_DIR}"
+bash "${ROOT_DIR}/scripts/ci/prune-native-linux-x86-hostgen-artifacts.sh" \
+  "${ROOT_DIR}/ci-artifacts/native-linux-x86-hostgen-vm" \
+  "${ARTIFACT_DIR}" \
+  "${REUSE_ACTUAL_STAGE1_ARTIFACT_DIR}" \
+  "${REUSE_ACTUAL_STAGE2_ARTIFACT_DIR}" \
+  "${ARTIFACT_RETENTION_COUNT}"
 
 CODE_ARTIFACT="${ARTIFACT_DIR}/code.bin"
 OBJECT_ARTIFACT="${ARTIFACT_DIR}/program.o"
@@ -366,8 +419,10 @@ if [[ "${REUSE_ACTUAL_STAGE2}" -ne 1 ]]; then
   validate_actual_stage1_artifact "${ACTUAL_STAGE1_ARTIFACT_DIR}"
 fi
 
+require_vm_free_space
 limactl shell "${VM_NAME}" -- rm -rf "${VM_WORK_DIR}"
 limactl shell "${VM_NAME}" -- mkdir -p "${VM_WORK_DIR}"
+HOST_VM_WORK_DIR_CREATED=1
 if [[ "${REUSE_ACTUAL_STAGE2}" -ne 1 && "${REUSE_ACTUAL_STAGE1}" -ne 1 ]]; then
   limactl copy "${CODE_ARTIFACT}" "${VM_NAME}:${VM_WORK_DIR}/code.bin"
   limactl copy "${OBJECT_ARTIFACT}" "${VM_NAME}:${VM_WORK_DIR}/program.o"
@@ -408,7 +463,7 @@ fi
 set +e
 limactl shell "${VM_NAME}" -- env \
   LSHARP_NATIVE_LINUX_X86_ACTUAL_TIMEOUT="${LSHARP_NATIVE_LINUX_X86_ACTUAL_TIMEOUT:-900}" \
-  LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_SIZE="${LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_SIZE:-4}" \
+  LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_SIZE="${LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_SIZE:-64}" \
   LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_RETRIES="${LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_RETRIES:-1}" \
   LSHARP_NATIVE_LINUX_X86_ACTUAL_HEAP_BYTES="${LSHARP_NATIVE_LINUX_X86_ACTUAL_HEAP_BYTES:-4294967296}" \
   LSHARP_NATIVE_LINUX_X86_VM_REPLAY_LOCK_DIR="${LSHARP_NATIVE_LINUX_X86_VM_REPLAY_LOCK_DIR:-/tmp/lsharp-native-linux-x86-hostgen-vm-replay.lock}" \
@@ -1313,7 +1368,7 @@ write_code_segment_table(out_dir / "stage-code-segments.tsv", code_segments, fun
 PY
 
 ACTUAL_TIMEOUT="${LSHARP_NATIVE_LINUX_X86_ACTUAL_TIMEOUT:-900}"
-ACTUAL_CHUNK_SIZE="${LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_SIZE:-4}"
+ACTUAL_CHUNK_SIZE="${LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_SIZE:-64}"
 ACTUAL_CHUNK_RETRIES="${LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_RETRIES:-1}"
 STAGE1_PROGRESS="${LSHARP_NATIVE_LINUX_X86_STAGE1_PROGRESS:-}"
 STAGE2_METADATA_START="${LSHARP_NATIVE_LINUX_X86_STAGE2_METADATA_START:-}"
@@ -2006,8 +2061,10 @@ if [[ "${vm_exec_status}" -ne 0 ]]; then
   echo "ERROR: native Linux x86_64 hostgen -> VM exec smoke failed with status ${vm_exec_status}" >&2
   if [[ "${KEEP_VM_WORK_DIR}" = "1" ]]; then
     echo "VM workdir kept for failure diagnostics by LSHARP_NATIVE_LINUX_X86_KEEP_VM_WORK_DIR=1: ${VM_WORK_DIR}" >&2
+    HOST_VM_WORK_DIR_CREATED=0
   else
     limactl shell "${VM_NAME}" -- rm -rf "${VM_WORK_DIR}"
+    HOST_VM_WORK_DIR_CREATED=0
     echo "VM workdir removed after failed evidence copy: ${VM_WORK_DIR}" >&2
   fi
   exit "${vm_exec_status}"
@@ -2015,8 +2072,10 @@ fi
 
 if [[ "${KEEP_VM_WORK_DIR}" = "1" ]]; then
   echo "VM workdir kept by LSHARP_NATIVE_LINUX_X86_KEEP_VM_WORK_DIR=1: ${VM_WORK_DIR}"
+  HOST_VM_WORK_DIR_CREATED=0
 else
   limactl shell "${VM_NAME}" -- rm -rf "${VM_WORK_DIR}"
+  HOST_VM_WORK_DIR_CREATED=0
   echo "VM workdir removed after successful evidence copy: ${VM_WORK_DIR}"
 fi
 
