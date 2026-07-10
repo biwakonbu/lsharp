@@ -751,7 +751,9 @@ mod tests {
                 .pages
                 .iter()
                 .all(|page| page.audience.contains("L# を使う開発者")
-                    || page.audience.contains("L# でアプリやライブラリを書く開発者")
+                    || page
+                        .audience
+                        .contains("L# でアプリやライブラリを書く開発者")
                     || page.audience.contains("L# package を作る開発者")
                     || page.audience.contains("既存サンプルから L# を学ぶ開発者")),
             "guides は利用者向け audience に揃えるべき"
@@ -795,7 +797,9 @@ mod tests {
             "documentation-site.html が必要"
         );
         assert!(
-            output.join("operations/documentation-freshness.html").exists(),
+            output
+                .join("operations/documentation-freshness.html")
+                .exists(),
             "documentation-freshness.html が必要"
         );
 

@@ -796,8 +796,9 @@ mod tests {
         assert_eq!(result["name"], "undefined-variable");
         assert_eq!(result["legacy_code"], "E0001");
         assert!(
-            result["doc"].as_str().is_some_and(|doc| doc
-                .contains("docs/guides/error-reference.md")),
+            result["doc"]
+                .as_str()
+                .is_some_and(|doc| doc.contains("docs/guides/error-reference.md")),
             "error reference docs への導線が必要"
         );
     }
