@@ -6134,31 +6134,28 @@ fn test_wasm_compiler_source_defn_step_roots_result_before_state_slot_update() {
         })
         .expect("compile-defn-functions-step-with-source-body-impl-3 body を取り出せること");
 
-    for (branch_name, result_expr) in [(
-        "defn branch",
-        "defn-result (make-compile-step-state 0 (+ idx 1) next-functions)",
-    )] {
-        let result_pos = source_step
-            .find(result_expr)
-            .unwrap_or_else(|| panic!("{branch_name} は defn-result state を local 化すること"));
-        let result_root_pos = source_step[result_pos..]
-            .find("(root_push defn-result)")
-            .map(|offset| offset + result_pos)
-            .unwrap_or_else(|| {
-                panic!("{branch_name} は defn-result state を root_set 前に root すること")
-            });
-        let root_set_pos = source_step[result_pos..]
-            .find("(root_set functions-slot defn-result)")
-            .map(|offset| offset + result_pos)
-            .unwrap_or_else(|| {
-                panic!("{branch_name} は defn-result state を functions slot に退避すること")
-            });
+    let branch_name = "defn branch";
+    let result_expr = "defn-result (make-compile-step-state 0 (+ idx 1) next-functions)";
+    let result_pos = source_step
+        .find(result_expr)
+        .unwrap_or_else(|| panic!("{branch_name} は defn-result state を local 化すること"));
+    let result_root_pos = source_step[result_pos..]
+        .find("(root_push defn-result)")
+        .map(|offset| offset + result_pos)
+        .unwrap_or_else(|| {
+            panic!("{branch_name} は defn-result state を root_set 前に root すること")
+        });
+    let root_set_pos = source_step[result_pos..]
+        .find("(root_set functions-slot defn-result)")
+        .map(|offset| offset + result_pos)
+        .unwrap_or_else(|| {
+            panic!("{branch_name} は defn-result state を functions slot に退避すること")
+        });
 
-        assert!(
-            result_pos < result_root_pos && result_root_pos < root_set_pos,
-            "{branch_name} は source-defn state を root_set に渡す前から root し、normal payload で functions slot を空にしないようにするべき"
-        );
-    }
+    assert!(
+        result_pos < result_root_pos && result_root_pos < root_set_pos,
+        "{branch_name} は source-defn state を root_set に渡す前から root し、normal payload で functions slot を空にしないようにするべき"
+    );
 
     let skip_ref_pos = source_step
         .find("skip-state-ref (ref-new 0)")
@@ -6208,31 +6205,28 @@ fn test_wasm_compiler_source_defn_step_normal_setup_diagnostic_roots_result_befo
             "compile-defn-functions-step-with-source-normal-setup-diagnostic body を取り出せること",
         );
 
-    for (branch_name, result_expr) in [(
-        "defn branch",
-        "defn-result (make-compile-step-state 0 (+ idx 1) next-functions)",
-    )] {
-        let result_pos = source_step
-            .find(result_expr)
-            .unwrap_or_else(|| panic!("{branch_name} は defn-result state を local 化すること"));
-        let result_root_pos = source_step[result_pos..]
-            .find("(root_push defn-result)")
-            .map(|offset| offset + result_pos)
-            .unwrap_or_else(|| {
-                panic!("{branch_name} は defn-result state を root_set 前に root すること")
-            });
-        let root_set_pos = source_step[result_pos..]
-            .find("(root_set functions-slot defn-result)")
-            .map(|offset| offset + result_pos)
-            .unwrap_or_else(|| {
-                panic!("{branch_name} は defn-result state を functions slot に退避すること")
-            });
+    let branch_name = "defn branch";
+    let result_expr = "defn-result (make-compile-step-state 0 (+ idx 1) next-functions)";
+    let result_pos = source_step
+        .find(result_expr)
+        .unwrap_or_else(|| panic!("{branch_name} は defn-result state を local 化すること"));
+    let result_root_pos = source_step[result_pos..]
+        .find("(root_push defn-result)")
+        .map(|offset| offset + result_pos)
+        .unwrap_or_else(|| {
+            panic!("{branch_name} は defn-result state を root_set 前に root すること")
+        });
+    let root_set_pos = source_step[result_pos..]
+        .find("(root_set functions-slot defn-result)")
+        .map(|offset| offset + result_pos)
+        .unwrap_or_else(|| {
+            panic!("{branch_name} は defn-result state を functions slot に退避すること")
+        });
 
-        assert!(
-            result_pos < result_root_pos && result_root_pos < root_set_pos,
-            "{branch_name} は normal setup diagnostic でも result state を root_set 前から root し、診断 probe 自体で functions state を壊さないようにするべき"
-        );
-    }
+    assert!(
+        result_pos < result_root_pos && result_root_pos < root_set_pos,
+        "{branch_name} は normal setup diagnostic でも result state を root_set 前から root し、診断 probe 自体で functions state を壊さないようにするべき"
+    );
 
     let skip_ref_pos = source_step
         .find("skip-state-ref (ref-new 0)")
