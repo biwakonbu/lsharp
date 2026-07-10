@@ -3249,6 +3249,98 @@ fn test_selfhost_normal_payload_production_defn_source_diagnostic_marks_expr_bou
 }
 
 #[test]
+fn test_selfhost_production_defn_diagnostic_reads_body_shape_before_each_handoff() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/App/CompilerMode.ls",
+    )))
+    .expect("CompilerMode.ls を読めること");
+    let source_body = source
+        .split("(defn compile-defn-with-source-production-inner-diagnostic")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-defn-function-with-source-production-inner-diagnostic")
+                .next()
+        })
+        .expect("production defn source diagnostic body を取り出せること");
+    let function_body = source
+        .split("(defn compile-defn-function-with-source-production-inner-diagnostic")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-defn-functions-step-with-source-production-inner-diagnostic")
+                .next()
+        })
+        .expect("production defn-function diagnostic body を取り出せること");
+    let step_body = source
+        .split("(defn compile-defn-functions-step-with-source-production-inner-diagnostic")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split(
+                "(defn continue-compile-defn-functions-step-with-source-production-diagnostic",
+            )
+            .next()
+        })
+        .expect("production inner step diagnostic body を取り出せること");
+
+    let source_marker_pos = source_body
+        .find("(print 9000000319)")
+        .expect("production defn source diagnostic は bind 前 body marker を出すべき");
+    let source_tag_pos = source_body[source_marker_pos..]
+        .find("(print (vector-get (vector-get node (+ 3 (vector-get node 2))) 0))")
+        .map(|pos| source_marker_pos + pos)
+        .expect("production defn source diagnostic は bind 前 body tag を直読するべき");
+    let source_len_pos = source_body[source_tag_pos..]
+        .find("(print (vector-length (vector-get node (+ 3 (vector-get node 2)))))")
+        .map(|pos| source_tag_pos + pos)
+        .expect("production defn source diagnostic は bind 前 body length を直読するべき");
+    let bind_pos = source_body
+        .find("env (bind-node-params node 3 0 param-count (env-new) 1)")
+        .expect("production defn source diagnostic は env bind を持つべき");
+
+    let function_marker_pos = function_body
+        .find("(print 9000000314)")
+        .expect("production defn-function diagnostic は inner call 前 body marker を出すべき");
+    let function_tag_pos = function_body[function_marker_pos..]
+        .find("(print (vector-get (vector-get node (+ 3 (vector-get node 2))) 0))")
+        .map(|pos| function_marker_pos + pos)
+        .expect("production defn-function diagnostic は inner call 前 body tag を直読するべき");
+    let function_len_pos = function_body[function_tag_pos..]
+        .find("(print (vector-length (vector-get node (+ 3 (vector-get node 2)))))")
+        .map(|pos| function_tag_pos + pos)
+        .expect("production defn-function diagnostic は inner call 前 body length を直読するべき");
+    let source_call_pos = function_body
+        .find("source-ir (compile-defn-with-source-production-inner-diagnostic node source ftable data-ref)")
+        .expect("production defn-function diagnostic は inner source call を持つべき");
+
+    let step_marker_pos = step_body
+        .find("(print 9000000303)")
+        .expect("production inner step diagnostic は wrapper call 前 body marker を出すべき");
+    let step_tag_pos = step_body[step_marker_pos..]
+        .find("(print (vector-get (vector-get decl (+ 3 (vector-get decl 2))) 0))")
+        .map(|pos| step_marker_pos + pos)
+        .expect("production inner step diagnostic は wrapper call 前 body tag を直読するべき");
+    let step_len_pos = step_body[step_tag_pos..]
+        .find("(print (vector-length (vector-get decl (+ 3 (vector-get decl 2)))))")
+        .map(|pos| step_tag_pos + pos)
+        .expect("production inner step diagnostic は wrapper call 前 body length を直読するべき");
+    let function_call_pos = step_body
+        .find("compiled-fn (compile-defn-function-with-source-production-inner-diagnostic decl source ftable data-ref)")
+        .expect("production inner step diagnostic は defn-function call を持つべき");
+
+    assert!(
+        source_marker_pos < source_tag_pos
+            && source_tag_pos < source_len_pos
+            && source_len_pos < bind_pos
+            && function_marker_pos < function_tag_pos
+            && function_tag_pos < function_len_pos
+            && function_len_pos < source_call_pos
+            && step_marker_pos < step_tag_pos
+            && step_tag_pos < step_len_pos
+            && step_len_pos < function_call_pos,
+        "production defn diagnostic は outer handoff / wrapper handoff / bind 前の順で同じ body shape を直読するべき"
+    );
+}
+
+#[test]
 fn test_selfhost_compile_let_chain_production_uses_single_step_safe_path() {
     let source = selfhost_module("Compiler.ls");
     let chain_body = source
