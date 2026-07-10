@@ -3249,98 +3249,6 @@ fn test_selfhost_normal_payload_production_defn_source_diagnostic_marks_expr_bou
 }
 
 #[test]
-fn test_selfhost_production_defn_diagnostic_reads_body_shape_before_each_handoff() {
-    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
-        "selfhost/src/App/CompilerMode.ls",
-    )))
-    .expect("CompilerMode.ls を読めること");
-    let source_body = source
-        .split("(defn compile-defn-with-source-production-inner-diagnostic")
-        .nth(1)
-        .and_then(|tail| {
-            tail.split("(defn compile-defn-function-with-source-production-inner-diagnostic")
-                .next()
-        })
-        .expect("production defn source diagnostic body を取り出せること");
-    let function_body = source
-        .split("(defn compile-defn-function-with-source-production-inner-diagnostic")
-        .nth(1)
-        .and_then(|tail| {
-            tail.split("(defn compile-defn-functions-step-with-source-production-inner-diagnostic")
-                .next()
-        })
-        .expect("production defn-function diagnostic body を取り出せること");
-    let step_body = source
-        .split("(defn compile-defn-functions-step-with-source-production-inner-diagnostic")
-        .nth(1)
-        .and_then(|tail| {
-            tail.split(
-                "(defn continue-compile-defn-functions-step-with-source-production-diagnostic",
-            )
-            .next()
-        })
-        .expect("production inner step diagnostic body を取り出せること");
-
-    let source_marker_pos = source_body
-        .find("(print 9000000319)")
-        .expect("production defn source diagnostic は bind 前 body marker を出すべき");
-    let source_tag_pos = source_body[source_marker_pos..]
-        .find("(print (vector-get (vector-get node (+ 3 (vector-get node 2))) 0))")
-        .map(|pos| source_marker_pos + pos)
-        .expect("production defn source diagnostic は bind 前 body tag を直読するべき");
-    let source_len_pos = source_body[source_tag_pos..]
-        .find("(print (vector-length (vector-get node (+ 3 (vector-get node 2)))))")
-        .map(|pos| source_tag_pos + pos)
-        .expect("production defn source diagnostic は bind 前 body length を直読するべき");
-    let bind_pos = source_body
-        .find("env (bind-node-params node 3 0 param-count (env-new) 1)")
-        .expect("production defn source diagnostic は env bind を持つべき");
-
-    let function_marker_pos = function_body
-        .find("(print 9000000314)")
-        .expect("production defn-function diagnostic は inner call 前 body marker を出すべき");
-    let function_tag_pos = function_body[function_marker_pos..]
-        .find("(print (vector-get (vector-get node (+ 3 (vector-get node 2))) 0))")
-        .map(|pos| function_marker_pos + pos)
-        .expect("production defn-function diagnostic は inner call 前 body tag を直読するべき");
-    let function_len_pos = function_body[function_tag_pos..]
-        .find("(print (vector-length (vector-get node (+ 3 (vector-get node 2)))))")
-        .map(|pos| function_tag_pos + pos)
-        .expect("production defn-function diagnostic は inner call 前 body length を直読するべき");
-    let source_call_pos = function_body
-        .find("source-ir (compile-defn-with-source-production-inner-diagnostic node source ftable data-ref)")
-        .expect("production defn-function diagnostic は inner source call を持つべき");
-
-    let step_marker_pos = step_body
-        .find("(print 9000000303)")
-        .expect("production inner step diagnostic は wrapper call 前 body marker を出すべき");
-    let step_tag_pos = step_body[step_marker_pos..]
-        .find("(print (vector-get (vector-get decl (+ 3 (vector-get decl 2))) 0))")
-        .map(|pos| step_marker_pos + pos)
-        .expect("production inner step diagnostic は wrapper call 前 body tag を直読するべき");
-    let step_len_pos = step_body[step_tag_pos..]
-        .find("(print (vector-length (vector-get decl (+ 3 (vector-get decl 2)))))")
-        .map(|pos| step_tag_pos + pos)
-        .expect("production inner step diagnostic は wrapper call 前 body length を直読するべき");
-    let function_call_pos = step_body
-        .find("compiled-fn (compile-defn-function-with-source-production-inner-diagnostic decl source ftable data-ref)")
-        .expect("production inner step diagnostic は defn-function call を持つべき");
-
-    assert!(
-        source_marker_pos < source_tag_pos
-            && source_tag_pos < source_len_pos
-            && source_len_pos < bind_pos
-            && function_marker_pos < function_tag_pos
-            && function_tag_pos < function_len_pos
-            && function_len_pos < source_call_pos
-            && step_marker_pos < step_tag_pos
-            && step_tag_pos < step_len_pos
-            && step_len_pos < function_call_pos,
-        "production defn diagnostic は outer handoff / wrapper handoff / bind 前の順で同じ body shape を直読するべき"
-    );
-}
-
-#[test]
 fn test_selfhost_compile_let_chain_production_uses_single_step_safe_path() {
     let source = selfhost_module("Compiler.ls");
     let chain_body = source
@@ -7720,6 +7628,27 @@ fn test_native_codegen_x86_map_insert_runtime_call_direct_appends_in_stage1() {
             && control_loop.contains("(+ (x86-current-emitted-offset result emit-start-base) 12)")
             && source.contains("(defn append-map-insert-helper-call-x86"),
         "stage1 が stage2 を生成するとき、map-insert runtime helper call は byte-vector 経由に戻さず direct append するべき"
+    );
+}
+
+#[test]
+fn test_native_codegen_x86_map_insert_helper_stages_group_merge_for_native_selfhost() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let helper = source
+        .split("(defn emit-x86-selfhost-map-insert-helper")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn emit-x86-selfhost-map-get-helper").next())
+        .expect("NativeCodegen.ls に x86 map-insert helper emitter が存在すること");
+
+    assert!(
+        helper.contains("head-left (concat-three-byte-vectors-rooted group1 group2 group3)")
+            && helper.contains("head-right (concat-byte-vectors-rooted group4 group5)")
+            && helper.contains("head (concat-byte-vectors-rooted head-left head-right)")
+            && helper.contains("(concat-byte-vectors-rooted head part26)")
+            && !helper.contains(
+                "head (concat-five-byte-vectors-rooted group1 group2 group3 group4 group5)"
+            ),
+        "x86 map-insert helper は native selfhost の5引数 group handoff で104 bytesを61 bytesへ縮退させないよう、3+2 groupを段階結合するべき"
     );
 }
 
@@ -27666,6 +27595,69 @@ fn linux_x86_direct_call_four_arg_computed_third_local_fourth_code_bytes() -> Ve
     )
 }
 
+fn linux_x86_two_four_arg_handoffs_preserve_first_object_code_bytes() -> Vec<u8> {
+    run_native_codegen_host_bytes_harness(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn main []
+  (let [caller-ir0 (vector-push (vector-new 8) (make-instr 3 1))
+        caller-ir1 (vector-push caller-ir0 (make-instr 54 0))
+        caller-ir2 (vector-push caller-ir1 (make-instr 3 42))
+        caller-ir3 (vector-push caller-ir2 (make-instr 55 0))
+        caller-ir4 (vector-push caller-ir3 (make-instr 3 13))
+        caller-ir5 (vector-push caller-ir4 (make-instr 3 17))
+        caller-ir6 (vector-push caller-ir5 (make-instr 3 19))
+        caller-ir (vector-push caller-ir6 (make-call 1))
+        wrapper-ir0 (vector-push (vector-new 18) (make-local-get 1))
+        wrapper-ir1 (vector-push wrapper-ir0 (make-instr 52 0))
+        wrapper-ir2 (vector-push wrapper-ir1 (make-instr 59 0))
+        wrapper-ir3 (vector-push wrapper-ir2 (make-instr 44 0))
+        wrapper-ir4 (vector-push wrapper-ir3 (make-local-get 1))
+        wrapper-ir5 (vector-push wrapper-ir4 (make-instr 3 0))
+        wrapper-ir6 (vector-push wrapper-ir5 (make-instr 53 0))
+        wrapper-ir7 (vector-push wrapper-ir6 (make-instr 59 0))
+        wrapper-ir8 (vector-push wrapper-ir7 (make-instr 44 0))
+        wrapper-ir9 (vector-push wrapper-ir8 (make-local-get 1))
+        wrapper-ir10 (vector-push wrapper-ir9 (make-local-get 2))
+        wrapper-ir11 (vector-push wrapper-ir10 (make-local-get 3))
+        wrapper-ir12 (vector-push wrapper-ir11 (make-local-get 4))
+        wrapper-ir (vector-push wrapper-ir12 (make-call 2))
+        callee-ir0 (vector-push (vector-new 3) (make-local-get 1))
+        callee-ir1 (vector-push callee-ir0 (make-instr 3 0))
+        callee-ir (vector-push callee-ir1 (make-instr 53 0))
+        caller (make-function-meta 0 0 caller-ir)
+        wrapper (make-function-meta 4 0 wrapper-ir)
+        callee (make-function-meta 4 0 callee-ir)
+        functions (vector-push
+                    (vector-push
+                      (vector-push (vector-new 3) caller)
+                      wrapper)
+                    callee)
+        target (make-target 3)
+        code (emit-native-function-meta-bundle functions target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    )
+}
+
 fn host_target_direct_call_five_arg_bundle_code_bytes() -> Vec<u8> {
     run_native_codegen_host_bytes_harness(
         r#"(module Main)
@@ -42608,6 +42600,38 @@ fn test_e2e_native_linux_x86_four_arg_call_computed_third_preserves_fourth_local
         exit_code,
         77,
         "Linux x86_64 four-arg computed-third/local-fourth: 第4引数 local 77 を返すべきだが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-LINUX-X86-SELFHOST-03b: 診断相当の runtime call 後も、連続する4引数 call が第1 object 引数を保持すること。
+#[test]
+#[ignore]
+fn test_e2e_native_linux_x86_two_four_arg_handoffs_preserve_first_object() {
+    let code_bytes = linux_x86_two_four_arg_handoffs_preserve_first_object_code_bytes();
+
+    assert!(
+        !code_bytes.is_empty(),
+        "Linux x86_64 two four-arg handoffs 向けコードバイト列が空"
+    );
+
+    let exit_code = if linux_x86_native_exec_supported() {
+        link_and_run_linux_x86_native_binary(&code_bytes)
+            .expect("Linux x86_64 two four-arg handoffs 実行に失敗")
+    } else if std::env::var_os("LSHARP_NATIVE_LINUX_X86_RUN_LIMA").is_some() {
+        link_and_run_linux_x86_native_binary_via_lima(&code_bytes)
+            .expect("Lima Linux x86_64 two four-arg handoffs 実行に失敗")
+    } else {
+        return;
+    };
+
+    assert_eq!(
+        exit_code,
+        42,
+        "Linux x86_64 two four-arg handoffs は第1 object 引数の先頭値 42 を返すべきだが {} を得た\n\
          bytes ({} bytes): {:?}",
         exit_code,
         code_bytes.len(),

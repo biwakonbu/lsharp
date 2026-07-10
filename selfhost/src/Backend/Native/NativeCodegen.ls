@@ -9940,7 +9940,9 @@
     group3 (concat-five-byte-vectors-rooted part11 part12 part13 part14 part15)
     group4 (concat-five-byte-vectors-rooted part16 part17 part18 part19 part20)
     group5 (concat-five-byte-vectors-rooted part21 part22 part23 part24 part25)
-    head (concat-five-byte-vectors-rooted group1 group2 group3 group4 group5)]
+    head-left (concat-three-byte-vectors-rooted group1 group2 group3)
+    head-right (concat-byte-vectors-rooted group4 group5)
+    head (concat-byte-vectors-rooted head-left head-right)]
     (concat-byte-vectors-rooted head part26)))
 
 (defn emit-x86-selfhost-map-get-helper []
