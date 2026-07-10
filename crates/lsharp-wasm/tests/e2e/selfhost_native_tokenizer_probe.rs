@@ -239,7 +239,7 @@ fn parser_defn_body_finalize_uses_small_rooted_helper() {
         .expect("Parser.ls に parse-defn-bodyless-or-body-v3 が存在すること");
 
     assert!(
-        body.contains("(finalize-defn-body-v3 body defn-node)")
+        body.contains("(finalize-defn-body-v3 parsed-defn-body defn-node)")
             && body.contains("(p-expect spans pos-ref 1)")
             && !body.contains("finalize-defn-parsed-body-v3")
             && !body.contains("node-with-placeholder"),
@@ -263,8 +263,8 @@ fn parser_parse_defn_inlines_non_meta_body_after_rooted_param_parse() {
             && parse_defn.contains("(skip-optional-where-v3 spans pos-ref src)")
             && parse_defn.contains("(parse-defn-bodyless-or-body-with-meta-v3")
             && parse_defn.contains("(if (== (p-current spans pos-ref) 1)")
-            && parse_defn.contains("(let [body (parse-expr-v3 spans pos-ref src)]")
-            && parse_defn.contains("(finalize-defn-body-v3 body defn-node)")
+            && parse_defn.contains("(let [parsed-defn-body (parse-expr-v3 spans pos-ref src)]")
+            && parse_defn.contains("(finalize-defn-body-v3 parsed-defn-body defn-node)")
             && parse_defn.contains("(p-expect spans pos-ref 1)")
             && !parse_defn.contains(
                 "(parse-defn-bodyless-or-body-v3 spans pos-ref src defn-node param-count)"

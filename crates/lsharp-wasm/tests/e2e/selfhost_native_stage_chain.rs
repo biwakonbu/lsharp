@@ -3841,8 +3841,16 @@ fn test_wasm_compiler_source_defn_normal_setup_diagnostic_marks_defn_function_in
         );
     }
 
-    let body_expr_pos = defn_body
+    let env_pos = defn_body
+        .find("env (bind-node-params node 3 0 param-count (env-new) 1)")
+        .expect("diagnostic wrapper は env を作ること");
+    let env_root_pos = defn_body[env_pos..]
+        .find("(root_push env)")
+        .map(|offset| offset + env_pos)
+        .expect("diagnostic wrapper は env を root すること");
+    let body_expr_pos = defn_body[env_root_pos..]
         .find("body-expr (vector-get node body-idx)")
+        .map(|offset| offset + env_root_pos)
         .expect("diagnostic wrapper は body-expr を取り出すこと");
     let body_root_pos = defn_body[body_expr_pos..]
         .find("(root_push body-expr)")
@@ -3852,13 +3860,9 @@ fn test_wasm_compiler_source_defn_normal_setup_diagnostic_marks_defn_function_in
         .find("(print 9000000233)")
         .map(|offset| offset + body_root_pos)
         .expect("diagnostic wrapper は body shape marker を出すこと");
-    let env_pos = defn_body[body_marker_pos..]
-        .find("env (bind-node-params node 3 0 param-count (env-new) 1)")
-        .map(|offset| offset + body_marker_pos)
-        .expect("diagnostic wrapper は env を作ること");
-    let env_marker_pos = defn_body[env_pos..]
+    let env_marker_pos = defn_body[body_marker_pos..]
         .find("(print 9000000234)")
-        .map(|offset| offset + env_pos)
+        .map(|offset| offset + body_marker_pos)
         .expect("diagnostic wrapper は env marker を出すこと");
     let compile_expr_pos = defn_body[env_marker_pos..]
         .find("result (compile-expr-with-source-normal-setup-diagnostic body-expr source env ftable instrs0 data-ref)")
@@ -3869,10 +3873,11 @@ fn test_wasm_compiler_source_defn_normal_setup_diagnostic_marks_defn_function_in
         .map(|offset| offset + compile_expr_pos)
         .expect("diagnostic wrapper は result marker を出すこと");
     assert!(
-        body_expr_pos < body_root_pos
+        env_pos < env_root_pos
+            && env_root_pos < body_expr_pos
+            && body_expr_pos < body_root_pos
             && body_root_pos < body_marker_pos
-            && body_marker_pos < env_pos
-            && env_pos < env_marker_pos
+            && body_marker_pos < env_marker_pos
             && env_marker_pos < compile_expr_pos
             && compile_expr_pos < result_marker_pos,
         "diagnostic wrapper は body / env / expr result の境界を順に測るべき"
@@ -7791,18 +7796,11 @@ fn test_native_codegen_x86_map_new_stack_delta_is_explicit_for_stage2_depth_stab
 #[test]
 fn test_native_codegen_x86_zero_arg_user_call_avoids_rel_wrapper_call() {
     let source = selfhost_module("NativeCodegen.ls");
-    let opcode_call_branch = source
-        .split("(defn codegen-x86-opcode-call-bundle")
-        .nth(1)
-        .and_then(|tail| {
-            tail.split("(defn codegen-ir-instr-bundle-x86-with-import-count-and-base")
-                .next()
-        })
-        .expect("NativeCodegen.ls に x86 opcode 40 call helper が存在すること");
+    let opcode_call_branch = native_codegen_x86_non_one_arg_call_bundle_body(&source);
     let zero_arg_branch = opcode_call_branch
         .split("(if (= target-param-count 0)")
         .nth(1)
-        .and_then(|tail| tail.split("(if (>= target-param-count 20)").next())
+        .and_then(|tail| tail.split("(if (= target-param-count 2)").next())
         .expect("x86 opcode 40 branch に zero-arg user call 専用分岐が存在すること");
 
     assert!(
@@ -11810,19 +11808,25 @@ fn test_native_codegen_x86_zero_arg_depth_one_call_roots_call_bytes_for_selfhost
         .nth(1)
         .and_then(|tail| tail.split("\n(defn ").next())
         .expect("NativeCodegen.ls に codegen-x86-opcode-call-bundle が存在すること");
+    let zero_arg_branch = native_codegen_x86_non_one_arg_call_bundle_body(&source)
+        .split("(if (= target-param-count 0)")
+        .nth(1)
+        .and_then(|tail| tail.split("(if (= target-param-count 2)").next())
+        .expect("non-one-arg helper に zero-arg call 分岐が存在すること");
 
     assert!(
         body.contains(
             "call-rel (- target-offset (+ (ref-get current-offset-ref) call-next-offset))]"
         ) && body.contains("(let [call-rel-bytes (emit-call-rel32 call-rel)]")
             && body.contains("(root_push call-rel-bytes)")
-            && body.contains("(if (= current-depth 0)")
-            && body.contains("(concat-byte-vectors-rooted call-rel-bytes (vector-new 0))")
-            && body.contains("(if (= current-depth 1)")
-            && body.contains("(concat-byte-vectors-rooted")
-            && body.contains("(emit-push-rax)")
-            && body.contains("call-rel-bytes")
-            && body.contains("(emit-pop-rcx)"),
+            && zero_arg_branch.contains("(if (= current-depth 0)")
+            && zero_arg_branch
+                .contains("(concat-byte-vectors-rooted call-rel-bytes (vector-new 0))")
+            && zero_arg_branch.contains("(if (= current-depth 1)")
+            && zero_arg_branch.contains("(concat-byte-vectors-rooted")
+            && zero_arg_branch.contains("(emit-push-rax)")
+            && zero_arg_branch.contains("call-rel-bytes")
+            && zero_arg_branch.contains("(emit-pop-rcx)"),
         "x86 zero-arg call は call-rel bytes を算出直後に別 let で root し、depth=0 では rooted concat の返却用 vector にして depth=1 では concat 中に 0 化しないよう rooted concat で構築するべき"
     );
 }
