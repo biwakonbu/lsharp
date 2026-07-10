@@ -5,7 +5,7 @@ native 配布物の生成・署名・公開チャネル・cross-build 方針を�
 ## 対象範囲
 
 - stable / nightly の公開チャネル
-- tier1 / tier2 の配布対象
+- supported product/release targets の配布対象
 - release artifact / checksum / 署名 / smoke の順序
 - package manager 配布と公式アーカイブの関係
 
@@ -29,15 +29,16 @@ version bump
 
 ## Native-only official replacement track
 
-native-only を公式配布へ完全置換する方針を後続トラックとして開始する。完了後は native-only archive を stable / nightly の正本にし、host launcher + embedded guest component は rollback compatibility 用の互換成果物へ降格する。
+native-only archive は stable / nightly の正本であり、host launcher + embedded guest component は rollback compatibility 用の互換成果物へ降格済みである。
 
-V2-13 target matrix status は `docs/language/native-backend-spec.md` に正本化済み。V2-14/V2-15 で native-only official archive layout / native-only release smoke / rollback anchor の stable 既定導線を正本化した。
-以後の native-only replacement blocker は target-specific blocker として扱う。
+Supported product/release targets は Mac Apple Silicon (`aarch64-apple-darwin`) と Linux x86_64 (`x86_64-unknown-linux-gnu`) の 2 つに限る。macOS Intel (`x86_64-apple-darwin`)、Windows (`x86_64-pc-windows-msvc`)、Linux ARM (`aarch64-unknown-linux-gnu`) は out of support scope であり、native-only 公式置換や release readiness の blocker には含めない。
 
-1. target matrix status: `aarch64-apple-darwin` と Linux x86_64 server priority track は actual self-regeneration complete。Linux x86_64 は GitHub release workflow ではなく Mac + Lima VM の local gate `scripts/ci/native-linux-x86-selfregen.sh` で release 前に検証する。
-2. `x86_64-pc-windows-msvc` は native backend spec 上 BLOCKED で、COFF/PE runtime/link/smoke が未実装。
-3. `scripts/release.sh` と `scripts/ci/release-smoke.sh` は `program.native` / `manifest.json` / `checksums.txt` を native-only official archive の必須 payload として扱う。
-4. `.github/workflows/release.yml` は stable build path で `NATIVE_ONLY_RELEASE=1` を渡し、native-only release archive を GitHub Release asset として扱う。
+V2-13 target matrix status は `docs/language/native-backend-spec.md` に正本化済みで、V2-14/V2-15 では native-only official archive layout / native-only release smoke / rollback anchor を stable 既定導線にした。current contract は次のとおり。
+
+1. `aarch64-apple-darwin` と Linux x86_64 server priority track の actual self-regeneration evidence を保持する。Linux x86_64 の actual replay は Mac + Lima VM の local operator gate `scripts/ci/native-linux-x86-selfregen.sh` で扱い、GitHub Actions の required CI job や release workflow の `needs` には含めない。
+2. `scripts/release.sh` と `scripts/ci/release-smoke.sh` は `program.native` / `manifest.json` / `checksums.txt` を native-only official archive の必須 payload として扱う。
+3. `.github/workflows/release.yml` は stable build path で `NATIVE_ONLY_RELEASE=1` を渡す。current automated publish は Actions 内で actual native program を生成できる `aarch64-apple-darwin` に限定し、Linux x86_64 の publish wiring は supported-target gap として扱う。
+4. out of support scope の target に internal diagnostic coverage や archived design が残っていても、release blocker や必須 artifact にはしない。
 
 stable release は native-only official archive を既定導線にする。host launcher + embedded guest component は rollback compatibility asset として保持し、default payload の `lsharp.component.wasm` companion sidecar には戻さない。
 
@@ -75,7 +76,7 @@ V2-15 では `scripts/release.sh` / `scripts/ci/release-smoke.sh` / `.github/wor
 
 | チャネル | 目的 | 期待する成果物 | ブロッキング条件 |
 |---|---|---|---|
-| stable | エンドユーザー向け正式配布 | tier1 公式アーカイブ、checksum、release notes | `ci-gate-v2` 成功、release smoke 成功 |
+| stable | エンドユーザー向け正式配布 | supported target 公式アーカイブ、checksum、release notes | `ci-gate-v2` 成功、release smoke 成功 |
 | nightly | 継続検証と先行配布 | nightly アーカイブ、checksum | nightly workflow 成功 |
 
 - stable は tag / GitHub Release を起点に扱う。
@@ -85,11 +86,11 @@ V2-15 では `scripts/release.sh` / `scripts/ci/release-smoke.sh` / `.github/wor
 
 | 階層 | 対象 | 配布方針 | CI での扱い |
 |---|---|---|---|
-| Tier1 | `macos-arm64`, `macos-x86_64`, `linux-x86_64`, `windows-x86_64` | 正式配布の必須対象 | release blocker |
-| Tier2 | `linux-aarch64` | cross-build と smoke を維持する拡張対象 | non-blocking で段階導入 |
+| Supported product/release targets | Mac Apple Silicon (`aarch64-apple-darwin`), Linux x86_64 (`x86_64-unknown-linux-gnu`) | 正式配布の必須対象 | release blocker |
+| Out of support scope | macOS x86_64 (`x86_64-apple-darwin`), Windows (`x86_64-pc-windows-msvc`), Linux ARM (`aarch64-unknown-linux-gnu`) | 公式配布対象外。内部診断や archived design は可 | release blocker にしない |
 
-- Tier1 は stable / nightly の両チャネルで同一命名規則を使う。
-- Tier2 は tier1 と同じ artifact 命名・checksum 規則を流用しつつ、release blocker にはしない。
+- Supported product/release targets は stable / nightly の両チャネルで同一命名規則を使う。
+- out of support scope の target を再導入する場合は、support scope の変更を TODO / spec / workflow / smoke に先に反映してから扱う。
 
 ## artifact と命名
 
@@ -107,7 +108,7 @@ V2-15 では `scripts/release.sh` / `scripts/ci/release-smoke.sh` / `.github/wor
 
 ### macOS notarization
 
-- 対象: `macos-arm64`, `macos-x86_64` の native-only archive
+- 対象: Mac Apple Silicon (`aarch64-apple-darwin`) の native-only archive
 - 前提:
   1. `Developer ID Application` 証明書が release 用 secret / secure storage にある
   2. notarization 用の Apple ID credential / app-specific password もしくは API key が使える
@@ -127,9 +128,9 @@ spctl --assess -vv lsharp
 - embedded guest component (`.component.wasm`) は stable native-only archive の既定 payload ではない。rollback compatibility asset や investigation 用 asset として添付する場合だけ checksum / release asset 管理の対象にする。
 - release workflow は macOS runner 上で `APPLE_CODESIGN_IDENTITY` と `APPLE_NOTARY_KEYCHAIN_PROFILE` が両方ある場合にだけ signing / notarization hook を実行し、`codesign --verify --deep --strict` / `spctl --assess -vv` / `xcrun notarytool submit --wait` を通す。credential 未設定時は skip し、native-only archive / rollback compatibility / checksum 契約だけを維持する。
 
-### Windows Authenticode
+### Windows Authenticode (archived / out of support scope)
 
-- 対象: `windows-x86_64` の `.exe`
+- 対象: Windows は out of support scope であり、現行 release workflow の対象外。
 - 手順:
   1. 証明書を release 用 secret / secure storage から取得
   2. `signtool.exe` で署名
@@ -140,7 +141,7 @@ spctl --assess -vv lsharp
 signtool verify /pa lsharp.exe
 ```
 
-- release workflow は Windows runner 上で `WINDOWS_SIGN_CERT_PFX_BASE64` / `WINDOWS_SIGN_CERT_PASSWORD` / `WINDOWS_TIMESTAMP_URL` が揃っている場合にだけ Authenticode hook を実行し、`signtool sign` / `signtool verify /pa` を通す。credential 未設定時は skip し、unsigned archive をそのまま release asset として残す。
+上記は archived design の記録であり、現行の supported product/release targets には含めない。Windows 対応を再開する場合は support scope の変更として扱い、`WINDOWS_SIGN_CERT_PFX_BASE64` / `WINDOWS_SIGN_CERT_PASSWORD` / `WINDOWS_TIMESTAMP_URL` を使う Authenticode hook を release workflow へ戻す前に TODO / native backend spec / smoke を更新する。
 
 ## package manager 配布
 
@@ -152,9 +153,8 @@ signtool verify /pa lsharp.exe
 
 ## cross-build 方針
 
-- cross-build は release workflow の packaging 段で扱う。
-- tier2 `linux-aarch64` は cross-build + smoke を回すが、release blocker にはしない。
-- target 追加時は artifact 命名・checksum・smoke 導線を tier1/tier2 表に追記してから workflow を増やす。
+- cross-build は supported product/release targets の packaging 段で扱う。
+- target 追加時は artifact 命名・checksum・smoke 導線を supported/out-of-scope 表に追記してから workflow を増やす。
 
 ## 現状メモ
 
@@ -163,21 +163,17 @@ signtool verify /pa lsharp.exe
 | `scripts/release-playbook.sh` | release binary を作り、bootstrap / default-path / README smoke まで実行可能 |
 | tag push 起点の自動 release workflow | `verify` / `build` / `release-smoke` / `release` まで接続済み |
 | checksum / native-only archive 自動生成 | `scripts/ci/build-native.sh` が actual native `stage3-native/program.native` を生成し、`scripts/release.sh` が `NATIVE_ONLY_PROGRAM` から archive 内 `program.native` / `lsharp` alias / `manifest.json` / `checksums.txt` を生成、`release` job が `bash scripts/checksum.sh dist > dist/checksums.txt` で attached checksum asset を追加、`scripts/ci/release-smoke.sh` が native-only payload と rollback anchor を workflow build job で検証 |
-| macOS notarization | secret-gated workflow hook まで接続済み。credential 未設定時は skip |
-| Windows 署名 | secret-gated workflow hook まで接続済み。credential 未設定時は skip |
+| macOS notarization | Mac Apple Silicon の secret-gated workflow hook まで接続済み。credential 未設定時は skip |
+| Windows 署名 | archived design。Windows は out of support scope のため現行 release workflow から外す |
 | package manager 配布 | 未実装 |
 
 ## workflow secrets
 
 - `APPLE_CODESIGN_IDENTITY`: `codesign --sign` に渡す Developer ID identity
 - `APPLE_NOTARY_KEYCHAIN_PROFILE`: `xcrun notarytool submit --keychain-profile` に渡す profile 名
-- `WINDOWS_SIGN_CERT_PFX_BASE64`: Authenticode 用 `.pfx` を base64 化した secret
-- `WINDOWS_SIGN_CERT_PASSWORD`: `.pfx` の password
-- `WINDOWS_TIMESTAMP_URL`: `signtool sign /tr` に渡す timestamp server URL
 
 現行 workflow はこれらの secret が未設定なら signing step を fail させず skip する。
 したがって **workflow hook-up は repo 内で完了** しても、**実際の signing 完了判定** は credential が投入されるまで blocked のまま残る。
-| `linux-aarch64` tier2 | 設計のみ |
 
 ## 関連ドキュメント
 

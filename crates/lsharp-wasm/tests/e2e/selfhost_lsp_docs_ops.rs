@@ -2518,7 +2518,7 @@ fn test_e2e_native_ops02_native_only_rc_smoke_accepts_empty_output_files() {
     );
 }
 
-/// TEST-NATIVE-OPS-03: native-only 完全置換は official replacement track として未完了 blocker を正本化すること
+/// TEST-NATIVE-OPS-03: native-only replacement の完了済み基盤と target 固有残件を正本化すること
 #[test]
 fn test_e2e_native_ops03_official_native_only_replacement_backlog_contract() {
     let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
@@ -2537,8 +2537,8 @@ fn test_e2e_native_ops03_official_native_only_replacement_backlog_contract() {
     );
     assert!(
         current_remaining_section
-            .contains("- [x] `V2-15` Native-only official release smoke and rollback"),
-        "TODO.md の V2-15 native-only official release smoke and rollback は完了扱いにすること"
+            .contains("- [~] `V2-15` Native-only official release smoke and rollback"),
+        "TODO.md の V2-15 は Apple Silicon 完了と Linux publish wiring 残件を区別すること"
     );
     assert!(
         current_remaining_section
@@ -2551,23 +2551,30 @@ fn test_e2e_native_ops03_official_native_only_replacement_backlog_contract() {
         std::fs::read_to_string(&native_spec).expect("native-backend-spec.md の読み込みに失敗");
     for expected in [
         "Native-only official replacement track",
+        "Supported product/release targets",
         "aarch64-apple-darwin",
-        "x86_64-apple-darwin",
         "x86_64-unknown-linux-gnu",
+        "Mac Apple Silicon",
+        "Linux x86_64",
+        "Unsupported product/release targets",
+        "x86_64-apple-darwin",
         "x86_64-pc-windows-msvc",
-        "BLOCKED",
-        "target matrix status",
-        "actual self-regeneration complete",
+        "out of support scope",
+        "GitHub Actions の required CI には含めない",
         "Mac + Lima VM local gate",
-        "stable 既定導線",
-        "COFF/PE runtime/link/smoke pending",
+        "20GiB memory",
+        "12GiB disk",
     ] {
         assert!(
             native_spec_content.contains(expected),
-            "native-backend-spec.md は native-only 完全置換 blocker `{}` を明記すること",
+            "native-backend-spec.md は support scope `{}` を明記すること",
             expected
         );
     }
+    assert!(
+        !native_spec_content.contains("x86_64-pc-windows-msvc` | **BLOCKED**"),
+        "Windows は blocker ではなく support scope 外として扱うこと"
+    );
 
     let release_policy =
         project_root.join("docs/development/operations/release-distribution-signing.md");
@@ -2575,9 +2582,13 @@ fn test_e2e_native_ops03_official_native_only_replacement_backlog_contract() {
         .expect("release-distribution-signing.md の読み込みに失敗");
     for expected in [
         "Native-only official replacement track",
+        "Supported product/release targets",
+        "aarch64-apple-darwin",
+        "x86_64-unknown-linux-gnu",
+        "out of support scope",
         "host launcher + embedded guest component",
         "rollback compatibility",
-        "native-only replacement blocker",
+        "publish wiring",
         "target matrix status",
         "native-only official archive layout",
         "program.native",
@@ -2590,8 +2601,35 @@ fn test_e2e_native_ops03_official_native_only_replacement_backlog_contract() {
     ] {
         assert!(
             release_policy_content.contains(expected),
-            "release-distribution-signing.md は native-only 置換方針 `{}` を記述すること",
+            "release-distribution-signing.md は support scope `{}` を記述すること",
             expected
+        );
+    }
+    assert!(
+        !release_policy_content
+            .contains("`macos-arm64`, `macos-x86_64`, `linux-x86_64`, `windows-x86_64`"),
+        "release-distribution-signing.md は旧 4 target Tier1 を正式配布対象として残さないこと"
+    );
+
+    for doc in [
+        "docs/development/validation/verification-spec.md",
+        "docs/development/planning/toolchain-parity-spec.md",
+        "docs/development/planning/completion-criteria.md",
+    ] {
+        let doc_path = project_root.join(doc);
+        let doc_content =
+            std::fs::read_to_string(&doc_path).expect("support scope doc read failed");
+        assert!(
+            doc_content.contains("Mac Apple Silicon")
+                && doc_content.contains("Linux x86_64")
+                && doc_content.contains("out of support scope"),
+            "{} は supported target scope を明記すること",
+            doc
+        );
+        assert!(
+            !doc_content.contains("macOS arm64, macOS x86_64, Linux x86_64, Windows x86_64"),
+            "{} は旧 4 target support scope を残さないこと",
+            doc
         );
     }
 
@@ -2625,6 +2663,19 @@ fn test_e2e_native_ops03_official_native_only_replacement_backlog_contract() {
             && release_workflow_content.contains("rollback compatibility"),
         "release.yml は native-only official release と rollback compatibility の境界を明記すること"
     );
+    assert!(
+        release_workflow_content.contains("supported product/release targets")
+            && release_workflow_content.contains("target: aarch64-apple-darwin")
+            && release_workflow_content
+                .contains("Linux x86_64 の Lima actual self-regeneration は local evidence",)
+            && release_workflow_content
+                .contains("native-only release program generation is not wired")
+            && !release_workflow_content.contains("target: x86_64-unknown-linux-gnu")
+            && !release_workflow_content.contains("target: x86_64-apple-darwin")
+            && !release_workflow_content.contains("target: x86_64-pc-windows-msvc")
+            && release_workflow_content.contains("experimental-native-rc"),
+        "release.yml は automated Apple Silicon build と Linux publish wiring 残件、experimental RC の境界を明記すること"
+    );
 }
 
 /// TEST-OPS-04: Linux x86_64 server target を native-only replacement の優先 slice として固定する。
@@ -2648,13 +2699,16 @@ fn test_e2e_native_ops04_linux_x86_server_target_contract() {
         "Linux runtime trampoline",
         "real ELF object/link artifact",
         "V2-13a-5e",
-        "Mac VM local gate",
-        "release-preflight-20260531152957",
-        "stage2/stage3 stdout byte-for-byte compare",
+        "Mac Apple Silicon 上の local Lima VM gate",
+        "stage2/stage3 compare summary",
+        "`V2-13a-5` actual Linux x86_64 stage2/stage3 VM regeneration",
+        "function 12",
+        "stage3 は `param=2 local=0 stack=1056 ir_len=1`",
+        "local VM release gate policy",
     ] {
         assert!(
             current_remaining_section.contains(expected),
-            "TODO.md の V2-13a は Linux x86_64 blocker `{}` を明記すること",
+            "TODO.md の V2-13a は current Linux x86_64 blocker `{}` を明記すること",
             expected
         );
     }
@@ -2673,17 +2727,23 @@ fn test_e2e_native_ops04_linux_x86_server_target_contract() {
         std::fs::read_to_string(&native_spec).expect("native-backend-spec.md の読み込みに失敗");
     for expected in [
         "Linux x86_64 server priority track",
-        "`x86_64-unknown-linux-gnu` | Linux x86_64 server priority track",
+        "`x86_64-unknown-linux-gnu` | Linux x86_64。server priority track",
         "Ubuntu x86_64 VM",
-        "Mac + Lima VM",
-        "native-linux-x86-selfregen",
+        "Mac + Lima VM local gate",
+        "scripts/ci/native-linux-x86-selfregen.sh",
         "scripts/ci/native-linux-x86-local-vm-smoke.sh",
         "scripts/ci/native-linux-x86-hostgen-vm-exec.sh",
-        "x86 selfhost runtime helper parity",
-        "Linux runtime trampoline",
-        "real ELF object/link artifact",
+        "runtime helper / Linux runtime trampoline / real ELF object/link artifact は固定済み",
         "substring-object-program.native seedling` が exit 3",
-        "release-preflight-20260531152957",
+        "`x86_64-unknown-linux-gnu` | Linux x86_64",
+        "supported product/release target",
+        "Mac Apple Silicon 上の Ubuntu x86_64 Lima VM",
+        "20GiB memory",
+        "12GiB disk",
+        "scripts/ci/lima/lsharp-linux-x86.yaml",
+        "scripts/ci/native-linux-x86-local-vm-smoke.sh",
+        "scripts/ci/native-linux-x86-hostgen-vm-exec.sh",
+        "stage2/stage3 function 12",
     ] {
         assert!(
             native_spec_content.contains(expected),
@@ -2691,6 +2751,28 @@ fn test_e2e_native_ops04_linux_x86_server_target_contract() {
             expected
         );
     }
+    assert!(
+        !native_spec_content.contains(
+            "full actual Linux native self-regeneration の未完了 blocker は、AArch64 actual stage23 と同等の **x86 selfhost runtime helper parity**"
+        ),
+        "native-backend-spec.md は完了済み helper/trampoline/ELF を current blocker に戻さないこと"
+    );
+
+    let phase11_plan =
+        project_root.join("docs/development/planning/phase11-implementation-plan.md");
+    let phase11_plan_content = std::fs::read_to_string(&phase11_plan)
+        .expect("phase11-implementation-plan.md の読み込みに失敗");
+    assert!(
+        phase11_plan_content.contains(
+            "test_e2e_stage23_actual_native_self_regeneration_harness_stage2_stage3_match"
+        ) && phase11_plan_content.contains(
+            "Darwin arm64 の representative actual self-regeneration は完了"
+        ) && phase11_plan_content.contains("Linux x86_64 の残件は `V2-13a-5`")
+            && !phase11_plan_content.contains(
+                "true stage1-native -> stage2-native -> stage3-native の実バイナリ再生成・実行比較は未達"
+            ),
+        "phase11 implementation plan は V2-08 完了と Linux V2-13a-5 の境界へ同期すること"
+    );
 
     let ci_workflow = project_root.join(".github/workflows/ci.yml");
     let ci_workflow_content =
@@ -2867,7 +2949,7 @@ fn test_e2e_native_ops04_linux_x86_server_target_contract() {
         "stage-entry-ir-trace.txt",
         "LSHARP_NATIVE_LINUX_X86_ACTUAL_HEAP_BYTES",
         "LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_SIZE",
-        "ACTUAL_CHUNK_SIZE=\"${LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_SIZE:-256}\"",
+        "ACTUAL_CHUNK_SIZE=\"${LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_SIZE:-64}\"",
         "LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_RETRIES",
         "run_actual_stage_chunked",
         "run_actual_stage_range",
@@ -2894,7 +2976,7 @@ fn test_e2e_native_ops04_linux_x86_server_target_contract() {
     }
 }
 
-/// TEST-NATIVE-OPS-05: x86_64 macOS は Rosetta local smoke で実行 coverage の入口を固定する。
+/// TEST-NATIVE-OPS-05: x86_64 macOS は internal diagnostic として残し release blocker から外す。
 #[test]
 fn test_e2e_native_ops05_macos_x86_rosetta_smoke_contract() {
     let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
@@ -2906,50 +2988,36 @@ fn test_e2e_native_ops05_macos_x86_rosetta_smoke_contract() {
         .nth(1)
         .and_then(|rest| rest.split("## Phase 11: Rust 完全撤去").next())
         .expect("TODO.md の現在の残タスク一覧 section が見つからない");
-    for expected in [
-        "`V2-13b` x86_64 macOS Rosetta native smoke",
-        "`x86_64-apple-darwin`",
-        "Rosetta local smoke",
-        "selfhost `emit-object` 由来の linkable x86_64 Mach-O relocatable object",
-        "test_e2e_native_macos_x86_selfhost_macho_object_links_and_executes_under_rosetta",
-        "actual self-regeneration / release smoke pending",
-    ] {
-        assert!(
-            current_remaining_section.contains(expected),
-            "TODO.md の正本は x86_64 macOS smoke contract `{}` を明記すること",
-            expected
-        );
-    }
+    assert!(
+        current_remaining_section
+            .contains("`V2-13` Native-only official replacement target matrix")
+            && current_remaining_section.contains("`x86_64-apple-darwin`")
+            && current_remaining_section.contains("support scope 外")
+            && !current_remaining_section.contains("`V2-13b`"),
+        "TODO.md は Intel Mac を独立 release task に戻さず out of support scope とすること"
+    );
 
     let native_spec = project_root.join("docs/language/native-backend-spec.md");
     let native_spec_content =
         std::fs::read_to_string(&native_spec).expect("native-backend-spec.md の読み込みに失敗");
-    for expected in [
-        "`x86_64-apple-darwin` | spec 対象、Rosetta local const-42 smoke + selfhost linkable Mach-O object smoke complete",
-        "scripts/ci/native-macos-x86-local-smoke.sh",
-        "LC_SEGMENT_64",
-        "_generated",
-        "test_e2e_native_macos_x86_selfhost_macho_object_links_and_executes_under_rosetta",
-        "actual self-regeneration complete 未達",
-    ] {
-        assert!(
-            native_spec_content.contains(expected),
-            "native-backend-spec.md は x86_64 macOS local smoke `{}` を明記すること",
-            expected
-        );
-    }
+    assert!(
+        native_spec_content.contains(
+            "`x86_64-apple-darwin` | out of support scope。Rosetta / Mach-O smoke は internal diagnostic のみ",
+        ) && native_spec_content.contains("Supported product/release targets")
+            && native_spec_content.contains("aarch64-apple-darwin")
+            && native_spec_content.contains("x86_64-unknown-linux-gnu"),
+        "native-backend-spec.md は Intel Mac を internal diagnostic に限定すること"
+    );
 
     let playbook = project_root.join("docs/development/operations/release-playbook.md");
     let playbook_content =
         std::fs::read_to_string(&playbook).expect("release-playbook.md の読み込みに失敗");
     assert!(
-        playbook_content.contains("scripts/ci/native-macos-x86-local-smoke.sh")
-            && playbook_content.contains("Rosetta local smoke")
-            && playbook_content.contains("selfhost linkable Mach-O object smoke")
-            && playbook_content.contains(
-                "test_e2e_native_macos_x86_selfhost_macho_object_links_and_executes_under_rosetta"
-            ),
-        "release-playbook.md は x86_64 macOS Rosetta local smoke と selfhost object smoke を release 前確認として示すこと"
+        playbook_content.contains("macOS Intel (`x86_64-apple-darwin`)")
+            && playbook_content.contains("out of support scope")
+            && playbook_content.contains("Rosetta / Mach-O smoke")
+            && playbook_content.contains("公式配布 blocker にしない"),
+        "release-playbook.md は Intel Mac diagnostic を公式 release blocker にしないこと"
     );
 
     let smoke = project_root.join("scripts/ci/native-macos-x86-local-smoke.sh");
@@ -2959,25 +3027,13 @@ fn test_e2e_native_ops05_macos_x86_rosetta_smoke_contract() {
     );
     let smoke_content =
         std::fs::read_to_string(&smoke).expect("native-macos-x86-local-smoke.sh の読み込みに失敗");
-    for expected in [
-        "requires Darwin",
-        "arch -x86_64",
-        "-arch",
-        "x86_64",
-        "program.o",
-        "runtime.o",
-        "linker-response.txt",
-        "program.native",
-        "\"target\": \"x86_64-apple-darwin\"",
-        "\"expected_exit_code\": 42",
-        "Mach-O",
-    ] {
-        assert!(
-            smoke_content.contains(expected),
-            "native-macos-x86-local-smoke.sh は Rosetta smoke contract `{}` を固定すること",
-            expected
-        );
-    }
+    assert!(
+        smoke_content.contains("requires Darwin")
+            && smoke_content.contains("arch -x86_64")
+            && smoke_content.contains("\"target\": \"x86_64-apple-darwin\"")
+            && smoke_content.contains("Mach-O"),
+        "既存 Rosetta smoke は internal diagnostic として実行可能なまま保持すること"
+    );
 }
 
 /// TEST-NATIVE-OPS-05b: Rosetta が使える Mac では x86_64 macOS smoke script が実行できること。
@@ -3980,15 +4036,17 @@ fn test_e2e_ops06_release_curl_installer_contract() {
     for expected in [
         "LSHARP_INSTALL_DIR",
         "$HOME/.local/bin",
+        "supported release targets",
+        "aarch64-apple-darwin",
+        "x86_64-unknown-linux-gnu",
         "https://github.com/${REPO}/releases/download",
         "lsharp-${VERSION}-${TARGET}",
         "program.native",
         "curl -fsSL",
         "shasum -a 256",
         "sha256sum",
-        "x86_64-apple-darwin native-only archive is not published yet",
         "LSHARP_ARCHIVE_URL",
-        "LSHARP_ALLOW_UNPUBLISHED_TARGET",
+        "unsupported release target",
     ] {
         assert!(
             install_content.contains(expected),
@@ -3996,6 +4054,11 @@ fn test_e2e_ops06_release_curl_installer_contract() {
             expected
         );
     }
+    assert!(
+        !install_content.contains("Darwin:x86_64) echo \"x86_64-apple-darwin\"")
+            && !install_content.contains("Linux:arm64|Linux:aarch64) echo"),
+        "install.sh は macOS Intel / Linux arm64 を supported default target として扱わないこと"
+    );
 
     let output = std::process::Command::new("bash")
         .arg("scripts/install.sh")
@@ -4006,13 +4069,13 @@ fn test_e2e_ops06_release_curl_installer_contract() {
         .expect("install.sh を起動できない");
     assert!(
         !output.status.success(),
-        "install.sh は unpublished x86_64-apple-darwin stable archive を黙って download しないこと"
+        "install.sh は out-of-scope x86_64-apple-darwin target を download しないこと"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("x86_64-apple-darwin native-only archive is not published yet")
-            && stderr.contains("LSHARP_ARCHIVE_URL"),
-        "install.sh は unpublished target の理由と明示 override を案内すること: {stderr}"
+        stderr.contains("unsupported release target: x86_64-apple-darwin")
+            && stderr.contains("aarch64-apple-darwin, x86_64-unknown-linux-gnu"),
+        "install.sh は out-of-scope target を拒否し supported target を案内すること: {stderr}"
     );
 
     let readme = project_root.join("README.md");
@@ -4026,7 +4089,7 @@ fn test_e2e_ops06_release_curl_installer_contract() {
     );
 }
 
-/// TEST-OPS-06d: release workflow に macOS / Windows signing hook が存在すること
+/// TEST-OPS-06d: release workflow に supported target の macOS signing hook だけが存在すること
 #[test]
 fn test_e2e_ops06_release_signing_workflow_hook() {
     let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
@@ -4046,11 +4109,9 @@ fn test_e2e_ops06_release_signing_workflow_hook() {
         "release.yml は macOS notarization hook も secret 経由で配線すること"
     );
     assert!(
-        workflow_content.contains("WINDOWS_SIGN_CERT_PFX_BASE64")
-            && workflow_content.contains("WINDOWS_SIGN_CERT_PASSWORD")
-            && workflow_content.contains("WINDOWS_TIMESTAMP_URL")
-            && workflow_content.contains("signtool verify /pa"),
-        "release.yml は Windows Authenticode signing / verify hook を持つこと"
+        !workflow_content.contains("WINDOWS_SIGN_CERT_PFX_BASE64")
+            && !workflow_content.contains("signtool verify /pa"),
+        "release.yml は support scope 外の Windows signing hook を release path に残さないこと"
     );
 
     let signing_doc =
@@ -4059,8 +4120,10 @@ fn test_e2e_ops06_release_signing_workflow_hook() {
         .expect("release-distribution-signing.md の読み込みに失敗");
     assert!(
         signing_doc_content.contains("APPLE_CODESIGN_IDENTITY")
-            && signing_doc_content.contains("WINDOWS_SIGN_CERT_PFX_BASE64"),
-        "release-distribution-signing.md は workflow hook の secret 名を正本として案内すること"
+            && signing_doc_content.contains("Mac Apple Silicon")
+            && signing_doc_content.contains("Windows")
+            && signing_doc_content.contains("out of support scope"),
+        "release-distribution-signing.md は supported macOS signing と Windows support scope 外を正本として案内すること"
     );
     assert!(
         signing_doc_content.contains("credential 未設定時は skip")
@@ -4074,9 +4137,9 @@ fn test_e2e_ops06_release_signing_workflow_hook() {
     let windows_design_content = std::fs::read_to_string(&windows_design)
         .expect("v2-05-windows-authenticode-signing.md の読み込みに失敗");
     assert!(
-        windows_design_content.contains("release.yml")
-            && windows_design_content.contains("WINDOWS_SIGN_CERT_PFX_BASE64"),
-        "Windows Authenticode design は release workflow hook へ接続した current state を反映すること"
+        windows_design_content.contains("out of support scope")
+            && !windows_design_content.contains("release.yml の secret-gated hook"),
+        "Windows Authenticode design は support scope 外の archived design として扱うこと"
     );
 }
 

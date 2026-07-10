@@ -2,9 +2,10 @@
 
 > **Status: Native-only official replacement track active (2026-05-09)**
 >
-> V2-08〜V2-10 で Darwin arm64 の actual native self-regeneration と experimental native-only RC は完了した。V2-13a では Linux x86_64 server priority track の actual native self-regeneration を Mac + Lima VM の local gate として固定した。
+> V2-08〜V2-10 で Darwin arm64 の actual native self-regeneration と experimental native-only RC は完了した。
 > 次の目標は native-only official replacement track として、host launcher + embedded guest component 配布を rollback compatibility へ降格し、native-only を公式配布へ完全置換すること。
-> ただし Tier1 target matrix には target-specific blocker が残るため、V2-13〜V2-15 の完了証跡と残る target-specific blocker は TODO.md の正本で追跡する。
+> Supported product/release targets は Mac Apple Silicon (`aarch64-apple-darwin`) と Linux x86_64 (`x86_64-unknown-linux-gnu`) の 2 つに固定する。`x86_64-apple-darwin` と Windows (`x86_64-pc-windows-msvc`) は support scope 外であり、公式置換 blocker として扱わない。
+> V2-13〜V2-15 はこの 2 target を正本として TODO.md に積む。
 > 詳細は `TODO.md` の現在の残タスク一覧、`docs/development/planning/v2-designs/v2-08-native-backend-self-regeneration.md`、`docs/development/planning/v2-designs/v2-09-wasm-native-differential-zero.md`、`docs/development/planning/v2-designs/v2-10-native-only-rc-distribution.md` および `backend-boundary.md` を参照。
 
 ## 目的
@@ -22,13 +23,13 @@ native backend は既存の `LoweredModule` を入力として受け取り、tar
 - object emitter と linker 連携
 - 決定的コード生成の要件
 
-以下は v1 の対象外だったが、Native-only official replacement track では Tier1 完全置換 blocker として扱う。
+以下は native backend の初期対象外であり、supported product/release targets の blocker として扱わない。
 
 - tail call 最適化
 - デバッグ情報の完全サポート
 - C ABI を越えた汎用 FFI 面の拡張
 - JIT や動的ロード
-- Windows 向けネイティブ成果物 (**BLOCKED**: `x86_64-pc-windows-msvc` の object/link/runtime 契約が未実装)
+- Windows 向けネイティブ成果物 (`x86_64-pc-windows-msvc` は out of support scope)
 
 ## パイプライン上の位置づけ
 
@@ -45,42 +46,45 @@ IR の意味を変える必要がある場合は、backend 内で吸収せず `b
 
 ## 対象ターゲット
 
-v1 で対象とするターゲットは次のとおりである。
-
-- `x86_64-apple-darwin`
-- `aarch64-apple-darwin`
-- `x86_64-unknown-linux-gnu`
-
-Native-only official replacement track で公式 Tier1 置換に必要な target matrix status は次のとおりである。V2-13 で target ごとの execution coverage と後続 blocker の境界を正本化し、V2-14/V2-15 で release artifact layout / stable smoke / rollback anchor を stable 既定導線へ昇格した。以後は target-specific execution blocker だけを残す。
+Native-only official replacement track で公式配布として扱う Supported product/release targets は次の 2 つである。
 
 | target | 現状 | 置換 blocker |
 |---|---|---|
-| `aarch64-apple-darwin` | actual self-regeneration complete / native-only release evidence 完了 | なし |
-| `x86_64-apple-darwin` | spec 対象、Rosetta local const-42 smoke + selfhost linkable Mach-O object smoke complete | actual self-regeneration complete 未達、release smoke pending |
-| `x86_64-unknown-linux-gnu` | Linux x86_64 server priority track の actual self-regeneration complete。Mac + Lima VM local gate で証跡化 | tag release 前の Mac + Lima VM local gate 再実行 |
-| `x86_64-pc-windows-msvc` | **BLOCKED** | COFF/PE runtime/link/smoke pending と Authenticode gate |
+| `aarch64-apple-darwin` | Mac Apple Silicon。actual native self-regeneration / stable native-only archive smoke 完了 | なし |
+| `x86_64-unknown-linux-gnu` | Linux x86_64。server priority track で先行検証中 | actual Linux native self-regeneration / publish wiring |
 
-### x86_64 macOS local smoke
+Unsupported product/release targets は次のとおりである。既存の internal diagnostic や historical design は残せるが、公式配布や release blocker には含めない。
 
-`x86_64-apple-darwin` は target descriptor / Mach-O object policy / x86_64 codegen path を持つが、full actual self-regeneration と release smoke は未完了である。Intel Mac 実機を前提にせず、macOS arm64 + Rosetta の local gate として `scripts/ci/native-macos-x86-local-smoke.sh` を使い、x86_64 Mach-O の `program.o` / `runtime.o` / `linker-response.txt` / `program.native` を生成して `arch -x86_64` で const-42 executable smoke を行う。
-
-selfhost `emit-object` の x86_64 Mach-O path は `LC_SEGMENT_64` / `__TEXT,__text` / `LC_SYMTAB` / `LC_BUILD_VERSION` を持つ relocatable object を生成し、`_generated` external symbol を runtime object から参照できる。`test_e2e_native_macos_x86_selfhost_macho_object_links_and_executes_under_rosetta` は selfhost が生成した object を `clang -arch x86_64` で runtime object とリンクし、Rosetta 実行で exit 42 を確認する。
-
-この smoke は `x86_64-apple-darwin` の実行 coverage 入口に限る。`actual self-regeneration complete 未達` と `release smoke pending` は target-specific blocker として残るため、stable release workflow には含めない。
+| target | 扱い |
+|---|---|
+| `x86_64-apple-darwin` | out of support scope。Rosetta / Mach-O smoke は internal diagnostic のみ |
+| `x86_64-pc-windows-msvc` | out of support scope。COFF/PE / Authenticode は公式配布 blocker ではない |
+| `aarch64-unknown-linux-gnu` | out of support scope。Linux ARM は tier2 ではなく将来再評価事項 |
 
 ### Linux x86_64 server priority track
 
-サーバー用途を優先するため、`x86_64-unknown-linux-gnu` は full Tier1 公式置換より先に V2-13a として切り出す。GitHub Actions `ubuntu-latest` runner では `NativeTarget` descriptor、ELF object emitter、x86_64 codegen exact-byte smoke を `native-linux-x86-smoke` で required CI に固定する。actual self-regeneration は GitHub required CI には載せず、Mac + Lima VM 上の `scripts/ci/native-linux-x86-selfregen.sh` local gate で実行する。
+サーバー用途を優先するため、`x86_64-unknown-linux-gnu` は Mac Apple Silicon と並ぶ supported product/release target として V2-13a で先行固定する。actual native self-regeneration の正本実行環境は Mac Apple Silicon 上の Ubuntu x86_64 Lima VM とし、GitHub Actions の required CI には含めない。`NativeTarget` descriptor、ELF object emitter、x86_64 codegen exact-byte smoke はローカルの `native-linux-x86-smoke` / Lima replay で確認する。
 
 開発中の inner loop は GitHub Actions ではなくローカル VM で回す。`scripts/ci/native-linux-x86-local-vm-smoke.sh` は Linux x86_64 VM 上で descriptor / ELF emitter と canonical `program.o` / `runtime.o` / `linker-response.txt` / `program.native` runtime-link smoke を短時間で確認する。QEMU x86_64 VM では selfhost exact-byte suite が重いため、local smoke には含めず、actual native self-regeneration の調査へ進む前の fast gate として扱う。
 
-host 側の selfhost `emit-native` で生成した Linux x86_64 code artifact を VM 内でリンク・実行する split smoke は `scripts/ci/native-linux-x86-hostgen-vm-exec.sh` で固定する。このスクリプトは `LSHARP_NATIVE_LINUX_X86_CODE_ARTIFACT` を指定して host-side selfhost artifact generation test を実行し、`limactl` 経由で Ubuntu x86_64 VM に `code.bin` を渡し、VM 内で `program.native` の `actual_exit_code` を確認する。local gate wrapper `scripts/ci/native-linux-x86-selfregen.sh` は clean seed rejection、isolated `CARGO_TARGET_DIR`、VM lock、local artifact の `actual-selfregen-summary.json`、stage2/stage3 stdout hash と code length の一致を検証する。
+VM は repo 管理の `scripts/ci/lima/lsharp-linux-x86.yaml` から作成する。この設定は x86_64 QEMU、4 CPU、20GiB memory、12GiB disk、host mount なしに固定し、provision 後の apt cache も削除する。
 
-full actual Linux native self-regeneration は、AArch64 actual stage23 と同等の **x86 selfhost runtime helper parity**、argc/argv と linear memory/data image を seed する **Linux runtime trampoline**、release artifact として link 可能な **real ELF object/link artifact**、および stage2/stage3 byte-for-byte compare を required gate として扱う。const-42 VM link/run は x86 codegen と Linux 実行環境の接続確認に留め、full self-regeneration 完了証跡とは分ける。
+```bash
+limactl create --name lsharp-linux-x86 scripts/ci/lima/lsharp-linux-x86.yaml
+limactl start lsharp-linux-x86
+```
+
+`scripts/ci/native-linux-x86-hostgen-vm-exec.sh` は replay 前に `/tmp` の空き容量が既定 4GiB 以上あることを確認し、actual transport の既定 chunk を 64 にする。失敗時も `LSHARP_NATIVE_LINUX_X86_KEEP_VM_WORK_DIR=1` を明示しない限り VM workdir を削除する。次回 replay は exclusive lock 取得後、current workdir と replay lock を保護した上で 24 時間超の stale guest workdir も削除する。ローカル `ci-artifacts/native-linux-x86-hostgen-vm/` は current/reuse artifact を保護しながら最新 8 世代へ制限する。調査で一時的に全世代を残す場合は `LSHARP_NATIVE_LINUX_X86_ARTIFACT_RETENTION_COUNT` を明示的に増やす。
+
+`LSHARP_NATIVE_LINUX_X86_STAGE3_SOURCE_OVERLAY` は、回収済み actual stage2 artifact を再利用して source shape の A/B 診断を短時間で行うための入力である。stage2 reuse と metadata / progress / raw boundary のいずれかの diagnostic-only mode を必須とし、full stage2/stage3 compare には使用できない。この overlay 結果は failure point の分類にだけ使い、actual self-regeneration の pass 証跡にはしない。
+
+host 側の selfhost `emit-native` で生成した Linux x86_64 code artifact を VM 内でリンク・実行する split smoke は `scripts/ci/native-linux-x86-hostgen-vm-exec.sh` で固定する。このスクリプトは `LSHARP_NATIVE_LINUX_X86_CODE_ARTIFACT` を指定して host-side selfhost artifact generation test を実行し、`limactl` 経由で Ubuntu x86_64 VM に `code.bin` を渡し、VM 内で `program.native` の `actual_exit_code` を確認する。
+
+actual self-regeneration の operator entry は `scripts/ci/native-linux-x86-selfregen.sh` とし、Mac + Lima VM local gate として実行する。重い `stage1 -> stage2` harvest に入る前の fail-fast 診断として、hostgen スクリプトは `LSHARP_NATIVE_LINUX_X86_STAGE1_PROGRESS=1` を受け取り、materialized `actual-stage1/program.native` から `actual-stage1-progress.txt` / `actual-stage1-progress-stderr.txt` を artifact 化できる。この progress artifact は parser / defn body shape の早期切り分け用であり、`stage2` / `stage3` transport の byte-for-byte compare を置き換えるものではない。
+
+runtime helper / Linux runtime trampoline / real ELF object/link artifact は固定済みであり、current blocker ではない。残る actual Linux native self-regeneration blocker は、source と segment row count が一致した stage2/stage3 function 12 の metadata が `local=6 / ir_len=41 / native bytes=2427` から `local=0 / ir_len=1 / native bytes=2092` へ縮退する fixed-point divergence と、それに伴う full transport の stderr/byte compare gate である。診断は function 12 metadata と raw production boundary を先に使い、full replay は narrow evidence が動いた後の最終確認に限定する。
 
 `scripts/ci/native-linux-x86-hostgen-vm-exec.sh` は host-side selfhost `emit-object` で生成した ELF64 relocatable `program.o` を VM に渡し、VM 内の `object-runtime.s` trampoline で `argc` / tagged argv vector を x86_64 SysV 側（`%r14` / `%r15`）へ seed して `object-program.native` を実行する。これにより Linux runtime trampoline と real ELF object/link artifact の const-42 slice は VM 証跡付きで固定済み。さらに `argv-program.o` / `argv-char-program.o` は同じ trampoline 上で command-line-arg + string-length / string-char-at helper を実行し、`argv-object-program.native seedling` が exit 8、`argv-char-object-program.native seedling` が exit 101 を返すことを確認する。`print-program.o` は print helper を Linux syscall 経由で実行し、`print-object-program.native` が exit 0 / stdout `42\n` を返すことを確認する。`vector-program.o` / `ref-program.o` は heap-backed vector/ref helper を実行し、`vector-object-program.native` が exit 42、`ref-object-program.native` が exit 99 を返すことを確認する。`substring-program.o` / `string-concat-program.o` は tagged string helper を実行し、`substring-object-program.native seedling` が exit 3、`string-concat-object-program.native seed ling` が exit 8 を返すことを確認する。`map-program.o` / `map-size-program.o` / `file-exists-program.o` は map/file helper を実行し、`map-object-program.native` が exit 42、`map-size-object-program.native` が exit 1、`file-exists-object-program.native file-exists-target.txt` が exit 1 を返すことを確認する。map/file helper 追加後の representative gap report では `selfhost_unsupported_x86_64` は空である。
-
-2026-05-31 の release-preflight `release-preflight-20260531152957` では、`scripts/ci/native-linux-x86-selfregen.sh` が helper/object smokes、actual stage1 materialize、stage1→stage2 chunked transport、stage2 materialize、stage2→stage3 generation、stage2/stage3 stdout byte-for-byte compare、`actual-selfregen-summary.json` validation まで pass した。summary は `stage2_stdout_sha256` / `stage3_stdout_sha256` ともに `92d963a78320cad0c81966ecc4d8e68110ff0105067eb7749b066c5b86ad20aa`、`stage2_code_len` / `stage3_code_len` ともに `9089498` である。
 
 この track の受理は Linux VM 上の証跡を必須にする。macOS arm64 ローカルだけでは Linux ELF runtime/link smoke と actual native self-regeneration を完了扱いにしない。
 

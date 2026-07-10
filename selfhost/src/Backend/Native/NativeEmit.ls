@@ -232,6 +232,9 @@
     with-shnum (append-u16-le with-shentsize section-count)]
     (append-u16-le with-shnum 4)))
 
+(defn emit-elf-header [section-header-offset section-count]
+  (append-elf-header (vector-new 64) section-header-offset section-count))
+
 (defn append-elf-symbol [bytes name info other shndx value size]
   (let [with-name (append-u32-le bytes name)
     with-info (vector-push with-name info)
@@ -391,7 +394,7 @@
       shstrtab-offset (+ strtab-offset strtab-size)
       shstrtab-size 49
       section-header-offset (align-to (+ shstrtab-offset shstrtab-size) 8)
-      header (append-elf-header (vector-new 64) section-header-offset 6)]
+      header (emit-elf-header section-header-offset 6)]
       (do
         (root_push header)
         (let [result (ref-new header)]

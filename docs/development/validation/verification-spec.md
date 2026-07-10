@@ -130,26 +130,25 @@ allowlist フォーマット:
 
 ## P11-2d-3: テスト行列
 
-### tier1 matrix
-tier1 は全テストを実行する最優先プラットフォーム:
+### Supported product/release target matrix
+supported target は全テストを実行する最優先プラットフォーム:
 
 | OS | arch | 実行内容 |
 |----|------|----------|
-| macOS | arm64 (Apple Silicon) | bootstrap + host launcher / component differential 全テスト |
-| macOS | x86_64 (Intel) | bootstrap + host launcher / component differential 全テスト |
+| macOS | arm64 (Mac Apple Silicon) | bootstrap + host launcher / component differential 全テスト |
 | Linux | x86_64 | bootstrap + host launcher / component differential 全テスト |
 
-tier1 で 1 つでも失敗した場合、PR はマージ不可。
+Mac Apple Silicon または Linux x86_64 で 1 つでも失敗した場合、PR はマージ不可。
 
-### tier2 matrix
-tier2 は段階的にカバレッジを拡大するプラットフォーム:
+### Out of support scope
 
 | OS | arch | 実行内容 |
 |----|------|----------|
-| Windows | x86_64 | host launcher 起動 + embedded guest component CLI smoke |
+| macOS | x86_64 (Intel) | out of support scope。Rosetta / Mach-O smoke は internal diagnostic のみ |
+| Windows | x86_64 | out of support scope。host launcher / Authenticode は archived design |
+| Linux | aarch64 | out of support scope。将来再評価事項 |
 
-- Windows での fixed-point 検証は後段対応とする
-- tier2 の失敗は warning 扱いとし、マージをブロックしない (ただし連続失敗は対応必須)
+- out of support scope の target は product/release gate から外す。再導入する場合は supported product/release target matrix の変更として扱う。
 
 ### テスト分類 (5 種)
 リポジトリ内のテストを以下の 5 種に分類し、CI job 名もこれに揃える:

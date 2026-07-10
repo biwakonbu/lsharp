@@ -1413,6 +1413,106 @@ fn test_driver_component_lsharp_path_compile_writes_runnable_component_artifact(
 }
 
 #[test]
+fn test_driver_component_compile_absolute_input_uses_host_artifact_fallback() {
+    let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let cli_source = project_root.join("selfhost/src/App/EmbeddedCli.ls");
+    let temp_dir = unique_temp_dir("default_path_component_compile_absolute_host_fallback");
+    let run_dir = temp_dir.join("runner");
+    let source_dir = temp_dir.join("source");
+    fs::create_dir_all(&run_dir).expect("runner dir creation failed");
+    fs::create_dir_all(&source_dir).expect("source dir creation failed");
+    let source_path = source_dir.join("input.ls");
+    let component_path = temp_dir.join("delegate.component.wasm");
+    let output_path = source_dir.join("input.component.wasm");
+    write_source_file(&source_path, "(defn main [] (print (+ (* 6 7) 0)))\n");
+    fs::write(&component_path, compile_component_entry(&cli_source))
+        .expect("selfhost component write failed");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+        .arg("compile")
+        .arg(&source_path)
+        .arg("--target")
+        .arg("wasi-component")
+        .arg("-o")
+        .arg(&output_path)
+        .env("LSHARP_PATH", &component_path)
+        .current_dir(&run_dir)
+        .output()
+        .expect("driver compile via component path failed");
+
+    assert!(
+        output.status.success(),
+        "guest が cwd 外の絶対入力を読めなくても host artifact fallback で成功するべき: stdout={}, stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let written = fs::read(&output_path).expect("fallback component output read failed");
+    assert!(
+        written.starts_with(b"\0asm"),
+        "fallback compile は runnable component bytes を書くべき"
+    );
+    let runtime_output = lsharp_wasm::wasi_runner::run_wasm_component(&written)
+        .expect("fallback component output should run");
+    assert_eq!(
+        runtime_output, "42\n",
+        "fallback component output は host compile の意味で実行できるべき"
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn test_driver_component_compile_guest_trap_uses_host_artifact_fallback() {
+    let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let cli_source = project_root.join("selfhost/src/App/EmbeddedCli.ls");
+    let temp_dir = unique_temp_dir("default_path_component_compile_trap_host_fallback");
+    let source_path = temp_dir.join("input.ls");
+    let component_path = temp_dir.join("delegate.component.wasm");
+    let output_path = temp_dir.join("input.component.wasm");
+    write_source_file(
+        &source_path,
+        "(type (Maybe a) (Just a) Nothing)\n\
+         (trait (Functor f) (defn fmap [func fa] : (f b)))\n\
+         (defn identity [x] x)\n\
+         (defn main [] (print (identity 42)))\n",
+    );
+    fs::write(&component_path, compile_component_entry(&cli_source))
+        .expect("selfhost component write failed");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+        .arg("compile")
+        .arg("input.ls")
+        .arg("--target")
+        .arg("wasi-component")
+        .arg("-o")
+        .arg("input.component.wasm")
+        .env("LSHARP_PATH", &component_path)
+        .current_dir(&temp_dir)
+        .output()
+        .expect("driver compile via component path failed");
+
+    assert!(
+        output.status.success(),
+        "guest が trap しても host artifact fallback で成功するべき: stdout={}, stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let written = fs::read(&output_path).expect("fallback component output read failed");
+    assert!(
+        written.starts_with(b"\0asm"),
+        "fallback compile は runnable component bytes を書くべき"
+    );
+    let runtime_output = lsharp_wasm::wasi_runner::run_wasm_component(&written)
+        .expect("fallback component output should run");
+    assert_eq!(
+        runtime_output, "42\n",
+        "fallback component output は host compile の意味で実行できるべき"
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn test_driver_component_lsharp_path_build_writes_runnable_component_artifact() {
     let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let cli_source = project_root.join("selfhost/src/App/EmbeddedCli.ls");

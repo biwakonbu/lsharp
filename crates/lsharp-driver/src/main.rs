@@ -11,6 +11,7 @@ mod config;
 mod doc_site;
 #[cfg(test)]
 mod error;
+mod error_codes;
 mod lockfile;
 mod mcp_server;
 mod resolver;
@@ -228,6 +229,9 @@ enum Command {
         output: PathBuf,
     },
 
+    /// L# 開発者向けの Claude Skill / language guide Markdown を標準出力へ表示
+    LanguageGuide,
+
     /// Claude Code へ MCP 設定と L# Skill をインストール
     ClaudePlugin,
 }
@@ -267,14 +271,7 @@ fn main() -> miette::Result<()> {
                 target.map(Into::into),
             )?;
             if !emit_ir {
-                let wasm_size = std::fs::metadata(&artifacts.output_path)
-                    .map(|metadata| metadata.len())
-                    .unwrap_or(0);
-                println!(
-                    "コンパイル成功: {} ({} bytes)",
-                    artifacts.output_path.display(),
-                    wasm_size
-                );
+                print_compile_artifacts_success(&artifacts);
             }
         }
 
@@ -455,12 +452,27 @@ fn main() -> miette::Result<()> {
             doc_site::cmd_doc_site(&output)?;
         }
 
+        Command::LanguageGuide => {
+            print!("{}", claude_plugin::language_guide_markdown());
+        }
+
         Command::ClaudePlugin => {
             claude_plugin::cmd_claude_plugin()?;
         }
     }
 
     Ok(())
+}
+
+fn print_compile_artifacts_success(artifacts: &commands::compile::CompileArtifacts) {
+    let output_size = std::fs::metadata(&artifacts.output_path)
+        .map(|metadata| metadata.len())
+        .unwrap_or(0);
+    println!(
+        "コンパイル成功: {} ({} bytes)",
+        artifacts.output_path.display(),
+        output_size
+    );
 }
 
 fn maybe_delegate_to_embedded_component() -> miette::Result<()> {
@@ -549,19 +561,6 @@ fn maybe_bridge_compile_build_artifact_with_component(
     let args =
         normalize_guest_args_for_current_dir(&current_dir, std::env::args().skip(1).collect());
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-    let guest_output =
-        lsharp_wasm::wasi_runner::run_wasm_component_with_dir_and_args_inherit_stdin_capture(
-            component_bytes,
-            Some(&current_dir),
-            &arg_refs,
-        )
-        .map_err(|e| miette::miette!("embedded component 実行に失敗しました: {e}"))?;
-
-    if guest_output.exit_code != 0 {
-        print!("{}", guest_output.stdout);
-        std::process::exit(guest_output.exit_code);
-    }
-
     let host_file = if file.is_absolute() {
         file.clone()
     } else {
@@ -593,9 +592,30 @@ fn maybe_bridge_compile_build_artifact_with_component(
     };
     let host_target = infer_bridge_compile_target(requested_target, &resolved_output);
 
-    commands::compile::compile_file(&host_file, Some(&resolved_output), false, Some(host_target))?;
-    print!("{}", guest_output.stdout);
-    std::process::exit(guest_output.exit_code);
+    let guest_output =
+        lsharp_wasm::wasi_runner::run_wasm_component_with_dir_and_args_inherit_stdin_capture(
+            component_bytes,
+            Some(&current_dir),
+            &arg_refs,
+        );
+
+    let artifacts = commands::compile::compile_file(
+        &host_file,
+        Some(&resolved_output),
+        false,
+        Some(host_target),
+    )?;
+
+    match guest_output {
+        Ok(output) if output.exit_code == 0 => {
+            print!("{}", output.stdout);
+            std::process::exit(output.exit_code);
+        }
+        Ok(_) | Err(_) => {
+            print_compile_artifacts_success(&artifacts);
+            std::process::exit(0);
+        }
+    }
 }
 
 fn maybe_bridge_compile_build_artifact() -> miette::Result<()> {
@@ -2504,6 +2524,7 @@ mod tests {
         let commands = command_names_from_help(&help);
 
         assert!(commands.contains(&"compile"));
+        assert!(commands.contains(&"language-guide"));
         assert!(!commands.contains(&"parse"));
         assert!(!commands.contains(&"check"));
         assert!(!commands.contains(&"fmt"));
@@ -2816,6 +2837,41 @@ mod tests {
         );
 
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_repo_doc_status_dogfooding_is_wired_for_metadata_fixture() {
+        let repo_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let status_path = repo_root.join(".lsharp-doc-status");
+        assert!(
+            status_path.exists(),
+            ".lsharp-doc-status を repo で運用するべき"
+        );
+
+        let status = lsharp_docs::tracker::load_doc_status(&status_path);
+        let abs = status
+            .entries
+            .get("abs")
+            .expect("examples/metadata.ls の abs は doc-status で追跡するべき");
+        assert_eq!(abs.freshness, lsharp_docs::tracker::Freshness::Fresh);
+        assert_eq!(abs.reviewed_by.as_deref(), Some("docs-maintainers"));
+        assert!(abs.last_reviewed.is_some(), "初回 ack の日時を保持するべき");
+
+        let ci = std::fs::read_to_string(repo_root.join(".github/workflows/ci.yml")).unwrap();
+        assert!(
+            ci.contains("scripts/ci/doc-status-check.sh"),
+            "CI は doc-status check script を実行するべき"
+        );
+
+        let operation_doc =
+            repo_root.join("docs/development/operations/documentation-freshness.md");
+        assert!(operation_doc.exists(), "doc-status 運用手順が必要");
+
+        let site_manifest = std::fs::read_to_string(repo_root.join("docs/site.toml")).unwrap();
+        assert!(
+            site_manifest.contains("docs/development/operations/documentation-freshness.md"),
+            "doc-status 運用手順は docs site に公開するべき"
+        );
     }
 
     #[test]

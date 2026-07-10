@@ -272,6 +272,34 @@ else
     WARNINGS=$((WARNINGS + 1))
 fi
 
+# Documentation site
+if [ -f "docs/site.toml" ] &&
+   grep -q 'source = "docs/site.toml"' docs/site.toml &&
+   grep -q 'docs/guides/quick-start.md' docs/site.toml &&
+   grep -q 'book/ch01-introduction.md' docs/site.toml &&
+   grep -q 'docs/development/operations/documentation-site.md' docs/site.toml; then
+    echo "  OK: docs/site.toml が公開ドキュメントサイトの SSOT として存在"
+else
+    echo "  ERROR: docs/site.toml に必須ページまたは source 宣言が不足"
+    ERRORS=$((ERRORS + 1))
+fi
+
+if [ -x "scripts/ci/build-doc-site.sh" ]; then
+    echo "  OK: scripts/ci/build-doc-site.sh 存在 (実行権限あり)"
+else
+    echo "  ERROR: scripts/ci/build-doc-site.sh なし、または実行権限なし"
+    ERRORS=$((ERRORS + 1))
+fi
+
+if [ -f ".github/workflows/docs.yml" ] &&
+   grep -q 'actions/upload-pages-artifact@v4' .github/workflows/docs.yml &&
+   grep -q 'actions/deploy-pages@v4' .github/workflows/docs.yml; then
+    echo "  OK: Docs Site workflow が GitHub Pages artifact / deploy を使用"
+else
+    echo "  ERROR: .github/workflows/docs.yml の GitHub Pages 公開設定が不足"
+    ERRORS=$((ERRORS + 1))
+fi
+
 # =============================================================================
 # 7. docs/development/planning/gap-classification.md の存在確認 (P11-1c)
 # =============================================================================

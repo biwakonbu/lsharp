@@ -1,12 +1,42 @@
 use crate::api_doc::{self, ApiDoc, ApiModule};
+use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct GuidePage {
-    slug: String,
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+struct SiteManifest {
     title: String,
-    markdown: String,
+    description: String,
+    source: String,
+    base_url: String,
+    sections: Vec<SiteSection>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+struct SiteSection {
+    id: String,
+    title: String,
+    description: String,
+    pages: Vec<SitePage>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+struct SitePage {
+    title: String,
+    source: String,
+    output: String,
+    summary: String,
+    audience: String,
+}
+
+impl SiteManifest {
+    fn all_pages(&self) -> Vec<&SitePage> {
+        self.sections
+            .iter()
+            .flat_map(|section| section.pages.iter())
+            .collect()
+    }
 }
 
 pub fn cmd_doc_site(output: &Path) -> miette::Result<()> {
@@ -15,28 +45,32 @@ pub fn cmd_doc_site(output: &Path) -> miette::Result<()> {
 }
 
 pub(crate) fn cmd_doc_site_in(repo_root: &Path, output: &Path) -> miette::Result<()> {
-    let guides_src = repo_root.join("docs/guides");
     let stdlib_root = repo_root.join("stdlib");
-    let guides_out = output.join("guides");
     let api_out = output.join("api");
-    let guides = collect_guides(&guides_src)?;
+    let manifest = load_site_manifest(repo_root)?;
 
-    fs::create_dir_all(&guides_out)
-        .map_err(|e| miette::miette!("{}: {}", guides_out.display(), e))?;
+    fs::create_dir_all(output).map_err(|e| miette::miette!("{}: {}", output.display(), e))?;
     fs::create_dir_all(&api_out).map_err(|e| miette::miette!("{}: {}", api_out.display(), e))?;
 
-    let guide_nav = guide_links(&guides, "");
-    let guide_nav_parent = guide_links(&guides, "../guides/");
+    for page in manifest.all_pages() {
+        let source_path = repo_root.join(&page.source);
+        let markdown = fs::read_to_string(&source_path)
+            .map_err(|e| miette::miette!("{}: {}", source_path.display(), e))?;
+        let output_path = output.join(&page.output);
+        if let Some(parent) = output_path.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|e| miette::miette!("{}: {}", parent.display(), e))?;
+        }
 
-    for guide in &guides {
         let html = render_page(
-            &guide.title,
-            &render_markdown(&guide.markdown),
-            "../index.html",
-            &guide_nav,
+            &manifest,
+            &page.title,
+            &render_markdown(&markdown),
+            &home_href(&page.output),
+            &site_nav_links(&manifest, &page.output),
         );
-        fs::write(guides_out.join(format!("{}.html", guide.slug)), html)
-            .map_err(|e| miette::miette!("guide 出力失敗: {e}"))?;
+        fs::write(&output_path, html)
+            .map_err(|e| miette::miette!("site page 出力失敗: {}: {e}", output_path.display()))?;
     }
 
     let stdlib_api = build_stdlib_api(&stdlib_root)?;
@@ -46,94 +80,132 @@ pub(crate) fn cmd_doc_site_in(repo_root: &Path, output: &Path) -> miette::Result
         .map_err(|e| miette::miette!("stdlib.json 出力失敗: {e}"))?;
 
     for module in &stdlib_api.modules {
+        let output_name = format!("api/{}.html", module.name);
         let html = render_page(
+            &manifest,
             &format!("API: {}", module.name),
             &render_api_module(module),
-            "../index.html",
-            &guide_nav_parent,
+            &home_href(&output_name),
+            &site_nav_links(&manifest, &output_name),
         );
         fs::write(api_out.join(format!("{}.html", module.name)), html)
             .map_err(|e| miette::miette!("API ページ出力失敗: {e}"))?;
     }
 
     let index_html = render_page(
-        "L# Documentation",
-        &render_index(&guides, &stdlib_api),
+        &manifest,
+        &manifest.title,
+        &render_index(&manifest, &stdlib_api),
         "index.html",
-        &guide_links(&guides, "guides/"),
+        &site_nav_links_from_index(&manifest),
     );
     fs::write(output.join("index.html"), index_html)
         .map_err(|e| miette::miette!("index.html 出力失敗: {e}"))?;
+    fs::write(output.join(".nojekyll"), "")
+        .map_err(|e| miette::miette!(".nojekyll 出力失敗: {e}"))?;
+    fs::write(
+        output.join("sitemap.xml"),
+        render_sitemap(&manifest, &stdlib_api),
+    )
+    .map_err(|e| miette::miette!("sitemap.xml 出力失敗: {e}"))?;
+    let manifest_json = serde_json::to_string_pretty(&manifest)
+        .map_err(|e| miette::miette!("docs-site-manifest.json 直列化失敗: {e}"))?;
+    fs::write(output.join("docs-site-manifest.json"), manifest_json)
+        .map_err(|e| miette::miette!("docs-site-manifest.json 出力失敗: {e}"))?;
 
-    println!("Language reference ... ok");
+    println!("Site manifest ({}) ... ok", manifest.source);
+    println!("Pages ({} pages) ... ok", manifest.all_pages().len());
     println!("Stdlib API ({} modules) ... ok", stdlib_api.modules.len());
-    println!("Guides ({} pages) ... ok", guides.len());
     println!("Site generated: {}", output.display());
 
     Ok(())
 }
 
-fn collect_guides(guides_src: &Path) -> miette::Result<Vec<GuidePage>> {
-    let mut guides = Vec::new();
-    for entry in
-        fs::read_dir(guides_src).map_err(|e| miette::miette!("{}: {}", guides_src.display(), e))?
-    {
-        let path = entry
-            .map_err(|e| miette::miette!("{}: {}", guides_src.display(), e))?
-            .path();
-        if path.extension().and_then(|ext| ext.to_str()) != Some("md") {
-            continue;
-        }
-        if path.file_name().and_then(|name| name.to_str()) == Some("README.md") {
-            continue;
-        }
+fn load_site_manifest(repo_root: &Path) -> miette::Result<SiteManifest> {
+    let manifest_path = repo_root.join("docs/site.toml");
+    let text = fs::read_to_string(&manifest_path)
+        .map_err(|e| miette::miette!("{}: {}", manifest_path.display(), e))?;
+    let manifest: SiteManifest =
+        toml::from_str(&text).map_err(|e| miette::miette!("docs/site.toml の読み込み失敗: {e}"))?;
+    validate_site_manifest(repo_root, &manifest)?;
+    Ok(manifest)
+}
 
-        let markdown =
-            fs::read_to_string(&path).map_err(|e| miette::miette!("{}: {}", path.display(), e))?;
-        let slug = path
-            .file_stem()
-            .and_then(|stem| stem.to_str())
-            .ok_or_else(|| miette::miette!("guide slug を解決できません: {}", path.display()))?
-            .to_string();
-        let title = guide_title(&slug, &markdown);
-        guides.push(GuidePage {
-            slug,
-            title,
-            markdown,
-        });
+fn validate_site_manifest(repo_root: &Path, manifest: &SiteManifest) -> miette::Result<()> {
+    if manifest.source != "docs/site.toml" {
+        return Err(miette::miette!(
+            "docs/site.toml: source は docs/site.toml で固定してください"
+        ));
     }
-    guides.sort_by_key(|guide| guide_sort_key(&guide.slug));
-    Ok(guides)
-}
 
-fn guide_sort_key(slug: &str) -> (u8, String) {
-    let priority = match slug {
-        "quick-start" => 0,
-        "language-reference" => 1,
-        "package-layout" => 2,
-        _ => 10,
-    };
-    (priority, slug.to_string())
-}
+    let mut section_ids = HashSet::new();
+    let mut sources = HashSet::new();
+    let mut outputs = HashSet::new();
 
-fn guide_title(slug: &str, markdown: &str) -> String {
-    match slug {
-        "quick-start" => "Quick Start".to_string(),
-        "language-reference" => "Language Reference".to_string(),
-        "package-layout" => "Package Layout".to_string(),
-        _ => markdown
-            .lines()
-            .find_map(|line| line.strip_prefix("# ").map(str::trim))
-            .map(str::to_string)
-            .unwrap_or_else(|| slug.replace('-', " ")),
+    for section in &manifest.sections {
+        if section.id.trim().is_empty() || section.title.trim().is_empty() {
+            return Err(miette::miette!(
+                "docs/site.toml: section id/title は必須です"
+            ));
+        }
+        if !section_ids.insert(section.id.as_str()) {
+            return Err(miette::miette!(
+                "docs/site.toml: section id が重複しています: {}",
+                section.id
+            ));
+        }
+        if section.pages.is_empty() {
+            return Err(miette::miette!(
+                "docs/site.toml: section に page がありません: {}",
+                section.id
+            ));
+        }
+
+        for page in &section.pages {
+            let source = Path::new(&page.source);
+            let output = Path::new(&page.output);
+            if !is_safe_relative_path(source) || !is_safe_relative_path(output) {
+                return Err(miette::miette!(
+                    "docs/site.toml: source/output は repo 相対パスで指定してください: {} -> {}",
+                    page.source,
+                    page.output
+                ));
+            }
+            if output.extension().and_then(|ext| ext.to_str()) != Some("html") {
+                return Err(miette::miette!(
+                    "docs/site.toml: output は .html で終わる必要があります: {}",
+                    page.output
+                ));
+            }
+            if !repo_root.join(source).exists() {
+                return Err(miette::miette!(
+                    "docs/site.toml: source が存在しません: {}",
+                    page.source
+                ));
+            }
+            if !sources.insert(page.source.as_str()) {
+                return Err(miette::miette!(
+                    "docs/site.toml: source が重複しています: {}",
+                    page.source
+                ));
+            }
+            if !outputs.insert(page.output.as_str()) {
+                return Err(miette::miette!(
+                    "docs/site.toml: output が重複しています: {}",
+                    page.output
+                ));
+            }
+        }
     }
+
+    Ok(())
 }
 
-fn guide_links(guides: &[GuidePage], prefix: &str) -> Vec<(String, String)> {
-    guides
-        .iter()
-        .map(|guide| (format!("{prefix}{}.html", guide.slug), guide.title.clone()))
-        .collect()
+fn is_safe_relative_path(path: &Path) -> bool {
+    !path.is_absolute()
+        && path
+            .components()
+            .all(|component| matches!(component, Component::Normal(_) | Component::CurDir))
 }
 
 fn build_stdlib_api(stdlib_root: &Path) -> miette::Result<ApiDoc> {
@@ -167,19 +239,33 @@ fn build_stdlib_api(stdlib_root: &Path) -> miette::Result<ApiDoc> {
     })
 }
 
-fn render_index(guides: &[GuidePage], stdlib_api: &ApiDoc) -> String {
+fn render_index(manifest: &SiteManifest, stdlib_api: &ApiDoc) -> String {
     let mut body = String::new();
-    body.push_str("<h1>L# Documentation</h1>\n");
-    body.push_str("<p>L# のガイドと標準ライブラリ API をまとめた静的サイトです。</p>\n");
-    body.push_str("<h2>Guides</h2>\n<ul>\n");
-    for guide in guides {
+    body.push_str(&format!("<h1>{}</h1>\n", escape_html(&manifest.title)));
+    body.push_str(&format!("<p>{}</p>\n", escape_html(&manifest.description)));
+    body.push_str(&format!(
+        "<p><strong>SSOT:</strong> <code>{}</code> がサイト構成の正本です。本文は各 Markdown と <code>stdlib/*.ls</code> の metadata を正本にします。</p>\n",
+        escape_html(&manifest.source)
+    ));
+
+    for section in &manifest.sections {
+        body.push_str(&format!("<h2>{}</h2>\n", escape_html(&section.title)));
         body.push_str(&format!(
-            "<li><a href=\"guides/{}.html\">{}</a></li>\n",
-            escape_html(&guide.slug),
-            escape_html(&guide.title)
+            "<p>{}</p>\n<ul>\n",
+            escape_html(&section.description)
         ));
+        for page in &section.pages {
+            body.push_str(&format!(
+                "<li><a href=\"{}\">{}</a><br><span>{}</span></li>\n",
+                escape_html(&page.output),
+                escape_html(&page.title),
+                escape_html(&page.summary)
+            ));
+        }
+        body.push_str("</ul>\n");
     }
-    body.push_str("</ul>\n<h2>Stdlib API</h2>\n<ul>\n");
+
+    body.push_str("<h2>Stdlib API</h2>\n<p><code>stdlib/*.ls</code> の <code>:doc</code> metadata から生成します。</p>\n<ul>\n");
     for module in &stdlib_api.modules {
         body.push_str(&format!(
             "<li><a href=\"api/{}.html\">{}</a></li>\n",
@@ -250,13 +336,14 @@ fn render_api_module(module: &ApiModule) -> String {
 }
 
 fn render_page(
+    manifest: &SiteManifest,
     title: &str,
     body: &str,
     home_href: &str,
-    guide_links: &[(String, String)],
+    nav_links: &[(String, String)],
 ) -> String {
     let mut nav = format!("<a href=\"{}\">Home</a>", escape_html(home_href));
-    for (href, label) in guide_links {
+    for (href, label) in nav_links {
         nav.push_str(&format!(
             "<a href=\"{}\">{}</a>",
             escape_html(href),
@@ -264,11 +351,85 @@ fn render_page(
         ));
     }
     format!(
-        "<!DOCTYPE html>\n<html lang=\"ja\"><head><meta charset=\"utf-8\"><title>{}</title><style>body{{font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;max-width:960px;margin:0 auto;padding:40px;line-height:1.6;color:#222;background:#faf8f3}}nav a{{margin-right:16px}}pre{{background:#f1ece2;padding:16px;border-radius:8px;overflow:auto}}code{{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}}section{{padding-bottom:16px;border-bottom:1px solid #ddd;margin-bottom:16px}}ul{{padding-left:20px}}</style></head><body><nav>{}</nav>{}</body></html>\n",
+        "<!DOCTYPE html>\n<html lang=\"ja\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>{}</title><style>{}</style></head><body><header><div class=\"brand\">{}</div><nav>{}</nav></header><main data-source=\"{}\">{}</main></body></html>\n",
         escape_html(title),
+        site_css(),
+        escape_html(&manifest.title),
         nav,
+        escape_html(&manifest.source),
         body
     )
+}
+
+fn home_href(current_output: &str) -> String {
+    format!("{}index.html", parent_prefix(current_output))
+}
+
+fn site_nav_links_from_index(manifest: &SiteManifest) -> Vec<(String, String)> {
+    manifest
+        .sections
+        .iter()
+        .filter_map(|section| {
+            section
+                .pages
+                .first()
+                .map(|page| (page.output.clone(), section.title.clone()))
+        })
+        .collect()
+}
+
+fn site_nav_links(manifest: &SiteManifest, current_output: &str) -> Vec<(String, String)> {
+    let prefix = parent_prefix(current_output);
+    manifest
+        .sections
+        .iter()
+        .filter_map(|section| {
+            section
+                .pages
+                .first()
+                .map(|page| (format!("{prefix}{}", page.output), section.title.clone()))
+        })
+        .collect()
+}
+
+fn parent_prefix(output: &str) -> String {
+    let depth = Path::new(output)
+        .parent()
+        .map(|parent| {
+            parent
+                .components()
+                .filter(|component| matches!(component, Component::Normal(_)))
+                .count()
+        })
+        .unwrap_or(0);
+    "../".repeat(depth)
+}
+
+fn render_sitemap(manifest: &SiteManifest, stdlib_api: &ApiDoc) -> String {
+    let mut paths = vec!["index.html".to_string()];
+    paths.extend(manifest.all_pages().iter().map(|page| page.output.clone()));
+    paths.extend(
+        stdlib_api
+            .modules
+            .iter()
+            .map(|module| format!("api/{}.html", module.name)),
+    );
+    paths.sort();
+
+    let base_url = manifest.base_url.trim_end_matches('/');
+    let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+    xml.push_str("<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n");
+    for path in paths {
+        xml.push_str("  <url><loc>");
+        xml.push_str(&escape_xml(&format!("{base_url}/{path}")));
+        xml.push_str("</loc></url>\n");
+    }
+    xml.push_str("</urlset>\n");
+    xml
+}
+
+fn site_css() -> &'static str {
+    "body{font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;margin:0;line-height:1.65;color:#202124;background:#fbfaf7}header{position:sticky;top:0;background:#fffdf8;border-bottom:1px solid #e6dfd2;padding:14px 32px;display:flex;align-items:center;gap:24px;z-index:1}.brand{font-weight:700;white-space:nowrap}nav{display:flex;gap:14px;flex-wrap:wrap}nav a{color:#3d4f7a;text-decoration:none}main{max-width:1040px;margin:0 auto;padding:40px 32px 72px}h1{font-size:2.2rem;line-height:1.2;margin:0 0 18px}h2{margin-top:36px;border-top:1px solid #e6dfd2;padding-top:28px}h3{margin-top:28px}a{color:#234f9d}pre{background:#f1ece2;padding:16px;border-radius:8px;overflow:auto}code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}section{padding-bottom:16px;border-bottom:1px solid #ddd;margin-bottom:16px}ul{padding-left:22px}li{margin:8px 0}span{color:#5f6368}@media(max-width:720px){header{position:static;align-items:flex-start;flex-direction:column;padding:16px 20px}main{padding:28px 20px 56px}h1{font-size:1.8rem}}"
 }
 
 fn render_markdown(markdown: &str) -> String {
@@ -399,6 +560,10 @@ fn escape_html(text: &str) -> String {
         .replace('>', "&gt;")
 }
 
+fn escape_xml(text: &str) -> String {
+    escape_html(text).replace('"', "&quot;")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -441,6 +606,32 @@ mod tests {
             output.join("guides/package-layout.html").exists(),
             "package-layout.html が必要"
         );
+        assert!(
+            output
+                .join("guides/metadata-driven-development.html")
+                .exists(),
+            "metadata-driven-development.html が必要"
+        );
+        assert!(
+            output.join("guides/ide-setup.html").exists(),
+            "ide-setup.html が必要"
+        );
+        assert!(
+            output.join("guides/deployment-targets.html").exists(),
+            "deployment-targets.html が必要"
+        );
+        assert!(
+            output.join("guides/stdlib-guide.html").exists(),
+            "stdlib-guide.html が必要"
+        );
+        assert!(
+            output.join("guides/error-reference.html").exists(),
+            "error-reference.html が必要"
+        );
+        assert!(
+            output.join("guides/examples.html").exists(),
+            "examples.html が必要"
+        );
         assert!(output.join("api/Core.html").exists(), "Core.html が必要");
         assert!(
             output.join("api/stdlib.json").exists(),
@@ -450,11 +641,172 @@ mod tests {
         let index = std::fs::read_to_string(output.join("index.html")).unwrap();
         assert!(index.contains("Quick Start"));
         assert!(index.contains("Package Layout"));
+        assert!(index.contains("Examples Matrix"));
         assert!(index.contains("Core"));
 
         let api = std::fs::read_to_string(output.join("api/stdlib.json")).unwrap();
         assert!(api.contains("\"package\": \"stdlib\""));
         assert!(api.contains("\"name\": \"Core\""));
+
+        std::fs::remove_dir_all(&output).unwrap();
+    }
+
+    #[test]
+    fn test_doc_site_manifest_is_single_source_of_truth() {
+        let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let manifest = load_site_manifest(&repo_root).expect("docs/site.toml should load");
+        let pages = manifest.all_pages();
+
+        assert_eq!(manifest.source, "docs/site.toml");
+        assert!(
+            pages
+                .iter()
+                .any(|page| page.source == "docs/guides/quick-start.md"
+                    && page.output == "guides/quick-start.html"),
+            "quick-start は manifest から生成対象になるべき"
+        );
+        assert!(
+            pages
+                .iter()
+                .any(|page| page.source == "book/ch01-introduction.md"
+                    && page.output == "book/introduction.html"),
+            "book の入口も manifest から生成対象になるべき"
+        );
+        assert!(
+            pages.iter().any(|page| page.source
+                == "docs/development/operations/documentation-site.md"
+                && page.output == "operations/documentation-site.html"),
+            "公開運用手順も manifest から生成対象になるべき"
+        );
+    }
+
+    #[test]
+    fn test_doc_site_manifest_exposes_examples_matrix() {
+        let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let manifest = load_site_manifest(&repo_root).expect("docs/site.toml should load");
+        let pages = manifest.all_pages();
+
+        assert!(
+            pages.iter().any(|page| page.title == "Examples Matrix"
+                && page.source == "docs/guides/examples.md"
+                && page.output == "guides/examples.html"),
+            "examples matrix は公開 guide として manifest から生成対象になるべき"
+        );
+    }
+
+    #[test]
+    fn test_doc_site_manifest_exposes_user_guide_expansion() {
+        let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let manifest = load_site_manifest(&repo_root).expect("docs/site.toml should load");
+        let pages = manifest.all_pages();
+
+        for (title, source, output) in [
+            (
+                "Metadata-Driven Development",
+                "docs/guides/metadata-driven-development.md",
+                "guides/metadata-driven-development.html",
+            ),
+            (
+                "IDE and LSP Setup",
+                "docs/guides/ide-setup.md",
+                "guides/ide-setup.html",
+            ),
+            (
+                "Deployment Targets",
+                "docs/guides/deployment-targets.md",
+                "guides/deployment-targets.html",
+            ),
+            (
+                "Stdlib Guide",
+                "docs/guides/stdlib-guide.md",
+                "guides/stdlib-guide.html",
+            ),
+            (
+                "Error Reference",
+                "docs/guides/error-reference.md",
+                "guides/error-reference.html",
+            ),
+        ] {
+            assert!(
+                pages.iter().any(|page| page.title == title
+                    && page.source == source
+                    && page.output == output),
+                "{title} は公開 guide として manifest から生成対象になるべき"
+            );
+        }
+    }
+
+    #[test]
+    fn test_doc_site_manifest_separates_user_guides_from_implementation_book() {
+        let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let manifest = load_site_manifest(&repo_root).expect("docs/site.toml should load");
+
+        let start_section = manifest
+            .sections
+            .iter()
+            .find(|section| section.id == "start")
+            .expect("start section が必要");
+        assert!(
+            start_section
+                .pages
+                .iter()
+                .all(|page| page.audience.contains("L# を使う開発者")
+                    || page
+                        .audience
+                        .contains("L# でアプリやライブラリを書く開発者")
+                    || page.audience.contains("L# package を作る開発者")
+                    || page.audience.contains("既存サンプルから L# を学ぶ開発者")),
+            "guides は利用者向け audience に揃えるべき"
+        );
+
+        let book_section = manifest
+            .sections
+            .iter()
+            .find(|section| section.id == "book")
+            .expect("book section が必要");
+        assert!(
+            book_section
+                .pages
+                .iter()
+                .all(|page| page.audience.contains("コンパイラ実装を読む開発者")),
+            "book はコンパイラ実装を読む開発者向け audience に揃えるべき"
+        );
+    }
+
+    #[test]
+    fn test_cmd_doc_site_generates_manifest_pages_and_publish_assets() {
+        let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let output = std::env::temp_dir().join("lsharp_doc_site_manifest");
+        let _ = std::fs::remove_dir_all(&output);
+
+        let result = cmd_doc_site_in(&repo_root, &output);
+        assert!(result.is_ok(), "doc-site は成功するべき: {result:?}");
+
+        assert!(output.join(".nojekyll").exists(), ".nojekyll が必要");
+        assert!(output.join("sitemap.xml").exists(), "sitemap.xml が必要");
+        assert!(
+            output.join("docs-site-manifest.json").exists(),
+            "docs-site-manifest.json が必要"
+        );
+        assert!(
+            output.join("book/introduction.html").exists(),
+            "book/introduction.html が必要"
+        );
+        assert!(
+            output.join("operations/documentation-site.html").exists(),
+            "documentation-site.html が必要"
+        );
+        assert!(
+            output
+                .join("operations/documentation-freshness.html")
+                .exists(),
+            "documentation-freshness.html が必要"
+        );
+
+        let index = std::fs::read_to_string(output.join("index.html")).unwrap();
+        assert!(index.contains("data-source=\"docs/site.toml\""));
+        assert!(index.contains("L# を使う"));
+        assert!(index.contains("言語と実装を読む"));
 
         std::fs::remove_dir_all(&output).unwrap();
     }

@@ -492,6 +492,11 @@
       -1
       (- value 1))))
 
+(defn control-flow-end-map-with-else-index [end-map else-idx end-idx]
+  (if (< else-idx 0)
+    end-map
+    (map-insert-index end-map else-idx end-idx)))
+
 (defn make-control-stack-entry [start-idx opcode]
   (vector-push (vector-push (vector-new 2) start-idx) opcode))
 
@@ -7153,11 +7158,24 @@
   (emit-twenty-plus-arg-call-x86 61 rel frame-base-slot-count))
 
 (defn emit-one-arg-call-x86-core-with-call-bytes [call-rel-bytes]
-  (concat-four-byte-vectors-rooted
-    (emit-mov-rdi-rax)
-    (emit-push-rcx)
-    call-rel-bytes
-    (emit-pop-rcx)))
+  (let [call-rel-slot (root_push call-rel-bytes)]
+    (let [mov-rdi (emit-mov-rdi-rax)]
+      (do
+        (root_push mov-rdi)
+        (let [push-rcx (emit-push-rcx)]
+          (do
+            (root_push push-rcx)
+            (let [pop-rcx (emit-pop-rcx)]
+              (do
+                (root_push pop-rcx)
+                (let [result (concat-four-byte-vectors-rooted mov-rdi push-rcx call-rel-bytes pop-rcx)]
+                  (do
+                    (root_set call-rel-slot result)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    result))))))))))
 
 (defn emit-three-arg-call-x86-core [rel frame-base-slot-count]
   (concat-byte-vectors
@@ -7205,8 +7223,7 @@
           result)))))
 
 (defn emit-four-arg-call-x86-core-with-rel-ref [call-rel-ref frame-base-slot-count]
-  (do
-    (root_push call-rel-ref)
+  (let [call-rel-ref-slot (root_push call-rel-ref)]
     (let [setup (concat-four-byte-vectors-rooted
                    (emit-mov-rdx-rcx)
                    (emit-mov-rsi-from-local (native-value-window-spill-offset frame-base-slot-count 0))
@@ -7219,6 +7236,9 @@
             (root_push call-rel-bytes)
             (let [result (concat-byte-vectors-rooted setup call-rel-bytes)]
               (do
+                (root_push result)
+                (root_set call-rel-ref-slot result)
+                (root_pop)
                 (root_pop)
                 (root_pop)
                 (root_pop)
@@ -7440,58 +7460,46 @@
     current-depth))
 
 (defn emit-nine-arg-call-x86-core [rel frame-base-slot-count]
-  (concat-byte-vectors
-    (concat-byte-vectors
-      (concat-byte-vectors
-        (concat-byte-vectors
-          (concat-byte-vectors
-            (concat-byte-vectors
-              (concat-byte-vectors
-                (concat-byte-vectors
-                  (concat-byte-vectors
-                    (concat-byte-vectors
-                      (concat-byte-vectors
-                        (concat-byte-vectors
-                          (emit-sub-rsp-imm32 32)
-                          (emit-mov-third-stack-from-rax))
-                        (emit-mov-second-stack-from-rcx))
-                      (emit-mov-r9-from-local (native-value-window-spill-offset frame-base-slot-count 0)))
-                    (emit-mov-top-stack-from-r9))
-                  (emit-mov-r9-from-local (native-value-window-spill-offset frame-base-slot-count 1)))
-                (emit-mov-r8-from-local (native-value-window-spill-offset frame-base-slot-count 2)))
-              (emit-mov-rcx-from-local (native-value-window-spill-offset frame-base-slot-count 3)))
-            (emit-mov-rdx-from-local (native-value-window-spill-offset frame-base-slot-count 4)))
-          (emit-mov-rsi-from-local (native-value-window-spill-offset frame-base-slot-count 5)))
-        (emit-mov-rdi-from-local (native-value-window-spill-offset frame-base-slot-count 6)))
-       (emit-call-rel32 rel))
-     (emit-add-rsp-imm32 32)))
+  (let [call-rel-bytes (emit-call-rel32 rel)]
+    (do
+      (root_push call-rel-bytes)
+      (let [result (emit-nine-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)]
+        (do
+          (root_pop)
+          result)))))
 
 (defn emit-nine-arg-call-x86-core-with-call-bytes [call-rel-bytes frame-base-slot-count]
-  (concat-byte-vectors
-    (concat-byte-vectors
-      (concat-byte-vectors
-        (concat-byte-vectors
-          (concat-byte-vectors
-            (concat-byte-vectors
-              (concat-byte-vectors
-                (concat-byte-vectors
-                  (concat-byte-vectors
-                    (concat-byte-vectors
-                      (concat-byte-vectors
-                        (concat-byte-vectors
-                          (emit-sub-rsp-imm32 32)
-                          (emit-mov-third-stack-from-rax))
-                        (emit-mov-second-stack-from-rcx))
-                      (emit-mov-r9-from-local (native-value-window-spill-offset frame-base-slot-count 0)))
-                    (emit-mov-top-stack-from-r9))
-                  (emit-mov-r9-from-local (native-value-window-spill-offset frame-base-slot-count 1)))
-                (emit-mov-r8-from-local (native-value-window-spill-offset frame-base-slot-count 2)))
-              (emit-mov-rcx-from-local (native-value-window-spill-offset frame-base-slot-count 3)))
-            (emit-mov-rdx-from-local (native-value-window-spill-offset frame-base-slot-count 4)))
-          (emit-mov-rsi-from-local (native-value-window-spill-offset frame-base-slot-count 5)))
-        (emit-mov-rdi-from-local (native-value-window-spill-offset frame-base-slot-count 6)))
-       call-rel-bytes)
-     (emit-add-rsp-imm32 32)))
+  (let [setup1 (concat-four-byte-vectors-rooted
+                 (emit-sub-rsp-imm32 32)
+                 (emit-mov-third-stack-from-rax)
+                 (emit-mov-second-stack-from-rcx)
+                 (emit-mov-r9-from-local (native-value-window-spill-offset frame-base-slot-count 0)))]
+    (do
+      (root_push setup1)
+      (let [setup2 (concat-four-byte-vectors-rooted
+                     setup1
+                     (emit-mov-top-stack-from-r9)
+                     (emit-mov-r9-from-local (native-value-window-spill-offset frame-base-slot-count 1))
+                     (emit-mov-r8-from-local (native-value-window-spill-offset frame-base-slot-count 2)))]
+        (do
+          (root_push setup2)
+          (let [setup3 (concat-four-byte-vectors-rooted
+                         setup2
+                         (emit-mov-rcx-from-local (native-value-window-spill-offset frame-base-slot-count 3))
+                         (emit-mov-rdx-from-local (native-value-window-spill-offset frame-base-slot-count 4))
+                         (emit-mov-rsi-from-local (native-value-window-spill-offset frame-base-slot-count 5)))]
+            (do
+              (root_push setup3)
+              (let [result (concat-four-byte-vectors-rooted
+                             setup3
+                             (emit-mov-rdi-from-local (native-value-window-spill-offset frame-base-slot-count 6))
+                             call-rel-bytes
+                             (emit-add-rsp-imm32 32))]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  result)))))))))
 
 (defn emit-nine-arg-call-x86 [rel frame-base-slot-count current-depth]
   (emit-consume-nine-produce-one-bundle-x86
@@ -8964,7 +8972,7 @@
       function-metas)
     len))
 
-(defn native-function-body-size-x86-loop-with-context [ctx idx total current-depth]
+(defn x86-body-size-loop-ctx [ctx idx total current-depth]
   (let [ir-func (vector-get ctx 0)
     function-metas (vector-get ctx 1)
     len (vector-get ctx 2)]
@@ -8975,11 +8983,11 @@
       operand (vector-get instr 1)
       next-total (+ total (native-instr-size-x86 opcode operand function-metas current-depth))
       next-depth (apply-stack-delta current-depth (opcode-stack-delta opcode operand function-metas))]
-      (native-function-body-size-x86-loop-with-context ctx (+ idx 1) next-total next-depth)))))
+      (x86-body-size-loop-ctx ctx (+ idx 1) next-total next-depth)))))
 
 (defn native-function-body-size-x86-loop [ir-func function-metas idx len total current-depth]
   (let [ctx (make-x86-body-size-context ir-func function-metas len)]
-    (native-function-body-size-x86-loop-with-context ctx idx total current-depth)))
+    (x86-body-size-loop-ctx ctx idx total current-depth)))
 
 (defn native-param-spill-bytes-x86-twenty-to-twenty-two [param-count]
   (if (= param-count 22)
@@ -9204,7 +9212,9 @@
                                       14
                                        (if (= param-count 1) 7 0))))))))
     body-size-ctx (make-x86-body-size-context ir-func function-metas (vector-length ir-func))
-    body-bytes (native-function-body-size-x86-loop-with-context body-size-ctx 0 0 0)]
+    body-bytes (if (> (vector-length ir-func) 4096)
+                 (+ 131072 (* (vector-length ir-func) 16))
+                 (x86-body-size-loop-ctx body-size-ctx 0 0 0))]
     (+ (+ (+ 6 frame-bytes) param-spill-bytes) body-bytes)))
 
 (defn collect-callable-function-starts-x86-loop [functions idx len starts offset]
@@ -9466,21 +9476,8 @@
                 (if (= target-param-count 2)
                   (emit-two-arg-call-x86 rel frame-base-slot-count current-depth)
                   (if (= target-param-count 1)
-                    (let [call-rel (emit-call-rel32 rel)
-                      push-rcx (emit-push-rcx)
-                      pop-rcx (emit-pop-rcx)
-                      bytes (vector-new 10)
-                      b1 (vector-push bytes 72)
-                      b2 (vector-push b1 137)
-                      b3 (vector-push b2 199)
-                      b4 (vector-push b3 (vector-get push-rcx 0))
-                      b5 (vector-push b4 (vector-get call-rel 0))
-                      b6 (vector-push b5 (vector-get call-rel 1))
-                      b7 (vector-push b6 (vector-get call-rel 2))
-                      b8 (vector-push b7 (vector-get call-rel 3))
-                      b9 (vector-push b8 (vector-get call-rel 4))
-                      b10 (vector-push b9 (vector-get pop-rcx 0))]
-                      b10)
+                    (let [call-rel-bytes (emit-call-rel32 rel)]
+                      (emit-one-arg-call-x86-core-with-call-bytes call-rel-bytes))
                     (emit-zero-arg-call-x86 rel frame-base-slot-count current-depth)))))))))))
 
 (defn emit-x86-selfhost-command-line-arg-helper []
@@ -10520,7 +10517,75 @@
 	                                      (emit-x86-helper-call-preserving-rcx
 	                                        (- (x86-selfhost-file-exists-helper-offset import-stub-offset import-count)
 	                                           (+ current-offset 6)))
-                                      (vector-new 0))))))))))))))))))
+                              (vector-new 0))))))))))))))))))
+
+(defn codegen-x86-non-one-arg-call-bundle [target-param-count call-rel call-rel-bytes frame-base-slot-count current-depth]
+  (if (= target-param-count 0)
+    (if (= current-depth 0)
+      (concat-byte-vectors-rooted call-rel-bytes (vector-new 0))
+      (if (= current-depth 1)
+        (concat-byte-vectors-rooted
+          (concat-byte-vectors-rooted
+            (emit-push-rax)
+            call-rel-bytes)
+          (emit-pop-rcx))
+        (concat-byte-vectors
+          (concat-byte-vectors
+            (concat-byte-vectors
+              (shift-native-value-window-x86-loop frame-base-slot-count (- current-depth 3))
+              (emit-mov-local-from-rcx (native-value-window-spill-offset frame-base-slot-count 0)))
+            (emit-push-rax))
+          (concat-byte-vectors
+            call-rel-bytes
+            (emit-pop-rcx)))))
+    (if (= target-param-count 2)
+      (emit-two-arg-call-x86-with-call-bytes call-rel-bytes frame-base-slot-count current-depth)
+      (if (= target-param-count 3)
+        (emit-consume-three-produce-one-bundle-x86
+          (emit-three-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)
+          frame-base-slot-count
+          current-depth)
+        (if (= target-param-count 4)
+          (emit-consume-four-produce-one-bundle-x86
+            (let [call-rel-ref (ref-new call-rel)]
+              (do
+                (root_push call-rel-ref)
+                (let [result (emit-four-arg-call-x86-core-with-rel-ref call-rel-ref frame-base-slot-count)]
+                  (do
+                    (root_pop)
+                    result))))
+            frame-base-slot-count
+            current-depth)
+          (if (= target-param-count 5)
+            (emit-consume-five-produce-one-bundle-x86
+              (emit-five-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)
+              frame-base-slot-count
+              current-depth)
+            (if (= target-param-count 6)
+              (emit-consume-six-produce-one-bundle-x86
+                (emit-six-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)
+                frame-base-slot-count
+                current-depth)
+              (if (= target-param-count 7)
+                (emit-consume-seven-produce-one-bundle-x86
+                  (emit-seven-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)
+                  frame-base-slot-count
+                  current-depth)
+                (if (= target-param-count 8)
+                  (emit-consume-eight-produce-one-bundle-x86
+                    (emit-eight-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)
+                    frame-base-slot-count
+                    current-depth)
+                  (if (= target-param-count 9)
+                    (emit-consume-nine-produce-one-bundle-x86
+                      (emit-nine-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)
+                      frame-base-slot-count
+                      current-depth)
+                    (if (>= target-param-count 20)
+                      (emit-call-bundle-x86-twenty-to-sixty target-param-count call-rel frame-base-slot-count)
+                      (if (>= target-param-count 10)
+                        (emit-call-bundle-x86-ten-to-nineteen target-param-count call-rel frame-base-slot-count)
+                        (vector-new 0)))))))))))))
 
 (defn codegen-x86-opcode-call-bundle [operand current-offset function-starts context]
   (let [function-metas (vector-get context 0)
@@ -10528,98 +10593,40 @@
     import-stub-offset (vector-get context 2)
     function-start-base (vector-get context 3)
 	    frame-base-slot-count (vector-get context 4)
-	    current-depth (vector-get context 5)
-	    operand-ref (ref-new operand)
-	    current-offset-ref (ref-new current-offset)
-	    function-starts-ref (ref-new function-starts)]
+	    current-depth (vector-get context 5)]
+    (let [function-metas-slot (root_push function-metas)]
+      (let [operand-ref (ref-new operand)]
 	    (do
 	      (root_push operand-ref)
-	      (root_push current-offset-ref)
-	      (root_push function-starts-ref)
-	      (let [target-meta (vector-get function-metas (ref-get operand-ref))
+        (let [current-offset-ref (ref-new current-offset)]
+	        (do
+	          (root_push current-offset-ref)
+            (let [function-starts-ref (ref-new function-starts)]
+	            (do
+	              (root_push function-starts-ref)
+	              (let [target-meta (vector-get function-metas (ref-get operand-ref))
 	        target-param-count (native-function-param-count target-meta)
 	        call-next-offset (native-call-rel-next-offset-x86 target-param-count current-depth)
 	        target-offset (if (< (ref-get operand-ref) import-count)
 	                        (x86-import-ret-stub-offset import-stub-offset import-count (ref-get operand-ref))
 	                        (- (vector-get (ref-get function-starts-ref) (- (ref-get operand-ref) import-count)) function-start-base))
 	        call-rel (- target-offset (+ (ref-get current-offset-ref) call-next-offset))]
-        (let [call-rel-bytes (emit-call-rel32 call-rel)]
-          (do
-            (root_push call-rel-bytes)
-          (let [result (if (= target-param-count 0)
-                     (if (= current-depth 0)
-                       (concat-byte-vectors-rooted call-rel-bytes (vector-new 0))
-                       (if (= current-depth 1)
-                         (concat-byte-vectors-rooted
-                           (concat-byte-vectors-rooted
-                             (emit-push-rax)
-                             call-rel-bytes)
-                           (emit-pop-rcx))
-                         (concat-byte-vectors
-                           (concat-byte-vectors
-                             (concat-byte-vectors
-                               (shift-native-value-window-x86-loop frame-base-slot-count (- current-depth 3))
-                               (emit-mov-local-from-rcx (native-value-window-spill-offset frame-base-slot-count 0)))
-                             (emit-push-rax))
-                           (concat-byte-vectors
-                             call-rel-bytes
-                             (emit-pop-rcx)))))
-                     (if (= target-param-count 1)
-                       (emit-one-arg-call-x86-core-with-call-bytes call-rel-bytes)
-                       (if (= target-param-count 2)
-                         (emit-two-arg-call-x86-with-call-bytes call-rel-bytes frame-base-slot-count current-depth)
-                         (if (= target-param-count 3)
-                           (emit-consume-three-produce-one-bundle-x86
-                             (emit-three-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)
-                             frame-base-slot-count
-                             current-depth)
-                           (if (= target-param-count 4)
-                             (emit-consume-four-produce-one-bundle-x86
-                               (let [call-rel-ref (ref-new call-rel)]
-                                 (do
-                                  (root_push call-rel-ref)
-                                  (let [result (emit-four-arg-call-x86-core-with-rel-ref call-rel-ref frame-base-slot-count)]
-                                   (do
-                                     (root_pop)
-                                     result))))
-                               frame-base-slot-count
-                               current-depth)
-                             (if (= target-param-count 5)
-                               (emit-consume-five-produce-one-bundle-x86
-                                 (emit-five-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)
-                                 frame-base-slot-count
-                                 current-depth)
-                               (if (= target-param-count 6)
-                                 (emit-consume-six-produce-one-bundle-x86
-                                   (emit-six-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)
-                                   frame-base-slot-count
-                                   current-depth)
-                                 (if (= target-param-count 7)
-                                   (emit-consume-seven-produce-one-bundle-x86
-                                     (emit-seven-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)
-                                     frame-base-slot-count
-                                     current-depth)
-                                   (if (= target-param-count 8)
-                                     (emit-consume-eight-produce-one-bundle-x86
-                                       (emit-eight-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)
-                                       frame-base-slot-count
-                                       current-depth)
-                                     (if (= target-param-count 9)
-                                       (emit-consume-nine-produce-one-bundle-x86
-                                         (emit-nine-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)
-                                         frame-base-slot-count
-                                         current-depth)
-                                         (if (>= target-param-count 20)
-                                           (emit-call-bundle-x86-twenty-to-sixty target-param-count call-rel frame-base-slot-count)
-                                           (if (>= target-param-count 10)
-                                             (emit-call-bundle-x86-ten-to-nineteen target-param-count call-rel frame-base-slot-count)
-                                             (vector-new 0)))))))))))))]
-	            (do
-	              (root_pop)
-	              (root_pop)
-	              (root_pop)
-	              (root_pop)
-	              result))))))))
+		        (let [call-rel-bytes (emit-call-rel32 call-rel)]
+		          (do
+		            (root_push call-rel-bytes)
+		          (let [result (if (= target-param-count 1)
+                     (emit-one-arg-call-x86-core-with-call-bytes call-rel-bytes)
+                     (codegen-x86-non-one-arg-call-bundle target-param-count call-rel call-rel-bytes frame-base-slot-count current-depth))]
+			            (do
+		                  (root_push result)
+			                  (ref-set operand-ref result)
+							              (root_pop)
+							              (root_pop)
+						              (root_pop)
+						              (root_pop)
+						              (root_pop)
+						              (root_pop)
+						              (ref-get operand-ref)))))))))))))))
 
 (defn codegen-ir-instr-bundle-x86-with-import-count-and-base [opcode operand current-offset function-starts function-metas import-count import-stub-offset function-start-base frame-base-slot-count current-depth]
   (if (= opcode 40)
@@ -10637,8 +10644,10 @@
                            frame-base-slot-count)
                          current-depth)]
         (do
+          (root_push call-context)
           (let [result (codegen-x86-opcode-call-bundle operand current-offset function-starts call-context)]
             (do
+              (root_pop)
               (root_pop)
               result)))))
     (if (= opcode 1)
@@ -10726,6 +10735,20 @@
     (vector-push (vector-new 2) idx)
     remaining))
 
+(defn continue-native-control-instr-bundle-loop-x86 [ctx idx remaining]
+  (if (<= remaining 1)
+    0
+    (do
+      (root_push ctx)
+      (let [next-state (make-x86-control-loop-state (+ idx 1) (- remaining 1))]
+        (do
+          (root_push next-state)
+          (let [final (generate-native-control-instr-bundle-loop-x86-with-context ctx next-state)]
+            (do
+              (root_pop)
+              (root_pop)
+              final)))))))
+
 (defn codegen-x86-control-loop-fallback-native [ctx idx opcode operand actual-current-offset]
   (let [ir-func (vector-get ctx 0)
     meta (vector-get ctx 2)
@@ -10810,9 +10833,13 @@
           (root_push function-metas)
           (let [chunk-state (make-x86-control-loop-state idx chunk-size)]
             (do
+              (root_push chunk-state)
               (generate-native-control-instr-bundle-loop-x86-with-context ctx chunk-state)
+              (root_pop)
               (let [tail-state (make-x86-control-loop-state (+ idx chunk-size) (- remaining chunk-size))]
-                (let [final (generate-native-control-instr-bundle-loop-x86-with-context ctx tail-state)]
+                (do
+                  (root_push tail-state)
+                  (let [final (generate-native-control-instr-bundle-loop-x86-with-context ctx tail-state)]
                   (do
                     (root_pop)
                     (root_pop)
@@ -10822,7 +10849,8 @@
                     (root_pop)
                     (root_pop)
                     (root_pop)
-                    final))))))
+                    (root_pop)
+                    final)))))))
         (let [instr (vector-get ir-func idx)
         opcode (vector-get instr 0)
 	        operand (vector-get instr 1)
@@ -10855,53 +10883,50 @@
                                                current-depth)]
                             (do
                               (root_push call-context)
-                              (let [native (codegen-x86-opcode-call-bundle (ref-get operand-ref) (ref-get actual-current-offset-ref) function-starts call-context)
-                                native-len (vector-length native)]
-                                (do
-                                  (append-native-bytes-loop result native 0 native-len)
-                                  (root_pop)
-                                  (root_pop)
-                                  (root_pop)
-                                  (root_pop)
-                                  (root_pop)
-                                  (root_pop)
-                                  (let [next-state (make-x86-control-loop-state (+ idx 1) (- remaining 1))]
-                                    (generate-native-control-instr-bundle-loop-x86-with-context ctx next-state))))))))))))))
+	                              (let [native (codegen-x86-opcode-call-bundle (ref-get operand-ref) (ref-get actual-current-offset-ref) function-starts call-context)]
+	                                (do
+	                                  (root_push native)
+	                                  (let [native-len (vector-length native)]
+	                                    (do
+	                                      (append-native-bytes-loop result native 0 native-len)
+	                                      (root_pop)
+	                                      (root_pop)
+	                                      (root_pop)
+	                                      (root_pop)
+	                                      (root_pop)
+	                                      (root_pop)
+	                                      (root_pop)
+	                                      (continue-native-control-instr-bundle-loop-x86 ctx idx remaining)))))))))))))))
         (if (= opcode 44)
           (do
             (append-drop-bundle-x86 result frame-base-slot-count current-depth)
-            (let [next-state (make-x86-control-loop-state (+ idx 1) (- remaining 1))]
-              (generate-native-control-instr-bundle-loop-x86-with-context ctx next-state)))
+            (continue-native-control-instr-bundle-loop-x86 ctx idx remaining))
         (if (= opcode 41)
           (do
             (append-control-if-instr-x86 result meta offsets idx)
-            (let [next-state (make-x86-control-loop-state (+ idx 1) (- remaining 1))]
-              (generate-native-control-instr-bundle-loop-x86-with-context ctx next-state)))
+            (continue-native-control-instr-bundle-loop-x86 ctx idx remaining))
         (if (= opcode 79)
           (do
-            (append-control-else-instr-x86 result meta offsets idx)
-            (let [next-state (make-x86-control-loop-state (+ idx 1) (- remaining 1))]
-              (generate-native-control-instr-bundle-loop-x86-with-context ctx next-state)))
+            (append-control-else-instr-x86 result ir-func meta offsets idx)
+            (continue-native-control-instr-bundle-loop-x86 ctx idx remaining))
+        (if (= opcode 43)
+          (continue-native-control-instr-bundle-loop-x86 ctx idx remaining)
         (if (= (direct-append-x86-opcode opcode) 6)
           (do
             (append-i64-const-bundle-x86 result operand frame-base-slot-count current-depth)
-            (let [next-state (make-x86-control-loop-state (+ idx 1) (- remaining 1))]
-              (generate-native-control-instr-bundle-loop-x86-with-context ctx next-state)))
+            (continue-native-control-instr-bundle-loop-x86 ctx idx remaining))
         (if (= (direct-append-x86-opcode opcode) 9)
           (do
             (append-root-push-bundle-x86 result)
-            (let [next-state (make-x86-control-loop-state (+ idx 1) (- remaining 1))]
-              (generate-native-control-instr-bundle-loop-x86-with-context ctx next-state)))
+            (continue-native-control-instr-bundle-loop-x86 ctx idx remaining))
         (if (= (direct-append-x86-opcode opcode) 8)
           (do
             (append-i32-const-bundle-x86 result (if (= opcode 75) 0 operand) frame-base-slot-count current-depth)
-            (let [next-state (make-x86-control-loop-state (+ idx 1) (- remaining 1))]
-              (generate-native-control-instr-bundle-loop-x86-with-context ctx next-state)))
+            (continue-native-control-instr-bundle-loop-x86 ctx idx remaining))
         (if (= (direct-append-x86-opcode opcode) 11)
           (do
             (append-root-set-bundle-x86 result frame-base-slot-count current-depth)
-            (let [next-state (make-x86-control-loop-state (+ idx 1) (- remaining 1))]
-              (generate-native-control-instr-bundle-loop-x86-with-context ctx next-state)))
+            (continue-native-control-instr-bundle-loop-x86 ctx idx remaining))
         (if (= opcode 60)
           (do
             (if (= current-depth 0)
@@ -10918,8 +10943,7 @@
                         (+ 13 (* (- current-depth 2) 14)))))
                 frame-base-slot-count
                 current-depth))
-            (let [next-state (make-x86-control-loop-state (+ idx 1) (- remaining 1))]
-              (generate-native-control-instr-bundle-loop-x86-with-context ctx next-state)))
+            (continue-native-control-instr-bundle-loop-x86 ctx idx remaining))
         (if (if (= opcode 64) true (if (= opcode 67) true (= opcode 59)))
           (do
             (append-x86-helper-call-preserving-rcx
@@ -10930,8 +10954,7 @@
                      (x86-selfhost-command-line-arg-helper-offset import-stub-offset import-count)
                      (x86-selfhost-print-helper-offset import-stub-offset import-count)))
                  (+ (x86-current-emitted-offset result emit-start-base) 6)))
-            (let [next-state (make-x86-control-loop-state (+ idx 1) (- remaining 1))]
-              (generate-native-control-instr-bundle-loop-x86-with-context ctx next-state)))
+            (continue-native-control-instr-bundle-loop-x86 ctx idx remaining))
         (if (if (= opcode 51) true (if (= opcode 52) true (= opcode 61)))
           (do
             (append-x86-helper-call-preserving-rcx
@@ -10942,8 +10965,7 @@
                      (x86-selfhost-vector-length-helper-offset import-stub-offset import-count)
                      (x86-selfhost-map-size-helper-offset import-stub-offset import-count)))
                  (+ (x86-current-emitted-offset result emit-start-base) 6)))
-            (let [next-state (make-x86-control-loop-state (+ idx 1) (- remaining 1))]
-              (generate-native-control-instr-bundle-loop-x86-with-context ctx next-state)))
+            (continue-native-control-instr-bundle-loop-x86 ctx idx remaining))
         (if (if (= opcode 50) true (if (= opcode 53) true (if (= opcode 55) true (if (= opcode 63) true (= opcode 70)))))
           (do
             (append-consume-two-helper-call-x86
@@ -10960,24 +10982,21 @@
                  (+ (x86-current-emitted-offset result emit-start-base) 5))
               frame-base-slot-count
               current-depth)
-            (let [next-state (make-x86-control-loop-state (+ idx 1) (- remaining 1))]
-              (generate-native-control-instr-bundle-loop-x86-with-context ctx next-state)))
+            (continue-native-control-instr-bundle-loop-x86 ctx idx remaining))
         (if (= opcode 54)
           (do
             (append-x86-helper-call-preserving-rcx
               result
               (- (x86-selfhost-vector-new-helper-offset import-stub-offset import-count)
                  (+ (x86-current-emitted-offset result emit-start-base) 6)))
-            (let [next-state (make-x86-control-loop-state (+ idx 1) (- remaining 1))]
-              (generate-native-control-instr-bundle-loop-x86-with-context ctx next-state)))
+            (continue-native-control-instr-bundle-loop-x86 ctx idx remaining))
         (if (= opcode 56)
           (do
             (append-x86-helper-call-preserving-rcx
               result
               (- (x86-selfhost-ref-new-helper-offset import-stub-offset import-count)
                  (+ (x86-current-emitted-offset result emit-start-base) 6)))
-            (let [next-state (make-x86-control-loop-state (+ idx 1) (- remaining 1))]
-              (generate-native-control-instr-bundle-loop-x86-with-context ctx next-state)))
+            (continue-native-control-instr-bundle-loop-x86 ctx idx remaining))
         (if (if (= opcode 57) true (= opcode 73))
           (do
             (append-x86-helper-call-preserving-rcx
@@ -10986,8 +11005,7 @@
                    (x86-selfhost-ref-get-helper-offset import-stub-offset import-count)
                    (x86-selfhost-file-exists-helper-offset import-stub-offset import-count))
                  (+ (x86-current-emitted-offset result emit-start-base) 6)))
-            (let [next-state (make-x86-control-loop-state (+ idx 1) (- remaining 1))]
-              (generate-native-control-instr-bundle-loop-x86-with-context ctx next-state)))
+            (continue-native-control-instr-bundle-loop-x86 ctx idx remaining))
         (if (= opcode 58)
           (do
             (append-consume-two-helper-call-x86
@@ -10996,8 +11014,7 @@
                  (+ (x86-current-emitted-offset result emit-start-base) 5))
               frame-base-slot-count
               current-depth)
-            (let [next-state (make-x86-control-loop-state (+ idx 1) (- remaining 1))]
-              (generate-native-control-instr-bundle-loop-x86-with-context ctx next-state)))
+            (continue-native-control-instr-bundle-loop-x86 ctx idx remaining))
         (if (= opcode 69)
           (do
             (append-substring-helper-call-x86
@@ -11006,8 +11023,7 @@
                  (+ (x86-current-emitted-offset result emit-start-base) 12))
               frame-base-slot-count
               current-depth)
-            (let [next-state (make-x86-control-loop-state (+ idx 1) (- remaining 1))]
-              (generate-native-control-instr-bundle-loop-x86-with-context ctx next-state)))
+            (continue-native-control-instr-bundle-loop-x86 ctx idx remaining))
         (if (= opcode 62)
           (do
             (append-map-insert-helper-call-x86
@@ -11016,44 +11032,36 @@
                  (+ (x86-current-emitted-offset result emit-start-base) 12))
               frame-base-slot-count
               current-depth)
-            (let [next-state (make-x86-control-loop-state (+ idx 1) (- remaining 1))]
-              (generate-native-control-instr-bundle-loop-x86-with-context ctx next-state)))
+            (continue-native-control-instr-bundle-loop-x86 ctx idx remaining))
         (if (= (direct-append-x86-opcode opcode) 1)
           (do
             (append-produce-one-bundle-x86 result (direct-append-produce-one-bytes-x86 opcode operand) frame-base-slot-count current-depth)
-            (let [next-state (make-x86-control-loop-state (+ idx 1) (- remaining 1))]
-              (generate-native-control-instr-bundle-loop-x86-with-context ctx next-state)))
+            (continue-native-control-instr-bundle-loop-x86 ctx idx remaining))
           (if (= (direct-append-x86-opcode opcode) 2)
             (do
               (append-consume-two-bundle-x86 result (codegen-ir-instr opcode operand) frame-base-slot-count current-depth)
-              (let [next-state (make-x86-control-loop-state (+ idx 1) (- remaining 1))]
-                (generate-native-control-instr-bundle-loop-x86-with-context ctx next-state)))
+              (continue-native-control-instr-bundle-loop-x86 ctx idx remaining))
             (if (= (direct-append-x86-opcode opcode) 3)
               (do
                 (append-local-set-bundle-x86 result (local-slot-offset operand) frame-base-slot-count current-depth)
-                (let [next-state (make-x86-control-loop-state (+ idx 1) (- remaining 1))]
-                  (generate-native-control-instr-bundle-loop-x86-with-context ctx next-state)))
+                (continue-native-control-instr-bundle-loop-x86 ctx idx remaining))
               (if (= (direct-append-x86-opcode opcode) 4)
                 (do
                   (append-local-get-bundle-x86 result (local-slot-offset operand) frame-base-slot-count current-depth)
-                  (let [next-state (make-x86-control-loop-state (+ idx 1) (- remaining 1))]
-                    (generate-native-control-instr-bundle-loop-x86-with-context ctx next-state)))
+                  (continue-native-control-instr-bundle-loop-x86 ctx idx remaining))
                 (if (= (direct-append-x86-opcode opcode) 5)
                   (do
                     (append-drop-bundle-x86 result frame-base-slot-count current-depth)
-                    (let [next-state (make-x86-control-loop-state (+ idx 1) (- remaining 1))]
-                      (generate-native-control-instr-bundle-loop-x86-with-context ctx next-state)))
+                    (continue-native-control-instr-bundle-loop-x86 ctx idx remaining))
                   (if (= (x86-plain-two-to-one-needs-window-restore opcode) 1)
                     (do
                       (append-plain-two-to-one-codegen-bundle-x86 result opcode operand frame-base-slot-count current-depth)
-                      (let [next-state (make-x86-control-loop-state (+ idx 1) (- remaining 1))]
-                        (generate-native-control-instr-bundle-loop-x86-with-context ctx next-state)))
+                      (continue-native-control-instr-bundle-loop-x86 ctx idx remaining))
                     (let [native (codegen-x86-control-loop-fallback-native ctx idx opcode operand (x86-current-emitted-offset result emit-start-base))
                       native-len (vector-length native)]
                       (do
                         (append-native-bytes-loop result native 0 native-len)
-                        (let [next-state (make-x86-control-loop-state (+ idx 1) (- remaining 1))]
-                          (generate-native-control-instr-bundle-loop-x86-with-context ctx next-state))))))))))))))))))))))))))))))))))
+                        (continue-native-control-instr-bundle-loop-x86 ctx idx remaining))))))))))))))))))))))))))))))))))
 (defn generate-native-control-instr-bundle-loop-x86-with-import-count-and-base [ir-func result meta offsets function-starts function-metas import-count import-stub-offset function-start-base frame-base-slot-count current-depth idx len]
   (let [emit-start-base (vector-length (ref-get result))
     layout (make-x86-function-emit-layout import-count import-stub-offset function-start-base emit-start-base)]
@@ -11365,8 +11373,8 @@
     native-len (vector-length native)]
     (append-native-bytes-rooted result native native-len)))
 
-(defn append-control-else-instr-x86 [result meta offsets idx]
-  (let [native (emit-control-else-x86 meta offsets idx)
+(defn append-control-else-instr-x86 [result ir-func meta offsets idx]
+  (let [native (emit-control-else-x86 ir-func meta offsets idx)
     native-len (vector-length native)]
     (append-native-bytes-rooted result native native-len)))
 
@@ -11452,9 +11460,7 @@
     end-map1 (map-insert-index end-map start-idx idx)]
     (do
       (root_push end-map1)
-      (let [end-map2 (if (< else-idx 0)
-                   end-map1
-                   (map-insert-index end-map1 else-idx idx))]
+      (let [end-map2 (control-flow-end-map-with-else-index end-map1 else-idx idx)]
         (do
           (root_push end-map2)
           (let [final (scan-control-flow-meta-loop ir-func (+ idx 1) len stack (- depth 1) end-map2 else-map branch-map)]
@@ -11547,9 +11553,7 @@
               end-map1 (map-insert-index end-map start-idx idx)]
               (do
                 (root_push end-map1)
-                (let [end-map2 (if (< else-idx 0)
-                             end-map1
-                             (map-insert-index end-map1 else-idx idx))]
+                (let [end-map2 (control-flow-end-map-with-else-index end-map1 else-idx idx)]
                   (do
                     (root_push end-map2)
                     (let [state (make-control-flow-scan-state 0 (+ idx 1) stack (- depth 1) end-map2 else-map branch-map)]
@@ -12204,15 +12208,35 @@
       (vector-get offsets (+ target-start 1))
       (control-end-target-offset meta offsets target-start))))
 
+(defn find-control-end-from-else [ir-func idx len depth]
+  (if (>= idx len)
+    -1
+    (let [instr (vector-get ir-func idx)
+      opcode (vector-get instr 0)]
+      (if (= (is-control-start-opcode opcode) 1)
+        (find-control-end-from-else ir-func (+ idx 1) len (+ depth 1))
+        (if (= opcode 43)
+          (if (= depth 0)
+            idx
+            (find-control-end-from-else ir-func (+ idx 1) len (- depth 1)))
+          (find-control-end-from-else ir-func (+ idx 1) len depth))))))
+
+(defn control-else-target-offset [ir-func meta offsets else-idx]
+  (let [end-idx (map-get-index (control-flow-end-map meta) else-idx)]
+    (if (< end-idx 0)
+      (let [fallback-end-idx (find-control-end-from-else ir-func (+ else-idx 1) (vector-length ir-func) 0)]
+        (vector-get offsets (+ fallback-end-idx 1)))
+      (vector-get offsets (+ end-idx 1)))))
+
 (defn emit-control-if-x86 [meta offsets idx]
   (let [current-offset (vector-get offsets idx)
     target-offset (control-if-false-target-offset meta offsets idx)
     disp (- target-offset (+ current-offset 8))]
     (concat-byte-vectors (emit-test-eax-eax) (emit-jz-rel32 disp))))
 
-(defn emit-control-else-x86 [meta offsets idx]
+(defn emit-control-else-x86 [ir-func meta offsets idx]
   (let [current-offset (vector-get offsets idx)
-    target-offset (control-end-target-offset meta offsets idx)
+    target-offset (control-else-target-offset ir-func meta offsets idx)
     disp (- target-offset (+ current-offset 5))]
     (emit-jmp-rel32 disp)))
 
@@ -12234,7 +12258,7 @@
     (if (= opcode 41)
       (emit-control-if-x86 meta offsets idx)
       (if (= opcode 79)
-        (emit-control-else-x86 meta offsets idx)
+        (emit-control-else-x86 ir-func meta offsets idx)
         (if (= opcode 80)
           (emit-control-branch-x86 ir-func meta offsets idx)
           (if (= opcode 81)
@@ -12250,7 +12274,7 @@
     (if (= opcode 41)
       (emit-aarch64-cbz-x0 (- (control-if-false-target-offset meta offsets idx) current-offset))
       (if (= opcode 79)
-        (emit-aarch64-b (- (control-end-target-offset meta offsets idx) current-offset))
+        (emit-aarch64-b (- (control-else-target-offset ir-func meta offsets idx) current-offset))
         (if (= opcode 80)
           (emit-aarch64-b (- (control-branch-target-offset ir-func meta offsets idx) current-offset))
           (if (= opcode 81)
@@ -13328,6 +13352,30 @@
 (defn x86-function-emit-layout-emit-start-base [layout]
   (vector-get layout 3))
 
+(defn generate-native-control-instr-bundle-row-step-x86 [ctx idx]
+  (do
+    (root_push ctx)
+    (let [row-state (make-x86-control-loop-state idx 1)]
+      (do
+        (root_push row-state)
+        (generate-native-control-instr-bundle-loop-x86-with-context ctx row-state)
+        (root_pop)
+        (root_pop)
+        0))))
+
+(defn generate-native-control-instr-bundle-row-chunk-x86 [ctx idx end]
+  (if (>= idx end)
+    0
+    (let [_row (generate-native-control-instr-bundle-row-step-x86 ctx idx)]
+      (generate-native-control-instr-bundle-row-chunk-x86 ctx (+ idx 1) end))))
+
+(defn generate-native-control-instr-bundle-row-loop-x86 [ctx idx len]
+  (if (>= idx len)
+    0
+    (let [chunk-end (if (> (+ idx 64) len) len (+ idx 64))
+      _chunk (generate-native-control-instr-bundle-row-chunk-x86 ctx idx chunk-end)]
+      (generate-native-control-instr-bundle-row-loop-x86 ctx chunk-end len))))
+
 (defn generate-native-function-x86-64-bundle-with-layout [func-meta result function-starts function-metas layout]
   (let [import-count (vector-get layout 0)
     import-stub-offset (vector-get layout 1)
@@ -13392,10 +13440,7 @@
                       (let [control-ctx (make-x86-control-bundle-context ir-func result control-meta offsets depths function-starts function-metas control-layout frame-base-slot-count)]
                         (do
                           (root_push control-ctx)
-                          (let [control-state (make-x86-control-loop-state 0 n)]
-                            (generate-native-control-instr-bundle-loop-x86-with-context
-                              control-ctx
-                              control-state))
+                          (generate-native-control-instr-bundle-row-loop-x86 control-ctx 0 n)
                           (root_pop)
                           (root_pop)
                           (root_pop)

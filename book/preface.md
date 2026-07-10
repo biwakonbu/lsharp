@@ -24,6 +24,10 @@ S 式構文を採用した理由は、パーサーの実装が劇的に簡単に
 
 型理論やコンパイラ理論の事前知識は不要である。必要な概念はその都度解説する。
 
+L# でアプリケーションやライブラリを書くための手順は、リポジトリの `docs/guides/` を正面玄関とする。本書は L# コンパイラ実装を読むための読み物であり、字句解析、構文解析、型推論、IR、コード生成、selfhost、LSP などの内部構造を扱う。
+
+公開 CLI の通常利用では `lsharp compile` / `lsharp test` / `lsharp doc` / `lsharp lsp` / `lsharp mcp-server` を入口にする。`parse` / `check` / `fmt` の詳細は、LSP / MCP / 内部 tooling を理解する文脈で扱う。
+
 ## 本書のコードについて {.unnumbered}
 
 本書に掲載するコードは、全て実際に動作する L# コンパイラの実装から引用している。仮想的なコードや疑似コードは最小限にとどめ、読者が実際のソースコードと対照しながら読み進められるようにした。
@@ -39,4 +43,3 @@ https://github.com/biwakonbu/lsharp
 本書の執筆にあたり、コンパイラ実装の先駆的な書籍である "Crafting Interpreters" (Robert Nystrom)、"Types and Programming Languages" (Benjamin C. Pierce)、"Real World OCaml" (Yaron Minsky 他) から多大な影響を受けた。
 
 また、Rust コミュニティ、WebAssembly コミュニティの方々が公開している資料やツールなしには、L# コンパイラの実装は不可能であった。特に `wasm-encoder`、`wasmtime`、`miette`、`insta` の開発者に感謝する。
-

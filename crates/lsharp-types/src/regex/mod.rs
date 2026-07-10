@@ -15,7 +15,10 @@ pub(crate) mod dfa;
 /// - `.` 任意の1文字
 /// - `*` 直前の0回以上
 /// - `+` 直前の1回以上
+/// - `{n}` / `{n,m}` / `{n,}` 回数指定
+/// - `*?` / `+?` / `??` / `{...}?` 非貪欲サフィックス
 /// - `[...]` 文字クラス（ネストなし、`^` 否定あり）
+/// - `\d` / `\w` / `\s` と否定形 `\D` / `\W` / `\S`
 /// - `\p{L}` Unicode Letter, `\p{N}` Unicode Number
 /// - `\P{L}` Unicode Letter 以外, `\P{N}` Unicode Number 以外
 #[derive(Debug, Clone)]
@@ -25,15 +28,26 @@ pub(crate) enum RegexNode {
     /// 任意の1文字 (.)
     Dot,
     /// 文字クラス ([a-z], [abc])
-    CharClass { chars: Vec<(char, char)>, negated: bool },
+    CharClass {
+        chars: Vec<(char, char)>,
+        negated: bool,
+    },
     /// 0回以上の繰り返し (*)
     Star(Box<RegexNode>),
     /// 1回以上の繰り返し (+)
     Plus(Box<RegexNode>),
     /// 0回または1回 (?)
     Optional(Box<RegexNode>),
+    /// min 回以上 max 回以下の繰り返し。max=None は上限なし。
+    BoundedRepeat {
+        inner: Box<RegexNode>,
+        min: usize,
+        max: Option<usize>,
+    },
     /// グループ ((...))
     Group(Vec<RegexNode>),
+    /// 非キャプチャグループ ((?:...))
+    NonCapturingGroup(Vec<RegexNode>),
     /// 選択肢 (a|b)
     Alternation(Vec<Vec<RegexNode>>),
     /// 後方参照 (\1, \2, ...)
@@ -87,7 +101,7 @@ fn parse_regex_inner(chars: &[char], start: usize) -> (Vec<RegexNode>, usize) {
             }
             '(' => {
                 i += 1;
-                // 先読み構文のチェック: (?=...) または (?!...)
+                // 先読み構文のチェック: (?=...), (?!...), (?:...)
                 if i < chars.len() && chars[i] == '?' {
                     if i + 1 < chars.len() && chars[i + 1] == '=' {
                         // 肯定先読み (?=...)
@@ -101,20 +115,28 @@ fn parse_regex_inner(chars: &[char], start: usize) -> (Vec<RegexNode>, usize) {
                         let (group_nodes, end) = parse_regex_inner(chars, i);
                         i = end;
                         RegexNode::LookaheadNeg(group_nodes)
+                    } else if i + 1 < chars.len() && chars[i + 1] == ':' {
+                        // 非キャプチャグループ (?:...)
+                        i += 2;
+                        let (group_nodes, end) = parse_regex_inner(chars, i);
+                        i = end;
+                        if group_nodes
+                            .iter()
+                            .any(|n| matches!(n, RegexNode::Literal('|')))
+                        {
+                            RegexNode::Alternation(split_alternatives(group_nodes))
+                        } else {
+                            RegexNode::NonCapturingGroup(group_nodes)
+                        }
                     } else {
                         // 通常のグループとして処理
                         let (group_nodes, end) = parse_regex_inner(chars, i);
                         i = end;
-                        if group_nodes.iter().any(|n| matches!(n, RegexNode::Literal('|'))) {
-                            let mut alternatives = vec![vec![]];
-                            for node in group_nodes {
-                                if matches!(node, RegexNode::Literal('|')) {
-                                    alternatives.push(vec![]);
-                                } else {
-                                    alternatives.last_mut().unwrap().push(node);
-                                }
-                            }
-                            RegexNode::Alternation(alternatives)
+                        if group_nodes
+                            .iter()
+                            .any(|n| matches!(n, RegexNode::Literal('|')))
+                        {
+                            RegexNode::Alternation(split_alternatives(group_nodes))
                         } else {
                             RegexNode::Group(group_nodes)
                         }
@@ -123,16 +145,11 @@ fn parse_regex_inner(chars: &[char], start: usize) -> (Vec<RegexNode>, usize) {
                     let (group_nodes, end) = parse_regex_inner(chars, i);
                     i = end;
                     // グループ内の | を処理
-                    if group_nodes.iter().any(|n| matches!(n, RegexNode::Literal('|'))) {
-                        let mut alternatives = vec![vec![]];
-                        for node in group_nodes {
-                            if matches!(node, RegexNode::Literal('|')) {
-                                alternatives.push(vec![]);
-                            } else {
-                                alternatives.last_mut().unwrap().push(node);
-                            }
-                        }
-                        RegexNode::Alternation(alternatives)
+                    if group_nodes
+                        .iter()
+                        .any(|n| matches!(n, RegexNode::Literal('|')))
+                    {
+                        RegexNode::Alternation(split_alternatives(group_nodes))
                     } else {
                         RegexNode::Group(group_nodes)
                     }
@@ -145,7 +162,9 @@ fn parse_regex_inner(chars: &[char], start: usize) -> (Vec<RegexNode>, usize) {
             '[' => {
                 i += 1;
                 let negated = i < chars.len() && chars[i] == '^';
-                if negated { i += 1; }
+                if negated {
+                    i += 1;
+                }
                 let mut ranges = Vec::new();
                 while i < chars.len() && chars[i] != ']' {
                     let start = chars[i];
@@ -158,8 +177,13 @@ fn parse_regex_inner(chars: &[char], start: usize) -> (Vec<RegexNode>, usize) {
                         i += 1;
                     }
                 }
-                if i < chars.len() { i += 1; } // ']'
-                RegexNode::CharClass { chars: ranges, negated }
+                if i < chars.len() {
+                    i += 1;
+                } // ']'
+                RegexNode::CharClass {
+                    chars: ranges,
+                    negated,
+                }
             }
             '\\' => {
                 i += 1;
@@ -167,14 +191,29 @@ fn parse_regex_inner(chars: &[char], start: usize) -> (Vec<RegexNode>, usize) {
                     let ch = chars[i];
                     i += 1;
                     match ch {
-                        'd' => RegexNode::CharClass { chars: vec![('0', '9')], negated: false },
+                        'd' => RegexNode::CharClass {
+                            chars: vec![('0', '9')],
+                            negated: false,
+                        },
+                        'D' => RegexNode::CharClass {
+                            chars: vec![('0', '9')],
+                            negated: true,
+                        },
                         'w' => RegexNode::CharClass {
                             chars: vec![('a', 'z'), ('A', 'Z'), ('0', '9'), ('_', '_')],
                             negated: false,
                         },
+                        'W' => RegexNode::CharClass {
+                            chars: vec![('a', 'z'), ('A', 'Z'), ('0', '9'), ('_', '_')],
+                            negated: true,
+                        },
                         's' => RegexNode::CharClass {
                             chars: vec![(' ', ' '), ('\t', '\t'), ('\n', '\n'), ('\r', '\r')],
                             negated: false,
+                        },
+                        'S' => RegexNode::CharClass {
+                            chars: vec![(' ', ' '), ('\t', '\t'), ('\n', '\n'), ('\r', '\r')],
+                            negated: true,
                         },
                         // Unicode 文字クラス: \p{L}, \p{N}
                         'p' | 'P' => {
@@ -186,7 +225,9 @@ fn parse_regex_inner(chars: &[char], start: usize) -> (Vec<RegexNode>, usize) {
                                     i += 1;
                                 }
                                 let property: String = chars[prop_start..i].iter().collect();
-                                if i < chars.len() { i += 1; } // '}'
+                                if i < chars.len() {
+                                    i += 1;
+                                } // '}'
                                 RegexNode::UnicodeClass { property, negated }
                             } else {
                                 // \p / \P の後に { がない場合はリテラル
@@ -207,22 +248,109 @@ fn parse_regex_inner(chars: &[char], start: usize) -> (Vec<RegexNode>, usize) {
             }
         };
 
-        // 量指定子のチェック
-        let node = if i < chars.len() {
-            match chars[i] {
-                '*' => { i += 1; RegexNode::Star(Box::new(node)) }
-                '+' => { i += 1; RegexNode::Plus(Box::new(node)) }
-                '?' => { i += 1; RegexNode::Optional(Box::new(node)) }
-                _ => node,
-            }
-        } else {
-            node
-        };
+        let node = parse_quantifier(chars, &mut i, node);
 
         nodes.push(node);
     }
 
     (nodes, i)
+}
+
+fn split_alternatives(nodes: Vec<RegexNode>) -> Vec<Vec<RegexNode>> {
+    let mut alternatives = vec![vec![]];
+    for node in nodes {
+        if matches!(node, RegexNode::Literal('|')) {
+            alternatives.push(vec![]);
+        } else {
+            alternatives.last_mut().unwrap().push(node);
+        }
+    }
+    alternatives
+}
+
+fn parse_quantifier(chars: &[char], i: &mut usize, node: RegexNode) -> RegexNode {
+    if *i >= chars.len() {
+        return node;
+    }
+
+    let quantified = match chars[*i] {
+        '*' => {
+            *i += 1;
+            RegexNode::Star(Box::new(node))
+        }
+        '+' => {
+            *i += 1;
+            RegexNode::Plus(Box::new(node))
+        }
+        '?' => {
+            *i += 1;
+            RegexNode::Optional(Box::new(node))
+        }
+        '{' => {
+            if let Some((min, max)) = parse_bounded_quantifier(chars, i) {
+                RegexNode::BoundedRepeat {
+                    inner: Box::new(node),
+                    min,
+                    max,
+                }
+            } else {
+                return node;
+            }
+        }
+        _ => return node,
+    };
+
+    if *i < chars.len() && chars[*i] == '?' {
+        *i += 1;
+    }
+    quantified
+}
+
+fn parse_bounded_quantifier(chars: &[char], i: &mut usize) -> Option<(usize, Option<usize>)> {
+    let original = *i;
+    *i += 1; // '{'
+    let min_start = *i;
+    while *i < chars.len() && chars[*i].is_ascii_digit() {
+        *i += 1;
+    }
+    if min_start == *i {
+        *i = original;
+        return None;
+    }
+    let min: usize = chars[min_start..*i]
+        .iter()
+        .collect::<String>()
+        .parse()
+        .ok()?;
+
+    let max = if *i < chars.len() && chars[*i] == ',' {
+        *i += 1;
+        let max_start = *i;
+        while *i < chars.len() && chars[*i].is_ascii_digit() {
+            *i += 1;
+        }
+        if max_start == *i {
+            None
+        } else {
+            Some(
+                chars[max_start..*i]
+                    .iter()
+                    .collect::<String>()
+                    .parse()
+                    .ok()?,
+            )
+        }
+    } else {
+        Some(min)
+    };
+
+    if *i < chars.len() && chars[*i] == '}' {
+        *i += 1;
+        Some((min, max))
+    } else {
+        *i = original;
+        None
+    }
 }
 
 /// 単一ノードが文字にマッチするか
@@ -269,10 +397,9 @@ fn try_repeat_complex(
         require_end: bool,
     ) -> bool {
         // 最小回数を満たしたら、残りのパターンとマッチ試行
-        if count >= min_count
-            && regex_match(rest_nodes, text, ni + 1, pos, require_end) {
-                return true;
-            }
+        if count >= min_count && regex_match(rest_nodes, text, ni + 1, pos, require_end) {
+            return true;
+        }
 
         if pos >= text.len() {
             return false;
@@ -280,22 +407,42 @@ fn try_repeat_complex(
 
         // inner をもう1回マッチさせる
         match inner {
-            RegexNode::Group(group_nodes) => {
+            RegexNode::Group(group_nodes) | RegexNode::NonCapturingGroup(group_nodes) => {
                 for end in (pos + 1)..=text.len() {
                     if regex_match(group_nodes, text, 0, pos, false)
                         && group_full_match(group_nodes, text, pos, end)
-                        && try_inner(inner, rest_nodes, text, ni, end, count + 1, min_count, require_end) {
-                            return true;
-                        }
+                        && try_inner(
+                            inner,
+                            rest_nodes,
+                            text,
+                            ni,
+                            end,
+                            count + 1,
+                            min_count,
+                            require_end,
+                        )
+                    {
+                        return true;
+                    }
                 }
             }
             RegexNode::Alternation(alternatives) => {
                 for alt in alternatives {
                     for end in (pos + 1)..=text.len() {
                         if group_full_match(alt, text, pos, end)
-                            && try_inner(inner, rest_nodes, text, ni, end, count + 1, min_count, require_end) {
-                                return true;
-                            }
+                            && try_inner(
+                                inner,
+                                rest_nodes,
+                                text,
+                                ni,
+                                end,
+                                count + 1,
+                                min_count,
+                                require_end,
+                            )
+                        {
+                            return true;
+                        }
                     }
                 }
             }
@@ -304,13 +451,182 @@ fn try_repeat_complex(
         false
     }
 
-    try_inner(inner, rest_nodes, text, ni, start, 0, min_count, require_end)
+    try_inner(
+        inner,
+        rest_nodes,
+        text,
+        ni,
+        start,
+        0,
+        min_count,
+        require_end,
+    )
 }
 
 /// グループノードがテキストの [start, end) にフルマッチするか
 fn group_full_match(nodes: &[RegexNode], text: &[char], start: usize, end: usize) -> bool {
     let sub_text = &text[start..end];
     regex_match(nodes, sub_text, 0, 0, true)
+}
+
+fn node_full_match_ends(node: &RegexNode, text: &[char], start: usize) -> Vec<usize> {
+    let mut ends = Vec::new();
+    for end in start..=text.len() {
+        if regex_match(std::slice::from_ref(node), &text[start..end], 0, 0, true) {
+            ends.push(end);
+        }
+    }
+    ends
+}
+
+#[allow(clippy::too_many_arguments)]
+fn try_repeat_bounded(
+    inner: &RegexNode,
+    nodes: &[RegexNode],
+    text: &[char],
+    ni: usize,
+    start: usize,
+    require_end: bool,
+    min_count: usize,
+    max_count: Option<usize>,
+) -> bool {
+    fn dfs(
+        inner: &RegexNode,
+        rest_nodes: &[RegexNode],
+        text: &[char],
+        pos: usize,
+        count: usize,
+        min_count: usize,
+        max_limit: usize,
+        require_end: bool,
+    ) -> bool {
+        if count >= min_count && regex_match(rest_nodes, text, 0, pos, require_end) {
+            return true;
+        }
+        if count >= max_limit {
+            return false;
+        }
+
+        for end in node_full_match_ends(inner, text, pos) {
+            if end == pos {
+                continue;
+            }
+            if dfs(
+                inner,
+                rest_nodes,
+                text,
+                end,
+                count + 1,
+                min_count,
+                max_limit,
+                require_end,
+            ) {
+                return true;
+            }
+        }
+        false
+    }
+
+    if matches!(max_count, Some(max) if max < min_count) {
+        return false;
+    }
+    let max_limit = max_count.unwrap_or_else(|| {
+        text.len()
+            .saturating_sub(start)
+            .saturating_add(min_count)
+            .saturating_add(1)
+    });
+    dfs(
+        inner,
+        &nodes[ni + 1..],
+        text,
+        start,
+        0,
+        min_count,
+        max_limit,
+        require_end,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn try_repeat_bounded_with_captures(
+    inner: &RegexNode,
+    nodes: &[RegexNode],
+    text: &[char],
+    ni: usize,
+    start: usize,
+    require_end: bool,
+    min_count: usize,
+    max_count: Option<usize>,
+    captures: &mut Vec<Option<Vec<char>>>,
+) -> bool {
+    if matches!(max_count, Some(max) if max < min_count) {
+        return false;
+    }
+    let max_limit = max_count.unwrap_or_else(|| {
+        text.len()
+            .saturating_sub(start)
+            .saturating_add(min_count)
+            .saturating_add(1)
+    });
+
+    fn dfs(
+        inner: &RegexNode,
+        rest_nodes: &[RegexNode],
+        text: &[char],
+        pos: usize,
+        count: usize,
+        min_count: usize,
+        max_limit: usize,
+        require_end: bool,
+        captures: &mut Vec<Option<Vec<char>>>,
+    ) -> bool {
+        if count >= min_count {
+            let mut rest_captures = captures.clone();
+            if regex_match_with_captures(rest_nodes, text, 0, pos, require_end, &mut rest_captures)
+            {
+                *captures = rest_captures;
+                return true;
+            }
+        }
+        if count >= max_limit {
+            return false;
+        }
+
+        for end in node_full_match_ends(inner, text, pos) {
+            if end == pos {
+                continue;
+            }
+            let mut next_captures = captures.clone();
+            if dfs(
+                inner,
+                rest_nodes,
+                text,
+                end,
+                count + 1,
+                min_count,
+                max_limit,
+                require_end,
+                &mut next_captures,
+            ) {
+                *captures = next_captures;
+                return true;
+            }
+        }
+        false
+    }
+
+    dfs(
+        inner,
+        &nodes[ni + 1..],
+        text,
+        start,
+        0,
+        min_count,
+        max_limit,
+        require_end,
+        captures,
+    )
 }
 
 /// 正規表現マッチのステップ上限 (NC-11: 病的入力対策)
@@ -323,7 +639,13 @@ thread_local! {
 
 /// NFA ベースの正規表現マッチ（バックトラッキング）
 /// require_end = true の場合、テキスト末尾まで消費されることを要求
-fn regex_match(nodes: &[RegexNode], text: &[char], ni: usize, ti: usize, require_end: bool) -> bool {
+fn regex_match(
+    nodes: &[RegexNode],
+    text: &[char],
+    ni: usize,
+    ti: usize,
+    require_end: bool,
+) -> bool {
     // ステップ制限チェック (NC-11)
     let exceeded = REGEX_STEPS.with(|steps| {
         let current = steps.get();
@@ -347,6 +669,11 @@ fn regex_match(nodes: &[RegexNode], text: &[char], ni: usize, ti: usize, require
             expanded.extend_from_slice(&nodes[ni + 1..]);
             regex_match(&expanded, text, 0, ti, require_end)
         }
+        RegexNode::NonCapturingGroup(group_nodes) => {
+            let mut expanded = group_nodes.clone();
+            expanded.extend_from_slice(&nodes[ni + 1..]);
+            regex_match(&expanded, text, 0, ti, require_end)
+        }
         RegexNode::Alternation(alternatives) => {
             for alt in alternatives {
                 let mut expanded = alt.clone();
@@ -361,7 +688,10 @@ fn regex_match(nodes: &[RegexNode], text: &[char], ni: usize, ti: usize, require
             if regex_match(nodes, text, ni + 1, ti, require_end) {
                 return true;
             }
-            if matches!(inner.as_ref(), RegexNode::Group(_) | RegexNode::Alternation(_)) {
+            if matches!(
+                inner.as_ref(),
+                RegexNode::Group(_) | RegexNode::NonCapturingGroup(_) | RegexNode::Alternation(_)
+            ) {
                 try_repeat_complex(inner, nodes, text, ni, ti, require_end, 0)
             } else {
                 let mut pos = ti;
@@ -375,7 +705,10 @@ fn regex_match(nodes: &[RegexNode], text: &[char], ni: usize, ti: usize, require
             }
         }
         RegexNode::Plus(inner) => {
-            if matches!(inner.as_ref(), RegexNode::Group(_) | RegexNode::Alternation(_)) {
+            if matches!(
+                inner.as_ref(),
+                RegexNode::Group(_) | RegexNode::NonCapturingGroup(_) | RegexNode::Alternation(_)
+            ) {
                 try_repeat_complex(inner, nodes, text, ni, ti, require_end, 1)
             } else {
                 let mut pos = ti;
@@ -393,7 +726,7 @@ fn regex_match(nodes: &[RegexNode], text: &[char], ni: usize, ti: usize, require
                 return true;
             }
             match inner.as_ref() {
-                RegexNode::Group(group_nodes) => {
+                RegexNode::Group(group_nodes) | RegexNode::NonCapturingGroup(group_nodes) => {
                     let mut expanded = group_nodes.clone();
                     expanded.extend_from_slice(&nodes[ni + 1..]);
                     regex_match(&expanded, text, 0, ti, require_end)
@@ -416,6 +749,9 @@ fn regex_match(nodes: &[RegexNode], text: &[char], ni: usize, ti: usize, require
                 }
             }
         }
+        RegexNode::BoundedRepeat { inner, min, max } => {
+            try_repeat_bounded(inner, nodes, text, ni, ti, require_end, *min, *max)
+        }
         RegexNode::Lookahead(lookahead_nodes) => {
             let remaining_text = &text[ti..];
             if regex_match(lookahead_nodes, remaining_text, 0, 0, false) {
@@ -432,9 +768,7 @@ fn regex_match(nodes: &[RegexNode], text: &[char], ni: usize, ti: usize, require
                 false
             }
         }
-        RegexNode::Backreference(_) => {
-            false
-        }
+        RegexNode::Backreference(_) => false,
         node => {
             if ti < text.len() && node_matches_char(node, text[ti]) {
                 regex_match(nodes, text, ni + 1, ti + 1, require_end)
@@ -466,13 +800,25 @@ fn regex_match_with_captures(
                 let sub = &text[ti..end_pos];
                 if group_full_match(group_nodes, text, ti, end_pos) {
                     captures[group_idx] = Some(sub.to_vec());
-                    if regex_match_with_captures(nodes, text, ni + 1, end_pos, require_end, captures) {
+                    if regex_match_with_captures(
+                        nodes,
+                        text,
+                        ni + 1,
+                        end_pos,
+                        require_end,
+                        captures,
+                    ) {
                         return true;
                     }
                 }
             }
             captures[group_idx] = None;
             false
+        }
+        RegexNode::NonCapturingGroup(group_nodes) => {
+            let mut expanded = group_nodes.clone();
+            expanded.extend_from_slice(&nodes[ni + 1..]);
+            regex_match_with_captures(&expanded, text, 0, ti, require_end, captures)
         }
         RegexNode::Backreference(n) => {
             if *n == 0 || *n > captures.len() {
@@ -485,7 +831,14 @@ fn regex_match_with_captures(
                     return false;
                 }
                 if text[ti..ti + cap_len] == captured[..] {
-                    regex_match_with_captures(nodes, text, ni + 1, ti + cap_len, require_end, captures)
+                    regex_match_with_captures(
+                        nodes,
+                        text,
+                        ni + 1,
+                        ti + cap_len,
+                        require_end,
+                        captures,
+                    )
                 } else {
                     false
                 }
@@ -523,7 +876,10 @@ fn regex_match_with_captures(
             if regex_match_with_captures(nodes, text, ni + 1, ti, require_end, captures) {
                 return true;
             }
-            if matches!(inner.as_ref(), RegexNode::Group(_) | RegexNode::Alternation(_)) {
+            if matches!(
+                inner.as_ref(),
+                RegexNode::Group(_) | RegexNode::NonCapturingGroup(_) | RegexNode::Alternation(_)
+            ) {
                 try_repeat_complex(inner, nodes, text, ni, ti, require_end, 0)
             } else {
                 let mut pos = ti;
@@ -537,7 +893,10 @@ fn regex_match_with_captures(
             }
         }
         RegexNode::Plus(inner) => {
-            if matches!(inner.as_ref(), RegexNode::Group(_) | RegexNode::Alternation(_)) {
+            if matches!(
+                inner.as_ref(),
+                RegexNode::Group(_) | RegexNode::NonCapturingGroup(_) | RegexNode::Alternation(_)
+            ) {
                 try_repeat_complex(inner, nodes, text, ni, ti, require_end, 1)
             } else {
                 let mut pos = ti;
@@ -555,7 +914,7 @@ fn regex_match_with_captures(
                 return true;
             }
             match inner.as_ref() {
-                RegexNode::Group(group_nodes) => {
+                RegexNode::Group(group_nodes) | RegexNode::NonCapturingGroup(group_nodes) => {
                     let mut expanded = group_nodes.clone();
                     expanded.extend_from_slice(&nodes[ni + 1..]);
                     regex_match_with_captures(&expanded, text, 0, ti, require_end, captures)
@@ -564,7 +923,8 @@ fn regex_match_with_captures(
                     for alt in alternatives {
                         let mut expanded = alt.clone();
                         expanded.extend_from_slice(&nodes[ni + 1..]);
-                        if regex_match_with_captures(&expanded, text, 0, ti, require_end, captures) {
+                        if regex_match_with_captures(&expanded, text, 0, ti, require_end, captures)
+                        {
                             return true;
                         }
                     }
@@ -572,12 +932,30 @@ fn regex_match_with_captures(
                 }
                 _ => {
                     if ti < text.len() && node_matches_char(inner, text[ti]) {
-                        return regex_match_with_captures(nodes, text, ni + 1, ti + 1, require_end, captures);
+                        return regex_match_with_captures(
+                            nodes,
+                            text,
+                            ni + 1,
+                            ti + 1,
+                            require_end,
+                            captures,
+                        );
                     }
                     false
                 }
             }
         }
+        RegexNode::BoundedRepeat { inner, min, max } => try_repeat_bounded_with_captures(
+            inner,
+            nodes,
+            text,
+            ni,
+            ti,
+            require_end,
+            *min,
+            *max,
+            captures,
+        ),
         node => {
             if ti < text.len() && node_matches_char(node, text[ti]) {
                 regex_match_with_captures(nodes, text, ni + 1, ti + 1, require_end, captures)
@@ -592,19 +970,35 @@ fn regex_match_with_captures(
 pub(crate) fn has_advanced_features(nodes: &[RegexNode]) -> bool {
     for node in nodes {
         match node {
-            RegexNode::Backreference(_)
-            | RegexNode::Lookahead(_)
-            | RegexNode::LookaheadNeg(_) => return true,
+            RegexNode::Backreference(_) | RegexNode::Lookahead(_) | RegexNode::LookaheadNeg(_) => {
+                return true;
+            }
+            RegexNode::NonCapturingGroup(inner) => {
+                if has_advanced_features(inner) {
+                    return true;
+                }
+            }
             RegexNode::Group(inner) => {
-                if has_advanced_features(inner) { return true; }
+                if has_advanced_features(inner) {
+                    return true;
+                }
             }
             RegexNode::Alternation(alts) => {
                 for alt in alts {
-                    if has_advanced_features(alt) { return true; }
+                    if has_advanced_features(alt) {
+                        return true;
+                    }
                 }
             }
             RegexNode::Star(inner) | RegexNode::Plus(inner) | RegexNode::Optional(inner) => {
-                if has_advanced_features(&[inner.as_ref().clone()]) { return true; }
+                if has_advanced_features(&[inner.as_ref().clone()]) {
+                    return true;
+                }
+            }
+            RegexNode::BoundedRepeat { inner, .. } => {
+                if has_advanced_features(&[inner.as_ref().clone()]) {
+                    return true;
+                }
             }
             _ => {}
         }
@@ -641,10 +1035,8 @@ pub(crate) fn simple_pattern_match(text: &str, pattern: &str) -> bool {
 
     // DFA マッチを試行 (後方参照・先読みがないパターンのみ)
     if !use_captures
-        && let Some(result) = dfa::try_dfa_match(
-            pattern, &nodes, &text_chars,
-            anchored_start, anchored_end,
-        )
+        && let Some(result) =
+            dfa::try_dfa_match(pattern, &nodes, &text_chars, anchored_start, anchored_end)
     {
         return result;
     }
@@ -725,6 +1117,47 @@ mod tests {
         assert!(simple_pattern_match("", "^a?$"));
         assert!(simple_pattern_match("a", "^a?$"));
         assert!(!simple_pattern_match("aa", "^a?$"));
+    }
+
+    #[test]
+    fn test_regex_bounded_quantifiers() {
+        assert!(simple_pattern_match("aaa", "^a{3}$"));
+        assert!(!simple_pattern_match("aa", "^a{3}$"));
+
+        assert!(simple_pattern_match("aa", "^a{2,4}$"));
+        assert!(simple_pattern_match("aaaa", "^a{2,4}$"));
+        assert!(!simple_pattern_match("a", "^a{2,4}$"));
+        assert!(!simple_pattern_match("aaaaa", "^a{2,4}$"));
+
+        assert!(simple_pattern_match("aaaaa", "^a{2,}$"));
+        assert!(!simple_pattern_match("a", "^a{2,}$"));
+    }
+
+    #[test]
+    fn test_regex_shorthand_negated_classes() {
+        assert!(simple_pattern_match("abc", "^\\D+$"));
+        assert!(!simple_pattern_match("123", "^\\D+$"));
+
+        assert!(simple_pattern_match("!?", "^\\W+$"));
+        assert!(!simple_pattern_match("abc_123", "^\\W+$"));
+
+        assert!(simple_pattern_match("visible", "^\\S+$"));
+        assert!(!simple_pattern_match("has space", "^\\S+$"));
+    }
+
+    #[test]
+    fn test_regex_non_capturing_group_does_not_shift_backreference() {
+        assert!(simple_pattern_match("abcdcd", "^(?:ab)(cd)\\1$"));
+        assert!(!simple_pattern_match("abcdab", "^(?:ab)(cd)\\1$"));
+    }
+
+    #[test]
+    fn test_regex_lazy_quantifier_suffix_is_accepted() {
+        assert!(simple_pattern_match("aaa", "^a+?$"));
+        assert!(simple_pattern_match("", "^a*?$"));
+        assert!(simple_pattern_match("a", "^a??$"));
+        assert!(simple_pattern_match("aaa", "^a{2,4}?$"));
+        assert!(!simple_pattern_match("aaaaa", "^a{2,4}?$"));
     }
 
     #[test]
@@ -810,7 +1243,10 @@ mod tests {
     #[test]
     fn test_unicode_letter() {
         assert!(simple_pattern_match("hello", "^\\p{L}+$"));
-        assert!(simple_pattern_match("\u{3053}\u{3093}\u{306B}\u{3061}\u{306F}", "^\\p{L}+$"));
+        assert!(simple_pattern_match(
+            "\u{3053}\u{3093}\u{306B}\u{3061}\u{306F}",
+            "^\\p{L}+$"
+        ));
         assert!(!simple_pattern_match("123", "^\\p{L}+$"));
     }
 
@@ -822,8 +1258,14 @@ mod tests {
 
     #[test]
     fn test_unicode_letter_number_combined() {
-        assert!(simple_pattern_match("\u{540D}\u{524D}42", "^\\p{L}+\\p{N}+$"));
-        assert!(!simple_pattern_match("42\u{540D}\u{524D}", "^\\p{L}+\\p{N}+$"));
+        assert!(simple_pattern_match(
+            "\u{540D}\u{524D}42",
+            "^\\p{L}+\\p{N}+$"
+        ));
+        assert!(!simple_pattern_match(
+            "42\u{540D}\u{524D}",
+            "^\\p{L}+\\p{N}+$"
+        ));
     }
 
     #[test]

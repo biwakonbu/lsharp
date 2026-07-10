@@ -409,8 +409,9 @@ fn test_e2e_selfhost_gc_collect_ignores_legacy_zero_root_slot_sentinel() {
 
 /// TEST-NATIVE-01: selfhost/src/Backend/Native/NativeTarget.ls の存在 + ターゲット記述子定義
 ///
-/// selfhost/src/Backend/Native/NativeTarget.ls が存在し、x86_64-apple-darwin, aarch64-apple-darwin,
-/// x86_64-unknown-linux-gnu の3つのターゲット記述子が定義されていることを検証する。
+/// selfhost/src/Backend/Native/NativeTarget.ls が存在し、supported product/release targets
+/// (aarch64-apple-darwin, x86_64-unknown-linux-gnu) と internal diagnostic descriptor
+/// (x86_64-apple-darwin) が分離されていることを検証する。
 /// Red Phase: NativeTarget.ls が未作成のため FAIL する。
 #[test]
 fn test_e2e_selfhost_native_target_descriptors() {
@@ -425,12 +426,17 @@ fn test_e2e_selfhost_native_target_descriptors() {
         "selfhost/src/Backend/Native/NativeTarget.ls に namespaced module 宣言がない"
     );
 
-    // x86_64-apple-darwin ターゲット記述子
+    // x86_64-apple-darwin は製品サポートではなく内部診断用 descriptor として残す
     assert!(
         source.contains("x86_64-apple-darwin")
             || source.contains("x86-64-macos")
             || source.contains("target-x86-64-darwin"),
-        "selfhost/src/Backend/Native/NativeTarget.ls に x86_64-apple-darwin ターゲット記述子がない"
+        "selfhost/src/Backend/Native/NativeTarget.ls に x86_64-apple-darwin 内部診断 descriptor がない"
+    );
+    assert!(
+        source.contains("Supported product/release targets")
+            && source.contains("Internal unsupported diagnostic descriptors"),
+        "NativeTarget.ls は product support と internal diagnostics をコメント上で分離すること"
     );
 
     // aarch64-apple-darwin ターゲット記述子

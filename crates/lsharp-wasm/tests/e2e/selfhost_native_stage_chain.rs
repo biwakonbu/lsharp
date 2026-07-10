@@ -141,12 +141,247 @@ fn strip_linux_x86_unused_base64_helpers(source: String) -> String {
     format!("{}{}", &source[..start], &source[end..])
 }
 
+fn strip_linux_x86_unused_byte_chunk_text_helpers(source: String) -> String {
+    let Some(start) =
+        source.find("\n(defn build-byte-chunk-text-lines [bytes start line-count end]")
+    else {
+        return source;
+    };
+    let Some(relative_end) = source[start..].find("\n(defn make-print-step-state [done next-idx]")
+    else {
+        return source;
+    };
+    let end = start + relative_end;
+    format!("{}{}", &source[..start], &source[end..])
+}
+
+fn strip_linux_x86_unused_regular_code_byte_printer(source: String) -> String {
+    let Some(start) = source.find("\n(defn print-code-bytes-step [bytes idx count]") else {
+        return source;
+    };
+    let Some(relative_end) =
+        source[start..].find("\n(defn print-packed-code-bytes-step [bytes idx count]")
+    else {
+        return source;
+    };
+    let end = start + relative_end;
+    format!("{}{}", &source[..start], &source[end..])
+}
+
+fn stabilize_linux_x86_packed_code_byte_printer(source: String) -> String {
+    let Some(start) =
+        source.find("\n(defn continue-print-packed-code-bytes-step [bytes count state]")
+    else {
+        return source;
+    };
+    let Some(relative_end) =
+        source[start..].find("\n(defn print-packed-code-segment-with-length [bytes segment-len]")
+    else {
+        return source;
+    };
+    let end = start + relative_end;
+    let replacement = r#"
+(defn continue-print-packed-code-bytes-step-times [bytes count remaining state]
+  (if (= remaining 0)
+    state
+    (if (= (vector-get state 0) 1)
+      state
+      (continue-print-packed-code-bytes-step-times
+        bytes
+        count
+        (- remaining 1)
+        (print-packed-code-bytes-step bytes (vector-get state 1) count)))))
+
+(defn print-packed-code-bytes-step-512 [bytes idx count]
+  (continue-print-packed-code-bytes-step-times
+    bytes
+    count
+    512
+    (make-print-step-state 0 idx)))
+
+(defn print-packed-code-bytes-loop [bytes idx count]
+  (let [step (print-packed-code-bytes-step-512 bytes idx count)]
+    (if (= (vector-get step 0) 1)
+      0
+      (print-packed-code-bytes-loop bytes (vector-get step 1) count))))
+"#;
+    format!("{}{}{}", &source[..start], replacement, &source[end..])
+}
+
+fn stabilize_linux_x86_padding_loop(source: String) -> String {
+    let Some(start) = source.find("\n(defn pad-byte-vector-to-length-range [bytes start end]")
+    else {
+        return source;
+    };
+    let Some(relative_end) = source[start..]
+        .find("\n(defn shift-x86-function-starts-loop [starts base idx len result result-slot]")
+    else {
+        return source;
+    };
+    let end = start + relative_end;
+    let source = format!("{}{}", &source[..start], &source[end..]);
+    source.replace(
+        r#"(let [segment (ref-get result)]
+                    (do
+                      (root_push segment)
+                      (let [padded-segment (pad-byte-vector-to-length segment function-size)]
+                        (do
+                          (root_push padded-segment)
+                          (print-packed-code-segment-with-length padded-segment function-size)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (let [final (print-x86-function-code-segments-loop functions starts import-count import-stub-offset (+ idx 1) len)]
+                            (do
+                              (root_pop)
+                              (root_pop)
+                              final)))))))))))))))"#,
+        r#"(let [segment (ref-get result)]
+                    (do
+                      (root_push segment)
+                      (print-packed-code-segment-with-length segment function-size)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (let [final (print-x86-function-code-segments-loop functions starts import-count import-stub-offset (+ idx 1) len)]
+                        (do
+                          (root_pop)
+                          (root_pop)
+                          final)))))))))))))"#,
+    )
+}
+
+fn strip_linux_x86_unused_shift_start_helpers(source: String) -> String {
+    let Some(start) = source
+        .find("\n(defn shift-x86-function-starts-loop [starts base idx len result result-slot]")
+    else {
+        return source;
+    };
+    let Some(relative_end) =
+        source[start..].find("\n(defn x86-function-slot-size [func-meta functions]")
+    else {
+        return source;
+    };
+    let end = start + relative_end;
+    format!("{}{}", &source[..start], &source[end..])
+}
+
+fn inline_linux_x86_slot_size_helper(source: String) -> String {
+    let source = source
+        .replace(
+            "(let [size (x86-function-slot-size func-meta functions)]",
+            "(let [size (+ (native-function-size-x86 func-meta functions) 2048)]",
+        )
+        .replace(
+            "next-offset (+ offset (x86-function-slot-size func-meta functions))",
+            "next-offset (+ offset (+ (native-function-size-x86 func-meta functions) 2048))",
+        )
+        .replace(
+            "next-total (+ total (x86-function-slot-size func-meta functions))",
+            "next-total (+ total (+ (native-function-size-x86 func-meta functions) 2048))",
+        );
+    let Some(start) = source.find("(defn x86-function-slot-size [func-meta functions]") else {
+        return source;
+    };
+    let Some(relative_end) =
+        source[start..].find("\n(defn print-x86-slot-size-progress-sample [functions idx]")
+    else {
+        return source;
+    };
+    let end = start + relative_end;
+    let trim_start = if start > 0 && source.as_bytes()[start - 1] == b'\n' {
+        start - 1
+    } else {
+        start
+    };
+    format!("{}{}", &source[..trim_start], &source[end..])
+}
+
+fn stabilize_linux_x86_append_vector_loop(source: String) -> String {
+    source.replace(
+        r#"(defn append-vector-loop [dst src idx len]
+  (if (>= idx len)
+    dst
+    (do
+      (root_push src)
+      (root_push dst)
+      (let [value (vector-get src idx)]
+        (do
+          (root_push value)
+          (let [next-dst (vector-push dst value)]
+            (do
+              (root_push next-dst)
+              (let [final (append-vector-loop next-dst src (+ idx 1) len)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  final)))))))))"#,
+        r#"(defn append-vector-loop [dst src idx len]
+  (if (>= idx len)
+    dst
+    (append-vector-loop
+      (vector-push dst (vector-get src idx))
+      src
+      (+ idx 1)
+      len)))"#,
+    )
+}
+
+fn root_linux_x86_seed_function_meta_constructor(source: String) -> String {
+    source.replace(
+        r#"(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))"#,
+        r#"(defn make-function-meta [param-count local-count ir]
+  (vector-push-triple-rooted (vector-new 3) param-count local-count ir))"#,
+    )
+}
+
 fn representative_actual_stage23_seed_source() -> String {
     representative_actual_stage23_seed_source_for_target("(host-target)")
 }
 
 fn linux_x86_representative_actual_stage23_seed_source() -> String {
     let code_binding_expr = r#"progress-mode (if (> (string-length (command-line-arg 8)) 0) 1 0)
+                    raw-functions-mode (if (> (string-length (command-line-arg 10)) 0) 1 0)
+                    raw-cache-ref (if (= raw-functions-mode 1) (ref-new (map-new)) cache-ref)
+                    raw-parse-count-ref (if (= raw-functions-mode 1) (ref-new 0) parse-count-ref)
+                    raw-cache-root (if (= raw-functions-mode 1) (root_push raw-cache-ref) 0)
+                    raw-parse-root (if (= raw-functions-mode 1) (root_push raw-parse-count-ref) 0)
+                    raw-pairs (if (= raw-functions-mode 1)
+                                (compile-file-pairs-with-cache source-path raw-cache-ref raw-parse-count-ref)
+                                (vector-new 0))
+                    raw-pairs-root (if (= raw-functions-mode 1) (root_push raw-pairs) 0)
+                    raw-reg-result (if (= raw-functions-mode 1)
+                                     (register-all-pairs raw-pairs 0 (vector-length raw-pairs) (ftable-new) 10)
+                                     (vector-new 0))
+                    raw-reg-root (if (= raw-functions-mode 1) (root_push raw-reg-result) 0)
+                    raw-ftable (if (= raw-functions-mode 1)
+                                 (vector-get raw-reg-result 0)
+                                 (ftable-new))
+                    raw-ftable-root (if (= raw-functions-mode 1) (root_push raw-ftable) 0)
+                    normal-transport-after-native-callables (if (= normal-transport-diagnostic-mode 1)
+                                                             (do
+                                                               (print 9000000174)
+                                                               (print (vector-length callables))
+                                                               (print (vector-length native-callables))
+                                                               (print (+ 9 (vector-length functions))))
+                                                             0)
+                    normal-payload-shape-after-native-callables (if (= normal-payload-shape-mode 1)
+                                                                 (do
+                                                                   (print 9000000198)
+                                                                   (print (vector-length callables))
+                                                                   (print (vector-length native-callables))
+                                                                   (print (+ 9 (vector-length functions))))
+                                                                 0)
                     progress-after-native-callables (if (= progress-mode 1)
                                                     (do
                                                       (print 9000000032)
@@ -157,162 +392,98 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                                                       (print (vector-length native-callables))
                                                       (print (+ 9 (vector-length functions))))
                                                     0)
-                    progress-after-first-slot-size (if (= progress-mode 1)
-                                                     (do
-                                                       (print 9000000045)
-                                                       (print (native-function-size-x86 (vector-get native-callables 10) native-callables))
-                                                       (print (x86-function-slot-size (vector-get native-callables 10) native-callables)))
-                                                     0)
-                    progress-after-inline-state-construction-probe (if (= progress-mode 1)
-                                                                     (do
-                                                                       (root_push native-callables)
-                                                                       (print 9000000051)
-                                                                       (let [inline-base0 (vector-push (vector-new 4) 0)]
-                                                                         (do
-                                                                           (root_push inline-base0)
-                                                                           (let [inline-base1 (vector-push inline-base0 1)]
-                                                                             (do
-                                                                               (root_push inline-base1)
-                                                                               (let [inline-base2 (vector-push inline-base1 native-callables)]
-                                                                                 (do
-                                                                                   (root_push inline-base2)
-                                                                                   (let [inline-state (vector-push inline-base2 3)]
-                                                                                     (do
-                                                                                       (print (vector-get inline-state 0))
-                                                                                       (print (vector-get inline-state 1))
-                                                                                       (print (vector-length (vector-get inline-state 2)))
-                                                                                       (print (vector-get inline-state 3))
-                                                                                       (root_pop)
-                                                                                       (root_pop)
-                                                                                       (root_pop)
-                                                                                       (root_pop)
-                                                                                       0)))))))))
-                                                                     0)
-                    progress-after-local-state-helper-probe (if (= progress-mode 1)
-                                                              (do
-                                                                (root_push native-callables)
-                                                                (print 9000000052)
-                                                                (let [local-state (linux-x86-probe-callable-object-offset-state 0 1 native-callables 3)]
-                                                                  (do
-                                                                    (print (vector-get local-state 0))
-                                                                    (print (vector-get local-state 1))
-                                                                    (print (vector-length (vector-get local-state 2)))
-                                                                    (print (vector-get local-state 3))
-                                                                    (root_pop)
-                                                                    0)))
-                                                              0)
-                    progress-after-state-helper-call-ir-probe (if (= progress-mode 1)
-                                                                (do
-                                                                  (root_push native-callables)
-                                                                  (let [main-meta (vector-get native-callables bounded-main-func-idx)]
-                                                                    (do
-                                                                      (root_push main-meta)
-                                                                      (let [main-ir (native-function-ir main-meta)]
-                                                                        (do
-                                                                          (root_push main-ir)
-                                                                          (print 9000000053)
-                                                                          (print (vector-length main-ir))
-                                                                          (print (linux-x86-call-after-marker main-ir 9000000051))
-                                                                          (print (linux-x86-call-after-marker main-ir 9000000052))
-                                                                          (print (linux-x86-call-after-marker main-ir 9000000050))
-                                                                          (print bounded-main-func-idx)
-                                                                          (root_pop)
-                                                                          (root_pop)
-                                                                          (root_pop)
-                                                                          0)))))
-                                                                0)
-                    progress-after-direct-state-helper-probe (if (= progress-mode 1)
-                                                               (do
-                                                                 (root_push native-callables)
-                                                                 (print 9000000050)
-                                                                 (let [vector-state (make-callable-object-offset-state 0 1 native-callables 3)]
-                                                                   (do
-                                                                     (print (vector-get vector-state 0))
-                                                                     (print (vector-get vector-state 1))
-                                                                     (print (vector-length (vector-get vector-state 2)))
-                                                                     (print (vector-get vector-state 3))
-                                                                     (let [numeric-state (make-callable-object-offset-state 0 1 1 1)]
-                                                                       (do
-                                                                         (print (vector-get numeric-state 0))
-                                                                         (print (vector-get numeric-state 1))
-                                                                         (print (vector-get numeric-state 2))
-                                                                         (print (vector-get numeric-state 3))
-                                                                         (root_pop)
-                                                                         0)))))
-                                                               0)
-                    progress-after-first-max-depth-step (if (= progress-mode 1)
-                                                          (do
-                                                            (root_push native-callables)
-                                                            (let [first-func (vector-get native-callables 10)
-                                                                  first-ir (native-function-ir first-func)
-                                                                  first-param-count (native-function-param-count first-func)
-                                                                  first-local-count (native-function-local-count first-func)
-                                                                  first-ir-len (vector-length first-ir)]
-                                                              (do
-                                                                (print 9000000049)
-                                                                (print (vector-length first-func))
-                                                                (print first-param-count)
-                                                                (print first-local-count)
-                                                                (print first-ir-len)
-                                                                (print (vector-get (vector-get first-ir 0) 0))
-                                                                (print (vector-get (vector-get first-ir 0) 1))
-                                                                (let [first-step-1 (native-max-stack-depth-step-64-loop-bounded first-ir native-callables 0 first-ir-len 0 0 1)]
-                                                                  (do
-                                                                    (print (vector-get first-step-1 0))
-                                                                    (print (vector-get first-step-1 1))
-                                                                    (print (vector-get first-step-1 2))
-                                                                    (print (vector-get first-step-1 3))
-                                                                    (let [first-step-64 (native-max-stack-depth-step-64 first-ir native-callables 0 first-ir-len 0 0)]
-                                                                      (do
-                                                                        (print (vector-get first-step-64 0))
-                                                                        (print (vector-get first-step-64 1))
-                                                                        (print (vector-get first-step-64 2))
-                                                                        (print (vector-get first-step-64 3))
-                                                                        (root_pop)
-                                                                        0)))))))
-                                                           0)
-                    progress-after-first-stack-components (if (= progress-mode 1)
-                                                           (do
-                                                             (print 9000000048)
-                                                             0)
-                                                           0)
-                    progress-after-first-size-components (if (= progress-mode 1)
-                                                          (do
-                                                            (print 9000000047)
-                                                            0)
-                                                          0)
+                    slot-sample-start (if (= progress-mode 1)
+                                        (parse-positive-int (command-line-arg 2))
+                                        0)
+                    slot-sample-end-arg (if (= progress-mode 1)
+                                          (parse-positive-int (command-line-arg 3))
+                                          0)
+                    slot-sample-end (if (= slot-sample-end-arg 0) 4 slot-sample-end-arg)
+                    progress-after-slot-sample (if (= progress-mode 1)
+                                                (print-x86-slot-size-progress native-callables slot-sample-start slot-sample-end)
+                                                0)
                     main-func-idx bounded-main-func-idx
                     entrypoint-func-idx bounded-main-func-idx
-                    slot-layout (collect-callable-function-slot-layout-x86 native-callables 10)
-                    starts (vector-get slot-layout 0)
+                    starts (if (= raw-functions-mode 1)
+                              (vector-new 0)
+                              (if (= raw-payload-boundary-mode 1)
+                                (vector-new 0)
+                                (collect-callable-function-slot-starts-x86 native-callables 10)))
+                    normal-transport-after-starts (if (= normal-transport-diagnostic-mode 1)
+                                                   (do
+                                                     (print 9000000175)
+                                                     (print (vector-length starts))
+                                                     (print (if (> (vector-length starts) 0) (vector-get starts 0) -1))
+                                                     (print (if (> (vector-length starts) 0) (vector-get starts (- (vector-length starts) 1)) -1)))
+                                                   0)
+                    normal-payload-shape-after-starts (if (= normal-payload-shape-mode 1)
+                                                       (do
+                                                         (print 9000000199)
+                                                         (print (vector-length starts))
+                                                         (print (if (> (vector-length starts) 0) (vector-get starts 0) -1))
+                                                         (print (if (> (vector-length starts) 0) (vector-get starts (- (vector-length starts) 1)) -1)))
+                                                       0)
                     progress-after-starts (if (= progress-mode 1)
                                            (do
                                              (print 9000000033)
-                                             (print (vector-length starts)))
+                                             (print (vector-length starts))
+                                             (print (if (> (vector-length starts) 0) (vector-get starts 0) -1))
+                                             (print (if (> (vector-length starts) 1) (vector-get starts 1) -1))
+                                             (print (if (> (vector-length starts) 2) (vector-get starts 2) -1))
+                                             (print (if (> (vector-length starts) 0) (vector-get starts (- (vector-length starts) 1)) -1)))
                                            0)
-                    progress-after-start-values (if (= progress-mode 1)
-                                                  (do
-                                                    (print 9000000044)
-                                                    (print (vector-get starts 0))
-                                                    (print (vector-get starts 1))
-                                                    (print (vector-get starts (- (vector-length starts) 1)))
-                                                    (print (- entrypoint-func-idx 10))
-                                                    (print (vector-get starts (- entrypoint-func-idx 10))))
-                                                  0)
-                    user-total (vector-get slot-layout 1)
+                    user-total (if (= raw-functions-mode 1)
+                                 0
+                                 (if (= raw-payload-boundary-mode 1)
+                                   0
+                                   (callable-user-total-slot-size-x86 native-callables 10)))
                     progress-after-user-total (if (= progress-mode 1)
                                                (do
                                                  (print 9000000034)
                                                  (print user-total))
                                                0)
-                    code-len (+ user-total (x86-selfhost-helper-trailer-size 10))
+                    code-len (if (= raw-functions-mode 1)
+                               0
+                               (if (= raw-payload-boundary-mode 1)
+                                 0
+                                 (+ user-total (x86-selfhost-helper-trailer-size 10))))
+                    normal-transport-after-size (if (= normal-transport-diagnostic-mode 1)
+                                                 (do
+                                                   (print 9000000176)
+                                                   (print user-total)
+                                                   (print code-len)
+                                                   (print (vector-length data)))
+                                                 0)
+                    normal-payload-shape-after-code-len (if (= normal-payload-shape-mode 1)
+                                                         (do
+                                                           (print 9000000200)
+                                                           (print user-total)
+                                                           (print code-len)
+                                                           (print (vector-length data)))
+                                                         0)
                     progress-after-code-len (if (= progress-mode 1)
                                              (do
                                                (print 9000000035)
                                                (print code-len))
                                              0)
                     code (vector-new 0)
-                    entrypoint-offset (vector-get starts (- entrypoint-func-idx 10))"#;
+                    entrypoint-offset (if (= raw-functions-mode 1)
+                                        0
+                                        (if (= raw-payload-boundary-mode 1)
+                                          0
+                                          (vector-get starts (- entrypoint-func-idx 10))))
+                    normal-transport-after-entrypoint (if (= normal-transport-diagnostic-mode 1)
+                                                       (do
+                                                         (print 9000000177)
+                                                         (print entrypoint-func-idx)
+                                                         (print entrypoint-offset))
+                                                       0)
+                    normal-payload-shape-after-entrypoint (if (= normal-payload-shape-mode 1)
+                                                           (do
+                                                             (print 9000000201)
+                                                             (print entrypoint-func-idx)
+                                                             (print entrypoint-offset))
+                                                           0)"#;
     let main_body = r#"      (let [data-len (vector-length data)
           range-start (parse-positive-int (command-line-arg 2))
           range-end-arg (parse-positive-int (command-line-arg 3))
@@ -324,67 +495,84 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                                        (print 9000000036)
                                        (print entrypoint-offset))
                                      0)
-          progress-after-layout-consistency (if (= progress-mode 1)
-                                             (do
-                                               (print 9000000057)
-                                               (print (if (= entrypoint-offset (vector-get starts (- entrypoint-func-idx 10))) 1 0))
-                                               (print (if (= code-len (+ user-total (x86-selfhost-helper-trailer-size 10))) 1 0))
-                                               (print (if (< entrypoint-offset code-len) 1 0))
-                                               (print (if (< user-total code-len) 1 0))
-                                               (print (% entrypoint-offset 1000000))
-                                               (print (% code-len 1000000))
-                                               (print (% user-total 1000000))
-                                               (print (x86-selfhost-helper-trailer-size 10)))
-                                             0)
           metadata-mode (if (> (string-length (command-line-arg 6)) 0) 1 0)
           metadata-prefix-limit (if (> (string-length (command-line-arg 7)) 0)
                                   (parse-positive-int (command-line-arg 7))
                                   8)]
          (do
-           (if (= progress-mode 1)
+	           (if (= raw-payload-boundary-mode 1)
+	             0
+	             (if (= normal-payload-shape-mode 1)
              (do
-               (print 9000000037)
-               (print (vector-length starts))
-               (print user-total)
-               (print code-len)
-               (print data-len)
-               (let [segment-ctx (make-x86-code-segment-context native-callables starts 10 user-total)]
-                 (do
-                   (root_push segment-ctx)
-                   (print 9000000038)
-                   (print entrypoint-func-idx)
-                   (print entrypoint-offset)
-                   (root_pop))))
-             (let [segment-ctx (make-x86-code-segment-context native-callables starts 10 user-total)]
+               (print 9000000202)
+               (print range-start)
+               (print range-end)
+               (print include-header)
+               (print include-tail)
+               0)
+             (if (= normal-transport-diagnostic-mode 1)
+             (do
+               (print 9000000178)
+               (print range-start)
+               (print range-end)
+               (print include-header)
+               (print include-tail)
+               (print metadata-mode)
+               0)
+             (if (= raw-functions-mode 1)
+             (do
+               (print-x86-known-ftable-lookups raw-ftable)
+               (print-x86-function-ir-owner-window functions raw-ftable raw-pairs range-start range-end))
+             (if (= progress-mode 1)
                (do
-                 (root_push segment-ctx)
-                 (if (= metadata-mode 1)
-                   (print-x86-function-segment-metadata-loop segment-ctx range-start range-end metadata-prefix-limit)
+                 (print 9000000037)
+                 (print (vector-length starts))
+                 (print user-total)
+                 (print code-len)
+                 (print data-len)
+                 (let [starts-size-sample-idx slot-sample-start
+                       starts-size-sample-next-idx (+ starts-size-sample-idx 1)
+                       starts-size-sample-start (if (< starts-size-sample-idx (vector-length starts)) (vector-get starts starts-size-sample-idx) -1)
+                       starts-size-sample-next (if (< starts-size-sample-next-idx (vector-length starts)) (vector-get starts starts-size-sample-next-idx) user-total)
+                       starts-size-sample-size (if (< starts-size-sample-start 0) -1 (- starts-size-sample-next starts-size-sample-start))]
                    (do
-                     (if (= include-header 1)
-                       (do
-                      (print 9000000005)
-                      (print (vector-length starts))
-                      (print entrypoint-func-idx)
-                      (print entrypoint-offset)
-                      (print 9000000006)
-                       (print 9000000001)
-                      (print code-len)
-                        (print 9000000002))
-                       0)
-                     (print-x86-function-code-segments-loop segment-ctx range-start range-end)
-                     (if (= include-tail 1)
-                       (do
-                         (print-x86-code-trailer-segments 10)
-                       (print 9000000003)
-                      (print data-len)
-                      (print 9000000004)
-                         (print-packed-code-bytes-loop data 0 data-len))
-                       0)))
-                 (root_pop))))))"#;
-    let payload_expr = r#"(let [payload-base (compile-file-functions-payload-with-cache (command-line-arg 1) 10 cache-ref parse-count-ref)
-      payload-root (root_push payload-base)]
-      payload-base)"#;
+                     (print 9000000120)
+                     (print starts-size-sample-idx)
+                     (print (+ starts-size-sample-idx 10))
+                     (print (vector-length starts))
+                     (print starts-size-sample-start)
+                     (print starts-size-sample-next)
+                     (print user-total)
+                     (print starts-size-sample-size)
+                     (print 9000000121)
+                     (print slot-sample-end)
+                     (print 9000000038)
+                     (print entrypoint-func-idx)
+                     (print entrypoint-offset))))
+               (if (= metadata-mode 1)
+                     (print-x86-function-segment-metadata-loop native-callables starts 10 user-total range-start range-end metadata-prefix-limit)
+                     (do
+                       (if (= include-header 1)
+                         (do
+                        (print 9000000005)
+                        (print (vector-length starts))
+                        (print entrypoint-func-idx)
+                        (print entrypoint-offset)
+                        (print 9000000006)
+                         (print 9000000001)
+                        (print code-len)
+                          (print 9000000002))
+                         0)
+                       (print-x86-function-code-segments-loop native-callables starts 10 user-total range-start range-end)
+                       (if (= include-tail 1)
+                         (do
+                           (print-x86-code-trailer-segments 10)
+                         (print 9000000003)
+                        (print data-len)
+                        (print 9000000004)
+                           (print-packed-code-bytes-loop data 0 data-len))
+	                         0))))))))))"#;
+    let payload_expr = "(compile-file-functions-payload-with-cache (command-line-arg 1) 10 cache-ref parse-count-ref)";
     let source = actual_stage23_seed_source_with_payload_and_code_binding_and_target(
         payload_expr,
         code_binding_expr,
@@ -392,68 +580,322 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
         main_body,
     );
     let source = strip_linux_x86_unused_base64_helpers(source);
-    let payload_bindings = r#"payload-base (compile-file-functions-payload-with-cache (command-line-arg 1) 10 cache-ref parse-count-ref)
-         payload-root (root_push payload-base)
+    let source = root_linux_x86_seed_function_meta_constructor(source);
+    let source = strip_linux_x86_unused_byte_chunk_text_helpers(source);
+    let source = strip_linux_x86_unused_regular_code_byte_printer(source);
+    let source = stabilize_linux_x86_packed_code_byte_printer(source);
+    let source = stabilize_linux_x86_padding_loop(source);
+    let source = strip_linux_x86_unused_shift_start_helpers(source);
+    let source = stabilize_linux_x86_append_vector_loop(source);
+    let payload_bindings = r#"source-path (command-line-arg 1)
+	         source-path-root (root_push source-path)
+	         normal-transport-diagnostic-mode (if (> (string-length (command-line-arg 11)) 0) 1 0)
+	         normal-payload-shape-mode (if (> (string-length (command-line-arg 12)) 0) 1 0)
+	         raw-payload-boundary-arg (command-line-arg 13)
+	         raw-payload-production-boundary-mode (if (string-eq raw-payload-boundary-arg "raw-payload-production-boundary") 1 0)
+	         raw-payload-boundary-mode (if (> (string-length raw-payload-boundary-arg) 0) 1 0)
+	         pre-payload-progress-mode (if (> (string-length (command-line-arg 8)) 0) 1 0)
+	         raw-payload-boundary-entry (if (= raw-payload-boundary-mode 1)
+	                                      (do
+	                                        (print 9000000293)
+	                                        (print (string-length source-path))
+	                                        (print (ref-get parse-count-ref)))
+	                                      0)
+	         normal-payload-shape-entry (if (= normal-payload-shape-mode 1)
+	                                      (do
+	                                        (print 9000000205)
+                                        (print (string-length source-path)))
+                                      0)
+         normal-transport-before-payload (if (= normal-transport-diagnostic-mode 1) (print 9000000170) 0)
+         pre-payload-observe-mode (if (= normal-transport-diagnostic-mode 1) 1 pre-payload-progress-mode)
+         pre-payload-progress-start (if (= pre-payload-progress-mode 1) (print 9000000030) 0)
+         pre-payload-source (if (= pre-payload-observe-mode 1) (read-file source-path) "")
+         pre-payload-source-root (if (= pre-payload-observe-mode 1) (root_push pre-payload-source) 0)
+         normal-transport-after-read (if (= normal-transport-diagnostic-mode 1)
+                                      (do
+                                        (print 9000000171)
+                                        (print (string-length pre-payload-source))
+                                        (print (if (> (string-length pre-payload-source) 0) (string-char-at pre-payload-source 0) -1)))
+                                      0)
+	         pre-payload-progress-read (if (= pre-payload-progress-mode 1)
+	                                    (do
+	                                      (print 9000000031)
+	                                      (print (string-length pre-payload-source))
+	                                      (print (if (> (string-length pre-payload-source) 0) (string-char-at pre-payload-source 0) -1)))
+	                                    0)
+	         pre-payload-source-pop (if (= pre-payload-observe-mode 1) (root_pop) 0)
+	         normal-payload-shape-direct-cache-ref (if (= normal-payload-shape-mode 1) (ref-new (map-new)) cache-ref)
+	         normal-payload-shape-direct-cache-root (if (= normal-payload-shape-mode 1) (root_push normal-payload-shape-direct-cache-ref) 0)
+	         normal-payload-shape-direct-parse-count-ref (if (= normal-payload-shape-mode 1) (ref-new 0) parse-count-ref)
+	         normal-payload-shape-direct-parse-root (if (= normal-payload-shape-mode 1) (root_push normal-payload-shape-direct-parse-count-ref) 0)
+	         normal-payload-shape-direct-data-ref (if (= normal-payload-shape-mode 1) (ref-new (vector-new 8)) cache-ref)
+	         normal-payload-shape-direct-data-root (if (= normal-payload-shape-mode 1) (root_push normal-payload-shape-direct-data-ref) 0)
+	         normal-payload-shape-before-direct-functions (if (= normal-payload-shape-mode 1)
+	                                                        (do
+	                                                          (print 9000000206)
+	                                                          (print (ref-get normal-payload-shape-direct-parse-count-ref))
+	                                                          (print (vector-length (ref-get normal-payload-shape-direct-data-ref))))
+	                                                        0)
+	         normal-payload-shape-direct-functions (if (= normal-payload-shape-mode 1)
+	                                                (compile-file-functions-with-cache-normal-payload-diagnostic source-path 10 normal-payload-shape-direct-cache-ref normal-payload-shape-direct-parse-count-ref normal-payload-shape-direct-data-ref)
+	                                                (vector-new 0))
+	         normal-payload-shape-direct-functions-root (if (= normal-payload-shape-mode 1) (root_push normal-payload-shape-direct-functions) 0)
+	         normal-payload-shape-direct-data (if (= normal-payload-shape-mode 1) (ref-get normal-payload-shape-direct-data-ref) (vector-new 0))
+	         normal-payload-shape-direct-data-root (if (= normal-payload-shape-mode 1) (root_push normal-payload-shape-direct-data) 0)
+	         normal-payload-shape-after-direct-functions (if (= normal-payload-shape-mode 1)
+	                                                       (do
+	                                                         (print 9000000203)
+	                                                         (print (vector-length normal-payload-shape-direct-functions))
+	                                                         (print (vector-length normal-payload-shape-direct-data))
+	                                                         (print (ref-get normal-payload-shape-direct-parse-count-ref)))
+	                                                       0)
+	         normal-payload-shape-after-direct-function-edges (if (= normal-payload-shape-mode 1)
+	                                                             (do
+	                                                               (print 9000000204)
+	                                                               (print (if (> (vector-length normal-payload-shape-direct-functions) 0) (vector-length (vector-get normal-payload-shape-direct-functions 0)) -1))
+                                                               (print (if (> (vector-length normal-payload-shape-direct-functions) 0) (vector-length (vector-get normal-payload-shape-direct-functions (- (vector-length normal-payload-shape-direct-functions) 1))) -1)))
+	                                                             0)
+	         normal-payload-shape-before-payload-base (if (= normal-payload-shape-mode 1)
+	                                                    (do
+	                                                      (print 9000000207)
+	                                                      (print (vector-length normal-payload-shape-direct-functions))
+	                                                      (print (vector-length normal-payload-shape-direct-data)))
+	                                                    0)
+		         raw-payload-boundary-before-payload-base (if (= raw-payload-boundary-mode 1)
+		                                                    (do
+		                                                      (print 9000000294)
+		                                                      (print (ref-get parse-count-ref)))
+		                                                    0)
+		         payload-base (if (= raw-payload-production-boundary-mode 1)
+		                        (compile-file-functions-payload-with-cache-normal-payload-production-diagnostic source-path 10 cache-ref parse-count-ref)
+		                        (if (= raw-payload-boundary-mode 1)
+		                          (compile-file-functions-payload-with-cache-raw-boundary-diagnostic source-path 10 cache-ref parse-count-ref)
+		                          (if (= pre-payload-progress-mode 1)
+				                        (compile-file-functions-payload-with-cache-progress source-path 10 cache-ref parse-count-ref)
+				                        (if (= normal-transport-diagnostic-mode 1)
+				                          (compile-file-functions-payload-with-cache-normal-setup-diagnostic source-path 10 cache-ref parse-count-ref)
+				                          (if (= normal-payload-shape-mode 1)
+				                            (compile-file-functions-payload-with-cache-normal-payload-production-diagnostic source-path 10 cache-ref parse-count-ref)
+				                            (compile-file-functions-payload-with-cache source-path 10 cache-ref parse-count-ref))))))
+	         payload-root (root_push payload-base)
+	         raw-payload-boundary-after-root (if (= raw-payload-boundary-mode 1)
+	                                          (do
+	                                            (print 9000000295)
+	                                            (print (vector-length payload-base))
+	                                            (print (if (> (vector-length payload-base) 0) (vector-length (vector-get payload-base 0)) -1))
+	                                            (print (if (> (vector-length payload-base) 1) (vector-length (vector-get payload-base 1)) -1)))
+	                                          0)
+	         normal-payload-shape-after-root (if (= normal-payload-shape-mode 1)
+	                                          (do
+	                                            (print 9000000196)
+                                            (print (vector-length payload-base))
+                                            (print (if (> (vector-length payload-base) 0) (vector-length (vector-get payload-base 0)) -1))
+                                            (print (if (> (vector-length payload-base) 1) (vector-length (vector-get payload-base 1)) -1)))
+                                          0)
          payload payload-base
          functions (vector-get payload-base 0)
          data (vector-get payload-base 1)
          bounded-main-func-idx (+ 9 (vector-length functions))
-         functions-root (root_push functions)
-         data-root (root_push data)"#;
+	         functions-root (root_push functions)
+	         data-root (root_push data)
+	         raw-payload-boundary-after-parts (if (= raw-payload-boundary-mode 1)
+	                                           (do
+	                                             (print 9000000296)
+	                                             (print (vector-length functions))
+	                                             (print (vector-length data))
+	                                             (print bounded-main-func-idx))
+	                                           0)
+	         normal-payload-shape-after-parts (if (= normal-payload-shape-mode 1)
+	                                           (do
+	                                             (print 9000000197)
+                                             (print (vector-length functions))
+                                             (print (vector-length data))
+                                             (print bounded-main-func-idx))
+                                           0)
+         normal-transport-after-payload (if (= normal-transport-diagnostic-mode 1)
+                                         (do
+                                           (print 9000000172)
+                                           (print (vector-length payload-base)))
+                                         0)
+         normal-transport-after-payload-parts (if (= normal-transport-diagnostic-mode 1)
+                                               (do
+                                                 (print 9000000173)
+                                                 (print (vector-length functions))
+                                                 (print (vector-length data)))
+                                               0)"#;
     let source = source.replace(&format!("payload {payload_expr}"), payload_bindings);
     let source = source.replace(
         "      (let [functions (vector-get payload 0)\n            data (vector-get payload 1)]",
         "      (let [payload-observed payload]",
     );
     let source = source.replace(
+        "(let [payload-observed payload]\n      (let [payload-observed payload]",
+        "(let [payload-observed payload]",
+    );
+    let source = source.replace(
         "native-callables (normalize-selfhost-native-function-metas-for-target callables target)",
         "native-callables callables",
-    );
-    source.replacen(
-        "\n(defn main []",
-        r#"
-(defn linux-x86-probe-callable-object-offset-state [done next-idx next-values next-offset]
+	    )
+	    .replace(
+	        "callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))",
+	        "callables (if (= raw-payload-boundary-mode 1) (vector-new 0) (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions)))",
+	    )
+    .replace(
+        "(defn x86-function-slot-size [func-meta functions]\n  (+ (native-function-size-x86 func-meta functions) 2048))",
+        r#"(defn x86-function-slot-size [func-meta functions]
+  (+ (native-function-size-x86 func-meta functions) 2048))
+
+(defn print-x86-slot-size-progress-sample [functions idx]
   (do
-    (root_push next-values)
-    (let [base0 (vector-push (vector-new 4) done)]
+    (root_push functions)
+    (let [actual-idx (+ idx 10)
+          func-meta (vector-get functions actual-idx)]
       (do
-        (root_push base0)
-        (let [base1 (vector-push base0 next-idx)]
+        (root_push func-meta)
+        (let [size (x86-function-slot-size func-meta functions)]
           (do
-            (root_push base1)
-            (let [with-values (vector-push base1 next-values)]
-              (do
-                (root_push with-values)
-                (let [state (vector-push with-values next-offset)]
-                  (do
-                    (root_pop)
-                    (root_pop)
-                    (root_pop)
-                    (root_pop)
-                    state))))))))))
+            (print 9000000039)
+            (print idx)
+            (print actual-idx)
+            (print size)
+            (print (native-function-param-count func-meta))
+            (print (native-function-local-count func-meta))
+            (print (vector-length (native-function-ir func-meta)))
+            (root_pop)
+            (root_pop)
+            0))))))
 
-(defn linux-x86-call-after-marker-loop [ir idx len marker seen]
+(defn print-x86-slot-size-progress [functions idx sample-end]
+  (if (>= idx sample-end)
+    (do
+      (print 9000000040)
+      (print sample-end)
+      (print -1)
+      (print -1)
+      (print -1)
+      (print -1)
+      (print -1))
+    (do
+      (print-x86-slot-size-progress-sample functions idx)
+      (print-x86-slot-size-progress functions (+ idx 1) sample-end))))
+
+(defn make-x86-owner-state [found pair-idx decl-idx defn-ordinal decl-hash lookup]
+  (vector-push
+    (vector-push
+      (vector-push
+        (vector-push
+          (vector-push
+            (vector-push (vector-new 6) found)
+            pair-idx)
+          decl-idx)
+        defn-ordinal)
+      decl-hash)
+    lookup))
+
+(defn find-x86-owner-in-decls [decls idx len ftable target defn-ordinal]
   (if (>= idx len)
-    -1
-    (let [instr (vector-get ir idx)
-          opcode (vector-get instr 0)
-          operand (vector-get instr 1)]
-      (if (= seen 1)
-        (if (= opcode 40)
-          operand
-          (linux-x86-call-after-marker-loop ir (+ idx 1) len marker 1))
-        (if (= opcode 1)
-          (if (= operand marker)
-            (linux-x86-call-after-marker-loop ir (+ idx 1) len marker 1)
-            (linux-x86-call-after-marker-loop ir (+ idx 1) len marker 0))
-          (linux-x86-call-after-marker-loop ir (+ idx 1) len marker 0))))))
+    (make-x86-owner-state 0 -1 -1 defn-ordinal 0 0)
+    (let [decl (vector-get decls idx)]
+      (if (= (vector-get decl 0) 20)
+        (let [decl-hash (vector-get decl 1)
+              func-idx (ftable-lookup ftable decl-hash)]
+          (if (= func-idx target)
+            (make-x86-owner-state 1 0 idx defn-ordinal decl-hash func-idx)
+            (find-x86-owner-in-decls decls (+ idx 1) len ftable target (+ defn-ordinal 1))))
+        (find-x86-owner-in-decls decls (+ idx 1) len ftable target defn-ordinal)))))
 
-(defn linux-x86-call-after-marker [ir marker]
-  (linux-x86-call-after-marker-loop ir 0 (vector-length ir) marker 0))
+(defn find-x86-owner-in-pairs [pairs pair-idx len ftable target]
+  (if (>= pair-idx len)
+    (make-x86-owner-state 0 -1 -1 -1 0 0)
+    (let [pair (vector-get pairs pair-idx)
+          decls (vector-get pair 1)
+          owner (find-x86-owner-in-decls decls 0 (vector-length decls) ftable target 0)]
+      (if (= (vector-get owner 0) 1)
+        (make-x86-owner-state 1 pair-idx (vector-get owner 2) (vector-get owner 3) (vector-get owner 4) (vector-get owner 5))
+        (find-x86-owner-in-pairs pairs (+ pair-idx 1) len ftable target)))))
 
-(defn main []"#,
-        1,
-    )
+(defn x86-ftable-hash-for-func-loop [ftable idx len target]
+  (if (>= idx len)
+    0
+    (if (= (vector-get ftable (+ idx 1)) target)
+      (vector-get ftable idx)
+      (x86-ftable-hash-for-func-loop ftable (+ idx 2) len target))))
+
+(defn x86-ftable-hash-for-func [ftable target]
+  (x86-ftable-hash-for-func-loop ftable 0 (vector-length ftable) target))
+
+(defn x86-body-size-loop-ctx-hash [] (name-hash "x86-body-size-loop-ctx" 0 22))
+(defn x86-native-function-body-size-loop-hash [] (name-hash "native-function-body-size-x86-loop" 0 34))
+(defn x86-native-function-size-hash [] (name-hash "native-function-size-x86" 0 24))
+
+(defn print-x86-known-ftable-lookups [ftable]
+  (do
+    (print 9000000049)
+    (print (x86-body-size-loop-ctx-hash))
+    (print (ftable-lookup ftable (x86-body-size-loop-ctx-hash)))
+    (print (x86-native-function-body-size-loop-hash))
+    (print (ftable-lookup ftable (x86-native-function-body-size-loop-hash)))
+    (print (x86-native-function-size-hash))
+    (print (ftable-lookup ftable (x86-native-function-size-hash)))))
+
+(defn print-x86-function-ir-owner-window [functions ftable pairs idx len]
+  (if (>= idx len)
+    0
+    (do
+      (root_push functions)
+      (root_push ftable)
+      (root_push pairs)
+      (let [func-meta (vector-get functions idx)]
+        (do
+          (root_push func-meta)
+          (let [ir (native-function-ir func-meta)]
+            (do
+              (root_push ir)
+              (let [actual-idx (+ idx 10)
+                    current-hash (x86-ftable-hash-for-func ftable actual-idx)
+                    current-lookup (ftable-lookup ftable current-hash)
+                    owner (find-x86-owner-in-pairs pairs 0 (vector-length pairs) ftable actual-idx)]
+                (do
+                  (root_push owner)
+                  (print 9000000048)
+                  (print idx)
+                  (print actual-idx)
+                  (print current-hash)
+                  (print current-lookup)
+                  (print (vector-get owner 0))
+                  (print (vector-get owner 1))
+                  (print (vector-get owner 2))
+                  (print (vector-get owner 3))
+                  (print (vector-get owner 4))
+                  (print (vector-get owner 5))
+                  (print (native-function-param-count func-meta))
+                  (print (native-function-local-count func-meta))
+                  (print (vector-length ir))
+                  (if (> (vector-length ir) 73)
+                    (let [instr (vector-get ir 73)]
+                      (do
+                        (root_push instr)
+                        (print (vector-get instr 0))
+                        (print (vector-get instr 1))
+                        (print (x86-ftable-hash-for-func ftable (vector-get instr 1)))
+                        (print (ftable-lookup ftable (x86-ftable-hash-for-func ftable (vector-get instr 1))))
+                        (root_pop)))
+                    (do
+                      (print -1)
+                      (print -1)
+                      (print 0)
+                      (print 0)))
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (let [final (print-x86-function-ir-owner-window functions ftable pairs (+ idx 1) len)]
+                    (do
+                      (root_pop)
+                      (root_pop)
+	        (root_pop)
+	                      final)))))))))))"#,
+    );
+    inline_linux_x86_slot_size_helper(source)
 }
 
 #[test]
@@ -481,33 +923,37 @@ fn test_linux_x86_representative_seed_uses_layout_emit_for_segmented_native_code
         "Linux x86 segmented seed は native 実行時に壊れやすい 7 引数 wrapper を直接呼ばない"
     );
     assert!(
-        !source.contains(
-            "(print-x86-function-code-segments-loop functions starts import-count import-stub-offset"
-        ),
-        "Linux x86 segmented seed は native 実行時に壊れやすい 6 引数 loop call を直接使わない"
+        source.contains(
+            "(print-x86-function-code-segments-loop native-callables starts 10 user-total range-start range-end"
+        ) && !source.contains("(print-x86-function-code-segments-loop segment-ctx"),
+        "Linux x86 segmented seed は stage2 native で壊れる segment ctx scalar を経由せず transport loop に直接 scalar を渡すべき"
     );
     assert!(
         source.contains("native-callables callables"),
-        "Linux x86 segmented seed は既知 x86 target では target-aware normalizer call を避け、x86 の 1-based local slot を直接保持するべき"
+        "Linux x86 segmented seed は x86 の 1-based local slot を保持するため native-callables を callables identity にするべき"
     );
     assert!(
-        !source.contains("native-callables (normalize-selfhost-native-function-metas"),
-        "Linux x86 segmented seed は x86 param spill と矛盾する selfhost local slot 正規化を直接使わない"
+        !source.contains("native-callables (normalize-selfhost-native-function-metas-for-target callables target)")
+            && !source.contains("native-callables (normalize-selfhost-native-function-metas callables)"),
+        "Linux x86 segmented seed は native stage2 で壊れる target-aware wrapper や、x86 param spill と矛盾する aarch64 用 local slot 正規化を直接使わない"
     );
     assert!(
-        source.contains("pad-byte-vector-to-length"),
-        "Linux x86 segmented seed は native stage の実 segment 長が declared size より短い場合に layout を保つ padding を持つべき"
+        source.contains("print-packed-code-segment-with-length"),
+        "Linux x86 segmented seed は native stage の実 segment 長が declared size より短い場合に declared length transport を持つべき"
     );
     assert!(
-        source.contains("(defn pad-byte-vector-to-length-range")
-            && source.contains("left (pad-byte-vector-to-length-range bytes start mid)")
-            && source.contains("right (pad-byte-vector-to-length-range left mid end)")
-            && !source.contains("(pad-byte-vector-to-length next target-len)"),
-        "Linux x86 segmented seed の padding は巨大 function slot で stack overflow しないよう range split で進めるべき"
+        source.contains("(print-packed-code-segment-with-length segment function-size)")
+            && !source.contains("padded-segment")
+            && !source.contains("pad-byte-vector-to-length")
+            && !source.contains("(defn pad-byte-vector-to-length-range")
+            && !source.contains("(defn continue-pad-byte-vector-to-length-step-times")
+            && !source.contains("left (pad-byte-vector-to-length-range bytes start mid)")
+            && !source.contains("right (pad-byte-vector-to-length-range left mid end)"),
+        "Linux x86 segmented seed は stage3 codegen を膨張させる padding vector materializer を持たず、declared length transport に任せるべき"
     );
     assert!(
-        source.contains("padded-segment (pad-byte-vector-to-length segment function-size)"),
-        "Linux x86 segmented seed は function start table と実 byte stream を一致させるため各 function segment を declared size まで padding するべき"
+        source.contains("(print-packed-code-segment-with-length segment function-size)"),
+        "Linux x86 segmented seed は function start table と実 byte stream を一致させるため各 function segment を declared size で出力するべき"
     );
     let segment_loop_body = source
         .split("(defn print-x86-function-code-segments-loop")
@@ -523,16 +969,14 @@ fn test_linux_x86_representative_seed_uses_layout_emit_for_segmented_native_code
         "Linux x86 segmented seed は巨大 function-size prealloc を避け、空 vector へ emit してから declared slot size まで padding するべき"
     );
     assert!(
-        source.contains("(defn x86-function-slot-size")
-            && source
-                .contains("(+ (linux-x86-native-function-size-bounded func-meta functions) 2048)")
-            && source.contains("(collect-callable-function-slot-layout-x86 native-callables 10)"),
-        "Linux x86 segmented seed は actual native stage の function-size undercount で helper 境界を壊さないよう、guard bytes 付き slot layout を使うべき"
+        !source.contains("(defn x86-function-slot-size [func-meta functions]")
+            && source.contains("(collect-callable-function-slot-starts-x86 native-callables 10)")
+            && source.contains("(+ (native-function-size-x86 func-meta functions) 2048)"),
+        "Linux x86 segmented seed は actual native stage の function-size undercount を guard bytes 付き slot layout で避けつつ、stage2 で不安定な slot-size wrapper を持たないべき"
     );
     assert!(
         source.contains("(defn print-packed-code-segment-with-length [bytes segment-len]")
-            && source
-                .contains("(print-packed-code-segment-with-length padded-segment function-size)"),
+            && source.contains("(print-packed-code-segment-with-length segment function-size)"),
         "Linux x86 segmented seed は native vector length drift を避けるため function segment を declared size で出力するべき"
     );
     assert!(
@@ -540,14 +984,35 @@ fn test_linux_x86_representative_seed_uses_layout_emit_for_segmented_native_code
             && source.contains("range-end-arg (parse-positive-int (command-line-arg 3))")
             && source.contains("include-header (if (= range-end-arg 0) 1 (parse-positive-int (command-line-arg 4)))")
             && source.contains("include-tail (if (= range-end-arg 0) 1 (parse-positive-int (command-line-arg 5)))")
-            && source.contains("(print-x86-function-code-segments-loop segment-ctx range-start range-end)")
+            && source.contains("(print-x86-function-code-segments-loop native-callables starts 10 user-total range-start range-end)")
             && source.contains("(if (= include-tail 1)")
-            && !source.contains("(print-x86-code-segments native-callables starts 10 user-total)"),
+            && !source.contains("(print-x86-code-segments native-callables starts 10 user-total)")
+            && !source.contains("segment-ctx (make-x86-code-segment-context"),
         "Linux x86 segmented seed は native heap OOM を避けるため function range を複数 process で出力できるべき"
+    );
+    let payload_base_pos = source
+        .find("payload-base (if (= raw-payload-boundary-mode 1)")
+        .expect("Linux x86 seed は payload-base を生成するべき");
+    let payload_root_pos = source[payload_base_pos..]
+        .find("payload-root (root_push payload-base)")
+        .map(|offset| offset + payload_base_pos)
+        .expect("Linux x86 seed は payload-base を root するべき");
+    let functions_from_payload_pos = source[payload_base_pos..]
+        .find("functions (vector-get payload-base 0)")
+        .map(|offset| offset + payload_base_pos)
+        .expect("Linux x86 seed は payload-base から functions を取り出すべき");
+    assert!(
+        payload_base_pos < payload_root_pos && payload_root_pos < functions_from_payload_pos,
+        "Linux x86 seed は normal transport の payload を失わないよう、payload-base を root してから functions/data を取り出すべき"
     );
     let entrypoint_checks = [
         !source.contains("emitted-main-func-idx"),
-        source.contains(
+        source.contains("source-path (command-line-arg 1)"),
+        source.contains("source-path-root (root_push source-path)"),
+        source.contains("payload-base (if (= raw-payload-boundary-mode 1)")
+            && source
+                .contains("(compile-file-functions-payload-with-cache source-path 10 cache-ref parse-count-ref)"),
+        !source.contains(
             "payload-base (compile-file-functions-payload-with-cache (command-line-arg 1) 10 cache-ref parse-count-ref)",
         ),
         source.contains("payload-root (root_push payload-base)"),
@@ -564,8 +1029,9 @@ fn test_linux_x86_representative_seed_uses_layout_emit_for_segmented_native_code
         !source.contains("defn decls-module-hash-or-minus-one"),
         !source.contains("defn find-module-pair-index"),
         !source.contains("pre-callable-progress"),
-        !source.contains("pre-callable-progress (if (= (if (> (string-length (command-line-arg 8)) 0) 1 0) 1)"),
-        source.contains("append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions)"),
+        source.contains("callables (if (= raw-payload-boundary-mode 1) (vector-new 0) (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions)))"),
+        !source.contains("(defn make-x86-import-placeholders-10"),
+        !source.contains("(defn append-one-import-placeholder"),
         source.contains("main-func-idx bounded-main-func-idx"),
         source.contains("entrypoint-func-idx bounded-main-func-idx"),
         !source.contains("main-func-idx entrypoint-func-idx"),
@@ -578,26 +1044,194 @@ fn test_linux_x86_representative_seed_uses_layout_emit_for_segmented_native_code
 }
 
 #[test]
-fn test_linux_x86_representative_seed_roots_payload_before_observing_children() {
+fn test_linux_x86_representative_seed_uses_stage_stable_append_vector_loop() {
     let source = linux_x86_representative_actual_stage23_seed_source();
-    let payload_base_pos = source
-        .find("payload-base (compile-file-functions-payload-with-cache (command-line-arg 1) 10 cache-ref parse-count-ref)")
-        .expect("Linux x86 representative seed は payload-base binding を持つこと");
-    let payload_root_pos = source
-        .find("payload-root (root_push payload-base)")
-        .expect("Linux x86 representative seed は payload-base root binding を持つこと");
-    let functions_pos = source
-        .find("functions (vector-get payload-base 0)")
-        .expect("Linux x86 representative seed は functions を payload-base から読むこと");
-    let data_pos = source
-        .find("data (vector-get payload-base 1)")
-        .expect("Linux x86 representative seed は data を payload-base から読むこと");
+    let body = source
+        .split("(defn append-vector-loop [dst src idx len]")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn find-defn-index-by-hash").next())
+        .expect("Linux x86 seed に append-vector-loop が存在すること");
 
     assert!(
-        payload_base_pos < payload_root_pos
-            && payload_root_pos < functions_pos
-            && payload_root_pos < data_pos,
-        "Linux x86 representative seed は payload-base を root してから functions/data を取り出すべき"
+        body.contains("(append-vector-loop\n      (vector-push dst (vector-get src idx))\n      src\n      (+ idx 1)\n      len)")
+            && !body.contains("root_push src")
+            && !body.contains("next-dst")
+            && !body.contains("final (append-vector-loop"),
+        "Linux x86 seed の append-vector-loop は stage2 native compiler が IR len 1 へ縮めない tail-call 形に寄せるべき"
+    );
+}
+
+#[test]
+fn test_linux_x86_representative_seed_strips_unused_byte_chunk_text_helpers() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+
+    assert!(
+        source.contains("(defn print-packed-code-segment-with-length [bytes segment-len]")
+            && source.contains("(print-packed-code-segment-with-length segment function-size)")
+            && source.contains("(print-packed-code-bytes-loop data 0 data-len)"),
+        "Linux x86 seed の active transport は packed code byte printer を使うべき"
+    );
+    for helper in [
+        "(defn build-byte-chunk-text-lines [bytes start line-count end]",
+        "(defn build-byte-chunk-text [bytes start end]",
+        "(defn write-byte-chunks [bytes idx len chunk-idx]",
+        "(defn print-byte-chunks-step [bytes idx len]",
+        "(defn continue-print-byte-chunks-step [bytes len state]",
+        "(defn continue-print-byte-chunks-step-times [bytes len remaining state]",
+        "(defn print-byte-chunks-step-8 [bytes idx len]",
+        "(defn continue-print-byte-chunks-step-8 [bytes len state]",
+        "(defn print-byte-chunks-step-64 [bytes idx len]",
+        "(defn continue-print-byte-chunks-step-64 [bytes len state]",
+        "(defn print-byte-chunks-step-512 [bytes idx len]",
+        "(defn continue-print-byte-chunks-step-512 [bytes len state]",
+        "(defn print-byte-chunks-step-4096 [bytes idx len]",
+        "(defn continue-print-byte-chunks-step-4096 [bytes len state]",
+        "(defn print-byte-chunks-step-32768 [bytes idx len]",
+        "(defn print-byte-chunks [bytes idx len]",
+        "(defn print-byte-chunks-small-step [bytes idx len]",
+        "(defn continue-print-byte-chunks-small-step [bytes len state]",
+        "(defn print-byte-chunks-small-step-8 [bytes idx len]",
+        "(defn continue-print-byte-chunks-small-step-8 [bytes len state]",
+        "(defn print-byte-chunks-small-step-64 [bytes idx len]",
+        "(defn continue-print-byte-chunks-small-step-64 [bytes len state]",
+        "(defn print-byte-chunks-small-step-512 [bytes idx len]",
+        "(defn print-byte-chunks-small [bytes idx len]",
+        "(defn build-byte-chunks-step [bytes idx len]",
+        "(defn continue-build-byte-chunks-step [bytes len state]",
+        "(defn continue-build-byte-chunks-step-times [bytes len remaining state]",
+        "(defn build-byte-chunks-step-8 [bytes idx len]",
+        "(defn continue-build-byte-chunks-step-8 [bytes len state]",
+        "(defn build-byte-chunks-step-64 [bytes idx len]",
+        "(defn continue-build-byte-chunks-step-64 [bytes len state]",
+        "(defn build-byte-chunks-step-512 [bytes idx len]",
+        "(defn build-byte-chunks [bytes idx len]",
+        "(defn print-code-bytes-step [bytes idx count]",
+        "(defn continue-print-code-bytes-step [bytes count state]",
+        "(defn print-code-bytes-step-8 [bytes idx count]",
+        "(defn continue-print-code-bytes-step-8 [bytes count state]",
+        "(defn print-code-bytes-step-64 [bytes idx count]",
+        "(defn continue-print-code-bytes-step-64 [bytes count state]",
+        "(defn print-code-bytes-step-512 [bytes idx count]",
+        "(defn continue-print-code-bytes-step-512 [bytes count state]",
+        "(defn print-code-bytes-step-4096 [bytes idx count]",
+        "(defn continue-print-code-bytes-step-4096 [bytes count state]",
+        "(defn print-code-bytes-step-32768 [bytes idx count]",
+        "(defn print-code-bytes-loop [bytes idx count]",
+    ] {
+        assert!(
+            !source.contains(helper),
+            "Linux x86 seed は未使用の {helper} を含めず stage2 native compiler の不要な IR 生成を避けるべき"
+        );
+    }
+}
+
+#[test]
+fn test_linux_x86_representative_seed_stabilizes_packed_byte_printer_loop() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+
+    assert!(
+        source.contains(
+            "(defn continue-print-packed-code-bytes-step-times [bytes count remaining state]"
+        ) && source.contains("(defn print-packed-code-bytes-step-512 [bytes idx count]")
+            && source.contains("step (print-packed-code-bytes-step-512 bytes idx count)"),
+        "Linux x86 seed の active packed printer は巨大 unroll ではなく bounded times continuation に寄せるべき"
+    );
+    for helper in [
+        "(defn continue-print-packed-code-bytes-step [bytes count state]",
+        "(defn print-packed-code-bytes-step-8 [bytes idx count]",
+        "(defn continue-print-packed-code-bytes-step-8 [bytes count state]",
+        "(defn print-packed-code-bytes-step-64 [bytes idx count]",
+        "(defn continue-print-packed-code-bytes-step-64 [bytes count state]",
+        "(defn print-packed-code-bytes-step-4096 [bytes idx count]",
+        "(defn continue-print-packed-code-bytes-step-4096 [bytes count state]",
+        "(defn print-packed-code-bytes-step-32768 [bytes idx count]",
+    ] {
+        assert!(
+            !source.contains(helper),
+            "Linux x86 seed は active packed printer の {helper} を含めず stage2 native compiler の巨大 IR 差分を避けるべき"
+        );
+    }
+}
+
+#[test]
+fn test_linux_x86_representative_seed_omits_padding_materializer() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+
+    assert!(
+        source.contains("(print-packed-code-segment-with-length segment function-size)")
+            && !source.contains("padded-segment")
+            && !source.contains("pad-byte-vector-to-length")
+            && !source.contains("(defn continue-pad-byte-vector-to-length-step-times")
+            && !source.contains("(defn pad-byte-vector-to-length-step-512")
+            && !source.contains("(defn pad-byte-vector-to-length-loop")
+            && !source.contains("(defn pad-byte-vector-to-length-range [bytes start end]")
+            && !source.contains("left (pad-byte-vector-to-length-range bytes start mid)")
+            && !source.contains("right (pad-byte-vector-to-length-range left mid end)"),
+        "Linux x86 seed は stage3 で巨大化しやすい padding materializer を持たず declared length transport だけを使うべき"
+    );
+}
+
+#[test]
+fn test_linux_x86_representative_seed_strips_unused_shift_start_helpers() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+
+    assert!(
+        !source.contains("(defn shift-x86-function-starts-loop")
+            && !source.contains("(defn shift-x86-function-starts [starts base]")
+            && !source.contains("shift-x86-function-starts"),
+        "Linux x86 seed は layout emit 移行後に未使用の shift-x86-function-starts helper を含めず、stage3 の巨大 slot-size drift を避けるべき"
+    );
+}
+
+#[test]
+fn test_linux_x86_representative_seed_inlines_slot_size_helper() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+    let starts_body = source
+        .split("(defn collect-callable-function-slot-starts-x86-loop")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("Linux x86 representative seed に slot starts loop が存在すること");
+    let total_body = source
+        .split("(defn callable-user-total-slot-size-x86-loop")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("Linux x86 representative seed に slot total loop が存在すること");
+
+    assert!(
+        !source.contains("(defn x86-function-slot-size [func-meta functions]"),
+        "Linux x86 seed は stage2 native で不安定な tiny slot-size wrapper defn を持たないべき"
+    );
+    assert!(
+        !source.contains("(x86-function-slot-size func-meta functions)"),
+        "Linux x86 seed は stage2 native で不安定な tiny slot-size wrapper call を経由しないべき"
+    );
+    assert!(
+        starts_body.contains(
+            "next-offset (+ offset (+ (native-function-size-x86 func-meta functions) 2048))",
+        ),
+        "Linux x86 seed は starts loop 内で guard 付き size を直接計算するべき"
+    );
+    assert!(
+        total_body.contains(
+            "next-total (+ total (+ (native-function-size-x86 func-meta functions) 2048))",
+        ),
+        "Linux x86 seed は total loop 内で guard 付き size を直接計算するべき"
+    );
+}
+
+#[test]
+fn test_linux_x86_representative_seed_roots_function_meta_triple_push() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+    let body = source
+        .split("(defn make-function-meta [param-count local-count ir]")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn push-import-placeholders").next())
+        .expect("Linux x86 seed に make-function-meta が存在すること");
+
+    assert!(
+        body.contains("(vector-push-triple-rooted (vector-new 3) param-count local-count ir)")
+            && !body.contains("(vector-push\n    (vector-push"),
+        "Linux x86 seed の make-function-meta は stage3 初期 chunk での GC/root 破壊を避けるため rooted triple push を使うべき"
     );
 }
 
@@ -668,15 +1302,271 @@ fn test_native_linux_x86_hostgen_vm_script_forwards_actual_chunk_env_to_guest() 
 
     for assignment in [
         r#"LSHARP_NATIVE_LINUX_X86_ACTUAL_TIMEOUT="${LSHARP_NATIVE_LINUX_X86_ACTUAL_TIMEOUT:-900}""#,
-        r#"LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_SIZE="${LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_SIZE:-256}""#,
+        r#"LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_SIZE="${LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_SIZE:-64}""#,
         r#"LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_RETRIES="${LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_RETRIES:-1}""#,
-        r#"LSHARP_NATIVE_LINUX_X86_ACTUAL_HEAP_BYTES="${LSHARP_NATIVE_LINUX_X86_ACTUAL_HEAP_BYTES:-2147483648}""#,
+        r#"LSHARP_NATIVE_LINUX_X86_ACTUAL_HEAP_BYTES="${LSHARP_NATIVE_LINUX_X86_ACTUAL_HEAP_BYTES:-4294967296}""#,
     ] {
         assert!(
             vm_exec.contains(assignment),
             "hostgen VM script は host 側の actual 実行設定を guest heredoc に渡すべき: {assignment}"
         );
     }
+}
+
+#[test]
+fn test_native_linux_x86_hostgen_vm_script_can_reuse_actual_stage1_artifact() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+    let vm_exec = script
+        .split(r#"limactl shell "${VM_NAME}" -- env"#)
+        .nth(1)
+        .and_then(|tail| tail.split("<<'VM_SCRIPT'").next())
+        .expect("VM 実行 heredoc は env 経由で actual stage1 reuse 設定を渡すべき");
+    let validate_body = shell_function_body(&script, "validate_actual_stage1_artifact");
+
+    assert!(
+        script.contains(
+            r#"REUSE_ACTUAL_STAGE1_ARTIFACT_DIR_INPUT="${LSHARP_NATIVE_LINUX_X86_REUSE_ACTUAL_STAGE1_ARTIFACT_DIR:-}""#
+        ),
+        "hostgen VM script は検証済み actual-stage1 artifact を再利用する env を受け付けるべき"
+    );
+    assert!(
+        script.contains(r#"ERROR: reusable actual stage1 artifact is under output artifact dir"#),
+        "reuse mode は出力 artifact dir 配下の input を rm -rf で巻き込まないよう拒否するべき"
+    );
+    assert!(
+        script.contains(r#"if [[ -n "${REUSE_ACTUAL_STAGE1_ARTIFACT_DIR_INPUT}" ]]; then"#)
+            && script.contains(r#"REUSE_ACTUAL_STAGE1=1"#)
+            && script.contains(
+                r#"validate_actual_stage1_artifact "${REUSE_ACTUAL_STAGE1_ARTIFACT_DIR}""#
+            )
+            && script.contains(
+                r#"cp "${REUSE_ACTUAL_STAGE1_ARTIFACT_DIR}/${file}" "${ACTUAL_STAGE1_ARTIFACT_DIR}/${file}""#
+            ),
+        "reuse mode は actual-stage1 artifact を再生成せず artifact dir へコピーするべき"
+    );
+    assert!(
+        script.contains(
+            "for file in stage1-code.bin stage1-data.bin entrypoint-offset.txt function-start-len.txt main-func-idx.txt manifest.json seed.ls;"
+        ),
+        "reuse mode は actual-stage1 artifact の allowlist だけをコピーするべき"
+    );
+    for file in [
+        "stage1-code.bin",
+        "stage1-data.bin",
+        "entrypoint-offset.txt",
+        "function-start-len.txt",
+        "main-func-idx.txt",
+        "manifest.json",
+        "seed.ls",
+    ] {
+        assert!(
+            script.contains(file),
+            "reuse mode は actual-stage1 artifact の必須ファイル {file} を検証するべき"
+        );
+    }
+    for check in [
+        r#"manifest.get("target") == "x86_64-unknown-linux-gnu""#,
+        r#"manifest.get("code_len") == code_len"#,
+        r#"manifest.get("data_len") == data_len"#,
+        r#"manifest.get("entrypoint_offset") == entrypoint_offset"#,
+        r#"manifest.get("function_start_len") == function_start_len"#,
+        r#"manifest.get("main_func_idx") == main_func_idx"#,
+        r#"0 <= entrypoint_offset < code_len"#,
+        r#"10 <= main_func_idx < 10 + function_start_len"#,
+    ] {
+        assert!(
+            validate_body.contains(check),
+            "actual-stage1 reuse は manifest と実ファイルの整合性を検証するべき: {check}"
+        );
+    }
+    assert!(
+        vm_exec.contains(r#"LSHARP_NATIVE_LINUX_X86_REUSE_ACTUAL_STAGE1="${REUSE_ACTUAL_STAGE1}""#),
+        "hostgen VM script は guest に actual-stage1 reuse mode を渡すべき"
+    );
+    assert!(
+        script.contains(
+            r#"if [[ -z "${REUSE_ACTUAL_STAGE1}" || "${REUSE_ACTUAL_STAGE1}" = "0" ]]; then"#
+        ) && script.contains(r#"bytes="$(od -An -tx1 -v code.bin"#),
+        "guest は reuse mode では host smoke link/execute を skip して actual replay へ進むべき"
+    );
+    assert!(
+        script.contains("fi\n\ncat >materialize-actual-bundle.py <<'PY'")
+            && script.contains("cat >decode-actual-transport.py <<'PY'"),
+        "actual replay 用 helper 生成は reuse mode でも必要なので quick smoke guard の外に置くべき"
+    );
+}
+
+#[test]
+fn test_native_linux_x86_hostgen_vm_script_can_reuse_actual_stage2_artifact() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+    let vm_exec = script
+        .split(r#"limactl shell "${VM_NAME}" -- env"#)
+        .nth(1)
+        .and_then(|tail| tail.split("<<'VM_SCRIPT'").next())
+        .expect("VM 実行 heredoc は env 経由で actual stage2 reuse 設定を渡すべき");
+    let validate_body = shell_function_body(&script, "validate_actual_stage2_artifact");
+
+    assert!(
+        script.contains(
+            r#"REUSE_ACTUAL_STAGE2_ARTIFACT_DIR_INPUT="${LSHARP_NATIVE_LINUX_X86_REUSE_ACTUAL_STAGE2_ARTIFACT_DIR:-}""#
+        ),
+        "hostgen VM script は検証済み actual-stage2 artifact root を再利用する env を受け付けるべき"
+    );
+    assert!(
+        script.contains(r#"ERROR: reusable actual stage2 artifact is under output artifact dir"#),
+        "stage2 reuse mode は出力 artifact dir 配下の input を rm -rf で巻き込まないよう拒否するべき"
+    );
+    assert!(
+        script.contains(r#"if [[ -n "${REUSE_ACTUAL_STAGE2_ARTIFACT_DIR_INPUT}" ]]; then"#)
+            && script.contains(r#"REUSE_ACTUAL_STAGE2=1"#)
+            && script.contains(
+                r#"validate_actual_stage2_artifact "${REUSE_ACTUAL_STAGE2_ARTIFACT_DIR}""#
+            )
+            && script.contains(
+                r#"cp "${REUSE_ACTUAL_STAGE2_ARTIFACT_DIR}/actual-stage2-stdout.txt" "${ARTIFACT_DIR}/actual-stage2-stdout.txt""#
+            )
+            && script.contains(
+                r#"cp "${REUSE_ACTUAL_STAGE2_ARTIFACT_DIR}/stage2-debug/${file}" "${ARTIFACT_DIR}/stage2-debug/${file}""#
+            ),
+        "stage2 reuse mode は previous artifact root から actual-stage2 stdout と stage2-debug bundle をコピーするべき"
+    );
+    for file in [
+        "stage-code.bin",
+        "stage-data.bin",
+        "entrypoint-offset.txt",
+        "function-start-len.txt",
+        "main-func-idx.txt",
+        "manifest.json",
+        "stage-code-segments.tsv",
+    ] {
+        assert!(
+            validate_body.contains(file),
+            "stage2 reuse は stage2-debug の必須ファイル {file} を検証するべき"
+        );
+    }
+    for check in [
+        r#"manifest.get("target") == "x86_64-unknown-linux-gnu""#,
+        r#"manifest.get("code_len") == code_len"#,
+        r#"manifest.get("data_len") == data_len"#,
+        r#"manifest.get("entrypoint_offset") == entrypoint_offset"#,
+        r#"manifest.get("function_start_len") == function_start_len"#,
+        r#"manifest.get("main_func_idx") == main_func_idx"#,
+        r#"0 <= entrypoint_offset < code_len"#,
+        r#"10 <= main_func_idx < 10 + function_start_len"#,
+    ] {
+        assert!(
+            validate_body.contains(check),
+            "actual-stage2 reuse は manifest と実ファイルの整合性を検証するべき: {check}"
+        );
+    }
+    assert!(
+        validate_body.contains("actual-stage2-stdout.txt")
+            && validate_body.contains("actual-stage2-stderr.txt")
+            && validate_body.contains(r#"stderr_path.stat().st_size != 0"#)
+            && validate_body.contains(r#""stage2-debug/src/App/Seed.ls""#),
+        "stage2 reuse は比較元 stdout、空 stderr、stage2 source tree を検証するべき"
+    );
+    assert!(
+        script.contains("stage2 reuse cannot collect stage1 progress or stage2 metadata")
+            && script.contains(r#""${STAGE1_PROGRESS_REQUESTED}" = "1""#)
+            && script.contains(r#""${STAGE2_METADATA_REQUESTED}" = "1""#),
+        "stage2 reuse は actual-stage1 が必要な stage1 progress / stage2 metadata と同時指定できないことを明示するべき"
+    );
+    assert!(
+        vm_exec.contains(r#"LSHARP_NATIVE_LINUX_X86_REUSE_ACTUAL_STAGE2="${REUSE_ACTUAL_STAGE2}""#),
+        "hostgen VM script は guest に actual-stage2 reuse mode を渡すべき"
+    );
+    assert!(
+        script.contains(r#"if [[ -z "${REUSE_ACTUAL_STAGE2}" || "${REUSE_ACTUAL_STAGE2}" = "0" ]]; then"#)
+            && script.contains(
+                "run_actual_stage_chunked actual-stage1 actual-stage2-stdout.txt actual-stage2-stderr.txt"
+            )
+            && script.contains(
+                "python3 decode-actual-transport.py actual-stage2-stdout.txt actual-stage2"
+            )
+            && script.contains(
+                r#"if [[ -n "${REUSE_ACTUAL_STAGE2}" && "${REUSE_ACTUAL_STAGE2}" != "0" ]]; then"#
+            )
+            && script.contains(
+                "python3 materialize-actual-bundle.py actual-stage2 stage-code.bin entrypoint-offset.txt"
+            ),
+        "guest は stage2 reuse mode では stage1->stage2 replay/decode を skip し、actual-stage2 materialize から stage3 run へ進むべき"
+    );
+}
+
+#[test]
+fn test_native_linux_x86_hostgen_vm_script_can_overlay_reused_stage2_source_for_diagnostics_only() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+    let validate_body = shell_function_body(&script, "validate_stage3_source_overlay_request");
+
+    assert!(
+        script.contains(
+            r#"STAGE3_SOURCE_OVERLAY_INPUT="${LSHARP_NATIVE_LINUX_X86_STAGE3_SOURCE_OVERLAY:-}""#
+        ) && script.contains(r#"STAGE3_SOURCE_OVERLAY="${STAGE3_SOURCE_OVERLAY_INPUT}""#)
+            && script
+                .contains(r#"STAGE3_SOURCE_OVERLAY="${ROOT_DIR}/${STAGE3_SOURCE_OVERLAY_INPUT}""#,),
+        "hostgen VM script は stage3 diagnostic source overlay を repo 相対または絶対パスで受け付けるべき"
+    );
+    assert!(
+        validate_body.contains(r#"[[ -z "${REUSE_ACTUAL_STAGE2_ARTIFACT_DIR_INPUT}" ]]"#)
+            && validate_body
+                .contains("stage3 source overlay requires actual stage2 artifact reuse"),
+        "source overlay は actual stage2 artifact reuse と同時指定した場合だけ許可するべき"
+    );
+    assert!(
+        validate_body.contains(r#"[[ ! -s "${STAGE3_SOURCE_OVERLAY}" ]]"#)
+            && validate_body.contains("stage3 source overlay is missing or empty"),
+        "source overlay は存在する非空ファイルだけを許可するべき"
+    );
+    assert!(
+        validate_body.contains("stage3 source overlay is under output artifact dir"),
+        "source overlay は output artifact の rm -rf で入力自身を削除する配置を拒否するべき"
+    );
+    for diagnostic_only_flag in [
+        "LSHARP_NATIVE_LINUX_X86_STAGE3_METADATA_ONLY",
+        "LSHARP_NATIVE_LINUX_X86_STAGE3_PROGRESS_ONLY",
+        "LSHARP_NATIVE_LINUX_X86_STAGE3_RAW_PAYLOAD_BOUNDARY_ONLY",
+        "LSHARP_NATIVE_LINUX_X86_STAGE3_RAW_PAYLOAD_PRODUCTION_BOUNDARY_ONLY",
+    ] {
+        assert!(
+            validate_body.contains(diagnostic_only_flag),
+            "source overlay は明示的な diagnostic-only flag を要求するべき: {diagnostic_only_flag}"
+        );
+    }
+    assert!(
+        validate_body.contains(
+            "stage3 source overlay requires metadata/progress/raw boundary diagnostic-only mode"
+        ) && !validate_body.contains("STAGE3_NORMAL_SETUP_ONLY")
+            && !validate_body.contains("STAGE3_NORMAL_PAYLOAD_SHAPE_ONLY"),
+        "source overlay は full compare や対象外の診断モードへ進めないよう許可する ONLY flag を限定するべき"
+    );
+
+    let reused_source_copy = script
+        .find(
+            r#"cp -a "${REUSE_ACTUAL_STAGE2_ARTIFACT_DIR}/stage2-debug/src" "${ARTIFACT_DIR}/stage2-debug/src""#,
+        )
+        .expect("stage2 reuse source tree を output artifact へコピーすること");
+    let overlay_copy = script
+        .find(r#"cp "${STAGE3_SOURCE_OVERLAY}" "${ARTIFACT_DIR}/stage2-debug/src/App/Seed.ls""#)
+        .expect("output artifact の stage2-debug Seed.ls を overlay で置換すること");
+    let vm_source_transfer = script
+        .find(
+            r#"tar -C "${ARTIFACT_DIR}/stage2-debug" --exclude '._*' -cf - src | limactl shell "${VM_NAME}" -- tar -C "${VM_WORK_DIR}/actual-stage2" -xf -"#,
+        )
+        .expect("output artifact の stage2 source tree を VM へ転送すること");
+    assert!(
+        reused_source_copy < overlay_copy && overlay_copy < vm_source_transfer,
+        "source overlay は output artifact の Seed.ls を VM 転送前に置換するべき"
+    );
 }
 
 #[test]
@@ -733,93 +1623,6 @@ fn test_native_linux_x86_hostgen_vm_script_guards_actual_replay_with_vm_side_loc
 }
 
 #[test]
-fn test_native_linux_x86_hostgen_vm_script_rejects_dirty_actual_stage1_seed_debug_probes() {
-    let script_path =
-        selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
-    let script = std::fs::read_to_string(&script_path)
-        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
-    let reject_body = shell_function_body(&script, "reject_dirty_actual_stage1_seed");
-
-    assert!(
-        reject_body.contains(r#"LSHARP_NATIVE_LINUX_X86_REJECT_DIRTY_STAGE1_SEED:-0"#)
-            && reject_body.contains(r#"!= "1""#)
-            && reject_body.contains("return 0"),
-        "dirty seed rejection は diagnostic replay を妨げないよう opt-in gate で有効化するべき"
-    );
-
-    for marker in [
-        "payload-progress-mode",
-        "pre-callable-progress",
-        "command-line-arg 9",
-        "9000000030",
-    ] {
-        assert!(
-            reject_body.contains(&format!("\"{marker}\"")),
-            "hostgen VM script は actual stage1 seed の dirty diagnostic marker を拒否するべき: {marker}"
-        );
-    }
-
-    assert!(
-        reject_body.contains(r#"seed_file="${ACTUAL_STAGE1_ARTIFACT_DIR}/seed.ls""#)
-            && reject_body.contains(r#"grep -Fq "${marker}" "${seed_file}""#)
-            && reject_body.contains("ERROR: actual stage1 seed contains diagnostic probe marker")
-            && reject_body.contains("exit 1"),
-        "dirty seed rejection は actual stage1 seed を固定 marker で検査し、VM 転送前に失敗するべき"
-    );
-
-    let artifact_generation_pos = script
-        .find("test_e2e_native_linux_x86_host_generates_actual_selfregen_stage1_bundle_artifact")
-        .expect("actual stage1 artifact 生成 test が必要");
-    let reject_call_pos = script
-        .find("\nreject_dirty_actual_stage1_seed\n")
-        .expect("actual stage1 seed rejection 呼び出しが必要");
-    let seed_copy_pos = script
-        .find(
-            r#"limactl copy "${ACTUAL_STAGE1_ARTIFACT_DIR}/seed.ls" "${VM_NAME}:${VM_WORK_DIR}/actual-stage1/src/App/Seed.ls""#,
-        )
-        .expect("actual stage1 seed を VM へ転送する導線が必要");
-
-    assert!(
-        artifact_generation_pos < reject_call_pos && reject_call_pos < seed_copy_pos,
-        "actual stage1 seed は生成後、VM 転送前に diagnostic marker を拒否するべき"
-    );
-}
-
-#[test]
-fn test_native_linux_x86_hostgen_vm_script_writes_summary_for_final_compare_failures() {
-    let script_path =
-        selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
-    let script = std::fs::read_to_string(&script_path)
-        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
-
-    assert!(
-        script.contains(
-            r#"write_actual_selfregen_failure_summary "stage2-stderr" 1 actual-stage2-stdout.txt actual-stage2-stderr.txt"#,
-        ) && script.contains(
-            r#"write_actual_selfregen_failure_summary "stage3-stderr" 1 actual-stage3-stdout.txt actual-stage3-stderr.txt"#,
-        ) && script.contains(
-            r#"write_actual_selfregen_failure_summary "stage2-stage3-compare" 1 actual-stage3-stdout.txt actual-stage3-stderr.txt"#,
-        ),
-        "hostgen VM script は final stderr / stage2-stage3 mismatch でも actual-selfregen-summary.json を残すべき"
-    );
-
-    let stderr_check_pos = script
-        .find(r#"write_actual_selfregen_failure_summary "stage2-stderr""#)
-        .expect("stage2 stderr failure summary が必要");
-    let compare_check_pos = script
-        .find(r#"write_actual_selfregen_failure_summary "stage2-stage3-compare""#)
-        .expect("stage2/stage3 compare failure summary が必要");
-    let pass_summary_pos = script
-        .find("actual_stage2_stdout_sha=")
-        .expect("actual selfregen pass summary の sha 計算が必要");
-
-    assert!(
-        stderr_check_pos < compare_check_pos && compare_check_pos < pass_summary_pos,
-        "final failure summary は pass summary を書く前に判定するべき"
-    );
-}
-
-#[test]
 fn test_native_linux_x86_hostgen_vm_decoder_writes_stage_code_segment_table() {
     let script_path =
         selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
@@ -846,11 +1649,67 @@ fn test_native_linux_x86_hostgen_vm_script_can_collect_stage2_metadata_range() {
     assert!(
         script.contains("LSHARP_NATIVE_LINUX_X86_STAGE2_METADATA_START")
             && script.contains("LSHARP_NATIVE_LINUX_X86_STAGE2_METADATA_END")
-            && script.contains("LSHARP_NATIVE_LINUX_X86_STAGE2_METADATA_PREFIX_LIMIT")
             && script.contains("actual-stage2-metadata.txt")
-            && script.contains(r#"./program.native src/App/Seed.ls "${metadata_start}" "${metadata_end}" 0 0 metadata "${metadata_prefix_limit}""#)
+            && script.contains(r#"./program.native src/App/Seed.ls "${metadata_start}" "${metadata_end}" 0 0 metadata"#)
             && script.contains("actual-stage2-metadata-stderr.txt"),
-        "hostgen VM script は env 指定時だけ actual-stage1 native compiler の function metadata range と prefix limit を artifact 化できるべき"
+        "hostgen VM script は env 指定時だけ actual-stage1 native compiler の function metadata range を artifact 化できるべき"
+    );
+}
+
+#[test]
+fn test_native_linux_x86_hostgen_vm_script_can_collect_stage2_metadata_range_only() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+    let vm_exec = script
+        .split(r#"limactl shell "${VM_NAME}" -- env"#)
+        .nth(1)
+        .and_then(|tail| tail.split("<<'VM_SCRIPT'").next())
+        .expect("VM 実行 heredoc は env 経由で stage2 metadata-only 診断設定を渡すべき");
+
+    assert!(
+        vm_exec.contains("LSHARP_NATIVE_LINUX_X86_STAGE2_METADATA_ONLY")
+            && script.contains("STAGE2_METADATA_ONLY")
+            && script.contains(r#"if [[ -n "${STAGE2_METADATA_ONLY}" ]]; then"#)
+            && script.contains("collect_stage2_metadata_range")
+            && script.contains(r#""phase": "stage2-metadata""#)
+            && script.contains("metadata_stdout_bytes")
+            && script.contains("metadata_stderr_bytes")
+            && script.contains("actual-stage2-metadata.txt")
+            && script.contains("actual-stage2-metadata-stderr.txt"),
+        "hostgen VM script は actual-stage1 native compiler の metadata range を stage1->stage2 full transport なしで artifact 化できるべき"
+    );
+}
+
+#[test]
+fn test_native_linux_x86_hostgen_vm_script_can_collect_stage3_metadata_range_only() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+    let vm_exec = script
+        .split(r#"limactl shell "${VM_NAME}" -- env"#)
+        .nth(1)
+        .and_then(|tail| tail.split("<<'VM_SCRIPT'").next())
+        .expect("VM 実行 heredoc は env 経由で stage3 metadata 診断設定を渡すべき");
+
+    assert!(
+        vm_exec.contains("LSHARP_NATIVE_LINUX_X86_STAGE3_METADATA_START")
+            && vm_exec.contains("LSHARP_NATIVE_LINUX_X86_STAGE3_METADATA_END")
+            && vm_exec.contains("LSHARP_NATIVE_LINUX_X86_STAGE3_METADATA_ONLY")
+            && script.contains("STAGE3_METADATA_START")
+            && script.contains("STAGE3_METADATA_END")
+            && script.contains("STAGE3_METADATA_ONLY")
+            && script.contains("collect_stage3_metadata_range")
+            && script.contains("actual-stage3-metadata.txt")
+            && script.contains("actual-stage3-metadata-stderr.txt")
+            && script.contains(r#"./program.native src/App/Seed.ls "${metadata_start}" "${metadata_end}" 0 0 metadata"#)
+            && script.contains("write_actual_selfregen_failure_summary \"stage3-metadata\"")
+            && script.contains(r#""phase": "stage3-metadata""#)
+            && script.contains("metadata_stdout_bytes")
+            && script.contains("metadata_stderr_bytes"),
+        "hostgen VM script は actual-stage2 native compiler の metadata range を full stage3 transport なしで artifact 化できるべき"
     );
 }
 
@@ -872,6 +1731,177 @@ fn test_native_linux_x86_hostgen_vm_script_can_collect_stage3_progress_markers()
             && script.contains(r#""phase": "stage3-progress""#)
             && script.contains("write_actual_selfregen_failure_summary \"stage3-progress\""),
         "hostgen VM script は env 指定時だけ actual-stage2 native compiler の stage3 setup progress を artifact 化できるべき"
+    );
+}
+
+#[test]
+fn test_native_linux_x86_hostgen_vm_script_can_collect_stage3_normal_setup_markers() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+    let vm_exec = script
+        .split(r#"limactl shell "${VM_NAME}" -- env"#)
+        .nth(1)
+        .and_then(|tail| tail.split("<<'VM_SCRIPT'").next())
+        .expect("VM 実行 heredoc は env 経由で normal setup 診断設定を渡すべき");
+    let failure_summary_call = "write_actual_selfregen_failure_summary \"stage3-normal-setup\"";
+
+    assert!(
+        vm_exec.contains("LSHARP_NATIVE_LINUX_X86_STAGE3_NORMAL_SETUP")
+            && vm_exec.contains("LSHARP_NATIVE_LINUX_X86_STAGE3_NORMAL_SETUP_ONLY")
+            && script.contains("STAGE3_NORMAL_SETUP_ONLY")
+            && script.contains("collect_stage3_normal_setup_markers")
+            && script.contains("actual-stage3-normal-setup.txt")
+            && script.contains("actual-stage3-normal-setup-stderr.txt")
+            && script.contains(
+                r#"./program.native src/App/Seed.ls 0 1 0 0 "" "" "" "" "" normal-setup"#,
+            )
+            && script.contains(r#""phase": "stage3-normal-setup""#)
+            && script.contains(failure_summary_call),
+        "hostgen VM script は env 指定時だけ actual-stage2 native compiler の通常 setup marker を artifact 化し、full transport 前で止められるべき"
+    );
+}
+
+#[test]
+fn test_native_linux_x86_hostgen_vm_script_can_collect_stage3_normal_payload_shape_markers() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+    let vm_exec = script
+        .split(r#"limactl shell "${VM_NAME}" -- env"#)
+        .nth(1)
+        .and_then(|tail| tail.split("<<'VM_SCRIPT'").next())
+        .expect("VM 実行 heredoc は env 経由で normal payload shape 診断設定を渡すべき");
+    let failure_summary_call =
+        "write_actual_selfregen_failure_summary \"stage3-normal-payload-shape\"";
+
+    assert!(
+        vm_exec.contains("LSHARP_NATIVE_LINUX_X86_STAGE3_NORMAL_PAYLOAD_SHAPE")
+            && vm_exec.contains("LSHARP_NATIVE_LINUX_X86_STAGE3_NORMAL_PAYLOAD_SHAPE_ONLY")
+            && script.contains("STAGE3_NORMAL_PAYLOAD_SHAPE_ONLY")
+            && script.contains("collect_stage3_normal_payload_shape_markers")
+            && script.contains("actual-stage3-normal-payload-shape.txt")
+            && script.contains("actual-stage3-normal-payload-shape-stderr.txt")
+            && script.contains(
+                r#"./program.native src/App/Seed.ls 0 1 0 0 "" "" "" "" "" "" normal-payload-shape"#,
+            )
+            && script.contains(r#""phase": "stage3-normal-payload-shape""#)
+            && script.contains(failure_summary_call),
+        "hostgen VM script は env 指定時だけ actual-stage2 native compiler の通常 payload shape marker を artifact 化し、full transport 前で止められるべき"
+    );
+}
+
+#[test]
+fn test_native_linux_x86_hostgen_vm_script_can_collect_stage3_raw_payload_boundary_markers() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+    let vm_exec = script
+        .split(r#"limactl shell "${VM_NAME}" -- env"#)
+        .nth(1)
+        .and_then(|tail| tail.split("<<'VM_SCRIPT'").next())
+        .expect("VM 実行 heredoc は env 経由で raw payload boundary 診断設定を渡すべき");
+    let failure_summary_call =
+        "write_actual_selfregen_failure_summary \"stage3-raw-payload-boundary\"";
+
+    assert!(
+        vm_exec.contains("LSHARP_NATIVE_LINUX_X86_STAGE3_RAW_PAYLOAD_BOUNDARY")
+            && vm_exec.contains("LSHARP_NATIVE_LINUX_X86_STAGE3_RAW_PAYLOAD_BOUNDARY_ONLY")
+            && script.contains("STAGE3_RAW_PAYLOAD_BOUNDARY_ONLY")
+            && script.contains("collect_stage3_raw_payload_boundary_markers")
+            && script.contains("actual-stage3-raw-payload-boundary.txt")
+            && script.contains("actual-stage3-raw-payload-boundary-stderr.txt")
+            && script.contains(
+                r#"./program.native src/App/Seed.ls 0 1 0 0 "" "" "" "" "" "" "" raw-payload-boundary"#,
+            )
+            && script.contains(r#""phase": "stage3-raw-payload-boundary""#)
+            && script.contains(failure_summary_call),
+        "hostgen VM script は env 指定時だけ actual-stage2 native compiler の raw payload boundary marker を artifact 化し、full transport 前で止められるべき"
+    );
+}
+
+#[test]
+fn test_native_linux_x86_hostgen_vm_script_can_collect_stage3_raw_payload_production_boundary_markers()
+ {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+    let vm_exec = script
+        .split(r#"limactl shell "${VM_NAME}" -- env"#)
+        .nth(1)
+        .and_then(|tail| tail.split("<<'VM_SCRIPT'").next())
+        .expect("VM 実行 heredoc は env 経由で raw payload production boundary 診断設定を渡すべき");
+    let failure_summary_call =
+        "write_actual_selfregen_failure_summary \"stage3-raw-payload-production-boundary\"";
+
+    assert!(
+        vm_exec.contains("LSHARP_NATIVE_LINUX_X86_STAGE3_RAW_PAYLOAD_PRODUCTION_BOUNDARY")
+            && vm_exec.contains("LSHARP_NATIVE_LINUX_X86_STAGE3_RAW_PAYLOAD_PRODUCTION_BOUNDARY_ONLY")
+            && script.contains("STAGE3_RAW_PAYLOAD_PRODUCTION_BOUNDARY_ONLY")
+            && script.contains("collect_stage3_raw_payload_production_boundary_markers")
+            && script.contains("actual-stage3-raw-payload-production-boundary.txt")
+            && script.contains("actual-stage3-raw-payload-production-boundary-stderr.txt")
+            && script.contains(
+                r#"./program.native src/App/Seed.ls 0 1 0 0 "" "" "" "" "" "" "" raw-payload-production-boundary"#,
+            )
+            && script.contains(r#""phase": "stage3-raw-payload-production-boundary""#)
+            && script.contains(failure_summary_call),
+        "hostgen VM script は env 指定時だけ actual-stage2 native compiler の raw payload production boundary marker を artifact 化し、full transport 前で止められるべき"
+    );
+}
+
+#[test]
+fn test_native_linux_x86_hostgen_vm_script_copies_raw_payload_boundary_evidence() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+    let evidence_copy_list = script
+        .split("for file in program.s runtime.s")
+        .nth(1)
+        .and_then(|tail| tail.split("; do").next())
+        .expect("VM evidence copy allowlist を取り出せること");
+
+    for file in [
+        "actual-stage3-raw-payload-boundary.txt",
+        "actual-stage3-raw-payload-boundary-stderr.txt",
+        "actual-stage3-raw-payload-production-boundary.txt",
+        "actual-stage3-raw-payload-production-boundary-stderr.txt",
+    ] {
+        assert!(
+            evidence_copy_list.contains(file),
+            "hostgen VM script は diagnostic summary が参照する {file} を VM workdir 削除前に artifact dir へコピーするべき"
+        );
+    }
+}
+
+#[test]
+fn test_native_linux_x86_hostgen_vm_script_can_collect_stage1_progress_markers_before_harvest() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+    let vm_exec = script
+        .split(r#"limactl shell "${VM_NAME}" -- env"#)
+        .nth(1)
+        .and_then(|tail| tail.split("<<'VM_SCRIPT'").next())
+        .expect("VM 実行 heredoc は env 経由で actual stage1 progress 設定を渡すべき");
+
+    assert!(
+        vm_exec.contains("LSHARP_NATIVE_LINUX_X86_STAGE1_PROGRESS")
+            && script.contains("collect_stage1_progress_markers")
+            && script.contains("actual-stage1-progress.txt")
+            && script.contains("actual-stage1-progress-stderr.txt")
+            && script.contains(
+                "actual-stage1-progress.txt actual-stage1-progress-stderr.txt actual-stage2-stdout.txt",
+            )
+            && script.contains(r#"./program.native src/App/Seed.ls 0 1 1 0 "" "" progress"#)
+            && script.contains("write_actual_selfregen_failure_summary \"stage1-progress\""),
+        "hostgen VM script は heavy stage1->stage2 harvest 前に actual-stage1 progress marker を artifact 化できるべき"
     );
 }
 
@@ -915,7 +1945,151 @@ fn test_native_linux_x86_hostgen_vm_script_cleans_vm_work_dir_before_run() {
 }
 
 #[test]
-fn test_native_linux_x86_hostgen_vm_script_bounds_local_build_outputs() {
+fn test_native_linux_x86_hostgen_vm_script_cleans_work_dir_by_default_after_run() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+
+    assert!(
+        script.contains(r#"KEEP_VM_WORK_DIR="${LSHARP_NATIVE_LINUX_X86_KEEP_VM_WORK_DIR:-0}""#)
+            && script.contains(r#"if [[ "${KEEP_VM_WORK_DIR}" = "1" ]]; then"#)
+            && script.contains("VM workdir kept by LSHARP_NATIVE_LINUX_X86_KEEP_VM_WORK_DIR=1")
+            && script.contains(
+                "VM workdir kept for failure diagnostics by LSHARP_NATIVE_LINUX_X86_KEEP_VM_WORK_DIR=1"
+            )
+            && script.contains("VM workdir removed after successful evidence copy")
+            && script.contains("VM workdir removed after failed evidence copy")
+            && !script.contains("VM workdir kept for failure diagnostics: ${VM_WORK_DIR}"),
+        "hostgen VM script は成功時と通常の失敗時に VM workdir を掃除し、KEEP 指定時だけ診断用に保持するべき"
+    );
+}
+
+#[test]
+fn test_native_linux_x86_hostgen_vm_script_cleans_vm_work_dir_from_host_exit_trap() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+    let cleanup_body = shell_function_body(&script, "cleanup_vm_work_dir_on_host_exit");
+    let mkdir_pos = script
+        .find(r#"limactl shell "${VM_NAME}" -- mkdir -p "${VM_WORK_DIR}""#)
+        .expect("hostgen VM script は VM workdir を作成すること");
+    let created_pos = script[mkdir_pos..]
+        .find("HOST_VM_WORK_DIR_CREATED=1")
+        .map(|pos| mkdir_pos + pos)
+        .expect("VM workdir 作成後に host cleanup 対象として記録すること");
+
+    assert!(
+        script.contains("HOST_VM_WORK_DIR_CREATED=0")
+            && script.contains("trap cleanup_vm_work_dir_on_host_exit EXIT")
+            && cleanup_body.contains(r#"if [[ "${HOST_VM_WORK_DIR_CREATED}" -ne 1 ]]"#)
+            && cleanup_body.contains(r#"if [[ "${KEEP_VM_WORK_DIR}" = "1" ]]"#)
+            && cleanup_body.contains(r#"limactl shell "${VM_NAME}" -- rm -rf "${VM_WORK_DIR}""#),
+        "host 側の signal/copy failure でも KEEP 指定がなければ EXIT trap で VM workdir を掃除するべき"
+    );
+    assert!(
+        created_pos > mkdir_pos,
+        "VM workdir を実際に作成してから cleanup 対象へ切り替えるべき"
+    );
+}
+
+#[test]
+fn test_native_linux_x86_hostgen_vm_script_prunes_stale_guest_work_dirs_after_lock() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+    let prune_body = shell_function_body(&script, "prune_stale_vm_work_dirs");
+    let guest = script
+        .split("<<'VM_SCRIPT'")
+        .nth(1)
+        .expect("hostgen VM script の guest heredoc を取り出せること");
+    let lock_pos = guest
+        .find("\nacquire_actual_replay_lock\n")
+        .expect("guest は actual replay lock を取得すること");
+    let prune_pos = guest
+        .find("\nprune_stale_vm_work_dirs\n")
+        .expect("guest は stale VM workdir を掃除すること");
+
+    assert!(
+        prune_body.contains("find /tmp")
+            && prune_body.contains(r#"-name 'lsharp-native-linux-x86-hostgen-vm-*'"#)
+            && prune_body.contains("-mtime +1")
+            && prune_body.contains(r#"! -path "${VM_WORK_DIR}""#)
+            && prune_body.contains(r#"! -path "${VM_REPLAY_LOCK_DIR}""#),
+        "guest cleanup は current workdir / replay lock を保護し、24時間超の旧 hostgen workdir だけを削除するべき"
+    );
+    assert!(
+        lock_pos < prune_pos,
+        "stale workdir cleanup は別の active replay を消さないよう exclusive lock 取得後に実行するべき"
+    );
+}
+
+#[test]
+fn test_native_linux_x86_hostgen_artifact_pruner_keeps_protected_generations() {
+    let root = std::env::temp_dir().join(format!(
+        "lsharp-native-linux-x86-artifact-pruner-{}-{}",
+        std::process::id(),
+        NATIVE_STAGE_CHAIN_COUNTER.fetch_add(1, Ordering::Relaxed)
+    ));
+    let current = root.join("protected-current");
+    let reuse = root.join("protected-reuse");
+    let newest = root.join("keep-newest");
+    let old = root.join("remove-old");
+    let oldest = root.join("remove-oldest");
+    for dir in [&current, &reuse, &newest, &old, &oldest] {
+        std::fs::create_dir_all(dir).unwrap_or_else(|e| panic!("{} 作成失敗: {e}", dir.display()));
+    }
+    let sentinel = root.join("README.txt");
+    std::fs::write(&sentinel, b"keep\n").expect("artifact root sentinel 作成失敗");
+    for (dir, timestamp) in [
+        (&current, "202607010101.01"),
+        (&reuse, "202607010102.01"),
+        (&oldest, "202607010103.01"),
+        (&old, "202607010104.01"),
+        (&newest, "202607010105.01"),
+    ] {
+        let status = std::process::Command::new("touch")
+            .args(["-t", timestamp])
+            .arg(dir)
+            .status()
+            .expect("artifact fixture mtime 設定失敗");
+        assert!(status.success(), "artifact fixture mtime 設定に失敗");
+    }
+
+    let script_path =
+        selfhost_project_root().join("scripts/ci/prune-native-linux-x86-hostgen-artifacts.sh");
+    let output = std::process::Command::new("bash")
+        .arg(&script_path)
+        .arg(&root)
+        .arg(&current)
+        .arg(&reuse)
+        .arg("")
+        .arg("1")
+        .output()
+        .unwrap_or_else(|e| panic!("{} 実行失敗: {e}", script_path.display()));
+
+    assert!(
+        output.status.success(),
+        "artifact pruner が失敗: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(current.is_dir(), "current artifact は常に保護するべき");
+    assert!(reuse.is_dir(), "reuse input artifact は常に保護するべき");
+    assert!(newest.is_dir(), "最新の非保護 artifact は保持するべき");
+    assert!(!old.exists(), "保持数を超えた artifact は削除するべき");
+    assert!(!oldest.exists(), "最古 artifact は削除するべき");
+    assert!(
+        sentinel.is_file(),
+        "artifact root 直下の通常 file は触らないこと"
+    );
+
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn test_native_linux_x86_hostgen_vm_script_prunes_local_artifact_generations() {
     let script_path =
         selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
     let script = std::fs::read_to_string(&script_path)
@@ -923,92 +2097,70 @@ fn test_native_linux_x86_hostgen_vm_script_bounds_local_build_outputs() {
 
     assert!(
         script.contains(
-            r#"HOSTGEN_CARGO_TARGET_DIR="${LSHARP_NATIVE_LINUX_X86_CARGO_TARGET_DIR:-/tmp/lsharp-native-linux-x86-hostgen-vm-cargo-target}""#
-        ) && script.contains(r#"cleanup_hostgen_cargo_target()"#)
-            && script.contains(r#"rm -rf "${HOSTGEN_CARGO_TARGET_DIR}""#)
-            && script.contains(r#"trap cleanup_hostgen_cargo_target EXIT"#)
-            && script.contains(r#"CARGO_TARGET_DIR="${HOSTGEN_CARGO_TARGET_DIR}" cargo test"#),
-        "hostgen VM script は repo 直下 target を肥大化させないよう、一時 CARGO_TARGET_DIR を使いデフォルトで掃除するべき"
+            r#"ARTIFACT_RETENTION_COUNT="${LSHARP_NATIVE_LINUX_X86_ARTIFACT_RETENTION_COUNT:-8}""#
+        ) && script.contains("prune-native-linux-x86-hostgen-artifacts.sh")
+            && script.contains(r#""${REUSE_ACTUAL_STAGE1_ARTIFACT_DIR}""#)
+            && script.contains(r#""${REUSE_ACTUAL_STAGE2_ARTIFACT_DIR}""#),
+        "hostgen VM script は current/reuse artifact を保護しつつ local artifact 世代を既定8件へ制限するべき"
     );
 }
 
 #[test]
-fn test_native_linux_x86_hostgen_vm_script_cleans_vm_work_dir_after_artifact_copy() {
+fn test_native_linux_x86_hostgen_vm_script_checks_vm_free_space_before_replay() {
     let script_path =
         selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
     let script = std::fs::read_to_string(&script_path)
         .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
-
-    let cleanup_fn_pos = script
-        .find("cleanup_vm_work_dir()")
-        .expect("hostgen VM script は VM work dir cleanup 関数を持つこと");
-    let debug_copy_pos = script
-        .find("copy_actual_stage_debug_artifact actual-stage3 stage3-debug")
-        .expect("hostgen VM script は stage3 debug artifact を回収すること");
-    let cleanup_call_pos = script
-        .find("\ncleanup_vm_work_dir\n")
-        .expect("hostgen VM script は artifact 回収後に VM work dir cleanup を呼ぶこと");
+    let check_body = shell_function_body(&script, "require_vm_free_space");
+    let check_call_pos = script
+        .find("\nrequire_vm_free_space\n")
+        .expect("hostgen VM script は replay 前に VM 空き容量を確認すること");
+    let create_pos = script
+        .find(r#"limactl shell "${VM_NAME}" -- mkdir -p "${VM_WORK_DIR}""#)
+        .expect("hostgen VM script は VM workdir を作成すること");
 
     assert!(
-        cleanup_fn_pos < debug_copy_pos
-            && debug_copy_pos < cleanup_call_pos
-            && script.contains(r#"LSHARP_NATIVE_LINUX_X86_KEEP_VM_WORK_DIR:-0"#)
-            && script.contains(r#"limactl shell "${VM_NAME}" -- rm -rf "${VM_WORK_DIR}""#),
-        "hostgen VM script は debug artifact 回収後、opt-in keep がない限り VM 内の巨大 work dir を掃除するべき"
+        script.contains(
+            r#"VM_MIN_FREE_BYTES="${LSHARP_NATIVE_LINUX_X86_VM_MIN_FREE_BYTES:-4294967296}""#
+        ) && check_body.contains("df -Pk /tmp")
+            && check_body.contains("VM free space is below required minimum"),
+        "hostgen VM script は既定4GiB未満の VM で長時間 replay を開始しないこと"
+    );
+    assert!(
+        check_call_pos < create_pos,
+        "VM 空き容量 gate は workdir 作成と artifact 転送より前に実行するべき"
     );
 }
 
 #[test]
-fn test_native_linux_x86_hostgen_vm_script_starts_stopped_vm_before_host_generation() {
-    let script_path =
-        selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
-    let script = std::fs::read_to_string(&script_path)
-        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
-    let ensure_body = shell_function_body(&script, "ensure_vm_running");
-
-    assert!(
-        ensure_body.contains(r#"limactl list "${VM_NAME}" --format '{{.Status}}'"#)
-            && ensure_body.contains(r#"[[ "${status}" = "Running" ]]"#)
-            && ensure_body.contains(r#"limactl start --tty=false "${VM_NAME}""#),
-        "hostgen VM script は stopped VM で長い hostgen 後に落ちないよう、実行前に VM 状態を見て起動するべき"
-    );
-
-    let limactl_check_pos = script
-        .find("command -v limactl")
-        .expect("limactl availability check が必要");
-    let ensure_call_pos = script
-        .find("\nensure_vm_running\n")
-        .expect("hostgen 開始前の VM 起動確認呼び出しが必要");
-    let first_hostgen_pos = script
-        .find("LSHARP_NATIVE_LINUX_X86_CODE_ARTIFACT")
-        .expect("最初の hostgen cargo test が必要");
-
-    assert!(
-        limactl_check_pos < ensure_call_pos && ensure_call_pos < first_hostgen_pos,
-        "VM 起動確認は limactl availability check 後、長い hostgen cargo test の前に実行するべき"
-    );
-}
-
-#[test]
-fn test_native_linux_x86_lima_config_uses_bounded_disk() {
-    let config_path = selfhost_project_root().join("scripts/ci/lima/lsharp-linux-x86.yaml");
+fn test_native_linux_x86_lima_config_bounds_disk_and_avoids_mount_growth() {
+    let root = selfhost_project_root();
+    let config_path = root.join("scripts/ci/lima/lsharp-linux-x86.yaml");
     let config = std::fs::read_to_string(&config_path)
         .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", config_path.display()));
+    let docs_path = root.join("docs/language/native-backend-spec.md");
+    let docs = std::fs::read_to_string(&docs_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", docs_path.display()));
 
+    for required in [
+        "vmType: qemu",
+        "arch: x86_64",
+        "cpus: 4",
+        "memory: 20GiB",
+        "disk: 12GiB",
+        "mounts: []",
+        "apt-get clean",
+        "rm -rf /var/lib/apt/lists/*",
+    ] {
+        assert!(
+            config.contains(required),
+            "Linux x86 Lima config に容量制御 contract が不足: {required}"
+        );
+    }
     assert!(
-        config.contains("arch: x86_64")
-            && config.contains("vmType: qemu")
-            && config.contains("memory: 16GiB")
-            && config.contains("disk: 12GiB")
-            && config.contains("build-essential")
-            && config.contains("python3")
-            && config.contains("rm -rf /var/lib/apt/lists/*")
-            && !config.contains("memory: 8GiB")
-            && !config.contains("memory: 12GiB")
-            && !config.contains("memory: 24GiB")
-            && !config.contains("disk: 30GiB")
-            && !config.contains("disk: 60GiB"),
-        "local Linux x86 Lima VM は storage を圧迫しない 12GiB disk と actual replay が OOM しない 16GiB memory config を正本にするべき"
+        docs.contains("scripts/ci/lima/lsharp-linux-x86.yaml")
+            && docs.contains("limactl create --name lsharp-linux-x86"),
+        "native backend docs は repo 管理の12GiB Lima configから再作成する手順を示すべき"
     );
 }
 
@@ -1024,6 +2176,24 @@ fn test_native_linux_x86_hostgen_vm_script_propagates_split_chunk_failures() {
         body.contains(r#"run_actual_stage_range "${stage_dir}" "${stdout_file}" "${stderr_file}" "${chunk_start}" "${split_mid}" "${include_header}" 0 || return $?"#)
             && body.contains(r#"run_actual_stage_range "${stage_dir}" "${stdout_file}" "${stderr_file}" "${split_mid}" "${chunk_end}" 0 "${include_tail}" || return $?"#),
         "chunk split 後の最小 range 失敗は親 range で握りつぶさず、stage summary に伝播させるべき"
+    );
+}
+
+#[test]
+fn test_native_linux_x86_hostgen_vm_script_harvests_complete_segments_before_splitting() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+    let body = shell_function_body(&script, "run_actual_stage_range");
+
+    assert!(
+        script.contains("parse_complete_actual_stage_segments")
+            && body.contains("chunk_progress_segments")
+            && body.contains(r#"cat "${chunk_clean}" >>"${stdout_file}""#)
+            && body.contains(r#"next_start=$((chunk_start + chunk_progress_segments))"#)
+            && body.contains(r#"run_actual_stage_range "${stage_dir}" "${stdout_file}" "${stderr_file}" "${next_start}" "${chunk_end}" 0 "${include_tail}""#),
+        "actual stage chunk が timeout / SIGTERM しても、完全に出力済みの segment は捨てずに回収して残り range だけを再実行するべき"
     );
 }
 
@@ -1098,20 +2268,6 @@ fn test_linux_x86_file_segmented_harness_writes_segments_from_append_emit_vector
 }
 
 #[test]
-fn test_linux_x86_representative_seed_separates_target_and_native_callables_bindings() {
-    let source = linux_x86_representative_actual_stage23_seed_source();
-
-    assert!(
-        !source.contains(
-            "let [target (make-target 3)\n                    native-callables"
-        ) && source.contains(
-            "(let [target (make-target 3)]\n                (do\n                  (root_push target)\n                  (let [native-callables callables]"
-        ),
-        "Linux x86 segmented seed は target descriptor が native-callables local を潰さないよう target/native-callables を同一 let binding list に置かない"
-    );
-}
-
-#[test]
 fn test_linux_x86_representative_seed_copy_slice_uses_bounded_steps() {
     let source = linux_x86_representative_actual_stage23_seed_source();
 
@@ -1129,62 +2285,6 @@ fn test_linux_x86_representative_seed_copy_slice_uses_bounded_steps() {
 }
 
 #[test]
-fn test_linux_x86_representative_seed_roots_slot_layout_accumulators() {
-    let source = linux_x86_representative_actual_stage23_seed_source();
-
-    assert!(
-        source.contains("starts-ref (ref-new (vector-new 8))")
-            && source.contains("(defn make-x86-slot-layout-context")
-            && source.contains("(defn print-x86-slot-layout-progress [marker ctx]")
-            && source.contains("(print-x86-slot-layout-progress 9000000059 ctx)")
-            && source.contains("(print-x86-slot-layout-progress 9000000060 ctx)")
-            && source.contains("(print-x86-slot-layout-progress 9000000061 ctx)")
-            && source.contains("(print-x86-slot-layout-progress 9000000062 ctx)")
-            && source.contains("(defn linux-x86-native-function-body-size-loop-bounded")
-            && source.contains(
-                "(linux-x86-native-function-body-size-loop-bounded ctx idx total current-depth 64)"
-            )
-            && source.contains("(defn linux-x86-native-function-size-bounded")
-            && source.contains("(linux-x86-native-function-size-bounded func-meta functions)")
-            && source.contains("(defn collect-callable-function-slot-layout-x86")
-            && source.contains(
-                "slot-layout (collect-callable-function-slot-layout-x86 native-callables 10)"
-            )
-            && source.contains("starts (vector-get slot-layout 0)")
-            && source.contains("user-total (vector-get slot-layout 1)")
-            && !source
-                .contains("user-total (callable-user-total-slot-size-x86 native-callables 10)")
-            && source.contains("(defn collect-callable-function-slot-starts-x86-loop [ctx]")
-            && source.contains(
-                "(defn collect-callable-function-slot-starts-x86-loop-bounded [ctx remaining]"
-            )
-            && source.contains("(collect-callable-function-slot-starts-x86-loop-bounded ctx 64)")
-            && source.contains(
-                "(collect-callable-function-slot-starts-x86-loop-bounded ctx (- remaining 1))"
-            )
-            && source.contains("(collect-callable-function-slot-starts-x86-loop ctx)")
-            && !source.contains("collect-callable-function-slot-starts-x86-loop functions (+")
-            && source.contains("idx-ref (ref-new import-count)")
-            && source.contains("len-ref (ref-new (vector-length functions))")
-            && source.contains("offset-ref (ref-new 0)")
-            && source.contains("(ref-set idx-ref (+ (ref-get idx-ref) 1))")
-            && source.contains("(ref-set offset-ref (+ (ref-get offset-ref) slot-size))")
-            && source.contains("(ref-set starts-ref next-starts)")
-            && source.contains("(ref-get starts-ref)")
-            && source.contains("total-ref (ref-new 0)")
-            && source.contains("(defn callable-user-total-slot-size-x86-loop [ctx]")
-            && source
-                .contains("(defn callable-user-total-slot-size-x86-loop-bounded [ctx remaining]")
-            && source.contains("(callable-user-total-slot-size-x86-loop-bounded ctx 64)")
-            && source
-                .contains("(callable-user-total-slot-size-x86-loop-bounded ctx (- remaining 1))")
-            && source.contains("(callable-user-total-slot-size-x86-loop ctx)")
-            && source.contains("(ref-get (x86-slot-layout-context-offset-ref ctx))"),
-        "Linux x86 segmented seed は starts/user-total 計算中の vector-push/native-function-size-x86 で accumulator local を壊さないよう ref slot で保持し、native stack overflow を避けるため bounded step で進めるべき"
-    );
-}
-
-#[test]
 fn test_linux_x86_representative_seed_releases_function_segment_before_next_segment() {
     let source = linux_x86_representative_actual_stage23_seed_source();
     let body = source
@@ -1193,10 +2293,10 @@ fn test_linux_x86_representative_seed_releases_function_segment_before_next_segm
         .and_then(|tail| tail.split("(defn print-x86-function-ir-prefix-loop").next())
         .expect("Linux x86 segmented seed に print-x86-function-code-segments-loop が存在すること");
     let print_pos = body
-        .find("(print-packed-code-segment-with-length padded-segment function-size)")
+        .find("(print-packed-code-segment-with-length segment function-size)")
         .expect("function segment を packed segment として出力すること");
     let recur_pos = body[print_pos..]
-        .find("(print-x86-function-code-segments-loop ctx (+ idx 1) len)")
+        .find("(print-x86-function-code-segments-loop functions starts import-count import-stub-offset (+ idx 1) len)")
         .map(|pos| print_pos + pos)
         .expect("function segment loop は次 segment へ進むこと");
     let release_pos = body[print_pos..recur_pos]
@@ -1211,26 +2311,60 @@ fn test_linux_x86_representative_seed_releases_function_segment_before_next_segm
 }
 
 #[test]
+fn test_linux_x86_representative_seed_roots_function_segment_before_declared_length_print() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+    let body = source
+        .split("(defn print-x86-function-code-segments-loop")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn print-x86-function-ir-prefix-loop").next())
+        .expect("Linux x86 segmented seed に print-x86-function-code-segments-loop が存在すること");
+
+    let segment_pos = body
+        .find("(let [segment (ref-get result)]")
+        .expect("function segment は padding 前に独立した let で取り出すこと");
+    let segment_root_pos = body[segment_pos..]
+        .find("(root_push segment)")
+        .map(|pos| segment_pos + pos)
+        .expect("function segment は declared length print 前に root すること");
+    let print_pos = body[segment_pos..]
+        .find("(print-packed-code-segment-with-length segment function-size)")
+        .map(|pos| segment_pos + pos)
+        .expect("function segment は root 後に declared slot size で出力すること");
+
+    assert!(
+        segment_pos < segment_root_pos
+            && segment_root_pos < print_pos
+            && !body.contains("padded-segment")
+            && !body.contains("pad-byte-vector-to-length"),
+        "Linux x86 segmented seed は declared length print 中の GC で segment を失わないよう、segment を root してから出力するべき"
+    );
+}
+
+#[test]
 fn test_linux_x86_representative_seed_can_print_function_segment_metadata() {
     let source = linux_x86_representative_actual_stage23_seed_source();
     lsharp_syntax::parse(&source)
         .expect("Linux x86 segmented seed source は metadata helper 追加後も parse できること");
     assert!(
-        source.contains("(defn print-x86-function-segment-metadata-loop [ctx idx len prefix-limit]")
+        source.contains("(defn print-x86-function-segment-metadata-loop [functions starts import-count import-stub-offset idx len prefix-limit]")
             && source.contains("metadata-mode (if (> (string-length (command-line-arg 6)) 0) 1 0)")
             && source.contains(
-                "(print-x86-function-segment-metadata-loop segment-ctx range-start range-end metadata-prefix-limit)"
+                "(print-x86-function-segment-metadata-loop native-callables starts 10 user-total range-start range-end metadata-prefix-limit)"
             )
             && source.contains("(print (native-function-param-count func-meta))")
             && source.contains("(print (native-function-local-count func-meta))")
             && source.contains("(print body-offset)")
             && source.contains("(print (vector-length ir-func))")
+            && source.contains("(print 9000000289)")
+            && source.contains("(print 9000000290)")
+            && source.contains("(print 9000000291)")
+            && source.contains("(print 9000000292)")
             && source.contains("(defn print-x86-function-ir-prefix-loop [segment ir offsets functions control-ctx idx len depth]")
             && source.contains("metadata-prefix-limit")
             && source.contains("command-line-arg 7")
             && source.contains("(print 9000000021)")
             && source.contains(
-                "(let [final (print-x86-function-segment-metadata-loop ctx (+ idx 1) len prefix-limit)]"
+                "(let [final (print-x86-function-segment-metadata-loop functions starts import-count import-stub-offset (+ idx 1) len prefix-limit)]"
             ),
         "Linux x86 segmented seed は通常 transport を変えず、任意 range の function metadata を native stage1 実行から出せるべき"
     );
@@ -1243,16 +2377,8 @@ fn test_linux_x86_representative_seed_can_print_stage_progress_markers() {
         .expect("Linux x86 segmented seed source は progress helper 追加後も parse できること");
 
     for marker in [
-        "9000000044",
-        "9000000045",
-        "9000000047",
-        "9000000048",
-        "9000000049",
-        "9000000050",
-        "9000000051",
-        "9000000052",
-        "9000000053",
-        "9000000057",
+        "9000000030",
+        "9000000031",
         "9000000032",
         "9000000033",
         "9000000034",
@@ -1260,6 +2386,10 @@ fn test_linux_x86_representative_seed_can_print_stage_progress_markers() {
         "9000000036",
         "9000000037",
         "9000000038",
+        "9000000039",
+        "9000000040",
+        "9000000120",
+        "9000000121",
     ] {
         assert!(
             source.contains(marker),
@@ -1267,373 +2397,2463 @@ fn test_linux_x86_representative_seed_can_print_stage_progress_markers() {
         );
     }
 
+    for token in [
+        "progress-mode (if (> (string-length (command-line-arg 8)) 0) 1 0)",
+        "pre-payload-progress-mode",
+        "pre-payload-progress-start",
+        "pre-payload-progress-read",
+        "read-file source-path",
+        "string-length pre-payload-source",
+        "string-char-at pre-payload-source 0",
+        "compile-file-functions-payload-with-cache-progress source-path 10 cache-ref parse-count-ref",
+        "progress-after-native-callables",
+        "(print (vector-length functions))",
+        "(print (vector-length callables))",
+        "(print (+ 9 (vector-length functions)))",
+        "progress-after-slot-sample",
+        "slot-sample-start (if (= progress-mode 1)",
+        "slot-sample-end-arg (if (= progress-mode 1)",
+        "slot-sample-end (if (= slot-sample-end-arg 0) 4 slot-sample-end-arg)",
+        "print-x86-slot-size-progress native-callables slot-sample-start slot-sample-end",
+        "(defn print-x86-slot-size-progress",
+        "(print sample-end)",
+        "progress-after-starts",
+        "progress-after-user-total",
+        "starts-size-sample-idx slot-sample-start",
+        "starts-size-sample-size (if (< starts-size-sample-start 0) -1 (- starts-size-sample-next starts-size-sample-start))",
+        "(print 9000000120)",
+        "(print starts-size-sample-size)",
+        "(print 9000000121)",
+        "progress-after-code-len",
+        "(if (= progress-mode 1)",
+        "(print 9000000038)",
+        "(print entrypoint-offset)",
+        "(print user-total)",
+        "(print code-len)",
+        "(print data-len)",
+        "metadata-mode (if (> (string-length (command-line-arg 6)) 0) 1 0)",
+    ] {
+        assert!(
+            source.contains(token),
+            "Linux x86 segmented seed は通常/metadata transport を残したまま、arg8 で setup progress token {token} を含むべき"
+        );
+    }
+
+    for token in [
+        "print-x86-first-large-slot-size functions 0",
+        "progress-after-payload-start",
+        "progress-after-pairs-probe",
+        "progress-after-compile-probe",
+        "progress-after-payload",
+        "pre-callable-progress",
+    ] {
+        assert!(
+            !source.contains(token),
+            "Linux x86 segmented seed は旧 progress probe token {token} を含めない"
+        );
+    }
+}
+
+#[test]
+fn test_linux_x86_representative_seed_can_print_raw_payload_boundary_markers() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+    lsharp_syntax::parse(&source).expect(
+        "Linux x86 segmented seed source は raw payload boundary 診断追加後も parse できること",
+    );
+
+    for marker in ["9000000293", "9000000294", "9000000295", "9000000296"] {
+        assert!(
+            source.contains(marker),
+            "Linux x86 segmented seed は raw payload boundary marker {marker} を出せるべき"
+        );
+    }
+
+    for token in [
+        "raw-payload-boundary-arg (command-line-arg 13)",
+        "raw-payload-boundary-mode (if (> (string-length raw-payload-boundary-arg) 0) 1 0)",
+        "raw-payload-boundary-entry",
+        "raw-payload-boundary-before-payload-base",
+        "payload-base (if (= raw-payload-production-boundary-mode 1)",
+        "compile-file-functions-payload-with-cache-raw-boundary-diagnostic source-path 10 cache-ref parse-count-ref",
+        "raw-payload-boundary-after-root",
+        "raw-payload-boundary-after-parts",
+        "(if (= raw-payload-boundary-mode 1)",
+        "(print (vector-length payload-base))",
+        "(print (vector-length functions))",
+        "(print (vector-length data))",
+    ] {
+        assert!(
+            source.contains(token),
+            "Linux x86 segmented seed は helper 差し替えなしの raw payload boundary 診断 token {token} を含むべき"
+        );
+    }
+}
+
+#[test]
+fn test_linux_x86_representative_seed_can_print_raw_payload_production_boundary_markers() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+    lsharp_syntax::parse(&source).expect(
+        "Linux x86 segmented seed source は raw payload production boundary 診断追加後も parse できること",
+    );
+
+    for token in [
+        "raw-payload-boundary-arg (command-line-arg 13)",
+        r#"raw-payload-production-boundary-mode (if (string-eq raw-payload-boundary-arg "raw-payload-production-boundary") 1 0)"#,
+        "payload-base (if (= raw-payload-production-boundary-mode 1)",
+        "compile-file-functions-payload-with-cache-normal-payload-production-diagnostic source-path 10 cache-ref parse-count-ref",
+        "raw-payload-boundary-before-payload-base",
+        "(if (= raw-payload-boundary-mode 1)",
+        "(print 9000000294)",
+    ] {
+        assert!(
+            source.contains(token),
+            "Linux x86 segmented seed は raw payload production boundary 診断 token {token} を含むべき"
+        );
+    }
+}
+
+#[test]
+fn test_linux_x86_representative_seed_can_print_normal_transport_setup_markers() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+    lsharp_syntax::parse(&source)
+        .expect("Linux x86 segmented seed source は normal setup 診断追加後も parse できること");
+
+    for marker in [
+        "9000000170",
+        "9000000171",
+        "9000000172",
+        "9000000173",
+        "9000000174",
+        "9000000175",
+        "9000000176",
+        "9000000177",
+        "9000000178",
+    ] {
+        assert!(
+            source.contains(marker),
+            "Linux x86 segmented seed は通常 transport setup marker {marker} を出せるべき"
+        );
+    }
+
+    for token in [
+        "normal-transport-diagnostic-mode (if (> (string-length (command-line-arg 11)) 0) 1 0)",
+        "pre-payload-observe-mode (if (= normal-transport-diagnostic-mode 1) 1 pre-payload-progress-mode)",
+        "payload-base (if (= raw-payload-boundary-mode 1)",
+        "compile-file-functions-payload-with-cache-normal-setup-diagnostic source-path 10 cache-ref parse-count-ref",
+        "compile-file-functions-payload-with-cache source-path 10 cache-ref parse-count-ref",
+        "normal-transport-after-payload",
+        "normal-transport-after-payload-parts",
+        "normal-transport-after-native-callables",
+        "normal-transport-after-starts",
+        "normal-transport-after-size",
+        "normal-transport-after-entrypoint",
+        "(if (= normal-transport-diagnostic-mode 1)",
+        "(print range-start)",
+        "(print range-end)",
+    ] {
+        assert!(
+            source.contains(token),
+            "Linux x86 segmented seed は progress helper を使わない通常 setup 診断 token {token} を含むべき"
+        );
+    }
+}
+
+#[test]
+fn test_linux_x86_representative_seed_can_print_normal_payload_shape_without_switching_helpers() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+    lsharp_syntax::parse(&source).expect(
+        "Linux x86 segmented seed source は normal payload shape 診断追加後も parse できること",
+    );
+
+    for marker in [
+        "9000000205",
+        "9000000206",
+        "9000000207",
+        "9000000196",
+        "9000000197",
+        "9000000198",
+        "9000000199",
+        "9000000203",
+        "9000000204",
+    ] {
+        assert!(
+            source.contains(marker),
+            "Linux x86 segmented seed は通常 payload shape marker {marker} を出せるべき"
+        );
+    }
+
+    for token in [
+        "normal-payload-shape-mode (if (> (string-length (command-line-arg 12)) 0) 1 0)",
+        "normal-payload-shape-entry (if (= normal-payload-shape-mode 1)",
+        "normal-payload-shape-before-direct-functions",
+        "normal-payload-shape-before-payload-base",
+        "payload-base (if (= raw-payload-boundary-mode 1)",
+        "normal-payload-shape-direct-functions",
+        "compile-file-functions-with-cache-normal-payload-diagnostic source-path 10 normal-payload-shape-direct-cache-ref normal-payload-shape-direct-parse-count-ref normal-payload-shape-direct-data-ref",
+        "normal-payload-shape-after-direct-functions",
+        "normal-payload-shape-after-direct-function-edges",
+        "compile-file-functions-payload-with-cache-normal-payload-production-diagnostic source-path 10 cache-ref parse-count-ref",
+        "compile-file-functions-payload-with-cache source-path 10 cache-ref parse-count-ref",
+        "normal-payload-shape-after-root",
+        "normal-payload-shape-after-parts",
+        "normal-payload-shape-after-native-callables",
+        "normal-payload-shape-after-starts",
+        "normal-payload-shape-after-code-len",
+        "normal-payload-shape-after-entrypoint",
+        "(if (= normal-payload-shape-mode 1)",
+        "(print (vector-length payload-base))",
+        "(print (vector-length functions))",
+        "(print (vector-length data))",
+        "(print (vector-length callables))",
+        "(print (vector-length native-callables))",
+        "(print (vector-length starts))",
+        "(print code-len)",
+        "(print entrypoint-func-idx)",
+        "(print entrypoint-offset)",
+    ] {
+        assert!(
+            source.contains(token),
+            "Linux x86 segmented seed は通常 helper のまま payload shape 診断 token {token} を含むべき"
+        );
+    }
+
+    let payload_base_pos = source
+        .find("payload-base (if (= raw-payload-boundary-mode 1)")
+        .expect("payload-base 生成が存在すること");
+    let payload_root_pos = source[payload_base_pos..]
+        .find("payload-root (root_push payload-base)")
+        .map(|pos| payload_base_pos + pos)
+        .expect("payload-base root が存在すること");
+    let shape_root_pos = source[payload_root_pos..]
+        .find("normal-payload-shape-after-root")
+        .map(|pos| payload_root_pos + pos)
+        .expect("payload root 後の shape 診断が存在すること");
+    let functions_pos = source[shape_root_pos..]
+        .find("functions (vector-get payload-base 0)")
+        .map(|pos| shape_root_pos + pos)
+        .expect("payload-base から functions を取り出すこと");
     assert!(
-        source.contains("progress-mode (if (> (string-length (command-line-arg 8)) 0) 1 0)")
-            && source.contains("progress-after-native-callables")
-            && source.contains("progress-after-first-slot-size")
-            && source.contains("(print (vector-length payload))")
-            && source.contains("(print (vector-length functions))")
-            && source.contains("(print (vector-length callables))")
-            && source.contains("(print (+ 9 (vector-length functions)))")
-            && source.contains("(print (+ 9 (vector-length functions)))")
-            && source.contains("progress-after-starts")
-            && source.contains("progress-after-start-values")
-            && source.contains("progress-after-user-total")
-            && source.contains("progress-after-code-len")
-            && source.contains("(if (= progress-mode 1)")
-            && source.contains("(print 9000000038)")
-            && source.contains("(print entrypoint-offset)")
-            && source.contains("(print user-total)")
-            && source.contains("(print code-len)")
-            && source.contains("(print data-len)")
-            && source.contains("metadata-mode (if (> (string-length (command-line-arg 6)) 0) 1 0)"),
-        "Linux x86 segmented seed は retired payload debug probe を戻さず、通常/metadata transport を残したまま arg8 で setup progress だけを出せるべき"
+        payload_base_pos < payload_root_pos
+            && payload_root_pos < shape_root_pos
+            && shape_root_pos < functions_pos,
+        "normal payload shape 診断は payload-base を root した後、functions/data を取り出す前に最初の形を採取するべき"
+    );
+
+    let production_payload_probe_pos = source[payload_base_pos..payload_root_pos]
+        .find("compile-file-functions-payload-with-cache-normal-payload-production-diagnostic source-path 10 cache-ref parse-count-ref")
+        .map(|pos| payload_base_pos + pos)
+        .expect("normal-payload-shape mode は production payload probe helper を通すこと");
+    let normal_payload_pos = source[production_payload_probe_pos..payload_root_pos]
+        .find("compile-file-functions-payload-with-cache source-path 10 cache-ref parse-count-ref")
+        .map(|pos| production_payload_probe_pos + pos)
+        .expect("通常 mode は production payload helper を保持すること");
+    assert!(
+        payload_base_pos < production_payload_probe_pos
+            && production_payload_probe_pos < normal_payload_pos
+            && normal_payload_pos < payload_root_pos,
+        "normal-payload-shape mode のときだけ production payload probe helper を挟み、通常 payload helper は維持するべき"
     );
 }
 
 #[test]
-fn test_linux_x86_representative_seed_omits_retired_payload_debug_probes() {
-    let source = linux_x86_representative_actual_stage23_seed_source();
-    lsharp_syntax::parse(&source)
-        .expect("Linux x86 segmented seed source は clean seed 化後も parse できること");
+fn test_selfhost_compiler_mode_has_normal_payload_function_boundary_diagnostic() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/App/CompilerMode.ls",
+    )))
+    .expect("CompilerMode.ls を読めること");
 
-    for marker in [
-        "payload-progress-mode",
-        "pre-callable-progress",
-        "command-line-arg 9",
-        "9000000030",
+    for token in [
+        "(defn compile-file-functions-with-cache-normal-payload-diagnostic",
+        "(print 9000000208)",
+        "(print 9000000209)",
+        "(print 9000000210)",
+        "(print 9000000211)",
+        "(print 9000000212)",
+        "(print 9000000213)",
+        "all-pairs (compile-file-pairs-with-cache path cache-ref parse-count-ref)",
+        "reg-result (register-all-pairs all-pairs 0 n start-ftable func-idx)",
+        "functions (compile-all-src-decl-pairs-chunked-production-diagnostic all-pairs 0 n ftable data-ref functions0)",
     ] {
         assert!(
-            !source.contains(marker),
-            "Linux x86 actual stage1 seed は pass 後の required path で retired payload debug marker を含めないこと: {marker}"
+            source.contains(token),
+            "CompilerMode.ls は normal payload direct functions 境界診断 token {token} を含むべき"
+        );
+    }
+}
+
+#[test]
+fn test_selfhost_normal_payload_diagnostic_enters_compile_all_shape_probe_after_boundary() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/App/CompilerMode.ls",
+    )))
+    .expect("CompilerMode.ls を読めること");
+    let body = source
+        .split("(defn compile-file-functions-with-cache-normal-payload-diagnostic")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-file-functions-payload-with-cache")
+                .next()
+        })
+        .expect("normal payload functions diagnostic body を取り出せること");
+
+    let boundary_pos = body
+        .find("(print 9000000212)")
+        .expect("normal payload diagnostic は compile-all 直前 marker を出すべき");
+    let compile_all_probe_pos = body[boundary_pos..]
+        .find("functions (compile-all-src-decl-pairs-chunked-normal-setup-diagnostic all-pairs 0 n ftable data-ref functions0)")
+        .map(|offset| offset + boundary_pos)
+        .expect("normal payload diagnostic は 0212 以降で compile-all shape probe を使うべき");
+    let finish_pos = body[compile_all_probe_pos..]
+        .find("(print 9000000213)")
+        .map(|offset| offset + compile_all_probe_pos)
+        .expect("normal payload diagnostic は compile-all 復帰後 marker を保持するべき");
+
+    assert!(
+        boundary_pos < compile_all_probe_pos && compile_all_probe_pos < finish_pos,
+        "normal payload diagnostic は 0212 で止まった crash を切り分けるため、0213 より前に compile-all shape probe を通るべき"
+    );
+}
+
+#[test]
+fn test_selfhost_compiler_mode_has_normal_payload_production_functions_diagnostic() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/App/CompilerMode.ls",
+    )))
+    .expect("CompilerMode.ls を読めること");
+
+    for token in [
+        "(defn compile-file-functions-with-cache-normal-payload-production-diagnostic",
+        "(print 9000000258)",
+        "(print 9000000259)",
+        "(print 9000000260)",
+        "(print 9000000261)",
+        "(print 9000000262)",
+        "(print 9000000263)",
+        "all-pairs (compile-file-pairs-with-cache path cache-ref parse-count-ref)",
+        "reg-result (register-all-pairs all-pairs 0 n start-ftable func-idx)",
+        "functions (compile-all-src-decl-pairs-chunked all-pairs 0 n ftable data-ref functions0)",
+    ] {
+        assert!(
+            source.contains(token),
+            "CompilerMode.ls は normal payload production functions 診断 token {token} を含むべき"
+        );
+    }
+}
+
+#[test]
+fn test_selfhost_normal_payload_production_functions_diagnostic_wraps_real_compile_all_path() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/App/CompilerMode.ls",
+    )))
+    .expect("CompilerMode.ls を読めること");
+    let body = source
+        .split("(defn compile-file-functions-with-cache-normal-payload-production-diagnostic")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-file-functions-payload-with-cache")
+                .next()
+        })
+        .expect("normal payload production functions diagnostic body を取り出せること");
+
+    let entry_pos = body
+        .find("(print 9000000258)")
+        .expect("production functions diagnostic は entry marker を出すべき");
+    let pairs_pos = body
+        .find("all-pairs (compile-file-pairs-with-cache path cache-ref parse-count-ref)")
+        .expect("production functions diagnostic は compile-file-pairs-with-cache を通るべき");
+    let after_pairs = body
+        .find("(print 9000000259)")
+        .expect("production functions diagnostic は pairs 後 marker を出すべき");
+    let before_register = body
+        .find("(print 9000000260)")
+        .expect("production functions diagnostic は register 前 marker を出すべき");
+    let after_register = body
+        .find("(print 9000000261)")
+        .expect("production functions diagnostic は register 後 marker を出すべき");
+    let before_compile_all = body
+        .find("(print 9000000262)")
+        .expect("production functions diagnostic は compile-all 前 marker を出すべき");
+    let compile_all = body
+        .find("functions (compile-all-src-decl-pairs-chunked-production-diagnostic all-pairs 0 n ftable data-ref functions0)")
+        .expect("production functions diagnostic は production compile-all diagnostic path を呼ぶべき");
+    let after_compile_all = body
+        .find("(print 9000000263)")
+        .expect("production functions diagnostic は compile-all 復帰後 marker を出すべき");
+
+    assert!(
+        entry_pos < pairs_pos
+            && pairs_pos < after_pairs
+            && after_pairs < before_register
+            && before_register < after_register
+            && after_register < before_compile_all
+            && before_compile_all < compile_all
+            && compile_all < after_compile_all,
+        "normal payload production functions 診断は entry -> pairs -> register -> production compile-all diagnostic -> finish の順にするべき"
+    );
+    assert!(
+        !body.contains("compile-all-src-decl-pairs-chunked-normal-setup-diagnostic")
+            && !body.contains("compile-all-src-decl-pairs-chunked-progress"),
+        "normal payload production functions 診断は normal/progress probe ではなく production compile-all diagnostic を使うべき"
+    );
+}
+
+#[test]
+fn test_selfhost_compiler_mode_has_normal_payload_production_pair_diagnostic() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/App/CompilerMode.ls",
+    )))
+    .expect("CompilerMode.ls を読めること");
+
+    for token in [
+        "(defn compile-src-decl-pairs-step-production-diagnostic",
+        "(defn compile-src-decl-pairs-step-8-production-diagnostic",
+        "(defn compile-src-decl-pairs-step-64-production-diagnostic",
+        "(defn compile-all-src-decl-pairs-chunked-production-diagnostic",
+        "(print 9000000264)",
+        "(print 9000000265)",
+        "(print 9000000266)",
+        "(print 9000000267)",
+        "(print 9000000268)",
+        "(print 9000000269)",
+        "(print 9000000270)",
+        "(print 9000000271)",
+        "(print 9000000272)",
+        "(print 9000000273)",
+        "(print 9000000274)",
+        "(defn compile-source-defn-functions-chunked-production-diagnostic",
+        "(print 9000000275)",
+        "(print 9000000276)",
+        "(print 9000000277)",
+        "(print 9000000278)",
+        "(defn compile-defn-functions-step-64-with-source-production-diagnostic",
+        "(print 9000000279)",
+        "(print 9000000280)",
+        "(print 9000000281)",
+        "(print 9000000282)",
+        "(defn continue-compile-defn-functions-step-with-source-production-diagnostic",
+        "(defn continue-compile-defn-functions-step-times-with-source-production-diagnostic",
+        "(print 9000000283)",
+        "(print 9000000284)",
+        "(print 9000000285)",
+        "(print 9000000286)",
+        "(print 9000000287)",
+        "(print 9000000288)",
+        "updated-functions (compile-source-defn-functions-chunked-production-diagnostic decls 0 (vector-length decls) src ftable data-ref functions)",
+        "state (compile-src-decl-pairs-step-64-production-diagnostic pairs idx n ftable data-ref functions)",
+        "functions (compile-all-src-decl-pairs-chunked-production-diagnostic all-pairs 0 n ftable data-ref functions0)",
+    ] {
+        assert!(
+            source.contains(token),
+            "CompilerMode.ls は normal payload production pair 診断 token {token} を含むべき"
+        );
+    }
+}
+
+#[test]
+fn test_selfhost_normal_payload_production_pair_diagnostic_uses_real_source_compile_path() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/App/CompilerMode.ls",
+    )))
+    .expect("CompilerMode.ls を読めること");
+    let body = source
+        .split("(defn compile-src-decl-pairs-step-production-diagnostic")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("production pair diagnostic body を取り出せること");
+
+    let entry_pos = body
+        .find("(print 9000000264)")
+        .expect("production pair diagnostic は entry marker を出すべき");
+    let pair_pos = body
+        .find("pair (vector-get pairs idx)")
+        .expect("production pair diagnostic は pair を取得するべき");
+    let before_compile = body
+        .find("(print 9000000265)")
+        .expect("production pair diagnostic は source compile 前 marker を出すべき");
+    let source_compile = body
+        .find("updated-functions (compile-source-defn-functions-chunked-production-diagnostic decls 0 (vector-length decls) src ftable data-ref functions)")
+        .expect("production pair diagnostic は production source chunk diagnostic を呼ぶべき");
+    let after_compile = body
+        .find("(print 9000000266)")
+        .expect("production pair diagnostic は source compile 後 marker を出すべき");
+
+    assert!(
+        entry_pos < pair_pos
+            && pair_pos < before_compile
+            && before_compile < source_compile
+            && source_compile < after_compile,
+        "production pair diagnostic は pair entry -> source compile 前 -> production source compile -> source compile 後の順にするべき"
+    );
+    assert!(
+        !body.contains("compile-source-defn-functions-chunked-normal-setup-diagnostic")
+            && !body.contains("compile-source-defn-functions-chunked-progress-probe"),
+        "production pair diagnostic は normal/progress probe ではなく production source diagnostic を使うべき"
+    );
+}
+
+#[test]
+fn test_selfhost_normal_payload_production_source_diagnostic_wraps_real_step64_path() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/App/CompilerMode.ls",
+    )))
+    .expect("CompilerMode.ls を読めること");
+    let body = source
+        .split("(defn compile-source-defn-functions-chunked-production-diagnostic")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("production source diagnostic body を取り出せること");
+
+    let entry_pos = body
+        .find("(print 9000000275)")
+        .expect("production source diagnostic は entry marker を出すべき");
+    let step64_pos = body
+        .find("state (compile-defn-functions-step-64-with-source-production-diagnostic decls idx n source ftable data-ref functions)")
+        .expect("production source diagnostic は production step64 diagnostic を呼ぶべき");
+    let after_step64_pos = body
+        .find("(print 9000000276)")
+        .expect("production source diagnostic は step64 復帰後 marker を出すべき");
+    let continue_pos = body
+        .find("result (continue-compile-defn-functions-step-64-with-source decls n source ftable data-ref state)")
+        .expect("production source diagnostic は production continue step64 を呼ぶべき");
+    let after_continue_pos = body
+        .find("(print 9000000277)")
+        .expect("production source diagnostic は continue 復帰後 marker を出すべき");
+    let functions_pos = body
+        .find("functions-result (vector-get result 2)")
+        .expect("production source diagnostic は result から functions を取り出すべき");
+    let finish_pos = body
+        .find("(print 9000000278)")
+        .expect("production source diagnostic は functions-result marker を出すべき");
+
+    assert!(
+        entry_pos < step64_pos
+            && step64_pos < after_step64_pos
+            && after_step64_pos < continue_pos
+            && continue_pos < after_continue_pos
+            && after_continue_pos < functions_pos
+            && functions_pos < finish_pos,
+        "production source diagnostic は entry -> production step64 diagnostic -> production continue -> functions-result の順にするべき"
+    );
+    assert!(
+        !body.contains("compile-defn-functions-step-64-with-source-normal-setup-diagnostic")
+            && !body.contains(
+                "continue-compile-defn-functions-step-64-with-source-normal-setup-diagnostic"
+            )
+            && !body.contains("progress-probe"),
+        "production source diagnostic は normal/progress probe ではなく production step64 path を使うべき"
+    );
+}
+
+#[test]
+fn test_selfhost_normal_payload_production_step64_diagnostic_keeps_real_inner_step_path() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/App/CompilerMode.ls",
+    )))
+    .expect("CompilerMode.ls を読めること");
+    let body = source
+        .split("(defn compile-defn-functions-step-64-with-source-production-diagnostic")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("production step64 diagnostic body を取り出せること");
+
+    let entry_pos = body
+        .find("(print 9000000279)")
+        .expect("production step64 diagnostic は entry marker を出すべき");
+    let step_pos = body
+        .find("state (compile-defn-functions-step-with-source decls idx n source ftable data-ref functions)")
+        .expect("production step64 diagnostic は production single step を呼ぶべき");
+    let after_step_pos = body
+        .find("(print 9000000280)")
+        .expect("production step64 diagnostic は single step 復帰後 marker を出すべき");
+    let before_continue_pos = body
+        .find("(print 9000000281)")
+        .expect("production step64 diagnostic は 63-step continue 前 marker を出すべき");
+    let continue_pos = body
+        .find("result (continue-compile-defn-functions-step-times-with-source-production-diagnostic decls n source ftable data-ref 63 state)")
+        .expect("production step64 diagnostic は production 63-step continue diagnostic を呼ぶべき");
+    let after_continue_pos = body
+        .find("(print 9000000282)")
+        .expect("production step64 diagnostic は 63-step continue 復帰後 marker を出すべき");
+
+    assert!(
+        entry_pos < step_pos
+            && step_pos < after_step_pos
+            && after_step_pos < before_continue_pos
+            && before_continue_pos < continue_pos
+            && continue_pos < after_continue_pos,
+        "production step64 diagnostic は entry -> production single step -> 63-step continue の順にするべき"
+    );
+    assert!(
+        !body.contains("compile-defn-functions-step-with-source-normal-setup-diagnostic")
+            && !body.contains(
+                "continue-compile-defn-functions-step-times-with-source-normal-setup-diagnostic"
+            )
+            && !body.contains("progress-probe"),
+        "production step64 diagnostic は normal/progress probe ではなく production inner path を使うべき"
+    );
+}
+
+#[test]
+fn test_selfhost_normal_payload_production_continue_diagnostic_marks_recursive_boundaries() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/App/CompilerMode.ls",
+    )))
+    .expect("CompilerMode.ls を読めること");
+    let step64_body = source
+        .split("(defn compile-defn-functions-step-64-with-source-production-diagnostic")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("production step64 diagnostic body を取り出せること");
+    let times_body = source
+        .split("(defn continue-compile-defn-functions-step-times-with-source-production-diagnostic")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("production continue-times diagnostic body を取り出せること");
+    let single_body = source
+        .split("(defn continue-compile-defn-functions-step-with-source-production-diagnostic")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("production single-step diagnostic body を取り出せること");
+
+    assert!(
+        step64_body.contains(
+            "result (continue-compile-defn-functions-step-times-with-source-production-diagnostic decls n source ftable data-ref 63 state)"
+        ),
+        "production step64 diagnostic は production continue-times diagnostic を呼ぶべき"
+    );
+    assert!(
+        !step64_body.contains(
+            "result (continue-compile-defn-functions-step-times-with-source decls n source ftable data-ref 63 state)"
+        ),
+        "production step64 diagnostic は 0281 直後を切るため production continue-times wrapper を経由するべき"
+    );
+
+    let entry_pos = times_body
+        .find("(print 9000000283)")
+        .expect("continue-times diagnostic は entry marker を出すべき");
+    let single_pos = times_body
+        .find("next-state (continue-compile-defn-functions-step-with-source-production-diagnostic decls n source ftable data-ref state)")
+        .expect("continue-times diagnostic は single-step diagnostic wrapper を呼ぶべき");
+    let after_single_pos = times_body
+        .find("(print 9000000286)")
+        .expect("continue-times diagnostic は single-step 復帰後 marker を出すべき");
+    let recursive_pos = times_body
+        .find("result (continue-compile-defn-functions-step-times-with-source-production-diagnostic decls n source ftable data-ref (- remaining 1) next-state)")
+        .expect("continue-times diagnostic は recursive continue を呼ぶべき");
+    let after_recursive_pos = times_body
+        .find("(print 9000000287)")
+        .expect("continue-times diagnostic は recursive 復帰後 marker を出すべき");
+
+    assert!(
+        entry_pos < single_pos
+            && single_pos < after_single_pos
+            && after_single_pos < recursive_pos
+            && recursive_pos < after_recursive_pos,
+        "continue-times diagnostic は entry -> single-step -> single result -> recursive -> recursive result の順にするべき"
+    );
+    assert!(
+        single_body.contains("(print 9000000284)")
+            && single_body.contains("(print 9000000285)")
+            && times_body.contains("(print 9000000288)"),
+        "continue diagnostic は single-step entry/result と done/remaining=0 return shape を出すべき"
+    );
+    assert!(
+        single_body.contains(
+            "result (compile-defn-functions-step-with-source-production-inner-diagnostic decls next-idx n source ftable data-ref next-functions)"
+        ),
+        "production continue diagnostic は 0284 と 0285 の間を切るため raw inner step diagnostic を呼ぶべき"
+    );
+    assert!(
+        !single_body.contains(
+            "result (compile-defn-functions-step-with-source-normal-setup-diagnostic decls next-idx n source ftable data-ref next-functions)"
+        ),
+        "production continue diagnostic は v46 A/B では normal setup source-defn diagnostic step を呼ばないこと"
+    );
+    assert!(
+        !times_body.contains("normal-setup-diagnostic") && !times_body.contains("progress-probe"),
+        "production continue diagnostic は normal/progress probe ではなく production single step を使うべき"
+    );
+}
+
+#[test]
+fn test_selfhost_normal_payload_production_inner_step_diagnostic_marks_defn_boundaries() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/App/CompilerMode.ls",
+    )))
+    .expect("CompilerMode.ls を読めること");
+    let single_body = source
+        .split("(defn continue-compile-defn-functions-step-with-source-production-diagnostic")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("production single-step diagnostic body を取り出せること");
+    let inner_body = source
+        .split("(defn compile-defn-functions-step-with-source-production-inner-diagnostic")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split(
+                "(defn continue-compile-defn-functions-step-with-source-production-diagnostic",
+            )
+            .next()
+        })
+        .expect("production inner step diagnostic body を取り出せること");
+
+    assert!(
+        single_body.contains(
+            "result (compile-defn-functions-step-with-source-production-inner-diagnostic decls next-idx n source ftable data-ref next-functions)"
+        ),
+        "production single-step diagnostic は raw inner step diagnostic を呼び、0284 と 0285 の間をさらに切るべき"
+    );
+    for token in [
+        "(print 9000000300)",
+        "(print 9000000301)",
+        "(print 9000000302)",
+    ] {
+        assert!(
+            inner_body.contains(token),
+            "production inner step diagnostic は defn branch 境界 token {token} を含むべき"
         );
     }
     assert!(
-        source.contains(
-            "payload-base (compile-file-functions-payload-with-cache (command-line-arg 1) 10 cache-ref parse-count-ref)"
-        ) && source.contains("payload payload-base")
-            && source.contains("functions (vector-get payload-base 0)")
-            && source.contains("data (vector-get payload-base 1)"),
-        "Linux x86 actual stage1 seed は payload debug probe を外しても payload/functions/data の正本 binding を維持すること"
+        inner_body.contains(
+            "compiled-fn (compile-defn-function-with-source-production-inner-diagnostic decl source ftable data-ref)"
+        ) && inner_body.contains("next-functions (push-object-vector functions compiled-fn)")
+            && inner_body
+                .contains("defn-result (make-compile-step-state 0 (+ idx 1) next-functions)")
+            && !inner_body.contains("normal-setup-diagnostic"),
+        "production inner step diagnostic は normal setup ではなく raw defn-function inner diagnostic path を保持するべき"
     );
 }
 
 #[test]
-fn test_linux_x86_representative_seed_prints_layout_consistency_probe() {
-    let source = linux_x86_representative_actual_stage23_seed_source();
+fn test_selfhost_normal_payload_production_defn_function_diagnostic_marks_ir_boundaries() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/App/CompilerMode.ls",
+    )))
+    .expect("CompilerMode.ls を読めること");
     let body = source
-        .split("progress-after-layout-consistency")
-        .nth(1)
-        .and_then(|tail| tail.split("metadata-mode").next())
-        .expect("layout consistency probe body が存在すること");
-
-    assert!(
-        source.contains("progress-after-layout-consistency")
-            && body.contains("(print 9000000057)")
-            && body.contains(
-                "(if (= entrypoint-offset (vector-get starts (- entrypoint-func-idx 10))) 1 0)"
-            )
-            && body.contains(
-                "(if (= code-len (+ user-total (x86-selfhost-helper-trailer-size 10))) 1 0)"
-            )
-            && body.contains("(if (< entrypoint-offset code-len) 1 0)")
-            && body.contains("(if (< user-total code-len) 1 0)")
-            && body.contains("(print (% entrypoint-offset 1000000))")
-            && body.contains("(print (% code-len 1000000))")
-            && body.contains("(print (% user-total 1000000))")
-            && body.contains("(print (x86-selfhost-helper-trailer-size 10))"),
-        "Linux x86 segmented seed は transport header 出力前に layout 計算の小さい predicate/modulo 診断を出せるべき"
-    );
-}
-
-#[test]
-fn test_linux_x86_representative_seed_prints_start_value_probe_after_starts() {
-    let source = linux_x86_representative_actual_stage23_seed_source();
-
-    assert!(
-        source.contains("progress-after-start-values")
-            && source.contains("(print 9000000044)")
-            && source.contains("(print (vector-get starts 0))")
-            && source.contains("(print (vector-get starts 1))")
-            && source.contains("(print (vector-get starts (- (vector-length starts) 1)))")
-            && source.contains("(print (- entrypoint-func-idx 10))")
-            && source.contains("(print (vector-get starts (- entrypoint-func-idx 10)))"),
-        "Linux x86 segmented seed は starts len 復帰後に starts の先頭/末尾/entrypoint 値を progress marker で採取できるべき"
-    );
-}
-
-#[test]
-fn test_linux_x86_representative_seed_prints_first_slot_size_probe() {
-    let source = linux_x86_representative_actual_stage23_seed_source();
-    let body = source
-        .split("progress-after-first-slot-size")
+        .split("(defn compile-defn-function-with-source-production-inner-diagnostic")
         .nth(1)
         .and_then(|tail| {
-            tail.split("progress-after-inline-state-construction-probe")
+            tail.split("(defn compile-defn-functions-step-with-source-production-inner-diagnostic")
                 .next()
         })
-        .expect("first slot size probe body が存在すること");
+        .expect("production defn-function diagnostic body を取り出せること");
 
+    for token in [
+        "(print 9000000310)",
+        "(print 9000000311)",
+        "(print 9000000312)",
+        "(print 9000000313)",
+    ] {
+        assert!(
+            body.contains(token),
+            "production defn-function diagnostic は source-ir / ir / meta 境界 token {token} を含むべき"
+        );
+    }
     assert!(
-        source.contains("progress-after-first-slot-size")
-            && source.contains("(print 9000000045)")
-            && source.contains("(print (native-function-size-x86 (vector-get native-callables 10) native-callables))")
-            && source.contains("(print (x86-function-slot-size (vector-get native-callables 10) native-callables))")
-            && !body.contains("(print 9000000056)")
-            && !body.contains("native-local-stack-bytes-with-window-x86")
-            && !body.contains("native-function-body-size-x86-loop-with-context"),
-        "Linux x86 segmented seed は first slot size だけを軽量 progress marker で採取し、stage2 decode を壊した重い component probe は含めない"
+        body.contains(
+            "source-ir (compile-defn-with-source-production-inner-diagnostic node source ftable data-ref)"
+        )
+            && body.contains("ir (if (> (vector-length source-ir) 0) source-ir (compile-defn-with-ftable node ftable))")
+            && body.contains("result (make-function-meta final-param-count local-count ir)")
+            && !body.contains("normal-setup-diagnostic"),
+        "production defn-function diagnostic は production defn source diagnostic path と raw fallback を保持するべき"
     );
 }
 
 #[test]
-fn test_linux_x86_representative_seed_prints_first_size_component_probe() {
-    let source = linux_x86_representative_actual_stage23_seed_source();
-    let body = source
-        .split("progress-after-first-size-components")
-        .nth(1)
-        .and_then(|tail| tail.split("main-func-idx").next())
-        .expect("first size component probe body が存在すること");
-    let marker = source
-        .find("(print 9000000047)")
-        .expect("first size component marker が存在すること");
-    let stack_component_marker = source
-        .find("progress-after-first-stack-components")
-        .expect("first stack component marker が存在すること");
-
-    assert!(
-        source.contains("progress-after-first-size-components")
-            && source.contains("(print 9000000047)")
-            && !body.contains("first-func (vector-get native-callables 10)")
-            && !body.contains("first-ir (native-function-ir first-func)")
-            && !body.contains("native-function-param-count")
-            && !body.contains("native-function-local-count")
-            && !body.contains("native-local-stack-bytes-with-window-x86")
-            && !body.contains("native-function-body-size-x86-loop-with-context"),
-        "Linux x86 segmented seed は 0049 で必要な metadata/max-depth 証跡を取れた後、0047 を marker-only にして診断汚染を避けるべき"
-    );
-    assert!(
-        stack_component_marker < marker,
-        "Linux x86 segmented seed は 0048/0047 marker order を保ちつつ、危険な追加評価をしない"
-    );
-}
-
-#[test]
-fn test_linux_x86_representative_seed_prints_first_stack_component_probe() {
-    let source = linux_x86_representative_actual_stage23_seed_source();
-    let body = source
-        .split("progress-after-first-stack-components")
-        .nth(1)
-        .and_then(|tail| tail.split("progress-after-first-size-components").next())
-        .expect("first stack component probe body が存在すること");
-
-    assert!(
-        source.contains("progress-after-first-stack-components")
-            && source.contains("(print 9000000048)")
-            && !body.contains("first-func (vector-get native-callables 10)")
-            && !body.contains("first-ir (native-function-ir first-func)")
-            && !body.contains("native-function-param-count")
-            && !body.contains("native-function-local-count")
-            && !body.contains("native-frame-base-slot-count")
-            && !body.contains("native-value-window-spill-slot-count-x86"),
-        "Linux x86 segmented seed は 0049 後に first callable を再読せず、0048 を marker-only にして診断汚染を避けるべき"
-    );
-    assert!(
-        source.find("progress-after-first-max-depth-step")
-            < source.find("progress-after-first-stack-components")
-            && source.find("progress-after-first-stack-components")
-                < source.find("progress-after-first-size-components"),
-        "Linux x86 segmented seed は 0049 の後に retired 0048/0047 marker を出して progress の位置だけを保つべき"
-    );
-}
-
-#[test]
-fn test_linux_x86_representative_seed_prints_direct_state_helper_probe() {
-    let source = linux_x86_representative_actual_stage23_seed_source();
-    let body = source
-        .split("progress-after-direct-state-helper-probe")
-        .nth(1)
-        .and_then(|tail| tail.split("progress-after-first-max-depth-step").next())
-        .expect("direct state helper probe body が存在すること");
-
-    assert!(
-        source.contains("progress-after-direct-state-helper-probe")
-            && source.contains("(print 9000000050)")
-            && body.contains(
-                "vector-state (make-callable-object-offset-state 0 1 native-callables 3)",
-            )
-            && body.contains("(print (vector-get vector-state 0))")
-            && body.contains("(print (vector-get vector-state 1))")
-            && body.contains("(print (vector-length (vector-get vector-state 2)))")
-            && body.contains("(print (vector-get vector-state 3))")
-            && body.contains("numeric-state (make-callable-object-offset-state 0 1 1 1)")
-            && body.contains("(print (vector-get numeric-state 0))")
-            && body.contains("(print (vector-get numeric-state 1))")
-            && body.contains("(print (vector-get numeric-state 2))")
-            && body.contains("(print (vector-get numeric-state 3))"),
-        "Linux x86 segmented seed は max-depth step の前に state helper へ vector/numeric field を直接渡して 0 化の発生源を切れるべき"
-    );
-    assert!(
-        source.find("progress-after-direct-state-helper-probe")
-            < source.find("progress-after-first-max-depth-step"),
-        "Linux x86 segmented seed は max-depth step の前に direct state helper probe を実行するべき"
-    );
-}
-
-#[test]
-fn test_linux_x86_representative_seed_prints_inline_state_construction_probe() {
-    let source = linux_x86_representative_actual_stage23_seed_source();
-    let body = source
-        .split("progress-after-inline-state-construction-probe")
+fn test_selfhost_normal_payload_production_defn_source_diagnostic_marks_expr_boundaries() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/App/CompilerMode.ls",
+    )))
+    .expect("CompilerMode.ls を読めること");
+    let function_body = source
+        .split("(defn compile-defn-function-with-source-production-inner-diagnostic")
         .nth(1)
         .and_then(|tail| {
-            tail.split("progress-after-direct-state-helper-probe")
+            tail.split("(defn compile-defn-functions-step-with-source-production-inner-diagnostic")
                 .next()
         })
-        .expect("inline state construction probe body が存在すること");
-
-    assert!(
-        source.contains("progress-after-inline-state-construction-probe")
-            && source.contains("(print 9000000051)")
-            && body.contains("inline-base0 (vector-push (vector-new 4) 0)")
-            && body.contains("inline-base1 (vector-push inline-base0 1)")
-            && body.contains("inline-base2 (vector-push inline-base1 native-callables)")
-            && body.contains("inline-state (vector-push inline-base2 3)")
-            && body.contains("(print (vector-get inline-state 0))")
-            && body.contains("(print (vector-get inline-state 1))")
-            && body.contains("(print (vector-length (vector-get inline-state 2)))")
-            && body.contains("(print (vector-get inline-state 3))"),
-        "Linux x86 segmented seed は state helper call の前に同型 vector construction を inline で検査できるべき"
-    );
-    assert!(
-        source.find("progress-after-inline-state-construction-probe")
-            < source.find("progress-after-direct-state-helper-probe"),
-        "Linux x86 segmented seed は helper call より前に inline state construction probe を実行するべき"
-    );
-}
-
-#[test]
-fn test_linux_x86_representative_seed_prints_local_state_helper_probe() {
-    let source = linux_x86_representative_actual_stage23_seed_source();
-    let body = source
-        .split("progress-after-local-state-helper-probe")
+        .expect("production defn-function diagnostic body を取り出せること");
+    let source_body = source
+        .split("(defn compile-defn-with-source-production-inner-diagnostic")
         .nth(1)
         .and_then(|tail| {
-            tail.split("progress-after-direct-state-helper-probe")
+            tail.split("(defn compile-defn-function-with-source-production-inner-diagnostic")
                 .next()
         })
-        .expect("local state helper probe body が存在すること");
+        .expect("production defn source diagnostic body を取り出せること");
 
     assert!(
-        source.contains("(defn linux-x86-probe-callable-object-offset-state")
-            && source.contains("progress-after-local-state-helper-probe")
-            && source.contains("(print 9000000052)")
-            && body.contains(
-                "local-state (linux-x86-probe-callable-object-offset-state 0 1 native-callables 3)",
-            )
-            && body.contains("(print (vector-get local-state 0))")
-            && body.contains("(print (vector-get local-state 1))")
-            && body.contains("(print (vector-length (vector-get local-state 2)))")
-            && body.contains("(print (vector-get local-state 3))"),
-        "Linux x86 segmented seed は imported state helper call の前に同型 local 4 引数 helper call を検査できるべき"
+        function_body.contains(
+            "source-ir (compile-defn-with-source-production-inner-diagnostic node source ftable data-ref)"
+        ),
+        "production defn-function diagnostic は 0310 と 0311 の間を切るため defn source inner diagnostic を呼ぶべき"
     );
+    for token in [
+        "(print 9000000320)",
+        "(print 9000000321)",
+        "(print 9000000322)",
+        "(print 9000000323)",
+    ] {
+        assert!(
+            source_body.contains(token),
+            "production defn source diagnostic は body/env/expr 境界 token {token} を含むべき"
+        );
+    }
     assert!(
-        source.find("progress-after-inline-state-construction-probe")
-            < source.find("progress-after-local-state-helper-probe")
-            && source.find("progress-after-local-state-helper-probe")
-                < source.find("progress-after-direct-state-helper-probe"),
-        "Linux x86 segmented seed は inline construction、local helper、imported helper の順で state 0 化を切るべき"
+        source_body.contains("body-expr (vector-get node body-idx)")
+            && source_body.contains("env (bind-node-params node 3 0 param-count (env-new) 1)")
+            && source_body.contains(
+                "result (compile-expr-with-source body-expr source env ftable instrs0 data-ref)"
+            )
+            && !source_body.contains("normal-setup-diagnostic"),
+        "production defn source diagnostic は normal setup ではなく raw compile-expr-with-source path を保持するべき"
+    );
+    let env_pos = source_body
+        .find("env (bind-node-params node 3 0 param-count (env-new) 1)")
+        .expect("production defn source diagnostic は env を作ること");
+    let env_root_pos = source_body[env_pos..]
+        .find("(root_push env)")
+        .map(|pos| env_pos + pos)
+        .expect("production defn source diagnostic は env を root すること");
+    let body_expr_pos = source_body[env_root_pos..]
+        .find("body-expr (vector-get node body-idx)")
+        .map(|pos| env_root_pos + pos)
+        .expect("production defn source diagnostic は env root 後に body-expr を取り直すこと");
+    let body_expr_root_pos = source_body[body_expr_pos..]
+        .find("(root_push body-expr)")
+        .map(|pos| body_expr_pos + pos)
+        .expect("production defn source diagnostic は body-expr を root すること");
+    let instrs0_pos = source_body
+        .find("instrs0 (vector-new 8)")
+        .expect("production defn source diagnostic は initial instrs vector を作ること");
+    let instrs0_root_pos = source_body[instrs0_pos..]
+        .find("(root_push instrs0)")
+        .map(|pos| instrs0_pos + pos)
+        .expect("production defn source diagnostic は compile-expr 前に instrs0 を root すること");
+    let compile_pos = source_body[instrs0_pos..]
+        .find("result (compile-expr-with-source body-expr source env ftable instrs0 data-ref)")
+        .map(|pos| instrs0_pos + pos)
+        .expect("production defn source diagnostic は rooted instrs0 を compile-expr へ渡すこと");
+
+    assert!(
+        env_pos < env_root_pos
+            && env_root_pos < body_expr_pos
+            && body_expr_pos < body_expr_root_pos
+            && body_expr_root_pos < instrs0_pos
+            && instrs0_pos < instrs0_root_pos
+            && instrs0_root_pos < compile_pos,
+        "stage2 native の production defn source diagnostic は canonical compile-defn と同じ env/body/instrs root ordering で raw compile-expr call を観測するべき"
     );
 }
 
 #[test]
-fn test_linux_x86_representative_seed_prints_state_helper_call_operand_probe() {
-    let source = linux_x86_representative_actual_stage23_seed_source();
-    let body = source
-        .split("progress-after-state-helper-call-ir-probe")
+fn test_selfhost_compile_let_chain_production_uses_single_step_safe_path() {
+    let source = selfhost_module("Compiler.ls");
+    let chain_body = source
+        .split("(defn compile-let-chain-with-source [")
         .nth(1)
         .and_then(|tail| {
-            tail.split("progress-after-direct-state-helper-probe")
+            tail.split("(defn compile-expr-with-ftable-dispatch-impl-body-impl")
                 .next()
         })
-        .expect("state helper call IR probe body が存在すること");
+        .expect("Compiler.ls に compile-let-chain-with-source が存在すること");
 
     assert!(
-        source.contains("(defn linux-x86-call-after-marker")
-            && source.contains("(defn linux-x86-call-after-marker-loop")
-            && source.contains("progress-after-state-helper-call-ir-probe")
-            && source.contains("(print 9000000053)")
-            && body.contains("main-meta (vector-get native-callables bounded-main-func-idx)")
-            && body.contains("main-ir (native-function-ir main-meta)")
-            && body.contains("(linux-x86-call-after-marker main-ir 9000000051)")
-            && body.contains("(linux-x86-call-after-marker main-ir 9000000052)")
-            && body.contains("(linux-x86-call-after-marker main-ir 9000000050)")
-            && body.contains("(print bounded-main-func-idx)"),
-        "Linux x86 segmented seed は local/imported state helper call の IR operand を stage2 progress で比較できるべき"
+        chain_body.contains(
+            "step (compile-let-chain-step-with-source node source env ftable instrs data-ref rooted-count)"
+        ) && !chain_body.contains("compile-let-chain-step-64-with-source"),
+        "production let-chain は v58 VM pass shape と同じ single-step safe path から始め、step64 chunk 起点を避けるべき"
     );
     assert!(
-        source.find("progress-after-local-state-helper-probe")
-            < source.find("progress-after-state-helper-call-ir-probe")
-            && source.find("progress-after-state-helper-call-ir-probe")
-                < source.find("progress-after-direct-state-helper-probe"),
-        "IR operand probe は local helper call 後、imported helper call 前に走るべき"
+        !source.contains("compile-expr-with-source-raw-let-single-step-boundary-diagnostic")
+            && !source.contains("compile-let-chain-with-source-single-step-boundary-diagnostic"),
+        "v58 の一時 raw boundary diagnostic wrapper は production fix 後に残さないこと"
     );
 }
 
 #[test]
-fn test_linux_x86_representative_seed_prints_first_max_depth_step_probe() {
-    let source = linux_x86_representative_actual_stage23_seed_source();
+fn test_selfhost_compiler_mode_has_normal_payload_production_payload_diagnostic() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/App/CompilerMode.ls",
+    )))
+    .expect("CompilerMode.ls を読めること");
+
+    for token in [
+        "(defn compile-file-functions-payload-with-cache-normal-payload-production-diagnostic",
+        "(print 9000000254)",
+        "(print 9000000255)",
+        "(print 9000000256)",
+        "(print 9000000257)",
+        "functions (compile-file-functions-with-cache-normal-payload-production-diagnostic path func-idx cache-ref parse-count-ref data-ref)",
+        "data-ref (ref-new (vector-new 8))",
+        "payload2 (vector-push payload1 data)",
+        "(root_set data-slot payload2)",
+    ] {
+        assert!(
+            source.contains(token),
+            "CompilerMode.ls は normal payload production payload 診断 token {token} を含むべき"
+        );
+    }
+}
+
+#[test]
+fn test_selfhost_normal_payload_production_payload_diagnostic_wraps_real_compile_path() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/App/CompilerMode.ls",
+    )))
+    .expect("CompilerMode.ls を読めること");
     let body = source
-        .split("progress-after-first-max-depth-step")
+        .split(
+            "(defn compile-file-functions-payload-with-cache-normal-payload-production-diagnostic",
+        )
         .nth(1)
-        .and_then(|tail| tail.split("progress-after-first-size-components").next())
-        .expect("first max depth step probe body が存在すること");
+        .and_then(|tail| {
+            tail.split("(defn compile-file-functions-with-cache-normal-setup-diagnostic")
+                .next()
+        })
+        .expect("normal payload production payload diagnostic body を取り出せること");
+
+    let entry_marker = body
+        .find("(print 9000000254)")
+        .expect("production payload diagnostic は entry marker を出すべき");
+    let data_alloc = body.find("data-ref (ref-new (vector-new 8))").expect(
+        "production payload diagnostic は production payload と同じ data-ref を確保するべき",
+    );
+    let before_compile = body
+        .find("(print 9000000255)")
+        .expect("production payload diagnostic は compile 前 marker を出すべき");
+    let compile_call = body
+        .find("functions (compile-file-functions-with-cache-normal-payload-production-diagnostic path func-idx cache-ref parse-count-ref data-ref)")
+        .expect("production payload diagnostic は通常 compile-all path を包む production functions diagnostic を呼ぶべき");
+    let after_compile = body
+        .find("(print 9000000256)")
+        .expect("production payload diagnostic は compile 復帰後 marker を出すべき");
+    let payload2_pos = body
+        .find("payload2 (vector-push payload1 data)")
+        .expect("production payload diagnostic は payload2 を生成するべき");
+    let root_set_pos = body[payload2_pos..]
+        .find("(root_set data-slot payload2)")
+        .map(|pos| payload2_pos + pos)
+        .expect("production payload diagnostic は payload2 を root slot に退避するべき");
+    let after_payload = body
+        .find("(print 9000000257)")
+        .expect("production payload diagnostic は payload assembly 後 marker を出すべき");
 
     assert!(
-        source.contains("progress-after-first-max-depth-step")
-            && source.contains("(print 9000000049)")
-            && source.contains("(print (vector-length first-func))")
-            && source.contains("first-param-count (native-function-param-count first-func)")
-            && source.contains("first-local-count (native-function-local-count first-func)")
-            && source.contains("(print first-param-count)")
-            && source.contains("(print first-local-count)")
-            && source.contains("first-ir-len (vector-length first-ir)")
-            && source.contains("(print first-ir-len)")
-            && source.contains("(print (vector-get (vector-get first-ir 0) 0))")
-            && source.contains("(print (vector-get (vector-get first-ir 0) 1))")
-            && source.contains(
-                "first-step-1 (native-max-stack-depth-step-64-loop-bounded first-ir native-callables 0 first-ir-len 0 0 1)",
-            )
-            && source.contains(
-                "first-step-64 (native-max-stack-depth-step-64 first-ir native-callables 0 first-ir-len 0 0)",
-            )
-            && body.contains("(print (vector-get first-step-1 0))")
-            && body.contains("(print (vector-get first-step-1 1))")
-            && body.contains("(print (vector-get first-step-1 2))")
-            && body.contains("(print (vector-get first-step-1 3))")
-            && body.contains("(print (vector-get first-step-64 0))")
-            && body.contains("(print (vector-get first-step-64 1))")
-            && body.contains("(print (vector-get first-step-64 2))")
-            && body.contains("(print (vector-get first-step-64 3))"),
-        "Linux x86 segmented seed は native-max-stack-depth を 1 step / 64 step に分けて failure point を採取できるべき"
+        entry_marker < data_alloc
+            && data_alloc < before_compile
+            && before_compile < compile_call
+            && compile_call < after_compile
+            && after_compile < payload2_pos
+            && payload2_pos < root_set_pos
+            && root_set_pos < after_payload,
+        "normal payload production payload 診断は entry -> data alloc -> before compile -> real compile -> after compile -> payload assembly の順にするべき"
     );
     assert!(
-        source.find("progress-after-first-max-depth-step")
-            < source.find("progress-after-first-stack-components"),
-        "Linux x86 segmented seed は 0048 frame-base 診断で native-callables を汚す前に max-depth step 診断へ進むべき"
+        !body.contains("compile-file-functions-with-cache-normal-setup-diagnostic path func-idx cache-ref parse-count-ref data-ref"),
+        "normal payload production payload 診断は normal setup probe ではなく production compile path を使うべき"
+    );
+    let paren_balance = body.chars().fold(0_i64, |balance, ch| {
+        if ch == '(' {
+            balance + 1
+        } else if ch == ')' {
+            balance - 1
+        } else {
+            balance
+        }
+    });
+    assert_eq!(
+        paren_balance, -1,
+        "normal payload production payload 診断 helper は次の defn に閉じ括弧を借りてはいけない"
     );
 }
 
 #[test]
-fn test_linux_x86_representative_seed_retires_entry_shape_probe_from_first_binding() {
-    let source = linux_x86_representative_actual_stage23_seed_source();
+fn test_selfhost_compiler_mode_has_normal_setup_payload_diagnostic() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/App/CompilerMode.ls",
+    )))
+    .expect("CompilerMode.ls を読めること");
+
+    for token in [
+        "(defn compile-file-functions-with-cache-normal-setup-diagnostic",
+        "(defn compile-file-functions-payload-with-cache-normal-setup-diagnostic",
+        "(print 9000000180)",
+        "(print 9000000181)",
+        "(print 9000000182)",
+        "(print 9000000183)",
+        "(print 9000000184)",
+        "(print 9000000185)",
+        "(print 9000000186)",
+        "(print 9000000187)",
+        "(print 9000000188)",
+        "(print 9000000189)",
+        "functions (compile-file-functions-with-cache-normal-setup-diagnostic path func-idx cache-ref parse-count-ref data-ref)",
+        "reg-result (register-all-pairs all-pairs 0 n start-ftable func-idx)",
+        "functions (compile-all-src-decl-pairs-chunked all-pairs 0 n ftable data-ref functions0)",
+    ] {
+        assert!(
+            source.contains(token),
+            "CompilerMode.ls は通常 setup payload 内部診断 token {token} を含むべき"
+        );
+    }
+}
+
+#[test]
+fn test_selfhost_normal_setup_diagnostic_correlates_compile_all_state_payload_shapes() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/App/CompilerMode.ls",
+    )))
+    .expect("CompilerMode.ls を読めること");
+
+    for token in [
+        "(defn print-normal-setup-pairs-state-shape",
+        "(defn print-normal-setup-pair-compile-shape",
+        "(defn print-normal-setup-payload-shape",
+        "(defn compile-src-decl-pairs-step-normal-setup-diagnostic",
+        "(defn compile-all-src-decl-pairs-chunked-normal-setup-diagnostic",
+        "(print 9000000190)",
+        "(print 9000000191)",
+        "(print 9000000192)",
+        "(print 9000000193)",
+        "(print 9000000194)",
+        "state (compile-src-decl-pairs-step-64-normal-setup-diagnostic pairs idx n ftable data-ref functions)",
+        "result (continue-compile-src-decl-pairs-step-64-normal-setup-diagnostic pairs n ftable data-ref state)",
+        "functions-result (vector-get result 2)",
+        "print-normal-setup-pairs-state-shape 9000000190 n state data-ref",
+        "print-normal-setup-pairs-state-shape 9000000191 n result data-ref",
+        "print-normal-setup-pairs-state-shape 9000000192 n result data-ref",
+        "print-normal-setup-pair-compile-shape 9000000194 idx decls functions updated-functions data-ref",
+        "print-normal-setup-source-call-shape idx decls-len functions data-ref",
+        "updated-functions (compile-source-defn-functions-chunked-normal-setup-diagnostic decls 0 decls-len src ftable data-ref functions)",
+        "functions (compile-all-src-decl-pairs-chunked-normal-setup-diagnostic all-pairs 0 n ftable data-ref functions0)",
+        "print-normal-setup-payload-shape payload2",
+    ] {
+        assert!(
+            source.contains(token),
+            "CompilerMode.ls は通常 setup の state/payload shape 診断 token {token} を含むべき"
+        );
+    }
+}
+
+#[test]
+fn test_wasm_compiler_source_defn_finish_normal_setup_diagnostic_reports_state_shape() {
+    let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("Compiler.ls を読めること");
+
+    for token in [
+        "(defn print-source-defn-normal-setup-finish-shape",
+        "(defn compile-defn-functions-step-with-source-normal-setup-diagnostic",
+        "(defn compile-source-defn-functions-chunked-normal-setup-diagnostic",
+        "(print 9000000195)",
+        "next-functions (push-object-vector functions compiled-fn)",
+        "defn-result (make-compile-step-state 0 (+ idx 1) next-functions)",
+        "print-source-defn-normal-setup-finish-shape idx functions compiled-fn defn-result data-ref",
+        "state (compile-defn-functions-step-64-with-source-normal-setup-diagnostic decls idx n source ftable data-ref functions)",
+        "result (continue-compile-defn-functions-step-64-with-source-normal-setup-diagnostic decls n source ftable data-ref state)",
+        "functions-result (vector-get result 2)",
+    ] {
+        assert!(
+            compiler.contains(token),
+            "Compiler.ls は source defn normal setup finish 診断 token {token} を含むべき"
+        );
+    }
+}
+
+#[test]
+fn test_selfhost_normal_setup_diagnostic_marks_source_call_before_seven_arg_boundary() {
+    let compiler_mode = std::fs::read_to_string(workspace_root_relative_path(
+        std::path::PathBuf::from("selfhost/src/App/CompilerMode.ls"),
+    ))
+    .expect("CompilerMode.ls を読めること");
+    let body = compiler_mode
+        .split("(defn compile-src-decl-pairs-step-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn continue-compile-src-decl-pairs-step-normal-setup-diagnostic")
+                .next()
+        })
+        .expect("compile-src-decl-pairs-step-normal-setup-diagnostic body を取り出せること");
+
+    for token in [
+        "(defn print-normal-setup-source-call-shape",
+        "(print 9000000214)",
+        "decls-len (vector-length decls)",
+        "print-normal-setup-source-call-shape idx decls-len functions data-ref",
+        "updated-functions (compile-source-defn-functions-chunked-normal-setup-diagnostic decls 0 decls-len src ftable data-ref functions)",
+    ] {
+        assert!(
+            compiler_mode.contains(token),
+            "CompilerMode.ls は source-defn 呼び出し境界診断 token {token} を含むべき"
+        );
+    }
+
+    let marker_pos = body
+        .find("print-normal-setup-source-call-shape idx decls-len functions data-ref")
+        .expect("source-defn 呼び出し直前 marker が存在すること");
+    let call_pos = body
+        .find("updated-functions (compile-source-defn-functions-chunked-normal-setup-diagnostic decls 0 decls-len src ftable data-ref functions)")
+        .expect("source-defn diagnostic 呼び出しは decls-len local を使うこと");
 
     assert!(
-        !source.contains("progress-after-payload-start")
-            && !source.contains("progress-after-pairs-probe")
-            && !source.contains("command-line-arg 9")
-            && !source.contains("(print 9000000030)"),
-        "Linux x86 actual stage1 seed は stage2 first binding 診断で使った arg9 payload entry-shape probe を required path へ戻さない"
+        marker_pos < call_pos,
+        "normal setup diagnostic は 7 引数 source-defn 呼び出し直前の functions-len を marker で採取するべき"
+    );
+}
+
+#[test]
+fn test_wasm_compiler_source_defn_normal_setup_diagnostic_marks_entry_arguments() {
+    let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("Compiler.ls を読めること");
+    let body = compiler
+        .split("(defn compile-source-defn-functions-chunked-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn continue-compile-let-chain-step-with-source")
+                .next()
+        })
+        .expect(
+            "compile-source-defn-functions-chunked-normal-setup-diagnostic body を取り出せること",
+        );
+
+    for token in [
+        "(defn print-source-defn-normal-setup-entry-shape",
+        "(print 9000000215)",
+        "print-source-defn-normal-setup-entry-shape idx n functions data-ref",
+    ] {
+        assert!(
+            compiler.contains(token),
+            "Compiler.ls は source-defn entry 境界診断 token {token} を含むべき"
+        );
+    }
+
+    let marker_pos = body
+        .find("print-source-defn-normal-setup-entry-shape idx n functions data-ref")
+        .expect("source-defn diagnostic entry marker が存在すること");
+    let state_pos = body
+        .find("state (compile-defn-functions-step-64-with-source-normal-setup-diagnostic decls idx n source ftable data-ref functions)")
+        .expect("source-defn diagnostic entry は step-64 を呼ぶこと");
+
+    assert!(
+        marker_pos < state_pos,
+        "source-defn diagnostic は step-64 に入る前の received functions-len を marker で採取するべき"
+    );
+}
+
+#[test]
+fn test_wasm_compiler_source_defn_normal_setup_diagnostic_marks_skip_state_shape() {
+    let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("Compiler.ls を読めること");
+    let compiler_base = std::fs::read_to_string(selfhost_source_path("CompilerBase.ls"))
+        .expect("CompilerBase.ls を読めること");
+    let body = compiler
+        .split("(defn compile-defn-functions-step-with-source-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split(
+                "\n(defn continue-compile-defn-functions-step-with-source-normal-setup-diagnostic",
+            )
+            .next()
+        })
+        .expect(
+            "compile-defn-functions-step-with-source-normal-setup-diagnostic body を取り出せること",
+        );
+
+    for token in [
+        "(defn print-source-defn-normal-setup-skip-shape",
+        "(print 9000000216)",
+        "(defn print-source-defn-normal-setup-ref-after-write-shape",
+        "(print 9000000222)",
+        "(defn print-source-defn-normal-setup-result-after-root-shape",
+        "(print 9000000223)",
+        "(print 9000000224)",
+        "(print 9000000225)",
+        "defn-result (make-compile-step-state 0 (+ idx 1) next-functions)",
+        "skip-result (ref-get skip-state-ref)",
+        "print-source-defn-normal-setup-ref-after-write-shape idx functions skip-state-ref data-ref",
+        "print-source-defn-normal-setup-result-after-root-shape idx functions skip-result data-ref",
+        "print-source-defn-normal-setup-skip-shape idx functions skip-result data-ref",
+    ] {
+        assert!(
+            compiler.contains(token),
+            "Compiler.ls は source-defn skip state 境界診断 token {token} を含むべき"
+        );
+    }
+    for token in [
+        "(defn write-compile-step-state-ref-normal-setup-diagnostic",
+        "(print 9000000217)",
+        "(print 9000000218)",
+        "(print 9000000219)",
+        "(print 9000000220)",
+        "(print 9000000221)",
+    ] {
+        assert!(
+            compiler_base.contains(token),
+            "CompilerBase.ls は source-defn skip state writer 内部診断 token {token} を含むべき"
+        );
+    }
+
+    let result_ref_pos = body
+        .find("skip-state-ref (ref-new 0)")
+        .expect("skip branch は caller-owned state ref を生成すること");
+    let write_pos = body[result_ref_pos..]
+        .find(
+            "(write-compile-step-state-ref-normal-setup-diagnostic skip-state-ref 0 (+ idx 1) functions)",
+        )
+        .map(|offset| offset + result_ref_pos)
+        .expect("skip branch は diagnostic writer helper で result state を生成すること");
+    let ref_checkpoint_positions = body
+        .match_indices("(print 9000000225)")
+        .map(|(pos, _)| pos)
+        .collect::<Vec<_>>();
+    assert!(
+        ref_checkpoint_positions.len() >= 3,
+        "skip branch は writer 前、writer 後、caller ref-get 前に skip-state-ref raw marker を出すべき: {ref_checkpoint_positions:?}"
+    );
+    let result_pos = body[write_pos..]
+        .find("skip-result (ref-get skip-state-ref)")
+        .map(|offset| offset + write_pos)
+        .expect("skip branch は state ref から skip-result state を取り出すこと");
+    let after_write_marker_pos = body[write_pos..]
+        .find("print-source-defn-normal-setup-ref-after-write-shape idx functions skip-state-ref data-ref")
+        .map(|offset| offset + write_pos)
+        .expect("skip branch は writer return 直後の state ref shape marker を出すこと");
+    let result_root_pos = body[result_pos..]
+        .find("(root_push skip-result)")
+        .map(|offset| offset + result_pos)
+        .expect("skip branch は skip-result state を marker 前から root すること");
+    let before_root_marker_pos = body[result_pos..]
+        .find("(print 9000000224)")
+        .map(|offset| offset + result_pos)
+        .expect("skip branch は result root 前の state shape marker を出すこと");
+    let after_root_marker_pos = body[result_root_pos..]
+        .find(
+            "print-source-defn-normal-setup-result-after-root-shape idx functions skip-result data-ref",
+        )
+        .map(|offset| offset + result_root_pos)
+        .expect("skip branch は result root 直後の state shape marker を出すこと");
+    let marker_pos = body[result_pos..]
+        .find("print-source-defn-normal-setup-skip-shape idx functions skip-result data-ref")
+        .map(|offset| offset + result_pos)
+        .expect("skip branch は skip state shape marker を出すこと");
+    let root_set_pos = body[result_pos..]
+        .find("(root_set functions-slot skip-result)")
+        .map(|offset| offset + result_pos)
+        .expect("skip branch は skip-result state を functions slot に退避すること");
+
+    assert!(
+        result_ref_pos < write_pos
+            && result_ref_pos < ref_checkpoint_positions[0]
+            && ref_checkpoint_positions[0] < write_pos
+            && write_pos < after_write_marker_pos
+            && write_pos < ref_checkpoint_positions[1]
+            && ref_checkpoint_positions[1] < after_write_marker_pos
+            && after_write_marker_pos < result_pos
+            && after_write_marker_pos < ref_checkpoint_positions[2]
+            && ref_checkpoint_positions[2] < result_pos
+            && write_pos < result_pos
+            && result_pos < before_root_marker_pos
+            && before_root_marker_pos < result_root_pos
+            && result_root_pos < after_root_marker_pos
+            && after_root_marker_pos < marker_pos
+            && marker_pos < root_set_pos,
+        "source-defn normal setup diagnostic は writer 前後の ref raw、result root 前後、root_set 前を分けて測り、state slot2 がどこで壊れるか切り分けるべき"
+    );
+
+    let writer_body = compiler_base
+        .split("(defn write-compile-step-state-ref-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("diagnostic writer body を取り出せること");
+    let entry_pos = writer_body
+        .find("(print 9000000217)")
+        .expect("diagnostic writer は entry marker を出すこと");
+    let with_done_pos = writer_body[entry_pos..]
+        .find("(print 9000000218)")
+        .map(|offset| offset + entry_pos)
+        .expect("diagnostic writer は with-done marker を出すこと");
+    let with_idx_pos = writer_body[with_done_pos..]
+        .find("(print 9000000219)")
+        .map(|offset| offset + with_done_pos)
+        .expect("diagnostic writer は with-idx marker を出すこと");
+    let state_pos = writer_body[with_idx_pos..]
+        .find("(print 9000000220)")
+        .map(|offset| offset + with_idx_pos)
+        .expect("diagnostic writer は state marker を出すこと");
+    let ref_set_pos = writer_body[state_pos..]
+        .find("(ref-set state-ref state)")
+        .map(|offset| offset + state_pos)
+        .expect("diagnostic writer は state marker 後に ref-set すること");
+    let ref_after_pos = writer_body[ref_set_pos..]
+        .find("(print 9000000221)")
+        .map(|offset| offset + ref_set_pos)
+        .expect("diagnostic writer は ref-set 後 marker を出すこと");
+    assert!(
+        entry_pos < with_done_pos
+            && with_done_pos < with_idx_pos
+            && with_idx_pos < state_pos
+            && state_pos < ref_set_pos
+            && ref_set_pos < ref_after_pos,
+        "diagnostic writer は entry / with-done / with-idx / state / ref-set 後の順で shape を出すべき"
+    );
+}
+
+#[test]
+fn test_wasm_compiler_source_defn_normal_setup_diagnostic_marks_defn_handoff_shape() {
+    let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("Compiler.ls を読めること");
+    let body = compiler
+        .split("(defn compile-defn-functions-step-with-source-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split(
+                "\n(defn continue-compile-defn-functions-step-with-source-normal-setup-diagnostic",
+            )
+            .next()
+        })
+        .expect(
+            "compile-defn-functions-step-with-source-normal-setup-diagnostic body を取り出せること",
+        );
+
+    for token in [
+        "(print 9000000226)",
+        "(print 9000000227)",
+        "(print 9000000228)",
+    ] {
+        assert!(
+            body.contains(token),
+            "source-defn defn branch は compile entry/return/vector push 境界診断 token {token} を含むべき"
+        );
+    }
+
+    let branch_pos = body
+        .find("(if (= (vector-get decl 0) 20)")
+        .expect("normal setup diagnostic は defn branch を持つこと");
+    let before_compile_pos = body[branch_pos..]
+        .find("(print 9000000226)")
+        .map(|offset| offset + branch_pos)
+        .expect("defn branch は compile-defn-function-with-source 前 marker を出すこと");
+    let compile_pos = body[before_compile_pos..]
+        .find("(let [compiled-fn (compile-defn-function-with-source-normal-setup-diagnostic decl source ftable data-ref)]")
+        .map(|offset| offset + before_compile_pos)
+        .expect("defn branch は normal setup diagnostic 専用 compile-defn-function-with-source wrapper を呼ぶこと");
+    let after_compile_pos = body[compile_pos..]
+        .find("(print 9000000227)")
+        .map(|offset| offset + compile_pos)
+        .expect("defn branch は compiled-fn return 直後 marker を出すこと");
+    let push_object_pos = body[after_compile_pos..]
+        .find("next-functions (push-object-vector functions compiled-fn)")
+        .map(|offset| offset + after_compile_pos)
+        .expect("defn branch は compiled-fn を functions に push すること");
+    let after_push_pos = body[push_object_pos..]
+        .find("(print 9000000228)")
+        .map(|offset| offset + push_object_pos)
+        .expect("defn branch は push-object-vector 直後 marker を出すこと");
+    let finish_marker_pos = body[after_push_pos..]
+        .find("print-source-defn-normal-setup-finish-shape idx functions compiled-fn defn-result data-ref")
+        .map(|offset| offset + after_push_pos)
+        .expect("defn branch は state finish marker を出すこと");
+
+    assert!(
+        before_compile_pos < compile_pos
+            && compile_pos < after_compile_pos
+            && after_compile_pos < push_object_pos
+            && push_object_pos < after_push_pos
+            && after_push_pos < finish_marker_pos,
+        "source-defn normal setup diagnostic は defn compile entry/return、vector push 後、state finish を順に分けて測るべき"
+    );
+}
+
+#[test]
+fn test_wasm_compiler_source_defn_normal_setup_diagnostic_marks_defn_function_internals() {
+    let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("Compiler.ls を読めること");
+    let plain_defn_body = compiler
+        .split("(defn compile-defn-with-source [")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("compile-defn-with-source body を取り出せること");
+    let plain_function_body = compiler
+        .split("(defn compile-defn-function-with-source [")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("compile-defn-function-with-source body を取り出せること");
+    let defn_body = compiler
+        .split("(defn compile-defn-with-source-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn compile-defn-function-with-source-normal-setup-diagnostic")
+                .next()
+        })
+        .expect("compile-defn-with-source-normal-setup-diagnostic body を取り出せること");
+    let function_body = compiler
+        .split("(defn compile-defn-function-with-source-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn compile-defn-functions-with-source")
+                .next()
+        })
+        .expect("compile-defn-function-with-source-normal-setup-diagnostic body を取り出せること");
+
+    for token in [
+        "(print 9000000233)",
+        "(print 9000000234)",
+        "(print 9000000235)",
+    ] {
+        assert!(
+            !plain_defn_body.contains(token),
+            "通常 compile-defn-with-source は host artifact gate の標準出力を汚さないよう内部診断 token {token} を含めない"
+        );
+    }
+    for token in [
+        "(print 9000000229)",
+        "(print 9000000230)",
+        "(print 9000000231)",
+        "(print 9000000232)",
+    ] {
+        assert!(
+            !plain_function_body.contains(token),
+            "通常 compile-defn-function-with-source は host artifact gate の標準出力を汚さないよう内部診断 token {token} を含めない"
+        );
+    }
+
+    for token in [
+        "(print 9000000233)",
+        "(print 9000000234)",
+        "(print 9000000235)",
+    ] {
+        assert!(
+            defn_body.contains(token),
+            "diagnostic wrapper は body/env/expr compile 境界診断 token {token} を含むべき"
+        );
+    }
+    for token in [
+        "(print 9000000229)",
+        "(print 9000000230)",
+        "(print 9000000231)",
+        "(print 9000000232)",
+    ] {
+        assert!(
+            function_body.contains(token),
+            "diagnostic function wrapper は source-ir/ir/meta 境界診断 token {token} を含むべき"
+        );
+    }
+
+    let env_pos = defn_body
+        .find("env (bind-node-params node 3 0 param-count (env-new) 1)")
+        .expect("diagnostic wrapper は env を作ること");
+    let env_root_pos = defn_body[env_pos..]
+        .find("(root_push env)")
+        .map(|offset| offset + env_pos)
+        .expect("diagnostic wrapper は env を root すること");
+    let body_expr_pos = defn_body[env_root_pos..]
+        .find("body-expr (vector-get node body-idx)")
+        .map(|offset| offset + env_root_pos)
+        .expect("diagnostic wrapper は body-expr を取り出すこと");
+    let body_root_pos = defn_body[body_expr_pos..]
+        .find("(root_push body-expr)")
+        .map(|offset| offset + body_expr_pos)
+        .expect("diagnostic wrapper は body-expr を root すること");
+    let body_marker_pos = defn_body[body_root_pos..]
+        .find("(print 9000000233)")
+        .map(|offset| offset + body_root_pos)
+        .expect("diagnostic wrapper は body shape marker を出すこと");
+    let env_marker_pos = defn_body[body_marker_pos..]
+        .find("(print 9000000234)")
+        .map(|offset| offset + body_marker_pos)
+        .expect("diagnostic wrapper は env marker を出すこと");
+    let compile_expr_pos = defn_body[env_marker_pos..]
+        .find("result (compile-expr-with-source-normal-setup-diagnostic body-expr source env ftable instrs0 data-ref)")
+        .map(|offset| offset + env_marker_pos)
+        .expect("diagnostic wrapper は compile-expr-with-source-normal-setup-diagnostic を呼ぶこと");
+    let result_marker_pos = defn_body[compile_expr_pos..]
+        .find("(print 9000000235)")
+        .map(|offset| offset + compile_expr_pos)
+        .expect("diagnostic wrapper は result marker を出すこと");
+    assert!(
+        env_pos < env_root_pos
+            && env_root_pos < body_expr_pos
+            && body_expr_pos < body_root_pos
+            && body_root_pos < body_marker_pos
+            && body_marker_pos < env_marker_pos
+            && env_marker_pos < compile_expr_pos
+            && compile_expr_pos < result_marker_pos,
+        "diagnostic wrapper は body / env / expr result の境界を順に測るべき"
+    );
+
+    let entry_marker_pos = function_body
+        .find("(print 9000000229)")
+        .expect("diagnostic function wrapper は entry marker を出すこと");
+    let source_ir_pos = function_body[entry_marker_pos..]
+        .find("source-ir (compile-defn-with-source-normal-setup-diagnostic node source ftable data-ref)")
+        .map(|offset| offset + entry_marker_pos)
+        .expect("diagnostic function wrapper は diagnostic defn wrapper で source-ir を作ること");
+    let source_ir_marker_pos = function_body[source_ir_pos..]
+        .find("(print 9000000230)")
+        .map(|offset| offset + source_ir_pos)
+        .expect("diagnostic function wrapper は source-ir marker を出すこと");
+    let ir_pos = function_body[source_ir_marker_pos..]
+        .find("ir (if (> (vector-length source-ir) 0) source-ir (compile-defn-with-ftable node ftable))")
+        .map(|offset| offset + source_ir_marker_pos)
+        .expect("diagnostic function wrapper は fallback ir を選ぶこと");
+    let ir_marker_pos = function_body[ir_pos..]
+        .find("(print 9000000231)")
+        .map(|offset| offset + ir_pos)
+        .expect("diagnostic function wrapper は ir marker を出すこと");
+    let meta_pos = function_body[ir_marker_pos..]
+        .find("result (make-function-meta final-param-count local-count ir)")
+        .map(|offset| offset + ir_marker_pos)
+        .expect("diagnostic function wrapper は function meta を作ること");
+    let meta_marker_pos = function_body[meta_pos..]
+        .find("(print 9000000232)")
+        .map(|offset| offset + meta_pos)
+        .expect("diagnostic function wrapper は function meta marker を出すこと");
+    assert!(
+        entry_marker_pos < source_ir_pos
+            && source_ir_pos < source_ir_marker_pos
+            && source_ir_marker_pos < ir_pos
+            && ir_pos < ir_marker_pos
+            && ir_marker_pos < meta_pos
+            && meta_pos < meta_marker_pos,
+        "diagnostic function wrapper は entry / source-ir / ir / meta の境界を順に測るべき"
+    );
+}
+
+#[test]
+fn test_wasm_compiler_source_defn_normal_setup_diagnostic_marks_expr_let_internals() {
+    let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("Compiler.ls を読めること");
+    let plain_expr_body = compiler
+        .split("(defn compile-expr-with-source [")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("compile-expr-with-source body を取り出せること");
+    let plain_let_body = compiler
+        .split("(defn compile-let-with-source [")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("compile-let-with-source body を取り出せること");
+    for token in [
+        "(print 9000000236)",
+        "(print 9000000237)",
+        "(print 9000000238)",
+        "(print 9000000239)",
+        "(print 9000000240)",
+        "(print 9000000241)",
+        "(print 9000000242)",
+    ] {
+        assert!(
+            !plain_expr_body.contains(token) && !plain_let_body.contains(token),
+            "通常 expr/let compile path は host artifact gate の標準出力を汚さないよう診断 token {token} を含めない"
+        );
+    }
+
+    let defn_diag_body = compiler
+        .split("(defn compile-defn-with-source-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn compile-defn-function-with-source-normal-setup-diagnostic")
+                .next()
+        })
+        .expect("compile-defn-with-source-normal-setup-diagnostic body を取り出せること");
+    assert!(
+        defn_diag_body.contains(
+            "result (compile-expr-with-source-normal-setup-diagnostic body-expr source env ftable instrs0 data-ref)"
+        ),
+        "defn diagnostic wrapper は body compile を expr diagnostic wrapper へ閉じ込めるべき"
+    );
+
+    let expr_diag_body = compiler
+        .split("(defn compile-expr-with-source-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn compile-expr-with-source-dispatch-normal-setup-diagnostic")
+                .next()
+        })
+        .expect("compile-expr-with-source-normal-setup-diagnostic body を取り出せること");
+    let expr_dispatch_diag_body = compiler
+        .split("(defn compile-expr-with-source-dispatch-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn compile-defn-with-source").next())
+        .expect("compile-expr-with-source-dispatch-normal-setup-diagnostic body を取り出せること");
+    let let_diag_body = compiler
+        .split("(defn compile-let-chain-step-with-source-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn compile-let-chain-with-source-normal-setup-diagnostic")
+                .next()
+        })
+        .expect("compile-let-chain-step-with-source-normal-setup-diagnostic body を取り出せること");
+    let let_chain_diag_body = compiler
+        .split("(defn compile-let-chain-with-source-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn compile-let-with-source-normal-setup-diagnostic")
+                .next()
+        })
+        .expect("compile-let-chain-with-source-normal-setup-diagnostic body を取り出せること");
+    let let_entry_diag_body = compiler
+        .split("(defn compile-let-with-source-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("compile-let-with-source-normal-setup-diagnostic body を取り出せること");
+
+    for token in ["(print 9000000236)", "(print 9000000242)"] {
+        assert!(
+            expr_diag_body.contains(token),
+            "expr diagnostic wrapper は dispatch 前後の token {token} を含むべき"
+        );
+    }
+    assert!(
+        expr_diag_body.contains(
+            "result (compile-expr-with-source-dispatch-normal-setup-diagnostic node source env ftable instrs data-ref)"
+        ),
+        "expr diagnostic wrapper は diagnostic dispatch を呼ぶべき"
+    );
+    assert!(
+        expr_dispatch_diag_body.contains("(compile-let-with-source-normal-setup-diagnostic node source env ftable instrs data-ref)"),
+        "diagnostic dispatch は tag 7 let を let diagnostic wrapper へ送るべき"
+    );
+    assert!(
+        let_entry_diag_body.contains("(print 9000000237)")
+            && let_entry_diag_body.contains(
+                "compile-let-chain-with-source-normal-setup-diagnostic node source env ftable instrs data-ref 0",
+            ),
+        "let diagnostic wrapper は entry marker 後に diagnostic let chain を呼ぶべき"
+    );
+    for token in [
+        "(print 9000000238)",
+        "(print 9000000239)",
+        "(print 9000000240)",
+    ] {
+        assert!(
+            let_diag_body.contains(token),
+            "let step diagnostic wrapper は init/finish 境界 token {token} を含むべき"
+        );
+    }
+    assert!(
+        let_chain_diag_body.contains("(print 9000000241)")
+            && let_chain_diag_body.contains(
+                "body-instrs (compile-expr-with-source-normal-setup-diagnostic body-expr source next-env ftable next-instrs data-ref)",
+            ),
+        "let chain diagnostic wrapper は step result と body compile 境界を測るべき"
+    );
+    assert!(
+        let_diag_body.contains(
+            "init-instrs (compile-expr-with-source-normal-setup-diagnostic init-expr source env ftable instrs data-ref)",
+        ),
+        "let step diagnostic wrapper は init compile も expr diagnostic wrapper で測るべき"
+    );
+}
+
+#[test]
+fn test_wasm_compiler_source_expr_roots_dispatch_result_before_unwinding() {
+    let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("Compiler.ls を読めること");
+    let expr_body = compiler
+        .split("(defn compile-expr-with-source [")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("compile-expr-with-source body を取り出せること");
+
+    let result_pos = expr_body
+        .find("result (compile-expr-with-source-dispatch node source env ftable instrs data-ref)")
+        .expect("compile-expr-with-source は dispatch result を local 化すること");
+    let result_root_pos = expr_body[result_pos..]
+        .find("(root_push result)")
+        .map(|offset| offset + result_pos)
+        .expect("compile-expr-with-source は outer roots unwind 前に result を root すること");
+    let first_pop_pos = expr_body[result_pos..]
+        .find("(root_pop)")
+        .map(|offset| offset + result_pos)
+        .expect("compile-expr-with-source は outer roots を unwind すること");
+
+    assert!(
+        result_pos < result_root_pos && result_root_pos < first_pop_pos,
+        "compile-expr-with-source は raw source-defn path で dispatch result を失わないよう root_pop 前に result を root するべき"
+    );
+}
+
+#[test]
+fn test_wasm_compiler_source_apply_roots_results_before_returning_to_expr() {
+    let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("Compiler.ls を読めること");
+
+    let apply_body = compiler
+        .split("(defn compile-apply-with-source [")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("compile-apply-with-source body を取り出せること");
+    let apply_result_pos = apply_body
+        .find("result\n          (if (> bop 0)")
+        .expect("compile-apply-with-source は apply result を local 化すること");
+    let apply_root_pos = apply_body[apply_result_pos..]
+        .find("(root_push result)")
+        .map(|offset| offset + apply_result_pos)
+        .expect("compile-apply-with-source は result を root すること");
+    let apply_pop_pos = apply_body[apply_result_pos..]
+        .find("(root_pop)")
+        .map(|offset| offset + apply_result_pos)
+        .expect("compile-apply-with-source は result root を unwind すること");
+    assert!(
+        apply_result_pos < apply_root_pos && apply_root_pos < apply_pop_pos,
+        "compile-apply-with-source は raw source-defn apply result を expr wrapper へ返す前に root するべき"
+    );
+
+    let builtin_body = compiler
+        .split("(defn compile-builtin-apply-with-source [")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn compile-builtin-apply-with-source-normal-setup-diagnostic")
+                .next()
+        })
+        .expect("compile-builtin-apply-with-source body を取り出せること");
+    let builtin_result_pos = builtin_body
+        .find("result\n      (if (= bop 70)")
+        .expect("compile-builtin-apply-with-source は builtin result を local 化すること");
+    let builtin_root_pos = builtin_body[builtin_result_pos..]
+        .find("(root_push result)")
+        .map(|offset| offset + builtin_result_pos)
+        .expect("compile-builtin-apply-with-source は result を root すること");
+    let builtin_pop_pos = builtin_body[builtin_result_pos..]
+        .find("(root_pop)")
+        .map(|offset| offset + builtin_result_pos)
+        .expect("compile-builtin-apply-with-source は result root を unwind すること");
+    assert!(
+        builtin_result_pos < builtin_root_pos && builtin_root_pos < builtin_pop_pos,
+        "compile-builtin-apply-with-source は raw source-defn builtin result を apply wrapper へ返す前に root するべき"
+    );
+}
+
+#[test]
+fn test_wasm_compiler_source_defn_normal_setup_diagnostic_marks_expr_do_internals() {
+    let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("Compiler.ls を読めること");
+    let plain_expr_body = compiler
+        .split("(defn compile-expr-with-source [")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("compile-expr-with-source body を取り出せること");
+    let plain_do_body = compiler
+        .split("(defn compile-do-with-source [")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("compile-do-with-source body を取り出せること");
+    for token in [
+        "(print 9000000243)",
+        "(print 9000000244)",
+        "(print 9000000245)",
+        "(print 9000000246)",
+        "(print 9000000247)",
+    ] {
+        assert!(
+            !plain_expr_body.contains(token) && !plain_do_body.contains(token),
+            "通常 expr/do compile path は host artifact gate の標準出力を汚さないよう診断 token {token} を含めない"
+        );
+    }
+
+    let expr_dispatch_diag_body = compiler
+        .split("(defn compile-expr-with-source-dispatch-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn compile-defn-with-source").next())
+        .expect("compile-expr-with-source-dispatch-normal-setup-diagnostic body を取り出せること");
+    assert!(
+        expr_dispatch_diag_body.contains(
+            "(compile-do-with-source-normal-setup-diagnostic node source env ftable instrs data-ref)"
+        ),
+        "diagnostic dispatch は tag 9 do を do diagnostic wrapper へ送るべき"
+    );
+
+    let do_step_diag_body = compiler
+        .split("(defn compile-do-exprs-step-with-source-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn continue-compile-do-exprs-step-with-source-normal-setup-diagnostic")
+                .next()
+        })
+        .expect("compile-do-exprs-step-with-source-normal-setup-diagnostic body を取り出せること");
+    for token in [
+        "(print 9000000244)",
+        "(print 9000000245)",
+        "(print 9000000246)",
+    ] {
+        assert!(
+            do_step_diag_body.contains(token),
+            "do step diagnostic wrapper は child compile / finish 境界 token {token} を含むべき"
+        );
+    }
+    assert!(
+        do_step_diag_body.contains(
+            "value-instrs (compile-expr-with-source-normal-setup-diagnostic expr source env ftable instrs data-ref)"
+        ),
+        "do step diagnostic wrapper は child expr を expr diagnostic wrapper で測るべき"
+    );
+
+    let do_entry_diag_body = compiler
+        .split("(defn compile-do-with-source-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("compile-do-with-source-normal-setup-diagnostic body を取り出せること");
+    assert!(
+        do_entry_diag_body.contains("(print 9000000243)")
+            && do_entry_diag_body.contains("(print 9000000247)")
+            && do_entry_diag_body.contains(
+                "compile-do-exprs-with-source-normal-setup-diagnostic node source env ftable 0 expr-count instrs data-ref",
+            ),
+        "do diagnostic wrapper は entry/final marker と diagnostic do expr chain を持つべき"
+    );
+}
+
+#[test]
+fn test_wasm_compiler_source_defn_normal_setup_diagnostic_marks_expr_apply_map_internals() {
+    let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("Compiler.ls を読めること");
+    let plain_apply_body = compiler
+        .split("(defn compile-apply-with-source [")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("compile-apply-with-source body を取り出せること");
+    let plain_map_ftable_body = compiler
+        .split("(defn compile-map-builtin-with-ftable [")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("compile-map-builtin-with-ftable body を取り出せること");
+    for token in [
+        "(print 9000000248)",
+        "(print 9000000249)",
+        "(print 9000000250)",
+        "(print 9000000251)",
+        "(print 9000000252)",
+        "(print 9000000253)",
+    ] {
+        assert!(
+            !plain_apply_body.contains(token) && !plain_map_ftable_body.contains(token),
+            "通常 apply/map ftable compile path は host artifact gate の標準出力を汚さないよう診断 token {token} を含めない"
+        );
+    }
+
+    let expr_dispatch_diag_body = compiler
+        .split("(defn compile-expr-with-source-dispatch-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn compile-defn-with-source").next())
+        .expect("compile-expr-with-source-dispatch-normal-setup-diagnostic body を取り出せること");
+    assert!(
+        expr_dispatch_diag_body.contains(
+            "(compile-apply-with-source-normal-setup-diagnostic node source env ftable instrs data-ref)"
+        ),
+        "diagnostic dispatch は tag 5 apply を apply diagnostic wrapper へ送るべき"
+    );
+
+    let apply_diag_body = compiler
+        .split("(defn compile-apply-with-source-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn compile-do-exprs-step-with-source")
+                .next()
+        })
+        .expect("compile-apply-with-source-normal-setup-diagnostic body を取り出せること");
+    assert!(
+        apply_diag_body.contains("(print 9000000248)")
+            && apply_diag_body.contains("(print 9000000249)")
+            && apply_diag_body.contains(
+                "compile-builtin-apply-with-source-normal-setup-diagnostic node source env ftable instrs data-ref bop safe-ftable-path",
+            ),
+        "apply diagnostic wrapper は builtin 判定と戻り instr shape を測るべき"
+    );
+
+    let builtin_diag_body = compiler
+        .split("(defn compile-builtin-apply-with-source-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn compile-apply-with-source-normal-setup-diagnostic")
+                .next()
+        })
+        .expect("compile-builtin-apply-with-source-normal-setup-diagnostic body を取り出せること");
+    assert!(
+        builtin_diag_body.contains(
+            "compile-map-builtin-with-ftable-normal-setup-diagnostic node env ftable instrs bop data-ref",
+        ),
+        "builtin diagnostic wrapper は safe ftable map path を map ftable diagnostic wrapper へ送るべき"
+    );
+
+    let map_diag_body = compiler
+        .split("(defn compile-map-builtin-with-ftable-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn compile-map-builtin-with-source").next())
+        .expect("compile-map-builtin-with-ftable-normal-setup-diagnostic body を取り出せること");
+    for token in [
+        "(print 9000000250)",
+        "(print 9000000251)",
+        "(print 9000000252)",
+        "(print 9000000253)",
+    ] {
+        assert!(
+            map_diag_body.contains(token),
+            "map ftable diagnostic wrapper は map/key/result 境界 token {token} を含むべき"
+        );
+    }
+    assert!(
+        map_diag_body.contains(
+            "result (compile-map-lookup-builtin-with-ftable env instrs map-instrs key-instrs map-root key-root bop simple-path)"
+        ),
+        "map ftable diagnostic wrapper は map-get lookup result 境界を測るべき"
+    );
+}
+
+#[test]
+fn test_selfhost_map_builtin_roots_map_instrs_before_key_compile() {
+    let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("Compiler.ls を読めること");
+
+    let source_body = compiler
+        .split("(defn compile-map-builtin-with-source [")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn compile-expr-with-ftable").next())
+        .expect("compile-map-builtin-with-source body を取り出せること");
+    let source_map_compile = source_body
+        .find("map-instrs (compile-expr-with-source map-expr")
+        .expect("source map builtin は map expr を compile すること");
+    let source_map_root = source_body[source_map_compile..]
+        .find("(root_push map-instrs)")
+        .map(|offset| source_map_compile + offset)
+        .expect("source map builtin は map-instrs を root すること");
+    let source_key_compile = source_body
+        .find("key-instrs (compile-map-key-with-source key-expr")
+        .expect("source map builtin は key expr を compile すること");
+    let source_key_root = source_body[source_key_compile..]
+        .find("(root_push key-instrs)")
+        .map(|offset| source_key_compile + offset)
+        .expect("source map builtin は key-instrs を root すること");
+    let source_lookup = source_body
+        .find("compile-map-lookup-builtin-with-ftable env instrs map-instrs key-instrs")
+        .expect("source map builtin は map/key instrs を lookup helper へ渡すこと");
+
+    assert!(
+        source_map_compile < source_map_root
+            && source_map_root < source_key_compile
+            && source_key_compile < source_key_root
+            && source_key_root < source_lookup,
+        "source map builtin は key compile 中の GC で map-instrs を失わないよう、map-instrs を key-instrs compile 前に root するべき"
+    );
+
+    let ftable_body = compiler
+        .split("(defn compile-map-builtin-with-ftable [")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn compile-map-builtin-with-ftable-normal-setup-diagnostic")
+                .next()
+        })
+        .expect("compile-map-builtin-with-ftable body を取り出せること");
+    let ftable_map_compile = ftable_body
+        .find("map-instrs (compile-expr-with-ftable map-expr")
+        .expect("ftable map builtin は map expr を compile すること");
+    let ftable_map_root = ftable_body[ftable_map_compile..]
+        .find("(root_push map-instrs)")
+        .map(|offset| ftable_map_compile + offset)
+        .expect("ftable map builtin は map-instrs を root すること");
+    let ftable_key_compile = ftable_body
+        .find("key-instrs (compile-map-key-with-ftable key-expr")
+        .expect("ftable map builtin は key expr を compile すること");
+    let ftable_key_root = ftable_body[ftable_key_compile..]
+        .find("(root_push key-instrs)")
+        .map(|offset| ftable_key_compile + offset)
+        .expect("ftable map builtin は key-instrs を root すること");
+    let ftable_lookup = ftable_body
+        .find("compile-map-lookup-builtin-with-ftable env instrs map-instrs key-instrs")
+        .expect("ftable map builtin は map/key instrs を lookup helper へ渡すこと");
+
+    assert!(
+        ftable_map_compile < ftable_map_root
+            && ftable_map_root < ftable_key_compile
+            && ftable_key_compile < ftable_key_root
+            && ftable_key_root < ftable_lookup,
+        "ftable map builtin も key compile 中の GC で map-instrs を失わないよう、map-instrs を key-instrs compile 前に root するべき"
+    );
+}
+
+#[test]
+fn test_selfhost_map_builtin_keeps_result_rooted_while_popping_operands() {
+    let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("Compiler.ls を読めること");
+
+    let source_body = compiler
+        .split("(defn compile-map-builtin-with-source [")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn compile-expr-with-ftable").next())
+        .expect("compile-map-builtin-with-source body を取り出せること");
+    let source_lookup = source_body
+        .find("result (compile-map-lookup-builtin-with-ftable env instrs map-instrs key-instrs")
+        .expect("source map lookup result を作ること");
+    let source_lookup_result_root = source_body[source_lookup..]
+        .find("(root_push result)")
+        .map(|offset| source_lookup + offset)
+        .expect("source map lookup は operand root を外す前に result を root すること");
+    let source_lookup_result_set = source_body[source_lookup_result_root..]
+        .find("(root_set map-slot result)")
+        .map(|offset| source_lookup_result_root + offset)
+        .expect("source map lookup は map slot へ result を退避すること");
+    let source_lookup_first_pop = source_body[source_lookup_result_set..]
+        .find("(root_pop)")
+        .map(|offset| source_lookup_result_set + offset)
+        .expect("source map lookup は result 退避後に root を外すこと");
+    assert!(
+        source_lookup < source_lookup_result_root
+            && source_lookup_result_root < source_lookup_result_set
+            && source_lookup_result_set < source_lookup_first_pop,
+        "source map lookup は result を保持したまま map/key operand roots を外すべき"
+    );
+
+    let ftable_body = compiler
+        .split("(defn compile-map-builtin-with-ftable [")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn compile-map-builtin-with-ftable-normal-setup-diagnostic")
+                .next()
+        })
+        .expect("compile-map-builtin-with-ftable body を取り出せること");
+    let ftable_lookup = ftable_body
+        .find("result (compile-map-lookup-builtin-with-ftable env instrs map-instrs key-instrs")
+        .expect("ftable map lookup result を作ること");
+    let ftable_lookup_result_root = ftable_body[ftable_lookup..]
+        .find("(root_push result)")
+        .map(|offset| ftable_lookup + offset)
+        .expect("ftable map lookup は operand root を外す前に result を root すること");
+    let ftable_lookup_result_set = ftable_body[ftable_lookup_result_root..]
+        .find("(root_set map-slot result)")
+        .map(|offset| ftable_lookup_result_root + offset)
+        .expect("ftable map lookup は map slot へ result を退避すること");
+    let ftable_lookup_first_pop = ftable_body[ftable_lookup_result_set..]
+        .find("(root_pop)")
+        .map(|offset| ftable_lookup_result_set + offset)
+        .expect("ftable map lookup は result 退避後に root を外すこと");
+    assert!(
+        ftable_lookup < ftable_lookup_result_root
+            && ftable_lookup_result_root < ftable_lookup_result_set
+            && ftable_lookup_result_set < ftable_lookup_first_pop,
+        "ftable map lookup も result を保持したまま map/key operand roots を外すべき"
+    );
+}
+
+#[test]
+fn test_linux_x86_representative_seed_omits_payload_entry_shape_probe() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+    assert!(
+        !source.contains("compile-file-mode-entry-shape-progress-probe")
+            && !source.contains("command-line-arg 9"),
+        "Linux x86 segmented seed は stage2/stage3 の payload compile を邪魔する arg9 entry-shape probe を含めない"
+    );
+}
+
+#[test]
+fn test_selfhost_compiler_mode_has_payload_progress_probe() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/App/CompilerMode.ls",
+    )))
+    .expect("CompilerMode.ls を読めること");
+
+    for token in [
+        "(defn compile-file-functions-payload-with-cache-progress",
+        "(print 9000000041)",
+        "(print 9000000042)",
+        "(print (string-length src))",
+        "(print (if (> (string-length src) 0) (string-char-at src 0) -1))",
+        "(print 9000000043)",
+        "fingerprint (source-fingerprint src)",
+        "(print 9000000044)",
+        "decls (parse-program src)",
+        "(print 9000000069)",
+        "(print 9000000070)",
+        "(print 9000000071)",
+        "(print 9000000072)",
+        "(print 9000000073)",
+        "(print 9000000074)",
+        "(print 9000000075)",
+        "(print 9000000130)",
+        "(print 9000000131)",
+        "(print 9000000132)",
+        "(defn compile-string-literal-with-source-probe",
+        "(print 9000000140)",
+        "(print 9000000141)",
+        "(print 9000000142)",
+        "(print 9000000143)",
+        "(defn compile-defn-functions-step-progress-probe",
+        "(defn compile-source-defn-functions-chunked-progress-probe",
+        "compile-source-defn-functions-chunked-progress-probe decls 0",
+        "(defn register-all-pairs-step-progress",
+        "(defn register-all-pairs-progress",
+        "(print 9000000080)",
+        "(print 9000000081)",
+        "(print 9000000082)",
+        "(print 9000000083)",
+        "(print 9000000084)",
+        "(print 9000000085)",
+        "(print 9000000086)",
+        "(print 9000000087)",
+        "(defn register-all-pairs-progress-loop",
+        "(print 9000000100)",
+        "(print 9000000101)",
+        "(print 9000000102)",
+        "(print 9000000103)",
+        "(print 9000000104)",
+        "(print 9000000105)",
+        "(print 9000000106)",
+        "(print 9000000107)",
+        "(defn make-register-state-progress",
+        "(print 9000000110)",
+        "(print 9000000111)",
+        "(print 9000000112)",
+        "(print 9000000113)",
+        "(print 9000000114)",
+        "(print 9000000115)",
+        "(print 9000000116)",
+        "(print 9000000117)",
+        "(print 9000000118)",
+        "(print state-ref)",
+        "(print (ref-get state-ref))",
+        "(print (vector-length (ref-get state-ref)))",
+        "(print (vector-get (ref-get state-ref) 0))",
+        "(print (vector-get (ref-get state-ref) 1))",
+        "(print (vector-get (ref-get state-ref) 3))",
+        "(print (vector-length (vector-get (ref-get state-ref) 2)))",
+        "base-slot (root_push base)",
+        "with-done (vector-push base (ref-get done-ref))",
+        "(root_set base-slot with-done)",
+        "with-idx (vector-push with-done (ref-get next-idx-ref))",
+        "(root_set base-slot with-idx)",
+        "with-ftable (vector-push with-idx next-ftable)",
+        "(root_set base-slot with-ftable)",
+        "state (vector-push with-ftable (ref-get next-func-idx-ref))",
+        "(root_set base-slot state)",
+        "(defn register-defns-step-progress",
+        "(defn register-defns-chunked-progress",
+        "(print 9000000090)",
+        "(print 9000000091)",
+        "(print 9000000092)",
+        "(print 9000000093)",
+        "(print 9000000094)",
+        "(print 9000000095)",
+        "(print 9000000096)",
+        "(print 9000000097)",
+        "(print 9000000098)",
+        "(print 9000000099)",
+        "state0-next-idx (vector-get state0 1)",
+        "state0-ftable (vector-get state0 2)",
+        "state0-next-func-idx (vector-get state0 3)",
+        "(root_push state0-ftable)",
+        "result (register-defns-chunked decls state0-next-idx n state0-ftable state0-next-func-idx)",
+        "(defn write-register-state-progress-ref",
+        "state-ref (ref-new 0)",
+        "(write-register-state-progress-ref done-state-ref 1 idx ftable func-idx)",
+        "(write-register-state-progress-ref defn-state-ref 0 (+ idx 1) next-ftable (+ func-idx 1))",
+        "(write-register-state-progress-ref non-defn-state-ref 0 (+ idx 1) ftable func-idx)",
+        "state (ref-get state-ref)",
+        "all-pairs (compile-file-pairs-with-cache path cache-ref parse-count-ref)",
+        "start-ftable (ftable-new)",
+        "reg-result (register-all-pairs-progress all-pairs 0 n start-ftable func-idx)",
+        "final-state (register-all-pairs-progress-loop pairs n state0)",
+        "result (register-defns-chunked-progress decls 0 (vector-length decls) ftable func-idx)",
+        "compile-all-src-decl-pairs-chunked-progress all-pairs 0 n ftable data-ref functions0",
+        "(print (vector-length (ref-get data-ref)))",
+    ] {
+        assert!(
+            source.contains(token),
+            "CompilerMode payload progress probe は token {token} を含むべき"
+        );
+    }
+
+    let compile_idx = source
+        .find("compile-source-defn-functions-chunked-progress-probe decls 0")
+        .expect("payload progress probe は chunked progress probe 呼び出しを含むべき");
+    let root_idx = source[compile_idx..]
+        .find("(root_push updated-functions)")
+        .map(|idx| compile_idx + idx)
+        .expect("payload progress probe は updated-functions を root するべき");
+    let marker_idx = source[compile_idx..]
+        .find("(print 9000000131)")
+        .map(|idx| compile_idx + idx)
+        .expect("payload progress probe は 9000000131 marker を含むべき");
+    assert!(
+        root_idx < marker_idx,
+        "payload progress probe は 9000000131 前に updated-functions を root するべき"
+    );
+
+    let step64_continue = source
+        .split("(defn continue-compile-defn-functions-step-64-progress-probe")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-source-defn-functions-chunked-progress-probe")
+                .next()
+        })
+        .expect("payload progress probe は step-64 continue body を持つべき");
+    for token in [
+        "next-state (compile-defn-functions-step-64-progress-probe",
+        "(root_push next-state)",
+        "result (continue-compile-defn-functions-step-64-progress-probe decls n src ftable data-ref next-state)",
+    ] {
+        assert!(
+            step64_continue.contains(token),
+            "payload progress probe の step-64 continue は token {token} を含むべき"
+        );
+    }
+
+    let if_probe = source
+        .split("(defn compile-if-with-source-probe")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-simple-builtin-with-source-probe")
+                .next()
+        })
+        .expect("payload progress probe は if probe body を持つべき");
+    assert_eq!(
+        if_probe.matches("(root_push").count(),
+        if_probe.matches("(root_pop)").count(),
+        "compile-if-with-source-probe は root_push/root_pop の数を揃えるべき"
+    );
+
+    let expr_probe = source
+        .split("(defn compile-expr-with-source-probe [")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn compile-defn-with-source-probe").next())
+        .expect("payload progress probe は expression probe wrapper を持つべき");
+    for token in [
+        "node-slot (root_push node)",
+        "source-slot (root_push source)",
+        "env-slot (root_push env)",
+        "ftable-slot (root_push ftable)",
+        "instrs-slot (root_push instrs)",
+        "data-slot (root_push data-ref)",
+        "result (compile-expr-with-source-probe-dispatch node source env ftable instrs data-ref rooted-count)",
+    ] {
+        assert!(
+            expr_probe.contains(token),
+            "compile-expr-with-source-probe は token {token} を含むべき"
+        );
+    }
+}
+
+#[test]
+fn test_selfhost_compiler_mode_defn_probe_reports_decl_body_shape() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/App/CompilerMode.ls",
+    )))
+    .expect("CompilerMode.ls を読めること");
+    let defn_probe = source
+        .split("(defn compile-defn-with-source-probe")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-defn-functions-chunked-step-progress-debug")
+                .next()
+        })
+        .expect("CompilerMode.ls に compile-defn-with-source-probe が存在すること");
+
+    for token in [
+        "(print 9000000144)",
+        "decl-len (vector-length node)",
+        "body-expr (if (> decl-len body-idx)",
+        "(print decl-len)",
+        "(print (if (> decl-len body-idx)",
+        "(vector-get body-expr 0)",
+    ] {
+        assert!(
+            defn_probe.contains(token),
+            "compile-defn-with-source-probe は decl/body shape 診断 token {token} を含むべき"
+        );
+    }
+
+    let body_root_idx = defn_probe
+        .find("(root_push body-expr)")
+        .expect("compile-defn-with-source-probe は body-expr を root するべき");
+    let marker_idx = defn_probe
+        .find("(print 9000000144)")
+        .expect("compile-defn-with-source-probe は 9000000144 marker を含むべき");
+    let tag_idx = defn_probe
+        .find("(vector-get body-expr 0)")
+        .expect("compile-defn-with-source-probe は body tag を出力するべき");
+    assert!(
+        body_root_idx < marker_idx && body_root_idx < tag_idx,
+        "compile-defn-with-source-probe は body shape 診断で GC が走っても body を失わないよう print 前に body-expr を root するべき"
+    );
+}
+
+#[test]
+fn test_selfhost_compiler_mode_defn_probe_reports_first_ir_and_data_shape() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/App/CompilerMode.ls",
+    )))
+    .expect("CompilerMode.ls を読めること");
+    let defn_probe = source
+        .split("(defn compile-defn-with-source-probe")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-defn-functions-chunked-step-progress-debug")
+                .next()
+        })
+        .expect("CompilerMode.ls に compile-defn-with-source-probe が存在すること");
+
+    for token in [
+        "(print 9000000145)",
+        "first-instr (if (> (vector-length result) 0) (vector-get result 0) (vector-new 2))",
+        "(print (vector-length result))",
+        "(print (if (> (vector-length result) 0) (vector-get first-instr 0) -1))",
+        "(print (if (> (vector-length result) 0) (vector-get first-instr 1) -1))",
+        "(print (vector-length (ref-get data-ref)))",
+    ] {
+        assert!(
+            defn_probe.contains(token),
+            "compile-defn-with-source-probe は first IR/data 診断 token {token} を含むべき"
+        );
+    }
+
+    let result_root_idx = defn_probe
+        .find("(root_push result)")
+        .expect("compile-defn-with-source-probe は result を診断前に root するべき");
+    let marker_idx = defn_probe
+        .find("(print 9000000145)")
+        .expect("compile-defn-with-source-probe は 9000000145 marker を含むべき");
+    let instr_root_idx = defn_probe
+        .find("(root_push first-instr)")
+        .expect("compile-defn-with-source-probe は first-instr を operand 出力前に root するべき");
+    let operand_idx = defn_probe
+        .find("(vector-get first-instr 1)")
+        .expect("compile-defn-with-source-probe は first IR operand を出力するべき");
+    assert!(
+        result_root_idx < marker_idx && instr_root_idx < operand_idx,
+        "compile-defn-with-source-probe は first IR/data 診断中に result / first-instr を root するべき"
+    );
+}
+
+#[test]
+fn test_selfhost_compiler_mode_progress_reports_parse_and_pair_body_shape() {
+    let source = selfhost_module("CompilerMode.ls");
+    let decl_shape_helper = source
+        .split("(defn print-progress-decl-body-shape")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn print-progress-pairs-body-shape").next())
+        .expect("CompilerMode.ls に print-progress-decl-body-shape が存在すること");
+    let pair_shape_helper = source
+        .split("(defn print-progress-pairs-body-shape")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-file-functions-payload-with-cache-progress")
+                .next()
+        })
+        .expect("CompilerMode.ls に print-progress-pairs-body-shape が存在すること");
+    let progress_body = source
+        .split("(defn compile-file-functions-payload-with-cache-progress")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-file-functions-payload-with-cache")
+                .next()
+        })
+        .expect(
+            "CompilerMode.ls に compile-file-functions-payload-with-cache-progress が存在すること",
+        );
+    let cleanup_probe_body = source
+        .split("(defn print-direct-defn-return-cleanup-progress-probe")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-file-mode-entry-shape-progress-probe")
+                .next()
+        })
+        .expect(
+            "CompilerMode.ls に print-direct-defn-return-cleanup-progress-probe が存在すること",
+        );
+
+    for token in [
+        "(print marker)",
+        "9000000146",
+        "body-idx (+ 3 param-count)",
+        "(print decl-len)",
+        "(print (if (> decl-len body-idx) (vector-get body-expr 0) -1))",
+        "9000000147",
+        "progress-spans (tokenize-with-spans src)",
+        "progress-first-defn-span (find-span-kind-index progress-spans 0 progress-span-count 30)",
+        "(defn print-program-step-body-progress-probe [spans src]",
+        "9000000148",
+        "9000000149",
+        "(defn print-program-defn-branch-progress-probe [spans src]",
+        "9000000150",
+        "9000000151",
+        "9000000152",
+        "(print-program-step-body-progress-probe progress-spans src)",
+        "(print-program-defn-branch-progress-probe progress-spans src)",
+        "(print-direct-defn-build-progress-probe progress-spans progress-first-defn-span src)",
+        "(print-direct-defn-return-cleanup-progress-probe progress-spans progress-first-defn-span src)",
+        "first-pair (if (> pair-count 0) (vector-get pairs 0) (vector-new 0))",
+        "first-pair-decls (if (> (vector-length first-pair) 1) (vector-get first-pair 1) (vector-new 0))",
+        "(print-progress-decl-body-shape 9000000147 pair-count first-pair-decl)",
+    ] {
+        assert!(
+            decl_shape_helper.contains(token)
+                || pair_shape_helper.contains(token)
+                || progress_body.contains(token),
+            "CompilerMode progress body shape 診断 token {token} を含むべき"
+        );
+    }
+    for token in [
+        "9000000153",
+        "9000000154",
+        "9000000155",
+        "9000000156",
+        "9000000157",
+        "9000000158",
+        "9000000159",
+        "9000000160",
+        "9000000161",
+        "9000000162",
+    ] {
+        assert!(
+            cleanup_probe_body.contains(token),
+            "cleanup progress probe は marker {token} を出力するべき"
+        );
+    }
+    assert!(
+        cleanup_probe_body.contains("cleanup-bodyless-body")
+            && cleanup_probe_body.contains("cleanup-parsed-body-source")
+            && !cleanup_probe_body.contains("(let [body (make-int-node 0)]")
+            && !cleanup_probe_body.contains("(let [body (parse-expr-v3 spans pos-ref src)]"),
+        "cleanup progress probe は Linux x86 stage2 selfhost lowering で if branch 間の同名 body shadow により local.set/get slot がずれないよう、branch 固有の body local 名を使うべき"
+    );
+
+    let parse_marker_idx = progress_body
+        .find("(print-progress-decl-body-shape")
+        .expect("progress path は parse body shape helper を呼ぶべき");
+    let cache_idx = progress_body
+        .find("all-pairs (compile-file-pairs-with-cache path cache-ref parse-count-ref)")
+        .expect("progress path は cache pair 生成を含むべき");
+    assert!(
+        parse_marker_idx < cache_idx,
+        "progress path は cache/pair 経路へ入る前に parse-program 直後の body shape を出力するべき"
+    );
+    let direct_probe_idx = progress_body
+        .find("(print-direct-defn-build-progress-probe")
+        .expect("progress path は direct defn body branch probe を呼ぶべき");
+    let cleanup_probe_idx = progress_body
+        .find("(print-direct-defn-return-cleanup-progress-probe")
+        .expect("progress path は direct defn cleanup probe を呼ぶべき");
+    let branch_probe_idx = progress_body
+        .find("(print-program-defn-branch-progress-probe")
+        .expect("progress path は parse-program defn branch probe を呼ぶべき");
+    let step_probe_idx = progress_body
+        .find("(print-program-step-body-progress-probe")
+        .expect("progress path は parse-program step body probe を呼ぶべき");
+    assert!(
+        parse_marker_idx < step_probe_idx
+            && step_probe_idx < branch_probe_idx
+            && branch_probe_idx < direct_probe_idx
+            && direct_probe_idx < cleanup_probe_idx
+            && cleanup_probe_idx < cache_idx,
+        "progress path は parse-program 直後かつ cache/pair 生成前に step/branch/direct/cleanup defn probe を出力するべき"
+    );
+
+    let pair_marker_idx = progress_body
+        .find("(print-progress-pairs-body-shape all-pairs)")
+        .expect("progress path は pair body shape helper を呼ぶべき");
+    assert!(
+        cache_idx < pair_marker_idx,
+        "progress path は cache/pair 生成後に pair 内 body shape を出力するべき"
     );
 }
 
@@ -1651,9 +4871,2116 @@ fn test_selfhost_compiler_mode_has_entry_shape_progress_probe() {
             && source.contains("(print 9000000050)")
             && source.contains("(print 9000000054)")
             && source.contains("(print 9000000058)")
+            && source.contains("(print 9000000059)")
+            && source.contains("(print 9000000060)")
+            && source.contains("(print 9000000061)")
             && source.contains("(let [src (read-file path)]")
+            && source.contains("(lex-one src 0 src-len)")
+            && source.contains("(tokenize-spans-step src 0 src-len tokens0)")
+            && source.contains("(tokenize-spans-step-512 src 0 src-len tokens0)")
             && source.contains("(let [spans (tokenize-with-spans src)]"),
-        "CompilerMode は stage2 first binding から read-file/tokenize 境界を段階的に出せる診断を持つべき"
+        "CompilerMode は stage2 first binding から read-file/tokenize step 境界を段階的に出せる診断を持つべき"
+    );
+}
+
+#[test]
+fn test_selfhost_compile_file_payload_roots_inputs_before_data_ref_alloc() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/App/CompilerMode.ls",
+    )))
+    .expect("CompilerMode.ls を読めること");
+    let body = source
+        .split("(defn compile-file-functions-payload-with-cache")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn compile-file-mode-cache-probe").next())
+        .expect("compile-file-functions-payload-with-cache body を取り出せること");
+
+    let path_root = body
+        .find("(root_push path)")
+        .expect("payload helper は path を root してから allocation するべき");
+    let cache_root = body
+        .find("(root_push cache-ref)")
+        .expect("payload helper は cache-ref を root してから allocation するべき");
+    let parse_root = body
+        .find("(root_push parse-count-ref)")
+        .expect("payload helper は parse-count-ref を root してから allocation するべき");
+    let data_alloc = body
+        .find("data-ref (ref-new (vector-new 8))")
+        .expect("payload helper は data-ref を確保するべき");
+    let data_root = body[data_alloc..]
+        .find("(root_push data-ref)")
+        .map(|offset| offset + data_alloc)
+        .expect("payload helper は compile call 前に data-ref を root するべき");
+    let compile_call = body
+        .find(
+            "functions (compile-file-functions-with-cache path func-idx cache-ref parse-count-ref data-ref)",
+        )
+        .expect("payload helper は compile-file-functions-with-cache に data-ref を渡すべき");
+
+    assert!(
+        path_root < data_alloc
+            && cache_root < data_alloc
+            && parse_root < data_alloc
+            && data_alloc < data_root
+            && data_root < compile_call,
+        "payload helper は input refs -> data-ref alloc -> data-ref root -> compile call の順で GC root を固定するべき"
+    );
+}
+
+#[test]
+fn test_selfhost_compile_file_payload_roots_result_before_unwinding_state() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/App/CompilerMode.ls",
+    )))
+    .expect("CompilerMode.ls を読めること");
+    let body = source
+        .split("(defn compile-file-functions-payload-with-cache")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-file-functions-with-cache-normal-setup-diagnostic")
+                .next()
+        })
+        .expect("compile-file-functions-payload-with-cache body を取り出せること");
+
+    let data_root = body
+        .find("data-slot (root_push data)")
+        .expect("payload helper は data root slot を保持するべき");
+    let payload2_pos = body
+        .find("payload2 (vector-push payload1 data)")
+        .expect("payload helper は payload2 を生成するべき");
+    let root_set_pos = body[payload2_pos..]
+        .find("(root_set data-slot payload2)")
+        .map(|offset| offset + payload2_pos)
+        .expect("payload helper は返却 payload2 を既存 root slot に退避するべき");
+    let first_pop_after_payload2 = body[payload2_pos..]
+        .find("(root_pop)")
+        .map(|offset| offset + payload2_pos)
+        .expect("payload helper は payload2 生成後に roots を unwind するべき");
+
+    assert!(
+        data_root < payload2_pos
+            && payload2_pos < root_set_pos
+            && root_set_pos < first_pop_after_payload2,
+        "payload helper は stage2 normal transport で payload2 の functions/data を失わないよう、unwind 前に payload2 を root slot へ退避するべき"
+    );
+}
+
+#[test]
+fn test_selfhost_compiler_mode_has_raw_payload_boundary_diagnostic() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/App/CompilerMode.ls",
+    )))
+    .expect("CompilerMode.ls を読めること");
+
+    for token in [
+        "(defn compile-file-functions-payload-with-cache-raw-boundary-diagnostic",
+        "(print 9000000297)",
+        "(print 9000000298)",
+        "(print 9000000299)",
+        "(print 9000000300)",
+        "(print 9000000301)",
+        "functions (compile-file-functions-with-cache path func-idx cache-ref parse-count-ref data-ref)",
+        "payload2 (vector-push payload1 data)",
+        "(root_set data-slot payload2)",
+    ] {
+        assert!(
+            source.contains(token),
+            "CompilerMode は raw payload helper 内部境界 diagnostic token {token} を含むべき"
+        );
+    }
+
+    let body = source
+        .split("(defn compile-file-functions-payload-with-cache-raw-boundary-diagnostic")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn compile-file-functions-payload-with-cache-normal-payload-production-diagnostic").next())
+        .expect("raw payload boundary diagnostic body を取り出せること");
+    let before_compile = body
+        .find("(print 9000000298)")
+        .expect("raw payload diagnostic は compile call 前 marker を出すべき");
+    let compile_call = body
+        .find("functions (compile-file-functions-with-cache path func-idx cache-ref parse-count-ref data-ref)")
+        .expect("raw payload diagnostic は production compile-file-functions-with-cache を呼ぶべき");
+    let after_compile = body
+        .find("(print 9000000299)")
+        .expect("raw payload diagnostic は compile call 後 marker を出すべき");
+    assert!(
+        before_compile < compile_call && compile_call < after_compile,
+        "raw payload diagnostic は production compile call の直前/直後だけを marker で挟むべき"
+    );
+}
+
+#[test]
+fn test_selfhost_raw_payload_boundary_diagnostic_form_is_balanced() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/App/CompilerMode.ls",
+    )))
+    .expect("CompilerMode.ls を読めること");
+
+    let form = source
+        .split("(defn compile-file-functions-payload-with-cache-raw-boundary-diagnostic")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-file-functions-payload-with-cache-normal-payload-production-diagnostic")
+                .next()
+        })
+        .expect("raw payload boundary diagnostic form を取り出せること");
+    let balance = form.chars().fold(1_i32, |balance, ch| match ch {
+        '(' => balance + 1,
+        ')' => balance - 1,
+        _ => balance,
+    });
+
+    assert_eq!(
+        balance, 0,
+        "raw payload boundary diagnostic は次の defn を selfhost parser に飲み込ませないよう単体で閉じるべき"
+    );
+}
+
+#[test]
+fn test_selfhost_normal_payload_roots_payload2_before_root_set() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/App/CompilerMode.ls",
+    )))
+    .expect("CompilerMode.ls を読めること");
+    let body = source
+        .split("(defn compile-file-functions-payload-with-cache")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-file-functions-with-cache-normal-setup-diagnostic")
+                .next()
+        })
+        .expect("compile-file-functions-payload-with-cache body を取り出せること");
+
+    let payload2_pos = body
+        .find("payload2 (vector-push payload1 data)")
+        .expect("payload helper は payload2 を生成するべき");
+    let payload2_root_pos = body[payload2_pos..]
+        .find("(root_push payload2)")
+        .map(|offset| offset + payload2_pos)
+        .expect("payload helper は payload2 を root_set 前に root するべき");
+    let root_set_pos = body[payload2_pos..]
+        .find("(root_set data-slot payload2)")
+        .map(|offset| offset + payload2_pos)
+        .expect("payload helper は payload2 を data root slot に退避するべき");
+
+    assert!(
+        payload2_pos < payload2_root_pos && payload2_root_pos < root_set_pos,
+        "normal payload helper は payload2 を root_set に渡す前から root し、functions/data slot を失わないようにするべき"
+    );
+}
+
+#[test]
+fn test_selfhost_compile_file_functions_roots_start_ftable_before_registering_pairs() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/App/CompilerMode.ls",
+    )))
+    .expect("CompilerMode.ls を読めること");
+    let body = source
+        .split("(defn compile-file-functions-with-cache")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-file-functions-payload-with-cache")
+                .next()
+        })
+        .expect("compile-file-functions-with-cache body を取り出せること");
+
+    let start_alloc = body
+        .find("start-ftable (ftable-new)")
+        .expect("compile-file-functions-with-cache は initial ftable を local 化するべき");
+    let start_root = body[start_alloc..]
+        .find("(root_push start-ftable)")
+        .map(|offset| offset + start_alloc)
+        .expect(
+            "compile-file-functions-with-cache は register 前に initial ftable を root するべき",
+        );
+    let register_call = body
+        .find("reg-result (register-all-pairs all-pairs 0 n start-ftable func-idx)")
+        .expect("register-all-pairs は rooted start-ftable を受け取るべき");
+
+    assert!(
+        start_alloc < start_root && start_root < register_call,
+        "normal payload 経路は start-ftable allocation -> root -> register-all-pairs の順で GC root を固定するべき"
+    );
+    assert!(
+        !body.contains("reg-result (register-all-pairs all-pairs 0 n (ftable-new) func-idx)"),
+        "normal payload 経路は unrooted inline ftable-new を register-all-pairs に渡してはいけない"
+    );
+}
+
+#[test]
+fn test_selfhost_compile_file_functions_roots_result_before_unwinding_state() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/App/CompilerMode.ls",
+    )))
+    .expect("CompilerMode.ls を読めること");
+    let body = source
+        .split("(defn compile-file-functions-with-cache")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-file-functions-payload-with-cache")
+                .next()
+        })
+        .expect("compile-file-functions-with-cache body を取り出せること");
+
+    let compile_call = body
+        .find("functions (compile-all-src-decl-pairs-chunked all-pairs 0 n ftable data-ref functions0)")
+        .expect("compile-file-functions-with-cache は functions を生成するべき");
+    let all_pairs_slot = body
+        .find("all-pairs-slot (root_push all-pairs)")
+        .expect("compile-file-functions-with-cache は最深 root slot を保持するべき");
+    let functions_root = body[compile_call..]
+        .find("(root_push functions)")
+        .map(|offset| offset + compile_call)
+        .expect(
+            "compile-file-functions-with-cache は返却 functions を root してから outer state を pop するべき",
+        );
+    let root_set_pos = body[functions_root..]
+        .find("(root_set all-pairs-slot functions)")
+        .map(|offset| offset + functions_root)
+        .expect(
+            "compile-file-functions-with-cache は返却 functions を最深 root slot へ退避するべき",
+        );
+    let first_pop_after_compile = body[compile_call..]
+        .find("(root_pop)")
+        .map(|offset| offset + compile_call)
+        .expect("compile-file-functions-with-cache は outer roots を pop するべき");
+
+    assert!(
+        all_pairs_slot < compile_call
+            && compile_call < functions_root
+            && functions_root < root_set_pos
+            && root_set_pos < first_pop_after_compile,
+        "normal payload 経路は stage2 native 実行中の GC で返却 functions を失わないよう、最深 root slot に退避してから outer roots を pop するべき"
+    );
+}
+
+#[test]
+fn test_selfhost_compile_file_mode_roots_payload_and_wasm_before_printing() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/App/CompilerMode.ls",
+    )))
+    .expect("CompilerMode.ls を読めること");
+    let body = source
+        .split("(defn compile-file-mode []")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-file-mode-build-progress-debug")
+                .next()
+        })
+        .expect("compile-file-mode body を取り出せること");
+
+    let path_root = body
+        .find("path-slot (root_push path)")
+        .expect("compile-file-mode は path を root してから cache を確保するべき");
+    let cache_alloc = body
+        .find("cache-ref (ref-new (map-new))")
+        .expect("compile-file-mode は cache-ref を確保するべき");
+    let cache_root = body
+        .find("cache-slot (root_push cache-ref)")
+        .expect("compile-file-mode は cache-ref を root するべき");
+    let parse_root = body
+        .find("parse-slot (root_push parse-count-ref)")
+        .expect("compile-file-mode は parse-count-ref を root するべき");
+    let data_ref_root = body
+        .find("data-ref-slot (root_push data-ref)")
+        .expect("compile-file-mode は data-ref を root するべき");
+    let compile_call = body
+        .find("functions (compile-file-functions-with-cache path 10 cache-ref parse-count-ref data-ref)")
+        .expect("compile-file-mode は compile-file-functions-with-cache を呼ぶべき");
+    let functions_root = body[compile_call..]
+        .find("functions-slot (root_push functions)")
+        .map(|offset| offset + compile_call)
+        .expect("compile-file-mode は build 前に functions を root するべき");
+    let data_get = body[functions_root..]
+        .find("data (ref-get data-ref)")
+        .map(|offset| offset + functions_root)
+        .expect("compile-file-mode は rooted data-ref から data を取り出すべき");
+    let data_root = body[data_get..]
+        .find("data-slot (root_push data)")
+        .map(|offset| offset + data_get)
+        .expect("compile-file-mode は build 前に data を root するべき");
+    let build_call = body[data_root..]
+        .find("wasm-bytes (build-wasm-bytes-wasi functions data)")
+        .map(|offset| offset + data_root)
+        .expect("compile-file-mode は rooted functions/data から wasm-bytes を生成するべき");
+    let wasm_root = body[build_call..]
+        .find("wasm-slot (root_push wasm-bytes)")
+        .map(|offset| offset + build_call)
+        .expect("compile-file-mode は print 前に wasm-bytes を root するべき");
+    let print_call = body[wasm_root..]
+        .find("result (print-wasm-module wasm-bytes)")
+        .map(|offset| offset + wasm_root)
+        .expect("compile-file-mode は rooted wasm-bytes を print するべき");
+    let first_pop_after_print = body[print_call..]
+        .find("(root_pop)")
+        .map(|offset| offset + print_call)
+        .expect("compile-file-mode は print 後に roots を unwind するべき");
+
+    assert!(
+        path_root < cache_alloc
+            && cache_alloc < cache_root
+            && cache_root < parse_root
+            && parse_root < data_ref_root
+            && data_ref_root < compile_call
+            && compile_call < functions_root
+            && functions_root < data_get
+            && data_get < data_root
+            && data_root < build_call
+            && build_call < wasm_root
+            && wasm_root < print_call
+            && print_call < first_pop_after_print,
+        "compile-file-mode は normal transport の GC で functions/data/wasm-bytes を失わない順序で root するべき"
+    );
+}
+
+#[test]
+fn test_selfhost_register_states_push_final_func_idx_without_int_helper_after_object_slot() {
+    let compiler_mode = std::fs::read_to_string(workspace_root_relative_path(
+        std::path::PathBuf::from("selfhost/src/App/CompilerMode.ls"),
+    ))
+    .expect("CompilerMode.ls を読めること");
+    let register_pairs_state_body = compiler_mode
+        .split("(defn make-register-pairs-state")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn register-all-pairs-step").next())
+        .expect("make-register-pairs-state body を取り出せること");
+    let register_all_pairs_body = compiler_mode
+        .split("(defn register-all-pairs [pairs idx n ftable func-idx]")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn compile-src-decl-pairs-step").next())
+        .expect("register-all-pairs body を取り出せること");
+    let compiler_base = std::fs::read_to_string(workspace_root_relative_path(
+        std::path::PathBuf::from("selfhost/src/Backend/Wasm/CompilerBase.ls"),
+    ))
+    .expect("CompilerBase.ls を読めること");
+    let register_state_body = compiler_base
+        .split("(defn write-register-state-ref")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("write-register-state-ref body を取り出せること");
+
+    assert!(
+        register_pairs_state_body
+            .contains("(let [state (vector-push with-ftable (ref-get next-func-idx-ref))]")
+            && !register_pairs_state_body
+                .contains("(let [state (push-int-vector-local with-ftable next-func-idx)]"),
+        "make-register-pairs-state は object slot 後の next-func-idx を helper call なしで積むべき"
+    );
+    assert!(
+        register_state_body
+            .contains("(let [state (vector-push with-ftable (ref-get next-func-idx-ref))]")
+            && !register_state_body
+                .contains("(let [state (push-int-vector with-ftable next-func-idx)]"),
+        "write-register-state-ref は object slot 後の next-func-idx を helper call なしで積むべき"
+    );
+    assert!(
+        register_all_pairs_body.contains("(let [result (vector-push with-ftable next-func-idx)]")
+            && !register_all_pairs_body
+                .contains("(let [result (push-int-vector-local with-ftable next-func-idx)]"),
+        "register-all-pairs final result も rooted with-ftable に直接 next-func-idx を積むべき"
+    );
+}
+
+#[test]
+fn test_selfhost_compile_src_decl_pairs_continuations_snapshot_state_slots() {
+    let compiler_mode = std::fs::read_to_string(workspace_root_relative_path(
+        std::path::PathBuf::from("selfhost/src/App/CompilerMode.ls"),
+    ))
+    .expect("CompilerMode.ls を読めること");
+    let continue_step = compiler_mode
+        .split("(defn continue-compile-src-decl-pairs-step [pairs n ftable data-ref state]")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("continue-compile-src-decl-pairs-step body を取り出せること");
+    let step8 = compiler_mode
+        .split("(defn compile-src-decl-pairs-step-8 [pairs idx n ftable data-ref functions]")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("compile-src-decl-pairs-step-8 body を取り出せること");
+    let continue_step8 = compiler_mode
+        .split("(defn continue-compile-src-decl-pairs-step-8 [pairs n ftable data-ref state]")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("continue-compile-src-decl-pairs-step-8 body を取り出せること");
+    let step64 = compiler_mode
+        .split("(defn compile-src-decl-pairs-step-64 [pairs idx n ftable data-ref functions]")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("compile-src-decl-pairs-step-64 body を取り出せること");
+    let continue_step64 = compiler_mode
+        .split("(defn continue-compile-src-decl-pairs-step-64")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("continue-compile-src-decl-pairs-step-64 body を取り出せること");
+    let chunked = compiler_mode
+        .split("(defn compile-all-src-decl-pairs-chunked [pairs idx n ftable data-ref functions]")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("compile-all-src-decl-pairs-chunked body を取り出せること");
+
+    assert!(
+        continue_step.contains("next-idx (vector-get state 1)")
+            && continue_step.contains("next-functions (vector-get state 2)")
+            && continue_step.contains("(root_push next-functions)")
+            && continue_step.contains(
+                "result (compile-src-decl-pairs-step pairs next-idx n ftable data-ref next-functions)",
+            )
+            && !continue_step.contains(
+                "compile-src-decl-pairs-step pairs (vector-get state 1) n ftable data-ref (vector-get state 2)",
+            ),
+        "continue-compile-src-decl-pairs-step は state slots を call 引数内で再取得せず、functions を root した snapshot から継続するべき"
+    );
+
+    assert!(
+        compiler_mode.contains("(defn continue-compile-src-decl-pairs-step-times")
+            && step8.contains("state (compile-src-decl-pairs-step pairs idx n ftable data-ref functions)")
+            && step8.contains("state-slot (root_push state)")
+            && step8.contains(
+                "result (continue-compile-src-decl-pairs-step-times pairs n ftable data-ref 7 state)",
+            )
+            && !step8.contains("step2 (continue-compile-src-decl-pairs-step"),
+        "compile-src-decl-pairs-step-8 は inline state chain ではなく rooted state + times continuation で unroll するべき"
+    );
+
+    assert!(
+        continue_step8.contains("next-idx (vector-get state 1)")
+            && continue_step8.contains("next-functions (vector-get state 2)")
+            && continue_step8.contains("(root_push next-functions)")
+            && continue_step8.contains(
+                "result (compile-src-decl-pairs-step-8 pairs next-idx n ftable data-ref next-functions)",
+            )
+            && !continue_step8.contains(
+                "compile-src-decl-pairs-step-8 pairs (vector-get state 1) n ftable data-ref (vector-get state 2)",
+            ),
+        "continue-compile-src-decl-pairs-step-8 は state slots を call 引数内で再取得せず、functions を root した snapshot から継続するべき"
+    );
+
+    assert!(
+        compiler_mode.contains("(defn continue-compile-src-decl-pairs-step-8-times")
+            && step64.contains("state (compile-src-decl-pairs-step-8 pairs idx n ftable data-ref functions)")
+            && step64.contains("state-slot (root_push state)")
+            && step64.contains(
+                "result (continue-compile-src-decl-pairs-step-8-times pairs n ftable data-ref 7 state)",
+            )
+            && !step64.contains("step2 (continue-compile-src-decl-pairs-step-8"),
+        "compile-src-decl-pairs-step-64 は inline state chain ではなく rooted state + times continuation で unroll するべき"
+    );
+
+    assert!(
+        continue_step64.contains("next-idx (vector-get state 1)")
+            && continue_step64.contains("next-functions (vector-get state 2)")
+            && continue_step64.contains("(root_push next-functions)")
+            && continue_step64.contains(
+                "next-state (compile-src-decl-pairs-step-64 pairs next-idx n ftable data-ref next-functions)",
+            )
+            && !continue_step64.contains(
+                "compile-src-decl-pairs-step-64 pairs (vector-get state 1) n ftable data-ref (vector-get state 2)",
+            ),
+        "continue-compile-src-decl-pairs-step-64 は state slots を call 引数内で再取得せず、functions を root した snapshot から継続するべき"
+    );
+
+    assert!(
+        chunked.contains("state (compile-src-decl-pairs-step-64 pairs idx n ftable data-ref functions)")
+            && chunked.contains("state-slot (root_push state)")
+            && chunked.contains("result (continue-compile-src-decl-pairs-step-64 pairs n ftable data-ref state)")
+            && !chunked.contains(
+                "(continue-compile-src-decl-pairs-step-64 pairs n ftable data-ref (compile-src-decl-pairs-step-64 pairs idx n ftable data-ref functions))",
+            ),
+        "compile-all-src-decl-pairs-chunked は initial state を root してから continuation に渡すべき"
+    );
+}
+
+#[test]
+fn test_wasm_compiler_source_defn_continuations_snapshot_state_slots() {
+    let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("Compiler.ls を読めること");
+    let continue_step = compiler
+        .split("(defn continue-compile-defn-functions-step-with-source")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("continue-compile-defn-functions-step-with-source body を取り出せること");
+    let continue_step64 = compiler
+        .split("(defn continue-compile-defn-functions-step-64-with-source")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("continue-compile-defn-functions-step-64-with-source body を取り出せること");
+    let chunked = compiler
+        .split("(defn compile-source-defn-functions-chunked")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("compile-source-defn-functions-chunked body を取り出せること");
+
+    assert!(
+        continue_step.contains("next-idx (vector-get state 1)")
+            && continue_step.contains("next-functions (vector-get state 2)")
+            && continue_step.contains("(root_push next-functions)")
+            && continue_step.contains(
+                "result (compile-defn-functions-step-with-source decls next-idx n source ftable data-ref next-functions)",
+            )
+            && !continue_step.contains(
+                "compile-defn-functions-step-with-source decls (vector-get state 1) n source ftable data-ref (vector-get state 2)",
+            ),
+        "source defn step continuation は state slots を snapshot し、functions を root してから次 step に渡すべき"
+    );
+    assert!(
+        continue_step64.contains("next-idx (vector-get state 1)")
+            && continue_step64.contains("next-functions (vector-get state 2)")
+            && continue_step64.contains("(root_push next-functions)")
+            && continue_step64.contains(
+                "next-state (compile-defn-functions-step-64-with-source decls next-idx n source ftable data-ref next-functions)",
+            )
+            && !continue_step64.contains(
+                "compile-defn-functions-step-64-with-source decls (vector-get state 1) n source ftable data-ref (vector-get state 2)",
+            ),
+        "source defn step-64 continuation は state slots を call 引数内で再取得せず、root 済み functions snapshot で継続するべき"
+    );
+    assert!(
+        chunked.contains(
+            "state (compile-defn-functions-step-64-with-source decls idx n source ftable data-ref functions)",
+        ) && chunked.contains("state-slot (root_push state)")
+            && chunked.contains(
+                "result (continue-compile-defn-functions-step-64-with-source decls n source ftable data-ref state)",
+            )
+            && !chunked.contains(
+                "(continue-compile-defn-functions-step-64-with-source decls n source ftable data-ref (compile-defn-functions-step-64-with-source decls idx n source ftable data-ref functions))",
+            ),
+        "compile-source-defn-functions-chunked は initial state を root してから continuation に渡すべき"
+    );
+}
+
+#[test]
+fn test_wasm_compiler_source_defn_single_continuations_root_returned_state_before_unwinding() {
+    let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("Compiler.ls を読めること");
+    let continue_step = compiler
+        .split("(defn continue-compile-defn-functions-step-with-source")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("continue-compile-defn-functions-step-with-source body を取り出せること");
+    let diagnostic_continue_step = compiler
+        .split("(defn continue-compile-defn-functions-step-with-source-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect(
+            "continue-compile-defn-functions-step-with-source-normal-setup-diagnostic body を取り出せること",
+        );
+
+    for (name, body, result_expr) in [
+        (
+            "continue-compile-defn-functions-step-with-source",
+            continue_step,
+            "result (compile-defn-functions-step-with-source decls next-idx n source ftable data-ref next-functions)",
+        ),
+        (
+            "continue-compile-defn-functions-step-with-source-normal-setup-diagnostic",
+            diagnostic_continue_step,
+            "result (compile-defn-functions-step-with-source-normal-setup-diagnostic decls next-idx n source ftable data-ref next-functions)",
+        ),
+    ] {
+        let state_root_pos = body
+            .find("state-slot (root_push state)")
+            .unwrap_or_else(|| panic!("{name} は state root slot を保持すること"));
+        let result_pos = body
+            .find(result_expr)
+            .unwrap_or_else(|| panic!("{name} は returned state を local 化すること"));
+        let result_root_pos = body[result_pos..]
+            .find("(root_push result)")
+            .map(|offset| offset + result_pos)
+            .unwrap_or_else(|| panic!("{name} は returned state を root_set 前に root すること"));
+        let root_set_pos = body[result_pos..]
+            .find("(root_set state-slot result)")
+            .map(|offset| offset + result_pos)
+            .unwrap_or_else(|| panic!("{name} は returned state を state slot に退避すること"));
+        let first_pop_after_result = body[result_pos..]
+            .find("(root_pop)")
+            .map(|offset| offset + result_pos)
+            .unwrap_or_else(|| panic!("{name} は roots を unwind すること"));
+
+        assert!(
+            state_root_pos < result_pos
+                && result_pos < result_root_pos
+                && result_root_pos < root_set_pos
+                && result_pos < root_set_pos
+                && root_set_pos < first_pop_after_result,
+            "{name} は source defn step が返した state を root_set 前から root し、outer roots unwind 前に root slot へ退避するべき"
+        );
+    }
+}
+
+#[test]
+fn test_wasm_compiler_source_defn_times_continuations_root_recursive_result_before_unwinding() {
+    let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("Compiler.ls を読めること");
+    let continue_times = compiler
+        .split("(defn continue-compile-defn-functions-step-times-with-source")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("continue-compile-defn-functions-step-times-with-source body を取り出せること");
+    let diagnostic_continue_times = compiler
+        .split("(defn continue-compile-defn-functions-step-times-with-source-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect(
+            "continue-compile-defn-functions-step-times-with-source-normal-setup-diagnostic body を取り出せること",
+        );
+
+    for (name, body, recursive_expr) in [
+        (
+            "continue-compile-defn-functions-step-times-with-source",
+            continue_times,
+            "result (continue-compile-defn-functions-step-times-with-source decls n source ftable data-ref (- remaining 1) next-state)",
+        ),
+        (
+            "continue-compile-defn-functions-step-times-with-source-normal-setup-diagnostic",
+            diagnostic_continue_times,
+            "result (continue-compile-defn-functions-step-times-with-source-normal-setup-diagnostic decls n source ftable data-ref (- remaining 1) next-state)",
+        ),
+    ] {
+        let state_root_pos = body
+            .find("state-slot (root_push state)")
+            .unwrap_or_else(|| panic!("{name} は state root slot を保持すること"));
+        let next_state_root_pos = body
+            .find("(root_push next-state)")
+            .unwrap_or_else(|| panic!("{name} は next-state を recursive call 前に root すること"));
+        let recursive_pos = body
+            .find(recursive_expr)
+            .unwrap_or_else(|| panic!("{name} は recursive result を local 化すること"));
+        let result_root_pos = body[recursive_pos..]
+            .find("(root_push result)")
+            .map(|offset| offset + recursive_pos)
+            .unwrap_or_else(|| panic!("{name} は recursive result を unwind 前に root すること"));
+        let root_set_pos = body[recursive_pos..]
+            .find("(root_set state-slot result)")
+            .map(|offset| offset + recursive_pos)
+            .unwrap_or_else(|| panic!("{name} は recursive result を state slot に退避すること"));
+        let first_pop_after_result = body[recursive_pos..]
+            .find("(root_pop)")
+            .map(|offset| offset + recursive_pos)
+            .unwrap_or_else(|| panic!("{name} は roots を unwind すること"));
+
+        assert!(
+            state_root_pos < next_state_root_pos
+                && next_state_root_pos < recursive_pos
+                && recursive_pos < result_root_pos
+                && result_root_pos < root_set_pos
+                && root_set_pos < first_pop_after_result,
+            "{name} は recursive continuation が返した state を root してから outer roots を unwind するべき"
+        );
+    }
+}
+
+#[test]
+fn test_wasm_compiler_source_defn_step64_continuations_root_recursive_result_before_unwinding() {
+    let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("Compiler.ls を読めること");
+    let continue_step64 = compiler
+        .split("(defn continue-compile-defn-functions-step-64-with-source")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("continue-compile-defn-functions-step-64-with-source body を取り出せること");
+    let diagnostic_continue_step64 = compiler
+        .split("(defn continue-compile-defn-functions-step-64-with-source-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect(
+            "continue-compile-defn-functions-step-64-with-source-normal-setup-diagnostic body を取り出せること",
+        );
+
+    for (name, body, recursive_expr) in [
+        (
+            "continue-compile-defn-functions-step-64-with-source",
+            continue_step64,
+            "result (continue-compile-defn-functions-step-64-with-source decls n source ftable data-ref next-state)",
+        ),
+        (
+            "continue-compile-defn-functions-step-64-with-source-normal-setup-diagnostic",
+            diagnostic_continue_step64,
+            "result (continue-compile-defn-functions-step-64-with-source-normal-setup-diagnostic decls n source ftable data-ref next-state)",
+        ),
+    ] {
+        let state_root_pos = body
+            .find("state-slot (root_push state)")
+            .unwrap_or_else(|| panic!("{name} は state root slot を保持すること"));
+        let next_state_root_pos = body
+            .find("(root_push next-state)")
+            .unwrap_or_else(|| panic!("{name} は next-state を recursive call 前に root すること"));
+        let recursive_pos = body
+            .find(recursive_expr)
+            .unwrap_or_else(|| panic!("{name} は recursive result を local 化すること"));
+        let result_root_pos = body[recursive_pos..]
+            .find("(root_push result)")
+            .map(|offset| offset + recursive_pos)
+            .unwrap_or_else(|| panic!("{name} は recursive result を unwind 前に root すること"));
+        let root_set_pos = body[recursive_pos..]
+            .find("(root_set state-slot result)")
+            .map(|offset| offset + recursive_pos)
+            .unwrap_or_else(|| panic!("{name} は recursive result を state slot に退避すること"));
+        let first_pop_after_result = body[recursive_pos..]
+            .find("(root_pop)")
+            .map(|offset| offset + recursive_pos)
+            .unwrap_or_else(|| panic!("{name} は roots を unwind すること"));
+
+        assert!(
+            state_root_pos < next_state_root_pos
+                && next_state_root_pos < recursive_pos
+                && recursive_pos < result_root_pos
+                && result_root_pos < root_set_pos
+                && root_set_pos < first_pop_after_result,
+            "{name} は 64-step recursive continuation が返した state を root してから outer roots を unwind するべき"
+        );
+    }
+}
+
+#[test]
+fn test_selfhost_compile_src_decl_pairs_chunked_roots_functions_result_before_unwinding_state() {
+    let compiler_mode = std::fs::read_to_string(workspace_root_relative_path(
+        std::path::PathBuf::from("selfhost/src/App/CompilerMode.ls"),
+    ))
+    .expect("CompilerMode.ls を読めること");
+    let normal_chunked = compiler_mode
+        .split("(defn compile-all-src-decl-pairs-chunked")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("compile-all-src-decl-pairs-chunked body を取り出せること");
+    let diagnostic_chunked = compiler_mode
+        .split("(defn compile-all-src-decl-pairs-chunked-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("compile-all-src-decl-pairs-chunked-normal-setup-diagnostic body を取り出せること");
+
+    for (name, chunked) in [
+        ("compile-all-src-decl-pairs-chunked", normal_chunked),
+        (
+            "compile-all-src-decl-pairs-chunked-normal-setup-diagnostic",
+            diagnostic_chunked,
+        ),
+    ] {
+        let functions_pos = chunked
+            .find("functions-result (vector-get result 2)")
+            .unwrap_or_else(|| panic!("{name} は result から functions を取り出すこと"));
+        let functions_root_pos = chunked[functions_pos..]
+            .find("(root_push functions-result)")
+            .map(|offset| offset + functions_pos)
+            .unwrap_or_else(|| panic!("{name} は functions-result を root_set 前に root すること"));
+        let root_set_pos = chunked
+            .find("(root_set state-slot functions-result)")
+            .unwrap_or_else(|| panic!("{name} は返却 functions を state-slot に退避すること"));
+        let first_pop_after_functions = chunked[functions_pos..]
+            .find("(root_pop)")
+            .map(|offset| offset + functions_pos)
+            .unwrap_or_else(|| panic!("{name} は roots を unwind すること"));
+
+        assert!(
+            functions_pos < functions_root_pos
+                && functions_root_pos < root_set_pos
+                && root_set_pos < first_pop_after_functions,
+            "{name} は stage2 native の normal payload で functions-result を失わないよう、root_set 前から root し、result/state root を pop する前に古い root slot へ退避するべき"
+        );
+    }
+}
+
+#[test]
+fn test_wasm_compiler_source_defn_chunked_roots_functions_result_before_unwinding_state() {
+    let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("Compiler.ls を読めること");
+    let normal_chunked = compiler
+        .split("(defn compile-source-defn-functions-chunked")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("compile-source-defn-functions-chunked body を取り出せること");
+    let diagnostic_chunked = compiler
+        .split("(defn compile-source-defn-functions-chunked-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect(
+            "compile-source-defn-functions-chunked-normal-setup-diagnostic body を取り出せること",
+        );
+
+    for (name, chunked) in [
+        ("compile-source-defn-functions-chunked", normal_chunked),
+        (
+            "compile-source-defn-functions-chunked-normal-setup-diagnostic",
+            diagnostic_chunked,
+        ),
+    ] {
+        let functions_pos = chunked
+            .find("functions-result (vector-get result 2)")
+            .unwrap_or_else(|| panic!("{name} は result から functions を取り出すこと"));
+        let functions_root_pos = chunked[functions_pos..]
+            .find("(root_push functions-result)")
+            .map(|offset| offset + functions_pos)
+            .unwrap_or_else(|| panic!("{name} は functions-result を root_set 前に root すること"));
+        let root_set_pos = chunked
+            .find("(root_set state-slot functions-result)")
+            .unwrap_or_else(|| panic!("{name} は返却 functions を state-slot に退避すること"));
+        let first_pop_after_functions = chunked[functions_pos..]
+            .find("(root_pop)")
+            .map(|offset| offset + functions_pos)
+            .unwrap_or_else(|| panic!("{name} は roots を unwind すること"));
+
+        assert!(
+            functions_pos < functions_root_pos
+                && functions_root_pos < root_set_pos
+                && root_set_pos < first_pop_after_functions,
+            "{name} は stage2 native の normal payload で functions-result を失わないよう、root_set 前から root し、result/state root を pop する前に古い root slot へ退避するべき"
+        );
+    }
+}
+
+#[test]
+fn test_selfhost_compile_src_decl_pair_step_wrappers_root_returned_state_before_unwinding() {
+    let compiler_mode = std::fs::read_to_string(workspace_root_relative_path(
+        std::path::PathBuf::from("selfhost/src/App/CompilerMode.ls"),
+    ))
+    .expect("CompilerMode.ls を読めること");
+    let step8 = compiler_mode
+        .split("(defn compile-src-decl-pairs-step-8")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("compile-src-decl-pairs-step-8 body を取り出せること");
+    let step64 = compiler_mode
+        .split("(defn compile-src-decl-pairs-step-64")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("compile-src-decl-pairs-step-64 body を取り出せること");
+
+    for (name, body, result_expr) in [
+        (
+            "compile-src-decl-pairs-step-8",
+            step8,
+            "result (continue-compile-src-decl-pairs-step-times pairs n ftable data-ref 7 state)",
+        ),
+        (
+            "compile-src-decl-pairs-step-64",
+            step64,
+            "result (continue-compile-src-decl-pairs-step-8-times pairs n ftable data-ref 7 state)",
+        ),
+    ] {
+        let result_pos = body
+            .find(result_expr)
+            .unwrap_or_else(|| panic!("{name} は continuation result を local 化するべき"));
+        let root_set_pos = body[result_pos..]
+            .find("(root_set pairs-slot result)")
+            .map(|offset| offset + result_pos)
+            .unwrap_or_else(|| panic!("{name} は返却 state を lower root slot に退避するべき"));
+        let first_pop_after_result = body[result_pos..]
+            .find("(root_pop)")
+            .map(|offset| offset + result_pos)
+            .unwrap_or_else(|| panic!("{name} は roots を unwind すること"));
+
+        assert!(
+            body.contains("pairs-slot (root_push pairs)")
+                && result_pos < root_set_pos
+                && root_set_pos < first_pop_after_result,
+            "{name} は stage2 native normal path で返却 state の functions slot を失わないよう、outer roots を pop する前に lower slot へ退避するべき"
+        );
+    }
+}
+
+#[test]
+fn test_selfhost_compile_src_decl_pair_step_wrappers_root_input_functions_until_result() {
+    let compiler_mode = std::fs::read_to_string(workspace_root_relative_path(
+        std::path::PathBuf::from("selfhost/src/App/CompilerMode.ls"),
+    ))
+    .expect("CompilerMode.ls を読めること");
+    let step8 = compiler_mode
+        .split("(defn compile-src-decl-pairs-step-8")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("compile-src-decl-pairs-step-8 body を取り出せること");
+    let step64 = compiler_mode
+        .split("(defn compile-src-decl-pairs-step-64")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("compile-src-decl-pairs-step-64 body を取り出せること");
+
+    for (name, body, state_expr, result_expr) in [
+        (
+            "compile-src-decl-pairs-step-8",
+            step8,
+            "state (compile-src-decl-pairs-step pairs idx n ftable data-ref functions)",
+            "result (continue-compile-src-decl-pairs-step-times pairs n ftable data-ref 7 state)",
+        ),
+        (
+            "compile-src-decl-pairs-step-64",
+            step64,
+            "state (compile-src-decl-pairs-step-8 pairs idx n ftable data-ref functions)",
+            "result (continue-compile-src-decl-pairs-step-8-times pairs n ftable data-ref 7 state)",
+        ),
+    ] {
+        let functions_root_pos = body
+            .find("functions-slot (root_push functions)")
+            .unwrap_or_else(|| panic!("{name} は input functions を root すること"));
+        let state_pos = body
+            .find(state_expr)
+            .unwrap_or_else(|| panic!("{name} は initial state を作ること"));
+        let result_pos = body
+            .find(result_expr)
+            .unwrap_or_else(|| panic!("{name} は continuation result を local 化すること"));
+        let root_set_pos = body[result_pos..]
+            .find("(root_set functions-slot result)")
+            .map(|offset| offset + result_pos)
+            .unwrap_or_else(|| panic!("{name} は返却 state を functions slot に退避すること"));
+        let first_pop_after_result = body[result_pos..]
+            .find("(root_pop)")
+            .map(|offset| offset + result_pos)
+            .unwrap_or_else(|| panic!("{name} は roots を unwind すること"));
+
+        assert!(
+            functions_root_pos < state_pos
+                && state_pos < result_pos
+                && result_pos < root_set_pos
+                && root_set_pos < first_pop_after_result,
+            "{name} は stage2 native normal path で done state の functions slot を空にしないよう、input functions を initial state 生成前から result unwind まで root するべき"
+        );
+    }
+}
+
+#[test]
+fn test_wasm_compiler_source_defn_step_wrappers_root_returned_state_before_unwinding() {
+    let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("Compiler.ls を読めること");
+    let step8 = compiler
+        .split("(defn compile-defn-functions-step-8-with-source")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("compile-defn-functions-step-8-with-source body を取り出せること");
+    let step64 = compiler
+        .split("(defn compile-defn-functions-step-64-with-source")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("compile-defn-functions-step-64-with-source body を取り出せること");
+
+    for (name, body, result_expr) in [
+        (
+            "compile-defn-functions-step-8-with-source",
+            step8,
+            "result (continue-compile-defn-functions-step-times-with-source decls n source ftable data-ref 7 state)",
+        ),
+        (
+            "compile-defn-functions-step-64-with-source",
+            step64,
+            "result (continue-compile-defn-functions-step-times-with-source decls n source ftable data-ref 63 state)",
+        ),
+    ] {
+        let result_pos = body
+            .find(result_expr)
+            .unwrap_or_else(|| panic!("{name} は continuation result を local 化するべき"));
+        let root_set_pos = body[result_pos..]
+            .find("(root_set decls-slot result)")
+            .map(|offset| offset + result_pos)
+            .unwrap_or_else(|| panic!("{name} は返却 state を lower root slot に退避するべき"));
+        let first_pop_after_result = body[result_pos..]
+            .find("(root_pop)")
+            .map(|offset| offset + result_pos)
+            .unwrap_or_else(|| panic!("{name} は roots を unwind すること"));
+
+        assert!(
+            body.contains("decls-slot (root_push decls)")
+                && result_pos < root_set_pos
+                && root_set_pos < first_pop_after_result,
+            "{name} は stage2 native normal path で返却 state の functions slot を失わないよう、outer roots を pop する前に lower slot へ退避するべき"
+        );
+    }
+}
+
+#[test]
+fn test_wasm_compiler_defn_step_finish_roots_return_state_before_unwinding_updated_functions() {
+    let compiler_base = std::fs::read_to_string(selfhost_source_path("CompilerBase.ls"))
+        .expect("CompilerBase.ls を読めること");
+    let body = compiler_base
+        .split("(defn compile-defn-functions-step-finish")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("compile-defn-functions-step-finish body を取り出せること");
+
+    let updated_pos = body
+        .find("updated-functions (push-object-vector functions compiled-fn)")
+        .expect("compile-defn-functions-step-finish は functions に compiled-fn を追加すること");
+    let updated_root_pos = body[updated_pos..]
+        .find("updated-slot (root_push updated-functions)")
+        .map(|offset| offset + updated_pos)
+        .expect("compile-defn-functions-step-finish は updated-functions を root すること");
+    let state_pos = body[updated_root_pos..]
+        .find("next-state (make-compile-step-state 0 (+ idx 1) updated-functions)")
+        .map(|offset| offset + updated_root_pos)
+        .expect("compile-defn-functions-step-finish は next-state を作ること");
+    let state_root_pos = body[state_pos..]
+        .find("(root_push next-state)")
+        .map(|offset| offset + state_pos)
+        .expect("compile-defn-functions-step-finish は next-state を root_set 前に root すること");
+    let root_set_pos = body[state_pos..]
+        .find("(root_set updated-slot next-state)")
+        .map(|offset| offset + state_pos)
+        .expect("compile-defn-functions-step-finish は next-state を updated slot に退避すること");
+    let first_pop_after_state = body[state_pos..]
+        .find("(root_pop)")
+        .map(|offset| offset + state_pos)
+        .expect("compile-defn-functions-step-finish は roots を unwind すること");
+
+    assert!(
+        updated_pos < updated_root_pos
+            && updated_root_pos < state_pos
+            && state_pos < state_root_pos
+            && state_root_pos < root_set_pos
+            && root_set_pos < first_pop_after_state,
+        "compile-defn-functions-step-finish は next-state を root_set 前から root し、updated-functions root を pop する前に同じ lower slot へ退避するべき"
+    );
+}
+
+#[test]
+fn test_wasm_compiler_defn_step_roots_finish_state_before_outer_unwind() {
+    let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("Compiler.ls を読めること");
+    let plain_step = compiler
+        .split("(defn compile-defn-functions-step [decls idx n ftable functions]")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn continue-compile-defn-functions-step")
+                .next()
+        })
+        .expect("compile-defn-functions-step body を取り出せること");
+
+    let functions_root_pos = plain_step
+        .find("functions-slot (root_push functions)")
+        .expect("compile-defn-functions-step は functions を root すること");
+    let result_pos = plain_step[functions_root_pos..]
+        .find("defn-result (compile-defn-functions-step-finish functions compiled-fn idx)")
+        .map(|offset| offset + functions_root_pos)
+        .expect("compile-defn-functions-step は finish helper の defn-result を local 化すること");
+    let root_set_pos = plain_step[result_pos..]
+        .find("(root_set functions-slot defn-result)")
+        .map(|offset| offset + result_pos)
+        .expect("compile-defn-functions-step は finish state を functions slot に退避すること");
+    let first_pop_after_result = plain_step[result_pos..]
+        .find("(root_pop)")
+        .map(|offset| offset + result_pos)
+        .expect("compile-defn-functions-step は roots を unwind すること");
+
+    assert!(
+        functions_root_pos < result_pos
+            && result_pos < root_set_pos
+            && root_set_pos < first_pop_after_result,
+        "compile-defn-functions-step は defn branch の finish state を outer roots unwind 前に lower slot へ退避するべき"
+    );
+
+    let skip_ref_pos = plain_step
+        .find("skip-state-ref (ref-new 0)")
+        .expect("compile-defn-functions-step の skip branch は caller-owned state ref を作ること");
+    let skip_write_pos = plain_step[skip_ref_pos..]
+        .find("(write-compile-step-state-ref skip-state-ref 0 (+ idx 1) functions)")
+        .map(|offset| offset + skip_ref_pos)
+        .expect("compile-defn-functions-step の skip branch は writer helper で state を渡すこと");
+    let skip_result_pos = plain_step[skip_write_pos..]
+        .find("skip-result (ref-get skip-state-ref)")
+        .map(|offset| offset + skip_write_pos)
+        .expect(
+            "compile-defn-functions-step の skip branch は state ref から skip-result を取り出すこと",
+        );
+    assert!(
+        skip_ref_pos < skip_write_pos
+            && skip_write_pos < skip_result_pos
+            && !plain_step
+                .contains("(let [result (make-compile-step-state 0 (+ idx 1) functions)]"),
+        "compile-defn-functions-step の skip branch は make-compile-step-state の object return boundary を直接踏まないこと"
+    );
+}
+
+#[test]
+fn test_wasm_compiler_source_defn_step_inlines_finish_state_for_native_stage2() {
+    let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("Compiler.ls を読めること");
+    let source_step = compiler
+        .split("(defn compile-defn-functions-step-with-source-body-impl-3")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn compile-let-with-ftable-impl-body-impl-3")
+                .next()
+        })
+        .expect("compile-defn-functions-step-with-source-body-impl-3 body を取り出せること");
+
+    let functions_root_pos = source_step
+        .find("functions-slot (root_push functions)")
+        .expect("source defn step は functions を root すること");
+    let next_functions_pos = source_step[functions_root_pos..]
+        .find("next-functions (push-object-vector functions compiled-fn)")
+        .map(|offset| offset + functions_root_pos)
+        .expect("source defn step は compiled-fn を functions に inline 追加すること");
+    let next_functions_root_pos = source_step[next_functions_pos..]
+        .find("(root_push next-functions)")
+        .map(|offset| offset + next_functions_pos)
+        .expect("source defn step は next-functions を result 作成前に root すること");
+    let result_pos = source_step[next_functions_root_pos..]
+        .find("defn-result (make-compile-step-state 0 (+ idx 1) next-functions)")
+        .map(|offset| offset + next_functions_root_pos)
+        .expect("source defn step は next-functions から state を inline で作ること");
+    let result_root_pos = source_step[result_pos..]
+        .find("(root_push defn-result)")
+        .map(|offset| offset + result_pos)
+        .expect("source defn step は defn-result state を root_set 前に root すること");
+    let root_set_pos = source_step[result_pos..]
+        .find("(root_set functions-slot defn-result)")
+        .map(|offset| offset + result_pos)
+        .expect("source defn step は defn-result state を functions slot に退避すること");
+
+    assert!(
+        functions_root_pos < next_functions_pos
+            && next_functions_pos < next_functions_root_pos
+            && next_functions_root_pos < result_pos
+            && result_pos < result_root_pos
+            && result_root_pos < root_set_pos,
+        "source defn step は native stage2 で helper return state をまたがず、compiled-fn 追加と state 作成を同一 root frame 内で完了するべき"
+    );
+    assert!(
+        !source_step
+            .contains("result (compile-defn-functions-step-finish functions compiled-fn idx)"),
+        "source defn step は stage2 native normal path では finish helper 呼び出しに戻り state を任せない"
+    );
+}
+
+#[test]
+fn test_wasm_compiler_source_defn_step_wrappers_root_result_before_root_set() {
+    let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("Compiler.ls を読めること");
+    let step8 = compiler
+        .split("(defn compile-defn-functions-step-8-with-source")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("compile-defn-functions-step-8-with-source body を取り出せること");
+    let step64 = compiler
+        .split("(defn compile-defn-functions-step-64-with-source")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("compile-defn-functions-step-64-with-source body を取り出せること");
+
+    for (name, body, result_expr) in [
+        (
+            "compile-defn-functions-step-8-with-source",
+            step8,
+            "result (continue-compile-defn-functions-step-times-with-source decls n source ftable data-ref 7 state)",
+        ),
+        (
+            "compile-defn-functions-step-64-with-source",
+            step64,
+            "result (continue-compile-defn-functions-step-times-with-source decls n source ftable data-ref 63 state)",
+        ),
+    ] {
+        let result_pos = body
+            .find(result_expr)
+            .unwrap_or_else(|| panic!("{name} は result state を local 化すること"));
+        let result_root_pos = body[result_pos..]
+            .find("(root_push result)")
+            .map(|offset| offset + result_pos)
+            .unwrap_or_else(|| panic!("{name} は result state を root_set 前に root すること"));
+        let decls_root_set_pos = body[result_pos..]
+            .find("(root_set decls-slot result)")
+            .map(|offset| offset + result_pos)
+            .unwrap_or_else(|| panic!("{name} は result state を decls slot に退避すること"));
+        let functions_root_set_pos = body[result_pos..]
+            .find("(root_set functions-slot result)")
+            .map(|offset| offset + result_pos)
+            .unwrap_or_else(|| panic!("{name} は result state を functions slot に退避すること"));
+
+        assert!(
+            result_pos < result_root_pos
+                && result_root_pos < decls_root_set_pos
+                && result_root_pos < functions_root_set_pos,
+            "{name} は source-defn wrapper result を root_set に渡す前から root し、normal payload の functions state を保つべき"
+        );
+    }
+}
+
+#[test]
+fn test_wasm_compiler_source_defn_public_step_uses_marker_free_stable_entry() {
+    let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("Compiler.ls を読めること");
+    let public_step = compiler
+        .split("(defn compile-defn-functions-step-with-source [decls idx n source ftable data-ref functions]")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn compile-let-chain-step-with-source").next())
+        .expect("compile-defn-functions-step-with-source public body を取り出せること");
+    let stable_step = compiler
+        .split("(defn compile-defn-functions-step-with-source-body-impl-3")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn compile-let-with-ftable-impl-body-impl-3")
+                .next()
+        })
+        .expect("compile-defn-functions-step-with-source-body-impl-3 body を取り出せること");
+
+    assert!(
+        public_step.contains(
+            "compile-defn-functions-step-with-source-body-impl-3 decls idx n source ftable data-ref functions",
+        ) && !public_step.contains(
+            "compile-defn-functions-step-with-source-body decls idx n source ftable data-ref functions",
+        ),
+        "source-defn public single-step は wrapper chain を通さず marker-free stable body へ直接入るべき"
+    );
+    assert!(
+        stable_step.contains("compile-defn-function-with-source decl source ftable data-ref")
+            && stable_step
+                .contains("(write-compile-step-state-ref skip-state-ref 0 (+ idx 1) functions)")
+            && !stable_step.contains("normal-setup-diagnostic")
+            && !stable_step.contains("(print 900000"),
+        "source-defn stable body は diagnostic marker や normal-setup helper に依存しない production body であるべき"
+    );
+}
+
+#[test]
+fn test_wasm_compiler_source_defn_step_roots_result_before_state_slot_update() {
+    let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("Compiler.ls を読めること");
+    let source_step = compiler
+        .split("(defn compile-defn-functions-step-with-source-body-impl-3")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn compile-let-with-ftable-impl-body-impl-3")
+                .next()
+        })
+        .expect("compile-defn-functions-step-with-source-body-impl-3 body を取り出せること");
+
+    let branch_name = "defn branch";
+    let result_expr = "defn-result (make-compile-step-state 0 (+ idx 1) next-functions)";
+    let result_pos = source_step
+        .find(result_expr)
+        .unwrap_or_else(|| panic!("{branch_name} は defn-result state を local 化すること"));
+    let result_root_pos = source_step[result_pos..]
+        .find("(root_push defn-result)")
+        .map(|offset| offset + result_pos)
+        .unwrap_or_else(|| {
+            panic!("{branch_name} は defn-result state を root_set 前に root すること")
+        });
+    let root_set_pos = source_step[result_pos..]
+        .find("(root_set functions-slot defn-result)")
+        .map(|offset| offset + result_pos)
+        .unwrap_or_else(|| {
+            panic!("{branch_name} は defn-result state を functions slot に退避すること")
+        });
+
+    assert!(
+        result_pos < result_root_pos && result_root_pos < root_set_pos,
+        "{branch_name} は source-defn state を root_set に渡す前から root し、normal payload で functions slot を空にしないようにするべき"
+    );
+
+    let skip_ref_pos = source_step
+        .find("skip-state-ref (ref-new 0)")
+        .expect("source defn skip branch は caller-owned state ref を作ること");
+    let skip_write_pos = source_step[skip_ref_pos..]
+        .find("(write-compile-step-state-ref skip-state-ref 0 (+ idx 1) functions)")
+        .map(|offset| offset + skip_ref_pos)
+        .expect("source defn skip branch は writer helper で state を渡すこと");
+    let skip_result_pos = source_step[skip_write_pos..]
+        .find("skip-result (ref-get skip-state-ref)")
+        .map(|offset| offset + skip_write_pos)
+        .expect("source defn skip branch は state ref から skip-result を取り出すこと");
+    let skip_root_pos = source_step[skip_result_pos..]
+        .find("(root_push skip-result)")
+        .map(|offset| offset + skip_result_pos)
+        .expect("source defn skip branch は skip-result を root_set 前に root すること");
+    let skip_root_set_pos = source_step[skip_result_pos..]
+        .find("(root_set functions-slot skip-result)")
+        .map(|offset| offset + skip_result_pos)
+        .expect("source defn skip branch は skip-result を functions slot に退避すること");
+    assert!(
+        skip_ref_pos < skip_write_pos
+            && skip_write_pos < skip_result_pos
+            && skip_result_pos < skip_root_pos
+            && skip_root_pos < skip_root_set_pos
+            && !source_step
+                .contains("(let [result (make-compile-step-state 0 (+ idx 1) functions)]"),
+        "source defn skip branch は caller-owned ref で state を受け取り、object return boundary を直接踏まないこと"
+    );
+}
+
+#[test]
+fn test_wasm_compiler_source_defn_step_normal_setup_diagnostic_roots_result_before_state_slot_update()
+ {
+    let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("Compiler.ls を読めること");
+    let source_step = compiler
+        .split("(defn compile-defn-functions-step-with-source-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split(
+                "\n(defn continue-compile-defn-functions-step-with-source-normal-setup-diagnostic",
+            )
+            .next()
+        })
+        .expect(
+            "compile-defn-functions-step-with-source-normal-setup-diagnostic body を取り出せること",
+        );
+
+    let branch_name = "defn branch";
+    let result_expr = "defn-result (make-compile-step-state 0 (+ idx 1) next-functions)";
+    let result_pos = source_step
+        .find(result_expr)
+        .unwrap_or_else(|| panic!("{branch_name} は defn-result state を local 化すること"));
+    let result_root_pos = source_step[result_pos..]
+        .find("(root_push defn-result)")
+        .map(|offset| offset + result_pos)
+        .unwrap_or_else(|| {
+            panic!("{branch_name} は defn-result state を root_set 前に root すること")
+        });
+    let root_set_pos = source_step[result_pos..]
+        .find("(root_set functions-slot defn-result)")
+        .map(|offset| offset + result_pos)
+        .unwrap_or_else(|| {
+            panic!("{branch_name} は defn-result state を functions slot に退避すること")
+        });
+
+    assert!(
+        result_pos < result_root_pos && result_root_pos < root_set_pos,
+        "{branch_name} は normal setup diagnostic でも result state を root_set 前から root し、診断 probe 自体で functions state を壊さないようにするべき"
+    );
+
+    let skip_ref_pos = source_step
+        .find("skip-state-ref (ref-new 0)")
+        .expect("normal setup diagnostic skip branch は caller-owned state ref を作ること");
+    let skip_write_pos = source_step[skip_ref_pos..]
+        .find(
+            "(write-compile-step-state-ref-normal-setup-diagnostic skip-state-ref 0 (+ idx 1) functions)",
+        )
+        .map(|offset| offset + skip_ref_pos)
+        .expect("normal setup diagnostic skip branch は diagnostic writer helper で state を渡すこと");
+    let skip_result_pos = source_step[skip_write_pos..]
+        .find("skip-result (ref-get skip-state-ref)")
+        .map(|offset| offset + skip_write_pos)
+        .expect("normal setup diagnostic skip branch は state ref から skip-result を取り出すこと");
+    let skip_root_pos = source_step[skip_result_pos..]
+        .find("(root_push skip-result)")
+        .map(|offset| offset + skip_result_pos)
+        .expect(
+            "normal setup diagnostic skip branch は skip-result を root_set 前に root すること",
+        );
+    let print_pos = source_step[skip_result_pos..]
+        .find("print-source-defn-normal-setup-skip-shape idx functions skip-result data-ref")
+        .map(|offset| offset + skip_result_pos)
+        .expect("normal setup diagnostic skip branch は skip state marker を出すこと");
+    let skip_root_set_pos = source_step[skip_result_pos..]
+        .find("(root_set functions-slot skip-result)")
+        .map(|offset| offset + skip_result_pos)
+        .expect(
+            "normal setup diagnostic skip branch は skip-result を functions slot に退避すること",
+        );
+    assert!(
+        skip_ref_pos < skip_write_pos
+            && skip_write_pos < skip_result_pos
+            && skip_result_pos < skip_root_pos
+            && skip_root_pos < print_pos
+            && print_pos < skip_root_set_pos
+            && !source_step
+                .contains("(let [result (make-compile-step-state 0 (+ idx 1) functions)]"),
+        "normal setup diagnostic skip branch は caller-owned ref で state を受け取り、probe 前に result を root すること"
+    );
+}
+
+#[test]
+fn test_wasm_compiler_source_defn_step_normal_setup_diagnostic_wrapper_roots_result_before_root_set()
+ {
+    let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("Compiler.ls を読めること");
+    let body = compiler
+        .split("(defn compile-defn-functions-step-64-with-source-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn continue-compile-defn-functions-step-64-with-source-normal-setup-diagnostic")
+                .next()
+        })
+        .expect(
+            "compile-defn-functions-step-64-with-source-normal-setup-diagnostic body を取り出せること",
+        );
+
+    let result_pos = body
+        .find("result (continue-compile-defn-functions-step-times-with-source-normal-setup-diagnostic decls n source ftable data-ref 63 state)")
+        .expect("compile-defn-functions-step-64-with-source-normal-setup-diagnostic は result state を local 化すること");
+    let result_root_pos = body[result_pos..]
+        .find("(root_push result)")
+        .map(|offset| offset + result_pos)
+        .expect("compile-defn-functions-step-64-with-source-normal-setup-diagnostic は result state を root_set 前に root すること");
+    let decls_root_set_pos = body[result_pos..]
+        .find("(root_set decls-slot result)")
+        .map(|offset| offset + result_pos)
+        .expect("compile-defn-functions-step-64-with-source-normal-setup-diagnostic は result state を decls slot に退避すること");
+    let functions_root_set_pos = body[result_pos..]
+        .find("(root_set functions-slot result)")
+        .map(|offset| offset + result_pos)
+        .expect("compile-defn-functions-step-64-with-source-normal-setup-diagnostic は result state を functions slot に退避すること");
+
+    assert!(
+        result_pos < result_root_pos
+            && result_root_pos < decls_root_set_pos
+            && result_root_pos < functions_root_set_pos,
+        "compile-defn-functions-step-64-with-source-normal-setup-diagnostic は result state を root_set 前から root し、診断 probe 自体で source-defn state carry を壊さないようにするべき"
+    );
+}
+
+#[test]
+fn test_wasm_compiler_source_defn_normal_setup_diagnostic_prints_before_overwriting_functions_root()
+{
+    let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("Compiler.ls を読めること");
+    let source_step = compiler
+        .split("(defn compile-defn-functions-step-with-source-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split(
+                "\n(defn continue-compile-defn-functions-step-with-source-normal-setup-diagnostic",
+            )
+            .next()
+        })
+        .expect(
+            "compile-defn-functions-step-with-source-normal-setup-diagnostic body を取り出せること",
+        );
+
+    let result_pos = source_step
+        .find("defn-result (make-compile-step-state 0 (+ idx 1) next-functions)")
+        .expect("defn branch は defn-result state を local 化すること");
+    let result_root_pos = source_step[result_pos..]
+        .find("(root_push defn-result)")
+        .map(|offset| offset + result_pos)
+        .expect("defn branch は defn-result state を診断前から root すること");
+    let print_pos = source_step[result_pos..]
+        .find(
+            "print-source-defn-normal-setup-finish-shape idx functions compiled-fn defn-result data-ref",
+        )
+        .map(|offset| offset + result_pos)
+        .expect("defn branch は source-defn 診断 marker を出すこと");
+    let root_set_pos = source_step[result_pos..]
+        .find("(root_set functions-slot defn-result)")
+        .map(|offset| offset + result_pos)
+        .expect("defn branch は defn-result state を functions slot に退避すること");
+
+    assert!(
+        result_pos < result_root_pos && result_root_pos < print_pos && print_pos < root_set_pos,
+        "source-defn normal setup diagnostic は input functions root を result で上書きする前に marker を出し、pair 1 の functions carry を probe 自体で壊さないようにするべき"
+    );
+}
+
+#[test]
+fn test_selfhost_compile_src_decl_pairs_step_roots_next_state_before_pair_unwind() {
+    let compiler_mode = std::fs::read_to_string(workspace_root_relative_path(
+        std::path::PathBuf::from("selfhost/src/App/CompilerMode.ls"),
+    ))
+    .expect("CompilerMode.ls を読めること");
+    let body = compiler_mode
+        .split("(defn compile-src-decl-pairs-step [pairs idx n ftable data-ref functions]")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn continue-compile-src-decl-pairs-step")
+                .next()
+        })
+        .expect("compile-src-decl-pairs-step body を取り出せること");
+
+    let functions_root_pos = body
+        .find("functions-slot (root_push functions)")
+        .expect("compile-src-decl-pairs-step は functions を root すること");
+    let updated_pos = body[functions_root_pos..]
+        .find("updated-functions (compile-source-defn-functions-chunked decls 0 (vector-length decls) src ftable data-ref functions)")
+        .map(|offset| offset + functions_root_pos)
+        .expect("compile-src-decl-pairs-step は updated-functions を生成すること");
+    let next_state_pos = body[updated_pos..]
+        .find("next-state (make-pairs-step-state 0 (+ idx 1) updated-functions)")
+        .map(|offset| offset + updated_pos)
+        .expect("compile-src-decl-pairs-step は next-state を生成すること");
+    let root_set_pos = body[next_state_pos..]
+        .find("(root_set functions-slot next-state)")
+        .map(|offset| offset + next_state_pos)
+        .expect("compile-src-decl-pairs-step は next-state を functions slot に退避すること");
+    let first_pop_after_state = body[next_state_pos..]
+        .find("(root_pop)")
+        .map(|offset| offset + next_state_pos)
+        .expect("compile-src-decl-pairs-step は roots を unwind すること");
+
+    assert!(
+        functions_root_pos < updated_pos
+            && updated_pos < next_state_pos
+            && next_state_pos < root_set_pos
+            && root_set_pos < first_pop_after_state,
+        "compile-src-decl-pairs-step は pair state の functions slot を失わないよう next-state を outer roots unwind 前に lower slot へ退避するべき"
+    );
+}
+
+#[test]
+fn test_selfhost_compile_src_decl_pairs_step_roots_next_state_before_root_set() {
+    let compiler_mode = std::fs::read_to_string(workspace_root_relative_path(
+        std::path::PathBuf::from("selfhost/src/App/CompilerMode.ls"),
+    ))
+    .expect("CompilerMode.ls を読めること");
+    let body = compiler_mode
+        .split("(defn compile-src-decl-pairs-step [pairs idx n ftable data-ref functions]")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn continue-compile-src-decl-pairs-step")
+                .next()
+        })
+        .expect("compile-src-decl-pairs-step body を取り出せること");
+
+    let next_state_pos = body
+        .find("next-state (make-pairs-step-state 0 (+ idx 1) updated-functions)")
+        .expect("compile-src-decl-pairs-step は next-state を生成すること");
+    let next_state_root_pos = body[next_state_pos..]
+        .find("(root_push next-state)")
+        .map(|offset| offset + next_state_pos)
+        .expect("compile-src-decl-pairs-step は next-state を root_set 前に root すること");
+    let root_set_pos = body[next_state_pos..]
+        .find("(root_set functions-slot next-state)")
+        .map(|offset| offset + next_state_pos)
+        .expect("compile-src-decl-pairs-step は next-state を functions slot に退避すること");
+
+    assert!(
+        next_state_pos < next_state_root_pos && next_state_root_pos < root_set_pos,
+        "compile-src-decl-pairs-step は pair state を root_set に渡す前から root し、normal payload の functions carry を保つべき"
+    );
+}
+
+#[test]
+fn test_selfhost_compile_src_decl_pair_wrappers_root_result_before_root_set() {
+    let compiler_mode = std::fs::read_to_string(workspace_root_relative_path(
+        std::path::PathBuf::from("selfhost/src/App/CompilerMode.ls"),
+    ))
+    .expect("CompilerMode.ls を読めること");
+    let step8 = compiler_mode
+        .split("(defn compile-src-decl-pairs-step-8")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("compile-src-decl-pairs-step-8 body を取り出せること");
+    let step64 = compiler_mode
+        .split("(defn compile-src-decl-pairs-step-64")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("compile-src-decl-pairs-step-64 body を取り出せること");
+
+    for (name, body, result_expr) in [
+        (
+            "compile-src-decl-pairs-step-8",
+            step8,
+            "result (continue-compile-src-decl-pairs-step-times pairs n ftable data-ref 7 state)",
+        ),
+        (
+            "compile-src-decl-pairs-step-64",
+            step64,
+            "result (continue-compile-src-decl-pairs-step-8-times pairs n ftable data-ref 7 state)",
+        ),
+    ] {
+        let result_pos = body
+            .find(result_expr)
+            .unwrap_or_else(|| panic!("{name} は result state を local 化すること"));
+        let result_root_pos = body[result_pos..]
+            .find("(root_push result)")
+            .map(|offset| offset + result_pos)
+            .unwrap_or_else(|| panic!("{name} は result state を root_set 前に root すること"));
+        let pairs_root_set_pos = body[result_pos..]
+            .find("(root_set pairs-slot result)")
+            .map(|offset| offset + result_pos)
+            .unwrap_or_else(|| panic!("{name} は result state を pairs slot に退避すること"));
+        let functions_root_set_pos = body[result_pos..]
+            .find("(root_set functions-slot result)")
+            .map(|offset| offset + result_pos)
+            .unwrap_or_else(|| panic!("{name} は result state を functions slot に退避すること"));
+
+        assert!(
+            result_pos < result_root_pos
+                && result_root_pos < pairs_root_set_pos
+                && result_root_pos < functions_root_set_pos,
+            "{name} は result state を root_set に渡す前から root し、normal payload の state carry を保つべき"
+        );
+    }
+}
+
+#[test]
+fn test_selfhost_compile_src_decl_pairs_step_normal_setup_diagnostic_roots_next_state_before_root_set()
+ {
+    let compiler_mode = std::fs::read_to_string(workspace_root_relative_path(
+        std::path::PathBuf::from("selfhost/src/App/CompilerMode.ls"),
+    ))
+    .expect("CompilerMode.ls を読めること");
+    let body = compiler_mode
+        .split("(defn compile-src-decl-pairs-step-normal-setup-diagnostic [pairs idx n ftable data-ref functions]")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn continue-compile-src-decl-pairs-step-normal-setup-diagnostic")
+                .next()
+        })
+        .expect("compile-src-decl-pairs-step-normal-setup-diagnostic body を取り出せること");
+
+    let next_state_pos = body
+        .find("next-state (make-pairs-step-state 0 (+ idx 1) updated-functions)")
+        .expect("compile-src-decl-pairs-step-normal-setup-diagnostic は next-state を生成すること");
+    let next_state_root_pos = body[next_state_pos..]
+        .find("(root_push next-state)")
+        .map(|offset| offset + next_state_pos)
+        .expect("compile-src-decl-pairs-step-normal-setup-diagnostic は next-state を root_set 前に root すること");
+    let root_set_pos = body[next_state_pos..]
+        .find("(root_set functions-slot next-state)")
+        .map(|offset| offset + next_state_pos)
+        .expect("compile-src-decl-pairs-step-normal-setup-diagnostic は next-state を functions slot に退避すること");
+
+    assert!(
+        next_state_pos < next_state_root_pos && next_state_root_pos < root_set_pos,
+        "compile-src-decl-pairs-step-normal-setup-diagnostic は pair state を root_set に渡す前から root し、診断 probe 自体で functions carry を壊さないようにするべき"
+    );
+}
+
+#[test]
+fn test_selfhost_compile_src_decl_pair_normal_setup_diagnostic_wrappers_root_result_before_root_set()
+ {
+    let compiler_mode = std::fs::read_to_string(workspace_root_relative_path(
+        std::path::PathBuf::from("selfhost/src/App/CompilerMode.ls"),
+    ))
+    .expect("CompilerMode.ls を読めること");
+    let step8 = compiler_mode
+        .split("(defn compile-src-decl-pairs-step-8-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("compile-src-decl-pairs-step-8-normal-setup-diagnostic body を取り出せること");
+    let step64 = compiler_mode
+        .split("(defn compile-src-decl-pairs-step-64-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("compile-src-decl-pairs-step-64-normal-setup-diagnostic body を取り出せること");
+
+    for (name, body, result_expr) in [
+        (
+            "compile-src-decl-pairs-step-8-normal-setup-diagnostic",
+            step8,
+            "result (continue-compile-src-decl-pairs-step-times-normal-setup-diagnostic pairs n ftable data-ref 7 state)",
+        ),
+        (
+            "compile-src-decl-pairs-step-64-normal-setup-diagnostic",
+            step64,
+            "result (continue-compile-src-decl-pairs-step-8-times-normal-setup-diagnostic pairs n ftable data-ref 7 state)",
+        ),
+    ] {
+        let result_pos = body
+            .find(result_expr)
+            .unwrap_or_else(|| panic!("{name} は result state を local 化すること"));
+        let result_root_pos = body[result_pos..]
+            .find("(root_push result)")
+            .map(|offset| offset + result_pos)
+            .unwrap_or_else(|| panic!("{name} は result state を root_set 前に root すること"));
+        let pairs_root_set_pos = body[result_pos..]
+            .find("(root_set pairs-slot result)")
+            .map(|offset| offset + result_pos)
+            .unwrap_or_else(|| panic!("{name} は result state を pairs slot に退避すること"));
+        let functions_root_set_pos = body[result_pos..]
+            .find("(root_set functions-slot result)")
+            .map(|offset| offset + result_pos)
+            .unwrap_or_else(|| panic!("{name} は result state を functions slot に退避すること"));
+
+        assert!(
+            result_pos < result_root_pos
+                && result_root_pos < pairs_root_set_pos
+                && result_root_pos < functions_root_set_pos,
+            "{name} は result state を root_set に渡す前から root し、診断 probe 自体で state carry を壊さないようにするべき"
+        );
+    }
+}
+
+#[test]
+fn test_selfhost_step_state_builders_root_final_state_before_unwinding_parts() {
+    let compiler_base = std::fs::read_to_string(selfhost_source_path("CompilerBase.ls"))
+        .expect("CompilerBase.ls を読めること");
+    let compile_state = compiler_base
+        .split("(defn make-compile-step-state")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("make-compile-step-state body を取り出せること");
+    let write_state = compiler_base
+        .split("(defn write-compile-step-state-ref")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("write-compile-step-state-ref body を取り出せること");
+    let compiler_mode = std::fs::read_to_string(workspace_root_relative_path(
+        std::path::PathBuf::from("selfhost/src/App/CompilerMode.ls"),
+    ))
+    .expect("CompilerMode.ls を読めること");
+    let pairs_state = compiler_mode
+        .split("(defn make-pairs-step-state")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("make-pairs-step-state body を取り出せること");
+    assert!(
+        compiler_base.contains("(defn push-int-vector-local [dst value]"),
+        "CompilerBase.ls は state builder の int slot を local root で push できる helper を持つべき"
+    );
+    assert!(
+        compiler_base
+            .contains("(defn write-compile-step-state-ref [state-ref done next-idx next-value]")
+            && compiler_base.contains("(ref-set state-ref state)"),
+        "CompilerBase.ls は compile step state の object return boundary を避ける writer helper を持つべき"
+    );
+    assert!(
+        compile_state.contains("base0 (push-int-vector-local (vector-new 3) done)")
+            && compile_state.contains("base1 (push-int-vector-local base0 next-idx)")
+            && !compile_state.contains("base0 (push-int-vector (vector-new 3) done)")
+            && !compile_state.contains("base1 (push-int-vector base0 next-idx)"),
+        "make-compile-step-state は skip/continue state の int slot 0/1 を local root push で組むべき"
+    );
+    assert!(
+        write_state.contains("with-done (push-int-vector-local base done)")
+            && write_state.contains("with-idx (push-int-vector-local with-done next-idx)")
+            && write_state.contains("state (push-object-vector with-idx next-value)")
+            && !write_state.contains("done-ref (ref-new done)")
+            && !write_state.contains("next-idx-ref (ref-new next-idx)")
+            && !write_state.contains("with-done (vector-push base")
+            && !write_state.contains("with-idx (vector-push with-done"),
+        "write-compile-step-state-ref も ref handoff 前に state slot 0/1 を local int push で組み、slot2 を object push で保持するべき"
+    );
+
+    for (name, body, slot_expr, state_expr, root_set_expr) in [
+        (
+            "make-compile-step-state",
+            compile_state,
+            "value-slot (root_push next-value)",
+            "state (push-object-vector base1 next-value)",
+            "(root_set value-slot state)",
+        ),
+        (
+            "make-pairs-step-state",
+            pairs_state,
+            "pairs-slot (root_push next-pairs)",
+            "state (push-object-vector base1 next-pairs)",
+            "(root_set pairs-slot state)",
+        ),
+    ] {
+        let slot_pos = body
+            .find(slot_expr)
+            .unwrap_or_else(|| panic!("{name} は carry value を lower slot に root すること"));
+        let state_pos = body[slot_pos..]
+            .find(state_expr)
+            .map(|offset| offset + slot_pos)
+            .unwrap_or_else(|| panic!("{name} は state vector を生成すること"));
+        let root_set_pos = body[state_pos..]
+            .find(root_set_expr)
+            .map(|offset| offset + state_pos)
+            .unwrap_or_else(|| panic!("{name} は final state を lower slot に退避すること"));
+        let first_pop_after_state = body[state_pos..]
+            .find("(root_pop)")
+            .map(|offset| offset + state_pos)
+            .unwrap_or_else(|| panic!("{name} は roots を unwind すること"));
+
+        assert!(
+            slot_pos < state_pos
+                && state_pos < root_set_pos
+                && root_set_pos < first_pop_after_state,
+            "{name} は return/root-pop 境界で state slot 2 を失わないよう final state を lower slot へ退避してから unwind するべき"
+        );
+    }
+}
+
+#[test]
+fn test_wasm_compiler_source_defn_step_wrappers_root_input_functions_until_result() {
+    let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("Compiler.ls を読めること");
+    let step8 = compiler
+        .split("(defn compile-defn-functions-step-8-with-source")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("compile-defn-functions-step-8-with-source body を取り出せること");
+    let step64 = compiler
+        .split("(defn compile-defn-functions-step-64-with-source")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("compile-defn-functions-step-64-with-source body を取り出せること");
+
+    for (name, body, state_expr, result_expr) in [
+        (
+            "compile-defn-functions-step-8-with-source",
+            step8,
+            "state (compile-defn-functions-step-with-source decls idx n source ftable data-ref functions)",
+            "result (continue-compile-defn-functions-step-times-with-source decls n source ftable data-ref 7 state)",
+        ),
+        (
+            "compile-defn-functions-step-64-with-source",
+            step64,
+            "state (compile-defn-functions-step-with-source decls idx n source ftable data-ref functions)",
+            "result (continue-compile-defn-functions-step-times-with-source decls n source ftable data-ref 63 state)",
+        ),
+    ] {
+        let functions_root_pos = body
+            .find("functions-slot (root_push functions)")
+            .unwrap_or_else(|| panic!("{name} は input functions を root すること"));
+        let state_pos = body
+            .find(state_expr)
+            .unwrap_or_else(|| panic!("{name} は initial state を作ること"));
+        let result_pos = body
+            .find(result_expr)
+            .unwrap_or_else(|| panic!("{name} は continuation result を local 化すること"));
+        let root_set_pos = body[result_pos..]
+            .find("(root_set functions-slot result)")
+            .map(|offset| offset + result_pos)
+            .unwrap_or_else(|| panic!("{name} は返却 state を functions slot に退避すること"));
+        let first_pop_after_result = body[result_pos..]
+            .find("(root_pop)")
+            .map(|offset| offset + result_pos)
+            .unwrap_or_else(|| panic!("{name} は roots を unwind すること"));
+
+        assert!(
+            functions_root_pos < state_pos
+                && state_pos < result_pos
+                && result_pos < root_set_pos
+                && root_set_pos < first_pop_after_result,
+            "{name} は stage2 native normal path で source defn functions state を失わないよう、input functions を initial state 生成前から result unwind まで root するべき"
+        );
+    }
+}
+
+#[test]
+fn test_wasm_compiler_defn_skip_branch_keeps_functions_rooted_until_state_built() {
+    let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("Compiler.ls を読めること");
+    let plain_step = compiler
+        .split("(defn compile-defn-functions-step [decls idx n ftable functions]")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn continue-compile-defn-functions-step")
+                .next()
+        })
+        .expect("compile-defn-functions-step body を取り出せること");
+    let source_step = compiler
+        .split("(defn compile-defn-functions-step-with-source-body-impl-3")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn compile-let-with-ftable-impl-body-impl-3")
+                .next()
+        })
+        .expect("compile-defn-functions-step-with-source-body-impl-3 body を取り出せること");
+    let diagnostic_source_step = compiler
+        .split("(defn compile-defn-functions-step-with-source-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split(
+                "\n(defn continue-compile-defn-functions-step-with-source-normal-setup-diagnostic",
+            )
+            .next()
+        })
+        .expect(
+            "compile-defn-functions-step-with-source-normal-setup-diagnostic body を取り出せること",
+        );
+
+    for (name, body, writer_call) in [
+        (
+            "compile-defn-functions-step",
+            plain_step,
+            "(write-compile-step-state-ref skip-state-ref 0 (+ idx 1) functions)",
+        ),
+        (
+            "compile-defn-functions-step-with-source-body-impl-3",
+            source_step,
+            "(write-compile-step-state-ref skip-state-ref 0 (+ idx 1) functions)",
+        ),
+        (
+            "compile-defn-functions-step-with-source-normal-setup-diagnostic",
+            diagnostic_source_step,
+            "(write-compile-step-state-ref-normal-setup-diagnostic skip-state-ref 0 (+ idx 1) functions)",
+        ),
+    ] {
+        let state_ref_pos = body.find("skip-state-ref (ref-new 0)").unwrap_or_else(|| {
+            panic!("{name} は skip branch 用 caller-owned state ref を作ること")
+        });
+        let write_pos = body[state_ref_pos..]
+            .find(writer_call)
+            .map(|offset| offset + state_ref_pos)
+            .unwrap_or_else(|| panic!("{name} は writer helper で skip state を構築すること"));
+        let result_pos = body[write_pos..]
+            .find("skip-result (ref-get skip-state-ref)")
+            .map(|offset| offset + write_pos)
+            .unwrap_or_else(|| panic!("{name} は state ref から skip-result state を取り出すこと"));
+        let result_root_pos = body[result_pos..]
+            .find("(root_push skip-result)")
+            .map(|offset| offset + result_pos)
+            .unwrap_or_else(|| panic!("{name} は skip state を root してから退避すること"));
+        let root_set_pos = body[result_pos..]
+            .find("(root_set functions-slot skip-result)")
+            .map(|offset| offset + result_pos)
+            .unwrap_or_else(|| panic!("{name} は skip state を functions slot に退避すること"));
+        let first_pop_after_result = body[result_pos..]
+            .find("(root_pop)")
+            .map(|offset| offset + result_pos)
+            .unwrap_or_else(|| panic!("{name} は roots を unwind すること"));
+
+        assert!(
+            state_ref_pos < write_pos
+                && write_pos < result_pos
+                && result_pos < result_root_pos
+                && result_root_pos < root_set_pos
+                && root_set_pos < first_pop_after_result,
+            "{name} の skip branch は先頭 non-defn decl を越えても functions vector を失わないよう、caller-owned state ref で受けた skip state を root し、lower root slot へ退避してから roots を pop するべき"
+        );
+    }
+}
+
+#[test]
+fn test_selfhost_parse_defn_body_branch_roots_body_before_finalize() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/Syntax/Parser.ls",
+    )))
+    .expect("Parser.ls を読めること");
+    let finalize_body = source
+        .split("(defn finalize-defn-body-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn maybe-append-defn-meta-v3").next())
+        .expect("finalize-defn-body-v3 body を取り出せること");
+    let parse_body = source
+        .split("(defn parse-defn-bodyless-or-body-v3")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn parse-defn-bodyless-or-body-with-meta-v3")
+                .next()
+        })
+        .expect("parse-defn-bodyless-or-body-v3 body を取り出せること");
+
+    assert!(
+        finalize_body.contains("[body defn-node]")
+            && !finalize_body.contains("param-count")
+            && finalize_body.contains("(root_push defn-node)")
+            && finalize_body.contains("(root_push body)"),
+        "finalize-defn-body-v3 は未使用 param-count を受け取らず、caller の外側 body root に頼らず defn/body を自分で root するべき"
+    );
+    assert!(
+        parse_body.contains(
+            "(do\n      (root_push spans)\n      (root_push pos-ref)\n      (root_push src)\n      (let [parsed-defn-body (parse-expr-v3 spans pos-ref src)]\n        (do\n          (root_push parsed-defn-body)\n          (let [parsed (finalize-defn-body-v3 parsed-defn-body defn-node)]\n            (do\n              (root_push parsed)\n              (p-expect spans pos-ref 1) ;; ) を消費\n              (root_pop)\n              (root_pop)\n              (root_pop)\n              (root_pop)\n              (root_pop)\n              parsed)))))"
+        ) && !parse_body.contains("finalize-defn-parsed-body-v3"),
+        "parse-defn-bodyless-or-body-v3 の body branch は parser state と body を caller 側で root してから p-expect 前に finalize-defn-body-v3 へ渡し、第5引数 handoff と p-expect 後の body local 再利用を避けるべき"
+    );
+}
+
+#[test]
+fn test_selfhost_compiler_mode_direct_defn_probe_avoids_parsed_body_handoff() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/App/CompilerMode.ls",
+    )))
+    .expect("CompilerMode.ls を読めること");
+    let direct_probe = source
+        .split("(defn print-direct-defn-build-progress-probe")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn print-direct-defn-return-cleanup-progress-probe")
+                .next()
+        })
+        .expect("print-direct-defn-build-progress-probe body を取り出せること");
+
+    assert!(
+        direct_probe.contains(
+            "(let [body (parse-expr-v3 spans pos-ref src)]\n                          (do\n                            (root_push body)\n                            (print 188)"
+        ) && direct_probe.contains(
+            "(let [parsed (finalize-defn-body-v3 body defn-node)]\n                              (do\n                                (root_push parsed)\n                                (p-expect spans pos-ref 1)"
+        ) && !direct_probe.contains("finalize-defn-parsed-body-v3"),
+        "progress 用 direct defn probe も body を caller 側で root し、p-expect 前に finalize-defn-body-v3 へ渡すべき"
+    );
+}
+
+#[test]
+fn test_selfhost_parse_defn_v3_does_not_rewrite_result_root_after_body_parse() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/Syntax/Parser.ls",
+    )))
+    .expect("Parser.ls を読めること");
+    let parse_defn_body = source
+        .split("(defn parse-defn-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn parse-defmacro-v3").next())
+        .expect("parse-defn-v3 body を取り出せること");
+
+    let result_root_idx = parse_defn_body
+        .find("(root_push result)\n            (let [with-params")
+        .expect("parse-defn-v3 は params parse 前に result を root するべき");
+    let params_idx = parse_defn_body
+        .find("with-params (parse-params-v3 spans pos-ref src result 0)")
+        .expect("parse-defn-v3 は rooted result で params parse に入るべき");
+
+    assert!(
+        result_root_idx < params_idx
+            && !parse_defn_body.contains("result-slot (root_push result)")
+            && !parse_defn_body.contains("root_set result-slot parsed"),
+        "parse-defn-v3 は params parse 中だけ初期 result を root し、未使用 result-slot local や parsed 書き戻しで stage2 native の body slot を壊すべきではない"
+    );
+}
+
+#[test]
+fn test_selfhost_finalize_defn_body_appends_body_without_placeholder_set() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/Syntax/Parser.ls",
+    )))
+    .expect("Parser.ls を読めること");
+    let finalize_body = source
+        .split("(defn finalize-defn-body-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn maybe-append-defn-meta-v3").next())
+        .expect("finalize-defn-body-v3 body を取り出せること");
+
+    assert!(
+        finalize_body.contains("(vector-push-single-rooted-v3 defn-node body)")
+            && finalize_body.contains("[body defn-node]")
+            && !finalize_body.contains("placeholder")
+            && !finalize_body.contains("node-with-placeholder")
+            && !finalize_body.contains("vector-set-at-rooted-v3"),
+        "finalize-defn-body-v3 は x86 stage2 で body slot が 0 に戻らないよう body を直接 root 済み append するべき"
+    );
+}
+
+#[test]
+fn test_selfhost_finalize_defn_roots_body_before_defn_node() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/Syntax/Parser.ls",
+    )))
+    .expect("Parser.ls を読めること");
+    let finalize_body = source
+        .split("(defn finalize-defn-body-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn maybe-append-defn-meta-v3").next())
+        .expect("finalize-defn-body-v3 body を取り出せること");
+    let finalize_parsed_body = source
+        .split("(defn finalize-defn-parsed-body-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn parse-defn-bodyless-or-body-v3").next())
+        .expect("finalize-defn-parsed-body-v3 body を取り出せること");
+
+    for (name, body) in [
+        ("finalize-defn-body-v3", finalize_body),
+        ("finalize-defn-parsed-body-v3", finalize_parsed_body),
+    ] {
+        let body_root_idx = body
+            .find("(root_push body)")
+            .unwrap_or_else(|| panic!("{name} は body を root するべき"));
+        let defn_root_idx = body
+            .find("(root_push defn-node)")
+            .unwrap_or_else(|| panic!("{name} は defn-node を root するべき"));
+        assert!(
+            body_root_idx < defn_root_idx,
+            "{name} は Linux x86 stage2 native の GC 境界で body 引数を失わないよう defn-node より先に body を root するべき"
+        );
+    }
+}
+
+#[test]
+fn test_selfhost_parse_program_step_dispatches_top_level_defn_without_parse_expr_wrapper() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/Syntax/Parser.ls",
+    )))
+    .expect("Parser.ls を読めること");
+    let step = source
+        .split("(defn parse-program-step-v3")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn parse-program-step-64-loop-bounded")
+                .next()
+        })
+        .expect("parse-program-step-v3 body を取り出せること");
+    let helper = source
+        .split("(defn parse-program-step-expr-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn parse-program-step-v3").next())
+        .expect("parse-program-step-expr-v3 body を取り出せること");
+
+    assert!(
+        helper.contains("expr (parse-expr-v3 spans pos-ref src)")
+            && step.contains("(== next-kind 30)")
+            && step.contains("(p-advance pos-ref)")
+            && step.contains("let [result-slot (root_push result)\n              expr (parse-defn-v3 spans pos-ref src)]")
+            && step.contains("next-result (vector-push-single-rooted-v3 result expr)")
+            && step.contains("(parse-program-step-expr-v3 spans pos-ref src result)"),
+        "parse-program-step-v3 は top-level defn を parse-expr wrapper 経由にせず同じ関数内で direct parse-defn し、parse-defn 中も result を root してから rooted append するべき"
     );
 }
 
@@ -1721,7 +7048,6 @@ fn test_linux_x86_metadata_replays_map_new_direct_vs_fallback_paths() {
             && source.contains("(print 9000000044)")
             && source.contains("(print 9000000045)")
             && source.contains("(x86-rel32-target-in-window-at-base direct 0 direct-len offset)")
-            && source.contains("(print function-start-base)")
             && source.contains("(print direct-call-rel)")
             && source.contains("(codegen-x86-control-loop-fallback-native control-ctx idx opcode operand offset)")
             && source.contains("(make-x86-function-emit-layout import-count import-stub-offset function-start-base (- 0 offset))")
@@ -1730,31 +7056,6 @@ fn test_linux_x86_metadata_replays_map_new_direct_vs_fallback_paths() {
                 "(print-x86-map-new-control-replay-diagnostic control-ctx idx opcode operand offset size)"
             ),
         "Linux x86 metadata mode は opcode60 map-new の direct/fallback/replay bytes と rel32 target を同一 row で比較できるべき"
-    );
-}
-
-#[test]
-fn test_linux_x86_metadata_rel32_target_helper_preserves_negative_user_call_targets() {
-    let source = linux_x86_representative_actual_stage23_seed_source();
-    let helper = source
-        .split("(defn x86-rel32-target-in-window-at-base [bytes offset size base-offset]")
-        .nth(1)
-        .and_then(|tail| tail.split("(defn pack-byte-chunk-2").next())
-        .expect("Linux x86 seed に rel32 target helper が存在すること");
-
-    assert!(
-        helper
-            .contains("(let [call-offset (x86-first-rel32-offset-in-window bytes offset 0 size)]")
-            && helper.contains("base-offset-ref (ref-new base-offset)")
-            && helper
-                .contains("(defn x86-rel32-target-at-offset-base [bytes call-offset base-offset]")
-            && helper.contains("call-offset-ref (ref-new call-offset)")
-            && helper.contains("(x86-rel32-at bytes (ref-get call-offset-ref))")
-            && helper.contains(
-                "(+ (ref-get base-offset-ref) (+ (ref-get call-offset-ref) (+ 5 rel32)))"
-            )
-            && !helper.contains("(if (>= target 0)"),
-        "opcode 40 user call は前方/後方どちらの関数にも飛ぶため、metadata helper は負の rel32 target を -1 sentinel と混同しないこと"
     );
 }
 
@@ -1786,26 +7087,146 @@ fn test_linux_x86_representative_seed_keeps_main_as_last_parseable_defn() {
 }
 
 #[test]
-fn test_linux_x86_representative_seed_roots_code_segment_context_inputs() {
+fn test_linux_x86_representative_seed_avoids_segment_context_for_transport_scalars() {
     let source = linux_x86_representative_actual_stage23_seed_source();
-    let body = source
-        .split("(defn make-x86-code-segment-context")
-        .nth(1)
-        .and_then(|tail| {
-            tail.split("(defn x86-code-segment-context-functions")
-                .next()
-        })
-        .expect("Linux x86 segmented seed に make-x86-code-segment-context が存在すること");
 
     assert!(
-        body.contains("(root_push functions)")
-            && body.contains("(root_push starts)")
-            && body.contains("(root_push base0)")
-            && body.contains("(root_push base1)")
-            && body.contains("(root_push base2)")
-            && body.contains("(let [ctx (vector-push base2 import-stub-offset)]")
-            && body.matches("(root_pop)").count() >= 5,
-        "Linux x86 segmented seed の segment context は stage1 native 実行中の vector-push GC で functions/starts を壊さないよう root-safe に構築するべき"
+        !source.contains("segment-ctx (make-x86-code-segment-context")
+            && source.contains("(defn print-x86-function-code-segments-loop [functions starts import-count import-stub-offset idx len]")
+            && source.contains("(defn print-x86-function-segment-metadata-loop [functions starts import-count import-stub-offset idx len prefix-limit]"),
+        "Linux x86 segmented seed は stage2 native 実行で segment ctx の scalar field が 0 化するため、transport scalar を ctx 経由にせず直接 loop に渡すべき"
+    );
+}
+
+#[test]
+fn test_linux_x86_metadata_can_trace_function_emit_progress_rows() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+
+    for expected in [
+        "(defn print-x86-function-emit-progress-row",
+        "(defn generate-native-control-instr-bundle-progress-row-x86",
+        "(print 9000000344)",
+        "(print 9000000345)",
+        "(defn print-x86-opcode40-call-append-progress-diagnostic",
+        "(print 9000000349)",
+        "(print 9000000352)",
+        "(native-function-param-count target-meta)",
+        "(print 9000000353)",
+        "(emit-one-arg-call-x86-core-with-call-bytes call-rel-bytes)",
+        "(print 9000000354)",
+        "(print 9000000355)",
+        "(defn diagnose-x86-opcode40-call-bundle-return-boundary",
+        "(print 9000000357)",
+        "(print 9000000358)",
+        "(print 9000000359)",
+        "(print 9000000356)",
+        "(print 9000000350)",
+        "(append-native-bytes-loop probe-ref native 0 native-len)",
+        "(print 9000000351)",
+        "(print-x86-opcode40-call-append-progress-diagnostic ctx idx)",
+        "(defn generate-native-control-instr-bundle-progress-loop-x86",
+        "(make-x86-control-loop-state idx 1)",
+        "(generate-native-control-instr-bundle-progress-loop-x86 control-ctx 0 n)",
+        "(x86-rel32-target-in-window-at-base segment offset size offset)",
+        "(defn generate-native-function-x86-64-bundle-with-layout-progress",
+        "(generate-native-function-x86-64-bundle-with-layout-progress func-meta result starts functions layout)",
+    ] {
+        assert!(
+            source.contains(expected),
+            "Linux x86 metadata mode は stage3 segment 生成クラッシュを phase/IR row 単位で切り分けられるべき: missing {expected}"
+        );
+    }
+    let _program = parse_for_pipeline(&source);
+}
+
+#[test]
+fn test_linux_x86_opcode40_diagnostic_defers_target_meta_lookup_until_opcode40_branch() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+    let body = source
+        .split("(defn print-x86-opcode40-call-append-progress-diagnostic")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn generate-native-control-instr-bundle-progress-row-x86")
+                .next()
+        })
+        .expect("Linux x86 metadata seed に opcode40 call append diagnostic が存在すること");
+    let before_opcode_guard = body
+        .split("(if (= opcode 40)")
+        .next()
+        .expect("opcode40 diagnostic body を guard 前後に分けられること");
+    let opcode_branch = body
+        .split("(if (= opcode 40)")
+        .nth(1)
+        .expect("opcode40 diagnostic body に opcode guard が存在すること");
+
+    assert!(
+        !before_opcode_guard.contains("target-meta")
+            && !before_opcode_guard.contains("target-param-count")
+            && opcode_branch.contains("target-meta (vector-get functions operand)")
+            && opcode_branch
+                .contains("target-param-count (native-function-param-count target-meta)")
+            && opcode_branch.contains("(print 9000000352)")
+            && opcode_branch.contains("(print target-param-count)"),
+        "opcode40 diagnostic は opcode 40 以外の row で巨大 operand を functions lookup しないよう、target metadata lookup を opcode 40 branch 内に遅延するべき"
+    );
+}
+
+#[test]
+fn test_linux_x86_metadata_progress_loop_releases_row_roots_before_next_row() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+    let row_step_body = source
+        .split("(defn generate-native-control-instr-bundle-progress-row-x86")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn generate-native-control-instr-bundle-progress-chunk-x86")
+                .next()
+        })
+        .expect("Linux x86 metadata seed に progress row helper が存在すること");
+    let row_chunk_body = source
+        .split("(defn generate-native-control-instr-bundle-progress-chunk-x86")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn generate-native-control-instr-bundle-progress-loop-x86")
+                .next()
+        })
+        .expect("Linux x86 metadata seed に progress chunk helper が存在すること");
+    let row_loop_body = source
+        .split("(defn generate-native-control-instr-bundle-progress-loop-x86")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn generate-native-function-x86-64-bundle-with-layout-progress")
+                .next()
+        })
+        .expect("Linux x86 metadata seed に progress loop helper が存在すること");
+
+    assert!(
+        row_step_body.contains("[ctx idx]")
+            && row_step_body.contains("(root_push ctx)")
+            && row_step_body.contains("(print 9000000344)")
+            && row_step_body.contains("(print 9000000345)")
+            && row_step_body.contains("row-state (make-x86-control-loop-state idx 1)")
+            && row_step_body.contains("(root_push row-state)")
+            && row_step_body.contains(
+                "(generate-native-control-instr-bundle-loop-x86-with-context ctx row-state)"
+            )
+            && row_step_body.contains("(root_pop)\n        (root_pop)\n        0")
+            && row_chunk_body.contains("[ctx idx end]")
+            && row_chunk_body.contains(
+                "(let [_row (generate-native-control-instr-bundle-progress-row-x86 ctx idx)]"
+            )
+            && row_chunk_body.contains(
+                "(generate-native-control-instr-bundle-progress-chunk-x86 ctx (+ idx 1) end)"
+            )
+            && row_loop_body.contains("chunk-end (if (> (+ idx 64) len) len (+ idx 64))")
+            && row_loop_body.contains(
+                "_chunk (generate-native-control-instr-bundle-progress-chunk-x86 ctx idx chunk-end)"
+            )
+            && row_loop_body.contains(
+                "(generate-native-control-instr-bundle-progress-loop-x86 ctx chunk-end len)"
+            )
+            && !row_loop_body
+                .contains("let [final (generate-native-control-instr-bundle-progress-loop-x86"),
+        "Linux x86 metadata progress loop は巨大 IR 関数で root/call frame を溜めないよう、row helper で roots を解放しつつ 64 row chunk で再帰深度を抑えるべき"
     );
 }
 
@@ -2211,30 +7632,6 @@ fn test_native_codegen_x86_map_insert_runtime_call_direct_appends_in_stage1() {
 }
 
 #[test]
-fn test_native_codegen_x86_map_insert_helper_overwrites_existing_key() {
-    let source = selfhost_module("NativeCodegen.ls");
-    let helper = source
-        .split("(defn emit-x86-selfhost-map-insert-helper []")
-        .nth(1)
-        .and_then(|tail| {
-            tail.split("(defn emit-x86-selfhost-map-get-helper []")
-                .next()
-        })
-        .expect("NativeCodegen.ls に x86 map-insert helper が存在すること");
-
-    assert!(
-        helper.contains("(byte-vector-4 201 69 57 209)")
-            && helper.contains("(byte-vector-4 3 73 57 8)")
-            && helper.contains("(byte-vector-4 137 64 8 72)")
-            && source.contains("(defn x86-selfhost-map-insert-helper-size []\n  104)")
-            && source.contains("(append-native-bytes-rooted result (emit-x86-selfhost-map-insert-helper) 104)")
-            && source.contains("(defn x86-selfhost-map-get-helper-offset [import-stub-offset import-count]\n  (+ (x86-helper-base-offset import-stub-offset import-count) 1482)")
-            && source.contains("(defn x86-selfhost-file-exists-helper-offset [import-stub-offset import-count]\n  (+ (x86-helper-base-offset import-stub-offset import-count) 1544)"),
-        "x86 selfhost map-insert helper は既存キーを検索して値だけを上書きし、重複 key append で古い env binding を残さないこと"
-    );
-}
-
-#[test]
 fn test_native_codegen_x86_substring_runtime_call_direct_appends_in_stage1() {
     let source = selfhost_module("NativeCodegen.ls");
     let control_loop = source
@@ -2305,7 +7702,7 @@ fn test_native_codegen_x86_read_file_runtime_call_direct_appends_in_stage1() {
 }
 
 #[test]
-fn test_native_codegen_x86_read_file_helper_uses_2m_cap_for_native_codegen_source() {
+fn test_native_codegen_x86_read_file_helper_uses_2m_cap_for_selfhost_sources() {
     let source = selfhost_module("NativeCodegen.ls");
     let helper = source
         .split("(defn emit-x86-selfhost-read-file-helper []")
@@ -2399,18 +7796,11 @@ fn test_native_codegen_x86_map_new_stack_delta_is_explicit_for_stage2_depth_stab
 #[test]
 fn test_native_codegen_x86_zero_arg_user_call_avoids_rel_wrapper_call() {
     let source = selfhost_module("NativeCodegen.ls");
-    let opcode_call_branch = source
-        .split("(defn codegen-x86-opcode-call-bundle")
-        .nth(1)
-        .and_then(|tail| {
-            tail.split("(defn codegen-ir-instr-bundle-x86-with-import-count-and-base")
-                .next()
-        })
-        .expect("NativeCodegen.ls に x86 opcode 40 call helper が存在すること");
+    let opcode_call_branch = native_codegen_x86_non_one_arg_call_bundle_body(&source);
     let zero_arg_branch = opcode_call_branch
         .split("(if (= target-param-count 0)")
         .nth(1)
-        .and_then(|tail| tail.split("(if (>= target-param-count 20)").next())
+        .and_then(|tail| tail.split("(if (= target-param-count 2)").next())
         .expect("x86 opcode 40 branch に zero-arg user call 専用分岐が存在すること");
 
     assert!(
@@ -2495,7 +7885,7 @@ fn test_selfhost_parser_defn_params_metadata_loop_uses_chunked_steps() {
 }
 
 #[test]
-fn test_selfhost_parser_parse_defn_v3_avoids_root_set_slot_return_path() {
+fn test_selfhost_parser_parse_defn_v3_preserves_return_without_result_slot_rewrite() {
     let source = selfhost_module("Parser.ls");
     let parse_defn_body = source
         .split("(defn parse-defn-v3")
@@ -2504,10 +7894,75 @@ fn test_selfhost_parser_parse_defn_v3_avoids_root_set_slot_return_path() {
         .expect("Parser.ls に parse-defn-v3 が存在すること");
 
     assert!(
-        !parse_defn_body.contains("result-slot")
-            && !parse_defn_body.contains("(root_set result-slot"),
-        "parse-defn-v3 は Linux x86 stage2 native の defn return 退避を壊さないよう、root_set slot 経由ではなく parsed を直接返すべき"
+        parse_defn_body.contains("defn-node (vector-set-at-rooted-v3 with-params 2 param-count)")
+            && parse_defn_body.contains("(root_push defn-node)")
+            && parse_defn_body.contains("(skip-optional-type-sig-v3 spans pos-ref src)")
+            && parse_defn_body.contains("(skip-optional-where-v3 spans pos-ref src)")
+            && parse_defn_body.contains("(parse-defn-bodyless-or-body-with-meta-v3")
+            && parse_defn_body.contains("(if (== (p-current spans pos-ref) 1)")
+            && parse_defn_body
+                .contains("(let [parsed-defn-body (parse-expr-v3 spans pos-ref src)]")
+            && parse_defn_body.contains("(finalize-defn-body-v3 parsed-defn-body defn-node)")
+            && parse_defn_body.contains("(p-expect spans pos-ref 1)")
+            && parse_defn_body.contains("(root_push result)\n            (let [with-params")
+            && parse_defn_body.contains("with-params (parse-params-v3 spans pos-ref src result 0)")
+            && !parse_defn_body.contains(
+                "(parse-defn-bodyless-or-body-v3 spans pos-ref src defn-node param-count)"
+            )
+            && !parse_defn_body.contains("result-slot (root_push result)")
+            && !parse_defn_body.contains("(root_set result-slot parsed)")
+            && !parse_defn_body.contains("parsed-ref"),
+        "parse-defn-v3 は Linux x86 stage2 native の helper boundary body/local 崩れを避けるため、non-meta body branch を direct probe と同じ形で inline するべき"
     );
+}
+
+#[test]
+fn test_selfhost_parser_parse_defn_v3_roots_parser_inputs_across_body_parse() {
+    let source = selfhost_module("Parser.ls");
+    let parse_defn_body = source
+        .split("(defn parse-defn-v3")
+        .nth(1)
+        .and_then(|tail| tail.split(";; === defmacro 宣言 ===").next())
+        .expect("Parser.ls に parse-defn-v3 が存在すること");
+
+    assert!(
+        parse_defn_body.contains(
+            "(do\n    (root_push spans)\n    (root_push pos-ref)\n    (root_push src)\n    (p-advance pos-ref)"
+        ) && parse_defn_body.contains("(parse-expr-v3 spans pos-ref src)")
+            && parse_defn_body.contains("(finalize-defn-body-v3 parsed-defn-body defn-node)"),
+        "parse-defn-v3 は stage2 native の deep body parse 中に spans/pos-ref/src を失わないよう、parser input を root してから defn body を読むべき"
+    );
+}
+
+#[test]
+fn test_selfhost_parser_defn_body_branches_use_branch_unique_body_locals() {
+    let source = selfhost_module("Parser.ls");
+    let helper_body = source
+        .split("(defn parse-defn-bodyless-or-body-v3")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn parse-defn-bodyless-or-body-with-meta-v3")
+                .next()
+        })
+        .expect("Parser.ls に parse-defn-bodyless-or-body-v3 が存在すること");
+    let parse_defn_body = source
+        .split("(defn parse-defn-v3")
+        .nth(1)
+        .and_then(|tail| tail.split(";; === defmacro 宣言 ===").next())
+        .expect("Parser.ls に parse-defn-v3 が存在すること");
+
+    for (name, body) in [
+        ("parse-defn-bodyless-or-body-v3", helper_body),
+        ("parse-defn-v3", parse_defn_body),
+    ] {
+        assert!(
+            body.contains("bodyless-defn-body")
+                && body.contains("parsed-defn-body")
+                && !body.contains("(let [body (make-int-node 0)]")
+                && !body.contains("(let [body (parse-expr-v3 spans pos-ref src)]"),
+            "{name} は Linux x86 stage2 selfhost lowering で if branch 間の同名 body shadow により local.set/get slot がずれないよう、branch 固有の body local 名を使うべき"
+        );
+    }
 }
 
 #[test]
@@ -2551,6 +8006,58 @@ fn test_selfhost_parser_parse_let_first_binding_roots_init_before_delegate() {
     assert!(
         init_parse_pos < init_root_pos && init_root_pos < delegate_pos,
         "parse-let-first-binding-v3 は native call 境界で init が stale にならないよう delegate 前に root するべき"
+    );
+}
+
+#[test]
+fn test_selfhost_parser_parse_let_roots_result_across_closing_paren_expect() {
+    let source = selfhost_module("Parser.ls");
+    let finish_body = source
+        .split("(defn finish-parse-let-result-after-expect-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn parse-let-after-first-binding-v3").next())
+        .expect("Parser.ls に finish-parse-let-result-after-expect-v3 が存在すること");
+    let after_first_body = source
+        .split("(defn parse-let-after-first-binding-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn parse-let-v3").next())
+        .expect("Parser.ls に parse-let-after-first-binding-v3 が存在すること");
+
+    let single_branch = after_first_body
+        .split(";; 複数バインディング")
+        .next()
+        .expect("parse-let-after-first-binding-v3 の single binding branch を取り出せること");
+    let single_result_pos = single_branch
+        .find("result (vector-push-quad-rooted-v3 (vector-new 8) 7 nh init body)")
+        .expect("single binding branch は result let を作ること");
+    let single_finish_pos = single_branch[single_result_pos..]
+        .find("(finish-parse-let-result-after-expect-v3 spans pos-ref result)")
+        .expect("single binding branch は result を finish helper へ渡すこと")
+        + single_result_pos;
+
+    let multi_branch = after_first_body
+        .split(";; 複数バインディング")
+        .nth(1)
+        .expect("parse-let-after-first-binding-v3 の multi binding branch を取り出せること");
+    let multi_result_pos = multi_branch
+        .find("result (vector-push-quad-rooted-v3 (vector-new 8) 7 nh init inner)")
+        .expect("multi binding branch は outer let result を作ること");
+    let multi_finish_pos = multi_branch[multi_result_pos..]
+        .find("(finish-parse-let-result-after-expect-v3 spans pos-ref result)")
+        .expect("multi binding branch は outer result を finish helper へ渡すこと")
+        + multi_result_pos;
+    let finish_root_pos = finish_body
+        .find("(root_push result)")
+        .expect("finish helper は result を p-expect 前に root すること");
+    let finish_expect_pos = finish_body
+        .find("(p-expect spans pos-ref 1)")
+        .expect("finish helper は closing paren を消費すること");
+
+    assert!(
+        single_result_pos < single_finish_pos
+            && multi_result_pos < multi_finish_pos
+            && finish_root_pos < finish_expect_pos,
+        "parse-let-v3 は Linux x86 stage2 native で p-expect call 境界を跨いで final let vector が壊れないよう、closing paren 消費前に result を root するべき"
     );
 }
 
@@ -2615,13 +8122,57 @@ fn test_linux_x86_representative_seed_has_opcode40_call_replay_metadata_diagnost
             && source.contains(
                 "(codegen-x86-opcode-call-bundle operand (ref-get offset-ref) starts direct-context)"
             )
-            && source.contains("direct-call-offset (- call-next-offset 5)")
             && source.contains(
-                "(x86-rel32-target-at-offset-base direct direct-call-offset (ref-get offset-ref))"
+                "(x86-rel32-target-in-window-at-base direct 0 direct-len (ref-get offset-ref))"
             )
-            && source.contains("(print function-start-base)")
             && source.contains("(print-x86-call-control-replay-diagnostic control-ctx idx opcode operand offset size)"),
         "Linux x86 segmented seed は opcode 40 user call の IR row / direct bundle / emitted bytes / rel32 target を同一 metadata row で出せるべき"
+    );
+}
+
+#[test]
+fn test_linux_x86_representative_seed_can_print_raw_function_ir_window_diagnostic() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+
+    assert!(
+        source.contains("(defn print-x86-function-ir-owner-window")
+            && source.contains("(defn make-x86-owner-state")
+            && source.contains("(defn find-x86-owner-in-pairs")
+            && source.contains("(defn x86-ftable-hash-for-func")
+            && source.contains("(defn x86-body-size-loop-ctx-hash [] (name-hash \"x86-body-size-loop-ctx\" 0 22))")
+            && source.contains("(defn x86-native-function-body-size-loop-hash [] (name-hash \"native-function-body-size-x86-loop\" 0 34))")
+            && source.contains("(defn x86-native-function-size-hash [] (name-hash \"native-function-size-x86\" 0 24))")
+            && !source.contains("(defn x86-body-size-loop-ctx-hash [] -7044977549765796714)")
+            && source.contains("(defn print-x86-known-ftable-lookups")
+            && source.contains("(print 9000000048)")
+            && source.contains("(print 9000000049)")
+            && source.contains(
+                "raw-functions-mode (if (> (string-length (command-line-arg 10)) 0) 1 0)"
+            )
+            && source.contains("raw-cache-ref (if (= raw-functions-mode 1) (ref-new (map-new)) cache-ref)")
+            && source.contains("raw-parse-count-ref (if (= raw-functions-mode 1) (ref-new 0) parse-count-ref)")
+            && source.contains("raw-cache-root (if (= raw-functions-mode 1) (root_push raw-cache-ref) 0)")
+            && source.contains("raw-parse-root (if (= raw-functions-mode 1) (root_push raw-parse-count-ref) 0)")
+            && source.contains("raw-pairs (if (= raw-functions-mode 1)")
+            && source.contains("(compile-file-pairs-with-cache source-path raw-cache-ref raw-parse-count-ref)")
+            && source.contains("raw-ftable (if (= raw-functions-mode 1)")
+            && source.contains("(print-x86-known-ftable-lookups raw-ftable)")
+            && source.contains(
+                "(if (= raw-functions-mode 1)\n             (do\n               (print-x86-known-ftable-lookups raw-ftable)"
+            )
+            && source.contains("starts (if (= raw-functions-mode 1)")
+            && source.contains("user-total (if (= raw-functions-mode 1)")
+            && source.contains("entrypoint-offset (if (= raw-functions-mode 1)")
+            && source.contains("current-hash (x86-ftable-hash-for-func ftable actual-idx)")
+            && source.contains("current-lookup (ftable-lookup ftable current-hash)")
+            && source.contains("owner (find-x86-owner-in-pairs pairs 0 (vector-length pairs) ftable actual-idx)")
+            && source.contains("(print (vector-get owner 1))")
+            && source.contains("(print (vector-get owner 3))")
+            && source.contains("instr (vector-get ir 73)")
+            && source.contains("(print (vector-get instr 0))")
+            && source.contains("(print (vector-get instr 1))")
+            && source.contains("(x86-ftable-hash-for-func ftable (vector-get instr 1))"),
+        "Linux x86 segmented seed は actual native stage1 の compile result と ftable lookup を codegen 前に同一診断行で切るべき"
     );
 }
 
@@ -2661,6 +8212,57 @@ fn test_selfhost_parser_parse_if_roots_condition_and_then_before_later_parse() {
 }
 
 #[test]
+fn test_selfhost_parser_parse_if_reads_final_result_from_ref_after_expect() {
+    let source = selfhost_module("Parser.ls");
+    let parse_if_body = source
+        .split("(defn parse-if-v3")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn finish-parse-if-result-after-expect-v3")
+                .next()
+        })
+        .expect(
+            "Parser.ls の parse-if-v3 直後に finish-parse-if-result-after-expect-v3 が存在すること",
+        );
+    let finish_body = source
+        .split("(defn finish-parse-if-result-after-expect-v3")
+        .nth(1)
+        .and_then(|tail| tail.split(";; === let 式").next())
+        .expect("Parser.ls に finish-parse-if-result-after-expect-v3 が存在すること");
+
+    let result_pos = parse_if_body
+        .find("result (vector-push-quad-rooted-v3 (vector-new 8) 6 cond-node then-node else-node)")
+        .expect("parse-if-v3 は closing paren 消費前に if result を構築すること");
+    let finish_call_pos = parse_if_body[result_pos..]
+        .find("(finish-parse-if-result-after-expect-v3 spans pos-ref result)")
+        .map(|pos| result_pos + pos)
+        .expect("parse-if-v3 は result を finish helper へ渡すこと");
+    let direct_expect_pos = parse_if_body.find("(p-expect spans pos-ref 1)");
+
+    let finish_root_pos = finish_body
+        .find("(root_push result)")
+        .expect("finish helper は result を p-expect 前に root すること");
+    let finish_ref_pos = finish_body
+        .find("result-ref (ref-new result)")
+        .expect("finish helper は result を ref に退避すること");
+    let finish_expect_pos = finish_body
+        .find("(p-expect spans pos-ref 1)")
+        .expect("finish helper は closing paren を消費すること");
+    let finish_ref_get_pos = finish_body
+        .find("final-result (ref-get result-ref)")
+        .expect("finish helper は p-expect 後に ref から result を読み戻すこと");
+
+    assert!(
+        result_pos < finish_call_pos
+            && direct_expect_pos.is_none()
+            && finish_root_pos < finish_ref_pos
+            && finish_ref_pos < finish_expect_pos
+            && finish_expect_pos < finish_ref_get_pos,
+        "parse-if-v3 は Linux x86 stage2 native で p-expect call 境界を跨いで branch/result local が stale にならないよう、先に if result を組み ref から読み戻すべき"
+    );
+}
+
+#[test]
 fn test_selfhost_compile_let_step_reloads_body_after_init_compile() {
     let source = selfhost_module("Compiler.ls");
     let step_body = source
@@ -2677,74 +8279,29 @@ fn test_selfhost_compile_let_step_reloads_body_after_init_compile() {
     let body_reload_pos = step_body
         .find("body-expr-after-init (vector-get node 3)")
         .expect("let-chain step は init compile 後に body-expr を node から取り直すこと");
+    let init_root_pos = step_body[init_compile_pos..]
+        .find("(root_push init-instrs)")
+        .map(|pos| init_compile_pos + pos)
+        .expect("let-chain step は init-instrs を body reload 前に root すること");
     let finish_pos = step_body
         .find("(compile-let-chain-step-finish name-hash body-expr-after-init init-instrs env rooted-count init-root)")
         .expect("let-chain step は取り直した body-expr を finish へ渡すこと");
+    let result_root_pos = step_body[finish_pos..]
+        .find("(root_push result)")
+        .map(|pos| finish_pos + pos)
+        .expect("let-chain step は返却 state を unwind 前に root すること");
+    let first_pop_after_result = step_body[result_root_pos..]
+        .find("(root_pop)")
+        .map(|pos| result_root_pos + pos)
+        .expect("let-chain step は result root 後に roots を unwind すること");
 
     assert!(
-        init_compile_pos < body_reload_pos && body_reload_pos < finish_pos,
-        "let-chain step は init compile 中に stale になり得る body-expr を持ち越さず、root 済み node から後で取り直すべき"
-    );
-}
-
-#[test]
-fn test_selfhost_compiler_source_step_impl3_uses_high_branch_handoff_markers() {
-    let source = selfhost_module("Compiler.ls");
-    let step_body = source
-        .split("(defn compile-defn-functions-step-with-source-body-impl-3")
-        .nth(1)
-        .and_then(|tail| {
-            tail.split("(defn compile-let-with-ftable-impl-body-impl-3")
-                .next()
-        })
-        .expect(
-            "Compiler.ls に compile-defn-functions-step-with-source-body-impl-3 が存在すること",
-        );
-
-    assert!(
-        step_body.contains("(print 9000000077)") && step_body.contains("(print 9000000078)"),
-        "impl-3 branch diagnostic は numeric payload と衝突しにくい high marker を使うべき"
-    );
-    assert!(
-        !step_body.contains("(print 215)") && !step_body.contains("(print 216)"),
-        "impl-3 branch diagnostic は低値 marker 215/216 を残さない"
-    );
-}
-
-#[test]
-fn test_selfhost_compiler_source_step_impl3_skip_branch_uses_distinct_result_binding() {
-    let source = selfhost_module("Compiler.ls");
-    let step_body = source
-        .split("(defn compile-defn-functions-step-with-source-body-impl-3")
-        .nth(1)
-        .and_then(|tail| {
-            tail.split("(defn compile-let-with-ftable-impl-body-impl-3")
-                .next()
-        })
-        .expect(
-            "Compiler.ls に compile-defn-functions-step-with-source-body-impl-3 が存在すること",
-        );
-    let skip_branch = step_body
-        .split("(let [next-skip-idx (+ idx 1)]")
-        .nth(1)
-        .expect("impl-3 は non-defn skip branch で next-skip-idx を束縛すること");
-
-    assert!(
-        skip_branch.contains("[skip-result (make-compile-step-state 0 next-skip-idx functions)]"),
-        "skip branch は defn branch の result local と衝突しない skip-result を使うべき"
-    );
-    assert!(
-        skip_branch.contains("[skip-result-root (root_push skip-result)]"),
-        "skip branch の progress 診断は skip-result を root して読むべき"
-    );
-    assert!(
-        skip_branch.contains("(root_set functions-slot skip-result)"),
-        "skip branch は functions-slot に skip-result を保存してから cleanup するべき"
-    );
-    assert!(
-        !skip_branch.contains("[result (make-compile-step-state 0 next-skip-idx functions)]")
-            && !skip_branch.contains("[result-root (root_push result)]"),
-        "skip branch に stale local と衝突しやすい result/result-root binding を残さない"
+        init_compile_pos < init_root_pos
+            && init_root_pos < body_reload_pos
+            && body_reload_pos < finish_pos
+            && finish_pos < result_root_pos
+            && result_root_pos < first_pop_after_result,
+        "let-chain step は init compile 中に stale になり得る init/body/result を失わないよう、init-instrs と返却 state を root しつつ body-expr を root 済み node から後で取り直すべき"
     );
 }
 
@@ -2779,6 +8336,184 @@ fn test_selfhost_compile_let_step_finish_uses_reloaded_body_without_extra_root()
             && env_bind_pos < next_value_pos,
         "let-chain finish は body-expr の追加 root は避けつつ、env-bind 中に env scalar が stale にならないよう env は root するべき"
     );
+}
+
+#[test]
+fn test_selfhost_compile_let_chain_roots_step_and_body_results_before_unwind() {
+    let source = selfhost_module("Compiler.ls");
+    let chain_body = source
+        .split("(defn compile-let-chain-with-source [")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-expr-with-ftable-dispatch-impl-body-impl")
+                .next()
+        })
+        .expect("Compiler.ls に compile-let-chain-with-source が存在すること");
+    let step_pos = chain_body
+        .find("step (compile-let-chain-step-with-source node source env ftable instrs data-ref rooted-count)")
+        .expect("let-chain は single-step safe path を実行すること");
+    let step_root_pos = chain_body[step_pos..]
+        .find("(root_push step)")
+        .map(|pos| step_pos + pos)
+        .expect("let-chain は step state を読む前に root すること");
+    let next_value_pos = chain_body
+        .find("next-value (vector-get step 2)")
+        .expect("let-chain は step state から next-value を読むこと");
+    let next_value_root_pos = chain_body[next_value_pos..]
+        .find("(root_push next-value)")
+        .map(|pos| next_value_pos + pos)
+        .expect("let-chain は next-value を branch 中に root すること");
+    let body_compile_pos = chain_body
+        .find("body-instrs (compile-expr-with-source body-expr source next-env ftable next-instrs data-ref)")
+        .expect("let-chain は final body を compile すること");
+    let body_root_pos = chain_body[body_compile_pos..]
+        .find("(root_push body-instrs)")
+        .map(|pos| body_compile_pos + pos)
+        .expect("let-chain は body-instrs を root-pop emit 前に root すること");
+    let emit_result_pos = chain_body
+        .find("result (emit-root-pop-drops body-instrs (vector-get step 1))")
+        .expect("let-chain は final body 後に root pop drops を emit すること");
+    let emit_result_root_pos = chain_body[emit_result_pos..]
+        .find("(root_push result)")
+        .map(|pos| emit_result_pos + pos)
+        .expect("let-chain は final result を outer roots unwind 前に root すること");
+    let recursive_call_pos = chain_body
+        .find("(compile-let-chain-with-source\n                (vector-get next-value 0)")
+        .expect("let-chain は recursive continuation を実行すること");
+    let recursive_result_pos = chain_body[..recursive_call_pos]
+        .rfind("(let [result")
+        .expect("let-chain は recursive continuation result を保持すること");
+    let recursive_result_root_pos = chain_body[recursive_result_pos..]
+        .find("(root_push result)")
+        .map(|pos| recursive_result_pos + pos)
+        .expect("let-chain は recursive result を outer roots unwind 前に root すること");
+
+    assert!(
+        step_pos < step_root_pos
+            && step_root_pos < next_value_pos
+            && next_value_pos < next_value_root_pos
+            && next_value_root_pos < body_compile_pos
+            && body_compile_pos < body_root_pos
+            && body_root_pos < emit_result_pos
+            && emit_result_pos < emit_result_root_pos
+            && next_value_root_pos < recursive_result_pos
+            && recursive_result_pos < recursive_result_root_pos,
+        "let-chain は v58 VM pass shape と同じく single-step state/next-value/body/result を root してから outer roots を unwind するべき"
+    );
+}
+
+#[test]
+fn test_selfhost_compile_let_chain_continuations_root_state_and_result() {
+    let source = selfhost_module("Compiler.ls");
+    let single_body = source
+        .split("(defn continue-compile-let-chain-step-with-source")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-let-chain-step-8-with-source")
+                .next()
+        })
+        .expect("Compiler.ls に continue-compile-let-chain-step-with-source が存在すること");
+    let chunk_body = source
+        .split("(defn continue-compile-let-chain-step-8-with-source")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-let-chain-step-64-with-source")
+                .next()
+        })
+        .expect("Compiler.ls に continue-compile-let-chain-step-8-with-source が存在すること");
+
+    for (label, body, recursive_fn) in [
+        ("single", single_body, "(compile-let-chain-step-with-source"),
+        ("step8", chunk_body, "(compile-let-chain-step-8-with-source"),
+    ] {
+        let state_root_pos = body.find("(root_push state)").unwrap_or_else(|| {
+            panic!("{label} continuation は done 判定前に state を root すること")
+        });
+        let done_check_pos = body
+            .find("(if (= (vector-get state 0) 1)")
+            .unwrap_or_else(|| panic!("{label} continuation は state done 判定を持つこと"));
+        let done_pop_pos = body
+            .find("(do\n        (root_pop)\n        state)")
+            .unwrap_or_else(|| {
+                panic!("{label} continuation は done branch で state root を pop すること")
+            });
+        let recursive_call_pos = body
+            .find(recursive_fn)
+            .unwrap_or_else(|| panic!("{label} continuation は recursive call を実行すること"));
+        let recursive_arg_pos = body[recursive_call_pos..]
+            .find("(vector-get next-value 0)")
+            .map(|pos| recursive_call_pos + pos)
+            .unwrap_or_else(|| {
+                panic!("{label} continuation は next-value の node を recursive call へ渡すこと")
+            });
+        let result_root_pos = body[recursive_call_pos..]
+            .find("(root_push result)")
+            .map(|pos| recursive_call_pos + pos)
+            .unwrap_or_else(|| {
+                panic!("{label} continuation は recursive result を unwind 前に root すること")
+            });
+        let first_pop_after_result = body[result_root_pos..]
+            .find("(root_pop)")
+            .map(|pos| result_root_pos + pos)
+            .unwrap_or_else(|| {
+                panic!("{label} continuation は result root 後に roots を unwind すること")
+            });
+
+        assert!(
+            state_root_pos < done_check_pos
+                && done_check_pos < done_pop_pos
+                && done_check_pos < recursive_call_pos
+                && recursive_call_pos < recursive_arg_pos
+                && recursive_arg_pos < result_root_pos
+                && result_root_pos < first_pop_after_result,
+            "{label} continuation は state/result を GC-safe に保ったまま done/recursive branch を処理するべき"
+        );
+    }
+}
+
+#[test]
+fn test_selfhost_compile_let_chain_step_chunks_root_final_state_before_return() {
+    let source = selfhost_module("Compiler.ls");
+    let step8_body = source
+        .split("(defn compile-let-chain-step-8-with-source")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn continue-compile-let-chain-step-8-with-source")
+                .next()
+        })
+        .expect("Compiler.ls に compile-let-chain-step-8-with-source が存在すること");
+    let step64_body = source
+        .split("(defn compile-let-chain-step-64-with-source")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn compile-let-with-source").next())
+        .expect("Compiler.ls に compile-let-chain-step-64-with-source が存在すること");
+
+    for (label, body) in [("step8", step8_body), ("step64", step64_body)] {
+        let final_state_pos = body
+            .find("step8 (continue-compile-let-chain-step")
+            .unwrap_or_else(|| panic!("{label} chunk は final step8 state を作ること"));
+        let result_root_pos = body[final_state_pos..]
+            .find("(root_push step8)")
+            .map(|pos| final_state_pos + pos)
+            .unwrap_or_else(|| {
+                panic!("{label} chunk は final step8 state を返却前に root すること")
+            });
+        let root_pop_pos = body[result_root_pos..]
+            .find("(root_pop)")
+            .map(|pos| result_root_pos + pos)
+            .unwrap_or_else(|| panic!("{label} chunk は final state root を pop してから返すこと"));
+        let return_pos = body[root_pop_pos..]
+            .find("step8")
+            .map(|pos| root_pop_pos + pos)
+            .unwrap_or_else(|| panic!("{label} chunk は final step8 state を返すこと"));
+
+        assert!(
+            final_state_pos < result_root_pos
+                && result_root_pos < root_pop_pos
+                && root_pop_pos < return_pos,
+            "{label} chunk は v54 single-step diagnostic と同じく返却 state を root してから caller へ渡すべき"
+        );
+    }
 }
 
 #[test]
@@ -2888,6 +8623,613 @@ fn test_selfhost_compile_if_with_source_roots_branches_before_cond_compile() {
             && cond_compile_pos < then_compile_pos
             && then_compile_pos < else_compile_pos,
         "compile-if-with-source は cond compile 中の GC で then/else scalar が stale にならないよう先に branches を root するべき"
+    );
+}
+
+#[test]
+fn test_selfhost_compile_if_with_source_roots_intermediate_instrs_between_branches() {
+    let source = selfhost_module("Compiler.ls");
+    let if_body = source
+        .split("(defn compile-if-with-source-impl-body-impl")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn compile-let-chain-with-source").next())
+        .expect("Compiler.ls に compile-if-with-source-impl-body-impl が存在すること");
+
+    for (binding, root) in [
+        (
+            "instrs1 (compile-expr-with-source cond-expr source env ftable instrs data-ref)",
+            "(root_push instrs1)",
+        ),
+        ("instrs2 (emit-to instrs1 41 0)", "(root_push instrs2)"),
+        (
+            "instrs3 (compile-expr-with-source then-expr source env ftable instrs2 data-ref)",
+            "(root_push instrs3)",
+        ),
+        ("instrs4 (emit-to instrs3 79 0)", "(root_push instrs4)"),
+        (
+            "instrs5 (compile-expr-with-source else-expr source env ftable instrs4 data-ref)",
+            "(root_push instrs5)",
+        ),
+    ] {
+        let binding_pos = if_body
+            .find(binding)
+            .unwrap_or_else(|| panic!("source if は {binding} を持つこと"));
+        let root_pos = if_body[binding_pos..]
+            .find(root)
+            .map(|offset| binding_pos + offset)
+            .unwrap_or_else(|| panic!("source if は {root} で中間 instr を root すること"));
+        assert!(
+            binding_pos < root_pos,
+            "compile-if-with-source は branch 間の再帰 compile/emit で {binding} が stale にならないよう直後に root するべき"
+        );
+    }
+}
+
+#[test]
+fn test_selfhost_normal_setup_diagnostic_dispatch_routes_if_explicitly() {
+    let source = selfhost_module("Compiler.ls");
+    let dispatch_body = source
+        .split("(defn compile-expr-with-source-dispatch-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn compile-defn-with-source").next())
+        .expect("Compiler.ls に normal setup diagnostic dispatch が存在すること");
+
+    let if_tag_pos = dispatch_body
+        .find("(if (= tag 6)")
+        .expect("normal setup diagnostic dispatch は if tag を明示分岐すること");
+    let if_call_pos = dispatch_body
+        .find("(compile-if-with-source-normal-setup-diagnostic node source env ftable instrs data-ref)")
+        .expect("normal setup diagnostic dispatch は if 専用 diagnostic を呼ぶこと");
+    let fallback_pos = dispatch_body
+        .find("(compile-expr-with-source-dispatch node source env ftable instrs data-ref)")
+        .expect("normal setup diagnostic dispatch は通常 dispatch fallback を保持すること");
+
+    assert!(
+        if_tag_pos < if_call_pos && if_call_pos < fallback_pos,
+        "if body の source IR len=1 を切り分けるため、normal setup diagnostic は fallback 前に if 専用 diagnostic を通すべき"
+    );
+
+    let if_body = source
+        .split("(defn compile-if-with-source-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-expr-with-source-dispatch-normal-setup-diagnostic")
+                .next()
+        })
+        .expect("Compiler.ls に if normal setup diagnostic が存在すること");
+    for marker in [
+        "9000000360",
+        "9000000361",
+        "9000000362",
+        "9000000363",
+        "9000000364",
+        "9000000365",
+        "9000000366",
+    ] {
+        assert!(
+            if_body.contains(marker),
+            "if normal setup diagnostic は marker {marker} を出すこと"
+        );
+    }
+}
+
+#[test]
+fn test_selfhost_normal_setup_source_defn_diagnostic_prints_decl_body_shape() {
+    let source = selfhost_module("Compiler.ls");
+    let source_step = source
+        .split("(defn compile-defn-functions-step-with-source-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split(
+                "\n(defn continue-compile-defn-functions-step-with-source-normal-setup-diagnostic",
+            )
+            .next()
+        })
+        .expect(
+            "compile-defn-functions-step-with-source-normal-setup-diagnostic body を取り出せること",
+        );
+
+    let marker_pos = source_step.find("(print 9000000367)").expect(
+        "normal setup source-defn diagnostic は compile 前の decl/body shape marker を出すこと",
+    );
+    let compile_pos = source_step
+        .find("(let [compiled-fn (compile-defn-function-with-source-normal-setup-diagnostic decl source ftable data-ref)]")
+        .expect("normal setup source-defn diagnostic は defn を compile すること");
+
+    assert!(
+        marker_pos < compile_pos
+            && source_step.contains("decl-len (vector-length decl)")
+            && source_step.contains("param-count (vector-get decl 2)")
+            && source_step.contains("body-idx (+ 3 param-count)")
+            && source_step.contains("body-expr (if (> decl-len body-idx)")
+            && source_step
+                .contains("(print (if (> decl-len body-idx) (vector-get body-expr 0) -1))")
+            && source_step
+                .contains("(print (if (> decl-len body-idx) (vector-length body-expr) -1))"),
+        "v115 では body-expr が compile-if 前に壊れていたため、次の replay は compile boundary で decl len / param-count / body tag / body len を直接出すべき"
+    );
+}
+
+#[test]
+fn test_selfhost_normal_setup_pair_diagnostic_prints_probe_decl_body_shape() {
+    let compiler_mode = std::fs::read_to_string(workspace_root_relative_path(
+        std::path::PathBuf::from("selfhost/src/App/CompilerMode.ls"),
+    ))
+    .expect("CompilerMode.ls を読めること");
+    let pair_step = compiler_mode
+        .split("(defn compile-src-decl-pairs-step-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn continue-compile-src-decl-pairs-step-normal-setup-diagnostic")
+                .next()
+        })
+        .expect("compile-src-decl-pairs-step-normal-setup-diagnostic body を取り出せること");
+
+    let marker_pos = pair_step.find("(print-normal-setup-source-call-body-shape idx decls 3 functions data-ref)")
+        .expect("normal setup pair diagnostic は source-defn 呼び出し前に probe decl body shape を出すこと");
+    let compile_pos = pair_step
+        .find("updated-functions (compile-source-defn-functions-chunked-normal-setup-diagnostic decls 0 decls-len src ftable data-ref functions)")
+        .expect("normal setup pair diagnostic は source-defn chunked compile を呼ぶこと");
+
+    assert!(
+        marker_pos < compile_pos
+            && compiler_mode.contains("(defn print-normal-setup-source-call-body-shape")
+            && compiler_mode.contains("(print 9000000368)")
+            && compiler_mode.contains(
+                "decl (if (> decls-len probe-idx) (vector-get decls probe-idx) (vector-new 0))"
+            )
+            && compiler_mode.contains(
+                "body-expr (if (> decl-len body-idx) (vector-get decl body-idx) (vector-new 0))"
+            )
+            && compiler_mode
+                .contains("(print (if (> decl-len body-idx) (vector-get body-expr 0) -1))")
+            && compiler_mode
+                .contains("(print (if (> decl-len body-idx) (vector-length body-expr) -1))"),
+        "v116 は 0367 の時点で body shape が壊れていたため、pair caller 側でも decl[3] の shape を source-defn 呼び出し前に出すべき"
+    );
+}
+
+#[test]
+fn test_selfhost_normal_setup_source_chunk_entry_prints_probe_decl_body_shape() {
+    let source = selfhost_module("Compiler.ls");
+    let chunked = source
+        .split("(defn compile-source-defn-functions-chunked-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn continue-compile-let-chain-step-with-source")
+                .next()
+        })
+        .expect(
+            "compile-source-defn-functions-chunked-normal-setup-diagnostic body を取り出せること",
+        );
+
+    let marker_pos = chunked
+        .find("(print-source-defn-normal-setup-entry-body-shape idx decls 3 functions data-ref)")
+        .expect("source-defn chunk entry は probe decl body shape marker を出すこと");
+    let step64_pos = chunked
+        .find("state (compile-defn-functions-step-64-with-source-normal-setup-diagnostic decls idx n source ftable data-ref functions)")
+        .expect("source-defn chunk entry は step64 を呼ぶこと");
+
+    assert!(
+        marker_pos < step64_pos
+            && source.contains("(defn print-source-defn-normal-setup-entry-body-shape")
+            && source.contains("(print 9000000369)")
+            && source.contains(
+                "decl (if (> decls-len probe-idx) (vector-get decls probe-idx) (vector-new 0))"
+            )
+            && source.contains(
+                "body-expr (if (> decl-len body-idx) (vector-get decl body-idx) (vector-new 0))"
+            )
+            && source.contains("(print (if (> decl-len body-idx) (vector-get body-expr 0) -1))")
+            && source.contains("(print (if (> decl-len body-idx) (vector-length body-expr) -1))"),
+        "0367 が壊れているため、source-defn chunk entry でも decl[3] の shape を step64 前に採取して CompilerMode->Compiler 境界を切るべき"
+    );
+}
+
+#[test]
+fn test_selfhost_normal_setup_direct_module_parse_prints_probe_decl_body_shape() {
+    let compiler_mode = std::fs::read_to_string(workspace_root_relative_path(
+        std::path::PathBuf::from("selfhost/src/App/CompilerMode.ls"),
+    ))
+    .expect("CompilerMode.ls を読めること");
+    let normal_setup = compiler_mode
+        .split("(defn compile-file-functions-with-cache-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn print-normal-setup-pairs-state-marker")
+                .next()
+        })
+        .expect("compile-file-functions-with-cache-normal-setup-diagnostic body を取り出せること");
+
+    let marker_pos = normal_setup
+        .find("(print-normal-setup-direct-module-parse-body-shape path 3)")
+        .expect(
+            "normal setup diagnostic は pair 生成前に direct module parse body shape を出すこと",
+        );
+    let pairs_pos = normal_setup
+        .find("all-pairs (compile-file-pairs-with-cache path cache-ref parse-count-ref)")
+        .expect("normal setup diagnostic は compile-file-pairs-with-cache を呼ぶこと");
+
+    assert!(
+        marker_pos < pairs_pos
+            && compiler_mode.contains("(defn print-normal-setup-direct-module-parse-body-shape")
+            && compiler_mode.contains("(print 9000000370)")
+            && compiler_mode.contains("module-name \"App.ModuleResolver\"")
+            && compiler_mode.contains("decls (parse-program module-src)")
+            && compiler_mode.contains(
+                "decl (if (> decls-len probe-idx) (vector-get decls probe-idx) (vector-new 0))"
+            )
+            && compiler_mode.contains(
+                "body-expr (if (> decl-len body-idx) (vector-get decl body-idx) (vector-new 0))"
+            ),
+        "v117 では pair caller 時点で decl[3] body が壊れていたため、normal setup は import/cache 経路へ入る前に App.ModuleResolver direct parse の body shape を採取するべき"
+    );
+}
+
+#[test]
+fn test_selfhost_normal_setup_direct_module_parse_splits_defn_return_and_append_shape() {
+    let compiler_mode = std::fs::read_to_string(workspace_root_relative_path(
+        std::path::PathBuf::from("selfhost/src/App/CompilerMode.ls"),
+    ))
+    .expect("CompilerMode.ls を読めること");
+    let direct_module = compiler_mode
+        .split("(defn print-normal-setup-direct-module-parse-body-shape")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn compile-file-functions-payload-with-cache-normal-setup-diagnostic")
+                .next()
+        })
+        .expect("direct module normal setup diagnostic helper を取り出せること");
+
+    assert!(
+        direct_module.contains("(print-normal-setup-direct-module-defn3-parse-shape module-src)")
+            && compiler_mode.contains("(defn print-normal-setup-direct-module-defn3-parse-shape")
+            && compiler_mode.contains("step0 (parse-program-step-v3 spans pos-ref module-src result0)")
+            && compiler_mode.contains("step1 (parse-program-step-v3 spans pos-ref module-src result1)")
+            && compiler_mode.contains("step2 (parse-program-step-v3 spans pos-ref module-src result2)")
+            && compiler_mode.contains("expr (parse-defn-v3 spans pos-ref module-src)")
+            && compiler_mode.contains("next-result (vector-push-single-rooted-v3 result3 expr)")
+            && compiler_mode.contains("(print-progress-decl-body-shape 9000000371 3 expr)")
+            && compiler_mode.contains("(print-progress-decl-body-shape 9000000372 (vector-length next-result) appended-decl)"),
+        "v118 で direct parse final result も壊れていたため、次は parse-defn-v3 return と program append 後のどちらで decl[3] body が崩れるかを分けるべき"
+    );
+}
+
+#[test]
+fn test_selfhost_normal_setup_direct_module_parse_splits_body_parse_and_finalize_shape() {
+    let compiler_mode = std::fs::read_to_string(workspace_root_relative_path(
+        std::path::PathBuf::from("selfhost/src/App/CompilerMode.ls"),
+    ))
+    .expect("CompilerMode.ls を読めること");
+    let direct_module = compiler_mode
+        .split("(defn print-normal-setup-direct-module-defn3-parse-shape")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn print-normal-setup-direct-module-parse-body-shape")
+                .next()
+        })
+        .expect("direct defn3 normal setup diagnostic helper を取り出せること");
+
+    assert!(
+        direct_module.contains(
+            "(print-normal-setup-defn-body-finalize-shape spans module-src (ref-get pos-ref))"
+        ) && compiler_mode.contains("(defn print-normal-setup-defn-body-finalize-shape")
+            && compiler_mode.contains("(print 9000000373)")
+            && compiler_mode.contains("(print 9000000374)")
+            && compiler_mode.contains("(print-progress-decl-body-shape 9000000375 1 parsed-body)")
+            && compiler_mode.contains("(print-progress-decl-body-shape 9000000376 1 parsed-body)")
+            && compiler_mode.contains("parsed-defn-body (parse-expr-v3 spans pos-ref src)")
+            && compiler_mode
+                .contains("parsed-body (finalize-defn-body-v3 parsed-defn-body defn-node)")
+            && compiler_mode
+                .contains("(p-advance pos-ref)\n        (p-advance pos-ref)\n        (let [ns"),
+        "v119 で parse-defn-v3 direct return が壊れていたため、body parse 直後と finalize 後のどちらで body slot が崩れるかを分けるべき"
+    );
+}
+
+#[test]
+fn test_selfhost_normal_setup_direct_module_parse_splits_expr_dispatch_and_let_shape() {
+    let compiler_mode = std::fs::read_to_string(workspace_root_relative_path(
+        std::path::PathBuf::from("selfhost/src/App/CompilerMode.ls"),
+    ))
+    .expect("CompilerMode.ls を読めること");
+    let body_finalize = compiler_mode
+        .split("(defn print-normal-setup-defn-body-finalize-shape")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn print-normal-setup-direct-module-defn3-parse-shape")
+                .next()
+        })
+        .expect("body finalize normal setup diagnostic helper を取り出せること");
+
+    assert!(
+        body_finalize
+            .contains("(print-normal-setup-body-dispatch-shape spans src (ref-get pos-ref))")
+            && compiler_mode.contains("(defn print-normal-setup-body-dispatch-shape")
+            && compiler_mode.contains("(defn print-progress-expr-shape")
+            && compiler_mode.contains("(print 9000000377)")
+            && compiler_mode.contains("(print 9000000378)")
+            && compiler_mode.contains("direct-let (parse-let-v3 spans let-pos src)")
+            && compiler_mode
+                .contains("(print-progress-expr-shape 9000000379 (ref-get let-pos) direct-let)")
+            && compiler_mode.contains("sexp-node (parse-sexp-v3 spans sexp-pos src)")
+            && compiler_mode
+                .contains("(print-progress-expr-shape 9000000380 (ref-get sexp-pos) sexp-node)"),
+        "v121 で body parse 直後に tag=0/len=126 へ崩れたため、parse-expr の S 式 dispatch と parse-let 直呼びのどちらで body shape が崩れるかを分けるべき"
+    );
+}
+
+#[test]
+fn test_selfhost_normal_setup_direct_module_parse_splits_parse_let_internals() {
+    let compiler_mode = std::fs::read_to_string(workspace_root_relative_path(
+        std::path::PathBuf::from("selfhost/src/App/CompilerMode.ls"),
+    ))
+    .expect("CompilerMode.ls を読めること");
+    let parse_let_diagnostic = compiler_mode
+        .split("(defn print-normal-setup-parse-let-internals")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn print-normal-setup-body-dispatch-shape")
+                .next()
+        })
+        .expect("parse-let normal setup diagnostic helper を取り出せること");
+
+    assert!(
+        compiler_mode.contains("(print-normal-setup-parse-let-internals spans src body-start-pos)")
+            && parse_let_diagnostic.contains("(print 9000000381)")
+            && parse_let_diagnostic.contains("(print 9000000382)")
+            && parse_let_diagnostic
+                .contains("(print-progress-expr-shape 9000000383 (ref-get pos-ref) init)")
+            && parse_let_diagnostic.contains("(print 9000000384)")
+            && parse_let_diagnostic
+                .contains("(print-progress-expr-shape 9000000385 (ref-get pos-ref) init2)")
+            && parse_let_diagnostic
+                .contains("(print-progress-expr-shape 9000000386 (ref-get pos-ref) rest-body)")
+            && parse_let_diagnostic
+                .contains("(print-progress-expr-shape 9000000387 (ref-get pos-ref) inner)")
+            && parse_let_diagnostic
+                .contains("(print-progress-expr-shape 9000000388 (ref-get pos-ref) final-result)"),
+        "v122 で direct parse-let-v3 が tag=0/len=126 を返したため、first binding init、second binding init、body parse、inner/final let assembly のどこで崩れるかを分けるべき"
+    );
+}
+
+#[test]
+fn test_selfhost_normal_setup_parse_let_diagnostic_roots_final_result_across_expect() {
+    let compiler_mode = std::fs::read_to_string(workspace_root_relative_path(
+        std::path::PathBuf::from("selfhost/src/App/CompilerMode.ls"),
+    ))
+    .expect("CompilerMode.ls を読めること");
+    let parse_let_diagnostic = compiler_mode
+        .split("(defn print-normal-setup-parse-let-internals")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn print-normal-setup-body-dispatch-shape")
+                .next()
+        })
+        .expect("parse-let normal setup diagnostic helper を取り出せること");
+
+    let multi_result_pos = parse_let_diagnostic
+        .find("result (vector-push-quad-rooted-v3 (vector-new 8) 7 nh init inner)")
+        .expect("normal setup parse-let diagnostic は outer let result を作ること");
+    let multi_finish_pos = parse_let_diagnostic[multi_result_pos..]
+        .find("(finish-parse-let-result-after-expect-v3 spans pos-ref result)")
+        .expect("normal setup parse-let diagnostic は result を finish helper へ渡すこと")
+        + multi_result_pos;
+    let multi_marker_pos = parse_let_diagnostic[multi_finish_pos..]
+        .find("(print-progress-expr-shape 9000000388 (ref-get pos-ref) final-result)")
+        .expect("normal setup parse-let diagnostic は final result shape を出すこと")
+        + multi_finish_pos;
+
+    assert!(
+        multi_result_pos < multi_finish_pos && multi_finish_pos < multi_marker_pos,
+        "v123 で inner let は正常、outer let final result だけが壊れたため、diagnostic helper も production と同じく result を root してから p-expect を跨ぐべき"
+    );
+}
+
+#[test]
+fn test_selfhost_normal_setup_parse_let_diagnostic_reads_final_result_from_ref_after_expect() {
+    let parser = selfhost_module("Parser.ls");
+    let finish_body = parser
+        .split("(defn finish-parse-let-result-after-expect-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn parse-let-after-first-binding-v3").next())
+        .expect("Parser.ls に finish-parse-let-result-after-expect-v3 が存在すること");
+    let compiler_mode = std::fs::read_to_string(workspace_root_relative_path(
+        std::path::PathBuf::from("selfhost/src/App/CompilerMode.ls"),
+    ))
+    .expect("CompilerMode.ls を読めること");
+    let parse_let_diagnostic = compiler_mode
+        .split("(defn print-normal-setup-parse-let-internals")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn print-normal-setup-body-dispatch-shape")
+                .next()
+        })
+        .expect("parse-let normal setup diagnostic helper を取り出せること");
+
+    let result_pos = parse_let_diagnostic
+        .find("result (vector-push-quad-rooted-v3 (vector-new 8) 7 nh init inner)")
+        .expect("normal setup parse-let diagnostic は outer let result を作ること");
+    let finish_call_pos = parse_let_diagnostic[result_pos..]
+        .find("(finish-parse-let-result-after-expect-v3 spans pos-ref result)")
+        .expect("normal setup parse-let diagnostic は result を finish helper へ渡すこと")
+        + result_pos;
+    let result_ref_pos = finish_body
+        .find("result-ref (ref-new result)")
+        .expect("finish helper は result を ref に退避すること");
+    let result_ref_root_pos = finish_body[result_ref_pos..]
+        .find("(root_push result-ref)")
+        .expect("finish helper は result-ref を root すること")
+        + result_ref_pos;
+    let expect_pos = finish_body[result_ref_pos..]
+        .find("(p-expect spans pos-ref 1)")
+        .expect("finish helper は closing paren を消費すること")
+        + result_ref_pos;
+    let final_result_pos = finish_body[expect_pos..]
+        .find("final-result (ref-get result-ref)")
+        .expect("finish helper は p-expect 後に ref から result を読み戻すこと")
+        + expect_pos;
+    let marker_pos = parse_let_diagnostic[finish_call_pos..]
+        .find("(print-progress-expr-shape 9000000388 (ref-get pos-ref) final-result)")
+        .expect("normal setup parse-let diagnostic は読み戻した final-result の shape を出すこと")
+        + finish_call_pos;
+
+    assert!(
+        result_pos < finish_call_pos
+            && result_ref_pos < result_ref_root_pos
+            && result_ref_root_pos < expect_pos
+            && expect_pos < final_result_pos
+            && finish_call_pos < marker_pos,
+        "v124 で result を root しても p-expect 後の local が clobber されたため、diagnostic mirror も ref 経由で final-result を出すべき"
+    );
+}
+
+#[test]
+fn test_selfhost_parser_parse_let_reads_final_result_from_ref_after_expect() {
+    let source = selfhost_module("Parser.ls");
+    let finish_body = source
+        .split("(defn finish-parse-let-result-after-expect-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn parse-let-after-first-binding-v3").next())
+        .expect("Parser.ls に finish-parse-let-result-after-expect-v3 が存在すること");
+    let after_first_body = source
+        .split("(defn parse-let-after-first-binding-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn parse-let-v3").next())
+        .expect("Parser.ls に parse-let-after-first-binding-v3 が存在すること");
+
+    for (branch_name, result_text) in [
+        (
+            "single binding",
+            "result (vector-push-quad-rooted-v3 (vector-new 8) 7 nh init body)",
+        ),
+        (
+            "multi binding",
+            "result (vector-push-quad-rooted-v3 (vector-new 8) 7 nh init inner)",
+        ),
+    ] {
+        let result_pos = after_first_body
+            .find(result_text)
+            .unwrap_or_else(|| panic!("parse-let {branch_name} は final result を作ること"));
+        let finish_call_pos = after_first_body[result_pos..]
+            .find("(finish-parse-let-result-after-expect-v3 spans pos-ref result)")
+            .unwrap_or_else(|| {
+                panic!("parse-let {branch_name} は final result を finish helper へ渡すこと")
+            })
+            + result_pos;
+        let result_ref_pos = finish_body
+            .find("result-ref (ref-new result)")
+            .unwrap_or_else(|| {
+                panic!("finish helper は p-expect 前に final result を ref に退避すること")
+            });
+        let result_ref_root_pos = finish_body[result_ref_pos..]
+            .find("(root_push result-ref)")
+            .unwrap_or_else(|| {
+                panic!("finish helper は p-expect 前に result-ref を root すること")
+            })
+            + result_ref_pos;
+        let expect_pos = finish_body[result_ref_pos..]
+            .find("(p-expect spans pos-ref 1)")
+            .unwrap_or_else(|| panic!("finish helper は closing paren を消費すること"))
+            + result_ref_pos;
+        let final_result_pos = finish_body[expect_pos..]
+            .find("final-result (ref-get result-ref)")
+            .unwrap_or_else(|| {
+                panic!("finish helper は p-expect 後に ref から final result を読み戻すこと")
+            })
+            + expect_pos;
+
+        assert!(
+            result_pos < finish_call_pos
+                && result_ref_pos < result_ref_root_pos
+                && result_ref_root_pos < expect_pos
+                && expect_pos < final_result_pos,
+            "parse-let {branch_name} は Linux x86 native call 境界で result local が clobber されても AST を返せるよう、ref 経由で final result を読み戻すべき"
+        );
+    }
+}
+
+#[test]
+fn test_selfhost_parser_parse_let_roots_returned_result_before_unwinding_bindings() {
+    let source = selfhost_module("Parser.ls");
+    let after_first_body = source
+        .split("(defn parse-let-after-first-binding-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn parse-let-v3").next())
+        .expect("Parser.ls に parse-let-after-first-binding-v3 が存在すること");
+    let first_binding_body = source
+        .split("(defn parse-let-first-binding-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn parse-let-rest-rooted-v3").next())
+        .expect("Parser.ls に parse-let-first-binding-v3 が存在すること");
+
+    let init_slot_pos = after_first_body
+        .find("init-slot (root_push init)")
+        .expect("parse-let-after-first-binding は init root slot を保持すること");
+    for (branch_name, result_text) in [
+        (
+            "single binding",
+            "final-result (finish-parse-let-result-after-expect-v3 spans pos-ref result)",
+        ),
+        (
+            "multi binding",
+            "final-result (finish-parse-let-result-after-expect-v3 spans pos-ref result)",
+        ),
+    ] {
+        let result_pos = after_first_body.find(result_text).unwrap_or_else(|| {
+            panic!("parse-let {branch_name} は final-result を local 化すること")
+        });
+        let result_root_pos = after_first_body[result_pos..]
+            .find("(root_push final-result)")
+            .map(|offset| offset + result_pos)
+            .unwrap_or_else(|| {
+                panic!("parse-let {branch_name} は final-result を unwind 前に root すること")
+            });
+        let root_set_pos = after_first_body[result_pos..]
+            .find("(root_set init-slot final-result)")
+            .map(|offset| offset + result_pos)
+            .unwrap_or_else(|| {
+                panic!("parse-let {branch_name} は final-result を init slot に退避すること")
+            });
+        let first_pop_after_result = after_first_body[result_pos..]
+            .find("(root_pop)")
+            .map(|offset| offset + result_pos)
+            .unwrap_or_else(|| panic!("parse-let {branch_name} は roots を unwind すること"));
+
+        assert!(
+            init_slot_pos < result_pos
+                && result_pos < result_root_pos
+                && result_root_pos < root_set_pos
+                && root_set_pos < first_pop_after_result,
+            "parse-let {branch_name} は final-result を root slot に退避してから binding roots を unwind するべき"
+        );
+    }
+
+    let first_init_slot_pos = first_binding_body
+        .find("init-slot (root_push init)")
+        .expect("parse-let-first-binding は init root slot を保持すること");
+    let parsed_pos = first_binding_body
+        .find("parsed (parse-let-after-first-binding-v3 spans pos-ref src nh init)")
+        .expect("parse-let-first-binding は parsed let result を local 化すること");
+    let parsed_root_pos = first_binding_body[parsed_pos..]
+        .find("(root_push parsed)")
+        .map(|offset| offset + parsed_pos)
+        .expect("parse-let-first-binding は parsed result を unwind 前に root すること");
+    let parsed_root_set_pos = first_binding_body[parsed_pos..]
+        .find("(root_set init-slot parsed)")
+        .map(|offset| offset + parsed_pos)
+        .expect("parse-let-first-binding は parsed result を init slot に退避すること");
+    let first_pop_after_parsed = first_binding_body[parsed_pos..]
+        .find("(root_pop)")
+        .map(|offset| offset + parsed_pos)
+        .expect("parse-let-first-binding は roots を unwind すること");
+
+    assert!(
+        first_init_slot_pos < parsed_pos
+            && parsed_pos < parsed_root_pos
+            && parsed_root_pos < parsed_root_set_pos
+            && parsed_root_set_pos < first_pop_after_parsed,
+        "parse-let-first-binding は parse-let-after-first-binding の返却 AST を root slot に退避してから init root を unwind するべき"
     );
 }
 
@@ -3327,12 +9669,65 @@ fn test_native_codegen_x86_control_else_fallback_appends_in_helper() {
         .expect("NativeCodegen.ls に generate-native-control-instr-bundle-loop-x86-with-context が存在すること");
 
     assert!(
-        source.contains("(defn append-control-else-instr-x86 [result meta offsets idx]")
+        source.contains("(defn append-control-else-instr-x86 [result ir-func meta offsets idx]")
             && control_loop_body.contains("(if (= opcode 79)")
             && control_loop_body
-                .contains("(append-control-else-instr-x86 result meta offsets idx)")
+                .contains("(append-control-else-instr-x86 result ir-func meta offsets idx)")
             && !control_loop_body.contains("(if (= (direct-append-x86-opcode opcode) 13)"),
         "x86 else control fallback は direct selector を増やさず、小さい helper 内で生成+append するべき"
+    );
+}
+
+#[test]
+fn test_native_codegen_control_else_target_falls_back_to_forward_end_scan() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let else_scan_body = source
+        .split("(defn find-control-end-from-else [ir-func idx len depth]")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("Else fallback 用の control end 前方探索 helper が必要");
+    let else_target_body = source
+        .split("(defn control-else-target-offset [ir-func meta offsets else-idx]")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("Else target offset helper が必要");
+    let emit_else_body = source
+        .split("(defn emit-control-else-x86 [ir-func meta offsets idx]")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("x86 Else emit は ir-func を受け取るべき");
+    let aarch64_emit_body = source
+        .split("(defn emit-control-instr-aarch64 [ir-func meta offsets idx]")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("aarch64 control emit が必要");
+
+    assert!(
+        else_scan_body.contains("(if (= (is-control-start-opcode opcode) 1)")
+            && else_scan_body
+                .contains("(find-control-end-from-else ir-func (+ idx 1) len (+ depth 1))")
+            && else_scan_body.contains("(if (= opcode 43)")
+            && else_scan_body.contains("(if (= depth 0)")
+            && else_scan_body.contains("idx")
+            && else_scan_body
+                .contains("(find-control-end-from-else ir-func (+ idx 1) len (- depth 1))"),
+        "Else fallback は nested control を数えながら対応する End を前方探索するべき"
+    );
+    assert!(
+        else_target_body.contains("end-idx (map-get-index (control-flow-end-map meta) else-idx)")
+            && else_target_body.contains("(if (< end-idx 0)")
+            && else_target_body.contains(
+                "(find-control-end-from-else ir-func (+ else-idx 1) (vector-length ir-func) 0)"
+            )
+            && else_target_body.contains("(vector-get offsets (+ fallback-end-idx 1))")
+            && else_target_body.contains("(vector-get offsets (+ end-idx 1))"),
+        "Else target helper は end-map の else idx entry が欠けた場合だけ forward scan fallback を使うべき"
+    );
+    assert!(
+        emit_else_body
+            .contains("target-offset (control-else-target-offset ir-func meta offsets idx)")
+            && aarch64_emit_body.contains("(control-else-target-offset ir-func meta offsets idx)"),
+        "x86/aarch64 の Else emit は stage3 で end-map entry が欠けても target=offsets[0] に落ちない fallback helper を使うべき"
     );
 }
 
@@ -3364,8 +9759,8 @@ fn test_native_codegen_x86_drop_direct_appends_before_late_selector() {
             && control_loop_body
                 .contains("(append-drop-bundle-x86 result frame-base-slot-count current-depth)")
             && !control_loop_body.contains("(if (if (= opcode 44) (<= current-depth 2) false)")
-            && control_loop_body.contains("(+ idx 1)")
-            && control_loop_body.contains("(- remaining 1)"),
+            && control_loop_body
+                .contains("(continue-native-control-instr-bundle-loop-x86 ctx idx remaining)"),
         "stage1 が stage2 を生成するとき、drop は深さに関係なく遅い selector へ戻さず早い direct append 分岐で処理するべき"
     );
 }
@@ -3389,10 +9784,7 @@ fn test_native_codegen_x86_root_opcodes_emit_real_bytes_and_sizes() {
     let size_body = source
         .split("(defn native-instr-size-x86")
         .nth(1)
-        .and_then(|tail| {
-            tail.split("(defn native-function-body-size-x86-loop-with-context")
-                .next()
-        })
+        .and_then(|tail| tail.split("(defn x86-body-size-loop-ctx").next())
         .expect("NativeCodegen.ls に x86 size calculator が存在すること");
     let root_set_body = source
         .split("(defn emit-root-set-bundle-x86")
@@ -3511,157 +9903,6 @@ fn test_linux_x86_owner_decl_diagnostic_is_env_driven() {
             && diagnostic_body.contains("register-all-pairs")
             && diagnostic_body.contains("(compile-file-pairs-with-cache \"src/App/Seed.ls\""),
         "Linux x86 owner decl diagnostic は function index を env で指定して actual Seed graph を調べられるべき"
-    );
-}
-
-#[test]
-#[ignore]
-fn test_e2e_selfhost_main_linux_x86_actual_seed_named_function_indices_diagnostic() {
-    let seed_source = linux_x86_representative_actual_stage23_seed_source();
-    let escaped_seed_source = escape_lsharp_string(&seed_source);
-    let harness = format!(
-        r#"(module App.HarnessMain)
-(import App.CompilerMode)
-(import Backend.Wasm.CompilerBase)
-(import Syntax.Parser)
-
-(defn make-owner-result [pair-idx decl-idx decl-hash next-func-idx]
-  (vector-push
-    (vector-push
-      (vector-push
-        (vector-push (vector-new 4) pair-idx)
-        decl-idx)
-      decl-hash)
-    next-func-idx))
-
-(defn find-owner-decl-loop [decls decl-idx decl-len current-func-idx target-func-idx pair-idx]
-  (if (>= decl-idx decl-len)
-    (make-owner-result -1 -1 -1 current-func-idx)
-    (let [decl (vector-get decls decl-idx)]
-      (if (= (vector-get decl 0) 20)
-        (if (= current-func-idx target-func-idx)
-          (make-owner-result pair-idx decl-idx (vector-get decl 1) (+ current-func-idx 1))
-          (find-owner-decl-loop decls (+ decl-idx 1) decl-len (+ current-func-idx 1) target-func-idx pair-idx))
-        (find-owner-decl-loop decls (+ decl-idx 1) decl-len current-func-idx target-func-idx pair-idx)))))
-
-(defn find-owner-pair-loop [pairs pair-idx pair-len current-func-idx target-func-idx]
-  (if (>= pair-idx pair-len)
-    (make-owner-result -1 -1 -1 current-func-idx)
-    (let [pair (vector-get pairs pair-idx)
-          decls (vector-get pair 1)
-          owner (find-owner-decl-loop decls 0 (vector-length decls) current-func-idx target-func-idx pair-idx)
-          owner-pair (vector-get owner 0)
-          next-func-idx (vector-get owner 3)]
-      (if (>= owner-pair 0)
-        owner
-        (find-owner-pair-loop pairs (+ pair-idx 1) pair-len next-func-idx target-func-idx)))))
-
-(defn print-named-index [pairs ftable functions-len reg-next-func-idx name]
-  (let [hash (name-hash name 0 (string-length name))
-        func-idx (ftable-lookup ftable hash)
-        emitted-limit (+ 10 functions-len)
-        owner (find-owner-pair-loop pairs 0 (vector-length pairs) 10 func-idx)]
-    (do
-      (print hash)
-      (print func-idx)
-      (print (if (< func-idx emitted-limit) 1 0))
-      (print (vector-get owner 0))
-      (print (vector-get owner 1))
-      (print (vector-get owner 2)))))
-
-(defn main []
-  (let [cache-ref (ref-new (map-new))
-        parse-count-ref (ref-new 0)
-        _ (write-file "src/App/Seed.ls" "{escaped_seed_source}")
-        pairs (compile-file-pairs-with-cache "src/App/Seed.ls" cache-ref parse-count-ref)
-        reg-result (register-all-pairs pairs 0 (vector-length pairs) (ftable-new) 10)
-        ftable (vector-get reg-result 0)
-        reg-next-func-idx (vector-get reg-result 1)
-        data-ref (ref-new (vector-new 8))
-        functions (compile-all-src-decl-pairs-chunked pairs 0 (vector-length pairs) ftable data-ref (vector-new 8))
-        functions-len (vector-length functions)]
-    (do
-      (print (vector-length pairs))
-      (print functions-len)
-      (print reg-next-func-idx)
-      (print-named-index pairs ftable functions-len reg-next-func-idx "native-function-size-x86")
-      (print-named-index pairs ftable functions-len reg-next-func-idx "native-function-body-size-x86-loop-with-context")
-      (print-named-index pairs ftable functions-len reg-next-func-idx "native-local-stack-bytes-with-window-x86")
-      (print-named-index pairs ftable functions-len reg-next-func-idx "native-total-slot-count-with-window-x86")
-      (print-named-index pairs ftable functions-len reg-next-func-idx "native-value-window-spill-slot-count-x86")
-      (print-named-index pairs ftable functions-len reg-next-func-idx "native-instr-size-x86")
-      (print-named-index pairs ftable functions-len reg-next-func-idx "opcode-stack-delta")
-      0)))"#,
-        escaped_seed_source = escaped_seed_source
-    );
-    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
-        try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
-            "linux-x86-actual-seed-named-function-indices-diagnostic",
-            SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
-            "src/App/HarnessMain.ls",
-            &harness,
-            &[],
-        )
-    })
-    .expect("Linux x86 actual seed named function indices diagnostic 実行に失敗");
-    let lines = parse_numeric_lines(&output);
-    println!("Linux x86 actual seed named function index lines: {lines:?}");
-    assert!(
-        lines.len() >= 45,
-        "Linux x86 actual seed named function indices diagnostic 出力が不足: {lines:?}"
-    );
-    let functions_len = lines[1];
-    let reg_next_func_idx = lines[2];
-    assert!(functions_len > 0, "functions-len が 0: {lines:?}");
-    assert!(
-        reg_next_func_idx >= 10,
-        "reg-next-func-idx が import prefix 未満: {lines:?}"
-    );
-    for pair in lines[3..].chunks_exact(6) {
-        assert!(
-            pair[1] >= 10,
-            "named function が ftable に見つからない: hash={} index={} lines={lines:?}",
-            pair[0],
-            pair[1]
-        );
-        assert!(
-            pair[2] == 0 || pair[2] == 1,
-            "emitted 範囲 flag が 0/1 ではない: chunk={pair:?} lines={lines:?}"
-        );
-        assert!(
-            pair[3] >= 0 && pair[4] >= 0,
-            "named function owner pair/decl が見つからない: chunk={pair:?} lines={lines:?}"
-        );
-        assert_eq!(
-            pair[5], pair[0],
-            "named function owner hash が lookup hash と一致しない: chunk={pair:?} lines={lines:?}"
-        );
-    }
-}
-
-#[test]
-fn test_linux_x86_named_function_indices_diagnostic_covers_size_helpers() {
-    let source = include_str!("selfhost_native_stage_chain.rs");
-    let diagnostic_body = source
-        .split(
-            "\nfn test_e2e_selfhost_main_linux_x86_actual_seed_named_function_indices_diagnostic",
-        )
-        .nth(1)
-        .and_then(|tail| tail.split("#[test]").next())
-        .expect("Linux x86 named function indices diagnostic が存在すること");
-
-    assert!(
-        diagnostic_body.contains("native-function-size-x86")
-            && diagnostic_body.contains("native-function-body-size-x86-loop-with-context")
-            && diagnostic_body.contains("native-local-stack-bytes-with-window-x86")
-            && diagnostic_body.contains("native-instr-size-x86")
-            && diagnostic_body.contains("ftable-lookup")
-            && diagnostic_body.contains("name-hash")
-            && diagnostic_body.contains("compile-all-src-decl-pairs-chunked")
-            && diagnostic_body.contains("find-owner-pair-loop")
-            && diagnostic_body.contains("reg-next-func-idx")
-            && diagnostic_body.contains("functions-len"),
-        "Linux x86 named function indices diagnostic は size/layout helper の actual function index と emitted function vector 範囲を同時に出力できるべき"
     );
 }
 
@@ -3854,36 +10095,286 @@ fn test_native_codegen_x86_one_arg_user_call_avoids_rel_wrapper_call() {
                 .next()
         })
         .expect("NativeCodegen.ls に x86 opcode 40 call helper が存在すること");
-    let call_bytes_branch = opcode_call_branch
-        .split("(if (= target-param-count 0)")
+    let one_to_nine_helper = source
+        .split("(defn emit-call-bundle-x86-one-to-nine")
         .nth(1)
-        .expect("x86 opcode 40 branch に call-bytes 分岐が存在すること");
-    let one_arg_branch = call_bytes_branch
+        .and_then(|tail| tail.split("(defn codegen-x86-opcode-call-bundle").next())
+        .expect("NativeCodegen.ls に x86 1..9 call helper が存在すること");
+    let one_arg_branch = one_to_nine_helper
         .split("(if (= target-param-count 1)")
         .nth(1)
-        .and_then(|tail| tail.split("(if (= target-param-count 3)").next())
-        .expect("x86 opcode 40 branch に one-arg user call 専用分岐が存在すること");
+        .and_then(|tail| tail.split("(emit-zero-arg-call-x86").next())
+        .expect("x86 1..9 helper に one-arg user call 専用分岐が存在すること");
+    let opcode_one_arg_branch = opcode_call_branch
+        .split("(if (= target-param-count 1)")
+        .nth(1)
+        .and_then(|tail| tail.split("(if (= target-param-count 2)").next())
+        .expect("x86 opcode 40 helper に one-arg user call 専用分岐が存在すること");
 
     assert!(
-        one_arg_branch.contains("call-rel-bytes")
-            && one_arg_branch.contains("call-rel-bytes")
+        opcode_one_arg_branch
+            .contains("(emit-one-arg-call-x86-core-with-call-bytes call-rel-bytes)")
+            && !opcode_one_arg_branch.contains("emit-call-bundle-x86-one-to-nine")
+            && one_arg_branch.contains("call-rel-bytes (emit-call-rel32 rel)")
+            && one_arg_branch
+                .contains("(emit-one-arg-call-x86-core-with-call-bytes call-rel-bytes)")
             && !one_arg_branch.contains("target-offset")
-            && !one_arg_branch.contains("emit-call-bundle-x86-one-to-nine"),
-        "x86 one-arg user call は outer root 済み rel32 bytes を使い、operand/rel local wrapper を避けるべき"
+            && !one_arg_branch.contains("(vector-new 10)"),
+        "x86 opcode 40 one-arg user call は本体側で outer root 済み call-rel-bytes を root-safe core helper へ直接渡し、1..9 helper の戻り値を跨いで result vector を壊さないようにするべき"
+    );
+}
+
+#[test]
+fn test_native_codegen_x86_one_arg_call_core_roots_parts_before_concat() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let one_arg_core = source
+        .split("(defn emit-one-arg-call-x86-core-with-call-bytes")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn emit-three-arg-call-x86-core").next())
+        .expect("NativeCodegen.ls に one-arg x86 call core helper が存在すること");
+    let mov_bind_pos = one_arg_core
+        .find("mov-rdi (emit-mov-rdi-rax)")
+        .expect("one-arg call core は mov-rdi bytes を local に置くこと");
+    let mov_root_pos = one_arg_core
+        .find("(root_push mov-rdi)")
+        .expect("one-arg call core は mov-rdi bytes を root すること");
+    let push_bind_pos = one_arg_core
+        .find("push-rcx (emit-push-rcx)")
+        .expect("one-arg call core は push-rcx bytes を local に置くこと");
+    let push_root_pos = one_arg_core
+        .find("(root_push push-rcx)")
+        .expect("one-arg call core は push-rcx bytes を root すること");
+    let call_root_pos = one_arg_core
+        .find("(root_push call-rel-bytes)")
+        .expect("one-arg call core は call-rel-bytes を root すること");
+    let call_root_slot_pos = one_arg_core
+        .find("call-rel-slot (root_push call-rel-bytes)")
+        .expect("one-arg call core は call-rel-bytes の root slot を保持すること");
+    let pop_bind_pos = one_arg_core
+        .find("pop-rcx (emit-pop-rcx)")
+        .expect("one-arg call core は pop-rcx bytes を local に置くこと");
+    let pop_root_pos = one_arg_core
+        .find("(root_push pop-rcx)")
+        .expect("one-arg call core は pop-rcx bytes を root すること");
+    let concat_pos = one_arg_core
+        .find("(concat-four-byte-vectors-rooted mov-rdi push-rcx call-rel-bytes pop-rcx)")
+        .expect("one-arg call core は root 済み parts を concat すること");
+    let result_bind_pos = one_arg_core
+        .find("result (concat-four-byte-vectors-rooted mov-rdi push-rcx call-rel-bytes pop-rcx)")
+        .expect("one-arg call core は concat result を local に置くこと");
+    let result_store_pos = one_arg_core
+        .find("(root_set call-rel-slot result)")
+        .expect("one-arg call core は result を既存 root slot に退避すること");
+    let first_pop_after_store_pos = result_store_pos
+        + one_arg_core[result_store_pos..]
+            .find("(root_pop)")
+            .expect("one-arg call core は roots を unwind すること");
+    let final_return_pos = one_arg_core
+        .rfind("result")
+        .expect("one-arg call core は result を返すこと");
+
+    assert!(
+        call_root_slot_pos <= call_root_pos
+            && call_root_pos < mov_bind_pos
+            && mov_bind_pos < mov_root_pos
+            && mov_root_pos < push_bind_pos
+            && push_bind_pos < push_root_pos
+            && push_root_pos < pop_bind_pos
+            && pop_bind_pos < pop_root_pos
+            && pop_root_pos < concat_pos
+            && result_bind_pos < concat_pos
+            && concat_pos < result_store_pos
+            && result_store_pos < first_pop_after_store_pos
+            && first_pop_after_store_pos < final_return_pos
+            && !one_arg_core.contains("(concat-four-byte-vectors-rooted\n    (emit-mov-rdi-rax)"),
+        "x86 one-arg call core は native stage2 の opcode 40 row 生成中に後続 part 評価と root unwind で一時 byte vector / result vector を失わないよう、call-rel-bytes と各 part を root し、result を既存 root slot に退避してから返すべき"
+    );
+}
+
+#[test]
+fn test_native_codegen_x86_opcode_call_bundle_roots_result_before_ref_set() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let body = source
+        .split("(defn codegen-x86-opcode-call-bundle")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("NativeCodegen.ls に codegen-x86-opcode-call-bundle が存在すること");
+
+    let result_bind_pos = body
+        .find("(let [result (if (= target-param-count 1)")
+        .expect("x86 opcode call bundle は result を let に束縛すること");
+    let result_root_pos = body
+        .find("(root_push result)")
+        .expect("x86 opcode call bundle は result を ref-set 前に root すること");
+    let result_store_pos = body
+        .find("(ref-set operand-ref result)")
+        .expect("x86 opcode call bundle は root 済み operand-ref に result を退避すること");
+    let first_pop_after_store_pos = result_store_pos
+        + body[result_store_pos..]
+            .find("(root_pop)")
+            .expect("x86 opcode call bundle は result 退避後に roots を unwind すること");
+
+    assert!(
+        result_bind_pos < result_root_pos
+            && result_root_pos < result_store_pos
+            && result_store_pos < first_pop_after_store_pos
+            && !body.contains("(root_set function-metas-slot result)"),
+        "x86 opcode 40 call helper は Linux x86 stage2 native の helper return 境界で one-arg call bytes が 0 化しないよう、result を rooted ref に退避してから unwind するべき"
+    );
+}
+
+#[test]
+fn test_native_codegen_x86_opcode_call_bundle_checks_one_arg_before_large_param_chain() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let body = source
+        .split("(defn codegen-x86-opcode-call-bundle")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("NativeCodegen.ls に codegen-x86-opcode-call-bundle が存在すること");
+
+    let one_arg_pos = body
+        .find("(let [result (if (= target-param-count 1)")
+        .expect("x86 opcode call bundle は one-arg branch を result chain の先頭で判定すること");
+    let rest_call_pos = body
+        .find("(codegen-x86-non-one-arg-call-bundle target-param-count call-rel call-rel-bytes frame-base-slot-count current-depth)")
+        .expect("x86 opcode call bundle は one-arg 以外を helper に委譲すること");
+    let result_root_pos = body
+        .find("(root_push result)")
+        .expect("x86 opcode call bundle は result を root すること");
+
+    assert!(
+        one_arg_pos < rest_call_pos
+            && rest_call_pos < result_root_pos
+            && body[one_arg_pos..rest_call_pos]
+                .contains("(emit-one-arg-call-x86-core-with-call-bytes call-rel-bytes)"),
+        "v101 metadata では minimal one-arg return-boundary helper が 10 bytes を返す一方、巨大な param-count chain 内の production helper だけ 0 bytes を返したため、one-arg branch は巨大 chain の前に切り出すべき"
+    );
+}
+
+#[test]
+fn test_native_codegen_x86_opcode_call_bundle_delegates_non_one_arg_chain_to_helper() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let body = source
+        .split("(defn codegen-x86-opcode-call-bundle")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("NativeCodegen.ls に codegen-x86-opcode-call-bundle が存在すること");
+    let rest_helper = source
+        .split("(defn codegen-x86-non-one-arg-call-bundle")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn codegen-x86-opcode-call-bundle").next())
+        .expect("NativeCodegen.ls に non-one-arg call bundle helper が存在すること");
+
+    let one_arg_pos = body
+        .find("(let [result (if (= target-param-count 1)")
+        .expect("x86 opcode call bundle は one-arg branch を result chain の先頭で判定すること");
+    let rest_call_pos = body
+        .find("(codegen-x86-non-one-arg-call-bundle target-param-count call-rel call-rel-bytes frame-base-slot-count current-depth)")
+        .expect("x86 opcode call bundle は non-one-arg chain を helper に委譲すること");
+    let result_root_pos = body
+        .find("(root_push result)")
+        .expect("x86 opcode call bundle は result を root すること");
+
+    assert!(
+        one_arg_pos < rest_call_pos
+            && rest_call_pos < result_root_pos
+            && !body[one_arg_pos..result_root_pos].contains("(if (= target-param-count 0)")
+            && rest_helper.contains("(if (= target-param-count 0)")
+            && rest_helper.contains("(if (= target-param-count 2)")
+            && rest_helper.contains("(if (= target-param-count 9)")
+            && rest_helper.contains("(emit-call-bundle-x86-ten-to-nineteen target-param-count call-rel frame-base-slot-count)"),
+        "v102 では one-arg branch を chain 先頭に置いても巨大 else branch と同居する限り native-len=0 のため、one-arg path は non-one-arg dispatch 本体から分離するべき"
+    );
+}
+
+fn native_codegen_x86_non_one_arg_call_bundle_body(source: &str) -> &str {
+    source
+        .split("(defn codegen-x86-non-one-arg-call-bundle")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn codegen-x86-opcode-call-bundle").next())
+        .expect("NativeCodegen.ls に x86 non-one-arg call bundle helper が存在すること")
+}
+
+#[test]
+fn test_native_codegen_x86_opcode_call_bundle_reads_result_from_operand_ref_after_unwind() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let body = source
+        .split("(defn codegen-x86-opcode-call-bundle")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("NativeCodegen.ls に codegen-x86-opcode-call-bundle が存在すること");
+
+    let function_metas_slot_pos = body
+        .find("function-metas-slot (root_push function-metas)")
+        .expect("x86 opcode call bundle は最下位の function-metas root slot を保持すること");
+    let call_rel_root_pos = body
+        .find("(root_push call-rel-bytes)")
+        .expect("x86 opcode call bundle は call-rel-bytes を root すること");
+    let result_bind_pos = body
+        .find("(let [result (if (= target-param-count 1)")
+        .expect("x86 opcode call bundle は result を let に束縛すること");
+    let result_root_pos = body
+        .find("(root_push result)")
+        .expect("x86 opcode call bundle は result を root すること");
+    let result_store_pos = body
+        .find("(ref-set operand-ref result)")
+        .expect("x86 opcode call bundle は result を rooted operand-ref に退避すること");
+    let first_pop_after_store_pos = result_store_pos
+        + body[result_store_pos..]
+            .find("(root_pop)")
+            .expect("x86 opcode call bundle は result 退避後に roots を unwind すること");
+    let final_ref_get_pos = body
+        .rfind("(ref-get operand-ref)")
+        .expect("x86 opcode call bundle は operand-ref から final result を返すこと");
+    let final_pop_pos = body
+        .rfind("(root_pop)")
+        .expect("x86 opcode call bundle は roots を unwind すること");
+
+    assert!(
+        function_metas_slot_pos < call_rel_root_pos
+            && call_rel_root_pos < result_bind_pos
+            && result_bind_pos < result_root_pos
+            && result_root_pos < result_store_pos
+            && result_store_pos < first_pop_after_store_pos
+            && first_pop_after_store_pos < final_pop_pos
+            && final_pop_pos < final_ref_get_pos
+            && !body.contains("final-result (ref-get operand-ref)")
+            && !body.contains("(root_set function-metas-slot result)"),
+        "x86 opcode 40 call helper は stage1 native の root_pop 戻り値や unrooted final-result local に依存せず、root unwind 後に operand-ref から返すべき"
+    );
+}
+
+#[test]
+fn test_native_codegen_x86_opcode_call_bundle_returns_operand_ref_after_final_unwind() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let body = source
+        .split("(defn codegen-x86-opcode-call-bundle")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("NativeCodegen.ls に codegen-x86-opcode-call-bundle が存在すること");
+
+    let result_store_pos = body
+        .find("(ref-set operand-ref result)")
+        .expect("x86 opcode call bundle は result を rooted operand-ref に退避すること");
+    let final_ref_get_pos = body
+        .rfind("(ref-get operand-ref)")
+        .expect("x86 opcode call bundle は operand-ref から最終 result を返すこと");
+    let final_pop_pos = body
+        .rfind("(root_pop)")
+        .expect("x86 opcode call bundle は roots を unwind すること");
+
+    assert!(
+        result_store_pos < final_pop_pos
+            && final_pop_pos < final_ref_get_pos
+            && !body.contains("final-result (ref-get operand-ref)"),
+        "x86 opcode 40 call helper は native stage2 の root_pop dummy return で final-result local を 0 化しないよう、最後の root unwind 後に operand-ref から返すべき"
     );
 }
 
 #[test]
 fn test_native_codegen_x86_low_arity_call_branches_do_not_shadow_call_rel_bytes() {
     let source = selfhost_module("NativeCodegen.ls");
-    let opcode_call_branch = source
-        .split("(defn codegen-x86-opcode-call-bundle")
-        .nth(1)
-        .and_then(|tail| {
-            tail.split("(defn codegen-ir-instr-bundle-x86-with-import-count-and-base")
-                .next()
-        })
-        .expect("NativeCodegen.ls に x86 opcode 40 call helper が存在すること");
+    let opcode_call_branch = native_codegen_x86_non_one_arg_call_bundle_body(&source);
     let call_bytes_branch = opcode_call_branch
         .split("(if (= target-param-count 0)")
         .nth(1)
@@ -3949,6 +10440,15 @@ fn test_native_codegen_x86_call_rel_uses_stable_operand_and_current_offset_refs(
     let function_starts_ref_pos = opcode_call_branch
         .find("function-starts-ref (ref-new function-starts)")
         .expect("x86 call helper は function-starts を ref に退避すること");
+    let operand_ref_root_pos = opcode_call_branch
+        .find("(root_push operand-ref)")
+        .expect("x86 call helper は operand-ref を次 allocation 前に root すること");
+    let current_offset_ref_root_pos = opcode_call_branch
+        .find("(root_push current-offset-ref)")
+        .expect("x86 call helper は current-offset-ref を次 allocation 前に root すること");
+    let function_starts_ref_root_pos = opcode_call_branch
+        .find("(root_push function-starts-ref)")
+        .expect("x86 call helper は function-starts-ref を target metadata 取得前に root すること");
     let target_meta_pos = opcode_call_branch
         .find("target-meta (vector-get function-metas (ref-get operand-ref))")
         .expect("target metadata は安定化した operand ref から取得すること");
@@ -3969,12 +10469,18 @@ fn test_native_codegen_x86_call_rel_uses_stable_operand_and_current_offset_refs(
         operand_ref_pos < target_meta_pos
             && current_offset_ref_pos < call_rel_pos
             && function_starts_ref_pos < target_starts_pos
+            && operand_ref_pos < operand_ref_root_pos
+            && operand_ref_root_pos < current_offset_ref_pos
+            && current_offset_ref_pos < current_offset_ref_root_pos
+            && current_offset_ref_root_pos < function_starts_ref_pos
+            && function_starts_ref_pos < function_starts_ref_root_pos
+            && function_starts_ref_root_pos < target_meta_pos
             && target_meta_pos < target_offset_pos
             && target_meta_pos < call_next_offset_pos
             && call_next_offset_pos < target_offset_pos
             && target_offset_pos <= target_starts_pos
             && target_offset_pos < call_rel_pos,
-        "x86 one-arg user call は native stage1 の local 破壊で rel=-9 self-call にならないよう operand/current-offset を ref 経由で固定するべき"
+        "x86 one-arg user call は native stage2 の opcode 40 row 生成中に ref object が次 allocation で失われないよう、operand/current-offset/function-starts を生成直後に root するべき"
     );
     assert!(
         !opcode_call_branch.contains("call-rel (native-call-rel-x86"),
@@ -3983,7 +10489,7 @@ fn test_native_codegen_x86_call_rel_uses_stable_operand_and_current_offset_refs(
 }
 
 #[test]
-fn test_native_codegen_x86_two_arg_user_call_avoids_rel_wrapper_call() {
+fn test_native_codegen_x86_call_bundle_roots_function_metas_before_ref_allocations() {
     let source = selfhost_module("NativeCodegen.ls");
     let opcode_call_branch = source
         .split("(defn codegen-x86-opcode-call-bundle")
@@ -3993,6 +10499,87 @@ fn test_native_codegen_x86_two_arg_user_call_avoids_rel_wrapper_call() {
                 .next()
         })
         .expect("NativeCodegen.ls に x86 opcode 40 call helper が存在すること");
+
+    let function_metas_bind_pos = opcode_call_branch
+        .find("function-metas (vector-get context 0)")
+        .expect("x86 call helper は context から function-metas を取得すること");
+    let function_metas_root_pos = opcode_call_branch
+        .find("function-metas-slot (root_push function-metas)")
+        .expect(
+            "x86 call helper は function-metas の root slot を ref allocation 前に保持すること",
+        );
+    let operand_ref_pos = opcode_call_branch
+        .find("operand-ref (ref-new operand)")
+        .expect("x86 call helper は operand ref を作ること");
+    let target_meta_pos = opcode_call_branch
+        .find("target-meta (vector-get function-metas (ref-get operand-ref))")
+        .expect("x86 call helper は function-metas から target metadata を読むこと");
+    let result_store_pos = opcode_call_branch
+        .find("(ref-set operand-ref result)")
+        .expect("x86 call helper は result を root 済み operand-ref へ退避すること");
+    let final_tail = &opcode_call_branch[result_store_pos..];
+    let final_ref_get_pos = final_tail
+        .rfind("(ref-get operand-ref)")
+        .expect("x86 call helper は operand-ref から result を返すこと");
+    let final_unwind_pop_count = final_tail[..final_ref_get_pos]
+        .matches("(root_pop)")
+        .count();
+
+    assert!(
+        function_metas_bind_pos < function_metas_root_pos
+            && function_metas_root_pos < operand_ref_pos
+            && operand_ref_pos < target_meta_pos
+            && final_unwind_pop_count == 6
+            && !opcode_call_branch.contains("final-result (ref-get operand-ref)")
+            && !opcode_call_branch.contains("(root_set function-metas-slot result)"),
+        "x86 opcode 40 call helper は function-metas local が ref-new 連鎖で失われて target-param-count が empty branch に落ちないよう、context から取り出した直後に root し、返却 result は root unwind 後に operand-ref から返すべき"
+    );
+}
+
+#[test]
+fn test_native_codegen_x86_call_bundle_keeps_result_rooted_while_unwinding_roots() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let opcode_call_branch = source
+        .split("(defn codegen-x86-opcode-call-bundle")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn codegen-ir-instr-bundle-x86-with-import-count-and-base")
+                .next()
+        })
+        .expect("NativeCodegen.ls に x86 opcode 40 call helper が存在すること");
+
+    let result_bind_pos = opcode_call_branch
+        .find("result (if (= target-param-count 1)")
+        .expect("x86 call helper は call byte result を local に置くこと");
+    let result_store_pos = opcode_call_branch
+        .find("(ref-set operand-ref result)")
+        .expect("x86 call helper は result を root 済み operand-ref に退避すること");
+    let first_pop_after_store_pos = result_store_pos
+        + opcode_call_branch[result_store_pos..]
+            .find("(root_pop)")
+            .expect("x86 call helper は inner roots を unwind すること");
+    let final_ref_get_pos = opcode_call_branch
+        .rfind("(ref-get operand-ref)")
+        .expect("x86 call helper は roots を最後まで unwind してから operand-ref を返すこと");
+    let final_pop_pos = opcode_call_branch
+        .rfind("(root_pop)")
+        .expect("x86 call helper は roots を unwind すること");
+
+    assert!(
+        result_bind_pos < result_store_pos
+            && result_store_pos < first_pop_after_store_pos
+            && first_pop_after_store_pos < final_pop_pos
+            && final_pop_pos < final_ref_get_pos
+            && !opcode_call_branch.contains("final-result (ref-get operand-ref)")
+            && !opcode_call_branch.contains("(root_set function-metas-slot result)"),
+        "x86 opcode 40 call bundle は result vector header が root unwind 中に壊れないよう、result を rooted operand-ref に退避して root unwind 後に operand-ref から返すべき"
+    );
+}
+
+#[test]
+fn test_native_codegen_x86_two_arg_user_call_avoids_rel_wrapper_call() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let opcode_call_branch = native_codegen_x86_non_one_arg_call_bundle_body(&source);
     let call_bytes_branch = opcode_call_branch
         .split("(if (= target-param-count 0)")
         .nth(1)
@@ -4015,14 +10602,7 @@ fn test_native_codegen_x86_two_arg_user_call_avoids_rel_wrapper_call() {
 #[test]
 fn test_native_codegen_x86_six_arg_user_call_avoids_rel_wrapper_call() {
     let source = selfhost_module("NativeCodegen.ls");
-    let opcode_call_branch = source
-        .split("(defn codegen-x86-opcode-call-bundle")
-        .nth(1)
-        .and_then(|tail| {
-            tail.split("(defn codegen-ir-instr-bundle-x86-with-import-count-and-base")
-                .next()
-        })
-        .expect("NativeCodegen.ls に x86 opcode 40 call helper が存在すること");
+    let opcode_call_branch = native_codegen_x86_non_one_arg_call_bundle_body(&source);
     let call_bytes_branch = opcode_call_branch
         .split("(if (= target-param-count 0)")
         .nth(1)
@@ -4046,14 +10626,7 @@ fn test_native_codegen_x86_six_arg_user_call_avoids_rel_wrapper_call() {
 #[test]
 fn test_native_codegen_x86_seven_arg_user_call_avoids_rel_wrapper_call() {
     let source = selfhost_module("NativeCodegen.ls");
-    let opcode_call_branch = source
-        .split("(defn codegen-x86-opcode-call-bundle")
-        .nth(1)
-        .and_then(|tail| {
-            tail.split("(defn codegen-ir-instr-bundle-x86-with-import-count-and-base")
-                .next()
-        })
-        .expect("NativeCodegen.ls に x86 opcode 40 call helper が存在すること");
+    let opcode_call_branch = native_codegen_x86_non_one_arg_call_bundle_body(&source);
     let call_bytes_branch = opcode_call_branch
         .split("(if (= target-param-count 0)")
         .nth(1)
@@ -4087,14 +10660,7 @@ fn test_native_codegen_x86_seven_arg_user_call_avoids_rel_wrapper_call() {
 #[test]
 fn test_native_codegen_x86_eight_arg_user_call_avoids_rel_wrapper_call() {
     let source = selfhost_module("NativeCodegen.ls");
-    let opcode_call_branch = source
-        .split("(defn codegen-x86-opcode-call-bundle")
-        .nth(1)
-        .and_then(|tail| {
-            tail.split("(defn codegen-ir-instr-bundle-x86-with-import-count-and-base")
-                .next()
-        })
-        .expect("NativeCodegen.ls に x86 opcode 40 call helper が存在すること");
+    let opcode_call_branch = native_codegen_x86_non_one_arg_call_bundle_body(&source);
     let call_bytes_branch = opcode_call_branch
         .split("(if (= target-param-count 0)")
         .nth(1)
@@ -4129,6 +10695,9 @@ fn test_native_codegen_x86_opcode_call_roots_function_starts_before_call_context
     let vector_new_pos = opcode40_branch
         .find("(vector-new 6)")
         .expect("x86 opcode 40 は call-context を構築すること");
+    let context_root_pos = opcode40_branch
+        .find("(root_push call-context)")
+        .expect("x86 opcode 40 は codegen-x86-opcode-call-bundle 呼び出し前に call-context を root すること");
     let call_pos = opcode40_branch
         .find(
             "(codegen-x86-opcode-call-bundle operand current-offset function-starts call-context)",
@@ -4136,22 +10705,17 @@ fn test_native_codegen_x86_opcode_call_roots_function_starts_before_call_context
         .expect("x86 opcode 40 は function-starts を使って call を emit すること");
 
     assert!(
-        root_push_pos < vector_new_pos && vector_new_pos < call_pos,
-        "function-starts は call-context 構築より前に root され、emit 中も保持されるべき"
+        root_push_pos < vector_new_pos
+            && vector_new_pos < context_root_pos
+            && context_root_pos < call_pos,
+        "function-starts は call-context 構築より前に root され、call-context は function-metas を保持したまま emit に渡すべき"
     );
 }
 
 #[test]
 fn test_native_codegen_x86_nine_arg_user_call_avoids_rel_wrapper_call() {
     let source = selfhost_module("NativeCodegen.ls");
-    let opcode_call_branch = source
-        .split("(defn codegen-x86-opcode-call-bundle")
-        .nth(1)
-        .and_then(|tail| {
-            tail.split("(defn codegen-ir-instr-bundle-x86-with-import-count-and-base")
-                .next()
-        })
-        .expect("NativeCodegen.ls に x86 opcode 40 call helper が存在すること");
+    let opcode_call_branch = native_codegen_x86_non_one_arg_call_bundle_body(&source);
     let call_bytes_branch = opcode_call_branch
         .split("(if (= target-param-count 0)")
         .nth(1)
@@ -4173,16 +10737,55 @@ fn test_native_codegen_x86_nine_arg_user_call_avoids_rel_wrapper_call() {
 }
 
 #[test]
+fn test_native_codegen_x86_nine_arg_call_core_with_bytes_roots_intermediate_vectors() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let nine_arg_core = source
+        .split("(defn emit-nine-arg-call-x86-core-with-call-bytes")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn emit-nine-arg-call-x86").next())
+        .expect("NativeCodegen.ls に emit-nine-arg-call-x86-core-with-call-bytes が存在すること");
+
+    let setup1_pos = nine_arg_core
+        .find("setup1 (concat-four-byte-vectors-rooted")
+        .expect("9 引数 call core は最初の setup vector を rooted concat で構築するべき");
+    let setup1_root_pos = nine_arg_core
+        .find("(root_push setup1)")
+        .expect("9 引数 call core は setup1 を次の concat 前に root するべき");
+    let setup2_pos = nine_arg_core
+        .find("setup2 (concat-four-byte-vectors-rooted")
+        .expect("9 引数 call core は setup2 を rooted concat で構築するべき");
+    let setup2_root_pos = nine_arg_core
+        .find("(root_push setup2)")
+        .expect("9 引数 call core は setup2 を次の concat 前に root するべき");
+    let setup3_pos = nine_arg_core
+        .find("setup3 (concat-four-byte-vectors-rooted")
+        .expect("9 引数 call core は setup3 を rooted concat で構築するべき");
+    let setup3_root_pos = nine_arg_core
+        .find("(root_push setup3)")
+        .expect("9 引数 call core は setup3 を result concat 前に root するべき");
+    let result_pos = nine_arg_core
+        .find("result (concat-four-byte-vectors-rooted")
+        .expect("9 引数 call core は result を rooted concat で構築するべき");
+    let result_return_pos = nine_arg_core
+        .rfind("result")
+        .expect("9 引数 call core は root 解放後に result を明示返却するべき");
+
+    assert!(
+        setup1_pos < setup1_root_pos
+            && setup1_root_pos < setup2_pos
+            && setup2_pos < setup2_root_pos
+            && setup2_root_pos < setup3_pos
+            && setup3_pos < setup3_root_pos
+            && setup3_root_pos < result_pos
+            && result_pos < result_return_pos,
+        "9 引数 call core は setup1/setup2/setup3 を root したまま後続 concat を行い、root 解放後も result を返すべき"
+    );
+}
+
+#[test]
 fn test_native_codegen_x86_four_arg_user_call_avoids_rel_wrapper_call() {
     let source = selfhost_module("NativeCodegen.ls");
-    let opcode_call_branch = source
-        .split("(defn codegen-x86-opcode-call-bundle")
-        .nth(1)
-        .and_then(|tail| {
-            tail.split("(defn codegen-ir-instr-bundle-x86-with-import-count-and-base")
-                .next()
-        })
-        .expect("NativeCodegen.ls に x86 opcode 40 call helper が存在すること");
+    let opcode_call_branch = native_codegen_x86_non_one_arg_call_bundle_body(&source);
     let call_bytes_branch = opcode_call_branch
         .split("(if (= target-param-count 0)")
         .nth(1)
@@ -4234,16 +10837,43 @@ fn test_native_codegen_x86_four_arg_call_bundle_roots_rel_ref() {
 }
 
 #[test]
+fn test_native_codegen_x86_four_arg_call_core_keeps_result_rooted_while_unwinding() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let four_arg_core = source
+        .split("(defn emit-four-arg-call-x86-core-with-rel-ref")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn emit-four-arg-call-x86").next())
+        .expect("NativeCodegen.ls に emit-four-arg-call-x86-core-with-rel-ref が存在すること");
+
+    let slot_pos = four_arg_core
+        .find("call-rel-ref-slot (root_push call-rel-ref)")
+        .expect("4 引数 call core は rel ref の root slot を保持するべき");
+    let result_pos = four_arg_core
+        .find("(root_push result)")
+        .expect("4 引数 call core は返却 result を root_set 前から root するべき");
+    let set_pos = four_arg_core
+        .find("(root_set call-rel-ref-slot result)")
+        .expect("4 引数 call core は result を下位 root slot へ退避してから unwind するべき");
+    let final_pop_pos = four_arg_core
+        .rfind("(root_pop)")
+        .expect("4 引数 call core は roots を unwind するべき");
+    let final_return_pos = four_arg_core
+        .rfind("result")
+        .expect("4 引数 call core は unwind 後に result を明示返却するべき");
+
+    assert!(
+        slot_pos < result_pos
+            && result_pos < set_pos
+            && set_pos < final_pop_pos
+            && final_pop_pos < final_return_pos,
+        "4 引数 call core は call-rel-ref/setup/call-rel-bytes roots を pop する前に result を下位 slot へ退避し、root_pop 戻り値に依存せず result を明示返却するべき"
+    );
+}
+
+#[test]
 fn test_native_codegen_x86_three_arg_user_call_avoids_rel_wrapper_call() {
     let source = selfhost_module("NativeCodegen.ls");
-    let opcode_call_branch = source
-        .split("(defn codegen-x86-opcode-call-bundle")
-        .nth(1)
-        .and_then(|tail| {
-            tail.split("(defn codegen-ir-instr-bundle-x86-with-import-count-and-base")
-                .next()
-        })
-        .expect("NativeCodegen.ls に x86 opcode 40 call helper が存在すること");
+    let opcode_call_branch = native_codegen_x86_non_one_arg_call_bundle_body(&source);
     let call_bytes_branch = opcode_call_branch
         .split("(if (= target-param-count 0)")
         .nth(1)
@@ -4266,14 +10896,7 @@ fn test_native_codegen_x86_three_arg_user_call_avoids_rel_wrapper_call() {
 #[test]
 fn test_native_codegen_x86_five_arg_user_call_avoids_rel_wrapper_call() {
     let source = selfhost_module("NativeCodegen.ls");
-    let opcode_call_branch = source
-        .split("(defn codegen-x86-opcode-call-bundle")
-        .nth(1)
-        .and_then(|tail| {
-            tail.split("(defn codegen-ir-instr-bundle-x86-with-import-count-and-base")
-                .next()
-        })
-        .expect("NativeCodegen.ls に x86 opcode 40 call helper が存在すること");
+    let opcode_call_branch = native_codegen_x86_non_one_arg_call_bundle_body(&source);
     let call_bytes_branch = opcode_call_branch
         .split("(if (= target-param-count 0)")
         .nth(1)
@@ -4325,22 +10948,6 @@ fn test_native_slot_count_scan_uses_wide_chunks_to_limit_native_stack() {
 }
 
 #[test]
-fn test_native_codegen_callable_offset_state_helper_is_registered_before_x86_stack_walk_use() {
-    let source = selfhost_module("NativeCodegen.ls");
-    let helper_pos = source
-        .find("(defn make-callable-object-offset-state")
-        .expect("NativeCodegen.ls に callable offset state helper が存在すること");
-    let stack_step_pos = source
-        .find("(defn native-max-stack-depth-step ")
-        .expect("NativeCodegen.ls に x86 stack depth step が存在すること");
-
-    assert!(
-        helper_pos < stack_step_pos,
-        "make-callable-object-offset-state は stage2 selfhost parser/register の ftable 欠落を避けるため、最初の x86 stack walk 使用より前に置くべき"
-    );
-}
-
-#[test]
 fn test_native_codegen_x86_param_spill_preserves_selfhost_scratch_slot_zero() {
     let source = selfhost_module("NativeCodegen.ls");
     let generate_body = source
@@ -4356,6 +10963,14 @@ fn test_native_codegen_x86_param_spill_preserves_selfhost_scratch_slot_zero() {
         source.contains("(defn native-param-slot-offset-x86 [param-index]")
             && source.contains("(local-slot-offset (+ param-index 1))"),
         "selfhost IR は local slot 0 を scratch として予約するため、x86 param spill は param0 を slot1 へ退避するべき"
+    );
+    assert!(
+        source.contains(
+            "(emit-local-get-bundle-x86 (local-slot-offset operand) frame-base-slot-count current-depth)"
+        ) && source.contains(
+            "(emit-local-set-bundle-x86 (local-slot-offset operand) frame-base-slot-count current-depth)"
+        ) && !source.contains("(defn native-local-slot-offset-x86 [idx]"),
+        "x86 bundle は selfhost 側の 1-based local operand をそのまま native slot に写すべき"
     );
     assert!(
         generate_body.contains("(spill-native-function-params-x86-loop 0 param-count result)")
@@ -4436,6 +11051,58 @@ fn test_wasm_compiler_base_builtin_dispatch_uses_literal_constants() {
 }
 
 #[test]
+fn test_wasm_compiler_string_literal_roots_bytes_before_header_allocation() {
+    let source = std::fs::read_to_string(selfhost_source_path("CompilerBase.ls"))
+        .expect("canonical CompilerBase.ls が読み込めること");
+    let body = source
+        .split("(defn compile-string-literal-with-source")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("CompilerBase.ls に compile-string-literal-with-source が存在すること");
+
+    let bytes_pos = body
+        .find("bytes (string-to-byte-vector text 0 text-len (vector-new 8))")
+        .expect("string literal compiler は text bytes を生成すること");
+    let root_bytes_pos = body
+        .find("(root_push bytes)")
+        .expect("string literal compiler は bytes を root すること");
+    let header_pos = body
+        .find("header (write-i32-le")
+        .expect("string literal compiler は string object header を生成すること");
+
+    assert!(
+        bytes_pos < root_bytes_pos && root_bytes_pos < header_pos,
+        "compile-string-literal-with-source は header allocation 前に bytes を root して data section への literal bytes を保持するべき"
+    );
+}
+
+#[test]
+fn test_wasm_compiler_string_literal_updates_data_ref_before_result_emit() {
+    let source = std::fs::read_to_string(selfhost_source_path("CompilerBase.ls"))
+        .expect("canonical CompilerBase.ls が読み込めること");
+    let body = source
+        .split("(defn compile-string-literal-with-source")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("CompilerBase.ls に compile-string-literal-with-source が存在すること");
+
+    let updated_data_pos = body
+        .find("updated-data (append-byte-vector data-with-header bytes 0 (vector-length bytes))")
+        .expect("string literal compiler は updated-data を生成すること");
+    let ref_set_pos = body
+        .find("(ref-set data-ref updated-data)")
+        .expect("string literal compiler は data-ref を更新すること");
+    let emit_result_pos = body
+        .find("result (emit-to instrs 1 offset)")
+        .expect("string literal compiler は literal offset IR を emit すること");
+
+    assert!(
+        updated_data_pos < ref_set_pos && ref_set_pos < emit_result_pos,
+        "compile-string-literal-with-source は emit-to の allocation 前に data-ref を更新して stage2 native の data section を保持するべき"
+    );
+}
+
+#[test]
 fn test_wasm_compiler_env_bind_returns_updated_environment_after_root_pop() {
     let source = std::fs::read_to_string(selfhost_source_path("CompilerBase.ls"))
         .expect("canonical CompilerBase.ls が読み込めること");
@@ -4471,18 +11138,23 @@ fn test_wasm_compiler_user_call_resolves_function_index_before_arg_compilation()
             .and_then(|tail| tail.split("\n(defn ").next())
             .unwrap_or_else(|| panic!("Compiler.ls に {name} が存在すること"));
         let lookup_pos = body
-            .find("func-idx-ref (ref-new (ftable-lookup ftable local-func-hash))")
-            .unwrap_or_else(|| panic!("{name} は func-idx を ftable から ref に退避すること"));
+            .find("call-instrs (emit-to (vector-new 1) 40 (ftable-lookup ftable local-func-hash))")
+            .unwrap_or_else(|| {
+                panic!("{name} は user call 命令を arg compilation 前に構築すること")
+            });
+        let root_pos = body.find("(root_push call-instrs)").unwrap_or_else(|| {
+            panic!("{name} は user call 命令を arg compilation 中 root すること")
+        });
         let args_pos = body
             .find("arg-instrs-list (compile-user-call-arg-instrs")
             .unwrap_or_else(|| panic!("{name} は user call args をコンパイルすること"));
         assert!(
-            lookup_pos < args_pos,
-            "{name} は native 実行時の func-hash local 破壊を避けるため arg compilation 前に func-idx を解決するべき"
+            lookup_pos < root_pos && root_pos < args_pos,
+            "{name} は native 実行時の func-hash/local/ref 破壊を避けるため arg compilation 前に call 命令を構築して root するべき"
         );
         assert!(
-            body.contains("func-idx (ref-get func-idx-ref)"),
-            "{name} は arg compilation 後に退避済み func-idx を ref から復元すること"
+            body.contains("instrs3 (append-instr-vector instrs2 call-instrs)"),
+            "{name} は arg compilation 後に root 済み call 命令を append すること"
         );
         assert!(
             body.contains("func-node (vector-get node 1)")
@@ -4491,6 +11163,442 @@ fn test_wasm_compiler_user_call_resolves_function_index_before_arg_compilation()
             "{name} は native high-arity call で壊れ得る func-hash 引数を信用せず node から再計算すること"
         );
     }
+}
+
+#[test]
+fn test_wasm_compiler_defn_function_reloads_param_count_after_ir_compilation() {
+    let source = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("canonical Compiler.ls が読み込めること");
+    for name in ["compile-defn-function-with-source", "compile-defn-function"] {
+        let body = source
+            .split(&format!("(defn {name}"))
+            .nth(1)
+            .and_then(|tail| tail.split("\n(defn ").next())
+            .unwrap_or_else(|| panic!("Compiler.ls に {name} が存在すること"));
+        let ir_root_pos = body
+            .find("(root_push ir)")
+            .unwrap_or_else(|| panic!("{name} は IR を root すること"));
+        let final_param_pos = body
+            .find("final-param-count (vector-get node 2)")
+            .unwrap_or_else(|| {
+                panic!("{name} は IR 生成後に param-count を node から読み直すこと")
+            });
+        assert!(
+            ir_root_pos < final_param_pos,
+            "{name} は native stage1 の scalar drift を避けるため IR 生成後に param-count を読み直すべき"
+        );
+        assert!(
+            body.contains(
+                "local-count (if (> local-max final-param-count) (- local-max final-param-count) 0)"
+            ) && body.contains("result (make-function-meta final-param-count local-count ir)"),
+            "{name} は再読込した param-count で local-count と function-meta を作ること"
+        );
+    }
+}
+
+#[test]
+fn test_wasm_compiler_defn_compile_roots_results_before_root_pops() {
+    let source = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("canonical Compiler.ls が読み込めること");
+    let defn_body = source
+        .split("(defn compile-defn-with-source")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("Compiler.ls に compile-defn-with-source が存在すること");
+    let result_pos = defn_body
+        .find("result (compile-expr-with-source body-expr source env ftable instrs0 data-ref)")
+        .expect("compile-defn-with-source は body compile result を作ること");
+    let env_pos = defn_body
+        .find("env (bind-node-params node 3 0 param-count (env-new) 1)")
+        .expect("compile-defn-with-source は env を作ること");
+    let root_env_pos = defn_body[env_pos..]
+        .find("(root_push env)")
+        .map(|offset| env_pos + offset)
+        .expect("compile-defn-with-source は env を root すること");
+    let body_expr_pos = defn_body[root_env_pos..]
+        .find("body-expr (vector-get node body-idx)")
+        .map(|offset| root_env_pos + offset)
+        .expect("compile-defn-with-source は env root 後に body-expr を取り出すこと");
+    let root_body_pos = defn_body[body_expr_pos..]
+        .find("(root_push body-expr)")
+        .map(|offset| body_expr_pos + offset)
+        .expect("compile-defn-with-source は body-expr を root すること");
+    let instrs0_pos = defn_body
+        .find("instrs0 (vector-new 8)")
+        .expect("compile-defn-with-source は initial instrs vector を作ること");
+    let root_instrs0_pos = defn_body[instrs0_pos..]
+        .find("(root_push instrs0)")
+        .map(|offset| instrs0_pos + offset)
+        .expect("compile-defn-with-source は body compile 前に instrs0 を root すること");
+    let root_result_pos = defn_body
+        .find("(root_push result)")
+        .expect("compile-defn-with-source は root_pop 前に result を root すること");
+    let first_pop_pos = defn_body
+        .find("(root_pop)")
+        .expect("compile-defn-with-source は root_pop を持つこと");
+    assert!(
+        env_pos < root_env_pos
+            && root_env_pos < body_expr_pos
+            && body_expr_pos < root_body_pos
+            && root_body_pos < instrs0_pos
+            && instrs0_pos < root_instrs0_pos
+            && root_instrs0_pos < result_pos
+            && result_pos < root_result_pos
+            && root_result_pos < first_pop_pos,
+        "compile-defn-with-source は native full payload path で env 構築 call 後に body-expr を取り直し、body / initial instrs / IR result を失わないよう root するべき"
+    );
+
+    let diagnostic_body = source
+        .split("(defn compile-defn-with-source-normal-setup-diagnostic")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("Compiler.ls に compile-defn-with-source-normal-setup-diagnostic が存在すること");
+    let diagnostic_result_pos = diagnostic_body
+        .find("result (compile-expr-with-source-normal-setup-diagnostic body-expr source env ftable instrs0 data-ref)")
+        .expect("compile-defn-with-source-normal-setup-diagnostic は body compile result を作ること");
+    let diagnostic_env_pos = diagnostic_body
+        .find("env (bind-node-params node 3 0 param-count (env-new) 1)")
+        .expect("compile-defn-with-source-normal-setup-diagnostic は env を作ること");
+    let diagnostic_root_env_pos = diagnostic_body[diagnostic_env_pos..]
+        .find("(root_push env)")
+        .map(|offset| diagnostic_env_pos + offset)
+        .expect("compile-defn-with-source-normal-setup-diagnostic は env を root すること");
+    let diagnostic_body_expr_pos = diagnostic_body[diagnostic_root_env_pos..]
+        .find("body-expr (vector-get node body-idx)")
+        .map(|offset| diagnostic_root_env_pos + offset)
+        .expect("compile-defn-with-source-normal-setup-diagnostic は env root 後に body-expr を取り出すこと");
+    let diagnostic_root_body_pos = diagnostic_body[diagnostic_body_expr_pos..]
+        .find("(root_push body-expr)")
+        .map(|offset| diagnostic_body_expr_pos + offset)
+        .expect("compile-defn-with-source-normal-setup-diagnostic は body-expr を root すること");
+    let diagnostic_instrs0_pos = diagnostic_body.find("instrs0 (vector-new 8)").expect(
+        "compile-defn-with-source-normal-setup-diagnostic は initial instrs vector を作ること",
+    );
+    let diagnostic_root_instrs0_pos = diagnostic_body[diagnostic_instrs0_pos..]
+        .find("(root_push instrs0)")
+        .map(|offset| diagnostic_instrs0_pos + offset)
+        .expect("compile-defn-with-source-normal-setup-diagnostic は body compile 前に instrs0 を root すること");
+    let diagnostic_root_result_pos = diagnostic_body.find("(root_push result)").expect(
+        "compile-defn-with-source-normal-setup-diagnostic は root_pop 前に result を root すること",
+    );
+    let diagnostic_first_pop_pos = diagnostic_body
+        .find("(root_pop)")
+        .expect("compile-defn-with-source-normal-setup-diagnostic は root_pop を持つこと");
+    assert!(
+        diagnostic_env_pos < diagnostic_root_env_pos
+            && diagnostic_root_env_pos < diagnostic_body_expr_pos
+            && diagnostic_body_expr_pos < diagnostic_root_body_pos
+            && diagnostic_root_body_pos < diagnostic_instrs0_pos
+            && diagnostic_instrs0_pos < diagnostic_root_instrs0_pos
+            && diagnostic_root_instrs0_pos < diagnostic_result_pos
+            && diagnostic_result_pos < diagnostic_root_result_pos
+            && diagnostic_root_result_pos < diagnostic_first_pop_pos,
+        "compile-defn-with-source-normal-setup-diagnostic は production path と同じ env/body/instrs/root result ordering を保つべき"
+    );
+
+    for name in ["compile-defn-function-with-source", "compile-defn-function"] {
+        let body = source
+            .split(&format!("(defn {name}"))
+            .nth(1)
+            .and_then(|tail| tail.split("\n(defn ").next())
+            .unwrap_or_else(|| panic!("Compiler.ls に {name} が存在すること"));
+        let make_pos = body
+            .find("result (make-function-meta final-param-count local-count ir)")
+            .unwrap_or_else(|| panic!("{name} は function-meta result を作ること"));
+        let root_pos = body
+            .find("(root_push result)")
+            .unwrap_or_else(|| panic!("{name} は root_pop 前に result を root すること"));
+        let first_pop_pos = body
+            .find("(root_pop)")
+            .unwrap_or_else(|| panic!("{name} は root_pop を持つこと"));
+        assert!(
+            make_pos < root_pos && root_pos < first_pop_pos,
+            "{name} は native full payload path で function-meta result を失わないよう root_pop 前に result を root するべき"
+        );
+    }
+}
+
+#[test]
+fn test_wasm_compiler_ftable_register_snapshots_scalars_across_vector_push() {
+    let source = std::fs::read_to_string(selfhost_source_path("CompilerBase.ls"))
+        .expect("canonical CompilerBase.ls が読み込めること");
+    let body = source
+        .split("(defn ftable-register")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("CompilerBase.ls に ftable-register が存在すること");
+
+    let name_ref_pos = body
+        .find("name-hash-ref (ref-new name-hash)")
+        .expect("ftable-register は name-hash を allocation 前に snapshot すること");
+    let func_ref_pos = body
+        .find("func-idx-ref (ref-new func-idx)")
+        .expect("ftable-register は func-idx を allocation 前に snapshot すること");
+    let with_name_pos = body
+        .find("with-name (vector-push ftable (ref-get name-hash-ref))")
+        .expect("ftable-register は snapshot した name-hash を登録すること");
+    let result_pos = body
+        .find("result (vector-push with-name (ref-get func-idx-ref))")
+        .expect("ftable-register は snapshot した func-idx を登録すること");
+
+    assert!(
+        name_ref_pos < func_ref_pos && func_ref_pos < with_name_pos && with_name_pos < result_pos,
+        "Linux x86 native stage1 では ftable-register の scalar が vector-push allocation を跨いで崩れないよう ref snapshot してから登録するべき"
+    );
+}
+
+#[test]
+fn test_wasm_compiler_register_state_builders_snapshot_scalar_fields() {
+    let compiler_base = std::fs::read_to_string(selfhost_source_path("CompilerBase.ls"))
+        .expect("canonical CompilerBase.ls が読み込めること");
+    let register_state = compiler_base
+        .split("(defn write-register-state-ref")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("CompilerBase.ls に write-register-state-ref が存在すること");
+    assert!(
+        register_state.contains("done-ref (ref-new done)")
+            && register_state.contains("next-idx-ref (ref-new next-idx)")
+            && register_state.contains("next-func-idx-ref (ref-new next-func-idx)")
+            && register_state.contains("base (vector-new 4)")
+            && register_state.contains("base-slot (root_push base)")
+            && register_state.contains("with-done (vector-push base (ref-get done-ref))")
+            && register_state.contains("(root_set base-slot with-done)")
+            && register_state.contains("with-idx (vector-push with-done (ref-get next-idx-ref))")
+            && register_state.contains("(root_set base-slot with-idx)")
+            && register_state.contains("with-ftable (vector-push with-idx next-ftable)")
+            && register_state.contains("(root_set base-slot with-ftable)")
+            && register_state
+                .contains("state (vector-push with-ftable (ref-get next-func-idx-ref))")
+            && register_state.contains("(root_set base-slot state)")
+            && !register_state.contains("push-int-vector")
+            && !register_state.contains("push-object-vector"),
+        "register-defns state は native stage1 の return/root-pop 境界で壊れないよう root_set base slot 更新で vector 化するべき"
+    );
+    let base_slot_pos = register_state
+        .find("base-slot (root_push base)")
+        .expect("write-register-state-ref は base-slot を root すること");
+    let done_ref_pos = register_state
+        .find("done-ref (ref-new done)")
+        .expect("write-register-state-ref は done を ref snapshot すること");
+    let next_ftable_root_pos = register_state
+        .find("(root_push next-ftable)")
+        .expect("write-register-state-ref は next-ftable を root すること");
+    let final_state_root_set_pos = register_state
+        .find("(root_set base-slot state)")
+        .expect("write-register-state-ref は final state を base-slot に root_set すること");
+    assert!(
+        base_slot_pos < done_ref_pos
+            && done_ref_pos < next_ftable_root_pos
+            && next_ftable_root_pos < final_state_root_set_pos,
+        "write-register-state-ref は state root slot を scalar/object temp roots より下に置き、final state をその slot に更新するべき"
+    );
+
+    let compiler_mode = selfhost_module("CompilerMode.ls");
+    let register_state_progress = compiler_mode
+        .split("(defn write-register-state-progress-ref")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("CompilerMode.ls に write-register-state-progress-ref が存在すること");
+    let progress_base_slot_pos = register_state_progress
+        .find("base-slot (root_push base)")
+        .expect("write-register-state-progress-ref は base-slot を root すること");
+    let progress_done_ref_pos = register_state_progress
+        .find("done-ref (ref-new done)")
+        .expect("write-register-state-progress-ref は done を ref snapshot すること");
+    let progress_final_state_root_set_pos = register_state_progress
+        .find("(root_set base-slot state)")
+        .expect(
+            "write-register-state-progress-ref は final state を base-slot に root_set すること",
+        );
+    assert!(
+        progress_base_slot_pos < progress_done_ref_pos
+            && progress_done_ref_pos < progress_final_state_root_set_pos,
+        "progress mirror も final state を下位 base-slot で最後まで root するべき"
+    );
+
+    let register_pairs_state = compiler_mode
+        .split("(defn make-register-pairs-state")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("CompilerMode.ls に make-register-pairs-state が存在すること");
+    assert!(
+        register_pairs_state.contains("done-ref (ref-new done)")
+            && register_pairs_state.contains("next-idx-ref (ref-new next-idx)")
+            && register_pairs_state.contains("next-func-idx-ref (ref-new next-func-idx)")
+            && register_pairs_state
+                .contains("(push-int-vector-local (vector-new 4) (ref-get done-ref))")
+            && register_pairs_state
+                .contains("(push-int-vector-local base0 (ref-get next-idx-ref))")
+            && register_pairs_state
+                .contains("(vector-push with-ftable (ref-get next-func-idx-ref))"),
+        "register-all-pairs state は pair 間 ftable carry を壊さないよう scalar fields を ref snapshot してから vector 化するべき"
+    );
+}
+
+#[test]
+fn test_selfhost_compiler_mode_probe_uses_literal_var_tag_for_builtin_detection() {
+    let compiler_mode = selfhost_module("CompilerMode.ls");
+    let apply_probe = compiler_mode
+        .split("(defn compile-apply-with-source-probe")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-expr-with-source-probe-dispatch")
+                .next()
+        })
+        .expect("CompilerMode.ls に compile-apply-with-source-probe が存在すること");
+
+    assert!(
+        apply_probe.contains("func-hash (if (= func-tag 4)"),
+        "CompilerMode source probe は canonical Compiler と同じ literal var tag 判定を使うべき"
+    );
+    assert!(
+        !apply_probe.contains("(tag-var)"),
+        "CompilerMode source probe は builtin 判定前に tag-var の 0 引数 call を挟むべきではない"
+    );
+}
+
+#[test]
+fn test_wasm_compiler_register_defns_continuations_snapshot_state_slots() {
+    let source = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("canonical Compiler.ls が読み込めること");
+    let continue_step = source
+        .split("(defn continue-register-defns-step")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("Compiler.ls に continue-register-defns-step が存在すること");
+    let continue_step8 = source
+        .split("(defn continue-register-defns-step-8")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("Compiler.ls に continue-register-defns-step-8 が存在すること");
+    let continue_step64 = source
+        .split("(defn continue-register-defns-step-64")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("Compiler.ls に continue-register-defns-step-64 が存在すること");
+    let chunked = source
+        .split("(defn register-defns-chunked")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("Compiler.ls に register-defns-chunked が存在すること");
+
+    for (name, body, callee) in [
+        (
+            "continue-register-defns-step",
+            continue_step,
+            "register-defns-step",
+        ),
+        (
+            "continue-register-defns-step-8",
+            continue_step8,
+            "register-defns-step-8",
+        ),
+        (
+            "continue-register-defns-step-64",
+            continue_step64,
+            "register-defns-step-64",
+        ),
+    ] {
+        assert!(
+            body.contains("next-idx (vector-get state 1)")
+                && body.contains("next-ftable (vector-get state 2)")
+                && body.contains("next-func-idx (vector-get state 3)")
+                && body.contains("(root_push next-ftable)")
+                && body.contains(&format!(
+                    "({callee} decls next-idx n next-ftable next-func-idx)"
+                ))
+                && !body.contains(&format!(
+                    "({callee} decls (vector-get state 1) n (vector-get state 2) (vector-get state 3))"
+                )),
+            "{name} は state slot を call 引数内で再取得せず、ftable を root した snapshot から継続するべき"
+        );
+    }
+
+    assert!(
+        chunked.contains("state (register-defns-step-64 decls idx n ftable func-idx)")
+            && chunked.contains("state-slot (root_push state)")
+            && chunked.contains("result (continue-register-defns-step-64 decls n state)")
+            && !chunked.contains(
+                "(continue-register-defns-step-64 decls n (register-defns-step-64 decls idx n ftable func-idx))"
+            ),
+        "register-defns-chunked は initial state を root してから 64-step continuation に渡すべき"
+    );
+}
+
+#[test]
+fn test_wasm_compiler_register_defns_step_uses_caller_owned_state_ref() {
+    let compiler_base = std::fs::read_to_string(selfhost_source_path("CompilerBase.ls"))
+        .expect("canonical CompilerBase.ls が読み込めること");
+    assert!(
+        compiler_base.contains("(defn write-register-state-ref")
+            && compiler_base.contains("(ref-set state-ref state)"),
+        "register state builder は object return boundary を避けるため caller-owned ref へ state を書き込む helper を持つべき"
+    );
+
+    let source = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("canonical Compiler.ls が読み込めること");
+    let step = source
+        .split("(defn register-defns-step")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("Compiler.ls に register-defns-step が存在すること");
+
+    assert!(
+        step.contains("done-state-ref (ref-new 0)")
+            && step.contains("(root_push done-state-ref)")
+            && step.contains("(write-register-state-ref done-state-ref 1 idx ftable func-idx)")
+            && step.contains("done-state (ref-get done-state-ref)")
+            && step.contains("defn-state-ref (ref-new 0)")
+            && step.contains("(root_push defn-state-ref)")
+            && step.contains(
+                "(write-register-state-ref defn-state-ref 0 (+ idx 1) next-ftable (+ func-idx 1))"
+            )
+            && step.contains("defn-state (ref-get defn-state-ref)")
+            && step.contains("non-defn-state-ref (ref-new 0)")
+            && step.contains("(root_push non-defn-state-ref)")
+            && step.contains(
+                "(write-register-state-ref non-defn-state-ref 0 (+ idx 1) ftable func-idx)"
+            )
+            && step.contains("non-defn-state (ref-get non-defn-state-ref)")
+            && !step.contains("[state-ref (ref-new 0)")
+            && !step.contains("make-register-state 1")
+            && !step.contains("make-register-state 0"),
+        "register-defns-step は caller-owned ref を使いつつ、branch 間の同名 state-ref shadow で selfhost lowering の local 解決を壊さないよう固有名を使うべき"
+    );
+}
+
+#[test]
+fn test_selfhost_compiler_mode_register_defns_progress_uses_branch_unique_state_refs() {
+    let compiler_mode = selfhost_module("CompilerMode.ls");
+    let step = compiler_mode
+        .split("(defn register-defns-step-progress")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("CompilerMode.ls に register-defns-step-progress が存在すること");
+
+    assert!(
+        step.contains("done-state-ref (ref-new 0)")
+            && step.contains("(root_push done-state-ref)")
+            && step.contains(
+                "(write-register-state-progress-ref done-state-ref 1 idx ftable func-idx)"
+            )
+            && step.contains("done-state (ref-get done-state-ref)")
+            && step.contains("defn-state-ref (ref-new 0)")
+            && step.contains("(root_push defn-state-ref)")
+            && step.contains(
+                "(write-register-state-progress-ref defn-state-ref 0 (+ idx 1) next-ftable (+ func-idx 1))"
+            )
+            && step.contains("defn-state (ref-get defn-state-ref)")
+            && step.contains("non-defn-state-ref (ref-new 0)")
+            && step.contains("(root_push non-defn-state-ref)")
+            && step.contains(
+                "(write-register-state-progress-ref non-defn-state-ref 0 (+ idx 1) ftable func-idx)"
+            )
+            && step.contains("non-defn-state (ref-get non-defn-state-ref)")
+            && !step.contains("[state-ref (ref-new 0)"),
+        "register-defns-step-progress は branch ごとに固有の state ref 名を使い、actual Linux x86 metadata で ref-new local と writer call local がずれないようにするべき"
+    );
 }
 
 #[test]
@@ -4677,6 +11785,19 @@ fn test_native_codegen_x86_control_loop_stabilizes_segmented_offsets_before_call
             && call_branch.contains("(append-native-bytes-loop result native 0 native-len)"),
         "x86 opcode 40 branch は call-context allocation の前後で current/base/import offsets を ref 経由で使うべき"
     );
+    let native_bind_pos = call_branch
+        .find("native (codegen-x86-opcode-call-bundle")
+        .expect("x86 opcode 40 branch は native call bytes を local に置くこと");
+    let native_root_pos = call_branch
+        .find("(root_push native)")
+        .expect("x86 opcode 40 branch は append 前に native call bytes を root すること");
+    let append_pos = call_branch
+        .find("(append-native-bytes-loop result native 0 native-len)")
+        .expect("x86 opcode 40 branch は native call bytes を append すること");
+    assert!(
+        native_bind_pos < native_root_pos && native_root_pos < append_pos,
+        "x86 opcode 40 branch は append-native-bytes-loop の result allocation 中に call bytes を失わないよう、native を append 前に root するべき"
+    );
 }
 
 #[test]
@@ -4687,19 +11808,25 @@ fn test_native_codegen_x86_zero_arg_depth_one_call_roots_call_bytes_for_selfhost
         .nth(1)
         .and_then(|tail| tail.split("\n(defn ").next())
         .expect("NativeCodegen.ls に codegen-x86-opcode-call-bundle が存在すること");
+    let zero_arg_branch = native_codegen_x86_non_one_arg_call_bundle_body(&source)
+        .split("(if (= target-param-count 0)")
+        .nth(1)
+        .and_then(|tail| tail.split("(if (= target-param-count 2)").next())
+        .expect("non-one-arg helper に zero-arg call 分岐が存在すること");
 
     assert!(
         body.contains(
             "call-rel (- target-offset (+ (ref-get current-offset-ref) call-next-offset))]"
         ) && body.contains("(let [call-rel-bytes (emit-call-rel32 call-rel)]")
             && body.contains("(root_push call-rel-bytes)")
-            && body.contains("(if (= current-depth 0)")
-            && body.contains("(concat-byte-vectors-rooted call-rel-bytes (vector-new 0))")
-            && body.contains("(if (= current-depth 1)")
-            && body.contains("(concat-byte-vectors-rooted")
-            && body.contains("(emit-push-rax)")
-            && body.contains("call-rel-bytes")
-            && body.contains("(emit-pop-rcx)"),
+            && zero_arg_branch.contains("(if (= current-depth 0)")
+            && zero_arg_branch
+                .contains("(concat-byte-vectors-rooted call-rel-bytes (vector-new 0))")
+            && zero_arg_branch.contains("(if (= current-depth 1)")
+            && zero_arg_branch.contains("(concat-byte-vectors-rooted")
+            && zero_arg_branch.contains("(emit-push-rax)")
+            && zero_arg_branch.contains("call-rel-bytes")
+            && zero_arg_branch.contains("(emit-pop-rcx)"),
         "x86 zero-arg call は call-rel bytes を算出直後に別 let で root し、depth=0 では rooted concat の返却用 vector にして depth=1 では concat 中に 0 化しないよう rooted concat で構築するべき"
     );
 }
@@ -4756,11 +11883,312 @@ fn test_native_codegen_x86_control_loop_chunks_deep_instruction_streams() {
             && body.contains("chunk-size (if (> remaining 64) 64 remaining)")
             && body.contains("chunk-state (make-x86-control-loop-state idx chunk-size)")
             && body.contains("tail-state (make-x86-control-loop-state (+ idx chunk-size) (- remaining chunk-size))")
-            && body.contains("next-state (make-x86-control-loop-state (+ idx 1) (- remaining 1))")
-            && body.contains("(generate-native-control-instr-bundle-loop-x86-with-context ctx next-state)")
+            && source.contains("(defn continue-native-control-instr-bundle-loop-x86 [ctx idx remaining]")
+            && body.contains("(continue-native-control-instr-bundle-loop-x86 ctx idx remaining)")
             && !body.contains("next-depth (generate-native-control-instr-bundle-loop-x86-with-context")
             && !body.contains("generate-native-control-instr-bundle-loop-x86-with-context ctx next-state next-depth"),
         "x86 control loop は巨大 IR 関数で wasm/native stack を使い切らないよう 64 命令単位で chunk 化しつつ、native stage1 の recursive scalar drift を避けるため current-depth を depth vector から読むべき"
+    );
+}
+
+#[test]
+fn test_native_codegen_x86_control_loop_roots_chunk_states_before_recursion() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let body = source
+        .split("(defn generate-native-control-instr-bundle-loop-x86-with-context")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split(
+                "(defn generate-native-control-instr-bundle-loop-x86-with-import-count-and-base",
+            )
+            .next()
+        })
+        .expect("NativeCodegen.ls に x86 control bundle loop が存在すること");
+    let chunk_branch = body
+        .split("(if (> remaining 64)\n        (do")
+        .nth(1)
+        .and_then(|tail| tail.split("(let [instr (vector-get ir-func idx)").next())
+        .expect("x86 control loop に 64-row chunk branch が存在すること");
+
+    let chunk_state_pos = chunk_branch
+        .find("chunk-state (make-x86-control-loop-state idx chunk-size)")
+        .expect("chunk branch は chunk-state を作ること");
+    let chunk_root_pos = chunk_branch[chunk_state_pos..]
+        .find("(root_push chunk-state)")
+        .map(|pos| chunk_state_pos + pos)
+        .expect("chunk branch は chunk-state を root すること");
+    let chunk_call_pos = chunk_branch[chunk_state_pos..]
+        .find("(generate-native-control-instr-bundle-loop-x86-with-context ctx chunk-state)")
+        .map(|pos| chunk_state_pos + pos)
+        .expect("chunk branch は chunk-state で再帰すること");
+    let tail_state_pos = chunk_branch
+        .find(
+            "tail-state (make-x86-control-loop-state (+ idx chunk-size) (- remaining chunk-size))",
+        )
+        .expect("chunk branch は tail-state を作ること");
+    let tail_root_pos = chunk_branch[tail_state_pos..]
+        .find("(root_push tail-state)")
+        .map(|pos| tail_state_pos + pos)
+        .expect("chunk branch は tail-state を root すること");
+    let tail_call_pos = chunk_branch[tail_state_pos..]
+        .find("(generate-native-control-instr-bundle-loop-x86-with-context ctx tail-state)")
+        .map(|pos| tail_state_pos + pos)
+        .expect("chunk branch は tail-state で再帰すること");
+
+    assert!(
+        chunk_state_pos < chunk_root_pos
+            && chunk_root_pos < chunk_call_pos
+            && chunk_call_pos < tail_state_pos
+            && tail_state_pos < tail_root_pos
+            && tail_root_pos < tail_call_pos,
+        "x86 control loop の 64-row chunk 分岐は stage3 normal transport の巨大関数生成中に state vector を GC から守るため、chunk-state/tail-state を再帰前に root するべき"
+    );
+}
+
+#[test]
+fn test_native_codegen_x86_function_bundle_avoids_initial_control_state_fallback() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let body = source
+        .split("(defn generate-native-function-x86-64-bundle-with-layout")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn generate-native-function-x86-64-bundle-with-import-count-and-base")
+                .next()
+        })
+        .expect("NativeCodegen.ls に x86 function bundle emitter が存在すること");
+
+    assert!(
+        body.contains("(generate-native-control-instr-bundle-row-loop-x86 control-ctx 0 n)")
+            && !body.contains("control-state (make-x86-control-loop-state 0 n)")
+            && !body.contains("(generate-native-control-instr-bundle-loop-x86-with-context\n                                    control-ctx"),
+        "x86 function bundle は medium IR 関数でも old chunked control-state fallback へ戻らず、metadata と同じ row-state loop を使うべき"
+    );
+}
+
+#[test]
+fn test_native_codegen_x86_function_bundle_uses_row_state_loop_for_all_ir_functions() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let body = source
+        .split("(defn generate-native-function-x86-64-bundle-with-layout")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn generate-native-function-x86-64-bundle-with-import-count-and-base")
+                .next()
+        })
+        .expect("NativeCodegen.ls に x86 function bundle emitter が存在すること");
+    let row_step_body = source
+        .split("(defn generate-native-control-instr-bundle-row-step-x86")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn generate-native-control-instr-bundle-row-chunk-x86")
+                .next()
+        })
+        .expect("NativeCodegen.ls に x86 row-step helper が存在すること");
+
+    assert!(
+        body.contains("(generate-native-control-instr-bundle-row-loop-x86 control-ctx 0 n)")
+            && !body.contains("(if (> n 1024)")
+            && !body.contains("(if (< n 65)")
+            && row_step_body.contains("row-state (make-x86-control-loop-state idx 1)")
+            && row_step_body.contains("(root_push row-state)")
+            && row_step_body.contains(
+                "(generate-native-control-instr-bundle-loop-x86-with-context ctx row-state)"
+            )
+            && !row_step_body.contains("9000000344")
+            && !row_step_body.contains("print-x86-function-emit-progress-row"),
+        "x86 normal function bundle は stage3 normal transport の medium IR 関数でも、metadata と同じ row-state root 済み loop で出力なしに処理するべき"
+    );
+}
+
+#[test]
+fn test_native_codegen_x86_row_loop_releases_row_roots_before_next_row() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let row_step_body = source
+        .split("(defn generate-native-control-instr-bundle-row-step-x86")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn generate-native-control-instr-bundle-row-chunk-x86")
+                .next()
+        })
+        .expect("NativeCodegen.ls に x86 row-step helper が存在すること");
+    let row_chunk_body = source
+        .split("(defn generate-native-control-instr-bundle-row-chunk-x86")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn generate-native-control-instr-bundle-row-loop-x86")
+                .next()
+        })
+        .expect("NativeCodegen.ls に x86 row-chunk helper が存在すること");
+    let row_loop_body = source
+        .split("(defn generate-native-control-instr-bundle-row-loop-x86")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn generate-native-function-x86-64-bundle-with-layout")
+                .next()
+        })
+        .expect("NativeCodegen.ls に x86 row-state control loop helper が存在すること");
+
+    assert!(
+        row_step_body.contains("[ctx idx]")
+            && row_step_body.contains("(root_push ctx)")
+            && row_step_body.contains("row-state (make-x86-control-loop-state idx 1)")
+            && row_step_body.contains("(root_push row-state)")
+            && row_step_body.contains(
+                "(generate-native-control-instr-bundle-loop-x86-with-context ctx row-state)"
+            )
+            && row_step_body.contains("(root_pop)\n        (root_pop)\n        0")
+            && row_chunk_body.contains("[ctx idx end]")
+            && row_chunk_body.contains(
+                "(let [_row (generate-native-control-instr-bundle-row-step-x86 ctx idx)]"
+            )
+            && row_chunk_body
+                .contains("(generate-native-control-instr-bundle-row-chunk-x86 ctx (+ idx 1) end)")
+            && row_loop_body.contains("chunk-end (if (> (+ idx 64) len) len (+ idx 64))")
+            && row_loop_body.contains(
+                "_chunk (generate-native-control-instr-bundle-row-chunk-x86 ctx idx chunk-end)"
+            )
+            && row_loop_body
+                .contains("(generate-native-control-instr-bundle-row-loop-x86 ctx chunk-end len)")
+            && !row_loop_body
+                .contains("let [final (generate-native-control-instr-bundle-row-loop-x86"),
+        "x86 row loop は巨大 IR 関数で root/call frame を溜めないよう、row helper で roots を解放しつつ 64 row chunk で再帰深度を抑えるべき"
+    );
+}
+
+#[test]
+fn test_native_codegen_x86_control_loop_roots_next_state_before_tail_recursion() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let body = source
+        .split("(defn generate-native-control-instr-bundle-loop-x86-with-context")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split(
+                "(defn generate-native-control-instr-bundle-loop-x86-with-import-count-and-base",
+            )
+            .next()
+        })
+        .expect("NativeCodegen.ls に x86 control bundle loop が存在すること");
+    let continue_body = source
+        .split("(defn continue-native-control-instr-bundle-loop-x86")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn codegen-x86-control-loop-fallback-native")
+                .next()
+        })
+        .expect("NativeCodegen.ls に x86 control loop continue helper が存在すること");
+
+    let push_ctx = continue_body
+        .find("(root_push ctx)")
+        .expect("continue helper は ctx を root すること");
+    let make_state = continue_body
+        .find("next-state (make-x86-control-loop-state (+ idx 1) (- remaining 1))")
+        .expect("continue helper は次の state を作ること");
+    let push_state = continue_body
+        .find("(root_push next-state)")
+        .expect("continue helper は next-state を root すること");
+    let recurse = continue_body
+        .find("(generate-native-control-instr-bundle-loop-x86-with-context ctx next-state)")
+        .expect("continue helper は root 後に tail recursion へ進むこと");
+    let first_pop = continue_body[recurse..]
+        .find("(root_pop)")
+        .map(|offset| recurse + offset)
+        .expect("continue helper は再帰後に root を外すこと");
+    let second_pop = continue_body[first_pop + "(root_pop)".len()..]
+        .find("(root_pop)")
+        .map(|offset| first_pop + "(root_pop)".len() + offset)
+        .expect("continue helper は push 数と同じだけ root を外すこと");
+
+    assert!(
+        continue_body.contains("[ctx idx remaining]")
+            && continue_body.contains("(if (<= remaining 1)")
+            && continue_body.matches("(root_push ").count() == 2
+            && continue_body.matches("(root_pop)").count() == 2
+            && push_ctx < make_state
+            && make_state < push_state
+            && push_state < recurse
+            && recurse < first_pop
+            && first_pop < second_pop
+            && body
+                .matches("(continue-native-control-instr-bundle-loop-x86 ctx idx remaining)")
+                .count()
+                >= 20
+            && !body.contains("next-state (make-x86-control-loop-state (+ idx 1) (- remaining 1))")
+            && !body.contains(
+                "(generate-native-control-instr-bundle-loop-x86-with-context ctx next-state)"
+            ),
+        "x86 control loop は actual stage2 の row tail 再帰で next-state/ctx を GC から守るため continue helper 経由にするべき"
+    );
+}
+
+#[test]
+fn test_native_codegen_control_flow_meta_inserts_else_end_index_through_helper() {
+    let source_path = selfhost_project_root().join("selfhost/src/Backend/Native/NativeCodegen.ls");
+    let source = std::fs::read_to_string(&source_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", source_path.display()));
+    let helper_body = source
+        .split("(defn control-flow-end-map-with-else-index [end-map else-idx end-idx]")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("control-flow end-map else-index helper が必要");
+    let recursive_end_body = source
+        .split("(defn scan-control-flow-meta-handle-end")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn scan-control-flow-meta-handle-branch")
+                .next()
+        })
+        .expect("recursive control-flow end handler が必要");
+    let step_body = source
+        .split("(defn scan-control-flow-meta-step ")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn scan-control-flow-meta-step-64-loop-bounded")
+                .next()
+        })
+        .expect("chunked control-flow step が必要");
+
+    assert!(
+        helper_body.contains("(if (< else-idx 0)")
+            && helper_body.contains("end-map")
+            && helper_body.contains("(map-insert-index end-map else-idx end-idx)"),
+        "control-flow helper は else が無い場合は end-map をそのまま返し、else がある場合は else idx -> end idx を挿入するべき"
+    );
+    assert!(
+        recursive_end_body
+            .contains("(control-flow-end-map-with-else-index end-map1 else-idx idx)",)
+            && step_body.contains("(control-flow-end-map-with-else-index end-map1 else-idx idx)"),
+        "recursive/step の end scan は stage3 で else idx 挿入を落とさないよう同じ helper を使うべき"
+    );
+}
+
+#[test]
+fn test_native_codegen_x86_control_loop_treats_end_as_direct_noop_continue() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let body = source
+        .split("(defn generate-native-control-instr-bundle-loop-x86-with-context")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split(
+                "(defn generate-native-control-instr-bundle-loop-x86-with-import-count-and-base",
+            )
+            .next()
+        })
+        .expect("NativeCodegen.ls に x86 control bundle loop が存在すること");
+    let end_branch = body
+        .split("(if (= opcode 43)")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(if (= (direct-append-x86-opcode opcode) 6)")
+                .next()
+        })
+        .expect("x86 control loop は End を fallback 前に処理すること");
+
+    assert!(
+        end_branch.contains("(continue-native-control-instr-bundle-loop-x86 ctx idx remaining)")
+            && !end_branch.contains("codegen-x86-control-loop-fallback-native")
+            && body.find("(if (= opcode 43)")
+                < body.find("codegen-x86-control-loop-fallback-native"),
+        "x86 control loop の End は native bytes を出さないため、空 vector fallback を経由せず直接次 row へ進むべき"
     );
 }
 
@@ -4779,41 +12207,84 @@ fn test_native_codegen_x86_collects_bundle_depths_for_control_loop() {
 }
 
 #[test]
-fn test_native_codegen_x86_body_size_loop_keeps_arity_stable() {
+fn test_native_codegen_x86_function_size_uses_large_ir_slot_fallback() {
     let source = std::fs::read_to_string(selfhost_source_path("NativeCodegen.ls"))
         .expect("canonical NativeCodegen.ls が読み込めること");
-    let body = source
-        .split("(defn native-function-body-size-x86-loop-with-context")
-        .nth(1)
-        .and_then(|tail| tail.split("\n(defn ").next())
-        .expect("NativeCodegen.ls に context 化された x86 body size loop が存在すること");
-
-    assert!(
-        body.contains("[ctx idx total current-depth]"),
-        "x86 body size loop は Linux x86 native の recursive call 破壊を避けるため context を使って 4 引数に収めるべき"
-    );
-    assert!(
-        body.contains("ir-func (vector-get ctx 0)")
-            && body.contains("function-metas (vector-get ctx 1)")
-            && body.contains("len (vector-get ctx 2)"),
-        "x86 body size context は ir/function metadata/len を recursive argument surface から退避するべき"
-    );
-    assert!(
-        body.contains(
-            "(native-function-body-size-x86-loop-with-context ctx (+ idx 1) next-total next-depth)",
-        ),
-        "x86 body size loop の recursive call は context + scalar state だけを渡すべき"
-    );
     let wrapper_body = source
         .split("(defn native-function-size-x86")
         .nth(1)
         .and_then(|tail| tail.split("\n(defn ").next())
         .expect("NativeCodegen.ls に native-function-size-x86 が存在すること");
     assert!(
-        wrapper_body.contains("body-size-ctx (make-x86-body-size-context ir-func function-metas")
-            && wrapper_body
-                .contains("(native-function-body-size-x86-loop-with-context body-size-ctx 0 0 0)"),
-        "native-function-size-x86 は actual native stage の function-size drift を避けるため context 化 body size loop を使うべき"
+        wrapper_body.contains("body-bytes (if (> (vector-length ir-func) 4096)")
+            && wrapper_body.contains("(+ 131072 (* (vector-length ir-func) 16))")
+            && wrapper_body.contains("(x86-body-size-loop-ctx body-size-ctx 0 0 0)"),
+        "native-function-size-x86 は巨大 selfhost 関数だけ exact body-size recursion を避け、十分大きい slot を予約するべき"
+    );
+}
+
+#[test]
+fn test_native_codegen_x86_body_size_loop_keeps_exact_small_ir_path() {
+    let source = std::fs::read_to_string(selfhost_source_path("NativeCodegen.ls"))
+        .expect("canonical NativeCodegen.ls が読み込めること");
+    let body = source
+        .split("(defn x86-body-size-loop-ctx")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("NativeCodegen.ls に context 化された x86 body size loop が存在すること");
+    let wrapper_body = source
+        .split("(defn native-function-size-x86")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("NativeCodegen.ls に native-function-size-x86 が存在すること");
+
+    assert!(
+        body.contains("[ctx idx total current-depth]")
+            && body.contains("ir-func (vector-get ctx 0)")
+            && body.contains("function-metas (vector-get ctx 1)")
+            && body.contains("len (vector-get ctx 2)")
+            && body.contains("(x86-body-size-loop-ctx ctx (+ idx 1) next-total next-depth)"),
+        "小さい IR の exact x86 body-size path は context + scalar state の 4 引数 recursion を維持するべき"
+    );
+    assert!(
+        wrapper_body.contains("(if (> (vector-length ir-func) 4096)")
+            && wrapper_body.contains("(x86-body-size-loop-ctx body-size-ctx 0 0 0)"),
+        "native-function-size-x86 は巨大 IR 以外では exact body-size path を使うべき"
+    );
+}
+
+#[test]
+fn test_linux_x86_representative_slot_start_helpers_root_live_metadata() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+    let starts_body = source
+        .split("(defn collect-callable-function-slot-starts-x86-loop")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("Linux x86 representative seed に slot starts loop が存在すること");
+    let total_body = source
+        .split("(defn callable-user-total-slot-size-x86-loop")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("Linux x86 representative seed に slot total loop が存在すること");
+
+    assert!(
+        starts_body.contains("(root_push functions)")
+            && starts_body.contains("(root_push starts)")
+            && starts_body.contains("(root_push func-meta)")
+            && starts_body.contains("(root_push next-starts)")
+            && starts_body.contains("(root_pop)")
+            && starts_body.contains(
+                "(collect-callable-function-slot-starts-x86-loop functions (+ idx 1) len next-starts next-offset)",
+            ),
+        "Linux x86 slot starts loop は native-function-size-x86 中の GC で starts / func-meta を壊さないよう root するべき"
+    );
+    assert!(
+        total_body.contains("(root_push functions)")
+            && total_body.contains("(root_push func-meta)")
+            && total_body.contains(
+                "(callable-user-total-slot-size-x86-loop functions (+ idx 1) len next-total)",
+            ),
+        "Linux x86 slot total loop は native-function-size-x86 中の GC で func-meta を壊さないよう root するべき"
     );
 }
 
@@ -5582,27 +13053,36 @@ fn test_e2e_stage1_native_observation_summary_two_run_determinism() {
     );
 }
 
-#[test]
-fn test_parse_numeric_lines_accepts_unsigned_i64_twos_complement_output() {
-    let lines =
-        parse_numeric_lines("9223372036854775808\n18446744073709551614\n18446744073709551615\n");
-
-    assert_eq!(lines, vec![i64::MIN, -2, -1]);
-}
-
 fn parse_numeric_lines(output: &str) -> Vec<i64> {
     output
         .as_bytes()
         .split(|byte| is_transport_separator(*byte))
         .filter(|line| !line.is_empty())
         .map(|line| {
-            let text = std::str::from_utf8(line)
-                .unwrap_or_else(|_| panic!("numeric line が UTF-8 でない: {line:?}"));
-            text.parse::<i64>()
-                .or_else(|_| text.parse::<u64>().map(|value| value as i64))
+            std::str::from_utf8(line)
+                .unwrap_or_else(|_| panic!("numeric line が UTF-8 でない: {line:?}"))
+                .parse::<i64>()
                 .unwrap_or_else(|_| panic!("numeric line ではない出力を検出: {:?}", line))
         })
         .collect()
+}
+
+fn parse_numeric_lines_i128(output: &str) -> Vec<i128> {
+    output
+        .as_bytes()
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            std::str::from_utf8(line)
+                .unwrap_or_else(|_| panic!("numeric line が UTF-8 でない: {line:?}"))
+                .parse::<i128>()
+                .unwrap_or_else(|_| panic!("numeric line ではない出力を検出: {:?}", line))
+        })
+        .collect()
+}
+
+fn numeric_i128_to_i64(value: i128, context: &str) -> i64 {
+    i64::try_from(value).unwrap_or_else(|_| panic!("{context} が i64 範囲外: value={value}"))
 }
 
 fn parse_direct_summaries(lines: &[i64]) -> [NativeTargetSummary; 3] {
@@ -5788,24 +13268,6 @@ fn host_native_exec_supported() -> bool {
 
 fn linux_x86_native_exec_supported() -> bool {
     cfg!(all(target_os = "linux", target_arch = "x86_64"))
-}
-
-fn macos_x86_rosetta_exec_supported() -> bool {
-    if !cfg!(target_os = "macos") {
-        return false;
-    }
-    let clang = std::process::Command::new("clang")
-        .arg("--version")
-        .output();
-    if !clang.map(|output| output.status.success()).unwrap_or(false) {
-        return false;
-    }
-    let rosetta = std::process::Command::new("arch")
-        .args(["-x86_64", "/usr/bin/true"])
-        .output();
-    rosetta
-        .map(|output| output.status.success())
-        .unwrap_or(false)
 }
 
 fn write_native_host_bundle_artifact(
@@ -6812,35 +14274,10 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
       -1)))
 
 (defn x86-rel32-target-in-window-at-base [bytes offset size base-offset]
-  (let [call-offset (x86-first-rel32-offset-in-window bytes offset 0 size)]
-    (if (>= call-offset 0)
-      (let [base-offset-ref (ref-new base-offset)
-            call-offset-ref (ref-new call-offset)]
-        (do
-          (root_push base-offset-ref)
-          (root_push call-offset-ref)
-          (let [rel32 (x86-rel32-at bytes (ref-get call-offset-ref))]
-            (do
-              (let [target (+ (ref-get base-offset-ref) (+ (ref-get call-offset-ref) (+ 5 rel32)))]
-                (do
-                  (root_pop)
-                  (root_pop)
-                  target))))))
+  (let [target (x86-rel32-target-in-window bytes offset size)]
+    (if (>= target 0)
+      (+ base-offset target)
       -1)))
-
-(defn x86-rel32-target-at-offset-base [bytes call-offset base-offset]
-  (let [base-offset-ref (ref-new base-offset)
-        call-offset-ref (ref-new call-offset)]
-    (do
-      (root_push base-offset-ref)
-      (root_push call-offset-ref)
-      (let [rel32 (x86-rel32-at bytes (ref-get call-offset-ref))]
-        (do
-          (let [target (+ (ref-get base-offset-ref) (+ (ref-get call-offset-ref) (+ 5 rel32)))]
-            (do
-              (root_pop)
-              (root_pop)
-              target)))))))
 
 (defn pack-byte-chunk-2 [bytes idx len]
   (+ (byte-at-or-zero bytes idx len)
@@ -7529,298 +14966,48 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
             (root_pop)
             final))))))
 
-(defn make-linux-x86-body-size-state [idx total current-depth]
-  (let [base0 (vector-push (vector-new 3) idx)]
-    (do
-      (root_push base0)
-      (let [base1 (vector-push base0 total)]
-        (do
-          (root_push base1)
-          (let [state (vector-push base1 current-depth)]
-            (do
-              (root_pop)
-              (root_pop)
-              state)))))))
+(defn x86-function-slot-size [func-meta functions]
+  (+ (native-function-size-x86 func-meta functions) 2048))
 
-(defn linux-x86-native-function-body-size-loop-bounded [ctx idx total current-depth remaining]
-  (let [ir-func (vector-get ctx 0)
-        function-metas (vector-get ctx 1)
-        len (vector-get ctx 2)]
-    (if (>= idx len)
-      (make-linux-x86-body-size-state idx total current-depth)
-      (if (<= remaining 0)
-        (make-linux-x86-body-size-state idx total current-depth)
+(defn collect-callable-function-slot-starts-x86-loop [functions idx len starts offset]
+  (if (>= idx len)
+    starts
+    (do
+      (root_push functions)
+      (root_push starts)
+      (let [func-meta (vector-get functions idx)]
         (do
-          (root_push ctx)
-          (let [instr (vector-get ir-func idx)
-                opcode (vector-get instr 0)
-                operand (vector-get instr 1)
-                next-total (+ total (native-instr-size-x86 opcode operand function-metas current-depth))
-                next-depth (apply-stack-delta current-depth (opcode-stack-delta opcode operand function-metas))]
+          (root_push func-meta)
+          (let [next-starts (vector-push starts offset)]
             (do
-              (let [result (linux-x86-native-function-body-size-loop-bounded ctx (+ idx 1) next-total next-depth (- remaining 1))]
+              (root_push next-starts)
+              (let [next-offset (+ offset (x86-function-slot-size func-meta functions))]
                 (do
                   (root_pop)
-                  result)))))))))
-
-(defn linux-x86-native-function-body-size-loop [ctx idx total current-depth]
-  (do
-    (root_push ctx)
-    (let [state (linux-x86-native-function-body-size-loop-bounded ctx idx total current-depth 64)
-          next-idx (vector-get state 0)
-          next-total (vector-get state 1)
-          next-depth (vector-get state 2)
-          len (vector-get ctx 2)]
-      (do
-        (let [result
-              (if (>= next-idx len)
-                next-total
-                (linux-x86-native-function-body-size-loop ctx next-idx next-total next-depth))]
-          (do
-            (root_pop)
-            result))))))
-
-(defn linux-x86-native-function-size-bounded [func-meta function-metas]
-  (let [param-count (native-function-param-count func-meta)
-        local-count (native-function-local-count func-meta)
-        ir-func (native-function-ir func-meta)
-        stack-bytes (native-local-stack-bytes-with-window-x86 ir-func (+ (+ param-count local-count) 1) function-metas)
-        frame-bytes (if (> stack-bytes 0) 14 0)
-        param-spill-bytes (if (>= param-count 20)
-                            (native-param-spill-bytes-x86-twenty-plus param-count)
-                            (if (> param-count 6)
-                              (+ 53 (* (- param-count 7) 11))
-                              (if (= param-count 6)
-                                42
-                                (if (= param-count 5)
-                                  35
-                                  (if (= param-count 4)
-                                    28
-                                    (if (= param-count 3)
-                                      21
-                                      (if (= param-count 2)
-                                        14
-                                        (if (= param-count 1) 7 0))))))))
-        body-size-ctx (make-x86-body-size-context ir-func function-metas (vector-length ir-func))
-        body-bytes (linux-x86-native-function-body-size-loop body-size-ctx 0 0 0)]
-    (+ (+ (+ 6 frame-bytes) param-spill-bytes) body-bytes)))
-
-(defn x86-function-slot-size [func-meta functions]
-  (+ (linux-x86-native-function-size-bounded func-meta functions) 2048))
-
-(defn make-x86-slot-layout-context [functions starts-ref idx-ref len-ref offset-ref]
-  (do
-    (root_push functions)
-    (root_push starts-ref)
-    (root_push idx-ref)
-    (root_push len-ref)
-    (root_push offset-ref)
-    (let [base0 (vector-push (vector-new 5) functions)]
-      (do
-        (root_push base0)
-        (let [base1 (vector-push base0 starts-ref)]
-          (do
-            (root_push base1)
-            (let [base2 (vector-push base1 idx-ref)]
-              (do
-                (root_push base2)
-                (let [base3 (vector-push base2 len-ref)]
-                  (do
-                    (root_push base3)
-                    (let [ctx (vector-push base3 offset-ref)]
-                      (do
-                        (root_pop)
-                        (root_pop)
-                        (root_pop)
-                        (root_pop)
-                        (root_pop)
-                        (root_pop)
-                        (root_pop)
-                        (root_pop)
-                        (root_pop)
-                        ctx))))))))))))
-
-(defn x86-slot-layout-context-functions [ctx] (vector-get ctx 0))
-(defn x86-slot-layout-context-starts-ref [ctx] (vector-get ctx 1))
-(defn x86-slot-layout-context-idx-ref [ctx] (vector-get ctx 2))
-(defn x86-slot-layout-context-len-ref [ctx] (vector-get ctx 3))
-(defn x86-slot-layout-context-offset-ref [ctx] (vector-get ctx 4))
-
-(defn print-x86-slot-layout-progress [marker ctx]
-  (if (> (string-length (command-line-arg 8)) 0)
-    (let [idx-ref (x86-slot-layout-context-idx-ref ctx)
-          len-ref (x86-slot-layout-context-len-ref ctx)
-          starts-ref (x86-slot-layout-context-starts-ref ctx)
-          offset-ref (x86-slot-layout-context-offset-ref ctx)]
-      (do
-        (print marker)
-        (print (ref-get idx-ref))
-        (print (ref-get len-ref))
-        (print (vector-length (ref-get starts-ref)))
-        (print (ref-get offset-ref))
-        0))
-    0))
-
-(defn collect-callable-function-slot-starts-x86-loop-bounded [ctx remaining]
-  (let [idx-ref (x86-slot-layout-context-idx-ref ctx)
-        len-ref (x86-slot-layout-context-len-ref ctx)
-        starts-ref (x86-slot-layout-context-starts-ref ctx)]
-    (if (>= (ref-get idx-ref) (ref-get len-ref))
-      (ref-get starts-ref)
-      (if (<= remaining 0)
-        (ref-get starts-ref)
-        (do
-          (root_push ctx)
-          (root_push idx-ref)
-          (root_push len-ref)
-          (let [functions (x86-slot-layout-context-functions ctx)
-                offset-ref (x86-slot-layout-context-offset-ref ctx)]
-            (do
-              (root_push functions)
-              (root_push starts-ref)
-              (root_push offset-ref)
-              (let [func-meta (vector-get functions (ref-get idx-ref))]
-                (do
-                  (root_push func-meta)
-                  (let [next-starts (vector-push (ref-get starts-ref) (ref-get offset-ref))]
-                    (do
-                      (root_push next-starts)
-                      (ref-set starts-ref next-starts)
-                      (let [slot-size (x86-function-slot-size func-meta functions)]
-                        (do
-                          (ref-set offset-ref (+ (ref-get offset-ref) slot-size))
-                          (ref-set idx-ref (+ (ref-get idx-ref) 1))
-                          (let [final (collect-callable-function-slot-starts-x86-loop-bounded ctx (- remaining 1))]
-                            (do
-                              (root_pop)
-                              (root_pop)
-                              (root_pop)
-                              (root_pop)
-                              (root_pop)
-                              (root_pop)
-                              (root_pop)
-                              (root_pop)
-                              final)))))))))))))))
-
-(defn collect-callable-function-slot-starts-x86-loop [ctx]
-  (let [_before (print-x86-slot-layout-progress 9000000059 ctx)
-        result (collect-callable-function-slot-starts-x86-loop-bounded ctx 64)
-        _after (print-x86-slot-layout-progress 9000000060 ctx)
-        idx-ref (x86-slot-layout-context-idx-ref ctx)
-        len-ref (x86-slot-layout-context-len-ref ctx)]
-    (if (>= (ref-get idx-ref) (ref-get len-ref))
-      result
-      (collect-callable-function-slot-starts-x86-loop ctx))))
-
-(defn make-x86-slot-layout-result [starts total]
-  (do
-    (root_push starts)
-    (let [base0 (vector-push (vector-new 2) starts)]
-      (do
-        (root_push base0)
-        (let [result (vector-push base0 total)]
-          (do
-            (root_pop)
-            (root_pop)
-            result))))))
-
-(defn collect-callable-function-slot-layout-x86 [functions import-count]
-  (do
-    (root_push functions)
-    (let [starts-ref (ref-new (vector-new 8))
-          idx-ref (ref-new import-count)
-          len-ref (ref-new (vector-length functions))
-          offset-ref (ref-new 0)]
-      (do
-        (root_push starts-ref)
-        (root_push idx-ref)
-        (root_push len-ref)
-        (root_push offset-ref)
-        (let [ctx (make-x86-slot-layout-context functions starts-ref idx-ref len-ref offset-ref)]
-          (do
-            (root_push ctx)
-            (let [starts (collect-callable-function-slot-starts-x86-loop ctx)
-                  total (ref-get offset-ref)
-                  result (make-x86-slot-layout-result starts total)]
-              (do
-                (root_pop)
-                (root_pop)
-                (root_pop)
-                (root_pop)
-                (root_pop)
-                (root_pop)
-                result))))))))
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (collect-callable-function-slot-starts-x86-loop functions (+ idx 1) len next-starts next-offset))))))))))
 
 (defn collect-callable-function-slot-starts-x86 [functions import-count]
-  (vector-get (collect-callable-function-slot-layout-x86 functions import-count) 0))
+  (collect-callable-function-slot-starts-x86-loop functions import-count (vector-length functions) (vector-new 8) 0))
 
-(defn callable-user-total-slot-size-x86-loop-bounded [ctx remaining]
-  (let [idx-ref (x86-slot-layout-context-idx-ref ctx)
-        len-ref (x86-slot-layout-context-len-ref ctx)]
-    (if (>= (ref-get idx-ref) (ref-get len-ref))
-      (ref-get (x86-slot-layout-context-offset-ref ctx))
-      (if (<= remaining 0)
-        (ref-get (x86-slot-layout-context-offset-ref ctx))
+(defn callable-user-total-slot-size-x86-loop [functions idx len total]
+  (if (>= idx len)
+    total
+    (do
+      (root_push functions)
+      (let [func-meta (vector-get functions idx)]
         (do
-          (root_push ctx)
-          (root_push idx-ref)
-          (root_push len-ref)
-          (let [functions (x86-slot-layout-context-functions ctx)
-                offset-ref (x86-slot-layout-context-offset-ref ctx)]
+          (root_push func-meta)
+          (let [next-total (+ total (x86-function-slot-size func-meta functions))]
             (do
-              (root_push functions)
-              (root_push offset-ref)
-              (let [func-meta (vector-get functions (ref-get idx-ref))]
-                (do
-                  (root_push func-meta)
-                  (let [slot-size (x86-function-slot-size func-meta functions)]
-                    (do
-                      (ref-set offset-ref (+ (ref-get offset-ref) slot-size))
-                      (ref-set idx-ref (+ (ref-get idx-ref) 1))
-                      (let [final (callable-user-total-slot-size-x86-loop-bounded ctx (- remaining 1))]
-                        (do
-                          (root_pop)
-                          (root_pop)
-                          (root_pop)
-                          (root_pop)
-                          (root_pop)
-                          (root_pop)
-                          final)))))))))))))
-
-(defn callable-user-total-slot-size-x86-loop [ctx]
-  (let [_before (print-x86-slot-layout-progress 9000000061 ctx)
-        result (callable-user-total-slot-size-x86-loop-bounded ctx 64)
-        _after (print-x86-slot-layout-progress 9000000062 ctx)
-        idx-ref (x86-slot-layout-context-idx-ref ctx)
-        len-ref (x86-slot-layout-context-len-ref ctx)]
-    (if (>= (ref-get idx-ref) (ref-get len-ref))
-      result
-      (callable-user-total-slot-size-x86-loop ctx))))
+              (root_pop)
+              (root_pop)
+              (callable-user-total-slot-size-x86-loop functions (+ idx 1) len next-total))))))))
 
 (defn callable-user-total-slot-size-x86 [functions import-count]
-  (do
-    (root_push functions)
-    (let [starts-ref (ref-new (vector-new 0))
-          idx-ref (ref-new import-count)
-          len-ref (ref-new (vector-length functions))
-          total-ref (ref-new 0)]
-      (do
-        (root_push starts-ref)
-        (root_push idx-ref)
-        (root_push len-ref)
-        (root_push total-ref)
-        (let [ctx (make-x86-slot-layout-context functions starts-ref idx-ref len-ref total-ref)]
-          (do
-            (root_push ctx)
-            (let [result (callable-user-total-slot-size-x86-loop ctx)]
-              (do
-                (root_pop)
-                (root_pop)
-                (root_pop)
-                (root_pop)
-                (root_pop)
-                (root_pop)
-                result))))))))
+  (callable-user-total-slot-size-x86-loop functions import-count (vector-length functions) 0))
 
 (defn x86-function-slot-size-from-starts [starts import-stub-offset idx function-start]
   (if (< (+ idx 1) (vector-length starts))
@@ -7854,48 +15041,42 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
 (defn x86-code-segment-context-import-count [ctx] (vector-get ctx 2))
 (defn x86-code-segment-context-import-stub-offset [ctx] (vector-get ctx 3))
 
-(defn print-x86-function-code-segments-loop [ctx idx len]
+(defn print-x86-function-code-segments-loop [functions starts import-count import-stub-offset idx len]
   (if (>= idx len)
     0
     (do
-      (let [functions (x86-code-segment-context-functions ctx)
-            starts (x86-code-segment-context-starts ctx)
-            import-count (x86-code-segment-context-import-count ctx)
-            import-stub-offset (x86-code-segment-context-import-stub-offset ctx)]
-        (do
-          (root_push ctx)
       (root_push functions)
       (root_push starts)
       (let [actual-idx (+ idx import-count)
-             func-meta (vector-get functions actual-idx)
-             function-start (vector-get starts idx)]
+            func-meta (vector-get functions actual-idx)
+            function-start (vector-get starts idx)]
         (do
           (root_push func-meta)
-		          (let [function-size (x86-function-slot-size-from-starts starts import-stub-offset idx function-start)
-		                result (ref-new (vector-new 0))]
-		            (do
-		              (root_push result)
-		              (let [layout (make-x86-function-emit-layout import-count import-stub-offset function-start 0)]
-		                (do
-		                   (root_push layout)
-		                   (generate-native-function-x86-64-bundle-with-layout func-meta result starts functions layout)
-		                   (let [segment (ref-get result)
-		                         padded-segment (pad-byte-vector-to-length segment function-size)]
-	                     (do
-	                       (root_push segment)
-	                       (root_push padded-segment)
-	                       (print-packed-code-segment-with-length padded-segment function-size)
-			                       (root_pop)
-			                       (root_pop)
-		                           (root_pop)
-		                           (root_pop)
-		                           (root_pop)
-	                           (root_pop)
-	                           (root_pop)
-		                        (let [final (print-x86-function-code-segments-loop ctx (+ idx 1) len)]
-	                        (do
-	                           (root_pop)
-                            final)))))))))))))))
+          (let [function-size (x86-function-slot-size-from-starts starts import-stub-offset idx function-start)
+                result (ref-new (vector-new 0))]
+            (do
+              (root_push result)
+              (let [layout (make-x86-function-emit-layout import-count import-stub-offset function-start 0)]
+                (do
+                  (root_push layout)
+                  (generate-native-function-x86-64-bundle-with-layout func-meta result starts functions layout)
+                  (let [segment (ref-get result)]
+                    (do
+                      (root_push segment)
+                      (let [padded-segment (pad-byte-vector-to-length segment function-size)]
+                        (do
+                          (root_push padded-segment)
+                          (print-packed-code-segment-with-length padded-segment function-size)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (let [final (print-x86-function-code-segments-loop functions starts import-count import-stub-offset (+ idx 1) len)]
+                            (do
+                              (root_pop)
+                              (root_pop)
+                              final)))))))))))))))
 
 (defn x86-param-spill-prefix-size [param-count]
   (if (>= param-count 20)
@@ -8266,7 +15447,6 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
               (print current-depth)
               (print offset)
               (print size)
-              (print function-start-base)
               (print emit-start-base)
               (print helper-target)
               (print direct-call-rel)
@@ -8414,8 +15594,7 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
 	                    (do
 	                      (root_push direct)
 	                      (let [direct-len (vector-length direct)
-	                            direct-call-offset (- call-next-offset 5)
-	                            direct-target (x86-rel32-target-at-offset-base direct direct-call-offset (ref-get offset-ref))]
+	                            direct-target (x86-rel32-target-in-window-at-base direct 0 direct-len (ref-get offset-ref))]
 	                        (do
 	                          (print 9000000046)
 	                          (print idx)
@@ -8424,7 +15603,6 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
 	                          (print current-depth)
 	                          (print (ref-get offset-ref))
 	                          (print size)
-	                          (print function-start-base)
 	                          (print target-param-count)
 	                          (print call-next-offset)
 	                          (print target-offset)
@@ -8449,6 +15627,332 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
 	          (root_pop)
 	          (root_pop))))
     0))
+
+(defn diagnose-x86-opcode40-call-bundle-return-boundary [operand current-offset function-starts context]
+  (let [function-metas (vector-get context 0)
+        import-count (vector-get context 1)
+        import-stub-offset (vector-get context 2)
+        function-start-base (vector-get context 3)
+        frame-base-slot-count (vector-get context 4)
+        current-depth (vector-get context 5)]
+    (do
+      (root_push function-metas)
+      (let [operand-ref (ref-new operand)]
+        (do
+          (root_push operand-ref)
+          (let [current-offset-ref (ref-new current-offset)]
+            (do
+              (root_push current-offset-ref)
+              (let [function-starts-ref (ref-new function-starts)]
+                (do
+                  (root_push function-starts-ref)
+                  (let [target-meta (vector-get function-metas (ref-get operand-ref))
+                        target-param-count (native-function-param-count target-meta)
+                        call-next-offset (native-call-rel-next-offset-x86 target-param-count current-depth)
+                        target-offset (if (< (ref-get operand-ref) import-count)
+                                        (x86-import-ret-stub-offset import-stub-offset import-count (ref-get operand-ref))
+                                        (- (vector-get (ref-get function-starts-ref) (- (ref-get operand-ref) import-count)) function-start-base))
+                        call-rel (- target-offset (+ (ref-get current-offset-ref) call-next-offset))]
+                    (let [call-rel-bytes (emit-call-rel32 call-rel)]
+                      (do
+                        (root_push call-rel-bytes)
+                        (let [result (if (= target-param-count 1)
+                                       (emit-one-arg-call-x86-core-with-call-bytes call-rel-bytes)
+                                       (vector-new 0))]
+                          (do
+                            (root_push result)
+                            (print 9000000357)
+                            (print target-param-count)
+                            (print (vector-length result))
+                            (ref-set operand-ref result)
+                            (print 9000000358)
+                            (print (vector-length (ref-get operand-ref)))
+                            (root_pop)
+                            (root_pop)
+                            (root_pop)
+                            (root_pop)
+                            (root_pop)
+                            (root_pop)
+                            (ref-get operand-ref)))))))))))))))
+
+(defn print-x86-opcode40-call-append-progress-diagnostic [ctx idx]
+  (let [ir-func (vector-get ctx 0)
+        offsets (vector-get ctx 3)
+        depths (vector-get ctx 4)
+        starts (vector-get ctx 5)
+        functions (vector-get ctx 6)
+        layout (vector-get ctx 7)
+        frame-base-slot-count (vector-get ctx 8)
+        instr (vector-get ir-func idx)
+        opcode (vector-get instr 0)
+        operand (vector-get instr 1)]
+    (if (= opcode 40)
+      (do
+        (root_push ctx)
+        (root_push instr)
+        (root_push starts)
+        (root_push functions)
+        (root_push layout)
+        (let [offset (vector-get offsets idx)
+              current-depth (vector-get depths idx)
+              import-count (vector-get layout 0)
+              import-stub-offset (vector-get layout 1)
+              function-start-base (vector-get layout 2)
+              target-meta (vector-get functions operand)
+              target-param-count (native-function-param-count target-meta)
+              direct-context
+                (vector-push
+                  (vector-push
+                    (vector-push
+                      (vector-push
+                        (vector-push
+                          (vector-push (vector-new 6) functions)
+                          import-count)
+                        import-stub-offset)
+                      function-start-base)
+                    frame-base-slot-count)
+                  current-depth)]
+          (do
+            (root_push direct-context)
+            (print 9000000349)
+            (print idx)
+            (print opcode)
+            (print operand)
+            (print current-depth)
+            (print offset)
+            (print 9000000352)
+            (print target-param-count)
+            (let [call-next-offset (native-call-rel-next-offset-x86 target-param-count current-depth)
+                  target-offset (if (< operand import-count)
+                                  (x86-import-ret-stub-offset import-stub-offset import-count operand)
+                                  (- (vector-get starts (- operand import-count)) function-start-base))
+                  call-rel (- target-offset (+ offset call-next-offset))
+                  call-rel-bytes (emit-call-rel32 call-rel)]
+              (do
+                (root_push call-rel-bytes)
+                (print 9000000353)
+                (print call-next-offset)
+                (print target-offset)
+                (print call-rel)
+                (let [call-rel-len (vector-length call-rel-bytes)]
+                  (do
+                    (print call-rel-len)
+                    (print (byte-at-or-zero call-rel-bytes 0 call-rel-len))
+                    (print (byte-at-or-zero call-rel-bytes 1 call-rel-len))
+                    (print (byte-at-or-zero call-rel-bytes 2 call-rel-len))
+                    (print (byte-at-or-zero call-rel-bytes 3 call-rel-len))
+                    (print (byte-at-or-zero call-rel-bytes 4 call-rel-len))))
+                (let [core-native (if (= target-param-count 1)
+                                    (emit-one-arg-call-x86-core-with-call-bytes call-rel-bytes)
+                                    (vector-new 0))]
+                  (do
+                    (root_push core-native)
+                    (let [core-len (vector-length core-native)]
+                      (do
+                        (print 9000000354)
+                        (print core-len)
+                        (print (byte-at-or-zero core-native 0 core-len))
+                        (print (byte-at-or-zero core-native 1 core-len))
+                        (print (byte-at-or-zero core-native 2 core-len))
+                        (print (byte-at-or-zero core-native 3 core-len))
+                        (print (byte-at-or-zero core-native 4 core-len))
+                        (print (byte-at-or-zero core-native 5 core-len))
+                        (print (byte-at-or-zero core-native 6 core-len))
+                        (print (byte-at-or-zero core-native 7 core-len))
+                        (root_pop)
+                        (root_pop)))))))
+            (print 9000000355)
+            (print operand)
+            (print offset)
+            (print (vector-length starts))
+            (print (vector-length functions))
+            (print (vector-length direct-context))
+            (print (vector-get direct-context 1))
+            (print (vector-get direct-context 5))
+            (let [diagnostic-native (diagnose-x86-opcode40-call-bundle-return-boundary operand offset starts direct-context)]
+              (do
+                (root_push diagnostic-native)
+                (print 9000000359)
+                (print (vector-length diagnostic-native))
+                (root_pop)))
+            (let [native (codegen-x86-opcode-call-bundle operand offset starts direct-context)]
+              (do
+                (root_push native)
+                (print 9000000356)
+                (let [native-len (vector-length native)
+                      probe-ref (ref-new (vector-new 0))]
+                  (do
+                    (root_push probe-ref)
+                    (print 9000000350)
+                    (print native-len)
+                    (append-native-bytes-loop probe-ref native 0 native-len)
+                    (print 9000000351)
+                    (print (vector-length (ref-get probe-ref)))
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    0)))))))
+      0)))
+
+(defn print-x86-function-emit-progress-row [ctx idx]
+  (let [ir-func (vector-get ctx 0)
+        result (vector-get ctx 1)
+        offsets (vector-get ctx 3)
+        depths (vector-get ctx 4)
+        function-metas (vector-get ctx 6)
+        instr (vector-get ir-func idx)
+        opcode (vector-get instr 0)
+        operand (vector-get instr 1)
+        depth (vector-get depths idx)
+        offset (vector-get offsets idx)
+        size (native-instr-size-x86 opcode operand function-metas depth)
+        segment (ref-get result)
+        segment-len (vector-length segment)
+        rel32-target (x86-rel32-target-in-window-at-base segment offset size offset)]
+    (do
+      (root_push instr)
+      (root_push segment)
+      (print idx)
+      (print opcode)
+      (print operand)
+      (print depth)
+      (print offset)
+      (print size)
+      (print segment-len)
+      (print rel32-target)
+      (print (byte-at-or-zero segment offset segment-len))
+      (print (byte-at-or-zero segment (+ offset 1) segment-len))
+      (print (byte-at-or-zero segment (+ offset 2) segment-len))
+      (print (byte-at-or-zero segment (+ offset 3) segment-len))
+      (print (byte-at-or-zero segment (+ offset 4) segment-len))
+      (print (byte-at-or-zero segment (+ offset 5) segment-len))
+      (print (byte-at-or-zero segment (+ offset 6) segment-len))
+      (print (byte-at-or-zero segment (+ offset 7) segment-len))
+      (root_pop)
+      (root_pop))))
+
+(defn generate-native-control-instr-bundle-progress-row-x86 [ctx idx]
+  (do
+    (root_push ctx)
+    (print 9000000344)
+    (print-x86-function-emit-progress-row ctx idx)
+    (print-x86-opcode40-call-append-progress-diagnostic ctx idx)
+    (let [row-state (make-x86-control-loop-state idx 1)]
+      (do
+        (root_push row-state)
+        (generate-native-control-instr-bundle-loop-x86-with-context ctx row-state)
+        (print 9000000345)
+        (print-x86-function-emit-progress-row ctx idx)
+        (root_pop)
+        (root_pop)
+        0))))
+
+(defn generate-native-control-instr-bundle-progress-chunk-x86 [ctx idx end]
+  (if (>= idx end)
+    0
+    (let [_row (generate-native-control-instr-bundle-progress-row-x86 ctx idx)]
+      (generate-native-control-instr-bundle-progress-chunk-x86 ctx (+ idx 1) end))))
+
+(defn generate-native-control-instr-bundle-progress-loop-x86 [ctx idx len]
+  (if (>= idx len)
+    0
+    (let [chunk-end (if (> (+ idx 64) len) len (+ idx 64))
+          _chunk (generate-native-control-instr-bundle-progress-chunk-x86 ctx idx chunk-end)]
+      (generate-native-control-instr-bundle-progress-loop-x86 ctx chunk-end len))))
+
+(defn generate-native-function-x86-64-bundle-with-layout-progress [func-meta result function-starts function-metas layout]
+  (let [import-count (vector-get layout 0)
+    import-stub-offset (vector-get layout 1)
+    function-start-base (vector-get layout 2)
+    emit-start-base (vector-get layout 3)
+    param-count (native-function-param-count func-meta)
+    local-count (native-function-local-count func-meta)
+    ir-func (native-function-ir func-meta)
+    frame-base-slot-count (native-frame-base-slot-count ir-func (+ (+ param-count local-count) 1))
+    stack-bytes (native-local-stack-bytes-with-window-x86 ir-func (+ (+ param-count local-count) 1) function-metas)
+    function-start 0
+    encoded-import-stub-offset (- import-stub-offset function-start-base)
+    encoded-function-start-base function-start-base
+    prologue-push (emit-push-rbp)
+    prologue-mov (emit-mov-rbp-rsp)
+    base-offset (+ function-start 4)
+    after-stack-offset (if (> stack-bytes 0) (+ base-offset 7) base-offset)
+    param-spill-bytes (x86-param-spill-prefix-size param-count)
+    body-offset (+ after-stack-offset param-spill-bytes)
+    n (vector-length ir-func)]
+    (do
+      (print 9000000346)
+      (print param-count)
+      (print local-count)
+      (print frame-base-slot-count)
+      (print stack-bytes)
+      (print param-spill-bytes)
+      (print body-offset)
+      (print n)
+      (root_push func-meta)
+      (root_push result)
+      (root_push function-starts)
+      (root_push function-metas)
+      (root_push layout)
+      (root_push ir-func)
+      (ref-set result (vector-push (ref-get result) (vector-get prologue-push 0)))
+      (ref-set result (vector-push (ref-get result) (vector-get prologue-mov 0)))
+      (ref-set result (vector-push (ref-get result) (vector-get prologue-mov 1)))
+      (ref-set result (vector-push (ref-get result) (vector-get prologue-mov 2)))
+      (if (> stack-bytes 0)
+        (append-native-bytes-loop result (emit-sub-rsp-imm32 stack-bytes) 0 7)
+        0)
+      (spill-native-function-params-x86-loop 0 param-count result)
+      (print 9000000347)
+      (print (vector-length (ref-get result)))
+      (print body-offset)
+      (let [control-meta (scan-control-flow-meta ir-func)]
+        (do
+          (root_push control-meta)
+          (let [offsets (collect-native-bundle-offsets-x86 ir-func function-metas body-offset)]
+            (do
+              (root_push offsets)
+              (let [depths (collect-native-bundle-depths-x86 ir-func function-metas)]
+                (do
+                  (root_push depths)
+                  (let [control-layout (make-x86-function-emit-layout import-count encoded-import-stub-offset encoded-function-start-base emit-start-base)]
+                    (do
+                      (root_push control-layout)
+                      (let [control-ctx (make-x86-control-bundle-context ir-func result control-meta offsets depths function-starts function-metas control-layout frame-base-slot-count)]
+                        (do
+                          (root_push control-ctx)
+                          (print 9000000348)
+                          (print n)
+                          (print (vector-length offsets))
+                          (print (vector-length depths))
+                          (print body-offset)
+                          (print emit-start-base)
+                          (generate-native-control-instr-bundle-progress-loop-x86 control-ctx 0 n)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)))))))))
+      (if (> stack-bytes 0)
+        (append-native-bytes-loop result (emit-add-rsp-imm32 stack-bytes) 0 7)
+        0)
+      (let [epilogue-pop (emit-pop-rbp)
+        epilogue-ret (emit-ret)]
+        (do
+          (ref-set result (vector-push (ref-get result) (vector-get epilogue-pop 0)))
+          (ref-set result (vector-push (ref-get result) (vector-get epilogue-ret 0)))
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+            0)))))))
 
 (defn print-x86-function-ir-prefix-loop [segment ir offsets functions control-ctx idx len depth]
   (if (>= idx len)
@@ -8490,42 +15994,58 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
           len
           (apply-stack-delta depth (opcode-stack-delta opcode operand functions)))))))
 
-(defn print-x86-function-segment-metadata-loop [ctx idx len prefix-limit]
-  (if (>= idx len)
-    0
-    (let [functions (x86-code-segment-context-functions ctx)
-          starts (x86-code-segment-context-starts ctx)
-          import-count (x86-code-segment-context-import-count ctx)
-          import-stub-offset (x86-code-segment-context-import-stub-offset ctx)]
-      (do
-        (root_push ctx)
-        (root_push functions)
-        (root_push starts)
-        (let [actual-idx (+ idx import-count)
-              func-meta (vector-get functions actual-idx)
-              function-start (vector-get starts idx)]
-          (do
-            (root_push func-meta)
-            (let [ir-func (native-function-ir func-meta)
-                  param-count (native-function-param-count func-meta)
-                  local-count (native-function-local-count func-meta)]
-              (do
-                (root_push ir-func)
-                (let [frame-base-slot-count
-                        (native-frame-base-slot-count ir-func (+ (+ param-count local-count) 1))
-                      stack-bytes
+(defn print-x86-function-segment-metadata-loop [functions starts import-count import-stub-offset idx len prefix-limit]
+	  (if (>= idx len)
+	    0
+	    (do
+	      (root_push functions)
+	      (root_push starts)
+	      (print 9000000289)
+	      (print idx)
+	      (print len)
+	      (print import-count)
+	      (print (vector-length functions))
+	      (print (vector-length starts))
+	      (let [actual-idx (+ idx import-count)
+	              func-meta (vector-get functions actual-idx)
+	              function-start (vector-get starts idx)]
+	          (do
+	            (print 9000000290)
+	            (print idx)
+	            (print actual-idx)
+	            (print function-start)
+	            (print (vector-length func-meta))
+	            (root_push func-meta)
+	            (let [ir-func (native-function-ir func-meta)
+	                  param-count (native-function-param-count func-meta)
+	                  local-count (native-function-local-count func-meta)]
+	              (do
+	                (print 9000000291)
+	                (print idx)
+	                (print param-count)
+	                (print local-count)
+	                (print (vector-length ir-func))
+	                (root_push ir-func)
+	                (let [frame-base-slot-count
+	                        (native-frame-base-slot-count ir-func (+ (+ param-count local-count) 1))
+	                      stack-bytes
                         (native-local-stack-bytes-with-window-x86
                           ir-func
                           (+ (+ param-count local-count) 1)
                           functions)
                       function-size (x86-function-slot-size-from-starts starts import-stub-offset idx function-start)
                       after-stack-offset (if (> stack-bytes 0) 11 4)
-                      param-spill-bytes (x86-param-spill-prefix-size param-count)
-                      body-offset (+ after-stack-offset param-spill-bytes)
-                      result (ref-new (vector-new function-size))]
-                  (do
-                    (root_push result)
-                    (print 9000000020)
+	                      param-spill-bytes (x86-param-spill-prefix-size param-count)
+	                      body-offset (+ after-stack-offset param-spill-bytes)
+	                      result (ref-new (vector-new function-size))]
+	                  (do
+	                    (root_push result)
+	                    (print 9000000292)
+	                    (print idx)
+	                    (print frame-base-slot-count)
+	                    (print stack-bytes)
+	                    (print function-size)
+	                    (print 9000000020)
                     (print idx)
                     (print actual-idx)
                     (print function-start)
@@ -8540,7 +16060,7 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
                     (let [layout (make-x86-function-emit-layout import-count import-stub-offset function-start function-start)]
                       (do
                         (root_push layout)
-                        (generate-native-function-x86-64-bundle-with-layout func-meta result starts functions layout)
+                        (generate-native-function-x86-64-bundle-with-layout-progress func-meta result starts functions layout)
                         (let [segment (ref-get result)
                               offsets (collect-native-bundle-offsets-x86 ir-func functions body-offset)]
                           (do
@@ -8576,22 +16096,17 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
                     (root_pop)
                     (root_pop)
                     (root_pop)
-                    (root_pop)
-                    (root_pop)
-                    (let [final (print-x86-function-segment-metadata-loop ctx (+ idx 1) len prefix-limit)]
+                    (let [final (print-x86-function-segment-metadata-loop functions starts import-count import-stub-offset (+ idx 1) len prefix-limit)]
                       (do
                         (root_pop)
-                        final))))))))))))
+                        (root_pop)
+                        final)))))))))))
 
 (defn print-x86-code-segments [functions starts import-count import-stub-offset]
   (do
     (root_push functions)
     (root_push starts)
-    (let [ctx (make-x86-code-segment-context functions starts import-count import-stub-offset)]
-      (do
-        (root_push ctx)
-        (print-x86-function-code-segments-loop ctx 0 (vector-length starts))
-        (root_pop)))
+    (print-x86-function-code-segments-loop functions starts import-count import-stub-offset 0 (vector-length starts))
     (print-x86-code-trailer-segments import-count)
     (root_pop)
     (root_pop)
@@ -8921,24 +16436,23 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
           (let [callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))]
             (do
               (root_push callables)
-              (let [target {target_expr}]
+              (let [target {target_expr}
+                    native-callables (normalize-selfhost-native-function-metas-for-target callables target)]
                 (do
+                  (root_push native-callables)
                   (root_push target)
-                  (let [native-callables (normalize-selfhost-native-function-metas-for-target callables target)]
+                  (let [{code_binding_expr}]
                     (do
-                      (root_push native-callables)
-                      (let [{code_binding_expr}]
-                        (do
-                          (root_push code)
+                      (root_push code)
   {main_body}
-                          (root_pop)
-                          (root_pop)
-                          (root_pop)
-                          (root_pop)
-                          (root_pop)
-                          (root_pop)
-                          (root_pop)
-                          0)))))))))))))"#,
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      0)))))))))))"#,
         payload_expr = payload_expr,
         code_binding_expr = code_binding_expr,
         target_expr = target_expr,
@@ -16286,57 +23800,6 @@ fn linux_x86_selfhost_const_42_object_bytes() -> Vec<u8> {
         .collect::<Vec<u8>>()
 }
 
-fn macos_x86_selfhost_const_42_object_bytes() -> Vec<u8> {
-    let output = run_native_pipeline_harness(
-        r#"(module Main)
-(import Backend.Native.NativeTarget)
-(import Backend.Native.NativeCodegen)
-(import Backend.Native.NativeEmit)
-(import IR.IR)
-
-(defn print-bytes [bytes idx n]
-  (if (>= idx n)
-    0
-    (do
-      (print (vector-get bytes idx))
-      (print-bytes bytes (+ idx 1) n))))
-
-(defn main []
-  (let [instr (vector-push (vector-push (vector-new 2) 1) 42)
-        ir (vector-push (vector-new 1) instr)
-        target (make-target 1)
-        code (emit-native ir target)
-        object (emit-object code target)]
-    (do
-      (print-bytes object 0 (vector-length object))
-      0)))"#,
-    );
-    output
-        .trim()
-        .lines()
-        .map(|line| {
-            line.parse::<u8>()
-                .unwrap_or_else(|_| panic!("Mach-O object byte parse 失敗: {line}"))
-        })
-        .collect::<Vec<u8>>()
-}
-
-fn read_le_u32(bytes: &[u8], offset: usize) -> u32 {
-    u32::from_le_bytes(
-        bytes[offset..offset + 4]
-            .try_into()
-            .expect("u32 read 範囲外"),
-    )
-}
-
-fn read_le_u64(bytes: &[u8], offset: usize) -> u64 {
-    u64::from_le_bytes(
-        bytes[offset..offset + 8]
-            .try_into()
-            .expect("u64 read 範囲外"),
-    )
-}
-
 fn linux_x86_selfhost_command_line_arg_string_length_object_bytes(arg_index: u32) -> Vec<u8> {
     let output = run_native_pipeline_harness(&format!(
         r#"(module Main)
@@ -16593,23 +24056,6 @@ fn linux_x86_selfhost_map_insert_get_object_bytes() -> Vec<u8> {
     )
 }
 
-fn linux_x86_selfhost_map_insert_overwrite_get_object_bytes() -> Vec<u8> {
-    linux_x86_selfhost_function_meta_object_bytes(
-        &[
-            (60, 0),
-            (3, 7),
-            (3, 42),
-            (62, 0),
-            (3, 7),
-            (3, 99),
-            (62, 0),
-            (3, 7),
-            (63, 0),
-        ],
-        0,
-    )
-}
-
 fn linux_x86_selfhost_map_insert_size_object_bytes() -> Vec<u8> {
     linux_x86_selfhost_function_meta_object_bytes(&[(60, 0), (3, 7), (3, 42), (62, 0), (61, 0)], 0)
 }
@@ -16648,6 +24094,515 @@ fn linux_x86_selfhost_ref_vector_append_after_i64_zero_object_bytes() -> Vec<u8>
         ],
         1,
     )
+}
+
+fn linux_x86_selfhost_ref_param_vector_set_get_object_bytes() -> Vec<u8> {
+    let output = run_native_pipeline_harness(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import Backend.Native.NativeEmit)
+(import IR.IR)
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn main []
+  (let [main-ir0 (vector-push (vector-new 17) (make-instr 3 4))
+        main-ir1 (vector-push main-ir0 (make-instr 54 0))
+        main-ir2 (vector-push main-ir1 (make-instr 56 0))
+        main-ir3 (vector-push main-ir2 (make-instr 11 0))
+        main-ir4 (vector-push main-ir3 (make-instr 3 4))
+        main-ir5 (vector-push main-ir4 (make-instr 54 0))
+        main-ir6 (vector-push main-ir5 (make-instr 3 7))
+        main-ir7 (vector-push main-ir6 (make-instr 55 0))
+        main-ir8 (vector-push main-ir7 (make-instr 11 1))
+        main-ir9 (vector-push main-ir8 (make-instr 10 0))
+        main-ir10 (vector-push main-ir9 (make-instr 10 1))
+        main-ir11 (vector-push main-ir10 (make-call 1))
+        main-ir12 (vector-push main-ir11 (make-instr 44 0))
+        main-ir13 (vector-push main-ir12 (make-instr 10 0))
+        main-ir14 (vector-push main-ir13 (make-instr 57 0))
+        main-ir15 (vector-push main-ir14 (make-instr 3 0))
+        main-ir (vector-push main-ir15 (make-instr 53 0))
+        helper-ir0 (vector-push (vector-new 3) (make-instr 10 1))
+        helper-ir1 (vector-push helper-ir0 (make-instr 10 2))
+        helper-ir (vector-push helper-ir1 (make-instr 58 0))
+        main-meta (make-function-meta 0 2 main-ir)
+        helper-meta (make-function-meta 2 0 helper-ir)
+        functions (vector-push
+                    (vector-push (vector-new 2) main-meta)
+                    helper-meta)
+        target (make-target 3)
+        native (emit-native-function-meta-bundle functions target)
+        object (emit-object native target)]
+    (do
+      (print-bytes object 0 (vector-length object))
+      0)))"#,
+    );
+    output
+        .trim()
+        .lines()
+        .map(|line| {
+            line.parse::<u8>().unwrap_or_else(|_| {
+                panic!("Linux x86_64 ref param/vector ELF object byte parse 失敗: {line}")
+            })
+        })
+        .collect::<Vec<u8>>()
+}
+
+fn linux_x86_selfhost_ref_param_five_arg_state_set_get_object_bytes() -> Vec<u8> {
+    let output = run_native_pipeline_harness(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import Backend.Native.NativeEmit)
+(import IR.IR)
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn main []
+  (let [main-ir0 (vector-push (vector-new 17) (make-instr 3 0))
+        main-ir1 (vector-push main-ir0 (make-instr 56 0))
+        main-ir2 (vector-push main-ir1 (make-instr 11 0))
+        main-ir3 (vector-push main-ir2 (make-instr 3 0))
+        main-ir4 (vector-push main-ir3 (make-instr 54 0))
+        main-ir5 (vector-push main-ir4 (make-instr 11 1))
+        main-ir6 (vector-push main-ir5 (make-instr 10 0))
+        main-ir7 (vector-push main-ir6 (make-instr 3 0))
+        main-ir8 (vector-push main-ir7 (make-instr 3 1))
+        main-ir9 (vector-push main-ir8 (make-instr 10 1))
+        main-ir10 (vector-push main-ir9 (make-instr 3 10))
+        main-ir11 (vector-push main-ir10 (make-call 1))
+        main-ir12 (vector-push main-ir11 (make-instr 44 0))
+        main-ir13 (vector-push main-ir12 (make-instr 10 0))
+        main-ir14 (vector-push main-ir13 (make-instr 57 0))
+        main-ir15 (vector-push main-ir14 (make-instr 3 3))
+        main-ir (vector-push main-ir15 (make-instr 53 0))
+        helper-ir0 (vector-push (vector-new 13) (make-instr 10 1))
+        helper-ir1 (vector-push helper-ir0 (make-instr 3 4))
+        helper-ir2 (vector-push helper-ir1 (make-instr 54 0))
+        helper-ir3 (vector-push helper-ir2 (make-instr 10 2))
+        helper-ir4 (vector-push helper-ir3 (make-instr 55 0))
+        helper-ir5 (vector-push helper-ir4 (make-instr 10 3))
+        helper-ir6 (vector-push helper-ir5 (make-instr 55 0))
+        helper-ir7 (vector-push helper-ir6 (make-instr 10 4))
+        helper-ir8 (vector-push helper-ir7 (make-instr 55 0))
+        helper-ir9 (vector-push helper-ir8 (make-instr 10 5))
+        helper-ir10 (vector-push helper-ir9 (make-instr 55 0))
+        helper-ir11 (vector-push helper-ir10 (make-instr 58 0))
+        helper-ir (vector-push helper-ir11 (make-instr 3 0))
+        main-meta (make-function-meta 0 2 main-ir)
+        helper-meta (make-function-meta 5 0 helper-ir)
+        functions (vector-push
+                    (vector-push (vector-new 2) main-meta)
+                    helper-meta)
+        target (make-target 3)
+        native (emit-native-function-meta-bundle functions target)
+        object (emit-object native target)]
+    (do
+      (print-bytes object 0 (vector-length object))
+      0)))"#,
+    );
+    output
+        .trim()
+        .lines()
+        .map(|line| {
+            line.parse::<u8>().unwrap_or_else(|_| {
+                panic!("Linux x86_64 five-arg ref state ELF object byte parse 失敗: {line}")
+            })
+        })
+        .collect::<Vec<u8>>()
+}
+
+fn linux_x86_selfhost_ref_param_rooted_state_set_get_object_bytes() -> Vec<u8> {
+    let output = run_native_pipeline_harness(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import Backend.Native.NativeEmit)
+(import IR.IR)
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn main []
+  (let [main-ir0 (vector-push (vector-new 20) (make-instr 3 0))
+        main-ir1 (vector-push main-ir0 (make-instr 56 0))
+        main-ir2 (vector-push main-ir1 (make-instr 11 0))
+        main-ir3 (vector-push main-ir2 (make-instr 10 0))
+        main-ir4 (vector-push main-ir3 (make-instr 74 0))
+        main-ir5 (vector-push main-ir4 (make-instr 44 0))
+        main-ir6 (vector-push main-ir5 (make-instr 3 0))
+        main-ir7 (vector-push main-ir6 (make-instr 54 0))
+        main-ir8 (vector-push main-ir7 (make-instr 11 1))
+        main-ir9 (vector-push main-ir8 (make-instr 10 0))
+        main-ir10 (vector-push main-ir9 (make-instr 3 0))
+        main-ir11 (vector-push main-ir10 (make-instr 3 1))
+        main-ir12 (vector-push main-ir11 (make-instr 10 1))
+        main-ir13 (vector-push main-ir12 (make-instr 3 10))
+        main-ir14 (vector-push main-ir13 (make-call 1))
+        main-ir15 (vector-push main-ir14 (make-instr 44 0))
+        main-ir16 (vector-push main-ir15 (make-instr 10 0))
+        main-ir17 (vector-push main-ir16 (make-instr 57 0))
+        main-ir18 (vector-push main-ir17 (make-instr 3 3))
+        main-ir (vector-push main-ir18 (make-instr 53 0))
+        helper-ir0 (vector-push (vector-new 87) (make-instr 10 1))
+        helper-ir1 (vector-push helper-ir0 (make-instr 74 0))
+        helper-ir2 (vector-push helper-ir1 (make-instr 44 0))
+        helper-ir3 (vector-push helper-ir2 (make-instr 3 4))
+        helper-ir4 (vector-push helper-ir3 (make-instr 54 0))
+        helper-ir5 (vector-push helper-ir4 (make-instr 11 6))
+        helper-ir6 (vector-push helper-ir5 (make-instr 10 6))
+        helper-ir7 (vector-push helper-ir6 (make-instr 74 0))
+        helper-ir8 (vector-push helper-ir7 (make-instr 11 7))
+        helper-ir9 (vector-push helper-ir8 (make-instr 10 2))
+        helper-ir10 (vector-push helper-ir9 (make-instr 56 0))
+        helper-ir11 (vector-push helper-ir10 (make-instr 11 8))
+        helper-ir12 (vector-push helper-ir11 (make-instr 10 3))
+        helper-ir13 (vector-push helper-ir12 (make-instr 56 0))
+        helper-ir14 (vector-push helper-ir13 (make-instr 11 9))
+        helper-ir15 (vector-push helper-ir14 (make-instr 10 5))
+        helper-ir16 (vector-push helper-ir15 (make-instr 56 0))
+        helper-ir17 (vector-push helper-ir16 (make-instr 11 10))
+        helper-ir18 (vector-push helper-ir17 (make-instr 10 8))
+        helper-ir19 (vector-push helper-ir18 (make-instr 74 0))
+        helper-ir20 (vector-push helper-ir19 (make-instr 44 0))
+        helper-ir21 (vector-push helper-ir20 (make-instr 10 9))
+        helper-ir22 (vector-push helper-ir21 (make-instr 74 0))
+        helper-ir23 (vector-push helper-ir22 (make-instr 44 0))
+        helper-ir24 (vector-push helper-ir23 (make-instr 10 10))
+        helper-ir25 (vector-push helper-ir24 (make-instr 74 0))
+        helper-ir26 (vector-push helper-ir25 (make-instr 44 0))
+        helper-ir27 (vector-push helper-ir26 (make-instr 10 4))
+        helper-ir28 (vector-push helper-ir27 (make-instr 74 0))
+        helper-ir29 (vector-push helper-ir28 (make-instr 44 0))
+        helper-ir30 (vector-push helper-ir29 (make-instr 10 6))
+        helper-ir31 (vector-push helper-ir30 (make-instr 10 8))
+        helper-ir32 (vector-push helper-ir31 (make-instr 57 0))
+        helper-ir33 (vector-push helper-ir32 (make-instr 55 0))
+        helper-ir34 (vector-push helper-ir33 (make-instr 11 11))
+        helper-ir35 (vector-push helper-ir34 (make-instr 10 7))
+        helper-ir36 (vector-push helper-ir35 (make-instr 10 11))
+        helper-ir37 (vector-push helper-ir36 (make-instr 76 0))
+        helper-ir38 (vector-push helper-ir37 (make-instr 44 0))
+        helper-ir39 (vector-push helper-ir38 (make-instr 10 11))
+        helper-ir40 (vector-push helper-ir39 (make-instr 10 9))
+        helper-ir41 (vector-push helper-ir40 (make-instr 57 0))
+        helper-ir42 (vector-push helper-ir41 (make-instr 55 0))
+        helper-ir43 (vector-push helper-ir42 (make-instr 11 12))
+        helper-ir44 (vector-push helper-ir43 (make-instr 10 7))
+        helper-ir45 (vector-push helper-ir44 (make-instr 10 12))
+        helper-ir46 (vector-push helper-ir45 (make-instr 76 0))
+        helper-ir47 (vector-push helper-ir46 (make-instr 44 0))
+        helper-ir48 (vector-push helper-ir47 (make-instr 10 12))
+        helper-ir49 (vector-push helper-ir48 (make-instr 10 4))
+        helper-ir50 (vector-push helper-ir49 (make-instr 55 0))
+        helper-ir51 (vector-push helper-ir50 (make-instr 11 13))
+        helper-ir52 (vector-push helper-ir51 (make-instr 10 7))
+        helper-ir53 (vector-push helper-ir52 (make-instr 10 13))
+        helper-ir54 (vector-push helper-ir53 (make-instr 76 0))
+        helper-ir55 (vector-push helper-ir54 (make-instr 44 0))
+        helper-ir56 (vector-push helper-ir55 (make-instr 10 13))
+        helper-ir57 (vector-push helper-ir56 (make-instr 10 10))
+        helper-ir58 (vector-push helper-ir57 (make-instr 57 0))
+        helper-ir59 (vector-push helper-ir58 (make-instr 55 0))
+        helper-ir60 (vector-push helper-ir59 (make-instr 11 14))
+        helper-ir61 (vector-push helper-ir60 (make-instr 10 7))
+        helper-ir62 (vector-push helper-ir61 (make-instr 10 14))
+        helper-ir63 (vector-push helper-ir62 (make-instr 76 0))
+        helper-ir64 (vector-push helper-ir63 (make-instr 44 0))
+        helper-ir65 (vector-push helper-ir64 (make-instr 10 1))
+        helper-ir66 (vector-push helper-ir65 (make-instr 10 14))
+        helper-ir67 (vector-push helper-ir66 (make-instr 58 0))
+        helper-ir68 (vector-push helper-ir67 (make-instr 44 0))
+        helper-ir69 (vector-push helper-ir68 (make-instr 10 1))
+        helper-ir70 (vector-push helper-ir69 (make-instr 57 0))
+        helper-ir71 (vector-push helper-ir70 (make-instr 3 3))
+        helper-ir72 (vector-push helper-ir71 (make-instr 53 0))
+        helper-ir73 (vector-push helper-ir72 (make-instr 44 0))
+        helper-ir74 (vector-push helper-ir73 (make-instr 75 0))
+        helper-ir75 (vector-push helper-ir74 (make-instr 44 0))
+        helper-ir76 (vector-push helper-ir75 (make-instr 75 0))
+        helper-ir77 (vector-push helper-ir76 (make-instr 44 0))
+        helper-ir78 (vector-push helper-ir77 (make-instr 75 0))
+        helper-ir79 (vector-push helper-ir78 (make-instr 44 0))
+        helper-ir80 (vector-push helper-ir79 (make-instr 75 0))
+        helper-ir81 (vector-push helper-ir80 (make-instr 44 0))
+        helper-ir82 (vector-push helper-ir81 (make-instr 75 0))
+        helper-ir83 (vector-push helper-ir82 (make-instr 44 0))
+        helper-ir84 (vector-push helper-ir83 (make-instr 75 0))
+        helper-ir85 (vector-push helper-ir84 (make-instr 44 0))
+        helper-ir86 (vector-push helper-ir85 (make-instr 3 0))
+        helper-ir helper-ir86
+        main-meta (make-function-meta 0 2 main-ir)
+        helper-meta (make-function-meta 5 9 helper-ir)
+        functions (vector-push
+                    (vector-push (vector-new 2) main-meta)
+                    helper-meta)
+        target (make-target 3)
+        native (emit-native-function-meta-bundle functions target)
+        object (emit-object native target)]
+    (do
+      (print-bytes object 0 (vector-length object))
+      0)))"#,
+    );
+    output
+        .trim()
+        .lines()
+        .map(|line| {
+            line.parse::<u8>().unwrap_or_else(|_| {
+                panic!("Linux x86_64 rooted ref state ELF object byte parse 失敗: {line}")
+            })
+        })
+        .collect::<Vec<u8>>()
+}
+
+fn lsharp_ir_instruction_expr(opcode: u32, operand: i64) -> String {
+    if opcode == 40 {
+        format!("(make-call {operand})")
+    } else {
+        format!("(make-instr {opcode} {operand})")
+    }
+}
+
+fn lsharp_ir_vector_bindings(prefix: &str, instrs: &[(u32, i64)]) -> String {
+    assert!(
+        !instrs.is_empty(),
+        "IR vector binding helper は 1 命令以上を要求する"
+    );
+    let mut bindings = String::new();
+    for (idx, (opcode, operand)) in instrs.iter().copied().enumerate() {
+        let expr = lsharp_ir_instruction_expr(opcode, operand);
+        if idx == 0 {
+            bindings.push_str(&format!(
+                "        {prefix}0 (vector-push (vector-new {len}) {expr})\n",
+                len = instrs.len()
+            ));
+        } else {
+            bindings.push_str(&format!(
+                "        {prefix}{idx} (vector-push {prefix}{prev} {expr})\n",
+                prev = idx - 1
+            ));
+        }
+    }
+    bindings.push_str(&format!(
+        "        {prefix} {prefix}{last}\n",
+        last = instrs.len() - 1
+    ));
+    bindings
+}
+
+fn linux_x86_selfhost_ref_param_rooted_state_print_set_get_object_bytes() -> Vec<u8> {
+    let main_instrs = [
+        (3, 0),
+        (56, 0),
+        (11, 0),
+        (10, 0),
+        (74, 0),
+        (44, 0),
+        (3, 0),
+        (54, 0),
+        (11, 1),
+        (10, 0),
+        (3, 0),
+        (3, 1),
+        (10, 1),
+        (3, 10),
+        (40, 1),
+        (44, 0),
+        (10, 0),
+        (57, 0),
+        (3, 3),
+        (53, 0),
+    ];
+    let mut helper_instrs = vec![
+        (10, 1),
+        (74, 0),
+        (44, 0),
+        (3, 4),
+        (54, 0),
+        (11, 6),
+        (10, 6),
+        (74, 0),
+        (11, 7),
+        (10, 2),
+        (56, 0),
+        (11, 8),
+        (10, 3),
+        (56, 0),
+        (11, 9),
+        (10, 5),
+        (56, 0),
+        (11, 10),
+        (10, 8),
+        (74, 0),
+        (44, 0),
+        (10, 9),
+        (74, 0),
+        (44, 0),
+        (10, 10),
+        (74, 0),
+        (44, 0),
+        (10, 4),
+        (74, 0),
+        (44, 0),
+        (10, 6),
+        (10, 8),
+        (57, 0),
+        (55, 0),
+        (11, 11),
+        (10, 7),
+        (10, 11),
+        (76, 0),
+        (44, 0),
+        (10, 11),
+        (10, 9),
+        (57, 0),
+        (55, 0),
+        (11, 12),
+        (10, 7),
+        (10, 12),
+        (76, 0),
+        (44, 0),
+        (10, 12),
+        (10, 4),
+        (55, 0),
+        (11, 13),
+        (10, 7),
+        (10, 13),
+        (76, 0),
+        (44, 0),
+        (10, 13),
+        (10, 10),
+        (57, 0),
+        (55, 0),
+        (11, 14),
+        (10, 7),
+        (10, 14),
+        (76, 0),
+        (44, 0),
+        (1, 9000000114),
+        (59, 0),
+        (44, 0),
+        (10, 14),
+        (52, 0),
+        (59, 0),
+        (44, 0),
+        (10, 14),
+        (3, 0),
+        (53, 0),
+        (59, 0),
+        (44, 0),
+        (10, 1),
+        (59, 0),
+        (44, 0),
+        (10, 1),
+        (57, 0),
+        (59, 0),
+        (44, 0),
+        (10, 1),
+        (10, 14),
+        (58, 0),
+        (44, 0),
+        (1, 9000000118),
+        (59, 0),
+        (44, 0),
+        (10, 1),
+        (59, 0),
+        (44, 0),
+        (10, 1),
+        (57, 0),
+        (3, 3),
+        (53, 0),
+        (44, 0),
+    ];
+    for _ in 0..6 {
+        helper_instrs.push((75, 0));
+        helper_instrs.push((44, 0));
+    }
+    helper_instrs.push((3, 0));
+
+    let main_bindings = lsharp_ir_vector_bindings("main-ir", &main_instrs);
+    let helper_bindings = lsharp_ir_vector_bindings("helper-ir", &helper_instrs);
+    let output = run_native_pipeline_harness(&format!(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import Backend.Native.NativeEmit)
+(import IR.IR)
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn main []
+  (let [
+{main_bindings}{helper_bindings}        main-meta (make-function-meta 0 2 main-ir)
+        helper-meta (make-function-meta 5 9 helper-ir)
+        functions (vector-push
+                    (vector-push (vector-new 2) main-meta)
+                    helper-meta)
+        target (make-target 3)
+        native (emit-native-function-meta-bundle functions target)
+        object (emit-object native target)]
+    (do
+      (print-bytes object 0 (vector-length object))
+      0)))"#
+    ));
+    output
+        .trim()
+        .lines()
+        .map(|line| {
+            line.parse::<u8>().unwrap_or_else(|_| {
+                panic!("Linux x86_64 rooted ref state print ELF object byte parse 失敗: {line}")
+            })
+        })
+        .collect::<Vec<u8>>()
 }
 
 fn host_target_plain_program_code_bytes(instrs: &[(u32, i64)]) -> Vec<u8> {
@@ -19374,6 +27329,51 @@ fn host_target_direct_call_two_arg_bundle_code_bytes() -> Vec<u8> {
     )
 }
 
+fn linux_x86_selfhost_body_first_two_arg_local_handoff_code_bytes() -> Vec<u8> {
+    run_native_codegen_host_bytes_harness(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn main []
+  (let [caller-ir0 (vector-push (vector-new 7) (make-instr 3 2))
+        caller-ir1 (vector-push caller-ir0 (make-instr 11 1))
+        caller-ir2 (vector-push caller-ir1 (make-instr 3 4))
+        caller-ir3 (vector-push caller-ir2 (make-instr 11 2))
+        caller-ir4 (vector-push caller-ir3 (make-local-get 2))
+        caller-ir5 (vector-push caller-ir4 (make-local-get 1))
+        caller-ir (vector-push caller-ir5 (make-call 1))
+        callee-ir0 (vector-push (vector-new 5) (make-local-get 1))
+        callee-ir1 (vector-push callee-ir0 (make-instr 3 10))
+        callee-ir2 (vector-push callee-ir1 (make-instr 25 0))
+        callee-ir3 (vector-push callee-ir2 (make-local-get 2))
+        callee-ir (vector-push callee-ir3 (make-instr 24 0))
+        caller (make-function-meta 0 3 caller-ir)
+        callee (make-function-meta 2 3 callee-ir)
+        functions (vector-push (vector-push (vector-new 2) caller) callee)
+        target (make-target 3)
+        code (emit-native-function-meta-bundle functions target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    )
+}
+
 fn host_target_direct_call_three_arg_bundle_code_bytes() -> Vec<u8> {
     run_native_codegen_host_bytes_harness(
         r#"(module Main)
@@ -19415,228 +27415,6 @@ fn host_target_direct_call_three_arg_bundle_code_bytes() -> Vec<u8> {
         caller (make-function-meta 0 0 caller-ir)
         callee (make-function-meta 3 0 callee-ir)
         functions (vector-push (vector-push (vector-new 2) caller) callee)
-        target (host-target)
-        code (emit-native-function-meta-bundle functions target)]
-    (do
-      (print-bytes code 0 (vector-length code))
-      0)))"#,
-    )
-}
-
-fn host_target_nested_three_arg_call_preserves_outer_values_code_bytes() -> Vec<u8> {
-    run_native_codegen_host_bytes_harness(
-        r#"(module Main)
-(import Backend.Native.NativeTarget)
-(import Backend.Native.NativeCodegen)
-(import IR.IR)
-
-(defn make-function-meta [param-count local-count ir]
-  (vector-push
-    (vector-push
-      (vector-push (vector-new 3) param-count)
-      local-count)
-    ir))
-
-(defn print-bytes [bytes idx n]
-  (if (>= idx n)
-    0
-    (do
-      (print (vector-get bytes idx))
-      (print-bytes bytes (+ idx 1) n))))
-
-(defn main []
-  (let [caller-ir (vector-push
-                    (vector-push
-                      (vector-push
-                        (vector-push
-                          (vector-push
-                            (vector-push
-                              (vector-push
-                                (vector-push
-                                  (vector-push
-                                    (vector-push
-                                      (vector-push (vector-new 11) (make-instr 3 101))
-                                      (make-instr 3 7))
-                                    (make-instr 3 3))
-                                  (make-instr 3 4))
-                                (make-instr 3 40))
-                              (make-instr 3 2))
-                            (make-instr 3 5))
-                          (make-call 1))
-                        (make-instr 24 0))
-                      (make-instr 24 0))
-                    (make-instr 24 0))
-        caller-ir2 (vector-push caller-ir (make-instr 24 0))
-        callee-ir (vector-push
-                    (vector-push
-                      (vector-push
-                        (vector-push
-                          (vector-push (vector-new 5) (make-local-get 0))
-                          (make-local-get 1))
-                        (make-instr 24 0))
-                      (make-local-get 2))
-                    (make-instr 24 0))
-        caller (make-function-meta 0 64 caller-ir2)
-        callee (make-function-meta 3 0 callee-ir)
-        functions (vector-push (vector-push (vector-new 2) caller) callee)
-        target (host-target)
-        code (emit-native-function-meta-bundle functions target)]
-    (do
-      (print-bytes code 0 (vector-length code))
-      0)))"#,
-    )
-}
-
-fn host_target_three_arg_object_call_then_root_pop_pairs_code_bytes() -> Vec<u8> {
-    run_native_codegen_host_bytes_harness(
-        r#"(module Main)
-(import Backend.Native.NativeTarget)
-(import Backend.Native.NativeCodegen)
-(import IR.IR)
-
-(defn make-function-meta [param-count local-count ir]
-  (vector-push
-    (vector-push
-      (vector-push (vector-new 3) param-count)
-      local-count)
-    ir))
-
-(defn print-bytes [bytes idx n]
-  (if (>= idx n)
-    0
-    (do
-      (print (vector-get bytes idx))
-      (print-bytes bytes (+ idx 1) n))))
-
-(defn main []
-  (let [caller-ir (vector-push
-                    (vector-push
-                      (vector-push
-                        (vector-push
-                          (vector-push
-                            (vector-push
-                              (vector-push
-                                (vector-push
-                                  (vector-push
-                                    (vector-push
-                                      (vector-push (vector-new 11) (make-instr 3 40))
-                                      (make-instr 3 2))
-                                    (make-instr 3 5))
-                                  (make-call 1))
-                                (make-instr 75 0))
-                              (make-instr 44 0))
-                            (make-instr 75 0))
-                          (make-instr 44 0))
-                        (make-instr 11 0))
-                      (make-local-get 0))
-                    (make-instr 52 0))
-        callee-ir (vector-push
-                    (vector-push
-                      (vector-push
-                        (vector-push
-                          (vector-push
-                            (vector-push
-                              (vector-push
-                                (vector-push (vector-new 8) (make-instr 3 3))
-                                (make-instr 54 0))
-                              (make-local-get 0))
-                            (make-instr 55 0))
-                          (make-local-get 1))
-                        (make-instr 55 0))
-                      (make-local-get 2))
-                    (make-instr 55 0))
-        caller (make-function-meta 0 16 caller-ir)
-        callee (make-function-meta 3 0 callee-ir)
-        functions (vector-push (vector-push (vector-new 2) caller) callee)
-        target (host-target)
-        code (emit-native-function-meta-bundle functions target)]
-    (do
-      (print-bytes code 0 (vector-length code))
-      0)))"#,
-    )
-}
-
-fn host_target_param_frame_three_arg_object_call_then_root_pop_pairs_code_bytes() -> Vec<u8> {
-    run_native_codegen_host_bytes_harness(
-        r#"(module Main)
-(import Backend.Native.NativeTarget)
-(import Backend.Native.NativeCodegen)
-(import IR.IR)
-
-(defn make-function-meta [param-count local-count ir]
-  (vector-push
-    (vector-push
-      (vector-push (vector-new 3) param-count)
-      local-count)
-    ir))
-
-(defn print-bytes [bytes idx n]
-  (if (>= idx n)
-    0
-    (do
-      (print (vector-get bytes idx))
-      (print-bytes bytes (+ idx 1) n))))
-
-(defn main []
-  (let [entry-ir (vector-push
-                   (vector-push
-                     (vector-push
-                       (vector-push
-                         (vector-push
-                           (vector-push
-                             (vector-push
-                               (vector-push (vector-new 8) (make-instr 3 1))
-                               (make-instr 3 2))
-                             (make-instr 3 3))
-                           (make-instr 3 4))
-                         (make-instr 3 5))
-                       (make-instr 3 6))
-                     (make-instr 3 7))
-                   (make-call 1))
-        caller-ir (vector-push
-                    (vector-push
-                      (vector-push
-                        (vector-push
-                          (vector-push
-                            (vector-push
-                              (vector-push
-                                (vector-push
-                                  (vector-push
-                                    (vector-push
-                                      (vector-push (vector-new 11) (make-instr 3 40))
-                                      (make-instr 3 2))
-                                    (make-instr 3 5))
-                                  (make-call 2))
-                                (make-instr 75 0))
-                              (make-instr 44 0))
-                            (make-instr 75 0))
-                          (make-instr 44 0))
-                        (make-instr 11 21))
-                      (make-local-get 21))
-                    (make-instr 52 0))
-        callee-ir (vector-push
-                    (vector-push
-                      (vector-push
-                        (vector-push
-                          (vector-push
-                            (vector-push
-                              (vector-push
-                                (vector-push (vector-new 8) (make-instr 3 3))
-                                (make-instr 54 0))
-                              (make-local-get 0))
-                            (make-instr 55 0))
-                          (make-local-get 1))
-                        (make-instr 55 0))
-                      (make-local-get 2))
-                    (make-instr 55 0))
-        entry (make-function-meta 0 0 entry-ir)
-        caller (make-function-meta 7 16 caller-ir)
-        callee (make-function-meta 3 0 callee-ir)
-        functions (vector-push
-                    (vector-push
-                      (vector-push (vector-new 3) entry)
-                      caller)
-                    callee)
         target (host-target)
         code (emit-native-function-meta-bundle functions target)]
     (do
@@ -19744,6 +27522,51 @@ fn host_target_direct_call_four_arg_bundle_code_bytes() -> Vec<u8> {
         callee (make-function-meta 4 0 callee-ir)
         functions (vector-push (vector-push (vector-new 2) caller) callee)
         target (host-target)
+        code (emit-native-function-meta-bundle functions target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    )
+}
+
+fn linux_x86_direct_call_four_arg_computed_third_local_fourth_code_bytes() -> Vec<u8> {
+    run_native_codegen_host_bytes_harness(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn main []
+  (let [caller-ir0 (vector-push (vector-new 11) (make-instr 3 13))
+        caller-ir1 (vector-push caller-ir0 (make-instr 11 1))
+        caller-ir2 (vector-push caller-ir1 (make-instr 3 77))
+        caller-ir3 (vector-push caller-ir2 (make-instr 11 2))
+        caller-ir4 (vector-push caller-ir3 (make-local-get 1))
+        caller-ir5 (vector-push caller-ir4 (make-instr 3 0))
+        caller-ir6 (vector-push caller-ir5 (make-local-get 1))
+        caller-ir7 (vector-push caller-ir6 (make-instr 3 1))
+        caller-ir8 (vector-push caller-ir7 (make-instr 24 0))
+        caller-ir9 (vector-push caller-ir8 (make-local-get 2))
+        caller-ir (vector-push caller-ir9 (make-call 1))
+        callee-ir (vector-push (vector-new 1) (make-local-get 4))
+        caller (make-function-meta 0 3 caller-ir)
+        callee (make-function-meta 4 0 callee-ir)
+        functions (vector-push (vector-push (vector-new 2) caller) callee)
+        target (make-target 3)
         code (emit-native-function-meta-bundle functions target)]
     (do
       (print-bytes code 0 (vector-length code))
@@ -25651,6 +33474,89 @@ fn link_and_run_linux_x86_native_binary(code: &[u8]) -> Result<i32, String> {
     result
 }
 
+fn link_and_run_linux_x86_native_binary_via_lima(code: &[u8]) -> Result<i32, String> {
+    let vm_name = std::env::var("LSHARP_NATIVE_LINUX_X86_LIMA_VM")
+        .unwrap_or_else(|_| "lsharp-linux-x86".to_string());
+    let id = NATIVE_HOST_EXEC_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let dir = target_fixture_dir("e2e-native-fixtures", "native-linux-x86-lima-exec", id);
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+
+    let byte_strs: Vec<String> = code.iter().map(|b| format!("0x{b:02x}")).collect();
+    let asm_content = format!(
+        ".text\n\
+         .globl generated\n\
+         generated:\n\
+             .byte {}\n\
+         .globl main\n\
+         main:\n\
+             push %rbp\n\
+             mov %rsp, %rbp\n\
+             call generated\n\
+             pop %rbp\n\
+             ret\n\
+         .section .note.GNU-stack,\"\",@progbits\n",
+        byte_strs.join(", ")
+    );
+    let host_asm = dir.join("prog.s");
+    std::fs::write(&host_asm, &asm_content).map_err(|e| format!("prog.s 書き込み失敗: {e}"))?;
+
+    let vm_work_dir = format!("/tmp/lsharp-linux-x86-e2e-{id}");
+    let setup = std::process::Command::new("limactl")
+        .args([
+            "shell",
+            &vm_name,
+            "--",
+            "bash",
+            "-lc",
+            &format!("rm -rf {vm_work_dir} && mkdir -p {vm_work_dir}"),
+        ])
+        .output()
+        .map_err(|e| format!("limactl setup 実行失敗: {e}"))?;
+    if !setup.status.success() {
+        return Err(format!(
+            "limactl setup 失敗: stdout={:?} stderr={:?}",
+            String::from_utf8_lossy(&setup.stdout),
+            String::from_utf8_lossy(&setup.stderr)
+        ));
+    }
+
+    let vm_asm = format!("{vm_name}:{vm_work_dir}/prog.s");
+    let copy = std::process::Command::new("limactl")
+        .arg("copy")
+        .arg(&host_asm)
+        .arg(&vm_asm)
+        .output()
+        .map_err(|e| format!("limactl copy 実行失敗: {e}"))?;
+    if !copy.status.success() {
+        return Err(format!(
+            "limactl copy 失敗: stdout={:?} stderr={:?}",
+            String::from_utf8_lossy(&copy.stdout),
+            String::from_utf8_lossy(&copy.stderr)
+        ));
+    }
+
+    let script = format!(
+        "set -euo pipefail\n\
+         cd {vm_work_dir}\n\
+         cc prog.s -o prog\n\
+         set +e\n\
+         ./prog >stdout.txt 2>stderr.txt\n\
+         code=$?\n\
+         cat stdout.txt\n\
+         cat stderr.txt >&2\n\
+         exit $code\n"
+    );
+    let output = std::process::Command::new("limactl")
+        .args(["shell", &vm_name, "--", "bash", "-lc", &script])
+        .output()
+        .map_err(|e| format!("limactl link/run 実行失敗: {e}"))?;
+    let _ = std::process::Command::new("limactl")
+        .args(["shell", &vm_name, "--", "rm", "-rf", &vm_work_dir])
+        .output();
+
+    Ok(output.status.code().unwrap_or(-1))
+}
+
 fn link_and_run_linux_x86_generated_object(program_object: &[u8]) -> Result<i32, String> {
     if !linux_x86_native_exec_supported() {
         return Err("Linux x86_64 native execution は Linux x86_64 でのみサポート".to_string());
@@ -25707,78 +33613,6 @@ fn link_and_run_linux_x86_generated_object(program_object: &[u8]) -> Result<i32,
         let run_result = std::process::Command::new(dir.join("program.native"))
             .output()
             .map_err(|e| format!("program.native 実行失敗: {e}"))?;
-
-        Ok(run_result.status.code().unwrap_or(-1))
-    })();
-
-    let _ = std::fs::remove_dir_all(&dir);
-    result
-}
-
-fn link_and_run_macos_x86_generated_object(program_object: &[u8]) -> Result<i32, String> {
-    if !macos_x86_rosetta_exec_supported() {
-        return Err(
-            "x86_64-apple-darwin Rosetta execution は macOS + clang + Rosetta でのみサポート"
-                .to_string(),
-        );
-    }
-
-    let id = NATIVE_HOST_EXEC_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let dir = target_fixture_dir("e2e-native-fixtures", "native-macos-x86-object-exec", id);
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-
-    let result = (|| {
-        std::fs::write(dir.join("program.o"), program_object)
-            .map_err(|e| format!("program.o 書き込み失敗: {e}"))?;
-        std::fs::write(
-            dir.join("runtime.s"),
-            ".section __TEXT,__text\n\
-             .extern _generated\n\
-             .globl _main\n\
-             _main:\n\
-                 pushq %rbp\n\
-                 movq %rsp, %rbp\n\
-                 callq _generated\n\
-                 popq %rbp\n\
-                 retq\n",
-        )
-        .map_err(|e| format!("runtime.s 書き込み失敗: {e}"))?;
-
-        let runtime_result = std::process::Command::new("clang")
-            .args(["-arch", "x86_64", "-c", "runtime.s", "-o", "runtime.o"])
-            .current_dir(&dir)
-            .output()
-            .map_err(|e| format!("runtime.o 生成失敗: {e}"))?;
-        if !runtime_result.status.success() {
-            return Err(format!(
-                "x86_64 macOS runtime.o 生成失敗:\nstdout: {}\nstderr: {}",
-                String::from_utf8_lossy(&runtime_result.stdout),
-                String::from_utf8_lossy(&runtime_result.stderr),
-            ));
-        }
-
-        let response_text = "-o\nprogram.native\nprogram.o\nruntime.o\n";
-        std::fs::write(dir.join("linker-response.txt"), response_text)
-            .map_err(|e| format!("linker-response.txt 書き込み失敗: {e}"))?;
-        let link_result = std::process::Command::new("clang")
-            .args(["-arch", "x86_64", "-Wl,-stack_size,0x08000000"])
-            .arg("@linker-response.txt")
-            .current_dir(&dir)
-            .output()
-            .map_err(|e| format!("clang 実行失敗: {e}"))?;
-        if !link_result.status.success() {
-            return Err(format!(
-                "x86_64 macOS object link 失敗:\nstdout: {}\nstderr: {}",
-                String::from_utf8_lossy(&link_result.stdout),
-                String::from_utf8_lossy(&link_result.stderr),
-            ));
-        }
-
-        let run_result = std::process::Command::new("arch")
-            .arg("-x86_64")
-            .arg(dir.join("program.native"))
-            .output()
-            .map_err(|e| format!("program.native Rosetta 実行失敗: {e}"))?;
 
         Ok(run_result.status.code().unwrap_or(-1))
     })();
@@ -26887,117 +34721,6 @@ fn test_e2e_native_linux_x86_host_generates_selfhost_elf_object_artifact() {
     );
 }
 
-/// NATIVE-MACOS-X86-02: selfhost emit-object が linkable x86_64 Mach-O artifact を生成すること。
-#[test]
-fn test_e2e_native_macos_x86_selfhost_macho_object_links_and_executes_under_rosetta() {
-    if !macos_x86_rosetta_exec_supported() {
-        return;
-    }
-
-    let object_bytes = macos_x86_selfhost_const_42_object_bytes();
-    assert!(
-        object_bytes.len() > 208,
-        "x86_64 Mach-O object は mach_header_64 / load commands / __text / symtab を持つこと"
-    );
-    assert_eq!(
-        &object_bytes[..4],
-        &[207, 250, 237, 254],
-        "x86_64 Mach-O object は MH_MAGIC_64 little-endian で始まること"
-    );
-    assert!(
-        object_bytes
-            .windows("_generated".len())
-            .any(|window| window == b"_generated"),
-        "x86_64 Mach-O object は _generated external symbol を持つこと"
-    );
-    assert_eq!(
-        read_le_u32(&object_bytes, 16),
-        3,
-        "x86_64 Mach-O object は LC_SEGMENT_64 / LC_SYMTAB / LC_BUILD_VERSION を持つこと"
-    );
-    assert_eq!(
-        read_le_u32(&object_bytes, 20),
-        200,
-        "x86_64 Mach-O object の sizeofcmds は 3 load commands 分と一致すること"
-    );
-    assert_eq!(
-        read_le_u32(&object_bytes, 32),
-        25,
-        "先頭 load command は LC_SEGMENT_64 であること"
-    );
-    assert_eq!(
-        read_le_u32(&object_bytes, 36),
-        152,
-        "LC_SEGMENT_64 cmdsize は section_64 1 個分を含むこと"
-    );
-    let text_offset = read_le_u32(&object_bytes, 152) as usize;
-    let text_align = read_le_u32(&object_bytes, 156) as usize;
-    assert_eq!(
-        text_offset, 232,
-        "__text section offset が text payload を指すこと"
-    );
-    assert_eq!(
-        read_le_u64(&object_bytes, 144),
-        16,
-        "__text section size は const-42 native payload 長と一致すること"
-    );
-    assert_eq!(
-        text_offset % (1usize << text_align),
-        0,
-        "__text section offset は Mach-O section align field と整合すること"
-    );
-    assert_eq!(
-        read_le_u32(&object_bytes, 184),
-        2,
-        "2 番目の load command は LC_SYMTAB であること"
-    );
-    assert_eq!(
-        read_le_u32(&object_bytes, 192),
-        248,
-        "LC_SYMTAB symoff は native payload 後の nlist_64 を指すこと"
-    );
-    assert_eq!(
-        read_le_u32(&object_bytes, 196),
-        1,
-        "LC_SYMTAB nsyms は _generated 1 件であること"
-    );
-    assert_eq!(
-        read_le_u32(&object_bytes, 200),
-        264,
-        "LC_SYMTAB stroff は string table を指すこと"
-    );
-    assert_eq!(
-        read_le_u32(&object_bytes, 204),
-        12,
-        "LC_SYMTAB strsize は NUL + _generated + NUL と一致すること"
-    );
-    assert_eq!(
-        read_le_u32(&object_bytes, 208),
-        50,
-        "3 番目の load command は LC_BUILD_VERSION であること"
-    );
-    assert_eq!(
-        object_bytes[252], 15,
-        "_generated nlist_64 は external section symbol であること"
-    );
-    assert_eq!(
-        object_bytes[253], 1,
-        "_generated nlist_64 は __text section を指すこと"
-    );
-    assert_eq!(
-        read_le_u64(&object_bytes, 256),
-        0,
-        "_generated n_value は __text 先頭を指すこと"
-    );
-
-    let exit_code = link_and_run_macos_x86_generated_object(&object_bytes)
-        .expect("x86_64 Mach-O object の Rosetta link/run に失敗");
-    assert_eq!(
-        exit_code, 42,
-        "x86_64 Mach-O object は Rosetta 実行で const 42 を返すこと"
-    );
-}
-
 /// NATIVE-LINUX-X86-02c: host 側 selfhost が argv/string-length helper を含む Linux ELF artifact を生成すること。
 #[test]
 #[ignore]
@@ -27198,6 +34921,153 @@ fn test_e2e_native_linux_x86_host_generates_ref_vector_after_i64_zero_elf_object
     assert_eq!(
         written, object_bytes,
         "Linux x86_64 ref/vector object artifact は生成 ELF object をそのまま保存すること"
+    );
+}
+
+/// NATIVE-LINUX-X86-02gc: helper 関数へ渡した Ref に vector object を書き戻せる Linux ELF artifact を生成すること。
+#[test]
+#[ignore]
+fn test_e2e_native_linux_x86_host_generates_ref_param_vector_set_get_elf_object_artifact() {
+    let artifact_path =
+        std::env::var_os("LSHARP_NATIVE_LINUX_X86_REF_PARAM_VECTOR_OBJECT_ARTIFACT").expect(
+            "LSHARP_NATIVE_LINUX_X86_REF_PARAM_VECTOR_OBJECT_ARTIFACT に Linux x86_64 ref param/vector object artifact path を指定すること",
+        );
+    let artifact_path = std::path::PathBuf::from(artifact_path);
+    if let Some(parent) = artifact_path.parent() {
+        std::fs::create_dir_all(parent)
+            .expect("Linux x86_64 ref param/vector object artifact dir 作成に失敗");
+    }
+
+    let object_bytes = linux_x86_selfhost_ref_param_vector_set_get_object_bytes();
+    assert!(
+        object_bytes.len() > 64,
+        "Linux x86_64 ref param/vector ELF object は ELF64 section table を持つこと"
+    );
+    assert!(
+        object_bytes
+            .windows("generated".len())
+            .any(|window| window == b"generated"),
+        "Linux x86_64 ref param/vector ELF object は generated symbol を持つこと"
+    );
+
+    std::fs::write(&artifact_path, &object_bytes)
+        .expect("Linux x86_64 ref param/vector object artifact 書き込みに失敗");
+    let written = std::fs::read(&artifact_path)
+        .expect("Linux x86_64 ref param/vector object artifact 読み戻しに失敗");
+    assert_eq!(
+        written, object_bytes,
+        "Linux x86_64 ref param/vector object artifact は生成 ELF object をそのまま保存すること"
+    );
+}
+
+/// NATIVE-LINUX-X86-02gd: 5 引数 helper 経由で caller-owned Ref に state vector を書き戻せる Linux ELF artifact を生成すること。
+#[test]
+#[ignore]
+fn test_e2e_native_linux_x86_host_generates_ref_param_five_arg_state_set_get_elf_object_artifact() {
+    let artifact_path =
+        std::env::var_os("LSHARP_NATIVE_LINUX_X86_REF_PARAM_FIVE_ARG_OBJECT_ARTIFACT").expect(
+            "LSHARP_NATIVE_LINUX_X86_REF_PARAM_FIVE_ARG_OBJECT_ARTIFACT に Linux x86_64 five-arg ref state object artifact path を指定すること",
+        );
+    let artifact_path = std::path::PathBuf::from(artifact_path);
+    if let Some(parent) = artifact_path.parent() {
+        std::fs::create_dir_all(parent)
+            .expect("Linux x86_64 five-arg ref state object artifact dir 作成に失敗");
+    }
+
+    let object_bytes = linux_x86_selfhost_ref_param_five_arg_state_set_get_object_bytes();
+    assert!(
+        object_bytes.len() > 64,
+        "Linux x86_64 five-arg ref state ELF object は ELF64 section table を持つこと"
+    );
+    assert!(
+        object_bytes
+            .windows("generated".len())
+            .any(|window| window == b"generated"),
+        "Linux x86_64 five-arg ref state ELF object は generated symbol を持つこと"
+    );
+
+    std::fs::write(&artifact_path, &object_bytes)
+        .expect("Linux x86_64 five-arg ref state object artifact 書き込みに失敗");
+    let written = std::fs::read(&artifact_path)
+        .expect("Linux x86_64 five-arg ref state object artifact 読み戻しに失敗");
+    assert_eq!(
+        written, object_bytes,
+        "Linux x86_64 five-arg ref state object artifact は生成 ELF object をそのまま保存すること"
+    );
+}
+
+/// NATIVE-LINUX-X86-02ge: actual writer に近い rooted helper 経由で caller-owned Ref に state vector を書き戻せる Linux ELF artifact を生成すること。
+#[test]
+#[ignore]
+fn test_e2e_native_linux_x86_host_generates_ref_param_rooted_state_set_get_elf_object_artifact() {
+    let artifact_path =
+        std::env::var_os("LSHARP_NATIVE_LINUX_X86_REF_PARAM_ROOTED_STATE_OBJECT_ARTIFACT")
+            .expect(
+                "LSHARP_NATIVE_LINUX_X86_REF_PARAM_ROOTED_STATE_OBJECT_ARTIFACT に Linux x86_64 rooted ref state object artifact path を指定すること",
+            );
+    let artifact_path = std::path::PathBuf::from(artifact_path);
+    if let Some(parent) = artifact_path.parent() {
+        std::fs::create_dir_all(parent)
+            .expect("Linux x86_64 rooted ref state object artifact dir 作成に失敗");
+    }
+
+    let object_bytes = linux_x86_selfhost_ref_param_rooted_state_set_get_object_bytes();
+    assert!(
+        object_bytes.len() > 64,
+        "Linux x86_64 rooted ref state ELF object は ELF64 section table を持つこと"
+    );
+    assert!(
+        object_bytes
+            .windows("generated".len())
+            .any(|window| window == b"generated"),
+        "Linux x86_64 rooted ref state ELF object は generated symbol を持つこと"
+    );
+
+    std::fs::write(&artifact_path, &object_bytes)
+        .expect("Linux x86_64 rooted ref state object artifact 書き込みに失敗");
+    let written = std::fs::read(&artifact_path)
+        .expect("Linux x86_64 rooted ref state object artifact 読み戻しに失敗");
+    assert_eq!(
+        written, object_bytes,
+        "Linux x86_64 rooted ref state object artifact は生成 ELF object をそのまま保存すること"
+    );
+}
+
+/// NATIVE-LINUX-X86-02gf: print helper 呼び出しを挟んだ rooted writer が caller-owned Ref を更新できる Linux ELF artifact を生成すること。
+#[test]
+#[ignore]
+fn test_e2e_native_linux_x86_host_generates_ref_param_rooted_state_print_set_get_elf_object_artifact()
+ {
+    let artifact_path =
+        std::env::var_os("LSHARP_NATIVE_LINUX_X86_REF_PARAM_ROOTED_STATE_PRINT_OBJECT_ARTIFACT")
+            .expect(
+                "LSHARP_NATIVE_LINUX_X86_REF_PARAM_ROOTED_STATE_PRINT_OBJECT_ARTIFACT に Linux x86_64 rooted ref state print object artifact path を指定すること",
+            );
+    let artifact_path = std::path::PathBuf::from(artifact_path);
+    if let Some(parent) = artifact_path.parent() {
+        std::fs::create_dir_all(parent)
+            .expect("Linux x86_64 rooted ref state print object artifact dir 作成に失敗");
+    }
+
+    let object_bytes = linux_x86_selfhost_ref_param_rooted_state_print_set_get_object_bytes();
+    assert!(
+        object_bytes.len() > 64,
+        "Linux x86_64 rooted ref state print ELF object は ELF64 section table を持つこと"
+    );
+    assert!(
+        object_bytes
+            .windows("generated".len())
+            .any(|window| window == b"generated"),
+        "Linux x86_64 rooted ref state print ELF object は generated symbol を持つこと"
+    );
+
+    std::fs::write(&artifact_path, &object_bytes)
+        .expect("Linux x86_64 rooted ref state print object artifact 書き込みに失敗");
+    let written = std::fs::read(&artifact_path)
+        .expect("Linux x86_64 rooted ref state print object artifact 読み戻しに失敗");
+    assert_eq!(
+        written, object_bytes,
+        "Linux x86_64 rooted ref state print object artifact は生成 ELF object をそのまま保存すること"
     );
 }
 
@@ -27642,9 +35512,9 @@ fn test_e2e_native_linux_x86_host_generates_zero_arg_append_four_arg_call_probe_
       -1)))
 
 (defn x86-rel32-target-in-window-at-base [bytes offset size base-offset]
-  (let [call-offset (x86-first-rel32-offset-in-window bytes offset 0 size)]
-    (if (>= call-offset 0)
-      (+ base-offset (+ call-offset (+ 5 (x86-rel32-at bytes call-offset))))
+  (let [target (x86-rel32-target-in-window bytes offset size)]
+    (if (>= target 0)
+      (+ base-offset target)
       -1)))
 
 (defn print-byte-window [bytes idx end]
@@ -30482,42 +38352,6 @@ fn test_e2e_native_linux_x86_host_generates_map_insert_get_elf_object_artifact()
     );
 }
 
-/// NATIVE-LINUX-X86-02j2: host 側 selfhost map-insert helper が同一 key の値を上書きできること。
-#[test]
-#[ignore]
-fn test_e2e_native_linux_x86_host_generates_map_insert_overwrite_get_elf_object_artifact() {
-    let artifact_path =
-        std::env::var_os("LSHARP_NATIVE_LINUX_X86_MAP_OVERWRITE_OBJECT_ARTIFACT").expect(
-            "LSHARP_NATIVE_LINUX_X86_MAP_OVERWRITE_OBJECT_ARTIFACT に Linux x86_64 map overwrite object artifact path を指定すること",
-        );
-    let artifact_path = std::path::PathBuf::from(artifact_path);
-    if let Some(parent) = artifact_path.parent() {
-        std::fs::create_dir_all(parent)
-            .expect("Linux x86_64 map overwrite object artifact dir 作成に失敗");
-    }
-
-    let object_bytes = linux_x86_selfhost_map_insert_overwrite_get_object_bytes();
-    assert!(
-        object_bytes.len() > 64,
-        "Linux x86_64 map overwrite ELF object は ELF64 section table を持つこと"
-    );
-    assert!(
-        object_bytes
-            .windows("generated".len())
-            .any(|window| window == b"generated"),
-        "Linux x86_64 map overwrite ELF object は generated symbol を持つこと"
-    );
-
-    std::fs::write(&artifact_path, &object_bytes)
-        .expect("Linux x86_64 map overwrite object artifact 書き込みに失敗");
-    let written = std::fs::read(&artifact_path)
-        .expect("Linux x86_64 map overwrite object artifact 読み戻しに失敗");
-    assert_eq!(
-        written, object_bytes,
-        "Linux x86_64 map overwrite object artifact は生成 ELF object をそのまま保存すること"
-    );
-}
-
 /// NATIVE-LINUX-X86-02k: host 側 selfhost が map-size helper を含む Linux ELF artifact を生成すること。
 #[test]
 #[ignore]
@@ -31986,6 +39820,27 @@ fn assert_x86_function_size_matches_generated_length_for_seed(
       (+ idx 1)
       len)))
 
+(defn pad-byte-vector-to-length-range [bytes start end]
+  (if (>= start end)
+    bytes
+    (let [width (- end start)]
+      (if (= width 1)
+        (vector-push bytes 144)
+        (do
+          (root_push bytes)
+          (let [mid (+ start (/ width 2))
+                left (pad-byte-vector-to-length-range bytes start mid)]
+            (do
+              (root_push left)
+              (let [right (pad-byte-vector-to-length-range left mid end)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  right)))))))))
+
+(defn pad-byte-vector-to-length [bytes target-len]
+  (pad-byte-vector-to-length-range bytes (vector-length bytes) target-len))
+
 	(defn check-instr-sizes [ir functions starts import-count import-stub-offset frame-base-slot-count meta offsets idx len depth]
 	  (if (>= idx len)
 	    0
@@ -32043,6 +39898,10 @@ fn assert_x86_function_size_matches_generated_length_for_seed(
 	            emit-import-offset))
 	        (let [actual-after (vector-length (ref-get result))
 	              actual-size (- actual-after actual-start)
+	              ir-len (vector-length (native-function-ir func))
+	              size-status (if (> ir-len 4096)
+	                            (if (>= expected-size actual-size) 0 1)
+	                            (if (= expected-size actual-size) 0 1))
 	              instr-status (check-instr-sizes
 	                (native-function-ir func)
 	                functions
@@ -32081,8 +39940,13 @@ fn assert_x86_function_size_matches_generated_length_for_seed(
 	                                     (if (= (native-function-param-count func) 1) 7 0)))))))))))
 	                0
 	                (vector-length (native-function-ir func))
-	                0)]
-	          (if (or (or (!= expected-start actual-start) (!= expected-size actual-size)) (!= instr-status 0))
+	                0)
+	              padding-status (if (if (= size-status 0) (> expected-size actual-size) false)
+	                               (do
+	                                 (ref-set result (pad-byte-vector-to-length (ref-get result) (+ actual-start expected-size)))
+	                                 0)
+	                               0)]
+	          (if (or (or (!= expected-start actual-start) (!= size-status 0)) (!= instr-status 0))
 	            (do
 	              (print func-idx)
 	              (print expected-start)
@@ -32091,7 +39955,7 @@ fn assert_x86_function_size_matches_generated_length_for_seed(
               (print actual-size)
               (print (native-function-param-count func))
               (print (native-function-local-count func))
-              (print (vector-length (native-function-ir func)))
+              (print ir-len)
               (print (native-local-stack-bytes-with-window
                 (native-function-ir func)
                 (+ (+ (native-function-param-count func) (native-function-local-count func)) 1)
@@ -32170,34 +40034,6 @@ fn test_e2e_native_linux_x86_selfhost_elf_object_links_and_executes() {
     assert_eq!(
         exit_code, 42,
         "Linux x86_64 selfhost ELF object 実行は exit code 42 を返すこと"
-    );
-}
-
-/// NATIVE-LINUX-X86-04-map-overwrite: Linux x86_64 selfhost map-insert helper は同一 key を上書きして最新値を返すこと。
-#[test]
-#[ignore]
-fn test_e2e_native_linux_x86_selfhost_map_insert_overwrite_get_links_and_executes() {
-    if !linux_x86_native_exec_supported() {
-        return;
-    }
-
-    let object_bytes = linux_x86_selfhost_map_insert_overwrite_get_object_bytes();
-    assert!(
-        object_bytes.len() > 64,
-        "Linux x86_64 map overwrite ELF object は ELF64 header と section table を持つこと: len={}",
-        object_bytes.len()
-    );
-    assert_eq!(
-        &object_bytes[0..4],
-        &[0x7f, b'E', b'L', b'F'],
-        "Linux x86_64 map overwrite object は ELF magic を持つこと"
-    );
-
-    let exit_code = link_and_run_linux_x86_generated_object(&object_bytes)
-        .expect("Linux x86_64 map overwrite ELF object の link/run に失敗");
-    assert_eq!(
-        exit_code, 99,
-        "Linux x86_64 selfhost map-insert overwrite 実行は exit code 99 を返すこと"
     );
 }
 
@@ -34536,6 +42372,38 @@ fn test_e2e_native_host_binary_direct_call_two_arg_bundle_link_and_execute() {
     );
 }
 
+/// NATIVE-LINUX-X86-SELFHOST-02: body-first 2 引数 call が x86 selfhost local slots へ渡ること。
+#[test]
+#[ignore]
+fn test_e2e_native_linux_x86_selfhost_body_first_two_arg_local_handoff_link_and_execute() {
+    let code_bytes = linux_x86_selfhost_body_first_two_arg_local_handoff_code_bytes();
+
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: Linux x86_64 body-first two-arg handoff 向けコードバイト列が空"
+    );
+
+    let exit_code = if linux_x86_native_exec_supported() {
+        link_and_run_linux_x86_native_binary(&code_bytes)
+            .expect("Linux x86_64 body-first two-arg handoff 実行に失敗")
+    } else if std::env::var_os("LSHARP_NATIVE_LINUX_X86_RUN_LIMA").is_some() {
+        link_and_run_linux_x86_native_binary_via_lima(&code_bytes)
+            .expect("Lima Linux x86_64 body-first two-arg handoff 実行に失敗")
+    } else {
+        return;
+    };
+
+    assert_eq!(
+        exit_code,
+        42,
+        "Linux x86_64 body-first two-arg handoff: exit code 42 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
 /// NATIVE-HOST-01j: 3 引数 direct call bundle が host binary として link/run できること。
 #[test]
 #[ignore]
@@ -34558,93 +42426,6 @@ fn test_e2e_native_host_binary_direct_call_three_arg_bundle_link_and_execute() {
         exit_code,
         47,
         "host binary direct call three-arg bundle: exit code 47 を期待したが {} を得た\n\
-         bytes ({} bytes): {:?}",
-        exit_code,
-        code_bytes.len(),
-        code_bytes
-    );
-}
-
-/// NATIVE-HOST-01j3: 深い value window 上の 3 引数 direct call 後も外側の値を保持できること。
-#[test]
-#[ignore]
-fn test_e2e_native_host_binary_nested_three_arg_call_preserves_outer_values() {
-    if !host_native_exec_supported() {
-        return;
-    }
-
-    let code_bytes = host_target_nested_three_arg_call_preserves_outer_values_code_bytes();
-
-    assert!(
-        !code_bytes.is_empty(),
-        "stage1-native: nested three-arg direct call preserve bundle host target 向けコードバイト列が空"
-    );
-
-    let exit_code = link_and_run_native_host_binary(&code_bytes)
-        .expect("nested three-arg direct call preserve host binary 実行に失敗");
-
-    assert_eq!(
-        exit_code,
-        162,
-        "host binary nested three-arg direct call preserve: exit code 162 を期待したが {} を得た\n\
-         bytes ({} bytes): {:?}",
-        exit_code,
-        code_bytes.len(),
-        code_bytes
-    );
-}
-
-/// NATIVE-HOST-01j4: 3 引数 object return call の直後に root_pop/drop pair が入っても戻り値を保持できること。
-#[test]
-#[ignore]
-fn test_e2e_native_host_binary_three_arg_object_call_survives_root_pop_pairs() {
-    if !host_native_exec_supported() {
-        return;
-    }
-
-    let code_bytes = host_target_three_arg_object_call_then_root_pop_pairs_code_bytes();
-
-    assert!(
-        !code_bytes.is_empty(),
-        "stage1-native: three-arg object call root-pop preserve bundle host target 向けコードバイト列が空"
-    );
-
-    let exit_code = link_and_run_native_host_binary(&code_bytes)
-        .expect("three-arg object call root-pop preserve host binary 実行に失敗");
-
-    assert_eq!(
-        exit_code,
-        3,
-        "host binary three-arg object call root-pop preserve: vector length 3 を期待したが {} を得た\n\
-         bytes ({} bytes): {:?}",
-        exit_code,
-        code_bytes.len(),
-        code_bytes
-    );
-}
-
-/// NATIVE-HOST-01j5: 7 param + 16 local frame の高い local slot でも object return を保持できること。
-#[test]
-#[ignore]
-fn test_e2e_native_host_binary_three_arg_object_call_survives_param_frame_root_pop_pairs() {
-    if !host_native_exec_supported() {
-        return;
-    }
-
-    let code_bytes = host_target_param_frame_three_arg_object_call_then_root_pop_pairs_code_bytes();
-
-    assert!(
-        !code_bytes.is_empty(),
-        "stage1-native: param-frame three-arg object call root-pop preserve bundle host target 向けコードバイト列が空"
-    );
-
-    let exit_code = link_and_run_native_host_binary(&code_bytes)
-        .expect("param-frame three-arg object call root-pop preserve host binary 実行に失敗");
-
-    assert_eq!(
-        exit_code,
-        3,
-        "host binary param-frame three-arg object call root-pop preserve: vector length 3 を期待したが {} を得た\n\
          bytes ({} bytes): {:?}",
         exit_code,
         code_bytes.len(),
@@ -34703,6 +42484,38 @@ fn test_e2e_native_host_binary_direct_call_four_arg_bundle_link_and_execute() {
         exit_code,
         54,
         "host binary direct call four-arg bundle: exit code 54 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-LINUX-X86-SELFHOST-03: 4 引数 call の第 3 引数が計算式でも第 4 引数 local を保持できること。
+#[test]
+#[ignore]
+fn test_e2e_native_linux_x86_four_arg_call_computed_third_preserves_fourth_local() {
+    let code_bytes = linux_x86_direct_call_four_arg_computed_third_local_fourth_code_bytes();
+
+    assert!(
+        !code_bytes.is_empty(),
+        "Linux x86_64 four-arg computed-third/local-fourth 向けコードバイト列が空"
+    );
+
+    let exit_code = if linux_x86_native_exec_supported() {
+        link_and_run_linux_x86_native_binary(&code_bytes)
+            .expect("Linux x86_64 four-arg computed-third/local-fourth 実行に失敗")
+    } else if std::env::var_os("LSHARP_NATIVE_LINUX_X86_RUN_LIMA").is_some() {
+        link_and_run_linux_x86_native_binary_via_lima(&code_bytes)
+            .expect("Lima Linux x86_64 four-arg computed-third/local-fourth 実行に失敗")
+    } else {
+        return;
+    };
+
+    assert_eq!(
+        exit_code,
+        77,
+        "Linux x86_64 four-arg computed-third/local-fourth: 第4引数 local 77 を返すべきだが {} を得た\n\
          bytes ({} bytes): {:?}",
         exit_code,
         code_bytes.len(),
@@ -41337,7 +49150,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_f
 (defn main []
   (let [defn-node (vector-set-at-rooted-v3 (vector-push-triple-rooted-v3 (vector-new 8) 20 123 0) 2 0)
         body (make-var-node 456)
-        decl (finalize-defn-body-v3 defn-node 0 body)]
+        decl (finalize-defn-body-v3 body defn-node)]
     (do
       (print (vector-get decl 0))
       (print (vector-get (vector-get decl 3) 0))
@@ -41733,7 +49546,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_f
 (defn main []
   (let [defn-node (vector-push (vector-push (vector-push (vector-new 8) 20) 0) 0)
         body (make-int-node 42)
-        decl (finalize-defn-body-v3 defn-node 0 body)]
+        decl (finalize-defn-body-v3 body defn-node)]
     (do
       (print (vector-get decl 2))
       (print (vector-get (vector-get decl 3) 0))
@@ -43818,7 +51631,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_e
                       (root_pop)
                       (root_pop)
                       (root_pop)
-                      0)))))))))))"#;
+                      0))))))))))"#;
     assert_representative_override_main_matches_selfhost(
         "native-stage23-pipeline-smoke-emit-object-only",
         main_source,
@@ -43863,7 +51676,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_e
                       (root_pop)
                       (root_pop)
                       (root_pop)
-                      0)))))))))))"#;
+                      0))))))))))"#;
     assert_representative_override_main_matches_selfhost(
         "native-stage23-pipeline-smoke-emit-object-aarch64-only",
         main_source,
@@ -43980,7 +51793,6 @@ struct X86MapNewDirectReplayRow {
     depth: i64,
     offset: i64,
     size: i64,
-    function_start_base: i64,
     emit_start_base: i64,
     helper_target: i64,
     direct_call_rel: i64,
@@ -43997,7 +51809,6 @@ struct X86UserCallDirectReplayRow {
     depth: i64,
     offset: i64,
     size: i64,
-    function_start_base: i64,
     param_count: i64,
     call_next_offset: i64,
     target_offset: i64,
@@ -44008,23 +51819,24 @@ struct X86UserCallDirectReplayRow {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct X86UserCallStageCodeRel32Correlation {
-    instr_idx: i64,
-    opcode: i64,
-    operand: i64,
-    depth: i64,
-    stage_code_call_offset: usize,
-    call_offset_in_row: usize,
-    relative_target: i64,
-    absolute_target: i64,
-    direct_target: i64,
-    call_rel: i64,
-    bytes: [u8; 5],
+struct X86UserCallDirectReplayWideRow {
+    instr_idx: i128,
+    opcode: i128,
+    operand: i128,
+    depth: i128,
+    offset: i128,
+    size: i128,
+    param_count: i128,
+    call_next_offset: i128,
+    target_offset: i128,
+    call_rel: i128,
+    direct_len: i128,
+    direct_target: i128,
+    bytes: [i128; 8],
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct LinuxX86FunctionSegmentMetadataRow {
-    function_start: i64,
     function_size: i64,
     instr_idx: i64,
     opcode: i64,
@@ -44033,6 +51845,21 @@ struct LinuxX86FunctionSegmentMetadataRow {
     offset: i64,
     size: i64,
     bytes: [u8; 8],
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct LinuxX86FunctionSegmentMetadataHeader {
+    segment_index: i64,
+    function_idx: i64,
+    function_start: i64,
+    function_size: i64,
+    param_count: i64,
+    local_count: i64,
+    frame_base_slot_count: i64,
+    stack_bytes: i64,
+    param_spill_bytes: i64,
+    body_offset: i64,
+    ir_len: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -44350,7 +52177,6 @@ fn parse_linux_x86_function_segment_metadata_rows(
     let lines = parse_numeric_lines(output);
     let mut idx = 0;
     let mut rows = Vec::new();
-    let mut current_function_start = 0;
     let mut current_function_size = 0;
     while idx < lines.len() {
         match lines[idx] {
@@ -44359,7 +52185,6 @@ fn parse_linux_x86_function_segment_metadata_rows(
                     idx + 12 <= lines.len(),
                     "x86 function metadata header が不足: idx={idx} lines={lines:?}"
                 );
-                current_function_start = lines[idx + 3];
                 current_function_size = lines[idx + 4];
                 idx += 12;
             }
@@ -44379,7 +52204,6 @@ fn parse_linux_x86_function_segment_metadata_rows(
                     lines[idx + 14] as u8,
                 ];
                 rows.push(LinuxX86FunctionSegmentMetadataRow {
-                    function_start: current_function_start,
                     function_size: current_function_size,
                     instr_idx: lines[idx + 1],
                     opcode: lines[idx + 2],
@@ -44394,18 +52218,32 @@ fn parse_linux_x86_function_segment_metadata_rows(
             9_000_000_022 | 9_000_000_023 => {
                 assert!(
                     idx + 14 <= lines.len(),
-                    "x86 function metadata i64-ge emitted replay row が不足: idx={idx} lines={lines:?}"
+                    "x86 function metadata i64-ge byte diagnostic row が不足: idx={idx} lines={lines:?}"
                 );
                 idx += 14;
             }
-            9_000_000_024 | 9_000_000_025 | 9_000_000_027 | 9_000_000_028 => {
+            9_000_000_024 | 9_000_000_025 => {
+                assert!(
+                    idx + 16 <= lines.len(),
+                    "x86 function metadata i64-ge control diagnostic row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 16;
+            }
+            9_000_000_026 => {
+                assert!(
+                    idx + 17 <= lines.len(),
+                    "x86 function metadata i64-ge replay diagnostic row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 17;
+            }
+            9_000_000_027 | 9_000_000_028 => {
                 assert!(
                     idx + 16 <= lines.len(),
                     "x86 function metadata replay row が不足: idx={idx} lines={lines:?}"
                 );
                 idx += 16;
             }
-            9_000_000_026 | 9_000_000_029 => {
+            9_000_000_029 => {
                 assert!(
                     idx + 17 <= lines.len(),
                     "x86 function metadata replay output row が不足: idx={idx} lines={lines:?}"
@@ -44414,10 +52252,10 @@ fn parse_linux_x86_function_segment_metadata_rows(
             }
             9_000_000_043 => {
                 assert!(
-                    idx + 21 <= lines.len(),
+                    idx + 20 <= lines.len(),
                     "x86 function metadata map-new direct replay row が不足: idx={idx} lines={lines:?}"
                 );
-                idx += 21;
+                idx += 20;
             }
             9_000_000_044 => {
                 assert!(
@@ -44435,10 +52273,10 @@ fn parse_linux_x86_function_segment_metadata_rows(
             }
             9_000_000_046 => {
                 assert!(
-                    idx + 22 <= lines.len(),
+                    idx + 21 <= lines.len(),
                     "x86 function metadata user call direct replay row が不足: idx={idx} lines={lines:?}"
                 );
-                idx += 22;
+                idx += 21;
             }
             marker => {
                 panic!(
@@ -44448,6 +52286,117 @@ fn parse_linux_x86_function_segment_metadata_rows(
         }
     }
     rows
+}
+
+fn parse_linux_x86_function_segment_metadata_headers(
+    output: &str,
+) -> Vec<LinuxX86FunctionSegmentMetadataHeader> {
+    let lines = parse_numeric_lines_i128(output);
+    let mut idx = 0;
+    let mut headers = Vec::new();
+    while idx < lines.len() {
+        match lines[idx] {
+            9_000_000_020 => {
+                assert!(
+                    idx + 12 <= lines.len(),
+                    "x86 function metadata header が不足: idx={idx} lines={lines:?}"
+                );
+                headers.push(LinuxX86FunctionSegmentMetadataHeader {
+                    segment_index: numeric_i128_to_i64(lines[idx + 1], "segment_index"),
+                    function_idx: numeric_i128_to_i64(lines[idx + 2], "function_idx"),
+                    function_start: numeric_i128_to_i64(lines[idx + 3], "function_start"),
+                    function_size: numeric_i128_to_i64(lines[idx + 4], "function_size"),
+                    param_count: numeric_i128_to_i64(lines[idx + 5], "param_count"),
+                    local_count: numeric_i128_to_i64(lines[idx + 6], "local_count"),
+                    frame_base_slot_count: numeric_i128_to_i64(
+                        lines[idx + 7],
+                        "frame_base_slot_count",
+                    ),
+                    stack_bytes: numeric_i128_to_i64(lines[idx + 8], "stack_bytes"),
+                    param_spill_bytes: numeric_i128_to_i64(lines[idx + 9], "param_spill_bytes"),
+                    body_offset: numeric_i128_to_i64(lines[idx + 10], "body_offset"),
+                    ir_len: numeric_i128_to_i64(lines[idx + 11], "ir_len"),
+                });
+                idx += 12;
+            }
+            9_000_000_021 => {
+                assert!(
+                    idx + 15 <= lines.len(),
+                    "x86 function metadata row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 15;
+            }
+            9_000_000_022 | 9_000_000_023 => {
+                assert!(
+                    idx + 14 <= lines.len(),
+                    "x86 function metadata i64-ge byte diagnostic row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 14;
+            }
+            9_000_000_024 | 9_000_000_025 => {
+                assert!(
+                    idx + 16 <= lines.len(),
+                    "x86 function metadata i64-ge control diagnostic row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 16;
+            }
+            9_000_000_026 => {
+                assert!(
+                    idx + 17 <= lines.len(),
+                    "x86 function metadata i64-ge replay diagnostic row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 17;
+            }
+            9_000_000_027 | 9_000_000_028 => {
+                assert!(
+                    idx + 16 <= lines.len(),
+                    "x86 function metadata replay row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 16;
+            }
+            9_000_000_029 => {
+                assert!(
+                    idx + 17 <= lines.len(),
+                    "x86 function metadata replay output row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 17;
+            }
+            9_000_000_043 => {
+                assert!(
+                    idx + 20 <= lines.len(),
+                    "x86 function metadata map-new direct replay row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 20;
+            }
+            9_000_000_044 => {
+                assert!(
+                    idx + 17 <= lines.len(),
+                    "x86 function metadata map-new fallback replay row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 17;
+            }
+            9_000_000_045 => {
+                assert!(
+                    idx + 18 <= lines.len(),
+                    "x86 function metadata map-new control replay row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 18;
+            }
+            9_000_000_046 => {
+                assert!(
+                    idx + 21 <= lines.len(),
+                    "x86 function metadata user call direct replay row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 21;
+            }
+            marker => {
+                panic!(
+                    "未知の x86 function metadata marker: marker={marker} idx={idx} lines={lines:?}"
+                );
+            }
+        }
+    }
+    headers
 }
 
 fn parse_x86_map_new_direct_replay_rows(output: &str) -> Vec<X86MapNewDirectReplayRow> {
@@ -44473,18 +52422,32 @@ fn parse_x86_map_new_direct_replay_rows(output: &str) -> Vec<X86MapNewDirectRepl
             9_000_000_022 | 9_000_000_023 => {
                 assert!(
                     idx + 14 <= lines.len(),
-                    "x86 function metadata i64-ge emitted replay row が不足: idx={idx} lines={lines:?}"
+                    "x86 function metadata i64-ge byte diagnostic row が不足: idx={idx} lines={lines:?}"
                 );
                 idx += 14;
             }
-            9_000_000_024 | 9_000_000_025 | 9_000_000_027 | 9_000_000_028 => {
+            9_000_000_024 | 9_000_000_025 => {
+                assert!(
+                    idx + 16 <= lines.len(),
+                    "x86 function metadata i64-ge control diagnostic row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 16;
+            }
+            9_000_000_026 => {
+                assert!(
+                    idx + 17 <= lines.len(),
+                    "x86 function metadata i64-ge replay diagnostic row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 17;
+            }
+            9_000_000_027 | 9_000_000_028 => {
                 assert!(
                     idx + 16 <= lines.len(),
                     "x86 function metadata replay row が不足: idx={idx} lines={lines:?}"
                 );
                 idx += 16;
             }
-            9_000_000_026 | 9_000_000_029 => {
+            9_000_000_029 => {
                 assert!(
                     idx + 17 <= lines.len(),
                     "x86 function metadata replay output row が不足: idx={idx} lines={lines:?}"
@@ -44493,7 +52456,7 @@ fn parse_x86_map_new_direct_replay_rows(output: &str) -> Vec<X86MapNewDirectRepl
             }
             9_000_000_043 => {
                 assert!(
-                    idx + 21 <= lines.len(),
+                    idx + 20 <= lines.len(),
                     "x86 function metadata map-new direct replay row が不足: idx={idx} lines={lines:?}"
                 );
                 rows.push(X86MapNewDirectReplayRow {
@@ -44503,13 +52466,13 @@ fn parse_x86_map_new_direct_replay_rows(output: &str) -> Vec<X86MapNewDirectRepl
                     depth: lines[idx + 4],
                     offset: lines[idx + 5],
                     size: lines[idx + 6],
-                    function_start_base: lines[idx + 7],
-                    emit_start_base: lines[idx + 8],
-                    helper_target: lines[idx + 9],
-                    direct_call_rel: lines[idx + 10],
-                    direct_len: lines[idx + 11],
-                    direct_target: lines[idx + 12],
+                    emit_start_base: lines[idx + 7],
+                    helper_target: lines[idx + 8],
+                    direct_call_rel: lines[idx + 9],
+                    direct_len: lines[idx + 10],
+                    direct_target: lines[idx + 11],
                     bytes: [
+                        lines[idx + 12] as u8,
                         lines[idx + 13] as u8,
                         lines[idx + 14] as u8,
                         lines[idx + 15] as u8,
@@ -44517,10 +52480,9 @@ fn parse_x86_map_new_direct_replay_rows(output: &str) -> Vec<X86MapNewDirectRepl
                         lines[idx + 17] as u8,
                         lines[idx + 18] as u8,
                         lines[idx + 19] as u8,
-                        lines[idx + 20] as u8,
                     ],
                 });
-                idx += 21;
+                idx += 20;
             }
             9_000_000_044 => {
                 assert!(
@@ -44538,10 +52500,10 @@ fn parse_x86_map_new_direct_replay_rows(output: &str) -> Vec<X86MapNewDirectRepl
             }
             9_000_000_046 => {
                 assert!(
-                    idx + 22 <= lines.len(),
+                    idx + 21 <= lines.len(),
                     "x86 function metadata user call direct replay row が不足: idx={idx} lines={lines:?}"
                 );
-                idx += 22;
+                idx += 21;
             }
             marker => {
                 panic!(
@@ -44576,18 +52538,32 @@ fn parse_x86_user_call_direct_replay_rows(output: &str) -> Vec<X86UserCallDirect
             9_000_000_022 | 9_000_000_023 => {
                 assert!(
                     idx + 14 <= lines.len(),
-                    "x86 function metadata i64-ge emitted replay row が不足: idx={idx} lines={lines:?}"
+                    "x86 function metadata i64-ge byte diagnostic row が不足: idx={idx} lines={lines:?}"
                 );
                 idx += 14;
             }
-            9_000_000_024 | 9_000_000_025 | 9_000_000_027 | 9_000_000_028 => {
+            9_000_000_024 | 9_000_000_025 => {
+                assert!(
+                    idx + 16 <= lines.len(),
+                    "x86 function metadata i64-ge control diagnostic row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 16;
+            }
+            9_000_000_026 => {
+                assert!(
+                    idx + 17 <= lines.len(),
+                    "x86 function metadata i64-ge replay diagnostic row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 17;
+            }
+            9_000_000_027 | 9_000_000_028 => {
                 assert!(
                     idx + 16 <= lines.len(),
                     "x86 function metadata replay row が不足: idx={idx} lines={lines:?}"
                 );
                 idx += 16;
             }
-            9_000_000_026 | 9_000_000_029 => {
+            9_000_000_029 => {
                 assert!(
                     idx + 17 <= lines.len(),
                     "x86 function metadata replay output row が不足: idx={idx} lines={lines:?}"
@@ -44596,10 +52572,10 @@ fn parse_x86_user_call_direct_replay_rows(output: &str) -> Vec<X86UserCallDirect
             }
             9_000_000_043 => {
                 assert!(
-                    idx + 21 <= lines.len(),
+                    idx + 20 <= lines.len(),
                     "x86 function metadata map-new direct replay row が不足: idx={idx} lines={lines:?}"
                 );
-                idx += 21;
+                idx += 20;
             }
             9_000_000_044 => {
                 assert!(
@@ -44617,7 +52593,7 @@ fn parse_x86_user_call_direct_replay_rows(output: &str) -> Vec<X86UserCallDirect
             }
             9_000_000_046 => {
                 assert!(
-                    idx + 22 <= lines.len(),
+                    idx + 21 <= lines.len(),
                     "x86 function metadata user call direct replay row が不足: idx={idx} lines={lines:?}"
                 );
                 rows.push(X86UserCallDirectReplayRow {
@@ -44627,14 +52603,14 @@ fn parse_x86_user_call_direct_replay_rows(output: &str) -> Vec<X86UserCallDirect
                     depth: lines[idx + 4],
                     offset: lines[idx + 5],
                     size: lines[idx + 6],
-                    function_start_base: lines[idx + 7],
-                    param_count: lines[idx + 8],
-                    call_next_offset: lines[idx + 9],
-                    target_offset: lines[idx + 10],
-                    call_rel: lines[idx + 11],
-                    direct_len: lines[idx + 12],
-                    direct_target: lines[idx + 13],
+                    param_count: lines[idx + 7],
+                    call_next_offset: lines[idx + 8],
+                    target_offset: lines[idx + 9],
+                    call_rel: lines[idx + 10],
+                    direct_len: lines[idx + 11],
+                    direct_target: lines[idx + 12],
                     bytes: [
+                        lines[idx + 13] as u8,
                         lines[idx + 14] as u8,
                         lines[idx + 15] as u8,
                         lines[idx + 16] as u8,
@@ -44642,10 +52618,128 @@ fn parse_x86_user_call_direct_replay_rows(output: &str) -> Vec<X86UserCallDirect
                         lines[idx + 18] as u8,
                         lines[idx + 19] as u8,
                         lines[idx + 20] as u8,
-                        lines[idx + 21] as u8,
                     ],
                 });
-                idx += 22;
+                idx += 21;
+            }
+            marker => {
+                panic!(
+                    "未知の x86 function metadata marker: marker={marker} idx={idx} lines={lines:?}"
+                );
+            }
+        }
+    }
+    rows
+}
+
+fn parse_x86_user_call_direct_replay_wide_rows(
+    output: &str,
+) -> Vec<X86UserCallDirectReplayWideRow> {
+    let lines = parse_numeric_lines_i128(output);
+    let mut idx = 0;
+    let mut rows = Vec::new();
+    while idx < lines.len() {
+        match lines[idx] {
+            9_000_000_020 => {
+                assert!(
+                    idx + 12 <= lines.len(),
+                    "x86 function metadata header が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 12;
+            }
+            9_000_000_021 => {
+                assert!(
+                    idx + 15 <= lines.len(),
+                    "x86 function metadata row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 15;
+            }
+            9_000_000_022 | 9_000_000_023 => {
+                assert!(
+                    idx + 14 <= lines.len(),
+                    "x86 function metadata i64-ge byte diagnostic row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 14;
+            }
+            9_000_000_024 | 9_000_000_025 => {
+                assert!(
+                    idx + 16 <= lines.len(),
+                    "x86 function metadata i64-ge control diagnostic row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 16;
+            }
+            9_000_000_026 => {
+                assert!(
+                    idx + 17 <= lines.len(),
+                    "x86 function metadata i64-ge replay diagnostic row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 17;
+            }
+            9_000_000_027 | 9_000_000_028 => {
+                assert!(
+                    idx + 16 <= lines.len(),
+                    "x86 function metadata replay row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 16;
+            }
+            9_000_000_029 => {
+                assert!(
+                    idx + 17 <= lines.len(),
+                    "x86 function metadata replay output row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 17;
+            }
+            9_000_000_043 => {
+                assert!(
+                    idx + 20 <= lines.len(),
+                    "x86 function metadata map-new direct replay row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 20;
+            }
+            9_000_000_044 => {
+                assert!(
+                    idx + 17 <= lines.len(),
+                    "x86 function metadata map-new fallback replay row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 17;
+            }
+            9_000_000_045 => {
+                assert!(
+                    idx + 18 <= lines.len(),
+                    "x86 function metadata map-new control replay row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 18;
+            }
+            9_000_000_046 => {
+                assert!(
+                    idx + 21 <= lines.len(),
+                    "x86 function metadata user call direct replay row が不足: idx={idx} lines={lines:?}"
+                );
+                rows.push(X86UserCallDirectReplayWideRow {
+                    instr_idx: lines[idx + 1],
+                    opcode: lines[idx + 2],
+                    operand: lines[idx + 3],
+                    depth: lines[idx + 4],
+                    offset: lines[idx + 5],
+                    size: lines[idx + 6],
+                    param_count: lines[idx + 7],
+                    call_next_offset: lines[idx + 8],
+                    target_offset: lines[idx + 9],
+                    call_rel: lines[idx + 10],
+                    direct_len: lines[idx + 11],
+                    direct_target: lines[idx + 12],
+                    bytes: [
+                        lines[idx + 13],
+                        lines[idx + 14],
+                        lines[idx + 15],
+                        lines[idx + 16],
+                        lines[idx + 17],
+                        lines[idx + 18],
+                        lines[idx + 19],
+                        lines[idx + 20],
+                    ],
+                });
+                idx += 21;
             }
             marker => {
                 panic!(
@@ -44667,6 +52761,40 @@ fn x86_metadata_row_rel32_target(row: &LinuxX86FunctionSegmentMetadataRow) -> Op
         row.bytes[rel_start + 3],
     ]);
     Some(row.offset + call_offset as i64 + 5 + rel32 as i64)
+}
+
+fn x86_metadata_rows_to_ir_call_trace_rows(
+    rows: &[LinuxX86FunctionSegmentMetadataRow],
+) -> Vec<X86IrCallTraceRow> {
+    rows.iter()
+        .filter_map(|row| {
+            let call_offset = x86_metadata_row_rel32_call_offset(row)?;
+            let target_offset = x86_metadata_row_rel32_target(row)?;
+            Some(X86IrCallTraceRow {
+                instr_idx: row.instr_idx,
+                opcode: row.opcode,
+                operand: row.operand,
+                depth: row.depth,
+                offset: row.offset + call_offset as i64,
+                size: row.size,
+                param_count: -1,
+                target_offset,
+            })
+        })
+        .collect()
+}
+
+fn read_x86_ir_call_trace_rows_from_metadata(path: &std::path::Path) -> Vec<X86IrCallTraceRow> {
+    let metadata = std::fs::read_to_string(path)
+        .unwrap_or_else(|e| panic!("x86 entry metadata 読み込み失敗 ({}): {e}", path.display()));
+    let metadata_rows = parse_linux_x86_function_segment_metadata_rows(&metadata);
+    let trace_rows = x86_metadata_rows_to_ir_call_trace_rows(&metadata_rows);
+    assert!(
+        !trace_rows.is_empty(),
+        "x86 entry metadata に first-8-byte rel32 call row が無い: path={} metadata_rows={metadata_rows:?}",
+        path.display()
+    );
+    trace_rows
 }
 
 fn find_zeroed_x86_runtime_helper_call_rows(
@@ -44692,133 +52820,6 @@ fn x86_metadata_row_rel32_call_offset(row: &LinuxX86FunctionSegmentMetadataRow) 
         return None;
     }
     (0..=size - 5).find(|offset| row.bytes[*offset] == 0xe8)
-}
-
-fn assert_x86_user_call_direct_rows_match_stage_code(
-    stage_code: &[u8],
-    metadata_rows: &[LinuxX86FunctionSegmentMetadataRow],
-    direct_rows: &[X86UserCallDirectReplayRow],
-    label: &str,
-) -> Vec<X86UserCallStageCodeRel32Correlation> {
-    assert!(
-        !direct_rows.is_empty(),
-        "{label}: opcode 40 direct replay row が無い"
-    );
-    let mut correlations = Vec::new();
-    for direct_row in direct_rows {
-        assert_eq!(
-            direct_row.opcode, 40,
-            "{label}: opcode 40 以外の direct row"
-        );
-        assert!(
-            direct_row.function_start_base >= 0 && direct_row.offset >= 0 && direct_row.size >= 5,
-            "{label}: stage code window を取れない direct row: {direct_row:?}"
-        );
-        assert_eq!(
-            direct_row.call_rel,
-            direct_row.target_offset - (direct_row.offset + direct_row.call_next_offset),
-            "{label}: opcode 40 direct replay row の call-rel が target/current offset と一致しない: row={direct_row:?}"
-        );
-        assert_eq!(
-            direct_row.direct_target, direct_row.target_offset,
-            "{label}: opcode 40 direct replay row の rel32 target が target-offset と一致しない: row={direct_row:?}"
-        );
-        assert_eq!(
-            direct_row.direct_len, direct_row.size,
-            "{label}: opcode 40 direct replay length が metadata size と一致しない: row={direct_row:?}"
-        );
-
-        let metadata_row = metadata_rows
-            .iter()
-            .find(|row| {
-                row.instr_idx == direct_row.instr_idx
-                    && row.function_start == direct_row.function_start_base
-                    && row.opcode == direct_row.opcode
-                    && row.operand == direct_row.operand
-                    && row.depth == direct_row.depth
-                    && row.offset == direct_row.offset
-                    && row.size == direct_row.size
-            })
-            .unwrap_or_else(|| {
-                panic!(
-                    "{label}: opcode 40 direct replay row に対応する metadata row が無い: row={direct_row:?}"
-                )
-            });
-
-        let row_abs = usize::try_from(direct_row.function_start_base + direct_row.offset)
-            .unwrap_or_else(|_| {
-                panic!("{label}: row absolute offset が usize 範囲外: {direct_row:?}")
-            });
-        let size = usize::try_from(direct_row.size)
-            .unwrap_or_else(|_| panic!("{label}: row size が usize 範囲外: {direct_row:?}"));
-        assert!(
-            row_abs + size <= stage_code.len(),
-            "{label}: opcode 40 stage code window が code 範囲外: row_abs={row_abs} size={size} code_len={} row={direct_row:?}",
-            stage_code.len()
-        );
-
-        let prefix_len = size.min(metadata_row.bytes.len());
-        assert_eq!(
-            &stage_code[row_abs..row_abs + prefix_len],
-            &metadata_row.bytes[..prefix_len],
-            "{label}: metadata row bytes と stage code prefix が一致しない: row={metadata_row:?} code_window={}",
-            byte_window_hex(stage_code, row_abs, 0, size.min(32))
-        );
-        assert_eq!(
-            &stage_code[row_abs..row_abs + prefix_len],
-            &direct_row.bytes[..prefix_len],
-            "{label}: direct replay bytes と stage code prefix が一致しない: row={direct_row:?} code_window={}",
-            byte_window_hex(stage_code, row_abs, 0, size.min(32))
-        );
-
-        let call_offsets = (0..=size - 5)
-            .filter(|offset| stage_code[row_abs + *offset] == 0xe8)
-            .collect::<Vec<_>>();
-        assert_eq!(
-            call_offsets.len(),
-            1,
-            "{label}: opcode 40 stage code window 内の rel32 call opcode 数が 1 でない: row={direct_row:?} call_offsets={call_offsets:?} code_window={}",
-            byte_window_hex(stage_code, row_abs, 0, size.min(48))
-        );
-        let call_offset_in_row = call_offsets[0];
-        assert_eq!(
-            direct_row.call_next_offset,
-            call_offset_in_row as i64 + 5,
-            "{label}: opcode 40 call_next_offset が actual e8 offset と一致しない: row={direct_row:?} call_offset_in_row={call_offset_in_row}"
-        );
-
-        let call_site = decode_x86_rel32_call_at(stage_code, row_abs + call_offset_in_row);
-        let relative_target =
-            direct_row.offset + call_offset_in_row as i64 + 5 + call_site.rel32 as i64;
-        let absolute_target = direct_row.function_start_base + relative_target;
-        assert_eq!(
-            relative_target, direct_row.direct_target,
-            "{label}: actual stage code rel32 target と direct replay target が一致しない: row={direct_row:?} call={call_site:?}"
-        );
-        assert_eq!(
-            call_site.rel32 as i64, direct_row.call_rel,
-            "{label}: actual stage code rel32 と direct replay call_rel が一致しない: row={direct_row:?} call={call_site:?}"
-        );
-        assert!(
-            absolute_target >= 0 && absolute_target < stage_code.len() as i64,
-            "{label}: opcode 40 actual rel32 absolute target が stage code 範囲外: absolute_target={absolute_target} code_len={} row={direct_row:?}",
-            stage_code.len()
-        );
-        correlations.push(X86UserCallStageCodeRel32Correlation {
-            instr_idx: direct_row.instr_idx,
-            opcode: direct_row.opcode,
-            operand: direct_row.operand,
-            depth: direct_row.depth,
-            stage_code_call_offset: call_site.call_offset,
-            call_offset_in_row,
-            relative_target,
-            absolute_target,
-            direct_target: direct_row.direct_target,
-            call_rel: direct_row.call_rel,
-            bytes: call_site.bytes,
-        });
-    }
-    correlations
 }
 
 fn find_x86_runtime_helper_rel32_targets_outside_relative_range(
@@ -45731,7 +53732,6 @@ fn test_e2e_linux_x86_actual_function_metadata_map_new_rel32_correlation() {
         .iter()
         .find(|row| {
             row.instr_idx == map_new_row.instr_idx
-                && row.function_start_base == map_new_row.function_start
                 && row.opcode == map_new_row.opcode
                 && row.depth == map_new_row.depth
                 && row.offset == map_new_row.offset
@@ -45803,7 +53803,6 @@ fn test_e2e_linux_x86_actual_function_metadata_user_call_rel32_correlation() {
             .iter()
             .find(|row| {
                 row.instr_idx == direct_row.instr_idx
-                    && row.function_start == direct_row.function_start_base
                     && row.opcode == direct_row.opcode
                     && row.operand == direct_row.operand
                     && row.depth == direct_row.depth
@@ -45828,30 +53827,68 @@ fn test_e2e_linux_x86_actual_function_metadata_user_call_rel32_correlation() {
         "Linux x86 function metadata の opcode 40 rows に first-8-byte rel32 call が無く、emitted/direct target を比較できなかった: path={} rows={direct_rows:?}",
         metadata_path.display()
     );
+}
 
-    if let Some(stage2_dir) = std::env::var_os("LSHARP_NATIVE_LINUX_X86_STAGE2_ARTIFACT_DIR") {
-        let stage2_dir = workspace_root_relative_path(std::path::PathBuf::from(stage2_dir));
-        let stage2_bundle = read_linux_x86_stage_code_artifact_bundle(
-            &stage2_dir,
-            &["stage-code.bin", "stage2-code.bin"],
-            &["stage-data.bin", "stage2-data.bin"],
-        );
-        let correlations = assert_x86_user_call_direct_rows_match_stage_code(
-            &stage2_bundle.code_bytes,
-            &metadata_rows,
-            &direct_rows,
-            "Linux x86 stage2 entrypoint opcode40 metadata/stage-code correlation",
-        );
-        println!(
-            "Linux x86 user call metadata/stage-code rel32 correlated: metadata={} stage2_dir={} correlations={correlations:?}",
-            metadata_path.display(),
-            stage2_dir.display()
-        );
-    } else {
-        println!(
-            "Linux x86 stage2 code artifact 未指定: LSHARP_NATIVE_LINUX_X86_STAGE2_ARTIFACT_DIR を指定すると opcode 40 metadata row / actual emitted bytes / rel32 target を stage-code.bin 上で照合する"
-        );
-    }
+#[test]
+#[ignore = "diagnostic: V2-13a-5 Linux x86 body-size recursive user-call target"]
+fn test_e2e_linux_x86_actual_body_size_metadata_recursive_call_targets_self() {
+    let metadata_path = std::env::var_os("LSHARP_NATIVE_LINUX_X86_FUNCTION_METADATA").expect(
+        "LSHARP_NATIVE_LINUX_X86_FUNCTION_METADATA に body-size function metadata txt を指定すること",
+    );
+    let metadata_path = workspace_root_relative_path(std::path::PathBuf::from(metadata_path));
+    let target_function_idx: i128 =
+        std::env::var("LSHARP_NATIVE_LINUX_X86_BODY_SIZE_FUNCTION_INDEX")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(1802);
+    let recursive_instr_idx: i128 =
+        std::env::var("LSHARP_NATIVE_LINUX_X86_BODY_SIZE_RECURSIVE_INSTR_INDEX")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(73);
+    let metadata = std::fs::read_to_string(&metadata_path).unwrap_or_else(|e| {
+        panic!(
+            "Linux x86 body-size metadata 読み込み失敗 ({}): {e}",
+            metadata_path.display()
+        )
+    });
+    let headers = parse_linux_x86_function_segment_metadata_headers(&metadata);
+    let header = headers
+        .iter()
+        .find(|header| header.function_idx as i128 == target_function_idx)
+        .unwrap_or_else(|| {
+            panic!(
+                "body-size metadata に target function header が無い: target={target_function_idx} path={} headers={headers:?}",
+                metadata_path.display()
+            )
+        });
+    let direct_rows = parse_x86_user_call_direct_replay_wide_rows(&metadata);
+    let recursive_row = direct_rows
+        .iter()
+        .find(|row| row.instr_idx == recursive_instr_idx && row.opcode == 40)
+        .unwrap_or_else(|| {
+            panic!(
+                "body-size metadata に recursive opcode 40 row が無い: instr={recursive_instr_idx} path={} rows={direct_rows:?}",
+                metadata_path.display()
+            )
+        });
+
+    println!(
+        "Linux x86 body-size recursive call diagnostic: metadata={} header={header:?} row={recursive_row:?}",
+        metadata_path.display()
+    );
+    assert_eq!(
+        recursive_row.operand,
+        target_function_idx,
+        "x86-body-size-loop-ctx の自己再帰 call operand は current function を指すべき: metadata={} header={header:?} row={recursive_row:?}",
+        metadata_path.display()
+    );
+    assert_eq!(
+        recursive_row.target_offset,
+        0,
+        "x86-body-size-loop-ctx の自己再帰 call target は current function start 相対 0 を指すべき: metadata={} header={header:?} row={recursive_row:?}",
+        metadata_path.display()
+    );
 }
 
 #[test]
@@ -45944,7 +53981,6 @@ fn test_linux_x86_function_metadata_parses_map_new_direct_rel32_row() {
 11
 5
 5088428
-5088428
 5092283
 5092267
 5
@@ -45964,7 +54000,6 @@ fn test_linux_x86_function_metadata_parses_map_new_direct_rel32_row() {
 
     assert_eq!(metadata_rows.len(), 1);
     assert_eq!(metadata_rows[0].opcode, 60);
-    assert_eq!(metadata_rows[0].function_start, 5_088_428);
     assert_eq!(x86_metadata_row_rel32_target(&metadata_rows[0]), Some(3855));
     assert_eq!(
         direct_rows,
@@ -45975,7 +54010,6 @@ fn test_linux_x86_function_metadata_parses_map_new_direct_rel32_row() {
             depth: 0,
             offset: 11,
             size: 5,
-            function_start_base: 5_088_428,
             emit_start_base: 5_088_428,
             helper_target: 5_092_283,
             direct_call_rel: 5_092_267,
@@ -45984,6 +54018,204 @@ fn test_linux_x86_function_metadata_parses_map_new_direct_rel32_row() {
             bytes: [232, 171, 179, 77, 0, 0, 0, 0],
         }]
     );
+}
+
+#[test]
+fn test_linux_x86_function_metadata_derives_entry_ir_call_trace_rows() {
+    let metadata = "\
+9000000020
+1098
+1108
+3340574
+5792
+0
+21
+22
+1200
+0
+11
+358
+9000000021
+138
+60
+12
+1
+1110
+7
+80
+232
+79
+4
+0
+0
+89
+72
+9000000021
+139
+1
+0
+1
+1200
+1
+184
+0
+0
+0
+0
+0
+0
+0
+";
+    let metadata_rows = parse_linux_x86_function_segment_metadata_rows(metadata);
+    let trace_rows = x86_metadata_rows_to_ir_call_trace_rows(&metadata_rows);
+
+    assert_eq!(
+        trace_rows,
+        vec![X86IrCallTraceRow {
+            instr_idx: 138,
+            opcode: 60,
+            operand: 12,
+            depth: 1,
+            offset: 1111,
+            size: 7,
+            param_count: -1,
+            target_offset: 2219,
+        }]
+    );
+}
+
+#[test]
+fn test_linux_x86_function_metadata_skips_i64_ge_diagnostic_rows() {
+    let metadata = "\
+9000000020
+1790
+1800
+5757119
+29121
+8
+19
+28
+1248
+64
+75
+637
+9000000021
+2
+35
+0
+2
+95
+9
+72
+57
+193
+15
+157
+192
+15
+182
+9000000022
+2
+35
+0
+2
+9
+72
+57
+193
+15
+157
+192
+15
+182
+9000000023
+2
+35
+0
+2
+9
+72
+57
+193
+15
+157
+192
+15
+182
+9000000024
+2
+35
+0
+2
+95
+9
+9
+72
+57
+193
+15
+157
+192
+15
+182
+9000000025
+2
+35
+0
+2
+95
+9
+9
+72
+57
+193
+15
+157
+192
+15
+182
+9000000026
+2
+35
+0
+2
+95
+9
+0
+9
+72
+57
+193
+15
+157
+192
+15
+182
+9000000021
+3
+41
+0
+1
+104
+8
+133
+192
+15
+132
+15
+0
+0
+0
+";
+    let rows = parse_linux_x86_function_segment_metadata_rows(metadata);
+
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0].instr_idx, 2);
+    assert_eq!(rows[0].opcode, 35);
+    assert_eq!(rows[1].instr_idx, 3);
+    assert_eq!(rows[1].opcode, 41);
+    assert!(parse_x86_map_new_direct_replay_rows(metadata).is_empty());
+    assert!(parse_x86_user_call_direct_replay_rows(metadata).is_empty());
 }
 
 #[test]
@@ -46023,7 +54255,6 @@ fn test_linux_x86_function_metadata_parses_user_call_direct_rel32_row() {
 8
 32
 64
-1000
 4
 58
 900
@@ -46045,7 +54276,6 @@ fn test_linux_x86_function_metadata_parses_user_call_direct_rel32_row() {
 
     assert_eq!(metadata_rows.len(), 1);
     assert_eq!(metadata_rows[0].opcode, 40);
-    assert_eq!(metadata_rows[0].function_start, 1_000);
     assert_eq!(
         user_call_rows,
         vec![X86UserCallDirectReplayRow {
@@ -46055,7 +54285,6 @@ fn test_linux_x86_function_metadata_parses_user_call_direct_rel32_row() {
             depth: 8,
             offset: 32,
             size: 64,
-            function_start_base: 1_000,
             param_count: 4,
             call_next_offset: 58,
             target_offset: 900,
@@ -46068,49 +54297,33 @@ fn test_linux_x86_function_metadata_parses_user_call_direct_rel32_row() {
 }
 
 #[test]
-fn test_linux_x86_user_call_direct_metadata_correlates_stage_code_rel32_rows() {
+fn test_linux_x86_function_metadata_wide_user_call_parser_skips_unsigned_diagnostics() {
     let metadata = "\
 9000000020
-10
-20
-1000
-100
+1792
+1802
+5874987
+2699
 4
-2
-16
-0
+4
+9
+1104
 28
-32
-3
-9000000021
-0
-40
-17
-4
-32
-25
-72
-137
-202
-72
-139
-181
-176
-253
+39
+82
 9000000046
-0
+30
 40
-17
+1788
 4
-32
+271
 25
-1000
 4
 25
-900
-843
+18446744073708832629
+18446744073708832333
 25
-900
+18446744073709551615
 72
 137
 202
@@ -46118,30 +54331,56 @@ fn test_linux_x86_user_call_direct_metadata_correlates_stage_code_rel32_rows() {
 139
 181
 176
-253
+255
+9000000046
+73
+40
+1803
+1
+586
+10
+1
+9
+2699
+2104
+10
+2700
+72
+137
+199
+81
+232
+56
+8
+0
 ";
-    let mut stage_code = vec![0u8; 2000];
-    let row_abs = 1000 + 32;
-    let window = [
-        0x48, 0x89, 0xca, 0x48, 0x8b, 0xb5, 0xb0, 0xfd, 0xff, 0xff, 0x48, 0x8b, 0xbd, 0xa8, 0xfd,
-        0xff, 0xff, 0x48, 0x89, 0xc1, 0xe8, 0x4b, 0x03, 0x00, 0x00,
-    ];
-    stage_code[row_abs..row_abs + window.len()].copy_from_slice(&window);
 
-    let metadata_rows = parse_linux_x86_function_segment_metadata_rows(metadata);
-    let user_call_rows = parse_x86_user_call_direct_replay_rows(metadata);
-    let correlations = assert_x86_user_call_direct_rows_match_stage_code(
-        &stage_code,
-        &metadata_rows,
-        &user_call_rows,
-        "synthetic-stage2",
+    let headers = parse_linux_x86_function_segment_metadata_headers(metadata);
+    let user_call_rows = parse_x86_user_call_direct_replay_wide_rows(metadata);
+
+    assert_eq!(
+        headers,
+        vec![LinuxX86FunctionSegmentMetadataHeader {
+            segment_index: 1792,
+            function_idx: 1802,
+            function_start: 5_874_987,
+            function_size: 2699,
+            param_count: 4,
+            local_count: 4,
+            frame_base_slot_count: 9,
+            stack_bytes: 1104,
+            param_spill_bytes: 28,
+            body_offset: 39,
+            ir_len: 82,
+        }]
     );
-
-    assert_eq!(correlations.len(), 1);
-    assert_eq!(correlations[0].instr_idx, 0);
-    assert_eq!(correlations[0].stage_code_call_offset, row_abs + 20);
-    assert_eq!(correlations[0].relative_target, 900);
-    assert_eq!(correlations[0].absolute_target, 1900);
+    assert_eq!(user_call_rows.len(), 2);
+    assert_eq!(user_call_rows[0].target_offset, 18_446_744_073_708_832_629);
+    assert_eq!(user_call_rows[0].direct_target, 18_446_744_073_709_551_615);
+    assert_eq!(user_call_rows[1].instr_idx, 73);
+    assert_eq!(user_call_rows[1].operand, 1803);
+    assert_eq!(user_call_rows[1].target_offset, 2699);
+    assert_eq!(user_call_rows[1].direct_target, 2700);
 }
 
 fn assert_linux_x86_entry_map_ref_ref_prefix(
@@ -46236,8 +54475,29 @@ fn test_e2e_linux_x86_actual_stage2_entrypoint_call_windows_diagnostic() {
                 .map(|dir| dir.join("stage-entry-ir-trace.txt"))
                 .filter(|path| path.exists())
         });
-    if let Some(trace_path) = trace_path {
-        let trace_rows = read_x86_ir_call_trace_rows(&trace_path);
+    let metadata_path = std::env::var_os("LSHARP_NATIVE_LINUX_X86_STAGE2_ENTRY_METADATA")
+        .map(std::path::PathBuf::from)
+        .map(workspace_root_relative_path)
+        .or_else(|| {
+            stage2_dir
+                .parent()
+                .map(|dir| dir.join("actual-stage2-metadata.txt"))
+                .filter(|path| path.exists())
+        });
+    let trace_rows_with_source = if let Some(trace_path) = trace_path {
+        Some((
+            format!("trace:{}", trace_path.display()),
+            read_x86_ir_call_trace_rows(&trace_path),
+        ))
+    } else {
+        metadata_path.map(|metadata_path| {
+            (
+                format!("metadata:{}", metadata_path.display()),
+                read_x86_ir_call_trace_rows_from_metadata(&metadata_path),
+            )
+        })
+    };
+    if let Some((trace_source, trace_rows)) = trace_rows_with_source {
         assert_x86_ir_call_trace_matches_entry_calls(&stage2_bundle, &trace_rows);
         assert_x86_call_targets_do_not_skip_rex_stack_restore_prefix(
             "Linux x86 stage2 entrypoint rel32 target diagnostic",
@@ -46246,8 +54506,7 @@ fn test_e2e_linux_x86_actual_stage2_entrypoint_call_windows_diagnostic() {
             &trace_rows,
         );
         println!(
-            "Linux x86 stage2 IR opcode/bytes/rel32 trace correlated: path={} rows={trace_rows:?}",
-            trace_path.display()
+            "Linux x86 stage2 IR opcode/metadata bytes/rel32 trace correlated: source={trace_source} rows={trace_rows:?}"
         );
     } else {
         assert_x86_call_targets_do_not_skip_rex_stack_restore_prefix(
@@ -46257,7 +54516,7 @@ fn test_e2e_linux_x86_actual_stage2_entrypoint_call_windows_diagnostic() {
             &[],
         );
         println!(
-            "Linux x86 stage2 IR trace 未指定: LSHARP_NATIVE_LINUX_X86_STAGE2_ENTRY_IR_TRACE を指定すると opcode 40/60/56 などの rel32 row / emitted bytes / rel32 target を同一 window で照合する"
+            "Linux x86 stage2 IR trace/entry metadata 未指定: LSHARP_NATIVE_LINUX_X86_STAGE2_ENTRY_IR_TRACE または LSHARP_NATIVE_LINUX_X86_STAGE2_ENTRY_METADATA を指定すると opcode 40/60/56 などの rel32 row / emitted bytes / rel32 target を同一 window で照合する"
         );
     }
 }
@@ -46774,6 +55033,24 @@ fn test_e2e_zero_diff_const_0() {
         wasm_output.trim().parse::<i32>().unwrap(),
         exit_code,
         "ZERO-DIFF: Wasm stdout と native exit code が一致すること (const 0)"
+    );
+}
+
+/// NATIVE-HOST-020e2: 2 引数 direct call でも callee の local.get 1 が第2引数を返せること。
+#[test]
+#[ignore]
+fn test_e2e_native_host_binary_two_arg_local_get_1_roundtrip() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let values = [13, 77];
+    let exit_code = native_exit_code_for_direct_call_local_get(&values, 1);
+
+    assert_eq!(
+        exit_code, 77,
+        "2 引数 direct call の local.get 1 は第2引数 77 を返すべきだが {} を得た",
+        exit_code
     );
 }
 
@@ -48590,5 +56867,149 @@ fn test_native_codegen_emits_x86_loop_brif_structural_bytes() {
     eprintln!(
         "✓ V2-08-CF: x86_64 loop/brif structural bytes OK ({} bytes)",
         code_bytes.len()
+    );
+}
+
+#[test]
+fn test_native_linux_x86_hostgen_vm_script_rejects_dirty_actual_stage1_seed_debug_probes() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+    let reject_body = shell_function_body(&script, "reject_dirty_actual_stage1_seed");
+
+    assert!(
+        reject_body.contains(r#"LSHARP_NATIVE_LINUX_X86_REJECT_DIRTY_STAGE1_SEED:-0"#)
+            && reject_body.contains(r#"!= "1""#)
+            && reject_body.contains("return 0"),
+        "dirty seed rejection は diagnostic replay を妨げないよう opt-in gate で有効化するべき"
+    );
+    for marker in [
+        "payload-progress-mode",
+        "pre-callable-progress",
+        "command-line-arg 9",
+        "9000000030",
+    ] {
+        assert!(
+            reject_body.contains(&format!("\"{marker}\"")),
+            "hostgen VM script は actual stage1 seed の dirty diagnostic marker を拒否するべき: {marker}"
+        );
+    }
+    assert!(
+        reject_body.contains(r#"seed_file="${ACTUAL_STAGE1_ARTIFACT_DIR}/seed.ls""#)
+            && reject_body.contains(r#"grep -Fq "${marker}" "${seed_file}""#)
+            && reject_body.contains("ERROR: actual stage1 seed contains diagnostic probe marker")
+            && reject_body.contains("exit 1"),
+        "dirty seed rejection は actual stage1 seed を固定 marker で検査し、VM 転送前に失敗するべき"
+    );
+}
+
+#[test]
+fn test_native_linux_x86_hostgen_vm_script_writes_summary_for_final_compare_failures() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+    let summary_body = shell_function_body(&script, "write_actual_selfregen_failure_summary");
+
+    for phase in [
+        "stage2-run",
+        "stage2-decode",
+        "stage3-run",
+        "stage3-decode",
+        "stage2-stderr",
+        "stage3-stderr",
+        "stage2-stage3-compare",
+    ] {
+        assert!(
+            script.contains(&format!(
+                "write_actual_selfregen_failure_summary \"{phase}\""
+            )),
+            "hostgen VM script は {phase} failure を hardened summary helper に渡すべき"
+        );
+    }
+    assert!(
+        summary_body.contains(r#""status": "fail""#)
+            && summary_body.contains(r#""phase": "${phase}""#)
+            && summary_body.contains(r#""exit_code": ${exit_code}"#)
+            && summary_body.contains(r#""stdout_bytes": ${stdout_bytes}"#)
+            && summary_body.contains(r#""stderr_bytes": ${stderr_bytes}"#),
+        "failure summary helper は phase/exit/stdout/stderr evidence を保持するべき"
+    );
+}
+
+#[test]
+fn test_native_linux_x86_hostgen_vm_script_starts_stopped_vm_before_host_generation() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+    let ensure_body = shell_function_body(&script, "ensure_vm_running");
+
+    assert!(
+        ensure_body.contains(r#"limactl list "${VM_NAME}" --format '{{.Status}}'"#)
+            && ensure_body.contains(r#"[[ "${status}" = "Running" ]]"#)
+            && ensure_body.contains(r#"limactl start --tty=false "${VM_NAME}""#),
+        "hostgen VM script は stopped VM で長い hostgen 後に落ちないよう、実行前に VM 状態を見て起動するべき"
+    );
+    let limactl_check_pos = script
+        .find("command -v limactl")
+        .expect("limactl availability check が必要");
+    let ensure_call_pos = script
+        .find("\nensure_vm_running\n")
+        .expect("hostgen 開始前の VM 起動確認呼び出しが必要");
+    let first_hostgen_pos = script
+        .find("LSHARP_NATIVE_LINUX_X86_CODE_ARTIFACT")
+        .expect("最初の hostgen cargo test が必要");
+    assert!(
+        limactl_check_pos < ensure_call_pos && ensure_call_pos < first_hostgen_pos,
+        "VM 起動確認は limactl availability check 後、長い hostgen cargo test の前に実行するべき"
+    );
+}
+
+#[test]
+fn test_native_linux_x86_hostgen_vm_script_bounds_local_build_outputs() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+
+    assert!(
+        script.contains(
+            r#"HOSTGEN_CARGO_TARGET_DIR="${LSHARP_NATIVE_LINUX_X86_CARGO_TARGET_DIR:-/tmp/lsharp-native-linux-x86-hostgen-vm-cargo-target}""#
+        ) && script.contains(r#"cleanup_hostgen_cargo_target()"#)
+            && script.contains(r#"rm -rf "${HOSTGEN_CARGO_TARGET_DIR}""#)
+            && script.contains(r#"trap cleanup_hostgen_cargo_target EXIT"#)
+            && script.contains(r#"CARGO_TARGET_DIR="${HOSTGEN_CARGO_TARGET_DIR}" cargo test"#),
+        "hostgen VM script は repo 直下 target を肥大化させないよう、一時 CARGO_TARGET_DIR を使いデフォルトで掃除するべき"
+    );
+}
+
+#[test]
+fn test_selfhost_compiler_source_step_impl3_combines_high_markers_with_ref_handoff() {
+    let source = selfhost_module("Compiler.ls");
+    let body = source
+        .split("(defn compile-defn-functions-step-with-source-body-impl-3")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-let-with-ftable-impl-body-impl-3")
+                .next()
+        })
+        .expect("Compiler.ls に source step impl-3 が存在すること");
+
+    assert!(
+        body.contains("(print 9000000077)") && body.contains("(print 9000000078)"),
+        "source step impl-3 は defn/skip return handoff を high marker で分離するべき"
+    );
+    assert!(
+        body.contains("next-skip-idx (+ idx 1)")
+            && body.contains("skip-state-ref (ref-new 0)")
+            && body.contains(
+                "(write-compile-step-state-ref skip-state-ref 0 next-skip-idx functions)",
+            )
+            && body.contains("skip-result (ref-get skip-state-ref)")
+            && body.contains("(root_push skip-result)")
+            && body.contains("(root_set functions-slot skip-result)"),
+        "source step impl-3 の skip branch は distinct binding と ref-backed rooted handoff を維持するべき"
     );
 }

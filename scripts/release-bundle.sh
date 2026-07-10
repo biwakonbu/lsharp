@@ -17,13 +17,20 @@ detect_target() {
   os="$(uname -s)"
   arch="$(uname -m)"
   case "$os:$arch" in
-    Darwin:x86_64) printf '%s\n' "x86_64-apple-darwin" ;;
     Darwin:arm64|Darwin:aarch64) printf '%s\n' "aarch64-apple-darwin" ;;
     Linux:x86_64) printf '%s\n' "x86_64-unknown-linux-gnu" ;;
-    Linux:arm64|Linux:aarch64) printf '%s\n' "aarch64-unknown-linux-gnu" ;;
-    MINGW64_NT-*:x86_64|MSYS_NT-*:x86_64|CYGWIN_NT-*:x86_64) printf '%s\n' "x86_64-pc-windows-msvc" ;;
     *)
-      echo "ERROR: unsupported host target: ${os}/${arch}. Set TARGET explicitly." >&2
+      echo "ERROR: unsupported host target: ${os}/${arch}. Supported release targets: aarch64-apple-darwin, x86_64-unknown-linux-gnu." >&2
+      exit 1
+      ;;
+  esac
+}
+
+validate_target() {
+  case "$1" in
+    aarch64-apple-darwin|x86_64-unknown-linux-gnu) ;;
+    *)
+      echo "ERROR: unsupported release target: $1. Supported release targets: aarch64-apple-darwin, x86_64-unknown-linux-gnu." >&2
       exit 1
       ;;
   esac
@@ -38,6 +45,7 @@ require_file() {
 }
 
 TARGET="$(detect_target)"
+validate_target "$TARGET"
 ARCHIVE_NAME="lsharp-${VERSION}-${TARGET}"
 BUNDLE_DIR="$DIST_DIR/$ARCHIVE_NAME"
 
@@ -70,19 +78,9 @@ cp -f "$BUNDLE_DIR/lsharp.component.wasm" "$DIST_DIR/lsharp.component.wasm"
 cp -f "$BUNDLE_DIR/lsharp.component.wasm" "$DIST_DIR/${ARCHIVE_NAME}.component.wasm"
 
 echo "=== release-bundle: archive bundle ==="
-case "$TARGET" in
-  *windows*)
-    (
-      cd "$DIST_DIR"
-      zip -rq "${ARCHIVE_NAME}.zip" "$ARCHIVE_NAME"
-    )
-    ;;
-  *)
-    (
-      cd "$DIST_DIR"
-      tar czf "${ARCHIVE_NAME}.tar.gz" "$ARCHIVE_NAME"
-    )
-    ;;
-esac
+(
+  cd "$DIST_DIR"
+  tar czf "${ARCHIVE_NAME}.tar.gz" "$ARCHIVE_NAME"
+)
 
 echo "release-bundle: OK ($DIST_DIR)"

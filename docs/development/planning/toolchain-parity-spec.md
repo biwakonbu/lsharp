@@ -66,11 +66,11 @@ docs/review/knowledge/doc-check/doc-ack/install/repl を L# 側へ移植し、VS
 
 ### T4-5: single binary 配布形式の固定
 
-macOS/Linux/Windows 向けの host launcher + embedded guest component 配布形式、クロスビルド手順、署名/パッケージング方針を固定する。
+Mac Apple Silicon (`aarch64-apple-darwin`) と Linux x86_64 (`x86_64-unknown-linux-gnu`) 向けの host launcher + embedded guest component 配布形式、クロスビルド手順、署名/パッケージング方針を固定する。macOS x86_64、Windows、Linux aarch64 は out of support scope とし、公式配布 blocker に含めない。
 
 **受入基準:**
 
-- AC-017: macOS 向け .tar.gz (署名/公証付き)、Linux 向け .tar.gz、Windows 向け .zip + .exe の host launcher 配布物が CI で生成される
+- AC-017: Mac Apple Silicon 向け .tar.gz (署名/公証付き) と Linux x86_64 向け .tar.gz の host launcher 配布物が CI で生成される
 - AC-018: クロスビルド手順がドキュメント化され、CI で再現可能である
 - AC-019: 全配布物に checksums.txt が同梱される
 - AC-020: 署名検証手順がドキュメント化されている

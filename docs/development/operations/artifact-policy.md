@@ -5,6 +5,12 @@ CI / CD パイプラインで生成される **workflow-local artifact** と、�
 この文書は **現在 workflow が実際に emit している名前だけ** を正本として扱う。
 将来用の placeholder 名は、対応する workflow とテストが入るまで active contract にしない。
 
+## Release target scope
+
+- Supported product/release targets は Mac Apple Silicon (`aarch64-apple-darwin`) と Linux x86_64 (`x86_64-unknown-linux-gnu`) の 2 つに限る。
+- macOS Intel (`x86_64-apple-darwin`)、Windows (`x86_64-pc-windows-msvc`)、Linux ARM (`aarch64-unknown-linux-gnu`) は out of support scope であり、release blocker や必須 artifact の欠落として扱わない。
+- support scope と current automation coverage は分けて扱う。workflow-local artifact は `.github/workflows/release.yml` が実際に build した supported target に対してだけ生成する。
+
 ## 命名規則
 
 ### workflow-local artifact（`actions/upload-artifact`）
@@ -32,7 +38,7 @@ CI / CD パイプラインで生成される **workflow-local artifact** と、�
 - `{commit_sha}`: GitHub Actions の `github.sha` が指すフルコミット SHA
 - `{version}`: Git tag / release version（例: `v0.2.0`）
 - `{target}`: Rust target triple（例: `x86_64-unknown-linux-gnu`）
-- `{ext}`: archive 拡張子（`tar.gz` / `zip`）
+- `{ext}`: archive 拡張子。現行 supported target の release workflow では `tar.gz`
 
 `lsharp-{version}-{target}` は **workflow-local artifact name** であり、`actions/download-artifact`
 が参照する論理名である。実際にユーザーが取得する **GitHub Release asset** は
@@ -99,7 +105,8 @@ bash scripts/checksum.sh dist > dist/checksums.txt
 - `native-proxy-{commit_sha}` は `ci-artifacts/native-proxy/{commit_sha}/` directory を正本とし、`scripts/ci/build-native.sh` が `stage1-native` / `stage2-native` / `stage3-native` canonical bundle、top-level `manifest.json`、および representative build entry の actual blocker report `actual-stage23-gap.json` を揃えた上で PR では 5 日、main では 30 日保持する
 - `native-linux-x86-{commit_sha}` は `ci-artifacts/native-linux-x86/{commit_sha}/` directory を正本とし、`scripts/ci/native-linux-x86-smoke.sh` が Ubuntu x86_64 上で `x86_64-unknown-linux-gnu` の target descriptor / ELF emitter / x86_64 codegen smoke を実行し、`summary.json` を揃えた上で PR では 5 日、main では 30 日保持する
 - release workflow の `lsharp-{version}-{target}` は **workflow-local artifact** であり、ユーザー向け名称は GitHub Release asset `lsharp-{version}-{target}.{ext}` として別に扱う。host launcher + `lsharp.component.wasm` は rollback compatibility 資産であり、native-only stable payload には含めない
-- actual Linux x86_64 self-regeneration は GitHub upload artifact ではなく local gate artifact として扱う。`scripts/ci/native-linux-x86-selfregen.sh` は Mac + Lima VM 上で `ci-artifacts/native-linux-x86-hostgen-vm/{artifact_id}/actual-selfregen-summary.json` を生成し、`status=pass`、stage2/stage3 stdout hash 一致、stage2/stage3 code length 一致を検証する。
+- ローカル VM 診断の `ci-artifacts/native-linux-x86-hostgen-vm/` は release artifact ではない。`scripts/ci/prune-native-linux-x86-hostgen-artifacts.sh` が current / stage1 reuse / stage2 reuse を保護し、既定で最新 8 世代だけを保持する。保持数は `LSHARP_NATIVE_LINUX_X86_ARTIFACT_RETENTION_COUNT`、削除候補の確認は `LSHARP_NATIVE_LINUX_X86_ARTIFACT_PRUNE_DRY_RUN=1` で上書きできる
+- actual Linux x86_64 self-regeneration は GitHub upload artifact ではなく local operator evidence として扱う。`scripts/ci/native-linux-x86-selfregen.sh` は Mac + Lima VM 上で `ci-artifacts/native-linux-x86-hostgen-vm/{artifact_id}/actual-selfregen-summary.json` を生成し、`status=pass`、stage2/stage3 stdout hash 一致、stage2/stage3 code length 一致を検証する。この local replay は required GitHub Actions job や release job の `needs` には含めない
 
 ## GC metrics artifact の受理 / 却下
 

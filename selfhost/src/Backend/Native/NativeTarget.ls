@@ -2,8 +2,12 @@
 
 ;; NativeTarget.ls - L# セルフホスティング: ネイティブターゲット記述子
 ;;
-;; x86_64-apple-darwin, aarch64-apple-darwin, x86_64-unknown-linux-gnu
-;; の3つのターゲットトリプルをサポートする。
+;; Supported product/release targets:
+;; - aarch64-apple-darwin (Mac Apple Silicon)
+;; - x86_64-unknown-linux-gnu (Linux x86_64)
+;;
+;; Internal unsupported diagnostic descriptors:
+;; - x86_64-apple-darwin (Rosetta/Mach-O smoke only; not a release target)
 ;; 各ターゲットはアーキテクチャ、OS、オブジェクト形式の情報を持つ。
 
 ;; === アーキテクチャ定数 ===
@@ -85,7 +89,7 @@
       runtime-policy)
     runtime-object-kind))
 
-;; x86_64-apple-darwin ターゲット記述子
+;; x86_64-apple-darwin 内部診断用ターゲット記述子
 (defn target-x86-64-darwin []
   (build-target
     (arch-x86-64)
@@ -144,7 +148,7 @@
       (target-aarch64-darwin)
       (if (= triple-id 3)
         (target-x86-64-linux)
-        ;; デフォルト: x86_64-apple-darwin
+        ;; デフォルト: x86_64-apple-darwin internal diagnostic descriptor
         (target-x86-64-darwin)))))
 
 ;; ターゲットからアーキテクチャを取得

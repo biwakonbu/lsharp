@@ -433,11 +433,16 @@ fn test_e2e_wasm_native_differential_structural_parity() {
         section_count
     );
 
-    // ネイティブ側の対応: 3ターゲットを NativeTarget.ls がサポートしていること
+    // ネイティブ側の対応: product support と internal diagnostic descriptor を分離すること
     let target_src = std::fs::read_to_string(selfhost_source_path("NativeTarget.ls")).unwrap();
     assert!(
         target_src.contains("x86_64-apple-darwin") || target_src.contains("target-x86-64-darwin"),
-        "NativeTarget.ls に x86_64-apple-darwin サポートがない"
+        "NativeTarget.ls に x86_64-apple-darwin internal diagnostic descriptor がない"
+    );
+    assert!(
+        target_src.contains("Supported product/release targets")
+            && target_src.contains("Internal unsupported diagnostic descriptors"),
+        "NativeTarget.ls は product support と internal diagnostics を分離すること"
     );
     assert!(
         target_src.contains("aarch64-apple-darwin") || target_src.contains("target-aarch64-darwin"),
@@ -451,7 +456,7 @@ fn test_e2e_wasm_native_differential_structural_parity() {
 
     // 構造一致サマリー
     eprintln!(
-        "Differential structural parity: wasm_sections={}, exports={}, types={}, native_targets=3",
+        "Differential structural parity: wasm_sections={}, exports={}, types={}, native_descriptors=3",
         section_count, export_count, type_count
     );
 }

@@ -1,4 +1,4 @@
-use crate::{api_doc, commands, config};
+use crate::{api_doc, commands, config, error_codes};
 use serde_json::{Value, json};
 use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
@@ -434,43 +434,23 @@ fn errors_tool(arguments: &Value) -> Result<Value, String> {
         .get("error_code")
         .and_then(Value::as_str)
         .ok_or_else(|| "error_code が必要です".to_string())?;
-    let (name, description, fix) = match code {
-        "E0001" => (
-            "undefined",
-            "未定義の識別子です",
-            "定義または import を確認してください",
-        ),
-        "E0002" => (
-            "if-condition",
-            "if 条件は Bool である必要があります",
-            "条件式を Bool へ修正してください",
-        ),
-        "E0003" => (
-            "if-branch",
-            "if の分岐型が一致していません",
-            "then/else の型を揃えてください",
-        ),
-        "E0004" => (
-            "arg-mismatch",
-            "関数引数の型が一致していません",
-            "呼び出し引数の型を修正してください",
-        ),
-        "E0005" => (
-            "infinite-type",
-            "無限型が発生しました",
-            "再帰的自己参照を外してください",
-        ),
-        _ => (
-            "unknown",
-            "未知のエラーコードです",
-            "最新版ドキュメントを確認してください",
-        ),
+    let Some(entry) = error_codes::find_error_code(code) else {
+        return Ok(json!({
+            "code": code,
+            "name": "unknown",
+            "description": "未知のエラーコードです",
+            "fix": "最新版ドキュメントを確認してください",
+            "doc": error_codes::ERROR_REFERENCE_DOC,
+        }));
     };
     Ok(json!({
-        "code": code,
-        "name": name,
-        "description": description,
-        "fix": fix,
+        "code": entry.code,
+        "legacy_code": entry.legacy_code,
+        "name": entry.name,
+        "description": entry.summary,
+        "detail": entry.detail,
+        "fix": entry.fix,
+        "doc": error_codes::ERROR_REFERENCE_DOC,
     }))
 }
 
@@ -805,6 +785,50 @@ mod tests {
         assert_eq!(abs["doc"], "整数の絶対値を返す。");
         assert_eq!(abs["params"][0]["doc"], "対象の整数");
         assert_eq!(abs["returns"]["doc"], "x の絶対値");
+    }
+
+    #[test]
+    fn test_errors_tool_returns_ls_error_code_reference_and_legacy_alias() {
+        let result = call_tool("lsharp_errors", &json!({"error_code": "LS1001"}))
+            .expect("lsharp_errors は LS#### を返すべき");
+
+        assert_eq!(result["code"], "LS1001");
+        assert_eq!(result["name"], "undefined-variable");
+        assert_eq!(result["legacy_code"], "E0001");
+        assert!(
+            result["doc"]
+                .as_str()
+                .is_some_and(|doc| doc.contains("docs/guides/error-reference.md")),
+            "error reference docs への導線が必要"
+        );
+    }
+
+    #[test]
+    fn test_errors_tool_accepts_legacy_error_code_alias() {
+        let result = call_tool("lsharp_errors", &json!({"error_code": "E0001"}))
+            .expect("legacy E0001 は LS1001 へ解決するべき");
+
+        assert_eq!(result["code"], "LS1001");
+        assert_eq!(result["legacy_code"], "E0001");
+
+        let branch_mismatch = call_tool("lsharp_errors", &json!({"error_code": "E0003"}))
+            .expect("legacy E0003 は LS1002 へ解決するべき");
+        assert_eq!(branch_mismatch["code"], "LS1002");
+    }
+
+    #[test]
+    fn test_error_reference_doc_mentions_all_mcp_error_codes() {
+        let repo_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let doc =
+            std::fs::read_to_string(repo_root.join("docs/guides/error-reference.md")).unwrap();
+
+        for entry in crate::error_codes::ERROR_CODES {
+            assert!(
+                doc.contains(entry.code),
+                "error-reference.md に {} が必要",
+                entry.code
+            );
+        }
     }
 
     #[test]

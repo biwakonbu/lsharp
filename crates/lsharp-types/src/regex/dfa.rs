@@ -108,7 +108,10 @@ thread_local! {
 fn build_nfa(nodes: &[RegexNode]) -> Vec<NfaState> {
     let mut states = Vec::new();
     let accept = states.len();
-    states.push(NfaState { transitions: vec![], is_accept: true });
+    states.push(NfaState {
+        transitions: vec![],
+        is_accept: true,
+    });
 
     let start = build_nfa_fragment(nodes, accept, &mut states);
 
@@ -163,31 +166,43 @@ fn build_nfa_node(node: &RegexNode, next: usize, states: &mut Vec<NfaState>) -> 
                 });
                 s
             } else {
-                let transitions: Vec<_> = chars.iter().map(|&(lo, hi)| {
-                    if lo == hi {
-                        (Some(CharMatcher::Exact(lo)), next)
-                    } else {
-                        (Some(CharMatcher::Range(lo, hi)), next)
-                    }
-                }).collect();
-                states.push(NfaState { transitions, is_accept: false });
+                let transitions: Vec<_> = chars
+                    .iter()
+                    .map(|&(lo, hi)| {
+                        if lo == hi {
+                            (Some(CharMatcher::Exact(lo)), next)
+                        } else {
+                            (Some(CharMatcher::Range(lo, hi)), next)
+                        }
+                    })
+                    .collect();
+                states.push(NfaState {
+                    transitions,
+                    is_accept: false,
+                });
                 s
             }
         }
         RegexNode::UnicodeClass { property, negated } => {
             let s = states.len();
             states.push(NfaState {
-                transitions: vec![(Some(CharMatcher::UnicodeClass {
-                    property: property.clone(),
-                    negated: *negated,
-                }), next)],
+                transitions: vec![(
+                    Some(CharMatcher::UnicodeClass {
+                        property: property.clone(),
+                        negated: *negated,
+                    }),
+                    next,
+                )],
                 is_accept: false,
             });
             s
         }
         RegexNode::Star(inner) => {
             let s = states.len();
-            states.push(NfaState { transitions: vec![], is_accept: false });
+            states.push(NfaState {
+                transitions: vec![],
+                is_accept: false,
+            });
             let inner_start = build_nfa_node(inner, s, states);
             states[s].transitions.push((None, inner_start));
             states[s].transitions.push((None, next));
@@ -195,7 +210,10 @@ fn build_nfa_node(node: &RegexNode, next: usize, states: &mut Vec<NfaState>) -> 
         }
         RegexNode::Plus(inner) => {
             let star_state = states.len();
-            states.push(NfaState { transitions: vec![], is_accept: false });
+            states.push(NfaState {
+                transitions: vec![],
+                is_accept: false,
+            });
             let inner_start = build_nfa_node(inner, star_state, states);
             states[star_state].transitions.push((None, inner_start));
             states[star_state].transitions.push((None, next));
@@ -210,12 +228,17 @@ fn build_nfa_node(node: &RegexNode, next: usize, states: &mut Vec<NfaState>) -> 
             });
             s
         }
-        RegexNode::Group(group_nodes) => {
-            build_nfa_fragment(group_nodes, next, states)
+        RegexNode::BoundedRepeat { inner, min, max } => {
+            build_nfa_bounded_repeat(inner, *min, *max, next, states)
         }
+        RegexNode::Group(group_nodes) => build_nfa_fragment(group_nodes, next, states),
+        RegexNode::NonCapturingGroup(group_nodes) => build_nfa_fragment(group_nodes, next, states),
         RegexNode::Alternation(alternatives) => {
             let s = states.len();
-            states.push(NfaState { transitions: vec![], is_accept: false });
+            states.push(NfaState {
+                transitions: vec![],
+                is_accept: false,
+            });
             for alt in alternatives {
                 let alt_start = build_nfa_fragment(alt, next, states);
                 states[s].transitions.push((None, alt_start));
@@ -223,14 +246,59 @@ fn build_nfa_node(node: &RegexNode, next: usize, states: &mut Vec<NfaState>) -> 
             s
         }
         // 後方参照・先読みは DFA で処理不可
-        RegexNode::Backreference(_)
-        | RegexNode::Lookahead(_)
-        | RegexNode::LookaheadNeg(_) => {
+        RegexNode::Backreference(_) | RegexNode::Lookahead(_) | RegexNode::LookaheadNeg(_) => {
             let s = states.len();
-            states.push(NfaState { transitions: vec![], is_accept: false });
+            states.push(NfaState {
+                transitions: vec![],
+                is_accept: false,
+            });
             s
         }
     }
+}
+
+fn build_nfa_bounded_repeat(
+    inner: &RegexNode,
+    min: usize,
+    max: Option<usize>,
+    next: usize,
+    states: &mut Vec<NfaState>,
+) -> usize {
+    if matches!(max, Some(max) if max < min) {
+        let s = states.len();
+        states.push(NfaState {
+            transitions: vec![],
+            is_accept: false,
+        });
+        return s;
+    }
+
+    let mut current_next = next;
+    match max {
+        Some(max) => {
+            for _ in min..max {
+                let inner_start = build_nfa_node(inner, current_next, states);
+                let s = states.len();
+                states.push(NfaState {
+                    transitions: vec![(None, inner_start), (None, current_next)],
+                    is_accept: false,
+                });
+                current_next = s;
+            }
+        }
+        None => {
+            current_next = build_nfa_node(
+                &RegexNode::Star(Box::new(inner.clone())),
+                current_next,
+                states,
+            );
+        }
+    }
+
+    for _ in 0..min {
+        current_next = build_nfa_node(inner, current_next, states);
+    }
+    current_next
 }
 
 /// イプシロン閉包を計算
@@ -239,7 +307,9 @@ fn epsilon_closure(nfa: &[NfaState], initial: &BTreeSet<usize>) -> BTreeSet<usiz
     let mut stack: Vec<usize> = initial.iter().copied().collect();
 
     while let Some(state) = stack.pop() {
-        if state >= nfa.len() { continue; }
+        if state >= nfa.len() {
+            continue;
+        }
         for (matcher, target) in &nfa[state].transitions {
             if matcher.is_none() && !closure.contains(target) {
                 closure.insert(*target);
@@ -255,9 +325,13 @@ fn epsilon_closure(nfa: &[NfaState], initial: &BTreeSet<usize>) -> BTreeSet<usiz
 fn nfa_move(nfa: &[NfaState], states: &BTreeSet<usize>, ch: char) -> BTreeSet<usize> {
     let mut result = BTreeSet::new();
     for &s in states {
-        if s >= nfa.len() { continue; }
+        if s >= nfa.len() {
+            continue;
+        }
         for (matcher, target) in &nfa[s].transitions {
-            if let Some(m) = matcher && m.matches(ch) {
+            if let Some(m) = matcher
+                && m.matches(ch)
+            {
                 result.insert(*target);
             }
         }
@@ -270,9 +344,13 @@ fn collect_matchers(nfa: &[NfaState], states: &BTreeSet<usize>) -> Vec<CharMatch
     let mut matchers = Vec::new();
     let mut seen = std::collections::HashSet::new();
     for &s in states {
-        if s >= nfa.len() { continue; }
+        if s >= nfa.len() {
+            continue;
+        }
         for (matcher, _) in &nfa[s].transitions {
-            if let Some(m) = matcher && seen.insert(format!("{m:?}")) {
+            if let Some(m) = matcher
+                && seen.insert(format!("{m:?}"))
+            {
                 matchers.push(m.clone());
             }
         }
@@ -286,34 +364,49 @@ fn collect_matchers(nfa: &[NfaState], states: &BTreeSet<usize>) -> Vec<CharMatch
 fn representative_chars(matchers: &[CharMatcher]) -> Vec<char> {
     let mut chars = Vec::new();
     let ascii_printable: Vec<char> = (' '..='~').collect();
-    let unicode_samples = ['\u{3042}', '\u{6F22}', '\u{3053}', '\u{3093}',
-                           '\u{306B}', '\u{3061}', '\u{306F}'];
+    let unicode_samples = [
+        '\u{3042}', '\u{6F22}', '\u{3053}', '\u{3093}', '\u{306B}', '\u{3061}', '\u{306F}',
+    ];
 
     for m in matchers {
         match m {
             CharMatcher::Exact(c) => {
-                if !chars.contains(c) { chars.push(*c); }
+                if !chars.contains(c) {
+                    chars.push(*c);
+                }
             }
             CharMatcher::Range(lo, hi) => {
                 let mut c = *lo;
                 while c <= *hi {
-                    if !chars.contains(&c) { chars.push(c); }
-                    if c == *hi { break; }
+                    if !chars.contains(&c) {
+                        chars.push(c);
+                    }
+                    if c == *hi {
+                        break;
+                    }
                     c = char::from_u32(c as u32 + 1).unwrap_or(*hi);
-                    if chars.len() > 256 { break; }
+                    if chars.len() > 256 {
+                        break;
+                    }
                 }
             }
             CharMatcher::Any | CharMatcher::NegatedRanges(_) => {
                 for c in &ascii_printable {
-                    if !chars.contains(c) { chars.push(*c); }
+                    if !chars.contains(c) {
+                        chars.push(*c);
+                    }
                 }
             }
             CharMatcher::UnicodeClass { .. } => {
                 for c in &ascii_printable {
-                    if !chars.contains(c) { chars.push(*c); }
+                    if !chars.contains(c) {
+                        chars.push(*c);
+                    }
                 }
                 for c in &unicode_samples {
-                    if !chars.contains(c) { chars.push(*c); }
+                    if !chars.contains(c) {
+                        chars.push(*c);
+                    }
                 }
             }
         }
@@ -344,7 +437,9 @@ fn compile_dfa_from_nfa(nfa: Vec<NfaState>) -> Option<Dfa> {
     let mut state_map: HashMap<BTreeSet<usize>, usize> = HashMap::new();
     let mut work_queue: VecDeque<BTreeSet<usize>> = VecDeque::new();
 
-    let is_accept = initial_set.iter().any(|&s| s < nfa.len() && nfa[s].is_accept);
+    let is_accept = initial_set
+        .iter()
+        .any(|&s| s < nfa.len() && nfa[s].is_accept);
     let start_idx = 0;
     state_map.insert(initial_set.clone(), start_idx);
     dfa_states.push(DfaState {
@@ -366,12 +461,18 @@ fn compile_dfa_from_nfa(nfa: Vec<NfaState>) -> Option<Dfa> {
 
         for ch in &rep_chars {
             let moved = nfa_move(&nfa, &current_set, *ch);
-            if moved.is_empty() { continue; }
+            if moved.is_empty() {
+                continue;
+            }
             let target_set = epsilon_closure(&nfa, &moved);
-            if target_set.is_empty() { continue; }
+            if target_set.is_empty() {
+                continue;
+            }
 
             // 既にこの遷移先の DFA 状態がある場合はスキップ
-            if target_to_idx.contains_key(&target_set) { continue; }
+            if target_to_idx.contains_key(&target_set) {
+                continue;
+            }
 
             let target_idx = if let Some(&idx) = state_map.get(&target_set) {
                 idx
@@ -379,7 +480,9 @@ fn compile_dfa_from_nfa(nfa: Vec<NfaState>) -> Option<Dfa> {
                 return None;
             } else {
                 let idx = dfa_states.len();
-                let is_accept = target_set.iter().any(|&s| s < nfa.len() && nfa[s].is_accept);
+                let is_accept = target_set
+                    .iter()
+                    .any(|&s| s < nfa.len() && nfa[s].is_accept);
                 state_map.insert(target_set.clone(), idx);
                 dfa_states.push(DfaState {
                     nfa_states: target_set.clone(),
@@ -565,7 +668,10 @@ mod tests {
     fn test_dfa_unicode_letter() {
         clear_dfa_cache();
         assert!(simple_pattern_match("hello", "^\\p{L}+$"));
-        assert!(simple_pattern_match("\u{3053}\u{3093}\u{306B}\u{3061}\u{306F}", "^\\p{L}+$"));
+        assert!(simple_pattern_match(
+            "\u{3053}\u{3093}\u{306B}\u{3061}\u{306F}",
+            "^\\p{L}+$"
+        ));
         assert!(!simple_pattern_match("123", "^\\p{L}+$"));
     }
 

@@ -462,11 +462,11 @@
 <a id="native-01-target-descriptors"></a>
 ### NATIVE-01 Target descriptors
 
-- Goal: tier1 native target ごとの差分を descriptor に閉じ込める。
+- Goal: supported product/release target ごとの差分を descriptor に閉じ込める。
 - Current state: `selfhost/src/Backend/Native/NativeTarget.ls` に skeleton はあるが、descriptor は `arch`, `os`, `obj-format`, `triple-id` の narrow slice に留まる。
 - Rust source: `docs/language/native-backend-spec.md`
 - L# target: `selfhost/src/Backend/Native/NativeTarget.ls`
-- Implementation direction: `x86_64-apple-darwin`, `aarch64-apple-darwin`, `x86_64-unknown-linux-gnu` の target descriptor を `abi`, `section names`, `relocation types`, `linker flavor`, `runtime artifact policy` の 5 項目で定義する。
+- Implementation direction: supported product/release targets (`aarch64-apple-darwin`, `x86_64-unknown-linux-gnu`) の target descriptor を `abi`, `section names`, `relocation types`, `linker flavor`, `runtime artifact policy` の 5 項目で定義する。`x86_64-apple-darwin` は internal diagnostic descriptor としてのみ残す。
 - Dependencies: `IR-06`
 - Acceptance: target 固有条件分岐が codegen 本体ではなく descriptor 参照だけになる。
 - Evidence: `selfhost/src/Backend/Native/NativeTarget.ls`
@@ -511,7 +511,7 @@
 ### NATIVE-05 Stage1-native self-regeneration
 
 - Goal: stage1-native が selfhost compiler を自分で再生成できるようにする。
-- Current state: `selfhost/src/Backend/Native/NativeCodegen.ls` / `selfhost/src/Backend/Native/NativeEmit.ls` / `selfhost/src/Backend/Native/NativeTarget.ls` と `test_e2e_native_self_regeneration_functional_equivalence` / `test_e2e_native_stage_chain_structure` により、native module skeleton と Wasm 基準の structural parity は追加済み。さらに `test_native_pipeline_complete_chain`, `test_native_codegen_emit_standalone_execution`, `test_native_codegen_real_execution`, `test_native_codegen_emits_full_const_instruction_bytes` で NativeTarget→NativeCodegen→NativeEmit の実行 slice、full-width const bytecode 生成、非空 bytecode 生成までは確認できる。加えて `test_e2e_native_linker_exposes_canonical_stage_artifact_paths`, `test_e2e_native_linker_generates_canonical_response_file_text`, `test_e2e_selfhost_main_native_bundle_summary_matches_canonical_contract`, `test_e2e_stage1_native_observation_summary_two_run_determinism`, `test_e2e_native_host_bundle_uses_canonical_artifact_contract`, `test_e2e_stage23_native_host_bundle_proxy_observations_match`, `test_e2e_native_host_bundle_artifact_writer_materializes_canonical_files`, `test_e2e_native_actual_stage23_gap_report_for_representative_entry` により representative build entry の artifact 名 / response file text / bundle summary 契約、tiny host-target program に対する canonical bundle materialization、host-side proxy の stage2/stage3 compare loop、canonical proxy bundle artifact materialization、representative build entry の actual-stage23 IR opcode gap report までは固定した。`scripts/ci/build-native.sh` も Darwin arm64 では `ci-artifacts/native-proxy/<id>/` に `stage1-native` / `stage2-native` / `stage3-native` proxy bundle と `actual-stage23-gap.json` を出力する build entry として追加済み。**ただし** true stage1-native -> stage2-native -> stage3-native の実バイナリ再生成・実行比較は未達。
+- Current state: Component Model pivot 後も native backend の canonical artifact / response file / deterministic stage observation / actual gap report を維持し、`test_e2e_stage23_actual_native_self_regeneration_harness_stage2_stage3_match` で representative `stage1-native -> stage2-native -> stage3-native` の artifact observation と transport payload 一致まで完了した。Darwin arm64 の representative actual self-regeneration は完了しており、Linux x86_64 の fixed-point 残件は Deferred の `V2-13a-5` で管理する。NATIVE-05 を Phase 11 blocker として reopen しない。
 - Rust source: `docs/development/planning/completion-criteria.md`
 - L# target: `scripts/ci/build-native.sh`, `.github/workflows/ci.yml`
 - Implementation direction: `stage1-native` の build entry は `selfhost/src/App/Main.ls` compile で固定し、`stage1-native -> stage2-native -> stage3-native` の functional equivalence を gate にする。
@@ -793,7 +793,7 @@
 ### OPS-06 Release playbook
 
 - Goal: host launcher + embedded guest component 配布の build/sign/checksum/changelog を自動化する。
-- Current state: `scripts/release-playbook.sh` は release binary を作り、`compile-phase11-inputs.sh` / `default-path-smoke.sh` を再利用して smoke まで回せる。`.github/workflows/release.yml` も `v*` tag push 起点の `verify` / `build` / `release-smoke` / `release` まで接続済みで、build job は host launcher archive に加えて companion sidecar `lsharp-{version}-{target}.component.wasm` も生成し、`scripts/ci/release-smoke.sh` で生成済み archive の required payload (`README.md` / `LICENSE` / `checksums.txt` / `lsharp-lsp` / `lsharp.component.wasm`) 検証、checksum 検証、packaged binary smoke を実行する。`release` job は build artifact download 後に `bash scripts/checksum.sh dist > dist/checksums.txt` を実行し、archive 群と sidecar component、attached release-level checksum asset を GitHub Release に添付する。`release-smoke` job は Ubuntu 上で実行可能な Linux x86_64 archive を Rust toolchain 無しで再検証する current middle gate として運用する。さらに host-backed `doc` ownership として `release-smoke.sh` は packaged `lsharp` の `doc` / `doc --json` と `lsharp-lsp --version` を通し、`scripts/smoke_test_readme.sh` も inline Quick Start fixture に対する checksum / compile / test / doc smoke を README/fresh-clone gate に含めるようになった。macOS notarization / Windows Authenticode も secret-gated workflow hook までは接続し、credential 未設定時は skip する。**ただし** 実際の署名完了は credential 未投入のため blocked。
+- Current state: `scripts/release-playbook.sh` は release binary を作り、`compile-phase11-inputs.sh` / `default-path-smoke.sh` を再利用して smoke まで回せる。`.github/workflows/release.yml` も `v*` tag push 起点の `verify` / `build` / `release-smoke` / `release` まで接続済みで、build job は supported product/release targets (`aarch64-apple-darwin`, `x86_64-unknown-linux-gnu`) の host launcher archive と companion sidecar `lsharp-{version}-{target}.component.wasm` を生成し、`scripts/ci/release-smoke.sh` で生成済み archive の required payload (`README.md` / `LICENSE` / `checksums.txt` / `lsharp-lsp` / `lsharp.component.wasm`) 検証、checksum 検証、packaged binary smoke を実行する。`release` job は build artifact download 後に `bash scripts/checksum.sh dist > dist/checksums.txt` を実行し、archive 群と sidecar component、attached release-level checksum asset を GitHub Release に添付する。`release-smoke` job は Ubuntu 上で実行可能な Linux x86_64 archive を Rust toolchain 無しで再検証する current middle gate として運用する。さらに host-backed `doc` ownership として `release-smoke.sh` は packaged `lsharp` の `doc` / `doc --json` と `lsharp-lsp --version` を通し、`scripts/smoke_test_readme.sh` も inline Quick Start fixture に対する checksum / compile / test / doc smoke を README/fresh-clone gate に含めるようになった。Mac Apple Silicon notarization は secret-gated workflow hook まで接続し、credential 未設定時は skip する。Windows Authenticode は archived / out of support scope とする。**ただし** 実際の署名完了は credential 未投入のため blocked。
 - Rust source: `docs/development/operations/release-playbook.md`, `docs/development/operations/release-distribution-signing.md`
 - L# target: release workflow, `scripts/release-playbook.sh`, `scripts/release.sh`, `scripts/checksum.sh`, `scripts/ci/release-smoke.sh`
 - Implementation direction: stable/nightly の 2 チャネルを固定し、release は `version bump -> CI -> host-launcher artifact -> checksum -> signing -> smoke -> tag -> GitHub Release` の順に自動化する。
@@ -864,15 +864,15 @@
 - Evidence: formula/manifests, release notes
 
 <a id="v2-04-linux-aarch64-tier2-distribution"></a>
-### V2-04 Linux aarch64 tier2 distribution
+### V2-04 Linux aarch64 archived design
 
-- Goal: Linux aarch64 を tier2 常設へ上げる。
-- Current state: v1 tier1 対象外。
+- Goal: Linux aarch64 を将来再導入する場合の archived design を保持する。
+- Current state: out of support scope。
 - Rust source: `docs/development/operations/release-distribution-signing.md`
 - L# target: release workflow
-- Implementation direction: cross build descriptor と smoke test を追加し、artifact 名と checksum 規則は tier1 と同一にする。
+- Implementation direction: support scope を変更した上で cross build descriptor と smoke test を追加し、artifact 名と checksum 規則を supported target と同期する。
 - Dependencies: `PKG-01`
-- Acceptance: linux-aarch64 artifact が nightly/stable の両方で生成される。
+- Acceptance: support scope を再変更した場合のみ、linux-aarch64 artifact が nightly/stable の両方で生成される。
 - Evidence: release workflow, artifacts
 
 <a id="v2-05-windows-authenticode-signing"></a>
@@ -915,7 +915,7 @@
 ### V2-08 Native backend self-regeneration
 
 - Goal: Deferred research track として native backend の true self-regeneration を成立させる。
-- Current state: `selfhost/src/Backend/Native/` 配下のコード、canonical artifact contract / response file text / bundle summary / stage observation determinism / host-side proxy compare loop / proxy artifact materialization (`scripts/ci/build-native.sh`, `test_e2e_native_host_bundle_artifact_writer_materializes_canonical_files`) と representative build entry の `actual-stage23-gap.json` blocker report (`test_e2e_native_actual_stage23_gap_report_for_representative_entry`) までは追加済みで、`LocalGet` / `LocalSet`、i32 arithmetic/logic core、limited `Drop` restore、direct intra-bundle no-arg call、さらに `emit-native-function-meta-bundle` による 1-arg〜61-arg direct call を host exact / x86 exact bytes で固定した。single previous-value preservation に加え、generic 20+-arg call/spill path と 61-value window により 61-arg marshaling と deeper limited previous restore まで入った。AArch64 の `I64Add` / `I64Sub` / `I64Mul`、主要 i64 compare (`I64Eq`, `I64Ne`, `I64LtS`, `I64GtS`, `I64LeS`, `I64GeS`)、`I32And` / `I32Or` も host exact / x86 exact bytes / gap report から外れた。加えて `emit-native-function-meta-bundle-with-import-count` により actual module index space を意識した import-prefix user call remap と shared import stub の partial path を追加し、`test_e2e_native_host_binary_import_prefixed_direct_call_arg_bundle_link_and_execute` / `test_e2e_native_host_binary_import_call_stub_link_and_execute` / `test_native_codegen_emits_x86_import_prefixed_direct_call_arg_bundle_bytes` で固定した。**ただし** true stage1-native -> stage2-native -> stage3-native の実バイナリ再生成・実行比較は未達で、残主要 blocker は representative stage23 全面の `Call`（real import/runtime semantics と representative stage23 integration）、representative producer 全面の `Drop`、integer data ops（`I32Load(8U)/Store`, `I64Load/Store`, `I64Div/Rem`）、および control-flow / memory ops（`BlockEmpty`, `Br`, `BrIf`, `Else`, `End`, `If`, `IfEmpty`, `Loop`, `LoopEmpty`, `MemoryCopy`, `MemoryFill`）。
+- Current state: `test_e2e_stage23_actual_native_self_regeneration_harness_stage2_stage3_match` により representative `stage1-native -> stage2-native -> stage3-native` の actual artifact observation / transport payload 一致を固定済みで、Darwin arm64 の representative actual self-regeneration は完了。Linux x86_64 の残件は `V2-13a-5` の function 12 fixed-point divergence と local Lima VM full compare gateに限定する。supported product/release targets は `aarch64-apple-darwin` と `x86_64-unknown-linux-gnu` で、Intel Mac / Windows / Linux ARM は release blocker に含めない。
 - Rust source: `docs/language/native-backend-spec.md`, `docs/development/planning/completion-criteria.md`
 - L# target: `selfhost/src/Backend/Native/NativeTarget.ls`, `selfhost/src/Backend/Native/NativeCodegen.ls`, `selfhost/src/Backend/Native/NativeEmit.ls`, `scripts/ci/build-native.sh`
 - Implementation direction: representative build entry を `selfhost/src/App/Main.ls` compile に固定し、`actual-stage23-gap.json` の先頭 families (`Call` / i32 dataflow / memory / control flow) を順に潰しながら tier1 target ごとに `stage1-native -> stage2-native -> stage3-native` を走らせて exit/stdout/stderr/artifact hash の観測値を比較する。

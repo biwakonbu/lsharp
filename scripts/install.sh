@@ -39,20 +39,16 @@ detect_target() {
   arch="$(uname -m)"
   case "$os:$arch" in
     Darwin:arm64|Darwin:aarch64) echo "aarch64-apple-darwin" ;;
-    Darwin:x86_64) echo "x86_64-apple-darwin" ;;
     Linux:x86_64) echo "x86_64-unknown-linux-gnu" ;;
-    Linux:arm64|Linux:aarch64) echo "aarch64-unknown-linux-gnu" ;;
-    *) fail "unsupported host target: $os/$arch; set LSHARP_TARGET explicitly" ;;
+    *) fail "unsupported host target: $os/$arch; supported release targets: aarch64-apple-darwin, x86_64-unknown-linux-gnu" ;;
   esac
 }
 
-guard_unpublished_target() {
-  target="$1"
-  if [ "$target" = "x86_64-apple-darwin" ] &&
-     [ -z "$ARCHIVE_URL" ] &&
-     [ "${LSHARP_ALLOW_UNPUBLISHED_TARGET:-0}" != "1" ]; then
-    fail "x86_64-apple-darwin native-only archive is not published yet; set LSHARP_ARCHIVE_URL to an explicit archive or LSHARP_ALLOW_UNPUBLISHED_TARGET=1 for a private mirror"
-  fi
+validate_target() {
+  case "$1" in
+    aarch64-apple-darwin|x86_64-unknown-linux-gnu) ;;
+    *) fail "unsupported release target: $1; supported release targets: aarch64-apple-darwin, x86_64-unknown-linux-gnu" ;;
+  esac
 }
 
 resolve_latest_version() {
@@ -165,11 +161,8 @@ need_cmd uname
 need_cmd tar
 
 [ -n "$TARGET" ] || TARGET="$(detect_target)"
-guard_unpublished_target "$TARGET"
-case "$TARGET" in
-  *windows*) EXT="zip" ;;
-  *) EXT="tar.gz" ;;
-esac
+validate_target "$TARGET"
+EXT="tar.gz"
 
 if [ -z "$VERSION" ]; then
   VERSION="$(resolve_latest_version)"

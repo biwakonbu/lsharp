@@ -29,7 +29,9 @@ jobs:
       - run: cargo clippy -- -D warnings
       - run: cargo fmt --check
 
-  # Tier1 各プラットフォーム向けリリースビルドとアーカイブ作成
+  # supported product/release targets のうち、Actions 内で actual native program を
+  # 生成できる target のリリースビルドとアーカイブ作成。
+  # Linux x86_64 の Lima actual self-regeneration は local evidence であり required CI には含めない。
   build:
     name: Build (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
@@ -113,53 +115,6 @@ jobs:
             cd dist
             tar czf "${archive_name}.${ARCHIVE_EXT}" "${archive_name}/"
           )
-      - name: Windows Authenticode signing hook
-        if: runner.os == 'Windows'
-        shell: pwsh
-        env:
-          VERSION: ${{ github.ref_name }}
-          TARGET: ${{ matrix.target }}
-          WINDOWS_SIGN_CERT_PFX_BASE64: ${{ secrets.WINDOWS_SIGN_CERT_PFX_BASE64 }}
-          WINDOWS_SIGN_CERT_PASSWORD: ${{ secrets.WINDOWS_SIGN_CERT_PASSWORD }}
-          WINDOWS_TIMESTAMP_URL: ${{ secrets.WINDOWS_TIMESTAMP_URL }}
-        run: |
-          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_SIGN_CERT_PFX_BASE64) -or
-              [string]::IsNullOrWhiteSpace($env:WINDOWS_SIGN_CERT_PASSWORD) -or
-              [string]::IsNullOrWhiteSpace($env:WINDOWS_TIMESTAMP_URL)) {
-            Write-Host "release signing: Windows credential 未設定時は skip"
-            exit 0
-          }
-
-          $archiveName = "lsharp-$env:VERSION-$env:TARGET"
-          $archiveDir = Join-Path "dist" $archiveName
-          $archivePath = Join-Path "dist" "$archiveName.zip"
-          $certPath = Join-Path $env:RUNNER_TEMP "lsharp-signing.pfx"
-          $signtoolPath = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
-            Sort-Object FullName -Descending |
-            Select-Object -First 1 -ExpandProperty FullName
-
-          if (-not $signtoolPath) {
-            throw "signtool.exe not found"
-          }
-
-          Set-Alias signtool $signtoolPath
-          [System.IO.File]::WriteAllBytes($certPath, [System.Convert]::FromBase64String($env:WINDOWS_SIGN_CERT_PFX_BASE64))
-
-          foreach ($binaryName in @("program.native", "lsharp.exe", "lsharp")) {
-            $binaryPath = Join-Path $archiveDir $binaryName
-            if (-not (Test-Path $binaryPath)) {
-              continue
-            }
-            signtool sign /f $certPath /p $env:WINDOWS_SIGN_CERT_PASSWORD /tr $env:WINDOWS_TIMESTAMP_URL /td sha256 /fd sha256 $binaryPath
-            signtool verify /pa $binaryPath
-          }
-
-          bash scripts/checksum.sh "$archiveDir" > "$archiveDir/checksums.txt"
-          if (Test-Path $archivePath) {
-            Remove-Item $archivePath -Force
-          }
-          Compress-Archive -Path $archiveDir -DestinationPath $archivePath -Force
-          Remove-Item $certPath -Force
       - name: リリースアーカイブ smoke
         shell: bash
         env:
@@ -239,7 +194,7 @@ jobs:
 
           bash scripts/ci/release-smoke.sh "$archive"
 
-  # 全 Tier1 ビルドを GitHub Release へ公開
+  # build / smoke 済みの supported target artifact を GitHub Release へ公開
   release:
     name: GitHub Release 作成
     runs-on: ubuntu-latest

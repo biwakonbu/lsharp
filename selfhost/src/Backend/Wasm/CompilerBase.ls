@@ -219,6 +219,13 @@
       (do
         (root_pop)
         next-dst))))
+(defn push-int-vector-local [dst value]
+  (do
+    (root_push dst)
+    (let [next-dst (vector-push dst value)]
+      (do
+        (root_pop)
+        next-dst))))
 (defn emit-instr [opcode operand] (push-int-vector (push-int-vector (vector-new 2) opcode) operand))
 (defn push-object-vector [dst value]
   (do
@@ -357,14 +364,21 @@
 (defn ftable-register [ftable name-hash func-idx]
   (do
     (root_push ftable)
-    (let [with-name (vector-push ftable name-hash)]
+    (let [name-hash-ref (ref-new name-hash)
+      func-idx-ref (ref-new func-idx)]
       (do
-        (root_push with-name)
-        (let [result (vector-push with-name func-idx)]
+        (root_push name-hash-ref)
+        (root_push func-idx-ref)
+        (let [with-name (vector-push ftable (ref-get name-hash-ref))]
           (do
-            (root_pop)
-            (root_pop)
-            result))))))
+            (root_push with-name)
+            (let [result (vector-push with-name (ref-get func-idx-ref))]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result))))))))
 (defn ftable-lookup-loop [ftable idx name-hash]
   (if (< idx 0)
     0
@@ -483,45 +497,110 @@
               (root_pop)
               (root_pop)
               result)))))))
-(defn make-compile-step-state [done next-idx next-value]
+(defn write-compile-step-state-ref [state-ref done next-idx next-value]
   (do
+    (root_push state-ref)
     (root_push next-value)
-    (let [compile-step-state-progress-mode (if (> (string-length (command-line-arg 8)) 0) 1 0)]
+    (let [base (vector-new 3)]
       (do
-        (if (= compile-step-state-progress-mode 1)
-          (if (< (vector-length next-value) 128)
-            (do
-              (print 9000000076)
-              (print 0)
-              (print done)
-              (print next-idx)
-              (print (vector-length next-value)))
-            (do))
-          (do))
-        (let [base0 (push-int-vector (vector-new 3) done)]
+        (let [base-slot (root_push base)]
           (do
-            (root_push base0)
-            (let [base1 (push-int-vector base0 next-idx)]
+            (let [with-done (push-int-vector-local base done)]
               (do
-                (root_push base1)
-                (let [state (push-object-vector base1 next-value)]
+                (root_set base-slot with-done)
+                (let [with-idx (push-int-vector-local with-done next-idx)]
                   (do
-                    (if (= compile-step-state-progress-mode 1)
-                      (if (< (vector-length next-value) 128)
-                        (let [state-root (root_push state)]
-                          (do
-                            (print 9000000076)
-                            (print 1)
-                            (print (vector-get state 0))
-                            (print (vector-get state 1))
-                            (print (vector-length (vector-get state 2)))
-                            (root_pop)))
-                        (do))
+                    (root_set base-slot with-idx)
+                    (let [state (push-object-vector with-idx next-value)]
+                      (do
+                        (root_set base-slot state)
+                        (ref-set state-ref state)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        0))))))))))))
+(defn write-compile-step-state-ref-normal-setup-diagnostic [state-ref done next-idx next-value]
+  (do
+    (root_push state-ref)
+    (root_push next-value)
+    (print 9000000217)
+    (print done)
+    (print next-idx)
+    (print (vector-length next-value))
+    (let [base (vector-new 3)]
+      (do
+        (let [base-slot (root_push base)]
+          (do
+            (let [with-done (push-int-vector-local base done)]
+              (do
+                (root_set base-slot with-done)
+                (print 9000000218)
+                (print (vector-length with-done))
+                (print (vector-get with-done 0))
+                (let [with-idx (push-int-vector-local with-done next-idx)]
+                  (do
+                    (root_set base-slot with-idx)
+                    (print 9000000219)
+                    (print (vector-length with-idx))
+                    (print (vector-get with-idx 0))
+                    (print (vector-get with-idx 1))
+                    (let [state (push-object-vector with-idx next-value)]
+                      (do
+                        (root_set base-slot state)
+                        (print 9000000220)
+                        (print (vector-length state))
+                        (print (vector-get state 0))
+                        (print (vector-get state 1))
+                        (print (vector-length (vector-get state 2)))
+                        (ref-set state-ref state)
+                        (print 9000000221)
+                        (print (vector-length (ref-get state-ref)))
+                        (print (vector-get (ref-get state-ref) 0))
+                        (print (vector-get (ref-get state-ref) 1))
+                        (print (vector-length (vector-get (ref-get state-ref) 2)))
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        0))))))))))))
+(defn make-compile-step-state [done next-idx next-value]
+  (let [value-slot (root_push next-value)
+    compile-step-state-progress-mode (if (> (string-length (command-line-arg 8)) 0) 1 0)]
+    (do
+      (if (= compile-step-state-progress-mode 1)
+        (if (< (vector-length next-value) 128)
+          (do
+            (print 9000000076)
+            (print 0)
+            (print done)
+            (print next-idx)
+            (print (vector-length next-value)))
+          (do))
+        (do))
+      (let [base0 (push-int-vector-local (vector-new 3) done)]
+        (do
+          (root_push base0)
+          (let [base1 (push-int-vector-local base0 next-idx)]
+            (do
+              (root_push base1)
+              (let [state (push-object-vector base1 next-value)]
+                (do
+                  (root_set value-slot state)
+                  (if (= compile-step-state-progress-mode 1)
+                    (if (< (vector-length next-value) 128)
+                      (let [state-root (root_push state)]
+                        (do
+                          (print 9000000076)
+                          (print 1)
+                          (print (vector-get state 0))
+                          (print (vector-get state 1))
+                          (print (vector-length (vector-get state 2)))
+                          (root_pop)))
                       (do))
-                    (root_pop)
-                    (root_pop)
-                    (root_pop)
-                    state))))))))))
+                    (do))
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  state)))))))))
 (defn string-literal-data-base [] 1024)
 (defn append-byte-vector-step [dst src idx count]
   (if (>= idx count)
@@ -730,31 +809,32 @@
               (let [text-len (string-length text)
                 bytes (string-to-byte-vector text 0 text-len (vector-new 8))
                 offset (+ (string-literal-data-base) (vector-length (ref-get data-ref)))]
-                (let [header (write-i32-le (write-i32-le (vector-new 8) 1) text-len)]
-                  (do
-                    (root_push bytes)
-                    (root_push header)
-                    (let [data-with-header (append-byte-vector (ref-get data-ref) header 0 8)]
-                      (do
-                        (root_push data-with-header)
-                        (let [updated-data (append-byte-vector data-with-header bytes 0 (vector-length bytes))]
-                          (do
-                            (root_push updated-data)
-                            (let [result (emit-to instrs 1 offset)]
-                              (do
-                                (root_push result)
-                                (ref-set data-ref updated-data)
-                                (root_pop)
-                                (root_pop)
-                                (root_pop)
-                                (root_pop)
-                                (root_pop)
-                                (root_pop)
-                                (root_pop)
-                                (root_pop)
-                                (root_pop)
-                                (root_pop)
-                                result))))))))))))))))
+                (do
+                  (root_push bytes)
+                  (let [header (write-i32-le (write-i32-le (vector-new 8) 1) text-len)]
+                    (do
+                      (root_push header)
+                      (let [data-with-header (append-byte-vector (ref-get data-ref) header 0 8)]
+                        (do
+                          (root_push data-with-header)
+                          (let [updated-data (append-byte-vector data-with-header bytes 0 (vector-length bytes))]
+                            (do
+                              (root_push updated-data)
+                              (ref-set data-ref updated-data)
+                              (let [result (emit-to instrs 1 offset)]
+                                (do
+                                  (root_push result)
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  result)))))))))))))))))
 (defn string-key-hash-step [source pos end acc]
   (if (>= pos end)
     (make-loop-step-state 1 pos acc)
@@ -998,11 +1078,14 @@
 (defn compile-defn-functions-step-finish [functions compiled-fn idx]
   (let [updated-functions (push-object-vector functions compiled-fn)]
     (do
-      (root_push updated-functions)
+      (let [updated-slot (root_push updated-functions)]
       (let [next-state (make-compile-step-state 0 (+ idx 1) updated-functions)]
         (do
+          (root_push next-state)
+          (root_set updated-slot next-state)
           (root_pop)
-          next-state)))))
+          (root_pop)
+          next-state))))))
 (defn compile-let-with-ftable-prepare [name-hash init-root init-instrs env]
   (do
     (root_push env)
@@ -1047,22 +1130,47 @@
                 (root_pop)
                 (root_pop)
                 result))))))))
-(defn make-register-state [done next-idx next-ftable next-func-idx]
+(defn write-register-state-ref [state-ref done next-idx next-ftable next-func-idx]
   (do
-    (root_push next-ftable)
-    (let [base0 (push-int-vector (vector-new 4) done)]
+    (root_push state-ref)
+    (let [base (vector-new 4)]
       (do
-        (root_push base0)
-        (let [base1 (push-int-vector base0 next-idx)]
+        (let [base-slot (root_push base)]
           (do
-            (root_push base1)
-            (let [with-ftable (push-object-vector base1 next-ftable)]
+            (let [done-ref (ref-new done)
+              next-idx-ref (ref-new next-idx)
+              next-func-idx-ref (ref-new next-func-idx)]
               (do
-                (root_push with-ftable)
-                (let [state (push-int-vector with-ftable next-func-idx)]
+                (root_push done-ref)
+                (root_push next-idx-ref)
+                (root_push next-func-idx-ref)
+                (root_push next-ftable)
+                (let [with-done (vector-push base (ref-get done-ref))]
                   (do
-                    (root_pop)
-                    (root_pop)
-                    (root_pop)
-                    (root_pop)
-                    state))))))))))
+                    (root_set base-slot with-done)
+                    (let [with-idx (vector-push with-done (ref-get next-idx-ref))]
+                      (do
+                        (root_set base-slot with-idx)
+                        (let [with-ftable (vector-push with-idx next-ftable)]
+                          (do
+                            (root_set base-slot with-ftable)
+                            (let [state (vector-push with-ftable (ref-get next-func-idx-ref))]
+                              (do
+                                (root_set base-slot state)
+                                (ref-set state-ref state)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                0))))))))))))))))
+(defn make-register-state [done next-idx next-ftable next-func-idx]
+  (let [state-ref (ref-new 0)]
+    (do
+      (root_push state-ref)
+      (write-register-state-ref state-ref done next-idx next-ftable next-func-idx)
+      (let [state (ref-get state-ref)]
+        (do
+          (root_pop)
+          state)))))

@@ -458,7 +458,7 @@ impl Lower {
         let func_name = format!("{type_name}.valid?");
         let mut body = Vec::new();
 
-        body.push(Instruction::I64Const(1));
+        body.push(Instruction::I32Const(1));
 
         for constraint in constraints {
             match constraint {
@@ -466,19 +466,13 @@ impl Lower {
                     body.push(Instruction::LocalGet(0));
                     body.push(Instruction::I64Const(*threshold));
                     body.push(Instruction::I64GeS);
-                    body.push(Instruction::I64ExtendI32S);
-                    body.push(Instruction::I32WrapI64);
                     body.push(Instruction::I32And);
-                    body.push(Instruction::I64ExtendI32S);
                 }
                 Constraint::Lte(Expr::Lit(_, Literal::Int(threshold))) => {
                     body.push(Instruction::LocalGet(0));
                     body.push(Instruction::I64Const(*threshold));
                     body.push(Instruction::I64LeS);
-                    body.push(Instruction::I64ExtendI32S);
-                    body.push(Instruction::I32WrapI64);
                     body.push(Instruction::I32And);
-                    body.push(Instruction::I64ExtendI32S);
                 }
                 Constraint::Range(lo_expr, hi_expr) => {
                     if let (Expr::Lit(_, Literal::Int(lo)), Expr::Lit(_, Literal::Int(hi))) =
@@ -487,22 +481,18 @@ impl Lower {
                         body.push(Instruction::LocalGet(0));
                         body.push(Instruction::I64Const(*lo));
                         body.push(Instruction::I64GeS);
-                        body.push(Instruction::I64ExtendI32S);
-                        body.push(Instruction::I32WrapI64);
                         body.push(Instruction::I32And);
-                        body.push(Instruction::I64ExtendI32S);
                         body.push(Instruction::LocalGet(0));
                         body.push(Instruction::I64Const(*hi));
                         body.push(Instruction::I64LeS);
-                        body.push(Instruction::I64ExtendI32S);
-                        body.push(Instruction::I32WrapI64);
                         body.push(Instruction::I32And);
-                        body.push(Instruction::I64ExtendI32S);
                     }
                 }
                 _ => {}
             }
         }
+
+        body.push(Instruction::I64ExtendI32S);
 
         Function {
             name: func_name,

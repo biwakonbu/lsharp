@@ -7,7 +7,7 @@ images:
 vmType: qemu
 arch: x86_64
 cpus: 4
-memory: 16GiB
+memory: 20GiB
 disk: 12GiB
 
 mounts: []

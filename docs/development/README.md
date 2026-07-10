@@ -16,5 +16,7 @@
 - `completion-criteria.md` / `compatibility-matrix.md` / `gap-classification.md` -- 完了判定と互換性
 - `rust-parity-spec.md` / `toolchain-parity-spec.md` / `runtime-stability-spec.md` -- ツールチェーン・安定性
 - `memory-management-roadmap.md` -- メモリ関連の長期方針
+- `improvement-roadmap.md` -- 問題台帳 ([`ISSUES.md`](../../ISSUES.md)) に対する改善フェーズと完了条件
+- `improvement-designs/` -- 品質改善のテーマ別設計 (imp-01〜06。Deferred 機能の設計は `v2-designs/`)
 
 詳細は各ファイル先頭の概要に従う。

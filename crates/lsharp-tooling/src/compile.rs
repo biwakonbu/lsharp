@@ -149,10 +149,7 @@ pub fn compile_file(
                 .map_err(|e| miette::miette!("{}: {}", output_path.display(), e))?;
         }
         CompileTarget::Native => {
-            return Err(miette::miette!(
-                "native backend は未サポートです。現在の Rust driver は wasm のみ生成できます: {}",
-                output_path.display()
-            ));
+            crate::native::compile_native_executable(&module, &output_path)?;
         }
     }
     Ok(CompileArtifacts {
@@ -261,6 +258,69 @@ mod tests {
             "wasi-component target は preview2 runner で実行できる component を出力するべき",
         );
         assert_eq!(stdout, "42\n");
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_compile_file_wasi_component_executes_constrained_type_helpers() {
+        let dir = std::env::temp_dir().join("lsharp_compile_pipeline_component_constrained");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(dir.join(".git")).unwrap();
+
+        let file = dir.join("Main.ls");
+        let output = dir.join("Main.component.wasm");
+        std::fs::write(
+            &file,
+            "(type-constrained Natural Int :constraints [(>= 0)])\n\
+             (defn main [] (print 42))\n",
+        )
+        .unwrap();
+
+        let artifacts = compile_file(
+            &file,
+            Some(&output),
+            false,
+            Some(CompileTarget::WasiComponent),
+        )
+        .unwrap();
+        let component_bytes = std::fs::read(&artifacts.output_path).unwrap();
+        let stdout = lsharp_wasm::wasi_runner::run_wasm_component(&component_bytes)
+            .expect("制約付き型 helper を含む component は validation と実行に成功するべき");
+        assert_eq!(stdout, "42\n");
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_compile_file_wasi_component_executes_record_access() {
+        let dir = std::env::temp_dir().join("lsharp_compile_pipeline_component_record");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(dir.join(".git")).unwrap();
+
+        let file = dir.join("Main.ls");
+        let output = dir.join("Main.component.wasm");
+        std::fs::write(
+            &file,
+            "(type Point (record (: x Int) (: y Int)))\n\
+             (defn make-point [x y] {Point x x y y})\n\
+             (defn main [] (print (Point.x (make-point 10 20))))\n",
+        )
+        .unwrap();
+
+        let artifacts = compile_file(
+            &file,
+            Some(&output),
+            false,
+            Some(CompileTarget::WasiComponent),
+        )
+        .unwrap();
+        let component_bytes = std::fs::read(&artifacts.output_path).unwrap();
+        let stdout = lsharp_wasm::wasi_runner::run_wasm_component(&component_bytes)
+            .expect("record access を含む component は validation と実行に成功するべき");
+        assert_eq!(stdout, "10\n");
 
         std::fs::remove_dir_all(&dir).unwrap();
     }
@@ -434,6 +494,238 @@ mod tests {
     }
 
     #[test]
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    fn test_compile_file_native_target_executes_print_i64_aarch64_macos() {
+        let dir = std::env::temp_dir().join("lsharp_compile_pipeline_native_aarch64_macos_print");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(dir.join(".git")).unwrap();
+
+        let file = dir.join("Main.ls");
+        let output = dir.join("demo");
+        std::fs::write(&file, "(defn main [] (print 42))\n").unwrap();
+
+        let artifacts =
+            compile_file(&file, Some(&output), false, Some(CompileTarget::Native)).unwrap();
+        let output = std::process::Command::new(&artifacts.output_path)
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(0));
+        assert_eq!(String::from_utf8_lossy(&output.stdout), "42\n");
+        assert!(output.stderr.is_empty());
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    fn test_compile_file_native_target_executes_user_function_call_aarch64_macos() {
+        let dir = std::env::temp_dir().join("lsharp_compile_pipeline_native_aarch64_macos_call");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(dir.join(".git")).unwrap();
+
+        let file = dir.join("Main.ls");
+        let output = dir.join("demo");
+        std::fs::write(
+            &file,
+            "(defn double [x] (+ x x))\n(defn main [] (double 21))\n",
+        )
+        .unwrap();
+
+        let artifacts =
+            compile_file(&file, Some(&output), false, Some(CompileTarget::Native)).unwrap();
+        let status = std::process::Command::new(&artifacts.output_path)
+            .status()
+            .unwrap();
+        assert_eq!(status.code(), Some(42));
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    fn test_compile_file_native_target_ignores_unreachable_runtime_helpers_aarch64_macos() {
+        let dir =
+            std::env::temp_dir().join("lsharp_compile_pipeline_native_aarch64_macos_reachable");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(dir.join(".git")).unwrap();
+
+        let file = dir.join("Main.ls");
+        let output = dir.join("demo");
+        std::fs::write(
+            &file,
+            "(type (Maybe a) (Just a) Nothing)\n(defn identity [x] x)\n(defn main [] (print (identity 42)))\n",
+        )
+        .unwrap();
+
+        let artifacts =
+            compile_file(&file, Some(&output), false, Some(CompileTarget::Native)).unwrap();
+        let output = std::process::Command::new(&artifacts.output_path)
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(0));
+        assert_eq!(String::from_utf8_lossy(&output.stdout), "42\n");
+        assert!(output.stderr.is_empty());
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    fn test_compile_file_native_target_executes_record_access_aarch64_macos() {
+        let dir = std::env::temp_dir().join("lsharp_compile_pipeline_native_aarch64_macos_record");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(dir.join(".git")).unwrap();
+
+        let file = dir.join("Main.ls");
+        let output = dir.join("demo");
+        std::fs::write(
+            &file,
+            "(type Point (record (: x Int) (: y Int)))\n\
+             (defn make-point [x y] {Point x x y y})\n\
+             (defn get-x [p] (Point.x p))\n\
+             (defn main [] (let [p (make-point 10 20)] (print (get-x p))))\n",
+        )
+        .unwrap();
+
+        let artifacts =
+            compile_file(&file, Some(&output), false, Some(CompileTarget::Native)).unwrap();
+        let output = std::process::Command::new(&artifacts.output_path)
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(0));
+        assert_eq!(String::from_utf8_lossy(&output.stdout), "10\n");
+        assert!(output.stderr.is_empty());
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    fn test_compile_file_native_target_executes_adt_match_aarch64_macos() {
+        let dir = std::env::temp_dir().join("lsharp_compile_pipeline_native_aarch64_macos_adt");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(dir.join(".git")).unwrap();
+
+        let file = dir.join("Main.ls");
+        let output = dir.join("demo");
+        std::fs::write(
+            &file,
+            "(type (Option a) (Some a) None)\n\
+             (defn unwrap-or [(: opt (Option Int)) (: default Int)] : Int\n\
+               (match opt [(Some x) x] [None default]))\n\
+             (defn main []\n\
+               (let [x (Some 42) y None]\n\
+                 (do (print (unwrap-or x 0)) (print (unwrap-or y 0)))))\n",
+        )
+        .unwrap();
+
+        let artifacts =
+            compile_file(&file, Some(&output), false, Some(CompileTarget::Native)).unwrap();
+        let output = std::process::Command::new(&artifacts.output_path)
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(0));
+        assert_eq!(String::from_utf8_lossy(&output.stdout), "42\n0\n");
+        assert!(output.stderr.is_empty());
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    fn test_compile_file_native_target_executes_recursive_if_aarch64_macos() {
+        let dir = std::env::temp_dir().join("lsharp_compile_pipeline_native_aarch64_macos_fib");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(dir.join(".git")).unwrap();
+
+        let file = dir.join("Main.ls");
+        let output = dir.join("demo");
+        std::fs::write(
+            &file,
+            "(defn fib [n] (if (< n 2) n (+ (fib (- n 1)) (fib (- n 2)))))\n(defn main [] (+ (fib 8) 21))\n",
+        )
+        .unwrap();
+
+        let artifacts =
+            compile_file(&file, Some(&output), false, Some(CompileTarget::Native)).unwrap();
+        let status = std::process::Command::new(&artifacts.output_path)
+            .status()
+            .unwrap();
+        assert_eq!(status.code(), Some(42));
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    fn test_compile_file_native_target_executes_simple_i64_arithmetic_aarch64_macos() {
+        let dir =
+            std::env::temp_dir().join("lsharp_compile_pipeline_native_aarch64_macos_arithmetic");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(dir.join(".git")).unwrap();
+
+        let file = dir.join("Main.ls");
+        let output = dir.join("demo");
+        std::fs::write(&file, "(defn main [] (+ 40 2))\n").unwrap();
+
+        let artifacts =
+            compile_file(&file, Some(&output), false, Some(CompileTarget::Native)).unwrap();
+        let status = std::process::Command::new(&artifacts.output_path)
+            .status()
+            .unwrap();
+        assert_eq!(status.code(), Some(42));
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    fn test_compile_file_native_target_writes_runnable_aarch64_macos_binary() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = std::env::temp_dir().join("lsharp_compile_pipeline_native_aarch64_macos");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(dir.join(".git")).unwrap();
+
+        let file = dir.join("Main.ls");
+        let output = dir.join("demo");
+        std::fs::write(&file, "(defn main [] 42)\n").unwrap();
+
+        let artifacts =
+            compile_file(&file, Some(&output), false, Some(CompileTarget::Native)).unwrap();
+        assert_eq!(artifacts.output_path, output);
+        assert!(
+            artifacts.output_path.exists(),
+            "native binary を生成するべき"
+        );
+
+        let mode = std::fs::metadata(&artifacts.output_path)
+            .unwrap()
+            .permissions()
+            .mode();
+        assert!(
+            mode & 0o111 != 0,
+            "native binary は実行可能であるべき: mode={mode:o}"
+        );
+
+        let status = std::process::Command::new(&artifacts.output_path)
+            .status()
+            .unwrap();
+        assert_eq!(status.code(), Some(42));
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
     fn test_compile_file_native_target_returns_explicit_error() {
         let dir = std::env::temp_dir().join("lsharp_compile_pipeline_native");
         let _ = std::fs::remove_dir_all(&dir);

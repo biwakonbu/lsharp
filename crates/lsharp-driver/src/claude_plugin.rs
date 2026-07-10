@@ -2,6 +2,10 @@ use serde_json::{Map, Value, json};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+pub(crate) fn language_guide_markdown() -> &'static str {
+    include_str!("../templates/lsharp-language-guide.md")
+}
+
 pub fn cmd_claude_plugin() -> miette::Result<()> {
     let claude_dir = claude_dir()?;
     let template_path =
@@ -164,5 +168,48 @@ mod tests {
         assert_eq!(settings["mcpServers"]["lsharp"]["args"][0], "mcp-server");
 
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_lsharp_language_guide_template_covers_user_development_workflows() {
+        let template_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("templates/lsharp-language-guide.md");
+        let skill = std::fs::read_to_string(template_path).unwrap();
+
+        for expected in [
+            "## Quick Start",
+            "lsharp compile",
+            "lsharp test",
+            "lsharp doc",
+            "## CLI Workflows",
+            "## Metadata-Driven Development",
+            "## Modules And Packages",
+            "## Deployment Targets",
+            "## Known Limits",
+            "Linux x86_64",
+            "Mac Apple Silicon",
+        ] {
+            assert!(skill.contains(expected), "skill に {expected} が必要");
+        }
+    }
+
+    #[test]
+    fn test_lsharp_language_guide_template_points_to_docs_guides_as_ssot() {
+        let template_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("templates/lsharp-language-guide.md");
+        let skill = std::fs::read_to_string(template_path).unwrap();
+
+        for expected in [
+            "docs/guides/",
+            "docs/guides/metadata-driven-development.md",
+            "docs/guides/ide-setup.md",
+            "docs/guides/deployment-targets.md",
+            "docs/guides/stdlib-guide.md",
+            "docs/guides/error-reference.md",
+            "docs/site.toml",
+            "正本",
+        ] {
+            assert!(skill.contains(expected), "skill に {expected} が必要");
+        }
     }
 }

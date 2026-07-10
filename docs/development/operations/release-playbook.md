@@ -1,6 +1,6 @@
 # リリースプレイブック
 
-L# の **手元実行手順** を定義する。配布チャネル、tier1/tier2、署名、package manager 方針の正本は [`release-distribution-signing.md`](./release-distribution-signing.md)。このページは自動化スクリプト `scripts/release-playbook.sh` と並走するオペレーター向け runbook に絞る。stable の配布モデルは **native-only archive** を正本とし、host launcher + guest component は rollback compatibility asset として扱う。
+L# の **手元実行手順** を定義する。配布チャネル、supported product/release targets、署名、package manager 方針の正本は [`release-distribution-signing.md`](./release-distribution-signing.md)。このページは自動化スクリプト `scripts/release-playbook.sh` と並走するオペレーター向け runbook に絞る。stable の配布モデルは **native-only archive** を正本とし、host launcher + guest component は rollback compatibility asset として扱う。
 
 ## 概要
 
@@ -44,6 +44,8 @@ vim Cargo.toml   # version = "0.x.y"
 | 7 | `bash scripts/ci/release-smoke.sh dist/lsharp-<version>-<target>.<ext>` | 生成済み release archive を展開し、checksum 検証と packaged binary smoke を行う |
 | 8 | チェックサム生成 | `scripts/checksum.sh` |
 
+Mac + Lima VM 上の Linux x86_64 actual self-regeneration は local operator evidence であり、この required CI 検証や `ci-gate-v2` の job graphには含めない。
+
 ### 3. アーティファクト生成
 
 リリースビルド成果物:
@@ -56,7 +58,7 @@ vim Cargo.toml   # version = "0.x.y"
 | release playbook 検証成果物 | `target/release-playbook/` 以下の bootstrap / smoke 出力 |
 | チェックサム | SHA-256 チェックサムファイル |
 
-配布対象の tier1 / tier2 切り分けと命名規則は `release-distribution-signing.md` と `artifact-policy.md` を参照。
+配布対象の supported product/release target 切り分けと命名規則は `release-distribution-signing.md` と `artifact-policy.md` を参照。
 
 release workflow では `scripts/ci/build-native.sh` で actual native `stage3-native/program.native` を生成し、`NATIVE_ONLY_PROGRAM` として `scripts/release.sh` に渡した直後に `scripts/ci/release-smoke.sh dist/lsharp-<version>-<target>.<ext>` を実行する。展開済み archive 上では `program.native` / `manifest.json` / `README.md` / `LICENSE` / `checksums.txt`、manifest の `rollback_anchor`、`checksums.txt`、packaged `lsharp` alias の `--version` / `check` / `fmt` / `compile` / `test` / `doc` smoke を通す。README / fresh-clone 側でも `scripts/smoke_test_readme.sh` が inline Quick Start fixture を使って checksum / compile / test / doc の導線を再確認する。
 
@@ -93,6 +95,7 @@ git push origin v<version>
 
 - `release-smoke` job は downloaded artifact を実行できる runner に絞るため、現時点では `aarch64-apple-darwin` archive を macOS arm64 runner で再検証する
 - `build` job の workflow-local artifact は native-only archive のみを同梱する。host launcher + companion sidecar は rollback compatibility asset として別扱いにする
+- Linux x86_64 (`x86_64-unknown-linux-gnu`) も supported product/release target だが、current workflow には Actions 内の native-only program 生成と publish wiring がない。local Lima replay を required CI に追加せず、target 用の自動生成経路を別途接続する
 - `release` job は build 済み archive を download した後、`bash scripts/checksum.sh dist > dist/checksums.txt` で release-level checksum asset を生成してから公開する
 - バージョン文字列にハイフンが含まれる場合 (例: `v0.2.0-rc1`) はプレリリースとして公開
 - `release_notes` は GitHub の自動生成を使用
@@ -120,8 +123,8 @@ Rollback anchor
 1. GitHub Releases ページで新規リリースを作成
 2. タグ `v<version>` を選択
 3. リリースノートを記載（変更点、破壊的変更、移行手順）
-4. アーティファクトをアップロード
-5. `lsharp-<version>-<target>.component.wasm` を guest component asset として添付
+4. native-only archive をアップロード
+5. rollback compatibility を同時公開する場合だけ host launcher archive / `lsharp-<version>-<target>.component.wasm` を添付
 6. `dist/checksums.txt` を checksum asset として添付
 7. `Rollback anchor` セクションに tag / asset 名 / checksum 名を記録
 
@@ -142,14 +145,16 @@ evidence archive には top-level `manifest.json` / `actual-stage23-gap.json` �
 
 ### 9. Native-only official replacement track
 
-native-only を公式配布へ完全置換する作業のうち、V2-13 target matrix、V2-14 native-only official archive layout、V2-15 native-only release smoke / rollback anchor は完了済みである。native-only archive を stable / nightly の正本にし、host launcher + embedded guest component は rollback compatibility 用の互換成果物へ降格する。
+native-only を公式配布へ完全置換する作業のうち、V2-13 target matrix、V2-14 native-only official archive layout、V2-15 native-only release smoke / rollback anchor の基盤は完了済みである。native-only archive を stable / nightly の正本にし、host launcher + embedded guest component は rollback compatibility 用の互換成果物へ降格する。
+
+Supported product/release targets は Mac Apple Silicon (`aarch64-apple-darwin`) と Linux x86_64 (`x86_64-unknown-linux-gnu`) の 2 つに限る。macOS Intel (`x86_64-apple-darwin`)、Windows (`x86_64-pc-windows-msvc`)、Linux ARM (`aarch64-unknown-linux-gnu`) は out of support scope であり、Rosetta / Mach-O smoke、archived Authenticode design、Linux ARM cross-build の未完了を公式配布 blocker にしない。
 
 V2-14 の native-only official archive layout は `program.native`、`manifest.json`、`checksums.txt`、README/LICENSE、target metadata を必須 payload とする。`program.native` は target native executable、`manifest.json` は target triple / archive schema version / source commit / native backend evidence / rollback compatibility asset 参照を持つ。現行の host launcher + embedded guest component archive と `lsharp.component.wasm` companion sidecar は stable 既定 payload ではなく rollback compatibility asset へ降格する。
 
 現時点で残る target-specific blocker は以下である。
 
-1. actual native self-regeneration は `aarch64-apple-darwin` と Linux x86_64 server priority track で完了している。Linux x86_64 は tag release 前に Mac + Lima VM 上で `NATIVE_LINUX_X86_HOSTGEN_VM_ARTIFACT_ID=<release-id> scripts/ci/native-linux-x86-selfregen.sh` を実行し、stage2/stage3 compare 証跡を local artifact として残す。`x86_64-apple-darwin` は `scripts/ci/native-macos-x86-local-smoke.sh` の Rosetta local smoke で const-42 実行 coverage の入口を確認し、加えて `test_e2e_native_macos_x86_selfhost_macho_object_links_and_executes_under_rosetta` で selfhost linkable Mach-O object smoke を確認する。ただし actual self-regeneration / release smoke は未完了として扱う。`x86_64-pc-windows-msvc` の Tier1 official gate は未完了。
-2. `x86_64-pc-windows-msvc` は native backend spec 上 BLOCKED で、COFF/PE runtime/link/smoke と Authenticode gate が必要。
+1. actual native self-regeneration evidence は `aarch64-apple-darwin` と Linux x86_64 server priority track で保持する。Linux x86_64 は Mac + Lima VM 上で `NATIVE_LINUX_X86_HOSTGEN_VM_ARTIFACT_ID=<release-id> scripts/ci/native-linux-x86-selfregen.sh` を実行して local artifact を残すが、required GitHub Actions job にはしない。
+2. current `.github/workflows/release.yml` は Actions 内で actual native program を生成できる `aarch64-apple-darwin` だけを自動 publish する。Linux x86_64 の native-only program 生成 / smoke / publish wiring は supported-target gap として残る。
 3. `scripts/release.sh` / `scripts/ci/release-smoke.sh` / `.github/workflows/release.yml` は native-only official archive layout を stable release path として扱う。host launcher + embedded guest component は rollback compatibility asset としてのみ扱う。
 
 この track を再開する場合は、V2-13 target matrix の正本である `docs/language/native-backend-spec.md` を確認し、target-specific blocker を解消したうえで native-only official archive layout / release smoke / rollback anchor を `release-distribution-signing.md` と workflow に同期する。
