@@ -2645,13 +2645,14 @@ fn test_e2e_native_ops04_linux_x86_server_target_contract() {
         "TODO.md の正本に Linux x86_64 server target の優先 task が必要"
     );
     for expected in [
-        "x86 selfhost runtime helper parity",
-        "Linux runtime trampoline",
-        "real ELF object/link artifact",
+        "`V2-13a-5` actual Linux x86_64 stage2/stage3 VM regeneration",
+        "function 12",
+        "stage3 は `param=2 local=0 stack=1056 ir_len=1`",
+        "local VM release gate policy",
     ] {
         assert!(
             current_remaining_section.contains(expected),
-            "TODO.md の V2-13a は Linux x86_64 blocker `{}` を明記すること",
+            "TODO.md の V2-13a は current Linux x86_64 blocker `{}` を明記すること",
             expected
         );
     }
@@ -2663,12 +2664,12 @@ fn test_e2e_native_ops04_linux_x86_server_target_contract() {
         "Linux x86_64 server priority track",
         "`x86_64-unknown-linux-gnu` | Linux x86_64",
         "supported product/release target",
-        "Ubuntu x86_64 VM",
+        "Mac Apple Silicon 上の Ubuntu x86_64 Lima VM",
+        "scripts/ci/lima/lsharp-linux-x86.yaml",
         "scripts/ci/native-linux-x86-local-vm-smoke.sh",
         "scripts/ci/native-linux-x86-hostgen-vm-exec.sh",
-        "x86 selfhost runtime helper parity",
-        "Linux runtime trampoline",
-        "real ELF object/link artifact",
+        "runtime helper / Linux runtime trampoline / real ELF object/link artifact は固定済み",
+        "stage2/stage3 function 12",
     ] {
         assert!(
             native_spec_content.contains(expected),
@@ -2676,6 +2677,28 @@ fn test_e2e_native_ops04_linux_x86_server_target_contract() {
             expected
         );
     }
+    assert!(
+        !native_spec_content.contains(
+            "full actual Linux native self-regeneration の未完了 blocker は、AArch64 actual stage23 と同等の **x86 selfhost runtime helper parity**"
+        ),
+        "native-backend-spec.md は完了済み helper/trampoline/ELF を current blocker に戻さないこと"
+    );
+
+    let phase11_plan =
+        project_root.join("docs/development/planning/phase11-implementation-plan.md");
+    let phase11_plan_content = std::fs::read_to_string(&phase11_plan)
+        .expect("phase11-implementation-plan.md の読み込みに失敗");
+    assert!(
+        phase11_plan_content.contains(
+            "test_e2e_stage23_actual_native_self_regeneration_harness_stage2_stage3_match"
+        ) && phase11_plan_content.contains(
+            "Darwin arm64 の representative actual self-regeneration は完了"
+        ) && phase11_plan_content.contains("Linux x86_64 の残件は `V2-13a-5`")
+            && !phase11_plan_content.contains(
+                "true stage1-native -> stage2-native -> stage3-native の実バイナリ再生成・実行比較は未達"
+            ),
+        "phase11 implementation plan は V2-08 完了と Linux V2-13a-5 の境界へ同期すること"
+    );
 
     let ci_workflow = project_root.join(".github/workflows/ci.yml");
     let ci_workflow_content =
@@ -2787,7 +2810,7 @@ fn test_e2e_native_ops04_linux_x86_server_target_contract() {
         "stage-entry-ir-trace.txt",
         "LSHARP_NATIVE_LINUX_X86_ACTUAL_HEAP_BYTES",
         "LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_SIZE",
-        "ACTUAL_CHUNK_SIZE=\"${LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_SIZE:-4}\"",
+        "ACTUAL_CHUNK_SIZE=\"${LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_SIZE:-64}\"",
         "LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_RETRIES",
         "run_actual_stage_chunked",
         "run_actual_stage_range",
