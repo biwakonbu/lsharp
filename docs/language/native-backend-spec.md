@@ -76,6 +76,8 @@ limactl start lsharp-linux-x86
 
 `scripts/ci/native-linux-x86-hostgen-vm-exec.sh` は replay 前に `/tmp` の空き容量が既定 4GiB 以上あることを確認し、actual transport の既定 chunk を 64 にする。失敗時も `LSHARP_NATIVE_LINUX_X86_KEEP_VM_WORK_DIR=1` を明示しない限り VM workdir を削除する。次回 replay は exclusive lock 取得後、current workdir と replay lock を保護した上で 24 時間超の stale guest workdir も削除する。ローカル `ci-artifacts/native-linux-x86-hostgen-vm/` は current/reuse artifact を保護しながら最新 8 世代へ制限する。調査で一時的に全世代を残す場合は `LSHARP_NATIVE_LINUX_X86_ARTIFACT_RETENTION_COUNT` を明示的に増やす。
 
+`LSHARP_NATIVE_LINUX_X86_STAGE3_SOURCE_OVERLAY` は、回収済み actual stage2 artifact を再利用して source shape の A/B 診断を短時間で行うための入力である。stage2 reuse と metadata / progress / raw boundary のいずれかの diagnostic-only mode を必須とし、full stage2/stage3 compare には使用できない。この overlay 結果は failure point の分類にだけ使い、actual self-regeneration の pass 証跡にはしない。
+
 host 側の selfhost `emit-native` で生成した Linux x86_64 code artifact を VM 内でリンク・実行する split smoke は `scripts/ci/native-linux-x86-hostgen-vm-exec.sh` で固定する。このスクリプトは `LSHARP_NATIVE_LINUX_X86_CODE_ARTIFACT` を指定して host-side selfhost artifact generation test を実行し、`limactl` 経由で Ubuntu x86_64 VM に `code.bin` を渡し、VM 内で `program.native` の `actual_exit_code` を確認する。
 
 actual self-regeneration の重い `stage1 -> stage2` harvest に入る前の fail-fast 診断として、同スクリプトは `LSHARP_NATIVE_LINUX_X86_STAGE1_PROGRESS=1` を受け取り、materialized `actual-stage1/program.native` から `actual-stage1-progress.txt` / `actual-stage1-progress-stderr.txt` を artifact 化できる。この progress artifact は parser / defn body shape の早期切り分け用であり、`stage2` / `stage3` transport の byte-for-byte compare を置き換えるものではない。

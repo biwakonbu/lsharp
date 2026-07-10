@@ -13,6 +13,7 @@ REUSE_ACTUAL_STAGE1_ARTIFACT_DIR_INPUT="${LSHARP_NATIVE_LINUX_X86_REUSE_ACTUAL_S
 REUSE_ACTUAL_STAGE1=0
 REUSE_ACTUAL_STAGE2_ARTIFACT_DIR_INPUT="${LSHARP_NATIVE_LINUX_X86_REUSE_ACTUAL_STAGE2_ARTIFACT_DIR:-}"
 REUSE_ACTUAL_STAGE2=0
+STAGE3_SOURCE_OVERLAY_INPUT="${LSHARP_NATIVE_LINUX_X86_STAGE3_SOURCE_OVERLAY:-}"
 STAGE1_PROGRESS_REQUESTED=0
 STAGE2_METADATA_REQUESTED=0
 HOST_VM_WORK_DIR_CREATED=0
@@ -43,6 +44,15 @@ if [[ -n "${REUSE_ACTUAL_STAGE2_ARTIFACT_DIR_INPUT}" ]]; then
   fi
 else
   REUSE_ACTUAL_STAGE2_ARTIFACT_DIR=""
+fi
+if [[ -n "${STAGE3_SOURCE_OVERLAY_INPUT}" ]]; then
+  if [[ "${STAGE3_SOURCE_OVERLAY_INPUT}" = /* ]]; then
+    STAGE3_SOURCE_OVERLAY="${STAGE3_SOURCE_OVERLAY_INPUT}"
+  else
+    STAGE3_SOURCE_OVERLAY="${ROOT_DIR}/${STAGE3_SOURCE_OVERLAY_INPUT}"
+  fi
+else
+  STAGE3_SOURCE_OVERLAY=""
 fi
 if [[ -n "${LSHARP_NATIVE_LINUX_X86_STAGE1_PROGRESS:-}" ]]; then
   STAGE1_PROGRESS_REQUESTED=1
@@ -97,6 +107,38 @@ require_vm_free_space() {
   echo "VM free space gate: available=${available_bytes} required=${VM_MIN_FREE_BYTES}"
 }
 
+validate_stage3_source_overlay_request() {
+  if [[ -z "${STAGE3_SOURCE_OVERLAY_INPUT}" ]]; then
+    return 0
+  fi
+  if [[ -z "${REUSE_ACTUAL_STAGE2_ARTIFACT_DIR_INPUT}" ]]; then
+    echo "ERROR: stage3 source overlay requires actual stage2 artifact reuse" >&2
+    exit 1
+  fi
+  case "${STAGE3_SOURCE_OVERLAY}/" in
+    "${ARTIFACT_DIR}/"*)
+      echo "ERROR: stage3 source overlay is under output artifact dir: ${STAGE3_SOURCE_OVERLAY}" >&2
+      exit 1
+      ;;
+  esac
+  if [[ ! -s "${STAGE3_SOURCE_OVERLAY}" ]]; then
+    echo "ERROR: stage3 source overlay is missing or empty: ${STAGE3_SOURCE_OVERLAY}" >&2
+    exit 1
+  fi
+  if [[ ! -f "${STAGE3_SOURCE_OVERLAY}" ]]; then
+    echo "ERROR: stage3 source overlay is not a regular file: ${STAGE3_SOURCE_OVERLAY}" >&2
+    exit 1
+  fi
+  if [[ -z "${LSHARP_NATIVE_LINUX_X86_STAGE3_METADATA_ONLY:-}" \
+    && -z "${LSHARP_NATIVE_LINUX_X86_STAGE3_PROGRESS_ONLY:-}" \
+    && -z "${LSHARP_NATIVE_LINUX_X86_STAGE3_RAW_PAYLOAD_BOUNDARY_ONLY:-}" \
+    && -z "${LSHARP_NATIVE_LINUX_X86_STAGE3_RAW_PAYLOAD_PRODUCTION_BOUNDARY_ONLY:-}" ]]; then
+    echo "ERROR: stage3 source overlay requires metadata/progress/raw boundary diagnostic-only mode" >&2
+    exit 1
+  fi
+}
+
+validate_stage3_source_overlay_request
 cd "${ROOT_DIR}"
 
 if ! command -v limactl >/dev/null 2>&1; then
@@ -273,6 +315,10 @@ if [[ -n "${REUSE_ACTUAL_STAGE2_ARTIFACT_DIR_INPUT}" ]]; then
   done
   rm -rf "${ARTIFACT_DIR}/stage2-debug/src"
   cp -a "${REUSE_ACTUAL_STAGE2_ARTIFACT_DIR}/stage2-debug/src" "${ARTIFACT_DIR}/stage2-debug/src"
+  if [[ -n "${STAGE3_SOURCE_OVERLAY_INPUT}" ]]; then
+    cp "${STAGE3_SOURCE_OVERLAY}" "${ARTIFACT_DIR}/stage2-debug/src/App/Seed.ls"
+    echo "using diagnostic stage3 source overlay: ${STAGE3_SOURCE_OVERLAY}"
+  fi
   echo "reusing actual stage2 artifact: ${REUSE_ACTUAL_STAGE2_ARTIFACT_DIR}"
 elif [[ -n "${REUSE_ACTUAL_STAGE1_ARTIFACT_DIR_INPUT}" ]]; then
   REUSE_ACTUAL_STAGE1=1

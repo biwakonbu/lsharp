@@ -1501,6 +1501,75 @@ fn test_native_linux_x86_hostgen_vm_script_can_reuse_actual_stage2_artifact() {
 }
 
 #[test]
+fn test_native_linux_x86_hostgen_vm_script_can_overlay_reused_stage2_source_for_diagnostics_only() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+    let validate_body = shell_function_body(&script, "validate_stage3_source_overlay_request");
+
+    assert!(
+        script.contains(
+            r#"STAGE3_SOURCE_OVERLAY_INPUT="${LSHARP_NATIVE_LINUX_X86_STAGE3_SOURCE_OVERLAY:-}""#
+        ) && script.contains(r#"STAGE3_SOURCE_OVERLAY="${STAGE3_SOURCE_OVERLAY_INPUT}""#)
+            && script
+                .contains(r#"STAGE3_SOURCE_OVERLAY="${ROOT_DIR}/${STAGE3_SOURCE_OVERLAY_INPUT}""#,),
+        "hostgen VM script は stage3 diagnostic source overlay を repo 相対または絶対パスで受け付けるべき"
+    );
+    assert!(
+        validate_body.contains(r#"[[ -z "${REUSE_ACTUAL_STAGE2_ARTIFACT_DIR_INPUT}" ]]"#)
+            && validate_body
+                .contains("stage3 source overlay requires actual stage2 artifact reuse"),
+        "source overlay は actual stage2 artifact reuse と同時指定した場合だけ許可するべき"
+    );
+    assert!(
+        validate_body.contains(r#"[[ ! -s "${STAGE3_SOURCE_OVERLAY}" ]]"#)
+            && validate_body.contains("stage3 source overlay is missing or empty"),
+        "source overlay は存在する非空ファイルだけを許可するべき"
+    );
+    assert!(
+        validate_body.contains("stage3 source overlay is under output artifact dir"),
+        "source overlay は output artifact の rm -rf で入力自身を削除する配置を拒否するべき"
+    );
+    for diagnostic_only_flag in [
+        "LSHARP_NATIVE_LINUX_X86_STAGE3_METADATA_ONLY",
+        "LSHARP_NATIVE_LINUX_X86_STAGE3_PROGRESS_ONLY",
+        "LSHARP_NATIVE_LINUX_X86_STAGE3_RAW_PAYLOAD_BOUNDARY_ONLY",
+        "LSHARP_NATIVE_LINUX_X86_STAGE3_RAW_PAYLOAD_PRODUCTION_BOUNDARY_ONLY",
+    ] {
+        assert!(
+            validate_body.contains(diagnostic_only_flag),
+            "source overlay は明示的な diagnostic-only flag を要求するべき: {diagnostic_only_flag}"
+        );
+    }
+    assert!(
+        validate_body.contains(
+            "stage3 source overlay requires metadata/progress/raw boundary diagnostic-only mode"
+        ) && !validate_body.contains("STAGE3_NORMAL_SETUP_ONLY")
+            && !validate_body.contains("STAGE3_NORMAL_PAYLOAD_SHAPE_ONLY"),
+        "source overlay は full compare や対象外の診断モードへ進めないよう許可する ONLY flag を限定するべき"
+    );
+
+    let reused_source_copy = script
+        .find(
+            r#"cp -a "${REUSE_ACTUAL_STAGE2_ARTIFACT_DIR}/stage2-debug/src" "${ARTIFACT_DIR}/stage2-debug/src""#,
+        )
+        .expect("stage2 reuse source tree を output artifact へコピーすること");
+    let overlay_copy = script
+        .find(r#"cp "${STAGE3_SOURCE_OVERLAY}" "${ARTIFACT_DIR}/stage2-debug/src/App/Seed.ls""#)
+        .expect("output artifact の stage2-debug Seed.ls を overlay で置換すること");
+    let vm_source_transfer = script
+        .find(
+            r#"tar -C "${ARTIFACT_DIR}/stage2-debug" --exclude '._*' -cf - src | limactl shell "${VM_NAME}" -- tar -C "${VM_WORK_DIR}/actual-stage2" -xf -"#,
+        )
+        .expect("output artifact の stage2 source tree を VM へ転送すること");
+    assert!(
+        reused_source_copy < overlay_copy && overlay_copy < vm_source_transfer,
+        "source overlay は output artifact の Seed.ls を VM 転送前に置換するべき"
+    );
+}
+
+#[test]
 fn test_native_linux_x86_hostgen_vm_script_guards_actual_replay_with_vm_side_lock() {
     let script_path =
         selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
