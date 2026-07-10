@@ -1926,6 +1926,38 @@ fn test_native_linux_x86_hostgen_vm_script_cleans_vm_work_dir_from_host_exit_tra
 }
 
 #[test]
+fn test_native_linux_x86_hostgen_vm_script_prunes_stale_guest_work_dirs_after_lock() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+    let prune_body = shell_function_body(&script, "prune_stale_vm_work_dirs");
+    let guest = script
+        .split("<<'VM_SCRIPT'")
+        .nth(1)
+        .expect("hostgen VM script の guest heredoc を取り出せること");
+    let lock_pos = guest
+        .find("\nacquire_actual_replay_lock\n")
+        .expect("guest は actual replay lock を取得すること");
+    let prune_pos = guest
+        .find("\nprune_stale_vm_work_dirs\n")
+        .expect("guest は stale VM workdir を掃除すること");
+
+    assert!(
+        prune_body.contains("find /tmp")
+            && prune_body.contains(r#"-name 'lsharp-native-linux-x86-hostgen-vm-*'"#)
+            && prune_body.contains("-mtime +1")
+            && prune_body.contains(r#"! -path "${VM_WORK_DIR}""#)
+            && prune_body.contains(r#"! -path "${VM_REPLAY_LOCK_DIR}""#),
+        "guest cleanup は current workdir / replay lock を保護し、24時間超の旧 hostgen workdir だけを削除するべき"
+    );
+    assert!(
+        lock_pos < prune_pos,
+        "stale workdir cleanup は別の active replay を消さないよう exclusive lock 取得後に実行するべき"
+    );
+}
+
+#[test]
 fn test_native_linux_x86_hostgen_artifact_pruner_keeps_protected_generations() {
     let root = std::env::temp_dir().join(format!(
         "lsharp-native-linux-x86-artifact-pruner-{}-{}",

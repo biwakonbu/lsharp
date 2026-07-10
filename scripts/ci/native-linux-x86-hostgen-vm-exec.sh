@@ -1444,6 +1444,18 @@ acquire_actual_replay_lock() {
   trap release_actual_replay_lock EXIT
 }
 
+prune_stale_vm_work_dirs() {
+  find /tmp \
+    -mindepth 1 \
+    -maxdepth 1 \
+    -type d \
+    -name 'lsharp-native-linux-x86-hostgen-vm-*' \
+    -mtime +1 \
+    ! -path "${VM_WORK_DIR}" \
+    ! -path "${VM_REPLAY_LOCK_DIR}" \
+    -exec rm -rf -- {} +
+}
+
 write_actual_selfregen_failure_summary() {
   local phase="$1"
   local exit_code="$2"
@@ -1778,6 +1790,7 @@ collect_stage3_raw_payload_production_boundary_markers() {
 }
 
 acquire_actual_replay_lock
+prune_stale_vm_work_dirs
 if [[ -z "${REUSE_ACTUAL_STAGE2}" || "${REUSE_ACTUAL_STAGE2}" = "0" ]]; then
   python3 materialize-actual-bundle.py actual-stage1 stage1-code.bin entrypoint-offset.txt
   set +e
