@@ -5308,7 +5308,7 @@ fn test_selfhost_compile_src_decl_pairs_continuations_snapshot_state_slots() {
         .and_then(|tail| tail.split("\n(defn ").next())
         .expect("continue-compile-src-decl-pairs-step-64 body を取り出せること");
     let chunked = compiler_mode
-        .split("(defn compile-all-src-decl-pairs-chunked")
+        .split("(defn compile-all-src-decl-pairs-chunked [pairs idx n ftable data-ref functions]")
         .nth(1)
         .and_then(|tail| tail.split("\n(defn ").next())
         .expect("compile-all-src-decl-pairs-chunked body を取り出せること");
@@ -6840,7 +6840,7 @@ fn test_selfhost_parse_defn_body_branch_roots_body_before_finalize() {
     );
     assert!(
         parse_body.contains(
-            "(do\n      (root_push spans)\n      (root_push pos-ref)\n      (root_push src)\n      (let [body (parse-expr-v3 spans pos-ref src)]\n        (do\n          (root_push body)\n          (let [parsed (finalize-defn-body-v3 body defn-node)]\n            (do\n              (root_push parsed)\n              (p-expect spans pos-ref 1) ;; ) を消費\n              (root_pop)\n              (root_pop)\n              (root_pop)\n              (root_pop)\n              (root_pop)\n              parsed)))))"
+            "(do\n      (root_push spans)\n      (root_push pos-ref)\n      (root_push src)\n      (let [parsed-defn-body (parse-expr-v3 spans pos-ref src)]\n        (do\n          (root_push parsed-defn-body)\n          (let [parsed (finalize-defn-body-v3 parsed-defn-body defn-node)]\n            (do\n              (root_push parsed)\n              (p-expect spans pos-ref 1) ;; ) を消費\n              (root_pop)\n              (root_pop)\n              (root_pop)\n              (root_pop)\n              (root_pop)\n              parsed)))))"
         ) && !parse_body.contains("finalize-defn-parsed-body-v3"),
         "parse-defn-bodyless-or-body-v3 の body branch は parser state と body を caller 側で root してから p-expect 前に finalize-defn-body-v3 へ渡し、第5引数 handoff と p-expect 後の body local 再利用を避けるべき"
     );
