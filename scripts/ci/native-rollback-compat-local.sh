@@ -150,6 +150,10 @@ mkdir -p \
   "${HOST_WORK_DIR}/dist-linux"
 COPYFILE_DISABLE=1 git archive --format=tar "${SOURCE_COMMIT}" \
   | tar -xf - -C "${HOST_WORK_DIR}/source"
+(
+  cd "${HOST_WORK_DIR}/source"
+  git init -q
+)
 
 LINUX_BUILD_IMAGE_PULL_ATTEMPTED=1
 docker run --rm \

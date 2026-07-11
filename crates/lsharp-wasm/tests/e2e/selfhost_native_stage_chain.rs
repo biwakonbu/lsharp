@@ -58053,6 +58053,19 @@ fn test_native_rollback_compatibility_local_producer_bounds_build_storage() {
             && !script.contains("CARGO_TARGET_DIR=${quoted_vm_work}/target"),
         "rollback producer は repo/cargo のない Lima VM 内で build しないこと"
     );
+    let archive_extract = script
+        .find("git archive --format=tar \"${SOURCE_COMMIT}\"")
+        .expect("rollback producer は Docker source を git archive から作ること");
+    let source_git_init = script.find("git init -q").expect(
+        "rollback producer は archived Docker source を temporary git repository にすること",
+    );
+    let docker_build = script
+        .find("docker run --rm")
+        .expect("rollback producer は Docker build を実行すること");
+    assert!(
+        archive_extract < source_git_init && source_git_init < docker_build,
+        "rollback producer は guest component sidecar の project-root 解決前に archived source を git init すること"
+    );
 }
 
 #[test]
