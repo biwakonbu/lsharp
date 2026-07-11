@@ -5,7 +5,7 @@ L# の **手元実行手順** を定義する。配布チャネル、supported p
 ## 概要
 
 ```
-バージョンバンプ → CI 検証 → native-only archive 生成 → チェックサム → タグ作成 → GitHub Release
+バージョンバンプ → CI 検証 → target-native input 事前生成 → タグ作成 → workflow dispatch → GitHub Release
 ```
 
 - channel / target matrix は `release-distribution-signing.md`
@@ -52,15 +52,15 @@ Mac + Lima VM 上の Linux x86_64 actual self-regeneration は local operator ev
 
 | アーティファクト | 説明 |
 |---|---|
-| native-only CLI body | `ci-artifacts/native-proxy/<version>-aarch64-apple-darwin/stage3-native/program.native` |
+| immutable App.Cli input bundle | archive root の `program.native` + `manifest.json`。target ごとに bundle 自体の SHA-256 を固定 |
 | native-only archive alias | archive 内 `lsharp`（`program.native` と同一 bytes） |
-| rollback compatibility asset | host launcher archive / `lsharp.component.wasm` companion sidecar |
+| rollback compatibility asset | target ごとの実在 host launcher archive。archive 自体の SHA-256 を固定 |
 | release playbook 検証成果物 | `target/release-playbook/` 以下の bootstrap / smoke 出力 |
 | チェックサム | SHA-256 チェックサムファイル |
 
 配布対象の supported product/release target 切り分けと命名規則は `release-distribution-signing.md` と `artifact-policy.md` を参照。
 
-release workflow では `scripts/ci/build-native.sh` で actual native `stage3-native/program.native` を生成し、`NATIVE_ONLY_PROGRAM` として `scripts/release.sh` に渡した直後に `scripts/ci/release-smoke.sh dist/lsharp-<version>-<target>.<ext>` を実行する。展開済み archive 上では `program.native` / `manifest.json` / `README.md` / `LICENSE` / `checksums.txt`、manifest の `rollback_anchor`、`checksums.txt`、packaged `lsharp` alias の `--version` / `check` / `fmt` / `compile` / `test` / `doc` smoke を通す。README / fresh-clone 側でも `scripts/smoke_test_readme.sh` が inline Quick Start fixture を使って checksum / compile / test / doc の導線を再確認する。
+release workflow は事前生成済み bundle を URL + SHA-256 で受け取り、archive root の `program.native` / `manifest.json` をそれぞれ `NATIVE_ONLY_PROGRAM` / `NATIVE_ONLY_PROGRAM_MANIFEST` として `scripts/release.sh` に渡す。同時に実在する rollback archive を `ROLLBACK_COMPATIBILITY_ASSET_PATH` へ渡し、`scripts/ci/release-smoke.sh <stable-archive> <rollback-archive>` で照合する。展開済み stable archive 上では `program.native` / `manifest.json` / `native-program-manifest.json` / `README.md` / `LICENSE` / `checksums.txt`、manifest の `rollback_anchor`、packaged `lsharp` alias の `--version` / `check` / `fmt` / `compile` / `test` / `doc` smoke を通す。README / fresh-clone 側でも `scripts/smoke_test_readme.sh` が inline Quick Start fixture を使って checksum / compile / test / doc の導線を再確認する。
 
 ### 4. チェックサム生成
 
@@ -71,7 +71,7 @@ bash scripts/checksum.sh
 
 全リリースアーティファクトに SHA-256 チェックサムを付与する。native-only archive と rollback compatibility asset を同じ release に添付する場合は、両方に個別チェックサムを付ける。
 
-### 5. タグ作成と自動リリース
+### 5. タグ作成と stable input の固定
 
 ```bash
 git tag v<version>
@@ -80,22 +80,28 @@ git push origin v<version>
 
 - タグ名は `v` プレフィックス付き（例: `v0.2.0`）
 - タグはリリースコミットに対して作成する
-- `v*` タグの push により `.github/workflows/release.yml` が自動起動する
+- tag push だけでは stable workflow を起動しない。入力 URL / SHA-256 が揃う前の公開を防ぐため、次節の `workflow_dispatch` を明示実行する
+- `aarch64-apple-darwin` は Mac Apple Silicon、`x86_64-unknown-linux-gnu` は Mac + Lima x86_64 VM で実 `App.Cli` を事前生成・実行検証する
+- 各 target の input bundle は archive root に `program.native` と `manifest.json` を置く。manifest は `target` / `entry_module: App.Cli` / `source: src/App/Cli.ls` / `source_commit` / `program_sha256` を持つ。producer は clean worktree で実行し、未コミット bytes を `HEAD` provenance として公開しない
+- `ROLLBACK_VERSION=v<version> bash scripts/ci/native-rollback-compat-local.sh` を Mac + Lima で実行し、両 target の実在する `lsharp-v<version>-<target>-host-launcher.tar.gz` を rollback input にする
+- input bundle と rollback archive は runner から HTTPS download できる場所へ置き、それぞれの SHA-256 を publish 前に固定する
 
 ### 6. 自動リリース workflow (`.github/workflows/release.yml`)
 
-`v*` タグを push すると以下の順で自動実行される:
+Actions の `Release` workflow を対象 tag の commit から開き、`Run workflow` で `release_tag` と 2 target 分の `*_url` / `*_sha256` を入力する。workflow は以下の順で実行される:
 
 | ジョブ | 内容 |
 |------|------|
 | `verify` | `cargo test` + `cargo clippy` + `cargo fmt --check` |
-| `build` | Actions 内で actual native program を生成できる `aarch64-apple-darwin` を対象に `build-native.sh` → `NATIVE_ONLY_PROGRAM=<.../stage3-native/program.native>` → `scripts/release.sh` で native-only archive を作成 |
-| `release-smoke` | macOS arm64 runner 上で `aarch64-apple-darwin` archive (`lsharp-{version}-aarch64-apple-darwin.tar.gz`) を download し、`scripts/ci/release-smoke.sh` を Rust toolchain 無しで再実行 |
-| `release` | `softprops/action-gh-release` で GitHub Release を作成し、native-only archive / `dist/checksums.txt` を添付 |
+| `build` | 両 target の input bundle / rollback archive を download して入力 SHA-256 を検証し、`scripts/release.sh` と `scripts/ci/release-smoke.sh` へ渡す |
+| `release-smoke` | macOS arm64 / Ubuntu x86_64 runner で各 target の stable archive と rollback archive を download し、Rust toolchain 無しで再実行 |
+| `release` | `softprops/action-gh-release` で指定済み tag の GitHub Release を作成し、2 native-only archive、2 rollback archive、`dist/checksums.txt` だけを添付 |
 
-- `release-smoke` job は downloaded artifact を実行できる runner に絞るため、現時点では `aarch64-apple-darwin` archive を macOS arm64 runner で再検証する
-- `build` job の workflow-local artifact は native-only archive のみを同梱する。host launcher + companion sidecar は rollback compatibility asset として別扱いにする
-- Linux x86_64 (`x86_64-unknown-linux-gnu`) の actual self-regeneration は local Lima VM で完了済み。current workflow には実 `App.Cli` native bundle を immutable release input として取り込む導線と publish wiring がないため、local Lima replay を required CI に追加せず release input / smoke / publish を別途接続する
+- `release-smoke` job は各 archive を実行できる target-native runner に分ける
+- 外部 input は download 中から 512 MiB の hard limit を適用し、失敗時に一時領域を削除する。展開前にも entry 数、圧縮/展開サイズ、path traversal、symlink/hardlink、regular-file whitelist を検証する
+- `build` job の workflow-local artifact は native-only archive と対応する rollback compatibility archive のみを同梱する
+- Linux x86_64 の heavy actual self-regeneration は Mac + Lima の事前生成 gate に閉じ、GitHub required CI / release job の `needs` には入れない
+- representative build artifact と experimental RC/evidence artifact は stable inputにも GitHub Release asset にも使わない
 - `release` job は build 済み archive を download した後、`bash scripts/checksum.sh dist > dist/checksums.txt` で release-level checksum asset を生成してから公開する
 - バージョン文字列にハイフンが含まれる場合 (例: `v0.2.0-rc1`) はプレリリースとして公開
 - `release_notes` は GitHub の自動生成を使用
@@ -130,18 +136,32 @@ Rollback anchor
 
 stable / nightly の扱い、署名順序、package manager 更新順は `release-distribution-signing.md` を参照。
 
-### 8. native-only release evidence
+### 8. immutable App.Cli input の準備
 
-Darwin arm64 の actual native self-regeneration artifact は stable native-only archive の source program として扱う。workflow 内の `experimental-native-rc` job 名は互換上残るが、内容は `Native-only release evidence` として `build-native.sh` / `native-only-rc-smoke.sh` の証跡を保存する。
+Mac Apple Silicon producer と Mac + Lima producer は、最終的に target ごとの staging directoryへ `program.native` と検証済み `manifest.json` を出力する。stable workflow へ渡す bundle は次の形に固定する。
 
 ```bash
-NATIVE_PROXY_ARTIFACT_ID=<version>-aarch64-apple-darwin bash scripts/ci/build-native.sh
-bash scripts/ci/native-only-rc-smoke.sh ci-artifacts/native-proxy/<version>-aarch64-apple-darwin
-tar -C ci-artifacts/native-proxy -czf dist/experimental-native-rc-<version>-aarch64-apple-darwin.tar.gz <version>-aarch64-apple-darwin
-bash scripts/checksum.sh dist > dist/checksums.txt
+tar -C <target-staging-dir> -czf <target>-native-input-bundle.tar.gz program.native manifest.json
+shasum -a 256 <target>-native-input-bundle.tar.gz
+shasum -a 256 lsharp-v<version>-<target>-host-launcher.tar.gz
 ```
 
-evidence archive には top-level `manifest.json` / `actual-stage23-gap.json` と、`stage1-native` / `stage2-native` / `stage3-native` の `program.o`, `runtime.o`, `linker-response.txt`, `program.native`, `stdout.txt`, `stderr.txt`, `summary.json` を含める。release notes には stable native-only archive の source evidence として `scripts/ci/native-only-rc-smoke.sh` の結果を明記する。
+Mac producer は `scripts/ci/native-macos-aarch64-selfhost-release.sh`、Linux producer は `scripts/ci/native-linux-x86-hostgen-vm-exec.sh` の target-only `src/App/Cli.ls` export を使う。Linux の full self-regeneration は green な stage2/stage3 fixed-point evidence を先に得る operator gateであり、stable workflow はその heavy replay を再実行しない。
+
+両 target の program / manifest / rollback archive が揃ったら、workflow input を公開する前に同じ入力を local gateへ渡す。
+
+```bash
+VERSION=v<version> \
+MACOS_APP_CLI_ARTIFACT_DIR=<mac-staging-dir> \
+LINUX_APP_CLI_ARTIFACT_DIR=<linux-staging-dir> \
+MACOS_ROLLBACK_ARCHIVE=<mac-rollback-archive> \
+LINUX_ROLLBACK_ARCHIVE=<linux-rollback-archive> \
+  bash scripts/ci/native-official-release-local.sh
+```
+
+この gate は macOS archive を host上、Linux x86_64 archive を Lima VM 上で `scripts/release.sh` / `scripts/ci/release-smoke.sh` に通す。stable / rollback manifest の `target` / `version` / `source_commit` は recursive smoke で一致を確認する。GitHub workflow は同じ immutable inputs を再 package / smoke するが、heavy self-regeneration 自体は繰り返さない。
+
+macOS payload を署名する場合は bundle 固定前に `program.native` を署名・verify し、署名後 bytes の `program_sha256` を manifest に記録する。workflow は immutable manifest/hash を壊す再署名をせず、secret がある場合に署名 verify と notarization submit を行う。
 
 ### 9. Native-only official replacement track
 
@@ -151,11 +171,11 @@ Supported product/release targets は Mac Apple Silicon (`aarch64-apple-darwin`)
 
 V2-14 の native-only official archive layout は `program.native`、`manifest.json`、`checksums.txt`、README/LICENSE、target metadata を必須 payload とする。`program.native` は target native executable、`manifest.json` は target triple / archive schema version / source commit / native backend evidence / rollback compatibility asset 参照を持つ。現行の host launcher + embedded guest component archive と `lsharp.component.wasm` companion sidecar は stable 既定 payload ではなく rollback compatibility asset へ降格する。
 
-現時点で残る target-specific blocker は以下である。
+current stable contract は以下である。
 
-1. actual native self-regeneration evidence は `aarch64-apple-darwin` と Linux x86_64 server priority track で保持する。Linux x86_64 は Mac + Lima VM 上で `NATIVE_LINUX_X86_HOSTGEN_VM_ARTIFACT_ID=<release-id> scripts/ci/native-linux-x86-selfregen.sh` を実行して local artifact を残すが、required GitHub Actions job にはしない。`stage23-map-insert-staged-merge-full-compare-v1` は stage2/stage3 byte-for-byte 一致と stderr 0 で pass 済み。
-2. current `.github/workflows/release.yml` は Actions 内で representative native evidence を生成できる `aarch64-apple-darwin` だけを自動 package する。両 supported target とも stable input は representative artifact ではなく実 `App.Cli` native bundle に切り替え、Linux x86_64 の archive / smoke / publish wiring を接続する必要がある。
-3. `scripts/release.sh` / `scripts/ci/release-smoke.sh` / `.github/workflows/release.yml` は native-only official archive layout を stable release path として扱う。host launcher + embedded guest component は rollback compatibility asset としてのみ扱う。
+1. actual native self-regeneration evidence は `aarch64-apple-darwin` と Linux x86_64 server priority track で保持する。Linux x86_64 の full replay は Mac + Lima VM の local operator gate であり、required GitHub Actions job にはしない。
+2. 両 supported target の stable input は representative artifact ではなく、実 `App.Cli` の `program.native` + manifest bundle と実在 rollback compatibility archive に固定する。
+3. `.github/workflows/release.yml` は input hashを検証した後に `scripts/release.sh` / `scripts/ci/release-smoke.sh` へ渡し、2 target の stable assetだけを publish する。
 
 この track を再開する場合は、V2-13 target matrix の正本である `docs/language/native-backend-spec.md` を確認し、target-specific blocker を解消したうえで native-only official archive layout / release smoke / rollback anchor を `release-distribution-signing.md` と workflow に同期する。
 

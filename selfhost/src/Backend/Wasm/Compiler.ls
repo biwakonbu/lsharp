@@ -2794,7 +2794,17 @@
               result)))))))
 
 (defn compile-defn-functions-chunked [decls idx n ftable functions]
-  (continue-compile-defn-functions-step-64 decls n ftable (compile-defn-functions-step-64 decls idx n ftable functions)))
+  (let [state (compile-defn-functions-step-64 decls idx n ftable functions)]
+    (do
+      (let [state-slot (root_push state)]
+        (do
+          (let [result (continue-compile-defn-functions-step-64 decls n ftable state)]
+            (do
+              (root_push result)
+              (root_set state-slot result)
+              (root_pop)
+              (root_pop)
+              result)))))))
 
 (defn compile-defn-functions [decls idx n ftable functions]
   (if (>= idx n)

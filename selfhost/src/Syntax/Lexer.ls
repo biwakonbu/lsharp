@@ -382,42 +382,53 @@
 
 ;; === メインのトークナイザー ===
 
-;; トークンを1つ読み取り、(kind, end_pos) をペアで返す
-;; ペア表現: kind * 1000000 + end_pos (簡易エンコード)
+;; トークンを1つ読み取り、(kind, end_pos) を packed scalar で返す。
+;; 未終端文字列の末尾 escape は source-len + 1 を返せるため、それより大きい radix を使う。
+(defn lex-result-base [source-len] (+ source-len 2))
+
+(defn make-lex-result [kind end-pos source-len]
+  (+ (* kind (lex-result-base source-len)) end-pos))
+
+(defn lex-result-kind [result source-len]
+  (/ result (lex-result-base source-len)))
+
+(defn lex-result-end [result source-len]
+  (- result (* (lex-result-kind result source-len) (lex-result-base source-len))))
+
 (defn lex-minus-token [src pos len]
   (if (< (+ pos 1) len)
     (if (== (string-char-at src (+ pos 1)) 62) ;; >
-      (+ (* 51 1000000) (+ pos 2)) ;; -> -> Arrow
+      (make-lex-result 51 (+ pos 2) len) ;; -> -> Arrow
       (if (is-digit-char (string-char-at src (+ pos 1)))
         (lex-number-token src pos len)
         (let [end (scan-symbol-end src (+ pos 1) len)]
           (let [kind (classify-symbol-span src pos end)]
-            (+ (* kind 1000000) end)))))
-    (+ (* 20 1000000) (+ pos 1))))
+            (make-lex-result kind end len)))))
+    (make-lex-result 20 (+ pos 1) len)))
 
 (defn lex-number-token [src pos len]
   (let [int-end (scan-digits src (+ pos 1) len)]
     (let [end (scan-number-end src int-end len)]
       (if (> end int-end)
-        (+ (* 11 1000000) end) ;; Float
-        (+ (* 10 1000000) end))))) ;; Int
+        (make-lex-result 11 end len) ;; Float
+        (make-lex-result 10 end len))))) ;; Int
 
 (defn lex-symbol-token [src pos len]
   (let [end (scan-symbol-end src (+ pos 1) len)]
     (let [kind (classify-symbol-span src pos end)]
-      (+ (* kind 1000000) end))))
+      (make-lex-result kind end len))))
 
 (defn lex-one-structured-rest [src pos len c]
   (if (is-digit-char c)
     (lex-number-token src pos len)
     (if (is-symbol-start c)
       (lex-symbol-token src pos len)
-      (+ (* 99 1000000) (+ pos 1))))) ;; unknown -> skip
+      (make-lex-result 99 (+ pos 1) len)))) ;; unknown -> skip
 
 (defn lex-one-structured [src pos len c]
   (if (== c 34) ;; " -> String
     (let [end (scan-string-end src (+ pos 1) len)]
-      (+ (* 12 1000000) end))
+      (make-lex-result 12 end len))
     (if (== c 45) ;; - -> Arrow / Symbol
       (lex-minus-token src pos len)
       (lex-one-structured-rest src pos len c))))
@@ -425,42 +436,42 @@
 (defn lex-tilde-token [src pos len]
   (if (< (+ pos 1) len)
     (if (== (string-char-at src (+ pos 1)) 64) ;; @
-      (+ (* 56 1000000) (+ pos 2)) ;; ~@ -> SpliceUnquote
-      (+ (* 55 1000000) (+ pos 1))) ;; ~ -> Unquote
-    (+ (* 55 1000000) (+ pos 1))))
+      (make-lex-result 56 (+ pos 2) len) ;; ~@ -> SpliceUnquote
+      (make-lex-result 55 (+ pos 1) len)) ;; ~ -> Unquote
+    (make-lex-result 55 (+ pos 1) len)))
 
 (defn lex-one-meta-special-rest [src pos len c]
-  (if (== c 35) (+ (* 57 1000000) (+ pos 1)) ;; # -> Hash
-    (if (== c 64) (+ (* 58 1000000) (+ pos 1)) ;; @ -> At
+  (if (== c 35) (make-lex-result 57 (+ pos 1) len) ;; # -> Hash
+    (if (== c 64) (make-lex-result 58 (+ pos 1) len) ;; @ -> At
       (lex-one-structured src pos len c))))
 
 (defn lex-one-meta-special [src pos len c]
-  (if (== c 39) (+ (* 54 1000000) (+ pos 1)) ;; ' -> Quote
+  (if (== c 39) (make-lex-result 54 (+ pos 1) len) ;; ' -> Quote
     (if (== c 126) ;; ~ -> Unquote / SpliceUnquote
       (lex-tilde-token src pos len)
       (lex-one-meta-special-rest src pos len c))))
 
 (defn lex-one-meta [src pos len c]
-  (if (== c 58) (+ (* 50 1000000) (+ pos 1)) ;; : -> Colon
-    (if (== c 124) (+ (* 52 1000000) (+ pos 1)) ;; | -> Pipe
-      (if (== c 46) (+ (* 53 1000000) (+ pos 1)) ;; . -> Dot
+  (if (== c 58) (make-lex-result 50 (+ pos 1) len) ;; : -> Colon
+    (if (== c 124) (make-lex-result 52 (+ pos 1) len) ;; | -> Pipe
+      (if (== c 46) (make-lex-result 53 (+ pos 1) len) ;; . -> Dot
         (lex-one-meta-special src pos len c)))))
 
 (defn lex-one-delim-rest [src pos len c]
-  (if (== c 123) (+ (* 4 1000000) (+ pos 1)) ;; { -> LBrace
-    (if (== c 125) (+ (* 5 1000000) (+ pos 1)) ;; } -> RBrace
+  (if (== c 123) (make-lex-result 4 (+ pos 1) len) ;; { -> LBrace
+    (if (== c 125) (make-lex-result 5 (+ pos 1) len) ;; } -> RBrace
       (lex-one-meta src pos len c))))
 
 (defn lex-one-delim [src pos len c]
-  (if (== c 40) (+ (* 0 1000000) (+ pos 1)) ;; ( -> LParen
-    (if (== c 41) (+ (* 1 1000000) (+ pos 1)) ;; ) -> RParen
-      (if (== c 91) (+ (* 2 1000000) (+ pos 1)) ;; [ -> LBracket
-        (if (== c 93) (+ (* 3 1000000) (+ pos 1)) ;; ] -> RBracket
+  (if (== c 40) (make-lex-result 0 (+ pos 1) len) ;; ( -> LParen
+    (if (== c 41) (make-lex-result 1 (+ pos 1) len) ;; ) -> RParen
+      (if (== c 91) (make-lex-result 2 (+ pos 1) len) ;; [ -> LBracket
+        (if (== c 93) (make-lex-result 3 (+ pos 1) len) ;; ] -> RBracket
           (lex-one-delim-rest src pos len c))))))
 
 (defn lex-one [src pos len]
   (if (>= pos len)
-    (+ (* 99 1000000) pos) ;; tok-eof
+    (make-lex-result 99 pos len) ;; tok-eof
     (let [c (string-char-at src pos)]
       (lex-one-delim src pos len c))))
 
@@ -514,17 +525,17 @@
   (let [next-tokens (append-span-token tokens kind start end)]
     (make-tokenize-state-from-appended-tokens done end next-tokens)))
 
-(defn append-lex-result-state [tokens result start]
-  (let [kind (/ result 1000000)]
-    (let [end-pos (- result (* kind 1000000))]
+(defn append-lex-result-state [tokens result start source-len]
+  (let [kind (lex-result-kind result source-len)]
+    (let [end-pos (lex-result-end result source-len)]
       (if (== kind 99)
         (let [next-tokens (append-span-token tokens 99 start start)]
           (make-tokenize-state-from-appended-tokens 1 start next-tokens))
         (let [next-tokens (append-span-token tokens kind start end-pos)]
           (make-tokenize-state-from-appended-tokens 0 end-pos next-tokens))))))
 
-(defn append-lex-result-state-rst [result start tokens]
-  (append-lex-result-state tokens result start))
+(defn append-lex-result-state-rst [result start tokens source-len]
+  (append-lex-result-state tokens result start source-len))
 
 ;; === T2-1: 値つきトークン (kind, start, end) 3つ組 ===
 
@@ -540,8 +551,8 @@
           ;; EOF トークン: (99, pos, pos)
           (append-span-token-state tokens 1 ws-pos 99 ws-pos ws-pos)
           (let [result (lex-one src ws-pos len)]
-            (let [kind (/ result 1000000)]
-              (let [end-pos (- result (* kind 1000000))]
+            (let [kind (lex-result-kind result len)]
+              (let [end-pos (lex-result-end result len)]
                 (if (== kind 99)
                   (append-span-token-state tokens 1 ws-pos 99 ws-pos ws-pos)
                   (append-span-token-state tokens 0 end-pos kind ws-pos end-pos))))))]

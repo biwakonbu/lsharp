@@ -8,6 +8,7 @@ ROLLBACK_ARCHIVE_PATH="${2:-}"
 WORK_DIR="${WORK_DIR:-$ROOT/target/ci/release-smoke}"
 EXTRACT_DIR="$WORK_DIR/extract"
 SMOKE_DIR="$WORK_DIR/smoke"
+MAX_ARCHIVE_BYTES="${LSHARP_RELEASE_SMOKE_MAX_ARCHIVE_BYTES:-536870912}"
 
 cleanup() {
   local exit_code=$?
@@ -67,6 +68,50 @@ if [[ ! -f "$ARCHIVE_PATH" ]]; then
 fi
 
 echo "=== release-smoke: unpack artifact ==="
+python3 - "$ARCHIVE_PATH" "$MAX_ARCHIVE_BYTES" <<'PY'
+import pathlib
+import stat
+import sys
+import tarfile
+import zipfile
+
+archive = pathlib.Path(sys.argv[1])
+limit = int(sys.argv[2])
+if archive.stat().st_size > limit:
+    raise SystemExit("archive compressed size exceeds limit")
+
+def validate_name(name: str) -> None:
+    path = pathlib.PurePosixPath(name)
+    if path.is_absolute() or ".." in path.parts:
+        raise SystemExit(f"unsafe archive entry: {name}")
+
+expanded = 0
+entries = 0
+if archive.name.endswith((".tar.gz", ".tgz")):
+    with tarfile.open(archive, "r:gz") as bundle:
+        for member in bundle.getmembers():
+            entries += 1
+            validate_name(member.name)
+            if not (member.isfile() or member.isdir()):
+                raise SystemExit(f"unsafe archive entry: {member.name}")
+            if member.isfile():
+                expanded += member.size
+elif archive.name.endswith(".zip"):
+    with zipfile.ZipFile(archive) as bundle:
+        for member in bundle.infolist():
+            entries += 1
+            validate_name(member.filename)
+            mode = member.external_attr >> 16
+            if stat.S_ISLNK(mode):
+                raise SystemExit(f"unsafe archive entry: {member.filename}")
+            expanded += member.file_size
+else:
+    raise SystemExit(f"unsupported archive format: {archive}")
+if entries > 256:
+    raise SystemExit("archive entry count exceeds limit")
+if expanded > limit:
+    raise SystemExit("archive expanded size exceeds limit")
+PY
 rm -rf "$WORK_DIR"
 mkdir -p "$EXTRACT_DIR" "$SMOKE_DIR"
 
@@ -149,13 +194,39 @@ else
     echo "ERROR: rollback compatibility guest component sidecar is not a Wasm binary: $COMPONENT_SIDECAR" >&2
     exit 1
   fi
+  if [[ ! -f "$ARCHIVE_ROOT/manifest.json" ]]; then
+    echo "ERROR: rollback compatibility manifest.json not found under $ARCHIVE_ROOT" >&2
+    exit 1
+  fi
+  python3 - "$ARCHIVE_ROOT/manifest.json" \
+    "${EXPECTED_ROLLBACK_TARGET:-}" \
+    "${EXPECTED_ROLLBACK_SOURCE_COMMIT:-}" \
+    "${EXPECTED_ROLLBACK_VERSION:-}" <<'PY'
+import json
+import pathlib
+import sys
+
+manifest = json.loads(pathlib.Path(sys.argv[1]).read_text())
+expected_target = sys.argv[2]
+expected_source_commit = sys.argv[3]
+expected_version = sys.argv[4]
+if manifest.get("archive_kind") != "rollback compatibility":
+    raise SystemExit("rollback compatibility manifest kind mismatch")
+if expected_target and manifest.get("target") != expected_target:
+    raise SystemExit("rollback compatibility manifest target mismatch")
+if expected_version and manifest.get("version") != expected_version:
+    raise SystemExit("rollback compatibility manifest version mismatch")
+if expected_source_commit and manifest.get("source_commit") != expected_source_commit:
+    raise SystemExit("rollback compatibility manifest source commit mismatch")
+for required in ("target", "version", "source_commit"):
+    if not manifest.get(required):
+        raise SystemExit(f"rollback compatibility manifest missing {required}")
+PY
 fi
 
-for optional in CHANGELOG.md; do
-  if [[ -e "$ARCHIVE_ROOT/$optional" ]]; then
-    echo "INFO: optional payload present: $optional"
-  fi
-done
+if [[ -e "$ARCHIVE_ROOT/CHANGELOG.md" ]]; then
+  echo "INFO: optional payload present: CHANGELOG.md"
+fi
 
 echo "=== release-smoke: verify checksums ==="
 while read -r expected relpath _; do
@@ -181,7 +252,14 @@ if [[ "$NATIVE_ONLY" == "1" ]]; then
   fi
   rollback_name="$(basename "$ROLLBACK_ARCHIVE_PATH")"
   rollback_sha256="$(hash_file "$ROLLBACK_ARCHIVE_PATH")"
-  python3 - "$ARCHIVE_ROOT/manifest.json" "$rollback_name" "$rollback_sha256" <<'PY'
+  python3 - \
+    "$ARCHIVE_ROOT/manifest.json" \
+    "$rollback_name" \
+    "$rollback_sha256" \
+    "$ARCHIVE_ROOT/native-program-manifest.json" \
+    "$PROGRAM_NATIVE" \
+    "${VERSION:-}" <<'PY'
+import hashlib
 import json
 import pathlib
 import sys
@@ -189,7 +267,12 @@ import sys
 manifest = json.loads(pathlib.Path(sys.argv[1]).read_text())
 rollback_name = sys.argv[2]
 rollback_sha256 = sys.argv[3]
+native_manifest = json.loads(pathlib.Path(sys.argv[4]).read_text())
+program_sha256 = hashlib.sha256(pathlib.Path(sys.argv[5]).read_bytes()).hexdigest()
+expected_version = sys.argv[6]
 anchor = manifest.get("rollback_anchor", {})
+if expected_version and manifest.get("version") != expected_version:
+    raise SystemExit("native-only manifest version mismatch")
 if anchor.get("asset") != rollback_name:
     raise SystemExit("rollback compatibility asset name mismatch")
 if anchor.get("rollback_sha256") != rollback_sha256:
@@ -198,6 +281,20 @@ native_input = manifest.get("native_program_input", {})
 input_manifest = native_input.get("manifest")
 if not input_manifest or not (pathlib.Path(sys.argv[1]).parent / input_manifest).is_file():
     raise SystemExit("native App.Cli input manifest is missing from archive")
+if native_manifest.get("target") != manifest.get("target"):
+    raise SystemExit("native App.Cli input target mismatch")
+if native_manifest.get("entry_module") != "App.Cli":
+    raise SystemExit("native App.Cli input entry_module must be App.Cli")
+if native_manifest.get("source") != "src/App/Cli.ls":
+    raise SystemExit("native App.Cli input source must be src/App/Cli.ls")
+if native_manifest.get("source_commit") != manifest.get("source_commit"):
+    raise SystemExit("native App.Cli input source commit mismatch")
+if native_manifest.get("selfhost_fixed_point") is not True:
+    raise SystemExit("native App.Cli input selfhost fixed-point evidence is required")
+if native_manifest.get("program_sha256") != program_sha256:
+    raise SystemExit("native App.Cli input program sha256 mismatch")
+if native_input.get("input_sha256") != program_sha256:
+    raise SystemExit("native App.Cli archive input sha256 mismatch")
 PY
   for required_checksum in program.native lsharp manifest.json native-program-manifest.json; do
     if ! awk '{print $2}' "$ARCHIVE_ROOT/checksums.txt" | grep -Fxq "$required_checksum"; then
@@ -227,7 +324,14 @@ cat > "$SMOKE_METADATA_SOURCE" <<'EOF'
 EOF
 
 echo "=== release-smoke: packaged binary ==="
-"$LSHARP_BIN" --version >/dev/null
+version_output="$("$LSHARP_BIN" --version)"
+if [[ -n "${VERSION:-}" ]]; then
+  expected_cli_version="lsharp ${VERSION#v}"
+  if [[ "${version_output}" != "${expected_cli_version}" ]]; then
+    echo "ERROR: packaged CLI version mismatch: expected=${expected_cli_version} actual=${version_output}" >&2
+    exit 1
+  fi
+fi
 if [[ "$NATIVE_ONLY" != "1" ]]; then
   "$LSHARP_LSP_BIN" --version >/dev/null
 fi
@@ -268,7 +372,20 @@ fi
 
 if [[ "$NATIVE_ONLY" == "1" ]]; then
   rollback_work_dir="${WORK_DIR}-rollback"
-  WORK_DIR="$rollback_work_dir" bash "$0" "$ROLLBACK_ARCHIVE_PATH"
+  read -r rollback_target rollback_source_commit rollback_version < <(
+    python3 - "$ARCHIVE_ROOT/manifest.json" <<'PY'
+import json
+import pathlib
+import sys
+manifest = json.loads(pathlib.Path(sys.argv[1]).read_text())
+print(manifest.get("target", ""), manifest.get("source_commit", ""), manifest.get("version", ""))
+PY
+  )
+  WORK_DIR="$rollback_work_dir" \
+    EXPECTED_ROLLBACK_TARGET="$rollback_target" \
+    EXPECTED_ROLLBACK_SOURCE_COMMIT="$rollback_source_commit" \
+    EXPECTED_ROLLBACK_VERSION="$rollback_version" \
+    bash "$0" "$ROLLBACK_ARCHIVE_PATH"
 fi
 
 echo "release-smoke: OK"

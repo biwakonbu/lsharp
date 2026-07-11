@@ -1983,6 +1983,42 @@ fn test_e2e_selfhost_wasmemit_root_set_instr() {
     assert_eq!(lines[12], "11", "body は end で終わること");
 }
 
+/// selfhost WasmEmit.ls: native 専用 opcode を黙って破棄せず fail-closed に拒否すること
+#[test]
+fn test_e2e_selfhost_wasmemit_rejects_native_only_opcodes() {
+    for opcode in [86, 87, 88] {
+        let harness = format!(
+            r#"
+(defn main []
+  (let [bytes (emit-ir-instr (vector-new 0) {opcode} 0)]
+    (do
+      (print (vector-length bytes))
+      0)))
+"#
+        );
+        let combined = format!(
+            "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+            selfhost_module("Token.ls"),
+            selfhost_module("AST.ls"),
+            selfhost_module("Lexer.ls"),
+            selfhost_module("Parser.ls"),
+            selfhost_module("IR.ls"),
+            selfhost_module("Compiler.ls"),
+            selfhost_module("WasiBackend.ls"),
+            selfhost_module("WasmEmit.ls"),
+            harness
+        );
+
+        let error = try_compile_and_run(&combined).expect_err(&format!(
+            "native 専用 opcode {opcode} を WasmEmit が黙って破棄している"
+        ));
+        assert!(
+            error.contains("unreachable") || error.contains("integer divide by zero"),
+            "native 専用 opcode {opcode} は明示的な trap で拒否すること: {error}"
+        );
+    }
+}
+
 /// selfhost compiler-mode: root runtime API が actual import semantics で動作すること
 #[test]
 fn test_e2e_selfhost_compiler_mode_root_runtime_api_works() {

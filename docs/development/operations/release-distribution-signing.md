@@ -35,10 +35,14 @@ Supported product/release targets は Mac Apple Silicon (`aarch64-apple-darwin`)
 
 V2-13 target matrix status は `docs/language/native-backend-spec.md` に正本化済みで、V2-14/V2-15 では native-only official archive layout / native-only release smoke / rollback anchor を stable 既定導線にした。current contract は次のとおり。
 
-1. `aarch64-apple-darwin` と Linux x86_64 server priority track の actual self-regeneration evidence を保持する。Linux x86_64 の actual replay は Mac + Lima VM の local operator gate `scripts/ci/native-linux-x86-selfregen.sh` で扱い、GitHub Actions の required CI job や release workflow の `needs` には含めない。`stage23-map-insert-staged-merge-full-compare-v1` は stage2/stage3 byte-for-byte 一致、同一 SHA-256、stderr 0 で pass 済み。
+1. `aarch64-apple-darwin` と Linux x86_64 server priority track の actual self-regeneration evidence を保持する。Linux x86_64 の actual replay は Mac + Lima VM の local operator gateで扱い、GitHub Actions の required CI job や release workflow の `needs` には含めない。
 2. `scripts/release.sh` と `scripts/ci/release-smoke.sh` は `program.native` / `manifest.json` / `checksums.txt` を native-only official archive の必須 payload として扱う。
-3. `.github/workflows/release.yml` は stable build path で `NATIVE_ONLY_RELEASE=1` を渡す。current automated path は representative evidence artifact を package しているため、stable input を実 `App.Cli` native bundle に置き換える必要がある。Linux x86_64 の archive / smoke / publish wiring と実在する rollback compatibility asset は supported-target gap として扱う。
+3. `.github/workflows/release.yml` は `workflow_dispatch` で release tag、両 target の immutable App.Cli bundle URL/SHA-256、実在 rollback archive URL/SHA-256 を必須入力として受け取る。各 bundle は archive root の `program.native` + `manifest.json` に固定し、入力 hash 検証後に `NATIVE_ONLY_PROGRAM` / `NATIVE_ONLY_PROGRAM_MANIFEST` / `ROLLBACK_COMPATIBILITY_ASSET_PATH` と `NATIVE_ONLY_RELEASE=1` を `scripts/release.sh` へ渡す。
 4. out of support scope の target に internal diagnostic coverage や archived design が残っていても、release blocker や必須 artifact にはしない。
+
+stable workflow は `aarch64-apple-darwin` と `x86_64-unknown-linux-gnu` の target-native runner で archive を作成し、`scripts/ci/release-smoke.sh <stable-archive> <rollback-archive>` を build直後と artifact download後に実行する。representative build-native artifact、experimental RC/evidence artifact、heavy Linux selfregen job は stable publish graphへ流さない。
+
+外部 input bundle / rollback archive は download 中から 512 MiB に制限し、展開前に圧縮/展開サイズ、entry 数、regular-file whitelist、path traversal、symlink/hardlink を検証する。stable archive と rollback archive は `target` / `version` / `source_commit` が一致しなければ publish gate を通さない。
 
 stable release は native-only official archive を既定導線にする。host launcher + embedded guest component は rollback compatibility asset として保持し、default payload の `lsharp.component.wasm` companion sidecar には戻さない。
 
@@ -126,7 +130,7 @@ spctl --assess -vv lsharp
 ```
 
 - embedded guest component (`.component.wasm`) は stable native-only archive の既定 payload ではない。rollback compatibility asset や investigation 用 asset として添付する場合だけ checksum / release asset 管理の対象にする。
-- release workflow は macOS runner 上で `APPLE_CODESIGN_IDENTITY` と `APPLE_NOTARY_KEYCHAIN_PROFILE` が両方ある場合にだけ signing / notarization hook を実行し、`codesign --verify --deep --strict` / `spctl --assess -vv` / `xcrun notarytool submit --wait` を通す。credential 未設定時は skip し、native-only archive / rollback compatibility / checksum 契約だけを維持する。
+- immutable input の `program_sha256` と packaged `program.native` を一致させるため、署名は input bundle の SHA-256 固定前に行う。release workflow は再署名せず、macOS runner 上で `APPLE_CODESIGN_IDENTITY` と `APPLE_NOTARY_KEYCHAIN_PROFILE` が両方ある場合にだけ `codesign --verify --deep --strict` / `spctl --assess -vv` / `xcrun notarytool submit --wait` を通す。credential 未設定時は skip し、native-only archive / rollback compatibility / checksum 契約だけを維持する。
 
 ### Windows Authenticode (archived / out of support scope)
 
@@ -161,15 +165,15 @@ signtool verify /pa lsharp.exe
 | 項目 | 現状 |
 |---|---|
 | `scripts/release-playbook.sh` | release binary を作り、bootstrap / default-path / README smoke まで実行可能 |
-| tag push 起点の自動 release workflow | `verify` / `build` / `release-smoke` / `release` まで接続済み |
-| checksum / native-only archive 自動生成 | `scripts/ci/build-native.sh` が actual native `stage3-native/program.native` を生成し、`scripts/release.sh` が `NATIVE_ONLY_PROGRAM` から archive 内 `program.native` / `lsharp` alias / `manifest.json` / `checksums.txt` を生成、`release` job が `bash scripts/checksum.sh dist > dist/checksums.txt` で attached checksum asset を追加、`scripts/ci/release-smoke.sh` が native-only payload と rollback anchor を workflow build job で検証 |
+| stable release workflow | tag 作成後の `workflow_dispatch` で immutable input URL/SHA-256 を受け、`verify` / 2 target `build` / 2 target `release-smoke` / `release` まで接続済み |
+| checksum / native-only archive 自動生成 | workflow が事前生成済み `program.native` + manifest bundle と rollback archive の SHA-256 を検証し、`scripts/release.sh` が archive 内 `program.native` / `lsharp` alias / `manifest.json` / `checksums.txt` を生成、`release` job が attached `dist/checksums.txt` を追加 |
 | macOS notarization | Mac Apple Silicon の secret-gated workflow hook まで接続済み。credential 未設定時は skip |
 | Windows 署名 | archived design。Windows は out of support scope のため現行 release workflow から外す |
 | package manager 配布 | 未実装 |
 
 ## workflow secrets
 
-- `APPLE_CODESIGN_IDENTITY`: `codesign --sign` に渡す Developer ID identity
+- `APPLE_CODESIGN_IDENTITY`: 事前署名済み input を要求する macOS verify/notarization hook の有効化条件
 - `APPLE_NOTARY_KEYCHAIN_PROFILE`: `xcrun notarytool submit --keychain-profile` に渡す profile 名
 
 現行 workflow はこれらの secret が未設定なら signing step を fail させず skip する。

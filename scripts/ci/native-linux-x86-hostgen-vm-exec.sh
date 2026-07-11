@@ -18,6 +18,8 @@ STAGE3_SOURCE_OVERLAY_INPUT="${LSHARP_NATIVE_LINUX_X86_STAGE3_SOURCE_OVERLAY:-}"
 STAGE3_TARGET_SOURCE="${LSHARP_NATIVE_LINUX_X86_STAGE3_TARGET_SOURCE:-}"
 STAGE3_TARGET_ONLY_REQUESTED="${LSHARP_NATIVE_LINUX_X86_STAGE3_TARGET_ONLY:-}"
 STAGE3_SOURCE_TREE_SHA256=""
+PACKAGE_VERSION="$(cargo metadata --no-deps --format-version 1 | python3 -c 'import json,sys; data=json.load(sys.stdin); print(next(p["version"] for p in data["packages"] if p["name"] == "lsharp-wasm"))')"
+EXPECTED_CLI_VERSION="lsharp ${PACKAGE_VERSION}"
 STAGE1_PROGRESS_REQUESTED=0
 STAGE2_METADATA_REQUESTED=0
 HOST_VM_WORK_DIR_CREATED=0
@@ -67,6 +69,28 @@ fi
 if [[ -n "${LSHARP_NATIVE_LINUX_X86_STAGE2_METADATA_ONLY:-}" ]]; then
   STAGE2_METADATA_REQUESTED=1
 fi
+
+require_safe_host_cleanup_path() {
+  local path="$1"
+  local label="$2"
+  case "${path}" in
+    ""|/|"${ROOT_DIR}"|"${ROOT_DIR}/"|*/../*|*/..)
+      echo "ERROR: refusing unsafe hostgen cleanup path for ${label}: ${path}" >&2
+      exit 1
+      ;;
+  esac
+  case "${label}:${path}" in
+    "artifact:${ROOT_DIR}/ci-artifacts/"*|"cargo:/tmp/lsharp-"*|"vm:/tmp/lsharp-"*) ;;
+    *)
+      echo "ERROR: refusing unsafe hostgen cleanup path for ${label}: ${path}" >&2
+      exit 1
+      ;;
+  esac
+}
+
+require_safe_host_cleanup_path "${ARTIFACT_DIR}" "artifact"
+require_safe_host_cleanup_path "${HOSTGEN_CARGO_TARGET_DIR}" "cargo"
+require_safe_host_cleanup_path "${VM_WORK_DIR}" "vm"
 
 cleanup_hostgen_cargo_target() {
   if [[ "${LSHARP_NATIVE_LINUX_X86_KEEP_CARGO_TARGET:-0}" = "1" ]]; then
@@ -213,6 +237,10 @@ validate_stage3_target_request() {
     echo "ERROR: stage3 target export cannot use a diagnostic source overlay" >&2
     exit 1
   fi
+  if [[ -n "$(git status --porcelain --untracked-files=all)" ]]; then
+    echo "ERROR: target-only App.Cli release provenance requires a clean worktree" >&2
+    exit 1
+  fi
   STAGE3_SOURCE_TREE_SHA256="$(python3 - "${REUSE_ACTUAL_STAGE2_ARTIFACT_DIR}" "${ROOT_DIR}/selfhost/src" <<'PY'
 import hashlib
 import json
@@ -225,6 +253,15 @@ summary_path = artifact_dir / "actual-selfregen-summary.json"
 if not summary_path.is_file():
     raise SystemExit(f"reusable stage2 artifact is missing green fixed-point summary: {summary_path}")
 summary = json.loads(summary_path.read_text())
+stage2_stdout_path = artifact_dir / "actual-stage2-stdout.txt"
+if not stage2_stdout_path.is_file():
+    raise SystemExit(f"reusable stage2 artifact is missing actual-stage2-stdout.txt: {stage2_stdout_path}")
+actual_stage2_stdout_sha256 = hashlib.sha256(stage2_stdout_path.read_bytes()).hexdigest()
+if actual_stage2_stdout_sha256 != summary.get("stage2_stdout_sha256"):
+    raise SystemExit(
+        "actual stage2 stdout does not match fixed-point summary: "
+        f"actual={actual_stage2_stdout_sha256} summary={summary.get('stage2_stdout_sha256')}"
+    )
 checks = [
     (summary.get("status") == "pass", "status"),
     (summary.get("target") == "x86_64-unknown-linux-gnu", "target"),
@@ -686,6 +723,7 @@ limactl shell "${VM_NAME}" -- env \
   LSHARP_NATIVE_LINUX_X86_STAGE3_TARGET_ONLY="${STAGE3_TARGET_ONLY_REQUESTED}" \
   LSHARP_NATIVE_LINUX_X86_SOURCE_COMMIT="${SOURCE_COMMIT}" \
   LSHARP_NATIVE_LINUX_X86_SOURCE_TREE_SHA256="${STAGE3_SOURCE_TREE_SHA256}" \
+  LSHARP_NATIVE_EXPECTED_CLI_VERSION="${EXPECTED_CLI_VERSION}" \
   LSHARP_NATIVE_LINUX_X86_REUSE_ACTUAL_STAGE1="${REUSE_ACTUAL_STAGE1}" \
   LSHARP_NATIVE_LINUX_X86_REUSE_ACTUAL_STAGE2="${REUSE_ACTUAL_STAGE2}" \
   bash -s -- "${VM_WORK_DIR}" <<'VM_SCRIPT'
@@ -693,6 +731,7 @@ set -euo pipefail
 
 VM_WORK_DIR="$1"
 cd "${VM_WORK_DIR}"
+EXPECTED_CLI_VERSION="${LSHARP_NATIVE_EXPECTED_CLI_VERSION:-}"
 
 HOST_OS="$(uname -s)"
 HOST_ARCH="$(uname -m)"
@@ -2251,7 +2290,8 @@ if [[ -n "${STAGE3_TARGET_ONLY}" && "${STAGE3_TARGET_ONLY}" != "0" ]]; then
   set -e
   if [[ "${actual_stage3_target_smoke_exit_code}" -ne 0 \
     || -s actual-stage3-target-smoke-stderr.txt \
-    || "$(tr -d '\r' <actual-stage3-target-smoke-stdout.txt)" != "lsharp 0.1.0" ]]; then
+    || -z "${EXPECTED_CLI_VERSION}" \
+    || "$(tr -d '\r' <actual-stage3-target-smoke-stdout.txt)" != "${EXPECTED_CLI_VERSION}" ]]; then
     write_actual_selfregen_failure_summary "stage3-target-smoke" "${actual_stage3_target_smoke_exit_code}" actual-stage3-target-smoke-stdout.txt actual-stage3-target-smoke-stderr.txt
     echo "ERROR: materialized stage3 target did not pass --version smoke" >&2
     exit 1
@@ -2269,6 +2309,7 @@ if [[ -n "${STAGE3_TARGET_ONLY}" && "${STAGE3_TARGET_ONLY}" != "0" ]]; then
   "source": "${ACTUAL_SOURCE_PATH}",
   "source_commit": "${SOURCE_COMMIT}",
   "source_tree_sha256": "${STAGE3_SOURCE_TREE_SHA256}",
+  "selfhost_fixed_point": true,
   "program_sha256": "${actual_stage3_program_sha}",
   "code_len": $(wc -c <actual-stage3/stage-code.bin),
   "stderr_bytes": $(wc -c <actual-stage3-stderr.txt)
@@ -2314,7 +2355,7 @@ copy_actual_stage_debug_artifact() {
   if ! limactl shell "${VM_NAME}" -- test -d "${VM_WORK_DIR}/${stage_dir}"; then
     return 0
   fi
-  rm -rf "${ARTIFACT_DIR}/${debug_dir}"
+  rm -rf "${ARTIFACT_DIR:?}/${debug_dir}"
   mkdir -p "${ARTIFACT_DIR}/${debug_dir}"
   for file in manifest.json stage-code.bin stage-data.bin stage-code-segments.tsv stage1-code.bin stage2-code.bin stage2-data.bin entrypoint-offset.txt function-start-len.txt main-func-idx.txt stage-entry-ir-trace.txt program.s runtime.s program.o runtime.o linker-response.txt program.native; do
     if limactl shell "${VM_NAME}" -- test -e "${VM_WORK_DIR}/${stage_dir}/${file}"; then
@@ -2350,6 +2391,30 @@ else
   limactl shell "${VM_NAME}" -- rm -rf "${VM_WORK_DIR}"
   HOST_VM_WORK_DIR_CREATED=0
   echo "VM workdir removed after successful evidence copy: ${VM_WORK_DIR}"
+fi
+
+if [[ "${STAGE3_TARGET_ONLY_REQUESTED}" = "1" ]]; then
+  cp "${ARTIFACT_DIR}/stage3-debug/program.native" "${ARTIFACT_DIR}/program.native"
+  chmod 755 "${ARTIFACT_DIR}/program.native"
+  cp "${ARTIFACT_DIR}/actual-selfregen-summary.json" "${ARTIFACT_DIR}/manifest.json"
+  rm -rf "${ARTIFACT_DIR}/stage1-debug" "${ARTIFACT_DIR}/stage2-debug" "${ARTIFACT_DIR}/stage3-debug"
+  find "${ARTIFACT_DIR}" -mindepth 1 -maxdepth 1 \
+    ! -name program.native \
+    ! -name manifest.json \
+    ! -name actual-selfregen-summary.json \
+    ! -name actual-stage3-target-smoke-stdout.txt \
+    ! -name actual-stage3-target-smoke-stderr.txt \
+    -exec rm -rf {} +
+  tar -czf "${ARTIFACT_DIR}/native-input-bundle.tar.gz" \
+    -C "${ARTIFACT_DIR}" \
+    program.native manifest.json \
+    actual-stage3-target-smoke-stdout.txt actual-stage3-target-smoke-stderr.txt
+  max_artifact_kib="${LSHARP_NATIVE_RELEASE_MAX_ARTIFACT_KIB:-524288}"
+  artifact_kib="$(du -sk "${ARTIFACT_DIR}" | awk '{print $1}')"
+  if (( artifact_kib > max_artifact_kib )); then
+    echo "ERROR: target-only release artifact is too large: ${artifact_kib} KiB > ${max_artifact_kib} KiB" >&2
+    exit 1
+  fi
 fi
 
 echo "native Linux x86_64 hostgen -> VM exec evidence collected."

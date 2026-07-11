@@ -1578,6 +1578,7 @@ fn test_native_linux_x86_hostgen_vm_script_can_export_reused_stage2_cli_bundle()
         r#""entry_module": "App.Cli""#,
         r#""source_commit": "${SOURCE_COMMIT}""#,
         r#""source_tree_sha256": "${STAGE3_SOURCE_TREE_SHA256}""#,
+        r#""selfhost_fixed_point": true"#,
         r#""source": "${ACTUAL_SOURCE_PATH}""#,
         r#""program_sha256": "${actual_stage3_program_sha}""#,
     ] {
@@ -1594,6 +1595,32 @@ fn test_native_linux_x86_hostgen_vm_script_can_export_reused_stage2_cli_bundle()
         ),
         "target-only mode は App.Cli payload を Seed payload と比較せず専用 summary で終了するべき"
     );
+    for bounded_output in [
+        r#"cp "${ARTIFACT_DIR}/stage3-debug/program.native" "${ARTIFACT_DIR}/program.native""#,
+        r#"cp "${ARTIFACT_DIR}/actual-selfregen-summary.json" "${ARTIFACT_DIR}/manifest.json""#,
+        r#"rm -rf "${ARTIFACT_DIR}/stage1-debug" "${ARTIFACT_DIR}/stage2-debug" "${ARTIFACT_DIR}/stage3-debug""#,
+        "LSHARP_NATIVE_RELEASE_MAX_ARTIFACT_KIB",
+        "target-only release artifact is too large",
+        "native-input-bundle.tar.gz",
+    ] {
+        assert!(
+            script.contains(bounded_output),
+            "target-only export は release payload を小さく保つ contract が必要: {bounded_output}"
+        );
+    }
+    for provenance_guard in [
+        "target-only App.Cli release provenance requires a clean worktree",
+        "git status --porcelain --untracked-files=all",
+        "actual stage2 stdout does not match fixed-point summary",
+        "actual-stage2-stdout.txt",
+        "stage2_stdout_sha256",
+        "LSHARP_NATIVE_EXPECTED_CLI_VERSION",
+    ] {
+        assert!(
+            script.contains(provenance_guard),
+            "target-only export は commit/source/payload provenance guard を持つべき: {provenance_guard}"
+        );
+    }
 }
 
 #[test]
@@ -2361,6 +2388,21 @@ fn test_linux_x86_file_segmented_harness_writes_segments_from_append_emit_vector
             && !writer_step_body.contains("result (ref-new (vector-new function-size))"),
         "Linux x86 file-segment writer は preallocated vector へ append せず、print path と同じ空 vector emit + declared slot padding を使うべき"
     );
+    let trailer_writer = source
+        .split("(defn write-x86-code-trailer-segments")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn write-x86-code-segments").next())
+        .expect("Linux x86 file-segment trailer writer が存在すること");
+    for helper in [
+        "emit-x86-selfhost-command-line-args-helper",
+        "emit-x86-selfhost-print-string-helper",
+        "emit-x86-selfhost-proc-exit-helper",
+    ] {
+        assert!(
+            trailer_writer.contains(helper),
+            "file-segment trailer writer は declared trailer size に含む CLI helper も出力するべき: {helper}"
+        );
+    }
 }
 
 #[test]
@@ -5487,6 +5529,29 @@ fn test_selfhost_compile_src_decl_pairs_continuations_snapshot_state_slots() {
 }
 
 #[test]
+fn test_wasm_compiler_defn_chunked_roots_initial_state_before_continuation() {
+    let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("Compiler.ls を読めること");
+    let chunked = compiler
+        .split("(defn compile-defn-functions-chunked [decls idx n ftable functions]")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("compile-defn-functions-chunked body を取り出せること");
+
+    assert!(
+        chunked.contains("state (compile-defn-functions-step-64 decls idx n ftable functions)")
+            && chunked.contains("state-slot (root_push state)")
+            && chunked.contains(
+                "result (continue-compile-defn-functions-step-64 decls n ftable state)",
+            )
+            && !chunked.contains(
+                "(continue-compile-defn-functions-step-64 decls n ftable (compile-defn-functions-step-64 decls idx n ftable functions))",
+            ),
+        "compile-defn-functions-chunked は nested call の誤 target lowering を避けるため initial state を root してから continuation に渡すべき"
+    );
+}
+
+#[test]
 fn test_wasm_compiler_source_defn_continuations_snapshot_state_slots() {
     let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
         .expect("Compiler.ls を読めること");
@@ -8224,6 +8289,51 @@ fn test_selfhost_lexer_tokenize_spans_step_512_roots_recursive_step() {
     assert!(
         step_pos < root_pos && root_pos < recurse_pos,
         "stage2 native tokenizer の 512-step 再帰では、次 state を recursive native call 前に root するべき"
+    );
+}
+
+#[test]
+fn test_selfhost_lexer_lex_result_encoding_scales_with_source_length() {
+    let source = selfhost_module("Lexer.ls");
+
+    assert!(
+        source.contains("(defn lex-result-base [source-len] (+ source-len 2))")
+            && source.contains("(defn make-lex-result [kind end-pos source-len]")
+            && source.contains("(defn lex-result-kind [result source-len]")
+            && source.contains("(defn lex-result-end [result source-len]")
+            && !source.contains("1000000"),
+        "Lexer の kind/end_pos encoding は 1,000,000-byte 境界で position を巻き戻さない動的 radix を使うべき"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_lexer_lex_result_round_trips_large_and_trailing_escape_positions() {
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
+        "lexer-dynamic-radix-round-trip",
+        &["Token.ls", "Lexer.ls"],
+        "src/App/HarnessMain.ls",
+        r#"(module App.HarnessMain)
+(import Syntax.Lexer)
+
+(defn main []
+  (let [large-len 1000000
+    large-result (make-lex-result 12 1000001 large-len)
+    trailing-len 2
+    trailing-result (make-lex-result 12 3 trailing-len)]
+    (do
+      (print (lex-result-kind large-result large-len))
+      (print (lex-result-end large-result large-len))
+      (print (lex-result-kind trailing-result trailing-len))
+      (print (lex-result-end trailing-result trailing-len))
+      0)))"#,
+        &[],
+    )
+    .expect("dynamic lexer radix round-trip harness 実行失敗");
+
+    assert_eq!(
+        parse_numeric_lines(&output),
+        vec![12, 1000001, 12, 3],
+        "large source 境界と末尾 backslash 相当 end-pos は kind へ carry せず round-trip するべき"
     );
 }
 
@@ -12796,6 +12906,204 @@ fn run_actual_native_self_regeneration_stage23_pair() -> Result<
     Ok((stage2_bundle, stage2_input, stage3_bundle, stage3_input))
 }
 
+fn run_actual_macos_aarch64_compiler_for_source(
+    label: &str,
+    compiler_input: &NativeEntrypointBundle,
+    source_path: &str,
+) -> Result<NativeEntrypointBundle, String> {
+    let compiler_bundle = build_native_host_bundle_with_canonical_artifacts_and_entrypoint(
+        &compiler_input.code_bytes,
+        &compiler_input.data_bytes,
+        compiler_input.entrypoint_offset,
+    )?;
+    let id = NATIVE_HOST_EXEC_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let dir = target_fixture_dir("e2e-native-fixtures", label, id);
+    std::fs::create_dir_all(&dir).map_err(|e| format!("{label} dir 作成失敗: {e}"))?;
+
+    let result = (|| {
+        let compiler_path = dir.join("compiler.native");
+        std::fs::write(&compiler_path, &compiler_bundle.program_binary)
+            .map_err(|e| format!("compiler.native 書き込み失敗: {e}"))?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&compiler_path, std::fs::Permissions::from_mode(0o755))
+                .map_err(|e| format!("compiler.native execute bit 設定失敗: {e}"))?;
+        }
+        let output = std::process::Command::new(&compiler_path)
+            .current_dir(selfhost_package_root())
+            .arg(source_path)
+            .output()
+            .map_err(|e| format!("actual compiler 実行失敗 ({source_path}): {e}"))?;
+        if !output.status.success() {
+            return Err(format!(
+                "actual compiler が失敗 ({source_path}): exit={:?} stdout={:?} stderr={:?}",
+                output.status.code(),
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            ));
+        }
+        if !output.stderr.is_empty() {
+            return Err(format!(
+                "actual compiler stderr が空でない ({source_path}): {:?}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
+        }
+        let transport =
+            extract_native_code_data_transport_output_with_optional_layout(&output.stdout, label);
+        let layout = transport.layout.ok_or_else(|| {
+            format!("actual compiler transport に entrypoint layout がない ({source_path})")
+        })?;
+        Ok(NativeEntrypointBundle {
+            function_start_len: layout.function_start_len,
+            main_func_idx: layout.main_func_idx,
+            declared_code_len: transport.declared_code_len,
+            declared_data_len: transport.declared_data_len,
+            entrypoint_offset: align_aarch64_entrypoint_to_function_start(
+                &transport.code_bytes,
+                layout.entrypoint_offset,
+            ),
+            code_bytes: transport.code_bytes,
+            data_bytes: transport.data_bytes,
+        })
+    })();
+
+    let _ = std::fs::remove_dir_all(&dir);
+    result
+}
+
+fn run_native_macos_aarch64_cli_bundle(
+    input: &NativeEntrypointBundle,
+    args: &[&str],
+) -> Result<NativeHostArtifactBundle, String> {
+    let bundle = build_native_cli_host_bundle_with_canonical_artifacts_and_entrypoint(
+        &input.code_bytes,
+        &input.data_bytes,
+        input.entrypoint_offset,
+    )?;
+    let id = NATIVE_HOST_EXEC_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let dir = target_fixture_dir("e2e-native-fixtures", "actual-app-cli-exec", id);
+    std::fs::create_dir_all(&dir).map_err(|e| format!("App.Cli exec dir 作成失敗: {e}"))?;
+
+    let result = (|| {
+        let program_path = dir.join("program.native");
+        std::fs::write(&program_path, &bundle.program_binary)
+            .map_err(|e| format!("App.Cli program.native 書き込み失敗: {e}"))?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&program_path, std::fs::Permissions::from_mode(0o755))
+                .map_err(|e| format!("App.Cli program.native execute bit 設定失敗: {e}"))?;
+        }
+        let output = std::process::Command::new(&program_path)
+            .current_dir(selfhost_package_root())
+            .args(args)
+            .output()
+            .map_err(|e| format!("App.Cli 実行失敗: {e}"))?;
+        Ok(NativeHostArtifactBundle {
+            program_object: bundle.program_object,
+            runtime_object: bundle.runtime_object,
+            response_text: bundle.response_text,
+            program_binary: bundle.program_binary,
+            stdout: output.stdout,
+            stderr: output.stderr,
+            exit_code: output.status.code().unwrap_or(-1),
+        })
+    })();
+
+    let _ = std::fs::remove_dir_all(&dir);
+    result
+}
+
+fn sha256_file_for_native_release(path: &std::path::Path) -> Result<String, String> {
+    let output = if cfg!(target_os = "macos") {
+        std::process::Command::new("shasum")
+            .args(["-a", "256"])
+            .arg(path)
+            .output()
+    } else {
+        std::process::Command::new("sha256sum").arg(path).output()
+    }
+    .map_err(|e| format!("SHA-256 command 実行失敗: {e}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "SHA-256 command が失敗: {:?}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+    String::from_utf8_lossy(&output.stdout)
+        .split_whitespace()
+        .next()
+        .map(str::to_string)
+        .ok_or_else(|| "SHA-256 output が空".to_string())
+}
+
+fn generate_actual_macos_aarch64_app_cli_release_program(
+    artifact_dir: &std::path::Path,
+) -> Result<NativeHostArtifactBundle, String> {
+    let (_, stage2_input, _, stage3_input) = run_actual_native_self_regeneration_stage23_pair()?;
+    if stage2_input != stage3_input {
+        return Err("actual stage2/stage3 compiler transport が fixed-point でない".to_string());
+    }
+    let app_cli_input = run_actual_macos_aarch64_compiler_for_source(
+        "actual-macos-aarch64-app-cli-compile",
+        &stage3_input,
+        "src/App/Cli.ls",
+    )?;
+    let bundle = run_native_macos_aarch64_cli_bundle(&app_cli_input, &["--version"])?;
+    let expected_version = format!("lsharp {}", env!("CARGO_PKG_VERSION"));
+    if bundle.exit_code != 0
+        || bundle.stdout != expected_version.as_bytes()
+        || !bundle.stderr.is_empty()
+    {
+        return Err(format!(
+            "actual App.Cli --version smoke が失敗: exit={} stdout={:?} stderr={:?}",
+            bundle.exit_code,
+            String::from_utf8_lossy(&bundle.stdout),
+            String::from_utf8_lossy(&bundle.stderr)
+        ));
+    }
+
+    let _ = std::fs::remove_dir_all(artifact_dir);
+    std::fs::create_dir_all(artifact_dir)
+        .map_err(|e| format!("App.Cli artifact dir 作成失敗: {e}"))?;
+    let program_path = artifact_dir.join("program.native");
+    std::fs::write(&program_path, &bundle.program_binary)
+        .map_err(|e| format!("release program.native 書き込み失敗: {e}"))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&program_path, std::fs::Permissions::from_mode(0o755))
+            .map_err(|e| format!("release program.native execute bit 設定失敗: {e}"))?;
+    }
+    let program_sha256 = sha256_file_for_native_release(&program_path)?;
+    let package_root = selfhost_package_root();
+    let project_root = package_root
+        .parent()
+        .ok_or_else(|| "selfhost package root の parent がない".to_string())?;
+    let commit_output = std::process::Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(project_root)
+        .output()
+        .map_err(|e| format!("source commit 取得失敗: {e}"))?;
+    if !commit_output.status.success() {
+        return Err("source commit 取得に失敗".to_string());
+    }
+    let source_commit = String::from_utf8_lossy(&commit_output.stdout)
+        .trim()
+        .to_string();
+    let manifest = format!(
+        "{{\"schema_version\":1,\"status\":\"pass\",\"artifact_kind\":\"native App.Cli release program\",\"target\":\"aarch64-apple-darwin\",\"entry_module\":\"App.Cli\",\"source\":\"src/App/Cli.ls\",\"source_commit\":\"{source_commit}\",\"selfhost_fixed_point\":true,\"program_sha256\":\"{program_sha256}\"}}\n"
+    );
+    std::fs::write(artifact_dir.join("manifest.json"), manifest)
+        .map_err(|e| format!("App.Cli manifest 書き込み失敗: {e}"))?;
+    std::fs::write(artifact_dir.join("smoke-stdout.txt"), &bundle.stdout)
+        .map_err(|e| format!("App.Cli smoke stdout 書き込み失敗: {e}"))?;
+    std::fs::write(artifact_dir.join("smoke-stderr.txt"), &bundle.stderr)
+        .map_err(|e| format!("App.Cli smoke stderr 書き込み失敗: {e}"))?;
+    Ok(bundle)
+}
+
 fn run_linux_x86_actual_native_self_regeneration_transport_stage(
     label: &str,
     stage_input: &NativeEntrypointBundle,
@@ -16450,8 +16758,11 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
         c15 (write-packed-code-segment prefix (emit-x86-selfhost-map-new-helper) c14)
         c16 (write-packed-code-segment prefix (emit-x86-selfhost-map-size-helper) c15)
         c17 (write-packed-code-segment prefix (emit-x86-selfhost-map-insert-helper) c16)
-        c18 (write-packed-code-segment prefix (emit-x86-selfhost-map-get-helper) c17)]
-    (write-packed-code-segment prefix (emit-x86-selfhost-file-exists-helper) c18)))
+        c18 (write-packed-code-segment prefix (emit-x86-selfhost-map-get-helper) c17)
+        c19 (write-packed-code-segment prefix (emit-x86-selfhost-file-exists-helper) c18)
+        c20 (write-packed-code-segment prefix (emit-x86-selfhost-command-line-args-helper) c19)
+        c21 (write-packed-code-segment prefix (emit-x86-selfhost-print-string-helper) c20)]
+    (write-packed-code-segment prefix (emit-x86-selfhost-proc-exit-helper) c21)))
 
 (defn write-x86-code-segments [prefix functions starts import-count import-stub-offset]
   (do
@@ -34119,10 +34430,54 @@ fn native_host_bundle_alloc_size(data_frontier: usize) -> usize {
         .max(0x1_0000_0000)
 }
 
+fn native_host_argv_projection_asm(exclude_process_argv0: bool) -> &'static str {
+    if exclude_process_argv0 {
+        "sub x19, x19, #1\n                  add x20, x20, #8\n                 "
+    } else {
+        ""
+    }
+}
+
+#[test]
+fn test_native_host_cli_argv_projection_excludes_process_argv0() {
+    assert_eq!(native_host_argv_projection_asm(false), "");
+    assert_eq!(
+        native_host_argv_projection_asm(true),
+        "sub x19, x19, #1\n                  add x20, x20, #8\n                 "
+    );
+}
+
 fn build_native_host_bundle_with_canonical_artifacts_and_entrypoint(
     code: &[u8],
     data: &[u8],
     entrypoint_offset: usize,
+) -> Result<NativeHostArtifactBundle, String> {
+    build_native_host_bundle_with_canonical_artifacts_entrypoint_and_argv_projection(
+        code,
+        data,
+        entrypoint_offset,
+        false,
+    )
+}
+
+fn build_native_cli_host_bundle_with_canonical_artifacts_and_entrypoint(
+    code: &[u8],
+    data: &[u8],
+    entrypoint_offset: usize,
+) -> Result<NativeHostArtifactBundle, String> {
+    build_native_host_bundle_with_canonical_artifacts_entrypoint_and_argv_projection(
+        code,
+        data,
+        entrypoint_offset,
+        true,
+    )
+}
+
+fn build_native_host_bundle_with_canonical_artifacts_entrypoint_and_argv_projection(
+    code: &[u8],
+    data: &[u8],
+    entrypoint_offset: usize,
+    exclude_process_argv0: bool,
 ) -> Result<NativeHostArtifactBundle, String> {
     if !host_native_exec_supported() {
         return Err(
@@ -34179,6 +34534,7 @@ fn build_native_host_bundle_with_canonical_artifacts_and_entrypoint(
                 .collect::<Vec<_>>()
                 .join(", ")
         };
+        let argv_projection = native_host_argv_projection_asm(exclude_process_argv0);
         let program_asm = format!(
             ".section __TEXT,__text\n\
              .extern _calloc\n\
@@ -34247,6 +34603,7 @@ fn build_native_host_bundle_with_canonical_artifacts_and_entrypoint(
                   b _lsharp_copy_argv_loop\n\
               _lsharp_copy_argv_done:\n\
                   mov x20, x25\n\
+                  {argv_projection}\
               _lsharp_call_entry:\n\
                   mov x0, x19\n\
                   mov x1, x20\n\
@@ -38959,9 +39316,9 @@ fn linux_x86_actual_stage1_diagnostic_seed_source() -> String {
           (print (string-char-at src 8))
           (print (lex-one src 0 (string-length src)))
           (let [lex0 (lex-one src 0 (string-length src))]
-            (let [kind0 (/ lex0 1000000)]
-              (let [base0 (* kind0 1000000)]
-                (let [end0 (- lex0 base0)]
+            (let [kind0 (lex-result-kind lex0 (string-length src))]
+              (let [base0 (* kind0 (lex-result-base (string-length src)))]
+                (let [end0 (lex-result-end lex0 (string-length src))]
                   (do
                     (print kind0)
                     (print base0)
@@ -39002,7 +39359,7 @@ fn linux_x86_actual_stage1_diagnostic_seed_source() -> String {
               (print (vector-get (vector-get manual-helper-state 2) 0))
               (print (vector-get (vector-get manual-helper-state 2) 1))
               (print (vector-get (vector-get manual-helper-state 2) 2))))
-          (let [manual-lex-state (append-lex-result-state (vector-new 32) 1 0)]
+          (let [manual-lex-state (append-lex-result-state (vector-new 32) 1 0 1)]
             (do
               (print (vector-get manual-lex-state 0))
               (print (vector-get manual-lex-state 1))
@@ -39012,8 +39369,8 @@ fn linux_x86_actual_stage1_diagnostic_seed_source() -> String {
               (print (vector-get (vector-get manual-lex-state 2) 2))))
           (let [manual-ws (skip-ws-loop src 0 (string-length src))]
             (let [manual-result (lex-one src manual-ws (string-length src))]
-              (let [manual-kind (/ manual-result 1000000)]
-                (let [manual-end (- manual-result (* manual-kind 1000000))]
+              (let [manual-kind (lex-result-kind manual-result (string-length src))]
+                (let [manual-end (lex-result-end manual-result (string-length src))]
                   (let [manual-next (append-span-token (vector-new 32) manual-kind manual-ws manual-end)]
                     (let [manual-step (make-tokenize-state 0 manual-end manual-next)]
                       (do
@@ -51995,6 +52352,33 @@ fn test_e2e_stage23_actual_native_self_regeneration_harness_stage2_stage3_match(
     );
 }
 
+/// V2-15: fixed-point selfhost compiler から実 App.Cli native release program を生成すること。
+#[test]
+#[ignore]
+fn test_e2e_native_macos_aarch64_actual_app_cli_release_program() {
+    if !host_native_exec_supported() {
+        return;
+    }
+    let artifact_dir = std::env::var_os("LSHARP_NATIVE_MACOS_AARCH64_APP_CLI_ARTIFACT_DIR")
+        .expect("LSHARP_NATIVE_MACOS_AARCH64_APP_CLI_ARTIFACT_DIR を指定すること");
+    let bundle = generate_actual_macos_aarch64_app_cli_release_program(&std::path::PathBuf::from(
+        artifact_dir,
+    ))
+    .expect("actual App.Cli native release program の生成に失敗");
+
+    assert_eq!(bundle.exit_code, 0, "App.Cli --version は成功すること");
+    let expected_version = format!("lsharp {}", env!("CARGO_PKG_VERSION"));
+    assert_eq!(
+        String::from_utf8_lossy(&bundle.stdout),
+        expected_version,
+        "App.Cli --version stdout が一致しない"
+    );
+    assert!(
+        bundle.stderr.is_empty(),
+        "App.Cli --version stderr は空であること"
+    );
+}
+
 /// V2-13a: Linux x86_64 の actual native executable 経由で stage2-native / stage3-native が自己再生成できること。
 #[test]
 #[ignore]
@@ -57233,9 +57617,114 @@ fn test_native_linux_x86_hostgen_vm_script_bounds_local_build_outputs() {
             r#"HOSTGEN_CARGO_TARGET_DIR="${LSHARP_NATIVE_LINUX_X86_CARGO_TARGET_DIR:-/tmp/lsharp-native-linux-x86-hostgen-vm-cargo-target}""#
         ) && script.contains(r#"cleanup_hostgen_cargo_target()"#)
             && script.contains(r#"rm -rf "${HOSTGEN_CARGO_TARGET_DIR}""#)
+            && script.contains("require_safe_host_cleanup_path")
+            && script.contains("refusing unsafe hostgen cleanup path")
             && script.contains(r#"trap cleanup_hostgen_cargo_target EXIT"#)
             && script.contains(r#"CARGO_TARGET_DIR="${HOSTGEN_CARGO_TARGET_DIR}" cargo test"#),
         "hostgen VM script は repo 直下 target を肥大化させないよう、一時 CARGO_TARGET_DIR を使いデフォルトで掃除するべき"
+    );
+}
+
+#[test]
+fn test_native_macos_aarch64_release_producer_is_clean_and_size_bounded() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-macos-aarch64-selfhost-release.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+
+    for required in [
+        "aarch64-apple-darwin",
+        "LSHARP_NATIVE_MACOS_AARCH64_APP_CLI_ARTIFACT_DIR",
+        "test_e2e_native_macos_aarch64_actual_app_cli_release_program",
+        "NATIVE_RELEASE_CARGO_TARGET_DIR",
+        "CARGO_TARGET_DIR=\"${NATIVE_RELEASE_CARGO_TARGET_DIR}\" cargo test",
+        "trap cleanup_native_release_target EXIT",
+        "git diff --quiet --ignore-submodules --",
+        "MAX_ARTIFACT_KIB",
+        "manifest.json",
+        "program.native",
+        "native-input-bundle.tar.gz",
+        "PACKAGE_VERSION",
+        "lsharp ${PACKAGE_VERSION}",
+        "require_safe_cleanup_path",
+        "refusing unsafe cleanup path",
+    ] {
+        assert!(
+            script.contains(required),
+            "Mac actual App.Cli producer contract が不足: {required}"
+        );
+    }
+}
+
+#[test]
+fn test_native_official_release_local_gate_packages_both_supported_targets() {
+    let script_path = selfhost_project_root().join("scripts/ci/native-official-release-local.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+
+    for required in [
+        "aarch64-apple-darwin",
+        "x86_64-unknown-linux-gnu",
+        "MACOS_APP_CLI_ARTIFACT_DIR",
+        "LINUX_APP_CLI_ARTIFACT_DIR",
+        "MACOS_ROLLBACK_ARCHIVE",
+        "LINUX_ROLLBACK_ARCHIVE",
+        "NATIVE_ONLY_PROGRAM_MANIFEST",
+        "ROLLBACK_COMPATIBILITY_ASSET_PATH",
+        "bash scripts/release.sh",
+        "bash scripts/ci/release-smoke.sh",
+        "limactl copy",
+        "limactl shell",
+        "lsharp-linux-x86",
+        "/tmp/lsharp-native-official-release-smoke",
+        "LSHARP_NATIVE_RELEASE_MAX_DIST_KIB",
+        "require_safe_cleanup_path",
+        "refusing unsafe cleanup path",
+    ] {
+        assert!(
+            script.contains(required),
+            "2 target local release gate contract が不足: {required}"
+        );
+    }
+}
+
+#[test]
+fn test_native_rollback_compatibility_local_producer_bounds_build_storage() {
+    let script_path = selfhost_project_root().join("scripts/ci/native-rollback-compat-local.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+    let release_script =
+        std::fs::read_to_string(selfhost_project_root().join("scripts/release.sh"))
+            .expect("release.sh 読み込み失敗");
+
+    for required in [
+        "aarch64-apple-darwin",
+        "x86_64-unknown-linux-gnu",
+        "NATIVE_ONLY_RELEASE=0",
+        "PACKAGE_VERSION",
+        "ROLLBACK_VERSION=\"${ROLLBACK_VERSION:-v${PACKAGE_VERSION}}\"",
+        "CARGO_TARGET_DIR",
+        "/tmp/lsharp-native-rollback-compat",
+        "limactl shell",
+        "limactl copy",
+        "lsharp-linux-x86",
+        "LSHARP_NATIVE_RELEASE_MAX_ROLLBACK_KIB",
+        "trap cleanup",
+        "require_safe_cleanup_path",
+        "refusing unsafe cleanup path",
+        "rollback compatibility provenance requires a clean worktree",
+        "git status --porcelain --untracked-files=all",
+        "manifest.json",
+    ] {
+        assert!(
+            script.contains(required),
+            "rollback compatibility local producer contract が不足: {required}"
+        );
+    }
+    assert!(
+        release_script.contains(r#"BUILD_TARGET_DIR="${CARGO_TARGET_DIR:-target}""#)
+            && release_script.contains(r#"${BUILD_TARGET_DIR}/release/${base_name}""#),
+        "release.sh は一時 CARGO_TARGET_DIR の rollback build output を解決すること"
     );
 }
 

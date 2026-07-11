@@ -1,6 +1,53 @@
 use super::support::*;
 use std::collections::{BTreeMap, BTreeSet};
 
+fn selfhost_defn_max_nesting(source: &str, name: &str) -> usize {
+    let marker = format!("(defn {name} ");
+    let start = source
+        .find(&marker)
+        .unwrap_or_else(|| panic!("selfhost defn が見つからない: {name}"));
+    let mut depth = 0usize;
+    let mut max_depth = 0usize;
+    let mut in_string = false;
+    let mut escaped = false;
+    let mut in_comment = false;
+
+    for byte in source[start..].bytes() {
+        if in_comment {
+            if byte == b'\n' {
+                in_comment = false;
+            }
+            continue;
+        }
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if byte == b'\\' {
+                escaped = true;
+            } else if byte == b'"' {
+                in_string = false;
+            }
+            continue;
+        }
+        match byte {
+            b';' => in_comment = true,
+            b'"' => in_string = true,
+            b'(' => {
+                depth += 1;
+                max_depth = max_depth.max(depth);
+            }
+            b')' => {
+                depth -= 1;
+                if depth == 0 {
+                    return max_depth;
+                }
+            }
+            _ => {}
+        }
+    }
+    panic!("selfhost defn が閉じていない: {name}");
+}
+
 #[derive(Debug)]
 struct NativeStage23GapReport {
     entry_path: String,
@@ -354,6 +401,44 @@ fn test_selfhost_compiler_maps_native_cli_runtime_builtins_to_dedicated_opcodes(
         parse_numeric_lines(&output),
         vec![86, 87, 88],
         "command-line-args/print-string/proc-exit は未使用の dedicated opcode に lower される必要がある"
+    );
+}
+
+#[test]
+fn test_native_cli_runtime_extension_keeps_large_dispatch_nesting_bounded() {
+    let source = std::fs::read_to_string(
+        selfhost_package_root().join("src/Backend/Native/NativeCodegen.ls"),
+    )
+    .expect("NativeCodegen.ls 読み込みに失敗");
+    let limits = [
+        ("opcode-pushes-stack", 7),
+        ("native-instr-size-x86", 35),
+        ("x86-selfhost-helper-trailer-size", 24),
+        ("is-selfhost-runtime-opcode-x86", 24),
+        ("codegen-selfhost-runtime-bundle-x86", 25),
+        (
+            "generate-native-control-instr-bundle-loop-x86-with-context",
+            35,
+        ),
+        ("native-selfhost-runtime-helper-tail-size-aarch64", 14),
+        ("codegen-selfhost-runtime-bundle-aarch64-tail", 16),
+        ("codegen-selfhost-runtime-bundle-aarch64", 16),
+    ];
+
+    for (name, limit) in limits {
+        let actual = selfhost_defn_max_nesting(&source, name);
+        assert!(
+            actual <= limit,
+            "{name} の式深度 {actual} が既存上限 {limit} を超えている。追加 opcode は小さい helper に分離する必要がある"
+        );
+    }
+
+    let wasm_source =
+        std::fs::read_to_string(selfhost_package_root().join("src/Backend/Wasm/WasmEmit.ls"))
+            .expect("WasmEmit.ls 読み込みに失敗");
+    assert!(
+        selfhost_defn_max_nesting(&wasm_source, "emit-runtime-ir-instr-tail-high") <= 7,
+        "native 専用 opcode の拒否は既存 Wasm dispatch の式深度を増やさないこと"
     );
 }
 

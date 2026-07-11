@@ -38,7 +38,8 @@ fn compiler_mode_tokenize_step_probe_distinguishes_append_state_boundaries() {
             && source.contains("(append-span-token-state tokens0 0 1 0 0 1)")
             && source.contains("(let [manual-helper-tokens (vector-get manual-helper-state 2)]")
             && source.contains("(print 9000000068)")
-            && source.contains("(append-lex-result-state tokens0 (lex-one src 0 src-len) 0)")
+            && source
+                .contains("(append-lex-result-state tokens0 (lex-one src 0 src-len) 0 src-len)")
             && source.contains("(let [manual-lex-tokens (vector-get manual-lex-state 2)]")
             && source.contains("(print 9000000060)")
             && source.contains("(tokenize-spans-step src 0 src-len tokens0)")
@@ -69,7 +70,7 @@ fn lexer_roots_appended_tokens_before_state_storage() {
         .and_then(|tail| tail.split("(defn append-lex-result-state").next())
         .expect("Lexer.ls に append-span-token-state-end が存在すること");
     let append_lex = source
-        .split("(defn append-lex-result-state [tokens result start]")
+        .split("(defn append-lex-result-state [tokens result start source-len]")
         .nth(1)
         .and_then(|tail| tail.split("(defn append-lex-result-state-rst").next())
         .expect("Lexer.ls に append-lex-result-state が存在すること");

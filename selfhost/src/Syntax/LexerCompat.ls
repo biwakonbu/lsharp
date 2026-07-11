@@ -11,8 +11,8 @@
     (if (>= ws-pos len)
       (make-tokenize-state 1 ws-pos (append-kind-token tokens 99))
       (let [result (lex-one src ws-pos len)
-        kind (/ result 1000000)
-        end-pos (- result (* kind 1000000))]
+        kind (lex-result-kind result len)
+        end-pos (lex-result-end result len)]
         (if (== kind 99)
           (make-tokenize-state 1 ws-pos (append-kind-token tokens 99))
           (make-tokenize-state 0 end-pos (append-kind-token tokens kind)))))))

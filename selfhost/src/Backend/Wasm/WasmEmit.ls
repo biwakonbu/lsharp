@@ -1155,6 +1155,15 @@
             (emit-and-instr bytes)
             bytes))))))
 
+(defn reject-native-only-wasm-opcode [bytes opcode]
+  (if (= opcode 86)
+    (do (/ opcode 0) bytes)
+    (if (= opcode 87)
+      (do (/ opcode 0) bytes)
+      (if (= opcode 88)
+        (do (/ opcode 0) bytes)
+        bytes))))
+
 (defn emit-runtime-ir-instr-tail-high [bytes opcode operand]
   (if (= opcode 72)
     (emit-or-instr bytes)
@@ -1166,7 +1175,7 @@
           (emit-root-pop-instr bytes)
           (if (= opcode 76)
             (emit-root-set-instr bytes)
-            bytes))))))
+            (reject-native-only-wasm-opcode bytes opcode)))))))
 
 (defn emit-ir-instr-basic-low [bytes opcode operand]
   (if (= opcode 20)

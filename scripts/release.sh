@@ -22,6 +22,7 @@ set -euo pipefail
 VERSION="${VERSION:-$(git describe --tags --always 2>/dev/null || echo "dev")}"
 TARGET="${TARGET:-$(rustc -Vv 2>/dev/null | grep host | cut -d' ' -f2 || echo "unknown")}"
 DIST_DIR="${DIST_DIR:-dist}"
+BUILD_TARGET_DIR="${CARGO_TARGET_DIR:-target}"
 NATIVE_ONLY_RELEASE="${NATIVE_ONLY_RELEASE:-1}"
 NATIVE_ONLY_PROGRAM="${NATIVE_ONLY_PROGRAM:-}"
 NATIVE_ONLY_PROGRAM_MANIFEST="${NATIVE_ONLY_PROGRAM_MANIFEST:-}"
@@ -63,8 +64,8 @@ copy_required_file() {
 
 resolve_required_binary_path() {
   local base_name="$1"
-  local unix_path="target/release/${base_name}"
-  local windows_path="target/release/${base_name}.exe"
+  local unix_path="${BUILD_TARGET_DIR}/release/${base_name}"
+  local windows_path="${BUILD_TARGET_DIR}/release/${base_name}.exe"
   if [[ -f "$unix_path" ]]; then
     printf '%s\n' "$unix_path"
     return 0
@@ -126,13 +127,15 @@ if manifest.get("status") != "pass":
     raise SystemExit("native App.Cli release program manifest status must be pass")
 if manifest.get("target") != target:
     raise SystemExit("native App.Cli release program target mismatch")
-if manifest.get("entry_module") not in (None, "App.Cli"):
+if manifest.get("entry_module") != "App.Cli":
     raise SystemExit("entry module must be App.Cli")
 if manifest.get("source") != "src/App/Cli.ls":
     raise SystemExit("entry module must be App.Cli")
+if manifest.get("selfhost_fixed_point") is not True:
+    raise SystemExit("selfhost fixed-point evidence is required")
 if manifest.get("scope") != "Linux x86_64 App.Cli native release bundle" and manifest.get("artifact_kind") != "native App.Cli release program":
     raise SystemExit("artifact kind must be native App.Cli release program")
-if manifest.get("source_commit") not in (None, source_commit):
+if manifest.get("source_commit") != source_commit:
     raise SystemExit("native App.Cli release program source commit mismatch")
 if manifest.get("program_sha256") != program_sha256:
     raise SystemExit("native program sha256 mismatch")
@@ -149,6 +152,7 @@ generate_native_manifest() {
   "schema_version": 1,
   "archive_kind": "native-only official archive",
   "target": "${TARGET}",
+  "version": "${VERSION}",
   "source_commit": "${SOURCE_COMMIT}",
   "entry_binary": "program.native",
   "rollback_anchor": {
@@ -164,6 +168,22 @@ generate_native_manifest() {
     "kind": "native-only release smoke",
     "binary": "program.native"
   }
+}
+EOF
+}
+
+generate_rollback_manifest() {
+  local manifest_path="${DIST_DIR}/${ARCHIVE_NAME}/manifest.json"
+  cat > "${manifest_path}" <<EOF
+{
+  "schema_version": 1,
+  "archive_kind": "rollback compatibility",
+  "target": "${TARGET}",
+  "version": "${VERSION}",
+  "source_commit": "${SOURCE_COMMIT}",
+  "entry_binary": "lsharp",
+  "lsp_binary": "lsharp-lsp",
+  "component": "lsharp.component.wasm"
 }
 EOF
 }
@@ -236,6 +256,7 @@ else
   copy_required_binary "lsharp-lsp"
   echo "Generating rollback compatibility guest component sidecar..."
   generate_guest_component_sidecar
+  generate_rollback_manifest
 fi
 
 # checksums.txt の生成 (AC-505: SHA-256)

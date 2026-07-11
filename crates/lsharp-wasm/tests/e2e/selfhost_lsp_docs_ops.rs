@@ -2588,7 +2588,8 @@ fn test_e2e_native_ops03_official_native_only_replacement_backlog_contract() {
         "out of support scope",
         "host launcher + embedded guest component",
         "rollback compatibility",
-        "publish wiring",
+        "workflow_dispatch",
+        "immutable App.Cli bundle",
         "target matrix status",
         "native-only official archive layout",
         "program.native",
@@ -2658,23 +2659,23 @@ fn test_e2e_native_ops03_official_native_only_replacement_backlog_contract() {
     let release_workflow_content =
         std::fs::read_to_string(&release_workflow).expect("release.yml の読み込みに失敗");
     assert!(
-        release_workflow_content.contains("NATIVE_ONLY_RELEASE: \"1\"")
-            && release_workflow_content.contains("Native-only release evidence")
+        release_workflow_content.contains("NATIVE_ONLY_RELEASE: '1'")
+            && release_workflow_content.contains("immutable App.Cli bundle")
             && release_workflow_content.contains("rollback compatibility"),
         "release.yml は native-only official release と rollback compatibility の境界を明記すること"
     );
     assert!(
-        release_workflow_content.contains("supported product/release targets")
+        release_workflow_content.contains("workflow_dispatch:")
             && release_workflow_content.contains("target: aarch64-apple-darwin")
-            && release_workflow_content
-                .contains("Linux x86_64 の Lima actual self-regeneration は local evidence",)
-            && release_workflow_content
-                .contains("native-only release program generation is not wired")
-            && !release_workflow_content.contains("target: x86_64-unknown-linux-gnu")
+            && release_workflow_content.contains("target: x86_64-unknown-linux-gnu")
+            && release_workflow_content.contains("actual self-regeneration は事前生成側")
+            && release_workflow_content.contains("native_bundle_sha256")
+            && release_workflow_content.contains("rollback_archive_sha256")
             && !release_workflow_content.contains("target: x86_64-apple-darwin")
             && !release_workflow_content.contains("target: x86_64-pc-windows-msvc")
-            && release_workflow_content.contains("experimental-native-rc"),
-        "release.yml は automated Apple Silicon build と Linux publish wiring 残件、experimental RC の境界を明記すること"
+            && !release_workflow_content.contains("experimental-native-rc")
+            && !release_workflow_content.contains("stage3-native/program.native"),
+        "release.yml は supported 2 target の immutable inputだけを stable publishへ流すこと"
     );
 }
 
@@ -3843,7 +3844,7 @@ fn test_e2e_ops05_doc_host_backed_distribution_ownership_docs() {
     );
 }
 
-/// TEST-OPS-06: scripts/ に release playbook + ドキュメント + tag push 自動化 workflow
+/// TEST-OPS-06: scripts/ に release playbook + immutable input release workflow
 #[test]
 fn test_e2e_ops06_release_playbook() {
     let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
@@ -3876,18 +3877,32 @@ fn test_e2e_ops06_release_playbook() {
             && !playbook_content.contains("host launcher / component package 生成"),
         "release-playbook.md 冒頭は stable native-only 配布モデルを説明すること"
     );
-    // tag push による自動リリース workflow が存在すること (OPS-06 tag-push automation)
+    // 事前検証済み immutable input を受け取る release workflow が存在すること
     let release_workflow = project_root.join(".github/workflows/release.yml");
     assert!(
         release_workflow.is_file(),
-        ".github/workflows/release.yml が存在しない -- tag push 自動リリースが未実装"
+        ".github/workflows/release.yml が存在しない -- stable release workflow が未実装"
     );
-    // workflow が v* タグトリガーを含むこと
     let workflow_content =
         std::fs::read_to_string(&release_workflow).expect("release.yml の読み込みに失敗");
+    let trigger_section = workflow_content
+        .split("env:")
+        .next()
+        .expect("release.yml の trigger section が見つからない");
     assert!(
-        workflow_content.contains("v*") || workflow_content.contains("'v"),
-        "release.yml に v* タグトリガーが設定されていない"
+        trigger_section.contains("workflow_dispatch:")
+            && trigger_section.contains("release_tag:")
+            && trigger_section.contains("macos_native_bundle_url:")
+            && trigger_section.contains("macos_native_bundle_sha256:")
+            && trigger_section.contains("macos_rollback_archive_url:")
+            && trigger_section.contains("macos_rollback_archive_sha256:")
+            && trigger_section.contains("linux_native_bundle_url:")
+            && trigger_section.contains("linux_native_bundle_sha256:")
+            && trigger_section.contains("linux_rollback_archive_url:")
+            && trigger_section.contains("linux_rollback_archive_sha256:")
+            && trigger_section.matches("required: true").count() == 9
+            && !trigger_section.contains("push:"),
+        "release.yml は release tag と 2 target の immutable App.Cli bundle / rollback archive input を受け取ること"
     );
 }
 
@@ -3912,39 +3927,73 @@ fn test_e2e_ops06_release_smoke_contract() {
         "release.yml が scripts/ci/release-smoke.sh を呼んでいない"
     );
     assert!(
+        workflow_content.contains("package_version=")
+            && workflow_content.contains("v${package_version}")
+            && workflow_content.contains("release tag must match Cargo package version"),
+        "release.yml は release tag と Cargo package version を完全一致させること"
+    );
+    assert!(
         workflow_content.contains("dist/checksums.txt"),
         "release.yml は attached release-level checksum asset `dist/checksums.txt` も扱うこと"
     );
     assert!(
+        workflow_content.contains("Rollback anchor")
+            && workflow_content.contains("body_path: release-body.md"),
+        "release.yml は stable tag / supported assets / checksums を release notes の rollback anchor に記録すること"
+    );
+    assert!(
         workflow_content.contains("NATIVE_ONLY_RELEASE")
             && workflow_content.contains("NATIVE_ONLY_PROGRAM")
-            && workflow_content.contains("stage3-native/program.native")
+            && workflow_content.contains("NATIVE_ONLY_PROGRAM_MANIFEST")
+            && workflow_content.contains("ROLLBACK_COMPATIBILITY_ASSET_PATH")
             && workflow_content.contains("native-only release"),
-        "release.yml は native-only release 用の actual native executable を解決してから stable build path へ渡すこと"
+        "release.yml は immutable App.Cli program / manifest / rollback archive を stable build path へ渡すこと"
     );
     let build_job_start = workflow_content
         .find("  build:")
         .expect("release.yml に build job が存在しない");
-    let evidence_job_start = workflow_content[build_job_start + 1..]
-        .find("\n  experimental-native-rc:")
+    let smoke_job_start = workflow_content[build_job_start + 1..]
+        .find("\n  release-smoke:")
         .map(|offset| build_job_start + 1 + offset)
         .unwrap_or(workflow_content.len());
-    let build_job_section = &workflow_content[build_job_start..evidence_job_start];
+    let build_job_section = &workflow_content[build_job_start..smoke_job_start];
     assert!(
-        build_job_section.contains("target: aarch64-apple-darwin"),
-        "release.yml の stable native-only build は Actions 内で actual native program を生成できる target を含むこと"
+        build_job_section.contains("target: aarch64-apple-darwin")
+            && build_job_section.contains("target: x86_64-unknown-linux-gnu"),
+        "release.yml の stable native-only build は supported 2 target を含むこと"
     );
-    for blocked_target in [
-        "target: x86_64-apple-darwin",
-        "target: x86_64-unknown-linux-gnu",
-        "target: x86_64-pc-windows-msvc",
+    for unsupported_target in [
+        "x86_64-apple-darwin",
+        "x86_64-pc-windows-msvc",
+        "aarch64-unknown-linux-gnu",
     ] {
         assert!(
-            !build_job_section.contains(blocked_target),
-            "release.yml の stable native-only build は target-specific blocker が残る `{}` を自動 publish しないこと",
-            blocked_target
+            !workflow_content.contains(unsupported_target),
+            "release.yml は unsupported target `{}` を stable path に含めないこと",
+            unsupported_target
         );
     }
+    for forbidden in [
+        "stage3-native/program.native",
+        "scripts/ci/build-native.sh",
+        "scripts/ci/native-only-rc-smoke.sh",
+        "experimental-native-rc:",
+        "native-linux-x86-selfregen.sh",
+    ] {
+        assert!(
+            !workflow_content.contains(forbidden),
+            "release.yml は representative / experimental / heavy gate `{forbidden}` を stable publish に流さないこと"
+        );
+    }
+    assert!(
+        build_job_section.contains("native-input-bundle.tar.gz")
+            && build_job_section.contains("native/manifest.json")
+            && build_job_section.contains("expected_sha256")
+            && build_job_section.contains("bash scripts/release.sh")
+            && build_job_section
+                .contains("bash scripts/ci/release-smoke.sh \"$archive\" \"$rollback_archive\""),
+        "release.yml は hash 検証済み input bundle と実在 rollback archive を release.sh / release-smoke.sh に渡すこと"
+    );
     assert!(
         release_script_content.contains("program.native")
             && release_script_content.contains("manifest.json")
@@ -3959,16 +4008,31 @@ fn test_e2e_ops06_release_smoke_contract() {
         "NATIVE_ONLY_PROGRAM_MANIFEST",
         "native App.Cli release program manifest is required",
         "entry module must be App.Cli",
+        "selfhost fixed-point evidence is required",
         "native program sha256 mismatch",
         "ROLLBACK_COMPATIBILITY_ASSET_PATH",
         "rollback compatibility asset is required",
         "rollback_sha256",
+        "rollback compatibility",
+        "generate_rollback_manifest",
     ] {
         assert!(
             release_script_content.contains(expected),
             "release.sh は immutable App.Cli input / rollback contract `{expected}` を持つこと"
         );
     }
+    assert!(
+        release_script_content.contains(r#"manifest.get("entry_module") != "App.Cli""#)
+            && !release_script_content
+                .contains(r#"manifest.get("entry_module") not in (None, "App.Cli")"#),
+        "release.sh は native input manifest の entry_module == App.Cli を必須にし、省略を許可しないこと"
+    );
+    assert!(
+        release_script_content.contains(r#"manifest.get("source_commit") != source_commit"#)
+            && !release_script_content
+                .contains(r#"manifest.get("source_commit") not in (None, source_commit)"#),
+        "release.sh は native input manifest の source_commit を release commit と完全一致させ、省略を許可しないこと"
+    );
     assert!(
         !release_script_content.contains(
             "tar czf \"${ARCHIVE_NAME}.tar.gz\" \"${ARCHIVE_NAME}/\" 2>/dev/null || true"
@@ -4008,6 +4072,43 @@ fn test_e2e_ops06_release_smoke_contract() {
             && smoke_content.contains("rollback_sha256"),
         "release-smoke.sh は stable archive と実在 rollback archive の名前/hashを照合すること"
     );
+    assert!(
+        smoke_content.contains("MAX_ARCHIVE_BYTES")
+            && smoke_content.contains("tarfile")
+            && smoke_content.contains("unsafe archive entry")
+            && smoke_content.contains("archive expanded size exceeds limit"),
+        "release-smoke.sh は archive の圧縮/展開サイズと path traversal/symlink を展開前に拒否すること"
+    );
+    assert!(
+        workflow_content.contains("MAX_RELEASE_INPUT_BYTES")
+            && workflow_content.contains("--max-filesize \"${MAX_RELEASE_INPUT_BYTES}\"")
+            && workflow_content.contains("cleanup_release_input_on_failure")
+            && workflow_content.contains("trap cleanup_release_input_on_failure EXIT")
+            && workflow_content.contains("tarfile")
+            && workflow_content.contains("unsafe native input bundle entry"),
+        "release.yml は外部 native input bundle を download 中から size 制限し、失敗時 cleanup 後に entry whitelist で展開すること"
+    );
+    assert!(
+        release_script_content.contains(r#""version": "${VERSION}""#),
+        "release.sh の stable/rollback manifest は release version を記録すること"
+    );
+    for expected in [
+        "native App.Cli input target mismatch",
+        "native App.Cli input entry_module must be App.Cli",
+        "native App.Cli input source must be src/App/Cli.ls",
+        "native App.Cli input source commit mismatch",
+        "packaged CLI version mismatch",
+        "rollback compatibility manifest target mismatch",
+        "rollback compatibility manifest version mismatch",
+        "rollback compatibility manifest source commit mismatch",
+        "native App.Cli input selfhost fixed-point evidence is required",
+        "native App.Cli input program sha256 mismatch",
+    ] {
+        assert!(
+            smoke_content.contains(expected),
+            "release-smoke.sh は native-program-manifest.json と archive payload の照合 contract `{expected}` を持つこと"
+        );
+    }
     assert!(
         smoke_content.contains(" doc ")
             || smoke_content.contains("\"$LSHARP_BIN\" doc ")
@@ -4241,8 +4342,15 @@ fn test_e2e_ops07_release_download_smoke_job() {
     );
     assert!(
         release_smoke_section.contains("aarch64-apple-darwin")
-            && release_smoke_section.contains("macos-14"),
-        "release-smoke job は stable native-only archive を実行できる runner/target で smoke すること"
+            && release_smoke_section.contains("macos-14")
+            && release_smoke_section.contains("x86_64-unknown-linux-gnu")
+            && release_smoke_section.contains("ubuntu-latest"),
+        "release-smoke job は supported 2 target の archive を target-native runner で smoke すること"
+    );
+    assert!(
+        release_smoke_section
+            .contains("bash scripts/ci/release-smoke.sh \"$archive\" \"$rollback_archive\""),
+        "release-smoke job は stable archive と実在 rollback archive を照合すること"
     );
     assert!(
         !release_smoke_section.contains("for archive in \"${archives[@]}\"; do"),
@@ -4274,6 +4382,23 @@ fn ops06_unique_temp_dir(label: &str) -> std::path::PathBuf {
     ));
     std::fs::create_dir_all(&dir).expect("temp dir の作成に失敗");
     dir
+}
+
+#[cfg(unix)]
+fn ops06_sha256(path: &std::path::Path) -> String {
+    let output = std::process::Command::new("bash")
+        .arg("-c")
+        .arg("if command -v sha256sum >/dev/null 2>&1; then sha256sum \"$1\"; else shasum -a 256 \"$1\"; fi")
+        .arg("_")
+        .arg(path)
+        .output()
+        .expect("fixture hash の取得に失敗");
+    assert!(output.status.success(), "fixture hash の取得が失敗した");
+    String::from_utf8_lossy(&output.stdout)
+        .split_whitespace()
+        .next()
+        .expect("fixture hash が空")
+        .to_string()
 }
 
 /// TEST-OPS-06c-guard: native-only release は明示 native executable なしで package しないこと。
@@ -4409,9 +4534,12 @@ esac
         .expect("README fixture 書き込み失敗");
     std::fs::write(archive_root.join("LICENSE"), "fixture license\n")
         .expect("LICENSE fixture 書き込み失敗");
+    let native_program_sha256 = ops06_sha256(&fake_lsharp);
     std::fs::write(
         archive_root.join("native-program-manifest.json"),
-        r#"{"status":"pass","target":"x86_64-unknown-linux-gnu","scope":"Linux x86_64 App.Cli native release bundle","source":"src/App/Cli.ls","program_sha256":"fixture"}"#,
+        format!(
+            r#"{{"status":"pass","target":"x86_64-unknown-linux-gnu","scope":"Linux x86_64 App.Cli native release bundle","entry_module":"App.Cli","source":"src/App/Cli.ls","source_commit":"fixture-commit","selfhost_fixed_point":true,"program_sha256":"{native_program_sha256}"}}"#
+        ),
     )
     .expect("native program manifest fixture 書き込み失敗");
 
@@ -4428,6 +4556,11 @@ esac
         .expect("rollback README fixture 書き込み失敗");
     std::fs::write(rollback_root.join("LICENSE"), "rollback fixture license\n")
         .expect("rollback LICENSE fixture 書き込み失敗");
+    std::fs::write(
+        rollback_root.join("manifest.json"),
+        r#"{"schema_version":1,"archive_kind":"rollback compatibility","target":"x86_64-unknown-linux-gnu","version":"v0.0.0-test","source_commit":"fixture-commit","entry_binary":"lsharp","lsp_binary":"lsharp-lsp","component":"lsharp.component.wasm"}"#,
+    )
+    .expect("rollback manifest fixture 書き込み失敗");
     let rollback_checksum_output = Command::new("bash")
         .arg(&checksum_script)
         .arg(&rollback_root)
@@ -4456,23 +4589,11 @@ esac
         "rollback fixture archive 作成が失敗した: {}",
         String::from_utf8_lossy(&rollback_tar_output.stderr)
     );
-    let rollback_hash_output = Command::new("bash")
-        .arg("-c")
-        .arg("if command -v sha256sum >/dev/null 2>&1; then sha256sum \"$1\"; else shasum -a 256 \"$1\"; fi")
-        .arg("_")
-        .arg(&rollback_path)
-        .output()
-        .expect("rollback fixture hash の取得に失敗");
-    assert!(rollback_hash_output.status.success());
-    let rollback_sha256 = String::from_utf8_lossy(&rollback_hash_output.stdout)
-        .split_whitespace()
-        .next()
-        .expect("rollback fixture hash が空")
-        .to_string();
+    let rollback_sha256 = ops06_sha256(&rollback_path);
     std::fs::write(
         archive_root.join("manifest.json"),
         format!(
-            r#"{{"schema_version":1,"archive_kind":"native-only official archive","target":"x86_64-unknown-linux-gnu","entry_binary":"program.native","rollback_anchor":{{"kind":"rollback compatibility","asset":"{rollback_name}.tar.gz","rollback_sha256":"{rollback_sha256}"}},"native_program_input":{{"manifest":"native-program-manifest.json","input_sha256":"fixture"}},"smoke":{{"kind":"native-only release smoke","binary":"program.native"}}}}"#
+            r#"{{"schema_version":1,"archive_kind":"native-only official archive","target":"x86_64-unknown-linux-gnu","source_commit":"fixture-commit","entry_binary":"program.native","rollback_anchor":{{"kind":"rollback compatibility","asset":"{rollback_name}.tar.gz","rollback_sha256":"{rollback_sha256}"}},"native_program_input":{{"manifest":"native-program-manifest.json","input_sha256":"{native_program_sha256}"}},"smoke":{{"kind":"native-only release smoke","binary":"program.native"}}}}"#
         ),
     )
     .expect("native-only manifest fixture 書き込み失敗");
