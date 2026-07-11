@@ -58037,6 +58037,7 @@ fn test_native_rollback_compatibility_local_producer_bounds_build_storage() {
         "docker image rm",
         "MIN_HOST_FREE_KIB",
         "VM_REQUIRED_FREE_KIB",
+        r#"awk 'NR == 2 {print \$4}'"#,
     ] {
         assert!(
             script.contains(required),

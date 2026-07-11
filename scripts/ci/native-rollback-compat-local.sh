@@ -177,7 +177,7 @@ linux_archive="${HOST_WORK_DIR}/dist-linux/${linux_archive_name}"
 verify_rollback_manifest "${linux_archive}" "x86_64-unknown-linux-gnu"
 cp "${linux_archive}" "${OUTPUT_DIR}/${linux_archive_name}"
 
-vm_free_kib="$(limactl shell "${VM_NAME}" -- sh -lc "df -Pk /tmp | awk 'NR == 2 {print \\$4}'")"
+vm_free_kib="$(limactl shell "${VM_NAME}" -- sh -lc "df -Pk /tmp | awk 'NR == 2 {print \$4}'")"
 if [[ ! "${vm_free_kib}" =~ ^[0-9]+$ ]] || (( vm_free_kib < VM_REQUIRED_FREE_KIB )); then
   echo "ERROR: rollback smoke requires ${VM_REQUIRED_FREE_KIB} KiB VM free space; available=${vm_free_kib:-unknown}" >&2
   exit 1
