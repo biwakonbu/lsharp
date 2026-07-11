@@ -32,6 +32,7 @@ ci-artifacts/readme-smoke/
 ci-artifacts/native-plan/
 ci-artifacts/native-proxy/
 ci-artifacts/native-linux-x86-hostgen-vm/
+/ci-artifacts/native-release/
 crates/lsharp-wasm/ci-artifacts/
 selfhost/src/Backend/Native/NativeCodegen.prefix*.ls
 selfhost/src/Backend/Native/NativeCodegen.mini*.ls

@@ -677,7 +677,7 @@ if [[ "${REUSE_ACTUAL_STAGE2}" -eq 1 ]]; then
   for file in stage-code.bin stage-data.bin entrypoint-offset.txt function-start-len.txt main-func-idx.txt manifest.json stage-code-segments.tsv; do
     limactl copy "${ARTIFACT_DIR}/stage2-debug/${file}" "${VM_NAME}:${VM_WORK_DIR}/actual-stage2/${file}"
   done
-  tar -C "${ARTIFACT_DIR}/stage2-debug" --exclude '._*' -cf - src | limactl shell "${VM_NAME}" -- tar -C "${VM_WORK_DIR}/actual-stage2" -xf -
+  COPYFILE_DISABLE=1 tar -C "${ARTIFACT_DIR}/stage2-debug" --exclude '._*' -cf - src | limactl shell "${VM_NAME}" -- tar -C "${VM_WORK_DIR}/actual-stage2" -xf -
   limactl copy "${ARTIFACT_DIR}/actual-stage2-stdout.txt" "${VM_NAME}:${VM_WORK_DIR}/actual-stage2-stdout.txt"
   limactl copy "${ARTIFACT_DIR}/actual-stage2-stderr.txt" "${VM_NAME}:${VM_WORK_DIR}/actual-stage2-stderr.txt"
 else
@@ -690,7 +690,7 @@ else
   limactl copy "${ACTUAL_STAGE1_ARTIFACT_DIR}/main-func-idx.txt" "${VM_NAME}:${VM_WORK_DIR}/actual-stage1/main-func-idx.txt"
   limactl copy "${ACTUAL_STAGE1_ARTIFACT_DIR}/manifest.json" "${VM_NAME}:${VM_WORK_DIR}/actual-stage1/manifest.json"
   limactl copy "${ACTUAL_STAGE1_ARTIFACT_DIR}/seed.ls" "${VM_NAME}:${VM_WORK_DIR}/actual-stage1/src/App/Seed.ls"
-  tar -C "${ROOT_DIR}/selfhost" --exclude '._*' -cf - src | limactl shell "${VM_NAME}" -- tar -C "${VM_WORK_DIR}/actual-stage1" -xf -
+  COPYFILE_DISABLE=1 tar -C "${ROOT_DIR}/selfhost" --exclude '._*' -cf - src | limactl shell "${VM_NAME}" -- tar -C "${VM_WORK_DIR}/actual-stage1" -xf -
   limactl copy "${ACTUAL_STAGE1_ARTIFACT_DIR}/seed.ls" "${VM_NAME}:${VM_WORK_DIR}/actual-stage1/src/App/Seed.ls"
 fi
 

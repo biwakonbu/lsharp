@@ -1683,7 +1683,7 @@ fn test_native_linux_x86_hostgen_vm_script_can_overlay_reused_stage2_source_for_
         .expect("output artifact の stage2-debug Seed.ls を overlay で置換すること");
     let vm_source_transfer = script
         .find(
-            r#"tar -C "${ARTIFACT_DIR}/stage2-debug" --exclude '._*' -cf - src | limactl shell "${VM_NAME}" -- tar -C "${VM_WORK_DIR}/actual-stage2" -xf -"#,
+            r#"COPYFILE_DISABLE=1 tar -C "${ARTIFACT_DIR}/stage2-debug" --exclude '._*' -cf - src | limactl shell "${VM_NAME}" -- tar -C "${VM_WORK_DIR}/actual-stage2" -xf -"#,
         )
         .expect("output artifact の stage2 source tree を VM へ転送すること");
     assert!(
@@ -57623,6 +57623,39 @@ fn test_native_linux_x86_hostgen_vm_script_bounds_local_build_outputs() {
             && script.contains(r#"trap cleanup_hostgen_cargo_target EXIT"#)
             && script.contains(r#"CARGO_TARGET_DIR="${HOSTGEN_CARGO_TARGET_DIR}" cargo test"#),
         "hostgen VM script は repo 直下 target を肥大化させないよう、一時 CARGO_TARGET_DIR を使いデフォルトで掃除するべき"
+    );
+}
+
+#[test]
+fn test_native_linux_x86_hostgen_vm_script_disables_macos_copyfile_metadata() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+
+    for source_dir in [
+        r#"${ARTIFACT_DIR}/stage2-debug"#,
+        r#"${ROOT_DIR}/selfhost"#,
+    ] {
+        let transfer = format!(
+            r#"COPYFILE_DISABLE=1 tar -C "{source_dir}" --exclude '._*' -cf - src"#
+        );
+        assert!(
+            script.contains(&transfer),
+            "macOS から VM への tar 転送は AppleDouble/xattr を生成しないこと: {transfer}"
+        );
+    }
+}
+
+#[test]
+fn test_native_release_default_artifacts_are_gitignored() {
+    let gitignore_path = selfhost_project_root().join(".gitignore");
+    let gitignore = std::fs::read_to_string(&gitignore_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", gitignore_path.display()));
+
+    assert!(
+        gitignore.lines().any(|line| line == "/ci-artifacts/native-release/"),
+        "native release producer の既定出力は clean worktree gate と競合しないよう ignore すること"
     );
 }
 
