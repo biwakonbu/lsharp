@@ -1624,6 +1624,19 @@ fn test_native_linux_x86_hostgen_vm_script_can_export_reused_stage2_cli_bundle()
 }
 
 #[test]
+fn test_native_linux_x86_target_export_ignores_generated_seed_in_source_digest() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+
+    assert!(
+        script.contains(r#"path.relative_to(root).as_posix() != "App/Seed.ls""#),
+        "target-only App.Cli provenance は replay 用に生成された App/Seed.ls を source tree digest から除外するべき"
+    );
+}
+
+#[test]
 fn test_native_linux_x86_hostgen_vm_script_can_overlay_reused_stage2_source_for_diagnostics_only() {
     let script_path =
         selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");

@@ -278,7 +278,14 @@ for ok, label in checks:
 
 def source_tree_digest(root: pathlib.Path) -> str:
     digest = hashlib.sha256()
-    files = sorted(root.rglob("*.ls"), key=lambda path: path.relative_to(root).as_posix())
+    files = sorted(
+        (
+            path
+            for path in root.rglob("*.ls")
+            if path.relative_to(root).as_posix() != "App/Seed.ls"
+        ),
+        key=lambda path: path.relative_to(root).as_posix(),
+    )
     if not files:
         raise SystemExit(f"source tree has no .ls files: {root}")
     for path in files:
