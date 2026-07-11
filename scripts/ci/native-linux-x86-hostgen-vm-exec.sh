@@ -141,9 +141,9 @@ reject_dirty_actual_stage1_seed() {
   fi
   local seed_file="${ACTUAL_STAGE1_ARTIFACT_DIR}/seed.ls"
   local marker
-  for marker in "payload-progress-mode" "pre-callable-progress" "command-line-arg 9" "9000000030"; do
-    if grep -Fq "${marker}" "${seed_file}"; then
-      echo "ERROR: actual stage1 seed contains diagnostic probe marker ${marker}: ${seed_file}" >&2
+  for marker in "payload-progress-mode" "pre-payload-progress-mode" "pre-callable-progress"; do
+    if grep -Eq "^[[:space:]]*${marker}[[:space:]]+1([[:space:]]|$)" "${seed_file}"; then
+      echo "ERROR: actual stage1 seed forces diagnostic mode ${marker}: ${seed_file}" >&2
       exit 1
     fi
   done

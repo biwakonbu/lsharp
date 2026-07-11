@@ -57524,21 +57524,22 @@ fn test_native_linux_x86_hostgen_vm_script_rejects_dirty_actual_stage1_seed_debu
     );
     for marker in [
         "payload-progress-mode",
+        "pre-payload-progress-mode",
         "pre-callable-progress",
-        "command-line-arg 9",
-        "9000000030",
     ] {
         assert!(
             reject_body.contains(&format!("\"{marker}\"")),
-            "hostgen VM script は actual stage1 seed の dirty diagnostic marker を拒否するべき: {marker}"
+            "hostgen VM script は literal 1 に固定された dirty diagnostic mode を拒否するべき: {marker}"
         );
     }
     assert!(
         reject_body.contains(r#"seed_file="${ACTUAL_STAGE1_ARTIFACT_DIR}/seed.ls""#)
-            && reject_body.contains(r#"grep -Fq "${marker}" "${seed_file}""#)
-            && reject_body.contains("ERROR: actual stage1 seed contains diagnostic probe marker")
+            && reject_body.contains(
+                r#"grep -Eq "^[[:space:]]*${marker}[[:space:]]+1([[:space:]]|$)" "${seed_file}""#
+            )
+            && reject_body.contains("ERROR: actual stage1 seed forces diagnostic mode")
             && reject_body.contains("exit 1"),
-        "dirty seed rejection は actual stage1 seed を固定 marker で検査し、VM 転送前に失敗するべき"
+        "dirty seed rejection は dormant diagnostic capability ではなく literal 1 の強制だけをVM転送前に拒否するべき"
     );
 }
 
