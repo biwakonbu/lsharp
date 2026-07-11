@@ -11015,13 +11015,28 @@
             (continue-native-control-instr-bundle-loop-x86 ctx idx remaining))
         (if (= opcode 86)
           (do
-            (append-zero-arg-call-bundle-x86
-              result
-              (- (x86-selfhost-command-line-args-helper-offset import-stub-offset import-count)
-                 (+ (x86-current-emitted-offset result emit-start-base)
-                    (native-call-rel-next-offset-x86 0 current-depth)))
-              frame-base-slot-count
-              current-depth)
+            (if (= current-depth 0)
+              (append-call-rel32-x86
+                result
+                (- (x86-selfhost-command-line-args-helper-offset import-stub-offset import-count)
+                   (+ (x86-current-emitted-offset result emit-start-base) 5)))
+              (if (= current-depth 1)
+                (do
+                  (append-x86-byte result 80)
+                  (append-call-rel32-x86
+                    result
+                    (- (x86-selfhost-command-line-args-helper-offset import-stub-offset import-count)
+                       (+ (x86-current-emitted-offset result emit-start-base) 5)))
+                  (append-x86-byte result 89))
+                (do
+                  (append-shift-native-value-window-x86-loop result frame-base-slot-count (- current-depth 3))
+                  (append-x86-rbp-disp32 result 72 137 141 (native-value-window-spill-offset frame-base-slot-count 0))
+                  (append-x86-byte result 80)
+                  (append-call-rel32-x86
+                    result
+                    (- (x86-selfhost-command-line-args-helper-offset import-stub-offset import-count)
+                       (+ (x86-current-emitted-offset result emit-start-base) 5)))
+                  (append-x86-byte result 89))))
             (continue-native-control-instr-bundle-loop-x86 ctx idx remaining))
         (if (if (= opcode 64) true (if (= opcode 67) true (if (= opcode 59) true (if (= opcode 87) true (= opcode 88)))))
           (do

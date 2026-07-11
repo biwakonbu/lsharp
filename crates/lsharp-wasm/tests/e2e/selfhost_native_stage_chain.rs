@@ -7604,6 +7604,39 @@ fn test_native_codegen_x86_map_new_runtime_call_direct_appends_all_depths_in_sta
 }
 
 #[test]
+fn test_native_codegen_x86_command_line_args_direct_append_avoids_rel_argument_helper() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let control_loop = source
+        .split("(defn generate-native-control-instr-bundle-loop-x86-with-context")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split(
+                "(defn generate-native-control-instr-bundle-loop-x86-with-import-count-and-base",
+            )
+            .next()
+        })
+        .expect("NativeCodegen.ls に x86 control bundle loop が存在すること");
+    let command_line_args_branch = control_loop
+        .split("(if (= opcode 86)")
+        .nth(1)
+        .and_then(|tail| tail.split("(if (if (= opcode 64)").next())
+        .expect("x86 control loop に opcode 86 branch が存在すること");
+    let direct_rel32_count = command_line_args_branch
+        .matches("(+ (x86-current-emitted-offset result emit-start-base) 5)")
+        .count();
+
+    assert!(
+        command_line_args_branch.contains("(if (= current-depth 0)")
+            && command_line_args_branch.contains("(append-call-rel32-x86")
+            && command_line_args_branch.contains("(append-x86-byte result 80)")
+            && command_line_args_branch.contains("(append-shift-native-value-window-x86-loop")
+            && direct_rel32_count >= 3
+            && !command_line_args_branch.contains("(append-zero-arg-call-bundle-x86"),
+        "command-line-args は Linux native stage2 で rel 引数を zero-arg helper に渡すと call -5 になるため、depth ごとの call bytes を直接 append し、call 直前の offset から rel32 を計算するべき"
+    );
+}
+
+#[test]
 fn test_native_codegen_x86_ref_new_runtime_call_direct_appends_in_stage1() {
     let source = selfhost_module("NativeCodegen.ls");
     let control_loop = source
@@ -18216,6 +18249,61 @@ fn test_e2e_selfhost_minimal_x86_zero_arg_call_preserves_call_bytes_after_value(
         &bundle.code_bytes[call_offset..call_offset + 7],
         &[0, 0, 0, 0, 0, 0, 0],
         "stage1-generated stage2 zero-arg call bundle must not be zero-filled"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_x86_command_line_args_depth_one_targets_runtime_helper() {
+    let source = "(module Main)\n(defn prefix [] 0)\n(defn main []\n  (+ 1 (command-line-args)))\n";
+    let escaped_source = escape_lsharp_string(source);
+    let payload_expr = format!(
+        r#"(do
+            (write-file "src/App/MinCommandLineArgsDepthOne.ls" "{escaped_source}")
+            (compile-file-functions-payload-with-cache "src/App/MinCommandLineArgsDepthOne.ls" 10 cache-ref parse-count-ref))"#
+    );
+    let bundle = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        run_selfhost_main_native_x86_segmented_host_bytes_harness_with_payload_and_args(
+            "native-x86-command-line-args-depth-one-call-target",
+            &payload_expr,
+            &[],
+        )
+    });
+    let entry = bundle.entrypoint_offset;
+    assert!(
+        bundle.function_start_len >= 2 && entry > 0,
+        "command-line-args rel32 regression は nonzero function start を使うべき: starts={} entry={entry}",
+        bundle.function_start_len
+    );
+    let end = (entry + 128).min(bundle.code_bytes.len().saturating_sub(7));
+    let call_offset = (entry..end)
+        .find(|offset| {
+            bundle.code_bytes[*offset] == 0x50
+                && bundle.code_bytes[*offset + 1] == 0xe8
+                && bundle.code_bytes[*offset + 6] == 0x59
+        })
+        .unwrap_or_else(|| {
+            panic!(
+                "command-line-args depth=1 call should emit push/call/pop, entry={entry}, bytes={:?}",
+                &bundle.code_bytes[entry..end]
+            )
+        });
+    let rel = i32::from_le_bytes([
+        bundle.code_bytes[call_offset + 2],
+        bundle.code_bytes[call_offset + 3],
+        bundle.code_bytes[call_offset + 4],
+        bundle.code_bytes[call_offset + 5],
+    ]);
+    let target = call_offset as isize + 6 + rel as isize;
+    let helper_start = bundle.code_bytes.len() - 46;
+
+    assert_eq!(
+        target, helper_start as isize,
+        "command-line-args depth=1 rel32 は直前 helper ではなく command-line-args helper を指すべき: entry={entry} call_offset={call_offset} rel={rel} target={target} helper_start={helper_start}"
+    );
+    assert_eq!(
+        &bundle.code_bytes[helper_start..helper_start + 4],
+        &[0x4c, 0x89, 0xf0, 0xc3],
+        "command-line-args helper は r14 の argc を rax へ返す4-byte trailer helper であるべき"
     );
 }
 
