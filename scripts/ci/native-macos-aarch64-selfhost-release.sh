@@ -111,9 +111,12 @@ for key, value in expected.items():
         raise SystemExit(f"native App.Cli manifest mismatch: {key}")
 PY
 
-tar -czf "${ARTIFACT_DIR}/native-input-bundle.tar.gz" \
-  -C "${ARTIFACT_DIR}" \
-  program.native manifest.json smoke-stdout.txt smoke-stderr.txt
+python3 "${ROOT_DIR}/scripts/ci/create-native-release-input-bundle.py" \
+  --output "${ARTIFACT_DIR}/native-input-bundle.tar.gz" \
+  --program "${PROGRAM_PATH}" \
+  --manifest "${MANIFEST_PATH}" \
+  --smoke-stdout "${ARTIFACT_DIR}/smoke-stdout.txt" \
+  --smoke-stderr "${ARTIFACT_DIR}/smoke-stderr.txt"
 
 artifact_kib="$(du -sk "${ARTIFACT_DIR}" | awk '{print $1}')"
 if (( artifact_kib > MAX_ARTIFACT_KIB )); then

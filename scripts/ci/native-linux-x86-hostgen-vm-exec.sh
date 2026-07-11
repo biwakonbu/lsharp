@@ -2412,10 +2412,12 @@ if [[ "${STAGE3_TARGET_ONLY_REQUESTED}" = "1" ]]; then
     ! -name actual-stage3-target-smoke-stdout.txt \
     ! -name actual-stage3-target-smoke-stderr.txt \
     -exec rm -rf {} +
-  tar -czf "${ARTIFACT_DIR}/native-input-bundle.tar.gz" \
-    -C "${ARTIFACT_DIR}" \
-    program.native manifest.json \
-    actual-stage3-target-smoke-stdout.txt actual-stage3-target-smoke-stderr.txt
+  python3 "${ROOT_DIR}/scripts/ci/create-native-release-input-bundle.py" \
+    --output "${ARTIFACT_DIR}/native-input-bundle.tar.gz" \
+    --program "${ARTIFACT_DIR}/program.native" \
+    --manifest "${ARTIFACT_DIR}/manifest.json" \
+    --smoke-stdout "${ARTIFACT_DIR}/actual-stage3-target-smoke-stdout.txt" \
+    --smoke-stderr "${ARTIFACT_DIR}/actual-stage3-target-smoke-stderr.txt"
   max_artifact_kib="${LSHARP_NATIVE_RELEASE_MAX_ARTIFACT_KIB:-524288}"
   artifact_kib="$(du -sk "${ARTIFACT_DIR}" | awk '{print $1}')"
   if (( artifact_kib > max_artifact_kib )); then
