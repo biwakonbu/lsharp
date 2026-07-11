@@ -1117,20 +1117,20 @@
     cache-slot (root_push cache-ref)
     parse-count-slot (root_push parse-count-ref)
     data-ref (ref-new (vector-new 8))
-    data-slot (root_push data-ref)
+    data-ref-slot (root_push data-ref)
     functions (compile-file-functions-with-cache path func-idx cache-ref parse-count-ref data-ref)]
     (do
       (root_push functions)
       (let [data (ref-get data-ref)]
         (do
-          (let [data-slot (root_push data)]
+          (let [payload-data-slot (root_push data)]
           (let [payload1 (vector-push (vector-new 2) functions)]
             (do
               (root_push payload1)
               (let [payload2 (vector-push payload1 data)]
                 (do
                   (root_push payload2)
-                  (root_set data-slot payload2)
+                  (root_set payload-data-slot payload2)
                   (root_pop)
                   (root_pop)
                   (root_pop)

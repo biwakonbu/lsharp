@@ -5072,22 +5072,25 @@ fn test_selfhost_compile_file_payload_roots_result_before_unwinding_state() {
     )))
     .expect("CompilerMode.ls を読めること");
     let body = source
-        .split("(defn compile-file-functions-payload-with-cache")
+        .split("(defn compile-file-functions-payload-with-cache [")
         .nth(1)
         .and_then(|tail| {
-            tail.split("(defn compile-file-functions-with-cache-normal-setup-diagnostic")
+            tail.split("(defn compile-file-functions-payload-with-cache-raw-boundary-diagnostic")
                 .next()
         })
         .expect("compile-file-functions-payload-with-cache body を取り出せること");
 
-    let data_root = body
-        .find("data-slot (root_push data)")
+    let data_ref_root = body
+        .find("data-ref-slot (root_push data-ref)")
+        .expect("payload helper は data-ref 専用 root slot を保持するべき");
+    let payload_data_root = body
+        .find("payload-data-slot (root_push data)")
         .expect("payload helper は data root slot を保持するべき");
     let payload2_pos = body
         .find("payload2 (vector-push payload1 data)")
         .expect("payload helper は payload2 を生成するべき");
     let root_set_pos = body[payload2_pos..]
-        .find("(root_set data-slot payload2)")
+        .find("(root_set payload-data-slot payload2)")
         .map(|offset| offset + payload2_pos)
         .expect("payload helper は返却 payload2 を既存 root slot に退避するべき");
     let first_pop_after_payload2 = body[payload2_pos..]
@@ -5096,10 +5099,69 @@ fn test_selfhost_compile_file_payload_roots_result_before_unwinding_state() {
         .expect("payload helper は payload2 生成後に roots を unwind するべき");
 
     assert!(
-        data_root < payload2_pos
+        data_ref_root < payload_data_root
+            && payload_data_root < payload2_pos
             && payload2_pos < root_set_pos
             && root_set_pos < first_pop_after_payload2,
         "payload helper は stage2 normal transport で payload2 の functions/data を失わないよう、unwind 前に payload2 を root slot へ退避するべき"
+    );
+}
+
+#[test]
+fn test_selfhost_compile_file_payload_keeps_data_ref_and_payload_root_slots_distinct() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/App/CompilerMode.ls",
+    )))
+    .expect("CompilerMode.ls を読めること");
+    let body = source
+        .split("(defn compile-file-functions-payload-with-cache [")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-file-functions-payload-with-cache-raw-boundary-diagnostic")
+                .next()
+        })
+        .expect("compile-file-functions-payload-with-cache body を取り出せること");
+    let has_legacy_data_slot = body
+        .lines()
+        .any(|line| line.trim_start().starts_with("data-slot (root_push"));
+
+    assert!(
+        body.contains("data-ref-slot (root_push data-ref)")
+            && body.contains("payload-data-slot (root_push data)")
+            && body.contains("(root_set payload-data-slot payload2)")
+            && !has_legacy_data_slot,
+        "payload helper は outer data-ref と inner payload data の root slot 名を共有してはならない"
+    );
+}
+
+#[test]
+fn test_selfhost_root_set_reserves_prefix_locals_before_value_temporary() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/Backend/Wasm/Compiler.ls",
+    )))
+    .expect("Compiler.ls を読めること");
+    let body = source
+        .split("(defn compile-root-set-instrs-with-source [")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-builtin-apply-fallback-with-source")
+                .next()
+        })
+        .expect("compile-root-set-instrs-with-source body を取り出せること");
+
+    let prefix_append = body
+        .find("instrs1 (append-instr-vector instrs value-instrs)")
+        .expect("root_set は value temporary の予約前に prefix IR を連結するべき");
+    let value_temporary = body
+        .find("value-local (max-root-temp-base1 env instrs1)")
+        .expect("root_set は prefix IR を含めて value temporary local を予約するべき");
+    let value_store = body
+        .find("instrs2 (emit-to instrs1 11 value-local)")
+        .expect("root_set は予約済み value temporary へ値を保存するべき");
+
+    assert!(
+        prefix_append < value_temporary && value_temporary < value_store,
+        "root_set は既存 root slot を value temporary に再利用しないよう prefix IR を先に走査するべき"
     );
 }
 
@@ -13363,6 +13425,57 @@ fn representative_selfhost_registration_order() -> Vec<SelfhostRegistrationDefn>
         let (file_name, program) = programs
             .get(&module_name)
             .unwrap_or_else(|| panic!("representative program が見つからない: {module_name}"));
+        for (decl_idx, decl) in program.decls.iter().enumerate() {
+            if let lsharp_syntax::ast::Decl::Defn { name, .. } = decl {
+                ordered_defns.push(SelfhostRegistrationDefn {
+                    absolute_idx,
+                    module: module_name.clone(),
+                    file_name: file_name.clone(),
+                    decl_idx,
+                    name: name.clone(),
+                });
+                absolute_idx += 1;
+            }
+        }
+    }
+    ordered_defns
+}
+
+fn representative_actual_stage23_seed_registration_order() -> Vec<SelfhostRegistrationDefn> {
+    let mut programs = representative_selfhost_programs_by_module();
+    let seed_source = representative_actual_stage23_seed_source();
+    let seed_program = parse_for_pipeline(&seed_source);
+    let seed_module = seed_program
+        .decls
+        .iter()
+        .find_map(|decl| match decl {
+            lsharp_syntax::ast::Decl::ModuleDecl { name, .. } => Some(name.clone()),
+            _ => None,
+        })
+        .expect("actual stage23 Seed の module 宣言が見つからない");
+    assert_eq!(seed_module, "App.Seed");
+    assert!(
+        programs
+            .insert(seed_module.clone(), ("Seed.ls".to_string(), seed_program))
+            .is_none(),
+        "actual stage23 Seed module が representative source と重複している"
+    );
+
+    let mut seen = BTreeSet::new();
+    let mut ordered_modules = Vec::new();
+    collect_representative_selfhost_module_order(
+        &seed_module,
+        &programs,
+        &mut seen,
+        &mut ordered_modules,
+    );
+
+    let mut absolute_idx = 10usize;
+    let mut ordered_defns = Vec::new();
+    for module_name in ordered_modules {
+        let (file_name, program) = programs
+            .get(&module_name)
+            .unwrap_or_else(|| panic!("actual stage23 module が見つからない: {module_name}"));
         for (decl_idx, decl) in program.decls.iter().enumerate() {
             if let lsharp_syntax::ast::Decl::Defn { name, .. } = decl {
                 ordered_defns.push(SelfhostRegistrationDefn {
@@ -23719,6 +23832,114 @@ fn run_selfhost_main_representative_aarch64_offset_lookup_harness(
         lines[2] as usize,
         lines[3] as usize,
     ]
+}
+
+#[test]
+#[ignore]
+fn test_e2e_stage23_actual_seed_aarch64_crash_offset_owner_diagnostic() {
+    let target_offset = std::env::var("LSHARP_NATIVE_AARCH64_CRASH_CODE_OFFSET")
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .unwrap_or(1_167_152);
+    let seed_source = escape_lsharp_string(&representative_actual_stage23_seed_source());
+    let harness = format!(
+        r#"(module App.HarnessMain)
+(import App.CompilerMode)
+(import Backend.Wasm.CompilerBase)
+(import Backend.Native.NativeCodegen)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn push-import-placeholders [idx count result]
+  (if (>= idx count)
+    result
+    (push-import-placeholders
+      (+ idx 1)
+      count
+      (vector-push result (make-function-meta 0 0 (vector-new 0))))))
+
+(defn append-vector-loop [dst src idx len]
+  (if (>= idx len)
+    dst
+    (append-vector-loop
+      (vector-push dst (vector-get src idx))
+      src
+      (+ idx 1)
+      len)))
+
+(defn find-start-idx-loop [starts target idx len last-idx]
+  (if (>= idx len)
+    last-idx
+    (let [current (vector-get starts idx)]
+      (if (> current target)
+        last-idx
+        (find-start-idx-loop starts target (+ idx 1) len idx)))))
+
+(defn main []
+  (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        _seed (write-file "src/App/Seed.ls" "{seed_source}")
+        payload (compile-file-functions-payload-with-cache "src/App/Seed.ls" 10 cache-ref parse-count-ref)
+        functions (vector-get payload 0)
+        callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))
+        native-callables (normalize-selfhost-native-function-metas callables)
+        layout (collect-callable-actual-layout-aarch64 native-callables 10)
+        starts (callable-layout-function-starts-aarch64 layout)
+        idx (find-start-idx-loop starts {target_offset} 0 (vector-length starts) 0)
+        start (vector-get starts idx)
+        next-start (if (< (+ idx 1) (vector-length starts)) (vector-get starts (+ idx 1)) 0)]
+    (do
+      (print idx)
+      (print start)
+      (print next-start)
+      (print (+ idx 10))
+      0)))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
+        "native-stage23-actual-seed-aarch64-crash-owner",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .expect("actual Seed crash offset owner diagnostic の実行に失敗");
+    let lines = parse_numeric_lines(&output);
+    assert_eq!(
+        lines.len(),
+        4,
+        "actual Seed crash offset owner diagnostic 出力が不足: {lines:?}"
+    );
+    assert!(
+        lines[1] as usize <= target_offset,
+        "crash offset より後ろの callable を owner にしている: target={target_offset} lines={lines:?}"
+    );
+    assert!(
+        lines[2] <= 0 || target_offset < lines[2] as usize,
+        "crash offset より前の next callable を owner にしている: target={target_offset} lines={lines:?}"
+    );
+    let function_idx = lines[3] as usize;
+    let owner = representative_actual_stage23_seed_registration_order()
+        .into_iter()
+        .find(|defn| defn.absolute_idx == function_idx)
+        .unwrap_or_else(|| {
+            panic!("actual Seed function index {function_idx} の owner が見つからない")
+        });
+    println!(
+        "actual Seed aarch64 crash owner: target={target_offset} callable_idx={} start={} next_start={} function_idx={} module={} file={} decl_idx={} name={}",
+        lines[0],
+        lines[1],
+        lines[2],
+        function_idx,
+        owner.module,
+        owner.file_name,
+        owner.decl_idx,
+        owner.name
+    );
 }
 
 #[test]
@@ -51354,6 +51575,36 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_r
       0)))"#;
     assert_representative_override_main_matches_selfhost(
         "native-stage23-pipeline-smoke-root-set-only",
+        main_source,
+    );
+}
+
+#[test]
+#[ignore]
+fn test_e2e_selfhost_pipeline_smoke_root_set_keeps_shadowed_slot_during_allocating_value() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+
+(defn main []
+  (let [base (vector-new 1)]
+    (do
+      (root_push base)
+      (let [slot (root_push base)]
+        (let [slot (root_push base)
+              _updated (root_set slot (vector-push (vector-new 1) 7))
+              updated (root_pop)]
+          (do
+            (root_push updated)
+            (print (vector-length updated))
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            0))))))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-root-set-shadowed-slot-allocating-value",
         main_source,
     );
 }

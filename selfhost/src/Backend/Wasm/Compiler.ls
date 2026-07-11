@@ -1007,8 +1007,8 @@
       (compile-simple-builtin-with-source node source env ftable instrs data-ref 76)
       (compile-root-set-rooted-with-source source env ftable instrs data-ref slot-expr (root-set-slot-simple slot-expr) value-expr value-root))))
 (defn compile-root-set-instrs-with-source [source env ftable instrs data-ref slot-expr slot-simple value-root value-instrs]
-  (let [value-local (max-root-temp-base1 env value-instrs)
-    instrs1 (append-instr-vector instrs value-instrs)
+  (let [instrs1 (append-instr-vector instrs value-instrs)
+    value-local (max-root-temp-base1 env instrs1)
     instrs2 (emit-to instrs1 11 value-local)
     instrs3 (if slot-simple instrs2 (maybe-root-push-drop instrs2 value-root value-local))
     instrs4 (compile-expr-with-source slot-expr source env ftable instrs3 data-ref)
