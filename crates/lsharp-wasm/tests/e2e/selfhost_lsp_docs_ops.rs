@@ -4456,6 +4456,14 @@ fn test_e2e_ops06_release_smoke_script_runs_fixture_archive() {
 set -euo pipefail
 cmd="${1:-}"
 case "$cmd" in
+  check|test|fmt|compile|doc)
+    if [[ "$(basename "$PWD")" != "smoke" ]]; then
+      echo "expected packaged CLI to run from the smoke directory" >&2
+      exit 1
+    fi
+    ;;
+esac
+case "$cmd" in
   --version)
     echo "lsharp 0.0.0-test"
     ;;

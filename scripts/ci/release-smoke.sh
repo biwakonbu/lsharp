@@ -309,6 +309,18 @@ SMOKE_METADATA_SOURCE="$SMOKE_DIR/quickstart-metadata.ls"
 SMOKE_WASM="$SMOKE_DIR/quickstart.wasm"
 SMOKE_DOC_HTML="$SMOKE_DIR/quickstart.html"
 SMOKE_DOC_JSON="$SMOKE_DIR/api.json"
+SMOKE_SOURCE_NAME="$(basename "$SMOKE_SOURCE")"
+SMOKE_METADATA_SOURCE_NAME="$(basename "$SMOKE_METADATA_SOURCE")"
+SMOKE_WASM_NAME="$(basename "$SMOKE_WASM")"
+
+# embedded component は current directory だけを filesystem として利用する。
+run_smoke_cli() {
+  (
+    cd "$SMOKE_DIR"
+    "$LSHARP_BIN" "$@"
+  )
+}
+
 cat > "$SMOKE_SOURCE" <<'EOF'
 (defn main [] 42)
 EOF
@@ -333,23 +345,26 @@ if [[ -n "${VERSION:-}" ]]; then
   fi
 fi
 if [[ "$NATIVE_ONLY" != "1" ]]; then
-  "$LSHARP_LSP_BIN" --version >/dev/null
+  (
+    cd "$SMOKE_DIR"
+    "$LSHARP_LSP_BIN" --version >/dev/null
+  )
 fi
-"$LSHARP_BIN" check "$SMOKE_SOURCE" >/dev/null
-"$LSHARP_BIN" fmt "$SMOKE_SOURCE" >/dev/null
-"$LSHARP_BIN" test "$SMOKE_METADATA_SOURCE" >/dev/null
+run_smoke_cli check "$SMOKE_SOURCE_NAME" >/dev/null
+run_smoke_cli fmt "$SMOKE_SOURCE_NAME" >/dev/null
+run_smoke_cli test "$SMOKE_METADATA_SOURCE_NAME" >/dev/null
 if [[ "$NATIVE_ONLY" == "1" ]]; then
-  "$LSHARP_BIN" compile "$SMOKE_SOURCE" >"$SMOKE_WASM"
-  "$LSHARP_BIN" doc "$SMOKE_METADATA_SOURCE" >"$SMOKE_DOC_HTML"
-  "$LSHARP_BIN" doc "$SMOKE_METADATA_SOURCE" --json >"$SMOKE_DOC_JSON"
+  run_smoke_cli compile "$SMOKE_SOURCE_NAME" >"$SMOKE_WASM"
+  run_smoke_cli doc "$SMOKE_METADATA_SOURCE_NAME" >"$SMOKE_DOC_HTML"
+  run_smoke_cli doc "$SMOKE_METADATA_SOURCE_NAME" --json >"$SMOKE_DOC_JSON"
   if ! grep -Eq '^wasm-size:[0-9]+$' "$SMOKE_WASM"; then
     echo "ERROR: native App.Cli compile summary is invalid: $SMOKE_WASM" >&2
     exit 1
   fi
 else
-  "$LSHARP_BIN" compile "$SMOKE_SOURCE" -o "$SMOKE_WASM" >/dev/null
-  "$LSHARP_BIN" doc "$SMOKE_METADATA_SOURCE" -o "$SMOKE_DOC_HTML" >/dev/null
-  "$LSHARP_BIN" doc "$SMOKE_METADATA_SOURCE" --json -o "$SMOKE_DOC_JSON" >/dev/null
+  run_smoke_cli compile "$SMOKE_SOURCE_NAME" -o "$SMOKE_WASM_NAME" >/dev/null
+  run_smoke_cli doc "$SMOKE_METADATA_SOURCE_NAME" -o "$(basename "$SMOKE_DOC_HTML")" >/dev/null
+  run_smoke_cli doc "$SMOKE_METADATA_SOURCE_NAME" --json -o "$(basename "$SMOKE_DOC_JSON")" >/dev/null
   if [[ ! -s "$SMOKE_WASM" ]]; then
     echo "ERROR: compile output is empty: $SMOKE_WASM" >&2
     exit 1
