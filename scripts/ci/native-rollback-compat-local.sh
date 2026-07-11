@@ -12,7 +12,12 @@ OUTPUT_DIR="${LSHARP_NATIVE_ROLLBACK_OUTPUT_DIR:-${ROOT_DIR}/ci-artifacts/native
 HOST_WORK_DIR="${LSHARP_NATIVE_ROLLBACK_HOST_WORK_DIR:-/tmp/lsharp-native-rollback-compat-host-$$}"
 VM_WORK_DIR="${LSHARP_NATIVE_ROLLBACK_VM_WORK_DIR:-/tmp/lsharp-native-rollback-compat-vm-$$}"
 MAX_ROLLBACK_KIB="${LSHARP_NATIVE_RELEASE_MAX_ROLLBACK_KIB:-524288}"
+MIN_HOST_FREE_KIB="${LSHARP_NATIVE_ROLLBACK_MIN_HOST_FREE_KIB:-8388608}"
+VM_REQUIRED_FREE_KIB="$((MAX_ROLLBACK_KIB * 3))"
+LINUX_BUILD_IMAGE="${LSHARP_NATIVE_ROLLBACK_LINUX_BUILD_IMAGE:-docker.io/library/rust:1.93.0-bookworm@sha256:7274e0edb5b47eda8053b350ebf3d489f7e0f65d2d7e77b16076299c7c047c28}"
 SOURCE_COMMIT="$(git rev-parse HEAD)"
+LINUX_BUILD_IMAGE_WAS_PRESENT=0
+LINUX_BUILD_IMAGE_PULL_ATTEMPTED=0
 
 require_safe_cleanup_path() {
   local path="$1"
@@ -78,6 +83,10 @@ cleanup() {
   if command -v limactl >/dev/null 2>&1; then
     limactl shell "${VM_NAME}" -- rm -rf "${VM_WORK_DIR}" >/dev/null 2>&1 || true
   fi
+  if [[ "${LINUX_BUILD_IMAGE_WAS_PRESENT}" -eq 0 && "${LINUX_BUILD_IMAGE_PULL_ATTEMPTED}" -eq 1 ]] \
+    && command -v docker >/dev/null 2>&1; then
+    docker image rm "${LINUX_BUILD_IMAGE}" >/dev/null 2>&1 || true
+  fi
 }
 trap cleanup EXIT
 
@@ -88,6 +97,28 @@ fi
 if ! command -v limactl >/dev/null 2>&1; then
   echo "ERROR: limactl is required for Linux x86 rollback build" >&2
   exit 1
+fi
+if ! command -v docker >/dev/null 2>&1; then
+  echo "ERROR: docker is required for Linux x86 rollback build" >&2
+  exit 1
+fi
+if [[ "${LINUX_BUILD_IMAGE}" != *@sha256:* ]]; then
+  echo "ERROR: Linux rollback build image must be pinned by sha256 digest" >&2
+  exit 1
+fi
+if ! docker info >/dev/null 2>&1; then
+  echo "ERROR: Docker daemon is not available" >&2
+  exit 1
+fi
+
+host_free_kib="$(df -Pk /tmp | awk 'NR == 2 {print $4}')"
+if [[ ! "${host_free_kib}" =~ ^[0-9]+$ ]] || (( host_free_kib < MIN_HOST_FREE_KIB )); then
+  echo "ERROR: rollback build requires ${MIN_HOST_FREE_KIB} KiB host free space; available=${host_free_kib:-unknown}" >&2
+  exit 1
+fi
+
+if docker image inspect "${LINUX_BUILD_IMAGE}" >/dev/null 2>&1; then
+  LINUX_BUILD_IMAGE_WAS_PRESENT=1
 fi
 
 vm_status="$(limactl list "${VM_NAME}" --format '{{.Status}}' 2>/dev/null || true)"
@@ -110,21 +141,48 @@ WORK_DIR="${HOST_WORK_DIR}/smoke-macos" \
   bash scripts/ci/release-smoke.sh "${mac_archive}"
 cp "${mac_archive}" "${OUTPUT_DIR}/"
 
+linux_archive_name="lsharp-${ROLLBACK_VERSION}-x86_64-unknown-linux-gnu-host-launcher.tar.gz"
+mkdir -p \
+  "${HOST_WORK_DIR}/source" \
+  "${HOST_WORK_DIR}/home" \
+  "${HOST_WORK_DIR}/cargo-home" \
+  "${HOST_WORK_DIR}/target-linux" \
+  "${HOST_WORK_DIR}/dist-linux"
+COPYFILE_DISABLE=1 git archive --format=tar "${SOURCE_COMMIT}" \
+  | tar -xf - -C "${HOST_WORK_DIR}/source"
+
+LINUX_BUILD_IMAGE_PULL_ATTEMPTED=1
+docker run --rm \
+  --platform linux/amd64 \
+  --user "$(id -u):$(id -g)" \
+  --mount "type=bind,src=${HOST_WORK_DIR},dst=/work" \
+  --workdir /work/source \
+  --env HOME=/work/home \
+  --env CARGO_HOME=/work/cargo-home \
+  --env CARGO_TARGET_DIR=/work/target-linux \
+  --env CARGO_INCREMENTAL=0 \
+  --env DIST_DIR=/work/dist-linux \
+  --env TARGET=x86_64-unknown-linux-gnu \
+  --env VERSION="${ROLLBACK_VERSION}" \
+  --env SOURCE_COMMIT="${SOURCE_COMMIT}" \
+  --env NATIVE_ONLY_RELEASE=0 \
+  "${LINUX_BUILD_IMAGE}" \
+  bash scripts/release.sh
+
+linux_archive="${HOST_WORK_DIR}/dist-linux/${linux_archive_name}"
+verify_rollback_manifest "${linux_archive}" "x86_64-unknown-linux-gnu"
+cp "${linux_archive}" "${OUTPUT_DIR}/${linux_archive_name}"
+
+vm_free_kib="$(limactl shell "${VM_NAME}" -- sh -lc "df -Pk /tmp | awk 'NR == 2 {print \\$4}'")"
+if [[ ! "${vm_free_kib}" =~ ^[0-9]+$ ]] || (( vm_free_kib < VM_REQUIRED_FREE_KIB )); then
+  echo "ERROR: rollback smoke requires ${VM_REQUIRED_FREE_KIB} KiB VM free space; available=${vm_free_kib:-unknown}" >&2
+  exit 1
+fi
 limactl shell "${VM_NAME}" -- rm -rf "${VM_WORK_DIR}"
 limactl shell "${VM_NAME}" -- mkdir -p "${VM_WORK_DIR}/dist"
-quoted_root="$(printf '%q' "${ROOT_DIR}")"
-quoted_vm_work="$(printf '%q' "${VM_WORK_DIR}")"
-quoted_version="$(printf '%q' "${ROLLBACK_VERSION}")"
-limactl shell "${VM_NAME}" -- bash -lc \
-  "cd ${quoted_root} && CARGO_TARGET_DIR=${quoted_vm_work}/target DIST_DIR=${quoted_vm_work}/dist TARGET=x86_64-unknown-linux-gnu VERSION=${quoted_version} NATIVE_ONLY_RELEASE=0 bash scripts/release.sh"
-
-linux_archive_name="lsharp-${ROLLBACK_VERSION}-x86_64-unknown-linux-gnu-host-launcher.tar.gz"
 limactl copy \
-  "${VM_NAME}:${VM_WORK_DIR}/dist/${linux_archive_name}" \
-  "${OUTPUT_DIR}/${linux_archive_name}"
-verify_rollback_manifest \
   "${OUTPUT_DIR}/${linux_archive_name}" \
-  "x86_64-unknown-linux-gnu"
+  "${VM_NAME}:${VM_WORK_DIR}/dist/${linux_archive_name}"
 limactl copy scripts/ci/release-smoke.sh "${VM_NAME}:${VM_WORK_DIR}/release-smoke.sh"
 limactl shell "${VM_NAME}" -- env \
   WORK_DIR="${VM_WORK_DIR}/smoke-linux" \

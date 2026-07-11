@@ -12756,6 +12756,19 @@ fn representative_actual_stage23_seed_source_for_target(target_expr: &str) -> St
     )
 }
 
+fn describe_native_process_exit_status(status: std::process::ExitStatus) -> String {
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::ExitStatusExt;
+
+        return format!("code={:?} signal={:?}", status.code(), status.signal());
+    }
+    #[cfg(not(unix))]
+    {
+        format!("code={:?}", status.code())
+    }
+}
+
 fn run_actual_native_self_regeneration_transport_stage(
     label: &str,
     stage_input: &NativeEntrypointBundle,
@@ -12820,10 +12833,10 @@ fn run_actual_native_self_regeneration_transport_stage(
         };
         if executed_bundle.exit_code != 0 {
             return Err(format!(
-                "{label} exit code が 0 でない: stdout={:?} stderr={:?} exit={}",
+                "{label} exit code が 0 でない: stdout={:?} stderr={:?} {}",
                 String::from_utf8_lossy(&executed_bundle.stdout),
                 String::from_utf8_lossy(&executed_bundle.stderr),
-                executed_bundle.exit_code
+                describe_native_process_exit_status(run_result.status)
             ));
         }
         if !executed_bundle.stderr.is_empty() {
@@ -12863,6 +12876,21 @@ fn run_actual_native_self_regeneration_transport_stage(
         let _ = std::fs::remove_dir_all(&dir);
     }
     result
+}
+
+#[test]
+#[cfg(unix)]
+fn test_describe_native_process_exit_status_includes_signal() {
+    let status = std::process::Command::new("sh")
+        .args(["-c", "kill -TERM $$"])
+        .status()
+        .expect("signal 終了 fixture の実行に失敗");
+
+    assert_eq!(
+        describe_native_process_exit_status(status),
+        "code=None signal=Some(15)",
+        "native process の異常終了は code=-1 へ潰さず signal を保持すること"
+    );
 }
 
 fn run_actual_native_self_regeneration_stage23_pair() -> Result<
@@ -57633,13 +57661,9 @@ fn test_native_linux_x86_hostgen_vm_script_disables_macos_copyfile_metadata() {
     let script = std::fs::read_to_string(&script_path)
         .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
 
-    for source_dir in [
-        r#"${ARTIFACT_DIR}/stage2-debug"#,
-        r#"${ROOT_DIR}/selfhost"#,
-    ] {
-        let transfer = format!(
-            r#"COPYFILE_DISABLE=1 tar -C "{source_dir}" --exclude '._*' -cf - src"#
-        );
+    for source_dir in [r#"${ARTIFACT_DIR}/stage2-debug"#, r#"${ROOT_DIR}/selfhost"#] {
+        let transfer =
+            format!(r#"COPYFILE_DISABLE=1 tar -C "{source_dir}" --exclude '._*' -cf - src"#);
         assert!(
             script.contains(&transfer),
             "macOS から VM への tar 転送は AppleDouble/xattr を生成しないこと: {transfer}"
@@ -57654,7 +57678,9 @@ fn test_native_release_default_artifacts_are_gitignored() {
         .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", gitignore_path.display()));
 
     assert!(
-        gitignore.lines().any(|line| line == "/ci-artifacts/native-release/"),
+        gitignore
+            .lines()
+            .any(|line| line == "/ci-artifacts/native-release/"),
         "native release producer の既定出力は clean worktree gate と競合しないよう ignore すること"
     );
 }
@@ -57749,6 +57775,17 @@ fn test_native_rollback_compatibility_local_producer_bounds_build_storage() {
         "rollback compatibility provenance requires a clean worktree",
         "git status --porcelain --untracked-files=all",
         "manifest.json",
+        "docker.io/library/rust:1.93.0-bookworm@sha256:",
+        "git archive --format=tar \"${SOURCE_COMMIT}\"",
+        "--platform linux/amd64",
+        "--rm",
+        "CARGO_INCREMENTAL=0",
+        "target-linux",
+        "dist-linux",
+        "docker image inspect",
+        "docker image rm",
+        "MIN_HOST_FREE_KIB",
+        "VM_REQUIRED_FREE_KIB",
     ] {
         assert!(
             script.contains(required),
@@ -57759,6 +57796,11 @@ fn test_native_rollback_compatibility_local_producer_bounds_build_storage() {
         release_script.contains(r#"BUILD_TARGET_DIR="${CARGO_TARGET_DIR:-target}""#)
             && release_script.contains(r#"${BUILD_TARGET_DIR}/release/${base_name}""#),
         "release.sh は一時 CARGO_TARGET_DIR の rollback build output を解決すること"
+    );
+    assert!(
+        !script.contains(r#"cd ${quoted_root}"#)
+            && !script.contains("CARGO_TARGET_DIR=${quoted_vm_work}/target"),
+        "rollback producer は repo/cargo のない Lima VM 内で build しないこと"
     );
 }
 
