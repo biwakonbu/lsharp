@@ -2406,6 +2406,27 @@ fn test_linux_x86_file_segmented_harness_writes_segments_from_append_emit_vector
 }
 
 #[test]
+fn test_linux_x86_representative_seed_printed_trailer_includes_all_declared_helpers() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+    let trailer_printer = source
+        .split("(defn print-x86-code-trailer-segments")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn prefixed-chunk-file-path").next())
+        .expect("Linux x86 segmented seed に print trailer が存在すること");
+
+    for helper in [
+        "emit-x86-selfhost-command-line-args-helper",
+        "emit-x86-selfhost-print-string-helper",
+        "emit-x86-selfhost-proc-exit-helper",
+    ] {
+        assert!(
+            trailer_printer.contains(helper),
+            "printed trailer は declared trailer size に含む CLI helper も出力するべき: {helper}"
+        );
+    }
+}
+
+#[test]
 fn test_linux_x86_representative_seed_copy_slice_uses_bounded_steps() {
     let source = linux_x86_representative_actual_stage23_seed_source();
 
@@ -16702,6 +16723,9 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
     (print-packed-code-segment (emit-x86-selfhost-map-insert-helper))
     (print-packed-code-segment (emit-x86-selfhost-map-get-helper))
     (print-packed-code-segment (emit-x86-selfhost-file-exists-helper))
+    (print-packed-code-segment (emit-x86-selfhost-command-line-args-helper))
+    (print-packed-code-segment (emit-x86-selfhost-print-string-helper))
+    (print-packed-code-segment (emit-x86-selfhost-proc-exit-helper))
     0))
 
 (defn prefixed-chunk-file-path [prefix chunk-idx]
