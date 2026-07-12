@@ -13140,6 +13140,27 @@ fn test_native_codegen_aarch64_zero_arg_user_call_preserves_live_left_operand() 
     );
 }
 
+#[test]
+fn test_selfhost_test_runner_evaluates_all_invariant_samples() {
+    let source = selfhost_module("TestRunner.ls");
+    let sample_loop = source
+        .split("(defn run-invariant-samples-loop")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn materialize-invariant").next())
+        .expect("TestRunner.ls に invariant sample loop が存在すること");
+
+    assert!(
+        sample_loop.contains("all-passed"),
+        "invariant sample loop は先行失敗後も残り sample を評価する累積結果を保持するべき"
+    );
+    assert!(
+        sample_loop.contains(
+            "(run-invariant-samples-loop program tc decl (+ sample-idx 1) sample-count next-passed)"
+        ),
+        "invariant sample loop は各 sample の評価後も常に次の sample へ進むべき"
+    );
+}
+
 fn describe_native_process_exit_status(status: std::process::ExitStatus) -> String {
     #[cfg(unix)]
     {
@@ -54002,7 +54023,7 @@ fn test_e2e_native_macos_aarch64_actual_app_cli_release_program() {
     );
 }
 
-/// V2-16d: 保存済み stage3 compiler が TestRunner metadata collector を native 実行できること。
+/// V2-16d: 保存済み stage3 compiler が TestRunner の invariant sample evaluator を native 実行できること。
 #[test]
 #[ignore = "LSHARP_NATIVE_MACOS_AARCH64_STAGE3_COMPILER に保存済み stage3 compiler を指定する"]
 fn test_e2e_saved_native_stage3_compiler_test_runner_metadata_probe() {
@@ -54034,12 +54055,19 @@ fn test_e2e_saved_native_stage3_compiler_test_runner_metadata_probe() {
 
 (defn main []
   (let [src "(defn abs [x] :example [(= (abs 5) 5) (= (abs (- 0 7)) 7)] :invariant (>= result 0) (if (< x 0) (- 0 x) x))"
-        suite (extract-test-cases src)
+        suite (generate-tests src)
         examples (vector-get suite 0)
-        invariants (vector-get suite 1)]
+        invariants (vector-get suite 1)
+        example0 (vector-get examples 0)
+        example1 (vector-get examples 1)
+        invariant0 (vector-get invariants 0)]
     (do
       (print (vector-length examples))
       (print (vector-length invariants))
+      (print (vector-get example0 1))
+      (print (vector-get example1 1))
+      (print (vector-get invariant0 1))
+      (print (vector-get invariant0 2))
       0)))
 "#,
     )
@@ -54062,8 +54090,8 @@ fn test_e2e_saved_native_stage3_compiler_test_runner_metadata_probe() {
     );
     assert_eq!(
         String::from_utf8_lossy(&bundle.stdout),
-        "2\n1\n",
-        "saved stage3 compiler の TestRunner metadata collector は example/invariant を 2/1 件抽出すること"
+        "2\n1\n1\n1\n1\n5\n",
+        "saved stage3 compiler の TestRunner は example/invariant 結果と invariant sample count を正しく materialize すること"
     );
     assert!(
         bundle.stderr.is_empty(),
@@ -54118,8 +54146,11 @@ fn test_e2e_saved_native_stage3_compiler_app_cli_metadata_command() {
         result.expect("saved stage3 compiler による App.Cli metadata command の実行に失敗");
 
     assert_eq!(
-        bundle.exit_code, 0,
-        "native App.Cli metadata test は成功終了すること"
+        bundle.exit_code,
+        0,
+        "native App.Cli metadata test は成功終了すること: stdout={:?} stderr={:?}",
+        String::from_utf8_lossy(&bundle.stdout),
+        String::from_utf8_lossy(&bundle.stderr)
     );
     assert_eq!(
         String::from_utf8_lossy(&bundle.stdout),
@@ -54129,6 +54160,67 @@ fn test_e2e_saved_native_stage3_compiler_app_cli_metadata_command() {
     assert!(
         bundle.stderr.is_empty(),
         "native App.Cli metadata test stderr は空であること: {:?}",
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+}
+
+/// V2-16d: 保存済み stage3 compiler の App.Cli は偽の invariant を failure として返すこと。
+#[test]
+#[ignore = "LSHARP_NATIVE_MACOS_AARCH64_STAGE3_COMPILER に保存済み stage3 compiler を指定する"]
+fn test_e2e_saved_native_stage3_compiler_app_cli_failing_invariant_command() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let compiler_path = std::path::PathBuf::from(
+        std::env::var_os("LSHARP_NATIVE_MACOS_AARCH64_STAGE3_COMPILER")
+            .expect("LSHARP_NATIVE_MACOS_AARCH64_STAGE3_COMPILER を指定すること"),
+    );
+    assert!(
+        compiler_path.is_file(),
+        "saved stage3 compiler が見つからない: {}",
+        compiler_path.display()
+    );
+
+    let package_root = selfhost_package_root();
+    let source_name = format!("native-failing-invariant-{}.ls", std::process::id());
+    let source_path = package_root.join(&source_name);
+    assert!(
+        !source_path.exists(),
+        "native failing invariant source が既に存在するため上書きしない: {}",
+        source_path.display()
+    );
+    std::fs::write(
+        &source_path,
+        "(defn identity [x] :invariant (!= result -1) x)\n(defn pair [x y] :invariant (!= result 15) (+ (* x 10) y))",
+    )
+    .expect("native failing invariant source の書き込みに失敗");
+
+    let result = (|| -> Result<NativeHostArtifactBundle, String> {
+        let input = run_saved_native_macos_aarch64_compiler_for_source(
+            "saved-stage3-app-cli-failing-invariant",
+            &compiler_path,
+            "src/App/Cli.ls",
+        )?;
+        let args = ["test", source_name.as_str()];
+        run_native_macos_aarch64_cli_bundle(&input, &args)
+    })();
+    let _ = std::fs::remove_file(&source_path);
+    let bundle =
+        result.expect("saved stage3 compiler による App.Cli failing invariant の実行に失敗");
+
+    assert_eq!(
+        bundle.exit_code, 2,
+        "native App.Cli failing invariant は runtime error で終了すること"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&bundle.stdout),
+        "examples:0\ninvariants:2\nfailures:2\n",
+        "saved stage3 compiler の App.Cli test は -1 sample と二引数 Cartesian sample の failing invariant を集計すること"
+    );
+    assert!(
+        bundle.stderr.is_empty(),
+        "native App.Cli failing invariant stderr は空であること: {:?}",
         String::from_utf8_lossy(&bundle.stderr)
     );
 }

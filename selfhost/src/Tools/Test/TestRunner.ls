@@ -370,7 +370,7 @@
       0)))
 
 (defn append-skip-span [spans start end]
-  (vector-push (vector-push spans start) end))
+  (vector-push-pair-rooted spans start end))
 
 (defn collect-defn-test-skip-spans-loop [src tokens idx end spans paren-depth bracket-depth brace-depth]
   (if (>= idx end)
@@ -378,7 +378,8 @@
     (let [kind (token-kind tokens idx)]
       (if (= kind (tok-eof))
         spans
-        (if (= (at-defn-top-level paren-depth bracket-depth brace-depth) 1)
+        (if (= kind (tok-lbracket))
+          (collect-defn-test-skip-spans-loop src tokens (consume-form tokens idx) end spans 1 0 0)
           (if (= kind (tok-colon))
             (let [payload-start (+ idx 2)]
               (if (< payload-start end)
@@ -389,20 +390,14 @@
                       (token-start tokens idx)
                       (token-end tokens (- payload-end 1)))
                     spans)]
-                  (collect-defn-test-skip-spans-loop src tokens payload-end end next-spans 1 0 0))
+                  (do
+                    (root_push next-spans)
+                    (let [result (collect-defn-test-skip-spans-loop src tokens payload-end end next-spans 1 0 0)]
+                      (do
+                        (root_pop)
+                        result))))
                 spans))
-            (let [next-paren (step-paren-depth kind paren-depth)
-              next-bracket (step-bracket-depth kind bracket-depth)
-              next-brace (step-brace-depth kind brace-depth)]
-              (collect-defn-test-skip-spans-loop
-                src tokens (+ idx 1) end spans
-                next-paren next-bracket next-brace)))
-          (let [next-paren (step-paren-depth kind paren-depth)
-            next-bracket (step-bracket-depth kind bracket-depth)
-            next-brace (step-brace-depth kind brace-depth)]
-            (collect-defn-test-skip-spans-loop
-              src tokens (+ idx 1) end spans
-              next-paren next-bracket next-brace)))))))
+            spans))))))
 
 (defn collect-test-skip-spans-loop [src tokens idx count spans]
   (if (>= idx count)
@@ -532,6 +527,51 @@
       5
       9)))
 
+(defn invariant-sample-value [idx]
+  (if (= idx 0)
+    (value-int 0)
+    (if (= idx 1)
+      (value-int 1)
+      (if (= idx 2)
+        (value-int 5)
+        (if (= idx 3)
+          (value-int (- 0 1))
+          (value-int 42))))))
+
+(defn append-zero-invariant-args [args idx count]
+  (if (>= idx count)
+    args
+    (append-zero-invariant-args
+      (vector-push args (value-int 0))
+      (+ idx 1)
+      count)))
+
+(defn invariant-sample-args [param-count sample-idx]
+  (if (= param-count 0)
+    (vector-new 0)
+    (if (= param-count 1)
+      (vector-push (vector-new 1) (invariant-sample-value sample-idx))
+      (let [first (invariant-sample-value (/ sample-idx 3))
+        second (invariant-sample-value (% sample-idx 3))
+        with-first (vector-push (vector-new param-count) first)
+        with-second (vector-push with-first second)]
+        (append-zero-invariant-args with-second 2 param-count)))))
+
+(defn eval-invariant-sample [program tc decl param-count sample-idx]
+  (let [args (invariant-sample-args param-count sample-idx)
+    result (eval-defn-call program decl args)
+    invariant-env (env-bind (env-new) (hash-result) result)
+    actual (eval-node program (vector-get tc 2) invariant-env)]
+    (value-truthy actual)))
+
+(defn run-invariant-samples-loop [program tc decl sample-idx sample-count all-passed]
+  (if (>= sample-idx sample-count)
+    all-passed
+    (let [param-count (vector-get decl 2)
+      passed (eval-invariant-sample program tc decl param-count sample-idx)
+      next-passed (if (= passed 1) all-passed 0)]
+      (run-invariant-samples-loop program tc decl (+ sample-idx 1) sample-count next-passed))))
+
 (defn materialize-invariant [program tc]
   (let [name (vector-get tc 0)
     fn-hash (vector-get tc 1)
@@ -539,20 +579,23 @@
     sample-count (if (> (vector-length decl) 0)
       (invariant-sample-count (vector-get decl 2))
       0)
-    passed (if (> sample-count 0) 1 0)]
+    passed (if (> sample-count 0)
+      (run-invariant-samples-loop program tc decl 0 sample-count 1)
+      0)]
     (make-test-result name passed sample-count)))
 
+(defn run-invariants-loop [program invariants idx count results]
+  (if (>= idx count)
+    results
+    (run-invariants-loop
+      program
+      invariants
+      (+ idx 1)
+      count
+      (vector-push results (materialize-invariant program (vector-get invariants idx))))))
+
 (defn run-invariants [program invariants]
-  (let [count (vector-length invariants)]
-    (if (= count 0)
-      (vector-new 0)
-      (if (= count 1)
-        (vector-push (vector-new 1)
-          (materialize-invariant program (vector-get invariants 0)))
-        (let [results (vector-push (vector-new count)
-            (materialize-invariant program (vector-get invariants 0)))]
-          (vector-push results
-            (materialize-invariant program (vector-get invariants 1))))))))
+  (run-invariants-loop program invariants 0 (vector-length invariants) (vector-new (vector-length invariants))))
 
 (defn count-passed-results-loop [results idx count acc]
   (if (>= idx count)
