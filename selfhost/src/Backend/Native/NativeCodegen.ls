@@ -9507,7 +9507,8 @@
     (concat-byte-vectors-rooted part1 part2)))
 
 (defn emit-x86-selfhost-command-line-args-helper []
-  (byte-vector-4 76 137 240 195))
+  ;; r12 は materializer が保持する argv count、r14 は heap base として使う。
+  (byte-vector-4 76 137 224 195))
 
 (defn emit-x86-selfhost-print-string-helper []
   (let [part1 (byte-vector-4 72 137 198 72)

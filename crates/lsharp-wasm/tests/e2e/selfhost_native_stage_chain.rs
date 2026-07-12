@@ -349,6 +349,14 @@ fn representative_actual_stage23_seed_source() -> String {
     representative_actual_stage23_seed_source_for_target("(host-target)")
 }
 
+fn cross_target_actual_stage23_seed_source() -> String {
+    representative_actual_stage23_seed_source_for_target(
+        r#"(if (string-eq (command-line-arg 2) "x86_64-unknown-linux-gnu")
+  (make-target 3)
+  (host-target))"#,
+    )
+}
+
 fn linux_x86_representative_actual_stage23_seed_source() -> String {
     let code_binding_expr = r#"progress-mode (if (> (string-length (command-line-arg 8)) 0) 1 0)
                     raw-functions-mode (if (> (string-length (command-line-arg 10)) 0) 1 0)
@@ -1319,6 +1327,10 @@ fn test_native_linux_x86_hostgen_vm_script_can_reuse_actual_stage1_artifact() {
         selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
     let script = std::fs::read_to_string(&script_path)
         .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+    let materializer_path =
+        selfhost_project_root().join("scripts/ci/materialize-native-linux-x86-bundle.py");
+    let materializer = std::fs::read_to_string(&materializer_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", materializer_path.display()));
     let vm_exec = script
         .split(r#"limactl shell "${VM_NAME}" -- env"#)
         .nth(1)
@@ -1393,9 +1405,28 @@ fn test_native_linux_x86_hostgen_vm_script_can_reuse_actual_stage1_artifact() {
         "guest は reuse mode では host smoke link/execute を skip して actual replay へ進むべき"
     );
     assert!(
-        script.contains("fi\n\ncat >materialize-actual-bundle.py <<'PY'")
-            && script.contains("cat >decode-actual-transport.py <<'PY'"),
-        "actual replay 用 helper 生成は reuse mode でも必要なので quick smoke guard の外に置くべき"
+        script.contains(
+            r#"limactl copy "${ROOT_DIR}/scripts/ci/materialize-native-linux-x86-bundle.py" "${VM_NAME}:${VM_WORK_DIR}/materialize-actual-bundle.py""#
+        ) && script.contains("cat >decode-actual-transport.py <<'PY'"),
+        "actual replay 用 materializer は reuse mode より前に VM workdir へ配置するべき"
+    );
+    for contract in [
+        "stage_dir = pathlib.Path(sys.argv[1])",
+        "code_name = sys.argv[2]",
+        "entrypoint = int((stage_dir / sys.argv[3]).read_text().strip())",
+        "LSHARP_NATIVE_LINUX_X86_ACTUAL_HEAP_BYTES",
+        "LSHARP_NATIVE_LINUX_X86_SKIP_ARGV0",
+        "lea lsharp_data(%rip), %rsi",
+        "subprocess.run([\"cc\", \"@linker-response.txt\"], cwd=stage_dir, check=True)",
+    ] {
+        assert!(
+            materializer.contains(contract),
+            "reusable Linux x86 materializer は既存 runtime contract `{contract}` を保持するべき"
+        );
+    }
+    assert!(
+        !script.contains("cat >materialize-actual-bundle.py <<'PY'"),
+        "materializer は hostgen script の heredoc に重複させないこと"
     );
 }
 
@@ -13130,7 +13161,12 @@ fn test_describe_native_process_exit_status_includes_signal() {
     );
 }
 
-fn run_actual_native_self_regeneration_stage23_pair() -> Result<
+fn run_actual_native_self_regeneration_stage23_pair_for_seed_source(
+    stage1_label: &str,
+    stage2_label: &str,
+    stage3_label: &str,
+    seed_source: &str,
+) -> Result<
     (
         NativeHostArtifactBundle,
         NativeEntrypointBundle,
@@ -13139,8 +13175,7 @@ fn run_actual_native_self_regeneration_stage23_pair() -> Result<
     ),
     String,
 > {
-    let seed_source = representative_actual_stage23_seed_source();
-    let escaped_seed_source = escape_lsharp_string(&seed_source);
+    let escaped_seed_source = escape_lsharp_string(seed_source);
     let pairs_expr = format!(
         r#"(do
             (write-file "src/App/Seed.ls" "{escaped_seed_source}")
@@ -13153,28 +13188,48 @@ fn run_actual_native_self_regeneration_stage23_pair() -> Result<
     );
 
     let stage1_input = run_selfhost_main_native_function_meta_bundle_host_bytes_harness_with_exprs(
-        "native-stage23-actual-self-regeneration-stage1",
+        stage1_label,
         &pairs_expr,
         &payload_expr,
     );
     let (stage2_bundle, stage2_input) = run_actual_native_self_regeneration_transport_stage(
-        "actual-stage2-native",
+        stage2_label,
         &stage1_input,
-        &seed_source,
+        seed_source,
     )?;
     let (stage3_bundle, stage3_input) = run_actual_native_self_regeneration_transport_stage(
-        "actual-stage3-native",
+        stage3_label,
         &stage2_input,
-        &seed_source,
+        seed_source,
     )?;
 
     Ok((stage2_bundle, stage2_input, stage3_bundle, stage3_input))
 }
 
-fn run_actual_macos_aarch64_compiler_for_source(
+fn run_actual_native_self_regeneration_stage23_pair() -> Result<
+    (
+        NativeHostArtifactBundle,
+        NativeEntrypointBundle,
+        NativeHostArtifactBundle,
+        NativeEntrypointBundle,
+    ),
+    String,
+> {
+    let seed_source = representative_actual_stage23_seed_source();
+    run_actual_native_self_regeneration_stage23_pair_for_seed_source(
+        "native-stage23-actual-self-regeneration-stage1",
+        "actual-stage2-native",
+        "actual-stage3-native",
+        &seed_source,
+    )
+}
+
+fn run_actual_macos_aarch64_compiler_for_source_with_args(
     label: &str,
     compiler_input: &NativeEntrypointBundle,
     source_path: &str,
+    args: &[&str],
+    align_aarch64_entrypoint: bool,
 ) -> Result<NativeEntrypointBundle, String> {
     let compiler_bundle = build_native_host_bundle_with_canonical_artifacts_and_entrypoint(
         &compiler_input.code_bytes,
@@ -13198,6 +13253,7 @@ fn run_actual_macos_aarch64_compiler_for_source(
         let output = std::process::Command::new(&compiler_path)
             .current_dir(selfhost_package_root())
             .arg(source_path)
+            .args(args)
             .output()
             .map_err(|e| format!("actual compiler 実行失敗 ({source_path}): {e}"))?;
         if !output.status.success() {
@@ -13219,15 +13275,20 @@ fn run_actual_macos_aarch64_compiler_for_source(
         let layout = transport.layout.ok_or_else(|| {
             format!("actual compiler transport に entrypoint layout がない ({source_path})")
         })?;
+        let entrypoint_offset = if align_aarch64_entrypoint {
+            align_aarch64_entrypoint_to_function_start(
+                &transport.code_bytes,
+                layout.entrypoint_offset,
+            )
+        } else {
+            layout.entrypoint_offset
+        };
         Ok(NativeEntrypointBundle {
             function_start_len: layout.function_start_len,
             main_func_idx: layout.main_func_idx,
             declared_code_len: transport.declared_code_len,
             declared_data_len: transport.declared_data_len,
-            entrypoint_offset: align_aarch64_entrypoint_to_function_start(
-                &transport.code_bytes,
-                layout.entrypoint_offset,
-            ),
+            entrypoint_offset,
             code_bytes: transport.code_bytes,
             data_bytes: transport.data_bytes,
         })
@@ -13235,6 +13296,20 @@ fn run_actual_macos_aarch64_compiler_for_source(
 
     let _ = std::fs::remove_dir_all(&dir);
     result
+}
+
+fn run_actual_macos_aarch64_compiler_for_source(
+    label: &str,
+    compiler_input: &NativeEntrypointBundle,
+    source_path: &str,
+) -> Result<NativeEntrypointBundle, String> {
+    run_actual_macos_aarch64_compiler_for_source_with_args(
+        label,
+        compiler_input,
+        source_path,
+        &[],
+        true,
+    )
 }
 
 fn run_native_macos_aarch64_cli_bundle(
@@ -13367,6 +13442,94 @@ fn generate_actual_macos_aarch64_app_cli_release_program(
     std::fs::write(artifact_dir.join("smoke-stderr.txt"), &bundle.stderr)
         .map_err(|e| format!("App.Cli smoke stderr 書き込み失敗: {e}"))?;
     Ok(bundle)
+}
+
+fn generate_actual_macos_aarch64_cross_linux_x86_app_cli_bundle(
+    artifact_dir: &std::path::Path,
+) -> Result<NativeEntrypointBundle, String> {
+    let seed_source = cross_target_actual_stage23_seed_source();
+    let (_, stage2_input, _, stage3_input) =
+        run_actual_native_self_regeneration_stage23_pair_for_seed_source(
+            "native-stage23-cross-linux-x86-stage1",
+            "cross-linux-x86-stage2-native",
+            "cross-linux-x86-stage3-native",
+            &seed_source,
+        )?;
+    if stage2_input != stage3_input {
+        return Err(
+            "cross-target compiler stage2/stage3 transport が fixed-point でない".to_string(),
+        );
+    }
+
+    let app_cli_input = run_actual_macos_aarch64_compiler_for_source_with_args(
+        "actual-macos-aarch64-cross-linux-x86-app-cli-compile",
+        &stage3_input,
+        "src/App/Cli.ls",
+        &["x86_64-unknown-linux-gnu"],
+        false,
+    )?;
+    if app_cli_input.code_bytes.is_empty()
+        || app_cli_input.entrypoint_offset >= app_cli_input.code_bytes.len()
+    {
+        return Err(format!(
+            "cross-target App.Cli bundle が不正: code_len={} entrypoint={}",
+            app_cli_input.code_bytes.len(),
+            app_cli_input.entrypoint_offset
+        ));
+    }
+
+    let _ = std::fs::remove_dir_all(artifact_dir);
+    std::fs::create_dir_all(artifact_dir)
+        .map_err(|e| format!("cross-target App.Cli artifact dir 作成失敗: {e}"))?;
+    let code_path = artifact_dir.join("stage-code.bin");
+    let data_path = artifact_dir.join("stage-data.bin");
+    std::fs::write(&code_path, &app_cli_input.code_bytes)
+        .map_err(|e| format!("cross-target App.Cli stage-code.bin 書き込み失敗: {e}"))?;
+    std::fs::write(&data_path, &app_cli_input.data_bytes)
+        .map_err(|e| format!("cross-target App.Cli stage-data.bin 書き込み失敗: {e}"))?;
+    std::fs::write(
+        artifact_dir.join("entrypoint-offset.txt"),
+        format!("{}\n", app_cli_input.entrypoint_offset),
+    )
+    .map_err(|e| format!("cross-target App.Cli entrypoint offset 書き込み失敗: {e}"))?;
+    std::fs::write(
+        artifact_dir.join("function-start-len.txt"),
+        format!("{}\n", app_cli_input.function_start_len),
+    )
+    .map_err(|e| format!("cross-target App.Cli function count 書き込み失敗: {e}"))?;
+    std::fs::write(
+        artifact_dir.join("main-func-idx.txt"),
+        format!("{}\n", app_cli_input.main_func_idx),
+    )
+    .map_err(|e| format!("cross-target App.Cli main function index 書き込み失敗: {e}"))?;
+
+    let code_sha256 = sha256_file_for_native_release(&code_path)?;
+    let data_sha256 = sha256_file_for_native_release(&data_path)?;
+    let package_root = selfhost_package_root();
+    let project_root = package_root
+        .parent()
+        .ok_or_else(|| "selfhost package root の parent がない".to_string())?;
+    let commit_output = std::process::Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(project_root)
+        .output()
+        .map_err(|e| format!("source commit 取得失敗: {e}"))?;
+    if !commit_output.status.success() {
+        return Err("source commit 取得に失敗".to_string());
+    }
+    let source_commit = String::from_utf8_lossy(&commit_output.stdout)
+        .trim()
+        .to_string();
+    let manifest = format!(
+        "{{\"schema_version\":1,\"status\":\"pass\",\"artifact_kind\":\"cross-target native App.Cli bundle\",\"compiler_target\":\"aarch64-apple-darwin\",\"target\":\"x86_64-unknown-linux-gnu\",\"entry_module\":\"App.Cli\",\"source\":\"src/App/Cli.ls\",\"source_commit\":\"{source_commit}\",\"selfhost_fixed_point\":true,\"code_sha256\":\"{code_sha256}\",\"data_sha256\":\"{data_sha256}\",\"entrypoint_offset\":{},\"function_start_len\":{},\"main_func_idx\":{}}}\n",
+        app_cli_input.entrypoint_offset,
+        app_cli_input.function_start_len,
+        app_cli_input.main_func_idx,
+    );
+    std::fs::write(artifact_dir.join("manifest.json"), manifest)
+        .map_err(|e| format!("cross-target App.Cli manifest 書き込み失敗: {e}"))?;
+
+    Ok(app_cli_input)
 }
 
 fn run_linux_x86_actual_native_self_regeneration_transport_stage(
@@ -18410,8 +18573,8 @@ fn test_e2e_selfhost_x86_command_line_args_depth_one_targets_runtime_helper() {
     );
     assert_eq!(
         &bundle.code_bytes[helper_start..helper_start + 4],
-        &[0x4c, 0x89, 0xf0, 0xc3],
-        "command-line-args helper は r14 の argc を rax へ返す4-byte trailer helper であるべき"
+        &[0x4c, 0x89, 0xe0, 0xc3],
+        "command-line-args helper は保持済み r12 の argc を rax へ返す4-byte trailer helper であるべき"
     );
 }
 
@@ -52987,6 +53150,43 @@ fn test_e2e_native_macos_aarch64_actual_app_cli_release_program() {
     assert!(
         bundle.stderr.is_empty(),
         "App.Cli --version stderr は空であること"
+    );
+}
+
+/// V2-16b: fixed-point 済み macOS native compiler が Linux x86_64 向け App.Cli bundle を出力できること。
+#[test]
+#[ignore]
+fn test_e2e_native_macos_aarch64_fixedpoint_compiler_exports_linux_x86_app_cli_bundle() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let artifact_dir =
+        std::env::var_os("LSHARP_NATIVE_MACOS_AARCH64_CROSS_LINUX_X86_APP_CLI_ARTIFACT_DIR")
+            .expect(
+                "LSHARP_NATIVE_MACOS_AARCH64_CROSS_LINUX_X86_APP_CLI_ARTIFACT_DIR を指定すること",
+            );
+    let bundle = generate_actual_macos_aarch64_cross_linux_x86_app_cli_bundle(
+        &std::path::PathBuf::from(artifact_dir),
+    )
+    .expect("fixed-point macOS compiler による Linux x86_64 App.Cli bundle 生成に失敗");
+
+    assert!(
+        !bundle.code_bytes.is_empty(),
+        "Linux x86_64 App.Cli code bundle が空"
+    );
+    assert!(
+        bundle.entrypoint_offset < bundle.code_bytes.len(),
+        "Linux x86_64 App.Cli entrypoint が code bundle 範囲外: {bundle:?}"
+    );
+    assert!(
+        std::path::Path::new(
+            &std::env::var_os("LSHARP_NATIVE_MACOS_AARCH64_CROSS_LINUX_X86_APP_CLI_ARTIFACT_DIR",)
+                .expect("artifact dir を再取得できない"),
+        )
+        .join("manifest.json")
+        .is_file(),
+        "Linux x86_64 App.Cli bundle manifest が生成されること"
     );
 }
 

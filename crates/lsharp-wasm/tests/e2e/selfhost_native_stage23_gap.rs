@@ -890,12 +890,12 @@ fn test_native_codegen_x86_cli_runtime_helper_emitters_return_linux_syscall_byte
     assert_eq!(
         lines,
         vec![
-            4, 76, 137, 240, 195, 51, 72, 137, 198, 72, 133, 246, 116, 40, 121, 7, 72, 15, 186,
+            4, 76, 137, 224, 195, 51, 72, 137, 198, 72, 133, 246, 116, 40, 121, 7, 72, 15, 186,
             246, 63, 235, 12, 72, 129, 254, 0, 0, 0, 64, 115, 3, 76, 1, 246, 139, 86, 4, 72, 131,
             198, 8, 191, 1, 0, 0, 0, 184, 1, 0, 0, 0, 15, 5, 49, 192, 195, 12, 72, 137, 199, 184,
             60, 0, 0, 0, 15, 5, 15, 11,
         ],
-        "x86_64 CLI runtime helper は Linux write/exit syscall と argc register の実バイトを返す必要がある"
+        "x86_64 CLI runtime helper は Linux write/exit syscall と保持済み argc register の実バイトを返す必要がある"
     );
 }
 
