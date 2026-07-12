@@ -4040,6 +4040,12 @@ fn test_e2e_ops06_release_smoke_contract() {
         "release.sh は tar 作成失敗を成功扱いにしないこと"
     );
     assert!(
+        release_script_content.contains(
+            r#"COPYFILE_DISABLE=1 tar --exclude '._*' -czf "${ARCHIVE_NAME}.tar.gz" "${ARCHIVE_NAME}/""#
+        ),
+        "release.sh は macOS の AppleDouble/xattr を release archive に含めないこと"
+    );
+    assert!(
         !release_script_content.contains("cargo build --release -p lsharp-driver")
             && !release_script_content
                 .contains("program_source=\"$(resolve_required_binary_path \"lsharp\")\""),
