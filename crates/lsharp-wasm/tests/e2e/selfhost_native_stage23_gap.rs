@@ -619,6 +619,57 @@ fn test_native_codegen_aarch64_write_file_helpers_use_binary_file_abi() {
 }
 
 #[test]
+fn test_native_codegen_aarch64_write_file_bytes_helper_preserves_heap_base() {
+    let lines = run_x86_selfhost_runtime_helper_harness(
+        "native-stage23-aarch64-write-file-bytes-heap-base",
+        r#"  (let [helper (emit-aarch64-selfhost-write-file-bytes-helper)]
+    (do
+      (print (vector-length helper))
+      (print-bytes-loop helper 20 32)
+      (print-bytes-loop helper 116 124)
+      (print-bytes-loop helper 140 144)
+      (print-bytes-loop helper 168 172)
+      (print-bytes-loop helper 196 200)
+      (print-bytes-loop helper 232 236)
+      (print-bytes-loop helper 264 268)
+      0))"#,
+    );
+
+    assert_eq!(
+        lines,
+        vec![
+            308, 23, 0, 128, 210, 32, 2, 248, 182, 160, 2, 0, 139, 244, 4, 248, 182, 180, 2, 20,
+            139, 31, 32, 3, 213, 224, 3, 0, 145, 225, 3, 0, 145, 247, 2, 0, 139, 224, 3, 23, 170,
+        ],
+        "AArch64 write-file-bytes helper は tagged heap offset を heap base へ戻し、base register を書込件数で破壊してはならない",
+    );
+}
+
+#[test]
+fn test_native_codegen_aarch64_write_file_helper_preserves_heap_base() {
+    let lines = run_x86_selfhost_runtime_helper_harness(
+        "native-stage23-aarch64-write-file-heap-base",
+        r#"  (let [helper (emit-aarch64-selfhost-write-file-helper)]
+    (do
+      (print (vector-length helper))
+      (print-bytes-loop helper 16 28)
+      (print-bytes-loop helper 112 124)
+      (print-bytes-loop helper 164 168)
+      (print-bytes-loop helper 184 188)
+      0))"#,
+    );
+
+    assert_eq!(
+        lines,
+        vec![
+            224, 17, 0, 128, 210, 32, 2, 248, 182, 160, 2, 0, 139, 148, 2, 248, 182, 161, 2, 20,
+            139, 33, 248, 64, 146, 49, 2, 0, 139, 224, 3, 17, 170,
+        ],
+        "AArch64 write-file helper は path/content の tagged heap offset を heap base へ戻し、書込件数で base register を破壊してはならない",
+    );
+}
+
+#[test]
 fn test_native_codegen_x86_vector_and_ref_helper_call_sites_resolve_offsets() {
     let lines = run_x86_selfhost_runtime_helper_harness(
         "native-stage23-x86-vector-ref-helper-call-sites",

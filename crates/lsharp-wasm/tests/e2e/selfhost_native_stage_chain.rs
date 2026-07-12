@@ -24928,6 +24928,27 @@ fn linux_x86_selfhost_vector_push_get_object_bytes() -> Vec<u8> {
     )
 }
 
+fn linux_x86_selfhost_write_file_bytes_object_bytes() -> Vec<u8> {
+    linux_x86_selfhost_function_meta_object_bytes(
+        &[
+            (3, 1),
+            (67, 0),
+            (3, 4),
+            (54, 0),
+            (3, 0),
+            (55, 0),
+            (3, 97),
+            (55, 0),
+            (3, 115),
+            (55, 0),
+            (3, 109),
+            (55, 0),
+            (90, 0),
+        ],
+        0,
+    )
+}
+
 fn linux_x86_selfhost_ref_set_get_object_bytes() -> Vec<u8> {
     linux_x86_selfhost_function_meta_object_bytes(
         &[
@@ -35881,6 +35902,42 @@ fn test_e2e_native_linux_x86_host_generates_vector_elf_object_artifact() {
     );
 }
 
+/// NATIVE-LINUX-X86-02fb: managed Vector の raw byte file output ELF artifact を生成すること。
+#[test]
+#[ignore]
+fn test_e2e_native_linux_x86_host_generates_write_file_bytes_elf_object_artifact() {
+    let artifact_path = std::env::var_os("LSHARP_NATIVE_LINUX_X86_WRITE_FILE_BYTES_OBJECT_ARTIFACT")
+        .expect(
+            "LSHARP_NATIVE_LINUX_X86_WRITE_FILE_BYTES_OBJECT_ARTIFACT に Linux x86_64 write-file-bytes object artifact path を指定すること",
+        );
+    let artifact_path = std::path::PathBuf::from(artifact_path);
+    if let Some(parent) = artifact_path.parent() {
+        std::fs::create_dir_all(parent)
+            .expect("Linux x86_64 write-file-bytes object artifact dir 作成に失敗");
+    }
+
+    let object_bytes = linux_x86_selfhost_write_file_bytes_object_bytes();
+    assert!(
+        object_bytes.len() > 64,
+        "Linux x86_64 write-file-bytes ELF object は ELF64 section table を持つこと"
+    );
+    assert!(
+        object_bytes
+            .windows("generated".len())
+            .any(|window| window == b"generated"),
+        "Linux x86_64 write-file-bytes ELF object は generated symbol を持つこと"
+    );
+
+    std::fs::write(&artifact_path, &object_bytes)
+        .expect("Linux x86_64 write-file-bytes object artifact 書き込みに失敗");
+    let written = std::fs::read(&artifact_path)
+        .expect("Linux x86_64 write-file-bytes object artifact 読み戻しに失敗");
+    assert_eq!(
+        written, object_bytes,
+        "Linux x86_64 write-file-bytes object artifact は生成 ELF object をそのまま保存すること"
+    );
+}
+
 /// NATIVE-LINUX-X86-02g: host 側 selfhost が ref helper を含む Linux ELF artifact を生成すること。
 #[test]
 #[ignore]
@@ -45590,6 +45647,48 @@ fn assert_representative_override_main_matches_selfhost_with_path_arg(
         bundle.exit_code,
         actual_output,
         String::from_utf8_lossy(&bundle.stderr)
+    );
+}
+
+#[test]
+#[ignore = "macOS arm64 actual native managed String write-file roundtrip"]
+fn test_e2e_native_macos_aarch64_write_file_managed_strings_roundtrip() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.OverrideMain)
+
+(defn main []
+  (let [path (string-concat "native-" "payload.txt")
+        payload (string-concat "native-" "payload")
+        written (write-file path payload)]
+    (do
+      (print written)
+      (print-string (read-file path))
+      (proc-exit 0))))"#;
+    let bundle = run_representative_override_main_native_with_args_and_files(
+        "native-stage23-aarch64-write-file-managed-strings-roundtrip",
+        main_source,
+        &[],
+        &[],
+    );
+
+    assert_eq!(
+        bundle.exit_code,
+        0,
+        "managed String write-file native bundle が exit 0 で完走しない: stdout={:?} stderr={:?}",
+        String::from_utf8_lossy(&bundle.stdout),
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+    assert!(
+        bundle.stderr.is_empty(),
+        "managed String write-file native bundle が stderr を出力した: {:?}",
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+    assert_eq!(
+        bundle.stdout, b"14\nnative-payload",
+        "managed String write-file の byte count と read-file native roundtrip が一致しない"
     );
 }
 
