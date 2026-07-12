@@ -17682,9 +17682,15 @@
     (let [target-meta (vector-get function-metas operand)
       target-param-count (native-function-param-count target-meta)]
       (if (>= target-param-count 20)
-        (native-call-bundle-size-aarch64-twenty-to-sixty target-param-count)
+        (native-consume-produce-one-size-aarch64
+          (native-call-bundle-size-aarch64-twenty-to-sixty target-param-count)
+          current-depth
+          target-param-count)
         (if (> target-param-count 9)
-          (+ 52 (* (- target-param-count 10) 8))
+          (native-consume-produce-one-size-aarch64
+            (+ 52 (* (- target-param-count 10) 8))
+            current-depth
+            target-param-count)
           (if (= target-param-count 9)
             (native-consume-produce-one-size-aarch64 48 current-depth 9)
             (if (= target-param-count 8)
@@ -18794,11 +18800,15 @@
                                 (if (= target-param-count 1)
                                   (- target-offset (+ current-offset 4))
                                   (- target-offset (+ current-offset (native-produce-one-prefix-size-aarch64 4 current-depth))))))))))))))
-      call-bytes (if (>= target-param-count 20)
-                 (emit-call-bundle-aarch64-twenty-to-sixty target-param-count disp frame-base-slot-count)
-                  (if (>= target-param-count 10)
-                    (emit-call-bundle-aarch64-ten-to-nineteen target-param-count disp frame-base-slot-count)
-                    (emit-call-bundle-aarch64-one-to-nine target-param-count disp frame-base-slot-count current-depth)))]
+      call-bytes (if (>= target-param-count 10)
+                 (emit-consume-produce-one-bundle-aarch64
+                   (if (>= target-param-count 20)
+                     (emit-call-bundle-aarch64-twenty-to-sixty target-param-count disp frame-base-slot-count)
+                     (emit-call-bundle-aarch64-ten-to-nineteen target-param-count disp frame-base-slot-count))
+                   frame-base-slot-count
+                   current-depth
+                   target-param-count)
+                 (emit-call-bundle-aarch64-one-to-nine target-param-count disp frame-base-slot-count current-depth))]
       call-bytes)
       (if (= opcode 1)
         (emit-i64-const-bundle-aarch64 operand frame-base-slot-count current-depth)

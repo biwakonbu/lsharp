@@ -29606,6 +29606,131 @@ fn host_target_direct_call_ten_arg_bundle_code_bytes() -> Vec<u8> {
     )
 }
 
+fn host_target_ten_arg_call_preserves_live_left_operand_code_bytes() -> Vec<u8> {
+    run_native_codegen_host_bytes_harness(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn main []
+  (let [caller0 (vector-push (vector-new 13) (make-instr 3 7))
+        caller1 (vector-push caller0 (make-instr 3 40))
+        caller2 (vector-push caller1 (make-instr 3 2))
+        caller3 (vector-push caller2 (make-instr 3 5))
+        caller4 (vector-push caller3 (make-instr 3 7))
+        caller5 (vector-push caller4 (make-instr 3 11))
+        caller6 (vector-push caller5 (make-instr 3 14))
+        caller7 (vector-push caller6 (make-instr 3 17))
+        caller8 (vector-push caller7 (make-instr 3 19))
+        caller9 (vector-push caller8 (make-instr 3 23))
+        caller10 (vector-push caller9 (make-instr 3 29))
+        caller11 (vector-push caller10 (make-call 1))
+        caller-ir (vector-push caller11 (make-instr 24 0))
+        callee0 (vector-push (vector-new 17) (make-local-get 0))
+        callee1 (vector-push callee0 (make-local-get 1))
+        callee2 (vector-push callee1 (make-instr 24 0))
+        callee3 (vector-push callee2 (make-local-get 2))
+        callee4 (vector-push callee3 (make-instr 24 0))
+        callee5 (vector-push callee4 (make-local-get 3))
+        callee6 (vector-push callee5 (make-instr 24 0))
+        callee7 (vector-push callee6 (make-local-get 4))
+        callee8 (vector-push callee7 (make-instr 24 0))
+        callee9 (vector-push callee8 (make-local-get 5))
+        callee10 (vector-push callee9 (make-instr 24 0))
+        callee11 (vector-push callee10 (make-local-get 6))
+        callee12 (vector-push callee11 (make-instr 24 0))
+        callee13 (vector-push callee12 (make-local-get 7))
+        callee14 (vector-push callee13 (make-instr 24 0))
+        callee15 (vector-push callee14 (make-local-get 8))
+        callee16 (vector-push callee15 (make-instr 24 0))
+        callee17 (vector-push callee16 (make-local-get 9))
+        callee-ir (vector-push callee17 (make-instr 24 0))
+        caller (make-function-meta 0 0 caller-ir)
+        callee (make-function-meta 10 0 callee-ir)
+        functions (vector-push (vector-push (vector-new 2) caller) callee)
+        target (host-target)
+        code (emit-native-function-meta-bundle functions target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    )
+}
+
+fn host_target_ten_arg_recursive_if_returns_acc_code_bytes() -> Vec<u8> {
+    run_native_codegen_host_bytes_harness(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn main []
+  (let [caller0 (vector-push (vector-new 11) (make-instr 3 1))
+        caller1 (vector-push caller0 (make-instr 3 2))
+        caller2 (vector-push caller1 (make-instr 3 3))
+        caller3 (vector-push caller2 (make-instr 3 4))
+        caller4 (vector-push caller3 (make-instr 3 5))
+        caller5 (vector-push caller4 (make-instr 3 6))
+        caller6 (vector-push caller5 (make-instr 3 7))
+        caller7 (vector-push caller6 (make-instr 3 8))
+        caller8 (vector-push caller7 (make-instr 3 9))
+        caller9 (vector-push caller8 (make-instr 3 42))
+        caller-ir (vector-push caller9 (make-call 1))
+        loop0 (vector-push (vector-new 16) (make-local-get 0))
+        loop1 (vector-push loop0 (make-instr 41 0))
+        loop2 (vector-push loop1 (make-local-get 9))
+        loop3 (vector-push loop2 (make-instr 79 0))
+        loop4 (vector-push loop3 (make-local-get 0))
+        loop5 (vector-push loop4 (make-local-get 1))
+        loop6 (vector-push loop5 (make-local-get 2))
+        loop7 (vector-push loop6 (make-local-get 3))
+        loop8 (vector-push loop7 (make-local-get 4))
+        loop9 (vector-push loop8 (make-local-get 5))
+        loop10 (vector-push loop9 (make-local-get 6))
+        loop11 (vector-push loop10 (make-local-get 7))
+        loop12 (vector-push loop11 (make-local-get 8))
+        loop13 (vector-push loop12 (make-local-get 9))
+        loop14 (vector-push loop13 (make-call 1))
+        loop-ir (vector-push loop14 (make-instr 43 0))
+        caller (make-function-meta 0 0 caller-ir)
+        loop (make-function-meta 10 0 loop-ir)
+        functions (vector-push (vector-push (vector-new 2) caller) loop)
+        target (host-target)
+        code (emit-native-function-meta-bundle functions target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    )
+}
+
 fn host_target_direct_call_eleven_arg_bundle_code_bytes() -> Vec<u8> {
     run_native_codegen_host_bytes_harness(
         r#"(module Main)
@@ -44508,6 +44633,64 @@ fn test_e2e_native_host_binary_direct_call_ten_arg_bundle_link_and_execute() {
         exit_code,
         167,
         "host binary direct call ten-arg bundle: exit code 167 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01s1: 10 引数 call 後も、その外側の値を保持すること。
+#[test]
+#[ignore]
+fn test_e2e_native_host_binary_ten_arg_call_preserves_live_left_operand() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_ten_arg_call_preserves_live_left_operand_code_bytes();
+
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: ten-arg live-left host target 向けコードバイト列が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary(&code_bytes)
+        .expect("ten-arg live-left host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        174,
+        "host binary ten-arg live-left: 7 + callee sum 167 = 174 を期待したが {} を得た\\n\\\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01s2: 10 引数の再帰 loop が base case で第10引数を返せること。
+#[test]
+#[ignore]
+fn test_e2e_native_host_binary_ten_arg_recursive_if_returns_acc() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_ten_arg_recursive_if_returns_acc_code_bytes();
+
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: ten-arg recursive if host target 向けコードバイト列が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary(&code_bytes)
+        .expect("ten-arg recursive if host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        42,
+        "host binary ten-arg recursive if: base case 第10引数 42 を期待したが {} を得た\\n\\\
          bytes ({} bytes): {:?}",
         exit_code,
         code_bytes.len(),

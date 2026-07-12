@@ -214,3 +214,57 @@ fn test_native_app_cli_parse_check_and_test_source_file_contract() {
     let _ = std::fs::remove_dir_all(&dir);
     result
 }
+
+#[test]
+#[ignore = "actual native App.Cli program を LSHARP_NATIVE_APP_CLI_PROGRAM で指定する"]
+fn test_native_app_cli_test_metadata_source_file_contract() {
+    if !cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+        return;
+    }
+
+    let program = PathBuf::from(
+        std::env::var_os("LSHARP_NATIVE_APP_CLI_PROGRAM")
+            .expect("LSHARP_NATIVE_APP_CLI_PROGRAM を指定すること"),
+    );
+    assert!(
+        program.is_file(),
+        "native App.Cli が見つからない: {}",
+        program.display()
+    );
+    let program = std::fs::canonicalize(&program).expect("native App.Cli の絶対パス化に失敗");
+
+    let dir = std::env::temp_dir().join(format!(
+        "lsharp_native_app_cli_metadata_test_contract_{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("fixture directory の作成に失敗");
+    std::fs::write(
+        dir.join("input.ls"),
+        "(defn abs [x] :example [(= (abs 5) 5) (= (abs (- 0 7)) 7)] :invariant (>= result 0) (if (< x 0) (- 0 x) x))",
+    )
+    .expect("metadata fixture input.ls の書き込みに失敗");
+
+    let result = (|| {
+        let test = Command::new(&program)
+            .current_dir(&dir)
+            .args(["test", "input.ls"])
+            .output()
+            .expect("native App.Cli metadata test の実行に失敗");
+        assert!(
+            test.status.success(),
+            "native metadata test は成功するべき: stdout={:?} stderr={:?}",
+            String::from_utf8_lossy(&test.stdout),
+            String::from_utf8_lossy(&test.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&test.stdout)
+                .lines()
+                .collect::<Vec<_>>(),
+            vec!["examples:2", "invariants:1", "failures:0"],
+            "native metadata test は passing suite の成功 summary を出力するべき"
+        );
+    })();
+    let _ = std::fs::remove_dir_all(&dir);
+    result
+}
