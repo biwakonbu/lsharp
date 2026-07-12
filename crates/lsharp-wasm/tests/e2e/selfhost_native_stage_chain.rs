@@ -350,10 +350,41 @@ fn representative_actual_stage23_seed_source() -> String {
 }
 
 fn cross_target_actual_stage23_seed_source() -> String {
-    representative_actual_stage23_seed_source_for_target(
+    let source = representative_actual_stage23_seed_source_for_target(
         r#"(if (string-eq (command-line-arg 2) "x86_64-unknown-linux-gnu")
   (make-target 3)
   (host-target))"#,
+    );
+    // stage2/3 は AArch64 ABI を保ち、最終の Linux x86 compile 時だけ import 6 を一引数にする。
+    let start = source
+        .find("(defn push-import-placeholders [idx count result]")
+        .expect("cross-target seed に import placeholder builder が存在すること");
+    let end = start
+        + source[start..]
+            .find("\n(defn append-vector-loop")
+            .expect("cross-target seed の import placeholder builder 終端が存在すること");
+    let replacement = r#"(defn push-import-placeholders [idx int-to-string-param-count result]
+  (if (>= idx 10)
+    result
+    (do
+      (root_push result)
+      (let [placeholder (make-function-meta (if (= idx 6) int-to-string-param-count 0) 0 (vector-new 0))]
+        (do
+          (root_push placeholder)
+          (let [next-result (vector-push result placeholder)]
+            (do
+              (root_push next-result)
+              (let [final (push-import-placeholders (+ idx 1) int-to-string-param-count next-result)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  final)))))))))"#;
+    let source = format!("{}{}{}", &source[..start], replacement, &source[end..]);
+    source.replacen(
+        "(push-import-placeholders 0 10 (vector-new 32))",
+        r#"(push-import-placeholders 0 (if (string-eq (command-line-arg 2) "x86_64-unknown-linux-gnu") 1 0) (vector-new 32))"#,
+        1,
     )
 }
 
@@ -8152,18 +8183,28 @@ fn test_native_codegen_routes_int_to_string_import_to_target_helpers() {
 }
 
 #[test]
-fn test_native_stage_seed_preserves_int_to_string_import_arity() {
-    let source = representative_actual_stage23_seed_source();
-    let placeholders = source
-        .split("(defn push-import-placeholders [idx count result]")
+fn test_cross_target_seed_uses_x86_only_int_to_string_import_arity() {
+    let host_source = representative_actual_stage23_seed_source();
+    let cross_source = cross_target_actual_stage23_seed_source();
+    let placeholders = cross_source
+        .split("(defn push-import-placeholders [idx int-to-string-param-count result]")
         .nth(1)
         .and_then(|tail| tail.split("(defn append-vector-loop").next())
-        .expect("native stage seed に import placeholder builder が存在すること");
+        .expect(
+            "cross-target stage seed に target-aware import placeholder builder が存在すること",
+        );
 
     assert!(
-        placeholders.contains("(make-function-meta (if (= idx 6) 1 0) 0 (vector-new 0))")
-            && !source.contains("(defn native-runtime-import-param-count [idx]"),
-        "native stage seed は int-to-string import (index 6) を 1 引数として inline し、stage2 の追加 user-call を避けるべき"
+        host_source.contains("(defn push-import-placeholders [idx count result]")
+            && host_source.contains("(make-function-meta 0 0 (vector-new 0))")
+            && placeholders.contains("(if (>= idx 10)")
+            && placeholders.contains(
+                "(make-function-meta (if (= idx 6) int-to-string-param-count 0) 0 (vector-new 0))"
+            )
+            && cross_source.contains(
+                "(push-import-placeholders 0 (if (string-eq (command-line-arg 2) \"x86_64-unknown-linux-gnu\") 1 0) (vector-new 32))"
+            ),
+        "cross-target seed は AArch64 bootstrap の import ABI を保ち、Linux x86 compile 時だけ int-to-string import (index 6) を 1 引数として扱うべき"
     );
 }
 
@@ -15331,7 +15372,7 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
     result
     (do
       (root_push result)
-      (let [placeholder (make-function-meta (if (= idx 6) 1 0) 0 (vector-new 0))]
+      (let [placeholder (make-function-meta 0 0 (vector-new 0))]
         (do
           (root_push placeholder)
           (let [next-result (vector-push result placeholder)]
