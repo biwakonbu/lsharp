@@ -11217,6 +11217,15 @@
                 frame-base-slot-count
                 current-depth))
             (continue-native-control-instr-bundle-loop-x86 ctx idx remaining))
+        (if (if (= opcode 89) true (= opcode 90))
+          (do
+            (append-two-arg-helper-call-x86
+              result
+              (- (x86-selfhost-file-write-helper-offset opcode import-stub-offset import-count)
+                 (+ (x86-current-emitted-offset result emit-start-base) 11))
+              frame-base-slot-count
+              current-depth)
+            (continue-native-control-instr-bundle-loop-x86 ctx idx remaining))
         (if (= opcode 86)
           (do
             (if (= current-depth 0)
@@ -11363,7 +11372,7 @@
                       native-len (vector-length native)]
                       (do
                         (append-native-bytes-loop result native 0 native-len)
-                        (continue-native-control-instr-bundle-loop-x86 ctx idx remaining)))))))))))))))))))))))))))))))))))
+                        (continue-native-control-instr-bundle-loop-x86 ctx idx remaining))))))))))))))))))))))))))))))))))))
 (defn generate-native-control-instr-bundle-loop-x86-with-import-count-and-base [ir-func result meta offsets function-starts function-metas import-count import-stub-offset function-start-base frame-base-slot-count current-depth idx len]
   (let [emit-start-base (vector-length (ref-get result))
     layout (make-x86-function-emit-layout import-count import-stub-offset function-start-base emit-start-base)]
@@ -11642,6 +11651,18 @@
 
 (defn append-consume-two-helper-call-x86 [result rel frame-base-slot-count current-depth]
   (do
+    (append-call-rel32-x86 result rel)
+    (if (>= current-depth 3)
+      (do
+        (append-native-bytes-rooted result (emit-mov-rcx-from-local (native-value-window-spill-offset frame-base-slot-count 0)) 7)
+        (append-drop-window-spill-shifts-x86 result frame-base-slot-count 1 (- current-depth 3)))
+      0)
+    0))
+
+(defn append-two-arg-helper-call-x86 [result rel frame-base-slot-count current-depth]
+  (do
+    (append-native-bytes-rooted result (emit-mov-rsi-rax) 3)
+    (append-native-bytes-rooted result (emit-mov-rdi-rcx) 3)
     (append-call-rel32-x86 result rel)
     (if (>= current-depth 3)
       (do

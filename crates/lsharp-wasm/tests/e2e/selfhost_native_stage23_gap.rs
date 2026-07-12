@@ -537,7 +537,9 @@ fn test_native_codegen_x86_write_file_helpers_use_binary_file_abi() {
         write-file-helper (emit-x86-selfhost-write-file-helper)
         write-file-bytes-helper (emit-x86-selfhost-write-file-bytes-helper)
         write-file-call (codegen-ir-instr-bundle-x86-with-import-count 89 0 current-offset (vector-new 0) (vector-new 0) import-count import-stub-offset 0 2)
-        write-file-bytes-call (codegen-ir-instr-bundle-x86-with-import-count 90 0 current-offset (vector-new 0) (vector-new 0) import-count import-stub-offset 0 2)]
+        write-file-bytes-call (codegen-ir-instr-bundle-x86-with-import-count 90 0 current-offset (vector-new 0) (vector-new 0) import-count import-stub-offset 0 2)
+        direct-write-file-call (ref-new (vector-new 0))
+        _ (append-two-arg-helper-call-x86 direct-write-file-call 4660 30 2)]
     (do
       (print (is-selfhost-runtime-opcode-x86 89))
       (print (is-selfhost-runtime-opcode-x86 90))
@@ -557,6 +559,8 @@ fn test_native_codegen_x86_write_file_helpers_use_binary_file_abi() {
       (print-bytes-loop write-file-call 0 (vector-length write-file-call))
       (print (vector-length write-file-bytes-call))
       (print-bytes-loop write-file-bytes-call 0 (vector-length write-file-bytes-call))
+      (print (vector-length (ref-get direct-write-file-call)))
+      (print-bytes-loop (ref-get direct-write-file-call) 0 (vector-length (ref-get direct-write-file-call)))
       0))"#,
     );
 
@@ -567,7 +571,8 @@ fn test_native_codegen_x86_write_file_helpers_use_binary_file_abi() {
             73, 137, 244, 69, 49, 237, 76, 137, 244, 65, 94, 65, 93, 65, 92, 91, 195, 255, 83, 65,
             84, 65, 85, 65, 86, 65, 87, 73, 137, 230, 73, 137, 244, 69, 76, 137, 244, 65, 95, 65,
             94, 65, 93, 65, 92, 91, 195, 11, 72, 137, 198, 72, 137, 207, 232, 149, 18, 0, 0, 11,
-            72, 137, 198, 72, 137, 207, 232, 80, 19, 0, 0,
+            72, 137, 198, 72, 137, 207, 232, 80, 19, 0, 0, 11, 72, 137, 198, 72, 137, 207, 232, 52,
+            18, 0, 0,
         ],
         "x86_64 write-file / write-file-bytes は binary ABI、trailer offset、raw byte write helper を一致させる必要がある",
     );
