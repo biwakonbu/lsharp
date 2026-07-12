@@ -5,12 +5,14 @@ L# の **手元実行手順** を定義する。配布チャネル、supported p
 ## 概要
 
 ```
-バージョンバンプ → CI 検証 → target-native input 事前生成 → タグ作成 → workflow dispatch → GitHub Release
+バージョンバンプ → 手元検証 → target-native input 事前生成 → local manual release gate → タグ作成 → 手動 GitHub Release
 ```
 
 - channel / target matrix は `release-distribution-signing.md`
 - artifact retention は `artifact-policy.md`
-- CI gate は `ci-gate-v2-job-graph.md`
+- CI 自動 build は停止中。手元の manual release gate が正本
+
+> **Temporary policy (2026-07-12): CI を起動せず**、Mac Apple Silicon と Lima Linux x86_64 VM 上で release artifact を生成・検証する。`.github/workflows/release.yml` は legacy Actions fallback であり、通常の release では dispatch しない。
 
 ## 手順
 
@@ -25,7 +27,7 @@ vim Cargo.toml   # version = "0.x.y"
 - `Cargo.toml` の `[workspace.package]` セクションで一元管理
 - セマンティックバージョニングに従う
 
-### 2. CI 検証
+### 2. 手元検証
 
 ```bash
 ./scripts/release-playbook.sh <version>
@@ -80,15 +82,15 @@ git push origin v<version>
 
 - タグ名は `v` プレフィックス付き（例: `v0.2.0`）
 - タグはリリースコミットに対して作成する
-- tag push だけでは stable workflow を起動しない。入力 URL / SHA-256 が揃う前の公開を防ぐため、次節の `workflow_dispatch` を明示実行する
+- tag push だけでは stable workflow を起動しない。通常の release では `workflow_dispatch` も実行せず、入力 URL / SHA-256 は手元の manual release gate と手動 GitHub Release 公開のために固定する。legacy Actions fallback を使う例外時だけ次節の `workflow_dispatch` を明示実行する
 - `aarch64-apple-darwin` は Mac Apple Silicon、`x86_64-unknown-linux-gnu` は Mac + Lima x86_64 VM で実 `App.Cli` を事前生成・実行検証する
 - 各 target の input bundle は archive root に `program.native` と `manifest.json` を置く。manifest は `target` / `entry_module: App.Cli` / `source: src/App/Cli.ls` / `source_commit` / `program_sha256` を持つ。producer は clean worktree で実行し、未コミット bytes を `HEAD` provenance として公開しない
 - `ROLLBACK_VERSION=v<version> bash scripts/ci/native-rollback-compat-local.sh` を Mac + Lima で実行し、両 target の実在する `lsharp-v<version>-<target>-host-launcher.tar.gz` を rollback input にする
 - input bundle と rollback archive は runner から HTTPS download できる場所へ置き、それぞれの SHA-256 を publish 前に固定する
 
-### 6. 自動リリース workflow (`.github/workflows/release.yml`)
+### 6. Legacy Actions fallback (`.github/workflows/release.yml`)
 
-Actions の `Release` workflow を対象 tag の commit から開き、`Run workflow` で `release_tag` と 2 target 分の `*_url` / `*_sha256` を入力する。workflow は以下の順で実行される:
+通常の release ではこの workflow を dispatch しない。Actions fallback を使う例外時だけ `enable_legacy_actions_release=true` を明示し、対象 tag の commit から `release_tag` と 2 target 分の `*_url` / `*_sha256` を入力する。workflow は以下の順で実行される:
 
 | ジョブ | 内容 |
 |------|------|
@@ -106,7 +108,21 @@ Actions の `Release` workflow を対象 tag の commit から開き、`Run work
 - バージョン文字列にハイフンが含まれる場合 (例: `v0.2.0-rc1`) はプレリリースとして公開
 - `release_notes` は GitHub の自動生成を使用
 
-### 7. Rollback anchor の記録
+### 7. 手動公開（現行の正本）
+
+local manual release gate を通した後、GitHub Release を手動で作成する:
+
+1. GitHub Releases ページで新規リリースを作成
+2. タグ `v<version>` を選択
+3. リリースノートを記載（変更点、破壊的変更、移行手順）
+4. native-only archive をアップロード
+5. rollback compatibility を同時公開する場合だけ host launcher archive / `lsharp-<version>-<target>.component.wasm` を添付
+6. `dist/checksums.txt` を checksum asset として添付
+7. `Rollback anchor` セクションに tag / asset 名 / checksum 名を記録
+
+stable / nightly の扱い、署名順序、package manager 更新順は `release-distribution-signing.md` を参照。
+
+### 8. Rollback anchor の記録
 
 stable release を publish したら、同じ GitHub Release notes に以下の `Rollback anchor` セクションを追記する。
 
@@ -122,21 +138,7 @@ Rollback anchor
 - package manager package は二次配布なので anchor には含めない。
 - rollback 手順はこの anchor を起点に `rollback-procedure.md` の B/C フローへ入る。
 
-#### 手動公開が必要な場合のみ
-
-自動 workflow を使わず手動で GitHub Release を作成する場合:
-
-1. GitHub Releases ページで新規リリースを作成
-2. タグ `v<version>` を選択
-3. リリースノートを記載（変更点、破壊的変更、移行手順）
-4. native-only archive をアップロード
-5. rollback compatibility を同時公開する場合だけ host launcher archive / `lsharp-<version>-<target>.component.wasm` を添付
-6. `dist/checksums.txt` を checksum asset として添付
-7. `Rollback anchor` セクションに tag / asset 名 / checksum 名を記録
-
-stable / nightly の扱い、署名順序、package manager 更新順は `release-distribution-signing.md` を参照。
-
-### 8. immutable App.Cli input の準備
+### 9. immutable App.Cli input の準備
 
 Mac Apple Silicon producer と Mac + Lima producer は、最終的に target ごとの staging directoryへ `program.native` と検証済み `manifest.json` を出力する。stable workflow へ渡す bundle は次の形に固定する。
 
@@ -163,13 +165,17 @@ LINUX_ROLLBACK_ARCHIVE=<linux-rollback-archive> \
 
 macOS payload を署名する場合は bundle 固定前に `program.native` を署名・verify し、署名後 bytes の `program_sha256` を manifest に記録する。workflow は immutable manifest/hash を壊す再署名をせず、secret がある場合に署名 verify と notarization submit を行う。
 
-### 9. Native-only official replacement track
+### 10. Native-only official replacement track
 
 native-only を公式配布へ完全置換する作業のうち、V2-13 target matrix、V2-14 native-only official archive layout、V2-15 native-only release smoke / rollback anchor の基盤は完了済みである。native-only archive を stable / nightly の正本にし、host launcher + embedded guest component は rollback compatibility 用の互換成果物へ降格する。
 
 Supported product/release targets は Mac Apple Silicon (`aarch64-apple-darwin`) と Linux x86_64 (`x86_64-unknown-linux-gnu`) の 2 つに限る。macOS Intel (`x86_64-apple-darwin`)、Windows (`x86_64-pc-windows-msvc`)、Linux ARM (`aarch64-unknown-linux-gnu`) は out of support scope であり、Rosetta / Mach-O smoke、archived Authenticode design、Linux ARM cross-build の未完了を公式配布 blocker にしない。
 
 V2-14 の native-only official archive layout は `program.native`、`manifest.json`、`checksums.txt`、README/LICENSE、target metadata を必須 payload とする。`program.native` は target native executable、`manifest.json` は target triple / archive schema version / source commit / native backend evidence / rollback compatibility asset 参照を持つ。現行の host launcher + embedded guest component archive と `lsharp.component.wasm` companion sidecar は stable 既定 payload ではなく rollback compatibility asset へ降格する。
+
+#### Experimental native-only RC evidence
+
+`scripts/ci/native-only-rc-smoke.sh` は experimental native-only RC の layout と evidence を確認する手動診断用 smoke である。stable release の local manual gate を置き換えず、RC artifact を通常の GitHub Release asset として公開しない。
 
 current stable contract は以下である。
 

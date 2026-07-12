@@ -733,7 +733,7 @@
 ### OPS-01 CI gate-v2 job graph
 
 - Goal: CI の主経路を L# ベース job graph へ切り替える。
-- Current state: `ci-gate` / `ci-gate-v2` に `default-path-smoke` / `test-fresh-clone` / `fresh-clone-smoke` / `gc-metrics-artifact` / `editor-extension-build` を required job として組み込み、compile/docs/default-path/binary-only fresh-clone/clean-checkout/editor distribution の blocking graph まで導入済み。GitHub branch protection でも Actions 表示名 `CI Gate v2` を required check として `main` に適用済み。**ただし** native/release job graph の再編と release signing は未完。
+- Current state: `ci-gate` / `ci-gate-v2` に `default-path-smoke` / `test-fresh-clone` / `fresh-clone-smoke` / `gc-metrics-artifact` / `editor-extension-build` の job graph を導入済み。**Temporary policy (2026-07-12): CI 自動実行は停止**しており、`.github/workflows/ci.yml` は `workflow_dispatch` だけを許可する。したがって `CI Gate v2` は branch protection の required check にせず、通常 release は Mac + Lima VM の local manual gate と手動 GitHub Release 公開を正本とする。native/release job graph の再編と release signing は引き続き未完。
 - Rust source: `docs/development/operations/ci-gate-v2-job-graph.md`, `.github/workflows/ci.yml`
 - L# target: `.github/workflows/ci.yml`
 - Implementation direction: job graph は `bootstrap-wasm -> bootstrap-native -> golden-parity -> release-smoke -> packaging`, `docs` 独立、`ci-gate-v2` 集約に固定する。required checks もこの名前に合わせる。

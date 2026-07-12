@@ -2,6 +2,8 @@
 
 公開コマンドの既定実装を Rust 内蔵パイプラインから **host launcher + embedded guest Wasm component** 構成へ移すための運用メモ。
 
+> **Temporary policy (2026-07-12): CI 自動実行は停止**。`default-path-smoke` と `fresh-clone-smoke` は workflow に残すが、`push` / `pull_request` では起動しない **manual CI 診断** とする。通常 release の required job には含めない。
+
 ## 目的
 
 - `lsharp` コマンドの **default path** を段階的に L# 実装へ切り替える。
@@ -19,8 +21,8 @@
 - `scripts/ci/default-path-smoke.sh` が、ビルド済み `lsharp` バイナリ単体で embedded guest default path の `compile` / `build` / `parse` / `check` / `test` / `review` / `doc-ack` / `doc-check` / `fmt`、runtime safety valve (`LSHARP_DISABLE_EMBEDDED_COMPONENT=1` で `parse` / `review` / `doc-ack` / `doc-check` の option-aware subset も含む delegation hint 復帰)、external `.component.wasm` delegation、executable path / directory path delegation と invalid path error を検証する。
 - `scripts/ci/compile-phase11-inputs.sh` も `LSHARP_BIN` を受け取り、Phase 11 固定入力セットを `lsharp` バイナリ経路でコンパイルする。
 - `fresh-clone-smoke` が clean checkout 相当のコピー上で `lsharp` host launcher を再ビルドし、default-path smoke + 代表的な selfhost / stdlib compile を実行する。
-- `.github/workflows/ci.yml` の `default-path-smoke` は `ci-gate` / `ci-gate-v2` の required job に含まれる。
-- `.github/workflows/ci.yml` の `fresh-clone-smoke` も required job に含まれる。
+- `.github/workflows/ci.yml` の `default-path-smoke` は、CI 停止中は `workflow_dispatch` からの **manual CI 診断** にだけ使い、branch protection / release の required job には含めない。
+- `.github/workflows/ci.yml` の `fresh-clone-smoke` も、CI 停止中は manual diagnostic であり required job には含めない。
 - `cargo test -p lsharp-driver --test default_path_delegation` が、embedded default path (`parse` / `check` / `compile` / `build` / `test` / `review` / `doc-ack` / `doc-check` / `fmt`)、runtime disable flag、`LSHARP_PATH` の executable path / directory path / preview1 `.wasm` artifact / Preview2 `.component.wasm` artifact / invalid path error、さらに `.component.wasm` compile/build bridge と adjacent sidecar precedence を固定する。
 - `selfhost/src/App/Cli.ls` は `init` を除く公開 13 CLI サブコマンド (`parse` / `check` / `compile` / `build` / `test` / `review` / `doc-ack` / `doc-check` / `install` / `repl` / `lsp` / `fmt` / `doc`) すべてに対応する selfhost surface を持つ。default path 用にはその中から `parse` / `check` / `compile` / `build` / `test` / `review` / `doc-ack` / `doc-check` / `fmt` を切り出した `selfhost/src/App/EmbeddedCli.ls` を埋め込み guest として使い、host launcher の built-in subset (`install` / `repl` / `lsp` / `doc`) および compile/build の Rust-only fallback と共存させる。
 - `selfhost/src/App/SmokeCli.ls` は `parse` / `check` / `fmt` / `compile` / `build` だけに絞った narrow selfhost smoke entrypoint で、LSP/doc/test 依存を持たない。これは STR-03 の non-circular smoke 専用であり、full CLI parity や `.component.wasm` cutover の正本ではない。
@@ -116,7 +118,7 @@
 - executable / directory delegation は **`compile` だけでなく全 13 CLI サブコマンドに対する process-entry hook** である
 - `LSHARP_PATH` が設定されている場合はそちらが最優先で、build-time に埋め込んだ guest component は fallback/default 候補としてのみ使う
 - `LSHARP_DISABLE_EMBEDDED_COMPONENT=1` が設定されている場合、embedded guest は起動せず、host launcher の built-in subset と external selfhost delegation hook を優先する。guest-backed `review` / `doc-ack` / `doc-check` の option-aware subset は host 別契約へ暗黙 fallback せず hint に戻す
-- `default-path-smoke.sh` は embedded default path (`parse` / `check` / `compile` / `build` / `test` / `review` text/JSON / `doc-ack` / `doc-check` / `fmt`、`doc-ack --trailer` / `doc-check --strict` を含む) と external `.component.wasm` delegation を daily smoke し、preview1 `.wasm` artifact については `default_path_delegation.rs` 側の targeted regression で固定する。
+- `default-path-smoke.sh` は embedded default path (`parse` / `check` / `compile` / `build` / `test` / `review` text/JSON / `doc-ack` / `doc-check` / `fmt`、`doc-ack --trailer` / `doc-check --strict` を含む) と external `.component.wasm` delegation を manual CI 診断で確認し、preview1 `.wasm` artifact については `default_path_delegation.rs` 側の targeted regression で固定する。
 
 ## 完了までに残ること
 

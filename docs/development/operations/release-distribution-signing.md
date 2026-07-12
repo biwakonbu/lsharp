@@ -13,7 +13,7 @@ native 配布物の生成・署名・公開チャネル・cross-build 方針を�
 
 ```text
 version bump
-  -> ci-gate-v2
+  -> local manual release gate
   -> package / archive
   -> checksum
   -> signing
@@ -23,7 +23,7 @@ version bump
   -> package manager update
 ```
 
-- `ci-gate-v2` が release 前提の blocking gate。
+- CI 自動実行は停止中のため、Mac + Lima VM 上の local manual release gate が release 前提の blocking gate。
 - 署名と package manager 更新は **公式アーカイブを正本** にしてぶら下げる。
 - 詳細な手元実行コマンドは `scripts/release-playbook.sh` と `release-playbook.md` に寄せる。
 
@@ -37,10 +37,10 @@ V2-13 target matrix status は `docs/language/native-backend-spec.md` に正本�
 
 1. `aarch64-apple-darwin` と Linux x86_64 server priority track の actual self-regeneration evidence を保持する。Linux x86_64 の actual replay は Mac + Lima VM の local operator gateで扱い、GitHub Actions の required CI job や release workflow の `needs` には含めない。
 2. `scripts/release.sh` と `scripts/ci/release-smoke.sh` は `program.native` / `manifest.json` / `checksums.txt` を native-only official archive の必須 payload として扱う。
-3. `.github/workflows/release.yml` は `workflow_dispatch` で release tag、両 target の immutable App.Cli bundle URL/SHA-256、実在 rollback archive URL/SHA-256 を必須入力として受け取る。各 bundle は archive root の `program.native` + `manifest.json` に固定し、入力 hash 検証後に `NATIVE_ONLY_PROGRAM` / `NATIVE_ONLY_PROGRAM_MANIFEST` / `ROLLBACK_COMPATIBILITY_ASSET_PATH` と `NATIVE_ONLY_RELEASE=1` を `scripts/release.sh` へ渡す。
+3. `scripts/ci/native-official-release-local.sh` を Mac + Lima VM 上で実行し、両 target の immutable App.Cli bundle と rollback archive を package / smoke する。`.github/workflows/release.yml` は `workflow_dispatch` の legacy Actions fallback であり、通常は dispatch しない。
 4. out of support scope の target に internal diagnostic coverage や archived design が残っていても、release blocker や必須 artifact にはしない。
 
-stable workflow は `aarch64-apple-darwin` と `x86_64-unknown-linux-gnu` の target-native runner で archive を作成し、`scripts/ci/release-smoke.sh <stable-archive> <rollback-archive>` を build直後と artifact download後に実行する。representative build-native artifact、experimental RC/evidence artifact、heavy Linux selfregen job は stable publish graphへ流さない。
+legacy Actions fallback を `enable_legacy_actions_release=true` で明示した場合だけ、`aarch64-apple-darwin` と `x86_64-unknown-linux-gnu` の target-native runner で archive を作成し、`scripts/ci/release-smoke.sh <stable-archive> <rollback-archive>` を build直後と artifact download後に実行する。representative build-native artifact、experimental RC/evidence artifact、heavy Linux selfregen job は stable publish graphへ流さない。
 
 外部 input bundle / rollback archive は download 中から 512 MiB に制限し、展開前に圧縮/展開サイズ、entry 数、regular-file whitelist、path traversal、symlink/hardlink を検証する。stable archive と rollback archive は `target` / `version` / `source_commit` が一致しなければ publish gate を通さない。
 
@@ -80,7 +80,7 @@ V2-15 では `scripts/release.sh` / `scripts/ci/release-smoke.sh` / `.github/wor
 
 | チャネル | 目的 | 期待する成果物 | ブロッキング条件 |
 |---|---|---|---|
-| stable | エンドユーザー向け正式配布 | supported target 公式アーカイブ、checksum、release notes | `ci-gate-v2` 成功、release smoke 成功 |
+| stable | エンドユーザー向け正式配布 | supported target 公式アーカイブ、checksum、release notes | local manual release gate、release smoke 成功 |
 | nightly | 継続検証と先行配布 | nightly アーカイブ、checksum | nightly workflow 成功 |
 
 - stable は tag / GitHub Release を起点に扱う。
@@ -165,7 +165,7 @@ signtool verify /pa lsharp.exe
 | 項目 | 現状 |
 |---|---|
 | `scripts/release-playbook.sh` | release binary を作り、bootstrap / default-path / README smoke まで実行可能 |
-| stable release workflow | tag 作成後の `workflow_dispatch` で immutable input URL/SHA-256 を受け、`verify` / 2 target `build` / 2 target `release-smoke` / `release` まで接続済み |
+| stable release workflow | legacy Actions fallback。通常は local manual release gate と手動 GitHub Release 公開を使い、Actions package/release は `enable_legacy_actions_release=true` の明示時だけ実行 |
 | checksum / native-only archive 自動生成 | workflow が事前生成済み `program.native` + manifest bundle と rollback archive の SHA-256 を検証し、`scripts/release.sh` が archive 内 `program.native` / `lsharp` alias / `manifest.json` / `checksums.txt` を生成、`release` job が attached `dist/checksums.txt` を追加 |
 | macOS notarization | Mac Apple Silicon の secret-gated workflow hook まで接続済み。credential 未設定時は skip |
 | Windows 署名 | archived design。Windows は out of support scope のため現行 release workflow から外す |

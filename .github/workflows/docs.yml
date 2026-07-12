@@ -1,32 +1,7 @@
 name: Docs Site
 
+# Temporary policy: docs site も push / pull_request で build しない。
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'docs/**'
-      - 'book/**'
-      - 'stdlib/**'
-      - 'crates/lsharp-driver/src/doc_site.rs'
-      - 'crates/lsharp-driver/src/api_doc.rs'
-      - 'crates/lsharp-tooling/src/api_doc.rs'
-      - 'scripts/ci/build-doc-site.sh'
-      - '.github/workflows/docs.yml'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-  pull_request:
-    branches: [main]
-    paths:
-      - 'docs/**'
-      - 'book/**'
-      - 'stdlib/**'
-      - 'crates/lsharp-driver/src/doc_site.rs'
-      - 'crates/lsharp-driver/src/api_doc.rs'
-      - 'crates/lsharp-tooling/src/api_doc.rs'
-      - 'scripts/ci/build-doc-site.sh'
-      - '.github/workflows/docs.yml'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
   workflow_dispatch:
 
 concurrency:
@@ -55,7 +30,7 @@ jobs:
 
   deploy:
     name: Deploy docs site
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     needs: build
     runs-on: ubuntu-latest
     permissions:

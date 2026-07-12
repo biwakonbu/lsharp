@@ -29,7 +29,7 @@ bash scripts/ci/build-doc-site.sh _site
 
 ## 公開フロー
 
-`.github/workflows/docs.yml` は `main` push と手動実行で `_site/` を build し、GitHub Pages artifact として deploy する。Pull Request では build と artifact 作成まで行い、deploy は実行しない。
+`.github/workflows/docs.yml` は CI 自動 build 停止中のため `workflow_dispatch` でのみ `_site/` を build し、`main` ref の手動 dispatch だけを GitHub Pages artifact として deploy する。`main` push と Pull Request では build / deploy を実行しない。
 
 GitHub 側の Pages 設定では、Build and deployment の Source を GitHub Actions にする。公開 URL は `docs/site.toml` の `base_url` と合わせる。
 

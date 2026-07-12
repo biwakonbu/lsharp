@@ -2115,6 +2115,16 @@ fn test_e2e_ops01_ci_gate_v2() {
     let ci_path = project_root.join(".github/workflows/ci.yml");
     assert!(ci_path.exists(), "ci.yml が存在しない");
     let content = std::fs::read_to_string(&ci_path).expect("ci.yml の読み込みに失敗");
+    let trigger_section = content
+        .split("concurrency:")
+        .next()
+        .expect("ci.yml の trigger section が見つからない");
+    assert!(
+        trigger_section.contains("workflow_dispatch:")
+            && !trigger_section.contains("push:")
+            && !trigger_section.contains("pull_request:"),
+        "CI build は push / pull_request で自動起動せず、明示的な workflow_dispatch だけを許可すること"
+    );
     // gate-v2 ジョブまたは ci-gate-v2 ジョブが存在すること
     assert!(
         content.contains("ci-gate-v2") || content.contains("gate-v2"),
@@ -2142,9 +2152,67 @@ fn test_e2e_ops01_ci_gate_v2() {
         );
     }
     assert!(
-        job_graph_content.contains("`main` | `ci-gate-v2`")
-            && job_graph_content.contains("Actions 表示名 `CI Gate v2`"),
-        "ci-gate-v2-job-graph.md は current branch protection 契約を説明すること"
+        job_graph_content.contains("`main` | なし（CI 自動実行は停止）")
+            && job_graph_content.contains("branch protection に CI Gate を required 設定しない"),
+        "ci-gate-v2-job-graph.md は CI 停止中の branch protection 契約を説明すること"
+    );
+    assert!(
+        job_graph_content.contains("CI 自動実行は停止")
+            && job_graph_content.contains("手元の manual release gate"),
+        "ci-gate-v2-job-graph.md は CI build 停止と local manual release の運用を説明すること"
+    );
+
+    let docs_workflow = project_root.join(".github/workflows/docs.yml");
+    let docs_content = std::fs::read_to_string(&docs_workflow).expect("docs.yml の読み込みに失敗");
+    let docs_trigger_section = docs_content
+        .split("concurrency:")
+        .next()
+        .expect("docs.yml の trigger section が見つからない");
+    assert!(
+        docs_trigger_section.contains("workflow_dispatch:")
+            && !docs_trigger_section.contains("push:")
+            && !docs_trigger_section.contains("pull_request:")
+            && docs_content.contains(
+                "if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'"
+            ),
+        "Docs Site も push / pull_request build を停止し、main の手動 dispatch でだけ deploy すること"
+    );
+
+    let ci_ops_doc = project_root.join("docs/development/operations/CI.md");
+    let ci_ops_content = std::fs::read_to_string(&ci_ops_doc).expect("CI.md の読み込みに失敗");
+    assert!(
+        ci_ops_content.contains("CI 自動実行は停止")
+            && ci_ops_content.contains("CI Gate v2 を required 設定しない"),
+        "CI.md は CI 停止中に CI Gate v2 を branch protection の required check にしないことを説明すること"
+    );
+
+    let branch_protection_doc =
+        project_root.join("docs/development/operations/branch-protection-checklist.md");
+    let branch_protection_content = std::fs::read_to_string(&branch_protection_doc)
+        .expect("branch-protection-checklist.md の読み込みに失敗");
+    assert!(
+        branch_protection_content.contains("CI Gate v2 を required にしない")
+            && branch_protection_content.contains("手元の manual release gate"),
+        "branch protection チェックリストは CI 停止中の手動 release 運用を説明すること"
+    );
+
+    let default_path_doc =
+        project_root.join("docs/development/operations/default-path-migration.md");
+    let default_path_content = std::fs::read_to_string(&default_path_doc)
+        .expect("default-path-migration.md の読み込みに失敗");
+    assert!(
+        default_path_content.contains("manual CI 診断")
+            && default_path_content.contains("required job には含めない"),
+        "default path の smoke は CI 停止中の manual diagnostic として記載すること"
+    );
+
+    let artifact_policy_doc = project_root.join("docs/development/operations/artifact-policy.md");
+    let artifact_policy_content =
+        std::fs::read_to_string(&artifact_policy_doc).expect("artifact-policy.md の読み込みに失敗");
+    assert!(
+        artifact_policy_content.contains("自動 CI 停止中")
+            && artifact_policy_content.contains("workflow_dispatch による手動診断"),
+        "artifact policy は CI artifact が自動 build ではなく手動診断時だけ生成されることを説明すること"
     );
 }
 
@@ -2179,17 +2247,18 @@ fn test_e2e_ops02_artifact_policy() {
     let release_content =
         std::fs::read_to_string(&release_workflow).expect("release.yml の読み込みに失敗");
     assert!(
-        release_content.contains("name: lsharp-${{ github.ref_name }}-${{ matrix.target }}"),
+        release_content
+            .contains("name: lsharp-${{ needs.verify.outputs.version }}-${{ matrix.target }}"),
         "release.yml は workflow-local release artifact 名を保持すること"
     );
     assert!(
         release_content.contains(
-            "dist/lsharp-${{ github.ref_name }}-${{ matrix.target }}.${{ matrix.archive_ext }}"
+            "dist/lsharp-${{ needs.verify.outputs.version }}-${{ matrix.target }}.${{ matrix.archive_ext }}"
         ),
         "release.yml は配布 asset ファイル名も固定すること"
     );
     assert!(
-        release_content.contains("NATIVE_ONLY_RELEASE: \"1\""),
+        release_content.contains("NATIVE_ONLY_RELEASE: '1'"),
         "release.yml は native-only official archive を stable release の既定にすること"
     );
     // アーティファクトポリシードキュメントが存在すること
@@ -2447,20 +2516,11 @@ fn test_e2e_native_ops02_native_only_rc_contract() {
     let release_workflow = project_root.join(".github/workflows/release.yml");
     let release_workflow_content =
         std::fs::read_to_string(&release_workflow).expect("release.yml の読み込みに失敗");
-    for expected in [
-        "experimental-native-rc",
-        "macos-14",
-        "scripts/ci/build-native.sh",
-        "scripts/ci/native-only-rc-smoke.sh",
-        "experimental-native-rc-${{ needs.verify.outputs.version }}-aarch64-apple-darwin.tar.gz",
-        "checksums.txt",
-    ] {
-        assert!(
-            release_workflow_content.contains(expected),
-            "release.yml は native-only RC workflow 契約 `{}` を含むこと",
-            expected
-        );
-    }
+    assert!(
+        !release_workflow_content.contains("experimental-native-rc")
+            && !release_workflow_content.contains("scripts/ci/native-only-rc-smoke.sh"),
+        "experimental native-only RC は手動 evidence に留め、stable release workflow へ混入させないこと"
+    );
 }
 
 #[test]
@@ -3890,6 +3950,9 @@ fn test_e2e_ops06_release_playbook() {
     assert!(
         playbook_content.contains("native-only archive")
             && playbook_content.contains("rollback compatibility asset")
+            && playbook_content.contains("CI を起動せず")
+            && playbook_content.contains("native-official-release-local.sh")
+            && playbook_content.contains("通常の release では `workflow_dispatch` も実行せず")
             && !playbook_content.contains(
                 "配布モデルは **Wasmtime embedding + guest Wasm component + host launcher single binary**"
             )
@@ -3911,6 +3974,7 @@ fn test_e2e_ops06_release_playbook() {
     assert!(
         trigger_section.contains("workflow_dispatch:")
             && trigger_section.contains("release_tag:")
+            && trigger_section.contains("enable_legacy_actions_release:")
             && trigger_section.contains("macos_native_bundle_url:")
             && trigger_section.contains("macos_native_bundle_sha256:")
             && trigger_section.contains("macos_rollback_archive_url:")
@@ -3922,6 +3986,12 @@ fn test_e2e_ops06_release_playbook() {
             && trigger_section.matches("required: true").count() == 9
             && !trigger_section.contains("push:"),
         "release.yml は release tag と 2 target の immutable App.Cli bundle / rollback archive input を受け取ること"
+    );
+    let legacy_actions_guard = "if: ${{ inputs.enable_legacy_actions_release == true }}";
+    assert_eq!(
+        workflow_content.matches(legacy_actions_guard).count(),
+        4,
+        "release.yml の verify / build / release-smoke / release はすべて local manual release を既定にし、legacy Actions 実行を明示 opt-in にすること"
     );
 }
 
@@ -4569,6 +4639,7 @@ esac
         .permissions();
     perms.set_mode(0o755);
     std::fs::set_permissions(&fake_lsharp, perms).expect("fake lsharp permission の設定に失敗");
+
     std::fs::copy(&fake_lsharp, archive_root.join("lsharp"))
         .expect("native-only lsharp alias fixture copy 失敗");
 
@@ -4932,7 +5003,7 @@ fn test_e2e_ops07_test_fresh_clone_script_runs_binary_only_fixture_archive() {
     let archive_root = temp_root.join("lsharp-v0.0.0-test-x86_64-unknown-linux-gnu");
     std::fs::create_dir_all(&archive_root).expect("fixture archive root の作成に失敗");
 
-    let fake_lsharp = archive_root.join("program.native");
+    let fake_lsharp = archive_root.join("lsharp");
     std::fs::write(
         &fake_lsharp,
         r#"#!/usr/bin/env bash
@@ -5095,15 +5166,27 @@ esac
     perms.set_mode(0o755);
     std::fs::set_permissions(&fake_lsharp, perms).expect("fake lsharp permission の設定に失敗");
 
+    let fake_lsp = archive_root.join("lsharp-lsp");
+    std::fs::write(&fake_lsp, "#!/usr/bin/env bash\nexit 0\n")
+        .expect("fake lsharp-lsp の書き込みに失敗");
+    let mut lsp_perms = std::fs::metadata(&fake_lsp)
+        .expect("fake lsharp-lsp metadata の取得に失敗")
+        .permissions();
+    lsp_perms.set_mode(0o755);
+    std::fs::set_permissions(&fake_lsp, lsp_perms)
+        .expect("fake lsharp-lsp permission の設定に失敗");
+    std::fs::write(archive_root.join("lsharp.component.wasm"), b"\0asm")
+        .expect("component sidecar fixture の書き込みに失敗");
+
     std::fs::write(archive_root.join("README.md"), "# fixture\n")
         .expect("README fixture 書き込み失敗");
     std::fs::write(archive_root.join("LICENSE"), "fixture license\n")
         .expect("LICENSE fixture 書き込み失敗");
     std::fs::write(
         archive_root.join("manifest.json"),
-        r#"{"schema_version":1,"archive_kind":"native-only official archive","target":"x86_64-unknown-linux-gnu","entry_binary":"program.native","rollback_anchor":{"kind":"rollback compatibility","asset":"lsharp-v0.0.0-test-x86_64-unknown-linux-gnu-host-launcher.tar.gz"},"smoke":{"kind":"native-only release smoke","binary":"program.native"}}"#,
+        r#"{"schema_version":1,"archive_kind":"rollback compatibility","target":"x86_64-unknown-linux-gnu","version":"v0.0.0-test","source_commit":"fixture-commit","entry_binary":"lsharp","lsp_binary":"lsharp-lsp","component":"lsharp.component.wasm"}"#,
     )
-    .expect("native-only manifest fixture 書き込み失敗");
+    .expect("rollback manifest fixture 書き込み失敗");
 
     let checksum_output = Command::new("bash")
         .arg(&checksum_script)

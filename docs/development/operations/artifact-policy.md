@@ -5,6 +5,8 @@ CI / CD パイプラインで生成される **workflow-local artifact** と、�
 この文書は **現在 workflow が実際に emit している名前だけ** を正本として扱う。
 将来用の placeholder 名は、対応する workflow とテストが入るまで active contract にしない。
 
+> **Temporary policy (2026-07-12): 自動 CI 停止中**。CI artifact は `push` / `pull_request` build では生成せず、`.github/workflows/ci.yml` の **workflow_dispatch による手動診断** でだけ生成する。通常 release は Mac + Lima VM の local manual gate と手動公開を使う。
+
 ## Release target scope
 
 - Supported product/release targets は Mac Apple Silicon (`aarch64-apple-darwin`) と Linux x86_64 (`x86_64-unknown-linux-gnu`) の 2 つに限る。
@@ -63,10 +65,10 @@ active contract として追記する。
 | `lsharp-{version}-{target}.{ext}` | - | - | 永続 | GitHub Release asset として公開 |
 | rollback compatibility asset | - | - | 永続 | LKG rollback anchor に記録された場合のみ GitHub Release asset として公開 |
 
-### CI での設定
+### 手動診断時の設定
 
 ```yaml
-# ci.yml: PR は 5 日、main は 30 日
+# ci.yml: 自動 CI を再開した場合は PR 5 日、main 30 日。停止中の workflow_dispatch は 30 日。
 - uses: actions/upload-artifact@v4
   with:
     name: bootstrap-diff-${{ github.sha }}
@@ -81,7 +83,7 @@ active contract として追記する。
     retention-days: 30
 ```
 
-PR の場合は GitHub Actions のデフォルト保持期間（90 日）を上書きし、5 日に短縮する。
+自動 CI 停止中の `workflow_dispatch` は PR event ではないため 30 日保持する。PR の場合は、将来 `push` / `pull_request` trigger を再開した時だけ GitHub Actions のデフォルト保持期間（90 日）を上書きし、5 日に短縮する。
 GitHub Release asset の「永続」は `retention-days` ではなく、GitHub Release 上の配布物として
 残す運用を指す。
 
@@ -110,7 +112,7 @@ bash scripts/checksum.sh dist > dist/checksums.txt
 
 ## GC metrics artifact の受理 / 却下
 
-`gc-metrics-artifact` は required job であり、他の「欠落を許容する中間成果物」と扱いを分ける。
+`gc-metrics-artifact` は、CI 停止中は手動診断ジョブであり、他の「欠落を許容する中間成果物」と扱いを分ける。自動 CI を再開する場合だけ required job に戻す。
 
 ### 正本
 
@@ -132,11 +134,11 @@ bash scripts/checksum.sh dist > dist/checksums.txt
 
 ### 受理の意味
 
-- current required path では、受理は「collector-backed `summary.json` / `collector-proof.json` が構造的に有効で、representative workload と S14/S15/S16 の machine-readable evidence が揃った」ことを意味する。
+- current manual diagnostic path では、受理は「collector-backed `summary.json` / `collector-proof.json` が構造的に有効で、representative workload と S14/S15/S16 の machine-readable evidence が揃った」ことを意味する。
 - `summary.json` は `s14_reason` / `s15_reason` / `s16_reason` を持ち、`blocked` / `n/a` の理由を machine-readable に保持する。
 - `collect-gc-metrics.sh` は sibling `collector-proof.json` が存在する場合はそれを `summary.json` へ merge して同一 validator に通し、受理後は current `s15_*` / `s16_*` slot と `s15_reason` / `s16_reason` を持つ normalized sidecar として `collector-proof.json` を常に書き戻す。
 - proof bundle 未指定でも `collector-proof.json` は emit され、fixture の bump / blocked path では `summary.json` 側の `s15_*` / `s16_*` slot と machine-readable reason をそのまま mirror する。
-- validate-only fixture では bump allocator / `blocked` / `n/a` payload を引き続き扱うが、required PR artifact は collector-backed path を正本とする。
+- validate-only fixture では bump allocator / `blocked` / `n/a` payload を引き続き扱うが、自動 CI を再開した後の PR artifact は collector-backed path を正本とする。
 - そのため current `gc-metrics-artifact` が green で `s14_status = s15_status = s16_status = pass` を保持していれば、`docs/development/planning/runtime-stability-spec.md` S14-S16 の closure evidence として扱う。
 
 ## 証跡

@@ -1,10 +1,8 @@
-name: CI
+name: CI (manual only)
 
+# Temporary policy: push / pull_request では CI build を実行しない。
+# release の正本は Mac + Lima VM で実行する local manual gate とする。
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
   workflow_dispatch:
     inputs:
       run_lsp_parity_gates:

@@ -1,9 +1,15 @@
-name: Release
+name: Release (legacy Actions fallback)
 
 # stable release は、Mac + Lima で事前生成・検証した immutable input だけを受け取る。
+# Temporary policy: local manual release を正本とし、Actions 上の package/release は明示 opt-in 時だけ動かす。
 on:
   workflow_dispatch:
     inputs:
+      enable_legacy_actions_release:
+        description: 'Run the legacy Actions package/release fallback instead of the local manual release route'
+        required: false
+        default: false
+        type: boolean
       release_tag:
         description: '公開する既存の v* tag'
         required: true
@@ -49,6 +55,7 @@ jobs:
   verify:
     name: Verify (test + lint + format)
     runs-on: ubuntu-latest
+    if: ${{ inputs.enable_legacy_actions_release == true }}
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
@@ -94,6 +101,7 @@ jobs:
   build:
     name: Build (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
+    if: ${{ inputs.enable_legacy_actions_release == true }}
     needs: verify
     strategy:
       fail-fast: false
@@ -278,6 +286,7 @@ jobs:
   release-smoke:
     name: Release smoke (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
+    if: ${{ inputs.enable_legacy_actions_release == true }}
     needs:
       - verify
       - build
@@ -320,6 +329,7 @@ jobs:
   release:
     name: GitHub Release 作成
     runs-on: ubuntu-latest
+    if: ${{ inputs.enable_legacy_actions_release == true }}
     needs:
       - verify
       - release-smoke
