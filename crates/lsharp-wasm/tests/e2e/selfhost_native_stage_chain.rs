@@ -1655,6 +1655,39 @@ fn test_native_linux_x86_hostgen_vm_script_can_export_reused_stage2_cli_bundle()
 }
 
 #[test]
+fn test_native_linux_x86_app_cli_source_file_smoke_script_contract() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-linux-x86-app-cli-source-file-smoke.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+
+    for required in [
+        "LSHARP_NATIVE_LINUX_X86_APP_CLI_BUNDLE_DIR",
+        "stage-code.bin",
+        "stage-data.bin",
+        "entrypoint-offset.txt",
+        "materialize-native-linux-x86-bundle.py",
+        "./program.native parse input.ls",
+        "./program.native check input.ls",
+        "./program.native fmt input.ls",
+        "./program.native test input.ls",
+        "./program.native test metadata.ls",
+        "./program.native compile input.ls -o compile.wasm",
+        "./program.native build input.ls -o build.wasm",
+        "trap cleanup EXIT",
+    ] {
+        assert!(
+            script.contains(required),
+            "Linux native App.Cli source-file smoke は `{required}` を固定するべき"
+        );
+    }
+    assert!(
+        !script.contains("cargo "),
+        "Linux native App.Cli source-file smoke は Rust/Cargo を runtime path に含めてはならない"
+    );
+}
+
+#[test]
 fn test_native_linux_x86_target_export_ignores_generated_seed_in_source_digest() {
     let script_path =
         selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
@@ -8115,6 +8148,24 @@ fn test_native_codegen_routes_int_to_string_import_to_target_helpers() {
                 "(aarch64-selfhost-int-to-string-helper-offset import-stub-offset import-count)"
             ),
         "native selfhost の import 6 (__int_to_string) は ret stub ではなく target ごとの tagged String helper へ dispatch するべき"
+    );
+}
+
+#[test]
+fn test_native_stage_seed_preserves_int_to_string_import_arity() {
+    let source = representative_actual_stage23_seed_source();
+    let placeholders = source
+        .split("(defn native-runtime-import-param-count [idx]")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn append-vector-loop").next())
+        .expect("native stage seed に runtime import arity metadata が存在すること");
+
+    assert!(
+        placeholders.contains("(if (= idx 6) 1 0)")
+            && placeholders.contains(
+                "(make-function-meta (native-runtime-import-param-count idx) 0 (vector-new 0))"
+            ),
+        "native stage seed は int-to-string import (index 6) を 1 引数として保持し、x86 call bundle が rdi を設定できるべき"
     );
 }
 
@@ -15277,12 +15328,15 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
       local-count)
     ir))
 
+(defn native-runtime-import-param-count [idx]
+  (if (= idx 6) 1 0))
+
 (defn push-import-placeholders [idx count result]
   (if (>= idx count)
     result
     (do
       (root_push result)
-      (let [placeholder (make-function-meta 0 0 (vector-new 0))]
+      (let [placeholder (make-function-meta (native-runtime-import-param-count idx) 0 (vector-new 0))]
         (do
           (root_push placeholder)
           (let [next-result (vector-push result placeholder)]
@@ -18618,6 +18672,36 @@ fn test_e2e_selfhost_minimal_x86_one_arg_call_targets_callee_not_self() {
     assert!(
         target >= 0 && (target as usize) < entry,
         "minimal one-arg call は entrypoint 自身ではなく前方の callee を指すべき: entry={entry} call_offset={call_offset} rel={rel} target={target}"
+    );
+}
+
+#[test]
+#[ignore = "完全な selfhost harness の型推論を要するため、Linux source-file smoke で実行検証する"]
+fn test_e2e_selfhost_x86_int_to_string_import_sets_rdi() {
+    let source = "(module Main)\n(defn main []\n  (int-to-string 42))\n";
+    let escaped_source = escape_lsharp_string(source);
+    let payload_expr = format!(
+        r#"(do
+            (write-file "src/App/MinIntToString.ls" "{escaped_source}")
+            (compile-file-functions-payload-with-cache "src/App/MinIntToString.ls" 10 cache-ref parse-count-ref))"#
+    );
+    let bundle = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        run_selfhost_main_native_x86_segmented_host_bytes_harness_with_payload_and_args(
+            "native-x86-int-to-string-import-abi",
+            &payload_expr,
+            &[],
+        )
+    });
+    let entry = bundle.entrypoint_offset;
+    let end = (entry + 128).min(bundle.code_bytes.len().saturating_sub(10));
+
+    assert!(
+        (entry..end).any(|offset| {
+            bundle.code_bytes[offset..offset + 10].starts_with(&[0x48, 0x89, 0xc7, 0x51, 0xe8])
+                && bundle.code_bytes[offset + 9] == 0x59
+        }),
+        "x86 int-to-string import は rax の整数引数を rdi へ移してから push/call/pop するべき: entry={entry} bytes={:02x?}",
+        &bundle.code_bytes[entry..end]
     );
 }
 
@@ -54225,7 +54309,7 @@ fn test_e2e_saved_native_stage3_compiler_app_cli_failing_invariant_command() {
     );
 }
 
-/// V2-16b: fixed-point 済み macOS native compiler が Linux x86_64 向け App.Cli bundle を出力できること。
+/// V2-16d: fixed-point 済み macOS compiler が Linux x86_64 App.Cli source-file contract を実行できること。
 #[test]
 #[ignore]
 fn test_e2e_native_macos_aarch64_fixedpoint_compiler_exports_linux_x86_app_cli_bundle() {
@@ -54233,15 +54317,14 @@ fn test_e2e_native_macos_aarch64_fixedpoint_compiler_exports_linux_x86_app_cli_b
         return;
     }
 
-    let artifact_dir =
+    let artifact_dir = std::path::PathBuf::from(
         std::env::var_os("LSHARP_NATIVE_MACOS_AARCH64_CROSS_LINUX_X86_APP_CLI_ARTIFACT_DIR")
             .expect(
                 "LSHARP_NATIVE_MACOS_AARCH64_CROSS_LINUX_X86_APP_CLI_ARTIFACT_DIR を指定すること",
-            );
-    let bundle = generate_actual_macos_aarch64_cross_linux_x86_app_cli_bundle(
-        &std::path::PathBuf::from(artifact_dir),
-    )
-    .expect("fixed-point macOS compiler による Linux x86_64 App.Cli bundle 生成に失敗");
+            ),
+    );
+    let bundle = generate_actual_macos_aarch64_cross_linux_x86_app_cli_bundle(&artifact_dir)
+        .expect("fixed-point macOS compiler による Linux x86_64 App.Cli bundle 生成に失敗");
 
     assert!(
         !bundle.code_bytes.is_empty(),
@@ -54252,13 +54335,40 @@ fn test_e2e_native_macos_aarch64_fixedpoint_compiler_exports_linux_x86_app_cli_b
         "Linux x86_64 App.Cli entrypoint が code bundle 範囲外: {bundle:?}"
     );
     assert!(
-        std::path::Path::new(
-            &std::env::var_os("LSHARP_NATIVE_MACOS_AARCH64_CROSS_LINUX_X86_APP_CLI_ARTIFACT_DIR",)
-                .expect("artifact dir を再取得できない"),
-        )
-        .join("manifest.json")
-        .is_file(),
+        bundle.code_bytes[bundle.entrypoint_offset..].starts_with(&[0x55, 0x48, 0x89, 0xe5]),
+        "Linux x86_64 App.Cli entrypoint は x86_64 prologue で始まること: bytes={:02x?}",
+        &bundle.code_bytes[bundle.entrypoint_offset..]
+            .get(..8)
+            .unwrap_or(&[])
+    );
+    assert!(
+        artifact_dir.join("manifest.json").is_file(),
         "Linux x86_64 App.Cli bundle manifest が生成されること"
+    );
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-linux-x86-app-cli-source-file-smoke.sh");
+    let output = std::process::Command::new("bash")
+        .arg(&script_path)
+        .current_dir(selfhost_project_root())
+        .env("LSHARP_NATIVE_LINUX_X86_APP_CLI_BUNDLE_DIR", &artifact_dir)
+        .output()
+        .expect("Linux App.Cli source-file smoke の実行に失敗");
+    assert!(
+        output.status.success(),
+        "Linux App.Cli source-file smoke は成功すること: stdout={:?} stderr={:?}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        output.stderr.is_empty(),
+        "Linux App.Cli source-file smoke stderr は空であること: {:?}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stdout)
+            .contains("Linux x86_64 native App.Cli source-file smoke passed"),
+        "Linux App.Cli source-file smoke success marker がない: {:?}",
+        String::from_utf8_lossy(&output.stdout)
     );
 }
 
