@@ -17709,7 +17709,7 @@
                           (native-consume-produce-one-size-aarch64 12 current-depth 2)
                            (if (= target-param-count 1)
                              12
-                             (native-produce-one-size-aarch64 4 current-depth)))))))))))))
+                             (native-produce-one-size-aarch64 12 current-depth)))))))))))))
     (if (= opcode 1)
       (native-produce-one-size-aarch64 (aarch64-load-i64-x0-size operand) current-depth)
       (if (= opcode 3)
@@ -18562,7 +18562,7 @@
                     (if (= target-param-count 1)
                       (emit-aarch64-helper-call-preserving-prev-and-lr disp)
                        (emit-produce-one-bundle-aarch64
-                         (emit-aarch64-bl disp)
+                         (emit-aarch64-helper-call-preserving-prev-and-lr disp)
                          frame-base-slot-count
                          current-depth)))))))))))
 
@@ -18799,7 +18799,7 @@
                               (- target-offset (+ current-offset 8))
                                 (if (= target-param-count 1)
                                   (- target-offset (+ current-offset 4))
-                                  (- target-offset (+ current-offset (native-produce-one-prefix-size-aarch64 4 current-depth))))))))))))))
+                                  (- target-offset (+ current-offset (native-produce-one-prefix-size-aarch64 12 current-depth))))))))))))))
       call-bytes (if (>= target-param-count 10)
                  (emit-consume-produce-one-bundle-aarch64
                    (if (>= target-param-count 20)

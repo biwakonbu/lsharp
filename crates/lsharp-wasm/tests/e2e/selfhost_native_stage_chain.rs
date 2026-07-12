@@ -13102,6 +13102,42 @@ fn test_native_stage_chain_embeds_current_native_codegen_source() {
     );
 }
 
+#[test]
+fn test_native_codegen_aarch64_zero_arg_user_call_preserves_live_left_operand() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let size_body = source
+        .split("(defn native-instr-size-aarch64-core")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn native-instr-size-aarch64 [").next())
+        .expect("NativeCodegen.ls に AArch64 instruction size pass が存在すること");
+    let call_bundle = source
+        .split("(defn emit-call-bundle-aarch64-one-to-nine")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn emit-aarch64-helper-call-preserving-prev-and-lr")
+                .next()
+        })
+        .expect("NativeCodegen.ls に AArch64 low-arity call bundle が存在すること");
+    let codegen_body = source
+        .split("(defn codegen-ir-instr-bundle-aarch64-with-import-count")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn codegen-ir-instr-bundle-aarch64 [").next())
+        .expect("NativeCodegen.ls に AArch64 opcode bundle codegen が存在すること");
+
+    assert!(
+        size_body.contains("(native-produce-one-size-aarch64 12 current-depth)"),
+        "AArch64 zero-arg user call の size は x9/x30 保存 helper の 12 bytes を含むべき"
+    );
+    assert!(
+        call_bundle.contains("(emit-aarch64-helper-call-preserving-prev-and-lr disp)"),
+        "AArch64 zero-arg user call は callee 越しに x9/x30 を保存する helper を使うべき"
+    );
+    assert!(
+        codegen_body.contains("(native-produce-one-prefix-size-aarch64 12 current-depth)"),
+        "AArch64 zero-arg user call の BL target は helper の保存命令後を基準に計算するべき"
+    );
+}
+
 fn describe_native_process_exit_status(status: std::process::ExitStatus) -> String {
     #[cfg(unix)]
     {
@@ -59037,6 +59073,110 @@ fn host_target_if_else_false_code_bytes() -> Vec<u8> {
     host_target_plain_program_code_bytes(&[(3, 0), (41, 0), (3, 42), (79, 0), (3, 7), (43, 0)])
 }
 
+fn host_target_bundle_nested_if_else_false_code_bytes() -> Vec<u8> {
+    // 外側と内側の false branch を通過して 42 を返す。
+    host_target_selfhost_program_bundle_code_bytes(
+        &[
+            (3, 0),
+            (41, 0),
+            (3, 1),
+            (79, 0),
+            (3, 0),
+            (41, 0),
+            (3, 2),
+            (79, 0),
+            (3, 42),
+            (43, 0),
+            (43, 0),
+        ],
+        0,
+    )
+}
+
+fn host_target_bundle_nested_if_else_false_with_zero_arg_calls_code_bytes() -> Vec<u8> {
+    run_native_codegen_host_bytes_harness(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn main []
+  (let [left0 (make-instr 1 42)
+        call-plus (make-instr 40 1)
+        eq-plus (make-instr 30 0)
+        outer-if (make-instr 41 0)
+        outer-then (make-instr 1 0)
+        outer-else (make-instr 79 0)
+        left1 (make-instr 1 42)
+        call-eq (make-instr 40 2)
+        eq-eq (make-instr 30 0)
+        inner-if (make-instr 41 0)
+        inner-then (make-instr 1 1)
+        inner-else (make-instr 79 0)
+        inner-false (make-instr 1 0)
+        inner-end (make-instr 43 0)
+        outer-end (make-instr 43 0)
+        main-ir (vector-push
+                  (vector-push
+                    (vector-push
+                      (vector-push
+                        (vector-push
+                          (vector-push
+                            (vector-push
+                              (vector-push
+                                (vector-push
+                                  (vector-push
+                                    (vector-push
+                                      (vector-push
+                                        (vector-push
+                                          (vector-push
+                                            (vector-push (vector-new 15) left0)
+                                            call-plus)
+                                          eq-plus)
+                                        outer-if)
+                                      outer-then)
+                                    outer-else)
+                                  left1)
+                                call-eq)
+                              eq-eq)
+                            inner-if)
+                          inner-then)
+                        inner-else)
+                      inner-false)
+                    inner-end)
+                  outer-end)
+        main-meta (make-function-meta 0 0 main-ir)
+        plus-ir (vector-push
+                  (vector-push (vector-new 2) (make-instr 1 43))
+                  (make-instr 1 43))
+        plus-meta (make-function-meta 0 0 plus-ir)
+        eq-meta (make-function-meta 0 0 (vector-push (vector-new 1) (make-instr 1 42)))
+        functions (vector-push
+                    (vector-push
+                      (vector-push (vector-new 3) main-meta)
+                      plus-meta)
+                    eq-meta)
+        code (emit-native-function-meta-bundle functions (host-target))]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    )
+}
+
 fn x86_target_if_else_code_bytes(cond: i64) -> Vec<u8> {
     // x86_64 target で if/else/end の機械語バイト列を生成する
     run_native_codegen_host_bytes_harness(&format!(
@@ -59142,6 +59282,62 @@ fn test_e2e_native_host_binary_if_else_false_branch_link_and_execute() {
         7,
         "V2-08-CF: if/else false branch: exit code 7 を期待したが {} を得た\n\
          bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// V2-16d: AArch64 bundle の nested false branch は内側の else を実行すること。
+#[test]
+#[ignore]
+fn test_e2e_native_host_binary_bundle_nested_if_else_false_branches_link_and_execute() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_bundle_nested_if_else_false_code_bytes();
+
+    assert!(
+        !code_bytes.is_empty(),
+        "nested if/else bundle の AArch64 code bytes が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary(&code_bytes)
+        .expect("nested if/else bundle host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        42,
+        "nested if/else bundle: outer/inner false branch は 42 を返すべきだが {} を得た\nbytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// V2-16d: zero-arg call を含む nested false branch も AArch64 bundle で内側の then を実行すること。
+#[test]
+#[ignore]
+fn test_e2e_native_host_binary_bundle_nested_if_else_false_with_zero_arg_calls_link_and_execute() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_bundle_nested_if_else_false_with_zero_arg_calls_code_bytes();
+
+    assert!(
+        !code_bytes.is_empty(),
+        "zero-arg call を含む nested if/else bundle の AArch64 code bytes が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary(&code_bytes)
+        .expect("zero-arg call を含む nested if/else bundle host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        1,
+        "zero-arg call を含む nested if/else bundle: false/true path は 1 を返すべきだが {} を得た\nbytes ({} bytes): {:?}",
         exit_code,
         code_bytes.len(),
         code_bytes
