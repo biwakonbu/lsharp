@@ -459,13 +459,14 @@
           results))
       results)))
 
-(defn collect-defn-metadata-loop [src tokens idx end fn-hash examples invariants paren-depth bracket-depth brace-depth]
+(defn collect-defn-metadata-loop [src tokens idx end fn-hash examples invariants]
   (if (>= idx end)
     (make-suite examples invariants)
     (let [kind (token-kind tokens idx)]
       (if (= kind (tok-eof))
         (make-suite examples invariants)
-        (if (= (at-defn-top-level paren-depth bracket-depth brace-depth) 1)
+        (if (= kind (tok-lbracket))
+          (collect-defn-metadata-loop src tokens (consume-form tokens idx) end fn-hash examples invariants)
           (if (= kind (tok-colon))
             (let [payload-start (+ idx 2)]
               (if (< payload-start end)
@@ -477,20 +478,9 @@
                   next-invariants (if (string-eq name "invariant")
                     (append-invariant-payload src tokens payload-start payload-end fn-hash invariants)
                     invariants)]
-                  (collect-defn-metadata-loop src tokens payload-end end fn-hash next-examples next-invariants 1 0 0))
+                  (collect-defn-metadata-loop src tokens payload-end end fn-hash next-examples next-invariants))
                 (make-suite examples invariants)))
-            (let [next-paren (step-paren-depth kind paren-depth)
-              next-bracket (step-bracket-depth kind bracket-depth)
-              next-brace (step-brace-depth kind brace-depth)]
-              (collect-defn-metadata-loop
-                src tokens (+ idx 1) end fn-hash examples invariants
-                next-paren next-bracket next-brace)))
-          (let [next-paren (step-paren-depth kind paren-depth)
-            next-bracket (step-bracket-depth kind bracket-depth)
-            next-brace (step-brace-depth kind brace-depth)]
-            (collect-defn-metadata-loop
-              src tokens (+ idx 1) end fn-hash examples invariants
-              next-paren next-bracket next-brace)))))))
+            (make-suite examples invariants)))))))
 
 (defn extract-test-cases-loop [src tokens idx count examples invariants]
   (if (>= idx count)
@@ -503,7 +493,7 @@
             (if (< (+ idx 2) count)
               (if (= (token-kind tokens (+ idx 1)) (tok-defn))
                 (let [fn-hash (name-hash src (token-start tokens (+ idx 2)) (token-end tokens (+ idx 2)))
-                  pair (collect-defn-metadata-loop src tokens (+ idx 3) next-idx fn-hash examples invariants 1 0 0)]
+                  pair (collect-defn-metadata-loop src tokens (+ idx 3) next-idx fn-hash examples invariants)]
                   (extract-test-cases-loop src tokens next-idx count (vector-get pair 0) (vector-get pair 1)))
                 (extract-test-cases-loop src tokens next-idx count examples invariants))
               (extract-test-cases-loop src tokens next-idx count examples invariants))

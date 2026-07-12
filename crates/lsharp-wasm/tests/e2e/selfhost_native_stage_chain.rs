@@ -13090,6 +13090,18 @@ fn representative_actual_stage23_seed_source_for_target(target_expr: &str) -> St
     )
 }
 
+#[test]
+fn test_native_stage_chain_embeds_current_native_codegen_source() {
+    let embedded = include_str!("../../../../selfhost/src/Backend/Native/NativeCodegen.ls");
+    let workspace = std::fs::read_to_string(selfhost_source_path("NativeCodegen.ls"))
+        .expect("canonical NativeCodegen.ls を読めること");
+
+    assert_eq!(
+        embedded, workspace,
+        "native stage chain は current NativeCodegen.ls を stage1 harness へ埋め込むべき"
+    );
+}
+
 fn describe_native_process_exit_status(status: std::process::ExitStatus) -> String {
     #[cfg(unix)]
     {
@@ -13376,6 +13388,50 @@ fn run_actual_macos_aarch64_compiler_for_source(
         &[],
         true,
     )
+}
+
+fn run_saved_native_macos_aarch64_compiler_for_source(
+    label: &str,
+    compiler_path: &std::path::Path,
+    source_path: &str,
+) -> Result<NativeEntrypointBundle, String> {
+    let output = std::process::Command::new(compiler_path)
+        .current_dir(selfhost_package_root())
+        .arg(source_path)
+        .output()
+        .map_err(|e| format!("saved native compiler 実行失敗 ({source_path}): {e}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "saved native compiler が失敗 ({source_path}): exit={:?} stdout={:?} stderr={:?}",
+            output.status.code(),
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+    if !output.stderr.is_empty() {
+        return Err(format!(
+            "saved native compiler stderr が空でない ({source_path}): {:?}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+    let transport =
+        extract_native_code_data_transport_output_with_optional_layout(&output.stdout, label);
+    let layout = transport.layout.ok_or_else(|| {
+        format!("saved native compiler transport に entrypoint layout がない ({source_path})")
+    })?;
+
+    Ok(NativeEntrypointBundle {
+        function_start_len: layout.function_start_len,
+        main_func_idx: layout.main_func_idx,
+        declared_code_len: transport.declared_code_len,
+        declared_data_len: transport.declared_data_len,
+        entrypoint_offset: align_aarch64_entrypoint_to_function_start(
+            &transport.code_bytes,
+            layout.entrypoint_offset,
+        ),
+        code_bytes: transport.code_bytes,
+        data_bytes: transport.data_bytes,
+    })
 }
 
 fn run_native_macos_aarch64_cli_bundle(
@@ -29671,6 +29727,73 @@ fn host_target_ten_arg_call_preserves_live_left_operand_code_bytes() -> Vec<u8> 
     )
 }
 
+fn host_target_ten_arg_call_preserves_two_live_left_operands_code_bytes() -> Vec<u8> {
+    run_native_codegen_host_bytes_harness(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn main []
+  (let [caller0 (vector-push (vector-new 14) (make-instr 3 3))
+        caller1 (vector-push caller0 (make-instr 3 7))
+        caller2 (vector-push caller1 (make-instr 3 40))
+        caller3 (vector-push caller2 (make-instr 3 2))
+        caller4 (vector-push caller3 (make-instr 3 5))
+        caller5 (vector-push caller4 (make-instr 3 7))
+        caller6 (vector-push caller5 (make-instr 3 11))
+        caller7 (vector-push caller6 (make-instr 3 14))
+        caller8 (vector-push caller7 (make-instr 3 17))
+        caller9 (vector-push caller8 (make-instr 3 19))
+        caller10 (vector-push caller9 (make-instr 3 23))
+        caller11 (vector-push caller10 (make-instr 3 29))
+        caller12 (vector-push caller11 (make-call 1))
+        caller13 (vector-push caller12 (make-instr 24 0))
+        caller-ir (vector-push caller13 (make-instr 24 0))
+        callee0 (vector-push (vector-new 17) (make-local-get 0))
+        callee1 (vector-push callee0 (make-local-get 1))
+        callee2 (vector-push callee1 (make-instr 24 0))
+        callee3 (vector-push callee2 (make-local-get 2))
+        callee4 (vector-push callee3 (make-instr 24 0))
+        callee5 (vector-push callee4 (make-local-get 3))
+        callee6 (vector-push callee5 (make-instr 24 0))
+        callee7 (vector-push callee6 (make-local-get 4))
+        callee8 (vector-push callee7 (make-instr 24 0))
+        callee9 (vector-push callee8 (make-local-get 5))
+        callee10 (vector-push callee9 (make-instr 24 0))
+        callee11 (vector-push callee10 (make-local-get 6))
+        callee12 (vector-push callee11 (make-instr 24 0))
+        callee13 (vector-push callee12 (make-local-get 7))
+        callee14 (vector-push callee13 (make-instr 24 0))
+        callee15 (vector-push callee14 (make-local-get 8))
+        callee16 (vector-push callee15 (make-instr 24 0))
+        callee17 (vector-push callee16 (make-local-get 9))
+        callee-ir (vector-push callee17 (make-instr 24 0))
+        caller (make-function-meta 0 0 caller-ir)
+        callee (make-function-meta 10 0 callee-ir)
+        functions (vector-push (vector-push (vector-new 2) caller) callee)
+        target (host-target)
+        code (emit-native-function-meta-bundle functions target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    )
+}
+
 fn host_target_ten_arg_recursive_if_returns_acc_code_bytes() -> Vec<u8> {
     run_native_codegen_host_bytes_harness(
         r#"(module Main)
@@ -44669,6 +44792,35 @@ fn test_e2e_native_host_binary_ten_arg_call_preserves_live_left_operand() {
     );
 }
 
+/// NATIVE-HOST-01s1a: 10 引数 call 後も、外側の 2 値を保持すること。
+#[test]
+#[ignore]
+fn test_e2e_native_host_binary_ten_arg_call_preserves_two_live_left_operands() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_ten_arg_call_preserves_two_live_left_operands_code_bytes();
+
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: ten-arg two-live-left host target 向けコードバイト列が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary(&code_bytes)
+        .expect("ten-arg two-live-left host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        177,
+        "host binary ten-arg two-live-left: 3 + 7 + callee sum 167 = 177 を期待したが {} を得た\\n\\\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
 /// NATIVE-HOST-01s2: 10 引数の再帰 loop が base case で第10引数を返せること。
 #[test]
 #[ignore]
@@ -53809,6 +53961,137 @@ fn test_e2e_native_macos_aarch64_actual_app_cli_release_program() {
     assert!(
         bundle.stderr.is_empty(),
         "App.Cli --version stderr は空であること"
+    );
+}
+
+/// V2-16d: 保存済み stage3 compiler が TestRunner metadata collector を native 実行できること。
+#[test]
+#[ignore = "LSHARP_NATIVE_MACOS_AARCH64_STAGE3_COMPILER に保存済み stage3 compiler を指定する"]
+fn test_e2e_saved_native_stage3_compiler_test_runner_metadata_probe() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let compiler_path = std::path::PathBuf::from(
+        std::env::var_os("LSHARP_NATIVE_MACOS_AARCH64_STAGE3_COMPILER")
+            .expect("LSHARP_NATIVE_MACOS_AARCH64_STAGE3_COMPILER を指定すること"),
+    );
+    assert!(
+        compiler_path.is_file(),
+        "saved stage3 compiler が見つからない: {}",
+        compiler_path.display()
+    );
+
+    let package_root = selfhost_package_root();
+    let probe_path = package_root.join("src/App/NativeMetadataProbe.ls");
+    assert!(
+        !probe_path.exists(),
+        "native metadata probe source が既に存在するため上書きしない: {}",
+        probe_path.display()
+    );
+    std::fs::write(
+        &probe_path,
+        r#"(module App.NativeMetadataProbe)
+(import Tools.Test.TestRunner)
+
+(defn main []
+  (let [src "(defn abs [x] :example [(= (abs 5) 5) (= (abs (- 0 7)) 7)] :invariant (>= result 0) (if (< x 0) (- 0 x) x))"
+        suite (extract-test-cases src)
+        examples (vector-get suite 0)
+        invariants (vector-get suite 1)]
+    (do
+      (print (vector-length examples))
+      (print (vector-length invariants))
+      0)))
+"#,
+    )
+    .expect("native metadata probe source の書き込みに失敗");
+
+    let result = (|| -> Result<NativeHostArtifactBundle, String> {
+        let input = run_saved_native_macos_aarch64_compiler_for_source(
+            "saved-stage3-test-runner-metadata-probe",
+            &compiler_path,
+            "src/App/NativeMetadataProbe.ls",
+        )?;
+        run_native_macos_aarch64_cli_bundle(&input, &[])
+    })();
+    let _ = std::fs::remove_file(&probe_path);
+    let bundle = result.expect("saved stage3 compiler による metadata probe の実行に失敗");
+
+    assert_eq!(
+        bundle.exit_code, 0,
+        "native metadata probe は成功終了すること"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&bundle.stdout),
+        "2\n1\n",
+        "saved stage3 compiler の TestRunner metadata collector は example/invariant を 2/1 件抽出すること"
+    );
+    assert!(
+        bundle.stderr.is_empty(),
+        "native metadata probe stderr は空であること: {:?}",
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+}
+
+/// V2-16d: 保存済み stage3 compiler が App.Cli の metadata test command を native 実行できること。
+#[test]
+#[ignore = "LSHARP_NATIVE_MACOS_AARCH64_STAGE3_COMPILER に保存済み stage3 compiler を指定する"]
+fn test_e2e_saved_native_stage3_compiler_app_cli_metadata_command() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let compiler_path = std::path::PathBuf::from(
+        std::env::var_os("LSHARP_NATIVE_MACOS_AARCH64_STAGE3_COMPILER")
+            .expect("LSHARP_NATIVE_MACOS_AARCH64_STAGE3_COMPILER を指定すること"),
+    );
+    assert!(
+        compiler_path.is_file(),
+        "saved stage3 compiler が見つからない: {}",
+        compiler_path.display()
+    );
+
+    let package_root = selfhost_package_root();
+    let source_name = format!("native-metadata-command-{}.ls", std::process::id());
+    let source_path = package_root.join(&source_name);
+    assert!(
+        !source_path.exists(),
+        "native metadata command source が既に存在するため上書きしない: {}",
+        source_path.display()
+    );
+    std::fs::write(
+        &source_path,
+        "(defn abs [x] :example [(= (abs 5) 5) (= (abs (- 0 7)) 7)] :invariant (>= result 0) (if (< x 0) (- 0 x) x))",
+    )
+    .expect("native metadata command source の書き込みに失敗");
+
+    let result = (|| -> Result<NativeHostArtifactBundle, String> {
+        let input = run_saved_native_macos_aarch64_compiler_for_source(
+            "saved-stage3-app-cli-metadata-command",
+            &compiler_path,
+            "src/App/Cli.ls",
+        )?;
+        let args = ["test", source_name.as_str()];
+        run_native_macos_aarch64_cli_bundle(&input, &args)
+    })();
+    let _ = std::fs::remove_file(&source_path);
+    let bundle =
+        result.expect("saved stage3 compiler による App.Cli metadata command の実行に失敗");
+
+    assert_eq!(
+        bundle.exit_code, 0,
+        "native App.Cli metadata test は成功終了すること"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&bundle.stdout),
+        "examples:2\ninvariants:1\nfailures:0\n",
+        "saved stage3 compiler の App.Cli test は metadata suite の summary を返すこと"
+    );
+    assert!(
+        bundle.stderr.is_empty(),
+        "native App.Cli metadata test stderr は空であること: {:?}",
+        String::from_utf8_lossy(&bundle.stderr)
     );
 }
 
