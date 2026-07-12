@@ -18690,6 +18690,52 @@ fn test_e2e_selfhost_minimal_main_ir_call_operand_points_to_id1() {
     );
 }
 
+#[test]
+fn test_e2e_selfhost_int_to_string_ir_call_operand_points_to_runtime_import_six() {
+    let source = "(module Main)\n(defn main []\n  (int-to-string 42))\n";
+    let escaped_source = escape_lsharp_string(source);
+    let harness = format!(
+        r#"(module App.HarnessMain)
+(import App.CompilerMode)
+(import Backend.Wasm.CompilerBase)
+
+(defn first-call-operand [ir idx len]
+  (if (>= idx len)
+    -1
+    (let [instr (vector-get ir idx)]
+      (if (= (vector-get instr 0) 40)
+        (vector-get instr 1)
+        (first-call-operand ir (+ idx 1) len)))))
+
+(defn main []
+  (do
+    (write-file "src/App/MinIntToString.ls" "{escaped_source}")
+    (let [cache-ref (ref-new (map-new))
+          parse-count-ref (ref-new 0)
+          payload (compile-file-functions-payload-with-cache "src/App/MinIntToString.ls" 10 cache-ref parse-count-ref)
+          functions (vector-get payload 0)
+          main-func (vector-get functions 0)
+          ir (function-meta-ir main-func)]
+      (print (first-call-operand ir 0 (vector-length ir))))))"#
+    );
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
+            "selfhost-int-to-string-ir-call-operand",
+            SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+            "src/App/HarnessMain.ls",
+            &harness,
+            &[],
+        )
+    })
+    .expect("int-to-string IR call operand probe 実行に失敗");
+    let lines = parse_numeric_lines(&output);
+    assert_eq!(
+        lines,
+        vec![6],
+        "`(int-to-string 42)` は native runtime の import 6 を call operand に持つべき"
+    );
+}
+
 #[allow(dead_code)]
 fn run_selfhost_main_override_native_function_meta_code_only_host_bytes_harness(
     label: &str,

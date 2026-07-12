@@ -1007,7 +1007,7 @@
         (do
           (root_push data-ref)
           (let [n (vector-length all-pairs)
-            start-ftable (ftable-new)]
+            start-ftable (ftable-with-native-runtime-imports)]
             (do
               (root_push start-ftable)
               (let [reg-result (register-all-pairs all-pairs 0 n start-ftable func-idx)

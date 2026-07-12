@@ -94,6 +94,7 @@
 (defn builtin-root-push [] 100385403511895)
 (defn builtin-root-pop [] 3238238822772)
 (defn builtin-root-set [] 3238238825349)
+(defn builtin-int-to-string [] (- 0 6637826915257342139))
 (defn builtin-basic-opcode [name-hash]
   (if (= name-hash 43)
     20
@@ -399,6 +400,8 @@
                 (root_pop)
                 (root_pop)
                 result))))))))
+(defn ftable-with-native-runtime-imports []
+  (ftable-register (ftable-new) (builtin-int-to-string) 6))
 (defn ftable-lookup-loop [ftable idx name-hash]
   (if (< idx 0)
     0
