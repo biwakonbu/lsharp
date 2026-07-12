@@ -239,6 +239,8 @@ fn selfhost_instruction_name(opcode: i64) -> String {
         86 => "CommandLineArgs",
         87 => "PrintString",
         88 => "ProcExit",
+        89 => "WriteFile",
+        90 => "WriteFileBytes",
         _ => return format!("Opcode{opcode}"),
     }
     .to_string()
@@ -314,6 +316,8 @@ fn supported_selfhost_native_opcodes_x86_64() -> BTreeSet<&'static str> {
         "RootPush",
         "RootPop",
         "RootSet",
+        "WriteFile",
+        "WriteFileBytes",
     ])
 }
 
@@ -520,6 +524,97 @@ fn test_native_codegen_x86_cli_runtime_call_sites_resolve_helper_offsets() {
             232, 142, 18, 0, 0, 89,
         ],
         "x86_64 command-line-args/print-string/proc-exit call site は stack effect と trailer offset を一致させる必要がある"
+    );
+}
+
+#[test]
+fn test_native_codegen_x86_write_file_helpers_use_binary_file_abi() {
+    let lines = run_x86_selfhost_runtime_helper_harness(
+        "native-stage23-x86-write-file-helper-abi",
+        r#"  (let [import-stub-offset 4096
+        import-count 10
+        current-offset 1024
+        write-file-helper (emit-x86-selfhost-write-file-helper)
+        write-file-bytes-helper (emit-x86-selfhost-write-file-bytes-helper)
+        write-file-call (codegen-ir-instr-bundle-x86-with-import-count 89 0 current-offset (vector-new 0) (vector-new 0) import-count import-stub-offset 0 2)
+        write-file-bytes-call (codegen-ir-instr-bundle-x86-with-import-count 90 0 current-offset (vector-new 0) (vector-new 0) import-count import-stub-offset 0 2)]
+    (do
+      (print (is-selfhost-runtime-opcode-x86 89))
+      (print (is-selfhost-runtime-opcode-x86 90))
+      (print (opcode-stack-delta 89 0 (vector-new 0)))
+      (print (opcode-stack-delta 90 0 (vector-new 0)))
+      (print (x86-selfhost-proc-exit-helper-offset import-stub-offset import-count))
+      (print (x86-selfhost-write-file-helper-offset import-stub-offset import-count))
+      (print (x86-selfhost-write-file-bytes-helper-offset import-stub-offset import-count))
+      (print (x86-selfhost-helper-trailer-size import-count))
+      (print (vector-length write-file-helper))
+      (print-bytes-loop write-file-helper 0 16)
+      (print-bytes-loop write-file-helper (- (vector-length write-file-helper) 11) (vector-length write-file-helper))
+      (print (vector-length write-file-bytes-helper))
+      (print-bytes-loop write-file-bytes-helper 0 16)
+      (print-bytes-loop write-file-bytes-helper (- (vector-length write-file-bytes-helper) 13) (vector-length write-file-bytes-helper))
+      (print (vector-length write-file-call))
+      (print-bytes-loop write-file-call 0 (vector-length write-file-call))
+      (print (vector-length write-file-bytes-call))
+      (print-bytes-loop write-file-bytes-call 0 (vector-length write-file-bytes-call))
+      0))"#,
+    );
+
+    assert_eq!(
+        lines,
+        vec![
+            1, 1, -1, -1, 5780, 5792, 5979, 2138, 187, 83, 65, 84, 65, 85, 65, 86, 73, 137, 230,
+            73, 137, 244, 69, 49, 237, 76, 137, 244, 65, 94, 65, 93, 65, 92, 91, 195, 255, 83, 65,
+            84, 65, 85, 65, 86, 65, 87, 73, 137, 230, 73, 137, 244, 69, 76, 137, 244, 65, 95, 65,
+            94, 65, 93, 65, 92, 91, 195, 11, 72, 137, 198, 72, 137, 207, 232, 149, 18, 0, 0, 11,
+            72, 137, 198, 72, 137, 207, 232, 80, 19, 0, 0,
+        ],
+        "x86_64 write-file / write-file-bytes は binary ABI、trailer offset、raw byte write helper を一致させる必要がある",
+    );
+}
+
+#[test]
+fn test_native_codegen_aarch64_write_file_helpers_use_binary_file_abi() {
+    let lines = run_x86_selfhost_runtime_helper_harness(
+        "native-stage23-aarch64-write-file-helper-abi",
+        r#"  (let [import-stub-offset 4096
+        import-count 10
+        current-offset 1024
+        write-file-helper (emit-aarch64-selfhost-write-file-helper)
+        write-file-bytes-helper (emit-aarch64-selfhost-write-file-bytes-helper)
+        write-file-call (codegen-ir-instr-bundle-aarch64-with-import-count 89 0 current-offset (vector-new 0) (vector-new 0) import-count import-stub-offset 0 2)
+        write-file-bytes-call (codegen-ir-instr-bundle-aarch64-with-import-count 90 0 current-offset (vector-new 0) (vector-new 0) import-count import-stub-offset 0 2)]
+    (do
+      (print (opcode-stack-delta 89 0 (vector-new 0)))
+      (print (opcode-stack-delta 90 0 (vector-new 0)))
+      (print (aarch64-selfhost-proc-exit-helper-offset import-stub-offset import-count))
+      (print (aarch64-selfhost-write-file-helper-offset import-stub-offset import-count))
+      (print (aarch64-selfhost-write-file-bytes-helper-offset import-stub-offset import-count))
+      (print (aarch64-selfhost-helper-trailer-size import-count))
+      (print (native-instr-size-aarch64 89 0 (vector-new 0) 2))
+      (print (native-instr-size-aarch64 90 0 (vector-new 0) 2))
+      (print (vector-length write-file-helper))
+      (print-bytes-loop write-file-helper 0 8)
+      (print-bytes-loop write-file-helper (- (vector-length write-file-helper) 4) (vector-length write-file-helper))
+      (print (vector-length write-file-bytes-helper))
+      (print-bytes-loop write-file-bytes-helper 0 8)
+      (print-bytes-loop write-file-bytes-helper (- (vector-length write-file-bytes-helper) 4) (vector-length write-file-bytes-helper))
+      (print (vector-length write-file-call))
+      (print-bytes-loop write-file-call 0 (vector-length write-file-call))
+      (print (vector-length write-file-bytes-call))
+      (print-bytes-loop write-file-bytes-call 0 (vector-length write-file-bytes-call))
+      0))"#,
+    );
+
+    assert_eq!(
+        lines,
+        vec![
+            -1, -1, 6708, 6724, 6948, 3160, 12, 12, 224, 243, 83, 191, 169, 245, 91, 191, 169, 192,
+            3, 95, 214, 308, 243, 83, 191, 169, 245, 91, 191, 169, 192, 3, 95, 214, 12, 225, 3, 0,
+            170, 224, 3, 9, 170, 143, 5, 0, 148, 12, 225, 3, 0, 170, 224, 3, 9, 170, 199, 5, 0,
+            148,
+        ],
+        "AArch64 write-file / write-file-bytes は Darwin ABI、trailer offset、raw byte write helper を一致させる必要がある",
     );
 }
 
@@ -793,7 +888,7 @@ fn test_native_codegen_aarch64_cli_runtime_helpers_preserve_offsets_and_branch_t
     cursor += 10;
     assert_eq!(
         scalars,
-        &[6616, 6624, 6708, 2628, 12, 16, 20, 44, 12, 12],
+        &[6616, 6624, 6708, 3160, 12, 16, 20, 44, 12, 12],
         "AArch64 CLI runtime helper の offset/trailer/stack-depth size が不正"
     );
 

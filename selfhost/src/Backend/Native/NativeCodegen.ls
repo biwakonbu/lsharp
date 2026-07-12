@@ -846,8 +846,10 @@
     (is-i64-compare-opcode opcode)))
 
 (defn opcode-stack-delta [opcode operand function-metas]
-  (if (= opcode 60)
-    1
+  (if (if (= opcode 89) true (= opcode 90))
+    -1
+    (if (= opcode 60)
+      1
   (if (= opcode 40)
     (- 1 (native-function-param-count (vector-get function-metas operand)))
     (if (= opcode 41)
@@ -890,7 +892,7 @@
                                 1
                                 (if (= (opcode-reduces-stack opcode) 1)
                                   -1
-                                  0)))))))))))))))))))))))
+                                  0))))))))))))))))))))))))
 
 (defn apply-stack-delta [current-depth delta]
   (let [next-depth (+ current-depth delta)]
@@ -8904,7 +8906,7 @@
       (+ plain-size (+ 7 (* (- current-depth 3) 14)))
       plain-size)))
 
-(defn native-instr-size-x86 [opcode operand function-metas current-depth]
+(defn native-instr-size-x86-core [opcode operand function-metas current-depth]
   (if (= opcode 40)
     (native-call-bundle-size-x86
       (native-function-param-count (vector-get function-metas operand))
@@ -8972,6 +8974,11 @@
                                                           (if (= (x86-plain-two-to-one-needs-window-restore opcode) 1)
                                                             (native-plain-two-to-one-bundle-size-x86 opcode operand current-depth)
                                                             (native-plain-instr-size-x86 opcode operand))))))))))))))))))))))))))))))))))
+
+(defn native-instr-size-x86 [opcode operand function-metas current-depth]
+  (if (= (x86-selfhost-file-write-opcode opcode) 1)
+    (native-call-bundle-size-x86 2 current-depth)
+    (native-instr-size-x86-core opcode operand function-metas current-depth)))
 
 (defn make-x86-body-size-context [ir-func function-metas len]
   (vector-push
@@ -10115,6 +10122,155 @@
         (root_pop)
         0))))
 
+;; x86_64 write-file helper: String path/content を Linux write syscall で保存する。
+(defn emit-x86-selfhost-write-file-helper []
+  (let [
+    part1 (byte-vector-4 83 65 84 65)
+    part2 (byte-vector-4 85 65 86 73)
+    part3 (byte-vector-4 137 230 73 137)
+    part4 (byte-vector-4 244 69 49 237)
+    part5 (byte-vector-4 72 133 255 121)
+    part6 (byte-vector-4 37 72 15 186)
+    part7 (byte-vector-4 247 63 139 79)
+    part8 (byte-vector-4 4 72 141 119)
+    part9 (byte-vector-4 8 72 137 202)
+    part10 (byte-vector-4 72 131 194 16)
+    part11 (byte-vector-4 72 131 226 240)
+    part12 (byte-vector-4 72 41 212 72)
+    part13 (byte-vector-4 137 231 243 164)
+    part14 (byte-vector-4 198 7 0 72)
+    part15 (byte-vector-4 137 231 184 2)
+    part16 (byte-vector-4 0 0 0 190)
+    part17 (byte-vector-4 65 2 0 0)
+    part18 (byte-vector-4 186 182 1 0)
+    part19 (byte-vector-4 0 15 5 72)
+    part20 (byte-vector-4 133 192 120 96)
+    part21 (byte-vector-4 72 137 195 76)
+    part22 (byte-vector-4 137 230 72 133)
+    part23 (byte-vector-4 246 121 14 72)
+    part24 (byte-vector-4 15 186 246 63)
+    part25 (byte-vector-4 139 86 4 72)
+    part26 (byte-vector-4 141 118 8 235)
+    part27 (byte-vector-4 13 49 210 128)
+    part28 (byte-vector-4 60 22 0 116)
+    part29 (byte-vector-4 5 72 255 194)
+    part30 (byte-vector-4 235 245 72 133)
+    part31 (byte-vector-4 210 116 26 72)
+    part32 (byte-vector-4 137 223 184 1)
+    part33 (byte-vector-4 0 0 0 15)
+    part34 (byte-vector-4 5 72 133 192)
+    part35 (byte-vector-4 126 26 72 1)
+    part36 (byte-vector-4 198 72 41 194)
+    part37 (byte-vector-4 73 1 197 235)
+    part38 (byte-vector-4 225 72 137 223)
+    part39 (byte-vector-4 184 3 0 0)
+    part40 (byte-vector-4 0 15 5 76)
+    part41 (byte-vector-4 137 232 235 12)
+    part42 (byte-vector-4 72 137 223 184)
+    part43 (byte-vector-4 3 0 0 0)
+    part44 (byte-vector-4 15 5 49 192)
+    part45 (byte-vector-4 76 137 244 65)
+    part46 (byte-vector-4 94 65 93 65)
+    part47 (byte-vector-3 92 91 195)
+    group1 (concat-five-byte-vectors-rooted part1 part2 part3 part4 part5)
+    group2 (concat-five-byte-vectors-rooted part6 part7 part8 part9 part10)
+    group3 (concat-five-byte-vectors-rooted part11 part12 part13 part14 part15)
+    group4 (concat-five-byte-vectors-rooted part16 part17 part18 part19 part20)
+    group5 (concat-five-byte-vectors-rooted part21 part22 part23 part24 part25)
+    group6 (concat-five-byte-vectors-rooted part26 part27 part28 part29 part30)
+    group7 (concat-five-byte-vectors-rooted part31 part32 part33 part34 part35)
+    group8 (concat-five-byte-vectors-rooted part36 part37 part38 part39 part40)
+    group9 (concat-five-byte-vectors-rooted part41 part42 part43 part44 part45)
+    group10 (concat-three-byte-vectors-rooted part46 part47 (vector-new 0))
+    head (concat-five-byte-vectors-rooted group1 group2 group3 group4 group5)
+    tail (concat-five-byte-vectors-rooted group6 group7 group8 group9 group10)]
+    (concat-byte-vectors-rooted head tail)))
+
+;; x86_64 write-file-bytes helper: Vector の各 i64 slot 下位 byte を chunk 化して保存する。
+(defn emit-x86-selfhost-write-file-bytes-helper []
+  (let [
+    part1 (byte-vector-4 83 65 84 65)
+    part2 (byte-vector-4 85 65 86 65)
+    part3 (byte-vector-4 87 73 137 230)
+    part4 (byte-vector-4 73 137 244 69)
+    part5 (byte-vector-4 49 237 72 133)
+    part6 (byte-vector-4 255 121 37 72)
+    part7 (byte-vector-4 15 186 247 63)
+    part8 (byte-vector-4 139 79 4 72)
+    part9 (byte-vector-4 141 119 8 72)
+    part10 (byte-vector-4 137 202 72 131)
+    part11 (byte-vector-4 194 16 72 131)
+    part12 (byte-vector-4 226 240 72 41)
+    part13 (byte-vector-4 212 72 137 231)
+    part14 (byte-vector-4 243 164 198 7)
+    part15 (byte-vector-4 0 72 137 231)
+    part16 (byte-vector-4 184 2 0 0)
+    part17 (byte-vector-4 0 190 65 2)
+    part18 (byte-vector-4 0 0 186 182)
+    part19 (byte-vector-4 1 0 0 15)
+    part20 (byte-vector-4 5 72 133 192)
+    part21 (byte-vector-4 15 136 156 0)
+    part22 (byte-vector-4 0 0 72 137)
+    part23 (byte-vector-4 195 77 133 228)
+    part24 (byte-vector-4 15 137 132 0)
+    part25 (byte-vector-4 0 0 73 15)
+    part26 (byte-vector-4 186 244 63 65)
+    part27 (byte-vector-4 139 84 36 8)
+    part28 (byte-vector-4 73 141 116 36)
+    part29 (byte-vector-4 16 72 129 236)
+    part30 (byte-vector-4 0 16 0 0)
+    part31 (byte-vector-4 73 137 231 72)
+    part32 (byte-vector-4 133 210 116 87)
+    part33 (byte-vector-4 72 137 209 72)
+    part34 (byte-vector-4 129 249 0 16)
+    part35 (byte-vector-4 0 0 118 5)
+    part36 (byte-vector-4 185 0 16 0)
+    part37 (byte-vector-4 0 73 137 200)
+    part38 (byte-vector-4 76 137 255 72)
+    part39 (byte-vector-4 133 201 116 16)
+    part40 (byte-vector-4 138 6 136 7)
+    part41 (byte-vector-4 72 131 198 8)
+    part42 (byte-vector-4 72 255 199 72)
+    part43 (byte-vector-4 255 201 235 235)
+    part44 (byte-vector-4 73 137 209 76)
+    part45 (byte-vector-4 137 254 76 137)
+    part46 (byte-vector-4 194 72 137 223)
+    part47 (byte-vector-4 184 1 0 0)
+    part48 (byte-vector-4 0 15 5 72)
+    part49 (byte-vector-4 133 192 126 34)
+    part50 (byte-vector-4 72 1 198 72)
+    part51 (byte-vector-4 41 194 73 1)
+    part52 (byte-vector-4 197 117 230 77)
+    part53 (byte-vector-4 41 193 76 137)
+    part54 (byte-vector-4 202 235 164 72)
+    part55 (byte-vector-4 137 223 184 3)
+    part56 (byte-vector-4 0 0 0 15)
+    part57 (byte-vector-4 5 76 137 232)
+    part58 (byte-vector-4 235 12 72 137)
+    part59 (byte-vector-4 223 184 3 0)
+    part60 (byte-vector-4 0 0 15 5)
+    part61 (byte-vector-4 49 192 76 137)
+    part62 (byte-vector-4 244 65 95 65)
+    part63 (byte-vector-4 94 65 93 65)
+    part64 (byte-vector-3 92 91 195)
+    group1 (concat-five-byte-vectors-rooted part1 part2 part3 part4 part5)
+    group2 (concat-five-byte-vectors-rooted part6 part7 part8 part9 part10)
+    group3 (concat-five-byte-vectors-rooted part11 part12 part13 part14 part15)
+    group4 (concat-five-byte-vectors-rooted part16 part17 part18 part19 part20)
+    group5 (concat-five-byte-vectors-rooted part21 part22 part23 part24 part25)
+    group6 (concat-five-byte-vectors-rooted part26 part27 part28 part29 part30)
+    group7 (concat-five-byte-vectors-rooted part31 part32 part33 part34 part35)
+    group8 (concat-five-byte-vectors-rooted part36 part37 part38 part39 part40)
+    group9 (concat-five-byte-vectors-rooted part41 part42 part43 part44 part45)
+    group10 (concat-five-byte-vectors-rooted part46 part47 part48 part49 part50)
+    group11 (concat-five-byte-vectors-rooted part51 part52 part53 part54 part55)
+    group12 (concat-five-byte-vectors-rooted part56 part57 part58 part59 part60)
+    group13 (concat-four-byte-vectors-rooted part61 part62 part63 part64)
+    head1 (concat-five-byte-vectors-rooted group1 group2 group3 group4 group5)
+    head2 (concat-five-byte-vectors-rooted group6 group7 group8 group9 group10)
+    tail (concat-three-byte-vectors-rooted group11 group12 group13)]
+    (concat-three-byte-vectors-rooted head1 head2 tail)))
+
 (defn emit-x86-helper-call-preserving-rcx [rel]
   (concat-three-byte-vectors-rooted
     (emit-push-rcx)
@@ -10331,6 +10487,12 @@
 (defn x86-selfhost-proc-exit-helper-size []
   12)
 
+(defn x86-selfhost-write-file-helper-size []
+  187)
+
+(defn x86-selfhost-write-file-bytes-helper-size []
+  255)
+
 (defn x86-selfhost-helper-trailer-size [import-count]
   (+ (x86-import-stub-size import-count)
      (+ (x86-selfhost-command-line-arg-helper-size)
@@ -10354,7 +10516,9 @@
                                                             (+ (x86-selfhost-file-exists-helper-size)
                                                                (+ (x86-selfhost-command-line-args-helper-size)
                                                                   (+ (x86-selfhost-print-string-helper-size)
-                                                                     (x86-selfhost-proc-exit-helper-size))))))))))))))))))))))))
+                                                                     (+ (x86-selfhost-proc-exit-helper-size)
+                                                                        (+ (x86-selfhost-write-file-helper-size)
+                                                                           (x86-selfhost-write-file-bytes-helper-size))))))))))))))))))))))))))
 
 (defn x86-helper-base-offset [import-stub-offset import-count]
   (+ import-stub-offset (x86-import-stub-size import-count)))
@@ -10425,7 +10589,13 @@
 (defn x86-selfhost-proc-exit-helper-offset [import-stub-offset import-count]
   (+ (x86-helper-base-offset import-stub-offset import-count) 1683))
 
-(defn is-selfhost-runtime-opcode-x86 [opcode]
+(defn x86-selfhost-write-file-helper-offset [import-stub-offset import-count]
+  (+ (x86-helper-base-offset import-stub-offset import-count) 1695))
+
+(defn x86-selfhost-write-file-bytes-helper-offset [import-stub-offset import-count]
+  (+ (x86-helper-base-offset import-stub-offset import-count) 1882))
+
+(defn is-selfhost-runtime-opcode-x86-core [opcode]
   (if (= opcode 64)
     1
     (if (= opcode 67)
@@ -10472,7 +10642,7 @@
                                               1
                                               0)))))))))))))))))))))))
 
-(defn codegen-selfhost-runtime-bundle-x86 [opcode current-offset import-stub-offset import-count frame-base-slot-count current-depth]
+(defn codegen-selfhost-runtime-bundle-x86-core [opcode current-offset import-stub-offset import-count frame-base-slot-count current-depth]
   (if (= opcode 86)
     (let [target-offset (x86-selfhost-command-line-args-helper-offset import-stub-offset import-count)
       call-next-offset (native-call-rel-next-offset-x86 0 current-depth)
@@ -10593,6 +10763,33 @@
 	                                        (- (x86-selfhost-file-exists-helper-offset import-stub-offset import-count)
 	                                           (+ current-offset 6)))
 	                              (vector-new 0)))))))))))))))))))
+
+(defn x86-selfhost-file-write-opcode [opcode]
+  (if (= opcode 89)
+    1
+    (if (= opcode 90) 1 0)))
+
+(defn x86-selfhost-file-write-helper-offset [opcode import-stub-offset import-count]
+  (if (= opcode 89)
+    (x86-selfhost-write-file-helper-offset import-stub-offset import-count)
+    (x86-selfhost-write-file-bytes-helper-offset import-stub-offset import-count)))
+
+(defn is-selfhost-runtime-opcode-x86 [opcode]
+  (if (= (x86-selfhost-file-write-opcode opcode) 1)
+    1
+    (is-selfhost-runtime-opcode-x86-core opcode)))
+
+(defn codegen-x86-selfhost-file-write-bundle [opcode current-offset import-stub-offset import-count frame-base-slot-count current-depth]
+  (let [target-offset (x86-selfhost-file-write-helper-offset opcode import-stub-offset import-count)
+    call-next-offset (native-call-rel-next-offset-x86 2 current-depth)
+    call-rel (- target-offset (+ current-offset call-next-offset))
+    call-rel-bytes (emit-call-rel32 call-rel)]
+    (codegen-x86-non-one-arg-call-bundle 2 call-rel call-rel-bytes frame-base-slot-count current-depth)))
+
+(defn codegen-selfhost-runtime-bundle-x86 [opcode current-offset import-stub-offset import-count frame-base-slot-count current-depth]
+  (if (= (x86-selfhost-file-write-opcode opcode) 1)
+    (codegen-x86-selfhost-file-write-bundle opcode current-offset import-stub-offset import-count frame-base-slot-count current-depth)
+    (codegen-selfhost-runtime-bundle-x86-core opcode current-offset import-stub-offset import-count frame-base-slot-count current-depth)))
 
 (defn codegen-x86-non-one-arg-call-bundle [target-param-count call-rel call-rel-bytes frame-base-slot-count current-depth]
   (if (= target-param-count 0)
@@ -13709,6 +13906,8 @@
           (append-native-bytes-rooted result (emit-x86-selfhost-command-line-args-helper) 4)
           (append-native-bytes-rooted result (emit-x86-selfhost-print-string-helper) 51)
           (append-native-bytes-rooted result (emit-x86-selfhost-proc-exit-helper) 12)
+          (append-native-bytes-rooted result (emit-x86-selfhost-write-file-helper) 187)
+          (append-native-bytes-rooted result (emit-x86-selfhost-write-file-bytes-helper) 255)
           (ref-get result))]
         (do
           (root_pop)
@@ -15054,6 +15253,191 @@
     head3 (concat-five-byte-vectors-rooted part11 part12 part13 part14 part15)]
     (concat-three-byte-vectors-rooted head1 head2 head3)))
 
+;; AArch64 write-file helper: String path/content を Darwin write syscall で保存する。
+(defn emit-aarch64-selfhost-write-file-helper []
+  (let [part1 (concat-four-byte-vectors-rooted
+                (encode-u32-le 2847888371)
+                (encode-u32-le 2847890421)
+                (encode-u32-le 2432697331)
+                (encode-u32-le 2852193268))
+    part2 (concat-four-byte-vectors-rooted
+            (encode-u32-le 3531603989)
+            (encode-u32-le 3086483520)
+            (encode-u32-le 335544336)
+            (encode-u32-le 2453731328))
+    part3 (concat-four-byte-vectors-rooted
+            (encode-u32-le 3107980290)
+            (encode-u32-le 2852258788)
+            (encode-u32-le 2432704513)
+            (encode-u32-le 2432711746))
+    part4 (concat-four-byte-vectors-rooted
+            (encode-u32-le 2457660482)
+            (encode-u32-le 3408028671)
+            (encode-u32-le 2432697312)
+            (encode-u32-le 3019899044))
+    part5 (concat-four-byte-vectors-rooted
+            (encode-u32-le 943723555)
+            (encode-u32-le 939529219)
+            (encode-u32-le 3506439300)
+            (encode-u32-le 402653180))
+    part6 (concat-four-byte-vectors-rooted
+            (encode-u32-le 956301343)
+            (encode-u32-le 2432697312)
+            (encode-u32-le 3531653153)
+            (encode-u32-le 3531617986))
+    part7 (concat-four-byte-vectors-rooted
+            (encode-u32-le 3531604144)
+            (encode-u32-le 3556773889)
+            (encode-u32-le 1409286946)
+            (encode-u32-le 2852127734))
+    part8 (concat-four-byte-vectors-rooted
+            (encode-u32-le 3086483540)
+            (encode-u32-le 335544339)
+            (encode-u32-le 2453731969)
+            (encode-u32-le 3107980322))
+    part9 (concat-four-byte-vectors-rooted
+            (encode-u32-le 2432704545)
+            (encode-u32-le 3019899202)
+            (encode-u32-le 2853569504)
+            (encode-u32-le 3531604112))
+    part10 (concat-four-byte-vectors-rooted
+             (encode-u32-le 3556773889)
+             (encode-u32-le 1409286498)
+             (encode-u32-le 3019899200)
+             (encode-u32-le 2332033057))
+    part11 (concat-four-byte-vectors-rooted
+             (encode-u32-le 3405774914)
+             (encode-u32-le 2332033717)
+             (encode-u32-le 402653175)
+             (encode-u32-le 2853569504))
+    part12 (concat-four-byte-vectors-rooted
+             (encode-u32-le 3531604176)
+             (encode-u32-le 3556773889)
+             (encode-u32-le 2853503968)
+             (encode-u32-le 335544325))
+    part13 (concat-four-byte-vectors-rooted
+             (encode-u32-le 2853569504)
+             (encode-u32-le 3531604176)
+             (encode-u32-le 3556773889)
+             (encode-u32-le 3531603968))
+    part14 (concat-four-byte-vectors-rooted
+             (encode-u32-le 2432696959)
+             (encode-u32-le 2831244277)
+             (encode-u32-le 2831242227)
+             (encode-u32-le 3596551104))
+    group1 (concat-four-byte-vectors-rooted part1 part2 part3 part4)
+    group2 (concat-four-byte-vectors-rooted part5 part6 part7 part8)
+    group3 (concat-four-byte-vectors-rooted part9 part10 part11 part12)
+    group4 (concat-byte-vectors-rooted part13 part14)]
+    (concat-four-byte-vectors-rooted group1 group2 group3 group4)))
+
+;; AArch64 write-file-bytes helper: Vector の各 i64 slot 下位 byte を chunk 化して保存する。
+(defn emit-aarch64-selfhost-write-file-bytes-helper []
+  (let [part1 (concat-four-byte-vectors-rooted
+                (encode-u32-le 2847888371)
+                (encode-u32-le 2847890421)
+                (encode-u32-le 2847892471)
+                (encode-u32-le 2432697331))
+    part2 (concat-four-byte-vectors-rooted
+            (encode-u32-le 2852193268)
+            (encode-u32-le 3531603989)
+            (encode-u32-le 3086483520)
+            (encode-u32-le 335544336))
+    part3 (concat-four-byte-vectors-rooted
+            (encode-u32-le 2453731328)
+            (encode-u32-le 3107980290)
+            (encode-u32-le 2852258788)
+            (encode-u32-le 2432704513))
+    part4 (concat-four-byte-vectors-rooted
+            (encode-u32-le 2432711746)
+            (encode-u32-le 2457660482)
+            (encode-u32-le 3408028671)
+            (encode-u32-le 2432697312))
+    part5 (concat-four-byte-vectors-rooted
+            (encode-u32-le 3019899044)
+            (encode-u32-le 943723555)
+            (encode-u32-le 939529219)
+            (encode-u32-le 3506439300))
+    part6 (concat-four-byte-vectors-rooted
+            (encode-u32-le 402653180)
+            (encode-u32-le 956301343)
+            (encode-u32-le 2432697312)
+            (encode-u32-le 3531653153))
+    part7 (concat-four-byte-vectors-rooted
+            (encode-u32-le 3531617986)
+            (encode-u32-le 3531604144)
+            (encode-u32-le 3556773889)
+            (encode-u32-le 1409287554))
+    part8 (concat-four-byte-vectors-rooted
+            (encode-u32-le 2852127734)
+            (encode-u32-le 3086483540)
+            (encode-u32-le 335544358)
+            (encode-u32-le 2453731988))
+    part9 (concat-four-byte-vectors-rooted
+            (encode-u32-le 3107981954)
+            (encode-u32-le 2432713364)
+            (encode-u32-le 3510634495)
+            (encode-u32-le 2432697335))
+    part10 (concat-four-byte-vectors-rooted
+             (encode-u32-le 3019899746)
+             (encode-u32-le 2852258788)
+             (encode-u32-le 4047504543)
+             (encode-u32-le 1409286217))
+    part11 (concat-four-byte-vectors-rooted
+             (encode-u32-le 3531735044)
+             (encode-u32-le 2852389861)
+             (encode-u32-le 2853635040)
+             (encode-u32-le 3019899044))
+    part12 (concat-four-byte-vectors-rooted
+             (encode-u32-le 4164978307)
+             (encode-u32-le 939529219)
+             (encode-u32-le 3506439300)
+             (encode-u32-le 402653180))
+    part13 (concat-four-byte-vectors-rooted
+             (encode-u32-le 2852258808)
+             (encode-u32-le 2853635041)
+             (encode-u32-le 2852455394)
+             (encode-u32-le 2853569504))
+    part14 (concat-four-byte-vectors-rooted
+             (encode-u32-le 3531604112)
+             (encode-u32-le 3556773889)
+             (encode-u32-le 1409286594)
+             (encode-u32-le 3019899296))
+    part15 (concat-four-byte-vectors-rooted
+             (encode-u32-le 2332033057)
+             (encode-u32-le 3405774914)
+             (encode-u32-le 2332033717)
+             (encode-u32-le 3053453058))
+    part16 (concat-four-byte-vectors-rooted
+             (encode-u32-le 3406103320)
+             (encode-u32-le 2853700578)
+             (encode-u32-le 402653158)
+             (encode-u32-le 2853569504))
+    part17 (concat-four-byte-vectors-rooted
+             (encode-u32-le 3531604176)
+             (encode-u32-le 3556773889)
+             (encode-u32-le 2853503968)
+             (encode-u32-le 335544325))
+    part18 (concat-four-byte-vectors-rooted
+             (encode-u32-le 2853569504)
+             (encode-u32-le 3531604176)
+             (encode-u32-le 3556773889)
+             (encode-u32-le 3531603968))
+    part19 (concat-byte-vectors-rooted
+             (concat-four-byte-vectors-rooted
+               (encode-u32-le 2432696959)
+               (encode-u32-le 2831246327)
+               (encode-u32-le 2831244277)
+               (encode-u32-le 2831242227))
+             (encode-u32-le 3596551104))
+    group1 (concat-four-byte-vectors-rooted part1 part2 part3 part4)
+    group2 (concat-four-byte-vectors-rooted part5 part6 part7 part8)
+    group3 (concat-four-byte-vectors-rooted part9 part10 part11 part12)
+    group4 (concat-four-byte-vectors-rooted part13 part14 part15 part16)
+    group5 (concat-three-byte-vectors-rooted part17 part18 part19)
+    head (concat-four-byte-vectors-rooted group1 group2 group3 group4)]
+    (concat-byte-vectors-rooted head group5)))
+
 (defn append-aarch64-selfhost-string-concat-helper-rooted [result]
   (do
     (append-native-bytes-rooted result (emit-aarch64-selfhost-string-concat-helper) 308)
@@ -15151,8 +15535,14 @@
 (defn aarch64-selfhost-proc-exit-helper-offset [import-stub-offset import-count]
   (+ (aarch64-helper-base-offset import-stub-offset import-count) 2572))
 
+(defn aarch64-selfhost-write-file-helper-offset [import-stub-offset import-count]
+  (+ (aarch64-helper-base-offset import-stub-offset import-count) 2588))
+
+(defn aarch64-selfhost-write-file-bytes-helper-offset [import-stub-offset import-count]
+  (+ (aarch64-helper-base-offset import-stub-offset import-count) 2812))
+
 (defn aarch64-selfhost-helper-trailer-size [import-count]
-  (+ (aarch64-selfhost-proc-exit-helper-offset 0 import-count) 16))
+  (+ (aarch64-selfhost-write-file-bytes-helper-offset 0 import-count) 308))
 
 (defn aarch64-bundle-initial-capacity [import-stub-offset import-count]
   (+ import-stub-offset (aarch64-selfhost-helper-trailer-size import-count)))
@@ -17133,7 +17523,7 @@
                       12
                       (native-selfhost-runtime-helper-tail-size-aarch64 opcode current-depth))))))))))))
 
-(defn native-instr-size-aarch64 [opcode operand function-metas current-depth]
+(defn native-instr-size-aarch64-core [opcode operand function-metas current-depth]
   (if (= (is-control-opcode opcode) 1)
     (if (= opcode 41)
       (native-conditional-control-instr-size-aarch64 current-depth)
@@ -17218,6 +17608,11 @@
                                          (+ (+ plain-size 4) (* (- current-depth 3) 8))
                                          plain-size)
                                        plain-size)))))))))))))))))))))
+
+(defn native-instr-size-aarch64 [opcode operand function-metas current-depth]
+  (if (= (aarch64-selfhost-file-write-opcode opcode) 1)
+    (native-consume-produce-one-size-aarch64 12 current-depth 2)
+    (native-instr-size-aarch64-core opcode operand function-metas current-depth)))
 
 (defn native-function-body-size-aarch64-loop [ir-func function-metas idx len total current-depth]
   (if (>= idx len)
@@ -18144,7 +18539,7 @@
                             (- (aarch64-selfhost-ref-get-helper-offset import-stub-offset import-count) (+ current-offset 4)))
                           (vector-new 0))))))))))))))
 
-(defn codegen-selfhost-runtime-bundle-aarch64 [opcode current-offset import-stub-offset import-count frame-base-slot-count current-depth]
+(defn codegen-selfhost-runtime-bundle-aarch64-core [opcode current-offset import-stub-offset import-count frame-base-slot-count current-depth]
   (if (= opcode 51)
     (emit-aarch64-helper-call-preserving-prev-and-lr
       (- (aarch64-selfhost-string-length-helper-offset import-stub-offset import-count) (+ current-offset 4)))
@@ -18201,6 +18596,26 @@
                       (emit-aarch64-helper-call-preserving-prev-and-lr
                         (- (aarch64-selfhost-map-size-helper-offset import-stub-offset import-count) (+ current-offset 4)))
                       (codegen-selfhost-runtime-bundle-aarch64-tail opcode current-offset import-stub-offset import-count frame-base-slot-count current-depth))))))))))))
+
+(defn aarch64-selfhost-file-write-opcode [opcode]
+  (if (= opcode 89)
+    1
+    (if (= opcode 90) 1 0)))
+
+(defn aarch64-selfhost-file-write-helper-offset [opcode import-stub-offset import-count]
+  (if (= opcode 89)
+    (aarch64-selfhost-write-file-helper-offset import-stub-offset import-count)
+    (aarch64-selfhost-write-file-bytes-helper-offset import-stub-offset import-count)))
+
+(defn codegen-aarch64-selfhost-file-write-bundle [opcode current-offset import-stub-offset import-count frame-base-slot-count current-depth]
+  (let [target-offset (aarch64-selfhost-file-write-helper-offset opcode import-stub-offset import-count)
+    disp (- target-offset (+ current-offset 8))]
+    (emit-two-arg-call-aarch64 disp frame-base-slot-count current-depth)))
+
+(defn codegen-selfhost-runtime-bundle-aarch64 [opcode current-offset import-stub-offset import-count frame-base-slot-count current-depth]
+  (if (= (aarch64-selfhost-file-write-opcode opcode) 1)
+    (codegen-aarch64-selfhost-file-write-bundle opcode current-offset import-stub-offset import-count frame-base-slot-count current-depth)
+    (codegen-selfhost-runtime-bundle-aarch64-core opcode current-offset import-stub-offset import-count frame-base-slot-count current-depth)))
 
 (defn codegen-ir-instr-bundle-aarch64-with-import-count [opcode operand current-offset function-starts function-metas import-count import-stub-offset frame-base-slot-count current-depth]
   (if (= opcode 40)
@@ -19602,6 +20017,8 @@
             (append-native-bytes-rooted result (emit-aarch64-selfhost-command-line-args-helper) 8)
             (append-native-bytes-rooted result (emit-aarch64-selfhost-print-string-helper) 84)
             (append-native-bytes-rooted result (emit-aarch64-selfhost-proc-exit-helper) 16)
+            (append-native-bytes-rooted result (emit-aarch64-selfhost-write-file-helper) 224)
+            (append-native-bytes-rooted result (emit-aarch64-selfhost-write-file-bytes-helper) 308)
             (ref-get result))]
           (do
             (root_pop)
