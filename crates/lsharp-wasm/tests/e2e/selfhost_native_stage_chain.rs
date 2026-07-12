@@ -13133,7 +13133,9 @@ fn test_native_codegen_aarch64_zero_arg_user_call_preserves_live_left_operand() 
         "AArch64 zero-arg user call は callee 越しに x9/x30 を保存する helper を使うべき"
     );
     assert!(
-        codegen_body.contains("(native-produce-one-prefix-size-aarch64 12 current-depth)"),
+        codegen_body.contains(
+            "(+ current-offset (+ (native-produce-one-prefix-size-aarch64 12 current-depth) 4))"
+        ),
         "AArch64 zero-arg user call の BL target は helper の保存命令後を基準に計算するべき"
     );
 }

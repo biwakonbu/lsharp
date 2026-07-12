@@ -18799,7 +18799,7 @@
                               (- target-offset (+ current-offset 8))
                                 (if (= target-param-count 1)
                                   (- target-offset (+ current-offset 4))
-                                  (- target-offset (+ current-offset (native-produce-one-prefix-size-aarch64 12 current-depth))))))))))))))
+                                  (- target-offset (+ current-offset (+ (native-produce-one-prefix-size-aarch64 12 current-depth) 4))))))))))))))
       call-bytes (if (>= target-param-count 10)
                  (emit-consume-produce-one-bundle-aarch64
                    (if (>= target-param-count 20)
