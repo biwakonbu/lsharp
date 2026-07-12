@@ -48,7 +48,7 @@ B 以降は依存が薄いものから並行着手してよい。
 | I-07 | rooting 修正の頻発 | B | [imp-07](improvement-designs/imp-07-test-verification-infrastructure.md) | rooting 規約の明文化 (下記 B-4) |
 | D-07 | 相互再帰モジュール一括推論 | C | [imp-04](improvement-designs/imp-04-module-system-strengthening.md) | |
 | I-05 | CLI 経路の未キャッシュ・SCC なし | C | imp-04 | V2-01 と接続 |
-| D-08 | Native backend 未完 | C | -- | V2-08/V2-09/V2-13 へ委譲済み、追跡のみ |
+| D-08 | Native backend research scope | C | -- | V2-08/V2-09 へ委譲済み、追跡のみ |
 | DOC-01 | ユーザーガイド不足 | D | [imp-05](improvement-designs/imp-05-docs-restructure.md) | |
 | DOC-02 | book/ 読者層混在 | D | imp-05 | |
 | DOC-03 | doc-status 未運用 | D | imp-05 | |

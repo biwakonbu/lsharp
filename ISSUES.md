@@ -30,7 +30,7 @@
 | [D-05](#d-05) | 正規表現制約が簡易パターンのみ | 低-中 | resolved | [imp-08](docs/development/planning/improvement-designs/imp-08-regex-constraint-engine.md) |
 | [D-06](#d-06) | トレイトが静的ディスパッチのみ (vtable なし) | 中 | in-design | imp-01 |
 | [D-07](#d-07) | 相互再帰モジュールが一括型推論前提 | 中 | in-design | [imp-04](docs/development/planning/improvement-designs/imp-04-module-system-strengthening.md) |
-| [D-08](#d-08) | Native backend 未完 (stage3 SIGSEGV 等) | 中-高 | deferred | V2-08 / V2-13 |
+| [D-08](#d-08) | Native backend research scope (self-regeneration / 差分ゼロ) | 中-高 | deferred | V2-08 / V2-09 |
 | [D-09](#d-09) | セルフホスト ADT が整数タグ + Vector 表現 | 中 | in-design | imp-01 |
 | [D-10](#d-10) | GC sentinel 判別の理論的 edge case (G1) | 低-中 | documented-limitation | [imp-03](docs/development/planning/improvement-designs/imp-03-dynamic-memory-layout.md) |
 
@@ -152,19 +152,16 @@
 - **関連**: I-05 / V2-01 (LSP incremental sync)。改善設計は [imp-04](docs/development/planning/improvement-designs/imp-04-module-system-strengthening.md)。
 
 <a id="d-08"></a>
-### D-08: Native backend が未完 (self-regeneration / 差分ゼロは V2 へ deferred)
+### D-08: Native backend research scope (self-regeneration / 差分ゼロは V2 へ deferred)
 
 - **影響度**: 中-高 / **状態**: deferred (公式状態を尊重)
 - **内容**: 2026-03-30 の方針転換で Wasmtime embedding + Component Model が正式配布モデルとなり、
   native self-regeneration (旧条件 1-2) は V2-08、Wasm/native 差分ゼロ (旧条件 3) は V2-09 へ移動した。
-  native-only 置換 (V2-13) は進行中だが、Linux x86_64 の actual stage1 → stage2 → stage3 単独実行が
-  未完走で、stage3 系の exit 139 (SIGSEGV) / exit 137 (OOM) の診断が継続している。
+  native-only official replacement の V2-13/V2-15 は完了しており、Linux x86_64 actual stage1 → stage2 → stage3 と stable release smoke は release blocker ではない。
 - **根拠**:
   - `docs/development/planning/completion-criteria.md:9` -- 方針転換と V2-08/V2-09 への移動
   - `docs/development/planning/completion-criteria.md:59-65` -- 旧条件 1-3 の deferred 整理
-  - `TODO.md:33` -- `V2-13a-5` 「actual Linux x86_64 stage2/stage3 VM regeneration」が BLOCKED
-  - `TODO.md:35` -- `V2-13a-5b` stage1 → stage2 → stage3 単独実行の完了条件が未達
-- **関連**: V2-08 / V2-09 / V2-13 (TODO.md がタスク正本)。本台帳は問題の存在のみ記録する。
+- **関連**: V2-08 / V2-09 (TODO.md がタスク正本)。本台帳は deferred research scope のみを記録する。
 
 <a id="d-09"></a>
 ### D-09: セルフホストコンパイラの ADT が整数タグ + Vector 表現
@@ -306,7 +303,7 @@
 - **根拠**: `git log --oneline -20` (2026-06-12) -- 上記コミット群。
   selfhost 側の rooting イディオムは `root_push` / `root_pop` / `root_set`
   (生成コード側ランタイム関数、`crates/lsharp-wasm/src/wasi.rs:154-156` 周辺)。
-- **関連**: D-08 (x86 backend 診断の継続)。改善設計は [imp-07](docs/development/planning/improvement-designs/imp-07-test-verification-infrastructure.md) (rooting 規約の明文化と guard test 拡張)。
+- **関連**: D-08 (native backend research scope)。改善設計は [imp-07](docs/development/planning/improvement-designs/imp-07-test-verification-infrastructure.md) (rooting 規約の明文化と guard test 拡張)。
 
 <a id="i-08"></a>
 ### I-08: テストカバレッジの偏り

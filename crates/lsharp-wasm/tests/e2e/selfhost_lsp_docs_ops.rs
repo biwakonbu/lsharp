@@ -2537,8 +2537,12 @@ fn test_e2e_native_ops03_official_native_only_replacement_backlog_contract() {
     );
     assert!(
         current_remaining_section
-            .contains("- [~] `V2-15` Native-only official release smoke and rollback"),
-        "TODO.md の V2-15 は Apple Silicon 完了と Linux publish wiring 残件を区別すること"
+            .contains("- [x] `V2-15` Native-only official release smoke and rollback"),
+        "TODO.md の V2-15 は両 supported target の actual App.Cli / rollback / local official smoke 完了後に完了扱いにすること"
+    );
+    assert!(
+        current_remaining_section.contains("native official release local gate: OK"),
+        "TODO.md の V2-15 は actual App.Cli input と両 target official local smoke の実測を記録すること"
     );
     assert!(
         current_remaining_section
@@ -2574,6 +2578,21 @@ fn test_e2e_native_ops03_official_native_only_replacement_backlog_contract() {
     assert!(
         !native_spec_content.contains("x86_64-pc-windows-msvc` | **BLOCKED**"),
         "Windows は blocker ではなく support scope 外として扱うこと"
+    );
+    assert!(
+        native_spec_content
+            .contains("Linux x86_64 actual App.Cli bundle / rollback / stable archive smoke 完了"),
+        "native-backend-spec.md は Linux x86_64 stable release input の実証完了を記録すること"
+    );
+
+    let issues = project_root.join("ISSUES.md");
+    let issues_content = std::fs::read_to_string(&issues).expect("ISSUES.md の読み込みに失敗");
+    assert!(
+        !issues_content.contains("stage3 系の exit 139 (SIGSEGV) / exit 137 (OOM) の診断が継続")
+            && !issues_content.contains(
+                "`V2-13a-5` 「actual Linux x86_64 stage2/stage3 VM regeneration」が BLOCKED"
+            ),
+        "ISSUES.md は解消済み V2-13 Linux stage3 blocker を current issue として残さないこと"
     );
 
     let release_policy =
@@ -2773,7 +2792,7 @@ fn test_e2e_native_ops04_linux_x86_server_target_contract() {
         ) && phase11_plan_content.contains(
             "Darwin arm64 の representative actual self-regeneration は完了"
         ) && phase11_plan_content.contains("Linux x86_64 の `V2-13a-5` は完了")
-            && phase11_plan_content.contains("Linux x86_64 の残件は `V2-15`")
+            && phase11_plan_content.contains("Linux x86_64 の `V2-15` は完了")
             && !phase11_plan_content.contains(
                 "true stage1-native -> stage2-native -> stage3-native の実バイナリ再生成・実行比較は未達"
             ),
@@ -4478,6 +4497,9 @@ esac
 case "$cmd" in
   --version)
     echo "lsharp 0.0.0-test"
+    ;;
+  --help)
+    echo "Usage: lsharp <command> [options]"
     ;;
   check)
     echo "type:Int"
