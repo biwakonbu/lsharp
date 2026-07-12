@@ -4060,7 +4060,7 @@ fn test_e2e_ops06_release_smoke_contract() {
     );
     assert!(
         release_script_content.contains(
-            r#"COPYFILE_DISABLE=1 tar --exclude '._*' -czf "${ARCHIVE_NAME}.tar.gz" "${ARCHIVE_NAME}/""#
+            r#"COPYFILE_DISABLE=1 tar --no-xattrs --exclude '._*' -czf "${ARCHIVE_NAME}.tar.gz" "${ARCHIVE_NAME}/""#
         ),
         "release.sh は macOS の AppleDouble/xattr を release archive に含めないこと"
     );

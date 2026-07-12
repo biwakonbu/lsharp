@@ -1759,6 +1759,58 @@ fn test_native_linux_x86_hostgen_vm_script_guards_actual_replay_with_vm_side_loc
 }
 
 #[test]
+fn test_native_linux_x86_hostgen_vm_script_guards_shared_setup_with_host_lock() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+    let acquire_body = shell_function_body(&script, "acquire_hostgen_lock");
+    let release_body = shell_function_body(&script, "release_hostgen_lock");
+
+    assert!(
+        script.contains(
+            r#"HOST_REPLAY_LOCK_DIR="${LSHARP_NATIVE_LINUX_X86_HOST_REPLAY_LOCK_DIR:-/tmp/lsharp-native-linux-x86-hostgen-vm-${VM_NAME}.lock}""#
+        ),
+        "hostgen script は VM 名ごとの host-side lock path を既定にするべき"
+    );
+    assert!(
+        acquire_body.contains(r#"mkdir "${HOST_REPLAY_LOCK_DIR}""#)
+            && acquire_body.contains(r#"current_pid=$$"#)
+            && acquire_body.contains("holder_pid")
+            && acquire_body.contains("kill -0")
+            && acquire_body.contains("WARN: removing stale hostgen lock"),
+        "host-side lock は mkdir で atomic acquire し、live holder と stale lock を区別するべき"
+    );
+    assert!(
+        release_body
+            .contains(r#"holder_pid="$(cat "${HOST_REPLAY_LOCK_DIR}/pid" 2>/dev/null || true)""#)
+            && release_body.contains(r#"[[ "${holder_pid}" = "$$" ]]"#)
+            && release_body.contains(r#"rm -rf "${HOST_REPLAY_LOCK_DIR}""#),
+        "host-side lock release は自分が保持する lock だけを解放するべき"
+    );
+
+    let acquire_pos = script
+        .find("\nacquire_hostgen_lock\n")
+        .expect("host-side lock acquire 呼び出しが必要");
+    let cargo_cleanup_pos = script
+        .rfind("\ncleanup_hostgen_cargo_target\n")
+        .expect("shared cargo target cleanup が必要");
+    let artifact_cleanup_pos = script
+        .find(r#"rm -rf "${ARTIFACT_DIR}""#)
+        .expect("output artifact cleanup が必要");
+    let vm_workdir_cleanup_pos = script
+        .rfind(r#"limactl shell "${VM_NAME}" -- rm -rf "${VM_WORK_DIR}""#)
+        .expect("VM workdir cleanup が必要");
+
+    assert!(
+        acquire_pos < cargo_cleanup_pos
+            && acquire_pos < artifact_cleanup_pos
+            && acquire_pos < vm_workdir_cleanup_pos,
+        "host-side lock は shared cargo target、artifact、VM workdir の削除より前に取得するべき"
+    );
+}
+
+#[test]
 fn test_native_linux_x86_hostgen_vm_decoder_writes_stage_code_segment_table() {
     let script_path =
         selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");

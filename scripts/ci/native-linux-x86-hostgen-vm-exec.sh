@@ -7,6 +7,7 @@ ARTIFACT_DIR_INPUT="${LSHARP_NATIVE_LINUX_X86_HOSTGEN_VM_ARTIFACT_DIR:-ci-artifa
 VM_NAME="${LSHARP_NATIVE_LINUX_X86_VM_NAME:-lsharp-linux-x86}"
 VM_WORK_DIR="${LSHARP_NATIVE_LINUX_X86_VM_WORK_DIR:-/tmp/lsharp-native-linux-x86-hostgen-vm-${ARTIFACT_ID}}"
 HOSTGEN_CARGO_TARGET_DIR="${LSHARP_NATIVE_LINUX_X86_CARGO_TARGET_DIR:-/tmp/lsharp-native-linux-x86-hostgen-vm-cargo-target}"
+HOST_REPLAY_LOCK_DIR="${LSHARP_NATIVE_LINUX_X86_HOST_REPLAY_LOCK_DIR:-/tmp/lsharp-native-linux-x86-hostgen-vm-${VM_NAME}.lock}"
 KEEP_VM_WORK_DIR="${LSHARP_NATIVE_LINUX_X86_KEEP_VM_WORK_DIR:-0}"
 ARTIFACT_RETENTION_COUNT="${LSHARP_NATIVE_LINUX_X86_ARTIFACT_RETENTION_COUNT:-8}"
 VM_MIN_FREE_BYTES="${LSHARP_NATIVE_LINUX_X86_VM_MIN_FREE_BYTES:-4294967296}"
@@ -23,6 +24,7 @@ EXPECTED_CLI_VERSION="lsharp ${PACKAGE_VERSION}"
 STAGE1_PROGRESS_REQUESTED=0
 STAGE2_METADATA_REQUESTED=0
 HOST_VM_WORK_DIR_CREATED=0
+HOST_REPLAY_LOCK_ACQUIRED=0
 
 if [[ "${ARTIFACT_DIR_INPUT}" = /* ]]; then
   if [[ "${ARTIFACT_DIR_INPUT}" != "${ROOT_DIR}"/* ]]; then
@@ -80,7 +82,7 @@ require_safe_host_cleanup_path() {
       ;;
   esac
   case "${label}:${path}" in
-    "artifact:${ROOT_DIR}/ci-artifacts/"*|"cargo:/tmp/lsharp-"*|"vm:/tmp/lsharp-"*) ;;
+    "artifact:${ROOT_DIR}/ci-artifacts/"*|"cargo:/tmp/lsharp-"*|"vm:/tmp/lsharp-"*|"lock:/tmp/lsharp-"*) ;;
     *)
       echo "ERROR: refusing unsafe hostgen cleanup path for ${label}: ${path}" >&2
       exit 1
@@ -91,6 +93,41 @@ require_safe_host_cleanup_path() {
 require_safe_host_cleanup_path "${ARTIFACT_DIR}" "artifact"
 require_safe_host_cleanup_path "${HOSTGEN_CARGO_TARGET_DIR}" "cargo"
 require_safe_host_cleanup_path "${VM_WORK_DIR}" "vm"
+require_safe_host_cleanup_path "${HOST_REPLAY_LOCK_DIR}" "lock"
+
+release_hostgen_lock() {
+  local holder_pid=""
+  if [[ "${HOST_REPLAY_LOCK_ACQUIRED}" -ne 1 ]]; then
+    return 0
+  fi
+  holder_pid="$(cat "${HOST_REPLAY_LOCK_DIR}/pid" 2>/dev/null || true)"
+  if [[ "${holder_pid}" = "$$" ]]; then
+    rm -rf "${HOST_REPLAY_LOCK_DIR}"
+  fi
+}
+
+acquire_hostgen_lock() {
+  local current_pid=$$
+  local holder_pid=""
+  local holder_artifact_dir=""
+  local holder_vm_work_dir=""
+  while ! mkdir "${HOST_REPLAY_LOCK_DIR}" 2>/dev/null; do
+    holder_pid="$(cat "${HOST_REPLAY_LOCK_DIR}/pid" 2>/dev/null || true)"
+    holder_artifact_dir="$(cat "${HOST_REPLAY_LOCK_DIR}/artifact_dir" 2>/dev/null || true)"
+    holder_vm_work_dir="$(cat "${HOST_REPLAY_LOCK_DIR}/vm_work_dir" 2>/dev/null || true)"
+    if [[ "${holder_pid}" =~ ^[0-9]+$ ]] && kill -0 "${holder_pid}" 2>/dev/null; then
+      echo "ERROR: hostgen lock is held: current_pid=${current_pid} holder_pid=${holder_pid} holder_artifact_dir=${holder_artifact_dir} holder_vm_work_dir=${holder_vm_work_dir}" >&2
+      return 90
+    fi
+    echo "WARN: removing stale hostgen lock: ${HOST_REPLAY_LOCK_DIR} holder_pid=${holder_pid} current_pid=${current_pid}" >&2
+    rm -rf "${HOST_REPLAY_LOCK_DIR}"
+  done
+  HOST_REPLAY_LOCK_ACQUIRED=1
+  printf '%s\n' "$$" >"${HOST_REPLAY_LOCK_DIR}/pid"
+  printf '%s\n' "${ARTIFACT_DIR}" >"${HOST_REPLAY_LOCK_DIR}/artifact_dir"
+  printf '%s\n' "${VM_WORK_DIR}" >"${HOST_REPLAY_LOCK_DIR}/vm_work_dir"
+  date -u '+%Y-%m-%dT%H:%M:%SZ' >"${HOST_REPLAY_LOCK_DIR}/started_at"
+}
 
 cleanup_hostgen_cargo_target() {
   if [[ "${LSHARP_NATIVE_LINUX_X86_KEEP_CARGO_TARGET:-0}" = "1" ]]; then
@@ -101,27 +138,33 @@ cleanup_hostgen_cargo_target() {
   fi
 }
 
+cleanup_hostgen_before_vm_work_dir() {
+  local exit_code=$?
+  trap - EXIT
+  cleanup_hostgen_cargo_target
+  release_hostgen_lock
+  exit "${exit_code}"
+}
+
 cleanup_vm_work_dir_on_host_exit() {
   local exit_code=$?
   local cleanup_exit_code=0
   trap - EXIT
   cleanup_hostgen_cargo_target
-  if [[ "${HOST_VM_WORK_DIR_CREATED}" -ne 1 ]]; then
-    exit "${exit_code}"
-  fi
-  if [[ "${KEEP_VM_WORK_DIR}" = "1" ]]; then
+  if [[ "${HOST_VM_WORK_DIR_CREATED}" -eq 1 && "${KEEP_VM_WORK_DIR}" = "1" ]]; then
     echo "VM workdir kept by LSHARP_NATIVE_LINUX_X86_KEEP_VM_WORK_DIR=1 after host exit: ${VM_WORK_DIR}" >&2
-    exit "${exit_code}"
+  elif [[ "${HOST_VM_WORK_DIR_CREATED}" -eq 1 ]]; then
+    set +e
+    limactl shell "${VM_NAME}" -- rm -rf "${VM_WORK_DIR}"
+    cleanup_exit_code=$?
+    set -e
+    if [[ "${cleanup_exit_code}" -eq 0 ]]; then
+      echo "VM workdir removed by host EXIT cleanup: ${VM_WORK_DIR}" >&2
+    else
+      echo "WARNING: host EXIT cleanup could not remove VM workdir: ${VM_WORK_DIR}" >&2
+    fi
   fi
-  set +e
-  limactl shell "${VM_NAME}" -- rm -rf "${VM_WORK_DIR}"
-  cleanup_exit_code=$?
-  set -e
-  if [[ "${cleanup_exit_code}" -eq 0 ]]; then
-    echo "VM workdir removed by host EXIT cleanup: ${VM_WORK_DIR}" >&2
-  else
-    echo "WARNING: host EXIT cleanup could not remove VM workdir: ${VM_WORK_DIR}" >&2
-  fi
+  release_hostgen_lock
   exit "${exit_code}"
 }
 
@@ -331,13 +374,13 @@ validate_stage3_target_request
 cd "${ROOT_DIR}"
 SOURCE_COMMIT="$(git rev-parse HEAD)"
 
-trap cleanup_hostgen_cargo_target EXIT
-cleanup_hostgen_cargo_target
-
 if ! command -v limactl >/dev/null 2>&1; then
   echo "ERROR: limactl is required for hostgen->VM Linux x86_64 native execution smoke" >&2
   exit 1
 fi
+trap cleanup_hostgen_before_vm_work_dir EXIT
+acquire_hostgen_lock
+cleanup_hostgen_cargo_target
 ensure_vm_running
 trap cleanup_vm_work_dir_on_host_exit EXIT
 if [[ -n "${REUSE_ACTUAL_STAGE1_ARTIFACT_DIR}" ]]; then

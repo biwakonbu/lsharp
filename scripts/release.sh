@@ -268,7 +268,7 @@ echo "Creating archive..."
 # Mac Apple Silicon / Linux x86_64: .tar.gz 形式
 (
   cd "${DIST_DIR}"
-  COPYFILE_DISABLE=1 tar --exclude '._*' -czf "${ARCHIVE_NAME}.tar.gz" "${ARCHIVE_NAME}/"
+  COPYFILE_DISABLE=1 tar --no-xattrs --exclude '._*' -czf "${ARCHIVE_NAME}.tar.gz" "${ARCHIVE_NAME}/"
 )
 if [[ ! -s "${DIST_DIR}/${ARCHIVE_NAME}.tar.gz" ]]; then
   echo "ERROR: release archive was not created: ${DIST_DIR}/${ARCHIVE_NAME}.tar.gz" >&2
