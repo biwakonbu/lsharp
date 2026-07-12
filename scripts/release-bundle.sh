@@ -7,6 +7,7 @@ STAGE_DIR="${STAGE_DIR:-$ROOT/stage2}"
 DIST_DIR="${DIST_DIR:-$ROOT/dist}"
 VERSION="${VERSION:-$(git -C "$ROOT" describe --tags --always 2>/dev/null || echo "dev")}"
 TARGET="${TARGET:-}"
+SOURCE_COMMIT="${SOURCE_COMMIT:-$(git -C "$ROOT" rev-parse --verify HEAD 2>/dev/null || echo "unknown")}"
 
 detect_target() {
   if [[ -n "$TARGET" ]]; then
@@ -44,6 +45,20 @@ require_file() {
   fi
 }
 
+generate_rollback_manifest() {
+  printf '%s\n' \
+    '{' \
+    '  "schema_version": 1,' \
+    '  "archive_kind": "rollback compatibility",' \
+    "  \"target\": \"${TARGET}\"," \
+    "  \"version\": \"${VERSION}\"," \
+    "  \"source_commit\": \"${SOURCE_COMMIT}\"," \
+    '  "entry_binary": "lsharp",' \
+    '  "lsp_binary": "lsharp-lsp",' \
+    '  "component": "lsharp.component.wasm"' \
+    '}' > "$BUNDLE_DIR/manifest.json"
+}
+
 TARGET="$(detect_target)"
 validate_target "$TARGET"
 ARCHIVE_NAME="lsharp-${VERSION}-${TARGET}"
@@ -68,6 +83,7 @@ fi
 cp -f "$STAGE_DIR/lsharp.component.wasm" "$BUNDLE_DIR/lsharp.component.wasm"
 cp -f "$ROOT/README.md" "$BUNDLE_DIR/README.md"
 cp -f "$ROOT/LICENSE" "$BUNDLE_DIR/LICENSE"
+generate_rollback_manifest
 
 echo "=== release-bundle: generate checksums ==="
 bash "$ROOT/scripts/checksum.sh" "$BUNDLE_DIR" > "$BUNDLE_DIR/checksums.txt"
