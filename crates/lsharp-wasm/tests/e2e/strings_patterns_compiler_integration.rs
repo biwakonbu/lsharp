@@ -1330,6 +1330,61 @@ fn test_e2e_selfhost_compiler_write_file_builtin_lowering() {
     assert_eq!(lines[4], "0", "write-file opcode operand は 0 であること");
 }
 
+/// selfhost Compiler.ls: write-file-bytes を binary builtin として lowering できること
+#[test]
+fn test_e2e_selfhost_compiler_write_file_bytes_builtin_lowering() {
+    let harness = r#"
+(defn main []
+  (let [program (parse-program "(defn main [] (write-file-bytes 0 0))")
+        pair (compile-program-functions program)
+        functions (vector-get pair 1)
+        main-fn (vector-get functions 0)
+        main-ir (vector-get main-fn 2)
+        last-instr (vector-get main-ir 2)]
+    (do
+      (print (vector-get main-fn 0))
+      (print (vector-get main-fn 1))
+      (print (vector-length main-ir))
+      (print (vector-get last-instr 0))
+      (print (vector-get last-instr 1))
+      0)))
+"#;
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("IR.ls"),
+        selfhost_module("Compiler.ls"),
+        harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert!(
+        lines.len() >= 5,
+        "write-file-bytes lowering 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "0", "main は 0 引数関数であること");
+    assert!(
+        lines[1].parse::<i64>().is_ok(),
+        "write-file-bytes lowering の local count は整数であること"
+    );
+    assert_eq!(
+        lines[2], "3",
+        "body は path/bytes const と write-file-bytes の 3 命令であること"
+    );
+    assert_eq!(
+        lines[3], "90",
+        "末尾命令は write-file-bytes builtin opcode であること"
+    );
+    assert_eq!(
+        lines[4], "0",
+        "write-file-bytes opcode operand は 0 であること"
+    );
+}
+
 /// selfhost Compiler.ls: command-line-arg を builtin として lowering できること
 #[test]
 fn test_e2e_selfhost_compiler_command_line_arg_builtin_lowering() {

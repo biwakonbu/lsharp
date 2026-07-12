@@ -58,6 +58,7 @@
 (defn op-print-string [] 87)
 (defn op-proc-exit [] 88)
 (defn op-write-file [] 89)
+(defn op-write-file-bytes [] 90)
 (defn builtin-add [] 43)
 (defn builtin-sub [] 45)
 (defn builtin-mul [] 42)
@@ -82,6 +83,7 @@
 (defn builtin-map-insert [] 2967773707765834)
 (defn builtin-read-file [] 100097347767123)
 (defn builtin-write-file [] 3246539326542506)
+(defn builtin-write-file-bytes [] 7965480599336288136)
 (defn builtin-map-contains [] (- 0 3820778934353407281))
 (defn builtin-map-remove [] 2967773956947477)
 (defn builtin-command-line-arg [] 4333701572691766591)
@@ -163,17 +165,19 @@
     64
     (if (= name-hash 3246539326542506)
       89
-      (if (= name-hash 4333701572691766591)
-        67
-        (if (= name-hash 2680668565995926546)
-          73
-          (if (= name-hash 5217540237477903124)
-            86
-            (if (= name-hash 2942060250258025265)
-              87
-              (if (= name-hash 98761626082613)
-                88
-                0))))))))
+      (if (= name-hash 7965480599336288136)
+        90
+        (if (= name-hash 4333701572691766591)
+          67
+          (if (= name-hash 2680668565995926546)
+            73
+            (if (= name-hash 5217540237477903124)
+              86
+              (if (= name-hash 2942060250258025265)
+                87
+                (if (= name-hash 98761626082613)
+                  88
+                  0)))))))))
 
 (defn builtin-map-extra-opcode [name-hash]
   (if (= name-hash (- 0 3820778934353407281))
