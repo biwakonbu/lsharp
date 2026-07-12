@@ -8155,17 +8155,15 @@ fn test_native_codegen_routes_int_to_string_import_to_target_helpers() {
 fn test_native_stage_seed_preserves_int_to_string_import_arity() {
     let source = representative_actual_stage23_seed_source();
     let placeholders = source
-        .split("(defn native-runtime-import-param-count [idx]")
+        .split("(defn push-import-placeholders [idx count result]")
         .nth(1)
         .and_then(|tail| tail.split("(defn append-vector-loop").next())
-        .expect("native stage seed に runtime import arity metadata が存在すること");
+        .expect("native stage seed に import placeholder builder が存在すること");
 
     assert!(
-        placeholders.contains("(if (= idx 6) 1 0)")
-            && placeholders.contains(
-                "(make-function-meta (native-runtime-import-param-count idx) 0 (vector-new 0))"
-            ),
-        "native stage seed は int-to-string import (index 6) を 1 引数として保持し、x86 call bundle が rdi を設定できるべき"
+        placeholders.contains("(make-function-meta (if (= idx 6) 1 0) 0 (vector-new 0))")
+            && !source.contains("(defn native-runtime-import-param-count [idx]"),
+        "native stage seed は int-to-string import (index 6) を 1 引数として inline し、stage2 の追加 user-call を避けるべき"
     );
 }
 
@@ -15328,15 +15326,12 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
       local-count)
     ir))
 
-(defn native-runtime-import-param-count [idx]
-  (if (= idx 6) 1 0))
-
 (defn push-import-placeholders [idx count result]
   (if (>= idx count)
     result
     (do
       (root_push result)
-      (let [placeholder (make-function-meta (native-runtime-import-param-count idx) 0 (vector-new 0))]
+      (let [placeholder (make-function-meta (if (= idx 6) 1 0) 0 (vector-new 0))]
         (do
           (root_push placeholder)
           (let [next-result (vector-push result placeholder)]
