@@ -120,3 +120,97 @@ fn test_native_app_cli_compile_and_build_output_are_actual_wasm() {
     let _ = std::fs::remove_dir_all(&dir);
     result
 }
+
+#[test]
+#[ignore = "actual native App.Cli program を LSHARP_NATIVE_APP_CLI_PROGRAM で指定する"]
+fn test_native_app_cli_parse_check_and_test_source_file_contract() {
+    if !cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+        return;
+    }
+
+    let program = PathBuf::from(
+        std::env::var_os("LSHARP_NATIVE_APP_CLI_PROGRAM")
+            .expect("LSHARP_NATIVE_APP_CLI_PROGRAM を指定すること"),
+    );
+    assert!(
+        program.is_file(),
+        "native App.Cli が見つからない: {}",
+        program.display()
+    );
+    let program = std::fs::canonicalize(&program).expect("native App.Cli の絶対パス化に失敗");
+
+    let dir = std::env::temp_dir().join(format!(
+        "lsharp_native_app_cli_source_file_contract_{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("fixture directory の作成に失敗");
+    std::fs::write(dir.join("input.ls"), "(defn main [] 42)")
+        .expect("fixture input.ls の書き込みに失敗");
+
+    let result = (|| {
+        let parse = Command::new(&program)
+            .current_dir(&dir)
+            .args(["parse", "input.ls"])
+            .output()
+            .expect("native App.Cli parse の実行に失敗");
+        assert!(
+            parse.status.success(),
+            "native parse は成功するべき: stdout={:?} stderr={:?}",
+            String::from_utf8_lossy(&parse.stdout),
+            String::from_utf8_lossy(&parse.stderr)
+        );
+        let parse_stdout = String::from_utf8_lossy(&parse.stdout);
+        for expected in [
+            "decls:1",
+            "first-decl:defn",
+            "first-body:int",
+            "diagnostics:0",
+        ] {
+            assert!(
+                parse_stdout.lines().any(|line| line == expected),
+                "native parse は {expected:?} を出力するべき: {parse_stdout:?}"
+            );
+        }
+
+        let check = Command::new(&program)
+            .current_dir(&dir)
+            .args(["check", "input.ls"])
+            .output()
+            .expect("native App.Cli check の実行に失敗");
+        assert!(
+            check.status.success(),
+            "native check は成功するべき: stdout={:?} stderr={:?}",
+            String::from_utf8_lossy(&check.stdout),
+            String::from_utf8_lossy(&check.stderr)
+        );
+        let check_stdout = String::from_utf8_lossy(&check.stdout);
+        for expected in ["Int", "diagnostics:0"] {
+            assert!(
+                check_stdout.lines().any(|line| line == expected),
+                "native check は {expected:?} を出力するべき: {check_stdout:?}"
+            );
+        }
+
+        let test = Command::new(&program)
+            .current_dir(&dir)
+            .args(["test", "input.ls"])
+            .output()
+            .expect("native App.Cli test の実行に失敗");
+        assert!(
+            test.status.success(),
+            "native test は空 suite で成功するべき: stdout={:?} stderr={:?}",
+            String::from_utf8_lossy(&test.stdout),
+            String::from_utf8_lossy(&test.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&test.stdout)
+                .lines()
+                .collect::<Vec<_>>(),
+            vec!["examples:0", "invariants:0", "failures:0"],
+            "native test は空 suite の成功 summary を出力するべき"
+        );
+    })();
+    let _ = std::fs::remove_dir_all(&dir);
+    result
+}

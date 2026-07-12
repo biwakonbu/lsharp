@@ -18554,10 +18554,7 @@
                     (if (= target-param-count 2)
                      (emit-two-arg-call-aarch64 disp frame-base-slot-count current-depth)
                     (if (= target-param-count 1)
-                      (let [save-prev (emit-aarch64-mov-x10-x9)
-                        call-bl (emit-aarch64-bl disp)
-                        restore-prev (emit-aarch64-mov-x9-x10)]
-                        (concat-three-byte-vectors-rooted save-prev call-bl restore-prev))
+                      (emit-aarch64-helper-call-preserving-prev-and-lr disp)
                        (emit-produce-one-bundle-aarch64
                          (emit-aarch64-bl disp)
                          frame-base-slot-count
