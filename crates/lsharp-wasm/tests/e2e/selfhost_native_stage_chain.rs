@@ -2337,6 +2337,9 @@ fn test_native_linux_x86_lima_config_bounds_disk_and_avoids_mount_growth() {
         "memory: 20GiB",
         "disk: 12GiB",
         "mounts: []",
+        "provision_stamp=/var/lib/lsharp-linux-x86-provisioned",
+        "if [ ! -f \"${provision_stamp}\" ]; then",
+        "touch \"${provision_stamp}\"",
         "apt-get clean",
         "rm -rf /var/lib/apt/lists/*",
     ] {
