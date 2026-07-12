@@ -8079,6 +8079,46 @@ fn test_native_codegen_x86_file_write_runtime_calls_direct_append_in_stage1() {
 }
 
 #[test]
+fn test_native_codegen_routes_int_to_string_import_to_target_helpers() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let x86_call_codegen = source
+        .split("(defn codegen-x86-opcode-call-bundle")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn codegen-ir-instr-bundle-x86-with-import-count-and-base")
+                .next()
+        })
+        .expect("NativeCodegen.ls に x86 call bundle codegen が存在すること");
+    let aarch64_import_stub = source
+        .split("(defn emit-aarch64-import-stub")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn make-native-progress-state").next())
+        .expect("NativeCodegen.ls に AArch64 import stub emitter が存在すること");
+
+    assert!(
+        source.contains("(defn emit-x86-selfhost-int-to-string-helper []")
+            && source.contains("(defn x86-selfhost-int-to-string-helper-offset")
+            && source.contains(
+                "(append-native-bytes-rooted result (emit-x86-selfhost-int-to-string-helper) 169)"
+            )
+            && x86_call_codegen.contains("(= (ref-get operand-ref) 6)")
+            && x86_call_codegen.contains(
+                "(x86-selfhost-int-to-string-helper-offset import-stub-offset import-count)"
+            )
+            && source.contains("(defn emit-aarch64-selfhost-int-to-string-helper []")
+            && source.contains("(defn aarch64-selfhost-int-to-string-helper-offset")
+            && source.contains(
+                "(append-native-bytes-rooted result (emit-aarch64-selfhost-int-to-string-helper) 176)"
+            )
+            && aarch64_import_stub.contains("(if (= import-idx 6)")
+            && aarch64_import_stub.contains(
+                "(aarch64-selfhost-int-to-string-helper-offset import-stub-offset import-count)"
+            ),
+        "native selfhost の import 6 (__int_to_string) は ret stub ではなく target ごとの tagged String helper へ dispatch するべき"
+    );
+}
+
+#[test]
 fn test_native_codegen_x86_file_exists_runtime_call_direct_appends_in_stage1() {
     let source = selfhost_module("NativeCodegen.ls");
     let control_loop = source
@@ -25138,6 +25178,78 @@ fn linux_x86_selfhost_write_file_bytes_object_bytes() -> Vec<u8> {
     )
 }
 
+fn linux_x86_selfhost_int_to_string_object_bytes(value: i64) -> Vec<u8> {
+    let output = run_native_pipeline_harness(&format!(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import Backend.Native.NativeEmit)
+(import IR.IR)
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn main []
+  (let [empty-ir (vector-new 0)
+        import0 (make-function-meta 0 0 empty-ir)
+        import1 (make-function-meta 0 0 empty-ir)
+        import2 (make-function-meta 0 0 empty-ir)
+        import3 (make-function-meta 0 0 empty-ir)
+        import4 (make-function-meta 0 0 empty-ir)
+        import5 (make-function-meta 0 0 empty-ir)
+        import6 (make-function-meta 1 0 empty-ir)
+        import7 (make-function-meta 0 0 empty-ir)
+        import8 (make-function-meta 0 0 empty-ir)
+        import9 (make-function-meta 0 0 empty-ir)
+        instr0 (make-instr 1 {value})
+        instr1 (make-instr 40 6)
+        instr2 (make-instr 87 0)
+        ir (vector-push
+             (vector-push
+               (vector-push (vector-new 3) instr0)
+               instr1)
+             instr2)
+        func (make-function-meta 0 0 ir)
+        imports1 (vector-push (vector-new 11) import0)
+        imports2 (vector-push imports1 import1)
+        imports3 (vector-push imports2 import2)
+        imports4 (vector-push imports3 import3)
+        imports5 (vector-push imports4 import4)
+        imports6 (vector-push imports5 import5)
+        imports7 (vector-push imports6 import6)
+        imports8 (vector-push imports7 import7)
+        imports9 (vector-push imports8 import8)
+        imports10 (vector-push imports9 import9)
+        functions (vector-push imports10 func)
+        target (make-target 3)
+        native (emit-native-function-meta-bundle-with-import-count functions 10 target)
+        object (emit-object native target)]
+    (do
+      (print-bytes object 0 (vector-length object))
+      0)))"#
+    ));
+    output
+        .trim()
+        .lines()
+        .map(|line| {
+            line.parse::<u8>().unwrap_or_else(|_| {
+                panic!("Linux x86_64 int-to-string ELF object byte parse 失敗: {line}")
+            })
+        })
+        .collect::<Vec<u8>>()
+}
+
 fn linux_x86_selfhost_ref_set_get_object_bytes() -> Vec<u8> {
     linux_x86_selfhost_function_meta_object_bytes(
         &[
@@ -27796,6 +27908,68 @@ fn host_target_selfhost_program_bundle_code_bytes(
         functions (vector-push (vector-new 1) func)
         target (host-target)
         code (emit-native-function-meta-bundle functions target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    );
+    run_native_codegen_host_bytes_harness(&source)
+}
+
+fn host_target_selfhost_int_to_string_bundle_code_bytes(value: i64) -> Vec<u8> {
+    let source = format!(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn main []
+  (let [empty-ir (vector-new 0)
+        import0 (make-function-meta 0 0 empty-ir)
+        import1 (make-function-meta 0 0 empty-ir)
+        import2 (make-function-meta 0 0 empty-ir)
+        import3 (make-function-meta 0 0 empty-ir)
+        import4 (make-function-meta 0 0 empty-ir)
+        import5 (make-function-meta 0 0 empty-ir)
+        import6 (make-function-meta 1 0 empty-ir)
+        import7 (make-function-meta 0 0 empty-ir)
+        import8 (make-function-meta 0 0 empty-ir)
+        import9 (make-function-meta 0 0 empty-ir)
+        instr0 (make-instr 1 {value})
+        instr1 (make-instr 40 6)
+        instr2 (make-instr 87 0)
+        ir (vector-push
+             (vector-push
+               (vector-push (vector-new 3) instr0)
+               instr1)
+             instr2)
+        func (make-function-meta 0 0 ir)
+        imports1 (vector-push (vector-new 11) import0)
+        imports2 (vector-push imports1 import1)
+        imports3 (vector-push imports2 import2)
+        imports4 (vector-push imports3 import3)
+        imports5 (vector-push imports4 import4)
+        imports6 (vector-push imports5 import5)
+        imports7 (vector-push imports6 import6)
+        imports8 (vector-push imports7 import7)
+        imports9 (vector-push imports8 import8)
+        imports10 (vector-push imports9 import9)
+        functions (vector-push imports10 func)
+        target (host-target)
+        code (emit-native-function-meta-bundle-with-import-count functions 10 target)]
     (do
       (print-bytes code 0 (vector-length code))
       0)))"#,
@@ -36127,6 +36301,42 @@ fn test_e2e_native_linux_x86_host_generates_write_file_bytes_elf_object_artifact
     );
 }
 
+/// NATIVE-LINUX-X86-02fc: import 6 の int-to-string helper を含む Linux ELF artifact を生成すること。
+#[test]
+#[ignore]
+fn test_e2e_native_linux_x86_host_generates_int_to_string_elf_object_artifact() {
+    let artifact_path = std::env::var_os("LSHARP_NATIVE_LINUX_X86_INT_TO_STRING_OBJECT_ARTIFACT")
+        .expect(
+            "LSHARP_NATIVE_LINUX_X86_INT_TO_STRING_OBJECT_ARTIFACT に Linux x86_64 int-to-string object artifact path を指定すること",
+        );
+    let artifact_path = std::path::PathBuf::from(artifact_path);
+    if let Some(parent) = artifact_path.parent() {
+        std::fs::create_dir_all(parent)
+            .expect("Linux x86_64 int-to-string object artifact dir 作成に失敗");
+    }
+
+    let object_bytes = linux_x86_selfhost_int_to_string_object_bytes(-42);
+    assert!(
+        object_bytes.len() > 64,
+        "Linux x86_64 int-to-string ELF object は ELF64 section table を持つこと"
+    );
+    assert!(
+        object_bytes
+            .windows("generated".len())
+            .any(|window| window == b"generated"),
+        "Linux x86_64 int-to-string ELF object は generated symbol を持つこと"
+    );
+
+    std::fs::write(&artifact_path, &object_bytes)
+        .expect("Linux x86_64 int-to-string object artifact 書き込みに失敗");
+    let written = std::fs::read(&artifact_path)
+        .expect("Linux x86_64 int-to-string object artifact 読み戻しに失敗");
+    assert_eq!(
+        written, object_bytes,
+        "Linux x86_64 int-to-string object artifact は生成 ELF object をそのまま保存すること"
+    );
+}
+
 /// NATIVE-LINUX-X86-02g: host 側 selfhost が ref helper を含む Linux ELF artifact を生成すること。
 #[test]
 #[ignore]
@@ -41813,6 +42023,37 @@ fn test_e2e_native_host_binary_selfhost_cli_runtime_builtins_execute() {
     let proc_exit = link_and_run_native_host_binary(&proc_exit_code)
         .expect("selfhost proc-exit host binary 実行に失敗");
     assert_eq!(proc_exit, 7);
+}
+
+/// NATIVE-HOST-01d2g2: import 6 (__int_to_string) が AArch64 native bundle で tagged String を返すこと。
+#[test]
+#[ignore]
+fn test_e2e_native_host_binary_selfhost_int_to_string_import_writes_decimal_string() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_selfhost_int_to_string_bundle_code_bytes(42);
+    let result = link_and_run_native_host_binary_capture_with_args(&code_bytes, &[])
+        .expect("selfhost int-to-string import host binary 実行に失敗");
+
+    assert_eq!(
+        result.exit_code,
+        0,
+        "host binary selfhost int-to-string import は成功するべき: stdout={:?} stderr={:?}",
+        String::from_utf8_lossy(&result.stdout),
+        String::from_utf8_lossy(&result.stderr)
+    );
+    assert_eq!(
+        result.stdout,
+        b"42",
+        "host binary selfhost int-to-string import は十進文字列を返すべき: stderr={:?}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    assert!(
+        result.stderr.is_empty(),
+        "host binary selfhost int-to-string import の stderr は空であるべき"
+    );
 }
 
 /// NATIVE-HOST-01d2ga: selfhost string-char-at (opcode 50) が AArch64 bundle path で argv 文字列から 1 byte を読めること。

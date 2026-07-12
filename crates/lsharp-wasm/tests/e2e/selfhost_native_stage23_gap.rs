@@ -567,7 +567,7 @@ fn test_native_codegen_x86_write_file_helpers_use_binary_file_abi() {
     assert_eq!(
         lines,
         vec![
-            1, 1, -1, -1, 5780, 5792, 5979, 2138, 187, 83, 65, 84, 65, 85, 65, 86, 73, 137, 230,
+            1, 1, -1, -1, 5780, 5792, 5979, 2307, 187, 83, 65, 84, 65, 85, 65, 86, 73, 137, 230,
             73, 137, 244, 69, 49, 237, 76, 137, 244, 65, 94, 65, 93, 65, 92, 91, 195, 255, 83, 65,
             84, 65, 85, 65, 86, 65, 87, 73, 137, 230, 73, 137, 244, 69, 76, 137, 244, 65, 95, 65,
             94, 65, 93, 65, 92, 91, 195, 11, 72, 137, 198, 72, 137, 207, 232, 149, 18, 0, 0, 11,
@@ -575,6 +575,35 @@ fn test_native_codegen_x86_write_file_helpers_use_binary_file_abi() {
             18, 0, 0,
         ],
         "x86_64 write-file / write-file-bytes は binary ABI、trailer offset、raw byte write helper を一致させる必要がある",
+    );
+}
+
+#[test]
+fn test_native_codegen_int_to_string_helpers_emit_tagged_decimal_string_abi() {
+    let lines = run_x86_selfhost_runtime_helper_harness(
+        "native-stage23-int-to-string-helper-abi",
+        r#"  (let [x86-helper (emit-x86-selfhost-int-to-string-helper)
+        aarch64-helper (emit-aarch64-selfhost-int-to-string-helper)]
+    (do
+      (print (vector-length x86-helper))
+      (print-bytes-loop x86-helper 0 20)
+      (print-bytes-loop x86-helper (- (vector-length x86-helper) 20) (vector-length x86-helper))
+      (print (vector-length aarch64-helper))
+      (print-bytes-loop aarch64-helper 0 20)
+      (print-bytes-loop aarch64-helper (- (vector-length aarch64-helper) 20) (vector-length aarch64-helper))
+      0))"#,
+    );
+
+    assert_eq!(
+        lines,
+        vec![
+            169, 83, 72, 137, 251, 72, 49, 255, 72, 199, 198, 32, 0, 0, 0, 72, 199, 194, 3, 0, 0,
+            8, 72, 137, 209, 243, 164, 76, 137, 208, 72, 15, 186, 232, 63, 91, 195, 49, 192, 91,
+            195, 176, 243, 83, 190, 169, 254, 11, 0, 249, 230, 3, 0, 170, 0, 4, 128, 210, 75, 253,
+            255, 151, 192, 3, 95, 214, 31, 32, 3, 213, 31, 32, 3, 213, 31, 32, 3, 213, 31, 32, 3,
+            213,
+        ],
+        "native int-to-string helper は tagged String の確保、十進 byte copy、callee-saved register の復元を target ごとの ABI で維持する必要がある",
     );
 }
 
@@ -614,7 +643,7 @@ fn test_native_codegen_aarch64_write_file_helpers_use_binary_file_abi() {
     assert_eq!(
         lines,
         vec![
-            -1, -1, 6708, 6724, 6948, 3160, 12, 12, 224, 243, 83, 191, 169, 245, 91, 191, 169, 192,
+            -1, -1, 6708, 6724, 6948, 3336, 12, 12, 224, 243, 83, 191, 169, 245, 91, 191, 169, 192,
             3, 95, 214, 308, 243, 83, 191, 169, 245, 91, 191, 169, 192, 3, 95, 214, 12, 225, 3, 0,
             170, 224, 3, 9, 170, 143, 5, 0, 148, 12, 225, 3, 0, 170, 224, 3, 9, 170, 199, 5, 0,
             148,

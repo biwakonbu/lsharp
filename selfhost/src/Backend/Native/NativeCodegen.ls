@@ -10272,6 +10272,59 @@
     tail (concat-three-byte-vectors-rooted group11 group12 group13)]
     (concat-three-byte-vectors-rooted head1 head2 tail)))
 
+;; x86_64 int-to-string helper: i64 を mmap した tagged String へ十進変換する。
+(defn emit-x86-selfhost-int-to-string-helper []
+  (let [result (ref-new (vector-new 169))]
+    (do
+      (root_push result)
+      (append-encoded-u32-rooted result 4220078163)
+      (append-encoded-u32-rooted result 1224683848)
+      (append-encoded-u32-rooted result 2148039)
+      (append-encoded-u32-rooted result 3343384576)
+      (append-encoded-u32-rooted result 962)
+      (append-encoded-u32-rooted result 3267840256)
+      (append-encoded-u32-rooted result 34)
+      (append-encoded-u32-rooted result 4290824009)
+      (append-encoded-u32-rooted result 1308622847)
+      (append-encoded-u32-rooted result 3343436081)
+      (append-encoded-u32-rooted result 2496)
+      (append-encoded-u32-rooted result 1208291072)
+      (append-encoded-u32-rooted result 1903739013)
+      (append-encoded-u32-rooted result 1220708681)
+      (append-encoded-u32-rooted result 826661001)
+      (append-encoded-u32-rooted result 3229960384)
+      (append-encoded-u32-rooted result 4148693369)
+      (append-encoded-u32-rooted result 28852696)
+      (append-encoded-u32-rooted result 1224736768)
+      (append-encoded-u32-rooted result 1210086029)
+      (append-encoded-u32-rooted result 141934725)
+      (append-encoded-u32-rooted result 3335454536)
+      (append-encoded-u32-rooted result 434843654)
+      (append-encoded-u32-rooted result 3343503921)
+      (append-encoded-u32-rooted result 2753)
+      (append-encoded-u32-rooted result 4059515136)
+      (append-encoded-u32-rooted result 2161049416)
+      (append-encoded-u32-rooted result 378024130)
+      (append-encoded-u32-rooted result 1975551304)
+      (append-encoded-u32-rooted result 3229959655)
+      (append-encoded-u32-rooted result 4282910324)
+      (append-encoded-u32-rooted result 755418830)
+      (append-encoded-u32-rooted result 542281033)
+      (append-encoded-u32-rooted result 1106389320)
+      (append-encoded-u32-rooted result 66247)
+      (append-encoded-u32-rooted result 2302738432)
+      (append-encoded-u32-rooted result 2370372690)
+      (append-encoded-u32-rooted result 2303199354)
+      (append-encoded-u32-rooted result 1285878737)
+      (append-encoded-u32-rooted result 256430217)
+      (append-encoded-u32-rooted result 1530915002)
+      (append-encoded-u32-rooted result 1539322307)
+      (append-x86-byte result 195)
+      (let [final (ref-get result)]
+        (do
+          (root_pop)
+          final)))))
+
 (defn emit-x86-helper-call-preserving-rcx [rel]
   (concat-three-byte-vectors-rooted
     (emit-push-rcx)
@@ -10494,6 +10547,9 @@
 (defn x86-selfhost-write-file-bytes-helper-size []
   255)
 
+(defn x86-selfhost-int-to-string-helper-size []
+  169)
+
 (defn x86-selfhost-helper-trailer-size [import-count]
   (+ (x86-import-stub-size import-count)
      (+ (x86-selfhost-command-line-arg-helper-size)
@@ -10519,7 +10575,8 @@
                                                                   (+ (x86-selfhost-print-string-helper-size)
                                                                      (+ (x86-selfhost-proc-exit-helper-size)
                                                                         (+ (x86-selfhost-write-file-helper-size)
-                                                                           (x86-selfhost-write-file-bytes-helper-size))))))))))))))))))))))))))
+                                                                           (+ (x86-selfhost-write-file-bytes-helper-size)
+                                                                              (x86-selfhost-int-to-string-helper-size)))))))))))))))))))))))))))
 
 (defn x86-helper-base-offset [import-stub-offset import-count]
   (+ import-stub-offset (x86-import-stub-size import-count)))
@@ -10595,6 +10652,9 @@
 
 (defn x86-selfhost-write-file-bytes-helper-offset [import-stub-offset import-count]
   (+ (x86-helper-base-offset import-stub-offset import-count) 1882))
+
+(defn x86-selfhost-int-to-string-helper-offset [import-stub-offset import-count]
+  (+ (x86-helper-base-offset import-stub-offset import-count) 2137))
 
 (defn is-selfhost-runtime-opcode-x86-core [opcode]
   (if (= opcode 64)
@@ -10880,9 +10940,15 @@
 	              (let [target-meta (vector-get function-metas (ref-get operand-ref))
 	        target-param-count (native-function-param-count target-meta)
 	        call-next-offset (native-call-rel-next-offset-x86 target-param-count current-depth)
-	        target-offset (if (< (ref-get operand-ref) import-count)
-	                        (x86-import-ret-stub-offset import-stub-offset import-count (ref-get operand-ref))
-	                        (- (vector-get (ref-get function-starts-ref) (- (ref-get operand-ref) import-count)) function-start-base))
+	        target-offset (if (= (ref-get operand-ref) 6)
+	                        (if (> import-count 6)
+	                          (x86-selfhost-int-to-string-helper-offset import-stub-offset import-count)
+	                          (if (< (ref-get operand-ref) import-count)
+	                            (x86-import-ret-stub-offset import-stub-offset import-count (ref-get operand-ref))
+	                            (- (vector-get (ref-get function-starts-ref) (- (ref-get operand-ref) import-count)) function-start-base)))
+	                        (if (< (ref-get operand-ref) import-count)
+	                          (x86-import-ret-stub-offset import-stub-offset import-count (ref-get operand-ref))
+	                          (- (vector-get (ref-get function-starts-ref) (- (ref-get operand-ref) import-count)) function-start-base)))
 	        call-rel (- target-offset (+ (ref-get current-offset-ref) call-next-offset))]
 		        (let [call-rel-bytes (emit-call-rel32 call-rel)]
 		          (do
@@ -13930,6 +13996,7 @@
           (append-native-bytes-rooted result (emit-x86-selfhost-proc-exit-helper) 12)
           (append-native-bytes-rooted result (emit-x86-selfhost-write-file-helper) 187)
           (append-native-bytes-rooted result (emit-x86-selfhost-write-file-bytes-helper) 255)
+          (append-native-bytes-rooted result (emit-x86-selfhost-int-to-string-helper) 169)
           (ref-get result))]
         (do
           (root_pop)
@@ -15460,6 +15527,60 @@
     head (concat-four-byte-vectors-rooted group1 group2 group3 group4)]
     (concat-byte-vectors-rooted head group5)))
 
+;; AArch64 int-to-string helper: allocator を使い i64 を tagged String へ十進変換する。
+(defn emit-aarch64-selfhost-int-to-string-helper []
+  (let [result (ref-new (vector-new 176))]
+    (do
+      (root_push result)
+      (append-encoded-u32-rooted result 2847822835)
+      (append-encoded-u32-rooted result 4177529854)
+      (append-encoded-u32-rooted result 2852127718)
+      (append-encoded-u32-rooted result 3531604992)
+      (append-encoded-u32-rooted result 2550136139)
+      (append-encoded-u32-rooted result 2852127731)
+      (append-encoded-u32-rooted result 2332033716)
+      (append-encoded-u32-rooted result 2432729729)
+      (append-encoded-u32-rooted result 4043309279)
+      (append-encoded-u32-rooted result 446670818)
+      (append-encoded-u32-rooted result 3666257088)
+      (append-encoded-u32-rooted result 3531604291)
+      (append-encoded-u32-rooted result 2596472836)
+      (append-encoded-u32-rooted result 2600697989)
+      (append-encoded-u32-rooted result 3506439201)
+      (append-encoded-u32-rooted result 285261989)
+      (append-encoded-u32-rooted result 956301349)
+      (append-encoded-u32-rooted result 2852389856)
+      (append-encoded-u32-rooted result 3053453088)
+      (append-encoded-u32-rooted result 872415394)
+      (append-encoded-u32-rooted result 3506439201)
+      (append-encoded-u32-rooted result 1384121763)
+      (append-encoded-u32-rooted result 956301347)
+      (append-encoded-u32-rooted result 3573751839)
+      (append-encoded-u32-rooted result 2432729731)
+      (append-encoded-u32-rooted result 3405840483)
+      (append-encoded-u32-rooted result 1384120356)
+      (append-encoded-u32-rooted result 3103785604)
+      (append-encoded-u32-rooted result 3103786627)
+      (append-encoded-u32-rooted result 2432705152)
+      (append-encoded-u32-rooted result 2852324322)
+      (append-encoded-u32-rooted result 3019899042)
+      (append-encoded-u32-rooted result 943723556)
+      (append-encoded-u32-rooted result 939529220)
+      (append-encoded-u32-rooted result 4043310146)
+      (append-encoded-u32-rooted result 1426063265)
+      (append-encoded-u32-rooted result 2990604896)
+      (append-encoded-u32-rooted result 4181724158)
+      (append-encoded-u32-rooted result 2831307763)
+      (append-encoded-u32-rooted result 3596551104)
+      (append-encoded-u32-rooted result 3573751839)
+      (append-encoded-u32-rooted result 3573751839)
+      (append-encoded-u32-rooted result 3573751839)
+      (append-encoded-u32-rooted result 3573751839)
+      (let [final (ref-get result)]
+        (do
+          (root_pop)
+          final)))))
+
 (defn append-aarch64-selfhost-string-concat-helper-rooted [result]
   (do
     (append-native-bytes-rooted result (emit-aarch64-selfhost-string-concat-helper) 308)
@@ -15563,8 +15684,11 @@
 (defn aarch64-selfhost-write-file-bytes-helper-offset [import-stub-offset import-count]
   (+ (aarch64-helper-base-offset import-stub-offset import-count) 2812))
 
+(defn aarch64-selfhost-int-to-string-helper-offset [import-stub-offset import-count]
+  (+ (aarch64-helper-base-offset import-stub-offset import-count) 3120))
+
 (defn aarch64-selfhost-helper-trailer-size [import-count]
-  (+ (aarch64-selfhost-write-file-bytes-helper-offset 0 import-count) 308))
+  (+ (aarch64-selfhost-int-to-string-helper-offset 0 import-count) 176))
 
 (defn aarch64-bundle-initial-capacity [import-stub-offset import-count]
   (+ import-stub-offset (aarch64-selfhost-helper-trailer-size import-count)))
@@ -18450,7 +18574,11 @@
     (emit-aarch64-b
       (- (aarch64-selfhost-alloc-helper-offset import-stub-offset import-count)
          (aarch64-import-ret-stub-offset import-stub-offset import-count import-idx)))
-    (emit-aarch64-ret)))
+    (if (= import-idx 6)
+      (emit-aarch64-b
+        (- (aarch64-selfhost-int-to-string-helper-offset import-stub-offset import-count)
+           (aarch64-import-ret-stub-offset import-stub-offset import-count import-idx)))
+      (emit-aarch64-ret))))
 
 (defn make-native-progress-state [done next-idx]
   (let [base0 (vector-push (vector-new 2) done)]
@@ -20041,6 +20169,7 @@
             (append-native-bytes-rooted result (emit-aarch64-selfhost-proc-exit-helper) 16)
             (append-native-bytes-rooted result (emit-aarch64-selfhost-write-file-helper) 224)
             (append-native-bytes-rooted result (emit-aarch64-selfhost-write-file-bytes-helper) 308)
+            (append-native-bytes-rooted result (emit-aarch64-selfhost-int-to-string-helper) 176)
             (ref-get result))]
           (do
             (root_pop)
