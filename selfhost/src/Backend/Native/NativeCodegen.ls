@@ -9504,16 +9504,22 @@
 
 (defn emit-x86-selfhost-print-string-helper []
   (let [part1 (byte-vector-4 72 137 198 72)
-    part2 (byte-vector-4 15 186 246 63)
-    part3 (byte-vector-4 139 86 4 72)
-    part4 (byte-vector-4 131 198 8 191)
-    part5 (byte-vector-4 1 0 0 0)
-    part6 (byte-vector-4 184 1 0 0)
-    part7 (byte-vector-4 0 15 5 49)
-    part8 (byte-vector-2 192 195)]
-    (concat-byte-vectors-rooted
+    part2 (byte-vector-4 133 246 116 40)
+    part3 (byte-vector-4 121 7 72 15)
+    part4 (byte-vector-4 186 246 63 235)
+    part5 (byte-vector-4 12 72 129 254)
+    part6 (byte-vector-4 0 0 0 64)
+    part7 (byte-vector-4 115 3 76 1)
+    part8 (byte-vector-4 246 139 86 4)
+    part9 (byte-vector-4 72 131 198 8)
+    part10 (byte-vector-4 191 1 0 0)
+    part11 (byte-vector-4 0 184 1 0)
+    part12 (byte-vector-4 0 0 15 5)
+    part13 (byte-vector-3 49 192 195)]
+    (concat-three-byte-vectors-rooted
       (concat-five-byte-vectors-rooted part1 part2 part3 part4 part5)
-      (concat-byte-vectors-rooted part6 (concat-byte-vectors-rooted part7 part8)))))
+      (concat-five-byte-vectors-rooted part6 part7 part8 part9 part10)
+      (concat-three-byte-vectors-rooted part11 part12 part13))))
 
 (defn emit-x86-selfhost-proc-exit-helper []
   (concat-three-byte-vectors-rooted
@@ -10320,7 +10326,7 @@
   4)
 
 (defn x86-selfhost-print-string-helper-size []
-  30)
+  51)
 
 (defn x86-selfhost-proc-exit-helper-size []
   12)
@@ -10417,7 +10423,7 @@
   (+ (x86-helper-base-offset import-stub-offset import-count) 1632))
 
 (defn x86-selfhost-proc-exit-helper-offset [import-stub-offset import-count]
-  (+ (x86-helper-base-offset import-stub-offset import-count) 1662))
+  (+ (x86-helper-base-offset import-stub-offset import-count) 1683))
 
 (defn is-selfhost-runtime-opcode-x86 [opcode]
   (if (= opcode 64)
@@ -13701,7 +13707,7 @@
           (append-native-bytes-rooted result (emit-x86-selfhost-map-get-helper) 62)
           (append-native-bytes-rooted result (emit-x86-selfhost-file-exists-helper) 84)
           (append-native-bytes-rooted result (emit-x86-selfhost-command-line-args-helper) 4)
-          (append-native-bytes-rooted result (emit-x86-selfhost-print-string-helper) 30)
+          (append-native-bytes-rooted result (emit-x86-selfhost-print-string-helper) 51)
           (append-native-bytes-rooted result (emit-x86-selfhost-proc-exit-helper) 12)
           (ref-get result))]
         (do

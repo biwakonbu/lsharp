@@ -11459,6 +11459,59 @@ fn test_wasm_compiler_string_literal_updates_data_ref_before_result_emit() {
 }
 
 #[test]
+fn test_native_codegen_x86_print_string_helper_resolves_static_data_offset() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let helper = source
+        .split("(defn emit-x86-selfhost-print-string-helper")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn emit-x86-selfhost-proc-exit-helper")
+                .next()
+        })
+        .expect("NativeCodegen.ls に x86 print-string helper が存在すること");
+    let size_body = source
+        .split("(defn x86-selfhost-print-string-helper-size")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn x86-selfhost-proc-exit-helper-size")
+                .next()
+        })
+        .expect("NativeCodegen.ls に x86 print-string helper size が存在すること");
+    let proc_exit_offset_body = source
+        .split("(defn x86-selfhost-proc-exit-helper-offset")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn is-selfhost-runtime-opcode-x86").next())
+        .expect("NativeCodegen.ls に x86 proc-exit helper offset が存在すること");
+    let bundle_writer = source
+        .split("(defn generate-native-x86-64-bundle-with-import-count")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\n(defn generate-native-x86-64-bundle [functions]")
+                .next()
+        })
+        .expect("NativeCodegen.ls に x86 bundle trailer writer が存在すること");
+
+    assert!(
+        helper.contains("part2 (byte-vector-4 133 246 116 40)")
+            && helper.contains("part3 (byte-vector-4 121 7 72 15)")
+            && helper.contains("part4 (byte-vector-4 186 246 63 235)")
+            && helper.contains("part5 (byte-vector-4 12 72 129 254)")
+            && helper.contains("part6 (byte-vector-4 0 0 0 64)")
+            && helper.contains("part7 (byte-vector-4 115 3 76 1)")
+            && helper.contains("part8 (byte-vector-4 246 139 86 4)"),
+        "x86 print-string helper は tagged pointer の tag を外し、small static data offset には r14 を足し、raw pointer はそのまま header を読むべき"
+    );
+    assert!(
+        size_body.contains("\n  51)")
+            && proc_exit_offset_body.contains("1683")
+            && bundle_writer.contains(
+                "(append-native-bytes-rooted result (emit-x86-selfhost-print-string-helper) 51)"
+            ),
+        "x86 print-string helper の実長と proc-exit trailer offset は static offset 解決追加後も同期するべき"
+    );
+}
+
+#[test]
 fn test_wasm_compiler_env_bind_returns_updated_environment_after_root_pop() {
     let source = std::fs::read_to_string(selfhost_source_path("CompilerBase.ls"))
         .expect("canonical CompilerBase.ls が読み込めること");
