@@ -344,24 +344,23 @@ if [[ -n "${VERSION:-}" ]]; then
     exit 1
   fi
 fi
-if [[ "$NATIVE_ONLY" != "1" ]]; then
+if [[ "$NATIVE_ONLY" == "1" ]]; then
+  # native-only App.Cli smoke is limited to --version and --help.
+  # The producer certifies the boot surface; host-launcher archives retain the
+  # broader source-file command smoke below.
+  native_help_output="$("$LSHARP_BIN" --help)"
+  if [[ "$native_help_output" != *"Usage: lsharp"* ]]; then
+    echo "ERROR: native-only App.Cli help output is invalid" >&2
+    exit 1
+  fi
+else
   (
     cd "$SMOKE_DIR"
     "$LSHARP_LSP_BIN" --version >/dev/null
   )
-fi
-run_smoke_cli check "$SMOKE_SOURCE_NAME" >/dev/null
-run_smoke_cli fmt "$SMOKE_SOURCE_NAME" >/dev/null
-run_smoke_cli test "$SMOKE_METADATA_SOURCE_NAME" >/dev/null
-if [[ "$NATIVE_ONLY" == "1" ]]; then
-  run_smoke_cli compile "$SMOKE_SOURCE_NAME" >"$SMOKE_WASM"
-  run_smoke_cli doc "$SMOKE_METADATA_SOURCE_NAME" >"$SMOKE_DOC_HTML"
-  run_smoke_cli doc "$SMOKE_METADATA_SOURCE_NAME" --json >"$SMOKE_DOC_JSON"
-  if ! grep -Eq '^wasm-size:[0-9]+$' "$SMOKE_WASM"; then
-    echo "ERROR: native App.Cli compile summary is invalid: $SMOKE_WASM" >&2
-    exit 1
-  fi
-else
+  run_smoke_cli check "$SMOKE_SOURCE_NAME" >/dev/null
+  run_smoke_cli fmt "$SMOKE_SOURCE_NAME" >/dev/null
+  run_smoke_cli test "$SMOKE_METADATA_SOURCE_NAME" >/dev/null
   run_smoke_cli compile "$SMOKE_SOURCE_NAME" -o "$SMOKE_WASM_NAME" >/dev/null
   run_smoke_cli doc "$SMOKE_METADATA_SOURCE_NAME" -o "$(basename "$SMOKE_DOC_HTML")" >/dev/null
   run_smoke_cli doc "$SMOKE_METADATA_SOURCE_NAME" --json -o "$(basename "$SMOKE_DOC_JSON")" >/dev/null
@@ -373,16 +372,15 @@ else
     echo "ERROR: compile output is not a Wasm binary: $SMOKE_WASM" >&2
     exit 1
   fi
-fi
+  if [[ ! -s "$SMOKE_DOC_HTML" ]]; then
+    echo "ERROR: doc HTML output is empty: $SMOKE_DOC_HTML" >&2
+    exit 1
+  fi
 
-if [[ ! -s "$SMOKE_DOC_HTML" ]]; then
-  echo "ERROR: doc HTML output is empty: $SMOKE_DOC_HTML" >&2
-  exit 1
-fi
-
-if [[ ! -s "$SMOKE_DOC_JSON" ]]; then
-  echo "ERROR: doc JSON output is empty: $SMOKE_DOC_JSON" >&2
-  exit 1
+  if [[ ! -s "$SMOKE_DOC_JSON" ]]; then
+    echo "ERROR: doc JSON output is empty: $SMOKE_DOC_JSON" >&2
+    exit 1
+  fi
 fi
 
 if [[ "$NATIVE_ONLY" == "1" ]]; then

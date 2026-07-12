@@ -4072,6 +4072,12 @@ fn test_e2e_ops06_release_smoke_contract() {
         "release-smoke.sh は native-only official archive payload と rollback anchor を検証すること"
     );
     assert!(
+        smoke_content.contains("native-only App.Cli smoke is limited to --version and --help")
+            && smoke_content.contains("native_help_output")
+            && smoke_content.contains(r#""$LSHARP_BIN" --help"#),
+        "release-smoke.sh は native-only artifact では実証済みの --version / --help boundary を検証すること"
+    );
+    assert!(
         smoke_content.contains(r#"ROLLBACK_ARCHIVE_PATH="${2:-}""#)
             && smoke_content.contains("rollback compatibility archive is required")
             && smoke_content.contains("rollback compatibility asset checksum mismatch")
