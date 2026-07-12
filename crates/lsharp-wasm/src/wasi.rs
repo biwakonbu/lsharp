@@ -153,11 +153,12 @@ fn emit_wasm_wasi_with_options(
     // 22: root_push
     // 23: root_pop
     // 24: root_set
-    // 25: __gc_collect
-    // 26..26+N-1: ユーザー関数
-    // 26+N: __proc_exit_with_collect
-    // 27+N: _start
-    // 28+N: wasi:cli/run@0.2.3#run
+    // 25: __write_file_bytes
+    // 26: __gc_collect
+    // 27..27+N-1: ユーザー関数
+    // 27+N: __proc_exit_with_collect
+    // 28+N: _start
+    // 29+N: wasi:cli/run@0.2.3#run
     let fd_write_idx: u32 = 0;
     let proc_exit_wasm_idx: u32 = 1;
     let args_get_idx: u32 = 2;
@@ -183,8 +184,9 @@ fn emit_wasm_wasi_with_options(
     let root_push_idx: u32 = WASI_IMPORT_COUNT + 13;
     let root_pop_idx: u32 = WASI_IMPORT_COUNT + 14;
     let root_set_idx: u32 = WASI_IMPORT_COUNT + 15;
-    let gc_collect_idx: u32 = WASI_IMPORT_COUNT + 16;
-    let user_func_base: u32 = WASI_IMPORT_COUNT + 17;
+    let write_file_bytes_idx: u32 = WASI_IMPORT_COUNT + 16;
+    let gc_collect_idx: u32 = WASI_IMPORT_COUNT + 17;
+    let user_func_base: u32 = WASI_IMPORT_COUNT + 18;
     let proc_exit_helper_idx: u32 = user_func_base + module.functions.len() as u32;
     let start_func_idx: u32 = proc_exit_helper_idx + 1;
     let component_run_func_idx: u32 = start_func_idx + 1;
@@ -419,6 +421,7 @@ fn emit_wasm_wasi_with_options(
     functions.function(alloc_type_idx);
     functions.function(read_stdin_type_idx);
     functions.function(string_concat_type_idx);
+    functions.function(write_file_type_idx);
     functions.function(read_stdin_type_idx);
     for &type_idx in &user_type_indices {
         functions.function(type_idx);
@@ -625,6 +628,13 @@ fn emit_wasm_wasi_with_options(
     emit_root_push_func(&mut codes, ROOT_STACK_TOP_GLOBAL_IDX, root_stack_base);
     emit_root_pop_func(&mut codes, ROOT_STACK_TOP_GLOBAL_IDX, root_stack_base);
     emit_root_set_func(&mut codes, ROOT_STACK_TOP_GLOBAL_IDX, root_stack_base);
+    emit_write_file_bytes_func(
+        &mut codes,
+        alloc_func_idx,
+        path_open_idx,
+        fd_write_idx,
+        fd_close_idx,
+    );
     emit_gc_collect_func(&mut codes, collector_globals, gc_layout);
 
     let struct_scratch_fields = max_struct_field_count(module);
@@ -658,6 +668,7 @@ fn emit_wasm_wasi_with_options(
             int_to_string_idx,
             read_file_idx,
             write_file_idx,
+            Some(write_file_bytes_idx),
             file_exists_idx,
             command_line_args_idx,
             command_line_arg_idx,
@@ -1178,6 +1189,7 @@ fn emit_wasm_http_handler_core(module: &Module) -> Result<Vec<u8>, CodegenError>
             int_to_string_idx,
             read_file_idx,
             write_file_idx,
+            None,
             file_exists_idx,
             command_line_args_idx,
             command_line_arg_idx,
@@ -3053,6 +3065,143 @@ fn emit_write_file_func(
     codes.function(&f);
 }
 
+/// __write_file_bytes: Vector の各要素の下位 8 bit を raw bytes として書き込む。
+///
+/// 呼び出し元は path/vector を root stack に保持してからこの helper を呼ぶため、
+/// packed buffer の確保中に GC が走っても入力オブジェクトは回収されない。
+fn emit_write_file_bytes_func(
+    codes: &mut CodeSection,
+    alloc_func_idx: u32,
+    path_open_idx: u32,
+    fd_write_idx: u32,
+    fd_close_idx: u32,
+) {
+    use wasm_encoder::{Instruction as W, MemArg};
+
+    let mem32 = |offset: u64| MemArg {
+        offset,
+        align: 2,
+        memory_index: 0,
+    };
+    let mem64 = |offset: u64| MemArg {
+        offset,
+        align: 3,
+        memory_index: 0,
+    };
+
+    // params: 0=path(i64), 1=Vector(i64)
+    // locals: 2=path_offset, 3=path_len, 4=vector_addr, 5=vector_len,
+    //         6=buffer_addr, 7=index, 8=fd, 9=nwritten (all i32)
+    let mut f = wasm_encoder::Function::new(vec![(8, ValType::I32)]);
+
+    // String path の bytes を取得する。
+    f.instruction(&W::LocalGet(0));
+    f.instruction(&W::I32WrapI64);
+    f.instruction(&W::I32Const(8));
+    f.instruction(&W::I32Add);
+    f.instruction(&W::LocalSet(2));
+    f.instruction(&W::LocalGet(0));
+    f.instruction(&W::I32WrapI64);
+    f.instruction(&W::I32Load(mem32(4)));
+    f.instruction(&W::LocalSet(3));
+
+    // Vector layout: [tag:i32, capacity:i32, length:i32, pad:i32, i64 elements...]
+    f.instruction(&W::LocalGet(1));
+    f.instruction(&W::I32WrapI64);
+    f.instruction(&W::LocalSet(4));
+    f.instruction(&W::LocalGet(4));
+    f.instruction(&W::I32Load(mem32(8)));
+    f.instruction(&W::LocalSet(5));
+
+    // Vector の i64 要素を packed bytes へ詰めるための一時バッファを確保する。
+    f.instruction(&W::LocalGet(5));
+    f.instruction(&W::I64ExtendI32U);
+    f.instruction(&W::Call(alloc_func_idx));
+    f.instruction(&W::I32WrapI64);
+    f.instruction(&W::LocalSet(6));
+
+    f.instruction(&W::I32Const(0));
+    f.instruction(&W::LocalSet(7));
+    f.instruction(&W::Block(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::Loop(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::LocalGet(7));
+    f.instruction(&W::LocalGet(5));
+    f.instruction(&W::I32GeU);
+    f.instruction(&W::BrIf(1));
+
+    // buffer[index] = low_byte(vector[index])
+    f.instruction(&W::LocalGet(6));
+    f.instruction(&W::LocalGet(7));
+    f.instruction(&W::I32Add);
+    f.instruction(&W::LocalGet(4));
+    f.instruction(&W::I32Const(16));
+    f.instruction(&W::I32Add);
+    f.instruction(&W::LocalGet(7));
+    f.instruction(&W::I32Const(3));
+    f.instruction(&W::I32Shl);
+    f.instruction(&W::I32Add);
+    f.instruction(&W::I64Load(mem64(0)));
+    f.instruction(&W::I32WrapI64);
+    f.instruction(&W::I32Store8(MemArg {
+        offset: 0,
+        align: 0,
+        memory_index: 0,
+    }));
+
+    f.instruction(&W::LocalGet(7));
+    f.instruction(&W::I32Const(1));
+    f.instruction(&W::I32Add);
+    f.instruction(&W::LocalSet(7));
+    f.instruction(&W::Br(0));
+    f.instruction(&W::End);
+    f.instruction(&W::End);
+
+    // path_open(dirfd=3, dirflags=0, path, path_len, oflags=CREAT|TRUNC,
+    //           rights=fd_write, rights_inheriting=0, fdflags=0, fd_ptr=280)
+    f.instruction(&W::I32Const(3));
+    f.instruction(&W::I32Const(0));
+    f.instruction(&W::LocalGet(2));
+    f.instruction(&W::LocalGet(3));
+    f.instruction(&W::I32Const(5));
+    f.instruction(&W::I64Const(0x40));
+    f.instruction(&W::I64Const(0));
+    f.instruction(&W::I32Const(0));
+    f.instruction(&W::I32Const(280));
+    f.instruction(&W::Call(path_open_idx));
+    f.instruction(&W::Drop);
+
+    f.instruction(&W::I32Const(280));
+    f.instruction(&W::I32Load(mem32(0)));
+    f.instruction(&W::LocalSet(8));
+
+    // iovec = { buffer_addr, vector_len } at scratch 352.
+    f.instruction(&W::I32Const(352));
+    f.instruction(&W::LocalGet(6));
+    f.instruction(&W::I32Store(mem32(0)));
+    f.instruction(&W::I32Const(352));
+    f.instruction(&W::LocalGet(5));
+    f.instruction(&W::I32Store(mem32(4)));
+
+    f.instruction(&W::LocalGet(8));
+    f.instruction(&W::I32Const(352));
+    f.instruction(&W::I32Const(1));
+    f.instruction(&W::I32Const(360));
+    f.instruction(&W::Call(fd_write_idx));
+    f.instruction(&W::Drop);
+
+    f.instruction(&W::I32Const(360));
+    f.instruction(&W::I32Load(mem32(0)));
+    f.instruction(&W::LocalSet(9));
+    f.instruction(&W::LocalGet(8));
+    f.instruction(&W::Call(fd_close_idx));
+    f.instruction(&W::Drop);
+
+    f.instruction(&W::LocalGet(9));
+    f.instruction(&W::I64ExtendI32U);
+    f.instruction(&W::End);
+    codes.function(&f);
+}
+
 /// __file_exists: String オブジェクトパスを受け取り、存在すれば 1、しなければ 0 を返す
 fn emit_file_exists_func(codes: &mut CodeSection, path_open_idx: u32, fd_close_idx: u32) {
     use wasm_encoder::Instruction as W;
@@ -3699,6 +3848,7 @@ fn emit_instructions_wasi(
     int_to_string_idx: u32,
     read_file_idx: u32,
     write_file_idx: u32,
+    write_file_bytes_idx: Option<u32>,
     file_exists_idx: u32,
     command_line_args_idx: u32,
     command_line_arg_idx: u32,
@@ -3816,6 +3966,14 @@ fn emit_instructions_wasi(
             Ok(())
         },
         |f, instruction| {
+            if matches!(instruction, Instruction::WriteFileBytes) {
+                let helper_idx = write_file_bytes_idx.ok_or_else(|| CodegenError::Error {
+                    msg: "write-file-bytes はこの target では未対応です".to_string(),
+                })?;
+                f.instruction(&W::Call(helper_idx));
+                return Ok(true);
+            }
+
             emit_wasi_struct_instruction(f, instruction, gc_types, alloc_func_idx, scratch)
         },
     )
@@ -3913,6 +4071,41 @@ mod tests {
              (defn main [] (print (double 21)))",
         );
         assert_eq!(run_wasi(&wasm), "42\n");
+    }
+
+    #[test]
+    fn test_wasi_write_file_bytes_writes_vector_low_bytes() {
+        let wasm = compile_wasi(
+            r#"
+            (defn main []
+              (let [bytes (vector-push
+                            (vector-push
+                              (vector-push
+                                (vector-push (vector-new 4) 0)
+                                97)
+                              115)
+                            109)]
+                (write-file-bytes "raw.wasm" bytes)))
+            "#,
+        );
+        let dir = std::env::temp_dir().join(format!(
+            "lsharp_wasi_write_file_bytes_{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("fixture directory の作成に失敗");
+
+        let result = (|| {
+            let output = crate::wasi_runner::run_wasm_wasi_with_dir(&wasm, Some(&dir))
+                .expect("write-file-bytes program の実行に失敗");
+            assert_eq!(output, "");
+            assert_eq!(
+                std::fs::read(dir.join("raw.wasm")).expect("raw.wasm の読み込みに失敗"),
+                b"\0asm"
+            );
+        })();
+        let _ = std::fs::remove_dir_all(&dir);
+        result
     }
 
     #[test]

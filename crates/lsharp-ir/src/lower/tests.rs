@@ -156,6 +156,24 @@ fn test_lower_function_call() {
 }
 
 #[test]
+fn test_lower_write_file_bytes_uses_dedicated_instruction() {
+    let module = lower("(defn main [] (write-file-bytes \"out.wasm\" (vector-new 4)))");
+    let main = module
+        .functions
+        .iter()
+        .find(|function| function.name == "main")
+        .expect("main function が存在するべき");
+
+    assert!(
+        main.body
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::WriteFileBytes)),
+        "write-file-bytes は import index を増やさない専用 IR 命令へ lower するべき: {:?}",
+        main.body
+    );
+}
+
+#[test]
 fn test_lower_function_prefers_ast_arity_when_inferred_name_collides() {
     let program = lsharp_syntax::parse("(defn make-if [cond then else] cond)").unwrap();
     let expr_type_results = HashMap::new();

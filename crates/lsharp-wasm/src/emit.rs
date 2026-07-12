@@ -191,6 +191,12 @@ where
             Instruction::CallImport(i) => {
                 func.instruction(&W::Call(*i));
             }
+            Instruction::WriteFileBytes => {
+                return Err(CodegenError::Error {
+                    msg: "write-file-bytes は target 固有の runtime helper を必要とします"
+                        .to_string(),
+                });
+            }
             Instruction::Drop => {
                 func.instruction(&W::Drop);
             }

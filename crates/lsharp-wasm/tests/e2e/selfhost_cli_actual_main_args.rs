@@ -83,6 +83,76 @@ fn run_cli_main_with_input_file_capture(
     output
 }
 
+#[test]
+fn test_e2e_selfhost_cli_main_compile_and_build_output_actual_preview1_wasm() {
+    let wasm = compile_only(selfhost_cli_runtime_bundle());
+
+    for command in ["compile", "build"] {
+        let dir = cli_main_args_fixture_dir(&format!("{command}_actual_wasm"));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("fixture directory の作成に失敗");
+        std::fs::write(dir.join("input.ls"), "(defn main [] 42)")
+            .expect("fixture input.ls の書き込みに失敗");
+
+        let output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_args_and_stdin_capture(
+            &wasm,
+            Some(&dir),
+            &[command, "input.ls", "-o", "output.wasm"],
+            "",
+        )
+        .expect("Cli main compile/build 実行に失敗");
+        let artifact = std::fs::read(dir.join("output.wasm"))
+            .expect("compile/build output artifact の読み込みに失敗");
+        let _ = std::fs::remove_dir_all(&dir);
+
+        assert_eq!(
+            output.exit_code, 0,
+            "{command} -o は成功終了するべき: stdout={:?}",
+            output.stdout
+        );
+        assert!(
+            artifact.starts_with(b"\0asm"),
+            "{command} -o は wasm-size summary ではなく actual Preview1 Wasm を書くべき: {:?}",
+            artifact
+        );
+        wasmparser::Validator::new()
+            .validate_all(&artifact)
+            .unwrap_or_else(|err| panic!("{command} -o output は valid Wasm であるべき: {err}"));
+    }
+
+    let dir = cli_main_args_fixture_dir("component_output_boundary");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("fixture directory の作成に失敗");
+    std::fs::write(dir.join("input.ls"), "(defn main [] 42)")
+        .expect("fixture input.ls の書き込みに失敗");
+    let output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_args_and_stdin_capture(
+        &wasm,
+        Some(&dir),
+        &[
+            "compile",
+            "input.ls",
+            "--target",
+            "wasi-component",
+            "-o",
+            "output.component.wasm",
+        ],
+        "",
+    )
+    .expect("Cli main component output 実行に失敗");
+    let output_exists = dir.join("output.component.wasm").exists();
+    let _ = std::fs::remove_dir_all(&dir);
+
+    assert_eq!(
+        output.exit_code, 1,
+        "component packaging 未実装時は compile -o を成功扱いにしない: stdout={:?}",
+        output.stdout
+    );
+    assert!(
+        !output_exists,
+        "component output は external packaging が接続されるまで artifact を書かない"
+    );
+}
+
 /// TEST-CLI-02-AP: actual Cli main は argv 経由で check file command を処理できること
 #[test]
 #[ignore]

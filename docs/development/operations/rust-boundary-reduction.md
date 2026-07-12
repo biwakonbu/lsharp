@@ -10,8 +10,8 @@ L# の通常開発を `cargo build` の待ち時間から切り離す。対象�
 
 - selfhost compiler の fixed-point は、supported target の stage chain で確認済みである。
 - native-only `program.native` の release smoke は `--version` と `--help` だけを実証対象にしている。source-file command の成功は release readiness の根拠ではない。
-- `selfhost/src/App/Cli.ls` と `selfhost/src/App/EmbeddedCli.ls` の `compile -o` / `build -o` は現在 `wasm-size:<n>` summary を `write-file` する。actual Wasm bytes を出力する contract ではない。
-- selfhost compiler IR は `write-file` (opcode `89`) と内部 `write-file-bytes` (opcode `90`) を持ち、両 native target の runtime helper は byte-level ABI test で固定した。まだ `App.Cli` は summary text を書く実装であり、native `program.native` の source-file output は単独では完了していない。
+- `selfhost/src/App/Cli.ls` の default `compile -o` / `build -o` は `write-file-bytes` で valid core Wasm bytes を書く。`wasi-component` output は selfhost 側に Component encoder を持たないため、artifact を偽装せず external packaging が必要として失敗する。`selfhost/src/App/EmbeddedCli.ls` は引き続き summary text を書く。
+- selfhost compiler IR は `write-file` (opcode `89`) と内部 `write-file-bytes` (opcode `90`) を持ち、両 native target の runtime helper は byte-level ABI test で固定した。現在の `App.Cli` output builder は selfhost `env` runtime import layout の valid core Wasm を返すため、standalone WASI Preview1 execution / component packaging / native `program.native` の source-file output は単独では完了していない。
 - Rust host launcher は embedded guest の command execution、actual artifact write、Wasm component capability wiring を担当している。prebuilt launcher を使う利用者は Rust toolchain を必要としないが、Rust 実装への runtime dependence は残る。
 - known rollback host-launcher archive を stage0 seed にした local bootstrap は、`cargo` を PATH から外した状態で stage2 再生成、`check`、actual Wasm output まで実行できる。これは no-Cargo development loop の証跡である。
 - `fetch-stage0.sh` が要求する GitHub Release archive/checksum の公開契約は未接続である。fresh clone が自動で stage0 を取得できることは、この時点では未達とする。
@@ -55,7 +55,7 @@ immutable prebuilt host launcher に委譲する executable は、移行中の�
 
 ## 残りの順序
 
-1. `V2-16b`: byte-output ABI と両 target の native `write-file` runtime helper は追加済み。`App.Cli` / `EmbeddedCli` の compile/build を actual Wasm bytes 出力へ移し、component sidecar と同じ WASI Preview1 file ABI を selfhost Wasm runtime に接続する。
+1. `V2-16b`: byte-output ABI、両 target の native `write-file` runtime helper、`App.Cli` default output の valid core Wasm bytes 書き込みは追加済み。standalone WASI Preview1 execution/capability ABI、`EmbeddedCli` output、component sidecar、両 native target の actual bytes E2E を接続する。
 2. `V2-16c`: host-only public command を native selfhost 実装へ移すか、外部 tool の責務として明示する。planned response や warmup-only REPL は parity と扱わない。
 3. `V2-16d`: Mac Apple Silicon と local Lima Linux x86_64 VM で、native `program.native` 単独の source-file command suite を実行する。stage0 からの再生成後も同じ gate を通す。
 4. `V2-16e`: 通常の開発/test 手順から Rust を外し、Rust workspace を stage0/oracle/rollback に限定する。

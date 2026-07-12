@@ -206,6 +206,10 @@ pub enum Instruction {
     // ホスト関数呼び出し
     CallImport(u32), // import された関数のインデックス
 
+    // バックエンド専用ランタイム命令
+    // 既存の import index を消費せず、Vector の下位 8 bit を raw bytes として書き込む。
+    WriteFileBytes,
+
     // スタック操作
     Drop,
 
@@ -327,6 +331,7 @@ impl fmt::Display for Instruction {
             Instruction::Return => write!(f, "return"),
             Instruction::Unreachable => write!(f, "unreachable"),
             Instruction::CallImport(i) => write!(f, "call_import {i}"),
+            Instruction::WriteFileBytes => write!(f, "write_file_bytes"),
             Instruction::Drop => write!(f, "drop"),
             Instruction::StructNew(idx) => write!(f, "struct.new {idx}"),
             Instruction::StructGet(type_idx, field_idx) => {

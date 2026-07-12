@@ -1256,6 +1256,31 @@ impl Lower {
                         ctx.emit(Instruction::Call(idx));
                     }
 
+                    // write-file-bytes: Vector の各要素の下位 8 bit を raw bytes として書き込む。
+                    // 専用 IR 命令にして既存 import index を増やさず、helper 内の割り当て中も
+                    // path/vector を root stack で保持する。
+                    Expr::Var(_, name) if name == "write-file-bytes" => {
+                        if args.len() >= 2 {
+                            let path_local = self.lower_expr_to_rooted_local(
+                                ctx,
+                                &args[0],
+                                "_write_bytes_path",
+                                "_write_bytes_path_root_slot",
+                            )?;
+                            let bytes_local = self.lower_expr_to_rooted_local(
+                                ctx,
+                                &args[1],
+                                "_write_bytes_value",
+                                "_write_bytes_value_root_slot",
+                            )?;
+                            ctx.emit(Instruction::LocalGet(path_local));
+                            ctx.emit(Instruction::LocalGet(bytes_local));
+                            ctx.emit(Instruction::WriteFileBytes);
+                            self.emit_root_pop_drop(ctx)?;
+                            self.emit_root_pop_drop(ctx)?;
+                        }
+                    }
+
                     // TypeName.field アクセサ呼び出し
                     Expr::Var(_, name)
                         if name.contains('.')

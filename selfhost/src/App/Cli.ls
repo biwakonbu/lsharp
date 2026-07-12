@@ -76,12 +76,25 @@
 (defn wasm-size-text [size] (string-concat "wasm-size:" (int-to-string size)))
 (defn compile-file-functions-data-with-cache [file-path cache-ref parse-count-ref] (compile-file-functions-payload-with-cache file-path 10 cache-ref parse-count-ref))
 (defn compile-file-functions-data [file-path] (let [cache-ref (ref-new (map-new)) parse-count-ref (ref-new 0)] (compile-file-functions-data-with-cache file-path cache-ref parse-count-ref)))
+(defn compile-file-wasm-bytes [file-path] (let [pair (compile-file-functions-data file-path) functions (vector-get pair 0) data (vector-get pair 1)] (build-wasm-bytes-wasi functions data)))
 (defn target-wasm-size-adjustment [target] (if (= target (compile-target-preview1)) (- (vector-length (emit-import-section-for-target (compile-target-preview1))) (vector-length (emit-import-section-for-target (compile-target-component)))) 0))
-(defn compile-file-wasm-size [file-path target] (let [pair (compile-file-functions-data file-path) functions (vector-get pair 0) data (vector-get pair 1) wasm-bytes (build-wasm-bytes-wasi functions data)] (+ (vector-length wasm-bytes) (target-wasm-size-adjustment target))))
+(defn compile-file-wasm-size [file-path target] (let [wasm-bytes (compile-file-wasm-bytes file-path)] (+ (vector-length wasm-bytes) (target-wasm-size-adjustment target))))
 (defn run-compile-source [src opts] (let [program (parse-program src) ir (lower program) wasm-size (emit-wasm-with-target ir opts)] (do (print-string (wasm-size-text wasm-size)) (print-string "
 ") (exit-success))))
-(defn run-compile-output [file-path output-path opts] (if (file-exists? file-path) (let [wasm-size (compile-file-wasm-size file-path opts) summary (wasm-size-text wasm-size)] (do (write-file output-path summary) (print-string summary) (print-string "
-") (exit-success))) (exit-compile-error)))
+(defn component-output-boundary-message [] "wasi-component output requires external component packaging")
+(defn run-compile-output [file-path output-path opts]
+  (if (file-exists? file-path)
+    (if (= opts (compile-target-preview1))
+      (let [wasm-bytes (compile-file-wasm-bytes file-path)
+        summary (wasm-size-text (vector-length wasm-bytes))]
+        (do
+          (write-file-bytes output-path wasm-bytes)
+          (print-string summary)
+          (print-string "
+")
+          (exit-success)))
+      (do (cli-stderr (component-output-boundary-message)) (exit-compile-error)))
+    (exit-compile-error)))
 (defn run-build-output [file-path output-path opts] (run-compile-output file-path output-path opts))
 (defn test-examples-text [count] (string-concat "examples:" (int-to-string count)))
 (defn test-invariants-text [count] (string-concat "invariants:" (int-to-string count)))

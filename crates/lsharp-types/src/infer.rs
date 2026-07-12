@@ -932,6 +932,15 @@ impl Infer {
             )),
         );
 
+        // write-file-bytes: (String, Vector) -> Int (Vector の下位 8 bit を raw bytes として書き込み)
+        env.insert(
+            "write-file-bytes".to_string(),
+            TypeScheme::mono(Type::Fun(
+                vec![Type::string(), Type::vector()],
+                Box::new(Type::int()),
+            )),
+        );
+
         // file-exists?: String -> Bool (ファイルが存在するか)
         env.insert(
             "file-exists?".to_string(),
@@ -2765,6 +2774,12 @@ mod tests {
 
         let grow = infer_one("(defn grow [v] (vector-push v 1))");
         assert_eq!(grow, "(Vector) -> Vector");
+    }
+
+    #[test]
+    fn test_write_file_bytes_builtin_accepts_vector_type() {
+        let result = infer_one("(defn write-bytes [bytes] (write-file-bytes \"out.wasm\" bytes))");
+        assert_eq!(result, "(Vector) -> Int");
     }
 
     #[test]
