@@ -46,6 +46,36 @@ fn test_e2e_selfhost_parser_parametric_type_heads() {
     );
 }
 
+/// TEST-SYNTAX-02l2: closed type-alias は target の raw type expression を保持する
+#[test]
+fn test_e2e_selfhost_parser_type_alias_retains_closed_target_expr() {
+    let harness = r#"
+(defn type-alias-target-or-zero [node]
+  (if (> (vector-length node) 2)
+    (vector-get node 2)
+    0))
+
+(defn main []
+  (let [alias-node (vector-get (parse-program "(type-alias Str String)") 0)
+        target (type-alias-target-or-zero alias-node)]
+    (do
+      (print (if (= (vector-get alias-node 0) (ast-typealias)) 1 0))
+      (print (if (= (vector-get alias-node 1) (name-hash "Str" 0 3)) 1 0))
+      (print (if (= target 0) 0 (if (= (vector-get target 0) (ast-type-named)) 1 0)))
+      (print (if (= target 0) 0 (if (= (vector-get target 1) (name-hash "String" 0 6)) 1 0)))
+      0)))
+"#;
+
+    let output = run_parser_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["1", "1", "1", "1"],
+        "closed type-alias は name と target raw type expression を保持するべき"
+    );
+}
+
 /// TEST-SYNTAX-02m: annotation form を AST ノードにパースできる
 #[test]
 fn test_e2e_selfhost_parser_ann_form() {

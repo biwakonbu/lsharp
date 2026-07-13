@@ -199,7 +199,9 @@
 (defn make-computation [builder-hash] (vector-push-triple-rooted (vector-new 8) (ast-computation) builder-hash 0))
 (defn make-type-decl [name-hash] (vector-push-pair-rooted (vector-new 2) (ast-type-decl) name-hash))
 (defn make-record-def [name-hash] (vector-push-pair-rooted (vector-new 2) (ast-recorddef) name-hash))
-(defn make-type-alias [name-hash] (vector-push-pair-rooted (vector-new 2) (ast-typealias) name-hash))
+;; closed type-alias: [23, name-hash, raw-target-type-expr]。parametric head は target を 0 に保留する。
+(defn make-type-alias [name-hash target-type-expr]
+  (vector-push-triple-rooted (vector-new 3) (ast-typealias) name-hash target-type-expr))
 (defn make-type-constrained [name-hash] (vector-push-pair-rooted (vector-new 2) (ast-typeconstrained) name-hash))
 (defn make-module-decl [name-hash] (vector-push-triple-rooted (vector-new 8) (ast-module-decl) name-hash 0))
 (defn make-import-decl [name-hash name-start name-end] (vector-push-pair-rooted (vector-push-pair-rooted (vector-new 4) (ast-import-decl) name-hash) name-start name-end))

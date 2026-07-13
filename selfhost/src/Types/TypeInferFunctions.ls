@@ -60,31 +60,35 @@
     0
     (vector-get signature (+ (vector-get signature 1) 2))))
 
-(defn typeinfer-unify-defn-param-annotations-loop [signature param-types idx count subst]
+(defn typeinfer-unify-defn-param-annotations-loop [signature param-types idx count subst alias-env]
   (if (>= idx count)
     subst
     (let [type-expr (typeinfer-defn-signature-param-expr signature idx)]
       (if (= type-expr 0)
-        (typeinfer-unify-defn-param-annotations-loop signature param-types (+ idx 1) count subst)
-        (let [next-subst (unify (vector-get param-types idx) (typeinfer-resolve-type-expr type-expr) subst)]
+        (typeinfer-unify-defn-param-annotations-loop signature param-types (+ idx 1) count subst alias-env)
+        (let [next-subst
+                (unify
+                  (vector-get param-types idx)
+                  (typeinfer-resolve-type-expr-with-aliases type-expr alias-env)
+                  subst)]
           (if (= (unify-failed next-subst) 1)
             next-subst
-            (typeinfer-unify-defn-param-annotations-loop signature param-types (+ idx 1) count next-subst)))))))
+            (typeinfer-unify-defn-param-annotations-loop signature param-types (+ idx 1) count next-subst alias-env)))))))
 
-(defn typeinfer-defn-param-annotation-subst [node param-count param-types subst]
+(defn typeinfer-defn-param-annotation-subst [node param-count param-types subst alias-env]
   (let [signature (typeinfer-defn-signature node param-count)]
     (if (= signature 0)
       subst
-      (typeinfer-unify-defn-param-annotations-loop signature param-types 0 param-count subst))))
+      (typeinfer-unify-defn-param-annotations-loop signature param-types 0 param-count subst alias-env))))
 
-(defn typeinfer-defn-return-annotation-subst [node param-count body-ty subst]
+(defn typeinfer-defn-return-annotation-subst [node param-count body-ty subst alias-env]
   (let [signature (typeinfer-defn-signature node param-count)]
     (if (= signature 0)
       subst
       (let [return-expr (typeinfer-defn-signature-return-expr signature)]
         (if (= return-expr 0)
           subst
-          (unify body-ty (typeinfer-resolve-type-expr return-expr) subst))))))
+          (unify body-ty (typeinfer-resolve-type-expr-with-aliases return-expr alias-env) subst))))))
 
 (defn typeinfer-build-curried-fun-loop [param-types subst idx count body-ty]
   (if (>= idx count)

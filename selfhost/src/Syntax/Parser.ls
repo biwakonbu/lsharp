@@ -1091,21 +1091,27 @@
               (parse-skip-to-close-v3 spans pos-ref 1)
               (skip-type-expr-v3 spans pos-ref)
               (p-expect spans pos-ref 1) ;; ) を消費
-              (make-type-alias name-h)))
+              ;; parametric alias は params を保持していないため、target は semantic prepass へ渡さない。
+              (make-type-alias name-h 0)))
           (do
             (parse-skip-to-close-v3 spans pos-ref 1)
             (parse-skip-to-close-v3 spans pos-ref 1)
-            (make-type-alias 0))))
+            (make-type-alias 0 0))))
       (if (== (p-current spans pos-ref) 20)
         (let [name-h (current-symbol-hash-v3 spans pos-ref src)]
           (do
             (p-advance pos-ref) ;; alias 名を消費
-            (skip-type-expr-v3 spans pos-ref)
-            (p-expect spans pos-ref 1) ;; ) を消費
-            (make-type-alias name-h)))
+            (let [target-type-expr (parse-type-expr-v3 spans pos-ref src)]
+              (do
+                (root_push target-type-expr)
+                (p-expect spans pos-ref 1) ;; ) を消費
+                (let [parsed (make-type-alias name-h target-type-expr)]
+                  (do
+                    (root_pop)
+                    parsed))))))
         (do
           (parse-skip-to-close-v3 spans pos-ref 1)
-          (make-type-alias 0))))))
+          (make-type-alias 0 0))))))
 
 (defn parse-type-constrained-v3 [spans pos-ref src]
   (do

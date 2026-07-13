@@ -360,6 +360,125 @@
       ;; Con 以外: そのまま返す
       ty)))
 
+;; closed type-alias を raw TypeExpr の各位置で解決する。parametric alias の head 展開は未対応。
+(defn typeinfer-resolve-named-type-with-aliases [name-hash alias-env]
+  (let [base-type (typeinfer-resolve-named-type name-hash)]
+    (do
+      (root_push base-type)
+      (let [resolved (resolve-alias alias-env base-type)]
+        (do
+          (root_pop)
+          resolved)))))
+
+(defn typeinfer-resolve-type-expr-args-with-aliases-loop [type-expr idx count args alias-env]
+  (if (>= idx count)
+    args
+    (do
+      (root_push args)
+      (let [arg-type
+              (typeinfer-resolve-type-expr-with-aliases
+                (vector-get type-expr (+ idx 3))
+                alias-env)]
+        (do
+          (root_push arg-type)
+          (let [next-args (push-object-vector-local args arg-type)]
+            (do
+              (root_push next-args)
+              (let [resolved
+                      (typeinfer-resolve-type-expr-args-with-aliases-loop
+                        type-expr
+                        (+ idx 1)
+                        count
+                        next-args
+                        alias-env)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  resolved)))))))))
+
+(defn typeinfer-resolve-app-type-with-aliases [type-expr alias-env]
+  (do
+    (root_push type-expr)
+    (root_push alias-env)
+    (let [name-hash (vector-get type-expr 1)
+      arg-count (vector-get type-expr 2)
+      args
+        (typeinfer-resolve-type-expr-args-with-aliases-loop
+          type-expr
+          0
+          arg-count
+          (vector-new arg-count)
+          alias-env)]
+      (do
+        (root_push args)
+        (let [result (mk-app (typeinfer-resolve-app-name name-hash) args)]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            result))))))
+
+(defn typeinfer-resolve-fun-params-with-aliases-loop [type-expr idx count return-type alias-env]
+  (if (>= idx count)
+    return-type
+    (let [param-type
+            (typeinfer-resolve-type-expr-with-aliases
+              (vector-get type-expr (+ idx 2))
+              alias-env)]
+      (do
+        (root_push param-type)
+        (let [rest-type
+                (typeinfer-resolve-fun-params-with-aliases-loop
+                  type-expr
+                  (+ idx 1)
+                  count
+                  return-type
+                  alias-env)]
+          (do
+            (root_push rest-type)
+            (let [result (mk-fun param-type rest-type)]
+              (do
+                (root_pop)
+                (root_pop)
+                result))))))))
+
+(defn typeinfer-resolve-fun-type-with-aliases [type-expr alias-env]
+  (do
+    (root_push type-expr)
+    (root_push alias-env)
+    (let [param-count (vector-get type-expr 1)
+      return-type-expr (vector-get type-expr (+ param-count 2))
+      return-type (typeinfer-resolve-type-expr-with-aliases return-type-expr alias-env)]
+      (do
+        (root_push return-type)
+        (let [result
+                (typeinfer-resolve-fun-params-with-aliases-loop
+                  type-expr
+                  0
+                  param-count
+                  return-type
+                  alias-env)]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            result))))))
+
+(defn typeinfer-resolve-type-expr-with-aliases [type-expr alias-env]
+  (if (= type-expr 0)
+    (mk-con 0)
+    (let [tag (vector-get type-expr 0)]
+      (if (= tag (tag-type-named))
+        (typeinfer-resolve-named-type-with-aliases (vector-get type-expr 1) alias-env)
+        (if (= tag (tag-type-app))
+          (typeinfer-resolve-app-type-with-aliases type-expr alias-env)
+          (if (= tag (tag-type-fun))
+            (typeinfer-resolve-fun-type-with-aliases type-expr alias-env)
+            (if (= tag (tag-type-var))
+              (typeinfer-resolve-named-type-with-aliases (vector-get type-expr 1) alias-env)
+              (mk-con 0))))))))
+
 ;; ============================================================
 ;; Record Update 式の型推論
 ;; ============================================================

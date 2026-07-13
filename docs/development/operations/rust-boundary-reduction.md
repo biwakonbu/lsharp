@@ -6,7 +6,7 @@ L# の通常開発を Rust toolchain や `cargo` の実行待ちから切り離�
 
 ここでいう「Rust 不要」は、あらかじめ取得した native stage0 package を使う日常の編集・検査・テスト・Wasm 出力の経路に `cargo`、`rustc`、host の `lsharp` を置かないという意味である。Rust workspace の物理削除や、MCP/LSP を含む全 host integration の native 化は含まない。
 
-この経路の成立は、自己ホスト実装が L# の全ての型・宣言意味論と parity を持つことを意味しない。現在自己ホストで検証済みの型注釈は `Int` / `Bool` / `String` / `Float` / `Unit` の named primitive、closed named head の再帰的な `TypeApp`、複数引数の関数型、lower-case `TypeExpr::Var` の raw representation と `defn` 注釈における nominal resolution である。`Ref (Vector Int)` と `(-> Int String Bool)` は parser から annotation unification まで確認済みであり、`Ref` / `Vector` の source 名は internal type constructor へ解決される。`TypeExpr::Var` は Rust の現在の `defn` 注釈と同じく source 名を nominal type として扱うため、型別名・ADT の parameter binding に必要な scoped polymorphic variable ではない。一方で record 型、型別名、ADT、record declaration の型環境登録は未完了である。これらを変更・検証する開発では、現時点では Rust implementation を source of truth / oracle として必要とする。
+この経路の成立は、自己ホスト実装が L# の全ての型・宣言意味論と parity を持つことを意味しない。現在自己ホストで検証済みの型注釈は `Int` / `Bool` / `String` / `Float` / `Unit` の named primitive、closed named head の再帰的な `TypeApp`、複数引数の関数型、lower-case `TypeExpr::Var` の raw representation と `defn` 注釈における nominal resolution である。`Ref (Vector Int)` と `(-> Int String Bool)` は parser から annotation unification まで確認済みであり、`Ref` / `Vector` の source 名は internal type constructor へ解決される。closed non-parametric `type-alias Name Target` は raw target を保存し、source order の prepass で `defn` の param / return signature にだけ透過展開する。`Text -> String`、`RefText -> (Ref Text)`、`TextFn -> (-> Text Text)` を parser-to-inference bundle で確認した。`TypeExpr::Var` は Rust の現在の `defn` 注釈と同じく source 名を nominal type として扱うため、型別名・ADT の parameter binding に必要な scoped polymorphic variable ではない。式内 `(: expr Alias)`、parametric alias、forward / recursive alias、record 型、ADT、record declaration の型環境登録は未完了である。これらを変更・検証する開発では、現時点では Rust implementation を source of truth / oracle として必要とする。
 
 ## 現在の事実
 
@@ -61,7 +61,7 @@ Rust が完全に不要になったわけではない。次の作業は native b
 2. native selfhost と Rust implementation の oracle/differential 比較、障害解析、emergency rollback。
 3. `mcp-server`、bare LSP、`--emit-ir`、native target など、上表で明示した Rust host integration surface。
 
-したがって、Linux gate 完了後に「検証済み core CLI の日常ループは Rust なしで開発可能」と言える。一方で、自己ホストの型・宣言意味論 P0 が未完了の間は「base language development 全体」や「L# の全機能」が Rust なしとは言えない。上表の Rust-only surface、external tool dependency、型・宣言の未実装 P0 は残る。
+したがって、Linux gate 完了後に「検証済み core CLI の日常ループは Rust なしで開発可能」と言える。一方で、自己ホストの型・宣言意味論 P0 が未完了の間は「base language development 全体」や「L# の全機能」が Rust なしとは言えない。closed alias signature slice はその境界を少し狭めるが、上表の Rust-only surface、external tool dependency、式内 alias / parametric alias / ADT / record などの未実装 P0 は残る。
 
 ## 検証と残タスク
 

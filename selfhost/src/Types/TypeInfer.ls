@@ -254,7 +254,7 @@
 ;; signature は [65, param-count, param-type-expr..., return-type-expr]。
 ;; compile-safe な covered slice として 0/1/2/3/4 引数を扱う
 
-(defn infer-defn-predeclared [node body-env final-env counter subst placeholder env-vars]
+(defn infer-defn-predeclared [node body-env final-env counter subst placeholder env-vars alias-env]
   (let [name-hash (vector-get node 1)
     param-count (vector-get node 2)]
     (if (= param-count 0)
@@ -264,7 +264,7 @@
           (propagate-error-result result)
           (let [s (result-subst result)
             body-ty (result-type result)
-            annotated-subst (typeinfer-defn-return-annotation-subst node param-count body-ty s)]
+            annotated-subst (typeinfer-defn-return-annotation-subst node param-count body-ty s alias-env)]
             (if (= (unify-failed annotated-subst) 1)
               (make-error-result-code (error-code-general))
               (let [next-subst (unify placeholder body-ty annotated-subst)]
@@ -274,7 +274,7 @@
       (let [param-types (typeinfer-fresh-param-types param-count counter)
         body-node (vector-get node (+ param-count 3))
         next-env (typeinfer-extend-env-with-node-params body-env node param-count 3 param-types)
-        annotated-param-subst (typeinfer-defn-param-annotation-subst node param-count param-types subst)]
+        annotated-param-subst (typeinfer-defn-param-annotation-subst node param-count param-types subst alias-env)]
         (if (= (unify-failed annotated-param-subst) 1)
           (make-error-result-code (error-code-general))
           (let [result (infer-expr body-node next-env annotated-param-subst counter)]
@@ -282,7 +282,7 @@
               (propagate-error-result result)
               (let [s (result-subst result)
                 body-ty (result-type result)
-                annotated-subst (typeinfer-defn-return-annotation-subst node param-count body-ty s)]
+                annotated-subst (typeinfer-defn-return-annotation-subst node param-count body-ty s alias-env)]
                 (if (= (unify-failed annotated-subst) 1)
                   (make-error-result-code (error-code-general))
                   (let [fun-ty (typeinfer-build-curried-fun param-types annotated-subst body-ty)
@@ -296,7 +296,7 @@
   (let [name-hash (vector-get node 1)
     placeholder (fresh-type-var counter)
     body-env (type-env-insert env name-hash (mono placeholder))]
-    (infer-defn-predeclared node body-env env counter (subst-new) placeholder (map-new))))
+    (infer-defn-predeclared node body-env env counter (subst-new) placeholder (map-new) (map-new))))
 
 ;; 型変数ベクタを一般化除外用の Set へ移す。
 (defn typeinfer-free-vars-to-set [vars idx len env-vars]
@@ -343,6 +343,30 @@
 (defn typeinfer-predeclare-defns [program env counter]
   (typeinfer-predeclare-defns-loop program 0 (vector-length program) env (map-new) counter))
 
+;; closed type-alias を source order で登録する。parametric alias は parser が target=0 として残す。
+(defn typeinfer-type-alias-target [decl]
+  (if (<= (vector-length decl) 2)
+    0
+    (vector-get decl 2)))
+
+(defn typeinfer-predeclare-closed-aliases-loop [program idx len alias-env]
+  (if (>= idx len)
+    alias-env
+    (let [decl (vector-get program idx)
+      tag (vector-get decl 0)]
+      (if (= tag (ast-typealias))
+        (let [name-hash (vector-get decl 1)
+          target-expr (typeinfer-type-alias-target decl)]
+          (if (= target-expr 0)
+            (typeinfer-predeclare-closed-aliases-loop program (+ idx 1) len alias-env)
+            (let [target-type (typeinfer-resolve-type-expr-with-aliases target-expr alias-env)
+              next-alias-env (map-insert-object-safe alias-env name-hash target-type)]
+              (typeinfer-predeclare-closed-aliases-loop program (+ idx 1) len next-alias-env))))
+        (typeinfer-predeclare-closed-aliases-loop program (+ idx 1) len alias-env)))))
+
+(defn typeinfer-predeclare-closed-aliases [program]
+  (typeinfer-predeclare-closed-aliases-loop program 0 (vector-length program) (map-new)))
+
 ;; program 推論の状態: [env, subst, first-type, first-seen, diagnostic-count, first-error-code]
 (defn typeinfer-program-analysis-state [env subst first-ty first-seen diagnostic-count first-error-code]
   (push-int-vector-local
@@ -367,7 +391,7 @@
 (defn infer-program-analysis-type [analysis]
   (apply-subst (infer-program-analysis-subst analysis) (infer-program-analysis-raw-type analysis)))
 
-(defn typeinfer-program-analysis-loop [program idx len placeholders counter state]
+(defn typeinfer-program-analysis-loop [program idx len placeholders counter alias-env state]
   (if (>= idx len)
     state
     (let [decl (vector-get program idx)
@@ -382,30 +406,44 @@
           name-hash (vector-get decl 1)
           placeholder (map-get-safe placeholders name-hash)
           pending-env-vars (typeinfer-pending-env-vars program (+ idx 1) len placeholders subst)
-          out (infer-defn-predeclared decl env env counter subst placeholder pending-env-vars)]
+          out (infer-defn-predeclared decl env env counter subst placeholder pending-env-vars alias-env)]
           (if (= (result-failed out) 1)
             (let [next-first-ty (if (= first-seen 0) (result-type out) first-ty)
               next-first-seen (if (= first-seen 0) 1 first-seen)
               next-first-error-code (if (= first-error-code 0) (result-error-code out) first-error-code)
               next-state (typeinfer-program-analysis-state (type-env-remove env name-hash) subst next-first-ty next-first-seen (+ diagnostic-count 1) next-first-error-code)]
-              (typeinfer-program-analysis-loop program (+ idx 1) len placeholders counter next-state))
+              (typeinfer-program-analysis-loop program (+ idx 1) len placeholders counter alias-env next-state))
             (let [next-first-ty (if (= first-seen 0) (result-type out) first-ty)
               next-first-seen (if (= first-seen 0) 1 first-seen)
               next-env (vector-get out 3)
               next-subst (result-subst out)
               next-state (typeinfer-program-analysis-state next-env next-subst next-first-ty next-first-seen diagnostic-count first-error-code)]
-              (typeinfer-program-analysis-loop program (+ idx 1) len placeholders counter next-state))))
-        (typeinfer-program-analysis-loop program (+ idx 1) len placeholders counter state)))))
+              (typeinfer-program-analysis-loop program (+ idx 1) len placeholders counter alias-env next-state))))
+        (typeinfer-program-analysis-loop program (+ idx 1) len placeholders counter alias-env state)))))
 
 ;; top-level defn を先行登録して一度だけ推論し、CLI/LSP が共有する結果を返す。
 (defn infer-program-analysis [program]
   (let [counter (make-var-counter)
     initial-env (init-builtin-env counter)
-    predeclared (typeinfer-predeclare-defns program initial-env counter)
-    env (vector-get predeclared 0)
-    placeholders (vector-get predeclared 1)
-    state (typeinfer-program-analysis-state env (subst-new) (mk-int) 0 0 0)]
-    (typeinfer-program-analysis-loop program 0 (vector-length program) placeholders counter state)))
+    alias-env (typeinfer-predeclare-closed-aliases program)]
+    (do
+      (root_push alias-env)
+      (let [predeclared (typeinfer-predeclare-defns program initial-env counter)
+        env (vector-get predeclared 0)
+        placeholders (vector-get predeclared 1)
+        state (typeinfer-program-analysis-state env (subst-new) (mk-int) 0 0 0)
+        result
+          (typeinfer-program-analysis-loop
+            program
+            0
+            (vector-length program)
+            placeholders
+            counter
+            alias-env
+            state)]
+        (do
+          (root_pop)
+          result)))))
 
 ;; ============================================================
 ;; infer: 公開 API (Main.ls から呼び出される)
