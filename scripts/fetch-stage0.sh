@@ -49,16 +49,6 @@ detect_archive_ext() {
   esac
 }
 
-guard_unpublished_target() {
-  local target="$1"
-  if [[ "$target" == "x86_64-apple-darwin" &&
-        -z "$RELEASE_BASE_URL" &&
-        "${STAGE0_ALLOW_UNPUBLISHED_TARGET:-0}" != "1" ]]; then
-    echo "ERROR: x86_64-apple-darwin stage0 archive is not published yet; set STAGE0_RELEASE_BASE_URL to an explicit mirror or STAGE0_ALLOW_UNPUBLISHED_TARGET=1 for a private release set" >&2
-    exit 1
-  fi
-}
-
 extract_archive() {
   local archive_path="$1"
   local extract_dir="$2"
@@ -76,23 +66,32 @@ extract_archive() {
   esac
 }
 
-find_archive_root() {
-  local extract_dir="$1"
-  local direct_children=()
-  shopt -s nullglob
-  direct_children=("$extract_dir"/*)
-  shopt -u nullglob
-  if [[ ${#direct_children[@]} -eq 1 && -d "${direct_children[0]}" ]]; then
-    printf '%s\n' "${direct_children[0]}"
-    return 0
-  fi
-  local candidate
-  candidate="$(find "$extract_dir" -mindepth 1 -maxdepth 2 -type f \( -name 'lsharp' -o -name 'lsharp.exe' \) -print -quit)"
-  if [[ -n "$candidate" ]]; then
-    dirname "$candidate"
-    return 0
-  fi
-  return 1
+validate_archive() {
+  local archive_path="$1"
+  local expected_root="$2"
+
+  python3 - "$archive_path" "$expected_root" <<'PY'
+import pathlib
+import tarfile
+import sys
+
+archive_path = pathlib.Path(sys.argv[1])
+expected_root = sys.argv[2]
+try:
+    with tarfile.open(archive_path, "r:gz") as archive:
+        members = archive.getmembers()
+except (OSError, tarfile.TarError) as error:
+    raise SystemExit(f"native stage0 archive is invalid: {error}")
+
+if not members:
+    raise SystemExit("native stage0 archive is empty")
+for member in members:
+    path = pathlib.PurePosixPath(member.name)
+    if path.is_absolute() or ".." in path.parts or not path.parts or path.parts[0] != expected_root:
+        raise SystemExit(f"unsafe native stage0 archive entry: {member.name}")
+    if member.issym() or member.islnk() or member.isdev():
+        raise SystemExit(f"unsafe native stage0 archive entry type: {member.name}")
+PY
 }
 
 verify_checksum_entry() {
@@ -124,6 +123,12 @@ verify_package_checksums() {
   fi
   while read -r expected relpath _; do
     [[ -n "${expected:-}" ]] || continue
+    case "${relpath:-}" in
+      ""|/*|..|../*|*/../*|*/..)
+        echo "ERROR: unsafe package checksum path: ${relpath:-missing}" >&2
+        exit 1
+        ;;
+    esac
     local actual
     actual="$(hash_file "$package_dir/$relpath")"
     if [[ "$expected" != "$actual" ]]; then
@@ -133,15 +138,83 @@ verify_package_checksums() {
   done < "$checksums_path"
 }
 
+validate_native_stage0_package() {
+  local package_dir="$1"
+  local expected_target="$2"
+
+  python3 - "$package_dir" "$expected_target" <<'PY'
+import json
+import os
+import pathlib
+import sys
+
+package_dir = pathlib.Path(sys.argv[1])
+expected_target = sys.argv[2]
+manifest_path = package_dir / "manifest.json"
+if not manifest_path.is_file() or manifest_path.is_symlink():
+    raise SystemExit(f"native stage0 manifest is required: {manifest_path}")
+try:
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+except (OSError, json.JSONDecodeError) as error:
+    raise SystemExit(f"native stage0 manifest is invalid: {error}")
+
+if manifest.get("kind") != "lsharp-native-selfhost-stage0":
+    raise SystemExit("native stage0 manifest kind is invalid")
+if manifest.get("target") != expected_target:
+    raise SystemExit(
+        "native stage0 manifest target mismatch: "
+        f"expected={expected_target} actual={manifest.get('target')!r}"
+    )
+
+for field in ("compiler", "transport_driver", "materializer"):
+    value = manifest.get(field)
+    if not isinstance(value, str) or not value:
+        raise SystemExit(f"native stage0 manifest {field} is invalid")
+    path = pathlib.PurePosixPath(value)
+    if path.is_absolute() or ".." in path.parts or "." in path.parts:
+        raise SystemExit(f"native stage0 manifest {field} must be a relative path")
+    candidate = package_dir.joinpath(*path.parts)
+    if not candidate.is_file() or candidate.is_symlink() or not os.access(candidate, os.X_OK):
+        raise SystemExit(f"native stage0 executable is unavailable: {candidate}")
+PY
+}
+
+install_stage0_package() {
+  local package_dir="$1"
+  local parent_dir
+  local stage0_name
+  local temporary_dir
+  local backup_dir=""
+
+  [[ "${STAGE0_DIR}" != "/" && "${STAGE0_DIR}" != "." ]] \
+    || { echo "ERROR: unsafe STAGE0_DIR: ${STAGE0_DIR}" >&2; exit 1; }
+  parent_dir="$(dirname "${STAGE0_DIR}")"
+  stage0_name="$(basename "${STAGE0_DIR}")"
+  mkdir -p "${parent_dir}"
+  temporary_dir="$(mktemp -d "${parent_dir}/.${stage0_name}.new.XXXXXX")"
+  cp -pR "${package_dir}/." "${temporary_dir}/"
+  validate_native_stage0_package "${temporary_dir}" "${TARGET}"
+
+  if [[ -e "${STAGE0_DIR}" || -L "${STAGE0_DIR}" ]]; then
+    backup_dir="$(mktemp -d "${parent_dir}/.${stage0_name}.previous.XXXXXX")"
+    rmdir "${backup_dir}"
+    mv "${STAGE0_DIR}" "${backup_dir}"
+  fi
+  mv "${temporary_dir}" "${STAGE0_DIR}"
+  if [[ -n "${backup_dir}" ]]; then
+    rm -rf "${backup_dir}"
+  fi
+}
+
 if [[ -z "$VERSION" ]]; then
   echo "ERROR: stage0 version is required. Pass it as the first arg or STAGE0_VERSION." >&2
   exit 1
 fi
 
 TARGET="$(detect_target)"
-guard_unpublished_target "$TARGET"
 ARCHIVE_EXT="$(detect_archive_ext "$TARGET")"
-ARCHIVE_NAME="lsharp-${VERSION}-${TARGET}.${ARCHIVE_EXT}"
+ARCHIVE_ROOT_NAME="lsharp-stage0-${VERSION}-${TARGET}"
+ARCHIVE_NAME="${ARCHIVE_ROOT_NAME}.${ARCHIVE_EXT}"
 if [[ -z "$RELEASE_BASE_URL" ]]; then
   RELEASE_BASE_URL="https://github.com/biwakonbu/lsharp/releases/download/${VERSION}"
 fi
@@ -165,18 +238,16 @@ verify_checksum_entry "$CHECKSUMS_PATH" "$WORK_DIR" "$ARCHIVE_NAME"
 echo "=== fetch-stage0: extract package ==="
 EXTRACT_DIR="$WORK_DIR/extract"
 mkdir -p "$EXTRACT_DIR"
+validate_archive "$ARCHIVE_PATH" "$ARCHIVE_ROOT_NAME"
 extract_archive "$ARCHIVE_PATH" "$EXTRACT_DIR"
-ARCHIVE_ROOT="$(find_archive_root "$EXTRACT_DIR")" || {
-  echo "ERROR: extracted package root not found" >&2
-  exit 1
-}
+ARCHIVE_ROOT="$EXTRACT_DIR/$ARCHIVE_ROOT_NAME"
+[[ -d "$ARCHIVE_ROOT" ]] || { echo "ERROR: extracted native stage0 root not found: $ARCHIVE_ROOT" >&2; exit 1; }
 
 echo "=== fetch-stage0: verify package checksum ==="
 verify_package_checksums "$ARCHIVE_ROOT"
+validate_native_stage0_package "$ARCHIVE_ROOT" "$TARGET"
 
 echo "=== fetch-stage0: install stage0 package ==="
-rm -rf "$STAGE0_DIR"
-mkdir -p "$STAGE0_DIR"
-cp -fR "$ARCHIVE_ROOT"/. "$STAGE0_DIR"/
+install_stage0_package "$ARCHIVE_ROOT"
 
 echo "fetch-stage0: OK ($STAGE0_DIR)"

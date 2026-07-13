@@ -5,12 +5,19 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "${ROOT_DIR}"
 
-PACKAGE_VERSION="$(cargo metadata --no-deps --format-version 1 | python3 -c 'import json,sys; data=json.load(sys.stdin); print(next(p["version"] for p in data["packages"] if p["name"] == "lsharp-wasm"))')"
-VERSION="${VERSION:-v${PACKAGE_VERSION}}"
+VERSION="${VERSION:-}"
+if [[ -z "${VERSION}" ]]; then
+  command -v cargo >/dev/null 2>&1 \
+    || { echo "ERROR: VERSION is required when cargo is unavailable" >&2; exit 1; }
+  PACKAGE_VERSION="$(cargo metadata --no-deps --format-version 1 | python3 -c 'import json,sys; data=json.load(sys.stdin); print(next(p["version"] for p in data["packages"] if p["name"] == "lsharp-wasm"))')"
+  VERSION="v${PACKAGE_VERSION}"
+fi
 SOURCE_COMMIT="${SOURCE_COMMIT:-$(git rev-parse HEAD)}"
 DIST_DIR="${DIST_DIR:-${ROOT_DIR}/dist/native-official}"
 MACOS_APP_CLI_ARTIFACT_DIR="${MACOS_APP_CLI_ARTIFACT_DIR:-}"
 LINUX_APP_CLI_ARTIFACT_DIR="${LINUX_APP_CLI_ARTIFACT_DIR:-}"
+MACOS_STAGE0_DIR="${MACOS_STAGE0_DIR:-}"
+LINUX_STAGE0_DIR="${LINUX_STAGE0_DIR:-}"
 MACOS_ROLLBACK_ARCHIVE="${MACOS_ROLLBACK_ARCHIVE:-}"
 LINUX_ROLLBACK_ARCHIVE="${LINUX_ROLLBACK_ARCHIVE:-}"
 SMOKE_ROOT="${LSHARP_NATIVE_RELEASE_SMOKE_ROOT:-/tmp/lsharp-native-official-release-smoke}"
@@ -116,6 +123,45 @@ package_target() {
   smoke_archive "${target}" "${archive_path}" "${rollback_archive}"
 }
 
+package_stage0_target() {
+  local target="$1"
+  local stage0_dir="$2"
+  local archive_path="${DIST_DIR}/lsharp-stage0-${VERSION}-${target}.tar.gz"
+
+  [[ -d "${stage0_dir}" ]] \
+    || { echo "ERROR: ${target} native stage0 directory is required: ${stage0_dir}" >&2; exit 1; }
+  rm -f "${archive_path}"
+  bash scripts/ci/package-native-stage0-release.sh \
+    --target "${target}" \
+    --version "${VERSION}" \
+    --stage0-dir "${stage0_dir}" \
+    --output-dir "${DIST_DIR}"
+  require_file "${archive_path}" "${target} native stage0 archive"
+}
+
+release_base_url() {
+  python3 - "${DIST_DIR}" <<'PY'
+from pathlib import Path
+import sys
+
+print(Path(sys.argv[1]).resolve().as_uri())
+PY
+}
+
+smoke_stage0_fetch() {
+  local target="$1"
+  local stage0_dir="${SMOKE_ROOT}/stage0-${target}"
+  local base_url="$2"
+
+  rm -rf "${stage0_dir}"
+  STAGE0_VERSION="${VERSION}" \
+    STAGE0_TARGET="${target}" \
+    STAGE0_RELEASE_BASE_URL="${base_url}" \
+    STAGE0_DIR="${stage0_dir}" \
+    bash scripts/fetch-stage0.sh
+  require_file "${stage0_dir}/manifest.json" "${target} fetched native stage0 manifest"
+}
+
 mkdir -p "${DIST_DIR}"
 rm -rf "${SMOKE_ROOT}"
 
@@ -127,6 +173,13 @@ package_target \
   "x86_64-unknown-linux-gnu" \
   "${LINUX_APP_CLI_ARTIFACT_DIR}" \
   "${LINUX_ROLLBACK_ARCHIVE}"
+package_stage0_target "aarch64-apple-darwin" "${MACOS_STAGE0_DIR}"
+package_stage0_target "x86_64-unknown-linux-gnu" "${LINUX_STAGE0_DIR}"
+
+bash scripts/checksum.sh "${DIST_DIR}" > "${DIST_DIR}/checksums.txt"
+RELEASE_BASE_URL="$(release_base_url)"
+smoke_stage0_fetch "aarch64-apple-darwin" "${RELEASE_BASE_URL}"
+smoke_stage0_fetch "x86_64-unknown-linux-gnu" "${RELEASE_BASE_URL}"
 
 dist_kib="$(du -sk "${DIST_DIR}" | awk '{print $1}')"
 if (( dist_kib > MAX_DIST_KIB )); then

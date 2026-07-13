@@ -3952,6 +3952,9 @@ fn test_e2e_ops06_release_playbook() {
             && playbook_content.contains("rollback compatibility asset")
             && playbook_content.contains("CI を起動せず")
             && playbook_content.contains("native-official-release-local.sh")
+            && playbook_content.contains("MACOS_STAGE0_DIR")
+            && playbook_content.contains("LINUX_STAGE0_DIR")
+            && playbook_content.contains("lsharp-stage0-")
             && playbook_content.contains("通常の release では `workflow_dispatch` も実行せず")
             && !playbook_content.contains(
                 "配布モデルは **Wasmtime embedding + guest Wasm component + host launcher single binary**"
@@ -4462,10 +4465,10 @@ fn test_e2e_ops07_release_download_smoke_job() {
     let doc_content =
         std::fs::read_to_string(&fresh_clone_doc).expect("fresh-clone-spec.md の読み込みに失敗");
     assert!(
-        doc_content.contains("release-smoke")
-            && (doc_content.contains("download release artifact")
-                || doc_content.contains("downloaded artifact")),
-        "fresh-clone-spec.md は downloaded artifact ベースの release-smoke step を説明すること"
+        doc_content.contains("手動 release gate")
+            && doc_content.contains("native-official-release-local.sh")
+            && doc_content.contains("GitHub Actions の自動 build は使わない"),
+        "fresh-clone-spec.md は手動 native release gate を正本として説明すること"
     );
 }
 
@@ -4820,16 +4823,24 @@ fn test_e2e_ops07_fresh_clone_no_rust() {
     let fetch_stage0_content =
         std::fs::read_to_string(&fetch_stage0_script).expect("fetch-stage0.sh の読み込みに失敗");
     for expected in [
-        "x86_64-apple-darwin stage0 archive is not published yet",
+        "lsharp-stage0-${VERSION}-${TARGET}",
+        "lsharp-native-selfhost-stage0",
+        "validate_native_stage0_package",
         "STAGE0_RELEASE_BASE_URL",
-        "STAGE0_ALLOW_UNPUBLISHED_TARGET",
+        "aarch64-apple-darwin",
+        "x86_64-unknown-linux-gnu",
     ] {
         assert!(
             fetch_stage0_content.contains(expected),
-            "fetch-stage0.sh は unpublished x86_64-apple-darwin stage0 contract `{}` を固定すること",
+            "fetch-stage0.sh は native stage0 release contract `{}` を固定すること",
             expected
         );
     }
+    assert!(
+        !fetch_stage0_content.contains("x86_64-apple-darwin")
+            && !fetch_stage0_content.contains("STAGE0_ALLOW_UNPUBLISHED_TARGET"),
+        "fetch-stage0.sh は out-of-support Intel Mac stage0 分岐を残さないこと"
+    );
 
     let ci_path = project_root.join(".github/workflows/ci.yml");
     let ci_content = std::fs::read_to_string(&ci_path).expect("ci.yml の読み込みに失敗");
@@ -4927,15 +4938,15 @@ fn test_e2e_ops07_fresh_clone_no_rust() {
         "fresh-clone-spec.md は mainline binary-only test-fresh-clone job と rollback compatibility archive の境界を説明すること"
     );
     assert!(
-        fresh_clone_doc_content.contains("現行の closest viable binary-only gate")
-            && fresh_clone_doc_content.contains("将来の true no-Rust end-state"),
-        "fresh-clone-spec.md は current binary-only gate と future-state を見出しレベルで分離すること"
+        fresh_clone_doc_content.contains("Native stage0 を取得する")
+            && fresh_clone_doc_content.contains("現在の到達点と残件"),
+        "fresh-clone-spec.md は native stage0 の取得導線と未完了 gate を見出しレベルで分離すること"
     );
     assert!(
-        fresh_clone_doc_content.contains("native-only official archive")
+        fresh_clone_doc_content.contains("native stage0")
             && fresh_clone_doc_content.contains("rollback compatibility archive")
-            && fresh_clone_doc_content.contains("future stage0"),
-        "fresh-clone-spec.md は native-only 正本、rollback compatibility、future stage0 scaffold を分離して説明すること"
+            && fresh_clone_doc_content.contains("Legacy compatibility reference"),
+        "fresh-clone-spec.md は native stage0 正本と rollback compatibility を分離して説明すること"
     );
     assert!(
         !fresh_clone_doc_content.contains("プリビルト stage0 host launcher package")
@@ -4945,9 +4956,15 @@ fn test_e2e_ops07_fresh_clone_no_rust() {
     );
     assert!(
         fresh_clone_doc_content.contains("./scripts/fetch-stage0.sh")
-            && fresh_clone_doc_content.contains("./scripts/bootstrap.sh")
-            && fresh_clone_doc_content.contains("./scripts/release-bundle.sh"),
-        "fresh-clone-spec.md は stage0 fetch/bootstrap/release-bundle 導線を文書化すること"
+            && fresh_clone_doc_content.contains("./scripts/native-selfhost-dev.sh")
+            && fresh_clone_doc_content.contains("native-official-release-local.sh"),
+        "fresh-clone-spec.md は stage0 fetch/native runner/manual release 導線を文書化すること"
+    );
+    assert!(
+        fresh_clone_doc_content.contains("lsharp-stage0-<version>-<target>.tar.gz")
+            && fresh_clone_doc_content.contains("./scripts/native-selfhost-dev.sh")
+            && fresh_clone_doc_content.contains("GitHub Actions の自動 build は使わない"),
+        "fresh-clone-spec.md は native stage0 archive、既定 runner、手動 release policy を文書化すること"
     );
     assert!(
         !fresh_clone_doc_content.contains("`./scripts/fetch-stage0.sh` は未実装")

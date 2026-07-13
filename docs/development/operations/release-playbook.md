@@ -115,7 +115,7 @@ local manual release gate を通した後、GitHub Release を手動で作成す
 1. GitHub Releases ページで新規リリースを作成
 2. タグ `v<version>` を選択
 3. リリースノートを記載（変更点、破壊的変更、移行手順）
-4. native-only archive をアップロード
+4. native-only App.Cli archive と target 別 `lsharp-stage0-<version>-<target>.tar.gz` をアップロード
 5. rollback compatibility を同時公開する場合だけ host launcher archive / `lsharp-<version>-<target>.component.wasm` を添付
 6. `dist/checksums.txt` を checksum asset として添付
 7. `Rollback anchor` セクションに tag / asset 名 / checksum 名を記録
@@ -138,9 +138,9 @@ Rollback anchor
 - package manager package は二次配布なので anchor には含めない。
 - rollback 手順はこの anchor を起点に `rollback-procedure.md` の B/C フローへ入る。
 
-### 9. immutable App.Cli input の準備
+### 9. immutable native input の準備
 
-Mac Apple Silicon producer と Mac + Lima producer は、最終的に target ごとの staging directoryへ `program.native` と検証済み `manifest.json` を出力する。stable workflow へ渡す bundle は次の形に固定する。
+Mac Apple Silicon producer と Mac + Lima producer は、最終的に target ごとの staging directoryへ `program.native` と検証済み `manifest.json` を出力する。current fixed-point compiler から作る `lsharp-native-selfhost-stage0` directory も同じ target ごとに固定する。manual release gate は App.Cli input と stage0 package を別 asset として package 化する。
 
 ```bash
 tar -C <target-staging-dir> -czf <target>-native-input-bundle.tar.gz program.native manifest.json
@@ -150,18 +150,20 @@ shasum -a 256 lsharp-v<version>-<target>-host-launcher.tar.gz
 
 Mac producer は `scripts/ci/native-macos-aarch64-selfhost-release.sh`、Linux producer は `scripts/ci/native-linux-x86-hostgen-vm-exec.sh` の target-only `src/App/Cli.ls` export を使う。Linux の full self-regeneration は green な stage2/stage3 fixed-point evidence を先に得る operator gateであり、stable workflow はその heavy replay を再実行しない。
 
-両 target の program / manifest / rollback archive が揃ったら、workflow input を公開する前に同じ入力を local gateへ渡す。
+両 target の program / manifest / stage0 directory / rollback archive が揃ったら、手動 GitHub Release に添付する前に同じ入力を local gateへ渡す。
 
 ```bash
 VERSION=v<version> \
 MACOS_APP_CLI_ARTIFACT_DIR=<mac-staging-dir> \
 LINUX_APP_CLI_ARTIFACT_DIR=<linux-staging-dir> \
+MACOS_STAGE0_DIR=<mac-native-stage0-dir> \
+LINUX_STAGE0_DIR=<linux-native-stage0-dir> \
 MACOS_ROLLBACK_ARCHIVE=<mac-rollback-archive> \
 LINUX_ROLLBACK_ARCHIVE=<linux-rollback-archive> \
   bash scripts/ci/native-official-release-local.sh
 ```
 
-この gate は macOS archive を host上、Linux x86_64 archive を Lima VM 上で `scripts/release.sh` / `scripts/ci/release-smoke.sh` に通す。stable / rollback manifest の `target` / `version` / `source_commit` は recursive smoke で一致を確認する。GitHub workflow は同じ immutable inputs を再 package / smoke するが、heavy self-regeneration 自体は繰り返さない。
+この gate は macOS archive を host上、Linux x86_64 archive を Lima VM 上で `scripts/release.sh` / `scripts/ci/release-smoke.sh` に通す。加えて `lsharp-stage0-${VERSION}-${target}.tar.gz` と release-level `checksums.txt` を作り、同じ local release set から `scripts/fetch-stage0.sh` を再実行して stage0 manifest / target / payload checksum を確認する。stable / rollback manifest の `target` / `version` / `source_commit` は recursive smoke で一致を確認する。通常の release では GitHub workflow を dispatch せず、heavy self-regeneration も繰り返さない。
 
 macOS payload を署名する場合は bundle 固定前に `program.native` を署名・verify し、署名後 bytes の `program_sha256` を manifest に記録する。workflow は immutable manifest/hash を壊す再署名をせず、secret がある場合に署名 verify と notarization submit を行う。
 

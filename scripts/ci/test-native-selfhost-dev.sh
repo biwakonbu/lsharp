@@ -31,7 +31,7 @@ TMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/lsharp-native-selfhost-dev.XXXXXX")"
 trap 'rm -rf "$TMP_ROOT"' EXIT
 
 TEST_ROOT="$TMP_ROOT/repo"
-STAGE0_DIR="$TMP_ROOT/stage0"
+STAGE0_DIR="$TEST_ROOT/stage0"
 SOURCE_ROOT="$TMP_ROOT/source"
 STAGE_DIR="$TMP_ROOT/stage"
 LOG_FILE="$TMP_ROOT/invocations.log"
@@ -245,12 +245,31 @@ run_runner() {
   )
 }
 
+run_runner_with_default_stage0() {
+  (
+    cd "$TEST_ROOT"
+    NATIVE_TEST_LOG="$LOG_FILE" \
+      NATIVE_TEST_PROJECT_DIR="$PROJECT_DIR" \
+      NATIVE_TEST_DOC_SOURCE="$DOC_INPUT" \
+      LSHARP_PATH="$HOST_BIN/lsharp" \
+      LSHARP_DISABLE_EMBEDDED_COMPONENT=1 \
+      PATH="$HOST_BIN:$PATH" \
+      "$TEST_ROOT/scripts/native-selfhost-dev.sh" \
+        --source-root "$SOURCE_ROOT" \
+        --stage-dir "$STAGE_DIR" \
+        "$@"
+  )
+}
+
 run_runner alpha beta
 assert_eq "1" "$(grep -c '^transport|' "$LOG_FILE")"
 assert_eq "1" "$(grep -c '^materializer|' "$LOG_FILE")"
 assert_file_contains "$LOG_FILE" "program|alpha beta"
 assert_file_not_contains "$LOG_FILE" "host-cargo"
 assert_file_not_contains "$LOG_FILE" "host-lsharp"
+
+run_runner_with_default_stage0 default-stage0
+assert_file_contains "$LOG_FILE" "program|default-stage0"
 
 run_runner reuse
 assert_eq "1" "$(grep -c '^transport|' "$LOG_FILE")"

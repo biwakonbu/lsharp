@@ -1,211 +1,75 @@
 # Rust 非必須 Fresh Clone 仕様
 
-Rust ツールチェーンを必要としない、L# プロジェクトの fresh clone から **native-only official archive** の取得・検証へ至る導線を定義する。現行 CI では native-only archive を生成できない Ubuntu path に限り、workflow-local の **rollback compatibility archive** を binary-only smoke の代替入力として使う。
+Rust ツールチェーンを必要としない L# の native selfhost 開発導線を定義する。GitHub Actions の自動 build は使わない。検証と release は Mac Apple Silicon と Lima Linux x86_64 VM の手動 local gate で行う。
 
 ## 目的
 
-Phase 11 / Phase 13 移行後、エンドユーザーは Rust をインストールせずに L# コンパイラを取得・利用できるようにする。Rust workspace は削除せず、開発者向け stage0 / native backend / rollback compatibility tooling context として残存する。
+通常の L# 開発、テスト、WASI コンパイルは native stage0 package だけで開始できるようにする。Rust workspace は削除しないが、stage0 producer、oracle differential、緊急 rollback、Rust host integration の保守境界に限定する。
 
-## 現行の closest viable binary-only gate
+Supported product/release targets は `aarch64-apple-darwin` と `x86_64-unknown-linux-gnu` のみである。
 
-現時点で mainline に接続済みなのは、**same-run の workflow-local artifact を download して検証する binary-only CI gate** である。
-ここでは `test-fresh-clone` / `release-smoke` / `smoke_test_readme.sh` が正本であり、GitHub Releases から stage0 package を取ってくる導線はまだ含まれない。
-
-### 1. リポジトリ取得
+## Native stage0 を取得する
 
 ```bash
-git clone https://github.com/<org>/lsharp.git
+git clone https://github.com/biwakonbu/lsharp.git
 cd lsharp
+
+# 手動 GitHub Release から target-native stage0 を取得する
+STAGE0_VERSION=v<version> ./scripts/fetch-stage0.sh
 ```
 
-`test-fresh-clone` job 自体は Rust ツールチェーンを setup せず、download 済み archive だけで smoke を行う。
+- asset 名は `lsharp-stage0-<version>-<target>.tar.gz` とする。
+- `fetch-stage0.sh` は release-level `checksums.txt`、package 内 `checksums.txt`、`lsharp-native-selfhost-stage0` manifest、target triple、実行可能な compiler/transport/materializer を検証する。
+- 成功時は `stage0/manifest.json` と `stage0/bin/{compiler,transport-driver,materializer}` を配置する。App.Cli の native-only archive は stage0 package として受け入れない。
+- `STAGE0_TARGET=<triple>` と `STAGE0_RELEASE_BASE_URL=<url>` は手動 mirror または local release set の検証時だけ上書きする。
 
-### 2. Mainline binary-only smoke
+## Rust なしで開発する
 
-`fresh-clone-artifact` が同一 workflow 内で Linux 用 release-style archive を生成し、`test-fresh-clone` がその artifact を `actions/download-artifact` で取得して検証する。
-
-- `scripts/ci/test-fresh-clone.sh <archive>` が entry point
-- `scripts/ci/release-smoke.sh` で `checksums.txt` 検証と packaged binary smoke を再利用する
-- `scripts/ci/default-path-smoke.sh` で `check` / `compile` の default-path smoke を再利用する
-- `scripts/smoke_test_readme.sh` で inline Quick Start fixture に対する README smoke を再利用する
-
-### 3. Release artifact の中間 gate
-
-release workflow では build 済み archive を `actions/download-artifact` で集約し、`scripts/ci/release-smoke.sh` で **download release artifact -> checksum verify -> packaged binary smoke** を再実行する。
-
-- Rust toolchain setup を追加せずに `.tar.gz` / `.zip` archive を展開する
-- `checksums.txt` を検証する
-- packaged `lsharp` binary の `--version` / `check` / `fmt` / `compile` / `test` / `doc` を smoke する
-
-### 4. 暫定 clean-checkout gate
-
-`fresh-clone-smoke` は current binary-only gate を補完する暫定 job であり、still Rust-dependent な clean checkout build regressions を継続検知する。
-
-- `scripts/ci/test-fresh-clone.sh` が `target/ci/fresh-clone-smoke/` に clean checkout 相当のコピーを作る
-- そのコピー上で `cargo build -p lsharp-driver -q` を実行し、ビルド済み `lsharp` binary を得る
-- `scripts/ci/default-path-smoke.sh` を再利用し、代表 selfhost / stdlib compile まで再確認する
-
-この gate は **Rust 非依存化の完了を主張しない**。あくまで `test-fresh-clone` と役割分担しながら、current mainline の regressions を捕捉するための暫定措置である。
-
-## 手元 future stage0 scaffold
-
-以下の 3 script は **手元で current release asset / stage bundle を試すための scaffold** として利用できる。
-ただし mainline CI / required check は依然として workflow-local artifact ベースの `test-fresh-clone` が正本であり、
-GitHub Releases 直結の true no-Rust end-state を mainline で完了扱いにはしていない。
-
-### 1. Stage0 パッケージ取得
+`scripts/native-selfhost-dev.sh` は既定で `./stage0` を使う。環境変数や `--stage0-dir` は別の stage0 を試す場合だけ必要である。
 
 ```bash
-# プリビルト stage0 archive を GitHub Releases から取得
-./scripts/fetch-stage0.sh
+./scripts/native-selfhost-dev.sh check examples/fib.ls
+./scripts/native-selfhost-dev.sh test examples/fib.ls
+./scripts/native-selfhost-dev.sh --bootstrap compile examples/fib.ls -o fib.wasm
 ```
 
-- OS / アーキテクチャを自動検出する
-- `stage0/lsharp` として配置する
-- future stage0 package は native-only official archive を正本とする
-- rollback compatibility archive を使う場合だけ、host launcher と guest compiler component の組を互換入力として扱う
-- チェックサム検証を実施する
-- `STAGE0_VERSION=<tag>` / `STAGE0_TARGET=<triple>` / `STAGE0_RELEASE_BASE_URL=<url>` で取得先を上書きできる
+初回または `--bootstrap` 指定時だけ source tree から `program.native` を再生成する。source fingerprint が変わらなければ生成済み native compiler を再利用する。対応 command と Rust-only boundary は `rust-boundary-reduction.md` を正本とする。
 
-### 2. ブートストラップ
+## 手動 release gate
+
+両 target の current fixed-point stage3 から作った stage0 directory と App.Cli artifact を渡して、release set を手元で作る。
 
 ```bash
-# stage0 launcher → stage1 component → stage2 component の 3 段階ブートストラップ
-./scripts/bootstrap.sh
+VERSION=v<version> \
+MACOS_APP_CLI_ARTIFACT_DIR=<mac-app-cli-dir> \
+LINUX_APP_CLI_ARTIFACT_DIR=<linux-app-cli-dir> \
+MACOS_STAGE0_DIR=<mac-stage0-dir> \
+LINUX_STAGE0_DIR=<linux-stage0-dir> \
+MACOS_ROLLBACK_ARCHIVE=<mac-rollback-archive> \
+LINUX_ROLLBACK_ARCHIVE=<linux-rollback-archive> \
+  bash scripts/ci/native-official-release-local.sh
 ```
 
-| ステージ | 入力 | 出力 | 説明 |
-|----------|------|------|------|
-| stage0 → stage1 | `selfhost/src/App/EmbeddedCli.ls` | `stage1/lsharp.component.wasm` または native stage artifact | stage0 archive の compiler entry で再コンパイル |
-| stage1 → stage2 | `selfhost/src/App/EmbeddedCli.ls` | `stage2/lsharp.component.wasm` または native stage artifact | stage1 output を入力に再コンパイル |
-| stage2 検証 | — | — | stage1 と stage2 の出力が一致することを確認 |
+この gate は App.Cli archive と target 別 stage0 archive を package 化し、`dist/native-official/checksums.txt` を生成する。続けて同じ local release set から `fetch-stage0.sh` を再実行し、manifest と checksum の取得経路まで確認する。Mac archive は host 上、Linux App.Cli archive は Lima VM 上で smoke する。GitHub Release にはこれらの archive と `checksums.txt` を手動で添付する。
 
-### 3. stage bundle 生成
+## 現在の到達点と残件
 
-```bash
-# stage artifact から検証用 bundle を生成
-./scripts/release-bundle.sh
-```
+- Mac Apple Silicon は current fixed-point stage3 の stage0 package を使い、`cargo`、`rustc`、host `lsharp` を block した source-file smoke を完走している。
+- Linux x86_64 は current import ABI 修正後の stage1 -> stage3 fixed-point を Lima VM で再生成中である。完了後、同じ stage0 package から source-file smoke と手動 release gate を実行する。
+- Rust host integration が必要なのは `mcp-server`、`--emit-ir`、native/web target、および emergency rollback である。通常の native selfhost 開発成功を Rust fallback で代替してはならない。
 
-- native-only official archive では `program.native` / `manifest.json` / `checksums.txt` を必須 payload とする
-- rollback compatibility archive を生成する場合だけ `lsharp` host launcher と `lsharp.component.wasm` sidecar を互換 payload として同梱する
+## Legacy compatibility reference
 
-### 4. テスト実行
+`scripts/bootstrap.sh`、`scripts/release-bundle.sh`、`scripts/ci/test-fresh-clone.sh`、`release-smoke`、`smoke_test_readme.sh` は rollback compatibility や過去の downloaded artifact 調査用に残す。通常の開発・release では実行しない。`NATIVE_ONLY_RELEASE=0` の rollback compatibility archive は native stage0 の代替配布物ではない。
 
-```bash
-# テストスイート実行
-./dist/lsharp test
-```
+## Legacy CI ジョブ
 
-- selfhost テストランナーによるテスト実行
-- smoke の主眼は、配布物に含まれる compiler artifact が Rust toolchain 無しで正常起動すること
-- Rust の `cargo test` は使用しない
-
-### 5. 配布パッケージ生成
-
-```bash
-# 配布用アーカイブ生成
-./scripts/release-bundle.sh
-```
-
-- `dist/lsharp-<version>-<target>.tar.gz` を生成
-- native-only archive には `program.native` と `lsharp` alias を含める
-- SHA-256 チェックサムを付与
-
-## 将来の true no-Rust end-state
-
-mainline で未完了なのは、上記 scaffold の存在ではなく **GitHub Releases / stage0 fetch 直結の required gate** と
-その配布運用である。現時点では以下がなお未完了:
-
-- `test-fresh-clone` / `release-smoke` の required path は workflow-local artifact が正本
-- GitHub Releases 上の stage0 package を mainline required gate から直接 fetch する経路は未接続
-- signing credential なしでは tag release の実署名も完了しない
-
-## CI ジョブ
-
-### `test-fresh-clone`
-
-```yaml
-fresh-clone-artifact:
-  name: Fresh clone artifact
-  runs-on: ubuntu-latest
-  steps:
-    - uses: actions/checkout@v4
-    - uses: dtolnay/rust-toolchain@stable
-    - env:
-        NATIVE_ONLY_RELEASE: "0"
-      run: bash scripts/release.sh
-    - uses: actions/upload-artifact@v4
-      with:
-        name: fresh-clone-archive-${{ github.sha }}
-        path: dist/*.tar.gz
-
-test-fresh-clone:
-  name: Test fresh clone (binary-only)
-  runs-on: ubuntu-latest
-  needs: fresh-clone-artifact
-  steps:
-    - uses: actions/checkout@v4
-    - uses: actions/download-artifact@v4
-      with:
-        name: fresh-clone-archive-${{ github.sha }}
-        path: dist/
-    # Rust ツールチェーン setup なし
-    - name: Binary-only smoke
-      run: bash scripts/ci/test-fresh-clone.sh dist/<archive>.tar.gz
-```
-
-- `fresh-clone-artifact` が Linux 用 rollback compatibility archive を同一 workflow で作成し、`test-fresh-clone` はそれを download して検証する。Ubuntu CI では actual native `program.native` を生成しないため、native-only official archive ではなく `NATIVE_ONLY_RELEASE=0` を明示して host launcher + guest component の rollback compatibility archive を使う。
-- `test-fresh-clone` 側は Rust ツールチェーン無し runner を維持する（`dtolnay/rust-toolchain` ステップなし）
-- `scripts/ci/test-fresh-clone.sh <archive>` が `scripts/ci/release-smoke.sh` / `scripts/ci/default-path-smoke.sh` / `scripts/smoke_test_readme.sh` を順に再利用し、downloaded artifact だけで `verify checksum -> packaged binary smoke -> default path smoke -> README Quick Start smoke` を通す
-- これは stage0 package 配布前の **closest viable binary-only gate** であり、true no-Rust end-state では GitHub Releases / stage0 fetch に置き換える
-
-### `fresh-clone-smoke`（現行の暫定 gate）
-
-`test-fresh-clone` と並走する暫定 gate として、現在も Rust 依存の **clean checkout 由来ビルド回帰** を継続検知する `fresh-clone-smoke` を運用する。
-
-- `scripts/ci/test-fresh-clone.sh` が `target/ci/fresh-clone-smoke/` に clean checkout 相当のコピーを作る
-- そのコピー上で `cargo build -p lsharp-driver -q` を実行し、ビルド済み `lsharp` binary を得る
-- `scripts/ci/default-path-smoke.sh` を再利用して `check` / `compile` の default-path smoke を再実行する
-- 追加で `selfhost/src/Syntax/Token.ls` と `stdlib/Core.ls` をコンパイルし、selfhost / stdlib の代表 slice が clean checkout でも壊れていないことを確認する
-
-このジョブは **Rust 非依存化の完了を主張しない**。あくまで `test-fresh-clone` と役割分担しながら、clean checkout 経路の regressions を CI gate に載せ続ける暫定措置である。
-
-### `release-smoke`（downloaded artifact の中間 gate）
-
-`test-fresh-clone` の前段として、release workflow では Actions 内で actual native program を生成できる native-only archive (`lsharp-{version}-aarch64-apple-darwin.tar.gz`) を `actions/download-artifact` で取得し、macOS arm64 runner 上で `scripts/ci/release-smoke.sh` により **download release artifact -> checksum verify -> packaged binary smoke** を再実行する。
-
-- Rust toolchain setup を追加せずに `scripts/ci/release-smoke.sh` を回す
-- `.tar.gz` / `.zip` archive を展開し、`checksums.txt` を検証する
-- packaged `lsharp` binary の `--version` / `check` / `fmt` / `compile` を smoke する
-- current workflow では native-only archive の実行可能性を優先し、downloaded artifact smoke の対象は `aarch64-apple-darwin` archive に限定する。Linux x86_64 は Mac + Lima VM local gate の証跡を release 前に別途確認する
-
-これは true no-Rust `test-fresh-clone` の代替ではないが、release artifact download 後の binary-only 経路 regressions を早めに捕捉する中間 gate である。
-
-## 前提条件
-
-| 条件 | 依存タスク | 説明 |
-|------|-----------|------|
-| stage0 パッケージ配布 | BOOT-04 | GitHub Releases で target 別 native-only official archive を配布済み |
-| ブートストラップ閉包 | BOOT-04 | stage0 → stage1 → stage2 の component 生成が完全に閉じている |
-| host launcher packaging | P13-3 | guest component の埋め込みまたは package 化パイプラインが動作 |
-| テストランナー | CLI-02 | `lsharp test` コマンドが機能 |
-
-## 現状
-
-2026 年時点では以下の制約がある:
-
-- stage0 native-only official archive の GitHub Releases 配布は未実装
-- ブートストラップの完全閉包（BOOT-04）は proxy 段階
-- `test-fresh-clone` は workflow-local downloaded artifact を使う closest viable binary-only gate までは接続されたが、GitHub Releases / stage0 fetch を起点とする true no-Rust end-state ではない
-- `fresh-clone-smoke` は clean checkout の smoke を継続検知する暫定 gate として並走する
-
-これらが解決された後、現行の workflow-local artifact ベース `test-fresh-clone` を GitHub Releases / stage0 fetch ベースへ置き換え、`fresh-clone-smoke` は段階的に retire する。
+`test-fresh-clone`、`fresh-clone-smoke`、`release-smoke` と関連 workflow は historical reference と rollback compatibility の再現用途に残す。通常の開発、検証、公開では実行・dispatch しない。`NATIVE_ONLY_RELEASE=0` は host launcher + guest component の rollback compatibility archive を意味し、native stage0 release asset を意味しない。
 
 ## 証跡
 
-- `scripts/smoke_test_readme.sh`（host launcher + component 配布 smoke への更新対象）
-- `scripts/ci/test-fresh-clone.sh`（clean checkout smoke + downloaded artifact binary-only smoke）
-- `scripts/ci/release-smoke.sh`（release artifact 展開 + checksum + packaged binary smoke）
-- `.github/workflows/ci.yml` (`fresh-clone-artifact`, `test-fresh-clone`, `fresh-clone-smoke`)
-- `crates/lsharp-wasm/tests/e2e/selfhost_lsp_docs_ops.rs` (`test_e2e_ops07_fresh_clone_no_rust`)
+- `scripts/fetch-stage0.sh`
+- `scripts/native-selfhost-dev.sh`
+- `scripts/ci/package-native-stage0-release.sh`
+- `scripts/ci/native-official-release-local.sh`
+- `scripts/ci/native-selfhost-dev-source-file-smoke.sh`

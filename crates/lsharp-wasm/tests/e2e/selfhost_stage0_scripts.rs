@@ -28,6 +28,37 @@ fn make_executable(path: &std::path::Path) {
     std::fs::set_permissions(path, perms).expect("permission の設定に失敗");
 }
 
+#[cfg(unix)]
+fn write_native_stage0_fixture(path: &std::path::Path, target: &str) {
+    let bin_dir = path.join("bin");
+    std::fs::create_dir_all(&bin_dir).expect("native stage0 fixture bin の作成に失敗");
+    for executable in ["compiler", "transport-driver", "materializer"] {
+        let executable_path = bin_dir.join(executable);
+        std::fs::write(
+            &executable_path,
+            "#!/usr/bin/env bash\nset -euo pipefail\nexit 0\n",
+        )
+        .unwrap_or_else(|e| panic!("{} の書き込みに失敗: {e}", executable_path.display()));
+        make_executable(&executable_path);
+    }
+    std::fs::write(bin_dir.join("materializer.py"), "#!/usr/bin/env python3\n")
+        .expect("native stage0 fixture materializer の書き込みに失敗");
+    std::fs::write(
+        path.join("manifest.json"),
+        format!(
+            r#"{{
+  "kind": "lsharp-native-selfhost-stage0",
+  "target": "{target}",
+  "compiler": "bin/compiler",
+  "transport_driver": "bin/transport-driver",
+  "materializer": "bin/materializer"
+}}
+"#
+        ),
+    )
+    .expect("native stage0 fixture manifest の書き込みに失敗");
+}
+
 #[test]
 fn test_native_macos_aarch64_materializer_supports_explicit_codesign_identity() {
     let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
@@ -227,7 +258,7 @@ esac
 
 #[cfg(unix)]
 #[test]
-fn test_e2e_ops07_fetch_stage0_script_fetches_fixture_release_assets() {
+fn test_e2e_ops07_fetch_stage0_script_fetches_native_stage0_fixture_release_asset() {
     use std::process::Command;
 
     let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
@@ -235,25 +266,9 @@ fn test_e2e_ops07_fetch_stage0_script_fetches_fixture_release_assets() {
     let checksum_script = project_root.join("scripts/checksum.sh");
     let temp_root = ops07_unique_temp_dir("fetch-stage0");
     let release_dir = temp_root.join("release");
-    let archive_root = release_dir.join("lsharp-v0.0.0-test-x86_64-unknown-linux-gnu");
+    let archive_root = release_dir.join("lsharp-stage0-v0.0.0-test-x86_64-unknown-linux-gnu");
     std::fs::create_dir_all(&archive_root).expect("fixture archive root の作成に失敗");
-
-    write_release_fixture_launcher(&archive_root.join("lsharp"));
-    std::fs::write(
-        archive_root.join("lsharp-lsp"),
-        "#!/usr/bin/env bash\necho 'lsharp-lsp 0.0.0-test'\n",
-    )
-    .expect("fixture lsp の書き込みに失敗");
-    make_executable(&archive_root.join("lsharp-lsp"));
-    std::fs::write(archive_root.join("README.md"), "# fixture\n")
-        .expect("README fixture 書き込み失敗");
-    std::fs::write(archive_root.join("LICENSE"), "fixture license\n")
-        .expect("LICENSE fixture 書き込み失敗");
-    std::fs::write(
-        archive_root.join("lsharp.component.wasm"),
-        b"\0asmfixture-component",
-    )
-    .expect("component fixture 書き込み失敗");
+    write_native_stage0_fixture(&archive_root, "x86_64-unknown-linux-gnu");
 
     let package_checksums = Command::new("bash")
         .arg(&checksum_script)
@@ -268,11 +283,12 @@ fn test_e2e_ops07_fetch_stage0_script_fetches_fixture_release_assets() {
     std::fs::write(archive_root.join("checksums.txt"), package_checksums.stdout)
         .expect("package checksums.txt 書き込み失敗");
 
-    let archive_path = release_dir.join("lsharp-v0.0.0-test-x86_64-unknown-linux-gnu.tar.gz");
+    let archive_path = release_dir.join("lsharp-stage0-v0.0.0-test-x86_64-unknown-linux-gnu.tar.gz");
     let tar_output = Command::new("tar")
+        .env("COPYFILE_DISABLE", "1")
         .arg("-czf")
         .arg(&archive_path)
-        .arg("lsharp-v0.0.0-test-x86_64-unknown-linux-gnu")
+        .arg("lsharp-stage0-v0.0.0-test-x86_64-unknown-linux-gnu")
         .current_dir(&release_dir)
         .output()
         .expect("fixture archive 作成に失敗");
@@ -317,10 +333,104 @@ fn test_e2e_ops07_fetch_stage0_script_fetches_fixture_release_assets() {
         String::from_utf8_lossy(&output.stderr)
     );
     assert!(
-        stage0_dir.join("lsharp").is_file()
-            && stage0_dir.join("lsharp.component.wasm").is_file()
+        stage0_dir.join("manifest.json").is_file()
+            && stage0_dir.join("bin/compiler").is_file()
+            && stage0_dir.join("bin/transport-driver").is_file()
+            && stage0_dir.join("bin/materializer").is_file()
             && stage0_dir.join("checksums.txt").is_file(),
-        "fetch-stage0.sh は stage0/ 配下へ package payload を展開するべき"
+        "fetch-stage0.sh は native stage0 manifest と executable payload を stage0/ 配下へ展開するべき"
+    );
+
+    std::fs::remove_dir_all(&temp_root).ok();
+}
+
+#[cfg(unix)]
+#[test]
+fn test_e2e_ops07_fetch_stage0_script_rejects_app_cli_archive_without_replacing_stage0() {
+    use std::process::Command;
+
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let fetch_script = project_root.join("scripts/fetch-stage0.sh");
+    let checksum_script = project_root.join("scripts/checksum.sh");
+    let temp_root = ops07_unique_temp_dir("fetch-stage0-reject-app-cli");
+    let release_dir = temp_root.join("release");
+    let archive_root = release_dir.join("lsharp-stage0-v0.0.0-test-x86_64-unknown-linux-gnu");
+    std::fs::create_dir_all(&archive_root).expect("reject fixture archive root の作成に失敗");
+    std::fs::write(archive_root.join("program.native"), "not a native stage0 package\n")
+        .expect("reject fixture program の書き込みに失敗");
+
+    let package_checksums = Command::new("bash")
+        .arg(&checksum_script)
+        .arg(&archive_root)
+        .output()
+        .expect("reject fixture package checksum の生成に失敗");
+    assert!(
+        package_checksums.status.success(),
+        "reject fixture package checksum の生成に失敗: stderr={}",
+        String::from_utf8_lossy(&package_checksums.stderr)
+    );
+    std::fs::write(archive_root.join("checksums.txt"), package_checksums.stdout)
+        .expect("reject fixture package checksums の書き込みに失敗");
+
+    let archive_path = release_dir.join("lsharp-stage0-v0.0.0-test-x86_64-unknown-linux-gnu.tar.gz");
+    let tar_output = Command::new("tar")
+        .env("COPYFILE_DISABLE", "1")
+        .arg("-czf")
+        .arg(&archive_path)
+        .arg("lsharp-stage0-v0.0.0-test-x86_64-unknown-linux-gnu")
+        .current_dir(&release_dir)
+        .output()
+        .expect("reject fixture archive の作成に失敗");
+    assert!(
+        tar_output.status.success(),
+        "reject fixture archive の作成に失敗: stderr={}",
+        String::from_utf8_lossy(&tar_output.stderr)
+    );
+
+    let release_checksums = Command::new("bash")
+        .arg(&checksum_script)
+        .arg(&release_dir)
+        .output()
+        .expect("reject fixture release checksum の生成に失敗");
+    assert!(
+        release_checksums.status.success(),
+        "reject fixture release checksum の生成に失敗: stderr={}",
+        String::from_utf8_lossy(&release_checksums.stderr)
+    );
+    std::fs::write(release_dir.join("checksums.txt"), release_checksums.stdout)
+        .expect("reject fixture release checksums の書き込みに失敗");
+
+    let stage0_dir = temp_root.join("stage0");
+    std::fs::create_dir_all(&stage0_dir).expect("existing stage0 の作成に失敗");
+    std::fs::write(stage0_dir.join("keep.txt"), "keep existing stage0\n")
+        .expect("existing stage0 sentinel の書き込みに失敗");
+    let output = Command::new("bash")
+        .arg(&fetch_script)
+        .env(
+            "STAGE0_RELEASE_BASE_URL",
+            format!("file://{}", release_dir.display()),
+        )
+        .env("STAGE0_VERSION", "v0.0.0-test")
+        .env("STAGE0_TARGET", "x86_64-unknown-linux-gnu")
+        .env("STAGE0_DIR", &stage0_dir)
+        .current_dir(&project_root)
+        .output()
+        .expect("reject fixture fetch-stage0.sh の実行に失敗");
+
+    assert!(
+        !output.status.success(),
+        "fetch-stage0.sh は App.Cli archive を native stage0 として受け入れてはならない"
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("native stage0 manifest"),
+        "reject 診断は native stage0 manifest を示すべき: stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        std::fs::read_to_string(stage0_dir.join("keep.txt")).expect("existing stage0 sentinel の読み込みに失敗"),
+        "keep existing stage0\n",
+        "invalid archive は既存 stage0 を置換してはならない"
     );
 
     std::fs::remove_dir_all(&temp_root).ok();

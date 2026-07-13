@@ -17,17 +17,15 @@ L# の通常開発を Rust toolchain や `cargo` の実行待ちから切り離�
 
 ## Native 開発経路
 
-stage0 package が既にある場合、通常のコア開発は次の runner を使う。
+`fetch-stage0.sh` が配置した `./stage0` package があれば、通常のコア開発は次の runner を使う。
 
 ```bash
-NATIVE_STAGE0_DIR=/path/to/lsharp-native-selfhost-stage0 \
-  ./scripts/native-selfhost-dev.sh check examples/fib.ls
+./scripts/native-selfhost-dev.sh check examples/fib.ls
 
-NATIVE_STAGE0_DIR=/path/to/lsharp-native-selfhost-stage0 \
-  ./scripts/native-selfhost-dev.sh --bootstrap compile examples/fib.ls -o fib.wasm
+./scripts/native-selfhost-dev.sh --bootstrap compile examples/fib.ls -o fib.wasm
 ```
 
-`--bootstrap` は stage0 compiler で current `selfhost/` を native program に再生成する。通常コマンドだけであれば、同じ source fingerprint で bootstrap を繰り返さない。
+`NATIVE_STAGE0_DIR=/path/to/lsharp-native-selfhost-stage0` または `--stage0-dir` は、別の stage0 package を比較・検証する場合だけ指定する。`--bootstrap` は stage0 compiler で current `selfhost/` を native program に再生成する。通常コマンドだけであれば、同じ source fingerprint で bootstrap を繰り返さない。
 
 Linux x86_64 の final gate は macOS host から Lima へ package と必要最小限の source/scripts をコピーして実行する。
 

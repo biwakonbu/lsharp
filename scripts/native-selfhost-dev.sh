@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-STAGE0_DIR="${NATIVE_STAGE0_DIR:-}"
+STAGE0_DIR="${NATIVE_STAGE0_DIR:-$ROOT/stage0}"
 SOURCE_ROOT="${NATIVE_SOURCE_ROOT:-$ROOT/selfhost}"
 STAGE_DIR="${NATIVE_STAGE_DIR:-$ROOT/.native-selfhost-dev}"
 RELATIVE_ENTRY="${NATIVE_RELATIVE_ENTRY:-src/App/Cli.ls}"
@@ -19,7 +19,7 @@ usage() {
 usage: scripts/native-selfhost-dev.sh [options] [--] [program args...]
 
 options:
-  --stage0-dir DIR  required stage0 package directory (or NATIVE_STAGE0_DIR)
+  --stage0-dir DIR  stage0 package directory (default: ./stage0 or NATIVE_STAGE0_DIR)
   --source-root DIR source tree to compile (default: ./selfhost)
   --stage-dir DIR   generated native stage directory
   --entry PATH      entry path relative to source root
@@ -264,7 +264,6 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-[[ -n "$STAGE0_DIR" ]] || die "NATIVE_STAGE0_DIR or --stage0-dir is required"
 [[ -d "$STAGE0_DIR" ]] || die "stage0 directory not found: $STAGE0_DIR"
 [[ -d "$SOURCE_ROOT" ]] || die "source root not found: $SOURCE_ROOT"
 [[ ! "$RELATIVE_ENTRY" = /* ]] || die "entry path must be relative to source root: $RELATIVE_ENTRY"
