@@ -1775,6 +1775,53 @@ fn test_native_linux_x86_app_cli_source_file_smoke_script_contract() {
 }
 
 #[test]
+fn test_native_selfhost_dev_source_file_smoke_script_contract() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-selfhost-dev-source-file-smoke.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+
+    for required in [
+        "NATIVE_STAGE0_DIR",
+        "native-selfhost-dev.sh",
+        "--bootstrap",
+        "parse",
+        "check",
+        "fmt",
+        "test",
+        "metadata.ls",
+        "compile",
+        "build",
+        "compile.wasm",
+        "build.wasm",
+        "decls:1",
+        "examples:2",
+        "invariants:1",
+        "failures:0",
+        "0061736d",
+        "blocked-tools",
+        "trap cleanup EXIT",
+    ] {
+        assert!(
+            script.contains(required),
+            "native selfhost source-file smoke は `{required}` を固定するべき"
+        );
+    }
+    for forbidden in [
+        "cargo build",
+        "cargo test",
+        "CARGO_TARGET_DIR",
+        "command -v lsharp",
+        "which lsharp",
+    ] {
+        assert!(
+            !script.contains(forbidden),
+            "native selfhost source-file smoke は Rust/Cargo または host lsharp discovery を含めてはならない: {forbidden}"
+        );
+    }
+}
+
+#[test]
 fn test_native_linux_x86_target_export_ignores_generated_seed_in_source_digest() {
     let script_path =
         selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
@@ -36031,6 +36078,47 @@ fn test_native_host_cli_argv_projection_excludes_process_argv0() {
     );
 }
 
+fn native_macos_codesign_identity(value: Option<std::ffi::OsString>) -> Option<std::ffi::OsString> {
+    value.filter(|identity| !identity.is_empty())
+}
+
+#[test]
+fn test_native_macos_codesign_identity_requires_an_explicit_nonempty_value() {
+    assert_eq!(native_macos_codesign_identity(None), None);
+    assert_eq!(
+        native_macos_codesign_identity(Some(std::ffi::OsString::new())),
+        None
+    );
+    assert_eq!(
+        native_macos_codesign_identity(Some(std::ffi::OsString::from("Developer ID Application"))),
+        Some(std::ffi::OsString::from("Developer ID Application"))
+    );
+}
+
+fn sign_native_macos_program_if_requested(program_path: &std::path::Path) -> Result<(), String> {
+    let Some(identity) = native_macos_codesign_identity(std::env::var_os(
+        "LSHARP_NATIVE_MACOS_AARCH64_CODESIGN_IDENTITY",
+    )) else {
+        return Ok(());
+    };
+    let output = std::process::Command::new("codesign")
+        .args(["--force", "--sign"])
+        .arg(&identity)
+        .arg("--timestamp=none")
+        .arg(program_path)
+        .output()
+        .map_err(|e| format!("native macOS code signing 実行失敗: {e}"))?;
+    if output.status.success() {
+        return Ok(());
+    }
+    Err(format!(
+        "native macOS code signing 失敗: identity={:?} stdout={} stderr={}",
+        identity,
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr),
+    ))
+}
+
 fn build_native_host_bundle_with_canonical_artifacts_and_entrypoint(
     code: &[u8],
     data: &[u8],
@@ -36310,6 +36398,8 @@ fn build_native_host_bundle_with_canonical_artifacts_entrypoint_and_argv_project
                 String::from_utf8_lossy(&relink_result.stderr),
             ));
         }
+
+        sign_native_macos_program_if_requested(&dir.join("program.native"))?;
 
         read_native_host_bundle_from_dir(&dir, response_text, Vec::new(), Vec::new(), 0)
     })();

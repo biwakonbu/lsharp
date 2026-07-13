@@ -195,3 +195,20 @@ for _ in range(2):
         cwd=stage_dir,
         check=True,
     )
+
+codesign_identity = os.environ.get(
+    "LSHARP_NATIVE_MACOS_AARCH64_CODESIGN_IDENTITY", ""
+).strip()
+if codesign_identity:
+    subprocess.run(
+        [
+            "codesign",
+            "--force",
+            "--sign",
+            codesign_identity,
+            "--timestamp=none",
+            "program.native",
+        ],
+        cwd=stage_dir,
+        check=True,
+    )

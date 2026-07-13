@@ -28,6 +28,28 @@ fn make_executable(path: &std::path::Path) {
     std::fs::set_permissions(path, perms).expect("permission の設定に失敗");
 }
 
+#[test]
+fn test_native_macos_aarch64_materializer_supports_explicit_codesign_identity() {
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let materializer = project_root.join("scripts/ci/materialize-native-macos-aarch64-bundle.py");
+    let source = std::fs::read_to_string(&materializer)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", materializer.display()));
+
+    for required in [
+        "LSHARP_NATIVE_MACOS_AARCH64_CODESIGN_IDENTITY",
+        "codesign",
+        "--force",
+        "--sign",
+        "--timestamp=none",
+        "program.native",
+    ] {
+        assert!(
+            source.contains(required),
+            "macOS native materializer は optional code signing の `{required}` を固定するべき"
+        );
+    }
+}
+
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 #[test]
 fn test_e2e_native_macos_aarch64_materializer_executes_tiny_stage_code() {
