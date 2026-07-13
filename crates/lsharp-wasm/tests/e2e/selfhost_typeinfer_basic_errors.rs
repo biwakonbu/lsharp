@@ -70,6 +70,64 @@ fn test_e2e_selfhost_typeinfer_typed_ann_unifies_primitive_type() {
     );
 }
 
+/// selfhost TypeInfer.ls テスト: raw TypeApp / TypeFun annotation を internal type へ解決できる
+#[test]
+fn test_e2e_selfhost_typeinfer_typed_ann_unifies_type_app_and_fun() {
+    let harness = r#"
+(defn raw-type-named [name-hash]
+  (vector-push (vector-push (vector-new 2) 60) name-hash))
+
+(defn raw-type-app1 [name-hash arg]
+  (vector-push
+    (vector-push
+      (vector-push
+        (vector-push (vector-new 4) 61)
+        name-hash)
+      1)
+    arg))
+
+(defn raw-type-fun1 [param ret]
+  (vector-push
+    (vector-push
+      (vector-push
+        (vector-push (vector-new 4) 62)
+        1)
+      param)
+    ret))
+
+(defn main []
+  (let [counter (make-var-counter)
+        env0 (init-builtin-env counter)
+        env1 (type-env-insert env0 901 (mono (mk-ref (mk-int))))
+        env2 (type-env-insert env1 902 (mono (mk-fun (mk-int) (mk-string))))
+        int-expr (raw-type-named 73679)
+        string-expr (raw-type-named 2486848561)
+        ref-int-expr (raw-type-app1 82035 int-expr)
+        int-to-string-expr (raw-type-fun1 int-expr string-expr)
+        ref-result (infer-expr (make-ann-typed (make-var 901) ref-int-expr) env2 (subst-new) counter)
+        fun-result (infer-expr (make-ann-typed (make-var 902) int-to-string-expr) env2 (subst-new) counter)]
+    (do
+      (print (result-failed ref-result))
+      (print (ty-tag (result-type ref-result)))
+      (print (ty-name (result-type ref-result)))
+      (print (result-failed fun-result))
+      (print (ty-tag (result-type fun-result)))
+      (print (ty-name (ty-fp (result-type fun-result))))
+      (print (ty-name (ty-fr (result-type fun-result))))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_typeinfer_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "5", "800", "0", "3", "100", "300"],
+        "raw TypeApp / TypeFun annotation は internal type と一致するべき"
+    );
+}
+
 /// selfhost TypeInfer.ls テスト: defn signature は param / return 型の不一致を拒否する
 #[test]
 fn test_e2e_selfhost_typeinfer_typed_defn_signature_rejects_mismatch() {

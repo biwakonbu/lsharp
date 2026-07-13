@@ -28,6 +28,8 @@
 (defn tag-do [] 9)
 (defn tag-match [] 10)
 (defn tag-type-named [] 60)
+(defn tag-type-app [] 61)
+(defn tag-type-fun [] 62)
 
 ;; computation step kind
 (defn comp-step-expr [] 0)
@@ -81,6 +83,9 @@
 (defn source-type-string-hash [] 2486848561)
 (defn source-type-float-hash [] 67973692)
 (defn source-type-unit-hash [] 2641316)
+(defn source-type-vector-hash [] 2558446947)
+(defn source-type-map-hash [] 77116)
+(defn source-type-ref-hash [] 82035)
 
 ;; raw TypeExpr を現在利用可能な internal Type へ解決する。
 ;; 未登録名は nominal constructor として保持し、ADT/alias registry の導入後に解決を拡張する。
@@ -97,10 +102,87 @@
             (mk-unit)
             (mk-con name-hash)))))))
 
+(defn typeinfer-resolve-app-name [name-hash]
+  (if (= name-hash (source-type-vector-hash))
+    (hash-vector)
+    (if (= name-hash (source-type-map-hash))
+      (hash-map)
+      (if (= name-hash (source-type-ref-hash))
+        (hash-ref)
+        name-hash))))
+
+(defn typeinfer-resolve-type-expr-args-loop [type-expr idx count args]
+  (if (>= idx count)
+    args
+    (do
+      (root_push args)
+      (let [arg-type (typeinfer-resolve-type-expr (vector-get type-expr (+ idx 3)))]
+        (do
+          (root_push arg-type)
+          (let [next-args (push-object-vector-local args arg-type)]
+            (do
+              (root_push next-args)
+              (let [resolved (typeinfer-resolve-type-expr-args-loop type-expr (+ idx 1) count next-args)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  resolved)))))))))
+
+(defn typeinfer-resolve-app-type [type-expr]
+  (do
+    (root_push type-expr)
+    (let [name-hash (vector-get type-expr 1)
+      arg-count (vector-get type-expr 2)
+      args (typeinfer-resolve-type-expr-args-loop type-expr 0 arg-count (vector-new arg-count))]
+      (do
+        (root_push args)
+        (let [result (mk-app (typeinfer-resolve-app-name name-hash) args)]
+          (do
+            (root_pop)
+            (root_pop)
+            result))))))
+
+(defn typeinfer-resolve-fun-params-loop [type-expr idx count return-type]
+  (if (>= idx count)
+    return-type
+    (let [param-type (typeinfer-resolve-type-expr (vector-get type-expr (+ idx 2)))]
+      (do
+        (root_push param-type)
+        (let [rest-type (typeinfer-resolve-fun-params-loop type-expr (+ idx 1) count return-type)]
+          (do
+            (root_push rest-type)
+            (let [result (mk-fun param-type rest-type)]
+              (do
+                (root_pop)
+                (root_pop)
+                result))))))))
+
+(defn typeinfer-resolve-fun-type [type-expr]
+  (do
+    (root_push type-expr)
+    (let [param-count (vector-get type-expr 1)
+      return-type-expr (vector-get type-expr (+ param-count 2))
+      return-type (typeinfer-resolve-type-expr return-type-expr)]
+      (do
+        (root_push return-type)
+        (let [result (typeinfer-resolve-fun-params-loop type-expr 0 param-count return-type)]
+          (do
+            (root_pop)
+            (root_pop)
+            result))))))
+
 (defn typeinfer-resolve-type-expr [type-expr]
-  (if (= (vector-get type-expr 0) (tag-type-named))
-    (typeinfer-resolve-named-type (vector-get type-expr 1))
-    (mk-con 0)))
+  (if (= type-expr 0)
+    (mk-con 0)
+    (let [tag (vector-get type-expr 0)]
+      (if (= tag (tag-type-named))
+        (typeinfer-resolve-named-type (vector-get type-expr 1))
+        (if (= tag (tag-type-app))
+          (typeinfer-resolve-app-type type-expr)
+          (if (= tag (tag-type-fun))
+            (typeinfer-resolve-fun-type type-expr)
+            (mk-con 0)))))))
 
 ;; 型アクセサ (Type.ls を利用)
 (defn ty-tag [ty] (type-tag ty))

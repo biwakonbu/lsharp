@@ -109,6 +109,67 @@ fn test_e2e_selfhost_parser_ann_form_retains_type_expr() {
     );
 }
 
+/// TEST-SYNTAX-02m3: annotation form は applied / function raw type expression を保持する
+#[test]
+fn test_e2e_selfhost_parser_ann_form_retains_type_app_and_fun_expr() {
+    let harness = r#"
+(defn main []
+  (let [app-node (vector-get (parse-program "(: 42 (Ref (Vector Int)))") 0)
+        app-type (vector-get app-node 2)
+        app-arg (vector-get app-type 3)
+        app-inner (vector-get app-arg 3)
+        fun-node (vector-get (parse-program "(: 42 (-> Int String Bool))") 0)
+        fun-type (vector-get fun-node 2)
+        fun-param1 (vector-get fun-type 2)
+        fun-param2 (vector-get fun-type 3)
+        fun-return (vector-get fun-type 4)]
+    (do
+      (print (vector-get app-type 0))
+      (print (vector-get app-type 1))
+      (print (vector-get app-type 2))
+      (print (vector-get app-arg 0))
+      (print (vector-get app-arg 1))
+      (print (vector-get app-arg 2))
+      (print (vector-get app-inner 0))
+      (print (vector-get app-inner 1))
+      (print (vector-get fun-type 0))
+      (print (vector-get fun-type 1))
+      (print (vector-get fun-param1 0))
+      (print (vector-get fun-param1 1))
+      (print (vector-get fun-param2 0))
+      (print (vector-get fun-param2 1))
+      (print (vector-get fun-return 0))
+      (print (vector-get fun-return 1))
+      0)))
+"#;
+
+    let output = run_parser_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        [
+            "61",
+            "82035",
+            "1",
+            "61",
+            "2558446947",
+            "1",
+            "60",
+            "73679",
+            "62",
+            "2",
+            "60",
+            "73679",
+            "60",
+            "2486848561",
+            "60",
+            "2076426",
+        ],
+        "annotation parser は TypeApp / TypeFun の raw payload を保持するべき"
+    );
+}
+
 /// TEST-SYNTAX-02n: float literal を lexer/parser で扱える
 #[test]
 fn test_e2e_selfhost_parser_float_literal() {
@@ -238,6 +299,71 @@ fn test_e2e_selfhost_parser_typed_defn_signature() {
     assert_eq!(lines[11], "73679", "param2 type は Int であるべき");
     assert_eq!(lines[12], "1", "return type は named type であるべき");
     assert_eq!(lines[13], "73679", "return type は Int であるべき");
+}
+
+/// TEST-SYNTAX-02p2: typed defn signature は nested type expression を保持する
+#[test]
+fn test_e2e_selfhost_parser_typed_defn_signature_retains_nested_type_expr() {
+    let harness = r#"
+(defn main []
+  (let [node (vector-get (parse-program "(defn transform [(: ref (Ref (Vector Int)))] : (-> Int String Bool) ref)") 0)
+        signature (vector-get node 5)
+        param-type (vector-get signature 2)
+        param-arg (vector-get param-type 3)
+        param-inner (vector-get param-arg 3)
+        return-type (vector-get signature 3)
+        return-param1 (vector-get return-type 2)
+        return-param2 (vector-get return-type 3)
+        return-ret (vector-get return-type 4)]
+    (do
+      (print (vector-get signature 0))
+      (print (vector-get signature 1))
+      (print (vector-get param-type 0))
+      (print (vector-get param-type 1))
+      (print (vector-get param-type 2))
+      (print (vector-get param-arg 0))
+      (print (vector-get param-arg 1))
+      (print (vector-get param-arg 2))
+      (print (vector-get param-inner 0))
+      (print (vector-get param-inner 1))
+      (print (vector-get return-type 0))
+      (print (vector-get return-type 1))
+      (print (vector-get return-param1 0))
+      (print (vector-get return-param1 1))
+      (print (vector-get return-param2 0))
+      (print (vector-get return-param2 1))
+      (print (vector-get return-ret 0))
+      (print (vector-get return-ret 1))
+      0)))
+"#;
+
+    let output = run_parser_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        [
+            "65",
+            "1",
+            "61",
+            "82035",
+            "1",
+            "61",
+            "2558446947",
+            "1",
+            "60",
+            "73679",
+            "62",
+            "2",
+            "60",
+            "73679",
+            "60",
+            "2486848561",
+            "60",
+            "2076426",
+        ],
+        "typed defn parser は nested TypeApp / TypeFun を signature に保持するべき"
+    );
 }
 
 /// TEST-SYNTAX-02q: defn の :where clause を最小 payload のままスキップできる

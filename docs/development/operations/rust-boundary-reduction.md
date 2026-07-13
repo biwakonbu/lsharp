@@ -6,7 +6,7 @@ L# の通常開発を Rust toolchain や `cargo` の実行待ちから切り離�
 
 ここでいう「Rust 不要」は、あらかじめ取得した native stage0 package を使う日常の編集・検査・テスト・Wasm 出力の経路に `cargo`、`rustc`、host の `lsharp` を置かないという意味である。Rust workspace の物理削除や、MCP/LSP を含む全 host integration の native 化は含まない。
 
-この経路の成立は、自己ホスト実装が L# の全ての型・宣言意味論と parity を持つことを意味しない。現在自己ホストで検証済みの型注釈は `Int` / `Bool` / `String` / `Float` / `Unit` の named primitive slice であり、`TypeApp`、関数型、型変数、型別名、ADT、record declaration の型環境登録は未完了である。これらを変更・検証する開発では、現時点では Rust implementation を source of truth / oracle として必要とする。
+この経路の成立は、自己ホスト実装が L# の全ての型・宣言意味論と parity を持つことを意味しない。現在自己ホストで検証済みの型注釈は `Int` / `Bool` / `String` / `Float` / `Unit` の named primitive、closed named head の再帰的な `TypeApp`、複数引数の関数型である。`Ref (Vector Int)` と `(-> Int String Bool)` は parser から annotation unification まで確認済みであり、`Ref` / `Vector` の source 名は internal type constructor へ解決される。一方で `TypeExpr::Var`、record 型、型別名、ADT、record declaration の型環境登録は未完了である。これらを変更・検証する開発では、現時点では Rust implementation を source of truth / oracle として必要とする。
 
 ## 現在の事実
 

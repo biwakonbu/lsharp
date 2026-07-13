@@ -52,6 +52,34 @@ fn test_e2e_selfhost_parser_typed_defn_signature_rejects_mismatch() {
     );
 }
 
+/// parser-to-inference bundle: applied / function signature を自己ホスト型推論へ渡せる
+#[test]
+fn test_e2e_selfhost_parser_typed_defn_signature_unifies_type_app_and_fun() {
+    let harness = r#"
+(defn main []
+  (let [program (parse-program "(defn ref-id [(: x (Ref (Vector Int)))] : (Ref (Vector Int)) x) (defn fn-id [(: f (-> Int String Bool))] : (-> Int String Bool) f)")
+        analysis (infer-program-analysis program)]
+    (do
+      (print (infer-program-analysis-diagnostic-count analysis))
+      (print (infer-program-analysis-first-error-code analysis))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}",
+        selfhost_parser_typeinfer_runtime_bundle(),
+        harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "0"],
+        "parser 経由の TypeApp / TypeFun signature は型推論に渡せるべき"
+    );
+}
+
 #[test]
 fn test_e2e_selfhost_lexer_arrow_dot() {
     // Lexer.ls が -> と . を正しくトークン化できることを検証

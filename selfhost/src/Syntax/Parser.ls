@@ -482,16 +482,98 @@
       (p-advance pos-ref)
       0)))
 
-;; raw TypeExpr の最小 parser。named type を保持し、未対応形は従来どおり安全に skip する。
+;; 型リストを読み、対応する ) までの raw TypeExpr を収集する。
+(defn parse-type-expr-list-rooted-v3 [spans pos-ref src result]
+  (if (== (p-current spans pos-ref) 1)
+    (do
+      (p-advance pos-ref)
+      result)
+    (if (== (p-current spans pos-ref) 99)
+      result
+      (do
+        (root_push result)
+        (let [item (parse-type-expr-v3 spans pos-ref src)]
+          (do
+            (root_push item)
+            (let [next-result (vector-push-single-rooted-v3 result item)]
+              (do
+                (root_push next-result)
+                (let [parsed (parse-type-expr-list-rooted-v3 spans pos-ref src next-result)]
+                  (do
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    parsed))))))))))
+
+(defn parse-type-expr-list-v3 [spans pos-ref src result]
+  (do
+    (root_push spans)
+    (root_push pos-ref)
+    (root_push src)
+    (let [parsed (parse-type-expr-list-rooted-v3 spans pos-ref src result)]
+      (do
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        parsed))))
+
+(defn parse-type-app-expr-v3 [spans pos-ref src name-hash]
+  (let [args (vector-new 0)
+    args-slot (root_push args)]
+    (let [parsed-args (parse-type-expr-list-v3 spans pos-ref src args)]
+      (do
+        (root_set args-slot parsed-args)
+        (let [parsed (make-type-app-expr name-hash parsed-args)]
+          (do
+            (root_pop)
+            parsed))))))
+
+(defn parse-type-fun-expr-v3 [spans pos-ref src]
+  (do
+    (p-advance pos-ref) ;; -> を消費
+    (let [all-types (vector-new 0)
+      all-types-slot (root_push all-types)]
+      (let [parsed-types (parse-type-expr-list-v3 spans pos-ref src all-types)]
+        (do
+          (root_set all-types-slot parsed-types)
+          (let [count (vector-length parsed-types)]
+            (if (<= count 0)
+              (do
+                (root_pop)
+                (make-type-named 0))
+              (let [return-type (vector-get parsed-types (- count 1))
+                params (type-expr-prefix parsed-types (- count 1))
+                parsed (make-type-fun-expr params return-type)]
+                (do
+                  (root_pop)
+                  parsed)))))))))
+
+(defn parse-type-list-expr-v3 [spans pos-ref src]
+  (do
+    (p-advance pos-ref) ;; ( を消費
+    (if (== (p-current spans pos-ref) 51)
+      (parse-type-fun-expr-v3 spans pos-ref src)
+      (if (== (p-current spans pos-ref) 20)
+        (let [name-hash (current-symbol-hash-v3 spans pos-ref src)]
+          (do
+            (p-advance pos-ref)
+            (parse-type-app-expr-v3 spans pos-ref src name-hash)))
+        (do
+          (parse-skip-to-close-v3 spans pos-ref 1)
+          (make-type-named 0))))))
+
+;; raw TypeExpr parser。Named、applied type、function type を保持する。
 (defn parse-type-expr-v3 [spans pos-ref src]
   (if (== (p-current spans pos-ref) 20)
     (let [name-hash (current-symbol-hash-v3 spans pos-ref src)]
       (do
         (p-advance pos-ref)
         (make-type-named name-hash)))
-    (do
-      (skip-type-expr-v3 spans pos-ref)
-      (make-type-named 0))))
+    (if (== (p-current spans pos-ref) 0)
+      (parse-type-list-expr-v3 spans pos-ref src)
+      (do
+        (skip-type-expr-v3 spans pos-ref)
+        (make-type-named 0)))))
 
 (defn directive-symbol-v3 [name]
   (if (string-eq name "where") 1
@@ -1902,23 +1984,47 @@
   (let [next-idx (scan-defn-param-form-end-v3 spans (+ idx 1) end 1)]
     (parse-defn-param-signature-append-v3 spans idx end src signature 0 next-idx)))
 
+(defn type-expr-invalid-v3 [type-expr]
+  (if (= type-expr 0)
+    1
+    (if (= (vector-get type-expr 0) (ast-type-named))
+      (if (= (vector-get type-expr 1) 0) 1 0)
+      0)))
+
+;; param span 内だけを読むための一時カーソル。型式の末尾が param の閉じ ) の直前であることも検証する。
+(defn parse-type-expr-from-span-v3 [spans start end src]
+  (let [type-pos (ref-new start)
+    type-pos-slot (root_push type-pos)]
+    (let [parsed (parse-type-expr-v3 spans type-pos src)]
+      (if (= (ref-get type-pos) end)
+        (if (= (type-expr-invalid-v3 parsed) 1)
+          (do
+            (root_pop)
+            0)
+          (do
+            (root_pop)
+            parsed))
+        (do
+          (root_pop)
+          0)))))
+
+(defn parse-defn-param-signature-typed-form-v3 [spans idx end src signature]
+  (let [next-idx (scan-defn-param-form-end-v3 spans (+ idx 1) end 1)]
+    (if (< (+ idx 3) next-idx)
+      (let [type-expr (parse-type-expr-from-span-v3 spans (+ idx 3) (- next-idx 1) src)]
+        (parse-defn-param-signature-append-v3 spans idx end src signature type-expr next-idx))
+      (parse-defn-param-signature-append-v3 spans idx end src signature 0 next-idx))))
+
 ;; parse-params-v3 のカーソル進行を維持したまま、typed parameter の raw type を span から再読する。
 (defn parse-defn-param-signature-loop-v3 [spans idx end src signature]
   (if (>= idx end)
     signature
     (let [kind (span-kind spans idx)]
       (if (== kind 0)
-        (if (< (+ idx 4) end)
+        (if (< (+ idx 2) end)
           (if (== (span-kind spans (+ idx 1)) 50)
             (if (== (span-kind spans (+ idx 2)) 20)
-              (if (== (span-kind spans (+ idx 3)) 20)
-                (if (== (span-kind spans (+ idx 4)) 1)
-                  (let [type-start (span-start spans (+ idx 3))
-                    type-end (span-end spans (+ idx 3))
-                    type-expr (make-type-named (name-hash src type-start type-end))]
-                    (parse-defn-param-signature-append-v3 spans idx end src signature type-expr (+ idx 5)))
-                  (parse-defn-param-signature-skip-form-v3 spans idx end src signature))
-                (parse-defn-param-signature-skip-form-v3 spans idx end src signature))
+              (parse-defn-param-signature-typed-form-v3 spans idx end src signature)
               (parse-defn-param-signature-skip-form-v3 spans idx end src signature))
             (parse-defn-param-signature-skip-form-v3 spans idx end src signature))
           (parse-defn-param-signature-skip-form-v3 spans idx end src signature))

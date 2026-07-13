@@ -38,6 +38,8 @@
 (defn ast-computationbuilder [] 30)
 (defn ast-defmacro [] 31)
 (defn ast-type-named [] 60)
+(defn ast-type-app [] 61)
+(defn ast-type-fun [] 62)
 (defn ast-defn-signature [] 65)
 (defn ast-pat-wildcard [] 40)
 (defn ast-pat-var [] 41)
@@ -129,6 +131,57 @@
 ;; raw TypeExpr の named form: [60, source-name-hash]
 (defn make-type-named [name-hash]
   (vector-push-pair-rooted (vector-new 2) (ast-type-named) name-hash))
+
+;; raw TypeExpr の object payload を左から複写する。
+(defn type-expr-append-items [items idx len out]
+  (if (>= idx len)
+    out
+    (type-expr-append-items
+      items
+      (+ idx 1)
+      len
+      (vector-push-single-rooted out (vector-get items idx)))))
+
+(defn type-expr-prefix [items count]
+  (do
+    (root_push items)
+    (let [result (type-expr-append-items items 0 count (vector-new count))]
+      (do
+        (root_pop)
+        result))))
+
+;; raw TypeExpr の applied form: [61, source-name-hash, arg-count, arg...]
+(defn make-type-app-expr [name-hash args]
+  (do
+    (root_push args)
+    (let [arg-count (vector-length args)
+      prefix
+        (vector-push
+          (vector-push
+            (vector-push (vector-new (+ arg-count 3)) (ast-type-app))
+            name-hash)
+          arg-count)
+      result (type-expr-append-items args 0 arg-count prefix)]
+      (do
+        (root_pop)
+        result))))
+
+;; raw TypeExpr の function form: [62, param-count, param..., return-type]
+(defn make-type-fun-expr [params return-type]
+  (do
+    (root_push params)
+    (root_push return-type)
+    (let [param-count (vector-length params)
+      prefix
+        (vector-push
+          (vector-push (vector-new (+ param-count 3)) (ast-type-fun))
+          param-count)
+      with-params (type-expr-append-items params 0 param-count prefix)
+      result (vector-push-single-rooted with-params return-type)]
+      (do
+        (root_pop)
+        (root_pop)
+        result))))
 
 ;; annotation: [11, expr, raw-type-expr]
 (defn make-ann-typed [expr type-expr]
