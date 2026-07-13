@@ -5625,7 +5625,7 @@ fn test_selfhost_normal_payload_roots_payload2_before_root_set() {
 }
 
 #[test]
-fn test_selfhost_compile_file_functions_roots_start_ftable_before_registering_pairs() {
+fn test_selfhost_compile_file_functions_roots_record_prelude_before_registering_pairs() {
     let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
         "selfhost/src/App/CompilerMode.ls",
     )))
@@ -5640,30 +5640,49 @@ fn test_selfhost_compile_file_functions_roots_start_ftable_before_registering_pa
         .expect("compile-file-functions-with-cache body を取り出せること");
 
     let start_alloc = body
-        .find("start-ftable (ftable-new)")
-        .expect("compile-file-functions-with-cache は initial ftable を local 化するべき");
+        .find("start-ftable (ftable-with-native-runtime-imports)")
+        .expect("compile-file-functions-with-cache は runtime imports 入りの initial ftable を local 化するべき");
     let start_root = body[start_alloc..]
         .find("(root_push start-ftable)")
         .map(|offset| offset + start_alloc)
         .expect(
             "compile-file-functions-with-cache は register 前に initial ftable を root するべき",
         );
+    let prelude_call = body
+        .find(
+            "prelude (compile-record-prelude-all-pairs all-pairs 0 n start-ftable func-idx (vector-new 8))",
+        )
+        .expect("record constructor/accessor prelude は rooted start-ftable から生成するべき");
+    let prelude_root = body[prelude_call..]
+        .find("(root_push prelude)")
+        .map(|offset| offset + prelude_call)
+        .expect(
+            "compile-file-functions-with-cache は register 前に record prelude を root するべき",
+        );
+    let prelude_ftable_root = body[prelude_root..]
+        .find("(root_push prelude-ftable)")
+        .map(|offset| offset + prelude_root)
+        .expect("compile-file-functions-with-cache は register 前に record prelude の ftable を root するべき");
     let register_call = body
-        .find("reg-result (register-all-pairs all-pairs 0 n start-ftable func-idx)")
-        .expect("register-all-pairs は rooted start-ftable を受け取るべき");
+        .find("reg-result (register-all-pairs all-pairs 0 n prelude-ftable prelude-func-idx)")
+        .expect("通常 defn 登録は record prelude 後の ftable と function index を受け取るべき");
 
     assert!(
-        start_alloc < start_root && start_root < register_call,
-        "normal payload 経路は start-ftable allocation -> root -> register-all-pairs の順で GC root を固定するべき"
+        start_alloc < start_root
+            && start_root < prelude_call
+            && prelude_call < prelude_root
+            && prelude_root < prelude_ftable_root
+            && prelude_ftable_root < register_call,
+        "normal payload 経路は start ftable allocation -> root -> record prelude -> prelude roots -> register-all-pairs の順で GC root を固定するべき"
     );
     assert!(
-        !body.contains("reg-result (register-all-pairs all-pairs 0 n (ftable-new) func-idx)"),
-        "normal payload 経路は unrooted inline ftable-new を register-all-pairs に渡してはいけない"
+        !body.contains("reg-result (register-all-pairs all-pairs 0 n start-ftable func-idx)"),
+        "normal payload 経路は record prelude 前の ftable を register-all-pairs に渡してはいけない"
     );
 }
 
 #[test]
-fn test_selfhost_compile_file_functions_roots_result_before_unwinding_state() {
+fn test_selfhost_compile_file_functions_roots_record_prelude_result_before_unwinding_state() {
     let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
         "selfhost/src/App/CompilerMode.ls",
     )))
@@ -5678,11 +5697,20 @@ fn test_selfhost_compile_file_functions_roots_result_before_unwinding_state() {
         .expect("compile-file-functions-with-cache body を取り出せること");
 
     let compile_call = body
-        .find("functions (compile-all-src-decl-pairs-chunked all-pairs 0 n ftable data-ref functions0)")
+        .find("functions (compile-all-src-decl-pairs-chunked all-pairs 0 n ftable data-ref prelude-functions)")
         .expect("compile-file-functions-with-cache は functions を生成するべき");
     let all_pairs_slot = body
         .find("all-pairs-slot (root_push all-pairs)")
         .expect("compile-file-functions-with-cache は最深 root slot を保持するべき");
+    let prelude_call = body
+        .find(
+            "prelude (compile-record-prelude-all-pairs all-pairs 0 n start-ftable func-idx (vector-new 8))",
+        )
+        .expect("compile-file-functions-with-cache は record prelude を生成するべき");
+    let prelude_functions_root = body[prelude_call..]
+        .find("(root_push prelude-functions)")
+        .map(|offset| offset + prelude_call)
+        .expect("compile-file-functions-with-cache は通常 defn compile 前に record prelude functions を root するべき");
     let functions_root = body[compile_call..]
         .find("(root_push functions)")
         .map(|offset| offset + compile_call)
@@ -5701,11 +5729,13 @@ fn test_selfhost_compile_file_functions_roots_result_before_unwinding_state() {
         .expect("compile-file-functions-with-cache は outer roots を pop するべき");
 
     assert!(
-        all_pairs_slot < compile_call
+        all_pairs_slot < prelude_call
+            && prelude_call < prelude_functions_root
+            && prelude_functions_root < compile_call
             && compile_call < functions_root
             && functions_root < root_set_pos
             && root_set_pos < first_pop_after_compile,
-        "normal payload 経路は stage2 native 実行中の GC で返却 functions を失わないよう、最深 root slot に退避してから outer roots を pop するべき"
+        "normal payload 経路は stage2 native 実行中の GC で record prelude と返却 functions を失わないよう、最深 root slot に退避してから outer roots を pop するべき"
     );
 }
 

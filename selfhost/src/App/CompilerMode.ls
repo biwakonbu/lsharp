@@ -1010,24 +1010,35 @@
             start-ftable (ftable-with-native-runtime-imports)]
             (do
               (root_push start-ftable)
-              (let [reg-result (register-all-pairs all-pairs 0 n start-ftable func-idx)
-                ftable (vector-get reg-result 0)]
+              (let [prelude (compile-record-prelude-all-pairs all-pairs 0 n start-ftable func-idx (vector-new 8))]
                 (do
-                  (root_push reg-result)
-                  (let [functions0 (vector-new 8)]
+                  (root_push prelude)
+                  (let [prelude-ftable (vector-get prelude 2)
+                    prelude-func-idx (vector-get prelude 3)
+                    prelude-functions (vector-get prelude 4)]
                     (do
-                      (root_push functions0)
-                      (let [functions (compile-all-src-decl-pairs-chunked all-pairs 0 n ftable data-ref functions0)]
+                      (root_push prelude-ftable)
+                      (root_push prelude-functions)
+                      (let [reg-result (register-all-pairs all-pairs 0 n prelude-ftable prelude-func-idx)]
                         (do
-                          (root_push functions)
-                          (root_set all-pairs-slot functions)
-                          (root_pop)
-                          (root_pop)
-                          (root_pop)
-                          (root_pop)
-                          (root_pop)
-                          (root_pop)
-                          functions)))))))))))))
+                          (root_push reg-result)
+                          (let [ftable (vector-get reg-result 0)]
+                            (do
+                              (root_push ftable)
+                              (let [functions (compile-all-src-decl-pairs-chunked all-pairs 0 n ftable data-ref prelude-functions)]
+                                (do
+                                  (root_push functions)
+                                  (root_set all-pairs-slot functions)
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  functions)))))))))))))))))
 (defn compile-file-functions-with-cache-normal-payload-diagnostic [path func-idx cache-ref parse-count-ref data-ref]
   (do
     (print 9000000208)
@@ -2754,6 +2765,126 @@
                   (root_pop)
                   (root_pop)
                   0)))))))))
+;; record helper は全 module pair で先に予約・生成する。
+;; pair ごとに defn と混在させると、後続 pair の function table index と body 順がずれる。
+(defn compile-record-prelude-all-pairs-step [pairs idx n ftable func-idx functions]
+  (if (>= idx n)
+    (make-record-prelude-state 1 idx ftable func-idx functions)
+    (do
+      (root_push pairs)
+      (root_push ftable)
+      (root_push functions)
+      (let [pair (vector-get pairs idx)]
+        (do
+          (root_push pair)
+          (let [decls (vector-get pair 1)]
+            (do
+              (root_push decls)
+              (let [prelude (record-prelude-chunked decls 0 (vector-length decls) ftable func-idx functions)]
+                (do
+                  (root_push prelude)
+                  (let [result (make-record-prelude-state 0 (+ idx 1) (vector-get prelude 2) (vector-get prelude 3) (vector-get prelude 4))]
+                    (do
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      result)))))))))))
+
+(defn continue-compile-record-prelude-all-pairs-step [pairs n state]
+  (if (= (vector-get state 0) 1)
+    state
+    (do
+      (root_push pairs)
+      (root_push state)
+      (let [next-ftable (vector-get state 2)
+        next-functions (vector-get state 4)]
+        (do
+          (root_push next-ftable)
+          (root_push next-functions)
+          (let [result (compile-record-prelude-all-pairs-step pairs (vector-get state 1) n next-ftable (vector-get state 3) next-functions)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              result)))))))
+
+(defn continue-compile-record-prelude-all-pairs-step-times [pairs n remaining state]
+  (if (= remaining 0)
+    state
+    (if (= (vector-get state 0) 1)
+      state
+      (do
+        (root_push pairs)
+        (root_push state)
+        (let [next-state (continue-compile-record-prelude-all-pairs-step pairs n state)]
+          (do
+            (root_push next-state)
+            (let [result (continue-compile-record-prelude-all-pairs-step-times pairs n (- remaining 1) next-state)]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result))))))))
+
+(defn compile-record-prelude-all-pairs-step-64 [pairs idx n ftable func-idx functions]
+  (do
+    (root_push pairs)
+    (root_push ftable)
+    (root_push functions)
+    (let [state (compile-record-prelude-all-pairs-step pairs idx n ftable func-idx functions)]
+      (do
+        (root_push state)
+        (let [result (continue-compile-record-prelude-all-pairs-step-times pairs n 63 state)]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            result))))))
+
+(defn continue-compile-record-prelude-all-pairs-step-64 [pairs n state]
+  (if (= (vector-get state 0) 1)
+    state
+    (do
+      (root_push pairs)
+      (root_push state)
+      (let [next-ftable (vector-get state 2)
+        next-functions (vector-get state 4)]
+        (do
+          (root_push next-ftable)
+          (root_push next-functions)
+          (let [next-state (compile-record-prelude-all-pairs-step-64 pairs (vector-get state 1) n next-ftable (vector-get state 3) next-functions)]
+            (do
+              (root_push next-state)
+              (let [result (continue-compile-record-prelude-all-pairs-step-64 pairs n next-state)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  result)))))))))
+
+(defn compile-record-prelude-all-pairs [pairs idx n ftable func-idx functions]
+  (do
+    (root_push pairs)
+    (root_push ftable)
+    (root_push functions)
+    (let [state (compile-record-prelude-all-pairs-step-64 pairs idx n ftable func-idx functions)]
+      (do
+        (root_push state)
+        (let [result (continue-compile-record-prelude-all-pairs-step-64 pairs n state)]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            result))))))
+
 (defn make-register-pairs-state [done next-idx next-ftable next-func-idx]
   (do
     (let [done-ref (ref-new done)

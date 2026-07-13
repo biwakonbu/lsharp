@@ -1877,41 +1877,107 @@
 (defn compile-defn-functions-with-source [decls idx n source ftable data-ref functions]
   (compile-source-defn-functions-chunked decls idx n source ftable data-ref functions))
 (defn source-program-functions-base [src decls base-idx]
-  (let [n (vector-length decls)
-    pass1 (register-defns-chunked decls 0 n (ftable-new) base-idx)
-    ftable (vector-get pass1 2)
-    data-ref (ref-new (vector-new 8))
-    functions (compile-source-defn-functions-chunked decls 0 n src ftable data-ref (vector-new 8))
-    data (ref-get data-ref)]
-    (let [payload1 (push-object-vector (vector-new 3) ftable)]
+  (do
+    (root_push src)
+    (root_push decls)
+    (let [n (vector-length decls)
+      prelude (record-prelude-chunked decls 0 n (ftable-new) base-idx (vector-new 8))]
       (do
-        (root_push payload1)
-        (let [payload2 (push-object-vector payload1 functions)]
+        (root_push prelude)
+        (let [prelude-ftable (vector-get prelude 2)
+          prelude-func-idx (vector-get prelude 3)
+          prelude-functions (vector-get prelude 4)]
           (do
-            (root_push payload2)
-            (let [payload3 (push-object-vector payload2 data)]
+            (root_push prelude-ftable)
+            (root_push prelude-functions)
+            (let [pass1 (register-defns-chunked decls 0 n prelude-ftable prelude-func-idx)]
               (do
-                (root_pop)
-                (root_pop)
-                payload3))))))))
+                (root_push pass1)
+                (let [ftable (vector-get pass1 2)
+                  data-ref (ref-new (vector-new 8))]
+                  (do
+                    (root_push ftable)
+                    (root_push data-ref)
+                    (let [functions (compile-source-defn-functions-chunked decls 0 n src ftable data-ref prelude-functions)]
+                      (do
+                        (root_push functions)
+                        (let [data (ref-get data-ref)]
+                          (do
+                            (root_push data)
+                            (let [payload1 (push-object-vector (vector-new 3) ftable)]
+                              (do
+                                (root_push payload1)
+                                (let [payload2 (push-object-vector payload1 functions)]
+                                  (do
+                                    (root_push payload2)
+                                    (let [payload3 (push-object-vector payload2 data)]
+                                      (do
+                                        (root_push payload3)
+                                        (root_pop)
+                                        (root_pop)
+                                        (root_pop)
+                                        (root_pop)
+                                        (root_pop)
+                                        (root_pop)
+                                        (root_pop)
+                                        (root_pop)
+                                        (root_pop)
+                                        (root_pop)
+                                        (root_pop)
+                                        (root_pop)
+                                        (root_pop)
+                                        payload3))))))))))))))))))))
 (defn compile-program-functions-with-source [src decls]
-  (let [n (vector-length decls)
-    pass1 (register-defns-chunked decls 0 n (ftable-new) 10)
-    ftable (vector-get pass1 2)
-    data-ref (ref-new (vector-new 8))
-    functions (compile-source-defn-functions-chunked decls 0 n src ftable data-ref (vector-new 8))
-    data (ref-get data-ref)]
-    (let [payload1 (push-object-vector (vector-new 3) ftable)]
+  (do
+    (root_push src)
+    (root_push decls)
+    (let [n (vector-length decls)
+      prelude (record-prelude-chunked decls 0 n (ftable-new) 10 (vector-new 8))]
       (do
-        (root_push payload1)
-        (let [payload2 (push-object-vector payload1 functions)]
+        (root_push prelude)
+        (let [prelude-ftable (vector-get prelude 2)
+          prelude-func-idx (vector-get prelude 3)
+          prelude-functions (vector-get prelude 4)]
           (do
-            (root_push payload2)
-            (let [payload3 (push-object-vector payload2 data)]
+            (root_push prelude-ftable)
+            (root_push prelude-functions)
+            (let [pass1 (register-defns-chunked decls 0 n prelude-ftable prelude-func-idx)]
               (do
-                (root_pop)
-                (root_pop)
-                payload3))))))))
+                (root_push pass1)
+                (let [ftable (vector-get pass1 2)
+                  data-ref (ref-new (vector-new 8))]
+                  (do
+                    (root_push ftable)
+                    (root_push data-ref)
+                    (let [functions (compile-source-defn-functions-chunked decls 0 n src ftable data-ref prelude-functions)]
+                      (do
+                        (root_push functions)
+                        (let [data (ref-get data-ref)]
+                          (do
+                            (root_push data)
+                            (let [payload1 (push-object-vector (vector-new 3) ftable)]
+                              (do
+                                (root_push payload1)
+                                (let [payload2 (push-object-vector payload1 functions)]
+                                  (do
+                                    (root_push payload2)
+                                    (let [payload3 (push-object-vector payload2 data)]
+                                      (do
+                                        (root_push payload3)
+                                        (root_pop)
+                                        (root_pop)
+                                        (root_pop)
+                                        (root_pop)
+                                        (root_pop)
+                                        (root_pop)
+                                        (root_pop)
+                                        (root_pop)
+                                        (root_pop)
+                                        (root_pop)
+                                        (root_pop)
+                                        (root_pop)
+                                        (root_pop)
+                                        payload3))))))))))))))))))))
 (defn compile-program-with-source [src decls]
   (let [pair (compile-program-functions-with-source src decls)
     ftable (vector-get pair 0)
@@ -2670,6 +2736,323 @@
           result (make-function-meta final-param-count local-count ir)]
           (do
             (root_push result)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            result))))))
+
+;; record constructor/static accessor は user defn より先に function table / Wasm body に置く。
+;; WasmEmit は末尾関数を _start から呼ぶため、helper は source-order の defn 群へ混在させない。
+(defn record-def-fields [decl]
+  (if (= (vector-length decl) 4)
+    (vector-get decl 3)
+    (vector-get decl 2)))
+
+(defn compile-record-constructor-fields [fields idx count record-local env instrs]
+  (if (>= idx count)
+    instrs
+    (do
+      (root_push fields)
+      (root_push env)
+      (let [instrs-slot (root_push instrs)
+        field-hash (vector-get fields (* idx 3))
+        value-instrs (emit-to (vector-new 2) (op-local-get) (+ idx 1))]
+        (do
+          (root_push value-instrs)
+          (let [next-instrs (compile-record-map-field-instrs env instrs record-local field-hash value-instrs)]
+            (do
+              (root_set instrs-slot next-instrs)
+              (root_pop)
+              (let [result (compile-record-constructor-fields fields (+ idx 1) count record-local env next-instrs)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  result)))))))))
+
+(defn make-record-constructor-meta [decl]
+  (do
+    (root_push decl)
+    (let [fields (record-def-fields decl)]
+      (do
+        (root_push fields)
+        (let [field-count (/ (vector-length fields) 3)
+          record-local (+ field-count 1)
+          env (env-new)
+          instrs0 (vector-new 8)]
+          (do
+            (root_push env)
+            (root_push instrs0)
+            (let [instrs1 (emit-to instrs0 (op-map-new) record-local)]
+              (do
+                (root_push instrs1)
+                (let [instrs2 (emit-to instrs1 (op-local-set) record-local)]
+                  (do
+                    (root_push instrs2)
+                    (let [with-fields (compile-record-constructor-fields fields 0 field-count record-local env instrs2)]
+                      (do
+                        (root_push with-fields)
+                        (let [ir (emit-to with-fields (op-local-get) record-local)]
+                          (do
+                            (root_push ir)
+                            (let [local-max (max-local-slot ir 0 (vector-length ir) 0)
+                              local-count (if (> local-max field-count) (- local-max field-count) 0)
+                              result (make-function-meta field-count local-count ir)]
+                              (do
+                                (root_push result)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                result))))))))))))))))
+
+(defn make-record-accessor-meta [field-hash]
+  (let [ir0 (emit-to (vector-new 4) (op-local-get) 1)]
+    (do
+      (root_push ir0)
+      (let [ir1 (emit-to ir0 (op-i64-const) field-hash)]
+        (do
+          (root_push ir1)
+          (let [ir2 (emit-to ir1 (op-map-get) 2)]
+            (do
+              (root_push ir2)
+              (let [local-max (max-local-slot ir2 0 (vector-length ir2) 0)
+                local-count (if (> local-max 1) (- local-max 1) 0)
+                result (make-function-meta 1 local-count ir2)]
+                (do
+                  (root_push result)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  result)))))))))
+
+(defn make-record-register-result [ftable func-idx functions]
+  (do
+    (root_push ftable)
+    (root_push functions)
+    (let [result1 (push-object-vector (vector-new 3) ftable)]
+      (do
+        (root_push result1)
+        (let [result2 (push-int-vector result1 func-idx)]
+          (do
+            (root_push result2)
+            (let [result (push-object-vector result2 functions)]
+              (do
+                (root_push result)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result))))))))
+
+(defn register-record-accessors [fields idx count ftable func-idx functions]
+  (if (>= idx count)
+    (make-record-register-result ftable func-idx functions)
+    (do
+      (root_push fields)
+      (root_push ftable)
+      (root_push functions)
+      (let [field-hash (vector-get fields (* idx 3))
+        accessor-hash (vector-get fields (+ (* idx 3) 1))
+        accessor-meta (make-record-accessor-meta field-hash)]
+        (do
+          (root_push accessor-meta)
+          (let [next-ftable (ftable-register ftable accessor-hash func-idx)]
+            (do
+              (root_push next-ftable)
+              (let [next-functions (push-object-vector functions accessor-meta)]
+                (do
+                  (root_push next-functions)
+                  (let [result (register-record-accessors fields (+ idx 1) count next-ftable (+ func-idx 1) next-functions)]
+                    (do
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      result)))))))))))
+
+(defn register-record-decl [decl ftable func-idx functions]
+  (do
+    (root_push decl)
+    (root_push ftable)
+    (root_push functions)
+    (let [fields (record-def-fields decl)
+      constructor-hash (vector-get decl 1)
+      constructor-meta (make-record-constructor-meta decl)]
+      (do
+        (root_push fields)
+        (root_push constructor-meta)
+        (let [next-ftable (ftable-register ftable constructor-hash func-idx)]
+          (do
+            (root_push next-ftable)
+            (let [next-functions (push-object-vector functions constructor-meta)]
+              (do
+                (root_push next-functions)
+                (let [result (register-record-accessors fields 0 (/ (vector-length fields) 3) next-ftable (+ func-idx 1) next-functions)]
+                  (do
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    result))))))))))
+
+(defn make-record-prelude-state [done next-idx ftable next-func-idx functions]
+  (do
+    (root_push ftable)
+    (root_push functions)
+    (let [state1 (push-int-vector (vector-new 5) done)]
+      (do
+        (root_push state1)
+        (let [state2 (push-int-vector state1 next-idx)]
+          (do
+            (root_push state2)
+            (let [state3 (push-object-vector state2 ftable)]
+              (do
+                (root_push state3)
+                (let [state4 (push-int-vector state3 next-func-idx)]
+                  (do
+                    (root_push state4)
+                    (let [result (push-object-vector state4 functions)]
+                      (do
+                        (root_push result)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        result))))))))))))
+
+(defn record-prelude-step [decls idx n ftable func-idx functions]
+  (if (>= idx n)
+    (make-record-prelude-state 1 idx ftable func-idx functions)
+    (do
+      (root_push decls)
+      (root_push ftable)
+      (root_push functions)
+      (let [decl (vector-get decls idx)]
+        (do
+          (root_push decl)
+          (if (= (vector-get decl 0) 22)
+            (let [record-result (register-record-decl decl ftable func-idx functions)]
+              (do
+                (root_push record-result)
+                (let [result (make-record-prelude-state 0 (+ idx 1) (vector-get record-result 0) (vector-get record-result 1) (vector-get record-result 2))]
+                  (do
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    result))))
+            (let [result (make-record-prelude-state 0 (+ idx 1) ftable func-idx functions)]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result))))))))
+
+(defn continue-record-prelude-step [decls n state]
+  (if (= (vector-get state 0) 1)
+    state
+    (do
+      (root_push decls)
+      (root_push state)
+      (let [next-ftable (vector-get state 2)
+        next-functions (vector-get state 4)]
+        (do
+          (root_push next-ftable)
+          (root_push next-functions)
+          (let [result (record-prelude-step decls (vector-get state 1) n next-ftable (vector-get state 3) next-functions)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              result)))))))
+
+(defn continue-record-prelude-step-times [decls n remaining state]
+  (if (= remaining 0)
+    state
+    (if (= (vector-get state 0) 1)
+      state
+      (do
+        (root_push decls)
+        (root_push state)
+        (let [next-state (continue-record-prelude-step decls n state)]
+          (do
+            (root_push next-state)
+            (let [result (continue-record-prelude-step-times decls n (- remaining 1) next-state)]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result))))))))
+
+(defn record-prelude-step-64 [decls idx n ftable func-idx functions]
+  (do
+    (root_push decls)
+    (root_push ftable)
+    (root_push functions)
+    (let [state (record-prelude-step decls idx n ftable func-idx functions)]
+      (do
+        (root_push state)
+        (let [result (continue-record-prelude-step-times decls n 63 state)]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            result))))))
+
+(defn continue-record-prelude-step-64 [decls n state]
+  (if (= (vector-get state 0) 1)
+    state
+    (do
+      (root_push decls)
+      (root_push state)
+      (let [next-ftable (vector-get state 2)
+        next-functions (vector-get state 4)]
+        (do
+          (root_push next-ftable)
+          (root_push next-functions)
+          (let [next-state (record-prelude-step-64 decls (vector-get state 1) n next-ftable (vector-get state 3) next-functions)]
+            (do
+              (root_push next-state)
+              (let [result (continue-record-prelude-step-64 decls n next-state)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  result)))))))))
+
+(defn record-prelude-chunked [decls idx n ftable func-idx functions]
+  (do
+    (root_push decls)
+    (root_push ftable)
+    (root_push functions)
+    (let [state (record-prelude-step-64 decls idx n ftable func-idx functions)]
+      (do
+        (root_push state)
+        (let [result (continue-record-prelude-step-64 decls n state)]
+          (do
             (root_pop)
             (root_pop)
             (root_pop)

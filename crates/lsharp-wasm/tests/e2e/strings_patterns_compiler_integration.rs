@@ -2321,6 +2321,105 @@ fn test_e2e_selfhost_compiler_mode_record_literal_field_access_runs() {
     assert_eq!(output, "6\n42\n");
 }
 
+/// selfhost compiler-mode: record constructor と static accessor を actual Wasm で実行できること
+#[test]
+fn test_e2e_selfhost_compiler_mode_record_constructor_and_static_accessor_run() {
+    let harness = r#"
+(defn print-bytes-loop [bytes idx count]
+  (if (>= idx count)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes-loop bytes (+ idx 1) count))))
+
+(defn main []
+  (let [source "(defn inc [n] (+ n 1)) (type Point (record (: x Int) (: y Int))) (defn main [] (let [point (Point (inc 40) 2)] (do (print (Point.x point)) (print (Point.y point)) 0)))"
+        program (parse-program source)
+        pair (compile-program-functions-with-source source program)
+        functions (vector-get pair 1)
+        data (vector-get pair 2)
+        wasm-bytes (build-wasm-bytes-wasi functions data)]
+    (do
+      (print (vector-length wasm-bytes))
+      (print-bytes-loop wasm-bytes 0 (vector-length wasm-bytes))
+      0)))
+"#;
+    let compiler_mode = format!("{}\n{}", selfhost_module("CompilerMode.ls"), harness);
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("IR.ls"),
+        selfhost_module("Compiler.ls"),
+        selfhost_module("WasiBackend.ls"),
+        selfhost_module("WasmEmit.ls"),
+        selfhost_module("ModuleResolver.ls"),
+        compiler_mode
+    );
+    let emitted = compile_and_run(&combined);
+    let wasm_bytes = parse_printed_wasm_bytes(&emitted);
+    let output = super::selfhost_bootstrap_four_layer::run_wasm_with_six_imports_compiler_mode(
+        &wasm_bytes,
+        "",
+        &[],
+    )
+    .expect("selfhost compiler-mode record constructor module should run");
+    assert_eq!(output, "41\n2\n");
+}
+
+/// selfhost compiler-mode: import 先 record の constructor/static accessor が actual Wasm で実行できること
+#[test]
+fn test_e2e_selfhost_compiler_mode_imported_record_constructor_and_static_accessor_run() {
+    let temp_root = std::env::temp_dir().join(format!(
+        "lsharp-selfhost-record-import-runtime-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&temp_root);
+    let app_dir = temp_root.join("src/App");
+    std::fs::create_dir_all(&app_dir).expect("record import fixture の directory を作れない");
+    std::fs::write(
+        app_dir.join("Shapes.ls"),
+        "(module App.Shapes)\n(type Point (record (: x Int) (: y Int)))\n",
+    )
+    .expect("record import fixture の Shapes.ls を書けない");
+    std::fs::write(
+        app_dir.join("Main.ls"),
+        "(module App.Main)\n(import App.Shapes)\n(defn inc [n] (+ n 1))\n(defn main [] (let [point (Point (inc 40) 2)] (do (print (Point.x point)) (print (Point.y point)) 0)))\n",
+    )
+    .expect("record import fixture の Main.ls を書けない");
+
+    let compiler_mode = format!(
+        "{}\n(defn main [] (compile-file-mode))",
+        selfhost_module("CompilerMode.ls")
+    );
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("IR.ls"),
+        selfhost_module("Compiler.ls"),
+        selfhost_module("WasiBackend.ls"),
+        selfhost_module("WasmEmit.ls"),
+        selfhost_module("ModuleResolver.ls"),
+        compiler_mode
+    );
+    let emitted =
+        compile_and_run_with_dir_and_args(&combined, &temp_root, &["compiler", "src/App/Main.ls"]);
+    let wasm_bytes = parse_printed_wasm_bytes(&emitted);
+    let output = super::selfhost_bootstrap_four_layer::run_wasm_with_six_imports_compiler_mode_fs(
+        &wasm_bytes,
+        &temp_root,
+        &[],
+    )
+    .expect("import 先 record を含む selfhost compiler-mode module should run");
+    assert_eq!(output, "41\n2\n");
+    std::fs::remove_dir_all(&temp_root).expect("record import fixture を削除できない");
+}
+
 /// selfhost compiler-mode: root_set を do 位置で使って map を更新できること
 #[test]
 fn test_e2e_selfhost_compiler_mode_root_set_updates_map_without_binding_result() {
