@@ -285,6 +285,45 @@ fn test_e2e_selfhost_parametric_record_registers_fresh_constructor_and_literal_s
     );
 }
 
+/// parser-to-inference bundle: parametric record の field access は let 束縛後も schema の field 型を使う
+#[test]
+fn test_e2e_selfhost_parametric_record_field_access_uses_instantiated_schema() {
+    let harness = r#"
+(defn main []
+  (let [valid-analysis
+          (infer-program-analysis
+            (parse-program "(type (Pair a b) (record (: fst a) (: snd b))) (defn int-first [] (let [pair {Pair fst 1 snd true}] (: (. pair fst) Int))) (defn bool-second [] (let [pair {Pair fst 1 snd true}] (: (. pair snd) Bool)))"))
+        invalid-analysis
+          (infer-program-analysis
+            (parse-program "(type (Pair a b) (record (: fst a) (: snd b))) (defn invalid [] (let [pair {Pair fst 1 snd true}] (: (. pair fst) Bool)))"))
+        unknown-analysis
+          (infer-program-analysis
+            (parse-program "(type (Pair a b) (record (: fst a) (: snd b))) (defn unknown [] (let [pair {Pair fst 1 snd true}] (. pair missing)))"))]
+    (do
+      (print (infer-program-analysis-diagnostic-count valid-analysis))
+      (print (infer-program-analysis-first-error-code valid-analysis))
+      (print (infer-program-analysis-diagnostic-count invalid-analysis))
+      (print (infer-program-analysis-first-error-code invalid-analysis))
+      (print (infer-program-analysis-diagnostic-count unknown-analysis))
+      (print (infer-program-analysis-first-error-code unknown-analysis))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}",
+        selfhost_parser_typeinfer_runtime_bundle(),
+        harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "0", "1", "6", "1", "6"],
+        "parametric record の field access は具体化済み schema の field 型を返し、未定義 field を診断するべき"
+    );
+}
+
 /// parser-to-inference bundle: parametric ADT 宣言は constructor と match pattern を型検査する
 #[test]
 fn test_e2e_selfhost_parametric_adt_registers_constructors_and_match() {

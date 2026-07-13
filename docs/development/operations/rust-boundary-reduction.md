@@ -10,7 +10,7 @@ L# の通常開発を Rust toolchain や `cargo` の実行待ちから切り離�
 
 ### 型・宣言意味論の更新 (2026-07-14)
 
-直前の概要にある record 宣言未実装という記述は更新済みである。自己ホスト parser は field 名と raw TypeExpr を保持し、推論 prepass は record schema と constructor を値環境へ登録して既知 record literal の field 型不一致を診断する。parametric record は `TypeInferRecordDecl.ls` が parameter ごとの bound variable を持つ structural record scheme を登録し、constructor と literal の使用ごとに scheme を instantiate する。Int field を持つ `Box` と Bool field を持つ `Box` の別使用箇所は独立であり、同じ `Pair a` literal 内の field は同じ具体化を共有する。record accessor、field access、update、pattern はこの slice に含まない。
+直前の概要にある record 宣言未実装という記述は更新済みである。自己ホスト parser は field 名と raw TypeExpr を保持し、推論 prepass は record schema と constructor を値環境へ登録して既知 record literal の field 型不一致を診断する。parametric record は `TypeInferRecordDecl.ls` が parameter ごとの bound variable を持つ structural record scheme を登録し、constructor と literal の使用ごとに scheme を instantiate する。Int field を持つ `Box` と Bool field を持つ `Box` の別使用箇所は独立であり、同じ `Pair a` literal 内の field は同じ具体化を共有する。`(. record field)` は let 束縛後も具体化済み schema の field 型を返し、field 型不一致と未定義 field を診断する。`Type.field` accessor、update、pattern はこの slice に含まない。
 
 ### 型・宣言意味論の更新: ordinary ADT (2026-07-14)
 
@@ -69,11 +69,11 @@ Rust が完全に不要になったわけではない。次の作業は native b
 2. native selfhost と Rust implementation の oracle/differential 比較、障害解析、emergency rollback。
 3. `mcp-server`、bare LSP、`--emit-ir`、native target など、上表で明示した Rust host integration surface。
 
-したがって、Linux gate 完了後に「検証済み core CLI の日常ループは Rust なしで開発可能」と言える。一方で、自己ホストの型・宣言意味論 P0 が未完了の間は「base language development 全体」や「L# の全機能」が Rust なしとは言えない。closed / parametric alias の signature・式内 annotation、ordinary ADT の constructor/pattern、parametric record の constructor/literal slice はその境界を少し狭めたが、上表の Rust-only surface、external tool dependency、forward / recursive alias、scoped polymorphic variable、record accessor / field access / update / pattern、GADT return type/refinement などの未実装 P0 は残る。
+したがって、Linux gate 完了後に「検証済み core CLI の日常ループは Rust なしで開発可能」と言える。一方で、自己ホストの型・宣言意味論 P0 が未完了の間は「base language development 全体」や「L# の全機能」が Rust なしとは言えない。closed / parametric alias の signature・式内 annotation、ordinary ADT の constructor/pattern、parametric record の constructor/literal/field access slice はその境界を少し狭めたが、上表の Rust-only surface、external tool dependency、forward / recursive alias、scoped polymorphic variable、record accessor / update / pattern、GADT return type/refinement などの未実装 P0 は残る。
 
 ### 残る Base Language Gap
 
-Rust を base implementation から外すため、forward / recursive alias、scoped polymorphic variable、record accessor / field access / update / pattern、GADT return type/refinement を自己ホスト側で実装・差分検証する必要がある。nonparametric / parametric record の constructor/literal schema と ordinary ADT constructor/pattern はこの一覧から除外する。
+Rust を base implementation から外すため、forward / recursive alias、scoped polymorphic variable、record accessor / update / pattern、GADT return type/refinement を自己ホスト側で実装・差分検証する必要がある。nonparametric / parametric record の constructor/literal/field access schema と ordinary ADT constructor/pattern はこの一覧から除外する。
 
 ## 検証と残タスク
 

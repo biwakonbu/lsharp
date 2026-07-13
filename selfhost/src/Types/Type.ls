@@ -206,6 +206,19 @@
       len
       (type-push-object out (apply-subst subst (type-app-arg ty idx))))))
 
+;; Record の field type にも置換を再帰適用する。
+(defn apply-subst-record-fields [subst ty idx len out]
+  (if (>= idx len)
+    out
+    (let [field-hash (vector-get ty idx)
+      field-ty (vector-get ty (+ idx 1))]
+      (apply-subst-record-fields
+        subst
+        ty
+        (+ idx 2)
+        len
+        (type-record-add-field out field-hash (apply-subst subst field-ty))))))
+
 (defn apply-subst [subst ty]
   (if (= (type-tag ty) 2)
     ;; Var: 置換に存在すれば再帰的に適用
@@ -224,8 +237,12 @@
           (type-app-name ty)
           (apply-subst-app-args
             subst ty 0 (type-app-arg-count ty) (vector-new (type-app-arg-count ty))))
-        ;; Con / Record: そのまま返す
-        ty))))
+        (if (= (type-tag ty) 4)
+          ;; Record: すべての field type に置換を適用
+          (apply-subst-record-fields
+            subst ty 2 (vector-length ty) (make-type-record (type-name ty)))
+          ;; Con: そのまま返す
+          ty)))))
 
 ;; === occurs-check ===
 

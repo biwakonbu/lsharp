@@ -126,22 +126,25 @@
 
 ;; field access の型推論
 ;; [13, expr, field-name-hash]
-;; record 型なら対応フィールド型を返し、不明なら fresh var へ fallback する
+;; declared record 型なら具体化済み field 型を返し、未宣言 literal だけ既存 fallback を保つ
 (defn infer-fieldaccess [node env subst counter]
   (let [field-name-hash (vector-get node 2)
     base-node (vector-get node 1)]
-    (if (= (vector-get base-node 0) (tag-recordlit))
-      (let [field-node (recordlit-field-node base-node field-name-hash)]
-        (if (= field-node 0)
-          (make-result subst (fresh-type-var counter))
-          (infer-expr field-node env subst counter)))
-      (let [base-result (infer-expr base-node env subst counter)]
-        (if (= (result-failed base-result) 1)
-          (propagate-error-result base-result)
-          (let [s1 (result-subst base-result)
-            base-ty (apply-subst s1 (result-type base-result))]
-            (if (= (ty-tag base-ty) (ty-record))
-              (make-result s1 (mk-int))
+    (let [base-result (infer-expr base-node env subst counter)]
+      (if (= (result-failed base-result) 1)
+        (propagate-error-result base-result)
+        (let [s1 (result-subst base-result)
+          base-ty (apply-subst s1 (result-type base-result))]
+          (if (= (ty-tag base-ty) (ty-record))
+            (let [field-ty (type-record-field-type base-ty field-name-hash)]
+              (if (= field-ty 0)
+                (make-error-result-code (error-code-general))
+                (make-result s1 (apply-subst s1 field-ty))))
+            (if (= (vector-get base-node 0) (tag-recordlit))
+              (let [field-node (recordlit-field-node base-node field-name-hash)]
+                (if (= field-node 0)
+                  (make-result s1 (fresh-type-var counter))
+                  (infer-expr field-node env s1 counter)))
               (make-result s1 (fresh-type-var counter)))))))))
 
 ;; record update の型推論
