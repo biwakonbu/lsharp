@@ -207,8 +207,11 @@ cat >"$SOURCE_ROOT/src/App/Cli.ls" <<'LS'
 LS
 
 DOC_INPUT="$TEST_ROOT/doc-input.ls"
+DEFAULT_COMPONENT_OUTPUT="$PROJECT_DIR/doc-input.component.wasm"
 COMPONENT_OUTPUT="$TEST_ROOT/compile.component.wasm"
 BUILD_COMPONENT_OUTPUT="$TEST_ROOT/build.component.wasm"
+PREVIEW1_OUTPUT="$TEST_ROOT/compile-preview1.wasm"
+FORCED_PREVIEW1_OUTPUT="$TEST_ROOT/compile-forced-preview1.component.wasm"
 printf '%s\n' '(defn main [] 42)' >"$DOC_INPUT"
 
 cat >"$HOST_BIN/cargo" <<'SH'
@@ -291,6 +294,19 @@ assert_file_not_contains "$LOG_FILE" "program|repl --stdin"
 run_runner doc "$DOC_INPUT" --json
 assert_file_contains "$LOG_FILE" "doc-helper|$DOC_INPUT --json"
 assert_file_not_contains "$LOG_FILE" "program|doc $DOC_INPUT --json"
+
+run_runner compile "$DOC_INPUT"
+assert_file_contains "$LOG_FILE" "component-helper|compile --source $DOC_INPUT --output $DEFAULT_COMPONENT_OUTPUT"
+assert_eq "component" "$(<"$DEFAULT_COMPONENT_OUTPUT")"
+assert_file_not_contains "$LOG_FILE" "program|compile $DOC_INPUT"
+
+run_runner compile "$DOC_INPUT" -o "$PREVIEW1_OUTPUT"
+assert_file_contains "$LOG_FILE" "program|compile $DOC_INPUT -o $PREVIEW1_OUTPUT"
+assert_file_not_contains "$LOG_FILE" "component-helper|compile --source $DOC_INPUT --output $PREVIEW1_OUTPUT"
+
+run_runner compile "$DOC_INPUT" -o "$FORCED_PREVIEW1_OUTPUT" --target wasi-preview1
+assert_file_contains "$LOG_FILE" "program|compile $DOC_INPUT -o $FORCED_PREVIEW1_OUTPUT --target wasi-preview1"
+assert_file_not_contains "$LOG_FILE" "component-helper|compile --source $DOC_INPUT --output $FORCED_PREVIEW1_OUTPUT"
 
 run_runner compile "$DOC_INPUT" -o "$COMPONENT_OUTPUT" --target wasi-component
 assert_file_contains "$LOG_FILE" "component-helper|compile --source $DOC_INPUT --output $COMPONENT_OUTPUT"

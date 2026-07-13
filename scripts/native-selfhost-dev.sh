@@ -121,11 +121,23 @@ stage_is_ready() {
   [[ "$(<"$stamp_path")" == "$expected_fingerprint" ]]
 }
 
+default_component_output_path() {
+  python3 - "$1" <<'PY'
+import pathlib
+import sys
+
+try:
+    print(pathlib.Path(sys.argv[1]).with_suffix(".component.wasm"))
+except ValueError as error:
+    raise SystemExit(f"error: cannot derive component output path: {error}")
+PY
+}
+
 component_output_path() {
   local args=("$@")
   local index=2
   local output_path=""
-  local target="wasi-preview1"
+  local target=""
 
   [[ ${#args[@]} -ge 2 ]] || return 1
   [[ -f "${args[1]}" ]] || return 1
@@ -159,7 +171,18 @@ component_output_path() {
     index=$((index + 1))
   done
 
-  [[ "$target" == "wasi-component" && -n "$output_path" ]] || return 1
+  if [[ -z "$target" ]]; then
+    if [[ -z "$output_path" || "$(basename "$output_path")" == *.component.wasm ]]; then
+      target="wasi-component"
+    else
+      target="wasi-preview1"
+    fi
+  fi
+
+  [[ "$target" == "wasi-component" ]] || return 1
+  if [[ -z "$output_path" ]]; then
+    output_path="$(default_component_output_path "${args[1]}")" || return 1
+  fi
   printf '%s\n' "$output_path"
 }
 
