@@ -1,12 +1,12 @@
 # L# (lsharp)
 
-L# は **Lisp の S 式構文**、**F# 系の型指向**、そして **L# 独自の型 / メタデータ設計** を組み合わせたプログラミング言語です。現在の公開ターゲットは WebAssembly/WASI 系で、配布は **Rust 製 host launcher + 埋め込み selfhost guest component** を前提に整理しています。
+L# は **Lisp の S 式構文**、**F# 系の型指向**、そして **L# 独自の型 / メタデータ設計** を組み合わせたプログラミング言語です。公開プログラムの出力は WebAssembly/WASI 系で、target-native selfhost compiler による bootstrap も検証中です。
 
 - 構文は Lisp 的に小さく保つ
 - 型は Hindley-Milner を土台に強く保つ
 - さらに trait、制約付き型、metadata、計算式などで「型に意味を持たせる」方向を探る
 
-> 現在の通常導線は Rust 製 `lsharp` host launcher による `compile` / `test` / `lsp` / `mcp-server` です。`LSHARP_PATH` を使うと、埋め込み guest component の代わりに外部 compiler / 配布物への process-entry delegation を試せます。
+> target-native stage0 package と `scripts/native-selfhost-dev.sh` は `cargo` / `rustc` / host `lsharp` を使わない source-file smoke を提供します。Mac Apple Silicon はこの狭い command slice を実証済みで、Linux x86_64 は current stage0 の final gate を実行中です。ただし selfhost の型検査には宣言、型注釈、ADT/record、trait/constraint の P0 parity が残るため、広い言語開発では当面 Rust host `lsharp` が必要です。
 
 ## Core Language
 
@@ -164,7 +164,8 @@ L# source (.ls)
 
 | 用途 | 現在の推奨経路 | 補足 |
 |------|----------------|------|
-| 日常開発・公開 CLI | `cargo build -p lsharp-driver` → `target/debug/lsharp compile ... -o out.component.wasm` | `--target wasi-component` が既定。single-binary 配布では host launcher がこの guest component を内蔵する |
+| target-native selfhost 検証 | `STAGE0_VERSION=v<version> ./scripts/fetch-stage0.sh` → `./scripts/native-selfhost-dev.sh compile ... -o out.wasm` | Rust を block した source-file smoke 用。Mac Apple Silicon は実証済み、Linux x86_64 は current fixed-point gate 実行中。型宣言を含む広い source parity は未完 |
+| 現在の通常開発 / Rust host integration | `cargo build -p lsharp-driver` → `target/debug/lsharp compile ... -o out.component.wasm` | 型注釈、ADT/record、trait/constraint を含む source と `mcp-server`、bare LSP、`--emit-ir`、web/native target、oracle/rollback |
 | browser 向け core wasm | `target/debug/lsharp compile --target web-wasm ... -o out.wasm` | `web-wasm` は browser 向け core `.wasm`。現時点では host launcher の Rust fallback 経路が担う |
 | metadata test | `target/debug/lsharp test examples/metadata.ls` | `:example` / `:invariant` を自動検証 |
 | IDE / AI 連携 | `target/debug/lsharp lsp` / `target/debug/lsharp mcp-server` | LSP / MCP の入口 |
@@ -174,10 +175,11 @@ L# source (.ls)
 
 - **公開ターゲット**: Wasm/WASI
 - **安定寄りのコア**: HM 型推論、ADT、record、module、static trait dispatch、metadata-driven docs/tests
-- **現在の配布モデル**: Rust host launcher + embedded guest component による single-binary distribution
+- **開発用 bootstrap**: `lsharp-native-selfhost-stage0` package と `scripts/native-selfhost-dev.sh`。fresh clone は `lsharp-stage0-<version>-<target>.tar.gz` を検証して `./stage0` に展開できるが、現時点では selfhost 型検査の限定 slice を検証する経路である
+- **現在の配布モデル**: native-only App.Cli archive は手動 Mac + Lima gate で package/smoke を継続中。Rust host launcher + embedded guest component は rollback compatibility と Rust-only integration に加え、型検査 parity 完了まで通常開発にも残る
 - **bootstrap の読み方**: `stage0 -> stage1 -> stage2 -> stage3` のうち、fixed-point の意味は `stage2.wasm == stage3.wasm`。最小 subset では `stage1 -> stage2` 実生成を確認済みで、full fixed input set でも stage2 self-feed と `stage1 -> stage2` / `stage2 -> stage3` の bit-identical chain evidence をテストと artifact で固定済み。native-only / pure selfhosting 配布の主張はまだ実験的・後続トラック扱い
 - **移行中**: selfhost cutover の残タスク、AI / package ecosystem、高度な型機能の parity
-- **deferred**: native backend の常用配布経路と native-only RC distribution は Phase 13+ / v2 の探求項目として保持
+- **残件**: selfhost 型検査の builtin / declaration / annotation / ADT / record / trait parity、Linux x86_64 current stage0 の fixed-point/source-file gate、両 target current artifact による手動 release gate、stage0 asset の手動公開
 - **注意点**: 高カインド型、GADT、computation expressions は README で方向性として触れていますが、全面的に runtime-ready と断定しない段階です
 
 ## Learn More
