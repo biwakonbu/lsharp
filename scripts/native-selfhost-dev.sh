@@ -8,6 +8,10 @@ STAGE_DIR="${NATIVE_STAGE_DIR:-$ROOT/.native-selfhost-dev}"
 RELATIVE_ENTRY="${NATIVE_RELATIVE_ENTRY:-src/App/Cli.ls}"
 DECODER="$ROOT/scripts/ci/decode-native-selfhost-transport.py"
 LSP_STDIO_SHIM="$ROOT/scripts/native-selfhost-lsp-stdio.py"
+INSTALL_HELPER="$ROOT/scripts/native-selfhost-install.py"
+REPL_HELPER="$ROOT/scripts/native-selfhost-repl.py"
+DOC_HELPER="$ROOT/scripts/native-selfhost-doc.py"
+COMPONENT_HELPER="$ROOT/scripts/native-selfhost-component.py"
 FORCE_BOOTSTRAP=0
 
 usage() {
@@ -117,6 +121,48 @@ stage_is_ready() {
   [[ "$(<"$stamp_path")" == "$expected_fingerprint" ]]
 }
 
+component_output_path() {
+  local args=("$@")
+  local index=2
+  local output_path=""
+  local target="wasi-preview1"
+
+  [[ ${#args[@]} -ge 2 ]] || return 1
+  [[ -f "${args[1]}" ]] || return 1
+
+  while (( index < ${#args[@]} )); do
+    case "${args[index]}" in
+      -o|--output)
+        index=$((index + 1))
+        (( index < ${#args[@]} )) || return 1
+        output_path="${args[index]}"
+        ;;
+      --target)
+        index=$((index + 1))
+        (( index < ${#args[@]} )) || return 1
+        case "${args[index]}" in
+          wasi-preview1)
+            target="wasi-preview1"
+            ;;
+          wasi-component|wasm)
+            target="wasi-component"
+            ;;
+          *)
+            return 1
+            ;;
+        esac
+        ;;
+      *)
+        return 1
+        ;;
+    esac
+    index=$((index + 1))
+  done
+
+  [[ "$target" == "wasi-component" && -n "$output_path" ]] || return 1
+  printf '%s\n' "$output_path"
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --stage0-dir)
@@ -206,6 +252,31 @@ if [[ "$FORCE_BOOTSTRAP" == "1" ]] || ! stage_is_ready "$FINGERPRINT"; then
   esac
   [[ -x "$STAGE_DIR/program.native" ]] || die "materializer did not produce an executable program.native"
   printf '%s\n' "$FINGERPRINT" >"$STAGE_DIR/.source-fingerprint.sha256"
+fi
+
+if [[ "${1:-}" == "install" ]]; then
+  [[ $# -eq 1 ]] || die "native install does not accept command arguments"
+  [[ -f "$INSTALL_HELPER" ]] || die "native install helper not found: $INSTALL_HELPER"
+  exec python3 "$INSTALL_HELPER" --project-dir "$PWD"
+fi
+
+if [[ "${1:-}" == "repl" ]]; then
+  [[ -f "$REPL_HELPER" ]] || die "native REPL helper not found: $REPL_HELPER"
+  exec python3 "$REPL_HELPER" --program "$STAGE_DIR/program.native" "${@:2}"
+fi
+
+if [[ "${1:-}" == "doc" ]]; then
+  [[ -f "$DOC_HELPER" ]] || die "native documentation helper not found: $DOC_HELPER"
+  exec python3 "$DOC_HELPER" --program "$STAGE_DIR/program.native" "${@:2}"
+fi
+
+if COMPONENT_OUTPUT="$(component_output_path "$@")"; then
+  [[ -f "$COMPONENT_HELPER" ]] || die "native component helper not found: $COMPONENT_HELPER"
+  exec python3 "$COMPONENT_HELPER" \
+    --program "$STAGE_DIR/program.native" \
+    --command "$1" \
+    --source "$2" \
+    --output "$COMPONENT_OUTPUT"
 fi
 
 if [[ "${1:-}" == "lsp" && "${2:-}" == "--stdio" ]]; then
