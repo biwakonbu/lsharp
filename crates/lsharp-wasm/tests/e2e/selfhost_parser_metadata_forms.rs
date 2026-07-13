@@ -170,6 +170,37 @@ fn test_e2e_selfhost_parser_ann_form_retains_type_app_and_fun_expr() {
     );
 }
 
+/// TEST-SYNTAX-02m4: lower-case type variable を named type と区別して保持する
+#[test]
+fn test_e2e_selfhost_parser_ann_form_retains_type_var_expr() {
+    let harness = r#"
+(defn main []
+  (let [var-node (vector-get (parse-program "(: 42 a)") 0)
+        var-type (vector-get var-node 2)
+        app-node (vector-get (parse-program "(: 42 (Ref a))") 0)
+        app-type (vector-get app-node 2)
+        app-arg (vector-get app-type 3)]
+    (do
+      (print (vector-get var-type 0))
+      (print (vector-get var-type 1))
+      (print (vector-get app-type 0))
+      (print (vector-get app-type 1))
+      (print (vector-get app-type 2))
+      (print (vector-get app-arg 0))
+      (print (vector-get app-arg 1))
+      0)))
+"#;
+
+    let output = run_parser_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["63", "97", "61", "82035", "1", "63", "97"],
+        "lower-case type variable は TypeNamed と区別して raw payload を保持するべき"
+    );
+}
+
 /// TEST-SYNTAX-02n: float literal を lexer/parser で扱える
 #[test]
 fn test_e2e_selfhost_parser_float_literal() {

@@ -128,6 +128,36 @@ fn test_e2e_selfhost_typeinfer_typed_ann_unifies_type_app_and_fun() {
     );
 }
 
+/// selfhost TypeInfer.ls テスト: raw TypeVar annotation は同名 nominal type へ解決できる
+#[test]
+fn test_e2e_selfhost_typeinfer_typed_ann_unifies_type_var() {
+    let harness = r#"
+(defn raw-type-var [name-hash]
+  (vector-push (vector-push (vector-new 2) 63) name-hash))
+
+(defn main []
+  (let [counter (make-var-counter)
+        env0 (init-builtin-env counter)
+        env (type-env-insert env0 903 (mono (mk-con 97)))
+        result (infer-expr (make-ann-typed (make-var 903) (raw-type-var 97)) env (subst-new) counter)]
+    (do
+      (print (result-failed result))
+      (print (ty-tag (result-type result)))
+      (print (ty-name (result-type result)))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_typeinfer_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "1", "97"],
+        "raw TypeVar annotation は同名 nominal type と一致するべき"
+    );
+}
+
 /// selfhost TypeInfer.ls テスト: defn signature は param / return 型の不一致を拒否する
 #[test]
 fn test_e2e_selfhost_typeinfer_typed_defn_signature_rejects_mismatch() {

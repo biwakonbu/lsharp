@@ -30,6 +30,7 @@
 (defn tag-type-named [] 60)
 (defn tag-type-app [] 61)
 (defn tag-type-fun [] 62)
+(defn tag-type-var [] 63)
 
 ;; computation step kind
 (defn comp-step-expr [] 0)
@@ -182,7 +183,10 @@
           (typeinfer-resolve-app-type type-expr)
           (if (= tag (tag-type-fun))
             (typeinfer-resolve-fun-type type-expr)
-            (mk-con 0)))))))
+            (if (= tag (tag-type-var))
+              ;; defn annotation の free variable は Rust implementation と同じ nominal name として扱う。
+              (mk-con (vector-get type-expr 1))
+              (mk-con 0))))))))
 
 ;; 型アクセサ (Type.ls を利用)
 (defn ty-tag [ty] (type-tag ty))

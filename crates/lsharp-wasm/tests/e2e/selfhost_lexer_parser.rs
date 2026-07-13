@@ -80,6 +80,36 @@ fn test_e2e_selfhost_parser_typed_defn_signature_unifies_type_app_and_fun() {
     );
 }
 
+/// parser-to-inference bundle: TypeVar signature は同名を維持し異名を拒否する
+#[test]
+fn test_e2e_selfhost_parser_typed_defn_signature_unifies_type_var() {
+    let harness = r#"
+(defn main []
+  (let [valid-analysis (infer-program-analysis (parse-program "(defn id [(: x a)] : a x)"))
+        invalid-analysis (infer-program-analysis (parse-program "(defn invalid [(: x a)] : b x)"))]
+    (do
+      (print (infer-program-analysis-diagnostic-count valid-analysis))
+      (print (infer-program-analysis-first-error-code valid-analysis))
+      (print (infer-program-analysis-diagnostic-count invalid-analysis))
+      (print (infer-program-analysis-first-error-code invalid-analysis))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}",
+        selfhost_parser_typeinfer_runtime_bundle(),
+        harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "0", "1", "6"],
+        "parser 経由の TypeVar signature は同名だけを一致させるべき"
+    );
+}
+
 #[test]
 fn test_e2e_selfhost_lexer_arrow_dot() {
     // Lexer.ls が -> と . を正しくトークン化できることを検証

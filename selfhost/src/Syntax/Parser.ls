@@ -99,6 +99,12 @@
 (defn current-symbol-text-v3 [spans pos-ref src]
   (substring src (p-start spans pos-ref) (p-end spans pos-ref)))
 
+(defn current-symbol-starts-uppercase-v3 [spans pos-ref src]
+  (let [first-char (string-char-at src (p-start spans pos-ref))]
+    (if (>= first-char 65)
+      (if (<= first-char 90) 1 0)
+      0)))
+
 (defn current-symbol-hash-v3 [spans pos-ref src]
   (name-hash src (p-start spans pos-ref) (p-end spans pos-ref)))
 
@@ -565,10 +571,13 @@
 ;; raw TypeExpr parser。Named、applied type、function type を保持する。
 (defn parse-type-expr-v3 [spans pos-ref src]
   (if (== (p-current spans pos-ref) 20)
-    (let [name-hash (current-symbol-hash-v3 spans pos-ref src)]
+    (let [name-hash (current-symbol-hash-v3 spans pos-ref src)
+      uppercase (current-symbol-starts-uppercase-v3 spans pos-ref src)]
       (do
         (p-advance pos-ref)
-        (make-type-named name-hash)))
+        (if (= uppercase 1)
+          (make-type-named name-hash)
+          (make-type-var-expr name-hash))))
     (if (== (p-current spans pos-ref) 0)
       (parse-type-list-expr-v3 spans pos-ref src)
       (do

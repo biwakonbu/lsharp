@@ -40,6 +40,7 @@
 (defn ast-type-named [] 60)
 (defn ast-type-app [] 61)
 (defn ast-type-fun [] 62)
+(defn ast-type-var [] 63)
 (defn ast-defn-signature [] 65)
 (defn ast-pat-wildcard [] 40)
 (defn ast-pat-var [] 41)
@@ -131,6 +132,10 @@
 ;; raw TypeExpr の named form: [60, source-name-hash]
 (defn make-type-named [name-hash]
   (vector-push-pair-rooted (vector-new 2) (ast-type-named) name-hash))
+
+;; raw TypeExpr の型変数: [63, source-name-hash]
+(defn make-type-var-expr [name-hash]
+  (vector-push-pair-rooted (vector-new 2) (ast-type-var) name-hash))
 
 ;; raw TypeExpr の object payload を左から複写する。
 (defn type-expr-append-items [items idx len out]
