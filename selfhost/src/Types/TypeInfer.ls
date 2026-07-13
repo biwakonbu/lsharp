@@ -5,6 +5,7 @@
 (import Types.TypeInferCore)
 (import Types.TypeInferFunctions)
 (import Types.TypeInferBuiltins)
+(import Types.TypeInferAdt)
 
 ;; TypeInfer.ls - L# セルフホスティング: Hindley-Milner 型推論
 ;;
@@ -16,6 +17,7 @@
 ;;   TypeInferBlock.ls   - let 式・do ブロック・computation 式の型推論
 ;;   TypeInferPattern.ls - パターンマッチの型推論
 ;;   TypeInferRecord.ls  - レコード型の型推論
+;;   TypeInferAdt.ls     - ADT constructor の宣言登録
 ;;
 ;; 依存: Type.ls, TypeScheme.ls, AST.ls
 ;;
@@ -762,7 +764,8 @@
       (root_push counter)
       (let [initial-env (init-builtin-env counter)
         record-env (typeinfer-register-record-defs program initial-env counter)
-        predeclared (typeinfer-predeclare-defns program record-env counter)
+        adt-env (typeinfer-register-adt-defs program record-env counter)
+        predeclared (typeinfer-predeclare-defns program adt-env counter)
         env (vector-get predeclared 0)
         placeholders (vector-get predeclared 1)
         state (typeinfer-program-analysis-state env (subst-new) (mk-int) 0 0 0)

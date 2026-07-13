@@ -205,6 +205,15 @@
 ;; parametric record 定義: [22, name-hash, parameter 名 vector, field 名と型式の vector]
 (defn make-record-def-with-params [name-hash params fields]
   (vector-push-quad-rooted (vector-new 4) (ast-recorddef) name-hash params fields))
+;; ADT variant: [constructor 名, raw field TypeExpr vector]
+(defn make-type-variant [name-hash fields]
+  (vector-push-pair-rooted (vector-new 2) name-hash fields))
+;; nonparametric ADT: [21, type 名, variant vector]
+(defn make-type-decl-with-variants [name-hash variants]
+  (vector-push-triple-rooted (vector-new 3) (ast-type-decl) name-hash variants))
+;; parametric ADT: [21, type 名, parameter 名 vector, variant vector]
+(defn make-type-decl-with-params-and-variants [name-hash params variants]
+  (vector-push-quad-rooted (vector-new 4) (ast-type-decl) name-hash params variants))
 ;; closed type-alias: [23, name-hash, raw-target-type-expr]
 ;; parametric type-alias: [23, name-hash, param-name-hashes, raw-target-type-expr]
 (defn make-type-alias [name-hash target-type-expr]

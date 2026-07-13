@@ -758,6 +758,7 @@ fn test_e2e_bootstrap_selfhost_full_deterministic() {
                 "Types.TypeInferCore",
                 "Types.TypeInferFunctions",
                 "Types.TypeInferBuiltins",
+                "Types.TypeInferAdt",
             ],
         ),
         (

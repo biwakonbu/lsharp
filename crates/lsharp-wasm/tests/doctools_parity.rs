@@ -21,6 +21,7 @@ fn selfhost_doctools_bundle() -> String {
         selfhost_module("TypeInferBlock.ls"),
         selfhost_module("TypeInferPattern.ls"),
         selfhost_module("TypeInferRecord.ls"),
+        selfhost_module("TypeInferAdt.ls"),
         selfhost_module("DocTools.ls"),
         selfhost_module("JsonRpc.ls"),
         selfhost_module("DocJson.ls"),

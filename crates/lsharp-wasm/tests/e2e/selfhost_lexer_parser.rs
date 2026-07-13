@@ -251,6 +251,64 @@ fn test_e2e_selfhost_record_decl_registers_constructor_and_literal_fields() {
     );
 }
 
+/// parser-to-inference bundle: parametric ADT 宣言は constructor と match pattern を型検査する
+#[test]
+fn test_e2e_selfhost_parametric_adt_registers_constructors_and_match() {
+    let harness = r#"
+(defn main []
+  (let [analysis
+          (infer-program-analysis
+            (parse-program "(type (Maybe a) (Just a) Nothing) (defn from-int [] (Just 1)) (defn fallback [m] (match m [(Just value) value] [Nothing 0])) (defn main-value [] (fallback (Just 4)))"))]
+    (do
+      (print (infer-program-analysis-diagnostic-count analysis))
+      (print (infer-program-analysis-first-error-code analysis))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}",
+        selfhost_parser_typeinfer_runtime_bundle(),
+        harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "0"],
+        "parametric ADT の constructor と match pattern は同じ型スキームから検査されるべき"
+    );
+}
+
+/// parser-to-inference bundle: parametric ADT constructor は使用箇所ごとに具体化される
+#[test]
+fn test_e2e_selfhost_parametric_adt_constructors_instantiate_per_use() {
+    let harness = r#"
+(defn main []
+  (let [analysis
+          (infer-program-analysis
+            (parse-program "(type (Maybe a) (Just a) Nothing) (defn int-or [m] (match m [(Just value) (+ value 1)] [Nothing 0])) (defn bool-or [m] (match m [(Just value) (if value 1 0)] [Nothing 0])) (defn use-int [] (int-or (Just 1))) (defn use-bool [] (bool-or (Just true)))"))]
+    (do
+      (print (infer-program-analysis-diagnostic-count analysis))
+      (print (infer-program-analysis-first-error-code analysis))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}",
+        selfhost_parser_typeinfer_runtime_bundle(),
+        harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "0"],
+        "parametric ADT constructor は Int と Bool の各使用箇所で独立に具体化されるべき"
+    );
+}
+
 #[test]
 fn test_e2e_selfhost_lexer_arrow_dot() {
     // Lexer.ls が -> と . を正しくトークン化できることを検証

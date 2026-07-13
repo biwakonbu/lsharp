@@ -543,6 +543,8 @@ fn test_e2e_selfhost_type_hm_core_golden() {
             .expect("canonical TypeInferPattern.ls が読み込めない");
     let type_infer_record_ls = std::fs::read_to_string(selfhost_source_path("TypeInferRecord.ls"))
         .expect("canonical TypeInferRecord.ls が読み込めない");
+    let type_infer_adt_ls = std::fs::read_to_string(selfhost_source_path("TypeInferAdt.ls"))
+        .expect("canonical TypeInferAdt.ls が読み込めない");
     let type_infer_ls = std::fs::read_to_string(selfhost_source_path("TypeInfer.ls"))
         .expect("canonical TypeInfer.ls が読み込めない");
     let type_infer_smoke_ls = std::fs::read_to_string(selfhost_source_path("TypeInferSmoke.ls"))
@@ -550,7 +552,7 @@ fn test_e2e_selfhost_type_hm_core_golden() {
 
     // モジュール連結 (依存順: TypeInfer.ls を先に、サブモジュールが上書き)
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
         token_ls,
         ast_ls,
         type_ls,
@@ -563,6 +565,7 @@ fn test_e2e_selfhost_type_hm_core_golden() {
         type_infer_block_ls,
         type_infer_pattern_ls,
         type_infer_record_ls,
+        type_infer_adt_ls,
         type_infer_smoke_ls
     );
 
