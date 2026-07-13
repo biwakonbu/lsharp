@@ -97,7 +97,17 @@ set -euo pipefail
 stage_dir="$1"
 [[ -s "$2" ]] || exit 95
 [[ -f "$3" ]] || exit 96
-[[ "${LSHARP_NATIVE_LINUX_X86_SKIP_ARGV0:-}" == "1" ]] || exit 99
+case "${NATIVE_TEST_EXPECTED_TARGET:-x86_64-unknown-linux-gnu}" in
+  x86_64-unknown-linux-gnu)
+    [[ "${LSHARP_NATIVE_LINUX_X86_SKIP_ARGV0:-}" == "1" ]] || exit 99
+    ;;
+  aarch64-apple-darwin)
+    [[ "${LSHARP_NATIVE_MACOS_AARCH64_SKIP_ARGV0:-}" == "1" ]] || exit 100
+    ;;
+  *)
+    exit 101
+    ;;
+esac
 printf 'materializer|%s\n' "$stage_dir" >>"$NATIVE_TEST_LOG"
 cat >"$stage_dir/program.native" <<'PROGRAM'
 #!/usr/bin/env bash
@@ -159,6 +169,20 @@ assert_file_contains "$LOG_FILE" "program|changed"
 run_runner --bootstrap bootstrap
 assert_eq "3" "$(grep -c '^transport|' "$LOG_FILE")"
 assert_file_contains "$LOG_FILE" "program|bootstrap"
+
+python3 - "$STAGE0_DIR/manifest.json" <<'PY'
+import json
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+manifest = json.loads(path.read_text())
+manifest["target"] = "aarch64-apple-darwin"
+path.write_text(json.dumps(manifest) + "\n")
+PY
+rm -rf "$STAGE_DIR"
+NATIVE_TEST_EXPECTED_TARGET=aarch64-apple-darwin run_runner mac
+assert_file_contains "$STAGE_DIR/manifest.json" '"target": "aarch64-apple-darwin"'
 
 assert_file_not_contains "$RUNNER" 'cargo '
 assert_file_not_contains "$RUNNER" 'command -v lsharp'

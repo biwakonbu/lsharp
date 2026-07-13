@@ -189,7 +189,7 @@ if [[ "$FORCE_BOOTSTRAP" == "1" ]] || ! stage_is_ready "$FINGERPRINT"; then
   COPIED_SOURCE="$STAGE_DIR/source"
   TRANSPORT_OUTPUT="$STAGE_DIR/transport-output.txt"
   "$TRANSPORT_DRIVER" "$COMPILER" "$COPIED_SOURCE" "$RELATIVE_ENTRY" "$TRANSPORT_OUTPUT"
-  python3 "$DECODER" "$TRANSPORT_OUTPUT" "$STAGE_DIR"
+  python3 "$DECODER" --target "$TARGET" "$TRANSPORT_OUTPUT" "$STAGE_DIR"
   case "$TARGET" in
     x86_64-unknown-linux-gnu)
       LSHARP_NATIVE_LINUX_X86_SKIP_ARGV0=1 \
