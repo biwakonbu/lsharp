@@ -149,6 +149,16 @@
       (type-app-args-eq ty1 ty2 (+ idx 1) len)
       0)))
 
+;; record の field 名と field 型を declaration order で構造比較する。
+(defn type-record-fields-eq [ty1 ty2 idx len]
+  (if (>= idx len)
+    1
+    (if (= (vector-get ty1 idx) (vector-get ty2 idx))
+      (if (= (types-eq (vector-get ty1 (+ idx 1)) (vector-get ty2 (+ idx 1))) 1)
+        (type-record-fields-eq ty1 ty2 (+ idx 2) len)
+        0)
+      0)))
+
 ;; === Substitution ===
 
 ;; Substitution は HashMap<Int, Type> で表現
@@ -190,7 +200,14 @@
                 (type-app-args-eq ty1 ty2 0 (type-app-arg-count ty1))
                 0)
               0)
-            0))))
+            (if (= (type-tag ty1) 4)
+              ;; 両方 Record: name、field count、各 field を比較
+              (if (= (type-name ty1) (type-name ty2))
+                (if (= (vector-length ty1) (vector-length ty2))
+                  (type-record-fields-eq ty1 ty2 2 (vector-length ty1))
+                  0)
+                0)
+              0)))))
     0))
 
 ;; === apply-subst ===
@@ -254,6 +271,14 @@
       1
       (occurs-check-app-args var-id ty (+ idx 1) len))))
 
+;; record field 型のいずれかに型変数が出現するかを調べる。
+(defn occurs-check-record-fields [var-id ty idx len]
+  (if (>= idx len)
+    0
+    (if (= (occurs-check var-id (vector-get ty (+ idx 1))) 1)
+      1
+      (occurs-check-record-fields var-id ty (+ idx 2) len))))
+
 (defn occurs-check [var-id ty]
   (if (= (type-tag ty) 2)
     ;; Var: ID が一致すれば出現
@@ -266,8 +291,11 @@
       (if (= (type-tag ty) 5)
         ;; App: いずれかの型引数に出現するか
         (occurs-check-app-args var-id ty 0 (type-app-arg-count ty))
-        ;; Con / Record: 出現しない
-        0))))
+        (if (= (type-tag ty) 4)
+          ;; Record: いずれかの field 型に出現するか
+          (occurs-check-record-fields var-id ty 2 (vector-length ty))
+          ;; Con: 出現しない
+          0)))))
 
 ;; === Unification ===
 
@@ -287,6 +315,27 @@
       (if (= (unify-failed next-subst) 1)
         next-subst
         (unify-app-args ty1 ty2 (+ idx 1) len next-subst)))))
+
+;; 同名 record の field 型を declaration order で単一化する。
+(defn unify-record-fields [ty1 ty2 idx len subst]
+  (if (>= idx len)
+    subst
+    (if (= (vector-get ty1 idx) (vector-get ty2 idx))
+      (let [next-subst
+              (unify (vector-get ty1 (+ idx 1)) (vector-get ty2 (+ idx 1)) subst)]
+        (if (= (unify-failed next-subst) 1)
+          next-subst
+          (unify-record-fields ty1 ty2 (+ idx 2) len next-subst)))
+      (unify-error))))
+
+(defn unify-record-types [ty1 ty2 subst]
+  (if (= (type-tag ty2) 4)
+    (if (= (type-name ty1) (type-name ty2))
+      (if (= (vector-length ty1) (vector-length ty2))
+        (unify-record-fields ty1 ty2 2 (vector-length ty1) subst)
+        (unify-error))
+      (unify-error))
+    (unify-error)))
 
 ;; 二つの型を単一化し、更新された置換を返す
 ;; 成功時: 置換 (map), 失敗時: エラーマーカー付き map
@@ -326,7 +375,10 @@
                       (unify-error))
                     (unify-error))
                   (unify-error))
-                (unify-error)))))))))
+                (if (= (type-tag ty1) 4)
+                  ;; 両方 Record: name、field count、各 field 型を単一化
+                  (unify-record-types ty1 ty2 subst)
+                  (unify-error))))))))))
 
 ;; エントリポイント (テスト用)
 (defn main []

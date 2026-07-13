@@ -2263,8 +2263,8 @@
             (root_pop)
             parsed))))))
 
-;; `(record (: field Type) ...)` の field 名と raw TypeExpr を平坦な pair として保持する。
-(defn parse-record-decl-fields-rooted-v3 [spans pos-ref src fields]
+;; `(record (: field Type) ...)` の field 名、Type.field accessor 名、raw TypeExpr を保持する。
+(defn parse-record-decl-fields-rooted-v3 [spans pos-ref src record-name-hash fields]
   (if (== (p-current spans pos-ref) 1)
     (do
       (p-advance pos-ref)
@@ -2280,17 +2280,36 @@
               (if (== (p-current spans pos-ref) 20)
                 (do
                   (root_push fields)
-                  (let [field-hash (current-symbol-hash-v3 spans pos-ref src)]
+                  (let [field-start (p-start spans pos-ref)
+                    field-end (p-end spans pos-ref)
+                    field-hash (name-hash src field-start field-end)
+                    accessor-hash
+                      (name-hash-loop
+                        src
+                        field-start
+                        field-end
+                        (+ 46 (* record-name-hash 31)))]
                     (do
                       (p-advance pos-ref)
                       (let [type-expr (parse-type-expr-v3 spans pos-ref src)]
                         (do
                           (root_push type-expr)
                           (p-expect spans pos-ref 1)
-                          (let [next-fields (vector-push-pair-rooted-v3 fields field-hash type-expr)]
+                          (let [next-fields
+                                  (vector-push-triple-rooted-v3
+                                    fields
+                                    field-hash
+                                    accessor-hash
+                                    type-expr)]
                             (do
                               (root_push next-fields)
-                              (let [parsed (parse-record-decl-fields-rooted-v3 spans pos-ref src next-fields)]
+                              (let [parsed
+                                      (parse-record-decl-fields-rooted-v3
+                                        spans
+                                        pos-ref
+                                        src
+                                        record-name-hash
+                                        next-fields)]
                                 (do
                                   (root_pop)
                                   (root_pop)
@@ -2298,22 +2317,28 @@
                                   parsed)))))))))
                 (do
                   (parse-skip-to-close-v3 spans pos-ref 1)
-                  (parse-record-decl-fields-rooted-v3 spans pos-ref src fields))))
+                  (parse-record-decl-fields-rooted-v3 spans pos-ref src record-name-hash fields))))
             (do
               (parse-skip-to-close-v3 spans pos-ref 1)
-              (parse-record-decl-fields-rooted-v3 spans pos-ref src fields))))
+              (parse-record-decl-fields-rooted-v3 spans pos-ref src record-name-hash fields))))
         (do
           (p-advance pos-ref)
-          (parse-record-decl-fields-rooted-v3 spans pos-ref src fields))))))
+          (parse-record-decl-fields-rooted-v3 spans pos-ref src record-name-hash fields))))))
 
-(defn parse-record-decl-fields-v3 [spans pos-ref src]
+(defn parse-record-decl-fields-v3 [spans pos-ref src record-name-hash]
   (do
     (root_push spans)
     (root_push pos-ref)
     (root_push src)
     (let [fields (vector-new 0)
       fields-slot (root_push fields)]
-      (let [parsed (parse-record-decl-fields-rooted-v3 spans pos-ref src fields)]
+      (let [parsed
+              (parse-record-decl-fields-rooted-v3
+                spans
+                pos-ref
+                src
+                record-name-hash
+                fields)]
         (do
           (root_set fields-slot parsed)
           (root_pop)
@@ -2326,7 +2351,7 @@
   (do
     (p-expect spans pos-ref 0) ;; record form の ( を消費
     (p-expect spans pos-ref 39) ;; record を消費
-    (let [fields (parse-record-decl-fields-v3 spans pos-ref src)]
+    (let [fields (parse-record-decl-fields-v3 spans pos-ref src name-hash)]
       (do
         (root_push fields)
         (root_push params)

@@ -199,10 +199,10 @@
 (defn make-computation [builder-hash] (vector-push-triple-rooted (vector-new 8) (ast-computation) builder-hash 0))
 (defn make-type-decl [name-hash] (vector-push-pair-rooted (vector-new 2) (ast-type-decl) name-hash))
 (defn make-record-def [name-hash] (vector-push-pair-rooted (vector-new 2) (ast-recorddef) name-hash))
-;; record 定義: [22, name-hash, field 名と型式を交互に並べた vector]
+;; record 定義: [22, name-hash, field 名/accessor 名/型式を並べた vector]
 (defn make-record-def-with-fields [name-hash fields]
   (vector-push-triple-rooted (vector-new 3) (ast-recorddef) name-hash fields))
-;; parametric record 定義: [22, name-hash, parameter 名 vector, field 名と型式の vector]
+;; parametric record 定義: [22, name-hash, parameter 名 vector, field 名/accessor 名/型式 vector]
 (defn make-record-def-with-params [name-hash params fields]
   (vector-push-quad-rooted (vector-new 4) (ast-recorddef) name-hash params fields))
 ;; ADT variant: [constructor 名, raw field TypeExpr vector]

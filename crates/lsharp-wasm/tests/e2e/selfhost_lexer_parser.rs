@@ -363,6 +363,40 @@ fn test_e2e_selfhost_parametric_record_update_uses_instantiated_schema() {
     );
 }
 
+/// parser-to-inference bundle: Rust 互換の Type.field accessor は record schema を多相に具体化する
+#[test]
+fn test_e2e_selfhost_parametric_record_static_accessor_uses_instantiated_schema() {
+    let harness = r#"
+(defn main []
+  (let [valid-analysis
+          (infer-program-analysis
+            (parse-program "(type (Pair a b) (record (: fst a) (: snd b))) (defn first [] (: (Pair.fst {Pair fst 1 snd true}) Int)) (defn second [] (: (Pair.snd {Pair fst 1 snd true}) Bool))"))
+        invalid-analysis
+          (infer-program-analysis
+            (parse-program "(type (Pair a b) (record (: fst a) (: snd b))) (defn invalid [] (: (Pair.fst {Pair fst 1 snd true}) Bool))"))]
+    (do
+      (print (infer-program-analysis-diagnostic-count valid-analysis))
+      (print (infer-program-analysis-first-error-code valid-analysis))
+      (print (infer-program-analysis-diagnostic-count invalid-analysis))
+      (print (infer-program-analysis-first-error-code invalid-analysis))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}",
+        selfhost_parser_typeinfer_runtime_bundle(),
+        harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "0", "1", "6"],
+        "Type.field accessor は record schema を使用し、field 型不一致を診断するべき"
+    );
+}
+
 /// parser-to-inference bundle: parametric ADT 宣言は constructor と match pattern を型検査する
 #[test]
 fn test_e2e_selfhost_parametric_adt_registers_constructors_and_match() {

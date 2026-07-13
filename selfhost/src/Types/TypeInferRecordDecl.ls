@@ -12,6 +12,7 @@
 
 ;; nonparametric: [22, name, fields]
 ;; parametric:    [22, name, params, fields]
+;; fields: [field-hash, accessor-hash, raw-TypeExpr, ...]
 (defn typeinfer-record-decl-params [decl]
   (if (>= (vector-length decl) 4)
     (vector-get decl 2)
@@ -66,7 +67,7 @@
       (root_push param-env)
       (root_push out)
       (let [field-hash (vector-get raw-fields idx)
-        raw-type-expr (vector-get raw-fields (+ idx 1))]
+        raw-type-expr (vector-get raw-fields (+ idx 2))]
         (do
           (root_push raw-type-expr)
           (let [field-ty
@@ -82,7 +83,7 @@
                   (let [parsed
                           (typeinfer-record-resolve-field-types-loop
                             raw-fields
-                            (+ idx 2)
+                            (+ idx 3)
                             len
                             alias-env
                             param-env
@@ -322,15 +323,85 @@
         (root_pop)
         result))))
 
-;; record constructor を schema と同じ bound variable で通常の値環境へ登録する。
+;; Type.field accessor を record schema と同じ bound variable で値環境へ登録する。
+;; raw field は [field-hash, accessor-hash, raw-TypeExpr] の triple で保持されるが、
+;; schema の record-ty は [field-hash, field-ty] の pair だけを持つ。
+(defn typeinfer-register-record-accessors-loop [raw-fields idx len env record-ty bound-vars]
+  (if (>= idx len)
+    env
+    (do
+      (root_push raw-fields)
+      (root_push env)
+      (root_push record-ty)
+      (root_push bound-vars)
+      (let [field-hash (vector-get raw-fields idx)
+        accessor-hash (vector-get raw-fields (+ idx 1))
+        field-ty (type-record-field-type record-ty field-hash)]
+        (do
+          (root_push field-ty)
+          (let [accessor-ty (mk-fun record-ty field-ty)]
+            (do
+              (root_push accessor-ty)
+              (let [accessor-scheme (poly accessor-ty bound-vars)]
+                (do
+                  (root_push accessor-scheme)
+                  (let [next-env
+                          (type-env-insert env accessor-hash accessor-scheme)]
+                    (do
+                      (root_push next-env)
+                      (let [result
+                              (typeinfer-register-record-accessors-loop
+                                raw-fields
+                                (+ idx 3)
+                                len
+                                next-env
+                                record-ty
+                                bound-vars)]
+                        (do
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          result)))))))))))))
+
+(defn typeinfer-register-record-accessors [raw-fields env record-ty bound-vars]
+  (if (= raw-fields 0)
+    env
+    (do
+      (root_push raw-fields)
+      (root_push env)
+      (root_push record-ty)
+      (root_push bound-vars)
+      (let [result
+              (typeinfer-register-record-accessors-loop
+                raw-fields
+                0
+                (vector-length raw-fields)
+                env
+                record-ty
+                bound-vars)]
+        (do
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          result)))))
+
+;; record constructor と Type.field accessor を schema と同じ bound variable で値環境へ登録する。
 (defn typeinfer-register-record-def [decl env record-env]
   (let [record-name-hash (vector-get decl 1)
-    schema (map-get-safe record-env (vector-get decl 1))]
+    schema (map-get-safe record-env (vector-get decl 1))
+    raw-fields (typeinfer-record-decl-field-exprs decl)]
     (if (= schema 0)
       env
       (do
         (root_push schema)
         (root_push env)
+        (root_push raw-fields)
         (let [record-ty (scheme-type schema)
           bound-vars (scheme-vars schema)]
           (do
@@ -348,13 +419,23 @@
                               record-name-hash
                               constructor-scheme)]
                       (do
-                        (root_pop)
-                        (root_pop)
-                        (root_pop)
-                        (root_pop)
-                        (root_pop)
-                        (root_pop)
-                        next-env))))))))))))
+                        (root_push next-env)
+                        (let [result
+                                (typeinfer-register-record-accessors
+                                  raw-fields
+                                  next-env
+                                  record-ty
+                                  bound-vars)]
+                          (do
+                            (root_pop)
+                            (root_pop)
+                            (root_pop)
+                            (root_pop)
+                            (root_pop)
+                            (root_pop)
+                            (root_pop)
+                            (root_pop)
+                            result))))))))))))))
 
 (defn typeinfer-register-record-defs-loop [program idx len env record-env]
   (if (>= idx len)
