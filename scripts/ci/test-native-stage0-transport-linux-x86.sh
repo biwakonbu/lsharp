@@ -285,6 +285,26 @@ assert_file_not_contains "$HOST_LOG" "lsharp"
 assert_file_not_contains "$HOST_LOG" "curl"
 
 reset_logs
+NATIVE_STAGE0_TRANSPORT_CHUNK_SIZE=2 \
+  run_driver 5 "$FAILURE_OUTPUT"
+assert_invocations $'src/App/Seed.ls|2|4|0|0\nsrc/App/Seed.ls|4|5|0|1'
+assert_eq "5" "$(grep -c '^9000000010$' "$FAILURE_OUTPUT")"
+[[ ! -e "${FAILURE_OUTPUT}.resume" ]] || fail "completed transport left a resume checkpoint"
+
+SOURCE_CHANGE_OUTPUT="$TMP_ROOT/source-change.transport"
+printf 'preserved\n' >"$SOURCE_CHANGE_OUTPUT"
+NATIVE_STAGE0_TRANSPORT_CHUNK_SIZE=2 \
+  NATIVE_STAGE0_FAKE_FAIL_START=2 \
+  run_driver_expect_failure 5 "$SOURCE_CHANGE_OUTPUT" "$TMP_ROOT/source-change.stderr"
+write_source 6 1
+reset_logs
+NATIVE_STAGE0_TRANSPORT_CHUNK_SIZE=2 \
+  run_driver 5 "$SOURCE_CHANGE_OUTPUT"
+assert_invocations $'src/App/Seed.ls|0|2|1|0\nsrc/App/Seed.ls|2|4|0|0\nsrc/App/Seed.ls|4|5|0|1'
+assert_eq "5" "$(grep -c '^9000000010$' "$SOURCE_CHANGE_OUTPUT")"
+[[ ! -e "${SOURCE_CHANGE_OUTPUT}.resume" ]] || fail "source-changed transport left a resume checkpoint"
+
+reset_logs
 TIMEOUT_FAILURE_OUTPUT="$TMP_ROOT/timeout-failure.transport"
 printf 'preserved\n' >"$TIMEOUT_FAILURE_OUTPUT"
 TIMEOUT_FAILURE_STDERR="$TMP_ROOT/timeout-failure.stderr"
