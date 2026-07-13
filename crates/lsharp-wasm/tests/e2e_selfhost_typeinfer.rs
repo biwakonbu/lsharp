@@ -1548,7 +1548,7 @@ fn test_e2e_selfhost_typeinfer_record_update() {
 
     let harness = r#"
 (defn mk-point-type []
-  (vector-push (vector-push (vector-new 2) 1) 700))
+  (type-record-add-field (make-type-record 700) 120 (mk-int)))
 
 (defn main []
   (let [counter (make-var-counter)
@@ -1588,8 +1588,8 @@ fn test_e2e_selfhost_typeinfer_record_update() {
     );
     assert_eq!(lines[0], "0", "record update infer は失敗すべきでない");
     assert_eq!(
-        lines[1], "1",
-        "record update infer の型タグは Con であるべき"
+        lines[1], "4",
+        "record update infer の型タグは Record であるべき"
     );
     assert_eq!(
         lines[2], "700",

@@ -324,6 +324,45 @@ fn test_e2e_selfhost_parametric_record_field_access_uses_instantiated_schema() {
     );
 }
 
+/// parser-to-inference bundle: parametric record update は schema の field 型を検査する
+#[test]
+fn test_e2e_selfhost_parametric_record_update_uses_instantiated_schema() {
+    let harness = r#"
+(defn main []
+  (let [valid-analysis
+          (infer-program-analysis
+            (parse-program "(type (Pair a b) (record (: fst a) (: snd b))) (defn valid [] (let [pair {Pair fst 1 snd true}] (: (. {pair | snd false} snd) Bool)))"))
+        invalid-analysis
+          (infer-program-analysis
+            (parse-program "(type (Pair a b) (record (: fst a) (: snd b))) (defn invalid [] (let [pair {Pair fst 1 snd true}] {pair | snd 2}))"))
+        unknown-analysis
+          (infer-program-analysis
+            (parse-program "(type (Pair a b) (record (: fst a) (: snd b))) (defn unknown [] (let [pair {Pair fst 1 snd true}] {pair | missing 2}))"))]
+    (do
+      (print (infer-program-analysis-diagnostic-count valid-analysis))
+      (print (infer-program-analysis-first-error-code valid-analysis))
+      (print (infer-program-analysis-diagnostic-count invalid-analysis))
+      (print (infer-program-analysis-first-error-code invalid-analysis))
+      (print (infer-program-analysis-diagnostic-count unknown-analysis))
+      (print (infer-program-analysis-first-error-code unknown-analysis))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}",
+        selfhost_parser_typeinfer_runtime_bundle(),
+        harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "0", "1", "6", "1", "6"],
+        "parametric record update は具体化済み schema の field 型を検査し、未定義 field を診断するべき"
+    );
+}
+
 /// parser-to-inference bundle: parametric ADT 宣言は constructor と match pattern を型検査する
 #[test]
 fn test_e2e_selfhost_parametric_adt_registers_constructors_and_match() {

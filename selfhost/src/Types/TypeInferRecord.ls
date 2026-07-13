@@ -149,8 +149,50 @@
 
 ;; record update の型推論
 ;; [14, base-expr, field-count, field1-hash, expr1, ...]
+(defn infer-declared-recordupdate-fields [node idx count env subst counter record-ty]
+  (do
+    (root_push record-ty)
+    (let [result
+            (if (>= idx count)
+              (make-result subst (apply-subst subst record-ty))
+              (let [field-offset (+ 3 (* idx 2))
+                field-name-hash (vector-get node field-offset)
+                value-node (vector-get node (+ field-offset 1))
+                expected-ty (type-record-field-type record-ty field-name-hash)]
+                (if (= expected-ty 0)
+                  (make-error-result-code (error-code-general))
+                  (let [value-result (infer-expr value-node env subst counter)]
+                    (if (= (result-failed value-result) 1)
+                      (propagate-error-result value-result)
+                      (let [next-subst
+                              (unify expected-ty (result-type value-result) (result-subst value-result))]
+                        (if (= (unify-failed next-subst) 1)
+                          (make-error-result-code (error-code-general))
+                          (infer-declared-recordupdate-fields
+                            node
+                            (+ idx 1)
+                            count
+                            env
+                            next-subst
+                            counter
+                            record-ty))))))))]
+      (do
+        (root_pop)
+        result))))
+
 (defn infer-recordupdate-node [node env subst counter]
   (let [base-result (infer-expr (vector-get node 1) env subst counter)]
     (if (= (result-failed base-result) 1)
       (propagate-error-result base-result)
-      (make-result (result-subst base-result) (result-type base-result)))))
+      (let [s1 (result-subst base-result)
+        base-ty (apply-subst s1 (result-type base-result))]
+        (if (= (ty-tag base-ty) (ty-record))
+          (infer-declared-recordupdate-fields
+            node
+            0
+            (vector-get node 2)
+            env
+            s1
+            counter
+            base-ty)
+          (make-error-result-code (error-code-general)))))))
