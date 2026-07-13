@@ -57,36 +57,17 @@
     0
     (vector-get record-node 2)))
 
-;; 宣言済み record の [field-hash, resolved-type, ...] から field 型を取得する。
-(defn record-decl-field-type-loop [record-fields field-name-hash idx len]
-  (if (>= idx len)
-    0
-    (if (= (vector-get record-fields idx) field-name-hash)
-      (vector-get record-fields (+ idx 1))
-      (record-decl-field-type-loop
-        record-fields
-        field-name-hash
-        (+ idx 2)
-        len))))
-
-(defn record-decl-field-type [record-fields field-name-hash]
-  (record-decl-field-type-loop
-    record-fields
-    field-name-hash
-    0
-    (vector-length record-fields)))
-
-;; declared record literal の各 field を宣言型と単一化する。
-(defn infer-declared-recordlit-fields [node idx count env subst counter record-fields]
+;; declared record literal の各 field を具体化済み schema の field 型と単一化する。
+(defn infer-declared-recordlit-fields [node idx count env subst counter record-ty]
   (do
-    (root_push record-fields)
+    (root_push record-ty)
     (let [result
             (if (>= idx count)
-              (make-result subst (mk-int))
+              (make-result subst record-ty)
               (let [field-offset (+ 3 (* idx 2))
                 field-name-hash (vector-get node field-offset)
                 value-node (vector-get node (+ field-offset 1))
-                expected-ty (record-decl-field-type record-fields field-name-hash)]
+                expected-ty (type-record-field-type record-ty field-name-hash)]
                 (if (= expected-ty 0)
                   (make-error-result-code (error-code-general))
                   (let [value-result (infer-expr value-node env subst counter)]
@@ -103,7 +84,7 @@
                             env
                             next-subst
                             counter
-                            record-fields))))))))]
+                            record-ty))))))))]
       (do
         (root_pop)
         result))))
@@ -113,23 +94,35 @@
 (defn infer-recordlit [node env subst counter]
   (let [type-name-hash (vector-get node 1)
     field-count (vector-get node 2)
-    record-fields (map-get-safe (var-counter-record-env counter) type-name-hash)
+    record-schema (map-get-safe (var-counter-record-env counter) type-name-hash)
     fields-result
-      (if (= record-fields 0)
+      (if (= record-schema 0)
         (infer-record-fields node 0 field-count env subst counter)
-        (if (= field-count (/ (vector-length record-fields) 2))
-          (infer-declared-recordlit-fields
-            node
-            0
-            field-count
-            env
-            subst
-            counter
-            record-fields)
-          (make-error-result-code (error-code-general))))]
+        (do
+          (root_push record-schema)
+          (let [record-ty (instantiate record-schema counter)]
+            (do
+              (root_push record-ty)
+              (let [result
+                      (if (= field-count (/ (- (vector-length record-ty) 2) 2))
+                        (infer-declared-recordlit-fields
+                          node
+                          0
+                          field-count
+                          env
+                          subst
+                          counter
+                          record-ty)
+                        (make-error-result-code (error-code-general)))]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  result))))))]
     (if (= (result-failed fields-result) 1)
       (propagate-error-result fields-result)
-      (make-result (result-subst fields-result) (mk-con type-name-hash)))))
+      (if (= record-schema 0)
+        (make-result (result-subst fields-result) (mk-con type-name-hash))
+        fields-result))))
 
 ;; field access の型推論
 ;; [13, expr, field-name-hash]

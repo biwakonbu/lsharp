@@ -27,10 +27,13 @@ fn typeinfer_runtime_modules() -> (String, String, String, String, String) {
             .expect("canonical TypeInferPattern.ls が読み込めない");
     let type_infer_record_ls = std::fs::read_to_string(selfhost_source_path("TypeInferRecord.ls"))
         .expect("canonical TypeInferRecord.ls が読み込めない");
+    let type_infer_record_decl_ls =
+        std::fs::read_to_string(selfhost_source_path("TypeInferRecordDecl.ls"))
+            .expect("canonical TypeInferRecordDecl.ls が読み込めない");
     let type_infer_adt_ls = std::fs::read_to_string(selfhost_source_path("TypeInferAdt.ls"))
         .expect("canonical TypeInferAdt.ls が読み込めない");
     let type_infer_ls = format!(
-        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
         type_infer_functions_ls,
         type_infer_builtins_ls,
         std::fs::read_to_string(selfhost_source_path("TypeInfer.ls"))
@@ -39,6 +42,7 @@ fn typeinfer_runtime_modules() -> (String, String, String, String, String) {
         type_infer_block_ls,
         type_infer_pattern_ls,
         type_infer_record_ls,
+        type_infer_record_decl_ls,
         type_infer_adt_ls
     );
     (

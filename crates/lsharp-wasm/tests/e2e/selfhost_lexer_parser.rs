@@ -251,6 +251,40 @@ fn test_e2e_selfhost_record_decl_registers_constructor_and_literal_fields() {
     );
 }
 
+/// parser-to-inference bundle: parametric record は constructor/literal ごとに型変数を具体化する
+#[test]
+fn test_e2e_selfhost_parametric_record_registers_fresh_constructor_and_literal_schemas() {
+    let harness = r#"
+(defn main []
+  (let [valid-analysis
+          (infer-program-analysis
+            (parse-program "(type (Box a) (record (: value a))) (defn int-constructor [] (Box 1)) (defn bool-constructor [] (Box true)) (defn int-literal [] {Box value 1}) (defn bool-literal [] {Box value true})"))
+        invalid-analysis
+          (infer-program-analysis
+            (parse-program "(type (Pair a) (record (: left a) (: right a))) (defn invalid [] {Pair left 1 right true})"))]
+    (do
+      (print (infer-program-analysis-diagnostic-count valid-analysis))
+      (print (infer-program-analysis-first-error-code valid-analysis))
+      (print (infer-program-analysis-diagnostic-count invalid-analysis))
+      (print (infer-program-analysis-first-error-code invalid-analysis))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}",
+        selfhost_parser_typeinfer_runtime_bundle(),
+        harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "0", "1", "6"],
+        "parametric record は使用箇所ごとに fresh で、同一 literal 内では field 型を共有するべき"
+    );
+}
+
 /// parser-to-inference bundle: parametric ADT 宣言は constructor と match pattern を型検査する
 #[test]
 fn test_e2e_selfhost_parametric_adt_registers_constructors_and_match() {

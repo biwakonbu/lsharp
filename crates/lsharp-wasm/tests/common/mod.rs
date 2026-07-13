@@ -187,6 +187,7 @@ pub(crate) fn selfhost_source_path(name: &str) -> std::path::PathBuf {
         "TypeInferBlock.ls" => "selfhost/src/Types/TypeInferBlock.ls",
         "TypeInferPattern.ls" => "selfhost/src/Types/TypeInferPattern.ls",
         "TypeInferRecord.ls" => "selfhost/src/Types/TypeInferRecord.ls",
+        "TypeInferRecordDecl.ls" => "selfhost/src/Types/TypeInferRecordDecl.ls",
         "TypeInferAdt.ls" => "selfhost/src/Types/TypeInferAdt.ls",
         "TypeInferSmoke.ls" => "selfhost/src/Types/TypeInferSmoke.ls",
         "TypeInfer.ls" => "selfhost/src/Types/TypeInfer.ls",
@@ -267,6 +268,9 @@ pub(crate) fn selfhost_cli_runtime_bundle() -> String {
             .expect("canonical TypeInferPattern.ls が読み込めない");
     let type_infer_record_ls = std::fs::read_to_string(selfhost_source_path("TypeInferRecord.ls"))
         .expect("canonical TypeInferRecord.ls が読み込めない");
+    let type_infer_record_decl_ls =
+        std::fs::read_to_string(selfhost_source_path("TypeInferRecordDecl.ls"))
+            .expect("canonical TypeInferRecordDecl.ls が読み込めない");
     let type_infer_adt_ls = std::fs::read_to_string(selfhost_source_path("TypeInferAdt.ls"))
         .expect("canonical TypeInferAdt.ls が読み込めない");
     let type_infer_ls = std::fs::read_to_string(selfhost_source_path("TypeInfer.ls"))
@@ -308,6 +312,7 @@ pub(crate) fn selfhost_cli_runtime_bundle() -> String {
         type_infer_block_ls,
         type_infer_pattern_ls,
         type_infer_record_ls,
+        type_infer_record_decl_ls,
         type_infer_adt_ls,
         compiler_base_ls,
         compiler_split_ls,
