@@ -2560,6 +2560,9 @@ fn test_linux_x86_file_segmented_harness_writes_segments_from_append_emit_vector
         "emit-x86-selfhost-command-line-args-helper",
         "emit-x86-selfhost-print-string-helper",
         "emit-x86-selfhost-proc-exit-helper",
+        "emit-x86-selfhost-write-file-helper",
+        "emit-x86-selfhost-write-file-bytes-helper",
+        "emit-x86-selfhost-int-to-string-helper",
     ] {
         assert!(
             trailer_writer.contains(helper),
@@ -2581,6 +2584,9 @@ fn test_linux_x86_representative_seed_printed_trailer_includes_all_declared_help
         "emit-x86-selfhost-command-line-args-helper",
         "emit-x86-selfhost-print-string-helper",
         "emit-x86-selfhost-proc-exit-helper",
+        "emit-x86-selfhost-write-file-helper",
+        "emit-x86-selfhost-write-file-bytes-helper",
+        "emit-x86-selfhost-int-to-string-helper",
     ] {
         assert!(
             trailer_printer.contains(helper),
@@ -17359,6 +17365,9 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
     (print-packed-code-segment (emit-x86-selfhost-command-line-args-helper))
     (print-packed-code-segment (emit-x86-selfhost-print-string-helper))
     (print-packed-code-segment (emit-x86-selfhost-proc-exit-helper))
+    (print-packed-code-segment (emit-x86-selfhost-write-file-helper))
+    (print-packed-code-segment (emit-x86-selfhost-write-file-bytes-helper))
+    (print-packed-code-segment (emit-x86-selfhost-int-to-string-helper))
     0))
 
 (defn prefixed-chunk-file-path [prefix chunk-idx]
@@ -17559,8 +17568,11 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
         c18 (write-packed-code-segment prefix (emit-x86-selfhost-map-get-helper) c17)
         c19 (write-packed-code-segment prefix (emit-x86-selfhost-file-exists-helper) c18)
         c20 (write-packed-code-segment prefix (emit-x86-selfhost-command-line-args-helper) c19)
-        c21 (write-packed-code-segment prefix (emit-x86-selfhost-print-string-helper) c20)]
-    (write-packed-code-segment prefix (emit-x86-selfhost-proc-exit-helper) c21)))
+        c21 (write-packed-code-segment prefix (emit-x86-selfhost-print-string-helper) c20)
+        c22 (write-packed-code-segment prefix (emit-x86-selfhost-proc-exit-helper) c21)
+        c23 (write-packed-code-segment prefix (emit-x86-selfhost-write-file-helper) c22)
+        c24 (write-packed-code-segment prefix (emit-x86-selfhost-write-file-bytes-helper) c23)]
+    (write-packed-code-segment prefix (emit-x86-selfhost-int-to-string-helper) c24)))
 
 (defn write-x86-code-segments [prefix functions starts import-count import-stub-offset]
   (do
