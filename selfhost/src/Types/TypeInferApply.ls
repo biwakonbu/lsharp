@@ -42,8 +42,25 @@
   (let [func-node (vector-get node 1)
     argc (vector-get node 2)]
     (if (= argc 0)
-      ;; 引数なし: func を推論してそのまま返す
-      (infer-expr func-node env subst counter)
+      ;; 引数なし apply は Unit を渡す呼び出しとして扱う。
+      (let [func-result (infer-expr func-node env subst counter)]
+        (if (= (result-failed func-result) 1)
+          (propagate-error-result func-result)
+          (let [s1 (result-subst func-result)
+            func-ty (result-type func-result)
+            ret-ty (fresh-type-var counter)
+            expected (mk-fun (mk-unit) ret-ty)
+            applied-func-ty (apply-subst s1 func-ty)
+            failure-code
+            (if (= (type-tag applied-func-ty) 2)
+              (if (= (occurs-check (type-name applied-func-ty) expected) 1)
+                (error-code-infinite)
+                (error-code-arg-mismatch))
+              (error-code-arg-mismatch))
+            s2 (unify applied-func-ty expected s1)]
+            (if (= (unify-failed s2) 1)
+              (make-error-result-code failure-code)
+              (make-result s2 (apply-subst s2 ret-ty))))))
       (let [func-result (infer-expr func-node env subst counter)]
         (if (= (result-failed func-result) 1)
           (propagate-error-result func-result)

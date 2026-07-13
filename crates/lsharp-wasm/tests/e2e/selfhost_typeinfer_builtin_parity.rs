@@ -121,8 +121,8 @@ fn test_e2e_selfhost_typeinfer_builtin_environment_covers_core_development_primi
     assert_eq!(
         lines,
         [
-            "0", "100", "0", "400", "0", "500", "0", "200", "0", "100", "0", "100",
-            "0", "300", "0", "100", "0", "300",
+            "0", "100", "0", "400", "0", "500", "0", "200", "0", "100", "0", "100", "0", "300",
+            "0", "100", "0", "300",
         ],
         "selfhost の builtin 型環境は Rust host と同じ基本 development primitive を解決するべき"
     );
@@ -167,6 +167,9 @@ fn test_e2e_selfhost_typeinfer_builtin_environment_registers_core_builtin_surfac
         "root_push",
         "root_pop",
         "root_set",
+        "ref-new",
+        "ref-get",
+        "ref-set",
         "not",
         "and",
         "or",
@@ -199,5 +202,145 @@ fn test_e2e_selfhost_typeinfer_builtin_environment_registers_core_builtin_surfac
         lines,
         vec!["1"; builtin_names.len()],
         "selfhost の builtin 型環境は型適用を要しない Rust host builtin をすべて登録するべき"
+    );
+}
+
+/// Ref builtin は型引数を保持し、get/set 間で同じ要素型を要求する。
+#[test]
+fn test_e2e_selfhost_typeinfer_ref_builtins_preserve_inner_type() {
+    let harness = format!(
+        r#"
+(defn make-node [tag]
+  (vector-push (vector-new 1) tag))
+
+(defn make-var-node [name-hash]
+  (vector-push (vector-push (vector-new 2) 4) name-hash))
+
+(defn make-apply1 [func arg]
+  (vector-push
+    (vector-push
+      (vector-push
+        (vector-push (vector-new 4) 5)
+        func)
+      1)
+    arg))
+
+(defn make-apply2 [func left right]
+  (vector-push
+    (vector-push
+      (vector-push
+        (vector-push
+          (vector-push (vector-new 5) 5)
+          func)
+        2)
+      left)
+    right))
+
+(defn main []
+  (let [counter (make-var-counter)
+        env (init-builtin-env counter)
+        subst (subst-new)
+        string-node (make-node 3)
+        int-node (make-node 1)
+        ref-new-node (make-var-node {ref_new})
+        ref-get-node (make-var-node {ref_get})
+        ref-set-node (make-var-node {ref_set})
+        ref-new-result (infer-expr (make-apply1 ref-new-node string-node) env subst counter)
+        ref-new-type (result-type ref-new-result)
+        ref-get-result
+          (infer-expr
+            (make-apply1 ref-get-node (make-apply1 ref-new-node string-node))
+            env subst counter)
+        ref-set-result
+          (infer-expr
+            (make-apply2 ref-set-node (make-apply1 ref-new-node string-node) string-node)
+            env subst counter)
+        ref-set-mismatch-result
+          (infer-expr
+            (make-apply2 ref-set-node (make-apply1 ref-new-node string-node) int-node)
+            env subst counter)]
+    (do
+      (print (result-failed ref-new-result))
+      (print (ty-tag ref-new-type))
+      (print (ty-name ref-new-type))
+      (print (ty-name (type-app-arg ref-new-type 0)))
+      (print (result-failed ref-get-result))
+      (print (ty-name (result-type ref-get-result)))
+      (print (result-failed ref-set-result))
+      (print (ty-name (result-type ref-set-result)))
+      (print (result-failed ref-set-mismatch-result))
+      0)))
+"#,
+        ref_new = lsharp_name_hash("ref-new"),
+        ref_get = lsharp_name_hash("ref-get"),
+        ref_set = lsharp_name_hash("ref-set"),
+    );
+    let combined = format!("{}\n{}", selfhost_typeinfer_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "5", "800", "300", "0", "300", "0", "500", "1"],
+        "Ref a は a を保持し、ref-set は同じ a 以外を拒否するべき"
+    );
+}
+
+/// 引数なし apply は Unit を渡した builtin 呼び出しとして結果型を返す。
+#[test]
+fn test_e2e_selfhost_typeinfer_zero_argument_builtin_call_applies_unit() {
+    let harness = format!(
+        r#"
+(defn make-var-node [name-hash]
+  (vector-push (vector-push (vector-new 2) 4) name-hash))
+
+(defn make-apply0 [func]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) 5)
+      func)
+    0))
+
+(defn make-apply1 [func arg]
+  (vector-push
+    (vector-push
+      (vector-push
+        (vector-push (vector-new 4) 5)
+        func)
+      1)
+    arg))
+
+(defn main []
+  (let [counter (make-var-counter)
+        env (init-builtin-env counter)
+        subst (subst-new)
+        map-new-node (make-var-node {map_new})
+        map-size-node (make-var-node {map_size})
+        command-line-args-node (make-var-node {command_line_args})
+        map-size-result
+          (infer-expr
+            (make-apply1 map-size-node (make-apply0 map-new-node))
+            env subst counter)
+        command-line-args-result
+          (infer-expr (make-apply0 command-line-args-node) env subst counter)]
+    (do
+      (print (result-failed map-size-result))
+      (print (ty-name (result-type map-size-result)))
+      (print (result-failed command-line-args-result))
+      (print (ty-name (result-type command-line-args-result)))
+      0)))
+"#,
+        map_new = lsharp_name_hash("map-new"),
+        map_size = lsharp_name_hash("map-size"),
+        command_line_args = lsharp_name_hash("command-line-args"),
+    );
+    let combined = format!("{}\n{}", selfhost_typeinfer_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "100", "0", "100"],
+        "引数なし builtin 呼び出しは Unit 入力を消費して結果型を返すべき"
     );
 }

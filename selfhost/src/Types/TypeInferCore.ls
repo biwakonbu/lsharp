@@ -42,6 +42,7 @@
 (defn ty-var [] 2)
 (defn ty-fun [] 3)
 (defn ty-record [] 4)
+(defn ty-app [] 5)
 
 ;; 型コンストラクタの名前ハッシュ
 (defn hash-int [] 100)
@@ -49,6 +50,9 @@
 (defn hash-string [] 300)
 (defn hash-float [] 400)
 (defn hash-unit [] 500)
+(defn hash-vector [] 600)
+(defn hash-map [] 700)
+(defn hash-ref [] 800)
 
 ;; ============================================================
 ;; 型構築ヘルパー (Type.ls の関数を直接使用)
@@ -60,10 +64,15 @@
 (defn mk-string [] (make-type-string))
 (defn mk-float [] (make-type-float))
 (defn mk-unit [] (make-type-unit))
+(defn mk-vector [] (mk-con (hash-vector)))
+(defn mk-map [] (mk-con (hash-map)))
 (defn mk-con [name-hash]
   (vector-push (vector-push (vector-new 2) (ty-con)) name-hash))
 (defn mk-var [id] (make-type-var id))
 (defn mk-fun [p r] (make-type-fun p r))
+(defn mk-app [name-hash args] (make-type-app name-hash args))
+(defn mk-app1 [name-hash arg] (make-type-app1 name-hash arg))
+(defn mk-ref [inner] (mk-app1 (hash-ref) inner))
 
 ;; 型アクセサ (Type.ls を利用)
 (defn ty-tag [ty] (type-tag ty))

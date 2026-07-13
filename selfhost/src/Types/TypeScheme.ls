@@ -103,6 +103,17 @@
         len
         (type-record-add-field out field-hash (instantiate-apply subst field-ty))))))
 
+;; 型適用の型引数へ具体化用置換を適用する。
+(defn instantiate-apply-app-args [subst ty idx len out]
+  (if (>= idx len)
+    out
+    (instantiate-apply-app-args
+      subst
+      ty
+      (+ idx 1)
+      len
+      (push-object-vector-local out (instantiate-apply subst (type-app-arg ty idx))))))
+
 ;; === instantiate ===
 
 ;; 型スキームを具体化: 束縛変数を新しい型変数で置換
@@ -142,8 +153,14 @@
             2
             (vector-length ty)
             (make-type-record (vector-get ty 1)))
-          ;; Con: そのまま
-          ty)))))
+          (if (= tag 5)
+            ;; App: 型引数ごとに置換を適用
+            (make-type-app
+              (type-app-name ty)
+              (instantiate-apply-app-args
+                subst ty 0 (type-app-arg-count ty) (vector-new (type-app-arg-count ty))))
+            ;; Con: そのまま
+            ty))))))
 
 ;; === generalize ===
 
@@ -182,6 +199,17 @@
         len
         (free-vars-append-unique acc field-vars 0 (vector-length field-vars))))))
 
+;; 型適用の型引数を左から走査し、自由変数順を安定化する。
+(defn free-vars-app-args [ty idx len acc]
+  (if (>= idx len)
+    acc
+    (let [arg-vars (free-vars (type-app-arg ty idx))]
+      (free-vars-app-args
+        ty
+        (+ idx 1)
+        len
+        (free-vars-append-unique acc arg-vars 0 (vector-length arg-vars))))))
+
 ;; 環境にない自由変数だけを source order のまま束縛変数へ積む
 (defn generalize-collect-bound [free idx len env-vars bound]
   (if (>= idx len)
@@ -217,8 +245,11 @@
         (if (= tag 4)
           ;; Record: field type を左から走査
           (free-vars-record-fields ty 2 (vector-length ty) (vector-new 4))
-          ;; Con: 自由変数なし
-          (vector-new 0))))))
+          (if (= tag 5)
+            ;; App: 型引数を左から走査
+            (free-vars-app-args ty 0 (type-app-arg-count ty) (vector-new (type-app-arg-count ty)))
+            ;; Con: 自由変数なし
+            (vector-new 0)))))))
 
 ;; === エントリポイント (テスト用) ===
 

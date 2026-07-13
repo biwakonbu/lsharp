@@ -19,6 +19,9 @@
 ;; レコード型: [4, name-hash, field1-hash, field1-type, ...]
 (defn type-record [] 4)
 
+;; 型適用: [5, name-hash, arg-count, arg1, ...]
+(defn type-app [] 5)
+
 ;; === 型構築 ===
 
 ;; 整数型 (hash=100, 0 は map-get のデフォルト値と衝突するため)
@@ -53,6 +56,48 @@
 (defn make-type-record [name-hash]
   (vector-push (vector-push (vector-new 8) 4) name-hash))
 
+;; object を保持したまま Vector へ追加する。
+(defn type-push-object [dst value]
+  (do
+    (root_push dst)
+    (root_push value)
+    (let [next-dst (vector-push dst value)]
+      (do
+        (root_pop)
+        (root_pop)
+        next-dst))))
+
+;; 型適用の引数を左から複写する。
+(defn type-app-append-args [args idx len out]
+  (if (>= idx len)
+    out
+    (type-app-append-args
+      args
+      (+ idx 1)
+      len
+      (type-push-object out (vector-get args idx)))))
+
+;; 型適用。例: Ref String = [5, Ref, 1, String]
+(defn make-type-app [name-hash args]
+  (let [arg-count (vector-length args)
+    prefix
+      (vector-push
+        (vector-push
+          (vector-push (vector-new (+ arg-count 3)) 5)
+          name-hash)
+        arg-count)]
+    (type-app-append-args args 0 arg-count prefix)))
+
+;; 1 引数型適用の頻出経路。
+(defn make-type-app1 [name-hash arg]
+  (type-push-object
+    (vector-push
+      (vector-push
+        (vector-push (vector-new 4) 5)
+        name-hash)
+      1)
+    arg))
+
 ;; レコード型にフィールドを追加
 (defn type-record-add-field [ty field-name-hash field-ty]
   (vector-push (vector-push ty field-name-hash) field-ty))
@@ -76,6 +121,16 @@
 (defn type-fun-ret [ty]
   (vector-get ty 2))
 
+;; 型適用の名前・引数を取得
+(defn type-app-name [ty]
+  (vector-get ty 1))
+
+(defn type-app-arg-count [ty]
+  (vector-get ty 2))
+
+(defn type-app-arg [ty idx]
+  (vector-get ty (+ idx 3)))
+
 ;; === 型アクセス ===
 
 ;; 型のタグを取得
@@ -85,6 +140,14 @@
 ;; 型コンストラクタの場合、名前ハッシュを取得
 (defn type-name [ty]
   (vector-get ty 1))
+
+;; 型適用の引数を構造的に比較する。
+(defn type-app-args-eq [ty1 ty2 idx len]
+  (if (>= idx len)
+    1
+    (if (= (types-eq (type-app-arg ty1 idx) (type-app-arg ty2 idx)) 1)
+      (type-app-args-eq ty1 ty2 (+ idx 1) len)
+      0)))
 
 ;; === Substitution ===
 
@@ -116,16 +179,33 @@
         ;; 両方 Var: ID を比較
         (if (= (type-name ty1) (type-name ty2)) 1 0)
         (if (= (type-tag ty1) 3)
-          ;; 両方 Fun: パラメータと戻り値をそれぞれ比較
+        ;; 両方 Fun: パラメータと戻り値をそれぞれ比較
           (if (= (types-eq (type-fun-param ty1) (type-fun-param ty2)) 1)
             (types-eq (type-fun-ret ty1) (type-fun-ret ty2))
             0)
-          0)))
+          (if (= (type-tag ty1) 5)
+            ;; 両方 App: constructor と全引数を比較
+            (if (= (type-app-name ty1) (type-app-name ty2))
+              (if (= (type-app-arg-count ty1) (type-app-arg-count ty2))
+                (type-app-args-eq ty1 ty2 0 (type-app-arg-count ty1))
+                0)
+              0)
+            0))))
     0))
 
 ;; === apply-subst ===
 
 ;; 置換を型に適用
+(defn apply-subst-app-args [subst ty idx len out]
+  (if (>= idx len)
+    out
+    (apply-subst-app-args
+      subst
+      ty
+      (+ idx 1)
+      len
+      (type-push-object out (apply-subst subst (type-app-arg ty idx))))))
+
 (defn apply-subst [subst ty]
   (if (= (type-tag ty) 2)
     ;; Var: 置換に存在すれば再帰的に適用
@@ -138,12 +218,25 @@
       (make-type-fun
         (apply-subst subst (type-fun-param ty))
         (apply-subst subst (type-fun-ret ty)))
-      ;; Con: そのまま返す
-      ty)))
+      (if (= (type-tag ty) 5)
+        ;; App: すべての型引数に置換を適用
+        (make-type-app
+          (type-app-name ty)
+          (apply-subst-app-args
+            subst ty 0 (type-app-arg-count ty) (vector-new (type-app-arg-count ty))))
+        ;; Con / Record: そのまま返す
+        ty))))
 
 ;; === occurs-check ===
 
 ;; var-id が ty 内に出現するかチェック (1=出現, 0=非出現)
+(defn occurs-check-app-args [var-id ty idx len]
+  (if (>= idx len)
+    0
+    (if (= (occurs-check var-id (type-app-arg ty idx)) 1)
+      1
+      (occurs-check-app-args var-id ty (+ idx 1) len))))
+
 (defn occurs-check [var-id ty]
   (if (= (type-tag ty) 2)
     ;; Var: ID が一致すれば出現
@@ -153,8 +246,11 @@
       (if (= (occurs-check var-id (type-fun-param ty)) 1)
         1
         (occurs-check var-id (type-fun-ret ty)))
-      ;; Con: 出現しない
-      0)))
+      (if (= (type-tag ty) 5)
+        ;; App: いずれかの型引数に出現するか
+        (occurs-check-app-args var-id ty 0 (type-app-arg-count ty))
+        ;; Con / Record: 出現しない
+        0))))
 
 ;; === Unification ===
 
@@ -165,6 +261,15 @@
 ;; 置換がエラーかチェック (0=正常, 1=エラー)
 (defn unify-failed [result]
   (map-get result -1))
+
+;; 同じ型コンストラクタの型引数を左から単一化する。
+(defn unify-app-args [ty1 ty2 idx len subst]
+  (if (>= idx len)
+    subst
+    (let [next-subst (unify (type-app-arg ty1 idx) (type-app-arg ty2 idx) subst)]
+      (if (= (unify-failed next-subst) 1)
+        next-subst
+        (unify-app-args ty1 ty2 (+ idx 1) len next-subst)))))
 
 ;; 二つの型を単一化し、更新された置換を返す
 ;; 成功時: 置換 (map), 失敗時: エラーマーカー付き map
@@ -187,15 +292,24 @@
           (if (= (type-tag ty1) 1)
             ;; 両方 Con: 名前が一致しないなら失敗
             (unify-error)
-            (if (= (type-tag ty1) 3)
-              ;; 両方 Fun: パラメータを単一化してから戻り値を単一化
-              (if (= (type-tag ty2) 3)
+              (if (= (type-tag ty1) 3)
+                ;; 両方 Fun: パラメータを単一化してから戻り値を単一化
+                (if (= (type-tag ty2) 3)
                 (let [s1 (unify (type-fun-param ty1) (type-fun-param ty2) subst)]
                   (if (= (unify-failed s1) 0)
                     (unify (type-fun-ret ty1) (type-fun-ret ty2) s1)
                     (unify-error)))
                 (unify-error))
-              (unify-error))))))))
+              (if (= (type-tag ty1) 5)
+                ;; 両方 App: constructor と arity が同じときだけ型引数を単一化
+                (if (= (type-tag ty2) 5)
+                  (if (= (type-app-name ty1) (type-app-name ty2))
+                    (if (= (type-app-arg-count ty1) (type-app-arg-count ty2))
+                      (unify-app-args ty1 ty2 0 (type-app-arg-count ty1) subst)
+                      (unify-error))
+                    (unify-error))
+                  (unify-error))
+                (unify-error)))))))))
 
 ;; エントリポイント (テスト用)
 (defn main []
