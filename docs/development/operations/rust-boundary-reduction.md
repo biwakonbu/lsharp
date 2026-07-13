@@ -61,7 +61,7 @@ Rust が完全に不要になったわけではない。次の作業は native b
 2. native selfhost と Rust implementation の oracle/differential 比較、障害解析、emergency rollback。
 3. `mcp-server`、bare LSP、`--emit-ir`、native target など、上表で明示した Rust host integration surface。
 
-したがって、Linux gate 完了後に「検証済み core CLI の日常ループは Rust なしで開発可能」と言える。一方で、自己ホストの型・宣言意味論 P0 が未完了の間は「base language development 全体」や「L# の全機能」が Rust なしとは言えない。closed alias signature slice はその境界を少し狭めるが、上表の Rust-only surface、external tool dependency、式内 alias / parametric alias / ADT / record などの未実装 P0 は残る。
+したがって、Linux gate 完了後に「検証済み core CLI の日常ループは Rust なしで開発可能」と言える。一方で、自己ホストの型・宣言意味論 P0 が未完了の間は「base language development 全体」や「L# の全機能」が Rust なしとは言えない。closed / parametric alias の signature・式内 annotation slice はその境界を少し狭めたが、上表の Rust-only surface、external tool dependency、forward / recursive alias、scoped polymorphic variable、ADT / record declaration environment などの未実装 P0 は残る。
 
 ## 検証と残タスク
 

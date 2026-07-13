@@ -199,6 +199,9 @@
 (defn make-computation [builder-hash] (vector-push-triple-rooted (vector-new 8) (ast-computation) builder-hash 0))
 (defn make-type-decl [name-hash] (vector-push-pair-rooted (vector-new 2) (ast-type-decl) name-hash))
 (defn make-record-def [name-hash] (vector-push-pair-rooted (vector-new 2) (ast-recorddef) name-hash))
+;; record 定義: [22, name-hash, field 名と型式を交互に並べた vector]
+(defn make-record-def-with-fields [name-hash fields]
+  (vector-push-triple-rooted (vector-new 3) (ast-recorddef) name-hash fields))
 ;; closed type-alias: [23, name-hash, raw-target-type-expr]
 ;; parametric type-alias: [23, name-hash, param-name-hashes, raw-target-type-expr]
 (defn make-type-alias [name-hash target-type-expr]

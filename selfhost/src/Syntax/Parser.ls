@@ -2233,20 +2233,91 @@
             (root_pop)
             parsed))))))
 
+;; `(record (: field Type) ...)` の field 名と raw TypeExpr を平坦な pair として保持する。
+(defn parse-record-decl-fields-rooted-v3 [spans pos-ref src fields]
+  (if (== (p-current spans pos-ref) 1)
+    (do
+      (p-advance pos-ref)
+      fields)
+    (if (== (p-current spans pos-ref) 99)
+      fields
+      (if (== (p-current spans pos-ref) 0)
+        (do
+          (p-advance pos-ref) ;; field form の ( を消費
+          (if (== (p-current spans pos-ref) 50)
+            (do
+              (p-advance pos-ref) ;; : を消費
+              (if (== (p-current spans pos-ref) 20)
+                (do
+                  (root_push fields)
+                  (let [field-hash (current-symbol-hash-v3 spans pos-ref src)]
+                    (do
+                      (p-advance pos-ref)
+                      (let [type-expr (parse-type-expr-v3 spans pos-ref src)]
+                        (do
+                          (root_push type-expr)
+                          (p-expect spans pos-ref 1)
+                          (let [next-fields (vector-push-pair-rooted-v3 fields field-hash type-expr)]
+                            (do
+                              (root_push next-fields)
+                              (let [parsed (parse-record-decl-fields-rooted-v3 spans pos-ref src next-fields)]
+                                (do
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  parsed)))))))))
+                (do
+                  (parse-skip-to-close-v3 spans pos-ref 1)
+                  (parse-record-decl-fields-rooted-v3 spans pos-ref src fields))))
+            (do
+              (parse-skip-to-close-v3 spans pos-ref 1)
+              (parse-record-decl-fields-rooted-v3 spans pos-ref src fields))))
+        (do
+          (p-advance pos-ref)
+          (parse-record-decl-fields-rooted-v3 spans pos-ref src fields))))))
+
+(defn parse-record-decl-fields-v3 [spans pos-ref src]
+  (do
+    (root_push spans)
+    (root_push pos-ref)
+    (root_push src)
+    (let [fields (vector-new 0)
+      fields-slot (root_push fields)]
+      (let [parsed (parse-record-decl-fields-rooted-v3 spans pos-ref src fields)]
+        (do
+          (root_set fields-slot parsed)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          parsed)))))
+
+(defn parse-record-def-v3 [spans pos-ref src name-hash]
+  (do
+    (p-expect spans pos-ref 0) ;; record form の ( を消費
+    (p-expect spans pos-ref 39) ;; record を消費
+    (let [fields (parse-record-decl-fields-v3 spans pos-ref src)]
+      (do
+        (root_push fields)
+        (p-expect spans pos-ref 1) ;; type 宣言の ) を消費
+        (let [parsed (make-record-def-with-fields name-hash fields)]
+          (do
+            (root_pop)
+            parsed))))))
+
 ;; === type 宣言 (簡易) ===
 (defn parse-type-v3 [spans pos-ref src]
   (do
     (p-advance pos-ref) ;; type を消費
     (let [h (parse-type-head-hash-v3 spans pos-ref src)
-      ;; いったん残りの variant / metadata は読み飛ばすが、
-      ;; record 本体だけは RecordDef として識別する
+      ;; variant / metadata は読み飛ばすが、record field は後段の型推論へ渡す。
       head-kind (if (== (p-current spans pos-ref) 0)
         (span-kind spans (+ (ref-get pos-ref) 1))
         0)]
-      (do
-        (parse-skip-to-close-v3 spans pos-ref 1)
-        (if (== head-kind 39)
-          (make-record-def h)
+      (if (== head-kind 39)
+        (parse-record-def-v3 spans pos-ref src h)
+        (do
+          (parse-skip-to-close-v3 spans pos-ref 1)
           (make-type-decl h))))))
 
 ;; === trait 宣言 (簡易) ===
