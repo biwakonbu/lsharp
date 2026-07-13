@@ -78,7 +78,7 @@ fi
 
 BLOCKED_TOOL_DIR="$WORK_DIR/blocked-tools"
 mkdir -p "$BLOCKED_TOOL_DIR"
-for blocked_tool in ca""rgo rustc lsharp; do
+for blocked_tool in cargo rustc lsharp; do
   printf '%s\n' '#!/usr/bin/env bash' 'exit 99' >"$BLOCKED_TOOL_DIR/$blocked_tool"
   chmod 755 "$BLOCKED_TOOL_DIR/$blocked_tool"
 done

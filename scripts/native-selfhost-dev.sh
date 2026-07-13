@@ -139,6 +139,7 @@ component_output_path() {
   local output_path=""
   local target=""
 
+  [[ "${args[0]:-}" == "compile" || "${args[0]:-}" == "build" ]] || return 1
   [[ ${#args[@]} -ge 2 ]] || return 1
   [[ -f "${args[1]}" ]] || return 1
 
@@ -204,6 +205,20 @@ unsupported_compile_target() {
       esac
     fi
     index=$((index + 1))
+  done
+
+  return 1
+}
+
+unsupported_compile_option() {
+  local args=("$@")
+
+  [[ "${args[0]:-}" == "compile" || "${args[0]:-}" == "build" ]] || return 1
+  for arg in "${args[@]:2}"; do
+    if [[ "$arg" == "--emit-ir" ]]; then
+      printf '%s\n' "$arg"
+      return 0
+    fi
   done
 
   return 1
@@ -316,8 +331,24 @@ if [[ "${1:-}" == "doc" ]]; then
   exec python3 "$DOC_HELPER" --program "$STAGE_DIR/program.native" "${@:2}"
 fi
 
+if [[ "${1:-}" == "mcp-server" ]]; then
+  die "native selfhost runner does not provide mcp-server; use the Rust host integration"
+fi
+
+if [[ "${1:-}" == "lsp" ]]; then
+  if [[ "${2:-}" != "--stdio" ]]; then
+    die "native selfhost runner supports lsp only with --stdio"
+  fi
+  [[ -f "$LSP_STDIO_SHIM" ]] || die "native LSP stdio shim not found: $LSP_STDIO_SHIM"
+  exec python3 "$LSP_STDIO_SHIM" --program "$STAGE_DIR/program.native" -- "${@:3}"
+fi
+
 if UNSUPPORTED_TARGET="$(unsupported_compile_target "$@")"; then
   die "native selfhost runner does not support --target $UNSUPPORTED_TARGET; use wasi-preview1 or wasi-component"
+fi
+
+if UNSUPPORTED_OPTION="$(unsupported_compile_option "$@")"; then
+  die "native selfhost runner does not support $UNSUPPORTED_OPTION; use the Rust host integration"
 fi
 
 if COMPONENT_OUTPUT="$(component_output_path "$@")"; then
@@ -327,11 +358,6 @@ if COMPONENT_OUTPUT="$(component_output_path "$@")"; then
     --command "$1" \
     --source "$2" \
     --output "$COMPONENT_OUTPUT"
-fi
-
-if [[ "${1:-}" == "lsp" && "${2:-}" == "--stdio" ]]; then
-  [[ -f "$LSP_STDIO_SHIM" ]] || die "native LSP stdio shim not found: $LSP_STDIO_SHIM"
-  exec python3 "$LSP_STDIO_SHIM" --program "$STAGE_DIR/program.native" -- "${@:3}"
 fi
 
 exec "$STAGE_DIR/program.native" "$@"

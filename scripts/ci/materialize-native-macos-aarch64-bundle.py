@@ -200,15 +200,22 @@ codesign_identity = os.environ.get(
     "LSHARP_NATIVE_MACOS_AARCH64_CODESIGN_IDENTITY", ""
 ).strip()
 if codesign_identity:
-    subprocess.run(
-        [
-            "codesign",
-            "--force",
-            "--sign",
-            codesign_identity,
-            "--timestamp=none",
-            "program.native",
-        ],
-        cwd=stage_dir,
-        check=True,
-    )
+    try:
+        subprocess.run(
+            [
+                "codesign",
+                "--force",
+                "--sign",
+                codesign_identity,
+                "--timestamp=none",
+                "program.native",
+            ],
+            cwd=stage_dir,
+            check=True,
+            capture_output=True,
+        )
+    except subprocess.CalledProcessError as error:
+        diagnostic = error.stderr.decode("utf-8", "replace").strip()
+        if diagnostic:
+            raise SystemExit(f"codesign failed: {diagnostic}") from error
+        raise SystemExit(f"codesign failed with exit={error.returncode}") from error

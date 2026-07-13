@@ -42,6 +42,7 @@ fn test_native_macos_aarch64_materializer_supports_explicit_codesign_identity() 
         "--sign",
         "--timestamp=none",
         "program.native",
+        "capture_output=True",
     ] {
         assert!(
             source.contains(required),
@@ -75,6 +76,7 @@ fn test_e2e_native_macos_aarch64_materializer_executes_tiny_stage_code() {
         .arg(&stage_dir)
         .arg(code_name)
         .arg(entrypoint_name)
+        .env("LSHARP_NATIVE_MACOS_AARCH64_CODESIGN_IDENTITY", "-")
         .output()
         .expect("macOS arm64 materializer の実行に失敗");
     assert!(
@@ -83,6 +85,32 @@ fn test_e2e_native_macos_aarch64_materializer_executes_tiny_stage_code() {
         materialize.status.code(),
         String::from_utf8_lossy(&materialize.stdout),
         String::from_utf8_lossy(&materialize.stderr)
+    );
+    assert!(
+        materialize.stderr.is_empty(),
+        "macOS arm64 materializer の成功時 stderr は空であるべき: {:?}",
+        String::from_utf8_lossy(&materialize.stderr)
+    );
+
+    let resign = Command::new("python3")
+        .arg(&materializer)
+        .arg(&stage_dir)
+        .arg(code_name)
+        .arg(entrypoint_name)
+        .env("LSHARP_NATIVE_MACOS_AARCH64_CODESIGN_IDENTITY", "-")
+        .output()
+        .expect("macOS arm64 materializer の再実行に失敗");
+    assert!(
+        resign.status.success(),
+        "macOS arm64 materializer の再署名が失敗した: status={:?}, stdout={}, stderr={}",
+        resign.status.code(),
+        String::from_utf8_lossy(&resign.stdout),
+        String::from_utf8_lossy(&resign.stderr)
+    );
+    assert!(
+        resign.stderr.is_empty(),
+        "macOS arm64 materializer の再署名成功時 stderr は空であるべき: {:?}",
+        String::from_utf8_lossy(&resign.stderr)
     );
 
     let program = stage_dir.join("program.native");

@@ -283,6 +283,18 @@ run_runner lsp --stdio relay
 assert_file_contains "$LOG_FILE" "lsp-shim|relay"
 assert_file_not_contains "$LOG_FILE" "program|lsp --stdio relay"
 
+if run_runner lsp >"$TMP_ROOT/lsp.stdout" 2>"$TMP_ROOT/lsp.stderr"; then
+  fail "native runner accepted bare lsp without stdio transport"
+fi
+assert_file_contains "$TMP_ROOT/lsp.stderr" "error: native selfhost runner supports lsp only with --stdio"
+assert_file_not_contains "$LOG_FILE" "program|lsp"
+
+if run_runner mcp-server >"$TMP_ROOT/mcp-server.stdout" 2>"$TMP_ROOT/mcp-server.stderr"; then
+  fail "native runner accepted Rust-only mcp-server"
+fi
+assert_file_contains "$TMP_ROOT/mcp-server.stderr" "error: native selfhost runner does not provide mcp-server"
+assert_file_not_contains "$LOG_FILE" "program|mcp-server"
+
 run_runner install
 assert_file_contains "$LOG_FILE" "install-helper|--project-dir $PROJECT_DIR"
 assert_file_not_contains "$LOG_FILE" "program|install"
@@ -294,6 +306,10 @@ assert_file_not_contains "$LOG_FILE" "program|repl --stdin"
 run_runner doc "$DOC_INPUT" --json
 assert_file_contains "$LOG_FILE" "doc-helper|$DOC_INPUT --json"
 assert_file_not_contains "$LOG_FILE" "program|doc $DOC_INPUT --json"
+
+run_runner parse "$DOC_INPUT"
+assert_file_contains "$LOG_FILE" "program|parse $DOC_INPUT"
+assert_file_not_contains "$LOG_FILE" "component-helper|parse --source $DOC_INPUT"
 
 run_runner compile "$DOC_INPUT"
 assert_file_contains "$LOG_FILE" "component-helper|compile --source $DOC_INPUT --output $DEFAULT_COMPONENT_OUTPUT"
@@ -329,6 +345,12 @@ if run_runner build "$DOC_INPUT" --target native >"$TMP_ROOT/native.stdout" 2>"$
 fi
 assert_file_contains "$TMP_ROOT/native.stderr" "error: native selfhost runner does not support --target native"
 assert_file_not_contains "$LOG_FILE" "program|build $DOC_INPUT --target native"
+
+if run_runner compile "$DOC_INPUT" --emit-ir >"$TMP_ROOT/emit-ir.stdout" 2>"$TMP_ROOT/emit-ir.stderr"; then
+  fail "native runner accepted Rust-only --emit-ir"
+fi
+assert_file_contains "$TMP_ROOT/emit-ir.stderr" "error: native selfhost runner does not support --emit-ir"
+assert_file_not_contains "$LOG_FILE" "program|compile $DOC_INPUT --emit-ir"
 
 assert_file_not_contains "$RUNNER" 'cargo '
 assert_file_not_contains "$RUNNER" 'command -v lsharp'
