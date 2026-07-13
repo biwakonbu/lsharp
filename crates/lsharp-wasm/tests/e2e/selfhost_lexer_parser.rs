@@ -144,6 +144,40 @@ fn test_e2e_selfhost_parser_closed_type_alias_unifies_defn_signature() {
     );
 }
 
+/// parser-to-inference bundle: closed type-alias は式内 annotation でも透過展開する
+#[test]
+fn test_e2e_selfhost_parser_closed_type_alias_unifies_annotation_expr() {
+    let harness = r#"
+(defn main []
+  (let [valid-analysis
+          (infer-program-analysis
+            (parse-program "(type-alias Str String) (defn hello [] (: \"world\" Str))"))
+        invalid-analysis
+          (infer-program-analysis
+            (parse-program "(type-alias Str String) (defn invalid [] (: 42 Str))"))]
+    (do
+      (print (infer-program-analysis-diagnostic-count valid-analysis))
+      (print (infer-program-analysis-first-error-code valid-analysis))
+      (print (infer-program-analysis-diagnostic-count invalid-analysis))
+      (print (infer-program-analysis-first-error-code invalid-analysis))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}",
+        selfhost_parser_typeinfer_runtime_bundle(),
+        harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "0", "1", "6"],
+        "closed type-alias は式内 annotation で String と同じ型として検査されるべき"
+    );
+}
+
 #[test]
 fn test_e2e_selfhost_lexer_arrow_dot() {
     // Lexer.ls が -> と . を正しくトークン化できることを検証

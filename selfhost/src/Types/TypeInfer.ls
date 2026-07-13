@@ -29,7 +29,7 @@
 ;;   node    - AST ノード (Vector)
 ;;   env     - 型環境 (HashMap<name-hash, TypeScheme>)
 ;;   subst   - 現在の置換 (HashMap<var-id, Type>)
-;;   counter - 型変数カウンタ (ref-cell)
+;;   counter - 型変数カウンタと alias 環境を持つ推論 context
 ;; 戻り値:
 ;;   [subst, type, error-code] - 更新された置換と推論された型
 
@@ -107,11 +107,16 @@
             expr-result
             (let [s1 (result-subst expr-result)
               expr-ty (result-type expr-result)
-              ann-ty (typeinfer-resolve-type-expr type-expr)
-              s2 (unify expr-ty ann-ty s1)]
-              (if (= (unify-failed s2) 1)
-                (make-error-result-code (error-code-general))
-                (make-result s2 (apply-subst s2 ann-ty))))))))))
+              alias-env (var-counter-alias-env counter)]
+              (do
+                (root_push alias-env)
+                (let [ann-ty (typeinfer-resolve-type-expr-with-aliases type-expr alias-env)
+                  s2 (unify expr-ty ann-ty s1)]
+                  (do
+                    (root_pop)
+                    (if (= (unify-failed s2) 1)
+                      (make-error-result-code (error-code-general))
+                      (make-result s2 (apply-subst s2 ann-ty)))))))))))))
 
 ;; quote/unquote 系は現状すべて inner expr へ委譲する
 (defn quote-like-tag? [tag]
@@ -295,8 +300,9 @@
 (defn infer-defn [node env counter]
   (let [name-hash (vector-get node 1)
     placeholder (fresh-type-var counter)
-    body-env (type-env-insert env name-hash (mono placeholder))]
-    (infer-defn-predeclared node body-env env counter (subst-new) placeholder (map-new) (map-new))))
+    body-env (type-env-insert env name-hash (mono placeholder))
+    alias-env (var-counter-alias-env counter)]
+    (infer-defn-predeclared node body-env env counter (subst-new) placeholder (map-new) alias-env)))
 
 ;; 型変数ベクタを一般化除外用の Set へ移す。
 (defn typeinfer-free-vars-to-set [vars idx len env-vars]
@@ -423,12 +429,12 @@
 
 ;; top-level defn を先行登録して一度だけ推論し、CLI/LSP が共有する結果を返す。
 (defn infer-program-analysis [program]
-  (let [counter (make-var-counter)
-    initial-env (init-builtin-env counter)
-    alias-env (typeinfer-predeclare-closed-aliases program)]
+  (let [alias-env (typeinfer-predeclare-closed-aliases program)
+    counter (make-var-counter-with-alias-env alias-env)]
     (do
-      (root_push alias-env)
-      (let [predeclared (typeinfer-predeclare-defns program initial-env counter)
+      (root_push counter)
+      (let [initial-env (init-builtin-env counter)
+        predeclared (typeinfer-predeclare-defns program initial-env counter)
         env (vector-get predeclared 0)
         placeholders (vector-get predeclared 1)
         state (typeinfer-program-analysis-state env (subst-new) (mk-int) 0 0 0)

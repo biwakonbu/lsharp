@@ -66,15 +66,38 @@
 ;; === 型変数カウンタ ===
 ;; 新しい型変数を生成するためのグローバルカウンタ
 
-;; カウンタ (ref-cell)
+;; 型推論 context = [next-id-ref, alias-env]。型変数 ID の API を保ったまま宣言環境を共有する。
+(defn make-var-counter-with-alias-env [alias-env]
+  (do
+    (root_push alias-env)
+    (let [id-ref (ref-new 1000)]
+      (do
+        (root_push id-ref)
+        (let [with-id-ref (push-object-vector-local (vector-new 2) id-ref)]
+          (do
+            (root_push with-id-ref)
+            (let [result (push-object-vector-local with-id-ref alias-env)]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result))))))))
+
 (defn make-var-counter []
-  (ref-new 1000))
+  (make-var-counter-with-alias-env (map-new)))
+
+(defn var-counter-id-ref [counter]
+  (vector-get counter 0))
+
+(defn var-counter-alias-env [counter]
+  (vector-get counter 1))
 
 ;; 次の型変数 ID を生成
 (defn next-var [counter]
-  (let [id (ref-get counter)]
+  (let [id-ref (var-counter-id-ref counter)
+    id (ref-get id-ref)]
     (do
-      (ref-set counter (+ id 1))
+      (ref-set id-ref (+ id 1))
       id)))
 
 ;; 束縛変数ベクタを左から順に fresh な型変数へ写す
