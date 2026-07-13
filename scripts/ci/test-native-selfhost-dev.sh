@@ -44,6 +44,21 @@ cp "$ROOT/scripts/ci/decode-native-selfhost-transport.py" \
   "$TEST_ROOT/scripts/ci/decode-native-selfhost-transport.py"
 chmod +x "$TEST_ROOT/scripts/ci/decode-native-selfhost-transport.py"
 
+cat >"$TEST_ROOT/scripts/native-selfhost-lsp-stdio.py" <<'PY'
+import os
+import pathlib
+import sys
+
+log_path = pathlib.Path(os.environ["NATIVE_TEST_LOG"])
+args = sys.argv[1:]
+if len(args) < 3 or args[0] != "--program" or args[2] != "--":
+    raise SystemExit(102)
+if not pathlib.Path(args[1]).is_file():
+    raise SystemExit(103)
+with log_path.open("a", encoding="ascii") as log:
+    log.write("lsp-shim|" + " ".join(args[3:]) + "\\n")
+PY
+
 cat >"$STAGE0_DIR/manifest.json" <<'JSON'
 {
   "kind": "lsharp-native-selfhost-stage0",
@@ -183,6 +198,10 @@ PY
 rm -rf "$STAGE_DIR"
 NATIVE_TEST_EXPECTED_TARGET=aarch64-apple-darwin run_runner mac
 assert_file_contains "$STAGE_DIR/manifest.json" '"target": "aarch64-apple-darwin"'
+
+run_runner lsp --stdio relay
+assert_file_contains "$LOG_FILE" "lsp-shim|relay"
+assert_file_not_contains "$LOG_FILE" "program|lsp --stdio relay"
 
 assert_file_not_contains "$RUNNER" 'cargo '
 assert_file_not_contains "$RUNNER" 'command -v lsharp'

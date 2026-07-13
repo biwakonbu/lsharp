@@ -7,6 +7,7 @@ SOURCE_ROOT="${NATIVE_SOURCE_ROOT:-$ROOT/selfhost}"
 STAGE_DIR="${NATIVE_STAGE_DIR:-$ROOT/.native-selfhost-dev}"
 RELATIVE_ENTRY="${NATIVE_RELATIVE_ENTRY:-src/App/Cli.ls}"
 DECODER="$ROOT/scripts/ci/decode-native-selfhost-transport.py"
+LSP_STDIO_SHIM="$ROOT/scripts/native-selfhost-lsp-stdio.py"
 FORCE_BOOTSTRAP=0
 
 usage() {
@@ -205,6 +206,11 @@ if [[ "$FORCE_BOOTSTRAP" == "1" ]] || ! stage_is_ready "$FINGERPRINT"; then
   esac
   [[ -x "$STAGE_DIR/program.native" ]] || die "materializer did not produce an executable program.native"
   printf '%s\n' "$FINGERPRINT" >"$STAGE_DIR/.source-fingerprint.sha256"
+fi
+
+if [[ "${1:-}" == "lsp" && "${2:-}" == "--stdio" ]]; then
+  [[ -f "$LSP_STDIO_SHIM" ]] || die "native LSP stdio shim not found: $LSP_STDIO_SHIM"
+  exec python3 "$LSP_STDIO_SHIM" --program "$STAGE_DIR/program.native" -- "${@:3}"
 fi
 
 exec "$STAGE_DIR/program.native" "$@"
