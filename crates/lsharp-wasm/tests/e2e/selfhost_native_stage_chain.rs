@@ -345,6 +345,46 @@ fn root_linux_x86_seed_function_meta_constructor(source: String) -> String {
     )
 }
 
+fn root_linux_x86_seed_int_to_string_import_arity(source: String) -> String {
+    source.replacen(
+        r#"(defn push-import-placeholders [idx count result]
+  (if (>= idx count)
+    result
+    (do
+      (root_push result)
+      (let [placeholder (make-function-meta 0 0 (vector-new 0))]
+        (do
+          (root_push placeholder)
+          (let [next-result (vector-push result placeholder)]
+            (do
+              (root_push next-result)
+              (let [final (push-import-placeholders (+ idx 1) count next-result)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  final)))))))))"#,
+        r#"(defn push-import-placeholders [idx count result]
+  (if (>= idx count)
+    result
+    (do
+      (root_push result)
+      (let [placeholder (make-function-meta (if (= idx 6) 1 0) 0 (vector-new 0))]
+        (do
+          (root_push placeholder)
+          (let [next-result (vector-push result placeholder)]
+            (do
+              (root_push next-result)
+              (let [final (push-import-placeholders (+ idx 1) count next-result)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  final)))))))))"#,
+        1,
+    )
+}
+
 fn representative_actual_stage23_seed_source() -> String {
     representative_actual_stage23_seed_source_for_target("(host-target)")
 }
@@ -620,6 +660,7 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
     );
     let source = strip_linux_x86_unused_base64_helpers(source);
     let source = root_linux_x86_seed_function_meta_constructor(source);
+    let source = root_linux_x86_seed_int_to_string_import_arity(source);
     let source = strip_linux_x86_unused_byte_chunk_text_helpers(source);
     let source = strip_linux_x86_unused_regular_code_byte_printer(source);
     let source = stabilize_linux_x86_packed_code_byte_printer(source);
@@ -1079,6 +1120,21 @@ fn test_linux_x86_representative_seed_uses_layout_emit_for_segmented_native_code
     assert!(
         entrypoint_checks.iter().all(|check| *check),
         "Linux x86 segmented seed は stage2/stage3 artifact の entrypoint を最後の callable ではなく対象 source の main defn に固定するべき: checks={entrypoint_checks:?}"
+    );
+}
+
+#[test]
+fn test_linux_x86_representative_seed_assigns_int_to_string_import_arity() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+    let placeholders = source
+        .split("(defn push-import-placeholders [idx count result]")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn append-vector-loop").next())
+        .expect("Linux x86 seed に import placeholder builder が存在すること");
+
+    assert!(
+        placeholders.contains("(make-function-meta (if (= idx 6) 1 0) 0 (vector-new 0))"),
+        "Linux x86 seed は int-to-string import (index 6) を一引数 metadata として埋め込むべき"
     );
 }
 
