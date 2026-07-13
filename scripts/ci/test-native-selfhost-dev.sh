@@ -318,6 +318,18 @@ assert_file_contains "$LOG_FILE" "component-helper|build --source $DOC_INPUT --o
 assert_eq "component" "$(<"$BUILD_COMPONENT_OUTPUT")"
 assert_file_not_contains "$LOG_FILE" "program|build $DOC_INPUT --output $BUILD_COMPONENT_OUTPUT --target wasm"
 
+if run_runner compile "$DOC_INPUT" --target web-wasm >"$TMP_ROOT/web-wasm.stdout" 2>"$TMP_ROOT/web-wasm.stderr"; then
+  fail "native runner accepted unsupported web-wasm target"
+fi
+assert_file_contains "$TMP_ROOT/web-wasm.stderr" "error: native selfhost runner does not support --target web-wasm"
+assert_file_not_contains "$LOG_FILE" "program|compile $DOC_INPUT --target web-wasm"
+
+if run_runner build "$DOC_INPUT" --target native >"$TMP_ROOT/native.stdout" 2>"$TMP_ROOT/native.stderr"; then
+  fail "native runner accepted unsupported native target"
+fi
+assert_file_contains "$TMP_ROOT/native.stderr" "error: native selfhost runner does not support --target native"
+assert_file_not_contains "$LOG_FILE" "program|build $DOC_INPUT --target native"
+
 assert_file_not_contains "$RUNNER" 'cargo '
 assert_file_not_contains "$RUNNER" 'command -v lsharp'
 assert_file_not_contains "$RUNNER" 'which lsharp'

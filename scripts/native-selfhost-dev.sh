@@ -186,6 +186,29 @@ component_output_path() {
   printf '%s\n' "$output_path"
 }
 
+unsupported_compile_target() {
+  local args=("$@")
+  local index=2
+
+  [[ "${args[0]:-}" == "compile" || "${args[0]:-}" == "build" ]] || return 1
+
+  while (( index < ${#args[@]} )); do
+    if [[ "${args[index]}" == "--target" ]]; then
+      index=$((index + 1))
+      (( index < ${#args[@]} )) || return 1
+      case "${args[index]}" in
+        web-wasm|native)
+          printf '%s\n' "${args[index]}"
+          return 0
+          ;;
+      esac
+    fi
+    index=$((index + 1))
+  done
+
+  return 1
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --stage0-dir)
@@ -291,6 +314,10 @@ fi
 if [[ "${1:-}" == "doc" ]]; then
   [[ -f "$DOC_HELPER" ]] || die "native documentation helper not found: $DOC_HELPER"
   exec python3 "$DOC_HELPER" --program "$STAGE_DIR/program.native" "${@:2}"
+fi
+
+if UNSUPPORTED_TARGET="$(unsupported_compile_target "$@")"; then
+  die "native selfhost runner does not support --target $UNSUPPORTED_TARGET; use wasi-preview1 or wasi-component"
 fi
 
 if COMPONENT_OUTPUT="$(component_output_path "$@")"; then
