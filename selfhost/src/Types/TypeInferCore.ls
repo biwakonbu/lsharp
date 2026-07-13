@@ -112,12 +112,31 @@
         (root_pop)
         next-map))))
 
+(defn map-insert-int-safe [m key value]
+  (do
+    (root_push m)
+    (let [next-map (map-insert m key value)]
+      (do
+        (root_pop)
+        next-map))))
+
+(defn map-remove-object-safe [m key]
+  (do
+    (root_push m)
+    (let [next-map (map-remove m key)]
+      (do
+        (root_pop)
+        next-map))))
+
 (defn type-env-new []
   (map-new))
 
 ;; 型環境に型スキームを追加
 (defn type-env-insert [env name-hash scheme]
   (map-insert-object-safe env name-hash scheme))
+
+(defn type-env-remove [env name-hash]
+  (map-remove-object-safe env name-hash))
 
 ;; 型環境から型スキームを取得 (0 = 未定義)
 (defn type-env-lookup [env name-hash]

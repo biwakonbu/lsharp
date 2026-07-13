@@ -44,7 +44,11 @@
 (defn typeinfer-build-curried-fun [param-types subst body-ty]
   (typeinfer-build-curried-fun-loop param-types subst 0 (vector-length param-types) body-ty))
 
-(defn typeinfer-finalize-defn-result [env name-hash subst value-ty]
-  (let [scheme (generalize (apply-subst subst value-ty) (map-new))
+(defn typeinfer-finalize-defn-result-with-env-vars [env name-hash subst value-ty env-vars]
+  (let [resolved-ty (apply-subst subst value-ty)
+    scheme (generalize resolved-ty env-vars)
     new-env (type-env-insert env name-hash scheme)]
-    (vector-push (make-result subst (apply-subst subst value-ty)) new-env)))
+    (vector-push (make-result subst resolved-ty) new-env)))
+
+(defn typeinfer-finalize-defn-result [env name-hash subst value-ty]
+  (typeinfer-finalize-defn-result-with-env-vars env name-hash subst value-ty (map-new)))

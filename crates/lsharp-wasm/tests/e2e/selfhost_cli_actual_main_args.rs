@@ -166,6 +166,40 @@ fn test_e2e_selfhost_cli_main_with_args_check_file() {
     );
 }
 
+/// TEST-CLI-02-AP2: actual Cli main は自己再帰 top-level defn を typecheck できること
+#[test]
+#[ignore]
+fn test_e2e_selfhost_cli_main_with_args_check_recursive_fib() {
+    let lines = run_cli_main_with_input_file(
+        "check_recursive_fib",
+        "(defn fib [n] (if (<= n 1) n (+ (fib (- n 1)) (fib (- n 2))))) (defn main [] (fib 10))",
+        &["check", "input.ls"],
+    );
+
+    assert_output_lines(
+        &lines,
+        &["Fn", "diagnostics:0"],
+        "Cli main check argv は自己再帰 fib を false type error にしてはならない",
+    );
+}
+
+/// TEST-CLI-02-AP3: actual Cli main は相互再帰 top-level defn を typecheck できること
+#[test]
+#[ignore]
+fn test_e2e_selfhost_cli_main_with_args_check_mutual_recursion_even_odd() {
+    let lines = run_cli_main_with_input_file(
+        "check_mutual_recursion",
+        "(defn even [n] (if (<= n 0) true (odd (- n 1)))) (defn odd [n] (if (<= n 0) false (even (- n 1)))) (defn main [] (even 10))",
+        &["check", "input.ls"],
+    );
+
+    assert_output_lines(
+        &lines,
+        &["Fn", "diagnostics:0"],
+        "Cli main check argv は相互再帰 even/odd を false type error にしてはならない",
+    );
+}
+
 /// TEST-CLI-02-AQ: actual Cli main は argv 経由で test file command を処理できること
 #[test]
 #[ignore]
