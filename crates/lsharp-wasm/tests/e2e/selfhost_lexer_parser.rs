@@ -217,6 +217,40 @@ fn test_e2e_selfhost_parser_parametric_type_alias_unifies_signature() {
     );
 }
 
+/// parser-to-inference bundle: nonparametric record 宣言は constructor と literal を型検査する
+#[test]
+fn test_e2e_selfhost_record_decl_registers_constructor_and_literal_fields() {
+    let harness = r#"
+(defn main []
+  (let [valid-analysis
+          (infer-program-analysis
+            (parse-program "(type Point (record (: x Int) (: y Int))) (defn from-constructor [] (Point 1 2)) (defn from-literal [] {Point x 1 y 2})"))
+        invalid-analysis
+          (infer-program-analysis
+            (parse-program "(type Point (record (: x Int) (: y Int))) (defn invalid [] {Point x true y 2})"))]
+    (do
+      (print (infer-program-analysis-diagnostic-count valid-analysis))
+      (print (infer-program-analysis-first-error-code valid-analysis))
+      (print (infer-program-analysis-diagnostic-count invalid-analysis))
+      (print (infer-program-analysis-first-error-code invalid-analysis))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}",
+        selfhost_parser_typeinfer_runtime_bundle(),
+        harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "0", "1", "6"],
+        "record 宣言は constructor/literal を登録し、field 型不一致を診断するべき"
+    );
+}
+
 #[test]
 fn test_e2e_selfhost_lexer_arrow_dot() {
     // Lexer.ls が -> と . を正しくトークン化できることを検証

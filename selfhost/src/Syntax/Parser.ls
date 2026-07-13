@@ -1113,6 +1113,36 @@
         (root_pop)
         params))))
 
+;; type 宣言 head を [name-hash, parameter 名 vector] として保持する。
+;; parameter がない head は空 vector を返し、既存の nonparametric AST shape を維持する。
+(defn make-type-decl-head-v3 [name-hash params]
+  (vector-push-pair-rooted-v3 (vector-new 2) name-hash params))
+
+(defn parse-type-decl-head-v3 [spans pos-ref src]
+  (if (== (p-current spans pos-ref) 0)
+    (do
+      (p-advance pos-ref) ;; type head の ( を消費
+      (if (== (p-current spans pos-ref) 20)
+        (let [name-hash (current-symbol-hash-v3 spans pos-ref src)]
+          (do
+            (p-advance pos-ref)
+            (let [params (parse-type-alias-param-hashes-v3 spans pos-ref src)]
+              (do
+                (root_push params)
+                (let [parsed (make-type-decl-head-v3 name-hash params)]
+                  (do
+                    (root_pop)
+                    parsed))))))
+        (do
+          (parse-skip-to-close-v3 spans pos-ref 1)
+          (make-type-decl-head-v3 0 (vector-new 0)))))
+    (if (== (p-current spans pos-ref) 20)
+      (let [name-hash (current-symbol-hash-v3 spans pos-ref src)]
+        (do
+          (p-advance pos-ref)
+          (make-type-decl-head-v3 name-hash (vector-new 0))))
+      (make-type-decl-head-v3 0 (vector-new 0)))))
+
 (defn parse-type-alias-v3 [spans pos-ref src]
   (do
     (p-advance pos-ref) ;; type-alias を消費
@@ -2292,16 +2322,21 @@
           (root_pop)
           parsed)))))
 
-(defn parse-record-def-v3 [spans pos-ref src name-hash]
+(defn parse-record-def-v3 [spans pos-ref src name-hash params]
   (do
     (p-expect spans pos-ref 0) ;; record form の ( を消費
     (p-expect spans pos-ref 39) ;; record を消費
     (let [fields (parse-record-decl-fields-v3 spans pos-ref src)]
       (do
         (root_push fields)
+        (root_push params)
         (p-expect spans pos-ref 1) ;; type 宣言の ) を消費
-        (let [parsed (make-record-def-with-fields name-hash fields)]
+        (let [parsed
+                (if (= (vector-length params) 0)
+                  (make-record-def-with-fields name-hash fields)
+                  (make-record-def-with-params name-hash params fields))]
           (do
+            (root_pop)
             (root_pop)
             parsed))))))
 
@@ -2309,16 +2344,24 @@
 (defn parse-type-v3 [spans pos-ref src]
   (do
     (p-advance pos-ref) ;; type を消費
-    (let [h (parse-type-head-hash-v3 spans pos-ref src)
-      ;; variant / metadata は読み飛ばすが、record field は後段の型推論へ渡す。
-      head-kind (if (== (p-current spans pos-ref) 0)
-        (span-kind spans (+ (ref-get pos-ref) 1))
-        0)]
-      (if (== head-kind 39)
-        (parse-record-def-v3 spans pos-ref src h)
-        (do
-          (parse-skip-to-close-v3 spans pos-ref 1)
-          (make-type-decl h))))))
+    (let [head (parse-type-decl-head-v3 spans pos-ref src)]
+      (do
+        (root_push head)
+        (let [name-hash (vector-get head 0)
+          params (vector-get head 1)
+          ;; variant / metadata は読み飛ばすが、record field は後段の型推論へ渡す。
+          head-kind (if (== (p-current spans pos-ref) 0)
+            (span-kind spans (+ (ref-get pos-ref) 1))
+            0)
+          parsed
+            (if (== head-kind 39)
+              (parse-record-def-v3 spans pos-ref src name-hash params)
+              (do
+                (parse-skip-to-close-v3 spans pos-ref 1)
+                (make-type-decl name-hash)))]
+          (do
+            (root_pop)
+            parsed))))))
 
 ;; === trait 宣言 (簡易) ===
 (defn parse-decl-body-step-v3 [spans pos-ref src result]

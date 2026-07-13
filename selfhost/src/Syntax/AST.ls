@@ -202,6 +202,9 @@
 ;; record 定義: [22, name-hash, field 名と型式を交互に並べた vector]
 (defn make-record-def-with-fields [name-hash fields]
   (vector-push-triple-rooted (vector-new 3) (ast-recorddef) name-hash fields))
+;; parametric record 定義: [22, name-hash, parameter 名 vector, field 名と型式の vector]
+(defn make-record-def-with-params [name-hash params fields]
+  (vector-push-quad-rooted (vector-new 4) (ast-recorddef) name-hash params fields))
 ;; closed type-alias: [23, name-hash, raw-target-type-expr]
 ;; parametric type-alias: [23, name-hash, param-name-hashes, raw-target-type-expr]
 (defn make-type-alias [name-hash target-type-expr]

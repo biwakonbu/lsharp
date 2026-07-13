@@ -113,6 +113,35 @@
 (defn var-counter-alias-env [counter]
   (vector-get counter 1))
 
+;; record 宣言環境を追加した推論 context を構築する。
+;; 既存の [next-id-ref, alias-env] 読み取りは index 0/1 のまま互換に保つ。
+(defn var-counter-with-alias-env-and-record-env [counter alias-env record-env]
+  (let [id-ref (var-counter-id-ref counter)]
+    (do
+      (root_push id-ref)
+      (root_push alias-env)
+      (root_push record-env)
+      (let [with-id-ref (push-object-vector-local (vector-new 3) id-ref)]
+        (do
+          (root_push with-id-ref)
+          (let [with-alias-env (push-object-vector-local with-id-ref alias-env)]
+            (do
+              (root_push with-alias-env)
+              (let [result (push-object-vector-local with-alias-env record-env)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  result)))))))))
+
+;; 旧形式の counter にも空の record 環境を返す。
+(defn var-counter-record-env [counter]
+  (if (> (vector-length counter) 2)
+    (vector-get counter 2)
+    (map-new)))
+
 ;; 既存の型変数 ID 供給を保ったまま、宣言 prepass 後の alias 環境へ差し替える。
 (defn var-counter-with-alias-env [counter alias-env]
   (let [id-ref (var-counter-id-ref counter)]

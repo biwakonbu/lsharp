@@ -103,6 +103,54 @@ fn test_e2e_selfhost_parser_record_decl_retains_fields_and_raw_type_exprs() {
     );
 }
 
+/// TEST-SYNTAX-02l0a: parametric record 宣言は parameter 名と field 型式を両方保持する
+#[test]
+fn test_e2e_selfhost_parser_parametric_record_decl_retains_params_and_fields() {
+    let harness = r#"
+(defn main []
+  (let [node (vector-get (parse-program "(type (Pair a b) (record (: fst a) (: snd b)))") 0)]
+    (do
+      (print (if (= (vector-get node 0) (ast-recorddef)) 1 0))
+      (print (if (= (vector-get node 1) (name-hash "Pair" 0 4)) 1 0))
+      (if (> (vector-length node) 3)
+        (let [params (vector-get node 2)
+              fields (vector-get node 3)
+              fst-type (vector-get fields 1)
+              snd-type (vector-get fields 3)]
+          (do
+            (print (if (= (vector-length node) 4) 1 0))
+            (print (if (= (vector-length params) 2) 1 0))
+            (print (if (= (vector-get params 0) (name-hash "a" 0 1)) 1 0))
+            (print (if (= (vector-get params 1) (name-hash "b" 0 1)) 1 0))
+            (print (if (= (vector-length fields) 4) 1 0))
+            (print (if (= (vector-get fields 0) (name-hash "fst" 0 3)) 1 0))
+            (print (if (= (vector-get fst-type 0) (ast-type-var)) 1 0))
+            (print (if (= (vector-get fields 2) (name-hash "snd" 0 3)) 1 0))
+            (print (if (= (vector-get snd-type 0) (ast-type-var)) 1 0))
+            0))
+        (do
+          (print 0)
+          (print 0)
+          (print 0)
+          (print 0)
+          (print 0)
+          (print 0)
+          (print 0)
+          (print 0)
+          (print 0)
+          0)))))
+"#;
+
+    let output = run_parser_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1"],
+        "parametric record 宣言は parameter vector と field 型式を保持するべき"
+    );
+}
+
 /// TEST-SYNTAX-02l1: parametric type-alias は parameter と raw target を保持する
 #[test]
 fn test_e2e_selfhost_parser_parametric_type_alias_retains_params_and_target() {

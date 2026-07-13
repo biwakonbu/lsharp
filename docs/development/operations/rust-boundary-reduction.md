@@ -8,6 +8,10 @@ L# の通常開発を Rust toolchain や `cargo` の実行待ちから切り離�
 
 この経路の成立は、自己ホスト実装が L# の全ての型・宣言意味論と parity を持つことを意味しない。現在自己ホストで検証済みの型注釈は `Int` / `Bool` / `String` / `Float` / `Unit` の named primitive、closed named head の再帰的な `TypeApp`、複数引数の関数型、lower-case `TypeExpr::Var` の raw representation と `defn` 注釈における nominal resolution である。`Ref (Vector Int)` と `(-> Int String Bool)` は parser から annotation unification まで確認済みであり、`Ref` / `Vector` の source 名は internal type constructor へ解決される。closed non-parametric `type-alias Name Target` は raw target を保存し、source order の prepass で `defn` の param / return signature と式内 `(: expr Alias)` に透過展開する。`Text -> String`、`RefText -> (Ref Text)`、`TextFn -> (-> Text Text)`、`(: "world" Str)` を parser-to-inference bundle で確認した。parametric `type-alias (Name a ...) Target` は parameter と raw target を保存し、source order の prepass で parameter ごとに fresh 型変数を割り当てる。arity が一致する `(Name Arg ...)` は target へ置換展開され、`Id Int -> Int`、`Callback Int String -> (-> Int String)`、`Box String -> (Ref String)` と式内 `(: "text" (Id String))` を確認した。通常の `defn` 注釈における `TypeExpr::Var` は source 名を nominal type として扱い続けるため、parametric alias target の内部以外で scoped polymorphic variable を提供するものではない。forward / recursive alias、record 型、ADT、record declaration の型環境登録は未完了である。これらを変更・検証する開発では、現時点では Rust implementation を source of truth / oracle として必要とする。
 
+### 型・宣言意味論の更新 (2026-07-14)
+
+直前の概要にある record 宣言未実装という記述は、nonparametric record については更新済みである。自己ホスト parser は field 名と raw TypeExpr を保持し、推論 prepass は constructor を値環境へ登録して既知 record literal の field 型不一致を診断する。parametric record は parameter 名と raw field TypeExpr を parser が保持する段階までで、polymorphic constructor と型環境登録はまだ行わない。
+
 ## 現在の事実
 
 - `lsharp-native-selfhost-stage0` package は `compiler`、`transport_driver`、`materializer` を持つ manifest で native bootstrap を開始する。release 用の `App.Cli` archive は stage0 package ではない。
@@ -62,6 +66,10 @@ Rust が完全に不要になったわけではない。次の作業は native b
 3. `mcp-server`、bare LSP、`--emit-ir`、native target など、上表で明示した Rust host integration surface。
 
 したがって、Linux gate 完了後に「検証済み core CLI の日常ループは Rust なしで開発可能」と言える。一方で、自己ホストの型・宣言意味論 P0 が未完了の間は「base language development 全体」や「L# の全機能」が Rust なしとは言えない。closed / parametric alias の signature・式内 annotation slice はその境界を少し狭めたが、上表の Rust-only surface、external tool dependency、forward / recursive alias、scoped polymorphic variable、ADT / record declaration environment などの未実装 P0 は残る。
+
+### 残る Base Language Gap
+
+Rust を base implementation から外すため、forward / recursive alias、scoped polymorphic variable、parametric record、record accessor / field access / update / pattern、ADT を自己ホスト側で実装・差分検証する必要がある。nonparametric record の宣言環境はこの一覧から除外する。
 
 ## 検証と残タスク
 

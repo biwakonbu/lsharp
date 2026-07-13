@@ -461,7 +461,224 @@
     (map-new)
     counter))
 
-;; alias 宣言と本体推論で同じ型変数 ID 供給を共有する。
+;; nonparametric record の field raw TypeExpr は decl の index 2 に置く。
+;; parametric record は [tag, name, params, fields] のため、この slice では登録しない。
+(defn typeinfer-record-decl-field-exprs [decl]
+  (if (>= (vector-length decl) 4)
+    0
+    (if (> (vector-length decl) 2)
+      (vector-get decl 2)
+      0)))
+
+(defn typeinfer-record-fields-append [out field-hash field-ty]
+  (let [with-name (push-int-vector-local out field-hash)]
+    (push-object-vector-local with-name field-ty)))
+
+;; record field 型式を alias 展開済みの [field-hash, type, ...] に変換する。
+(defn typeinfer-resolve-record-field-types-loop [raw-fields idx len alias-env out]
+  (if (>= idx len)
+    out
+    (do
+      (root_push raw-fields)
+      (root_push alias-env)
+      (root_push out)
+      (let [field-hash (vector-get raw-fields idx)
+        raw-type-expr (vector-get raw-fields (+ idx 1))]
+        (do
+          (root_push raw-type-expr)
+          (let [field-ty (typeinfer-resolve-type-expr-with-aliases raw-type-expr alias-env)]
+            (do
+              (root_push field-ty)
+              (let [next-out (typeinfer-record-fields-append out field-hash field-ty)]
+                (do
+                  (root_push next-out)
+                  (let [parsed
+                          (typeinfer-resolve-record-field-types-loop
+                            raw-fields
+                            (+ idx 2)
+                            len
+                            alias-env
+                            next-out)]
+                    (do
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      parsed)))))))))))
+
+(defn typeinfer-resolve-record-field-types [raw-fields alias-env]
+  (do
+    (root_push raw-fields)
+    (root_push alias-env)
+    (let [out (vector-new 0)
+      out-slot (root_push out)]
+      (let [parsed
+              (typeinfer-resolve-record-field-types-loop
+                raw-fields
+                0
+                (vector-length raw-fields)
+                alias-env
+                out)]
+        (do
+          (root_set out-slot parsed)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          parsed)))))
+
+;; source order で nonparametric record の field 型を registry に登録する。
+(defn typeinfer-predeclare-record-env-loop [program idx len alias-env record-env]
+  (if (>= idx len)
+    record-env
+    (let [decl (vector-get program idx)
+      tag (vector-get decl 0)]
+      (if (= tag (ast-recorddef))
+        (let [raw-fields (typeinfer-record-decl-field-exprs decl)]
+          (if (= raw-fields 0)
+            (typeinfer-predeclare-record-env-loop program (+ idx 1) len alias-env record-env)
+            (do
+              (root_push raw-fields)
+              (root_push record-env)
+              (let [field-types (typeinfer-resolve-record-field-types raw-fields alias-env)]
+                (do
+                  (root_push field-types)
+                  (let [next-record-env
+                          (map-insert-object-safe record-env (vector-get decl 1) field-types)]
+                    (do
+                      (root_push next-record-env)
+                      (let [parsed
+                              (typeinfer-predeclare-record-env-loop
+                                program
+                                (+ idx 1)
+                                len
+                                alias-env
+                                next-record-env)]
+                        (do
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          parsed)))))))))
+        (typeinfer-predeclare-record-env-loop program (+ idx 1) len alias-env record-env)))))
+
+(defn typeinfer-predeclare-record-env [program alias-env]
+  (do
+    (root_push program)
+    (root_push alias-env)
+    (let [record-env (map-new)
+      record-env-slot (root_push record-env)]
+      (let [parsed
+              (typeinfer-predeclare-record-env-loop
+                program
+                0
+                (vector-length program)
+                alias-env
+                record-env)]
+        (do
+          (root_set record-env-slot parsed)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          parsed)))))
+
+;; record の field 型列から curried constructor 型を組み立てる。
+(defn typeinfer-record-constructor-type-loop [fields idx len result]
+  (if (>= idx len)
+    result
+    (do
+      (root_push fields)
+      (root_push result)
+      (let [field-ty (vector-get fields (+ idx 1))]
+        (do
+          (root_push field-ty)
+          (let [rest
+                  (typeinfer-record-constructor-type-loop fields (+ idx 2) len result)]
+            (do
+              (root_push rest)
+              (let [constructed (mk-fun field-ty rest)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  constructed)))))))))
+
+(defn typeinfer-record-constructor-type [record-name-hash fields]
+  (do
+    (root_push fields)
+    (let [record-ty (mk-con record-name-hash)]
+      (do
+        (root_push record-ty)
+        (let [result
+                (typeinfer-record-constructor-type-loop
+                  fields
+                  0
+                  (vector-length fields)
+                  record-ty)]
+          (do
+            (root_pop)
+            (root_pop)
+            result))))))
+
+;; record constructor は通常の値環境に単相型スキームとして追加する。
+(defn typeinfer-register-record-defs-loop [program idx len env record-env]
+  (if (>= idx len)
+    env
+    (let [decl (vector-get program idx)
+      tag (vector-get decl 0)]
+      (if (= tag (ast-recorddef))
+        (let [raw-fields (typeinfer-record-decl-field-exprs decl)]
+          (if (= raw-fields 0)
+            (typeinfer-register-record-defs-loop program (+ idx 1) len env record-env)
+            (let [record-name-hash (vector-get decl 1)
+              field-types (map-get-safe record-env (vector-get decl 1))]
+              (if (= field-types 0)
+                (typeinfer-register-record-defs-loop program (+ idx 1) len env record-env)
+                (do
+                  (root_push field-types)
+                  (let [constructor-ty
+                          (typeinfer-record-constructor-type record-name-hash field-types)]
+                    (do
+                      (root_push constructor-ty)
+                      (let [next-env (type-env-insert env record-name-hash (mono constructor-ty))]
+                        (do
+                          (root_push next-env)
+                          (let [parsed
+                                  (typeinfer-register-record-defs-loop
+                                    program
+                                    (+ idx 1)
+                                    len
+                                    next-env
+                                    record-env)]
+                            (do
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              parsed)))))))))))
+        (typeinfer-register-record-defs-loop program (+ idx 1) len env record-env)))))
+
+(defn typeinfer-register-record-defs [program env counter]
+  (let [record-env (var-counter-record-env counter)]
+    (do
+      (root_push program)
+      (root_push env)
+      (root_push record-env)
+      (let [result
+              (typeinfer-register-record-defs-loop
+                program
+                0
+                (vector-length program)
+                env
+                record-env)]
+        (do
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          result)))))
+
+;; alias / record 宣言と本体推論で同じ型変数 ID 供給を共有する。
 (defn typeinfer-make-alias-aware-counter [program]
   (let [bootstrap-counter (make-var-counter)]
     (do
@@ -469,11 +686,19 @@
       (let [alias-env (typeinfer-predeclare-closed-aliases program bootstrap-counter)]
         (do
           (root_push alias-env)
-          (let [result (var-counter-with-alias-env bootstrap-counter alias-env)]
+          (let [record-env (typeinfer-predeclare-record-env program alias-env)]
             (do
-              (root_pop)
-              (root_pop)
-              result)))))))
+              (root_push record-env)
+              (let [result
+                      (var-counter-with-alias-env-and-record-env
+                        bootstrap-counter
+                        alias-env
+                        record-env)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  result)))))))))
 
 ;; program 推論の状態: [env, subst, first-type, first-seen, diagnostic-count, first-error-code]
 (defn typeinfer-program-analysis-state [env subst first-ty first-seen diagnostic-count first-error-code]
@@ -536,7 +761,8 @@
     (do
       (root_push counter)
       (let [initial-env (init-builtin-env counter)
-        predeclared (typeinfer-predeclare-defns program initial-env counter)
+        record-env (typeinfer-register-record-defs program initial-env counter)
+        predeclared (typeinfer-predeclare-defns program record-env counter)
         env (vector-get predeclared 0)
         placeholders (vector-get predeclared 1)
         state (typeinfer-program-analysis-state env (subst-new) (mk-int) 0 0 0)
