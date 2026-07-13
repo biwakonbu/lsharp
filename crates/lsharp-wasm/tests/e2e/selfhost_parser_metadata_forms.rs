@@ -73,6 +73,42 @@ fn test_e2e_selfhost_parser_ann_form() {
     assert_eq!(lines[2], "42", "annotation inner の値が保持されるべき");
 }
 
+/// TEST-SYNTAX-02m2: annotation form は raw type expression を保持する
+#[test]
+fn test_e2e_selfhost_parser_ann_form_retains_type_expr() {
+    let harness = r#"
+(defn ann-type-tag-or-zero [node]
+  (if (> (vector-length node) 2)
+    (let [ty (vector-get node 2)]
+      (if (= ty 0) 0 (vector-get ty 0)))
+    0))
+
+(defn ann-type-name-or-zero [node]
+  (if (> (vector-length node) 2)
+    (let [ty (vector-get node 2)]
+      (if (= ty 0) 0 (vector-get ty 1)))
+    0))
+
+(defn main []
+  (let [node (vector-get (parse-program "(: 42 Int)") 0)]
+    (do
+      (print (if (= (vector-get node 0) (ast-ann)) 1 0))
+      (print (vector-length node))
+      (print (ann-type-tag-or-zero node))
+      (print (ann-type-name-or-zero node))
+      0)))
+"#;
+
+    let output = run_parser_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["1", "3", "60", "73679"],
+        "annotation parser は TypeNamed の raw payload を保持するべき"
+    );
+}
+
 /// TEST-SYNTAX-02n: float literal を lexer/parser で扱える
 #[test]
 fn test_e2e_selfhost_parser_float_literal() {
@@ -151,13 +187,17 @@ fn test_e2e_selfhost_parser_computation_expr() {
     assert_eq!(lines[12], "1", "step4 expr の hash が一致すべき");
 }
 
-/// TEST-SYNTAX-02p: defn の annotated param / return type を最小 payload でスキップできる
+/// TEST-SYNTAX-02p: defn の annotated param / return type を body の後ろに保持できる
 #[test]
 fn test_e2e_selfhost_parser_typed_defn_signature() {
     let harness = r#"
 (defn main []
   (let [node (vector-get (parse-program "(defn add [(: x Int) (: y Int)] : Int (+ x y))") 0)
-        body (vector-get node 5)]
+        body (vector-get node 5)
+        signature (vector-get node 6)
+        param1-type (vector-get signature 2)
+        param2-type (vector-get signature 3)
+        return-type (vector-get signature 4)]
     (do
       (print (if (= (vector-get node 0) 20) 1 0))
       (print (if (= (vector-get node 1) (name-hash "add" 0 3)) 1 0))
@@ -165,6 +205,14 @@ fn test_e2e_selfhost_parser_typed_defn_signature() {
       (print (if (= (vector-get node 3) (name-hash "x" 0 1)) 1 0))
       (print (if (= (vector-get node 4) (name-hash "y" 0 1)) 1 0))
       (print (if (= (vector-get body 0) (ast-apply)) 1 0))
+      (print (if (= (vector-get signature 0) 65) 1 0))
+      (print (vector-get signature 1))
+      (print (if (= (vector-get param1-type 0) (ast-type-named)) 1 0))
+      (print (vector-get param1-type 1))
+      (print (if (= (vector-get param2-type 0) (ast-type-named)) 1 0))
+      (print (vector-get param2-type 1))
+      (print (if (= (vector-get return-type 0) (ast-type-named)) 1 0))
+      (print (vector-get return-type 1))
       0)))
 "#;
 
@@ -172,7 +220,7 @@ fn test_e2e_selfhost_parser_typed_defn_signature() {
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert!(
-        lines.len() >= 6,
+        lines.len() >= 14,
         "typed defn parser 出力が不足: {:?}",
         lines
     );
@@ -182,6 +230,14 @@ fn test_e2e_selfhost_parser_typed_defn_signature() {
     assert_eq!(lines[3], "1", "param1 hash は x であるべき");
     assert_eq!(lines[4], "1", "param2 hash は y であるべき");
     assert_eq!(lines[5], "1", "body は apply ノードであるべき");
+    assert_eq!(lines[6], "1", "signature tag は 65 であるべき");
+    assert_eq!(lines[7], "2", "signature param count は 2 であるべき");
+    assert_eq!(lines[8], "1", "param1 type は named type であるべき");
+    assert_eq!(lines[9], "73679", "param1 type は Int であるべき");
+    assert_eq!(lines[10], "1", "param2 type は named type であるべき");
+    assert_eq!(lines[11], "73679", "param2 type は Int であるべき");
+    assert_eq!(lines[12], "1", "return type は named type であるべき");
+    assert_eq!(lines[13], "73679", "return type は Int であるべき");
 }
 
 /// TEST-SYNTAX-02q: defn の :where clause を最小 payload のままスキップできる

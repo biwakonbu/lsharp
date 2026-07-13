@@ -24,6 +24,34 @@ fn test_e2e_selfhost_negative_int_parses_as_int() {
     assert_eq!(lines[2], "-1", "-1 の値が保持されるべき");
 }
 
+/// parser-to-inference bundle: parser が保持した defn signature を type inference が検査する
+#[test]
+fn test_e2e_selfhost_parser_typed_defn_signature_rejects_mismatch() {
+    let harness = r#"
+(defn main []
+  (let [program (parse-program "(defn invalid [(: x Bool)] : Int x)")
+        analysis (infer-program-analysis program)]
+    (do
+      (print (infer-program-analysis-diagnostic-count analysis))
+      (print (infer-program-analysis-first-error-code analysis))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}",
+        selfhost_parser_typeinfer_runtime_bundle(),
+        harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["1", "6"],
+        "parser 経由の typed defn signature は型不一致を診断するべき"
+    );
+}
+
 #[test]
 fn test_e2e_selfhost_lexer_arrow_dot() {
     // Lexer.ls が -> と . を正しくトークン化できることを検証

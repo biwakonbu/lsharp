@@ -37,6 +37,8 @@
 (defn ast-private [] 29)
 (defn ast-computationbuilder [] 30)
 (defn ast-defmacro [] 31)
+(defn ast-type-named [] 60)
+(defn ast-defn-signature [] 65)
 (defn ast-pat-wildcard [] 40)
 (defn ast-pat-var [] 41)
 (defn ast-pat-lit [] 42)
@@ -120,7 +122,19 @@
 (defn make-lit-unit [] (vector-push-single-rooted (vector-new 1) (ast-lit-unit)))
 (defn make-if [cond-expr then-expr else-expr] (vector-push-triple-rooted (vector-push-single-rooted (vector-new 4) (ast-if)) cond-expr then-expr else-expr))
 (defn make-let [name-hash init-expr body-expr] (vector-push-pair-rooted (vector-push-pair-rooted (vector-new 4) (ast-let) name-hash) init-expr body-expr))
-(defn make-ann [expr] (vector-push-pair-rooted (vector-new 2) (ast-ann) expr))
+;; 互換用の annotation constructor。型 payload 不在は 0 として扱う。
+(defn make-ann [expr]
+  (vector-push-triple-rooted (vector-new 3) (ast-ann) expr 0))
+
+;; raw TypeExpr の named form: [60, source-name-hash]
+(defn make-type-named [name-hash]
+  (vector-push-pair-rooted (vector-new 2) (ast-type-named) name-hash))
+
+;; annotation: [11, expr, raw-type-expr]
+(defn make-ann-typed [expr type-expr]
+  (vector-push-triple-rooted (vector-new 3) (ast-ann) expr type-expr))
+(defn make-defn-signature [param-count]
+  (vector-push-pair-rooted (vector-new 2) (ast-defn-signature) param-count))
 (defn make-recordlit [type-name-hash] (vector-push-triple-rooted (vector-new 8) (ast-recordlit) type-name-hash 0))
 (defn make-fieldaccess [expr field-name-hash] (vector-push-triple-rooted (vector-new 3) (ast-fieldaccess) expr field-name-hash))
 (defn make-recordupdate [base-expr] (vector-push-triple-rooted (vector-new 8) (ast-recordupdate) base-expr 0))

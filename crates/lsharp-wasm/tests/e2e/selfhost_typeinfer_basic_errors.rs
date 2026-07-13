@@ -29,6 +29,95 @@ fn test_e2e_selfhost_typeinfer_ann_expr() {
     );
 }
 
+/// selfhost TypeInfer.ls テスト: typed ann は primitive 型との一致を検査する
+#[test]
+fn test_e2e_selfhost_typeinfer_typed_ann_unifies_primitive_type() {
+    let harness = r#"
+(defn main []
+  (let [counter (make-var-counter)
+        env (init-builtin-env counter)
+        int-type-expr (make-type-named 73679)
+        bool-type-expr (make-type-named 2076426)
+        string-type-expr (make-type-named 2486848561)
+        float-type-expr (make-type-named 67973692)
+        unit-type-expr (make-type-named 2641316)
+        accepted (infer-expr (make-ann-typed (make-lit-int 42) int-type-expr) env (subst-new) counter)
+        accepted-string (infer-expr (make-ann-typed (vector-push (vector-new 1) (ast-lit-string)) string-type-expr) env (subst-new) counter)
+        accepted-float (infer-expr (make-ann-typed (make-lit-float 0 0) float-type-expr) env (subst-new) counter)
+        accepted-unit (infer-expr (make-ann-typed (make-lit-unit) unit-type-expr) env (subst-new) counter)
+        rejected (infer-expr (make-ann-typed (make-lit-int 42) bool-type-expr) env (subst-new) counter)]
+    (do
+      (print (result-failed accepted))
+      (print (ty-name (result-type accepted)))
+      (print (result-failed accepted-string))
+      (print (ty-name (result-type accepted-string)))
+      (print (result-failed accepted-float))
+      (print (ty-name (result-type accepted-float)))
+      (print (result-failed accepted-unit))
+      (print (ty-name (result-type accepted-unit)))
+      (print (result-failed rejected))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_typeinfer_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "100", "0", "300", "0", "400", "0", "500", "1"],
+        "typed ann は全 primitive 型が一致するときだけ成功するべき"
+    );
+}
+
+/// selfhost TypeInfer.ls テスト: defn signature は param / return 型の不一致を拒否する
+#[test]
+fn test_e2e_selfhost_typeinfer_typed_defn_signature_rejects_mismatch() {
+    let harness = r#"
+(defn make-typed-defn [name-hash param-hash param-type return-type body]
+  (let [signature
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push (vector-new 4) 65)
+                1)
+              param-type)
+            return-type)]
+    (vector-push
+      (vector-push
+        (vector-push
+          (vector-push
+            (vector-push
+              (vector-push (vector-new 6) 20)
+              name-hash)
+            1)
+          param-hash)
+        body)
+      signature)))
+
+(defn main []
+  (let [counter (make-var-counter)
+        x-hash 120
+        bad-defn (make-typed-defn 121 x-hash (make-type-named 2076426) (make-type-named 73679) (make-var x-hash))
+        program (vector-push (vector-new 1) bad-defn)
+        analysis (infer-program-analysis program)]
+    (do
+      (print (infer-program-analysis-diagnostic-count analysis))
+      (print (infer-program-analysis-first-error-code analysis))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_typeinfer_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["1", "6"],
+        "typed defn signature は param と return の不一致を一般型エラーにするべき"
+    );
+}
+
 /// selfhost TypeInfer.ls テスト: 未定義変数は undefined error code を返せる
 #[test]
 fn test_e2e_selfhost_typeinfer_error_undefined_var_code() {

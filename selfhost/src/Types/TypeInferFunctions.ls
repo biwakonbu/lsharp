@@ -1,4 +1,5 @@
 (module Types.TypeInferFunctions)
+(import Syntax.AST)
 (import Types.Type)
 (import Types.TypeScheme)
 (import Types.TypeInferCore)
@@ -33,6 +34,57 @@
 
 (defn typeinfer-extend-env-with-node-params [env node count node-offset param-types]
   (typeinfer-extend-env-with-node-params-loop env node count node-offset 0 param-types))
+
+;; defn signature は [65, param-count, param-type-expr..., return-type-expr]。
+;; body の直後だけを参照し、後続の metadata とは区別する。
+(defn typeinfer-defn-signature [node param-count]
+  (let [signature-index (+ param-count 4)]
+    (if (>= signature-index (vector-length node))
+      0
+      (let [candidate (vector-get node signature-index)]
+        (if (= candidate 0)
+          0
+          (if (= (vector-get candidate 0) (ast-defn-signature))
+            candidate
+            0))))))
+
+(defn typeinfer-defn-signature-param-expr [signature idx]
+  (if (= signature 0)
+    0
+    (if (>= idx (vector-get signature 1))
+      0
+      (vector-get signature (+ idx 2)))))
+
+(defn typeinfer-defn-signature-return-expr [signature]
+  (if (= signature 0)
+    0
+    (vector-get signature (+ (vector-get signature 1) 2))))
+
+(defn typeinfer-unify-defn-param-annotations-loop [signature param-types idx count subst]
+  (if (>= idx count)
+    subst
+    (let [type-expr (typeinfer-defn-signature-param-expr signature idx)]
+      (if (= type-expr 0)
+        (typeinfer-unify-defn-param-annotations-loop signature param-types (+ idx 1) count subst)
+        (let [next-subst (unify (vector-get param-types idx) (typeinfer-resolve-type-expr type-expr) subst)]
+          (if (= (unify-failed next-subst) 1)
+            next-subst
+            (typeinfer-unify-defn-param-annotations-loop signature param-types (+ idx 1) count next-subst)))))))
+
+(defn typeinfer-defn-param-annotation-subst [node param-count param-types subst]
+  (let [signature (typeinfer-defn-signature node param-count)]
+    (if (= signature 0)
+      subst
+      (typeinfer-unify-defn-param-annotations-loop signature param-types 0 param-count subst))))
+
+(defn typeinfer-defn-return-annotation-subst [node param-count body-ty subst]
+  (let [signature (typeinfer-defn-signature node param-count)]
+    (if (= signature 0)
+      subst
+      (let [return-expr (typeinfer-defn-signature-return-expr signature)]
+        (if (= return-expr 0)
+          subst
+          (unify body-ty (typeinfer-resolve-type-expr return-expr) subst))))))
 
 (defn typeinfer-build-curried-fun-loop [param-types subst idx count body-ty]
   (if (>= idx count)

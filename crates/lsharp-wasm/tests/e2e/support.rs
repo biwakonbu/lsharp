@@ -1281,6 +1281,7 @@ fn cached_selfhost_bundle(cell: &'static OnceLock<String>, modules: &[&str]) -> 
 
 static SELFHOST_LEXER_RUNTIME_BUNDLE: OnceLock<String> = OnceLock::new();
 static SELFHOST_PARSER_RUNTIME_BUNDLE: OnceLock<String> = OnceLock::new();
+static SELFHOST_PARSER_TYPEINFER_RUNTIME_BUNDLE: OnceLock<String> = OnceLock::new();
 static SELFHOST_TYPEINFER_RUNTIME_BUNDLE: OnceLock<String> = OnceLock::new();
 static SELFHOST_CLI_RUNTIME_BUNDLE: OnceLock<String> = OnceLock::new();
 static SELFHOST_NATIVE_CODEGEN_BUNDLE: OnceLock<String> = OnceLock::new();
@@ -1298,6 +1299,30 @@ pub(crate) fn selfhost_parser_runtime_bundle() -> &'static str {
             "Lexer.ls",
             "LexerCompat.ls",
             "Parser.ls",
+        ],
+    )
+}
+
+/// selfhost parser と型推論を一体で検証するための最小 runtime bundle
+pub(crate) fn selfhost_parser_typeinfer_runtime_bundle() -> &'static str {
+    cached_selfhost_bundle(
+        &SELFHOST_PARSER_TYPEINFER_RUNTIME_BUNDLE,
+        &[
+            "Token.ls",
+            "AST.ls",
+            "Lexer.ls",
+            "LexerCompat.ls",
+            "Parser.ls",
+            "Type.ls",
+            "TypeScheme.ls",
+            "TypeInferCore.ls",
+            "TypeInferFunctions.ls",
+            "TypeInferBuiltins.ls",
+            "TypeInfer.ls",
+            "TypeInferApply.ls",
+            "TypeInferBlock.ls",
+            "TypeInferPattern.ls",
+            "TypeInferRecord.ls",
         ],
     )
 }
@@ -1543,6 +1568,17 @@ mod tests {
         assert_eq!(
             bundle.as_ptr(),
             selfhost_typeinfer_runtime_bundle().as_ptr()
+        );
+    }
+
+    #[test]
+    fn test_support_selfhost_parser_typeinfer_runtime_bundle_cached() {
+        let bundle = selfhost_parser_typeinfer_runtime_bundle();
+        assert!(bundle.contains(selfhost_module("Parser.ls").trim()));
+        assert!(bundle.contains(selfhost_module("TypeInfer.ls").trim()));
+        assert_eq!(
+            bundle.as_ptr(),
+            selfhost_parser_typeinfer_runtime_bundle().as_ptr()
         );
     }
 

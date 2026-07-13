@@ -95,10 +95,23 @@
                       (make-result s5 (apply-subst s5 else-ty)))))))))))))
 
 ;; ann 式の型推論
-;; selfhost AST は型式 payload を保持していないため、現状は内側の式をそのまま推論する
-;; [11, expr]
+;; [11, expr, raw-type-expr]。旧 AST の payload 不在は内側の式をそのまま返す。
 (defn infer-ann [node env subst counter]
-  (infer-expr (vector-get node 1) env subst counter))
+  (let [expr-result (infer-expr (vector-get node 1) env subst counter)]
+    (if (= (result-failed expr-result) 1)
+      (propagate-error-result expr-result)
+      (if (<= (vector-length node) 2)
+        expr-result
+        (let [type-expr (vector-get node 2)]
+          (if (= type-expr 0)
+            expr-result
+            (let [s1 (result-subst expr-result)
+              expr-ty (result-type expr-result)
+              ann-ty (typeinfer-resolve-type-expr type-expr)
+              s2 (unify expr-ty ann-ty s1)]
+              (if (= (unify-failed s2) 1)
+                (make-error-result-code (error-code-general))
+                (make-result s2 (apply-subst s2 ann-ty))))))))))
 
 ;; quote/unquote 系は現状すべて inner expr へ委譲する
 (defn quote-like-tag? [tag]
@@ -237,7 +250,8 @@
 ;; ============================================================
 ;; infer-defn: トップレベル関数定義の型推論
 ;; ============================================================
-;; [20, name-hash, param-count, param-hash1, ..., body]
+;; [20, name-hash, param-count, param-hash1, ..., body, signature?]
+;; signature は [65, param-count, param-type-expr..., return-type-expr]。
 ;; compile-safe な covered slice として 0/1/2/3/4 引数を扱う
 
 (defn infer-defn-predeclared [node body-env final-env counter subst placeholder env-vars]
@@ -250,23 +264,32 @@
           (propagate-error-result result)
           (let [s (result-subst result)
             body-ty (result-type result)
-            next-subst (unify placeholder body-ty s)]
-            (if (= (unify-failed next-subst) 1)
+            annotated-subst (typeinfer-defn-return-annotation-subst node param-count body-ty s)]
+            (if (= (unify-failed annotated-subst) 1)
               (make-error-result-code (error-code-general))
-              (typeinfer-finalize-defn-result-with-env-vars final-env name-hash next-subst body-ty env-vars)))))
+              (let [next-subst (unify placeholder body-ty annotated-subst)]
+                (if (= (unify-failed next-subst) 1)
+                  (make-error-result-code (error-code-general))
+                  (typeinfer-finalize-defn-result-with-env-vars final-env name-hash next-subst body-ty env-vars)))))))
       (let [param-types (typeinfer-fresh-param-types param-count counter)
         body-node (vector-get node (+ param-count 3))
         next-env (typeinfer-extend-env-with-node-params body-env node param-count 3 param-types)
-        result (infer-expr body-node next-env subst counter)]
-        (if (= (result-failed result) 1)
-          (propagate-error-result result)
-          (let [s (result-subst result)
-            body-ty (result-type result)
-            fun-ty (typeinfer-build-curried-fun param-types s body-ty)
-            next-subst (unify placeholder fun-ty s)]
-            (if (= (unify-failed next-subst) 1)
-              (make-error-result-code (error-code-general))
-              (typeinfer-finalize-defn-result-with-env-vars final-env name-hash next-subst fun-ty env-vars))))))))
+        annotated-param-subst (typeinfer-defn-param-annotation-subst node param-count param-types subst)]
+        (if (= (unify-failed annotated-param-subst) 1)
+          (make-error-result-code (error-code-general))
+          (let [result (infer-expr body-node next-env annotated-param-subst counter)]
+            (if (= (result-failed result) 1)
+              (propagate-error-result result)
+              (let [s (result-subst result)
+                body-ty (result-type result)
+                annotated-subst (typeinfer-defn-return-annotation-subst node param-count body-ty s)]
+                (if (= (unify-failed annotated-subst) 1)
+                  (make-error-result-code (error-code-general))
+                  (let [fun-ty (typeinfer-build-curried-fun param-types annotated-subst body-ty)
+                    next-subst (unify placeholder fun-ty annotated-subst)]
+                    (if (= (unify-failed next-subst) 1)
+                      (make-error-result-code (error-code-general))
+                      (typeinfer-finalize-defn-result-with-env-vars final-env name-hash next-subst fun-ty env-vars))))))))))))
 
 ;; 単独で呼ばれる infer-defn も自己再帰を許可する。
 (defn infer-defn [node env counter]

@@ -482,6 +482,17 @@
       (p-advance pos-ref)
       0)))
 
+;; raw TypeExpr の最小 parser。named type を保持し、未対応形は従来どおり安全に skip する。
+(defn parse-type-expr-v3 [spans pos-ref src]
+  (if (== (p-current spans pos-ref) 20)
+    (let [name-hash (current-symbol-hash-v3 spans pos-ref src)]
+      (do
+        (p-advance pos-ref)
+        (make-type-named name-hash)))
+    (do
+      (skip-type-expr-v3 spans pos-ref)
+      (make-type-named 0))))
+
 (defn directive-symbol-v3 [name]
   (if (string-eq name "where") 1
     (if (string-eq name "doc") 1
@@ -568,14 +579,17 @@
 
 ;; defn 用メタデータパーサー: :doc / :example / :params / :returns を記録する
 ;; 返却: [doc-string, example-text, params-vector, returns-string]
-(defn parse-defn-metadata-v3 [spans pos-ref src]
+(defn make-empty-defn-metadata-v3 []
   (let [params0 (vector-new 0)]
     (do
       (root_push params0)
       (let [meta (vector-push-quad-rooted-v3 (vector-new 4) "" "" params0 "")]
         (do
           (root_pop)
-          (parse-defn-metadata-loop-v3 spans pos-ref src meta))))))
+          meta)))))
+
+(defn parse-defn-metadata-v3 [spans pos-ref src]
+  (parse-defn-metadata-loop-v3 spans pos-ref src (make-empty-defn-metadata-v3)))
 
 (defn parse-defn-metadata-loop-rooted-v3 [spans pos-ref src meta]
   (if (== (colon-directive-v3 spans pos-ref src) 1)
@@ -805,9 +819,30 @@
         (root_pop)
         parsed))))
 
+(defn defn-signature-param-present-v3 [signature idx count]
+  (if (>= idx count)
+    0
+    (if (= (vector-get signature (+ idx 2)) 0)
+      (defn-signature-param-present-v3 signature (+ idx 1) count)
+      1)))
+
+(defn defn-signature-present-v3 [signature]
+  (let [param-count (vector-get signature 1)
+    return-type (vector-get signature (+ param-count 2))]
+    (if (= return-type 0)
+      (defn-signature-param-present-v3 signature 0 param-count)
+      1)))
+
+(defn maybe-append-defn-signature-v3 [node signature]
+  (if (= signature 0)
+    node
+    (if (= (defn-signature-present-v3 signature) 1)
+      (vector-push-single-rooted-v3 node signature)
+      node)))
+
 (defn maybe-append-defn-meta-v3 [node meta]
   (if (= (defn-metadata-present-v3 meta) 1)
-    (vector-push node meta)
+    (vector-push-single-rooted-v3 node meta)
     node))
 
 (defn finalize-defn-parsed-body-v3 [spans pos-ref defn-node param-count body]
@@ -845,9 +880,11 @@
               (root_pop)
               parsed)))))))
 
-(defn parse-defn-bodyless-or-body-with-meta-v3 [spans pos-ref src defn-node param-count meta]
+(defn parse-defn-bodyless-or-body-with-meta-v3 [spans pos-ref src defn-node param-count signature meta]
   (maybe-append-defn-meta-v3
-    (parse-defn-bodyless-or-body-v3 spans pos-ref src defn-node param-count)
+    (maybe-append-defn-signature-v3
+      (parse-defn-bodyless-or-body-v3 spans pos-ref src defn-node param-count)
+      signature)
     meta))
 
 (defn skip-optional-type-sig-v3 [spans pos-ref src]
@@ -856,8 +893,7 @@
     (if (== (p-current spans pos-ref) 50) ;; :
       (do
         (p-advance pos-ref)
-        (skip-type-expr-v3 spans pos-ref)
-        0)
+        (parse-type-expr-v3 spans pos-ref src))
       0)))
 
 (defn where-directive-v3 [spans pos-ref src]
@@ -901,12 +937,15 @@
     (let [expr (parse-expr-v3 spans pos-ref src)]
       (do
         (root_push expr)
-        (skip-type-expr-v3 spans pos-ref)
-        (p-expect spans pos-ref 1)
-        (let [parsed (make-ann expr)]
+        (let [type-expr (parse-type-expr-v3 spans pos-ref src)]
           (do
-            (root_pop)
-            parsed))))))
+            (root_push type-expr)
+            (p-expect spans pos-ref 1)
+            (let [parsed (make-ann-typed expr type-expr)]
+              (do
+                (root_pop)
+                (root_pop)
+                parsed))))))))
 
 (defn parse-fieldaccess-v3 [spans pos-ref src]
   (do
@@ -1833,6 +1872,69 @@
         (root_pop)
         parsed))))
 
+(defn scan-defn-param-form-end-v3 [spans idx end depth]
+  (if (>= idx end)
+    idx
+    (let [kind (span-kind spans idx)]
+      (if (== kind 0)
+        (scan-defn-param-form-end-v3 spans (+ idx 1) end (+ depth 1))
+        (if (== kind 1)
+          (if (= depth 1)
+            (+ idx 1)
+            (scan-defn-param-form-end-v3 spans (+ idx 1) end (- depth 1)))
+          (scan-defn-param-form-end-v3 spans (+ idx 1) end depth))))))
+
+(defn parse-defn-param-signature-append-v3 [spans idx end src signature type-expr next-idx]
+  (do
+    (root_push signature)
+    (root_push type-expr)
+    (let [next-signature (vector-push signature type-expr)]
+      (do
+        (root_push next-signature)
+        (let [parsed (parse-defn-param-signature-loop-v3 spans next-idx end src next-signature)]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn parse-defn-param-signature-skip-form-v3 [spans idx end src signature]
+  (let [next-idx (scan-defn-param-form-end-v3 spans (+ idx 1) end 1)]
+    (parse-defn-param-signature-append-v3 spans idx end src signature 0 next-idx)))
+
+;; parse-params-v3 のカーソル進行を維持したまま、typed parameter の raw type を span から再読する。
+(defn parse-defn-param-signature-loop-v3 [spans idx end src signature]
+  (if (>= idx end)
+    signature
+    (let [kind (span-kind spans idx)]
+      (if (== kind 0)
+        (if (< (+ idx 4) end)
+          (if (== (span-kind spans (+ idx 1)) 50)
+            (if (== (span-kind spans (+ idx 2)) 20)
+              (if (== (span-kind spans (+ idx 3)) 20)
+                (if (== (span-kind spans (+ idx 4)) 1)
+                  (let [type-start (span-start spans (+ idx 3))
+                    type-end (span-end spans (+ idx 3))
+                    type-expr (make-type-named (name-hash src type-start type-end))]
+                    (parse-defn-param-signature-append-v3 spans idx end src signature type-expr (+ idx 5)))
+                  (parse-defn-param-signature-skip-form-v3 spans idx end src signature))
+                (parse-defn-param-signature-skip-form-v3 spans idx end src signature))
+              (parse-defn-param-signature-skip-form-v3 spans idx end src signature))
+            (parse-defn-param-signature-skip-form-v3 spans idx end src signature))
+          (parse-defn-param-signature-skip-form-v3 spans idx end src signature))
+        (if (== kind 20)
+          (parse-defn-param-signature-append-v3 spans idx end src signature 0 (+ idx 1))
+          (parse-defn-param-signature-loop-v3 spans (+ idx 1) end src signature))))))
+
+(defn parse-defn-param-signature-v3 [spans start end src param-count]
+  (let [signature (make-defn-signature param-count)]
+    (do
+      (root_push signature)
+      (let [parsed (parse-defn-param-signature-loop-v3 spans start end src signature)]
+        (do
+          (root_pop)
+          parsed)))))
+
 ;; === defn 式 ===
 (defn parse-defn-tail-v3 [spans pos-ref src defn-node param-count]
   (do
@@ -1843,7 +1945,7 @@
       (if (== (colon-directive-v3 spans pos-ref src) 1)
         (let [meta (parse-defn-metadata-v3 spans pos-ref src)]
           (parse-defn-bodyless-or-body-with-meta-v3
-            spans pos-ref src defn-node param-count meta))
+            spans pos-ref src defn-node param-count 0 meta))
         (parse-defn-bodyless-or-body-v3
           spans pos-ref src defn-node param-count))]
       (do
@@ -1862,46 +1964,64 @@
       (do
         (p-advance pos-ref) ;; name を消費
         (p-expect spans pos-ref 2) ;; [ を消費
-        (let [result (vector-push-triple-rooted-v3 (vector-new 8) 20 nh 0)]
+        (let [params-start (ref-get pos-ref)
+          result (vector-push-triple-rooted-v3 (vector-new 8) 20 nh 0)]
           (do
             (root_push result)
             (let [with-params (parse-params-v3 spans pos-ref src result 0)]
               (do
                 (root_push with-params)
-                (let [param-count (- (vector-length with-params) 3)
+                (let [params-end (ref-get pos-ref)
+                  param-count (- (vector-length with-params) 3)
                   defn-node (vector-set-at-rooted-v3 with-params 2 param-count)]
                   (do
                     (root_push defn-node)
-                    (skip-optional-type-sig-v3 spans pos-ref src)
-                    (skip-optional-where-v3 spans pos-ref src)
-                    (let [parsed
-                      (if (== (colon-directive-v3 spans pos-ref src) 1)
-                        (let [meta (parse-defn-metadata-v3 spans pos-ref src)]
-                          (parse-defn-bodyless-or-body-with-meta-v3
-                            spans pos-ref src defn-node param-count meta))
-                        (if (== (p-current spans pos-ref) 1)
-                          (do
-                            (p-advance pos-ref)
-                            (let [bodyless-defn-body (make-int-node 0)]
-                              (finalize-defn-body-v3 bodyless-defn-body defn-node)))
-                          (let [parsed-defn-body (parse-expr-v3 spans pos-ref src)]
-                            (do
-                              (root_push parsed-defn-body)
-                              (let [parsed-body (finalize-defn-body-v3 parsed-defn-body defn-node)]
-                                (do
-                                  (root_push parsed-body)
-                                  (p-expect spans pos-ref 1)
-                                  (root_pop)
-                                  (root_pop)
-                                  parsed-body))))))]
+                    (let [param-signature (parse-defn-param-signature-v3
+                      spans params-start params-end src param-count)]
                       (do
-                        (root_pop)
-                        (root_pop)
-                        (root_pop)
-                        (root_pop)
-                        (root_pop)
-                        (root_pop)
-                        parsed))))))))))))
+                        (root_push param-signature)
+                        (let [return-type (skip-optional-type-sig-v3 spans pos-ref src)]
+                          (do
+                            (root_push return-type)
+                            (let [signature (vector-push-single-rooted-v3 param-signature return-type)]
+                              (do
+                                (root_push signature)
+                                (skip-optional-where-v3 spans pos-ref src)
+                                (let [parsed
+                                  (if (== (colon-directive-v3 spans pos-ref src) 1)
+                                    (let [meta (parse-defn-metadata-v3 spans pos-ref src)]
+                                      (parse-defn-bodyless-or-body-with-meta-v3
+                                        spans pos-ref src defn-node param-count signature meta))
+                                    (if (== (p-current spans pos-ref) 1)
+                                      (do
+                                        (p-advance pos-ref)
+                                        (let [bodyless-defn-body (make-int-node 0)
+                                          parsed-body (finalize-defn-body-v3 bodyless-defn-body defn-node)]
+                                          (maybe-append-defn-signature-v3 parsed-body signature)))
+                                      (let [parsed-defn-body (parse-expr-v3 spans pos-ref src)]
+                                        (do
+                                          (root_push parsed-defn-body)
+                                          (let [parsed-body (finalize-defn-body-v3 parsed-defn-body defn-node)]
+                                            (do
+                                              (root_push parsed-body)
+                                              (p-expect spans pos-ref 1)
+                                              (let [parsed-with-signature
+                                                (maybe-append-defn-signature-v3 parsed-body signature)]
+                                                (do
+                                                  (root_pop)
+                                                  (root_pop)
+                                                  parsed-with-signature))))))))]
+                                  (do
+                                    (root_pop)
+                                    (root_pop)
+                                    (root_pop)
+                                    (root_pop)
+                                    (root_pop)
+                                    (root_pop)
+                                    (root_pop)
+                                    (root_pop)
+                                    (root_pop)
+                                    parsed))))))))))))))))))
 
 ;; === defmacro 宣言 ===
 (defn parse-defmacro-v3 [spans pos-ref src]

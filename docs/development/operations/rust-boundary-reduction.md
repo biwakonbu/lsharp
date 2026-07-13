@@ -6,6 +6,8 @@ L# の通常開発を Rust toolchain や `cargo` の実行待ちから切り離�
 
 ここでいう「Rust 不要」は、あらかじめ取得した native stage0 package を使う日常の編集・検査・テスト・Wasm 出力の経路に `cargo`、`rustc`、host の `lsharp` を置かないという意味である。Rust workspace の物理削除や、MCP/LSP を含む全 host integration の native 化は含まない。
 
+この経路の成立は、自己ホスト実装が L# の全ての型・宣言意味論と parity を持つことを意味しない。現在自己ホストで検証済みの型注釈は `Int` / `Bool` / `String` / `Float` / `Unit` の named primitive slice であり、`TypeApp`、関数型、型変数、型別名、ADT、record declaration の型環境登録は未完了である。これらを変更・検証する開発では、現時点では Rust implementation を source of truth / oracle として必要とする。
+
 ## 現在の事実
 
 - `lsharp-native-selfhost-stage0` package は `compiler`、`transport_driver`、`materializer` を持つ manifest で native bootstrap を開始する。release 用の `App.Cli` archive は stage0 package ではない。
@@ -40,7 +42,7 @@ LSHARP_NATIVE_LINUX_X86_STAGE0_DIR=/path/to/linux-stage0 \
 
 | Command surface | Native の責務 | Rust の要否 | 外部条件・制約 |
 | --- | --- | --- | --- |
-| `parse` / `check` / `fmt` / `test` | native `program.native` が直接実行する core CLI | 通常開発では不要 | Bash、Python 3、hash tool。stage materialize は Mac で `clang`、Linux で `cc` を使う。Mac は必要な host でのみ codesign identity を指定する。 |
+| `parse` / `check` / `fmt` / `test` | native `program.native` が直接実行する core CLI | 検証済み core slice では不要 | Bash、Python 3、hash tool。stage materialize は Mac で `clang`、Linux で `cc` を使う。Mac は必要な host でのみ codesign identity を指定する。型・宣言の未実装 P0 は Rust oracle が必要。 |
 | `compile -o` / `build -o` (WASI Preview1) | native CLI が actual core Wasm bytes を出力する | 通常開発では不要 | 上と同じ。Mac は検証済み、Linux は current stage0 gate 待ち。 |
 | component `compile` / `build` | native core Wasm を component 化する | 不要 | Python helper と外部 `wasm-tools` が必要。これは Rust host fallback ではない。 |
 | `install` | package install / module index helper | 不要 | Python 3。git dependency は `git` が必要。 |
@@ -59,7 +61,7 @@ Rust が完全に不要になったわけではない。次の作業は native b
 2. native selfhost と Rust implementation の oracle/differential 比較、障害解析、emergency rollback。
 3. `mcp-server`、bare LSP、`--emit-ir`、native target など、上表で明示した Rust host integration surface。
 
-したがって、base language development については Linux gate 完了後に「Rust なしで開発可能」と言える。一方で「L# の全機能が Rust なし」とは言えず、上表の Rust-only surface と external tool dependency は残る。
+したがって、Linux gate 完了後に「検証済み core CLI の日常ループは Rust なしで開発可能」と言える。一方で、自己ホストの型・宣言意味論 P0 が未完了の間は「base language development 全体」や「L# の全機能」が Rust なしとは言えない。上表の Rust-only surface、external tool dependency、型・宣言の未実装 P0 は残る。
 
 ## 検証と残タスク
 

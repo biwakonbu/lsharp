@@ -27,6 +27,7 @@
 (defn tag-lambda [] 8)
 (defn tag-do [] 9)
 (defn tag-match [] 10)
+(defn tag-type-named [] 60)
 
 ;; computation step kind
 (defn comp-step-expr [] 0)
@@ -73,6 +74,33 @@
 (defn mk-app [name-hash args] (make-type-app name-hash args))
 (defn mk-app1 [name-hash arg] (make-type-app1 name-hash arg))
 (defn mk-ref [inner] (mk-app1 (hash-ref) inner))
+
+;; source TypeExpr の primitive 名は internal Type の識別子とは別空間である。
+(defn source-type-int-hash [] 73679)
+(defn source-type-bool-hash [] 2076426)
+(defn source-type-string-hash [] 2486848561)
+(defn source-type-float-hash [] 67973692)
+(defn source-type-unit-hash [] 2641316)
+
+;; raw TypeExpr を現在利用可能な internal Type へ解決する。
+;; 未登録名は nominal constructor として保持し、ADT/alias registry の導入後に解決を拡張する。
+(defn typeinfer-resolve-named-type [name-hash]
+  (if (= name-hash (source-type-int-hash))
+    (mk-int)
+    (if (= name-hash (source-type-bool-hash))
+      (mk-bool)
+      (if (= name-hash (source-type-string-hash))
+        (mk-string)
+        (if (= name-hash (source-type-float-hash))
+          (mk-float)
+          (if (= name-hash (source-type-unit-hash))
+            (mk-unit)
+            (mk-con name-hash)))))))
+
+(defn typeinfer-resolve-type-expr [type-expr]
+  (if (= (vector-get type-expr 0) (tag-type-named))
+    (typeinfer-resolve-named-type (vector-get type-expr 1))
+    (mk-con 0)))
 
 ;; 型アクセサ (Type.ls を利用)
 (defn ty-tag [ty] (type-tag ty))

@@ -2414,7 +2414,7 @@
                           (if (== (colon-directive-v3 spans pos-ref src) 1)
                             (let [meta (parse-defn-metadata-v3 spans pos-ref src)]
                               (parse-defn-bodyless-or-body-with-meta-v3
-                                spans pos-ref src defn-node param-count meta))
+                                spans pos-ref src defn-node param-count 0 meta))
                             (if (== (p-current spans pos-ref) 1)
                               (do
                                 (p-advance pos-ref)
