@@ -343,7 +343,7 @@
 ;; ============================================================
 
 ;; resolve-alias: 型エイリアスを展開する
-;; alias-env: HashMap<name-hash, target-type>
+;; alias-env: [closed-aliases, parametric-aliases]
 ;; ty: 解決対象の型
 ;; 展開はシャロー (1段階のみ)
 (defn resolve-alias [alias-env ty]
@@ -351,7 +351,8 @@
     (if (= tag (ty-con))
       ;; Con 型: エイリアス環境を参照
       (let [name (ty-name ty)
-            target (map-get alias-env name)]
+            closed-aliases (type-alias-env-closed alias-env)
+            target (map-get-safe closed-aliases name)]
         (if (= target 0)
           ;; エイリアスなし: そのまま返す
           ty
@@ -360,7 +361,8 @@
       ;; Con 以外: そのまま返す
       ty)))
 
-;; closed type-alias を raw TypeExpr の各位置で解決する。parametric alias の head 展開は未対応。
+;; alias-env は [closed-aliases, parametric-aliases]。
+;; closed alias は named type を 1 段透過展開する。
 (defn typeinfer-resolve-named-type-with-aliases [name-hash alias-env]
   (let [base-type (typeinfer-resolve-named-type name-hash)]
     (do
@@ -370,15 +372,23 @@
           (root_pop)
           resolved)))))
 
-(defn typeinfer-resolve-type-expr-args-with-aliases-loop [type-expr idx count args alias-env]
+;; parametric alias target の raw TypeExpr だけは source parameter を型変数へ解決する。
+(defn typeinfer-resolve-type-var-with-aliases-and-params [name-hash alias-env type-param-env]
+  (let [bound (map-get-safe type-param-env name-hash)]
+    (if (= bound 0)
+      (typeinfer-resolve-named-type-with-aliases name-hash alias-env)
+      bound)))
+
+(defn typeinfer-resolve-type-expr-args-with-aliases-loop [type-expr idx count args alias-env type-param-env]
   (if (>= idx count)
     args
     (do
       (root_push args)
       (let [arg-type
-              (typeinfer-resolve-type-expr-with-aliases
+              (typeinfer-resolve-type-expr-with-aliases-and-params
                 (vector-get type-expr (+ idx 3))
-                alias-env)]
+                alias-env
+                type-param-env)]
         (do
           (root_push arg-type)
           (let [next-args (push-object-vector-local args arg-type)]
@@ -390,17 +400,66 @@
                         (+ idx 1)
                         count
                         next-args
-                        alias-env)]
+                        alias-env
+                        type-param-env)]
                 (do
                   (root_pop)
                   (root_pop)
                   (root_pop)
                   resolved)))))))))
 
-(defn typeinfer-resolve-app-type-with-aliases [type-expr alias-env]
+(defn typeinfer-build-parametric-alias-subst-loop [param-types args idx count subst]
+  (if (>= idx count)
+    subst
+    (let [param-type (vector-get param-types idx)
+      arg-type (vector-get args idx)
+      next-subst (map-insert-object-safe subst (type-name param-type) arg-type)]
+      (typeinfer-build-parametric-alias-subst-loop
+        param-types
+        args
+        (+ idx 1)
+        count
+        next-subst))))
+
+;; parametric alias entry = [parameter-type-vars, resolved-target-type]
+(defn typeinfer-resolve-parametric-alias-application [entry args]
+  (do
+    (root_push entry)
+    (root_push args)
+    (let [param-types (vector-get entry 0)
+      target-type (vector-get entry 1)
+      param-count (vector-length param-types)]
+      (do
+        (root_push param-types)
+        (root_push target-type)
+        (let [result
+          (if (= param-count (vector-length args))
+            (let [subst
+              (typeinfer-build-parametric-alias-subst-loop
+                param-types
+                args
+                0
+                param-count
+                (map-new))]
+              (do
+                (root_push subst)
+                (let [expanded (instantiate-apply subst target-type)]
+                  (do
+                    (root_pop)
+                    expanded))))
+            0)]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            result))))))
+
+(defn typeinfer-resolve-app-type-with-aliases-and-params [type-expr alias-env type-param-env]
   (do
     (root_push type-expr)
     (root_push alias-env)
+    (root_push type-param-env)
     (let [name-hash (vector-get type-expr 1)
       arg-count (vector-get type-expr 2)
       args
@@ -409,23 +468,41 @@
           0
           arg-count
           (vector-new arg-count)
-          alias-env)]
+          alias-env
+          type-param-env)]
       (do
         (root_push args)
-        (let [result (mk-app (typeinfer-resolve-app-name name-hash) args)]
+        (let [parametric-aliases (type-alias-env-parametric alias-env)]
           (do
-            (root_pop)
-            (root_pop)
-            (root_pop)
-            result))))))
+            (root_push parametric-aliases)
+            (let [entry (map-get-safe parametric-aliases name-hash)
+              result
+                (if (= entry 0)
+                  (mk-app (typeinfer-resolve-app-name name-hash) args)
+                  (do
+                    (root_push entry)
+                    (let [expanded (typeinfer-resolve-parametric-alias-application entry args)]
+                      (do
+                        (root_pop)
+                        (if (= expanded 0)
+                          (mk-app (typeinfer-resolve-app-name name-hash) args)
+                          expanded)))))]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result))))))))
 
-(defn typeinfer-resolve-fun-params-with-aliases-loop [type-expr idx count return-type alias-env]
+(defn typeinfer-resolve-fun-params-with-aliases-loop [type-expr idx count return-type alias-env type-param-env]
   (if (>= idx count)
     return-type
     (let [param-type
-            (typeinfer-resolve-type-expr-with-aliases
+            (typeinfer-resolve-type-expr-with-aliases-and-params
               (vector-get type-expr (+ idx 2))
-              alias-env)]
+              alias-env
+              type-param-env)]
       (do
         (root_push param-type)
         (let [rest-type
@@ -434,7 +511,8 @@
                   (+ idx 1)
                   count
                   return-type
-                  alias-env)]
+                  alias-env
+                  type-param-env)]
           (do
             (root_push rest-type)
             (let [result (mk-fun param-type rest-type)]
@@ -443,13 +521,18 @@
                 (root_pop)
                 result))))))))
 
-(defn typeinfer-resolve-fun-type-with-aliases [type-expr alias-env]
+(defn typeinfer-resolve-fun-type-with-aliases-and-params [type-expr alias-env type-param-env]
   (do
     (root_push type-expr)
     (root_push alias-env)
+    (root_push type-param-env)
     (let [param-count (vector-get type-expr 1)
       return-type-expr (vector-get type-expr (+ param-count 2))
-      return-type (typeinfer-resolve-type-expr-with-aliases return-type-expr alias-env)]
+      return-type
+        (typeinfer-resolve-type-expr-with-aliases-and-params
+          return-type-expr
+          alias-env
+          type-param-env)]
       (do
         (root_push return-type)
         (let [result
@@ -458,26 +541,49 @@
                   0
                   param-count
                   return-type
-                  alias-env)]
+                  alias-env
+                  type-param-env)]
           (do
+            (root_pop)
             (root_pop)
             (root_pop)
             (root_pop)
             result))))))
 
-(defn typeinfer-resolve-type-expr-with-aliases [type-expr alias-env]
+(defn typeinfer-resolve-type-expr-with-aliases-and-params [type-expr alias-env type-param-env]
   (if (= type-expr 0)
     (mk-con 0)
     (let [tag (vector-get type-expr 0)]
       (if (= tag (tag-type-named))
         (typeinfer-resolve-named-type-with-aliases (vector-get type-expr 1) alias-env)
         (if (= tag (tag-type-app))
-          (typeinfer-resolve-app-type-with-aliases type-expr alias-env)
+          (typeinfer-resolve-app-type-with-aliases-and-params type-expr alias-env type-param-env)
           (if (= tag (tag-type-fun))
-            (typeinfer-resolve-fun-type-with-aliases type-expr alias-env)
+            (typeinfer-resolve-fun-type-with-aliases-and-params type-expr alias-env type-param-env)
             (if (= tag (tag-type-var))
-              (typeinfer-resolve-named-type-with-aliases (vector-get type-expr 1) alias-env)
+              (typeinfer-resolve-type-var-with-aliases-and-params
+                (vector-get type-expr 1)
+                alias-env
+                type-param-env)
               (mk-con 0))))))))
+
+(defn typeinfer-resolve-type-expr-with-aliases [type-expr alias-env]
+  (do
+    (root_push type-expr)
+    (root_push alias-env)
+    (let [type-param-env (map-new)]
+      (do
+        (root_push type-param-env)
+        (let [result
+          (typeinfer-resolve-type-expr-with-aliases-and-params
+            type-expr
+            alias-env
+            type-param-env)]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            result))))))
 
 ;; ============================================================
 ;; Record Update 式の型推論

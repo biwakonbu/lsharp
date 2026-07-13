@@ -349,29 +349,131 @@
 (defn typeinfer-predeclare-defns [program env counter]
   (typeinfer-predeclare-defns-loop program 0 (vector-length program) env (map-new) counter))
 
-;; closed type-alias を source order で登録する。parametric alias は parser が target=0 として残す。
+;; type-alias の raw target を取得する。parametric alias は [tag, name, params, target] を使う。
 (defn typeinfer-type-alias-target [decl]
   (if (<= (vector-length decl) 2)
     0
-    (vector-get decl 2)))
+    (if (>= (vector-length decl) 4)
+      (vector-get decl 3)
+      (vector-get decl 2))))
 
-(defn typeinfer-predeclare-closed-aliases-loop [program idx len alias-env]
+;; parametric alias entry = [parameter-type-vars, resolved-target-type]
+(defn typeinfer-make-parametric-alias-entry [param-types target-type]
+  (do
+    (root_push param-types)
+    (root_push target-type)
+    (let [with-param-types (push-object-vector-local (vector-new 2) param-types)]
+      (do
+        (root_push with-param-types)
+        (let [result (push-object-vector-local with-param-types target-type)]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            result))))))
+
+;; parametric alias の source parameter を fresh 型変数へ対応付ける。
+;; 戻り値 = [param-name-to-type, param-types-in-source-order]
+(defn typeinfer-build-parametric-alias-param-state-loop [params idx len counter param-env param-types]
   (if (>= idx len)
-    alias-env
+    (push-object-vector-local (push-object-vector-local (vector-new 2) param-env) param-types)
+    (let [param-hash (vector-get params idx)
+      param-type (fresh-type-var counter)
+      next-param-env (map-insert-object-safe param-env param-hash param-type)
+      next-param-types (push-object-vector-local param-types param-type)]
+      (typeinfer-build-parametric-alias-param-state-loop
+        params
+        (+ idx 1)
+        len
+        counter
+        next-param-env
+        next-param-types))))
+
+(defn typeinfer-build-parametric-alias-param-state [params counter]
+  (typeinfer-build-parametric-alias-param-state-loop
+    params
+    0
+    (vector-length params)
+    counter
+    (map-new)
+    (vector-new (vector-length params))))
+
+;; closed / parametric type-alias を source order で登録する。
+(defn typeinfer-predeclare-closed-aliases-loop [program idx len closed-aliases parametric-aliases counter]
+  (if (>= idx len)
+    (make-type-alias-env closed-aliases parametric-aliases)
     (let [decl (vector-get program idx)
       tag (vector-get decl 0)]
       (if (= tag (ast-typealias))
         (let [name-hash (vector-get decl 1)
           target-expr (typeinfer-type-alias-target decl)]
-          (if (= target-expr 0)
-            (typeinfer-predeclare-closed-aliases-loop program (+ idx 1) len alias-env)
-            (let [target-type (typeinfer-resolve-type-expr-with-aliases target-expr alias-env)
-              next-alias-env (map-insert-object-safe alias-env name-hash target-type)]
-              (typeinfer-predeclare-closed-aliases-loop program (+ idx 1) len next-alias-env))))
-        (typeinfer-predeclare-closed-aliases-loop program (+ idx 1) len alias-env)))))
+            (if (= target-expr 0)
+            (typeinfer-predeclare-closed-aliases-loop program (+ idx 1) len closed-aliases parametric-aliases counter)
+            (if (>= (vector-length decl) 4)
+              (let [params (vector-get decl 2)]
+                (if (= (vector-length params) 0)
+                  (let [alias-env (make-type-alias-env closed-aliases parametric-aliases)
+                    target-type (typeinfer-resolve-type-expr-with-aliases target-expr alias-env)
+                    next-closed-aliases (map-insert-object-safe closed-aliases name-hash target-type)]
+                    (typeinfer-predeclare-closed-aliases-loop
+                      program
+                      (+ idx 1)
+                      len
+                      next-closed-aliases
+                      parametric-aliases
+                      counter))
+                  (let [alias-env (make-type-alias-env closed-aliases parametric-aliases)
+                    param-state (typeinfer-build-parametric-alias-param-state params counter)
+                    param-env (vector-get param-state 0)
+                    param-types (vector-get param-state 1)
+                    target-type
+                      (typeinfer-resolve-type-expr-with-aliases-and-params
+                        target-expr
+                        alias-env
+                        param-env)
+                    entry (typeinfer-make-parametric-alias-entry param-types target-type)
+                    next-parametric-aliases (map-insert-object-safe parametric-aliases name-hash entry)]
+                    (typeinfer-predeclare-closed-aliases-loop
+                      program
+                      (+ idx 1)
+                      len
+                      closed-aliases
+                      next-parametric-aliases
+                      counter))))
+              (let [alias-env (make-type-alias-env closed-aliases parametric-aliases)
+                target-type (typeinfer-resolve-type-expr-with-aliases target-expr alias-env)
+                next-closed-aliases (map-insert-object-safe closed-aliases name-hash target-type)]
+                (typeinfer-predeclare-closed-aliases-loop
+                  program
+                  (+ idx 1)
+                  len
+                  next-closed-aliases
+                  parametric-aliases
+                  counter)))))
+        (typeinfer-predeclare-closed-aliases-loop program (+ idx 1) len closed-aliases parametric-aliases counter)))))
 
-(defn typeinfer-predeclare-closed-aliases [program]
-  (typeinfer-predeclare-closed-aliases-loop program 0 (vector-length program) (map-new)))
+(defn typeinfer-predeclare-closed-aliases [program counter]
+  (typeinfer-predeclare-closed-aliases-loop
+    program
+    0
+    (vector-length program)
+    (map-new)
+    (map-new)
+    counter))
+
+;; alias 宣言と本体推論で同じ型変数 ID 供給を共有する。
+(defn typeinfer-make-alias-aware-counter [program]
+  (let [bootstrap-counter (make-var-counter)]
+    (do
+      (root_push bootstrap-counter)
+      (let [alias-env (typeinfer-predeclare-closed-aliases program bootstrap-counter)]
+        (do
+          (root_push alias-env)
+          (let [result (var-counter-with-alias-env bootstrap-counter alias-env)]
+            (do
+              (root_pop)
+              (root_pop)
+              result)))))))
 
 ;; program 推論の状態: [env, subst, first-type, first-seen, diagnostic-count, first-error-code]
 (defn typeinfer-program-analysis-state [env subst first-ty first-seen diagnostic-count first-error-code]
@@ -429,8 +531,8 @@
 
 ;; top-level defn を先行登録して一度だけ推論し、CLI/LSP が共有する結果を返す。
 (defn infer-program-analysis [program]
-  (let [alias-env (typeinfer-predeclare-closed-aliases program)
-    counter (make-var-counter-with-alias-env alias-env)]
+  (let [counter (typeinfer-make-alias-aware-counter program)
+    alias-env (var-counter-alias-env counter)]
     (do
       (root_push counter)
       (let [initial-env (init-builtin-env counter)

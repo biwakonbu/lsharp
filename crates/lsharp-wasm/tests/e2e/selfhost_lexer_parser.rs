@@ -178,6 +178,45 @@ fn test_e2e_selfhost_parser_closed_type_alias_unifies_annotation_expr() {
     );
 }
 
+/// parser-to-inference bundle: parametric type-alias は適用された型引数で target を置換する
+#[test]
+fn test_e2e_selfhost_parser_parametric_type_alias_unifies_signature() {
+    let harness = r#"
+(defn main []
+  (let [valid-analysis
+          (infer-program-analysis
+            (parse-program "(type-alias (Zero) String) (type-alias (Id a) a) (type-alias (Wrapped a) (Id a)) (type-alias (Callback a b) (-> a b)) (type-alias (Box a) (Ref a)) (defn zero [] : Zero \"zero\") (defn identity [(: value (Id Int))] : Int value) (defn wrapped [(: value (Wrapped Int))] : Int value) (defn callback [(: f (Callback Int String))] : (-> Int String) f) (defn box [(: value (Box String))] : (Ref String) value) (defn annotated [] (: \"text\" (Id String)))"))
+        invalid-analysis
+          (infer-program-analysis
+            (parse-program "(type-alias (Id a) a) (defn invalid [] (: \"text\" (Id Int)))"))
+        arity-analysis
+          (infer-program-analysis
+            (parse-program "(type-alias (Id a) a) (defn arity [(: value (Id Int String))] : Int value)"))]
+    (do
+      (print (infer-program-analysis-diagnostic-count valid-analysis))
+      (print (infer-program-analysis-first-error-code valid-analysis))
+      (print (infer-program-analysis-diagnostic-count invalid-analysis))
+      (print (infer-program-analysis-first-error-code invalid-analysis))
+      (print (infer-program-analysis-diagnostic-count arity-analysis))
+      (print (infer-program-analysis-first-error-code arity-analysis))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}",
+        selfhost_parser_typeinfer_runtime_bundle(),
+        harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "0", "1", "6", "1", "6"],
+        "parametric type-alias は arity 一致時だけ target 型へ展開されるべき"
+    );
+}
+
 #[test]
 fn test_e2e_selfhost_lexer_arrow_dot() {
     // Lexer.ls が -> と . を正しくトークン化できることを検証

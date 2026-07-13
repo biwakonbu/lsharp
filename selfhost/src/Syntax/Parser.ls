@@ -1078,6 +1078,41 @@
           name-h))
       0)))
 
+;; parametric type-alias head の parameter 名を source order で保持する。
+(defn parse-type-alias-param-hashes-rooted-v3 [spans pos-ref src params]
+  (if (== (p-current spans pos-ref) 1)
+    (do
+      (p-advance pos-ref)
+      params)
+    (if (== (p-current spans pos-ref) 20)
+      (let [param-hash (current-symbol-hash-v3 spans pos-ref src)]
+        (do
+          (p-advance pos-ref)
+          (root_push params)
+          (let [next-params (vector-push-single-rooted-v3 params param-hash)]
+            (do
+              (root_push next-params)
+              (let [parsed (parse-type-alias-param-hashes-rooted-v3 spans pos-ref src next-params)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  parsed))))))
+      (do
+        (parse-skip-to-close-v3 spans pos-ref 1)
+        0))))
+
+(defn parse-type-alias-param-hashes-v3 [spans pos-ref src]
+  (do
+    (root_push spans)
+    (root_push pos-ref)
+    (root_push src)
+    (let [params (parse-type-alias-param-hashes-rooted-v3 spans pos-ref src (vector-new 0))]
+      (do
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        params))))
+
 (defn parse-type-alias-v3 [spans pos-ref src]
   (do
     (p-advance pos-ref) ;; type-alias を消費
@@ -1088,11 +1123,18 @@
           (let [name-h (current-symbol-hash-v3 spans pos-ref src)]
             (do
               (p-advance pos-ref) ;; alias 名を消費
-              (parse-skip-to-close-v3 spans pos-ref 1)
-              (skip-type-expr-v3 spans pos-ref)
-              (p-expect spans pos-ref 1) ;; ) を消費
-              ;; parametric alias は params を保持していないため、target は semantic prepass へ渡さない。
-              (make-type-alias name-h 0)))
+              (let [params (parse-type-alias-param-hashes-v3 spans pos-ref src)]
+                (do
+                  (root_push params)
+                  (let [target-type-expr (parse-type-expr-v3 spans pos-ref src)]
+                    (do
+                      (root_push target-type-expr)
+                      (p-expect spans pos-ref 1) ;; ) を消費
+                      (let [parsed (make-type-alias-with-params name-h params target-type-expr)]
+                        (do
+                          (root_pop)
+                          (root_pop)
+                          parsed))))))))
           (do
             (parse-skip-to-close-v3 spans pos-ref 1)
             (parse-skip-to-close-v3 spans pos-ref 1)

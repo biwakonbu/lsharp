@@ -46,6 +46,36 @@ fn test_e2e_selfhost_parser_parametric_type_heads() {
     );
 }
 
+/// TEST-SYNTAX-02l1: parametric type-alias は parameter と raw target を保持する
+#[test]
+fn test_e2e_selfhost_parser_parametric_type_alias_retains_params_and_target() {
+    let harness = r#"
+(defn main []
+  (let [alias-node (vector-get (parse-program "(type-alias (Callback a b) (-> a b))") 0)
+        params (vector-get alias-node 2)
+        target (vector-get alias-node 3)]
+    (do
+      (print (vector-length alias-node))
+      (print (vector-length params))
+      (print (if (= (vector-get params 0) (name-hash "a" 0 1)) 1 0))
+      (print (if (= (vector-get params 1) (name-hash "b" 0 1)) 1 0))
+      (print (if (= (vector-get target 0) (ast-type-fun)) 1 0))
+      (print (vector-get target 1))
+      (print (if (= (vector-get (vector-get target 2) 0) (ast-type-var)) 1 0))
+      (print (if (= (vector-get (vector-get target 3) 0) (ast-type-var)) 1 0))
+      0)))
+"#;
+
+    let output = run_parser_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["4", "2", "1", "1", "1", "1", "1", "1"],
+        "parametric type-alias は parameter vector と raw target type expression を保持するべき"
+    );
+}
+
 /// TEST-SYNTAX-02l2: closed type-alias は target の raw type expression を保持する
 #[test]
 fn test_e2e_selfhost_parser_type_alias_retains_closed_target_expr() {

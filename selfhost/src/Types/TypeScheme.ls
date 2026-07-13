@@ -66,6 +66,27 @@
 ;; === 型変数カウンタ ===
 ;; 新しい型変数を生成するためのグローバルカウンタ
 
+;; 型別名環境 = [closed-aliases, parametric-aliases]
+(defn make-type-alias-env [closed-aliases parametric-aliases]
+  (do
+    (root_push closed-aliases)
+    (root_push parametric-aliases)
+    (let [with-closed (push-object-vector-local (vector-new 2) closed-aliases)]
+      (do
+        (root_push with-closed)
+        (let [result (push-object-vector-local with-closed parametric-aliases)]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            result))))))
+
+(defn type-alias-env-closed [alias-env]
+  (vector-get alias-env 0))
+
+(defn type-alias-env-parametric [alias-env]
+  (vector-get alias-env 1))
+
 ;; 型推論 context = [next-id-ref, alias-env]。型変数 ID の API を保ったまま宣言環境を共有する。
 (defn make-var-counter-with-alias-env [alias-env]
   (do
@@ -84,13 +105,29 @@
                 result))))))))
 
 (defn make-var-counter []
-  (make-var-counter-with-alias-env (map-new)))
+  (make-var-counter-with-alias-env (make-type-alias-env (map-new) (map-new))))
 
 (defn var-counter-id-ref [counter]
   (vector-get counter 0))
 
 (defn var-counter-alias-env [counter]
   (vector-get counter 1))
+
+;; 既存の型変数 ID 供給を保ったまま、宣言 prepass 後の alias 環境へ差し替える。
+(defn var-counter-with-alias-env [counter alias-env]
+  (let [id-ref (var-counter-id-ref counter)]
+    (do
+      (root_push id-ref)
+      (root_push alias-env)
+      (let [with-id-ref (push-object-vector-local (vector-new 2) id-ref)]
+        (do
+          (root_push with-id-ref)
+          (let [result (push-object-vector-local with-id-ref alias-env)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              result)))))))
 
 ;; 次の型変数 ID を生成
 (defn next-var [counter]
