@@ -5,7 +5,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 STAGE0_DIR="${NATIVE_STAGE0_DIR:-}"
 SOURCE_ROOT="${NATIVE_SOURCE_ROOT:-$ROOT/selfhost}"
 STAGE_DIR="${NATIVE_STAGE_DIR:-$ROOT/.native-selfhost-dev}"
-RELATIVE_ENTRY="${NATIVE_RELATIVE_ENTRY:-src/App/Main.ls}"
+RELATIVE_ENTRY="${NATIVE_RELATIVE_ENTRY:-src/App/Cli.ls}"
 DECODER="$ROOT/scripts/ci/decode-native-selfhost-transport.py"
 FORCE_BOOTSTRAP=0
 

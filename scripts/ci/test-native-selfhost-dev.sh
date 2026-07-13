@@ -108,8 +108,8 @@ chmod +x "$stage_dir/program.native"
 SH
 chmod +x "$STAGE0_DIR/bin/materializer"
 
-cat >"$SOURCE_ROOT/src/App/Main.ls" <<'LS'
-(module Main)
+cat >"$SOURCE_ROOT/src/App/Cli.ls" <<'LS'
+(module App.Cli)
 LS
 
 cat >"$HOST_BIN/cargo" <<'SH'
@@ -149,7 +149,7 @@ run_runner reuse
 assert_eq "1" "$(grep -c '^transport|' "$LOG_FILE")"
 assert_file_contains "$LOG_FILE" "program|reuse"
 
-printf '\n;; source refresh\n' >>"$SOURCE_ROOT/src/App/Main.ls"
+printf '\n;; source refresh\n' >>"$SOURCE_ROOT/src/App/Cli.ls"
 run_runner changed
 assert_eq "2" "$(grep -c '^transport|' "$LOG_FILE")"
 assert_file_contains "$LOG_FILE" "program|changed"
