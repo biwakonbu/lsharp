@@ -11198,6 +11198,37 @@ fn test_native_codegen_x86_two_arg_user_call_avoids_rel_wrapper_call() {
 }
 
 #[test]
+fn test_native_codegen_x86_two_arg_user_call_restores_deep_spill_window_and_size() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let call_body = source
+        .split("(defn emit-two-arg-call-x86-with-call-bytes")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn emit-two-arg-call-x86 [").next())
+        .expect("NativeCodegen.ls に二引数 x86 call emitter が存在すること");
+    let restore_pos = call_body
+        .find("(emit-mov-rcx-from-local")
+        .expect("二引数 x86 call は深い値ウィンドウの rcx を復元すること");
+    let shift_pos = call_body
+        .find("(emit-drop-window-spill-shifts-x86 frame-base-slot-count 1 (- current-depth 3))")
+        .expect("二引数 x86 call は call 後に残るより深い spill slots を一段詰めること");
+
+    assert!(
+        restore_pos < shift_pos,
+        "二引数 x86 call は call 戻り値の直後に rcx を復元してから spill window を詰めること"
+    );
+
+    let size_body = source
+        .split("(defn native-call-bundle-size-x86 [target-param-count current-depth]")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn native-call-rel-next-offset-x86").next())
+        .expect("NativeCodegen.ls に x86 call bundle size helper が存在すること");
+    assert!(
+        size_body.contains("(if (>= current-depth 3) (+ 18 (* (- current-depth 3) 14)) 11)"),
+        "二引数 x86 call size は深い spill shift の 14-byte pairs を含むこと"
+    );
+}
+
+#[test]
 fn test_native_codegen_x86_six_arg_user_call_avoids_rel_wrapper_call() {
     let source = selfhost_module("NativeCodegen.ls");
     let opcode_call_branch = native_codegen_x86_non_one_arg_call_bundle_body(&source);
@@ -13718,6 +13749,20 @@ fn generate_actual_macos_aarch64_app_cli_release_program(
 fn generate_actual_macos_aarch64_cross_linux_x86_app_cli_bundle(
     artifact_dir: &std::path::Path,
 ) -> Result<NativeEntrypointBundle, String> {
+    generate_actual_macos_aarch64_cross_linux_x86_bundle_for_source(
+        artifact_dir,
+        "src/App/Cli.ls",
+        "App.Cli",
+        "cross-target native App.Cli bundle",
+    )
+}
+
+fn generate_actual_macos_aarch64_cross_linux_x86_bundle_for_source(
+    artifact_dir: &std::path::Path,
+    source_path: &str,
+    entry_module: &str,
+    artifact_kind: &str,
+) -> Result<NativeEntrypointBundle, String> {
     let seed_source = cross_target_actual_stage23_seed_source();
     let (_, stage2_input, _, stage3_input) =
         run_actual_native_self_regeneration_stage23_pair_for_seed_source(
@@ -13732,47 +13777,49 @@ fn generate_actual_macos_aarch64_cross_linux_x86_app_cli_bundle(
         );
     }
 
-    let app_cli_input = run_actual_macos_aarch64_compiler_for_source_with_args(
-        "actual-macos-aarch64-cross-linux-x86-app-cli-compile",
+    let compile_label = format!(
+        "actual-macos-aarch64-cross-linux-x86-{}-compile",
+        entry_module.replace('.', "-")
+    );
+    let input = run_actual_macos_aarch64_compiler_for_source_with_args(
+        &compile_label,
         &stage3_input,
-        "src/App/Cli.ls",
+        source_path,
         &["x86_64-unknown-linux-gnu"],
         false,
     )?;
-    if app_cli_input.code_bytes.is_empty()
-        || app_cli_input.entrypoint_offset >= app_cli_input.code_bytes.len()
-    {
+    if input.code_bytes.is_empty() || input.entrypoint_offset >= input.code_bytes.len() {
         return Err(format!(
-            "cross-target App.Cli bundle が不正: code_len={} entrypoint={}",
-            app_cli_input.code_bytes.len(),
-            app_cli_input.entrypoint_offset
+            "cross-target {entry_module} bundle が不正: code_len={} entrypoint={}",
+            input.code_bytes.len(),
+            input.entrypoint_offset
         ));
     }
 
     let _ = std::fs::remove_dir_all(artifact_dir);
     std::fs::create_dir_all(artifact_dir)
-        .map_err(|e| format!("cross-target App.Cli artifact dir 作成失敗: {e}"))?;
+        .map_err(|e| format!("cross-target {entry_module} artifact dir 作成失敗: {e}"))?;
     let code_path = artifact_dir.join("stage-code.bin");
     let data_path = artifact_dir.join("stage-data.bin");
-    std::fs::write(&code_path, &app_cli_input.code_bytes)
-        .map_err(|e| format!("cross-target App.Cli stage-code.bin 書き込み失敗: {e}"))?;
-    std::fs::write(&data_path, &app_cli_input.data_bytes)
-        .map_err(|e| format!("cross-target App.Cli stage-data.bin 書き込み失敗: {e}"))?;
+    std::fs::write(&code_path, &input.code_bytes)
+        .map_err(|e| format!("cross-target {entry_module} stage-code.bin 書き込み失敗: {e}"))?;
+    std::fs::write(&data_path, &input.data_bytes)
+        .map_err(|e| format!("cross-target {entry_module} stage-data.bin 書き込み失敗: {e}"))?;
     std::fs::write(
         artifact_dir.join("entrypoint-offset.txt"),
-        format!("{}\n", app_cli_input.entrypoint_offset),
+        format!("{}\n", input.entrypoint_offset),
     )
-    .map_err(|e| format!("cross-target App.Cli entrypoint offset 書き込み失敗: {e}"))?;
+    .map_err(|e| format!("cross-target {entry_module} entrypoint offset 書き込み失敗: {e}"))?;
     std::fs::write(
         artifact_dir.join("function-start-len.txt"),
-        format!("{}\n", app_cli_input.function_start_len),
+        format!("{}\n", input.function_start_len),
     )
-    .map_err(|e| format!("cross-target App.Cli function count 書き込み失敗: {e}"))?;
+    .map_err(|e| format!("cross-target {entry_module} function count 書き込み失敗: {e}"))?;
     std::fs::write(
         artifact_dir.join("main-func-idx.txt"),
-        format!("{}\n", app_cli_input.main_func_idx),
+        format!("{}\n", input.main_func_idx),
     )
-    .map_err(|e| format!("cross-target App.Cli main function index 書き込み失敗: {e}"))?;
+    .map_err(|e| format!("cross-target {entry_module} main function index 書き込み失敗: {e}"))?;
 
     let code_sha256 = sha256_file_for_native_release(&code_path)?;
     let data_sha256 = sha256_file_for_native_release(&data_path)?;
@@ -13792,15 +13839,13 @@ fn generate_actual_macos_aarch64_cross_linux_x86_app_cli_bundle(
         .trim()
         .to_string();
     let manifest = format!(
-        "{{\"schema_version\":1,\"status\":\"pass\",\"artifact_kind\":\"cross-target native App.Cli bundle\",\"compiler_target\":\"aarch64-apple-darwin\",\"target\":\"x86_64-unknown-linux-gnu\",\"entry_module\":\"App.Cli\",\"source\":\"src/App/Cli.ls\",\"source_commit\":\"{source_commit}\",\"selfhost_fixed_point\":true,\"code_sha256\":\"{code_sha256}\",\"data_sha256\":\"{data_sha256}\",\"entrypoint_offset\":{},\"function_start_len\":{},\"main_func_idx\":{}}}\n",
-        app_cli_input.entrypoint_offset,
-        app_cli_input.function_start_len,
-        app_cli_input.main_func_idx,
+        "{{\"schema_version\":1,\"status\":\"pass\",\"artifact_kind\":\"{artifact_kind}\",\"compiler_target\":\"aarch64-apple-darwin\",\"target\":\"x86_64-unknown-linux-gnu\",\"entry_module\":\"{entry_module}\",\"source\":\"{source_path}\",\"source_commit\":\"{source_commit}\",\"selfhost_fixed_point\":true,\"code_sha256\":\"{code_sha256}\",\"data_sha256\":\"{data_sha256}\",\"entrypoint_offset\":{},\"function_start_len\":{},\"main_func_idx\":{}}}\n",
+        input.entrypoint_offset, input.function_start_len, input.main_func_idx,
     );
     std::fs::write(artifact_dir.join("manifest.json"), manifest)
-        .map_err(|e| format!("cross-target App.Cli manifest 書き込み失敗: {e}"))?;
+        .map_err(|e| format!("cross-target {entry_module} manifest 書き込み失敗: {e}"))?;
 
-    Ok(app_cli_input)
+    Ok(input)
 }
 
 fn run_linux_x86_actual_native_self_regeneration_transport_stage(
@@ -17950,11 +17995,24 @@ fn run_selfhost_main_native_x86_segmented_host_bytes_harness_with_payload_and_ar
     payload_expr: &str,
     args: &[&str],
 ) -> NativeEntrypointBundle {
+    run_selfhost_main_native_x86_segmented_host_bytes_harness_with_payload_and_args_for_modules(
+        label,
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        payload_expr,
+        args,
+    )
+}
+
+fn run_selfhost_main_native_x86_segmented_host_bytes_harness_with_payload_and_args_for_modules(
+    label: &str,
+    modules: &[&str],
+    payload_expr: &str,
+    args: &[&str],
+) -> NativeEntrypointBundle {
     let code_binding_expr = r#"entrypoint-func-idx (- (vector-length callables) 1)
                     starts (collect-callable-function-starts-x86 native-callables 10)
-                    user-total (callable-user-total-size-x86 native-callables 10)
-                    code-len (+ user-total (x86-selfhost-helper-trailer-size 10))
-                    code (vector-new 0)
+                    code (generate-native-x86-64-bundle-with-import-count native-callables 10)
+                    code-len (vector-length code)
                     entrypoint-offset (vector-get starts (- entrypoint-func-idx 10))"#;
     let main_body = r#"      (let [main-func-idx entrypoint-func-idx
           data-len (vector-length data)]
@@ -17967,7 +18025,7 @@ fn run_selfhost_main_native_x86_segmented_host_bytes_harness_with_payload_and_ar
              (print 9000000001)
             (print code-len)
             (print 9000000002)
-           (print-x86-code-segments native-callables starts 10 user-total)
+           (print-code-bytes-loop code 0 code-len)
              (print 9000000003)
             (print data-len)
             (print 9000000004)
@@ -17981,7 +18039,7 @@ fn run_selfhost_main_native_x86_segmented_host_bytes_harness_with_payload_and_ar
         );
     let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
         label,
-        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        modules,
         "src/App/HarnessMain.ls",
         &harness,
         args,
@@ -18040,6 +18098,20 @@ fn run_selfhost_main_native_x86_file_segmented_host_bytes_harness_with_payload_a
     payload_expr: &str,
     args: &[&str],
 ) -> NativeEntrypointBundle {
+    run_selfhost_main_native_x86_file_segmented_host_bytes_harness_with_payload_and_args_for_modules(
+        label,
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        payload_expr,
+        args,
+    )
+}
+
+fn run_selfhost_main_native_x86_file_segmented_host_bytes_harness_with_payload_and_args_for_modules(
+    label: &str,
+    modules: &[&str],
+    payload_expr: &str,
+    args: &[&str],
+) -> NativeEntrypointBundle {
     let code_binding_expr = r#"entrypoint-func-idx (- (vector-length callables) 1)
                     starts (collect-callable-function-starts-x86 native-callables 10)
                     user-total (callable-user-total-size-x86 native-callables 10)
@@ -18067,7 +18139,7 @@ fn run_selfhost_main_native_x86_file_segmented_host_bytes_harness_with_payload_a
         );
     let (dir, output) = try_compile_and_run_selfhost_fixture_entry_preserve_dir_with_args(
         label,
-        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        modules,
         "src/App/HarnessMain.ls",
         &harness,
         args,
@@ -40480,6 +40552,99 @@ fn test_e2e_native_linux_x86_host_generates_file_exists_elf_object_artifact() {
     );
 }
 
+/// NATIVE-LINUX-X86-02l2: TestRunner metadata extraction の Linux x86 native probe を生成すること。
+#[test]
+#[ignore]
+fn test_e2e_native_linux_x86_host_generates_test_runner_metadata_probe_bundle_artifact() {
+    let artifact_dir = std::env::var_os(
+        "LSHARP_NATIVE_LINUX_X86_TEST_RUNNER_METADATA_PROBE_ARTIFACT_DIR",
+    )
+    .expect(
+        "LSHARP_NATIVE_LINUX_X86_TEST_RUNNER_METADATA_PROBE_ARTIFACT_DIR に TestRunner metadata probe artifact dir を指定すること",
+    );
+    let artifact_dir = std::path::PathBuf::from(artifact_dir);
+    let _ = std::fs::remove_dir_all(&artifact_dir);
+    std::fs::create_dir_all(&artifact_dir)
+        .expect("Linux x86_64 TestRunner metadata probe artifact dir 作成に失敗");
+
+    let probe_source = r#"(module App.Probe)
+(import Tools.Test.TestRunner)
+(import Syntax.Lexer)
+(import Syntax.Parser)
+
+(defn main []
+  (let [src "(defn abs [x] :example [(= (abs 5) 5) (= (abs (- 0 7)) 7)] :invariant (>= result 0) (if (< x 0) (- 0 x) x))"
+        tokens (tokenize-with-spans src)
+        count (token-count tokens)
+        example-end (consume-form tokens 8)
+        example-text (payload-source src tokens 8 example-end)
+        parsed-examples (parse-program example-text)
+        appended-examples (append-example-payload src tokens 8 example-end 123 (vector-new 8))
+        examples (extract-examples src)
+        invariants (extract-invariants src)
+        suite (extract-test-cases src)]
+    (do
+      (print 9100)
+      (print count)
+      (print (token-kind tokens 6))
+      (print (string-length (directive-name src tokens 6 count)))
+      (print example-end)
+      (print (string-length example-text))
+      (print (vector-length parsed-examples))
+      (print (vector-length appended-examples))
+      (print (vector-length examples))
+      (print (vector-length invariants))
+      (print (vector-length suite))
+      0)))"#;
+    let escaped_probe_source = escape_lsharp_string(probe_source);
+    let payload_expr = format!(
+        r#"(do
+            (write-file "src/App/Probe.ls" "{escaped_probe_source}")
+            (compile-file-functions-payload-with-cache "src/App/Probe.ls" 10 cache-ref parse-count-ref))"#
+    );
+    let mut modules = SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES.to_vec();
+    modules.push("TestRunner.ls");
+    let bundle = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        run_selfhost_main_native_x86_segmented_host_bytes_harness_with_payload_and_args_for_modules(
+            "linux-x86-test-runner-metadata-probe-bundle",
+            &modules,
+            &payload_expr,
+            &[],
+        )
+    });
+
+    assert!(
+        bundle.entrypoint_offset < bundle.code_bytes.len(),
+        "Linux x86_64 TestRunner metadata probe entrypoint は code 範囲内にあること: entry={} len={}",
+        bundle.entrypoint_offset,
+        bundle.code_bytes.len()
+    );
+    assert!(
+        !bundle.code_bytes.is_empty(),
+        "Linux x86_64 TestRunner metadata probe code artifact は空でないこと"
+    );
+
+    std::fs::write(artifact_dir.join("stage-code.bin"), &bundle.code_bytes)
+        .expect("Linux x86_64 TestRunner metadata probe stage-code.bin 書き込みに失敗");
+    std::fs::write(artifact_dir.join("stage-data.bin"), &bundle.data_bytes)
+        .expect("Linux x86_64 TestRunner metadata probe stage-data.bin 書き込みに失敗");
+    std::fs::write(
+        artifact_dir.join("entrypoint-offset.txt"),
+        format!("{}\n", bundle.entrypoint_offset),
+    )
+    .expect("Linux x86_64 TestRunner metadata probe entrypoint-offset.txt 書き込みに失敗");
+    std::fs::write(
+        artifact_dir.join("function-start-len.txt"),
+        format!("{}\n", bundle.function_start_len),
+    )
+    .expect("Linux x86_64 TestRunner metadata probe function-start-len.txt 書き込みに失敗");
+    std::fs::write(
+        artifact_dir.join("main-func-idx.txt"),
+        format!("{}\n", bundle.main_func_idx),
+    )
+    .expect("Linux x86_64 TestRunner metadata probe main-func-idx.txt 書き込みに失敗");
+}
+
 /// NATIVE-LINUX-X86-02m: host 側 selfhost が actual self-regeneration 用 stage1 x86 payload を生成すること。
 #[test]
 #[ignore]
@@ -54405,6 +54570,93 @@ fn test_e2e_native_macos_aarch64_fixedpoint_compiler_exports_linux_x86_app_cli_b
             .contains("Linux x86_64 native App.Cli source-file smoke passed"),
         "Linux App.Cli source-file smoke success marker がない: {:?}",
         String::from_utf8_lossy(&output.stdout)
+    );
+}
+
+/// V2-16d: fixed-point compiler が Linux x86_64 で TestRunner metadata の各段階を観測できる bundle を出力すること。
+#[test]
+#[ignore]
+fn test_e2e_native_macos_aarch64_fixedpoint_compiler_exports_linux_x86_test_runner_metadata_probe_bundle()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let artifact_dir = std::path::PathBuf::from(
+        std::env::var_os(
+            "LSHARP_NATIVE_MACOS_AARCH64_CROSS_LINUX_X86_TEST_RUNNER_METADATA_PROBE_ARTIFACT_DIR",
+        )
+        .expect(
+            "LSHARP_NATIVE_MACOS_AARCH64_CROSS_LINUX_X86_TEST_RUNNER_METADATA_PROBE_ARTIFACT_DIR を指定すること",
+        ),
+    );
+    let package_root = selfhost_package_root();
+    let probe_path = package_root.join("src/App/NativeLinuxX86MetadataProbe.ls");
+    assert!(
+        !probe_path.exists(),
+        "Linux x86 TestRunner metadata probe source が既に存在するため上書きしない: {}",
+        probe_path.display()
+    );
+    std::fs::write(
+        &probe_path,
+        r#"(module App.NativeLinuxX86MetadataProbe)
+(import Tools.Test.TestRunner)
+(import Syntax.Lexer)
+(import Syntax.Parser)
+
+(defn main []
+  (let [src "(defn abs [x] :example [(= (abs 5) 5) (= (abs (- 0 7)) 7)] :invariant (>= result 0) (if (< x 0) (- 0 x) x))"
+        tokens (tokenize-with-spans src)
+        count (token-count tokens)
+        example-end (consume-form tokens 8)
+        example-text (payload-source src tokens 8 example-end)
+        parsed-literal (parse-program "(= 1 1)")
+        parsed-examples (parse-program example-text)
+        appended-examples (append-example-payload src tokens 8 example-end 123 (vector-new 8))
+        extracted-suite (extract-test-cases src)
+        generated-suite (generate-tests src)]
+    (do
+      (print 9200)
+      (print count)
+      (print (token-kind tokens 6))
+      (print (string-length (directive-name src tokens 6 count)))
+      (print example-end)
+      (print (string-length example-text))
+      (print-string example-text)
+      (print-string "\n")
+      (print (vector-length parsed-literal))
+      (print (vector-length parsed-examples))
+      (print (vector-length appended-examples))
+      (print (vector-length (vector-get extracted-suite 0)))
+      (print (vector-length (vector-get extracted-suite 1)))
+      (print (vector-length (vector-get generated-suite 0)))
+      (print (vector-length (vector-get generated-suite 1)))
+      0)))
+"#,
+    )
+    .expect("Linux x86 TestRunner metadata probe source の書き込みに失敗");
+
+    let result = generate_actual_macos_aarch64_cross_linux_x86_bundle_for_source(
+        &artifact_dir,
+        "src/App/NativeLinuxX86MetadataProbe.ls",
+        "App.NativeLinuxX86MetadataProbe",
+        "cross-target native TestRunner metadata probe bundle",
+    );
+    let _ = std::fs::remove_file(&probe_path);
+    let bundle =
+        result.expect("fixed-point compiler による Linux x86 TestRunner metadata probe 生成に失敗");
+
+    assert!(
+        !bundle.code_bytes.is_empty(),
+        "Linux x86 TestRunner metadata probe code bundle が空"
+    );
+    assert!(
+        bundle.entrypoint_offset < bundle.code_bytes.len(),
+        "Linux x86 TestRunner metadata probe entrypoint が code bundle 範囲外: {bundle:?}"
+    );
+    assert!(
+        artifact_dir.join("manifest.json").is_file(),
+        "Linux x86 TestRunner metadata probe bundle manifest が生成されること"
     );
 }
 

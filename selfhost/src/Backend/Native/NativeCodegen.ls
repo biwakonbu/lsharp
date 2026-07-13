@@ -8430,8 +8430,10 @@
                    call-rel-bytes)]
     (if (>= current-depth 3)
       (concat-byte-vectors-rooted
-        call-seq
-        (emit-mov-rcx-from-local (native-value-window-spill-offset frame-base-slot-count 0)))
+        (concat-byte-vectors-rooted
+          call-seq
+          (emit-mov-rcx-from-local (native-value-window-spill-offset frame-base-slot-count 0)))
+        (emit-drop-window-spill-shifts-x86 frame-base-slot-count 1 (- current-depth 3)))
       call-seq)))
 
 (defn emit-two-arg-call-x86 [rel frame-base-slot-count current-depth]
@@ -8766,7 +8768,7 @@
                 (if (= target-param-count 3)
                   (if (>= current-depth 5) (+ 25 (* (- current-depth 4) 14)) (if (= current-depth 4) 25 18))
                   (if (= target-param-count 2)
-                    (if (>= current-depth 3) 18 11)
+                    (if (>= current-depth 3) (+ 18 (* (- current-depth 3) 14)) 11)
                     (if (= target-param-count 1)
                       10
                       (if (= current-depth 0)
