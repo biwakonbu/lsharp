@@ -28,6 +28,69 @@ fn make_executable(path: &std::path::Path) {
     std::fs::set_permissions(path, perms).expect("permission の設定に失敗");
 }
 
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+#[test]
+fn test_e2e_native_macos_aarch64_materializer_executes_tiny_stage_code() {
+    use std::process::Command;
+
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let materializer = project_root.join("scripts/ci/materialize-native-macos-aarch64-bundle.py");
+    let temp_root = ops07_unique_temp_dir("native-macos-aarch64-materializer");
+    let stage_dir = temp_root.join("stage");
+    let code_name = "tiny-stage-code.bin";
+    let entrypoint_name = "entrypoint-offset.txt";
+    std::fs::create_dir_all(&stage_dir).expect("stage dir の作成に失敗");
+    std::fs::write(
+        stage_dir.join(code_name),
+        [0x00, 0x00, 0x80, 0x52, 0xc0, 0x03, 0x5f, 0xd6],
+    )
+    .expect("tiny stage code の書き込みに失敗");
+    std::fs::write(stage_dir.join(entrypoint_name), "0\n")
+        .expect("entrypoint offset の書き込みに失敗");
+
+    let materialize = Command::new("python3")
+        .arg(&materializer)
+        .arg(&stage_dir)
+        .arg(code_name)
+        .arg(entrypoint_name)
+        .output()
+        .expect("macOS arm64 materializer の実行に失敗");
+    assert!(
+        materialize.status.success(),
+        "macOS arm64 materializer が失敗した: status={:?}, stdout={}, stderr={}",
+        materialize.status.code(),
+        String::from_utf8_lossy(&materialize.stdout),
+        String::from_utf8_lossy(&materialize.stderr)
+    );
+
+    let program = stage_dir.join("program.native");
+    assert!(
+        program.is_file(),
+        "materializer は program.native を生成するべき"
+    );
+    assert!(
+        std::fs::metadata(&program)
+            .expect("program.native の metadata 取得に失敗")
+            .permissions()
+            .mode()
+            & 0o111
+            != 0,
+        "program.native は executable であるべき"
+    );
+    let execution = Command::new(&program)
+        .output()
+        .expect("tiny stage program の実行に失敗");
+    assert!(
+        execution.status.success(),
+        "tiny stage program は exit 0 で終了するべき: status={:?}, stdout={}, stderr={}",
+        execution.status.code(),
+        String::from_utf8_lossy(&execution.stdout),
+        String::from_utf8_lossy(&execution.stderr)
+    );
+
+    std::fs::remove_dir_all(&temp_root).ok();
+}
+
 #[cfg(unix)]
 fn write_release_fixture_launcher(path: &std::path::Path) {
     std::fs::write(
