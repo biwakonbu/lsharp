@@ -1,71 +1,73 @@
 # Rust 依存境界の縮小
 
-## 目的
+## 目的と対象
 
-L# の通常開発を `cargo build` の待ち時間から切り離す。対象の product/release target は Mac Apple Silicon (`aarch64-apple-darwin`) と Linux x86_64 (`x86_64-unknown-linux-gnu`) のみとする。
+L# の通常開発を Rust toolchain や `cargo` の実行待ちから切り離す。対象の product/release target は Mac Apple Silicon (`aarch64-apple-darwin`) と Linux x86_64 (`x86_64-unknown-linux-gnu`) のみである。
 
-この文書の完了条件は Rust workspace の物理削除ではない。通常の L# ソース編集、コンパイル、テストで Rust toolchain を必要としないことと、Rust の責務を bootstrap/oracle/rollback に限定することである。
+ここでいう「Rust 不要」は、あらかじめ取得した native stage0 package を使う日常の編集・検査・テスト・Wasm 出力の経路に `cargo`、`rustc`、host の `lsharp` を置かないという意味である。Rust workspace の物理削除や、MCP/LSP を含む全 host integration の native 化は含まない。
 
 ## 現在の事実
 
-- selfhost compiler の fixed-point は、supported target の stage chain で確認済みである。
-- native-only `program.native` の release smoke は `--version` と `--help` だけを実証対象にしている。source-file command の成功は release readiness の根拠ではない。
-- `selfhost/src/App/Cli.ls` の default `compile -o` / `build -o` は `write-file-bytes` で valid core Wasm bytes を書く。`wasi-component` output は selfhost 側に Component encoder を持たないため、artifact を偽装せず external packaging が必要として失敗する。`selfhost/src/App/EmbeddedCli.ls` は引き続き summary text を書く。
-- `7f13a12489176499c229e050d84f8e9ddec18c3a` から actual Mac Apple Silicon native `App.Cli` artifact を再生成し、生成物だけで `compile -o` / `build -o` の valid core Wasm header / validator と component target の explicit rejection を確認した。これは release smoke の boot surface を広げるものではない。
-- 保存済み Mac Apple Silicon stage3 `program.native` は、Rust host process を使わず `App.Cli test` の metadata source-file slice を実行できる。成功 suite は `examples:2` / `invariants:1` / `failures:0`、失敗 suite は `examples:0` / `invariants:2` / `failures:2` を返す。invariant は Rust runtime と同じ 0/1/5/-1/42（2 引数以上は先頭 2 引数の 3x3 組合せ）を評価し、先行 failure で評価を打ち切らない。この証跡は Mac の native `test` 一項目に限るため、全 command suite、Linux、stage0 からの再生成後の gate を完了扱いにしない。
-- selfhost compiler IR は `write-file` (opcode `89`) と内部 `write-file-bytes` (opcode `90`) を持つ。AArch64 helper は tagged heap offset を heap base へ戻すよう修正し、managed String の actual native write/read roundtrip で byte count `14` と payload `native-payload` を確認した。Linux x86_64 は tagged actual address を使うため、Lima VM の単一 ELF object smoke で managed argv path / Vector の raw bytes `00 61 73 6d` と success status `0` を確認した。現在の `App.Cli` output builder は selfhost `env` runtime import layout の valid core Wasm を返すため、standalone WASI Preview1 execution / component packaging / Linux native `App.Cli` source-file output は単独では完了していない。
-- Rust host launcher は embedded guest の command execution、actual artifact write、Wasm component capability wiring を担当している。prebuilt launcher を使う利用者は Rust toolchain を必要としないが、Rust 実装への runtime dependence は残る。
-- known rollback host-launcher archive を stage0 seed にした local bootstrap は、`cargo` を PATH から外した状態で stage2 再生成、`check`、actual Wasm output まで実行できる。これは no-Cargo development loop の証跡である。
-- `fetch-stage0.sh` が要求する GitHub Release archive/checksum の公開契約は未接続である。fresh clone が自動で stage0 を取得できることは、この時点では未達とする。
+- `lsharp-native-selfhost-stage0` package は `compiler`、`transport_driver`、`materializer` を持つ manifest で native bootstrap を開始する。release 用の `App.Cli` archive は stage0 package ではない。
+- Mac Apple Silicon では、current fixed-point stage3 compiler を stage0 package 化し、`scripts/native-selfhost-dev.sh` を通す source-file smoke が成功している。smoke は `cargo`、`rustc`、host `lsharp` を PATH 上で失敗させた状態で `parse`、`check`、`fmt`、通常と metadata の `test`、`compile -o`、`build -o` を実行する。
+- Linux x86_64 は current import ABI 修正後の stage1 -> stage3 fixed-point を Lima VM で再生成中である。以前の cross artifact による App.Cli smoke は current stage0 からの再生成を証明しないため、Linux の同じ source-file smoke が通るまで完了扱いにしない。
+- native bootstrap の初回だけは source tree を再生成する。fingerprint が不変なら `scripts/native-selfhost-dev.sh` は生成済み `program.native` を再利用する。
+- `LSHARP_NATIVE_MACOS_AARCH64_CODESIGN_IDENTITY` は macOS host policy 上、生成済み Mach-O の実行に署名が必要な環境でだけ指定する。成功時の codesign 出力は command stderr に漏らさず、失敗時だけ診断として返す。
+- GitHub Actions の自動 build は使わない。検証と release は Mac と Lima VM の手動 local gate で行う。
 
-## V2-16a: Cargo なしの開発ループ
+## Native 開発経路
 
-`scripts/selfhost-dev.sh` は stage0 package を入力にして stage1/stage2 を組み、stage2 launcher に通常の argv を委譲する。script 自体は `cargo` を呼ばない。
-
-stage0 directory には少なくとも `lsharp` と `lsharp.component.wasm` が必要である。既知の rollback host-launcher archive を展開した directory を入力にできる。
+stage0 package が既にある場合、通常のコア開発は次の runner を使う。
 
 ```bash
-STAGE0_DIR=/path/to/lsharp-host-launcher \
-  ./scripts/selfhost-dev.sh check examples/fib.ls
+NATIVE_STAGE0_DIR=/path/to/lsharp-native-selfhost-stage0 \
+  ./scripts/native-selfhost-dev.sh check examples/fib.ls
 
-STAGE0_DIR=/path/to/lsharp-host-launcher \
-  ./scripts/selfhost-dev.sh compile examples/fib.ls -o fib.component.wasm
+NATIVE_STAGE0_DIR=/path/to/lsharp-native-selfhost-stage0 \
+  ./scripts/native-selfhost-dev.sh --bootstrap compile examples/fib.ls -o fib.wasm
 ```
 
-初回、または `ENTRY_FILE` / `selfhost/src/**/*.ls` の fingerprint が変わった場合は stage1/stage2 を再生成する。常に再生成したい場合は `--bootstrap` を渡す。
+`--bootstrap` は stage0 compiler で current `selfhost/` を native program に再生成する。通常コマンドだけであれば、同じ source fingerprint で bootstrap を繰り返さない。
+
+Linux x86_64 の final gate は macOS host から Lima へ package と必要最小限の source/scripts をコピーして実行する。
 
 ```bash
-STAGE0_DIR=/path/to/lsharp-host-launcher \
-  ./scripts/selfhost-dev.sh --bootstrap check examples/fib.ls
+LSHARP_NATIVE_LINUX_X86_STAGE0_DIR=/path/to/linux-stage0 \
+  ./scripts/ci/native-linux-x86-native-stage0-source-file-smoke.sh
 ```
 
-runner は `LSHARP_PATH` と `LSHARP_DISABLE_EMBEDDED_COMPONENT` を除去してから bootstrap と stage2 command を実行する。外部 launcher への意図しない delegation を避けるためである。`--help` を stage2 へ渡す場合は `-- --help` を使う。
+この wrapper は VM の `/tmp` 空き容量を 4 GiB 以上で確認し、VM 内で `scripts/ci/native-selfhost-dev-source-file-smoke.sh` を実行する。source-file smoke は `cargo`、`rustc`、host `lsharp` を blocklist に入れるため、Rust host fallback は成功条件にならない。
 
-この経路は `cargo` を編集・実行の hot path から外すが、immutable な Rust 製 host launcher を bootstrap compatibility boundary として使う。Rust 実装を不要にした証拠ではない。
+## Command Boundary
 
-## 目標境界
+| Command surface | Native の責務 | Rust の要否 | 外部条件・制約 |
+| --- | --- | --- | --- |
+| `parse` / `check` / `fmt` / `test` | native `program.native` が直接実行する core CLI | 通常開発では不要 | Bash、Python 3、hash tool。stage materialize は Mac で `clang`、Linux で `cc` を使う。Mac は必要な host でのみ codesign identity を指定する。 |
+| `compile -o` / `build -o` (WASI Preview1) | native CLI が actual core Wasm bytes を出力する | 通常開発では不要 | 上と同じ。Mac は検証済み、Linux は current stage0 gate 待ち。 |
+| component `compile` / `build` | native core Wasm を component 化する | 不要 | Python helper と外部 `wasm-tools` が必要。これは Rust host fallback ではない。 |
+| `install` | package install / module index helper | 不要 | Python 3。git dependency は `git` が必要。 |
+| `repl` | expression ごとの native compile + run | 不要 | Python helper と外部 `wasmtime`。stateful evaluator ではない。 |
+| `doc` | native `doc --json` を document helper が整形する | 不要 | Python helper。 |
+| `lsp --stdio` | native program に stdio replay shim を接続する | 不要 | Python shim。bare `lsp` は native runner が明示的に拒否する。 |
+| `mcp-server` | native runner は提供しない | 必要 | Rust host integration の責務として明示的に失敗する。 |
+| `compile --emit-ir` | native runner は提供しない | 必要 | Rust host integration の責務として明示的に失敗する。 |
+| `--target web-wasm` / `--target native` | native runner は提供しない | 必要 | native selfhost の supported output target 外として明示的に失敗する。 |
 
-| 範囲 | 通常開発で使うもの | V2-16 完了後の Rust の役割 |
-|---|---|---|
-| bootstrap | stage0 package と stage2 再利用 | stage0 取得と緊急復旧のみ |
-| parse/check/fmt/test | selfhost stage2 または native CLI | oracle 比較のみ |
-| compile/build output | native CLI が actual bytes を書く | oracle 比較と bootstrap のみ |
-| install/repl/lsp/doc | native selfhost または明示した外部 tool | hidden host-launcher fallback なし |
-| release verification | 両 target の native artifact E2E | optional differential と rollback 検証 |
+## Rust に残る責務
 
-immutable prebuilt host launcher に委譲する executable は、移行中の開発 runner としては許容する。これは edit/run loop から `cargo` を外すが、base implementation が Rust を必要としなくなったことは意味しない。
+Rust が完全に不要になったわけではない。次の作業は native base development loop の外側に残る。
 
-## 残りの順序
+1. stage0 の生成・配布・取得。fresh clone が自動で stage0 を取得する public release contract は別途閉じる必要がある。通常開発は供給済み stage0 package を前提にする。
+2. native selfhost と Rust implementation の oracle/differential 比較、障害解析、emergency rollback。
+3. `mcp-server`、bare LSP、`--emit-ir`、native target など、上表で明示した Rust host integration surface。
 
-1. `V2-16b`: byte-output ABI、両 target の native `write-file` runtime helper、Mac actual `App.Cli` default output の valid core Wasm bytes 書き込みは確認済み。standalone WASI Preview1 execution/capability ABI、`EmbeddedCli` output、component sidecar、Linux native `App.Cli` source-file output E2E を接続する。
-2. `V2-16c`: host-only public command を native selfhost 実装へ移すか、外部 tool の責務として明示する。planned response や warmup-only REPL は parity と扱わない。
-3. `V2-16d`: Mac Apple Silicon と local Lima Linux x86_64 VM で、native `program.native` 単独の source-file command suite を実行する。stage0 からの再生成後も同じ gate を通す。
-4. `V2-16e`: 通常の開発/test 手順から Rust を外し、Rust workspace を stage0/oracle/rollback に限定する。
+したがって、base language development については Linux gate 完了後に「Rust なしで開発可能」と言える。一方で「L# の全機能が Rust なし」とは言えず、上表の Rust-only surface と external tool dependency は残る。
 
-## 必須証跡
+## 検証と残タスク
 
-- `scripts/selfhost-dev.sh` の fixture が bootstrap、stage2 reuse、source change refresh、forced rebuild、command delegation を検証し、script に `cargo` がないことを検証する。
-- Mac actual `program.native` の `compile -o` と `build -o` は nonempty Wasm bytes と `\0asm` header を生成済み。Linux の managed Vector write smoke は完了しており、Linux actual `App.Cli` source-file output を追加で確認する。
-- native `parse`、`check`、`fmt`、`test`、`compile -o`、`build -o` が host launcher を process path に置かず real source file に対して動く。
-- stage0-to-stage2 rebuild 後にも同じ native command suite が通る。
-- documentation が prebuilt executable の toolchain-free use と Rust runtime dependence の撤去を区別する。
+- `bash scripts/ci/test-native-selfhost-dev.sh` は runner の source refresh、native direct command routing、external helper routing、Rust-only command の明示拒否を検証する。
+- `test_native_selfhost_dev_source_file_smoke_script_contract` は smoke が host fallback を発見・利用しないことを固定する。
+- `test_e2e_native_macos_aarch64_materializer_executes_tiny_stage_code` は macOS materializer の再署名成功時に stderr が空であることを固定する。
+- Mac Apple Silicon の actual stage0 source-file smoke は 2026-07-13 に成功した。
+- Linux x86_64 は current fixed-point artifact を stage0 package 化し、`native-linux-x86-native-stage0-source-file-smoke.sh` を成功させることが残っている。
+- Linux 成功後、両 target の evidence と command boundary を再確認して V2-16d / V2-16e の完了可否を判断する。stage0 の public acquisition はそれとは別の release/distribution task として追跡する。

@@ -1822,6 +1822,67 @@ fn test_native_selfhost_dev_source_file_smoke_script_contract() {
 }
 
 #[test]
+fn test_native_linux_x86_native_stage0_source_file_smoke_script_contract() {
+    let script_path = selfhost_project_root()
+        .join("scripts/ci/native-linux-x86-native-stage0-source-file-smoke.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+
+    for required in [
+        "LSHARP_NATIVE_LINUX_X86_STAGE0_DIR",
+        "native-selfhost-dev-source-file-smoke.sh",
+        "NATIVE_STAGE0_DIR",
+        "NATIVE_SELFHOST_SOURCE_ROOT",
+        "NATIVE_SELFHOST_STAGE_DIR",
+        "limactl copy",
+        "selfhost",
+        "VM free space gate",
+        "trap cleanup EXIT",
+    ] {
+        assert!(
+            script.contains(required),
+            "Linux native stage0 source-file smoke は `{required}` を固定するべき"
+        );
+    }
+    for forbidden in [
+        "cargo build",
+        "cargo test",
+        "CARGO_TARGET_DIR",
+        "command -v lsharp",
+        "which lsharp",
+    ] {
+        assert!(
+            !script.contains(forbidden),
+            "Linux native stage0 source-file smoke は Rust/Cargo または host lsharp discovery を含めてはならない: {forbidden}"
+        );
+    }
+}
+
+#[test]
+fn test_rust_boundary_reduction_doc_records_native_stage0_command_boundaries() {
+    let document_path = selfhost_project_root()
+        .join("docs/development/operations/rust-boundary-reduction.md");
+    let document = std::fs::read_to_string(&document_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", document_path.display()));
+
+    for required in [
+        "scripts/native-selfhost-dev.sh",
+        "NATIVE_STAGE0_DIR",
+        "x86_64-unknown-linux-gnu",
+        "aarch64-apple-darwin",
+        "mcp-server",
+        "--emit-ir",
+        "wasm-tools",
+        "wasmtime",
+    ] {
+        assert!(
+            document.contains(required),
+            "Rust dependency boundary document は native command boundary `{required}` を明記するべき"
+        );
+    }
+}
+
+#[test]
 fn test_native_linux_x86_target_export_ignores_generated_seed_in_source_digest() {
     let script_path =
         selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
