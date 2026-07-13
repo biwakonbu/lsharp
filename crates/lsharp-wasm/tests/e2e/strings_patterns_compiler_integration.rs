@@ -2369,6 +2369,53 @@ fn test_e2e_selfhost_compiler_mode_record_constructor_and_static_accessor_run() 
     assert_eq!(output, "41\n2\n");
 }
 
+/// legacy base compiler: record constructor と static accessor を runtime import base 付きで実行できること
+#[test]
+fn test_e2e_selfhost_legacy_base_compiler_record_constructor_and_static_accessor_run() {
+    let harness = r#"
+(defn print-bytes-loop [bytes idx count]
+  (if (>= idx count)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes-loop bytes (+ idx 1) count))))
+
+(defn main []
+  (let [source "(defn inc [n] (+ n 1)) (type Point (record (: x Int) (: y Int))) (defn main [] (let [point (Point (inc 40) 2)] (do (print (Point.x point)) (print (Point.y point)) 0)))"
+        program (parse-program source)
+        pair (compile-program-functions-with-base program 10)
+        functions (vector-get pair 1)
+        wasm-bytes (build-wasm-bytes-wasi functions (vector-new 0))]
+    (do
+      (print (vector-length wasm-bytes))
+      (print-bytes-loop wasm-bytes 0 (vector-length wasm-bytes))
+      0)))
+"#;
+    let compiler_mode = format!("{}\n{}", selfhost_module("CompilerMode.ls"), harness);
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("IR.ls"),
+        selfhost_module("Compiler.ls"),
+        selfhost_module("WasiBackend.ls"),
+        selfhost_module("WasmEmit.ls"),
+        selfhost_module("ModuleResolver.ls"),
+        compiler_mode
+    );
+    let emitted = compile_and_run(&combined);
+    let wasm_bytes = parse_printed_wasm_bytes(&emitted);
+    let output = super::selfhost_bootstrap_four_layer::run_wasm_with_six_imports_compiler_mode(
+        &wasm_bytes,
+        "",
+        &[],
+    )
+    .expect("selfhost legacy base compiler record module should run");
+    assert_eq!(output, "41\n2\n");
+}
+
 /// selfhost compiler-mode: import 先 record の constructor/static accessor が actual Wasm で実行できること
 #[test]
 fn test_e2e_selfhost_compiler_mode_imported_record_constructor_and_static_accessor_run() {

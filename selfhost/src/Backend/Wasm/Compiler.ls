@@ -3457,11 +3457,56 @@
           (do
             (root_pop)
             result))))))
-(defn compile-program-functions [decls] (let [n (vector-length decls) pass1 (register-defns-chunked decls 0 n (ftable-new) 0) ftable (vector-get pass1 2) functions-state (compile-defn-functions-chunked decls 0 n ftable (vector-new 8)) functions (vector-get functions-state 2)] (push-object-vector (push-object-vector (vector-new 2) ftable) functions)))
+(defn program-functions-base [decls base-idx]
+  (do
+    (root_push decls)
+    (let [n (vector-length decls)
+      prelude (record-prelude-chunked decls 0 n (ftable-new) base-idx (vector-new 8))]
+      (do
+        (root_push prelude)
+        (let [prelude-ftable (vector-get prelude 2)
+          prelude-func-idx (vector-get prelude 3)
+          prelude-functions (vector-get prelude 4)]
+          (do
+            (root_push prelude-ftable)
+            (root_push prelude-functions)
+            (let [pass1 (register-defns-chunked decls 0 n prelude-ftable prelude-func-idx)]
+              (do
+                (root_push pass1)
+                (let [ftable (vector-get pass1 2)]
+                  (do
+                    (root_push ftable)
+                    (let [functions-state (compile-defn-functions-chunked decls 0 n ftable prelude-functions)]
+                      (do
+                        (root_push functions-state)
+                        (let [functions (vector-get functions-state 2)]
+                          (do
+                            (root_push functions)
+                            (let [result1 (push-object-vector (vector-new 2) ftable)]
+                              (do
+                                (root_push result1)
+                                (let [result (push-object-vector result1 functions)]
+                                  (do
+                                    (root_push result)
+                                    (root_pop)
+                                    (root_pop)
+                                    (root_pop)
+                                    (root_pop)
+                                    (root_pop)
+                                    (root_pop)
+                                    (root_pop)
+                                    (root_pop)
+                                    (root_pop)
+                                    (root_pop)
+                                    result))))))))))))))))))
+
+(defn compile-program-functions [decls]
+  (program-functions-base decls 0))
 ;; V2-11: import section を含む harness 向けに base offset を取る変種。
 ;; base-idx は user func を ftable に登録する際の起点で、selfhost ランタイム
 ;; (root_push 等) を import 0..base-idx-1 に置く構成と整合する。
-(defn compile-program-functions-with-base [decls base-idx] (let [n (vector-length decls) pass1 (register-defns-chunked decls 0 n (ftable-new) base-idx) ftable (vector-get pass1 2) functions-state (compile-defn-functions-chunked decls 0 n ftable (vector-new 8)) functions (vector-get functions-state 2)] (push-object-vector (push-object-vector (vector-new 2) ftable) functions)))
+(defn compile-program-functions-with-base [decls base-idx]
+  (program-functions-base decls base-idx))
 (defn compile-program [decls] (let [pair (compile-program-functions decls) ftable (vector-get pair 0) functions (vector-get pair 1) ir-state (collect-function-irs-chunked functions 0 (vector-length functions) (vector-new 8)) ir-list (vector-get ir-state 2)] (push-object-vector (push-object-vector (vector-new 2) ftable) ir-list)))
 (defn lower [x] (let [n (vector-length x)] (if (= n 0) (vector-new 0) (if (= n 2) (if (if (= (vector-get x 0) 1) true (= (vector-get x 0) 2)) (compile-expr x (env-new) (vector-new 8)) (let [pair (compile-program x) ir-list (vector-get pair 1)] (if (> (vector-length ir-list) 0) (vector-get ir-list 0) (vector-new 0)))) (let [pair (compile-program x) ir-list (vector-get pair 1)] (if (> (vector-length ir-list) 0) (vector-get ir-list 0) (vector-new 0)))))))
 (defn bind-param-hashes [param-hashes idx n env local-idx]

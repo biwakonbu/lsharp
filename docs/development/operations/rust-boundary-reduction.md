@@ -14,7 +14,7 @@ L# の通常開発を Rust toolchain や `cargo` の実行待ちから切り離�
 
 ### record runtime 更新 (2026-07-14)
 
-自己ホスト Wasm compiler は `CompilerMode` の file-compile 経路で `RecordLit`、direct `FieldAccess`、nonparametric record の `Point ...` constructor、`Point.field` static accessor を既存の `Map` runtime に lower する。record 本体を field 式の allocation 中も root に保持し、field hash を key に `map-insert` / `map-get` を使う。record constructor と static accessor は user `defn` より前に prelude として function table / Wasm body へ登録し、Wasm entrypoint が最後の user function のままになる順序を保つ。actual compiler-mode E2E は `{Point label "record" x 42}` から `(. point label)` を `string-length` へ渡して `6`、`(. point x)` から `42` を出力し、`Point (inc 40) 2` の `Point.x` / `Point.y` が `41` / `2` を出力することを確認した。import された別 module の `Point` でも同じ `41` / `2` を generated Wasm で確認した。immutable update、record pattern、parametric record runtime の専用 E2E は未完である。さらに `EmbeddedCli` / `SmokeCli` / no-arg pipeline smoke が使う legacy `lower` 経路は full program ではなく先頭 IR だけを返し、record prelude をまだ通さない。したがって今回の証跡はこの legacy public surface の Rust-free compile を意味しない。generated Wasm の `print-string` は opcode 87 が `WasmEmit.ls` で明示拒否されるため、別の output parity gap として残る。
+自己ホスト Wasm compiler は `CompilerMode` の file-compile 経路と legacy `compile-program-functions` / `compile-program-functions-with-base` で、`RecordLit`、direct `FieldAccess`、nonparametric record の `Point ...` constructor、`Point.field` static accessor を既存の `Map` runtime に lower する。record 本体を field 式の allocation 中も root に保持し、field hash を key に `map-insert` / `map-get` を使う。record constructor と static accessor は user `defn` より前に prelude として function table / Wasm body へ登録し、Wasm entrypoint が最後の user function のままになる順序を保つ。actual compiler-mode E2E は `{Point label "record" x 42}` から `(. point label)` を `string-length` へ渡して `6`、`(. point x)` から `42` を出力し、`Point (inc 40) 2` の `Point.x` / `Point.y` が `41` / `2` を出力することを確認した。import された別 module の `Point` でも同じ `41` / `2` を generated Wasm で確認した。legacy 10-import base wrapper でも同じ `41` / `2` を generated Wasm で確認した。immutable update、record pattern、parametric record runtime の専用 E2E は未完である。さらに `EmbeddedCli` / `SmokeCli` / no-arg pipeline smoke が使う legacy `lower` 経路は full program ではなく先頭 IR だけを返すため、今回の証跡はこの legacy public surface の Rust-free compile を意味しない。generated Wasm の `print-string` は opcode 87 が `WasmEmit.ls` で明示拒否されるため、別の output parity gap として残る。
 
 ### 型・宣言意味論の更新: ordinary ADT (2026-07-14)
 
@@ -77,7 +77,7 @@ Rust が完全に不要になったわけではない。次の作業は native b
 
 ### 残る Base Language Gap
 
-Rust を base implementation から外すため、legacy `lower` / embedded compiler の full-program 化、forward / recursive alias、scoped polymorphic variable、immutable record update、record pattern、GADT return type/refinement を自己ホスト側で実装・差分検証する必要がある。`CompilerMode` における nonparametric record の constructor/literal/direct/static accessor runtime と、nonparametric / parametric record の schema / `Type.field` accessor 型検査、ordinary ADT constructor/pattern はこの一覧から除外する。parametric record runtime は専用 E2E を通すまで保留する。
+Rust を base implementation から外すため、legacy `lower` / embedded compiler の full-program 化、forward / recursive alias、scoped polymorphic variable、immutable record update、record pattern、GADT return type/refinement を自己ホスト側で実装・差分検証する必要がある。`CompilerMode` と legacy function wrapper における nonparametric record の constructor/literal/direct/static accessor runtime と、nonparametric / parametric record の schema / `Type.field` accessor 型検査、ordinary ADT constructor/pattern はこの一覧から除外する。parametric record runtime は専用 E2E を通すまで保留する。
 
 ## 検証と残タスク
 
