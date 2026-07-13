@@ -32,6 +32,7 @@ mod selfhost_rooting_parity;
 mod selfhost_stage0_scripts;
 mod selfhost_type_parser_parity;
 mod selfhost_typeinfer_basic_errors;
+mod selfhost_typeinfer_builtin_parity;
 mod selfhost_typeinfer_computation_do;
 mod selfhost_typeinfer_curried_apply;
 mod selfhost_typeinfer_curried_defn_field_access;
