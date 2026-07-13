@@ -47,6 +47,7 @@ chmod +x "$TEST_ROOT/scripts/ci/decode-native-selfhost-transport.py"
 cat >"$STAGE0_DIR/manifest.json" <<'JSON'
 {
   "kind": "lsharp-native-selfhost-stage0",
+  "target": "x86_64-unknown-linux-gnu",
   "compiler": "bin/compiler",
   "transport_driver": "bin/transport-driver",
   "materializer": "bin/materializer"
@@ -96,6 +97,7 @@ set -euo pipefail
 stage_dir="$1"
 [[ -s "$2" ]] || exit 95
 [[ -f "$3" ]] || exit 96
+[[ "${LSHARP_NATIVE_LINUX_X86_SKIP_ARGV0:-}" == "1" ]] || exit 99
 printf 'materializer|%s\n' "$stage_dir" >>"$NATIVE_TEST_LOG"
 cat >"$stage_dir/program.native" <<'PROGRAM'
 #!/usr/bin/env bash

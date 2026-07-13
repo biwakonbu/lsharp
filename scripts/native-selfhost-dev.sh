@@ -85,6 +85,11 @@ except (OSError, json.JSONDecodeError) as error:
 if manifest.get("kind") != "lsharp-native-selfhost-stage0":
     raise SystemExit("error: stage0 manifest kind must be lsharp-native-selfhost-stage0")
 
+target = manifest.get("target")
+if target not in ("x86_64-unknown-linux-gnu", "aarch64-apple-darwin"):
+    raise SystemExit("error: stage0 manifest target must be a supported native target")
+print(target)
+
 for field in ("compiler", "transport_driver", "materializer"):
     value = manifest.get(field)
     if not isinstance(value, str) or not value:
@@ -166,11 +171,12 @@ manifest_paths=()
 while IFS= read -r path; do
   manifest_paths+=("$path")
 done < <(parse_stage0_manifest)
-[[ ${#manifest_paths[@]} -eq 3 ]] || die "stage0 manifest did not provide three executables"
+[[ ${#manifest_paths[@]} -eq 4 ]] || die "stage0 manifest did not provide target and three executables"
 
-COMPILER="$STAGE0_DIR/${manifest_paths[0]}"
-TRANSPORT_DRIVER="$STAGE0_DIR/${manifest_paths[1]}"
-MATERIALIZER="$STAGE0_DIR/${manifest_paths[2]}"
+TARGET="${manifest_paths[0]}"
+COMPILER="$STAGE0_DIR/${manifest_paths[1]}"
+TRANSPORT_DRIVER="$STAGE0_DIR/${manifest_paths[2]}"
+MATERIALIZER="$STAGE0_DIR/${manifest_paths[3]}"
 for executable in "$COMPILER" "$TRANSPORT_DRIVER" "$MATERIALIZER"; do
   [[ -x "$executable" ]] || die "stage0 manifest executable is unavailable: $executable"
 done
@@ -184,7 +190,19 @@ if [[ "$FORCE_BOOTSTRAP" == "1" ]] || ! stage_is_ready "$FINGERPRINT"; then
   TRANSPORT_OUTPUT="$STAGE_DIR/transport-output.txt"
   "$TRANSPORT_DRIVER" "$COMPILER" "$COPIED_SOURCE" "$RELATIVE_ENTRY" "$TRANSPORT_OUTPUT"
   python3 "$DECODER" "$TRANSPORT_OUTPUT" "$STAGE_DIR"
-  "$MATERIALIZER" "$STAGE_DIR" "$STAGE_DIR/stage-code.bin" "$STAGE_DIR/entrypoint-offset.txt"
+  case "$TARGET" in
+    x86_64-unknown-linux-gnu)
+      LSHARP_NATIVE_LINUX_X86_SKIP_ARGV0=1 \
+        "$MATERIALIZER" "$STAGE_DIR" "$STAGE_DIR/stage-code.bin" "$STAGE_DIR/entrypoint-offset.txt"
+      ;;
+    aarch64-apple-darwin)
+      LSHARP_NATIVE_MACOS_AARCH64_SKIP_ARGV0=1 \
+        "$MATERIALIZER" "$STAGE_DIR" "$STAGE_DIR/stage-code.bin" "$STAGE_DIR/entrypoint-offset.txt"
+      ;;
+    *)
+      die "unsupported native stage0 target: $TARGET"
+      ;;
+  esac
   [[ -x "$STAGE_DIR/program.native" ]] || die "materializer did not produce an executable program.native"
   printf '%s\n' "$FINGERPRINT" >"$STAGE_DIR/.source-fingerprint.sha256"
 fi
