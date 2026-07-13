@@ -1205,11 +1205,15 @@
 (defn compile-expr-with-ftable-dispatch-complex-2-rest [tag node env ftable instrs]
   (if (= tag 8)
     (compile-lambda-with-ftable node env ftable instrs)
-    (if (= tag 9)
-      (compile-do-exprs node env ftable 0 (vector-get node 1) instrs)
+      (if (= tag 9)
+        (compile-do-exprs node env ftable 0 (vector-get node 1) instrs)
       (if (= tag 10)
         (compile-match-with-ftable node env ftable instrs)
-        (emit-to instrs 1 0)))))
+        (if (= tag 12)
+          (compile-recordlit-with-ftable node env ftable instrs)
+          (if (= tag 13)
+            (compile-fieldaccess-with-ftable node env ftable instrs)
+            (emit-to instrs 1 0)))))))
 
 (defn compile-apply-with-source [node source env ftable instrs data-ref]
   (let [func-node (vector-get node 1)
@@ -1433,7 +1437,11 @@
                 (compile-lambda-with-source node source env ftable instrs data-ref)
                 (if (= tag 10)
                   (compile-match-with-source node source env ftable instrs data-ref)
-                  (compile-expr-with-ftable node env ftable instrs))))))))))
+                  (if (= tag 12)
+                    (compile-recordlit-with-source node source env ftable instrs data-ref)
+                    (if (= tag 13)
+                      (compile-fieldaccess-with-source node source env ftable instrs data-ref)
+                      (compile-expr-with-ftable node env ftable instrs))))))))))))
 (defn compile-expr-with-source [node source env ftable instrs data-ref]
   (let [node-slot (root_push node)
     source-slot (root_push source)
@@ -1452,6 +1460,177 @@
       (root_pop)
       (root_pop)
       result)))
+
+;; record は既存の Map runtime に保持する。
+;; field 値は順に map-insert し、record 自体は field 式の allocation をまたいで root に残す。
+;; nominal discriminator は record pattern lowering と同時に追加する。
+(defn compile-record-map-field-instrs [env instrs record-local field-hash value-instrs]
+  (let [map-local (max-root-temp-base env instrs value-instrs)
+    key-local (+ map-local 1)
+    value-local (+ map-local 2)
+    instrs1 (emit-to instrs (op-local-get) record-local)
+    instrs2 (emit-to instrs1 (op-local-set) map-local)
+    instrs3 (emit-to instrs2 (op-i64-const) field-hash)
+    instrs4 (emit-to instrs3 (op-local-set) key-local)
+    instrs5 (append-instr-vector instrs4 value-instrs)
+    instrs6 (emit-to instrs5 (op-local-set) value-local)
+    instrs7 (emit-to instrs6 (op-local-get) map-local)
+    instrs8 (emit-to instrs7 (op-local-get) key-local)
+    instrs9 (emit-to instrs8 (op-local-get) value-local)
+    instrs10 (emit-to instrs9 (op-map-insert) map-local)]
+    (emit-to instrs10 (op-local-set) record-local)))
+
+(defn compile-recordlit-fields-with-source [node source env ftable idx count instrs record-local data-ref]
+  (if (>= idx count)
+    instrs
+    (do
+      (root_push node)
+      (root_push source)
+      (root_push env)
+      (root_push ftable)
+      (let [instrs-slot (root_push instrs)]
+        (do
+          (root_push data-ref)
+          (let [field-hash (vector-get node (+ 3 (* idx 2)))
+            value-node (vector-get node (+ 4 (* idx 2)))]
+            (do
+              (root_push value-node)
+              (let [value-instrs (compile-expr-with-source value-node source env ftable (vector-new 8) data-ref)]
+                (do
+                  (root_push value-instrs)
+                  (let [next-instrs (compile-record-map-field-instrs env instrs record-local field-hash value-instrs)]
+                    (do
+                      (root_set instrs-slot next-instrs)
+                      (root_pop)
+                      (root_pop)
+                      (let [result (compile-recordlit-fields-with-source node source env ftable (+ idx 1) count next-instrs record-local data-ref)]
+                        (do
+                          (root_set instrs-slot result)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          result)))))))))))))
+
+(defn compile-recordlit-with-source [node source env ftable instrs data-ref]
+  (do
+    (root_push node)
+    (root_push source)
+    (root_push env)
+    (root_push ftable)
+    (let [instrs-slot (root_push instrs)
+      record-local (max-root-temp-base1 env instrs)]
+      (do
+        (root_push data-ref)
+        (let [instrs1 (emit-to instrs (op-map-new) record-local)
+          instrs2 (emit-to instrs1 (op-local-set) record-local)
+          instrs3 (emit-root-push-drop instrs2 record-local)]
+          (do
+            (root_set instrs-slot instrs3)
+            (let [with-fields (compile-recordlit-fields-with-source node source env ftable 0 (vector-get node 2) instrs3 record-local data-ref)]
+              (do
+                (root_set instrs-slot with-fields)
+                (let [instrs4 (emit-to with-fields (op-local-get) record-local)
+                  result (emit-root-pop-drop instrs4)]
+                  (do
+                    (root_set instrs-slot result)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    result))))))))))
+
+(defn compile-recordlit-fields-with-ftable [node env ftable idx count instrs record-local]
+  (if (>= idx count)
+    instrs
+    (do
+      (root_push node)
+      (root_push env)
+      (root_push ftable)
+      (let [instrs-slot (root_push instrs)
+        field-hash (vector-get node (+ 3 (* idx 2)))
+        value-node (vector-get node (+ 4 (* idx 2)))]
+        (do
+          (root_push value-node)
+          (let [value-instrs (compile-expr-with-ftable value-node env ftable (vector-new 8))]
+            (do
+              (root_push value-instrs)
+              (let [next-instrs (compile-record-map-field-instrs env instrs record-local field-hash value-instrs)]
+                (do
+                  (root_set instrs-slot next-instrs)
+                  (root_pop)
+                  (root_pop)
+                  (let [result (compile-recordlit-fields-with-ftable node env ftable (+ idx 1) count next-instrs record-local)]
+                    (do
+                      (root_set instrs-slot result)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      result)))))))))))
+
+(defn compile-recordlit-with-ftable [node env ftable instrs]
+  (do
+    (root_push node)
+    (root_push env)
+    (root_push ftable)
+    (let [instrs-slot (root_push instrs)
+      record-local (max-root-temp-base1 env instrs)]
+      (do
+        (let [instrs1 (emit-to instrs (op-map-new) record-local)
+          instrs2 (emit-to instrs1 (op-local-set) record-local)
+          instrs3 (emit-root-push-drop instrs2 record-local)]
+          (do
+            (root_set instrs-slot instrs3)
+            (let [with-fields (compile-recordlit-fields-with-ftable node env ftable 0 (vector-get node 2) instrs3 record-local)]
+              (do
+                (root_set instrs-slot with-fields)
+                (let [instrs4 (emit-to with-fields (op-local-get) record-local)
+                  result (emit-root-pop-drop instrs4)]
+                  (do
+                    (root_set instrs-slot result)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    result))))))))))
+
+(defn compile-fieldaccess-with-source [node source env ftable instrs data-ref]
+  (let [record-expr (vector-get node 1)
+    field-hash (vector-get node 2)
+    record-instrs (compile-expr-with-source record-expr source env ftable (vector-new 8) data-ref)
+    key-instrs (emit-to (vector-new 2) (op-i64-const) field-hash)
+    record-root (alloc-root-needed record-expr)
+    simple-path (simple-map-operand record-expr)]
+    (do
+      (root_push record-instrs)
+      (root_push key-instrs)
+      (let [result (compile-map-lookup-builtin-with-ftable env instrs record-instrs key-instrs record-root 0 (op-map-get) simple-path)]
+        (do
+          (root_pop)
+          (root_pop)
+          result)))))
+
+(defn compile-fieldaccess-with-ftable [node env ftable instrs]
+  (let [record-expr (vector-get node 1)
+    field-hash (vector-get node 2)
+    record-instrs (compile-expr-with-ftable record-expr env ftable (vector-new 8))
+    key-instrs (emit-to (vector-new 2) (op-i64-const) field-hash)
+    record-root (alloc-root-needed record-expr)
+    simple-path (simple-map-operand record-expr)]
+    (do
+      (root_push record-instrs)
+      (root_push key-instrs)
+      (let [result (compile-map-lookup-builtin-with-ftable env instrs record-instrs key-instrs record-root 0 (op-map-get) simple-path)]
+        (do
+          (root_pop)
+          (root_pop)
+          result)))))
+
 (defn compile-expr-with-source-normal-setup-diagnostic [node source env ftable instrs data-ref]
   (let [node-slot (root_push node)
     source-slot (root_push source)

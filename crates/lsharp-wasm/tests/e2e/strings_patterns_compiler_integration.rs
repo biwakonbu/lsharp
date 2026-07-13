@@ -2273,6 +2273,54 @@ fn test_e2e_selfhost_compiler_mode_map_insert_preserves_entry() {
     assert_eq!(lines, vec!["1", "456"]);
 }
 
+/// selfhost compiler-mode: record literal の field access を actual Wasm で実行できること
+#[test]
+fn test_e2e_selfhost_compiler_mode_record_literal_field_access_runs() {
+    let harness = r#"
+(defn print-bytes-loop [bytes idx count]
+  (if (>= idx count)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes-loop bytes (+ idx 1) count))))
+
+(defn main []
+  (let [source "(type Point (record (: label String) (: x Int))) (defn main [] (let [point {Point label \"record\" x 42}] (do (print (string-length (. point label))) (print (. point x)) 0)))"
+        program (parse-program source)
+        pair (compile-program-functions-with-source source program)
+        functions (vector-get pair 1)
+        data (vector-get pair 2)
+        wasm-bytes (build-wasm-bytes-wasi functions data)]
+    (do
+      (print (vector-length wasm-bytes))
+      (print-bytes-loop wasm-bytes 0 (vector-length wasm-bytes))
+      0)))
+"#;
+    let compiler_mode = format!("{}\n{}", selfhost_module("CompilerMode.ls"), harness);
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("IR.ls"),
+        selfhost_module("Compiler.ls"),
+        selfhost_module("WasiBackend.ls"),
+        selfhost_module("WasmEmit.ls"),
+        selfhost_module("ModuleResolver.ls"),
+        compiler_mode
+    );
+    let emitted = compile_and_run(&combined);
+    let wasm_bytes = parse_printed_wasm_bytes(&emitted);
+    let output = super::selfhost_bootstrap_four_layer::run_wasm_with_six_imports_compiler_mode(
+        &wasm_bytes,
+        "",
+        &[],
+    )
+    .expect("selfhost compiler-mode record literal module should run");
+    assert_eq!(output, "6\n42\n");
+}
+
 /// selfhost compiler-mode: root_set を do 位置で使って map を更新できること
 #[test]
 fn test_e2e_selfhost_compiler_mode_root_set_updates_map_without_binding_result() {

@@ -12,6 +12,10 @@ L# の通常開発を Rust toolchain や `cargo` の実行待ちから切り離�
 
 直前の概要にある record 宣言未実装という記述は更新済みである。自己ホスト parser は field 名、`Type.field` accessor 名、raw TypeExpr を保持し、推論 prepass は record schema、constructor、accessor scheme を値環境へ登録して既知 record literal の field 型不一致を診断する。parametric record は `TypeInferRecordDecl.ls` が parameter ごとの bound variable を持つ structural record scheme を登録し、constructor、literal、accessor の使用ごとに scheme を instantiate する。Int field を持つ `Box` と Bool field を持つ `Box` の別使用箇所は独立であり、同じ `Pair a` literal 内の field は同じ具体化を共有する。`(. record field)` は let 束縛後も具体化済み schema の field 型を返し、field 型不一致と未定義 field を診断する。`{record | field value}` update も同じ schema 型へ単一化し、型不一致と未定義 field を診断する。`Type.field` は structural record 型との単一化を経て field 型を返し、不一致を診断する。accessor の実行時 lowering と record pattern はこの slice に含まない。
 
+### record runtime 更新 (2026-07-14)
+
+自己ホスト Wasm compiler は `RecordLit` と direct `FieldAccess` を既存の `Map` runtime に lower する。record 本体を field 式の allocation 中も root に保持し、field hash を key に `map-insert` / `map-get` を使う。actual compiler-mode E2E では `{Point label "record" x 42}` から `(. point label)` を `string-length` へ渡して `6`、`(. point x)` から `42` を出力する target Wasm を確認した。これは record literal と direct field access のみであり、`Point ...` constructor、`Point.field` static accessor、immutable update、record pattern は未実装である。generated Wasm の `print-string` は opcode 87 が `WasmEmit.ls` で明示拒否されるため、別の output parity gap として残る。
+
 ### 型・宣言意味論の更新: ordinary ADT (2026-07-14)
 
 ordinary ADT は parser が variant 名と raw field TypeExpr を保持し、`TypeInferAdt.ls` の prepass が type parameter を束縛した constructor scheme を値環境へ登録する。`(type (Maybe a) (Just a) Nothing)` の constructor application と match pattern は同じ polymorphic scheme を使い、`Int` と `Bool` の別使用箇所で独立に instantiate される。これは通常 ADT の constructor/pattern 型検査を Rust oracle の必須範囲から外す進捗であり、GADT の variant return type、pattern refinement、exhaustiveness は含まない。
