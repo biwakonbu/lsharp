@@ -7668,6 +7668,21 @@ fn test_linux_x86_metadata_replays_control_if_control_loop_single_row() {
 }
 
 #[test]
+fn test_linux_x86_metadata_replays_control_if_reports_rel32_targets() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+    assert!(
+        source.contains("(print 9000000050)")
+            && source.contains("actual-target")
+            && source.contains("direct-target")
+            && source.contains("replay-target")
+            && source.contains("segment\n                                        offset\n                                        size\n                                        offset")
+            && source.contains("exact\n                                        0\n                                        exact-len\n                                        offset")
+            && source.contains("replay\n                                        0\n                                        after-len\n                                        offset"),
+        "Linux x86 metadata mode は stage2 entrypoint の if について actual/direct/replay の emitted bytes と rel32 target を同一 row で相関できるべき"
+    );
+}
+
+#[test]
 fn test_linux_x86_metadata_replays_map_new_direct_vs_fallback_paths() {
     let source = linux_x86_representative_actual_stage23_seed_source();
     assert!(
@@ -10513,11 +10528,29 @@ fn test_native_codegen_x86_control_if_fallback_appends_in_helper() {
         .expect("NativeCodegen.ls に generate-native-control-instr-bundle-loop-x86-with-context が存在すること");
 
     assert!(
-        source.contains("(defn append-control-if-instr-x86 [result meta offsets idx]")
+        source.contains("(defn append-control-if-instr-x86 [result meta offsets idx frame-base-slot-count current-depth]")
             && control_loop_body.contains("(if (= opcode 41)")
-            && control_loop_body.contains("(append-control-if-instr-x86 result meta offsets idx)")
+            && control_loop_body.contains("(append-control-if-instr-x86 result meta offsets idx frame-base-slot-count current-depth)")
             && !control_loop_body.contains("(if (= (direct-append-x86-opcode opcode) 12)"),
         "x86 if control fallback は direct selector を増やさず、小さい helper 内で生成+append するべき"
+    );
+}
+
+#[test]
+fn test_native_codegen_x86_control_if_restores_window_after_condition_test() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let size_body = source
+        .split("(defn native-instr-size-x86 [")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn make-x86-body-size-context").next())
+        .expect("NativeCodegen.ls に x86 bundle size pass が存在すること");
+
+    assert!(
+        source.contains("(defn emit-control-if-bundle-x86")
+            && source.contains("(emit-drop-bundle-x86 frame-base-slot-count current-depth)")
+            && source.contains("(emit-control-if-bundle-x86 meta offsets idx frame-base-slot-count current-depth)")
+            && size_body.contains("(native-conditional-control-instr-size-x86 current-depth)"),
+        "x86 if bundle は TEST 後に条件値を pop/shift して、size pass もその追加 bytes を rel32 計算へ反映するべき"
     );
 }
 
@@ -16838,9 +16871,50 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
                               (root_push row-state)
                               (generate-native-control-instr-bundle-loop-x86-with-context fresh-ctx row-state)
                               (let [replay (ref-get replay-ref)
-                                    after-len (vector-length replay)]
+                                    after-len (vector-length replay)
+                                    segment (ref-get (vector-get control-ctx 1))
+                                    actual-target
+                                      (x86-rel32-target-in-window-at-base
+                                        segment
+                                        offset
+                                        size
+                                        offset)
+                                    direct-target
+                                      (x86-rel32-target-in-window-at-base
+                                        exact
+                                        0
+                                        exact-len
+                                        offset)
+                                    replay-target
+                                      (x86-rel32-target-in-window-at-base
+                                        replay
+                                        0
+                                        after-len
+                                        offset)]
                                 (do
                                   (root_push replay)
+                                  (root_push segment)
+                                  (print 9000000050)
+                                  (print idx)
+                                  (print opcode)
+                                  (print operand)
+                                  (print current-depth)
+                                  (print offset)
+                                  (print size)
+                                  (print (vector-length segment))
+                                  (print actual-target)
+                                  (print exact-len)
+                                  (print direct-target)
+                                  (print after-len)
+                                  (print replay-target)
+                                  (print (byte-at-or-zero segment offset (vector-length segment)))
+                                  (print (byte-at-or-zero segment (+ offset 1) (vector-length segment)))
+                                  (print (byte-at-or-zero segment (+ offset 2) (vector-length segment)))
+                                  (print (byte-at-or-zero segment (+ offset 3) (vector-length segment)))
+                                  (print (byte-at-or-zero segment (+ offset 4) (vector-length segment)))
+                                  (print (byte-at-or-zero segment (+ offset 5) (vector-length segment)))
+                                  (print (byte-at-or-zero segment (+ offset 6) (vector-length segment)))
+                                  (print (byte-at-or-zero segment (+ offset 7) (vector-length segment)))
                                   (print 9000000029)
                                   (print idx)
                                   (print opcode)
@@ -16858,6 +16932,7 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
                                   (print (byte-at-or-zero replay (+ before-len 5) after-len))
                                   (print (byte-at-or-zero replay (+ before-len 6) after-len))
                                   (print (byte-at-or-zero replay (+ before-len 7) after-len))
+                                  (root_pop)
                                   (root_pop)))
                               (root_pop)))
                           (root_pop)))
@@ -26596,6 +26671,63 @@ fn host_target_bundle_if_empty_preserves_previous_code_bytes(cond: i64) -> Vec<u
       0)))"#,
         cond = cond
     ))
+}
+
+fn host_target_bundle_if_result_preserves_outer_for_add_code_bytes() -> Vec<u8> {
+    let instr_bindings = [
+        (1, 7),
+        (1, 0),
+        (1, 0),
+        (30, 0),
+        (41, 0),
+        (1, 1),
+        (79, 0),
+        (1, 0),
+        (43, 0),
+        (20, 0),
+    ]
+    .iter()
+    .enumerate()
+    .map(|(idx, (opcode, operand))| {
+        format!("instr{idx} (make-instr {opcode} {operand})")
+    })
+    .collect::<Vec<_>>()
+    .join("\n        ");
+    let ir_expr = (0..10).fold("(vector-new 10)".to_string(), |expr, idx| {
+        format!("(vector-push {expr} instr{idx})")
+    });
+    let source = format!(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn main []
+  (let [{instr_bindings}
+        ir {ir_expr}
+        func (make-function-meta 0 0 ir)
+        functions (vector-push (vector-new 1) func)
+        target (make-target 3)
+        code (emit-native-function-meta-bundle functions target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    );
+    run_native_codegen_host_bytes_harness(&source)
 }
 
 fn host_target_block_br_code_bytes() -> Vec<u8> {
@@ -42741,6 +42873,28 @@ fn test_e2e_native_host_binary_bundle_if_empty_false_branch_preserves_previous_v
         7,
         "bundle if-empty false branch は条件値を pop して直前値 7 を保つべき: exit={exit_code}\n\
          bytes ({} bytes): {:?}",
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+#[test]
+#[ignore]
+fn test_e2e_native_host_binary_bundle_if_result_preserves_outer_for_add() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_bundle_if_result_preserves_outer_for_add_code_bytes();
+
+    assert!(!code_bytes.is_empty(), "bundle if result のコードバイト列が空");
+
+    let exit_code = link_and_run_linux_x86_native_binary_via_lima(&code_bytes)
+        .expect("Linux x86 bundle if result/add host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code, 8,
+        "bundle if result は outer value 7 を保持して add できるべき: exit={exit_code}\nbytes ({} bytes): {:?}",
         code_bytes.len(),
         code_bytes
     );

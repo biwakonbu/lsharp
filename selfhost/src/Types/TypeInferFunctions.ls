@@ -204,10 +204,43 @@
   (typeinfer-build-curried-fun-loop param-types subst 0 (vector-length param-types) body-ty))
 
 (defn typeinfer-finalize-defn-result-with-env-vars [env name-hash subst value-ty env-vars]
-  (let [resolved-ty (apply-subst subst value-ty)
-    scheme (generalize resolved-ty env-vars)
-    new-env (type-env-insert env name-hash scheme)]
-    (vector-push (make-result subst resolved-ty) new-env)))
+  (do
+    ;; apply-subst / generalize / env insert の allocation 中も、型と環境を
+    ;; native GC が回収しないように live object を明示的に保持する。
+    (root_push env)
+    (root_push subst)
+    (root_push value-ty)
+    (root_push env-vars)
+    (let [resolved-ty (apply-subst subst value-ty)]
+      (do
+        (root_push resolved-ty)
+        (let [scheme (generalize resolved-ty env-vars)]
+          (do
+            (root_push scheme)
+            (let [new-env (type-env-insert env name-hash scheme)]
+              (do
+                (root_push new-env)
+                ;; native backend でも result/env の戻り値 shape を壊さないよう、
+                ;; make-result へ後付けせず rooted helper で4要素を構築する。
+                (let [result
+                        (push-object-vector-local
+                          (push-int-vector-local
+                            (push-object-vector-local
+                              (push-object-vector-local (vector-new 4) subst)
+                              resolved-ty)
+                            0)
+                          new-env)]
+                  (do
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    result))))))))))
 
 (defn typeinfer-finalize-defn-result [env name-hash subst value-ty]
   (typeinfer-finalize-defn-result-with-env-vars env name-hash subst value-ty (map-new)))

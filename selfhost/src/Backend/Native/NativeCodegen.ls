@@ -8978,9 +8978,11 @@
                                                             (native-plain-instr-size-x86 opcode operand))))))))))))))))))))))))))))))))))
 
 (defn native-instr-size-x86 [opcode operand function-metas current-depth]
-  (if (= (x86-selfhost-file-write-opcode opcode) 1)
-    (native-call-bundle-size-x86 2 current-depth)
-    (native-instr-size-x86-core opcode operand function-metas current-depth)))
+  (if (if (= opcode 41) true (if (= opcode 81) true (= opcode 83)))
+    (native-conditional-control-instr-size-x86 current-depth)
+    (if (= (x86-selfhost-file-write-opcode opcode) 1)
+      (native-call-bundle-size-x86 2 current-depth)
+      (native-instr-size-x86-core opcode operand function-metas current-depth))))
 
 (defn make-x86-body-size-context [ir-func function-metas len]
   (vector-push
@@ -11102,7 +11104,7 @@
     frame-base-slot-count (vector-get ctx 8)
     current-depth (vector-get depths idx)]
     (if (= (is-control-opcode opcode) 1)
-      (emit-control-instr-x86 ir-func meta offsets idx)
+      (emit-control-instr-bundle-x86 ir-func meta offsets idx frame-base-slot-count current-depth)
       (if (= (is-selfhost-runtime-opcode-x86 opcode) 1)
         (do
           (let [actual-current-offset-ref (ref-new actual-current-offset)]
@@ -11244,7 +11246,7 @@
             (continue-native-control-instr-bundle-loop-x86 ctx idx remaining))
         (if (= opcode 41)
           (do
-            (append-control-if-instr-x86 result meta offsets idx)
+            (append-control-if-instr-x86 result meta offsets idx frame-base-slot-count current-depth)
             (continue-native-control-instr-bundle-loop-x86 ctx idx remaining))
         (if (= opcode 79)
           (do
@@ -11759,8 +11761,8 @@
   (let [op-bytes (codegen-ir-instr opcode operand)]
     (append-consume-two-bundle-x86 result op-bytes frame-base-slot-count current-depth)))
 
-(defn append-control-if-instr-x86 [result meta offsets idx]
-  (let [native (emit-control-if-x86 meta offsets idx)
+(defn append-control-if-instr-x86 [result meta offsets idx frame-base-slot-count current-depth]
+  (let [native (emit-control-if-bundle-x86 meta offsets idx frame-base-slot-count current-depth)
     native-len (vector-length native)]
     (append-native-bytes-rooted result native native-len)))
 
@@ -12070,6 +12072,14 @@
           (if (= opcode 83)
             8
             0))))))
+
+(defn native-drop-bundle-size-x86 [current-depth]
+  (if (>= current-depth 3)
+    (+ 10 (* (- current-depth 3) 14))
+    3))
+
+(defn native-conditional-control-instr-size-x86 [current-depth]
+  (+ 8 (native-drop-bundle-size-x86 current-depth)))
 
 (defn native-control-instr-size-aarch64 [opcode]
   (if (= opcode 41)
@@ -12625,6 +12635,23 @@
     disp (- target-offset (+ current-offset 8))]
     (concat-byte-vectors (emit-test-eax-eax) (emit-jz-rel32 disp))))
 
+;; 条件値を TEST した後、flags を壊さない mov/load だけで native value window から取り除く。
+;; branch body は condition を消費した深さで生成されるため、ここで window を復元する。
+(defn emit-control-if-bundle-x86 [meta offsets idx frame-base-slot-count current-depth]
+  (let [current-offset (vector-get offsets idx)
+    target-offset (control-if-false-target-offset meta offsets idx)
+    drop-bytes (emit-drop-bundle-x86 frame-base-slot-count current-depth)
+    disp (- target-offset (+ current-offset (+ 8 (vector-length drop-bytes))))]
+    (do
+      (root_push drop-bytes)
+      (let [result
+              (concat-byte-vectors-rooted
+                (concat-byte-vectors-rooted (emit-test-eax-eax) drop-bytes)
+                (emit-jz-rel32 disp))]
+        (do
+          (root_pop)
+          result)))))
+
 (defn emit-control-else-x86 [ir-func meta offsets idx]
   (let [current-offset (vector-get offsets idx)
     target-offset (control-else-target-offset ir-func meta offsets idx)
@@ -12643,6 +12670,21 @@
     disp (- target-offset (+ current-offset 8))]
     (concat-byte-vectors (emit-test-eax-eax) (emit-jnz-rel32 disp))))
 
+(defn emit-control-branch-if-bundle-x86 [ir-func meta offsets idx frame-base-slot-count current-depth]
+  (let [current-offset (vector-get offsets idx)
+    target-offset (control-branch-target-offset ir-func meta offsets idx)
+    drop-bytes (emit-drop-bundle-x86 frame-base-slot-count current-depth)
+    disp (- target-offset (+ current-offset (+ 8 (vector-length drop-bytes))))]
+    (do
+      (root_push drop-bytes)
+      (let [result
+              (concat-byte-vectors-rooted
+                (concat-byte-vectors-rooted (emit-test-eax-eax) drop-bytes)
+                (emit-jnz-rel32 disp))]
+        (do
+          (root_pop)
+          result)))))
+
 (defn emit-control-instr-x86 [ir-func meta offsets idx]
   (let [instr (vector-get ir-func idx)
     opcode (vector-get instr 0)]
@@ -12656,6 +12698,21 @@
             (emit-control-branch-if-x86 ir-func meta offsets idx)
             (if (= opcode 83)
               (emit-control-if-x86 meta offsets idx)
+              (vector-new 0))))))))
+
+(defn emit-control-instr-bundle-x86 [ir-func meta offsets idx frame-base-slot-count current-depth]
+  (let [instr (vector-get ir-func idx)
+    opcode (vector-get instr 0)]
+    (if (= opcode 41)
+      (emit-control-if-bundle-x86 meta offsets idx frame-base-slot-count current-depth)
+      (if (= opcode 79)
+        (emit-control-else-x86 ir-func meta offsets idx)
+        (if (= opcode 80)
+          (emit-control-branch-x86 ir-func meta offsets idx)
+          (if (= opcode 81)
+            (emit-control-branch-if-bundle-x86 ir-func meta offsets idx frame-base-slot-count current-depth)
+            (if (= opcode 83)
+              (emit-control-if-bundle-x86 meta offsets idx frame-base-slot-count current-depth)
               (vector-new 0))))))))
 
 (defn emit-control-instr-aarch64 [ir-func meta offsets idx]

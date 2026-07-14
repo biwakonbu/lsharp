@@ -139,6 +139,84 @@ fn test_e2e_selfhost_scoped_type_var_defn_signature_is_polymorphic() {
     );
 }
 
+/// parser-to-inference bundle: program analysis は最初の defn の型を保持する
+#[test]
+fn test_e2e_selfhost_program_analysis_preserves_first_defn_type() {
+    let harness = r#"
+(defn main []
+  (let [analysis
+          (infer-program-analysis (parse-program "(defn main [] 42)"))
+        ty (infer-program-analysis-type analysis)]
+    (do
+      (print (ty-tag ty))
+      (print (ty-name ty))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}",
+        selfhost_parser_typeinfer_runtime_bundle(),
+        harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["1", "100"],
+        "program analysis は defn の Int 型を環境ベクタへ取り違えず保持すべき"
+    );
+}
+
+/// parser-to-compiler bundle: source compile は if の control IR と outer add を保持する
+#[test]
+fn test_e2e_selfhost_source_compile_preserves_if_add_ir_order() {
+    let harness = r#"
+(defn print-ir-loop [ir idx len]
+  (if (>= idx len)
+    0
+    (let [instr (vector-get ir idx)]
+      (do
+        (print (vector-get instr 0))
+        (print (vector-get instr 1))
+        (print-ir-loop ir (+ idx 1) len)))))
+
+(defn main []
+  (let [source "(defn main [] (+ 7 (if (= 0 0) 42 9)))"
+        program (parse-program source)
+        pair (compile-program-functions-with-source source program)
+        functions (vector-get pair 1)
+        main-fn (vector-get functions 0)
+        ir (vector-get main-fn 2)]
+    (do
+      (print (vector-length ir))
+      (print-ir-loop ir 0 (vector-length ir))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("IR.ls"),
+        selfhost_module("Compiler.ls"),
+        harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        [
+            "10", "1", "7", "1", "0", "1", "0", "30", "0", "41", "0", "1", "42", "79",
+            "0", "1", "9", "43", "0", "20", "0",
+        ],
+        "source compiler は if の branch/end と outer add の IR 順序を保持すべき"
+    );
+}
+
 /// parser-to-inference bundle: closed type-alias は defn の引数・戻り値注釈で透過展開する
 #[test]
 fn test_e2e_selfhost_parser_closed_type_alias_unifies_defn_signature() {
