@@ -152,6 +152,31 @@ fn test_e2e_selfhost_cli_source_compile_uses_full_program_builder() {
     );
 }
 
+#[test]
+fn test_e2e_selfhost_embedded_cli_component_output_has_explicit_external_boundary() {
+    let source = std::fs::read_to_string(
+        selfhost_project_root().join("selfhost/src/App/EmbeddedCli.ls"),
+    )
+    .expect("canonical EmbeddedCli.ls が読み込めない");
+
+    assert!(
+        source.contains("(defn component-output-boundary-message "),
+        "EmbeddedCli は component packaging の外部境界メッセージを定義する必要がある"
+    );
+    assert!(
+        source.contains("component-output-boundary-message"),
+        "EmbeddedCli の component target は外部 packaging 境界を明示する必要がある"
+    );
+    assert!(
+        !source.contains("emit-wasm-with-target"),
+        "EmbeddedCli の component target が legacy size-only emitter に戻ってはいけない"
+    );
+    assert!(
+        !source.contains("(write-file output-path summary)"),
+        "EmbeddedCli の component target が summary text を Wasm artifact として書いてはいけない"
+    );
+}
+
 // === TEST-BOOT-02-A: MacroExpand.ls direct compile テスト ===
 
 /// canonical MacroExpand.ls を直接コンパイルして成功することを検証する。

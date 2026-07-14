@@ -18,7 +18,7 @@ L# の通常開発を Rust toolchain や `cargo` の実行待ちから切り離�
 
 ### legacy source compile boundary 更新 (2026-07-14)
 
-`App.Cli` と `EmbeddedCli` の source-string helper は、`parse-program` の結果を `compile-program-functions-with-source` に渡し、先頭 IR だけを返す `lower` ではなく全 functions/data を `build-wasm-bytes-wasi` へ渡す。これにより helper 自体は複数 top-level function を落とさない。ただし両 CLI の component/size-only branch、`SmokeCli`、no-arg `PipelineSmoke` は別の legacy surface であり、今回の変更はそれらを置き換えない。
+`App.Cli` と `EmbeddedCli` の source-string helper は、`parse-program` の結果を `compile-program-functions-with-source` に渡し、先頭 IR だけを返す `lower` ではなく全 functions/data を `build-wasm-bytes-wasi` へ渡す。これにより helper 自体は複数 top-level function を落とさない。`EmbeddedCli` の component target は summary text を出力せず、外部 component packaging が必要な境界を明示的に返す。一方 `App.Cli` / `EmbeddedCli` の component sidecar、`SmokeCli`、no-arg `PipelineSmoke` は別の legacy / external surface であり、今回の変更はそれらを置き換えない。
 
 ### 型・宣言意味論の更新: ordinary ADT (2026-07-14)
 
