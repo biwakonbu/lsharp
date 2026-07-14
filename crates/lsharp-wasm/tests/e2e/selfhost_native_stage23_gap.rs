@@ -1235,19 +1235,19 @@ fn test_native_codegen_x86_vector_push_helper_compares_length_to_capacity_regist
 }
 
 #[test]
-fn test_native_codegen_x86_vector_push_helper_uses_capacity_register_for_growth() {
+fn test_native_codegen_x86_vector_push_helper_saves_capacity_before_length_for_growth() {
     let lines = run_x86_selfhost_runtime_helper_harness(
-        "native-stage23-x86-vector-push-helper-capacity-growth",
+        "native-stage23-x86-vector-push-helper-growth-register-order",
         r#"  (let [helper (emit-x86-selfhost-vector-push-helper)]
     (do
-      (print-bytes-loop helper 40 44)
+      (print-bytes-loop helper 36 45)
       0))"#,
     );
 
     assert_eq!(
         lines,
-        vec![137, 229, 69, 133],
-        "x86_64 vector-push helper は grow 時も capacity を mov r13d, r12d で保持する必要がある"
+        vec![69, 137, 229, 65, 137, 212, 69, 133, 237],
+        "x86_64 vector-push helper は grow 時に capacity を r13d へ退避してから length を r12d へ保存する必要がある"
     );
 }
 
@@ -1316,7 +1316,7 @@ fn test_native_codegen_x86_vector_and_ref_helper_emitters_return_executable_byte
             72, 193, 234, 47, 117, 16, 131, 57, 2, 117, 11, 59, 65, 8, 115, 6, 72, 139, 68, 193,
             16, 195, 49, 192, 195, 205, 65, 84, 65, 85, 72, 133, 201, 15, 137, 185, 0, 0, 0, 72,
             15, 186, 241, 63, 139, 81, 8, 68, 139, 97, 4, 68, 57, 226, 15, 130, 141, 0, 0, 0, 80,
-            81, 65, 137, 212, 69, 137, 229, 69, 133, 237, 117, 8, 65, 189, 1, 0, 0, 0, 235, 3, 69,
+            81, 69, 137, 229, 65, 137, 212, 69, 133, 237, 117, 8, 65, 189, 1, 0, 0, 0, 235, 3, 69,
             1, 237, 49, 255, 74, 141, 52, 237, 16, 0, 0, 0, 186, 3, 0, 0, 0, 65, 186, 34, 0, 0, 0,
             73, 199, 192, 255, 255, 255, 255, 69, 49, 201, 184, 9, 0, 0, 0, 15, 5, 72, 133, 192,
             120, 63, 199, 0, 2, 0, 0, 0, 68, 137, 104, 4, 68, 137, 96, 8, 72, 137, 194, 72, 139,
