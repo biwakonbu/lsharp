@@ -1822,6 +1822,64 @@ impl Infer {
         }
     }
 
+    /// defn signature 内の lower-case 型変数を scope ごとに束縛する。
+    fn collect_defn_type_var_names(
+        &self,
+        type_expr: &TypeExpr,
+        names: &mut Vec<String>,
+        seen: &mut HashSet<String>,
+    ) {
+        match type_expr {
+            TypeExpr::Var(_, name) => {
+                if !self.type_aliases.contains_key(name) && seen.insert(name.clone()) {
+                    names.push(name.clone());
+                }
+            }
+            TypeExpr::App(_, base, args) => {
+                self.collect_defn_type_var_names(base, names, seen);
+                for arg in args {
+                    self.collect_defn_type_var_names(arg, names, seen);
+                }
+            }
+            TypeExpr::Fun(_, params, ret) => {
+                for param in params {
+                    self.collect_defn_type_var_names(param, names, seen);
+                }
+                self.collect_defn_type_var_names(ret, names, seen);
+            }
+            TypeExpr::Record(_, fields) => {
+                for (_, field_ty) in fields {
+                    self.collect_defn_type_var_names(field_ty, names, seen);
+                }
+            }
+            TypeExpr::Named(_, _) => {}
+        }
+    }
+
+    fn defn_type_vars(
+        &mut self,
+        params: &[Param],
+        return_ty: Option<&TypeExpr>,
+    ) -> Vec<(String, TypeVarId)> {
+        let mut names = Vec::new();
+        let mut seen = HashSet::new();
+        for param in params {
+            if let Some(type_expr) = &param.ty {
+                self.collect_defn_type_var_names(type_expr, &mut names, &mut seen);
+            }
+        }
+        if let Some(type_expr) = return_ty {
+            self.collect_defn_type_var_names(type_expr, &mut names, &mut seen);
+        }
+        names
+            .into_iter()
+            .map(|name| {
+                let type_var = self.var_gen.fresh_id();
+                (name, type_var)
+            })
+            .collect()
+    }
+
     /// 関数定義の型推論
     fn infer_defn(
         &mut self,
@@ -1837,6 +1895,7 @@ impl Infer {
             span,
         } = input;
         let mut local_env = env.clone();
+        let defn_type_vars = self.defn_type_vars(params, return_ty);
 
         // 再帰呼び出し用: 関数自身を型変数として環境に仮登録
         let self_ty = self.var_gen.fresh();
@@ -1846,7 +1905,7 @@ impl Infer {
         let mut param_types = Vec::new();
         for param in params {
             let ty = if let Some(type_expr) = &param.ty {
-                self.resolve_type_expr(type_expr, &[])
+                self.resolve_type_expr(type_expr, &defn_type_vars)
             } else {
                 self.var_gen.fresh()
             };
@@ -1862,7 +1921,7 @@ impl Infer {
 
         // 戻り値型注釈があれば統合
         let subst = if let Some(ret_ty_expr) = return_ty {
-            let ret_ty = self.resolve_type_expr(ret_ty_expr, &[]);
+            let ret_ty = self.resolve_type_expr(ret_ty_expr, &defn_type_vars);
             let s2 = self.unify(&body_type.apply_subst(&subst), &ret_ty, span)?;
             subst.compose(&s2)
         } else {
@@ -2831,6 +2890,27 @@ mod tests {
     fn test_type_annotation() {
         let result = infer_one("(defn add [(: x Int) (: y Int)] : Int (+ x y))");
         assert_eq!(result, "(Int, Int) -> Int");
+    }
+
+    #[test]
+    fn test_multiple_scoped_type_vars_in_type_annotation() {
+        let result = infer_one("(defn choose-first [(: x a) (: y b)] : a x)");
+        assert!(
+            result.starts_with("forall"),
+            "expected polymorphic scheme: {result}"
+        );
+        assert!(result.contains("->"), "expected function type: {result}");
+        let calls = infer(
+            "(defn choose-first [(: x a) (: y b)] : a x)
+             (defn main []
+               (do (print (choose-first 42 true))
+                   (print (choose-first true 42))
+                   0))",
+        );
+        assert!(
+            calls.is_ok(),
+            "independent call-site instantiation should type-check: {calls:?}"
+        );
     }
 
     // --- レコード型テスト ---
