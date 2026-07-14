@@ -139,6 +139,35 @@ fn test_e2e_selfhost_scoped_type_var_defn_signature_is_polymorphic() {
     );
 }
 
+/// parser-to-inference bundle: 1 signature 内の複数 type variable を独立に一般化する
+#[test]
+fn test_e2e_selfhost_scoped_multiple_type_vars_defn_signature_is_polymorphic() {
+    let harness = r#"
+(defn main []
+  (let [analysis
+          (infer-program-analysis
+            (parse-program "(defn choose-first [(: x a) (: y b)] : a x) (defn main [] (do (print (choose-first 42 true)) (print (choose-first true 42)) 0))"))]
+    (do
+      (print (infer-program-analysis-diagnostic-count analysis))
+      (print (infer-program-analysis-first-error-code analysis))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}",
+        selfhost_parser_typeinfer_runtime_bundle(),
+        harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "0"],
+        "1 つの defn signature 内の複数 scoped type variable は独立に具体化できるべき"
+    );
+}
+
 /// parser-to-inference bundle: program analysis は最初の defn の型を保持する
 #[test]
 fn test_e2e_selfhost_program_analysis_preserves_first_defn_type() {

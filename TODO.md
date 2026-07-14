@@ -2,7 +2,7 @@
 
 ## 2026-07-15 Rust-free base 境界の更新
 
-- [~] `defn` signature の scoped polymorphic type variable — 同じ lower-case 型変数名を parameter / return annotation 間で共有し、`(defn id [(: x a)] : a x)` を Int / Bool の別 call site で独立に instantiate できることを確認した。異なる scoped 変数名を 1 つの signature 内で同時に扱う完全な多変数署名、GADT の return refinement、exhaustiveness は未完了である。Evidence: `test_e2e_selfhost_scoped_type_var_defn_signature_is_polymorphic`、`test_e2e_selfhost_parser_typed_defn_signature_unifies_type_var`。
+- [x] `defn` signature の scoped polymorphic type variable — 同じ lower-case 型変数名を parameter / return annotation 間で共有し、異なる scoped 変数名も 1 つの signature 内で独立に fresh 型変数として扱う。`id` の Int / Bool 別 call site と、`choose-first` の `a` / `b` を別々に具体化する call site を確認した。GADT の return refinement と exhaustiveness は別の未完了項目である。Evidence: `test_e2e_selfhost_scoped_type_var_defn_signature_is_polymorphic`、`test_e2e_selfhost_scoped_multiple_type_vars_defn_signature_is_polymorphic`、`test_e2e_selfhost_parser_typed_defn_signature_unifies_type_var`。
 
 - [x] embedded driver の guest-success fast path — embedded component の `compile` / `build` が guest exit code 0 のとき Rust `compile_file` を実行せず、失敗時だけ host artifact fallback を使う。runtime disable 下の `test` は Rust `cmd_test` へ暗黙 fallback せず selfhost delegation hint を返す。Evidence: `test_guest_compile_success_does_not_request_host_fallback`、`test_test_command_is_selfhost_shadow_command`、`crates/lsharp-driver/src/main.rs`。
 

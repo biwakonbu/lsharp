@@ -267,10 +267,8 @@
   (let [name-hash (vector-get node 1)
     param-count (vector-get node 2)
     type-param-env (typeinfer-defn-type-param-env node param-count counter)]
-    ;; Rust parity: 1 つの defn signature 内では同じ scoped variable 名だけを許可する。
-    (if (> (map-size type-param-env) 1)
-      (make-error-result-code (error-code-general))
-      (if (= param-count 0)
+    ;; signature 内の各 scoped variable は独立した型変数として扱う。
+    (if (= param-count 0)
       (let [body-node (vector-get node 3)
         result (infer-expr body-node body-env subst counter)]
         (if (= (result-failed result) 1)
@@ -323,7 +321,7 @@
                     next-subst (unify placeholder fun-ty annotated-subst)]
                     (if (= (unify-failed next-subst) 1)
                       (make-error-result-code (error-code-general))
-                      (typeinfer-finalize-defn-result-with-env-vars final-env name-hash next-subst fun-ty env-vars)))))))))))))
+                      (typeinfer-finalize-defn-result-with-env-vars final-env name-hash next-subst fun-ty env-vars))))))))))))
 
 ;; 単独で呼ばれる infer-defn も自己再帰を許可する。
 (defn infer-defn [node env counter]
