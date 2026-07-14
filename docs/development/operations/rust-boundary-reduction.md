@@ -22,7 +22,7 @@ L# の通常開発を Rust toolchain や `cargo` の実行待ちから切り離�
 
 ### 型・宣言意味論の更新: ordinary ADT (2026-07-14)
 
-ordinary ADT は parser が variant 名と raw field TypeExpr を保持し、`TypeInferAdt.ls` の prepass が type parameter を束縛した constructor scheme を値環境へ登録する。`(type (Maybe a) (Just a) Nothing)` の constructor application と match pattern は同じ polymorphic scheme を使い、`Int` と `Bool` の別使用箇所で独立に instantiate される。さらに selfhost Wasm compiler の source 経路で Map-based constructor、variant tag、direct field binder、constructor mismatch fallback を actual Wasm 実行で確認した。これは ordinary ADT の parser / 型検査と direct runtime の Rust-free slice を示すが、nested constructor pattern、ftable direct target parity、Rust linear-memory ABI parity、nominal/exhaustiveness closure は未完了である。GADT の variant return type、pattern refinement、exhaustiveness も含まれない。
+ordinary ADT は parser が variant 名と raw field TypeExpr を保持し、`TypeInferAdt.ls` の prepass が type parameter を束縛した constructor scheme を値環境へ登録する。`(type (Maybe a) (Just a) Nothing)` の constructor application と match pattern は同じ polymorphic scheme を使い、`Int` と `Bool` の別使用箇所で独立に instantiate される。さらに selfhost Wasm compiler の source 経路で Map-based constructor、variant tag、direct field binder、nested constructor pattern、constructor mismatch fallback を actual Wasm 実行で確認した（`test_e2e_selfhost_compiler_mode_adt_constructor_pattern_binds_and_falls_back`、`test_e2e_selfhost_compiler_mode_adt_nested_constructor_pattern_runs`）。これは ordinary ADT の parser / 型検査と source runtime の Rust-free slice を示すが、ftable direct target parity、Rust linear-memory ABI parity、nominal/exhaustiveness closure は未完了である。GADT の variant return type、pattern refinement、exhaustiveness も含まれない。
 
 ## 現在の事実
 
@@ -53,6 +53,7 @@ LSHARP_NATIVE_LINUX_X86_STAGE0_DIR=/path/to/linux-stage0 \
 ```
 
 この wrapper は VM の `/tmp` 空き容量を 4 GiB 以上で確認し、VM 内で `scripts/ci/native-selfhost-dev-source-file-smoke.sh` を実行する。source-file smoke は `cargo`、`rustc`、host `lsharp` を blocklist に入れるため、Rust host fallback は成功条件にならない。
+既定の transport は 64 functions/chunk、chunk timeout は 900 秒である。checkpoint を再利用する診断時だけ `LSHARP_NATIVE_LINUX_X86_TRANSPORT_CHUNK_SIZE` と `LSHARP_NATIVE_LINUX_X86_TRANSPORT_TIMEOUT_SECONDS` を指定して VM 側へ引き渡せる。VM の disk size や空き容量 gate は変更しない。
 
 ## Command Boundary
 
@@ -87,7 +88,7 @@ Rust が完全に不要になったわけではない。次の作業は native b
 
 ### 残る Base Language Gap
 
-Rust を base implementation から外すため、legacy `lower` / embedded compiler の full-program 化、ordinary ADT runtime の残り、scoped polymorphic variable、record pattern の残り、GADT return type/refinement を自己ホスト側で実装・差分検証する必要がある。recursive alias は Rust implementation と同じく拒否するため、未対応の recursive language feature としては数えない。`CompilerMode` と ftable 経路における nonparametric / parametric record の constructor/literal/direct/static accessor/update runtime、record pattern の direct field/binder/literal/fallback slice、ordinary ADT の parser / 型検査と source 経路の direct constructor/tag/binder/fallback slice はこの一覧から除外する。ただし ordinary ADT の nested constructor pattern、ftable direct target parity、Rust linear-memory ABI parity、nominal/exhaustiveness closure、record nominal type hash、patch Map の hidden base entry を含む field lookup、record を一般 Map として扱う全 API の parity は別途確認する。出力側では `print-string` の 11-import env ABI を標準 WASI Preview1 と接続し、standalone 実行まで確認する作業が残る。
+Rust を base implementation から外すため、legacy `lower` / embedded compiler の full-program 化、ordinary ADT runtime の残り、scoped polymorphic variable、record pattern の残り、GADT return type/refinement を自己ホスト側で実装・差分検証する必要がある。recursive alias は Rust implementation と同じく拒否するため、未対応の recursive language feature としては数えない。`CompilerMode` と ftable 経路における nonparametric / parametric record の constructor/literal/direct/static accessor/update runtime、record pattern の direct field/binder/literal/fallback slice、ordinary ADT の parser / 型検査と source 経路の direct / nested constructor/tag/binder/fallback slice はこの一覧から除外する。ただし ordinary ADT の ftable direct target parity、Rust linear-memory ABI parity、nominal/exhaustiveness closure、record nominal type hash、patch Map の hidden base entry を含む field lookup、record を一般 Map として扱う全 API の parity は別途確認する。出力側では `print-string` の 11-import env ABI を標準 WASI Preview1 と接続し、standalone 実行まで確認する作業が残る。
 
 ## 検証と残タスク
 
