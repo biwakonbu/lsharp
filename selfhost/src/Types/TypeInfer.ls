@@ -361,6 +361,55 @@
       (vector-get decl 3)
       (vector-get decl 2))))
 
+;; Rust implementation と同じく、alias 自身を target に含む宣言は拒否する。
+;; raw TypeExpr を直接走査するため、closed / parametric の両形式と nested target に対応する。
+(defn typeinfer-type-expr-contains-name-range [type-expr idx end name-hash]
+  (if (>= idx end)
+    0
+    (if (= (typeinfer-type-expr-contains-name (vector-get type-expr idx) name-hash) 1)
+      1
+      (typeinfer-type-expr-contains-name-range type-expr (+ idx 1) end name-hash))))
+
+(defn typeinfer-type-expr-contains-name [type-expr name-hash]
+  (if (= type-expr 0)
+    0
+    (let [tag (vector-get type-expr 0)]
+      (if (= tag (ast-type-named))
+        (if (= (vector-get type-expr 1) name-hash) 1 0)
+        (if (= tag (ast-type-var))
+          (if (= (vector-get type-expr 1) name-hash) 1 0)
+          (if (= tag (ast-type-app))
+            (if (= (vector-get type-expr 1) name-hash)
+              1
+              (typeinfer-type-expr-contains-name-range
+                type-expr
+                3
+                (+ (vector-get type-expr 2) 3)
+                name-hash))
+            (if (= tag (ast-type-fun))
+              (typeinfer-type-expr-contains-name-range
+                type-expr
+                2
+                (+ (vector-get type-expr 1) 3)
+                name-hash)
+              0)))))))
+
+(defn typeinfer-recursive-alias-count-loop [program idx len count]
+  (if (>= idx len)
+    count
+    (let [decl (vector-get program idx)
+      tag (vector-get decl 0)]
+      (if (= tag (ast-typealias))
+        (let [name-hash (vector-get decl 1)
+          target-expr (typeinfer-type-alias-target decl)]
+          (if (= (typeinfer-type-expr-contains-name target-expr name-hash) 1)
+            (typeinfer-recursive-alias-count-loop program (+ idx 1) len (+ count 1))
+            (typeinfer-recursive-alias-count-loop program (+ idx 1) len count)))
+        (typeinfer-recursive-alias-count-loop program (+ idx 1) len count)))))
+
+(defn typeinfer-recursive-alias-count [program]
+  (typeinfer-recursive-alias-count-loop program 0 (vector-length program) 0))
+
 ;; parametric alias entry = [parameter-type-vars, resolved-target-type]
 (defn typeinfer-make-parametric-alias-entry [param-types target-type]
   (do
@@ -613,29 +662,38 @@
 
 ;; top-level defn を先行登録して一度だけ推論し、CLI/LSP が共有する結果を返す。
 (defn infer-program-analysis [program]
-  (let [counter (typeinfer-make-alias-aware-counter program)
-    alias-env (var-counter-alias-env counter)]
-    (do
-      (root_push counter)
-      (let [initial-env (init-builtin-env counter)
-        record-env (typeinfer-register-record-defs program initial-env counter)
-        adt-env (typeinfer-register-adt-defs program record-env counter)
-        predeclared (typeinfer-predeclare-defns program adt-env counter)
-        env (vector-get predeclared 0)
-        placeholders (vector-get predeclared 1)
-        state (typeinfer-program-analysis-state env (subst-new) (mk-int) 0 0 0)
-        result
-          (typeinfer-program-analysis-loop
-            program
-            0
-            (vector-length program)
-            placeholders
-            counter
-            alias-env
-            state)]
+  (let [recursive-count (typeinfer-recursive-alias-count program)]
+    (if (> recursive-count 0)
+      (typeinfer-program-analysis-state
+        (type-env-new)
+        (subst-new)
+        (mk-int)
+        1
+        recursive-count
+        (error-code-general))
+      (let [counter (typeinfer-make-alias-aware-counter program)
+        alias-env (var-counter-alias-env counter)]
         (do
-          (root_pop)
-          result)))))
+          (root_push counter)
+          (let [initial-env (init-builtin-env counter)
+            record-env (typeinfer-register-record-defs program initial-env counter)
+            adt-env (typeinfer-register-adt-defs program record-env counter)
+            predeclared (typeinfer-predeclare-defns program adt-env counter)
+            env (vector-get predeclared 0)
+            placeholders (vector-get predeclared 1)
+            state (typeinfer-program-analysis-state env (subst-new) (mk-int) 0 0 0)
+            result
+              (typeinfer-program-analysis-loop
+                program
+                0
+                (vector-length program)
+                placeholders
+                counter
+                alias-env
+                state)]
+            (do
+              (root_pop)
+              result)))))))
 
 ;; ============================================================
 ;; infer: 公開 API (Main.ls から呼び出される)

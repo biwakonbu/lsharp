@@ -178,6 +178,35 @@ fn test_e2e_selfhost_parser_forward_type_alias_unifies_signature() {
     );
 }
 
+/// parser-to-inference bundle: recursive type-alias は Rust implementation と同じく拒否する
+#[test]
+fn test_e2e_selfhost_parser_recursive_type_alias_is_rejected() {
+    let harness = r#"
+(defn main []
+  (let [analysis
+          (infer-program-analysis
+            (parse-program "(type-alias Rec Rec) (defn ok [] : Int 42)"))]
+    (do
+      (print (infer-program-analysis-diagnostic-count analysis))
+      (print (infer-program-analysis-first-error-code analysis))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}",
+        selfhost_parser_typeinfer_runtime_bundle(),
+        harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["1", "6"],
+        "recursive type-alias は宣言単体でも E0006 として拒否されるべき"
+    );
+}
+
 /// parser-to-inference bundle: closed type-alias は式内 annotation でも透過展開する
 #[test]
 fn test_e2e_selfhost_parser_closed_type_alias_unifies_annotation_expr() {
