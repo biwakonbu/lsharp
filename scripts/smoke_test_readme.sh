@@ -9,8 +9,7 @@ cd "$ROOT"
 
 ERRORS=0
 PASS=0
-DEFAULT_LSHARP_BIN="$ROOT/target/debug/lsharp"
-LSHARP_BIN="${LSHARP_BIN:-$DEFAULT_LSHARP_BIN}"
+LSHARP_BIN="${LSHARP_BIN:-$ROOT/target/debug/lsharp}"
 SMOKE_DIR="${SMOKE_DIR:-ci-artifacts/readme-smoke}"
 SMOKE_SOURCE="$SMOKE_DIR/quickstart.ls"
 SMOKE_METADATA_SOURCE="$SMOKE_DIR/quickstart-metadata.ls"
@@ -56,19 +55,10 @@ if [[ -x "$LSHARP_BIN" ]]; then
     echo "--- prebuilt lsharp binary: $LSHARP_BIN ---"
     echo "PASS: using prebuilt lsharp binary ($LSHARP_BIN)"
     PASS=$((PASS + 1))
-elif [[ "$LSHARP_BIN" != "$DEFAULT_LSHARP_BIN" ]]; then
-    echo "--- prebuilt lsharp binary: $LSHARP_BIN ---"
-    echo "FAIL: lsharp binary not executable ($LSHARP_BIN)"
-    ERRORS=$((ERRORS + 1))
 else
-    echo "--- cargo build -p lsharp-driver ---"
-    if cargo build -p lsharp-driver 2>&1 | tail -3; then
-        echo "PASS: cargo build -p lsharp-driver"
-        PASS=$((PASS + 1))
-    else
-        echo "FAIL: cargo build -p lsharp-driver"
-        ERRORS=$((ERRORS + 1))
-    fi
+    echo "FAIL: lsharp binary is required: $LSHARP_BIN"
+    echo "Set LSHARP_BIN to a packaged lsharp/program.native before running this smoke."
+    exit 1
 fi
 
 # 2. README Quick Start の checksum 導線が packaged archive で通ること

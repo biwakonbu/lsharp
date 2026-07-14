@@ -100,13 +100,9 @@ ensure_lsharp_bin() {
     return
   fi
 
-  echo "=== compile-phase11-inputs: build lsharp binary ==="
-  cargo build -p lsharp-driver -q
-
-  if [[ ! -x "$LSHARP_BIN" ]]; then
-    echo "ERROR: lsharp binary not executable: $LSHARP_BIN"
-    exit 1
-  fi
+  echo "ERROR: lsharp binary is required: $LSHARP_BIN" >&2
+  echo "Set LSHARP_BIN to a packaged lsharp/program.native before running this gate." >&2
+  exit 1
 }
 
 cd "$ROOT_DIR"

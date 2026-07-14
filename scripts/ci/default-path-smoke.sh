@@ -22,12 +22,8 @@ fi
 mkdir -p "$OUT_DIR"
 
 if [[ ! -x "$LSHARP_BIN" ]]; then
-  echo "=== default-path-smoke: build lsharp binary ==="
-  cargo build -p lsharp-driver -q
-fi
-
-if [[ ! -x "$LSHARP_BIN" ]]; then
-  echo "ERROR: lsharp binary not executable: $LSHARP_BIN"
+  echo "ERROR: lsharp binary is required: $LSHARP_BIN" >&2
+  echo "Set LSHARP_BIN to a packaged lsharp/program.native before running this smoke." >&2
   exit 1
 fi
 
