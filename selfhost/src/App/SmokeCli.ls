@@ -37,9 +37,10 @@
 ") (exit-success))))
 (defn run-fmt-source [src opts] (do (print-string src) (exit-success)))
 (defn wasm-size-text [size] (string-concat "wasm-size:" (int-to-string size)))
-(defn run-compile-source [src opts] (let [program (parse-program src) ir (lower program) wasm-size (emit-wasm ir)] (do (print-string (wasm-size-text wasm-size)) (print-string "
+(defn compile-source-wasm-bytes [src] (let [program (parse-program src) pair (compile-program-functions-with-source src program) functions (vector-get pair 1) data (vector-get pair 2)] (build-wasm-bytes-wasi functions data)))
+(defn run-compile-source [src opts] (let [wasm-bytes (compile-source-wasm-bytes src) wasm-size (vector-length wasm-bytes)] (do (print-string (wasm-size-text wasm-size)) (print-string "
 ") (exit-success))))
-(defn run-compile-output [file-path output-path] (if (file-exists? file-path) (let [src (read-file file-path) program (parse-program src) ir (lower program) wasm-size (emit-wasm ir) summary (wasm-size-text wasm-size)] (do (write-file output-path summary) (print-string summary) (print-string "
+(defn run-compile-output [file-path output-path] (if (file-exists? file-path) (let [wasm-bytes (compile-source-wasm-bytes (read-file file-path)) summary (wasm-size-text (vector-length wasm-bytes))] (do (write-file-bytes output-path wasm-bytes) (print-string summary) (print-string "
 ") (exit-success))) (exit-compile-error)))
 (defn run-build-output [file-path output-path] (run-compile-output file-path output-path))
 (defn run-parse [file-path opts] (if (file-exists? file-path) (run-parse-source (read-file file-path) opts) (exit-compile-error)))

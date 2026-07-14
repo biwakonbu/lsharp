@@ -153,6 +153,35 @@ fn test_e2e_selfhost_cli_source_compile_uses_full_program_builder() {
 }
 
 #[test]
+fn test_e2e_selfhost_smoke_cli_source_compile_uses_full_program_builder() {
+    let source = std::fs::read_to_string(
+        selfhost_project_root().join("selfhost/src/App/SmokeCli.ls"),
+    )
+    .expect("canonical SmokeCli.ls が読み込めない");
+
+    assert!(
+        source.contains("(defn compile-source-wasm-bytes "),
+        "SmokeCli に source 全体を Wasm bytes へ変換する helper が必要"
+    );
+    assert!(
+        source.contains("compile-program-functions-with-source"),
+        "SmokeCli source compile helper は全 function/data payload API を使う必要がある"
+    );
+    assert!(
+        source.contains("build-wasm-bytes-wasi"),
+        "SmokeCli source compile helper は実 Wasm bytes builder を使う必要がある"
+    );
+    assert!(
+        !source.contains("(defn run-compile-source [src opts] (let [program (parse-program src) ir (lower program)"),
+        "SmokeCli run-compile-source が先頭 IR だけを返す legacy lower 経路へ戻ってはいけない"
+    );
+    assert!(
+        !source.contains("(write-file output-path summary)"),
+        "SmokeCli output が summary text を Wasm artifact として書いてはいけない"
+    );
+}
+
+#[test]
 fn test_e2e_selfhost_embedded_cli_component_output_has_explicit_external_boundary() {
     let source = std::fs::read_to_string(
         selfhost_project_root().join("selfhost/src/App/EmbeddedCli.ls"),
