@@ -55032,6 +55032,27 @@ struct LinuxX86FunctionSegmentMetadataHeader {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+struct LinuxX86RawFunctionOwnerRow {
+    function_slot: i128,
+    function_idx: i128,
+    current_hash: i128,
+    current_lookup: i128,
+    owner_found: i128,
+    owner_pair_idx: i128,
+    owner_decl_idx: i128,
+    owner_defn_ordinal: i128,
+    owner_decl_hash: i128,
+    owner_lookup: i128,
+    param_count: i128,
+    local_count: i128,
+    ir_len: i128,
+    probe_opcode: i128,
+    probe_operand: i128,
+    probe_hash: i128,
+    probe_lookup: i128,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct X86RuntimeHelperRel32TargetDiagnostic {
     row: LinuxX86FunctionSegmentMetadataRow,
     call_offset: usize,
@@ -55338,6 +55359,103 @@ fn read_linux_x86_stage_code_segments_tsv(
         )
     });
     parse_linux_x86_stage_code_segments_tsv(&output)
+}
+
+fn parse_linux_x86_raw_function_owner_rows(output: &str) -> Vec<LinuxX86RawFunctionOwnerRow> {
+    let lines = parse_numeric_lines_i128(output);
+    let mut idx = 0;
+    let mut rows = Vec::new();
+    while idx < lines.len() {
+        match lines[idx] {
+            9_000_000_049 => {
+                assert!(
+                    idx + 7 <= lines.len(),
+                    "x86 raw function known ftable lookup row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 7;
+            }
+            9_000_000_048 => {
+                assert!(
+                    idx + 18 <= lines.len(),
+                    "x86 raw function owner row が不足: idx={idx} lines={lines:?}"
+                );
+                rows.push(LinuxX86RawFunctionOwnerRow {
+                    function_slot: lines[idx + 1],
+                    function_idx: lines[idx + 2],
+                    current_hash: lines[idx + 3],
+                    current_lookup: lines[idx + 4],
+                    owner_found: lines[idx + 5],
+                    owner_pair_idx: lines[idx + 6],
+                    owner_decl_idx: lines[idx + 7],
+                    owner_defn_ordinal: lines[idx + 8],
+                    owner_decl_hash: lines[idx + 9],
+                    owner_lookup: lines[idx + 10],
+                    param_count: lines[idx + 11],
+                    local_count: lines[idx + 12],
+                    ir_len: lines[idx + 13],
+                    probe_opcode: lines[idx + 14],
+                    probe_operand: lines[idx + 15],
+                    probe_hash: lines[idx + 16],
+                    probe_lookup: lines[idx + 17],
+                });
+                idx += 18;
+            }
+            marker => {
+                panic!(
+                    "未知の x86 raw function owner marker: marker={marker} idx={idx} lines={lines:?}"
+                );
+            }
+        }
+    }
+    rows
+}
+
+fn extract_linux_x86_function_metadata_records(output: &str) -> String {
+    let lines = parse_numeric_lines_i128(output);
+    let mut idx = 0;
+    let mut records = Vec::new();
+    while idx < lines.len() {
+        let record_len = match lines[idx] {
+            9_000_000_020 => 12,
+            9_000_000_021 => 15,
+            _ => {
+                idx += 1;
+                continue;
+            }
+        };
+        assert!(
+            idx + record_len <= lines.len(),
+            "x86 function metadata record が途中で切れている: marker={} idx={idx} record_len={record_len} lines={lines:?}",
+            lines[idx]
+        );
+        for value in &lines[idx..idx + record_len] {
+            records.push(value.to_string());
+        }
+        idx += record_len;
+    }
+    records.join("\n")
+}
+
+fn extract_linux_x86_user_call_direct_replay_records(output: &str) -> String {
+    let lines = parse_numeric_lines_i128(output);
+    let mut idx = 0;
+    let mut records = Vec::new();
+    while idx < lines.len() {
+        if lines[idx] != 9_000_000_046 {
+            idx += 1;
+            continue;
+        }
+        let record_len = 21;
+        assert!(
+            idx + record_len <= lines.len(),
+            "x86 user call direct replay record が途中で切れている: idx={idx} lines={lines:?}"
+        );
+        for value in &lines[idx..idx + record_len] {
+            records.push(value.to_string());
+        }
+        idx += record_len;
+    }
+    records.join("\n")
 }
 
 fn parse_linux_x86_function_segment_metadata_rows(
@@ -55932,6 +56050,238 @@ fn x86_metadata_row_rel32_target(row: &LinuxX86FunctionSegmentMetadataRow) -> Op
     Some(row.offset + call_offset as i64 + 5 + rel32 as i64)
 }
 
+fn lsharp_name_hash_u64(name: &str) -> i128 {
+    name.chars()
+        .fold(0_u64, |hash, ch| {
+            hash.wrapping_mul(31).wrapping_add(u64::from(ch as u32))
+        })
+        .into()
+}
+
+fn normalize_x86_signed_word(value: i128, context: &str) -> i64 {
+    if value < 0 {
+        return i64::try_from(value)
+            .unwrap_or_else(|_| panic!("{context} が i64 範囲外: value={value}"));
+    }
+    let value = u64::try_from(value)
+        .unwrap_or_else(|_| panic!("{context} が u64 範囲外: value={value}"));
+    value as i64
+}
+
+fn find_linux_x86_raw_function_owner_for_decl_hash<'a>(
+    rows: &'a [LinuxX86RawFunctionOwnerRow],
+    decl_hash: i128,
+    name: &str,
+) -> &'a LinuxX86RawFunctionOwnerRow {
+    let matches = rows
+        .iter()
+        .filter(|row| row.owner_found == 1 && row.owner_decl_hash == decl_hash)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        matches.len(),
+        1,
+        "x86 raw function owner が一意に見つからない: name={name} hash={decl_hash} matches={matches:?}"
+    );
+    let owner = matches[0];
+    assert_eq!(
+        owner.current_lookup, owner.function_idx,
+        "x86 raw function current ftable lookup が function index と一致しない: name={name} owner={owner:?}"
+    );
+    assert_eq!(
+        owner.owner_lookup, owner.function_idx,
+        "x86 raw function declaration owner lookup が function index と一致しない: name={name} owner={owner:?}"
+    );
+    owner
+}
+
+fn find_linux_x86_metadata_header_for_function_idx<'a>(
+    headers: &'a [LinuxX86FunctionSegmentMetadataHeader],
+    function_idx: usize,
+    name: &str,
+) -> &'a LinuxX86FunctionSegmentMetadataHeader {
+    let function_idx_i64 = i64::try_from(function_idx)
+        .unwrap_or_else(|_| panic!("x86 function index が i64 範囲外: name={name} index={function_idx}"));
+    let matches = headers
+        .iter()
+        .filter(|header| header.function_idx == function_idx_i64)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        matches.len(),
+        1,
+        "x86 metadata header が一意に見つからない: name={name} function_idx={function_idx} headers={headers:?}"
+    );
+    matches[0]
+}
+
+fn assert_linux_x86_metadata_rows_match_stage_code(
+    name: &str,
+    header: &LinuxX86FunctionSegmentMetadataHeader,
+    rows: &[LinuxX86FunctionSegmentMetadataRow],
+    segment: &LinuxX86TransportCodeSegment,
+    code: &[u8],
+) {
+    assert_eq!(
+        usize::try_from(header.function_start)
+            .unwrap_or_else(|_| panic!("x86 metadata function start が負: name={name} header={header:?}")),
+        segment.start,
+        "x86 metadata function start と stage segment start が一致しない: name={name} header={header:?} segment={segment:?}"
+    );
+    assert_eq!(
+        usize::try_from(header.function_size)
+            .unwrap_or_else(|_| panic!("x86 metadata function size が負: name={name} header={header:?}")),
+        segment.len,
+        "x86 metadata function size と stage segment length が一致しない: name={name} header={header:?} segment={segment:?}"
+    );
+    for row in rows {
+        let row_offset = usize::try_from(row.offset).unwrap_or_else(|_| {
+            panic!("x86 metadata instruction offset が負: name={name} row={row:?}")
+        });
+        let row_size = usize::try_from(row.size)
+            .unwrap_or_else(|_| panic!("x86 metadata instruction size が負: name={name} row={row:?}"));
+        let byte_count = row_size.min(row.bytes.len());
+        if byte_count == 0 {
+            continue;
+        }
+        let start = segment.start + row_offset;
+        let end = start + byte_count;
+        assert!(
+            end <= code.len() && end <= segment.end(),
+            "x86 metadata instruction bytes が stage code 範囲外: name={name} row={row:?} segment={segment:?} code_len={}",
+            code.len()
+        );
+        assert_eq!(
+            &code[start..end],
+            &row.bytes[..byte_count],
+            "x86 metadata instruction bytes と stage code が一致しない: name={name} row={row:?} segment={segment:?}"
+        );
+    }
+}
+
+fn assert_linux_x86_parser_call_correlation(
+    owner_rows: &[LinuxX86RawFunctionOwnerRow],
+    parse_program_decl_hash: i128,
+    parse_defn_decl_hash: i128,
+    program_headers: &[LinuxX86FunctionSegmentMetadataHeader],
+    program_rows: &[LinuxX86FunctionSegmentMetadataRow],
+    program_direct_rows: &[X86UserCallDirectReplayWideRow],
+    defn_headers: &[LinuxX86FunctionSegmentMetadataHeader],
+    defn_rows: &[LinuxX86FunctionSegmentMetadataRow],
+    segments: &[LinuxX86TransportCodeSegment],
+    code: &[u8],
+) {
+    let program_owner = find_linux_x86_raw_function_owner_for_decl_hash(
+        owner_rows,
+        parse_program_decl_hash,
+        "parse-program-step-v3",
+    );
+    let defn_owner = find_linux_x86_raw_function_owner_for_decl_hash(
+        owner_rows,
+        parse_defn_decl_hash,
+        "parse-defn-v3",
+    );
+    let program_idx = usize::try_from(program_owner.function_idx).unwrap_or_else(|_| {
+        panic!("parse-program-step-v3 function index が usize 範囲外: owner={program_owner:?}")
+    });
+    let defn_idx = usize::try_from(defn_owner.function_idx)
+        .unwrap_or_else(|_| panic!("parse-defn-v3 function index が usize 範囲外: owner={defn_owner:?}"));
+    let program_header = find_linux_x86_metadata_header_for_function_idx(
+        program_headers,
+        program_idx,
+        "parse-program-step-v3",
+    );
+    let defn_header = find_linux_x86_metadata_header_for_function_idx(
+        defn_headers,
+        defn_idx,
+        "parse-defn-v3",
+    );
+    let program_segment = find_linux_x86_transport_segment_for_function_idx(segments, program_idx)
+        .unwrap_or_else(|| panic!("parse-program-step-v3 stage segment が無い: function_idx={program_idx}"));
+    let defn_segment = find_linux_x86_transport_segment_for_function_idx(segments, defn_idx)
+        .unwrap_or_else(|| panic!("parse-defn-v3 stage segment が無い: function_idx={defn_idx}"));
+
+    assert_linux_x86_metadata_rows_match_stage_code(
+        "parse-program-step-v3",
+        program_header,
+        program_rows,
+        program_segment,
+        code,
+    );
+    assert_linux_x86_metadata_rows_match_stage_code(
+        "parse-defn-v3",
+        defn_header,
+        defn_rows,
+        defn_segment,
+        code,
+    );
+
+    let call = program_rows
+        .iter()
+        .find(|row| row.opcode == 40 && row.operand == defn_idx as i64)
+        .unwrap_or_else(|| {
+            panic!(
+                "parse-program-step-v3 に parse-defn-v3 への opcode 40 call が無い: defn_idx={defn_idx} rows={program_rows:?}"
+            )
+        });
+    let direct = program_direct_rows
+        .iter()
+        .find(|direct| {
+            direct.instr_idx == i128::from(call.instr_idx)
+                && direct.opcode == i128::from(call.opcode)
+                && direct.operand == i128::from(call.operand)
+                && direct.depth == i128::from(call.depth)
+                && direct.offset == i128::from(call.offset)
+                && direct.size == i128::from(call.size)
+        })
+        .unwrap_or_else(|| {
+            panic!(
+                "parse-program-step-v3 opcode 40 の direct replay row が無い: call={call:?} rows={program_direct_rows:?}"
+            )
+        });
+    let expected_relative_target = i64::try_from(defn_segment.start)
+        .expect("stage segment start は i64 範囲内であること")
+        - i64::try_from(program_segment.start).expect("stage segment start は i64 範囲内であること");
+    assert_eq!(
+        normalize_x86_signed_word(direct.target_offset, "opcode 40 target offset"),
+        expected_relative_target,
+        "parse-program-step-v3 direct replay target が parse-defn-v3 segment に着地しない: call={call:?} direct={direct:?} program_segment={program_segment:?} defn_segment={defn_segment:?}"
+    );
+    let call_next_offset = i64::try_from(direct.call_next_offset).unwrap_or_else(|_| {
+        panic!("opcode 40 call next offset が i64 範囲外: direct={direct:?}")
+    });
+    let expected_call_rel = expected_relative_target - (call.offset + call_next_offset);
+    assert_eq!(
+        normalize_x86_signed_word(direct.call_rel, "opcode 40 call rel"),
+        expected_call_rel,
+        "parse-program-step-v3 direct replay rel32 が target/current offset と一致しない: call={call:?} direct={direct:?}"
+    );
+    assert_eq!(
+        direct.bytes.map(|byte| u8::try_from(byte).expect("direct replay byte は u8 範囲内であること")),
+        call.bytes,
+        "parse-program-step-v3 direct replay bytes と metadata prefix が一致しない: call={call:?} direct={direct:?}"
+    );
+    let row_offset = usize::try_from(call.offset)
+        .unwrap_or_else(|_| panic!("opcode 40 instruction offset が負: row={call:?}"));
+    assert!(
+        call_next_offset >= 5,
+        "opcode 40 call next offset は rel32 call 長以上であること: direct={direct:?}"
+    );
+    let code_call_offset = program_segment.start
+        + row_offset
+        + usize::try_from(call_next_offset - 5)
+            .expect("opcode 40 call offset は usize 範囲内であること");
+    let emitted_call = decode_x86_rel32_call_at(code, code_call_offset);
+    assert_eq!(
+        i64::from(emitted_call.rel32),
+        expected_call_rel,
+        "parse-program-step-v3 stage code rel32 と direct replay が一致しない: call={call:?} direct={direct:?} emitted_call={emitted_call:?}"
+    );
+    assert_eq!(
+        emitted_call.target_offset,
+        i64::try_from(defn_segment.start).expect("stage segment start は i64 範囲内であること"),
+        "parse-program-step-v3 stage code rel32 target が parse-defn-v3 segment に着地しない: call={call:?} emitted_call={emitted_call:?} defn_segment={defn_segment:?}"
+    );
+}
+
 fn x86_metadata_rows_to_ir_call_trace_rows(
     rows: &[LinuxX86FunctionSegmentMetadataRow],
 ) -> Vec<X86IrCallTraceRow> {
@@ -56493,6 +56843,8 @@ fn test_linux_x86_function_segment_metadata_detects_zeroed_map_insert_runtime_ca
 0
 0
 0
+0
+0
 ";
     let rows = parse_linux_x86_function_segment_metadata_rows(metadata);
     let zeroed_rows = find_zeroed_x86_runtime_helper_call_rows(&rows);
@@ -56690,6 +57042,8 @@ fn test_linux_x86_function_segment_metadata_detects_zeroed_substring_runtime_cal
 3
 692
 12
+0
+0
 0
 0
 0
@@ -57110,6 +57464,345 @@ segment_index\tfunction_idx\tkind\tstart\tlen\tend\tfirst_32_bytes\n\
     assert_eq!(hit.start, 3_102_363);
     assert_eq!(hit.len, 2_595);
     assert_eq!(hit.first_32_bytes, vec![0x55, 0x48, 0x89, 0xe5]);
+}
+
+#[test]
+fn test_linux_x86_raw_function_owner_rows_parse_parser_declarations() {
+    let raw = "\
+9000000049
+11
+21
+22
+32
+33
+43
+9000000048
+17
+27
+101
+27
+1
+3
+5
+7
+2001
+27
+2
+4
+80
+40
+31
+3001
+31
+";
+
+    let rows = parse_linux_x86_raw_function_owner_rows(raw);
+
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].function_slot, 17);
+    assert_eq!(rows[0].function_idx, 27);
+    assert_eq!(rows[0].owner_found, 1);
+    assert_eq!(rows[0].owner_decl_hash, 2001);
+    assert_eq!(rows[0].owner_lookup, 27);
+    assert_eq!(rows[0].probe_opcode, 40);
+    assert_eq!(rows[0].probe_operand, 31);
+}
+
+#[test]
+fn test_linux_x86_function_metadata_extracts_records_from_mixed_diagnostic_output() {
+    let output = "\
+9000000289
+17
+18
+10
+28
+18
+9000000290
+17
+27
+100
+3
+9000000020
+17
+27
+100
+20
+2
+4
+6
+32
+16
+4
+1
+9000000344
+0
+40
+31
+0
+4
+5
+9000000021
+0
+40
+31
+0
+4
+5
+232
+11
+0
+0
+0
+0
+0
+0
+";
+
+    let metadata = extract_linux_x86_function_metadata_records(output);
+    let headers = parse_linux_x86_function_segment_metadata_headers(&metadata);
+    let rows = parse_linux_x86_function_segment_metadata_rows(&metadata);
+
+    assert_eq!(headers.len(), 1);
+    assert_eq!(headers[0].function_idx, 27);
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].opcode, 40);
+    assert_eq!(rows[0].bytes[..5], [0xe8, 0x0b, 0, 0, 0]);
+}
+
+#[test]
+fn test_linux_x86_function_metadata_extracts_user_call_direct_replay_records() {
+    let output = "\
+9000000289
+17
+18
+10
+28
+18
+9000000046
+0
+40
+31
+0
+4
+5
+2
+5
+20
+11
+5
+20
+232
+11
+0
+0
+0
+0
+0
+0
+";
+
+    let metadata = extract_linux_x86_user_call_direct_replay_records(output);
+    let rows = parse_x86_user_call_direct_replay_wide_rows(&metadata);
+
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].opcode, 40);
+    assert_eq!(rows[0].operand, 31);
+    assert_eq!(rows[0].call_rel, 11);
+}
+
+#[test]
+fn test_linux_x86_parser_call_correlation_checks_owner_metadata_code_and_rel32_target() {
+    let raw = "\
+9000000048
+17
+27
+101
+27
+1
+0
+0
+0
+2001
+27
+2
+4
+80
+40
+31
+3001
+31
+9000000048
+21
+31
+102
+31
+1
+0
+1
+1
+2002
+31
+1
+3
+40
+-1
+-1
+0
+0
+";
+    let program_metadata = "\
+9000000020
+17
+27
+100
+20
+2
+4
+6
+32
+16
+4
+1
+9000000021
+0
+40
+31
+0
+4
+5
+232
+11
+0
+0
+0
+0
+0
+0
+";
+    let program_direct = "\
+9000000046
+0
+40
+31
+0
+4
+5
+2
+5
+20
+11
+5
+20
+232
+11
+0
+0
+0
+0
+0
+0
+";
+    let defn_metadata = "\
+9000000020
+21
+31
+120
+12
+1
+3
+4
+24
+8
+1
+1
+9000000021
+0
+42
+0
+0
+0
+1
+85
+0
+0
+0
+0
+0
+0
+0
+";
+    let segments = parse_linux_x86_stage_code_segments_tsv(
+        "segment_index\tfunction_idx\tkind\tstart\tlen\tend\tfirst_32_bytes\n\
+         17\t27\tfunction\t100\t20\t120\t55 48 89 e5\n\
+         21\t31\tfunction\t120\t12\t132\t55 48 89 e5\n",
+    );
+    let mut code = vec![0u8; 132];
+    code[104..109].copy_from_slice(&[0xe8, 0x0b, 0x00, 0x00, 0x00]);
+    code[120] = 0x55;
+
+    assert_linux_x86_parser_call_correlation(
+        &parse_linux_x86_raw_function_owner_rows(raw),
+        2001,
+        2002,
+        &parse_linux_x86_function_segment_metadata_headers(program_metadata),
+        &parse_linux_x86_function_segment_metadata_rows(program_metadata),
+        &parse_x86_user_call_direct_replay_wide_rows(program_direct),
+        &parse_linux_x86_function_segment_metadata_headers(defn_metadata),
+        &parse_linux_x86_function_segment_metadata_rows(defn_metadata),
+        &segments,
+        &code,
+    );
+}
+
+#[test]
+#[ignore = "diagnostic: V2-13a-5 Linux x86 parser call owner/metadata/code/rel32 correlation"]
+fn test_e2e_linux_x86_actual_parser_call_metadata_correlates_to_stage_code() {
+    let artifact_dir = std::env::var_os("LSHARP_NATIVE_LINUX_X86_PARSER_CALL_DIAGNOSTIC_DIR")
+        .expect(
+            "LSHARP_NATIVE_LINUX_X86_PARSER_CALL_DIAGNOSTIC_DIR に parser diagnostic artifact directory を指定すること",
+        );
+    let artifact_dir = workspace_root_relative_path(std::path::PathBuf::from(artifact_dir));
+    assert!(
+        artifact_dir.is_dir(),
+        "parser diagnostic artifact directory が無い: {}",
+        artifact_dir.display()
+    );
+    let read = |name: &str| {
+        std::fs::read_to_string(artifact_dir.join(name)).unwrap_or_else(|e| {
+            panic!(
+                "parser diagnostic artifact を読めない: name={name} dir={}: {e}",
+                artifact_dir.display()
+            )
+        })
+    };
+    let owner_rows = parse_linux_x86_raw_function_owner_rows(&read("parser-owners.txt"));
+    let raw_program_metadata = read("parse-program-step-v3-metadata.txt");
+    let program_metadata = extract_linux_x86_function_metadata_records(&raw_program_metadata);
+    let program_direct_rows = parse_x86_user_call_direct_replay_wide_rows(
+        &extract_linux_x86_user_call_direct_replay_records(&raw_program_metadata),
+    );
+    let defn_metadata =
+        extract_linux_x86_function_metadata_records(&read("parse-defn-v3-metadata.txt"));
+    let segments = read_linux_x86_stage_code_segments_tsv(&artifact_dir.join("stage-code-segments.tsv"));
+    let code = std::fs::read(artifact_dir.join("stage-code.bin")).unwrap_or_else(|e| {
+        panic!(
+            "parser diagnostic stage code を読めない: dir={}: {e}",
+            artifact_dir.display()
+        )
+    });
+
+    assert_linux_x86_parser_call_correlation(
+        &owner_rows,
+        lsharp_name_hash_u64("parse-program-step-v3"),
+        lsharp_name_hash_u64("parse-defn-v3"),
+        &parse_linux_x86_function_segment_metadata_headers(&program_metadata),
+        &parse_linux_x86_function_segment_metadata_rows(&program_metadata),
+        &program_direct_rows,
+        &parse_linux_x86_function_segment_metadata_headers(&defn_metadata),
+        &parse_linux_x86_function_segment_metadata_rows(&defn_metadata),
+        &segments,
+        &code,
+    );
 }
 
 #[test]
