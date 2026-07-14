@@ -10201,7 +10201,8 @@ fn test_native_codegen_x86_vector_push_helper_reads_capacity_from_vector_header(
         .expect("NativeCodegen.ls に x86 vector-push helper が存在すること");
 
     assert!(
-        helper_body.contains("part6 (byte-vector-4 8 68 139 61)")
+        helper_body.contains("part6 (byte-vector-4 8 68 139 97)")
+            && !helper_body.contains("part6 (byte-vector-4 8 68 139 61)")
             && !helper_body.contains("part6 (byte-vector-4 8 68 139 65)"),
         "x86 vector-push helper は caller frame の [rbp+4] ではなく、untagged vector の [rcx+4] から capacity を読むべき"
     );

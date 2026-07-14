@@ -1201,6 +1201,23 @@ fn test_native_codegen_x86_vector_push_helper_has_growth_path() {
 }
 
 #[test]
+fn test_native_codegen_x86_vector_push_helper_reads_capacity_from_rcx_header() {
+    let lines = run_x86_selfhost_runtime_helper_harness(
+        "native-stage23-x86-vector-push-helper-capacity-header",
+        r#"  (let [helper (emit-x86-selfhost-vector-push-helper)]
+    (do
+      (print-bytes-loop helper 21 25)
+      0))"#,
+    );
+
+    assert_eq!(
+        lines,
+        vec![68, 139, 97, 4],
+        "x86_64 vector-push helper は caller frame ではなく untagged vector の [rcx+4] から capacity を読む必要がある"
+    );
+}
+
+#[test]
 fn test_native_codegen_x86_i64_sub_depth_three_restores_previous_window() {
     let lines = run_x86_selfhost_runtime_helper_harness(
         "native-stage23-x86-i64-sub-depth-three",
@@ -1264,7 +1281,7 @@ fn test_native_codegen_x86_vector_and_ref_helper_emitters_return_executable_byte
             121, 39, 72, 129, 249, 0, 240, 255, 255, 127, 30, 72, 15, 186, 241, 63, 72, 137, 202,
             72, 193, 234, 47, 117, 16, 131, 57, 2, 117, 11, 59, 65, 8, 115, 6, 72, 139, 68, 193,
             16, 195, 49, 192, 195, 205, 65, 84, 65, 85, 72, 133, 201, 15, 137, 185, 0, 0, 0, 72,
-            15, 186, 241, 63, 139, 81, 8, 68, 139, 65, 4, 68, 57, 194, 15, 130, 141, 0, 0, 0, 80,
+            15, 186, 241, 63, 139, 81, 8, 68, 139, 97, 4, 68, 57, 194, 15, 130, 141, 0, 0, 0, 80,
             81, 65, 137, 212, 69, 137, 197, 69, 133, 237, 117, 8, 65, 189, 1, 0, 0, 0, 235, 3, 69,
             1, 237, 49, 255, 74, 141, 52, 237, 16, 0, 0, 0, 186, 3, 0, 0, 0, 65, 186, 34, 0, 0, 0,
             73, 199, 192, 255, 255, 255, 255, 69, 49, 201, 184, 9, 0, 0, 0, 15, 5, 72, 133, 192,
