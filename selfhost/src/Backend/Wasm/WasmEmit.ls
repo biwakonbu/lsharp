@@ -1003,7 +1003,7 @@
 (defn emit-root-push-instr [bytes] (emit-leb128 (emit-byte bytes 16) 7))
 (defn emit-root-pop-instr [bytes] (emit-leb128 (emit-byte bytes 16) 8))
 (defn emit-root-set-instr [bytes] (emit-leb128 (emit-byte bytes 16) 9))
-(defn emit-print-string-instr [bytes] (emit-leb128 (emit-byte bytes 16) 10))
+(defn emit-print-string-instr [bytes] (let [b1 (emit-leb128 (emit-byte bytes 16) 10)] (emit-leb128-s (emit-byte b1 66) 0)))
 (defn emit-and-instr [bytes] (emit-byte bytes 131))
 (defn emit-or-instr [bytes] (emit-byte bytes 132))
 (defn emit-print-instr [bytes] (let [b1 (emit-leb128 (emit-byte bytes 16) 1)] (emit-leb128-s (emit-byte b1 66) 0)))

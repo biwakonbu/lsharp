@@ -5275,7 +5275,7 @@
     parse-slot (root_push parse-count-ref)
     data-ref (ref-new (vector-new 8))
     data-ref-slot (root_push data-ref)
-    functions (compile-file-functions-with-cache path 10 cache-ref parse-count-ref data-ref)]
+    functions (compile-file-functions-with-cache path 11 cache-ref parse-count-ref data-ref)]
     (do
       (let [functions-slot (root_push functions)]
         (do

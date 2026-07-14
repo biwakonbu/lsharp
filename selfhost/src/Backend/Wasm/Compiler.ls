@@ -1932,7 +1932,7 @@
     (root_push src)
     (root_push decls)
     (let [n (vector-length decls)
-      prelude (record-prelude-chunked decls 0 n (ftable-new) 10 (vector-new 8))]
+      prelude (record-prelude-chunked decls 0 n (ftable-new) 11 (vector-new 8))]
       (do
         (root_push prelude)
         (let [prelude-ftable (vector-get prelude 2)

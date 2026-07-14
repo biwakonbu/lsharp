@@ -436,8 +436,44 @@ fn test_selfhost_wasm_emit_print_string_appends_runtime_call() {
 
     assert_eq!(
         parse_numeric_lines(&output),
-        vec![2, 16, 10],
-        "print-string opcode は 11 番目の runtime import への call [16, 10] を出力する必要がある"
+        vec![4, 16, 10, 66, 0],
+        "print-string opcode は 11 番目の runtime import への call と i64 のゼロ結果を出力する必要がある"
+    );
+}
+
+#[test]
+fn test_selfhost_wasm_function_body_keeps_print_string_result() {
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
+        "selfhost-wasm-function-body-print-string-result",
+        &["IR.ls", "WasiBackend.ls", "WasmEmit.ls"],
+        "Main.ls",
+        r#"(module Main)
+(import Backend.Wasm.WasmEmit)
+
+(defn print-bytes-loop [bytes idx len]
+  (if (>= idx len)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes-loop bytes (+ idx 1) len))))
+
+(defn main []
+  (let [instr0 (vector-push (vector-new 2) 87)
+        instr (vector-push instr0 0)
+        ir (vector-push (vector-new 4) instr)
+        body (build-function-body ir)]
+    (do
+      (print (vector-length body))
+      (print-bytes-loop body 0 (vector-length body))
+      0)))"#,
+        &[],
+    )
+    .expect("selfhost Wasm function body print-string harness 実行に失敗");
+
+    assert_eq!(
+        parse_numeric_lines(&output),
+        vec![6, 0, 16, 10, 66, 0, 11],
+        "function body emission は print-string の runtime call と i64 のゼロ結果を保持する必要がある"
     );
 }
 

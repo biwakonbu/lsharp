@@ -1454,6 +1454,7 @@ fn run_wasm_with_six_imports_compiler_mode_inner(
     file_root: Option<&std::path::Path>,
     args: &[&str],
     printed_first_on_error: bool,
+    include_print_string: bool,
 ) -> Result<String, String> {
     let engine = configured_selfhost_engine();
     let module = wasmtime::Module::new(&engine, wasm)
@@ -1628,21 +1629,33 @@ fn run_wasm_with_six_imports_compiler_mode_inner(
             slot
         },
     );
+    let print_string = wasmtime::Func::wrap(
+        &mut store,
+        |mut caller: wasmtime::Caller<'_, SixImportState>, value: i64| {
+            let bytes = read_string_object_bytes(&mut caller, value);
+            let text = String::from_utf8(bytes).expect("print-string の文字列が UTF-8 ではない");
+            caller.data_mut().printed.push_str(&text);
+        },
+    );
+    let mut imports = vec![
+        alloc.into(),
+        print.into(),
+        read_file.into(),
+        command_line_arg.into(),
+        string_concat.into(),
+        substring.into(),
+        file_exists.into(),
+        root_push.into(),
+        root_pop.into(),
+        root_set.into(),
+    ];
+    if include_print_string {
+        imports.push(print_string.into());
+    }
     let instance = wasmtime::Instance::new(
         &mut store,
         &module,
-        &[
-            alloc.into(),
-            print.into(),
-            read_file.into(),
-            command_line_arg.into(),
-            string_concat.into(),
-            substring.into(),
-            file_exists.into(),
-            root_push.into(),
-            root_pop.into(),
-            root_set.into(),
-        ],
+        &imports,
     )
     .map_err(|e| format!("インスタンス化に失敗: {e}"))?;
     let start = instance
@@ -1665,7 +1678,23 @@ pub(crate) fn run_wasm_with_six_imports_compiler_mode(
     file_content: &str,
     args: &[&str],
 ) -> Result<String, String> {
-    run_wasm_with_six_imports_compiler_mode_inner(wasm, Some(file_content), None, args, false)
+    run_wasm_with_six_imports_compiler_mode_inner(wasm, Some(file_content), None, args, false, false)
+}
+
+pub(crate) fn run_wasm_with_eleven_imports_compiler_mode(
+    wasm: &[u8],
+    file_content: &str,
+    args: &[&str],
+) -> Result<String, String> {
+    run_wasm_with_six_imports_compiler_mode_inner(wasm, Some(file_content), None, args, false, true)
+}
+
+pub(crate) fn run_wasm_with_eleven_imports_compiler_mode_fs(
+    wasm: &[u8],
+    root_dir: &std::path::Path,
+    args: &[&str],
+) -> Result<String, String> {
+    run_wasm_with_six_imports_compiler_mode_inner(wasm, None, Some(root_dir), args, false, true)
 }
 
 pub(crate) fn run_wasm_with_six_imports_compiler_mode_fs(
@@ -1673,7 +1702,7 @@ pub(crate) fn run_wasm_with_six_imports_compiler_mode_fs(
     root_dir: &std::path::Path,
     args: &[&str],
 ) -> Result<String, String> {
-    run_wasm_with_six_imports_compiler_mode_inner(wasm, None, Some(root_dir), args, false)
+    run_wasm_with_six_imports_compiler_mode_inner(wasm, None, Some(root_dir), args, false, false)
 }
 
 pub(crate) fn run_wasm_with_six_imports_compiler_mode_fs_printed_first(
@@ -1681,7 +1710,7 @@ pub(crate) fn run_wasm_with_six_imports_compiler_mode_fs_printed_first(
     root_dir: &std::path::Path,
     args: &[&str],
 ) -> Result<String, String> {
-    run_wasm_with_six_imports_compiler_mode_inner(wasm, None, Some(root_dir), args, true)
+    run_wasm_with_six_imports_compiler_mode_inner(wasm, None, Some(root_dir), args, true, false)
 }
 
 ///

@@ -2166,7 +2166,7 @@ fn test_e2e_selfhost_compiler_mode_root_runtime_api_works() {
     );
     let emitted = compile_and_run(&combined);
     let wasm_bytes = parse_printed_wasm_bytes(&emitted);
-    let output = super::selfhost_bootstrap_four_layer::run_wasm_with_six_imports_compiler_mode(
+    let output = super::selfhost_bootstrap_four_layer::run_wasm_with_eleven_imports_compiler_mode(
         &wasm_bytes,
         "",
         &[],
@@ -2215,7 +2215,7 @@ fn test_e2e_selfhost_compiler_mode_root_set_preserves_map_insert_value() {
     );
     let emitted = compile_and_run(&combined);
     let wasm_bytes = parse_printed_wasm_bytes(&emitted);
-    let output = super::selfhost_bootstrap_four_layer::run_wasm_with_six_imports_compiler_mode(
+    let output = super::selfhost_bootstrap_four_layer::run_wasm_with_eleven_imports_compiler_mode(
         &wasm_bytes,
         "",
         &[],
@@ -2264,7 +2264,7 @@ fn test_e2e_selfhost_compiler_mode_map_insert_preserves_entry() {
     );
     let emitted = compile_and_run(&combined);
     let wasm_bytes = parse_printed_wasm_bytes(&emitted);
-    let output = super::selfhost_bootstrap_four_layer::run_wasm_with_six_imports_compiler_mode(
+    let output = super::selfhost_bootstrap_four_layer::run_wasm_with_eleven_imports_compiler_mode(
         &wasm_bytes,
         "",
         &[],
@@ -2313,7 +2313,7 @@ fn test_e2e_selfhost_compiler_mode_record_literal_field_access_runs() {
     );
     let emitted = compile_and_run(&combined);
     let wasm_bytes = parse_printed_wasm_bytes(&emitted);
-    let output = super::selfhost_bootstrap_four_layer::run_wasm_with_six_imports_compiler_mode(
+    let output = super::selfhost_bootstrap_four_layer::run_wasm_with_eleven_imports_compiler_mode(
         &wasm_bytes,
         "",
         &[],
@@ -2361,13 +2361,61 @@ fn test_e2e_selfhost_compiler_mode_record_constructor_and_static_accessor_run() 
     );
     let emitted = compile_and_run(&combined);
     let wasm_bytes = parse_printed_wasm_bytes(&emitted);
-    let output = super::selfhost_bootstrap_four_layer::run_wasm_with_six_imports_compiler_mode(
+    let output = super::selfhost_bootstrap_four_layer::run_wasm_with_eleven_imports_compiler_mode(
         &wasm_bytes,
         "",
         &[],
     )
     .expect("selfhost compiler-mode record constructor module should run");
     assert_eq!(output, "41\n2\n");
+}
+
+/// selfhost compiler-mode: parametric record の constructor/static accessor を異なる具体化で実行できること
+#[test]
+fn test_e2e_selfhost_compiler_mode_parametric_record_constructor_and_static_accessor_run() {
+    let harness = r#"
+(defn print-bytes-loop [bytes idx count]
+  (if (>= idx count)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes-loop bytes (+ idx 1) count))))
+
+(defn main []
+  (let [source "(type (Box a) (record (: value a))) (defn main [] (let [int-box (Box 41) bool-box (Box true)] (do (print (Box.value int-box)) (print (Box.value bool-box)) 0)))"
+        program (parse-program source)
+        pair (compile-program-functions-with-source source program)
+        functions (vector-get pair 1)
+        data (vector-get pair 2)
+        wasm-bytes (build-wasm-bytes-wasi functions data)]
+    (do
+      (print (vector-length wasm-bytes))
+      (print-bytes-loop wasm-bytes 0 (vector-length wasm-bytes))
+      0)))
+"#;
+    let compiler_mode = format!("{}\n{}", selfhost_module("CompilerMode.ls"), harness);
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("IR.ls"),
+        selfhost_module("Compiler.ls"),
+        selfhost_module("WasiBackend.ls"),
+        selfhost_module("WasmEmit.ls"),
+        selfhost_module("ModuleResolver.ls"),
+        compiler_mode
+    );
+    let emitted = compile_and_run(&combined);
+    let wasm_bytes = parse_printed_wasm_bytes(&emitted);
+    let output = super::selfhost_bootstrap_four_layer::run_wasm_with_eleven_imports_compiler_mode(
+        &wasm_bytes,
+        "",
+        &[],
+    )
+    .expect("selfhost compiler-mode parametric record module should run");
+    assert_eq!(output, "41\n1\n");
 }
 
 /// legacy base compiler: record constructor と static accessor を runtime import base 付きで実行できること
@@ -2408,7 +2456,7 @@ fn test_e2e_selfhost_legacy_base_compiler_record_constructor_and_static_accessor
     );
     let emitted = compile_and_run(&combined);
     let wasm_bytes = parse_printed_wasm_bytes(&emitted);
-    let output = super::selfhost_bootstrap_four_layer::run_wasm_with_six_imports_compiler_mode(
+    let output = super::selfhost_bootstrap_four_layer::run_wasm_with_eleven_imports_compiler_mode(
         &wasm_bytes,
         "",
         &[],
@@ -2458,7 +2506,7 @@ fn test_e2e_selfhost_compiler_mode_imported_record_constructor_and_static_access
     let emitted =
         compile_and_run_with_dir_and_args(&combined, &temp_root, &["compiler", "src/App/Main.ls"]);
     let wasm_bytes = parse_printed_wasm_bytes(&emitted);
-    let output = super::selfhost_bootstrap_four_layer::run_wasm_with_six_imports_compiler_mode_fs(
+    let output = super::selfhost_bootstrap_four_layer::run_wasm_with_eleven_imports_compiler_mode_fs(
         &wasm_bytes,
         &temp_root,
         &[],
@@ -2507,7 +2555,7 @@ fn test_e2e_selfhost_compiler_mode_root_set_updates_map_without_binding_result()
     );
     let emitted = compile_and_run(&combined);
     let wasm_bytes = parse_printed_wasm_bytes(&emitted);
-    let output = super::selfhost_bootstrap_four_layer::run_wasm_with_six_imports_compiler_mode(
+    let output = super::selfhost_bootstrap_four_layer::run_wasm_with_eleven_imports_compiler_mode(
         &wasm_bytes,
         "",
         &[],
@@ -2558,7 +2606,7 @@ fn test_e2e_selfhost_compiler_mode_zero_arg_tag_call_inside_vector_builder() {
     let wasm_bytes = parse_printed_wasm_bytes(&emitted);
     std::fs::write("/tmp/zero_arg_tag_vector_builder.wasm", &wasm_bytes)
         .expect("debug wasm dump should succeed");
-    let output = super::selfhost_bootstrap_four_layer::run_wasm_with_six_imports_compiler_mode(
+    let output = super::selfhost_bootstrap_four_layer::run_wasm_with_eleven_imports_compiler_mode(
         &wasm_bytes,
         "",
         &[],
