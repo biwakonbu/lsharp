@@ -96,6 +96,35 @@ fn test_e2e_selfhost_flat_compat_sources_removed() {
     );
 }
 
+#[test]
+fn test_e2e_selfhost_embedded_cli_source_compile_uses_full_program_builder() {
+    let source = std::fs::read_to_string(
+        selfhost_project_root().join("selfhost/src/App/EmbeddedCli.ls"),
+    )
+    .expect("canonical EmbeddedCli.ls が読み込めない");
+
+    assert!(
+        source.contains("(defn compile-source-wasm-bytes "),
+        "EmbeddedCli に source 全体を Wasm bytes へ変換する helper が必要"
+    );
+    assert!(
+        source.contains("compile-program-functions-with-source"),
+        "source compile helper は全 function/data payload API を使う必要がある"
+    );
+    assert!(
+        source.contains("build-wasm-bytes-wasi"),
+        "source compile helper は実 Wasm bytes builder を使う必要がある"
+    );
+    assert!(
+        source.contains("(defn run-compile-source [src opts] (let [wasm-bytes (compile-source-wasm-bytes src)"),
+        "run-compile-source は full-program helper を呼び出す必要がある"
+    );
+    assert!(
+        !source.contains("(defn run-compile-source [src opts] (let [program (parse-program src) ir (lower program)"),
+        "run-compile-source が先頭 IR だけを返す legacy lower 経路へ戻ってはいけない"
+    );
+}
+
 // === TEST-BOOT-02-A: MacroExpand.ls direct compile テスト ===
 
 /// canonical MacroExpand.ls を直接コンパイルして成功することを検証する。
