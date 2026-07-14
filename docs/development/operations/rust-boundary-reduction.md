@@ -73,7 +73,7 @@ LSHARP_NATIVE_LINUX_X86_STAGE0_DIR=/path/to/linux-stage0 \
 
 2026-07-14 時点で、selfhost parser は record pattern の field 配置を維持したまま record type name hash を AST 末尾へ保存し、`TypeInferPattern.ls` は登録済み record schema を instantiate して各 child pattern を field 型と unify する。未登録 record、未定義 field、field child の型不一致は selfhost 側で診断できる。既存の type name なし手組み AST は shallow fallback を維持する。
 
-一方、selfhost Wasm compiler の match lowering はまだ record pattern を実行時に判定せず、field lookup、binder local、arm fallback、nested child pattern、record の nominal metadata まで含む runtime parity は未完了である。したがって、この進捗は record pattern の型検査を Rust oracle の必須範囲から一部外したものであり、L# の全 record pattern 機能が Rust なしで使えることを意味しない。
+一方、selfhost Wasm compiler の match lowering は direct record Map の field presence/value lookup、field binder local、literal child check、arm fallback まで source / ftable の actual Wasm 実行で確認済みである。ただし nested record/constructor pattern、record の nominal type hash、patch/base Map chain、一般 Map API parity まで含む runtime parity は未完了である。したがって、この進捗は record pattern の一部を Rust oracle の必須範囲から外したものであり、L# の全 record pattern 機能が Rust なしで使えることを意味しない。
 
 ## Rust に残る責務
 
@@ -83,11 +83,11 @@ Rust が完全に不要になったわけではない。次の作業は native b
 2. native selfhost と Rust implementation の oracle/differential 比較、障害解析、emergency rollback。
 3. `mcp-server`、bare LSP、`--emit-ir`、native target など、上表で明示した Rust host integration surface。
 
-したがって、Linux gate 完了後に「検証済み core CLI の日常ループは Rust なしで開発可能」と言える。一方で、自己ホストの型・宣言意味論 P0 が未完了の間は「base language development 全体」や「L# の全機能」が Rust なしとは言えない。closed / parametric alias の signature・式内 annotation、forward closed alias の signature、recursive alias の E0006 rejection、ordinary ADT の constructor/pattern、parametric record の constructor/literal/field access/update/runtime、`Type.field` accessor の型検査、immutable record update の nested runtime slice はその境界を少し狭めた。record runtime の full public closure、legacy `lower` / embedded compiler surface、上表の Rust-only surface、external tool dependency、scoped polymorphic variable、record pattern、GADT return type/refinement などの未実装 P0 は残る。
+したがって、Linux gate 完了後に「検証済み core CLI の日常ループは Rust なしで開発可能」と言える。一方で、自己ホストの型・宣言意味論 P0 が未完了の間は「base language development 全体」や「L# の全機能」が Rust なしとは言えない。closed / parametric alias の signature・式内 annotation、forward closed alias の signature、recursive alias の E0006 rejection、ordinary ADT の constructor/pattern、parametric record の constructor/literal/field access/update/runtime、`Type.field` accessor の型検査、immutable record update の nested runtime slice はその境界を少し狭めた。record runtime の full public closure、legacy `lower` / embedded compiler surface、上表の Rust-only surface、external tool dependency、scoped polymorphic variable、record pattern の残り、GADT return type/refinement などの未実装 P0 は残る。
 
 ### 残る Base Language Gap
 
-Rust を base implementation から外すため、legacy `lower` / embedded compiler の full-program 化、scoped polymorphic variable、record pattern、GADT return type/refinement を自己ホスト側で実装・差分検証する必要がある。recursive alias は Rust implementation と同じく拒否するため、未対応の recursive language feature としては数えない。`CompilerMode` と ftable 経路における nonparametric / parametric record の constructor/literal/direct/static accessor/update runtime と、record schema / `Type.field` accessor 型検査、ordinary ADT constructor/pattern はこの一覧から除外する。ただし patch Map の hidden base entry を含むため、record を一般 Map として扱う全 API の parity は別途確認する。出力側では `print-string` の 11-import env ABI を標準 WASI Preview1 と接続し、standalone 実行まで確認する作業が残る。
+Rust を base implementation から外すため、legacy `lower` / embedded compiler の full-program 化、scoped polymorphic variable、record pattern の残り、GADT return type/refinement を自己ホスト側で実装・差分検証する必要がある。recursive alias は Rust implementation と同じく拒否するため、未対応の recursive language feature としては数えない。`CompilerMode` と ftable 経路における nonparametric / parametric record の constructor/literal/direct/static accessor/update runtime、record pattern の direct field/binder/literal/fallback slice、record schema / `Type.field` accessor 型検査、ordinary ADT constructor/pattern はこの一覧から除外する。ただし nested record/constructor pattern、record nominal type hash、patch Map の hidden base entry を含む field lookup、record を一般 Map として扱う全 API の parity は別途確認する。出力側では `print-string` の 11-import env ABI を標準 WASI Preview1 と接続し、standalone 実行まで確認する作業が残る。
 
 ## 検証と残タスク
 

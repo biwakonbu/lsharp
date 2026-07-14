@@ -24,6 +24,7 @@
 (defn op-i64-gt [] 33)
 (defn op-i64-le [] 34)
 (defn op-i64-ge [] 35)
+(defn op-i64-and [] 71)
 (defn op-call [] 40)
 (defn op-block [] 42)
 (defn op-loop [] 82)

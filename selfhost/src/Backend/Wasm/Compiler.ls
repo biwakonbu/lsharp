@@ -1425,7 +1425,71 @@
             (root_pop)
             (root_pop)
             result))))))
-(defn compile-match-with-source [node source env ftable instrs data-ref] (let [scrutinee (vector-get node 1) arm-count (vector-get node 2) scr-idx (+ 1 (map-size env)) instrs1 (compile-expr-with-source scrutinee source env ftable instrs data-ref) instrs2 (emit-to instrs1 11 scr-idx)] (if (> arm-count 0) (let [pat1 (vector-get node 3) body1 (vector-get node 4) i5 (compile-match-pattern-check pat1 scr-idx instrs2) i6 (emit-to i5 41 0) i7 (compile-expr-with-source body1 source env ftable i6 data-ref) i8 (emit-to i7 43 0)] (if (> arm-count 1) (let [pat2 (vector-get node 5) body2 (vector-get node 6) i11 (compile-match-pattern-check pat2 scr-idx i8) i12 (emit-to i11 41 0) i13 (compile-expr-with-source body2 source env ftable i12 data-ref) i14 (emit-to i13 43 0)] (if (> arm-count 2) (let [pat3 (vector-get node 7) body3 (vector-get node 8) i17 (compile-match-pattern-check pat3 scr-idx i14) i18 (emit-to i17 41 0) i19 (compile-expr-with-source body3 source env ftable i18 data-ref) i20 (emit-to i19 43 0) i21 (emit-to i20 1 0) i22 (emit-to i21 43 0) i23 (emit-to i22 43 0) i24 (emit-to i23 43 0)] i24) (let [i15 (emit-to i14 1 0) i16 (emit-to i15 43 0) i17 (emit-to i16 43 0)] i17))) (let [i9 (emit-to i8 1 0) i10 (emit-to i9 43 0)] i10))) (emit-to instrs2 1 0))))
+(defn compile-match-arms-with-source [node idx arm-count source env ftable data-ref scr-idx result-local scratch-base binder-base instrs]
+  (if (>= idx arm-count)
+    instrs
+    (let [pattern-slot (+ 3 (* idx 2))
+      body-slot (+ pattern-slot 1)
+      pat (vector-get node pattern-slot)
+      body (vector-get node body-slot)
+      bind-state (bind-match-pattern pat env binder-base)]
+      (do
+        (root_push bind-state)
+        (let [arm-env (vector-get bind-state 0)
+          checked (compile-match-pattern-check-with-scratch pat scr-idx scratch-base instrs)
+          opened (emit-to checked (op-if-empty) 0)
+          bound (compile-match-pattern-binders pat scr-idx arm-env scratch-base opened)
+          body-instrs (compile-expr-with-source body source arm-env ftable bound data-ref)
+          stored (emit-to body-instrs (op-local-set) result-local)
+          exited (emit-to stored (op-br) 1)
+          else-opened (emit-to exited (op-else) 0)
+          rest
+            (compile-match-arms-with-source
+              node
+              (+ idx 1)
+              arm-count
+              source
+              env
+              ftable
+              data-ref
+              scr-idx
+              result-local
+              scratch-base
+              binder-base
+              else-opened)
+          closed (emit-to rest (op-end) 0)]
+          (do
+            (root_pop)
+            closed))))))
+
+(defn compile-match-with-source [node source env ftable instrs data-ref]
+  (let [scrutinee (vector-get node 1)
+    arm-count (vector-get node 2)
+    scr-idx (+ 1 (map-size env))
+    instrs1 (compile-expr-with-source scrutinee source env ftable instrs data-ref)
+    instrs2 (emit-to instrs1 (op-local-set) scr-idx)
+    scratch-base (max-root-temp-base env instrs2 (vector-new 0))
+    result-local (+ scratch-base 6)
+    binder-base (+ result-local 1)
+    instrs3 (emit-to instrs2 (op-i64-const) 0)
+    instrs4 (emit-to instrs3 (op-local-set) result-local)
+    instrs5 (emit-to instrs4 (op-block) 0)
+    instrs6
+      (compile-match-arms-with-source
+        node
+        0
+        arm-count
+        source
+        env
+        ftable
+        data-ref
+        scr-idx
+        result-local
+        scratch-base
+        binder-base
+        instrs5)
+    instrs7 (emit-to instrs6 (op-end) 0)]
+    (emit-to instrs7 (op-local-get) result-local)))
 (defn compile-recordupdate-with-source-entry [node source env ftable instrs data-ref]
   (compile-recordupdate-with-source node source env ftable instrs data-ref))
 (defn compile-expr-with-source-dispatch [node source env ftable instrs data-ref]
@@ -4022,6 +4086,41 @@
 (defn compile-do-expr-with-source [node source env ftable idx instrs data-ref]
   (compile-expr-with-source (vector-get node (+ 2 idx)) source env ftable instrs data-ref))
 
+(defn compile-match-arms-with-ftable [node idx arm-count env ftable scr-idx result-local scratch-base binder-base instrs]
+  (if (>= idx arm-count)
+    instrs
+    (let [pattern-slot (+ 3 (* idx 2))
+      body-slot (+ pattern-slot 1)
+      pat (vector-get node pattern-slot)
+      body (vector-get node body-slot)
+      bind-state (bind-match-pattern pat env binder-base)]
+      (do
+        (root_push bind-state)
+        (let [arm-env (vector-get bind-state 0)
+          checked (compile-match-pattern-check-with-scratch pat scr-idx scratch-base instrs)
+          opened (emit-to checked (op-if-empty) 0)
+          bound (compile-match-pattern-binders pat scr-idx arm-env scratch-base opened)
+          body-instrs (compile-expr-with-ftable body arm-env ftable bound)
+          stored (emit-to body-instrs (op-local-set) result-local)
+          exited (emit-to stored (op-br) 1)
+          else-opened (emit-to exited (op-else) 0)
+          rest
+            (compile-match-arms-with-ftable
+              node
+              (+ idx 1)
+              arm-count
+              env
+              ftable
+              scr-idx
+              result-local
+              scratch-base
+              binder-base
+              else-opened)
+          closed (emit-to rest (op-end) 0)]
+          (do
+            (root_pop)
+            closed))))))
+
 (defn compile-match-with-ftable [node env ftable instrs]
   (compile-match-with-ftable-core node env ftable instrs))
 
@@ -4037,11 +4136,25 @@
 (defn compile-match-with-ftable-core-4 [node env ftable instrs]
   (let [arm-count (vector-get node 2)
     scr-idx (+ 1 (map-size env))
-    instrs2 (emit-to (compile-expr-with-ftable (vector-get node 1) env ftable instrs) 11 scr-idx)]
-    (if (> arm-count 0)
-      (let [i5 (emit-to
-        (compile-expr-with-ftable (vector-get node 4) env ftable (compile-match-arm-prefix node scr-idx 3 instrs2))
-        43
-        0)]
-        (compile-match-with-ftable-rest node env ftable arm-count scr-idx i5))
-      (emit-to instrs2 1 0))))
+    instrs1 (compile-expr-with-ftable (vector-get node 1) env ftable instrs)
+    instrs2 (emit-to instrs1 (op-local-set) scr-idx)
+    scratch-base (max-root-temp-base env instrs2 (vector-new 0))
+    result-local (+ scratch-base 6)
+    binder-base (+ result-local 1)
+    instrs3 (emit-to instrs2 (op-i64-const) 0)
+    instrs4 (emit-to instrs3 (op-local-set) result-local)
+    instrs5 (emit-to instrs4 (op-block) 0)
+    instrs6
+      (compile-match-arms-with-ftable
+        node
+        0
+        arm-count
+        env
+        ftable
+        scr-idx
+        result-local
+        scratch-base
+        binder-base
+        instrs5)
+    instrs7 (emit-to instrs6 (op-end) 0)]
+    (emit-to instrs7 (op-local-get) result-local)))
