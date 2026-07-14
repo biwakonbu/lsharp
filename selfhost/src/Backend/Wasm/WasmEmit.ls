@@ -469,7 +469,7 @@
     (let [instr (vector-get ir-instrs idx)
       opcode (vector-get instr 0)
       operand (vector-get instr 1)]
-      (if (= opcode 41)
+      (if (if (= opcode 41) true (= opcode 83))
         (make-emit-if-state 0 (+ idx 1) (emit-ir-instr body opcode operand) (+ if-depth 1) (* if-flags 2))
         (if (= opcode 79)
           (make-emit-if-state 0 (+ idx 1) (emit-byte body (wasm-else)) if-depth (+ if-flags 1))
@@ -1062,12 +1062,21 @@
 (defn emit-ir-instr [bytes opcode operand]
   (if (= opcode 1)
     (emit-leb128-s (emit-byte bytes 66) operand)
-    (if (= opcode 10)
-      (emit-leb128 (emit-byte bytes 32) (- operand 1))
-      (if (= opcode 11)
-        (emit-leb128 (emit-byte bytes 33) (- operand 1))
-        (emit-ir-instr-basic bytes opcode operand)))))
-
+    (if (= opcode 42)
+      (emit-block-empty bytes)
+      (if (= opcode 82)
+        (emit-loop-empty bytes)
+        (if (= opcode 10)
+          (emit-leb128 (emit-byte bytes 32) (- operand 1))
+          (if (= opcode 11)
+            (emit-leb128 (emit-byte bytes 33) (- operand 1))
+            (if (= opcode 80)
+              (emit-br bytes operand)
+              (if (= opcode 81)
+                (emit-br-if bytes operand)
+                (if (= opcode 83)
+                  (emit-byte (emit-byte (emit-byte bytes 167) 4) 64)
+                  (emit-ir-instr-basic bytes opcode operand))))))))))
 (defn emit-data-section [data-bytes offset]
   (do
     (root_push data-bytes)

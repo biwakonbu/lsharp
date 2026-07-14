@@ -2127,6 +2127,47 @@ fn test_e2e_selfhost_wasmemit_rejects_native_only_opcodes() {
     }
 }
 
+/// selfhost WasmEmit.ls: record patch lookup が使う control-flow opcode を Wasm bytes へ出力できること
+#[test]
+fn test_e2e_selfhost_wasmemit_emits_control_flow_opcodes() {
+    let harness = r#"
+(defn print-bytes [bytes idx]
+  (if (>= idx (vector-length bytes))
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1)))))
+
+(defn main []
+        (let [block-bytes (emit-ir-instr (vector-new 0) 42 0)
+        loop-bytes (emit-ir-instr (vector-new 0) 82 0)
+        br-bytes (emit-ir-instr (vector-new 0) 80 1)
+        br-if-bytes (emit-ir-instr (vector-new 0) 81 1)
+        if-bytes (emit-ir-instr (vector-new 0) 83 0)]
+    (do
+      (print-bytes block-bytes 0)
+      (print-bytes loop-bytes 0)
+      (print-bytes br-bytes 0)
+      (print-bytes br-if-bytes 0)
+      (print-bytes if-bytes 0)
+      0)))
+"#;
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("IR.ls"),
+        selfhost_module("Compiler.ls"),
+        selfhost_module("WasiBackend.ls"),
+        selfhost_module("WasmEmit.ls"),
+        harness
+    );
+    let output = compile_and_run(&combined);
+    assert_eq!(output, "2\n64\n3\n64\n12\n1\n13\n1\n167\n4\n64\n");
+}
+
 /// selfhost compiler-mode: root runtime API が actual import semantics で動作すること
 #[test]
 fn test_e2e_selfhost_compiler_mode_root_runtime_api_works() {
@@ -2418,9 +2459,9 @@ fn test_e2e_selfhost_compiler_mode_parametric_record_constructor_and_static_acce
     assert_eq!(output, "41\n1\n");
 }
 
-/// legacy base compiler: record constructor と static accessor を runtime import base 付きで実行できること
+/// selfhost compiler-mode: record update の結果を actual Wasm で実行できること
 #[test]
-fn test_e2e_selfhost_legacy_base_compiler_record_constructor_and_static_accessor_run() {
+fn test_e2e_selfhost_compiler_mode_record_update_runs() {
     let harness = r#"
 (defn print-bytes-loop [bytes idx count]
   (if (>= idx count)
@@ -2430,9 +2471,57 @@ fn test_e2e_selfhost_legacy_base_compiler_record_constructor_and_static_accessor
       (print-bytes-loop bytes (+ idx 1) count))))
 
 (defn main []
-  (let [source "(defn inc [n] (+ n 1)) (type Point (record (: x Int) (: y Int))) (defn main [] (let [point (Point (inc 40) 2)] (do (print (Point.x point)) (print (Point.y point)) 0)))"
+  (let [source "(type Point (record (: x Int) (: y Int) (: z Int))) (defn main [] (let [p {Point x 1 y 2 z 3} q {p | x 10} r {q | y 20}] (do (print (Point.x q)) (print (Point.y q)) (print (Point.z q)) (print (. q y)) (print (Point.x p)) (print (Point.y p)) (print (Point.z p)) (print (Point.x r)) (print (Point.y r)) (print (Point.z r)) (print (. r x)) (print (. r y)) (print (. r z)) 0)))"
         program (parse-program source)
-        pair (compile-program-functions-with-base program 10)
+        pair (compile-program-functions-with-source source program)
+        functions (vector-get pair 1)
+        data (vector-get pair 2)
+        wasm-bytes (build-wasm-bytes-wasi functions data)]
+    (do
+      (print (vector-length wasm-bytes))
+      (print-bytes-loop wasm-bytes 0 (vector-length wasm-bytes))
+      0)))
+"#;
+    let compiler_mode = format!("{}\n{}", selfhost_module("CompilerMode.ls"), harness);
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("IR.ls"),
+        selfhost_module("Compiler.ls"),
+        selfhost_module("WasiBackend.ls"),
+        selfhost_module("WasmEmit.ls"),
+        selfhost_module("ModuleResolver.ls"),
+        compiler_mode
+    );
+    let emitted = compile_and_run(&combined);
+    let wasm_bytes = parse_printed_wasm_bytes(&emitted);
+    let output = super::selfhost_bootstrap_four_layer::run_wasm_with_eleven_imports_compiler_mode(
+        &wasm_bytes,
+        "",
+        &[],
+    )
+    .expect("selfhost compiler-mode record update module should run");
+    assert_eq!(output, "10\n2\n3\n2\n1\n2\n3\n10\n20\n3\n10\n20\n3\n");
+}
+
+/// selfhost ftable compiler: record update と static accessor を実行できること
+#[test]
+fn test_e2e_selfhost_ftable_compiler_record_update_and_static_accessor_run() {
+    let harness = r#"
+(defn print-bytes-loop [bytes idx count]
+  (if (>= idx count)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes-loop bytes (+ idx 1) count))))
+
+(defn main []
+  (let [source "(type Point (record (: x Int) (: y Int) (: z Int))) (defn main [] (let [p {Point x 1 y 2 z 3} q {p | x 10} r {q | y 20}] (do (print (Point.x q)) (print (Point.y q)) (print (Point.z q)) (print (. q y)) (print (Point.x p)) (print (Point.y p)) (print (Point.z p)) (print (Point.x r)) (print (Point.y r)) (print (Point.z r)) (print (. r x)) (print (. r y)) (print (. r z)) 0)))"
+        program (parse-program source)
+        pair (compile-program-functions-with-base program 11)
         functions (vector-get pair 1)
         wasm-bytes (build-wasm-bytes-wasi functions (vector-new 0))]
     (do
@@ -2462,7 +2551,7 @@ fn test_e2e_selfhost_legacy_base_compiler_record_constructor_and_static_accessor
         &[],
     )
     .expect("selfhost legacy base compiler record module should run");
-    assert_eq!(output, "41\n2\n");
+    assert_eq!(output, "10\n2\n3\n2\n1\n2\n3\n10\n20\n3\n10\n20\n3\n");
 }
 
 /// selfhost compiler-mode: import 先 record の constructor/static accessor が actual Wasm で実行できること
