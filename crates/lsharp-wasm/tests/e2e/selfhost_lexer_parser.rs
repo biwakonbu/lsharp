@@ -110,6 +110,35 @@ fn test_e2e_selfhost_parser_typed_defn_signature_unifies_type_var() {
     );
 }
 
+/// parser-to-inference bundle: defn signature の型変数を具体化ごとに一般化する
+#[test]
+fn test_e2e_selfhost_scoped_type_var_defn_signature_is_polymorphic() {
+    let harness = r#"
+(defn main []
+  (let [analysis
+          (infer-program-analysis
+            (parse-program "(defn id [(: x a)] : a x) (defn main [] (do (print (id 42)) (print (id true)) 0))"))]
+    (do
+      (print (infer-program-analysis-diagnostic-count analysis))
+      (print (infer-program-analysis-first-error-code analysis))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}",
+        selfhost_parser_typeinfer_runtime_bundle(),
+        harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "0"],
+        "defn signature の scoped type variable は具体化ごとに多相であるべき"
+    );
+}
+
 /// parser-to-inference bundle: closed type-alias は defn の引数・戻り値注釈で透過展開する
 #[test]
 fn test_e2e_selfhost_parser_closed_type_alias_unifies_defn_signature() {

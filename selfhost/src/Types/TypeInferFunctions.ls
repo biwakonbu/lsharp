@@ -60,35 +60,138 @@
     0
     (vector-get signature (+ (vector-get signature 1) 2))))
 
-(defn typeinfer-unify-defn-param-annotations-loop [signature param-types idx count subst alias-env]
+(defn typeinfer-bind-signature-type-var [type-param-env name-hash counter]
+  (let [bound (map-get-safe type-param-env name-hash)]
+    (if (= bound 0)
+      (map-insert-object-safe type-param-env name-hash (fresh-type-var counter))
+      type-param-env)))
+
+(defn typeinfer-collect-signature-type-expr-list
+  [type-expr idx count counter type-param-env]
+  (if (>= idx count)
+    type-param-env
+    (let [next-env
+            (typeinfer-collect-signature-type-expr
+              (vector-get type-expr (+ idx 2))
+              counter
+              type-param-env)]
+      (typeinfer-collect-signature-type-expr-list
+        type-expr
+        (+ idx 1)
+        count
+        counter
+        next-env))))
+
+(defn typeinfer-collect-signature-type-expr [type-expr counter type-param-env]
+  (if (= type-expr 0)
+    type-param-env
+    (let [tag (vector-get type-expr 0)]
+      (if (= tag (ast-type-var))
+        (typeinfer-bind-signature-type-var
+          type-param-env
+          (vector-get type-expr 1)
+          counter)
+        (if (= tag (ast-type-app))
+          (typeinfer-collect-signature-type-expr-list
+            type-expr
+            1
+            (vector-get type-expr 2)
+            counter
+            type-param-env)
+          (if (= tag (ast-type-fun))
+            (let [param-count (vector-get type-expr 1)
+              after-params
+                (typeinfer-collect-signature-type-expr-list
+                  type-expr
+                  0
+                  param-count
+                  counter
+                  type-param-env)]
+              (typeinfer-collect-signature-type-expr
+                (vector-get type-expr (+ param-count 2))
+                counter
+                after-params))
+            type-param-env))))))
+
+(defn typeinfer-defn-type-param-env [node param-count counter]
+  (let [signature (typeinfer-defn-signature node param-count)]
+    (if (= signature 0)
+      (map-new)
+      (let [initial (map-new)
+        after-params
+          (typeinfer-collect-signature-type-expr-list
+            signature
+            0
+            (vector-get signature 1)
+            counter
+            initial)]
+        (typeinfer-collect-signature-type-expr
+          (typeinfer-defn-signature-return-expr signature)
+          counter
+          after-params)))))
+
+(defn typeinfer-unify-defn-param-annotations-loop
+  [signature param-types idx count subst alias-env type-param-env]
   (if (>= idx count)
     subst
     (let [type-expr (typeinfer-defn-signature-param-expr signature idx)]
       (if (= type-expr 0)
-        (typeinfer-unify-defn-param-annotations-loop signature param-types (+ idx 1) count subst alias-env)
+        (typeinfer-unify-defn-param-annotations-loop
+          signature
+          param-types
+          (+ idx 1)
+          count
+          subst
+          alias-env
+          type-param-env)
         (let [next-subst
                 (unify
                   (vector-get param-types idx)
-                  (typeinfer-resolve-type-expr-with-aliases type-expr alias-env)
+                  (typeinfer-resolve-type-expr-with-aliases-and-params
+                    type-expr
+                    alias-env
+                    type-param-env)
                   subst)]
           (if (= (unify-failed next-subst) 1)
             next-subst
-            (typeinfer-unify-defn-param-annotations-loop signature param-types (+ idx 1) count next-subst alias-env)))))))
+            (typeinfer-unify-defn-param-annotations-loop
+              signature
+              param-types
+              (+ idx 1)
+              count
+              next-subst
+              alias-env
+              type-param-env)))))))
 
-(defn typeinfer-defn-param-annotation-subst [node param-count param-types subst alias-env]
+(defn typeinfer-defn-param-annotation-subst
+  [node param-count param-types subst alias-env type-param-env]
   (let [signature (typeinfer-defn-signature node param-count)]
     (if (= signature 0)
       subst
-      (typeinfer-unify-defn-param-annotations-loop signature param-types 0 param-count subst alias-env))))
+      (typeinfer-unify-defn-param-annotations-loop
+        signature
+        param-types
+        0
+        param-count
+        subst
+        alias-env
+        type-param-env))))
 
-(defn typeinfer-defn-return-annotation-subst [node param-count body-ty subst alias-env]
+(defn typeinfer-defn-return-annotation-subst
+  [node param-count body-ty subst alias-env type-param-env]
   (let [signature (typeinfer-defn-signature node param-count)]
     (if (= signature 0)
       subst
       (let [return-expr (typeinfer-defn-signature-return-expr signature)]
         (if (= return-expr 0)
           subst
-          (unify body-ty (typeinfer-resolve-type-expr-with-aliases return-expr alias-env) subst))))))
+          (unify
+            body-ty
+            (typeinfer-resolve-type-expr-with-aliases-and-params
+              return-expr
+              alias-env
+              type-param-env)
+            subst))))))
 
 (defn typeinfer-build-curried-fun-loop [param-types subst idx count body-ty]
   (if (>= idx count)

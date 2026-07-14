@@ -265,15 +265,26 @@
 
 (defn infer-defn-predeclared [node body-env final-env counter subst placeholder env-vars alias-env]
   (let [name-hash (vector-get node 1)
-    param-count (vector-get node 2)]
-    (if (= param-count 0)
+    param-count (vector-get node 2)
+    type-param-env (typeinfer-defn-type-param-env node param-count counter)]
+    ;; Rust parity: 1 つの defn signature 内では同じ scoped variable 名だけを許可する。
+    (if (> (map-size type-param-env) 1)
+      (make-error-result-code (error-code-general))
+      (if (= param-count 0)
       (let [body-node (vector-get node 3)
         result (infer-expr body-node body-env subst counter)]
         (if (= (result-failed result) 1)
           (propagate-error-result result)
           (let [s (result-subst result)
             body-ty (result-type result)
-            annotated-subst (typeinfer-defn-return-annotation-subst node param-count body-ty s alias-env)]
+            annotated-subst
+              (typeinfer-defn-return-annotation-subst
+                node
+                param-count
+                body-ty
+                s
+                alias-env
+                type-param-env)]
             (if (= (unify-failed annotated-subst) 1)
               (make-error-result-code (error-code-general))
               (let [next-subst (unify placeholder body-ty annotated-subst)]
@@ -283,7 +294,14 @@
       (let [param-types (typeinfer-fresh-param-types param-count counter)
         body-node (vector-get node (+ param-count 3))
         next-env (typeinfer-extend-env-with-node-params body-env node param-count 3 param-types)
-        annotated-param-subst (typeinfer-defn-param-annotation-subst node param-count param-types subst alias-env)]
+        annotated-param-subst
+          (typeinfer-defn-param-annotation-subst
+            node
+            param-count
+            param-types
+            subst
+            alias-env
+            type-param-env)]
         (if (= (unify-failed annotated-param-subst) 1)
           (make-error-result-code (error-code-general))
           (let [result (infer-expr body-node next-env annotated-param-subst counter)]
@@ -291,14 +309,21 @@
               (propagate-error-result result)
               (let [s (result-subst result)
                 body-ty (result-type result)
-                annotated-subst (typeinfer-defn-return-annotation-subst node param-count body-ty s alias-env)]
+                annotated-subst
+                  (typeinfer-defn-return-annotation-subst
+                    node
+                    param-count
+                    body-ty
+                    s
+                    alias-env
+                    type-param-env)]
                 (if (= (unify-failed annotated-subst) 1)
                   (make-error-result-code (error-code-general))
                   (let [fun-ty (typeinfer-build-curried-fun param-types annotated-subst body-ty)
                     next-subst (unify placeholder fun-ty annotated-subst)]
                     (if (= (unify-failed next-subst) 1)
                       (make-error-result-code (error-code-general))
-                      (typeinfer-finalize-defn-result-with-env-vars final-env name-hash next-subst fun-ty env-vars))))))))))))
+                      (typeinfer-finalize-defn-result-with-env-vars final-env name-hash next-subst fun-ty env-vars)))))))))))))
 
 ;; 単独で呼ばれる infer-defn も自己再帰を許可する。
 (defn infer-defn [node env counter]
