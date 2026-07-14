@@ -8720,6 +8720,29 @@ fn test_selfhost_parser_defn_body_branches_use_branch_unique_body_locals() {
 }
 
 #[test]
+fn test_selfhost_parser_parse_defn_v3_uses_branch_unique_finalized_defn_locals() {
+    let source = selfhost_module("Parser.ls");
+    let parse_defn_body = source
+        .split("(defn parse-defn-v3")
+        .nth(1)
+        .and_then(|tail| tail.split(";; === defmacro 宣言 ===").next())
+        .expect("Parser.ls に parse-defn-v3 が存在すること");
+
+    assert!(
+        parse_defn_body.contains(
+            "bodyless-finalized-defn (finalize-defn-body-v3 bodyless-defn-body defn-node)"
+        ) && parse_defn_body.contains(
+            "expr-finalized-defn (finalize-defn-body-v3 parsed-defn-body defn-node)"
+        ) && parse_defn_body.contains(
+            "(maybe-append-defn-signature-v3 bodyless-finalized-defn signature)"
+        ) && parse_defn_body.contains(
+            "(maybe-append-defn-signature-v3 expr-finalized-defn signature)"
+        ) && !parse_defn_body.contains("parsed-body (finalize-defn-body-v3"),
+        "parse-defn-v3 は Linux x86 selfhost の branch local slot 衝突を避けるため、bodyless/body 分岐で finalized defn の local 名を共有しないべき"
+    );
+}
+
+#[test]
 fn test_selfhost_parser_parse_let_v3_delegates_after_first_binding_for_native_size() {
     let source = selfhost_module("Parser.ls");
     let parse_let_body = source

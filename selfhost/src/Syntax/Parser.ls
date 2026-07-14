@@ -2189,17 +2189,17 @@
                                       (do
                                         (p-advance pos-ref)
                                         (let [bodyless-defn-body (make-int-node 0)
-                                          parsed-body (finalize-defn-body-v3 bodyless-defn-body defn-node)]
-                                          (maybe-append-defn-signature-v3 parsed-body signature)))
+                                          bodyless-finalized-defn (finalize-defn-body-v3 bodyless-defn-body defn-node)]
+                                          (maybe-append-defn-signature-v3 bodyless-finalized-defn signature)))
                                       (let [parsed-defn-body (parse-expr-v3 spans pos-ref src)]
                                         (do
                                           (root_push parsed-defn-body)
-                                          (let [parsed-body (finalize-defn-body-v3 parsed-defn-body defn-node)]
+                                          (let [expr-finalized-defn (finalize-defn-body-v3 parsed-defn-body defn-node)]
                                             (do
-                                              (root_push parsed-body)
+                                              (root_push expr-finalized-defn)
                                               (p-expect spans pos-ref 1)
                                               (let [parsed-with-signature
-                                                (maybe-append-defn-signature-v3 parsed-body signature)]
+                                                (maybe-append-defn-signature-v3 expr-finalized-defn signature)]
                                                 (do
                                                   (root_pop)
                                                   (root_pop)
