@@ -3062,6 +3062,99 @@
           (root_pop)
           result)))))
 
+;; ordinary ADT は record と同じ Map runtime の narrow slice を使う。
+;; -2 は variant hash、0.. は constructor field index を保持する予約 key。
+(defn compile-adt-constructor-fields [fields idx count constructor-local env instrs]
+  (if (>= idx count)
+    instrs
+    (do
+      (root_push fields)
+      (root_push env)
+      (let [instrs-slot (root_push instrs)
+        value-instrs (emit-to (vector-new 2) (op-local-get) (+ idx 1))]
+        (do
+          (root_push value-instrs)
+          (let [next-instrs
+                  (compile-record-map-field-instrs
+                    env
+                    instrs
+                    constructor-local
+                    idx
+                    value-instrs)]
+            (do
+              (root_set instrs-slot next-instrs)
+              (root_pop)
+              (let [result
+                      (compile-adt-constructor-fields
+                        fields
+                        (+ idx 1)
+                        count
+                        constructor-local
+                        env
+                        next-instrs)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  result)))))))))
+
+(defn make-adt-constructor-meta [variant]
+  (do
+    (root_push variant)
+    (let [constructor-hash (vector-get variant 0)
+      fields (vector-get variant 1)]
+      (do
+        (root_push fields)
+        (let [field-count (vector-length fields)
+          constructor-local (+ field-count 1)
+          env (env-new)
+          instrs0 (vector-new 8)]
+          (do
+            (root_push env)
+            (root_push instrs0)
+            (let [instrs1 (emit-to instrs0 (op-map-new) constructor-local)]
+              (do
+                (root_push instrs1)
+                (let [instrs2 (emit-to instrs1 (op-local-set) constructor-local)]
+                  (do
+                    (root_push instrs2)
+                    (let [tag-value (emit-to (vector-new 2) (op-i64-const) constructor-hash)]
+                      (do
+                        (root_push tag-value)
+                        (let [with-tag
+                                (compile-record-map-field-instrs
+                                  env
+                                  instrs2
+                                  constructor-local
+                                  (adt-constructor-tag-key)
+                                  tag-value)]
+                          (do
+                            (root_push with-tag)
+                            (let [with-fields
+                                    (compile-adt-constructor-fields
+                                      fields
+                                      0
+                                      field-count
+                                      constructor-local
+                                      env
+                                      with-tag)
+                              ir (emit-to with-fields (op-local-get) constructor-local)
+                              local-max (max-local-slot ir 0 (vector-length ir) 0)
+                              local-count (if (> local-max field-count) (- local-max field-count) 0)
+                              result (make-function-meta field-count local-count ir)]
+                              (do
+                                (root_push result)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                result))))))))))))))))
+
 (defn make-record-register-result [ftable func-idx functions]
   (do
     (root_push ftable)
@@ -3138,6 +3231,50 @@
                     (root_pop)
                     result))))))))))
 
+(defn register-adt-variants [variants idx count ftable func-idx functions]
+  (if (>= idx count)
+    (make-record-register-result ftable func-idx functions)
+    (do
+      (root_push variants)
+      (root_push ftable)
+      (root_push functions)
+      (let [variant (vector-get variants idx)]
+        (do
+          (root_push variant)
+          (let [constructor-hash (vector-get variant 0)
+            constructor-meta (make-adt-constructor-meta variant)]
+            (do
+              (root_push constructor-meta)
+              (let [next-ftable (ftable-register ftable constructor-hash func-idx)]
+                (do
+                  (root_push next-ftable)
+                  (let [next-functions (push-object-vector functions constructor-meta)]
+                    (do
+                      (root_push next-functions)
+                      (let [result
+                              (register-adt-variants
+                                variants
+                                (+ idx 1)
+                                count
+                                next-ftable
+                                (+ func-idx 1)
+                                next-functions)]
+                        (do
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          result)))))))))))))
+
+(defn register-adt-decl [decl ftable func-idx functions]
+  (let [variants
+          (if (>= (vector-length decl) 4)
+            (vector-get decl 3)
+            (vector-get decl 2))]
+    (register-adt-variants variants 0 (vector-length variants) ftable func-idx functions)))
+
 (defn make-record-prelude-state [done next-idx ftable next-func-idx functions]
   (do
     (root_push ftable)
@@ -3188,13 +3325,25 @@
                     (root_pop)
                     (root_pop)
                     result))))
-            (let [result (make-record-prelude-state 0 (+ idx 1) ftable func-idx functions)]
-              (do
-                (root_pop)
-                (root_pop)
-                (root_pop)
-                (root_pop)
-                result))))))))
+            (if (= (vector-get decl 0) 21)
+              (let [adt-result (register-adt-decl decl ftable func-idx functions)]
+                (do
+                  (root_push adt-result)
+                  (let [result (make-record-prelude-state 0 (+ idx 1) (vector-get adt-result 0) (vector-get adt-result 1) (vector-get adt-result 2))]
+                    (do
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      result))))
+              (let [result (make-record-prelude-state 0 (+ idx 1) ftable func-idx functions)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  result)))))))))
 
 (defn continue-record-prelude-step [decls n state]
   (if (= (vector-get state 0) 1)
@@ -4072,7 +4221,7 @@
       (if (= tag 2)
         (emit-to instrs 1 (vector-get node 1))
         (if (= tag 4)
-          (compile-expr-with-ftable-dispatch-var node env instrs)
+          (compile-expr-with-ftable-dispatch-var node env ftable instrs)
           (compile-expr-with-ftable-dispatch-complex tag node env ftable instrs))))))
 
 (defn compile-expr-with-ftable-dispatch-complex-2 [tag node env ftable instrs]

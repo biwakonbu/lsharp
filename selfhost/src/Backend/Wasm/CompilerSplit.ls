@@ -135,11 +135,14 @@
   (let [next-instrs (if (< (+ idx 1) expr-count) (emit-to value-instrs (op-drop) 0) value-instrs)]
     (make-compile-step-state 0 (+ idx 1) next-instrs)))
 
-(defn compile-expr-with-ftable-dispatch-var [node env instrs]
-  (let [idx (env-lookup env (vector-get node 1))]
-    (if (= idx 0)
-      (emit-to instrs 1 0)
-      (emit-to instrs 10 idx))))
+(defn compile-expr-with-ftable-dispatch-var [node env ftable instrs]
+  (let [name-hash (vector-get node 1)
+    idx (env-lookup env name-hash)]
+    (if (> idx 0)
+      (emit-to instrs 10 idx)
+      (if (ftable-contains ftable name-hash)
+        (emit-to instrs (op-call) (ftable-lookup ftable name-hash))
+        (emit-to instrs 1 0)))))
 
 (defn make-match-bind-state [env next-local]
   (push-int-vector (push-object-vector (vector-new 2) env) next-local))
@@ -226,21 +229,63 @@
         (let [combined (emit-to field-check (op-i64-and) 0)]
           (compile-match-record-fields pat (+ idx 1) count value-local scratch-base combined))))))
 
+(defn compile-match-constructor-tag-check [pat value-local scratch-base instrs]
+  (let [map-op (+ scratch-base 1)
+    ctor-hash (vector-get pat 1)
+    i1 (emit-to instrs (op-local-get) value-local)
+    i2 (emit-to i1 (op-i64-const) (adt-constructor-tag-key))
+    i3 (emit-to i2 (op-map-contains) map-op)
+    i4 (emit-to i3 (op-local-get) value-local)
+    i5 (emit-to i4 (op-i64-const) (adt-constructor-tag-key))
+    i6 (emit-to i5 (op-map-get) map-op)
+    i7 (emit-to i6 (op-i64-const) ctor-hash)
+    i8 (emit-to i7 (op-i64-eq) 0)]
+    (emit-to i8 (op-i64-and) 0)))
+
+(defn compile-match-constructor-field-check [pat value-local scratch-base idx instrs]
+  (let [child (vector-get pat (+ 3 idx))
+    map-op (+ scratch-base 1)
+    i1 (emit-to instrs (op-local-get) value-local)
+    i2 (emit-to i1 (op-i64-const) idx)
+    contains (emit-to i2 (op-map-contains) map-op)
+    child-tag (vector-get child 0)]
+    (if (or (= child-tag (ast-pat-wildcard)) (or (= child-tag (ast-pat-var)) (= child-tag 4)))
+      contains
+      (let [i3 (emit-to contains (op-local-get) value-local)
+        i4 (emit-to i3 (op-i64-const) idx)
+        i5 (emit-to i4 (op-map-get) map-op)
+        i6 (emit-to i5 (op-local-set) scratch-base)
+        i7 (compile-match-pattern-check-with-scratch child scratch-base scratch-base i6)]
+        (emit-to i7 (op-i64-and) 0)))))
+
+(defn compile-match-constructor-fields [pat idx count value-local scratch-base instrs]
+  (if (>= idx count)
+    instrs
+    (let [field-check (compile-match-constructor-field-check pat value-local scratch-base idx instrs)
+      combined (emit-to field-check (op-i64-and) 0)]
+      (compile-match-constructor-fields pat (+ idx 1) count value-local scratch-base combined))))
+
+(defn compile-match-constructor-pattern [pat value-local scratch-base instrs]
+  (let [checked (compile-match-constructor-tag-check pat value-local scratch-base instrs)]
+    (compile-match-constructor-fields pat 0 (vector-get pat 2) value-local scratch-base checked)))
+
 (defn compile-match-pattern-check-with-scratch [pat value-local scratch-base instrs]
   (let [pat-tag (vector-get pat 0)]
     (if (= pat-tag (ast-pat-lit))
       (compile-match-literal-check (vector-get pat 1) value-local instrs)
       (if (or (= pat-tag (ast-pat-wildcard)) (= pat-tag (ast-pat-var)))
         (emit-to instrs (op-i64-const) 1)
-        (if (or (= pat-tag 12) (= pat-tag (ast-pat-recordpat)))
-          (compile-match-record-fields
-            pat
-            0
-            (vector-get pat 1)
-            value-local
-            scratch-base
-            instrs)
-          (emit-to instrs (op-i64-const) 0))))))
+        (if (or (= pat-tag 11) (= pat-tag (ast-pat-constructor)))
+          (compile-match-constructor-pattern pat value-local scratch-base instrs)
+          (if (or (= pat-tag 12) (= pat-tag (ast-pat-recordpat)))
+            (compile-match-record-fields
+              pat
+              0
+              (vector-get pat 1)
+              value-local
+              scratch-base
+              instrs)
+            (emit-to instrs (op-i64-const) 0)))))))
 
 (defn compile-match-pattern-check [pat scr-idx instrs]
   (compile-match-pattern-check-with-scratch pat scr-idx (+ scr-idx 1) instrs))
@@ -257,6 +302,19 @@
       i4 (emit-to i3 (op-local-set) scratch-base)
       i5 (compile-match-pattern-binders child scratch-base env scratch-base i4)]
       (compile-match-pattern-binders-children
+        pat (+ idx 1) count value-local env scratch-base i5))))
+
+(defn compile-match-constructor-pattern-binders-children [pat idx count value-local env scratch-base instrs]
+  (if (>= idx count)
+    instrs
+    (let [child (vector-get pat (+ 3 idx))
+      map-op (+ scratch-base 1)
+      i1 (emit-to instrs (op-local-get) value-local)
+      i2 (emit-to i1 (op-i64-const) idx)
+      i3 (emit-to i2 (op-map-get) map-op)
+      i4 (emit-to i3 (op-local-set) scratch-base)
+      i5 (compile-match-pattern-binders child scratch-base env scratch-base i4)]
+      (compile-match-constructor-pattern-binders-children
         pat (+ idx 1) count value-local env scratch-base i5))))
 
 (defn compile-match-pattern-binders [pat value-local env scratch-base instrs]
@@ -276,7 +334,16 @@
           env
           scratch-base
           instrs)
-        instrs))))
+        (if (or (= pat-tag 11) (= pat-tag (ast-pat-constructor)))
+          (compile-match-constructor-pattern-binders-children
+            pat
+            0
+            (vector-get pat 2)
+            value-local
+            env
+            scratch-base
+            instrs)
+          instrs)))))
 
 (defn compile-match-arm-prefix [node scr-idx pattern-slot instrs]
   (let [i1 (emit-to instrs 10 scr-idx)

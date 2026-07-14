@@ -52,6 +52,7 @@
 (defn op-read-file [] 64)
 (defn op-map-contains [] 65)
 (defn op-map-remove [] 66)
+(defn adt-constructor-tag-key [] -2)
 (defn op-command-line-arg [] 67)
 (defn op-runtime-hash-string [] 68)
 (defn op-substring [] 69)
@@ -418,6 +419,19 @@
   (do
     (root_push ftable)
     (let [value (ftable-lookup-loop ftable (- (vector-length ftable) 2) name-hash)]
+      (do
+        (root_pop)
+        value))))
+(defn ftable-contains-loop [ftable idx name-hash]
+  (if (< idx 0)
+    false
+    (if (= (vector-get ftable idx) name-hash)
+      true
+      (ftable-contains-loop ftable (- idx 2) name-hash))))
+(defn ftable-contains [ftable name-hash]
+  (do
+    (root_push ftable)
+    (let [value (ftable-contains-loop ftable (- (vector-length ftable) 2) name-hash)]
       (do
         (root_pop)
         value))))
