@@ -456,14 +456,84 @@
                   counter)))))
         (typeinfer-predeclare-closed-aliases-loop program (+ idx 1) len closed-aliases parametric-aliases counter)))))
 
+;; 初回 prepass 後に閉 alias だけを再評価する。parametric alias は fresh 型変数を
+;; 持つため、ここでは再登録せず、forward な閉 alias chain だけを収束させる。
+(defn typeinfer-refresh-closed-aliases-loop [program idx len closed-aliases parametric-aliases]
+  (if (>= idx len)
+    (make-type-alias-env closed-aliases parametric-aliases)
+    (let [decl (vector-get program idx)
+      tag (vector-get decl 0)]
+      (if (= tag (ast-typealias))
+        (let [target-expr (typeinfer-type-alias-target decl)
+          is-closed
+            (if (< (vector-length decl) 4)
+              1
+              (if (= (vector-length (vector-get decl 2)) 0) 1 0))]
+          (if (= is-closed 1)
+            (if (= target-expr 0)
+              (typeinfer-refresh-closed-aliases-loop
+                program (+ idx 1) len closed-aliases parametric-aliases)
+              (let [alias-env (make-type-alias-env closed-aliases parametric-aliases)
+                target-type (typeinfer-resolve-type-expr-with-aliases target-expr alias-env)
+                next-closed-aliases
+                  (map-insert-object-safe closed-aliases (vector-get decl 1) target-type)]
+                (typeinfer-refresh-closed-aliases-loop
+                  program
+                  (+ idx 1)
+                  len
+                  next-closed-aliases
+                  parametric-aliases)))
+            (typeinfer-refresh-closed-aliases-loop
+              program (+ idx 1) len closed-aliases parametric-aliases)))
+        (typeinfer-refresh-closed-aliases-loop
+          program (+ idx 1) len closed-aliases parametric-aliases)))))
+
+(defn typeinfer-refresh-closed-aliases-rounds [program alias-env rounds]
+  (if (>= rounds (vector-length program))
+    alias-env
+    (do
+      (root_push alias-env)
+      (let [closed-aliases (type-alias-env-closed alias-env)
+        parametric-aliases (type-alias-env-parametric alias-env)]
+        (do
+          (root_push closed-aliases)
+          (root_push parametric-aliases)
+          (let [next-env
+                  (typeinfer-refresh-closed-aliases-loop
+                    program
+                    0
+                    (vector-length program)
+                    closed-aliases
+                    parametric-aliases)]
+            (do
+              (root_push next-env)
+              (let [result
+                      (typeinfer-refresh-closed-aliases-rounds
+                        program
+                        next-env
+                        (+ rounds 1))]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  result)))))))))
+
 (defn typeinfer-predeclare-closed-aliases [program counter]
-  (typeinfer-predeclare-closed-aliases-loop
-    program
-    0
-    (vector-length program)
-    (map-new)
-    (map-new)
-    counter))
+  (let [initial-env
+          (typeinfer-predeclare-closed-aliases-loop
+            program
+            0
+            (vector-length program)
+            (map-new)
+            (map-new)
+            counter)]
+    (do
+      (root_push initial-env)
+      (let [result (typeinfer-refresh-closed-aliases-rounds program initial-env 0)]
+        (do
+          (root_pop)
+          result)))))
 
 ;; alias / record 宣言と本体推論で同じ型変数 ID 供給を共有する。
 (defn typeinfer-make-alias-aware-counter [program]

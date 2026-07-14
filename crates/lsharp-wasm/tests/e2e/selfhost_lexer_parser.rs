@@ -144,6 +144,40 @@ fn test_e2e_selfhost_parser_closed_type_alias_unifies_defn_signature() {
     );
 }
 
+/// parser-to-inference bundle: forward type-alias chain は宣言順に依存せず透過展開する
+#[test]
+fn test_e2e_selfhost_parser_forward_type_alias_unifies_signature() {
+    let harness = r#"
+(defn main []
+  (let [valid-analysis
+          (infer-program-analysis
+            (parse-program "(type-alias Later LaterTarget) (type-alias LaterTarget String) (defn echo [(: value Later)] : String value)"))
+        invalid-analysis
+          (infer-program-analysis
+            (parse-program "(type-alias Later LaterTarget) (type-alias LaterTarget String) (defn invalid [] : Later 42)"))]
+    (do
+      (print (infer-program-analysis-diagnostic-count valid-analysis))
+      (print (infer-program-analysis-first-error-code valid-analysis))
+      (print (infer-program-analysis-diagnostic-count invalid-analysis))
+      (print (infer-program-analysis-first-error-code invalid-analysis))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}",
+        selfhost_parser_typeinfer_runtime_bundle(),
+        harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "0", "1", "6"],
+        "forward type-alias chain は後続 alias の target まで展開して型検査するべき"
+    );
+}
+
 /// parser-to-inference bundle: closed type-alias は式内 annotation でも透過展開する
 #[test]
 fn test_e2e_selfhost_parser_closed_type_alias_unifies_annotation_expr() {
