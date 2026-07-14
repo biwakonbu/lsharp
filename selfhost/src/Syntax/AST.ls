@@ -208,6 +208,9 @@
 ;; ADT variant: [constructor 名, raw field TypeExpr vector]
 (defn make-type-variant [name-hash fields]
   (vector-push-pair-rooted (vector-new 2) name-hash fields))
+;; GADT variant: [constructor 名, raw field TypeExpr vector, raw return TypeExpr]
+(defn make-type-variant-with-return-type [name-hash fields return-type]
+  (vector-push-triple-rooted (vector-new 3) name-hash fields return-type))
 ;; nonparametric ADT: [21, type 名, variant vector]
 (defn make-type-decl-with-variants [name-hash variants]
   (vector-push-triple-rooted (vector-new 3) (ast-type-decl) name-hash variants))

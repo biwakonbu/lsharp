@@ -55,6 +55,13 @@
 (defn poly [ty bound-vars]
   (push-object-vector-local (push-object-vector-local (vector-new 2) ty) bound-vars))
 
+;; GADT constructor 用の多相型スキーム。末尾 marker は pattern inference の
+;; branch-local refinement 判定だけに使い、型と bound-vars の既存 slot は変えない。
+(defn poly-gadt [ty bound-vars]
+  (push-int-vector-local
+    (push-object-vector-local (push-object-vector-local (vector-new 3) ty) bound-vars)
+    1))
+
 ;; 型スキームの型を取得
 (defn scheme-type [scheme]
   (vector-get scheme 0))
@@ -62,6 +69,11 @@
 ;; 型スキームの束縛変数を取得
 (defn scheme-vars [scheme]
   (vector-get scheme 1))
+
+(defn scheme-gadt [scheme]
+  (if (> (vector-length scheme) 2)
+    (vector-get scheme 2)
+    0))
 
 ;; === 型変数カウンタ ===
 ;; 新しい型変数を生成するためのグローバルカウンタ

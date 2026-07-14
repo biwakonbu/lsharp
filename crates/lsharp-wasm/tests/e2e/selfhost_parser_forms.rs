@@ -529,6 +529,33 @@ fn test_e2e_selfhost_parser_match_record_pattern_retains_type_hash() {
     );
 }
 
+/// TEST-SYNTAX-02l4b: GADT variant の return type を AST に保持できる
+#[test]
+fn test_e2e_selfhost_parser_gadt_variant_retains_return_type() {
+    let harness = r#"
+(defn main []
+  (let [decl (vector-get (parse-program "(type (Expr a) (: (IntLit Int) (Expr Int)) (: (BoolLit Bool) (Expr Bool)))") 0)
+        variants (vector-get decl 3)
+        int-variant (vector-get variants 0)
+        return-type (vector-get int-variant 2)]
+    (do
+      (print (vector-length int-variant))
+      (print (if (= (vector-get return-type 0) (ast-type-app)) 1 0))
+      (print (if (= (vector-get return-type 1) (name-hash "Expr" 0 4)) 1 0))
+      (print (vector-get return-type 2))
+      0)))
+"#;
+
+    let output = run_parser_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["3", "1", "1", "1"],
+        "GADT variant の return type は raw TypeExpr として保持されるべき"
+    );
+}
+
 /// TEST-SYNTAX-02l5: match の int/bool literal pattern を canonical tag としてパースできる
 #[test]
 fn test_e2e_selfhost_parser_match_literal_pattern_tag() {

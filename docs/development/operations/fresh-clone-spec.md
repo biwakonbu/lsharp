@@ -55,7 +55,7 @@ LINUX_ROLLBACK_ARCHIVE=<linux-rollback-archive> \
 ## 現在の到達点と残件
 
 - Mac Apple Silicon は current fixed-point stage3 の stage0 package を使い、`cargo`、`rustc`、host `lsharp` を block した source-file smoke を完走している。
-- Linux x86_64 は current import ABI 修正後の stage1 -> stage3 fixed-point を Lima VM で再生成中である。完了後、同じ stage0 package から source-file smoke と手動 release gate を実行する。
+- Linux x86_64 は commit `4bd9ee9` から生成した stage0 package で stage1 -> stage3 fixed-point と source-file smoke を完了している。以後の GADT / record pattern selfhost checkpoint はその gate 後の変更なので、checkpoint commit 後に同じ source-file smoke と手動 release gate を再実行する。
 - Rust host integration が必要なのは `mcp-server`、`--emit-ir`、native/web target、および emergency rollback である。通常の native selfhost 開発成功を Rust fallback で代替してはならない。
 
 ## Legacy compatibility reference

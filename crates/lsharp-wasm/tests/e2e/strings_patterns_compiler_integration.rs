@@ -2710,7 +2710,7 @@ fn test_e2e_selfhost_compiler_mode_record_update_runs() {
       (print-bytes-loop bytes (+ idx 1) count))))
 
 (defn main []
-  (let [source "(type Point (record (: x Int) (: y Int) (: z Int))) (defn main [] (let [p {Point x 1 y 2 z 3} q {p | x 10} r {q | y 20}] (do (print (Point.x q)) (print (Point.y q)) (print (Point.z q)) (print (. q y)) (print (Point.x p)) (print (Point.y p)) (print (Point.z p)) (print (Point.x r)) (print (Point.y r)) (print (Point.z r)) (print (. r x)) (print (. r y)) (print (. r z)) (print (match p [{Point x x} x] [_ 0])) (print (match p [{Point x 42} 1] [_ 0])) 0)))"
+  (let [source "(type Point (record (: x Int) (: y Int) (: z Int))) (defn main [] (let [p {Point x 1 y 2 z 3} q {p | x 10} r {q | y 20}] (do (print (Point.x q)) (print (Point.y q)) (print (Point.z q)) (print (. q y)) (print (Point.x p)) (print (Point.y p)) (print (Point.z p)) (print (Point.x r)) (print (Point.y r)) (print (Point.z r)) (print (. r x)) (print (. r y)) (print (. r z)) (print (match p [{Point x x} x] [_ 0])) (print (match p [{Point x 42} 1] [_ 0])) (print (match q [{Point x x} x] [_ 0])) (print (match r [{Point x x} x] [_ 0])) 0)))"
         program (parse-program source)
         pair (compile-program-functions-with-source source program)
         functions (vector-get pair 1)
@@ -2743,7 +2743,10 @@ fn test_e2e_selfhost_compiler_mode_record_update_runs() {
         &[],
     )
     .expect("selfhost compiler-mode record update module should run");
-    assert_eq!(output, "10\n2\n3\n2\n1\n2\n3\n10\n20\n3\n10\n20\n3\n1\n0\n");
+    assert_eq!(
+        output,
+        "10\n2\n3\n2\n1\n2\n3\n10\n20\n3\n10\n20\n3\n1\n0\n10\n10\n"
+    );
 }
 
 /// selfhost ftable compiler: record update と static accessor を実行できること
@@ -2791,6 +2794,53 @@ fn test_e2e_selfhost_ftable_compiler_record_update_and_static_accessor_run() {
     )
     .expect("selfhost legacy base compiler record module should run");
     assert_eq!(output, "10\n2\n3\n2\n1\n2\n3\n10\n20\n3\n10\n20\n3\n");
+}
+
+/// selfhost ftable compiler: record pattern の field binder と nominal mismatch を実行できること
+#[test]
+fn test_e2e_selfhost_ftable_compiler_record_pattern_runs() {
+    let harness = r#"
+(defn print-bytes-loop [bytes idx count]
+  (if (>= idx count)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes-loop bytes (+ idx 1) count))))
+
+(defn main []
+  (let [source "(type Point (record (: x Int) (: y Int))) (defn main [] (let [p {Point x 1 y 2} q {p | x 10} r {q | y 20}] (do (print (match q [{Point x x} x] [_ 0])) (print (match q [{Point x 42} 1] [_ 0])) (print (match r [{Point x x} x] [_ 0])) 0)))"
+        program (parse-program source)
+        pair (compile-program-functions-with-base program 11)
+        functions (vector-get pair 1)
+        wasm-bytes (build-wasm-bytes-wasi functions (vector-new 0))]
+    (do
+      (print (vector-length wasm-bytes))
+      (print-bytes-loop wasm-bytes 0 (vector-length wasm-bytes))
+      0)))
+"#;
+    let compiler_mode = format!("{}\n{}", selfhost_module("CompilerMode.ls"), harness);
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("IR.ls"),
+        selfhost_module("Compiler.ls"),
+        selfhost_module("WasiBackend.ls"),
+        selfhost_module("WasmEmit.ls"),
+        selfhost_module("ModuleResolver.ls"),
+        compiler_mode
+    );
+    let emitted = compile_and_run(&combined);
+    let wasm_bytes = parse_printed_wasm_bytes(&emitted);
+    let output = super::selfhost_bootstrap_four_layer::run_wasm_with_eleven_imports_compiler_mode(
+        &wasm_bytes,
+        "",
+        &[],
+    )
+    .expect("selfhost ftable compiler record pattern module should run");
+    assert_eq!(output, "10\n0\n10\n");
 }
 
 /// selfhost compiler-mode: import 先 record の constructor/static accessor が actual Wasm で実行できること

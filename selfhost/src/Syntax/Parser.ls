@@ -2412,8 +2412,74 @@
           (root_pop)
           parsed)))))
 
+;; GADT variant の (: <variant-form> <return-type>) を parse する。
+(defn parse-type-variant-gadt-v3 [spans pos-ref src]
+  (do
+    (p-advance pos-ref) ;; : を消費
+    (if (== (p-current spans pos-ref) 0)
+      (do
+        (p-advance pos-ref) ;; variant form の ( を消費
+        (let [name-hash (current-symbol-hash-v3 spans pos-ref src)]
+          (do
+            (p-advance pos-ref)
+            (let [fields (parse-type-variant-fields-v3 spans pos-ref src)]
+              (do
+                (root_push fields)
+                (let [return-type (parse-type-expr-v3 spans pos-ref src)]
+                  (do
+                    (root_push return-type)
+                    (p-expect spans pos-ref 1)
+                    (let [parsed
+                            (make-type-variant-with-return-type
+                              name-hash
+                              fields
+                              return-type)]
+                      (do
+                        (root_pop)
+                        (root_pop)
+                        parsed)))))))))
+      (let [name-hash (current-symbol-hash-v3 spans pos-ref src)
+        fields (vector-new 0)]
+        (do
+          (p-advance pos-ref)
+          (root_push fields)
+          (let [return-type (parse-type-expr-v3 spans pos-ref src)]
+            (do
+              (root_push return-type)
+              (p-expect spans pos-ref 1)
+              (let [parsed
+                      (make-type-variant-with-return-type
+                        name-hash
+                        fields
+                        return-type)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  parsed)))))))))
+
+;; parenthesized ADT variant の outer `(` を消費した後を処理する。
+(defn parse-type-variant-parenthesized-v3 [spans pos-ref src]
+  (do
+    (p-advance pos-ref)
+    (if (== (p-current spans pos-ref) 50)
+      (parse-type-variant-gadt-v3 spans pos-ref src)
+      (if (== (p-current spans pos-ref) 20)
+        (let [name-hash (current-symbol-hash-v3 spans pos-ref src)]
+          (do
+            (p-advance pos-ref)
+            (let [fields (parse-type-variant-fields-v3 spans pos-ref src)]
+              (do
+                (root_push fields)
+                (let [parsed (make-type-variant name-hash fields)]
+                  (do
+                    (root_pop)
+                    parsed))))))
+        (do
+          (parse-skip-to-close-v3 spans pos-ref 1)
+          0)))))
+
 ;; ADT variant は bare constructor または (Constructor field-type ...) で表す。
-;; constructor head を持たない form は読み飛ばす。GADT return type はまだ AST に保持しない。
+;; constructor head を持たない form は読み飛ばす。
 (defn parse-type-variant-v3 [spans pos-ref src]
   (if (== (p-current spans pos-ref) 20)
     (let [name-hash (current-symbol-hash-v3 spans pos-ref src)]
@@ -2421,22 +2487,7 @@
         (p-advance pos-ref)
         (make-type-variant name-hash (vector-new 0))))
     (if (== (p-current spans pos-ref) 0)
-      (do
-        (p-advance pos-ref)
-        (if (== (p-current spans pos-ref) 20)
-          (let [name-hash (current-symbol-hash-v3 spans pos-ref src)]
-            (do
-              (p-advance pos-ref)
-              (let [fields (parse-type-variant-fields-v3 spans pos-ref src)]
-                (do
-                  (root_push fields)
-                  (let [parsed (make-type-variant name-hash fields)]
-                    (do
-                      (root_pop)
-                      parsed))))))
-          (do
-            (parse-skip-to-close-v3 spans pos-ref 1)
-            0)))
+      (parse-type-variant-parenthesized-v3 spans pos-ref src)
       (do
         (p-advance pos-ref)
         0))))

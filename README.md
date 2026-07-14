@@ -6,7 +6,7 @@ L# は **Lisp の S 式構文**、**F# 系の型指向**、そして **L# 独自
 - 型は Hindley-Milner を土台に強く保つ
 - さらに trait、制約付き型、metadata、計算式などで「型に意味を持たせる」方向を探る
 
-> target-native stage0 package と `scripts/native-selfhost-dev.sh` は `cargo` / `rustc` / host `lsharp` を使わない source-file smoke を提供します。Mac Apple Silicon はこの狭い command slice を実証済みで、Linux x86_64 は current stage0 の final gate を実行中です。ただし selfhost の型検査には宣言、型注釈、ADT/record、trait/constraint の P0 parity が残るため、広い言語開発では当面 Rust host `lsharp` が必要です。
+> target-native stage0 package と `scripts/native-selfhost-dev.sh` は `cargo` / `rustc` / host `lsharp` を使わない source-file smoke を提供します。Mac Apple Silicon と、commit `4bd9ee9` の Linux x86_64 でこの狭い command slice を実証済みです。今回の GADT / record pattern selfhost checkpoint は Linux gate 後の変更なので、checkpoint commit 後に再 gate が必要です。未完了の型・宣言 parity、Rust host integration、stage0 の生成・配布・oracle は引き続き Rust 側に残ります。
 
 ## Core Language
 
@@ -164,8 +164,8 @@ L# source (.ls)
 
 | 用途 | 現在の推奨経路 | 補足 |
 |------|----------------|------|
-| target-native selfhost 検証 | `STAGE0_VERSION=v<version> ./scripts/fetch-stage0.sh` → `./scripts/native-selfhost-dev.sh compile ... -o out.wasm` | Rust を block した source-file smoke 用。Mac Apple Silicon は実証済み、Linux x86_64 は current fixed-point gate 実行中。型宣言を含む広い source parity は未完 |
-| 現在の通常開発 / Rust host integration | `cargo build -p lsharp-driver` → `target/debug/lsharp compile ... -o out.component.wasm` | 型注釈、ADT/record、trait/constraint を含む source と `mcp-server`、bare LSP、`--emit-ir`、web/native target、oracle/rollback |
+| target-native selfhost 検証 | `STAGE0_VERSION=v<version> ./scripts/fetch-stage0.sh` → `./scripts/native-selfhost-dev.sh compile ... -o out.wasm` | Rust を block した source-file smoke 用。Mac Apple Silicon と commit `4bd9ee9` の Linux x86_64 で実証済み。今回の checkpoint 後の Linux gate と広い source parity は未完 |
+| 現在の通常開発 / Rust host integration | `cargo build -p lsharp-driver` → `target/debug/lsharp compile ... -o out.component.wasm` | 未完の GADT / ADT / record parity、`mcp-server`、bare LSP、`--emit-ir`、web/native target、oracle/rollback |
 | browser 向け core wasm | `target/debug/lsharp compile --target web-wasm ... -o out.wasm` | `web-wasm` は browser 向け core `.wasm`。現時点では host launcher の Rust fallback 経路が担う |
 | metadata test | `target/debug/lsharp test examples/metadata.ls` | `:example` / `:invariant` を自動検証 |
 | IDE / AI 連携 | `target/debug/lsharp lsp` / `target/debug/lsharp mcp-server` | LSP / MCP の入口 |
@@ -176,10 +176,10 @@ L# source (.ls)
 - **公開ターゲット**: Wasm/WASI
 - **安定寄りのコア**: HM 型推論、ADT、record、module、static trait dispatch、metadata-driven docs/tests
 - **開発用 bootstrap**: `lsharp-native-selfhost-stage0` package と `scripts/native-selfhost-dev.sh`。fresh clone は `lsharp-stage0-<version>-<target>.tar.gz` を検証して `./stage0` に展開できるが、現時点では selfhost 型検査の限定 slice を検証する経路である
-- **現在の配布モデル**: native-only App.Cli archive は手動 Mac + Lima gate で package/smoke を継続中。Rust host launcher + embedded guest component は rollback compatibility と Rust-only integration に加え、型検査 parity 完了まで通常開発にも残る
+- **現在の配布モデル**: native-only App.Cli archive は手動 Mac + Lima gate で package/smoke を継続中。Rust host launcher + embedded guest component は rollback compatibility、Rust-only integration、未完了の言語 parity の oracle として残る
 - **bootstrap の読み方**: `stage0 -> stage1 -> stage2 -> stage3` のうち、fixed-point の意味は `stage2.wasm == stage3.wasm`。最小 subset では `stage1 -> stage2` 実生成を確認済みで、full fixed input set でも stage2 self-feed と `stage1 -> stage2` / `stage2 -> stage3` の bit-identical chain evidence をテストと artifact で固定済み。native-only / pure selfhosting 配布の主張はまだ実験的・後続トラック扱い
 - **移行中**: selfhost cutover の残タスク、AI / package ecosystem、高度な型機能の parity
-- **残件**: selfhost 型検査の builtin / declaration / annotation / ADT / record / trait parity、Linux x86_64 current stage0 の fixed-point/source-file gate、両 target current artifact による手動 release gate、stage0 asset の手動公開
+- **残件**: ordinary ADT の full ftable/import parity、record pattern の nested/Map API parity、GADT exhaustiveness/full runtime parity、Linux x86_64 checkpoint 後の source-file gate、両 target current artifact による手動 release gate、stage0 asset の手動公開
 - **注意点**: 高カインド型、GADT、computation expressions は README で方向性として触れていますが、全面的に runtime-ready と断定しない段階です
 
 ## Learn More

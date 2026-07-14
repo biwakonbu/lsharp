@@ -1436,9 +1436,10 @@
       (do
         (root_push bind-state)
         (let [arm-env (vector-get bind-state 0)
-          checked (compile-match-pattern-check-with-scratch pat scr-idx scratch-base instrs)
+          pattern-temp-base (vector-get bind-state 1)
+          checked (compile-match-pattern-check-with-scratch pat scr-idx scratch-base pattern-temp-base ftable instrs)
           opened (emit-to checked (op-if-empty) 0)
-          bound (compile-match-pattern-binders pat scr-idx arm-env scratch-base opened)
+          bound (compile-match-pattern-binders pat scr-idx arm-env scratch-base pattern-temp-base ftable opened)
           body-instrs (compile-expr-with-source body source arm-env ftable bound data-ref)
           stored (emit-to body-instrs (op-local-set) result-local)
           exited (emit-to stored (op-br) 1)
@@ -1630,41 +1631,56 @@
               base-value-instrs (emit-to (vector-new 2) (op-local-get) base-local)]
               (do
                 (root_push base-value-instrs)
-                (let [instrs7 (compile-record-map-field-instrs
-                                env
-                                instrs6
-                                record-local
-                                (record-update-base-key)
-                                base-value-instrs)]
+                (let [base-marker-instrs
+                        (compile-record-get-with-fallback
+                          env
+                          (vector-new 2)
+                          base-value-instrs
+                          (record-nominal-type-key))]
                   (do
-                    (root_set instrs-slot instrs7)
-                    (let [with-fields
-                            (compile-recordlit-fields-with-source
-                              node
-                              source
-                              env
-                              ftable
-                              0
-                              (vector-get node 2)
-                              instrs7
-                              record-local
-                              data-ref)]
+                    (root_push base-marker-instrs)
+                    (let [instrs7 (compile-record-map-field-instrs
+                                    env
+                                    instrs6
+                                    record-local
+                                    (record-update-base-key)
+                                    base-value-instrs)
+                      instrs8 (compile-record-map-field-instrs
+                                env
+                                instrs7
+                                record-local
+                                (record-nominal-type-key)
+                                base-marker-instrs)]
                       (do
-                        (root_set instrs-slot with-fields)
-                        (let [instrs8 (emit-to with-fields (op-local-get) record-local)
-                          instrs9 (emit-root-pop-drop instrs8)
-                          result (emit-root-pop-drop instrs9)]
+                        (root_set instrs-slot instrs8)
+                        (let [with-fields
+                                (compile-recordlit-fields-with-source
+                                  node
+                                  source
+                                  env
+                                  ftable
+                                  0
+                                  (vector-get node 2)
+                                  instrs8
+                                  record-local
+                                  data-ref)]
                           (do
-                            (root_set instrs-slot result)
-                            (root_pop)
-                            (root_pop)
-                            (root_pop)
-                            (root_pop)
-                            (root_pop)
-                            (root_pop)
-                            (root_pop)
-                            (root_pop)
-                            result))))))))))))))
+                            (root_set instrs-slot with-fields)
+                            (let [instrs9 (emit-to with-fields (op-local-get) record-local)
+                              instrs10 (emit-root-pop-drop instrs9)
+                              result (emit-root-pop-drop instrs10)]
+                              (do
+                                (root_set instrs-slot result)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                result))))))))))))))))
 
 (defn compile-recordupdate-with-ftable [node env ftable instrs]
   (do
@@ -1687,37 +1703,54 @@
           base-value-instrs (emit-to (vector-new 2) (op-local-get) base-local)]
           (do
             (root_push base-value-instrs)
-            (let [instrs7 (compile-record-map-field-instrs
-                            env
-                            instrs6
-                            record-local
-                            (record-update-base-key)
-                            base-value-instrs)]
+            (let [base-marker-instrs
+                    (compile-record-get-with-fallback
+                      env
+                      (vector-new 2)
+                      base-value-instrs
+                      (record-nominal-type-key))]
               (do
-                (root_set instrs-slot instrs7)
-                (let [with-fields
-                        (compile-recordlit-fields-with-ftable
-                          node
-                          env
-                          ftable
-                          0
-                          (vector-get node 2)
-                          instrs7
-                          record-local)]
-                  (do
-                    (root_set instrs-slot with-fields)
-                    (let [instrs8 (emit-to with-fields (op-local-get) record-local)
-                      instrs9 (emit-root-pop-drop instrs8)
-                      result (emit-root-pop-drop instrs9)]
-                      (do
-                        (root_set instrs-slot result)
-                        (root_pop)
-                        (root_pop)
-                        (root_pop)
-                        (root_pop)
-                        (root_pop)
-                        (root_pop)
-                        result))))))))))))
+                (root_push base-marker-instrs)
+                (let [instrs7 (compile-record-map-field-instrs
+                                env
+                                instrs6
+                                record-local
+                                (record-update-base-key)
+                                base-value-instrs)
+                  instrs8 (compile-record-map-field-instrs
+                            env
+                            instrs7
+                            record-local
+                            (record-nominal-type-key)
+                            base-marker-instrs)]
+                (do
+                  (root_set instrs-slot instrs8)
+                  (let [with-fields
+                          (compile-recordlit-fields-with-ftable
+                            node
+                            env
+                            ftable
+                            0
+                            (vector-get node 2)
+                            instrs8
+                            record-local)]
+                    (do
+                      (root_set instrs-slot with-fields)
+                      (let [instrs9 (emit-to with-fields (op-local-get) record-local)
+                        instrs10 (emit-root-pop-drop instrs9)
+                        result (emit-root-pop-drop instrs10)]
+                        (do
+                          (root_set instrs-slot result)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          result))))))))))))))
 
 (defn compile-recordlit-fields-with-source [node source env ftable idx count instrs record-local data-ref]
   (if (>= idx count)
@@ -3116,6 +3149,51 @@
           (root_pop)
           result)))))
 
+(defn make-record-pattern-field-presence-meta [field-hash]
+  (let [map-op 2
+    base-map-op 8
+    result-local 13
+    ir0 (emit-to (vector-new 4) (op-block) 0)
+    ir1 (emit-to ir0 (op-loop) 0)
+    ir2 (emit-to ir1 (op-local-get) 1)
+    ir3 (emit-to ir2 (op-i64-const) field-hash)
+    ir4 (emit-to ir3 (op-map-contains) map-op)]
+    (do
+      (root_push ir0)
+      (root_push ir4)
+      (let [ir5 (emit-to ir4 (op-if-empty) 0)
+        ir6 (emit-to ir5 (op-i64-const) 1)
+        ir7 (emit-to ir6 (op-local-set) result-local)
+        ir8 (emit-to ir7 (op-br) 2)
+        ir9 (emit-to ir8 (op-else) 0)
+        ir10 (emit-to ir9 (op-local-get) 1)
+        ir11 (emit-to ir10 (op-i64-const) (record-update-base-key))
+        ir12 (emit-to ir11 (op-map-contains) base-map-op)
+        ir13 (emit-to ir12 (op-if-empty) 0)
+        ir14 (emit-to ir13 (op-local-get) 1)
+        ir15 (emit-to ir14 (op-i64-const) (record-update-base-key))
+        ir16 (emit-to ir15 (op-map-get) base-map-op)
+        ir17 (emit-to ir16 (op-local-set) 1)
+        ir18 (emit-to ir17 (op-br) 2)
+        ir19 (emit-to ir18 (op-else) 0)
+        ir20 (emit-to ir19 (op-i64-const) 0)
+        ir21 (emit-to ir20 (op-local-set) result-local)
+        ir22 (emit-to ir21 (op-br) 3)
+        ir23 (emit-to ir22 (op-end) 0)
+        ir24 (emit-to ir23 (op-end) 0)
+        ir25 (emit-to ir24 (op-end) 0)
+        ir26 (emit-to ir25 (op-end) 0)
+        ir27 (emit-to ir26 (op-local-get) result-local)
+        local-max (max-local-slot ir27 0 (vector-length ir27) 0)
+        local-count (if (> local-max 1) (- local-max 1) 0)
+        result (make-function-meta 1 local-count ir27)]
+        (do
+          (root_push result)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          result)))))
+
 ;; ordinary ADT は record と同じ Map runtime の narrow slice を使う。
 ;; -2 は variant hash、0.. は constructor field index を保持する予約 key。
 (defn compile-adt-constructor-fields [fields idx count constructor-local env instrs]
@@ -3238,24 +3316,58 @@
       (root_push functions)
       (let [field-hash (vector-get fields (* idx 3))
         accessor-hash (vector-get fields (+ (* idx 3) 1))
-        accessor-meta (make-record-accessor-meta field-hash)]
+        accessor-meta (make-record-accessor-meta field-hash)
+        presence-meta (make-record-pattern-field-presence-meta field-hash)]
         (do
           (root_push accessor-meta)
-          (let [next-ftable (ftable-register ftable accessor-hash func-idx)]
+          (root_push presence-meta)
+          (let [with-accessor (ftable-register ftable accessor-hash func-idx)]
             (do
-              (root_push next-ftable)
-              (let [next-functions (push-object-vector functions accessor-meta)]
+              (root_push with-accessor)
+              (let [with-get
+                      (ftable-register
+                        with-accessor
+                        (record-pattern-field-get-key field-hash)
+                        func-idx)]
                 (do
-                  (root_push next-functions)
-                  (let [result (register-record-accessors fields (+ idx 1) count next-ftable (+ func-idx 1) next-functions)]
+                  (root_push with-get)
+                  (let [next-ftable
+                          (ftable-register
+                            with-get
+                            (record-pattern-field-presence-key field-hash)
+                            (+ func-idx 1))]
                     (do
-                      (root_pop)
-                      (root_pop)
-                      (root_pop)
-                      (root_pop)
-                      (root_pop)
-                      (root_pop)
-                      result)))))))))))
+                      (root_push next-ftable)
+                      (let [with-accessor-function
+                              (push-object-vector functions accessor-meta)]
+                        (do
+                          (root_push with-accessor-function)
+                          (let [next-functions
+                                  (push-object-vector
+                                    with-accessor-function
+                                    presence-meta)]
+                            (do
+                              (root_push next-functions)
+                              (let [result
+                                      (register-record-accessors
+                                        fields
+                                        (+ idx 1)
+                                        count
+                                        next-ftable
+                                        (+ func-idx 2)
+                                        next-functions)]
+                                (do
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  result)))))))))))))))))
 
 (defn register-record-decl [decl ftable func-idx functions]
   (do
@@ -4130,21 +4242,42 @@
                   (root_pop)
                   skip-result)))))))))
 (defn compile-let-with-ftable-impl-body-impl-3 [node env ftable instrs]
-  (let [name-hash (vector-get node 1)
+  (let [node-slot (root_push node)
+    env-slot (root_push env)
+    ftable-slot (root_push ftable)
+    instrs-slot (root_push instrs)
+    name-hash (vector-get node 1)
     init-expr (vector-get node 2)
     init-root (alloc-root-needed init-expr)
+    init-expr-slot (root_push init-expr)
     init-instrs (compile-expr-with-ftable init-expr env ftable instrs)
-    body-expr-after-init (vector-get node 3)]
+    init-instrs-slot (root_push init-instrs)
+    body-expr-after-init (vector-get node 3)
+    body-expr-slot (root_push body-expr-after-init)
+    prep (compile-let-with-ftable-prepare name-hash init-root init-instrs env)
+    prep-slot (root_push prep)
+    new-env (vector-get prep 0)
+    instrs2 (vector-get prep 1)
+    new-env-slot (root_push new-env)
+    instrs2-slot (root_push instrs2)
+    body-instrs (compile-expr-with-ftable body-expr-after-init new-env ftable instrs2)]
     (do
-      (root_push body-expr-after-init)
-      (let [prep (compile-let-with-ftable-prepare name-hash init-root init-instrs env)
-        new-env (vector-get prep 0)
-        instrs2 (vector-get prep 1)
-        body-instrs (compile-expr-with-ftable body-expr-after-init new-env ftable instrs2)]
-        (let [result (maybe-root-pop-drop body-instrs init-root)]
-          (do
-            (root_pop)
-            result))))))
+      (root_push body-instrs)
+      (let [result (maybe-root-pop-drop body-instrs init-root)]
+        (do
+          (root_push result)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          result)))))
 
 (defn compile-if-with-source-impl-body-impl [node source env ftable instrs data-ref]
   (let [cond-expr (vector-get node 1)
@@ -4300,9 +4433,10 @@
       (do
         (root_push bind-state)
         (let [arm-env (vector-get bind-state 0)
-          checked (compile-match-pattern-check-with-scratch pat scr-idx scratch-base instrs)
+          pattern-temp-base (vector-get bind-state 1)
+          checked (compile-match-pattern-check-with-scratch pat scr-idx scratch-base pattern-temp-base ftable instrs)
           opened (emit-to checked (op-if-empty) 0)
-          bound (compile-match-pattern-binders pat scr-idx arm-env scratch-base opened)
+          bound (compile-match-pattern-binders pat scr-idx arm-env scratch-base pattern-temp-base ftable opened)
           body-instrs (compile-expr-with-ftable body arm-env ftable bound)
           stored (emit-to body-instrs (op-local-set) result-local)
           exited (emit-to stored (op-br) 1)

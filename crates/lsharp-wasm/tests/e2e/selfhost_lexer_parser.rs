@@ -654,6 +654,71 @@ fn test_e2e_selfhost_parametric_adt_constructors_instantiate_per_use() {
     );
 }
 
+/// parser-to-inference bundle: GADT constructor は宣言された戻り型を保持する
+#[test]
+fn test_e2e_selfhost_gadt_constructor_registers_refined_return_type() {
+    let harness = r#"
+(defn main []
+  (let [analysis
+          (infer-program-analysis
+            (parse-program "(type (Expr a) (: (IntLit Int) (Expr Int)) (: (BoolLit Bool) (Expr Bool))) (defn make-int [] (IntLit 1))"))
+        env (infer-program-analysis-env analysis)
+        scheme (type-env-lookup env (name-hash "make-int" 0 8))
+        ty (scheme-type scheme)
+        arg (type-app-arg ty 0)]
+    (do
+      (print (infer-program-analysis-diagnostic-count analysis))
+      (print (type-tag ty))
+      (print (if (= (type-app-name ty) (name-hash "Expr" 0 4)) 1 0))
+      (print (type-tag arg))
+      (print (type-name arg))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}",
+        selfhost_parser_typeinfer_runtime_bundle(),
+        harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "5", "1", "1", "100"],
+        "GADT の IntLit constructor は Expr Int を返す scheme として登録されるべき",
+    );
+}
+
+/// parser-to-inference bundle: GADT match は arm ごとに戻り型の refinement を適用する
+#[test]
+fn test_e2e_selfhost_gadt_match_refines_each_constructor_arm() {
+    let harness = r#"
+(defn main []
+  (let [analysis
+          (infer-program-analysis
+            (parse-program "(type (Expr a) (: (IntLit Int) (Expr Int)) (: (BoolLit Bool) (Expr Bool))) (defn eval [expr] (match expr [(IntLit value) value] [(BoolLit value) (if value 1 0)]))"))]
+    (do
+      (print (infer-program-analysis-diagnostic-count analysis))
+      (print (infer-program-analysis-first-error-code analysis))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}",
+        selfhost_parser_typeinfer_runtime_bundle(),
+        harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "0"],
+        "GADT match は IntLit / BoolLit の各 arm を独立に refinement できるべき",
+    );
+}
+
 #[test]
 fn test_e2e_selfhost_lexer_arrow_dot() {
     // Lexer.ls が -> と . を正しくトークン化できることを検証

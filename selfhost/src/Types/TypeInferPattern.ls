@@ -123,6 +123,29 @@
                   counter
                   record-ty)))))))))
 
+;; GADT の constructor pattern が scrutinee 型変数へ注入した制約は arm-local。
+;; body の戻り値や外側環境の制約は残し、scrutinee 型に現れる変数の binding だけを
+;; 次の arm へ持ち越さない。
+(defn strip-match-scrutinee-vars [subst vars idx len]
+  (if (>= idx len)
+    subst
+    (strip-match-scrutinee-vars
+      (map-remove-object-safe subst (vector-get vars idx))
+      vars
+      (+ idx 1)
+      len)))
+
+(defn strip-match-scrutinee-subst [scrut-ty subst]
+  (let [vars (free-vars scrut-ty)]
+    (strip-match-scrutinee-vars subst vars 0 (vector-length vars))))
+
+(defn match-pattern-gadt? [pat env]
+  (let [tag (vector-get pat 0)]
+    (if (or (= tag 11) (= tag 43))
+      (let [scheme (type-env-lookup env (vector-get pat 1))]
+        (if (= scheme 0) 0 (scheme-gadt scheme)))
+      0)))
+
 (defn infer-pattern [pat env subst counter]
   (let [tag (vector-get pat 0)]
     (if (= tag 1)
@@ -246,7 +269,8 @@
       pat-info (infer-pattern pat env subst counter)
       pat-subst (pat-result-subst pat-info)
       pat-ty (pat-result-type pat-info)
-      pat-env (pat-result-env pat-info)]
+      pat-env (pat-result-env pat-info)
+      gadt-pattern? (match-pattern-gadt? pat env)]
       (if (= (map-get pat-subst -1) 1)
         (propagate-error-result pat-info)
         (let [s2 (unify (apply-subst pat-subst scrut-ty) pat-ty pat-subst)]
@@ -260,15 +284,19 @@
                   s4 (unify (apply-subst s3 result-ty) body-ty s3)]
                   (if (= (unify-failed s4) 1)
                     (make-error-result-code (error-code-general))
-                    (infer-match-arms
-                      node
-                      (+ idx 1)
-                      arm-count
-                      env
-                      scrut-ty
-                      result-ty
-                      s4
-                      counter)))))))))))
+                    (let [next-subst
+                            (if (= gadt-pattern? 1)
+                              (strip-match-scrutinee-subst scrut-ty s4)
+                              s4)]
+                      (infer-match-arms
+                        node
+                        (+ idx 1)
+                        arm-count
+                        env
+                        scrut-ty
+                        result-ty
+                        next-subst
+                        counter))))))))))))
 
 (defn infer-match [node env subst counter]
   (let [scrutinee (vector-get node 1)

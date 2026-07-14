@@ -121,6 +121,21 @@
         (root_pop)
         result))))
 
+;; GADT variant は AST 末尾の raw return TypeExpr を constructor の戻り型に使う。
+;; 旧形式の 2 要素 variant は宣言全体の result-type をそのまま使う。
+(defn typeinfer-adt-variant-result-type [variant result-type alias-env param-env]
+  (if (> (vector-length variant) 2)
+    (typeinfer-resolve-type-expr-with-aliases-and-params
+      (vector-get variant 2)
+      alias-env
+      param-env)
+    result-type))
+
+(defn typeinfer-adt-variant-scheme [variant constructor-type bound-vars]
+  (if (> (vector-length variant) 2)
+    (poly-gadt constructor-type bound-vars)
+    (poly constructor-type bound-vars)))
+
 ;; 同一 ADT の variant は同じ parameter variables / bound-vars を共有する。
 (defn typeinfer-register-adt-variants-loop [variants idx len env alias-env param-env result-type bound-vars]
   (if (>= idx len)
@@ -136,18 +151,29 @@
         (do
           (root_push variant)
           (let [constructor-name-hash (vector-get variant 0)
-            raw-fields (vector-get variant 1)]
+            raw-fields (vector-get variant 1)
+            variant-result-type
+              (typeinfer-adt-variant-result-type
+                variant
+                result-type
+                alias-env
+                param-env)]
             (do
+              (root_push variant-result-type)
               (root_push raw-fields)
               (let [constructor-type
                       (typeinfer-adt-constructor-type
                         raw-fields
                         alias-env
                         param-env
-                        result-type)]
+                        variant-result-type)]
                 (do
                   (root_push constructor-type)
-                  (let [scheme (poly constructor-type bound-vars)]
+                  (let [scheme
+                          (typeinfer-adt-variant-scheme
+                            variant
+                            constructor-type
+                            bound-vars)]
                     (do
                       (root_push scheme)
                       (let [next-env
@@ -165,6 +191,7 @@
                                     result-type
                                     bound-vars)]
                             (do
+                              (root_pop)
                               (root_pop)
                               (root_pop)
                               (root_pop)
