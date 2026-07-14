@@ -86,6 +86,43 @@
         (vector-push (make-error-result-code (error-code-general)) env))))
 )
 
+;; canonical record pattern は既存の field 配置を保ったまま末尾に type 名 hash を持つ。
+;; 旧手組み AST（type 名なし）は 0 を返し、従来の shallow fallback を維持する。
+(defn record-pattern-type-hash [pat]
+  (let [field-count (vector-get pat 1)
+    type-slot (+ 2 (* field-count 2))]
+    (if (> (vector-length pat) type-slot)
+      (vector-get pat type-slot)
+      0)))
+
+;; schema がある record pattern の field を左から推論し、schema field 型と unify する。
+(defn infer-record-pattern-schema-children [node idx count env subst counter record-ty]
+  (if (>= idx count)
+    (vector-push (make-result subst record-ty) env)
+    (let [field-offset (+ 2 (* idx 2))
+      field-hash (vector-get node field-offset)
+      child (vector-get node (+ field-offset 1))
+      expected-ty (type-record-field-type record-ty field-hash)]
+      (if (= expected-ty 0)
+        (vector-push (make-error-result-code (error-code-general)) env)
+        (let [child-info (infer-pattern child env subst counter)]
+          (if (= (result-failed child-info) 1)
+            child-info
+            (let [child-subst (result-subst child-info)
+              child-ty (result-type child-info)
+              child-env (vector-get child-info 3)
+              next-subst (unify (apply-subst child-subst expected-ty) child-ty child-subst)]
+              (if (= (unify-failed next-subst) 1)
+                (vector-push (make-error-result-code (error-code-general)) child-env)
+                (infer-record-pattern-schema-children
+                  node
+                  (+ idx 1)
+                  count
+                  child-env
+                  next-subst
+                  counter
+                  record-ty)))))))))
+
 (defn infer-pattern [pat env subst counter]
   (let [tag (vector-get pat 0)]
     (if (= tag 1)
@@ -151,20 +188,38 @@
                             ctor-ty))))
                     (if (or (= tag 12) (= tag 44))
                       ;; レコードパターン
-                      ;; [12, field-count, field-hash1, sub-pat1, ...]
+                      ;; [12/44, field-count, field-hash1, sub-pat1, ..., type-name-hash?]
                       (let [fc (vector-get pat 1)
-                        child-info
-                        (infer-pattern-children
-                          pat 0 fc 3 2 env subst counter)
-                        child-subst (pattern-children-subst child-info)
-                        child-env (pattern-children-env child-info)]
-                        (if (= (map-get child-subst -1) 1)
-                          (vector-push
-                            (make-error-result-code (map-get child-subst -2))
-                            child-env)
-                          ;; レコード全体の型はまだ最小版として fresh var
-                          (let [ty (fresh-type-var counter)]
-                            (vector-push (make-result child-subst ty) child-env))))
+                        type-hash (if (= tag 44) (record-pattern-type-hash pat) 0)
+                        record-env (var-counter-record-env counter)
+                        record-schema (if (= type-hash 0) 0 (map-get-safe record-env type-hash))]
+                        (if (= type-hash 0)
+                          (let [child-info
+                                (infer-pattern-children
+                                  pat 0 fc 3 2 env subst counter)
+                            child-subst (pattern-children-subst child-info)
+                            child-env (pattern-children-env child-info)]
+                            (if (= (map-get child-subst -1) 1)
+                              (vector-push
+                                (make-error-result-code (map-get child-subst -2))
+                                child-env)
+                              ;; 旧 AST は record schema を持たないため fresh var のまま扱う。
+                              (let [ty (fresh-type-var counter)]
+                                (vector-push (make-result child-subst ty) child-env))))
+                          (if (= record-schema 0)
+                            ;; parser が保持した record 名が未登録なら未定義 record として拒否する。
+                            (vector-push
+                              (make-error-result-code (error-code-undefined))
+                              env)
+                            (let [record-ty (instantiate record-schema counter)]
+                              (infer-record-pattern-schema-children
+                                pat
+                                0
+                                fc
+                                env
+                                subst
+                                counter
+                                record-ty)))))
                       ;; 未知のパターン: 新しい型変数 (ワイルドカード扱い)
                       (let [ty (fresh-type-var counter)]
                         (vector-push (make-result subst ty) env)))))))))))))

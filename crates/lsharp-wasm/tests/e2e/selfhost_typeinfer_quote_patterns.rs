@@ -253,6 +253,63 @@ fn test_e2e_selfhost_typeinfer_match_record_pattern_binder() {
     );
 }
 
+/// selfhost TypeInfer.ls テスト: record schema の field 型で record pattern binder を具体化する
+#[test]
+fn test_e2e_selfhost_typeinfer_record_pattern_uses_declared_field_type() {
+    let harness = r#"
+(defn main []
+  (let [counter0 (make-var-counter)
+        aliases (var-counter-alias-env counter0)
+        point-hash 700
+        field-x 120
+        x-hash 1200
+        point-ty (type-record-add-field (make-type-record point-hash) field-x (mk-int))
+        record-env (map-insert-object-safe (map-new) point-hash (mono point-ty))
+        counter (var-counter-with-alias-env-and-record-env counter0 aliases record-env)
+        env (type-env-new)
+        child-pat (vector-push (vector-push (vector-new 2) (ast-pat-var)) x-hash)
+        pat (vector-push
+              (vector-push
+                (vector-push
+                  (vector-push
+                    (vector-push (vector-new 5) (ast-pat-recordpat))
+                    1)
+                  field-x)
+                child-pat)
+              point-hash)
+        result (infer-pattern pat env (subst-new) counter)
+        bound (type-env-lookup (pat-result-env result) x-hash)
+        bound-ty (apply-subst (result-subst result) (scheme-type bound))]
+    (do
+      (print (result-failed result))
+      (print (ty-tag bound-ty))
+      (print (ty-name bound-ty))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_typeinfer_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 3,
+        "record pattern schema infer 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(
+        lines[0], "0",
+        "record pattern schema infer は失敗すべきでない"
+    );
+    assert_eq!(
+        lines[1], "1",
+        "record pattern binder は Int へ具体化されるべき"
+    );
+    assert_eq!(
+        lines[2], "100",
+        "record pattern binder の型名は Int hash=100 であるべき"
+    );
+}
+
 /// selfhost TypeInfer.ls テスト: match の constructor pattern binder を body で参照できる
 #[test]
 fn test_e2e_selfhost_typeinfer_match_constructor_pattern_binder() {

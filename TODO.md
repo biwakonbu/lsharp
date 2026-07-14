@@ -1,5 +1,10 @@
 # L# セルフホスティング & エコシステム TODO
 
+## 2026-07-14 Rust-free base 境界の更新
+
+- [x] record pattern の parser/type inference slice — selfhost parser が record type name hash を AST 末尾へ保持し、登録済み schema の instantiate、field 存在確認、child pattern と field 型の unify、未知 record/field と型不一致の診断を行う。Evidence: `test_e2e_selfhost_parser_match_record_pattern_retains_type_hash`, `test_e2e_selfhost_typeinfer_record_pattern_uses_declared_field_type`, `test_e2e_selfhost_parser_match_record_pattern_tag`, `test_e2e_selfhost_typeinfer_match_record_pattern_binder`。
+- [~] record pattern runtime lowering — selfhost Wasm compiler の match 実行時 field lookup、binder local、arm fallback、nested child pattern、record nominal metadata は未完了。型検査だけで record pattern 全体を Rust-free 完了とは扱わない。
+
 > 凡例: `[x]` 完了 / `[ ]` 未着手 / `[~]` 部分実装 / `[BLOCKED: ...]` 依存待ち / `[DEFERRED]` 後続トラック送り
 >
 > **完了済みフェーズ**: Phase 0-7, P8, P9-1/2/3/4/6, P10, P12, P13, P14。

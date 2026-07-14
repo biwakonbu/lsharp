@@ -65,6 +65,12 @@ LSHARP_NATIVE_LINUX_X86_STAGE0_DIR=/path/to/linux-stage0 \
 | `compile --emit-ir` | native runner は提供しない | 必要 | Rust host integration の責務として明示的に失敗する。 |
 | `--target web-wasm` / `--target native` | native runner は提供しない | 必要 | native selfhost の supported output target 外として明示的に失敗する。 |
 
+## Record pattern の現在地
+
+2026-07-14 時点で、selfhost parser は record pattern の field 配置を維持したまま record type name hash を AST 末尾へ保存し、`TypeInferPattern.ls` は登録済み record schema を instantiate して各 child pattern を field 型と unify する。未登録 record、未定義 field、field child の型不一致は selfhost 側で診断できる。既存の type name なし手組み AST は shallow fallback を維持する。
+
+一方、selfhost Wasm compiler の match lowering はまだ record pattern を実行時に判定せず、field lookup、binder local、arm fallback、nested child pattern、record の nominal metadata まで含む runtime parity は未完了である。したがって、この進捗は record pattern の型検査を Rust oracle の必須範囲から一部外したものであり、L# の全 record pattern 機能が Rust なしで使えることを意味しない。
+
 ## Rust に残る責務
 
 Rust が完全に不要になったわけではない。次の作業は native base development loop の外側に残る。

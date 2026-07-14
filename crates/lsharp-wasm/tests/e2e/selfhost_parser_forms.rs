@@ -508,6 +508,27 @@ fn test_e2e_selfhost_parser_match_record_pattern_tag() {
     assert_eq!(lines[3], "1", "record child は ast-pat-var であるべき");
 }
 
+/// TEST-SYNTAX-02l4a: record pattern は record type 名の hash を保持する
+#[test]
+fn test_e2e_selfhost_parser_match_record_pattern_retains_type_hash() {
+    let harness = r#"
+(defn main []
+  (let [node (vector-get (parse-program "(match value [{Point x rest} rest])") 0)
+        pat (vector-get node 3)
+        type-slot (+ 2 (* (vector-get pat 1) 2))]
+    (do
+      (print (if (= (vector-get pat type-slot) (name-hash "Point" 0 5)) 1 0))
+      0)))
+"#;
+
+    let output = run_parser_runtime(harness);
+    assert_eq!(
+        output.trim(),
+        "1",
+        "record pattern は record type name hash を保持すべき"
+    );
+}
+
 /// TEST-SYNTAX-02l5: match の int/bool literal pattern を canonical tag としてパースできる
 #[test]
 fn test_e2e_selfhost_parser_match_literal_pattern_tag() {

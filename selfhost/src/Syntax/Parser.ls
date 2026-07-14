@@ -1834,19 +1834,22 @@
 (defn parse-recordpat-v3 [spans pos-ref src]
   (do
     (p-advance pos-ref) ;; { を消費
-    (if (== (p-current spans pos-ref) 20)
-      (do
-        (p-advance pos-ref) ;; type 名を最小 parity で消費
-        0)
-      0)
-    (let [result (vector-push-pair-rooted-v3 (vector-new 8) (ast-pat-recordpat) 0)]
+    (let [type-hash
+          (if (== (p-current spans pos-ref) 20)
+            (let [name-hash (current-symbol-hash-v3 spans pos-ref src)]
+              (do
+                (p-advance pos-ref)
+                name-hash))
+            0)
+      result (vector-push-pair-rooted-v3 (vector-new 8) (ast-pat-recordpat) 0)]
       (do
         (root_push result)
         (let [with-fields (parse-recordpat-fields-v3 spans pos-ref src result 0)
-          field-count (/ (- (vector-length with-fields) 2) 2)]
+          field-count (/ (- (vector-length with-fields) 2) 2)
+          with-type-hash (vector-push-single-rooted-v3 with-fields type-hash)]
           (do
-            (root_push with-fields)
-            (let [parsed (vector-set-at-rooted-v3 with-fields 1 field-count)]
+            (root_push with-type-hash)
+            (let [parsed (vector-set-at-rooted-v3 with-type-hash 1 field-count)]
               (do
                 (root_pop)
                 (root_pop)
