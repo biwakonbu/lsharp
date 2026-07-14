@@ -528,6 +528,14 @@ fn infer_bridge_compile_target(
     }
 }
 
+fn should_fallback_to_host_compile(guest_exit_code: Option<i32>) -> bool {
+    guest_exit_code != Some(0)
+}
+
+fn is_selfhost_shadow_command(command: &str) -> bool {
+    matches!(command, "parse" | "check" | "test" | "fmt")
+}
+
 fn maybe_bridge_compile_build_artifact_with_component(
     component_bytes: &[u8],
 ) -> miette::Result<bool> {
@@ -599,6 +607,13 @@ fn maybe_bridge_compile_build_artifact_with_component(
             &arg_refs,
         );
 
+    if let Ok(output) = &guest_output
+        && !should_fallback_to_host_compile(Some(output.exit_code))
+    {
+        print!("{}", output.stdout);
+        std::process::exit(output.exit_code);
+    }
+
     let artifacts = commands::compile::compile_file(
         &host_file,
         Some(&resolved_output),
@@ -607,10 +622,6 @@ fn maybe_bridge_compile_build_artifact_with_component(
     )?;
 
     match guest_output {
-        Ok(output) if output.exit_code == 0 => {
-            print!("{}", output.stdout);
-            std::process::exit(output.exit_code);
-        }
         Ok(_) | Err(_) => {
             print_compile_artifacts_success(&artifacts);
             std::process::exit(0);
@@ -835,10 +846,9 @@ fn maybe_hint_shadow_command_requires_lsharp_path() -> miette::Result<()> {
     };
 
     let requires_selfhost = match command {
-        "parse" | "check" | "fmt" => true,
         "review" => should_delegate_review_command_args(&args),
         "doc-ack" | "doc-check" => should_delegate_doc_command_args(&args),
-        _ => false,
+        _ => is_selfhost_shadow_command(command),
     };
 
     if requires_selfhost {
@@ -2499,6 +2509,19 @@ fn cmd_repl() -> miette::Result<()> {
 mod tests {
     use super::*;
     use clap::CommandFactory;
+
+    #[test]
+    fn test_guest_compile_success_does_not_request_host_fallback() {
+        assert!(!should_fallback_to_host_compile(Some(0)));
+        assert!(should_fallback_to_host_compile(Some(1)));
+        assert!(should_fallback_to_host_compile(None));
+    }
+
+    #[test]
+    fn test_test_command_is_selfhost_shadow_command() {
+        assert!(is_selfhost_shadow_command("test"));
+        assert!(!is_selfhost_shadow_command("compile"));
+    }
 
     fn command_names_from_help(help: &str) -> Vec<&str> {
         help.lines()

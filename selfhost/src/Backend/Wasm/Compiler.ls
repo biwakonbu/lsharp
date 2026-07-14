@@ -1539,6 +1539,23 @@
 ;; nominal discriminator は record pattern lowering と同時に追加する。
 (defn record-update-base-key [] -1)
 
+(defn compile-record-nominal-marker [env instrs record-local type-hash]
+  (if (= type-hash 0)
+    instrs
+    (let [marker-instrs (emit-to (vector-new 2) (op-i64-const) type-hash)]
+      (do
+        (root_push marker-instrs)
+        (let [result
+                (compile-record-map-field-instrs
+                  env
+                  instrs
+                  record-local
+                  (record-nominal-type-key)
+                  marker-instrs)]
+          (do
+            (root_pop)
+            result))))))
+
 (defn compile-record-map-field-instrs [env instrs record-local field-hash value-instrs]
   (let [map-local (max-root-temp-base env instrs value-instrs)
     key-local (+ map-local 1)
@@ -1751,20 +1768,24 @@
           instrs3 (emit-root-push-drop instrs2 record-local)]
           (do
             (root_set instrs-slot instrs3)
-            (let [with-fields (compile-recordlit-fields-with-source node source env ftable 0 (vector-get node 2) instrs3 record-local data-ref)]
+            (let [with-marker (compile-record-nominal-marker env instrs3 record-local (vector-get node 1))]
               (do
-                (root_set instrs-slot with-fields)
-                (let [instrs4 (emit-to with-fields (op-local-get) record-local)
-                  result (emit-root-pop-drop instrs4)]
+                (root_push with-marker)
+                (let [with-fields (compile-recordlit-fields-with-source node source env ftable 0 (vector-get node 2) with-marker record-local data-ref)]
                   (do
-                    (root_set instrs-slot result)
-                    (root_pop)
-                    (root_pop)
-                    (root_pop)
-                    (root_pop)
-                    (root_pop)
-                    (root_pop)
-                    result))))))))))
+                    (root_set instrs-slot with-fields)
+                    (let [instrs4 (emit-to with-fields (op-local-get) record-local)
+                      result (emit-root-pop-drop instrs4)]
+                      (do
+                        (root_set instrs-slot result)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        result))))))))))))
 
 (defn compile-recordlit-fields-with-ftable [node env ftable idx count instrs record-local]
   (if (>= idx count)
@@ -1808,18 +1829,22 @@
           instrs3 (emit-root-push-drop instrs2 record-local)]
           (do
             (root_set instrs-slot instrs3)
-            (let [with-fields (compile-recordlit-fields-with-ftable node env ftable 0 (vector-get node 2) instrs3 record-local)]
+            (let [with-marker (compile-record-nominal-marker env instrs3 record-local (vector-get node 1))]
               (do
-                (root_set instrs-slot with-fields)
-                (let [instrs4 (emit-to with-fields (op-local-get) record-local)
-                  result (emit-root-pop-drop instrs4)]
+                (root_push with-marker)
+                (let [with-fields (compile-recordlit-fields-with-ftable node env ftable 0 (vector-get node 2) with-marker record-local)]
                   (do
-                    (root_set instrs-slot result)
-                    (root_pop)
-                    (root_pop)
-                    (root_pop)
-                    (root_pop)
-                    result))))))))))
+                    (root_set instrs-slot with-fields)
+                    (let [instrs4 (emit-to with-fields (op-local-get) record-local)
+                      result (emit-root-pop-drop instrs4)]
+                      (do
+                        (root_set instrs-slot result)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        result))))))))))))
 
 (defn compile-fieldaccess-with-source [node source env ftable instrs data-ref]
   (let [record-expr (vector-get node 1)
@@ -2983,6 +3008,27 @@
                   (root_pop)
                   result)))))))))
 
+(defn compile-record-constructor-fields-with-nominal [decl fields idx count record-local env instrs]
+  (let [with-marker
+          (compile-record-nominal-marker
+            env
+            instrs
+            record-local
+            (vector-get decl 1))]
+    (do
+      (root_push with-marker)
+      (let [with-fields
+              (compile-record-constructor-fields
+                fields
+                idx
+                count
+                record-local
+                env
+                with-marker)]
+        (do
+          (root_pop)
+          with-fields)))))
+
 (defn make-record-constructor-meta [decl]
   (do
     (root_push decl)
@@ -3002,7 +3048,15 @@
                 (let [instrs2 (emit-to instrs1 (op-local-set) record-local)]
                   (do
                     (root_push instrs2)
-                    (let [with-fields (compile-record-constructor-fields fields 0 field-count record-local env instrs2)]
+                    (let [with-fields
+                            (compile-record-constructor-fields-with-nominal
+                              decl
+                              fields
+                              0
+                              field-count
+                              record-local
+                              env
+                              instrs2)]
                       (do
                         (root_push with-fields)
                         (let [ir (emit-to with-fields (op-local-get) record-local)]

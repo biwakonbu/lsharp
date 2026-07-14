@@ -217,6 +217,28 @@
         i7 (compile-match-pattern-check-with-scratch child scratch-base scratch-base i6)]
         (emit-to i7 (op-i64-and) 0)))))
 
+(defn record-pattern-type-hash-for-compiler [pat]
+  (let [field-count (vector-get pat 1)
+    type-slot (+ 2 (* field-count 2))]
+    (if (> (vector-length pat) type-slot)
+      (vector-get pat type-slot)
+      0)))
+
+(defn compile-match-record-type-check [pat value-local scratch-base instrs]
+  (let [type-hash (record-pattern-type-hash-for-compiler pat)]
+    (if (= type-hash 0)
+      instrs
+      (let [map-op (+ scratch-base 1)
+        i1 (emit-to instrs (op-local-get) value-local)
+        i2 (emit-to i1 (op-i64-const) (record-nominal-type-key))
+        i3 (emit-to i2 (op-map-contains) map-op)
+        i4 (emit-to i3 (op-local-get) value-local)
+        i5 (emit-to i4 (op-i64-const) (record-nominal-type-key))
+        i6 (emit-to i5 (op-map-get) map-op)
+        i7 (emit-to i6 (op-i64-const) type-hash)
+        i8 (emit-to i7 (op-i64-eq) 0)]
+        (emit-to i8 (op-i64-and) 0)))))
+
 (defn compile-match-record-fields [pat idx count value-local scratch-base instrs]
   (if (>= idx count)
     (if (= count 0)
@@ -228,6 +250,39 @@
         (compile-match-record-fields pat (+ idx 1) count value-local scratch-base field-check)
         (let [combined (emit-to field-check (op-i64-and) 0)]
           (compile-match-record-fields pat (+ idx 1) count value-local scratch-base combined))))))
+
+(defn compile-match-record-fields-with-seed [pat idx count value-local scratch-base instrs]
+  (if (>= idx count)
+    instrs
+    (let [field-check
+            (compile-match-record-field-check
+              pat
+              value-local
+              scratch-base
+              idx
+              instrs)
+      combined (emit-to field-check (op-i64-and) 0)]
+      (compile-match-record-fields-with-seed
+        pat
+        (+ idx 1)
+        count
+        value-local
+        scratch-base
+        combined))))
+
+(defn compile-match-record-pattern [pat value-local scratch-base instrs]
+  (let [count (vector-get pat 1)
+    type-hash (record-pattern-type-hash-for-compiler pat)]
+    (if (= count 0)
+      (if (= type-hash 0)
+        (emit-to instrs (op-i64-const) 1)
+        (compile-match-record-type-check pat value-local scratch-base instrs))
+      (let [seed (if (= type-hash 0)
+        instrs
+        (compile-match-record-type-check pat value-local scratch-base instrs))]
+        (if (= type-hash 0)
+          (compile-match-record-fields pat 0 count value-local scratch-base seed)
+          (compile-match-record-fields-with-seed pat 0 count value-local scratch-base seed))))))
 
 (defn compile-match-constructor-tag-check [pat value-local scratch-base instrs]
   (let [map-op (+ scratch-base 1)
@@ -278,10 +333,8 @@
         (if (or (= pat-tag 11) (= pat-tag (ast-pat-constructor)))
           (compile-match-constructor-pattern pat value-local scratch-base instrs)
           (if (or (= pat-tag 12) (= pat-tag (ast-pat-recordpat)))
-            (compile-match-record-fields
+            (compile-match-record-pattern
               pat
-              0
-              (vector-get pat 1)
               value-local
               scratch-base
               instrs)

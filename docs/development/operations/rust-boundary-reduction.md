@@ -4,7 +4,7 @@
 
 L# の通常開発を Rust toolchain や `cargo` の実行待ちから切り離す。対象の product/release target は Mac Apple Silicon (`aarch64-apple-darwin`) と Linux x86_64 (`x86_64-unknown-linux-gnu`) のみである。
 
-ここでいう「Rust 不要」は、あらかじめ取得した native stage0 package を使う日常の編集・検査・テスト・Wasm 出力の経路に `cargo`、`rustc`、host の `lsharp` を置かないという意味である。Rust workspace の物理削除や、MCP/LSP を含む全 host integration の native 化は含まない。
+ここでいう「Rust 不要」は、あらかじめ取得した native stage0 package を使う日常の編集・検査・テスト・Wasm 出力の経路に `cargo`、`rustc`、host の `lsharp` を置かないという意味である。公開 Rust driver の embedded guest 成功時も host `compile_file` を重ねず、失敗時だけ明示的な fallback を使う。Rust workspace の物理削除や、MCP/LSP を含む全 host integration の native 化は含まない。
 
 この経路の成立は、自己ホスト実装が L# の全ての型・宣言意味論と parity を持つことを意味しない。現在自己ホストで検証済みの型注釈は `Int` / `Bool` / `String` / `Float` / `Unit` の named primitive、closed named head の再帰的な `TypeApp`、複数引数の関数型、lower-case `TypeExpr::Var` の raw representation と `defn` 注釈における nominal resolution である。`Ref (Vector Int)` と `(-> Int String Bool)` は parser から annotation unification まで確認済みであり、`Ref` / `Vector` の source 名は internal type constructor へ解決される。closed non-parametric `type-alias Name Target` は raw target を保存し、source order の prepass で `defn` の param / return signature と式内 `(: expr Alias)` に透過展開する。`Text -> String`、`RefText -> (Ref Text)`、`TextFn -> (-> Text Text)`、`(: "world" Str)` を parser-to-inference bundle で確認した。parametric `type-alias (Name a ...) Target` は parameter と raw target を保存し、source order の prepass で parameter ごとに fresh 型変数を割り当てる。arity が一致する `(Name Arg ...)` は target へ置換展開され、`Id Int -> Int`、`Callback Int String -> (-> Int String)`、`Box String -> (Ref String)` と式内 `(: "text" (Id String))` を確認した。forward closed alias chain も `Later -> LaterTarget -> String` の source-order 非依存な再評価により signature の受理と不一致診断まで確認済みであり、recursive alias は Rust と同じく `E0006` で拒否する parity を確認済みである（`test_e2e_selfhost_parser_forward_type_alias_unifies_signature`、`test_e2e_selfhost_parser_recursive_type_alias_is_rejected`、closed / parametric alias regression、`TypeInfer.ls` parse/check）。通常の `defn` 注釈における `TypeExpr::Var` は source 名を nominal type として扱い続けるため、parametric alias target の内部以外で scoped polymorphic variable を提供するものではない。record pattern、GADT の variant return type / refinement は未完了である。immutable record update は `CompilerMode` と ftable runtime slice で patch Map の recursive fallback と元 record の不変性を検証済みだが、内部表現の `map-size` / 反復まで含む完全な record API parity は未主張である。未完了の意味論を変更・検証する開発では、現時点では Rust implementation を source of truth / oracle として必要とする。
 
@@ -15,6 +15,8 @@ L# の通常開発を Rust toolchain や `cargo` の実行待ちから切り離�
 ### record runtime 更新 (2026-07-14)
 
 自己ホスト Wasm compiler は `CompilerMode` の file-compile 経路と legacy `compile-program-functions` / `compile-program-functions-with-base` で、`RecordLit`、`RecordUpdate`、direct `FieldAccess`、nonparametric record の `Point ...` constructor、`Point.field` static accessor を既存の `Map` runtime に lower する。record 本体を field 式の allocation 中も root に保持し、field hash を key に `map-insert` / `map-get` を使う。record update は更新 field だけを持つ patch Map に base Map を sentinel key `-1` で保持し、field lookup が patch chain を再帰的に辿るため、元の record は変更されない。record constructor と static accessor は user `defn` より前に prelude として function table / Wasm body へ登録し、Wasm entrypoint が最後の user function のままになる順序を保つ。actual compiler-mode E2E は `{Point label "record" x 42}` から `(. point label)` を `string-length` へ渡して `6`、`(. point x)` から `42` を出力し、`Point (inc 40) 2` の `Point.x` / `Point.y` が `41` / `2` を出力することを確認した。import された別 module の `Point` でも同じ `41` / `2` を generated Wasm で確認し、parametric `Box Int` / `Box Bool` の別具体化も `41` / `1` を出力する専用 E2E で確認した。さらに `p -> q -> r` の nested update を static / dynamic access で読み、`p` の値が保持されることを `test_e2e_selfhost_compiler_mode_record_update_runs` と ftable 経路の `test_e2e_selfhost_ftable_compiler_record_update_and_static_accessor_run` で確認した。normal compiler-mode の 11-import ABI に function table base `11` を揃え、direct source compile、imported file compile、`Cli` / `EmbeddedCli` の source-to-Wasm 入口で constructor/accessor call が runtime import と衝突しないことを確認した。record pattern は未完である。`App.Cli` と `EmbeddedCli` では `compile-source-wasm-bytes` が full functions/data payload を `build-wasm-bytes-wasi` へ渡す source-string slice を追加し、`EmbeddedCli` の component target は summary text を生成せず外部 packaging 境界を返す。一方、`SmokeCli` と no-arg `PipelineSmoke` は legacy `lower` を残し、component sidecar の生成は外部ツール境界であるため、legacy public surface 全体の Rust-free compile は未完了である。generated Wasm の opcode 87 (`print-string`) は通常の `CompilerMode` 出力で 11 番目の `env` runtime import への `call 10` として出力するところまで修正済みだが、外部 runtime の文字列 ABI 接続と standalone WASI Preview1 実行は別の output parity gap として残る。
+
+source compiler-mode では record literal / static constructor が nominal marker `-3` を Map に保存し、canonical record pattern の type hash と照合する。同じ field layout を持つ別 record type が arm fallback へ進むことを `test_e2e_selfhost_compiler_mode_record_pattern_checks_nominal_type` で確認した。ftable nominal pattern の独立 E2E、patch/base Map chain への marker 伝播、一般 Map API parity は残課題である。
 
 ### legacy source compile boundary 更新 (2026-07-14)
 
@@ -60,6 +62,7 @@ LSHARP_NATIVE_LINUX_X86_STAGE0_DIR=/path/to/linux-stage0 \
 | Command surface | Native の責務 | Rust の要否 | 外部条件・制約 |
 | --- | --- | --- | --- |
 | `parse` / `check` / `fmt` / `test` | native `program.native` が直接実行する core CLI | 検証済み core slice では不要 | Bash、Python 3、hash tool。stage materialize は Mac で `clang`、Linux で `cc` を使う。Mac は必要な host でのみ codesign identity を指定する。型・宣言の未実装 P0 は Rust oracle が必要。 |
+| embedded driver の guest-success compile/build | guest の artifact summary / output をそのまま返す | 不要 | guest exit code 0 では Rust `compile_file` を呼ばず、失敗時だけ host artifact fallback。runtime disable 下の `test` は delegation hint。 |
 | `compile -o` / `build -o` (WASI Preview1) | native CLI が actual core Wasm bytes を出力する | 通常開発では不要 | 上と同じ。Mac は検証済み、Linux は current stage0 gate 待ち。 |
 | component `compile` / `build` | native core Wasm を component 化する | 不要 | Python helper と外部 `wasm-tools` が必要。これは Rust host fallback ではない。 |
 | `install` | package install / module index helper | 不要 | Python 3。git dependency は `git` が必要。 |
@@ -76,6 +79,8 @@ LSHARP_NATIVE_LINUX_X86_STAGE0_DIR=/path/to/linux-stage0 \
 
 一方、selfhost Wasm compiler の match lowering は direct record Map の field presence/value lookup、field binder local、literal child check、arm fallback まで source / ftable の actual Wasm 実行で確認済みである。ただし nested record/constructor pattern、record の nominal type hash、patch/base Map chain、一般 Map API parity まで含む runtime parity は未完了である。したがって、この進捗は record pattern の一部を Rust oracle の必須範囲から外したものであり、L# の全 record pattern 機能が Rust なしで使えることを意味しない。
 
+上記の nominal type hash は全経路の完了を意味しない。source compiler-mode の direct record literal / canonical pattern mismatch は検証済みだが、ftable nominal pattern の独立 E2E と patch/base Map chain への marker 伝播は未検証である。
+
 ## Rust に残る責務
 
 Rust が完全に不要になったわけではない。次の作業は native base development loop の外側に残る。
@@ -90,11 +95,14 @@ Rust が完全に不要になったわけではない。次の作業は native b
 
 Rust を base implementation から外すため、legacy `lower` / embedded compiler の full-program 化、ordinary ADT runtime の残り、scoped polymorphic variable、record pattern の残り、GADT return type/refinement を自己ホスト側で実装・差分検証する必要がある。recursive alias は Rust implementation と同じく拒否するため、未対応の recursive language feature としては数えない。`CompilerMode` と ftable 経路における nonparametric / parametric record の constructor/literal/direct/static accessor/update runtime、record pattern の direct field/binder/literal/fallback slice、ordinary ADT の parser / 型検査と source / ftable 経路の direct / nested constructor/tag/binder/fallback slice はこの一覧から除外する。ただし ordinary ADT の full ftable/import target parity、Rust linear-memory ABI parity、nominal/exhaustiveness closure、record nominal type hash、patch Map の hidden base entry を含む field lookup、record を一般 Map として扱う全 API の parity は別途確認する。出力側では `print-string` の 11-import env ABI を標準 WASI Preview1 と接続し、standalone 実行まで確認する作業が残る。
 
+ここでいう `record nominal type hash` の残件は source direct mismatch 以外の全体 parity、特に ftable pattern と patch chain を指す。
+
 ## 検証と残タスク
 
 - `bash scripts/ci/test-native-selfhost-dev.sh` は runner の source refresh、native direct command routing、external helper routing、Rust-only command の明示拒否を検証する。
 - `test_native_selfhost_dev_source_file_smoke_script_contract` は smoke が host fallback を発見・利用しないことを固定する。
 - `test_e2e_native_macos_aarch64_materializer_executes_tiny_stage_code` は macOS materializer の再署名成功時に stderr が空であることを固定する。
+- `test_guest_compile_success_does_not_request_host_fallback` と `test_test_command_is_selfhost_shadow_command` は driver の guest-success / Rust fallback boundary を固定する。
 - Mac Apple Silicon の actual stage0 source-file smoke は 2026-07-13 に成功した。
 - Linux x86_64 は current fixed-point artifact を stage0 package 化し、`native-linux-x86-native-stage0-source-file-smoke.sh` を成功させることが残っている。直近の historical stage0 replay は `parse stdout is missing decls:1` で stage2/stage3 前に停止したため、current-source gate の failure evidence としてのみ扱う。
 - selfhost Wasm の `print-string` は 11-import layout と `call 10` の emitter contract まで検証済みだが、標準 WASI Preview1 host だけで実行できる standalone ABI までは検証していない。

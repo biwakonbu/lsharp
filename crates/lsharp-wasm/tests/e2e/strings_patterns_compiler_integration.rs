@@ -2411,6 +2411,54 @@ fn test_e2e_selfhost_compiler_mode_record_pattern_binds_field_and_falls_back() {
     assert_eq!(output, "41\n0\n43\n");
 }
 
+/// selfhost compiler-mode: 同じ field layout の異なる record 型を pattern で区別すること
+#[test]
+fn test_e2e_selfhost_compiler_mode_record_pattern_checks_nominal_type() {
+    let harness = r#"
+(defn print-bytes-loop [bytes idx count]
+  (if (>= idx count)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes-loop bytes (+ idx 1) count))))
+
+(defn main []
+  (let [source "(type Point (record (: x Int))) (type Size (record (: x Int))) (defn pick [p] (match p [{Size x x} 1] [_ 0])) (defn main [] (let [p {Point x 41}] (print (pick p)) 0))"
+        program (parse-program source)
+        pair (compile-program-functions-with-source source program)
+        functions (vector-get pair 1)
+        data (vector-get pair 2)
+        wasm-bytes (build-wasm-bytes-wasi functions data)]
+    (do
+      (print (vector-length wasm-bytes))
+      (print-bytes-loop wasm-bytes 0 (vector-length wasm-bytes))
+      0)))
+"#;
+    let compiler_mode = format!("{}\n{}", selfhost_module("CompilerMode.ls"), harness);
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("IR.ls"),
+        selfhost_module("Compiler.ls"),
+        selfhost_module("WasiBackend.ls"),
+        selfhost_module("WasmEmit.ls"),
+        selfhost_module("ModuleResolver.ls"),
+        compiler_mode
+    );
+    let emitted = compile_and_run(&combined);
+    let wasm_bytes = parse_printed_wasm_bytes(&emitted);
+    let output = super::selfhost_bootstrap_four_layer::run_wasm_with_eleven_imports_compiler_mode(
+        &wasm_bytes,
+        "",
+        &[],
+    )
+    .expect("selfhost compiler-mode nominal record pattern module should run");
+    assert_eq!(output, "0\n");
+}
+
 /// selfhost compiler-mode: ordinary ADT の constructor / pattern binder を actual Wasm で実行できること
 #[test]
 fn test_e2e_selfhost_compiler_mode_adt_constructor_pattern_binds_and_falls_back() {

@@ -53,6 +53,7 @@
 (defn op-map-contains [] 65)
 (defn op-map-remove [] 66)
 (defn adt-constructor-tag-key [] -2)
+(defn record-nominal-type-key [] -3)
 (defn op-command-line-arg [] 67)
 (defn op-runtime-hash-string [] 68)
 (defn op-substring [] 69)
