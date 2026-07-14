@@ -77,7 +77,8 @@
 (defn compile-file-wasm-bytes [file-path] (let [pair (compile-file-functions-data file-path) functions (vector-get pair 0) data (vector-get pair 1)] (build-wasm-bytes-wasi functions data)))
 (defn target-wasm-size-adjustment [target] (if (= target (compile-target-preview1)) (- (vector-length (emit-import-section-for-target (compile-target-preview1))) (vector-length (emit-import-section-for-target (compile-target-component)))) 0))
 (defn compile-file-wasm-size [file-path target] (let [wasm-bytes (compile-file-wasm-bytes file-path)] (+ (vector-length wasm-bytes) (target-wasm-size-adjustment target))))
-(defn run-compile-source [src opts] (let [program (parse-program src) ir (lower program) wasm-size (emit-wasm-with-target ir opts)] (do (print-string (wasm-size-text wasm-size)) (print-string "
+(defn compile-source-wasm-bytes [src] (let [program (parse-program src) pair (compile-program-functions-with-source src program) functions (vector-get pair 1) data (vector-get pair 2)] (build-wasm-bytes-wasi functions data)))
+(defn run-compile-source [src opts] (let [wasm-bytes (compile-source-wasm-bytes src) wasm-size (vector-length wasm-bytes)] (do (print-string (wasm-size-text wasm-size)) (print-string "
 ") (exit-success))))
 (defn component-output-boundary-message [] "wasi-component output requires external component packaging")
 (defn run-compile-output [file-path output-path opts]
