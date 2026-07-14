@@ -1859,6 +1859,26 @@ fn test_native_linux_x86_native_stage0_source_file_smoke_script_contract() {
 }
 
 #[test]
+fn test_native_linux_x86_stage0_smoke_exposes_conservative_transport_controls() {
+    let script_path = selfhost_project_root()
+        .join("scripts/ci/native-linux-x86-native-stage0-source-file-smoke.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+
+    for required in [
+        "LSHARP_NATIVE_LINUX_X86_TRANSPORT_CHUNK_SIZE",
+        "LSHARP_NATIVE_LINUX_X86_TRANSPORT_TIMEOUT_SECONDS",
+        "NATIVE_STAGE0_TRANSPORT_CHUNK_SIZE",
+        "NATIVE_STAGE0_TRANSPORT_TIMEOUT_SECONDS",
+    ] {
+        assert!(
+            script.contains(required),
+            "Linux native stage0 source-file smoke は transport control `{required}` を VM に渡すべき"
+        );
+    }
+}
+
+#[test]
 fn test_rust_boundary_reduction_doc_records_native_stage0_command_boundaries() {
     let document_path = selfhost_project_root()
         .join("docs/development/operations/rust-boundary-reduction.md");
