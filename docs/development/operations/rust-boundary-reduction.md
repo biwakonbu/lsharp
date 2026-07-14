@@ -14,7 +14,7 @@ L# の通常開発を Rust toolchain や `cargo` の実行待ちから切り離�
 
 ### record runtime 更新 (2026-07-14)
 
-自己ホスト Wasm compiler は `CompilerMode` の file-compile 経路と legacy `compile-program-functions` / `compile-program-functions-with-base` で、`RecordLit`、direct `FieldAccess`、nonparametric record の `Point ...` constructor、`Point.field` static accessor を既存の `Map` runtime に lower する。record 本体を field 式の allocation 中も root に保持し、field hash を key に `map-insert` / `map-get` を使う。record constructor と static accessor は user `defn` より前に prelude として function table / Wasm body へ登録し、Wasm entrypoint が最後の user function のままになる順序を保つ。actual compiler-mode E2E は `{Point label "record" x 42}` から `(. point label)` を `string-length` へ渡して `6`、`(. point x)` から `42` を出力し、`Point (inc 40) 2` の `Point.x` / `Point.y` が `41` / `2` を出力することを確認した。import された別 module の `Point` でも同じ `41` / `2` を generated Wasm で確認した。legacy 10-import base wrapper でも同じ `41` / `2` を generated Wasm で確認した。immutable update、record pattern、parametric record runtime の専用 E2E は未完である。さらに `EmbeddedCli` / `SmokeCli` / no-arg pipeline smoke が使う legacy `lower` 経路は full program ではなく先頭 IR だけを返すため、今回の証跡はこの legacy public surface の Rust-free compile を意味しない。generated Wasm の `print-string` は opcode 87 が `WasmEmit.ls` で明示拒否されるため、別の output parity gap として残る。
+自己ホスト Wasm compiler は `CompilerMode` の file-compile 経路と legacy `compile-program-functions` / `compile-program-functions-with-base` で、`RecordLit`、direct `FieldAccess`、nonparametric record の `Point ...` constructor、`Point.field` static accessor を既存の `Map` runtime に lower する。record 本体を field 式の allocation 中も root に保持し、field hash を key に `map-insert` / `map-get` を使う。record constructor と static accessor は user `defn` より前に prelude として function table / Wasm body へ登録し、Wasm entrypoint が最後の user function のままになる順序を保つ。actual compiler-mode E2E は `{Point label "record" x 42}` から `(. point label)` を `string-length` へ渡して `6`、`(. point x)` から `42` を出力し、`Point (inc 40) 2` の `Point.x` / `Point.y` が `41` / `2` を出力することを確認した。import された別 module の `Point` でも同じ `41` / `2` を generated Wasm で確認した。legacy 10-import base wrapper でも同じ `41` / `2` を generated Wasm で確認した。immutable update、record pattern、parametric record runtime の専用 E2E は未完である。さらに `EmbeddedCli` / `SmokeCli` / no-arg pipeline smoke が使う legacy `lower` 経路は full program ではなく先頭 IR だけを返すため、今回の証跡はこの legacy public surface の Rust-free compile を意味しない。generated Wasm の opcode 87 (`print-string`) は通常の `CompilerMode` 出力で 11 番目の `env` runtime import への `call 10` として出力するところまで修正済みだが、外部 runtime の文字列 ABI 接続と standalone WASI Preview1 実行は別の output parity gap として残る。
 
 ### 型・宣言意味論の更新: ordinary ADT (2026-07-14)
 
@@ -77,7 +77,7 @@ Rust が完全に不要になったわけではない。次の作業は native b
 
 ### 残る Base Language Gap
 
-Rust を base implementation から外すため、legacy `lower` / embedded compiler の full-program 化、forward / recursive alias、scoped polymorphic variable、immutable record update、record pattern、GADT return type/refinement を自己ホスト側で実装・差分検証する必要がある。`CompilerMode` と legacy function wrapper における nonparametric record の constructor/literal/direct/static accessor runtime と、nonparametric / parametric record の schema / `Type.field` accessor 型検査、ordinary ADT constructor/pattern はこの一覧から除外する。parametric record runtime は専用 E2E を通すまで保留する。
+Rust を base implementation から外すため、legacy `lower` / embedded compiler の full-program 化、forward / recursive alias、scoped polymorphic variable、immutable record update、record pattern、GADT return type/refinement を自己ホスト側で実装・差分検証する必要がある。`CompilerMode` と legacy function wrapper における nonparametric record の constructor/literal/direct/static accessor runtime と、nonparametric / parametric record の schema / `Type.field` accessor 型検査、ordinary ADT constructor/pattern はこの一覧から除外する。parametric record runtime は専用 E2E を通すまで保留する。出力側では `print-string` の 11-import env ABI を標準 WASI Preview1 と接続し、standalone 実行まで確認する作業が残る。
 
 ## 検証と残タスク
 
@@ -86,4 +86,5 @@ Rust を base implementation から外すため、legacy `lower` / embedded comp
 - `test_e2e_native_macos_aarch64_materializer_executes_tiny_stage_code` は macOS materializer の再署名成功時に stderr が空であることを固定する。
 - Mac Apple Silicon の actual stage0 source-file smoke は 2026-07-13 に成功した。
 - Linux x86_64 は current fixed-point artifact を stage0 package 化し、`native-linux-x86-native-stage0-source-file-smoke.sh` を成功させることが残っている。
+- selfhost Wasm の `print-string` は 11-import layout と `call 10` の emitter contract まで検証済みだが、標準 WASI Preview1 host だけで実行できる standalone ABI までは検証していない。
 - Linux 成功後、両 target の evidence と command boundary を再確認して V2-16d / V2-16e の完了可否を判断する。stage0 の public acquisition はそれとは別の release/distribution task として追跡する。

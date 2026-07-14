@@ -935,11 +935,13 @@
                   result)))))))))
 ;; 関数セクション: ユーザ関数 type5..(5+N-1) + _start type(5+N)
 (defn emit-function-section-wasi-quad-functions [functions] (let [func-count (vector-length functions) body0 (emit-leb128 (vector-new 32) (+ func-count 1)) body1 (append-type-index-sequence body0 5 (+ 5 func-count)) body2 (emit-leb128 body1 (+ 5 func-count)) body-size (vector-length body2) result0 (emit-byte (vector-new 32) 3) result1 (emit-leb128 result0 body-size)] (append-byte-vector result1 body2 0 body-size)))
-;; コードセクション: ユーザ関数ボディ + _start(import10個後の最終ユーザ関数=9+func_count を call)
+;; コードセクション: 旧10-import runtime のユーザ関数ボディ + _start
 (defn emit-code-section-wasi-quad-functions [functions] (let [func-count (vector-length functions) main-func-idx (+ 9 func-count) body0 (emit-leb128 (vector-new 64) (+ func-count 1)) body1 (append-code-bodies-functions body0 functions 0 func-count) wrapper0 (emit-byte (vector-new 8) 0) wrapper1 (emit-byte wrapper0 16) wrapper2 (emit-leb128 wrapper1 main-func-idx) wrapper3 (emit-byte wrapper2 26) wrapper4 (emit-byte wrapper3 11) wrapper-size (vector-length wrapper4) body2 (emit-leb128 body1 wrapper-size) body3 (append-byte-vector body2 wrapper4 0 wrapper-size) body-size (vector-length body3) result0 (emit-byte (vector-new 64) 10) result1 (emit-leb128 result0 body-size)] (append-byte-vector-chunked result1 body3 0 body-size)))
+;; コードセクション: 11-import runtime のユーザ関数ボディ + _start
+(defn emit-code-section-wasi-quad-functions-print-string [functions] (let [func-count (vector-length functions) main-func-idx (+ 10 func-count) body0 (emit-leb128 (vector-new 64) (+ func-count 1)) body1 (append-code-bodies-functions body0 functions 0 func-count) wrapper0 (emit-byte (vector-new 8) 0) wrapper1 (emit-byte wrapper0 16) wrapper2 (emit-leb128 wrapper1 main-func-idx) wrapper3 (emit-byte wrapper2 26) wrapper4 (emit-byte wrapper3 11) wrapper-size (vector-length wrapper4) body2 (emit-leb128 body1 wrapper-size) body3 (append-byte-vector body2 wrapper4 0 wrapper-size) body-size (vector-length body3) result0 (emit-byte (vector-new 64) 10) result1 (emit-leb128 result0 body-size)] (append-byte-vector-chunked result1 body3 0 body-size)))
 (defn emit-code-section-wasi-quad-functions-progress-debug [functions]
   (let [func-count (vector-length functions)
-    main-func-idx (+ 9 func-count)
+    main-func-idx (+ 10 func-count)
     body0 (emit-leb128 (vector-new 64) (+ func-count 1))]
     (do
       (print 571)
@@ -986,7 +988,10 @@
 (defn append-import-root-push-entry [body] (let [b0 (append-import-env-prefix body) b1 (emit-leb128 b0 9) b2 (emit-byte b1 114) b3 (emit-byte b2 111) b4 (emit-byte b3 111) b5 (emit-byte b4 116) b6 (emit-byte b5 95) b7 (emit-byte b6 112) b8 (emit-byte b7 117) b9 (emit-byte b8 115) b10 (emit-byte b9 104) b11 (emit-byte b10 0)] (emit-leb128 b11 0)))
 (defn append-import-root-pop-entry [body] (let [b0 (append-import-env-prefix body) b1 (emit-leb128 b0 8) b2 (emit-byte b1 114) b3 (emit-byte b2 111) b4 (emit-byte b3 111) b5 (emit-byte b4 116) b6 (emit-byte b5 95) b7 (emit-byte b6 112) b8 (emit-byte b7 111) b9 (emit-byte b8 112) b10 (emit-byte b9 0)] (emit-leb128 b10 4)))
 (defn append-import-root-set-entry [body] (let [b0 (append-import-env-prefix body) b1 (emit-leb128 b0 8) b2 (emit-byte b1 114) b3 (emit-byte b2 111) b4 (emit-byte b3 111) b5 (emit-byte b4 116) b6 (emit-byte b5 95) b7 (emit-byte b6 115) b8 (emit-byte b7 101) b9 (emit-byte b8 116) b10 (emit-byte b9 0)] (emit-leb128 b10 2)))
+(defn append-import-print-string-entry [body] (let [b0 (append-import-env-prefix body) b1 (emit-leb128 b0 12) b2 (emit-byte b1 112) b3 (emit-byte b2 114) b4 (emit-byte b3 105) b5 (emit-byte b4 110) b6 (emit-byte b5 116) b7 (emit-byte b6 45) b8 (emit-byte b7 115) b9 (emit-byte b8 116) b10 (emit-byte b9 114) b11 (emit-byte b10 105) b12 (emit-byte b11 110) b13 (emit-byte b12 103) b14 (emit-byte b13 0)] (emit-leb128 b14 1)))
 (defn emit-import-section-alloc-print-read-arg-concat-sub [] (let [body0 (emit-leb128 (vector-new 160) 10) body1 (append-import-alloc-entry body0) body2 (append-import-print-entry body1) body3 (append-import-read-file-entry body2) body4 (append-import-command-line-arg-entry body3) body5 (append-import-string-concat-entry body4) body6 (append-import-substring-entry body5) body7 (append-import-file-exists-entry body6) body8 (append-import-root-push-entry body7) body9 (append-import-root-pop-entry body8) body10 (append-import-root-set-entry body9) body-size (vector-length body10) result0 (emit-byte (vector-new 160) 2) result1 (emit-leb128 result0 body-size)] (append-byte-vector result1 body10 0 body-size)))
+;; 通常の selfhost Wasm module 用11-import layout。旧10-import helperは bootstrap harness 互換用に残す。
+(defn emit-import-section-alloc-print-read-arg-concat-sub-print-string [] (let [body0 (emit-leb128 (vector-new 192) 11) body1 (append-import-alloc-entry body0) body2 (append-import-print-entry body1) body3 (append-import-read-file-entry body2) body4 (append-import-command-line-arg-entry body3) body5 (append-import-string-concat-entry body4) body6 (append-import-substring-entry body5) body7 (append-import-file-exists-entry body6) body8 (append-import-root-push-entry body7) body9 (append-import-root-pop-entry body8) body10 (append-import-root-set-entry body9) body11 (append-import-print-string-entry body10) body-size (vector-length body11) result0 (emit-byte (vector-new 192) 2) result1 (emit-leb128 result0 body-size)] (append-byte-vector result1 body11 0 body-size)))
 ;; selfhost 10-import レイアウト用エイリアス (harness から呼びやすい短縮名)
 (defn emit-import-section-runtime [] (emit-import-section-alloc-print-read-arg-concat-sub))
 ;; runtime 10-import 用の関数セクション (WASI _start エントリなし)
@@ -998,6 +1003,7 @@
 (defn emit-root-push-instr [bytes] (emit-leb128 (emit-byte bytes 16) 7))
 (defn emit-root-pop-instr [bytes] (emit-leb128 (emit-byte bytes 16) 8))
 (defn emit-root-set-instr [bytes] (emit-leb128 (emit-byte bytes 16) 9))
+(defn emit-print-string-instr [bytes] (emit-leb128 (emit-byte bytes 16) 10))
 (defn emit-and-instr [bytes] (emit-byte bytes 131))
 (defn emit-or-instr [bytes] (emit-byte bytes 132))
 (defn emit-print-instr [bytes] (let [b1 (emit-leb128 (emit-byte bytes 16) 1)] (emit-leb128-s (emit-byte b1 66) 0)))
@@ -1158,11 +1164,14 @@
 (defn reject-native-only-wasm-opcode [bytes opcode]
   (if (= opcode 86)
     (do (/ opcode 0) bytes)
-    (if (= opcode 87)
+    (if (= opcode 88)
       (do (/ opcode 0) bytes)
-      (if (= opcode 88)
-        (do (/ opcode 0) bytes)
-        bytes))))
+      bytes)))
+
+(defn emit-runtime-ir-instr-tail-high-final [bytes opcode operand]
+  (if (= opcode 87)
+    (emit-print-string-instr bytes)
+    (reject-native-only-wasm-opcode bytes opcode)))
 
 (defn emit-runtime-ir-instr-tail-high [bytes opcode operand]
   (if (= opcode 72)
@@ -1175,7 +1184,7 @@
           (emit-root-pop-instr bytes)
           (if (= opcode 76)
             (emit-root-set-instr bytes)
-            (reject-native-only-wasm-opcode bytes opcode)))))))
+            (emit-runtime-ir-instr-tail-high-final bytes opcode operand)))))))
 
 (defn emit-ir-instr-basic-low [bytes opcode operand]
   (if (= opcode 20)

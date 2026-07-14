@@ -5180,11 +5180,11 @@
   (let [func-count (vector-length functions)
     header (emit-header)]
     (let [type-sec (emit-type-section-wasi-quad-functions functions)]
-      (let [import-sec (emit-import-section-alloc-print-read-arg-concat-sub)]
+      (let [import-sec (emit-import-section-alloc-print-read-arg-concat-sub-print-string)]
         (let [func-sec (emit-function-section-wasi-quad-functions functions)]
           (let [memory-sec (emit-memory-section)]
-            (let [export-sec (emit-export-section-main-memory-index (+ 10 func-count) 0)]
-              (let [code-sec (emit-code-section-wasi-quad-functions functions)]
+            (let [export-sec (emit-export-section-main-memory-index (+ 11 func-count) 0)]
+              (let [code-sec (emit-code-section-wasi-quad-functions-print-string functions)]
                 (let [data-sec (emit-data-section data 1024)]
                   (let [b0 (append-section-bytes (vector-new 64) header)
                     b1 (append-section-bytes b0 type-sec)
@@ -5209,7 +5209,7 @@
             (do
               (print 52)
               (print (vector-length type-sec))
-              (let [import-sec (emit-import-section-alloc-print-read-arg-concat-sub)]
+              (let [import-sec (emit-import-section-alloc-print-read-arg-concat-sub-print-string)]
                 (do
                   (print 53)
                   (print (vector-length import-sec))
@@ -5221,7 +5221,7 @@
                         (do
                           (print 55)
                           (print (vector-length memory-sec))
-                          (let [export-sec (emit-export-section-main-memory-index (+ 10 func-count) 0)]
+                          (let [export-sec (emit-export-section-main-memory-index (+ 11 func-count) 0)]
                             (do
                               (print 56)
                               (print (vector-length export-sec))

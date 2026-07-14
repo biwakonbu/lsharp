@@ -2093,7 +2093,8 @@ fn test_e2e_selfhost_wasmemit_root_set_instr() {
 /// selfhost WasmEmit.ls: native 専用 opcode を黙って破棄せず fail-closed に拒否すること
 #[test]
 fn test_e2e_selfhost_wasmemit_rejects_native_only_opcodes() {
-    for opcode in [86, 87, 88] {
+    // print-string (87) は 11-import runtime の call へ lower されるため拒否対象から外す。
+    for opcode in [86, 88] {
         let harness = format!(
             r#"
 (defn main []

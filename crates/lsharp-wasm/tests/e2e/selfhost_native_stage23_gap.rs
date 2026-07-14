@@ -409,6 +409,69 @@ fn test_selfhost_compiler_maps_native_cli_runtime_builtins_to_dedicated_opcodes(
 }
 
 #[test]
+fn test_selfhost_wasm_emit_print_string_appends_runtime_call() {
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
+        "selfhost-wasm-emit-print-string-runtime-call",
+        &["IR.ls", "WasiBackend.ls", "WasmEmit.ls"],
+        "Main.ls",
+        r#"(module Main)
+(import Backend.Wasm.WasmEmit)
+
+(defn print-bytes-loop [bytes idx len]
+  (if (>= idx len)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes-loop bytes (+ idx 1) len))))
+
+(defn main []
+  (let [bytes (emit-runtime-ir-instr (vector-new 4) 87 0)]
+    (do
+      (print (vector-length bytes))
+      (print-bytes-loop bytes 0 (vector-length bytes))
+      0)))"#,
+        &[],
+    )
+    .expect("selfhost Wasm print-string emitter harness 実行に失敗");
+
+    assert_eq!(
+        parse_numeric_lines(&output),
+        vec![2, 16, 10],
+        "print-string opcode は 11 番目の runtime import への call [16, 10] を出力する必要がある"
+    );
+}
+
+#[test]
+fn test_selfhost_wasm_print_string_runtime_layout_uses_eleven_imports() {
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
+        "selfhost-wasm-print-string-runtime-layout",
+        &["IR.ls", "WasiBackend.ls", "WasmEmit.ls"],
+        "Main.ls",
+        r#"(module Main)
+(import Backend.Wasm.WasmEmit)
+
+(defn main []
+  (let [imports (emit-import-section-alloc-print-read-arg-concat-sub-print-string)
+        code (emit-code-section-wasi-quad-functions-print-string (vector-new 0))
+        import-count-idx (if (>= (vector-get imports 1) 128) 3 2)]
+    (do
+      (print (vector-get imports 0))
+      (print (vector-get imports import-count-idx))
+      (print (vector-length code))
+      (print (vector-get code 6))
+      0)))"#,
+        &[],
+    )
+    .expect("selfhost Wasm print-string runtime layout harness 実行に失敗");
+
+    assert_eq!(
+        parse_numeric_lines(&output),
+        vec![2, 11, 9, 10],
+        "print-string runtime は 11 imports と _start -> import_count + function_count - 1 を維持する必要がある"
+    );
+}
+
+#[test]
 fn test_native_cli_runtime_extension_keeps_large_dispatch_nesting_bounded() {
     let source = std::fs::read_to_string(
         selfhost_package_root().join("src/Backend/Native/NativeCodegen.ls"),
