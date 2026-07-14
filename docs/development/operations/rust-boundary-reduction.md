@@ -34,7 +34,7 @@ ordinary ADT は parser が variant 名と raw field TypeExpr を保持し、`Ty
 
 - `lsharp-native-selfhost-stage0` package は `compiler`、`transport_driver`、`materializer` を持つ manifest で native bootstrap を開始する。release 用の `App.Cli` archive は stage0 package ではない。
 - Mac Apple Silicon では、current fixed-point stage3 compiler を stage0 package 化し、`scripts/native-selfhost-dev.sh` を通す source-file smoke が成功している。smoke は `cargo`、`rustc`、host `lsharp` を PATH 上で失敗させた状態で `parse`、`check`、`fmt`、通常と metadata の `test`、`compile -o`、`build -o` を実行する。
-- Linux x86_64 は current import ABI 修正後の stage1 -> stage3 fixed-point を Lima VM で再生成中である。2026-07-14 の historical `8dd37ef-static-string-fixedpoint` stage0 replay は 43 chunk まで進んだが、最終 parse 確認で `parse stdout is missing decls:1` となり、stage2/stage3 summary 生成前に停止した。これは transport / VM 容量ではなく stage0 と現 source の parse 契約不一致であり、以前の cross artifact による App.Cli smoke と同様に current stage0 からの再生成を証明しない。Linux の同じ source-file smoke が通るまで完了扱いにしない。
+- Linux x86_64 は、現行 commit `4bd9ee9` から生成した fresh actual-stage1 を stage0 package 化し、Lima `lsharp-linux-x86` VM 内で `native-linux-x86-native-stage0-source-file-smoke.sh` を成功させた。2,779 functions の transport/materialize を通過し、`cargo`、`rustc`、host `lsharp` を blocklist に入れた状態で `parse`、`check`、`fmt`、通常と metadata の `test`、`compile -o`、`build -o` を完走した。これにより current source に対する Linux の native source-file gate を確認済みとする。2026-07-14 の historical `8dd37ef-static-string-fixedpoint` replay における `parse stdout is missing decls:1` は、今回の fresh stage0 で解消された過去の failure evidence として残す。
 - native bootstrap の初回だけは source tree を再生成する。fingerprint が不変なら `scripts/native-selfhost-dev.sh` は生成済み `program.native` を再利用する。
 - `LSHARP_NATIVE_MACOS_AARCH64_CODESIGN_IDENTITY` は macOS host policy 上、生成済み Mach-O の実行に署名が必要な環境でだけ指定する。成功時の codesign 出力は command stderr に漏らさず、失敗時だけ診断として返す。
 - GitHub Actions の自動 build は使わない。検証と release は Mac と Lima VM の手動 local gate で行う。
@@ -108,6 +108,6 @@ Rust を base implementation から外すため、legacy `lower` / embedded comp
 - `test_e2e_native_macos_aarch64_materializer_executes_tiny_stage_code` は macOS materializer の再署名成功時に stderr が空であることを固定する。
 - `test_guest_compile_success_does_not_request_host_fallback` と `test_test_command_is_selfhost_shadow_command` は driver の guest-success / Rust fallback boundary を固定する。
 - Mac Apple Silicon の actual stage0 source-file smoke は 2026-07-13 に成功した。
-- Linux x86_64 は current fixed-point artifact を stage0 package 化し、`native-linux-x86-native-stage0-source-file-smoke.sh` を成功させることが残っている。直近の historical stage0 replay は `parse stdout is missing decls:1` で stage2/stage3 前に停止したため、current-source gate の failure evidence としてのみ扱う。
+- Linux x86_64 の current source-file gate は 2026-07-15 に成功した。現行 commit `4bd9ee9` から fresh actual-stage1 を生成して stage0 package 化し、Lima VM の 2,779-function transport/materialize と `parse` / `check` / `fmt` / 通常+metadata `test` / `compile -o` / `build -o` を、`cargo` / `rustc` / host `lsharp` の blocklist 下で完走した。historical stage0 replay の `parse stdout is missing decls:1` は再発しなかった。
 - selfhost Wasm の `print-string` は 11-import layout と `call 10` の emitter contract まで検証済みだが、標準 WASI Preview1 host だけで実行できる standalone ABI までは検証していない。
-- Linux 成功後、両 target の evidence と command boundary を再確認して V2-16d / V2-16e の完了可否を判断する。stage0 の public acquisition はそれとは別の release/distribution task として追跡する。
+- Linux 成功後の両 target の evidence を再確認し、V2-16d は完了とする。V2-16e は、stage0 の public acquisition、Rust oracle/differential、emergency rollback、未完の言語意味論を残すため継続する。stage0 の public acquisition は別の release/distribution task として追跡する。
