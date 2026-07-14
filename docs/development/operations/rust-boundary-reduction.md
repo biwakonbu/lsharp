@@ -22,7 +22,7 @@ L# の通常開発を Rust toolchain や `cargo` の実行待ちから切り離�
 
 ### 型・宣言意味論の更新: ordinary ADT (2026-07-14)
 
-ordinary ADT は parser が variant 名と raw field TypeExpr を保持し、`TypeInferAdt.ls` の prepass が type parameter を束縛した constructor scheme を値環境へ登録する。`(type (Maybe a) (Just a) Nothing)` の constructor application と match pattern は同じ polymorphic scheme を使い、`Int` と `Bool` の別使用箇所で独立に instantiate される。これは通常 ADT の constructor/pattern 型検査を Rust oracle の必須範囲から外す進捗であり、GADT の variant return type、pattern refinement、exhaustiveness は含まない。
+ordinary ADT は parser が variant 名と raw field TypeExpr を保持し、`TypeInferAdt.ls` の prepass が type parameter を束縛した constructor scheme を値環境へ登録する。`(type (Maybe a) (Just a) Nothing)` の constructor application と match pattern は同じ polymorphic scheme を使い、`Int` と `Bool` の別使用箇所で独立に instantiate される。これは ordinary ADT の parser / 型検査を Rust oracle の必須範囲から外す進捗である。一方、selfhost Wasm compiler の constructor allocation、variant tag 判定、constructor-pattern の field binder は未接続で、ADT runtime の Rust-free closure を意味しない。GADT の variant return type、pattern refinement、exhaustiveness も含まれない。
 
 ## 現在の事実
 
@@ -83,11 +83,11 @@ Rust が完全に不要になったわけではない。次の作業は native b
 2. native selfhost と Rust implementation の oracle/differential 比較、障害解析、emergency rollback。
 3. `mcp-server`、bare LSP、`--emit-ir`、native target など、上表で明示した Rust host integration surface。
 
-したがって、Linux gate 完了後に「検証済み core CLI の日常ループは Rust なしで開発可能」と言える。一方で、自己ホストの型・宣言意味論 P0 が未完了の間は「base language development 全体」や「L# の全機能」が Rust なしとは言えない。closed / parametric alias の signature・式内 annotation、forward closed alias の signature、recursive alias の E0006 rejection、ordinary ADT の constructor/pattern、parametric record の constructor/literal/field access/update/runtime、`Type.field` accessor の型検査、immutable record update の nested runtime slice はその境界を少し狭めた。record runtime の full public closure、legacy `lower` / embedded compiler surface、上表の Rust-only surface、external tool dependency、scoped polymorphic variable、record pattern の残り、GADT return type/refinement などの未実装 P0 は残る。
+したがって、Linux gate 完了後に「検証済み core CLI の日常ループは Rust なしで開発可能」と言える。一方で、自己ホストの型・宣言意味論 P0 が未完了の間は「base language development 全体」や「L# の全機能」が Rust なしとは言えない。closed / parametric alias の signature・式内 annotation、forward closed alias の signature、recursive alias の E0006 rejection、ordinary ADT の parser / 型検査、parametric record の constructor/literal/field access/update/runtime、`Type.field` accessor の型検査、immutable record update の nested runtime slice はその境界を少し狭めた。ordinary ADT runtime、record runtime の full public closure、legacy `lower` / embedded compiler surface、上表の Rust-only surface、external tool dependency、scoped polymorphic variable、record pattern の残り、GADT return type/refinement などの未実装 P0 は残る。
 
 ### 残る Base Language Gap
 
-Rust を base implementation から外すため、legacy `lower` / embedded compiler の full-program 化、scoped polymorphic variable、record pattern の残り、GADT return type/refinement を自己ホスト側で実装・差分検証する必要がある。recursive alias は Rust implementation と同じく拒否するため、未対応の recursive language feature としては数えない。`CompilerMode` と ftable 経路における nonparametric / parametric record の constructor/literal/direct/static accessor/update runtime、record pattern の direct field/binder/literal/fallback slice、record schema / `Type.field` accessor 型検査、ordinary ADT constructor/pattern はこの一覧から除外する。ただし nested record/constructor pattern、record nominal type hash、patch Map の hidden base entry を含む field lookup、record を一般 Map として扱う全 API の parity は別途確認する。出力側では `print-string` の 11-import env ABI を標準 WASI Preview1 と接続し、standalone 実行まで確認する作業が残る。
+Rust を base implementation から外すため、legacy `lower` / embedded compiler の full-program 化、ordinary ADT runtime、scoped polymorphic variable、record pattern の残り、GADT return type/refinement を自己ホスト側で実装・差分検証する必要がある。recursive alias は Rust implementation と同じく拒否するため、未対応の recursive language feature としては数えない。`CompilerMode` と ftable 経路における nonparametric / parametric record の constructor/literal/direct/static accessor/update runtime、record pattern の direct field/binder/literal/fallback slice、record schema / `Type.field` accessor 型検査、ordinary ADT の parser / 型検査はこの一覧から除外する。ただし ordinary ADT の constructor allocation / tag check / field binder、nested record/constructor pattern、record nominal type hash、patch Map の hidden base entry を含む field lookup、record を一般 Map として扱う全 API の parity は別途確認する。出力側では `print-string` の 11-import env ABI を標準 WASI Preview1 と接続し、standalone 実行まで確認する作業が残る。
 
 ## 検証と残タスク
 
