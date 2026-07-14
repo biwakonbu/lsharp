@@ -10192,6 +10192,22 @@ fn test_native_codegen_x86_vector_get_helper_rejects_non_vector_objects() {
 }
 
 #[test]
+fn test_native_codegen_x86_vector_push_helper_reads_capacity_from_vector_header() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let helper_body = source
+        .split("(defn emit-x86-selfhost-vector-push-helper")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn emit-x86-selfhost-ref-new-helper").next())
+        .expect("NativeCodegen.ls に x86 vector-push helper が存在すること");
+
+    assert!(
+        helper_body.contains("part6 (byte-vector-4 8 68 139 61)")
+            && !helper_body.contains("part6 (byte-vector-4 8 68 139 65)"),
+        "x86 vector-push helper は caller frame の [rbp+4] ではなく、untagged vector の [rcx+4] から capacity を読むべき"
+    );
+}
+
+#[test]
 fn test_native_codegen_x86_rbp_disp32_emitter_uses_direct_bytes_without_concat() {
     let source = selfhost_module("NativeCodegen.ls");
     let helper_body = source

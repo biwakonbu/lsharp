@@ -9698,7 +9698,7 @@
     part3 (byte-vector-4 137 185 0 0)
     part4 (byte-vector-4 0 72 15 186)
     part5 (byte-vector-4 241 63 139 81)
-    part6 (byte-vector-4 8 68 139 65)
+    part6 (byte-vector-4 8 68 139 61)
     part7 (byte-vector-4 4 68 57 194)
     part8 (byte-vector-4 15 130 141 0)
     part9 (byte-vector-4 0 0 80 81)
