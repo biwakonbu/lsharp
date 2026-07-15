@@ -1525,8 +1525,9 @@ fn test_embedded_cli_component_compile_preview1_writes_runnable_wasm_without_dri
     );
     let print_string_written =
         fs::read(&print_string_output_path).expect("print-string runtime output read failed");
-    let print_string_runtime_output = lsharp_wasm::wasi_runner::run_wasm_wasi(&print_string_written)
-        .expect("print-string runtime output should run");
+    let print_string_runtime_output =
+        lsharp_wasm::wasi_runner::run_wasm_wasi(&print_string_written)
+            .expect("print-string runtime output should run");
     assert_eq!(
         print_string_runtime_output, "hello",
         "Preview1 print-string は静的文字列 data を stdout へ出力するべき"
@@ -1565,11 +1566,78 @@ fn test_embedded_cli_component_compile_preview1_writes_runnable_wasm_without_dri
         "Preview1 string-concat は両方の文字列を結合して出力するべき"
     );
 
+    let substring_source_path = temp_dir.join("substring.ls");
+    let substring_output_path = temp_dir.join("substring.wasm");
+    write_source_file(
+        &substring_source_path,
+        "(defn main [] (do (print-string (substring \"hello world\" 6 11)) 0))\n",
+    );
+    let substring_guest =
+        lsharp_wasm::wasi_runner::run_wasm_component_with_dir_and_args_inherit_stdin_capture(
+            &component,
+            Some(&temp_dir),
+            &[
+                "compile",
+                "substring.ls",
+                "--target",
+                "wasi-preview1",
+                "-o",
+                "substring.wasm",
+            ],
+        )
+        .expect("embedded CLI substring runtime execution failed");
+    assert_eq!(
+        substring_guest.exit_code, 0,
+        "Preview1 substring compile は成功するべき: stdout={}",
+        substring_guest.stdout
+    );
+    let substring_written = fs::read(&substring_output_path).expect("substring output read failed");
+    let substring_runtime_output = lsharp_wasm::wasi_runner::run_wasm_wasi(&substring_written)
+        .expect("substring runtime output should run");
+    assert_eq!(
+        substring_runtime_output, "world",
+        "Preview1 substring は指定範囲の文字列を出力するべき"
+    );
+
+    let invalid_substring_source_path = temp_dir.join("invalid-substring.ls");
+    let invalid_substring_output_path = temp_dir.join("invalid-substring.wasm");
+    write_source_file(
+        &invalid_substring_source_path,
+        "(defn main [] (do (print-string (substring \"hello\" 4 7)) 0))\n",
+    );
+    let invalid_substring_guest =
+        lsharp_wasm::wasi_runner::run_wasm_component_with_dir_and_args_inherit_stdin_capture(
+            &component,
+            Some(&temp_dir),
+            &[
+                "compile",
+                "invalid-substring.ls",
+                "--target",
+                "wasi-preview1",
+                "-o",
+                "invalid-substring.wasm",
+            ],
+        )
+        .expect("embedded CLI invalid substring compilation failed");
+    assert_eq!(
+        invalid_substring_guest.exit_code, 0,
+        "Preview1 の範囲外 substring は artifact 生成までは成功するべき: stdout={}",
+        invalid_substring_guest.stdout
+    );
+    let invalid_substring_written =
+        fs::read(&invalid_substring_output_path).expect("invalid substring output read failed");
+    let invalid_substring_runtime =
+        lsharp_wasm::wasi_runner::run_wasm_wasi(&invalid_substring_written);
+    assert!(
+        invalid_substring_runtime.is_err(),
+        "Preview1 の範囲外 substring は runtime trap で拒否するべき"
+    );
+
     let unsupported_source_path = temp_dir.join("unsupported.ls");
     let unsupported_output_path = temp_dir.join("unsupported.wasm");
     write_source_file(
         &unsupported_source_path,
-        "(defn main [] (print-string (substring \"abc\" 0 1)))\n",
+        "(defn main [] (print-string (read-file \"missing\")))\n",
     );
     let unsupported_guest =
         lsharp_wasm::wasi_runner::run_wasm_component_with_dir_and_args_inherit_stdin_capture(

@@ -2274,7 +2274,7 @@
                   true
                   (if (and (>= opcode 65) (<= opcode 66))
                     true
-                    (if (= opcode 70)
+                    (if (and (>= opcode 69) (<= opcode 70))
                       true
                       (if (and (>= opcode 71) (<= opcode 72))
                       true
