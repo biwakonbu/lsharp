@@ -5,16 +5,18 @@ TARGET=""
 VERSION=""
 STAGE0_DIR=""
 OUTPUT_DIR=""
+SOURCE_COMMIT=""
 
 usage() {
   cat <<'EOF'
-usage: scripts/ci/package-native-stage0-release.sh --target TARGET --version VERSION --stage0-dir DIR --output-dir DIR
+usage: scripts/ci/package-native-stage0-release.sh --target TARGET --version VERSION --stage0-dir DIR --output-dir DIR --source-commit COMMIT
 
 options:
   --target TARGET      x86_64-unknown-linux-gnu or aarch64-apple-darwin
   --version VERSION    release version, for example v0.1.0
   --stage0-dir DIR     verified native stage0 package directory
   --output-dir DIR     directory that receives the release archive
+  --source-commit COMMIT  40-hex source commit used to build the stage0 package
   --help               show this help
 EOF
 }
@@ -33,8 +35,9 @@ require_option_value() {
 validate_native_stage0_package() {
   local package_dir="$1"
   local expected_target="$2"
+  local expected_source_commit="${3:-}"
 
-  python3 - "$package_dir" "$expected_target" <<'PY'
+  python3 - "$package_dir" "$expected_target" "$expected_source_commit" <<'PY'
 import json
 import os
 import pathlib
@@ -42,6 +45,7 @@ import sys
 
 package_dir = pathlib.Path(sys.argv[1])
 expected_target = sys.argv[2]
+expected_source_commit = sys.argv[3]
 if not package_dir.is_dir() or package_dir.is_symlink():
     raise SystemExit(f"native stage0 package directory is invalid: {package_dir}")
 
@@ -66,6 +70,11 @@ if manifest.get("target") != expected_target:
     raise SystemExit(
         "native stage0 manifest target mismatch: "
         f"expected={expected_target} actual={manifest.get('target')!r}"
+    )
+if expected_source_commit and manifest.get("source_commit") != expected_source_commit:
+    raise SystemExit(
+        "native stage0 manifest source commit mismatch: "
+        f"expected={expected_source_commit} actual={manifest.get('source_commit')!r}"
     )
 
 for field in ("compiler", "transport_driver", "materializer"):
@@ -103,6 +112,11 @@ while [[ $# -gt 0 ]]; do
       OUTPUT_DIR="$2"
       shift 2
       ;;
+    --source-commit)
+      require_option_value "$@"
+      SOURCE_COMMIT="$2"
+      shift 2
+      ;;
     --help)
       usage
       exit 0
@@ -117,6 +131,7 @@ done
 [[ -n "$VERSION" ]] || die "--version is required"
 [[ -n "$STAGE0_DIR" ]] || die "--stage0-dir is required"
 [[ -n "$OUTPUT_DIR" ]] || die "--output-dir is required"
+[[ -n "$SOURCE_COMMIT" ]] || die "--source-commit is required"
 
 case "$TARGET" in
   x86_64-unknown-linux-gnu|aarch64-apple-darwin) ;;
@@ -125,6 +140,8 @@ esac
 case "$VERSION" in
   *[!A-Za-z0-9._-]*|"") die "version must contain only ASCII letters, digits, dot, underscore, or hyphen: $VERSION" ;;
 esac
+[[ "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
+  || die "source commit must be a 40-character lowercase hexadecimal commit: $SOURCE_COMMIT"
 [[ "$OUTPUT_DIR" != "/" && "$OUTPUT_DIR" != "." ]] \
   || die "unsafe output directory: $OUTPUT_DIR"
 
@@ -141,7 +158,24 @@ ARCHIVE_PATH="$OUTPUT_DIR/$ARCHIVE_NAME"
 
 cp -pR "$STAGE0_DIR/." "$PACKAGE_DIR"
 rm -f "$PACKAGE_DIR/checksums.txt"
-validate_native_stage0_package "$PACKAGE_DIR" "$TARGET"
+python3 - "$PACKAGE_DIR/manifest.json" "$SOURCE_COMMIT" <<'PY'
+import json
+import pathlib
+import sys
+
+manifest_path = pathlib.Path(sys.argv[1])
+source_commit = sys.argv[2]
+manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+existing = manifest.get("source_commit")
+if existing is not None and existing != source_commit:
+    raise SystemExit(
+        "native stage0 source commit does not match the release input: "
+        f"expected={source_commit} actual={existing}"
+    )
+manifest["source_commit"] = source_commit
+manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+PY
+validate_native_stage0_package "$PACKAGE_DIR" "$TARGET" "$SOURCE_COMMIT"
 "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/scripts/checksum.sh" "$PACKAGE_DIR" >"$PACKAGE_DIR/checksums.txt"
 
 (

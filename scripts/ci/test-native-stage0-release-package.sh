@@ -28,6 +28,7 @@ HOST_BIN="$TMP_ROOT/host-bin"
 HOST_TOOL_LOG="$TMP_ROOT/host-tools.log"
 TARGET="x86_64-unknown-linux-gnu"
 VERSION="v0.0.0-test"
+SOURCE_COMMIT="0000000000000000000000000000000000000000"
 ARCHIVE_NAME="lsharp-stage0-${VERSION}-${TARGET}"
 ARCHIVE_PATH="$DIST_DIR/${ARCHIVE_NAME}.tar.gz"
 
@@ -74,6 +75,7 @@ NATIVE_STAGE0_RELEASE_TEST_LOG="$HOST_TOOL_LOG" \
     --target "$TARGET" \
     --version "$VERSION" \
     --stage0-dir "$STAGE0_DIR" \
+    --source-commit "$SOURCE_COMMIT" \
     --output-dir "$DIST_DIR"
 
 assert_eq "" "$(cat "$HOST_TOOL_LOG")"
@@ -111,6 +113,8 @@ if manifest.get("kind") != "lsharp-native-selfhost-stage0":
     raise SystemExit(f"unexpected manifest kind: {manifest.get('kind')!r}")
 if manifest.get("target") != target:
     raise SystemExit(f"unexpected manifest target: {manifest.get('target')!r}")
+if manifest.get("source_commit") != "0000000000000000000000000000000000000000":
+    raise SystemExit(f"unexpected manifest source commit: {manifest.get('source_commit')!r}")
 for field in ("compiler", "transport_driver", "materializer"):
     value = manifest.get(field)
     path = pathlib.PurePosixPath(value or "")

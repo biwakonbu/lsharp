@@ -146,6 +146,7 @@ validate_native_stage0_package() {
 import json
 import os
 import pathlib
+import re
 import sys
 
 package_dir = pathlib.Path(sys.argv[1])
@@ -165,6 +166,9 @@ if manifest.get("target") != expected_target:
         "native stage0 manifest target mismatch: "
         f"expected={expected_target} actual={manifest.get('target')!r}"
     )
+source_commit = manifest.get("source_commit")
+if not isinstance(source_commit, str) or re.fullmatch(r"[0-9a-f]{40}", source_commit) is None:
+    raise SystemExit("native stage0 manifest source_commit must be a 40-character lowercase hexadecimal commit")
 
 for field in ("compiler", "transport_driver", "materializer"):
     value = manifest.get(field)

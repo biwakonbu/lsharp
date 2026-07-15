@@ -49,6 +49,7 @@ fn write_native_stage0_fixture(path: &std::path::Path, target: &str) {
             r#"{{
   "kind": "lsharp-native-selfhost-stage0",
   "target": "{target}",
+  "source_commit": "0000000000000000000000000000000000000000",
   "compiler": "bin/compiler",
   "transport_driver": "bin/transport-driver",
   "materializer": "bin/materializer"
@@ -339,6 +340,12 @@ fn test_e2e_ops07_fetch_stage0_script_fetches_native_stage0_fixture_release_asse
             && stage0_dir.join("bin/materializer").is_file()
             && stage0_dir.join("checksums.txt").is_file(),
         "fetch-stage0.sh は native stage0 manifest と executable payload を stage0/ 配下へ展開するべき"
+    );
+    let manifest = std::fs::read_to_string(stage0_dir.join("manifest.json"))
+        .expect("fetched stage0 manifest の読み込みに失敗");
+    assert!(
+        manifest.contains("\"source_commit\": \"0000000000000000000000000000000000000000\""),
+        "fetched stage0 manifest は source commit provenance を保持するべき"
     );
 
     std::fs::remove_dir_all(&temp_root).ok();

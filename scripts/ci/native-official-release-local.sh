@@ -135,6 +135,7 @@ package_stage0_target() {
     --target "${target}" \
     --version "${VERSION}" \
     --stage0-dir "${stage0_dir}" \
+    --source-commit "${SOURCE_COMMIT}" \
     --output-dir "${DIST_DIR}"
   require_file "${archive_path}" "${target} native stage0 archive"
 }

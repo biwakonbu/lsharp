@@ -61346,6 +61346,7 @@ fn test_native_official_release_local_gate_packages_both_supported_targets() {
         "LINUX_ROLLBACK_ARCHIVE",
         "package-native-stage0-release.sh",
         "lsharp-stage0-${VERSION}-${target}.tar.gz",
+        "--source-commit \"${SOURCE_COMMIT}\"",
         "fetch-stage0.sh",
         "STAGE0_RELEASE_BASE_URL",
         "bash scripts/checksum.sh \"${DIST_DIR}\" > \"${DIST_DIR}/checksums.txt\"",

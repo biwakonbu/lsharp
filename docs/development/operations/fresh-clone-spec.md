@@ -19,7 +19,7 @@ STAGE0_VERSION=v<version> ./scripts/fetch-stage0.sh
 ```
 
 - asset 名は `lsharp-stage0-<version>-<target>.tar.gz` とする。
-- `fetch-stage0.sh` は release-level `checksums.txt`、package 内 `checksums.txt`、`lsharp-native-selfhost-stage0` manifest、target triple、実行可能な compiler/transport/materializer を検証する。
+- `fetch-stage0.sh` は release-level `checksums.txt`、package 内 `checksums.txt`、`lsharp-native-selfhost-stage0` manifest、target triple、source commit provenance、実行可能な compiler/transport/materializer を検証する。
 - 成功時は `stage0/manifest.json` と `stage0/bin/{compiler,transport-driver,materializer}` を配置する。App.Cli の native-only archive は stage0 package として受け入れない。
 - `STAGE0_TARGET=<triple>` と `STAGE0_RELEASE_BASE_URL=<url>` は手動 mirror または local release set の検証時だけ上書きする。
 
