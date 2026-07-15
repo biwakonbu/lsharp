@@ -2425,7 +2425,7 @@ fn test_e2e_selfhost_compiler_mode_map_string_key_contains_remove_runs() {
       (print-bytes-loop bytes (+ idx 1) count))))
 
 (defn main []
-  (let [source "(defn main [] (let [m1 (map-insert (map-new) \"aa\" 456)] (let [present (map-contains? m1 \"aa\")] (let [missing (map-contains? m1 \"zz\")] (let [m2 (map-remove m1 \"aa\")] (do (print present) (print missing) (print (map-contains? m2 \"aa\")) (print (map-size m2)) 0))))))"
+  (let [source "(defn main [] (let [m1 (map-insert (map-new) \"a\\n\" 456)] (let [present (map-contains? m1 \"a\\n\")] (let [missing (map-contains? m1 \"zz\")] (let [m2 (map-remove m1 \"a\\n\")] (do (print present) (print missing) (print (map-contains? m2 \"a\\n\")) (print (map-size m2)) 0))))))"
         program (parse-program source)
         pair (compile-program-functions-with-source source program)
         functions (vector-get pair 1)
@@ -2474,7 +2474,7 @@ fn test_e2e_selfhost_ftable_compiler_mode_map_string_key_contains_remove_runs() 
       (print-bytes-loop bytes (+ idx 1) count))))
 
 (defn main []
-  (let [source "(defn main [] (let [m1 (map-insert (map-new) \"aa\" 456)] (let [present (map-contains? m1 \"aa\")] (let [missing (map-contains? m1 \"zz\")] (let [m2 (map-remove m1 \"aa\")] (do (print present) (print missing) (print (map-contains? m2 \"aa\")) (print (map-size m2)) 0))))))"
+  (let [source "(defn main [] (let [m1 (map-insert (map-new) \"a\\n\" 456)] (let [present (map-contains? m1 \"a\\n\")] (let [missing (map-contains? m1 \"zz\")] (let [m2 (map-remove m1 \"a\\n\")] (do (print present) (print missing) (print (map-contains? m2 \"a\\n\")) (print (map-size m2)) 0))))))"
         program (parse-program source)
         pair (compile-program-functions-with-base program 11)
         functions (vector-get pair 1)
