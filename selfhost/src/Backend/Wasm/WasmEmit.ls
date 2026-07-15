@@ -385,16 +385,21 @@
 (defn emit-memory-section [] (let [bytes (vector-new 8)] (let [b1 (emit-byte bytes 5) b2 (emit-byte b1 4) b3 (emit-byte b2 1) b4 (emit-byte b3 0) b5 (emit-byte b4 128) b6 (emit-byte b5 2)] b6)))
 (defn emit-import-section [] (let [bytes (vector-new 64)] (let [b1 (emit-byte bytes 2) b2 (emit-byte b1 36) b3 (emit-byte b2 1) b4 (emit-byte b3 21) b5 (emit-byte b4 119) b6 (emit-byte b5 97) b7 (emit-byte b6 115) b8 (emit-byte b7 105) b9 (emit-byte b8 95) b10 (emit-byte b9 115) b11 (emit-byte b10 110) b12 (emit-byte b11 97) b13 (emit-byte b12 112) b14 (emit-byte b13 115) b15 (emit-byte b14 104) b16 (emit-byte b15 111) b17 (emit-byte b16 116) b18 (emit-byte b17 95) b19 (emit-byte b18 112) b20 (emit-byte b19 114) b21 (emit-byte b20 101) b22 (emit-byte b21 118) b23 (emit-byte b22 105) b24 (emit-byte b23 101) b25 (emit-byte b24 119) b26 (emit-byte b25 49) b27 (emit-byte b26 8) b28 (emit-byte b27 102) b29 (emit-byte b28 100) b30 (emit-byte b29 95) b31 (emit-byte b30 119) b32 (emit-byte b31 114) b33 (emit-byte b32 105) b34 (emit-byte b33 116) b35 (emit-byte b34 101) b36 (emit-byte b35 0) b37 (emit-byte b36 0)] b37)))
 (defn emit-import-section-wasi-standalone []
-  (let [body0 (emit-byte (vector-new 64) 1)
+  (let [body0 (emit-byte (vector-new 96) 2)
     body1 (emit-standalone-byte-seq-8 body0 22 119 97 115 105 95 115 110)
     body2 (emit-standalone-byte-seq-8 body1 97 112 115 104 111 116 95 112)
     body3 (emit-standalone-byte-seq-8 body2 114 101 118 105 101 119 49 8)
     body4 (emit-standalone-byte-seq-8 body3 102 100 95 119 114 105 116 101)
     body5 (emit-standalone-byte-seq-2 body4 0 0)
-    body-size (vector-length body5)
+    body6 (emit-standalone-byte-seq-8 body5 22 119 97 115 105 95 115 110)
+    body7 (emit-standalone-byte-seq-8 body6 97 112 115 104 111 116 95 112)
+    body8 (emit-standalone-byte-seq-8 body7 114 101 118 105 101 119 49 14)
+    body9 (emit-standalone-byte-seq-8 body8 97 114 103 115 95 115 105 122)
+    body10 (emit-standalone-byte-seq-8 body9 101 115 95 103 101 116 0 6)
+    body-size (vector-length body10)
     result0 (emit-byte (vector-new 64) 2)
     result1 (emit-leb128 result0 body-size)]
-    (append-byte-vector-chunked result1 body5 0 body-size)))
+    (append-byte-vector-chunked result1 body10 0 body-size)))
 (defn append-component-module-name [body] (let [b1 (emit-leb128 body (wasi-module-name-length-for-target (wasi-target-component))) b2 (emit-byte b1 119) b3 (emit-byte b2 97) b4 (emit-byte b3 115) b5 (emit-byte b4 105)] b5))
 (defn emit-import-section-component [] (let [body0 (emit-leb128 (vector-new 32) 1) body1 (append-component-module-name body0) body2 (emit-leb128 body1 8) body3 (emit-byte body2 102) body4 (emit-byte body3 100) body5 (emit-byte body4 95) body6 (emit-byte body5 119) body7 (emit-byte body6 114) body8 (emit-byte body7 105) body9 (emit-byte body8 116) body10 (emit-byte body9 101) body11 (emit-byte body10 0) body12 (emit-leb128 body11 0) body-size (vector-length body12) result0 (emit-byte (vector-new 32) 2) result1 (emit-leb128 result0 body-size)] (append-byte-vector result1 body12 0 body-size)))
 (defn emit-import-section-for-target [target] (if (= target (wasi-target-component)) (emit-import-section-component) (emit-import-section)))
@@ -658,15 +663,87 @@
                 (root_pop)
                 (root_pop)
                 result))))))))
+(defn standalone-command-line-args-opcode [] 91)
+(defn standalone-ir-instr [instr]
+  (let [opcode (vector-get instr 0)
+    operand (vector-get instr 1)]
+    (if (= opcode 86)
+      (make-instr (standalone-command-line-args-opcode) 0)
+      (if (and (= opcode 40) (>= operand 12))
+        (make-instr 40 (+ operand 1))
+        instr))))
+(defn standalone-ir-instrs-step [ir idx count result]
+  (if (>= idx count)
+    (make-loop-step-state 1 idx result)
+    (do
+      (root_push result)
+      (let [instr (vector-get ir idx)
+        next-instr (standalone-ir-instr instr)]
+        (do
+          (root_push next-instr)
+          (let [next-result (push-object-vector result next-instr)]
+            (do
+              (root_push next-result)
+              (let [state (make-loop-step-state 0 (+ idx 1) next-result)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  state)))))))))
+(defn continue-standalone-ir-instrs-step [ir count state]
+  (if (= (vector-get state 0) 1)
+    state
+    (standalone-ir-instrs-step ir (vector-get state 1) count (vector-get state 2))))
+(defn standalone-ir-instrs-step-8 [ir idx count result]
+  (let [s1 (standalone-ir-instrs-step ir idx count result)
+    s2 (continue-standalone-ir-instrs-step ir count s1)
+    s3 (continue-standalone-ir-instrs-step ir count s2)
+    s4 (continue-standalone-ir-instrs-step ir count s3)
+    s5 (continue-standalone-ir-instrs-step ir count s4)
+    s6 (continue-standalone-ir-instrs-step ir count s5)
+    s7 (continue-standalone-ir-instrs-step ir count s6)
+    s8 (continue-standalone-ir-instrs-step ir count s7)]
+    s8))
+(defn continue-standalone-ir-instrs-step-8 [ir count state]
+  (if (= (vector-get state 0) 1)
+    state
+    (standalone-ir-instrs-step-8 ir (vector-get state 1) count (vector-get state 2))))
+(defn standalone-ir-instrs-step-64 [ir idx count result]
+  (let [s1 (standalone-ir-instrs-step-8 ir idx count result)
+    s2 (continue-standalone-ir-instrs-step-8 ir count s1)
+    s3 (continue-standalone-ir-instrs-step-8 ir count s2)
+    s4 (continue-standalone-ir-instrs-step-8 ir count s3)
+    s5 (continue-standalone-ir-instrs-step-8 ir count s4)
+    s6 (continue-standalone-ir-instrs-step-8 ir count s5)
+    s7 (continue-standalone-ir-instrs-step-8 ir count s6)
+    s8 (continue-standalone-ir-instrs-step-8 ir count s7)]
+    s8))
+(defn continue-standalone-ir-instrs-step-64 [ir count state]
+  (if (= (vector-get state 0) 1)
+    state
+    (standalone-ir-instrs-step-64 ir (vector-get state 1) count (vector-get state 2))))
+(defn standalone-ir-instrs-loop [ir count state]
+  (if (= (vector-get state 0) 1)
+    (vector-get state 2)
+    (standalone-ir-instrs-loop
+      ir
+      count
+      (continue-standalone-ir-instrs-step-64 ir count state))))
+(defn standalone-ir-instrs [ir]
+  (let [count (vector-length ir)
+    state (standalone-ir-instrs-step-64 ir 0 count (vector-new 8))]
+    (standalone-ir-instrs-loop ir count state)))
 (defn shift-runtime-call-indices-step [bytes result idx count]
   (if (>= idx count)
     (make-loop-step-state 1 idx result)
     (let [byte (vector-get bytes idx)]
       (if (if (= byte 16) (< (+ idx 1) count) false)
         (let [next-byte (vector-get bytes (+ idx 1))]
-          (if (< next-byte 11)
-            (make-loop-step-state 0 (+ idx 2) (emit-byte (emit-byte result 16) (+ next-byte 1)))
-            (make-loop-step-state 0 (+ idx 1) (emit-byte result byte))))
+          (if (= next-byte 11)
+            (make-loop-step-state 0 (+ idx 2) (emit-byte (emit-byte result 16) 1))
+            (if (< next-byte 11)
+              (make-loop-step-state 0 (+ idx 2) (emit-byte (emit-byte result 16) (+ next-byte 2)))
+              (make-loop-step-state 0 (+ idx 1) (emit-byte result byte)))))
         (make-loop-step-state 0 (+ idx 1) (emit-byte result byte))))))
 (defn shift-runtime-call-indices-step-8 [bytes state count]
   (let [s1 (if (= (vector-get state 0) 1) state (shift-runtime-call-indices-step bytes (vector-get state 2) (vector-get state 1) count))
@@ -684,14 +761,53 @@
     (shift-runtime-call-indices-loop bytes (shift-runtime-call-indices-step-8 bytes state count) count)))
 (defn shift-runtime-call-indices [bytes]
   (shift-runtime-call-indices-loop bytes (make-loop-step-state 0 0 (vector-new 64)) (vector-length bytes)))
+(defn shift-standalone-runtime-call-indices-step [bytes result idx count]
+  (if (>= idx count)
+    (make-loop-step-state 1 idx result)
+    (let [byte (vector-get bytes idx)]
+      (if (if (= byte 16) (< (+ idx 1) count) false)
+        (let [next-byte (vector-get bytes (+ idx 1))]
+          (if (and (> next-byte 0) (< next-byte 11))
+            (make-loop-step-state 0 (+ idx 2) (emit-byte (emit-byte result 16) (+ next-byte 1)))
+            (make-loop-step-state 0 (+ idx 1) (emit-byte result byte))))
+        (make-loop-step-state 0 (+ idx 1) (emit-byte result byte))))))
+(defn shift-standalone-runtime-call-indices-step-8 [bytes state count]
+  (let [s1 (if (= (vector-get state 0) 1) state (shift-standalone-runtime-call-indices-step bytes (vector-get state 2) (vector-get state 1) count))
+    s2 (if (= (vector-get s1 0) 1) s1 (shift-standalone-runtime-call-indices-step bytes (vector-get s1 2) (vector-get s1 1) count))
+    s3 (if (= (vector-get s2 0) 1) s2 (shift-standalone-runtime-call-indices-step bytes (vector-get s2 2) (vector-get s2 1) count))
+    s4 (if (= (vector-get s3 0) 1) s3 (shift-standalone-runtime-call-indices-step bytes (vector-get s3 2) (vector-get s3 1) count))
+    s5 (if (= (vector-get s4 0) 1) s4 (shift-standalone-runtime-call-indices-step bytes (vector-get s4 2) (vector-get s4 1) count))
+    s6 (if (= (vector-get s5 0) 1) s5 (shift-standalone-runtime-call-indices-step bytes (vector-get s5 2) (vector-get s5 1) count))
+    s7 (if (= (vector-get s6 0) 1) s6 (shift-standalone-runtime-call-indices-step bytes (vector-get s6 2) (vector-get s6 1) count))
+    s8 (if (= (vector-get s7 0) 1) s7 (shift-standalone-runtime-call-indices-step bytes (vector-get s7 2) (vector-get s7 1) count))]
+    s8))
+(defn shift-standalone-runtime-call-indices-loop [bytes state count]
+  (if (= (vector-get state 0) 1)
+    (vector-get state 2)
+    (shift-standalone-runtime-call-indices-loop bytes (shift-standalone-runtime-call-indices-step-8 bytes state count) count)))
+(defn shift-standalone-runtime-call-indices [bytes]
+  (shift-standalone-runtime-call-indices-loop bytes (make-loop-step-state 0 0 (vector-new 64)) (vector-length bytes)))
 (defn build-function-body-function-standalone [func-meta]
-  (let [body (build-function-body-function func-meta)]
+  (do
+    (root_push func-meta)
+    (let [local-count (function-meta-local-count func-meta)
+      ir-instrs (standalone-ir-instrs (function-meta-ir func-meta))]
     (do
-      (root_push body)
-      (let [result (shift-runtime-call-indices body)]
+      (root_push ir-instrs)
+      (let [body0 (if (= local-count 0) (emit-byte (vector-new 64) 0) (emit-byte (emit-leb128 (emit-leb128 (vector-new 64) 1) local-count) 126))
+        body (append-ir-instrs body0 ir-instrs 0 (vector-length ir-instrs))]
         (do
-          (root_pop)
-          result)))))
+          (root_push body)
+          (let [body1 (emit-byte body 11)]
+            (do
+              (root_push body1)
+              (let [shifted-body (shift-runtime-call-indices body1)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  shifted-body))))))))))
 (defn emit-standalone-allocator-body []
   (let [b0 (vector-new 64)
     b1 (emit-standalone-byte-seq-8 b0 1 2 127 32 0 167 65 7)
@@ -887,7 +1003,7 @@
 (defn append-standalone-runtime-bodies-step [body idx]
   (if (>= idx 11)
     (make-loop-step-state 1 idx body)
-    (let [func-body (standalone-runtime-body idx)]
+    (let [func-body (shift-standalone-runtime-call-indices (standalone-runtime-body idx))]
       (do
         (root_push func-body)
         (let [next-body (append-standalone-code-body body func-body)]
@@ -1320,11 +1436,11 @@
 (defn emit-code-section-wasi-quad-functions [functions] (let [func-count (vector-length functions) main-func-idx (+ 9 func-count) body0 (emit-leb128 (vector-new 64) (+ func-count 1)) body1 (append-code-bodies-functions body0 functions 0 func-count) wrapper0 (emit-byte (vector-new 8) 0) wrapper1 (emit-byte wrapper0 16) wrapper2 (emit-leb128 wrapper1 main-func-idx) wrapper3 (emit-byte wrapper2 26) wrapper4 (emit-byte wrapper3 11) wrapper-size (vector-length wrapper4) body2 (emit-leb128 body1 wrapper-size) body3 (append-byte-vector body2 wrapper4 0 wrapper-size) body-size (vector-length body3) result0 (emit-byte (vector-new 64) 10) result1 (emit-leb128 result0 body-size)] (append-byte-vector-chunked result1 body3 0 body-size)))
 ;; コードセクション: 11-import runtime のユーザ関数ボディ + _start
 (defn emit-code-section-wasi-quad-functions-print-string [functions] (let [func-count (vector-length functions) main-func-idx (+ 10 func-count) body0 (emit-leb128 (vector-new 64) (+ func-count 1)) body1 (append-code-bodies-functions body0 functions 0 func-count) wrapper0 (emit-byte (vector-new 8) 0) wrapper1 (emit-byte wrapper0 16) wrapper2 (emit-leb128 wrapper1 main-func-idx) wrapper3 (emit-byte wrapper2 26) wrapper4 (emit-byte wrapper3 11) wrapper-size (vector-length wrapper4) body2 (emit-leb128 body1 wrapper-size) body3 (append-byte-vector body2 wrapper4 0 wrapper-size) body-size (vector-length body3) result0 (emit-byte (vector-new 64) 10) result1 (emit-leb128 result0 body-size)] (append-byte-vector-chunked result1 body3 0 body-size)))
-;; 標準 WASI Preview1 の fd_write だけを外部 import に残し、旧 env runtime は
+;; 標準 WASI Preview1 の fd_write / args_sizes_get だけを外部 import に残し、旧 env runtime は
 ;; 同じ関数番号を保った内部 Wasm 関数として配置する standalone ABI。
 (defn emit-type-section-wasi-standalone [functions]
   (let [func-count (vector-length functions)
-    total-count (+ func-count 7)
+    total-count (+ func-count 8)
     body0 (emit-leb128 (vector-new 96) total-count)
     body1 (emit-standalone-byte-seq-8 body0 96 4 127 127 127 127 1 127)
     body2 (emit-byte (emit-standalone-byte-seq-4 body1 96 1 126 1) 126)
@@ -1332,12 +1448,13 @@
     body4 (emit-standalone-byte-seq-6 body3 96 2 126 126 1 126)
     body5 (emit-byte (emit-standalone-byte-seq-6 body4 96 3 126 126 126 1) 126)
     body6 (emit-standalone-byte-seq-4 body5 96 0 1 126)
-    body7 (append-function-types body6 functions 0 func-count)
-    body8 (emit-byte (emit-standalone-byte-seq-2 body7 96 0) 0)
-    body-size (vector-length body8)
+    body7 (emit-standalone-byte-seq-6 body6 96 2 127 127 1 127)
+    body8 (append-function-types body7 functions 0 func-count)
+    body9 (emit-byte (emit-standalone-byte-seq-2 body8 96 0) 0)
+    body-size (vector-length body9)
     result0 (emit-byte (vector-new 96) 1)
     result1 (emit-leb128 result0 body-size)]
-    (append-byte-vector-chunked result1 body8 0 body-size)))
+    (append-byte-vector-chunked result1 body9 0 body-size)))
 (defn emit-function-section-wasi-standalone [functions]
   (let [func-count (vector-length functions)
     body0 (emit-leb128 (vector-new 64) (+ func-count 12))
@@ -1352,15 +1469,15 @@
     body9 (emit-leb128 body8 5)
     body10 (emit-leb128 body9 3)
     body11 (emit-leb128 body10 2)
-    body12 (append-type-index-sequence body11 6 (+ 6 func-count))
-    body13 (emit-leb128 body12 (+ 6 func-count))
+    body12 (append-type-index-sequence body11 7 (+ 7 func-count))
+    body13 (emit-leb128 body12 (+ 7 func-count))
     body-size (vector-length body13)
     result0 (emit-byte (vector-new 64) 3)
     result1 (emit-leb128 result0 body-size)]
     (append-byte-vector-chunked result1 body13 0 body-size)))
 (defn emit-code-section-wasi-standalone [functions]
   (let [func-count (vector-length functions)
-    main-func-idx (+ 11 func-count)
+    main-func-idx (+ 12 func-count)
     body0 (emit-leb128 (vector-new 64) (+ func-count 12))
     body1 (append-standalone-runtime-bodies body0 0)
     body2 (append-code-bodies-functions-standalone body1 functions 0 func-count)
@@ -1600,6 +1717,16 @@
             (emit-and-instr bytes)
             bytes))))))
 
+;; args_sizes_get の import index は runtime call の再配置前に 11 を sentinel として保持する。
+(defn emit-command-line-args-standalone-instr [bytes]
+  (let [b1 (emit-leb128-s (emit-byte bytes 65) 160)
+    b2 (emit-leb128-s (emit-byte b1 65) 164)
+    b3 (emit-leb128 (emit-byte b2 16) 11)
+    b4 (emit-byte b3 26)
+    b5 (emit-leb128-s (emit-byte b4 65) 160)
+    b6 (emit-standalone-byte-seq-4 b5 40 2 0 173)]
+    b6))
+
 (defn reject-native-only-wasm-opcode [bytes opcode]
   (if (= opcode 86)
     (do (/ opcode 0) bytes)
@@ -1610,7 +1737,9 @@
 (defn emit-runtime-ir-instr-tail-high-final [bytes opcode operand]
   (if (= opcode 87)
     (emit-print-string-instr bytes)
-    (reject-native-only-wasm-opcode bytes opcode)))
+    (if (= opcode (standalone-command-line-args-opcode))
+      (emit-command-line-args-standalone-instr bytes)
+      (reject-native-only-wasm-opcode bytes opcode))))
 
 (defn emit-runtime-ir-instr-tail-high [bytes opcode operand]
   (if (= opcode 72)
