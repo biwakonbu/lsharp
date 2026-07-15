@@ -2253,6 +2253,51 @@
                                         (root_pop)
                                         (root_pop)
                                         payload3))))))))))))))))))))
+(defn compile-program-functions-with-source-base [src decls base-idx]
+  (source-program-functions-base src decls base-idx))
+(defn standalone-preview1-opcode-supported? [opcode]
+  (if (= opcode 1)
+    true
+    (if (= opcode 10)
+      true
+      (if (= opcode 11)
+        true
+        (if (and (>= opcode 20) (<= opcode 23))
+          true
+          (if (= opcode 28)
+            true
+            (if (and (>= opcode 30) (<= opcode 35))
+              true
+              (if (and (>= opcode 40) (<= opcode 44))
+                true
+                (if (and (>= opcode 50) (<= opcode 63))
+                  true
+                  (if (and (>= opcode 65) (<= opcode 66))
+                    true
+                    (if (and (>= opcode 71) (<= opcode 72))
+                      true
+                      (if (and (>= opcode 74) (<= opcode 85)) true false))))))))))))
+(defn standalone-preview1-first-unsupported-ir-opcode [ir idx count]
+  (if (>= idx count)
+    -1
+    (let [instr (vector-get ir idx)
+      opcode (vector-get instr 0)]
+      (if (standalone-preview1-opcode-supported? opcode)
+        (standalone-preview1-first-unsupported-ir-opcode ir (+ idx 1) count)
+        opcode))))
+(defn standalone-preview1-first-unsupported-function-opcode [functions idx count]
+  (if (>= idx count)
+    -1
+    (let [func-meta (vector-get functions idx)
+      opcode (standalone-preview1-first-unsupported-ir-opcode
+        (function-meta-ir func-meta)
+        0
+        (vector-length (function-meta-ir func-meta)))]
+      (if (>= opcode 0)
+        opcode
+        (standalone-preview1-first-unsupported-function-opcode functions (+ idx 1) count)))))
+(defn standalone-preview1-first-unsupported-opcode [functions]
+  (standalone-preview1-first-unsupported-function-opcode functions 0 (vector-length functions)))
 (defn compile-program-with-source [src decls]
   (let [pair (compile-program-functions-with-source src decls)
     ftable (vector-get pair 0)

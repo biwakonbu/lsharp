@@ -5194,6 +5194,24 @@
                     b5 (append-section-bytes b4 export-sec)
                     b6 (append-section-bytes b5 code-sec)]
                     (append-section-bytes b6 data-sec)))))))))))
+(defn build-wasm-bytes-wasi-standalone [functions data]
+  (let [func-count (vector-length functions)
+    header (emit-header)]
+    (let [type-sec (emit-type-section-wasi-standalone functions)]
+      (let [import-sec (emit-import-section-wasi-standalone)]
+        (let [func-sec (emit-function-section-wasi-standalone functions)]
+          (let [memory-sec (emit-memory-section)]
+            (let [export-sec (emit-export-section-main-memory-index (+ 12 func-count) 0)]
+              (let [code-sec (emit-code-section-wasi-standalone functions)]
+                (let [data-sec (emit-data-section data 1024)]
+                  (let [b0 (append-section-bytes (vector-new 64) header)
+                    b1 (append-section-bytes b0 type-sec)
+                    b2 (append-section-bytes b1 import-sec)
+                    b3 (append-section-bytes b2 func-sec)
+                    b4 (append-section-bytes b3 memory-sec)
+                    b5 (append-section-bytes b4 export-sec)
+                    b6 (append-section-bytes b5 code-sec)]
+                    (append-section-bytes b6 data-sec)))))))))))
 (defn build-wasm-bytes-wasi-progress-debug [functions data]
   (let [func-count (vector-length functions)
     data-len (vector-length data)]

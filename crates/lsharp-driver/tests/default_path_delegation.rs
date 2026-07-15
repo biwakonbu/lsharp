@@ -1412,6 +1412,125 @@ fn test_driver_component_lsharp_path_compile_writes_runnable_component_artifact(
     let _ = fs::remove_dir_all(&temp_dir);
 }
 
+/// Rust driver を介さず、selfhost EmbeddedCli 自身が Preview1 artifact を生成できること
+#[test]
+fn test_embedded_cli_component_compile_preview1_writes_runnable_wasm_without_driver() {
+    let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let cli_source = project_root.join("selfhost/src/App/EmbeddedCli.ls");
+    let temp_dir = unique_temp_dir("embedded_cli_component_preview1_compile");
+    let source_path = temp_dir.join("input.ls");
+    let output_path = temp_dir.join("output.wasm");
+    write_source_file(
+        &source_path,
+        "(defn inc [n] (+ n 1))\n\
+         (type Point (record (: x Int) (: y Int)))\n\
+         (defn main [] (let [point (Point (inc 40) 2)] (do (print (Point.x point)) (print (Point.y point)) 0)))\n",
+    );
+    let component = compile_component_entry(&cli_source);
+
+    let guest =
+        lsharp_wasm::wasi_runner::run_wasm_component_with_dir_and_args_inherit_stdin_capture(
+            &component,
+            Some(&temp_dir),
+            &[
+                "compile",
+                "input.ls",
+                "--target",
+                "wasi-preview1",
+                "-o",
+                "output.wasm",
+            ],
+        )
+        .expect("embedded CLI component execution failed");
+    assert_eq!(
+        guest.exit_code, 0,
+        "EmbeddedCli の Preview1 compile は成功するべき: stdout={}",
+        guest.stdout
+    );
+    assert!(
+        guest.stdout.contains("wasm-size:"),
+        "EmbeddedCli の Preview1 compile は artifact summary を返すべき: {}",
+        guest.stdout
+    );
+
+    let written = fs::read(&output_path).expect("embedded CLI Preview1 output read failed");
+    assert!(
+        written.starts_with(b"\0asm"),
+        "EmbeddedCli の Preview1 compile は runnable Wasm bytes を書くべき"
+    );
+    let runtime_output = lsharp_wasm::wasi_runner::run_wasm_wasi(&written)
+        .expect("embedded CLI Preview1 output should run");
+    assert_eq!(
+        runtime_output, "41\n2\n",
+        "EmbeddedCli の Preview1 output は static record accessor を実行できるべき"
+    );
+
+    let root_source_path = temp_dir.join("root.ls");
+    let root_output_path = temp_dir.join("root.wasm");
+    write_source_file(
+        &root_source_path,
+        "(defn main [] (let [slot (root_push 41)] (do (root_set slot 42) (print (root_pop)) 0)))\n",
+    );
+    let root_guest =
+        lsharp_wasm::wasi_runner::run_wasm_component_with_dir_and_args_inherit_stdin_capture(
+            &component,
+            Some(&temp_dir),
+            &[
+                "compile",
+                "root.ls",
+                "--target",
+                "wasi-preview1",
+                "-o",
+                "root.wasm",
+            ],
+        )
+        .expect("embedded CLI root runtime execution failed");
+    assert_eq!(
+        root_guest.exit_code, 0,
+        "Preview1 root runtime compile は成功するべき: stdout={}",
+        root_guest.stdout
+    );
+    let root_written = fs::read(&root_output_path).expect("root runtime output read failed");
+    let root_runtime_output = lsharp_wasm::wasi_runner::run_wasm_wasi(&root_written)
+        .expect("root runtime output should run");
+    assert_eq!(
+        root_runtime_output, "42\n",
+        "Preview1 root_push/root_set/root_pop は値を保持するべき"
+    );
+
+    let unsupported_source_path = temp_dir.join("unsupported.ls");
+    let unsupported_output_path = temp_dir.join("unsupported.wasm");
+    write_source_file(
+        &unsupported_source_path,
+        "(defn main [] (print (string-concat \"a\" \"b\")))\n",
+    );
+    let unsupported_guest =
+        lsharp_wasm::wasi_runner::run_wasm_component_with_dir_and_args_inherit_stdin_capture(
+            &component,
+            Some(&temp_dir),
+            &[
+                "compile",
+                "unsupported.ls",
+                "--target",
+                "wasi-preview1",
+                "-o",
+                "unsupported.wasm",
+            ],
+        )
+        .expect("embedded CLI unsupported runtime execution failed");
+    assert_ne!(
+        unsupported_guest.exit_code, 0,
+        "Preview1 unsupported runtime opcode は成功扱いにしてはいけない: stdout={}",
+        unsupported_guest.stdout
+    );
+    assert!(
+        !unsupported_output_path.exists(),
+        "Preview1 unsupported runtime opcode は不完全な Wasm artifact を書いてはいけない"
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
 #[test]
 fn test_driver_component_compile_absolute_input_uses_host_artifact_fallback() {
     let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
