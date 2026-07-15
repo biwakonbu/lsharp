@@ -1532,11 +1532,44 @@ fn test_embedded_cli_component_compile_preview1_writes_runnable_wasm_without_dri
         "Preview1 print-string は静的文字列 data を stdout へ出力するべき"
     );
 
+    let concat_source_path = temp_dir.join("concat.ls");
+    let concat_output_path = temp_dir.join("concat.wasm");
+    write_source_file(
+        &concat_source_path,
+        "(defn main [] (do (print-string (string-concat \"hello\" \" world\")) 0))\n",
+    );
+    let concat_guest =
+        lsharp_wasm::wasi_runner::run_wasm_component_with_dir_and_args_inherit_stdin_capture(
+            &component,
+            Some(&temp_dir),
+            &[
+                "compile",
+                "concat.ls",
+                "--target",
+                "wasi-preview1",
+                "-o",
+                "concat.wasm",
+            ],
+        )
+        .expect("embedded CLI string-concat runtime execution failed");
+    assert_eq!(
+        concat_guest.exit_code, 0,
+        "Preview1 string-concat compile は成功するべき: stdout={}",
+        concat_guest.stdout
+    );
+    let concat_written = fs::read(&concat_output_path).expect("string-concat output read failed");
+    let concat_runtime_output = lsharp_wasm::wasi_runner::run_wasm_wasi(&concat_written)
+        .expect("string-concat runtime output should run");
+    assert_eq!(
+        concat_runtime_output, "hello world",
+        "Preview1 string-concat は両方の文字列を結合して出力するべき"
+    );
+
     let unsupported_source_path = temp_dir.join("unsupported.ls");
     let unsupported_output_path = temp_dir.join("unsupported.wasm");
     write_source_file(
         &unsupported_source_path,
-        "(defn main [] (print (string-concat \"a\" \"b\")))\n",
+        "(defn main [] (print-string (substring \"abc\" 0 1)))\n",
     );
     let unsupported_guest =
         lsharp_wasm::wasi_runner::run_wasm_component_with_dir_and_args_inherit_stdin_capture(

@@ -2274,11 +2274,13 @@
                   true
                   (if (and (>= opcode 65) (<= opcode 66))
                     true
-                    (if (and (>= opcode 71) (<= opcode 72))
+                    (if (= opcode 70)
+                      true
+                      (if (and (>= opcode 71) (<= opcode 72))
                       true
                       (if (and (>= opcode 74) (<= opcode 85))
                         true
-                        (if (= opcode 87) true false)))))))))))))
+                        (if (= opcode 87) true false))))))))))))))
 (defn standalone-preview1-first-unsupported-ir-opcode [ir idx count]
   (if (>= idx count)
     -1
