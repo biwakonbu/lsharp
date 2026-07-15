@@ -2655,6 +2655,54 @@ fn test_e2e_selfhost_compiler_mode_nested_record_pattern_runs() {
     assert_eq!(output, "41\n1\n7\n");
 }
 
+/// selfhost compiler-mode: record field 内の nested constructor pattern を実行できること
+#[test]
+fn test_e2e_selfhost_compiler_mode_record_nested_constructor_pattern_runs() {
+    let harness = r#"
+(defn print-bytes-loop [bytes idx count]
+  (if (>= idx count)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes-loop bytes (+ idx 1) count))))
+
+(defn main []
+  (let [source "(type Tree (Leaf Int) (Node Tree Tree)) (type Outer (record (: tree Tree))) (defn read-leaf [o] (match o [{Outer tree (Leaf x)} x] [_ 0])) (defn read-node [o] (match o [{Outer tree (Node (Leaf x) (Leaf y))} (+ x y)] [_ 0])) (defn main [] (let [p {Outer tree (Node (Leaf 40) (Leaf 2))} q {Outer tree (Leaf 7)}] (do (print (read-leaf q)) (print (read-node p)) 0)))"
+        program (parse-program source)
+        pair (compile-program-functions-with-source source program)
+        functions (vector-get pair 1)
+        data (vector-get pair 2)
+        wasm-bytes (build-wasm-bytes-wasi functions data)]
+    (do
+      (print (vector-length wasm-bytes))
+      (print-bytes-loop wasm-bytes 0 (vector-length wasm-bytes))
+      0)))
+"#;
+    let compiler_mode = format!("{}\n{}", selfhost_module("CompilerMode.ls"), harness);
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("IR.ls"),
+        selfhost_module("Compiler.ls"),
+        selfhost_module("WasiBackend.ls"),
+        selfhost_module("WasmEmit.ls"),
+        selfhost_module("ModuleResolver.ls"),
+        compiler_mode
+    );
+    let emitted = compile_and_run(&combined);
+    let wasm_bytes = parse_printed_wasm_bytes(&emitted);
+    let output = super::selfhost_bootstrap_four_layer::run_wasm_with_eleven_imports_compiler_mode(
+        &wasm_bytes,
+        "",
+        &[],
+    )
+    .expect("selfhost compiler-mode record nested constructor pattern module should run");
+    assert_eq!(output, "7\n42\n");
+}
+
 /// selfhost compiler-mode: 同じ field layout の異なる record 型を pattern で区別すること
 #[test]
 fn test_e2e_selfhost_compiler_mode_record_pattern_checks_nominal_type() {
@@ -3099,7 +3147,7 @@ fn test_e2e_selfhost_ftable_compiler_nested_record_pattern_runs() {
       (print-bytes-loop bytes (+ idx 1) count))))
 
 (defn main []
-  (let [source "(type Inner (record (: x Int))) (type Outer (record (: inner Inner))) (defn read-inner [o] (match o [{Outer inner {Inner x x}} x] [_ 0])) (defn read-literal [o] (match o [{Outer inner {Inner x 41}} 1] [_ 0])) (defn main [] (let [p {Outer inner {Inner x 41}}] (do (print (read-inner p)) (print (read-literal p)) 0)))"
+  (let [source "(type Inner (record (: x Int))) (type Outer (record (: inner Inner))) (defn read-inner [o] (match o [{Outer inner {Inner x x}} x] [_ 0])) (defn read-literal [o] (match o [{Outer inner {Inner x 41}} 1] [_ 0])) (defn read-literal-miss [o] (match o [{Outer inner {Inner x 42}} 1] [_ 7])) (defn main [] (let [p {Outer inner {Inner x 41}}] (do (print (read-inner p)) (print (read-literal p)) (print (read-literal-miss p)) 0)))"
         program (parse-program source)
         pair (compile-program-functions-with-base program 11)
         functions (vector-get pair 1)
@@ -3131,7 +3179,54 @@ fn test_e2e_selfhost_ftable_compiler_nested_record_pattern_runs() {
         &[],
     )
     .expect("selfhost ftable compiler nested record pattern module should run");
-    assert_eq!(output, "41\n1\n");
+    assert_eq!(output, "41\n1\n7\n");
+}
+
+/// selfhost ftable compiler: record field 内の nested constructor pattern を実行できること
+#[test]
+fn test_e2e_selfhost_ftable_compiler_record_nested_constructor_pattern_runs() {
+    let harness = r#"
+(defn print-bytes-loop [bytes idx count]
+  (if (>= idx count)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes-loop bytes (+ idx 1) count))))
+
+(defn main []
+  (let [source "(type Tree (Leaf Int) (Node Tree Tree)) (type Outer (record (: tree Tree))) (defn read-leaf [o] (match o [{Outer tree (Leaf x)} x] [_ 0])) (defn read-node [o] (match o [{Outer tree (Node (Leaf x) (Leaf y))} (+ x y)] [_ 0])) (defn main [] (let [p {Outer tree (Node (Leaf 40) (Leaf 2))} q {Outer tree (Leaf 7)}] (do (print (read-leaf q)) (print (read-node p)) 0)))"
+        program (parse-program source)
+        pair (compile-program-functions-with-base program 11)
+        functions (vector-get pair 1)
+        wasm-bytes (build-wasm-bytes-wasi functions (vector-new 0))]
+    (do
+      (print (vector-length wasm-bytes))
+      (print-bytes-loop wasm-bytes 0 (vector-length wasm-bytes))
+      0)))
+"#;
+    let compiler_mode = format!("{}\n{}", selfhost_module("CompilerMode.ls"), harness);
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("IR.ls"),
+        selfhost_module("Compiler.ls"),
+        selfhost_module("WasiBackend.ls"),
+        selfhost_module("WasmEmit.ls"),
+        selfhost_module("ModuleResolver.ls"),
+        compiler_mode
+    );
+    let emitted = compile_and_run(&combined);
+    let wasm_bytes = parse_printed_wasm_bytes(&emitted);
+    let output = super::selfhost_bootstrap_four_layer::run_wasm_with_eleven_imports_compiler_mode(
+        &wasm_bytes,
+        "",
+        &[],
+    )
+    .expect("selfhost ftable compiler record nested constructor pattern module should run");
+    assert_eq!(output, "7\n42\n");
 }
 
 /// selfhost compiler-mode: import 先 record の constructor/static accessor が actual Wasm で実行できること
