@@ -739,8 +739,12 @@
   (emit-standalone-byte-seq-4 (vector-new 8) 0 32 1 11))
 (defn emit-standalone-root-push-body []
   (let [b0 (emit-standalone-byte-seq-8 (vector-new 32) 1 2 127 65 192 0 40 2)
-    b1 (emit-standalone-byte-seq-8 b0 0 33 1 65 128 1 32 1)
-    b2 (emit-standalone-byte-seq-8 b1 65 3 116 106 33 2 32 2)
+    b1 (emit-standalone-byte-seq-8 b0 0 33 1 32 1 65 240 1)
+    b1a (emit-standalone-byte-seq-1 b1 79)
+    b1b (emit-standalone-byte-seq-4 b1a 4 64 0 11)
+    b1c (emit-standalone-byte-seq-4 b1b 65 128 1 32)
+    b1d (emit-standalone-byte-seq-1 b1c 1)
+    b2 (emit-standalone-byte-seq-8 b1d 65 3 116 106 33 2 32 2)
     b2a (emit-standalone-byte-seq-4 b2 32 0 55 3)
     b2b (emit-standalone-byte-seq-1 b2a 0)
     b3 (emit-standalone-byte-seq-8 b2b 65 192 0 32 1 65 1 106)
@@ -759,11 +763,14 @@
     b6 (emit-standalone-byte-seq-4 b5 3 0 11 11)]
     b6))
 (defn emit-standalone-root-set-body []
-  (let [b0 (emit-standalone-byte-seq-8 (vector-new 24) 1 2 127 32 0 167 33 2)
-    b1 (emit-standalone-byte-seq-8 b0 65 128 1 32 2 65 3 116)
-    b2 (emit-standalone-byte-seq-8 b1 106 33 3 32 3 32 1 55)
-    b3 (emit-standalone-byte-seq-6 b2 3 0 32 2 173 11)]
-    b3))
+  (let [b0 (emit-standalone-byte-seq-8 (vector-new 24) 1 3 127 32 0 167 33 2)
+    b1 (emit-standalone-byte-seq-8 b0 65 192 0 40 2 0 33 4)
+    b2 (emit-standalone-byte-seq-8 b1 32 2 32 4 79 4 64 0)
+    b2a (emit-standalone-byte-seq-1 b2 11)
+    b3 (emit-standalone-byte-seq-8 b2a 65 128 1 32 2 65 3 116)
+    b4 (emit-standalone-byte-seq-8 b3 106 33 3 32 3 32 1 55)
+    b5 (emit-standalone-byte-seq-6 b4 3 0 32 2 173 11)]
+    b5))
 (defn emit-standalone-wrapper-body [main-func-idx]
   (let [b0 (vector-new 8)
     b1 (emit-byte b0 0)

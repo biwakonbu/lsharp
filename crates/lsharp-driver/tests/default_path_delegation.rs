@@ -1528,6 +1528,37 @@ fn test_embedded_cli_component_compile_preview1_writes_runnable_wasm_without_dri
         "Preview1 unsupported runtime opcode は不完全な Wasm artifact を書いてはいけない"
     );
 
+    let large_source_path = temp_dir.join("large.ls");
+    let large_output_path = temp_dir.join("large.wasm");
+    let large_literal = "x".repeat(1100);
+    write_source_file(
+        &large_source_path,
+        &format!("(defn main [] (print \"{}\"))\n", large_literal),
+    );
+    let large_guest =
+        lsharp_wasm::wasi_runner::run_wasm_component_with_dir_and_args_inherit_stdin_capture(
+            &component,
+            Some(&temp_dir),
+            &[
+                "compile",
+                "large.ls",
+                "--target",
+                "wasi-preview1",
+                "-o",
+                "large.wasm",
+            ],
+        )
+        .expect("embedded CLI large layout execution failed");
+    assert_ne!(
+        large_guest.exit_code, 0,
+        "Preview1 data が heap 領域へ到達する source は成功扱いにしてはいけない: stdout={}",
+        large_guest.stdout
+    );
+    assert!(
+        !large_output_path.exists(),
+        "Preview1 data/heap layout violation は不完全な Wasm artifact を書いてはいけない"
+    );
+
     let _ = fs::remove_dir_all(&temp_dir);
 }
 
