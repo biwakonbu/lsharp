@@ -1853,6 +1853,61 @@ fn test_record_pattern_uses_struct_get() {
 }
 
 #[test]
+fn test_nested_record_pattern_emits_recursive_struct_get() {
+    let source = r#"
+        (type Inner (record (: x Int)))
+        (type Outer (record (: inner Inner)))
+        (defn read-inner [o]
+          (match o
+            [{Outer inner {Inner x x}} x]
+            [_ 0]))
+    "#;
+    let program = lsharp_syntax::parse(source).unwrap();
+    let mut infer = Infer::new();
+    let type_results = infer.infer_program(&program).unwrap();
+    let mut lowerer = Lower::new();
+    let module = lowerer.lower_program(&program, &type_results).unwrap();
+
+    let read_inner = module
+        .functions
+        .iter()
+        .find(|f| f.name == "read-inner")
+        .unwrap();
+    let struct_get_count = read_inner
+        .body
+        .iter()
+        .filter(|instruction| matches!(instruction, Instruction::StructGet(_, _)))
+        .count();
+    assert!(
+        struct_get_count >= 2,
+        "nested record pattern は親と子の StructGet を生成すべき: {:?}",
+        read_inner.body
+    );
+}
+
+#[test]
+fn test_nested_record_pattern_rejects_literal_child_until_lowered() {
+    let source = r#"
+        (type Inner (record (: x Int)))
+        (type Outer (record (: inner Inner)))
+        (defn read-inner [o]
+          (match o
+            [{Outer inner {Inner x 41}} 1]
+            [_ 0]))
+    "#;
+    let program = lsharp_syntax::parse(source).unwrap();
+    let mut infer = Infer::new();
+    let type_results = infer.infer_program(&program).unwrap();
+    let mut lowerer = Lower::new();
+    let result = lowerer.lower_program(&program, &type_results);
+
+    assert!(
+        matches!(result, Err(LowerError::Unsupported { .. })),
+        "nested literal child は lowering 未対応として明示エラーにすべき: {result:?}"
+    );
+}
+
+#[test]
 fn test_resolve_field_index() {
     let mut lowerer = Lower::new();
     lowerer

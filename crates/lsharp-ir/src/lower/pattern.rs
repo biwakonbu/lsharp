@@ -110,20 +110,7 @@ impl Lower {
                 ctx.emit(Instruction::End);
             }
             Pattern::RecordPat(_, type_name, field_pats) => {
-                // レコードパターン: StructGet でフィールドを抽出
-                for (field_name, field_pat) in field_pats {
-                    if let Pattern::Var(_, var_name) = field_pat {
-                        let field_idx = self.resolve_field_index(type_name, field_name);
-                        let gc_type_idx = self.record_type_indices.get(type_name.as_str()).copied();
-
-                        ctx.emit(Instruction::LocalGet(scrut_local));
-                        if let (Some(gc_idx), Some(f_idx)) = (gc_type_idx, field_idx) {
-                            ctx.emit(Instruction::StructGet(gc_idx, f_idx));
-                        }
-                        let var_local = ctx.alloc_local(var_name.clone());
-                        ctx.emit(Instruction::LocalSet(var_local));
-                    }
-                }
+                self.bind_record_pattern_fields(ctx, scrut_local, type_name, field_pats)?;
                 self.lower_arm_body_with_guard(ctx, scrut_local, arms, arm, idx)?;
             }
             _ => {
@@ -133,6 +120,54 @@ impl Lower {
             }
         }
 
+        Ok(())
+    }
+
+    /// レコードパターンの field を抽出し、nested record child を再帰的に bind する。
+    fn bind_record_pattern_fields(
+        &mut self,
+        ctx: &mut FuncCtx,
+        record_local: u32,
+        type_name: &str,
+        field_pats: &[(String, Pattern)],
+    ) -> Result<(), LowerError> {
+        for (field_name, field_pat) in field_pats {
+            let field_idx = self.resolve_field_index(type_name, field_name);
+            let gc_type_idx = self.record_type_indices.get(type_name).copied();
+
+            match field_pat {
+                Pattern::Var(_, var_name) => {
+                    ctx.emit(Instruction::LocalGet(record_local));
+                    if let (Some(gc_idx), Some(f_idx)) = (gc_type_idx, field_idx) {
+                        ctx.emit(Instruction::StructGet(gc_idx, f_idx));
+                    }
+                    let var_local = ctx.alloc_local(var_name.clone());
+                    ctx.emit(Instruction::LocalSet(var_local));
+                }
+                Pattern::RecordPat(_, child_type_name, child_fields) => {
+                    if let (Some(gc_idx), Some(f_idx)) = (gc_type_idx, field_idx) {
+                        ctx.emit(Instruction::LocalGet(record_local));
+                        ctx.emit(Instruction::StructGet(gc_idx, f_idx));
+                        let temp_name = format!("__record_field_{}_{}", field_name, ctx.next_local);
+                        let field_local = ctx.alloc_local(temp_name);
+                        ctx.emit(Instruction::LocalSet(field_local));
+                        self.bind_record_pattern_fields(
+                            ctx,
+                            field_local,
+                            child_type_name,
+                            child_fields,
+                        )?;
+                    }
+                }
+                Pattern::Wildcard(_) => {}
+                // literal/constructor child の判定は別の lowering 対応として残す。
+                _ => {
+                    return Err(LowerError::Unsupported {
+                        msg: format!("レコードフィールドパターン: {:?}", field_pat),
+                    });
+                }
+            }
+        }
         Ok(())
     }
 

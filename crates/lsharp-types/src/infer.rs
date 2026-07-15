@@ -1648,6 +1648,10 @@ impl Infer {
                 } else if let Some((_params, target)) = self.type_aliases.get(name) {
                     // 型エイリアスを透過的に展開
                     target.clone()
+                } else if let Some(record_info) = self.record_registry.get(name)
+                    && record_info.type_params.is_empty()
+                {
+                    Type::Record(record_info.name.clone(), record_info.fields.clone())
                 } else {
                     Type::Con(name.clone())
                 }
@@ -1657,6 +1661,10 @@ impl Infer {
                     Type::Var(*id)
                 } else if let Some((_params, target)) = self.type_aliases.get(name) {
                     target.clone()
+                } else if let Some(record_info) = self.record_registry.get(name)
+                    && record_info.type_params.is_empty()
+                {
+                    Type::Record(record_info.name.clone(), record_info.fields.clone())
                 } else {
                     Type::Con(name.clone())
                 }
@@ -2517,11 +2525,17 @@ impl Infer {
                             span: *span,
                         })?;
 
-                    let (_pat_ty, bindings) = self.infer_pattern(env, field_pat)?;
-                    for (name, _) in &bindings {
-                        all_bindings.push((name.clone(), expected_ty.clone()));
+                    let (pat_ty, bindings) = self.infer_pattern(env, field_pat)?;
+                    let pat_subst = self.unify(
+                        &pat_ty.apply_subst(&param_subst),
+                        &expected_ty.apply_subst(&param_subst),
+                        *span,
+                    )?;
+                    param_subst = param_subst.compose(&pat_subst);
+                    for (name, ty) in &bindings {
+                        all_bindings.push((name.clone(), ty.apply_subst(&param_subst)));
                     }
-                    result_fields.push((field_name.clone(), expected_ty));
+                    result_fields.push((field_name.clone(), expected_ty.apply_subst(&param_subst)));
                 }
 
                 for (name, ty) in &record_info.fields {
@@ -2936,6 +2950,22 @@ mod tests {
         .unwrap();
         let (name, _scheme) = &results[0];
         assert_eq!(name, "get-x");
+    }
+
+    #[test]
+    fn test_nested_record_field_type_is_inferred() {
+        let results = infer(
+            "(type Inner (record (: x Int)))
+             (type Outer (record (: inner Inner)))
+             (defn read-inner [o]
+               (match o
+                 [{Outer inner {Inner x x}} x]
+                 [_ 0]))",
+        );
+        assert!(
+            results.is_ok(),
+            "nested record field type should unify with its record pattern: {results:?}"
+        );
     }
 
     #[test]
