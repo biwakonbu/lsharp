@@ -737,6 +737,15 @@
   (emit-byte (emit-standalone-byte-seq-4 (vector-new 8) 0 32 0 26) 11))
 (defn emit-standalone-second-i64-body []
   (emit-standalone-byte-seq-4 (vector-new 8) 0 32 1 11))
+(defn emit-standalone-print-string-body []
+  (let [b0 (emit-standalone-byte-seq-8 (vector-new 64) 0 65 0 32 0 167 65 8)
+    b1 (emit-standalone-byte-seq-4 b0 106 54 2 0)
+    b2 (emit-standalone-byte-seq-8 b1 65 4 32 0 167 40 2 4)
+    b2a (emit-standalone-byte-seq-2 b2 54 2)
+    b2b (emit-standalone-byte-seq-1 b2a 0)
+    b3 (emit-standalone-byte-seq-8 b2b 65 1 65 0 65 1 65 8)
+    b4 (emit-standalone-byte-seq-4 b3 16 0 26 11)]
+    b4))
 (defn emit-standalone-root-push-body []
   (let [b0 (emit-standalone-byte-seq-8 (vector-new 32) 1 2 127 65 192 0 40 2)
     b1 (emit-standalone-byte-seq-8 b0 0 33 1 32 1 65 240 1)
@@ -813,7 +822,9 @@
                     (emit-standalone-root-pop-body)
                     (if (= idx 9)
                       (emit-standalone-root-set-body)
-                      (emit-standalone-drop-i64-body))))))))))))
+                      (if (= idx 10)
+                        (emit-standalone-print-string-body)
+                        (emit-standalone-drop-i64-body)))))))))))))
 (defn append-standalone-runtime-bodies-step [body idx]
   (if (>= idx 11)
     (make-loop-step-state 1 idx body)
