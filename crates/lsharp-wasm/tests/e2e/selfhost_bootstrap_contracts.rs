@@ -153,6 +153,33 @@ fn test_e2e_selfhost_cli_source_compile_uses_full_program_builder() {
 }
 
 #[test]
+fn test_e2e_selfhost_pipeline_smoke_uses_full_program_builder() {
+    let source = std::fs::read_to_string(selfhost_source_path("PipelineSmoke.ls"))
+        .expect("PipelineSmoke.ls が読み込めない");
+
+    assert!(
+        source.contains("(import App.CompilerMode)"),
+        "PipelineSmoke の Wasm builder は App.CompilerMode 経由で import する必要がある"
+    );
+    assert!(
+        source.contains("compile-program-functions-with-source"),
+        "PipelineSmoke の full pipeline は全 function/data payload API を使う必要がある"
+    );
+    assert!(
+        source.contains("build-wasm-bytes-wasi"),
+        "PipelineSmoke の full pipeline は実 Wasm bytes builder を使う必要がある"
+    );
+    assert!(
+        !source.contains("(lower program-m)"),
+        "PipelineSmoke が先頭 IR だけを返す legacy lower 経路へ戻ってはいけない"
+    );
+    assert!(
+        !source.contains("(lower program)"),
+        "PipelineSmoke の source compile が先頭 IR だけを返す legacy lower 経路へ戻ってはいけない"
+    );
+}
+
+#[test]
 fn test_e2e_selfhost_smoke_cli_source_compile_uses_full_program_builder() {
     let source = std::fs::read_to_string(
         selfhost_project_root().join("selfhost/src/App/SmokeCli.ls"),

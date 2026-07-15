@@ -1,4 +1,5 @@
 (module App.PipelineSmoke)
+(import App.CompilerMode)
 (import Syntax.AST)
 (import Syntax.Lexer)
 (import Syntax.LexerCompat)
@@ -18,73 +19,101 @@
   (do
     (root_push src)
     (let [tokens (tokenize src)]
-    (do
-      (root_push tokens)
-      (let [program (parse-program src)]
-        (do
-          (root_push program)
-          (let [ir (lower program)]
-            (do
-              (root_push ir)
-              (let [wasm-size (emit-wasm ir)
-                result (vector-push
-                         (vector-push
-                           (vector-push
-                             (vector-push (vector-new 4) tokens)
-                             program)
-                           ir)
-                         wasm-size)]
-                (do
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  result))))))))))
+      (do
+        (root_push tokens)
+        (let [program (parse-program src)]
+          (do
+            (root_push program)
+            (let [compiled (compile-program-functions-with-source src program)]
+              (do
+                (root_push compiled)
+                (let [functions (vector-get compiled 1)
+                  data (vector-get compiled 2)]
+                  (do
+                    (root_push functions)
+                    (root_push data)
+                    (let [ir-list (collect-function-irs functions 0 (vector-length functions) (vector-new 8))]
+                      (do
+                        (root_push ir-list)
+                        (let [wasm-bytes (build-wasm-bytes-wasi functions data)]
+                          (do
+                            (root_push wasm-bytes)
+                            (let [ir (if (> (vector-length ir-list) 0) (vector-get ir-list 0) (vector-new 0))
+                              wasm-size (vector-length wasm-bytes)
+                              result (vector-push
+                                (vector-push
+                                  (vector-push
+                                    (vector-push (vector-new 4) tokens)
+                                    program)
+                                  ir)
+                                wasm-size)]
+                              (do
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                result))))))))))))))))
 (defn compile-if-test [] (vector-push (vector-push (vector-push (vector-new 4) 1) 6) 3))
 (defn compile-let-test [] (vector-push (vector-push (vector-push (vector-new 4) 1) 7) 2))
 (defn compile-full-pipeline [src]
   (do
     (root_push src)
     (let [tokens (tokenize src)]
-    (do
-      (root_push tokens)
-      (let [program (parse-program src)]
-        (do
-          (root_push program)
-          (let [program-m (expand-macros program)
-            n (vector-length program)]
-            (do
-              (root_push program-m)
-              (let [result
-                     (if (> n 0)
-                       (let [decl0 (vector-get program-m 0)
-                         body-node (vector-get decl0 3)
-                         expanded-tag (vector-get body-node 0)
-                         ty-result (infer program-m)
-                         ir (lower program-m)]
-                         (do
-                           (root_push ty-result)
-                           (root_push ir)
-                           (let [summary (vector-push
-                                           (vector-push
-                                             (vector-push
-                                               (vector-push
-                                                 (vector-push (vector-new 8) expanded-tag)
-                                                 (vector-get ty-result 0))
-                                               (vector-get ty-result 1))
-                                             (vector-length ir))
-                                           5)]
-                             (do
-                               (root_pop)
-                               (root_pop)
-                               summary))))
-                       (vector-push (vector-push (vector-push (vector-push (vector-push (vector-new 8) 0) 0) 0) 0) 5))]
-                (do
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  result))))))))))
+      (do
+        (root_push tokens)
+        (let [program (parse-program src)]
+          (do
+            (root_push program)
+            (let [program-m (expand-macros program)
+              n (vector-length program-m)]
+              (do
+                (root_push program-m)
+                (let [result
+                  (if (> n 0)
+                    (let [decl0 (vector-get program-m 0)
+                      body-node (vector-get decl0 3)
+                      expanded-tag (vector-get body-node 0)
+                      ty-result (infer program-m)
+                      compiled (compile-program-functions-with-source src program-m)]
+                      (do
+                        (root_push ty-result)
+                        (root_push compiled)
+                        (let [functions (vector-get compiled 1)
+                          data (vector-get compiled 2)]
+                          (do
+                            (root_push functions)
+                            (root_push data)
+                            (let [ir-list (collect-function-irs functions 0 (vector-length functions) (vector-new 8))]
+                              (do
+                                (root_push ir-list)
+                                (let [wasm-bytes (build-wasm-bytes-wasi functions data)]
+                                  (do
+                                    (root_push wasm-bytes)
+                                    (let [summary (vector-push
+                                        (vector-push
+                                          (vector-push
+                                            (vector-push
+                                              (vector-push (vector-new 8) expanded-tag)
+                                              (vector-get ty-result 0))
+                                            (vector-get ty-result 1))
+                                          (vector-length ir-list))
+                                        5)]
+                                      (do
+                                        (root_pop)
+                                        (root_pop)
+                                        (root_pop)
+                                        (root_pop)
+                                        (root_pop)
+                                        (root_pop)
+                                        summary))))))))))
+                    (vector-push (vector-push (vector-push (vector-push (vector-push (vector-new 8) 0) 0) 0) 0) 5))]
+                  (do
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    result))))))))))
 (defn compile-native-pipeline-with-native [ir target native]
   (do
     (root_push ir)
