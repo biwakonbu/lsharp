@@ -1732,6 +1732,44 @@ fn test_embedded_cli_component_compile_preview1_writes_runnable_wasm_without_dri
         "Preview1 command-line-args は WASI argv の個数を返すべき"
     );
 
+    let arg_source_path = temp_dir.join("argv-first.ls");
+    let arg_output_path = temp_dir.join("argv-first.wasm");
+    write_source_file(
+        &arg_source_path,
+        "(defn main [] (print-string (command-line-arg 0)))\n",
+    );
+    let arg_guest =
+        lsharp_wasm::wasi_runner::run_wasm_component_with_dir_args_and_stdin_capture(
+            &component,
+            Some(&temp_dir),
+            &[
+                "compile",
+                "argv-first.ls",
+                "--target",
+                "wasi-preview1",
+                "-o",
+                "argv-first.wasm",
+            ],
+            "",
+        )
+        .expect("embedded CLI argv string runtime execution failed");
+    assert_eq!(
+        arg_guest.exit_code, 0,
+        "Preview1 command-line-arg compile は成功するべき: stdout={}",
+        arg_guest.stdout
+    );
+    let arg_written = fs::read(&arg_output_path).expect("argv-first output read failed");
+    let arg_runtime_output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
+        &arg_written,
+        None,
+        &["alpha", "beta"],
+    )
+    .expect("argv-first Preview1 output should run");
+    assert_eq!(
+        arg_runtime_output, "alpha",
+        "Preview1 command-line-arg は argv[0] の文字列を返すべき"
+    );
+
     let _ = fs::remove_dir_all(&temp_dir);
 }
 

@@ -5201,7 +5201,7 @@
       (let [import-sec (emit-import-section-wasi-standalone)]
         (let [func-sec (emit-function-section-wasi-standalone functions)]
           (let [memory-sec (emit-memory-section)]
-            (let [export-sec (emit-export-section-main-memory-index (+ 13 func-count) 0)]
+            (let [export-sec (emit-export-section-main-memory-index (+ 15 func-count) 0)]
               (let [code-sec (emit-code-section-wasi-standalone functions)]
                 (let [data-sec (emit-data-section data 1024)]
                   (let [b0 (append-section-bytes (vector-new 64) header)
