@@ -10188,7 +10188,7 @@ fn test_native_codegen_x86_vector_new_helper_nop_fills_capacity_for_code_vectors
     );
     assert!(
         source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 569)")
-            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1501)"),
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1544)"),
         "x86 vector-new helper の拡張後は後続 runtime helper offset も +37 へ同期するべき"
     );
 }
