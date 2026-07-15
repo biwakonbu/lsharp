@@ -53,6 +53,8 @@
 (defn op-map-contains [] 65)
 (defn op-map-remove [] 66)
 (defn adt-constructor-tag-key [] -2)
+;; Map runtime の 0 は空スロット判定に使うため、ADT field key は 1 始まりにする。
+(defn adt-constructor-field-key [idx] (+ idx 1))
 (defn record-nominal-type-key [] -3)
 (defn op-command-line-arg [] 67)
 (defn op-runtime-hash-string [] 68)

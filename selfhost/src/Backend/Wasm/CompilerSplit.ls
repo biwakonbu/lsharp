@@ -153,10 +153,16 @@
 (defn make-match-bind-state [env next-local]
   (push-int-vector (push-object-vector (vector-new 2) env) next-local))
 
+(defn match-pattern-child-slot [pat idx]
+  (let [tag (vector-get pat 0)]
+    (if (or (= tag 11) (= tag (ast-pat-constructor)))
+      (+ 3 idx)
+      (+ 3 (* idx 2)))))
+
 (defn bind-match-pattern-children [pat idx count env next-local]
   (if (>= idx count)
     (make-match-bind-state env next-local)
-    (let [child (vector-get pat (+ 3 (* idx 2)))]
+    (let [child (vector-get pat (match-pattern-child-slot pat idx))]
       (do
         (root_push pat)
         (root_push child)
@@ -340,13 +346,13 @@
   (let [child (vector-get pat (+ 3 idx))
     map-op (+ scratch-base 1)
     i1 (emit-to instrs (op-local-get) value-local)
-    i2 (emit-to i1 (op-i64-const) idx)
+    i2 (emit-to i1 (op-i64-const) (adt-constructor-field-key idx))
     contains (emit-to i2 (op-map-contains) map-op)
     child-tag (vector-get child 0)]
     (if (or (= child-tag (ast-pat-wildcard)) (or (= child-tag (ast-pat-var)) (= child-tag 4)))
       contains
       (let [i3 (emit-to contains (op-local-get) value-local)
-        i4 (emit-to i3 (op-i64-const) idx)
+        i4 (emit-to i3 (op-i64-const) (adt-constructor-field-key idx))
         i5 (emit-to i4 (op-map-get) map-op)
         i6 (emit-to i5 (op-local-set) scratch-base)
         i7 (compile-match-pattern-check-with-scratch child scratch-base scratch-base pattern-temp-base ftable i6)]
@@ -401,7 +407,7 @@
     (let [child (vector-get pat (+ 3 idx))
       map-op (+ scratch-base 1)
       i1 (emit-to instrs (op-local-get) value-local)
-      i2 (emit-to i1 (op-i64-const) idx)
+      i2 (emit-to i1 (op-i64-const) (adt-constructor-field-key idx))
       i3 (emit-to i2 (op-map-get) map-op)
       i4 (emit-to i3 (op-local-set) scratch-base)
       i5 (compile-match-pattern-binders child scratch-base env scratch-base pattern-temp-base ftable i4)]

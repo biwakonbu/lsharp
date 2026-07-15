@@ -629,7 +629,7 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                      (print entrypoint-func-idx)
                      (print entrypoint-offset))))
                (if (= metadata-mode 1)
-                     (print-x86-function-segment-metadata-loop native-callables starts 10 user-total range-start range-end metadata-prefix-limit)
+                     (print-x86-function-segment-metadata-loop native-callables starts 10 user-total range-start range-end metadata-prefix-limit entrypoint-func-idx entrypoint-offset)
                      (do
                        (if (= include-header 1)
                          (do
@@ -2859,10 +2859,10 @@ fn test_linux_x86_representative_seed_can_print_function_segment_metadata() {
     lsharp_syntax::parse(&source)
         .expect("Linux x86 segmented seed source は metadata helper 追加後も parse できること");
     assert!(
-        source.contains("(defn print-x86-function-segment-metadata-loop [functions starts import-count import-stub-offset idx len prefix-limit]")
+        source.contains("(defn print-x86-function-segment-metadata-loop [functions starts import-count import-stub-offset idx len prefix-limit entrypoint-func-idx entrypoint-offset]")
             && source.contains("metadata-mode (if (> (string-length (command-line-arg 6)) 0) 1 0)")
             && source.contains(
-                "(print-x86-function-segment-metadata-loop native-callables starts 10 user-total range-start range-end metadata-prefix-limit)"
+                "(print-x86-function-segment-metadata-loop native-callables starts 10 user-total range-start range-end metadata-prefix-limit entrypoint-func-idx entrypoint-offset)"
             )
             && source.contains("(print (native-function-param-count func-meta))")
             && source.contains("(print (native-function-local-count func-meta))")
@@ -2872,12 +2872,12 @@ fn test_linux_x86_representative_seed_can_print_function_segment_metadata() {
             && source.contains("(print 9000000290)")
             && source.contains("(print 9000000291)")
             && source.contains("(print 9000000292)")
-            && source.contains("(defn print-x86-function-ir-prefix-loop [segment ir offsets functions control-ctx idx len depth]")
+            && source.contains("(defn print-x86-function-ir-prefix-loop [segment ir offsets functions control-ctx function-index entrypoint-func-idx entrypoint-offset idx len depth]")
             && source.contains("metadata-prefix-limit")
             && source.contains("command-line-arg 7")
             && source.contains("(print 9000000021)")
             && source.contains(
-                "(let [final (print-x86-function-segment-metadata-loop functions starts import-count import-stub-offset (+ idx 1) len prefix-limit)]"
+                "(let [final (print-x86-function-segment-metadata-loop functions starts import-count import-stub-offset (+ idx 1) len prefix-limit entrypoint-func-idx entrypoint-offset)]"
             ),
         "Linux x86 segmented seed は通常 transport を変えず、任意 range の function metadata を native stage1 実行から出せるべき"
     );
@@ -7683,6 +7683,22 @@ fn test_linux_x86_metadata_replays_control_if_reports_rel32_targets() {
 }
 
 #[test]
+fn test_linux_x86_metadata_replays_entrypoint_call_reports_identity() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+    assert!(
+        source.contains("(defn print-x86-entrypoint-call-control-replay-diagnostic")
+            && source.contains("(print 9000000051)")
+            && source.contains("function-index")
+            && source.contains("entrypoint-func-idx")
+            && source.contains("entrypoint-offset")
+            && source.contains(
+                "(print-x86-entrypoint-call-control-replay-diagnostic control-ctx function-index entrypoint-func-idx entrypoint-offset idx opcode operand offset size)"
+            ),
+        "Linux x86 metadata mode は stage2-generated entrypoint の opcode40 IR row と emitted bytes/rel32 target を function identity 付きで相関できるべき"
+    );
+}
+
+#[test]
 fn test_linux_x86_metadata_replays_map_new_direct_vs_fallback_paths() {
     let source = linux_x86_representative_actual_stage23_seed_source();
     assert!(
@@ -7736,7 +7752,7 @@ fn test_linux_x86_representative_seed_avoids_segment_context_for_transport_scala
     assert!(
         !source.contains("segment-ctx (make-x86-code-segment-context")
             && source.contains("(defn print-x86-function-code-segments-loop [functions starts import-count import-stub-offset idx len]")
-            && source.contains("(defn print-x86-function-segment-metadata-loop [functions starts import-count import-stub-offset idx len prefix-limit]"),
+            && source.contains("(defn print-x86-function-segment-metadata-loop [functions starts import-count import-stub-offset idx len prefix-limit entrypoint-func-idx entrypoint-offset]"),
         "Linux x86 segmented seed は stage2 native 実行で segment ctx の scalar field が 0 化するため、transport scalar を ctx 経由にせず直接 loop に渡すべき"
     );
 }
@@ -17190,6 +17206,23 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
 	          (root_pop))))
     0))
 
+(defn print-x86-entrypoint-call-control-replay-diagnostic [control-ctx function-index entrypoint-func-idx entrypoint-offset idx opcode operand offset size]
+  (if (= function-index entrypoint-func-idx)
+    (if (= opcode 40)
+      (do
+        (print 9000000051)
+        (print function-index)
+        (print entrypoint-func-idx)
+        (print entrypoint-offset)
+        (print idx)
+        (print opcode)
+        (print operand)
+        (print offset)
+        (print size)
+        (print-x86-call-control-replay-diagnostic control-ctx idx opcode operand offset size))
+      0)
+    0))
+
 (defn diagnose-x86-opcode40-call-bundle-return-boundary [operand current-offset function-starts context]
   (let [function-metas (vector-get context 0)
         import-count (vector-get context 1)
@@ -17516,7 +17549,7 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
           (root_pop)
             0)))))))
 
-(defn print-x86-function-ir-prefix-loop [segment ir offsets functions control-ctx idx len depth]
+(defn print-x86-function-ir-prefix-loop [segment ir offsets functions control-ctx function-index entrypoint-func-idx entrypoint-offset idx len depth]
   (if (>= idx len)
     0
     (let [instr (vector-get ir idx)
@@ -17545,6 +17578,7 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
         (print-x86-i64-ge-control-replay-diagnostic control-ctx idx opcode operand offset size)
         (print-x86-control-if-control-replay-diagnostic control-ctx idx opcode operand offset size)
         (print-x86-map-new-control-replay-diagnostic control-ctx idx opcode operand offset size)
+        (print-x86-entrypoint-call-control-replay-diagnostic control-ctx function-index entrypoint-func-idx entrypoint-offset idx opcode operand offset size)
         (print-x86-call-control-replay-diagnostic control-ctx idx opcode operand offset size)
         (print-x86-function-ir-prefix-loop
           segment
@@ -17552,11 +17586,14 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
           offsets
           functions
           control-ctx
+          function-index
+          entrypoint-func-idx
+          entrypoint-offset
           (+ idx 1)
           len
           (apply-stack-delta depth (opcode-stack-delta opcode operand functions)))))))
 
-(defn print-x86-function-segment-metadata-loop [functions starts import-count import-stub-offset idx len prefix-limit]
+(defn print-x86-function-segment-metadata-loop [functions starts import-count import-stub-offset idx len prefix-limit entrypoint-func-idx entrypoint-offset]
 	  (if (>= idx len)
 	    0
 	    (do
@@ -17648,7 +17685,7 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
                                           prefix-len (if (< (vector-length ir-func) prefix-limit) (vector-length ir-func) prefix-limit)]
                                       (do
                                         (root_push control-ctx)
-                                        (print-x86-function-ir-prefix-loop segment ir-func offsets functions control-ctx 0 prefix-len 0)
+                                        (print-x86-function-ir-prefix-loop segment ir-func offsets functions control-ctx idx entrypoint-func-idx entrypoint-offset 0 prefix-len 0)
                                         (root_pop)))
                                     (root_pop)))
                                 (root_pop)))
@@ -17658,7 +17695,7 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
                     (root_pop)
                     (root_pop)
                     (root_pop)
-                    (let [final (print-x86-function-segment-metadata-loop functions starts import-count import-stub-offset (+ idx 1) len prefix-limit)]
+                    (let [final (print-x86-function-segment-metadata-loop functions starts import-count import-stub-offset (+ idx 1) len prefix-limit entrypoint-func-idx entrypoint-offset)]
                       (do
                         (root_pop)
                         (root_pop)

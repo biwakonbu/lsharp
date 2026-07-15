@@ -2715,7 +2715,7 @@ fn test_e2e_selfhost_compiler_mode_adt_nested_constructor_pattern_runs() {
       (print-bytes-loop bytes (+ idx 1) count))))
 
 (defn main []
-  (let [source "(type (Maybe a) (Just a) Nothing) (defn unwrap [m] (match m [(Just (Just x)) x] [Nothing 0] [other 7])) (defn main [] (do (print (unwrap (Just (Just 41)))) (print (unwrap (Just Nothing))) 0))"
+  (let [source "(type (Maybe a) (Just a) Nothing) (type Tree (Leaf Int) (Node Tree Tree)) (defn unwrap [m] (match m [(Just (Just x)) x] [Nothing 0] [other 7])) (defn sum-tree [t] (match t [(Node (Leaf x) (Leaf y)) (+ x y)] [other 0])) (defn main [] (do (print (unwrap (Just (Just 41)))) (print (unwrap (Just Nothing))) (print (sum-tree (Node (Leaf 40) (Leaf 2)))) 0))"
         program (parse-program source)
         pair (compile-program-functions-with-source source program)
         functions (vector-get pair 1)
@@ -2748,7 +2748,7 @@ fn test_e2e_selfhost_compiler_mode_adt_nested_constructor_pattern_runs() {
         &[],
     )
     .expect("selfhost compiler-mode nested ADT pattern module should run");
-    assert_eq!(output, "41\n7\n");
+    assert_eq!(output, "41\n7\n42\n");
 }
 
 /// selfhost ftable compiler: ordinary ADT の constructor / pattern binder を actual Wasm で実行できること
@@ -2763,7 +2763,7 @@ fn test_e2e_selfhost_ftable_compiler_adt_constructor_pattern_runs() {
       (print-bytes-loop bytes (+ idx 1) count))))
 
 (defn main []
-  (let [source "(type (Maybe a) (Just a) Nothing) (defn unwrap [m] (match m [(Just (Just x)) x] [Nothing 0] [other 7])) (defn main [] (do (print (unwrap (Just (Just 41)))) (print (unwrap (Just Nothing))) 0))"
+  (let [source "(type (Maybe a) (Just a) Nothing) (type Tree (Leaf Int) (Node Tree Tree)) (defn unwrap [m] (match m [(Just (Just x)) x] [Nothing 0] [other 7])) (defn sum-tree [t] (match t [(Node (Leaf x) (Leaf y)) (+ x y)] [other 0])) (defn main [] (do (print (unwrap (Just (Just 41)))) (print (unwrap (Just Nothing))) (print (sum-tree (Node (Leaf 40) (Leaf 2)))) 0))"
         program (parse-program source)
         pair (compile-program-functions-with-base program 11)
         functions (vector-get pair 1)
@@ -2795,7 +2795,7 @@ fn test_e2e_selfhost_ftable_compiler_adt_constructor_pattern_runs() {
         &[],
     )
     .expect("selfhost ftable compiler ADT pattern module should run");
-    assert_eq!(output, "41\n7\n");
+    assert_eq!(output, "41\n7\n42\n");
 }
 
 /// selfhost compiler-mode: record constructor と static accessor を actual Wasm で実行できること

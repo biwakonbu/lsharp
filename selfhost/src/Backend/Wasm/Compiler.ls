@@ -3216,7 +3216,7 @@
                     env
                     instrs
                     constructor-local
-                    idx
+                    (adt-constructor-field-key idx)
                     value-instrs)]
             (do
               (root_set instrs-slot next-instrs)
