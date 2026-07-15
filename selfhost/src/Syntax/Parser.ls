@@ -12,7 +12,7 @@
 ;; [tag, ...data]
 ;; tag=1: int [1, value]
 ;; tag=2: bool [2, 0/1]
-;; tag=3: string [3, start, end]  (ソース位置参照)
+;; tag=3: string [3, start, end, map-key-hash]  (ソース位置参照)
 ;; tag=4: var [4, name-hash]  (名前ハッシュで識別)
 ;; tag=5: apply [5, func-node, arg-count, arg1, arg2, ...]
 ;; tag=6: if [6, cond, then, else]
@@ -108,6 +108,40 @@
 (defn current-symbol-hash-v3 [spans pos-ref src]
   (name-hash src (p-start spans pos-ref) (p-end spans pos-ref)))
 
+;; ftable 経路は AST だけを受け取るため、Map の文字列キー用 hash を
+;; パース時に保持する。source 経路と同じく、エスケープ後の文字列を hash する。
+(defn string-literal-map-hash-escaped-char [escaped]
+  (if (= escaped 110)
+    10
+    (if (= escaped 116)
+      9
+      (if (= escaped 114)
+        13
+        (if (= escaped 34)
+          34
+          (if (= escaped 92)
+            92
+            escaped))))))
+
+(defn string-literal-map-hash-loop [src pos end acc]
+  (if (>= pos end)
+    acc
+    (let [char (string-char-at src pos)]
+      (if (= char 92)
+        (if (< (+ pos 1) end)
+          (let [escaped (string-char-at src (+ pos 1))]
+            (string-literal-map-hash-loop
+              src
+              (+ pos 2)
+              end
+              (+ (string-literal-map-hash-escaped-char escaped) (* acc 31))))
+          (string-literal-map-hash-loop src (+ pos 1) end (+ char (* acc 31))))
+        (string-literal-map-hash-loop src (+ pos 1) end (+ char (* acc 31)))))))
+
+(defn string-literal-map-hash [src start end]
+  (let [hash (string-literal-map-hash-loop src start end 0)]
+    (if (= hash 0) 2 (if (= hash -1) 1 hash))))
+
 ;; === AST ノード構築ヘルパー ===
 
 ;; 整数リテラルノード: [1, value]
@@ -122,9 +156,9 @@
 (defn make-var-node [h]
   (vector-push-pair-rooted-v3 (vector-new 2) 4 h))
 
-;; 文字列ノード: [3, start, end]
-(defn make-string-node [start end]
-  (vector-push-triple-rooted-v3 (vector-new 3) 3 start end))
+;; 文字列ノード: [3, start, end, map-key-hash]
+(defn make-string-node [start end map-key-hash]
+  (vector-push-quad-rooted-v3 (vector-new 4) 3 start end map-key-hash))
 
 ;; 浮動小数点リテラルノード: [19, start, end]
 (defn make-float-node [start end]
@@ -1410,12 +1444,15 @@
       (p-advance pos-ref)
       (make-var-node h))))
 
-(defn parse-string-node-v3 [spans pos-ref]
+(defn parse-string-node-v3 [spans pos-ref src]
   (let [start (p-start spans pos-ref)
     end (p-end spans pos-ref)]
     (do
       (p-advance pos-ref)
-      (make-string-node (+ start 1) (- end 1)))))
+      (make-string-node
+        (+ start 1)
+        (- end 1)
+        (string-literal-map-hash src (+ start 1) (- end 1))))))
 
 ;; 式のパース (メインディスパッチ)
 (defn parse-expr-v3 [spans pos-ref src]
@@ -1436,7 +1473,7 @@
           (if (== kind 14) ;; false
             (do (p-advance pos-ref) (make-bool-node 0))
             (if (== kind 12) ;; String
-              (parse-string-node-v3 spans pos-ref) ;; 引用符を除く
+              (parse-string-node-v3 spans pos-ref src) ;; 引用符を除く
               (if (== kind 54) ;; '
                 (parse-quote-v3 spans pos-ref src)
                 (if (== kind 55) ;; ~

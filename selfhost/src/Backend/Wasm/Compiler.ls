@@ -558,7 +558,12 @@
         (+ used-max3 1)))))
 
 (defn compile-map-key-with-source [key-expr source env ftable data-ref] (if (= (vector-get key-expr 0) 3) (compile-string-key-hash-with-source key-expr source (vector-new 8)) (compile-expr-with-source key-expr source env ftable (vector-new 8) data-ref)))
-(defn compile-map-key-with-ftable [key-expr env ftable] (compile-expr-with-ftable key-expr env ftable (vector-new 8)))
+(defn compile-map-key-with-ftable [key-expr env ftable]
+  (if (= (vector-get key-expr 0) 3)
+    (if (> (vector-length key-expr) 3)
+      (emit-to (vector-new 8) 1 (vector-get key-expr 3))
+      (emit-to (vector-new 8) 1 0))
+    (compile-expr-with-ftable key-expr env ftable (vector-new 8))))
 
 (defn compile-ref-new-with-source [node source env ftable instrs data-ref]
   (let [node-slot (root_push node)
