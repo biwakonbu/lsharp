@@ -1770,6 +1770,47 @@ fn test_embedded_cli_component_compile_preview1_writes_runnable_wasm_without_dri
         "Preview1 command-line-arg は argv[0] の文字列を返すべき"
     );
 
+    let exists_fixture_path = temp_dir.join("exists.txt");
+    fs::write(&exists_fixture_path, "fixture")
+        .expect("file-exists fixture write failed");
+    let file_exists_source_path = temp_dir.join("file-exists.ls");
+    let file_exists_output_path = temp_dir.join("file-exists.wasm");
+    write_source_file(
+        &file_exists_source_path,
+        "(defn main [] (do (print (file-exists? \"exists.txt\")) (print (file-exists? \"missing.txt\"))))\n",
+    );
+    let file_exists_guest =
+        lsharp_wasm::wasi_runner::run_wasm_component_with_dir_args_and_stdin_capture(
+            &component,
+            Some(&temp_dir),
+            &[
+                "compile",
+                "file-exists.ls",
+                "--target",
+                "wasi-preview1",
+                "-o",
+                "file-exists.wasm",
+            ],
+            "",
+        )
+        .expect("embedded CLI file-exists runtime execution failed");
+    assert_eq!(
+        file_exists_guest.exit_code, 0,
+        "Preview1 file-exists? compile は成功するべき: stdout={}",
+        file_exists_guest.stdout
+    );
+    let file_exists_written =
+        fs::read(&file_exists_output_path).expect("file-exists output read failed");
+    let file_exists_runtime_output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir(
+        &file_exists_written,
+        Some(&temp_dir),
+    )
+    .expect("file-exists Preview1 output should run");
+    assert_eq!(
+        file_exists_runtime_output, "1\n0\n",
+        "Preview1 file-exists? は既存/不存在を判定するべき"
+    );
+
     let _ = fs::remove_dir_all(&temp_dir);
 }
 
