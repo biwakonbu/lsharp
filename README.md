@@ -6,7 +6,7 @@ L# は **Lisp の S 式構文**、**F# 系の型指向**、そして **L# 独自
 - 型は Hindley-Milner を土台に強く保つ
 - さらに trait、制約付き型、metadata、計算式などで「型に意味を持たせる」方向を探る
 
-> target-native stage0 package と `scripts/native-selfhost-dev.sh` は `cargo` / `rustc` / host `lsharp` を使わない source-file smoke を提供します。Mac Apple Silicon と、commit `4bd9ee9` の Linux x86_64 でこの狭い command slice を実証済みです。今回の GADT / record pattern selfhost checkpoint は Linux gate 後の変更なので、checkpoint commit 後に再 gate が必要です。未完了の型・宣言 parity、Rust host integration、stage0 の生成・配布・oracle は引き続き Rust 側に残ります。
+> target-native stage0 package と `scripts/native-selfhost-dev.sh` は `cargo` / `rustc` / host `lsharp` を使わない source-file smoke を提供します。Mac Apple Silicon と、commit `4bd9ee9` の Linux x86_64 でこの狭い command slice を実証済みです。GADT / record pattern を含む commit `7807089` では current-source の Linux x86_64 stage1 -> stage2 -> stage3 selfregen も pass しましたが、checkpoint 後の source-file smoke は別途再 gate が必要です。未完了の型・宣言 parity、Rust host integration、stage0 の生成・配布・oracle は引き続き Rust 側に残ります。
 
 ## Core Language
 
@@ -164,7 +164,7 @@ L# source (.ls)
 
 | 用途 | 現在の推奨経路 | 補足 |
 |------|----------------|------|
-| target-native selfhost 検証 | `STAGE0_VERSION=v<version> ./scripts/fetch-stage0.sh` → `./scripts/native-selfhost-dev.sh compile ... -o out.wasm` | Rust を block した source-file smoke 用。Mac Apple Silicon と commit `4bd9ee9` の Linux x86_64 で実証済み。今回の checkpoint 後の Linux gate と広い source parity は未完 |
+| target-native selfhost 検証 | `STAGE0_VERSION=v<version> ./scripts/fetch-stage0.sh` → `./scripts/native-selfhost-dev.sh compile ... -o out.wasm` | Rust を block した source-file smoke 用。Mac Apple Silicon と commit `4bd9ee9` の Linux x86_64 で実証済み。commit `7807089` の Linux current-source selfregen は pass 済みだが、checkpoint 後の source-file gate と広い source parity は未完 |
 | 現在の通常開発 / Rust host integration | `cargo build -p lsharp-driver` → `target/debug/lsharp compile ... -o out.component.wasm` | 未完の GADT / ADT / record parity、`mcp-server`、bare LSP、`--emit-ir`、web/native target、oracle/rollback |
 | browser 向け core wasm | `target/debug/lsharp compile --target web-wasm ... -o out.wasm` | `web-wasm` は browser 向け core `.wasm`。現時点では host launcher の Rust fallback 経路が担う |
 | metadata test | `target/debug/lsharp test examples/metadata.ls` | `:example` / `:invariant` を自動検証 |

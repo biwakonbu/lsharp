@@ -34,7 +34,7 @@ ordinary ADT は parser が variant 名と raw field TypeExpr を保持し、`Ty
 
 - `lsharp-native-selfhost-stage0` package は `compiler`、`transport_driver`、`materializer` を持つ manifest で native bootstrap を開始する。release 用の `App.Cli` archive は stage0 package ではない。
 - Mac Apple Silicon では、current fixed-point stage3 compiler を stage0 package 化し、`scripts/native-selfhost-dev.sh` を通す source-file smoke が成功している。smoke は `cargo`、`rustc`、host `lsharp` を PATH 上で失敗させた状態で `parse`、`check`、`fmt`、通常と metadata の `test`、`compile -o`、`build -o` を実行する。
-- Linux x86_64 は、最後に検証した commit `4bd9ee9` から生成した fresh actual-stage1 を stage0 package 化し、Lima `lsharp-linux-x86` VM 内で `native-linux-x86-native-stage0-source-file-smoke.sh` を成功させた。2,779 functions の transport/materialize を通過し、`cargo`、`rustc`、host `lsharp` を blocklist に入れた状態で `parse`、`check`、`fmt`、通常と metadata の `test`、`compile -o`、`build -o` を完走した。今回の GADT / record pattern selfhost 変更はこの gate の後に加わったため、checkpoint commit 後に同じ Linux gate を再実行する必要がある。2026-07-14 の historical `8dd37ef-static-string-fixedpoint` replay における `parse stdout is missing decls:1` は、fresh stage0 で解消された過去の failure evidence として残す。
+- Linux x86_64 は、commit `4bd9ee9` から生成した fresh actual-stage1 を stage0 package 化し、Lima `lsharp-linux-x86` VM 内で `native-linux-x86-native-stage0-source-file-smoke.sh` を成功させた。2,779 functions の transport/materialize を通過し、`cargo`、`rustc`、host `lsharp` を blocklist に入れた状態で `parse`、`check`、`fmt`、通常と metadata の `test`、`compile -o`、`build -o` を完走した。続く commit `7807089` では current-source actual stage1 -> stage2 -> stage3 selfregen を pass したが、source-file smoke はまだ別途再実行が必要である。2026-07-14 の historical `8dd37ef-static-string-fixedpoint` replay における `parse stdout is missing decls:1` は、fresh stage0 で解消された過去の failure evidence として残す。
 - native bootstrap の初回だけは source tree を再生成する。fingerprint が不変なら `scripts/native-selfhost-dev.sh` は生成済み `program.native` を再利用する。
 - `LSHARP_NATIVE_MACOS_AARCH64_CODESIGN_IDENTITY` は macOS host policy 上、生成済み Mach-O の実行に署名が必要な環境でだけ指定する。成功時の codesign 出力は command stderr に漏らさず、失敗時だけ診断として返す。
 - GitHub Actions の自動 build は使わない。検証と release は Mac と Lima VM の手動 local gate で行う。
@@ -67,7 +67,7 @@ LSHARP_NATIVE_LINUX_X86_STAGE0_DIR=/path/to/linux-stage0 \
 | --- | --- | --- | --- |
 | `parse` / `check` / `fmt` / `test` | native `program.native` が直接実行する core CLI | 検証済み core slice では不要 | Bash、Python 3、hash tool。stage materialize は Mac で `clang`、Linux で `cc` を使う。Mac は必要な host でのみ codesign identity を指定する。型・宣言の未実装 P0 は Rust oracle が必要。 |
 | embedded driver の guest-success compile/build | guest の artifact summary / output をそのまま返す | 不要 | guest exit code 0 では Rust `compile_file` を呼ばず、失敗時だけ host artifact fallback。runtime disable 下の `test` は delegation hint。 |
-| `compile -o` / `build -o` (WASI Preview1) | native CLI が actual core Wasm bytes を出力する | 通常開発では不要 | 上と同じ。Mac は検証済み、Linux は current stage0 gate 待ち。 |
+| `compile -o` / `build -o` (WASI Preview1) | native CLI が actual core Wasm bytes を出力する | 通常開発では不要 | 上と同じ。Mac は検証済み。Linux の source-file smoke は `4bd9ee9` が最後の確認で、`7807089` は current-source stage1 -> stage3 selfregen を別途 pass した。 |
 | component `compile` / `build` | native core Wasm を component 化する | 不要 | Python helper と外部 `wasm-tools` が必要。これは Rust host fallback ではない。 |
 | `install` | package install / module index helper | 不要 | Python 3。git dependency は `git` が必要。 |
 | `repl` | expression ごとの native compile + run | 不要 | Python helper と外部 `wasmtime`。stateful evaluator ではない。 |
@@ -93,7 +93,7 @@ Rust が完全に不要になったわけではない。次の作業は native b
 2. native selfhost と Rust implementation の oracle/differential 比較、障害解析、emergency rollback。
 3. `mcp-server`、bare LSP、`--emit-ir`、native target など、上表で明示した Rust host integration surface。
 
-したがって、Linux gate 完了後に「検証済み core CLI の日常ループは Rust なしで開発可能」と言える。一方で、自己ホストの型・宣言意味論 P0 が未完了の間は「base language development 全体」や「L# の全機能」が Rust なしとは言えない。closed / parametric alias の signature・式内 annotation、forward closed alias の signature、recursive alias の E0006 rejection、scoped polymorphic `defn` signature、ordinary ADT の parser / 型検査と direct runtime slice、parametric record の constructor/literal/field access/update/runtime、`Type.field` accessor の型検査、immutable record update の nested runtime slice、record pattern の source / ftable direct runtime slice はその境界を少し狭めた。ordinary ADT runtime の残り、record runtime の full public closure、legacy `lower` / embedded compiler surface、上表の Rust-only surface、external tool dependency、record pattern の残り、GADT exhaustiveness / full runtime parity などの未実装 P0 は残る。
+したがって、source-file smoke と current selfregen の両方が確認できた範囲では「検証済み core CLI の日常ループは Rust なしで開発可能」と言える。一方で、今回の `7807089` selfregen pass だけでは source-file command coverage を更新したことにはならない。自己ホストの型・宣言意味論 P0 が未完了の間は「base language development 全体」や「L# の全機能」が Rust なしとは言えない。closed / parametric alias の signature・式内 annotation、forward closed alias の signature、recursive alias の E0006 rejection、scoped polymorphic `defn` signature、ordinary ADT の parser / 型検査と direct runtime slice、parametric record の constructor/literal/field access/update/runtime、`Type.field` accessor の型検査、immutable record update の nested runtime slice、record pattern の source / ftable direct runtime slice はその境界を少し狭めた。ordinary ADT runtime の残り、record runtime の full public closure、legacy `lower` / embedded compiler surface、上表の Rust-only surface、external tool dependency、record pattern の残り、GADT exhaustiveness / full runtime parity などの未実装 P0 は残る。
 
 ### 残る Base Language Gap
 
@@ -108,6 +108,6 @@ Rust を base implementation から外すため、legacy `lower` / embedded comp
 - `test_e2e_native_macos_aarch64_materializer_executes_tiny_stage_code` は macOS materializer の再署名成功時に stderr が空であることを固定する。
 - `test_guest_compile_success_does_not_request_host_fallback` と `test_test_command_is_selfhost_shadow_command` は driver の guest-success / Rust fallback boundary を固定する。
 - Mac Apple Silicon の actual stage0 source-file smoke は 2026-07-13 に成功した。
-- Linux x86_64 の last verified source-file gate は 2026-07-15、commit `4bd9ee9` で成功した。今回の GADT / record pattern checkpoint を反映した stage0 package は未再生成のため、commit 後の Linux gate を残タスクとする。historical stage0 replay の `parse stdout is missing decls:1` は再発しなかった。
+- Linux x86_64 の last verified source-file gate は 2026-07-15、commit `4bd9ee9` で成功した。続く commit `7807089` では current-source actual stage1 -> stage2 -> stage3 selfregen を別 gateで再検証し、`3,097` functions、stage2/stage3 code length `10,227,172`、stdout SHA-256 `a1f2ee14f1a13763945dd1bfcd6cd2c678c59944a25e9dcb69b90076b93c1`、両 stderr 0、summary `pass` を確認した。current checkpoint 後の source-file smoke はまだ別途再実行が必要である。historical stage0 replay の `parse stdout is missing decls:1` は再発しなかった。
 - selfhost Wasm の `print-string` は 11-import layout と `call 10` の emitter contract まで検証済みだが、標準 WASI Preview1 host だけで実行できる standalone ABI までは検証していない。
 - Linux 成功後の両 target の evidence を再確認し、V2-16d は完了とする。V2-16e は、stage0 の public acquisition、Rust oracle/differential、emergency rollback、未完の言語意味論を残すため継続する。stage0 の public acquisition は別の release/distribution task として追跡する。
