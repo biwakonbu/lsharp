@@ -30,6 +30,7 @@ mod selfhost_parser_forms;
 mod selfhost_parser_metadata_forms;
 mod selfhost_rooting_parity;
 mod selfhost_stage0_scripts;
+mod selfhost_standalone_io;
 mod selfhost_type_parser_parity;
 mod selfhost_typeinfer_basic_errors;
 mod selfhost_typeinfer_builtin_parity;
