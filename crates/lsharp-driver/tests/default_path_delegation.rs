@@ -1756,6 +1756,72 @@ fn test_embedded_cli_component_compile_preview1_writes_runnable_wasm_without_dri
         "Preview1 write-file-bytes は Vector の下位8 bitを preopened dir に書くべき"
     );
 
+    let root_scratch_target_path = temp_dir.join("root-scratch-layout.raw");
+    let root_scratch_source_path = temp_dir.join("root-scratch-layout.ls");
+    let root_scratch_output_path = temp_dir.join("root-scratch-layout.wasm");
+    write_source_file(
+        &root_scratch_source_path,
+        r#"(defn drain-root-values [n]
+  (if (<= n 0)
+    0
+    (if (= n 29)
+      (print (root_pop))
+      (do (root_pop) (drain-root-values (- n 1))))))
+(defn retain-roots-and-write [n]
+  (if (<= n 0)
+    (do
+      (let [bytes (vector-push
+                    (vector-push
+                      (vector-push
+                        (vector-push (vector-new 4) 0)
+                        97)
+                      115)
+                    109)]
+        (write-file-bytes "root-scratch-layout.raw" bytes))
+      (drain-root-values 120))
+    (do (root_push 42) (retain-roots-and-write (- n 1)))))
+(defn main [] (retain-roots-and-write 120))
+"#,
+    );
+    let root_scratch_guest =
+        lsharp_wasm::wasi_runner::run_wasm_component_with_dir_args_and_stdin_capture(
+            &component,
+            Some(&temp_dir),
+            &[
+                "compile",
+                "root-scratch-layout.ls",
+                "--target",
+                "wasi-preview1",
+                "-o",
+                "root-scratch-layout.wasm",
+            ],
+            "",
+        )
+        .expect("embedded CLI root/scratch layout runtime execution failed");
+    assert_eq!(
+        root_scratch_guest.exit_code,
+        0,
+        "Preview1 root/scratch layout compile は成功するべき: stdout={}",
+        root_scratch_guest.stdout
+    );
+    let root_scratch_written =
+        fs::read(&root_scratch_output_path).expect("root/scratch layout output read failed");
+    let root_scratch_runtime_output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir(
+        &root_scratch_written,
+        Some(&temp_dir),
+    )
+    .expect("root/scratch layout Preview1 output should run");
+    assert_eq!(
+        root_scratch_runtime_output,
+        "42\n",
+        "Preview1 write-file-bytes は root stack 後方の scratch を使うべき",
+    );
+    assert_eq!(
+        fs::read(&root_scratch_target_path).expect("root/scratch target read failed"),
+        b"\0asm",
+        "Preview1 root/scratch write-file-bytes は raw bytes を書くべき",
+    );
+
     let large_source_path = temp_dir.join("large.ls");
     let large_output_path = temp_dir.join("large.wasm");
     let large_literal = "x".repeat(1100);
