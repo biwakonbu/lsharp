@@ -18,6 +18,12 @@ Mac Apple Silicon (`aarch64-apple-darwin`) と Linux x86_64 (`x86_64-unknown-lin
 
 `TypeInferFunctions.ls` は `defn` の parameter / return annotation に現れる scoped 名ごとに共有 fresh 型変数を割り当て、通常の型環境で関数を一般化する。これにより `id` を Int と Bool の別 call site で使え、`choose-first [(: x a) (: y b)] : a x` では `a` と `b` を独立に具体化できる。GADT refinement と exhaustiveness は別タスクである。Evidence: `test_e2e_selfhost_scoped_type_var_defn_signature_is_polymorphic`、`test_e2e_selfhost_scoped_multiple_type_vars_defn_signature_is_polymorphic`、`TypeInfer.ls` check。
 
+### `App.Cli` Preview1 output boundary 更新 (2026-07-17)
+
+`App.Cli` の `compile` / `build` Preview1 経路を、旧 `env` import の `build-wasm-bytes-wasi` から、`EmbeddedCli` と同じ guarded `build-wasm-bytes-wasi-standalone` へ切り替えた。file/source compile は standalone 用 function/data base `12` を使い、入力長、data layout、unsupported opcode、空 artifact を compile error として扱う。component target は従来どおり外部 packaging boundary として拒否し、size-only の `compile` / `build` も standalone artifact の実バイト長を使う。Evidence: `test_e2e_selfhost_cli_source_compile_uses_full_program_builder`、`test_e2e_selfhost_standalone_read_file_returns_empty_on_path_open_errno`、`cargo run --bin lsharp -- check selfhost/src/App/Cli.ls`。
+
+この変更は source contract と standalone runtime slice までの証拠であり、Linux x86_64 の current-source stage0 再生成、`App.Cli` の actual `compile -o` / `build -o` artifact 実行、長大入力・未対応言語機能の negative gate はまだ完了扱いにしない。したがって `LEGACY-IO-01` と `LEGACY-BOOT-01` の Rust oracle / bootstrap 境界は維持する。
+
 ### 型・宣言意味論の更新 (2026-07-14)
 
 直前の概要にある record 宣言未実装という記述は更新済みである。自己ホスト parser は field 名、`Type.field` accessor 名、raw TypeExpr を保持し、推論 prepass は record schema、constructor、accessor scheme を値環境へ登録して既知 record literal の field 型不一致を診断する。parametric record は `TypeInferRecordDecl.ls` が parameter ごとの bound variable を持つ structural record scheme を登録し、constructor、literal、accessor の使用ごとに scheme を instantiate する。Int field を持つ `Box` と Bool field を持つ `Box` の別使用箇所は独立であり、同じ `Pair a` literal 内の field は同じ具体化を共有する。`(. record field)` は let 束縛後も具体化済み schema の field 型を返し、field 型不一致と未定義 field を診断する。`{record | field value}` update も同じ schema 型へ単一化し、型不一致と未定義 field を診断する。`Type.field` は structural record 型との単一化を経て field 型を返し、不一致を診断する。record pattern はこの型推論 slice に含まない。static accessor の実行時 lowering は下記で実証済みである。

@@ -135,20 +135,27 @@ fn test_e2e_selfhost_cli_source_compile_uses_full_program_builder() {
         "App/Cli に source 全体を Wasm bytes へ変換する helper が必要"
     );
     assert!(
-        source.contains("compile-program-functions-with-source"),
-        "App/Cli source compile helper は全 function/data payload API を使う必要がある"
+        source.contains("compile-program-functions-with-source-base src program 12"),
+        "App/Cli Preview1 source compile helper は standalone 用 base 12 を使う必要がある"
     );
     assert!(
-        source.contains("build-wasm-bytes-wasi"),
-        "App/Cli source compile helper は実 Wasm bytes builder を使う必要がある"
+        source.contains("build-wasm-bytes-wasi-standalone"),
+        "App/Cli Preview1 source compile helper は standalone Wasm bytes builder を使う必要がある"
     );
     assert!(
-        source.contains("(defn run-compile-source [src opts] (let [wasm-bytes (compile-source-wasm-bytes src)"),
-        "App/Cli run-compile-source は full-program helper を呼び出す必要がある"
+        source.contains("standalone-preview1-first-unsupported-opcode")
+            && source.contains("standalone-preview1-data-layout-safe?")
+            && source.contains("standalone-preview1-input-layout-safe?"),
+        "App/Cli Preview1 output は standalone capability guard を通る必要がある"
     );
     assert!(
-        !source.contains("(defn run-compile-source [src opts] (let [program (parse-program src) ir (lower program)"),
-        "App/Cli run-compile-source が先頭 IR だけを返す legacy lower 経路へ戻ってはいけない"
+        source.contains("component-output-boundary-message")
+            && source.contains("unsupported standalone Preview1 runtime capability"),
+        "App/Cli は component と standalone 未対応機能を明示的な境界として返す必要がある"
+    );
+    assert!(
+        !source.contains("(build-wasm-bytes-wasi functions data)"),
+        "App/Cli Preview1 output が旧 env ABI builder へ戻ってはいけない"
     );
 }
 

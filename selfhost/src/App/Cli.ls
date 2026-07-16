@@ -17,7 +17,7 @@
 (import Types.TypeInfer)
 (import Types.TypeInferCore)
 (import Types.TypeScheme)
-(import Backend.Wasm.WasmEmit)
+(import Backend.Wasm.CompilerBase)
 (defn push-int-vector-local [dst value] (do (root_push dst) (let [next-dst (vector-push dst value)] (do (root_pop) next-dst))))
 (defn push-object-vector-local [dst value] (do (root_push dst) (root_push value) (let [next-dst (vector-push dst value)] (do (root_pop) (root_pop) next-dst))))
 (defn exit-success [] 0)
@@ -72,26 +72,32 @@
 (defn run-check-source [src opts] (let [program (parse-program src) analysis (infer-program-analysis program) ty (infer-program-analysis-type analysis) rendered (render-type-text ty) diagnostics-count (infer-program-analysis-diagnostic-count analysis) first-error-code (infer-program-analysis-first-error-code analysis) diagnostics-text (diagnostics-summary-text diagnostics-count "T0001" (if (= first-error-code 0) "" (check-diagnostic-body-from-code first-error-code)))] (do (print-string rendered) (print-string "\n") (print-string diagnostics-text) (print-string "\n") (exit-success))))
 (defn run-fmt-source [src opts] (let [program (parse-program src) formatted (format-program-with-source program src)] (do (print-string formatted) (exit-success))))
 (defn wasm-size-text [size] (string-concat "wasm-size:" (int-to-string size)))
-(defn compile-file-functions-data-with-cache [file-path cache-ref parse-count-ref] (compile-file-functions-payload-with-cache file-path 11 cache-ref parse-count-ref))
+(defn compile-file-functions-data-with-cache [file-path cache-ref parse-count-ref] (compile-file-functions-payload-with-cache file-path 12 cache-ref parse-count-ref))
 (defn compile-file-functions-data [file-path] (let [cache-ref (ref-new (map-new)) parse-count-ref (ref-new 0)] (compile-file-functions-data-with-cache file-path cache-ref parse-count-ref)))
-(defn compile-file-wasm-bytes [file-path] (let [pair (compile-file-functions-data file-path) functions (vector-get pair 0) data (vector-get pair 1)] (build-wasm-bytes-wasi functions data)))
-(defn target-wasm-size-adjustment [target] (if (= target (compile-target-preview1)) (- (vector-length (emit-import-section-for-target (compile-target-preview1))) (vector-length (emit-import-section-for-target (compile-target-component)))) 0))
-(defn compile-file-wasm-size [file-path target] (let [wasm-bytes (compile-file-wasm-bytes file-path)] (+ (vector-length wasm-bytes) (target-wasm-size-adjustment target))))
-(defn compile-source-wasm-bytes [src] (let [program (parse-program src) pair (compile-program-functions-with-source src program) functions (vector-get pair 1) data (vector-get pair 2)] (build-wasm-bytes-wasi functions data)))
-(defn run-compile-source [src opts] (let [wasm-bytes (compile-source-wasm-bytes src) wasm-size (vector-length wasm-bytes)] (do (print-string (wasm-size-text wasm-size)) (print-string "
-") (exit-success))))
+(defn standalone-preview1-capability-boundary-message [] "unsupported standalone Preview1 runtime capability")
+(defn standalone-preview1-input-layout-safe? [src] (< (string-length src) 1024))
+(defn standalone-preview1-data-layout-safe? [data] (< (vector-length data) (standalone-data-layout-limit)))
+(defn compile-file-wasm-bytes [file-path] (let [pair (compile-file-functions-data file-path) functions (vector-get pair 0) data (vector-get pair 1) unsupported-opcode (standalone-preview1-first-unsupported-opcode functions)] (if (>= unsupported-opcode 0) (vector-new 0) (if (standalone-preview1-data-layout-safe? data) (build-wasm-bytes-wasi-standalone functions data) (vector-new 0)))))
+(defn compile-file-wasm-size [file-path target] (vector-length (compile-file-wasm-bytes file-path)))
+(defn compile-source-wasm-bytes [src] (let [program (parse-program src) pair (compile-program-functions-with-source-base src program 12) functions (vector-get pair 1) data (vector-get pair 2) unsupported-opcode (standalone-preview1-first-unsupported-opcode functions)] (if (>= unsupported-opcode 0) (vector-new 0) (if (standalone-preview1-data-layout-safe? data) (build-wasm-bytes-wasi-standalone functions data) (vector-new 0)))))
+(defn run-compile-source [src opts] (if (standalone-preview1-input-layout-safe? src) (let [wasm-bytes (compile-source-wasm-bytes src) wasm-size (vector-length wasm-bytes)] (if (= wasm-size 0) (do (cli-stderr (standalone-preview1-capability-boundary-message)) (exit-compile-error)) (do (print-string (wasm-size-text wasm-size)) (print-string "\n") (exit-success)))) (do (cli-stderr (standalone-preview1-capability-boundary-message)) (exit-compile-error))))
 (defn component-output-boundary-message [] "wasi-component output requires external component packaging")
 (defn run-compile-output [file-path output-path opts]
   (if (file-exists? file-path)
     (if (= opts (compile-target-preview1))
-      (let [wasm-bytes (compile-file-wasm-bytes file-path)
-        summary (wasm-size-text (vector-length wasm-bytes))]
-        (do
-          (write-file-bytes output-path wasm-bytes)
-          (print-string summary)
-          (print-string "
-")
-          (exit-success)))
+      (let [src (read-file file-path)]
+        (if (standalone-preview1-input-layout-safe? src)
+          (let [wasm-bytes (compile-file-wasm-bytes file-path)
+            wasm-size (vector-length wasm-bytes)
+            summary (wasm-size-text wasm-size)]
+            (if (= wasm-size 0)
+              (do (cli-stderr (standalone-preview1-capability-boundary-message)) (exit-compile-error))
+              (do
+                (write-file-bytes output-path wasm-bytes)
+                (print-string summary)
+                (print-string "\n")
+                (exit-success))))
+          (do (cli-stderr (standalone-preview1-capability-boundary-message)) (exit-compile-error))))
       (do (cli-stderr (component-output-boundary-message)) (exit-compile-error)))
     (exit-compile-error)))
 (defn run-build-output [file-path output-path opts] (run-compile-output file-path output-path opts))
@@ -118,8 +124,8 @@
 ") (exit-success))))))
 (defn run-parse [file-path opts] (if (file-exists? file-path) (run-parse-source (read-file file-path) opts) (exit-compile-error)))
 (defn run-check [file-path opts] (if (file-exists? file-path) (run-check-source (read-file file-path) opts) (exit-compile-error)))
-(defn run-compile [file-path opts] (if (file-exists? file-path) (let [wasm-size (compile-file-wasm-size file-path opts)] (do (print-string (wasm-size-text wasm-size)) (print-string "
-") (exit-success))) (exit-compile-error)))
+(defn run-compile [file-path opts] (if (file-exists? file-path) (if (= opts (compile-target-preview1)) (let [wasm-size (compile-file-wasm-size file-path opts)] (if (= wasm-size 0) (do (cli-stderr (standalone-preview1-capability-boundary-message)) (exit-compile-error)) (do (print-string (wasm-size-text wasm-size)) (print-string "
+") (exit-success)))) (do (cli-stderr (component-output-boundary-message)) (exit-compile-error))) (exit-compile-error)))
 (defn run-build [file-path opts] (if (file-exists? file-path) (run-compile file-path opts) (exit-compile-error)))
 (defn run-test [file-path opts] (if (file-exists? file-path) (run-test-source (read-file file-path) opts) (exit-compile-error)))
 (defn run-review [file-path opts] (if (file-exists? file-path) (run-review-source (read-file file-path) opts) (exit-compile-error)))
