@@ -103,6 +103,17 @@ L# の最終目標は、Rust 実装を正本として残したまま一部のコ
 - `TODO.md` と `docs/development/operations/rust-boundary-reduction.md` は current truth として更新する。`[x]` はこの完了基準を満たした項目だけにし、partial parity、既知の Rust-only surface、未検証の ABI は `[~]` と残リスクに記録する。
 - stage0 の生成・配布・source commit provenance・rollback は運用上の bootstrap boundary であり、通常開発から Rust を外せても、公開 release の再現性と緊急復旧を検証するまで削除しない。
 
+### 今後の標準進行（L# dogfooding）
+
+- 通常の開発・テスト・Wasm 出力は、検証済み native stage0 と `scripts/native-selfhost-dev.sh` を入口に L# 自身で進める。成功経路に `cargo`、`rustc`、host `lsharp`、暗黙の Rust fallback を入れない。
+- Rust は削除対象ではなく、stage0 の取得・再生成・provenance、Rust oracle/differential、障害解析、emergency rollback、未移行 host integration のための明示的な境界として残す。未対応機能を Rust fallback で成功したように見せない。
+- 対応 target は Mac Apple Silicon (`aarch64-apple-darwin`) と Linux x86_64 (`x86_64-unknown-linux-gnu`) に限定する。別 target の対応を進捗や完了条件へ混ぜない。
+- 次の作業は正本 TODO から一つの未対応機能を選び、失敗値・failure boundary・target・再現 command を固定する RED を先に追加する。GREEN 後に native stage0、Rust oracle、runtime/artifact、両対応 target の必要な証跡を揃える。
+- 未対応機能は明示診断または明示 external boundary で止める。partial parity、Rust-only、bootstrap/oracle、verified slice を区別して TODO/docs に記録し、verified slice だけを `[x]` にする。
+- Linux VM や stage regeneration の待機中は、同じ heavy replay を重複起動せず、artifact reuse と VM-side lock を使う。共有しない parser/type/runtime、診断、fixture、contract test、docs を並行して進める。
+- 変更は task-relevant files に限定し、focused gate と docs audit の後に `main` へ commit/push する。push 後に `HEAD`、`origin/main`、worktree、TODO の残件を再監査し、未完なら次の具体的な RED と blocker を残す。
+- 「Rust なしで日常開発可能」と「L# 全機能・全公開 surface が Rust-free 完了」は別の判定とする。後者は parser から公開 command、runtime、配布 provenance までの要件別 evidence が揃うまで宣言しない。
+
 ### 実装の進行規則
 
 1. **開始時の事実確認**: 作業対象の `AGENTS.md`、`git status`、現在 branch/upstream、`TODO.md` の正本、直近の artifact/VM 状態を先に確認する。過去の完了報告や stale artifact は current evidence として再利用しない。
