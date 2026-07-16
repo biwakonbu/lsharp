@@ -111,6 +111,8 @@ Rust を base implementation から外すため、legacy `lower` / embedded comp
 
 2026-07-16 追加進捗: standalone raw vector `write-file-bytes` の partial `fd_write` を RED→GREEN で閉じた。5 byte payload に対して最初の write を 2 bytes に制限する WASI shim で single-call 実装の `[0, 97]` truncation を再現し、修正後は `nwritten` を検査し、offset / remaining / total を更新して再試行する loop を生成する。errno、0 bytes、要求長超過は signed `-1` とし、selfhost compiler 生成 artifact（3586 bytes）は `wasm-tools validate` と partial shim 下の exact E2E（`fd_write` 2 回、raw payload 全量）を pass した。path-open / `fd_close` error、read の partial/error、root capacity / `memory.grow`、dynamic data/heap layout、component sidecar、Linux `App.Cli` native source-file output、bootstrap/oracle/host boundary は未完了である。Evidence: `test_e2e_selfhost_standalone_write_file_bytes_retries_partial_fd_write`、`test_wasi_fd_write_shim_is_used_for_standalone_import`、`selfhost/src/Backend/Wasm/WasmEmit.ls`。
 
+2026-07-16 追加進捗: standalone bounded `read-file` の partial `fd_read` を RED→GREEN で閉じた。2 bytes、残り 5 bytes、EOF の shim で旧 single-read body の `pa` truncation を再現し、修正後は buffer offset / remaining を更新する loop、0-byte 終了、errno 時の close 境界を生成する。selfhost compiler 生成 artifact（2531 bytes）は `wasm-tools validate` と partial shim 下の exact E2E（`fd_read` 3 回、`payload` 全量）を pass した。1024 bytes 超の read、partial read 後の errno 全体意味論、`fd_close` error、root capacity / `memory.grow`、dynamic data/heap layout、component sidecar、Linux `App.Cli` native source-file output、bootstrap/oracle/host boundary は未完了である。Evidence: `test_e2e_selfhost_standalone_read_file_retries_partial_fd_read`、`selfhost/src/Backend/Wasm/WasmEmit.ls`。
+
 ## 検証と残タスク
 
 - `bash scripts/ci/test-native-selfhost-dev.sh` は runner の source refresh、native direct command routing、external helper routing、Rust-only command の明示拒否を検証する。

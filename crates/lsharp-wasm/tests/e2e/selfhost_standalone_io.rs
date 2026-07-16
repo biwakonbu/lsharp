@@ -13,6 +13,13 @@ struct PartialFdWriteCapture {
     last_iov_len: i32,
 }
 
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+struct PartialFdReadCapture {
+    stdout: Vec<u8>,
+    read_payload: Vec<u8>,
+    fd_read_calls: usize,
+}
+
 fn fixture_dir(name: &str) -> PathBuf {
     std::env::temp_dir().join(format!(
         "lsharp_selfhost_standalone_io_{}_{}",
@@ -126,6 +133,108 @@ fn run_with_partial_fd_write(wasm: &[u8], dir: &Path) -> Result<PartialFdWriteCa
         .lock()
         .map(|state| state.clone())
         .map_err(|_| "fd_write capture lock が poison された".to_string())
+}
+
+fn run_with_partial_fd_read(wasm: &[u8], dir: &Path) -> Result<PartialFdReadCapture, String> {
+    use wasmtime::{Engine, Linker, Module, Store};
+    use wasmtime_wasi::{preview1::WasiP1Ctx, WasiCtxBuilder};
+
+    let engine = Engine::default();
+    let mut linker = Linker::<WasiP1Ctx>::new(&engine);
+    linker.allow_shadowing(true);
+    wasmtime_wasi::preview1::add_to_linker_sync(&mut linker, |ctx| ctx)
+        .map_err(|err| format!("WASI linker 構築に失敗: {err}"))?;
+
+    let capture = Arc::new(Mutex::new(PartialFdReadCapture::default()));
+    let fd_read_capture = Arc::clone(&capture);
+    linker
+        .func_wrap(
+            "wasi_snapshot_preview1",
+            "fd_read",
+            move |mut caller: wasmtime::Caller<'_, WasiP1Ctx>,
+                  _fd: i32,
+                  iovs: i32,
+                  iovs_len: i32,
+                  nread: i32|
+                  -> i32 {
+                let memory = caller
+                    .get_export("memory")
+                    .and_then(|export| export.into_memory())
+                    .expect("standalone Wasm は memory export を持つべき");
+                let mut state = fd_read_capture.lock().expect("fd_read capture lock");
+                state.fd_read_calls += 1;
+                let payload = b"payload";
+                let remaining = payload.len().saturating_sub(state.read_payload.len());
+                let mut requested = 0usize;
+                for index in 0..iovs_len {
+                    let base = iovs + index * 8;
+                    requested += read_i32(memory, &caller, base + 4) as usize;
+                }
+                let write_len = remaining.min(requested).min(if state.fd_read_calls == 1 {
+                    2
+                } else {
+                    usize::MAX
+                });
+                let mut copied = 0usize;
+                for index in 0..iovs_len {
+                    let base = iovs + index * 8;
+                    let ptr = read_i32(memory, &caller, base);
+                    let len = read_i32(memory, &caller, base + 4) as usize;
+                    let chunk_len = (write_len - copied).min(len);
+                    if chunk_len == 0 {
+                        break;
+                    }
+                    let start = ptr as usize;
+                    let end = start + chunk_len;
+                    let payload_start = state.read_payload.len();
+                    memory.data_mut(&mut caller)[start..end]
+                        .copy_from_slice(&payload[payload_start..payload_start + chunk_len]);
+                    state
+                        .read_payload
+                        .extend_from_slice(&payload[payload_start..payload_start + chunk_len]);
+                    copied += chunk_len;
+                }
+                write_i32(memory, &mut caller, nread, copied as i32);
+                0
+            },
+        )
+        .map_err(|err| format!("partial fd_read shim 登録に失敗: {err}"))?;
+
+    let stdout = wasmtime_wasi::pipe::MemoryOutputPipe::new(16 * 1024 * 1024);
+    let mut builder = WasiCtxBuilder::new();
+    builder.stdout(stdout.clone());
+    builder
+        .preopened_dir(
+            dir,
+            ".",
+            wasmtime_wasi::DirPerms::all(),
+            wasmtime_wasi::FilePerms::all(),
+        )
+        .map_err(|err| format!("preopened_dir に失敗: {err}"))?;
+    let mut store = Store::new(&engine, builder.build_p1());
+    let module = Module::new(&engine, wasm).map_err(|err| format!("Wasm 構築に失敗: {err:#}"))?;
+    let instance = linker
+        .instantiate(&mut store, &module)
+        .map_err(|err| format!("Wasm instance 化に失敗: {err}"))?;
+    let start = instance
+        .get_typed_func::<(), ()>(&mut store, "_start")
+        .map_err(|err| format!("_start export が見つからない: {err}"))?;
+    start
+        .call(&mut store, ())
+        .map_err(|err| format!("standalone Wasm 実行に失敗: {err}"))?;
+    drop(store);
+
+    let stdout = stdout
+        .try_into_inner()
+        .ok_or_else(|| "stdout capture lock が poison された".to_string())?
+        .to_vec();
+    capture
+        .lock()
+        .map(|state| PartialFdReadCapture {
+            stdout,
+            ..state.clone()
+        })
+        .map_err(|_| "fd_read capture lock が poison された".to_string())
 }
 
 fn compile_standalone_source(source: &str, dir: &Path, cli_cache_env: &str) -> Vec<u8> {
@@ -327,5 +436,40 @@ fn test_e2e_selfhost_standalone_write_file_bytes_retries_partial_fd_write() {
             "partial raw fd_write capture: {capture:?}"
         );
         assert_eq!(capture.file_write_calls, 2);
+    });
+}
+
+#[test]
+fn test_e2e_selfhost_standalone_read_file_retries_partial_fd_read() {
+    run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, || {
+        let dir = fixture_dir("partial_read");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("read fixture directory の作成に失敗");
+        std::fs::write(dir.join("input.txt"), b"payload")
+            .expect("read fixture input.txt の書き込みに失敗");
+        let standalone_wasm = if let Some(artifact) =
+            std::env::var_os("LSHARP_STANDALONE_IO_READ_ARTIFACT")
+        {
+            std::fs::read(artifact).expect("LSHARP_STANDALONE_IO_READ_ARTIFACT の読み込みに失敗")
+        } else {
+            let standalone_wasm = compile_standalone_source(
+                r#"(defn main [] (print-string (read-file "input.txt")))"#,
+                &dir,
+                "LSHARP_STANDALONE_IO_READ_CLI_ARTIFACT",
+            );
+            if let Some(save_path) = std::env::var_os("LSHARP_STANDALONE_IO_READ_SAVE_ARTIFACT") {
+                std::fs::write(save_path, &standalone_wasm)
+                    .expect("read standalone artifact の保存に失敗");
+            }
+            standalone_wasm
+        };
+
+        let capture = run_with_partial_fd_read(&standalone_wasm, &dir)
+            .expect("partial fd_read 下の standalone 実行に失敗");
+        let _ = std::fs::remove_dir_all(&dir);
+
+        assert_eq!(capture.stdout, b"payload");
+        assert_eq!(capture.read_payload, b"payload");
+        assert_eq!(capture.fd_read_calls, 3);
     });
 }
