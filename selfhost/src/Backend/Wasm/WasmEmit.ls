@@ -932,13 +932,13 @@
     b13 (emit-standalone-byte-seq-1 b12 11)]
     b13))
 (defn emit-standalone-read-file-body []
-  ;; 最大 1024-byte read + partial fd_read retry の bounded slice。
+  ;; 最大 4096-byte read + partial fd_read retry の bounded slice。
   ;; root stack 後方の 2176/2184/2240 scratch を使う。
   (let [b0a (emit-standalone-byte-seq-2 (vector-new 1024) 1 8)
     b0 (emit-byte b0a 127)
     b1 (emit-standalone-byte-seq-8 b0 32 0 167 65 8 106 33 1)
     b2 (emit-standalone-byte-seq-8 b1 32 0 167 40 2 4 33 2)
-    b3 (emit-standalone-byte-seq-8 b2 65 128 8 173 16 1 167 33)
+    b3 (emit-standalone-byte-seq-8 b2 65 128 16 173 16 1 167 33)
     b4 (emit-standalone-byte-seq-1 b3 5)
     b5 (emit-standalone-byte-seq-8 b4 32 5 65 1 54 2 0 32)
     b6 (emit-standalone-byte-seq-6 b5 5 65 0 54 2 4)
@@ -950,11 +950,11 @@
     b12a (emit-standalone-byte-seq-8 b11 40 2 0 33 4 65 0 33)
     b12b (emit-standalone-byte-seq-1 b12a 6)
     b13 (emit-standalone-byte-seq-8 b12b 2 64 3 64 32 6 65 128)
-    b14 (emit-standalone-byte-seq-8 b13 8 75 13 1 65 128 17 32)
+    b14 (emit-standalone-byte-seq-8 b13 16 75 13 1 65 128 17 32)
     b14a (emit-standalone-byte-seq-1 b14 5)
     b15 (emit-standalone-byte-seq-8 b14a 65 8 106 32 6 106 54 2)
     b15a (emit-standalone-byte-seq-1 b15 0)
-    b16 (emit-standalone-byte-seq-8 b15a 65 128 17 65 128 8 32 6)
+    b16 (emit-standalone-byte-seq-8 b15a 65 128 17 65 128 16 32 6)
     b16a (emit-standalone-byte-seq-4 b16 107 54 2 4)
     b17 (emit-standalone-byte-seq-8 b16a 65 136 17 65 0 54 2 0)
     b18 (emit-standalone-byte-seq-8 b17 32 4 65 128 17 65 1 65)
