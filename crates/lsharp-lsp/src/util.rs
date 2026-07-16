@@ -1,6 +1,7 @@
 use tower_lsp::lsp_types::*;
 
 use lsharp_syntax::ast::{Decl, Expr, Pattern, Program};
+use lsharp_syntax::span::Span;
 
 /// バイトオフセットを LSP Position (行・列) に変換する
 pub(crate) fn offset_to_position(source: &str, offset: usize) -> Position {
@@ -353,18 +354,41 @@ pub fn find_definition(source: &str, position: Position) -> Option<Range> {
     None
 }
 
-fn diagnostic_error(message: String) -> Diagnostic {
+fn span_to_range(source: &str, span: Span) -> Range {
+    let start = offset_to_position(source, span.start.min(source.len()));
+    let end = offset_to_position(source, span.end.min(source.len()));
+    Range::new(start, end)
+}
+
+fn diagnostic_error_at(
+    source: &str,
+    message: String,
+    code: Option<&str>,
+    span: Option<Span>,
+) -> Diagnostic {
     Diagnostic {
-        range: Range::new(Position::new(0, 0), Position::new(0, 0)),
+        range: span
+            .map(|span| span_to_range(source, span))
+            .unwrap_or_default(),
         severity: Some(DiagnosticSeverity::ERROR),
         message,
         source: Some("lsharp".to_string()),
+        code: code.map(|code| NumberOrString::String(code.to_string())),
         ..Default::default()
     }
 }
 
+fn diagnostic_error(message: String) -> Diagnostic {
+    diagnostic_error_at("", message, None, None)
+}
+
 fn parse_program(source: &str) -> std::result::Result<Program, Box<Diagnostic>> {
-    lsharp_syntax::parse(source).map_err(|e| Box::new(diagnostic_error(format!("{e}"))))
+    lsharp_syntax::parse(source).map_err(|error| {
+        let message = error.to_string();
+        let code = error.code();
+        let span = error.span();
+        Box::new(diagnostic_error_at(source, message, Some(code), span))
+    })
 }
 
 pub(crate) fn module_name_from_source(source: &str, path: &std::path::Path) -> String {
@@ -427,7 +451,10 @@ pub fn parse_and_check(source: &str) -> Vec<Diagnostic> {
 
     let mut infer = lsharp_types::infer::Infer::new();
     if let Err(e) = infer.infer_program(&program) {
-        diagnostics.push(diagnostic_error(format!("{e}")));
+        let message = e.to_string();
+        let code = e.code();
+        let span = e.span();
+        diagnostics.push(diagnostic_error_at(source, message, Some(code), span));
     }
 
     diagnostics
@@ -514,5 +541,30 @@ mod tests {
         // "+" と "x" の使用が収集される
         let x_usages: Vec<_> = usages.iter().filter(|u| u.name == "x").collect();
         assert_eq!(x_usages.len(), 2, "x は 2 箇所で使用されるべき");
+    }
+
+    #[test]
+    fn syntax_diagnostics_expose_stable_code_and_source_range() {
+        let diagnostics = parse_only("(unknown-form)");
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(
+            diagnostics[0].code,
+            Some(NumberOrString::String("LS0103".to_string()))
+        );
+        assert_eq!(
+            diagnostics[0].range,
+            Range::new(Position::new(0, 1), Position::new(0, 13))
+        );
+    }
+
+    #[test]
+    fn type_diagnostics_expose_stable_code_and_non_empty_source_range() {
+        let diagnostics = parse_and_check("(defn bad [] (+ 1 true))");
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(
+            diagnostics[0].code,
+            Some(NumberOrString::String("LS1004".to_string()))
+        );
+        assert_ne!(diagnostics[0].range, Range::default());
     }
 }
