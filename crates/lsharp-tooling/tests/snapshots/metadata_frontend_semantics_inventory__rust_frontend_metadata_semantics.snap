@@ -1,0 +1,58 @@
+---
+source: crates/lsharp-tooling/tests/metadata_frontend_semantics_inventory.rs
+expression: "serde_json::to_string_pretty(&snapshot).expect(\"snapshot JSON を serialize できるべき\")"
+---
+{
+  "checker_current_structural_semantics": {
+    "diagnostic_count": 0,
+    "non_bool_direct_example_accepted": true
+  },
+  "docs_current_rendering_boundary": {
+    "api_doc_projection": {
+      "doc": "DOC_MARKER_contract_inventory",
+      "first_legacy_example": "(succ 0)",
+      "has_invariant_field": false,
+      "parameter_doc": "PARAM_MARKER_input",
+      "return_doc": "RETURN_MARKER_output"
+    },
+    "html_renderer": {
+      "doc_visible": true,
+      "legacy_example_source_visible": false,
+      "legacy_invariant_source_visible": false,
+      "parameter_doc_visible": true,
+      "return_doc_visible": true
+    }
+  },
+  "formatter_current_roundtrip": {
+    "aggregate_example_count": 2,
+    "aggregate_has_invariant": true,
+    "ordered_forms": [
+      {
+        "directive": ":example [ (succ 0) (= (succ 1) 2)]",
+        "expression_count": 2,
+        "kind": "LegacyExample"
+      },
+      {
+        "directive": ":invariant (= result (+ x 1))",
+        "kind": "LegacyInvariant"
+      }
+    ],
+    "reparse_succeeded": true
+  },
+  "inventory_status": "current_behavior_not_final_v0_2_contract",
+  "parser_current_legacy_projection": {
+    "aggregate_example_count": 2,
+    "aggregate_has_invariant": true,
+    "ordered_forms": [
+      {
+        "directive": ":example [(succ 0) (= (succ 1) 2)]",
+        "expression_count": 2,
+        "kind": "LegacyExample"
+      },
+      {
+        "directive": ":invariant (= result (+ x 1))",
+        "kind": "LegacyInvariant"
+      }
+    ]
+  }
+}
