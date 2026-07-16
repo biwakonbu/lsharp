@@ -1123,11 +1123,15 @@
                             (root_pop)
                             (root_pop)
                             functions))))))))))))))
+(defn compile-data-initial-vector-for-base [func-idx]
+  (if (= func-idx 12)
+    (standalone-data-layout-prefix)
+    (vector-new 8)))
 (defn compile-file-functions-payload-with-cache [path func-idx cache-ref parse-count-ref]
   (let [path-slot (root_push path)
     cache-slot (root_push cache-ref)
     parse-count-slot (root_push parse-count-ref)
-    data-ref (ref-new (vector-new 8))
+    data-ref (ref-new (compile-data-initial-vector-for-base func-idx))
     data-ref-slot (root_push data-ref)
     functions (compile-file-functions-with-cache path func-idx cache-ref parse-count-ref data-ref)]
     (do

@@ -718,6 +718,40 @@
             (root_pop)
             result))))))
 
+(defn standalone-data-layout-prefix-size [] 3072)
+(defn standalone-data-layout-limit [] 4096)
+(defn standalone-zero-byte-block []
+  (let [b0 (vector-new 8)
+    b1 (push-int-vector b0 0)
+    b2 (push-int-vector b1 0)
+    b3 (push-int-vector b2 0)
+    b4 (push-int-vector b3 0)
+    b5 (push-int-vector b4 0)
+    b6 (push-int-vector b5 0)
+    b7 (push-int-vector b6 0)
+    b8 (push-int-vector b7 0)]
+    b8))
+(defn append-standalone-zero-blocks-8 [dst block]
+  (let [b1 (append-byte-vector dst block 0 8)
+    b2 (append-byte-vector b1 block 0 8)
+    b3 (append-byte-vector b2 block 0 8)
+    b4 (append-byte-vector b3 block 0 8)
+    b5 (append-byte-vector b4 block 0 8)
+    b6 (append-byte-vector b5 block 0 8)
+    b7 (append-byte-vector b6 block 0 8)
+    b8 (append-byte-vector b7 block 0 8)]
+    b8))
+(defn standalone-data-layout-prefix []
+  (let [block (standalone-zero-byte-block)
+    b0 (vector-new (standalone-data-layout-prefix-size))
+    b1 (append-standalone-zero-blocks-8 b0 block)
+    b2 (append-standalone-zero-blocks-8 b1 block)
+    b3 (append-standalone-zero-blocks-8 b2 block)
+    b4 (append-standalone-zero-blocks-8 b3 block)
+    b5 (append-standalone-zero-blocks-8 b4 block)
+    b6 (append-standalone-zero-blocks-8 b5 block)]
+    b6))
+
 (defn string-to-byte-vector-step [text idx count bytes]
   (if (>= idx count)
     (make-compile-step-state 1 idx bytes)

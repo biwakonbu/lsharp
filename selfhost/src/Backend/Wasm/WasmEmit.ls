@@ -876,7 +876,8 @@
     b1 (emit-standalone-byte-seq-8 b0 1 2 127 32 0 167 65 7)
     b2 (emit-standalone-byte-seq-8 b1 106 65 120 113 33 1 65 32)
     b3 (emit-standalone-byte-seq-8 b2 40 2 0 33 2 32 2 69)
-    b4 (emit-standalone-byte-seq-8 b3 4 64 65 128 16 33 2 11)
+    b4a (emit-standalone-byte-seq-8 b3 4 64 65 128 192 0 33 2)
+    b4 (emit-standalone-byte-seq-1 b4a 11)
     b5 (emit-standalone-byte-seq-8 b4 65 32 32 2 32 1 106 54)
     b6 (emit-standalone-byte-seq-6 b5 2 0 32 2 173 11)]
     b6))

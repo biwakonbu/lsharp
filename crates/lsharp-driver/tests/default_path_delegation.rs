@@ -1498,6 +1498,46 @@ fn test_embedded_cli_component_compile_preview1_writes_runnable_wasm_without_dri
         "Preview1 root_push/root_set/root_pop は値を保持するべき"
     );
 
+    let root_data_source_path = temp_dir.join("root-data-layout.ls");
+    let root_data_output_path = temp_dir.join("root-data-layout.wasm");
+    write_source_file(
+        &root_data_source_path,
+        r#"(defn retain-roots [n]
+  (if (<= n 0)
+    (print-string "safe")
+    (do (root_push n) (retain-roots (- n 1)))))
+(defn main [] (retain-roots 120))
+"#,
+    );
+    let root_data_guest =
+        lsharp_wasm::wasi_runner::run_wasm_component_with_dir_args_and_stdin_capture(
+            &component,
+            Some(&temp_dir),
+            &[
+                "compile",
+                "root-data-layout.ls",
+                "--target",
+                "wasi-preview1",
+                "-o",
+                "root-data-layout.wasm",
+            ],
+            "",
+        )
+        .expect("embedded CLI root/data layout runtime execution failed");
+    assert_eq!(
+        root_data_guest.exit_code, 0,
+        "Preview1 root/data layout compile は成功するべき: stdout={}",
+        root_data_guest.stdout
+    );
+    let root_data_written =
+        fs::read(&root_data_output_path).expect("root/data layout output read failed");
+    let root_data_runtime_output = lsharp_wasm::wasi_runner::run_wasm_wasi(&root_data_written)
+        .expect("root/data layout output should run");
+    assert_eq!(
+        root_data_runtime_output, "safe",
+        "Preview1 root stack は static data を上書きしてはいけない"
+    );
+
     let print_string_source_path = temp_dir.join("print-string.ls");
     let print_string_output_path = temp_dir.join("print-string.wasm");
     write_source_file(

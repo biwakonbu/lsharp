@@ -2169,7 +2169,7 @@
               (do
                 (root_push pass1)
                 (let [ftable (vector-get pass1 2)
-                  data-ref (ref-new (vector-new 8))]
+                  data-ref (ref-new (standalone-data-layout-prefix))]
                   (do
                     (root_push ftable)
                     (root_push data-ref)
