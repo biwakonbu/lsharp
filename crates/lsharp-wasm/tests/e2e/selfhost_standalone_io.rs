@@ -128,6 +128,48 @@ fn run_with_partial_fd_write(wasm: &[u8], dir: &Path) -> Result<PartialFdWriteCa
         .map_err(|_| "fd_write capture lock が poison された".to_string())
 }
 
+fn compile_standalone_source(source: &str, dir: &Path, cli_cache_env: &str) -> Vec<u8> {
+    std::fs::create_dir_all(dir).expect("standalone source fixture directory の作成に失敗");
+    std::fs::write(dir.join("input.ls"), source).expect("standalone input.ls の書き込みに失敗");
+    let harness = r#"
+(defn main []
+  (let [src (read-file "input.ls")
+        program (parse-program src)
+        pair (compile-program-functions-with-source-base src program 12)
+        functions (vector-get pair 1)
+        data (vector-get pair 2)
+        wasm (build-wasm-bytes-wasi-standalone functions data)]
+    (do
+      (write-file-bytes "output.wasm" wasm)
+      0)))
+"#;
+    let cli_source = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let cli_wasm = if let Some(cache_path) = std::env::var_os(cli_cache_env) {
+        let cache_path = PathBuf::from(cache_path);
+        if cache_path.exists() {
+            std::fs::read(cache_path).expect("cached selfhost CLI Wasm の読み込みに失敗")
+        } else {
+            let bytes = compile_only(&cli_source);
+            std::fs::write(cache_path, &bytes).expect("cached selfhost CLI Wasm の書き込みに失敗");
+            bytes
+        }
+    } else {
+        compile_only(&cli_source)
+    };
+    let output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_args_and_stdin_capture(
+        &cli_wasm,
+        Some(dir),
+        &["compile", "input.ls", "-o", "output.wasm"],
+        "",
+    )
+    .expect("selfhost standalone source compile の実行に失敗");
+    assert_eq!(
+        output.exit_code, 0,
+        "selfhost source compile は成功するべき"
+    );
+    std::fs::read(dir.join("output.wasm")).expect("standalone output.wasm の読み込みに失敗")
+}
+
 #[test]
 fn test_wasi_fd_write_shim_is_used_for_standalone_import() {
     let dir = fixture_dir("shim");
@@ -236,6 +278,53 @@ fn test_e2e_selfhost_standalone_write_file_retries_partial_fd_write() {
         assert_eq!(
             capture.file, b"payload",
             "partial fd_write capture: {capture:?}"
+        );
+        assert_eq!(capture.file_write_calls, 2);
+    });
+}
+
+#[test]
+fn test_e2e_selfhost_standalone_write_file_bytes_retries_partial_fd_write() {
+    run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, || {
+        let dir = fixture_dir("partial_write_bytes");
+        let _ = std::fs::remove_dir_all(&dir);
+        let standalone_wasm = if let Some(artifact) =
+            std::env::var_os("LSHARP_STANDALONE_IO_RAW_ARTIFACT")
+        {
+            std::fs::create_dir_all(&dir).expect("cached raw artifact 用 directory の作成に失敗");
+            std::fs::read(artifact).expect("LSHARP_STANDALONE_IO_RAW_ARTIFACT の読み込みに失敗")
+        } else {
+            let standalone_wasm = compile_standalone_source(
+                r#"(defn main []
+  (let [bytes (vector-push
+                (vector-push
+                  (vector-push
+                    (vector-push
+                      (vector-push (vector-new 5) 0)
+                      97)
+                    115)
+                  109)
+                33)]
+    (write-file-bytes "raw.bin" bytes)))
+"#,
+                &dir,
+                "LSHARP_STANDALONE_IO_RAW_CLI_ARTIFACT",
+            );
+            if let Some(save_path) = std::env::var_os("LSHARP_STANDALONE_IO_RAW_SAVE_ARTIFACT") {
+                std::fs::write(save_path, &standalone_wasm)
+                    .expect("raw standalone artifact の保存に失敗");
+            }
+            standalone_wasm
+        };
+
+        let capture = run_with_partial_fd_write(&standalone_wasm, &dir)
+            .expect("partial fd_write 下の raw standalone 実行に失敗");
+        let _ = std::fs::remove_dir_all(&dir);
+
+        assert_eq!(capture.stdout, b"");
+        assert_eq!(
+            capture.file, b"\0asm!",
+            "partial raw fd_write capture: {capture:?}"
         );
         assert_eq!(capture.file_write_calls, 2);
     });
