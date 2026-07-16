@@ -103,6 +103,20 @@ L# の最終目標は、Rust 実装を正本として残したまま一部のコ
 - `TODO.md` と `docs/development/operations/rust-boundary-reduction.md` は current truth として更新する。`[x]` はこの完了基準を満たした項目だけにし、partial parity、既知の Rust-only surface、未検証の ABI は `[~]` と残リスクに記録する。
 - stage0 の生成・配布・source commit provenance・rollback は運用上の bootstrap boundary であり、通常開発から Rust を外せても、公開 release の再現性と緊急復旧を検証するまで削除しない。
 
+### 実装の進行規則
+
+1. **開始時の事実確認**: 作業対象の `AGENTS.md`、`git status`、現在 branch/upstream、`TODO.md` の正本、直近の artifact/VM 状態を先に確認する。過去の完了報告や stale artifact は current evidence として再利用しない。
+2. **一つの狭い仮説を一つの RED にする**: 失敗値、failure boundary、対象 target、再現 command をテストに固定する。実装を先に書かず、期待値を失敗に合わせて変更しない。
+3. **待ち時間を分離する**: stage regeneration / Linux VM の heavy job は VM-side lock と artifact reuse を使って一本に制限する。実行中は parser/type/runtime の非共有 focused work、fixture、docs、diagnostic、contract test を進め、同じ仮説の full replay を重複起動しない。VM workdir、lock、巨大な一時 artifact は終了時に回収し、disk 使用量を確認する。
+4. **GREEN の証拠を段階化する**: focused test、selfhost source `check`、Wasm validation/runtime、Rust oracle/differential、Mac Apple Silicon native gate、Linux x86_64 native/VM gateの順に、必要な範囲まで検証する。Rust driver の成功、summary、header、単一 layer testだけでは Rust-free 完了にしない。
+5. **境界を明示する**: 未対応 feature は Rust fallback で成功したように見せず、明示的な診断または外部 tool boundary を返す。`verified slice`、`partial parity`、`Rust-only`、`bootstrap/oracle` を TODO/docs で混同しない。
+6. **独立作業の分担**: サブエージェントは read-only の調査、証跡監査、独立した focused test 候補の整理に活用する。実装・docs・Git 反映は current worktree の責任範囲を一つに保ち、証拠を統合してから採用する。
+7. **反映と再監査**: GREEN と docs audit の後、task-relevant files だけを commit/push する。push 後に `HEAD` と `origin/main`、worktree、TODO の残タスクを再確認し、未完のまま停止する場合は次の具体的な RED と blocker を記録する。完了宣言は要件ごとの evidence audit が終わるまで行わない。
+
+### 完璧な L# 実装の判定
+
+「Rust-free」は Rust のソースを早期削除することではなく、L# の対応機能が parser → 型推論 → lowering → codegen → runtime → 公開 command の全境界を通り、Mac Apple Silicon と Linux x86_64 の native program から同じ意味論で実行できることを指す。未対応の言語機能、ABI、公開 surface、component/external helper、bootstrap provenance が残る間は `[~]` を維持し、各項目の parity と実行証跡を閉じてから `[x]` に更新する。
+
 ## hooks/スキルのトラブルシューティング
 
 hooks やスキルに問題が発生した場合は `.Codex/rules/hook-troubleshooting.md` を参照。

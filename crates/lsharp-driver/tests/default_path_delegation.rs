@@ -2043,6 +2043,53 @@ fn test_embedded_cli_component_compile_preview1_writes_runnable_wasm_without_dri
         "Preview1 command-line-args は root stack 内 scratch を使うべき",
     );
 
+    let argv_heap_scratch_source_path = temp_dir.join("argv-heap-scratch.ls");
+    let argv_heap_scratch_output_path = temp_dir.join("argv-heap-scratch.wasm");
+    write_source_file(
+        &argv_heap_scratch_source_path,
+        r#"(defn main []
+  (let [v (vector-new 4096)]
+    (do
+      (print-string (command-line-arg 0))
+      (print (vector-get v 1022))
+      (print (vector-get v 3070)))))
+"#,
+    );
+    let argv_heap_scratch_guest =
+        lsharp_wasm::wasi_runner::run_wasm_component_with_dir_args_and_stdin_capture(
+            &component,
+            Some(&temp_dir),
+            &[
+                "compile",
+                "argv-heap-scratch.ls",
+                "--target",
+                "wasi-preview1",
+                "-o",
+                "argv-heap-scratch.wasm",
+            ],
+            "",
+        )
+        .expect("embedded CLI argv heap scratch runtime execution failed");
+    assert_eq!(
+        argv_heap_scratch_guest.exit_code,
+        0,
+        "Preview1 argv heap scratch compile は成功するべき: stdout={}",
+        argv_heap_scratch_guest.stdout
+    );
+    let argv_heap_scratch_written =
+        fs::read(&argv_heap_scratch_output_path).expect("argv heap scratch output read failed");
+    let argv_heap_scratch_runtime_output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
+        &argv_heap_scratch_written,
+        None,
+        &["alpha", "beta"],
+    )
+    .expect("argv heap scratch Preview1 output should run");
+    assert_eq!(
+        argv_heap_scratch_runtime_output,
+        "alpha0\n0\n",
+        "Preview1 command-line-arg は既存 heap 上の argv table/buffer を壊してはいけない",
+    );
+
     let large_source_path = temp_dir.join("large.ls");
     let large_output_path = temp_dir.join("large.wasm");
     let large_literal = "x".repeat(1100);
