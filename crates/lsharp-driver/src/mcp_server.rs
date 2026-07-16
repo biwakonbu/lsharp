@@ -265,6 +265,20 @@ fn check_tool(arguments: &Value) -> Result<Value, String> {
         "diagnostics": diagnostics.iter().map(|diag| json!({
             "message": diag.message,
             "severity": diag.severity.map(|severity| format!("{severity:?}")),
+            "code": diag
+                .code
+                .as_ref()
+                .and_then(|code| serde_json::to_value(code).ok()),
+            "range": {
+                "start": {
+                    "line": diag.range.start.line,
+                    "character": diag.range.start.character,
+                },
+                "end": {
+                    "line": diag.range.end.line,
+                    "character": diag.range.end.character,
+                },
+            },
         })).collect::<Vec<_>>()
     }))
 }
@@ -823,6 +837,18 @@ mod tests {
 
         assert_eq!(result["code"], "LS0201");
         assert_eq!(result["name"], "macro-expansion-error");
+    }
+
+    #[test]
+    fn test_check_tool_returns_diagnostic_code_and_source_range() {
+        let result = call_tool("lsharp_check", &json!({"source": "(unknown-form)"}))
+            .expect("lsharp_check は syntax diagnostics を返すべき");
+        let diagnostic = &result["diagnostics"][0];
+
+        assert_eq!(diagnostic["code"], "LS0103");
+        assert_eq!(diagnostic["range"]["start"]["line"], 0);
+        assert_eq!(diagnostic["range"]["start"]["character"], 1);
+        assert_eq!(diagnostic["range"]["end"]["character"], 13);
     }
 
     #[test]
