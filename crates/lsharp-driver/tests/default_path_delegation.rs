@@ -1637,7 +1637,7 @@ fn test_embedded_cli_component_compile_preview1_writes_runnable_wasm_without_dri
     let unsupported_output_path = temp_dir.join("unsupported.wasm");
     write_source_file(
         &unsupported_source_path,
-        "(defn main [] (write-file-bytes \"missing\" (vector-new 1)))\n",
+        "(defn main [] (proc-exit 0))\n",
     );
     let unsupported_guest =
         lsharp_wasm::wasi_runner::run_wasm_component_with_dir_and_args_inherit_stdin_capture(
@@ -1661,6 +1661,59 @@ fn test_embedded_cli_component_compile_preview1_writes_runnable_wasm_without_dri
     assert!(
         !unsupported_output_path.exists(),
         "Preview1 unsupported runtime opcode は不完全な Wasm artifact を書いてはいけない"
+    );
+
+    let write_file_bytes_target_path = temp_dir.join("raw.wasm");
+    let write_file_bytes_source_path = temp_dir.join("write-file-bytes.ls");
+    let write_file_bytes_output_path = temp_dir.join("write-file-bytes.wasm");
+    write_source_file(
+        &write_file_bytes_source_path,
+        r#"(defn main []
+  (let [bytes (vector-push
+                (vector-push
+                  (vector-push
+                    (vector-push (vector-new 4) 0)
+                    97)
+                  115)
+                109)]
+    (write-file-bytes "raw.wasm" bytes)))
+"#,
+    );
+    let write_file_bytes_guest =
+        lsharp_wasm::wasi_runner::run_wasm_component_with_dir_args_and_stdin_capture(
+            &component,
+            Some(&temp_dir),
+            &[
+                "compile",
+                "write-file-bytes.ls",
+                "--target",
+                "wasi-preview1",
+                "-o",
+                "write-file-bytes.wasm",
+            ],
+            "",
+        )
+        .expect("embedded CLI write-file-bytes runtime execution failed");
+    assert_eq!(
+        write_file_bytes_guest.exit_code, 0,
+        "Preview1 write-file-bytes compile は成功するべき: stdout={}",
+        write_file_bytes_guest.stdout
+    );
+    let write_file_bytes_written =
+        fs::read(&write_file_bytes_output_path).expect("write-file-bytes output read failed");
+    let write_file_bytes_runtime_output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir(
+        &write_file_bytes_written,
+        Some(&temp_dir),
+    )
+    .expect("write-file-bytes Preview1 output should run");
+    assert_eq!(
+        write_file_bytes_runtime_output, "",
+        "Preview1 write-file-bytes は stdout に余計な出力を出すべきではない"
+    );
+    assert_eq!(
+        fs::read(&write_file_bytes_target_path).expect("write-file-bytes target read failed"),
+        b"\0asm",
+        "Preview1 write-file-bytes は Vector の下位8 bitを preopened dir に書くべき"
     );
 
     let large_source_path = temp_dir.join("large.ls");
