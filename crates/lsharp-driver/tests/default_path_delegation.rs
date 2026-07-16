@@ -2279,6 +2279,48 @@ fn test_embedded_cli_component_compile_preview1_writes_runnable_wasm_without_dri
         "Preview1 read-file は bounded file content を返すべき"
     );
 
+    let large_read_fixture_path = temp_dir.join("read-large.txt");
+    let large_read_content = "r".repeat(300);
+    fs::write(&large_read_fixture_path, &large_read_content)
+        .expect("large read-file fixture write failed");
+    let large_read_source_path = temp_dir.join("read-large.ls");
+    let large_read_output_path = temp_dir.join("read-large.wasm");
+    write_source_file(
+        &large_read_source_path,
+        "(defn main [] (print-string (read-file \"read-large.txt\")))\n",
+    );
+    let large_read_guest =
+        lsharp_wasm::wasi_runner::run_wasm_component_with_dir_args_and_stdin_capture(
+            &component,
+            Some(&temp_dir),
+            &[
+                "compile",
+                "read-large.ls",
+                "--target",
+                "wasi-preview1",
+                "-o",
+                "read-large.wasm",
+            ],
+            "",
+        )
+        .expect("embedded CLI large read-file runtime execution failed");
+    assert_eq!(
+        large_read_guest.exit_code, 0,
+        "Preview1 large read-file compile は成功するべき: stdout={}",
+        large_read_guest.stdout
+    );
+    let large_read_written =
+        fs::read(&large_read_output_path).expect("large read-file output read failed");
+    let large_read_runtime_output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir(
+        &large_read_written,
+        Some(&temp_dir),
+    )
+    .expect("large read-file Preview1 output should run");
+    assert_eq!(
+        large_read_runtime_output, large_read_content,
+        "Preview1 read-file は 256 bytes を超える bounded file content を返すべき"
+    );
+
     let write_file_target_path = temp_dir.join("write.txt");
     let write_file_source_path = temp_dir.join("write-file.ls");
     let write_file_output_path = temp_dir.join("write-file.wasm");
