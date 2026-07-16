@@ -2,6 +2,7 @@
 set -euo pipefail
 
 TARGET=""
+SOURCE_COMMIT="${NATIVE_STAGE0_SOURCE_COMMIT:-}"
 COMPILER=""
 TRANSPORT_DRIVER=""
 MATERIALIZER=""
@@ -14,10 +15,11 @@ MATERIALIZER_WRAPPER_PATH="bin/materializer"
 
 usage() {
   cat <<'EOF'
-usage: scripts/ci/package-native-stage0.sh --target TARGET --compiler PATH --transport-driver PATH --materializer PATH --output-dir DIR
+usage: scripts/ci/package-native-stage0.sh --target TARGET --source-commit COMMIT --compiler PATH --transport-driver PATH --materializer PATH --output-dir DIR
 
 options:
   --target TARGET             x86_64-unknown-linux-gnu or aarch64-apple-darwin
+  --source-commit COMMIT      40-character lowercase source commit (defaults to current HEAD)
   --compiler PATH             executable native compiler
   --transport-driver PATH     executable native transport driver
   --materializer PATH         nonempty materializer Python script
@@ -69,6 +71,11 @@ while [[ $# -gt 0 ]]; do
       TARGET="$2"
       shift 2
       ;;
+    --source-commit)
+      require_option_value "$@"
+      SOURCE_COMMIT="$2"
+      shift 2
+      ;;
     --compiler)
       require_option_value "$@"
       COMPILER="$2"
@@ -104,6 +111,13 @@ done
 [[ -n "$TRANSPORT_DRIVER" ]] || die "--transport-driver is required"
 [[ -n "$MATERIALIZER" ]] || die "--materializer is required"
 [[ -n "$OUTPUT_DIR" ]] || die "--output-dir is required"
+
+if [[ -z "$SOURCE_COMMIT" ]]; then
+  SOURCE_COMMIT="$(cd "$ROOT" && git rev-parse --verify HEAD 2>/dev/null)" \
+    || die "source commit is required when the repository HEAD cannot be resolved"
+fi
+[[ "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
+  || die "source commit must be a 40-character lowercase hexadecimal commit: $SOURCE_COMMIT"
 
 case "$TARGET" in
   x86_64-unknown-linux-gnu|aarch64-apple-darwin) ;;
@@ -148,6 +162,7 @@ cat >"$PACKAGE_DIR/manifest.json" <<EOF
 {
   "kind": "lsharp-native-selfhost-stage0",
   "target": "$TARGET",
+  "source_commit": "$SOURCE_COMMIT",
   "compiler": "$COMPILER_PATH",
   "transport_driver": "$TRANSPORT_DRIVER_PATH",
   "materializer": "$MATERIALIZER_WRAPPER_PATH"

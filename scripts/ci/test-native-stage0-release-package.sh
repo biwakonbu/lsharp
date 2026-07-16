@@ -64,6 +64,7 @@ done
 
 PATH="$HOST_BIN:$PATH" "$PACKAGE" \
   --target "$TARGET" \
+  --source-commit "$SOURCE_COMMIT" \
   --compiler "$INPUT_DIR/compiler.native" \
   --transport-driver "$INPUT_DIR/transport-driver" \
   --materializer "$INPUT_DIR/materializer.py" \

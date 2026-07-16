@@ -50,6 +50,7 @@ MATERIALIZER="$INPUT_DIR/materializer.py"
 NON_EXECUTABLE_COMPILER="$INPUT_DIR/non-executable-compiler"
 EMPTY_MATERIALIZER="$INPUT_DIR/empty-materializer.py"
 TARGET="x86_64-unknown-linux-gnu"
+SOURCE_COMMIT="0000000000000000000000000000000000000000"
 
 mkdir -p "$INPUT_DIR" "$HOST_BIN"
 : >"$HOST_TOOL_LOG"
@@ -137,6 +138,7 @@ expect_reject "empty materializer" run_package \
 export NATIVE_STAGE0_PACKAGE_TEST_LOG="$HOST_TOOL_LOG"
 run_package \
   --target "$TARGET" \
+  --source-commit "$SOURCE_COMMIT" \
   --compiler "$COMPILER" \
   --transport-driver "$TRANSPORT_DRIVER" \
   --materializer "$MATERIALIZER" \
@@ -157,6 +159,7 @@ with open(manifest_path, encoding="utf-8") as source:
 expected = {
     "kind": "lsharp-native-selfhost-stage0",
     "target": target,
+    "source_commit": "0000000000000000000000000000000000000000",
     "compiler": "bin/compiler",
     "transport_driver": "bin/transport-driver",
     "materializer": "bin/materializer",
