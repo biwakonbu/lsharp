@@ -1,4 +1,5 @@
 use crate::ast::*;
+use crate::metadata::{MetadataForm, MetadataFormKind};
 use crate::span::Span;
 use crate::token::{Token, TokenKind};
 
@@ -338,19 +339,32 @@ impl Parser {
                             found = true;
                         }
                         "example" => {
+                            let form_start = self.peek_span();
                             self.advance(); // :
                             self.advance(); // example
                             self.expect(TokenKind::LBracket)?;
+                            let mut expressions = Vec::new();
                             while !self.check(TokenKind::RBracket) {
-                                metadata.example.push(self.parse_expr()?);
+                                expressions.push(self.parse_expr()?);
                             }
-                            self.advance(); // ]
+                            let form_end = self.advance().span; // ]
+                            metadata.example.extend(expressions.iter().cloned());
+                            metadata.forms.push(MetadataForm::new(
+                                form_start.merge(form_end),
+                                MetadataFormKind::LegacyExample { expressions },
+                            ));
                             found = true;
                         }
                         "invariant" => {
+                            let form_start = self.peek_span();
                             self.advance(); // :
                             self.advance(); // invariant
-                            metadata.invariant = Some(self.parse_expr()?);
+                            let predicate = self.parse_expr()?;
+                            metadata.invariant = Some(predicate.clone());
+                            metadata.forms.push(MetadataForm::new(
+                                form_start.merge(predicate.span()),
+                                MetadataFormKind::LegacyInvariant { predicate },
+                            ));
                             found = true;
                         }
                         "transitions" => {

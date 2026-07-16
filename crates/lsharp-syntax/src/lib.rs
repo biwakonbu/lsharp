@@ -3,6 +3,7 @@ pub mod derive;
 pub mod hygiene;
 pub mod lexer;
 pub mod macro_expand;
+pub mod metadata;
 pub mod parser;
 pub mod span;
 pub mod token;

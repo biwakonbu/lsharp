@@ -1,3 +1,4 @@
+use crate::metadata::MetadataForm;
 use crate::span::Span;
 
 /// リテラル値
@@ -103,6 +104,9 @@ pub struct Metadata {
     pub since: Option<String>,
     /// ADT 状態遷移メタデータ :transitions [(from -> to) ...]
     pub transitions: Vec<(String, String)>,
+    /// source order と directive span を保持する lossless contract forms。
+    /// 既存 field は v0.1 consumer 向けの互換 projection として併存する。
+    pub forms: Vec<MetadataForm>,
 }
 
 /// 式
