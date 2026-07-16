@@ -1936,6 +1936,59 @@ fn test_embedded_cli_component_compile_preview1_writes_runnable_wasm_without_dri
         "Preview1 read-file は root stack 後方の scratch を使うべき",
     );
 
+    let argv_root_scratch_source_path = temp_dir.join("argv-root-scratch.ls");
+    let argv_root_scratch_output_path = temp_dir.join("argv-root-scratch.wasm");
+    write_source_file(
+        &argv_root_scratch_source_path,
+        r#"(defn drain-root-values [n]
+  (if (<= n 0)
+    0
+    (if (= n 17)
+      (print (root_pop))
+      (do (root_pop) (drain-root-values (- n 1))))))
+(defn retain-roots-and-read-arg [n]
+  (if (<= n 0)
+    (do (print-string (command-line-arg 0))
+        (drain-root-values 120))
+    (do (root_push 42) (retain-roots-and-read-arg (- n 1)))))
+(defn main [] (retain-roots-and-read-arg 120))
+"#,
+    );
+    let argv_root_scratch_guest =
+        lsharp_wasm::wasi_runner::run_wasm_component_with_dir_args_and_stdin_capture(
+            &component,
+            Some(&temp_dir),
+            &[
+                "compile",
+                "argv-root-scratch.ls",
+                "--target",
+                "wasi-preview1",
+                "-o",
+                "argv-root-scratch.wasm",
+            ],
+            "",
+        )
+        .expect("embedded CLI argv root scratch runtime execution failed");
+    assert_eq!(
+        argv_root_scratch_guest.exit_code,
+        0,
+        "Preview1 argv root scratch compile は成功するべき: stdout={}",
+        argv_root_scratch_guest.stdout
+    );
+    let argv_root_scratch_written =
+        fs::read(&argv_root_scratch_output_path).expect("argv root scratch output read failed");
+    let argv_root_scratch_runtime_output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
+        &argv_root_scratch_written,
+        None,
+        &["alpha", "beta"],
+    )
+    .expect("argv root scratch Preview1 output should run");
+    assert_eq!(
+        argv_root_scratch_runtime_output,
+        "alpha42\n",
+        "Preview1 command-line-arg は root stack 内 scratch を使うべき",
+    );
+
     let large_source_path = temp_dir.join("large.ls");
     let large_output_path = temp_dir.join("large.wasm");
     let large_literal = "x".repeat(1100);

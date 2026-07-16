@@ -1159,10 +1159,11 @@
     b5 (emit-standalone-byte-seq-6 b4 3 0 32 2 173 11)]
     b5))
 (defn emit-standalone-command-line-arg-body []
+  ;; args_sizes_get の argc/argv_buf_size scratch は root stack 外の 2256/2260 に置く。
   (let [b0 (emit-standalone-byte-seq-4 (vector-new 512) 1 10 127 65)
-    b1 (emit-standalone-byte-seq-8 b0 128 2 65 132 2 16 11 26)
-    b2 (emit-standalone-byte-seq-8 b1 65 128 2 40 2 0 33 2)
-    b3 (emit-standalone-byte-seq-8 b2 65 132 2 40 2 0 33 3)
+    b1 (emit-standalone-byte-seq-8 b0 208 17 65 212 17 16 11 26)
+    b2 (emit-standalone-byte-seq-8 b1 65 208 17 40 2 0 33 2)
+    b3 (emit-standalone-byte-seq-8 b2 65 212 17 40 2 0 33 3)
     b4 (emit-standalone-byte-seq-8 b3 32 2 65 128 8 75 4 64)
     b5 (emit-standalone-byte-seq-4 b4 0 11 32 3)
     b6 (emit-standalone-byte-seq-6 b5 65 128 32 75 4 64)
