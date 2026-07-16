@@ -19,6 +19,7 @@ struct PartialFdReadCapture {
     stdout: Vec<u8>,
     read_payload: Vec<u8>,
     fd_read_calls: usize,
+    path_open_calls: usize,
     fd_close_calls: usize,
 }
 
@@ -178,11 +179,29 @@ fn run_with_partial_fd_read_with_fd_read_errno(
     run_with_partial_fd_read_with_errors(wasm, dir, fd_read_errno, 0)
 }
 
+fn run_with_partial_fd_read_with_path_open_errno(
+    wasm: &[u8],
+    dir: &Path,
+    path_open_errno: i32,
+) -> Result<PartialFdReadCapture, String> {
+    run_with_partial_fd_read_with_errors_and_path_open(wasm, dir, 0, 0, Some(path_open_errno))
+}
+
 fn run_with_partial_fd_read_with_errors(
     wasm: &[u8],
     dir: &Path,
     fd_read_errno: i32,
     close_errno: i32,
+) -> Result<PartialFdReadCapture, String> {
+    run_with_partial_fd_read_with_errors_and_path_open(wasm, dir, fd_read_errno, close_errno, None)
+}
+
+fn run_with_partial_fd_read_with_errors_and_path_open(
+    wasm: &[u8],
+    dir: &Path,
+    fd_read_errno: i32,
+    close_errno: i32,
+    path_open_errno: Option<i32>,
 ) -> Result<PartialFdReadCapture, String> {
     use wasmtime::{Engine, Linker, Module, Store};
     use wasmtime_wasi::{preview1::WasiP1Ctx, WasiCtxBuilder};
@@ -194,6 +213,30 @@ fn run_with_partial_fd_read_with_errors(
         .map_err(|err| format!("WASI linker 構築に失敗: {err}"))?;
 
     let capture = Arc::new(Mutex::new(PartialFdReadCapture::default()));
+    if let Some(path_open_errno) = path_open_errno {
+        let path_open_capture = Arc::clone(&capture);
+        linker
+            .func_wrap(
+                "wasi_snapshot_preview1",
+                "path_open",
+                move |_caller: wasmtime::Caller<'_, WasiP1Ctx>,
+                      _dirfd: i32,
+                      _dirflags: i32,
+                      _path: i32,
+                      _path_len: i32,
+                      _oflags: i32,
+                      _fs_rights_base: i64,
+                      _fs_rights_inheriting: i64,
+                      _fdflags: i32,
+                      _fd_ptr: i32|
+                      -> i32 {
+                    let mut state = path_open_capture.lock().expect("path_open capture lock");
+                    state.path_open_calls += 1;
+                    path_open_errno
+                },
+            )
+            .map_err(|err| format!("path_open shim 登録に失敗: {err}"))?;
+    }
     let fd_read_capture = Arc::clone(&capture);
     linker
         .func_wrap(
@@ -709,5 +752,30 @@ fn test_e2e_selfhost_standalone_file_exists_returns_false_on_fd_close_errno() {
 
         assert_eq!(capture.stdout, b"false");
         assert_eq!(capture.fd_close_calls, 1);
+    });
+}
+
+#[test]
+fn test_e2e_selfhost_standalone_read_file_returns_empty_on_path_open_errno() {
+    run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, || {
+        let dir = fixture_dir("path_open_errno");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("read path_open errno fixture directory の作成に失敗");
+        std::fs::write(dir.join("input.txt"), b"payload")
+            .expect("read path_open errno input.txt の書き込みに失敗");
+
+        let standalone_wasm = compile_standalone_source(
+            r#"(defn main [] (print-string (read-file "input.txt")))"#,
+            &dir,
+            "LSHARP_STANDALONE_IO_FILE_EXISTS_CLOSE_CLI_ARTIFACT",
+        );
+        let capture = run_with_partial_fd_read_with_path_open_errno(&standalone_wasm, &dir, 1)
+            .expect("path_open errno 下の standalone read 実行に失敗");
+        let _ = std::fs::remove_dir_all(&dir);
+
+        assert_eq!(capture.stdout, b"");
+        assert_eq!(capture.path_open_calls, 1);
+        assert_eq!(capture.fd_read_calls, 0);
+        assert_eq!(capture.fd_close_calls, 0);
     });
 }
