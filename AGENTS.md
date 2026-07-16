@@ -114,6 +114,19 @@ L# の最終目標は、Rust 実装を正本として残したまま一部のコ
 - 変更は task-relevant files に限定し、focused gate と docs audit の後に `main` へ commit/push する。push 後に `HEAD`、`origin/main`、worktree、TODO の残件を再監査し、未完なら次の具体的な RED と blocker を残す。
 - 「Rust なしで日常開発可能」と「L# 全機能・全公開 surface が Rust-free 完了」は別の判定とする。後者は parser から公開 command、runtime、配布 provenance までの要件別 evidence が揃うまで宣言しない。
 
+### 現在の完遂ループ（v0.2 Evidence-driven Contracts）
+
+現在の最初の対象は `TODO.md` の `EC-M1-01` であり、以後も次の順序を崩さない。
+
+1. `TODO.md`、current worktree、対象 target の artifact/VM 状態を再確認し、対象を一つの observable contract に絞る。
+2. Rust oracle と selfhost/native の双方で同じ fixture を使う RED を追加し、failure value、diagnostic/span、exit code、artifact/runtime boundary を固定する。
+3. L# 実装を変更し、focused GREEN の後に Rust differential、native stage0 の `check/test/compile/build`、Wasm validate/runtime を必要な範囲で通す。
+4. Mac Apple Silicon と Linux x86_64 の必要 gate を揃え、未検証の target/ABI は `[~]` と残リスクに記録する。header、summary、単一 layer test だけでは完了にしない。
+5. 検証済み evidence を docs/ADR/TODO へ反映し、task-relevant 差分だけを `main` へ commit/push する。push 後に `HEAD`、`origin/main`、worktree、TODO を再監査する。
+6. 長時間 gate 中は共有しない別 slice を進め、同じ仮説の重い replay を増やさない。停止時は次の RED、再現 command、blocker、残タスクを必ず記録し、完了まで再開できる状態にする。
+
+`EC-M1-01`〜`EC-M1-07`、`LEGACY-*`、runtime/public surface の全要件を evidence で閉じるまで、Rust-free daily development 可能を全機能 Rust-free 完了とは呼ばない。
+
 ### 実装の進行規則
 
 1. **開始時の事実確認**: 作業対象の `AGENTS.md`、`git status`、現在 branch/upstream、`TODO.md` の正本、直近の artifact/VM 状態を先に確認する。過去の完了報告や stale artifact は current evidence として再利用しない。
