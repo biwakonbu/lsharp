@@ -1,6 +1,7 @@
 //! IR -> Wasm バイナリ生成
 
 use lsharp_ir::{Instruction, Module};
+use lsharp_syntax::span::Span;
 use wasm_encoder::{
     CodeSection, EntityType, ExportKind, ExportSection, FunctionSection, ImportSection,
     MemorySection, MemoryType, TypeSection, ValType,
@@ -11,6 +12,16 @@ use wasm_encoder::{
 pub enum CodegenError {
     #[error("コード生成エラー: {msg}")]
     Error { msg: String },
+}
+
+impl CodegenError {
+    pub fn code(&self) -> &'static str {
+        "LS4001"
+    }
+
+    pub fn span(&self) -> Option<Span> {
+        None
+    }
 }
 
 /// IR モジュールを Wasm バイナリに変換
@@ -226,6 +237,16 @@ mod tests {
     use super::*;
     use lsharp_ir::lower::Lower;
     use lsharp_types::infer::Infer;
+
+    #[test]
+    fn codegen_errors_expose_stable_code_without_source_span() {
+        let error = CodegenError::Error {
+            msg: "invalid instruction".to_string(),
+        };
+
+        assert_eq!(error.code(), "LS4001");
+        assert_eq!(error.span(), None);
+    }
 
     fn compile(source: &str) -> Vec<u8> {
         let program = lsharp_syntax::parse(source).unwrap();

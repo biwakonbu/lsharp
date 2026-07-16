@@ -2,7 +2,7 @@
 
 このページは L# の `LS####` エラーコード体系の利用者向け正本です。MCP の `lsharp_errors` tool も同じ driver 側 table を参照します。
 
-現時点の scope は error code reference と MCP lookup の統一です。lexer/parser/macro/type/lowering の下層エラーは stable code/span まで接続済みですが、`ParseAllError` を含む CLI / LSP / MCP の全診断経路と codegen error への `LS####` 貫通は I-02 / imp-02 の残タスクとして扱います。
+現時点の scope は error code reference と MCP lookup の統一です。lexer/parser/macro/type/lowering/codegen の下層エラーは stable code/span まで接続済みです。CodegenError は source span を持たないため `span = None` とし、`ParseAllError` を含む CLI / LSP / MCP の全診断経路と LSP の range/code forwarding は I-02 / imp-02 の残タスクとして扱います。
 
 ## Code Ranges
 
