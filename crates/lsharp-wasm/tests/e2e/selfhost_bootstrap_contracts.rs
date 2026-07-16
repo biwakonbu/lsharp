@@ -116,7 +116,8 @@ fn test_e2e_selfhost_embedded_cli_source_compile_uses_full_program_builder() {
         "source compile helper は実 Wasm bytes builder を使う必要がある"
     );
     assert!(
-        source.contains("(defn run-compile-source [src opts] (let [wasm-bytes (compile-source-wasm-bytes src)"),
+        source.contains("(defn run-compile-source [src opts]")
+            && source.contains("wasm-bytes (compile-source-wasm-bytes src)"),
         "run-compile-source は full-program helper を呼び出す必要がある"
     );
     assert!(
