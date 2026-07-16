@@ -6051,6 +6051,44 @@ fn test_e2e_selfhost_test_runner_reports_unknown_invariant_variable() {
         "selfhost contract path は未定義 invariant 変数を silent Unit/0 fallback にしないべき"
     );
 }
+
+/// TEST-CLI-02-O2g: selfhost runner が legacy contract の順序と source span を保持すること
+#[test]
+fn test_e2e_selfhost_test_runner_preserves_contract_form_order_and_spans() {
+    let harness = r#"
+(defn main []
+  (let [src "(defn succ [x] :example [(succ 0)] :invariant (= result (+ x 1)) :example [(succ 1)] (+ x 1))"
+        forms (extract-contract-forms src)
+        form0 (vector-get forms 0)
+        form1 (vector-get forms 1)
+        form2 (vector-get forms 2)]
+    (do
+      (print (vector-length forms))
+      (print (vector-get form0 0))
+      (print (vector-length (vector-get form0 2)))
+      (print (vector-get form0 3))
+      (print (vector-get form0 4))
+      (print (vector-get form1 0))
+      (print (vector-length (vector-get form1 2)))
+      (print (vector-get form1 3))
+      (print (vector-get form1 4))
+      (print (vector-get form2 0))
+      (print (vector-length (vector-get form2 2)))
+      (print (vector-get form2 3))
+      (print (vector-get form2 4))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["3", "1", "1", "15", "34", "2", "1", "35", "64", "1", "1", "65", "84"],
+        "selfhost contract inventory は legacy directive の順序・grouping・source span を保持すべき"
+    );
+}
 /// TEST-CLI-02-O2d: selfhost/src/Tools/Test/TestRunner.ls が supported subset の metadata suite を実行できること
 #[test]
 #[ignore]

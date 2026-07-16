@@ -585,6 +585,72 @@
           results))
       results)))
 
+(defn contract-form-example [] 1)
+(defn contract-form-invariant [] 2)
+
+;; ordered legacy form: [kind, function-name-hash, payload-expressions, start, end]
+(defn make-contract-form [kind fn-hash payload start end]
+  (vector-push
+    (vector-push
+      (vector-push
+        (vector-push
+          (vector-push (vector-new 5) kind)
+          fn-hash)
+        payload)
+      start)
+    end))
+
+(defn append-contract-form [src tokens idx payload-start payload-end name fn-hash forms]
+  (if (or (string-eq name "example") (string-eq name "invariant"))
+    (let [text (payload-source src tokens payload-start payload-end)
+      payload (if (> (string-length text) 0) (parse-program text) (vector-new 0))
+      kind (if (string-eq name "example") (contract-form-example) (contract-form-invariant))
+      start (token-start tokens idx)
+      end (token-end tokens (- payload-end 1))
+      form (make-contract-form kind fn-hash payload start end)]
+      (vector-push forms form))
+    forms))
+
+(defn collect-defn-contract-forms-loop [src tokens idx end fn-hash forms]
+  (if (>= idx end)
+    forms
+    (let [kind (token-kind tokens idx)]
+      (if (= kind (tok-eof))
+        forms
+        (if (= kind (tok-lbracket))
+          (collect-defn-contract-forms-loop src tokens (consume-form tokens idx) end fn-hash forms)
+          (if (= kind (tok-colon))
+            (let [payload-start (+ idx 2)]
+              (if (< payload-start end)
+                (let [name (directive-name src tokens idx end)
+                  payload-end (consume-form tokens payload-start)
+                  next-forms (append-contract-form
+                    src tokens idx payload-start payload-end name fn-hash forms)]
+                  (collect-defn-contract-forms-loop src tokens payload-end end fn-hash next-forms))
+                forms))
+            forms))))))
+
+(defn extract-contract-forms-loop [src tokens idx count forms]
+  (if (>= idx count)
+    forms
+    (let [kind (token-kind tokens idx)]
+      (if (= kind (tok-eof))
+        forms
+        (let [next-idx (consume-form tokens idx)]
+          (if (= kind (tok-lparen))
+            (if (< (+ idx 2) count)
+              (if (= (token-kind tokens (+ idx 1)) (tok-defn))
+                (let [fn-hash (name-hash src (token-start tokens (+ idx 2)) (token-end tokens (+ idx 2)))
+                  next-forms (collect-defn-contract-forms-loop src tokens (+ idx 3) next-idx fn-hash forms)]
+                  (extract-contract-forms-loop src tokens next-idx count next-forms))
+                (extract-contract-forms-loop src tokens next-idx count forms))
+              (extract-contract-forms-loop src tokens next-idx count forms))
+            (extract-contract-forms-loop src tokens next-idx count forms)))))))
+
+(defn extract-contract-forms [src]
+  (let [tokens (tokenize-with-spans src)]
+    (extract-contract-forms-loop src tokens 0 (token-count tokens) (vector-new 8))))
+
 (defn collect-defn-metadata-loop [src tokens idx end fn-hash examples invariants]
   (if (>= idx end)
     (make-suite examples invariants)
