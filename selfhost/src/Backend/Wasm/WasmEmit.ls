@@ -691,6 +691,7 @@
 (defn standalone-command-line-arg-opcode [] 92)
 (defn standalone-file-exists-opcode [] 93)
 (defn standalone-read-file-opcode [] 94)
+(defn standalone-write-file-opcode [] 95)
 (defn standalone-ir-instr [instr]
   (let [opcode (vector-get instr 0)
     operand (vector-get instr 1)]
@@ -702,9 +703,11 @@
           (make-instr (standalone-file-exists-opcode) 0)
           (if (= opcode 64)
             (make-instr (standalone-read-file-opcode) 0)
+            (if (= opcode 89)
+              (make-instr (standalone-write-file-opcode) 0)
             (if (and (= opcode 40) (>= operand 12))
-              (make-instr 40 (+ operand 8))
-              instr)))))))
+              (make-instr 40 (+ operand 9))
+              instr))))))))
 (defn standalone-ir-instrs-step [ir idx count result]
   (if (>= idx count)
     (make-loop-step-state 1 idx result)
@@ -957,6 +960,37 @@
     b25 (emit-standalone-byte-seq-1 b24 11)
     b26 (emit-standalone-byte-seq-4 b25 32 5 173 11)]
     b26))
+(defn emit-standalone-write-file-body []
+  ;; create|truncate + single fd_write の bounded slice。open failure は -1 を返す。
+  (let [b0a (emit-standalone-byte-seq-2 (vector-new 512) 1 7)
+    b0 (emit-byte b0a 127)
+    b1 (emit-standalone-byte-seq-8 b0 32 0 167 65 8 106 33 2)
+    b2 (emit-standalone-byte-seq-8 b1 32 0 167 40 2 4 33 3)
+    b3 (emit-standalone-byte-seq-8 b2 32 1 167 65 8 106 33 4)
+    b4 (emit-standalone-byte-seq-8 b3 32 1 167 40 2 4 33 5)
+    b5 (emit-standalone-byte-seq-8 b4 65 3 65 0 32 2 32 3)
+    b6a (emit-byte b5 65)
+    b6 (emit-leb128 b6a 5)
+    b7a (emit-byte b6 66)
+    b7 (emit-leb128-s b7a 64)
+    b8a (emit-byte b7 66)
+    b8 (emit-leb128-s b8a 0)
+    b9 (emit-standalone-byte-seq-8 b8 65 0 65 152 2 16 13 33)
+    b10 (emit-standalone-byte-seq-1 b9 6)
+    b11a (emit-byte b10 65)
+    b11 (emit-leb128-s b11a -1)
+    b12a (emit-byte b11 33)
+    b12 (emit-leb128 b12a 8)
+    b13 (emit-standalone-byte-seq-8 b12 32 6 69 4 64 65 152 2)
+    b14 (emit-standalone-byte-seq-8 b13 40 2 0 33 7 65 224 2)
+    b15 (emit-standalone-byte-seq-8 b14 32 4 54 2 0 65 224 2)
+    b16 (emit-standalone-byte-seq-8 b15 32 5 54 2 4 65 232 2)
+    b17 (emit-standalone-byte-seq-8 b16 65 0 54 2 0 32 7 65)
+    b18 (emit-standalone-byte-seq-8 b17 224 2 65 1 65 232 2 16)
+    b19 (emit-standalone-byte-seq-8 b18 0 26 65 232 2 40 2 0)
+    b20 (emit-standalone-byte-seq-8 b19 33 8 32 7 16 14 26 11)
+    b21 (emit-standalone-byte-seq-4 b20 32 8 172 11)]
+    b21))
 (defn emit-standalone-print-string-body []
   (let [b0 (emit-standalone-byte-seq-8 (vector-new 64) 0 65 0 32 0 167 65 8)
     b1 (emit-standalone-byte-seq-4 b0 106 54 2 0)
@@ -1140,9 +1174,11 @@
           (emit-standalone-file-exists-body)
           (if (= idx 13)
             (emit-standalone-read-file-body)
-            (emit-standalone-drop-i64-body))))))))))))))))
+            (if (= idx 14)
+              (emit-standalone-write-file-body)
+              (emit-standalone-drop-i64-body)))))))))))))))))
 (defn append-standalone-runtime-bodies-step [body idx]
-  (if (>= idx 14)
+  (if (>= idx 15)
     (make-loop-step-state 1 idx body)
     (let [func-body (shift-standalone-runtime-call-indices (standalone-runtime-body idx))]
       (do
@@ -1577,7 +1613,7 @@
 (defn emit-code-section-wasi-quad-functions [functions] (let [func-count (vector-length functions) main-func-idx (+ 9 func-count) body0 (emit-leb128 (vector-new 64) (+ func-count 1)) body1 (append-code-bodies-functions body0 functions 0 func-count) wrapper0 (emit-byte (vector-new 8) 0) wrapper1 (emit-byte wrapper0 16) wrapper2 (emit-leb128 wrapper1 main-func-idx) wrapper3 (emit-byte wrapper2 26) wrapper4 (emit-byte wrapper3 11) wrapper-size (vector-length wrapper4) body2 (emit-leb128 body1 wrapper-size) body3 (append-byte-vector body2 wrapper4 0 wrapper-size) body-size (vector-length body3) result0 (emit-byte (vector-new 64) 10) result1 (emit-leb128 result0 body-size)] (append-byte-vector-chunked result1 body3 0 body-size)))
 ;; コードセクション: 11-import runtime のユーザ関数ボディ + _start
 (defn emit-code-section-wasi-quad-functions-print-string [functions] (let [func-count (vector-length functions) main-func-idx (+ 10 func-count) body0 (emit-leb128 (vector-new 64) (+ func-count 1)) body1 (append-code-bodies-functions body0 functions 0 func-count) wrapper0 (emit-byte (vector-new 8) 0) wrapper1 (emit-byte wrapper0 16) wrapper2 (emit-leb128 wrapper1 main-func-idx) wrapper3 (emit-byte wrapper2 26) wrapper4 (emit-byte wrapper3 11) wrapper-size (vector-length wrapper4) body2 (emit-leb128 body1 wrapper-size) body3 (append-byte-vector body2 wrapper4 0 wrapper-size) body-size (vector-length body3) result0 (emit-byte (vector-new 64) 10) result1 (emit-leb128 result0 body-size)] (append-byte-vector-chunked result1 body3 0 body-size)))
-;; 標準 WASI Preview1 の fd_write / args_sizes_get / args_get / path_open / fd_close だけを外部 import に残し、旧 env runtime は
+;; 標準 WASI Preview1 の fd_write / args_sizes_get / args_get / path_open / fd_close / fd_read だけを外部 import に残し、旧 env runtime は
 ;; 同じ関数番号を保った内部 Wasm 関数として配置する standalone ABI。
 (defn emit-type-section-wasi-standalone [functions]
   (let [func-count (vector-length functions)
@@ -1605,7 +1641,7 @@
     (append-byte-vector-chunked result1 body16 0 body-size)))
 (defn emit-function-section-wasi-standalone [functions]
   (let [func-count (vector-length functions)
-    body0 (emit-leb128 (vector-new 64) (+ func-count 15))
+    body0 (emit-leb128 (vector-new 64) (+ func-count 16))
     body1 (emit-leb128 body0 1)
     body2 (emit-leb128 body1 2)
     body3 (emit-leb128 body2 1)
@@ -1620,16 +1656,17 @@
     body12 (emit-leb128 body11 1)
     body13 (emit-leb128 body12 1)
     body14 (emit-leb128 body13 1)
-    body15 (append-type-index-sequence body14 7 (+ 7 func-count))
-    body16 (emit-leb128 body15 (+ 7 func-count))
-    body-size (vector-length body16)
+    body15 (emit-leb128 body14 3)
+    body16 (append-type-index-sequence body15 7 (+ 7 func-count))
+    body17 (emit-leb128 body16 (+ 7 func-count))
+    body-size (vector-length body17)
     result0 (emit-byte (vector-new 64) 3)
     result1 (emit-leb128 result0 body-size)]
-    (append-byte-vector-chunked result1 body16 0 body-size)))
+    (append-byte-vector-chunked result1 body17 0 body-size)))
 (defn emit-code-section-wasi-standalone [functions]
   (let [func-count (vector-length functions)
-    main-func-idx (+ 19 func-count)
-    body0 (emit-leb128 (vector-new 64) (+ func-count 15))
+    main-func-idx (+ 20 func-count)
+    body0 (emit-leb128 (vector-new 64) (+ func-count 16))
     body1 (append-standalone-runtime-bodies body0 0)
     body2 (append-code-bodies-functions-standalone body1 functions 0 func-count)
     body3 (append-standalone-code-body body2 (emit-standalone-wrapper-body main-func-idx))
@@ -1883,6 +1920,8 @@
   (emit-leb128 (emit-byte bytes 16) 18))
 (defn emit-read-file-standalone-instr [bytes]
   (emit-leb128 (emit-byte bytes 16) 19))
+(defn emit-write-file-standalone-instr [bytes]
+  (emit-leb128 (emit-byte bytes 16) 20))
 
 (defn reject-native-only-wasm-opcode [bytes opcode]
   (if (= opcode 86)
@@ -1902,7 +1941,9 @@
           (emit-file-exists-standalone-instr bytes)
           (if (= opcode (standalone-read-file-opcode))
             (emit-read-file-standalone-instr bytes)
-            (reject-native-only-wasm-opcode bytes opcode)))))))
+            (if (= opcode (standalone-write-file-opcode))
+              (emit-write-file-standalone-instr bytes)
+              (reject-native-only-wasm-opcode bytes opcode))))))))
 
 (defn emit-runtime-ir-instr-tail-high [bytes opcode operand]
   (if (= opcode 72)

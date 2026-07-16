@@ -1637,7 +1637,7 @@ fn test_embedded_cli_component_compile_preview1_writes_runnable_wasm_without_dri
     let unsupported_output_path = temp_dir.join("unsupported.wasm");
     write_source_file(
         &unsupported_source_path,
-        "(defn main [] (write-file \"missing\" \"payload\"))\n",
+        "(defn main [] (write-file-bytes \"missing\" (vector-new 1)))\n",
     );
     let unsupported_guest =
         lsharp_wasm::wasi_runner::run_wasm_component_with_dir_and_args_inherit_stdin_capture(
@@ -1850,6 +1850,50 @@ fn test_embedded_cli_component_compile_preview1_writes_runnable_wasm_without_dri
     assert_eq!(
         read_file_runtime_output, "payload",
         "Preview1 read-file は bounded file content を返すべき"
+    );
+
+    let write_file_target_path = temp_dir.join("write.txt");
+    let write_file_source_path = temp_dir.join("write-file.ls");
+    let write_file_output_path = temp_dir.join("write-file.wasm");
+    write_source_file(
+        &write_file_source_path,
+        "(defn main [] (write-file \"write.txt\" \"payload\"))\n",
+    );
+    let write_file_guest =
+        lsharp_wasm::wasi_runner::run_wasm_component_with_dir_args_and_stdin_capture(
+            &component,
+            Some(&temp_dir),
+            &[
+                "compile",
+                "write-file.ls",
+                "--target",
+                "wasi-preview1",
+                "-o",
+                "write-file.wasm",
+            ],
+            "",
+        )
+        .expect("embedded CLI write-file runtime execution failed");
+    assert_eq!(
+        write_file_guest.exit_code, 0,
+        "Preview1 write-file compile は成功するべき: stdout={}",
+        write_file_guest.stdout
+    );
+    let write_file_written =
+        fs::read(&write_file_output_path).expect("write-file output read failed");
+    let write_file_runtime_output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir(
+        &write_file_written,
+        Some(&temp_dir),
+    )
+    .expect("write-file Preview1 output should run");
+    assert_eq!(
+        write_file_runtime_output, "",
+        "Preview1 write-file は stdout に余計な出力を出すべきではない"
+    );
+    assert_eq!(
+        fs::read_to_string(&write_file_target_path).expect("write-file target read failed"),
+        "payload",
+        "Preview1 write-file は preopened dir に bounded payload を書くべき"
     );
 
     let _ = fs::remove_dir_all(&temp_dir);
