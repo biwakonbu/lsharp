@@ -78,6 +78,7 @@ parse_stage0_manifest() {
   python3 - "$manifest_path" <<'PY'
 import json
 import os
+import re
 import sys
 
 manifest_path = sys.argv[1]
@@ -94,6 +95,13 @@ target = manifest.get("target")
 if target not in ("x86_64-unknown-linux-gnu", "aarch64-apple-darwin"):
     raise SystemExit("error: stage0 manifest target must be a supported native target")
 print(target)
+
+source_commit = manifest.get("source_commit")
+if not isinstance(source_commit, str) or re.fullmatch(r"[0-9a-f]{40}", source_commit) is None:
+    raise SystemExit(
+        "error: stage0 manifest source_commit must be a 40-character lowercase hexadecimal commit"
+    )
+print(source_commit)
 
 for field in ("compiler", "transport_driver", "materializer"):
     value = manifest.get(field)
@@ -278,12 +286,12 @@ manifest_paths=()
 while IFS= read -r path; do
   manifest_paths+=("$path")
 done < <(parse_stage0_manifest)
-[[ ${#manifest_paths[@]} -eq 4 ]] || die "stage0 manifest did not provide target and three executables"
+[[ ${#manifest_paths[@]} -eq 5 ]] || die "stage0 manifest did not provide target, source commit, and three executables"
 
 TARGET="${manifest_paths[0]}"
-COMPILER="$STAGE0_DIR/${manifest_paths[1]}"
-TRANSPORT_DRIVER="$STAGE0_DIR/${manifest_paths[2]}"
-MATERIALIZER="$STAGE0_DIR/${manifest_paths[3]}"
+COMPILER="$STAGE0_DIR/${manifest_paths[2]}"
+TRANSPORT_DRIVER="$STAGE0_DIR/${manifest_paths[3]}"
+MATERIALIZER="$STAGE0_DIR/${manifest_paths[4]}"
 for executable in "$COMPILER" "$TRANSPORT_DRIVER" "$MATERIALIZER"; do
   [[ -x "$executable" ]] || die "stage0 manifest executable is unavailable: $executable"
 done

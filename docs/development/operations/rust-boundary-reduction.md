@@ -38,10 +38,11 @@ ordinary ADT は parser が variant 名と raw field TypeExpr を保持し、`Ty
 
 ## 現在の事実
 
-- `lsharp-native-selfhost-stage0` package は `compiler`、`transport_driver`、`materializer` を持つ manifest で native bootstrap を開始する。release 用の `App.Cli` archive は stage0 package ではない。
+- `lsharp-native-selfhost-stage0` package は `compiler`、`transport_driver`、`materializer`、40 桁 lowercase hex の `source_commit` を持つ manifest で native bootstrap を開始する。`scripts/native-selfhost-dev.sh` は provenance のない manifest を拒否する。release 用の `App.Cli` archive は stage0 package ではない。
 - Mac Apple Silicon では、current fixed-point stage3 compiler を stage0 package 化し、`scripts/native-selfhost-dev.sh` を通す source-file smoke が成功している。smoke は `cargo`、`rustc`、host `lsharp` を PATH 上で失敗させた状態で `parse`、`check`、`fmt`、通常と metadata の `test`、`compile -o`、`build -o` を実行する。
 - Linux x86_64 は、commit `4bd9ee9` から生成した fresh actual-stage1 を stage0 package 化し、Lima `lsharp-linux-x86` VM 内で source-file smoke を成功させた。続く current-source stage0 `/tmp/lsharp-native-linux-x86-stage0-7807089` の再確認でも、`LSHARP_NATIVE_LINUX_X86_TRANSPORT_CHUNK_SIZE=64`、timeout 1200 秒で `parse`、`check`、`fmt`、通常と metadata の `test`、`compile -o`、`build -o` を完走した。実行中は `cargo`、`rustc`、host `lsharp` を blocklist にし、VM は 11 GiB disk 中 3.2 GiB 使用（30%）で終了、temporary workdir/lock は残していない。`7807089` の actual stage1 -> stage2 -> stage3 selfregen も別 gateで pass している。2026-07-14 の historical `8dd37ef-static-string-fixedpoint` replay における `parse stdout is missing decls:1` は、fresh stage0 で解消された過去の failure evidence として残す。
 - native bootstrap の初回だけは source tree を再生成する。fingerprint が不変なら `scripts/native-selfhost-dev.sh` は生成済み `program.native` を再利用する。
+- repo 内の旧 stage0 artifact に `source_commit` がない場合は、native runner の成功経路へ再利用せず、source commit と fixed-point evidence を付けた package を再生成する。
 - `LSHARP_NATIVE_MACOS_AARCH64_CODESIGN_IDENTITY` は macOS host policy 上、生成済み Mach-O の実行に署名が必要な環境でだけ指定する。成功時の codesign 出力は command stderr に漏らさず、失敗時だけ診断として返す。
 - GitHub Actions の自動 build は使わない。検証と release は Mac と Lima VM の手動 local gate で行う。
 

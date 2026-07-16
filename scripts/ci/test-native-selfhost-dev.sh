@@ -130,6 +130,7 @@ cat >"$STAGE0_DIR/manifest.json" <<'JSON'
 {
   "kind": "lsharp-native-selfhost-stage0",
   "target": "x86_64-unknown-linux-gnu",
+  "source_commit": "0000000000000000000000000000000000000000",
   "compiler": "bin/compiler",
   "transport_driver": "bin/transport-driver",
   "materializer": "bin/materializer"
@@ -353,6 +354,34 @@ assert_file_contains "$LOG_FILE" "component-helper|build --source $DOC_INPUT --o
 assert_eq "component" "$(<"$BUILD_COMPONENT_OUTPUT")"
 assert_file_not_contains "$LOG_FILE" "program|build $DOC_INPUT --output $BUILD_COMPONENT_OUTPUT --target wasm"
 
+python3 - "$STAGE0_DIR/manifest.json" <<'PY'
+import json
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+manifest = json.loads(path.read_text())
+manifest.pop("source_commit")
+path.write_text(json.dumps(manifest) + "\n")
+PY
+rm -rf "$STAGE_DIR"
+if run_runner missing-source-commit >"$TMP_ROOT/missing-source.stdout" 2>"$TMP_ROOT/missing-source.stderr"; then
+  fail "native runner accepted a stage0 manifest without source_commit"
+fi
+assert_file_contains "$TMP_ROOT/missing-source.stderr" "source_commit"
+
+python3 - "$STAGE0_DIR/manifest.json" <<'PY'
+import json
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+manifest = json.loads(path.read_text())
+manifest["target"] = "x86_64-unknown-linux-gnu"
+manifest["source_commit"] = "0000000000000000000000000000000000000000"
+path.write_text(json.dumps(manifest) + "\n")
+PY
+
 if run_runner compile "$DOC_INPUT" --target web-wasm >"$TMP_ROOT/web-wasm.stdout" 2>"$TMP_ROOT/web-wasm.stderr"; then
   fail "native runner accepted unsupported web-wasm target"
 fi
@@ -374,7 +403,7 @@ assert_file_not_contains "$LOG_FILE" "program|compile $DOC_INPUT --emit-ir"
 assert_file_not_contains "$RUNNER" 'cargo '
 assert_file_not_contains "$RUNNER" 'command -v lsharp'
 assert_file_not_contains "$RUNNER" 'which lsharp'
-assert_file_not_contains "$RUNNER" '"$ROOT/scripts/selfhost-dev.sh"'
-assert_file_not_contains "$RUNNER" '"$ROOT/scripts/bootstrap.sh"'
+assert_file_not_contains "$RUNNER" "\"\$ROOT/scripts/selfhost-dev.sh\""
+assert_file_not_contains "$RUNNER" "\"\$ROOT/scripts/bootstrap.sh\""
 
 echo "native selfhost dev runner tests: OK"
