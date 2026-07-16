@@ -1,6 +1,7 @@
 //! パターンマッチの lowering
 
 use lsharp_syntax::ast::*;
+use lsharp_syntax::span::Span;
 
 use crate::{Instruction, IrType};
 
@@ -110,12 +111,13 @@ impl Lower {
                 ctx.emit(Instruction::End);
             }
             Pattern::RecordPat(_, type_name, field_pats) => {
-                self.bind_record_pattern_fields(ctx, scrut_local, type_name, field_pats)?;
+                self.bind_record_pattern_fields(ctx, scrut_local, type_name, field_pats, arm.span)?;
                 self.lower_arm_body_with_guard(ctx, scrut_local, arms, arm, idx)?;
             }
             _ => {
                 return Err(LowerError::Unsupported {
                     msg: format!("パターン: {:?}", arm.pattern),
+                    span: Some(arm.span),
                 });
             }
         }
@@ -130,6 +132,7 @@ impl Lower {
         record_local: u32,
         type_name: &str,
         field_pats: &[(String, Pattern)],
+        span: Span,
     ) -> Result<(), LowerError> {
         for (field_name, field_pat) in field_pats {
             let field_idx = self.resolve_field_index(type_name, field_name);
@@ -156,6 +159,7 @@ impl Lower {
                             field_local,
                             child_type_name,
                             child_fields,
+                            span,
                         )?;
                     }
                 }
@@ -164,6 +168,7 @@ impl Lower {
                 _ => {
                     return Err(LowerError::Unsupported {
                         msg: format!("レコードフィールドパターン: {:?}", field_pat),
+                        span: Some(span),
                     });
                 }
             }

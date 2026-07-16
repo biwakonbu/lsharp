@@ -579,16 +579,19 @@ impl Lower {
             let root_push_idx = *self.func_indices.get("root_push").ok_or_else(|| {
                 LowerError::UndefinedFunction {
                     name: "root_push".to_string(),
+                    span: Some(body.span()),
                 }
             })?;
             let root_pop_idx = *self.func_indices.get("root_pop").ok_or_else(|| {
                 LowerError::UndefinedFunction {
                     name: "root_pop".to_string(),
+                    span: Some(body.span()),
                 }
             })?;
             let root_set_idx = *self.func_indices.get("root_set").ok_or_else(|| {
                 LowerError::UndefinedFunction {
                     name: "root_set".to_string(),
+                    span: Some(body.span()),
                 }
             })?;
             let root_ops = SelfTcoRootOps {

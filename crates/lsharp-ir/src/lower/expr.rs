@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 
 use lsharp_syntax::ast::*;
+use lsharp_syntax::span::Span;
 
 use crate::{Function, Instruction, IrType, closure};
 
@@ -12,7 +13,7 @@ impl Lower {
     /// 式を IR 命令に変換（スタックマシン方式）
     pub(crate) fn lower_expr(&mut self, ctx: &mut FuncCtx, expr: &Expr) -> Result<(), LowerError> {
         match expr {
-            Expr::Lit(_, lit) => match lit {
+            Expr::Lit(expr_span, lit) => match lit {
                 Literal::Int(n) => ctx.emit(Instruction::I64Const(*n)),
                 Literal::Float(n) => ctx.emit(Instruction::F64Const(*n)),
                 Literal::Bool(b) => ctx.emit(Instruction::I64Const(if *b { 1 } else { 0 })),
@@ -29,6 +30,7 @@ impl Lower {
                     let alloc_idx = *self.func_indices.get("__alloc").ok_or_else(|| {
                         LowerError::UndefinedFunction {
                             name: "__alloc".to_string(),
+                            span: Some(*expr_span),
                         }
                     })?;
 
@@ -73,7 +75,7 @@ impl Lower {
                 Literal::Unit => ctx.emit(Instruction::I64Const(0)),
             },
 
-            Expr::Var(_, name) => {
+            Expr::Var(expr_span, name) => {
                 if let Some(&idx) = ctx.locals_map.get(name) {
                     ctx.emit(Instruction::LocalGet(idx));
                 } else if let Some(&func_idx) = self.func_indices.get(name) {
@@ -83,7 +85,10 @@ impl Lower {
                     // Lambda Lifting で生成された関数の呼び出し
                     ctx.emit(Instruction::Call(func_idx));
                 } else {
-                    return Err(LowerError::UndefinedFunction { name: name.clone() });
+                    return Err(LowerError::UndefinedFunction {
+                        name: name.clone(),
+                        span: Some(*expr_span),
+                    });
                 }
             }
 
@@ -137,7 +142,7 @@ impl Lower {
                 result?;
             }
 
-            Expr::App(_, func, args) => {
+            Expr::App(expr_span, func, args) => {
                 match func.as_ref() {
                     // and/or 論理演算子（i64 -> i32 変換が必要）
                     Expr::Var(_, op) if (op == "and" || op == "or") && args.len() == 2 => {
@@ -160,7 +165,7 @@ impl Lower {
                     Expr::Var(_, op) if is_builtin_binop(op) && args.len() == 2 => {
                         self.lower_expr(ctx, &args[0])?;
                         self.lower_expr(ctx, &args[1])?;
-                        self.emit_binop(ctx, op)?;
+                        self.emit_binop(ctx, op, *expr_span)?;
                     }
                     // not 演算子
                     Expr::Var(_, op) if op == "not" && args.len() == 1 => {
@@ -184,6 +189,7 @@ impl Lower {
                                     *self.func_indices.get("print-string").ok_or_else(|| {
                                         LowerError::UndefinedFunction {
                                             name: "print-string".to_string(),
+                                            span: Some(*expr_span),
                                         }
                                     })?;
                                 ctx.emit(Instruction::Call(idx));
@@ -192,6 +198,7 @@ impl Lower {
                                 let idx = *self.func_indices.get("print").ok_or_else(|| {
                                     LowerError::UndefinedFunction {
                                         name: "print".to_string(),
+                                        span: Some(*expr_span),
                                     }
                                 })?;
                                 ctx.emit(Instruction::Call(idx));
@@ -208,6 +215,7 @@ impl Lower {
                         let idx = *self.func_indices.get("print-string").ok_or_else(|| {
                             LowerError::UndefinedFunction {
                                 name: "print-string".to_string(),
+                                span: Some(*expr_span),
                             }
                         })?;
                         ctx.emit(Instruction::Call(idx));
@@ -224,6 +232,7 @@ impl Lower {
                         let idx = *self.func_indices.get("proc-exit").ok_or_else(|| {
                             LowerError::UndefinedFunction {
                                 name: "proc-exit".to_string(),
+                                span: Some(*expr_span),
                             }
                         })?;
                         ctx.emit(Instruction::Call(idx));
@@ -238,6 +247,7 @@ impl Lower {
                         let idx = *self.func_indices.get("__alloc").ok_or_else(|| {
                             LowerError::UndefinedFunction {
                                 name: "__alloc".to_string(),
+                                span: Some(*expr_span),
                             }
                         })?;
                         ctx.emit(Instruction::Call(idx));
@@ -302,6 +312,7 @@ impl Lower {
                             let alloc_idx = *self.func_indices.get("__alloc").ok_or_else(|| {
                                 LowerError::UndefinedFunction {
                                     name: "__alloc".to_string(),
+                                    span: Some(*expr_span),
                                 }
                             })?;
                             ctx.emit(Instruction::Call(alloc_idx));
@@ -371,6 +382,7 @@ impl Lower {
                                 *self.func_indices.get("__string_concat").ok_or_else(|| {
                                     LowerError::UndefinedFunction {
                                         name: "__string_concat".to_string(),
+                                        span: Some(*expr_span),
                                     }
                                 })?;
                             let result_local = ctx.alloc_local("_strcat_result".to_string());
@@ -392,6 +404,7 @@ impl Lower {
                         let idx = *self.func_indices.get("__string_eq").ok_or_else(|| {
                             LowerError::UndefinedFunction {
                                 name: "__string_eq".to_string(),
+                                span: Some(*expr_span),
                             }
                         })?;
                         ctx.emit(Instruction::Call(idx));
@@ -404,6 +417,7 @@ impl Lower {
                         let idx = *self.func_indices.get("__int_to_string").ok_or_else(|| {
                             LowerError::UndefinedFunction {
                                 name: "__int_to_string".to_string(),
+                                span: Some(*expr_span),
                             }
                         })?;
                         ctx.emit(Instruction::Call(idx));
@@ -425,6 +439,7 @@ impl Lower {
                         let alloc_idx = *self.func_indices.get("__alloc").ok_or_else(|| {
                             LowerError::UndefinedFunction {
                                 name: "__alloc".to_string(),
+                                span: Some(*expr_span),
                             }
                         })?;
                         ctx.emit(Instruction::Call(alloc_idx));
@@ -508,6 +523,7 @@ impl Lower {
                         let alloc_idx = *self.func_indices.get("__alloc").ok_or_else(|| {
                             LowerError::UndefinedFunction {
                                 name: "__alloc".to_string(),
+                                span: Some(*expr_span),
                             }
                         })?;
                         ctx.emit(Instruction::Call(alloc_idx));
@@ -684,6 +700,7 @@ impl Lower {
                                     *self.func_indices.get("__alloc").ok_or_else(|| {
                                         LowerError::UndefinedFunction {
                                             name: "__alloc".to_string(),
+                                            span: Some(*expr_span),
                                         }
                                     })?;
                                 self.emit_root_push_local(ctx, val_local, "_vpush_val_root_slot")?;
@@ -803,6 +820,7 @@ impl Lower {
                         let alloc_idx = *self.func_indices.get("__alloc").ok_or_else(|| {
                             LowerError::UndefinedFunction {
                                 name: "__alloc".to_string(),
+                                span: Some(*expr_span),
                             }
                         })?;
                         ctx.emit(Instruction::Call(alloc_idx));
@@ -1229,6 +1247,7 @@ impl Lower {
                         let idx = *self.func_indices.get("root_push").ok_or_else(|| {
                             LowerError::UndefinedFunction {
                                 name: "root_push".to_string(),
+                                span: Some(*expr_span),
                             }
                         })?;
                         ctx.emit(Instruction::Call(idx));
@@ -1237,6 +1256,7 @@ impl Lower {
                         let idx = *self.func_indices.get("root_pop").ok_or_else(|| {
                             LowerError::UndefinedFunction {
                                 name: "root_pop".to_string(),
+                                span: Some(*expr_span),
                             }
                         })?;
                         ctx.emit(Instruction::Call(idx));
@@ -1251,6 +1271,7 @@ impl Lower {
                         let idx = *self.func_indices.get("root_set").ok_or_else(|| {
                             LowerError::UndefinedFunction {
                                 name: "root_set".to_string(),
+                                span: Some(*expr_span),
                             }
                         })?;
                         ctx.emit(Instruction::Call(idx));
@@ -1293,7 +1314,10 @@ impl Lower {
                         if let Some(&idx) = self.func_indices.get(name.as_str()) {
                             ctx.emit(Instruction::Call(idx));
                         } else {
-                            return Err(LowerError::UndefinedFunction { name: name.clone() });
+                            return Err(LowerError::UndefinedFunction {
+                                name: name.clone(),
+                                span: Some(*expr_span),
+                            });
                         }
                     }
                     // ユーザー定義関数呼び出し（トレイト静的ディスパッチ対応）
@@ -1387,12 +1411,16 @@ impl Lower {
                                 self.emit_root_pop_drop(ctx)?;
                             }
                         } else {
-                            return Err(LowerError::UndefinedFunction { name: name.clone() });
+                            return Err(LowerError::UndefinedFunction {
+                                name: name.clone(),
+                                span: Some(*expr_span),
+                            });
                         }
                     }
                     _ => {
                         return Err(LowerError::Unsupported {
                             msg: "間接的な関数呼び出し".to_string(),
+                            span: Some(*expr_span),
                         });
                     }
                 }
@@ -1590,7 +1618,7 @@ impl Lower {
                 }
             }
 
-            Expr::FieldAccess(_, expr, field_name) => {
+            Expr::FieldAccess(expr_span, expr, field_name) => {
                 // 式を評価してスタックにレコード値を積む
                 self.lower_expr(ctx, expr)?;
 
@@ -1611,6 +1639,7 @@ impl Lower {
                                 msg: format!(
                                     "レコード型 '{tn}' にフィールド '{field_name}' が存在しません"
                                 ),
+                                span: Some(*expr_span),
                             });
                         }
                     }
@@ -1638,6 +1667,7 @@ impl Lower {
                 if !resolved {
                     return Err(LowerError::Unsupported {
                         msg: format!("フィールド '{field_name}' を解決できません"),
+                        span: Some(*expr_span),
                     });
                 }
             }
@@ -1749,9 +1779,12 @@ impl Lower {
                 }
             }
             // P10-1: Quote/Unquote/UnquoteSplice はマクロ展開後には残らない
-            Expr::Quote(_, _) | Expr::Unquote(_, _) | Expr::UnquoteSplice(_, _) => {
+            Expr::Quote(expr_span, _)
+            | Expr::Unquote(expr_span, _)
+            | Expr::UnquoteSplice(expr_span, _) => {
                 return Err(LowerError::Unsupported {
                     msg: "quote/unquote はマクロ展開後に使用できません".to_string(),
+                    span: Some(*expr_span),
                 });
             }
         }
@@ -1760,7 +1793,12 @@ impl Lower {
     }
 
     /// 二項演算子の IR 命令を出力
-    pub(crate) fn emit_binop(&mut self, ctx: &mut FuncCtx, op: &str) -> Result<(), LowerError> {
+    pub(crate) fn emit_binop(
+        &mut self,
+        ctx: &mut FuncCtx,
+        op: &str,
+        span: Span,
+    ) -> Result<(), LowerError> {
         match op {
             "+" => ctx.emit(Instruction::I64Add),
             "-" => ctx.emit(Instruction::I64Sub),
@@ -1808,6 +1846,7 @@ impl Lower {
             _ => {
                 return Err(LowerError::Unsupported {
                     msg: format!("未知の二項演算子: {}", op),
+                    span: Some(span),
                 });
             }
         }
@@ -1824,6 +1863,7 @@ impl Lower {
             let hash_idx = *self.func_indices.get("__fnv1a_hash").ok_or_else(|| {
                 LowerError::UndefinedFunction {
                     name: "__fnv1a_hash".to_string(),
+                    span: Some(key_expr.span()),
                 }
             })?;
             ctx.emit(Instruction::Call(hash_idx));
@@ -1869,6 +1909,7 @@ impl Lower {
                 .get("root_push")
                 .ok_or_else(|| LowerError::UndefinedFunction {
                     name: "root_push".to_string(),
+                    span: None,
                 })?;
         let slot_local = ctx.alloc_local(slot_name.to_string());
         ctx.emit(Instruction::LocalGet(value_local));
@@ -1898,6 +1939,7 @@ impl Lower {
                 .get("root_pop")
                 .ok_or_else(|| LowerError::UndefinedFunction {
                     name: "root_pop".to_string(),
+                    span: None,
                 })?;
         ctx.emit(Instruction::Call(root_pop_idx));
         ctx.emit(Instruction::Drop);

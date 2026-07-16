@@ -4,6 +4,7 @@ use std::collections::HashMap;
 
 use super::*;
 use crate::{Instruction, Module};
+use lsharp_syntax::span::Span;
 use lsharp_types::{
     infer::Infer,
     types::{Type, TypeScheme},
@@ -47,6 +48,32 @@ const ROOT_PUSH_IDX: u32 = 14;
 const ROOT_POP_IDX: u32 = 15;
 const ROOT_SET_IDX: u32 = 16;
 const USER_FUNC_BASE_IDX: u32 = 17;
+
+#[test]
+fn lower_errors_expose_stable_codes_and_spans() {
+    let span = Span::new(5, 12);
+    let errors = vec![
+        (
+            LowerError::Unsupported {
+                msg: "unsupported".to_string(),
+                span: Some(span),
+            },
+            "LS3001",
+        ),
+        (
+            LowerError::UndefinedFunction {
+                name: "missing".to_string(),
+                span: Some(span),
+            },
+            "LS3002",
+        ),
+    ];
+
+    for (error, expected_code) in errors {
+        assert_eq!(error.code(), expected_code);
+        assert_eq!(error.span(), Some(span));
+    }
+}
 
 fn function_index(module: &Module, name: &str) -> u32 {
     USER_FUNC_BASE_IDX
@@ -1330,9 +1357,11 @@ fn test_lower_undefined_variable_error() {
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert!(
-        matches!(err, LowerError::UndefinedFunction { .. }),
+        matches!(&err, LowerError::UndefinedFunction { .. }),
         "expected UndefinedFunction error, got: {err}"
     );
+    assert_eq!(err.code(), "LS3002");
+    assert_eq!(err.span(), Some(s));
 }
 
 #[test]
@@ -1340,7 +1369,7 @@ fn test_emit_binop_unknown_operator_returns_error() {
     // 未知の二項演算子でエラーが返ることを確認 (R-M2)
     let mut lowerer = Lower::new();
     let mut ctx = FuncCtx::with_type_scope("test".to_string(), "test".to_string());
-    let result = lowerer.emit_binop(&mut ctx, "unknown_op");
+    let result = lowerer.emit_binop(&mut ctx, "unknown_op", Span::dummy());
     assert!(
         result.is_err(),
         "未知の演算子 'unknown_op' でエラーが返るべき"
@@ -1362,7 +1391,7 @@ fn test_emit_binop_known_operators_succeed() {
     ];
     for op in &known_ops {
         let mut ctx = FuncCtx::with_type_scope("test".to_string(), "test".to_string());
-        let result = lowerer.emit_binop(&mut ctx, op);
+        let result = lowerer.emit_binop(&mut ctx, op, Span::dummy());
         assert!(result.is_ok(), "演算子 '{op}' は成功すべき");
     }
 }
@@ -1902,9 +1931,12 @@ fn test_nested_record_pattern_rejects_literal_child_until_lowered() {
     let result = lowerer.lower_program(&program, &type_results);
 
     assert!(
-        matches!(result, Err(LowerError::Unsupported { .. })),
+        matches!(&result, Err(LowerError::Unsupported { .. })),
         "nested literal child は lowering 未対応として明示エラーにすべき: {result:?}"
     );
+    let err = result.unwrap_err();
+    assert_eq!(err.code(), "LS3001");
+    assert!(err.span().is_some());
 }
 
 #[test]

@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 
 use lsharp_syntax::ast::*;
+use lsharp_syntax::span::Span;
 use lsharp_types::infer::ExprTypeKey;
 use lsharp_types::types::Type;
 
@@ -18,10 +19,25 @@ mod tests;
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum LowerError {
     #[error("未サポートの式: {msg}")]
-    Unsupported { msg: String },
+    Unsupported { msg: String, span: Option<Span> },
 
     #[error("未定義の関数: {name}")]
-    UndefinedFunction { name: String },
+    UndefinedFunction { name: String, span: Option<Span> },
+}
+
+impl LowerError {
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::Unsupported { .. } => "LS3001",
+            Self::UndefinedFunction { .. } => "LS3002",
+        }
+    }
+
+    pub fn span(&self) -> Option<Span> {
+        match self {
+            Self::Unsupported { span, .. } | Self::UndefinedFunction { span, .. } => *span,
+        }
+    }
 }
 
 /// Lowering コンテキスト

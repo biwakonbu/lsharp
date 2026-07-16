@@ -93,6 +93,7 @@ mod tests {
     fn test_from_lower_error() {
         let err = lsharp_ir::lower::LowerError::UndefinedFunction {
             name: "foo".to_string(),
+            span: None,
         };
         let unified: LsharpError = err.into();
         assert!(matches!(unified, LsharpError::Lower(_)));
