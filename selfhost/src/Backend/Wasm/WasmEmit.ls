@@ -1975,12 +1975,13 @@
             bytes))))))
 
 ;; args_sizes_get の import index は runtime call の再配置前に 11 を sentinel として保持する。
+;; argc/argv_buf_size scratch は root stack 外の 2272/2276 に置く。
 (defn emit-command-line-args-standalone-instr [bytes]
-  (let [b1 (emit-leb128-s (emit-byte bytes 65) 160)
-    b2 (emit-leb128-s (emit-byte b1 65) 164)
+  (let [b1 (emit-leb128-s (emit-byte bytes 65) 2272)
+    b2 (emit-leb128-s (emit-byte b1 65) 2276)
     b3 (emit-leb128 (emit-byte b2 16) 11)
     b4 (emit-byte b3 26)
-    b5 (emit-leb128-s (emit-byte b4 65) 160)
+    b5 (emit-leb128-s (emit-byte b4 65) 2272)
     b6 (emit-standalone-byte-seq-4 b5 40 2 0 173)]
     b6))
 (defn emit-command-line-arg-standalone-instr [bytes]
