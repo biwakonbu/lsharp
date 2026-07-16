@@ -126,6 +126,8 @@ Rust を base implementation から外すため、legacy `lower` / embedded comp
 
 2026-07-16 追加進捗: standalone bounded `read-file` の上限を 1024 bytes から 4096 bytes へ拡張した。4096 bytes (`a` * 4095 + `b`) の fixture で旧 body が全量を返せない RED を再現し、修正後は selfhost compiler 生成 artifact を標準 WASI preopened directory で実行して全量を byte-for-byte で確認した。Evidence: `test_e2e_selfhost_standalone_read_file_returns_all_bytes_at_4096`、`selfhost/src/Backend/Wasm/WasmEmit.ls`。これは bounded 4096-byte slice の拡張であり、4096 bytes 超の read、custom `path_open` errno shim parity、`fd_filestat_get` を含む full fd error semantics、root capacity / `memory.grow`、dynamic data/heap layout、component sidecar、Linux `App.Cli` native source-file output、bootstrap/oracle/host boundary は未完了である。
 
+2026-07-17 追加進捗: standalone `file-exists?` の `fd_close` errno を fail-closed に揃えた。`fd_close=1` shim 下で旧 selfhost artifact が `true` を返す RED を再現し、Rust oracle は `fd_close` の戻り値を errno local へ保存、selfhost Wasm emitter は close結果を既存 errno local へ保存する GREEN を実装した。修正後の selfhost compiler 生成 artifact は同じ shim で `false` を返し、Rust body scan と actual E2E（close 1 回）を passした。Evidence: `test_wasi_file_exists_preserves_fd_close_errno`、`test_e2e_selfhost_standalone_file_exists_returns_false_on_fd_close_errno`、`crates/lsharp-wasm/src/wasi.rs`、`selfhost/src/Backend/Wasm/WasmEmit.ls`。残る full fd error は selfhost custom `path_open` / stat parity、zero-byte / over-reportingの全 helper差分、4096 bytes 超の read、root capacity / `memory.grow`、dynamic data/heap layout、component sidecar、Linux `App.Cli` native source-file output、bootstrap/oracle/host boundary である。
+
 ## 検証と残タスク
 
 - `bash scripts/ci/test-native-selfhost-dev.sh` は runner の source refresh、native direct command routing、external helper routing、Rust-only command の明示拒否を検証する。

@@ -687,3 +687,27 @@ fn test_e2e_selfhost_standalone_read_file_returns_fd_close_errno() {
         assert_eq!(capture.fd_close_calls, 1);
     });
 }
+
+#[test]
+fn test_e2e_selfhost_standalone_file_exists_returns_false_on_fd_close_errno() {
+    run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, || {
+        let dir = fixture_dir("file_exists_close_errno");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir)
+            .expect("file-exists close errno fixture directory の作成に失敗");
+        std::fs::write(dir.join("exists.txt"), b"payload")
+            .expect("file-exists close errno fixture の作成に失敗");
+
+        let standalone_wasm = compile_standalone_source(
+            r#"(defn main [] (if (file-exists? "exists.txt") (print-string "true") (print-string "false")))"#,
+            &dir,
+            "LSHARP_STANDALONE_IO_FILE_EXISTS_CLOSE_CLI_ARTIFACT",
+        );
+        let capture = run_with_partial_fd_write_with_close_errno(&standalone_wasm, &dir, 1)
+            .expect("fd_close errno 下の file-exists standalone 実行に失敗");
+        let _ = std::fs::remove_dir_all(&dir);
+
+        assert_eq!(capture.stdout, b"false");
+        assert_eq!(capture.fd_close_calls, 1);
+    });
+}

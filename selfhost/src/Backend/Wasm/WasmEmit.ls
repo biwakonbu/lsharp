@@ -927,7 +927,9 @@
     b8 (emit-standalone-byte-seq-4 b7 32 3 69 4)
     b9 (emit-standalone-byte-seq-1 b8 64)
     b10 (emit-standalone-byte-seq-8 b9 65 192 17 40 2 0 16 14)
-    b11 (emit-standalone-byte-seq-2 b10 26 11)
+    ;; fd_close errno を保持し、close 失敗時は存在判定を 0 にする。
+    b11a (emit-standalone-byte-seq-2 b10 33 3)
+    b11 (emit-standalone-byte-seq-1 b11a 11)
     b12 (emit-standalone-byte-seq-4 b11 32 3 69 173)
     b13 (emit-standalone-byte-seq-1 b12 11)]
     b13))

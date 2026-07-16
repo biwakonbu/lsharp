@@ -3364,7 +3364,7 @@ fn emit_file_exists_func(codes: &mut CodeSection, path_open_idx: u32, fd_close_i
         memory_index: 0,
     }));
     f.instruction(&W::Call(fd_close_idx));
-    f.instruction(&W::Drop);
+    f.instruction(&W::LocalSet(3)); // close errno: open 成功でも close 失敗は存在判定を失敗にする
     f.instruction(&W::End);
 
     // 結果: errno == 0 なら 1、それ以外 0
@@ -4324,6 +4324,12 @@ mod tests {
             "#,
         );
         assert_eq!(run_wasi(&wasm), "-1\n-1\n");
+    }
+
+    #[test]
+    fn test_wasi_file_exists_preserves_fd_close_errno() {
+        let wasm = compile_wasi(r#"(defn main [] (print (file-exists? "input.txt")))"#);
+        assert_call_result_is_saved(&wasm, 8, 5, "file-exists fd_close");
     }
 
     #[test]
