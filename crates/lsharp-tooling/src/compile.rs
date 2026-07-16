@@ -82,16 +82,17 @@ fn compile_module_from_formatted_source(file: &Path, source: &str) -> miette::Re
         return lsharp_ir::compile_multi_file(file).map_err(|e| miette::miette!("{e}"));
     }
 
-    let program = lsharp_syntax::parse(source).map_err(|e| miette::miette!("{e}"))?;
+    let program =
+        lsharp_syntax::parse(source).map_err(|e| miette::miette!("[{}] {e}", e.code()))?;
     let mut infer = lsharp_types::infer::Infer::new();
     let type_results = infer
         .infer_program(&program)
-        .map_err(|e| miette::miette!("{e}"))?;
+        .map_err(|e| miette::miette!("[{}] {e}", e.code()))?;
     let expr_type_results = infer.expr_type_results_snapshot();
     let mut lower = lsharp_ir::lower::Lower::new();
     lower
         .lower_program_with_expr_types(&program, &type_results, &expr_type_results)
-        .map_err(|e| miette::miette!("{e}"))
+        .map_err(|e| miette::miette!("[{}] {e}", e.code()))
 }
 
 fn has_file_imports_from_source(source: &str) -> bool {
@@ -131,20 +132,20 @@ pub fn compile_file(
 
     match target {
         CompileTarget::WasiPreview1 => {
-            let wasm_bytes =
-                lsharp_wasm::wasi::emit_wasm_wasi(&module).map_err(|e| miette::miette!("{e}"))?;
+            let wasm_bytes = lsharp_wasm::wasi::emit_wasm_wasi(&module)
+                .map_err(|e| miette::miette!("[{}] {e}", e.code()))?;
             std::fs::write(&output_path, &wasm_bytes)
                 .map_err(|e| miette::miette!("{}: {}", output_path.display(), e))?;
         }
         CompileTarget::WasiComponent => {
             let wasm_bytes = lsharp_wasm::wasi::emit_wasm_wasi_p2(&module)
-                .map_err(|e| miette::miette!("{e}"))?;
+                .map_err(|e| miette::miette!("[{}] {e}", e.code()))?;
             std::fs::write(&output_path, &wasm_bytes)
                 .map_err(|e| miette::miette!("{}: {}", output_path.display(), e))?;
         }
         CompileTarget::WebWasm => {
-            let wasm_bytes =
-                lsharp_wasm::codegen::emit_wasm(&module).map_err(|e| miette::miette!("{e}"))?;
+            let wasm_bytes = lsharp_wasm::codegen::emit_wasm(&module)
+                .map_err(|e| miette::miette!("[{}] {e}", e.code()))?;
             std::fs::write(&output_path, &wasm_bytes)
                 .map_err(|e| miette::miette!("{}: {}", output_path.display(), e))?;
         }
@@ -161,6 +162,18 @@ pub fn compile_file(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn compile_diagnostics_preserve_stable_type_error_code() {
+        let error =
+            compile_module_from_formatted_source(Path::new("Main.ls"), "(defn bad [] (+ 1 true))")
+                .expect_err("型エラーは compile を失敗させるべき");
+
+        assert!(
+            error.to_string().contains("[LS1004]"),
+            "compile diagnostics は stable code を含むべき: {error}"
+        );
+    }
 
     #[test]
     fn test_resolve_compile_target_uses_output_extension_when_flag_missing() {
