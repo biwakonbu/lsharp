@@ -104,10 +104,28 @@
 (defn test-examples-text [count] (string-concat "examples:" (int-to-string count)))
 (defn test-invariants-text [count] (string-concat "invariants:" (int-to-string count)))
 (defn test-failures-text [count] (string-concat "failures:" (int-to-string count)))
-(defn run-test-source [src opts] (let [suite (generate-tests-from-source src) example-results (vector-get suite 0) invariant-results (vector-get suite 1) example-count (vector-length example-results) invariant-count (vector-length invariant-results) failed (+ (count-failed-results example-results) (count-failed-results invariant-results))] (do (print-string (test-examples-text example-count)) (print-string "
-") (print-string (test-invariants-text invariant-count)) (print-string "
-") (print-string (test-failures-text failed)) (print-string "
-") (if (> failed 0) (exit-runtime-error) (exit-success)))))
+(defn run-test-source [src opts]
+  (let [suite (generate-tests-from-source src)
+    example-results (vector-get suite 0)
+    invariant-results (vector-get suite 1)
+    example-count (vector-length example-results)
+    invariant-count (vector-length invariant-results)
+    failed (+ (count-failed-results example-results) (count-failed-results invariant-results))
+    diagnostic-count (test-diagnostics-count example-results invariant-results)
+    diagnostic-summary (test-diagnostics-summary example-results invariant-results)]
+    (do
+      (print-string (test-examples-text example-count))
+      (print-string "\n")
+      (print-string (test-invariants-text invariant-count))
+      (print-string "\n")
+      (print-string (test-failures-text failed))
+      (print-string "\n")
+      (if (> diagnostic-count 0)
+        (do
+          (print-string diagnostic-summary)
+          (print-string "\n"))
+        (print-string ""))
+      (if (> failed 0) (exit-runtime-error) (exit-success)))))
 (defn review-option-json [] 1)
 (defn review-json-source-id [] 200)
 (defn run-review-source [src opts] (let [program (parse-program src)] (if (= opts (review-option-json)) (let [review-json (generate-review-schema-json program (review-json-source-id))] (do (print-string review-json) (print-string "

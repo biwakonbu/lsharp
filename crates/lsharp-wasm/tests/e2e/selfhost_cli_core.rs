@@ -5994,6 +5994,63 @@ fn test_e2e_selfhost_test_runner_executes_invariant_only() {
         "run-invariants は supported invariant を 5 サンプル計画付きで materialize できるべき"
     );
 }
+
+/// TEST-CLI-02-O2e: selfhost runner が invariant の元関数引数を scope に束縛すること
+#[test]
+fn test_e2e_selfhost_test_runner_binds_invariant_parameters() {
+    let harness = r#"
+(defn main []
+  (let [src "(defn succ [x] :invariant (= result (+ x 1)) (+ x 1))"
+        suite (generate-tests-from-source src)
+        results (vector-get suite 1)
+        invariant0 (vector-get results 0)]
+    (do
+      (print (vector-length results))
+      (print (vector-get invariant0 1))
+      (print (vector-get invariant0 2))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["1", "1", "5"],
+        "selfhost invariant は x/result scope と 5 サンプルを Rust oracle と揃えるべき"
+    );
+}
+
+/// TEST-CLI-02-O2f: selfhost runner が invariant の未定義変数を LS1001 として報告すること
+#[test]
+fn test_e2e_selfhost_test_runner_reports_unknown_invariant_variable() {
+    let harness = r#"
+(defn main []
+  (let [src "(defn succ [x] :invariant (= result (+ missing 1)) (+ x 1))"]
+    (do
+      (print-string "BEGIN\n")
+      (print (run-test-source src 0))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec![
+            "BEGIN",
+            "examples:0",
+            "invariants:1",
+            "failures:1",
+            "diagnostics:1,LS1001",
+            "2",
+        ],
+        "selfhost contract path は未定義 invariant 変数を silent Unit/0 fallback にしないべき"
+    );
+}
 /// TEST-CLI-02-O2d: selfhost/src/Tools/Test/TestRunner.ls が supported subset の metadata suite を実行できること
 #[test]
 #[ignore]

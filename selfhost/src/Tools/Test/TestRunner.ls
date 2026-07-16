@@ -14,13 +14,13 @@
   (/ (vector-length tokens) 3))
 
 (defn token-kind [tokens n]
-  (span-kind tokens n))
+  (vector-get tokens (* n 3)))
 
 (defn token-start [tokens n]
-  (span-start tokens n))
+  (vector-get tokens (+ (* n 3) 1)))
 
 (defn token-end [tokens n]
-  (span-end tokens n))
+  (vector-get tokens (+ (* n 3) 2)))
 
 (defn token-text [src tokens n]
   (substring src (token-start tokens n) (token-end tokens n)))
@@ -35,18 +35,75 @@
       input)
     expected))
 
-;; テスト結果: [name-id, passed, actual]
+;; テスト結果: [name-id, passed, actual, diagnostic-code]
 (defn make-test-result [name passed actual]
   (vector-push
     (vector-push
-      (vector-push (vector-new 3) name)
-      passed)
-    actual))
+      (vector-push
+        (vector-push (vector-new 4) name)
+        passed)
+      actual)
+    0))
+
+(defn make-test-result-with-diagnostic [name passed actual diagnostic-code]
+  (vector-push
+    (vector-push
+      (vector-push
+        (vector-push (vector-new 4) name)
+        passed)
+      actual)
+    diagnostic-code))
 
 (defn make-suite [examples invariants]
   (vector-push
     (vector-push (vector-new 2) examples)
     invariants))
+
+(defn test-result-diagnostic [result]
+  (if (> (vector-length result) 3)
+    (vector-get result 3)
+    0))
+
+(defn contract-diagnostic-undefined [] 1) ;; LS1001: undefined-variable
+
+(defn diagnostic-count-loop [results idx count acc]
+  (if (>= idx count)
+    acc
+    (let [code (test-result-diagnostic (vector-get results idx))]
+      (diagnostic-count-loop results (+ idx 1) count
+        (if (> code 0) (+ acc 1) acc)))))
+
+(defn test-diagnostics-count [examples invariants]
+  (+ (diagnostic-count-loop examples 0 (vector-length examples) 0)
+    (diagnostic-count-loop invariants 0 (vector-length invariants) 0)))
+
+(defn first-diagnostic-code-loop [results idx count]
+  (if (>= idx count)
+    0
+    (let [code (test-result-diagnostic (vector-get results idx))]
+      (if (> code 0)
+        code
+        (first-diagnostic-code-loop results (+ idx 1) count)))))
+
+(defn first-test-diagnostic-code [examples invariants]
+  (let [example-code (first-diagnostic-code-loop examples 0 (vector-length examples))]
+    (if (> example-code 0)
+      example-code
+      (first-diagnostic-code-loop invariants 0 (vector-length invariants)))))
+
+(defn test-diagnostic-code-text [code]
+  (if (= code (contract-diagnostic-undefined))
+    "LS1001"
+    "LS0000"))
+
+(defn test-diagnostics-summary [examples invariants]
+  (let [count (test-diagnostics-count examples invariants)
+    code (first-test-diagnostic-code examples invariants)]
+    (if (= count 0)
+      "diagnostics:0"
+      (string-concat "diagnostics:"
+        (string-concat (int-to-string count)
+          (string-concat "," (test-diagnostic-code-text code)))))))
 
 (defn test-hash-string [s]
   (name-hash s 0 (string-length s)))
@@ -112,6 +169,9 @@
       (value-unit)
       value)))
 
+(defn env-has? [env name-hash]
+  (if (= (map-get env name-hash) 0) 0 1))
+
 (defn builtin-hash-arith? [name-hash]
   (if (= name-hash (hash-plus)) 1
     (if (= name-hash (hash-minus)) 1
@@ -156,6 +216,77 @@
           decl
           (find-defn-by-hash program target-hash (+ idx 1) count))
         (find-defn-by-hash program target-hash (+ idx 1) count)))))
+
+(defn known-contract-name? [program env name-hash]
+  (if (= (env-has? env name-hash) 1)
+    1
+    (if (= (builtin-hash? name-hash) 1)
+      1
+      (if (= name-hash (hash-result))
+        1
+        (if (> (vector-length (find-defn-by-hash program name-hash 0 (vector-length program))) 0)
+          1
+          0)))))
+
+(defn first-unknown-hash [left right]
+  (if (>= left 0) left right))
+
+(defn invariant-node-unknown-hash-args-loop [program node env idx count]
+  (if (>= idx count)
+    -1
+    (let [found (invariant-node-unknown-hash program (vector-get node (+ 3 idx)) env)]
+      (if (>= found 0)
+        found
+        (invariant-node-unknown-hash-args-loop program node env (+ idx 1) count)))))
+
+(defn invariant-node-unknown-hash-do-loop [program node env idx count]
+  (if (>= idx count)
+    -1
+    (let [found (invariant-node-unknown-hash program (vector-get node (+ 2 idx)) env)]
+      (if (>= found 0)
+        found
+        (invariant-node-unknown-hash-do-loop program node env (+ idx 1) count)))))
+
+(defn invariant-node-unknown-hash [program node env]
+  (let [tag (vector-get node 0)]
+    (if (= tag (ast-var))
+      (if (= (known-contract-name? program env (vector-get node 1)) 1)
+        -1
+        (vector-get node 1))
+      (if (= tag (ast-apply))
+        (let [callee-found (invariant-node-unknown-hash program (vector-get node 1) env)]
+          (if (>= callee-found 0)
+            callee-found
+            (invariant-node-unknown-hash-args-loop program node env 0 (vector-get node 2))))
+        (if (= tag (ast-if))
+          (let [cond-found (invariant-node-unknown-hash program (vector-get node 1) env)
+            then-found (invariant-node-unknown-hash program (vector-get node 2) env)]
+            (if (>= cond-found 0)
+              cond-found
+              (if (>= then-found 0)
+                then-found
+                (invariant-node-unknown-hash program (vector-get node 3) env))))
+          (if (= tag (ast-let))
+            (let [init-found (invariant-node-unknown-hash program (vector-get node 2) env)]
+              (if (>= init-found 0)
+                init-found
+                (invariant-node-unknown-hash program
+                  (vector-get node 3)
+                  (env-bind env (vector-get node 1) (value-unit)))))
+            (if (= tag (ast-do))
+              (invariant-node-unknown-hash-do-loop program node env 0 (vector-get node 1))
+              (if (= tag (ast-ann))
+                (invariant-node-unknown-hash program (vector-get node 1) env)
+                -1))))))))
+
+(defn invariant-unknown-variable [program expr decl param-count]
+  (let [scope (bind-params-loop
+                (env-bind (env-new) (hash-result) (value-unit))
+                decl
+                (vector-new 0)
+                0
+                param-count)]
+    (invariant-node-unknown-hash program expr scope)))
 
 (defn bind-params-loop [env decl args idx count]
   (if (>= idx count)
@@ -560,7 +691,8 @@
 (defn eval-invariant-sample [program tc decl param-count sample-idx]
   (let [args (invariant-sample-args param-count sample-idx)
     result (eval-defn-call program decl args)
-    invariant-env (env-bind (env-new) (hash-result) result)
+    param-env (bind-params-loop (env-new) decl args 0 param-count)
+    invariant-env (env-bind param-env (hash-result) result)
     actual (eval-node program (vector-get tc 2) invariant-env)]
     (value-truthy actual)))
 
@@ -579,10 +711,19 @@
     sample-count (if (> (vector-length decl) 0)
       (invariant-sample-count (vector-get decl 2))
       0)
-    passed (if (> sample-count 0)
-      (run-invariant-samples-loop program tc decl 0 sample-count 1)
-      0)]
-    (make-test-result name passed sample-count)))
+    unknown-hash (if (> (vector-length decl) 0)
+      (invariant-unknown-variable program (vector-get tc 2) decl (vector-get decl 2))
+      -1)
+    diagnostic-code (if (>= unknown-hash 0)
+      (contract-diagnostic-undefined)
+      0)
+    passed (if (= diagnostic-code 0)
+      (if (> sample-count 0)
+        (run-invariant-samples-loop program tc decl 0 sample-count 1)
+        0)
+      0)
+    actual (if (= diagnostic-code 0) sample-count 0)]
+    (make-test-result-with-diagnostic name passed actual diagnostic-code)))
 
 (defn run-invariants-loop [program invariants idx count results]
   (if (>= idx count)

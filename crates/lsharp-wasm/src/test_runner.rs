@@ -70,17 +70,23 @@ pub fn generate_test_program(original: &Program, tests: &[GeneratedTest]) -> Str
             }
             TestKind::Invariant => {
                 // :invariant は `result` を参照する事後条件
-                // サンプル入力で関数を呼び出し、result に束縛して検証
+                // サンプル入力を元関数の引数名へ束縛し、result も束縛して検証
                 // サンプル値: 0, 1, -1, 5, 42
                 let fn_name = &test.function_name;
-                let param_count = find_param_count(original, fn_name);
+                let param_names = find_param_names(original, fn_name);
                 let invariant_str = format!("{}", test.expr);
 
-                for sample_args in generate_sample_args(param_count) {
+                for sample_args in generate_sample_args(param_names.len()) {
                     let args_str = sample_args.join(" ");
-                    source.push_str(&format!(
-                        "    (print (if (let [result ({fn_name} {args_str})] {invariant_str}) 1 0))\n"
-                    ));
+                    let result_scope =
+                        format!("(let [result ({fn_name} {args_str})] {invariant_str})");
+                    let scoped_invariant = param_names.iter().zip(&sample_args).rev().fold(
+                        result_scope,
+                        |body, (param_name, sample_arg)| {
+                            format!("(let [{param_name} {sample_arg}] {body})")
+                        },
+                    );
+                    source.push_str(&format!("    (print (if {scoped_invariant} 1 0))\n"));
                 }
             }
         }
@@ -92,15 +98,20 @@ pub fn generate_test_program(original: &Program, tests: &[GeneratedTest]) -> Str
 
 /// 関数のパラメータ数を取得
 fn find_param_count(program: &Program, fn_name: &str) -> usize {
+    find_param_names(program, fn_name).len()
+}
+
+/// 関数のパラメータ名を取得
+fn find_param_names(program: &Program, fn_name: &str) -> Vec<String> {
     for decl in &program.decls {
         let actual = unwrap_private_decl(decl);
         if let Decl::Defn { name, params, .. } = actual
             && name == fn_name
         {
-            return params.len();
+            return params.iter().map(|param| param.name.clone()).collect();
         }
     }
-    0
+    Vec::new()
 }
 
 /// Private 宣言をアンラップ
@@ -270,6 +281,25 @@ mod tests {
         assert!(
             results[0].passed,
             "invariant テストが成功するはず: {:?}",
+            results[0].error
+        );
+    }
+
+    #[test]
+    fn test_invariant_execution_binds_parameter_scope() {
+        let source = r#"(defn succ [x] :invariant (= result (+ x 1)) (+ x 1))"#;
+        let program = lsharp_syntax::parse(source).unwrap();
+        let tests = generate_tests(&program);
+        assert_eq!(tests.len(), 1);
+
+        let test_source = generate_test_program(&program, &tests);
+        let output = compile_and_run(&test_source);
+        let results = parse_test_output(&output, &tests, &program);
+
+        assert_eq!(results.len(), 1);
+        assert!(
+            results[0].passed,
+            "invariant は元関数引数 x と result の両方を参照できるべき: {:?}",
             results[0].error
         );
     }
