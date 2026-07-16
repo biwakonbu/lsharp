@@ -2795,14 +2795,15 @@ fn emit_read_file_func(
     use wasm_encoder::Instruction as W;
 
     // locals: 0=path(i64 param), 1=path_offset(i32), 2=path_len(i32), 3=fd(i32),
-    //         4=file_size(i32), 5=buf_addr(i32), 6=nread(i32)
+    //         4=file_size(i32), 5=buf_addr(i32), 6=fd_read_errno(i32), 7=nread(i32)
     let mut f = wasm_encoder::Function::new(vec![
         (1, ValType::I32), // 1: path_offset (bytes の開始アドレス = path_addr + 8)
         (1, ValType::I32), // 2: path_len
         (1, ValType::I32), // 3: fd
         (1, ValType::I32), // 4: file_size
         (1, ValType::I32), // 5: buf_addr (String オブジェクトのアドレス)
-        (1, ValType::I32), // 6: nread
+        (1, ValType::I32), // 6: fd_read_errno
+        (1, ValType::I32), // 7: nread
     ]);
 
     // String オブジェクトからパス情報を取得
@@ -2911,7 +2912,7 @@ fn emit_read_file_func(
     f.instruction(&W::I32Const(1)); // iovs_len
     f.instruction(&W::I32Const(360)); // nread ptr
     f.instruction(&W::Call(fd_read_idx));
-    f.instruction(&W::Drop); // errno
+    f.instruction(&W::LocalSet(6)); // errno
 
     // nread を読み取り
     f.instruction(&W::I32Const(360));
@@ -2920,7 +2921,16 @@ fn emit_read_file_func(
         align: 2,
         memory_index: 0,
     }));
-    f.instruction(&W::LocalSet(6)); // nread
+    f.instruction(&W::LocalSet(7)); // nread
+
+    // fd_read errno は payload を公開せず fail-closed にする。
+    f.instruction(&W::LocalGet(6));
+    f.instruction(&W::I32Const(0));
+    f.instruction(&W::I32Ne);
+    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::I32Const(0));
+    f.instruction(&W::LocalSet(7));
+    f.instruction(&W::End);
 
     // fd_close
     f.instruction(&W::LocalGet(3));
@@ -2929,7 +2939,7 @@ fn emit_read_file_func(
 
     // String オブジェクトの len を nread に更新
     f.instruction(&W::LocalGet(5));
-    f.instruction(&W::LocalGet(6));
+    f.instruction(&W::LocalGet(7));
     f.instruction(&W::I32Store(wasm_encoder::MemArg {
         offset: 4,
         align: 2,
@@ -4089,6 +4099,38 @@ mod tests {
         );
     }
 
+    fn assert_fd_read_errno_is_saved(wasm_bytes: &[u8]) {
+        use wasmparser::{Operator, Parser, Payload};
+
+        let mut found_saved_errno = false;
+        for payload in Parser::new(0).parse_all(wasm_bytes) {
+            let payload = payload.expect("Wasm payload の読み取りに失敗");
+            let Payload::CodeSectionEntry(body) = payload else {
+                continue;
+            };
+
+            let mut read_call = false;
+            for operator in body
+                .get_operators_reader()
+                .expect("helper body の operator reader 作成に失敗")
+            {
+                match operator.expect("helper body の operator 読み取りに失敗") {
+                    Operator::Call { function_index: 4 } => read_call = true,
+                    Operator::LocalSet { .. } if read_call => {
+                        found_saved_errno = true;
+                        read_call = false;
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        assert!(
+            found_saved_errno,
+            "fd_read errno を local へ保存する必要がある"
+        );
+    }
+
     #[test]
     fn test_wasi_write_helpers_preserve_fd_close_errno() {
         let wasm = compile_wasi(
@@ -4103,6 +4145,12 @@ mod tests {
         );
         assert_close_errno_is_saved(&wasm, 7);
         assert_close_errno_is_saved(&wasm, 16);
+    }
+
+    #[test]
+    fn test_wasi_read_file_preserves_fd_read_errno() {
+        let wasm = compile_wasi(r#"(defn main [] (print-string (read-file "input.txt")))"#);
+        assert_fd_read_errno_is_saved(&wasm);
     }
 
     #[test]

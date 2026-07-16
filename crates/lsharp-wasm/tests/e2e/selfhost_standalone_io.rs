@@ -159,12 +159,29 @@ fn run_with_partial_fd_write_with_close_errno(
 }
 
 fn run_with_partial_fd_read(wasm: &[u8], dir: &Path) -> Result<PartialFdReadCapture, String> {
-    run_with_partial_fd_read_with_close_errno(wasm, dir, 0)
+    run_with_partial_fd_read_with_errors(wasm, dir, 0, 0)
 }
 
 fn run_with_partial_fd_read_with_close_errno(
     wasm: &[u8],
     dir: &Path,
+    close_errno: i32,
+) -> Result<PartialFdReadCapture, String> {
+    run_with_partial_fd_read_with_errors(wasm, dir, 0, close_errno)
+}
+
+fn run_with_partial_fd_read_with_fd_read_errno(
+    wasm: &[u8],
+    dir: &Path,
+    fd_read_errno: i32,
+) -> Result<PartialFdReadCapture, String> {
+    run_with_partial_fd_read_with_errors(wasm, dir, fd_read_errno, 0)
+}
+
+fn run_with_partial_fd_read_with_errors(
+    wasm: &[u8],
+    dir: &Path,
+    fd_read_errno: i32,
     close_errno: i32,
 ) -> Result<PartialFdReadCapture, String> {
     use wasmtime::{Engine, Linker, Module, Store};
@@ -226,7 +243,11 @@ fn run_with_partial_fd_read_with_close_errno(
                     copied += chunk_len;
                 }
                 write_i32(memory, &mut caller, nread, copied as i32);
-                0
+                if state.fd_read_calls == 1 {
+                    fd_read_errno
+                } else {
+                    0
+                }
             },
         )
         .map_err(|err| format!("partial fd_read shim 登録に失敗: {err}"))?;
@@ -565,6 +586,37 @@ fn test_e2e_selfhost_standalone_read_file_retries_partial_fd_read() {
         assert_eq!(capture.stdout, b"payload");
         assert_eq!(capture.read_payload, b"payload");
         assert_eq!(capture.fd_read_calls, 3);
+    });
+}
+
+#[test]
+fn test_e2e_selfhost_standalone_read_file_returns_fd_read_errno_after_partial_read() {
+    run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, || {
+        let dir = fixture_dir("fd_read_errno");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("read fd_read errno fixture directory の作成に失敗");
+        std::fs::write(dir.join("input.txt"), b"payload")
+            .expect("read fd_read errno input.txt の書き込みに失敗");
+        let standalone_wasm =
+            if let Some(artifact) = std::env::var_os("LSHARP_STANDALONE_IO_READ_ERRNO_ARTIFACT") {
+                std::fs::read(artifact)
+                    .expect("LSHARP_STANDALONE_IO_READ_ERRNO_ARTIFACT の読み込みに失敗")
+            } else {
+                compile_standalone_source(
+                    r#"(defn main [] (print-string (read-file "input.txt")))"#,
+                    &dir,
+                    "LSHARP_STANDALONE_IO_READ_ERRNO_CLI_ARTIFACT",
+                )
+            };
+
+        let capture = run_with_partial_fd_read_with_fd_read_errno(&standalone_wasm, &dir, 1)
+            .expect("partial fd_read errno 下の standalone 実行に失敗");
+        let _ = std::fs::remove_dir_all(&dir);
+
+        assert_eq!(capture.stdout, b"");
+        assert_eq!(capture.read_payload, b"pa");
+        assert_eq!(capture.fd_read_calls, 1);
+        assert_eq!(capture.fd_close_calls, 1);
     });
 }
 
