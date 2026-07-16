@@ -938,7 +938,7 @@
 (defn emit-standalone-read-file-body []
   ;; 最大 1024-byte read + partial fd_read retry の bounded slice。
   ;; root stack 後方の 2176/2184/2240 scratch を使う。
-  (let [b0a (emit-standalone-byte-seq-2 (vector-new 1024) 1 7)
+  (let [b0a (emit-standalone-byte-seq-2 (vector-new 1024) 1 8)
     b0 (emit-byte b0a 127)
     b1 (emit-standalone-byte-seq-8 b0 32 0 167 65 8 106 33 1)
     b2 (emit-standalone-byte-seq-8 b1 32 0 167 40 2 4 33 2)
@@ -971,11 +971,13 @@
     b23 (emit-standalone-byte-seq-1 b22 12)
     b24 (emit-standalone-byte-seq-1 b23 0)
     b25 (emit-standalone-byte-seq-4 b24 11 11 32 4)
-    b26 (emit-standalone-byte-seq-8 b25 16 14 26 32 5 32 6 54)
-    b27 (emit-standalone-byte-seq-4 b26 2 4 11 32)
-    b28 (emit-standalone-byte-seq-2 b27 5 172)
-    b29 (emit-standalone-byte-seq-1 b28 11)]
-    b29))
+    b26a (emit-standalone-byte-seq-4 b25 16 14 33 8)
+    b26b (emit-standalone-byte-seq-4 b26a 32 8 65 0)
+    b26c (emit-standalone-byte-seq-8 b26b 71 4 64 65 0 33 6 11)
+    b26d (emit-standalone-byte-seq-4 b26c 32 5 32 6)
+    b27 (emit-standalone-byte-seq-4 b26d 54 2 4 11)
+    b28 (emit-standalone-byte-seq-4 b27 32 5 172 11)]
+    b28))
 (defn emit-standalone-write-file-body []
   ;; create|truncate + partial fd_write retry の bounded slice。root stack 後方の 2176/2184/2240 scratch を使う。
   (let [b0a (emit-standalone-byte-seq-2 (vector-new 1024) 1 10)

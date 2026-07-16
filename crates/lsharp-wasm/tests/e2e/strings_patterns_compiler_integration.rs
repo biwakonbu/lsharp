@@ -1654,6 +1654,49 @@ fn test_e2e_selfhost_wasmemit_file_exists_instr() {
     assert_eq!(lines[10], "11", "body は end で終わること");
 }
 
+/// selfhost WasmEmit.ls: read-file が fd_close の errno を保持できること
+#[test]
+fn test_e2e_selfhost_wasmemit_read_file_preserves_fd_close_errno() {
+    let harness = r#"
+(defn scan-close-set [body index limit]
+  (if (>= index (- limit 4))
+    0
+    (if (= (vector-get body index) 16)
+      (if (= (vector-get body (+ index 1)) 14)
+        (if (= (vector-get body (+ index 2)) 33)
+          (if (= (vector-get body (+ index 3)) 8)
+            1
+            (scan-close-set body (+ index 1) limit))
+          (scan-close-set body (+ index 1) limit))
+        (scan-close-set body (+ index 1) limit))
+      (scan-close-set body (+ index 1) limit))))
+
+(defn main []
+  (let [body (emit-standalone-read-file-body)]
+    (do
+      (print (scan-close-set body 0 (vector-length body)))
+      0)))
+"#;
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("IR.ls"),
+        selfhost_module("Compiler.ls"),
+        selfhost_module("WasiBackend.ls"),
+        selfhost_module("WasmEmit.ls"),
+        harness
+    );
+    let output = compile_and_run(&combined);
+    assert_eq!(
+        output.trim(),
+        "1",
+        "fd_close errno を local へ保存する body が必要"
+    );
+}
+
 /// selfhost WasmEmit.ls: i64.ge_s opcode を比較命令として emit できること
 #[test]
 fn test_e2e_selfhost_wasmemit_i64_ge_instr() {

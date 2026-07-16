@@ -113,6 +113,8 @@ Rust を base implementation から外すため、legacy `lower` / embedded comp
 
 2026-07-16 追加進捗: standalone bounded `read-file` の partial `fd_read` を RED→GREEN で閉じた。2 bytes、残り 5 bytes、EOF の shim で旧 single-read body の `pa` truncation を再現し、修正後は buffer offset / remaining を更新する loop、0-byte 終了、errno 時の close 境界を生成する。selfhost compiler 生成 artifact（2531 bytes）は `wasm-tools validate` と partial shim 下の exact E2E（`fd_read` 3 回、`payload` 全量）を pass した。1024 bytes 超の read、partial read 後の errno 全体意味論、`fd_close` error、root capacity / `memory.grow`、dynamic data/heap layout、component sidecar、Linux `App.Cli` native source-file output、bootstrap/oracle/host boundary は未完了である。Evidence: `test_e2e_selfhost_standalone_read_file_retries_partial_fd_read`、`selfhost/src/Backend/Wasm/WasmEmit.ls`。
 
+2026-07-16 追加進捗: standalone `read-file` の `fd_close` 戻り値を drop せず local 8 へ保存し、close errno が非ゼロなら累積 length を 0 に戻す fail-closed body を RED→GREEN で固定した。body scan は旧実装の close `drop` を `0` として再現し、修正後の `call fd_close` → `local.set 8` を `1` として確認した（`test_e2e_selfhost_wasmemit_read_file_preserves_fd_close_errno`）。これは生成 body の focused gateであり、selfhost compiler が生成した standalone artifact の `wasm-tools validate` と close errno shim 下の actual runtime E2E は未完了として残す。partial read 後の errno 全体意味論、string/raw write の `fd_close` error、1024 bytes 超の read、root capacity / `memory.grow`、dynamic data/heap layout、component sidecar、Linux `App.Cli` native source-file output、bootstrap/oracle/host boundary も未完了である。
+
 ## 検証と残タスク
 
 - `bash scripts/ci/test-native-selfhost-dev.sh` は runner の source refresh、native direct command routing、external helper routing、Rust-only command の明示拒否を検証する。
