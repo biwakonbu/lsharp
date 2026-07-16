@@ -590,15 +590,15 @@ fn test_e2e_selfhost_standalone_read_file_retries_partial_fd_read() {
 }
 
 #[test]
-fn test_e2e_selfhost_standalone_read_file_returns_all_bytes_over_1024() {
+fn test_e2e_selfhost_standalone_read_file_returns_all_bytes_at_4096() {
     run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, || {
-        let dir = fixture_dir("read_over_1024");
+        let dir = fixture_dir("read_at_4096");
         let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).expect("1024-byte超 read fixture directory の作成に失敗");
-        let mut payload = vec![b'a'; 1024];
+        std::fs::create_dir_all(&dir).expect("4096-byte read fixture directory の作成に失敗");
+        let mut payload = vec![b'a'; 4095];
         payload.push(b'b');
         std::fs::write(dir.join("input.txt"), &payload)
-            .expect("1024-byte超 read fixture input.txt の書き込みに失敗");
+            .expect("4096-byte read fixture input.txt の書き込みに失敗");
 
         let standalone_wasm = compile_standalone_source(
             r#"(defn main [] (print-string (read-file "input.txt")))"#,
@@ -611,7 +611,7 @@ fn test_e2e_selfhost_standalone_read_file_returns_all_bytes_over_1024() {
             &[],
             "",
         )
-        .expect("1024-byte超 read の standalone 実行に失敗");
+        .expect("4096-byte read の standalone 実行に失敗");
         let _ = std::fs::remove_dir_all(&dir);
 
         assert_eq!(output.exit_code, 0);

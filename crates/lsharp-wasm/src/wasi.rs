@@ -2796,7 +2796,7 @@ fn emit_read_file_func(
 
     // locals: 0=path(i64 param), 1=path_offset(i32), 2=path_len(i32), 3=fd(i32),
     //         4=file_size(i32), 5=buf_addr(i32), 6=fd_read_errno(i32), 7=nread(i32),
-    //         8=path_open_errno(i32)
+    //         8=path_open_errno(i32), 9=fd_filestat_get_errno(i32)
     let mut f = wasm_encoder::Function::new(vec![
         (1, ValType::I32), // 1: path_offset (bytes の開始アドレス = path_addr + 8)
         (1, ValType::I32), // 2: path_len
@@ -2806,6 +2806,7 @@ fn emit_read_file_func(
         (1, ValType::I32), // 6: fd_read_errno
         (1, ValType::I32), // 7: nread
         (1, ValType::I32), // 8: path_open_errno
+        (1, ValType::I32), // 9: fd_filestat_get_errno
     ]);
 
     // String オブジェクトからパス情報を取得
@@ -2880,7 +2881,37 @@ fn emit_read_file_func(
     f.instruction(&W::LocalGet(3)); // fd
     f.instruction(&W::I32Const(288)); // stat buf (288..352)
     f.instruction(&W::Call(fd_filestat_get_idx));
-    f.instruction(&W::Drop); // errno
+    f.instruction(&W::LocalSet(9)); // fd_filestat_get errno
+
+    // stat 失敗時は開いた fd を閉じ、空文字列を返す。
+    f.instruction(&W::LocalGet(9));
+    f.instruction(&W::I32Const(0));
+    f.instruction(&W::I32Ne);
+    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::LocalGet(3));
+    f.instruction(&W::Call(fd_close_idx));
+    f.instruction(&W::LocalSet(8)); // close errno は結果を返さず fail-closed
+    f.instruction(&W::I64Const(8));
+    f.instruction(&W::Call(alloc_func_idx));
+    f.instruction(&W::I32WrapI64);
+    f.instruction(&W::LocalSet(5));
+    f.instruction(&W::LocalGet(5));
+    f.instruction(&W::I32Const(1));
+    f.instruction(&W::I32Store(wasm_encoder::MemArg {
+        offset: 0,
+        align: 2,
+        memory_index: 0,
+    }));
+    f.instruction(&W::LocalGet(5));
+    f.instruction(&W::I32Const(0));
+    f.instruction(&W::I32Store(wasm_encoder::MemArg {
+        offset: 4,
+        align: 2,
+        memory_index: 0,
+    }));
+    emit_tagged_pointer_from_i32_local(&mut f, 5);
+    f.instruction(&W::Return);
+    f.instruction(&W::End);
 
     // file_size = stat[32..40] の下位 32bit (filesize は offset 32 の i64)
     f.instruction(&W::I32Const(288));
@@ -4274,6 +4305,7 @@ mod tests {
             "#,
         );
         assert_call_result_is_saved(&wasm, 6, 6, "read-file path_open");
+        assert_call_result_is_saved(&wasm, 6, 8, "read-file fd_filestat_get");
         assert_call_result_is_saved(&wasm, 7, 6, "write-file path_open");
         assert_call_result_is_saved(&wasm, 16, 6, "write-file-bytes path_open");
     }
