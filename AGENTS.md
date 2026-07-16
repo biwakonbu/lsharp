@@ -117,6 +117,18 @@ L# の最終目標は、Rust 実装を正本として残したまま一部のコ
 
 「Rust-free」は Rust のソースを早期削除することではなく、L# の対応機能が parser → 型推論 → lowering → codegen → runtime → 公開 command の全境界を通り、Mac Apple Silicon と Linux x86_64 の native program から同じ意味論で実行できることを指す。未対応の言語機能、ABI、公開 surface、component/external helper、bootstrap provenance が残る間は `[~]` を維持し、各項目の parity と実行証跡を閉じてから `[x]` に更新する。
 
+### 完遂ロードマップ
+
+完璧な実装へは、便利な周辺機能からではなく、意味論と検証境界を先に閉じる次の順序で進める。
+
+1. **言語契約**: lexer/parser、型推論、診断 code/span、module/import、metadata の Rust/native parity を閉じる。未完の `LS####` 診断体系、GADT exhaustiveness、HKT、computation expression、trait の動的境界はこの段階の対象とする。
+2. **実行意味論**: record/ADT/pattern、Map、closure、GC、linear-memory ABI を lowering → Wasm codegen → runtime の順に閉じ、source/ftable/import と両対応 target の actual E2E を揃える。単なる AST/IR snapshot で終了しない。
+3. **自己ホスト compiler**: legacy `lower`、full-program builder、module graph、component sidecar、standalone I/O と dynamic memory layout を実成果物で閉じる。Rust driver fallback が成功を隠していないことを negative test でも確認する。
+4. **公開 surface**: `compile` / `build` の全 supported output、`test`、`doc`、`repl`、`lsp --stdio`、`install`、必要な external tool boundary を実 native program で検証する。`mcp-server` や unsupported target は、未実装のまま曖昧に成功させず明示拒否または Rust host integration として分類する。
+5. **配布と最終監査**: stage0 の source provenance、取得、再生成、rollback、Mac/Linux release artifact を固定し、TODO の全 `[~]` / `[ ]` を要件単位で再監査する。全項目の evidence が揃うまで「完全対応」「Rust 完全撤去」と宣言しない。
+
+各段階では、最初に次の一つの RED を選び、GREEN の直後に Rust oracle/native target/runtime の必要な証拠を追加する。長時間の VM gate が必要な場合も、待機中に次の段階の非共有 focused test や診断を進め、重い replay を進捗として数えない。
+
 ## hooks/スキルのトラブルシューティング
 
 hooks やスキルに問題が発生した場合は `.Codex/rules/hook-troubleshooting.md` を参照。

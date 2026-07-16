@@ -2,12 +2,13 @@
 
 このページは L# の `LS####` エラーコード体系の利用者向け正本です。MCP の `lsharp_errors` tool も同じ driver 側 table を参照します。
 
-現時点の scope は error code reference と MCP lookup の統一です。CLI / LSP / MCP の全診断へ `LS####` を貫通させる作業は I-02 / imp-02 の残タスクとして扱います。
+現時点の scope は error code reference と MCP lookup の統一です。lexer/parser/macro の下層エラーは stable code/span と `ParseAllError` forwarding まで接続済みですが、CLI / LSP / MCP の全診断と type/lowering/codegen error への `LS####` 貫通は I-02 / imp-02 の残タスクとして扱います。
 
 ## Code Ranges
 
 - `LS0001` - `LS0003`: lexer
 - `LS0101` - `LS0104`: parser
+- `LS0201`: macro expansion
 - `LS1001` - `LS1013`: type checker
 - `LS3001` - `LS3104`: lowering and module graph
 - `LS4001`: codegen
@@ -35,6 +36,7 @@
 | `LS0102` | unexpected-eof | source が途中で終了しました | 閉じ括弧、vector、metadata form の終端を追加してください。 |
 | `LS0103` | unknown-form | 未知の special form です | `defn`, `type`, `module`, `import`, `trait`, `impl` などの form 名を確認してください。 |
 | `LS0104` | multiple-parse-errors | 複数の parse error が発生しました | 先頭の parse error から順に修正してください。 |
+| `LS0201` | macro-expansion-error | マクロ展開に失敗しました | macro 定義と呼び出し引数、quote / unquote の構造を見直してください。 |
 | `LS1001` | undefined-variable | 未定義の識別子です | 定義、import、module path、綴りを確認してください。 |
 | `LS1002` | type-mismatch | 型が一致していません | if 条件、then/else、関数引数、戻り値の型を揃えてください。 |
 | `LS1003` | infinite-type | 無限型が発生しました | 再帰的自己参照や関数適用の形を見直してください。 |

@@ -817,6 +817,15 @@ mod tests {
     }
 
     #[test]
+    fn test_errors_tool_returns_macro_expansion_code_reference() {
+        let result = call_tool("lsharp_errors", &json!({"error_code": "LS0201"}))
+            .expect("LS0201 は macro expansion error として解決するべき");
+
+        assert_eq!(result["code"], "LS0201");
+        assert_eq!(result["name"], "macro-expansion-error");
+    }
+
+    #[test]
     fn test_error_reference_doc_mentions_all_mcp_error_codes() {
         let repo_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
         let doc =

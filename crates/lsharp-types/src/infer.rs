@@ -98,6 +98,51 @@ pub enum TypeError {
     },
 }
 
+impl TypeError {
+    /// 型推論エラーを公開診断コードへ変換する。
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::Mismatch { error_code, .. } | Self::MismatchWithAlias { error_code, .. } => {
+                match error_code {
+                    TypeErrorCode::IfCondition
+                    | TypeErrorCode::IfBranch
+                    | TypeErrorCode::General => "LS1002",
+                    TypeErrorCode::ArgMismatch => "LS1004",
+                }
+            }
+            Self::InfiniteType { .. } => "LS1003",
+            Self::UndefinedVar { .. } => "LS1001",
+            Self::UndefinedConstructor { .. } => "LS1005",
+            Self::ArityMismatch { .. } => "LS1004",
+            Self::UndefinedRecord { .. } => "LS1006",
+            Self::UndefinedField { .. } => "LS1007",
+            Self::RecursiveAlias { .. } => "LS1008",
+            Self::UndefinedAlias { .. } => "LS1009",
+            Self::UndefinedTrait { .. } => "LS1010",
+            Self::MissingImpl { .. } => "LS1011",
+            Self::KindMismatch { .. } => "LS1013",
+        }
+    }
+
+    pub fn span(&self) -> Option<Span> {
+        Some(match self {
+            Self::Mismatch { span, .. }
+            | Self::InfiniteType { span, .. }
+            | Self::UndefinedVar { span, .. }
+            | Self::UndefinedConstructor { span, .. }
+            | Self::ArityMismatch { span, .. }
+            | Self::UndefinedRecord { span, .. }
+            | Self::UndefinedField { span, .. }
+            | Self::RecursiveAlias { span, .. }
+            | Self::UndefinedAlias { span, .. }
+            | Self::UndefinedTrait { span, .. }
+            | Self::MissingImpl { span, .. }
+            | Self::MismatchWithAlias { span, .. }
+            | Self::KindMismatch { span, .. } => *span,
+        })
+    }
+}
+
 /// 型エラーコード (E0001 形式)
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypeErrorCode {

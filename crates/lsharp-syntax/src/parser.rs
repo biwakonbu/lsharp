@@ -22,6 +22,28 @@ pub enum ParseError {
     Multiple(Vec<ParseError>),
 }
 
+impl ParseError {
+    /// 利用者向けの安定した診断コードを返す。
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::Unexpected { .. } => "LS0101",
+            Self::UnexpectedEof { .. } => "LS0102",
+            Self::UnknownForm { .. } => "LS0103",
+            Self::Multiple(_) => "LS0104",
+        }
+    }
+
+    /// 診断に対応する source span を返す。
+    /// EOF は現在の AST/API が位置を保持していないため `None` になる。
+    pub fn span(&self) -> Option<Span> {
+        match self {
+            Self::Unexpected { span, .. } | Self::UnknownForm { span, .. } => Some(*span),
+            Self::UnexpectedEof { .. } => None,
+            Self::Multiple(errors) => errors.first().and_then(Self::span),
+        }
+    }
+}
+
 /// パーサー
 pub struct Parser {
     tokens: Vec<Token>,

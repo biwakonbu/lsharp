@@ -61,6 +61,22 @@ pub enum MacroExpandError {
 }
 
 impl MacroExpandError {
+    /// 利用者向けの安定した診断コードを返す。
+    pub fn code(&self) -> &'static str {
+        "LS0201"
+    }
+
+    /// 診断に対応する source span を返す。
+    pub fn span(&self) -> Option<Span> {
+        match self {
+            Self::UndefinedMacro { span, .. }
+            | Self::ArityMismatch { span, .. }
+            | Self::RecursionLimit { span, .. }
+            | Self::SpliceOutsideList { span } => Some(*span),
+            Self::WithTrace { inner, .. } => inner.span(),
+        }
+    }
+
     /// P10-3: トレースバックを付与してエラーを返す
     pub fn with_trace(self, trace: Vec<MacroExpansionStep>) -> Self {
         if trace.is_empty() {

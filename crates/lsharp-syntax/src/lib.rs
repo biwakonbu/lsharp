@@ -38,3 +38,70 @@ pub enum ParseAllError {
     #[error("マクロ展開エラー: {0}")]
     MacroExpand(#[from] macro_expand::MacroExpandError),
 }
+
+impl ParseAllError {
+    /// パイプライン全体で利用する安定した診断コードを返す。
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::Lex(error) => error.code(),
+            Self::Parse(error) => error.code(),
+            Self::MacroExpand(error) => error.code(),
+        }
+    }
+
+    /// パイプライン全体で利用する source span を返す。
+    pub fn span(&self) -> Option<span::Span> {
+        match self {
+            Self::Lex(error) => error.span(),
+            Self::Parse(error) => error.span(),
+            Self::MacroExpand(error) => error.span(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod diagnostic_tests {
+    use super::{ParseAllError, parse};
+    use crate::lexer::Lexer;
+    use crate::span::Span;
+
+    #[test]
+    fn lexer_error_exposes_stable_code_and_span() {
+        let error = Lexer::new("@")
+            .tokenize()
+            .expect_err("未知文字は失敗するべき");
+
+        assert_eq!(error.code(), "LS0001");
+        assert_eq!(error.span(), Some(Span::new(0, 1)));
+    }
+
+    #[test]
+    fn parser_error_exposes_stable_code_and_span() {
+        let error = parse("(unknown-form)").expect_err("未知 form は失敗するべき");
+        let ParseAllError::Parse(error) = error else {
+            panic!("parser error を期待しました");
+        };
+
+        assert_eq!(error.code(), "LS0103");
+        assert_eq!(error.span(), Some(Span::new(1, 13)));
+    }
+
+    #[test]
+    fn parse_all_error_forwards_code_and_span() {
+        let error = parse("@").expect_err("lexer error は失敗するべき");
+
+        assert_eq!(error.code(), "LS0001");
+        assert_eq!(error.span(), Some(Span::new(0, 1)));
+    }
+
+    #[test]
+    fn macro_expand_error_exposes_stable_code_and_span() {
+        let error =
+            ParseAllError::MacroExpand(crate::macro_expand::MacroExpandError::SpliceOutsideList {
+                span: Span::new(4, 6),
+            });
+
+        assert_eq!(error.code(), "LS0201");
+        assert_eq!(error.span(), Some(Span::new(4, 6)));
+    }
+}

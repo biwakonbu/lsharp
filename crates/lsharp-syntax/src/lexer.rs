@@ -14,6 +14,26 @@ pub enum LexError {
     InvalidNumber { text: String, span: Span },
 }
 
+impl LexError {
+    /// 利用者向けの安定した診断コードを返す。
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::UnexpectedChar { .. } => "LS0001",
+            Self::UnterminatedString { .. } => "LS0002",
+            Self::InvalidNumber { .. } => "LS0003",
+        }
+    }
+
+    /// 診断に対応する source span を返す。
+    pub fn span(&self) -> Option<Span> {
+        Some(match self {
+            Self::UnexpectedChar { span, .. }
+            | Self::UnterminatedString { span }
+            | Self::InvalidNumber { span, .. } => *span,
+        })
+    }
+}
+
 /// 字句解析器
 pub struct Lexer<'src> {
     source: &'src str,

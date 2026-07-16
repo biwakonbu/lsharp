@@ -68,6 +68,14 @@ pub(crate) const ERROR_CODES: &[ErrorCodeEntry] = &[
         fix: "先頭の parse error から順に修正してください。",
     },
     ErrorCodeEntry {
+        code: "LS0201",
+        legacy_code: None,
+        name: "macro-expansion-error",
+        summary: "マクロ展開に失敗しました",
+        detail: "macro の名前、引数、展開深度、または unquote-splicing の文脈を確認してください。",
+        fix: "macro 定義と呼び出し引数、quote / unquote の構造を見直してください。",
+    },
+    ErrorCodeEntry {
         code: "LS1001",
         legacy_code: Some("E0001"),
         name: "undefined-variable",
