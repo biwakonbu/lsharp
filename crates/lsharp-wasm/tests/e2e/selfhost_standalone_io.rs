@@ -527,11 +527,7 @@ fn test_e2e_selfhost_standalone_write_helpers_return_fd_close_errno() {
             .expect("fd_close errno 下の standalone write 実行に失敗");
         let _ = std::fs::remove_dir_all(&dir);
 
-        // standalone print は現在 i64 の bit pattern を unsigned decimal で出力する。
-        assert_eq!(
-            capture.stdout,
-            b"18446744073709551615\n18446744073709551615\n"
-        );
+        assert_eq!(capture.stdout, b"-1\n-1\n");
         assert_eq!(capture.file, b"payload\0asm!");
         assert_eq!(capture.fd_close_calls, 2);
     });
