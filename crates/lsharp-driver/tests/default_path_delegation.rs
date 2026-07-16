@@ -1764,7 +1764,7 @@ fn test_embedded_cli_component_compile_preview1_writes_runnable_wasm_without_dri
         r#"(defn drain-root-values [n]
   (if (<= n 0)
     0
-    (if (= n 29)
+    (if (= n 20)
       (print (root_pop))
       (do (root_pop) (drain-root-values (- n 1))))))
 (defn retain-roots-and-write [n]
@@ -1820,6 +1820,120 @@ fn test_embedded_cli_component_compile_preview1_writes_runnable_wasm_without_dri
         fs::read(&root_scratch_target_path).expect("root/scratch target read failed"),
         b"\0asm",
         "Preview1 root/scratch write-file-bytes は raw bytes を書くべき",
+    );
+
+    let root_string_scratch_target_path = temp_dir.join("root-string-scratch.txt");
+    let root_string_scratch_source_path = temp_dir.join("root-string-scratch.ls");
+    let root_string_scratch_output_path = temp_dir.join("root-string-scratch.wasm");
+    write_source_file(
+        &root_string_scratch_source_path,
+        r#"(defn drain-root-values [n]
+  (if (<= n 0)
+    0
+    (if (= n 29)
+      (print (root_pop))
+      (do (root_pop) (drain-root-values (- n 1))))))
+(defn retain-roots-and-write [n]
+  (if (<= n 0)
+    (do (write-file "root-string-scratch.txt" "payload")
+        (drain-root-values 120))
+    (do (root_push 42) (retain-roots-and-write (- n 1)))))
+(defn main [] (retain-roots-and-write 120))
+ "#,
+    );
+    let root_string_scratch_guest =
+        lsharp_wasm::wasi_runner::run_wasm_component_with_dir_args_and_stdin_capture(
+            &component,
+            Some(&temp_dir),
+            &[
+                "compile",
+                "root-string-scratch.ls",
+                "--target",
+                "wasi-preview1",
+                "-o",
+                "root-string-scratch.wasm",
+            ],
+            "",
+        )
+        .expect("embedded CLI root/string scratch runtime execution failed");
+    assert_eq!(
+        root_string_scratch_guest.exit_code,
+        0,
+        "Preview1 root/string scratch compile は成功するべき: stdout={}",
+        root_string_scratch_guest.stdout
+    );
+    let root_string_scratch_written =
+        fs::read(&root_string_scratch_output_path).expect("root/string scratch output read failed");
+    let root_string_scratch_runtime_output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir(
+        &root_string_scratch_written,
+        Some(&temp_dir),
+    )
+    .expect("root/string scratch Preview1 output should run");
+    assert_eq!(
+        root_string_scratch_runtime_output,
+        "42\n",
+        "Preview1 write-file は root stack 後方の scratch を使うべき",
+    );
+    assert_eq!(
+        fs::read_to_string(&root_string_scratch_target_path)
+            .expect("root/string scratch target read failed"),
+        "payload",
+        "Preview1 root/string write-file は payload を書くべき",
+    );
+
+    let root_read_scratch_fixture_path = temp_dir.join("root-read-scratch.txt");
+    fs::write(&root_read_scratch_fixture_path, "payload")
+        .expect("root/read scratch fixture write failed");
+    let root_read_scratch_source_path = temp_dir.join("root-read-scratch.ls");
+    let root_read_scratch_output_path = temp_dir.join("root-read-scratch.wasm");
+    write_source_file(
+        &root_read_scratch_source_path,
+        r#"(defn drain-root-values [n]
+  (if (<= n 0)
+    0
+    (if (= n 29)
+      (print (root_pop))
+      (do (root_pop) (drain-root-values (- n 1))))))
+(defn retain-roots-and-read [n]
+  (if (<= n 0)
+    (do (print-string (read-file "root-read-scratch.txt"))
+        (drain-root-values 120))
+    (do (root_push 42) (retain-roots-and-read (- n 1)))))
+(defn main [] (retain-roots-and-read 120))
+ "#,
+    );
+    let root_read_scratch_guest =
+        lsharp_wasm::wasi_runner::run_wasm_component_with_dir_args_and_stdin_capture(
+            &component,
+            Some(&temp_dir),
+            &[
+                "compile",
+                "root-read-scratch.ls",
+                "--target",
+                "wasi-preview1",
+                "-o",
+                "root-read-scratch.wasm",
+            ],
+            "",
+        )
+        .expect("embedded CLI root/read scratch runtime execution failed");
+    assert_eq!(
+        root_read_scratch_guest.exit_code,
+        0,
+        "Preview1 root/read scratch compile は成功するべき: stdout={}",
+        root_read_scratch_guest.stdout
+    );
+    let root_read_scratch_written =
+        fs::read(&root_read_scratch_output_path).expect("root/read scratch output read failed");
+    let root_read_scratch_runtime_output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir(
+        &root_read_scratch_written,
+        Some(&temp_dir),
+    )
+    .expect("root/read scratch Preview1 output should run");
+    assert_eq!(
+        root_read_scratch_runtime_output,
+        "payload42\n",
+        "Preview1 read-file は root stack 後方の scratch を使うべき",
     );
 
     let large_source_path = temp_dir.join("large.ls");
