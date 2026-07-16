@@ -17,8 +17,8 @@ pub const DEFAULT_PROPERTY_SEED: u64 = 0;
 /// Rust/selfhost の双方で固定する generator algorithm version。
 pub const TYPE_DIRECTED_GENERATOR_VERSION: &str = "type-directed-splitmix64-v1";
 
-/// M1 の owner identifier。現 slice は parser が保持する関数名を格納し、
-/// module-qualified name の解決は後続 inventory slice で追加する。
+/// M1 の owner identifier。body 付き nested module は型推論と同じ
+/// `App.Sub.name` 形式で修飾する。
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SymbolId(String);
 
@@ -295,29 +295,37 @@ pub fn inventory_contract_suites(
 ) -> Result<Vec<ContractSuite>, ContractInventoryError> {
     let mut suites = Vec::new();
     for decl in &program.decls {
-        inventory_decl_tree(decl, &mut suites)?;
+        inventory_decl_tree(decl, None, &mut suites)?;
     }
     Ok(suites)
 }
 
 fn inventory_decl_tree(
     decl: &Decl,
+    module_prefix: Option<&str>,
     suites: &mut Vec<ContractSuite>,
 ) -> Result<(), ContractInventoryError> {
-    if let Decl::ModuleDecl { body, .. } = decl {
+    if let Decl::ModuleDecl { name, body, .. } = decl {
+        let prefix = match module_prefix {
+            Some(outer) => format!("{outer}.{name}"),
+            None => name.clone(),
+        };
         for nested_decl in body {
-            inventory_decl_tree(nested_decl, suites)?;
+            inventory_decl_tree(nested_decl, Some(&prefix), suites)?;
         }
         return Ok(());
     }
 
-    if let Some(suite) = inventory_decl(decl)? {
+    if let Some(suite) = inventory_decl(decl, module_prefix)? {
         suites.push(suite);
     }
     Ok(())
 }
 
-fn inventory_decl(decl: &Decl) -> Result<Option<ContractSuite>, ContractInventoryError> {
+fn inventory_decl(
+    decl: &Decl,
+    module_prefix: Option<&str>,
+) -> Result<Option<ContractSuite>, ContractInventoryError> {
     let decl = match decl {
         Decl::Private { inner, .. } => inner.as_ref(),
         other => other,
@@ -331,7 +339,12 @@ fn inventory_decl(decl: &Decl) -> Result<Option<ContractSuite>, ContractInventor
         return Ok(None);
     };
 
-    validate_compatibility_projection(name, metadata)?;
+    let owner = match module_prefix {
+        Some(prefix) => format!("{prefix}.{name}"),
+        None => name.clone(),
+    };
+
+    validate_compatibility_projection(&owner, metadata)?;
     let Some(first) = metadata.forms.iter().find(|form| is_contract_form(form)) else {
         return Ok(None);
     };
@@ -396,7 +409,7 @@ fn inventory_decl(decl: &Decl) -> Result<Option<ContractSuite>, ContractInventor
     }
 
     Ok(Some(ContractSuite {
-        owner: SymbolId(name.clone()),
+        owner: SymbolId(owner),
         docs: Vec::new(),
         executable,
         pending_migration,
