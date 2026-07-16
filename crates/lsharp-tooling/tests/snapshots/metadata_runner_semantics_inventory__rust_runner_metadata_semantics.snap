@@ -1,0 +1,58 @@
+---
+source: crates/lsharp-tooling/tests/metadata_runner_semantics_inventory.rs
+expression: "serde_json::to_string_pretty(&snapshot).expect(\"snapshot JSON を serialize できるべき\")"
+---
+{
+  "inventory_status": "current_behavior_not_final_v0_2_contract",
+  "non_bool_example_boundary": {
+    "checker_diagnostic_count": 0,
+    "generated_as_if_condition": true,
+    "runner_error_code": "E0002",
+    "runner_error_mentions_type_check_phase": true,
+    "runner_error_uses_public_ls_code": false,
+    "runner_succeeded": false
+  },
+  "supported_boolean_contracts": {
+    "generated_invariant_samples": [
+      "0",
+      "1",
+      "5",
+      "-1",
+      "42"
+    ],
+    "generated_print_guard_count": 7,
+    "generated_test_order": [
+      "invariant",
+      "example",
+      "example"
+    ],
+    "public_results": [
+      {
+        "error": null,
+        "function_name": "succ",
+        "kind": "invariant",
+        "name": "succ_invariant",
+        "passed": true
+      },
+      {
+        "error": null,
+        "function_name": "succ",
+        "kind": "example",
+        "name": "succ_example_0",
+        "passed": true
+      },
+      {
+        "error": ":example 式が偽を返しました: (= (succ 1) 999)",
+        "function_name": "succ",
+        "kind": "example",
+        "name": "succ_example_1",
+        "passed": false
+      }
+    ],
+    "public_summary": {
+      "failed": 1,
+      "passed": 2,
+      "total": 3
+    }
+  }
+}
