@@ -2,6 +2,8 @@
 
 ## 2026-07-16 Rust-free base 境界の更新
 
+- [x] Rust-free 日常開発の開始判定 — Mac Apple Silicon と Linux x86_64 の verified stage0 を前提に、`scripts/native-selfhost-dev.sh` の `parse` / `check` / `fmt` / `test` / `compile -o` / `build -o` は Rust toolchain と host `lsharp` なしで進めてよい。これは Rust workspace の物理撤去や、未完 semantics・host integration・stage0 acquisition・oracle・rollback の完了を意味しない。運用境界: [rust-boundary-reduction.md](docs/development/operations/rust-boundary-reduction.md)。
+
 - [x] current Linux x86_64 selfregen checkpoint — commit `7807089` の selfhost source から actual stage1 bundle を生成し、Mac Apple Silicon 上の Lima Linux x86_64 VM で stage1 -> stage2 -> stage3 transport、materialize、stdout byte-for-byte compare を完走した。stage1 は `3,097` functions、stage2/stage3 はともに code length `10,227,172`、stdout SHA-256 は `a1f2ee14f1a13763945dd1bfcd6cd2c678c59944a25a18e9dcb69b90076b93c1`、両 stderr は 0、summary status は `pass`。これは現行 selfregen の証跡であり、`parse` / `check` / `fmt` / `test` / `compile` / `build` の source-file smoke 完了とは別である。Evidence: `ci-artifacts/native-linux-x86-hostgen-vm/7807089-gadt-record/actual-selfregen-summary.json`、`ci-artifacts/native-linux-x86-hostgen-vm/7807089-gadt-record/actual-stage1/manifest.json`。
 
 - [x] GADT parser/type inference refinement slice — GADT variant の raw return TypeExpr を AST に保持し、constructor scheme の戻り型と match arm-local refinement へ接続した。constructor registration と `IntLit` / `BoolLit` の各 arm が診断なしで通ることを確認済み。GADT exhaustiveness と full runtime parity は残る。Evidence: `test_e2e_selfhost_parser_gadt_variant_retains_return_type`, `test_e2e_selfhost_gadt_constructor_registers_refined_return_type`, `test_e2e_selfhost_gadt_match_refines_each_constructor_arm`。
