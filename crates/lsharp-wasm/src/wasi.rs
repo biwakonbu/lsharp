@@ -3052,14 +3052,21 @@ fn emit_write_file_func(
     }));
     f.instruction(&W::LocalSet(7));
 
-    // fd_close
+    // fd_close の errno を path_len local に保存する。
     f.instruction(&W::LocalGet(6));
     f.instruction(&W::Call(fd_close_idx));
-    f.instruction(&W::Drop);
+    f.instruction(&W::LocalSet(3));
+    f.instruction(&W::LocalGet(3));
+    f.instruction(&W::I32Const(0));
+    f.instruction(&W::I32Ne);
+    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::I32Const(-1));
+    f.instruction(&W::LocalSet(7));
+    f.instruction(&W::End);
 
     // 書き込みバイト数を返す
     f.instruction(&W::LocalGet(7));
-    f.instruction(&W::I64ExtendI32U);
+    f.instruction(&W::I64ExtendI32S);
 
     f.instruction(&W::End);
     codes.function(&f);
@@ -3194,10 +3201,17 @@ fn emit_write_file_bytes_func(
     f.instruction(&W::LocalSet(9));
     f.instruction(&W::LocalGet(8));
     f.instruction(&W::Call(fd_close_idx));
-    f.instruction(&W::Drop);
+    f.instruction(&W::LocalSet(7));
+    f.instruction(&W::LocalGet(7));
+    f.instruction(&W::I32Const(0));
+    f.instruction(&W::I32Ne);
+    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::I32Const(-1));
+    f.instruction(&W::LocalSet(9));
+    f.instruction(&W::End);
 
     f.instruction(&W::LocalGet(9));
-    f.instruction(&W::I64ExtendI32U);
+    f.instruction(&W::I64ExtendI32S);
     f.instruction(&W::End);
     codes.function(&f);
 }
@@ -4026,6 +4040,69 @@ mod tests {
         drop(store);
         let bytes = stdout.try_into_inner().unwrap();
         String::from_utf8(bytes.to_vec()).unwrap()
+    }
+
+    fn assert_close_errno_is_saved(wasm_bytes: &[u8], code_ordinal: usize) {
+        use wasmparser::{Operator, Parser, Payload};
+
+        let mut ordinal = 0usize;
+        let mut found_saved_errno = false;
+        let mut found_dropped_errno = false;
+        for payload in Parser::new(0).parse_all(wasm_bytes) {
+            let payload = payload.expect("Wasm payload の読み取りに失敗");
+            let Payload::CodeSectionEntry(body) = payload else {
+                continue;
+            };
+            if ordinal != code_ordinal {
+                ordinal += 1;
+                continue;
+            }
+
+            let mut close_call = false;
+            for operator in body
+                .get_operators_reader()
+                .expect("helper body の operator reader 作成に失敗")
+            {
+                match operator.expect("helper body の operator 読み取りに失敗") {
+                    Operator::Call { function_index: 5 } => close_call = true,
+                    Operator::LocalSet { .. } if close_call => {
+                        found_saved_errno = true;
+                        close_call = false;
+                    }
+                    Operator::Drop if close_call => {
+                        found_dropped_errno = true;
+                        close_call = false;
+                    }
+                    _ => close_call = false,
+                }
+            }
+            break;
+        }
+
+        assert!(
+            found_saved_errno,
+            "fd_close errno を local へ保存する必要がある"
+        );
+        assert!(
+            !found_dropped_errno,
+            "fd_close errno を drop してはいけない"
+        );
+    }
+
+    #[test]
+    fn test_wasi_write_helpers_preserve_fd_close_errno() {
+        let wasm = compile_wasi(
+            r#"
+            (defn main []
+              (do
+                (write-file "output.txt" "payload")
+                (let [bytes (vector-push (vector-new 1) 97)]
+                  (write-file-bytes "raw.bin" bytes))
+                0))
+            "#,
+        );
+        assert_close_errno_is_saved(&wasm, 7);
+        assert_close_errno_is_saved(&wasm, 16);
     }
 
     #[test]

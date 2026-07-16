@@ -1037,9 +1037,12 @@
     b30 (emit-standalone-byte-seq-8 b29 10 32 6 106 33 10 32 11)
     b31 (emit-standalone-byte-seq-8 b30 32 6 107 33 11 12 0 11)
     b32 (emit-standalone-byte-seq-6 b31 32 9 33 8 11 32)
-    b33 (emit-standalone-byte-seq-8 b32 7 16 14 26 11 32 8 172)
-    b34 (emit-standalone-byte-seq-1 b33 11)]
-    b34))
+    b33a (emit-standalone-byte-seq-8 b32 7 16 14 33 9 32 9 65)
+    b33b (emit-standalone-byte-seq-8 b33a 0 71 4 64 65 127 33 8)
+    b33c (emit-standalone-byte-seq-2 b33b 11 11)
+    b33d (emit-standalone-byte-seq-2 b33c 32 8)
+    b34a (emit-standalone-byte-seq-2 b33d 172 11)]
+    b34a))
 (defn emit-standalone-write-file-bytes-body []
   ;; Vector の下位8 bitを packed buffer へ詰め、partial fd_write を再試行する bounded slice。
   ;; root stack 後方の 2176/2184/2240 scratch を使う。
@@ -1111,9 +1114,11 @@
     b37 (emit-standalone-byte-seq-8 b36 32 12 107 33 11 12 0 11)
     b37a (emit-standalone-byte-seq-2 b37 11 32)
     b38 (emit-standalone-byte-seq-1 b37a 8)
-    b39 (emit-standalone-byte-seq-6 b38 16 14 26 32 9 172)
-    b40 (emit-standalone-byte-seq-1 b39 11)]
-    b40))
+    b39a (emit-standalone-byte-seq-8 b38 16 14 33 12 32 12 65 0)
+    b39b (emit-standalone-byte-seq-8 b39a 71 4 64 65 127 33 9 11)
+    b39c (emit-standalone-byte-seq-2 b39b 32 9)
+    b39d (emit-standalone-byte-seq-2 b39c 172 11)]
+    b39d))
 (defn emit-standalone-print-string-body []
   (let [b0 (emit-standalone-byte-seq-8 (vector-new 64) 0 65 0 32 0 167 65 8)
     b1 (emit-standalone-byte-seq-4 b0 106 54 2 0)

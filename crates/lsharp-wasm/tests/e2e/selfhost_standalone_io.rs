@@ -8,6 +8,7 @@ struct PartialFdWriteCapture {
     file: Vec<u8>,
     file_write_calls: usize,
     fd_write_calls: usize,
+    fd_close_calls: usize,
     last_fd: i32,
     last_iovs_len: i32,
     last_iov_len: i32,
@@ -18,6 +19,7 @@ struct PartialFdReadCapture {
     stdout: Vec<u8>,
     read_payload: Vec<u8>,
     fd_read_calls: usize,
+    fd_close_calls: usize,
 }
 
 fn fixture_dir(name: &str) -> PathBuf {
@@ -49,6 +51,14 @@ fn write_i32<T>(
 }
 
 fn run_with_partial_fd_write(wasm: &[u8], dir: &Path) -> Result<PartialFdWriteCapture, String> {
+    run_with_partial_fd_write_with_close_errno(wasm, dir, 0)
+}
+
+fn run_with_partial_fd_write_with_close_errno(
+    wasm: &[u8],
+    dir: &Path,
+    close_errno: i32,
+) -> Result<PartialFdWriteCapture, String> {
     use wasmtime::{Engine, Linker, Module, Store};
     use wasmtime_wasi::{preview1::WasiP1Ctx, WasiCtxBuilder};
 
@@ -108,6 +118,19 @@ fn run_with_partial_fd_write(wasm: &[u8], dir: &Path) -> Result<PartialFdWriteCa
         )
         .map_err(|err| format!("partial fd_write shim 登録に失敗: {err}"))?;
 
+    let fd_close_capture = Arc::clone(&capture);
+    linker
+        .func_wrap(
+            "wasi_snapshot_preview1",
+            "fd_close",
+            move |_caller: wasmtime::Caller<'_, WasiP1Ctx>, _fd: i32| -> i32 {
+                let mut state = fd_close_capture.lock().expect("fd_close capture lock");
+                state.fd_close_calls += 1;
+                close_errno
+            },
+        )
+        .map_err(|err| format!("fd_close shim 登録に失敗: {err}"))?;
+
     let mut builder = WasiCtxBuilder::new();
     builder
         .preopened_dir(
@@ -136,6 +159,14 @@ fn run_with_partial_fd_write(wasm: &[u8], dir: &Path) -> Result<PartialFdWriteCa
 }
 
 fn run_with_partial_fd_read(wasm: &[u8], dir: &Path) -> Result<PartialFdReadCapture, String> {
+    run_with_partial_fd_read_with_close_errno(wasm, dir, 0)
+}
+
+fn run_with_partial_fd_read_with_close_errno(
+    wasm: &[u8],
+    dir: &Path,
+    close_errno: i32,
+) -> Result<PartialFdReadCapture, String> {
     use wasmtime::{Engine, Linker, Module, Store};
     use wasmtime_wasi::{preview1::WasiP1Ctx, WasiCtxBuilder};
 
@@ -199,6 +230,19 @@ fn run_with_partial_fd_read(wasm: &[u8], dir: &Path) -> Result<PartialFdReadCapt
             },
         )
         .map_err(|err| format!("partial fd_read shim 登録に失敗: {err}"))?;
+
+    let fd_close_capture = Arc::clone(&capture);
+    linker
+        .func_wrap(
+            "wasi_snapshot_preview1",
+            "fd_close",
+            move |_caller: wasmtime::Caller<'_, WasiP1Ctx>, _fd: i32| -> i32 {
+                let mut state = fd_close_capture.lock().expect("fd_close capture lock");
+                state.fd_close_calls += 1;
+                close_errno
+            },
+        )
+        .map_err(|err| format!("fd_close shim 登録に失敗: {err}"))?;
 
     let stdout = wasmtime_wasi::pipe::MemoryOutputPipe::new(16 * 1024 * 1024);
     let mut builder = WasiCtxBuilder::new();
@@ -440,6 +484,60 @@ fn test_e2e_selfhost_standalone_write_file_bytes_retries_partial_fd_write() {
 }
 
 #[test]
+fn test_e2e_selfhost_standalone_write_helpers_return_fd_close_errno() {
+    run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, || {
+        let dir = fixture_dir("close_errno_write");
+        let _ = std::fs::remove_dir_all(&dir);
+        let standalone_wasm = if let Some(artifact) =
+            std::env::var_os("LSHARP_STANDALONE_IO_CLOSE_WRITE_ARTIFACT")
+        {
+            std::fs::create_dir_all(&dir).expect("cached close artifact 用 directory の作成に失敗");
+            std::fs::read(artifact)
+                .expect("LSHARP_STANDALONE_IO_CLOSE_WRITE_ARTIFACT の読み込みに失敗")
+        } else {
+            let standalone_wasm = compile_standalone_source(
+                r#"(defn main []
+  (let [bytes (vector-push
+                (vector-push
+                  (vector-push
+                    (vector-push
+                      (vector-push (vector-new 5) 0)
+                      97)
+                    115)
+                  109)
+                33)]
+    (do
+      (print (write-file "written.txt" "payload"))
+      (print (write-file-bytes "raw.bin" bytes))
+      0)))
+"#,
+                &dir,
+                "LSHARP_STANDALONE_IO_CLOSE_WRITE_CLI_ARTIFACT",
+            );
+            if let Some(save_path) =
+                std::env::var_os("LSHARP_STANDALONE_IO_CLOSE_WRITE_SAVE_ARTIFACT")
+            {
+                std::fs::write(save_path, &standalone_wasm)
+                    .expect("close errno standalone artifact の保存に失敗");
+            }
+            standalone_wasm
+        };
+
+        let capture = run_with_partial_fd_write_with_close_errno(&standalone_wasm, &dir, 1)
+            .expect("fd_close errno 下の standalone write 実行に失敗");
+        let _ = std::fs::remove_dir_all(&dir);
+
+        // standalone print は現在 i64 の bit pattern を unsigned decimal で出力する。
+        assert_eq!(
+            capture.stdout,
+            b"18446744073709551615\n18446744073709551615\n"
+        );
+        assert_eq!(capture.file, b"payload\0asm!");
+        assert_eq!(capture.fd_close_calls, 2);
+    });
+}
+
+#[test]
 fn test_e2e_selfhost_standalone_read_file_retries_partial_fd_read() {
     run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, || {
         let dir = fixture_dir("partial_read");
@@ -471,5 +569,43 @@ fn test_e2e_selfhost_standalone_read_file_retries_partial_fd_read() {
         assert_eq!(capture.stdout, b"payload");
         assert_eq!(capture.read_payload, b"payload");
         assert_eq!(capture.fd_read_calls, 3);
+    });
+}
+
+#[test]
+fn test_e2e_selfhost_standalone_read_file_returns_fd_close_errno() {
+    run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, || {
+        let dir = fixture_dir("close_errno_read");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("read close errno fixture directory の作成に失敗");
+        std::fs::write(dir.join("input.txt"), b"payload")
+            .expect("read close errno input.txt の書き込みに失敗");
+        let standalone_wasm =
+            if let Some(artifact) = std::env::var_os("LSHARP_STANDALONE_IO_CLOSE_READ_ARTIFACT") {
+                std::fs::read(artifact)
+                    .expect("LSHARP_STANDALONE_IO_CLOSE_READ_ARTIFACT の読み込みに失敗")
+            } else {
+                let standalone_wasm = compile_standalone_source(
+                    r#"(defn main [] (print-string (read-file "input.txt")))"#,
+                    &dir,
+                    "LSHARP_STANDALONE_IO_CLOSE_READ_CLI_ARTIFACT",
+                );
+                if let Some(save_path) =
+                    std::env::var_os("LSHARP_STANDALONE_IO_CLOSE_READ_SAVE_ARTIFACT")
+                {
+                    std::fs::write(save_path, &standalone_wasm)
+                        .expect("close errno read standalone artifact の保存に失敗");
+                }
+                standalone_wasm
+            };
+
+        let capture = run_with_partial_fd_read_with_close_errno(&standalone_wasm, &dir, 1)
+            .expect("fd_close errno 下の standalone read 実行に失敗");
+        let _ = std::fs::remove_dir_all(&dir);
+
+        assert_eq!(capture.stdout, b"");
+        assert_eq!(capture.read_payload, b"payload");
+        assert_eq!(capture.fd_read_calls, 3);
+        assert_eq!(capture.fd_close_calls, 1);
     });
 }
