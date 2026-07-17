@@ -54,11 +54,11 @@ Selfhost `Tools.Test.TestRunner` は top-level `defn` の metadata vector slot 4
 
 ### EC-M1-02 selfhost runner example metadata projection (2026-07-17)
 
-Selfhost `Tools.Test.TestRunner` は parser が defn metadata vector slot 1 に保持した legacy `:example` payload を `parse-program` で AST 化し、top-level `defn` の test case へ投影するようになった。`generate-tests` の実行経路もこの projection を使い、`succ` の 2 example を抽出して両方 `passed=1` になることを selfhost Wasm E2E で確認した。metadata slot は formatter/docs 互換の文字列のままとし、既存の `extract-examples` / `extract-contract-forms` source scanner API は order/span 互換のため残している。
+Selfhost `Tools.Test.TestRunner` は parser が defn metadata vector slot 5 に保持した ordered legacy forms を優先し、kind `1` の `:example` raw payload だけを `parse-program` で AST 化して top-level `defn` の test case へ投影するようになった。ordered forms がない旧 metadata では slot 1 の集約 payload へ fallback する。`generate-tests` の実行経路もこの projection を使い、`:example` / `:invariant` / `:example` の順序から kind `1,2,1` を確認し、2 example を抽出して両方 `passed=1` になることを selfhost Wasm E2E で確認した。metadata slot 1 は formatter/docs 互換の文字列のままとし、既存の `extract-examples` / `extract-contract-forms` source scanner API は legacy order/span projection 用に残している。
 
-Evidence: `test_e2e_selfhost_test_runner_projects_examples_from_parser_metadata`、`test_e2e_selfhost_test_runner_preserves_example_metadata_across_defn_shapes`、`test_e2e_selfhost_parser_defn_preserves_invariant_metadata`、`cargo run --bin lsharp -- check selfhost/src/Syntax/Parser.ls`、`cargo run --bin lsharp -- check selfhost/src/Tools/Test/TestRunner.ls`。
+Evidence: `test_e2e_selfhost_test_runner_projects_ordered_example_forms`、`test_e2e_selfhost_test_runner_projects_examples_from_parser_metadata`、`test_e2e_selfhost_test_runner_preserves_example_metadata_across_defn_shapes`、`test_e2e_selfhost_parser_defn_preserves_invariant_metadata`、`cargo run --bin lsharp -- check selfhost/src/Syntax/Parser.ls`、`cargo run --bin lsharp -- check selfhost/src/Tools/Test/TestRunner.ls`。
 
-これは raw payload を parser-owned metadata から再パースする移行 bridge であり、canonical `ContractSuite` IR ではない。module/private declaration、Rust `MetadataForm` との ordered canonical conversion、docs payload、new contract forms、migration diagnostic、Mac/Linux artifact/runtime parity は残件である。
+これは raw payload を parser-owned ordered metadata から再パースする移行 bridge であり、canonical `ContractSuite` IR ではない。invariant の ordered form 消費、module/private declaration、Rust `MetadataForm` との ordered canonical conversion、source span、docs payload、new contract forms、migration diagnostic、Mac/Linux artifact/runtime parity は残件である。
 
 ### EC-M1-02 selfhost formatter typed metadata projection (2026-07-17)
 

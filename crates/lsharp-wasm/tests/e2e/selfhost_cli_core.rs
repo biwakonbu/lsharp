@@ -6044,6 +6044,45 @@ fn test_e2e_selfhost_test_runner_preserves_example_metadata_across_defn_shapes()
     );
 }
 
+/// EC-M1-02: selfhost runner が parser-owned ordered forms から example を投影すること
+#[test]
+fn test_e2e_selfhost_test_runner_projects_ordered_example_forms() {
+    let harness = r#"
+(defn main []
+  (let [src "(defn succ [x] :example [(= (succ 1) 2)] :invariant (= result (+ x 1)) :example [(= (succ 5) 6)] (+ x 1))"
+        program (parse-program src)
+        decl (vector-get program 0)
+        forms (test-defn-ordered-forms decl)
+        examples (extract-examples-from-program program)
+        suite (generate-tests src)
+        results (vector-get suite 0)
+        result0 (vector-get results 0)
+        result1 (vector-get results 1)]
+    (do
+      (print (vector-length forms))
+      (print (vector-get (vector-get forms 0) 0))
+      (print (vector-get (vector-get forms 1) 0))
+      (print (vector-get (vector-get forms 2) 0))
+      (print (vector-length examples))
+      (print (vector-length results))
+      (print (vector-get result0 1))
+      (print (vector-get result1 1))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["3", "1", "2", "1", "2", "2", "1", "1"],
+        "runner は parser-owned ordered forms から example のみを順序どおり投影するべき"
+    );
+}
+
 /// TEST-CLI-02-O2b: selfhost/src/Tools/Test/TestRunner.ls が supported subset の metadata suite を実行できること
 #[test]
 #[ignore]

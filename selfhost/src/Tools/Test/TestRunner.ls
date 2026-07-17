@@ -6,8 +6,8 @@
 
 ;; TestRunner.ls - L# セルフホスティング: メタデータテストランナー
 ;;
-;; :example は互換性のため source payload から抽出するが、:invariant は
-;; parser が保持した defn metadata AST を test case へ投影する。
+;; :example / :invariant は parser が保持した defn metadata を test case へ投影する。
+;; ordered forms がない旧 metadata には集約 payload の fallback を残す。
 ;; 算術・比較・if/let/do・トップレベル defn 呼び出しの subset を実行する。
 
 (defn token-count [tokens]
@@ -59,7 +59,7 @@
     (vector-push (vector-new 2) examples)
     invariants))
 
-;; defn ノード末尾の metadata vector [doc, example, params, returns, invariant]
+;; defn ノード末尾の metadata vector [doc, example, params, returns, invariant, ordered-forms]
 ;; から parser-owned invariant AST を取り出す。
 (defn test-defn-signature-node? [candidate]
   (if (= candidate 0)
@@ -94,6 +94,14 @@
       (if (> (vector-length meta) 1)
         (vector-get meta 1)
         ""))))
+
+(defn test-defn-ordered-forms [decl]
+  (let [meta (test-defn-metadata decl)]
+    (if (= meta 0)
+      0
+      (if (> (vector-length meta) 5)
+        (vector-get meta 5)
+        0))))
 
 (defn append-parser-invariant [decl results]
   (let [predicate (test-defn-invariant decl)]
@@ -639,14 +647,45 @@
 (defn append-parsed-cases [exprs fn-hash results]
   (append-parsed-cases-loop exprs fn-hash 0 (vector-length exprs) results))
 
+(defn append-parser-ordered-example-form [form decl results]
+  (if (= (vector-get form 0) 1)
+    (let [payload (vector-get form 1)]
+      (if (> (string-length payload) 0)
+        (append-parsed-cases
+          (parse-program payload)
+          (vector-get decl 1)
+          results)
+        results))
+    results))
+
+(defn append-parser-ordered-examples-loop [forms idx count decl results]
+  (if (>= idx count)
+    results
+    (let [form (vector-get forms idx)
+      next-results (append-parser-ordered-example-form form decl results)]
+      (append-parser-ordered-examples-loop
+        forms
+        (+ idx 1)
+        count
+        decl
+        next-results))))
+
 (defn append-parser-examples [decl results]
-  (let [text (test-defn-example-text decl)]
-    (if (> (string-length text) 0)
-      (append-parsed-cases
-        (parse-program text)
-        (vector-get decl 1)
-        results)
-      results)))
+  (let [forms (test-defn-ordered-forms decl)]
+    (if (= forms 0)
+      (let [text (test-defn-example-text decl)]
+        (if (> (string-length text) 0)
+          (append-parsed-cases
+            (parse-program text)
+            (vector-get decl 1)
+            results)
+          results))
+      (append-parser-ordered-examples-loop
+        forms
+        0
+        (vector-length forms)
+        decl
+        results))))
 
 ;; parser が保持する defn metadata の example payload を test case へ投影する。
 ;; payload は互換のため文字列で保持し、ここで AST に再パースする。
