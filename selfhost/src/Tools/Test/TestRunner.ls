@@ -59,6 +59,13 @@
     (vector-push (vector-new 2) examples)
     invariants))
 
+(defn make-suite-with-assertions [examples invariants assertions]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) examples)
+      invariants)
+    assertions))
+
 ;; defn ノード末尾の metadata vector [doc, example, params, returns, invariant, ordered-forms]
 ;; から parser-owned invariant AST を取り出す。
 (defn test-defn-signature-node? [candidate]
@@ -190,6 +197,100 @@
     (vector-length program)
     (vector-new 8)))
 
+;; parser-owned canonical :assert form [3, predicate-vector] を assertion case へ投影する。
+(defn append-parser-assertion-predicates-loop [predicates idx count decl results]
+  (if (>= idx count)
+    results
+    (append-parser-assertion-predicates-loop
+      predicates
+      (+ idx 1)
+      count
+      decl
+      (vector-push
+        results
+        (make-test-case
+          (vector-length results)
+          (vector-get decl 1)
+          (vector-get predicates idx))))))
+
+(defn append-parser-ordered-assertion-form [form decl results]
+  (if (= (vector-get form 0) (contract-form-assert))
+    (let [predicates (vector-get form 1)]
+      (append-parser-assertion-predicates-loop
+        predicates
+        0
+        (vector-length predicates)
+        decl
+        results))
+    results))
+
+(defn append-parser-ordered-assertions-loop [forms idx count decl results]
+  (if (>= idx count)
+    results
+    (let [form (vector-get forms idx)
+      next-results (append-parser-ordered-assertion-form form decl results)]
+      (append-parser-ordered-assertions-loop
+        forms
+        (+ idx 1)
+        count
+        decl
+        next-results))))
+
+(defn append-parser-assertions [decl results]
+  (let [forms (test-defn-ordered-forms decl)]
+    (if (= forms 0)
+      results
+      (append-parser-ordered-assertions-loop
+        forms
+        0
+        (vector-length forms)
+        decl
+        results))))
+
+(defn append-parser-assertions-from-module-loop [module-node idx count results]
+  (if (>= idx count)
+    results
+    (append-parser-assertions-from-module-loop
+      module-node
+      (+ idx 1)
+      count
+      (append-parser-assertions-from-decl
+        (vector-get module-node (+ idx 3))
+        results))))
+
+(defn append-parser-assertions-from-decl [decl results]
+  (let [tag (vector-get decl 0)]
+    (if (= tag (ast-defn))
+      (append-parser-assertions decl results)
+      (if (= tag (ast-private))
+        (append-parser-assertions-from-decl (vector-get decl 1) results)
+        (if (= tag (ast-module-decl))
+          (append-parser-assertions-from-module-loop
+            decl
+            0
+            (vector-get decl 2)
+            results)
+          results)))))
+
+(defn extract-assertions-from-program-loop [program idx count results]
+  (if (>= idx count)
+    results
+    (let [next-results (append-parser-assertions-from-decl
+        (vector-get program idx)
+        results)]
+      (extract-assertions-from-program-loop
+        program
+        (+ idx 1)
+        count
+        next-results))))
+
+(defn extract-assertions-from-program [program]
+  (extract-assertions-from-program-loop
+    program
+    0
+    (vector-length program)
+    (vector-new 8)))
+
 (defn test-result-diagnostic [result]
   (if (> (vector-length result) 3)
     (vector-get result 3)
@@ -233,6 +334,25 @@
 (defn test-diagnostics-summary [examples invariants]
   (let [count (test-diagnostics-count examples invariants)
     code (first-test-diagnostic-code examples invariants)]
+    (if (= count 0)
+      "diagnostics:0"
+      (string-concat "diagnostics:"
+        (string-concat (int-to-string count)
+          (string-concat "," (test-diagnostic-code-text code)))))))
+
+(defn test-diagnostics-count-with-assertions [examples invariants assertions]
+  (+ (test-diagnostics-count examples invariants)
+    (diagnostic-count-loop assertions 0 (vector-length assertions) 0)))
+
+(defn first-test-diagnostic-code-with-assertions [examples invariants assertions]
+  (let [code (first-test-diagnostic-code examples invariants)]
+    (if (> code 0)
+      code
+      (first-diagnostic-code-loop assertions 0 (vector-length assertions)))))
+
+(defn test-diagnostics-summary-with-assertions [examples invariants assertions]
+  (let [count (test-diagnostics-count-with-assertions examples invariants assertions)
+    code (first-test-diagnostic-code-with-assertions examples invariants assertions)]
     (if (= count 0)
       "diagnostics:0"
       (string-concat "diagnostics:"
@@ -967,6 +1087,37 @@
 (defn run-examples [program test-cases]
   (run-examples-loop program test-cases 0 (vector-length test-cases) (vector-new 16)))
 
+(defn run-assertions-loop [program test-cases idx count results]
+  (if (>= idx count)
+    results
+    (let [tc (vector-get test-cases idx)
+      name (vector-get tc 0)
+      expr (vector-get tc 2)
+      actual (eval-node program expr (env-new))
+      bool-valid (if (= (value-tag actual) (ast-lit-bool)) 1 0)
+      passed (if (= bool-valid 1) (value-truthy actual) 0)
+      diagnostic-code (if (= bool-valid 1) 0 (contract-diagnostic-non-bool))]
+      (run-assertions-loop
+        program
+        test-cases
+        (+ idx 1)
+        count
+        (vector-push
+          results
+          (make-test-result-with-diagnostic
+            name
+            passed
+            passed
+            diagnostic-code))))))
+
+(defn run-assertions [program test-cases]
+  (run-assertions-loop
+    program
+    test-cases
+    0
+    (vector-length test-cases)
+    (vector-new (vector-length test-cases))))
+
 (defn invariant-sample-count [param-count]
   (if (= param-count 0)
     1
@@ -1116,9 +1267,14 @@
   (let [program (parse-program src)
     examples (extract-examples-from-program program)
     invariants (extract-invariants-from-program program)
+    assertions (extract-assertions-from-program program)
     example-results (run-examples program examples)
-    invariant-results (run-invariants program invariants)]
-    (make-suite example-results invariant-results)))
+    invariant-results (run-invariants program invariants)
+    assertion-results (run-assertions program assertions)]
+    (make-suite-with-assertions
+      example-results
+      invariant-results
+      assertion-results)))
 
 (defn generate-tests-from-source [src]
   (generate-tests src))

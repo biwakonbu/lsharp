@@ -36,7 +36,7 @@ Rust syntax は `:assert [predicate ...]` を lossless な ordered metadata form
 
 Evidence: RED の `metadata_contract_assert` compile failure、GREEN の `canonical_assert_forms_preserve_order_and_predicate_spans`、`cargo test -p lsharp-syntax -p lsharp-types -p lsharp-tooling -- --nocapture`、`bash scripts/audit_docs.sh`。
 
-これは Rust parser/types の canonical inventory bridge に限定した verified slice であり、selfhost parser/formatter/runner、assert の型検査・実行・diagnostic report、migration diagnostic、Mac/Linux current-source native artifact/runtime parity は残件である。したがって `:assert` を L# の日常開発経路で使える機能として扱うには、次に selfhost 側の同じ ordered form と実行境界を接続する必要がある。
+これは Rust parser/types の canonical inventory bridge に限定した verified slice であり、selfhost 側の全 parser/formatter/runner parity、assert の型検査・diagnostic report、migration diagnostic、Mac/Linux current-source native artifact/runtime parity は残件である。selfhost の parser/formatter と限定 runner projection は後続の EC-M1-03 slice で個別に検証する。
 
 ### EC-M1-03 selfhost canonical assert parser/formatter bridge (2026-07-17)
 
@@ -44,7 +44,15 @@ Selfhost `Syntax.AST` / `Syntax.Parser` は canonical `:assert [predicate ...]` 
 
 Evidence: RED の `test_e2e_selfhost_formatter_roundtrips_canonical_assert_form`、GREEN の同 test、`selfhost_formatter_source_roundtrip` 6 tests、legacy parser metadata regression、`cargo run --bin lsharp -- check selfhost/src/Syntax/Parser.ls` / `FormatterDecl.ls` / `TestRunner.ls`。
 
-これは selfhost parser/formatter の round-trip verified slice に限定され、predicate span、assert の type check / execution / diagnostic report、legacy migration diagnostic、Rust/native contract inventory parity、Mac/Linux current-source artifact/runtime gate は残件である。特に `:assert` はまだ TestRunner の executable contract path に接続していないため、現時点では L# source の保存・整形までを Rust-free daily slice として扱う。
+これは selfhost parser/formatter の round-trip verified slice に限定され、predicate span、assert の全 type check / diagnostic report、legacy migration diagnostic、Rust/native contract inventory parity、Mac/Linux current-source artifact/runtime gate は残件である。限定 runner projection と実行は次の EC-M1-03 sliceで扱う。
+
+### EC-M1-03 selfhost canonical assert runner projection (2026-07-17)
+
+Selfhost `Tools.Test.TestRunner` は parser-owned ordered form kind `3` の predicate vector を predicate 単位の test case へ投影し、既存の result tuple `[name, passed, actual, diagnostic]` を再利用して strict Bool の deterministic assertion 実行を行う。`generate-tests` は既存の examples/invariants slot を保持したまま assertion slot `2` を追加し、`App.Cli` / `App.EmbeddedCli` は assertion 件数を表示し、failure と diagnostic の集計にも含める。assertion がない既存 source の text output は従来どおりである。
+
+Evidence: RED の `test_e2e_selfhost_test_runner_projects_and_runs_ordered_assertion_forms`、GREEN の同 test、`cargo run --bin lsharp -- check selfhost/src/Tools/Test/TestRunner.ls` / `Cli.ls` / `EmbeddedCli.ls`。full CLI bundle は Rust type inference の待ち時間が大きいため default E2E から分離し、`test_e2e_selfhost_cli_reports_canonical_assertions` を ignored manual gate として残す。
+
+これは parser-owned predicate projection と限定 evaluator の verified slice であり、predicate source span、Rust checker/oracle との assertion diagnostic parity、undefined-variable の専用診断、全 AST/runtime の assertion evaluation、legacy migration、Mac/Linux current-source artifact/runtime gate は残件である。したがって `:assert` は selfhost runner の supported subset で実行可能になったが、EC-M1-03/04 または全機能 Rust-free 完了とは扱わない。
 
 ### scoped polymorphic `defn` signature (2026-07-15)
 

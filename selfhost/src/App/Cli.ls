@@ -103,21 +103,37 @@
 (defn run-build-output [file-path output-path opts] (run-compile-output file-path output-path opts))
 (defn test-examples-text [count] (string-concat "examples:" (int-to-string count)))
 (defn test-invariants-text [count] (string-concat "invariants:" (int-to-string count)))
+(defn test-assertions-text [count] (string-concat "assertions:" (int-to-string count)))
 (defn test-failures-text [count] (string-concat "failures:" (int-to-string count)))
 (defn run-test-source [src opts]
   (let [suite (generate-tests-from-source src)
     example-results (vector-get suite 0)
     invariant-results (vector-get suite 1)
+    assertion-results (vector-get suite 2)
     example-count (vector-length example-results)
     invariant-count (vector-length invariant-results)
-    failed (+ (count-failed-results example-results) (count-failed-results invariant-results))
-    diagnostic-count (test-diagnostics-count example-results invariant-results)
-    diagnostic-summary (test-diagnostics-summary example-results invariant-results)]
+    assertion-count (vector-length assertion-results)
+    failed (+
+      (count-failed-results example-results)
+      (+ (count-failed-results invariant-results) (count-failed-results assertion-results)))
+    diagnostic-count (test-diagnostics-count-with-assertions
+      example-results
+      invariant-results
+      assertion-results)
+    diagnostic-summary (test-diagnostics-summary-with-assertions
+      example-results
+      invariant-results
+      assertion-results)]
     (do
       (print-string (test-examples-text example-count))
       (print-string "\n")
       (print-string (test-invariants-text invariant-count))
       (print-string "\n")
+      (if (> assertion-count 0)
+        (do
+          (print-string (test-assertions-text assertion-count))
+          (print-string "\n"))
+        (print-string ""))
       (print-string (test-failures-text failed))
       (print-string "\n")
       (if (> diagnostic-count 0)

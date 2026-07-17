@@ -6121,6 +6121,76 @@ fn test_e2e_selfhost_test_runner_projects_ordered_invariant_forms() {
     );
 }
 
+/// EC-M1-03: selfhost runner が canonical :assert を独立 bucket へ投影・実行すること
+#[test]
+fn test_e2e_selfhost_test_runner_projects_and_runs_ordered_assertion_forms() {
+    let harness = r#"
+(defn main []
+  (let [src "(defn positive [] :assert [(> 1 0) (= 1 1)] true)"
+        program (parse-program src)
+        decl (vector-get program 0)
+        forms (test-defn-ordered-forms decl)
+        form (vector-get forms 0)
+        suite (generate-tests src)
+        assertions (vector-get suite 2)
+        result0 (vector-get assertions 0)
+        result1 (vector-get assertions 1)]
+    (do
+      (print (vector-length forms))
+      (print (vector-get form 0))
+      (print (vector-length (vector-get form 1)))
+      (print (vector-length assertions))
+      (print (vector-get result0 1))
+      (print (vector-get result1 1))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_test_runner_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["1", "3", "2", "2", "1", "1"],
+        "canonical :assert は predicate の grouping と順序を保ったまま独立 bucket で実行されるべき"
+    );
+}
+
+/// EC-M1-03: selfhost CLI が canonical :assert の件数を結果へ反映すること
+#[test]
+#[ignore]
+fn test_e2e_selfhost_cli_reports_canonical_assertions() {
+    let harness = r#"
+(defn main []
+  (let [src "(defn positive [] :assert [(> 1 0) (= 1 1)] true)"]
+    (do
+      (print-string "BEGIN\n")
+      (print (run-test-source src 0))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec![
+            "BEGIN",
+            "examples:0",
+            "invariants:0",
+            "assertions:2",
+            "failures:0",
+            "0"
+        ],
+        "selfhost CLI は canonical :assert を silent success にせず件数へ反映するべき"
+    );
+}
+
 /// EC-M1-02: selfhost runner が module/private declaration 内の invariant を投影すること
 #[test]
 fn test_e2e_selfhost_test_runner_projects_nested_invariant_forms() {
