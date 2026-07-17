@@ -6274,6 +6274,48 @@ fn test_e2e_selfhost_test_runner_rejects_empty_canonical_case() {
     );
 }
 
+/// EC-M1-02: selfhost runner が :case の未知変数を Unit に丸めないこと
+#[test]
+fn test_e2e_selfhost_test_runner_rejects_unknown_case_variable() {
+    let harness = r#"
+(defn main []
+  (let [src "(defn identity [x] :case [(expect missing 1) (expect x x) (expect result result)] x)"
+        suite (generate-tests src)
+        results (vector-get suite 3)
+        result0 (vector-get results 0)
+        result1 (vector-get results 1)
+        result2 (vector-get results 2)
+        summary (test-diagnostics-summary-with-cases
+          (vector-new 0)
+          (vector-new 0)
+          (vector-new 0)
+          results)]
+    (do
+      (print (vector-length results))
+      (print (vector-get result0 1))
+      (print (vector-get result0 3))
+      (print (vector-get result1 1))
+      (print (vector-get result1 3))
+      (print (vector-get result2 1))
+      (print (vector-get result2 3))
+      (print-string summary)
+      (print-string "\n")
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_test_runner_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["3", "0", "1", "0", "1", "0", "1", "diagnostics:3,LS1001"],
+        "selfhost runner は未知変数を Unit に丸めず、case の implicit scope を許可するべきではない"
+    );
+}
+
 /// EC-M1-02: selfhost CLI が canonical :case の件数・失敗を summary へ反映すること
 #[test]
 fn test_e2e_selfhost_cli_reports_canonical_cases() {

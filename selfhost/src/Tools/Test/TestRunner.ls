@@ -643,13 +643,13 @@
         found
         (find-defn-by-hash program target-hash (+ idx 1) count)))))
 
-(defn known-contract-name? [program env name-hash]
+(defn known-contract-name? [program env name-hash allow-result]
   (if (= (env-has? env name-hash) 1)
     1
     (if (= (builtin-hash? name-hash) 1)
       1
       (if (= name-hash (hash-result))
-        1
+        allow-result
         (if (> (vector-length (find-defn-by-hash program name-hash 0 (vector-length program))) 0)
           1
           0)))))
@@ -657,52 +657,51 @@
 (defn first-unknown-hash [left right]
   (if (>= left 0) left right))
 
-(defn invariant-node-unknown-hash-args-loop [program node env idx count]
+(defn contract-node-unknown-hash-args-loop [program node env allow-result idx count]
   (if (>= idx count)
     -1
-    (let [found (invariant-node-unknown-hash program (vector-get node (+ 3 idx)) env)]
+    (let [found (contract-node-unknown-hash program (vector-get node (+ 3 idx)) env allow-result)]
       (if (>= found 0)
         found
-        (invariant-node-unknown-hash-args-loop program node env (+ idx 1) count)))))
+        (contract-node-unknown-hash-args-loop program node env allow-result (+ idx 1) count)))))
 
-(defn invariant-node-unknown-hash-do-loop [program node env idx count]
+(defn contract-node-unknown-hash-do-loop [program node env allow-result idx count]
   (if (>= idx count)
     -1
-    (let [found (invariant-node-unknown-hash program (vector-get node (+ 2 idx)) env)]
+    (let [found (contract-node-unknown-hash program (vector-get node (+ 2 idx)) env allow-result)]
       (if (>= found 0)
         found
-        (invariant-node-unknown-hash-do-loop program node env (+ idx 1) count)))))
+        (contract-node-unknown-hash-do-loop program node env allow-result (+ idx 1) count)))))
 
-(defn invariant-node-unknown-hash [program node env]
+(defn contract-node-unknown-hash [program node env allow-result]
   (let [tag (vector-get node 0)]
     (if (= tag (ast-var))
-      (if (= (known-contract-name? program env (vector-get node 1)) 1)
+      (if (= (known-contract-name? program env (vector-get node 1) allow-result) 1)
         -1
         (vector-get node 1))
       (if (= tag (ast-apply))
-        (let [callee-found (invariant-node-unknown-hash program (vector-get node 1) env)]
+        (let [callee-found (contract-node-unknown-hash program (vector-get node 1) env allow-result)]
           (if (>= callee-found 0)
             callee-found
-            (invariant-node-unknown-hash-args-loop program node env 0 (vector-get node 2))))
+            (contract-node-unknown-hash-args-loop program node env allow-result 0 (vector-get node 2))))
         (if (= tag (ast-if))
-          (let [cond-found (invariant-node-unknown-hash program (vector-get node 1) env)
-            then-found (invariant-node-unknown-hash program (vector-get node 2) env)]
+          (let [cond-found (contract-node-unknown-hash program (vector-get node 1) env allow-result)
+            then-found (contract-node-unknown-hash program (vector-get node 2) env allow-result)]
             (if (>= cond-found 0)
               cond-found
               (if (>= then-found 0)
                 then-found
-                (invariant-node-unknown-hash program (vector-get node 3) env))))
+                (contract-node-unknown-hash program (vector-get node 3) env allow-result))))
           (if (= tag (ast-let))
-            (let [init-found (invariant-node-unknown-hash program (vector-get node 2) env)]
+            (let [init-found (contract-node-unknown-hash program (vector-get node 2) env allow-result)]
               (if (>= init-found 0)
                 init-found
-                (invariant-node-unknown-hash program
-                  (vector-get node 3)
-                  (env-bind env (vector-get node 1) (value-unit)))))
+                (contract-node-unknown-hash program (vector-get node 3)
+                  (env-bind env (vector-get node 1) (value-unit)) allow-result)))
             (if (= tag (ast-do))
-              (invariant-node-unknown-hash-do-loop program node env 0 (vector-get node 1))
+              (contract-node-unknown-hash-do-loop program node env allow-result 0 (vector-get node 1))
               (if (= tag (ast-ann))
-                (invariant-node-unknown-hash program (vector-get node 1) env)
+                (contract-node-unknown-hash program (vector-get node 1) env allow-result)
                 -1))))))))
 
 (defn invariant-unknown-variable [program expr decl param-count]
@@ -712,7 +711,15 @@
                 (vector-new 0)
                 0
                 param-count)]
-    (invariant-node-unknown-hash program expr scope)))
+    (contract-node-unknown-hash program expr scope 1)))
+
+;; canonical :case は owner の引数や result を暗黙に束縛しない。
+(defn case-unknown-variable [program actual expected]
+  (let [scope (env-new)
+    actual-found (contract-node-unknown-hash program actual scope 0)]
+    (if (>= actual-found 0)
+      actual-found
+      (contract-node-unknown-hash program expected scope 0))))
 
 (defn bind-params-loop [env decl args idx count]
   (if (>= idx count)
@@ -1277,21 +1284,37 @@
           (vector-push
             results
             (make-test-result-with-diagnostic name 0 0 diagnostic-code)))
-        (let [actual (eval-node program (vector-get test-case 1) (env-new))
-          expected (eval-node program (vector-get test-case 2) (env-new))
-          passed (values-equal actual expected)]
-          (run-cases-loop
-            program
-            test-cases
-            (+ idx 1)
-            count
-            (vector-push
-              results
-              (make-test-result-with-diagnostic
-                name
-                passed
-                (value-int-or-bool actual)
-                0))))))))
+        (let [actual-expr (vector-get test-case 1)
+          expected-expr (vector-get test-case 2)
+          unknown-hash (case-unknown-variable program actual-expr expected-expr)]
+          (if (>= unknown-hash 0)
+            (run-cases-loop
+              program
+              test-cases
+              (+ idx 1)
+              count
+              (vector-push
+                results
+                (make-test-result-with-diagnostic
+                  name
+                  0
+                  0
+                  (contract-diagnostic-undefined))))
+            (let [actual (eval-node program actual-expr (env-new))
+              expected (eval-node program expected-expr (env-new))
+              passed (values-equal actual expected)]
+              (run-cases-loop
+                program
+                test-cases
+                (+ idx 1)
+                count
+                (vector-push
+                  results
+                  (make-test-result-with-diagnostic
+                    name
+                    passed
+                    (value-int-or-bool actual)
+                    0))))))))))
 
 (defn run-cases [program test-cases]
   (run-cases-loop
