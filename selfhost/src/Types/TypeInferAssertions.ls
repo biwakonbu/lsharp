@@ -148,7 +148,7 @@
                   (root_pop)
                   (root_pop)
                   result)))))))))
-(defn check-property-postcondition [payload] (check-property-predicate payload (property-postcondition-text payload)))
+(defn check-property-postcondition [payload] (let [expression (property-postcondition-text payload)] (if (= (string-length expression) 0) (canonical-property-empty-code) (if (string-eq expression "true") (canonical-assertion-vacuous-code) (check-property-predicate payload expression)))))
 (defn check-property-preconditions-loop [payload idx close len]
   (let [expression-start (property-skip-space payload idx len)]
     (if (>= expression-start close)

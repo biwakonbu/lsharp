@@ -6906,6 +6906,72 @@ fn test_e2e_selfhost_cli_check_rejects_non_bool_second_property_precondition() {
     );
 }
 
+/// EC-M1-04: selfhost check が空の canonical property を成功扱いしないこと。
+#[test]
+fn test_e2e_selfhost_cli_check_rejects_empty_canonical_property() {
+    let harness = r#"
+(defn main []
+  (let [source "(defn noop [] :property [] true)"
+        program (parse-program source)
+        analysis (infer-program-analysis program)
+        result (check-canonical-properties-with-analysis program analysis)]
+    (do
+      (print-string "BEGIN\n")
+      (print (vector-get result 0))
+      (print (vector-get result 1))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}",
+        selfhost_parser_typeinfer_runtime_bundle(),
+        harness
+    );
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["BEGIN", "1", "2007"],
+        "selfhost property checker は空の property を成功扱いするべきではない"
+    );
+}
+
+/// EC-M1-04: selfhost check が literal true の property postcondition を拒否すること。
+#[test]
+fn test_e2e_selfhost_cli_check_rejects_vacuous_property_postcondition() {
+    let harness = r#"
+(defn main []
+  (let [source "(defn identity [x] :property [(for-all [x Int] :postcondition true)] x)"
+        program (parse-program source)
+        analysis (infer-program-analysis program)
+        result (check-canonical-properties-with-analysis program analysis)]
+    (do
+      (print-string "BEGIN\n")
+      (print (vector-get result 0))
+      (print (vector-get result 1))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}",
+        selfhost_parser_typeinfer_runtime_bundle(),
+        harness
+    );
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["BEGIN", "1", "2005"],
+        "selfhost property checker は literal true postcondition を成功扱いするべきではない"
+    );
+}
+
 /// EC-M1-02: selfhost test が canonical :case の型エラーを実行前に拒否すること
 #[test]
 fn test_e2e_selfhost_cli_test_rejects_invalid_canonical_case() {

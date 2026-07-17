@@ -172,6 +172,14 @@ Evidence: RED の `test_e2e_selfhost_cli_check_accepts_multiple_typed_property_b
 
 これは raw payload の full-list scope projection に限定した verified slice であり、重複 binder と binder 名 `result` の衝突、nested vector を含む完全な bracket-aware expression parser、TypeExpr / diagnostic span の Rust parity、empty/non-vacuous property、type-directed sampling/shrink、evaluator、full CLI artifact/runtime、Mac Apple Silicon / Linux x86_64 の current-source native gate は残件である。property 全体または全機能 Rust-free 完了とは扱わず、Rust oracle / bootstrap 境界を維持する。
 
+### EC-M1-04 selfhost property empty/non-vacuous preflight (2026-07-18)
+
+Selfhost `Types.TypeInferAssertions` は empty canonical `:property []` を `2007`（property requires a postcondition）として拒否し、postcondition が literal `true` の property を `2005`（vacuous）として拒否するようになった。literal `true` の判定は postcondition に限定し、precondition の optional/full-list traversal と valid typed binder scope は維持する。
+
+Evidence: RED の `test_e2e_selfhost_cli_check_rejects_empty_canonical_property` と `test_e2e_selfhost_cli_check_rejects_vacuous_property_postcondition`、GREEN の同 2 tests、`test_e2e_selfhost_cli_check_accepts_typed_property_binder`、`test_e2e_selfhost_cli_check_rejects_non_bool_canonical_property`、`./target/debug/lsharp check selfhost/src/Types/TypeInferAssertions.ls`。Rust oracle 側の `canonical_property_requires_at_least_one_for_all` / `canonical_property_rejects_literal_true_postcondition_as_vacuous` と同じ non-vacuity boundary を確認した。
+
+これは empty property と literal `true` postcondition の verified slice に限られる。typed binder なし、`cases=0`、static comparison の constant-true 判定、到達不能 precondition、sampling/shrink/evaluator、diagnostic span parity、full CLI artifact/runtime、Mac Apple Silicon / Linux x86_64 の current-source native gate は残件であり、Rust oracle / bootstrap 境界を維持する。
+
 ### scoped polymorphic `defn` signature (2026-07-15)
 
 `TypeInferFunctions.ls` は `defn` の parameter / return annotation に現れる scoped 名ごとに共有 fresh 型変数を割り当て、通常の型環境で関数を一般化する。これにより `id` を Int と Bool の別 call site で使え、`choose-first [(: x a) (: y b)] : a x` では `a` と `b` を独立に具体化できる。GADT refinement と exhaustiveness は別タスクである。Evidence: `test_e2e_selfhost_scoped_type_var_defn_signature_is_polymorphic`、`test_e2e_selfhost_scoped_multiple_type_vars_defn_signature_is_polymorphic`、`TypeInfer.ls` check。
