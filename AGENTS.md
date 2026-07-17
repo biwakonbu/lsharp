@@ -153,6 +153,20 @@ L# の最終目標は、Rust 実装を正本として残したまま一部のコ
 
 各段階では、最初に次の一つの RED を選び、GREEN の直後に Rust oracle/native target/runtime の必要な証拠を追加する。長時間の VM gate が必要な場合も、待機中に次の段階の非共有 focused test や診断を進め、重い replay を進捗として数えない。
 
+### 完璧な実装へ向けた運用契約
+
+「Rust を外す」は Rust のコードを先に削除することではない。L# で実際に開発を続けられるよう、検証済み native stage0 を日常開発の入口にして、未対応の機能は Rust fallback で隠さず、明示的な診断または明示的な外部境界として残す。完璧な実装とは、対応 target で parser → 型推論 → lowering → codegen → runtime → 公開 command と成果物が一貫して実行でき、配布用 stage0 の provenance・再生成・rollback まで検証済みの状態である。
+
+作業は次の順序で進める。
+
+1. 開始時に `git status`、branch/upstream、`TODO.md`、対象 target の native stage0・artifact・VM lock/job 状態を確認する。過去の報告や stale artifact を現状の証拠にしない。
+2. TODO から一つの observable contract だけを選び、失敗値、診断 code/span、exit code、artifact/runtime boundary、対象 target、再現 command を固定した RED を先に追加する。
+3. selfhost/native の実装を進め、focused test、Rust oracle/differential、native stage0、Wasm validate/runtime、必要な Mac Apple Silicon と Linux x86_64 gate を順に通す。summary/header/単一 layer test だけでは完了にしない。
+4. 検証済み evidence だけを docs/ADR/TODO に反映し、`[~]` は partial parity、Rust-only、bootstrap/oracle、external boundary、未検証 ABI を明示する。要件全体の evidence が揃うまで `[x]` や「完全対応」を使わない。
+5. task-relevant files だけを `main` に commit/push し、push 後に `HEAD == origin/main`、worktree、TODO 残件を再監査する。ユーザーの既存差分は保持し、force push や無関係な整理はしない。
+
+長時間の stage regeneration / Linux VM gate は仮説ごとに一つだけ実行し、VM-side lock と既存 artifact を再利用する。待機中は同じ replay を重複起動せず、共有しない parser/type/runtime、診断、fixture、contract test、docs を進める。停止する場合は、次の RED、再現 command、blocker、対象 artifact/target、必要な evidence を current docs に残し、次の run は必ず status refresh から再開する。VM の一時 workdir と巨大 artifact は gate 後に回収し、disk 使用量も確認する。
+
 ## hooks/スキルのトラブルシューティング
 
 hooks やスキルに問題が発生した場合は `.Codex/rules/hook-troubleshooting.md` を参照。
