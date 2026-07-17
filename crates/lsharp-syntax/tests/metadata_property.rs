@@ -62,3 +62,13 @@ fn property_form_rejects_negative_cases() {
 
     assert!(error.to_string().contains("non-negative case count"));
 }
+
+#[test]
+fn property_form_rejects_non_numeric_cases() {
+    let source =
+        "(defn identity [x] :property [(for-all [x Int] :cases false :postcondition (= result x))] x)";
+    let error =
+        lsharp_syntax::parse(source).expect_err("非数値 :cases は parse できてはならない");
+
+    assert!(error.to_string().contains("non-negative case count"));
+}

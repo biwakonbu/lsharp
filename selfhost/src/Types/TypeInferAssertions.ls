@@ -686,13 +686,13 @@
     (check-canonical-cases-with-analysis program analysis)))
 (defn property-binders-empty? [payload] (if (string-eq (property-probe-parameter-source payload) "[result]") 1 0))
 (defn property-cases-zero? [payload] (let [marker (property-find-substring payload ":cases") len (string-length payload)] (if (< marker 0) 0 (let [start (property-skip-space payload (+ marker 6) len) end (property-atom-expression-end payload start len)] (if (<= end start) 0 (if (= (parse-int-from-str payload start end 0) 0) 1 0))))))
-(defn property-cases-negative? [payload] (let [marker (property-find-substring payload ":cases") len (string-length payload)] (if (< marker 0) 0 (let [start (property-skip-space payload (+ marker 6) len)] (if (< start len) (if (= (string-char-at payload start) 45) 1 0) 0)))))
+(defn property-cases-invalid? [payload] (let [marker (property-find-substring payload ":cases") len (string-length payload)] (if (< marker 0) 0 (let [start (property-skip-space payload (+ marker 6) len)] (if (< start len) (let [ch (string-char-at payload start)] (if (= ch 45) 1 (if (< ch 48) 1 (if (> ch 57) 1 0)))) 0)))))
 (defn check-property-form [form diagnostic-count first-error-code]
   (if (= (vector-get form 0) (contract-form-property))
     (do
       (root_push form)
       (let [payload (if (> (vector-length form) 1) (vector-get form 1) "")
-        structural-code (if (or (= (property-binders-empty? payload) 1) (or (= (property-cases-zero? payload) 1) (= (property-cases-negative? payload) 1))) (canonical-property-empty-code) 0)
+        structural-code (if (or (= (property-binders-empty? payload) 1) (or (= (property-cases-zero? payload) 1) (= (property-cases-invalid? payload) 1))) (canonical-property-empty-code) 0)
         precondition-code (check-property-precondition payload)
         code (if (> structural-code 0) structural-code (if (> precondition-code 0) precondition-code (check-property-postcondition payload)))
         next-count (if (> code 0) (+ diagnostic-count 1) diagnostic-count)

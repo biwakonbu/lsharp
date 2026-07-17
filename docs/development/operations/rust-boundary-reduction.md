@@ -212,11 +212,11 @@ Rust canonical checker と selfhost `check` は、`(: false Bool)` のように 
 
 Evidence: RED の `canonical_property_rejects_annotated_false_precondition` と `test_e2e_selfhost_cli_check_rejects_annotated_false_property_precondition`、GREEN の同 2 tests、`./target/debug/lsharp check selfhost/src/Types/TypeInferAssertions.ls`。残るのは compound expression の reachability、malformed option、sampling/shrink/evaluator、diagnostic/span parity、full CLI artifact/runtime、Mac Apple Silicon / Linux x86_64 の current-source native gate である。
 
-### EC-M1-04 negative `:cases` option boundary (2026-07-18)
+### EC-M1-04 invalid `:cases` option boundary (2026-07-18)
 
-Rust `Syntax.Parser` は `:cases -1` を `non-negative case count` の parse error として拒否する。selfhost `Types.TypeInferAssertions` は raw property payload の `:cases` 値が負号で始まる場合を structural code `2007` で拒否し、parse error を検査 0 件の成功へ丸めない。selfhost の raw payload boundary と Rust parser の exact diagnostic layer は異なるため、両方の拒否を別 evidence として保持する。
+Rust `Syntax.Parser` は `:cases -1` と `:cases false` を `non-negative case count` の parse error として拒否する。selfhost `Types.TypeInferAssertions` は raw property payload の `:cases` token が digit でも負号でもない場合を structural code `2007` で拒否し、parse error を検査 0 件の成功へ丸めない。selfhost の raw payload boundary と Rust parser の exact diagnostic layer は異なるため、両方の拒否を別 evidence として保持する。
 
-Evidence: `property_form_rejects_negative_cases`、`test_e2e_selfhost_cli_check_rejects_negative_property_cases` の RED/GREEN、`./target/debug/lsharp check selfhost/src/Types/TypeInferAssertions.ls`。残るのは非数値 `cases`、unknown option、malformed bracket の explicit diagnostic、sampling/shrink/evaluator、diagnostic/span parity、full CLI artifact/runtime、Mac Apple Silicon / Linux x86_64 の current-source native gate である。
+Evidence: `property_form_rejects_negative_cases`、`property_form_rejects_non_numeric_cases`、`test_e2e_selfhost_cli_check_rejects_negative_property_cases`、`test_e2e_selfhost_cli_check_rejects_non_numeric_property_cases` の RED/GREEN、`./target/debug/lsharp check selfhost/src/Types/TypeInferAssertions.ls`。残るのは unknown option、missing option value、malformed bracket の explicit diagnostic、sampling/shrink/evaluator、diagnostic/span parity、full CLI artifact/runtime、Mac Apple Silicon / Linux x86_64 の current-source native gate である。
 
 ### scoped polymorphic `defn` signature (2026-07-15)
 
