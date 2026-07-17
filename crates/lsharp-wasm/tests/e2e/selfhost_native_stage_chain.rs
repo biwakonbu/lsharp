@@ -2574,6 +2574,40 @@ fn test_native_linux_x86_hostgen_vm_script_prunes_local_artifact_generations() {
 }
 
 #[test]
+fn test_native_linux_x86_hostgen_vm_script_can_skip_unrelated_host_probes() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+    let actual_stage1_pos = script
+        .find("test_e2e_native_linux_x86_host_generates_actual_selfregen_stage1_bundle_artifact")
+        .expect("actual stage1 generation probe が必要");
+    let first_host_probe_pos = script
+        .find("test_e2e_native_linux_x86_host_generates_const_42_code_artifact")
+        .expect("host probe block が必要");
+
+    assert!(
+        script.contains(
+            r#"SKIP_HOST_PROBES="${LSHARP_NATIVE_LINUX_X86_SKIP_HOST_PROBES:-0}""#
+        ) && script.contains("SKIP_HOST_PROBES=\"${LSHARP_NATIVE_LINUX_X86_SKIP_HOST_PROBES:-0}\"")
+            && script.contains("SKIP_HOST_PROBES"),
+        "hostgen VM script は unrelated probe を切り離す skip flag を持つべき"
+    );
+    assert!(
+        first_host_probe_pos < actual_stage1_pos,
+        "actual stage1 generation は host probe block の後段に残るべき"
+    );
+    assert!(
+        script.contains(
+            "if [[ \"${SKIP_HOST_PROBES}\" != \"1\" ]]; then\n"
+        ) && script.contains(
+            "if [[ -z \"${REUSE_ACTUAL_STAGE1}\" || \"${REUSE_ACTUAL_STAGE1}\" = \"0\" ]] && [[ \"${SKIP_HOST_PROBES}\" != \"1\" ]]; then"
+        ),
+        "skip flag は host-side probe と VM-side probe の両方を止め、actual stage replay は残すべき"
+    );
+}
+
+#[test]
 fn test_native_linux_x86_hostgen_vm_script_checks_vm_free_space_before_replay() {
     let script_path =
         selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
