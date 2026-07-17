@@ -17,6 +17,7 @@
 (import Types.TypeInfer)
 (import Types.TypeInferCore)
 (import Types.TypeScheme)
+(import Types.TypeInferAssertions)
 (import Backend.Wasm.CompilerBase)
 (defn push-int-vector-local [dst value] (do (root_push dst) (let [next-dst (vector-push dst value)] (do (root_pop) next-dst))))
 (defn push-object-vector-local [dst value] (do (root_push dst) (root_push value) (let [next-dst (vector-push dst value)] (do (root_pop) (root_pop) next-dst))))
@@ -60,7 +61,7 @@
 (defn parse-diagnostics-first-code [diagnostics] (if (> (vector-length diagnostics) 0) (parse-diagnostic-code (vector-get diagnostics 0)) 0))
 (defn parse-diagnostic-body-from-code [code] (if (= code 1001) "unexpected token )" (if (= code 1002) "unexpected token ]" "parse error")))
 (defn parse-diagnostics-body-text [diagnostics] (if (> (vector-length diagnostics) 0) (parse-diagnostic-body-from-code (parse-diagnostics-first-code diagnostics)) ""))
-(defn check-diagnostic-body-from-code [code] (if (= code (error-code-undefined)) "undefined symbol" (if (= code (error-code-if-cond)) "if condition must be Bool" (if (= code (error-code-if-branch)) "if branches must have same type" (if (= code (error-code-arg-mismatch)) "function argument type mismatch" (if (= code (error-code-infinite)) "infinite type" "type error"))))))
+(defn check-diagnostic-body-from-code [code] (if (= code (canonical-assertion-type-error-code)) "assert predicate type error" (if (= code (canonical-assertion-non-bool-code)) "assert predicate must be Bool" (if (= code (error-code-undefined)) "undefined symbol" (if (= code (error-code-if-cond)) "if condition must be Bool" (if (= code (error-code-if-branch)) "if branches must have same type" (if (= code (error-code-arg-mismatch)) "function argument type mismatch" (if (= code (error-code-infinite)) "infinite type" "type error"))))))))
 (defn check-diagnostics-body-text [program] (let [code (check-diagnostics-first-code program)] (if (= code 0) "" (check-diagnostic-body-from-code code))))
 (defn run-parse-source [src opts] (let [program (parse-program src) diagnostics (parse-diagnostics src) diagnostics-count (vector-length diagnostics) diagnostics-text (diagnostics-summary-text diagnostics-count "P0001" (parse-diagnostics-body-text diagnostics))] (do (print-string (parse-decl-count-text program)) (print-string "
 ") (print-string (string-concat "first-decl:" (parse-first-decl-text program))) (print-string "
@@ -69,7 +70,7 @@
 ") (exit-success))))
 (defn builtin-type-name-text [type-hash] (if (= type-hash 100) "Int" (if (= type-hash 200) "Bool" (if (= type-hash 300) "String" (if (= type-hash 400) "Float" (if (= type-hash 500) "Unit" (string-concat "type-" (int-to-string type-hash))))))))
 (defn render-type-text [ty] (let [tag (ty-tag ty)] (if (= tag 1) (builtin-type-name-text (ty-name ty)) (if (= tag 2) (string-concat "t" (int-to-string (ty-name ty))) (if (= tag 3) "Fn" (if (= tag 4) (string-concat "record-" (int-to-string (ty-name ty))) "Unknown"))))))
-(defn run-check-source [src opts] (let [program (parse-program src) analysis (infer-program-analysis program) ty (infer-program-analysis-type analysis) rendered (render-type-text ty) diagnostics-count (infer-program-analysis-diagnostic-count analysis) first-error-code (infer-program-analysis-first-error-code analysis) diagnostics-text (diagnostics-summary-text diagnostics-count "T0001" (if (= first-error-code 0) "" (check-diagnostic-body-from-code first-error-code)))] (do (print-string rendered) (print-string "\n") (print-string diagnostics-text) (print-string "\n") (exit-success))))
+(defn run-check-source [src opts] (let [program (parse-program src) analysis (infer-program-analysis program) ty (infer-program-analysis-type analysis) rendered (render-type-text ty) base-diagnostics-count (infer-program-analysis-diagnostic-count analysis) base-first-error-code (infer-program-analysis-first-error-code analysis) canonical-check (check-canonical-assertions-with-analysis program analysis) canonical-diagnostics-count (vector-get canonical-check 0) canonical-first-error-code (vector-get canonical-check 1) diagnostics-count (+ base-diagnostics-count canonical-diagnostics-count) first-error-code (if (= base-first-error-code 0) canonical-first-error-code base-first-error-code) diagnostics-text (diagnostics-summary-text diagnostics-count "T0001" (if (= first-error-code 0) "" (check-diagnostic-body-from-code first-error-code)))] (do (print-string rendered) (print-string "\n") (print-string diagnostics-text) (print-string "\n") (exit-success))))
 (defn run-fmt-source [src opts] (let [program (parse-program src) formatted (format-program-with-source program src)] (do (print-string formatted) (exit-success))))
 (defn wasm-size-text [size] (string-concat "wasm-size:" (int-to-string size)))
 (defn compile-file-functions-data-with-cache [file-path cache-ref parse-count-ref] (compile-file-functions-payload-with-cache file-path 12 cache-ref parse-count-ref))

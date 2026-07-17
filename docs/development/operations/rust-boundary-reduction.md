@@ -62,6 +62,14 @@ Evidence: RED の `metadata_contract_check` 2ケース、GREEN の同 2ケース
 
 これは Rust の parser/types oracle に接続した canonical assertion 型検査の verified slice であり、selfhost `check` から同じ診断を返す経路、安定した診断 code/schema、全 evaluator/runtime の assertion parity、zero-case・到達不能 precondition・constant-true property の non-vacuity、Mac Apple Silicon / Linux x86_64 の current-source native artifact/runtime gate は残件である。また inventory 失敗時にこの narrow checker は既存の metadata 診断を優先して変更しないため、inventory の fail-closed 契約を広げる作業も別に必要である。EC-M1-04 や全機能 Rust-free 完了の判定には使わない。
 
+### EC-M1-04 selfhost `check` canonical assertion Bool preflight (2026-07-17)
+
+Selfhost `Types.TypeInferAssertions` は parser-owned canonical `:assert` predicate を既存 `TypeInfer` の AST/環境へ渡す `check-canonical-assertions` を公開し、`App.Cli` と `App.EmbeddedCli` の `run-check-source` から preflight として呼び出すようになった。predicate を実行せずに静的推論し、正確な Bool なら診断 0、Int など Bool 以外なら診断 1 / code `1002`、未定義変数・関数引数の捕捉・predicate 内の推論失敗なら code `1001` を `check` の既存診断集計へ加える。これにより、対応済みの canonical assertion Bool strictness は selfhost の `check` 経路にも入った。
+
+Evidence: RED で未定義の `check-canonical-assertions` を固定した後、`test_e2e_selfhost_metadata_check_rejects_non_bool_canonical_assertion` が selfhost parser/TypeInfer bundle 上で non-Bool `1,1002`、valid Bool `0,0`、undefined `1,1001`、parameter capture `1,1001` を確認、`cargo run --quiet --bin lsharp -- check selfhost/src/Types/TypeInferAssertions.ls` / `Cli.ls` / `EmbeddedCli.ls`、`git diff --check`、`bash scripts/audit_docs.sh`。
+
+これは Rust の synthetic HM probe と同じ全体 parity を閉じたものではなく、selfhost `TypeInfer` の解析済み global env を使う narrow static preflight である。predicate span、Rust checker と同じ型エラーの詳細・code/span parity、module/private-local scope、full CLI bundle の runtime/manual gate、non-vacuity、Mac Apple Silicon / Linux x86_64 の native artifact/runtime parity は残件である。この slice だけで EC-M1-04 や全機能 Rust-free 完了とは扱わない。
+
 ### scoped polymorphic `defn` signature (2026-07-15)
 
 `TypeInferFunctions.ls` は `defn` の parameter / return annotation に現れる scoped 名ごとに共有 fresh 型変数を割り当て、通常の型環境で関数を一般化する。これにより `id` を Int と Bool の別 call site で使え、`choose-first [(: x a) (: y b)] : a x` では `a` と `b` を独立に具体化できる。GADT refinement と exhaustiveness は別タスクである。Evidence: `test_e2e_selfhost_scoped_type_var_defn_signature_is_polymorphic`、`test_e2e_selfhost_scoped_multiple_type_vars_defn_signature_is_polymorphic`、`TypeInfer.ls` check。

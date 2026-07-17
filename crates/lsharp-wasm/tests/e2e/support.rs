@@ -630,6 +630,7 @@ pub(crate) fn selfhost_source_path(name: &str) -> std::path::PathBuf {
         "TypeInferRecord.ls" => "selfhost/src/Types/TypeInferRecord.ls",
         "TypeInferRecordDecl.ls" => "selfhost/src/Types/TypeInferRecordDecl.ls",
         "TypeInferAdt.ls" => "selfhost/src/Types/TypeInferAdt.ls",
+        "TypeInferAssertions.ls" => "selfhost/src/Types/TypeInferAssertions.ls",
         "TypeInferSmoke.ls" => "selfhost/src/Types/TypeInferSmoke.ls",
         "TypeInfer.ls" => "selfhost/src/Types/TypeInfer.ls",
         "Constraints.ls" => "selfhost/src/Types/Constraints.ls",
@@ -730,6 +731,9 @@ fn selfhost_module_raw(name: &str) -> &'static str {
             include_str!("../../../../selfhost/src/Types/TypeInferRecordDecl.ls")
         }
         "TypeInferAdt.ls" => include_str!("../../../../selfhost/src/Types/TypeInferAdt.ls"),
+        "TypeInferAssertions.ls" => {
+            include_str!("../../../../selfhost/src/Types/TypeInferAssertions.ls")
+        }
         "TypeInferSmoke.ls" => include_str!("../../../../selfhost/src/Types/TypeInferSmoke.ls"),
         "TypeInfer.ls" => include_str!("../../../../selfhost/src/Types/TypeInfer.ls"),
         "CompilerBase.ls" => include_str!("../../../../selfhost/src/Backend/Wasm/CompilerBase.ls"),
@@ -1334,6 +1338,7 @@ pub(crate) fn selfhost_parser_typeinfer_runtime_bundle() -> &'static str {
             "TypeInferRecord.ls",
             "TypeInferRecordDecl.ls",
             "TypeInferAdt.ls",
+            "TypeInferAssertions.ls",
         ],
     )
 }
@@ -1355,6 +1360,7 @@ pub(crate) fn selfhost_typeinfer_runtime_bundle() -> &'static str {
             "TypeInferRecord.ls",
             "TypeInferRecordDecl.ls",
             "TypeInferAdt.ls",
+            "TypeInferAssertions.ls",
         ],
     )
 }
@@ -1396,6 +1402,7 @@ pub(crate) fn selfhost_cli_runtime_bundle() -> &'static str {
             "TypeInferRecord.ls",
             "TypeInferRecordDecl.ls",
             "TypeInferAdt.ls",
+            "TypeInferAssertions.ls",
             "Compiler.ls",
             "WasiBackend.ls",
             "WasmEmit.ls",

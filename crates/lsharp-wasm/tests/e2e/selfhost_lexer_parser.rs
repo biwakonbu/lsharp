@@ -3,6 +3,42 @@ use super::support::*;
 // =================================================// selfhost Lexer.ls 拡張テスト (Step 3)
 // =================================================
 #[test]
+fn test_e2e_selfhost_metadata_check_rejects_non_bool_canonical_assertion() {
+    let harness = r#"
+(defn main []
+  (let [program (parse-program "(defn positive [] :assert [(+ 1 2)] true)")
+        result (check-canonical-assertions program)
+        valid-program (parse-program "(defn positive [] :assert [(> 1 0)] true)")
+        valid-result (check-canonical-assertions valid-program)
+        undefined-program (parse-program "(defn positive [] :assert [missing] true)")
+        undefined-result (check-canonical-assertions undefined-program)
+        parameter-program (parse-program "(defn positive [x] :assert [x] x)")
+        parameter-result (check-canonical-assertions parameter-program)]
+    (do
+      (print (vector-get result 0))
+      (print (vector-get result 1))
+      (print (vector-get valid-result 0))
+      (print (vector-get valid-result 1))
+      (print (vector-get undefined-result 0))
+      (print (vector-get undefined-result 1))
+      (print (vector-get parameter-result 0))
+      (print (vector-get parameter-result 1))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_parser_typeinfer_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["1", "1002", "0", "0", "1", "1001", "1", "1001"]
+    );
+}
+
+#[test]
 fn test_e2e_selfhost_negative_int_parses_as_int() {
     let harness = r#"
 (defn main []
