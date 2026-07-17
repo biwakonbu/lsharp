@@ -76,6 +76,14 @@
         (vector-get meta 4)
         0))))
 
+(defn test-defn-example-text [decl]
+  (let [meta (test-defn-metadata decl)]
+    (if (= meta 0)
+      ""
+      (if (> (vector-length meta) 1)
+        (vector-get meta 1)
+        ""))))
+
 (defn append-parser-invariant [decl results]
   (let [predicate (test-defn-invariant decl)]
     (if (= predicate 0)
@@ -620,6 +628,38 @@
 (defn append-parsed-cases [exprs fn-hash results]
   (append-parsed-cases-loop exprs fn-hash 0 (vector-length exprs) results))
 
+(defn append-parser-examples [decl results]
+  (let [text (test-defn-example-text decl)]
+    (if (> (string-length text) 0)
+      (append-parsed-cases
+        (parse-program text)
+        (vector-get decl 1)
+        results)
+      results)))
+
+;; parser が保持する defn metadata の example payload を test case へ投影する。
+;; payload は互換のため文字列で保持し、ここで AST に再パースする。
+(defn extract-examples-from-program-loop [program idx count results]
+  (if (>= idx count)
+    results
+    (let [decl (vector-get program idx)
+      next-results
+      (if (= (vector-get decl 0) (ast-defn))
+        (append-parser-examples decl results)
+        results)]
+      (extract-examples-from-program-loop
+        program
+        (+ idx 1)
+        count
+        next-results))))
+
+(defn extract-examples-from-program [program]
+  (extract-examples-from-program-loop
+    program
+    0
+    (vector-length program)
+    (vector-new 8)))
+
 (defn append-example-payload [src tokens payload-start payload-end fn-hash results]
   (let [text (payload-source src tokens payload-start payload-end)]
     (if (> (string-length text) 0)
@@ -870,8 +910,7 @@
 ;; generate-tests: source からテストスイート全体を生成・実行
 (defn generate-tests [src]
   (let [program (parse-program src)
-    cases (extract-test-cases src)
-    examples (vector-get cases 0)
+    examples (extract-examples-from-program program)
     invariants (extract-invariants-from-program program)
     example-results (run-examples program examples)
     invariant-results (run-invariants program invariants)]

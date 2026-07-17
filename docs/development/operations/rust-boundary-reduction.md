@@ -26,7 +26,7 @@ Mac Apple Silicon (`aarch64-apple-darwin`) または Linux x86_64 (`x86_64-unkno
 
 ### Linux current-source App.Cli source-file smoke (2026-07-17)
 
-current checkout `8c11612` の selfhost source（App.Cli standalone Preview1 output と EC-M1-02 parser/formatter/runner invariant AST slice を含む）を、provenance を付けた Linux x86_64 stage0 package から Lima VM `lsharp-linux-x86` 内で再生成した。`LSHARP_NATIVE_LINUX_X86_TRANSPORT_CHUNK_SIZE=256` を指定し、`function_start_len=2918` を 12 chunk に分けて transport した。VM は 4 CPU、16 GiB RAM、12 GiB diskで、compiler の最大 RSS は約 12.3 GiB、OOM なしだった。`cargo`、`rustc`、host `lsharp` は blocklist した。
+current checkout `b0e6c73` の selfhost source（App.Cli standalone Preview1 output と EC-M1-02 parser/formatter/runner invariant AST slice を含む）を、provenance を付けた Linux x86_64 stage0 package から Lima VM `lsharp-linux-x86` 内で再生成した。`LSHARP_NATIVE_LINUX_X86_TRANSPORT_CHUNK_SIZE=256` を指定し、`function_start_len=2918` を 12 chunk に分けて transport した。VM は 4 CPU、16 GiB RAM、12 GiB diskで、compiler の最大 RSS は約 12.3 GiB、OOM なしだった。`cargo`、`rustc`、host `lsharp` は blocklist した。
 
 生成後の native program で `parse`、`check`、`fmt`、通常と metadata の `test`、`compile -o`、`build -o` を実行し、stdout/stderr、core Wasm header、positive `wasm-size` を確認して pass した。VM workdir は終了時に削除され、disk 使用量は 11 GiB 中 3.1 GiB（30%）に戻った。この evidence は Rust-free daily core development boundary を Linux x86_64 にも広げるが、生成 artifact の `wasm-tools validate` / standalone runtime、4096 bytes 超 read、dynamic root/data/heap layout、component sidecar、public stage0 acquisition は残件である。
 
@@ -42,7 +42,15 @@ Evidence: `test_e2e_selfhost_parser_defn_preserves_invariant_metadata`、`test_e
 
 Selfhost `Tools.Test.TestRunner` は top-level `defn` の metadata vector slot 4 を読み、parser が保持した legacy `:invariant` AST から test case を直接生成するようになった。`generate-tests` も同じ parser AST projection を使用し、`succ(x)` の predicate shape、invariant 1 件の抽出、5 sample の実行結果 `passed=1` を一つの selfhost Wasm E2E で確認した。RED は未定義の `extract-invariants-from-program` により固定し、GREEN は `test_e2e_selfhost_test_runner_extracts_invariant_from_parser_ast` と Rust driver の `check selfhost/src/Tools/Test/TestRunner.ls` で確認した。
 
-これは runner の verified slice であり、EC-M1-02 全体の完了ではない。legacy `:example` は互換のため raw source scan を継続し、module/private declaration、Rust `MetadataForm` との ordered canonical conversion、docs payload、new contract forms、migration diagnostic、Mac/Linux artifact/runtime parity は残件である。
+これは runner の verified slice であり、EC-M1-02 全体の完了ではない。legacy `:example` は次の parser metadata projection slice まで互換 raw source scanner API を残し、module/private declaration、Rust `MetadataForm` との ordered canonical conversion、docs payload、new contract forms、migration diagnostic、Mac/Linux artifact/runtime parity は残件である。
+
+### EC-M1-02 selfhost runner example metadata projection (2026-07-17)
+
+Selfhost `Tools.Test.TestRunner` は parser が defn metadata vector slot 1 に保持した legacy `:example` payload を `parse-program` で AST 化し、top-level `defn` の test case へ投影するようになった。`generate-tests` の実行経路もこの projection を使い、`succ` の 2 example を抽出して両方 `passed=1` になることを selfhost Wasm E2E で確認した。metadata slot は formatter/docs 互換の文字列のままとし、既存の `extract-examples` / `extract-contract-forms` source scanner API は order/span 互換のため残している。
+
+Evidence: `test_e2e_selfhost_test_runner_projects_examples_from_parser_metadata`、`cargo run --bin lsharp -- check selfhost/src/Tools/Test/TestRunner.ls`。
+
+これは raw payload を parser-owned metadata から再パースする移行 bridge であり、canonical `ContractSuite` IR ではない。複数 `:example` directive の append、typed defn signature、module/private declaration、Rust `MetadataForm` との ordered canonical conversion、docs payload、new contract forms、migration diagnostic、Mac/Linux artifact/runtime parity は残件である。
 
 ### 型・宣言意味論の更新 (2026-07-14)
 

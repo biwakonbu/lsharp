@@ -5973,6 +5973,42 @@ fn test_e2e_selfhost_test_runner_extracts_invariant_from_parser_ast() {
     );
 }
 
+/// EC-M1-02: selfhost runner が parser の defn metadata から example を投影すること
+#[test]
+fn test_e2e_selfhost_test_runner_projects_examples_from_parser_metadata() {
+    let harness = r#"
+(defn main []
+  (let [src "(defn succ [x] :example [(= (succ 1) 2) (= (succ 5) 6)] (+ x 1))"
+        program (parse-program src)
+        decl (vector-get program 0)
+        meta (vector-get decl 5)
+        examples (extract-examples-from-program program)
+        suite (generate-tests src)
+        results (vector-get suite 0)
+        result0 (vector-get results 0)
+        result1 (vector-get results 1)]
+    (do
+      (print (if (> (string-length (vector-get meta 1)) 0) 1 0))
+      (print (vector-length examples))
+      (print (vector-length results))
+      (print (vector-get result0 1))
+      (print (vector-get result1 1))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["1", "2", "2", "1", "1"],
+        "example は parser metadata から投影され、generate-tests で 2 件とも成功するべき"
+    );
+}
+
 /// TEST-CLI-02-O2b: selfhost/src/Tools/Test/TestRunner.ls が supported subset の metadata suite を実行できること
 #[test]
 #[ignore]
