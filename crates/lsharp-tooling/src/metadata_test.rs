@@ -49,10 +49,7 @@ pub fn run_metadata_tests(file: &Path) -> miette::Result<MetadataTestRun> {
             .contains(":case は少なくとも 1 件の expectation")
         {
             "LS2006"
-        } else if diagnostic
-            .message
-            .contains(":assert の literal true predicate")
-        {
+        } else if diagnostic.message.contains("vacuous") {
             "LS2005"
         } else if diagnostic
             .message
@@ -215,6 +212,22 @@ mod tests {
         assert!(
             error.to_string().contains("[LS2005]"),
             "literal true canonical assertion は LS2005 を返すべき: {error}"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_run_metadata_tests_rejects_statically_true_integer_comparison() {
+        let dir = unique_temp_dir("static_true_integer_comparison");
+        let file = dir.join("Main.ls");
+        fs::write(&file, "(defn noop [] :assert [(= 1 1)] true)\n").unwrap();
+
+        let error = run_metadata_tests(&file)
+            .expect_err("静的に true な整数比較を成功扱いしてはならない");
+        assert!(
+            error.to_string().contains("[LS2005]"),
+            "静的に true な整数比較は LS2005 を返すべき: {error}"
         );
 
         let _ = fs::remove_dir_all(&dir);

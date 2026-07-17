@@ -125,10 +125,12 @@ fn collect_assertion_non_vacuity(
                     }
                     MetadataFormKind::Assertion { predicates } => {
                         for predicate in predicates {
-                            if matches!(predicate, Expr::Lit(_, Literal::Bool(true))) {
+                            if matches!(predicate, Expr::Lit(_, Literal::Bool(true)))
+                                || statically_true_integer_comparison(predicate)
+                            {
                                 diagnostics.push(MetadataDiagnostic {
                                     severity: Severity::Error,
-                                    message: ":assert の literal true predicate は検査を識別できず vacuous です"
+                                    message: ":assert predicate は静的に true で検査を識別できず vacuous です"
                                         .to_string(),
                                     span: predicate.span(),
                                     function_name: owner.clone(),
@@ -141,6 +143,36 @@ fn collect_assertion_non_vacuity(
             }
         }
         _ => {}
+    }
+}
+
+fn statically_true_integer_comparison(expr: &Expr) -> bool {
+    let Expr::Ann(_, inner, _) = expr else {
+        return statically_true_integer_comparison_app(expr);
+    };
+    statically_true_integer_comparison(inner)
+}
+
+fn statically_true_integer_comparison_app(expr: &Expr) -> bool {
+    let Expr::App(_, callee, args) = expr else {
+        return false;
+    };
+    let Expr::Var(_, operator) = callee.as_ref() else {
+        return false;
+    };
+    let [Expr::Lit(_, Literal::Int(left)), Expr::Lit(_, Literal::Int(right))] = args.as_slice()
+    else {
+        return false;
+    };
+
+    match operator.as_str() {
+        "=" | "==" => left == right,
+        "!=" => left != right,
+        "<" => left < right,
+        ">" => left > right,
+        "<=" => left <= right,
+        ">=" => left >= right,
+        _ => false,
     }
 }
 

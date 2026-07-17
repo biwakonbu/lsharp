@@ -4,6 +4,7 @@
 (import Types.Type)
 (import Types.TypeInfer)
 (import Types.TypeInferCore)
+(import Types.TypeInferAssertions)
 
 ;; legacy metadata を canonical form へ silent conversion せず分類する。
 ;; row は [diagnostic-code, disposition]。disposition は

@@ -83,8 +83,58 @@
       1
       (assertion-contains-param-loop predicate decl (+ idx 1) count))))
 
+;; operator の name-hash は Parser の 31-fold hash と一致させる。
+(defn static-comparison-operator? [operator]
+  (if (= operator 61) 1
+    (if (= operator 1952) 1
+      (if (= operator 1084) 1
+        (if (= operator 60) 1
+          (if (= operator 62) 1
+            (if (= operator 1921) 1
+              (if (= operator 1983) 1 0))))))))
+
+(defn static-comparison-true? [operator left right]
+  (if (or (= operator 61) (= operator 1952))
+    (if (= left right) 1 0)
+    (if (= operator 1084)
+      (if (!= left right) 1 0)
+      (if (= operator 60)
+        (if (< left right) 1 0)
+        (if (= operator 62)
+          (if (> left right) 1 0)
+          (if (= operator 1921)
+            (if (<= left right) 1 0)
+            (if (= operator 1983)
+              (if (>= left right) 1 0)
+              0)))))))
+
+(defn statically-true-integer-comparison? [predicate]
+  (let [tag (vector-get predicate 0)]
+    (if (= tag (ast-ann))
+      (statically-true-integer-comparison? (vector-get predicate 1))
+      (if (= tag (ast-apply))
+        (let [callee (vector-get predicate 1)
+          arg-count (vector-get predicate 2)]
+          (if (= arg-count 2)
+            (if (= (vector-get callee 0) (ast-var))
+              (if (= (static-comparison-operator? (vector-get callee 1)) 1)
+                (if (= (vector-get (vector-get predicate 3) 0) (ast-lit-int))
+                  (if (= (vector-get (vector-get predicate 4) 0) (ast-lit-int))
+                    (static-comparison-true?
+                      (vector-get callee 1)
+                      (vector-get (vector-get predicate 3) 1)
+                      (vector-get (vector-get predicate 4) 1))
+                    0)
+                  0)
+                0)
+              0)
+            0))
+        0))))
+
 (defn check-assertion-predicate [predicate decl env counter]
-  (if (and (= (vector-get predicate 0) (ast-lit-bool)) (= (vector-get predicate 1) 1))
+  (if (or
+    (and (= (vector-get predicate 0) (ast-lit-bool)) (= (vector-get predicate 1) 1))
+    (= (statically-true-integer-comparison? predicate) 1))
     (canonical-assertion-vacuous-code)
     (if (= (assertion-contains-param-loop
       predicate

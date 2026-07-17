@@ -216,7 +216,7 @@ pub(crate) const ERROR_CODES: &[ErrorCodeEntry] = &[
         legacy_code: None,
         name: "vacuous-contract",
         summary: "executable contract が実装の挙動を検査していません",
-        detail: ":assert の literal true predicate が常に真となり、実装差分を検出できません。",
+        detail: ":assert の predicate が静的に常真で、実装差分を検出できません。",
         fix: "実装結果または入力に依存する Bool predicate を指定してください。",
     },
     ErrorCodeEntry {

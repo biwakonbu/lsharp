@@ -3,7 +3,8 @@ use lsharp_types::metadata_check::{Severity, check_metadata};
 
 #[test]
 fn canonical_bool_assertion_is_accepted() {
-    const SOURCE: &str = "(defn positive [] :assert [(> 1 0) (= 1 1)] true)";
+    const SOURCE: &str =
+        "(defn positive [x] (> x 0)) (defn checked [] :assert [(positive 1) (positive 2)] true)";
     let program = parse(SOURCE).expect("Bool :assert は parse できるべき");
 
     let diagnostics = check_metadata(&program);
@@ -115,4 +116,32 @@ fn canonical_assertion_rejects_literal_true_as_vacuous() {
     assert!(diagnostic.message.contains("vacuous"));
     assert_eq!(&SOURCE[diagnostic.span.start..diagnostic.span.end], "true");
     assert_eq!(diagnostic.function_name, "noop");
+}
+
+#[test]
+fn canonical_assertion_rejects_statically_true_integer_comparisons_as_vacuous() {
+    for predicate in [
+        "(= 1 1)",
+        "(< 1 2)",
+        "(> 2 1)",
+        "(<= 1 2)",
+        "(>= 2 1)",
+        "(!= 1 2)",
+    ] {
+        let source = format!("(defn noop [] :assert [{predicate}] true)");
+        let program = parse(&source)
+            .expect("静的に true な整数比較は diagnostic のため parse できるべき");
+
+        let diagnostics = check_metadata(&program);
+
+        assert_eq!(diagnostics.len(), 1, "{predicate}: {diagnostics:?}");
+        let diagnostic = &diagnostics[0];
+        assert_eq!(diagnostic.severity, Severity::Error);
+        assert!(diagnostic.message.contains("vacuous"), "{diagnostics:?}");
+        assert_eq!(
+            &source[diagnostic.span.start..diagnostic.span.end],
+            predicate
+        );
+        assert_eq!(diagnostic.function_name, "noop");
+    }
 }
