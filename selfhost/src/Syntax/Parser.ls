@@ -703,15 +703,43 @@
         result))))
 
 ;; defn 用メタデータパーサー: :doc / :example / :params / :returns / :invariant を記録する
-;; 返却: [doc-string, example-text, params-vector, returns-string, invariant-expr]
+;; 返却: [doc-string, example-text, params-vector, returns-string, invariant-expr, ordered-forms]
+;; ordered form: [kind, raw-example-text または invariant-ast]
 (defn make-empty-defn-metadata-v3 []
-  (let [params0 (vector-new 0)]
+  (let [params0 (vector-new 0)
+    forms0 (vector-new 0)]
     (do
       (root_push params0)
+      (root_push forms0)
       (let [meta4 (vector-push-quad-rooted-v3 (vector-new 4) "" "" params0 "")]
         (do
           (root_pop)
-          (vector-push-single-rooted-v3 meta4 0))))))
+          (let [meta5 (vector-push-single-rooted-v3 meta4 0)]
+            (do
+              (root_push meta5)
+              (let [result (vector-push-single-rooted-v3 meta5 forms0)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  result)))))))))
+
+(defn append-defn-metadata-form-v3 [meta kind payload]
+  (let [forms (vector-get meta 5)
+    form (vector-push-pair-rooted-v3 (vector-new 2) kind payload)]
+    (do
+      (root_push meta)
+      (root_push forms)
+      (root_push form)
+      (let [updated-forms (vector-push-single-rooted-v3 forms form)]
+        (do
+          (root_push updated-forms)
+          (let [updated-meta (vector-set-at-rooted-v3 meta 5 updated-forms)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              updated-meta)))))))
 
 (defn parse-defn-metadata-v3 [spans pos-ref src]
   (parse-defn-metadata-loop-v3 spans pos-ref src (make-empty-defn-metadata-v3)))
@@ -793,7 +821,12 @@
               example-text (substring src content-start content-end)
               combined (append-defn-example-text-v3 meta example-text)
               updated (vector-set-at-rooted-v3 meta 1 combined)]
-              (parse-defn-metadata-loop-v3 spans pos-ref src updated))))))
+              (do
+                (root_push updated)
+                (let [with-form (append-defn-metadata-form-v3 updated 1 example-text)]
+                  (do
+                    (root_pop)
+                    (parse-defn-metadata-loop-v3 spans pos-ref src with-form)))))))))
     (do
       (skip-directive-payload-v3 spans pos-ref)
       (parse-defn-metadata-loop-v3 spans pos-ref src meta))))
@@ -939,8 +972,12 @@
       (root_push predicate)
       (let [updated (vector-set-at-rooted-v3 meta 4 predicate)]
         (do
-          (root_pop)
-          (parse-defn-metadata-loop-v3 spans pos-ref src updated))))))
+          (root_push updated)
+          (let [with-form (append-defn-metadata-form-v3 updated 2 predicate)]
+            (do
+              (root_pop)
+              (root_pop)
+              (parse-defn-metadata-loop-v3 spans pos-ref src with-form))))))))
 
 (defn defn-metadata-present-v3 [meta]
   (if (> (string-length (vector-get meta 0)) 0)

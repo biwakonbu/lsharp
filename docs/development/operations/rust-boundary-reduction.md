@@ -38,6 +38,14 @@ Evidence: `test_e2e_selfhost_parser_defn_preserves_invariant_metadata`、`test_e
 
 これは selfhost parser/AST/formatter の verified slice であり、EC-M1-02 全体の完了ではない。Rust `MetadataForm` との canonical conversion、selfhost docs payload と `:example` の raw source scan 除去、new `:case` / `:assert` / `:property` / `:postcondition` forms、migration diagnostic、Mac/Linux artifact/runtime parity は残件である。
 
+### EC-M1-02 selfhost parser-owned ordered legacy forms (2026-07-17)
+
+Selfhost `Syntax.Parser` は defn metadata の既存 slot `0..4` を互換形のまま保持しつつ、slot `5` に parser-owned ordered forms を追加した。各 form は `[kind, payload]` で、`:example` は kind `1` と raw payload string、`:invariant` は kind `2` と predicate AST を保持する。同じ directive の繰り返しも source order のまま蓄積するため、後段 consumer が metadata の集約文字列だけに依存せず、directive 順を復元できる。
+
+RED で `:example` / `:invariant` / `:example` が metadata length `5`、forms `0` へ欠落する failure を固定し、GREEN では forms length `3`、kind `1,2,1`、両 example payload、invariant AST、既存 doc/params/returns/invariant regression 4件を確認した。Evidence: `test_e2e_selfhost_parser_defn_preserves_ordered_metadata_forms`、`cargo test -p lsharp-wasm --test e2e selfhost_parser_metadata_forms::test_e2e_selfhost_parser_defn_preserves_`、`cargo run --bin lsharp -- check selfhost/src/Syntax/Parser.ls`。
+
+これは parser-owned legacy bridge の verified slice であり、forms に source span はまだなく、Rust `MetadataForm` / `ContractSuite` への canonical conversion、module/private qualification、new `:case` / `:assert` / `:property` / `:postcondition` forms、TestRunner の ordered projection、Mac/Linux current-source artifact/runtime parity は残件である。
+
 ### EC-M1-02 selfhost runner invariant AST projection (2026-07-17)
 
 Selfhost `Tools.Test.TestRunner` は top-level `defn` の metadata vector slot 4 を読み、parser が保持した legacy `:invariant` AST から test case を直接生成するようになった。`generate-tests` も同じ parser AST projection を使用し、`succ(x)` の predicate shape、invariant 1 件の抽出、5 sample の実行結果 `passed=1` を一つの selfhost Wasm E2E で確認した。RED は未定義の `extract-invariants-from-program` により固定し、GREEN は `test_e2e_selfhost_test_runner_extracts_invariant_from_parser_ast` と Rust driver の `check selfhost/src/Tools/Test/TestRunner.ls` で確認した。

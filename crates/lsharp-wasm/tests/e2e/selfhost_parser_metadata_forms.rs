@@ -790,8 +790,8 @@ fn test_e2e_selfhost_parser_defn_preserves_doc_example_metadata() {
     );
     assert_eq!(lines[1], "1", "body は apply ノードのまま保持されるべき");
     assert_eq!(
-        lines[2], "5",
-        "metadata entry は doc/example/params/returns/invariant の 5 件であるべき"
+        lines[2], "6",
+        "metadata entry は legacy 5 スロットと ordered forms の 6 件であるべき"
     );
     assert_eq!(lines[3], "0", ":params なしでは空 vector を保持するべき");
     assert_eq!(lines[4], "0", ":returns なしでは空文字列を保持するべき");
@@ -841,8 +841,8 @@ fn test_e2e_selfhost_parser_defn_preserves_params_returns_metadata() {
     );
     assert_eq!(lines[1], "1", "body は apply ノードのまま保持されるべき");
     assert_eq!(
-        lines[2], "5",
-        "metadata entry は doc/example/params/returns/invariant の 5 件であるべき"
+        lines[2], "6",
+        "metadata entry は legacy 5 スロットと ordered forms の 6 件であるべき"
     );
     assert_eq!(lines[3], "2", "params metadata は 2 件であるべき");
     assert_eq!(lines[4], "1", "1件目 param 名 hash は x であるべき");
@@ -874,8 +874,44 @@ fn test_e2e_selfhost_parser_defn_preserves_invariant_metadata() {
 
     assert_eq!(
         lines,
-        ["6", "5", "1", "1"],
+        ["6", "6", "1", "1"],
         "selfhost parser は legacy :invariant と defn body を同時に保持するべき"
+    );
+}
+
+/// EC-M1-02: parser-owned ordered metadata forms が directive 順を保持する
+#[test]
+fn test_e2e_selfhost_parser_defn_preserves_ordered_metadata_forms() {
+    let harness = r#"
+(defn main []
+  (let [node (vector-get (parse-program "(defn succ [x] :example [(succ 0)] :invariant (= result (+ x 1)) :example [(succ 1)] (+ x 1))") 0)
+        meta (vector-get node 5)
+        forms (vector-get meta 5)
+        form0 (vector-get forms 0)
+        form1 (vector-get forms 1)
+        form2 (vector-get forms 2)
+        invariant (vector-get form1 1)]
+    (do
+      (print (vector-length meta))
+      (print (vector-length forms))
+      (print (vector-get form0 0))
+      (print (vector-get form1 0))
+      (print (vector-get form2 0))
+      (print-string (vector-get form0 1))
+      (print-string "\n")
+      (print (if (= (vector-get invariant 0) (ast-apply)) 1 0))
+      (print-string (vector-get form2 1))
+      (print-string "\n")
+      0)))
+"#;
+
+    let output = run_parser_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["6", "3", "1", "2", "1", "(succ 0)", "1", "(succ 1)"],
+        "parser-owned ordered metadata は directive 順序と payload を保持するべき"
     );
 }
 
