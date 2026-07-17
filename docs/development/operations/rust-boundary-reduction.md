@@ -44,13 +44,13 @@ Selfhost `Syntax.Parser` は defn metadata の既存 slot `0..4` を互換形の
 
 RED で `:example` / `:invariant` / `:example` が metadata length `5`、forms `0` へ欠落する failure を固定し、GREEN では forms length `3`、kind `1,2,1`、両 example payload、invariant AST、既存 doc/params/returns/invariant regression 4件を確認した。Evidence: `test_e2e_selfhost_parser_defn_preserves_ordered_metadata_forms`、`cargo test -p lsharp-wasm --test e2e selfhost_parser_metadata_forms::test_e2e_selfhost_parser_defn_preserves_`、`cargo run --bin lsharp -- check selfhost/src/Syntax/Parser.ls`。
 
-これは parser-owned legacy bridge の verified slice であり、forms に source span はまだなく、Rust `MetadataForm` / `ContractSuite` への canonical conversion、module/private qualification、new `:case` / `:assert` / `:property` / `:postcondition` forms、TestRunner の ordered projection、Mac/Linux current-source artifact/runtime parity は残件である。
+これは parser-owned legacy bridge の verified slice であり、forms に source span はまだなく、Rust `MetadataForm` / `ContractSuite` への canonical conversion、module/private qualification、new `:case` / `:assert` / `:property` / `:postcondition` forms、Mac/Linux current-source artifact/runtime parity は残件である。
 
 ### EC-M1-02 selfhost runner invariant AST projection (2026-07-17)
 
-Selfhost `Tools.Test.TestRunner` は top-level `defn` の metadata vector slot 4 を読み、parser が保持した legacy `:invariant` AST から test case を直接生成するようになった。`generate-tests` も同じ parser AST projection を使用し、`succ(x)` の predicate shape、invariant 1 件の抽出、5 sample の実行結果 `passed=1` を一つの selfhost Wasm E2E で確認した。RED は未定義の `extract-invariants-from-program` により固定し、GREEN は `test_e2e_selfhost_test_runner_extracts_invariant_from_parser_ast` と Rust driver の `check selfhost/src/Tools/Test/TestRunner.ls` で確認した。
+Selfhost `Tools.Test.TestRunner` は top-level `defn` の metadata vector slot 5 にある ordered kind `2` form を優先し、parser が保持した legacy `:invariant` AST から test case を直接生成する。旧 metadata では slot 4 に fallback する。`generate-tests` も同じ parser AST projection を使用し、`succ(x)` の predicate shape、invariant 1 件の抽出、5 sample の実行結果 `passed=1` を一つの selfhost Wasm E2E で確認した。RED は未定義の `extract-invariants-from-program` により固定し、GREEN は `test_e2e_selfhost_test_runner_extracts_invariant_from_parser_ast` と Rust driver の `check selfhost/src/Tools/Test/TestRunner.ls` で確認した。
 
-これは runner の verified slice であり、EC-M1-02 全体の完了ではない。legacy `:example` の互換 raw source scanner API は order/span projection 用に残し、module/private declaration、Rust `MetadataForm` との ordered canonical conversion、docs payload、new contract forms、migration diagnostic、Mac/Linux artifact/runtime parity は残件である。
+これは runner の verified slice であり、EC-M1-02 全体の完了ではない。legacy `:example` / `:invariant` の互換 raw source scanner API は order/span projection 用に残し、module/private declaration、Rust `MetadataForm` との ordered canonical conversion、docs payload、new contract forms、migration diagnostic、Mac/Linux artifact/runtime parity は残件である。
 
 ### EC-M1-02 selfhost runner example metadata projection (2026-07-17)
 
@@ -58,7 +58,15 @@ Selfhost `Tools.Test.TestRunner` は parser が defn metadata vector slot 5 に�
 
 Evidence: `test_e2e_selfhost_test_runner_projects_ordered_example_forms`、`test_e2e_selfhost_test_runner_projects_examples_from_parser_metadata`、`test_e2e_selfhost_test_runner_preserves_example_metadata_across_defn_shapes`、`test_e2e_selfhost_parser_defn_preserves_invariant_metadata`、`cargo run --bin lsharp -- check selfhost/src/Syntax/Parser.ls`、`cargo run --bin lsharp -- check selfhost/src/Tools/Test/TestRunner.ls`。
 
-これは raw payload を parser-owned ordered metadata から再パースする移行 bridge であり、canonical `ContractSuite` IR ではない。invariant の ordered form 消費、module/private declaration、Rust `MetadataForm` との ordered canonical conversion、source span、docs payload、new contract forms、migration diagnostic、Mac/Linux artifact/runtime parity は残件である。
+これは raw payload を parser-owned ordered metadata から再パースする移行 bridge であり、canonical `ContractSuite` IR ではない。module/private declaration、Rust `MetadataForm` との ordered canonical conversion、source span、docs payload、new contract forms、migration diagnostic、Mac/Linux artifact/runtime parity は残件である。
+
+### EC-M1-02 selfhost runner ordered invariant projection (2026-07-17)
+
+Selfhost `Tools.Test.TestRunner` は parser-owned ordered forms の kind `2` を directive 順に走査し、同じ `defn` に繰り返し現れる legacy `:invariant` をそれぞれ test case へ投影する。ordered forms がない旧 metadata では slot 4 の集約 invariant へ fallback する。これにより、slot 4 の「最後の invariant だけ」という互換 accessor による欠落を、parser-owned metadata が存在する経路では防ぐ。
+
+RED では二つの invariant を持つ `succ(x)` が forms 2 件に対して invariant/result 1 件しか生成しない failure `2,2,2,1,1,1,0` を固定した。GREEN では forms 2 件、kind `2,2`、invariant/result 2 件、両方 `passed=1` を最小 selfhost TestRunner bundle の Wasm E2E `test_e2e_selfhost_test_runner_projects_ordered_invariant_forms` で確認し、`cargo run --bin lsharp -- check selfhost/src/Tools/Test/TestRunner.ls` も `diagnostics:0` で通過した。
+
+これは ordered legacy projection の verified slice であり、canonical `ContractSuite` IR、source span、module/private declaration、new contract forms、migration diagnostic、Mac/Linux current-source artifact/runtime parity は残件である。
 
 ### EC-M1-02 selfhost formatter typed metadata projection (2026-07-17)
 

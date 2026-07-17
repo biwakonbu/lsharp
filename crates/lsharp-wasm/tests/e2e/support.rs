@@ -1291,6 +1291,7 @@ static SELFHOST_LEXER_RUNTIME_BUNDLE: OnceLock<String> = OnceLock::new();
 static SELFHOST_PARSER_RUNTIME_BUNDLE: OnceLock<String> = OnceLock::new();
 static SELFHOST_PARSER_TYPEINFER_RUNTIME_BUNDLE: OnceLock<String> = OnceLock::new();
 static SELFHOST_TYPEINFER_RUNTIME_BUNDLE: OnceLock<String> = OnceLock::new();
+static SELFHOST_TEST_RUNNER_RUNTIME_BUNDLE: OnceLock<String> = OnceLock::new();
 static SELFHOST_CLI_RUNTIME_BUNDLE: OnceLock<String> = OnceLock::new();
 static SELFHOST_NATIVE_CODEGEN_BUNDLE: OnceLock<String> = OnceLock::new();
 
@@ -1354,6 +1355,21 @@ pub(crate) fn selfhost_typeinfer_runtime_bundle() -> &'static str {
             "TypeInferRecord.ls",
             "TypeInferRecordDecl.ls",
             "TypeInferAdt.ls",
+        ],
+    )
+}
+
+/// selfhost TestRunner の直接 projection を検証するための最小 runtime bundle
+pub(crate) fn selfhost_test_runner_runtime_bundle() -> &'static str {
+    cached_selfhost_bundle(
+        &SELFHOST_TEST_RUNNER_RUNTIME_BUNDLE,
+        &[
+            "Token.ls",
+            "AST.ls",
+            "Lexer.ls",
+            "LexerCompat.ls",
+            "Parser.ls",
+            "TestRunner.ls",
         ],
     )
 }

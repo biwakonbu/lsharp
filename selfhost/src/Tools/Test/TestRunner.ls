@@ -103,16 +103,46 @@
         (vector-get meta 5)
         0))))
 
-(defn append-parser-invariant [decl results]
-  (let [predicate (test-defn-invariant decl)]
-    (if (= predicate 0)
+(defn append-parser-ordered-invariant-form [form decl results]
+  (if (= (vector-get form 0) 2)
+    (vector-push
       results
-      (vector-push
-        results
-        (make-test-case
-          (vector-length results)
-          (vector-get decl 1)
-          predicate)))))
+      (make-test-case
+        (vector-length results)
+        (vector-get decl 1)
+        (vector-get form 1)))
+    results))
+
+(defn append-parser-ordered-invariants-loop [forms idx count decl results]
+  (if (>= idx count)
+    results
+    (let [form (vector-get forms idx)
+      next-results (append-parser-ordered-invariant-form form decl results)]
+      (append-parser-ordered-invariants-loop
+        forms
+        (+ idx 1)
+        count
+        decl
+        next-results))))
+
+(defn append-parser-invariant [decl results]
+  (let [forms (test-defn-ordered-forms decl)]
+    (if (= forms 0)
+      (let [predicate (test-defn-invariant decl)]
+        (if (= predicate 0)
+          results
+          (vector-push
+            results
+            (make-test-case
+              (vector-length results)
+              (vector-get decl 1)
+              predicate))))
+      (append-parser-ordered-invariants-loop
+        forms
+        0
+        (vector-length forms)
+        decl
+        results))))
 
 ;; parser AST から top-level defn の invariant test case を抽出する。
 ;; module/private declaration は既存 raw source scanner と同じくこの slice の対象外。

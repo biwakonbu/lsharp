@@ -6083,6 +6083,44 @@ fn test_e2e_selfhost_test_runner_projects_ordered_example_forms() {
     );
 }
 
+/// EC-M1-02: selfhost runner が複数の parser-owned invariant forms を保持すること
+#[test]
+fn test_e2e_selfhost_test_runner_projects_ordered_invariant_forms() {
+    let harness = r#"
+(defn main []
+  (let [src "(defn succ [x] :invariant (>= result 0) :invariant (= result (+ x 1)) (+ x 1))"
+        program (parse-program src)
+        decl (vector-get program 0)
+        forms (test-defn-ordered-forms decl)
+        invariants (extract-invariants-from-program program)
+        suite (generate-tests src)
+        results (vector-get suite 1)
+        result0 (vector-get results 0)
+        result1 (vector-get results 1)]
+    (do
+      (print (vector-length forms))
+      (print (vector-get (vector-get forms 0) 0))
+      (print (vector-get (vector-get forms 1) 0))
+      (print (vector-length invariants))
+      (print (vector-length results))
+      (print (vector-get result0 1))
+      (print (vector-get result1 1))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_test_runner_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["2", "2", "2", "2", "2", "1", "1"],
+        "runner は複数の parser-owned invariant forms を順序どおり実行するべき"
+    );
+}
+
 /// TEST-CLI-02-O2b: selfhost/src/Tools/Test/TestRunner.ls が supported subset の metadata suite を実行できること
 #[test]
 #[ignore]
