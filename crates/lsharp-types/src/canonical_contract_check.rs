@@ -41,6 +41,15 @@ pub(crate) fn check_case_non_vacuity(program: &Program) -> Vec<MetadataDiagnosti
     diagnostics
 }
 
+/// 空の canonical `:property` や literal-true property を成功扱いしない。
+pub(crate) fn check_property_non_vacuity(program: &Program) -> Vec<MetadataDiagnostic> {
+    let mut diagnostics = Vec::new();
+    for decl in &program.decls {
+        collect_property_non_vacuity(decl, None, &mut diagnostics);
+    }
+    diagnostics
+}
+
 fn collect_case_non_vacuity(
     decl: &Decl,
     module_prefix: Option<&str>,
@@ -139,6 +148,82 @@ fn collect_assertion_non_vacuity(
                         }
                     }
                     _ => {}
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+fn collect_property_non_vacuity(
+    decl: &Decl,
+    module_prefix: Option<&str>,
+    diagnostics: &mut Vec<MetadataDiagnostic>,
+) {
+    match decl {
+        Decl::Private { inner, .. } => {
+            collect_property_non_vacuity(inner, module_prefix, diagnostics);
+        }
+        Decl::ModuleDecl { name, body, .. } => {
+            let prefix = match module_prefix {
+                Some(outer) => format!("{outer}.{name}"),
+                None => name.clone(),
+            };
+            for nested in body {
+                collect_property_non_vacuity(nested, Some(&prefix), diagnostics);
+            }
+        }
+        Decl::Defn {
+            name,
+            metadata: Some(metadata),
+            ..
+        } => {
+            let owner = match module_prefix {
+                Some(prefix) => format!("{prefix}.{name}"),
+                None => name.clone(),
+            };
+            for form in &metadata.forms {
+                let MetadataFormKind::Property { properties } = &form.kind else {
+                    continue;
+                };
+                if properties.is_empty() {
+                    diagnostics.push(MetadataDiagnostic {
+                        severity: Severity::Error,
+                        message: ":property は少なくとも 1 件の for-all を必要とします".to_string(),
+                        span: form.span(),
+                        function_name: owner.clone(),
+                    });
+                }
+                for property in properties {
+                    if property.binders().is_empty() {
+                        diagnostics.push(MetadataDiagnostic {
+                            severity: Severity::Error,
+                            message: ":property は少なくとも 1 件の typed binder を必要とします"
+                                .to_string(),
+                            span: property.source_span(),
+                            function_name: owner.clone(),
+                        });
+                    }
+                    if property.cases() == Some(0) {
+                        diagnostics.push(MetadataDiagnostic {
+                            severity: Severity::Error,
+                            message: ":property の case count は 1 以上を必要とします".to_string(),
+                            span: property.source_span(),
+                            function_name: owner.clone(),
+                        });
+                    }
+                    if matches!(
+                        property.postcondition(),
+                        Expr::Lit(_, Literal::Bool(true))
+                    ) {
+                        diagnostics.push(MetadataDiagnostic {
+                            severity: Severity::Error,
+                            message: ":property の literal true postcondition は検査を識別できず vacuous です"
+                                .to_string(),
+                            span: property.postcondition().span(),
+                            function_name: owner.clone(),
+                        });
+                    }
                 }
             }
         }

@@ -6195,6 +6195,84 @@ fn test_e2e_selfhost_parser_preserves_ordered_case_forms() {
     );
 }
 
+/// EC-M1-03: selfhost parser が canonical :property payload を bracket-aware に保持すること
+#[test]
+fn test_e2e_selfhost_parser_preserves_ordered_property_forms() {
+    let harness = r#"
+(defn main []
+  (let [src "(defn abs [x] :property [(for-all [x Int] :cases 12 :seed 81042 :shrink false :precondition [(>= x -100)] :postcondition (>= result 0))] (if (< x 0) (- 0 x) x))"
+        program (parse-program src)
+        decl (vector-get program 0)
+        forms (test-defn-ordered-forms decl)
+        form (vector-get forms 0)
+        payload (vector-get form 1)]
+    (do
+      (print (vector-length forms))
+      (print (vector-get form 0))
+      (print-string payload)
+      (print-string "\n")
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_test_runner_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec![
+            "1",
+            "5",
+            "(for-all [x Int] :cases 12 :seed 81042 :shrink false :precondition [(>= x -100)] :postcondition (>= result 0))",
+        ],
+        "selfhost parser は canonical :property payload の括弧構造と source order を保持するべき"
+    );
+}
+
+/// EC-M1-03: selfhost metadata runner が未接続の canonical :property を検出すること
+#[test]
+fn test_e2e_selfhost_runner_reports_unimplemented_property_boundary() {
+    let harness = r#"
+(defn main []
+  (do
+    (print (metadata-test-runner-boundary-code (parse-program "(defn abs [x] :property [(for-all [x Int] :cases 12 :seed 81042 :shrink false :precondition [(>= x -100)] :postcondition (>= result 0))] (if (< x 0) (- 0 x) x))")))
+    0))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_test_runner_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["3002"],
+        "selfhost runner は未接続の property を LS3002 境界へ送るべき"
+    );
+}
+
+/// EC-M1-03: embedded/native CLI が同じ property runner 境界を呼び出すこと
+#[test]
+fn test_selfhost_cli_sources_route_property_runner_boundary() {
+    for file_name in ["Cli.ls", "EmbeddedCli.ls"] {
+        let path = if file_name == "Cli.ls" {
+            selfhost_source_path(file_name)
+        } else {
+            selfhost_project_root().join("selfhost/src/App/EmbeddedCli.ls")
+        };
+        let source = std::fs::read_to_string(path)
+            .unwrap_or_else(|error| panic!("{} の読み込みに失敗: {}", file_name, error));
+        assert!(
+            source.contains("metadata-test-runner-boundary-code"),
+            "{} は未接続の property runner を明示的な境界へ送るべき",
+            file_name
+        );
+    }
+}
+
 /// EC-M1-02: selfhost runner が canonical :case を actual/expected として実行すること
 #[test]
 fn test_e2e_selfhost_test_runner_materializes_canonical_cases() {

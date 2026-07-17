@@ -4,9 +4,17 @@
 //! contract へ変換せず、`pending_migration` に lossless なまま保持する。
 
 use crate::types::Type;
-use lsharp_syntax::ast::{Decl, Expr, Metadata, Program};
+use lsharp_syntax::ast::{Decl, Expr, Metadata, Program, TypeExpr};
 use lsharp_syntax::metadata::MetadataFormKind;
 use lsharp_syntax::span::Span;
+use std::collections::BTreeMap;
+
+/// source で省略した property の portable case count。
+pub const DEFAULT_PROPERTY_CASES: usize = 256;
+/// source で省略した property の portable replay seed。
+pub const DEFAULT_PROPERTY_SEED: u64 = 0;
+/// Rust/selfhost の双方で固定する generator algorithm version。
+pub const TYPE_DIRECTED_GENERATOR_VERSION: &str = "type-directed-splitmix64-v1";
 
 /// M1 の owner identifier。現 slice は parser が保持する関数名を格納し、
 /// module-qualified name の解決は後続 inventory slice で追加する。
@@ -367,6 +375,9 @@ fn inventory_decl(decl: &Decl) -> Result<Option<ContractSuite>, ContractInventor
                     })
                 }));
             }
+            MetadataFormKind::Property { properties } => {
+                executable.extend(properties.iter().map(canonical_property));
+            }
         }
     }
 
@@ -408,6 +419,7 @@ fn validate_compatibility_projection(
             }
             MetadataFormKind::Case { .. } => {}
             MetadataFormKind::Assertion { .. } => {}
+            MetadataFormKind::Property { .. } => {}
         }
     }
 
@@ -417,5 +429,84 @@ fn validate_compatibility_projection(
         Err(ContractInventoryError::ProjectionMismatch {
             owner: owner.to_string(),
         })
+    }
+}
+
+fn canonical_property(property: &lsharp_syntax::metadata::PropertyForm) -> ExecutableContract {
+    let mut type_vars = BTreeMap::new();
+    let binders = property
+        .binders()
+        .iter()
+        .map(|binder| Binder {
+            name: binder.name().to_string(),
+            ty: canonical_property_type(binder.ty(), &mut type_vars),
+            generator: GeneratorPlan::TypeDirected,
+        })
+        .collect();
+    let preconditions = property
+        .preconditions()
+        .iter()
+        .cloned()
+        .map(|expression| Predicate {
+            source_span: expression.span(),
+            expression,
+        })
+        .collect();
+    let postcondition = Predicate {
+        expression: property.postcondition().clone(),
+        source_span: property.postcondition().span(),
+    };
+    let sampling = SamplingPlan {
+        cases: property.cases().unwrap_or(DEFAULT_PROPERTY_CASES),
+        seed: property.seed().unwrap_or(DEFAULT_PROPERTY_SEED),
+        generator_version: TYPE_DIRECTED_GENERATOR_VERSION.to_string(),
+        shrink: property.shrink().unwrap_or(true),
+        coverage_buckets: Vec::new(),
+    };
+
+    ExecutableContract::Property(Property {
+        binders,
+        preconditions,
+        postcondition,
+        sampling,
+        source_span: property.source_span(),
+    })
+}
+
+fn canonical_property_type(ty: &TypeExpr, type_vars: &mut BTreeMap<String, u32>) -> Type {
+    match ty {
+        TypeExpr::Named(_, name) => Type::Con(name.clone()),
+        TypeExpr::Var(_, name) => {
+            let next = type_vars.len() as u32;
+            Type::Var(*type_vars.entry(name.clone()).or_insert(next))
+        }
+        TypeExpr::App(_, base, args) => {
+            let base_name = match base.as_ref() {
+                TypeExpr::Named(_, name) | TypeExpr::Var(_, name) => name.clone(),
+                other => other.to_string(),
+            };
+            Type::App(
+                base_name,
+                args.iter()
+                    .map(|arg| canonical_property_type(arg, type_vars))
+                    .collect(),
+            )
+        }
+        TypeExpr::Fun(_, params, result) => Type::Fun(
+            params
+                .iter()
+                .map(|param| canonical_property_type(param, type_vars))
+                .collect(),
+            Box::new(canonical_property_type(result, type_vars)),
+        ),
+        TypeExpr::Record(_, fields) => Type::Record(
+            "_property".to_string(),
+            fields
+                .iter()
+                .map(|(name, field_type)| {
+                    (name.clone(), canonical_property_type(field_type, type_vars))
+                })
+                .collect(),
+        ),
     }
 }

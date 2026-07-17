@@ -46,6 +46,7 @@
 (defn contract-form-invariant [] 2)
 (defn contract-form-assert [] 3)
 (defn contract-form-case [] 4)
+(defn contract-form-property [] 5)
 (defn ast-pat-wildcard [] 40)
 (defn ast-pat-var [] 41)
 (defn ast-pat-lit [] 42)

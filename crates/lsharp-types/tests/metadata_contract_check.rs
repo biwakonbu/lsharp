@@ -145,3 +145,63 @@ fn canonical_assertion_rejects_statically_true_integer_comparisons_as_vacuous() 
         assert_eq!(diagnostic.function_name, "noop");
     }
 }
+
+#[test]
+fn canonical_property_requires_at_least_one_for_all() {
+    const SOURCE: &str = "(defn noop [] :property [] true)";
+    let program = parse(SOURCE).expect("空の :property も diagnostic のため parse できるべき");
+
+    let diagnostics = check_metadata(&program);
+
+    assert_eq!(diagnostics.len(), 1, "空の property を成功扱いしてはならない");
+    let diagnostic = &diagnostics[0];
+    assert_eq!(diagnostic.severity, Severity::Error);
+    assert!(diagnostic.message.contains(":property"));
+    assert!(diagnostic.message.contains("少なくとも 1 件"));
+    assert_eq!(diagnostic.function_name, "noop");
+}
+
+#[test]
+fn canonical_property_rejects_zero_cases() {
+    const SOURCE: &str =
+        "(defn identity [x] :property [(for-all [x Int] :cases 0 :postcondition (= result x))] x)";
+    let program = parse(SOURCE).expect("zero-case property は diagnostic のため parse できるべき");
+
+    let diagnostics = check_metadata(&program);
+
+    assert_eq!(diagnostics.len(), 1, "zero case を成功扱いしてはならない");
+    let diagnostic = &diagnostics[0];
+    assert_eq!(diagnostic.severity, Severity::Error);
+    assert!(diagnostic.message.contains("case count"));
+    assert_eq!(diagnostic.function_name, "identity");
+}
+
+#[test]
+fn canonical_property_requires_a_typed_binder() {
+    const SOURCE: &str =
+        "(defn noop [] :property [(for-all [] :postcondition (>= result 0))] true)";
+    let program = parse(SOURCE).expect("binder なし property は diagnostic のため parse できるべき");
+
+    let diagnostics = check_metadata(&program);
+
+    assert_eq!(diagnostics.len(), 1, "binder なしを成功扱いしてはならない");
+    let diagnostic = &diagnostics[0];
+    assert_eq!(diagnostic.severity, Severity::Error);
+    assert!(diagnostic.message.contains("typed binder"));
+    assert_eq!(diagnostic.function_name, "noop");
+}
+
+#[test]
+fn canonical_property_rejects_literal_true_postcondition_as_vacuous() {
+    const SOURCE: &str =
+        "(defn identity [x] :property [(for-all [x Int] :postcondition true)] x)";
+    let program = parse(SOURCE).expect("literal true property は diagnostic のため parse できるべき");
+
+    let diagnostics = check_metadata(&program);
+
+    assert_eq!(diagnostics.len(), 1, "literal true を成功扱いしてはならない");
+    let diagnostic = &diagnostics[0];
+    assert_eq!(diagnostic.severity, Severity::Error);
+    assert!(diagnostic.message.contains("vacuous"));
+    assert_eq!(diagnostic.function_name, "identity");
+}

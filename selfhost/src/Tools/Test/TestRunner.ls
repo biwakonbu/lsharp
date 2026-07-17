@@ -132,6 +132,59 @@
         (vector-get meta 5)
         0))))
 
+;; canonical :property は parser/AST まで接続済みだが、selfhost evaluator は未接続である。
+;; 実行件数 0 の成功へ流さず、declaration tree 全体で明示的な境界コードを返す。
+(defn has-unsupported-property-form-loop [forms idx count]
+  (if (>= idx count)
+    0
+    (let [form (vector-get forms idx)]
+      (if (= (vector-get form 0) (contract-form-property))
+        1
+        (has-unsupported-property-form-loop forms (+ idx 1) count)))))
+
+(defn has-unsupported-property-in-module-loop [module-node idx count]
+  (if (>= idx count)
+    0
+    (if (= (has-unsupported-property-in-decl (vector-get module-node (+ idx 3))) 1)
+      1
+      (has-unsupported-property-in-module-loop module-node (+ idx 1) count))))
+
+(defn has-unsupported-property-in-decl [decl]
+  (let [tag (vector-get decl 0)]
+    (if (= tag (ast-defn))
+      (let [forms (test-defn-ordered-forms decl)]
+        (if (= forms 0)
+          0
+          (has-unsupported-property-form-loop forms 0 (vector-length forms))))
+      (if (= tag (ast-private))
+        (has-unsupported-property-in-decl (vector-get decl 1))
+        (if (= tag (ast-module-decl))
+          (has-unsupported-property-in-module-loop
+            decl
+            0
+            (vector-get decl 2))
+          0)))))
+
+(defn has-unsupported-property-in-program-loop [program idx count]
+  (if (>= idx count)
+    0
+    (if (= (has-unsupported-property-in-decl (vector-get program idx)) 1)
+      1
+      (has-unsupported-property-in-program-loop program (+ idx 1) count))))
+
+(defn has-unsupported-property-in-program? [program]
+  (has-unsupported-property-in-program-loop
+    program
+    0
+    (vector-length program)))
+
+(defn contract-diagnostic-unsupported-property [] 3002) ;; LS3002: unimplemented property runner
+
+(defn metadata-test-runner-boundary-code [program]
+  (if (= (has-unsupported-property-in-program? program) 1)
+    (contract-diagnostic-unsupported-property)
+    0))
+
 (defn append-parser-ordered-invariant-form [form decl results]
   (if (= (vector-get form 0) 2)
     (vector-push
@@ -452,7 +505,9 @@
       "LS1002"
       (if (= code (contract-diagnostic-empty-case))
         "LS2006"
-        "LS0000"))))
+        (if (= code (contract-diagnostic-unsupported-property))
+          "LS3002"
+          "LS0000")))))
 
 (defn test-diagnostics-summary [examples invariants]
   (let [count (test-diagnostics-count examples invariants)

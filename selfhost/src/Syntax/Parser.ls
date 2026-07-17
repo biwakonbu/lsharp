@@ -630,9 +630,10 @@
                     (if (string-eq name "invariant") 1
                       (if (string-eq name "case") 1
                         (if (string-eq name "assert") 1
+                        (if (string-eq name "property") 1
                           (if (string-eq name "transitions") 1
                             (if (string-eq name "constraints") 1
-                              0))))))))))))))
+                              0)))))))))))))))
 
 (defn colon-directive-v3 [spans pos-ref src]
   (if (== (p-current spans pos-ref) 50)
@@ -771,9 +772,11 @@
                         (parse-defn-meta-case-v3 spans pos-ref src meta)
                         (if (string-eq dir-name "assert")
                           (parse-defn-meta-assert-v3 spans pos-ref src meta)
-                          (do
-                            (skip-directive-payload-v3 spans pos-ref)
-                            (parse-defn-metadata-loop-rooted-v3 spans pos-ref src meta)))))))))]
+                          (if (string-eq dir-name "property")
+                            (parse-defn-meta-property-v3 spans pos-ref src meta)
+                            (do
+                              (skip-directive-payload-v3 spans pos-ref)
+                              (parse-defn-metadata-loop-rooted-v3 spans pos-ref src meta))))))))))]
             (do
               (root_pop)
               (root_pop)
@@ -1114,6 +1117,41 @@
                   (root_pop)
                   (root_pop)
                   (parse-defn-metadata-loop-v3 spans pos-ref src updated))))))))
+    (do
+      (skip-directive-payload-v3 spans pos-ref)
+      (parse-defn-metadata-loop-v3 spans pos-ref src meta))))
+
+;; canonical :property payload を bracket-aware に lossless 保存する。
+;; typed binder / sampling への projection は後続の selfhost contract slice で行う。
+(defn parse-defn-meta-property-v3 [spans pos-ref src meta]
+  (if (== (p-current spans pos-ref) 2)
+    (do
+      (p-advance pos-ref)
+      (if (== (p-current spans pos-ref) 3)
+        (do
+          (p-advance pos-ref)
+          (let [updated (append-defn-metadata-form-v3
+            meta
+            (contract-form-property)
+            "")]
+            (parse-defn-metadata-loop-v3 spans pos-ref src updated)))
+        (let [content-start (p-start spans pos-ref)]
+          (do
+            (parse-skip-bracket-v3 spans pos-ref 1)
+            (let [last-idx (- (ref-get pos-ref) 2)
+              content-end (span-end spans last-idx)
+              property-text (substring src content-start content-end)
+              updated (append-defn-metadata-form-v3
+                meta
+                (contract-form-property)
+                property-text)]
+              (do
+                (root_push updated)
+                (let [result
+                  (parse-defn-metadata-loop-v3 spans pos-ref src updated)]
+                  (do
+                    (root_pop)
+                    result))))))))
     (do
       (skip-directive-payload-v3 spans pos-ref)
       (parse-defn-metadata-loop-v3 spans pos-ref src meta))))

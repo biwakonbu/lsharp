@@ -1,5 +1,7 @@
 use crate::ast::*;
-use crate::metadata::{CaseExpectation, MetadataForm, MetadataFormKind};
+use crate::metadata::{
+    CaseExpectation, MetadataForm, MetadataFormKind, PropertyBinder, PropertyForm,
+};
 use crate::span::Span;
 use crate::token::{Token, TokenKind};
 
@@ -399,6 +401,22 @@ impl Parser {
                             ));
                             found = true;
                         }
+                        "property" => {
+                            let form_start = self.peek_span();
+                            self.advance(); // :
+                            self.advance(); // property
+                            self.expect(TokenKind::LBracket)?;
+                            let mut properties = Vec::new();
+                            while !self.check(TokenKind::RBracket) {
+                                properties.push(self.parse_property_form()?);
+                            }
+                            let form_end = self.advance().span; // ]
+                            metadata.forms.push(MetadataForm::new(
+                                form_start.merge(form_end),
+                                MetadataFormKind::Property { properties },
+                            ));
+                            found = true;
+                        }
                         "transitions" => {
                             // :transitions [(From -> To) ...]
                             self.advance(); // :
@@ -445,6 +463,129 @@ impl Parser {
             actual,
             expected,
         ))
+    }
+
+    fn parse_property_form(&mut self) -> Result<PropertyForm, ParseError> {
+        let entry_start = self.expect(TokenKind::LParen)?.span;
+        let head_span = self.peek_span();
+        let head = self.expect_symbol()?;
+        if head != "for-all" {
+            return Err(ParseError::Unexpected {
+                expected: "for-all".to_string(),
+                found: head,
+                span: head_span,
+            });
+        }
+
+        self.expect(TokenKind::LBracket)?;
+        let mut binders = Vec::new();
+        while !self.check(TokenKind::RBracket) {
+            let binder_start = self.peek_span();
+            let name = self.expect_symbol()?;
+            let ty = self.parse_type_expr()?;
+            binders.push(PropertyBinder::new(
+                binder_start.merge(type_expr_span(&ty)),
+                name,
+                ty,
+            ));
+        }
+        self.advance(); // ]
+
+        let mut preconditions = Vec::new();
+        let mut postcondition = None;
+        let mut cases = None;
+        let mut seed = None;
+        let mut shrink = None;
+        while !self.check(TokenKind::RParen) {
+            self.expect(TokenKind::Colon)?;
+            let option_span = self.peek_span();
+            let option = self.expect_symbol()?;
+            match option.as_str() {
+                "precondition" => {
+                    self.expect(TokenKind::LBracket)?;
+                    while !self.check(TokenKind::RBracket) {
+                        preconditions.push(self.parse_expr()?);
+                    }
+                    self.advance(); // ]
+                }
+                "postcondition" => postcondition = Some(self.parse_expr()?),
+                "cases" => cases = Some(self.parse_property_usize("non-negative case count")?),
+                "seed" => seed = Some(self.parse_property_u64("non-negative seed")?),
+                "shrink" => shrink = Some(self.parse_property_bool()?),
+                _ => {
+                    return Err(ParseError::Unexpected {
+                        expected: "property option (precondition/postcondition/cases/seed/shrink)"
+                            .to_string(),
+                        found: option,
+                        span: option_span,
+                    });
+                }
+            }
+        }
+        let entry_end = self.advance().span; // )
+        let postcondition = postcondition.ok_or_else(|| ParseError::Unexpected {
+            expected: ":postcondition".to_string(),
+            found: ")".to_string(),
+            span: entry_end,
+        })?;
+
+        Ok(PropertyForm::new(
+            entry_start.merge(entry_end),
+            binders,
+            preconditions,
+            postcondition,
+            cases,
+            seed,
+            shrink,
+        ))
+    }
+
+    fn parse_property_usize(&mut self, expected: &str) -> Result<usize, ParseError> {
+        let token = self.advance();
+        match token.kind {
+            TokenKind::Int(value) if value >= 0 => {
+                usize::try_from(value).map_err(|_| ParseError::Unexpected {
+                    expected: expected.to_string(),
+                    found: value.to_string(),
+                    span: token.span,
+                })
+            }
+            kind => Err(ParseError::Unexpected {
+                expected: expected.to_string(),
+                found: kind.to_string(),
+                span: token.span,
+            }),
+        }
+    }
+
+    fn parse_property_u64(&mut self, expected: &str) -> Result<u64, ParseError> {
+        let token = self.advance();
+        match token.kind {
+            TokenKind::Int(value) if value >= 0 => {
+                u64::try_from(value).map_err(|_| ParseError::Unexpected {
+                    expected: expected.to_string(),
+                    found: value.to_string(),
+                    span: token.span,
+                })
+            }
+            kind => Err(ParseError::Unexpected {
+                expected: expected.to_string(),
+                found: kind.to_string(),
+                span: token.span,
+            }),
+        }
+    }
+
+    fn parse_property_bool(&mut self) -> Result<bool, ParseError> {
+        let token = self.advance();
+        match token.kind {
+            TokenKind::Bool(value) => Ok(value),
+            kind => Err(ParseError::Unexpected {
+                expected: "Bool shrink flag".to_string(),
+                found: kind.to_string(),
+                span: token.span,
+            }),
+        }
     }
 
     /// (type Name Variant1 Variant2 ...)
@@ -1535,6 +1676,7 @@ impl Parser {
                     | "invariant"
                     | "case"
                     | "assert"
+                    | "property"
                     | "transitions"
             ),
             _ => false,
@@ -1611,6 +1753,16 @@ impl Parser {
                 })
             }
         }
+    }
+}
+
+fn type_expr_span(ty: &TypeExpr) -> Span {
+    match ty {
+        TypeExpr::Named(span, _)
+        | TypeExpr::App(span, _, _)
+        | TypeExpr::Fun(span, _, _)
+        | TypeExpr::Var(span, _)
+        | TypeExpr::Record(span, _) => *span,
     }
 }
 

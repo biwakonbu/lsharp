@@ -2,6 +2,8 @@ use std::path::Path;
 
 pub use lsharp_wasm::test_runner::TestResult;
 
+use lsharp_types::metadata_contract::{ExecutableContract, inventory_contract_suites};
+
 /// metadata test 実行結果。
 #[derive(Debug, Clone)]
 pub struct MetadataTestRun {
@@ -64,6 +66,19 @@ pub fn run_metadata_tests(file: &Path) -> miette::Result<MetadataTestRun> {
             "LS1002"
         };
         return Err(miette::miette!("[{code}] {diagnostic}"));
+    }
+    let suites = inventory_contract_suites(&program)
+        .map_err(|error| miette::miette!("metadata contract inventory に失敗: {error}"))?;
+    if let Some(owner) = suites.iter().find_map(|suite| {
+        suite
+            .executable()
+            .iter()
+            .any(|contract| matches!(contract, ExecutableContract::Property(_)))
+            .then(|| suite.owner().as_str())
+    }) {
+        return Err(miette::miette!(
+            "[LS3002] {owner}: canonical :property は metadata test runner へ未接続です"
+        ));
     }
     let tests = lsharp_types::metadata_check::generate_tests(&program);
     if tests.is_empty() {
@@ -277,6 +292,27 @@ mod tests {
             error.to_string().contains("[LS1001]"),
             "case parameter capture は LS1001 を返すべき: {error}"
         );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_run_metadata_tests_rejects_unimplemented_property_runner() {
+        let dir = unique_temp_dir("unsupported_property_runner");
+        let file = dir.join("Main.ls");
+        fs::write(
+            &file,
+            "(defn identity [x] :property [(for-all [x Int] :cases 1 :postcondition (= result x))] x)\n",
+        )
+        .unwrap();
+
+        let error = run_metadata_tests(&file)
+            .expect_err("未接続の property runner を tests 0 件として成功扱いしてはならない");
+        assert!(
+            error.to_string().contains("[LS3002]"),
+            "property runner の未対応境界は LS3002 を返すべき: {error}"
+        );
+        assert!(error.to_string().contains("identity"));
 
         let _ = fs::remove_dir_all(&dir);
     }

@@ -190,11 +190,18 @@
 (defn run-test-source [src opts]
   (let [program (parse-program src)
     analysis (infer-program-analysis program)
+    property-boundary-code (metadata-test-runner-boundary-code program)
     case-check (check-canonical-cases-with-analysis program analysis)
     case-diagnostics-count (vector-get case-check 0)]
-    (if (> case-diagnostics-count 0)
-      (run-test-source-case-preflight program case-check)
-      (let [suite (generate-tests-from-source src)
+    (if (> property-boundary-code 0)
+      (run-test-source-case-preflight
+        program
+        (vector-push
+          (vector-push (vector-new 2) 1)
+          property-boundary-code))
+      (if (> case-diagnostics-count 0)
+        (run-test-source-case-preflight program case-check)
+        (let [suite (generate-tests-from-source src)
     example-results (vector-get suite 0)
     invariant-results (vector-get suite 1)
     assertion-results (vector-get suite 2)
@@ -240,7 +247,7 @@
           (print-string diagnostic-summary)
           (print-string "\n"))
         (print-string ""))
-      (if (> failed 0) (exit-runtime-error) (exit-success)))))))
+      (if (> failed 0) (exit-runtime-error) (exit-success))))))))
 (defn review-option-json [] 1)
 (defn review-json-source-id [] 200)
 (defn run-review-source [src opts] (let [program (parse-program src)] (if (= opts (review-option-json)) (let [review-json (generate-review-schema-json program (review-json-source-id))] (do (print-string review-json) (print-string "

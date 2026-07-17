@@ -1,4 +1,4 @@
-use crate::ast::Expr;
+use crate::ast::{Expr, TypeExpr};
 use crate::span::Span;
 
 /// source 上の順序と範囲を保持した metadata form。
@@ -52,6 +52,98 @@ impl CaseExpectation {
     }
 }
 
+/// canonical `:property` の binder。
+#[derive(Debug, Clone, PartialEq)]
+pub struct PropertyBinder {
+    source_span: Span,
+    name: String,
+    ty: TypeExpr,
+}
+
+impl PropertyBinder {
+    pub(crate) fn new(source_span: Span, name: String, ty: TypeExpr) -> Self {
+        Self {
+            source_span,
+            name,
+            ty,
+        }
+    }
+
+    pub fn source_span(&self) -> Span {
+        self.source_span
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn ty(&self) -> &TypeExpr {
+        &self.ty
+    }
+}
+
+/// `:property` 内の `(for-all ...)` declaration。
+#[derive(Debug, Clone, PartialEq)]
+pub struct PropertyForm {
+    source_span: Span,
+    binders: Vec<PropertyBinder>,
+    preconditions: Vec<Expr>,
+    postcondition: Expr,
+    cases: Option<usize>,
+    seed: Option<u64>,
+    shrink: Option<bool>,
+}
+
+impl PropertyForm {
+    pub(crate) fn new(
+        source_span: Span,
+        binders: Vec<PropertyBinder>,
+        preconditions: Vec<Expr>,
+        postcondition: Expr,
+        cases: Option<usize>,
+        seed: Option<u64>,
+        shrink: Option<bool>,
+    ) -> Self {
+        Self {
+            source_span,
+            binders,
+            preconditions,
+            postcondition,
+            cases,
+            seed,
+            shrink,
+        }
+    }
+
+    pub fn source_span(&self) -> Span {
+        self.source_span
+    }
+
+    pub fn binders(&self) -> &[PropertyBinder] {
+        &self.binders
+    }
+
+    pub fn preconditions(&self) -> &[Expr] {
+        &self.preconditions
+    }
+
+    pub fn postcondition(&self) -> &Expr {
+        &self.postcondition
+    }
+
+    pub fn cases(&self) -> Option<usize> {
+        self.cases
+    }
+
+    pub fn seed(&self) -> Option<u64> {
+        self.seed
+    }
+
+    pub fn shrink(&self) -> Option<bool> {
+        self.shrink
+    }
+}
+
 /// source から lossless に保持する contract form。
 #[derive(Debug, Clone, PartialEq)]
 pub enum MetadataFormKind {
@@ -63,4 +155,6 @@ pub enum MetadataFormKind {
     Case { expectations: Vec<CaseExpectation> },
     /// canonical `:assert [predicate ...]`。一つの directive 内の grouping を維持する。
     Assertion { predicates: Vec<Expr> },
+    /// canonical `:property [(for-all ...)]`。declaration grouping を維持する。
+    Property { properties: Vec<PropertyForm> },
 }

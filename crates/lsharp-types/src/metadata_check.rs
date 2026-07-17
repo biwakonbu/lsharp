@@ -5,6 +5,7 @@
 
 use crate::canonical_contract_check::{
     check_assertion_non_vacuity, check_assertion_types, check_case_non_vacuity, check_case_types,
+    check_property_non_vacuity,
 };
 use crate::metadata_contract::inventory_contract_suites;
 use lsharp_syntax::ast::{ComputationStep, Decl, Expr, Metadata, Program};
@@ -91,6 +92,7 @@ pub fn check_metadata(program: &Program) -> Vec<MetadataDiagnostic> {
 
     diagnostics.extend(check_assertion_non_vacuity(program));
     diagnostics.extend(check_case_non_vacuity(program));
+    diagnostics.extend(check_property_non_vacuity(program));
     if let Ok(suites) = inventory_contract_suites(program) {
         diagnostics.extend(check_assertion_types(program, &suites));
         diagnostics.extend(check_case_types(program, &suites));
