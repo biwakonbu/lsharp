@@ -161,6 +161,25 @@ fn test_e2e_selfhost_cli_source_compile_uses_full_program_builder() {
 }
 
 #[test]
+fn test_e2e_selfhost_cli_property_runner_import_is_explicit() {
+    for (label, path) in [
+        ("App/Cli.ls", selfhost_source_path("Cli.ls")),
+        (
+            "App/EmbeddedCli.ls",
+            selfhost_project_root().join("selfhost/src/App/EmbeddedCli.ls"),
+        ),
+    ] {
+        let source = std::fs::read_to_string(&path)
+            .unwrap_or_else(|err| panic!("{} が読み込めない: {}", path.display(), err));
+        assert!(
+            source.contains("(import Tools.Test.PropertyRunner)"),
+            "{} は TestRunner の transitive import に依存せず PropertyRunner を明示 import する必要がある",
+            label
+        );
+    }
+}
+
+#[test]
 fn test_e2e_selfhost_pipeline_smoke_uses_full_program_builder() {
     let source = std::fs::read_to_string(selfhost_source_path("PipelineSmoke.ls"))
         .expect("PipelineSmoke.ls が読み込めない");

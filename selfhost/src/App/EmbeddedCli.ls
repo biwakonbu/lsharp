@@ -7,6 +7,7 @@
 (import Tools.Doc.DocJson)
 (import Tools.Doc.DocTools)
 (import Tools.Test.TestRunner)
+(import Tools.Test.PropertyRunner)
 (import Types.TypeInfer)
 (import Types.TypeInferCore)
 (import Types.TypeScheme)

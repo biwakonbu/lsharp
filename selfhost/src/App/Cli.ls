@@ -14,6 +14,7 @@
 (import Tools.Lsp.LspServerNav)
 (import Syntax.Parser)
 (import Tools.Test.TestRunner)
+(import Tools.Test.PropertyRunner)
 (import Types.TypeInfer)
 (import Types.TypeInferCore)
 (import Types.TypeScheme)
