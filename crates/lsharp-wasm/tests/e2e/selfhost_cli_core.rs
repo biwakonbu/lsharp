@@ -5938,6 +5938,41 @@ fn test_e2e_selfhost_test_runner_extracts_supported_metadata_suite() {
     );
 }
 
+/// EC-M1-02: selfhost runner が parser の invariant AST を test case へ直接投影すること
+#[test]
+fn test_e2e_selfhost_test_runner_extracts_invariant_from_parser_ast() {
+    let harness = r#"
+(defn main []
+  (let [src "(defn succ [x] :invariant (= result (+ x 1)) (+ x 1))"
+        program (parse-program src)
+        invariants (extract-invariants-from-program program)
+        test-case (vector-get invariants 0)
+        predicate (vector-get test-case 2)
+        suite (generate-tests src)
+        invariant-results (vector-get suite 1)
+        invariant-result (vector-get invariant-results 0)]
+    (do
+      (print (vector-length invariants))
+      (print (if (= (vector-get predicate 0) (ast-apply)) 1 0))
+      (print (if (= (vector-get (vector-get predicate 1) 1) (hash-eq)) 1 0))
+      (print (vector-length invariant-results))
+      (print (vector-get invariant-result 1))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["1", "1", "1", "1", "1"],
+        "invariant は parser AST から抽出され、generate-tests で実行されるべき"
+    );
+}
+
 /// TEST-CLI-02-O2b: selfhost/src/Tools/Test/TestRunner.ls が supported subset の metadata suite を実行できること
 #[test]
 #[ignore]

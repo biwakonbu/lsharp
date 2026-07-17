@@ -6,8 +6,8 @@
 
 ;; TestRunner.ls - L# セルフホスティング: メタデータテストランナー
 ;;
-;; 現状の selfhost parser は metadata を AST に保持しないため、
-;; source 文字列から :example / :invariant を抽出し、
+;; :example は互換性のため source payload から抽出するが、:invariant は
+;; parser が保持した defn metadata AST を test case へ投影する。
 ;; 算術・比較・if/let/do・トップレベル defn 呼び出しの subset を実行する。
 
 (defn token-count [tokens]
@@ -58,6 +58,57 @@
   (vector-push
     (vector-push (vector-new 2) examples)
     invariants))
+
+;; defn ノード末尾の metadata vector [doc, example, params, returns, invariant]
+;; から parser-owned invariant AST を取り出す。
+(defn test-defn-metadata [decl]
+  (let [param-count (vector-get decl 2)
+    meta-idx (+ 4 param-count)]
+    (if (< meta-idx (vector-length decl))
+      (vector-get decl meta-idx)
+      0)))
+
+(defn test-defn-invariant [decl]
+  (let [meta (test-defn-metadata decl)]
+    (if (= meta 0)
+      0
+      (if (> (vector-length meta) 4)
+        (vector-get meta 4)
+        0))))
+
+(defn append-parser-invariant [decl results]
+  (let [predicate (test-defn-invariant decl)]
+    (if (= predicate 0)
+      results
+      (vector-push
+        results
+        (make-test-case
+          (vector-length results)
+          (vector-get decl 1)
+          predicate)))))
+
+;; parser AST から top-level defn の invariant test case を抽出する。
+;; module/private declaration は既存 raw source scanner と同じくこの slice の対象外。
+(defn extract-invariants-from-program-loop [program idx count results]
+  (if (>= idx count)
+    results
+    (let [decl (vector-get program idx)
+      next-results
+      (if (= (vector-get decl 0) (ast-defn))
+        (append-parser-invariant decl results)
+        results)]
+      (extract-invariants-from-program-loop
+        program
+        (+ idx 1)
+        count
+        next-results))))
+
+(defn extract-invariants-from-program [program]
+  (extract-invariants-from-program-loop
+    program
+    0
+    (vector-length program)
+    (vector-new 8)))
 
 (defn test-result-diagnostic [result]
   (if (> (vector-length result) 3)
@@ -818,10 +869,10 @@
 
 ;; generate-tests: source からテストスイート全体を生成・実行
 (defn generate-tests [src]
-  (let [program (parse-program (strip-test-metadata src))
+  (let [program (parse-program src)
     cases (extract-test-cases src)
     examples (vector-get cases 0)
-    invariants (vector-get cases 1)
+    invariants (extract-invariants-from-program program)
     example-results (run-examples program examples)
     invariant-results (run-invariants program invariants)]
     (make-suite example-results invariant-results)))
