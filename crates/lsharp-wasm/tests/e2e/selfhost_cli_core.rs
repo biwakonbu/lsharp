@@ -6840,6 +6840,72 @@ fn test_e2e_selfhost_cli_check_rejects_non_bool_property_precondition() {
     );
 }
 
+/// EC-M1-04: selfhost check が複数の typed property binder を同じ scope へ投影すること。
+#[test]
+fn test_e2e_selfhost_cli_check_accepts_multiple_typed_property_binders() {
+    let harness = r#"
+(defn main []
+  (let [source "(defn pair [x] :property [(for-all [left Int right Int] :precondition [(>= left 0) (>= right 0)] :postcondition (>= result (+ left right)))] x)"
+        program (parse-program source)
+        analysis (infer-program-analysis program)
+        result (check-canonical-properties-with-analysis program analysis)]
+    (do
+      (print-string "BEGIN\n")
+      (print (vector-get result 0))
+      (print (vector-get result 1))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}",
+        selfhost_parser_typeinfer_runtime_bundle(),
+        harness
+    );
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["BEGIN", "0", "0"],
+        "selfhost property checker は複数の typed binder を同じ scope へ投影するべき"
+    );
+}
+
+/// EC-M1-04: selfhost check が複数 precondition の全てを Bool preflight すること。
+#[test]
+fn test_e2e_selfhost_cli_check_rejects_non_bool_second_property_precondition() {
+    let harness = r#"
+(defn main []
+  (let [source "(defn identity [x] :property [(for-all [value Int] :precondition [(>= value 0) (+ value 1)] :postcondition (>= result value))] x)"
+        program (parse-program source)
+        analysis (infer-program-analysis program)
+        result (check-canonical-properties-with-analysis program analysis)]
+    (do
+      (print-string "BEGIN\n")
+      (print (vector-get result 0))
+      (print (vector-get result 1))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}",
+        selfhost_parser_typeinfer_runtime_bundle(),
+        harness
+    );
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["BEGIN", "1", "1002"],
+        "selfhost property checker は全ての precondition を Bool 必須にするべき"
+    );
+}
+
 /// EC-M1-02: selfhost test が canonical :case の型エラーを実行前に拒否すること
 #[test]
 fn test_e2e_selfhost_cli_test_rejects_invalid_canonical_case() {

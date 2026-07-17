@@ -21,8 +21,7 @@
     (vector-new 2)
     diagnostic-count
     first-error-code))
-;; raw :property payload から first binder / precondition / postcondition を取り出す。
-;; 複数 binder / precondition の完全な typed projection は後続 slice で追加する。
+;; raw :property payload から first binder / precondition / postcondition を取り出す。複数要素の完全な typed projection は後続 slice で追加する。
 (defn property-space? [ch]
   (if (or (= ch 32) (= ch 9))
     1
@@ -40,12 +39,7 @@
       idx
       (property-find-substring-loop src needle (+ idx 1) len needle-len))))
 (defn property-find-substring [src needle]
-  (property-find-substring-loop
-    src
-    needle
-    0
-    (string-length src)
-    (string-length needle)))
+  (property-find-substring-loop src needle 0 (string-length src) (string-length needle)))
 (defn property-balanced-expression-end [src idx len depth]
   (if (>= idx len)
     -1
@@ -71,67 +65,51 @@
     payload-len (string-length payload)]
     (if (< marker 0)
       ""
-      (let [expression-start
-              (property-skip-space
-                payload
-                (+ marker (string-length ":postcondition"))
-                payload-len)]
+      (let [expression-start (property-skip-space payload (+ marker (string-length ":postcondition")) payload-len)]
         (if (>= expression-start payload-len)
           ""
-          (let [expression-end
-                  (if (= (string-char-at payload expression-start) 40)
-                    (property-balanced-expression-end
-                      payload
-                      expression-start
-                      payload-len
-                      0)
-                    (property-atom-expression-end
-                      payload
-                      expression-start
-                      payload-len))]
+          (let [expression-end (if (= (string-char-at payload expression-start) 40)
+              (property-balanced-expression-end payload expression-start payload-len 0)
+              (property-atom-expression-end payload expression-start payload-len))]
             (if (<= expression-end expression-start)
               ""
               (substring payload expression-start expression-end))))))))
-(defn property-first-binder-parameter-source [payload]
-  (let [open (property-find-substring payload "[")
-    len (string-length payload)]
-    (if (< open 0)
-      ""
-      (let [name-start (property-skip-space payload (+ open 1) len)
-        name-end (property-atom-expression-end payload name-start len)
+(defn property-binder-source-loop [payload idx close len result]
+  (let [name-start (property-skip-space payload idx len)]
+    (if (>= name-start close)
+      result
+      (let [name-end (property-atom-expression-end payload name-start len)
         type-start (property-skip-space payload name-end len)
         type-end (if (= (string-char-at payload type-start) 40)
           (property-balanced-expression-end payload type-start len 0)
-          (property-atom-expression-end payload type-start len))]
-        (if (or (= name-end name-start) (<= type-end type-start))
+          (property-atom-expression-end payload type-start len))
+        binder (if (or (= name-end name-start) (<= type-end type-start))
           ""
           (string-concat
             "(: "
             (string-concat
               (substring payload name-start name-end)
-              (string-concat
-                " "
-                (string-concat (substring payload type-start type-end) ")")))))))))
+              (string-concat " " (string-concat (substring payload type-start type-end) ")")))))]
+        (if (= (string-length binder) 0)
+          result
+          (property-binder-source-loop
+            payload
+            (property-skip-space payload type-end len)
+            close
+            len
+            (if (= (string-length result) 0)
+              binder
+              (string-concat result (string-concat " " binder)))))))))
 (defn property-probe-parameter-source [payload]
-  (let [binder (property-first-binder-parameter-source payload)]
-    (if (= (string-length binder) 0)
+  (let [open (property-find-substring payload "[")
+    len (string-length payload)
+    close (property-find-substring-loop payload "]" (+ open 1) len 1)]
+    (if (or (< open 0) (< close 0))
       "[result]"
-      (string-concat "[" (string-concat binder " result]")))))
-(defn property-first-precondition-text [payload]
-  (let [marker (property-find-substring payload ":precondition")
-    len (string-length payload)]
-    (if (< marker 0)
-      ""
-      (let [bracket-start (property-skip-space payload (+ marker 13) len)]
-        (if (>= bracket-start len)
-          ""
-          (let [expression-start (property-skip-space payload (+ bracket-start 1) len)
-            expression-end (if (= (string-char-at payload expression-start) 40)
-              (property-balanced-expression-end payload expression-start len 0)
-              (property-atom-expression-end payload expression-start len))]
-            (if (<= expression-end expression-start)
-              ""
-              (substring payload expression-start expression-end))))))))
+      (let [binders (property-binder-source-loop payload (+ open 1) close len "")]
+        (if (= (string-length binders) 0)
+          "[result]"
+          (string-concat "[" (string-concat binders " result]")))))))
 (defn property-probe-return-type [ty]
   (if (= (ty-tag ty) (ty-fun))
     (property-probe-return-type (type-fun-ret ty))
@@ -170,13 +148,50 @@
                   (root_pop)
                   (root_pop)
                   result)))))))))
-(defn check-property-postcondition [payload]
-  (check-property-predicate payload (property-postcondition-text payload)))
-(defn check-property-precondition [payload]
-  (let [expression (property-first-precondition-text payload)]
-    (if (= (string-length expression) 0)
+(defn check-property-postcondition [payload] (check-property-predicate payload (property-postcondition-text payload)))
+(defn check-property-preconditions-loop [payload idx close len]
+  (let [expression-start (property-skip-space payload idx len)]
+    (if (>= expression-start close)
       0
-      (check-property-predicate payload expression))))
+      (do
+        (root_push payload)
+        (let [expression-end (if (= (string-char-at payload expression-start) 40)
+            (property-balanced-expression-end payload expression-start len 0)
+            (property-atom-expression-end payload expression-start len))]
+          (if (<= expression-end expression-start)
+            (do
+              (root_pop)
+              (canonical-property-type-error-code))
+            (let [expression (substring payload expression-start expression-end)]
+              (do
+                (root_push expression)
+                (let [code (check-property-predicate payload expression)]
+                  (if (> code 0)
+                    (do
+                      (root_pop)
+                      (root_pop)
+                      code)
+                    (let [result (check-property-preconditions-loop
+                        payload
+                        expression-end
+                        close
+                        len)]
+                      (do
+                        (root_pop)
+                        (root_pop)
+                        result))))))))))))
+(defn check-property-precondition [payload]
+  (let [marker (property-find-substring payload ":precondition")
+    len (string-length payload)]
+    (if (< marker 0)
+      0
+      (let [bracket-start (property-skip-space payload (+ marker 13) len)]
+        (if (or (>= bracket-start len) (!= (string-char-at payload bracket-start) 91))
+          (canonical-property-type-error-code)
+          (let [close (property-find-substring-loop payload "]" (+ bracket-start 1) len 1)]
+            (if (< close 0)
+              (canonical-property-type-error-code)
+              (check-property-preconditions-loop payload (+ bracket-start 1) close len))))))))
 (defn defn-metadata [decl]
   (let [param-count (vector-get decl 2)
     body-end (+ 4 param-count)
@@ -445,7 +460,6 @@
           diagnostic-count
           first-error-code)))
     (assertion-check-state diagnostic-count first-error-code)))
-
 (defn check-case-forms-loop
   [forms idx count decl env counter diagnostic-count first-error-code]
   (if (>= idx count)
@@ -523,7 +537,6 @@
         counter
         0
         0))))
-
 (defn check-program-assertions-loop
   [program idx count env counter diagnostic-count first-error-code]
   (if (>= idx count)
@@ -563,7 +576,6 @@
                 (root_pop)
                 (root_pop)
                 result))))))))
-
 (defn check-canonical-assertions-with-analysis [program analysis]
   (let [counter (typeinfer-make-alias-aware-counter program)
     env (infer-program-analysis-env analysis)]
@@ -575,11 +587,9 @@
       counter
       0
       0)))
-
 (defn check-canonical-assertions [program]
   (let [analysis (infer-program-analysis program)]
     (check-canonical-assertions-with-analysis program analysis)))
-
 (defn check-case-module-program-loop
   [program idx count env counter diagnostic-count first-error-code]
   (if (>= idx count)
@@ -611,7 +621,6 @@
                 (root_pop)
                 (root_pop)
                 result))))))))
-
 (defn check-case-module [module-node]
   (let [module-program (canonical-module-program module-node)]
     (let [analysis (infer-program-analysis module-program)
@@ -625,7 +634,6 @@
         counter
         0
         0))))
-
 (defn check-case-program-loop
   [program idx count env counter diagnostic-count first-error-code]
   (if (>= idx count)
@@ -665,7 +673,6 @@
                 (root_pop)
                 (root_pop)
                 result))))))))
-
 (defn check-canonical-cases-with-analysis [program analysis]
   (let [counter (typeinfer-make-alias-aware-counter program)
     env (infer-program-analysis-env analysis)]
@@ -677,11 +684,9 @@
       counter
       0
       0)))
-
 (defn check-canonical-cases [program]
   (let [analysis (infer-program-analysis program)]
     (check-canonical-cases-with-analysis program analysis)))
-
 ;; canonical :property の postcondition を checker へ接続する。
 (defn check-property-form [form diagnostic-count first-error-code]
   (if (= (vector-get form 0) (contract-form-property))
@@ -697,7 +702,6 @@
           (root_pop)
           state)))
     (assertion-check-state diagnostic-count first-error-code)))
-
 (defn check-property-forms-loop
   [forms idx count diagnostic-count first-error-code]
   (if (>= idx count)
@@ -724,7 +728,6 @@
                   (root_pop)
                   (root_pop)
                   result)))))))))
-
 (defn check-defn-properties [decl]
   (let [forms (defn-ordered-forms decl)]
     (if (= forms 0)
@@ -735,7 +738,6 @@
         (vector-length forms)
         0
         0))))
-
 (defn check-property-module [module-node]
   (let [module-program (canonical-module-program module-node)]
     (do
@@ -749,7 +751,6 @@
         (do
           (root_pop)
           result)))))
-
 (defn check-property-decl [decl]
   (let [tag (vector-get decl 0)]
     (if (= tag (ast-defn))
@@ -785,7 +786,6 @@
                   (root_pop)
                   (root_pop)
                   result)))))))))
-
 (defn check-canonical-properties-with-analysis [program analysis]
   (check-property-program-loop
     program

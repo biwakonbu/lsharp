@@ -164,6 +164,14 @@ Evidence: `test_e2e_selfhost_cli_check_rejects_non_bool_canonical_property`、`t
 
 これは最初の binder / 最初の precondition に限定した verified slice であり、複数 typed binder / 複数 precondition、binder 名 `result` の衝突、完全な TypeExpr/parser projection、empty/non-vacuous property、type-directed sampling/shrink、evaluator、Rust/selfhost diagnostic/span parity、full CLI artifact/runtime、Mac Apple Silicon / Linux x86_64 の current-source native gate は残件である。したがってこの範囲は Rust なしの日常開発で利用できるが、property 全体または全機能 Rust-free 完了とは扱わず、Rust oracle / bootstrap 境界を維持する。
 
+### EC-M1-04 selfhost property binder/precondition full-list scope (2026-07-18)
+
+Selfhost `Types.TypeInferAssertions` は binder bracket 内の typed binder を source 順に全て synthetic probe の parameter scopeへ投影し、precondition bracket 内の predicate を全て順に Bool preflight するようになった。いずれかの predicate が non-Bool / type error なら最初の error code を返し、全て valid なら postcondition まで検査する。複数 predicate の各 call boundary では `payload` / `expression` を root し、native GC による probe 入力の消失と root stack leak を防ぐ。
+
+Evidence: RED の `test_e2e_selfhost_cli_check_accepts_multiple_typed_property_binders` と `test_e2e_selfhost_cli_check_rejects_non_bool_second_property_precondition`、GREEN の同 2 tests、既存 postcondition / first precondition / typed binder の focused E2E 4件、`./target/debug/lsharp check selfhost/src/Types/TypeInferAssertions.ls`。実装ファイルは 800 行、括弧深度 0、`git diff --check` を満たす。
+
+これは raw payload の full-list scope projection に限定した verified slice であり、重複 binder と binder 名 `result` の衝突、nested vector を含む完全な bracket-aware expression parser、TypeExpr / diagnostic span の Rust parity、empty/non-vacuous property、type-directed sampling/shrink、evaluator、full CLI artifact/runtime、Mac Apple Silicon / Linux x86_64 の current-source native gate は残件である。property 全体または全機能 Rust-free 完了とは扱わず、Rust oracle / bootstrap 境界を維持する。
+
 ### scoped polymorphic `defn` signature (2026-07-15)
 
 `TypeInferFunctions.ls` は `defn` の parameter / return annotation に現れる scoped 名ごとに共有 fresh 型変数を割り当て、通常の型環境で関数を一般化する。これにより `id` を Int と Bool の別 call site で使え、`choose-first [(: x a) (: y b)] : a x` では `a` と `b` を独立に具体化できる。GADT refinement と exhaustiveness は別タスクである。Evidence: `test_e2e_selfhost_scoped_type_var_defn_signature_is_polymorphic`、`test_e2e_selfhost_scoped_multiple_type_vars_defn_signature_is_polymorphic`、`TypeInfer.ls` check。
