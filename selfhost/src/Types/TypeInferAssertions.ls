@@ -1,5 +1,6 @@
 (module Types.TypeInferAssertions)
 (import Syntax.AST)
+(import Syntax.Parser)
 (import Types.Type)
 (import Types.TypeInfer)
 (import Types.TypeInferCore)
@@ -14,12 +15,120 @@
 (defn canonical-case-type-error-code [] 1001)
 (defn canonical-case-value-error-code [] 1002)
 (defn canonical-case-empty-code [] 2006)
+(defn canonical-property-type-error-code [] 1001)
+(defn canonical-property-non-bool-code [] 1002)
+(defn canonical-property-empty-code [] 2007)
 
 (defn assertion-check-state [diagnostic-count first-error-code]
   (vector-push-pair-rooted
     (vector-new 2)
     diagnostic-count
     first-error-code))
+
+;; raw :property payload から postcondition の balanced expression を取り出す。
+;; typed binder / precondition の projection は後続 slice で追加する。
+(defn property-space? [ch]
+  (if (or (= ch 32) (= ch 9))
+    1
+    (if (or (= ch 10) (= ch 13)) 1 0)))
+
+(defn property-skip-space [src idx len]
+  (if (>= idx len)
+    idx
+    (if (= (property-space? (string-char-at src idx)) 1)
+      (property-skip-space src (+ idx 1) len)
+      idx)))
+
+(defn property-find-substring-loop [src needle idx len needle-len]
+  (if (> (+ idx needle-len) len)
+    -1
+    (if (string-eq (substring src idx (+ idx needle-len)) needle)
+      idx
+      (property-find-substring-loop src needle (+ idx 1) len needle-len))))
+
+(defn property-find-substring [src needle]
+  (property-find-substring-loop
+    src
+    needle
+    0
+    (string-length src)
+    (string-length needle)))
+
+(defn property-balanced-expression-end [src idx len depth]
+  (if (>= idx len)
+    -1
+    (let [ch (string-char-at src idx)]
+      (if (= ch 40)
+        (property-balanced-expression-end src (+ idx 1) len (+ depth 1))
+        (if (= ch 41)
+          (if (= depth 1)
+            (+ idx 1)
+            (property-balanced-expression-end src (+ idx 1) len (- depth 1)))
+          (property-balanced-expression-end src (+ idx 1) len depth))))))
+
+(defn property-atom-expression-end [src idx len]
+  (if (>= idx len)
+    idx
+    (let [ch (string-char-at src idx)]
+      (if (or
+        (= (property-space? ch) 1)
+        (or (= ch 41) (= ch 93)))
+        idx
+        (property-atom-expression-end src (+ idx 1) len)))))
+
+(defn property-postcondition-text [payload]
+  (let [marker (property-find-substring payload ":postcondition")
+    payload-len (string-length payload)]
+    (if (< marker 0)
+      ""
+      (let [expression-start
+              (property-skip-space
+                payload
+                (+ marker (string-length ":postcondition"))
+                payload-len)]
+        (if (>= expression-start payload-len)
+          ""
+          (let [expression-end
+                  (if (= (string-char-at payload expression-start) 40)
+                    (property-balanced-expression-end
+                      payload
+                      expression-start
+                      payload-len
+                      0)
+                    (property-atom-expression-end
+                      payload
+                      expression-start
+                      payload-len))]
+            (if (<= expression-end expression-start)
+              ""
+              (substring payload expression-start expression-end))))))))
+
+(defn property-probe-return-type [ty]
+  (if (= (ty-tag ty) (ty-fun))
+    (type-fun-ret ty)
+    ty))
+
+(defn check-property-postcondition [payload]
+  (let [expression (property-postcondition-text payload)]
+    (if (= (string-length expression) 0)
+      (canonical-property-type-error-code)
+      (let [probe-source
+              (string-concat
+                "(defn __lsharp_property_probe [result] "
+                (string-concat expression ")"))
+        probe-program (parse-program probe-source)
+        analysis (infer-program-analysis probe-program)
+        diagnostic-count (infer-program-analysis-diagnostic-count analysis)]
+        (if (> diagnostic-count 0)
+          (canonical-property-type-error-code)
+          (let [resolved
+                  (property-probe-return-type
+                    (infer-program-analysis-type analysis))]
+            (if (and
+              (= (ty-tag resolved) (ty-con))
+              (= (ty-name resolved) (hash-bool)))
+              0
+              (canonical-property-non-bool-code))))))))
 
 (defn defn-metadata [decl]
   (let [param-count (vector-get decl 2)
@@ -545,3 +654,119 @@
 (defn check-canonical-cases [program]
   (let [analysis (infer-program-analysis program)]
     (check-canonical-cases-with-analysis program analysis)))
+
+;; canonical :property の postcondition を checker へ接続する。
+(defn check-property-form [form diagnostic-count first-error-code]
+  (if (= (vector-get form 0) (contract-form-property))
+    (do
+      (root_push form)
+      (let [payload (if (> (vector-length form) 1) (vector-get form 1) "")
+        code (check-property-postcondition payload)
+        next-count (if (> code 0) (+ diagnostic-count 1) diagnostic-count)
+        next-first-code (if (= first-error-code 0) code first-error-code)
+        state (assertion-check-state next-count next-first-code)]
+        (do
+          (root_pop)
+          state)))
+    (assertion-check-state diagnostic-count first-error-code)))
+
+(defn check-property-forms-loop
+  [forms idx count diagnostic-count first-error-code]
+  (if (>= idx count)
+    (assertion-check-state diagnostic-count first-error-code)
+    (do
+      (root_push forms)
+      (let [form (vector-get forms idx)]
+        (do
+          (root_push form)
+          (let [state (check-property-form
+              form
+              diagnostic-count
+              first-error-code)]
+            (do
+              (root_push state)
+              (let [result (check-property-forms-loop
+                  forms
+                  (+ idx 1)
+                  count
+                  (vector-get state 0)
+                  (vector-get state 1))]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  result)))))))))
+
+(defn check-defn-properties [decl]
+  (let [forms (defn-ordered-forms decl)]
+    (if (= forms 0)
+      (assertion-check-state 0 0)
+      (check-property-forms-loop
+        forms
+        0
+        (vector-length forms)
+        0
+        0))))
+
+(defn check-property-module [module-node]
+  (let [module-program (canonical-module-program module-node)]
+    (do
+      (root_push module-program)
+      (let [result (check-property-program-loop
+          module-program
+          0
+          (vector-length module-program)
+          0
+          0)]
+        (do
+          (root_pop)
+          result)))))
+
+(defn check-property-decl [decl]
+  (let [tag (vector-get decl 0)]
+    (if (= tag (ast-defn))
+      (check-defn-properties decl)
+      (if (= tag (ast-private))
+        (check-property-decl (vector-get decl 1))
+        (if (= tag (ast-module-decl))
+          (check-property-module decl)
+          (assertion-check-state 0 0))))))
+
+(defn check-property-program-loop
+  [program idx count diagnostic-count first-error-code]
+  (if (>= idx count)
+    (assertion-check-state diagnostic-count first-error-code)
+    (do
+      (root_push program)
+      (let [decl (vector-get program idx)]
+        (do
+          (root_push decl)
+          (let [state (check-property-decl decl)]
+            (do
+              (root_push state)
+              (let [result (check-property-program-loop
+                  program
+                  (+ idx 1)
+                  count
+                  (+ diagnostic-count (vector-get state 0))
+                  (if (= first-error-code 0)
+                    (vector-get state 1)
+                    first-error-code))]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  result)))))))))
+
+(defn check-canonical-properties-with-analysis [program analysis]
+  (check-property-program-loop
+    program
+    0
+    (vector-length program)
+    0
+    0))
+
+(defn check-canonical-properties [program]
+  (check-canonical-properties-with-analysis
+    program
+    (infer-program-analysis program)))

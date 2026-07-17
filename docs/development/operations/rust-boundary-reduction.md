@@ -148,6 +148,14 @@ Rust `metadata_check::check_metadata` は canonical `ExecutableContract::Propert
 
 Evidence: `canonical_property_requires_bool_postcondition`、`canonical_property_requires_bool_preconditions`、`canonical_property_accepts_bool_predicates_in_binder_scope`、`cargo test -p lsharp-types --test metadata_contract_check -- --nocapture`（14 tests）、`cargo test -p lsharp-syntax --test metadata_property -- --nocapture`（2 tests）。この slice は property の戻り値型を owner の関数型へ結び付ける検査、type-directed sampling/shrink、evaluator、selfhost detailed diagnostic parity、Wasm artifact/runtime、Mac Apple Silicon / Linux x86_64 の native gateをまだ閉じていないため、EC-M1-04 や全機能 Rust-free 完了には使わない。
 
+### EC-M1-04 selfhost `check` canonical `:property` Bool preflight (2026-07-18)
+
+Selfhost `Types.TypeInferAssertions` は canonical `:property` の raw postcondition を bracket-aware に取り出し、synthetic `result` probe を `TypeInfer` へ渡して戻り値が `Bool` かを `check-canonical-properties-with-analysis` で検査する。non-Bool predicate は `1002` として返し、`App.Cli` / `App.EmbeddedCli` の `check` は assertion / case と同じ diagnostics 集計へ property の件数と専用本文 `property predicate must be Bool` を接続する。`test` の property evaluator は未実装のため、既存の `LS3002` 明示境界は変更していない。
+
+Evidence: RED の `test_selfhost_cli_sources_route_property_runner_boundary` 拡張、GREEN の `test_e2e_selfhost_cli_check_rejects_non_bool_canonical_property`（parser + type inference + selfhost checker の Wasm E2E）、`cargo test -p lsharp-wasm --test e2e selfhost_cli_sources_route_property_runner_boundary -- --nocapture`、`./target/debug/lsharp check selfhost/src/Types/TypeInferAssertions.ls` / `App/Cli.ls` / `App/EmbeddedCli.ls`。full CLI bundle runtime/manual gate は重いためこの slice では再実行していない。
+
+これは selfhost の postcondition Bool preflight に限定した verified slice であり、typed binder / `precondition` projection、empty/non-vacuous property、type-directed sampling/shrink、property evaluator、Rust/selfhost diagnostic/span parity、full CLI artifact/runtime、Mac Apple Silicon / Linux x86_64 の current-source native gate は残件である。したがって property を Rust なしで変更・検査できる範囲は増えたが、property 全体または全機能 Rust-free 完了とは扱わず、Rust oracle / bootstrap 境界を維持する。
+
 ### scoped polymorphic `defn` signature (2026-07-15)
 
 `TypeInferFunctions.ls` は `defn` の parameter / return annotation に現れる scoped 名ごとに共有 fresh 型変数を割り当て、通常の型環境で関数を一般化する。これにより `id` を Int と Bool の別 call site で使え、`choose-first [(: x a) (: y b)] : a x` では `a` と `b` を独立に具体化できる。GADT refinement と exhaustiveness は別タスクである。Evidence: `test_e2e_selfhost_scoped_type_var_defn_signature_is_polymorphic`、`test_e2e_selfhost_scoped_multiple_type_vars_defn_signature_is_polymorphic`、`TypeInfer.ls` check。

@@ -6270,6 +6270,16 @@ fn test_selfhost_cli_sources_route_property_runner_boundary() {
             "{} は未接続の property runner を明示的な境界へ送るべき",
             file_name
         );
+        assert!(
+            source.contains("check-canonical-properties-with-analysis"),
+            "{} の check は canonical property preflight を呼び出すべき",
+            file_name
+        );
+        assert!(
+            source.contains("check-property-diagnostic-body-from-code"),
+            "{} の check は property 専用診断本文を持つべき",
+            file_name
+        );
     }
 }
 
@@ -6724,6 +6734,43 @@ fn test_e2e_selfhost_cli_check_reports_invalid_canonical_case() {
             "0",
         ],
         "selfhost check は canonical case の unsupported type を実行前に報告するべき"
+    );
+}
+
+/// EC-M1-04: selfhost check が canonical :property の non-Bool predicate を報告すること。
+#[test]
+fn test_e2e_selfhost_cli_check_rejects_non_bool_canonical_property() {
+    let harness = r#"
+(defn main []
+  (let [source "(defn identity [x] :property [(for-all [x Int] :postcondition (+ result 1))] x)"
+        program (parse-program source)
+        analysis (infer-program-analysis program)
+        result (check-canonical-properties-with-analysis program analysis)]
+    (do
+      (print-string "BEGIN\n")
+      (print (vector-get result 0))
+      (print (vector-get result 1))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}",
+        selfhost_parser_typeinfer_runtime_bundle(),
+        harness
+    );
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec![
+            "BEGIN",
+            "1",
+            "1002",
+        ],
+        "selfhost property checker は non-Bool predicate を実行前に報告するべき"
     );
 }
 

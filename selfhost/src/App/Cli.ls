@@ -64,6 +64,7 @@
 (defn parse-diagnostics-body-text [diagnostics] (if (> (vector-length diagnostics) 0) (parse-diagnostic-body-from-code (parse-diagnostics-first-code diagnostics)) ""))
 (defn check-diagnostic-body-from-code [code] (if (= code (canonical-assertion-type-error-code)) "assert predicate type error" (if (= code (canonical-assertion-non-bool-code)) "assert predicate must be Bool" (if (= code (canonical-assertion-empty-code)) "assert requires at least one predicate" (if (= code (canonical-assertion-vacuous-code)) "assert predicate is vacuous" (if (= code (error-code-undefined)) "undefined symbol" (if (= code (error-code-if-cond)) "if condition must be Bool" (if (= code (error-code-if-branch)) "if branches must have same type" (if (= code (error-code-arg-mismatch)) "function argument type mismatch" (if (= code (error-code-infinite)) "infinite type" "type error"))))))))))
 (defn check-case-diagnostic-body-from-code [code] (if (= code (canonical-case-type-error-code)) "case expression type error" (if (= code (canonical-case-value-error-code)) "case actual and expected types must be Int or Bool" (if (= code (canonical-case-empty-code)) "case requires at least one expectation" "case type error"))))
+(defn check-property-diagnostic-body-from-code [code] (if (= code (canonical-property-type-error-code)) "property predicate type error" (if (= code (canonical-property-non-bool-code)) "property predicate must be Bool" (if (= code (canonical-property-empty-code)) "property requires a postcondition" "property predicate type error"))))
 (defn check-diagnostics-body-text [program] (let [code (check-diagnostics-first-code program)] (if (= code 0) "" (check-diagnostic-body-from-code code))))
 (defn run-parse-source [src opts] (let [program (parse-program src) diagnostics (parse-diagnostics src) diagnostics-count (vector-length diagnostics) diagnostics-text (diagnostics-summary-text diagnostics-count "P0001" (parse-diagnostics-body-text diagnostics))] (do (print-string (parse-decl-count-text program)) (print-string "
 ") (print-string (string-concat "first-decl:" (parse-first-decl-text program))) (print-string "
@@ -84,12 +85,17 @@
     canonical-first-error-code (vector-get canonical-check 1)
     case-check (check-canonical-cases-with-analysis program analysis)
     case-diagnostics-count (vector-get case-check 0)
+    property-check (check-canonical-properties-with-analysis program analysis)
+    property-diagnostics-count (vector-get property-check 0)
     migration-summary (legacy-migration-summary (classify-legacy-contracts program))
     case-first-error-code (vector-get case-check 1)
-    diagnostics-count (+ base-diagnostics-count (+ canonical-diagnostics-count case-diagnostics-count))
+    property-first-error-code (vector-get property-check 1)
+    diagnostics-count (+ base-diagnostics-count (+ canonical-diagnostics-count (+ case-diagnostics-count property-diagnostics-count)))
     first-error-code
       (if (= base-first-error-code 0)
-        (if (= canonical-first-error-code 0) case-first-error-code canonical-first-error-code)
+        (if (= canonical-first-error-code 0)
+          (if (= case-first-error-code 0) property-first-error-code case-first-error-code)
+          canonical-first-error-code)
         base-first-error-code)
     diagnostics-body
       (if (> base-first-error-code 0)
@@ -98,7 +104,9 @@
           (check-diagnostic-body-from-code canonical-first-error-code)
           (if (> case-first-error-code 0)
             (check-case-diagnostic-body-from-code case-first-error-code)
-            "")))
+            (if (> property-first-error-code 0)
+              (check-property-diagnostic-body-from-code property-first-error-code)
+              ""))))
     diagnostics-text (diagnostics-summary-text diagnostics-count "T0001" diagnostics-body)]
     (do
       (print-string rendered)
