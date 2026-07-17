@@ -54,6 +54,14 @@ Evidence: RED の `test_e2e_selfhost_test_runner_projects_and_runs_ordered_asser
 
 これは parser-owned predicate projection と限定 evaluator の verified slice であり、predicate source span、Rust checker/oracle との assertion diagnostic parity、undefined-variable の専用診断、全 AST/runtime の assertion evaluation、legacy migration、Mac/Linux current-source artifact/runtime gate は残件である。したがって `:assert` は selfhost runner の supported subset で実行可能になったが、EC-M1-03/04 または全機能 Rust-free 完了とは扱わない。
 
+### EC-M1-04 Rust canonical assert type-check bridge (2026-07-17)
+
+Rust `metadata_check::check_metadata` は canonical contract inventory の `ExecutableContract::Assertion` を検査対象へ追加し、各 predicate を元 program の clone に引数なしの HM probe として付加するようになった。assertion は関数引数や `result` を暗黙に束縛せず、推論結果の戻り値が正確に `Bool` であることを要求する。非 `Bool` は assertion の predicate span、推論エラーは predicate 内の error span に `MetadataDiagnostic` を返す。元の AST と既存の legacy metadata 診断は変更しない。
+
+Evidence: RED の `metadata_contract_check` 2ケース、GREEN の同 2ケース（非 `Bool` の型と predicate span、defn parameter を捕捉しない未定義変数診断）、`cargo test -p lsharp-types -- --nocapture`（202 unit tests + integration tests）、対象ファイルの `rustfmt --check`、`git diff --check`。
+
+これは Rust の parser/types oracle に接続した canonical assertion 型検査の verified slice であり、selfhost `check` から同じ診断を返す経路、安定した診断 code/schema、全 evaluator/runtime の assertion parity、zero-case・到達不能 precondition・constant-true property の non-vacuity、Mac Apple Silicon / Linux x86_64 の current-source native artifact/runtime gate は残件である。また inventory 失敗時にこの narrow checker は既存の metadata 診断を優先して変更しないため、inventory の fail-closed 契約を広げる作業も別に必要である。EC-M1-04 や全機能 Rust-free 完了の判定には使わない。
+
 ### scoped polymorphic `defn` signature (2026-07-15)
 
 `TypeInferFunctions.ls` は `defn` の parameter / return annotation に現れる scoped 名ごとに共有 fresh 型変数を割り当て、通常の型環境で関数を一般化する。これにより `id` を Int と Bool の別 call site で使え、`choose-first [(: x a) (: y b)] : a x` では `a` と `b` を独立に具体化できる。GADT refinement と exhaustiveness は別タスクである。Evidence: `test_e2e_selfhost_scoped_type_var_defn_signature_is_polymorphic`、`test_e2e_selfhost_scoped_multiple_type_vars_defn_signature_is_polymorphic`、`TypeInfer.ls` check。

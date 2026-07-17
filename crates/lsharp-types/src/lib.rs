@@ -1,3 +1,4 @@
+mod canonical_contract_check;
 pub mod constraints;
 pub mod infer;
 pub mod metadata_check;

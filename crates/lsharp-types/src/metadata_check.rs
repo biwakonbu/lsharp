@@ -3,6 +3,8 @@
 //! 構造化メタデータ（:doc, :params, :returns 等）の整合性を検証する。
 //! エラー（不整合）と警告（推奨）を区別して報告する。
 
+use crate::canonical_contract_check::check_assertion_types;
+use crate::metadata_contract::inventory_contract_suites;
 use lsharp_syntax::ast::{ComputationStep, Decl, Expr, Metadata, Program};
 use lsharp_syntax::span::Span;
 
@@ -82,6 +84,10 @@ pub fn check_metadata(program: &Program) -> Vec<MetadataDiagnostic> {
         {
             check_defn_metadata(&mut diagnostics, name, params, meta, *span, &all_names);
         }
+    }
+
+    if let Ok(suites) = inventory_contract_suites(program) {
+        diagnostics.extend(check_assertion_types(program, &suites));
     }
 
     diagnostics
