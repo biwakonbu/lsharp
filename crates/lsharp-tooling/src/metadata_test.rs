@@ -29,6 +29,7 @@ impl MetadataTestRun {
 /// metadata test 種別を CLI 表示向けに整形する。
 pub fn test_kind_label(kind: &lsharp_types::metadata_check::TestKind) -> &'static str {
     match kind {
+        lsharp_types::metadata_check::TestKind::Case => "case",
         lsharp_types::metadata_check::TestKind::Example => "example",
         lsharp_types::metadata_check::TestKind::Invariant => "invariant",
     }
@@ -44,6 +45,11 @@ pub fn run_metadata_tests(file: &Path) -> miette::Result<MetadataTestRun> {
         .find(|diagnostic| diagnostic.severity == lsharp_types::metadata_check::Severity::Error)
     {
         let code = if diagnostic
+            .message
+            .contains(":case は少なくとも 1 件の expectation")
+        {
+            "LS2006"
+        } else if diagnostic
             .message
             .contains(":assert の literal true predicate")
         {
@@ -231,6 +237,22 @@ mod tests {
     }
 
     #[test]
+    fn test_run_metadata_tests_rejects_empty_canonical_case() {
+        let dir = unique_temp_dir("empty_canonical_case");
+        let file = dir.join("Main.ls");
+        fs::write(&file, "(defn noop [] :case [] 0)\n").unwrap();
+
+        let error =
+            run_metadata_tests(&file).expect_err("空の canonical case を成功扱いしてはならない");
+        assert!(
+            error.to_string().contains("[LS2006]"),
+            "空の canonical case は LS2006 を返すべき: {error}"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn test_run_metadata_tests_rejects_canonical_case_parameter_capture() {
         let dir = unique_temp_dir("canonical_case_parameter_capture");
         let file = dir.join("Main.ls");
@@ -242,6 +264,28 @@ mod tests {
             error.to_string().contains("[LS1001]"),
             "case parameter capture は LS1001 を返すべき: {error}"
         );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_run_metadata_tests_executes_canonical_cases() {
+        let dir = unique_temp_dir("canonical_case_execution");
+        let file = dir.join("Main.ls");
+        fs::write(
+            &file,
+            "(defn succ [x] :case [(expect (succ 1) 2) (expect (succ 2) 4)] (+ x 1))\n",
+        )
+        .unwrap();
+
+        let run = run_metadata_tests(&file).expect("canonical case runner は実行できるべき");
+        assert_eq!(run.total(), 2);
+        assert_eq!(run.passed(), 1);
+        assert_eq!(run.failed(), 1);
+        assert_eq!(run.results[0].name, "succ_case_0");
+        assert_eq!(run.results[1].name, "succ_case_1");
+        assert!(run.results[0].passed);
+        assert!(!run.results[1].passed);
 
         let _ = fs::remove_dir_all(&dir);
     }

@@ -196,6 +196,14 @@ pub(crate) const ERROR_CODES: &[ErrorCodeEntry] = &[
         fix: "実装結果または入力に依存する Bool predicate を指定してください。",
     },
     ErrorCodeEntry {
+        code: "LS2006",
+        legacy_code: None,
+        name: "empty-case-contract",
+        summary: "canonical case に検査対象がありません",
+        detail: ":case の expectation が空で、テスト 0 件を成功として扱う可能性があります。",
+        fix: ":case に actual / expected の組を少なくとも 1 件追加してください。",
+    },
+    ErrorCodeEntry {
         code: "LS3001",
         legacy_code: None,
         name: "unsupported-lowering",

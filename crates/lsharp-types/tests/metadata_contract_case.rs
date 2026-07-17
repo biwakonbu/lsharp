@@ -65,6 +65,22 @@ fn canonical_case_requires_matching_actual_and_expected_types() {
 }
 
 #[test]
+fn canonical_case_requires_at_least_one_expectation() {
+    const SOURCE: &str = "(defn noop [] :case [] 0)";
+    let program = parse(SOURCE).expect("空 case も diagnostic のため parse できるべき");
+
+    let diagnostics = check_metadata(&program);
+
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "空 case をテスト 0 件の成功扱いしてはならない"
+    );
+    assert!(diagnostics[0].message.contains(":case は少なくとも 1 件"));
+    assert_eq!(diagnostics[0].function_name, "noop");
+}
+
+#[test]
 fn canonical_case_accepts_int_and_bool_comparisons() {
     const SOURCE: &str = "(defn noop [] :case [(expect 1 1) (expect true false)] true)";
     let program = parse(SOURCE).expect("Int/Bool case は parse できるべき");

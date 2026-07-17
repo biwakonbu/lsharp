@@ -4,10 +4,11 @@
 //! エラー（不整合）と警告（推奨）を区別して報告する。
 
 use crate::canonical_contract_check::{
-    check_assertion_non_vacuity, check_assertion_types, check_case_types,
+    check_assertion_non_vacuity, check_assertion_types, check_case_non_vacuity, check_case_types,
 };
 use crate::metadata_contract::inventory_contract_suites;
 use lsharp_syntax::ast::{ComputationStep, Decl, Expr, Metadata, Program};
+use lsharp_syntax::metadata::MetadataFormKind;
 use lsharp_syntax::span::Span;
 
 /// メタデータ検証結果の重大度
@@ -89,6 +90,7 @@ pub fn check_metadata(program: &Program) -> Vec<MetadataDiagnostic> {
     }
 
     diagnostics.extend(check_assertion_non_vacuity(program));
+    diagnostics.extend(check_case_non_vacuity(program));
     if let Ok(suites) = inventory_contract_suites(program) {
         diagnostics.extend(check_assertion_types(program, &suites));
         diagnostics.extend(check_case_types(program, &suites));
@@ -394,11 +396,15 @@ pub struct GeneratedTest {
     pub kind: TestKind,
     /// テスト式（AST）
     pub expr: Expr,
+    /// canonical `:case` の期待値。それ以外は `None`。
+    pub expected: Option<Expr>,
 }
 
 /// テストの種別
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TestKind {
+    /// canonical `:case` から生成されたテスト
+    Case,
     /// :invariant から生成されたテスト
     Invariant,
     /// :example から生成されたテスト
@@ -431,7 +437,26 @@ pub fn generate_tests(program: &Program) -> Vec<GeneratedTest> {
                     function_name: name.clone(),
                     kind: TestKind::Invariant,
                     expr: invariant_expr.clone(),
+                    expected: None,
                 });
+            }
+
+            // canonical :case からテスト生成
+            let mut case_index = 0;
+            for form in &meta.forms {
+                let MetadataFormKind::Case { expectations } = &form.kind else {
+                    continue;
+                };
+                for expectation in expectations {
+                    tests.push(GeneratedTest {
+                        name: format!("{name}_case_{case_index}"),
+                        function_name: name.clone(),
+                        kind: TestKind::Case,
+                        expr: expectation.actual().clone(),
+                        expected: Some(expectation.expected().clone()),
+                    });
+                    case_index += 1;
+                }
             }
 
             // :example からテスト生成
@@ -441,6 +466,7 @@ pub fn generate_tests(program: &Program) -> Vec<GeneratedTest> {
                     function_name: name.clone(),
                     kind: TestKind::Example,
                     expr: example_expr.clone(),
+                    expected: None,
                 });
             }
         }
@@ -718,6 +744,26 @@ mod test_generation_tests {
         assert_eq!(tests.len(), 2);
         assert_eq!(tests[0].kind, TestKind::Invariant);
         assert_eq!(tests[1].kind, TestKind::Example);
+    }
+
+    #[test]
+    fn test_generate_ordered_canonical_cases() {
+        let tests =
+            gen_tests(r#"(defn succ [x] :case [(expect (succ 1) 2) (expect (succ 2) 4)] (+ x 1))"#);
+        assert_eq!(tests.len(), 2);
+        assert_eq!(tests[0].name, "succ_case_0");
+        assert_eq!(tests[0].function_name, "succ");
+        assert_eq!(tests[0].kind, TestKind::Case);
+        assert_eq!(
+            tests[0].expected.as_ref().map(ToString::to_string),
+            Some("2".to_string())
+        );
+        assert_eq!(tests[1].name, "succ_case_1");
+        assert_eq!(tests[1].kind, TestKind::Case);
+        assert_eq!(
+            tests[1].expected.as_ref().map(ToString::to_string),
+            Some("4".to_string())
+        );
     }
 
     #[test]

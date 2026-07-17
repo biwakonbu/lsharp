@@ -1,7 +1,7 @@
 //! メタデータテスト実行エンジン
 //!
-//! `:example` と `:invariant` メタデータから生成されたテストケースを
-//! コンパイル・実行して検証する。
+//! canonical `:case` と legacy `:example` / `:invariant` metadata から生成された
+//! テストケースをコンパイル・実行して検証する。
 
 use lsharp_syntax::ast::{Decl, Program};
 use lsharp_types::metadata_check::{GeneratedTest, TestKind};
@@ -62,6 +62,14 @@ pub fn generate_test_program(original: &Program, tests: &[GeneratedTest]) -> Str
 
     for test in tests {
         match test.kind {
+            TestKind::Case => {
+                let actual = format!("{}", test.expr);
+                let expected = test
+                    .expected
+                    .as_ref()
+                    .expect("canonical case test には expected value が必要");
+                source.push_str(&format!("    (print (if (= {actual} {expected}) 1 0))\n"));
+            }
             TestKind::Example => {
                 // :example 式をそのまま評価
                 // 式が真（非ゼロ）なら 1 を、偽なら 0 を print
@@ -164,6 +172,31 @@ pub fn parse_test_output(
 
     for test in tests {
         match test.kind {
+            TestKind::Case => {
+                let passed = lines
+                    .get(line_idx)
+                    .map(|line| line.trim() == "1")
+                    .unwrap_or(false);
+                let expected = test
+                    .expected
+                    .as_ref()
+                    .expect("canonical case test には expected value が必要");
+                results.push(TestResult {
+                    name: test.name.clone(),
+                    function_name: test.function_name.clone(),
+                    kind: test.kind.clone(),
+                    passed,
+                    error: if passed {
+                        None
+                    } else {
+                        Some(format!(
+                            ":case が期待値と一致しません: actual={}, expected={expected}",
+                            test.expr
+                        ))
+                    },
+                });
+                line_idx += 1;
+            }
             TestKind::Example => {
                 let passed = lines
                     .get(line_idx)

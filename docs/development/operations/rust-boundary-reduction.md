@@ -52,7 +52,15 @@ Rust metadata checker は canonical `:case` の actual / expected を引数な�
 
 Evidence: `canonical_case_requires_matching_actual_and_expected_types`、`canonical_case_accepts_int_and_bool_comparisons`、`canonical_case_rejects_unsupported_string_comparison`、`canonical_case_does_not_capture_defn_parameters`、`test_run_metadata_tests_rejects_mismatched_canonical_case_types`、`test_run_metadata_tests_rejects_canonical_case_parameter_capture`。
 
-これは `:case` の type preflight の verified sliceであり、実行 runner/materialization、selfhost parser/formatter/runner、empty/malformed case diagnostics、Mac/Linux current-source native artifact/runtime parity は残件である。
+これは `:case` の type preflight の verified sliceであり、実行 runner/materialization は Rust tooling/Wasmtime 経路で検証済み、selfhost parser/formatter/runner、malformed case diagnostics、Mac/Linux current-source native artifact/runtime parity は残件である。空の `:case []` は `LS2006` として明示拒否し、テスト 0 件の成功を隠さない。
+
+### EC-M1-02 canonical `:case` runner materialization (2026-07-17)
+
+Rust tooling は type preflight 済みの top-level / private `:case` を `GeneratedTest` の ordered `Case` entries へ materialize し、expected value と actual expression を保持する。Wasm test runner は各 entry を `(= actual expected)` として一行ずつ実行し、結果を `succ_case_0` のような安定名で返す。成功 1 件と期待値不一致 1 件を同じ source から確認し、空 case は `LS2006` で拒否する。
+
+Evidence: `test_generate_ordered_canonical_cases`、`test_run_metadata_tests_executes_canonical_cases`、`canonical_case_requires_at_least_one_expectation`、`test_run_metadata_tests_rejects_empty_canonical_case`。
+
+これは Rust runner の verified slice であり、selfhost runner/materialization、module-qualified/native stage0 の current-source artifact/runtime parity、property/assertion との統合は残件である。
 
 ### EC-M1-03 selfhost canonical assert parser/formatter bridge (2026-07-17)
 
