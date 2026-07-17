@@ -227,3 +227,27 @@ fn test_e2e_selfhost_formatter_roundtrips_canonical_case_form() {
         "canonical :case は kind・expectation 順序・formatter roundtrip を保持するべき"
     );
 }
+
+/// EC-M1-03: formatter は複数の ordered contract form を順序どおり保持する。
+#[test]
+fn test_e2e_selfhost_formatter_preserves_multiple_ordered_contract_forms() {
+    let output = run_formatter_source_harness(
+        r#"
+(module Main)
+(defn main []
+  (let [src "(defn law [x] :example [(law 0)] :invariant (> x 0) :case [(expect (law 0) 1)] :assert [(= 1 1)] :case [(expect (law 1) 2)] :example [(law 1) (law 2)] (+ x 1))"
+        program (parse-program src)
+        canonical (format-program program 0)]
+    (do
+      (print-string (format-program-with-source program src))
+      (print-string canonical)
+      0)))
+"#,
+    );
+
+    assert_eq!(
+        output,
+        "(defn law [x] :example [(law 0)] :invariant (> x 0) :case [(expect (law 0) 1)] :assert [(= 1 1)] :case [(expect (law 1) 2)] :example [(law 1) (law 2)] (+ x 1))\n(defn law [x] :example [(law 0)] :invariant (> x 0) :case [(expect (law 0) 1)] :assert [(= 1 1)] :case [(expect (law 1) 2)] :example [(law 1) (law 2)] (+ x 1))\n",
+        "formatter は複数の canonical contract form の順序と payload を保持するべき"
+    );
+}

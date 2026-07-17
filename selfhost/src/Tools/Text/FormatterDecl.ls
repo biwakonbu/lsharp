@@ -272,21 +272,6 @@
     (string-concat ":assert ["
       (string-concat (format-expr-list predicates 0 count indent-level) "]"))))
 
-(defn format-defn-metadata-assert-loop [forms idx count indent-level]
-  (if (>= idx count)
-    ""
-    (let [form (vector-get forms idx)]
-      (if (= (vector-get form 0) (contract-form-assert))
-        (format-defn-metadata-assert-form form indent-level)
-        (format-defn-metadata-assert-loop forms (+ idx 1) count indent-level)))))
-
-(defn format-defn-metadata-assert [meta indent-level]
-  (if (> (vector-length meta) 5)
-    (let [forms (vector-get meta 5)
-      text (format-defn-metadata-assert-loop forms 0 (vector-length forms) indent-level)]
-      text)
-    ""))
-
 (defn format-defn-metadata-case-expectation [expectation indent-level]
   (let [actual-text (format-expr (vector-get expectation 0) indent-level)
     expected-text (format-expr (vector-get expectation 1) indent-level)]
@@ -310,18 +295,34 @@
       (format-defn-metadata-case-expectations expectations 0 count indent-level)
       "]")))
 
-(defn format-defn-metadata-case-loop [forms idx count indent-level]
-  (if (>= idx count)
-    ""
-    (let [form (vector-get forms idx)]
-      (if (= (vector-get form 0) (contract-form-case))
-        (format-defn-metadata-case-form form indent-level)
-        (format-defn-metadata-case-loop forms (+ idx 1) count indent-level)))))
+(defn format-defn-metadata-form [form indent-level]
+  (let [kind (vector-get form 0)
+    payload (vector-get form 1)]
+    (if (= kind (contract-form-example))
+      (str3 ":example [" payload "]")
+      (if (= kind (contract-form-invariant))
+        (str3 ":invariant " (format-expr payload indent-level) "")
+        (if (= kind (contract-form-assert))
+          (format-defn-metadata-assert-form form indent-level)
+          (if (= kind (contract-form-case))
+            (format-defn-metadata-case-form form indent-level)
+            ""))))))
 
-(defn format-defn-metadata-case [meta indent-level]
+(defn format-defn-metadata-forms-loop [forms idx count indent-level pieces]
+  (if (>= idx count)
+    pieces
+    (format-defn-metadata-forms-loop
+      forms (+ idx 1) count indent-level
+      (append-metadata-piece pieces
+        (format-defn-metadata-form (vector-get forms idx) indent-level)))))
+
+(defn format-defn-metadata-forms [meta indent-level]
   (if (> (vector-length meta) 5)
     (let [forms (vector-get meta 5)]
-      (format-defn-metadata-case-loop forms 0 (vector-length forms) indent-level))
+      (if (> (vector-length forms) 0)
+        (format-defn-metadata-forms-loop
+          forms 0 (vector-length forms) indent-level "")
+        ""))
     ""))
 
 (defn format-defn-metadata [decl]
@@ -331,12 +332,14 @@
       (let [pieces-1 (append-metadata-piece "" (format-defn-metadata-params meta))
         pieces-2 (append-metadata-piece pieces-1 (format-defn-metadata-returns meta))
         pieces-3 (append-metadata-piece pieces-2 (format-defn-metadata-doc meta))
-        pieces-4 (append-metadata-piece pieces-3 (format-defn-metadata-example meta))
-        pieces-5 (append-metadata-piece pieces-4 (format-defn-metadata-invariant meta))
-        pieces-6 (append-metadata-piece pieces-5 (format-defn-metadata-case meta 0))
-        pieces-7 (append-metadata-piece pieces-6 (format-defn-metadata-assert meta 0))]
-        (if (> (string-length pieces-7) 0)
-          (string-concat " " pieces-7)
+        ordered (format-defn-metadata-forms meta 0)
+        legacy-1 (append-metadata-piece pieces-3 (format-defn-metadata-example meta))
+        legacy-2 (append-metadata-piece legacy-1 (format-defn-metadata-invariant meta))
+        pieces-4 (if (> (string-length ordered) 0)
+          (append-metadata-piece pieces-3 ordered)
+          legacy-2)]
+        (if (> (string-length pieces-4) 0)
+          (string-concat " " pieces-4)
           "")))))
 
 (defn format-defn-metadata-invariant-with-source [meta source]
@@ -352,22 +355,6 @@
       (string-concat
         (format-expr-list-with-source predicates 0 count indent-level source)
         "]"))))
-
-(defn format-defn-metadata-assert-loop-with-source [forms idx count indent-level source]
-  (if (>= idx count)
-    ""
-    (let [form (vector-get forms idx)]
-      (if (= (vector-get form 0) (contract-form-assert))
-        (format-defn-metadata-assert-form-with-source form indent-level source)
-        (format-defn-metadata-assert-loop-with-source
-          forms (+ idx 1) count indent-level source)))))
-
-(defn format-defn-metadata-assert-with-source [meta indent-level source]
-  (if (> (vector-length meta) 5)
-    (let [forms (vector-get meta 5)]
-      (format-defn-metadata-assert-loop-with-source
-        forms 0 (vector-length forms) indent-level source))
-    ""))
 
 (defn format-defn-metadata-case-expectation-with-source [expectation indent-level source]
   (let [actual-text (format-expr-with-source
@@ -396,21 +383,35 @@
         expectations 0 count indent-level source)
       "]")))
 
-(defn format-defn-metadata-case-loop-with-source
-  [forms idx count indent-level source]
-  (if (>= idx count)
-    ""
-    (let [form (vector-get forms idx)]
-      (if (= (vector-get form 0) (contract-form-case))
-        (format-defn-metadata-case-form-with-source form indent-level source)
-        (format-defn-metadata-case-loop-with-source
-          forms (+ idx 1) count indent-level source)))))
+(defn format-defn-metadata-form-with-source [form source]
+  (let [kind (vector-get form 0)
+    payload (vector-get form 1)]
+    (if (= kind (contract-form-example))
+      (str3 ":example [" payload "]")
+      (if (= kind (contract-form-invariant))
+        (str3 ":invariant " (format-expr-with-source payload 0 source) "")
+        (if (= kind (contract-form-assert))
+          (format-defn-metadata-assert-form-with-source form 0 source)
+          (if (= kind (contract-form-case))
+            (format-defn-metadata-case-form-with-source form 0 source)
+            ""))))))
 
-(defn format-defn-metadata-case-with-source [meta indent-level source]
+(defn format-defn-metadata-forms-with-source-loop
+  [forms idx count source pieces]
+  (if (>= idx count)
+    pieces
+    (format-defn-metadata-forms-with-source-loop
+      forms (+ idx 1) count source
+      (append-metadata-piece pieces
+        (format-defn-metadata-form-with-source (vector-get forms idx) source)))))
+
+(defn format-defn-metadata-forms-with-source [meta source]
   (if (> (vector-length meta) 5)
     (let [forms (vector-get meta 5)]
-      (format-defn-metadata-case-loop-with-source
-        forms 0 (vector-length forms) indent-level source))
+      (if (> (vector-length forms) 0)
+        (format-defn-metadata-forms-with-source-loop
+          forms 0 (vector-length forms) source "")
+        ""))
     ""))
 
 (defn format-defn-metadata-with-source [decl source]
@@ -420,14 +421,15 @@
       (let [pieces-1 (append-metadata-piece "" (format-defn-metadata-params meta))
         pieces-2 (append-metadata-piece pieces-1 (format-defn-metadata-returns meta))
         pieces-3 (append-metadata-piece pieces-2 (format-defn-metadata-doc meta))
-        pieces-4 (append-metadata-piece pieces-3 (format-defn-metadata-example meta))
-        pieces-5 (append-metadata-piece pieces-4 (format-defn-metadata-invariant-with-source meta source))
-        pieces-6 (append-metadata-piece pieces-5
-          (format-defn-metadata-case-with-source meta 0 source))
-        pieces-7 (append-metadata-piece pieces-6
-          (format-defn-metadata-assert-with-source meta 0 source))]
-        (if (> (string-length pieces-7) 0)
-          (string-concat " " pieces-7)
+        ordered (format-defn-metadata-forms-with-source meta source)
+        legacy-1 (append-metadata-piece pieces-3 (format-defn-metadata-example meta))
+        legacy-2 (append-metadata-piece legacy-1
+          (format-defn-metadata-invariant-with-source meta source))
+        pieces-4 (if (> (string-length ordered) 0)
+          (append-metadata-piece pieces-3 ordered)
+          legacy-2)]
+        (if (> (string-length pieces-4) 0)
+          (string-concat " " pieces-4)
           "")))))
 
 (defn format-defn-with-source [decl indent-level source]
