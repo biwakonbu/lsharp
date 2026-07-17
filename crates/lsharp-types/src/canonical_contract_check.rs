@@ -2,9 +2,9 @@
 
 use crate::infer::Infer;
 use crate::metadata_check::{MetadataDiagnostic, Severity};
-use crate::metadata_contract::{ContractSuite, ExecutableContract, ExpectedOutcome};
+use crate::metadata_contract::{ContractSuite, ExecutableContract, ExpectedOutcome, Property};
 use crate::types::Type;
-use lsharp_syntax::ast::{Decl, Expr, Literal, Program};
+use lsharp_syntax::ast::{Decl, Expr, Literal, Param, Program, TypeExpr};
 use lsharp_syntax::metadata::MetadataFormKind;
 use lsharp_syntax::span::Span;
 
@@ -12,6 +12,13 @@ struct AssertionProbe {
     name: String,
     owner: String,
     span: Span,
+}
+
+struct PropertyProbe {
+    name: String,
+    owner: String,
+    span: Span,
+    kind: &'static str,
 }
 
 struct CaseProbe {
@@ -448,6 +455,167 @@ pub(crate) fn check_assertion_types(
             .into_iter()
             .collect(),
     }
+}
+
+/// canonical property の precondition / postcondition を Bool として検査する。
+/// property binder と `result` を synthetic probe の lexical scope に追加し、元 AST は変更しない。
+pub(crate) fn check_property_types(
+    program: &Program,
+    suites: &[ContractSuite],
+) -> Vec<MetadataDiagnostic> {
+    let mut check_program = program.clone();
+    let mut probes = Vec::new();
+
+    for suite in suites {
+        for contract in suite.executable() {
+            let ExecutableContract::Property(property) = contract else {
+                continue;
+            };
+            let params = property_probe_params(property);
+            for predicate in property.preconditions() {
+                let name = format!("lsharp.internal.property#{}", probes.len());
+                check_program.decls.push(Decl::Defn {
+                    span: predicate.source_span(),
+                    name: name.clone(),
+                    params: params.clone(),
+                    return_ty: None,
+                    body: predicate.expression().clone(),
+                    where_clauses: Vec::new(),
+                    metadata: None,
+                });
+                probes.push(PropertyProbe {
+                    name,
+                    owner: suite.owner().as_str().to_string(),
+                    span: predicate.source_span(),
+                    kind: "precondition",
+                });
+            }
+
+            let predicate = property.postcondition();
+            let name = format!("lsharp.internal.property#{}", probes.len());
+            check_program.decls.push(Decl::Defn {
+                span: predicate.source_span(),
+                name: name.clone(),
+                params,
+                return_ty: None,
+                body: predicate.expression().clone(),
+                where_clauses: Vec::new(),
+                metadata: None,
+            });
+            probes.push(PropertyProbe {
+                name,
+                owner: suite.owner().as_str().to_string(),
+                span: predicate.source_span(),
+                kind: "postcondition",
+            });
+        }
+    }
+
+    if probes.is_empty() {
+        return Vec::new();
+    }
+
+    let mut infer = Infer::new();
+    match infer.infer_program(&check_program) {
+        Ok(results) => non_bool_property_diagnostics(&results, &probes),
+        Err(error) => property_inference_error_diagnostic(error, &probes)
+            .into_iter()
+            .collect(),
+    }
+}
+
+fn property_probe_params(property: &Property) -> Vec<Param> {
+    let span = property.source_span();
+    let mut params = property
+        .binders()
+        .iter()
+        .map(|binder| Param {
+            span,
+            name: binder.name().to_string(),
+            ty: Some(canonical_type_expr(binder.ty(), span)),
+        })
+        .collect::<Vec<_>>();
+    if !params.iter().any(|param| param.name == "result") {
+        params.push(Param {
+            span,
+            name: "result".to_string(),
+            ty: None,
+        });
+    }
+    params
+}
+
+fn canonical_type_expr(ty: &Type, span: Span) -> TypeExpr {
+    match ty {
+        Type::Con(name) => TypeExpr::Named(span, name.clone()),
+        Type::Var(id) => TypeExpr::Var(span, format!("t{id}")),
+        Type::Fun(params, result) => TypeExpr::Fun(
+            span,
+            params
+                .iter()
+                .map(|param| canonical_type_expr(param, span))
+                .collect(),
+            Box::new(canonical_type_expr(result, span)),
+        ),
+        Type::App(name, args) => TypeExpr::App(
+            span,
+            Box::new(TypeExpr::Named(span, name.clone())),
+            args.iter()
+                .map(|arg| canonical_type_expr(arg, span))
+                .collect(),
+        ),
+        Type::Record(_, fields) => TypeExpr::Record(
+            span,
+            fields
+                .iter()
+                .map(|(name, field_type)| (name.clone(), canonical_type_expr(field_type, span)))
+                .collect(),
+        ),
+    }
+}
+
+fn non_bool_property_diagnostics(
+    results: &[(String, crate::types::TypeScheme)],
+    probes: &[PropertyProbe],
+) -> Vec<MetadataDiagnostic> {
+    let bool_type = Type::bool();
+    probes
+        .iter()
+        .filter_map(|probe| {
+            let (_, scheme) = results.iter().find(|(name, _)| name == &probe.name)?;
+            let Type::Fun(_, return_type) = &scheme.ty else {
+                return None;
+            };
+            if return_type.as_ref() == &bool_type {
+                return None;
+            }
+            Some(MetadataDiagnostic {
+                severity: Severity::Error,
+                message: format!(
+                    ":property {} は Bool 必須ですが、{} が推論されました",
+                    probe.kind, return_type
+                ),
+                span: probe.span,
+                function_name: probe.owner.clone(),
+            })
+        })
+        .collect()
+}
+
+fn property_inference_error_diagnostic(
+    error: crate::infer::TypeError,
+    probes: &[PropertyProbe],
+) -> Option<MetadataDiagnostic> {
+    let error_span = error.span()?;
+    let probe = probes
+        .iter()
+        .find(|probe| contains(probe.span, error_span))?;
+    Some(MetadataDiagnostic {
+        severity: Severity::Error,
+        message: format!(":property {} の型推論に失敗しました: {error}", probe.kind),
+        span: error_span,
+        function_name: probe.owner.clone(),
+    })
 }
 
 fn non_bool_assertion_diagnostics(

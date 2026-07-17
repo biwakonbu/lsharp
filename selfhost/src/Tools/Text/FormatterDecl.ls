@@ -306,7 +306,9 @@
           (format-defn-metadata-assert-form form indent-level)
           (if (= kind (contract-form-case))
             (format-defn-metadata-case-form form indent-level)
-            ""))))))
+            (if (= kind (contract-form-property))
+              (str3 ":property [" payload "]")
+              "")))))))
 
 (defn format-defn-metadata-forms-loop [forms idx count indent-level pieces]
   (if (>= idx count)
@@ -394,7 +396,9 @@
           (format-defn-metadata-assert-form-with-source form 0 source)
           (if (= kind (contract-form-case))
             (format-defn-metadata-case-form-with-source form 0 source)
-            ""))))))
+            (if (= kind (contract-form-property))
+              (str3 ":property [" payload "]")
+              "")))))))
 
 (defn format-defn-metadata-forms-with-source-loop
   [forms idx count source pieces]

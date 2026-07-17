@@ -205,3 +205,49 @@ fn canonical_property_rejects_literal_true_postcondition_as_vacuous() {
     assert!(diagnostic.message.contains("vacuous"));
     assert_eq!(diagnostic.function_name, "identity");
 }
+
+#[test]
+fn canonical_property_requires_bool_postcondition() {
+    const SOURCE: &str =
+        "(defn identity [x] :property [(for-all [x Int] :postcondition (+ result 1))] x)";
+    let program = parse(SOURCE).expect("non-Bool property postcondition は parse できるべき");
+
+    let diagnostics = check_metadata(&program);
+
+    assert_eq!(diagnostics.len(), 1, "non-Bool postcondition を成功扱いしてはならない");
+    let diagnostic = &diagnostics[0];
+    assert_eq!(diagnostic.severity, Severity::Error);
+    assert!(diagnostic.message.contains(":property postcondition は Bool 必須"));
+    assert!(diagnostic.message.contains("Int"));
+    assert_eq!(diagnostic.function_name, "identity");
+    assert_eq!(
+        &SOURCE[diagnostic.span.start..diagnostic.span.end],
+        "(+ result 1)"
+    );
+}
+
+#[test]
+fn canonical_property_requires_bool_preconditions() {
+    const SOURCE: &str = "(defn identity [x] :property [(for-all [x Int] :precondition [(+ x 1)] :postcondition (>= result 0))] x)";
+    let program = parse(SOURCE).expect("non-Bool property precondition は parse できるべき");
+
+    let diagnostics = check_metadata(&program);
+
+    assert_eq!(diagnostics.len(), 1, "non-Bool precondition を成功扱いしてはならない");
+    let diagnostic = &diagnostics[0];
+    assert_eq!(diagnostic.severity, Severity::Error);
+    assert!(diagnostic.message.contains(":property precondition は Bool 必須"));
+    assert!(diagnostic.message.contains("Int"));
+    assert_eq!(diagnostic.function_name, "identity");
+    assert_eq!(&SOURCE[diagnostic.span.start..diagnostic.span.end], "(+ x 1)");
+}
+
+#[test]
+fn canonical_property_accepts_bool_predicates_in_binder_scope() {
+    const SOURCE: &str = "(defn identity [x] :property [(for-all [x Int] :precondition [(>= x 0)] :postcondition (>= result 0))] x)";
+    let program = parse(SOURCE).expect("Bool property predicates は parse できるべき");
+
+    let diagnostics = check_metadata(&program);
+
+    assert!(diagnostics.is_empty(), "valid property を拒否してはならない: {diagnostics:?}");
+}

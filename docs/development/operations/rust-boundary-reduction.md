@@ -132,9 +132,21 @@ Rust `Syntax.Parser` は `:property` の typed binder、precondition/postconditi
 
 Selfhost `Syntax.Parser` は ordered form kind `5` と bracket-aware raw payload を保持し、`Tools.Test.TestRunner` は declaration tree の property を検出する。typed projection / sampling / evaluator が未実装の間は、`App.Cli` と `App.EmbeddedCli` の `run-test-source` が既存 preflight 形式で `diagnostics:1,LS3002` と runtime error を返す。
 
-Evidence: `metadata_property` 2件、`metadata_contract_property` 2件、`metadata_contract_check` の property 4件を含む focused tests、`test_run_metadata_tests_rejects_unimplemented_property_runner`、`test_e2e_selfhost_parser_preserves_ordered_property_forms`、`test_e2e_selfhost_runner_reports_unimplemented_property_boundary`、`test_selfhost_cli_sources_route_property_runner_boundary`、`./target/debug/lsharp check selfhost/src/Tools/Test/TestRunner.ls` / `Cli.ls` / `EmbeddedCli.ls`。full CLI bundle の runtime/manual gate は型推論待ち時間が大きいためこの slice の default gate へ追加していない。
+Evidence: `metadata_property` 2件、`metadata_contract_property` 2件、`metadata_contract_check` の property 7件を含む focused tests、`test_run_metadata_tests_rejects_unimplemented_property_runner`、`test_e2e_selfhost_parser_preserves_ordered_property_forms`、`test_e2e_selfhost_runner_reports_unimplemented_property_boundary`、`test_selfhost_cli_sources_route_property_runner_boundary`、`./target/debug/lsharp check selfhost/src/Tools/Test/TestRunner.ls` / `Cli.ls` / `EmbeddedCli.ls`。full CLI bundle の runtime/manual gate は型推論待ち時間が大きいためこの slice の default gate へ追加していない。
 
-これは Rust typed metadata と selfhost raw payload/明示拒否の verified slice であり、selfhost typed binder projection、property non-vacuity の全条件、type-directed sampling/shrink、property evaluator、Rust/selfhost diagnostic/span parity、Wasm artifact/runtime、Mac Apple Silicon / Linux x86_64 の current-source native gate、formatter/docs/public command parity は残件である。したがって EC-M1-03、EC-M1-04、または全機能 Rust-free 完了には使わず、Rust oracle / bootstrap 境界を維持する。
+これは Rust typed metadata と selfhost raw payload/明示拒否の verified slice であり、selfhost typed binder projection、property non-vacuity の全条件、type-directed sampling/shrink、property evaluator、Rust/selfhost diagnostic/span parity、Wasm artifact/runtime、Mac Apple Silicon / Linux x86_64 の current-source native gate、formatter の typed projection と docs/public command parity は残件である。したがって EC-M1-03、EC-M1-04、または全機能 Rust-free 完了には使わず、Rust oracle / bootstrap 境界を維持する。
+
+### EC-M1-03 selfhost canonical `:property` formatter bridge (2026-07-18)
+
+Selfhost `Tools.Text.FormatterDecl` は ordered form kind `5` の raw payload を source-aware / canonical formatter の両方で `:property [...]` として再構成する。typed projection や evaluator が未実装でも、canonical property の binder、sampling options、precondition、postcondition、body を formatter が削除・並べ替えしないことを固定した。
+
+Evidence: RED の `test_e2e_selfhost_formatter_roundtrips_canonical_property_form`、GREEN の同 test、`./target/debug/lsharp check selfhost/src/Tools/Text/FormatterDecl.ls`。これは raw payload round-trip の verified slice であり、selfhost typed projection、property evaluation、diagnostic/span parity、Wasm artifact/runtime、Mac Apple Silicon / Linux x86_64 の current-source native gate は残件である。
+
+### EC-M1-04 Rust canonical `:property` predicate type-check bridge (2026-07-18)
+
+Rust `metadata_check::check_metadata` は canonical `ExecutableContract::Property` の precondition / postcondition を property binder と synthetic `result` の lexical scopeで HM 型推論へ渡し、戻り値が正確に `Bool` であることを要求する。非 `Bool` は predicate source span と owner を持つ `MetadataDiagnostic` として拒否し、valid Bool predicates は受理する。元の AST と既存の assertion / case checker は変更しない。
+
+Evidence: `canonical_property_requires_bool_postcondition`、`canonical_property_requires_bool_preconditions`、`canonical_property_accepts_bool_predicates_in_binder_scope`、`cargo test -p lsharp-types --test metadata_contract_check -- --nocapture`（14 tests）、`cargo test -p lsharp-syntax --test metadata_property -- --nocapture`（2 tests）。この slice は property の戻り値型を owner の関数型へ結び付ける検査、type-directed sampling/shrink、evaluator、selfhost detailed diagnostic parity、Wasm artifact/runtime、Mac Apple Silicon / Linux x86_64 の native gateをまだ閉じていないため、EC-M1-04 や全機能 Rust-free 完了には使わない。
 
 ### scoped polymorphic `defn` signature (2026-07-15)
 

@@ -228,6 +228,31 @@ fn test_e2e_selfhost_formatter_roundtrips_canonical_case_form() {
     );
 }
 
+/// EC-M1-03: canonical :property は source-aware/canonical formatter で削除されない。
+#[test]
+fn test_e2e_selfhost_formatter_roundtrips_canonical_property_form() {
+    let output = run_formatter_source_harness(
+        r#"
+(module Main)
+(defn main []
+  (let [src "(defn abs [x] :property [(for-all [x Int] :cases 12 :seed 81042 :shrink false :precondition [(>= x -100)] :postcondition (>= result 0))] (if (< x 0) (- 0 x) x))"
+        program (parse-program src)
+        formatted (format-program-with-source program src)
+        canonical (format-program program 0)]
+    (do
+      (print-string formatted)
+      (print-string canonical)
+      0)))
+"#,
+    );
+
+    assert_eq!(
+        output,
+        "(defn abs [x] :property [(for-all [x Int] :cases 12 :seed 81042 :shrink false :precondition [(>= x -100)] :postcondition (>= result 0))] (if (< x 0) (- 0 x) x))\n(defn abs [x] :property [(for-all [x Int] :cases 12 :seed 81042 :shrink false :precondition [(>= x -100)] :postcondition (>= result 0))] (if (< x 0) (- 0 x) x))\n",
+        "canonical :property は source-aware/canonical formatter で raw payload と body を保持するべき"
+    );
+}
+
 /// EC-M1-03: formatter は複数の ordered contract form を順序どおり保持する。
 #[test]
 fn test_e2e_selfhost_formatter_preserves_multiple_ordered_contract_forms() {
