@@ -844,7 +844,7 @@ fn test_native_codegen_x86_vector_and_ref_helper_call_sites_resolve_offsets() {
     assert_eq!(
         lines,
         vec![
-            4547, 4666, 4683, 4730, 4935, 5008, 5026, 7, 81, 232, 189, 9, 0, 0, 89, 7, 81, 232, 52,
+            4549, 4666, 4683, 4730, 4935, 5008, 5026, 7, 81, 232, 191, 9, 0, 0, 89, 7, 81, 232, 52,
             10, 0, 0, 89, 5, 232, 70, 10, 0, 0, 5, 232, 117, 10, 0, 0, 7, 81, 232, 65, 11, 0, 0,
             89, 7, 81, 232, 138, 11, 0, 0, 89, 5, 232, 157, 11, 0, 0,
         ],
@@ -1520,6 +1520,33 @@ fn test_native_codegen_x86_vector_new_preserves_capacity_across_syscall() {
         lines,
         vec![119, 81, 80, 72, 120, 63, 65, 91, 68, 137, 88, 4],
         "x86_64 vector-new helper は syscall が r11 を壊しても capacity を vector header に保存する必要がある"
+    );
+}
+
+#[test]
+fn test_native_codegen_x86_vector_new_call_targets_executable_entry_after_prefix() {
+    let lines = run_x86_selfhost_runtime_helper_harness(
+        "native-stage23-x86-vector-new-call-entry",
+        r#"  (let [helper (emit-x86-selfhost-vector-new-helper)]
+    (do
+      (print (x86-helper-base-offset 4096 10))
+      (print (x86-selfhost-vector-new-helper-offset 4096 10))
+      (print (vector-length helper))
+      (print (vector-get helper 2))
+      (print (vector-get helper 3))
+      (print (vector-get helper 4))
+      (print (vector-get helper 5))
+      (print (vector-get helper 6))
+      (print (vector-get helper 7))
+      (print (vector-get helper 8))
+      (print (vector-get helper 9))
+      0))"#,
+    );
+
+    assert_eq!(
+        lines,
+        vec![4097, 4549, 119, 72, 141, 52, 197, 16, 0, 0, 0],
+        "x86 vector-new call は無効な 2-byte prefix ではなく mmap 準備命令の先頭へ分岐するべき"
     );
 }
 
