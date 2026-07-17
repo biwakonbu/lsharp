@@ -40,6 +40,37 @@
         (vector-get metadata 5)
         0))))
 
+(defn canonical-unprivate-decl [decl]
+  (if (= (vector-get decl 0) (ast-private))
+    (canonical-unprivate-decl (vector-get decl 1))
+    decl))
+
+;; module の flattened body を infer-program-analysis が受け取れる vector に戻す。
+(defn canonical-module-program-loop [module-node idx count result]
+  (if (>= idx count)
+    result
+    (let [raw-decl (vector-get module-node (+ 3 idx))
+      decl (canonical-unprivate-decl raw-decl)
+      next-result (vector-push-single-rooted result decl)]
+      (do
+        (root_push next-result)
+        (let [parsed (canonical-module-program-loop module-node (+ idx 1) count next-result)]
+          (do
+            (root_pop)
+            parsed))))))
+
+(defn canonical-module-program [module-node]
+  (let [count (if (> (vector-length module-node) 2) (vector-get module-node 2) 0)
+    result (vector-new 0)]
+    (do
+      (root_push module-node)
+      (root_push result)
+      (let [parsed (canonical-module-program-loop module-node 0 count result)]
+        (do
+          (root_pop)
+          (root_pop)
+          parsed)))))
+
 (defn assertion-contains-param-loop [predicate decl idx count]
   (if (>= idx count)
     0
@@ -135,7 +166,7 @@
         0
         0))))
 
-(defn check-program-assertions-loop
+(defn check-module-program-loop
   [program idx count env counter diagnostic-count first-error-code]
   (if (>= idx count)
     (assertion-check-state diagnostic-count first-error-code)
@@ -147,7 +178,7 @@
       state-first-code (vector-get state 1)
       next-first-code
         (if (= first-error-code 0) state-first-code first-error-code)]
-      (check-program-assertions-loop
+      (check-module-program-loop
         program
         (+ idx 1)
         count
@@ -155,6 +186,60 @@
         counter
         next-count
         next-first-code))))
+
+(defn check-module-assertions [module-node]
+  (let [module-program (canonical-module-program module-node)]
+    (let [analysis (infer-program-analysis module-program)
+      counter (typeinfer-make-alias-aware-counter module-program)
+      env (infer-program-analysis-env analysis)]
+      (check-module-program-loop
+        module-program
+        0
+        (vector-length module-program)
+        env
+        counter
+        0
+        0))))
+
+(defn check-program-assertions-loop
+  [program idx count env counter diagnostic-count first-error-code]
+  (if (>= idx count)
+    (assertion-check-state diagnostic-count first-error-code)
+    (let [decl (vector-get program idx)]
+      (do
+        (root_push decl)
+        (let [tag (vector-get decl 0)
+          state (if (= tag (ast-defn))
+            (check-defn-assertions decl env counter)
+            (if (= tag (ast-module-decl))
+              (check-module-assertions decl)
+              (if (= tag (ast-private))
+                (let [inner (canonical-unprivate-decl decl)
+                  inner-tag (vector-get inner 0)]
+                  (if (= inner-tag (ast-defn))
+                    (check-defn-assertions inner env counter)
+                    (if (= inner-tag (ast-module-decl))
+                      (check-module-assertions inner)
+                      (assertion-check-state 0 0))))
+                (assertion-check-state 0 0))))]
+          (do
+            (root_push state)
+            (let [next-count (+ diagnostic-count (vector-get state 0))
+              state-first-code (vector-get state 1)
+              next-first-code
+                (if (= first-error-code 0) state-first-code first-error-code)
+              result (check-program-assertions-loop
+                program
+                (+ idx 1)
+                count
+                env
+                counter
+                next-count
+                next-first-code)]
+              (do
+                (root_pop)
+                (root_pop)
+                result))))))))
 
 (defn check-canonical-assertions-with-analysis [program analysis]
   (let [counter (typeinfer-make-alias-aware-counter program)

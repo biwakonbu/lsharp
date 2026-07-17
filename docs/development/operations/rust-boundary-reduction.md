@@ -68,7 +68,9 @@ Selfhost `Types.TypeInferAssertions` は parser-owned canonical `:assert` predic
 
 Evidence: RED で未定義の `check-canonical-assertions` を固定した後、`test_e2e_selfhost_metadata_check_rejects_non_bool_canonical_assertion` が selfhost parser/TypeInfer bundle 上で non-Bool `1,1002`、valid Bool `0,0`、undefined `1,1001`、parameter capture `1,1001` を確認、`cargo run --quiet --bin lsharp -- check selfhost/src/Types/TypeInferAssertions.ls` / `Cli.ls` / `EmbeddedCli.ls`、`git diff --check`、`bash scripts/audit_docs.sh`。
 
-これは Rust の synthetic HM probe と同じ全体 parity を閉じたものではなく、selfhost `TypeInfer` の解析済み global env を使う narrow static preflight である。predicate span、Rust checker と同じ型エラーの詳細・code/span parity、module/private-local scope、full CLI bundle の runtime/manual gate、non-vacuity、Mac Apple Silicon / Linux x86_64 の native artifact/runtime parity は残件である。この slice だけで EC-M1-04 や全機能 Rust-free 完了とは扱わない。
+同じ E2E で flattened module body と `private` 宣言を走査し、module/private 内の non-Bool predicate と、module-local helper の `Int` 結果をそれぞれ `1,1002` として検出することも確認した。module body は selfhost の AST 表現から専用 program vector へ戻し、module 内だけの TypeInfer environment を使う。loop 再帰中の module decl は root して、inference allocation による AST 消失を防ぐ。
+
+これは Rust の synthetic HM probe と同じ全体 parity を閉じたものではなく、selfhost `TypeInfer` の解析済み environment を使う narrow static preflight である。predicate span、Rust checker と同じ型エラーの詳細・code/span parity、nested module、full CLI bundle の runtime/manual gate、non-vacuity、Mac Apple Silicon / Linux x86_64 の native artifact/runtime parity は残件である。この slice だけで EC-M1-04 や全機能 Rust-free 完了とは扱わない。
 
 ### scoped polymorphic `defn` signature (2026-07-15)
 

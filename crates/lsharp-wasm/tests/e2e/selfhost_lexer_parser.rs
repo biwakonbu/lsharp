@@ -13,7 +13,15 @@ fn test_e2e_selfhost_metadata_check_rejects_non_bool_canonical_assertion() {
         undefined-program (parse-program "(defn positive [] :assert [missing] true)")
         undefined-result (check-canonical-assertions undefined-program)
         parameter-program (parse-program "(defn positive [x] :assert [x] x)")
-        parameter-result (check-canonical-assertions parameter-program)]
+        parameter-result (check-canonical-assertions parameter-program)
+        module-program (parse-program "(module Demo (defn positive [] :assert [(+ 1 2)] true))")
+        module-result (check-canonical-assertions module-program)
+        private-program (parse-program "(module Demo (private (defn positive [] :assert [(+ 1 2)] true)))")
+        private-result (check-canonical-assertions private-program)
+        module-helper-program (parse-program "(module Demo (defn helper [x] x) (defn positive [] :assert [(helper 1)] true))")
+        module-helper-result (check-canonical-assertions module-helper-program)
+        private-helper-program (parse-program "(module Demo (private (defn helper [x] x)) (defn positive [] :assert [(helper 1)] true))")
+        private-helper-result (check-canonical-assertions private-helper-program)]
     (do
       (print (vector-get result 0))
       (print (vector-get result 1))
@@ -23,10 +31,22 @@ fn test_e2e_selfhost_metadata_check_rejects_non_bool_canonical_assertion() {
       (print (vector-get undefined-result 1))
       (print (vector-get parameter-result 0))
       (print (vector-get parameter-result 1))
+      (print (vector-get module-result 0))
+      (print (vector-get module-result 1))
+      (print (vector-get private-result 0))
+      (print (vector-get private-result 1))
+      (print (vector-get module-helper-result 0))
+      (print (vector-get module-helper-result 1))
+      (print (vector-get private-helper-result 0))
+      (print (vector-get private-helper-result 1))
       0)))
 "#;
 
-    let combined = format!("{}\n{}", selfhost_parser_typeinfer_runtime_bundle(), harness);
+    let combined = format!(
+        "{}\n{}",
+        selfhost_parser_typeinfer_runtime_bundle(),
+        harness
+    );
     let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
         compile_and_run(&combined)
     });
@@ -34,7 +54,10 @@ fn test_e2e_selfhost_metadata_check_rejects_non_bool_canonical_assertion() {
 
     assert_eq!(
         lines,
-        ["1", "1002", "0", "0", "1", "1001", "1", "1001"]
+        [
+            "1", "1002", "0", "0", "1", "1001", "1", "1001", "1", "1002", "1", "1002", "1", "1002",
+            "1", "1002",
+        ]
     );
 }
 
