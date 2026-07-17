@@ -87,3 +87,24 @@ fn test_e2e_selfhost_formatter_format_program_with_source_defn_metadata() {
         "format-program-with-source は defn metadata を canonical 順で保持するべき"
     );
 }
+
+/// EC-M1-02: source-aware formatter が legacy :invariant metadata を保持できること
+#[test]
+fn test_e2e_selfhost_formatter_format_program_with_source_invariant_metadata() {
+    let output = run_formatter_source_harness(
+        r#"
+(module Main)
+(defn main []
+  (let [src "(defn succ [x] :invariant (= result (+ x 1)) :doc \"successor\" (+ x 1))"
+        program (parse-program src)]
+    (do
+      (print-string (format-program-with-source program src))
+      0)))
+"#,
+    );
+
+    assert_eq!(
+        output, "(defn succ [x] :doc \"successor\" :invariant (= result (+ x 1)) (+ x 1))\n",
+        "format-program-with-source は legacy :invariant metadata を保持するべき"
+    );
+}

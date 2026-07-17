@@ -790,8 +790,8 @@ fn test_e2e_selfhost_parser_defn_preserves_doc_example_metadata() {
     );
     assert_eq!(lines[1], "1", "body は apply ノードのまま保持されるべき");
     assert_eq!(
-        lines[2], "4",
-        "metadata entry は doc/example/params/returns の 4 件であるべき"
+        lines[2], "5",
+        "metadata entry は doc/example/params/returns/invariant の 5 件であるべき"
     );
     assert_eq!(lines[3], "0", ":params なしでは空 vector を保持するべき");
     assert_eq!(lines[4], "0", ":returns なしでは空文字列を保持するべき");
@@ -841,8 +841,8 @@ fn test_e2e_selfhost_parser_defn_preserves_params_returns_metadata() {
     );
     assert_eq!(lines[1], "1", "body は apply ノードのまま保持されるべき");
     assert_eq!(
-        lines[2], "4",
-        "metadata entry は doc/example/params/returns の 4 件であるべき"
+        lines[2], "5",
+        "metadata entry は doc/example/params/returns/invariant の 5 件であるべき"
     );
     assert_eq!(lines[3], "2", "params metadata は 2 件であるべき");
     assert_eq!(lines[4], "1", "1件目 param 名 hash は x であるべき");
@@ -850,6 +850,33 @@ fn test_e2e_selfhost_parser_defn_preserves_params_returns_metadata() {
     assert_eq!(lines[6], "1", "2件目 param 名 hash は y であるべき");
     assert_eq!(lines[7], "right", "2件目 param doc が保持されるべき");
     assert_eq!(lines[8], "sum", ":returns string が保持されるべき");
+}
+
+/// EC-M1-02: defn の legacy :invariant metadata を AST として保持できる
+#[test]
+fn test_e2e_selfhost_parser_defn_preserves_invariant_metadata() {
+    let harness = r#"
+(defn main []
+  (let [node (vector-get (parse-program "(defn succ [x] :invariant (= result (+ x 1)) (+ x 1))") 0)
+        body (vector-get node 4)
+        meta (vector-get node 5)
+        invariant (vector-get meta 4)]
+    (do
+      (print (vector-length node))
+      (print (vector-length meta))
+      (print (if (= (vector-get body 0) (ast-apply)) 1 0))
+      (print (if (= (vector-get invariant 0) (ast-apply)) 1 0))
+      0)))
+"#;
+
+    let output = run_parser_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["6", "5", "1", "1"],
+        "selfhost parser は legacy :invariant と defn body を同時に保持するべき"
+    );
 }
 
 /// TEST-SYNTAX-04: Hygiene.ls gensym/scope-id/expansion trace

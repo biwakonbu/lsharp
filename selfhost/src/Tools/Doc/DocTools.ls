@@ -111,7 +111,7 @@
       next-result (extract-type-definitions-decl inner-decl result)]
       (extract-type-definitions-module-body decl next-result (+ idx 1) count))))
 
-;; defn ノード末尾の metadata vector [doc-string, example-string, params, returns] を参照する
+;; defn ノード末尾の metadata vector [doc-string, example-string, params, returns, invariant-expr] を参照する
 (defn extract-defn-metadata [decl]
   (let [param-count (vector-get decl 2)
     meta-idx (+ 4 param-count)]

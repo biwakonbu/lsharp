@@ -702,16 +702,16 @@
         (root_pop)
         result))))
 
-;; defn 用メタデータパーサー: :doc / :example / :params / :returns を記録する
-;; 返却: [doc-string, example-text, params-vector, returns-string]
+;; defn 用メタデータパーサー: :doc / :example / :params / :returns / :invariant を記録する
+;; 返却: [doc-string, example-text, params-vector, returns-string, invariant-expr]
 (defn make-empty-defn-metadata-v3 []
   (let [params0 (vector-new 0)]
     (do
       (root_push params0)
-      (let [meta (vector-push-quad-rooted-v3 (vector-new 4) "" "" params0 "")]
+      (let [meta4 (vector-push-quad-rooted-v3 (vector-new 4) "" "" params0 "")]
         (do
           (root_pop)
-          meta)))))
+          (vector-push-single-rooted-v3 meta4 0))))))
 
 (defn parse-defn-metadata-v3 [spans pos-ref src]
   (parse-defn-metadata-loop-v3 spans pos-ref src (make-empty-defn-metadata-v3)))
@@ -735,9 +735,11 @@
                   (parse-defn-meta-params-v3 spans pos-ref src meta)
                   (if (string-eq dir-name "returns")
                     (parse-defn-meta-returns-v3 spans pos-ref src meta)
-                    (do
-                      (skip-directive-payload-v3 spans pos-ref)
-                      (parse-defn-metadata-loop-rooted-v3 spans pos-ref src meta))))))]
+                    (if (string-eq dir-name "invariant")
+                      (parse-defn-meta-invariant-v3 spans pos-ref src meta)
+                      (do
+                        (skip-directive-payload-v3 spans pos-ref)
+                        (parse-defn-metadata-loop-rooted-v3 spans pos-ref src meta)))))))]
             (do
               (root_pop)
               (root_pop)
@@ -923,6 +925,16 @@
       (skip-directive-payload-v3 spans pos-ref)
       (parse-defn-metadata-loop-v3 spans pos-ref src meta))))
 
+;; :invariant expr — 事後条件 AST を保持する
+(defn parse-defn-meta-invariant-v3 [spans pos-ref src meta]
+  (let [predicate (parse-expr-v3 spans pos-ref src)]
+    (do
+      (root_push predicate)
+      (let [updated (vector-set-at-rooted-v3 meta 4 predicate)]
+        (do
+          (root_pop)
+          (parse-defn-metadata-loop-v3 spans pos-ref src updated))))))
+
 (defn defn-metadata-present-v3 [meta]
   (if (> (string-length (vector-get meta 0)) 0)
     1
@@ -932,7 +944,9 @@
         1
         (if (> (string-length (vector-get meta 3)) 0)
           1
-          0)))))
+          (if (= (vector-get meta 4) 0)
+            0
+            1))))))
 
 (defn finalize-defn-body-v3 [body defn-node]
   (do

@@ -249,6 +249,12 @@
       (string-concat ":example [" (string-concat example-text "]"))
       "")))
 
+(defn format-defn-metadata-invariant [meta]
+  (let [predicate (vector-get meta 4)]
+    (if (= predicate 0)
+      ""
+      (string-concat ":invariant " (format-expr predicate 0)))))
+
 (defn format-defn-metadata [decl]
   (let [meta (extract-defn-metadata decl)]
     (if (= meta 0)
@@ -256,16 +262,36 @@
       (let [pieces-1 (append-metadata-piece "" (format-defn-metadata-params meta))
         pieces-2 (append-metadata-piece pieces-1 (format-defn-metadata-returns meta))
         pieces-3 (append-metadata-piece pieces-2 (format-defn-metadata-doc meta))
-        pieces-4 (append-metadata-piece pieces-3 (format-defn-metadata-example meta))]
-        (if (> (string-length pieces-4) 0)
-          (string-concat " " pieces-4)
+        pieces-4 (append-metadata-piece pieces-3 (format-defn-metadata-example meta))
+        pieces-5 (append-metadata-piece pieces-4 (format-defn-metadata-invariant meta))]
+        (if (> (string-length pieces-5) 0)
+          (string-concat " " pieces-5)
+          "")))))
+
+(defn format-defn-metadata-invariant-with-source [meta source]
+  (let [predicate (vector-get meta 4)]
+    (if (= predicate 0)
+      ""
+      (string-concat ":invariant " (format-expr-with-source predicate 0 source)))))
+
+(defn format-defn-metadata-with-source [decl source]
+  (let [meta (extract-defn-metadata decl)]
+    (if (= meta 0)
+      ""
+      (let [pieces-1 (append-metadata-piece "" (format-defn-metadata-params meta))
+        pieces-2 (append-metadata-piece pieces-1 (format-defn-metadata-returns meta))
+        pieces-3 (append-metadata-piece pieces-2 (format-defn-metadata-doc meta))
+        pieces-4 (append-metadata-piece pieces-3 (format-defn-metadata-example meta))
+        pieces-5 (append-metadata-piece pieces-4 (format-defn-metadata-invariant-with-source meta source))]
+        (if (> (string-length pieces-5) 0)
+          (string-concat " " pieces-5)
           "")))))
 
 (defn format-defn-with-source [decl indent-level source]
   (let [name-text (symbol-from-hash (vector-get decl 1))
     param-count (vector-get decl 2)
     params-text (format-hash-list decl 3 param-count)
-    metadata-text (format-defn-metadata decl)
+    metadata-text (format-defn-metadata-with-source decl source)
     body-text (format-expr-with-source (vector-get decl (+ 3 param-count)) indent-level source)]
     (str3 (str7 "(defn " name-text " [" params-text "]" metadata-text " ") body-text ")")))
 
