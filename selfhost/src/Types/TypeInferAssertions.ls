@@ -11,6 +11,9 @@
 (defn canonical-assertion-non-bool-code [] 1002)
 (defn canonical-assertion-empty-code [] 2004)
 (defn canonical-assertion-vacuous-code [] 2005)
+(defn canonical-case-type-error-code [] 1001)
+(defn canonical-case-value-error-code [] 1002)
+(defn canonical-case-empty-code [] 2006)
 
 (defn assertion-check-state [diagnostic-count first-error-code]
   (vector-push-pair-rooted
@@ -176,6 +179,119 @@
         0
         0))))
 
+;; canonical :case は owner の引数や result を暗黙に束縛しない。
+(defn canonical-case-primitive-kind [resolved]
+  (if (= (type-tag resolved) (ty-con))
+    (if (= (type-name resolved) (hash-int))
+      1
+      (if (= (type-name resolved) (hash-bool)) 2 0))
+    0))
+
+(defn check-case-expectation [pair decl env counter]
+  (let [actual (vector-get pair 0)
+    expected (vector-get pair 1)
+    parameter-count (vector-get decl 2)]
+    (if (or
+      (= (assertion-contains-param-loop actual decl 0 parameter-count) 1)
+      (= (assertion-contains-param-loop expected decl 0 parameter-count) 1))
+      (canonical-case-type-error-code)
+      (let [actual-result (infer-expr actual env (subst-new) counter)]
+        (if (= (result-failed actual-result) 1)
+          (canonical-case-type-error-code)
+          (let [actual-type (apply-subst
+              (result-subst actual-result)
+              (result-type actual-result))
+            actual-kind (canonical-case-primitive-kind actual-type)
+            expected-result (infer-expr expected env (subst-new) counter)]
+            (if (= (result-failed expected-result) 1)
+              (canonical-case-type-error-code)
+              (let [expected-type (apply-subst
+                  (result-subst expected-result)
+                  (result-type expected-result))
+                expected-kind (canonical-case-primitive-kind expected-type)]
+                (if (or (= actual-kind 0) (= expected-kind 0))
+                  (canonical-case-value-error-code)
+                  (if (= actual-kind expected-kind)
+                    0
+                    (canonical-case-value-error-code)))))))))))
+
+(defn check-case-expectations-loop
+  [expectations idx count decl env counter diagnostic-count first-error-code]
+  (if (>= idx count)
+    (assertion-check-state diagnostic-count first-error-code)
+    (let [code (check-case-expectation
+        (vector-get expectations idx)
+        decl
+        env
+        counter)
+      next-count (if (> code 0) (+ diagnostic-count 1) diagnostic-count)
+      next-first-error-code
+        (if (= first-error-code 0) code first-error-code)]
+      (check-case-expectations-loop
+        expectations
+        (+ idx 1)
+        count
+        decl
+        env
+        counter
+        next-count
+        next-first-error-code))))
+
+(defn check-case-form [form decl env counter diagnostic-count first-error-code]
+  (if (= (vector-get form 0) (contract-form-case))
+    (let [expectations (vector-get form 1)]
+      (if (= (vector-length expectations) 0)
+        (assertion-check-state
+          (+ diagnostic-count 1)
+          (if (= first-error-code 0)
+            (canonical-case-empty-code)
+            first-error-code))
+        (check-case-expectations-loop
+          expectations
+          0
+          (vector-length expectations)
+          decl
+          env
+          counter
+          diagnostic-count
+          first-error-code)))
+    (assertion-check-state diagnostic-count first-error-code)))
+
+(defn check-case-forms-loop
+  [forms idx count decl env counter diagnostic-count first-error-code]
+  (if (>= idx count)
+    (assertion-check-state diagnostic-count first-error-code)
+    (let [state (check-case-form
+        (vector-get forms idx)
+        decl
+        env
+        counter
+        diagnostic-count
+        first-error-code)]
+      (check-case-forms-loop
+        forms
+        (+ idx 1)
+        count
+        decl
+        env
+        counter
+        (vector-get state 0)
+        (vector-get state 1)))))
+
+(defn check-defn-cases [decl env counter]
+  (let [forms (defn-ordered-forms decl)]
+    (if (= forms 0)
+      (assertion-check-state 0 0)
+      (check-case-forms-loop
+        forms
+        0
+        (vector-length forms)
+        decl
+        env
+        counter
+        0
+        0))))
+
 (defn check-module-program-loop
   [program idx count env counter diagnostic-count first-error-code]
   (if (>= idx count)
@@ -277,3 +393,105 @@
 (defn check-canonical-assertions [program]
   (let [analysis (infer-program-analysis program)]
     (check-canonical-assertions-with-analysis program analysis)))
+
+(defn check-case-module-program-loop
+  [program idx count env counter diagnostic-count first-error-code]
+  (if (>= idx count)
+    (assertion-check-state diagnostic-count first-error-code)
+    (let [decl (vector-get program idx)]
+      (do
+        (root_push decl)
+        (let [tag (vector-get decl 0)
+          state (if (= tag (ast-defn))
+            (check-defn-cases decl env counter)
+            (if (= tag (ast-module-decl))
+              (check-case-module decl)
+              (assertion-check-state 0 0)))]
+          (do
+            (root_push state)
+            (let [next-count (+ diagnostic-count (vector-get state 0))
+              state-first-code (vector-get state 1)
+              next-first-code
+                (if (= first-error-code 0) state-first-code first-error-code)
+              result (check-case-module-program-loop
+                program
+                (+ idx 1)
+                count
+                env
+                counter
+                next-count
+                next-first-code)]
+              (do
+                (root_pop)
+                (root_pop)
+                result))))))))
+
+(defn check-case-module [module-node]
+  (let [module-program (canonical-module-program module-node)]
+    (let [analysis (infer-program-analysis module-program)
+      counter (typeinfer-make-alias-aware-counter module-program)
+      env (infer-program-analysis-env analysis)]
+      (check-case-module-program-loop
+        module-program
+        0
+        (vector-length module-program)
+        env
+        counter
+        0
+        0))))
+
+(defn check-case-program-loop
+  [program idx count env counter diagnostic-count first-error-code]
+  (if (>= idx count)
+    (assertion-check-state diagnostic-count first-error-code)
+    (let [decl (vector-get program idx)]
+      (do
+        (root_push decl)
+        (let [tag (vector-get decl 0)
+          state (if (= tag (ast-defn))
+            (check-defn-cases decl env counter)
+            (if (= tag (ast-module-decl))
+              (check-case-module decl)
+              (if (= tag (ast-private))
+                (let [inner (canonical-unprivate-decl decl)
+                  inner-tag (vector-get inner 0)]
+                  (if (= inner-tag (ast-defn))
+                    (check-defn-cases inner env counter)
+                    (if (= inner-tag (ast-module-decl))
+                      (check-case-module inner)
+                      (assertion-check-state 0 0))))
+                (assertion-check-state 0 0))))]
+          (do
+            (root_push state)
+            (let [next-count (+ diagnostic-count (vector-get state 0))
+              state-first-code (vector-get state 1)
+              next-first-code
+                (if (= first-error-code 0) state-first-code first-error-code)
+              result (check-case-program-loop
+                program
+                (+ idx 1)
+                count
+                env
+                counter
+                next-count
+                next-first-code)]
+              (do
+                (root_pop)
+                (root_pop)
+                result))))))))
+
+(defn check-canonical-cases-with-analysis [program analysis]
+  (let [counter (typeinfer-make-alias-aware-counter program)
+    env (infer-program-analysis-env analysis)]
+    (check-case-program-loop
+      program
+      0
+      (vector-length program)
+      env
+      counter
+      0
+      0)))
+
+(defn check-canonical-cases [program]
+  (let [analysis (infer-program-analysis program)]
+    (check-canonical-cases-with-analysis program analysis)))

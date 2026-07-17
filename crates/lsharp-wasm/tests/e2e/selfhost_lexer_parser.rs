@@ -91,6 +91,62 @@ fn test_e2e_selfhost_metadata_check_rejects_non_bool_canonical_assertion() {
 }
 
 #[test]
+fn test_e2e_selfhost_metadata_check_rejects_invalid_canonical_case() {
+    let harness = r#"
+(defn main []
+  (let [valid-program (parse-program "(defn noop [] :case [(expect 1 1) (expect true false)] true)")
+        valid-result (check-canonical-cases valid-program)
+        string-program (parse-program "(defn noop [] :case [(expect \"a\" \"a\")] true)")
+        string-result (check-canonical-cases string-program)
+        mismatch-program (parse-program "(defn noop [] :case [(expect 1 true)] true)")
+        mismatch-result (check-canonical-cases mismatch-program)
+        parameter-program (parse-program "(defn identity [x] :case [(expect x 1)] x)")
+        parameter-result (check-canonical-cases parameter-program)
+        empty-program (parse-program "(defn noop [] :case [] 0)")
+        empty-result (check-canonical-cases empty-program)
+        module-program (parse-program "(module Demo (defn noop [] :case [(expect 1 true)] true))")
+        module-result (check-canonical-cases module-program)
+        private-program (parse-program "(module Demo (private (defn noop [] :case [] 0)))")
+        private-result (check-canonical-cases private-program)]
+    (do
+      (print (vector-get valid-result 0))
+      (print (vector-get valid-result 1))
+      (print (vector-get string-result 0))
+      (print (vector-get string-result 1))
+      (print (vector-get mismatch-result 0))
+      (print (vector-get mismatch-result 1))
+      (print (vector-get parameter-result 0))
+      (print (vector-get parameter-result 1))
+      (print (vector-get empty-result 0))
+      (print (vector-get empty-result 1))
+      (print (vector-get module-result 0))
+      (print (vector-get module-result 1))
+      (print (vector-get private-result 0))
+      (print (vector-get private-result 1))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}",
+        selfhost_parser_typeinfer_runtime_bundle(),
+        harness
+    );
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        [
+            "0", "0", "1", "1002", "1", "1002", "1", "1001", "1", "2006", "1", "1002",
+            "1", "2006",
+        ],
+        "selfhost case checker は Rust metadata checker と同じ failure boundary を返すべき"
+    );
+}
+
+#[test]
 fn test_e2e_selfhost_negative_int_parses_as_int() {
     let harness = r#"
 (defn main []
