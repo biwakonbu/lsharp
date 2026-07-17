@@ -44,7 +44,15 @@ Rust syntax が canonical `:case [(expect actual expected) ...]` を lossless fo
 
 Evidence: RED の `canonical_case_metadata_preserves_expectations_and_spans` compile failure、GREEN の同 test、`canonical_case_forms_project_to_ordered_inventory_entries`、`cargo test -p lsharp-syntax --test metadata_inventory -- --nocapture`、`cargo test -p lsharp-types --test metadata_contract_case -- --nocapture`。
 
-これは parser と canonical IR の verified sliceであり、`:case` の type check、Int/Bool comparison、実行 runner、selfhost parser/formatter/runner、empty/malformed case diagnostics、Mac/Linux current-source native artifact/runtime parity は残件である。次の実装は型検査を先に固定し、runner が未対応 case を成功扱いにしない境界を追加する。
+これは parser と canonical IR の verified sliceであり、`:case` の実行 runner、selfhost parser/formatter/runner、empty/malformed case diagnostics、Mac/Linux current-source native artifact/runtime parity は残件である。次の実装は、型検査済みの `:case` を runner の実行結果へ materialize し、未対応 case を空の成功として扱わない境界を追加する。
+
+### EC-M1-02 canonical `:case` type preflight (2026-07-17)
+
+Rust metadata checker は canonical `:case` の actual / expected を引数なしの内部 probe として HM 型推論へ渡し、owner の defn parameter を暗黙 capture しない。actual / expected の型不一致、型推論中の未定義変数、Int / Bool 以外の比較対象を metadata diagnostic として拒否する。tooling の `test` 経路では未定義変数を `LS1001`、その他の `:case` 型不整合を `LS1002` として返す。
+
+Evidence: `canonical_case_requires_matching_actual_and_expected_types`、`canonical_case_accepts_int_and_bool_comparisons`、`canonical_case_rejects_unsupported_string_comparison`、`canonical_case_does_not_capture_defn_parameters`、`test_run_metadata_tests_rejects_mismatched_canonical_case_types`、`test_run_metadata_tests_rejects_canonical_case_parameter_capture`。
+
+これは `:case` の type preflight の verified sliceであり、実行 runner/materialization、selfhost parser/formatter/runner、empty/malformed case diagnostics、Mac/Linux current-source native artifact/runtime parity は残件である。
 
 ### EC-M1-03 selfhost canonical assert parser/formatter bridge (2026-07-17)
 

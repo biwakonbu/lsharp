@@ -53,7 +53,9 @@ pub fn run_metadata_tests(file: &Path) -> miette::Result<MetadataTestRun> {
             .contains(":assert は少なくとも 1 件の predicate")
         {
             "LS2004"
-        } else if diagnostic.message.contains("未定義の識別子") {
+        } else if diagnostic.message.contains("未定義の識別子")
+            || diagnostic.message.contains("未定義の変数")
+        {
             "LS1001"
         } else {
             "LS1002"
@@ -207,6 +209,38 @@ mod tests {
         assert!(
             error.to_string().contains("[LS2005]"),
             "literal true canonical assertion は LS2005 を返すべき: {error}"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_run_metadata_tests_rejects_mismatched_canonical_case_types() {
+        let dir = unique_temp_dir("mismatched_canonical_case_types");
+        let file = dir.join("Main.ls");
+        fs::write(&file, "(defn noop [] :case [(expect 1 true)] true)\n").unwrap();
+
+        let error = run_metadata_tests(&file)
+            .expect_err("型不一致 canonical case を成功扱いしてはならない");
+        assert!(
+            error.to_string().contains("[LS1002]"),
+            "型不一致 canonical case は LS1002 を返すべき: {error}"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_run_metadata_tests_rejects_canonical_case_parameter_capture() {
+        let dir = unique_temp_dir("canonical_case_parameter_capture");
+        let file = dir.join("Main.ls");
+        fs::write(&file, "(defn identity [x] :case [(expect x 1)] x)\n").unwrap();
+
+        let error = run_metadata_tests(&file)
+            .expect_err("case が owner parameter を暗黙 capture したように成功してはならない");
+        assert!(
+            error.to_string().contains("[LS1001]"),
+            "case parameter capture は LS1001 を返すべき: {error}"
         );
 
         let _ = fs::remove_dir_all(&dir);
