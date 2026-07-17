@@ -42,15 +42,15 @@ Evidence: `test_e2e_selfhost_parser_defn_preserves_invariant_metadata`、`test_e
 
 Selfhost `Tools.Test.TestRunner` は top-level `defn` の metadata vector slot 4 を読み、parser が保持した legacy `:invariant` AST から test case を直接生成するようになった。`generate-tests` も同じ parser AST projection を使用し、`succ(x)` の predicate shape、invariant 1 件の抽出、5 sample の実行結果 `passed=1` を一つの selfhost Wasm E2E で確認した。RED は未定義の `extract-invariants-from-program` により固定し、GREEN は `test_e2e_selfhost_test_runner_extracts_invariant_from_parser_ast` と Rust driver の `check selfhost/src/Tools/Test/TestRunner.ls` で確認した。
 
-これは runner の verified slice であり、EC-M1-02 全体の完了ではない。legacy `:example` は次の parser metadata projection slice まで互換 raw source scanner API を残し、module/private declaration、Rust `MetadataForm` との ordered canonical conversion、docs payload、new contract forms、migration diagnostic、Mac/Linux artifact/runtime parity は残件である。
+これは runner の verified slice であり、EC-M1-02 全体の完了ではない。legacy `:example` の互換 raw source scanner API は order/span projection 用に残し、module/private declaration、Rust `MetadataForm` との ordered canonical conversion、docs payload、new contract forms、migration diagnostic、Mac/Linux artifact/runtime parity は残件である。
 
 ### EC-M1-02 selfhost runner example metadata projection (2026-07-17)
 
 Selfhost `Tools.Test.TestRunner` は parser が defn metadata vector slot 1 に保持した legacy `:example` payload を `parse-program` で AST 化し、top-level `defn` の test case へ投影するようになった。`generate-tests` の実行経路もこの projection を使い、`succ` の 2 example を抽出して両方 `passed=1` になることを selfhost Wasm E2E で確認した。metadata slot は formatter/docs 互換の文字列のままとし、既存の `extract-examples` / `extract-contract-forms` source scanner API は order/span 互換のため残している。
 
-Evidence: `test_e2e_selfhost_test_runner_projects_examples_from_parser_metadata`、`cargo run --bin lsharp -- check selfhost/src/Tools/Test/TestRunner.ls`。
+Evidence: `test_e2e_selfhost_test_runner_projects_examples_from_parser_metadata`、`test_e2e_selfhost_test_runner_preserves_example_metadata_across_defn_shapes`、`test_e2e_selfhost_parser_defn_preserves_invariant_metadata`、`cargo run --bin lsharp -- check selfhost/src/Syntax/Parser.ls`、`cargo run --bin lsharp -- check selfhost/src/Tools/Test/TestRunner.ls`。
 
-これは raw payload を parser-owned metadata から再パースする移行 bridge であり、canonical `ContractSuite` IR ではない。複数 `:example` directive の append、typed defn signature、module/private declaration、Rust `MetadataForm` との ordered canonical conversion、docs payload、new contract forms、migration diagnostic、Mac/Linux artifact/runtime parity は残件である。
+これは raw payload を parser-owned metadata から再パースする移行 bridge であり、canonical `ContractSuite` IR ではない。module/private declaration、Rust `MetadataForm` との ordered canonical conversion、docs payload、new contract forms、migration diagnostic、Mac/Linux artifact/runtime parity は残件である。
 
 ### 型・宣言意味論の更新 (2026-07-14)
 

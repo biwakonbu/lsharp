@@ -6009,6 +6009,41 @@ fn test_e2e_selfhost_test_runner_projects_examples_from_parser_metadata() {
     );
 }
 
+/// EC-M1-02: selfhost parser metadata が複数 directive と typed defn で保持されること
+#[test]
+fn test_e2e_selfhost_test_runner_preserves_example_metadata_across_defn_shapes() {
+    let harness = r#"
+(defn main []
+  (let [multi-src "(defn succ [x] :example [(= (succ 1) 2)] :example [(= (succ 5) 6)] (+ x 1))"
+        multi-program (parse-program multi-src)
+        multi-examples (extract-examples-from-program multi-program)
+        typed-src "(defn typed-succ [(: x Int)] : Int :example [(= (typed-succ 1) 2)] (+ x 1))"
+        typed-program (parse-program typed-src)
+        typed-examples (extract-examples-from-program typed-program)
+        typed-suite (generate-tests typed-src)
+        typed-results (vector-get typed-suite 0)
+        typed-result (vector-get typed-results 0)]
+    (do
+      (print (vector-length multi-examples))
+      (print (vector-length typed-examples))
+      (print (vector-length typed-results))
+      (print (vector-get typed-result 1))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["2", "1", "1", "1"],
+        "複数 example directive の順序と typed defn の metadata projection を維持するべき"
+    );
+}
+
 /// TEST-CLI-02-O2b: selfhost/src/Tools/Test/TestRunner.ls が supported subset の metadata suite を実行できること
 #[test]
 #[ignore]

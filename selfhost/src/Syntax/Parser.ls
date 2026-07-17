@@ -773,6 +773,12 @@
       (parse-defn-metadata-loop-v3 spans pos-ref src meta))))
 
 ;; :example [...] — ブラケット内の式テキストを抽出
+(defn append-defn-example-text-v3 [meta example-text]
+  (let [existing (vector-get meta 1)]
+    (if (> (string-length existing) 0)
+      (string-concat existing (string-concat " " example-text))
+      example-text)))
+
 (defn parse-defn-meta-example-v3 [spans pos-ref src meta]
   (if (== (p-current spans pos-ref) 2)
     (do
@@ -785,7 +791,8 @@
             (let [last-idx (- (ref-get pos-ref) 2)
               content-end (span-end spans last-idx)
               example-text (substring src content-start content-end)
-              updated (vector-set-at-rooted-v3 meta 1 example-text)]
+              combined (append-defn-example-text-v3 meta example-text)
+              updated (vector-set-at-rooted-v3 meta 1 combined)]
               (parse-defn-metadata-loop-v3 spans pos-ref src updated))))))
     (do
       (skip-directive-payload-v3 spans pos-ref)

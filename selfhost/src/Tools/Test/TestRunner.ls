@@ -61,9 +61,20 @@
 
 ;; defn ノード末尾の metadata vector [doc, example, params, returns, invariant]
 ;; から parser-owned invariant AST を取り出す。
+(defn test-defn-signature-node? [candidate]
+  (if (= candidate 0)
+    0
+    (if (= (vector-get candidate 0) (ast-defn-signature)) 1 0)))
+
 (defn test-defn-metadata [decl]
   (let [param-count (vector-get decl 2)
-    meta-idx (+ 4 param-count)]
+    body-end (+ 4 param-count)
+    meta-idx
+      (if (< body-end (vector-length decl))
+        (if (= (test-defn-signature-node? (vector-get decl body-end)) 1)
+          (+ body-end 1)
+          body-end)
+        (vector-length decl))]
     (if (< meta-idx (vector-length decl))
       (vector-get decl meta-idx)
       0)))
