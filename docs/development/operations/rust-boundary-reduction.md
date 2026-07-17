@@ -118,6 +118,14 @@ Evidence: RED で未定義の `check-canonical-assertions` を固定した後、
 
 Evidence: `canonical_assertion_requires_at_least_one_predicate`、`canonical_assertion_non_vacuity_qualifies_module_owner`、`canonical_assertion_rejects_literal_true_as_vacuous`、`test_run_metadata_tests_rejects_empty_canonical_assertion`、`test_run_metadata_tests_rejects_literal_true_canonical_assertion`、`test_errors_tool_returns_empty_executable_contract_code`、`test_errors_tool_returns_vacuous_contract_code`、`test_e2e_selfhost_metadata_check_rejects_non_bool_canonical_assertion` 内の empty scope 4ケースと literal true、`cargo run --quiet --bin lsharp -- check selfhost/src/Types/TypeInferAssertions.ls` / `Cli.ls` / `EmbeddedCli.ls`。到達不能 precondition、constant-true property、full CLI bundle、両対応 target の current-source artifact/runtime parity は残件である。
 
+### EC-M1-04 static integer comparison non-vacuity (2026-07-17)
+
+Rust canonical checker と selfhost `TypeInferAssertions` は、整数 literal に対する `=` / `==` / `!=` / `<` / `>` / `<=` / `>=` の静的に常真な比較を `LS2005` 相当の vacuous diagnostic として拒否する。tooling の legacy message 判定も literal `true` 固有文字列に依存せず、vacuous diagnostic を同じ `LS2005` へ forwarding する。`MetadataMigration` は `TypeInferAssertions` を明示 import し、bundle だけでなく EmbeddedCli の module build でも成立する。
+
+Evidence: `canonical_assertion_rejects_statically_true_integer_comparisons_as_vacuous`、`test_run_metadata_tests_rejects_statically_true_integer_comparison`、`test_e2e_selfhost_metadata_check_rejects_non_bool_canonical_assertion` の `= 1 1` fixture、`test_error_reference_doc_mentions_all_mcp_error_codes`、`cargo test -p lsharp-driver mcp_server::tests::test_error_reference_doc_mentions_all_mcp_error_codes -- --nocapture`。
+
+これは integer literal comparison の verified slice に限られる。到達不能 precondition、constant-true property、property sampling、full assertion diagnostic/span parity、Mac Apple Silicon / Linux x86_64 の current-source native artifact/runtime parity は未完了であり、Rust oracle / bootstrap 境界は維持する。
+
 ### scoped polymorphic `defn` signature (2026-07-15)
 
 `TypeInferFunctions.ls` は `defn` の parameter / return annotation に現れる scoped 名ごとに共有 fresh 型変数を割り当て、通常の型環境で関数を一般化する。これにより `id` を Int と Bool の別 call site で使え、`choose-first [(: x a) (: y b)] : a x` では `a` と `b` を独立に具体化できる。GADT refinement と exhaustiveness は別タスクである。Evidence: `test_e2e_selfhost_scoped_type_var_defn_signature_is_polymorphic`、`test_e2e_selfhost_scoped_multiple_type_vars_defn_signature_is_polymorphic`、`TypeInfer.ls` check。
