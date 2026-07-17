@@ -60,6 +60,14 @@ Evidence: `test_e2e_selfhost_formatter_extracts_typed_defn_metadata`、`cargo te
 
 これは formatter consumer の typed accessor parity に限定した verified slice である。`DocTools` の同型 accessor、parser-owned ordered forms、Rust `MetadataForm` との canonical `ContractSuite` IR conversion、module/private declaration、new contract forms、migration diagnostic、Mac/Linux current-source artifact/runtime parity は残件である。
 
+### EC-M1-02 selfhost DocTools typed metadata accessor (2026-07-17)
+
+Selfhost `Tools.Doc.DocTools` にも、typed `defn` の body 後にある optional signature tag `65` を skip して metadata vector を読む accessor を追加した。`test_doctools_typed_metadata_accessor_source_contract` と `cargo run --bin lsharp -- check selfhost/src/Tools/Doc/DocTools.ls` で、実装の source contract と Rust driver の syntax/type check を確認した。
+
+一方、current checkout の `doctools_parity` runtime bundle は typed docs payload の RED と既存 untyped docs/type-kind test の双方で stack overflow になった。元の fixed-offset accessor に戻した control run でも同じ stack overflow だったため、これは今回の helper だけでは説明できない既存 DocTools bundle baseline failure として切り分けた。したがって typed docs payload の actual E2E GREEN、`generate-knowledge` parity、runtime baseline 修復は未完了であり、この accessor を Rust-free verified completion とみなさない。
+
+Evidence: `test_doctools_typed_metadata_accessor_source_contract`、`cargo run --bin lsharp -- check selfhost/src/Tools/Doc/DocTools.ls`。未完了 gate: `test_e2e_doctools_generate_doc_output_function_metadata`、`test_e2e_doctools_type_kind_string_all_variants`（いずれも stack overflow）。
+
 ### EC-M1-02 canonical inventory の module body projection (2026-07-17)
 
 Rust `metadata_contract` inventory は `ModuleDecl.body` を再帰走査し、module 内の legacy `:example` / `:invariant` を top-level と同じ `ContractSuite.pending_migration` へ lossless に投影するようになった。RED で module body の suite が 0 件になる欠落を固定し、GREEN では suite 1 件、owner `succ`、pending form 1 件、元 metadata span、空の docs/executable を確認した。module-qualified `SymbolId` や module/private の統合規則はこの slice では変更していない。

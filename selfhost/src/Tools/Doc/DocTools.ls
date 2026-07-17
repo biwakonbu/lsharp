@@ -111,10 +111,21 @@
       next-result (extract-type-definitions-decl inner-decl result)]
       (extract-type-definitions-module-body decl next-result (+ idx 1) count))))
 
+;; typed defn の optional signature tag を検出する
+(defn doc-defn-signature-node? [candidate]
+  (if (= candidate 0)
+    0
+    (if (= (vector-get candidate 0) (ast-defn-signature)) 1 0)))
+
 ;; defn ノード末尾の metadata vector [doc-string, example-string, params, returns, invariant-expr] を参照する
 (defn extract-defn-metadata [decl]
-  (let [param-count (vector-get decl 2)
-    meta-idx (+ 4 param-count)]
+  (let [body-end (+ 4 (vector-get decl 2))
+    meta-idx
+      (if (< body-end (vector-length decl))
+        (if (= (doc-defn-signature-node? (vector-get decl body-end)) 1)
+          (+ body-end 1)
+          body-end)
+        (vector-length decl))]
     (if (< meta-idx (vector-length decl))
       (vector-get decl meta-idx)
       0)))

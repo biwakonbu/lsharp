@@ -393,6 +393,23 @@ fn test_e2e_doctools_generate_doc_output_function_metadata() {
     assert_eq!(lines[11], "(add 1 2)", "example が保持されるべき");
 }
 
+/// typed defn の metadata accessor が signature vector を飛ばす実装契約を保持すること
+#[test]
+fn test_doctools_typed_metadata_accessor_source_contract() {
+    let source = std::fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../selfhost/src/Tools/Doc/DocTools.ls"),
+    )
+    .expect("canonical DocTools.ls が読み込めるべき");
+    assert!(
+        source.contains("(defn doc-defn-signature-node? [candidate]"),
+        "DocTools は typed defn signature の判定 helper を持つべき"
+    );
+    assert!(
+        source.contains("(if (= (doc-defn-signature-node? (vector-get decl body-end)) 1)"),
+        "DocTools metadata accessor は body 後の signature を skip するべき"
+    );
+}
+
 // ============================================================
 // CP-04: generate-knowledge の構造検証
 // ============================================================
