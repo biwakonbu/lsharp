@@ -1545,8 +1545,8 @@ fn test_native_codegen_x86_vector_new_call_targets_executable_entry_after_prefix
 
     assert_eq!(
         lines,
-        vec![4097, 4549, 119, 72, 141, 52, 197, 16, 0, 0, 0],
-        "x86 vector-new call は無効な 2-byte prefix ではなく mmap 準備命令の先頭へ分岐するべき"
+        vec![4097, 4547, 119, 72, 141, 52, 197, 16, 0, 0, 0],
+        "x86 vector-new call は mmap helper の push prologue を含む実行入口へ分岐するべき"
     );
 }
 

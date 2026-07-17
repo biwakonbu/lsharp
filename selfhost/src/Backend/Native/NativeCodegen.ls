@@ -10601,7 +10601,7 @@
   (+ (x86-helper-base-offset import-stub-offset import-count) 348))
 
 (defn x86-selfhost-vector-new-helper-offset [import-stub-offset import-count]
-  (+ (x86-helper-base-offset import-stub-offset import-count) 452))
+  (+ (x86-helper-base-offset import-stub-offset import-count) 450))
 
 (defn x86-selfhost-vector-length-helper-offset [import-stub-offset import-count]
   (+ (x86-helper-base-offset import-stub-offset import-count) 569))
