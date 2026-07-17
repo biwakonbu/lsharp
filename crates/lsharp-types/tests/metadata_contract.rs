@@ -2,7 +2,7 @@ use lsharp_syntax::ast::{Decl, Expr};
 use lsharp_syntax::metadata::MetadataFormKind;
 use lsharp_syntax::parse;
 use lsharp_types::metadata_contract::{
-    ContractInventoryError, LegacyContract, inventory_contract_suites,
+    inventory_contract_suites, ContractInventoryError, LegacyContract,
 };
 
 const LEGACY_CONTRACT_FORMS: &str = include_str!(concat!(
@@ -72,6 +72,42 @@ fn aggregate_and_ordered_form_mismatch_fails_closed() {
         ContractInventoryError::ProjectionMismatch {
             owner: "succ".to_string(),
         }
+    );
+}
+
+#[test]
+fn module_nested_legacy_forms_are_inventoried_without_loss() {
+    let program = parse(
+        r#"
+(module Math
+  (defn succ [x]
+    :invariant (= result (+ x 1))
+    (+ x 1)))
+"#,
+    )
+    .expect("module 内の legacy metadata fixture は parse できるべき");
+
+    let metadata_span = match &program.decls[0] {
+        Decl::ModuleDecl { body, .. } => match &body[0] {
+            Decl::Defn {
+                metadata: Some(metadata),
+                ..
+            } => metadata.forms[0].span(),
+            _ => panic!("module body の先頭宣言は metadata 付き defn であるべき"),
+        },
+        _ => panic!("fixture の先頭宣言は module であるべき"),
+    };
+
+    let suites = inventory_contract_suites(&program)
+        .expect("module body の legacy metadata は inventory できるべき");
+    assert_eq!(suites.len(), 1);
+    assert_eq!(suites[0].owner().as_str(), "succ");
+    assert!(suites[0].docs().is_empty());
+    assert!(suites[0].executable().is_empty());
+    assert_eq!(suites[0].pending_migration().len(), 1);
+    assert_eq!(
+        suites[0].pending_migration()[0].source_span(),
+        metadata_span
     );
 }
 

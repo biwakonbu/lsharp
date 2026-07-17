@@ -289,11 +289,26 @@ pub fn inventory_contract_suites(
 ) -> Result<Vec<ContractSuite>, ContractInventoryError> {
     let mut suites = Vec::new();
     for decl in &program.decls {
-        if let Some(suite) = inventory_decl(decl)? {
-            suites.push(suite);
-        }
+        inventory_decl_tree(decl, &mut suites)?;
     }
     Ok(suites)
+}
+
+fn inventory_decl_tree(
+    decl: &Decl,
+    suites: &mut Vec<ContractSuite>,
+) -> Result<(), ContractInventoryError> {
+    if let Decl::ModuleDecl { body, .. } = decl {
+        for nested_decl in body {
+            inventory_decl_tree(nested_decl, suites)?;
+        }
+        return Ok(());
+    }
+
+    if let Some(suite) = inventory_decl(decl)? {
+        suites.push(suite);
+    }
+    Ok(())
 }
 
 fn inventory_decl(decl: &Decl) -> Result<Option<ContractSuite>, ContractInventoryError> {
