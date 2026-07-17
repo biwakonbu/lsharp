@@ -1097,9 +1097,6 @@
           results))
       results)))
 
-(defn contract-form-example [] 1)
-(defn contract-form-invariant [] 2)
-
 ;; ordered legacy form: [kind, function-name-hash, payload-expressions, start, end]
 (defn make-contract-form [kind fn-hash payload start end]
   (vector-push
