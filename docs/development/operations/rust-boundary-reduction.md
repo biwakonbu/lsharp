@@ -52,6 +52,14 @@ Evidence: `test_e2e_selfhost_test_runner_projects_examples_from_parser_metadata`
 
 これは raw payload を parser-owned metadata から再パースする移行 bridge であり、canonical `ContractSuite` IR ではない。module/private declaration、Rust `MetadataForm` との ordered canonical conversion、docs payload、new contract forms、migration diagnostic、Mac/Linux artifact/runtime parity は残件である。
 
+### EC-M1-02 selfhost formatter typed metadata projection (2026-07-17)
+
+Selfhost `Tools.Text.FormatterDecl` は typed `defn` の body 直後にある optional signature tag `65` を skip してから metadata vector を読むようになった。これにより、signature を doc payload と誤認せず、typed `defn` の `:doc` / `:example` を source-aware formatter から取得できる。RED で metadata が `0` になる failure を固定し、GREEN で typed metadata 3項目を確認したうえで、string / float / untyped metadata / invariant を含む formatter 5ケースを pass した。Rust driver の selfhost source `check` も `diagnostics:0` で通過している。
+
+Evidence: `test_e2e_selfhost_formatter_extracts_typed_defn_metadata`、`cargo test -p lsharp-wasm --test e2e selfhost_formatter_source_roundtrip::test_e2e_selfhost_formatter -- --nocapture`、`cargo run --bin lsharp -- check selfhost/src/Tools/Text/FormatterDecl.ls`。
+
+これは formatter consumer の typed accessor parity に限定した verified slice である。`DocTools` の同型 accessor、parser-owned ordered forms、Rust `MetadataForm` との canonical `ContractSuite` IR conversion、module/private declaration、new contract forms、migration diagnostic、Mac/Linux current-source artifact/runtime parity は残件である。
+
 ### 型・宣言意味論の更新 (2026-07-14)
 
 直前の概要にある record 宣言未実装という記述は更新済みである。自己ホスト parser は field 名、`Type.field` accessor 名、raw TypeExpr を保持し、推論 prepass は record schema、constructor、accessor scheme を値環境へ登録して既知 record literal の field 型不一致を診断する。parametric record は `TypeInferRecordDecl.ls` が parameter ごとの bound variable を持つ structural record scheme を登録し、constructor、literal、accessor の使用ごとに scheme を instantiate する。Int field を持つ `Box` と Bool field を持つ `Box` の別使用箇所は独立であり、同じ `Pair a` literal 内の field は同じ具体化を共有する。`(. record field)` は let 束縛後も具体化済み schema の field 型を返し、field 型不一致と未定義 field を診断する。`{record | field value}` update も同じ schema 型へ単一化し、型不一致と未定義 field を診断する。`Type.field` は structural record 型との単一化を経て field 型を返し、不一致を診断する。record pattern はこの型推論 slice に含まない。static accessor の実行時 lowering は下記で実証済みである。

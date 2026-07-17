@@ -218,8 +218,19 @@
       piece)
     acc))
 
+(defn formatter-defn-signature-node? [candidate]
+  (if (= candidate 0)
+    0
+    (if (= (vector-get candidate 0) (ast-defn-signature)) 1 0)))
+
 (defn extract-defn-metadata [decl]
-  (let [meta-idx (+ 4 (vector-get decl 2))]
+  (let [body-end (+ 4 (vector-get decl 2))
+    meta-idx
+      (if (< body-end (vector-length decl))
+        (if (= (formatter-defn-signature-node? (vector-get decl body-end)) 1)
+          (+ body-end 1)
+          body-end)
+        (vector-length decl))]
     (if (< meta-idx (vector-length decl))
       (vector-get decl meta-idx)
       0)))
