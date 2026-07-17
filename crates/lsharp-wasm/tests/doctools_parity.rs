@@ -41,7 +41,9 @@ fn selfhost_html_bundle() -> String {
 }
 
 fn run_doctools(harness: &str) -> Vec<String> {
-    let output = compile_and_run(&format!("{}\n{}", selfhost_doctools_bundle(), harness));
+    let source = format!("{}\n{}", selfhost_doctools_bundle(), harness);
+    let output =
+        run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || compile_and_run(&source));
     output
         .trim()
         .lines()
@@ -50,11 +52,14 @@ fn run_doctools(harness: &str) -> Vec<String> {
 }
 
 fn run_doctools_raw(harness: &str) -> String {
-    compile_and_run(&format!("{}\n{}", selfhost_doctools_bundle(), harness))
+    let source = format!("{}\n{}", selfhost_doctools_bundle(), harness);
+    run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || compile_and_run(&source))
 }
 
 fn run_html(harness: &str) -> Vec<String> {
-    let output = compile_and_run(&format!("{}\n{}", selfhost_html_bundle(), harness));
+    let source = format!("{}\n{}", selfhost_html_bundle(), harness);
+    let output =
+        run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || compile_and_run(&source));
     output
         .trim()
         .lines()
@@ -408,6 +413,117 @@ fn test_doctools_typed_metadata_accessor_source_contract() {
         source.contains("(if (= (doc-defn-signature-node? (vector-get decl body-end)) 1)"),
         "DocTools metadata accessor は body 後の signature を skip するべき"
     );
+}
+
+/// typed defn の metadata accessor が signature vector を飛ばすこと
+#[test]
+fn test_e2e_doctools_extracts_typed_defn_metadata() {
+    let harness = r#"
+(defn main []
+  (let [program (parse-program "(defn add [(: x Int)] : Int :doc \"typed add\" :example [(add 1)] (+ x 1))")
+        decl (vector-get program 0)
+        meta (extract-defn-metadata decl)]
+    (do
+      (print (vector-length meta))
+      (print-string (vector-get meta 0))
+      (print-string "\n")
+      (print-string (vector-get meta 1))
+      (print-string "\n")
+      0)))
+"#;
+    let lines = run_doctools(harness);
+    assert_eq!(lines[0], "5", "typed metadata vector は5要素であるべき");
+    assert_eq!(
+        lines[1], "typed add",
+        "typed doc が metadata から読めるべき"
+    );
+    assert_eq!(
+        lines[2], "(add 1)",
+        "typed example が metadata から読めるべき"
+    );
+}
+
+/// typed defn が DocTools の selfhost inference で失敗しないこと
+#[test]
+fn test_e2e_doctools_infers_typed_defn_for_docs() {
+    let harness = r#"
+(defn main []
+  (let [program (parse-program "(defn add [(: x Int)] : Int (+ x 1))")
+        decl (vector-get program 0)
+        counter (make-var-counter)
+        env (init-builtin-env counter)
+        result (infer-defn decl env counter)]
+    (do
+      (print (result-failed result))
+      (print (result-type result))
+      0)))
+"#;
+    let lines = run_doctools(harness);
+    assert_eq!(
+        lines[0], "0",
+        "typed defn の selfhost inference は失敗しないべき"
+    );
+}
+
+/// docs function range が untyped defn を1件抽出できること
+#[test]
+fn test_e2e_doctools_extracts_doc_function_range() {
+    let harness = r#"
+(defn main []
+  (let [program (parse-program "(defn add [x y] (+ x y))")
+        entries (extract-doc-function-entries program)]
+    (do
+      (print (vector-length entries))
+      0)))
+"#;
+    let lines = run_doctools(harness);
+    assert_eq!(lines[0], "1", "docs function range が1件を返すべき");
+}
+
+/// typed defn の docs metadata を既存 function payload shape へ投影すること
+#[test]
+fn test_e2e_doctools_generate_doc_output_typed_function_metadata() {
+    let harness = r#"
+(defn main []
+  (let [program (parse-program "(defn add [(: x Int)] : Int :doc \"typed add\" :example [(add 1)] (+ x 1))")
+        doc (generate-doc-output program 42)
+        functions (vector-get doc 1)
+        fn0 (vector-get functions 0)
+        params (vector-get fn0 3)
+        param0 (vector-get params 0)
+        returns (vector-get fn0 4)]
+    (do
+      (print (vector-length fn0))
+      (print (vector-length params))
+      (print-string (vector-get param0 0))
+      (print-string "\n")
+      (print-string (vector-get param0 1))
+      (print-string "\n")
+      (print-string (vector-get returns 0))
+      (print-string "\n")
+      (print-string (vector-get returns 1))
+      (print-string "\n")
+      (print-string (vector-get fn0 5))
+      (print-string "\n")
+      (print-string (vector-get fn0 6))
+      (print-string "\n")
+      0)))
+"#;
+    let lines = run_doctools(harness);
+    assert_eq!(
+        lines[0], "7",
+        "typed doc-output function entry は 7 要素であるべき"
+    );
+    assert_eq!(lines[1], "1", "typed params が 1 件であるべき");
+    assert_eq!(lines[2], "x", "typed param 名が x であるべき");
+    assert_eq!(lines[3], "Int", "typed param 型が Int であるべき");
+    assert_eq!(lines[4], "Int", "typed returns 型が Int であるべき");
+    assert_eq!(
+        lines[5], "",
+        "typed returns doc の未指定値は空文字列であるべき"
+    );
+    assert_eq!(lines[6], "typed add", "typed doc が保持されるべき");
+    assert_eq!(lines[7], "(add 1)", "typed example が保持されるべき");
 }
 
 // ============================================================

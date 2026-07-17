@@ -546,15 +546,28 @@
     (make-knowledge-state entries env)
     (let [decl (vector-get decls (+ base idx))
       state (collect-knowledge-function-decl decl entries env counter emit-entry)]
-      (collect-knowledge-function-range
-        decls
-        base
-        (+ idx 1)
-        count
-        (knowledge-state-entries state)
-        (knowledge-state-env state)
-        counter
-        emit-entry))))
+      (do
+        (root_push state)
+        (let [next-entries (knowledge-state-entries state)
+          next-env (knowledge-state-env state)]
+          (do
+            (root_push next-entries)
+            (root_push next-env)
+            (let [next-state
+              (collect-knowledge-function-range
+                decls
+                base
+                (+ idx 1)
+                count
+                next-entries
+                next-env
+                counter
+                emit-entry)]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                next-state))))))))
 
 (defn collect-knowledge-function-module-body [decl entries env counter emit-entry]
   (collect-knowledge-function-range
@@ -591,15 +604,28 @@
     (make-knowledge-state entries env)
     (let [decl (vector-get decls (+ base idx))
       state (collect-doc-function-decl decl entries env counter emit-entry)]
-      (collect-doc-function-range
-        decls
-        base
-        (+ idx 1)
-        count
-        (knowledge-state-entries state)
-        (knowledge-state-env state)
-        counter
-        emit-entry))))
+      (do
+        (root_push state)
+        (let [next-entries (knowledge-state-entries state)
+          next-env (knowledge-state-env state)]
+          (do
+            (root_push next-entries)
+            (root_push next-env)
+            (let [next-state
+              (collect-doc-function-range
+                decls
+                base
+                (+ idx 1)
+                count
+                next-entries
+                next-env
+                counter
+                emit-entry)]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                next-state))))))))
 
 (defn collect-doc-function-module-body [decl entries env counter emit-entry]
   (collect-doc-function-range

@@ -62,11 +62,11 @@ Evidence: `test_e2e_selfhost_formatter_extracts_typed_defn_metadata`、`cargo te
 
 ### EC-M1-02 selfhost DocTools typed metadata accessor (2026-07-17)
 
-Selfhost `Tools.Doc.DocTools` にも、typed `defn` の body 後にある optional signature tag `65` を skip して metadata vector を読む accessor を追加した。`test_doctools_typed_metadata_accessor_source_contract` と `cargo run --bin lsharp -- check selfhost/src/Tools/Doc/DocTools.ls` で、実装の source contract と Rust driver の syntax/type check を確認した。
+Selfhost `Tools.Doc.DocTools` は typed `defn` の body 後にある optional signature tag `65` を skip して metadata vector を読むようになった。さらに docs/knowledge の declaration range が state から取り出した entries/env を root 保持して再帰へ渡すようになり、GC による Wasm `unreachable` trap を防いだ。巨大 bundle の test thread stack overflowを避けるため、`doctools_parity` の selfhost bundle runner も expanded stack を使う。
 
-一方、current checkout の `doctools_parity` runtime bundle は typed docs payload の RED と既存 untyped docs/type-kind test の双方で stack overflow になった。元の fixed-offset accessor に戻した control run でも同じ stack overflow だったため、これは今回の helper だけでは説明できない既存 DocTools bundle baseline failure として切り分けた。したがって typed docs payload の actual E2E GREEN、`generate-knowledge` parity、runtime baseline 修復は未完了であり、この accessor を Rust-free verified completion とみなさない。
+RED では typed metadata の fixed-offset 誤認、range recursion の `unreachable`、typed docs payload の trap を固定し、GREEN では source contract、Rust driver `check`、typed accessor、typed inference、range、typed/untyped docs payload、knowledge payload を確認した。Evidence: `test_doctools_typed_metadata_accessor_source_contract`、`test_e2e_doctools_extracts_typed_defn_metadata`、`test_e2e_doctools_infers_typed_defn_for_docs`、`test_e2e_doctools_extracts_doc_function_range`、`test_e2e_doctools_generate_doc_output_typed_function_metadata`、`test_e2e_doctools_generate_doc_output_function_metadata`、`test_e2e_doctools_generate_knowledge_structure`、`cargo run --bin lsharp -- check selfhost/src/Tools/Doc/DocTools.ls`。
 
-Evidence: `test_doctools_typed_metadata_accessor_source_contract`、`cargo run --bin lsharp -- check selfhost/src/Tools/Doc/DocTools.ls`。未完了 gate: `test_e2e_doctools_generate_doc_output_function_metadata`、`test_e2e_doctools_type_kind_string_all_variants`（いずれも stack overflow）。
+これは selfhost docs consumer の typed accessor と range lifetime に限定した verified slice であり、canonical `ContractSuite` IR、parser-owned ordered forms、new contract forms、migration diagnostic、module-qualified docs、Mac/Linux current-source artifact/runtime parity は残件である。
 
 ### EC-M1-02 canonical inventory の module body projection (2026-07-17)
 
