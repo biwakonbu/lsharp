@@ -6154,6 +6154,36 @@ fn test_e2e_selfhost_test_runner_projects_nested_invariant_forms() {
     );
 }
 
+/// EC-M1-01: Rust oracle と selfhost runner が invariant parameter scope の結果を揃えること
+#[test]
+fn test_e2e_selfhost_test_runner_matches_rust_oracle_for_invariant_scope() {
+    let source = "(defn succ [x] :invariant (= result (+ x 1)) (+ x 1))";
+    let oracle = run_metadata_tests(source);
+    assert_eq!(oracle.len(), 1, "Rust oracle は invariant 1 件を生成するべき");
+    assert!(oracle[0].passed, "Rust oracle の invariant は全 sample で pass するべき");
+
+    let harness = r#"
+(defn main []
+  (let [src "(defn succ [x] :invariant (= result (+ x 1)) (+ x 1))"
+        suite (generate-tests src)
+        results (vector-get suite 1)
+        result0 (vector-get results 0)]
+    (do
+      (print (vector-length results))
+      (print (vector-get result0 1))
+      (print (vector-get result0 2))
+      (print (vector-get result0 3))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_test_runner_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(lines, vec!["1", "1", "5", "0"]);
+}
+
 /// TEST-CLI-02-O2b: selfhost/src/Tools/Test/TestRunner.ls が supported subset の metadata suite を実行できること
 #[test]
 #[ignore]
