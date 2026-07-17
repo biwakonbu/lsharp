@@ -62,6 +62,14 @@ Evidence: `test_generate_ordered_canonical_cases`、`test_run_metadata_tests_exe
 
 これは Rust runner の verified slice であり、selfhost runner/materialization、module-qualified/native stage0 の current-source artifact/runtime parity、property/assertion との統合は残件である。
 
+### EC-M1-02 selfhost canonical `:case` parser bridge (2026-07-17)
+
+Selfhost `Syntax.AST` / `Syntax.Parser` は canonical `:case [(expect actual expected) ...]` を ordered metadata slot の kind `4` と expectation pair vector として保持する。actual / expected の AST を source 順に保持し、既存の `:example` / `:invariant` / `:assert` form kind と混同しない。embedded selfhost parser check でも current source を受理する。
+
+Evidence: RED の `test_e2e_selfhost_parser_preserves_ordered_case_forms`、GREEN の同 test（`1, 4, 2, 5, 1, 5, 1`）、`cargo run --quiet --bin lsharp -- check selfhost/src/Syntax/Parser.ls`。
+
+これは selfhost parser の verified slice に限定され、selfhost runner/materialization、empty/malformed case diagnostics、Rust/native inventory parity、Mac/Linux current-source artifact/runtime parity は残件である。`generate-tests` はまだ case form を実行結果へ投影しないため、未対応 case を Rust fallback で成功扱いしない。
+
 ### EC-M1-03 selfhost canonical assert parser/formatter bridge (2026-07-17)
 
 Selfhost `Syntax.AST` / `Syntax.Parser` は canonical `:assert [predicate ...]` を ordered metadata slot の kind `3` と predicate vector として保持し、`Tools.Text.FormatterDecl` は source-aware / canonical formatter の両方で `:assert` の grouping と predicate 順を再構成する。legacy `:example` / `:invariant` の metadata slot と runner projection は変更せず、既存 typed metadata の 6-slot contract も回帰で固定した。

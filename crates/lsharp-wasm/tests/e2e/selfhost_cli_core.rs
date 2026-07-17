@@ -6158,6 +6158,43 @@ fn test_e2e_selfhost_test_runner_projects_and_runs_ordered_assertion_forms() {
     );
 }
 
+/// EC-M1-02: selfhost parser が canonical :case の expectation を ordered form へ保持すること
+#[test]
+fn test_e2e_selfhost_parser_preserves_ordered_case_forms() {
+    let harness = r#"
+(defn main []
+  (let [src "(defn succ [x] :case [(expect (succ 1) 2) (expect (succ 2) 4)] (+ x 1))"
+        program (parse-program src)
+        decl (vector-get program 0)
+        forms (test-defn-ordered-forms decl)
+        form (vector-get forms 0)
+        expectations (vector-get form 1)
+        pair0 (vector-get expectations 0)
+        pair1 (vector-get expectations 1)]
+    (do
+      (print (vector-length forms))
+      (print (vector-get form 0))
+      (print (vector-length expectations))
+      (print (vector-get (vector-get pair0 0) 0))
+      (print (vector-get (vector-get pair0 1) 0))
+      (print (vector-get (vector-get pair1 0) 0))
+      (print (vector-get (vector-get pair1 1) 0))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_test_runner_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["1", "4", "2", "5", "1", "5", "1"],
+        "selfhost parser は canonical :case を expectation 順に保持するべき"
+    );
+}
+
 /// EC-M1-03: selfhost CLI が canonical :assert の件数を結果へ反映すること
 #[test]
 #[ignore]

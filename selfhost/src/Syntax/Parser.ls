@@ -626,12 +626,13 @@
           (if (string-eq name "rationale") 1
             (if (string-eq name "since") 1
               (if (string-eq name "see-also") 1
-                (if (string-eq name "example") 1
-                  (if (string-eq name "invariant") 1
-                    (if (string-eq name "assert") 1
-                    (if (string-eq name "transitions") 1
-                      (if (string-eq name "constraints") 1
-                        0)))))))))))))
+                  (if (string-eq name "example") 1
+                    (if (string-eq name "invariant") 1
+                      (if (string-eq name "case") 1
+                        (if (string-eq name "assert") 1
+                          (if (string-eq name "transitions") 1
+                            (if (string-eq name "constraints") 1
+                              0))))))))))))))
 
 (defn colon-directive-v3 [spans pos-ref src]
   (if (== (p-current spans pos-ref) 50)
@@ -703,7 +704,7 @@
         (root_pop)
         result))))
 
-;; defn 用メタデータパーサー: :doc / :example / :params / :returns / :invariant を記録する
+;; defn 用メタデータパーサー: :doc / :example / :params / :returns / :invariant / :case を記録する
 ;; 返却: [doc-string, example-text, params-vector, returns-string, invariant-expr, ordered-forms]
 ;; ordered form: [kind, raw-example-text または invariant-ast]
 (defn make-empty-defn-metadata-v3 []
@@ -766,11 +767,13 @@
                     (parse-defn-meta-returns-v3 spans pos-ref src meta)
                     (if (string-eq dir-name "invariant")
                       (parse-defn-meta-invariant-v3 spans pos-ref src meta)
-                      (if (string-eq dir-name "assert")
-                        (parse-defn-meta-assert-v3 spans pos-ref src meta)
-                      (do
-                        (skip-directive-payload-v3 spans pos-ref)
-                        (parse-defn-metadata-loop-rooted-v3 spans pos-ref src meta))))))))]
+                      (if (string-eq dir-name "case")
+                        (parse-defn-meta-case-v3 spans pos-ref src meta)
+                        (if (string-eq dir-name "assert")
+                          (parse-defn-meta-assert-v3 spans pos-ref src meta)
+                          (do
+                            (skip-directive-payload-v3 spans pos-ref)
+                            (parse-defn-metadata-loop-rooted-v3 spans pos-ref src meta)))))))))]
             (do
               (root_pop)
               (root_pop)
@@ -981,6 +984,95 @@
               (root_pop)
               (root_pop)
               (parse-defn-metadata-loop-v3 spans pos-ref src with-form))))))))
+
+;; :case [(expect actual expected) ...] — actual / expected の AST pair を保持する。
+(defn parse-defn-meta-case-expectation-v3 [spans pos-ref src]
+  (if (== (p-current spans pos-ref) 0)
+    (do
+      (p-advance pos-ref)
+      (if (== (p-current spans pos-ref) 20)
+        (let [name (current-symbol-text-v3 spans pos-ref src)]
+          (if (string-eq name "expect")
+            (do
+              (p-advance pos-ref)
+              (let [actual (parse-expr-v3 spans pos-ref src)]
+                (do
+                  (root_push actual)
+                  (let [expected (parse-expr-v3 spans pos-ref src)]
+                    (do
+                      (root_push expected)
+                      (p-expect spans pos-ref 1)
+                      (let [pair (vector-push-pair-rooted-v3
+                        (vector-new 2)
+                        actual
+                        expected)]
+                        (do
+                          (root_pop)
+                          (root_pop)
+                          pair)))))))
+            (do
+              (parse-skip-to-close-v3 spans pos-ref 1)
+              (vector-new 0))))
+        (do
+          (parse-skip-to-close-v3 spans pos-ref 1)
+          (vector-new 0))))
+    (vector-new 0)))
+
+(defn parse-defn-meta-case-loop-rooted-v3 [spans pos-ref src expectations]
+  (if (== (p-current spans pos-ref) 3)
+    (do
+      (p-advance pos-ref)
+      expectations)
+    (if (== (p-current spans pos-ref) 99)
+      expectations
+      (do
+        (root_push expectations)
+        (let [pair (parse-defn-meta-case-expectation-v3 spans pos-ref src)]
+          (do
+            (root_push pair)
+            (let [next-expectations (vector-push-single-rooted-v3 expectations pair)]
+              (do
+                (root_push next-expectations)
+                (let [parsed (parse-defn-meta-case-loop-rooted-v3
+                  spans pos-ref src next-expectations)]
+                  (do
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    parsed))))))))))
+
+(defn parse-defn-meta-case-loop-v3 [spans pos-ref src expectations]
+  (do
+    (root_push spans)
+    (root_push pos-ref)
+    (root_push src)
+    (let [parsed (parse-defn-meta-case-loop-rooted-v3 spans pos-ref src expectations)]
+      (do
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        parsed))))
+
+(defn parse-defn-meta-case-v3 [spans pos-ref src meta]
+  (if (== (p-current spans pos-ref) 2)
+    (do
+      (p-advance pos-ref)
+      (let [expectations0 (vector-new 0)]
+        (do
+          (root_push expectations0)
+          (let [expectations (parse-defn-meta-case-loop-v3
+            spans pos-ref src expectations0)]
+            (do
+              (root_push expectations)
+              (let [updated (append-defn-metadata-form-v3
+                meta (contract-form-case) expectations)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (parse-defn-metadata-loop-v3 spans pos-ref src updated))))))))
+    (do
+      (skip-directive-payload-v3 spans pos-ref)
+      (parse-defn-metadata-loop-v3 spans pos-ref src meta))))
 
 ;; :assert [predicate ...] — canonical Bool predicate vector を保持する。
 (defn parse-defn-meta-assert-loop-v3 [spans pos-ref src predicates]
