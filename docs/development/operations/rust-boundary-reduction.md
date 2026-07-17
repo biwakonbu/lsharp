@@ -68,7 +68,15 @@ Selfhost `Syntax.AST` / `Syntax.Parser` は canonical `:case [(expect actual exp
 
 Evidence: RED の `test_e2e_selfhost_parser_preserves_ordered_case_forms`、GREEN の同 test（`1, 4, 2, 5, 1, 5, 1`）、`cargo run --quiet --bin lsharp -- check selfhost/src/Syntax/Parser.ls`。
 
-これは selfhost parser の verified slice に限定され、selfhost runner/materialization、empty/malformed case diagnostics、Rust/native inventory parity、Mac/Linux current-source artifact/runtime parity は残件である。`generate-tests` はまだ case form を実行結果へ投影しないため、未対応 case を Rust fallback で成功扱いしない。
+これは selfhost parser の verified slice に限定され、empty/malformed case diagnostics、Rust/native inventory parity、Mac/Linux current-source artifact/runtime parity は残件である。runner projection と CLI summary は次の selfhost case runner slice で検証する。
+
+### EC-M1-02 selfhost canonical `:case` runner and CLI slice (2026-07-17)
+
+Selfhost `Tools.Test.TestRunner` は parser-owned kind `4` の expectation pair を `[name, actual-ast, expected-ast, diagnostic]` の case test case へ投影し、`generate-tests` の suite slot `3` で actual / expected を Int / Bool value として比較する。期待値不一致は `passed=0` で返し、空の `:case []` は synthetic failure と `LS2006` にする。`App.Cli` / `App.EmbeddedCli` は `cases:N`、case failure、case diagnostic を既存の examples/invariants/assertions 集計へ追加する。
+
+Evidence: `test_e2e_selfhost_test_runner_materializes_canonical_cases`、`test_e2e_selfhost_test_runner_rejects_empty_canonical_case`（`diagnostics:1,LS2006`）、`test_e2e_selfhost_cli_reports_canonical_cases`、`cargo run --quiet --bin lsharp -- check selfhost/src/Tools/Test/TestRunner.ls` / `Cli.ls` / `EmbeddedCli.ls`、full CLI GREEN (`362.93s`)。
+
+これは selfhost runner/evaluator と text CLI summary の verified sliceであり、selfhost case の Rust type-check/detailed span parity、malformed case diagnostics、property/assertion との共通 ContractSuite、module-qualified/native stage0 の current-source artifact/runtime parity、Mac/Linux native gate は残件である。Int / Bool 以外を selfhost runner が成功扱いしないための static preflight は Rust/selfhost checker の後続境界として保持する。
 
 ### EC-M1-03 selfhost canonical assert parser/formatter bridge (2026-07-17)
 

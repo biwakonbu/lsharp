@@ -74,26 +74,33 @@
 (defn test-examples-text [count] (string-concat "examples:" (int-to-string count)))
 (defn test-invariants-text [count] (string-concat "invariants:" (int-to-string count)))
 (defn test-assertions-text [count] (string-concat "assertions:" (int-to-string count)))
+(defn test-cases-text [count] (string-concat "cases:" (int-to-string count)))
 (defn test-failures-text [count] (string-concat "failures:" (int-to-string count)))
 (defn run-test-source [src opts]
   (let [suite (generate-tests-from-source src)
     example-results (vector-get suite 0)
     invariant-results (vector-get suite 1)
     assertion-results (vector-get suite 2)
+    case-results (vector-get suite 3)
     example-count (vector-length example-results)
     invariant-count (vector-length invariant-results)
     assertion-count (vector-length assertion-results)
+    case-count (vector-length case-results)
     failed (+
       (count-failed-results example-results)
-      (+ (count-failed-results invariant-results) (count-failed-results assertion-results)))
-    diagnostic-count (test-diagnostics-count-with-assertions
+      (+
+        (count-failed-results invariant-results)
+        (+ (count-failed-results assertion-results) (count-failed-results case-results))))
+    diagnostic-count (test-diagnostics-count-with-cases
       example-results
       invariant-results
-      assertion-results)
-    diagnostic-summary (test-diagnostics-summary-with-assertions
+      assertion-results
+      case-results)
+    diagnostic-summary (test-diagnostics-summary-with-cases
       example-results
       invariant-results
-      assertion-results)]
+      assertion-results
+      case-results)]
     (do
       (print-string (test-examples-text example-count))
       (print-string "\n")
@@ -102,6 +109,11 @@
       (if (> assertion-count 0)
         (do
           (print-string (test-assertions-text assertion-count))
+          (print-string "\n"))
+        (print-string ""))
+      (if (> case-count 0)
+        (do
+          (print-string (test-cases-text case-count))
           (print-string "\n"))
         (print-string ""))
       (print-string (test-failures-text failed))

@@ -6195,6 +6195,117 @@ fn test_e2e_selfhost_parser_preserves_ordered_case_forms() {
     );
 }
 
+/// EC-M1-02: selfhost runner が canonical :case を actual/expected として実行すること
+#[test]
+fn test_e2e_selfhost_test_runner_materializes_canonical_cases() {
+    let harness = r#"
+(defn main []
+  (let [src "(defn succ [x] :case [(expect (succ 1) 2) (expect (succ 2) 4)] (+ x 1))"
+        program (parse-program src)
+        cases (extract-cases-from-program program)
+        case0 (vector-get cases 0)
+        case1 (vector-get cases 1)
+        suite (generate-tests src)
+        results (vector-get suite 3)
+        result0 (vector-get results 0)
+        result1 (vector-get results 1)]
+    (do
+      (print (vector-length cases))
+      (print (vector-get case0 0))
+      (print (vector-get (vector-get case0 1) 0))
+      (print (vector-get (vector-get case0 2) 0))
+      (print (vector-get case1 0))
+      (print (vector-get (vector-get case1 1) 0))
+      (print (vector-get (vector-get case1 2) 0))
+      (print (vector-get result0 1))
+      (print (vector-get result1 1))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_test_runner_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["2", "0", "5", "1", "1", "5", "1", "1", "0"],
+        "selfhost runner は canonical :case の actual/expected を順序どおり実行するべき"
+    );
+}
+
+/// EC-M1-02: selfhost runner が空の canonical :case を LS2006 で拒否すること
+#[test]
+fn test_e2e_selfhost_test_runner_rejects_empty_canonical_case() {
+    let harness = r#"
+(defn main []
+  (let [src "(defn succ [x] :case [] (+ x 1))"
+        program (parse-program src)
+        cases (extract-cases-from-program program)
+        suite (generate-tests src)
+        results (vector-get suite 3)
+        result0 (vector-get results 0)
+        summary (test-diagnostics-summary-with-cases
+          (vector-new 0)
+          (vector-new 0)
+          (vector-new 0)
+          results)]
+    (do
+      (print (vector-length cases))
+      (print (vector-length results))
+      (print (vector-get result0 1))
+      (print (vector-get result0 3))
+      (print-string summary)
+      (print-string "\n")
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_test_runner_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["1", "1", "0", "2006", "diagnostics:1,LS2006"],
+        "selfhost runner は空の canonical :case を 0 件の成功として扱わず LS2006 にするべき"
+    );
+}
+
+/// EC-M1-02: selfhost CLI が canonical :case の件数・失敗を summary へ反映すること
+#[test]
+fn test_e2e_selfhost_cli_reports_canonical_cases() {
+    let harness = r#"
+(defn main []
+  (let [src "(defn succ [x] :case [(expect (succ 1) 2) (expect (succ 2) 4)] (+ x 1))"]
+    (do
+      (print-string "BEGIN\n")
+      (print (run-test-source src 0))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec![
+            "BEGIN",
+            "examples:0",
+            "invariants:0",
+            "cases:2",
+            "failures:1",
+            "2",
+        ],
+        "selfhost CLI は canonical :case を silent success にせず件数と失敗数へ反映するべき"
+    );
+}
+
 /// EC-M1-03: selfhost CLI が canonical :assert の件数を結果へ反映すること
 #[test]
 #[ignore]

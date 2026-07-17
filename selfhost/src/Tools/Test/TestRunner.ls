@@ -6,7 +6,7 @@
 
 ;; TestRunner.ls - L# セルフホスティング: メタデータテストランナー
 ;;
-;; :example / :invariant は parser が保持した defn metadata を test case へ投影する。
+;; :example / :invariant / :case は parser が保持した defn metadata を test case へ投影する。
 ;; ordered forms がない旧 metadata には集約 payload の fallback を残す。
 ;; 算術・比較・if/let/do・トップレベル defn 呼び出しの subset を実行する。
 
@@ -34,6 +34,19 @@
       (vector-push (vector-new 3) name)
       input)
     expected))
+
+;; canonical :case: [name-id, actual-expr, expected-expr, diagnostic-code]
+(defn make-case-test-case [name actual expected diagnostic-code]
+  (vector-push-quad-rooted
+    (vector-new 4)
+    name
+    actual
+    expected
+    diagnostic-code))
+
+(defn append-case-test-case-rooted [results name actual expected diagnostic-code]
+  (let [test-case (make-case-test-case name actual expected diagnostic-code)]
+    (vector-push-single-rooted results test-case)))
 
 ;; テスト結果: [name-id, passed, actual, diagnostic-code]
 (defn make-test-result [name passed actual]
@@ -65,6 +78,15 @@
       (vector-push (vector-new 3) examples)
       invariants)
     assertions))
+
+(defn make-suite-with-cases [examples invariants assertions cases]
+  (vector-push
+    (vector-push
+      (vector-push
+        (vector-push (vector-new 4) examples)
+        invariants)
+      assertions)
+    cases))
 
 ;; defn ノード末尾の metadata vector [doc, example, params, returns, invariant, ordered-forms]
 ;; から parser-owned invariant AST を取り出す。
@@ -291,6 +313,104 @@
     (vector-length program)
     (vector-new 8)))
 
+;; parser-owned canonical :case form [4, [[actual, expected] ...]] を case へ投影する。
+(defn append-parser-case-expectations-loop [expectations idx count results]
+  (if (>= idx count)
+    results
+    (let [pair (vector-get expectations idx)
+      actual (vector-get pair 0)
+      expected (vector-get pair 1)]
+      (append-parser-case-expectations-loop
+        expectations
+        (+ idx 1)
+        count
+        (append-case-test-case-rooted
+          results
+          (vector-length results)
+          actual
+          expected
+          0)))))
+
+(defn append-parser-ordered-case-form [form results]
+  (if (= (vector-get form 0) (contract-form-case))
+    (let [expectations (vector-get form 1)]
+      (if (= (vector-length expectations) 0)
+        (append-case-test-case-rooted
+          results
+          (vector-length results)
+          (value-unit)
+          (value-unit)
+          (contract-diagnostic-empty-case))
+        (append-parser-case-expectations-loop
+          expectations
+          0
+          (vector-length expectations)
+          results)))
+    results))
+
+(defn append-parser-ordered-cases-loop [forms idx count results]
+  (if (>= idx count)
+    results
+    (append-parser-ordered-cases-loop
+      forms
+      (+ idx 1)
+      count
+      (append-parser-ordered-case-form (vector-get forms idx) results))))
+
+(defn append-parser-cases [decl results]
+  (let [forms (test-defn-ordered-forms decl)]
+    (if (= forms 0)
+      results
+      (append-parser-ordered-cases-loop
+        forms
+        0
+        (vector-length forms)
+        results))))
+
+(defn append-parser-cases-from-module-loop [module-node idx count results]
+  (if (>= idx count)
+    results
+    (append-parser-cases-from-module-loop
+      module-node
+      (+ idx 1)
+      count
+      (append-parser-cases-from-decl
+        (vector-get module-node (+ idx 3))
+        results))))
+
+(defn append-parser-cases-from-decl [decl results]
+  (let [tag (vector-get decl 0)]
+    (if (= tag (ast-defn))
+      (append-parser-cases decl results)
+      (if (= tag (ast-private))
+        (append-parser-cases-from-decl (vector-get decl 1) results)
+        (if (= tag (ast-module-decl))
+          (append-parser-cases-from-module-loop
+            decl
+            0
+            (vector-get decl 2)
+            results)
+          results)))))
+
+(defn extract-cases-from-program-loop [program idx count results]
+  (if (>= idx count)
+    results
+    (let [next-results (append-parser-cases-from-decl
+        (vector-get program idx)
+        results)]
+      (extract-cases-from-program-loop
+        program
+        (+ idx 1)
+        count
+        next-results))))
+
+(defn extract-cases-from-program [program]
+  (extract-cases-from-program-loop
+    program
+    0
+    (vector-length program)
+    (vector-new 8)))
+
 (defn test-result-diagnostic [result]
   (if (> (vector-length result) 3)
     (vector-get result 3)
@@ -298,6 +418,7 @@
 
 (defn contract-diagnostic-undefined [] 1) ;; LS1001: undefined-variable
 (defn contract-diagnostic-non-bool [] 2) ;; LS1002: invariant-predicate-must-be-bool
+(defn contract-diagnostic-empty-case [] 2006) ;; LS2006: empty-case-contract
 
 (defn diagnostic-count-loop [results idx count acc]
   (if (>= idx count)
@@ -329,7 +450,9 @@
     "LS1001"
     (if (= code (contract-diagnostic-non-bool))
       "LS1002"
-      "LS0000")))
+      (if (= code (contract-diagnostic-empty-case))
+        "LS2006"
+        "LS0000"))))
 
 (defn test-diagnostics-summary [examples invariants]
   (let [count (test-diagnostics-count examples invariants)
@@ -353,6 +476,25 @@
 (defn test-diagnostics-summary-with-assertions [examples invariants assertions]
   (let [count (test-diagnostics-count-with-assertions examples invariants assertions)
     code (first-test-diagnostic-code-with-assertions examples invariants assertions)]
+    (if (= count 0)
+      "diagnostics:0"
+      (string-concat "diagnostics:"
+        (string-concat (int-to-string count)
+          (string-concat "," (test-diagnostic-code-text code)))))))
+
+(defn test-diagnostics-count-with-cases [examples invariants assertions cases]
+  (+ (test-diagnostics-count-with-assertions examples invariants assertions)
+    (diagnostic-count-loop cases 0 (vector-length cases) 0)))
+
+(defn first-test-diagnostic-code-with-cases [examples invariants assertions cases]
+  (let [code (first-test-diagnostic-code-with-assertions examples invariants assertions)]
+    (if (> code 0)
+      code
+      (first-diagnostic-code-loop cases 0 (vector-length cases)))))
+
+(defn test-diagnostics-summary-with-cases [examples invariants assertions cases]
+  (let [count (test-diagnostics-count-with-cases examples invariants assertions cases)
+    code (first-test-diagnostic-code-with-cases examples invariants assertions cases)]
     (if (= count 0)
       "diagnostics:0"
       (string-concat "diagnostics:"
@@ -1118,6 +1260,50 @@
     (vector-length test-cases)
     (vector-new (vector-length test-cases))))
 
+(defn case-test-diagnostic [test-case]
+  (if (> (vector-length test-case) 3)
+    (vector-get test-case 3)
+    0))
+
+(defn run-cases-loop [program test-cases idx count results]
+  (if (>= idx count)
+    results
+    (let [test-case (vector-get test-cases idx)
+      name (vector-get test-case 0)
+      diagnostic-code (case-test-diagnostic test-case)]
+      (if (> diagnostic-code 0)
+        (run-cases-loop
+          program
+          test-cases
+          (+ idx 1)
+          count
+          (vector-push
+            results
+            (make-test-result-with-diagnostic name 0 0 diagnostic-code)))
+        (let [actual (eval-node program (vector-get test-case 1) (env-new))
+          expected (eval-node program (vector-get test-case 2) (env-new))
+          passed (values-equal actual expected)]
+          (run-cases-loop
+            program
+            test-cases
+            (+ idx 1)
+            count
+            (vector-push
+              results
+              (make-test-result-with-diagnostic
+                name
+                passed
+                (value-int-or-bool actual)
+                0))))))))
+
+(defn run-cases [program test-cases]
+  (run-cases-loop
+    program
+    test-cases
+    0
+    (vector-length test-cases)
+    (vector-new (vector-length test-cases))))
+
 (defn invariant-sample-count [param-count]
   (if (= param-count 0)
     1
@@ -1268,13 +1454,16 @@
     examples (extract-examples-from-program program)
     invariants (extract-invariants-from-program program)
     assertions (extract-assertions-from-program program)
+    cases (extract-cases-from-program program)
     example-results (run-examples program examples)
     invariant-results (run-invariants program invariants)
-    assertion-results (run-assertions program assertions)]
-    (make-suite-with-assertions
+    assertion-results (run-assertions program assertions)
+    case-results (run-cases program cases)]
+    (make-suite-with-cases
       example-results
       invariant-results
-      assertion-results)))
+      assertion-results
+      case-results)))
 
 (defn generate-tests-from-source [src]
   (generate-tests src))
