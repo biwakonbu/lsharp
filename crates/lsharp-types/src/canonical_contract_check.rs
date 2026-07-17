@@ -222,10 +222,10 @@ fn collect_property_non_vacuity(
                     if matches!(
                         property.postcondition(),
                         Expr::Lit(_, Literal::Bool(true))
-                    ) {
+                    ) || statically_true_integer_comparison(property.postcondition()) {
                         diagnostics.push(MetadataDiagnostic {
                             severity: Severity::Error,
-                            message: ":property の literal true postcondition は検査を識別できず vacuous です"
+                            message: ":property の postcondition は検査を識別できず vacuous です"
                                 .to_string(),
                             span: property.postcondition().span(),
                             function_name: owner.clone(),

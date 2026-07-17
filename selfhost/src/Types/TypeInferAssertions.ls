@@ -112,41 +112,37 @@
   (if (= (ty-tag ty) (ty-fun))
     (property-probe-return-type (type-fun-ret ty))
     ty))
-(defn check-property-predicate [payload expression]
+(defn property-probe-predicate [program] (let [decl (vector-get program 0)] (vector-get decl (+ 3 (vector-get decl 2)))))
+(defn check-property-predicate [payload expression reject-vacuous]
   (if (= (string-length expression) 0)
     (canonical-property-type-error-code)
     (do
       (root_push payload)
       (root_push expression)
-      (let [probe-source
-              (string-concat
-                "(defn __lsharp_property_probe "
-                (string-concat
-                  (property-probe-parameter-source payload)
-                  (string-concat " " (string-concat expression ")"))))]
+      (let [probe-source (string-concat "(defn __lsharp_property_probe " (string-concat (property-probe-parameter-source payload) (string-concat " " (string-concat expression ")"))))]
         (do
           (root_push probe-source)
-          (let [analysis (infer-program-analysis (parse-program probe-source))]
+          (let [probe-program (parse-program probe-source)]
             (do
-              (root_push analysis)
-              (let [diagnostic-count (infer-program-analysis-diagnostic-count analysis)
-                result (if (> diagnostic-count 0)
-                  (canonical-property-type-error-code)
-                  (let [resolved
-                          (property-probe-return-type
-                            (infer-program-analysis-type analysis))]
-                    (if (and
-                      (= (ty-tag resolved) (ty-con))
-                      (= (ty-name resolved) (hash-bool)))
-                      0
-                      (canonical-property-non-bool-code))))]
+              (root_push probe-program)
+              (let [analysis (infer-program-analysis probe-program)]
                 (do
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  result)))))))))
-(defn check-property-postcondition [payload] (let [expression (property-postcondition-text payload)] (if (= (string-length expression) 0) (canonical-property-empty-code) (if (string-eq expression "true") (canonical-assertion-vacuous-code) (check-property-predicate payload expression)))))
+                  (root_push analysis)
+                  (let [diagnostic-count (infer-program-analysis-diagnostic-count analysis)
+                    result (if (> diagnostic-count 0)
+                      (canonical-property-type-error-code)
+                      (let [predicate (property-probe-predicate probe-program)
+                        resolved (property-probe-return-type (infer-program-analysis-type analysis))
+                        type-code (if (and (= (ty-tag resolved) (ty-con)) (= (ty-name resolved) (hash-bool))) 0 (canonical-property-non-bool-code))]
+                        (if (and (= reject-vacuous 1) (= (statically-true-integer-comparison? predicate) 1)) (canonical-assertion-vacuous-code) type-code)))]
+                    (do
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      result)))))))))))
+(defn check-property-postcondition [payload] (let [expression (property-postcondition-text payload)] (if (= (string-length expression) 0) (canonical-property-empty-code) (if (string-eq expression "true") (canonical-assertion-vacuous-code) (check-property-predicate payload expression 1)))))
 (defn check-property-preconditions-loop [payload idx close len]
   (let [expression-start (property-skip-space payload idx len)]
     (if (>= expression-start close)
@@ -163,7 +159,7 @@
             (let [expression (substring payload expression-start expression-end)]
               (do
                 (root_push expression)
-                (let [code (check-property-predicate payload expression)]
+                (let [code (check-property-predicate payload expression 0)]
                   (if (> code 0)
                     (do
                       (root_pop)

@@ -178,7 +178,7 @@ Selfhost `Types.TypeInferAssertions` は empty canonical `:property []` を `200
 
 Evidence: RED の `test_e2e_selfhost_cli_check_rejects_empty_canonical_property` と `test_e2e_selfhost_cli_check_rejects_vacuous_property_postcondition`、GREEN の同 2 tests、`test_e2e_selfhost_cli_check_accepts_typed_property_binder`、`test_e2e_selfhost_cli_check_rejects_non_bool_canonical_property`、`./target/debug/lsharp check selfhost/src/Types/TypeInferAssertions.ls`。Rust oracle 側の `canonical_property_requires_at_least_one_for_all` / `canonical_property_rejects_literal_true_postcondition_as_vacuous` と同じ non-vacuity boundary を確認した。
 
-これは empty property と literal `true` postcondition の verified slice に限られる。typed binder なし、`cases=0`、static comparison の constant-true 判定、到達不能 precondition、sampling/shrink/evaluator、diagnostic span parity、full CLI artifact/runtime、Mac Apple Silicon / Linux x86_64 の current-source native gate は残件であり、Rust oracle / bootstrap 境界を維持する。
+これは empty property と literal `true` postcondition の verified slice に限られる。typed binder なし、`cases=0`、到達不能 precondition、sampling/shrink/evaluator、diagnostic span parity、full CLI artifact/runtime、Mac Apple Silicon / Linux x86_64 の current-source native gate は残件であり、Rust oracle / bootstrap 境界を維持する。
 
 ### EC-M1-04 selfhost property structural non-vacuity (2026-07-18)
 
@@ -186,7 +186,13 @@ Selfhost `Types.TypeInferAssertions` は `for-all` の typed binder が 0 件、
 
 Evidence: `test_e2e_selfhost_cli_check_rejects_empty_canonical_property`、`test_e2e_selfhost_cli_check_rejects_property_without_typed_binder`、`test_e2e_selfhost_cli_check_rejects_zero_case_property`、`test_selfhost_cli_sources_route_property_runner_boundary`、`./target/debug/lsharp check selfhost/src/Types/TypeInferAssertions.ls` / `App/Cli.ls` / `App/EmbeddedCli.ls`、`bash scripts/audit_docs.sh`。
 
-これは structural code `2007` の selfhost verified slice であり、Rust metadata checker の個別 message/span、static constant-true comparison、negative `cases` / malformed option、到達不能 precondition、sampling/shrink/evaluator、full CLI artifact/runtime、Mac Apple Silicon / Linux x86_64 の current-source native gate は残件である。property 全体または全機能 Rust-free 完了とは扱わず、Rust oracle / bootstrap 境界を維持する。
+これは structural code `2007` の selfhost verified slice であり、Rust metadata checker の個別 message/span、negative `cases` / malformed option、到達不能 precondition、sampling/shrink/evaluator、full CLI artifact/runtime、Mac Apple Silicon / Linux x86_64 の current-source native gate は残件である。property 全体または全機能 Rust-free 完了とは扱わず、Rust oracle / bootstrap 境界を維持する。
+
+### EC-M1-04 property static integer non-vacuity parity (2026-07-18)
+
+Rust `canonical_contract_check` と selfhost `Types.TypeInferAssertions` は、property postcondition の整数 literal に対する `=` / `==` / `!=` / `<` / `>` / `<=` / `>=` の静的に常真な比較を `2005` 相当の vacuous diagnostic として拒否する。Rust は property の postcondition AST を既存の assertion 判定器へ渡し、selfhost は synthetic probe の parsed program を root したまま同じ比較規約を適用する。precondition の Bool 型検査ではこの non-vacuity 判定を適用せず、入力に依存し得る predicate の型検査を維持する。
+
+Evidence: RED の `canonical_property_rejects_statically_true_integer_comparisons_as_vacuous` と `test_e2e_selfhost_cli_check_rejects_statically_true_property_postcondition`、GREEN の同 2 tests、`cargo test -p lsharp-types --test metadata_contract_check -- --nocapture`（15 tests）、empty / literal true / typed binder / binderless / zero-case の selfhost focused E2E、`./target/debug/lsharp check selfhost/src/Types/TypeInferAssertions.ls`、`bash scripts/audit_docs.sh`。残るのは動的に到達不能な precondition、negative `cases` / malformed option、type-directed sampling/shrink、property evaluator、diagnostic/span parity、full CLI artifact/runtime、Mac Apple Silicon / Linux x86_64 の current-source native gate であり、この slice 単独では EC-M1-04 全体または全機能 Rust-free 完了とは扱わない。
 
 ### scoped polymorphic `defn` signature (2026-07-15)
 
