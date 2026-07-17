@@ -367,6 +367,22 @@ impl Parser {
                             ));
                             found = true;
                         }
+                        "assert" => {
+                            let form_start = self.peek_span();
+                            self.advance(); // :
+                            self.advance(); // assert
+                            self.expect(TokenKind::LBracket)?;
+                            let mut predicates = Vec::new();
+                            while !self.check(TokenKind::RBracket) {
+                                predicates.push(self.parse_expr()?);
+                            }
+                            let form_end = self.advance().span; // ]
+                            metadata.forms.push(MetadataForm::new(
+                                form_start.merge(form_end),
+                                MetadataFormKind::Assertion { predicates },
+                            ));
+                            found = true;
+                        }
                         "transitions" => {
                             // :transitions [(From -> To) ...]
                             self.advance(); // :
@@ -1480,6 +1496,7 @@ impl Parser {
                     | "see-also"
                     | "example"
                     | "invariant"
+                    | "assert"
                     | "transitions"
             ),
             _ => false,

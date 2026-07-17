@@ -333,25 +333,38 @@ fn inventory_decl(decl: &Decl) -> Result<Option<ContractSuite>, ContractInventor
         .forms
         .last()
         .expect("first があれば last も存在する");
-    let pending_migration = metadata
-        .forms
-        .iter()
-        .map(|form| match &form.kind {
-            MetadataFormKind::LegacyExample { expressions } => LegacyContract::Example {
-                expressions: expressions.clone(),
-                source_span: form.span(),
-            },
-            MetadataFormKind::LegacyInvariant { predicate } => LegacyContract::Invariant {
-                predicate: predicate.clone(),
-                source_span: form.span(),
-            },
-        })
-        .collect();
+    let mut executable = Vec::new();
+    let mut pending_migration = Vec::new();
+    for form in &metadata.forms {
+        match &form.kind {
+            MetadataFormKind::LegacyExample { expressions } => {
+                pending_migration.push(LegacyContract::Example {
+                    expressions: expressions.clone(),
+                    source_span: form.span(),
+                });
+            }
+            MetadataFormKind::LegacyInvariant { predicate } => {
+                pending_migration.push(LegacyContract::Invariant {
+                    predicate: predicate.clone(),
+                    source_span: form.span(),
+                });
+            }
+            MetadataFormKind::Assertion { predicates } => {
+                executable.extend(predicates.iter().cloned().map(|predicate| {
+                    let source_span = predicate.span();
+                    ExecutableContract::Assertion(Assertion {
+                        predicate,
+                        source_span,
+                    })
+                }));
+            }
+        }
+    }
 
     Ok(Some(ContractSuite {
         owner: SymbolId(name.clone()),
         docs: Vec::new(),
-        executable: Vec::new(),
+        executable,
         pending_migration,
         intent_links: Vec::new(),
         claim_links: Vec::new(),
@@ -384,6 +397,7 @@ fn validate_compatibility_projection(
             MetadataFormKind::LegacyInvariant { predicate } => {
                 invariant = Some(predicate.clone());
             }
+            MetadataFormKind::Assertion { .. } => {}
         }
     }
 

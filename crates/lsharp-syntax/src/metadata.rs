@@ -22,11 +22,13 @@ impl MetadataForm {
     }
 }
 
-/// v0.1 metadata から lossless に保持する executable contract form。
+/// source から lossless に保持する contract form。
 #[derive(Debug, Clone, PartialEq)]
 pub enum MetadataFormKind {
     /// legacy `:example [expr ...]`。一つの directive 内の grouping を維持する。
     LegacyExample { expressions: Vec<Expr> },
     /// legacy `:invariant predicate`。
     LegacyInvariant { predicate: Expr },
+    /// canonical `:assert [predicate ...]`。一つの directive 内の grouping を維持する。
+    Assertion { predicates: Vec<Expr> },
 }

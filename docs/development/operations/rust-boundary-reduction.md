@@ -30,6 +30,14 @@ Evidence: `test_e2e_selfhost_test_runner_rejects_non_bool_invariant`、`cargo ru
 
 これは selfhost runner の strict Bool verified slice であり、Rust `run_metadata_tests` との diagnostic/span parity、structured report、current-source Mac/Linux native artifact/runtime gate は残件である。したがって、日常開発でこの slice を利用できるが、Rust oracle / bootstrap 境界は引き続き保持する。
 
+### EC-M1-02 canonical assert inventory bridge (2026-07-17)
+
+Rust syntax は `:assert [predicate ...]` を lossless な ordered metadata form として parse し、metadata inventory は各 predicate を source 順の `ExecutableContract::Assertion` へ投影するようになった。directive span と predicate span を保持し、canonical form は legacy `pending_migration` へ混ぜない。既存の `:example` / `:invariant` aggregate projection と migration queue は変更していない。
+
+Evidence: RED の `metadata_contract_assert` compile failure、GREEN の `canonical_assert_forms_preserve_order_and_predicate_spans`、`cargo test -p lsharp-syntax -p lsharp-types -p lsharp-tooling -- --nocapture`、`bash scripts/audit_docs.sh`。
+
+これは Rust parser/types の canonical inventory bridge に限定した verified slice であり、selfhost parser/formatter/runner、assert の型検査・実行・diagnostic report、migration diagnostic、Mac/Linux current-source native artifact/runtime parity は残件である。したがって `:assert` を L# の日常開発経路で使える機能として扱うには、次に selfhost 側の同じ ordered form と実行境界を接続する必要がある。
+
 ### scoped polymorphic `defn` signature (2026-07-15)
 
 `TypeInferFunctions.ls` は `defn` の parameter / return annotation に現れる scoped 名ごとに共有 fresh 型変数を割り当て、通常の型環境で関数を一般化する。これにより `id` を Int と Bool の別 call site で使え、`choose-first [(: x a) (: y b)] : a x` では `a` と `b` を独立に具体化できる。GADT refinement と exhaustiveness は別タスクである。Evidence: `test_e2e_selfhost_scoped_type_var_defn_signature_is_polymorphic`、`test_e2e_selfhost_scoped_multiple_type_vars_defn_signature_is_polymorphic`、`TypeInfer.ls` check。
