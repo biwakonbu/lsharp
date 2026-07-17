@@ -220,10 +220,7 @@ fn collect_property_non_vacuity(
                         });
                     }
                     for precondition in property.preconditions() {
-                        if matches!(
-                            precondition,
-                            Expr::Lit(_, Literal::Bool(false))
-                        ) || statically_false_integer_comparison(precondition) {
+                        if statically_false_precondition(precondition) {
                             diagnostics.push(MetadataDiagnostic {
                                 severity: Severity::Error,
                                 message: ":property の precondition は到達不能で vacuous です"
@@ -254,6 +251,14 @@ fn collect_property_non_vacuity(
 
 fn statically_true_integer_comparison(expr: &Expr) -> bool {
     matches!(static_integer_comparison_result(expr), Some(true))
+}
+
+fn statically_false_precondition(expr: &Expr) -> bool {
+    let Expr::Ann(_, inner, _) = expr else {
+        return matches!(expr, Expr::Lit(_, Literal::Bool(false)))
+            || statically_false_integer_comparison(expr);
+    };
+    statically_false_precondition(inner)
 }
 
 fn statically_false_integer_comparison(expr: &Expr) -> bool {

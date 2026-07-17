@@ -284,6 +284,23 @@ fn canonical_property_rejects_statically_false_integer_preconditions() {
 }
 
 #[test]
+fn canonical_property_rejects_annotated_false_precondition() {
+    const SOURCE: &str =
+        "(defn identity [x] :property [(for-all [x Int] :precondition [(: false Bool)] :postcondition (>= result 0))] x)";
+    let program = parse(SOURCE)
+        .expect("annotated false precondition は diagnostic のため parse できるべき");
+
+    let diagnostics = check_metadata(&program);
+
+    assert_eq!(diagnostics.len(), 1, "annotation 付き到達不能 precondition を成功扱いしてはならない");
+    let diagnostic = &diagnostics[0];
+    assert_eq!(diagnostic.severity, Severity::Error);
+    assert!(diagnostic.message.contains("vacuous"), "{diagnostics:?}");
+    assert_eq!(&SOURCE[diagnostic.span.start..diagnostic.span.end], "(: false Bool)");
+    assert_eq!(diagnostic.function_name, "identity");
+}
+
+#[test]
 fn canonical_property_requires_bool_postcondition() {
     const SOURCE: &str =
         "(defn identity [x] :property [(for-all [x Int] :postcondition (+ result 1))] x)";

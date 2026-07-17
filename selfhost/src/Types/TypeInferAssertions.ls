@@ -134,7 +134,7 @@
                       (let [predicate (property-probe-predicate probe-program)
                         resolved (property-probe-return-type (infer-program-analysis-type analysis))
                         type-code (if (and (= (ty-tag resolved) (ty-con)) (= (ty-name resolved) (hash-bool))) 0 (canonical-property-non-bool-code))]
-                        (if (and (= reject-vacuous 1) (= (statically-true-integer-comparison? predicate) 1)) (canonical-assertion-vacuous-code) (if (and (= reject-unreachable 1) (= (statically-false-integer-comparison? predicate) 1)) (canonical-assertion-vacuous-code) type-code))))]
+                        (if (and (= reject-vacuous 1) (= (statically-true-integer-comparison? predicate) 1)) (canonical-assertion-vacuous-code) (if (and (= reject-unreachable 1) (or (= (statically-false-integer-comparison? predicate) 1) (= (statically-false-bool? predicate) 1))) (canonical-assertion-vacuous-code) type-code))))]
                     (do
                       (root_pop)
                       (root_pop)
@@ -289,6 +289,7 @@
         0))))
 (defn statically-true-integer-comparison? [predicate] (statically-integer-comparison? predicate 1))
 (defn statically-false-integer-comparison? [predicate] (statically-integer-comparison? predicate 2))
+(defn statically-false-bool? [predicate] (let [tag (vector-get predicate 0)] (if (= tag (ast-ann)) (statically-false-bool? (vector-get predicate 1)) (if (and (= tag (ast-lit-bool)) (= (vector-get predicate 1) 0)) 1 0))))
 (defn check-assertion-predicate [predicate decl env counter]
   (if (or
     (and (= (vector-get predicate 0) (ast-lit-bool)) (= (vector-get predicate 1) 1))
