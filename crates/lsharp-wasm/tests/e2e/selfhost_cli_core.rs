@@ -6592,6 +6592,68 @@ fn test_e2e_selfhost_test_runner_rejects_non_bool_invariant() {
     );
 }
 
+/// EC-M1-02: selfhost check が canonical :case の型エラーを実行前に報告すること
+#[test]
+fn test_e2e_selfhost_cli_check_reports_invalid_canonical_case() {
+    let harness = r#"
+(defn main []
+  (do
+    (print-string "BEGIN\n")
+    (print (run-check-source "(defn noop [] :case [(expect \"a\" \"a\")] true)" 0))
+    0))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec![
+            "BEGIN",
+            "Bool",
+            "diagnostics:1,T0001@1:1,first-body:case actual and expected types must be Int or Bool",
+            "0",
+        ],
+        "selfhost check は canonical case の unsupported type を実行前に報告するべき"
+    );
+}
+
+/// EC-M1-02: selfhost test が canonical :case の型エラーを実行前に拒否すること
+#[test]
+fn test_e2e_selfhost_cli_test_rejects_invalid_canonical_case() {
+    let harness = r#"
+(defn main []
+  (let [src "(defn noop [] :case [(expect \"a\" \"a\")] true)"]
+    (do
+      (print-string "BEGIN\n")
+      (print (run-test-source src 0))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec![
+            "BEGIN",
+            "examples:0",
+            "invariants:0",
+            "cases:1",
+            "failures:1",
+            "diagnostics:1,LS1002",
+            "2",
+        ],
+        "selfhost test は canonical case の unsupported type を評価せず拒否するべき"
+    );
+}
+
 /// TEST-CLI-02-O2g: selfhost runner が legacy contract の順序と source span を保持すること
 #[test]
 fn test_e2e_selfhost_test_runner_preserves_contract_form_order_and_spans() {
