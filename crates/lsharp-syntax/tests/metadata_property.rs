@@ -52,3 +52,13 @@ fn property_form_requires_a_postcondition() {
 
     assert!(error.to_string().contains(":postcondition"));
 }
+
+#[test]
+fn property_form_rejects_negative_cases() {
+    let source =
+        "(defn identity [x] :property [(for-all [x Int] :cases -1 :postcondition (= result x))] x)";
+    let error =
+        lsharp_syntax::parse(source).expect_err("negative :cases は parse できてはならない");
+
+    assert!(error.to_string().contains("non-negative case count"));
+}
