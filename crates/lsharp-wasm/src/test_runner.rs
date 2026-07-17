@@ -4,7 +4,7 @@
 //! テストケースをコンパイル・実行して検証する。
 
 use lsharp_syntax::ast::{Decl, Program};
-use lsharp_types::metadata_check::{GeneratedTest, TestKind};
+use lsharp_types::metadata_check::{GeneratedTest, PropertySmokeTestSpec, TestKind};
 
 /// テスト実行結果
 #[derive(Debug, Clone)]
@@ -97,6 +97,23 @@ pub fn generate_test_program(original: &Program, tests: &[GeneratedTest]) -> Str
                     source.push_str(&format!("    (print (if {scoped_invariant} 1 0))\n"));
                 }
             }
+            TestKind::Property => {
+                let spec = test
+                    .property
+                    .as_ref()
+                    .expect("property smoke test には profile が必要");
+                let samples = property_sample_values(spec);
+                for sample in samples {
+                    let postcondition = format!("{}", test.expr);
+                    let result_scope = format!(
+                        "(let [result ({} {})] {postcondition})",
+                        test.function_name, sample
+                    );
+                    let scoped_property =
+                        format!("(let [{} {}] {result_scope})", spec.binder_name, sample);
+                    source.push_str(&format!("    (print (if {scoped_property} 1 0))\n"));
+                }
+            }
         }
     }
 
@@ -155,6 +172,14 @@ fn generate_sample_args(param_count: usize) -> Vec<Vec<String>> {
         }
     }
     combos
+}
+
+fn property_sample_values(spec: &PropertySmokeTestSpec) -> Vec<String> {
+    ["0", "1", "5", "-1", "42"]
+        .iter()
+        .take(spec.cases)
+        .map(|sample| (*sample).to_string())
+        .collect()
 }
 
 /// テスト結果を解析
@@ -232,6 +257,35 @@ pub fn parse_test_output(
                             ":invariant が偽を返しました (入力: {})",
                             args.join(", ")
                         ));
+                    }
+                    line_idx += 1;
+                }
+
+                results.push(TestResult {
+                    name: test.name.clone(),
+                    function_name: test.function_name.clone(),
+                    kind: test.kind.clone(),
+                    passed: all_passed,
+                    error: fail_msg,
+                });
+            }
+            TestKind::Property => {
+                let spec = test
+                    .property
+                    .as_ref()
+                    .expect("property smoke test には profile が必要");
+                let samples = property_sample_values(spec);
+                let mut all_passed = true;
+                let mut fail_msg = None;
+
+                for sample in &samples {
+                    let passed = lines
+                        .get(line_idx)
+                        .map(|line| line.trim() == "1")
+                        .unwrap_or(false);
+                    if !passed {
+                        all_passed = false;
+                        fail_msg = Some(format!(":property が偽を返しました (入力: {sample})"));
                     }
                     line_idx += 1;
                 }

@@ -123,6 +123,7 @@
 (defn test-invariants-text [count] (string-concat "invariants:" (int-to-string count)))
 (defn test-assertions-text [count] (string-concat "assertions:" (int-to-string count)))
 (defn test-cases-text [count] (string-concat "cases:" (int-to-string count)))
+(defn test-properties-text [count] (string-concat "properties:" (int-to-string count)))
 (defn test-failures-text [count] (string-concat "failures:" (int-to-string count)))
 (defn case-preflight-diagnostics-summary [case-check]
   (let [count (vector-get case-check 0)
@@ -142,6 +143,7 @@
     invariants (extract-invariants-from-program program)
     assertions (extract-assertions-from-program program)
     cases (extract-cases-from-program program)
+    properties (extract-property-test-cases program)
     diagnostic-count (vector-get case-check 0)
     diagnostic-summary (case-preflight-diagnostics-summary case-check)]
     (do
@@ -157,6 +159,11 @@
       (if (> (vector-length cases) 0)
         (do
           (print-string (test-cases-text (vector-length cases)))
+          (print-string "\n"))
+        (print-string ""))
+      (if (> (vector-length properties) 0)
+        (do
+          (print-string (test-properties-text (vector-length properties)))
           (print-string "\n"))
         (print-string ""))
       (print-string (test-failures-text diagnostic-count))
@@ -183,25 +190,31 @@
     invariant-results (vector-get suite 1)
     assertion-results (vector-get suite 2)
     case-results (vector-get suite 3)
+    property-results (vector-get suite 4)
     example-count (vector-length example-results)
     invariant-count (vector-length invariant-results)
     assertion-count (vector-length assertion-results)
     case-count (vector-length case-results)
+    property-count (vector-length property-results)
     failed (+
       (count-failed-results example-results)
       (+
         (count-failed-results invariant-results)
-        (+ (count-failed-results assertion-results) (count-failed-results case-results))))
-    diagnostic-count (test-diagnostics-count-with-cases
+        (+
+          (count-failed-results assertion-results)
+          (+ (count-failed-results case-results) (count-failed-results property-results)))))
+    diagnostic-count (test-diagnostics-count-with-properties
       example-results
       invariant-results
       assertion-results
-      case-results)
-    diagnostic-summary (test-diagnostics-summary-with-cases
+      case-results
+      property-results)
+    diagnostic-summary (test-diagnostics-summary-with-properties
       example-results
       invariant-results
       assertion-results
-      case-results)]
+      case-results
+      property-results)]
     (do
       (print-string (test-examples-text example-count))
       (print-string "\n")
@@ -215,6 +228,11 @@
       (if (> case-count 0)
         (do
           (print-string (test-cases-text case-count))
+          (print-string "\n"))
+        (print-string ""))
+      (if (> property-count 0)
+        (do
+          (print-string (test-properties-text property-count))
           (print-string "\n"))
         (print-string ""))
       (print-string (test-failures-text failed))

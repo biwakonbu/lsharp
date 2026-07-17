@@ -6254,6 +6254,90 @@ fn test_e2e_selfhost_runner_reports_unimplemented_property_boundary() {
     );
 }
 
+/// EC-M1-05: 移行期の deterministic property smoke profile を実行すること
+#[test]
+fn test_e2e_selfhost_runner_executes_deterministic_property_smoke() {
+    let harness = r#"
+(defn main []
+  (let [src "(defn identity [x] :property [(for-all [x Int] :cases 5 :postcondition (= result x))] x)"
+        suite (generate-tests-from-source src)
+        properties (vector-get suite 4)
+        result0 (vector-get properties 0)]
+    (do
+      (print (vector-length properties))
+      (print (vector-get result0 1))
+      (print (vector-get result0 2))
+      (print (vector-get result0 3))
+      (print (metadata-test-runner-boundary-code (parse-program src)))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_test_runner_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["1", "1", "5", "0", "0"],
+        "selfhost runner は deterministic property smoke を 5 cases 実行して成功扱いすべき"
+    );
+}
+
+/// EC-M1-05: selfhost CLI が deterministic property smoke を 0 件へ丸めないこと
+#[test]
+fn test_e2e_selfhost_cli_reports_deterministic_property_smoke() {
+    let harness = r#"
+(defn main []
+  (do
+    (print (run-test-source "(defn identity [x] :property [(for-all [x Int] :cases 5 :postcondition (= result x))] x)" 0))
+    0))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["examples:0", "invariants:0", "properties:1", "failures:0", "0"],
+        "selfhost CLI は deterministic property を properties:1 として集計すべき"
+    );
+}
+
+/// EC-M1-05: selfhost CLI が non-Bool property を実行せず preflight 診断にすること
+#[test]
+fn test_e2e_selfhost_cli_rejects_non_bool_deterministic_property() {
+    let harness = r#"
+(defn main []
+  (do
+    (print (run-test-source "(defn identity [x] :property [(for-all [x Int] :cases 1 :postcondition (+ result 1))] x)" 0))
+    0))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec![
+            "examples:0",
+            "invariants:0",
+            "properties:1",
+            "failures:1",
+            "diagnostics:1,LS1002",
+            "2",
+        ],
+        "selfhost CLI は non-Bool property を truthy な整数として実行してはならない"
+    );
+}
+
 /// EC-M1-03: embedded/native CLI が同じ property runner 境界を呼び出すこと
 #[test]
 fn test_selfhost_cli_sources_route_property_runner_boundary() {

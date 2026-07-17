@@ -3,6 +3,7 @@
 (import Syntax.Lexer)
 (import Syntax.Parser)
 (import Syntax.Token)
+(import Tools.Test.PropertyRunner)
 
 ;; TestRunner.ls - L# セルフホスティング: メタデータテストランナー
 ;;
@@ -88,6 +89,11 @@
       assertions)
     cases))
 
+(defn make-suite-with-properties [examples invariants assertions cases properties]
+  (vector-push-single-rooted
+    (make-suite-with-cases examples invariants assertions cases)
+    properties))
+
 ;; defn ノード末尾の metadata vector [doc, example, params, returns, invariant, ordered-forms]
 ;; から parser-owned invariant AST を取り出す。
 (defn test-defn-signature-node? [candidate]
@@ -132,8 +138,7 @@
         (vector-get meta 5)
         0))))
 
-;; canonical :property は parser/AST まで接続済みだが、selfhost evaluator は未接続である。
-;; 実行件数 0 の成功へ流さず、declaration tree 全体で明示的な境界コードを返す。
+;; 未対応 property profile は実行件数 0 の成功へ流さず、明示的な境界コードを返す。
 (defn has-unsupported-property-form-loop [forms idx count]
   (if (>= idx count)
     0
@@ -181,9 +186,7 @@
 (defn contract-diagnostic-unsupported-property [] 3002) ;; LS3002: unimplemented property runner
 
 (defn metadata-test-runner-boundary-code [program]
-  (if (= (has-unsupported-property-in-program? program) 1)
-    (contract-diagnostic-unsupported-property)
-    0))
+  (property-runner-boundary-code program))
 
 (defn append-parser-ordered-invariant-form [form decl results]
   (if (= (vector-get form 0) 2)
@@ -550,6 +553,35 @@
 (defn test-diagnostics-summary-with-cases [examples invariants assertions cases]
   (let [count (test-diagnostics-count-with-cases examples invariants assertions cases)
     code (first-test-diagnostic-code-with-cases examples invariants assertions cases)]
+    (if (= count 0)
+      "diagnostics:0"
+      (string-concat "diagnostics:"
+        (string-concat (int-to-string count)
+          (string-concat "," (test-diagnostic-code-text code)))))))
+
+(defn test-diagnostics-count-with-properties [examples invariants assertions cases properties]
+  (+ (test-diagnostics-count-with-cases examples invariants assertions cases)
+    (diagnostic-count-loop properties 0 (vector-length properties) 0)))
+
+(defn first-test-diagnostic-code-with-properties [examples invariants assertions cases properties]
+  (let [code (first-test-diagnostic-code-with-cases examples invariants assertions cases)]
+    (if (> code 0)
+      code
+      (first-diagnostic-code-loop properties 0 (vector-length properties)))))
+
+(defn test-diagnostics-summary-with-properties [examples invariants assertions cases properties]
+  (let [count (test-diagnostics-count-with-properties
+      examples
+      invariants
+      assertions
+      cases
+      properties)
+    code (first-test-diagnostic-code-with-properties
+      examples
+      invariants
+      assertions
+      cases
+      properties)]
     (if (= count 0)
       "diagnostics:0"
       (string-concat "diagnostics:"
@@ -1379,6 +1411,124 @@
     (vector-length test-cases)
     (vector-new (vector-length test-cases))))
 
+;; 移行期 property smoke profile は legacy invariant と同じ固定値を使う。
+(defn property-sample-value [idx]
+  (if (= idx 0)
+    (value-int 0)
+    (if (= idx 1)
+      (value-int 1)
+      (if (= idx 2)
+        (value-int 5)
+        (if (= idx 3)
+          (value-int (- 0 1))
+          (value-int 42))))))
+
+(defn property-unknown-variable [program test-case]
+  (let [env (env-bind
+      (env-bind
+        (env-new)
+        (property-test-case-binder test-case)
+        (value-unit))
+      (hash-result)
+      (value-unit))]
+    (contract-node-unknown-hash
+      program
+      (property-test-case-postcondition test-case)
+      env
+      1)))
+
+(defn eval-property-sample-value [program test-case decl sample-idx]
+  (let [sample (property-sample-value sample-idx)
+    args (vector-push-single-rooted (vector-new 1) sample)
+    result (eval-defn-call program decl args)
+    owner-env (bind-params-loop (env-new) decl args 0 (vector-get decl 2))
+    property-env (env-bind
+      (env-bind
+        owner-env
+        (property-test-case-binder test-case)
+        sample)
+      (hash-result)
+      result)]
+    (eval-node
+      program
+      (property-test-case-postcondition test-case)
+      property-env)))
+
+(defn property-sample-summary [passed bool-valid]
+  (vector-push
+    (vector-push (vector-new 2) passed)
+    bool-valid))
+
+(defn run-property-samples-summary-loop
+  [program test-case decl sample-idx sample-count all-passed all-bool]
+  (if (>= sample-idx sample-count)
+    (property-sample-summary all-passed all-bool)
+    (let [actual (eval-property-sample-value program test-case decl sample-idx)
+      bool-valid (if (= (value-tag actual) (ast-lit-bool)) 1 0)
+      passed (if (= bool-valid 1) (value-truthy actual) 0)
+      next-passed (if (= passed 1) all-passed 0)
+      next-bool (if (= bool-valid 1) all-bool 0)]
+      (run-property-samples-summary-loop
+        program
+        test-case
+        decl
+        (+ sample-idx 1)
+        sample-count
+        next-passed
+        next-bool))))
+
+(defn materialize-property [program test-case]
+  (let [name (vector-get test-case 0)
+    owner (property-test-case-owner test-case)
+    decl (find-defn-by-hash program owner 0 (vector-length program))
+    profile-code (property-test-case-profile-code test-case)
+    owner-valid (if (and (> (vector-length decl) 0) (= (vector-get decl 2) 1)) 1 0)
+    unknown-hash (if (and (= profile-code 0) (= owner-valid 1))
+      (property-unknown-variable program test-case)
+      -1)
+    sample-count (property-test-case-count test-case)
+    sample-summary (if (or (> profile-code 0) (or (= owner-valid 0) (>= unknown-hash 0)))
+      (property-sample-summary 0 0)
+      (run-property-samples-summary-loop
+        program
+        test-case
+        decl
+        0
+        sample-count
+        1
+        1))
+    bool-valid (vector-get sample-summary 1)
+    diagnostic-code (if (> profile-code 0)
+      profile-code
+      (if (= owner-valid 0)
+        (contract-diagnostic-unsupported-property)
+        (if (>= unknown-hash 0)
+          (contract-diagnostic-undefined)
+          (if (= bool-valid 1) 0 (contract-diagnostic-non-bool)))))
+    passed (if (= diagnostic-code 0) (vector-get sample-summary 0) 0)
+    actual (if (= diagnostic-code 0) sample-count 0)]
+    (make-test-result-with-diagnostic name passed actual diagnostic-code)))
+
+(defn run-properties-loop [program test-cases idx count results]
+  (if (>= idx count)
+    results
+    (run-properties-loop
+      program
+      test-cases
+      (+ idx 1)
+      count
+      (vector-push
+        results
+        (materialize-property program (vector-get test-cases idx))))))
+
+(defn run-properties [program test-cases]
+  (run-properties-loop
+    program
+    test-cases
+    0
+    (vector-length test-cases)
+    (vector-new (vector-length test-cases))))
+
 (defn invariant-sample-count [param-count]
   (if (= param-count 0)
     1
@@ -1530,15 +1680,18 @@
     invariants (extract-invariants-from-program program)
     assertions (extract-assertions-from-program program)
     cases (extract-cases-from-program program)
+    properties (extract-property-test-cases program)
     example-results (run-examples program examples)
     invariant-results (run-invariants program invariants)
     assertion-results (run-assertions program assertions)
-    case-results (run-cases program cases)]
-    (make-suite-with-cases
+    case-results (run-cases program cases)
+    property-results (run-properties program properties)]
+    (make-suite-with-properties
       example-results
       invariant-results
       assertion-results
-      case-results)))
+      case-results
+      property-results)))
 
 (defn generate-tests-from-source [src]
   (generate-tests src))

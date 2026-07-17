@@ -34,6 +34,7 @@ pub fn test_kind_label(kind: &lsharp_types::metadata_check::TestKind) -> &'stati
         lsharp_types::metadata_check::TestKind::Case => "case",
         lsharp_types::metadata_check::TestKind::Example => "example",
         lsharp_types::metadata_check::TestKind::Invariant => "invariant",
+        lsharp_types::metadata_check::TestKind::Property => "property",
     }
 }
 
@@ -69,18 +70,31 @@ pub fn run_metadata_tests(file: &Path) -> miette::Result<MetadataTestRun> {
     }
     let suites = inventory_contract_suites(&program)
         .map_err(|error| miette::miette!("metadata contract inventory に失敗: {error}"))?;
-    if let Some(owner) = suites.iter().find_map(|suite| {
-        suite
-            .executable()
+    let tests = lsharp_types::metadata_check::generate_tests(&program);
+    let property_count = suites
+        .iter()
+        .flat_map(|suite| suite.executable())
+        .filter(|contract| matches!(contract, ExecutableContract::Property(_)))
+        .count();
+    let generated_property_count = tests
+        .iter()
+        .filter(|test| matches!(test.kind, lsharp_types::metadata_check::TestKind::Property))
+        .count();
+    if property_count != generated_property_count {
+        let owner = suites
             .iter()
-            .any(|contract| matches!(contract, ExecutableContract::Property(_)))
-            .then(|| suite.owner().as_str())
-    }) {
+            .find_map(|suite| {
+                suite
+                    .executable()
+                    .iter()
+                    .any(|contract| matches!(contract, ExecutableContract::Property(_)))
+                    .then(|| suite.owner().as_str())
+            })
+            .unwrap_or("anonymous");
         return Err(miette::miette!(
-            "[LS3002] {owner}: canonical :property は metadata test runner へ未接続です"
+            "[LS3002] {owner}: canonical :property は deterministic smoke profile の範囲外です"
         ));
     }
-    let tests = lsharp_types::metadata_check::generate_tests(&program);
     if tests.is_empty() {
         return Ok(MetadataTestRun {
             results: Vec::new(),
@@ -238,8 +252,8 @@ mod tests {
         let file = dir.join("Main.ls");
         fs::write(&file, "(defn noop [] :assert [(= 1 1)] true)\n").unwrap();
 
-        let error = run_metadata_tests(&file)
-            .expect_err("静的に true な整数比較を成功扱いしてはならない");
+        let error =
+            run_metadata_tests(&file).expect_err("静的に true な整数比較を成功扱いしてはならない");
         assert!(
             error.to_string().contains("[LS2005]"),
             "静的に true な整数比較は LS2005 を返すべき: {error}"
@@ -297,22 +311,63 @@ mod tests {
     }
 
     #[test]
-    fn test_run_metadata_tests_rejects_unimplemented_property_runner() {
-        let dir = unique_temp_dir("unsupported_property_runner");
+    fn test_run_metadata_tests_executes_deterministic_property_smoke() {
+        let dir = unique_temp_dir("deterministic_property_smoke");
         let file = dir.join("Main.ls");
         fs::write(
             &file,
-            "(defn identity [x] :property [(for-all [x Int] :cases 1 :postcondition (= result x))] x)\n",
+            "(defn identity [x] :property [(for-all [x Int] :cases 5 :postcondition (= result x))] x)\n",
         )
         .unwrap();
 
-        let error = run_metadata_tests(&file)
-            .expect_err("未接続の property runner を tests 0 件として成功扱いしてはならない");
+        let run = run_metadata_tests(&file).expect("deterministic property smoke は実行できるべき");
+        assert_eq!(run.total(), 1);
+        assert_eq!(run.passed(), 1);
+        assert_eq!(run.failed(), 0);
+        assert_eq!(run.results[0].name, "identity_property_0");
+        assert_eq!(
+            run.results[0].kind,
+            lsharp_types::metadata_check::TestKind::Property
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_run_metadata_tests_rejects_property_outside_deterministic_smoke_profile() {
+        let dir = unique_temp_dir("unsupported_property_profile");
+        let file = dir.join("Main.ls");
+        fs::write(
+            &file,
+            "(defn identity [x] :property [(for-all [x Int] :cases 6 :postcondition (= result x))] x)\n",
+        )
+        .unwrap();
+
+        let error =
+            run_metadata_tests(&file).expect_err("profile 外の property を成功扱いしてはならない");
         assert!(
             error.to_string().contains("[LS3002]"),
-            "property runner の未対応境界は LS3002 を返すべき: {error}"
+            "profile 外の property は LS3002 を返すべき: {error}"
         );
-        assert!(error.to_string().contains("identity"));
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_run_metadata_tests_reports_failing_deterministic_property() {
+        let dir = unique_temp_dir("failing_deterministic_property");
+        let file = dir.join("Main.ls");
+        fs::write(
+            &file,
+            "(defn identity [x] :property [(for-all [x Int] :cases 1 :postcondition (= result (+ x 1)))] x)\n",
+        )
+        .unwrap();
+
+        let run = run_metadata_tests(&file).expect("failing property も結果を返すべき");
+        assert_eq!(run.total(), 1);
+        assert_eq!(run.passed(), 0);
+        assert_eq!(run.failed(), 1);
+        assert!(run.results[0].error.is_some());
 
         let _ = fs::remove_dir_all(&dir);
     }

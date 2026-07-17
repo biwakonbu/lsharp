@@ -661,6 +661,7 @@ pub(crate) fn selfhost_source_path(name: &str) -> std::path::PathBuf {
         "HtmlDoc.ls" => "selfhost/src/Tools/Doc/HtmlDoc.ls",
         "HtmlLayout.ls" => "selfhost/src/Tools/Doc/HtmlLayout.ls",
         "HtmlTemplate.ls" => "selfhost/src/Tools/Doc/HtmlTemplate.ls",
+        "PropertyRunner.ls" => "selfhost/src/Tools/Test/PropertyRunner.ls",
         "TestRunner.ls" => "selfhost/src/Tools/Test/TestRunner.ls",
         "GC.ls" => "selfhost/src/Runtime/GC.ls",
         other => panic!("不明な selfhost canonical module path: {other}"),
@@ -756,6 +757,9 @@ fn selfhost_module_raw(name: &str) -> &'static str {
         "HtmlDoc.ls" => include_str!("../../../../selfhost/src/Tools/Doc/HtmlDoc.ls"),
         "HtmlLayout.ls" => include_str!("../../../../selfhost/src/Tools/Doc/HtmlLayout.ls"),
         "HtmlTemplate.ls" => include_str!("../../../../selfhost/src/Tools/Doc/HtmlTemplate.ls"),
+        "PropertyRunner.ls" => {
+            include_str!("../../../../selfhost/src/Tools/Test/PropertyRunner.ls")
+        }
         "JsonRpc.ls" => include_str!("../../../../selfhost/src/Tools/Lsp/JsonRpc.ls"),
         "Linter.ls" => include_str!("../../../../selfhost/src/Tools/Text/Linter.ls"),
         "LspServerCore.ls" => include_str!("../../../../selfhost/src/Tools/Lsp/LspServerCore.ls"),
@@ -1380,6 +1384,7 @@ pub(crate) fn selfhost_test_runner_runtime_bundle() -> &'static str {
             "Lexer.ls",
             "LexerCompat.ls",
             "Parser.ls",
+            "PropertyRunner.ls",
             "TestRunner.ls",
         ],
     )
@@ -1417,6 +1422,7 @@ pub(crate) fn selfhost_cli_runtime_bundle() -> &'static str {
             "FormatterExpr.ls",
             "FormatterDecl.ls",
             "Formatter.ls",
+            "PropertyRunner.ls",
             "TestRunner.ls",
             "DocTools.ls",
             "DocJson.ls",

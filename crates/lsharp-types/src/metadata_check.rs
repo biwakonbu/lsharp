@@ -8,8 +8,8 @@ use crate::canonical_contract_check::{
     check_property_non_vacuity, check_property_types,
 };
 use crate::metadata_contract::inventory_contract_suites;
-use lsharp_syntax::ast::{ComputationStep, Decl, Expr, Metadata, Program};
-use lsharp_syntax::metadata::MetadataFormKind;
+use lsharp_syntax::ast::{ComputationStep, Decl, Expr, Metadata, Program, TypeExpr};
+use lsharp_syntax::metadata::{MetadataFormKind, PropertyForm};
 use lsharp_syntax::span::Span;
 
 /// メタデータ検証結果の重大度
@@ -401,6 +401,44 @@ pub struct GeneratedTest {
     pub expr: Expr,
     /// canonical `:case` の期待値。それ以外は `None`。
     pub expected: Option<Expr>,
+    /// 移行期の deterministic property smoke profile。通常の test では `None`。
+    pub property: Option<PropertySmokeTestSpec>,
+}
+
+/// Rust/selfhost が段階的に共有する deterministic property smoke profile。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PropertySmokeTestSpec {
+    pub binder_name: String,
+    pub cases: usize,
+}
+
+/// `:property` のうち、移行期 runner が実行できる narrow profile を返す。
+///
+/// type-directed sampling、seed、shrink、precondition は別 slice のため、ここで
+/// 暗黙に既定値へ丸めず、明示的に profile 外として扱う。
+pub fn property_smoke_test_spec(property: &PropertyForm) -> Option<PropertySmokeTestSpec> {
+    if property.binders().len() != 1
+        || !property.preconditions().is_empty()
+        || property.seed().is_some()
+        || property.shrink().is_some()
+    {
+        return None;
+    }
+    let binder = property.binders().first()?;
+    let TypeExpr::Named(_, ty_name) = binder.ty() else {
+        return None;
+    };
+    if ty_name != "Int" {
+        return None;
+    }
+    let cases = property.cases()?;
+    if !(1..=5).contains(&cases) {
+        return None;
+    }
+    Some(PropertySmokeTestSpec {
+        binder_name: binder.name().to_string(),
+        cases,
+    })
 }
 
 /// テストの種別
@@ -410,6 +448,8 @@ pub enum TestKind {
     Case,
     /// :invariant から生成されたテスト
     Invariant,
+    /// 移行期 deterministic property smoke profile。
+    Property,
     /// :example から生成されたテスト
     Example,
 }
@@ -441,6 +481,7 @@ pub fn generate_tests(program: &Program) -> Vec<GeneratedTest> {
                     kind: TestKind::Invariant,
                     expr: invariant_expr.clone(),
                     expected: None,
+                    property: None,
                 });
             }
 
@@ -457,8 +498,29 @@ pub fn generate_tests(program: &Program) -> Vec<GeneratedTest> {
                         kind: TestKind::Case,
                         expr: expectation.actual().clone(),
                         expected: Some(expectation.expected().clone()),
+                        property: None,
                     });
                     case_index += 1;
+                }
+            }
+
+            // 移行期 deterministic property smoke profile からテスト生成
+            for form in &meta.forms {
+                let MetadataFormKind::Property { properties } = &form.kind else {
+                    continue;
+                };
+                for (property_index, property) in properties.iter().enumerate() {
+                    let Some(spec) = property_smoke_test_spec(property) else {
+                        continue;
+                    };
+                    tests.push(GeneratedTest {
+                        name: format!("{name}_property_{property_index}"),
+                        function_name: name.clone(),
+                        kind: TestKind::Property,
+                        expr: property.postcondition().clone(),
+                        expected: None,
+                        property: Some(spec),
+                    });
                 }
             }
 
@@ -470,6 +532,7 @@ pub fn generate_tests(program: &Program) -> Vec<GeneratedTest> {
                     kind: TestKind::Example,
                     expr: example_expr.clone(),
                     expected: None,
+                    property: None,
                 });
             }
         }
