@@ -188,6 +188,14 @@ pub(crate) const ERROR_CODES: &[ErrorCodeEntry] = &[
         fix: ":assert に Bool predicate を少なくとも 1 件追加してください。",
     },
     ErrorCodeEntry {
+        code: "LS2005",
+        legacy_code: None,
+        name: "vacuous-contract",
+        summary: "executable contract が実装の挙動を検査していません",
+        detail: ":assert の literal true predicate が常に真となり、実装差分を検出できません。",
+        fix: "実装結果または入力に依存する Bool predicate を指定してください。",
+    },
+    ErrorCodeEntry {
         code: "LS3001",
         legacy_code: None,
         name: "unsupported-lowering",

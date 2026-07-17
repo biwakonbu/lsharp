@@ -97,3 +97,22 @@ fn canonical_assertion_non_vacuity_qualifies_module_owner() {
         ":assert []"
     );
 }
+
+#[test]
+fn canonical_assertion_rejects_literal_true_as_vacuous() {
+    const SOURCE: &str = "(defn noop [] :assert [true] true)";
+    let program = parse(SOURCE).expect("literal true assertion は parse できるべき");
+
+    let diagnostics = check_metadata(&program);
+
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "literal true を検査成功としてはならない"
+    );
+    let diagnostic = &diagnostics[0];
+    assert_eq!(diagnostic.severity, Severity::Error);
+    assert!(diagnostic.message.contains("vacuous"));
+    assert_eq!(&SOURCE[diagnostic.span.start..diagnostic.span.end], "true");
+    assert_eq!(diagnostic.function_name, "noop");
+}

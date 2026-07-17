@@ -16,6 +16,8 @@ fn test_e2e_selfhost_metadata_check_rejects_non_bool_canonical_assertion() {
         parameter-result (check-canonical-assertions parameter-program)
         empty-program (parse-program "(defn noop [] :assert [] true)")
         empty-result (check-canonical-assertions empty-program)
+        literal-true-program (parse-program "(defn noop [] :assert [true] true)")
+        literal-true-result (check-canonical-assertions literal-true-program)
         module-empty-program (parse-program "(module Demo (defn noop [] :assert [] true))")
         module-empty-result (check-canonical-assertions module-empty-program)
         private-empty-program (parse-program "(module Demo (private (defn noop [] :assert [] true)))")
@@ -45,6 +47,8 @@ fn test_e2e_selfhost_metadata_check_rejects_non_bool_canonical_assertion() {
       (print (vector-get parameter-result 1))
       (print (vector-get empty-result 0))
       (print (vector-get empty-result 1))
+      (print (vector-get literal-true-result 0))
+      (print (vector-get literal-true-result 1))
       (print (vector-get module-empty-result 0))
       (print (vector-get module-empty-result 1))
       (print (vector-get private-empty-result 0))
@@ -79,8 +83,9 @@ fn test_e2e_selfhost_metadata_check_rejects_non_bool_canonical_assertion() {
     assert_eq!(
         lines,
         [
-            "1", "1002", "0", "0", "1", "1001", "1", "1001", "1", "2004", "1", "2004", "1", "2004",
-            "1", "2004", "1", "1002", "1", "1002", "1", "1002", "1", "1002", "1", "1002", "1", "1002",
+            "1", "1002", "0", "0", "1", "1001", "1", "1001", "1", "2004", "1", "2005", "1", "2004",
+            "1", "2004", "1", "2004", "1", "1002", "1", "1002", "1", "1002", "1", "1002", "1", "1002",
+            "1", "1002",
         ]
     );
 }

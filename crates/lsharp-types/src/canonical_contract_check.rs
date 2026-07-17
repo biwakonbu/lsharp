@@ -4,7 +4,7 @@ use crate::infer::Infer;
 use crate::metadata_check::{MetadataDiagnostic, Severity};
 use crate::metadata_contract::{ContractSuite, ExecutableContract};
 use crate::types::Type;
-use lsharp_syntax::ast::{Decl, Program};
+use lsharp_syntax::ast::{Decl, Expr, Literal, Program};
 use lsharp_syntax::metadata::MetadataFormKind;
 use lsharp_syntax::span::Span;
 
@@ -51,15 +51,30 @@ fn collect_assertion_non_vacuity(
                 None => name.clone(),
             };
             for form in &metadata.forms {
-                if let MetadataFormKind::Assertion { predicates } = &form.kind
-                    && predicates.is_empty()
-                {
-                    diagnostics.push(MetadataDiagnostic {
-                        severity: Severity::Error,
-                        message: ":assert は少なくとも 1 件の predicate を必要とします".to_string(),
-                        span: form.span(),
-                        function_name: owner.clone(),
-                    });
+                match &form.kind {
+                    MetadataFormKind::Assertion { predicates } if predicates.is_empty() => {
+                        diagnostics.push(MetadataDiagnostic {
+                            severity: Severity::Error,
+                            message: ":assert は少なくとも 1 件の predicate を必要とします"
+                                .to_string(),
+                            span: form.span(),
+                            function_name: owner.clone(),
+                        });
+                    }
+                    MetadataFormKind::Assertion { predicates } => {
+                        for predicate in predicates {
+                            if matches!(predicate, Expr::Lit(_, Literal::Bool(true))) {
+                                diagnostics.push(MetadataDiagnostic {
+                                    severity: Severity::Error,
+                                    message: ":assert の literal true predicate は検査を識別できず vacuous です"
+                                        .to_string(),
+                                    span: predicate.span(),
+                                    function_name: owner.clone(),
+                                });
+                            }
+                        }
+                    }
+                    _ => {}
                 }
             }
         }

@@ -849,6 +849,15 @@ mod tests {
     }
 
     #[test]
+    fn test_errors_tool_returns_vacuous_contract_code() {
+        let result = call_tool("lsharp_errors", &json!({"error_code": "LS2005"}))
+            .expect("LS2005 は vacuous contract として解決するべき");
+
+        assert_eq!(result["code"], "LS2005");
+        assert_eq!(result["name"], "vacuous-contract");
+    }
+
+    #[test]
     fn test_check_tool_returns_diagnostic_code_and_source_range() {
         let result = call_tool("lsharp_check", &json!({"source": "(unknown-form)"}))
             .expect("lsharp_check は syntax diagnostics を返すべき");

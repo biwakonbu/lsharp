@@ -74,9 +74,9 @@ Evidence: RED で未定義の `check-canonical-assertions` を固定した後、
 
 ### EC-M1-04 empty canonical assertion non-vacuity (2026-07-17)
 
-空の canonical `:assert []` を検査 0 件の成功として扱わない境界を、Rust metadata checker / tooling と selfhost checker で揃えた。Rust 側は directive span を保持した metadata error を返し、tooling の `test` path は `LS2004` として拒否する。selfhost `check-canonical-assertions` は code `2004` を返し、top-level、module、`private`、nested module を同じ判定にする。
+空の canonical `:assert []` と literal `true` predicate を、検査 0 件または実装非依存の成功として扱わない境界を Rust metadata checker / tooling と selfhost checker で揃えた。Rust 側は directive/predicate span を保持した metadata error を返し、tooling の `test` path はそれぞれ `LS2004` / `LS2005` として拒否する。selfhost `check-canonical-assertions` はそれぞれ code `2004` / `2005` を返し、empty case は top-level、module、`private`、nested module で同じ判定にする。
 
-Evidence: `canonical_assertion_requires_at_least_one_predicate`、`canonical_assertion_non_vacuity_qualifies_module_owner`、`test_run_metadata_tests_rejects_empty_canonical_assertion`、`test_e2e_selfhost_metadata_check_rejects_non_bool_canonical_assertion` 内の empty scope 4ケース、`cargo run --quiet --bin lsharp -- check selfhost/src/Types/TypeInferAssertions.ls` / `Cli.ls` / `EmbeddedCli.ls`。到達不能 precondition、constant-true property、full CLI bundle、両対応 target の current-source artifact/runtime parity は残件である。
+Evidence: `canonical_assertion_requires_at_least_one_predicate`、`canonical_assertion_non_vacuity_qualifies_module_owner`、`canonical_assertion_rejects_literal_true_as_vacuous`、`test_run_metadata_tests_rejects_empty_canonical_assertion`、`test_run_metadata_tests_rejects_literal_true_canonical_assertion`、`test_errors_tool_returns_empty_executable_contract_code`、`test_errors_tool_returns_vacuous_contract_code`、`test_e2e_selfhost_metadata_check_rejects_non_bool_canonical_assertion` 内の empty scope 4ケースと literal true、`cargo run --quiet --bin lsharp -- check selfhost/src/Types/TypeInferAssertions.ls` / `Cli.ls` / `EmbeddedCli.ls`。到達不能 precondition、constant-true property、full CLI bundle、両対応 target の current-source artifact/runtime parity は残件である。
 
 ### scoped polymorphic `defn` signature (2026-07-15)
 

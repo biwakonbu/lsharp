@@ -45,6 +45,11 @@ pub fn run_metadata_tests(file: &Path) -> miette::Result<MetadataTestRun> {
     {
         let code = if diagnostic
             .message
+            .contains(":assert の literal true predicate")
+        {
+            "LS2005"
+        } else if diagnostic
+            .message
             .contains(":assert は少なくとも 1 件の predicate")
         {
             "LS2004"
@@ -186,6 +191,22 @@ mod tests {
         assert!(
             error.to_string().contains("[LS2004]"),
             "空の canonical assertion は LS2004 を返すべき: {error}"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_run_metadata_tests_rejects_literal_true_canonical_assertion() {
+        let dir = unique_temp_dir("literal_true_canonical_assertion");
+        let file = dir.join("Main.ls");
+        fs::write(&file, "(defn noop [] :assert [true] true)\n").unwrap();
+
+        let error = run_metadata_tests(&file)
+            .expect_err("literal true canonical assertion を成功扱いしてはならない");
+        assert!(
+            error.to_string().contains("[LS2005]"),
+            "literal true canonical assertion は LS2005 を返すべき: {error}"
         );
 
         let _ = fs::remove_dir_all(&dir);

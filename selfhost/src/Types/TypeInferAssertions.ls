@@ -10,6 +10,7 @@
 (defn canonical-assertion-type-error-code [] 1001)
 (defn canonical-assertion-non-bool-code [] 1002)
 (defn canonical-assertion-empty-code [] 2004)
+(defn canonical-assertion-vacuous-code [] 2005)
 
 (defn assertion-check-state [diagnostic-count first-error-code]
   (vector-push-pair-rooted
@@ -80,21 +81,23 @@
       (assertion-contains-param-loop predicate decl (+ idx 1) count))))
 
 (defn check-assertion-predicate [predicate decl env counter]
-  (if (= (assertion-contains-param-loop
+  (if (and (= (vector-get predicate 0) (ast-lit-bool)) (= (vector-get predicate 1) 1))
+    (canonical-assertion-vacuous-code)
+    (if (= (assertion-contains-param-loop
       predicate
       decl
       0
       (vector-get decl 2)) 1)
-    (canonical-assertion-type-error-code)
-    (let [result (infer-expr predicate env (subst-new) counter)]
-      (if (= (result-failed result) 1)
-        (canonical-assertion-type-error-code)
-        (let [resolved (apply-subst (result-subst result) (result-type result))]
-          (if (= (type-tag resolved) (ty-con))
-            (if (= (type-name resolved) (hash-bool))
-              0
-              (canonical-assertion-non-bool-code))
-            (canonical-assertion-non-bool-code)))))))
+      (canonical-assertion-type-error-code)
+      (let [result (infer-expr predicate env (subst-new) counter)]
+        (if (= (result-failed result) 1)
+          (canonical-assertion-type-error-code)
+          (let [resolved (apply-subst (result-subst result) (result-type result))]
+            (if (= (type-tag resolved) (ty-con))
+              (if (= (type-name resolved) (hash-bool))
+                0
+                (canonical-assertion-non-bool-code))
+              (canonical-assertion-non-bool-code))))))))
 
 (defn check-assertion-predicates-loop
   [predicates idx count decl env counter diagnostic-count first-error-code]
