@@ -223,7 +223,7 @@ fn collect_property_non_vacuity(
                         if matches!(
                             precondition,
                             Expr::Lit(_, Literal::Bool(false))
-                        ) {
+                        ) || statically_false_integer_comparison(precondition) {
                             diagnostics.push(MetadataDiagnostic {
                                 severity: Severity::Error,
                                 message: ":property の precondition は到達不能で vacuous です"
@@ -253,33 +253,41 @@ fn collect_property_non_vacuity(
 }
 
 fn statically_true_integer_comparison(expr: &Expr) -> bool {
-    let Expr::Ann(_, inner, _) = expr else {
-        return statically_true_integer_comparison_app(expr);
-    };
-    statically_true_integer_comparison(inner)
+    matches!(static_integer_comparison_result(expr), Some(true))
 }
 
-fn statically_true_integer_comparison_app(expr: &Expr) -> bool {
+fn statically_false_integer_comparison(expr: &Expr) -> bool {
+    matches!(static_integer_comparison_result(expr), Some(false))
+}
+
+fn static_integer_comparison_result(expr: &Expr) -> Option<bool> {
+    let Expr::Ann(_, inner, _) = expr else {
+        return static_integer_comparison_result_app(expr);
+    };
+    static_integer_comparison_result(inner)
+}
+
+fn static_integer_comparison_result_app(expr: &Expr) -> Option<bool> {
     let Expr::App(_, callee, args) = expr else {
-        return false;
+        return None;
     };
     let Expr::Var(_, operator) = callee.as_ref() else {
-        return false;
+        return None;
     };
     let [Expr::Lit(_, Literal::Int(left)), Expr::Lit(_, Literal::Int(right))] = args.as_slice()
     else {
-        return false;
+        return None;
     };
 
-    match operator.as_str() {
+    Some(match operator.as_str() {
         "=" | "==" => left == right,
         "!=" => left != right,
         "<" => left < right,
         ">" => left > right,
         "<=" => left <= right,
         ">=" => left >= right,
-        _ => false,
-    }
+        _ => return None,
+    })
 }
 
 /// canonical `:case` の actual / expected を同じ lexical scope で型検査する。

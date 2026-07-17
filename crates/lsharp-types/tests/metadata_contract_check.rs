@@ -254,6 +254,36 @@ fn canonical_property_rejects_unreachable_literal_false_precondition() {
 }
 
 #[test]
+fn canonical_property_rejects_statically_false_integer_preconditions() {
+    for predicate in [
+        "(= 1 2)",
+        "(< 2 1)",
+        "(> 1 2)",
+        "(<= 2 1)",
+        "(>= 1 2)",
+        "(!= 1 1)",
+    ] {
+        let source = format!(
+            "(defn identity [x] :property [(for-all [x Int] :precondition [{predicate}] :postcondition (>= result 0))] x)"
+        );
+        let program = parse(&source)
+            .expect("静的に false な precondition は diagnostic のため parse できるべき");
+
+        let diagnostics = check_metadata(&program);
+
+        assert_eq!(diagnostics.len(), 1, "{predicate}: {diagnostics:?}");
+        let diagnostic = &diagnostics[0];
+        assert_eq!(diagnostic.severity, Severity::Error);
+        assert!(diagnostic.message.contains("vacuous"), "{diagnostics:?}");
+        assert_eq!(
+            &source[diagnostic.span.start..diagnostic.span.end],
+            predicate
+        );
+        assert_eq!(diagnostic.function_name, "identity");
+    }
+}
+
+#[test]
 fn canonical_property_requires_bool_postcondition() {
     const SOURCE: &str =
         "(defn identity [x] :property [(for-all [x Int] :postcondition (+ result 1))] x)";

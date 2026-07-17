@@ -113,7 +113,7 @@
     (property-probe-return-type (type-fun-ret ty))
     ty))
 (defn property-probe-predicate [program] (let [decl (vector-get program 0)] (vector-get decl (+ 3 (vector-get decl 2)))))
-(defn check-property-predicate [payload expression reject-vacuous]
+(defn check-property-predicate [payload expression reject-vacuous reject-unreachable]
   (if (= (string-length expression) 0)
     (canonical-property-type-error-code)
     (do
@@ -134,7 +134,7 @@
                       (let [predicate (property-probe-predicate probe-program)
                         resolved (property-probe-return-type (infer-program-analysis-type analysis))
                         type-code (if (and (= (ty-tag resolved) (ty-con)) (= (ty-name resolved) (hash-bool))) 0 (canonical-property-non-bool-code))]
-                        (if (and (= reject-vacuous 1) (= (statically-true-integer-comparison? predicate) 1)) (canonical-assertion-vacuous-code) type-code)))]
+                        (if (and (= reject-vacuous 1) (= (statically-true-integer-comparison? predicate) 1)) (canonical-assertion-vacuous-code) (if (and (= reject-unreachable 1) (= (statically-false-integer-comparison? predicate) 1)) (canonical-assertion-vacuous-code) type-code))))]
                     (do
                       (root_pop)
                       (root_pop)
@@ -142,7 +142,7 @@
                       (root_pop)
                       (root_pop)
                       result)))))))))))
-(defn check-property-postcondition [payload] (let [expression (property-postcondition-text payload)] (if (= (string-length expression) 0) (canonical-property-empty-code) (if (string-eq expression "true") (canonical-assertion-vacuous-code) (check-property-predicate payload expression 1)))))
+(defn check-property-postcondition [payload] (let [expression (property-postcondition-text payload)] (if (= (string-length expression) 0) (canonical-property-empty-code) (if (string-eq expression "true") (canonical-assertion-vacuous-code) (check-property-predicate payload expression 1 0)))))
 (defn check-property-preconditions-loop [payload idx close len]
   (let [expression-start (property-skip-space payload idx len)]
     (if (>= expression-start close)
@@ -159,7 +159,7 @@
             (let [expression (substring payload expression-start expression-end)]
               (do
                 (root_push expression)
-                (let [code (if (string-eq expression "false") (canonical-assertion-vacuous-code) (check-property-predicate payload expression 0))]
+                (let [code (if (string-eq expression "false") (canonical-assertion-vacuous-code) (check-property-predicate payload expression 0 1))]
                   (if (> code 0)
                     (do
                       (root_pop)
@@ -251,24 +251,24 @@
           (if (= operator 62) 1
             (if (= operator 1921) 1
               (if (= operator 1983) 1 0))))))))
-(defn static-comparison-true? [operator left right]
+(defn static-comparison-result? [operator left right]
   (if (or (= operator 61) (= operator 1952))
-    (if (= left right) 1 0)
+    (if (= left right) 1 2)
     (if (= operator 1084)
-      (if (!= left right) 1 0)
+      (if (!= left right) 1 2)
       (if (= operator 60)
-        (if (< left right) 1 0)
+        (if (< left right) 1 2)
         (if (= operator 62)
-          (if (> left right) 1 0)
+          (if (> left right) 1 2)
           (if (= operator 1921)
-            (if (<= left right) 1 0)
+            (if (<= left right) 1 2)
             (if (= operator 1983)
-              (if (>= left right) 1 0)
+              (if (>= left right) 1 2)
               0)))))))
-(defn statically-true-integer-comparison? [predicate]
+(defn statically-integer-comparison? [predicate expected]
   (let [tag (vector-get predicate 0)]
     (if (= tag (ast-ann))
-      (statically-true-integer-comparison? (vector-get predicate 1))
+      (statically-integer-comparison? (vector-get predicate 1) expected)
       (if (= tag (ast-apply))
         (let [callee (vector-get predicate 1)
           arg-count (vector-get predicate 2)]
@@ -277,16 +277,18 @@
               (if (= (static-comparison-operator? (vector-get callee 1)) 1)
                 (if (= (vector-get (vector-get predicate 3) 0) (ast-lit-int))
                   (if (= (vector-get (vector-get predicate 4) 0) (ast-lit-int))
-                    (static-comparison-true?
-                      (vector-get callee 1)
-                      (vector-get (vector-get predicate 3) 1)
-                      (vector-get (vector-get predicate 4) 1))
+                    (if (= (static-comparison-result?
+                        (vector-get callee 1)
+                        (vector-get (vector-get predicate 3) 1)
+                        (vector-get (vector-get predicate 4) 1)) expected) 1 0)
                     0)
                   0)
                 0)
               0)
             0))
         0))))
+(defn statically-true-integer-comparison? [predicate] (statically-integer-comparison? predicate 1))
+(defn statically-false-integer-comparison? [predicate] (statically-integer-comparison? predicate 2))
 (defn check-assertion-predicate [predicate decl env counter]
   (if (or
     (and (= (vector-get predicate 0) (ast-lit-bool)) (= (vector-get predicate 1) 1))
