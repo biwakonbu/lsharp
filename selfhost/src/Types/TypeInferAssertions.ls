@@ -4,10 +4,8 @@
 (import Types.Type)
 (import Types.TypeInfer)
 (import Types.TypeInferCore)
-
 ;; TypeInfer の既存 AST/環境を使った canonical :assert の狭い型検査。
 ;; predicate は関数引数を暗黙に束縛せず、実行せずに Bool を確認する。
-
 (defn canonical-assertion-type-error-code [] 1001)
 (defn canonical-assertion-non-bool-code [] 1002)
 (defn canonical-assertion-empty-code [] 2004)
@@ -18,34 +16,29 @@
 (defn canonical-property-type-error-code [] 1001)
 (defn canonical-property-non-bool-code [] 1002)
 (defn canonical-property-empty-code [] 2007)
-
 (defn assertion-check-state [diagnostic-count first-error-code]
   (vector-push-pair-rooted
     (vector-new 2)
     diagnostic-count
     first-error-code))
-
-;; raw :property payload から postcondition の balanced expression を取り出す。
-;; typed binder / precondition の projection は後続 slice で追加する。
+;; raw :property payload から first binder / precondition / postcondition を取り出す。
+;; 複数 binder / precondition の完全な typed projection は後続 slice で追加する。
 (defn property-space? [ch]
   (if (or (= ch 32) (= ch 9))
     1
     (if (or (= ch 10) (= ch 13)) 1 0)))
-
 (defn property-skip-space [src idx len]
   (if (>= idx len)
     idx
     (if (= (property-space? (string-char-at src idx)) 1)
       (property-skip-space src (+ idx 1) len)
       idx)))
-
 (defn property-find-substring-loop [src needle idx len needle-len]
   (if (> (+ idx needle-len) len)
     -1
     (if (string-eq (substring src idx (+ idx needle-len)) needle)
       idx
       (property-find-substring-loop src needle (+ idx 1) len needle-len))))
-
 (defn property-find-substring [src needle]
   (property-find-substring-loop
     src
@@ -53,7 +46,6 @@
     0
     (string-length src)
     (string-length needle)))
-
 (defn property-balanced-expression-end [src idx len depth]
   (if (>= idx len)
     -1
@@ -65,7 +57,6 @@
             (+ idx 1)
             (property-balanced-expression-end src (+ idx 1) len (- depth 1)))
           (property-balanced-expression-end src (+ idx 1) len depth))))))
-
 (defn property-atom-expression-end [src idx len]
   (if (>= idx len)
     idx
@@ -75,7 +66,6 @@
         (or (= ch 41) (= ch 93)))
         idx
         (property-atom-expression-end src (+ idx 1) len)))))
-
 (defn property-postcondition-text [payload]
   (let [marker (property-find-substring payload ":postcondition")
     payload-len (string-length payload)]
@@ -102,34 +92,91 @@
             (if (<= expression-end expression-start)
               ""
               (substring payload expression-start expression-end))))))))
-
+(defn property-first-binder-parameter-source [payload]
+  (let [open (property-find-substring payload "[")
+    len (string-length payload)]
+    (if (< open 0)
+      ""
+      (let [name-start (property-skip-space payload (+ open 1) len)
+        name-end (property-atom-expression-end payload name-start len)
+        type-start (property-skip-space payload name-end len)
+        type-end (if (= (string-char-at payload type-start) 40)
+          (property-balanced-expression-end payload type-start len 0)
+          (property-atom-expression-end payload type-start len))]
+        (if (or (= name-end name-start) (<= type-end type-start))
+          ""
+          (string-concat
+            "(: "
+            (string-concat
+              (substring payload name-start name-end)
+              (string-concat
+                " "
+                (string-concat (substring payload type-start type-end) ")")))))))))
+(defn property-probe-parameter-source [payload]
+  (let [binder (property-first-binder-parameter-source payload)]
+    (if (= (string-length binder) 0)
+      "[result]"
+      (string-concat "[" (string-concat binder " result]")))))
+(defn property-first-precondition-text [payload]
+  (let [marker (property-find-substring payload ":precondition")
+    len (string-length payload)]
+    (if (< marker 0)
+      ""
+      (let [bracket-start (property-skip-space payload (+ marker 13) len)]
+        (if (>= bracket-start len)
+          ""
+          (let [expression-start (property-skip-space payload (+ bracket-start 1) len)
+            expression-end (if (= (string-char-at payload expression-start) 40)
+              (property-balanced-expression-end payload expression-start len 0)
+              (property-atom-expression-end payload expression-start len))]
+            (if (<= expression-end expression-start)
+              ""
+              (substring payload expression-start expression-end))))))))
 (defn property-probe-return-type [ty]
   (if (= (ty-tag ty) (ty-fun))
-    (type-fun-ret ty)
+    (property-probe-return-type (type-fun-ret ty))
     ty))
-
-(defn check-property-postcondition [payload]
-  (let [expression (property-postcondition-text payload)]
-    (if (= (string-length expression) 0)
-      (canonical-property-type-error-code)
+(defn check-property-predicate [payload expression]
+  (if (= (string-length expression) 0)
+    (canonical-property-type-error-code)
+    (do
+      (root_push payload)
+      (root_push expression)
       (let [probe-source
               (string-concat
-                "(defn __lsharp_property_probe [result] "
-                (string-concat expression ")"))
-        probe-program (parse-program probe-source)
-        analysis (infer-program-analysis probe-program)
-        diagnostic-count (infer-program-analysis-diagnostic-count analysis)]
-        (if (> diagnostic-count 0)
-          (canonical-property-type-error-code)
-          (let [resolved
-                  (property-probe-return-type
-                    (infer-program-analysis-type analysis))]
-            (if (and
-              (= (ty-tag resolved) (ty-con))
-              (= (ty-name resolved) (hash-bool)))
-              0
-              (canonical-property-non-bool-code))))))))
-
+                "(defn __lsharp_property_probe "
+                (string-concat
+                  (property-probe-parameter-source payload)
+                  (string-concat " " (string-concat expression ")"))))]
+        (do
+          (root_push probe-source)
+          (let [analysis (infer-program-analysis (parse-program probe-source))]
+            (do
+              (root_push analysis)
+              (let [diagnostic-count (infer-program-analysis-diagnostic-count analysis)
+                result (if (> diagnostic-count 0)
+                  (canonical-property-type-error-code)
+                  (let [resolved
+                          (property-probe-return-type
+                            (infer-program-analysis-type analysis))]
+                    (if (and
+                      (= (ty-tag resolved) (ty-con))
+                      (= (ty-name resolved) (hash-bool)))
+                      0
+                      (canonical-property-non-bool-code))))]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  result)))))))))
+(defn check-property-postcondition [payload]
+  (check-property-predicate payload (property-postcondition-text payload)))
+(defn check-property-precondition [payload]
+  (let [expression (property-first-precondition-text payload)]
+    (if (= (string-length expression) 0)
+      0
+      (check-property-predicate payload expression))))
 (defn defn-metadata [decl]
   (let [param-count (vector-get decl 2)
     body-end (+ 4 param-count)
@@ -145,20 +192,17 @@
     (if (< metadata-index decl-length)
       (vector-get decl metadata-index)
       0)))
-
 (defn defn-ordered-forms [decl]
   (let [metadata (defn-metadata decl)]
     (if (= metadata 0)
       0
       (if (> (vector-length metadata) 5)
-        (vector-get metadata 5)
-        0))))
-
+      (vector-get metadata 5)
+      0))))
 (defn canonical-unprivate-decl [decl]
   (if (= (vector-get decl 0) (ast-private))
     (canonical-unprivate-decl (vector-get decl 1))
     decl))
-
 ;; module の flattened body を infer-program-analysis が受け取れる vector に戻す。
 (defn canonical-module-program-loop [module-node idx count result]
   (if (>= idx count)
@@ -172,7 +216,6 @@
           (do
             (root_pop)
             parsed))))))
-
 (defn canonical-module-program [module-node]
   (let [count (if (> (vector-length module-node) 2) (vector-get module-node 2) 0)
     result (vector-new 0)]
@@ -184,14 +227,12 @@
           (root_pop)
           (root_pop)
           parsed)))))
-
 (defn assertion-contains-param-loop [predicate decl idx count]
   (if (>= idx count)
     0
     (if (= (ast-contains-var predicate (vector-get decl (+ 3 idx))) 1)
       1
       (assertion-contains-param-loop predicate decl (+ idx 1) count))))
-
 ;; operator の name-hash は Parser の 31-fold hash と一致させる。
 (defn static-comparison-operator? [operator]
   (if (= operator 61) 1
@@ -201,7 +242,6 @@
           (if (= operator 62) 1
             (if (= operator 1921) 1
               (if (= operator 1983) 1 0))))))))
-
 (defn static-comparison-true? [operator left right]
   (if (or (= operator 61) (= operator 1952))
     (if (= left right) 1 0)
@@ -216,7 +256,6 @@
             (if (= operator 1983)
               (if (>= left right) 1 0)
               0)))))))
-
 (defn statically-true-integer-comparison? [predicate]
   (let [tag (vector-get predicate 0)]
     (if (= tag (ast-ann))
@@ -239,7 +278,6 @@
               0)
             0))
         0))))
-
 (defn check-assertion-predicate [predicate decl env counter]
   (if (or
     (and (= (vector-get predicate 0) (ast-lit-bool)) (= (vector-get predicate 1) 1))
@@ -260,7 +298,6 @@
                 0
                 (canonical-assertion-non-bool-code))
               (canonical-assertion-non-bool-code))))))))
-
 (defn check-assertion-predicates-loop
   [predicates idx count decl env counter diagnostic-count first-error-code]
   (if (>= idx count)
@@ -282,7 +319,6 @@
         counter
         next-count
         next-first-error-code))))
-
 (defn check-assertion-form [form decl env counter diagnostic-count first-error-code]
   (if (= (vector-get form 0) 3)
     (let [predicates (vector-get form 1)]
@@ -302,7 +338,6 @@
           diagnostic-count
           first-error-code)))
     (assertion-check-state diagnostic-count first-error-code)))
-
 (defn check-assertion-forms-loop
   [forms idx count decl env counter diagnostic-count first-error-code]
   (if (>= idx count)
@@ -323,7 +358,6 @@
         counter
         (vector-get state 0)
         (vector-get state 1)))))
-
 (defn check-defn-assertions [decl env counter]
   (let [forms (defn-ordered-forms decl)]
     (if (= forms 0)
@@ -337,7 +371,6 @@
         counter
         0
         0))))
-
 ;; canonical :case は owner の引数や result を暗黙に束縛しない。
 (defn canonical-case-primitive-kind [resolved]
   (if (= (type-tag resolved) (ty-con))
@@ -345,7 +378,6 @@
       1
       (if (= (type-name resolved) (hash-bool)) 2 0))
     0))
-
 (defn check-case-expectation [pair decl env counter]
   (let [actual (vector-get pair 0)
     expected (vector-get pair 1)
@@ -373,7 +405,6 @@
                   (if (= actual-kind expected-kind)
                     0
                     (canonical-case-value-error-code)))))))))))
-
 (defn check-case-expectations-loop
   [expectations idx count decl env counter diagnostic-count first-error-code]
   (if (>= idx count)
@@ -395,7 +426,6 @@
         counter
         next-count
         next-first-error-code))))
-
 (defn check-case-form [form decl env counter diagnostic-count first-error-code]
   (if (= (vector-get form 0) (contract-form-case))
     (let [expectations (vector-get form 1)]
@@ -436,7 +466,6 @@
         counter
         (vector-get state 0)
         (vector-get state 1)))))
-
 (defn check-defn-cases [decl env counter]
   (let [forms (defn-ordered-forms decl)]
     (if (= forms 0)
@@ -450,7 +479,6 @@
         counter
         0
         0))))
-
 (defn check-module-program-loop
   [program idx count env counter diagnostic-count first-error-code]
   (if (>= idx count)
@@ -482,7 +510,6 @@
                 (root_pop)
                 (root_pop)
                 result))))))))
-
 (defn check-module-assertions [module-node]
   (let [module-program (canonical-module-program module-node)]
     (let [analysis (infer-program-analysis module-program)
@@ -661,7 +688,8 @@
     (do
       (root_push form)
       (let [payload (if (> (vector-length form) 1) (vector-get form 1) "")
-        code (check-property-postcondition payload)
+        precondition-code (check-property-precondition payload)
+        code (if (> precondition-code 0) precondition-code (check-property-postcondition payload))
         next-count (if (> code 0) (+ diagnostic-count 1) diagnostic-count)
         next-first-code (if (= first-error-code 0) code first-error-code)
         state (assertion-check-state next-count next-first-code)]

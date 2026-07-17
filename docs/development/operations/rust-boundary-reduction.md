@@ -156,6 +156,14 @@ Evidence: RED の `test_selfhost_cli_sources_route_property_runner_boundary` 拡
 
 これは selfhost の postcondition Bool preflight に限定した verified slice であり、typed binder / `precondition` projection、empty/non-vacuous property、type-directed sampling/shrink、property evaluator、Rust/selfhost diagnostic/span parity、full CLI artifact/runtime、Mac Apple Silicon / Linux x86_64 の current-source native gate は残件である。したがって property を Rust なしで変更・検査できる範囲は増えたが、property 全体または全機能 Rust-free 完了とは扱わず、Rust oracle / bootstrap 境界を維持する。
 
+### EC-M1-04 selfhost property first binder/precondition scope (2026-07-18)
+
+Selfhost `Types.TypeInferAssertions` は raw `:property` payload の最初の typed binder を synthetic probe の parameter scope へ投影し、最初の `:precondition` が存在する場合だけ同じ scope で Bool preflight するようになった。precondition が未指定なら postcondition の検査へ進み、non-Bool の precondition / postcondition は `1002`、valid な typed binder + Bool precondition/postcondition は `0` とする。probe と解析結果は native GC の safe point を跨いで root する。
+
+Evidence: `test_e2e_selfhost_cli_check_rejects_non_bool_canonical_property`、`test_e2e_selfhost_cli_check_accepts_typed_property_binder`、`test_e2e_selfhost_cli_check_rejects_non_bool_property_precondition`、`cargo test -p lsharp-wasm --test e2e selfhost_cli_check_rejects_non_bool_canonical_property -- --nocapture`、同 typed binder / precondition の各 focused test、`./target/debug/lsharp check selfhost/src/Types/TypeInferAssertions.ls`。実装ファイルは 800 行、括弧深度 0、`git diff --check` を満たす。
+
+これは最初の binder / 最初の precondition に限定した verified slice であり、複数 typed binder / 複数 precondition、binder 名 `result` の衝突、完全な TypeExpr/parser projection、empty/non-vacuous property、type-directed sampling/shrink、evaluator、Rust/selfhost diagnostic/span parity、full CLI artifact/runtime、Mac Apple Silicon / Linux x86_64 の current-source native gate は残件である。したがってこの範囲は Rust なしの日常開発で利用できるが、property 全体または全機能 Rust-free 完了とは扱わず、Rust oracle / bootstrap 境界を維持する。
+
 ### scoped polymorphic `defn` signature (2026-07-15)
 
 `TypeInferFunctions.ls` は `defn` の parameter / return annotation に現れる scoped 名ごとに共有 fresh 型変数を割り当て、通常の型環境で関数を一般化する。これにより `id` を Int と Bool の別 call site で使え、`choose-first [(: x a) (: y b)] : a x` では `a` と `b` を独立に具体化できる。GADT refinement と exhaustiveness は別タスクである。Evidence: `test_e2e_selfhost_scoped_type_var_defn_signature_is_polymorphic`、`test_e2e_selfhost_scoped_multiple_type_vars_defn_signature_is_polymorphic`、`TypeInfer.ls` check。
