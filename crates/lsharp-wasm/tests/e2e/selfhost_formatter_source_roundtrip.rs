@@ -180,3 +180,50 @@ fn test_e2e_selfhost_formatter_roundtrips_canonical_assert_form() {
         "canonical :assert は kind・grouping・formatter roundtrip を保持するべき"
     );
 }
+
+/// EC-M1-03: canonical :case は source-aware formatter で落とさず roundtrip する。
+#[test]
+fn test_e2e_selfhost_formatter_roundtrips_canonical_case_form() {
+    let output = run_formatter_source_harness(
+        r#"
+(module Main)
+(defn main []
+  (let [src "(defn succ [x] :case [(expect (succ 1) 2) (expect (succ 2) 4)] (+ x 1))"
+        program (parse-program src)
+        formatted (format-program-with-source program src)
+        canonical (format-program program 0)
+        roundtrip (parse-program formatted)
+        decl (vector-get roundtrip 0)
+        meta (extract-defn-metadata decl)
+        forms (vector-get meta 5)
+        form (vector-get forms 0)
+        expectations (vector-get form 1)
+        first-expectation (vector-get expectations 0)
+        actual (vector-get first-expectation 0)
+        expected (vector-get first-expectation 1)]
+    (do
+      (print-string formatted)
+      (print-string canonical)
+      (print (vector-get form 0))
+      (print (vector-length expectations))
+      (print (vector-get actual 0))
+      (print (vector-get expected 0))
+      (print (vector-get expected 1))
+      0)))
+"#,
+    );
+
+    assert_eq!(
+        output.lines().map(str::to_owned).collect::<Vec<_>>(),
+        vec![
+            "(defn succ [x] :case [(expect (succ 1) 2) (expect (succ 2) 4)] (+ x 1))".to_owned(),
+            "(defn succ [x] :case [(expect (succ 1) 2) (expect (succ 2) 4)] (+ x 1))".to_owned(),
+            "4".to_owned(),
+            "2".to_owned(),
+            "5".to_owned(),
+            "1".to_owned(),
+            "2".to_owned(),
+        ],
+        "canonical :case は kind・expectation 順序・formatter roundtrip を保持するべき"
+    );
+}

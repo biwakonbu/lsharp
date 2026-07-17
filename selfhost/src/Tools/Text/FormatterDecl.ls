@@ -287,6 +287,43 @@
       text)
     ""))
 
+(defn format-defn-metadata-case-expectation [expectation indent-level]
+  (let [actual-text (format-expr (vector-get expectation 0) indent-level)
+    expected-text (format-expr (vector-get expectation 1) indent-level)]
+    (str5 "(expect " actual-text " " expected-text ")")))
+
+(defn format-defn-metadata-case-expectations [expectations idx count indent-level]
+  (if (<= count 0)
+    ""
+    (let [expectation-text (format-defn-metadata-case-expectation
+        (vector-get expectations idx) indent-level)]
+      (if (= count 1)
+        expectation-text
+        (str3 expectation-text " "
+          (format-defn-metadata-case-expectations
+            expectations (+ idx 1) (- count 1) indent-level))))))
+
+(defn format-defn-metadata-case-form [form indent-level]
+  (let [expectations (vector-get form 1)
+    count (vector-length expectations)]
+    (str3 ":case ["
+      (format-defn-metadata-case-expectations expectations 0 count indent-level)
+      "]")))
+
+(defn format-defn-metadata-case-loop [forms idx count indent-level]
+  (if (>= idx count)
+    ""
+    (let [form (vector-get forms idx)]
+      (if (= (vector-get form 0) (contract-form-case))
+        (format-defn-metadata-case-form form indent-level)
+        (format-defn-metadata-case-loop forms (+ idx 1) count indent-level)))))
+
+(defn format-defn-metadata-case [meta indent-level]
+  (if (> (vector-length meta) 5)
+    (let [forms (vector-get meta 5)]
+      (format-defn-metadata-case-loop forms 0 (vector-length forms) indent-level))
+    ""))
+
 (defn format-defn-metadata [decl]
   (let [meta (extract-defn-metadata decl)]
     (if (= meta 0)
@@ -296,9 +333,10 @@
         pieces-3 (append-metadata-piece pieces-2 (format-defn-metadata-doc meta))
         pieces-4 (append-metadata-piece pieces-3 (format-defn-metadata-example meta))
         pieces-5 (append-metadata-piece pieces-4 (format-defn-metadata-invariant meta))
-        pieces-6 (append-metadata-piece pieces-5 (format-defn-metadata-assert meta 0))]
-        (if (> (string-length pieces-6) 0)
-          (string-concat " " pieces-6)
+        pieces-6 (append-metadata-piece pieces-5 (format-defn-metadata-case meta 0))
+        pieces-7 (append-metadata-piece pieces-6 (format-defn-metadata-assert meta 0))]
+        (if (> (string-length pieces-7) 0)
+          (string-concat " " pieces-7)
           "")))))
 
 (defn format-defn-metadata-invariant-with-source [meta source]
@@ -331,6 +369,50 @@
         forms 0 (vector-length forms) indent-level source))
     ""))
 
+(defn format-defn-metadata-case-expectation-with-source [expectation indent-level source]
+  (let [actual-text (format-expr-with-source
+      (vector-get expectation 0) indent-level source)
+    expected-text (format-expr-with-source
+      (vector-get expectation 1) indent-level source)]
+    (str5 "(expect " actual-text " " expected-text ")")))
+
+(defn format-defn-metadata-case-expectations-with-source
+  [expectations idx count indent-level source]
+  (if (<= count 0)
+    ""
+    (let [expectation-text (format-defn-metadata-case-expectation-with-source
+        (vector-get expectations idx) indent-level source)]
+      (if (= count 1)
+        expectation-text
+        (str3 expectation-text " "
+          (format-defn-metadata-case-expectations-with-source
+            expectations (+ idx 1) (- count 1) indent-level source))))))
+
+(defn format-defn-metadata-case-form-with-source [form indent-level source]
+  (let [expectations (vector-get form 1)
+    count (vector-length expectations)]
+    (str3 ":case ["
+      (format-defn-metadata-case-expectations-with-source
+        expectations 0 count indent-level source)
+      "]")))
+
+(defn format-defn-metadata-case-loop-with-source
+  [forms idx count indent-level source]
+  (if (>= idx count)
+    ""
+    (let [form (vector-get forms idx)]
+      (if (= (vector-get form 0) (contract-form-case))
+        (format-defn-metadata-case-form-with-source form indent-level source)
+        (format-defn-metadata-case-loop-with-source
+          forms (+ idx 1) count indent-level source)))))
+
+(defn format-defn-metadata-case-with-source [meta indent-level source]
+  (if (> (vector-length meta) 5)
+    (let [forms (vector-get meta 5)]
+      (format-defn-metadata-case-loop-with-source
+        forms 0 (vector-length forms) indent-level source))
+    ""))
+
 (defn format-defn-metadata-with-source [decl source]
   (let [meta (extract-defn-metadata decl)]
     (if (= meta 0)
@@ -341,9 +423,11 @@
         pieces-4 (append-metadata-piece pieces-3 (format-defn-metadata-example meta))
         pieces-5 (append-metadata-piece pieces-4 (format-defn-metadata-invariant-with-source meta source))
         pieces-6 (append-metadata-piece pieces-5
+          (format-defn-metadata-case-with-source meta 0 source))
+        pieces-7 (append-metadata-piece pieces-6
           (format-defn-metadata-assert-with-source meta 0 source))]
-        (if (> (string-length pieces-6) 0)
-          (string-concat " " pieces-6)
+        (if (> (string-length pieces-7) 0)
+          (string-concat " " pieces-7)
           "")))))
 
 (defn format-defn-with-source [decl indent-level source]
