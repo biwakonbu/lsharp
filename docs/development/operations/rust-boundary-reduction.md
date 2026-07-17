@@ -180,6 +180,14 @@ Evidence: RED の `test_e2e_selfhost_cli_check_rejects_empty_canonical_property`
 
 これは empty property と literal `true` postcondition の verified slice に限られる。typed binder なし、`cases=0`、static comparison の constant-true 判定、到達不能 precondition、sampling/shrink/evaluator、diagnostic span parity、full CLI artifact/runtime、Mac Apple Silicon / Linux x86_64 の current-source native gate は残件であり、Rust oracle / bootstrap 境界を維持する。
 
+### EC-M1-04 selfhost property structural non-vacuity (2026-07-18)
+
+Selfhost `Types.TypeInferAssertions` は `for-all` の typed binder が 0 件、または `:cases 0` の property を structural code `2007` で拒否するようになった。`App.Cli` / `App.EmbeddedCli` の diagnostic body も、postcondition だけでなく typed binder と positive case count を要求する共通境界へ更新した。これにより empty property、binder-less property、zero-case property が検査 0 件の成功として隠れない。
+
+Evidence: `test_e2e_selfhost_cli_check_rejects_empty_canonical_property`、`test_e2e_selfhost_cli_check_rejects_property_without_typed_binder`、`test_e2e_selfhost_cli_check_rejects_zero_case_property`、`test_selfhost_cli_sources_route_property_runner_boundary`、`./target/debug/lsharp check selfhost/src/Types/TypeInferAssertions.ls` / `App/Cli.ls` / `App/EmbeddedCli.ls`、`bash scripts/audit_docs.sh`。
+
+これは structural code `2007` の selfhost verified slice であり、Rust metadata checker の個別 message/span、static constant-true comparison、negative `cases` / malformed option、到達不能 precondition、sampling/shrink/evaluator、full CLI artifact/runtime、Mac Apple Silicon / Linux x86_64 の current-source native gate は残件である。property 全体または全機能 Rust-free 完了とは扱わず、Rust oracle / bootstrap 境界を維持する。
+
 ### scoped polymorphic `defn` signature (2026-07-15)
 
 `TypeInferFunctions.ls` は `defn` の parameter / return annotation に現れる scoped 名ごとに共有 fresh 型変数を割り当て、通常の型環境で関数を一般化する。これにより `id` を Int と Bool の別 call site で使え、`choose-first [(: x a) (: y b)] : a x` では `a` と `b` を独立に具体化できる。GADT refinement と exhaustiveness は別タスクである。Evidence: `test_e2e_selfhost_scoped_type_var_defn_signature_is_polymorphic`、`test_e2e_selfhost_scoped_multiple_type_vars_defn_signature_is_polymorphic`、`TypeInfer.ls` check。

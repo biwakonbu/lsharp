@@ -4,8 +4,7 @@
 (import Types.Type)
 (import Types.TypeInfer)
 (import Types.TypeInferCore)
-;; TypeInfer の既存 AST/環境を使った canonical :assert の狭い型検査。
-;; predicate は関数引数を暗黙に束縛せず、実行せずに Bool を確認する。
+;; TypeInfer の既存 AST/環境を使った canonical :assert の狭い型検査。predicate は関数引数を暗黙に束縛せず、実行せずに Bool を確認する。
 (defn canonical-assertion-type-error-code [] 1001)
 (defn canonical-assertion-non-bool-code [] 1002)
 (defn canonical-assertion-empty-code [] 2004)
@@ -21,7 +20,6 @@
     (vector-new 2)
     diagnostic-count
     first-error-code))
-;; raw :property payload から first binder / precondition / postcondition を取り出す。複数要素の完全な typed projection は後続 slice で追加する。
 (defn property-space? [ch]
   (if (or (= ch 32) (= ch 9))
     1
@@ -687,14 +685,16 @@
 (defn check-canonical-cases [program]
   (let [analysis (infer-program-analysis program)]
     (check-canonical-cases-with-analysis program analysis)))
-;; canonical :property の postcondition を checker へ接続する。
+(defn property-binders-empty? [payload] (if (string-eq (property-probe-parameter-source payload) "[result]") 1 0))
+(defn property-cases-zero? [payload] (let [marker (property-find-substring payload ":cases") len (string-length payload)] (if (< marker 0) 0 (let [start (property-skip-space payload (+ marker 6) len) end (property-atom-expression-end payload start len)] (if (<= end start) 0 (if (= (parse-int-from-str payload start end 0) 0) 1 0))))))
 (defn check-property-form [form diagnostic-count first-error-code]
   (if (= (vector-get form 0) (contract-form-property))
     (do
       (root_push form)
       (let [payload (if (> (vector-length form) 1) (vector-get form 1) "")
+        structural-code (if (or (= (property-binders-empty? payload) 1) (= (property-cases-zero? payload) 1)) (canonical-property-empty-code) 0)
         precondition-code (check-property-precondition payload)
-        code (if (> precondition-code 0) precondition-code (check-property-postcondition payload))
+        code (if (> structural-code 0) structural-code (if (> precondition-code 0) precondition-code (check-property-postcondition payload)))
         next-count (if (> code 0) (+ diagnostic-count 1) diagnostic-count)
         next-first-code (if (= first-error-code 0) code first-error-code)
         state (assertion-check-state next-count next-first-code)]

@@ -6972,6 +6972,72 @@ fn test_e2e_selfhost_cli_check_rejects_vacuous_property_postcondition() {
     );
 }
 
+/// EC-M1-04: selfhost check が typed binder のない property を成功扱いしないこと。
+#[test]
+fn test_e2e_selfhost_cli_check_rejects_property_without_typed_binder() {
+    let harness = r#"
+(defn main []
+  (let [source "(defn noop [] :property [(for-all [] :postcondition (>= result 0))] true)"
+        program (parse-program source)
+        analysis (infer-program-analysis program)
+        result (check-canonical-properties-with-analysis program analysis)]
+    (do
+      (print-string "BEGIN\n")
+      (print (vector-get result 0))
+      (print (vector-get result 1))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}",
+        selfhost_parser_typeinfer_runtime_bundle(),
+        harness
+    );
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["BEGIN", "1", "2007"],
+        "selfhost property checker は typed binder のない property を成功扱いするべきではない"
+    );
+}
+
+/// EC-M1-04: selfhost check が cases=0 の property を成功扱いしないこと。
+#[test]
+fn test_e2e_selfhost_cli_check_rejects_zero_case_property() {
+    let harness = r#"
+(defn main []
+  (let [source "(defn identity [x] :property [(for-all [x Int] :cases 0 :postcondition (= result x))] x)"
+        program (parse-program source)
+        analysis (infer-program-analysis program)
+        result (check-canonical-properties-with-analysis program analysis)]
+    (do
+      (print-string "BEGIN\n")
+      (print (vector-get result 0))
+      (print (vector-get result 1))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}",
+        selfhost_parser_typeinfer_runtime_bundle(),
+        harness
+    );
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["BEGIN", "1", "2007"],
+        "selfhost property checker は cases=0 の property を成功扱いするべきではない"
+    );
+}
+
 /// EC-M1-02: selfhost test が canonical :case の型エラーを実行前に拒否すること
 #[test]
 fn test_e2e_selfhost_cli_test_rejects_invalid_canonical_case() {
