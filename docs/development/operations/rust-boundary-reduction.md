@@ -38,6 +38,14 @@ Evidence: RED の `metadata_contract_assert` compile failure、GREEN の `canoni
 
 これは Rust parser/types の canonical inventory bridge に限定した verified slice であり、selfhost 側の全 parser/formatter/runner parity、assert の型検査・diagnostic report、migration diagnostic、Mac/Linux current-source native artifact/runtime parity は残件である。selfhost の parser/formatter と限定 runner projection は後続の EC-M1-03 slice で個別に検証する。
 
+### EC-M1-02 canonical `:case` parser/inventory bridge (2026-07-17)
+
+Rust syntax が canonical `:case [(expect actual expected) ...]` を lossless form として parse し、各 expectation の actual / expected 式、entry span、directive span を保持するようになった。metadata inventory は source 順に `ExecutableContract::Case` へ投影し、legacy `:example` / `:invariant` projection と混同しない。
+
+Evidence: RED の `canonical_case_metadata_preserves_expectations_and_spans` compile failure、GREEN の同 test、`canonical_case_forms_project_to_ordered_inventory_entries`、`cargo test -p lsharp-syntax --test metadata_inventory -- --nocapture`、`cargo test -p lsharp-types --test metadata_contract_case -- --nocapture`。
+
+これは parser と canonical IR の verified sliceであり、`:case` の type check、Int/Bool comparison、実行 runner、selfhost parser/formatter/runner、empty/malformed case diagnostics、Mac/Linux current-source native artifact/runtime parity は残件である。次の実装は型検査を先に固定し、runner が未対応 case を成功扱いにしない境界を追加する。
+
 ### EC-M1-03 selfhost canonical assert parser/formatter bridge (2026-07-17)
 
 Selfhost `Syntax.AST` / `Syntax.Parser` は canonical `:assert [predicate ...]` を ordered metadata slot の kind `3` と predicate vector として保持し、`Tools.Text.FormatterDecl` は source-aware / canonical formatter の両方で `:assert` の grouping と predicate 順を再構成する。legacy `:example` / `:invariant` の metadata slot と runner projection は変更せず、既存 typed metadata の 6-slot contract も回帰で固定した。

@@ -1,5 +1,5 @@
 use crate::ast::*;
-use crate::metadata::{MetadataForm, MetadataFormKind};
+use crate::metadata::{CaseExpectation, MetadataForm, MetadataFormKind};
 use crate::span::Span;
 use crate::token::{Token, TokenKind};
 
@@ -367,6 +367,22 @@ impl Parser {
                             ));
                             found = true;
                         }
+                        "case" => {
+                            let form_start = self.peek_span();
+                            self.advance(); // :
+                            self.advance(); // case
+                            self.expect(TokenKind::LBracket)?;
+                            let mut expectations = Vec::new();
+                            while !self.check(TokenKind::RBracket) {
+                                expectations.push(self.parse_case_expectation()?);
+                            }
+                            let form_end = self.advance().span; // ]
+                            metadata.forms.push(MetadataForm::new(
+                                form_start.merge(form_end),
+                                MetadataFormKind::Case { expectations },
+                            ));
+                            found = true;
+                        }
                         "assert" => {
                             let form_start = self.peek_span();
                             self.advance(); // :
@@ -408,6 +424,27 @@ impl Parser {
         }
 
         Ok(if found { Some(metadata) } else { None })
+    }
+
+    fn parse_case_expectation(&mut self) -> Result<CaseExpectation, ParseError> {
+        let entry_start = self.expect(TokenKind::LParen)?.span;
+        let head_span = self.peek_span();
+        let head = self.expect_symbol()?;
+        if head != "expect" {
+            return Err(ParseError::Unexpected {
+                expected: "expect".to_string(),
+                found: head,
+                span: head_span,
+            });
+        }
+        let actual = self.parse_expr()?;
+        let expected = self.parse_expr()?;
+        let entry_end = self.expect(TokenKind::RParen)?.span;
+        Ok(CaseExpectation::new(
+            entry_start.merge(entry_end),
+            actual,
+            expected,
+        ))
     }
 
     /// (type Name Variant1 Variant2 ...)
@@ -1496,6 +1533,7 @@ impl Parser {
                     | "see-also"
                     | "example"
                     | "invariant"
+                    | "case"
                     | "assert"
                     | "transitions"
             ),

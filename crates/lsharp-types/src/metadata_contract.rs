@@ -349,6 +349,15 @@ fn inventory_decl(decl: &Decl) -> Result<Option<ContractSuite>, ContractInventor
                     source_span: form.span(),
                 });
             }
+            MetadataFormKind::Case { expectations } => {
+                executable.extend(expectations.iter().map(|expectation| {
+                    ExecutableContract::Case(Case {
+                        actual: expectation.actual().clone(),
+                        expected: ExpectedOutcome::Value(expectation.expected().clone()),
+                        source_span: expectation.source_span(),
+                    })
+                }));
+            }
             MetadataFormKind::Assertion { predicates } => {
                 executable.extend(predicates.iter().cloned().map(|predicate| {
                     let source_span = predicate.span();
@@ -397,6 +406,7 @@ fn validate_compatibility_projection(
             MetadataFormKind::LegacyInvariant { predicate } => {
                 invariant = Some(predicate.clone());
             }
+            MetadataFormKind::Case { .. } => {}
             MetadataFormKind::Assertion { .. } => {}
         }
     }

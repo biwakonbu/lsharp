@@ -55,3 +55,40 @@ fn legacy_contract_metadata_forms_preserve_source_order_and_spans() {
     };
     assert_eq!(predicate, metadata.invariant.as_ref().unwrap());
 }
+
+#[test]
+fn canonical_case_metadata_preserves_expectations_and_spans() {
+    const SOURCE: &str = "(defn abs [x] :case [(expect (abs -5) 5) (expect (abs 0) 0)] (+ x 1))";
+    let program = parse(SOURCE).expect("canonical :case metadata は parse できるべき");
+    let Decl::Defn {
+        metadata: Some(metadata),
+        ..
+    } = &program.decls[0]
+    else {
+        panic!("fixture は metadata 付き defn であるべき");
+    };
+
+    let [form] = metadata.forms.as_slice() else {
+        panic!(":case は一つの lossless metadata form を保持するべき");
+    };
+    let MetadataFormKind::Case { expectations } = &form.kind else {
+        panic!(":case は Case form として保持されるべき");
+    };
+    assert_eq!(expectations.len(), 2);
+    assert_eq!(
+        &SOURCE[form.span().start..form.span().end],
+        ":case [(expect (abs -5) 5) (expect (abs 0) 0)]"
+    );
+    assert_eq!(
+        &SOURCE[expectations[0].source_span().start..expectations[0].source_span().end],
+        "(expect (abs -5) 5)"
+    );
+    assert_eq!(
+        &SOURCE[expectations[0].actual().span().start..expectations[0].actual().span().end],
+        "(abs -5)"
+    );
+    assert_eq!(
+        &SOURCE[expectations[0].expected().span().start..expectations[0].expected().span().end],
+        "5"
+    );
+}

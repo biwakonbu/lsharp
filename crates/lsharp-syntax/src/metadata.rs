@@ -22,6 +22,36 @@ impl MetadataForm {
     }
 }
 
+/// canonical `:case` 内の `(expect actual expected)` entry。
+#[derive(Debug, Clone, PartialEq)]
+pub struct CaseExpectation {
+    source_span: Span,
+    actual: Expr,
+    expected: Expr,
+}
+
+impl CaseExpectation {
+    pub(crate) fn new(source_span: Span, actual: Expr, expected: Expr) -> Self {
+        Self {
+            source_span,
+            actual,
+            expected,
+        }
+    }
+
+    pub fn source_span(&self) -> Span {
+        self.source_span
+    }
+
+    pub fn actual(&self) -> &Expr {
+        &self.actual
+    }
+
+    pub fn expected(&self) -> &Expr {
+        &self.expected
+    }
+}
+
 /// source から lossless に保持する contract form。
 #[derive(Debug, Clone, PartialEq)]
 pub enum MetadataFormKind {
@@ -29,6 +59,8 @@ pub enum MetadataFormKind {
     LegacyExample { expressions: Vec<Expr> },
     /// legacy `:invariant predicate`。
     LegacyInvariant { predicate: Expr },
+    /// canonical `:case [(expect actual expected) ...]`。
+    Case { expectations: Vec<CaseExpectation> },
     /// canonical `:assert [predicate ...]`。一つの directive 内の grouping を維持する。
     Assertion { predicates: Vec<Expr> },
 }
