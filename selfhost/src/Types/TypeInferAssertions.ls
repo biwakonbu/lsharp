@@ -9,6 +9,7 @@
 
 (defn canonical-assertion-type-error-code [] 1001)
 (defn canonical-assertion-non-bool-code [] 1002)
+(defn canonical-assertion-empty-code [] 2004)
 
 (defn assertion-check-state [diagnostic-count first-error-code]
   (vector-push-pair-rooted
@@ -120,15 +121,21 @@
 (defn check-assertion-form [form decl env counter diagnostic-count first-error-code]
   (if (= (vector-get form 0) 3)
     (let [predicates (vector-get form 1)]
-      (check-assertion-predicates-loop
-        predicates
-        0
-        (vector-length predicates)
-        decl
-        env
-        counter
-        diagnostic-count
-        first-error-code))
+      (if (= (vector-length predicates) 0)
+        (assertion-check-state
+          (+ diagnostic-count 1)
+          (if (= first-error-code 0)
+            (canonical-assertion-empty-code)
+            first-error-code))
+        (check-assertion-predicates-loop
+          predicates
+          0
+          (vector-length predicates)
+          decl
+          env
+          counter
+          diagnostic-count
+          first-error-code)))
     (assertion-check-state diagnostic-count first-error-code)))
 
 (defn check-assertion-forms-loop

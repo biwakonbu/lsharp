@@ -53,3 +53,47 @@ fn canonical_assertion_does_not_capture_defn_parameters() {
     assert_eq!(&SOURCE[diagnostic.span.start..diagnostic.span.end], "x");
     assert_eq!(diagnostic.function_name, "identity");
 }
+
+#[test]
+fn canonical_assertion_requires_at_least_one_predicate() {
+    const SOURCE: &str = "(defn noop [] :assert [] true)";
+    let program = parse(SOURCE).expect("空の :assert も diagnostic のため parse できるべき");
+
+    let diagnostics = check_metadata(&program);
+
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "空の assertion を成功扱いしてはならない"
+    );
+    let diagnostic = &diagnostics[0];
+    assert_eq!(diagnostic.severity, Severity::Error);
+    assert!(diagnostic.message.contains(":assert"));
+    assert!(diagnostic.message.contains("少なくとも 1 件"));
+    assert_eq!(
+        &SOURCE[diagnostic.span.start..diagnostic.span.end],
+        ":assert []"
+    );
+    assert_eq!(diagnostic.function_name, "noop");
+}
+
+#[test]
+fn canonical_assertion_non_vacuity_qualifies_module_owner() {
+    const SOURCE: &str = "(module Demo (private (defn noop [] :assert [] true)))";
+    let program = parse(SOURCE).expect("module 内の空 assertion も parse できるべき");
+
+    let diagnostics = check_metadata(&program);
+
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "module 内の空 assertion を成功扱いしてはならない"
+    );
+    let diagnostic = &diagnostics[0];
+    assert_eq!(diagnostic.severity, Severity::Error);
+    assert_eq!(diagnostic.function_name, "Demo.noop");
+    assert_eq!(
+        &SOURCE[diagnostic.span.start..diagnostic.span.end],
+        ":assert []"
+    );
+}

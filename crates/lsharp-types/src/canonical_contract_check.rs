@@ -5,12 +5,66 @@ use crate::metadata_check::{MetadataDiagnostic, Severity};
 use crate::metadata_contract::{ContractSuite, ExecutableContract};
 use crate::types::Type;
 use lsharp_syntax::ast::{Decl, Program};
+use lsharp_syntax::metadata::MetadataFormKind;
 use lsharp_syntax::span::Span;
 
 struct AssertionProbe {
     name: String,
     owner: String,
     span: Span,
+}
+
+/// 空の canonical `:assert` を、検査 0 件の成功として扱わない。
+pub(crate) fn check_assertion_non_vacuity(program: &Program) -> Vec<MetadataDiagnostic> {
+    let mut diagnostics = Vec::new();
+    for decl in &program.decls {
+        collect_assertion_non_vacuity(decl, None, &mut diagnostics);
+    }
+    diagnostics
+}
+
+fn collect_assertion_non_vacuity(
+    decl: &Decl,
+    module_prefix: Option<&str>,
+    diagnostics: &mut Vec<MetadataDiagnostic>,
+) {
+    match decl {
+        Decl::Private { inner, .. } => {
+            collect_assertion_non_vacuity(inner, module_prefix, diagnostics);
+        }
+        Decl::ModuleDecl { name, body, .. } => {
+            let prefix = match module_prefix {
+                Some(outer) => format!("{outer}.{name}"),
+                None => name.clone(),
+            };
+            for nested in body {
+                collect_assertion_non_vacuity(nested, Some(&prefix), diagnostics);
+            }
+        }
+        Decl::Defn {
+            name,
+            metadata: Some(metadata),
+            ..
+        } => {
+            let owner = match module_prefix {
+                Some(prefix) => format!("{prefix}.{name}"),
+                None => name.clone(),
+            };
+            for form in &metadata.forms {
+                if let MetadataFormKind::Assertion { predicates } = &form.kind
+                    && predicates.is_empty()
+                {
+                    diagnostics.push(MetadataDiagnostic {
+                        severity: Severity::Error,
+                        message: ":assert は少なくとも 1 件の predicate を必要とします".to_string(),
+                        span: form.span(),
+                        function_name: owner.clone(),
+                    });
+                }
+            }
+        }
+        _ => {}
+    }
 }
 
 /// canonical assertion を既存の HM 推論器で検査する。

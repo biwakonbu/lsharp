@@ -60,7 +60,7 @@ Rust `metadata_check::check_metadata` は canonical contract inventory の `Exec
 
 Evidence: RED の `metadata_contract_check` 2ケース、GREEN の同 2ケース（非 `Bool` の型と predicate span、defn parameter を捕捉しない未定義変数診断）、`cargo test -p lsharp-types -- --nocapture`（202 unit tests + integration tests）、対象ファイルの `rustfmt --check`、`git diff --check`。
 
-これは Rust の parser/types oracle に接続した canonical assertion 型検査の verified slice であり、selfhost `check` から同じ診断を返す経路、安定した診断 code/schema、全 evaluator/runtime の assertion parity、zero-case・到達不能 precondition・constant-true property の non-vacuity、Mac Apple Silicon / Linux x86_64 の current-source native artifact/runtime gate は残件である。また inventory 失敗時にこの narrow checker は既存の metadata 診断を優先して変更しないため、inventory の fail-closed 契約を広げる作業も別に必要である。EC-M1-04 や全機能 Rust-free 完了の判定には使わない。
+これは Rust の parser/types oracle に接続した canonical assertion 型検査の verified slice であり、selfhost `check` からの詳細診断 parity、安定した診断 code/schema、全 evaluator/runtime の assertion parity、到達不能 precondition・constant-true property の non-vacuity、Mac Apple Silicon / Linux x86_64 の current-source native artifact/runtime gate は残件である。また inventory 失敗時にこの narrow checker は既存の metadata 診断を優先して変更しないため、inventory の fail-closed 契約を広げる作業も別に必要である。EC-M1-04 や全機能 Rust-free 完了の判定には使わない。
 
 ### EC-M1-04 selfhost `check` canonical assertion Bool preflight (2026-07-17)
 
@@ -70,7 +70,13 @@ Evidence: RED で未定義の `check-canonical-assertions` を固定した後、
 
 同じ E2E で flattened module body、`private` 宣言、nested module を走査し、module/private/Inner module 内の non-Bool predicate と local helper の `Int` 結果をそれぞれ `1,1002` として検出することも確認した。module body は selfhost の AST 表現から専用 program vector へ戻し、module ごとの TypeInfer environment を使う。loop 再帰中の module decl と state は root して、inference allocation による AST 消失を防ぐ。
 
-これは Rust の synthetic HM probe と同じ全体 parity を閉じたものではなく、selfhost `TypeInfer` の解析済み environment を使う narrow static preflight である。predicate span、Rust checker と同じ型エラーの詳細・code/span parity、module name qualification/collision と imported module scope、full CLI bundle の runtime/manual gate、non-vacuity、Mac Apple Silicon / Linux x86_64 の native artifact/runtime parity は残件である。この slice だけで EC-M1-04 や全機能 Rust-free 完了とは扱わない。
+これは Rust の synthetic HM probe と同じ全体 parity を閉じたものではなく、selfhost `TypeInfer` の解析済み environment を使う narrow static preflight である。predicate span、Rust checker と同じ型エラーの詳細・code/span parity、module name qualification/collision と imported module scope、full CLI bundle の runtime/manual gate、property/assertion の他の non-vacuity、Mac Apple Silicon / Linux x86_64 の native artifact/runtime parity は残件である。この slice だけで EC-M1-04 や全機能 Rust-free 完了とは扱わない。
+
+### EC-M1-04 empty canonical assertion non-vacuity (2026-07-17)
+
+空の canonical `:assert []` を検査 0 件の成功として扱わない境界を、Rust metadata checker / tooling と selfhost checker で揃えた。Rust 側は directive span を保持した metadata error を返し、tooling の `test` path は `LS2004` として拒否する。selfhost `check-canonical-assertions` は code `2004` を返し、top-level、module、`private`、nested module を同じ判定にする。
+
+Evidence: `canonical_assertion_requires_at_least_one_predicate`、`canonical_assertion_non_vacuity_qualifies_module_owner`、`test_run_metadata_tests_rejects_empty_canonical_assertion`、`test_e2e_selfhost_metadata_check_rejects_non_bool_canonical_assertion` 内の empty scope 4ケース、`cargo run --quiet --bin lsharp -- check selfhost/src/Types/TypeInferAssertions.ls` / `Cli.ls` / `EmbeddedCli.ls`。到達不能 precondition、constant-true property、full CLI bundle、両対応 target の current-source artifact/runtime parity は残件である。
 
 ### scoped polymorphic `defn` signature (2026-07-15)
 

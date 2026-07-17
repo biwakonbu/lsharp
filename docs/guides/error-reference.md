@@ -10,6 +10,7 @@
 - `LS0101` - `LS0104`: parser
 - `LS0201`: macro expansion
 - `LS1001` - `LS1013`: type checker
+- `LS2004`: metadata contract validation
 - `LS3001` - `LS3104`: lowering and module graph
 - `LS4001`: codegen
 
@@ -50,6 +51,7 @@
 | `LS1011` | missing-impl | 必要な trait impl が見つかりません | 対象型の impl を追加するか、constraint を見直してください。 |
 | `LS1012` | alias-type-mismatch | type alias 展開後の型が一致していません | alias の target 型と利用箇所の型を確認してください。 |
 | `LS1013` | kind-mismatch | kind が一致していません | 型引数の数と高カインド型の使い方を確認してください。 |
+| `LS2004` | empty-executable-contract | executable contract に検査対象がありません | `:assert` に Bool predicate を少なくとも 1 件追加してください。 |
 | `LS3001` | unsupported-lowering | lowering が未対応の構文です | 対応済みの言語機能へ書き換えるか、該当機能の lowering 実装を追加してください。 |
 | `LS3002` | undefined-lowered-function | lowering 後に未定義関数が残っています | module import、関数定義、stdlib 参照を確認してください。 |
 | `LS3101` | cyclic-module-dependency | module dependency に循環があります | module 境界を分割するか、循環 import をなくしてください。 |

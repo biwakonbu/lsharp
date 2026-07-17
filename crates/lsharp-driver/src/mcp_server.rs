@@ -840,6 +840,15 @@ mod tests {
     }
 
     #[test]
+    fn test_errors_tool_returns_empty_executable_contract_code() {
+        let result = call_tool("lsharp_errors", &json!({"error_code": "LS2004"}))
+            .expect("LS2004 は空の executable contract として解決するべき");
+
+        assert_eq!(result["code"], "LS2004");
+        assert_eq!(result["name"], "empty-executable-contract");
+    }
+
+    #[test]
     fn test_check_tool_returns_diagnostic_code_and_source_range() {
         let result = call_tool("lsharp_check", &json!({"source": "(unknown-form)"}))
             .expect("lsharp_check は syntax diagnostics を返すべき");

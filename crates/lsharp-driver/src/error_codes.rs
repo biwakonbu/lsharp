@@ -180,6 +180,14 @@ pub(crate) const ERROR_CODES: &[ErrorCodeEntry] = &[
         fix: "型引数の数と高カインド型の使い方を確認してください。",
     },
     ErrorCodeEntry {
+        code: "LS2004",
+        legacy_code: None,
+        name: "empty-executable-contract",
+        summary: "executable contract に検査対象がありません",
+        detail: ":assert の predicate が空で、検査 0 件を成功として扱う可能性があります。",
+        fix: ":assert に Bool predicate を少なくとも 1 件追加してください。",
+    },
+    ErrorCodeEntry {
         code: "LS3001",
         legacy_code: None,
         name: "unsupported-lowering",

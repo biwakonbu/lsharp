@@ -41,11 +41,14 @@ pub fn run_metadata_tests(file: &Path) -> miette::Result<MetadataTestRun> {
     let program = lsharp_syntax::parse(&source).map_err(|e| miette::miette!("{e}"))?;
     if let Some(diagnostic) = lsharp_types::metadata_check::check_metadata(&program)
         .into_iter()
-        .find(|diagnostic| {
-            diagnostic.severity == lsharp_types::metadata_check::Severity::Error
-        })
+        .find(|diagnostic| diagnostic.severity == lsharp_types::metadata_check::Severity::Error)
     {
-        let code = if diagnostic.message.contains("未定義の識別子") {
+        let code = if diagnostic
+            .message
+            .contains(":assert は少なくとも 1 件の predicate")
+        {
+            "LS2004"
+        } else if diagnostic.message.contains("未定義の識別子") {
             "LS1001"
         } else {
             "LS1002"
@@ -167,6 +170,22 @@ mod tests {
         assert!(
             error.to_string().contains("[LS1001]"),
             "unknown invariant variable は LS1001 を返すべき: {error}"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_run_metadata_tests_rejects_empty_canonical_assertion() {
+        let dir = unique_temp_dir("empty_canonical_assertion");
+        let file = dir.join("Main.ls");
+        fs::write(&file, "(defn noop [] :assert [] true)\n").unwrap();
+
+        let error = run_metadata_tests(&file)
+            .expect_err("空の canonical assertion を成功扱いしてはならない");
+        assert!(
+            error.to_string().contains("[LS2004]"),
+            "空の canonical assertion は LS2004 を返すべき: {error}"
         );
 
         let _ = fs::remove_dir_all(&dir);
