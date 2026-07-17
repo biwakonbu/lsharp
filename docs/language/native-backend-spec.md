@@ -67,7 +67,7 @@ Unsupported product/release targets は次のとおりである。既存の inte
 
 開発中の inner loop は GitHub Actions ではなくローカル VM で回す。`scripts/ci/native-linux-x86-local-vm-smoke.sh` は Linux x86_64 VM 上で descriptor / ELF emitter と canonical `program.o` / `runtime.o` / `linker-response.txt` / `program.native` runtime-link smoke を短時間で確認する。QEMU x86_64 VM では selfhost exact-byte suite が重いため、local smoke には含めず、actual native self-regeneration の調査へ進む前の fast gate として扱う。
 
-VM は repo 管理の `scripts/ci/lima/lsharp-linux-x86.yaml` から作成する。この設定は x86_64 QEMU、4 CPU、20GiB memory、12GiB disk、host mount なしに固定し、provision 後の apt cache も削除する。
+VM は repo 管理の `scripts/ci/lima/lsharp-linux-x86.yaml` から作成する。この設定は x86_64 QEMU、4 CPU、16GiB memory、12GiB disk、host mount なしに固定し、provision 後の apt cache も削除する。12GiB disk は base OS と compiler replay の空き4GiB gateを両立する下限として維持し、VM workdir と Cargo target は replay 終了時に削除する。
 
 ```bash
 limactl create --name lsharp-linux-x86 scripts/ci/lima/lsharp-linux-x86.yaml

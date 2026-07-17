@@ -16,6 +16,14 @@ version = "0.1.0"
 edition = "2024"
 license = "MIT"
 
+[profile.dev]
+debug = 1
+incremental = false
+
+[profile.test]
+debug = 1
+incremental = false
+
 [workspace.dependencies]
 miette = { version = "7", features = ["fancy"] }
 thiserror = "2"

@@ -21,6 +21,8 @@ STAGE3_TARGET_ONLY_REQUESTED="${LSHARP_NATIVE_LINUX_X86_STAGE3_TARGET_ONLY:-}"
 STAGE3_SOURCE_TREE_SHA256=""
 PACKAGE_VERSION="$(cargo metadata --no-deps --format-version 1 | python3 -c 'import json,sys; data=json.load(sys.stdin); print(next(p["version"] for p in data["packages"] if p["name"] == "lsharp-wasm"))')"
 EXPECTED_CLI_VERSION="lsharp ${PACKAGE_VERSION}"
+# VM replay は使い捨て target のため、incremental state を蓄積しない。
+export CARGO_INCREMENTAL="${CARGO_INCREMENTAL:-0}"
 STAGE1_PROGRESS_REQUESTED=0
 STAGE2_METADATA_REQUESTED=0
 HOST_VM_WORK_DIR_CREATED=0
