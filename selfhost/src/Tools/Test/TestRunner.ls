@@ -144,15 +144,38 @@
         decl
         results))))
 
-;; parser AST から top-level defn の invariant test case を抽出する。
-;; module/private declaration は既存 raw source scanner と同じくこの slice の対象外。
+;; parser AST から declaration tree 内の defn invariant test case を抽出する。
+(defn append-parser-invariants-from-module-loop [module-node idx count results]
+  (if (>= idx count)
+    results
+    (append-parser-invariants-from-module-loop
+      module-node
+      (+ idx 1)
+      count
+      (append-parser-invariants-from-decl
+        (vector-get module-node (+ idx 3))
+        results))))
+
+(defn append-parser-invariants-from-decl [decl results]
+  (let [tag (vector-get decl 0)]
+    (if (= tag (ast-defn))
+      (append-parser-invariant decl results)
+      (if (= tag (ast-private))
+        (append-parser-invariants-from-decl (vector-get decl 1) results)
+        (if (= tag (ast-module-decl))
+          (append-parser-invariants-from-module-loop
+            decl
+            0
+            (vector-get decl 2)
+            results)
+          results)))))
+
+;; parser AST から defn の invariant test case を declaration tree 順に抽出する。
 (defn extract-invariants-from-program-loop [program idx count results]
   (if (>= idx count)
     results
-    (let [decl (vector-get program idx)
-      next-results
-      (if (= (vector-get decl 0) (ast-defn))
-        (append-parser-invariant decl results)
+    (let [next-results (append-parser-invariants-from-decl
+        (vector-get program idx)
         results)]
       (extract-invariants-from-program-loop
         program
@@ -315,14 +338,44 @@
     (vector-get args idx)
     (value-unit)))
 
+(defn find-defn-in-module-body-loop [module-node target-hash idx count]
+  (if (>= idx count)
+    (vector-new 0)
+    (let [found (find-defn-in-decl-by-hash
+        (vector-get module-node (+ idx 3))
+        target-hash)]
+      (if (> (vector-length found) 0)
+        found
+        (find-defn-in-module-body-loop
+          module-node
+          target-hash
+          (+ idx 1)
+          count)))))
+
+(defn find-defn-in-decl-by-hash [decl target-hash]
+  (let [tag (vector-get decl 0)]
+    (if (= tag (ast-defn))
+      (if (= (vector-get decl 1) target-hash)
+        decl
+        (vector-new 0))
+      (if (= tag (ast-private))
+        (find-defn-in-decl-by-hash (vector-get decl 1) target-hash)
+        (if (= tag (ast-module-decl))
+          (find-defn-in-module-body-loop
+            decl
+            target-hash
+            0
+            (vector-get decl 2))
+          (vector-new 0))))))
+
 (defn find-defn-by-hash [program target-hash idx count]
   (if (>= idx count)
     (vector-new 0)
-    (let [decl (vector-get program idx)]
-      (if (= (vector-get decl 0) (ast-defn))
-        (if (= (vector-get decl 1) target-hash)
-          decl
-          (find-defn-by-hash program target-hash (+ idx 1) count))
+    (let [found (find-defn-in-decl-by-hash
+        (vector-get program idx)
+        target-hash)]
+      (if (> (vector-length found) 0)
+        found
         (find-defn-by-hash program target-hash (+ idx 1) count)))))
 
 (defn known-contract-name? [program env name-hash]
@@ -719,13 +772,36 @@
 
 ;; parser が保持する defn metadata の example payload を test case へ投影する。
 ;; payload は互換のため文字列で保持し、ここで AST に再パースする。
+(defn append-parser-examples-from-module-loop [module-node idx count results]
+  (if (>= idx count)
+    results
+    (append-parser-examples-from-module-loop
+      module-node
+      (+ idx 1)
+      count
+      (append-parser-examples-from-decl
+        (vector-get module-node (+ idx 3))
+        results))))
+
+(defn append-parser-examples-from-decl [decl results]
+  (let [tag (vector-get decl 0)]
+    (if (= tag (ast-defn))
+      (append-parser-examples decl results)
+      (if (= tag (ast-private))
+        (append-parser-examples-from-decl (vector-get decl 1) results)
+        (if (= tag (ast-module-decl))
+          (append-parser-examples-from-module-loop
+            decl
+            0
+            (vector-get decl 2)
+            results)
+          results)))))
+
 (defn extract-examples-from-program-loop [program idx count results]
   (if (>= idx count)
     results
-    (let [decl (vector-get program idx)
-      next-results
-      (if (= (vector-get decl 0) (ast-defn))
-        (append-parser-examples decl results)
+    (let [next-results (append-parser-examples-from-decl
+        (vector-get program idx)
         results)]
       (extract-examples-from-program-loop
         program
