@@ -8,6 +8,42 @@ pub fn check_metadata_strings(source: &str) -> miette::Result<Vec<String>> {
 }
 
 #[cfg(test)]
+mod migration_tests {
+    use super::*;
+
+    #[test]
+    fn migration_diagnostic_strings_preserve_selected_semantics_and_disposition() {
+        let diagnostics = migration_diagnostic_strings(
+            r#"
+(defn succ [x]
+  :example [(succ 0) (= (succ 1) 2)]
+  :invariant (= result (+ x 1))
+  (+ x 1))
+"#,
+        )
+        .expect("legacy metadata migration diagnostics should be rendered");
+
+        assert_eq!(diagnostics.len(), 3);
+        assert!(diagnostics[0].starts_with("[LS2001]"));
+        assert!(diagnostics[0].contains("disposition=docs-only-example"));
+        assert!(diagnostics[1].contains("disposition=assertion"));
+        assert!(diagnostics[2].starts_with("[LS2002]"));
+        assert!(diagnostics[2].contains("disposition=property-postcondition"));
+    }
+}
+
+/// legacy metadata を source order の migration report へ文字列化する。
+pub fn migration_diagnostic_strings(source: &str) -> miette::Result<Vec<String>> {
+    let program = lsharp_syntax::parse(source).map_err(|e| miette::miette!("{e}"))?;
+    let diagnostics = lsharp_types::metadata_migration::classify_legacy_contracts(&program)
+        .map_err(|e| miette::miette!("{e}"))?;
+    Ok(diagnostics
+        .into_iter()
+        .map(|diagnostic| diagnostic.to_string())
+        .collect())
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 

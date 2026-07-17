@@ -1408,6 +1408,7 @@ pub(crate) fn selfhost_cli_runtime_bundle() -> &'static str {
             "TypeInferRecordDecl.ls",
             "TypeInferAdt.ls",
             "TypeInferAssertions.ls",
+            "MetadataMigration.ls",
             "Compiler.ls",
             "WasiBackend.ls",
             "WasmEmit.ls",

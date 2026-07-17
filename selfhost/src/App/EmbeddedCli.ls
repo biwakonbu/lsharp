@@ -11,6 +11,7 @@
 (import Types.TypeInferCore)
 (import Types.TypeScheme)
 (import Types.TypeInferAssertions)
+(import Types.MetadataMigration)
 
 (defn exit-success [] 0)
 (defn exit-compile-error [] 1)
@@ -83,6 +84,7 @@
     canonical-first-error-code (vector-get canonical-check 1)
     case-check (check-canonical-cases-with-analysis program analysis)
     case-diagnostics-count (vector-get case-check 0)
+    migration-summary (legacy-migration-summary (classify-legacy-contracts program))
     case-first-error-code (vector-get case-check 1)
     diagnostics-count (+ base-diagnostics-count (+ canonical-diagnostics-count case-diagnostics-count))
     first-error-code
@@ -103,6 +105,11 @@
       (print-string "\n")
       (print-string diagnostics-text)
       (print-string "\n")
+      (if (> (string-length migration-summary) 0)
+        (do
+          (print-string migration-summary)
+          (print-string "\n"))
+        (print-string ""))
       (exit-success))))
 (defn test-examples-text [count] (string-concat "examples:" (int-to-string count)))
 (defn test-invariants-text [count] (string-concat "invariants:" (int-to-string count)))

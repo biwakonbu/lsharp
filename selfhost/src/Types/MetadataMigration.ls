@@ -178,3 +178,39 @@
       env
       counter
       (vector-new 0))))
+
+(defn legacy-code-text [code]
+  (string-concat "LS" (int-to-string code)))
+
+(defn legacy-disposition-text [disposition]
+  (if (= disposition (legacy-doc-example-disposition))
+    "docs-only-example"
+    (if (= disposition (legacy-assertion-disposition))
+      "assertion"
+      (if (= disposition (legacy-property-disposition))
+        "property-postcondition"
+        "manual-review"))))
+
+(defn legacy-migration-row-text [row]
+  (string-concat
+    (legacy-code-text (vector-get row 0))
+    (string-concat ":" (legacy-disposition-text (vector-get row 1)))))
+
+(defn legacy-migration-summary-loop [rows idx count]
+  (if (>= idx count)
+    ""
+    (let [piece (legacy-migration-row-text (vector-get rows idx))
+      rest (legacy-migration-summary-loop rows (+ idx 1) count)]
+      (if (= (string-length rest) 0)
+        piece
+        (string-concat piece (string-concat "," rest))))))
+
+(defn legacy-migration-summary [rows]
+  (let [count (vector-length rows)]
+    (if (= count 0)
+      ""
+      (string-concat
+        "migration:"
+        (string-concat
+          (int-to-string count)
+          (string-concat "," (legacy-migration-summary-loop rows 0 count)))))))

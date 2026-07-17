@@ -6348,6 +6348,34 @@ fn test_e2e_selfhost_cli_reports_canonical_cases() {
     );
 }
 
+#[test]
+fn test_e2e_selfhost_cli_check_reports_legacy_migration_summary() {
+    let harness = r#"
+(defn main []
+  (let [src "(defn succ [x] :example [(succ 0) (= (succ 1) 2)] :invariant (= result (+ x 1)) (+ x 1))"]
+    (do
+      (print (run-check-source src 0))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec![
+            "Fn",
+            "diagnostics:0",
+            "migration:3,LS2001:docs-only-example,LS2001:assertion,LS2002:property-postcondition",
+            "0",
+        ],
+        "selfhost check は legacy metadata を silent success にせず migration disposition を返すべき"
+    );
+}
+
 /// EC-M1-03: selfhost CLI が canonical :assert の件数を結果へ反映すること
 #[test]
 #[ignore]

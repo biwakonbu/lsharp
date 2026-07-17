@@ -18,6 +18,7 @@
 (import Types.TypeInferCore)
 (import Types.TypeScheme)
 (import Types.TypeInferAssertions)
+(import Types.MetadataMigration)
 (import Backend.Wasm.CompilerBase)
 (defn push-int-vector-local [dst value] (do (root_push dst) (let [next-dst (vector-push dst value)] (do (root_pop) next-dst))))
 (defn push-object-vector-local [dst value] (do (root_push dst) (root_push value) (let [next-dst (vector-push dst value)] (do (root_pop) (root_pop) next-dst))))
@@ -83,6 +84,7 @@
     canonical-first-error-code (vector-get canonical-check 1)
     case-check (check-canonical-cases-with-analysis program analysis)
     case-diagnostics-count (vector-get case-check 0)
+    migration-summary (legacy-migration-summary (classify-legacy-contracts program))
     case-first-error-code (vector-get case-check 1)
     diagnostics-count (+ base-diagnostics-count (+ canonical-diagnostics-count case-diagnostics-count))
     first-error-code
@@ -103,6 +105,11 @@
       (print-string "\n")
       (print-string diagnostics-text)
       (print-string "\n")
+      (if (> (string-length migration-summary) 0)
+        (do
+          (print-string migration-summary)
+          (print-string "\n"))
+        (print-string ""))
       (exit-success))))
 (defn run-fmt-source [src opts] (let [program (parse-program src) formatted (format-program-with-source program src)] (do (print-string formatted) (exit-success))))
 (defn wasm-size-text [size] (string-concat "wasm-size:" (int-to-string size)))
