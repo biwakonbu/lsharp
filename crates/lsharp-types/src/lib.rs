@@ -3,6 +3,7 @@ pub mod constraints;
 pub mod infer;
 pub mod metadata_check;
 pub mod metadata_contract;
+pub mod metadata_migration;
 pub(crate) mod regex;
 pub mod types;
 

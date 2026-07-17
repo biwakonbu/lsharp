@@ -148,7 +148,7 @@
       (print-string "\n")
       (print-string diagnostic-summary)
       (print-string "\n")
-      2))))
+      2)))
 (defn run-test-source [src opts]
   (let [program (parse-program src)
     analysis (infer-program-analysis program)
@@ -202,7 +202,7 @@
           (print-string diagnostic-summary)
           (print-string "\n"))
         (print-string ""))
-      (if (> failed 0) 2 (exit-success))))))))
+      (if (> failed 0) 2 (exit-success)))))))
 (defn review-option-json [] 2)
 (defn review-json-source-id [] 200)
 (defn run-review-source [src opts] (let [program (parse-program src)] (if (= opts (review-option-json)) (let [review-json (generate-review-schema-json program (review-json-source-id))] (do (print-string review-json) (print-string "\n") (exit-success))) (let [review (generate-review program opts) diagnostics (vector-get review 1) review-title (review-summary-title diagnostics) review-body (review-summary-body diagnostics) review-severity (review-summary-severity diagnostics) review-code-location (review-summary-code-location diagnostics)] (do (print (vector-length diagnostics)) (print-string review-title) (print-string "\n") (print-string review-body) (print-string "\n") (print-string review-severity) (print-string "\n") (print-string review-code-location) (print-string "\n") (exit-success))))))

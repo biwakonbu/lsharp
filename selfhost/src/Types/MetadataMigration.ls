@@ -1,0 +1,180 @@
+(module Types.MetadataMigration)
+(import Syntax.AST)
+(import Syntax.Parser)
+(import Types.Type)
+(import Types.TypeInfer)
+(import Types.TypeInferCore)
+
+;; legacy metadata を canonical form へ silent conversion せず分類する。
+;; row は [diagnostic-code, disposition]。disposition は
+;; 1=docs-only :example, 2=:assert, 3=:property/:postcondition,
+;; 4=manual review を表す。
+
+(defn legacy-example-code [] 2001)
+(defn legacy-invariant-code [] 2002)
+(defn ambiguous-legacy-code [] 2003)
+(defn legacy-doc-example-disposition [] 1)
+(defn legacy-assertion-disposition [] 2)
+(defn legacy-property-disposition [] 3)
+(defn legacy-manual-disposition [] 4)
+
+(defn legacy-migration-row [code disposition]
+  (vector-push-pair-rooted (vector-new 2) code disposition))
+
+(defn legacy-example-row-for-expression [expression env counter]
+  (let [result (infer-expr expression env (subst-new) counter)]
+    (if (= (result-failed result) 1)
+      (legacy-migration-row
+        (ambiguous-legacy-code)
+        (legacy-manual-disposition))
+      (let [resolved (apply-subst (result-subst result) (result-type result))
+        tag (type-tag resolved)]
+        (if (= tag (ty-var))
+          (legacy-migration-row
+            (ambiguous-legacy-code)
+            (legacy-manual-disposition))
+          (if (= tag (ty-con))
+            (if (= (type-name resolved) (hash-bool))
+              (legacy-migration-row
+                (legacy-example-code)
+                (legacy-assertion-disposition))
+              (legacy-migration-row
+                (legacy-example-code)
+                (legacy-doc-example-disposition)))
+            (legacy-migration-row
+              (legacy-example-code)
+              (legacy-doc-example-disposition))))))))
+
+(defn legacy-example-expressions-loop
+  [expressions idx count env counter result]
+  (if (>= idx count)
+    result
+    (let [row (legacy-example-row-for-expression
+        (vector-get expressions idx)
+        env
+        counter)
+      next-result (vector-push-single-rooted result row)]
+      (do
+        (root_push next-result)
+        (let [parsed (legacy-example-expressions-loop
+            expressions
+            (+ idx 1)
+            count
+            env
+            counter
+            next-result)]
+          (do
+            (root_pop)
+            parsed))))))
+
+(defn legacy-example-form [form env counter result]
+  (let [example-text (vector-get form 1)
+    expressions (parse-program example-text)]
+    (do
+      (root_push expressions)
+      (let [parsed (legacy-example-expressions-loop
+          expressions
+          0
+          (vector-length expressions)
+          env
+          counter
+          result)]
+        (do
+          (root_pop)
+          parsed)))))
+
+(defn legacy-form-loop [forms idx count env counter result]
+  (if (>= idx count)
+    result
+    (let [form (vector-get forms idx)
+      kind (vector-get form 0)
+      next-result (if (= kind (contract-form-example))
+        (legacy-example-form form env counter result)
+        (if (= kind (contract-form-invariant))
+          (vector-push-single-rooted
+            result
+            (legacy-migration-row
+              (legacy-invariant-code)
+              (legacy-property-disposition)))
+          result))]
+      (do
+        (root_push next-result)
+        (let [parsed (legacy-form-loop
+            forms
+            (+ idx 1)
+            count
+            env
+            counter
+            next-result)]
+          (do
+            (root_pop)
+            parsed))))))
+
+(defn legacy-defn [decl env counter result]
+  (let [forms (defn-ordered-forms decl)]
+    (if (= forms 0)
+      result
+      (legacy-form-loop
+        forms
+        0
+        (vector-length forms)
+        env
+        counter
+        result))))
+
+(defn legacy-program-loop
+  [program idx count env counter result]
+  (if (>= idx count)
+    result
+    (let [decl (vector-get program idx)
+      tag (vector-get decl 0)
+      next-result (if (= tag (ast-defn))
+        (legacy-defn decl env counter result)
+        (if (= tag (ast-private))
+          (legacy-program-loop
+            (vector-push-single-rooted (vector-new 1) (vector-get decl 1))
+            0
+            1
+            env
+            counter
+            result)
+          (if (= tag (ast-module-decl))
+            (legacy-module decl result)
+            result)))]
+      (do
+        (root_push next-result)
+        (let [parsed (legacy-program-loop
+            program
+            (+ idx 1)
+            count
+            env
+            counter
+            next-result)]
+          (do
+            (root_pop)
+            parsed))))))
+
+(defn legacy-module [module-node result]
+  (let [module-program (canonical-module-program module-node)
+    analysis (infer-program-analysis module-program)
+    env (infer-program-analysis-env analysis)
+    counter (typeinfer-make-alias-aware-counter module-program)]
+    (legacy-program-loop
+      module-program
+      0
+      (vector-length module-program)
+      env
+      counter
+      result)))
+
+(defn classify-legacy-contracts [program]
+  (let [analysis (infer-program-analysis program)
+    env (infer-program-analysis-env analysis)
+    counter (typeinfer-make-alias-aware-counter program)]
+    (legacy-program-loop
+      program
+      0
+      (vector-length program)
+      env
+      counter
+      (vector-new 0))))

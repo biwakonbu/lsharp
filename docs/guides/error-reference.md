@@ -10,7 +10,7 @@
 - `LS0101` - `LS0104`: parser
 - `LS0201`: macro expansion
 - `LS1001` - `LS1013`: type checker
-- `LS2004` - `LS2006`: metadata contract validation
+- `LS2001` - `LS2006`: metadata contract validation and migration
 - `LS3001` - `LS3104`: lowering and module graph
 - `LS4001`: codegen
 
@@ -51,6 +51,9 @@
 | `LS1011` | missing-impl | 必要な trait impl が見つかりません | 対象型の impl を追加するか、constraint を見直してください。 |
 | `LS1012` | alias-type-mismatch | type alias 展開後の型が一致していません | alias の target 型と利用箇所の型を確認してください。 |
 | `LS1013` | kind-mismatch | kind が一致していません | 型引数の数と高カインド型の使い方を確認してください。 |
+| `LS2001` | legacy-example-migration | legacy `:example` に canonical migration 候補があります | report の disposition を確認し、docs-only `:example` または `:assert` へ明示的に移行してください。 |
+| `LS2002` | legacy-invariant-migration | legacy `:invariant` に canonical migration 候補があります | binder、generator、postcondition を明示した `:property` へ移行してください。 |
+| `LS2003` | ambiguous-legacy-contract | legacy contract の意味を安全に自動判定できません | 参照 scope と意図を確認し、`:example`、`:assert`、`:case`、`:property` のいずれかを明示してください。 |
 | `LS2004` | empty-executable-contract | executable contract に検査対象がありません | `:assert` に Bool predicate を少なくとも 1 件追加してください。 |
 | `LS2005` | vacuous-contract | executable contract が実装の挙動を検査していません | 実装結果または入力に依存する Bool predicate を指定してください。 |
 | `LS2006` | empty-case-contract | canonical case に検査対象がありません | `:case` に actual / expected の組を少なくとも 1 件追加してください。 |

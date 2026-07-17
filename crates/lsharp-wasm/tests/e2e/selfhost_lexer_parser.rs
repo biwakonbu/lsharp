@@ -147,6 +147,40 @@ fn test_e2e_selfhost_metadata_check_rejects_invalid_canonical_case() {
 }
 
 #[test]
+fn test_e2e_selfhost_metadata_migration_classifies_legacy_forms() {
+    let harness = r#"
+(defn main []
+  (let [program (parse-program "(defn succ [x] :example [(succ 0) (= (succ 1) 2)] :invariant (= result (+ x 1)) (+ x 1))")
+        result (classify-legacy-contracts program)]
+    (do
+      (print (vector-length result))
+      (print (vector-get (vector-get result 0) 0))
+      (print (vector-get (vector-get result 0) 1))
+      (print (vector-get (vector-get result 1) 0))
+      (print (vector-get (vector-get result 1) 1))
+      (print (vector-get (vector-get result 2) 0))
+      (print (vector-get (vector-get result 2) 1))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}",
+        selfhost_parser_typeinfer_runtime_bundle(),
+        harness
+    );
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["3", "2001", "1", "2001", "2", "2002", "3"],
+        "selfhost migration classifier は Rust classifier と同じ disposition を返すべき"
+    );
+}
+
+#[test]
 fn test_e2e_selfhost_negative_int_parses_as_int() {
     let harness = r#"
 (defn main []
