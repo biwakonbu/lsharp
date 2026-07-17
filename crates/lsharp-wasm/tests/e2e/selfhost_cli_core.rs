@@ -6254,6 +6254,29 @@ fn test_e2e_selfhost_runner_reports_unimplemented_property_boundary() {
     );
 }
 
+/// EC-M1-05: selfhost property smoke profile が seed を暗黙に受け入れないこと
+#[test]
+fn test_e2e_selfhost_runner_rejects_property_seed_option() {
+    let harness = r#"
+(defn main []
+  (do
+    (print (metadata-test-runner-boundary-code (parse-program "(defn identity [x] :property [(for-all [x Int] :cases 1 :seed 42 :postcondition (= result x))] x)")))
+    0))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_test_runner_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["3002"],
+        "selfhost runner は deterministic smoke profile 外の seed を明示拒否すべき"
+    );
+}
+
 /// EC-M1-05: 移行期の deterministic property smoke profile を実行すること
 #[test]
 fn test_e2e_selfhost_runner_executes_deterministic_property_smoke() {

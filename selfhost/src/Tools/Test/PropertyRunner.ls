@@ -111,6 +111,7 @@
       (vector-push-triple-rooted (vector-new 3) 0 0 -1))
     after-cases (property-runner-skip-space payload (vector-get cases 2) len)
     post-marker (property-runner-find-from payload ":postcondition" after-cases)
+    post-layout-ok (if (= post-marker after-cases) 1 0)
     post-start (property-runner-skip-space payload (+ post-marker 14) len)
     post-end (if (= (string-char-at payload post-start) 40)
       (property-runner-balanced-end payload post-start len 0)
@@ -127,8 +128,8 @@
           3002
           (if (= (vector-get cases 1) 0)
             3002
-            (if (or (< post-marker 0) (<= post-end post-start))
-              3002
+              (if (or (< post-marker 0) (or (= post-layout-ok 0) (<= post-end post-start)))
+                3002
               (if (= payload-end-ok 0) 3002 0))))))))
 
 (defn property-runner-postcondition-text [payload]
