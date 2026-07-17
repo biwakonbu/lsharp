@@ -22,6 +22,14 @@ Evidence: `test_e2e_selfhost_test_runner_matches_rust_oracle_for_invariant_scope
 
 これは EC-M1-01 の parameter-scope verified slice であり、strict Bool、full diagnostic/span parity、structured report、current-source Mac/Linux native artifact/runtime gate は残件である。したがって、この slice の日常開発は Rust なしで進められるが、未完の contract semantics を変更するときは Rust oracle を保持する。
 
+### EC-M1-01 selfhost invariant Bool diagnostic (2026-07-17)
+
+Selfhost `Tools.Test.TestRunner` は invariant を各 deterministic sample で評価し、全ての実値が `Bool` であることを確認するようになった。`(defn succ [x] :invariant (+ x 1) (+ x 1))` は Int を truthy として通さず、`diagnostics:1,LS1002` と failure code `2` を返す。未定義変数の `LS1001` と、Bool invariant の `diagnostics:0` は既存経路で維持する。
+
+Evidence: `test_e2e_selfhost_test_runner_rejects_non_bool_invariant`、`cargo run --bin lsharp -- check selfhost/src/Tools/Test/TestRunner.ls` (`diagnostics:0`)。
+
+これは selfhost runner の strict Bool verified slice であり、Rust `run_metadata_tests` との diagnostic/span parity、structured report、current-source Mac/Linux native artifact/runtime gate は残件である。したがって、日常開発でこの slice を利用できるが、Rust oracle / bootstrap 境界は引き続き保持する。
+
 ### scoped polymorphic `defn` signature (2026-07-15)
 
 `TypeInferFunctions.ls` は `defn` の parameter / return annotation に現れる scoped 名ごとに共有 fresh 型変数を割り当て、通常の型環境で関数を一般化する。これにより `id` を Int と Bool の別 call site で使え、`choose-first [(: x a) (: y b)] : a x` では `a` と `b` を独立に具体化できる。GADT refinement と exhaustiveness は別タスクである。Evidence: `test_e2e_selfhost_scoped_type_var_defn_signature_is_polymorphic`、`test_e2e_selfhost_scoped_multiple_type_vars_defn_signature_is_polymorphic`、`TypeInfer.ls` check。

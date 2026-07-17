@@ -196,6 +196,7 @@
     0))
 
 (defn contract-diagnostic-undefined [] 1) ;; LS1001: undefined-variable
+(defn contract-diagnostic-non-bool [] 2) ;; LS1002: invariant-predicate-must-be-bool
 
 (defn diagnostic-count-loop [results idx count acc]
   (if (>= idx count)
@@ -225,7 +226,9 @@
 (defn test-diagnostic-code-text [code]
   (if (= code (contract-diagnostic-undefined))
     "LS1001"
-    "LS0000"))
+    (if (= code (contract-diagnostic-non-bool))
+      "LS1002"
+      "LS0000")))
 
 (defn test-diagnostics-summary [examples invariants]
   (let [count (test-diagnostics-count examples invariants)
@@ -1002,12 +1005,20 @@
         (append-zero-invariant-args with-second 2 param-count)))))
 
 (defn eval-invariant-sample [program tc decl param-count sample-idx]
+  (value-truthy (eval-invariant-sample-value program tc decl param-count sample-idx)))
+
+(defn eval-invariant-sample-value [program tc decl param-count sample-idx]
   (let [args (invariant-sample-args param-count sample-idx)
     result (eval-defn-call program decl args)
     param-env (bind-params-loop (env-new) decl args 0 param-count)
     invariant-env (env-bind param-env (hash-result) result)
     actual (eval-node program (vector-get tc 2) invariant-env)]
-    (value-truthy actual)))
+    actual))
+
+(defn invariant-sample-summary [passed bool-valid]
+  (vector-push
+    (vector-push (vector-new 2) passed)
+    bool-valid))
 
 (defn run-invariant-samples-loop [program tc decl sample-idx sample-count all-passed]
   (if (>= sample-idx sample-count)
@@ -1016,6 +1027,30 @@
       passed (eval-invariant-sample program tc decl param-count sample-idx)
       next-passed (if (= passed 1) all-passed 0)]
       (run-invariant-samples-loop program tc decl (+ sample-idx 1) sample-count next-passed))))
+
+(defn run-invariant-sample-summary-loop
+  [program tc decl sample-idx sample-count all-passed all-bool]
+  (if (>= sample-idx sample-count)
+    (invariant-sample-summary all-passed all-bool)
+    (let [param-count (vector-get decl 2)
+      actual (eval-invariant-sample-value
+        program
+        tc
+        decl
+        param-count
+        sample-idx)
+      bool-valid (if (= (value-tag actual) (ast-lit-bool)) 1 0)
+      passed (if (= bool-valid 1) (value-truthy actual) 0)
+      next-passed (if (= passed 1) all-passed 0)
+      next-bool (if (= bool-valid 1) all-bool 0)]
+      (run-invariant-sample-summary-loop
+        program
+        tc
+        decl
+        (+ sample-idx 1)
+        sample-count
+        next-passed
+        next-bool))))
 
 (defn materialize-invariant [program tc]
   (let [name (vector-get tc 0)
@@ -1027,13 +1062,26 @@
     unknown-hash (if (> (vector-length decl) 0)
       (invariant-unknown-variable program (vector-get tc 2) decl (vector-get decl 2))
       -1)
+    sample-summary (if (>= unknown-hash 0)
+      (invariant-sample-summary 0 0)
+      (if (> sample-count 0)
+        (run-invariant-sample-summary-loop
+          program
+          tc
+          decl
+          0
+          sample-count
+          1
+          1)
+        (invariant-sample-summary 0 1)))
+    type-valid (vector-get sample-summary 1)
     diagnostic-code (if (>= unknown-hash 0)
       (contract-diagnostic-undefined)
-      0)
+      (if (= type-valid 1)
+        0
+        (contract-diagnostic-non-bool)))
     passed (if (= diagnostic-code 0)
-      (if (> sample-count 0)
-        (run-invariant-samples-loop program tc decl 0 sample-count 1)
-        0)
+      (vector-get sample-summary 0)
       0)
     actual (if (= diagnostic-code 0) sample-count 0)]
     (make-test-result-with-diagnostic name passed actual diagnostic-code)))

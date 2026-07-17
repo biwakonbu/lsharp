@@ -6281,7 +6281,9 @@ fn test_e2e_selfhost_test_runner_reports_unknown_invariant_variable() {
 "#;
 
     let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
-    let output = compile_and_run(&combined);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert_eq!(
@@ -6295,6 +6297,38 @@ fn test_e2e_selfhost_test_runner_reports_unknown_invariant_variable() {
             "2",
         ],
         "selfhost contract path は未定義 invariant 変数を silent Unit/0 fallback にしないべき"
+    );
+}
+
+/// TEST-CLI-02-O2g1: selfhost runner が Bool でない invariant を LS1002 として報告すること
+#[test]
+fn test_e2e_selfhost_test_runner_rejects_non_bool_invariant() {
+    let harness = r#"
+(defn main []
+  (let [src "(defn succ [x] :invariant (+ x 1) (+ x 1))"]
+    (do
+      (print-string "BEGIN\n")
+      (print (run-test-source src 0))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec![
+            "BEGIN",
+            "examples:0",
+            "invariants:1",
+            "failures:1",
+            "diagnostics:1,LS1002",
+            "2",
+        ],
+        "selfhost contract path は Bool でない invariant を truthy として成功扱いしないべき"
     );
 }
 
