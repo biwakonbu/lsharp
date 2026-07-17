@@ -82,7 +82,7 @@ Source (.ls)
 1. **RED**: テストを先に書く → `cargo test` で **失敗を確認**
 2. **GREEN**: 実装を書く → `cargo test` で **成功を確認**
 3. **REFACTOR**: リファクタリング → テスト成功を維持
-4. **UPDATE**: TODO.md の項目を `[x]` に更新 (テスト数を注記)
+4. **UPDATE**: 検証済み evidence を ADR/docs と TODO.md に反映する。項目全体の完了条件を満たした場合だけ `[x]`、verified slice や partial parity は `[~]` のまま残す。
 
 ### ルール
 
@@ -103,9 +103,11 @@ L# の最終目標は、Rust 実装を正本として残したまま一部のコ
 - `TODO.md` と `docs/development/operations/rust-boundary-reduction.md` は current truth として更新する。`[x]` はこの完了基準を満たした項目だけにし、partial parity、既知の Rust-only surface、未検証の ABI は `[~]` と残リスクに記録する。
 - stage0 の生成・配布・source commit provenance・rollback は運用上の bootstrap boundary であり、通常開発から Rust を外せても、公開 release の再現性と緊急復旧を検証するまで削除しない。
 
-### 今後の標準進行（L# dogfooding）
+### 今後の標準進行（L# dogfooding、正本）
 
-- 通常の開発・テスト・Wasm 出力は、検証済み native stage0 と `scripts/native-selfhost-dev.sh` を入口に L# 自身で進める。成功経路に `cargo`、`rustc`、host `lsharp`、暗黙の Rust fallback を入れない。
+この節を、L# を L# で開発しながら Rust 依存を段階的に置換するための運用契約とする。単一の成功テスト、Rust driver の成功、生成 summary、または stale な stage0 artifact だけで Rust-free 完了を宣言しない。
+
+- 通常の L# の実装・テスト・Wasm 出力は、検証済み native stage0 と `scripts/native-selfhost-dev.sh` を入口に L# 自身で進める。成功経路に `cargo`、`rustc`、host `lsharp`、暗黙の Rust fallback を入れない。
 - Rust は削除対象ではなく、stage0 の取得・再生成・provenance、Rust oracle/differential、障害解析、emergency rollback、未移行 host integration のための明示的な境界として残す。未対応機能を Rust fallback で成功したように見せない。
 - 対応 target は Mac Apple Silicon (`aarch64-apple-darwin`) と Linux x86_64 (`x86_64-unknown-linux-gnu`) に限定する。別 target の対応を進捗や完了条件へ混ぜない。
 - 次の作業は正本 TODO から一つの未対応機能を選び、失敗値・failure boundary・target・再現 command を固定する RED を先に追加する。GREEN 後に native stage0、Rust oracle、runtime/artifact、両対応 target の必要な証跡を揃える。
@@ -113,6 +115,8 @@ L# の最終目標は、Rust 実装を正本として残したまま一部のコ
 - Linux VM や stage regeneration の待機中は、同じ heavy replay を重複起動せず、artifact reuse と VM-side lock を使う。共有しない parser/type/runtime、診断、fixture、contract test、docs を並行して進める。
 - 変更は task-relevant files に限定し、focused gate と docs audit の後に `main` へ commit/push する。push 後に `HEAD`、`origin/main`、worktree、TODO の残件を再監査し、未完なら次の具体的な RED と blocker を残す。
 - 「Rust なしで日常開発可能」と「L# 全機能・全公開 surface が Rust-free 完了」は別の判定とする。後者は parser から公開 command、runtime、配布 provenance までの要件別 evidence が揃うまで宣言しない。
+
+機能を置換する単位は、`RED → selfhost 実装 → focused GREEN → Rust differential → native stage0 → artifact/runtime → 対応2 target → docs/ADR/TODO → commit/push` とする。未対応機能はまず明示診断または明示 external boundary で止め、その後に同じ observable contract を保った native 実装へ置換する。
 
 ### 現在の完遂ループ（v0.2 Evidence-driven Contracts）
 
