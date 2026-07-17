@@ -21,7 +21,11 @@ fn test_e2e_selfhost_metadata_check_rejects_non_bool_canonical_assertion() {
         module-helper-program (parse-program "(module Demo (defn helper [x] x) (defn positive [] :assert [(helper 1)] true))")
         module-helper-result (check-canonical-assertions module-helper-program)
         private-helper-program (parse-program "(module Demo (private (defn helper [x] x)) (defn positive [] :assert [(helper 1)] true))")
-        private-helper-result (check-canonical-assertions private-helper-program)]
+        private-helper-result (check-canonical-assertions private-helper-program)
+        nested-module-program (parse-program "(module Outer (module Inner (defn positive [] :assert [(+ 1 2)] true)))")
+        nested-module-result (check-canonical-assertions nested-module-program)
+        nested-helper-program (parse-program "(module Outer (module Inner (defn helper [x] x) (defn positive [] :assert [(helper 1)] true)))")
+        nested-helper-result (check-canonical-assertions nested-helper-program)]
     (do
       (print (vector-get result 0))
       (print (vector-get result 1))
@@ -39,6 +43,10 @@ fn test_e2e_selfhost_metadata_check_rejects_non_bool_canonical_assertion() {
       (print (vector-get module-helper-result 1))
       (print (vector-get private-helper-result 0))
       (print (vector-get private-helper-result 1))
+      (print (vector-get nested-module-result 0))
+      (print (vector-get nested-module-result 1))
+      (print (vector-get nested-helper-result 0))
+      (print (vector-get nested-helper-result 1))
       0)))
 "#;
 
@@ -56,7 +64,7 @@ fn test_e2e_selfhost_metadata_check_rejects_non_bool_canonical_assertion() {
         lines,
         [
             "1", "1002", "0", "0", "1", "1001", "1", "1001", "1", "1002", "1", "1002", "1", "1002",
-            "1", "1002",
+            "1", "1002", "1", "1002", "1", "1002",
         ]
     );
 }

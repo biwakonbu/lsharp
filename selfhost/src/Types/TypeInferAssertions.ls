@@ -170,22 +170,33 @@
   [program idx count env counter diagnostic-count first-error-code]
   (if (>= idx count)
     (assertion-check-state diagnostic-count first-error-code)
-    (let [decl (vector-get program idx)
-      state (if (= (vector-get decl 0) (ast-defn))
-        (check-defn-assertions decl env counter)
-        (assertion-check-state 0 0))
-      next-count (+ diagnostic-count (vector-get state 0))
-      state-first-code (vector-get state 1)
-      next-first-code
-        (if (= first-error-code 0) state-first-code first-error-code)]
-      (check-module-program-loop
-        program
-        (+ idx 1)
-        count
-        env
-        counter
-        next-count
-        next-first-code))))
+    (let [decl (vector-get program idx)]
+      (do
+        (root_push decl)
+        (let [tag (vector-get decl 0)
+          state (if (= tag (ast-defn))
+            (check-defn-assertions decl env counter)
+            (if (= tag (ast-module-decl))
+              (check-module-assertions decl)
+              (assertion-check-state 0 0)))]
+          (do
+            (root_push state)
+            (let [next-count (+ diagnostic-count (vector-get state 0))
+              state-first-code (vector-get state 1)
+              next-first-code
+                (if (= first-error-code 0) state-first-code first-error-code)
+              result (check-module-program-loop
+                program
+                (+ idx 1)
+                count
+                env
+                counter
+                next-count
+                next-first-code)]
+              (do
+                (root_pop)
+                (root_pop)
+                result))))))))
 
 (defn check-module-assertions [module-node]
   (let [module-program (canonical-module-program module-node)]
