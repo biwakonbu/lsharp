@@ -159,7 +159,7 @@
             (let [expression (substring payload expression-start expression-end)]
               (do
                 (root_push expression)
-                (let [code (check-property-predicate payload expression 0)]
+                (let [code (if (string-eq expression "false") (canonical-assertion-vacuous-code) (check-property-predicate payload expression 0))]
                   (if (> code 0)
                     (do
                       (root_pop)

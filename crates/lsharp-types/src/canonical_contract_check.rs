@@ -219,6 +219,20 @@ fn collect_property_non_vacuity(
                             function_name: owner.clone(),
                         });
                     }
+                    for precondition in property.preconditions() {
+                        if matches!(
+                            precondition,
+                            Expr::Lit(_, Literal::Bool(false))
+                        ) {
+                            diagnostics.push(MetadataDiagnostic {
+                                severity: Severity::Error,
+                                message: ":property の precondition は到達不能で vacuous です"
+                                    .to_string(),
+                                span: precondition.span(),
+                                function_name: owner.clone(),
+                            });
+                        }
+                    }
                     if matches!(
                         property.postcondition(),
                         Expr::Lit(_, Literal::Bool(true))

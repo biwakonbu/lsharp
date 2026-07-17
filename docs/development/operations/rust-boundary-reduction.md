@@ -194,6 +194,12 @@ Rust `canonical_contract_check` と selfhost `Types.TypeInferAssertions` は、p
 
 Evidence: RED の `canonical_property_rejects_statically_true_integer_comparisons_as_vacuous` と `test_e2e_selfhost_cli_check_rejects_statically_true_property_postcondition`、GREEN の同 2 tests、`cargo test -p lsharp-types --test metadata_contract_check -- --nocapture`（15 tests）、empty / literal true / typed binder / binderless / zero-case の selfhost focused E2E、`./target/debug/lsharp check selfhost/src/Types/TypeInferAssertions.ls`、`bash scripts/audit_docs.sh`。残るのは動的に到達不能な precondition、negative `cases` / malformed option、type-directed sampling/shrink、property evaluator、diagnostic/span parity、full CLI artifact/runtime、Mac Apple Silicon / Linux x86_64 の current-source native gate であり、この slice 単独では EC-M1-04 全体または全機能 Rust-free 完了とは扱わない。
 
+### EC-M1-04 literal-false precondition reachability (2026-07-18)
+
+Rust canonical checker と selfhost `check` は、property precondition が正確な literal `false` の場合に `2005` 相当の vacuous diagnostic を返すようになった。Rust は property form の AST span、selfhost は bracket-aware に抽出した expression を対象にする。precondition は `true` の Bool 型検査や入力依存 predicate の検査を継続し、今回の slice では annotation、静的比較、論理式の恒真/恒偽判定までは拡張していない。
+
+Evidence: RED の `canonical_property_rejects_unreachable_literal_false_precondition` と `test_e2e_selfhost_cli_check_rejects_unreachable_literal_false_precondition`、GREEN の同 2 tests、`./target/debug/lsharp check selfhost/src/Types/TypeInferAssertions.ls`。残るのは annotation / static comparison / compound expression の reachability、negative `cases` / malformed option、sampling/shrink/evaluator、diagnostic/span parity、full CLI artifact/runtime、Mac Apple Silicon / Linux x86_64 の current-source native gateである。
+
 ### scoped polymorphic `defn` signature (2026-07-15)
 
 `TypeInferFunctions.ls` は `defn` の parameter / return annotation に現れる scoped 名ごとに共有 fresh 型変数を割り当て、通常の型環境で関数を一般化する。これにより `id` を Int と Bool の別 call site で使え、`choose-first [(: x a) (: y b)] : a x` では `a` と `b` を独立に具体化できる。GADT refinement と exhaustiveness は別タスクである。Evidence: `test_e2e_selfhost_scoped_type_var_defn_signature_is_polymorphic`、`test_e2e_selfhost_scoped_multiple_type_vars_defn_signature_is_polymorphic`、`TypeInfer.ls` check。
