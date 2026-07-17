@@ -628,9 +628,10 @@
               (if (string-eq name "see-also") 1
                 (if (string-eq name "example") 1
                   (if (string-eq name "invariant") 1
+                    (if (string-eq name "assert") 1
                     (if (string-eq name "transitions") 1
                       (if (string-eq name "constraints") 1
-                        0))))))))))))
+                        0)))))))))))))
 
 (defn colon-directive-v3 [spans pos-ref src]
   (if (== (p-current spans pos-ref) 50)
@@ -765,9 +766,11 @@
                     (parse-defn-meta-returns-v3 spans pos-ref src meta)
                     (if (string-eq dir-name "invariant")
                       (parse-defn-meta-invariant-v3 spans pos-ref src meta)
+                      (if (string-eq dir-name "assert")
+                        (parse-defn-meta-assert-v3 spans pos-ref src meta)
                       (do
                         (skip-directive-payload-v3 spans pos-ref)
-                        (parse-defn-metadata-loop-rooted-v3 spans pos-ref src meta)))))))]
+                        (parse-defn-metadata-loop-rooted-v3 spans pos-ref src meta))))))))]
             (do
               (root_pop)
               (root_pop)
@@ -979,6 +982,50 @@
               (root_pop)
               (parse-defn-metadata-loop-v3 spans pos-ref src with-form))))))))
 
+;; :assert [predicate ...] — canonical Bool predicate vector を保持する。
+(defn parse-defn-meta-assert-loop-v3 [spans pos-ref src predicates]
+  (if (== (p-current spans pos-ref) 3)
+    (do
+      (p-advance pos-ref)
+      predicates)
+    (if (== (p-current spans pos-ref) 99)
+      predicates
+      (do
+        (root_push predicates)
+        (let [predicate (parse-expr-v3 spans pos-ref src)]
+          (do
+            (root_push predicate)
+            (let [next-predicates (vector-push-single-rooted-v3 predicates predicate)]
+              (do
+                (root_push next-predicates)
+                (let [parsed (parse-defn-meta-assert-loop-v3
+                  spans pos-ref src next-predicates)]
+                  (do
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    parsed))))))))))
+
+(defn parse-defn-meta-assert-v3 [spans pos-ref src meta]
+  (if (== (p-current spans pos-ref) 2)
+    (do
+      (p-advance pos-ref)
+      (let [predicates0 (vector-new 0)]
+        (do
+          (root_push predicates0)
+          (let [predicates (parse-defn-meta-assert-loop-v3 spans pos-ref src predicates0)]
+            (do
+              (root_push predicates)
+              (let [updated (append-defn-metadata-form-v3
+                meta (contract-form-assert) predicates)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (parse-defn-metadata-loop-v3 spans pos-ref src updated))))))))
+    (do
+      (skip-directive-payload-v3 spans pos-ref)
+      (parse-defn-metadata-loop-v3 spans pos-ref src meta))))
+
 (defn defn-metadata-present-v3 [meta]
   (if (> (string-length (vector-get meta 0)) 0)
     1
@@ -989,7 +1036,9 @@
         (if (> (string-length (vector-get meta 3)) 0)
           1
           (if (= (vector-get meta 4) 0)
-            0
+            (if (> (vector-length meta) 5)
+              (if (> (vector-length (vector-get meta 5)) 0) 1 0)
+              0)
             1))))))
 
 (defn finalize-defn-body-v3 [body defn-node]

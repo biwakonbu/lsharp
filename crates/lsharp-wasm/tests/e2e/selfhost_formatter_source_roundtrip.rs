@@ -98,7 +98,7 @@ fn test_e2e_selfhost_formatter_extracts_typed_defn_metadata() {
   (let [program (parse-program "(defn add [(: x Int)] : Int :doc \"typed\" :example [(add 1)] (+ x 1))")
         decl (vector-get program 0)
         meta (extract-defn-metadata decl)
-        has-metadata (if (= (vector-length meta) 5) 1 0)
+        has-metadata (if (= (vector-length meta) 6) 1 0)
         has-doc (if (= has-metadata 1)
           (if (string-eq (vector-get meta 0) "typed") 1 0)
           0)
@@ -138,5 +138,45 @@ fn test_e2e_selfhost_formatter_format_program_with_source_invariant_metadata() {
     assert_eq!(
         output, "(defn succ [x] :doc \"successor\" :invariant (= result (+ x 1)) (+ x 1))\n",
         "format-program-with-source は legacy :invariant metadata を保持するべき"
+    );
+}
+
+/// EC-M1-03: canonical :assert は selfhost parser / formatter 間で grouping と順序を保つ。
+#[test]
+fn test_e2e_selfhost_formatter_roundtrips_canonical_assert_form() {
+    let output = run_formatter_source_harness(
+        r#"
+(module Main)
+(defn main []
+  (let [src "(defn positive [] :assert [(> 1 0) (= 1 1)] true)"
+        program (parse-program src)
+        formatted (format-program-with-source program src)
+        canonical (format-program program 0)
+        roundtrip (parse-program formatted)
+        decl (vector-get roundtrip 0)
+        meta (extract-defn-metadata decl)
+        forms (vector-get meta 5)
+        form (vector-get forms 0)
+        predicates (vector-get form 1)]
+    (do
+      (print-string formatted)
+      (print-string canonical)
+      (print (vector-length forms))
+      (print (vector-get form 0))
+      (print (vector-length predicates))
+      0)))
+"#,
+    );
+
+    assert_eq!(
+        output.lines().map(str::to_owned).collect::<Vec<_>>(),
+        vec![
+            "(defn positive [] :assert [(> 1 0) (= 1 1)] true)".to_owned(),
+            "(defn positive [] :assert [(> 1 0) (= 1 1)] true)".to_owned(),
+            "1".to_owned(),
+            "3".to_owned(),
+            "2".to_owned(),
+        ],
+        "canonical :assert は kind・grouping・formatter roundtrip を保持するべき"
     );
 }

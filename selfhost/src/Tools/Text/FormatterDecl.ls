@@ -266,6 +266,27 @@
       ""
       (string-concat ":invariant " (format-expr predicate 0)))))
 
+(defn format-defn-metadata-assert-form [form indent-level]
+  (let [predicates (vector-get form 1)
+    count (vector-length predicates)]
+    (string-concat ":assert ["
+      (string-concat (format-expr-list predicates 0 count indent-level) "]"))))
+
+(defn format-defn-metadata-assert-loop [forms idx count indent-level]
+  (if (>= idx count)
+    ""
+    (let [form (vector-get forms idx)]
+      (if (= (vector-get form 0) (contract-form-assert))
+        (format-defn-metadata-assert-form form indent-level)
+        (format-defn-metadata-assert-loop forms (+ idx 1) count indent-level)))))
+
+(defn format-defn-metadata-assert [meta indent-level]
+  (if (> (vector-length meta) 5)
+    (let [forms (vector-get meta 5)
+      text (format-defn-metadata-assert-loop forms 0 (vector-length forms) indent-level)]
+      text)
+    ""))
+
 (defn format-defn-metadata [decl]
   (let [meta (extract-defn-metadata decl)]
     (if (= meta 0)
@@ -274,9 +295,10 @@
         pieces-2 (append-metadata-piece pieces-1 (format-defn-metadata-returns meta))
         pieces-3 (append-metadata-piece pieces-2 (format-defn-metadata-doc meta))
         pieces-4 (append-metadata-piece pieces-3 (format-defn-metadata-example meta))
-        pieces-5 (append-metadata-piece pieces-4 (format-defn-metadata-invariant meta))]
-        (if (> (string-length pieces-5) 0)
-          (string-concat " " pieces-5)
+        pieces-5 (append-metadata-piece pieces-4 (format-defn-metadata-invariant meta))
+        pieces-6 (append-metadata-piece pieces-5 (format-defn-metadata-assert meta 0))]
+        (if (> (string-length pieces-6) 0)
+          (string-concat " " pieces-6)
           "")))))
 
 (defn format-defn-metadata-invariant-with-source [meta source]
@@ -284,6 +306,30 @@
     (if (= predicate 0)
       ""
       (string-concat ":invariant " (format-expr-with-source predicate 0 source)))))
+
+(defn format-defn-metadata-assert-form-with-source [form indent-level source]
+  (let [predicates (vector-get form 1)
+    count (vector-length predicates)]
+    (string-concat ":assert ["
+      (string-concat
+        (format-expr-list-with-source predicates 0 count indent-level source)
+        "]"))))
+
+(defn format-defn-metadata-assert-loop-with-source [forms idx count indent-level source]
+  (if (>= idx count)
+    ""
+    (let [form (vector-get forms idx)]
+      (if (= (vector-get form 0) (contract-form-assert))
+        (format-defn-metadata-assert-form-with-source form indent-level source)
+        (format-defn-metadata-assert-loop-with-source
+          forms (+ idx 1) count indent-level source)))))
+
+(defn format-defn-metadata-assert-with-source [meta indent-level source]
+  (if (> (vector-length meta) 5)
+    (let [forms (vector-get meta 5)]
+      (format-defn-metadata-assert-loop-with-source
+        forms 0 (vector-length forms) indent-level source))
+    ""))
 
 (defn format-defn-metadata-with-source [decl source]
   (let [meta (extract-defn-metadata decl)]
@@ -293,9 +339,11 @@
         pieces-2 (append-metadata-piece pieces-1 (format-defn-metadata-returns meta))
         pieces-3 (append-metadata-piece pieces-2 (format-defn-metadata-doc meta))
         pieces-4 (append-metadata-piece pieces-3 (format-defn-metadata-example meta))
-        pieces-5 (append-metadata-piece pieces-4 (format-defn-metadata-invariant-with-source meta source))]
-        (if (> (string-length pieces-5) 0)
-          (string-concat " " pieces-5)
+        pieces-5 (append-metadata-piece pieces-4 (format-defn-metadata-invariant-with-source meta source))
+        pieces-6 (append-metadata-piece pieces-5
+          (format-defn-metadata-assert-with-source meta 0 source))]
+        (if (> (string-length pieces-6) 0)
+          (string-concat " " pieces-6)
           "")))))
 
 (defn format-defn-with-source [decl indent-level source]

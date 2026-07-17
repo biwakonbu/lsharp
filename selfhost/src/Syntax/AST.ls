@@ -42,6 +42,7 @@
 (defn ast-type-fun [] 62)
 (defn ast-type-var [] 63)
 (defn ast-defn-signature [] 65)
+(defn contract-form-assert [] 3)
 (defn ast-pat-wildcard [] 40)
 (defn ast-pat-var [] 41)
 (defn ast-pat-lit [] 42)

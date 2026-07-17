@@ -38,6 +38,14 @@ Evidence: RED の `metadata_contract_assert` compile failure、GREEN の `canoni
 
 これは Rust parser/types の canonical inventory bridge に限定した verified slice であり、selfhost parser/formatter/runner、assert の型検査・実行・diagnostic report、migration diagnostic、Mac/Linux current-source native artifact/runtime parity は残件である。したがって `:assert` を L# の日常開発経路で使える機能として扱うには、次に selfhost 側の同じ ordered form と実行境界を接続する必要がある。
 
+### EC-M1-03 selfhost canonical assert parser/formatter bridge (2026-07-17)
+
+Selfhost `Syntax.AST` / `Syntax.Parser` は canonical `:assert [predicate ...]` を ordered metadata slot の kind `3` と predicate vector として保持し、`Tools.Text.FormatterDecl` は source-aware / canonical formatter の両方で `:assert` の grouping と predicate 順を再構成する。legacy `:example` / `:invariant` の metadata slot と runner projection は変更せず、既存 typed metadata の 6-slot contract も回帰で固定した。
+
+Evidence: RED の `test_e2e_selfhost_formatter_roundtrips_canonical_assert_form`、GREEN の同 test、`selfhost_formatter_source_roundtrip` 6 tests、legacy parser metadata regression、`cargo run --bin lsharp -- check selfhost/src/Syntax/Parser.ls` / `FormatterDecl.ls` / `TestRunner.ls`。
+
+これは selfhost parser/formatter の round-trip verified slice に限定され、predicate span、assert の type check / execution / diagnostic report、legacy migration diagnostic、Rust/native contract inventory parity、Mac/Linux current-source artifact/runtime gate は残件である。特に `:assert` はまだ TestRunner の executable contract path に接続していないため、現時点では L# source の保存・整形までを Rust-free daily slice として扱う。
+
 ### scoped polymorphic `defn` signature (2026-07-15)
 
 `TypeInferFunctions.ls` は `defn` の parameter / return annotation に現れる scoped 名ごとに共有 fresh 型変数を割り当て、通常の型環境で関数を一般化する。これにより `id` を Int と Bool の別 call site で使え、`choose-first [(: x a) (: y b)] : a x` では `a` と `b` を独立に具体化できる。GADT refinement と exhaustiveness は別タスクである。Evidence: `test_e2e_selfhost_scoped_type_var_defn_signature_is_polymorphic`、`test_e2e_selfhost_scoped_multiple_type_vars_defn_signature_is_polymorphic`、`TypeInfer.ls` check。
