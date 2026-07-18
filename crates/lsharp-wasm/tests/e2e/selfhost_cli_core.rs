@@ -6772,6 +6772,36 @@ fn test_e2e_selfhost_cli_check_reports_legacy_migration_summary() {
     assert_eq!(lines[4], "0");
 }
 
+/// EC-M1-03: selfhost migration JSON の文字列値が JSON の escape 規則を守ること
+#[test]
+fn test_e2e_selfhost_migration_json_quote_escapes_delimiters_and_controls() {
+    let harness = r#"
+(defn main []
+  (let [value (string-concat "quote: \" slash: \\" "\n\t")]
+    (do
+      (print-string (legacy-json-quote value))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_migration_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+
+    assert_eq!(
+        output.trim(),
+        r#""quote: \" slash: \\\n\t""#,
+        "legacy migration JSON の文字列値は quote/backslash/control を escape するべき"
+    );
+    let parsed: Value = serde_json::from_str(output.trim())
+        .expect("legacy migration JSON の quoted string は valid JSON であるべき");
+    assert_eq!(
+        parsed,
+        Value::String("quote: \" slash: \\\n\t".to_owned()),
+        "legacy migration JSON の escape は元の文字列へ round-trip するべき"
+    );
+}
+
 /// EC-M1-03: selfhost migration row が parser-owned owner と directive span を保持すること
 #[test]
 fn test_e2e_selfhost_migration_rows_preserve_legacy_owner_and_directive_spans() {
