@@ -6767,6 +6767,47 @@ fn test_e2e_selfhost_cli_check_reports_legacy_migration_summary() {
     );
 }
 
+/// EC-M1-03: selfhost migration row が parser-owned directive span を保持すること
+#[test]
+fn test_e2e_selfhost_migration_rows_preserve_legacy_directive_spans() {
+    let harness = r#"
+(defn main []
+  (let [src "(defn succ [x] :example [(succ 0) (= (succ 1) 2)] :invariant (= result (+ x 1)) (+ x 1))"
+        program (parse-program src)
+        rows (classify-legacy-contracts program)
+        row0 (vector-get rows 0)
+        row1 (vector-get rows 1)
+        row2 (vector-get rows 2)
+        raw (extract-contract-forms src)
+        raw0 (vector-get raw 0)
+        raw1 (vector-get raw 1)]
+    (do
+      (print (vector-length rows))
+      (print (vector-length row0))
+      (print (vector-length row1))
+      (print (vector-length row2))
+      (print (= (vector-get row0 2) (vector-get raw0 3)))
+      (print (= (vector-get row0 3) (vector-get raw0 4)))
+      (print (= (vector-get row1 2) (vector-get raw0 3)))
+      (print (= (vector-get row1 3) (vector-get raw0 4)))
+      (print (= (vector-get row2 2) (vector-get raw1 3)))
+      (print (= (vector-get row2 3) (vector-get raw1 4)))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_migration_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["3", "4", "4", "4", "1", "1", "1", "1", "1", "1"],
+        "selfhost migration row は legacy directive の source span を parser と共有するべき"
+    );
+}
+
 /// EC-M1-03: selfhost CLI が canonical :assert の件数を結果へ反映すること
 #[test]
 #[ignore]

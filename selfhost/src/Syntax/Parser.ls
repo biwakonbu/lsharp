@@ -826,30 +826,30 @@
 
 (defn parse-defn-meta-example-v3 [spans pos-ref src meta]
   (if (== (p-current spans pos-ref) 2)
-    (do
-      (p-advance pos-ref)
-      (if (== (p-current spans pos-ref) 3)
-        (do (p-advance pos-ref) (parse-defn-metadata-loop-v3 spans pos-ref src meta))
-        (let [directive-start (metadata-directive-start-v3 spans pos-ref)
-          content-start (p-start spans pos-ref)]
-          (do
-            (parse-skip-bracket-v3 spans pos-ref 1)
-            (let [last-idx (- (ref-get pos-ref) 2)
-              content-end (span-end spans last-idx)
-              example-text (substring src content-start content-end)
-              combined (append-defn-example-text-v3 meta example-text)
-              updated (vector-set-at-rooted-v3 meta 1 combined)]
-              (do
-                (root_push updated)
-                (let [with-form (append-defn-metadata-form-v3
-                    updated
-                    1
-                    example-text
-                    directive-start
-                    (metadata-directive-end-v3 spans pos-ref))]
-                  (do
-                    (root_pop)
-                    (parse-defn-metadata-loop-v3 spans pos-ref src with-form)))))))))
+    (let [directive-start (metadata-directive-start-v3 spans pos-ref)]
+      (do
+        (p-advance pos-ref)
+        (if (== (p-current spans pos-ref) 3)
+          (do (p-advance pos-ref) (parse-defn-metadata-loop-v3 spans pos-ref src meta))
+          (let [content-start (p-start spans pos-ref)]
+            (do
+              (parse-skip-bracket-v3 spans pos-ref 1)
+              (let [last-idx (- (ref-get pos-ref) 2)
+                content-end (span-end spans last-idx)
+                example-text (substring src content-start content-end)
+                combined (append-defn-example-text-v3 meta example-text)
+                updated (vector-set-at-rooted-v3 meta 1 combined)]
+                (do
+                  (root_push updated)
+                  (let [with-form (append-defn-metadata-form-v3
+                      updated
+                      1
+                      example-text
+                      directive-start
+                      (metadata-directive-end-v3 spans pos-ref))]
+                    (do
+                      (root_pop)
+                      (parse-defn-metadata-loop-v3 spans pos-ref src with-form))))))))))
     (do
       (skip-directive-payload-v3 spans pos-ref)
       (parse-defn-metadata-loop-v3 spans pos-ref src meta))))

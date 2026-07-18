@@ -7,7 +7,8 @@
 (import Types.TypeInferAssertions)
 
 ;; legacy metadata を canonical form へ silent conversion せず分類する。
-;; row は [diagnostic-code, disposition]。disposition は
+;; row は [diagnostic-code, disposition, directive-start, directive-end]。
+;; 先頭 2 フィールドは既存 summary との互換を維持する。disposition は
 ;; 1=docs-only :example, 2=:assert, 3=:property/:postcondition,
 ;; 4=manual review を表す。
 
@@ -19,41 +20,53 @@
 (defn legacy-property-disposition [] 3)
 (defn legacy-manual-disposition [] 4)
 
-(defn legacy-migration-row [code disposition]
-  (vector-push-pair-rooted (vector-new 2) code disposition))
+(defn legacy-migration-row [code disposition start end]
+  (vector-push-quad-rooted (vector-new 4) code disposition start end))
 
-(defn legacy-example-row-for-expression [expression env counter]
+(defn legacy-example-row-for-expression [expression env counter start end]
   (let [result (infer-expr expression env (subst-new) counter)]
     (if (= (result-failed result) 1)
       (legacy-migration-row
         (ambiguous-legacy-code)
-        (legacy-manual-disposition))
+        (legacy-manual-disposition)
+        start
+        end)
       (let [resolved (apply-subst (result-subst result) (result-type result))
         tag (type-tag resolved)]
         (if (= tag (ty-var))
           (legacy-migration-row
             (ambiguous-legacy-code)
-            (legacy-manual-disposition))
+            (legacy-manual-disposition)
+            start
+            end)
           (if (= tag (ty-con))
             (if (= (type-name resolved) (hash-bool))
               (legacy-migration-row
                 (legacy-example-code)
-                (legacy-assertion-disposition))
+                (legacy-assertion-disposition)
+                start
+                end)
               (legacy-migration-row
                 (legacy-example-code)
-                (legacy-doc-example-disposition)))
+                (legacy-doc-example-disposition)
+                start
+                end))
             (legacy-migration-row
               (legacy-example-code)
-              (legacy-doc-example-disposition))))))))
+              (legacy-doc-example-disposition)
+              start
+              end)))))))
 
 (defn legacy-example-expressions-loop
-  [expressions idx count env counter result]
+  [expressions idx count env counter start end result]
   (if (>= idx count)
     result
     (let [row (legacy-example-row-for-expression
         (vector-get expressions idx)
         env
-        counter)
+        counter
+        start
+        end)
       next-result (vector-push-single-rooted result row)]
       (do
         (root_push next-result)
@@ -63,6 +76,8 @@
             count
             env
             counter
+            start
+            end
             next-result)]
           (do
             (root_pop)
@@ -70,6 +85,8 @@
 
 (defn legacy-example-form [form env counter result]
   (let [example-text (vector-get form 1)
+    start (if (> (vector-length form) 2) (vector-get form 2) 0)
+    end (if (> (vector-length form) 3) (vector-get form 3) 0)
     expressions (parse-program example-text)]
     (do
       (root_push expressions)
@@ -79,6 +96,8 @@
           (vector-length expressions)
           env
           counter
+          start
+          end
           result)]
         (do
           (root_pop)
@@ -96,7 +115,9 @@
             result
             (legacy-migration-row
               (legacy-invariant-code)
-              (legacy-property-disposition)))
+              (legacy-property-disposition)
+              (if (> (vector-length form) 2) (vector-get form 2) 0)
+              (if (> (vector-length form) 3) (vector-get form 3) 0)))
           result))]
       (do
         (root_push next-result)

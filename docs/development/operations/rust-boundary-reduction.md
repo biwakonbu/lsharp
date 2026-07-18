@@ -328,6 +328,14 @@ Evidence: `test_e2e_selfhost_parser_contract_forms_keep_directive_spans`、`test
 
 これは directive-level span の verified sliceであり、binder/predicate/expectation 個別 span、module-qualified/private owner、Rust canonical `ContractSuite` 全 variant、formatter/docs の span forwarding、diagnostic parity、Wasm artifact/runtime、Mac/Linux current-source native gate は残件である。
 
+### EC-M1-03 selfhost legacy migration row directive span (2026-07-18)
+
+Selfhost `Types.MetadataMigration` の legacy migration row を `[diagnostic-code, disposition, directive-start, directive-end]` へ拡張した。既存の summary が参照する `code` / `disposition` の index は維持し、parser-owned ordered form の directive span を `:example` の各 expression row と `:invariant` row へコピーする。`:example` が複数 expression を含む場合も、同じ legacy directive に属する各 row が同じ span を保持する。あわせて `Syntax.Parser` の `:example` span capture timing を `:invariant` と同じ directive token 位置へ揃えた。
+
+Evidence: RED では rows が `[code, disposition]` の 2 要素で、`:example` row と raw `extract-contract-forms` の span 比較が `0` になった。GREEN の `test_e2e_selfhost_migration_rows_preserve_legacy_directive_spans` は、2 expression の `:example` と `:invariant` の計 3 rows が 4 要素になり、raw inventory の start/end と全 6 値で一致することを、migration 専用 21-module selfhost bundle（実行 46.81 秒）で確認した。`./target/debug/lsharp check selfhost/src/Syntax/Parser.ls` と `selfhost/src/Types/MetadataMigration.ls` は各 `diagnostics:0`。
+
+これは migration row の directive-level span projection に限定した verified sliceであり、Rust `LegacyMigrationDiagnostic` と同じ owner / selected semantics / message / expression 個別 span、構造化診断と exit code、module/private owner parity、Wasm artifact/runtime、Mac Apple Silicon / Linux x86_64 の current-source native gate は残件である。row shape の拡張だけで legacy metadata の migration 完了や全機能 Rust-free 完了とは扱わず、Rust oracle / bootstrap 境界を維持する。
+
 ### EC-M1-02 selfhost typed property runner bridge (2026-07-18)
 
 `extract-property-test-cases` は parser-owned `ContractSuite` の typed property projection を移行期 evaluator の入力へ変換するようになった。Rust `property_smoke_test_spec` と同じく、実行対象は単一の `Int` binder、precondition なし、`cases 1..5`、seed/shrink なしの deterministic profile に限定する。profile 外の複数 binder / precondition / 未対応 option は binder を先頭だけへ縮退させず `LS3002` として明示拒否し、parser projection に保持された canonical payload は失わない。

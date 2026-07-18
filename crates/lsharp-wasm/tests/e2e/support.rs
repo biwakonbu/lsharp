@@ -1363,6 +1363,7 @@ static SELFHOST_PARSER_RUNTIME_BUNDLE: OnceLock<String> = OnceLock::new();
 static SELFHOST_PARSER_TYPEINFER_RUNTIME_BUNDLE: OnceLock<String> = OnceLock::new();
 static SELFHOST_TYPEINFER_RUNTIME_BUNDLE: OnceLock<String> = OnceLock::new();
 static SELFHOST_TEST_RUNNER_RUNTIME_BUNDLE: OnceLock<String> = OnceLock::new();
+static SELFHOST_MIGRATION_RUNTIME_BUNDLE: OnceLock<String> = OnceLock::new();
 static SELFHOST_CLI_RUNTIME_BUNDLE: OnceLock<String> = OnceLock::new();
 static SELFHOST_NATIVE_CODEGEN_BUNDLE: OnceLock<String> = OnceLock::new();
 
@@ -1443,6 +1444,36 @@ pub(crate) fn selfhost_test_runner_runtime_bundle() -> &'static str {
             "Lexer.ls",
             "LexerCompat.ls",
             "Parser.ls",
+            "PropertyRunner.ls",
+            "TestRunner.ls",
+        ],
+    )
+}
+
+/// selfhost migration classifier と raw contract scanner を検証する最小 runtime bundle
+pub(crate) fn selfhost_migration_runtime_bundle() -> &'static str {
+    cached_selfhost_bundle(
+        &SELFHOST_MIGRATION_RUNTIME_BUNDLE,
+        &[
+            "Token.ls",
+            "AST.ls",
+            "Lexer.ls",
+            "LexerCompat.ls",
+            "Parser.ls",
+            "Type.ls",
+            "TypeScheme.ls",
+            "TypeInferCore.ls",
+            "TypeInferFunctions.ls",
+            "TypeInferBuiltins.ls",
+            "TypeInfer.ls",
+            "TypeInferApply.ls",
+            "TypeInferBlock.ls",
+            "TypeInferPattern.ls",
+            "TypeInferRecord.ls",
+            "TypeInferRecordDecl.ls",
+            "TypeInferAdt.ls",
+            "TypeInferAssertions.ls",
+            "MetadataMigration.ls",
             "PropertyRunner.ls",
             "TestRunner.ls",
         ],
