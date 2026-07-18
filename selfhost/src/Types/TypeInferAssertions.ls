@@ -297,6 +297,7 @@
 (defn statically-false-bool? [predicate] (let [tag (vector-get predicate 0)] (if (= tag (ast-ann)) (statically-false-bool? (vector-get predicate 1)) (if (and (= tag (ast-lit-bool)) (= (vector-get predicate 1) 0)) 1 0))))
 (defn static-logic-and-hash [] 96727)
 (defn static-logic-or-hash [] 3555)
+(defn static-logic-not-hash [] 109267)
 (defn static-boolean-and-result [left right]
   (if (= left 2)
     2
@@ -322,21 +323,28 @@
         (if (= tag (ast-apply))
           (let [callee (vector-get predicate 1)
             arg-count (vector-get predicate 2)]
-            (if (and (= arg-count 2) (= (vector-get callee 0) (ast-var)))
-              (let [operator (vector-get callee 1)
-                left (vector-get predicate 3)
-                right (vector-get predicate 4)]
-                (if (= operator (static-logic-and-hash))
-                  (static-boolean-and-result
-                    (statically-boolean-result left)
-                    (statically-boolean-result right))
-                  (if (= operator (static-logic-or-hash))
-                    (static-boolean-or-result
-                      (statically-boolean-result left)
-                      (statically-boolean-result right))
-                    (if (= (statically-true-integer-comparison? predicate) 1)
-                      1
-                      (if (= (statically-false-integer-comparison? predicate) 1) 2 0)))))
+            (if (= (vector-get callee 0) (ast-var))
+              (let [operator (vector-get callee 1)]
+                (if (= operator (static-logic-not-hash))
+                  (if (= arg-count 1)
+                    (let [operand-result (statically-boolean-result (vector-get predicate 3))]
+                      (if (= operand-result 1) 2 (if (= operand-result 2) 1 0)))
+                    0)
+                  (if (= arg-count 2)
+                    (let [left (vector-get predicate 3)
+                      right (vector-get predicate 4)]
+                      (if (= operator (static-logic-and-hash))
+                        (static-boolean-and-result
+                          (statically-boolean-result left)
+                          (statically-boolean-result right))
+                        (if (= operator (static-logic-or-hash))
+                          (static-boolean-or-result
+                            (statically-boolean-result left)
+                            (statically-boolean-result right))
+                          (if (= (statically-true-integer-comparison? predicate) 1)
+                            1
+                            (if (= (statically-false-integer-comparison? predicate) 1) 2 0)))))
+                    0)))
               0))
           0)))))
 (defn check-assertion-predicate [predicate decl env counter]

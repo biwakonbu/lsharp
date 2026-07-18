@@ -230,10 +230,9 @@ fn collect_property_non_vacuity(
                             });
                         }
                     }
-                    if matches!(
-                        property.postcondition(),
-                        Expr::Lit(_, Literal::Bool(true))
-                    ) || statically_true_integer_comparison(property.postcondition()) {
+                    if matches!(property.postcondition(), Expr::Lit(_, Literal::Bool(true)))
+                        || statically_true_integer_comparison(property.postcondition())
+                    {
                         diagnostics.push(MetadataDiagnostic {
                             severity: Severity::Error,
                             message: ":property の postcondition は検査を識別できず vacuous です"
@@ -271,7 +270,10 @@ fn static_integer_comparison_result_app(expr: &Expr) -> Option<bool> {
     let Expr::Var(_, operator) = callee.as_ref() else {
         return None;
     };
-    let [Expr::Lit(_, Literal::Int(left)), Expr::Lit(_, Literal::Int(right))] = args.as_slice()
+    let [
+        Expr::Lit(_, Literal::Int(left)),
+        Expr::Lit(_, Literal::Int(right)),
+    ] = args.as_slice()
     else {
         return None;
     };
@@ -300,6 +302,12 @@ fn static_boolean_result(expr: &Expr) -> Option<bool> {
     let Expr::Var(_, operator) = callee.as_ref() else {
         return static_integer_comparison_result(expr);
     };
+    if operator == "not" {
+        let [operand] = args.as_slice() else {
+            return static_integer_comparison_result(expr);
+        };
+        return static_boolean_result(operand).map(|value| !value);
+    }
     let [left, right] = args.as_slice() else {
         return static_integer_comparison_result(expr);
     };
