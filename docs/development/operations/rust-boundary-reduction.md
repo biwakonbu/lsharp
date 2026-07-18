@@ -258,6 +258,12 @@ WASI / HTTP codegen の free-list base / capacity を mutable runtime globals �
 
 Evidence: RED の `test_e2e_runtime_free_list_grows_past_initial_capacity`（`alloc_count=4097` に対して `gc_freed_count=4096`、`gc_free_list_count=4096`）、GREEN の同 test（`gc_freed_count=4097`、`gc_free_list_count=4097`、`gc_live_alloc_count=0`）、`test_e2e_runtime_free_list_growth_reuses_moved_entries`（2 回目の `alloc_count=8194`）、collector focused 15 tests、allocator focused 11 tests、object table growth test、`cargo check -p lsharp-wasm`。これは WASI actual runtime の free-list growth verified slice であり、HTTP/component actual runtime parity、root stack growth、上限診断、size class、precise sentinel、current-source stage0 gate は残件である。
 
+### LEGACY-RUNTIME-01 root stack growth slice (2026-07-18)
+
+WASI / HTTP codegen の root stack base / capacity を mutable runtime globals へ移し、root stack が初期容量 `32768` に達したとき Wasm memory の末尾へ容量を倍増して既存 roots を `memory.copy` するようにした。collector、`root_set`、`root_pop` は更新後の base を参照し、root metadata の移動で heap payload address は移動しない。memory growth failure は明示 trap の境界として残している。
+
+Evidence: RED の `test_e2e_runtime_root_stack_grows_past_initial_capacity`（32769 番目の push で旧 `unreachable`）、GREEN の同 test（`root_stack_top=32769`）、`test_e2e_runtime_root_stack_growth_preserves_root_api`（移動後の `root_set` / `root_pop` が `42` を返す）、4097 rooted object table growth test、root/free-list/collector/allocator focused tests、`cargo check -p lsharp-wasm`。これは WASI actual runtime の root stack growth verified slice であり、HTTP/component actual runtime parity、allocation failure diagnostic、size class、precise sentinel、current-source stage0 gate は残件である。
+
 ### EC-M1-02 legacy metadata invariant slice (2026-07-17)
 
 Selfhost `Syntax.Parser` は legacy `:invariant` predicate を既存 metadata vector の slot 4 に AST として保持し、`Tools.Text.FormatterDecl` の source-aware 経路は `:doc` と invariant を canonical 順で出力する。既存の `:doc` / `:example` / `:params` / `:returns` の slot と、`DocTools` の docs payload 抽出は維持した。RED で invariant と後続 body が skip payload に吸収される failure を固定し、GREEN で parser AST shape、既存 metadata regression、source-aware formatter の string / float / metadata / invariant 4ケースを pass した。
