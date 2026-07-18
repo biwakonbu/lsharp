@@ -272,6 +272,12 @@ Rust `Syntax.Parser` は `:cases`、`:precondition`、`:postcondition`、`:seed`
 
 Evidence: RED の `test_e2e_selfhost_cli_check_rejects_unknown_property_option`（`BEGIN / 0 / 0`）と境界追加時の `seed/postcondition` 未検出、GREEN の同 test と `test_e2e_selfhost_cli_check_rejects_unknown_property_option_at_each_boundary`、`property_form_rejects_unknown_option` / `property_form_rejects_prefixed_option_name` を含む `cargo test -p lsharp-syntax --test metadata_property -- --nocapture`（6 tests）、`cargo test -p lsharp-types --test metadata_contract_check -- --nocapture`（20 tests）、selfhost source `check`、既存 unary-not selfhost regression。残るのは missing option value / malformed bracket の explicit diagnostic、compound option/span parity、dynamic precondition evaluator、sampling/shrink、full CLI artifact/runtime、Mac Apple Silicon / Linux x86_64 の current-source native gate である。
 
+### EC-M1-04 missing scalar property option value (2026-07-18)
+
+Rust `Syntax.Parser` は `:seed` / `:shrink` の値が次の option または property 終端で欠落している場合に parse error として拒否する。selfhost `Types.TypeInferAssertions` も既知 option の値開始を検査し、end・閉じ括弧・次の `:` を値欠落として structural code `2007` にする。これにより、欠落した scalar option を後続の valid `:postcondition` だけで成功扱いしない。
+
+Evidence: RED の `test_e2e_selfhost_cli_check_rejects_missing_property_scalar_option_value`（`BEGIN / 0 / 0 / 0 / 0`）、GREEN の同 test、`property_form_rejects_missing_scalar_option_value` を含む `cargo test -p lsharp-syntax --test metadata_property -- --nocapture`（7 tests）。残るのは missing list/expression option value の diagnostic/span parity、malformed bracket、dynamic precondition evaluator、sampling/shrink、full CLI artifact/runtime、Mac Apple Silicon / Linux x86_64 の current-source native gate である。
+
 ### scoped polymorphic `defn` signature (2026-07-15)
 
 `TypeInferFunctions.ls` は `defn` の parameter / return annotation に現れる scoped 名ごとに共有 fresh 型変数を割り当て、通常の型環境で関数を一般化する。これにより `id` を Int と Bool の別 call site で使え、`choose-first [(: x a) (: y b)] : a x` では `a` と `b` を独立に具体化できる。GADT refinement と exhaustiveness は別タスクである。Evidence: `test_e2e_selfhost_scoped_type_var_defn_signature_is_polymorphic`、`test_e2e_selfhost_scoped_multiple_type_vars_defn_signature_is_polymorphic`、`TypeInfer.ls` check。

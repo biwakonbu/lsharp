@@ -88,3 +88,11 @@ fn property_form_rejects_prefixed_option_name() {
 
     assert!(error.to_string().contains("property option"));
 }
+
+#[test]
+fn property_form_rejects_missing_scalar_option_value() {
+    let source = "(defn identity [x] :property [(for-all [x Int] :cases 1 :seed :postcondition (= result x))] x)";
+    let error = lsharp_syntax::parse(source).expect_err("値が欠落した scalar option は拒否するべき");
+
+    assert!(error.to_string().contains("non-negative seed"));
+}

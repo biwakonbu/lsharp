@@ -8254,6 +8254,44 @@ fn test_e2e_selfhost_cli_check_rejects_unknown_property_option_at_each_boundary(
     );
 }
 
+/// EC-M1-04: selfhost check が scalar property option の値欠落を成功扱いしないこと。
+#[test]
+fn test_e2e_selfhost_cli_check_rejects_missing_property_scalar_option_value() {
+    let harness = r#"
+(defn print-check-result [source]
+  (let [program (parse-program source)
+        analysis (infer-program-analysis program)
+        result (check-canonical-properties-with-analysis program analysis)]
+    (do
+      (print (vector-get result 0))
+      (print (vector-get result 1))
+      0)))
+
+(defn main []
+  (do
+    (print-string "BEGIN\n")
+    (print-check-result "(defn identity [x] :property [(for-all [x Int] :cases 1 :seed :postcondition (= result x))] x)")
+    (print-check-result "(defn identity [x] :property [(for-all [x Int] :cases 1 :shrink :postcondition (= result x))] x)")
+    0))
+"#;
+
+    let combined = format!(
+        "{}\n{}",
+        selfhost_parser_typeinfer_runtime_bundle(),
+        harness
+    );
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["BEGIN", "1", "2007", "1", "2007"],
+        "selfhost property checker は scalar option の値欠落を成功扱いするべきではない"
+    );
+}
+
 /// EC-M1-02: selfhost test が canonical :case の型エラーを実行前に拒否すること
 #[test]
 fn test_e2e_selfhost_cli_test_rejects_invalid_canonical_case() {

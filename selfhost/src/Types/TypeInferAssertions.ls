@@ -774,6 +774,29 @@
     (if (and (>= idx 0) (and (< idx len) (= (string-char-at payload idx) 58)))
       (if (= (property-known-option? payload idx) 1) 0 1)
       0)))
+(defn property-option-length [payload option-start]
+  (if (= (property-option-prefix? payload option-start ":precondition") 1)
+    (string-length ":precondition")
+    (if (= (property-option-prefix? payload option-start ":postcondition") 1)
+      (string-length ":postcondition")
+      (if (= (property-option-prefix? payload option-start ":cases") 1)
+        (string-length ":cases")
+        (if (= (property-option-prefix? payload option-start ":seed") 1)
+          (string-length ":seed")
+          (string-length ":shrink"))))))
+(defn property-option-value-start [payload option-start len]
+  (property-skip-space
+    payload
+    (+ option-start (property-option-length payload option-start))
+    len))
+(defn property-option-value-missing? [payload option-start len]
+  (let [value-start (property-option-value-start payload option-start len)]
+    (if (>= value-start len)
+      1
+      (let [ch (string-char-at payload value-start)]
+        (if (or (= ch 41) (= ch 93))
+          1
+          (if (= ch 58) 1 0))))))
 (defn property-balanced-bracket-end [src idx len depth]
   (if (>= idx len)
     -1
@@ -788,16 +811,7 @@
 (defn property-option-value-end [payload option-start len]
   (let [precondition? (= (property-option-prefix? payload option-start ":precondition") 1)
     postcondition? (= (property-option-prefix? payload option-start ":postcondition") 1)
-    option-len (if precondition?
-      (string-length ":precondition")
-      (if postcondition?
-        (string-length ":postcondition")
-        (if (= (property-option-prefix? payload option-start ":cases") 1)
-          (string-length ":cases")
-          (if (= (property-option-prefix? payload option-start ":seed") 1)
-            (string-length ":seed")
-            (string-length ":shrink")))))
-    value-start (property-skip-space payload (+ option-start option-len) len)]
+    value-start (property-option-value-start payload option-start len)]
     (if (or (>= value-start len) (= (string-char-at payload value-start) 58))
       value-start
       (if precondition?
@@ -816,14 +830,16 @@
         (let [ch (string-char-at payload current)]
           (if (= ch 41)
             0
-            (if (= ch 58)
-              (if (= (property-unknown-option-at? payload current) 1)
+          (if (= ch 58)
+            (if (= (property-unknown-option-at? payload current) 1)
+              1
+              (if (= (property-option-value-missing? payload current len) 1)
                 1
                 (property-unknown-option-loop
                   payload
                   (property-option-value-end payload current len)
-                  len))
-              0)))))))
+                  len)))
+            0)))))))
 (defn property-unknown-option? [payload]
   (let [len (string-length payload)
     open (property-find-substring payload "[")
