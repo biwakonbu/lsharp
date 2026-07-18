@@ -74,11 +74,17 @@ pub fn handle_jsonrpc_message(request: &Value) -> Value {
             json!({
                 "tools": list_tools()
                     .into_iter()
-                    .map(|tool| json!({
-                        "name": tool.name,
-                        "description": tool.description,
-                        "inputSchema": tool_input_schema(&tool.name),
-                    }))
+                    .map(|tool| {
+                        let mut descriptor = json!({
+                            "name": tool.name,
+                            "description": tool.description,
+                            "inputSchema": tool_input_schema(&tool.name),
+                        });
+                        if tool.name == "lsharp_check" {
+                            descriptor["outputSchema"] = tool_output_schema(&tool.name);
+                        }
+                        descriptor
+                    })
                     .collect::<Vec<_>>()
             }),
         ),
@@ -225,6 +231,73 @@ fn tool_input_schema(name: &str) -> Value {
     }
 }
 
+fn tool_output_schema(name: &str) -> Value {
+    match name {
+        "lsharp_check" => json!({
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "required": ["ok", "diagnostics", "migrationDiagnostics"],
+            "properties": {
+                "ok": { "type": "boolean" },
+                "diagnostics": { "type": "array" },
+                "migrationDiagnostics": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "required": ["code", "owner", "selectedSemantics", "disposition", "range"],
+                        "properties": {
+                            "code": {
+                                "type": "string",
+                                "enum": ["LS2001", "LS2002", "LS2003"]
+                            },
+                            "owner": { "type": "string" },
+                            "selectedSemantics": {
+                                "type": "string",
+                                "enum": [
+                                    "legacy-example-truthiness",
+                                    "legacy-invariant-deterministic-smoke"
+                                ]
+                            },
+                            "disposition": {
+                                "type": "string",
+                                "enum": [
+                                    "docs-only-example",
+                                    "assertion",
+                                    "property-postcondition",
+                                    "manual-review"
+                                ]
+                            },
+                            "range": {
+                                "type": "object",
+                                "required": ["start", "end"],
+                                "properties": {
+                                    "start": { "$ref": "#/$defs/position" },
+                                    "end": { "$ref": "#/$defs/position" }
+                                }
+                            },
+                            "message": { "type": "string" }
+                        }
+                    }
+                }
+            },
+            "$defs": {
+                "position": {
+                    "type": "object",
+                    "required": ["line", "character"],
+                    "properties": {
+                        "line": { "type": "integer", "minimum": 0 },
+                        "character": { "type": "integer", "minimum": 0 }
+                    }
+                }
+            }
+        }),
+        _ => json!({
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object"
+        }),
+    }
+}
+
 fn json_schema(required_primary: &[&str], required_secondary: &[&str]) -> Value {
     json!({
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -260,6 +333,7 @@ fn hover_tool(arguments: &Value) -> Result<Value, String> {
 fn check_tool(arguments: &Value) -> Result<Value, String> {
     let source = source_argument(arguments)?;
     let diagnostics = lsharp_lsp::parse_and_check(&source);
+    let migration_diagnostics = legacy_migration_diagnostics_json(&source);
     Ok(json!({
         "ok": diagnostics.is_empty(),
         "diagnostics": diagnostics.iter().map(|diag| json!({
@@ -279,8 +353,65 @@ fn check_tool(arguments: &Value) -> Result<Value, String> {
                     "character": diag.range.end.character,
                 },
             },
-        })).collect::<Vec<_>>()
+        })).collect::<Vec<_>>(),
+        "migrationDiagnostics": migration_diagnostics,
     }))
+}
+
+fn legacy_migration_diagnostics_json(source: &str) -> Vec<Value> {
+    let Ok(program) = lsharp_syntax::parse(source) else {
+        return Vec::new();
+    };
+    let Ok(diagnostics) = lsharp_types::metadata_migration::classify_legacy_contracts(&program)
+    else {
+        return Vec::new();
+    };
+
+    diagnostics
+        .iter()
+        .map(|diagnostic| {
+            json!({
+                "code": diagnostic.code(),
+                "owner": diagnostic.owner(),
+                "selectedSemantics": diagnostic.selected_semantics().as_str(),
+                "disposition": diagnostic.disposition().as_str(),
+                "range": source_span_range(source, diagnostic.span()),
+                "message": diagnostic.message(),
+            })
+        })
+        .collect()
+}
+
+fn source_span_range(source: &str, span: lsharp_syntax::span::Span) -> Value {
+    let (start_line, start_character) = source_offset_position(source, span.start);
+    let (end_line, end_character) = source_offset_position(source, span.end);
+    json!({
+        "start": {
+            "line": start_line,
+            "character": start_character,
+        },
+        "end": {
+            "line": end_line,
+            "character": end_character,
+        },
+    })
+}
+
+fn source_offset_position(source: &str, offset: usize) -> (u32, u32) {
+    let mut line = 0;
+    let mut character = 0;
+    for (index, ch) in source.char_indices() {
+        if index >= offset {
+            break;
+        }
+        if ch == '\n' {
+            line += 1;
+            character = 0;
+        } else {
+            character += 1;
+        }
+    }
+    (line, character)
 }
 
 fn completion_tool(arguments: &Value) -> Result<Value, String> {
@@ -867,6 +998,73 @@ mod tests {
         assert_eq!(diagnostic["range"]["start"]["line"], 0);
         assert_eq!(diagnostic["range"]["start"]["character"], 1);
         assert_eq!(diagnostic["range"]["end"]["character"], 13);
+    }
+
+    #[test]
+    fn test_check_tool_reports_legacy_migration_enum_strings() {
+        let source = "(defn succ [x] :example [(succ 0) (= (succ 1) 2)] :invariant (= result (+ x 1)) (+ x 1))";
+        let result = call_tool("lsharp_check", &json!({"source": source}))
+            .expect("lsharp_check は legacy migration report を返すべき");
+
+        assert_eq!(result["ok"], true);
+        assert_eq!(result["diagnostics"], json!([]));
+        let migration = result["migrationDiagnostics"]
+            .as_array()
+            .expect("migrationDiagnostics は配列であるべき");
+        assert_eq!(migration.len(), 3);
+        assert_eq!(migration[0]["code"], "LS2001");
+        assert_eq!(migration[0]["owner"], "succ");
+        assert_eq!(
+            migration[0]["selectedSemantics"],
+            "legacy-example-truthiness"
+        );
+        assert_eq!(migration[0]["disposition"], "docs-only-example");
+        assert_eq!(migration[0]["range"]["start"]["line"], 0);
+        assert_eq!(migration[0]["range"]["start"]["character"], 25);
+        assert_eq!(migration[0]["range"]["end"]["character"], 33);
+        assert_eq!(migration[1]["disposition"], "assertion");
+        assert_eq!(migration[2]["code"], "LS2002");
+        assert_eq!(
+            migration[2]["selectedSemantics"],
+            "legacy-invariant-deterministic-smoke"
+        );
+        assert_eq!(migration[2]["disposition"], "property-postcondition");
+        assert_eq!(migration[2]["range"]["start"]["character"], 61);
+        assert_eq!(migration[2]["range"]["end"]["character"], 79);
+    }
+
+    #[test]
+    fn test_check_tool_declares_legacy_migration_output_schema() {
+        let response = handle_jsonrpc_message(&json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/list"
+        }));
+        let tool = response["result"]["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|tool| tool["name"] == "lsharp_check")
+            .expect("lsharp_check が tools/list に必要");
+        let migration = &tool["outputSchema"]["properties"]["migrationDiagnostics"];
+
+        assert_eq!(migration["type"], "array");
+        assert_eq!(
+            migration["items"]["properties"]["selectedSemantics"]["enum"],
+            json!([
+                "legacy-example-truthiness",
+                "legacy-invariant-deterministic-smoke"
+            ])
+        );
+        assert_eq!(
+            migration["items"]["properties"]["disposition"]["enum"],
+            json!([
+                "docs-only-example",
+                "assertion",
+                "property-postcondition",
+                "manual-review"
+            ])
+        );
     }
 
     #[test]

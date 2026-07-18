@@ -170,6 +170,14 @@ Selfhost `Tools.Text.FormatterDecl` は ordered form kind `5` の raw payload �
 
 Evidence: RED の `test_e2e_selfhost_formatter_roundtrips_canonical_property_form`、GREEN の同 test、`./target/debug/lsharp check selfhost/src/Tools/Text/FormatterDecl.ls`。これは raw payload round-trip の verified slice であり、selfhost typed projection、property evaluation、diagnostic/span parity、Wasm artifact/runtime、Mac Apple Silicon / Linux x86_64 の current-source native gate は残件である。
 
+### EC-M1-03 Rust MCP migration enum/string report (2026-07-18)
+
+Rust driver の MCP `lsharp_check` は、parse/check 結果に加えて legacy `:example` / `:invariant` の migration rows を `migrationDiagnostics` として返す。rows は source order を保ち、`LS2001` / `LS2002` / `LS2003`、owner、`legacy-example-truthiness` / `legacy-invariant-deterministic-smoke`、`docs-only-example` / `assertion` / `property-postcondition` / `manual-review`、LSP の line/character range、message を structured JSON へ射影する。`tools/list` の `lsharp_check.outputSchema` も同じ enum を宣言するため、MCP client が unknown string を成功扱いしない。
+
+Evidence: RED の `test_check_tool_reports_legacy_migration_enum_strings` と `test_check_tool_declares_legacy_migration_output_schema`、GREEN の同 2 tests。fixture `(defn succ [x] :example [(succ 0) (= (succ 1) 2)] :invariant (= result (+ x 1)) (+ x 1))` で `LS2001` 2件と `LS2002` 1件、`(25,33)` / `(61,79)` の source range を確認した。selfhost の既存 `migration` JSON/row projection とは別に、Rust MCP の structured output boundary を閉じた verified slice である。
+
+これは MCP の migration report schema/射影だけを対象とする。Rust-free の selfhost MCP server、全 form の evaluator、全 diagnostic/span parity、EmbeddedCli/MCP の両対応 target artifact/runtime、Mac Apple Silicon / Linux x86_64 の current-source native gate、stage0 provenance は残件であり、EC-M1-03 全体または全機能 Rust-free 完了とは扱わない。Rust oracle / bootstrap / host integration 境界は維持する。
+
 ### EC-M1-04 Rust canonical `:property` predicate type-check bridge (2026-07-18)
 
 Rust `metadata_check::check_metadata` は canonical `ExecutableContract::Property` の precondition / postcondition を property binder と synthetic `result` の lexical scopeで HM 型推論へ渡し、戻り値が正確に `Bool` であることを要求する。非 `Bool` は predicate source span と owner を持つ `MetadataDiagnostic` として拒否し、valid Bool predicates は受理する。元の AST と既存の assertion / case checker は変更しない。
