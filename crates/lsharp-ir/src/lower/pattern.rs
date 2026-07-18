@@ -8,6 +8,45 @@ use crate::{Instruction, IrType};
 use super::{FuncCtx, Lower, LowerError};
 
 impl Lower {
+    fn emit_match_root_push(
+        &self,
+        ctx: &mut FuncCtx,
+        value_local: u32,
+        span: Span,
+    ) -> Result<(), LowerError> {
+        let root_push_idx =
+            *self
+                .func_indices
+                .get("root_push")
+                .ok_or_else(|| LowerError::UndefinedFunction {
+                    name: "root_push".to_string(),
+                    span: Some(span),
+                })?;
+        ctx.emit(Instruction::LocalGet(value_local));
+        ctx.emit(Instruction::Call(root_push_idx));
+        ctx.emit(Instruction::Drop);
+        Ok(())
+    }
+
+    fn emit_match_root_pop_into_local(
+        &self,
+        ctx: &mut FuncCtx,
+        value_local: u32,
+        span: Span,
+    ) -> Result<(), LowerError> {
+        let root_pop_idx =
+            *self
+                .func_indices
+                .get("root_pop")
+                .ok_or_else(|| LowerError::UndefinedFunction {
+                    name: "root_pop".to_string(),
+                    span: Some(span),
+                })?;
+        ctx.emit(Instruction::Call(root_pop_idx));
+        ctx.emit(Instruction::LocalSet(value_local));
+        Ok(())
+    }
+
     /// match の腕を if-else チェインに変換
     pub(crate) fn lower_match_arms(
         &mut self,
@@ -51,6 +90,35 @@ impl Lower {
                 ctx.emit(Instruction::LocalGet(scrut_local));
                 ctx.emit(Instruction::I64Const(if *b { 1 } else { 0 }));
                 ctx.emit(Instruction::I64Eq);
+                ctx.emit(Instruction::If(IrType::I64));
+                self.lower_arm_body_with_guard(ctx, scrut_local, arms, arm, idx)?;
+                ctx.emit(Instruction::Else);
+                self.lower_match_arms(ctx, scrut_local, arms, idx + 1)?;
+                ctx.emit(Instruction::End);
+            }
+            Pattern::Lit(pattern_span, Literal::String(value)) => {
+                let string_eq_idx = *self.func_indices.get("__string_eq").ok_or_else(|| {
+                    LowerError::UndefinedFunction {
+                        name: "__string_eq".to_string(),
+                        span: Some(*pattern_span),
+                    }
+                })?;
+
+                self.emit_match_root_push(ctx, scrut_local, *pattern_span)?;
+                self.lower_expr(
+                    ctx,
+                    &Expr::Lit(*pattern_span, Literal::String(value.clone())),
+                )?;
+                let literal_local = ctx.alloc_local("_match_string_literal".to_string());
+                ctx.emit(Instruction::LocalSet(literal_local));
+                self.emit_match_root_push(ctx, literal_local, *pattern_span)?;
+                self.emit_match_root_pop_into_local(ctx, literal_local, *pattern_span)?;
+                self.emit_match_root_pop_into_local(ctx, scrut_local, *pattern_span)?;
+
+                ctx.emit(Instruction::LocalGet(scrut_local));
+                ctx.emit(Instruction::LocalGet(literal_local));
+                ctx.emit(Instruction::Call(string_eq_idx));
+                ctx.emit(Instruction::I32WrapI64);
                 ctx.emit(Instruction::If(IrType::I64));
                 self.lower_arm_body_with_guard(ctx, scrut_local, arms, arm, idx)?;
                 ctx.emit(Instruction::Else);

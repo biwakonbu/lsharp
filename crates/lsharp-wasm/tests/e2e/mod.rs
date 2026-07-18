@@ -47,5 +47,6 @@ mod selfhost_string_value_semantics;
 mod selfhost_string_pattern_compiler;
 mod stdlib_modules_selfhost_lexer;
 mod string_escape_sequences;
+mod string_literal_pattern_runtime;
 mod strings_patterns_compiler_integration;
 mod support;

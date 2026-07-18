@@ -153,6 +153,50 @@ fn test_lower_comparison() {
 }
 
 #[test]
+fn test_lower_string_literal_pattern_uses_content_equality_and_balanced_roots() {
+    const STRING_EQ_IDX: u32 = 3;
+
+    let module = lower(
+        r#"(defn classify [value]
+             (match value ["same" 1] [_ 0]))"#,
+    );
+    let classify = module
+        .functions
+        .iter()
+        .find(|function| function.name == "classify")
+        .expect("classify function が存在するべき");
+
+    assert_eq!(
+        count_call_instr(&classify.body, STRING_EQ_IDX),
+        1,
+        "String literal pattern は __string_eq を 1 回呼ぶべき: {:?}",
+        classify.body
+    );
+    assert_eq!(
+        count_call_instr(&classify.body, ROOT_PUSH_IDX),
+        2,
+        "scrutinee と pattern literal を root_push するべき: {:?}",
+        classify.body
+    );
+    assert_roots_balanced(&classify.body, "String literal pattern");
+
+    let alloc_pos = call_position(&classify.body, ALLOC_IDX);
+    assert_rooted_safe_point(
+        &classify.body,
+        alloc_pos,
+        "String literal pattern allocation",
+    );
+    let string_eq_pos = call_position(&classify.body, STRING_EQ_IDX);
+    assert!(
+        call_positions(&classify.body, ROOT_POP_IDX)
+            .into_iter()
+            .all(|position| position < string_eq_pos),
+        "更新済み root 値を __string_eq 前に local へ戻すべき: {:?}",
+        classify.body
+    );
+}
+
+#[test]
 fn test_lower_if_expr() {
     assert_ir("(defn main [] (if (< 1 2) 42 0))", "lower_if_expr");
 }
