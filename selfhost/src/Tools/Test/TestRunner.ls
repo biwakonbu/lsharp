@@ -1766,6 +1766,34 @@
           (value-int (- 0 1))
           (value-int 42))))))
 
+(defn property-sample-arguments [test-case sample-idx]
+  (let [binder-count (vector-length (property-test-case-binders test-case))]
+    (if (= binder-count 1)
+      (vector-push-single-rooted
+        (vector-new 1)
+        (property-sample-value sample-idx))
+      (vector-push-pair-rooted
+        (vector-new 2)
+        (property-sample-value (/ sample-idx 3))
+        (property-sample-value (% sample-idx 3))))))
+
+(defn property-bind-unit-binders-loop [env binders idx]
+  (if (>= idx (vector-length binders))
+    env
+    (property-bind-unit-binders-loop
+      (env-bind env (vector-get binders idx) (value-unit))
+      binders
+      (+ idx 1))))
+
+(defn property-bind-binders-loop [env binders samples idx]
+  (if (>= idx (vector-length binders))
+    env
+    (property-bind-binders-loop
+      (env-bind env (vector-get binders idx) (vector-get samples idx))
+      binders
+      samples
+      (+ idx 1))))
+
 (defn property-unknown-preconditions-loop [program preconditions env idx]
   (if (>= idx (vector-length preconditions))
     -1
@@ -1783,11 +1811,12 @@
           (+ idx 1))))))
 
 (defn property-unknown-variable [program test-case]
-  (let [env (env-bind
-      (env-bind
-        (env-new)
-        (property-test-case-binder test-case)
-        (value-unit))
+  (let [base-env (property-bind-unit-binders-loop
+      (env-new)
+      (property-test-case-binders test-case)
+      0)
+    env (env-bind
+      base-env
       (hash-result)
       (value-unit))
     preconditions (property-test-case-preconditions test-case)
@@ -1823,22 +1852,25 @@
   (let [preconditions (property-test-case-preconditions test-case)
     env (env-bind
       (env-new)
-      (property-test-case-binder test-case)
-      sample)]
+      (hash-result)
+      (value-unit))
+    env (property-bind-binders-loop
+      env
+      (property-test-case-binders test-case)
+      sample
+      0)]
     (eval-property-preconditions-loop program preconditions env 0)))
 
-(defn eval-property-sample-value [program test-case decl sample-idx]
-  (let [sample (property-sample-value sample-idx)
-    args (vector-push-single-rooted (vector-new 1) sample)
+(defn eval-property-sample-value [program test-case decl sample]
+  (let [args sample
     result (eval-defn-call program decl args)
     owner-env (bind-params-loop (env-new) decl args 0 (vector-get decl 2))
-    property-env (env-bind
-      (env-bind
-        owner-env
-        (property-test-case-binder test-case)
-        sample)
-      (hash-result)
-      result)]
+    property-env0 (property-bind-binders-loop
+      owner-env
+      (property-test-case-binders test-case)
+      sample
+      0)
+    property-env (env-bind property-env0 (hash-result) result)]
     (eval-node
       program
       (property-test-case-postcondition test-case)
@@ -1855,10 +1887,11 @@
   [program test-case decl sample-idx sample-count all-passed all-bool actual-count]
   (if (>= sample-idx sample-count)
     (property-sample-summary all-passed all-bool actual-count)
-    (let [precondition (eval-property-precondition
+    (let [sample (property-sample-arguments test-case sample-idx)
+      precondition (eval-property-precondition
         program
         test-case
-        (property-sample-value sample-idx))
+        sample)
       precondition-bool (if (= (value-tag precondition) (ast-lit-bool)) 1 0)
       precondition-passed (if (= precondition-bool 1) (value-truthy precondition) 0)]
       (if (= precondition-bool 0)
@@ -1881,7 +1914,7 @@
             all-passed
             all-bool
             actual-count)
-          (let [actual (eval-property-sample-value program test-case decl sample-idx)
+          (let [actual (eval-property-sample-value program test-case decl sample)
             bool-valid (if (= (value-tag actual) (ast-lit-bool)) 1 0)
             passed (if (= bool-valid 1) (value-truthy actual) 0)
             next-passed (if (= passed 1) all-passed 0)
@@ -1901,7 +1934,10 @@
     owner (property-test-case-owner test-case)
     decl (find-defn-by-hash program owner 0 (vector-length program))
     profile-code (property-test-case-profile-code test-case)
-    owner-valid (if (and (> (vector-length decl) 0) (= (vector-get decl 2) 1)) 1 0)
+    binder-count (vector-length (property-test-case-binders test-case))
+    owner-valid (if (and
+        (> (vector-length decl) 0)
+        (= (vector-get decl 2) binder-count)) 1 0)
     precondition-count (vector-length (property-test-case-preconditions test-case))
     unknown-hash (if (and (= profile-code 0) (= owner-valid 1))
       (property-unknown-variable program test-case)

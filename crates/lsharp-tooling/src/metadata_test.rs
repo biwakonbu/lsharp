@@ -398,6 +398,46 @@ mod tests {
     }
 
     #[test]
+    fn test_run_metadata_tests_executes_two_int_property_binders() {
+        let dir = unique_temp_dir("deterministic_property_two_binders");
+        let file = dir.join("Main.ls");
+        fs::write(
+            &file,
+            "(defn sum [left right] :property [(for-all [a Int b Int] :cases 5 :precondition [(< b 5)] :postcondition (= result (+ a b)))] (+ left right))\n",
+        )
+        .unwrap();
+
+        let run = run_metadata_tests(&file)
+            .expect("二つの Int binder は deterministic pair prefix として実行できるべき");
+        assert_eq!(run.total(), 1);
+        assert_eq!(run.passed(), 1);
+        assert_eq!(run.failed(), 0);
+        assert_eq!(run.results[0].name, "sum_property_0");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_run_metadata_tests_rejects_three_int_property_binders() {
+        let dir = unique_temp_dir("unsupported_property_three_binders");
+        let file = dir.join("Main.ls");
+        fs::write(
+            &file,
+            "(defn sum3 [left middle right] :property [(for-all [a Int b Int c Int] :cases 1 :postcondition (= result (+ a (+ b c))))] (+ left (+ middle right)))\n",
+        )
+        .unwrap();
+
+        let error = run_metadata_tests(&file)
+            .expect_err("3 binder property は deterministic pair profile 外であるべき");
+        assert!(
+            error.to_string().contains("[LS3002]"),
+            "3 binder property は LS3002 を返すべき: {error}"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn test_run_metadata_tests_rejects_property_outside_deterministic_smoke_profile() {
         let dir = unique_temp_dir("unsupported_property_profile");
         let file = dir.join("Main.ls");

@@ -526,7 +526,7 @@ pub struct GeneratedTest {
 /// Rust/selfhost が段階的に共有する deterministic property smoke profile。
 #[derive(Debug, Clone, PartialEq)]
 pub struct PropertySmokeTestSpec {
-    pub binder_name: String,
+    pub binder_names: Vec<String>,
     pub cases: usize,
     /// 移行期に評価する precondition。source order の conjunction として評価する。
     pub preconditions: Vec<Expr>,
@@ -538,22 +538,30 @@ pub struct PropertySmokeTestSpec {
 /// 丸めず、明示的に profile 外として扱う。precondition は source order の
 /// conjunction として deterministic sample の filter に使う。
 pub fn property_smoke_test_spec(property: &PropertyForm) -> Option<PropertySmokeTestSpec> {
-    if property.binders().len() != 1 || property.seed().is_some() || property.shrink().is_some() {
+    if !(1..=2).contains(&property.binders().len())
+        || property.seed().is_some()
+        || property.shrink().is_some()
+    {
         return None;
     }
-    let binder = property.binders().first()?;
-    let TypeExpr::Named(_, ty_name) = binder.ty() else {
-        return None;
-    };
-    if ty_name != "Int" {
-        return None;
+    for binder in property.binders() {
+        let TypeExpr::Named(_, ty_name) = binder.ty() else {
+            return None;
+        };
+        if ty_name != "Int" {
+            return None;
+        }
     }
     let cases = property.cases()?;
     if !(1..=5).contains(&cases) {
         return None;
     }
     Some(PropertySmokeTestSpec {
-        binder_name: binder.name().to_string(),
+        binder_names: property
+            .binders()
+            .iter()
+            .map(|binder| binder.name().to_string())
+            .collect(),
         cases,
         preconditions: property.preconditions().to_vec(),
     })

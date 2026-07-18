@@ -638,3 +638,11 @@ deterministic `Int` property の precondition evaluator を、単一条件から
 Evidence: `test_run_metadata_tests_executes_all_property_preconditions_as_conjunction`、`test_e2e_selfhost_runner_executes_all_property_preconditions_as_conjunction`（`[0, 1, 5, -1, 42]` のうち 3 件を実行）、Rust tooling metadata 16 tests、selfhost runner property 7 tests、Wasm `test_runner` unit 6 tests、`PropertyRunner.ls` / `TestRunner.ls` source check（各 `diagnostics:0`）。
 
 これは単一 `Int` binder と deterministic cases に限定した conjunction slice であり、一般 `TypeExpr`、複数 binder、type-directed generator、seed/shrink/coverage、predicate 個別 span、structured assurance report、Wasm artifact/runtime、Mac Apple Silicon / Linux x86_64 の current-source native gate は残件である。したがって、対応済み profile の日常開発は Rust なしで進められるが、profile 外の property semantics、stage0 provenance、Rust oracle / bootstrap / host integration の境界は維持する。
+
+### EC-M1-02 two-Int-binder property evaluator (2026-07-18)
+
+deterministic property profile を、単一 binder から最大 2 個の `Int` binder へ拡張した。Rust `PropertySmokeTestSpec` と selfhost typed contract bridge は binder name/hash を source order の vector として保持する。scalar prefix `[0, 1, 5]` の lexicographic pair prefix `(0,0)`, `(0,1)`, `(0,5)`, `(1,0)`, `(1,1)` を cases の先頭から共有し、precondition conjunction は両 binder を同じ環境へ束縛して評価する。target function の引数数は binder 数と一致することを要求し、selfhost は不一致を未実装 property として成功扱いにしない。
+
+Evidence: `test_run_metadata_tests_executes_two_int_property_binders`、`test_e2e_selfhost_runner_executes_two_int_property_binders`（5 pair 中 1 件を precondition skip して `actual=4`）、既存の single-binder / conjunction / seed / unsupported profile regression、`PropertyRunner.ls` / `TestRunner.ls` source check（各 `diagnostics:0`）。
+
+これは 1..2 個の `Int` binder と deterministic pair prefix に限定した verified slice であり、3 個以上の binder、一般 `TypeExpr`、owner/binder の独立 arity、type-directed generator、seed/shrink/coverage、predicate 個別 span、structured assurance report、Wasm artifact/runtime、Mac Apple Silicon / Linux x86_64 の current-source native gate は残件である。対応済み profile の変更は Rust なしで進められるが、profile 外 semantics、stage0 provenance、Rust oracle / bootstrap / host integration の境界は維持する。

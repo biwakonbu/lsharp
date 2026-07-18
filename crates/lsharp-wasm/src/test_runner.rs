@@ -103,33 +103,37 @@ pub fn generate_test_program(original: &Program, tests: &[GeneratedTest]) -> Str
                     .as_ref()
                     .expect("property smoke test には profile が必要");
                 let samples = property_sample_values(spec);
-                for sample in samples {
+                for sample_args in samples {
+                    let args = sample_args.join(" ");
                     let postcondition = format!("{}", test.expr);
-                    if !spec.preconditions.is_empty() {
-                        let result_scope = format!(
-                            "(let [result ({} {})] (if {} 1 0))",
-                            test.function_name, sample, postcondition
-                        );
-                        let guarded_property = spec
-                            .preconditions
-                            .iter()
-                            .rev()
-                            .fold(result_scope, |body, precondition| {
-                                format!("(if {} {} 2)", precondition, body)
-                            });
-                        let scoped_property = format!(
-                            "(let [{} {}] {})",
-                            spec.binder_name, sample, guarded_property
-                        );
-                        source.push_str(&format!("    (print {scoped_property})\n"));
+                    let result_scope = if spec.preconditions.is_empty() {
+                        format!(
+                            "(let [result ({} {})] {})",
+                            test.function_name, args, postcondition
+                        )
                     } else {
-                        let result_scope = format!(
-                            "(let [result ({} {})] {postcondition})",
-                            test.function_name, sample
-                        );
-                        let scoped_property =
-                            format!("(let [{} {}] {result_scope})", spec.binder_name, sample);
+                        format!(
+                            "(let [result ({} {})] (if {} 1 0))",
+                            test.function_name, args, postcondition
+                        )
+                    };
+                    let guarded_property = spec
+                        .preconditions
+                        .iter()
+                        .rev()
+                        .fold(result_scope, |body, precondition| {
+                            format!("(if {} {} 2)", precondition, body)
+                        });
+                    let scoped_property = spec.binder_names.iter().zip(&sample_args).rev().fold(
+                        guarded_property,
+                        |body, (binder_name, sample)| {
+                            format!("(let [{} {}] {})", binder_name, sample, body)
+                        },
+                    );
+                    if spec.preconditions.is_empty() {
                         source.push_str(&format!("    (print (if {scoped_property} 1 0))\n"));
+                    } else {
+                        source.push_str(&format!("    (print {scoped_property})\n"));
                     }
                 }
             }
@@ -193,12 +197,22 @@ fn generate_sample_args(param_count: usize) -> Vec<Vec<String>> {
     combos
 }
 
-fn property_sample_values(spec: &PropertySmokeTestSpec) -> Vec<String> {
-    ["0", "1", "5", "-1", "42"]
-        .iter()
-        .take(spec.cases)
-        .map(|sample| (*sample).to_string())
-        .collect()
+fn property_sample_values(spec: &PropertySmokeTestSpec) -> Vec<Vec<String>> {
+    let scalar = ["0", "1", "5", "-1", "42"];
+    let mut samples = Vec::new();
+    if spec.binder_names.len() == 1 {
+        for value in scalar {
+            samples.push(vec![value.to_string()]);
+        }
+    } else {
+        for left in &scalar[..3] {
+            for right in &scalar[..3] {
+                samples.push(vec![(*left).to_string(), (*right).to_string()]);
+            }
+        }
+    }
+    samples.truncate(spec.cases);
+    samples
 }
 
 /// テスト結果を解析
@@ -298,7 +312,7 @@ pub fn parse_test_output(
                 let mut fail_msg = None;
                 let mut executed = 0;
 
-                for sample in &samples {
+                for sample_args in &samples {
                     let line = lines.get(line_idx).map(|line| line.trim()).unwrap_or("");
                     if !spec.preconditions.is_empty() && line == "2" {
                         line_idx += 1;
@@ -308,7 +322,10 @@ pub fn parse_test_output(
                     let passed = line == "1";
                     if !passed {
                         all_passed = false;
-                        fail_msg = Some(format!(":property が偽を返しました (入力: {sample})"));
+                        fail_msg = Some(format!(
+                            ":property が偽を返しました (入力: {})",
+                            sample_args.join(", ")
+                        ));
                     }
                     line_idx += 1;
                 }

@@ -6480,12 +6480,42 @@ fn test_e2e_selfhost_runner_rejects_vacuous_property_precondition() {
     );
 }
 
-/// EC-M1-02: selfhost runner が複数 binder を単一引数へ縮退させないこと
+/// EC-M1-02: selfhost runner が二つの Int binder を pair prefix として実行すること
 #[test]
-fn test_e2e_selfhost_runner_rejects_multiple_property_binders_before_execution() {
+fn test_e2e_selfhost_runner_executes_two_int_property_binders() {
     let harness = r#"
 (defn main []
-  (let [src "(defn pair [x] :property [(for-all [left Int right Int] :cases 1 :postcondition (= result left))] x)"
+  (let [src "(defn sum [left right] :property [(for-all [a Int b Int] :cases 5 :precondition [(< b 5)] :postcondition (= result (+ a b)))] (+ left right))"
+        suite (generate-tests-from-source src)
+        properties (vector-get suite 4)
+        result0 (vector-get properties 0)]
+    (do
+      (print (vector-length properties))
+      (print (vector-get result0 1))
+      (print (vector-get result0 2))
+      (print (vector-get result0 3))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_test_runner_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["1", "1", "4", "0"],
+        "selfhost runner は二つの Int binder を同じ pair prefix と precondition で評価すべき"
+    );
+}
+
+/// EC-M1-02: selfhost runner が 3 binder を profile 外として拒否すること
+#[test]
+fn test_e2e_selfhost_runner_rejects_three_int_property_binders() {
+    let harness = r#"
+(defn main []
+  (let [src "(defn sum3 [left middle right] :property [(for-all [a Int b Int c Int] :cases 1 :postcondition (= result (+ a (+ b c))))] (+ left (+ middle right)))"
         suite (generate-tests-from-source src)
         properties (vector-get suite 4)
         result0 (vector-get properties 0)]
@@ -6506,7 +6536,7 @@ fn test_e2e_selfhost_runner_rejects_multiple_property_binders_before_execution()
     assert_eq!(
         lines,
         vec!["1", "0", "0", "3002"],
-        "selfhost runner は複数 binder を単一引数へ縮退させて property を実行してはならない"
+        "selfhost runner は 3 binder property を profile 外として拒否すべき"
     );
 }
 
