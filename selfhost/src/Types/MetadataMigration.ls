@@ -20,10 +20,29 @@
 (defn legacy-property-disposition [] 3)
 (defn legacy-manual-disposition [] 4)
 
+(defn legacy-migration-message [code disposition]
+  (if (= code (ambiguous-legacy-code))
+    "legacy :example は silent conversion できません。manual review が必要です"
+    (if (= code (legacy-invariant-code))
+      "legacy :invariant は :property / :postcondition への移行候補です"
+      (if (= disposition (legacy-assertion-disposition))
+        "Bool legacy :example は strict :assert への移行候補です"
+        "legacy :example は docs-only :example として保持する候補です"))))
+
 (defn legacy-migration-row [code disposition start end owner]
-  (vector-push
-    (vector-push-quad-rooted (vector-new 4) code disposition start end)
-    owner))
+  (let [base (vector-push-single-rooted
+      (vector-push-quad-rooted (vector-new 4) code disposition start end)
+      owner)]
+    (do
+      (root_push base)
+      (let [message (legacy-migration-message code disposition)]
+        (do
+          (root_push message)
+          (let [result (vector-push base message)]
+            (do
+              (root_pop)
+              (root_pop)
+              result)))))))
 
 (defn legacy-example-row-for-expression [expression env counter start end owner]
   (let [result (infer-expr expression env (subst-new) counter)]
