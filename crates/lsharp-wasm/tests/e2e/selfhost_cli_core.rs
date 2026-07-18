@@ -6231,6 +6231,83 @@ fn test_e2e_selfhost_parser_preserves_ordered_property_forms() {
     );
 }
 
+/// EC-M1-02: selfhost parser が deterministic property を typed contract shape へ投影すること
+#[test]
+fn test_e2e_selfhost_parser_projects_typed_property_sampling_contract() {
+    let harness = r#"
+(defn main []
+  (let [program (parse-program "(defn identity [x] :property [(for-all [value Int] :cases 3 :postcondition (= result value))] x)")
+        contracts (extract-parser-typed-property-contracts program)
+        contract (vector-get contracts 0)
+        binders (vector-get contract 1)
+        binder (vector-get binders 0)
+        preconditions (vector-get contract 2)
+        postcondition (vector-get contract 3)
+        sampling (vector-get contract 4)]
+    (do
+      (print (vector-length contracts))
+      (print (if (= (vector-get contract 0) (name-hash "identity" 0 8)) 1 0))
+      (print (vector-length binders))
+      (print (if (= (vector-get binder 0) (name-hash "value" 0 5)) 1 0))
+      (print (if (= (vector-get binder 1) (name-hash "Int" 0 3)) 1 0))
+      (print (vector-get binder 2))
+      (print (vector-length preconditions))
+      (print (vector-get postcondition 0))
+      (print (vector-get sampling 0))
+      (print (vector-get sampling 1))
+      (print-string (vector-get sampling 2))
+      (print-string "\n")
+      (print (vector-get sampling 3))
+      (print (vector-get sampling 4))
+      (print (vector-get contract 5))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_test_runner_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec![
+            "1", "1", "1", "1", "1", "1", "0", "5", "3", "0",
+            "type-directed-splitmix64-v1", "1", "0", "0",
+        ],
+        "selfhost property は owner/binder/predicate/sampling の typed contract shape を Rust canonical IR に対応付けるべき"
+    );
+}
+
+/// EC-M1-02: selfhost typed projection が未対応 sampling option を明示拒否すること
+#[test]
+fn test_e2e_selfhost_parser_keeps_typed_property_profile_boundary() {
+    let harness = r#"
+(defn main []
+  (let [program (parse-program "(defn identity [x] :property [(for-all [value Int] :cases 3 :seed 42 :postcondition (= result value))] x)")
+        contracts (extract-parser-typed-property-contracts program)
+        contract (vector-get contracts 0)]
+    (do
+      (print (vector-length contracts))
+      (print (vector-length (vector-get contract 1)))
+      (print (vector-length (vector-get contract 4)))
+      (print (vector-get contract 5))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_test_runner_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["1", "0", "0", "3002"],
+        "selfhost typed property projection は未対応 sampling option を default 値へ丸めず明示拒否するべき"
+    );
+}
+
 /// EC-M1-03: selfhost metadata runner が未接続の canonical :property を検出すること
 #[test]
 fn test_e2e_selfhost_runner_reports_unimplemented_property_boundary() {
@@ -7783,8 +7860,10 @@ fn test_e2e_selfhost_parser_contract_suite_projection_separates_legacy_forms() {
       (print (vector-get (vector-get pending 1) 0))
       (print (vector-length (vector-get (vector-get executable 0) 1)))
       (print (vector-length (vector-get (vector-get executable 1) 1)))
-      (print-string (vector-get (vector-get executable 2) 1))
+      (print-string (vector-get (vector-get ordered 3) 1))
       (print-string "\n")
+      (print (vector-length (vector-get (vector-get executable 2) 1)))
+      (print (vector-get (vector-get (vector-get executable 2) 1) 4))
       (print (vector-get (vector-get (vector-get pending 1) 1) 0))
       0)))
 "#;
@@ -7810,8 +7889,61 @@ fn test_e2e_selfhost_parser_contract_suite_projection_separates_legacy_forms() {
             "1",
             "(for-all [x Int] :cases 3 :postcondition (= result x))",
             "5",
+            "0",
+            "5",
         ],
         "parser-owned contract suite は canonical forms と legacy migration forms を分離し、順序を保持するべき"
+    );
+}
+
+/// EC-M1-02: parser-owned ContractSuite が canonical :property payload を typed shape へ投影すること
+#[test]
+fn test_e2e_selfhost_parser_contract_suite_projects_typed_property_payload() {
+    let harness = r#"
+(defn main []
+  (let [src "(defn identity [x] :property [(for-all [value Int] :cases 3 :postcondition (= result value))] x)"
+        suites (extract-parser-contract-suites src)
+        suite (vector-get suites 0)
+        executable (vector-get suite 2)
+        property (vector-get executable 0)
+        payload (vector-get property 1)
+        binders (vector-get payload 0)
+        binder (vector-get binders 0)
+        preconditions (vector-get payload 1)
+        postcondition (vector-get payload 2)
+        sampling (vector-get payload 3)]
+    (do
+      (print (vector-length suites))
+      (print (vector-length executable))
+      (print (vector-get property 0))
+      (print (vector-length binders))
+      (print (if (= (vector-get binder 0) (name-hash "value" 0 5)) 1 0))
+      (print (if (= (vector-get binder 1) (name-hash "Int" 0 3)) 1 0))
+      (print (vector-get binder 2))
+      (print (vector-length preconditions))
+      (print (vector-get postcondition 0))
+      (print (vector-get sampling 0))
+      (print (vector-get sampling 1))
+      (print-string (vector-get sampling 2))
+      (print-string "\n")
+      (print (vector-get sampling 3))
+      (print (vector-get sampling 4))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_test_runner_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec![
+            "1", "1", "5", "1", "1", "1", "1", "0", "5", "3", "0",
+            "type-directed-splitmix64-v1", "1", "0",
+        ],
+        "parser-owned ContractSuite は canonical property の typed binder/predicate/sampling を raw string のまま返すべきではない"
     );
 }
 

@@ -69,7 +69,16 @@
         0
         (property-runner-digits? src (+ idx 1) end)))))
 
-;; [binder-name-hash, binder-is-int, binder-close]
+;; 4 要素を root 付きで追加する local helper。PropertyRunner の既存 import 境界を保つ。
+(defn property-runner-push-four [first second third fourth]
+  (let [with-three (vector-push-triple-rooted
+      (vector-new 4)
+      first
+      second
+      third)]
+    (vector-push-single-rooted with-three fourth)))
+
+;; [binder-name-hash, binder-is-int, binder-close, binder-type-hash]
 (defn property-runner-binder-info [payload open close]
   (let [len (string-length payload)
     name-start (property-runner-skip-space payload (+ open 1) len)
@@ -78,12 +87,12 @@
     type-end (property-runner-atom-end payload type-start len)
     after-type (property-runner-skip-space payload type-end len)]
     (if (= after-type close)
-      (vector-push-triple-rooted
-        (vector-new 3)
+      (property-runner-push-four
         (name-hash payload name-start name-end)
         (if (string-eq (substring payload type-start type-end) "Int") 1 0)
-        close)
-      (vector-push-triple-rooted (vector-new 3) 0 0 -1))))
+        close
+        (name-hash payload type-start type-end))
+      (property-runner-push-four 0 0 -1 0))))
 
 ;; [case-count, case-count-valid, case-value-end]
 (defn property-runner-cases-info [payload marker]
@@ -179,6 +188,104 @@
       (vector-get cases-info 0)
       profile-code)))
 
+;; Rust canonical Property の移行期 deterministic profile を typed shape へ投影する。
+;; contract: [owner, binders, preconditions, postcondition, sampling, profile-code]
+;; binder: [name-hash, type-name-hash, generator-kind(1=type-directed)]
+;; sampling: [cases, seed, generator-version, shrink(1=true), coverage-count]
+(defn make-property-typed-binder [binder-info]
+  (vector-push-triple-rooted
+    (vector-new 3)
+    (vector-get binder-info 0)
+    (vector-get binder-info 3)
+    1))
+
+(defn make-property-sampling-plan [cases]
+  (let [with-fields (property-runner-push-four
+      cases
+      0
+      "type-directed-splitmix64-v1"
+      1)]
+    (vector-push-single-rooted with-fields 0)))
+
+(defn make-property-typed-contract [owner payload]
+  (let [profile-code (property-runner-profile-code payload)
+    open (property-runner-find-from payload "[" 0)
+    close (property-runner-find-from payload "]" (+ open 1))
+    binder-info (if (and (>= open 0) (>= close 0))
+      (property-runner-binder-info payload open close)
+      (property-runner-push-four 0 0 -1 0))
+    cases-marker (property-runner-find-from payload ":cases" 0)
+    cases-info (if (>= cases-marker 0)
+      (property-runner-cases-info payload cases-marker)
+      (vector-push-triple-rooted (vector-new 3) 0 0 -1))]
+    (do
+      (root_push payload)
+      (root_push binder-info)
+      (root_push cases-info)
+      (let [binders (if (= profile-code 0)
+        (vector-push-single-rooted
+          (vector-new 0)
+          (make-property-typed-binder binder-info))
+        (vector-new 0))]
+        (do
+          (root_push binders)
+          (let [preconditions (vector-new 0)
+            postcondition (if (= profile-code 0)
+              (property-runner-postcondition payload)
+              0)
+            sampling (if (= profile-code 0)
+              (make-property-sampling-plan (vector-get cases-info 0))
+              (vector-new 0))]
+            (do
+              (root_push preconditions)
+              (root_push postcondition)
+              (root_push sampling)
+              (let [row0 (property-runner-push-four
+                  owner
+                  binders
+                  preconditions
+                  postcondition)]
+                (do
+                  (root_push row0)
+                  (let [row1 (vector-push-single-rooted row0 sampling)]
+                    (do
+                      (root_push row1)
+                      (let [row2 (vector-push-single-rooted row1 profile-code)]
+                        (do
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          row2)))))))))))))
+
+(defn property-runner-form-typed-contract [form owner]
+  (let [payload (if (> (vector-length form) 1) (vector-get form 1) "")]
+    (make-property-typed-contract owner payload)))
+
+(defn property-runner-form-typed-payload [form owner]
+  (let [contract (property-runner-form-typed-contract form owner)]
+    (do
+      (root_push contract)
+      (let [payload0 (property-runner-push-four
+          (vector-get contract 1)
+          (vector-get contract 2)
+          (vector-get contract 3)
+          (vector-get contract 4))]
+        (do
+          (root_push payload0)
+          (let [payload (vector-push-single-rooted
+              payload0
+              (vector-get contract 5))]
+            (do
+              (root_pop)
+              (root_pop)
+              payload)))))))
+
 (defn property-runner-ordered-forms [decl]
   (let [param-count (vector-get decl 2)
     body-end (+ 4 param-count)
@@ -247,6 +354,76 @@
     0
     (vector-length program)
     (vector-new 4)))
+
+(defn property-runner-append-typed-forms-loop [forms idx count owner results]
+  (if (>= idx count)
+    results
+    (let [form (vector-get forms idx)
+      next-results (if (= (vector-get form 0) (contract-form-property))
+        (vector-push-single-rooted
+          results
+          (property-runner-form-typed-contract form owner))
+        results)]
+      (do
+        (root_push next-results)
+        (let [parsed (property-runner-append-typed-forms-loop
+            forms
+            (+ idx 1)
+            count
+            owner
+            next-results)]
+          (do
+            (root_pop)
+            parsed))))))
+
+(defn property-runner-append-typed-decl [decl results]
+  (let [tag (vector-get decl 0)]
+    (if (= tag (ast-defn))
+      (let [forms (property-runner-ordered-forms decl)]
+        (if (= forms 0)
+          results
+          (property-runner-append-typed-forms-loop
+            forms
+            0
+            (vector-length forms)
+            (vector-get decl 1)
+            results)))
+      (if (= tag (ast-private))
+        (property-runner-append-typed-decl (vector-get decl 1) results)
+        (if (= tag (ast-module-decl))
+          (property-runner-append-typed-module-loop
+            decl
+            0
+            (vector-get decl 2)
+            results)
+          results)))))
+
+(defn property-runner-append-typed-module-loop [module-node idx count results]
+  (if (>= idx count)
+    results
+    (property-runner-append-typed-module-loop
+      module-node
+      (+ idx 1)
+      count
+      (property-runner-append-typed-decl
+        (vector-get module-node (+ idx 3))
+        results))))
+
+(defn property-runner-append-typed-program-loop [program idx count results]
+  (if (>= idx count)
+    results
+    (property-runner-append-typed-program-loop
+      program
+      (+ idx 1)
+      count
+      (property-runner-append-typed-decl (vector-get program idx) results))))
+
+(defn extract-parser-typed-property-contracts [program]
+  (property-runner-append-typed-program-loop
+    program
+    0
+    (vector-length program)
+    (vector-new 0)))
 
 (defn property-test-case-profile-code [test-case]
   (vector-get test-case 5))

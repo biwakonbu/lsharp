@@ -155,14 +155,23 @@
     1
     0))
 
+(defn make-parser-contract-form [form owner]
+  (let [kind (vector-get form 0)
+    payload (if (= kind (contract-form-property))
+      (property-runner-form-typed-payload form owner)
+      (if (> (vector-length form) 1) (vector-get form 1) 0))]
+    (vector-push-pair-rooted (vector-new 2) kind payload)))
+
 (defn partition-parser-contract-forms-loop
-  [forms idx count executable pending]
+  [forms idx count owner executable pending]
   (if (>= idx count)
     (vector-push-pair-rooted (vector-new 2) executable pending)
     (let [form (vector-get forms idx)
       kind (vector-get form 0)
       next-executable (if (= (parser-contract-form-executable? kind) 1)
-        (vector-push-single-rooted executable form)
+        (vector-push-single-rooted
+          executable
+          (make-parser-contract-form form owner))
         executable)
       next-pending (if (= (parser-contract-form-pending? kind) 1)
         (vector-push-single-rooted pending form)
@@ -174,6 +183,7 @@
             forms
             (+ idx 1)
             count
+            owner
             next-executable
             next-pending)]
           (do
@@ -181,11 +191,12 @@
             (root_pop)
             result))))))
 
-(defn partition-parser-contract-forms [forms]
+(defn partition-parser-contract-forms [forms owner]
   (partition-parser-contract-forms-loop
     forms
     0
     (vector-length forms)
+    owner
     (vector-new 0)
     (vector-new 0)))
 
@@ -197,7 +208,8 @@
           results
           (do
             (root_push forms)
-            (let [partitioned (partition-parser-contract-forms forms)]
+            (let [partitioned
+                (partition-parser-contract-forms forms (vector-get decl 1))]
               (do
                 (root_push partitioned)
                 (let [suite (make-parser-contract-suite

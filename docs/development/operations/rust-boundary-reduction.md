@@ -156,6 +156,14 @@ Evidence: `metadata_property` 2件、`metadata_contract_property` 2件、`metada
 
 これは Rust typed metadata と selfhost raw payload/明示拒否の verified slice であり、selfhost typed binder projection、property non-vacuity の全条件、type-directed sampling/shrink、property evaluator、Rust/selfhost diagnostic/span parity、Wasm artifact/runtime、Mac Apple Silicon / Linux x86_64 の current-source native gate、formatter の typed projection と docs/public command parity は残件である。したがって EC-M1-03、EC-M1-04、または全機能 Rust-free 完了には使わず、Rust oracle / bootstrap 境界を維持する。
 
+### EC-M1-02 selfhost typed deterministic property projection (2026-07-18)
+
+Selfhost `Tools.Test.PropertyRunner` と `Tools.Test.TestRunner` は、移行期の deterministic property smoke profile（`for-all` の単一 `Int` binder、positive `cases`、`postcondition`、追加 option なし）を `extract-parser-contract-suites` の executable property form へ接続し、`[kind, [binders, preconditions, postcondition, sampling, profile-code]]` へ投影する。lossless な `ordered-forms` は raw payload を維持するため formatter/source-order の境界を壊さない。binder は名前/type hash と type-directed generator marker を持ち、sampling は Rust canonical `SamplingPlan` と同じ順序で cases、seed `0`、generator version、shrink `true`、coverage 件数 `0` を保持する。`seed` など未対応 option は typed default に丸めず、profile code `3002` と空の typed payload で明示拒否する。
+
+Evidence: RED の `test_e2e_selfhost_parser_contract_suite_projects_typed_property_payload`、GREEN の同 test、`test_e2e_selfhost_parser_contract_suite_projection_separates_legacy_forms`、`test_e2e_selfhost_parser_projects_typed_property_sampling_contract`、`test_e2e_selfhost_parser_keeps_typed_property_profile_boundary`、parser regression 4件、runner regression 3件、`./target/debug/lsharp check selfhost/src/Tools/Test/PropertyRunner.ls` / `TestRunner.ls`（各 `Fn` / `diagnostics:0`）。
+
+これは Rust `Property` / `SamplingPlan` の deterministic Int smoke profile に限定した selfhost projection である。複数 binder、precondition、一般の `TypeExpr`、既定 cases `256`、seed/shrink の source option、coverage bucket、source span、type-directed generator 実装、property evaluator、Rust/selfhost diagnostic parity、Wasm artifact/runtime、Mac Apple Silicon / Linux x86_64 の current-source native gate は残件であり、EC-M1-02 / EC-M1-03 または全機能 Rust-free 完了には使わない。Rust oracle / bootstrap 境界は維持する。
+
 ### EC-M1-03 selfhost canonical `:property` formatter bridge (2026-07-18)
 
 Selfhost `Tools.Text.FormatterDecl` は ordered form kind `5` の raw payload を source-aware / canonical formatter の両方で `:property [...]` として再構成する。typed projection や evaluator が未実装でも、canonical property の binder、sampling options、precondition、postcondition、body を formatter が削除・並べ替えしないことを固定した。
