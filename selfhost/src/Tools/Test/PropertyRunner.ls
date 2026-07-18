@@ -111,6 +111,12 @@
         (name-hash payload type-start type-end))
       (property-runner-push-four 0 0 -1 0))))
 
+(defn property-runner-type-supported? [payload type-start type-end]
+  (let [type-hash (name-hash payload type-start type-end)]
+    (if (or (= type-hash (property-runner-type-int-hash))
+        (or (= type-hash (property-runner-type-bool-hash))
+          (= type-hash (property-runner-type-string-hash)))) 1 0)))
+
 (defn property-runner-collect-typed-binders-loop [payload idx close len result]
   (let [name-start (property-runner-skip-space payload idx len)]
     (if (>= name-start close)
@@ -118,15 +124,13 @@
       (let [name-end (property-runner-atom-end payload name-start len)
         type-start (property-runner-skip-space payload name-end len)
         type-end (property-runner-atom-end payload type-start len)
-        type-text (if (> type-end type-start) (substring payload type-start type-end) "")
-        type-supported (if (or
-            (string-eq type-text "Int")
-            (or (string-eq type-text "Bool") (string-eq type-text "String"))) 1 0)
         valid (if (and
             (> name-end name-start)
             (and
               (> type-end type-start)
-              (and (<= type-end close) (= type-supported 1)))) 1 0)]
+              (and
+                (<= type-end close)
+                (= (property-runner-type-supported? payload type-start type-end) 1)))) 1 0)]
         (if (= valid 0)
           (vector-push-pair-rooted (vector-new 2) result 0)
           (let [binder (vector-push-triple-rooted
@@ -152,15 +156,22 @@
                       (root_pop)
                       parsed)))))))))))
 
-(defn property-runner-typed-binders-info [payload open close]
-  (if (and (>= open 0) (and (>= close 0) (> close open)))
-    (property-runner-collect-typed-binders-loop
+(defn property-runner-typed-binders-info [payload]
+  (let [close (property-runner-find-from
       payload
-      (+ open 1)
-      close
-      (string-length payload)
-      (vector-new 0))
-    (vector-push-pair-rooted (vector-new 2) (vector-new 0) 0)))
+      "]"
+      (+ (property-runner-find-from payload "[" 0) 1))]
+    (if (and
+        (>= (property-runner-find-from payload "[" 0) 0)
+        (and (>= close 0)
+          (> close (property-runner-find-from payload "[" 0))))
+      (property-runner-collect-typed-binders-loop
+        payload
+        (+ (property-runner-find-from payload "[" 0) 1)
+        close
+        (string-length payload)
+        (vector-new 0))
+      (vector-push-pair-rooted (vector-new 2) (vector-new 0) 0))))
 
 ;; [case-count, case-count-valid, case-value-end]
 (defn property-runner-cases-info [payload marker]
@@ -242,7 +253,7 @@
     start (property-runner-skip-space payload 0 len)
     open (property-runner-find-from payload "[" start)
     close (property-runner-find-from payload "]" (+ open 1))
-    binder-info (property-runner-typed-binders-info payload open close)]
+    binder-info (property-runner-typed-binders-info payload)]
     (if (= (property-runner-prefix? payload start "(for-all") 0)
       3002
       (if (or (< open 0) (< close 0))
@@ -276,16 +287,16 @@
 
 (defn property-runner-precondition-text [payload]
   (let [marker (property-runner-find-from payload ":precondition" 0)
-    len (string-length payload)
-    open (if (>= marker 0)
-      (property-runner-find-from payload "[" (+ marker 13))
-      -1)
-    end (if (>= open 0)
-      (property-runner-balanced-bracket-end payload open len 0)
-      -1)]
-    (if (and (>= open 0) (> end (+ open 1)))
-      (substring payload (+ open 1) (- end 1))
-      "")))
+    len (string-length payload)]
+    (if (< marker 0)
+      ""
+      (let [precondition-open (property-runner-find-from payload "[" (+ marker 13))]
+        (if (< precondition-open 0)
+          ""
+          (let [bracket-end (property-runner-balanced-bracket-end payload precondition-open len 0)]
+            (if (> bracket-end (+ precondition-open 1))
+              (substring payload (+ precondition-open 1) (- bracket-end 1))
+              "")))))))
 
 (defn property-runner-preconditions [payload]
   (let [text (property-runner-precondition-text payload)]
@@ -360,7 +371,7 @@
     cases-info (if (>= cases-marker 0)
       (property-runner-cases-info payload cases-marker)
       (vector-push-triple-rooted (vector-new 3) 0 0 -1))
-    binder-info (property-runner-typed-binders-info payload open close)]
+    binder-info (property-runner-typed-binders-info payload)]
     (do
       (root_push payload)
       (root_push binder-info)
@@ -429,15 +440,20 @@
               (root_pop)
               payload)))))))
 
+(defn property-runner-signature-node? [candidate]
+  (if (= candidate 0)
+    0
+    (if (= (vector-get candidate 0) (ast-defn-signature)) 1 0)))
+
 (defn property-runner-ordered-forms [decl]
   (let [param-count (vector-get decl 2)
     body-end (+ 4 param-count)
     signature (if (< body-end (vector-length decl)) (vector-get decl body-end) 0)
-    offset (if (and (!= signature 0) (= (vector-get signature 0) (ast-defn-signature))) 1 0)
+    offset (if (= (property-runner-signature-node? signature) 1) 1 0)
     meta-index (+ body-end offset)]
     (if (< meta-index (vector-length decl))
       (let [meta (vector-get decl meta-index)]
-        (if (and (!= meta 0) (> (vector-length meta) 5)) (vector-get meta 5) 0))
+        (if (> (vector-length meta) 5) (vector-get meta 5) 0))
       0)))
 
 (defn property-runner-append-forms-loop [forms idx count owner results]
@@ -788,11 +804,12 @@
   (if (>= idx count)
     results
     (let [contract (vector-get contracts idx)
-      next-results (vector-push-single-rooted
-        results
-        (property-runner-typed-contract-test-case
-          contract
-          (vector-length results)))]
+      ;; vector-push は容量内では同じベクタを更新するため、追加前の index を保存する。
+      append-index (vector-length results)
+      test-case (property-runner-typed-contract-test-case
+        contract
+        append-index)
+      next-results (vector-push-single-rooted results test-case)]
       (do
         (root_push next-results)
         (let [parsed (property-runner-append-typed-test-cases-loop

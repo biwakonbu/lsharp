@@ -1858,7 +1858,8 @@
   (if (>= idx (vector-length binders))
     env
     (property-bind-unit-binders-loop
-      (env-bind env (vector-get binders idx) (value-unit))
+      ;; map-get の未登録値 0 と区別するため、存在確認用の raw sentinel を束縛する。
+      (env-bind env (vector-get binders idx) 1)
       binders
       (+ idx 1))))
 

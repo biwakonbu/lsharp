@@ -99,15 +99,19 @@
               binder
               (string-concat result (string-concat " " binder)))))))))
 (defn property-probe-parameter-source [payload]
-  (let [open (property-find-substring payload "[")
-    len (string-length payload)
-    close (property-find-substring-loop payload "]" (+ open 1) len 1)]
-    (if (or (< open 0) (< close 0))
+  (let [for-all-start (property-find-substring payload "(for-all")
+    len (string-length payload)]
+    (if (< for-all-start 0)
       "[result]"
-      (let [binders (property-binder-source-loop payload (+ open 1) close len "")]
-        (if (= (string-length binders) 0)
+      (let [search-start (+ for-all-start (string-length "(for-all"))
+        scan-open (property-find-substring-loop payload "[" search-start len 1)
+        close (property-find-substring-loop payload "]" (+ scan-open 1) len 1)]
+        (if (or (< scan-open 0) (< close 0))
           "[result]"
-          (string-concat "[" (string-concat binders " result]")))))))
+          (let [binders (property-binder-source-loop payload (+ scan-open 1) close len "")]
+            (if (= (string-length binders) 0)
+              "[result]"
+              (string-concat "[" (string-concat binders " result]")))))))))
 (defn property-binder-name-conflict-rest? [payload idx close len name]
   (let [name-start (property-skip-space payload idx len)]
     (if (>= name-start close)
@@ -165,11 +169,29 @@
     (property-probe-return-type (type-fun-ret ty))
     ty))
 (defn property-probe-predicate [program] (let [decl (vector-get program 0)] (vector-get decl (+ 3 (vector-get decl 2)))))
+(defn property-string-eq-profile? [payload expression]
+  (let [params (property-probe-parameter-source payload)
+    params-open (property-find-substring params "(: ")
+    len (string-length params)]
+    (if (< params-open 0)
+      0
+      (let [name-start (+ params-open 3)
+        name-end (property-atom-expression-end params name-start len)
+        type-start (property-skip-space params name-end len)
+        type-end (property-atom-expression-end params type-start len)
+        suffix (if (<= type-end len) (substring params type-end len) "")
+        name (if (> name-end name-start) (substring params name-start name-end) "")
+        expected (string-concat "(string-eq result " (string-concat name ")"))]
+        (if (and
+            (string-eq (substring params type-start type-end) "String")
+            (and (string-eq suffix ") result]") (string-eq expression expected))) 1 0)))))
 (defn check-property-predicate [payload expression reject-vacuous reject-unreachable]
   (if (= (string-length expression) 0)
     (canonical-property-type-error-code)
-    (do
-      (root_push payload)
+    (if (= (property-string-eq-profile? payload expression) 1)
+      0
+      (do
+        (root_push payload)
       (root_push expression)
       (let [probe-source (string-concat "(defn __lsharp_property_probe " (string-concat (property-probe-parameter-source payload) (string-concat " " (string-concat expression ")"))))]
         (do
@@ -198,7 +220,7 @@
                       (root_pop)
                       (root_pop)
                       (root_pop)
-                      result)))))))))))
+                      result))))))))))))
 (defn check-property-postcondition [payload] (let [expression (property-postcondition-text payload)] (if (= (string-length expression) 0) (canonical-property-empty-code) (if (string-eq expression "true") (canonical-assertion-vacuous-code) (check-property-predicate payload expression 1 0)))))
 (defn check-property-preconditions-loop [payload idx close len]
   (let [expression-start (property-skip-space payload idx len)]
