@@ -49,7 +49,13 @@
 (defn run-build [file-path opts] (if (file-exists? file-path) (run-compile file-path opts) (exit-compile-error)))
 (defn run-fmt [file-path opts] (if (file-exists? file-path) (run-fmt-source (read-file file-path) opts) (exit-compile-error)))
 (defn parse-diagnostics-loop [spans pos-ref src diagnostics] (if (== (p-current spans pos-ref) 99) diagnostics (let [before (ref-get pos-ref) parsed (parse-with-recovery spans pos-ref src diagnostics) next-diagnostics (vector-get parsed 1)] (if (= (ref-get pos-ref) before) (do (p-advance pos-ref) (parse-diagnostics-loop spans pos-ref src next-diagnostics)) (parse-diagnostics-loop spans pos-ref src next-diagnostics)))))
-(defn parse-diagnostics [src] (let [spans (tokenize-with-spans src) pos-ref (ref-new 0) diagnostics (parse-diagnostics-loop spans pos-ref src (collect-diagnostics))] diagnostics))
+(defn parse-diagnostics [src]
+  (let [spans (tokenize-with-spans src)
+    pos-ref (ref-new 0)
+    delimiter-diagnostics (parse-delimiter-diagnostics spans src)]
+    (if (> (vector-length delimiter-diagnostics) 0)
+      delimiter-diagnostics
+      (parse-diagnostics-loop spans pos-ref src (collect-diagnostics)))))
 (defn check-diagnostics-count-program [program] 0)
 (defn check-diagnostics-first-code [program] 0)
 (defn output-option-flag [arg] (or (string-eq arg "-o") (string-eq arg "--output")))

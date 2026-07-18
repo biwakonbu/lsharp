@@ -84,7 +84,13 @@
     fields4 (legacy-json-append-field fields3 (string-concat "\"migration\":" (legacy-migration-detail-json-summary migration-rows)))]
     (string-concat "{" (string-concat fields4 "}"))))
 (defn parse-diagnostics-loop [spans pos-ref src diagnostics] (if (== (p-current spans pos-ref) 99) diagnostics (let [before (ref-get pos-ref) parsed (parse-with-recovery spans pos-ref src diagnostics) next-diagnostics (vector-get parsed 1)] (if (= (ref-get pos-ref) before) (do (p-advance pos-ref) (parse-diagnostics-loop spans pos-ref src next-diagnostics)) (parse-diagnostics-loop spans pos-ref src next-diagnostics)))))
-(defn parse-diagnostics [src] (let [spans (tokenize-with-spans src) pos-ref (ref-new 0) diagnostics (parse-diagnostics-loop spans pos-ref src (collect-diagnostics))] diagnostics))
+(defn parse-diagnostics [src]
+  (let [spans (tokenize-with-spans src)
+    pos-ref (ref-new 0)
+    delimiter-diagnostics (parse-delimiter-diagnostics spans src)]
+    (if (> (vector-length delimiter-diagnostics) 0)
+      delimiter-diagnostics
+      (parse-diagnostics-loop spans pos-ref src (collect-diagnostics)))))
 (defn check-diagnostics-count-program [program] (infer-program-analysis-diagnostic-count (infer-program-analysis program)))
 (defn check-diagnostics-first-code [program] (infer-program-analysis-first-error-code (infer-program-analysis program)))
 (defn builtin-type-name-text [type-hash] (if (= type-hash 100) "Int" (if (= type-hash 200) "Bool" (if (= type-hash 300) "String" (if (= type-hash 400) "Float" (if (= type-hash 500) "Unit" (string-concat "type-" (int-to-string type-hash))))))))

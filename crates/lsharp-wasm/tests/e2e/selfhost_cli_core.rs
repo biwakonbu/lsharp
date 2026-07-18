@@ -8292,6 +8292,28 @@ fn test_e2e_selfhost_cli_check_rejects_missing_property_scalar_option_value() {
     );
 }
 
+/// EC-M1-04: selfhost parser の delimiter diagnostics が unclosed property expression を見落とさないこと。
+#[test]
+fn test_e2e_selfhost_parser_delimiter_diagnostics_rejects_unclosed_property_expression() {
+    let harness = r#"
+(defn main []
+  (let [source "(defn identity [x] :property [(for-all [x Int] :postcondition (= result x))] x"
+        diagnostics (parse-delimiter-diagnostics (tokenize-with-spans source) source)]
+    (do
+      (print (vector-length diagnostics))
+      (print (vector-get (vector-get diagnostics 0) 1))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_parser_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(lines, vec!["1", "1001"], "selfhost delimiter diagnostics は unclosed property expression を拒否するべき");
+}
+
 /// EC-M1-02: selfhost test が canonical :case の型エラーを実行前に拒否すること
 #[test]
 fn test_e2e_selfhost_cli_test_rejects_invalid_canonical_case() {

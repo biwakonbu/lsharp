@@ -649,13 +649,15 @@
 (defn parse-skip-bracket-v3 [spans pos-ref depth]
   (if (<= depth 0) 0
     (let [kind (p-current spans pos-ref)]
-      (do
-        (p-advance pos-ref)
-        (if (== kind 2)
-          (parse-skip-bracket-v3 spans pos-ref (+ depth 1))
-          (if (== kind 3)
-            (parse-skip-bracket-v3 spans pos-ref (- depth 1))
-            (parse-skip-bracket-v3 spans pos-ref depth)))))))
+      (if (== kind 99)
+        0
+        (do
+          (p-advance pos-ref)
+          (if (== kind 2)
+            (parse-skip-bracket-v3 spans pos-ref (+ depth 1))
+            (if (== kind 3)
+              (parse-skip-bracket-v3 spans pos-ref (- depth 1))
+              (parse-skip-bracket-v3 spans pos-ref depth))))))))
 
 (defn parse-skip-brace-v3 [spans pos-ref depth]
   (if (<= depth 0) 0
@@ -3200,6 +3202,44 @@
 ;; 診断を追加
 (defn add-diagnostic [diagnostics diag]
   (vector-push diagnostics diag))
+
+;; parse recovery より先に delimiter の未閉鎖を検出し、深い parser 再帰を EOF で止める。
+(defn parse-delimiter-balance-loop [spans idx count paren-depth bracket-depth first-code]
+  (if (>= idx count)
+    (if (> first-code 0)
+      first-code
+      (if (> bracket-depth 0) 1002 (if (> paren-depth 0) 1001 0)))
+    (let [kind (span-kind spans idx)]
+      (if (== kind 0)
+        (parse-delimiter-balance-loop spans (+ idx 1) count (+ paren-depth 1) bracket-depth first-code)
+        (if (== kind 1)
+          (parse-delimiter-balance-loop
+            spans
+            (+ idx 1)
+            count
+            (if (> paren-depth 0) (- paren-depth 1) paren-depth)
+            bracket-depth
+            (if (and (= paren-depth 0) (= first-code 0)) 1001 first-code))
+          (if (== kind 2)
+            (parse-delimiter-balance-loop spans (+ idx 1) count paren-depth (+ bracket-depth 1) first-code)
+            (if (== kind 3)
+              (parse-delimiter-balance-loop
+                spans
+                (+ idx 1)
+                count
+                paren-depth
+                (if (> bracket-depth 0) (- bracket-depth 1) bracket-depth)
+                (if (and (= bracket-depth 0) (= first-code 0)) 1002 first-code))
+              (parse-delimiter-balance-loop spans (+ idx 1) count paren-depth bracket-depth first-code))))))))
+(defn parse-delimiter-diagnostic-code [spans]
+  (parse-delimiter-balance-loop spans 0 (/ (vector-length spans) 3) 0 0 0))
+(defn parse-delimiter-diagnostics [spans src]
+  (let [code (parse-delimiter-diagnostic-code spans)]
+    (if (= code 0)
+      (vector-new 0)
+      (vector-push-single-rooted-v3
+        (vector-new 0)
+        (make-diagnostic 0 code (string-length src) 0)))))
 
 ;; 次の同期ポイント (閉じ括弧 or トップレベル) まで回復
 ;; kind=1 (RParen), kind=99 (EOF) で停止

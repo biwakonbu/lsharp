@@ -278,6 +278,12 @@ Rust `Syntax.Parser` は `:seed` / `:shrink` の値が次の option または pr
 
 Evidence: RED の `test_e2e_selfhost_cli_check_rejects_missing_property_scalar_option_value`（`BEGIN / 0 / 0 / 0 / 0`）、GREEN の同 test、`property_form_rejects_missing_scalar_option_value` を含む `cargo test -p lsharp-syntax --test metadata_property -- --nocapture`（7 tests）。残るのは missing list/expression option value の diagnostic/span parity、malformed bracket、dynamic precondition evaluator、sampling/shrink、full CLI artifact/runtime、Mac Apple Silicon / Linux x86_64 の current-source native gate である。
 
+### EC-M1-04 unclosed delimiter diagnostic boundary (2026-07-18)
+
+Rust `Syntax.Parser` は property payload の外側 bracket が閉じていない入力を parse error として拒否する。selfhost `Syntax.Parser` は bracket skip の EOF を明示的に停止し、`parse-diagnostics` の前段に `()` / `[]` の delimiter balance scan を追加した。未閉鎖の括弧は `1001`、未閉鎖の角括弧は `1002` の diagnostic record として返し、parse recovery の深い再帰が EOF で無限に進まないようにする。CLI の `App.Cli`、`App.EmbeddedCli`、`App.SmokeCli` は同じ scan を parse diagnostics の入口へ接続している。
+
+Evidence: RED で未閉鎖 property expression の selfhost parse diagnostics が長時間完走しなかった。GREEN の `property_form_rejects_unclosed_outer_bracket`、`test_e2e_selfhost_parser_delimiter_diagnostics_rejects_unclosed_property_expression`（`1 / 1001`）、`cargo test -p lsharp-syntax --test metadata_property -- --nocapture`（8 tests）、`Parser.ls` と各 `App.*` の source check、`bash scripts/audit_docs.sh` を確認した。この slice は未閉鎖 delimiter の停止と明示診断を閉じるが、mismatched delimiter の詳細 span、missing list/expression option value、dynamic precondition evaluator、sampling/shrink、full CLI artifact/runtime、Mac Apple Silicon / Linux x86_64 の current-source native gate は残件である。
+
 ### scoped polymorphic `defn` signature (2026-07-15)
 
 `TypeInferFunctions.ls` は `defn` の parameter / return annotation に現れる scoped 名ごとに共有 fresh 型変数を割り当て、通常の型環境で関数を一般化する。これにより `id` を Int と Bool の別 call site で使え、`choose-first [(: x a) (: y b)] : a x` では `a` と `b` を独立に具体化できる。GADT refinement と exhaustiveness は別タスクである。Evidence: `test_e2e_selfhost_scoped_type_var_defn_signature_is_polymorphic`、`test_e2e_selfhost_scoped_multiple_type_vars_defn_signature_is_polymorphic`、`TypeInfer.ls` check。
