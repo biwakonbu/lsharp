@@ -666,3 +666,11 @@ deterministic property profile に単一 `Bool` binder の verified slice を追
 Evidence: Rust `test_run_metadata_tests_executes_bool_property_binder`、`test_run_metadata_tests_rejects_bool_property_above_two_cases`、selfhost `test_e2e_selfhost_runner_executes_bool_property_binder`、`test_e2e_selfhost_runner_rejects_bool_property_above_two_cases`、既存の 2-Int property regression、`PropertyRunner.ls` / `TestRunner.ls` source check（各 `diagnostics:0`）。Rust oracle は Wasm test program の `false` / `true` を実行し、selfhost native bundle は同じ 2 cases を評価して `actual=2` を返す。
 
 これは Bool 全体または EC-M1-05 全体の完了ではない。Bool と Int の混合 generator、複数 Bool binder、constraint/type-directed generator、seed/shrink/coverage bucket、predicate/span parity、current-source Mac Apple Silicon / Linux x86_64 native artifact/runtime gate、stage0 provenance は残件である。したがって、単一 Bool slice の日常開発は Rust なしで進められるが、profile 外 property semantics と Rust oracle / bootstrap / host integration の境界は維持する。
+
+### EC-M1-05 mixed Int/Bool property sampling (2026-07-18)
+
+deterministic property profile を、単一 Bool から 2 binder の `Int`/`Bool` mixed slice へ拡張した。対象は source order を保った `[value Int flag Bool]` または `[flag Bool value Int]`、`:cases 1..2` に限定し、型別の入力列を `[0, false]`, `[1, true]` とする。Rust `PropertySmokeTestSpec` は binder type vector を検査してこの profile を選択し、Wasm test runner は各 binder type の順序に従って literal を生成する。selfhost typed contract も同じ type-name hash vector を test-case へ渡し、`TestRunner` が Int/Bool の値を source order のまま評価する。
+
+Evidence: Rust `test_run_metadata_tests_executes_mixed_int_bool_property_binders` / `test_run_metadata_tests_rejects_mixed_int_bool_property_above_two_cases`、selfhost `test_e2e_selfhost_runner_executes_mixed_int_bool_property_binders` / `test_e2e_selfhost_runner_rejects_mixed_int_bool_property_above_two_cases`、single Bool / two-Int regression、`PropertyRunner.ls` / `TestRunner.ls` source check（各 `diagnostics:0`）。
+
+これは mixed type 全体または EC-M1-05 全体の完了ではない。mixed cases 3 以上、複数 Bool binder、3 binder、一般 `TypeExpr`、constraint/type-directed generator、seed/shrink/coverage bucket、predicate/span parity、current-source Mac Apple Silicon / Linux x86_64 native artifact/runtime gate、stage0 provenance は残件である。verified slice の日常開発は Rust なしで進められるが、profile 外 property semantics と Rust oracle / bootstrap / host integration の境界は維持する。

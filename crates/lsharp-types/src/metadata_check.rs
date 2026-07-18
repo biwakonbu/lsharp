@@ -565,14 +565,13 @@ pub fn property_smoke_test_spec(property: &PropertyForm) -> Option<PropertySmoke
             _ => None,
         })
         .collect::<Option<Vec<_>>>()?;
-    let bool_binder_count = binder_types
-        .iter()
-        .filter(|binder_type| **binder_type == PropertyBinderType::Bool)
-        .count();
-    if bool_binder_count > 0
-        && (bool_binder_count != 1 || binder_types.len() != 1 || cases > 2)
-    {
-        return None;
+    match binder_types.as_slice() {
+        [PropertyBinderType::Int] | [PropertyBinderType::Int, PropertyBinderType::Int] => {}
+        [PropertyBinderType::Bool]
+        | [PropertyBinderType::Int, PropertyBinderType::Bool]
+        | [PropertyBinderType::Bool, PropertyBinderType::Int]
+            if cases <= 2 => {}
+        _ => return None,
     }
     Some(PropertySmokeTestSpec {
         binder_names: property

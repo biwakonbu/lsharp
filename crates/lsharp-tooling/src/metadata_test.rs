@@ -438,6 +438,46 @@ mod tests {
     }
 
     #[test]
+    fn test_run_metadata_tests_executes_mixed_int_bool_property_binders() {
+        let dir = unique_temp_dir("deterministic_property_mixed_int_bool_binders");
+        let file = dir.join("Main.ls");
+        fs::write(
+            &file,
+            "(defn choose [input enabled] :property [(for-all [value Int flag Bool] :cases 2 :postcondition (and (>= value 0) (or flag (not flag))))] enabled)\n",
+        )
+        .unwrap();
+
+        let run = run_metadata_tests(&file)
+            .expect("Int/Bool mixed binder は deterministic typed prefix として実行できるべき");
+        assert_eq!(run.total(), 1);
+        assert_eq!(run.passed(), 1);
+        assert_eq!(run.failed(), 0);
+        assert_eq!(run.results[0].name, "choose_property_0");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_run_metadata_tests_rejects_mixed_int_bool_property_above_two_cases() {
+        let dir = unique_temp_dir("unsupported_mixed_int_bool_property_cases");
+        let file = dir.join("Main.ls");
+        fs::write(
+            &file,
+            "(defn choose [input enabled] :property [(for-all [value Int flag Bool] :cases 3 :postcondition (and (>= value 0) (or flag (not flag))))] enabled)\n",
+        )
+        .unwrap();
+
+        let error = run_metadata_tests(&file)
+            .expect_err("Int/Bool mixed property の cases 3 は narrow profile 外であるべき");
+        assert!(
+            error.to_string().contains("[LS3002]"),
+            "Int/Bool mixed property の cases 3 は LS3002 を返すべき: {error}"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn test_run_metadata_tests_rejects_three_int_property_binders() {
         let dir = unique_temp_dir("unsupported_property_three_binders");
         let file = dir.join("Main.ls");

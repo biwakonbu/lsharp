@@ -635,6 +635,28 @@
 (defn property-runner-bool-binder-count [binders]
   (property-runner-bool-binder-count-loop binders 0 (vector-length binders)))
 
+(defn property-runner-int-binder-count-loop [binders idx count]
+  (if (>= idx count)
+    0
+    (+ (if (= (vector-get (vector-get binders idx) 1) (property-runner-type-int-hash)) 1 0)
+      (property-runner-int-binder-count-loop binders (+ idx 1) count))))
+
+(defn property-runner-int-binder-count [binders]
+  (property-runner-int-binder-count-loop binders 0 (vector-length binders)))
+
+(defn property-runner-mixed-int-bool? [binders]
+  (let [bool-count (property-runner-bool-binder-count binders)
+    int-count (property-runner-int-binder-count binders)]
+    (if (and (= bool-count 1)
+        (and (= int-count 1) (= (vector-length binders) 2))) 1 0)))
+
+(defn property-runner-bool-profile-supported? [binders cases]
+  (if (> cases 2)
+    0
+    (if (= (vector-length binders) 1)
+      1
+      (property-runner-mixed-int-bool? binders))))
+
 (defn property-runner-binder-type-profile-code [contract]
   (let [binders (vector-get contract 1)
     sampling (vector-get contract 4)
@@ -644,8 +666,7 @@
       3002
       (if (= bool-count 0)
         0
-        (if (and (= bool-count 1)
-            (and (= (vector-length binders) 1) (<= cases 2)))
+        (if (= (property-runner-bool-profile-supported? binders cases) 1)
           0
           3002)))))
 
