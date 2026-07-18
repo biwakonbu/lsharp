@@ -7980,6 +7980,48 @@ fn test_e2e_selfhost_parser_contract_suite_projects_property_precondition() {
     );
 }
 
+/// EC-M1-02: parser-owned ContractSuite が複数の typed property binder を source 順に保持すること
+#[test]
+fn test_e2e_selfhost_parser_contract_suite_projects_multiple_property_binders() {
+    let harness = r#"
+(defn main []
+  (let [src "(defn pair [x] :property [(for-all [left Int right Int] :cases 2 :precondition [(>= left 0)] :postcondition (= result left))] x)"
+        suites (extract-parser-contract-suites src)
+        suite (vector-get suites 0)
+        suite-executable (vector-get suite 2)
+        suite-transformed (vector-get suite-executable 0)
+        payload (vector-get suite-transformed 1)
+        binders (vector-get payload 0)
+        left (vector-get binders 0)
+        right (vector-get binders 1)
+        sampling (vector-get payload 3)]
+    (do
+      (print (vector-length suite-executable))
+      (print (vector-get suite-transformed 0))
+      (print (vector-length binders))
+      (print (if (= (vector-get left 0) (name-hash "left" 0 4)) 1 0))
+      (print (if (= (vector-get left 1) (name-hash "Int" 0 3)) 1 0))
+      (print (if (= (vector-get right 0) (name-hash "right" 0 5)) 1 0))
+      (print (if (= (vector-get right 1) (name-hash "Int" 0 3)) 1 0))
+      (print (vector-length (vector-get payload 1)))
+      (print (vector-get (vector-get payload 3) 0))
+      (print (vector-get payload 4))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_test_runner_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["1", "5", "2", "1", "1", "1", "1", "1", "2", "0"],
+        "parser-owned ContractSuite は複数 typed binder の source order と sampling を保持するべき"
+    );
+}
+
 /// TEST-CLI-02-O2d: selfhost/src/Tools/Test/TestRunner.ls が supported subset の metadata suite を実行できること
 #[test]
 #[ignore]

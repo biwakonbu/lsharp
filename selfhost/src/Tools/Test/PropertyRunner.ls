@@ -3,9 +3,9 @@
 (import Syntax.Lexer)
 (import Syntax.Parser)
 
-;; 移行期 property smoke profile の raw payload projection。
-;; 対応範囲は `for-all [x Int] :cases 1..5 :postcondition expr` のみとし、
-;; seed / shrink / precondition / 未知 option は TestRunner へ渡す前に拒否する。
+;; 移行期 property profile の raw payload projection。
+;; 対応範囲は 1 個以上の Int binder、`:cases 1..5`、単一 precondition、postcondition とし、
+;; seed / shrink / 未知 option は TestRunner へ渡す前に拒否する。
 
 (defn property-runner-space? [ch]
   (if (or (= ch 32) (= ch 9))
@@ -106,6 +106,55 @@
         (name-hash payload type-start type-end))
       (property-runner-push-four 0 0 -1 0))))
 
+(defn property-runner-collect-typed-binders-loop [payload idx close len result]
+  (let [name-start (property-runner-skip-space payload idx len)]
+    (if (>= name-start close)
+      (vector-push-pair-rooted (vector-new 2) result 1)
+      (let [name-end (property-runner-atom-end payload name-start len)
+        type-start (property-runner-skip-space payload name-end len)
+        type-end (property-runner-atom-end payload type-start len)
+        valid (if (and
+            (> name-end name-start)
+            (and
+              (> type-end type-start)
+              (and
+                (<= type-end close)
+                (string-eq (substring payload type-start type-end) "Int")))) 1 0)]
+        (if (= valid 0)
+          (vector-push-pair-rooted (vector-new 2) result 0)
+          (let [binder (vector-push-triple-rooted
+              (vector-new 3)
+              (name-hash payload name-start name-end)
+              (name-hash payload type-start type-end)
+              1)]
+            (do
+              (root_push result)
+              (root_push binder)
+              (let [next-result (vector-push-single-rooted result binder)]
+                (do
+                  (root_push next-result)
+                  (let [parsed (property-runner-collect-typed-binders-loop
+                      payload
+                      type-end
+                      close
+                      len
+                      next-result)]
+                    (do
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      parsed)))))))))))
+
+(defn property-runner-typed-binders-info [payload open close]
+  (if (and (>= open 0) (and (>= close 0) (> close open)))
+    (property-runner-collect-typed-binders-loop
+      payload
+      (+ open 1)
+      close
+      (string-length payload)
+      (vector-new 0))
+    (vector-push-pair-rooted (vector-new 2) (vector-new 0) 0)))
+
 ;; [case-count, case-count-valid, case-value-end]
 (defn property-runner-cases-info [payload marker]
   (let [len (string-length payload)
@@ -116,15 +165,9 @@
     valid (if (= digits 1) (if (and (> count 0) (<= count 5)) 1 0) 0)]
     (vector-push-triple-rooted (vector-new 3) count valid end)))
 
-;; `profile` が 0 の場合だけ、layout 全体がこの移行期 slice に一致する。
-(defn property-runner-profile-code [payload]
+;; binder の検証方式だけを caller ごとに変え、option/layout の境界は共有する。
+(defn property-runner-profile-layout-code [payload close binder-valid binder-count]
   (let [len (string-length payload)
-    start (property-runner-skip-space payload 0 len)
-    open (property-runner-find-from payload "[" start)
-    close (property-runner-find-from payload "]" (+ open 1))
-    binder (if (and (>= open 0) (>= close 0))
-      (property-runner-binder-info payload open close)
-      (vector-push-triple-rooted (vector-new 3) 0 0 -1))
     after-binder (property-runner-skip-space payload (+ close 1) len)
     cases-marker (property-runner-find-from payload ":cases" after-binder)
     cases (if (= cases-marker after-binder)
@@ -154,17 +197,58 @@
     payload-end-ok (if (= after-post len)
       1
       (if (and (= after-post (- len 1)) (= (string-char-at payload after-post) 41)) 1 0))]
+    (if (or (= binder-valid 0) (= binder-count 0))
+      3002
+      (if (= (vector-get cases 1) 0)
+        3002
+        (if (or (= pre-layout-ok 0) (or (< post-marker 0) (or (= post-layout-ok 0) (<= post-end post-start))))
+          3002
+          (if (= payload-end-ok 0) 3002 0))))))
+
+;; `profile` が 0 の場合だけ、layout 全体がこの移行期 single-binder slice に一致する。
+(defn property-runner-profile-code [payload]
+  (let [len (string-length payload)
+    start (property-runner-skip-space payload 0 len)
+    open (property-runner-find-from payload "[" start)
+    close (property-runner-find-from payload "]" (+ open 1))
+    binder (if (and (>= open 0) (>= close 0))
+      (property-runner-binder-info payload open close)
+      (vector-push-triple-rooted (vector-new 3) 0 0 -1))]
     (if (= (property-runner-prefix? payload start "(for-all") 0)
       3002
       (if (or (< open 0) (< close 0))
         3002
-        (if (= (vector-get binder 1) 0)
-              3002
-            (if (= (vector-get cases 1) 0)
-              3002
-              (if (or (= pre-layout-ok 0) (or (< post-marker 0) (or (= post-layout-ok 0) (<= post-end post-start))))
-                3002
-              (if (= payload-end-ok 0) 3002 0))))))))
+        (do
+          (root_push binder)
+          (let [code (property-runner-profile-layout-code
+              payload
+              close
+              (vector-get binder 1)
+              1)]
+            (do
+              (root_pop)
+              code)))))))
+
+(defn property-runner-typed-profile-code [payload]
+  (let [len (string-length payload)
+    start (property-runner-skip-space payload 0 len)
+    open (property-runner-find-from payload "[" start)
+    close (property-runner-find-from payload "]" (+ open 1))
+    binder-info (property-runner-typed-binders-info payload open close)]
+    (if (= (property-runner-prefix? payload start "(for-all") 0)
+      3002
+      (if (or (< open 0) (< close 0))
+        3002
+        (do
+          (root_push binder-info)
+          (let [code (property-runner-profile-layout-code
+              payload
+              close
+              (vector-get binder-info 1)
+              (vector-length (vector-get binder-info 0)))]
+            (do
+              (root_pop)
+              code)))))))
 
 (defn property-runner-postcondition-text [payload]
   (let [marker (property-runner-find-from payload ":postcondition" 0)
@@ -236,12 +320,6 @@
 ;; contract: [owner, binders, preconditions, postcondition, sampling, profile-code]
 ;; binder: [name-hash, type-name-hash, generator-kind(1=type-directed)]
 ;; sampling: [cases, seed, generator-version, shrink(1=true), coverage-count]
-(defn make-property-typed-binder [binder-info]
-  (vector-push-triple-rooted
-    (vector-new 3)
-    (vector-get binder-info 0)
-    (vector-get binder-info 3)
-    1))
 
 (defn make-property-sampling-plan [cases]
   (let [with-fields (property-runner-push-four
@@ -252,24 +330,20 @@
     (vector-push-single-rooted with-fields 0)))
 
 (defn make-property-typed-contract [owner payload]
-  (let [profile-code (property-runner-profile-code payload)
+  (let [profile-code (property-runner-typed-profile-code payload)
     open (property-runner-find-from payload "[" 0)
     close (property-runner-find-from payload "]" (+ open 1))
-    binder-info (if (and (>= open 0) (>= close 0))
-      (property-runner-binder-info payload open close)
-      (property-runner-push-four 0 0 -1 0))
     cases-marker (property-runner-find-from payload ":cases" 0)
     cases-info (if (>= cases-marker 0)
       (property-runner-cases-info payload cases-marker)
-      (vector-push-triple-rooted (vector-new 3) 0 0 -1))]
+      (vector-push-triple-rooted (vector-new 3) 0 0 -1))
+    binder-info (property-runner-typed-binders-info payload open close)]
     (do
       (root_push payload)
       (root_push binder-info)
       (root_push cases-info)
       (let [binders (if (= profile-code 0)
-        (vector-push-single-rooted
-          (vector-new 0)
-          (make-property-typed-binder binder-info))
+        (vector-get binder-info 0)
         (vector-new 0))]
         (do
           (root_push binders)
