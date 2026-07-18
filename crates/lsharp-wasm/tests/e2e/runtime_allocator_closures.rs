@@ -493,6 +493,79 @@ fn test_e2e_runtime_object_table_grows_past_initial_capacity() {
     );
 }
 
+#[test]
+fn test_e2e_runtime_free_list_grows_past_initial_capacity() {
+    let (_stdout, telemetry) = compile_and_capture_runtime_telemetry(
+        r#"
+        (defn alloc-unrooted [n]
+          (if (<= n 0)
+            0
+            (let [value (__alloc 8)]
+              (alloc-unrooted (- n 1)))))
+        (defn main [] (alloc-unrooted 4097))
+    "#,
+    );
+
+    assert_eq!(
+        telemetry.alloc_count, 4097,
+        "free-list growth fixture は 4097 allocations を完了すべき: {:?}",
+        telemetry
+    );
+    assert_eq!(
+        telemetry.gc_freed_count, 4097,
+        "4097 個の unrooted allocation が GC で回収されるべき: {:?}",
+        telemetry
+    );
+    assert_eq!(
+        telemetry.gc_free_list_count, 4097,
+        "初期容量 4096 を超えた free-list metadata も保持されるべき: {:?}",
+        telemetry
+    );
+    assert_eq!(
+        telemetry.gc_live_alloc_count, 0,
+        "unrooted allocation は GC 後に live として残るべきではない: {:?}",
+        telemetry
+    );
+}
+
+#[test]
+fn test_e2e_runtime_free_list_growth_reuses_moved_entries() {
+    let (_stdout, series) = compile_and_capture_runtime_telemetry_series(
+        r#"
+        (defn alloc-unrooted [n]
+          (if (<= n 0)
+            0
+            (let [value (__alloc 8)]
+              (alloc-unrooted (- n 1)))))
+        (defn main [] (alloc-unrooted 4097))
+    "#,
+        2,
+    );
+
+    let first = series.first().expect("first runtime telemetry");
+    let last = series.last().expect("last runtime telemetry");
+    assert_eq!(
+        first.gc_free_list_count, 4097,
+        "first collection は moved free-list entries を保持すべき: {:?}",
+        first
+    );
+    assert_eq!(
+        last.alloc_count, 8194,
+        "second run は moved free-list entries を 4097 件再利用すべき: {:?}",
+        last
+    );
+    assert_eq!(
+        last.gc_free_list_count, 4097,
+        "再利用後の回収でも free-list 容量を保持すべき: {:?}",
+        last
+    );
+    assert_eq!(
+        last.gc_live_alloc_count, 0,
+        "second run の unrooted allocation は GC 後に live として残るべきではない: {:?}",
+        last
+    );
+}
+
 /// CP-05: __alloc メトリクス — peak heap pointer が alloc 後に増加すること
 #[test]
 fn test_e2e_alloc_metrics_peak_usage() {
