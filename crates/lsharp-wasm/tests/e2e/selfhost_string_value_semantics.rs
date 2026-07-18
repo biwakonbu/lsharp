@@ -61,3 +61,36 @@ fn test_e2e_selfhost_test_runner_compares_string_values_by_content() {
         "selfhost runner は String の一致・不一致と literal pattern を内容で評価するべき"
     );
 }
+
+/// EC-M1-05: string-eq は decoded literal と property sample の内部表現差を越えて比較する。
+#[test]
+fn test_e2e_selfhost_test_runner_string_eq_compares_literals_and_property_samples() {
+    let harness = r#"
+(defn main []
+  (let [src "(defn identity [x] :case [(expect (string-eq \"same\" \"same\") true) (expect (string-eq \"same\" \"other\") false)] :property [(for-all [sample String] :cases 1 :postcondition (string-eq result \"\"))] x)"
+        suite (generate-tests-from-source src)
+        cases (vector-get suite 3)
+        properties (vector-get suite 4)
+        property-result (vector-get properties 0)]
+    (do
+      (print (vector-length cases))
+      (print (vector-get (vector-get cases 0) 1))
+      (print (vector-get (vector-get cases 1) 1))
+      (print (vector-length properties))
+      (print (vector-get property-result 1))
+      (print (vector-get property-result 2))
+      (print (vector-get property-result 3))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_test_runner_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+
+    assert_eq!(
+        output.trim().lines().collect::<Vec<_>>(),
+        vec!["2", "1", "1", "1", "1", "1", "0"],
+        "string-eq は literal/literal と property sample/literal を decoded text で比較するべき"
+    );
+}

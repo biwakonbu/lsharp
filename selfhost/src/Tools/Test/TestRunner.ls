@@ -1154,7 +1154,7 @@
   (if (= callee-hash (hash-string-eq))
     (if (= (value-tag arg0) (ast-lit-string))
       (if (= (value-tag arg1) (ast-lit-string))
-        (value-bool (if (string-eq (vector-get arg0 1) (vector-get arg1 1)) 1 0))
+        (value-bool (values-equal arg0 arg1))
         (value-bool 0))
       (value-bool 0))
     0))
