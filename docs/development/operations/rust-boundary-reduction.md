@@ -731,6 +731,14 @@ Evidence: `property_smoke_spec_accepts_single_string_binder`、Rust `test_runner
 
 これは単一Stringの deterministic prefix に限定した verified sliceであり、Stringの複数binder・Int/Boolとの混在、一般 `TypeExpr`、constraint/type-directed generator、seed/shrink/coverage bucket、structured assurance report、current-source Mac Apple Silicon / Linux x86_64 native artifact/runtime gate、stage0 provenanceは残件である。対応済みprofileの日常開発はRustなしで進められるが、profile外 property semantics と Rust oracle / bootstrap / host integration の境界は維持する。
 
+### EC-M1-06 selfhost `test --format json` assurance slice (2026-07-19)
+
+`App.Cli` の `test --json` / `test --format json` に、`implementation_conformance` と `intent_validation` を分けた単一行 JSON report を追加した。前者は `status`、`method`、実行 `cases`、seed、generator、shrinks、実行/失敗 coverage、diagnostics、target、provenance を返し、後者は stakeholder intent を自動検証せず `unknown` として open questions / independent reviews / contradicting observations を返す。top-level `verified` は生成しない。既存の text `test` 出力と exit code は維持し、JSON の conformance failure は exit `2` とする。
+
+Evidence: Rust-hosted actual argv `test_e2e_selfhost_cli_main_with_args_test_format_json_file` (1 passed)、current-source Mac Apple Silicon native `test_native_app_cli_test_format_json_source_file_contract` / `test_native_app_cli_test_format_json_reports_vacuous_failure_source_file_contract` / String property success / text vacuous `LS2005` rejection (5 ignored contracts passed)、`./target/debug/lsharp parse selfhost/src/App/Cli.ls` と `./target/debug/lsharp check selfhost/src/App/Cli.ls` (`diagnostics:0`)。current native `App.Cli` は stage0 の source provenance を自己取得しないため、report の `target` / `source_commit` / `artifact_digest` は `unknown` と明示する。
+
+これは単一 String property の native report sliceと、単一 Int vacuous failure JSONに限定される。全 form、EmbeddedCli、Rust/selfhost differential、provenance 注入、Linux x86_64 current-source artifact/runtime、一般 `TypeExpr` の coverage/seed/shrink、EC-M1-06 全体の完了条件は残件である。対応済み profile の日常開発は Rust なしで進められるが、report の unknown を成功扱いせず、Rust oracle / bootstrap / host integration の境界を維持する。
+
 ### Current Mac native stage0 gate (2026-07-19)
 
 `selfhost/` source snapshot commit `10d0983b4f8e17d8b9ded439161f653c1bf91e4e`（後続 commit は `selfhost/` を変更しない docs-only 差分）から Mac Apple Silicon の actual stage23 fixed-point を再生成し、stage2/stage3 の `program.native` を `source_commit` 付き stage0 package `/tmp/lsharp-stage0-10d0983b-macos-compiler` として materialize した。stage23 test は `765.58s` で pass、stage2/stage3 は exit `0`、stderr `0`、program/runtime/response/stdout/stderr の観測 hash が一致した。

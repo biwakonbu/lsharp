@@ -68,6 +68,7 @@
 (defn check-property-diagnostic-body-from-code [code] (if (= code (canonical-property-type-error-code)) "property predicate type error" (if (= code (canonical-property-non-bool-code)) "property predicate must be Bool" (if (= code (canonical-property-empty-code)) "property requires typed binders, a postcondition, and positive cases" "property predicate type error"))))
 (defn check-diagnostics-body-text [program] (let [code (check-diagnostics-first-code program)] (if (= code 0) "" (check-diagnostic-body-from-code code))))
 (defn check-option-json [] 1)
+(defn test-option-json [] 1)
 (defn check-exit-code [diagnostics-count] (if (> diagnostics-count 0) (exit-code-compile-error) (exit-success)))
 (defn check-json-diagnostics [count first-error-code body]
   (let [fields0 ""
@@ -185,6 +186,180 @@
 (defn test-cases-text [count] (string-concat "cases:" (int-to-string count)))
 (defn test-properties-text [count] (string-concat "properties:" (int-to-string count)))
 (defn test-failures-text [count] (string-concat "failures:" (int-to-string count)))
+(defn assurance-result-actual-loop [results idx count acc]
+  (if (>= idx count)
+    acc
+    (assurance-result-actual-loop
+      results
+      (+ idx 1)
+      count
+      (+ acc (vector-get (vector-get results idx) 2)))))
+(defn assurance-result-actual [results]
+  (assurance-result-actual-loop results 0 (vector-length results) 0))
+(defn assurance-total-actual [examples invariants assertions cases properties]
+  (+
+    (assurance-result-actual examples)
+    (+
+      (assurance-result-actual invariants)
+      (+
+        (assurance-result-actual assertions)
+        (+ (assurance-result-actual cases) (assurance-result-actual properties))))))
+(defn assurance-method [property-count case-count assertion-count example-count invariant-count]
+  (if (> property-count 0)
+    "sampled-property"
+    (if (> case-count 0)
+      "explicit-case"
+      (if (> assertion-count 0)
+        "assert"
+        (if (or (> example-count 0) (> invariant-count 0))
+          "legacy-deterministic-smoke"
+          "none")))))
+(defn assurance-generator [method]
+  (if (string-eq method "sampled-property")
+    "legacy-deterministic-smoke"
+    "direct-evaluation"))
+(defn assurance-status [failed diagnostic-count]
+  (if (or (> failed 0) (> diagnostic-count 0)) "fail" "pass"))
+(defn assurance-coverage-json [executed failed]
+  (let [fields0 ""
+    fields1 (docjson-append fields0 (docjson-int-field "executed" executed))
+    fields2 (docjson-append fields1 (docjson-int-field "failed" failed))]
+    (docjson-object-wrap fields2)))
+(defn assurance-diagnostics-json [count first-error-code]
+  (let [fields0 ""
+    fields1 (docjson-append fields0 (docjson-int-field "count" count))
+    fields2 (docjson-append fields1 (docjson-int-field "firstErrorCode" first-error-code))]
+    (docjson-object-wrap fields2)))
+(defn assurance-provenance-json []
+  (let [fields0 ""
+    fields1 (docjson-append fields0 (docjson-string-field "runner" "selfhost"))
+    fields2 (docjson-append fields1 (docjson-string-field "source_commit" "unknown"))
+    fields3 (docjson-append fields2 (docjson-string-field "artifact_digest" "unknown"))]
+    (docjson-object-wrap fields3)))
+(defn assurance-intent-json []
+  (let [fields0 ""
+    fields1 (docjson-append fields0 (docjson-string-field "status" "unknown"))
+    fields2 (docjson-append fields1 (docjson-int-field "open_questions" 0))
+    fields3 (docjson-append fields2 (docjson-int-field "independent_reviews" 0))
+    fields4 (docjson-append fields3 (docjson-int-field "contradicting_observations" 0))]
+    (docjson-object-wrap fields4)))
+(defn assurance-conformance-json
+  [status method cases executed failed diagnostic-count diagnostic-code]
+  (let [fields0 ""
+    fields1 (docjson-append fields0 (docjson-string-field "status" status))
+    fields2 (docjson-append fields1 (docjson-string-field "method" method))
+    fields3 (docjson-append fields2 (docjson-int-field "cases" cases))
+    fields4 (docjson-append fields3 (docjson-int-field "seed" 0))
+    fields5 (docjson-append fields4 (docjson-string-field "generator" (assurance-generator method)))
+    fields6 (docjson-append fields5 (docjson-array-field "shrinks" "[]"))
+    fields7 (docjson-append fields6 (docjson-object-field "coverage" (assurance-coverage-json executed failed)))
+    fields8 (docjson-append fields7 (docjson-object-field "diagnostics" (assurance-diagnostics-json diagnostic-count diagnostic-code)))
+    fields9 (docjson-append fields8 (docjson-string-field "target" "unknown"))
+    fields10 (docjson-append fields9 (docjson-object-field "provenance" (assurance-provenance-json)))]
+    (docjson-object-wrap fields10)))
+(defn assurance-report-json
+  [status method cases executed failed diagnostic-count diagnostic-code]
+  (let [fields0 ""
+    fields1 (docjson-append fields0
+      (docjson-object-field
+        "implementation_conformance"
+        (assurance-conformance-json
+          status
+          method
+          cases
+          executed
+          failed
+          diagnostic-count
+          diagnostic-code)))
+    fields2 (docjson-append fields1
+      (docjson-object-field "intent_validation" (assurance-intent-json)))]
+    (docjson-object-wrap fields2)))
+(defn run-test-source-json-preflight [program diagnostic-code]
+  (let [examples (extract-examples-from-program program)
+    invariants (extract-invariants-from-program program)
+    assertions (extract-assertions-from-program program)
+    cases (extract-cases-from-program program)
+    properties (extract-property-test-cases program)
+    method (assurance-method
+      (vector-length properties)
+      (vector-length cases)
+      (vector-length assertions)
+      (vector-length examples)
+      (vector-length invariants))
+    rendered (assurance-report-json "fail" method 0 0 1 1 diagnostic-code)]
+    (do
+      (print-string rendered)
+      (print-string "\n")
+      (exit-runtime-error))))
+(defn assurance-suite-failed [suite]
+  (let [examples (vector-get suite 0)
+    invariants (vector-get suite 1)
+    assertions (vector-get suite 2)
+    cases (vector-get suite 3)
+    properties (vector-get suite 4)]
+    (+
+      (count-failed-results examples)
+      (+
+        (count-failed-results invariants)
+        (+
+          (count-failed-results assertions)
+          (+ (count-failed-results cases) (count-failed-results properties)))))))
+(defn assurance-suite-diagnostic-count [suite]
+  (test-diagnostics-count-with-properties
+    (vector-get suite 0)
+    (vector-get suite 1)
+    (vector-get suite 2)
+    (vector-get suite 3)
+    (vector-get suite 4)))
+(defn assurance-suite-diagnostic-code [suite]
+  (first-test-diagnostic-code-with-properties
+    (vector-get suite 0)
+    (vector-get suite 1)
+    (vector-get suite 2)
+    (vector-get suite 3)
+    (vector-get suite 4)))
+(defn assurance-suite-method [suite]
+  (assurance-method
+    (vector-length (vector-get suite 4))
+    (vector-length (vector-get suite 3))
+    (vector-length (vector-get suite 2))
+    (vector-length (vector-get suite 0))
+    (vector-length (vector-get suite 1))))
+(defn assurance-suite-executed [suite]
+  (assurance-total-actual
+    (vector-get suite 0)
+    (vector-get suite 1)
+    (vector-get suite 2)
+    (vector-get suite 3)
+    (vector-get suite 4)))
+(defn run-test-source-json-suite [suite]
+  (let [failed (assurance-suite-failed suite)
+    diagnostic-count (assurance-suite-diagnostic-count suite)
+    diagnostic-code (assurance-suite-diagnostic-code suite)
+    method (assurance-suite-method suite)
+    executed (assurance-suite-executed suite)
+    rendered (assurance-report-json
+      (assurance-status failed diagnostic-count)
+      method
+      executed
+      executed
+      failed
+      diagnostic-count
+      diagnostic-code)]
+    (do
+      (print-string rendered)
+      (print-string "\n")
+      (if (> failed 0) (exit-runtime-error) (exit-success)))))
+(defn run-test-source-json [src]
+  (let [program (parse-program src)
+    analysis (infer-program-analysis program)
+    property-boundary-code (metadata-test-runner-boundary-code program)
+    case-check (check-canonical-cases-with-analysis program analysis)]
+    (if (> property-boundary-code 0)
+      (run-test-source-json-preflight program property-boundary-code)
+      (if (> (vector-get case-check 0) 0)
+        (run-test-source-json-preflight program (vector-get case-check 1))
+        (run-test-source-json-suite (generate-tests-from-source src))))))
 (defn case-preflight-diagnostics-summary [case-check]
   (let [count (vector-get case-check 0)
     raw-code (vector-get case-check 1)
@@ -231,7 +406,7 @@
       (print-string diagnostic-summary)
       (print-string "\n")
       (exit-runtime-error))))
-(defn run-test-source [src opts]
+(defn run-test-source-text [src]
   (let [program (parse-program src)
     analysis (infer-program-analysis program)
     property-boundary-code (metadata-test-runner-boundary-code program)
@@ -303,6 +478,10 @@
           (print-string "\n"))
         (print-string ""))
       (if (> failed 0) (exit-runtime-error) (exit-success))))))))
+(defn run-test-source [src opts]
+  (if (= opts (test-option-json))
+    (run-test-source-json src)
+    (run-test-source-text src)))
 (defn review-option-json [] 1)
 (defn review-json-source-id [] 200)
 (defn run-review-source [src opts] (let [program (parse-program src)] (if (= opts (review-option-json)) (let [review-json (generate-review-schema-json program (review-json-source-id))] (do (print-string review-json) (print-string "
@@ -927,6 +1106,19 @@
               (check-cli-option-invalid))
             (check-cli-option-invalid))
           (check-cli-option-invalid))))))
+(defn parse-test-cli-option [argc]
+  (if (<= argc 2)
+    0
+    (let [arg2 (command-line-arg 2)]
+      (if (and (= argc 3) (json-option-flag arg2))
+        (test-option-json)
+        (if (= argc 4)
+          (if (format-option-flag arg2)
+            (if (string-eq (command-line-arg 3) "json")
+              (test-option-json)
+              (check-cli-option-invalid))
+            (check-cli-option-invalid))
+          (check-cli-option-invalid))))))
 (defn parse-doc-cli-option [argc cmd-name]
   (if (<= argc 2)
     (doc-cli-option-none)
@@ -957,7 +1149,7 @@
                   (doc-cli-option-invalid)))
               (doc-cli-option-none))))))))
 (defn run-command-with-doc-option [cmd-name file-path doc-option] (let [cmd-id (arg-parse cmd-name)] (if (= cmd-id (cmd-doc-ack)) (run-doc-ack file-path doc-option) (if (= cmd-id (cmd-doc-check)) (run-doc-check file-path doc-option) (run-command cmd-name file-path doc-option)))))
-(defn run-main-command [argc cmd-name file-path]
+(defn run-main-command-core [argc cmd-name file-path]
   (if (and (string-eq cmd-name "lsp") (string-eq file-path "--stdio"))
     (run-lsp-stdio-server)
     (if (and (compile-or-build-command cmd-name) (> argc 2))
@@ -982,6 +1174,19 @@
                 (exit-code-compile-error))
               (run-command-with-doc-option cmd-name file-path doc-option)))
           (run-command cmd-name file-path (default-compile-target)))))))
+(defn run-test-command [argc cmd-name file-path]
+  (if (> argc 2)
+    (let [test-option (parse-test-cli-option argc)]
+      (if (>= test-option 0)
+        (run-command cmd-name file-path test-option)
+        (do
+          (cli-stderr (doc-cli-option-error-message argc))
+          (exit-code-compile-error))))
+    (run-command cmd-name file-path 0)))
+(defn run-main-command [argc cmd-name file-path]
+  (if (string-eq cmd-name "test")
+    (run-test-command argc cmd-name file-path)
+    (run-main-command-core argc cmd-name file-path)))
 (defn exit-main [code] (do (proc-exit code) 0))
 (defn main []
   (let [argc (command-line-args)]

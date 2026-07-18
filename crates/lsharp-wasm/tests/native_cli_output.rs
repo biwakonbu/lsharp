@@ -1,5 +1,7 @@
 use std::{path::PathBuf, process::Command};
 
+use serde_json::Value;
+
 fn assert_numeric_wasm_size(command: &str, stdout: &[u8]) {
     let stdout = std::str::from_utf8(stdout)
         .unwrap_or_else(|_| panic!("native {command} stdout は UTF-8 であるべき"));
@@ -315,6 +317,145 @@ fn test_native_app_cli_test_string_property_source_file_contract() {
             vec!["examples:0", "invariants:0", "properties:1", "failures:0"],
             "native test は String property の成功 summary を出力するべき"
         );
+    })();
+    let _ = std::fs::remove_dir_all(&dir);
+    result
+}
+
+#[test]
+#[ignore = "actual native App.Cli program を LSHARP_NATIVE_APP_CLI_PROGRAM で指定する"]
+fn test_native_app_cli_test_format_json_source_file_contract() {
+    if !cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+        return;
+    }
+
+    let program = PathBuf::from(
+        std::env::var_os("LSHARP_NATIVE_APP_CLI_PROGRAM")
+            .expect("LSHARP_NATIVE_APP_CLI_PROGRAM を指定すること"),
+    );
+    assert!(
+        program.is_file(),
+        "native App.Cli が見つからない: {}",
+        program.display()
+    );
+    let program = std::fs::canonicalize(&program).expect("native App.Cli の絶対パス化に失敗");
+
+    let dir = std::env::temp_dir().join(format!(
+        "lsharp_native_app_cli_test_format_json_contract_{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("fixture directory の作成に失敗");
+    std::fs::write(
+        dir.join("input.ls"),
+        "(defn identity [x] :property [(for-all [sample String] :cases 5 :postcondition (string-eq result sample))] x)",
+    )
+    .expect("JSON property fixture input.ls の書き込みに失敗");
+
+    let result = (|| {
+        let test = Command::new(&program)
+            .current_dir(&dir)
+            .args(["test", "input.ls", "--format", "json"])
+            .output()
+            .expect("native App.Cli test --format json の実行に失敗");
+        assert!(
+            test.status.success(),
+            "native test --format json は成功するべき: stdout={:?} stderr={:?}",
+            String::from_utf8_lossy(&test.stdout),
+            String::from_utf8_lossy(&test.stderr)
+        );
+        let stdout = String::from_utf8_lossy(&test.stdout);
+        let lines: Vec<&str> = stdout.lines().collect();
+        assert_eq!(
+            lines.len(),
+            1,
+            "native test --format json は report 1 行を返すべき"
+        );
+        let report: Value =
+            serde_json::from_str(lines[0]).expect("native test --format json は valid JSON");
+        assert!(
+            report.get("verified").is_none(),
+            "native assurance report は top-level verified を返してはならない"
+        );
+        assert_eq!(report["implementation_conformance"]["status"], "pass");
+        assert_eq!(
+            report["implementation_conformance"]["method"],
+            "sampled-property"
+        );
+        assert_eq!(report["implementation_conformance"]["cases"], 5);
+        assert_eq!(
+            report["implementation_conformance"]["coverage"]["executed"],
+            5
+        );
+        assert_eq!(report["implementation_conformance"]["target"], "unknown");
+        assert_eq!(report["intent_validation"]["status"], "unknown");
+    })();
+    let _ = std::fs::remove_dir_all(&dir);
+    result
+}
+
+#[test]
+#[ignore = "actual native App.Cli program を LSHARP_NATIVE_APP_CLI_PROGRAM で指定する"]
+fn test_native_app_cli_test_format_json_reports_vacuous_failure_source_file_contract() {
+    if !cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+        return;
+    }
+
+    let program = PathBuf::from(
+        std::env::var_os("LSHARP_NATIVE_APP_CLI_PROGRAM")
+            .expect("LSHARP_NATIVE_APP_CLI_PROGRAM を指定すること"),
+    );
+    assert!(
+        program.is_file(),
+        "native App.Cli が見つからない: {}",
+        program.display()
+    );
+    let program = std::fs::canonicalize(&program).expect("native App.Cli の絶対パス化に失敗");
+
+    let dir = std::env::temp_dir().join(format!(
+        "lsharp_native_app_cli_test_format_json_vacuous_contract_{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("fixture directory の作成に失敗");
+    std::fs::write(
+        dir.join("input.ls"),
+        "(defn identity [x] :property [(for-all [sample Int] :cases 1 :postcondition true)] x)",
+    )
+    .expect("vacuous JSON property fixture input.ls の書き込みに失敗");
+
+    let result = (|| {
+        let test = Command::new(&program)
+            .current_dir(&dir)
+            .args(["test", "input.ls", "--format", "json"])
+            .output()
+            .expect("native App.Cli vacuous test --format json の実行に失敗");
+        assert_eq!(
+            test.status.code(),
+            Some(2),
+            "native test --format json は vacuous property を exit 2 にするべき: stdout={:?} stderr={:?}",
+            String::from_utf8_lossy(&test.stdout),
+            String::from_utf8_lossy(&test.stderr)
+        );
+        let stdout = String::from_utf8_lossy(&test.stdout);
+        let lines: Vec<&str> = stdout.lines().collect();
+        assert_eq!(
+            lines.len(),
+            1,
+            "native failure JSON は report 1 行を返すべき"
+        );
+        let report: Value =
+            serde_json::from_str(lines[0]).expect("native failure JSON は valid JSON");
+        assert_eq!(report["implementation_conformance"]["status"], "fail");
+        assert_eq!(
+            report["implementation_conformance"]["diagnostics"]["count"],
+            1
+        );
+        assert_eq!(
+            report["implementation_conformance"]["diagnostics"]["firstErrorCode"],
+            2005
+        );
+        assert_eq!(report["intent_validation"]["status"], "unknown");
     })();
     let _ = std::fs::remove_dir_all(&dir);
     result

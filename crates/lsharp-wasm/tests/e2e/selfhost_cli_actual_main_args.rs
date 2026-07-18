@@ -277,6 +277,58 @@ fn test_e2e_selfhost_cli_main_check_json_aliases() {
     assert_eq!(reports[0]["type"], "Int");
 }
 
+/// EC-M1-06: actual selfhost CLI の test --format json が assurance の二軸 report を返すこと
+#[test]
+fn test_e2e_selfhost_cli_main_with_args_test_format_json_file() {
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, || {
+        run_cli_main_with_input_file_capture(
+            "test_format_json",
+            "(defn identity [x] :property [(for-all [sample String] :cases 5 :postcondition (string-eq result sample))] x)",
+            &["test", "input.ls", "--format", "json"],
+        )
+    });
+    assert_eq!(
+        output.exit_code, 0,
+        "test --format json の passing property は exit code 0 で終了するべき"
+    );
+    let lines = output_lines(output.stdout);
+    assert_eq!(
+        lines.len(),
+        1,
+        "test --format json は JSON report だけを stdout へ返すべき"
+    );
+    let report: Value =
+        serde_json::from_str(&lines[0]).expect("test --format json output は valid JSON");
+    assert!(
+        report.get("verified").is_none(),
+        "assurance report は top-level verified を返してはならない"
+    );
+    assert_eq!(report["implementation_conformance"]["status"], "pass");
+    assert_eq!(
+        report["implementation_conformance"]["method"],
+        "sampled-property"
+    );
+    assert_eq!(report["implementation_conformance"]["cases"], 5);
+    assert_eq!(report["implementation_conformance"]["seed"], 0);
+    assert_eq!(
+        report["implementation_conformance"]["generator"],
+        "legacy-deterministic-smoke"
+    );
+    assert_eq!(
+        report["implementation_conformance"]["coverage"]["executed"],
+        5
+    );
+    assert_eq!(report["implementation_conformance"]["target"], "unknown");
+    assert_eq!(
+        report["implementation_conformance"]["provenance"]["runner"],
+        "selfhost"
+    );
+    assert_eq!(report["intent_validation"]["status"], "unknown");
+    assert_eq!(report["intent_validation"]["open_questions"], 0);
+    assert_eq!(report["intent_validation"]["independent_reviews"], 0);
+    assert_eq!(report["intent_validation"]["contradicting_observations"], 0);
+}
+
 /// TEST-CLI-02-AP2: actual Cli main は自己再帰 top-level defn を typecheck できること
 #[test]
 #[ignore]
