@@ -733,7 +733,7 @@ Evidence: `property_smoke_spec_accepts_single_string_binder`、Rust `test_runner
 
 ### Current Mac native stage0 gate (2026-07-19)
 
-current `main` commit `10d0983b4f8e17d8b9ded439161f653c1bf91e4e` から Mac Apple Silicon の actual stage23 fixed-point を再生成し、stage2/stage3 の `program.native` を `source_commit` 付き stage0 package `/tmp/lsharp-stage0-10d0983b-macos-compiler` として materialize した。stage23 test は `765.58s` で pass、stage2/stage3 は exit `0`、stderr `0`、program/runtime/response/stdout/stderr の観測 hash が一致した。
+`selfhost/` source snapshot commit `10d0983b4f8e17d8b9ded439161f653c1bf91e4e`（後続 commit は `selfhost/` を変更しない docs-only 差分）から Mac Apple Silicon の actual stage23 fixed-point を再生成し、stage2/stage3 の `program.native` を `source_commit` 付き stage0 package `/tmp/lsharp-stage0-10d0983b-macos-compiler` として materialize した。stage23 test は `765.58s` で pass、stage2/stage3 は exit `0`、stderr `0`、program/runtime/response/stdout/stderr の観測 hash が一致した。
 
 この package を使う `scripts/ci/native-selfhost-dev-source-file-smoke.sh` は `aarch64-apple-darwin native selfhost source-file smoke passed` となり、PATH 上で `cargo`、`rustc`、host `lsharp` を blockした状態の `parse` / `check` / `fmt` / 通常と metadata の `test` / `compile` / `build`、Wasm magic/positive-size gateを完走した。`scripts/native-selfhost-dev.sh` の同一 fingerprint stage reuse でも `fmt` / `compile` / `test` を確認した。
 
