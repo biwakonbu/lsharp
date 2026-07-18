@@ -120,7 +120,7 @@ L# の最終目標は、Rust 実装を正本として残したまま一部のコ
 
 ### 現在の完遂ループ（v0.2 Evidence-driven Contracts）
 
-現在の最初の対象は `TODO.md` の `EC-M1-01` であり、以後も次の順序を崩さない。
+現在の対象は `TODO.md` の current milestone と scheduling rules が示す最優先の未完項目から一つだけ選ぶ。特定の milestone 名を恒久的な開始点として固定せず、push 後の再監査で次の対象を更新する。
 
 1. `TODO.md`、current worktree、対象 target の artifact/VM 状態を再確認し、対象を一つの observable contract に絞る。
 2. Rust oracle と selfhost/native の双方で同じ fixture を使う RED を追加し、failure value、diagnostic/span、exit code、artifact/runtime boundary を固定する。
@@ -170,6 +170,15 @@ L# の最終目標は、Rust 実装を正本として残したまま一部のコ
 5. task-relevant files だけを `main` に commit/push し、push 後に `HEAD == origin/main`、worktree、TODO 残件を再監査する。ユーザーの既存差分は保持し、force push や無関係な整理はしない。
 
 長時間の stage regeneration / Linux VM gate は仮説ごとに一つだけ実行し、VM-side lock と既存 artifact を再利用する。待機中は同じ replay を重複起動せず、共有しない parser/type/runtime、診断、fixture、contract test、docs を進める。停止する場合は、次の RED、再現 command、blocker、対象 artifact/target、必要な evidence を current docs に残し、次の run は必ず status refresh から再開する。VM の一時 workdir と巨大 artifact は gate 後に回収し、disk 使用量も確認する。
+
+### 完了監査の必須条件
+
+完了宣言は、実装が存在することや focused test が通ることではなく、要求された境界ごとの evidence が揃ったことを意味する。各タスクの完了前に次を確認する。
+
+- TODO、仕様、Issue、ADR に書かれた各 requirement・target・公開 command・artifact/runtime boundary を列挙し、それぞれの証拠が current checkout の実ファイル、実行結果、生成物、runtime であることを確認する。
+- unit test、Rust driver の成功、summary/header、stale artifact、Rust fallback の成功を、native stage0、Wasm validate/runtime、Mac Apple Silicon、Linux x86_64 の証拠へ拡大解釈しない。証拠の scope が要件の scope と一致しない場合は未完了とする。
+- 未対応、partial parity、Rust-only、bootstrap/oracle、external boundary、未検証 ABI を分類し、未完了のまま `[x]` や完了移行を行わない。完了項目だけを ADR に移し、TODO から削除する。
+- 同じ blocker が解消していない場合でも、停止時は次の RED、再現 command、blocker、残る target/evidence を記録する。再開時はその記録と current state を照合し、重複した heavy replay を起動しない。
 
 ## hooks/スキルのトラブルシューティング
 
