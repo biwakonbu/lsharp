@@ -125,3 +125,69 @@ fn test_e2e_selfhost_compiler_executes_string_patterns_by_content() {
         "static/dynamic/empty/mismatch String は正しい arm を選ぶべき"
     );
 }
+
+/// LEGACY-LANG-02: ftable compiler も source data に頼らず nested String pattern を内容照合する。
+#[test]
+fn test_e2e_selfhost_ftable_compiler_executes_nested_string_patterns_from_argv() {
+    let harness = r#"
+(defn print-bytes-loop [bytes idx count]
+  (if (>= idx count)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes-loop bytes (+ idx 1) count))))
+
+(defn main []
+  (let [source "(type (Maybe a) (Some a) None) (defn classify [value] (match value [(Some \"ab\") 1] [(Some \"\") 2] [_ 0])) (defn main [] (print (classify (Some (command-line-arg 1)))))"
+        program (parse-program source)
+        pair (compile-program-functions-with-base program 11)
+        functions (vector-get pair 1)
+        wasm-bytes (build-wasm-bytes-wasi functions (vector-new 0))]
+    (do
+      (print (vector-length wasm-bytes))
+      (print-bytes-loop wasm-bytes 0 (vector-length wasm-bytes))
+      0)))
+"#;
+
+    let compiler_mode = format!("{}\n{}", selfhost_module("CompilerMode.ls"), harness);
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("IR.ls"),
+        selfhost_module("Compiler.ls"),
+        selfhost_module("WasiBackend.ls"),
+        selfhost_module("WasmEmit.ls"),
+        selfhost_module("ModuleResolver.ls"),
+        compiler_mode
+    );
+    let emitted = compile_and_run(&combined);
+    let wasm_bytes = parse_printed_wasm_bytes(&emitted);
+
+    let run = |value: &str| {
+        super::selfhost_bootstrap_four_layer::run_wasm_with_eleven_imports_compiler_mode(
+            &wasm_bytes,
+            "",
+            &["program", value],
+        )
+        .expect("selfhost ftable compiler-mode nested String pattern module should run")
+    };
+
+    assert_eq!(
+        run("ab"),
+        "1\n",
+        "dynamic argv は nested \"ab\" arm に一致するべき"
+    );
+    assert_eq!(
+        run(""),
+        "2\n",
+        "empty argv は nested empty String arm に一致するべき"
+    );
+    assert_eq!(
+        run("other"),
+        "0\n",
+        "mismatch argv は wildcard arm に落ちるべき"
+    );
+}
