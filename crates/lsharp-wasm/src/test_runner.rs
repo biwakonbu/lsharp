@@ -105,16 +105,21 @@ pub fn generate_test_program(original: &Program, tests: &[GeneratedTest]) -> Str
                 let samples = property_sample_values(spec);
                 for sample in samples {
                     let postcondition = format!("{}", test.expr);
-                    if let Some(precondition) = &spec.precondition {
-                        let precondition = format!("{}", precondition);
+                    if !spec.preconditions.is_empty() {
+                        let result_scope = format!(
+                            "(let [result ({} {})] (if {} 1 0))",
+                            test.function_name, sample, postcondition
+                        );
+                        let guarded_property = spec
+                            .preconditions
+                            .iter()
+                            .rev()
+                            .fold(result_scope, |body, precondition| {
+                                format!("(if {} {} 2)", precondition, body)
+                            });
                         let scoped_property = format!(
-                            "(let [{} {}] (if {} (let [result ({} {})] (if {} 1 0)) 2))",
-                            spec.binder_name,
-                            sample,
-                            precondition,
-                            test.function_name,
-                            sample,
-                            postcondition
+                            "(let [{} {}] {})",
+                            spec.binder_name, sample, guarded_property
                         );
                         source.push_str(&format!("    (print {scoped_property})\n"));
                     } else {
@@ -295,7 +300,7 @@ pub fn parse_test_output(
 
                 for sample in &samples {
                     let line = lines.get(line_idx).map(|line| line.trim()).unwrap_or("");
-                    if spec.precondition.is_some() && line == "2" {
+                    if !spec.preconditions.is_empty() && line == "2" {
                         line_idx += 1;
                         continue;
                     }
@@ -308,7 +313,7 @@ pub fn parse_test_output(
                     line_idx += 1;
                 }
 
-                if spec.precondition.is_some() && executed == 0 {
+                if !spec.preconditions.is_empty() && executed == 0 {
                     all_passed = false;
                     fail_msg =
                         Some(":property の precondition が全サンプルで false です".to_string());

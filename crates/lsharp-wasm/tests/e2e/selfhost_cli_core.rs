@@ -6420,6 +6420,36 @@ fn test_e2e_selfhost_runner_executes_property_precondition_and_skips_false_sampl
     );
 }
 
+/// EC-M1-02: selfhost runner が複数 precondition を conjunction として評価すること
+#[test]
+fn test_e2e_selfhost_runner_executes_all_property_preconditions_as_conjunction() {
+    let harness = r#"
+(defn main []
+  (let [src "(defn identity [x] :property [(for-all [value Int] :cases 5 :precondition [(>= value 0) (< value 42)] :postcondition (= result value))] x)"
+        suite (generate-tests-from-source src)
+        properties (vector-get suite 4)
+        result0 (vector-get properties 0)]
+    (do
+      (print (vector-length properties))
+      (print (vector-get result0 1))
+      (print (vector-get result0 2))
+      (print (vector-get result0 3))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_test_runner_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["1", "1", "3", "0"],
+        "selfhost runner は複数 precondition を全て満たす sample だけ評価すべき"
+    );
+}
+
 /// EC-M1-04: selfhost runner が全 sample skip の property を vacuous success にしないこと
 #[test]
 fn test_e2e_selfhost_runner_rejects_vacuous_property_precondition() {

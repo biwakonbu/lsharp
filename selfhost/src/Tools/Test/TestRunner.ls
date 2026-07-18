@@ -1766,6 +1766,22 @@
           (value-int (- 0 1))
           (value-int 42))))))
 
+(defn property-unknown-preconditions-loop [program preconditions env idx]
+  (if (>= idx (vector-length preconditions))
+    -1
+    (let [unknown (contract-node-unknown-hash
+        program
+        (vector-get preconditions idx)
+        env
+        1)]
+      (if (>= unknown 0)
+        unknown
+        (property-unknown-preconditions-loop
+          program
+          preconditions
+          env
+          (+ idx 1))))))
+
 (defn property-unknown-variable [program test-case]
   (let [env (env-bind
       (env-bind
@@ -1775,13 +1791,11 @@
       (hash-result)
       (value-unit))
     preconditions (property-test-case-preconditions test-case)
-    precondition-unknown (if (> (vector-length preconditions) 0)
-      (contract-node-unknown-hash
-        program
-        (vector-get preconditions 0)
-        env
-        1)
-      -1)]
+    precondition-unknown (property-unknown-preconditions-loop
+      program
+      preconditions
+      env
+      0)]
     (if (>= precondition-unknown 0)
       precondition-unknown
       (contract-node-unknown-hash
@@ -1790,15 +1804,28 @@
         env
         1))))
 
+(defn eval-property-preconditions-loop [program preconditions env idx]
+  (if (>= idx (vector-length preconditions))
+    (value-bool 1)
+    (let [precondition (eval-node program (vector-get preconditions idx) env)
+      precondition-bool (if (= (value-tag precondition) (ast-lit-bool)) 1 0)]
+      (if (= precondition-bool 0)
+        precondition
+        (if (= (value-truthy precondition) 0)
+          (value-bool 0)
+          (eval-property-preconditions-loop
+            program
+            preconditions
+            env
+            (+ idx 1)))))))
+
 (defn eval-property-precondition [program test-case sample]
   (let [preconditions (property-test-case-preconditions test-case)
     env (env-bind
       (env-new)
       (property-test-case-binder test-case)
       sample)]
-    (if (= (vector-length preconditions) 0)
-      (value-bool 1)
-      (eval-node program (vector-get preconditions 0) env))))
+    (eval-property-preconditions-loop program preconditions env 0)))
 
 (defn eval-property-sample-value [program test-case decl sample-idx]
   (let [sample (property-sample-value sample-idx)

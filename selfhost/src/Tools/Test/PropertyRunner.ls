@@ -4,7 +4,8 @@
 (import Syntax.Parser)
 
 ;; 移行期 property profile の raw payload projection。
-;; 対応範囲は 1 個以上の Int binder、`:cases 1..5`、単一 precondition、postcondition とし、
+;; 対応範囲は 1 個の Int binder、`:cases 1..5`、precondition の conjunction、
+;; postcondition とし、
 ;; seed / shrink / 未知 option は TestRunner へ渡す前に拒否する。
 
 (defn property-runner-space? [ch]
@@ -564,15 +565,13 @@
     (vector-new 0)))
 
 ;; canonical contract を移行期 evaluator の test-case shape へ変換する。
-;; 実行可能なのは単一 Int binder / precondition 1 件以下の profile に限定する。
+;; 実行可能なのは単一 Int binder / deterministic cases の profile に限定する。
 (defn property-runner-execution-profile-code [contract]
   (let [profile-code (vector-get contract 5)
-    binders (vector-get contract 1)
-    preconditions (vector-get contract 2)]
+    binders (vector-get contract 1)]
     (if (> profile-code 0)
       profile-code
-      (if (or (!= (vector-length binders) 1)
-          (> (vector-length preconditions) 1))
+      (if (!= (vector-length binders) 1)
         3002
         0))))
 

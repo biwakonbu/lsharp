@@ -528,21 +528,17 @@ pub struct GeneratedTest {
 pub struct PropertySmokeTestSpec {
     pub binder_name: String,
     pub cases: usize,
-    /// 移行期に評価する単一 precondition。複数条件は profile 外として拒否する。
-    pub precondition: Option<Expr>,
+    /// 移行期に評価する precondition。source order の conjunction として評価する。
+    pub preconditions: Vec<Expr>,
 }
 
 /// `:property` のうち、移行期 runner が実行できる narrow profile を返す。
 ///
-/// type-directed sampling、seed、shrink、複数 precondition は別 slice のため、ここで
-/// 暗黙に既定値へ丸めず、明示的に profile 外として扱う。単一 precondition は
-/// deterministic sample の filter として実行する。
+/// type-directed sampling、seed、shrink は別 slice のため、ここで暗黙に既定値へ
+/// 丸めず、明示的に profile 外として扱う。precondition は source order の
+/// conjunction として deterministic sample の filter に使う。
 pub fn property_smoke_test_spec(property: &PropertyForm) -> Option<PropertySmokeTestSpec> {
-    if property.binders().len() != 1
-        || property.preconditions().len() > 1
-        || property.seed().is_some()
-        || property.shrink().is_some()
-    {
+    if property.binders().len() != 1 || property.seed().is_some() || property.shrink().is_some() {
         return None;
     }
     let binder = property.binders().first()?;
@@ -559,7 +555,7 @@ pub fn property_smoke_test_spec(property: &PropertyForm) -> Option<PropertySmoke
     Some(PropertySmokeTestSpec {
         binder_name: binder.name().to_string(),
         cases,
-        precondition: property.preconditions().first().cloned(),
+        preconditions: property.preconditions().to_vec(),
     })
 }
 
