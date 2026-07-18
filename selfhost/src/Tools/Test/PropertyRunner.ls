@@ -53,6 +53,18 @@
             (property-runner-balanced-end src (+ idx 1) len (- depth 1)))
           (property-runner-balanced-end src (+ idx 1) len depth))))))
 
+(defn property-runner-balanced-bracket-end [src idx len depth]
+  (if (>= idx len)
+    -1
+    (let [ch (string-char-at src idx)]
+      (if (= ch 91)
+        (property-runner-balanced-bracket-end src (+ idx 1) len (+ depth 1))
+        (if (= ch 93)
+          (if (= depth 1)
+            (+ idx 1)
+            (property-runner-balanced-bracket-end src (+ idx 1) len (- depth 1)))
+          (property-runner-balanced-bracket-end src (+ idx 1) len depth))))))
+
 (defn property-runner-atom-end [src idx len]
   (if (>= idx len)
     idx
@@ -119,8 +131,21 @@
       (property-runner-cases-info payload cases-marker)
       (vector-push-triple-rooted (vector-new 3) 0 0 -1))
     after-cases (property-runner-skip-space payload (vector-get cases 2) len)
-    post-marker (property-runner-find-from payload ":postcondition" after-cases)
-    post-layout-ok (if (= post-marker after-cases) 1 0)
+    pre-marker (property-runner-find-from payload ":precondition" after-cases)
+    pre-open (if (= pre-marker after-cases)
+      (property-runner-find-from payload "[" (+ pre-marker 13))
+      -1)
+    pre-end (if (>= pre-open 0)
+      (property-runner-balanced-bracket-end payload pre-open len 0)
+      -1)
+    pre-layout-ok (if (= pre-marker after-cases)
+      (if (and (>= pre-open 0) (> pre-end (+ pre-open 1))) 1 0)
+      1)
+    after-precondition (if (= pre-marker after-cases)
+      (property-runner-skip-space payload pre-end len)
+      after-cases)
+    post-marker (property-runner-find-from payload ":postcondition" after-precondition)
+    post-layout-ok (if (= post-marker after-precondition) 1 0)
     post-start (property-runner-skip-space payload (+ post-marker 14) len)
     post-end (if (= (string-char-at payload post-start) 40)
       (property-runner-balanced-end payload post-start len 0)
@@ -134,10 +159,10 @@
       (if (or (< open 0) (< close 0))
         3002
         (if (= (vector-get binder 1) 0)
-          3002
-          (if (= (vector-get cases 1) 0)
-            3002
-              (if (or (< post-marker 0) (or (= post-layout-ok 0) (<= post-end post-start)))
+              3002
+            (if (= (vector-get cases 1) 0)
+              3002
+              (if (or (= pre-layout-ok 0) (or (< post-marker 0) (or (= post-layout-ok 0) (<= post-end post-start))))
                 3002
               (if (= payload-end-ok 0) 3002 0))))))))
 
@@ -156,6 +181,25 @@
       0
       (let [program (parse-program text)]
         (if (> (vector-length program) 0) (vector-get program 0) 0)))))
+
+(defn property-runner-precondition-text [payload]
+  (let [marker (property-runner-find-from payload ":precondition" 0)
+    len (string-length payload)
+    open (if (>= marker 0)
+      (property-runner-find-from payload "[" (+ marker 13))
+      -1)
+    end (if (>= open 0)
+      (property-runner-balanced-bracket-end payload open len 0)
+      -1)]
+    (if (and (>= open 0) (> end (+ open 1)))
+      (substring payload (+ open 1) (- end 1))
+      "")))
+
+(defn property-runner-preconditions [payload]
+  (let [text (property-runner-precondition-text payload)]
+    (if (= (string-length text) 0)
+      (vector-new 0)
+      (parse-program text))))
 
 ;; property test case:
 ;; [name-id, owner-function-hash, binder-hash, postcondition, cases, profile-code]
@@ -229,12 +273,14 @@
         (vector-new 0))]
         (do
           (root_push binders)
-          (let [preconditions (vector-new 0)
-            postcondition (if (= profile-code 0)
+          (let [postcondition (if (= profile-code 0)
               (property-runner-postcondition payload)
               0)
             sampling (if (= profile-code 0)
               (make-property-sampling-plan (vector-get cases-info 0))
+              (vector-new 0))
+            preconditions (if (= profile-code 0)
+              (property-runner-preconditions payload)
               (vector-new 0))]
             (do
               (root_push preconditions)

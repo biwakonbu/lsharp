@@ -7947,6 +7947,39 @@ fn test_e2e_selfhost_parser_contract_suite_projects_typed_property_payload() {
     );
 }
 
+/// EC-M1-02: parser-owned ContractSuite が canonical property precondition を AST へ投影すること
+#[test]
+fn test_e2e_selfhost_parser_contract_suite_projects_property_precondition() {
+    let harness = r#"
+(defn main []
+  (let [src "(defn identity [x] :property [(for-all [value Int] :cases 3 :precondition [(>= value 0)] :postcondition (= result value))] x)"
+        suites (extract-parser-contract-suites src)
+        property (vector-get (vector-get (vector-get suites 0) 2) 0)
+        payload (vector-get property 1)
+        preconditions (vector-get payload 1)
+        predicate (vector-get preconditions 0)]
+    (do
+      (print (vector-length suites))
+      (print (vector-length preconditions))
+      (print (vector-get predicate 0))
+      (print (vector-get (vector-get payload 3) 0))
+      (print (vector-get payload 4))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_test_runner_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["1", "1", "5", "3", "0"],
+        "parser-owned ContractSuite は property precondition を raw payload のまま破棄せず AST として保持するべき"
+    );
+}
+
 /// TEST-CLI-02-O2d: selfhost/src/Tools/Test/TestRunner.ls が supported subset の metadata suite を実行できること
 #[test]
 #[ignore]
