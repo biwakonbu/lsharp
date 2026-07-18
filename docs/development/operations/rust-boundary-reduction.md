@@ -690,3 +690,11 @@ Bool binder の typed profile を 3 個まで拡張した。対象は source ord
 Evidence: Rust `test_run_metadata_tests_executes_three_bool_property_binders` / `test_run_metadata_tests_rejects_three_bool_property_above_two_cases`、selfhost `test_e2e_selfhost_runner_executes_three_bool_property_binders` / `test_e2e_selfhost_runner_rejects_three_bool_property_above_two_cases`、既存の single Bool / Int-Bool mixed / two Bool / three Int regression、`PropertyRunner.ls` / `TestRunner.ls` source check（各 `diagnostics:0`）。
 
 これは 3-`Bool` の deterministic prefix に限定した verified slice であり、Bool/Int/Bool の一般 mixed arity、4 個以上の binder、一般 `TypeExpr`、constraint/type-directed generator、seed/shrink/coverage bucket、predicate/span parity、current-source Mac Apple Silicon / Linux x86_64 native artifact/runtime gate、stage0 provenance は残件である。対応済み profile の日常開発は Rust なしで進められるが、profile 外 property semantics と Rust oracle / bootstrap / host integration の境界は維持する。
+
+### EC-M1-04 selfhost property runner non-vacuity (2026-07-18)
+
+selfhost `TestRunner` の直接 materialize 経路でも、静的に true な `:property` postcondition を成功扱いしないようにした。`true` と静的な Int 比較を AST の 3 値（true / false / unknown）で判定し、postcondition が true の場合は `LS2005` を返す。precondition の静的 false 判定も同じ判定器を通し、既存の全 sample skip による `LS2005` と整合させる。型推論モジュールを runner bundle に暗黙追加せず、既存 canonical checker と同じ比較・`and`/`or`/`not` の narrow 判定を selfhost 実行境界へ明示した。
+
+Evidence: selfhost `test_e2e_selfhost_runner_rejects_vacuous_property_postcondition`、`test_e2e_selfhost_runner_rejects_statically_true_property_postcondition`、既存 `test_e2e_selfhost_runner_rejects_vacuous_property_precondition`、Rust tooling の canonical vacuity tests、`TestRunner.ls` source check（`diagnostics:0`）。RED では runner が `postcondition true` と `(= 1 1)` を `passed=1, actual=1, diagnostic=0` としていたが、GREEN ではいずれも `passed=0, actual=0, diagnostic=2005` になった。
+
+これは literal/static comparison と deterministic property runner の non-vacuity slice に限定される。一般的な constant propagation、動的に常に true となる postconditionの検出、一般 `TypeExpr`、type-directed generator、seed/shrink/coverage bucket、structured assurance report、current-source Mac Apple Silicon / Linux x86_64 native artifact/runtime gate、stage0 provenance は残件である。対応済み runner slice の日常開発は Rust なしで進められるが、property evaluator 全体と Rust oracle / bootstrap / host integration の境界は維持する。

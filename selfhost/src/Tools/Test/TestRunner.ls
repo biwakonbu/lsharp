@@ -1970,7 +1970,113 @@
               sample-count
               next-passed
               next-bool
-              (+ actual-count 1))))))))
+            (+ actual-count 1))))))))
+
+(defn property-runner-static-comparison-result [operator left right]
+  (if (or (= operator 61) (= operator 1952))
+    (if (= left right) 1 2)
+    (if (= operator 1084)
+      (if (!= left right) 1 2)
+      (if (= operator 60)
+        (if (< left right) 1 2)
+        (if (= operator 62)
+          (if (> left right) 1 2)
+          (if (= operator 1921)
+            (if (<= left right) 1 2)
+            (if (= operator 1983)
+              (if (>= left right) 1 2)
+              0)))))))
+
+(defn property-runner-statically-integer-comparison? [predicate expected]
+  (let [tag (vector-get predicate 0)]
+    (if (= tag (ast-ann))
+      (property-runner-statically-integer-comparison? (vector-get predicate 1) expected)
+      (if (= tag (ast-apply))
+        (let [callee (vector-get predicate 1)
+          arg-count (vector-get predicate 2)]
+          (if (and (= arg-count 2) (= (vector-get callee 0) (ast-var)))
+            (if (and (= (vector-get (vector-get predicate 3) 0) (ast-lit-int))
+                (= (vector-get (vector-get predicate 4) 0) (ast-lit-int)))
+              (if (= (property-runner-static-comparison-result
+                  (vector-get callee 1)
+                  (vector-get (vector-get predicate 3) 1)
+                  (vector-get (vector-get predicate 4) 1)) expected) 1 0)
+              0)
+            0))
+        0))))
+
+(defn property-runner-static-boolean-and [left right]
+  (if (= left 2)
+    2
+    (if (= right 2)
+      2
+      (if (= left 1)
+        right
+        (if (= right 1) left 0)))))
+
+(defn property-runner-static-boolean-or [left right]
+  (if (= left 1)
+    1
+    (if (= right 1)
+      1
+      (if (= left 2)
+        right
+        (if (= right 2) left 0)))))
+
+(defn property-runner-statically-boolean-result [predicate]
+  (let [tag (vector-get predicate 0)]
+    (if (= tag (ast-ann))
+      (property-runner-statically-boolean-result (vector-get predicate 1))
+      (if (= tag (ast-lit-bool))
+        (if (= (vector-get predicate 1) 1) 1 2)
+        (if (= tag (ast-apply))
+          (let [callee (vector-get predicate 1)
+            arg-count (vector-get predicate 2)]
+            (if (= (vector-get callee 0) (ast-var))
+              (let [operator (vector-get callee 1)]
+                (if (= operator 109267)
+                  (if (= arg-count 1)
+                    (let [operand-result (property-runner-statically-boolean-result
+                        (vector-get predicate 3))]
+                      (if (= operand-result 1) 2 (if (= operand-result 2) 1 0)))
+                    0)
+                  (if (= arg-count 2)
+                    (let [left (vector-get predicate 3)
+                      right (vector-get predicate 4)]
+                      (if (= operator 96727)
+                        (property-runner-static-boolean-and
+                          (property-runner-statically-boolean-result left)
+                          (property-runner-statically-boolean-result right))
+                        (if (= operator 3555)
+                          (property-runner-static-boolean-or
+                            (property-runner-statically-boolean-result left)
+                            (property-runner-statically-boolean-result right))
+                          (if (= (property-runner-statically-integer-comparison? predicate 1) 1)
+                            1
+                            (if (= (property-runner-statically-integer-comparison? predicate 2) 1)
+                              2
+                              0)))))
+                    0)))
+              0))
+          0)))))
+
+(defn property-runner-static-precondition-code-loop [preconditions idx count]
+  (if (>= idx count)
+    0
+    (if (= (property-runner-statically-boolean-result (vector-get preconditions idx)) 2)
+      (contract-diagnostic-vacuous-property)
+      (property-runner-static-precondition-code-loop preconditions (+ idx 1) count))))
+
+(defn property-runner-static-vacuous-code [test-case]
+  (let [postcondition-result (property-runner-statically-boolean-result
+      (property-test-case-postcondition test-case))
+    preconditions (property-test-case-preconditions test-case)]
+    (if (= postcondition-result 1)
+      (contract-diagnostic-vacuous-property)
+      (property-runner-static-precondition-code-loop
+        preconditions
+        0
+        (vector-length preconditions)))))
 
 (defn materialize-property [program test-case]
   (let [name (vector-get test-case 0)
@@ -1985,8 +2091,11 @@
     unknown-hash (if (and (= profile-code 0) (= owner-valid 1))
       (property-unknown-variable program test-case)
       -1)
+    static-vacuous-code (if (and (= profile-code 0) (and (= owner-valid 1) (< unknown-hash 0)))
+      (property-runner-static-vacuous-code test-case)
+      0)
     sample-count (property-test-case-count test-case)
-    sample-summary (if (or (> profile-code 0) (or (= owner-valid 0) (>= unknown-hash 0)))
+    sample-summary (if (or (> profile-code 0) (or (= owner-valid 0) (or (>= unknown-hash 0) (> static-vacuous-code 0))))
       (property-sample-summary 0 0 0)
       (run-property-samples-summary-loop
         program
@@ -2005,11 +2114,13 @@
         (contract-diagnostic-unsupported-property)
         (if (>= unknown-hash 0)
           (contract-diagnostic-undefined)
-          (if (= bool-valid 0)
-            (contract-diagnostic-non-bool)
-            (if (and (> precondition-count 0) (= actual-count 0))
-              (contract-diagnostic-vacuous-property)
-              0)))))
+          (if (> static-vacuous-code 0)
+            static-vacuous-code
+            (if (= bool-valid 0)
+              (contract-diagnostic-non-bool)
+              (if (and (> precondition-count 0) (= actual-count 0))
+                (contract-diagnostic-vacuous-property)
+                0))))))
     passed (if (= diagnostic-code 0) (vector-get sample-summary 0) 0)
     actual (if (= diagnostic-code 0) actual-count 0)]
     (make-test-result-with-diagnostic name passed actual diagnostic-code)))

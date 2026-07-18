@@ -6480,6 +6480,66 @@ fn test_e2e_selfhost_runner_rejects_vacuous_property_precondition() {
     );
 }
 
+/// EC-M1-04: selfhost runner が literal true の property postcondition を成功扱いしないこと
+#[test]
+fn test_e2e_selfhost_runner_rejects_vacuous_property_postcondition() {
+    let harness = r#"
+(defn main []
+  (let [src "(defn identity [x] :property [(for-all [value Int] :cases 1 :postcondition true)] x)"
+        suite (generate-tests-from-source src)
+        properties (vector-get suite 4)
+        result0 (vector-get properties 0)]
+    (do
+      (print (vector-length properties))
+      (print (vector-get result0 1))
+      (print (vector-get result0 2))
+      (print (vector-get result0 3))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_test_runner_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["1", "0", "0", "2005"],
+        "selfhost runner は literal true postcondition を vacuous success にしてはならない"
+    );
+}
+
+/// EC-M1-04: selfhost runner が静的に true な integer comparison postcondition を成功扱いしないこと
+#[test]
+fn test_e2e_selfhost_runner_rejects_statically_true_property_postcondition() {
+    let harness = r#"
+(defn main []
+  (let [src "(defn identity [x] :property [(for-all [value Int] :cases 1 :postcondition (= 1 1))] x)"
+        suite (generate-tests-from-source src)
+        properties (vector-get suite 4)
+        result0 (vector-get properties 0)]
+    (do
+      (print (vector-length properties))
+      (print (vector-get result0 1))
+      (print (vector-get result0 2))
+      (print (vector-get result0 3))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_test_runner_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["1", "0", "0", "2005"],
+        "selfhost runner は静的に true な integer comparison を vacuous success にしてはならない"
+    );
+}
+
 /// EC-M1-02: selfhost runner が二つの Int binder を pair prefix として実行すること
 #[test]
 fn test_e2e_selfhost_runner_executes_two_int_property_binders() {
