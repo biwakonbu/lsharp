@@ -462,6 +462,141 @@ fn test_native_app_cli_test_format_json_reports_vacuous_failure_source_file_cont
 }
 
 #[test]
+#[ignore = "actual native EmbeddedCli program を LSHARP_NATIVE_EMBEDDED_CLI_PROGRAM で指定する"]
+fn test_native_embedded_cli_test_format_json_source_file_contract() {
+    if !cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+        return;
+    }
+
+    let program = PathBuf::from(
+        std::env::var_os("LSHARP_NATIVE_EMBEDDED_CLI_PROGRAM")
+            .expect("LSHARP_NATIVE_EMBEDDED_CLI_PROGRAM を指定すること"),
+    );
+    assert!(
+        program.is_file(),
+        "native EmbeddedCli が見つからない: {}",
+        program.display()
+    );
+    let program = std::fs::canonicalize(&program).expect("native EmbeddedCli の絶対パス化に失敗");
+    let source = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/metadata.ls");
+    let source = std::fs::canonicalize(&source).expect("metadata fixture の絶対パス化に失敗");
+
+    let test = Command::new(&program)
+        .current_dir(
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .parent()
+                .and_then(std::path::Path::parent)
+                .expect("workspace root の解決に失敗"),
+        )
+        .args([
+            "test",
+            source.to_str().expect("metadata path は UTF-8 であるべき"),
+            "--format",
+            "json",
+        ])
+        .output()
+        .expect("native EmbeddedCli test --format json の実行に失敗");
+
+    assert!(
+        test.status.success(),
+        "native EmbeddedCli test --format json は成功するべき: stdout={:?} stderr={:?}",
+        String::from_utf8_lossy(&test.stdout),
+        String::from_utf8_lossy(&test.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&test.stdout);
+    let lines: Vec<&str> = stdout.lines().collect();
+    assert_eq!(
+        lines.len(),
+        1,
+        "native EmbeddedCli test --format json は report 1 行を返すべき"
+    );
+    let report: Value =
+        serde_json::from_str(lines[0]).expect("native EmbeddedCli JSON は valid JSON");
+    assert!(
+        report.get("verified").is_none(),
+        "native EmbeddedCli assurance report は top-level verified を返してはならない"
+    );
+    assert_eq!(report["implementation_conformance"]["status"], "pass");
+    assert_eq!(
+        report["implementation_conformance"]["method"],
+        "legacy-deterministic-smoke"
+    );
+    assert!(
+        report["implementation_conformance"]["cases"]
+            .as_u64()
+            .unwrap_or(0)
+            > 0
+    );
+    assert_eq!(report["intent_validation"]["status"], "unknown");
+}
+
+#[test]
+#[ignore = "actual native EmbeddedCli program を LSHARP_NATIVE_EMBEDDED_CLI_PROGRAM で指定する"]
+fn test_native_embedded_cli_test_format_json_reports_vacuous_failure_source_file_contract() {
+    if !cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+        return;
+    }
+
+    let program = PathBuf::from(
+        std::env::var_os("LSHARP_NATIVE_EMBEDDED_CLI_PROGRAM")
+            .expect("LSHARP_NATIVE_EMBEDDED_CLI_PROGRAM を指定すること"),
+    );
+    assert!(
+        program.is_file(),
+        "native EmbeddedCli が見つからない: {}",
+        program.display()
+    );
+    let program = std::fs::canonicalize(&program).expect("native EmbeddedCli の絶対パス化に失敗");
+    let dir = std::env::temp_dir().join(format!(
+        "lsharp_native_embedded_cli_test_format_json_vacuous_contract_{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("EmbeddedCli vacuous fixture directory の作成に失敗");
+    std::fs::write(
+        dir.join("input.ls"),
+        "(defn identity [x] :property [(for-all [sample Int] :cases 1 :postcondition true)] x)",
+    )
+    .expect("EmbeddedCli vacuous fixture の書き込みに失敗");
+
+    let result = (|| {
+        let test = Command::new(&program)
+            .current_dir(&dir)
+            .args(["test", "input.ls", "--format", "json"])
+            .output()
+            .expect("native EmbeddedCli vacuous test --format json の実行に失敗");
+        assert_eq!(
+            test.status.code(),
+            Some(2),
+            "native EmbeddedCli JSON failure は exit 2 であるべき: stdout={:?} stderr={:?}",
+            String::from_utf8_lossy(&test.stdout),
+            String::from_utf8_lossy(&test.stderr)
+        );
+        let stdout = String::from_utf8_lossy(&test.stdout);
+        let lines: Vec<&str> = stdout.lines().collect();
+        assert_eq!(
+            lines.len(),
+            1,
+            "native EmbeddedCli JSON failure は report 1 行を返すべき"
+        );
+        let report: Value =
+            serde_json::from_str(lines[0]).expect("native EmbeddedCli failure JSON は valid JSON");
+        assert_eq!(report["implementation_conformance"]["status"], "fail");
+        assert_eq!(
+            report["implementation_conformance"]["diagnostics"]["count"],
+            1
+        );
+        assert_eq!(
+            report["implementation_conformance"]["diagnostics"]["firstErrorCode"],
+            2005
+        );
+        assert_eq!(report["intent_validation"]["status"], "unknown");
+    })();
+    let _ = std::fs::remove_dir_all(&dir);
+    result
+}
+
+#[test]
 #[ignore = "actual native App.Cli program を LSHARP_NATIVE_APP_CLI_PROGRAM で指定する"]
 fn test_native_app_cli_test_rejects_vacuous_property_source_file_contract() {
     if !cfg!(all(target_os = "macos", target_arch = "aarch64")) {
