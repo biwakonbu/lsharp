@@ -581,7 +581,36 @@ pub fn property_smoke_test_spec(property: &PropertyForm) -> Option<PropertySmoke
         ]
         | [PropertyBinderType::Int, PropertyBinderType::Bool]
         | [PropertyBinderType::Bool, PropertyBinderType::Int]
-            if cases <= 2 => {}
+        | [
+            PropertyBinderType::Int,
+            PropertyBinderType::Int,
+            PropertyBinderType::Bool,
+        ]
+        | [
+            PropertyBinderType::Int,
+            PropertyBinderType::Bool,
+            PropertyBinderType::Int,
+        ]
+        | [
+            PropertyBinderType::Bool,
+            PropertyBinderType::Int,
+            PropertyBinderType::Int,
+        ]
+        | [
+            PropertyBinderType::Int,
+            PropertyBinderType::Bool,
+            PropertyBinderType::Bool,
+        ]
+        | [
+            PropertyBinderType::Bool,
+            PropertyBinderType::Int,
+            PropertyBinderType::Bool,
+        ]
+        | [
+            PropertyBinderType::Bool,
+            PropertyBinderType::Bool,
+            PropertyBinderType::Int,
+        ] if cases <= 2 => {}
         _ => return None,
     }
     Some(PropertySmokeTestSpec {

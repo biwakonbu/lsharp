@@ -659,6 +659,12 @@
   (if (and (= (property-runner-bool-binder-count binders) 3)
       (= (vector-length binders) 3)) 1 0))
 
+(defn property-runner-three-mixed-int-bool? [binders]
+  (let [bool-count (property-runner-bool-binder-count binders)
+    int-count (property-runner-int-binder-count binders)]
+    (if (and (= (vector-length binders) 3)
+        (and (> bool-count 0) (> int-count 0))) 1 0)))
+
 (defn property-runner-bool-profile-supported? [binders cases]
   (if (> cases 2)
     0
@@ -666,9 +672,11 @@
       1
       (if (= (property-runner-mixed-int-bool? binders) 1)
         1
-        (if (= (property-runner-two-bool? binders) 1)
+        (if (= (property-runner-three-mixed-int-bool? binders) 1)
           1
-          (property-runner-three-bool? binders))))))
+          (if (= (property-runner-two-bool? binders) 1)
+            1
+            (property-runner-three-bool? binders)))))))
 
 (defn property-runner-binder-type-profile-code [contract]
   (let [binders (vector-get contract 1)

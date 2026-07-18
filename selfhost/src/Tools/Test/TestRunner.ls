@@ -1791,6 +1791,19 @@
           (= (property-sample-binder-type-int? binder-types 2) 1))) 1 0)
     0))
 
+(defn property-sample-three-mixed-binder? [binder-count binder-types]
+  (if (and (= binder-count 3) (= (vector-length binder-types) 3))
+    (let [bool-count (+
+        (property-sample-binder-type-bool? binder-types 0)
+        (+ (property-sample-binder-type-bool? binder-types 1)
+          (property-sample-binder-type-bool? binder-types 2)))
+      int-count (+
+        (property-sample-binder-type-int? binder-types 0)
+        (+ (property-sample-binder-type-int? binder-types 1)
+          (property-sample-binder-type-int? binder-types 2)))]
+      (if (and (> bool-count 0) (> int-count 0)) 1 0))
+    0))
+
 (defn property-sample-three-bool-binder? [binder-count binder-types]
   (if (and (= binder-count 3) (= (vector-length binder-types) 3))
     (if (and (= (property-sample-binder-type-bool? binder-types 0) 1)
@@ -1818,25 +1831,31 @@
           (property-sample-value sample-idx)
           (property-sample-value sample-idx)
           (property-sample-value sample-idx))
-        (if (= (property-sample-three-bool-binder? binder-count binder-types) 1)
-        (vector-push-triple-rooted
-          (vector-new 3)
-          (property-sample-by-type (vector-get binder-types 0) sample-idx)
-          (property-sample-by-type (vector-get binder-types 1) sample-idx)
-          (property-sample-by-type (vector-get binder-types 2) sample-idx))
-        (if (= mixed-binder 1)
-        (vector-push-pair-rooted
-          (vector-new 2)
-          (property-sample-by-type (vector-get binder-types 0) sample-idx)
-          (property-sample-by-type (vector-get binder-types 1) sample-idx))
-          (if (= binder-count 1)
-          (vector-push-single-rooted
-            (vector-new 1)
-            (property-sample-value sample-idx))
+        (if (= (property-sample-three-mixed-binder? binder-count binder-types) 1)
+          (vector-push-triple-rooted
+            (vector-new 3)
+            (property-sample-by-type (vector-get binder-types 0) sample-idx)
+            (property-sample-by-type (vector-get binder-types 1) sample-idx)
+            (property-sample-by-type (vector-get binder-types 2) sample-idx))
+          (if (= (property-sample-three-bool-binder? binder-count binder-types) 1)
+            (vector-push-triple-rooted
+              (vector-new 3)
+              (property-sample-by-type (vector-get binder-types 0) sample-idx)
+              (property-sample-by-type (vector-get binder-types 1) sample-idx)
+              (property-sample-by-type (vector-get binder-types 2) sample-idx))
+            (if (= mixed-binder 1)
               (vector-push-pair-rooted
                 (vector-new 2)
-                (property-sample-value (/ sample-idx 3))
-                (property-sample-value (% sample-idx 3))))))))))
+                (property-sample-by-type (vector-get binder-types 0) sample-idx)
+                (property-sample-by-type (vector-get binder-types 1) sample-idx))
+              (if (= binder-count 1)
+                (vector-push-single-rooted
+                  (vector-new 1)
+                  (property-sample-value sample-idx))
+                (vector-push-pair-rooted
+                  (vector-new 2)
+                  (property-sample-value (/ sample-idx 3))
+                  (property-sample-value (% sample-idx 3)))))))))))
 
 (defn property-bind-unit-binders-loop [env binders idx]
   (if (>= idx (vector-length binders))
