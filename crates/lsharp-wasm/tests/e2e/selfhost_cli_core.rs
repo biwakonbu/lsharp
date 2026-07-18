@@ -6863,6 +6863,51 @@ fn test_e2e_selfhost_test_runner_matches_rust_oracle_for_valid_invariant_match()
     );
 }
 
+/// EC-M1-01: invariant 内 match の literal / wildcard pattern を Rust oracle と selfhost が評価すること
+#[test]
+fn test_e2e_selfhost_test_runner_matches_rust_oracle_for_literal_and_wildcard_match() {
+    let source = r#"
+(defn literal-match [x]
+  :invariant (match true [true (= result result)] [_ false])
+  (+ x 1))
+(defn wildcard-match [x]
+  :invariant (match x [_ (= result (+ x 1))])
+  (+ x 1))
+"#;
+    let oracle = run_metadata_tests(source);
+    assert_eq!(oracle.len(), 2, "Rust oracle は match invariant 2 件を生成するべき");
+    assert!(oracle.iter().all(|result| result.passed));
+
+    let harness = r#"
+(defn main []
+  (let [src "(defn literal-match [x] :invariant (match true [true (= result result)] [_ false]) (+ x 1)) (defn wildcard-match [x] :invariant (match x [_ (= result (+ x 1))]) (+ x 1))"
+        suite (generate-tests src)
+        results (vector-get suite 1)
+        result0 (vector-get results 0)
+        result1 (vector-get results 1)]
+    (do
+      (print (vector-length results))
+      (print (vector-get result0 1))
+      (print (vector-get result0 2))
+      (print (vector-get result0 3))
+      (print (vector-get result1 1))
+      (print (vector-get result1 2))
+      (print (vector-get result1 3))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_test_runner_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(
+        lines,
+        vec!["2", "1", "5", "0", "1", "5", "0"],
+        "selfhost match evaluator は literal/wildcard pattern を Rust oracle と揃えるべき"
+    );
+}
+
 /// EC-M1-01: invariant 内 match arm の未知変数を Rust oracle と selfhost が診断すること
 #[test]
 fn test_e2e_selfhost_test_runner_reports_unknown_invariant_match_variable() {
