@@ -783,6 +783,62 @@
             (+ idx 1)
             count))))))
 
+(defn contract-bind-pattern-vars-constructor-loop [env pattern idx count]
+  (if (>= idx count)
+    env
+    (contract-bind-pattern-vars-constructor-loop
+      (contract-bind-pattern-vars env (vector-get pattern (+ 3 idx)))
+      pattern
+      (+ idx 1)
+      count)))
+
+(defn contract-bind-pattern-vars-record-loop [env pattern idx count]
+  (if (>= idx count)
+    env
+    (contract-bind-pattern-vars-record-loop
+      (contract-bind-pattern-vars env (vector-get pattern (+ 3 (* idx 2))))
+      pattern
+      (+ idx 1)
+      count)))
+
+(defn contract-bind-pattern-vars [env pattern]
+  (let [tag (vector-get pattern 0)]
+    (if (= tag (ast-pat-var))
+      (env-bind env (vector-get pattern 1) (value-unit))
+      (if (= tag (ast-pat-constructor))
+        (contract-bind-pattern-vars-constructor-loop
+          env
+          pattern
+          0
+          (vector-get pattern 2))
+        (if (= tag (ast-pat-recordpat))
+          (contract-bind-pattern-vars-record-loop
+            env
+            pattern
+            0
+            (vector-get pattern 1))
+          env)))))
+
+(defn contract-node-unknown-hash-match-loop [program node env allow-result idx count]
+  (if (>= idx count)
+    -1
+    (let [arm-base (+ 3 (* idx 2))
+      arm-env (contract-bind-pattern-vars env (vector-get node arm-base))
+      found (contract-node-unknown-hash
+        program
+        (vector-get node (+ arm-base 1))
+        arm-env
+        allow-result)]
+      (if (>= found 0)
+        found
+        (contract-node-unknown-hash-match-loop
+          program
+          node
+          env
+          allow-result
+          (+ idx 1)
+          count)))))
+
 (defn contract-bind-lambda-params-loop [env node idx count]
   (if (>= idx count)
     env
@@ -825,19 +881,30 @@
                   (vector-get node (+ 2 param-count))
                   lambda-env
                   allow-result))
-              (if (= tag (ast-computation))
-                (contract-node-unknown-hash-computation-loop
-                  program
-                  node
-                  env
-                  allow-result
-                  0
-                  (vector-get node 2))
-                (if (= tag (ast-do))
-                  (contract-node-unknown-hash-do-loop program node env allow-result 0 (vector-get node 1))
-                  (if (= tag (ast-ann))
-                    (contract-node-unknown-hash program (vector-get node 1) env allow-result)
-                    -1))))))))))
+              (if (= tag (ast-match))
+                (let [scrutinee-found (contract-node-unknown-hash program (vector-get node 1) env allow-result)]
+                  (if (>= scrutinee-found 0)
+                    scrutinee-found
+                    (contract-node-unknown-hash-match-loop
+                      program
+                      node
+                      env
+                      allow-result
+                      0
+                      (vector-get node 2))))
+                (if (= tag (ast-computation))
+                  (contract-node-unknown-hash-computation-loop
+                    program
+                    node
+                    env
+                    allow-result
+                    0
+                    (vector-get node 2))
+                  (if (= tag (ast-do))
+                    (contract-node-unknown-hash-do-loop program node env allow-result 0 (vector-get node 1))
+                    (if (= tag (ast-ann))
+                      (contract-node-unknown-hash program (vector-get node 1) env allow-result)
+                      -1)))))))))))
 
 (defn invariant-unknown-variable [program expr decl param-count]
   (let [scope (bind-params-loop
