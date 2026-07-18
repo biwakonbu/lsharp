@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 WRAPPER="$ROOT/scripts/ci/package-native-linux-x86-actual-stage1-vm.sh"
+SOURCE_COMMIT="$(git -C "$ROOT" rev-parse --verify HEAD)"
 
 fail() {
   echo "FAIL: $*" >&2
@@ -128,7 +129,7 @@ run_wrapper \
   --actual-stage1-dir "$ACTUAL_STAGE1" \
   --output-dir "$OUTPUT_DIR"
 
-python3 - "$OUTPUT_DIR/manifest.json" <<'PY'
+python3 - "$OUTPUT_DIR/manifest.json" "$SOURCE_COMMIT" <<'PY'
 import json
 import sys
 
@@ -136,6 +137,7 @@ manifest = json.load(open(sys.argv[1], encoding="utf-8"))
 expected = {
     "kind": "lsharp-native-selfhost-stage0",
     "target": "x86_64-unknown-linux-gnu",
+    "source_commit": sys.argv[2],
     "compiler": "bin/compiler",
     "transport_driver": "bin/transport-driver",
     "materializer": "bin/materializer",
