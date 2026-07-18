@@ -191,3 +191,65 @@ fn test_e2e_selfhost_ftable_compiler_executes_nested_string_patterns_from_argv()
         "mismatch argv は wildcard arm に落ちるべき"
     );
 }
+
+/// LEGACY-LANG-02: import module 内の nested String pattern を compile-file-mode で保持する。
+#[test]
+fn test_e2e_selfhost_compiler_mode_executes_imported_nested_string_patterns() {
+    let temp_root = std::env::temp_dir().join(format!(
+        "lsharp-selfhost-string-pattern-import-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&temp_root);
+    let app_dir = temp_root.join("src/App");
+    std::fs::create_dir_all(&app_dir).expect("String pattern import fixture directory を作れない");
+    std::fs::write(
+        app_dir.join("Patterns.ls"),
+        "(module App.Patterns)\n(type (Maybe a) (Some a) None)\n(defn classify [value] (match value [(Some \"ab\") 1] [(Some \"\") 2] [_ 0]))\n",
+    )
+    .expect("String pattern import fixture の Patterns.ls を書けない");
+    std::fs::write(
+        app_dir.join("Main.ls"),
+        "(module App.Main)\n(import App.Patterns)\n(defn main [] (print (classify (Some (command-line-arg 1)))))\n",
+    )
+    .expect("String pattern import fixture の Main.ls を書けない");
+
+    let compiler_mode = format!(
+        "{}\n(defn main [] (compile-file-mode))",
+        selfhost_module("CompilerMode.ls")
+    );
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("IR.ls"),
+        selfhost_module("Compiler.ls"),
+        selfhost_module("WasiBackend.ls"),
+        selfhost_module("WasmEmit.ls"),
+        selfhost_module("ModuleResolver.ls"),
+        compiler_mode
+    );
+    let emitted =
+        compile_and_run_with_dir_and_args(&combined, &temp_root, &["compiler", "src/App/Main.ls"]);
+    let wasm_bytes = parse_printed_wasm_bytes(&emitted);
+
+    let run = |value: &str| {
+        super::selfhost_bootstrap_four_layer::run_wasm_with_eleven_imports_compiler_mode_fs(
+            &wasm_bytes,
+            &temp_root,
+            &["program", value],
+        )
+        .expect("imported nested String pattern module should run")
+    };
+
+    assert_eq!(run("ab"), "1\n", "imported exact String arm に一致するべき");
+    assert_eq!(run(""), "2\n", "imported empty String arm に一致するべき");
+    assert_eq!(
+        run("other"),
+        "0\n",
+        "imported mismatch は wildcard arm に落ちるべき"
+    );
+
+    std::fs::remove_dir_all(&temp_root).expect("String pattern import fixture を削除できない");
+}
