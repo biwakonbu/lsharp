@@ -1198,7 +1198,11 @@
     1
     (if (string-eq name "invariant")
       1
-      0)))
+      (if (string-eq name "case")
+        1
+        (if (string-eq name "assert")
+          1
+          (if (string-eq name "property") 1 0))))))
 
 (defn append-skip-span [spans start end]
   (vector-push-pair-rooted spans start end))
@@ -1371,7 +1375,7 @@
           results))
       results)))
 
-;; ordered legacy form: [kind, function-name-hash, payload-expressions, start, end]
+;; ordered contract form: [kind, function-name-hash, payload, start, end]
 (defn make-contract-form [kind fn-hash payload start end]
   (vector-push
     (vector-push
@@ -1383,16 +1387,34 @@
       start)
     end))
 
+(defn contract-form-kind [name]
+  (if (string-eq name "example")
+    (contract-form-example)
+    (if (string-eq name "invariant")
+      (contract-form-invariant)
+      (if (string-eq name "assert")
+        (contract-form-assert)
+        (if (string-eq name "case")
+          (contract-form-case)
+          (if (string-eq name "property")
+            (contract-form-property)
+            0))))))
+
+(defn contract-form-payload [src tokens payload-start payload-end name]
+  (let [text (payload-source src tokens payload-start payload-end)]
+    (if (or (string-eq name "example") (string-eq name "invariant"))
+      (if (> (string-length text) 0) (parse-program text) (vector-new 0))
+      (vector-push-single-rooted (vector-new 1) text))))
+
 (defn append-contract-form [src tokens idx payload-start payload-end name fn-hash forms]
-  (if (or (string-eq name "example") (string-eq name "invariant"))
-    (let [text (payload-source src tokens payload-start payload-end)
-      payload (if (> (string-length text) 0) (parse-program text) (vector-new 0))
-      kind (if (string-eq name "example") (contract-form-example) (contract-form-invariant))
-      start (token-start tokens idx)
-      end (token-end tokens (- payload-end 1))
-      form (make-contract-form kind fn-hash payload start end)]
-      (vector-push forms form))
-    forms))
+  (let [kind (contract-form-kind name)]
+    (if (> kind 0)
+      (let [payload (contract-form-payload src tokens payload-start payload-end name)
+            start (token-start tokens idx)
+            end (token-end tokens (- payload-end 1))
+            form (make-contract-form kind fn-hash payload start end)]
+        (vector-push forms form))
+      forms)))
 
 (defn collect-defn-contract-forms-loop [src tokens idx end fn-hash forms]
   (if (>= idx end)

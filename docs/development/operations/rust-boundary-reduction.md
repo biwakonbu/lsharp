@@ -298,6 +298,12 @@ RED で `:example` / `:invariant` / `:example` が metadata length `5`、forms `
 
 これは parser-owned legacy bridge の verified slice であり、forms に source span はまだなく、Rust `MetadataForm` / `ContractSuite` への canonical conversion、module/private qualification、new `:case` / `:assert` / `:property` / `:postcondition` forms、Mac/Linux current-source artifact/runtime parity は残件である。
 
+### EC-M1-02 selfhost raw inventory canonical form bridge (2026-07-18)
+
+Selfhost `Tools.Test.TestRunner` の raw `extract-contract-forms` inventory は legacy `:example` / `:invariant` に加えて canonical `:case` / `:assert` / `:property` を同じ ordered form vectorへ収集するようになった。form は `[kind, owner-hash, payload, start, end]` を保持し、legacy payload は AST vector、canonical payload は raw text の一要素 vectorとして型を揃えた。全 5 種類を混在させた fixture で kind 順 `1,4,3,5,2`、canonical payload、全 form の start/end span を selfhost Wasm で確認した。metadata stripping の directive 判定も同じ 5 種類へ揃えた。
+
+Evidence: `test_e2e_selfhost_contract_inventory_includes_canonical_forms`、`test_e2e_selfhost_test_runner_preserves_contract_form_order_and_spans`、`cargo run --quiet --bin lsharp -- check selfhost/src/Tools/Test/TestRunner.ls`（`diagnostics:0`）。これは raw source inventory の verified sliceであり、Rust `MetadataForm` と同型の `ContractSuite` / `Example` / `Case` / `Assertion` / `Property` IR、parser-owned canonical metadataとの統合、module/private の qualified owner、predicate/expectation span、migration diagnostic、Mac/Linux current-source artifact/runtime parity は残件である。
+
 ### EC-M1-02 selfhost runner invariant AST projection (2026-07-17)
 
 Selfhost `Tools.Test.TestRunner` は declaration tree 内の `defn` metadata vector slot 5 にある ordered kind `2` form を優先し、parser が保持した legacy `:invariant` AST から test case を直接生成する。旧 metadata では slot 4 に fallback する。`generate-tests` も同じ parser AST projection を使用し、`succ(x)` の predicate shape、invariant 1 件の抽出、5 sample の実行結果 `passed=1` を一つの selfhost Wasm E2E で確認した。RED は未定義の `extract-invariants-from-program` により固定し、GREEN は `test_e2e_selfhost_test_runner_extracts_invariant_from_parser_ast` と Rust driver の `check selfhost/src/Tools/Test/TestRunner.ls` で確認した。

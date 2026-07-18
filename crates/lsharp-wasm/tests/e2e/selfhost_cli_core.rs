@@ -7685,8 +7685,10 @@ fn test_e2e_selfhost_test_runner_preserves_contract_form_order_and_spans() {
       0)))
 "#;
 
-    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
-    let output = compile_and_run(&combined);
+    let combined = format!("{}\n{}", selfhost_test_runner_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert_eq!(
@@ -7695,6 +7697,69 @@ fn test_e2e_selfhost_test_runner_preserves_contract_form_order_and_spans() {
         "selfhost contract inventory は legacy directive の順序・grouping・source span を保持すべき"
     );
 }
+
+/// EC-M1-02: selfhost raw inventory が legacy/canonical contract の順序と span を保持すること
+#[test]
+fn test_e2e_selfhost_contract_inventory_includes_canonical_forms() {
+    let harness = r#"
+(defn main []
+  (let [src "(defn f [x] :example [(f 1)] :case [(expect (f 1) 2)] :assert [(= 1 1)] :property [(for-all [x Int] :cases 3 :postcondition (= result x))] :invariant (= result (+ x 1)) (+ x 1))"
+        forms (extract-contract-forms src)
+        form0 (vector-get forms 0)
+        form1 (vector-get forms 1)
+        form2 (vector-get forms 2)
+        form3 (vector-get forms 3)
+        form4 (vector-get forms 4)]
+    (do
+      (print (vector-length forms))
+      (print (vector-get form0 0))
+      (print (vector-get form1 0))
+      (print (vector-get form2 0))
+      (print (vector-get form3 0))
+      (print (vector-get form4 0))
+      (print-string (vector-get (vector-get form1 2) 0))
+      (print-string "\n")
+      (print-string (vector-get (vector-get form2 2) 0))
+      (print-string "\n")
+      (print-string (vector-get (vector-get form3 2) 0))
+      (print-string "\n")
+      (print (vector-length (vector-get form4 2)))
+      (print (if (< (vector-get form0 3) (vector-get form0 4)) 1 0))
+      (print (if (< (vector-get form1 3) (vector-get form1 4)) 1 0))
+      (print (if (< (vector-get form2 3) (vector-get form2 4)) 1 0))
+      (print (if (< (vector-get form3 3) (vector-get form3 4)) 1 0))
+      (print (if (< (vector-get form4 3) (vector-get form4 4)) 1 0))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_test_runner_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(
+        lines,
+        vec![
+            "5",
+            "1",
+            "4",
+            "3",
+            "5",
+            "2",
+            "(expect (f 1) 2)",
+            "(= 1 1)",
+            "(for-all [x Int] :cases 3 :postcondition (= result x))",
+            "1",
+            "1",
+            "1",
+            "1",
+            "1",
+            "1",
+        ],
+        "raw contract inventory は全 form kind の順序、payload、source span を保持するべき"
+    );
+}
+
 /// TEST-CLI-02-O2d: selfhost/src/Tools/Test/TestRunner.ls が supported subset の metadata suite を実行できること
 #[test]
 #[ignore]
