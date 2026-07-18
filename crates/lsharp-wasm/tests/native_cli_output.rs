@@ -322,6 +322,67 @@ fn test_native_app_cli_test_string_property_source_file_contract() {
 
 #[test]
 #[ignore = "actual native App.Cli program を LSHARP_NATIVE_APP_CLI_PROGRAM で指定する"]
+fn test_native_app_cli_test_rejects_vacuous_property_source_file_contract() {
+    if !cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+        return;
+    }
+
+    let program = PathBuf::from(
+        std::env::var_os("LSHARP_NATIVE_APP_CLI_PROGRAM")
+            .expect("LSHARP_NATIVE_APP_CLI_PROGRAM を指定すること"),
+    );
+    assert!(
+        program.is_file(),
+        "native App.Cli が見つからない: {}",
+        program.display()
+    );
+    let program = std::fs::canonicalize(&program).expect("native App.Cli の絶対パス化に失敗");
+
+    let dir = std::env::temp_dir().join(format!(
+        "lsharp_native_app_cli_vacuous_property_contract_{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("fixture directory の作成に失敗");
+    std::fs::write(
+        dir.join("input.ls"),
+        "(defn identity [x] :property [(for-all [sample Int] :cases 1 :postcondition true)] x)",
+    )
+    .expect("vacuous property fixture input.ls の書き込みに失敗");
+
+    let result = (|| {
+        let test = Command::new(&program)
+            .current_dir(&dir)
+            .args(["test", "input.ls"])
+            .output()
+            .expect("native App.Cli vacuous property test の実行に失敗");
+        assert_eq!(
+            test.status.code(),
+            Some(2),
+            "native test は vacuous property を runtime error にするべき: stdout={:?} stderr={:?}",
+            String::from_utf8_lossy(&test.stdout),
+            String::from_utf8_lossy(&test.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&test.stdout)
+                .lines()
+                .collect::<Vec<_>>(),
+            vec![
+                "examples:0",
+                "invariants:0",
+                "properties:1",
+                "failures:1",
+                "diagnostics:1,LS2005",
+            ],
+            "native test は vacuous property の診断付き summary を出力するべき"
+        );
+    })();
+    let _ = std::fs::remove_dir_all(&dir);
+    result
+}
+
+#[test]
+#[ignore = "actual native App.Cli program を LSHARP_NATIVE_APP_CLI_PROGRAM で指定する"]
 fn test_native_app_cli_test_metadata_source_file_contract() {
     if !cfg!(all(target_os = "macos", target_arch = "aarch64")) {
         return;
