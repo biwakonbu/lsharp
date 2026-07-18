@@ -469,11 +469,17 @@
       (property-runner-append-decl (vector-get program idx) results))))
 
 (defn extract-property-test-cases [program]
-  (property-runner-append-program-loop
-    program
-    0
-    (vector-length program)
-    (vector-new 4)))
+  (let [contracts (extract-parser-typed-property-contracts program)]
+    (do
+      (root_push contracts)
+      (let [results (property-runner-append-typed-test-cases-loop
+          contracts
+          0
+          (vector-length contracts)
+          (vector-new 4))]
+        (do
+          (root_pop)
+          results)))))
 
 (defn property-runner-append-typed-forms-loop [forms idx count owner results]
   (if (>= idx count)
@@ -544,6 +550,58 @@
     0
     (vector-length program)
     (vector-new 0)))
+
+;; canonical contract を移行期 evaluator の test-case shape へ変換する。
+;; 実行可能なのは単一 Int binder / precondition なしの profile に限定する。
+(defn property-runner-execution-profile-code [contract]
+  (let [profile-code (vector-get contract 5)
+    binders (vector-get contract 1)
+    preconditions (vector-get contract 2)]
+    (if (> profile-code 0)
+      profile-code
+      (if (or (!= (vector-length binders) 1)
+          (> (vector-length preconditions) 0))
+        3002
+        0))))
+
+(defn property-runner-typed-contract-test-case [contract name]
+  (let [owner (vector-get contract 0)
+    binders (vector-get contract 1)
+    sampling (vector-get contract 4)
+    profile-code (property-runner-execution-profile-code contract)
+    binder (if (= (vector-length binders) 1)
+      (vector-get (vector-get binders 0) 0)
+      0)
+    postcondition (if (= profile-code 0) (vector-get contract 3) 0)
+    cases (if (= profile-code 0) (vector-get sampling 0) 0)]
+    (make-property-test-case
+      name
+      owner
+      binder
+      postcondition
+      cases
+      profile-code)))
+
+(defn property-runner-append-typed-test-cases-loop
+  [contracts idx count results]
+  (if (>= idx count)
+    results
+    (let [contract (vector-get contracts idx)
+      next-results (vector-push-single-rooted
+        results
+        (property-runner-typed-contract-test-case
+          contract
+          (vector-length results)))]
+      (do
+        (root_push next-results)
+        (let [parsed (property-runner-append-typed-test-cases-loop
+            contracts
+            (+ idx 1)
+            count
+            next-results)]
+          (do
+            (root_pop)
+            parsed))))))
 
 (defn property-test-case-profile-code [test-case]
   (vector-get test-case 5))

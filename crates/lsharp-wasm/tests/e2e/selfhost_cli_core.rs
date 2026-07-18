@@ -6331,6 +6331,66 @@ fn test_e2e_selfhost_runner_reports_unimplemented_property_boundary() {
     );
 }
 
+/// EC-M1-02: selfhost runner が precondition を無視して property を成功扱いしないこと
+#[test]
+fn test_e2e_selfhost_runner_rejects_property_precondition_before_execution() {
+    let harness = r#"
+(defn main []
+  (let [src "(defn identity [x] :property [(for-all [x Int] :cases 1 :precondition [(>= x 0)] :postcondition (= result x))] x)"
+        suite (generate-tests-from-source src)
+        properties (vector-get suite 4)
+        result0 (vector-get properties 0)]
+    (do
+      (print (vector-length properties))
+      (print (vector-get result0 1))
+      (print (vector-get result0 2))
+      (print (vector-get result0 3))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_test_runner_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["1", "0", "0", "3002"],
+        "selfhost runner は未対応 precondition を無視して property を成功扱いしてはならない"
+    );
+}
+
+/// EC-M1-02: selfhost runner が複数 binder を単一引数へ縮退させないこと
+#[test]
+fn test_e2e_selfhost_runner_rejects_multiple_property_binders_before_execution() {
+    let harness = r#"
+(defn main []
+  (let [src "(defn pair [x] :property [(for-all [left Int right Int] :cases 1 :postcondition (= result left))] x)"
+        suite (generate-tests-from-source src)
+        properties (vector-get suite 4)
+        result0 (vector-get properties 0)]
+    (do
+      (print (vector-length properties))
+      (print (vector-get result0 1))
+      (print (vector-get result0 2))
+      (print (vector-get result0 3))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_test_runner_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["1", "0", "0", "3002"],
+        "selfhost runner は複数 binder を単一引数へ縮退させて property を実行してはならない"
+    );
+}
+
 /// EC-M1-05: selfhost property smoke profile が seed を暗黙に受け入れないこと
 #[test]
 fn test_e2e_selfhost_runner_rejects_property_seed_option() {
