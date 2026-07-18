@@ -7,7 +7,8 @@
 (import Types.TypeInferAssertions)
 
 ;; legacy metadata を canonical form へ silent conversion せず分類する。
-;; row は [diagnostic-code, disposition, directive-start, directive-end, owner-hash, message, selected-semantics-code]。
+;; row は [diagnostic-code, disposition, directive-start, directive-end, owner-hash, message,
+;; selected-semantics-code, expression-start, expression-end]。
 ;; 先頭 4 フィールドは既存 summary/span consumer との互換を維持する。disposition は
 ;; 1=docs-only :example, 2=:assert, 3=:property/:postcondition,
 ;; 4=manual review を表す。
@@ -78,61 +79,100 @@
                 result
                 (legacy-selected-semantics-code code)))))))))
 
-(defn legacy-migration-row [code disposition start end owner]
-  (legacy-migration-row-with-type code disposition start end owner ""))
+(defn legacy-migration-row-with-expression-span
+  [code disposition start end owner type-text expression-start expression-end]
+  (let [base (legacy-migration-row-with-type
+      code
+      disposition
+      start
+      end
+      owner
+      type-text)]
+    (do
+      (root_push base)
+      (let [result (vector-push-pair-rooted base expression-start expression-end)]
+        (do
+          (root_pop)
+          result)))))
 
-(defn legacy-example-row-for-expression [expression env counter start end owner]
+(defn legacy-migration-row [code disposition start end owner]
+  (legacy-migration-row-with-expression-span code disposition start end owner "" 0 0))
+
+(defn legacy-example-row-for-expression
+  [expression env counter start end owner expression-start expression-end]
   (let [result (infer-expr expression env (subst-new) counter)]
     (if (= (result-failed result) 1)
-      (legacy-migration-row
+      (legacy-migration-row-with-expression-span
         (ambiguous-legacy-code)
         (legacy-manual-disposition)
         start
         end
-        owner)
+        owner
+        ""
+        expression-start
+        expression-end)
       (let [resolved (apply-subst (result-subst result) (result-type result))
         tag (type-tag resolved)]
         (if (= tag (ty-var))
-          (legacy-migration-row
+          (legacy-migration-row-with-expression-span
             (ambiguous-legacy-code)
             (legacy-manual-disposition)
             start
             end
-            owner)
+            owner
+            ""
+            expression-start
+            expression-end)
           (if (= tag (ty-con))
             (if (= (type-name resolved) (hash-bool))
-              (legacy-migration-row
+              (legacy-migration-row-with-expression-span
                 (legacy-example-code)
                 (legacy-assertion-disposition)
                 start
                 end
-                owner)
-              (legacy-migration-row-with-type
+                owner
+                ""
+                expression-start
+                expression-end)
+              (legacy-migration-row-with-expression-span
                 (legacy-example-code)
                 (legacy-doc-example-disposition)
                 start
                 end
                 owner
-                (legacy-type-text resolved)))
-            (legacy-migration-row-with-type
+                (legacy-type-text resolved)
+                expression-start
+                expression-end))
+            (legacy-migration-row-with-expression-span
               (legacy-example-code)
               (legacy-doc-example-disposition)
               start
               end
               owner
-              (legacy-type-text resolved))))))))
+              (legacy-type-text resolved)
+              expression-start
+              expression-end)))))))
 
 (defn legacy-example-expressions-loop
-  [expressions idx count env counter start end owner result]
+  [expressions idx count env counter start end owner expression-spans result]
   (if (>= idx count)
     result
-    (let [row (legacy-example-row-for-expression
+    (let [span-index (* idx 2)
+      expression-start (if (> (vector-length expression-spans) span-index)
+        (vector-get expression-spans span-index)
+        0)
+      expression-end (if (> (vector-length expression-spans) (+ span-index 1))
+        (vector-get expression-spans (+ span-index 1))
+        0)
+      row (legacy-example-row-for-expression
         (vector-get expressions idx)
         env
         counter
         start
         end
-        owner)
+        owner
+        expression-start
+        expression-end)
       next-result (vector-push-single-rooted result row)]
       (do
         (root_push next-result)
@@ -145,6 +185,7 @@
             start
             end
             owner
+            expression-spans
             next-result)]
           (do
             (root_pop)
@@ -154,9 +195,11 @@
   (let [example-text (vector-get form 1)
     start (if (> (vector-length form) 2) (vector-get form 2) 0)
     end (if (> (vector-length form) 3) (vector-get form 3) 0)
+    expression-spans (if (> (vector-length form) 4) (vector-get form 4) (vector-new 0))
     expressions (parse-program example-text)]
     (do
       (root_push expressions)
+      (root_push expression-spans)
       (let [parsed (legacy-example-expressions-loop
           expressions
           0
@@ -166,10 +209,24 @@
           start
           end
           owner
+          expression-spans
           result)]
         (do
           (root_pop)
+          (root_pop)
           parsed)))))
+
+(defn legacy-form-expression-span-start [form]
+  (if (> (vector-length form) 4)
+    (let [span (vector-get form 4)]
+      (if (> (vector-length span) 0) (vector-get span 0) 0))
+    0))
+
+(defn legacy-form-expression-span-end [form]
+  (if (> (vector-length form) 4)
+    (let [span (vector-get form 4)]
+      (if (> (vector-length span) 1) (vector-get span 1) 0))
+    0))
 
 (defn legacy-form-loop [forms idx count env counter owner result]
   (if (>= idx count)
@@ -181,12 +238,15 @@
         (if (= kind (contract-form-invariant))
           (vector-push-single-rooted
             result
-            (legacy-migration-row
+            (legacy-migration-row-with-expression-span
               (legacy-invariant-code)
               (legacy-property-disposition)
               (if (> (vector-length form) 2) (vector-get form 2) 0)
               (if (> (vector-length form) 3) (vector-get form 3) 0)
-              owner))
+              owner
+              ""
+              (legacy-form-expression-span-start form)
+              (legacy-form-expression-span-end form)))
           result))]
       (do
         (root_push next-result)
@@ -418,6 +478,15 @@
       (int-to-string start)
       (string-concat ",\"end\":" (string-concat (int-to-string end) "}")))))
 
+(defn legacy-json-expression-span-field [row]
+  (string-concat
+    "\"expressionSpan\":{\"start\":"
+    (string-concat
+      (int-to-string (vector-get row 7))
+      (string-concat
+        ",\"end\":"
+        (string-concat (int-to-string (vector-get row 8)) "}")))))
+
 (defn legacy-migration-row-detail-json [row]
   (let [fields0 ""
     fields1 (legacy-json-append-field
@@ -441,8 +510,11 @@
       (legacy-json-span-field (vector-get row 2) (vector-get row 3)))
     fields6 (legacy-json-append-field
       fields5
-      (legacy-json-field "message" (vector-get row 5)))]
-    (string-concat "{" (string-concat fields6 "}"))))
+      (legacy-json-field "message" (vector-get row 5)))
+    fields7 (if (> (vector-length row) 8)
+      (legacy-json-append-field fields6 (legacy-json-expression-span-field row))
+      fields6)]
+    (string-concat "{" (string-concat fields7 "}"))))
 
 (defn legacy-migration-detail-json-summary-loop [rows idx count]
   (if (>= idx count)

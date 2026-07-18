@@ -752,6 +752,30 @@
               (root_pop)
               updated-meta)))))))
 
+(defn append-defn-metadata-form-with-extra-v3 [meta kind payload start end extra]
+  (let [forms (vector-get meta 5)
+    base-form (vector-push-quad-rooted-v3 (vector-new 4) kind payload start end)]
+    (do
+      (root_push meta)
+      (root_push forms)
+      (root_push base-form)
+      (root_push extra)
+      (let [form (vector-push-single-rooted-v3 base-form extra)]
+        (do
+          (root_push form)
+          (let [updated-forms (vector-push-single-rooted-v3 forms form)]
+            (do
+              (root_push updated-forms)
+              (let [updated-meta (vector-set-at-rooted-v3 meta 5 updated-forms)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  updated-meta)))))))))
+
 (defn parse-defn-metadata-v3 [spans pos-ref src]
   (parse-defn-metadata-loop-v3 spans pos-ref src (make-empty-defn-metadata-v3)))
 
@@ -831,8 +855,13 @@
         (p-advance pos-ref)
         (if (== (p-current spans pos-ref) 3)
           (do (p-advance pos-ref) (parse-defn-metadata-loop-v3 spans pos-ref src meta))
-          (let [content-start (p-start spans pos-ref)]
+          (let [content-start (p-start spans pos-ref)
+            expression-spans (collect-example-expression-spans-v3
+              spans
+              (ref-get pos-ref)
+              (/ (vector-length spans) 3))]
             (do
+              (root_push expression-spans)
               (parse-skip-bracket-v3 spans pos-ref 1)
               (let [last-idx (- (ref-get pos-ref) 2)
                 content-end (span-end spans last-idx)
@@ -841,13 +870,15 @@
                 updated (vector-set-at-rooted-v3 meta 1 combined)]
                 (do
                   (root_push updated)
-                  (let [with-form (append-defn-metadata-form-v3
+                  (let [with-form (append-defn-metadata-form-with-extra-v3
                       updated
                       1
                       example-text
                       directive-start
-                      (metadata-directive-end-v3 spans pos-ref))]
+                      (metadata-directive-end-v3 spans pos-ref)
+                      expression-spans)]
                     (do
+                      (root_pop)
                       (root_pop)
                       (parse-defn-metadata-loop-v3 spans pos-ref src with-form))))))))))
     (do
@@ -991,23 +1022,32 @@
 ;; :invariant expr — 事後条件 AST を保持する
 (defn parse-defn-meta-invariant-v3 [spans pos-ref src meta]
   (let [directive-start (metadata-directive-start-v3 spans pos-ref)
+    expression-start (p-start spans pos-ref)
     predicate (parse-expr-v3 spans pos-ref src)
     directive-end (metadata-directive-end-v3 spans pos-ref)]
     (do
       (root_push predicate)
-      (let [updated (vector-set-at-rooted-v3 meta 4 predicate)]
+      (let [expression-span (vector-push-pair-rooted-v3
+          (vector-new 0)
+          expression-start
+          directive-end)]
         (do
-          (root_push updated)
-          (let [with-form (append-defn-metadata-form-v3
-              updated
-              2
-              predicate
-              directive-start
-              directive-end)]
+          (root_push expression-span)
+          (let [updated (vector-set-at-rooted-v3 meta 4 predicate)]
             (do
-              (root_pop)
-              (root_pop)
-              (parse-defn-metadata-loop-v3 spans pos-ref src with-form))))))))
+              (root_push updated)
+              (let [with-form (append-defn-metadata-form-with-extra-v3
+                  updated
+                  2
+                  predicate
+                  directive-start
+                  directive-end
+                  expression-span)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (parse-defn-metadata-loop-v3 spans pos-ref src with-form))))))))))
 
 ;; :case [(expect actual expected) ...] — actual / expected の AST pair を保持する。
 (defn parse-defn-meta-case-expectation-v3 [spans pos-ref src]
@@ -2365,6 +2405,36 @@
             (+ idx 1)
             (scan-defn-param-form-end-v3 spans (+ idx 1) end (- depth 1)))
           (scan-defn-param-form-end-v3 spans (+ idx 1) end depth))))))
+
+(defn collect-example-expression-spans-v3-loop [spans idx end result]
+  (if (>= idx end)
+    result
+    (if (== (span-kind spans idx) 3)
+      result
+      (let [kind (span-kind spans idx)
+        next-idx (if (== kind 0)
+          (scan-defn-param-form-end-v3 spans (+ idx 1) end 1)
+          (+ idx 1))
+        last-idx (- next-idx 1)
+        expression-start (span-start spans idx)
+        expression-end (span-end spans last-idx)]
+        (do
+          (root_push result)
+          (let [next-result (vector-push-pair-rooted-v3 result expression-start expression-end)]
+            (do
+              (root_push next-result)
+              (let [parsed (collect-example-expression-spans-v3-loop
+                  spans
+                  next-idx
+                  end
+                  next-result)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  parsed)))))))))
+
+(defn collect-example-expression-spans-v3 [spans idx end]
+  (collect-example-expression-spans-v3-loop spans idx end (vector-new 0)))
 
 (defn parse-defn-param-signature-append-v3 [spans idx end src signature type-expr next-idx]
   (do

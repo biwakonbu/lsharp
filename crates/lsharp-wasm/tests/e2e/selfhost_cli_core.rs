@@ -6898,7 +6898,17 @@ fn test_e2e_selfhost_migration_rows_preserve_legacy_owner_and_directive_spans() 
                     (int-to-string (vector-get raw0 4))
                     (string-concat
                       "},\"message\":\""
-                      (string-concat (vector-get row0 5) "\"}"))))))))
+                      (string-concat
+                        (vector-get row0 5)
+                        (string-concat
+                          "\",\"expressionSpan\":{\"start\":"
+                          (string-concat
+                            (int-to-string (vector-get row0 7))
+                            (string-concat
+                              ",\"end\":"
+                              (string-concat
+                                (int-to-string (vector-get row0 8))
+                                "}}"))))))))))))
         expected-detail-json-summary (string-concat
           "["
           (string-concat
@@ -6961,7 +6971,7 @@ fn test_e2e_selfhost_migration_rows_preserve_legacy_owner_and_directive_spans() 
     let lines: Vec<&str> = output.trim().lines().collect();
 
     let expected_check_lines = vec![
-        "3", "7", "7", "7", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1",
+        "3", "9", "9", "9", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1",
     ];
     assert_eq!(lines.len(), expected_check_lines.len() + 2);
     assert_eq!(
@@ -6981,9 +6991,70 @@ fn test_e2e_selfhost_migration_rows_preserve_legacy_owner_and_directive_spans() 
     assert!(detail_json["ownerHash"].is_i64());
     assert!(detail_json["span"]["start"].is_i64());
     assert!(detail_json["span"]["end"].is_i64());
+    assert!(detail_json["expressionSpan"]["start"].is_i64());
+    assert!(detail_json["expressionSpan"]["end"].is_i64());
     let detail_json_summary: Value = serde_json::from_str(lines[expected_check_lines.len() + 1])
         .expect("selfhost migration detail summary は valid JSON であるべき");
     assert_eq!(detail_json_summary.as_array().map(Vec::len), Some(3));
+}
+
+/// EC-M1-03: selfhost migration row が各 legacy expression の source span を保持すること
+#[test]
+fn test_e2e_selfhost_migration_rows_preserve_expression_spans() {
+    let source =
+        "(defn succ [x] :example [(succ 0) (= (succ 1) 2)] :invariant (= result (+ x 1)) (+ x 1))";
+    let harness = format!(
+        r#"
+(defn main []
+  (let [program (parse-program "{source}")
+        rows (classify-legacy-contracts program)
+        row0 (vector-get rows 0)
+        row1 (vector-get rows 1)
+        row2 (vector-get rows 2)]
+    (do
+      (print (vector-length row0))
+      (print (if (> (vector-length row0) 8) (vector-get row0 7) -1))
+      (print (if (> (vector-length row0) 8) (vector-get row0 8) -1))
+      (print (vector-length row1))
+      (print (if (> (vector-length row1) 8) (vector-get row1 7) -1))
+      (print (if (> (vector-length row1) 8) (vector-get row1 8) -1))
+      (print (vector-length row2))
+      (print (if (> (vector-length row2) 8) (vector-get row2 7) -1))
+      (print (if (> (vector-length row2) 8) (vector-get row2 8) -1))
+      0)))
+"#
+    );
+
+    let combined = format!("{}\n{}", selfhost_migration_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let actual: Vec<String> = output
+        .trim()
+        .lines()
+        .map(std::string::ToString::to_string)
+        .collect();
+
+    let expected_spans = ["(succ 0)", "(= (succ 1) 2)", "(= result (+ x 1))"]
+        .map(|expr| {
+            let start = source.find(expr).expect("expression span fixture が見つかる");
+            (start.to_string(), (start + expr.len()).to_string())
+        });
+    let expected = vec![
+        "9".to_owned(),
+        expected_spans[0].0.clone(),
+        expected_spans[0].1.clone(),
+        "9".to_owned(),
+        expected_spans[1].0.clone(),
+        expected_spans[1].1.clone(),
+        "9".to_owned(),
+        expected_spans[2].0.clone(),
+        expected_spans[2].1.clone(),
+    ];
+    assert_eq!(
+        actual, expected,
+        "legacy migration row は directive span だけでなく各 expression span を保持するべき"
+    );
 }
 
 /// EC-M1-03: selfhost CLI が canonical :assert の件数を結果へ反映すること
