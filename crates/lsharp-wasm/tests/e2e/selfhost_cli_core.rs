@@ -6772,6 +6772,35 @@ fn test_e2e_selfhost_cli_check_reports_legacy_migration_summary() {
     assert_eq!(lines[4], "0");
 }
 
+/// EC-M1-03: selfhost check の JSON option が構造化 migration report を返すこと
+#[test]
+fn test_e2e_selfhost_cli_check_source_json_returns_structured_migration_report() {
+    let harness = r#"
+(defn main []
+  (let [src "(defn succ [x] :example [(succ 0) (= (succ 1) 2)] :invariant (= result (+ x 1)) (+ x 1))"]
+    (do
+      (print (run-check-source src 1))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(lines.len(), 2, "check --json は JSON report と終了コードだけを返すべき");
+    let report: Value = serde_json::from_str(lines[0])
+        .expect("check --json の report は valid JSON であるべき");
+    assert_eq!(report["command"], "check");
+    assert_eq!(report["type"], "Fn");
+    assert_eq!(report["diagnostics"]["count"], 0);
+    assert_eq!(report["diagnostics"]["firstErrorCode"], 0);
+    assert_eq!(report["diagnostics"]["message"], "");
+    assert_eq!(report["migration"].as_array().unwrap().len(), 3);
+    assert_eq!(lines[1], "0");
+}
+
 /// EC-M1-03: selfhost migration JSON の文字列値が JSON の escape 規則を守ること
 #[test]
 fn test_e2e_selfhost_migration_json_quote_escapes_delimiters_and_controls() {

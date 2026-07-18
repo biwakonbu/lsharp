@@ -344,6 +344,14 @@ Evidence: RED の `test_e2e_selfhost_migration_json_quote_escapes_delimiters_and
 
 これは generic JSON string escaping の verified sliceであり、JSON schema の enum/string contract、CLI `check --json` の option routing・structured diagnostic・exit code、expression 個別 span、全 form evaluator、Wasm artifact/runtime、Mac Apple Silicon / Linux x86_64 の current-source native gate は残件である。selfhost Wasm E2E は Rust host が compile/run する oracle lane であり、native stage0 の証拠には数えない。
 
+### EC-M1-03 selfhost check JSON report source contract (2026-07-18)
+
+`App.Cli.run-check-source` に JSON option の source contract を追加した。option 値 `1` は、text summary の代わりに `command`、推論結果の `type`、`diagnostics` object（`count`、`firstErrorCode`、`message`）、source-order の `migration` JSON array を 1 行で返す。既存の migration row JSON builder を再利用し、診断がない場合も numeric zero と空 message を明示する。
+
+Evidence: RED の `test_e2e_selfhost_cli_check_source_json_returns_structured_migration_report` は option `1` が旧 text 5 行を返し、JSON report 2 行契約に対して失敗した（456.19 秒）。GREEN は同じ selfhost CLI bundle を compile/run し、Rust `serde_json` で report を parse、`command=check`、`type=Fn`、diagnostics zero、migration 3 rows、終了コード `0` を確認した（420.13 秒）。`./target/debug/lsharp check selfhost/src/App/Cli.ls` は `diagnostics:0`。
+
+これは `run-check-source` の verified source sliceであり、実 argv の `check --json` / `--format json` option routing、non-zero diagnostic の exit code、enum/string schema の固定、expression 個別 span、全 form evaluator、Wasm artifact/runtime、Mac Apple Silicon / Linux x86_64 の current-source native gate は残件である。selfhost Wasm E2E は Rust host が compile/run する oracle lane であり、native stage0 の証拠には数えない。
+
 ### EC-M1-02 selfhost typed property runner bridge (2026-07-18)
 
 `extract-property-test-cases` は parser-owned `ContractSuite` の typed property projection を移行期 evaluator の入力へ変換するようになった。Rust `property_smoke_test_spec` と同じく、実行対象は単一の `Int` binder、precondition なし、`cases 1..5`、seed/shrink なしの deterministic profile に限定する。profile 外の複数 binder / precondition / 未対応 option は binder を先頭だけへ縮退させず `LS3002` として明示拒否し、parser projection に保持された canonical payload は失わない。
