@@ -4,7 +4,9 @@
 //! テストケースをコンパイル・実行して検証する。
 
 use lsharp_syntax::ast::{Decl, Program};
-use lsharp_types::metadata_check::{GeneratedTest, PropertySmokeTestSpec, TestKind};
+use lsharp_types::metadata_check::{
+    GeneratedTest, PropertyBinderType, PropertySmokeTestSpec, TestKind,
+};
 
 /// テスト実行結果
 #[derive(Debug, Clone)]
@@ -200,7 +202,10 @@ fn generate_sample_args(param_count: usize) -> Vec<Vec<String>> {
 fn property_sample_values(spec: &PropertySmokeTestSpec) -> Vec<Vec<String>> {
     let scalar = ["0", "1", "5", "-1", "42"];
     let mut samples = Vec::new();
-    if spec.binder_names.len() == 1 {
+    if spec.binder_types == [PropertyBinderType::Bool] {
+        samples.push(vec!["false".to_string()]);
+        samples.push(vec!["true".to_string()]);
+    } else if spec.binder_names.len() == 1 {
         for value in scalar {
             samples.push(vec![value.to_string()]);
         }

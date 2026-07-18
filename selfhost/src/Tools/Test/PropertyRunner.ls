@@ -4,8 +4,9 @@
 (import Syntax.Parser)
 
 ;; 移行期 property profile の raw payload projection。
-;; 対応範囲は 1..2 個の Int binder、`:cases 1..5`、precondition の conjunction、
-;; postcondition とし、二 binder は deterministic pair prefix へ投影する。
+;; 対応範囲は 1..2 個の Int binder、または単一 Bool binder、`:cases 1..5`、
+;; precondition の conjunction、postcondition とする。二 binder は deterministic
+;; pair prefix、Bool binder は false/true prefix へ投影する。
 ;; seed / shrink / 未知 option は TestRunner へ渡す前に拒否する。
 
 (defn property-runner-space? [ch]
@@ -114,13 +115,13 @@
       (let [name-end (property-runner-atom-end payload name-start len)
         type-start (property-runner-skip-space payload name-end len)
         type-end (property-runner-atom-end payload type-start len)
+        type-text (if (> type-end type-start) (substring payload type-start type-end) "")
+        type-supported (if (or (string-eq type-text "Int") (string-eq type-text "Bool")) 1 0)
         valid (if (and
             (> name-end name-start)
             (and
               (> type-end type-start)
-              (and
-                (<= type-end close)
-                (string-eq (substring payload type-start type-end) "Int")))) 1 0)]
+              (and (<= type-end close) (= type-supported 1)))) 1 0)]
         (if (= valid 0)
           (vector-push-pair-rooted (vector-new 2) result 0)
           (let [binder (vector-push-triple-rooted
@@ -288,16 +289,18 @@
       (parse-program text))))
 
 ;; property test case:
-;; [name-id, owner-function-hash, binder-hashes, postcondition, cases, profile-code, preconditions]
+;; [name-id, owner-function-hash, binder-hashes, postcondition, cases, profile-code,
+;;  preconditions, binder-type-hashes]
 (defn make-property-test-case-with-preconditions
-  [name owner binders postcondition cases profile-code preconditions]
-  (let [v1 (vector-push-single-rooted (vector-new 7) name)
+  [name owner binders postcondition cases profile-code preconditions binder-types]
+  (let [v1 (vector-push-single-rooted (vector-new 8) name)
     v2 (vector-push-single-rooted v1 owner)
     v3 (vector-push-single-rooted v2 binders)
     v4 (vector-push-single-rooted v3 postcondition)
     v5 (vector-push-single-rooted v4 cases)
-    v6 (vector-push-single-rooted v5 profile-code)]
-    (vector-push-single-rooted v6 preconditions)))
+    v6 (vector-push-single-rooted v5 profile-code)
+    v7 (vector-push-single-rooted v6 preconditions)]
+    (vector-push-single-rooted v7 binder-types)))
 
 (defn make-property-test-case [name owner binder postcondition cases profile-code]
   (make-property-test-case-with-preconditions
@@ -307,6 +310,7 @@
     postcondition
     cases
     profile-code
+    (vector-new 0)
     (vector-new 0)))
 
 (defn property-runner-form-case [form owner name]
@@ -566,7 +570,8 @@
     (vector-new 0)))
 
 ;; canonical contract を移行期 evaluator の test-case shape へ変換する。
-;; 実行可能なのは 1..2 個の Int binder / deterministic cases の profile に限定する。
+;; 実行可能なのは 1..2 個の Int binder、または単一 Bool binder / deterministic cases の
+;; profile に限定する。
 (defn property-runner-execution-profile-code [contract]
   (let [profile-code (vector-get contract 5)
     binders (vector-get contract 1)]
@@ -574,7 +579,9 @@
       profile-code
       (if (or (< (vector-length binders) 1) (> (vector-length binders) 2))
         3002
-        (if (= (property-runner-binder-name-collision? binders) 1) 3002 0)))))
+        (if (= (property-runner-binder-name-collision? binders) 1)
+          3002
+          (property-runner-binder-type-profile-code contract))))))
 
 (defn property-runner-binder-name-collision-rest? [binders idx count binder-hash]
   (if (>= idx count)
@@ -604,6 +611,44 @@
 (defn property-runner-binder-name-collision? [binders]
   (property-runner-binder-name-collision-loop binders 0 (vector-length binders)))
 
+(defn property-runner-type-int-hash [] (name-hash "Int" 0 3))
+(defn property-runner-type-bool-hash [] (name-hash "Bool" 0 4))
+
+(defn property-runner-binder-types-supported-loop [binders idx count]
+  (if (>= idx count)
+    1
+    (let [type-hash (vector-get (vector-get binders idx) 1)]
+      (if (or (= type-hash (property-runner-type-int-hash))
+          (= type-hash (property-runner-type-bool-hash)))
+        (property-runner-binder-types-supported-loop binders (+ idx 1) count)
+        0))))
+
+(defn property-runner-binder-types-supported? [binders]
+  (property-runner-binder-types-supported-loop binders 0 (vector-length binders)))
+
+(defn property-runner-bool-binder-count-loop [binders idx count]
+  (if (>= idx count)
+    0
+    (+ (if (= (vector-get (vector-get binders idx) 1) (property-runner-type-bool-hash)) 1 0)
+      (property-runner-bool-binder-count-loop binders (+ idx 1) count))))
+
+(defn property-runner-bool-binder-count [binders]
+  (property-runner-bool-binder-count-loop binders 0 (vector-length binders)))
+
+(defn property-runner-binder-type-profile-code [contract]
+  (let [binders (vector-get contract 1)
+    sampling (vector-get contract 4)
+    cases (if (> (vector-length sampling) 0) (vector-get sampling 0) 0)
+    bool-count (property-runner-bool-binder-count binders)]
+    (if (= (property-runner-binder-types-supported? binders) 0)
+      3002
+      (if (= bool-count 0)
+        0
+        (if (and (= bool-count 1)
+            (and (= (vector-length binders) 1) (<= cases 2)))
+          0
+          3002)))))
+
 (defn property-runner-binder-hashes-loop [binders idx count result]
   (if (>= idx count)
     result
@@ -627,6 +672,29 @@
     (vector-length binders)
     (vector-new (vector-length binders))))
 
+(defn property-runner-binder-types-loop [binders idx count result]
+  (if (>= idx count)
+    result
+    (let [binder (vector-get binders idx)
+      next-result (vector-push-single-rooted result (vector-get binder 1))]
+      (do
+        (root_push next-result)
+        (let [parsed (property-runner-binder-types-loop
+            binders
+            (+ idx 1)
+            count
+            next-result)]
+          (do
+            (root_pop)
+            parsed))))))
+
+(defn property-runner-binder-types [binders]
+  (property-runner-binder-types-loop
+    binders
+    0
+    (vector-length binders)
+    (vector-new (vector-length binders))))
+
 (defn property-runner-typed-contract-test-case [contract name]
   (let [owner (vector-get contract 0)
     binders (vector-get contract 1)
@@ -636,10 +704,14 @@
     binder-hashes (if (= profile-code 0)
       (property-runner-binder-hashes binders)
       (vector-new 0))
+    binder-types (if (= profile-code 0)
+      (property-runner-binder-types binders)
+      (vector-new 0))
     postcondition (if (= profile-code 0) (vector-get contract 3) 0)
     cases (if (= profile-code 0) (vector-get sampling 0) 0)]
     (do
       (root_push binder-hashes)
+      (root_push binder-types)
       (let [result (make-property-test-case-with-preconditions
           name
           owner
@@ -647,8 +719,10 @@
           postcondition
           cases
           profile-code
-          preconditions)]
+          preconditions
+          binder-types)]
         (do
+          (root_pop)
           (root_pop)
           result)))))
 
@@ -691,6 +765,11 @@
 (defn property-test-case-preconditions [test-case]
   (if (> (vector-length test-case) 6)
     (vector-get test-case 6)
+    (vector-new 0)))
+
+(defn property-test-case-binder-types [test-case]
+  (if (> (vector-length test-case) 7)
+    (vector-get test-case 7)
     (vector-new 0)))
 
 (defn property-runner-boundary-loop [test-cases idx count]

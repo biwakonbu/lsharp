@@ -6510,6 +6510,66 @@ fn test_e2e_selfhost_runner_executes_two_int_property_binders() {
     );
 }
 
+/// EC-M1-05: selfhost runner が単一 Bool binder を false/true prefix として実行すること
+#[test]
+fn test_e2e_selfhost_runner_executes_bool_property_binder() {
+    let harness = r#"
+(defn main []
+  (let [src "(defn identity [x] :property [(for-all [value Bool] :cases 2 :postcondition (or value (not value)))] x)"
+        suite (generate-tests-from-source src)
+        properties (vector-get suite 4)
+        result0 (vector-get properties 0)]
+    (do
+      (print (vector-length properties))
+      (print (vector-get result0 1))
+      (print (vector-get result0 2))
+      (print (vector-get result0 3))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_test_runner_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["1", "1", "2", "0"],
+        "selfhost runner は単一 Bool binder を false/true の 2 cases として評価すべき"
+    );
+}
+
+/// EC-M1-05: selfhost runner が Bool の cases 上限を明示拒否すること
+#[test]
+fn test_e2e_selfhost_runner_rejects_bool_property_above_two_cases() {
+    let harness = r#"
+(defn main []
+  (let [src "(defn identity [x] :property [(for-all [value Bool] :cases 3 :postcondition (or value (not value)))] x)"
+        suite (generate-tests-from-source src)
+        properties (vector-get suite 4)
+        result0 (vector-get properties 0)]
+    (do
+      (print (vector-length properties))
+      (print (vector-get result0 1))
+      (print (vector-get result0 2))
+      (print (vector-get result0 3))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_test_runner_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["1", "0", "0", "3002"],
+        "selfhost runner は Bool の cases 3 を narrow profile 外として拒否すべき"
+    );
+}
+
 /// EC-M1-02: selfhost runner が 3 binder を profile 外として拒否すること
 #[test]
 fn test_e2e_selfhost_runner_rejects_three_int_property_binders() {

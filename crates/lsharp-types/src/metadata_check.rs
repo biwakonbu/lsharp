@@ -527,9 +527,17 @@ pub struct GeneratedTest {
 #[derive(Debug, Clone, PartialEq)]
 pub struct PropertySmokeTestSpec {
     pub binder_names: Vec<String>,
+    pub binder_types: Vec<PropertyBinderType>,
     pub cases: usize,
     /// 移行期に評価する precondition。source order の conjunction として評価する。
     pub preconditions: Vec<Expr>,
+}
+
+/// 移行期 property runner が実値を生成できる binder type。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PropertyBinderType {
+    Int,
+    Bool,
 }
 
 /// `:property` のうち、移行期 runner が実行できる narrow profile を返す。
@@ -544,16 +552,26 @@ pub fn property_smoke_test_spec(property: &PropertyForm) -> Option<PropertySmoke
     {
         return None;
     }
-    for binder in property.binders() {
-        let TypeExpr::Named(_, ty_name) = binder.ty() else {
-            return None;
-        };
-        if ty_name != "Int" {
-            return None;
-        }
-    }
     let cases = property.cases()?;
     if !(1..=5).contains(&cases) {
+        return None;
+    }
+    let binder_types = property
+        .binders()
+        .iter()
+        .map(|binder| match binder.ty() {
+            TypeExpr::Named(_, ty_name) if ty_name == "Int" => Some(PropertyBinderType::Int),
+            TypeExpr::Named(_, ty_name) if ty_name == "Bool" => Some(PropertyBinderType::Bool),
+            _ => None,
+        })
+        .collect::<Option<Vec<_>>>()?;
+    let bool_binder_count = binder_types
+        .iter()
+        .filter(|binder_type| **binder_type == PropertyBinderType::Bool)
+        .count();
+    if bool_binder_count > 0
+        && (bool_binder_count != 1 || binder_types.len() != 1 || cases > 2)
+    {
         return None;
     }
     Some(PropertySmokeTestSpec {
@@ -562,6 +580,7 @@ pub fn property_smoke_test_spec(property: &PropertyForm) -> Option<PropertySmoke
             .iter()
             .map(|binder| binder.name().to_string())
             .collect(),
+        binder_types,
         cases,
         preconditions: property.preconditions().to_vec(),
     })

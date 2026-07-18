@@ -1766,16 +1766,27 @@
           (value-int (- 0 1))
           (value-int 42))))))
 
+(defn property-sample-bool [idx]
+  (value-bool (if (= (% idx 2) 0) 0 1)))
+
 (defn property-sample-arguments [test-case sample-idx]
-  (let [binder-count (vector-length (property-test-case-binders test-case))]
-    (if (= binder-count 1)
+  (let [binder-count (vector-length (property-test-case-binders test-case))
+    binder-types (property-test-case-binder-types test-case)
+    bool-binder (if (and (= binder-count 1) (> (vector-length binder-types) 0))
+      (if (= (vector-get binder-types 0) (property-runner-type-bool-hash)) 1 0)
+      0)]
+    (if (= bool-binder 1)
       (vector-push-single-rooted
         (vector-new 1)
-        (property-sample-value sample-idx))
-      (vector-push-pair-rooted
-        (vector-new 2)
-        (property-sample-value (/ sample-idx 3))
-        (property-sample-value (% sample-idx 3))))))
+        (property-sample-bool sample-idx))
+      (if (= binder-count 1)
+        (vector-push-single-rooted
+          (vector-new 1)
+          (property-sample-value sample-idx))
+        (vector-push-pair-rooted
+          (vector-new 2)
+          (property-sample-value (/ sample-idx 3))
+          (property-sample-value (% sample-idx 3)))))))
 
 (defn property-bind-unit-binders-loop [env binders idx]
   (if (>= idx (vector-length binders))

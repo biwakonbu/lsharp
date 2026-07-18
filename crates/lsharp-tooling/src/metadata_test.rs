@@ -418,6 +418,26 @@ mod tests {
     }
 
     #[test]
+    fn test_run_metadata_tests_executes_bool_property_binder() {
+        let dir = unique_temp_dir("deterministic_property_bool_binder");
+        let file = dir.join("Main.ls");
+        fs::write(
+            &file,
+            "(defn identity [x] :property [(for-all [value Bool] :cases 2 :postcondition (or value (not value)))] x)\n",
+        )
+        .unwrap();
+
+        let run = run_metadata_tests(&file)
+            .expect("単一 Bool binder は false/true の deterministic prefix として実行できるべき");
+        assert_eq!(run.total(), 1);
+        assert_eq!(run.passed(), 1);
+        assert_eq!(run.failed(), 0);
+        assert_eq!(run.results[0].name, "identity_property_0");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn test_run_metadata_tests_rejects_three_int_property_binders() {
         let dir = unique_temp_dir("unsupported_property_three_binders");
         let file = dir.join("Main.ls");
@@ -452,6 +472,26 @@ mod tests {
         assert!(
             error.to_string().contains("[LS3002]"),
             "profile 外の property は LS3002 を返すべき: {error}"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_run_metadata_tests_rejects_bool_property_above_two_cases() {
+        let dir = unique_temp_dir("unsupported_bool_property_cases");
+        let file = dir.join("Main.ls");
+        fs::write(
+            &file,
+            "(defn identity [x] :property [(for-all [value Bool] :cases 3 :postcondition (or value (not value)))] x)\n",
+        )
+        .unwrap();
+
+        let error = run_metadata_tests(&file)
+            .expect_err("Bool property の cases 3 は narrow profile 外であるべき");
+        assert!(
+            error.to_string().contains("[LS3002]"),
+            "Bool property の cases 3 は LS3002 を返すべき: {error}"
         );
 
         let _ = fs::remove_dir_all(&dir);
