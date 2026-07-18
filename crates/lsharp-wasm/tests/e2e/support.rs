@@ -74,7 +74,6 @@ pub(crate) const SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES: &[&str] = &[
 ];
 static SELFHOST_FIXTURE_COUNTER: AtomicUsize = AtomicUsize::new(0);
 static FIXTURE_RUN_ID: OnceLock<String> = OnceLock::new();
-const ROOT_STACK_BYTES: i32 = 32768 * 8;
 // selfhost acceptance は Wasmtime 側で 64 MiB の wasm stack を許可するため、
 // それを包む host thread には十分な余裕を持たせる。
 pub(crate) const NATIVE_HARNESS_STACK_BYTES: usize = 128 * 1024 * 1024;
@@ -89,6 +88,8 @@ pub(crate) struct RuntimeTelemetry {
     pub(crate) gc_free_list_count: i32,
     pub(crate) gc_live_alloc_count: i32,
     pub(crate) root_stack_top: i32,
+    pub(crate) root_stack_base: i32,
+    pub(crate) root_stack_capacity: i32,
     pub(crate) root_slots: [i64; 8],
 }
 
@@ -475,10 +476,11 @@ fn read_runtime_telemetry(
     let gc_free_list_count = read_i32_global(instance, store, "__lsharp_gc_free_list_count");
     let gc_live_alloc_count = read_i32_global(instance, store, "__lsharp_gc_live_alloc_count");
     let root_stack_top = read_i32_global(instance, store, "__lsharp_root_stack_top");
+    let root_stack_base = read_i32_global(instance, store, "__lsharp_root_stack_base");
+    let root_stack_capacity = read_i32_global(instance, store, "__lsharp_root_stack_capacity");
     let memory = instance
         .get_memory(&mut *store, "memory")
         .expect("memory export が必要");
-    let root_stack_base = heap_start - ROOT_STACK_BYTES;
     let mut root_slots = [0i64; 8];
     let captured_slots = usize::min(root_stack_top.max(0) as usize, root_slots.len());
     for (slot, value) in root_slots.iter_mut().take(captured_slots).enumerate() {
@@ -493,6 +495,8 @@ fn read_runtime_telemetry(
         gc_free_list_count,
         gc_live_alloc_count,
         root_stack_top,
+        root_stack_base,
+        root_stack_capacity,
         root_slots,
     }
 }

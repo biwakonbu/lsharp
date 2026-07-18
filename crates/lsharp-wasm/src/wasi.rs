@@ -54,6 +54,8 @@ const INTERNAL_HEAP_PTR_EXPORT: &str = "__lsharp_heap_ptr";
 const INTERNAL_HEAP_START_EXPORT: &str = "__lsharp_heap_start";
 const INTERNAL_ALLOC_COUNT_EXPORT: &str = "__lsharp_alloc_count";
 const INTERNAL_ROOT_STACK_TOP_EXPORT: &str = "__lsharp_root_stack_top";
+const INTERNAL_ROOT_STACK_BASE_EXPORT: &str = "__lsharp_root_stack_base";
+const INTERNAL_ROOT_STACK_CAPACITY_EXPORT: &str = "__lsharp_root_stack_capacity";
 const INTERNAL_GC_LIVE_ALLOC_COUNT_EXPORT: &str = "__lsharp_gc_live_alloc_count";
 const INTERNAL_GC_FREE_LIST_COUNT_EXPORT: &str = "__lsharp_gc_free_list_count";
 const INTERNAL_GC_COLLECTION_COUNT_EXPORT: &str = "__lsharp_gc_collection_count";
@@ -604,6 +606,16 @@ fn emit_wasm_wasi_with_options(
         INTERNAL_ROOT_STACK_TOP_EXPORT,
         ExportKind::Global,
         ROOT_STACK_TOP_GLOBAL_IDX,
+    );
+    exports.export(
+        INTERNAL_ROOT_STACK_BASE_EXPORT,
+        ExportKind::Global,
+        ROOT_STACK_BASE_GLOBAL_IDX,
+    );
+    exports.export(
+        INTERNAL_ROOT_STACK_CAPACITY_EXPORT,
+        ExportKind::Global,
+        ROOT_STACK_CAPACITY_GLOBAL_IDX,
     );
     exports.export(
         INTERNAL_ALLOC_COUNT_EXPORT,

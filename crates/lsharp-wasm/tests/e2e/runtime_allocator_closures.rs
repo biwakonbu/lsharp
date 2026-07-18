@@ -512,6 +512,16 @@ fn test_e2e_runtime_root_stack_grows_past_initial_capacity() {
         "初期容量 32768 を超えた root slot も保持されるべき: {:?}",
         telemetry
     );
+    assert_eq!(
+        telemetry.root_stack_capacity, 65536,
+        "root stack は満杯時に容量を倍増すべき: {:?}",
+        telemetry
+    );
+    assert!(
+        telemetry.root_stack_base > telemetry.heap_start,
+        "root table は payload heap より後ろの安全な領域へ移動すべき: {:?}",
+        telemetry
+    );
 }
 
 #[test]
