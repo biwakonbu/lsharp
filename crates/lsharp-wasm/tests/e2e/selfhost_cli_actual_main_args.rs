@@ -211,6 +211,29 @@ fn test_e2e_selfhost_cli_main_with_args_check_json_file() {
     assert_eq!(report["migration"].as_array().unwrap().len(), 0);
 }
 
+/// EC-M1-03: actual selfhost check --json が診断時に exit code 1 を返すこと
+#[test]
+fn test_e2e_selfhost_cli_main_with_args_check_json_diagnostic_exit() {
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, || {
+        run_cli_main_with_input_file_capture(
+            "check_json_diagnostic",
+            "(defn main [] (if 42 1 0))",
+            &["check", "input.ls", "--json"],
+        )
+    });
+    assert_eq!(
+        output.exit_code, 1,
+        "診断付き check --json は exit code 1 で終了するべき"
+    );
+    let lines = output_lines(output.stdout);
+    assert_eq!(lines.len(), 1, "診断付き actual check --json は report だけを stdout へ返すべき");
+    let report: Value =
+        serde_json::from_str(&lines[0]).expect("診断付き check --json output は valid JSON");
+    assert!(report["diagnostics"]["count"].as_i64().unwrap() > 0);
+    assert!(report["diagnostics"]["firstErrorCode"].as_i64().unwrap() > 0);
+    assert!(!report["diagnostics"]["message"].as_str().unwrap().is_empty());
+}
+
 /// TEST-CLI-02-AP2: actual Cli main は自己再帰 top-level defn を typecheck できること
 #[test]
 #[ignore]

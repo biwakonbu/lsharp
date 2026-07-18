@@ -360,6 +360,14 @@ Evidence: actual argv RED の `test_e2e_selfhost_cli_main_with_args_check_json_f
 
 これは実 argv `check --json` と EmbeddedCli source contract の verified sliceであり、`--format json` の独立 actual-runtime evidence、non-zero diagnostic の exit code、enum/string schema、expression 個別 span、全 form evaluator、Wasm artifact/runtime、Mac Apple Silicon / Linux x86_64 の current-source native gate は残件である。selfhost Wasm E2E は Rust host が compile/run する oracle lane であり、native stage0 の証拠には数えない。
 
+### EC-M1-03 selfhost check JSON diagnostic exit (2026-07-18)
+
+`run-check-source` と EmbeddedCli の check path に診断件数ベースの exit boundary を追加した。diagnostics が 0 件なら `0`、1 件以上なら compile error `1` を返し、JSON report は従来どおり stdout に残す。actual main では `proc-exit` がこの値を WASI exit code へ伝えるため、structured report の解析と process failure を別々に観測できる。
+
+Evidence: RED の `test_e2e_selfhost_cli_check_source_json_returns_diagnostic_exit` は `(if 42 1 0)` の structured report が valid でも戻り値 `0` のままで失敗した（461.46 秒）。GREEN は同じ source harness で diagnostics count / firstErrorCode / message を保持しつつ戻り値 `1` を確認した（577.41 秒）。actual argv の `test_e2e_selfhost_cli_main_with_args_check_json_diagnostic_exit` は Rust `serde_json` で stdout report を parse し、WASI exit code `1` と stdout 1 行を確認した（415.95 秒）。既存の ignored text diagnostic tests も compile error `1` の期待へ更新した。
+
+これは check JSON の non-zero exit verified sliceであり、`--format json` の独立 actual-runtime evidence、enum/string schema、expression 個別 span、全 form evaluator、Wasm artifact/runtime、Mac Apple Silicon / Linux x86_64 の current-source native gate は残件である。selfhost Wasm E2E は Rust host が compile/run する oracle lane であり、native stage0 の証拠には数えない。
+
 ### EC-M1-02 selfhost typed property runner bridge (2026-07-18)
 
 `extract-property-test-cases` は parser-owned `ContractSuite` の typed property projection を移行期 evaluator の入力へ変換するようになった。Rust `property_smoke_test_spec` と同じく、実行対象は単一の `Int` binder、precondition なし、`cases 1..5`、seed/shrink なしの deterministic profile に限定する。profile 外の複数 binder / precondition / 未対応 option は binder を先頭だけへ縮退させず `LS3002` として明示拒否し、parser projection に保持された canonical payload は失わない。

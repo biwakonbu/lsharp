@@ -68,6 +68,7 @@
 (defn check-property-diagnostic-body-from-code [code] (if (= code (canonical-property-type-error-code)) "property predicate type error" (if (= code (canonical-property-non-bool-code)) "property predicate must be Bool" (if (= code (canonical-property-empty-code)) "property requires typed binders, a postcondition, and positive cases" "property predicate type error"))))
 (defn check-diagnostics-body-text [program] (let [code (check-diagnostics-first-code program)] (if (= code 0) "" (check-diagnostic-body-from-code code))))
 (defn check-option-json [] 1)
+(defn check-exit-code [diagnostics-count] (if (> diagnostics-count 0) (exit-code-compile-error) (exit-success)))
 (defn check-json-diagnostics [count first-error-code body]
   (let [fields0 ""
     fields1 (legacy-json-append-field fields0 (legacy-json-int-field "count" count))
@@ -130,7 +131,7 @@
       (do
         (print-string (check-json-report rendered diagnostics-count first-error-code diagnostics-body migration-rows))
         (print-string "\n")
-        (exit-success))
+        (check-exit-code diagnostics-count))
       (do
       (print-string rendered)
       (print-string "\n")
@@ -146,7 +147,7 @@
           (print-string migration-detail)
           (print-string "\n"))
         (print-string ""))
-      (exit-success)))))
+      (check-exit-code diagnostics-count)))))
 (defn run-fmt-source [src opts] (let [program (parse-program src) formatted (format-program-with-source program src)] (do (print-string formatted) (exit-success))))
 (defn wasm-size-text [size] (string-concat "wasm-size:" (int-to-string size)))
 (defn compile-file-functions-data-with-cache [file-path cache-ref parse-count-ref] (compile-file-functions-payload-with-cache file-path 12 cache-ref parse-count-ref))

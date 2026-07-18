@@ -1127,8 +1127,8 @@ fn test_e2e_selfhost_cli_check_source_type_error_summary() {
     );
     assert_eq!(
         lines.last(),
-        Some(&"0"),
-        "run-check-source は type-error summary 後も success を返すべき"
+        Some(&"1"),
+        "run-check-source は type-error summary 後に compile error を返すべき"
     );
 }
 
@@ -1159,8 +1159,8 @@ fn test_e2e_selfhost_cli_check_source_undefined_symbol_summary() {
     );
     assert_eq!(
         lines.last(),
-        Some(&"0"),
-        "run-check-source は diagnostics summary 後も success を返すべき"
+        Some(&"1"),
+        "run-check-source は diagnostics summary 後に compile error を返すべき"
     );
 }
 
@@ -6799,6 +6799,32 @@ fn test_e2e_selfhost_cli_check_source_json_returns_structured_migration_report()
     assert_eq!(report["diagnostics"]["message"], "");
     assert_eq!(report["migration"].as_array().unwrap().len(), 3);
     assert_eq!(lines[1], "0");
+}
+
+/// EC-M1-03: selfhost check JSON が診断時に non-zero exit を返すこと
+#[test]
+fn test_e2e_selfhost_cli_check_source_json_returns_diagnostic_exit() {
+    let harness = r#"
+(defn main []
+  (let [result (run-check-source "(defn main [] (if 42 1 0))" 1)]
+    (do
+      (print result)
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(lines.len(), 2, "診断付き check --json は report と exit code を返すべき");
+    let report: Value = serde_json::from_str(lines[0])
+        .expect("診断付き check --json の report は valid JSON であるべき");
+    assert!(report["diagnostics"]["count"].as_i64().unwrap() > 0);
+    assert!(report["diagnostics"]["firstErrorCode"].as_i64().unwrap() > 0);
+    assert!(!report["diagnostics"]["message"].as_str().unwrap().is_empty());
+    assert_eq!(lines[1], "1");
 }
 
 /// EC-M1-03: selfhost migration JSON の文字列値が JSON の escape 規則を守ること
