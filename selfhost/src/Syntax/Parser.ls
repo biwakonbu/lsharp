@@ -12,7 +12,7 @@
 ;; [tag, ...data]
 ;; tag=1: int [1, value]
 ;; tag=2: bool [2, 0/1]
-;; tag=3: string [3, start, end, map-key-hash]  (ソース位置参照)
+;; tag=3: string [3, start, end, map-key-hash, decoded-value]
 ;; tag=4: var [4, name-hash]  (名前ハッシュで識別)
 ;; tag=5: apply [5, func-node, arg-count, arg1, arg2, ...]
 ;; tag=6: if [6, cond, then, else]
@@ -156,9 +156,18 @@
 (defn make-var-node [h]
   (vector-push-pair-rooted-v3 (vector-new 2) 4 h))
 
-;; 文字列ノード: [3, start, end, map-key-hash]
-(defn make-string-node [start end map-key-hash]
-  (vector-push-quad-rooted-v3 (vector-new 4) 3 start end map-key-hash))
+;; 文字列ノード: [3, start, end, map-key-hash, decoded-value]
+(defn make-string-node [start end map-key-hash decoded-value]
+  (do
+    (root_push decoded-value)
+    (let [base (vector-push-quad-rooted-v3 (vector-new 5) 3 start end map-key-hash)]
+      (do
+        (root_push base)
+        (let [result (vector-push base decoded-value)]
+          (do
+            (root_pop)
+            (root_pop)
+            result))))))
 
 ;; 浮動小数点リテラルノード: [19, start, end]
 (defn make-float-node [start end]
@@ -1761,13 +1770,23 @@
 
 (defn parse-string-node-v3 [spans pos-ref src]
   (let [start (p-start spans pos-ref)
-    end (p-end spans pos-ref)]
+    end (p-end spans pos-ref)
+    content-start (+ start 1)
+    content-end (- end 1)
+    map-key-hash (string-literal-map-hash src content-start content-end)]
     (do
       (p-advance pos-ref)
-      (make-string-node
-        (+ start 1)
-        (- end 1)
-        (string-literal-map-hash src (+ start 1) (- end 1))))))
+      (let [decoded-value (string-literal-value src content-start content-end)]
+        (do
+          (root_push decoded-value)
+          (let [result (make-string-node
+            content-start
+            content-end
+            map-key-hash
+            decoded-value)]
+            (do
+              (root_pop)
+              result)))))))
 
 ;; 式のパース (メインディスパッチ)
 (defn parse-expr-v3 [spans pos-ref src]

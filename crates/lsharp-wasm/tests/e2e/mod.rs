@@ -43,6 +43,7 @@ mod selfhost_typeinfer_pipeline_bootstrap;
 mod selfhost_typeinfer_quote_patterns;
 mod selfhost_typeinfer_records_computation;
 mod selfhost_typeinfer_recursive_defns;
+mod selfhost_string_value_semantics;
 mod stdlib_modules_selfhost_lexer;
 mod string_escape_sequences;
 mod strings_patterns_compiler_integration;

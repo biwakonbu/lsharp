@@ -128,6 +128,58 @@
 (defn make-lit-bool [b] (vector-push-pair-rooted (vector-new 2) 2 b))
 (defn make-var [name-hash] (vector-push-pair-rooted (vector-new 2) 4 name-hash))
 (defn make-lit-unit [] (vector-push-single-rooted (vector-new 1) (ast-lit-unit)))
+
+;; String AST を source なしでも評価できるよう、literal の実値も保持する。
+(defn string-literal-value-consumed [src pos end]
+  (if (if (< (+ pos 1) end) (= (string-char-at src pos) 92) false)
+    2
+    1))
+
+(defn string-literal-value-piece [src pos end]
+  (if (if (< (+ pos 1) end) (= (string-char-at src pos) 92) false)
+    (let [escaped (string-char-at src (+ pos 1))]
+      (if (= escaped 110)
+        "\n"
+        (if (= escaped 116)
+          "\t"
+          (if (= escaped 114)
+            "\r"
+            (if (= escaped 34)
+              "\""
+              (if (= escaped 92)
+                "\\"
+                (substring src (+ pos 1) (+ pos 2))))))))
+    (substring src pos (+ pos 1))))
+
+(defn string-literal-value-loop [src pos end out]
+  (if (>= pos end)
+    out
+    (do
+      (root_push src)
+      (root_push out)
+      (let [piece (string-literal-value-piece src pos end)
+        next-pos (+ pos (string-literal-value-consumed src pos end))]
+        (do
+          (root_push piece)
+          (let [next-out (string-concat out piece)]
+            (do
+              (root_push next-out)
+              (let [result (string-literal-value-loop src next-pos end next-out)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  result)))))))))
+
+(defn string-literal-value [src start end]
+  (do
+    (root_push src)
+    (let [result (string-literal-value-loop src start end "")]
+      (do
+        (root_pop)
+        result))))
+
 (defn make-if [cond-expr then-expr else-expr] (vector-push-triple-rooted (vector-push-single-rooted (vector-new 4) (ast-if)) cond-expr then-expr else-expr))
 (defn make-let [name-hash init-expr body-expr] (vector-push-pair-rooted (vector-push-pair-rooted (vector-new 4) (ast-let) name-hash) init-expr body-expr))
 ;; 互換用の annotation constructor。型 payload 不在は 0 として扱う。

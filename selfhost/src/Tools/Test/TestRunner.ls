@@ -758,6 +758,16 @@
 (defn value-string [text]
   (vector-push-pair-rooted (vector-new 2) (ast-lit-string) text))
 
+(defn value-string-text-present? [value]
+  (let [len (vector-length value)]
+    (if (= len 2) 1
+      (if (> len 4) 1 0))))
+
+(defn value-string-text [value]
+  (if (> (vector-length value) 4)
+    (vector-get value 4)
+    (vector-get value 1)))
+
 (defn value-unit []
   (make-lit-unit))
 
@@ -783,7 +793,10 @@
       (if (= ltag (ast-lit-unit))
         1
         (if (= ltag (ast-lit-string))
-          (if (string-eq (vector-get left 1) (vector-get right 1)) 1 0)
+          (if (and (= (value-string-text-present? left) 1)
+              (= (value-string-text-present? right) 1))
+            (if (string-eq (value-string-text left) (value-string-text right)) 1 0)
+            0)
           (if (= (vector-get left 1) (vector-get right 1)) 1 0)))
       0)))
 
@@ -1252,31 +1265,33 @@
       node
       (if (= tag (ast-lit-bool))
         node
-        (if (= tag (ast-lit-unit))
+        (if (= tag (ast-lit-string))
           node
-          (if (= tag (ast-var))
-            (env-lookup env (vector-get node 1))
-            (if (= tag (ast-if))
-              (let [cond-value (eval-node program (vector-get node 1) env)]
-                (if (= (value-truthy cond-value) 1)
-                  (eval-node program (vector-get node 2) env)
-                  (eval-node program (vector-get node 3) env)))
-              (if (= tag (ast-let))
-                  (let [name-hash (vector-get node 1)
-                  init-value (eval-node program (vector-get node 2) env)
-                  body-env (env-bind env name-hash init-value)]
-                  (eval-node program (vector-get node 3) body-env))
-                  (if (= tag (ast-match))
-                    (eval-match program node env)
-                    (if (= tag (ast-do))
-                  (eval-do-loop program node env 0 (vector-get node 1) (value-unit))
-                  (if (= tag (ast-computation))
-                    (eval-computation program node env)
-                    (if (= tag (ast-ann))
-                      (eval-node program (vector-get node 1) env)
-                      (if (= tag (ast-apply))
-                        (eval-apply program node env)
-                        (value-unit))))))))))))))
+          (if (= tag (ast-lit-unit))
+            node
+            (if (= tag (ast-var))
+              (env-lookup env (vector-get node 1))
+              (if (= tag (ast-if))
+                (let [cond-value (eval-node program (vector-get node 1) env)]
+                  (if (= (value-truthy cond-value) 1)
+                    (eval-node program (vector-get node 2) env)
+                    (eval-node program (vector-get node 3) env)))
+                (if (= tag (ast-let))
+                    (let [name-hash (vector-get node 1)
+                    init-value (eval-node program (vector-get node 2) env)
+                    body-env (env-bind env name-hash init-value)]
+                    (eval-node program (vector-get node 3) body-env))
+                    (if (= tag (ast-match))
+                      (eval-match program node env)
+                      (if (= tag (ast-do))
+                    (eval-do-loop program node env 0 (vector-get node 1) (value-unit))
+                    (if (= tag (ast-computation))
+                      (eval-computation program node env)
+                      (if (= tag (ast-ann))
+                        (eval-node program (vector-get node 1) env)
+                        (if (= tag (ast-apply))
+                          (eval-apply program node env)
+                          (value-unit)))))))))))))))
 
 (defn depth-total [paren-depth bracket-depth brace-depth]
   (+ (+ paren-depth bracket-depth) brace-depth))
