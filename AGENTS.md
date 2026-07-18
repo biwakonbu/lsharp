@@ -79,15 +79,15 @@ Source (.ls)
 
 ### フロー
 
-1. **RED**: テストを先に書く → `cargo test` で **失敗を確認**
-2. **GREEN**: 実装を書く → `cargo test` で **成功を確認**
+1. **RED**: テストを先に書く。Rust oracle/bootstrap の契約は `cargo test` で失敗を確認し、Rust-free slice は同じ fixture を `scripts/native-selfhost-dev.sh` の native stage0 経路でも失敗させる。`cargo test` だけでは native evidence としない。
+2. **GREEN**: 実装を書く。Rust oracle の focused test と native stage0 の対応 command を順に成功させ、Rust host fallback の成功を native GREEN として扱わない。
 3. **REFACTOR**: リファクタリング → テスト成功を維持
-4. **UPDATE**: 検証済み evidence を ADR/docs と TODO.md に反映する。項目全体の完了条件を満たした場合だけ `[x]`、verified slice や partial parity は `[~]` のまま残す。
+4. **UPDATE**: 検証済み evidence を ADR/docs と TODO.md に反映する。verified slice や partial parity は `[~]` のまま残し、項目全体の完了条件を満たしたら判断と evidence を ADR へ移して TODO.md から項目を削除する。`[x]` は使わない。
 
 ### ルール
 
 - 実装ファイルを編集する前に、必ず対応するテストを書く
-- テストが 0 個の項目は `[x]` にしない (`[~]` で留める)
+- テストが 0 個の項目は完了扱いにせず (`[~]` で留める)、完了項目は ADR へ移して TODO.md から削除する。
 - テストが失敗したら実装を修正する (テストの期待値を変更しない)
 - `/tdd <タスク>` コマンドで TDD ワークフローを起動できる (例: `/tdd P6-3 Computation Expression の脱糖実装`)
 
@@ -95,28 +95,28 @@ Source (.ls)
 
 L# の最終目標は、Rust 実装を正本として残したまま一部のコマンドだけを動かすことではなく、L# の全言語機能と公開コマンドを自己ホスト実装へ段階的に移し、通常の開発・テスト・Wasm 出力を Rust なしで完走できる状態にすることである。作業中は Rust を bootstrap、oracle/differential 検証、障害時の rollback、未移行 host integration のために保持するが、それを理由に未対応機能を完了扱いにしない。
 
-- 対応 target は Mac Apple Silicon (`aarch64-apple-darwin`) と Linux x86_64 (`x86_64-unknown-linux-gnu`) に限定する。日常の core CLI は provenance が検証された native stage0 と `scripts/native-selfhost-dev.sh` を入口にし、成功経路で `cargo`、`rustc`、host `lsharp`、Rust fallback を呼ばない。
+- 対応 target は Mac Apple Silicon (`aarch64-apple-darwin`) と Linux x86_64 (`x86_64-unknown-linux-gnu`) に限定する。日常の core CLI は、producer/source commit と source fingerprint が current checkout に一致し、manifest と検証証跡がある native stage0 と `scripts/native-selfhost-dev.sh` を入口にする。stale または fingerprint mismatch の stage0 は採用せず、成功経路で `cargo`、`rustc`、host `lsharp`、Rust fallback を呼ばない。
 - 言語機能を Rust-free 完了とするには、parser、型推論、lowering、codegen、runtime、source/ftable/import の必要経路を同じ仕様で閉じ、対応 target の native program から実際に実行する E2E テストを追加する。単一レイヤーの unit test、Rust driver 経由の成功、summary/header の生成だけでは完了としない。
-- Rust oracle は parity を確認するために使う。新しい L# 実装は RED テスト、Rust との診断/出力差分確認、native stage0 の実行確認、regression test の順で進め、未対応機能は誤った Wasm を出さず明示的な診断または明示的な外部境界を返す。
-- `compile` / `build` の全 target、EmbeddedCli/Component の実成果物、LSP/MCP/REPL/install/doc などの公開 surface を個別に検証する。Rust host fallback が欠落を隠さないよう、guest-success、artifact bytes、standalone runtime、外部 helper の境界を分けてテストする。
+- Rust oracle は parity を確認するために使う。新しい L# 実装は RED テスト、Rust との診断/出力差分確認、native stage0 の実行確認、regression test の順で進め、未対応機能は誤った Wasm を出さず明示的な診断または明示的な外部境界を返す。fallback が一度でも実行された結果は native gate の pass/evidence に数えず、fallback 発生を stderr または evidence に残す。
+- `compile` / `build` の全 target、EmbeddedCli/Component の実成果物、LSP/MCP/REPL/install/doc などの公開 surface を個別に検証する。明示拒否や Rust host integration は境界を正しく扱った証拠ではあるが、Rust-free 実装完了の証拠ではない。guest-success、artifact bytes、standalone runtime、外部 helper の境界を分けてテストする。
 - 長時間の stage regeneration や Linux VM gate の実行中は、対象を共有しない parser/type/runtime の focused test、docs、診断、fixture、契約テストを並行して進める。VM の待ち時間を理由に実装を止めず、完了後に native gate と fixed-point evidence を統合する。
-- `TODO.md` と `docs/development/operations/rust-boundary-reduction.md` は current truth として更新する。`[x]` はこの完了基準を満たした項目だけにし、partial parity、既知の Rust-only surface、未検証の ABI は `[~]` と残リスクに記録する。
+- `TODO.md` と `docs/development/operations/rust-boundary-reduction.md` は current truth として更新する。TODO.md は active-only の正本とし、`[x]` は使わず、partial parity、既知の Rust-only surface、未検証の ABI は `[~]` と残リスクに記録する。要件全体が完了した項目は ADR へ移して TODO.md から削除する。
 - stage0 の生成・配布・source commit provenance・rollback は運用上の bootstrap boundary であり、通常開発から Rust を外せても、公開 release の再現性と緊急復旧を検証するまで削除しない。
 
 ### 今後の標準進行（L# dogfooding、正本）
 
 この節を、L# を L# で開発しながら Rust 依存を段階的に置換するための運用契約とする。単一の成功テスト、Rust driver の成功、生成 summary、または stale な stage0 artifact だけで Rust-free 完了を宣言しない。
 
-- 通常の L# の実装・テスト・Wasm 出力は、検証済み native stage0 と `scripts/native-selfhost-dev.sh` を入口に L# 自身で進める。成功経路に `cargo`、`rustc`、host `lsharp`、暗黙の Rust fallback を入れない。
+- 通常の L# の実装・テスト・Wasm 出力は、検証済み native stage0 と `scripts/native-selfhost-dev.sh` を入口に L# 自身で進める。Rust の `cargo test` は oracle/bootstrap/differential lane、native stage0 の `test` は Rust-free dogfooding lane として別々に記録し、成功経路に `cargo`、`rustc`、host `lsharp`、暗黙の Rust fallback を入れない。
 - Rust は削除対象ではなく、stage0 の取得・再生成・provenance、Rust oracle/differential、障害解析、emergency rollback、未移行 host integration のための明示的な境界として残す。未対応機能を Rust fallback で成功したように見せない。
 - 対応 target は Mac Apple Silicon (`aarch64-apple-darwin`) と Linux x86_64 (`x86_64-unknown-linux-gnu`) に限定する。別 target の対応を進捗や完了条件へ混ぜない。
 - 次の作業は正本 TODO から一つの未対応機能を選び、失敗値・failure boundary・target・再現 command を固定する RED を先に追加する。GREEN 後に native stage0、Rust oracle、runtime/artifact、両対応 target の必要な証跡を揃える。
-- 未対応機能は明示診断または明示 external boundary で止める。partial parity、Rust-only、bootstrap/oracle、verified slice を区別して TODO/docs に記録し、verified slice だけを `[x]` にする。
+- 未対応機能は明示診断または明示 external boundary で止める。partial parity、Rust-only、bootstrap/oracle、verified slice を区別して TODO/docs に記録し、verified slice は `[~]` とする。完了項目は ADR へ移して TODO.md から削除し、`[x]` は使わない。
 - Linux VM や stage regeneration の待機中は、同じ heavy replay を重複起動せず、artifact reuse と VM-side lock を使う。共有しない parser/type/runtime、診断、fixture、contract test、docs を並行して進める。
 - 変更は task-relevant files に限定し、focused gate と docs audit の後に `main` へ commit/push する。push 後に `HEAD`、`origin/main`、worktree、TODO の残件を再監査し、未完なら次の具体的な RED と blocker を残す。
 - 「Rust なしで日常開発可能」と「L# 全機能・全公開 surface が Rust-free 完了」は別の判定とする。後者は parser から公開 command、runtime、配布 provenance までの要件別 evidence が揃うまで宣言しない。
 
-機能を置換する単位は、`RED → selfhost 実装 → focused GREEN → Rust differential → native stage0 → artifact/runtime → 対応2 target → docs/ADR/TODO → commit/push` とする。未対応機能はまず明示診断または明示 external boundary で止め、その後に同じ observable contract を保った native 実装へ置換する。
+機能を置換する単位は、`RED → selfhost 実装 → focused GREEN → Rust differential lane → native stage0 dogfooding lane → artifact/runtime → 対応2 target → docs/ADR/TODO → commit/push` とする。未対応機能はまず明示診断または明示 external boundary で止め、その後に同じ observable contract を保った native 実装へ置換する。
 
 ### 現在の完遂ループ（v0.2 Evidence-driven Contracts）
 
@@ -143,7 +143,7 @@ L# の最終目標は、Rust 実装を正本として残したまま一部のコ
 
 ### 完璧な L# 実装の判定
 
-「Rust-free」は Rust のソースを早期削除することではなく、L# の対応機能が parser → 型推論 → lowering → codegen → runtime → 公開 command の全境界を通り、Mac Apple Silicon と Linux x86_64 の native program から同じ意味論で実行できることを指す。未対応の言語機能、ABI、公開 surface、component/external helper、bootstrap provenance が残る間は `[~]` を維持し、各項目の parity と実行証跡を閉じてから `[x]` に更新する。
+「Rust-free」は Rust のソースを早期削除することではなく、L# の対応機能が parser → 型推論 → lowering → codegen → runtime → 公開 command の全境界を通り、Mac Apple Silicon と Linux x86_64 の native program から同じ意味論で実行できることを指す。未対応の言語機能、ABI、公開 surface、component/external helper、bootstrap provenance が残る間は TODO.md の `[~]` を維持し、各項目の parity と実行証跡を閉じてから ADR へ移して TODO.md から削除する。
 
 ### 完遂ロードマップ
 
