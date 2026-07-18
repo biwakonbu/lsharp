@@ -205,6 +205,14 @@ fn property_sample_values(spec: &PropertySmokeTestSpec) -> Vec<Vec<String>> {
     if spec.binder_types == [PropertyBinderType::Bool] {
         samples.push(vec!["false".to_string()]);
         samples.push(vec!["true".to_string()]);
+    } else if spec.binder_types
+        == [
+            PropertyBinderType::Int,
+            PropertyBinderType::Int,
+            PropertyBinderType::Int,
+        ]
+    {
+        samples.push(vec!["0".to_string(), "0".to_string(), "0".to_string()]);
     } else if spec.binder_types.len() > 1
         && spec
             .binder_types

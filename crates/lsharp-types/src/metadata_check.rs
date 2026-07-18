@@ -567,6 +567,11 @@ pub fn property_smoke_test_spec(property: &PropertyForm) -> Option<PropertySmoke
         .collect::<Option<Vec<_>>>()?;
     match binder_types.as_slice() {
         [PropertyBinderType::Int] | [PropertyBinderType::Int, PropertyBinderType::Int] => {}
+        [
+            PropertyBinderType::Int,
+            PropertyBinderType::Int,
+            PropertyBinderType::Int,
+        ] if cases == 1 => {}
         [PropertyBinderType::Bool]
         | [PropertyBinderType::Bool, PropertyBinderType::Bool]
         | [

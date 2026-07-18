@@ -1779,6 +1779,18 @@
     (if (= (vector-get binder-types idx) (property-runner-type-bool-hash)) 1 0)
     0))
 
+(defn property-sample-binder-type-int? [binder-types idx]
+  (if (< idx (vector-length binder-types))
+    (if (= (vector-get binder-types idx) (property-runner-type-int-hash)) 1 0)
+    0))
+
+(defn property-sample-three-int-binder? [binder-count binder-types]
+  (if (and (= binder-count 3) (= (vector-length binder-types) 3))
+    (if (and (= (property-sample-binder-type-int? binder-types 0) 1)
+        (and (= (property-sample-binder-type-int? binder-types 1) 1)
+          (= (property-sample-binder-type-int? binder-types 2) 1))) 1 0)
+    0))
+
 (defn property-sample-three-bool-binder? [binder-count binder-types]
   (if (and (= binder-count 3) (= (vector-length binder-types) 3))
     (if (and (= (property-sample-binder-type-bool? binder-types 0) 1)
@@ -1800,7 +1812,13 @@
       (vector-push-single-rooted
         (vector-new 1)
         (property-sample-bool sample-idx))
-      (if (= (property-sample-three-bool-binder? binder-count binder-types) 1)
+      (if (= (property-sample-three-int-binder? binder-count binder-types) 1)
+        (vector-push-triple-rooted
+          (vector-new 3)
+          (property-sample-value sample-idx)
+          (property-sample-value sample-idx)
+          (property-sample-value sample-idx))
+        (if (= (property-sample-three-bool-binder? binder-count binder-types) 1)
         (vector-push-triple-rooted
           (vector-new 3)
           (property-sample-by-type (vector-get binder-types 0) sample-idx)
@@ -1815,10 +1833,10 @@
           (vector-push-single-rooted
             (vector-new 1)
             (property-sample-value sample-idx))
-            (vector-push-pair-rooted
-              (vector-new 2)
-              (property-sample-value (/ sample-idx 3))
-              (property-sample-value (% sample-idx 3)))))))))
+              (vector-push-pair-rooted
+                (vector-new 2)
+                (property-sample-value (/ sample-idx 3))
+                (property-sample-value (% sample-idx 3))))))))))
 
 (defn property-bind-unit-binders-loop [env binders idx]
   (if (>= idx (vector-length binders))
