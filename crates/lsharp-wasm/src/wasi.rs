@@ -48,6 +48,8 @@ const GC_OBJECT_TABLE_BASE_GLOBAL_IDX: u32 = 8;
 const GC_OBJECT_TABLE_CAPACITY_GLOBAL_IDX: u32 = 9;
 const GC_FREE_LIST_BASE_GLOBAL_IDX: u32 = 10;
 const GC_FREE_LIST_CAPACITY_GLOBAL_IDX: u32 = 11;
+const ROOT_STACK_BASE_GLOBAL_IDX: u32 = 12;
+const ROOT_STACK_CAPACITY_GLOBAL_IDX: u32 = 13;
 const INTERNAL_HEAP_PTR_EXPORT: &str = "__lsharp_heap_ptr";
 const INTERNAL_HEAP_START_EXPORT: &str = "__lsharp_heap_start";
 const INTERNAL_ALLOC_COUNT_EXPORT: &str = "__lsharp_alloc_count";
@@ -75,6 +77,7 @@ struct CollectorGlobals {
     heap_ptr_global_idx: u32,
     heap_start_global_idx: u32,
     root_stack_top_global_idx: u32,
+    root_stack_base_global_idx: u32,
     object_count_global_idx: u32,
     free_list_count_global_idx: u32,
     free_list_base_global_idx: u32,
@@ -82,11 +85,6 @@ struct CollectorGlobals {
     object_table_base_global_idx: u32,
     gc_collection_count_global_idx: u32,
     gc_freed_count_global_idx: u32,
-}
-
-#[derive(Copy, Clone)]
-struct GcRuntimeLayout {
-    root_stack_base: i32,
 }
 
 #[derive(Copy, Clone)]
@@ -480,6 +478,7 @@ fn emit_wasm_wasi_with_options(
         heap_ptr_global_idx: HEAP_PTR_GLOBAL_IDX,
         heap_start_global_idx: HEAP_START_GLOBAL_IDX,
         root_stack_top_global_idx: ROOT_STACK_TOP_GLOBAL_IDX,
+        root_stack_base_global_idx: ROOT_STACK_BASE_GLOBAL_IDX,
         object_count_global_idx: GC_OBJECT_COUNT_GLOBAL_IDX,
         free_list_count_global_idx: GC_FREE_LIST_COUNT_GLOBAL_IDX,
         free_list_base_global_idx: GC_FREE_LIST_BASE_GLOBAL_IDX,
@@ -488,10 +487,6 @@ fn emit_wasm_wasi_with_options(
         gc_collection_count_global_idx: GC_COLLECTION_COUNT_GLOBAL_IDX,
         gc_freed_count_global_idx: GC_FREED_COUNT_GLOBAL_IDX,
     };
-    let gc_layout = GcRuntimeLayout {
-        root_stack_base,
-    };
-
     let mut memories = MemorySection::new();
     memories.memory(MemoryType {
         minimum: minimum_pages.max(1),
@@ -578,6 +573,22 @@ fn emit_wasm_wasi_with_options(
         },
         &wasm_encoder::ConstExpr::i32_const(GC_FREE_LIST_SLOT_CAPACITY),
     );
+    globals.global(
+        GlobalType {
+            val_type: ValType::I32,
+            mutable: true,
+            shared: false,
+        },
+        &wasm_encoder::ConstExpr::i32_const(root_stack_base),
+    );
+    globals.global(
+        GlobalType {
+            val_type: ValType::I32,
+            mutable: true,
+            shared: false,
+        },
+        &wasm_encoder::ConstExpr::i32_const(ROOT_STACK_SLOT_CAPACITY),
+    );
     wasm_module.section(&globals);
 
     // === Export Section ===
@@ -656,7 +667,7 @@ fn emit_wasm_wasi_with_options(
     // === Code Section ===
     let mut codes = CodeSection::new();
     emit_print_i64_func(&mut codes);
-    emit_alloc_func(&mut codes, allocator_globals, gc_layout);
+    emit_alloc_func(&mut codes, allocator_globals);
     emit_string_concat_func(&mut codes, alloc_func_idx);
     emit_string_eq_func(&mut codes);
     emit_print_string_func(&mut codes);
@@ -675,9 +686,15 @@ fn emit_wasm_wasi_with_options(
     emit_command_line_arg_func(&mut codes, alloc_func_idx, args_get_idx, args_sizes_get_idx);
     emit_read_stdin_func(&mut codes, alloc_func_idx, string_concat_idx, fd_read_idx);
     emit_fnv1a_hash_func(&mut codes);
-    emit_root_push_func(&mut codes, ROOT_STACK_TOP_GLOBAL_IDX, root_stack_base);
-    emit_root_pop_func(&mut codes, ROOT_STACK_TOP_GLOBAL_IDX, root_stack_base);
-    emit_root_set_func(&mut codes, ROOT_STACK_TOP_GLOBAL_IDX, root_stack_base);
+    emit_root_push_func(
+        &mut codes,
+        HEAP_PTR_GLOBAL_IDX,
+        ROOT_STACK_TOP_GLOBAL_IDX,
+        ROOT_STACK_BASE_GLOBAL_IDX,
+        ROOT_STACK_CAPACITY_GLOBAL_IDX,
+    );
+    emit_root_pop_func(&mut codes, ROOT_STACK_TOP_GLOBAL_IDX, ROOT_STACK_BASE_GLOBAL_IDX);
+    emit_root_set_func(&mut codes, ROOT_STACK_TOP_GLOBAL_IDX, ROOT_STACK_BASE_GLOBAL_IDX);
     emit_write_file_bytes_func(
         &mut codes,
         alloc_func_idx,
@@ -685,7 +702,7 @@ fn emit_wasm_wasi_with_options(
         fd_write_idx,
         fd_close_idx,
     );
-    emit_gc_collect_func(&mut codes, collector_globals, gc_layout);
+    emit_gc_collect_func(&mut codes, collector_globals);
 
     let struct_scratch_fields = max_struct_field_count(module);
     for func in &module.functions {
@@ -1105,6 +1122,7 @@ fn emit_wasm_http_handler_core(module: &Module) -> Result<Vec<u8>, CodegenError>
         heap_ptr_global_idx: HEAP_PTR_GLOBAL_IDX,
         heap_start_global_idx: HEAP_START_GLOBAL_IDX,
         root_stack_top_global_idx: ROOT_STACK_TOP_GLOBAL_IDX,
+        root_stack_base_global_idx: ROOT_STACK_BASE_GLOBAL_IDX,
         object_count_global_idx: GC_OBJECT_COUNT_GLOBAL_IDX,
         free_list_count_global_idx: GC_FREE_LIST_COUNT_GLOBAL_IDX,
         free_list_base_global_idx: GC_FREE_LIST_BASE_GLOBAL_IDX,
@@ -1113,10 +1131,6 @@ fn emit_wasm_http_handler_core(module: &Module) -> Result<Vec<u8>, CodegenError>
         gc_collection_count_global_idx: GC_COLLECTION_COUNT_GLOBAL_IDX,
         gc_freed_count_global_idx: GC_FREED_COUNT_GLOBAL_IDX,
     };
-    let gc_layout = GcRuntimeLayout {
-        root_stack_base,
-    };
-
     let mut memories = MemorySection::new();
     memories.memory(MemoryType {
         minimum: minimum_pages.max(1),
@@ -1202,6 +1216,22 @@ fn emit_wasm_http_handler_core(module: &Module) -> Result<Vec<u8>, CodegenError>
         },
         &wasm_encoder::ConstExpr::i32_const(GC_FREE_LIST_SLOT_CAPACITY),
     );
+    globals.global(
+        GlobalType {
+            val_type: ValType::I32,
+            mutable: true,
+            shared: false,
+        },
+        &wasm_encoder::ConstExpr::i32_const(root_stack_base),
+    );
+    globals.global(
+        GlobalType {
+            val_type: ValType::I32,
+            mutable: true,
+            shared: false,
+        },
+        &wasm_encoder::ConstExpr::i32_const(ROOT_STACK_SLOT_CAPACITY),
+    );
     wasm_module.section(&globals);
 
     let mut exports = ExportSection::new();
@@ -1226,7 +1256,7 @@ fn emit_wasm_http_handler_core(module: &Module) -> Result<Vec<u8>, CodegenError>
 
     let mut codes = CodeSection::new();
     emit_trap_i64_to_unit_func(&mut codes);
-    emit_alloc_func(&mut codes, allocator_globals, gc_layout);
+    emit_alloc_func(&mut codes, allocator_globals);
     emit_string_concat_func(&mut codes, alloc_func_idx);
     emit_string_eq_func(&mut codes);
     emit_trap_i64_to_unit_func(&mut codes);
@@ -1239,10 +1269,16 @@ fn emit_wasm_http_handler_core(module: &Module) -> Result<Vec<u8>, CodegenError>
     emit_trap_i64_to_i64_func(&mut codes);
     emit_trap_void_to_i64_func(&mut codes);
     emit_fnv1a_hash_func(&mut codes);
-    emit_root_push_func(&mut codes, ROOT_STACK_TOP_GLOBAL_IDX, root_stack_base);
-    emit_root_pop_func(&mut codes, ROOT_STACK_TOP_GLOBAL_IDX, root_stack_base);
-    emit_root_set_func(&mut codes, ROOT_STACK_TOP_GLOBAL_IDX, root_stack_base);
-    emit_gc_collect_func(&mut codes, collector_globals, gc_layout);
+    emit_root_push_func(
+        &mut codes,
+        HEAP_PTR_GLOBAL_IDX,
+        ROOT_STACK_TOP_GLOBAL_IDX,
+        ROOT_STACK_BASE_GLOBAL_IDX,
+        ROOT_STACK_CAPACITY_GLOBAL_IDX,
+    );
+    emit_root_pop_func(&mut codes, ROOT_STACK_TOP_GLOBAL_IDX, ROOT_STACK_BASE_GLOBAL_IDX);
+    emit_root_set_func(&mut codes, ROOT_STACK_TOP_GLOBAL_IDX, ROOT_STACK_BASE_GLOBAL_IDX);
+    emit_gc_collect_func(&mut codes, collector_globals);
 
     let struct_scratch_fields = max_struct_field_count(module);
     for func in &module.functions {
@@ -1511,7 +1547,7 @@ fn emit_print_i64_func(codes: &mut CodeSection) {
 }
 
 /// __alloc: free-list reuse を持つ allocator
-fn emit_alloc_func(codes: &mut CodeSection, globals: AllocatorGlobals, layout: GcRuntimeLayout) {
+fn emit_alloc_func(codes: &mut CodeSection, globals: AllocatorGlobals) {
     use wasm_encoder::{Instruction as W, MemArg};
 
     let AllocatorGlobals {
@@ -1523,8 +1559,6 @@ fn emit_alloc_func(codes: &mut CodeSection, globals: AllocatorGlobals, layout: G
         object_table_base_global_idx,
         object_table_capacity_global_idx,
     } = globals;
-    let _ = layout;
-
     let mem32 = |offset: u64| MemArg {
         offset,
         align: 2,
@@ -1789,7 +1823,6 @@ fn emit_alloc_func(codes: &mut CodeSection, globals: AllocatorGlobals, layout: G
 fn emit_gc_mark_candidate(
     f: &mut wasm_encoder::Function,
     globals: CollectorGlobals,
-    layout: GcRuntimeLayout,
     locals: GcMarkHelperLocals,
 ) {
     use wasm_encoder::{Instruction as W, MemArg};
@@ -1799,7 +1832,6 @@ fn emit_gc_mark_candidate(
         heap_start_global_idx,
         ..
     } = globals;
-    let _ = layout;
     let object_table_base_global_idx = globals.object_table_base_global_idx;
     let GcMarkHelperLocals {
         old_count_local,
@@ -1913,7 +1945,6 @@ fn emit_gc_mark_candidate(
 fn emit_gc_collect_func(
     codes: &mut CodeSection,
     globals: CollectorGlobals,
-    layout: GcRuntimeLayout,
 ) {
     use wasm_encoder::{Instruction as W, MemArg};
 
@@ -1953,6 +1984,7 @@ fn emit_gc_collect_func(
         heap_ptr_global_idx,
         heap_start_global_idx: _,
         root_stack_top_global_idx,
+        root_stack_base_global_idx,
         object_count_global_idx,
         free_list_count_global_idx,
         free_list_base_global_idx,
@@ -1961,10 +1993,6 @@ fn emit_gc_collect_func(
         gc_collection_count_global_idx,
         gc_freed_count_global_idx,
     } = globals;
-    let GcRuntimeLayout {
-        root_stack_base, ..
-    } = layout;
-
     let mem32 = |offset: u64| MemArg {
         offset,
         align: 2,
@@ -2019,7 +2047,7 @@ fn emit_gc_collect_func(
     f.instruction(&W::GlobalGet(root_stack_top_global_idx));
     f.instruction(&W::I32GeU);
     f.instruction(&W::BrIf(1));
-    f.instruction(&W::I32Const(root_stack_base));
+    f.instruction(&W::GlobalGet(root_stack_base_global_idx));
     f.instruction(&W::LocalGet(ROOT_IDX_LOCAL));
     f.instruction(&W::I32Const(3));
     f.instruction(&W::I32Shl);
@@ -2031,7 +2059,6 @@ fn emit_gc_collect_func(
     emit_gc_mark_candidate(
         &mut f,
         globals,
-        layout,
         GcMarkHelperLocals {
             old_count_local: OLD_COUNT_LOCAL,
             candidate_value_local: SLOT_VALUE_LOCAL,
@@ -2100,7 +2127,6 @@ fn emit_gc_collect_func(
     emit_gc_mark_candidate(
         &mut f,
         globals,
-        layout,
         GcMarkHelperLocals {
             old_count_local: OLD_COUNT_LOCAL,
             candidate_value_local: CHILD_VALUE_LOCAL,
@@ -2141,7 +2167,6 @@ fn emit_gc_collect_func(
     emit_gc_mark_candidate(
         &mut f,
         globals,
-        layout,
         GcMarkHelperLocals {
             old_count_local: OLD_COUNT_LOCAL,
             candidate_value_local: CHILD_VALUE_LOCAL,
@@ -2199,7 +2224,6 @@ fn emit_gc_collect_func(
     emit_gc_mark_candidate(
         &mut f,
         globals,
-        layout,
         GcMarkHelperLocals {
             old_count_local: OLD_COUNT_LOCAL,
             candidate_value_local: CHILD_VALUE_LOCAL,
@@ -2215,7 +2239,6 @@ fn emit_gc_collect_func(
     emit_gc_mark_candidate(
         &mut f,
         globals,
-        layout,
         GcMarkHelperLocals {
             old_count_local: OLD_COUNT_LOCAL,
             candidate_value_local: CHILD_VALUE_LOCAL,
@@ -2282,7 +2305,6 @@ fn emit_gc_collect_func(
     emit_gc_mark_candidate(
         &mut f,
         globals,
-        layout,
         GcMarkHelperLocals {
             old_count_local: OLD_COUNT_LOCAL,
             candidate_value_local: CHILD_VALUE_LOCAL,
@@ -2500,10 +2522,24 @@ fn emit_gc_collect_func(
 
 fn emit_root_push_func(
     codes: &mut CodeSection,
+    heap_ptr_global_idx: u32,
     root_stack_top_global_idx: u32,
-    root_stack_base: i32,
+    root_stack_base_global_idx: u32,
+    root_stack_capacity_global_idx: u32,
 ) {
     use wasm_encoder::{Instruction as W, MemArg};
+
+    const TOP_LOCAL: u32 = 1;
+    const OLD_BASE_LOCAL: u32 = 2;
+    const OLD_CAPACITY_LOCAL: u32 = 3;
+    const NEW_CAPACITY_LOCAL: u32 = 4;
+    const ROOT_TABLE_BYTES_LOCAL: u32 = 5;
+    const MEMORY_END_LOCAL: u32 = 6;
+    const NEW_BASE_LOCAL: u32 = 7;
+    const NEW_END_LOCAL: u32 = 8;
+    const GROW_PAGES_LOCAL: u32 = 9;
+    const GROW_RESULT_LOCAL: u32 = 10;
+    const SLOT_ADDR_LOCAL: u32 = 11;
 
     let mem64 = |offset: u64| MemArg {
         offset,
@@ -2511,29 +2547,103 @@ fn emit_root_push_func(
         memory_index: 0,
     };
 
-    let mut f = wasm_encoder::Function::new(vec![(1, ValType::I32), (1, ValType::I32)]);
+    let mut f = wasm_encoder::Function::new(vec![(11, ValType::I32)]);
     f.instruction(&W::GlobalGet(root_stack_top_global_idx));
-    f.instruction(&W::LocalSet(1));
-    f.instruction(&W::LocalGet(1));
-    f.instruction(&W::I32Const(ROOT_STACK_SLOT_CAPACITY));
+    f.instruction(&W::LocalSet(TOP_LOCAL));
+    f.instruction(&W::LocalGet(TOP_LOCAL));
+    f.instruction(&W::GlobalGet(root_stack_capacity_global_idx));
     f.instruction(&W::I32GeU);
+    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::GlobalGet(root_stack_base_global_idx));
+    f.instruction(&W::LocalSet(OLD_BASE_LOCAL));
+    f.instruction(&W::GlobalGet(root_stack_capacity_global_idx));
+    f.instruction(&W::LocalSet(OLD_CAPACITY_LOCAL));
+    f.instruction(&W::LocalGet(OLD_CAPACITY_LOCAL));
+    f.instruction(&W::I32Const(2));
+    f.instruction(&W::I32Mul);
+    f.instruction(&W::LocalSet(NEW_CAPACITY_LOCAL));
+    f.instruction(&W::LocalGet(NEW_CAPACITY_LOCAL));
+    f.instruction(&W::I32Const(8));
+    f.instruction(&W::I32Mul);
+    f.instruction(&W::LocalSet(ROOT_TABLE_BYTES_LOCAL));
+    f.instruction(&W::MemorySize(0));
+    f.instruction(&W::I32Const(65536));
+    f.instruction(&W::I32Mul);
+    f.instruction(&W::LocalSet(MEMORY_END_LOCAL));
+    f.instruction(&W::GlobalGet(heap_ptr_global_idx));
+    f.instruction(&W::LocalSet(NEW_BASE_LOCAL));
+    f.instruction(&W::LocalGet(NEW_BASE_LOCAL));
+    f.instruction(&W::LocalGet(MEMORY_END_LOCAL));
+    f.instruction(&W::I32LtU);
+    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::LocalGet(MEMORY_END_LOCAL));
+    f.instruction(&W::LocalSet(NEW_BASE_LOCAL));
+    f.instruction(&W::End);
+    f.instruction(&W::LocalGet(NEW_BASE_LOCAL));
+    f.instruction(&W::I32Const(7));
+    f.instruction(&W::I32Add);
+    f.instruction(&W::I32Const(-8));
+    f.instruction(&W::I32And);
+    f.instruction(&W::LocalSet(NEW_BASE_LOCAL));
+    f.instruction(&W::LocalGet(NEW_BASE_LOCAL));
+    f.instruction(&W::LocalGet(ROOT_TABLE_BYTES_LOCAL));
+    f.instruction(&W::I32Add);
+    f.instruction(&W::LocalSet(NEW_END_LOCAL));
+    f.instruction(&W::LocalGet(NEW_END_LOCAL));
+    f.instruction(&W::LocalGet(MEMORY_END_LOCAL));
+    f.instruction(&W::I32GtU);
+    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::LocalGet(NEW_END_LOCAL));
+    f.instruction(&W::LocalGet(MEMORY_END_LOCAL));
+    f.instruction(&W::I32Sub);
+    f.instruction(&W::I32Const(65535));
+    f.instruction(&W::I32Add);
+    f.instruction(&W::I32Const(65536));
+    f.instruction(&W::I32DivU);
+    f.instruction(&W::LocalSet(GROW_PAGES_LOCAL));
+    f.instruction(&W::Else);
+    f.instruction(&W::I32Const(0));
+    f.instruction(&W::LocalSet(GROW_PAGES_LOCAL));
+    f.instruction(&W::End);
+    f.instruction(&W::LocalGet(GROW_PAGES_LOCAL));
+    f.instruction(&W::MemoryGrow(0));
+    f.instruction(&W::LocalSet(GROW_RESULT_LOCAL));
+    f.instruction(&W::LocalGet(GROW_RESULT_LOCAL));
+    f.instruction(&W::I32Const(-1));
+    f.instruction(&W::I32Eq);
     f.instruction(&W::If(wasm_encoder::BlockType::Empty));
     f.instruction(&W::Unreachable);
     f.instruction(&W::End);
-    f.instruction(&W::I32Const(root_stack_base));
-    f.instruction(&W::LocalGet(1));
+    f.instruction(&W::LocalGet(NEW_BASE_LOCAL));
+    f.instruction(&W::LocalGet(OLD_BASE_LOCAL));
+    f.instruction(&W::LocalGet(OLD_CAPACITY_LOCAL));
+    f.instruction(&W::I32Const(8));
+    f.instruction(&W::I32Mul);
+    f.instruction(&W::MemoryCopy {
+        src_mem: 0,
+        dst_mem: 0,
+    });
+    f.instruction(&W::LocalGet(NEW_BASE_LOCAL));
+    f.instruction(&W::GlobalSet(root_stack_base_global_idx));
+    f.instruction(&W::LocalGet(NEW_CAPACITY_LOCAL));
+    f.instruction(&W::GlobalSet(root_stack_capacity_global_idx));
+    f.instruction(&W::LocalGet(NEW_END_LOCAL));
+    f.instruction(&W::GlobalSet(heap_ptr_global_idx));
+    f.instruction(&W::End);
+    f.instruction(&W::GlobalGet(root_stack_base_global_idx));
+    f.instruction(&W::LocalGet(TOP_LOCAL));
     f.instruction(&W::I32Const(3));
     f.instruction(&W::I32Shl);
     f.instruction(&W::I32Add);
-    f.instruction(&W::LocalSet(2));
-    f.instruction(&W::LocalGet(2));
+    f.instruction(&W::LocalSet(SLOT_ADDR_LOCAL));
+    f.instruction(&W::LocalGet(SLOT_ADDR_LOCAL));
     f.instruction(&W::LocalGet(0));
     f.instruction(&W::I64Store(mem64(0)));
-    f.instruction(&W::LocalGet(1));
+    f.instruction(&W::LocalGet(TOP_LOCAL));
     f.instruction(&W::I32Const(1));
     f.instruction(&W::I32Add);
     f.instruction(&W::GlobalSet(root_stack_top_global_idx));
-    f.instruction(&W::LocalGet(1));
+    f.instruction(&W::LocalGet(TOP_LOCAL));
     f.instruction(&W::I64ExtendI32U);
     f.instruction(&W::End);
     codes.function(&f);
@@ -2542,7 +2652,7 @@ fn emit_root_push_func(
 fn emit_root_pop_func(
     codes: &mut CodeSection,
     root_stack_top_global_idx: u32,
-    root_stack_base: i32,
+    root_stack_base_global_idx: u32,
 ) {
     use wasm_encoder::{Instruction as W, MemArg};
 
@@ -2566,7 +2676,7 @@ fn emit_root_pop_func(
     f.instruction(&W::LocalSet(0));
     f.instruction(&W::LocalGet(0));
     f.instruction(&W::GlobalSet(root_stack_top_global_idx));
-    f.instruction(&W::I32Const(root_stack_base));
+    f.instruction(&W::GlobalGet(root_stack_base_global_idx));
     f.instruction(&W::LocalGet(0));
     f.instruction(&W::I32Const(3));
     f.instruction(&W::I32Shl);
@@ -2582,7 +2692,7 @@ fn emit_root_pop_func(
 fn emit_root_set_func(
     codes: &mut CodeSection,
     root_stack_top_global_idx: u32,
-    root_stack_base: i32,
+    root_stack_base_global_idx: u32,
 ) {
     use wasm_encoder::{Instruction as W, MemArg};
 
@@ -2608,7 +2718,7 @@ fn emit_root_set_func(
     f.instruction(&W::If(wasm_encoder::BlockType::Empty));
     f.instruction(&W::Unreachable);
     f.instruction(&W::End);
-    f.instruction(&W::I32Const(root_stack_base));
+    f.instruction(&W::GlobalGet(root_stack_base_global_idx));
     f.instruction(&W::LocalGet(2));
     f.instruction(&W::I32Const(3));
     f.instruction(&W::I32Shl);

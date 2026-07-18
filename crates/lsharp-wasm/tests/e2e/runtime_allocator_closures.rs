@@ -494,6 +494,55 @@ fn test_e2e_runtime_object_table_grows_past_initial_capacity() {
 }
 
 #[test]
+fn test_e2e_runtime_root_stack_grows_past_initial_capacity() {
+    let (_stdout, telemetry) = compile_and_capture_runtime_telemetry(
+        r#"
+        (defn push-roots [n]
+          (if (<= n 0)
+            0
+            (do
+              (root_push n)
+              (push-roots (- n 1)))))
+        (defn main [] (push-roots 32769))
+    "#,
+    );
+
+    assert_eq!(
+        telemetry.root_stack_top, 32769,
+        "初期容量 32768 を超えた root slot も保持されるべき: {:?}",
+        telemetry
+    );
+}
+
+#[test]
+fn test_e2e_runtime_root_stack_growth_preserves_root_api() {
+    let result = compile_and_run(
+        r#"
+        (defn push-roots [n]
+          (if (<= n 0)
+            0
+            (do
+              (root_push n)
+              (push-roots (- n 1)))))
+        (defn main []
+          (let [top (push-roots 32769)
+                updated (root_set 32768 42)
+                popped (root_pop)]
+            (do
+              (print top)
+              (print updated)
+              (print popped)
+              popped)))
+    "#,
+    );
+    assert_eq!(
+        result.trim().lines().collect::<Vec<_>>(),
+        vec!["0", "32768", "42"],
+        "root_set/root_pop は移動後の root table を参照すべき"
+    );
+}
+
+#[test]
 fn test_e2e_runtime_free_list_grows_past_initial_capacity() {
     let (_stdout, telemetry) = compile_and_capture_runtime_telemetry(
         r#"
