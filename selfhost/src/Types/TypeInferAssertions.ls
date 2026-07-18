@@ -133,8 +133,13 @@
                       (canonical-property-type-error-code)
                       (let [predicate (property-probe-predicate probe-program)
                         resolved (property-probe-return-type (infer-program-analysis-type analysis))
-                        type-code (if (and (= (ty-tag resolved) (ty-con)) (= (ty-name resolved) (hash-bool))) 0 (canonical-property-non-bool-code))]
-                        (if (and (= reject-vacuous 1) (= (statically-true-integer-comparison? predicate) 1)) (canonical-assertion-vacuous-code) (if (and (= reject-unreachable 1) (or (= (statically-false-integer-comparison? predicate) 1) (= (statically-false-bool? predicate) 1))) (canonical-assertion-vacuous-code) type-code))))]
+                        type-code (if (and (= (ty-tag resolved) (ty-con)) (= (ty-name resolved) (hash-bool))) 0 (canonical-property-non-bool-code))
+                        boolean-result (statically-boolean-result predicate)]
+                        (if (and (= reject-vacuous 1) (= boolean-result 1))
+                          (canonical-assertion-vacuous-code)
+                          (if (and (= reject-unreachable 1) (= boolean-result 2))
+                            (canonical-assertion-vacuous-code)
+                            type-code))))]
                     (do
                       (root_pop)
                       (root_pop)
@@ -290,6 +295,50 @@
 (defn statically-true-integer-comparison? [predicate] (statically-integer-comparison? predicate 1))
 (defn statically-false-integer-comparison? [predicate] (statically-integer-comparison? predicate 2))
 (defn statically-false-bool? [predicate] (let [tag (vector-get predicate 0)] (if (= tag (ast-ann)) (statically-false-bool? (vector-get predicate 1)) (if (and (= tag (ast-lit-bool)) (= (vector-get predicate 1) 0)) 1 0))))
+(defn static-logic-and-hash [] 96727)
+(defn static-logic-or-hash [] 3555)
+(defn static-boolean-and-result [left right]
+  (if (= left 2)
+    2
+    (if (= right 2)
+      2
+      (if (= left 1)
+        right
+        (if (= right 1) left 0)))))
+(defn static-boolean-or-result [left right]
+  (if (= left 1)
+    1
+    (if (= right 1)
+      1
+      (if (= left 2)
+        right
+        (if (= right 2) left 0)))))
+(defn statically-boolean-result [predicate]
+  (let [tag (vector-get predicate 0)]
+    (if (= tag (ast-ann))
+      (statically-boolean-result (vector-get predicate 1))
+      (if (= tag (ast-lit-bool))
+        (if (= (vector-get predicate 1) 1) 1 2)
+        (if (= tag (ast-apply))
+          (let [callee (vector-get predicate 1)
+            arg-count (vector-get predicate 2)]
+            (if (and (= arg-count 2) (= (vector-get callee 0) (ast-var)))
+              (let [operator (vector-get callee 1)
+                left (vector-get predicate 3)
+                right (vector-get predicate 4)]
+                (if (= operator (static-logic-and-hash))
+                  (static-boolean-and-result
+                    (statically-boolean-result left)
+                    (statically-boolean-result right))
+                  (if (= operator (static-logic-or-hash))
+                    (static-boolean-or-result
+                      (statically-boolean-result left)
+                      (statically-boolean-result right))
+                    (if (= (statically-true-integer-comparison? predicate) 1)
+                      1
+                      (if (= (statically-false-integer-comparison? predicate) 1) 2 0)))))
+              0))
+          0)))))
 (defn check-assertion-predicate [predicate decl env counter]
   (if (or
     (and (= (vector-get predicate 0) (ast-lit-bool)) (= (vector-get predicate 1) 1))

@@ -240,6 +240,12 @@ Rust canonical checker と selfhost `check` は、`(: false Bool)` のように 
 
 Evidence: RED の `canonical_property_rejects_annotated_false_precondition` と `test_e2e_selfhost_cli_check_rejects_annotated_false_property_precondition`、GREEN の同 2 tests、`./target/debug/lsharp check selfhost/src/Types/TypeInferAssertions.ls`。残るのは compound expression の reachability、malformed option、sampling/shrink/evaluator、diagnostic/span parity、full CLI artifact/runtime、Mac Apple Silicon / Linux x86_64 の current-source native gate である。
 
+### EC-M1-04 compound boolean precondition reachability (2026-07-18)
+
+Rust canonical checker と selfhost `check` は、Bool literal、integer literal comparison、`and` / `or` の compound predicate を `true` / `false` / `unknown` の三値として評価する。`(and false true)` のように入力へ依存しない false precondition は、compound expression 全体の span を保持した `2005` 相当の vacuous diagnostic として拒否する。一方、unknown operand を含む predicate は到達不能と決め打ちせず、通常の Bool 型検査へ進む。既存の literal / annotated literal / static integer comparison と property postcondition の常真判定も同じ評価器へ統合した。
+
+Evidence: RED の `canonical_property_rejects_compound_false_precondition` と `test_e2e_selfhost_cli_check_rejects_compound_false_property_precondition`、GREEN の同 2 tests、既存 static-false precondition / static-true postcondition の selfhost E2E、`cargo test -p lsharp-types --test metadata_contract_check -- --nocapture`（19 tests）、`./target/debug/lsharp check selfhost/src/Types/TypeInferAssertions.ls`。残るのは compound predicate の網羅的 operator/span parity、dynamic predicate の evaluator、malformed option、sampling/shrink、full CLI artifact/runtime、Mac Apple Silicon / Linux x86_64 の current-source native gate であり、EC-M1-04 全体または全機能 Rust-free 完了とは扱わない。Rust oracle / bootstrap 境界は維持する。
+
 ### EC-M1-04 invalid `:cases` option boundary (2026-07-18)
 
 Rust `Syntax.Parser` は `:cases -1` と `:cases false` を `non-negative case count` の parse error として拒否する。selfhost `Types.TypeInferAssertions` は raw property payload の `:cases` token が digit でも負号でもない場合を structural code `2007` で拒否し、parse error を検査 0 件の成功へ丸めない。selfhost の raw payload boundary と Rust parser の exact diagnostic layer は異なるため、両方の拒否を別 evidence として保持する。

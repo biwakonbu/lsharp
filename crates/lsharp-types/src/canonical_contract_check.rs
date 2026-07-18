@@ -250,19 +250,11 @@ fn collect_property_non_vacuity(
 }
 
 fn statically_true_integer_comparison(expr: &Expr) -> bool {
-    matches!(static_integer_comparison_result(expr), Some(true))
+    matches!(static_boolean_result(expr), Some(true))
 }
 
 fn statically_false_precondition(expr: &Expr) -> bool {
-    let Expr::Ann(_, inner, _) = expr else {
-        return matches!(expr, Expr::Lit(_, Literal::Bool(false)))
-            || statically_false_integer_comparison(expr);
-    };
-    statically_false_precondition(inner)
-}
-
-fn statically_false_integer_comparison(expr: &Expr) -> bool {
-    matches!(static_integer_comparison_result(expr), Some(false))
+    matches!(static_boolean_result(expr), Some(false))
 }
 
 fn static_integer_comparison_result(expr: &Expr) -> Option<bool> {
@@ -293,6 +285,39 @@ fn static_integer_comparison_result_app(expr: &Expr) -> Option<bool> {
         ">=" => left >= right,
         _ => return None,
     })
+}
+
+fn static_boolean_result(expr: &Expr) -> Option<bool> {
+    if let Expr::Ann(_, inner, _) = expr {
+        return static_boolean_result(inner);
+    }
+    if let Expr::Lit(_, Literal::Bool(value)) = expr {
+        return Some(*value);
+    }
+    let Expr::App(_, callee, args) = expr else {
+        return static_integer_comparison_result(expr);
+    };
+    let Expr::Var(_, operator) = callee.as_ref() else {
+        return static_integer_comparison_result(expr);
+    };
+    let [left, right] = args.as_slice() else {
+        return static_integer_comparison_result(expr);
+    };
+    let left = static_boolean_result(left);
+    let right = static_boolean_result(right);
+    match operator.as_str() {
+        "and" => match (left, right) {
+            (Some(false), _) | (_, Some(false)) => Some(false),
+            (Some(true), other) | (other, Some(true)) => other,
+            (None, None) => None,
+        },
+        "or" => match (left, right) {
+            (Some(true), _) | (_, Some(true)) => Some(true),
+            (Some(false), other) | (other, Some(false)) => other,
+            (None, None) => None,
+        },
+        _ => static_integer_comparison_result_app(expr),
+    }
 }
 
 /// canonical `:case` の actual / expected を同じ lexical scope で型検査する。
