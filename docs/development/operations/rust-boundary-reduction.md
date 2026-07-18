@@ -162,7 +162,7 @@ Selfhost `Tools.Test.PropertyRunner` と `Tools.Test.TestRunner` は、移行期
 
 Evidence: RED の `test_e2e_selfhost_parser_contract_suite_projects_typed_property_payload`、`test_e2e_selfhost_parser_contract_suite_projects_property_precondition`、`test_e2e_selfhost_parser_contract_suite_projects_multiple_property_binders`、GREEN の同 3 tests、`test_e2e_selfhost_parser_contract_suite_projection_separates_legacy_forms`、`test_e2e_selfhost_parser_projects_typed_property_sampling_contract`、`test_e2e_selfhost_parser_keeps_typed_property_profile_boundary`、parser regression 4件、runner regression 3件、`./target/debug/lsharp check selfhost/src/Tools/Test/PropertyRunner.ls` / `TestRunner.ls`（各 `Fn` / `diagnostics:0`）。
 
-これは Rust `Property` / `SamplingPlan` の deterministic Int projection に限定した selfhost slice である。複数 precondition、一般の `TypeExpr`、既定 cases `256`、seed/shrink の source option、coverage bucket、source span、type-directed generator 実装、property evaluator、Rust/selfhost diagnostic parity、Wasm artifact/runtime、Mac Apple Silicon / Linux x86_64 の current-source native gate は残件であり、EC-M1-02 / EC-M1-03 または全機能 Rust-free 完了には使わない。Rust oracle / bootstrap 境界は維持する。
+これは Rust `Property` / `SamplingPlan` の deterministic Int projection に限定した selfhost slice である。複数 precondition、一般の `TypeExpr`、既定 cases `256`、seed/shrink の source option、coverage bucket、binder/predicate 個別 source span、type-directed generator 実装、property evaluator、Rust/selfhost diagnostic parity、Wasm artifact/runtime、Mac Apple Silicon / Linux x86_64 の current-source native gate は残件であり、EC-M1-02 / EC-M1-03 または全機能 Rust-free 完了には使わない。Rust oracle / bootstrap 境界は維持する。
 
 ### EC-M1-03 selfhost canonical `:property` formatter bridge (2026-07-18)
 
@@ -318,7 +318,15 @@ Evidence: `test_e2e_selfhost_contract_inventory_includes_canonical_forms`、`tes
 
 Selfhost `TestRunner` は parser が保持した ordered metadata form を `[owner-hash, ordered-forms, executable-forms, pending-migration-forms]` の suite projection へ変換するようになった。canonical `:case` / `:assert` / `:property`（kind `4,3,5`）は executable 側へ、legacy `:example` / `:invariant`（kind `1,2`）は pending migration 側へ分離し、混在 fixture の source order と parser-owned payload shape を保持することを selfhost Wasm E2E で確認した。これは既存の個別 runner bucket を置き換えずに canonical `ContractSuite` の入力境界を固定する移行 sliceである。
 
-Evidence: `test_e2e_selfhost_parser_contract_suite_projection_separates_legacy_forms`、`cargo run --quiet --bin lsharp -- check selfhost/src/Tools/Test/TestRunner.ls`（`diagnostics:0`）。この projection は Rust `ContractSuite` と同一の typed IR ではなく、source span、module-qualified/private owner、docs `Example`、predicate/expectation span、canonical checker/formatter/docs の共通変換、runner の suite 一本化、migration diagnostic、Mac/Linux current-source artifact/runtime parity は残件である。
+Evidence: `test_e2e_selfhost_parser_contract_suite_projection_separates_legacy_forms`、`cargo run --quiet --bin lsharp -- check selfhost/src/Tools/Test/TestRunner.ls`（`diagnostics:0`）。この projection は Rust `ContractSuite` と同一の typed IR ではなく、module-qualified/private owner、docs `Example`、predicate/expectation span、canonical checker/formatter/docs の共通変換、runner の suite 一本化、migration diagnostic、Mac/Linux current-source artifact/runtime parity は残件である。directive 単位の source span は後続の typed form span slice で検証する。
+
+### EC-M1-02 selfhost contract directive span projection (2026-07-18)
+
+Selfhost `Syntax.Parser` の ordered metadata form を `[kind, payload, directive-start, directive-end]` に拡張し、既存 consumer が使う `kind` / `payload` の index を維持した。`TestRunner` の parser-owned `ContractSuite` executable form も同じ directive span を保持するため、raw inventory `[kind, owner, payload, start, end]` と canonical suite form の start/end が一致する。property の typed payload、legacy/canonical form の source order、pending/executable 分離は従来どおりである。
+
+Evidence: `test_e2e_selfhost_parser_contract_forms_keep_directive_spans`、`test_e2e_selfhost_parser_contract_suite_preserves_property_directive_span`、`test_e2e_selfhost_parser_contract_suite_projection_separates_legacy_forms`、`./target/debug/lsharp check selfhost/src/Syntax/Parser.ls` / `Tools.Test.TestRunner.ls`（各 `diagnostics:0`）、parser 10件・parser-owned suite 5件・runner 5件の focused E2E。RED では parser form が `[kind,payload]` で span を失って `2,0,0` となったが、GREEN では form length `4` と raw inventoryとの start/end 一致を確認した。
+
+これは directive-level span の verified sliceであり、binder/predicate/expectation 個別 span、module-qualified/private owner、Rust canonical `ContractSuite` 全 variant、formatter/docs の span forwarding、diagnostic parity、Wasm artifact/runtime、Mac/Linux current-source native gate は残件である。
 
 ### EC-M1-02 selfhost typed property runner bridge (2026-07-18)
 
@@ -326,7 +334,7 @@ Evidence: `test_e2e_selfhost_parser_contract_suite_projection_separates_legacy_f
 
 Evidence: `test_e2e_selfhost_runner_executes_deterministic_property_smoke`、`test_e2e_selfhost_runner_rejects_property_precondition_before_execution`、`test_e2e_selfhost_runner_rejects_multiple_property_binders_before_execution`、`test_e2e_selfhost_runner_rejects_property_seed_option`、`./target/debug/lsharp check selfhost/src/Tools/Test/PropertyRunner.ls`（`diagnostics:0`）、Rust `metadata_contract_check` 18 tests。RED では precondition 付き property が `1,1,1,0` と成功していたが、GREEN では typed contract bridge の execution boundary が `1,0,0,3002` を返すことを確認した。
 
-これは canonical property の parser projection と deterministic smoke runner の接続を閉じた verified sliceであり、複数 binder / 複数 precondition の evaluator、一般 `TypeExpr`、type-directed generator、seed/shrink/coverage、source span、structured report、Wasm artifact/runtime、Mac/Linux current-source native gate は残件である。したがって profile 外の property は Rust fallback で成功させず、Rust oracle/未移行 evaluator 境界を維持する。
+これは canonical property の parser projection と deterministic smoke runner の接続を閉じた verified sliceであり、複数 binder / 複数 precondition の evaluator、一般 `TypeExpr`、type-directed generator、seed/shrink/coverage、binder/predicate 個別 span、structured report、Wasm artifact/runtime、Mac/Linux current-source native gate は残件である。したがって profile 外の property は Rust fallback で成功させず、Rust oracle/未移行 evaluator 境界を維持する。
 
 ### EC-M1-02 selfhost runner invariant AST projection (2026-07-17)
 

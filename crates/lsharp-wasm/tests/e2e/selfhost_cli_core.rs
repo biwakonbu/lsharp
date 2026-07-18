@@ -6231,6 +6231,65 @@ fn test_e2e_selfhost_parser_preserves_ordered_property_forms() {
     );
 }
 
+/// EC-M1-02: selfhost parser-owned contract form が directive source span を保持すること
+#[test]
+fn test_e2e_selfhost_parser_contract_forms_keep_directive_spans() {
+    let harness = r#"
+(defn main []
+  (let [src "(defn identity [x] :property [(for-all [x Int] :cases 1 :postcondition (= result x))] x)"
+        program (parse-program src)
+        decl (vector-get program 0)
+        forms (test-defn-ordered-forms decl)
+        form (vector-get forms 0)]
+    (do
+      (print (vector-length form))
+      (print (if (and (> (vector-length form) 3) (= (vector-get form 2) 19)) 1 0))
+      (print (if (and (> (vector-length form) 3) (< (vector-get form 2) (vector-get form 3))) 1 0))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_test_runner_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["4", "1", "1"],
+        "parser-owned contract form は directive の source span を payload と一緒に保持するべき"
+    );
+}
+
+/// EC-M1-02: parser-owned ContractSuite が raw inventory と directive span を共有すること
+#[test]
+fn test_e2e_selfhost_parser_contract_suite_preserves_property_directive_span() {
+    let harness = r#"
+(defn main []
+  (let [src "(defn identity [x] :property [(for-all [x Int] :cases 1 :postcondition (= result x))] x)"
+        raw (vector-get (extract-contract-forms src) 0)
+        suites (extract-parser-contract-suites src)
+        ordered (vector-get (vector-get suites 0) 1)
+        suite-form (vector-get ordered 0)]
+    (do
+      (print (if (and (> (vector-length raw) 4) (and (> (vector-length suite-form) 3) (= (vector-get raw 3) (vector-get suite-form 2)))) 1 0))
+      (print (if (and (> (vector-length raw) 4) (and (> (vector-length suite-form) 3) (= (vector-get raw 4) (vector-get suite-form 3)))) 1 0))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_test_runner_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["1", "1"],
+        "parser-owned ContractSuite は raw inventory と同じ directive span を保持するべき"
+    );
+}
+
 /// EC-M1-02: selfhost parser が deterministic property を typed contract shape へ投影すること
 #[test]
 fn test_e2e_selfhost_parser_projects_typed_property_sampling_contract() {

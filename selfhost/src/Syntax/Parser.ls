@@ -707,7 +707,7 @@
 
 ;; defn 用メタデータパーサー: :doc / :example / :params / :returns / :invariant / :case を記録する
 ;; 返却: [doc-string, example-text, params-vector, returns-string, invariant-expr, ordered-forms]
-;; ordered form: [kind, raw-example-text または invariant-ast]
+;; ordered form: [kind, payload, directive-start, directive-end]
 (defn make-empty-defn-metadata-v3 []
   (let [params0 (vector-new 0)
     forms0 (vector-new 0)]
@@ -726,9 +726,17 @@
                   (root_pop)
                   result)))))))))
 
-(defn append-defn-metadata-form-v3 [meta kind payload]
+(defn metadata-directive-start-v3 [spans pos-ref]
+  (let [idx (- (ref-get pos-ref) 2)]
+    (if (>= idx 0) (span-start spans idx) 0)))
+
+(defn metadata-directive-end-v3 [spans pos-ref]
+  (let [idx (- (ref-get pos-ref) 1)]
+    (if (>= idx 0) (span-end spans idx) 0)))
+
+(defn append-defn-metadata-form-v3 [meta kind payload start end]
   (let [forms (vector-get meta 5)
-    form (vector-push-pair-rooted-v3 (vector-new 2) kind payload)]
+    form (vector-push-quad-rooted-v3 (vector-new 4) kind payload start end)]
     (do
       (root_push meta)
       (root_push forms)
@@ -822,7 +830,8 @@
       (p-advance pos-ref)
       (if (== (p-current spans pos-ref) 3)
         (do (p-advance pos-ref) (parse-defn-metadata-loop-v3 spans pos-ref src meta))
-        (let [content-start (p-start spans pos-ref)]
+        (let [directive-start (metadata-directive-start-v3 spans pos-ref)
+          content-start (p-start spans pos-ref)]
           (do
             (parse-skip-bracket-v3 spans pos-ref 1)
             (let [last-idx (- (ref-get pos-ref) 2)
@@ -832,7 +841,12 @@
               updated (vector-set-at-rooted-v3 meta 1 combined)]
               (do
                 (root_push updated)
-                (let [with-form (append-defn-metadata-form-v3 updated 1 example-text)]
+                (let [with-form (append-defn-metadata-form-v3
+                    updated
+                    1
+                    example-text
+                    directive-start
+                    (metadata-directive-end-v3 spans pos-ref))]
                   (do
                     (root_pop)
                     (parse-defn-metadata-loop-v3 spans pos-ref src with-form)))))))))
@@ -976,13 +990,20 @@
 
 ;; :invariant expr — 事後条件 AST を保持する
 (defn parse-defn-meta-invariant-v3 [spans pos-ref src meta]
-  (let [predicate (parse-expr-v3 spans pos-ref src)]
+  (let [directive-start (metadata-directive-start-v3 spans pos-ref)
+    predicate (parse-expr-v3 spans pos-ref src)
+    directive-end (metadata-directive-end-v3 spans pos-ref)]
     (do
       (root_push predicate)
       (let [updated (vector-set-at-rooted-v3 meta 4 predicate)]
         (do
           (root_push updated)
-          (let [with-form (append-defn-metadata-form-v3 updated 2 predicate)]
+          (let [with-form (append-defn-metadata-form-v3
+              updated
+              2
+              predicate
+              directive-start
+              directive-end)]
             (do
               (root_pop)
               (root_pop)
@@ -1058,21 +1079,26 @@
 
 (defn parse-defn-meta-case-v3 [spans pos-ref src meta]
   (if (== (p-current spans pos-ref) 2)
-    (do
-      (p-advance pos-ref)
-      (let [expectations0 (vector-new 0)]
-        (do
-          (root_push expectations0)
-          (let [expectations (parse-defn-meta-case-loop-v3
-            spans pos-ref src expectations0)]
-            (do
-              (root_push expectations)
-              (let [updated (append-defn-metadata-form-v3
-                meta (contract-form-case) expectations)]
-                (do
-                  (root_pop)
-                  (root_pop)
-                  (parse-defn-metadata-loop-v3 spans pos-ref src updated))))))))
+    (let [directive-start (metadata-directive-start-v3 spans pos-ref)]
+      (do
+        (p-advance pos-ref)
+        (let [expectations0 (vector-new 0)]
+          (do
+            (root_push expectations0)
+            (let [expectations (parse-defn-meta-case-loop-v3
+              spans pos-ref src expectations0)]
+              (do
+                (root_push expectations)
+                (let [updated (append-defn-metadata-form-v3
+                  meta
+                  (contract-form-case)
+                  expectations
+                  directive-start
+                  (metadata-directive-end-v3 spans pos-ref))]
+                  (do
+                    (root_pop)
+                    (root_pop)
+                    (parse-defn-metadata-loop-v3 spans pos-ref src updated)))))))))
     (do
       (skip-directive-payload-v3 spans pos-ref)
       (parse-defn-metadata-loop-v3 spans pos-ref src meta))))
@@ -1103,20 +1129,25 @@
 
 (defn parse-defn-meta-assert-v3 [spans pos-ref src meta]
   (if (== (p-current spans pos-ref) 2)
-    (do
-      (p-advance pos-ref)
-      (let [predicates0 (vector-new 0)]
-        (do
-          (root_push predicates0)
-          (let [predicates (parse-defn-meta-assert-loop-v3 spans pos-ref src predicates0)]
-            (do
-              (root_push predicates)
-              (let [updated (append-defn-metadata-form-v3
-                meta (contract-form-assert) predicates)]
-                (do
-                  (root_pop)
-                  (root_pop)
-                  (parse-defn-metadata-loop-v3 spans pos-ref src updated))))))))
+    (let [directive-start (metadata-directive-start-v3 spans pos-ref)]
+      (do
+        (p-advance pos-ref)
+        (let [predicates0 (vector-new 0)]
+          (do
+            (root_push predicates0)
+            (let [predicates (parse-defn-meta-assert-loop-v3 spans pos-ref src predicates0)]
+              (do
+                (root_push predicates)
+                (let [updated (append-defn-metadata-form-v3
+                  meta
+                  (contract-form-assert)
+                  predicates
+                  directive-start
+                  (metadata-directive-end-v3 spans pos-ref))]
+                  (do
+                    (root_pop)
+                    (root_pop)
+                    (parse-defn-metadata-loop-v3 spans pos-ref src updated)))))))))
     (do
       (skip-directive-payload-v3 spans pos-ref)
       (parse-defn-metadata-loop-v3 spans pos-ref src meta))))
@@ -1125,33 +1156,38 @@
 ;; typed binder / sampling への projection は後続の selfhost contract slice で行う。
 (defn parse-defn-meta-property-v3 [spans pos-ref src meta]
   (if (== (p-current spans pos-ref) 2)
-    (do
-      (p-advance pos-ref)
-      (if (== (p-current spans pos-ref) 3)
-        (do
-          (p-advance pos-ref)
-          (let [updated (append-defn-metadata-form-v3
-            meta
-            (contract-form-property)
-            "")]
-            (parse-defn-metadata-loop-v3 spans pos-ref src updated)))
-        (let [content-start (p-start spans pos-ref)]
+    (let [directive-start (metadata-directive-start-v3 spans pos-ref)]
+      (do
+        (p-advance pos-ref)
+        (if (== (p-current spans pos-ref) 3)
           (do
-            (parse-skip-bracket-v3 spans pos-ref 1)
-            (let [last-idx (- (ref-get pos-ref) 2)
-              content-end (span-end spans last-idx)
-              property-text (substring src content-start content-end)
-              updated (append-defn-metadata-form-v3
-                meta
-                (contract-form-property)
-                property-text)]
-              (do
-                (root_push updated)
-                (let [result
-                  (parse-defn-metadata-loop-v3 spans pos-ref src updated)]
-                  (do
-                    (root_pop)
-                    result))))))))
+            (p-advance pos-ref)
+            (let [updated (append-defn-metadata-form-v3
+              meta
+              (contract-form-property)
+              ""
+              directive-start
+              (metadata-directive-end-v3 spans pos-ref))]
+              (parse-defn-metadata-loop-v3 spans pos-ref src updated)))
+          (let [content-start (p-start spans pos-ref)]
+            (do
+              (parse-skip-bracket-v3 spans pos-ref 1)
+              (let [last-idx (- (ref-get pos-ref) 2)
+                content-end (span-end spans last-idx)
+                property-text (substring src content-start content-end)
+                updated (append-defn-metadata-form-v3
+                  meta
+                  (contract-form-property)
+                  property-text
+                  directive-start
+                  (metadata-directive-end-v3 spans pos-ref))]
+                (do
+                  (root_push updated)
+                  (let [result
+                    (parse-defn-metadata-loop-v3 spans pos-ref src updated)]
+                    (do
+                      (root_pop)
+                      result)))))))))
     (do
       (skip-directive-payload-v3 spans pos-ref)
       (parse-defn-metadata-loop-v3 spans pos-ref src meta))))

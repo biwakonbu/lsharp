@@ -157,10 +157,12 @@
 
 (defn make-parser-contract-form [form owner]
   (let [kind (vector-get form 0)
+    start (if (> (vector-length form) 2) (vector-get form 2) 0)
+    end (if (> (vector-length form) 3) (vector-get form 3) 0)
     payload (if (= kind (contract-form-property))
       (property-runner-form-typed-payload form owner)
       (if (> (vector-length form) 1) (vector-get form 1) 0))]
-    (vector-push-pair-rooted (vector-new 2) kind payload)))
+    (vector-push-quad-rooted (vector-new 4) kind payload start end)))
 
 (defn partition-parser-contract-forms-loop
   [forms idx count owner executable pending]
