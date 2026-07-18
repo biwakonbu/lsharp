@@ -126,6 +126,32 @@ fn test_e2e_selfhost_embedded_cli_source_compile_uses_full_program_builder() {
     );
 }
 
+/// EC-M1-03: EmbeddedCli も check JSON report と argv routing を持つこと
+#[test]
+fn test_e2e_selfhost_embedded_cli_check_json_contract_is_present() {
+    let source = std::fs::read_to_string(
+        selfhost_project_root().join("selfhost/src/App/EmbeddedCli.ls"),
+    )
+    .expect("canonical EmbeddedCli.ls が読み込めない");
+
+    assert!(
+        source.contains("(defn check-json-report "),
+        "EmbeddedCli に check JSON report builder が必要"
+    );
+    assert!(
+        source.contains("(defn parse-check-cli-option "),
+        "EmbeddedCli に check JSON option parser が必要"
+    );
+    assert!(
+        source.contains("(if (= opts (check-option-json))"),
+        "EmbeddedCli の run-check-source は JSON option を分岐する必要がある"
+    );
+    assert!(
+        source.contains(r#"(string-eq cmd-name "check")"#),
+        "EmbeddedCli の main dispatch は check option を明示的に扱う必要がある"
+    );
+}
+
 #[test]
 fn test_e2e_selfhost_cli_source_compile_uses_full_program_builder() {
     let source = std::fs::read_to_string(selfhost_source_path("Cli.ls"))

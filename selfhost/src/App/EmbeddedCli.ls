@@ -67,6 +67,21 @@
 (defn check-case-diagnostic-body-from-code [code] (if (= code (canonical-case-type-error-code)) "case expression type error" (if (= code (canonical-case-value-error-code)) "case actual and expected types must be Int or Bool" (if (= code (canonical-case-empty-code)) "case requires at least one expectation" "case type error"))))
 (defn check-property-diagnostic-body-from-code [code] (if (= code (canonical-property-type-error-code)) "property predicate type error" (if (= code (canonical-property-non-bool-code)) "property predicate must be Bool" (if (= code (canonical-property-empty-code)) "property requires typed binders, a postcondition, and positive cases" "property predicate type error"))))
 (defn check-diagnostics-body-text [program] (let [code (check-diagnostics-first-code program)] (if (= code 0) "" (check-diagnostic-body-from-code code))))
+(defn check-option-json [] 1)
+(defn check-json-diagnostics [count first-error-code body]
+  (let [fields0 ""
+    fields1 (legacy-json-append-field fields0 (legacy-json-int-field "count" count))
+    fields2 (legacy-json-append-field fields1 (legacy-json-int-field "firstErrorCode" first-error-code))
+    fields3 (legacy-json-append-field fields2 (legacy-json-field "message" body))]
+    (string-concat "{" (string-concat fields3 "}"))))
+(defn check-json-report [rendered diagnostics-count first-error-code diagnostics-body migration-rows]
+  (let [fields0 ""
+    fields1 (legacy-json-append-field fields0 (legacy-json-field "command" "check"))
+    fields2 (legacy-json-append-field fields1 (legacy-json-field "type" rendered))
+    diagnostics (check-json-diagnostics diagnostics-count first-error-code diagnostics-body)
+    fields3 (legacy-json-append-field fields2 (string-concat "\"diagnostics\":" diagnostics))
+    fields4 (legacy-json-append-field fields3 (string-concat "\"migration\":" (legacy-migration-detail-json-summary migration-rows)))]
+    (string-concat "{" (string-concat fields4 "}"))))
 (defn parse-diagnostics-loop [spans pos-ref src diagnostics] (if (== (p-current spans pos-ref) 99) diagnostics (let [before (ref-get pos-ref) parsed (parse-with-recovery spans pos-ref src diagnostics) next-diagnostics (vector-get parsed 1)] (if (= (ref-get pos-ref) before) (do (p-advance pos-ref) (parse-diagnostics-loop spans pos-ref src next-diagnostics)) (parse-diagnostics-loop spans pos-ref src next-diagnostics)))))
 (defn parse-diagnostics [src] (let [spans (tokenize-with-spans src) pos-ref (ref-new 0) diagnostics (parse-diagnostics-loop spans pos-ref src (collect-diagnostics))] diagnostics))
 (defn check-diagnostics-count-program [program] (infer-program-analysis-diagnostic-count (infer-program-analysis program)))
@@ -111,7 +126,12 @@
               (check-property-diagnostic-body-from-code property-first-error-code)
               ""))))
     diagnostics-text (diagnostics-summary-text diagnostics-count "T0001" diagnostics-body)]
-    (do
+    (if (= opts (check-option-json))
+      (do
+        (print-string (check-json-report rendered diagnostics-count first-error-code diagnostics-body migration-rows))
+        (print-string "\n")
+        (exit-success))
+      (do
       (print-string rendered)
       (print-string "\n")
       (print-string diagnostics-text)
@@ -126,7 +146,7 @@
           (print-string migration-detail)
           (print-string "\n"))
         (print-string ""))
-      (exit-success))))
+      (exit-success)))))
 (defn test-examples-text [count] (string-concat "examples:" (int-to-string count)))
 (defn test-invariants-text [count] (string-concat "invariants:" (int-to-string count)))
 (defn test-assertions-text [count] (string-concat "assertions:" (int-to-string count)))
@@ -319,8 +339,23 @@
             (if (string-eq (command-line-arg 3) "json")
               (review-option-json)
               (review-cli-option-invalid))
-            (review-cli-option-invalid))
-          (review-cli-option-invalid))))))
+              (review-cli-option-invalid))
+            (review-cli-option-invalid))))))
+(defn check-cli-option-none [] 0)
+(defn check-cli-option-invalid [] (- 0 1))
+(defn parse-check-cli-option [argc]
+  (if (<= argc 2)
+    (check-cli-option-none)
+    (let [arg2 (command-line-arg 2)]
+      (if (and (= argc 3) (json-option-flag arg2))
+        (check-option-json)
+        (if (= argc 4)
+          (if (format-option-flag arg2)
+            (if (string-eq (command-line-arg 3) "json")
+              (check-option-json)
+              (check-cli-option-invalid))
+            (check-cli-option-invalid))
+          (check-cli-option-invalid))))))
 (defn doc-cli-option-none [] 0)
 (defn doc-cli-option-invalid [] (- 0 1))
 (defn parse-doc-cli-option [argc cmd-name]
@@ -373,12 +408,17 @@
         (if (>= review-option 0)
           (run-command cmd-name file-path review-option)
           (exit-compile-error)))
-      (if (and (> argc 2) (or (string-eq cmd-name "doc-ack") (string-eq cmd-name "doc-check")))
-        (let [doc-option (parse-doc-cli-option argc cmd-name)]
-          (if (>= doc-option 0)
-            (run-command-with-doc-option cmd-name file-path doc-option)
+      (if (and (string-eq cmd-name "check") (> argc 2))
+        (let [check-option (parse-check-cli-option argc)]
+          (if (>= check-option 0)
+            (run-command cmd-name file-path check-option)
             (exit-compile-error)))
-        (run-command cmd-name file-path (default-compile-target))))))
+        (if (and (> argc 2) (or (string-eq cmd-name "doc-ack") (string-eq cmd-name "doc-check")))
+          (let [doc-option (parse-doc-cli-option argc cmd-name)]
+            (if (>= doc-option 0)
+              (run-command-with-doc-option cmd-name file-path doc-option)
+              (exit-compile-error)))
+          (run-command cmd-name file-path (default-compile-target)))))))
 (defn exit-main [code] (do (proc-exit code) 0))
 (defn main []
   (let [argc (command-line-args)]

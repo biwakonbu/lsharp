@@ -352,6 +352,14 @@ Evidence: RED の `test_e2e_selfhost_cli_check_source_json_returns_structured_mi
 
 これは `run-check-source` の verified source sliceであり、実 argv の `check --json` / `--format json` option routing、non-zero diagnostic の exit code、enum/string schema の固定、expression 個別 span、全 form evaluator、Wasm artifact/runtime、Mac Apple Silicon / Linux x86_64 の current-source native gate は残件である。selfhost Wasm E2E は Rust host が compile/run する oracle lane であり、native stage0 の証拠には数えない。
 
+### EC-M1-03 selfhost check JSON argv routing (2026-07-18)
+
+`App.Cli` の実 argv dispatch に `check --json` と `check --format json` を接続し、valid option は `run-check-source` の structured report へ渡し、未知 option は compile error exit へ明示的に分岐するようにした。`App.EmbeddedCli` にも同じ `check-json-report` schema、option parser、main dispatch を反映した。actual main は `proc-exit` を使うため、JSON report は stdout 1 行、終了値は stdout に印字せず WASI exit code として観測する。
+
+Evidence: actual argv RED の `test_e2e_selfhost_cli_main_with_args_check_json_file` は、最初に harness の stack overflow を検出したため expanded-stack wrapper を追加し、その後 `--json` 未配線の text stdout を検出した。GREEN は current selfhost CLI bundle を実行し、Rust `serde_json` の `command=check`、`type=Int`、diagnostics zero、空 migration array、stdout 1 行、WASI exit code `0` を確認した（430.13 秒）。EmbeddedCli の `test_e2e_selfhost_embedded_cli_check_json_contract_is_present` は builder/parser/option branch/main dispatch の source contract を確認し、`./target/debug/lsharp check selfhost/src/App/Cli.ls` と `EmbeddedCli.ls` は各 `diagnostics:0`。
+
+これは実 argv `check --json` と EmbeddedCli source contract の verified sliceであり、`--format json` の独立 actual-runtime evidence、non-zero diagnostic の exit code、enum/string schema、expression 個別 span、全 form evaluator、Wasm artifact/runtime、Mac Apple Silicon / Linux x86_64 の current-source native gate は残件である。selfhost Wasm E2E は Rust host が compile/run する oracle lane であり、native stage0 の証拠には数えない。
+
 ### EC-M1-02 selfhost typed property runner bridge (2026-07-18)
 
 `extract-property-test-cases` は parser-owned `ContractSuite` の typed property projection を移行期 evaluator の入力へ変換するようになった。Rust `property_smoke_test_spec` と同じく、実行対象は単一の `Int` binder、precondition なし、`cases 1..5`、seed/shrink なしの deterministic profile に限定する。profile 外の複数 binder / precondition / 未対応 option は binder を先頭だけへ縮退させず `LS3002` として明示拒否し、parser projection に保持された canonical payload は失わない。

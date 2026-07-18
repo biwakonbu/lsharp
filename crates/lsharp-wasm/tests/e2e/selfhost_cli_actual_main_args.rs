@@ -189,6 +189,28 @@ fn test_e2e_selfhost_cli_main_with_args_check_file() {
     );
 }
 
+/// EC-M1-03: actual selfhost CLI の check --json が source JSON report を返すこと
+#[test]
+fn test_e2e_selfhost_cli_main_with_args_check_json_file() {
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, || {
+        run_cli_main_with_input_file_capture(
+            "check_json",
+            "(defn main [] 42)",
+            &["check", "input.ls", "--json"],
+        )
+    });
+    assert_eq!(output.exit_code, 0, "check --json は exit code 0 で終了するべき");
+    let lines = output_lines(output.stdout);
+
+    assert_eq!(lines.len(), 1, "actual check --json は JSON report だけを stdout へ返すべき");
+    let report: Value =
+        serde_json::from_str(&lines[0]).expect("check --json output は valid JSON");
+    assert_eq!(report["command"], "check");
+    assert_eq!(report["type"], "Int");
+    assert_eq!(report["diagnostics"]["count"], 0);
+    assert_eq!(report["migration"].as_array().unwrap().len(), 0);
+}
+
 /// TEST-CLI-02-AP2: actual Cli main は自己再帰 top-level defn を typecheck できること
 #[test]
 #[ignore]

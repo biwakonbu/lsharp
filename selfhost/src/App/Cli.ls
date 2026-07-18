@@ -905,6 +905,21 @@
     (if (> argc 2)
       (string-concat "unsupported option: " (command-line-arg 2))
       "unsupported option")))
+(defn check-cli-option-none [] 0)
+(defn check-cli-option-invalid [] (- 0 1))
+(defn parse-check-cli-option [argc]
+  (if (<= argc 2)
+    (check-cli-option-none)
+    (let [arg2 (command-line-arg 2)]
+      (if (and (= argc 3) (json-option-flag arg2))
+        (check-option-json)
+        (if (= argc 4)
+          (if (format-option-flag arg2)
+            (if (string-eq (command-line-arg 3) "json")
+              (check-option-json)
+              (check-cli-option-invalid))
+            (check-cli-option-invalid))
+          (check-cli-option-invalid))))))
 (defn parse-doc-cli-option [argc cmd-name]
   (if (<= argc 2)
     (doc-cli-option-none)
@@ -945,14 +960,21 @@
           (do
             (cli-stderr (cli-option-error-message options))
             (exit-code-compile-error))))
-      (if (> argc 2)
-        (let [doc-option (parse-doc-cli-option argc cmd-name)]
-          (if (= doc-option (doc-cli-option-invalid))
+      (if (and (string-eq cmd-name "check") (> argc 2))
+        (let [check-option (parse-check-cli-option argc)]
+          (if (>= check-option 0)
+            (run-command cmd-name file-path check-option)
             (do
               (cli-stderr (doc-cli-option-error-message argc))
-              (exit-code-compile-error))
-            (run-command-with-doc-option cmd-name file-path doc-option)))
-        (run-command cmd-name file-path (default-compile-target))))))
+              (exit-code-compile-error))))
+        (if (> argc 2)
+          (let [doc-option (parse-doc-cli-option argc cmd-name)]
+            (if (= doc-option (doc-cli-option-invalid))
+              (do
+                (cli-stderr (doc-cli-option-error-message argc))
+                (exit-code-compile-error))
+              (run-command-with-doc-option cmd-name file-path doc-option)))
+          (run-command cmd-name file-path (default-compile-target)))))))
 (defn exit-main [code] (do (proc-exit code) 0))
 (defn main []
   (let [argc (command-line-args)]
