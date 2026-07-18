@@ -8973,6 +8973,47 @@ fn test_selfhost_lexer_tokenize_spans_step_512_roots_recursive_step() {
 }
 
 #[test]
+fn test_selfhost_lexer_tokenize_state_loops_tail_recurse_after_root_cleanup() {
+    let source = selfhost_module("Lexer.ls");
+    for (name, start, end, recursive_call) in [
+        (
+            "tokenize-spans-step-512-state-loop",
+            "(defn tokenize-spans-step-512-state-loop [src len state remaining]",
+            "(defn tokenize-spans-step-512-loop-bounded",
+            "(tokenize-spans-step-512-state-loop src len step (- remaining 1))",
+        ),
+        (
+            "tokenize-spans-outer-loop-bounded",
+            "(defn tokenize-spans-outer-loop-bounded [src pos len tokens remaining]",
+            "(defn tokenize-spans-loop",
+            "(tokenize-spans-outer-loop-bounded src next-pos len next-tokens (- remaining 1))",
+        ),
+        (
+            "tokenize-spans-loop",
+            "(defn tokenize-spans-loop [src pos len tokens]",
+            "(defn tokenize-with-spans",
+            "(tokenize-spans-loop src next-pos len next-tokens)",
+        ),
+    ] {
+        let body = source
+            .split(start)
+            .nth(1)
+            .and_then(|tail| tail.split(end).next())
+            .unwrap_or_else(|| panic!("Lexer.ls に {name} の body が存在すること"));
+        let recursive_pos = body
+            .find(recursive_call)
+            .unwrap_or_else(|| panic!("{name} は recursive call を持つこと"));
+        let root_cleanup_pos = body
+            .rfind("(root_pop)")
+            .unwrap_or_else(|| panic!("{name} は recursive call 前に root を解放すること"));
+        assert!(
+            root_cleanup_pos < recursive_pos,
+            "{name} は state を保持したまま再帰せず root_pop 後に self-TCO 可能な末尾呼び出しへするべき"
+        );
+    }
+}
+
+#[test]
 fn test_selfhost_lexer_lex_result_encoding_scales_with_source_length() {
     let source = selfhost_module("Lexer.ls");
 
@@ -10296,6 +10337,42 @@ fn test_native_codegen_x86_vector_push_helper_reads_capacity_from_vector_header(
             && helper_body.contains("part11 (byte-vector-4 137 212 69 133)")
             && !helper_body.contains("part11 (byte-vector-4 137 229 69 133)"),
         "x86 vector-push helper は caller frame の [rbp+4] ではなく、untagged vector の [rcx+4] から capacity を読むべき"
+    );
+}
+
+#[test]
+fn test_native_codegen_append_bytes_continuations_are_self_tail_calls() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let bounded = source
+        .split("(defn append-native-bytes-loop-bounded")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn continue-append-native-bytes-loop-step-64").next())
+        .expect("NativeCodegen.ls に bounded native byte append loop が存在すること");
+    let continuation = source
+        .split("(defn continue-append-native-bytes-loop-step-64")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn append-native-bytes-loop ").next())
+        .expect("NativeCodegen.ls に native byte append continuation が存在すること");
+    let bounded_call = bounded
+        .find("(append-native-bytes-loop-bounded result native (+ idx 1) len (- remaining 1))")
+        .expect("bounded native byte append loop は自身を呼ぶこと");
+    let bounded_last_root_pop = bounded
+        .rfind("(root_pop)")
+        .expect("bounded native byte append loop は再帰前に root を解放すること");
+    let continuation_call = continuation
+        .find("(continue-append-native-bytes-loop-step-64 result native len next-idx)")
+        .expect("native byte append continuation は自身を呼ぶこと");
+    let continuation_last_root_pop = continuation
+        .rfind("(root_pop)")
+        .expect("native byte append continuation は再帰前に root を解放すること");
+
+    assert!(
+        bounded_last_root_pop < bounded_call,
+        "bounded native byte append loop は 64 bytes ごとの再帰を self-TCO へ変換できるよう、root_pop 後に自身を末尾呼び出しするべき"
+    );
+    assert!(
+        continuation_last_root_pop < continuation_call,
+        "native byte append continuation は巨大 code vector の chunk 数ぶん Wasm frame を保持しないよう、root_pop 後に自身を末尾呼び出しするべき"
     );
 }
 

@@ -11481,12 +11481,10 @@
           (do
             (root_push next)
             (ref-set result next)
-            (let [final (append-native-bytes-loop-bounded result native (+ idx 1) len (- remaining 1))]
-              (do
-                (root_pop)
-                (root_pop)
-                (root_pop)
-                final))))))))
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (append-native-bytes-loop-bounded result native (+ idx 1) len (- remaining 1))))))))
 
 (defn continue-append-native-bytes-loop-step-64 [result native len idx]
   (if (>= idx len)
@@ -11495,11 +11493,10 @@
       (root_push result)
       (root_push native)
       (let [next-idx (append-native-bytes-loop-bounded result native idx len 64)]
-        (let [final (continue-append-native-bytes-loop-step-64 result native len next-idx)]
-          (do
-            (root_pop)
-            (root_pop)
-            final))))))
+        (do
+          (root_pop)
+          (root_pop)
+          (continue-append-native-bytes-loop-step-64 result native len next-idx))))))
 
 (defn append-native-bytes-loop [result native idx len]
   (continue-append-native-bytes-loop-step-64 result native len idx))
