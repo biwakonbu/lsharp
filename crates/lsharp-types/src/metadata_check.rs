@@ -546,7 +546,7 @@ pub enum PropertyBinderType {
 /// 丸めず、明示的に profile 外として扱う。precondition は source order の
 /// conjunction として deterministic sample の filter に使う。
 pub fn property_smoke_test_spec(property: &PropertyForm) -> Option<PropertySmokeTestSpec> {
-    if !(1..=2).contains(&property.binders().len())
+    if !(1..=3).contains(&property.binders().len())
         || property.seed().is_some()
         || property.shrink().is_some()
     {
@@ -569,6 +569,11 @@ pub fn property_smoke_test_spec(property: &PropertyForm) -> Option<PropertySmoke
         [PropertyBinderType::Int] | [PropertyBinderType::Int, PropertyBinderType::Int] => {}
         [PropertyBinderType::Bool]
         | [PropertyBinderType::Bool, PropertyBinderType::Bool]
+        | [
+            PropertyBinderType::Bool,
+            PropertyBinderType::Bool,
+            PropertyBinderType::Bool,
+        ]
         | [PropertyBinderType::Int, PropertyBinderType::Bool]
         | [PropertyBinderType::Bool, PropertyBinderType::Int]
             if cases <= 2 => {}

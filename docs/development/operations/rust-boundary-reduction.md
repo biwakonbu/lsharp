@@ -682,3 +682,11 @@ Bool binder の typed profile を、単一 Bool から最大 2 個の Bool binde
 Evidence: Rust `test_run_metadata_tests_executes_two_bool_property_binders` / `test_run_metadata_tests_rejects_two_bool_property_above_two_cases`、selfhost `test_e2e_selfhost_runner_executes_two_bool_property_binders` / `test_e2e_selfhost_runner_rejects_two_bool_property_above_two_cases`、single Bool / Int-Bool mixed / two-Int regression、`PropertyRunner.ls` / `TestRunner.ls` source check（各 `diagnostics:0`）。
 
 これは Bool generator 全体または EC-M1-05 全体の完了ではない。Bool 3 binder、Bool/Int/Bool の一般 mixed arity、一般 `TypeExpr`、constraint/type-directed generator、seed/shrink/coverage bucket、predicate/span parity、current-source Mac Apple Silicon / Linux x86_64 native artifact/runtime gate、stage0 provenance は残件である。verified slice の日常開発は Rust なしで進められるが、profile 外 property semantics と Rust oracle / bootstrap / host integration の境界は維持する。
+
+### EC-M1-05 three-Bool property sampling (2026-07-18)
+
+Bool binder の typed profile を 3 個まで拡張した。対象は source order を保つ `[a Bool b Bool c Bool]`、`:cases 1..2` に限定し、Rust oracle と selfhost runner が `[false, false, false]`, `[true, true, true]` を共有する。Rust の `PropertySmokeTestSpec` は 3-要素の Bool vector を許可し、Wasm test runner は各 binder type を順番に Bool literal へ投影する。selfhost `PropertyRunner` は 3-要素 Bool profile のみ arity 3 を許可し、`TestRunner` は triple vector として owner/precondition/postcondition に渡す。3-`Int` や 3-要素 mixed profile、`:cases 3` は従来どおり未実装 profile として `LS3002` / `3002` で拒否する。
+
+Evidence: Rust `test_run_metadata_tests_executes_three_bool_property_binders` / `test_run_metadata_tests_rejects_three_bool_property_above_two_cases`、selfhost `test_e2e_selfhost_runner_executes_three_bool_property_binders` / `test_e2e_selfhost_runner_rejects_three_bool_property_above_two_cases`、既存の single Bool / Int-Bool mixed / two Bool / three Int regression、`PropertyRunner.ls` / `TestRunner.ls` source check（各 `diagnostics:0`）。
+
+これは 3-`Bool` の deterministic prefix に限定した verified slice であり、Bool/Int/Bool の一般 mixed arity、4 個以上の binder、一般 `TypeExpr`、constraint/type-directed generator、seed/shrink/coverage bucket、predicate/span parity、current-source Mac Apple Silicon / Linux x86_64 native artifact/runtime gate、stage0 provenance は残件である。対応済み profile の日常開発は Rust なしで進められるが、profile 外 property semantics と Rust oracle / bootstrap / host integration の境界は維持する。
