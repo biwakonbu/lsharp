@@ -1,4 +1,5 @@
 use super::support::*;
+use lsharp_syntax::ast::{Decl, Expr, Literal, Pattern};
 
 fn run_parser_runtime(harness: &str) -> String {
     compile_and_run(&format!(
@@ -604,6 +605,61 @@ fn test_e2e_selfhost_parser_match_literal_pattern_tag() {
     assert_eq!(
         lines[5], "1",
         "bool literal payload value は true(1) であるべき"
+    );
+}
+
+/// TEST-SYNTAX-02l5a: match の string literal pattern を canonical tag としてパースできる
+#[test]
+fn test_e2e_selfhost_parser_match_string_literal_pattern_tag() {
+    let source = r#"(defn main [value] (match value ["same" 1] [(Some "nested") 2] [rest 0]))"#;
+    let rust_program = lsharp_syntax::parse(source).expect("Rust parser は fixture を受理するべき");
+    let Decl::Defn { body, .. } = &rust_program.decls[0] else {
+        panic!("Rust parser は defn を返すべき");
+    };
+    let Expr::Match(_, _, rust_arms) = body else {
+        panic!("Rust parser は match body を返すべき");
+    };
+    assert!(
+        matches!(&rust_arms[0].pattern, Pattern::Lit(_, Literal::String(value)) if value == "same"),
+        "Rust oracle は top-level string literal pattern を保持するべき"
+    );
+    let Pattern::Constructor(_, name, children) = &rust_arms[1].pattern else {
+        panic!("Rust oracle は constructor pattern を保持するべき");
+    };
+    assert_eq!(name, "Some");
+    assert!(
+        matches!(&children[0], Pattern::Lit(_, Literal::String(value)) if value == "nested"),
+        "Rust oracle は nested string literal pattern を保持するべき"
+    );
+
+    let harness = r#"
+(defn main []
+  (let [decl (vector-get (parse-program "(defn main [value] (match value [\"same\" 1] [(Some \"nested\") 2] [rest 0]))") 0)
+        node (vector-get decl 4)
+        string-pat (vector-get node 3)
+        ctor-pat (vector-get node 5)
+        ctor-child (vector-get ctor-pat 3)
+        string-is-pat (if (= (vector-get string-pat 0) (ast-pat-lit)) 1 0)
+        child-is-pat (if (= (vector-get ctor-child 0) (ast-pat-lit)) 1 0)]
+    (do
+      (print string-is-pat)
+      (print (if (= string-is-pat 1)
+        (if (= (vector-get (vector-get string-pat 1) 0) (ast-lit-string)) 1 0)
+        0))
+      (print child-is-pat)
+      (print (if (= child-is-pat 1)
+        (if (= (vector-get (vector-get ctor-child 1) 0) (ast-lit-string)) 1 0)
+        0))
+      0)))
+"#;
+
+    let output = run_parser_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["1", "1", "1", "1"],
+        "top-level / nested string literal pattern は ast-pat-lit payload に canonicalize されるべき"
     );
 }
 

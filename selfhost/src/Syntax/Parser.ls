@@ -2216,9 +2216,11 @@
         (vector-push-pair-rooted-v3 (vector-new 2) (ast-pat-lit) expr)
         (if (= tag (ast-lit-bool))
           (vector-push-pair-rooted-v3 (vector-new 2) (ast-pat-lit) expr)
-          (if (= tag (ast-lit-unit))
+          (if (= tag (ast-lit-string))
             (vector-push-pair-rooted-v3 (vector-new 2) (ast-pat-lit) expr)
-            expr)))]
+            (if (= tag (ast-lit-unit))
+              (vector-push-pair-rooted-v3 (vector-new 2) (ast-pat-lit) expr)
+              expr))))]
       (do
         (root_pop)
         result))))
