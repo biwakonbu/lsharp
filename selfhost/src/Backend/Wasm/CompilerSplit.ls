@@ -369,7 +369,7 @@
     (emit-to i8 (op-i64-and) 0)))
 
 (defn compile-match-constructor-field-check [pat value-local scratch-base pattern-temp-base ftable idx instrs]
-  ;; sibling field 用の map local を維持するため、再帰 child の scratch を 2 slot 進める。
+  ;; 再帰 child は全 binder より後ろの temp を使い、sibling の value/binder local を壊さない。
   (let [child (vector-get pat (+ 3 idx))
     map-op (+ scratch-base 1)
     i1 (emit-to instrs (op-local-get) value-local)
@@ -382,7 +382,7 @@
         i4 (emit-to i3 (op-i64-const) (adt-constructor-field-key idx))
         i5 (emit-to i4 (op-map-get) map-op)
         i6 (emit-to i5 (op-local-set) scratch-base)
-        i7 (compile-match-pattern-check-with-scratch child scratch-base (+ scratch-base 2) pattern-temp-base ftable i6)]
+        i7 (compile-match-pattern-check-with-scratch child scratch-base pattern-temp-base pattern-temp-base ftable i6)]
         (emit-to i7 (op-i64-and) 0)))))
 
 (defn compile-match-constructor-fields [pat idx count value-local scratch-base pattern-temp-base ftable instrs]
@@ -437,7 +437,7 @@
       i2 (emit-to i1 (op-i64-const) (adt-constructor-field-key idx))
       i3 (emit-to i2 (op-map-get) map-op)
       i4 (emit-to i3 (op-local-set) scratch-base)
-      i5 (compile-match-pattern-binders child scratch-base env (+ scratch-base 2) pattern-temp-base ftable i4)]
+      i5 (compile-match-pattern-binders child scratch-base env pattern-temp-base pattern-temp-base ftable i4)]
       (compile-match-constructor-pattern-binders-children
         pat (+ idx 1) count value-local env scratch-base pattern-temp-base ftable i5))))
 
