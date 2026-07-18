@@ -1010,6 +1010,37 @@
     body (vector-get decl (+ 3 param-count))]
     (eval-node program body env)))
 
+;; 移行期 contract evaluator の match subset。
+;; literal / wildcard / variable pattern だけを扱い、constructor/record は未対応境界に残す。
+(defn match-pattern? [pattern value]
+  (let [tag (vector-get pattern 0)]
+    (if (= tag (ast-pat-wildcard))
+      1
+      (if (= tag (ast-pat-var))
+        1
+        (if (= tag (ast-pat-lit))
+          (values-equal value (vector-get pattern 1))
+          0)))))
+
+(defn match-bind-pattern [env pattern value]
+  (if (= (vector-get pattern 0) (ast-pat-var))
+    (env-bind env (vector-get pattern 1) value)
+    env))
+
+(defn eval-match-loop [program node env value idx count]
+  (if (>= idx count)
+    (value-unit)
+    (let [arm-base (+ 3 (* idx 2))
+      pattern (vector-get node arm-base)
+      body (vector-get node (+ arm-base 1))]
+      (if (= (match-pattern? pattern value) 1)
+        (eval-node program body (match-bind-pattern env pattern value))
+        (eval-match-loop program node env value (+ idx 1) count)))))
+
+(defn eval-match [program node env]
+  (let [value (eval-node program (vector-get node 1) env)]
+    (eval-match-loop program node env value 0 (vector-get node 2))))
+
 ;; 移行期 contract evaluator の computation subset。
 ;; identity 相当の builder では、各 step の値を順に評価して let! だけ環境へ束縛する。
 (defn eval-computation-loop [program node env idx count last]
@@ -1070,11 +1101,13 @@
                   (eval-node program (vector-get node 2) env)
                   (eval-node program (vector-get node 3) env)))
               (if (= tag (ast-let))
-                (let [name-hash (vector-get node 1)
+                  (let [name-hash (vector-get node 1)
                   init-value (eval-node program (vector-get node 2) env)
                   body-env (env-bind env name-hash init-value)]
                   (eval-node program (vector-get node 3) body-env))
-                  (if (= tag (ast-do))
+                  (if (= tag (ast-match))
+                    (eval-match program node env)
+                    (if (= tag (ast-do))
                   (eval-do-loop program node env 0 (vector-get node 1) (value-unit))
                   (if (= tag (ast-computation))
                     (eval-computation program node env)
@@ -1082,7 +1115,7 @@
                       (eval-node program (vector-get node 1) env)
                       (if (= tag (ast-apply))
                         (eval-apply program node env)
-                        (value-unit)))))))))))))
+                        (value-unit))))))))))))))
 
 (defn depth-total [paren-depth bracket-depth brace-depth]
   (+ (+ paren-depth bracket-depth) brace-depth))

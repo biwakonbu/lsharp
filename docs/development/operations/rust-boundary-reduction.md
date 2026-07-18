@@ -34,6 +34,12 @@ Rust `Expr::Computation` の Display が parser で再読込できる `(computat
 
 Evidence: `test_computation_display_roundtrips_to_parser_syntax`、`test_e2e_selfhost_test_runner_matches_rust_oracle_for_valid_invariant_computation`、computation scope / unknown-variable focused tests、`cargo run --quiet --bin lsharp -- check selfhost/src/Tools/Test/TestRunner.ls`（`diagnostics:0`）。これは direct identity-builder の `let!` / final value に限定した verified sliceであり、一般の builder bind / return semantics、`do!` の effect semantics、computation runtime 全体、match valid evaluation、diagnostic/span parity、Mac/Linux current-source native artifact/runtime gate、EC-M1-01 aggregate は残件である。未完了の computation semantics を変更するときは Rust oracle を保持する。
 
+### EC-M1-01 invariant match direct evaluation slice (2026-07-18)
+
+Selfhost `Tools.Test.TestRunner` は legacy invariant の `match` について、literal / wildcard / variable pattern を順に照合し、variable pattern の値を arm body の環境へ束縛する限定 evaluator を追加した。`(match x [value (= result (+ value 1))])` は Rust oracle と selfhost Wasm の双方で `1 invariant / passed=1 / actual=5 / diagnostic=0` となり、unknown variable の `LS1001` 診断も維持される。
+
+Evidence: `test_e2e_selfhost_test_runner_matches_rust_oracle_for_valid_invariant_match`、`test_e2e_selfhost_test_runner_matches_rust_oracle_for_invariant_scope`、`test_e2e_selfhost_test_runner_matches_rust_oracle_for_invariant_local_let_scope`、`test_e2e_selfhost_test_runner_reports_unknown_invariant_match_variable`、`cargo run --quiet --bin lsharp -- check selfhost/src/Tools/Test/TestRunner.ls`（`diagnostics:0`）。これは primitive pattern の direct evaluation に限定した verified sliceであり、constructor / record / GADT pattern、exhaustiveness、full match runtime、diagnostic/span parity、Mac/Linux current-source native artifact/runtime gate、EC-M1-01 aggregate は残件である。未完了の match semantics を変更するときは Rust oracle を保持する。
+
 ### EC-M1-01 selfhost invariant Bool diagnostic (2026-07-17)
 
 Selfhost `Tools.Test.TestRunner` は invariant を各 deterministic sample で評価し、全ての実値が `Bool` であることを確認するようになった。`(defn succ [x] :invariant (+ x 1) (+ x 1))` は Int を truthy として通さず、`diagnostics:1,LS1002` と failure code `2` を返す。未定義変数の `LS1001` と、Bool invariant の `diagnostics:0` は既存経路で維持する。

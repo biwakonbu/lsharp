@@ -6825,6 +6825,44 @@ fn test_e2e_selfhost_test_runner_matches_rust_oracle_for_valid_invariant_computa
     );
 }
 
+/// EC-M1-01: invariant 内 match の variable pattern を Rust oracle と selfhost が評価すること
+#[test]
+fn test_e2e_selfhost_test_runner_matches_rust_oracle_for_valid_invariant_match() {
+    let source = r#"
+(defn succ [x]
+  :invariant (match x [value (= result (+ value 1))])
+  (+ x 1))
+"#;
+    let oracle = run_metadata_tests(source);
+    assert_eq!(oracle.len(), 1, "Rust oracle は match invariant 1 件を生成するべき");
+    assert!(oracle[0].passed, "Rust oracle の match invariant は pass するべき");
+
+    let harness = r#"
+(defn main []
+  (let [src "(defn succ [x] :invariant (match x [value (= result (+ value 1))]) (+ x 1))"
+        suite (generate-tests src)
+        results (vector-get suite 1)
+        result0 (vector-get results 0)]
+    (do
+      (print (vector-length results))
+      (print (vector-get result0 1))
+      (print (vector-get result0 2))
+      (print (vector-get result0 3))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_test_runner_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(
+        lines,
+        vec!["1", "1", "5", "0"],
+        "selfhost match evaluator は variable pattern binding を保持し Rust oracle と揃えるべき"
+    );
+}
+
 /// EC-M1-01: invariant 内 match arm の未知変数を Rust oracle と selfhost が診断すること
 #[test]
 fn test_e2e_selfhost_test_runner_reports_unknown_invariant_match_variable() {
