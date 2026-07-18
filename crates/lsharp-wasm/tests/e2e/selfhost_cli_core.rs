@@ -6766,7 +6766,7 @@ fn test_e2e_selfhost_cli_check_reports_legacy_migration_summary() {
     assert!(lines[3].contains("|selected=legacy-example-truthiness|disposition=docs-only-example|"));
     assert!(lines[3].contains("|selected=legacy-example-truthiness|disposition=assertion|"));
     assert!(lines[3].contains("|selected=legacy-invariant-deterministic-smoke|disposition=property-postcondition|"));
-    assert!(lines[3].contains("|message=legacy :example は docs-only :example として保持する候補です"));
+    assert!(lines[3].contains("|message=non-Bool (Int) legacy :example は docs-only :example として保持する候補です"));
     assert!(lines[3].contains("|message=Bool legacy :example は strict :assert への移行候補です"));
     assert!(lines[3].contains("|message=legacy :invariant は :property / :postcondition への移行候補です"));
     assert_eq!(lines[4], "0");
@@ -6824,7 +6824,7 @@ fn test_e2e_selfhost_migration_rows_preserve_legacy_owner_and_directive_spans() 
       (print (= (vector-get row2 4) (vector-get raw1 1)))
       (print (string-eq
         (vector-get row0 5)
-        "legacy :example は docs-only :example として保持する候補です"))
+        "non-Bool (Int) legacy :example は docs-only :example として保持する候補です"))
       (print (string-eq
         (vector-get row1 5)
         "Bool legacy :example は strict :assert への移行候補です"))

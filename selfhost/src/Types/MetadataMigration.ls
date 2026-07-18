@@ -23,22 +23,51 @@
 (defn legacy-selected-semantics-code [code]
   (if (= code (legacy-invariant-code)) 2 1))
 
-(defn legacy-migration-message [code disposition]
+(defn legacy-type-text [ty]
+  (let [tag (type-tag ty)
+    name (type-name ty)]
+    (if (= tag (ty-con))
+      (if (= name (hash-int))
+        "Int"
+        (if (= name (hash-bool))
+          "Bool"
+          (if (= name (hash-string))
+            "String"
+            (if (= name (hash-float))
+              "Float"
+              (if (= name (hash-unit)) "Unit" (string-concat "type-" (int-to-string name)))))))
+      (if (= tag (ty-var))
+        (string-concat "t" (int-to-string name))
+        (if (= tag (ty-fun))
+          "Fn"
+          (if (= tag (ty-record))
+            (string-concat "record-" (int-to-string name))
+            (if (= tag (ty-app))
+              (string-concat "type-app-" (int-to-string name))
+              "Unknown")))))))
+
+(defn legacy-migration-message [code disposition type-text]
   (if (= code (ambiguous-legacy-code))
     "legacy :example は silent conversion できません。manual review が必要です"
     (if (= code (legacy-invariant-code))
       "legacy :invariant は :property / :postcondition への移行候補です"
       (if (= disposition (legacy-assertion-disposition))
         "Bool legacy :example は strict :assert への移行候補です"
-        "legacy :example は docs-only :example として保持する候補です"))))
+        (if (= (string-length type-text) 0)
+          "legacy :example は docs-only :example として保持する候補です"
+          (string-concat
+            "non-Bool ("
+            (string-concat
+              type-text
+              ") legacy :example は docs-only :example として保持する候補です")))))))
 
-(defn legacy-migration-row [code disposition start end owner]
+(defn legacy-migration-row-with-type [code disposition start end owner type-text]
   (let [base (vector-push-single-rooted
       (vector-push-quad-rooted (vector-new 4) code disposition start end)
       owner)]
     (do
       (root_push base)
-      (let [message (legacy-migration-message code disposition)]
+      (let [message (legacy-migration-message code disposition type-text)]
         (do
           (root_push message)
           (let [result (vector-push base message)]
@@ -48,6 +77,9 @@
               (vector-push-single-rooted
                 result
                 (legacy-selected-semantics-code code)))))))))
+
+(defn legacy-migration-row [code disposition start end owner]
+  (legacy-migration-row-with-type code disposition start end owner ""))
 
 (defn legacy-example-row-for-expression [expression env counter start end owner]
   (let [result (infer-expr expression env (subst-new) counter)]
@@ -75,18 +107,20 @@
                 start
                 end
                 owner)
-              (legacy-migration-row
+              (legacy-migration-row-with-type
                 (legacy-example-code)
                 (legacy-doc-example-disposition)
                 start
                 end
-                owner))
-            (legacy-migration-row
+                owner
+                (legacy-type-text resolved)))
+            (legacy-migration-row-with-type
               (legacy-example-code)
               (legacy-doc-example-disposition)
               start
               end
-              owner)))))))
+              owner
+              (legacy-type-text resolved))))))))
 
 (defn legacy-example-expressions-loop
   [expressions idx count env counter start end owner result]
