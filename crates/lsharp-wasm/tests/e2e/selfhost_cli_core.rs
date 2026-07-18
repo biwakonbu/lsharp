@@ -6767,9 +6767,9 @@ fn test_e2e_selfhost_cli_check_reports_legacy_migration_summary() {
     );
 }
 
-/// EC-M1-03: selfhost migration row が parser-owned directive span を保持すること
+/// EC-M1-03: selfhost migration row が parser-owned owner と directive span を保持すること
 #[test]
-fn test_e2e_selfhost_migration_rows_preserve_legacy_directive_spans() {
+fn test_e2e_selfhost_migration_rows_preserve_legacy_owner_and_directive_spans() {
     let harness = r#"
 (defn main []
   (let [src "(defn succ [x] :example [(succ 0) (= (succ 1) 2)] :invariant (= result (+ x 1)) (+ x 1))"
@@ -6792,6 +6792,9 @@ fn test_e2e_selfhost_migration_rows_preserve_legacy_directive_spans() {
       (print (= (vector-get row1 3) (vector-get raw0 4)))
       (print (= (vector-get row2 2) (vector-get raw1 3)))
       (print (= (vector-get row2 3) (vector-get raw1 4)))
+      (print (= (vector-get row0 4) (vector-get raw0 1)))
+      (print (= (vector-get row1 4) (vector-get raw0 1)))
+      (print (= (vector-get row2 4) (vector-get raw1 1)))
       0)))
 "#;
 
@@ -6803,8 +6806,10 @@ fn test_e2e_selfhost_migration_rows_preserve_legacy_directive_spans() {
 
     assert_eq!(
         lines,
-        vec!["3", "4", "4", "4", "1", "1", "1", "1", "1", "1"],
-        "selfhost migration row は legacy directive の source span を parser と共有するべき"
+        vec![
+            "3", "5", "5", "5", "1", "1", "1", "1", "1", "1", "1", "1", "1",
+        ],
+        "selfhost migration row は raw inventory の owner と directive span を共有するべき"
     );
 }
 

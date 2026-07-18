@@ -7,8 +7,8 @@
 (import Types.TypeInferAssertions)
 
 ;; legacy metadata を canonical form へ silent conversion せず分類する。
-;; row は [diagnostic-code, disposition, directive-start, directive-end]。
-;; 先頭 2 フィールドは既存 summary との互換を維持する。disposition は
+;; row は [diagnostic-code, disposition, directive-start, directive-end, owner-hash]。
+;; 先頭 4 フィールドは既存 summary/span consumer との互換を維持する。disposition は
 ;; 1=docs-only :example, 2=:assert, 3=:property/:postcondition,
 ;; 4=manual review を表す。
 
@@ -20,17 +20,20 @@
 (defn legacy-property-disposition [] 3)
 (defn legacy-manual-disposition [] 4)
 
-(defn legacy-migration-row [code disposition start end]
-  (vector-push-quad-rooted (vector-new 4) code disposition start end))
+(defn legacy-migration-row [code disposition start end owner]
+  (vector-push
+    (vector-push-quad-rooted (vector-new 4) code disposition start end)
+    owner))
 
-(defn legacy-example-row-for-expression [expression env counter start end]
+(defn legacy-example-row-for-expression [expression env counter start end owner]
   (let [result (infer-expr expression env (subst-new) counter)]
     (if (= (result-failed result) 1)
       (legacy-migration-row
         (ambiguous-legacy-code)
         (legacy-manual-disposition)
         start
-        end)
+        end
+        owner)
       (let [resolved (apply-subst (result-subst result) (result-type result))
         tag (type-tag resolved)]
         (if (= tag (ty-var))
@@ -38,27 +41,31 @@
             (ambiguous-legacy-code)
             (legacy-manual-disposition)
             start
-            end)
+            end
+            owner)
           (if (= tag (ty-con))
             (if (= (type-name resolved) (hash-bool))
               (legacy-migration-row
                 (legacy-example-code)
                 (legacy-assertion-disposition)
                 start
-                end)
+                end
+                owner)
               (legacy-migration-row
                 (legacy-example-code)
                 (legacy-doc-example-disposition)
                 start
-                end))
+                end
+                owner))
             (legacy-migration-row
               (legacy-example-code)
               (legacy-doc-example-disposition)
               start
-              end)))))))
+              end
+              owner)))))))
 
 (defn legacy-example-expressions-loop
-  [expressions idx count env counter start end result]
+  [expressions idx count env counter start end owner result]
   (if (>= idx count)
     result
     (let [row (legacy-example-row-for-expression
@@ -66,7 +73,8 @@
         env
         counter
         start
-        end)
+        end
+        owner)
       next-result (vector-push-single-rooted result row)]
       (do
         (root_push next-result)
@@ -78,12 +86,13 @@
             counter
             start
             end
+            owner
             next-result)]
           (do
             (root_pop)
             parsed))))))
 
-(defn legacy-example-form [form env counter result]
+(defn legacy-example-form [form env counter owner result]
   (let [example-text (vector-get form 1)
     start (if (> (vector-length form) 2) (vector-get form 2) 0)
     end (if (> (vector-length form) 3) (vector-get form 3) 0)
@@ -98,18 +107,19 @@
           counter
           start
           end
+          owner
           result)]
         (do
           (root_pop)
           parsed)))))
 
-(defn legacy-form-loop [forms idx count env counter result]
+(defn legacy-form-loop [forms idx count env counter owner result]
   (if (>= idx count)
     result
     (let [form (vector-get forms idx)
       kind (vector-get form 0)
       next-result (if (= kind (contract-form-example))
-        (legacy-example-form form env counter result)
+        (legacy-example-form form env counter owner result)
         (if (= kind (contract-form-invariant))
           (vector-push-single-rooted
             result
@@ -117,7 +127,8 @@
               (legacy-invariant-code)
               (legacy-property-disposition)
               (if (> (vector-length form) 2) (vector-get form 2) 0)
-              (if (> (vector-length form) 3) (vector-get form 3) 0)))
+              (if (> (vector-length form) 3) (vector-get form 3) 0)
+              owner))
           result))]
       (do
         (root_push next-result)
@@ -127,6 +138,7 @@
             count
             env
             counter
+            owner
             next-result)]
           (do
             (root_pop)
@@ -142,6 +154,7 @@
         (vector-length forms)
         env
         counter
+        (vector-get decl 1)
         result))))
 
 (defn legacy-program-loop
