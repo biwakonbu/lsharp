@@ -6744,6 +6744,46 @@ fn test_e2e_selfhost_test_runner_reports_unknown_invariant_lambda_variable() {
     );
 }
 
+/// EC-M1-01: invariant 内 computation binding の未知変数を Rust oracle と selfhost が診断すること
+#[test]
+fn test_e2e_selfhost_test_runner_reports_unknown_invariant_computation_variable() {
+    let source = "(defn succ [x] :invariant (computation maybe-builder (let! delta missing) (return (= result (+ x delta)))) (+ x 1))";
+    let program = lsharp_syntax::parse(source)
+        .expect("computation を含む invariant fixture は parse できるべき");
+    let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.message.contains("未定義")),
+        "Rust oracle は computation step の未知変数を診断するべき: {diagnostics:?}"
+    );
+
+    let harness = r#"
+(defn main []
+  (let [src "(defn succ [x] :invariant (computation maybe-builder (let! delta missing) (return (= result (+ x delta)))) (+ x 1))"
+        suite (generate-tests src)
+        results (vector-get suite 1)
+        result0 (vector-get results 0)]
+    (do
+      (print (vector-length results))
+      (print (vector-get result0 1))
+      (print (vector-get result0 2))
+      (print (vector-get result0 3))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_test_runner_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(
+        lines,
+        vec!["1", "0", "0", "1"],
+        "selfhost contract path は computation step の未知変数を LS1002 にすり替えず LS1001 として報告するべき"
+    );
+}
+
 /// TEST-CLI-02-O2b: selfhost/src/Tools/Test/TestRunner.ls が supported subset の metadata suite を実行できること
 #[test]
 #[ignore]
