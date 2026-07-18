@@ -730,3 +730,11 @@ deterministic property smoke profile に単一 `String` binder の verified slic
 Evidence: `property_smoke_spec_accepts_single_string_binder`、Rust `test_runner::tests::test_property_string_binder_execution`、selfhost `test_e2e_selfhost_runner_executes_string_property_binder`、`./target/debug/lsharp check selfhost/src/Tools/Test/PropertyRunner.ls`、`./target/debug/lsharp check selfhost/src/Tools/Test/TestRunner.ls`（各 `diagnostics:0`）。Rust oracle と selfhost runner は同じ5 casesを実行し、`passed=1` / `actual=5` / `diagnostic=0` を確認した。
 
 これは単一Stringの deterministic prefix に限定した verified sliceであり、Stringの複数binder・Int/Boolとの混在、一般 `TypeExpr`、constraint/type-directed generator、seed/shrink/coverage bucket、structured assurance report、current-source Mac Apple Silicon / Linux x86_64 native artifact/runtime gate、stage0 provenanceは残件である。対応済みprofileの日常開発はRustなしで進められるが、profile外 property semantics と Rust oracle / bootstrap / host integration の境界は維持する。
+
+### Current Mac native stage0 gate (2026-07-19)
+
+current `main` commit `10d0983b4f8e17d8b9ded439161f653c1bf91e4e` から Mac Apple Silicon の actual stage23 fixed-point を再生成し、stage2/stage3 の `program.native` を `source_commit` 付き stage0 package `/tmp/lsharp-stage0-10d0983b-macos-compiler` として materialize した。stage23 test は `765.58s` で pass、stage2/stage3 は exit `0`、stderr `0`、program/runtime/response/stdout/stderr の観測 hash が一致した。
+
+この package を使う `scripts/ci/native-selfhost-dev-source-file-smoke.sh` は `aarch64-apple-darwin native selfhost source-file smoke passed` となり、PATH 上で `cargo`、`rustc`、host `lsharp` を blockした状態の `parse` / `check` / `fmt` / 通常と metadata の `test` / `compile` / `build`、Wasm magic/positive-size gateを完走した。`scripts/native-selfhost-dev.sh` の同一 fingerprint stage reuse でも `fmt` / `compile` / `test` を確認した。
+
+これは Mac の小規模 core sliceに対する current-source native evidenceであり、Rust-free 全体完了ではない。約1,000行以上の selfhost source（`Cli.ls`、`Parser.ls`、`Compiler.ls`、`TestRunner.ls` など）を native `check` すると stderr なしの exit `139` が残る。さらに公開 native `test` は現時点で String `:property` fixtureを `examples:0` / `invariants:0` / `failures:0` と報告し、今回の String runner sliceはまだ公開 property evaluatorへ接続されていない。Linux x86_64 の current-source stage0/artifact/runtime、large-source check、property public command、stage0 public acquisition/release provenanceは残件である。
