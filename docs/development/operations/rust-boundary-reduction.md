@@ -22,6 +22,12 @@ Evidence: `test_e2e_selfhost_test_runner_matches_rust_oracle_for_invariant_scope
 
 これは EC-M1-01 の parameter-scope verified slice であり、strict Bool、full diagnostic/span parity、structured report、current-source Mac/Linux native artifact/runtime gate は残件である。したがって、この slice の日常開発は Rust なしで進められるが、未完の contract semantics を変更するときは Rust oracle を保持する。
 
+### EC-M1-01 invariant local-let scope (2026-07-18)
+
+Rust `metadata_check` は legacy `:invariant` 内の lexical `let` binding を scope-aware に収集し、`(let [delta 1] (= result (+ x delta)))` の `delta` を未定義変数として誤診断しないようになった。値式を binding 前、body を binding 後に検査し、lambda / match pattern / computation binding も同じ自由変数規則で扱う。unknown variable の `LS1001` 回帰は維持した。
+
+Evidence: `test_run_metadata_tests_allows_local_let_binding_in_invariant`、`test_run_metadata_tests_reports_unknown_invariant_variable`、`cargo test -p lsharp-tooling --lib -- --nocapture`（51 tests）、`cargo test -p lsharp-types metadata_check -- --nocapture`（29 tests）。これは Rust oracle の lexical scope parity に限定され、selfhost/native runner の全 contract semantics、diagnostic/span parity、Mac/Linux current-source artifact/runtime gate、EC-M1-01 aggregate は未完了である。
+
 ### EC-M1-01 selfhost invariant Bool diagnostic (2026-07-17)
 
 Selfhost `Tools.Test.TestRunner` は invariant を各 deterministic sample で評価し、全ての実値が `Bool` であることを確認するようになった。`(defn succ [x] :invariant (+ x 1) (+ x 1))` は Int を truthy として通さず、`diagnostics:1,LS1002` と failure code `2` を返す。未定義変数の `LS1001` と、Bool invariant の `diagnostics:0` は既存経路で維持する。
@@ -233,6 +239,12 @@ Evidence: `property_form_rejects_negative_cases`、`property_form_rejects_non_nu
 current checkout `b0e6c73` の selfhost source（App.Cli standalone Preview1 output と EC-M1-02 parser/formatter/runner invariant AST slice を含む）を、provenance を付けた Linux x86_64 stage0 package から Lima VM `lsharp-linux-x86` 内で再生成した。`LSHARP_NATIVE_LINUX_X86_TRANSPORT_CHUNK_SIZE=256` を指定し、`function_start_len=2918` を 12 chunk に分けて transport した。VM は 4 CPU、16 GiB RAM、12 GiB diskで、compiler の最大 RSS は約 12.3 GiB、OOM なしだった。`cargo`、`rustc`、host `lsharp` は blocklist した。
 
 生成後の native program で `parse`、`check`、`fmt`、通常と metadata の `test`、`compile -o`、`build -o` を実行し、stdout/stderr、core Wasm header、positive `wasm-size` を確認して pass した。VM workdir は終了時に削除され、disk 使用量は 11 GiB 中 3.1 GiB（30%）に戻った。この evidence は Rust-free daily core development boundary を Linux x86_64 にも広げるが、生成 artifact の `wasm-tools validate` / standalone runtime、4096 bytes 超 read、dynamic root/data/heap layout、component sidecar、public stage0 acquisition は残件である。
+
+### Linux current-source replay memory boundary (2026-07-18)
+
+`5b8cd24a` の packaging/runtime script 変更を含む source commit `b62badf5` の provenance 付き Linux x86_64 stage0 package を Lima VM `lsharp-linux-x86` で再利用し、`LSHARP_NATIVE_LINUX_X86_TRANSPORT_CHUNK_SIZE=256` の source-file smoke を実行した。chunk `0-1280` までは完了したが、`1280-1536` の compiler RSS が約 13.5 GiB（VM 使用可能メモリ約 15 GiB）に達したため、安全境界で停止した。最終 artifact、native `parse/check/fmt/test/compile/build` の完走証拠は生成されていない。
+
+停止後は VM process、lock、workdir を回収し、disk は 11 GiB 中 3.3 GiB 使用（31%）に戻った。この結果は chunk `256` の current-source replay が未完であることだけを示し、既定 chunk `64` または責務分割で再検証すべきことを示す。`LEGACY-IO-01`、`LEGACY-BOOT-01`、`EC-M1-07` は完了扱いにしない。
 
 ### EC-M1-02 legacy metadata invariant slice (2026-07-17)
 

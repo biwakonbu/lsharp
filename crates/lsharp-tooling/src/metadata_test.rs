@@ -215,6 +215,30 @@ mod tests {
     }
 
     #[test]
+    fn test_run_metadata_tests_allows_local_let_binding_in_invariant() {
+        let dir = unique_temp_dir("local_let_invariant");
+        let file = dir.join("Main.ls");
+        fs::write(
+            &file,
+            r#"(defn succ
+  [x]
+  :invariant (let [delta 1] (= result (+ x delta)))
+  (+ x 1))
+"#,
+        )
+        .unwrap();
+
+        let run = run_metadata_tests(&file)
+            .expect("invariant の local let binding は metadata oracle で有効であるべき");
+        assert_eq!(run.total(), 1);
+        assert_eq!(run.passed(), 1);
+        assert_eq!(run.failed(), 0);
+        assert_eq!(run.results[0].name, "succ_invariant");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn test_run_metadata_tests_rejects_empty_canonical_assertion() {
         let dir = unique_temp_dir("empty_canonical_assertion");
         let file = dir.join("Main.ls");

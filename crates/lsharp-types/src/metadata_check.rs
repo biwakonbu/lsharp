@@ -8,7 +8,7 @@ use crate::canonical_contract_check::{
     check_property_non_vacuity, check_property_types,
 };
 use crate::metadata_contract::inventory_contract_suites;
-use lsharp_syntax::ast::{ComputationStep, Decl, Expr, Metadata, Program, TypeExpr};
+use lsharp_syntax::ast::{ComputationStep, Decl, Expr, Metadata, Pattern, Program, TypeExpr};
 use lsharp_syntax::metadata::{MetadataFormKind, PropertyForm};
 use lsharp_syntax::span::Span;
 
@@ -206,6 +206,124 @@ fn collect_var_references_inner(expr: &Expr, refs: &mut Vec<(String, Span)>) {
     }
 }
 
+/// lexical scope を考慮して、式の自由変数参照だけを収集する。
+fn collect_scoped_var_references(expr: &Expr) -> Vec<(String, Span)> {
+    let mut refs = Vec::new();
+    let mut scope = Vec::new();
+    collect_scoped_var_references_inner(expr, &mut scope, &mut refs);
+    refs
+}
+
+fn collect_scoped_var_references_inner(
+    expr: &Expr,
+    scope: &mut Vec<String>,
+    refs: &mut Vec<(String, Span)>,
+) {
+    match expr {
+        Expr::Var(span, name) => {
+            if !scope.iter().any(|bound| bound == name) {
+                refs.push((name.clone(), *span));
+            }
+        }
+        Expr::Lit(_, _) => {}
+        Expr::If(_, cond, then_branch, else_branch) => {
+            collect_scoped_var_references_inner(cond, scope, refs);
+            collect_scoped_var_references_inner(then_branch, scope, refs);
+            collect_scoped_var_references_inner(else_branch, scope, refs);
+        }
+        Expr::Let(_, bindings, body) => {
+            let scope_start = scope.len();
+            for (pattern, value) in bindings {
+                collect_scoped_var_references_inner(value, scope, refs);
+                collect_pattern_bindings(pattern, scope);
+            }
+            collect_scoped_var_references_inner(body, scope, refs);
+            scope.truncate(scope_start);
+        }
+        Expr::Lambda(_, params, body) => {
+            let scope_start = scope.len();
+            scope.extend(params.iter().map(|param| param.name.clone()));
+            collect_scoped_var_references_inner(body, scope, refs);
+            scope.truncate(scope_start);
+        }
+        Expr::App(_, func, args) => {
+            collect_scoped_var_references_inner(func, scope, refs);
+            for arg in args {
+                collect_scoped_var_references_inner(arg, scope, refs);
+            }
+        }
+        Expr::Match(_, scrutinee, arms) => {
+            collect_scoped_var_references_inner(scrutinee, scope, refs);
+            for arm in arms {
+                let scope_start = scope.len();
+                collect_pattern_bindings(&arm.pattern, scope);
+                if let Some(guard) = &arm.guard {
+                    collect_scoped_var_references_inner(guard, scope, refs);
+                }
+                collect_scoped_var_references_inner(&arm.body, scope, refs);
+                scope.truncate(scope_start);
+            }
+        }
+        Expr::Do(_, exprs) => {
+            for expr in exprs {
+                collect_scoped_var_references_inner(expr, scope, refs);
+            }
+        }
+        Expr::Ann(_, inner, _) => collect_scoped_var_references_inner(inner, scope, refs),
+        Expr::RecordLit(_, _, fields) => {
+            for (_, value) in fields {
+                collect_scoped_var_references_inner(value, scope, refs);
+            }
+        }
+        Expr::FieldAccess(_, inner, _) => {
+            collect_scoped_var_references_inner(inner, scope, refs);
+        }
+        Expr::RecordUpdate(_, base, fields) => {
+            collect_scoped_var_references_inner(base, scope, refs);
+            for (_, value) in fields {
+                collect_scoped_var_references_inner(value, scope, refs);
+            }
+        }
+        Expr::Computation(_, _, steps) => {
+            let scope_start = scope.len();
+            for step in steps {
+                match step {
+                    ComputationStep::LetBang(_, pattern, value) => {
+                        collect_scoped_var_references_inner(value, scope, refs);
+                        collect_pattern_bindings(pattern, scope);
+                    }
+                    ComputationStep::DoBang(_, expr)
+                    | ComputationStep::Return(_, expr)
+                    | ComputationStep::Expr(expr) => {
+                        collect_scoped_var_references_inner(expr, scope, refs)
+                    }
+                }
+            }
+            scope.truncate(scope_start);
+        }
+        Expr::Quote(_, inner) | Expr::Unquote(_, inner) | Expr::UnquoteSplice(_, inner) => {
+            collect_scoped_var_references_inner(inner, scope, refs);
+        }
+    }
+}
+
+fn collect_pattern_bindings(pattern: &Pattern, scope: &mut Vec<String>) {
+    match pattern {
+        Pattern::Wildcard(_) | Pattern::Lit(_, _) => {}
+        Pattern::Var(_, name) => scope.push(name.clone()),
+        Pattern::Constructor(_, _, fields) => {
+            for field in fields {
+                collect_pattern_bindings(field, scope);
+            }
+        }
+        Pattern::RecordPat(_, _, fields) => {
+            for (_, field) in fields {
+                collect_pattern_bindings(field, scope);
+            }
+        }
+    }
+}
+
 /// 組み込み関数・演算子名（検証で除外する）
 fn is_builtin(name: &str) -> bool {
     matches!(
@@ -335,7 +453,7 @@ fn check_invariant(
     span: Span,
     all_names: &[String],
 ) {
-    let var_refs = collect_var_references(invariant);
+    let var_refs = collect_scoped_var_references(invariant);
 
     for (ref_name, _ref_span) in &var_refs {
         // 組み込み演算子・関数はスキップ
