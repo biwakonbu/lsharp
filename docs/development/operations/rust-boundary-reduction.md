@@ -652,3 +652,9 @@ Evidence: `test_run_metadata_tests_executes_two_int_property_binders`、`test_e2
 公開 `run-test-source` まで同じ verified profile を接続した。2 個の `Int` binder、precondition conjunction、owner arity 一致の fixture が `properties:1`、`failures:0`、exit `0` で集計されることを `test_e2e_selfhost_cli_reports_two_int_property_binders` で確認した。これは public CLI summary の実行契約を閉じる evidence である。
 
 この E2E は Rust host の `compile_and_run` で巨大な selfhost CLI bundle を生成・実行する oracle lane で、今回の focused run は 417.34 秒だった。通常開発の Rust-free native gate ではなく、Rust oracle / differential 用の重い検証として扱う。current-source stage0 provenance、Mac Apple Silicon / Linux x86_64 の native artifact/runtime gate、profile 外 property semantics は未完了であり、Rust の bootstrap / oracle / host integration 境界を維持する。
+
+### EC-M1-04 property binder scope collision (2026-07-18)
+
+canonical property binder の lexical scope を fail-closed にした。同じ binder 名の重複と予約名 `result` は、Rust canonical checker では binder span 付き metadata error、selfhost `check` では structural code `2007`、selfhost deterministic runner では未対応 profile code `3002` として拒否する。これにより property binder が暗黙の postcondition `result` を上書きしたり、同じ hash の環境束縛へ縮退したりしない。
+
+Evidence: `canonical_property_rejects_duplicate_binder_names`、`canonical_property_rejects_result_binder_name`、`test_e2e_selfhost_cli_check_rejects_property_binder_name_collisions`、`test_e2e_selfhost_runner_rejects_property_binder_name_collisions`、Rust metadata contract 22 tests、`PropertyRunner.ls` / `TypeInferAssertions.ls` source check（各 `diagnostics:0`）。これは binder scope の verified sliceであり、一般 `TypeExpr`、type-directed sampling/shrink、全 evaluator、diagnostic/span parity、current-source Mac/Linux native artifact/runtime gate、stage0 provenance は残件である。Rust oracle / bootstrap / host integration 境界は維持する。

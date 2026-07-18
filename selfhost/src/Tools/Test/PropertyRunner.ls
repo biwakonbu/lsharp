@@ -574,7 +574,35 @@
       profile-code
       (if (or (< (vector-length binders) 1) (> (vector-length binders) 2))
         3002
-        0))))
+        (if (= (property-runner-binder-name-collision? binders) 1) 3002 0)))))
+
+(defn property-runner-binder-name-collision-rest? [binders idx count binder-hash]
+  (if (>= idx count)
+    0
+    (if (= (vector-get (vector-get binders idx) 0) binder-hash)
+      1
+      (property-runner-binder-name-collision-rest?
+        binders
+        (+ idx 1)
+        count
+        binder-hash))))
+
+(defn property-runner-binder-name-collision-loop [binders idx count]
+  (if (>= idx count)
+    0
+    (let [binder-hash (vector-get (vector-get binders idx) 0)]
+      (if (= binder-hash (name-hash "result" 0 6))
+        1
+        (if (= (property-runner-binder-name-collision-rest?
+            binders
+            (+ idx 1)
+            count
+            binder-hash) 1)
+          1
+          (property-runner-binder-name-collision-loop binders (+ idx 1) count))))))
+
+(defn property-runner-binder-name-collision? [binders]
+  (property-runner-binder-name-collision-loop binders 0 (vector-length binders)))
 
 (defn property-runner-binder-hashes-loop [binders idx count result]
   (if (>= idx count)

@@ -385,3 +385,33 @@ fn canonical_property_accepts_bool_predicates_in_binder_scope() {
 
     assert!(diagnostics.is_empty(), "valid property を拒否してはならない: {diagnostics:?}");
 }
+
+#[test]
+fn canonical_property_rejects_duplicate_binder_names() {
+    const SOURCE: &str =
+        "(defn pair [left right] :property [(for-all [value Int value Int] :postcondition (= result value))] (+ left right))";
+    let program = parse(SOURCE).expect("重複 binder property は diagnostic のため parse できるべき");
+
+    let diagnostics = check_metadata(&program);
+
+    assert_eq!(diagnostics.len(), 1, "重複 binder を成功扱いしてはならない");
+    let diagnostic = &diagnostics[0];
+    assert_eq!(diagnostic.severity, Severity::Error);
+    assert!(diagnostic.message.contains("重複"), "{diagnostics:?}");
+    assert_eq!(diagnostic.function_name, "pair");
+}
+
+#[test]
+fn canonical_property_rejects_result_binder_name() {
+    const SOURCE: &str =
+        "(defn identity [value] :property [(for-all [result Int] :postcondition (= result 0))] value)";
+    let program = parse(SOURCE).expect("result binder property は diagnostic のため parse できるべき");
+
+    let diagnostics = check_metadata(&program);
+
+    assert_eq!(diagnostics.len(), 1, "予約名 result の binder を成功扱いしてはならない");
+    let diagnostic = &diagnostics[0];
+    assert_eq!(diagnostic.severity, Severity::Error);
+    assert!(diagnostic.message.contains("result"), "{diagnostics:?}");
+    assert_eq!(diagnostic.function_name, "identity");
+}

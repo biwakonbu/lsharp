@@ -108,6 +108,58 @@
         (if (= (string-length binders) 0)
           "[result]"
           (string-concat "[" (string-concat binders " result]")))))))
+(defn property-binder-name-conflict-rest? [payload idx close len name]
+  (let [name-start (property-skip-space payload idx len)]
+    (if (>= name-start close)
+      0
+      (let [name-end (property-atom-expression-end payload name-start len)
+        type-start (property-skip-space payload name-end len)
+        type-end (if (= (string-char-at payload type-start) 40)
+          (property-balanced-expression-end payload type-start len 0)
+          (property-atom-expression-end payload type-start len))]
+        (if (or (= name-end name-start) (<= type-end type-start))
+          0
+          (if (string-eq (substring payload name-start name-end) name)
+            1
+            (property-binder-name-conflict-rest?
+              payload
+              (property-skip-space payload type-end len)
+              close
+              len
+              name)))))))
+(defn property-binder-name-conflict-loop [payload idx close len]
+  (let [name-start (property-skip-space payload idx len)]
+    (if (>= name-start close)
+      0
+      (let [name-end (property-atom-expression-end payload name-start len)
+        type-start (property-skip-space payload name-end len)
+        type-end (if (= (string-char-at payload type-start) 40)
+          (property-balanced-expression-end payload type-start len 0)
+          (property-atom-expression-end payload type-start len))]
+        (if (or (= name-end name-start) (<= type-end type-start))
+          0
+          (let [name (substring payload name-start name-end)]
+            (if (string-eq name "result")
+              1
+              (if (= (property-binder-name-conflict-rest?
+                  payload
+                  (property-skip-space payload type-end len)
+                  close
+                  len
+                  name) 1)
+                1
+                (property-binder-name-conflict-loop
+                  payload
+                  (property-skip-space payload type-end len)
+                  close
+                  len)))))))))
+(defn property-binder-name-conflict? [payload]
+  (let [open (property-find-substring payload "[")
+    len (string-length payload)
+    close (property-find-substring-loop payload "]" (+ open 1) len 1)]
+    (if (or (< open 0) (< close 0))
+      0
+      (property-binder-name-conflict-loop payload (+ open 1) close len))))
 (defn property-probe-return-type [ty]
   (if (= (ty-tag ty) (ty-fun))
     (property-probe-return-type (type-fun-ret ty))
@@ -852,7 +904,7 @@
     (do
       (root_push form)
       (let [payload (if (> (vector-length form) 1) (vector-get form 1) "")
-        structural-code (if (or (= (property-binders-empty? payload) 1) (or (= (property-cases-zero? payload) 1) (or (= (property-cases-invalid? payload) 1) (= (property-unknown-option? payload) 1)))) (canonical-property-empty-code) 0)
+        structural-code (if (or (= (property-binders-empty? payload) 1) (or (= (property-binder-name-conflict? payload) 1) (or (= (property-cases-zero? payload) 1) (or (= (property-cases-invalid? payload) 1) (= (property-unknown-option? payload) 1))))) (canonical-property-empty-code) 0)
         precondition-code (check-property-precondition payload)
         code (if (> structural-code 0) structural-code (if (> precondition-code 0) precondition-code (check-property-postcondition payload)))
         next-count (if (> code 0) (+ diagnostic-count 1) diagnostic-count)

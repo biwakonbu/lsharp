@@ -7,6 +7,7 @@ use crate::types::Type;
 use lsharp_syntax::ast::{Decl, Expr, Literal, Param, Program, TypeExpr};
 use lsharp_syntax::metadata::MetadataFormKind;
 use lsharp_syntax::span::Span;
+use std::collections::HashSet;
 
 struct AssertionProbe {
     name: String,
@@ -202,6 +203,28 @@ fn collect_property_non_vacuity(
                     });
                 }
                 for property in properties {
+                    let mut binder_names = HashSet::new();
+                    for binder in property.binders() {
+                        if binder.name() == "result" {
+                            diagnostics.push(MetadataDiagnostic {
+                                severity: Severity::Error,
+                                message: ":property binder の result は予約名のため使用できません"
+                                    .to_string(),
+                                span: binder.source_span(),
+                                function_name: owner.clone(),
+                            });
+                        } else if !binder_names.insert(binder.name()) {
+                            diagnostics.push(MetadataDiagnostic {
+                                severity: Severity::Error,
+                                message: format!(
+                                    ":property binder 名 '{}' は重複しています",
+                                    binder.name()
+                                ),
+                                span: binder.source_span(),
+                                function_name: owner.clone(),
+                            });
+                        }
+                    }
                     if property.binders().is_empty() {
                         diagnostics.push(MetadataDiagnostic {
                             severity: Severity::Error,
