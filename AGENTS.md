@@ -124,6 +124,13 @@ L# の最終目標は、Rust 実装を正本として残したまま一部のコ
 
 機能を置換する単位は、`RED → selfhost 実装 → focused GREEN → Rust differential lane → native stage0 dogfooding lane → artifact/runtime → 対応2 target → docs/ADR/TODO → commit/push` とする。未対応機能はまず明示診断または明示 external boundary で止め、その後に同じ observable contract を保った native 実装へ置換する。
 
+### Git worktree の配置と片付け
+
+- 新しい worktree は `/Users/biwakonbu/github/tmp/` の直下に作成する。`/Users/biwakonbu/github/` 直下へ `lsharp-*` の作業ディレクトリを増やさない。
+- feature worktree は一つの task に限定し、commit/push と統合が完了したら、clean・upstream 一致・統合先の祖先であることを確認して `git worktree remove` する。
+- 継続利用する integration worktree だけを `github/tmp` に残す。aborted merge や検証専用 worktree、不要になった local branch も確認後に片付ける。
+- dirty、実行中、または別セッション所有の可能性がある worktree は移動・削除しない。所有と完了を確認できない既存 worktree は、利用者と調整してから整理する。
+
 ### 現在の完遂ループ（v0.2 Evidence-driven Contracts）
 
 現在の対象は `TODO.md` の current milestone と scheduling rules が示す最優先の未完項目から一つだけ選ぶ。特定の milestone 名を恒久的な開始点として固定せず、push 後の再監査で次の対象を更新する。
