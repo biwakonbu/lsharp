@@ -40,16 +40,54 @@
       (if (= tag (ty-var))
         (string-concat "t" (int-to-string name))
         (if (= tag (ty-fun))
-          "Fn"
+          (string-concat
+            "("
+            (string-concat
+              (legacy-type-text (type-fun-param ty))
+              (string-concat
+                ") -> "
+                (legacy-type-text (type-fun-ret ty)))))
           (if (= tag (ty-record))
             (string-concat "record-" (int-to-string name))
             (if (= tag (ty-app))
               (string-concat "type-app-" (int-to-string name))
               "Unknown")))))))
 
+(defn legacy-type-contains-variable-app-loop [ty idx count]
+  (if (>= idx count)
+    0
+    (if (= (legacy-type-contains-variable? (type-app-arg ty idx)) 1)
+      1
+      (legacy-type-contains-variable-app-loop ty (+ idx 1) count))))
+
+(defn legacy-type-contains-variable-record-loop [ty idx len]
+  (if (>= idx len)
+    0
+    (if (= (legacy-type-contains-variable? (vector-get ty (+ idx 1))) 1)
+      1
+      (legacy-type-contains-variable-record-loop ty (+ idx 2) len))))
+
+(defn legacy-type-contains-variable? [ty]
+  (let [tag (type-tag ty)]
+    (if (= tag (ty-var))
+      1
+      (if (= tag (ty-fun))
+        (if (= (legacy-type-contains-variable? (type-fun-param ty)) 1)
+          1
+          (legacy-type-contains-variable? (type-fun-ret ty)))
+        (if (= tag (ty-app))
+          (legacy-type-contains-variable-app-loop ty 0 (type-app-arg-count ty))
+          (if (= tag (ty-record))
+            (legacy-type-contains-variable-record-loop ty 2 (vector-length ty))
+            0))))))
+
 (defn legacy-migration-message [code disposition type-text]
   (if (= code (ambiguous-legacy-code))
-    "legacy :example は silent conversion できません。manual review が必要です"
+    (if (= (string-length type-text) 0)
+      "legacy :example は silent conversion できません。manual review が必要です"
+      (string-concat
+        "legacy :example は silent conversion できません。manual review が必要です: 型 "
+        (string-concat type-text " を concrete に確定できません")))
     (if (= code (legacy-invariant-code))
       "legacy :invariant は :property / :postcondition への移行候補です"
       (if (= disposition (legacy-assertion-disposition))
@@ -113,14 +151,14 @@
         expression-end)
       (let [resolved (apply-subst (result-subst result) (result-type result))
         tag (type-tag resolved)]
-        (if (= tag (ty-var))
+        (if (= (legacy-type-contains-variable? resolved) 1)
           (legacy-migration-row-with-expression-span
             (ambiguous-legacy-code)
             (legacy-manual-disposition)
             start
             end
             owner
-            ""
+            (legacy-type-text resolved)
             expression-start
             expression-end)
           (if (= tag (ty-con))

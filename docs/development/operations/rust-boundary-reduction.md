@@ -344,6 +344,12 @@ Evidence: RED の `test_e2e_selfhost_migration_rows_preserve_expression_spans` �
 
 これは expression-level span projection の verified sliceであり、enum/string schema、全 form evaluator、module/private owner parity、Wasm artifact/runtime、Mac Apple Silicon / Linux x86_64 の current-source native gate は残件である。selfhost Wasm E2E は Rust host が compile/run する oracle lane のため、native stage0 の証拠には数えない。legacy migration 完了や全機能 Rust-free 完了とは扱わず、Rust oracle / bootstrap 境界を維持する。
 
+### EC-M1-03 selfhost migration polymorphic manual-review boundary (2026-07-18)
+
+Rust `metadata_migration` と selfhost `Types.MetadataMigration` は、legacy `:example` の expression 型を再帰的に確認し、`Fun` / `App` / `Record` の内部に未確定型変数が残る場合も `LS2003`、`manual-review`、`legacy-example-truthiness` として分類するようになった。selfhost は型変数を `legacy-type-text` へ投影して、silent conversion を拒否した理由を migration message に含める。Rust と selfhost の型変数 allocator は別実装なので、reason 内の variable id は target lane ごとに異なり得るが、diagnostic code、selected semantics、disposition、manual-review boundary は同じ fixture で確認する。
+
+Evidence: `polymorphic_legacy_example_requires_manual_review`、`test_e2e_selfhost_metadata_migration_marks_polymorphic_example_manual_review`。Rust oracle は `LS2003` / `ManualReview` と reason prefix を確認し、selfhost Wasm E2E は `LS2003` / disposition `4` / selected semantics `1` と `型 (t1000) -> t1000 を concrete に確定できません` を確認した。これは Rust host compile/run を使う oracle lane の focused evidence であり、全 enum/string schema、全 form evaluator、module/private owner parity、Wasm artifact/runtime、Mac Apple Silicon / Linux x86_64 の current-source native gate、EC-M1-03 全体または全機能 Rust-free 完了の証拠には数えない。Rust oracle / bootstrap 境界を維持する。
+
 ### EC-M1-03 selfhost migration JSON string escaping (2026-07-18)
 
 `Types.MetadataMigration` の `legacy-json-quote` が migration row の JSON object/array projection に使う文字列値を、JSON の quote、backslash、newline、carriage return、tab、backspace、form feed、およびその他の ASCII control escape へ変換するようになった。Types 層から LSP 層へ逆依存させず、migration 層に bounded な escape helper を持たせた。

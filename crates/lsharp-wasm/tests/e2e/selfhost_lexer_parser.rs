@@ -185,6 +185,46 @@ fn test_e2e_selfhost_metadata_migration_classifies_legacy_forms() {
 }
 
 #[test]
+fn test_e2e_selfhost_metadata_migration_marks_polymorphic_example_manual_review() {
+    let harness = r#"
+(defn main []
+  (let [program (parse-program "(defn identity [x] :example [(fn [value] value)] x)")
+        result (classify-legacy-contracts program)
+        row (vector-get result 0)]
+    (do
+      (print (vector-length result))
+      (print (vector-get row 0))
+      (print (vector-get row 1))
+      (print (vector-get row 6))
+      (print-string (vector-get row 5))
+      (print-string "\n")
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}",
+        selfhost_parser_typeinfer_runtime_bundle(),
+        harness
+    );
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec![
+            "1",
+            "2003",
+            "4",
+            "1",
+            "legacy :example は silent conversion できません。manual review が必要です: 型 (t1000) -> t1000 を concrete に確定できません",
+        ],
+        "selfhost migration classifier は未確定の polymorphic :example を Rust と同じ manual-review 境界へ送るべき"
+    );
+}
+
+#[test]
 fn test_e2e_selfhost_negative_int_parses_as_int() {
     let harness = r#"
 (defn main []

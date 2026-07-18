@@ -40,3 +40,29 @@ fn legacy_metadata_is_classified_without_silent_conversion() {
         LegacyMigrationDisposition::PropertyPostcondition
     );
 }
+
+#[test]
+fn polymorphic_legacy_example_requires_manual_review() {
+    let source = r#"
+(defn identity [x]
+  :example [(fn [value] value)]
+  x)
+"#;
+    let program = parse(source).expect("polymorphic legacy example は parse できるべき");
+    let diagnostics = classify_legacy_contracts(&program)
+        .expect("polymorphic legacy example は migration diagnostic を返すべき");
+
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(diagnostics[0].code(), "LS2003");
+    assert_eq!(
+        diagnostics[0].selected_semantics(),
+        LegacySelectedSemantics::ExampleTruthiness
+    );
+    assert_eq!(
+        diagnostics[0].disposition(),
+        LegacyMigrationDisposition::ManualReview
+    );
+    assert!(diagnostics[0]
+        .message()
+        .starts_with("legacy :example は silent conversion できません。manual review が必要です:"));
+}
