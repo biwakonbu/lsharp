@@ -645,7 +645,7 @@ deterministic property profile を、単一 binder から最大 2 個の `Int` b
 
 Evidence: `test_run_metadata_tests_executes_two_int_property_binders`、`test_e2e_selfhost_runner_executes_two_int_property_binders`（5 pair 中 1 件を precondition skip して `actual=4`）、既存の single-binder / conjunction / seed / unsupported profile regression、`PropertyRunner.ls` / `TestRunner.ls` source check（各 `diagnostics:0`）。
 
-これは 1..2 個の `Int` binder と deterministic pair prefix に限定した verified slice であり、3 binder の一般 profile、3-`Int` の cases 2 以上、一般 `TypeExpr`、owner/binder の独立 arity、type-directed generator、seed/shrink/coverage、predicate 個別 span、structured assurance report、Wasm artifact/runtime、Mac Apple Silicon / Linux x86_64 の current-source native gate は残件である。対応済み profile の変更は Rust なしで進められるが、profile 外 semantics、stage0 provenance、Rust oracle / bootstrap / host integration の境界は維持する。
+これは 1..2 個の `Int` binder と deterministic pair prefix に限定した verified slice であり、後続の generic typed prefix により 3〜8 binder の cases 1..2 は別途拡張された。一般 `TypeExpr`、owner/binder の独立 arity、type-directed generator、seed/shrink/coverage、predicate 個別 span、structured assurance report、Wasm artifact/runtime、Mac Apple Silicon / Linux x86_64 の current-source native gate は残件である。対応済み profile の変更は Rust なしで進められるが、profile 外 semantics、stage0 provenance、Rust oracle / bootstrap / host integration の境界は維持する。
 
 ### EC-M1-02 public selfhost `test` CLI property slice (2026-07-18)
 
@@ -689,15 +689,15 @@ Bool binder の typed profile を 3 個まで拡張した。対象は source ord
 
 Evidence: Rust `test_run_metadata_tests_executes_three_bool_property_binders` / `test_run_metadata_tests_rejects_three_bool_property_above_two_cases`、selfhost `test_e2e_selfhost_runner_executes_three_bool_property_binders` / `test_e2e_selfhost_runner_rejects_three_bool_property_above_two_cases`、既存の single Bool / Int-Bool mixed / two Bool / three Int regression、`PropertyRunner.ls` / `TestRunner.ls` source check（各 `diagnostics:0`）。
 
-これは 3-`Bool` の deterministic prefix に限定した verified slice であり、Bool/Int/Bool の一般 mixed arity、4 個以上の binder、一般 `TypeExpr`、constraint/type-directed generator、seed/shrink/coverage bucket、predicate/span parity、current-source Mac Apple Silicon / Linux x86_64 native artifact/runtime gate、stage0 provenance は残件である。対応済み profile の日常開発は Rust なしで進められるが、profile 外 property semantics と Rust oracle / bootstrap / host integration の境界は維持する。
+これは 3-`Bool` の deterministic prefix に限定した verified slice であり、一般 `TypeExpr`、constraint/type-directed generator、seed/shrink/coverage bucket、predicate/span parity、current-source Mac Apple Silicon / Linux x86_64 native artifact/runtime gate、stage0 provenance は残件である。3 個以上の Int/Bool binder は次の generic typed prefix で扱い、profile 外 property semantics と Rust oracle / bootstrap / host integration の境界は維持する。
 
 ### EC-M1-05 three-Int property sampling (2026-07-18)
 
-deterministic property profile に 3 個の `Int` binder の最小 slice を追加した。対象は source order を保つ `[a Int b Int c Int]`、`:cases 1` に限定し、Rust oracle と selfhost runner が `[0, 0, 0]` を 1 case だけ共有する。Rust `PropertySmokeTestSpec` は 3-要素 Int vector をこの cases 境界で許可し、Wasm test runner は triple Int literal を生成する。selfhost `PropertyRunner` は 3-Int を cases 1 のみ実行可能とし、`TestRunner` は owner function へ triple vector を渡す。cases 2 以上は Rust `LS3002` / selfhost `3002` で明示拒否し、既存の 3-`Int` profile 外境界を維持する。
+deterministic property profile に 3 個の `Int` binder の最小 slice を追加した。対象は source order を保つ `[a Int b Int c Int]`、`:cases 1` に限定し、Rust oracle と selfhost runner が `[0, 0, 0]` を 1 case だけ共有した。これは後続の generic typed prefix へ統合され、現在は 3 個以上の Int/Bool binder を cases 1..2 で source-order loop から生成する。最初の slice の cases boundary として、cases 3 以上は Rust `LS3002` / selfhost `3002` で明示拒否する。
 
-Evidence: Rust `test_run_metadata_tests_executes_three_int_property_binders` / `test_run_metadata_tests_rejects_three_int_property_binders_above_one_case`、selfhost `test_e2e_selfhost_runner_executes_three_int_property_binders` / `test_e2e_selfhost_runner_rejects_three_int_property_binders_above_one_case`、既存 single/two-Int、Bool、mixed、3-Int cases boundary regression、`PropertyRunner.ls` / `TestRunner.ls` source check（各 `diagnostics:0`）。
+Evidence: Rust `test_run_metadata_tests_executes_three_int_property_binders` / `test_run_metadata_tests_rejects_three_int_property_binders_above_two_cases`、selfhost `test_e2e_selfhost_runner_executes_three_int_property_binders` / `test_e2e_selfhost_runner_rejects_three_int_property_binders_above_two_cases`、既存 single/two-Int、Bool、mixed、3-Int cases boundary regression、`PropertyRunner.ls` / `TestRunner.ls` source check（各 `diagnostics:0`）。
 
-これは 3-Int の cases 1 deterministic prefix に限定した verified slice であり、3 binder の未対応 mixed profile、3-Int の cases 2 以上、4 個以上の binder、一般 `TypeExpr`、constraint/type-directed generator、seed/shrink/coverage bucket、predicate/span parity、current-source Mac Apple Silicon / Linux x86_64 native artifact/runtime gate、stage0 provenance は残件である。対応済み profile の日常開発は Rust なしで進められるが、profile 外 property semantics と Rust oracle / bootstrap / host integration の境界は維持する。
+これは 3-Int の cases 1 deterministic prefix に限定した verified sliceであり、3 個以上の Int/Bool binder の cases 2 prefixは次の generic typed profileで扱う。一般 `TypeExpr`、constraint/type-directed generator、seed/shrink/coverage bucket、predicate/span parity、current-source Mac Apple Silicon / Linux x86_64 native artifact/runtime gate、stage0 provenance は残件である。対応済み profile の日常開発は Rust なしで進められるが、profile 外 property semantics と Rust oracle / bootstrap / host integration の境界は維持する。
 
 ### EC-M1-05 three-binder mixed Int/Bool property sampling (2026-07-18)
 
@@ -705,7 +705,15 @@ deterministic property profile に 3 個の `Int`/`Bool` mixed binder の最小 
 
 Evidence: Rust `test_run_metadata_tests_executes_three_mixed_int_bool_property_binders` / `test_run_metadata_tests_rejects_three_mixed_int_bool_property_above_two_cases`、selfhost `test_e2e_selfhost_runner_executes_three_mixed_int_bool_property_binders` / `test_e2e_selfhost_runner_rejects_three_mixed_int_bool_property_above_two_cases`、既存 3-Int / 3-Bool / 2-binder mixed regression、`PropertyRunner.ls` / `TestRunner.ls` source check（各 `diagnostics:0`）。
 
-これは既知の 3-要素 Int/Bool 組み合わせと cases 1..2 に限定した verified slice であり、一般 `TypeExpr`、constraint/type-directed generator、seed/shrink/coverage bucket、任意 arity、predicate/span parity、structured assurance report、current-source Mac Apple Silicon / Linux x86_64 native artifact/runtime gate、stage0 provenance は残件である。対応済み profile の日常開発は Rust なしで進められるが、profile 外 property semantics と Rust oracle / bootstrap / host integration の境界は維持する。
+これは既知の 3-要素 Int/Bool 組み合わせと cases 1..2 に限定した verified slice であり、4 個以上の typed binder は次の generic profileへ移行した。一般 `TypeExpr`、constraint/type-directed generator、seed/shrink/coverage bucket、predicate/span parity、structured assurance report、current-source Mac Apple Silicon / Linux x86_64 native artifact/runtime gate、stage0 provenance は残件である。対応済み profile の日常開発は Rust なしで進められるが、profile 外 property semantics と Rust oracle / bootstrap / host integration の境界は維持する。
+
+### EC-M1-05 generic Int/Bool typed prefix (2026-07-18)
+
+deterministic property sampling の arity 分岐を、個別の 3-binder case から source-order `binder_types` vector の loop へ統合した。1〜2 個の `Int` は既存の scalar/pair prefix と `:cases 1..5` を維持し、3〜8 個の `Int`/`Bool` は各 binder の型に応じた `[0,false,...]` / `[1,true,...]` の typed prefix を `:cases 1..2` で実行する。Rust `PropertySmokeTestSpec`、Wasm test runner、selfhost `PropertyRunner` の profile 判定と `TestRunner` の materialize が同じ境界を持つ。4 binder mixed `[first Int flag Bool second Int again Bool]` の positive/negative fixture で cases 2 実行と cases 3 の `LS3002` / `3002` 拒否を確認した。
+
+Evidence: Rust `test_run_metadata_tests_executes_four_mixed_int_bool_property_binders` / `test_run_metadata_tests_rejects_four_mixed_int_bool_property_above_two_cases`、selfhost `test_e2e_selfhost_runner_executes_four_mixed_int_bool_property_binders` / `test_e2e_selfhost_runner_rejects_four_mixed_int_bool_property_above_two_cases`、既存 3-Int / 3-Bool / 3-binder mixed regression、`PropertyRunner.ls` / `TestRunner.ls` source check（各 `diagnostics:0`）。
+
+これは Int/Bool の 1〜8 binder deterministic prefix に限定した verified slice であり、9 個以上の binder、String/record/ADT などの一般 `TypeExpr`、constraint/type-directed generator、seed/shrink/coverage bucket、predicate/span parity、structured assurance report、current-source Mac Apple Silicon / Linux x86_64 native artifact/runtime gate、stage0 provenance は残件である。対応済み profile の日常開発は Rust なしで進められるが、profile 外 property semantics と Rust oracle / bootstrap / host integration の境界は維持する。
 
 ### EC-M1-04 selfhost property runner non-vacuity (2026-07-18)
 

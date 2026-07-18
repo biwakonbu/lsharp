@@ -6842,10 +6842,10 @@ fn test_e2e_selfhost_runner_executes_three_int_property_binders() {
 
 /// EC-M1-05: selfhost runner が 3 Int binder の cases 上限を明示拒否すること
 #[test]
-fn test_e2e_selfhost_runner_rejects_three_int_property_binders_above_one_case() {
+fn test_e2e_selfhost_runner_rejects_three_int_property_binders_above_two_cases() {
     let harness = r#"
 (defn main []
-  (let [src "(defn sum3 [left middle right] :property [(for-all [a Int b Int c Int] :cases 2 :postcondition (= result (+ a (+ b c))))] (+ left (+ middle right)))"
+  (let [src "(defn sum3 [left middle right] :property [(for-all [a Int b Int c Int] :cases 3 :postcondition (= result (+ a (+ b c))))] (+ left (+ middle right)))"
         suite (generate-tests-from-source src)
         properties (vector-get suite 4)
         result0 (vector-get properties 0)]
@@ -6866,7 +6866,7 @@ fn test_e2e_selfhost_runner_rejects_three_int_property_binders_above_one_case() 
     assert_eq!(
         lines,
         vec!["1", "0", "0", "3002"],
-        "selfhost runner は 3 Int binder の cases 2 を narrow profile 外として拒否すべき"
+        "selfhost runner は 3 Int binder の cases 3 を narrow profile 外として拒否すべき"
     );
 }
 
@@ -6927,6 +6927,66 @@ fn test_e2e_selfhost_runner_rejects_three_mixed_int_bool_property_above_two_case
         lines,
         vec!["1", "0", "0", "3002"],
         "selfhost runner は 3 binder mixed の cases 3 を narrow profile 外として拒否すべき"
+    );
+}
+
+/// EC-M1-05: selfhost runner が 4 binder mixed Int/Bool を source-order prefix として実行すること
+#[test]
+fn test_e2e_selfhost_runner_executes_four_mixed_int_bool_property_binders() {
+    let harness = r#"
+(defn main []
+  (let [src "(defn choose [left enabled right ready] :property [(for-all [first Int flag Bool second Int again Bool] :cases 2 :postcondition (= result (if (and flag again) (+ first second) first)))] (if (and enabled ready) (+ left right) left))"
+        suite (generate-tests-from-source src)
+        properties (vector-get suite 4)
+        result0 (vector-get properties 0)]
+    (do
+      (print (vector-length properties))
+      (print (vector-get result0 1))
+      (print (vector-get result0 2))
+      (print (vector-get result0 3))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_test_runner_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["1", "1", "2", "0"],
+        "selfhost runner は 4 binder mixed を [0,false,0,false]/[1,true,1,true] として評価すべき"
+    );
+}
+
+/// EC-M1-05: selfhost runner が 4 binder mixed の cases 上限を明示拒否すること
+#[test]
+fn test_e2e_selfhost_runner_rejects_four_mixed_int_bool_property_above_two_cases() {
+    let harness = r#"
+(defn main []
+  (let [src "(defn choose [left enabled right ready] :property [(for-all [first Int flag Bool second Int again Bool] :cases 3 :postcondition (= result (if (and flag again) (+ first second) first)))] (if (and enabled ready) (+ left right) left))"
+        suite (generate-tests-from-source src)
+        properties (vector-get suite 4)
+        result0 (vector-get properties 0)]
+    (do
+      (print (vector-length properties))
+      (print (vector-get result0 1))
+      (print (vector-get result0 2))
+      (print (vector-get result0 3))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_test_runner_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["1", "0", "0", "3002"],
+        "selfhost runner は 4 binder mixed の cases 3 を narrow profile 外として拒否すべき"
     );
 }
 

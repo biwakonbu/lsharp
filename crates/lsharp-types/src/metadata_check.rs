@@ -540,13 +540,16 @@ pub enum PropertyBinderType {
     Bool,
 }
 
+const DETERMINISTIC_TYPED_BINDER_LIMIT: usize = 8;
+
 /// `:property` のうち、移行期 runner が実行できる narrow profile を返す。
 ///
 /// type-directed sampling、seed、shrink は別 slice のため、ここで暗黙に既定値へ
-/// 丸めず、明示的に profile 外として扱う。precondition は source order の
+/// 丸めず、明示的に profile 外として扱う。1〜2 個の Int は legacy prefix、3〜8 個の
+/// Int/Bool は cases 1〜2 の typed prefix とする。precondition は source order の
 /// conjunction として deterministic sample の filter に使う。
 pub fn property_smoke_test_spec(property: &PropertyForm) -> Option<PropertySmokeTestSpec> {
-    if !(1..=3).contains(&property.binders().len())
+    if !(1..=DETERMINISTIC_TYPED_BINDER_LIMIT).contains(&property.binders().len())
         || property.seed().is_some()
         || property.shrink().is_some()
     {
@@ -567,50 +570,12 @@ pub fn property_smoke_test_spec(property: &PropertyForm) -> Option<PropertySmoke
         .collect::<Option<Vec<_>>>()?;
     match binder_types.as_slice() {
         [PropertyBinderType::Int] | [PropertyBinderType::Int, PropertyBinderType::Int] => {}
-        [
-            PropertyBinderType::Int,
-            PropertyBinderType::Int,
-            PropertyBinderType::Int,
-        ] if cases == 1 => {}
         [PropertyBinderType::Bool]
         | [PropertyBinderType::Bool, PropertyBinderType::Bool]
-        | [
-            PropertyBinderType::Bool,
-            PropertyBinderType::Bool,
-            PropertyBinderType::Bool,
-        ]
         | [PropertyBinderType::Int, PropertyBinderType::Bool]
         | [PropertyBinderType::Bool, PropertyBinderType::Int]
-        | [
-            PropertyBinderType::Int,
-            PropertyBinderType::Int,
-            PropertyBinderType::Bool,
-        ]
-        | [
-            PropertyBinderType::Int,
-            PropertyBinderType::Bool,
-            PropertyBinderType::Int,
-        ]
-        | [
-            PropertyBinderType::Bool,
-            PropertyBinderType::Int,
-            PropertyBinderType::Int,
-        ]
-        | [
-            PropertyBinderType::Int,
-            PropertyBinderType::Bool,
-            PropertyBinderType::Bool,
-        ]
-        | [
-            PropertyBinderType::Bool,
-            PropertyBinderType::Int,
-            PropertyBinderType::Bool,
-        ]
-        | [
-            PropertyBinderType::Bool,
-            PropertyBinderType::Bool,
-            PropertyBinderType::Int,
-        ] if cases <= 2 => {}
+            if cases <= 2 => {}
+        _ if binder_types.len() >= 3 && cases <= 2 => {}
         _ => return None,
     }
     Some(PropertySmokeTestSpec {

@@ -578,20 +578,20 @@ mod tests {
     }
 
     #[test]
-    fn test_run_metadata_tests_rejects_three_int_property_binders_above_one_case() {
+    fn test_run_metadata_tests_rejects_three_int_property_binders_above_two_cases() {
         let dir = unique_temp_dir("unsupported_property_three_binders");
         let file = dir.join("Main.ls");
         fs::write(
             &file,
-            "(defn sum3 [left middle right] :property [(for-all [a Int b Int c Int] :cases 2 :postcondition (= result (+ a (+ b c))))] (+ left (+ middle right)))\n",
+            "(defn sum3 [left middle right] :property [(for-all [a Int b Int c Int] :cases 3 :postcondition (= result (+ a (+ b c))))] (+ left (+ middle right)))\n",
         )
         .unwrap();
 
         let error = run_metadata_tests(&file)
-            .expect_err("3 Int binder property の cases 2 は narrow profile 外であるべき");
+            .expect_err("3 Int binder property の cases 3 は narrow profile 外であるべき");
         assert!(
             error.to_string().contains("[LS3002]"),
-            "3 Int binder property の cases 2 は LS3002 を返すべき: {error}"
+            "3 Int binder property の cases 3 は LS3002 を返すべき: {error}"
         );
 
         let _ = fs::remove_dir_all(&dir);
@@ -632,6 +632,46 @@ mod tests {
         assert!(
             error.to_string().contains("[LS3002]"),
             "3 binder mixed property の cases 3 は LS3002 を返すべき: {error}"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_run_metadata_tests_executes_four_mixed_int_bool_property_binders() {
+        let dir = unique_temp_dir("deterministic_property_four_mixed_binders");
+        let file = dir.join("Main.ls");
+        fs::write(
+            &file,
+            "(defn choose [left enabled right ready] :property [(for-all [first Int flag Bool second Int again Bool] :cases 2 :postcondition (= result (if (and flag again) (+ first second) first)))] (if (and enabled ready) (+ left right) left))\n",
+        )
+        .unwrap();
+
+        let run = run_metadata_tests(&file)
+            .expect("4 binder mixed property は source-order typed prefix として実行できるべき");
+        assert_eq!(run.total(), 1);
+        assert_eq!(run.passed(), 1);
+        assert_eq!(run.failed(), 0);
+        assert_eq!(run.results[0].name, "choose_property_0");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_run_metadata_tests_rejects_four_mixed_int_bool_property_above_two_cases() {
+        let dir = unique_temp_dir("unsupported_property_four_mixed_cases");
+        let file = dir.join("Main.ls");
+        fs::write(
+            &file,
+            "(defn choose [left enabled right ready] :property [(for-all [first Int flag Bool second Int again Bool] :cases 3 :postcondition (= result (if (and flag again) (+ first second) first)))] (if (and enabled ready) (+ left right) left))\n",
+        )
+        .unwrap();
+
+        let error = run_metadata_tests(&file)
+            .expect_err("4 binder mixed property の cases 3 は narrow profile 外であるべき");
+        assert!(
+            error.to_string().contains("[LS3002]"),
+            "4 binder mixed property の cases 3 は LS3002 を返すべき: {error}"
         );
 
         let _ = fs::remove_dir_all(&dir);

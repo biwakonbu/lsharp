@@ -571,14 +571,14 @@
     (vector-new 0)))
 
 ;; canonical contract を移行期 evaluator の test-case shape へ変換する。
-;; 実行可能なのは 1..2 個の Int binder、cases 1 の 3 個の Int binder、または
-;; 1..3 個の Bool binder / Int-Bool mixed binder の deterministic cases profile に限定する。
+;; 実行可能なのは 1..2 個の Int binder の legacy prefix、または 3..8 個の
+;; Int/Bool binder を cases 1..2 で評価する deterministic typed prefix に限定する。
 (defn property-runner-execution-profile-code [contract]
   (let [profile-code (vector-get contract 5)
     binders (vector-get contract 1)]
     (if (> profile-code 0)
       profile-code
-      (if (or (< (vector-length binders) 1) (> (vector-length binders) 3))
+      (if (or (< (vector-length binders) 1) (> (vector-length binders) 8))
         3002
         (if (= (property-runner-binder-name-collision? binders) 1)
           3002
@@ -668,15 +668,7 @@
 (defn property-runner-bool-profile-supported? [binders cases]
   (if (> cases 2)
     0
-    (if (= (vector-length binders) 1)
-      1
-      (if (= (property-runner-mixed-int-bool? binders) 1)
-        1
-        (if (= (property-runner-three-mixed-int-bool? binders) 1)
-          1
-          (if (= (property-runner-two-bool? binders) 1)
-            1
-            (property-runner-three-bool? binders)))))))
+    (if (and (> (vector-length binders) 0) (<= (vector-length binders) 8)) 1 0)))
 
 (defn property-runner-binder-type-profile-code [contract]
   (let [binders (vector-get contract 1)
@@ -688,7 +680,7 @@
       (if (= bool-count 0)
         (if (or (= (vector-length binders) 1) (= (vector-length binders) 2))
           0
-          (if (and (= (vector-length binders) 3) (= cases 1)) 0 3002))
+          (if (and (>= (vector-length binders) 3) (<= cases 2)) 0 3002))
         (if (= (property-runner-bool-profile-supported? binders cases) 1)
           0
           3002)))))

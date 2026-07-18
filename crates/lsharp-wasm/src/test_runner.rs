@@ -205,19 +205,12 @@ fn property_sample_values(spec: &PropertySmokeTestSpec) -> Vec<Vec<String>> {
     if spec.binder_types == [PropertyBinderType::Bool] {
         samples.push(vec!["false".to_string()]);
         samples.push(vec!["true".to_string()]);
-    } else if spec.binder_types
-        == [
-            PropertyBinderType::Int,
-            PropertyBinderType::Int,
-            PropertyBinderType::Int,
-        ]
-    {
-        samples.push(vec!["0".to_string(), "0".to_string(), "0".to_string()]);
-    } else if spec.binder_types.len() > 1
-        && spec
-            .binder_types
-            .iter()
-            .any(|binder_type| matches!(binder_type, PropertyBinderType::Bool))
+    } else if spec.binder_types.len() >= 3
+        || (spec.binder_types.len() > 1
+            && spec
+                .binder_types
+                .iter()
+                .any(|binder_type| matches!(binder_type, PropertyBinderType::Bool)))
     {
         for sample_idx in 0..spec.cases {
             let args = spec
