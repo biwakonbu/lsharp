@@ -6780,7 +6780,21 @@ fn test_e2e_selfhost_migration_rows_preserve_legacy_owner_and_directive_spans() 
         row2 (vector-get rows 2)
         raw (extract-contract-forms src)
         raw0 (vector-get raw 0)
-        raw1 (vector-get raw 1)]
+        raw1 (vector-get raw 1)
+        detail0 (legacy-migration-row-detail-text row0)
+        expected-detail0 (string-concat
+          "LS2001|owner="
+          (string-concat
+            (int-to-string (vector-get raw0 1))
+            (string-concat
+              "|selected=legacy-example-truthiness|disposition=docs-only-example|span="
+              (string-concat
+                (int-to-string (vector-get raw0 3))
+                (string-concat
+                  "-"
+                  (string-concat
+                    (int-to-string (vector-get raw0 4))
+                    (string-concat "|message=" (vector-get row0 5))))))))]
     (do
       (print (vector-length rows))
       (print (vector-length row0))
@@ -6807,6 +6821,7 @@ fn test_e2e_selfhost_migration_rows_preserve_legacy_owner_and_directive_spans() 
       (print (= (vector-get row0 6) 1))
       (print (= (vector-get row1 6) 1))
       (print (= (vector-get row2 6) 2))
+      (print (string-eq detail0 expected-detail0))
       0)))
 "#;
 
@@ -6819,7 +6834,7 @@ fn test_e2e_selfhost_migration_rows_preserve_legacy_owner_and_directive_spans() 
     assert_eq!(
         lines,
         vec![
-            "3", "7", "7", "7", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1",
+            "3", "7", "7", "7", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1",
         ],
         "selfhost migration row は raw inventory の owner と directive span を共有するべき"
     );

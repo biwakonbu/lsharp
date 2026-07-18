@@ -250,6 +250,38 @@
         "property-postcondition"
         "manual-review"))))
 
+(defn legacy-selected-semantics-text [code]
+  (if (= code 2)
+    "legacy-invariant-deterministic-smoke"
+    "legacy-example-truthiness"))
+
+(defn legacy-migration-row-detail-text [row]
+  (string-concat
+    (legacy-code-text (vector-get row 0))
+    (string-concat
+      "|owner="
+      (string-concat
+        (int-to-string (vector-get row 4))
+        (string-concat
+          "|selected="
+          (string-concat
+            (legacy-selected-semantics-text (vector-get row 6))
+            (string-concat
+              "|disposition="
+              (string-concat
+                (legacy-disposition-text (vector-get row 1))
+                (string-concat
+                  "|span="
+                  (string-concat
+                    (int-to-string (vector-get row 2))
+                    (string-concat
+                      "-"
+                      (string-concat
+                        (int-to-string (vector-get row 3))
+                        (string-concat
+                          "|message="
+                          (vector-get row 5))))))))))))))
+
 (defn legacy-migration-row-text [row]
   (string-concat
     (legacy-code-text (vector-get row 0))
