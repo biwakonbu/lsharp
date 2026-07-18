@@ -462,6 +462,24 @@ fn test_e2e_alloc_memory_grow() {
 }
 
 #[test]
+fn test_e2e_alloc_memory_grow_failure_does_not_return_out_of_bounds_address() {
+    let result = try_compile_and_run_with_memory_limit(
+        r#"
+        (defn main []
+          (let [addr (__alloc 1000000)]
+            (print addr)))
+        "#,
+        1024 * 1024,
+    );
+
+    let error = result.expect_err("memory.grow 失敗時に out-of-bounds address を返してはならない");
+    assert!(
+        error.contains("unreachable") || error.contains("memory") || error.contains("trap"),
+        "allocation failure は明示的な runtime failure になるべき: {error}"
+    );
+}
+
+#[test]
 fn test_e2e_runtime_object_table_grows_past_initial_capacity() {
     let (_stdout, telemetry) = compile_and_capture_runtime_telemetry(
         r#"

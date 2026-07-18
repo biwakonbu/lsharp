@@ -264,6 +264,12 @@ WASI / HTTP codegen の root stack base / capacity を mutable runtime globals �
 
 Evidence: RED の `test_e2e_runtime_root_stack_grows_past_initial_capacity`（32769 番目の push で旧 `unreachable`）、GREEN の同 test（`root_stack_top=32769`）、`test_e2e_runtime_root_stack_growth_preserves_root_api`（移動後の `root_set` / `root_pop` が `42` を返す）、4097 rooted object table growth test、root/free-list/collector/allocator focused tests、`cargo check -p lsharp-wasm`。これは WASI actual runtime の root stack growth verified slice であり、HTTP/component actual runtime parity、allocation failure diagnostic、size class、precise sentinel、current-source stage0 gate は残件である。
 
+### LEGACY-RUNTIME-01 bump allocation failure boundary (2026-07-18)
+
+通常の bump allocation が必要ページ数を `memory.grow` で追加できない場合、戻り値を捨てず `-1` を検査して Wasm `unreachable` へ遷移するようにした。これにより、上限超過後に heap pointer を更新して payload 範囲外の allocation address を成功値として返す経路を閉じた。WASI と HTTP は共有 `emit_alloc_func` を使うため、同じ codegen boundary が適用される。
+
+Evidence: RED の `test_e2e_alloc_memory_grow_failure_does_not_return_out_of_bounds_address`（1 MiB `StoreLimits` 下で旧実装が `360960` を返す）、GREEN の同 test（同条件で明示 runtime trap）、通常の `test_e2e_alloc_memory_grow`、object/free-list/root growth と collector focused 22 tests。これは allocation failure の fail-closed trap slice であり、ユーザー向け `LS4002` 診断、free-list size class、sentinel precise discrimination、HTTP/component actual runtime parity、current-source stage0 gate は残件である。
+
 ### EC-M1-02 legacy metadata invariant slice (2026-07-17)
 
 Selfhost `Syntax.Parser` は legacy `:invariant` predicate を既存 metadata vector の slot 4 に AST として保持し、`Tools.Text.FormatterDecl` の source-aware 経路は `:doc` と invariant を canonical 順で出力する。既存の `:doc` / `:example` / `:params` / `:returns` の slot と、`DocTools` の docs payload 抽出は維持した。RED で invariant と後続 body が skip payload に吸収される failure を固定し、GREEN で parser AST shape、既存 metadata regression、source-aware formatter の string / float / metadata / invariant 4ケースを pass した。

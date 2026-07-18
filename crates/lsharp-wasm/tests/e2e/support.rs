@@ -243,6 +243,61 @@ pub(crate) fn run_wasi(wasm_bytes: &[u8]) -> String {
     lsharp_wasm::wasi_runner::run_wasm_wasi(wasm_bytes).unwrap()
 }
 
+/// Wasmtime の resource limiter で memory.grow 失敗を再現するテスト用実行器。
+pub(crate) fn try_compile_and_run_with_memory_limit(
+    source: &str,
+    memory_limit_bytes: usize,
+) -> Result<String, String> {
+    let program = parse_for_pipeline(source);
+    let mut infer = Infer::new();
+    let type_results = infer
+        .infer_program(&program)
+        .map_err(|e| format!("型推論エラー: {e:?}"))?;
+    let mut lower = Lower::new();
+    let module = lower
+        .lower_program(&program, &type_results)
+        .map_err(|e| format!("IR変換エラー: {e:?}"))?;
+    let wasm_bytes = lsharp_wasm::wasi::emit_wasm_wasi(&module)
+        .map_err(|e| format!("Wasm生成エラー: {e:?}"))?;
+
+    use wasmtime::{Linker, Module, Store, StoreLimitsBuilder};
+    use wasmtime_wasi::{WasiCtxBuilder, preview1::WasiP1Ctx};
+
+    let engine = wasmtime::Engine::default();
+    let mut linker = Linker::<(WasiP1Ctx, wasmtime::StoreLimits)>::new(&engine);
+    wasmtime_wasi::preview1::add_to_linker_sync(&mut linker, |state| &mut state.0)
+        .map_err(|e| format!("WASI linker 構築に失敗: {e}"))?;
+
+    let stdout = wasmtime_wasi::pipe::MemoryOutputPipe::new(WASI_STDOUT_CAPTURE_BYTES);
+    let mut builder = WasiCtxBuilder::new();
+    builder.stdout(stdout.clone());
+    builder.args(&["memory-limit"]);
+    let wasi = builder.build_p1();
+    let limits = StoreLimitsBuilder::new()
+        .memory_size(memory_limit_bytes)
+        .build();
+    let mut store = Store::new(&engine, (wasi, limits));
+    store.limiter(|state| &mut state.1);
+
+    let module = Module::new(&engine, wasm_bytes)
+        .map_err(|e| format!("Wasm module 構築失敗: {e}"))?;
+    let instance = linker
+        .instantiate(&mut store, &module)
+        .map_err(|e| format!("WASI instance 化失敗: {e}"))?;
+    let start = instance
+        .get_typed_func::<(), ()>(&mut store, "_start")
+        .map_err(|e| format!("_start export 取得失敗: {e}"))?;
+    start
+        .call(&mut store, ())
+        .map_err(|e| format!("runtime trap: {e:#}"))?;
+
+    drop(store);
+    let bytes = stdout
+        .try_into_inner()
+        .ok_or_else(|| "stdout 取得失敗: pipe が解放されていない".to_string())?;
+    String::from_utf8(bytes.to_vec()).map_err(|e| format!("stdout UTF-8 変換失敗: {e}"))
+}
+
 pub(crate) fn compile_and_capture_runtime_telemetry(source: &str) -> (String, RuntimeTelemetry) {
     let program = parse_for_pipeline(source);
     let mut infer = Infer::new();

@@ -1705,7 +1705,13 @@ fn emit_alloc_func(codes: &mut CodeSection, globals: AllocatorGlobals) {
     f.instruction(&W::I32Const(65536));
     f.instruction(&W::I32DivU);
     f.instruction(&W::MemoryGrow(0));
-    f.instruction(&W::Drop);
+    f.instruction(&W::LocalSet(20));
+    f.instruction(&W::LocalGet(20));
+    f.instruction(&W::I32Const(-1));
+    f.instruction(&W::I32Eq);
+    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::Unreachable);
+    f.instruction(&W::End);
     f.instruction(&W::End);
     f.instruction(&W::LocalGet(3));
     f.instruction(&W::GlobalSet(heap_ptr_global_idx));
