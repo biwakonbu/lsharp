@@ -316,6 +316,57 @@
                           "|message="
                           (vector-get row 5))))))))))))))
 
+(defn legacy-json-quote [text]
+  (string-concat "\"" (string-concat text "\"")))
+
+(defn legacy-json-field [name value]
+  (string-concat
+    (legacy-json-quote name)
+    (string-concat ":" (legacy-json-quote value))))
+
+(defn legacy-json-int-field [name value]
+  (string-concat
+    (legacy-json-quote name)
+    (string-concat ":" (int-to-string value))))
+
+(defn legacy-json-append-field [body field]
+  (if (= (string-length body) 0)
+    field
+    (string-concat body (string-concat "," field))))
+
+(defn legacy-json-span-field [start end]
+  (string-concat
+    "\"span\":{\"start\":"
+    (string-concat
+      (int-to-string start)
+      (string-concat ",\"end\":" (string-concat (int-to-string end) "}")))))
+
+(defn legacy-migration-row-detail-json [row]
+  (let [fields0 ""
+    fields1 (legacy-json-append-field
+      fields0
+      (legacy-json-field "code" (legacy-code-text (vector-get row 0))))
+    fields2 (legacy-json-append-field
+      fields1
+      (legacy-json-int-field "ownerHash" (vector-get row 4)))
+    fields3 (legacy-json-append-field
+      fields2
+      (legacy-json-field
+        "selectedSemantics"
+        (legacy-selected-semantics-text (vector-get row 6))))
+    fields4 (legacy-json-append-field
+      fields3
+      (legacy-json-field
+        "disposition"
+        (legacy-disposition-text (vector-get row 1))))
+    fields5 (legacy-json-append-field
+      fields4
+      (legacy-json-span-field (vector-get row 2) (vector-get row 3)))
+    fields6 (legacy-json-append-field
+      fields5
+      (legacy-json-field "message" (vector-get row 5)))]
+    (string-concat "{" (string-concat fields6 "}"))))
+
 (defn legacy-migration-detail-summary-loop [rows idx count]
   (if (>= idx count)
     ""
