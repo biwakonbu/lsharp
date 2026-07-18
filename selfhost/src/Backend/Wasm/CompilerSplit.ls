@@ -196,7 +196,30 @@
           (bind-match-pattern-children pat 0 (vector-get pat 2) env next-local)
           (make-match-bind-state env next-local))))))
 
-(defn compile-match-literal-check [lit value-local instrs]
+(defn compile-match-string-char-checks [text value-local temp-local idx len instrs]
+  (if (>= idx len)
+    instrs
+    (let [i1 (emit-to instrs (op-local-get) value-local)
+      i2 (emit-to i1 (op-i64-const) idx)
+      i3 (emit-to i2 (op-string-char-at) temp-local)
+      i4 (emit-to i3 (op-i64-const) (string-char-at text idx))
+      i5 (emit-to i4 (op-i64-eq) 0)
+      combined (emit-to i5 (op-i64-and) 0)]
+      (compile-match-string-char-checks text value-local temp-local (+ idx 1) len combined))))
+
+(defn compile-match-string-literal-check [lit value-local temp-local instrs]
+  ;; decoded value を持たない legacy node は hash 比較へ戻さず fail closed にする。
+  (if (> (vector-length lit) 4)
+    (let [text (vector-get lit 4)
+      len (string-length text)
+      i1 (emit-to instrs (op-local-get) value-local)
+      i2 (emit-to i1 (op-string-length) 0)
+      i3 (emit-to i2 (op-i64-const) len)
+      length-checked (emit-to i3 (op-i64-eq) 0)]
+      (compile-match-string-char-checks text value-local temp-local 0 len length-checked))
+    (emit-to instrs (op-i64-const) 0)))
+
+(defn compile-match-literal-check [lit value-local temp-local instrs]
   (let [lit-tag (vector-get lit 0)]
     (if (= lit-tag (ast-lit-int))
       (let [i1 (emit-to instrs (op-local-get) value-local)
@@ -210,7 +233,9 @@
           (let [i1 (emit-to instrs (op-local-get) value-local)
             i2 (emit-to i1 (op-i64-const) 0)]
             (emit-to i2 (op-i64-eq) 0))
-          (emit-to instrs (op-i64-const) 0))))))
+          (if (= lit-tag (ast-lit-string))
+            (compile-match-string-literal-check lit value-local temp-local instrs)
+            (emit-to instrs (op-i64-const) 0)))))))
 
 (defn compile-record-pattern-field-contains-with-fallback [ftable value-local field-hash temp-base instrs]
   ;; record update の patch map / base chain lookup を static helper に委譲する。
@@ -374,7 +399,7 @@
 (defn compile-match-pattern-check-with-scratch [pat value-local scratch-base pattern-temp-base ftable instrs]
   (let [pat-tag (vector-get pat 0)]
     (if (= pat-tag (ast-pat-lit))
-      (compile-match-literal-check (vector-get pat 1) value-local instrs)
+      (compile-match-literal-check (vector-get pat 1) value-local scratch-base instrs)
       (if (or (= pat-tag (ast-pat-wildcard)) (= pat-tag (ast-pat-var)))
         (emit-to instrs (op-i64-const) 1)
         (if (or (= pat-tag 11) (= pat-tag (ast-pat-constructor)))
