@@ -2601,7 +2601,7 @@ fn test_native_linux_x86_hostgen_vm_script_can_skip_unrelated_host_probes() {
         script.contains(
             "if [[ \"${SKIP_HOST_PROBES}\" != \"1\" ]]; then\n"
         ) && script.contains(
-            "if [[ -z \"${REUSE_ACTUAL_STAGE1}\" || \"${REUSE_ACTUAL_STAGE1}\" = \"0\" ]] && [[ \"${SKIP_HOST_PROBES}\" != \"1\" ]]; then"
+            "if [[ -z \"${REUSE_ACTUAL_STAGE1}\" || \"${REUSE_ACTUAL_STAGE1}\" = \"0\" ]]; then\nif [[ \"${SKIP_HOST_PROBES}\" != \"1\" ]]; then"
         ),
         "skip flag は host-side probe と VM-side probe の両方を止め、actual stage replay は残すべき"
     );
@@ -2648,7 +2648,7 @@ fn test_native_linux_x86_lima_config_bounds_disk_and_avoids_mount_growth() {
         "vmType: qemu",
         "arch: x86_64",
         "cpus: 4",
-        "memory: 20GiB",
+        "memory: 16GiB",
         "disk: 12GiB",
         "mounts: []",
         "provision_stamp=/var/lib/lsharp-linux-x86-provisioned",
@@ -61372,7 +61372,9 @@ fn test_native_linux_x86_hostgen_vm_script_bounds_local_build_outputs() {
             && script.contains(r#"rm -rf "${HOSTGEN_CARGO_TARGET_DIR}""#)
             && script.contains("require_safe_host_cleanup_path")
             && script.contains("refusing unsafe hostgen cleanup path")
-            && script.contains(r#"trap cleanup_hostgen_cargo_target EXIT"#)
+            && script.contains(r#"trap cleanup_hostgen_before_vm_work_dir EXIT"#)
+            && shell_function_body(&script, "cleanup_hostgen_before_vm_work_dir")
+                .contains("cleanup_hostgen_cargo_target")
             && script.contains(r#"CARGO_TARGET_DIR="${HOSTGEN_CARGO_TARGET_DIR}" cargo test"#),
         "hostgen VM script は repo 直下 target を肥大化させないよう、一時 CARGO_TARGET_DIR を使いデフォルトで掃除するべき"
     );

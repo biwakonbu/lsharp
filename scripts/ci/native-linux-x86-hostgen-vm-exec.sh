@@ -154,9 +154,13 @@ cleanup_vm_work_dir_on_host_exit() {
   local cleanup_exit_code=0
   trap - EXIT
   cleanup_hostgen_cargo_target
-  if [[ "${HOST_VM_WORK_DIR_CREATED}" -eq 1 && "${KEEP_VM_WORK_DIR}" = "1" ]]; then
+  if [[ "${HOST_VM_WORK_DIR_CREATED}" -ne 1 ]]; then
+    release_hostgen_lock
+    exit "${exit_code}"
+  fi
+  if [[ "${KEEP_VM_WORK_DIR}" = "1" ]]; then
     echo "VM workdir kept by LSHARP_NATIVE_LINUX_X86_KEEP_VM_WORK_DIR=1 after host exit: ${VM_WORK_DIR}" >&2
-  elif [[ "${HOST_VM_WORK_DIR_CREATED}" -eq 1 ]]; then
+  else
     set +e
     limactl shell "${VM_NAME}" -- rm -rf "${VM_WORK_DIR}"
     cleanup_exit_code=$?
@@ -804,7 +808,8 @@ if [[ "${HOST_OS}" != "Linux" || "${HOST_ARCH}" != "x86_64" ]]; then
   exit 1
 fi
 
-if [[ -z "${REUSE_ACTUAL_STAGE1}" || "${REUSE_ACTUAL_STAGE1}" = "0" ]] && [[ "${SKIP_HOST_PROBES}" != "1" ]]; then
+if [[ -z "${REUSE_ACTUAL_STAGE1}" || "${REUSE_ACTUAL_STAGE1}" = "0" ]]; then
+if [[ "${SKIP_HOST_PROBES}" != "1" ]]; then
 if [[ -z "${REUSE_ACTUAL_STAGE2}" || "${REUSE_ACTUAL_STAGE2}" = "0" ]]; then
 bytes="$(od -An -tx1 -v code.bin | tr -s '[:space:]' ' ' | sed 's/^ //; s/ $//; s/ /, 0x/g; s/^/0x/')"
 if [[ -z "${bytes}" ]]; then
@@ -1419,6 +1424,7 @@ cat >file-exists-object-summary.json <<JSON
   ]
 }
 JSON
+fi
 fi
 fi
 
