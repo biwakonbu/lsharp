@@ -50,7 +50,23 @@
 
 ;; 関数型: param -> return
 (defn make-type-fun [param-ty ret-ty]
-  (vector-push (vector-push (vector-push (vector-new 3) 3) param-ty) ret-ty))
+  (do
+    (root_push param-ty)
+    (root_push ret-ty)
+    (let [base (vector-new 3)
+      base-slot (root_push base)
+      with-tag (vector-push base 3)]
+      (do
+        (root_set base-slot with-tag)
+        (let [with-param (vector-push with-tag param-ty)]
+          (do
+            (root_set base-slot with-param)
+            (let [result (vector-push with-param ret-ty)]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result))))))))
 
 ;; レコード型
 (defn make-type-record [name-hash]

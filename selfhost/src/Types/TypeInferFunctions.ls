@@ -13,7 +13,7 @@
       count
       counter
       (+ idx 1)
-      (vector-push acc (fresh-type-var counter)))))
+      (vector-push-single-rooted acc (fresh-type-var counter)))))
 
 (defn typeinfer-fresh-param-types [count counter]
   (typeinfer-fresh-param-types-loop count counter 0 (vector-new count)))
@@ -193,15 +193,50 @@
               type-param-env)
             subst))))))
 
+(defn typeinfer-make-fun-rooted [param-ty ret-ty]
+  (do
+    (root_push param-ty)
+    (root_push ret-ty)
+    (let [base (vector-new 3)
+      result (vector-push-triple-rooted base (ty-fun) param-ty ret-ty)]
+      (do
+        (root_pop)
+        (root_pop)
+        result))))
+
 (defn typeinfer-build-curried-fun-loop [param-types subst idx count body-ty]
   (if (>= idx count)
     body-ty
-    (let [rest-fun (typeinfer-build-curried-fun-loop param-types subst (+ idx 1) count body-ty)
-      param-ty (vector-get param-types idx)]
-      (mk-fun (apply-subst subst param-ty) rest-fun))))
+    (let [rest-fun (typeinfer-build-curried-fun-loop param-types subst (+ idx 1) count body-ty)]
+      (do
+        (root_push rest-fun)
+        (let [param-ty (vector-get param-types idx)
+          applied-param-ty (apply-subst subst param-ty)]
+          (do
+            (root_push applied-param-ty)
+            (let [result (typeinfer-make-fun-rooted applied-param-ty rest-fun)]
+              (do
+                (root_pop)
+                (root_pop)
+                result))))))))
 
 (defn typeinfer-build-curried-fun [param-types subst body-ty]
-  (typeinfer-build-curried-fun-loop param-types subst 0 (vector-length param-types) body-ty))
+  (do
+    (root_push param-types)
+    (root_push subst)
+    (root_push body-ty)
+    (let [result
+            (typeinfer-build-curried-fun-loop
+              param-types
+              subst
+              0
+              (vector-length param-types)
+              body-ty)]
+      (do
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        result))))
 
 (defn typeinfer-finalize-defn-result-with-env-vars [env name-hash subst value-ty env-vars]
   (do

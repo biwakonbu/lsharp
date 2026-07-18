@@ -264,7 +264,9 @@ fn test_e2e_selfhost_parser_typed_defn_signature_rejects_mismatch() {
         selfhost_parser_typeinfer_runtime_bundle(),
         harness
     );
-    let output = compile_and_run(&combined);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert_eq!(
@@ -292,7 +294,9 @@ fn test_e2e_selfhost_parser_typed_defn_signature_unifies_type_app_and_fun() {
         selfhost_parser_typeinfer_runtime_bundle(),
         harness
     );
-    let output = compile_and_run(&combined);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert_eq!(
@@ -302,7 +306,7 @@ fn test_e2e_selfhost_parser_typed_defn_signature_unifies_type_app_and_fun() {
     );
 }
 
-/// parser-to-inference bundle: TypeVar signature は同名を維持し異名を拒否する
+/// parser-to-inference bundle: TypeVar signature は同名を共有し異名を別変数として束縛する
 #[test]
 fn test_e2e_selfhost_parser_typed_defn_signature_unifies_type_var() {
     let harness = r#"
@@ -322,13 +326,15 @@ fn test_e2e_selfhost_parser_typed_defn_signature_unifies_type_var() {
         selfhost_parser_typeinfer_runtime_bundle(),
         harness
     );
-    let output = compile_and_run(&combined);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert_eq!(
         lines,
-        ["0", "0", "1", "6"],
-        "parser 経由の TypeVar signature は同名だけを一致させるべき"
+        ["0", "0", "0", "0"],
+        "parser 経由の TypeVar signature は signature scope 内の型変数を Rust と同じく解決するべき"
     );
 }
 
@@ -351,7 +357,9 @@ fn test_e2e_selfhost_scoped_type_var_defn_signature_is_polymorphic() {
         selfhost_parser_typeinfer_runtime_bundle(),
         harness
     );
-    let output = compile_and_run(&combined);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert_eq!(
@@ -380,7 +388,9 @@ fn test_e2e_selfhost_scoped_multiple_type_vars_defn_signature_is_polymorphic() {
         selfhost_parser_typeinfer_runtime_bundle(),
         harness
     );
-    let output = compile_and_run(&combined);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert_eq!(
@@ -409,7 +419,9 @@ fn test_e2e_selfhost_program_analysis_preserves_first_defn_type() {
         selfhost_parser_typeinfer_runtime_bundle(),
         harness
     );
-    let output = compile_and_run(&combined);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert_eq!(
@@ -492,7 +504,9 @@ fn test_e2e_selfhost_parser_closed_type_alias_unifies_defn_signature() {
         selfhost_parser_typeinfer_runtime_bundle(),
         harness
     );
-    let output = compile_and_run(&combined);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert_eq!(
@@ -526,7 +540,9 @@ fn test_e2e_selfhost_parser_forward_type_alias_unifies_signature() {
         selfhost_parser_typeinfer_runtime_bundle(),
         harness
     );
-    let output = compile_and_run(&combined);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert_eq!(
@@ -555,7 +571,9 @@ fn test_e2e_selfhost_parser_recursive_type_alias_is_rejected() {
         selfhost_parser_typeinfer_runtime_bundle(),
         harness
     );
-    let output = compile_and_run(&combined);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert_eq!(
@@ -589,7 +607,9 @@ fn test_e2e_selfhost_parser_closed_type_alias_unifies_annotation_expr() {
         selfhost_parser_typeinfer_runtime_bundle(),
         harness
     );
-    let output = compile_and_run(&combined);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert_eq!(
@@ -628,7 +648,9 @@ fn test_e2e_selfhost_parser_parametric_type_alias_unifies_signature() {
         selfhost_parser_typeinfer_runtime_bundle(),
         harness
     );
-    let output = compile_and_run(&combined);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert_eq!(
@@ -662,7 +684,9 @@ fn test_e2e_selfhost_record_decl_registers_constructor_and_literal_fields() {
         selfhost_parser_typeinfer_runtime_bundle(),
         harness
     );
-    let output = compile_and_run(&combined);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert_eq!(
@@ -696,7 +720,9 @@ fn test_e2e_selfhost_parametric_record_registers_fresh_constructor_and_literal_s
         selfhost_parser_typeinfer_runtime_bundle(),
         harness
     );
-    let output = compile_and_run(&combined);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert_eq!(
@@ -735,7 +761,9 @@ fn test_e2e_selfhost_parametric_record_field_access_uses_instantiated_schema() {
         selfhost_parser_typeinfer_runtime_bundle(),
         harness
     );
-    let output = compile_and_run(&combined);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert_eq!(
@@ -774,7 +802,9 @@ fn test_e2e_selfhost_parametric_record_update_uses_instantiated_schema() {
         selfhost_parser_typeinfer_runtime_bundle(),
         harness
     );
-    let output = compile_and_run(&combined);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert_eq!(
@@ -808,7 +838,9 @@ fn test_e2e_selfhost_parametric_record_static_accessor_uses_instantiated_schema(
         selfhost_parser_typeinfer_runtime_bundle(),
         harness
     );
-    let output = compile_and_run(&combined);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert_eq!(
@@ -837,7 +869,9 @@ fn test_e2e_selfhost_parametric_adt_registers_constructors_and_match() {
         selfhost_parser_typeinfer_runtime_bundle(),
         harness
     );
-    let output = compile_and_run(&combined);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert_eq!(
@@ -866,7 +900,9 @@ fn test_e2e_selfhost_parametric_adt_constructors_instantiate_per_use() {
         selfhost_parser_typeinfer_runtime_bundle(),
         harness
     );
-    let output = compile_and_run(&combined);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert_eq!(
@@ -902,7 +938,9 @@ fn test_e2e_selfhost_gadt_constructor_registers_refined_return_type() {
         selfhost_parser_typeinfer_runtime_bundle(),
         harness
     );
-    let output = compile_and_run(&combined);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert_eq!(
@@ -931,7 +969,9 @@ fn test_e2e_selfhost_gadt_match_refines_each_constructor_arm() {
         selfhost_parser_typeinfer_runtime_bundle(),
         harness
     );
-    let output = compile_and_run(&combined);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert_eq!(

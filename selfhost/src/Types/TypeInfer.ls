@@ -263,65 +263,169 @@
 ;; signature は [65, param-count, param-type-expr..., return-type-expr]。
 ;; compile-safe な covered slice として 0/1/2/3/4 引数を扱う
 
+(defn infer-defn-parameterized-predeclared
+  [node body-env final-env counter subst placeholder env-vars alias-env type-param-env]
+  (do
+    ;; parameterized defn の各中間値を、後続 allocation の前に root へ積む。
+    (root_push node)
+    (root_push body-env)
+    (root_push final-env)
+    (root_push counter)
+    (root_push subst)
+    (root_push placeholder)
+    (root_push env-vars)
+    (root_push alias-env)
+    (root_push type-param-env)
+    (let [name-hash (vector-get node 1)
+      param-count (vector-get node 2)
+      param-types (typeinfer-fresh-param-types param-count counter)]
+      (do
+        (root_push param-types)
+        (let [body-node (vector-get node (+ param-count 3))]
+          (do
+            (root_push body-node)
+            (let [next-env
+                    (typeinfer-extend-env-with-node-params
+                      body-env
+                      node
+                      param-count
+                      3
+                      param-types)]
+              (do
+                (root_push next-env)
+                (let [annotated-param-subst
+                        (typeinfer-defn-param-annotation-subst
+                          node
+                          param-count
+                          param-types
+                          subst
+                          alias-env
+                          type-param-env)]
+                  (do
+                    (root_push annotated-param-subst)
+                    (let [result
+                            (if (= (unify-failed annotated-param-subst) 1)
+                              (make-error-result-code (error-code-general))
+                              (let [body-result
+                                      (infer-expr
+                                        body-node
+                                        next-env
+                                        annotated-param-subst
+                                        counter)]
+                                (if (= (result-failed body-result) 1)
+                                  (propagate-error-result body-result)
+                                  (let [s (result-subst body-result)
+                                    body-ty (result-type body-result)
+                                    annotated-subst
+                                      (typeinfer-defn-return-annotation-subst
+                                        node
+                                        param-count
+                                        body-ty
+                                        s
+                                        alias-env
+                                        type-param-env)]
+                                    (if (= (unify-failed annotated-subst) 1)
+                                      (make-error-result-code (error-code-general))
+                                      (let [fun-ty
+                                              (typeinfer-build-curried-fun
+                                                param-types
+                                                annotated-subst
+                                                body-ty)]
+                                        (do
+                                          (root_push fun-ty)
+                                          (let [next-subst
+                                                  (unify
+                                                    placeholder
+                                                    fun-ty
+                                                    annotated-subst)]
+                                            (do
+                                              (root_push next-subst)
+                                              (let [final-result
+                                                      (if (= (unify-failed next-subst) 1)
+                                                        (make-error-result-code (error-code-general))
+                                                        (typeinfer-finalize-defn-result-with-env-vars
+                                                          final-env
+                                                          name-hash
+                                                          next-subst
+                                                          fun-ty
+                                                          env-vars))]
+                                                (do
+                                                  (root_pop)
+                                                  (root_pop)
+                                                  final-result)))))))))))]
+                      (do
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        result))))))))))))
+
 (defn infer-defn-predeclared [node body-env final-env counter subst placeholder env-vars alias-env]
-  (let [name-hash (vector-get node 1)
-    param-count (vector-get node 2)
-    type-param-env (typeinfer-defn-type-param-env node param-count counter)]
-    ;; signature 内の各 scoped variable は独立した型変数として扱う。
-    (if (= param-count 0)
-      (let [body-node (vector-get node 3)
-        result (infer-expr body-node body-env subst counter)]
-        (if (= (result-failed result) 1)
-          (propagate-error-result result)
-          (let [s (result-subst result)
-            body-ty (result-type result)
-            annotated-subst
-              (typeinfer-defn-return-annotation-subst
-                node
-                param-count
-                body-ty
-                s
-                alias-env
-                type-param-env)]
-            (if (= (unify-failed annotated-subst) 1)
-              (make-error-result-code (error-code-general))
-              (let [next-subst (unify placeholder body-ty annotated-subst)]
-                (if (= (unify-failed next-subst) 1)
-                  (make-error-result-code (error-code-general))
-                  (typeinfer-finalize-defn-result-with-env-vars final-env name-hash next-subst body-ty env-vars)))))))
-      (let [param-types (typeinfer-fresh-param-types param-count counter)
-        body-node (vector-get node (+ param-count 3))
-        next-env (typeinfer-extend-env-with-node-params body-env node param-count 3 param-types)
-        annotated-param-subst
-          (typeinfer-defn-param-annotation-subst
-            node
-            param-count
-            param-types
-            subst
-            alias-env
-            type-param-env)]
-        (if (= (unify-failed annotated-param-subst) 1)
-          (make-error-result-code (error-code-general))
-          (let [result (infer-expr body-node next-env annotated-param-subst counter)]
-            (if (= (result-failed result) 1)
-              (propagate-error-result result)
-              (let [s (result-subst result)
-                body-ty (result-type result)
-                annotated-subst
-                  (typeinfer-defn-return-annotation-subst
-                    node
-                    param-count
-                    body-ty
-                    s
-                    alias-env
-                    type-param-env)]
-                (if (= (unify-failed annotated-subst) 1)
-                  (make-error-result-code (error-code-general))
-                  (let [fun-ty (typeinfer-build-curried-fun param-types annotated-subst body-ty)
-                    next-subst (unify placeholder fun-ty annotated-subst)]
-                    (if (= (unify-failed next-subst) 1)
-                      (make-error-result-code (error-code-general))
-                      (typeinfer-finalize-defn-result-with-env-vars final-env name-hash next-subst fun-ty env-vars))))))))))))
+  (do
+    ;; parameterized defn の推論中も、AST と共有環境を native GC から保持する。
+    (root_push node)
+    (root_push body-env)
+    (root_push final-env)
+    (root_push counter)
+    (root_push subst)
+    (root_push placeholder)
+    (root_push env-vars)
+    (root_push alias-env)
+    (let [result
+            (let [name-hash (vector-get node 1)
+              param-count (vector-get node 2)
+              type-param-env (typeinfer-defn-type-param-env node param-count counter)]
+              ;; signature 内の各 scoped variable は独立した型変数として扱う。
+              (if (= param-count 0)
+                (let [body-node (vector-get node 3)
+                  result (infer-expr body-node body-env subst counter)]
+                  (if (= (result-failed result) 1)
+                    (propagate-error-result result)
+                    (let [s (result-subst result)
+                      body-ty (result-type result)
+                      annotated-subst
+                        (typeinfer-defn-return-annotation-subst
+                          node
+                          param-count
+                          body-ty
+                          s
+                          alias-env
+                          type-param-env)]
+                      (if (= (unify-failed annotated-subst) 1)
+                        (make-error-result-code (error-code-general))
+                        (let [next-subst (unify placeholder body-ty annotated-subst)]
+                          (if (= (unify-failed next-subst) 1)
+                            (make-error-result-code (error-code-general))
+                            (typeinfer-finalize-defn-result-with-env-vars final-env name-hash next-subst body-ty env-vars)))))))
+                (infer-defn-parameterized-predeclared
+                  node
+                  body-env
+                  final-env
+                  counter
+                  subst
+                  placeholder
+                  env-vars
+                  alias-env
+                  type-param-env)))]
+      (do
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        result))))
 
 ;; 単独で呼ばれる infer-defn も自己再帰を許可する。
 (defn infer-defn [node env counter]
@@ -680,7 +784,15 @@
 (defn infer-program-analysis-first-error-code [analysis] (vector-get analysis 5))
 
 (defn infer-program-analysis-type [analysis]
-  (apply-subst (infer-program-analysis-subst analysis) (infer-program-analysis-raw-type analysis)))
+  (do
+    (root_push analysis)
+    (let [result
+            (apply-subst
+              (infer-program-analysis-subst analysis)
+              (infer-program-analysis-raw-type analysis))]
+      (do
+        (root_pop)
+        result))))
 
 (defn typeinfer-program-analysis-loop [program idx len placeholders counter alias-env state]
   (if (>= idx len)
@@ -707,45 +819,47 @@
                       out (infer-defn-predeclared decl env env counter subst placeholder pending-env-vars alias-env)]
                       (do
                         (root_push out)
-                        (let [next-first-ty (if (= first-seen 0) (result-type out) first-ty)
-                          next-first-seen (if (= first-seen 0) 1 first-seen)
-                          next-first-error-code (if (= first-error-code 0) (result-error-code out) first-error-code)
-                          next-env (if (= (result-failed out) 1)
-                            (type-env-remove env name-hash)
-                            (vector-get out 3))
-                          next-subst (if (= (result-failed out) 1) subst (result-subst out))]
+                        (let [next-first-ty (if (= first-seen 0) (result-type out) first-ty)]
                           (do
+                            ;; result-type out は後続の環境/置換取得より先に保持する。
                             (root_push next-first-ty)
-                            (root_push next-env)
-                            (root_push next-subst)
-                            (let [result
-                                    (typeinfer-program-analysis-state
-                                      next-env
-                                      next-subst
-                                      next-first-ty
-                                      next-first-seen
-                                      (if (= (result-failed out) 1) (+ diagnostic-count 1) diagnostic-count)
-                                      (if (= (result-failed out) 1) next-first-error-code first-error-code))]
+                            (let [next-first-seen (if (= first-seen 0) 1 first-seen)
+                              next-first-error-code (if (= first-error-code 0) (result-error-code out) first-error-code)
+                              next-env (if (= (result-failed out) 1)
+                                (type-env-remove env name-hash)
+                                (vector-get out 3))
+                              next-subst (if (= (result-failed out) 1) subst (result-subst out))]
                               (do
-                                (root_push result)
-                                (let [recur-result
-                                        (typeinfer-program-analysis-loop
-                                          program
-                                          (+ idx 1)
-                                          len
-                                          placeholders
-                                          counter
-                                          alias-env
-                                          result)]
+                                (root_push next-env)
+                                (root_push next-subst)
+                                (let [result
+                                        (typeinfer-program-analysis-state
+                                          next-env
+                                          next-subst
+                                          next-first-ty
+                                          next-first-seen
+                                          (if (= (result-failed out) 1) (+ diagnostic-count 1) diagnostic-count)
+                                          (if (= (result-failed out) 1) next-first-error-code first-error-code))]
                                   (do
-                                    (root_pop)
-                                    (root_pop)
-                                    (root_pop)
-                                    (root_pop)
-                                    (root_pop)
-                                    (root_pop)
-                                    (root_pop)
-                                    recur-result))))))))
+                                    (root_push result)
+                                    (let [recur-result
+                                            (typeinfer-program-analysis-loop
+                                              program
+                                              (+ idx 1)
+                                              len
+                                              placeholders
+                                              counter
+                                              alias-env
+                                              result)]
+                                      (do
+                                        (root_pop)
+                                        (root_pop)
+                                        (root_pop)
+                                        (root_pop)
+                                        (root_pop)
+                                        (root_pop)
+                                        (root_pop)
+                                        recur-result))))))))))
                     (typeinfer-program-analysis-loop program (+ idx 1) len placeholders counter alias-env state))]
             (do
               (root_pop)
@@ -754,38 +868,46 @@
 
 ;; top-level defn を先行登録して一度だけ推論し、CLI/LSP が共有する結果を返す。
 (defn infer-program-analysis [program]
-  (let [recursive-count (typeinfer-recursive-alias-count program)]
-    (if (> recursive-count 0)
-      (typeinfer-program-analysis-state
-        (type-env-new)
-        (subst-new)
-        (mk-int)
-        1
-        recursive-count
-        (error-code-general))
-      (let [counter (typeinfer-make-alias-aware-counter program)
-        alias-env (var-counter-alias-env counter)]
-        (do
-          (root_push counter)
-          (let [initial-env (init-builtin-env counter)
-            record-env (typeinfer-register-record-defs program initial-env counter)
-            adt-env (typeinfer-register-adt-defs program record-env counter)
-            predeclared (typeinfer-predeclare-defns program adt-env counter)
-            env (vector-get predeclared 0)
-            placeholders (vector-get predeclared 1)
-            state (typeinfer-program-analysis-state env (subst-new) (mk-int) 0 0 0)
-            result
-              (typeinfer-program-analysis-loop
-                program
-                0
-                (vector-length program)
-                placeholders
-                counter
-                alias-env
-                state)]
-            (do
-              (root_pop)
-              result)))))))
+  (do
+    ;; program の子ノードを prepass / top-level inference の全 allocation 中も保持する。
+    (root_push program)
+    (let [recursive-count (typeinfer-recursive-alias-count program)]
+      (if (> recursive-count 0)
+        (let [result
+                (typeinfer-program-analysis-state
+                  (type-env-new)
+                  (subst-new)
+                  (mk-int)
+                  1
+                  recursive-count
+                  (error-code-general))]
+          (do
+            (root_pop)
+            result))
+        (let [counter (typeinfer-make-alias-aware-counter program)
+          alias-env (var-counter-alias-env counter)]
+          (do
+            (root_push counter)
+            (let [initial-env (init-builtin-env counter)
+              record-env (typeinfer-register-record-defs program initial-env counter)
+              adt-env (typeinfer-register-adt-defs program record-env counter)
+              predeclared (typeinfer-predeclare-defns program adt-env counter)
+              env (vector-get predeclared 0)
+              placeholders (vector-get predeclared 1)
+              state (typeinfer-program-analysis-state env (subst-new) (mk-int) 0 0 0)
+              result
+                (typeinfer-program-analysis-loop
+                  program
+                  0
+                  (vector-length program)
+                  placeholders
+                  counter
+                  alias-env
+                  state)]
+              (do
+                (root_pop)
+                (root_pop)
+                result))))))))
 
 ;; ============================================================
 ;; infer: 公開 API (Main.ls から呼び出される)
