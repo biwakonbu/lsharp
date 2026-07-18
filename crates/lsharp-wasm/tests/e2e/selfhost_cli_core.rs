@@ -6617,6 +6617,29 @@ fn test_e2e_selfhost_cli_reports_deterministic_property_smoke() {
     );
 }
 
+/// EC-M1-02: selfhost CLI が二つの Int binder と precondition conjunction を実行すること
+#[test]
+fn test_e2e_selfhost_cli_reports_two_int_property_binders() {
+    let harness = r#"
+(defn main []
+  (do
+    (print (run-test-source "(defn sum [left right] :property [(for-all [a Int b Int] :cases 5 :precondition [(< b 5)] :postcondition (= result (+ a b)))] (+ left right))" 0))
+    0))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["examples:0", "invariants:0", "properties:1", "failures:0", "0"],
+        "selfhost CLI は二つの Int binder と precondition conjunction を実行すべき"
+    );
+}
+
 /// EC-M1-05: selfhost CLI が non-Bool property を実行せず preflight 診断にすること
 #[test]
 fn test_e2e_selfhost_cli_rejects_non_bool_deterministic_property() {

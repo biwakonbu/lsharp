@@ -646,3 +646,9 @@ deterministic property profile を、単一 binder から最大 2 個の `Int` b
 Evidence: `test_run_metadata_tests_executes_two_int_property_binders`、`test_e2e_selfhost_runner_executes_two_int_property_binders`（5 pair 中 1 件を precondition skip して `actual=4`）、既存の single-binder / conjunction / seed / unsupported profile regression、`PropertyRunner.ls` / `TestRunner.ls` source check（各 `diagnostics:0`）。
 
 これは 1..2 個の `Int` binder と deterministic pair prefix に限定した verified slice であり、3 個以上の binder、一般 `TypeExpr`、owner/binder の独立 arity、type-directed generator、seed/shrink/coverage、predicate 個別 span、structured assurance report、Wasm artifact/runtime、Mac Apple Silicon / Linux x86_64 の current-source native gate は残件である。対応済み profile の変更は Rust なしで進められるが、profile 外 semantics、stage0 provenance、Rust oracle / bootstrap / host integration の境界は維持する。
+
+### EC-M1-02 public selfhost `test` CLI property slice (2026-07-18)
+
+公開 `run-test-source` まで同じ verified profile を接続した。2 個の `Int` binder、precondition conjunction、owner arity 一致の fixture が `properties:1`、`failures:0`、exit `0` で集計されることを `test_e2e_selfhost_cli_reports_two_int_property_binders` で確認した。これは public CLI summary の実行契約を閉じる evidence である。
+
+この E2E は Rust host の `compile_and_run` で巨大な selfhost CLI bundle を生成・実行する oracle lane で、今回の focused run は 417.34 秒だった。通常開発の Rust-free native gate ではなく、Rust oracle / differential 用の重い検証として扱う。current-source stage0 provenance、Mac Apple Silicon / Linux x86_64 の native artifact/runtime gate、profile 外 property semantics は未完了であり、Rust の bootstrap / oracle / host integration 境界を維持する。
