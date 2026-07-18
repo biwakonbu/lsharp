@@ -72,3 +72,19 @@ fn property_form_rejects_non_numeric_cases() {
 
     assert!(error.to_string().contains("non-negative case count"));
 }
+
+#[test]
+fn property_form_rejects_unknown_option() {
+    let source = "(defn identity [x] :property [(for-all [x Int] :unknown true :cases 1 :postcondition (= result x))] x)";
+    let error = lsharp_syntax::parse(source).expect_err("未知の property option は拒否するべき");
+
+    assert!(error.to_string().contains("property option"));
+}
+
+#[test]
+fn property_form_rejects_prefixed_option_name() {
+    let source = "(defn identity [x] :property [(for-all [x Int] :cases-extra true :postcondition (= result x))] x)";
+    let error = lsharp_syntax::parse(source).expect_err("既知 option の prefix を持つ未知 option は拒否するべき");
+
+    assert!(error.to_string().contains("property option"));
+}

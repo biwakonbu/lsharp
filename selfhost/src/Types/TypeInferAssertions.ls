@@ -744,12 +744,99 @@
 (defn property-binders-empty? [payload] (if (string-eq (property-probe-parameter-source payload) "[result]") 1 0))
 (defn property-cases-zero? [payload] (let [marker (property-find-substring payload ":cases") len (string-length payload)] (if (< marker 0) 0 (let [start (property-skip-space payload (+ marker 6) len) end (property-atom-expression-end payload start len)] (if (<= end start) 0 (if (= (parse-int-from-str payload start end 0) 0) 1 0))))))
 (defn property-cases-invalid? [payload] (let [marker (property-find-substring payload ":cases") len (string-length payload)] (if (< marker 0) 0 (let [start (property-skip-space payload (+ marker 6) len)] (if (< start len) (let [ch (string-char-at payload start)] (if (= ch 45) 1 (if (< ch 48) 1 (if (> ch 57) 1 0)))) 0)))))
+(defn property-option-boundary? [payload idx]
+  (let [len (string-length payload)]
+    (if (>= idx len)
+      1
+      (let [ch (string-char-at payload idx)]
+        (if (= (property-space? ch) 1)
+          1
+          (if (or (= ch 41) (= ch 93)) 1 0))))))
+(defn property-option-prefix? [payload idx option]
+  (let [len (string-length payload)
+    option-len (string-length option)
+    option-end (+ idx option-len)]
+    (if (or (< idx 0) (> option-end len))
+      0
+      (if (string-eq (substring payload idx option-end) option)
+        (property-option-boundary? payload option-end)
+        0))))
+(defn property-known-option? [payload idx]
+  (if (or (= (property-option-prefix? payload idx ":cases") 1)
+      (or (= (property-option-prefix? payload idx ":precondition") 1)
+        (or (= (property-option-prefix? payload idx ":postcondition") 1)
+          (or (= (property-option-prefix? payload idx ":seed") 1)
+            (= (property-option-prefix? payload idx ":shrink") 1)))))
+    1
+    0))
+(defn property-unknown-option-at? [payload idx]
+  (let [len (string-length payload)]
+    (if (and (>= idx 0) (and (< idx len) (= (string-char-at payload idx) 58)))
+      (if (= (property-known-option? payload idx) 1) 0 1)
+      0)))
+(defn property-balanced-bracket-end [src idx len depth]
+  (if (>= idx len)
+    -1
+    (let [ch (string-char-at src idx)]
+      (if (= ch 91)
+        (property-balanced-bracket-end src (+ idx 1) len (+ depth 1))
+        (if (= ch 93)
+          (if (= depth 1)
+            (+ idx 1)
+            (property-balanced-bracket-end src (+ idx 1) len (- depth 1)))
+          (property-balanced-bracket-end src (+ idx 1) len depth))))))
+(defn property-option-value-end [payload option-start len]
+  (let [precondition? (= (property-option-prefix? payload option-start ":precondition") 1)
+    postcondition? (= (property-option-prefix? payload option-start ":postcondition") 1)
+    option-len (if precondition?
+      (string-length ":precondition")
+      (if postcondition?
+        (string-length ":postcondition")
+        (if (= (property-option-prefix? payload option-start ":cases") 1)
+          (string-length ":cases")
+          (if (= (property-option-prefix? payload option-start ":seed") 1)
+            (string-length ":seed")
+            (string-length ":shrink")))))
+    value-start (property-skip-space payload (+ option-start option-len) len)]
+    (if (or (>= value-start len) (= (string-char-at payload value-start) 58))
+      value-start
+      (if precondition?
+        (if (= (string-char-at payload value-start) 91)
+          (property-balanced-bracket-end payload value-start len 0)
+          (property-atom-expression-end payload value-start len))
+        (if (and postcondition? (= (string-char-at payload value-start) 40))
+          (property-balanced-expression-end payload value-start len 0)
+          (property-atom-expression-end payload value-start len))))))
+(defn property-unknown-option-loop [payload idx len]
+  (if (< idx 0)
+    0
+    (let [current (property-skip-space payload idx len)]
+      (if (>= current len)
+        0
+        (let [ch (string-char-at payload current)]
+          (if (= ch 41)
+            0
+            (if (= ch 58)
+              (if (= (property-unknown-option-at? payload current) 1)
+                1
+                (property-unknown-option-loop
+                  payload
+                  (property-option-value-end payload current len)
+                  len))
+              0)))))))
+(defn property-unknown-option? [payload]
+  (let [len (string-length payload)
+    open (property-find-substring payload "[")
+    close (property-find-substring-loop payload "]" (+ open 1) len 1)]
+    (if (or (< open 0) (< close 0))
+      0
+      (property-unknown-option-loop payload (+ close 1) len))))
 (defn check-property-form [form diagnostic-count first-error-code]
   (if (= (vector-get form 0) (contract-form-property))
     (do
       (root_push form)
       (let [payload (if (> (vector-length form) 1) (vector-get form 1) "")
-        structural-code (if (or (= (property-binders-empty? payload) 1) (or (= (property-cases-zero? payload) 1) (= (property-cases-invalid? payload) 1))) (canonical-property-empty-code) 0)
+        structural-code (if (or (= (property-binders-empty? payload) 1) (or (= (property-cases-zero? payload) 1) (or (= (property-cases-invalid? payload) 1) (= (property-unknown-option? payload) 1)))) (canonical-property-empty-code) 0)
         precondition-code (check-property-precondition payload)
         code (if (> structural-code 0) structural-code (if (> precondition-code 0) precondition-code (check-property-postcondition payload)))
         next-count (if (> code 0) (+ diagnostic-count 1) diagnostic-count)

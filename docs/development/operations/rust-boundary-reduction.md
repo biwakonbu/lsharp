@@ -266,6 +266,12 @@ Rust `Syntax.Parser` は `:cases -1` と `:cases false` を `non-negative case c
 
 Evidence: `property_form_rejects_negative_cases`、`property_form_rejects_non_numeric_cases`、`test_e2e_selfhost_cli_check_rejects_negative_property_cases`、`test_e2e_selfhost_cli_check_rejects_non_numeric_property_cases` の RED/GREEN、`./target/debug/lsharp check selfhost/src/Types/TypeInferAssertions.ls`。残るのは unknown option、missing option value、malformed bracket の explicit diagnostic、sampling/shrink/evaluator、diagnostic/span parity、full CLI artifact/runtime、Mac Apple Silicon / Linux x86_64 の current-source native gate である。
 
+### EC-M1-04 unknown property option boundary (2026-07-18)
+
+Rust `Syntax.Parser` は `:cases`、`:precondition`、`:postcondition`、`:seed`、`:shrink` 以外の property option を parse error として拒否する。selfhost `Types.TypeInferAssertions` も、binder後から top-level option の値を bracket/parenthesis 単位で skip しながら同じ option 集合を検査し、option の任意順序、postcondition 後、既知 option 名の prefix を含む未知の `:` token に structural code `2007` を返す。これにより、selfhost `check` が未知 option を無視して `diagnostics:0` を返す silent success を防ぐ。既存の deterministic property runner の profile 外拒否は変更していない。
+
+Evidence: RED の `test_e2e_selfhost_cli_check_rejects_unknown_property_option`（`BEGIN / 0 / 0`）と境界追加時の `seed/postcondition` 未検出、GREEN の同 test と `test_e2e_selfhost_cli_check_rejects_unknown_property_option_at_each_boundary`、`property_form_rejects_unknown_option` / `property_form_rejects_prefixed_option_name` を含む `cargo test -p lsharp-syntax --test metadata_property -- --nocapture`（6 tests）、`cargo test -p lsharp-types --test metadata_contract_check -- --nocapture`（20 tests）、selfhost source `check`、既存 unary-not selfhost regression。残るのは missing option value / malformed bracket の explicit diagnostic、compound option/span parity、dynamic precondition evaluator、sampling/shrink、full CLI artifact/runtime、Mac Apple Silicon / Linux x86_64 の current-source native gate である。
+
 ### scoped polymorphic `defn` signature (2026-07-15)
 
 `TypeInferFunctions.ls` は `defn` の parameter / return annotation に現れる scoped 名ごとに共有 fresh 型変数を割り当て、通常の型環境で関数を一般化する。これにより `id` を Int と Bool の別 call site で使え、`choose-first [(: x a) (: y b)] : a x` では `a` と `b` を独立に具体化できる。GADT refinement と exhaustiveness は別タスクである。Evidence: `test_e2e_selfhost_scoped_type_var_defn_signature_is_polymorphic`、`test_e2e_selfhost_scoped_multiple_type_vars_defn_signature_is_polymorphic`、`TypeInfer.ls` check。
