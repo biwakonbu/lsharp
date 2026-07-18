@@ -286,14 +286,26 @@
       (parse-program text))))
 
 ;; property test case:
-;; [name-id, owner-function-hash, binder-hash, postcondition, cases, profile-code]
-(defn make-property-test-case [name owner binder postcondition cases profile-code]
-  (let [v1 (vector-push-single-rooted (vector-new 6) name)
+;; [name-id, owner-function-hash, binder-hash, postcondition, cases, profile-code, preconditions]
+(defn make-property-test-case-with-preconditions
+  [name owner binder postcondition cases profile-code preconditions]
+  (let [v1 (vector-push-single-rooted (vector-new 7) name)
     v2 (vector-push-single-rooted v1 owner)
     v3 (vector-push-single-rooted v2 binder)
     v4 (vector-push-single-rooted v3 postcondition)
-    v5 (vector-push-single-rooted v4 cases)]
-    (vector-push-single-rooted v5 profile-code)))
+    v5 (vector-push-single-rooted v4 cases)
+    v6 (vector-push-single-rooted v5 profile-code)]
+    (vector-push-single-rooted v6 preconditions)))
+
+(defn make-property-test-case [name owner binder postcondition cases profile-code]
+  (make-property-test-case-with-preconditions
+    name
+    owner
+    binder
+    postcondition
+    cases
+    profile-code
+    (vector-new 0)))
 
 (defn property-runner-form-case [form owner name]
   (let [payload (if (> (vector-length form) 1) (vector-get form 1) "")
@@ -552,7 +564,7 @@
     (vector-new 0)))
 
 ;; canonical contract を移行期 evaluator の test-case shape へ変換する。
-;; 実行可能なのは単一 Int binder / precondition なしの profile に限定する。
+;; 実行可能なのは単一 Int binder / precondition 1 件以下の profile に限定する。
 (defn property-runner-execution-profile-code [contract]
   (let [profile-code (vector-get contract 5)
     binders (vector-get contract 1)
@@ -560,13 +572,14 @@
     (if (> profile-code 0)
       profile-code
       (if (or (!= (vector-length binders) 1)
-          (> (vector-length preconditions) 0))
+          (> (vector-length preconditions) 1))
         3002
         0))))
 
 (defn property-runner-typed-contract-test-case [contract name]
   (let [owner (vector-get contract 0)
     binders (vector-get contract 1)
+    preconditions (vector-get contract 2)
     sampling (vector-get contract 4)
     profile-code (property-runner-execution-profile-code contract)
     binder (if (= (vector-length binders) 1)
@@ -574,13 +587,14 @@
       0)
     postcondition (if (= profile-code 0) (vector-get contract 3) 0)
     cases (if (= profile-code 0) (vector-get sampling 0) 0)]
-    (make-property-test-case
+    (make-property-test-case-with-preconditions
       name
       owner
       binder
       postcondition
       cases
-      profile-code)))
+      profile-code
+      preconditions)))
 
 (defn property-runner-append-typed-test-cases-loop
   [contracts idx count results]
@@ -617,6 +631,11 @@
 
 (defn property-test-case-count [test-case]
   (vector-get test-case 4))
+
+(defn property-test-case-preconditions [test-case]
+  (if (> (vector-length test-case) 6)
+    (vector-get test-case 6)
+    (vector-new 0)))
 
 (defn property-runner-boundary-loop [test-cases idx count]
   (if (>= idx count)

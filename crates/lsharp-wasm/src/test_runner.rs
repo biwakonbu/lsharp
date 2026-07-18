@@ -105,13 +105,27 @@ pub fn generate_test_program(original: &Program, tests: &[GeneratedTest]) -> Str
                 let samples = property_sample_values(spec);
                 for sample in samples {
                     let postcondition = format!("{}", test.expr);
-                    let result_scope = format!(
-                        "(let [result ({} {})] {postcondition})",
-                        test.function_name, sample
-                    );
-                    let scoped_property =
-                        format!("(let [{} {}] {result_scope})", spec.binder_name, sample);
-                    source.push_str(&format!("    (print (if {scoped_property} 1 0))\n"));
+                    if let Some(precondition) = &spec.precondition {
+                        let precondition = format!("{}", precondition);
+                        let scoped_property = format!(
+                            "(let [{} {}] (if {} (let [result ({} {})] (if {} 1 0)) 2))",
+                            spec.binder_name,
+                            sample,
+                            precondition,
+                            test.function_name,
+                            sample,
+                            postcondition
+                        );
+                        source.push_str(&format!("    (print {scoped_property})\n"));
+                    } else {
+                        let result_scope = format!(
+                            "(let [result ({} {})] {postcondition})",
+                            test.function_name, sample
+                        );
+                        let scoped_property =
+                            format!("(let [{} {}] {result_scope})", spec.binder_name, sample);
+                        source.push_str(&format!("    (print (if {scoped_property} 1 0))\n"));
+                    }
                 }
             }
         }
@@ -277,17 +291,27 @@ pub fn parse_test_output(
                 let samples = property_sample_values(spec);
                 let mut all_passed = true;
                 let mut fail_msg = None;
+                let mut executed = 0;
 
                 for sample in &samples {
-                    let passed = lines
-                        .get(line_idx)
-                        .map(|line| line.trim() == "1")
-                        .unwrap_or(false);
+                    let line = lines.get(line_idx).map(|line| line.trim()).unwrap_or("");
+                    if spec.precondition.is_some() && line == "2" {
+                        line_idx += 1;
+                        continue;
+                    }
+                    executed += 1;
+                    let passed = line == "1";
                     if !passed {
                         all_passed = false;
                         fail_msg = Some(format!(":property が偽を返しました (入力: {sample})"));
                     }
                     line_idx += 1;
+                }
+
+                if spec.precondition.is_some() && executed == 0 {
+                    all_passed = false;
+                    fail_msg =
+                        Some(":property の precondition が全サンプルで false です".to_string());
                 }
 
                 results.push(TestResult {

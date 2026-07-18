@@ -621,4 +621,12 @@ Evidence: Rust `test_run_metadata_tests_executes_deterministic_property_smoke` /
 
 これは EC-M1-05 全体または Rust 完全撤去ではない。type-directed generator、constraint conjunction、複数 binder / `Bool` 以外の型、precondition、seed、shrink、coverage bucket、diagnostic/span parity、Mac Apple Silicon / Linux x86_64 の current-source native artifact/runtime gate は残る。したがって、現時点ではこの deterministic smoke profile を使う日常開発は Rust なしで進められるが、profile 外の property と全機能の oracle/bootstrap 境界には Rust を残す。
 
+### EC-M1-02 single precondition property evaluator (2026-07-18)
+
+deterministic `Int` property の verified slice を、precondition なしから単一 precondition 付きへ拡張した。Rust `PropertySmokeTestSpec` と selfhost `PropertyRunner` は、単一の Bool precondition を sample filter として保持し、precondition が false の sample では対象関数と postcondition を評価せず skip する。selfhost の result `actual` は実行対象 sample 数を返し、全 sample が false の場合は vacuous success にせず `LS2005` を返す。precondition または postcondition が Bool でない場合は `LS1002`、複数 precondition、複数 binder、seed/shrink 付き profile は従来どおり `LS3002` で明示拒否する。
+
+Evidence: `test_run_metadata_tests_executes_property_precondition_and_skips_false_samples`、`test_e2e_selfhost_runner_executes_property_precondition_and_skips_false_samples`（5 samples 中 4 executed）、`test_e2e_selfhost_runner_rejects_vacuous_property_precondition`（`LS2005`）、selfhost runner prefix 6 tests、Wasm `test_runner` unit 6 tests、Rust tooling metadata 15 tests、`PropertyRunner.ls` / `TestRunner.ls` source check（各 `diagnostics:0`）。
+
+これは単一 `Int` binder の deterministic evaluator に限定した verified sliceであり、複数 precondition の conjunction、一般 `TypeExpr`、type-directed generator、seed/shrink/coverage、predicate 個別 span、structured assurance report、Wasm artifact/runtime、Mac Apple Silicon / Linux x86_64 の current-source native gate は残件である。したがって property evaluator 全体や Rust 完全撤去の完了とは扱わず、Rust oracle / bootstrap 境界を維持する。
+
 2026-07-18 の current-source Linux x86_64 replay では、host-side native artifact probe 12 件と stage1 bundle生成（code 4,149,774 bytes、data 1,511 bytes）までは pass した。一方、Lima VM の actual stage1 は chunk `0-64` から `0-1` まで自動分割しても exit 137 となった。actual heap を 4 GiB から 2 GiB に下げた再利用 replayでも RSS は約 15.7 GiB まで増え、同じ `0-1` が再現したため、chunk 数や VM disk 容量ではなく native runtime の heap/root/data layout が failure boundary である。VM は 11 GiB disk 中約 7.8 GiB free のまま終了し、重い replay の再試行は行わない。Linux current-source native gate と、これを閉じる `LEGACY-RUNTIME-01` / `LEGACY-ROOT-01` 相当の runtime 容量調整は未完了である。

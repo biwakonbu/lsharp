@@ -322,6 +322,7 @@
     (vector-length program)))
 
 (defn contract-diagnostic-unsupported-property [] 3002) ;; LS3002: unimplemented property runner
+(defn contract-diagnostic-vacuous-property [] 2005) ;; LS2005: vacuous property
 
 (defn metadata-test-runner-boundary-code [program]
   (property-runner-boundary-code program))
@@ -644,11 +645,13 @@
     "LS1001"
     (if (= code (contract-diagnostic-non-bool))
       "LS1002"
-      (if (= code (contract-diagnostic-empty-case))
-        "LS2006"
-        (if (= code (contract-diagnostic-unsupported-property))
-          "LS3002"
-          "LS0000")))))
+      (if (= code (contract-diagnostic-vacuous-property))
+        "LS2005"
+        (if (= code (contract-diagnostic-empty-case))
+          "LS2006"
+          (if (= code (contract-diagnostic-unsupported-property))
+            "LS3002"
+            "LS0000"))))))
 
 (defn test-diagnostics-summary [examples invariants]
   (let [count (test-diagnostics-count examples invariants)
@@ -1770,12 +1773,32 @@
         (property-test-case-binder test-case)
         (value-unit))
       (hash-result)
-      (value-unit))]
-    (contract-node-unknown-hash
-      program
-      (property-test-case-postcondition test-case)
-      env
-      1)))
+      (value-unit))
+    preconditions (property-test-case-preconditions test-case)
+    precondition-unknown (if (> (vector-length preconditions) 0)
+      (contract-node-unknown-hash
+        program
+        (vector-get preconditions 0)
+        env
+        1)
+      -1)]
+    (if (>= precondition-unknown 0)
+      precondition-unknown
+      (contract-node-unknown-hash
+        program
+        (property-test-case-postcondition test-case)
+        env
+        1))))
+
+(defn eval-property-precondition [program test-case sample]
+  (let [preconditions (property-test-case-preconditions test-case)
+    env (env-bind
+      (env-new)
+      (property-test-case-binder test-case)
+      sample)]
+    (if (= (vector-length preconditions) 0)
+      (value-bool 1)
+      (eval-node program (vector-get preconditions 0) env))))
 
 (defn eval-property-sample-value [program test-case decl sample-idx]
   (let [sample (property-sample-value sample-idx)
@@ -1794,28 +1817,57 @@
       (property-test-case-postcondition test-case)
       property-env)))
 
-(defn property-sample-summary [passed bool-valid]
+(defn property-sample-summary [passed bool-valid actual]
   (vector-push
-    (vector-push (vector-new 2) passed)
-    bool-valid))
+    (vector-push
+      (vector-push (vector-new 3) passed)
+      bool-valid)
+    actual))
 
 (defn run-property-samples-summary-loop
-  [program test-case decl sample-idx sample-count all-passed all-bool]
+  [program test-case decl sample-idx sample-count all-passed all-bool actual-count]
   (if (>= sample-idx sample-count)
-    (property-sample-summary all-passed all-bool)
-    (let [actual (eval-property-sample-value program test-case decl sample-idx)
-      bool-valid (if (= (value-tag actual) (ast-lit-bool)) 1 0)
-      passed (if (= bool-valid 1) (value-truthy actual) 0)
-      next-passed (if (= passed 1) all-passed 0)
-      next-bool (if (= bool-valid 1) all-bool 0)]
-      (run-property-samples-summary-loop
+    (property-sample-summary all-passed all-bool actual-count)
+    (let [precondition (eval-property-precondition
         program
         test-case
-        decl
-        (+ sample-idx 1)
-        sample-count
-        next-passed
-        next-bool))))
+        (property-sample-value sample-idx))
+      precondition-bool (if (= (value-tag precondition) (ast-lit-bool)) 1 0)
+      precondition-passed (if (= precondition-bool 1) (value-truthy precondition) 0)]
+      (if (= precondition-bool 0)
+        (run-property-samples-summary-loop
+          program
+          test-case
+          decl
+          (+ sample-idx 1)
+          sample-count
+          0
+          0
+          actual-count)
+        (if (= precondition-passed 0)
+          (run-property-samples-summary-loop
+            program
+            test-case
+            decl
+            (+ sample-idx 1)
+            sample-count
+            all-passed
+            all-bool
+            actual-count)
+          (let [actual (eval-property-sample-value program test-case decl sample-idx)
+            bool-valid (if (= (value-tag actual) (ast-lit-bool)) 1 0)
+            passed (if (= bool-valid 1) (value-truthy actual) 0)
+            next-passed (if (= passed 1) all-passed 0)
+            next-bool (if (= bool-valid 1) all-bool 0)]
+            (run-property-samples-summary-loop
+              program
+              test-case
+              decl
+              (+ sample-idx 1)
+              sample-count
+              next-passed
+              next-bool
+              (+ actual-count 1))))))))
 
 (defn materialize-property [program test-case]
   (let [name (vector-get test-case 0)
@@ -1823,12 +1875,13 @@
     decl (find-defn-by-hash program owner 0 (vector-length program))
     profile-code (property-test-case-profile-code test-case)
     owner-valid (if (and (> (vector-length decl) 0) (= (vector-get decl 2) 1)) 1 0)
+    precondition-count (vector-length (property-test-case-preconditions test-case))
     unknown-hash (if (and (= profile-code 0) (= owner-valid 1))
       (property-unknown-variable program test-case)
       -1)
     sample-count (property-test-case-count test-case)
     sample-summary (if (or (> profile-code 0) (or (= owner-valid 0) (>= unknown-hash 0)))
-      (property-sample-summary 0 0)
+      (property-sample-summary 0 0 0)
       (run-property-samples-summary-loop
         program
         test-case
@@ -1836,17 +1889,23 @@
         0
         sample-count
         1
-        1))
+        1
+        0))
     bool-valid (vector-get sample-summary 1)
+    actual-count (vector-get sample-summary 2)
     diagnostic-code (if (> profile-code 0)
       profile-code
       (if (= owner-valid 0)
         (contract-diagnostic-unsupported-property)
         (if (>= unknown-hash 0)
           (contract-diagnostic-undefined)
-          (if (= bool-valid 1) 0 (contract-diagnostic-non-bool)))))
+          (if (= bool-valid 0)
+            (contract-diagnostic-non-bool)
+            (if (and (> precondition-count 0) (= actual-count 0))
+              (contract-diagnostic-vacuous-property)
+              0)))))
     passed (if (= diagnostic-code 0) (vector-get sample-summary 0) 0)
-    actual (if (= diagnostic-code 0) sample-count 0)]
+    actual (if (= diagnostic-code 0) actual-count 0)]
     (make-test-result-with-diagnostic name passed actual diagnostic-code)))
 
 (defn run-properties-loop [program test-cases idx count results]

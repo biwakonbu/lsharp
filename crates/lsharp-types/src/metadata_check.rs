@@ -524,19 +524,22 @@ pub struct GeneratedTest {
 }
 
 /// Rust/selfhost が段階的に共有する deterministic property smoke profile。
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PropertySmokeTestSpec {
     pub binder_name: String,
     pub cases: usize,
+    /// 移行期に評価する単一 precondition。複数条件は profile 外として拒否する。
+    pub precondition: Option<Expr>,
 }
 
 /// `:property` のうち、移行期 runner が実行できる narrow profile を返す。
 ///
-/// type-directed sampling、seed、shrink、precondition は別 slice のため、ここで
-/// 暗黙に既定値へ丸めず、明示的に profile 外として扱う。
+/// type-directed sampling、seed、shrink、複数 precondition は別 slice のため、ここで
+/// 暗黙に既定値へ丸めず、明示的に profile 外として扱う。単一 precondition は
+/// deterministic sample の filter として実行する。
 pub fn property_smoke_test_spec(property: &PropertyForm) -> Option<PropertySmokeTestSpec> {
     if property.binders().len() != 1
-        || !property.preconditions().is_empty()
+        || property.preconditions().len() > 1
         || property.seed().is_some()
         || property.shrink().is_some()
     {
@@ -556,6 +559,7 @@ pub fn property_smoke_test_spec(property: &PropertyForm) -> Option<PropertySmoke
     Some(PropertySmokeTestSpec {
         binder_name: binder.name().to_string(),
         cases,
+        precondition: property.preconditions().first().cloned(),
     })
 }
 
