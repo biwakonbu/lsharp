@@ -281,6 +281,15 @@ run_runner changed
 assert_eq "2" "$(grep -c '^transport|' "$LOG_FILE")"
 assert_file_contains "$LOG_FILE" "program|changed"
 
+mkdir -p "$SOURCE_ROOT/target"
+printf '%s\n' 'generated build output' >"$SOURCE_ROOT/target/generated-output.txt"
+run_runner generated-only
+assert_eq "2" "$(grep -c '^transport|' "$LOG_FILE")"
+assert_file_contains "$LOG_FILE" "program|generated-only"
+if [[ -e "$STAGE_DIR/source/target/generated-output.txt" ]]; then
+  fail "native stage source copied generated files outside src/"
+fi
+
 run_runner --bootstrap bootstrap
 assert_eq "3" "$(grep -c '^transport|' "$LOG_FILE")"
 assert_file_contains "$LOG_FILE" "program|bootstrap"

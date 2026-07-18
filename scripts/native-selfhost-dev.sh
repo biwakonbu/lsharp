@@ -64,7 +64,7 @@ hash_file() {
 
 source_fingerprint() {
   (
-    cd "$SOURCE_ROOT"
+    cd "$SOURCE_ROOT/src"
     while IFS= read -r source_path; do
       printf '%s  %s\n' "$(hash_file "$source_path")" "$source_path"
     done < <(find . -type f -print | LC_ALL=C sort)
@@ -118,7 +118,7 @@ copy_source_tree() {
   local copied_source="$STAGE_DIR/source"
   rm -rf "$copied_source"
   mkdir -p "$copied_source"
-  cp -R "$SOURCE_ROOT/." "$copied_source/"
+  cp -R "$SOURCE_ROOT/src" "$copied_source/"
 }
 
 stage_is_ready() {
