@@ -234,6 +234,49 @@ fn test_e2e_selfhost_cli_main_with_args_check_json_diagnostic_exit() {
     assert!(!report["diagnostics"]["message"].as_str().unwrap().is_empty());
 }
 
+/// EC-M1-03: actual selfhost check の JSON aliases が同じ report を返すこと
+#[test]
+fn test_e2e_selfhost_cli_main_check_json_aliases() {
+    let reports = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, || {
+        let wasm = compile_only(selfhost_cli_runtime_bundle());
+        let mut reports = Vec::new();
+        for (prefix, args) in [
+            ("check_json_alias_long", vec!["check", "input.ls", "--json"]),
+            (
+                "check_json_alias_format",
+                vec!["check", "input.ls", "--format", "json"],
+            ),
+        ] {
+            let dir = cli_main_args_fixture_dir(prefix);
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).expect("fixture directory の作成に失敗");
+            std::fs::write(dir.join("input.ls"), "(defn main [] 42)")
+                .expect("fixture input.ls の書き込みに失敗");
+            let output =
+                lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_args_and_stdin_capture(
+                    &wasm,
+                    Some(&dir),
+                    &args,
+                    "",
+                )
+                .expect("check JSON alias 実行に失敗");
+            let _ = std::fs::remove_dir_all(&dir);
+            assert_eq!(output.exit_code, 0, "valid check JSON alias は成功するべき");
+            let lines = output_lines(output.stdout);
+            assert_eq!(lines.len(), 1, "check JSON alias は report 1 行を返すべき");
+            reports.push(
+                serde_json::from_str::<Value>(&lines[0])
+                    .expect("check JSON alias output は valid JSON であるべき"),
+            );
+        }
+        reports
+    });
+
+    assert_eq!(reports[0], reports[1], "--json と --format json は同じ report を返すべき");
+    assert_eq!(reports[0]["command"], "check");
+    assert_eq!(reports[0]["type"], "Int");
+}
+
 /// TEST-CLI-02-AP2: actual Cli main は自己再帰 top-level defn を typecheck できること
 #[test]
 #[ignore]

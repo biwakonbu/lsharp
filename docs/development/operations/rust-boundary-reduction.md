@@ -356,9 +356,9 @@ Evidence: RED の `test_e2e_selfhost_cli_check_source_json_returns_structured_mi
 
 `App.Cli` の実 argv dispatch に `check --json` と `check --format json` を接続し、valid option は `run-check-source` の structured report へ渡し、未知 option は compile error exit へ明示的に分岐するようにした。`App.EmbeddedCli` にも同じ `check-json-report` schema、option parser、main dispatch を反映した。actual main は `proc-exit` を使うため、JSON report は stdout 1 行、終了値は stdout に印字せず WASI exit code として観測する。
 
-Evidence: actual argv RED の `test_e2e_selfhost_cli_main_with_args_check_json_file` は、最初に harness の stack overflow を検出したため expanded-stack wrapper を追加し、その後 `--json` 未配線の text stdout を検出した。GREEN は current selfhost CLI bundle を実行し、Rust `serde_json` の `command=check`、`type=Int`、diagnostics zero、空 migration array、stdout 1 行、WASI exit code `0` を確認した（430.13 秒）。EmbeddedCli の `test_e2e_selfhost_embedded_cli_check_json_contract_is_present` は builder/parser/option branch/main dispatch の source contract を確認し、`./target/debug/lsharp check selfhost/src/App/Cli.ls` と `EmbeddedCli.ls` は各 `diagnostics:0`。
+Evidence: actual argv RED の `test_e2e_selfhost_cli_main_with_args_check_json_file` は、最初に harness の stack overflow を検出したため expanded-stack wrapper を追加し、その後 `--json` 未配線の text stdout を検出した。GREEN は current selfhost CLI bundle を実行し、Rust `serde_json` の `command=check`、`type=Int`、diagnostics zero、空 migration array、stdout 1 行、WASI exit code `0` を確認した（430.13 秒）。`test_e2e_selfhost_cli_main_check_json_aliases` は同じ compiled Wasm から `--json` と `--format json` を実行し、両 report の deep-equal と各 exit code `0` を確認した（388.08 秒）。EmbeddedCli の `test_e2e_selfhost_embedded_cli_check_json_contract_is_present` は builder/parser/option branch/main dispatch の source contract を確認し、`./target/debug/lsharp check selfhost/src/App/Cli.ls` と `EmbeddedCli.ls` は各 `diagnostics:0`。
 
-これは実 argv `check --json` と EmbeddedCli source contract の verified sliceであり、`--format json` の独立 actual-runtime evidence、non-zero diagnostic の exit code、enum/string schema、expression 個別 span、全 form evaluator、Wasm artifact/runtime、Mac Apple Silicon / Linux x86_64 の current-source native gate は残件である。selfhost Wasm E2E は Rust host が compile/run する oracle lane であり、native stage0 の証拠には数えない。
+これは実 argv `check --json` / `--format json` と EmbeddedCli source contract の verified sliceであり、non-zero diagnostic の exit code、enum/string schema、expression 個別 span、全 form evaluator、Wasm artifact/runtime、Mac Apple Silicon / Linux x86_64 の current-source native gate は残件である。selfhost Wasm E2E は Rust host が compile/run する oracle lane であり、native stage0 の証拠には数えない。
 
 ### EC-M1-03 selfhost check JSON diagnostic exit (2026-07-18)
 
@@ -366,7 +366,7 @@ Evidence: actual argv RED の `test_e2e_selfhost_cli_main_with_args_check_json_f
 
 Evidence: RED の `test_e2e_selfhost_cli_check_source_json_returns_diagnostic_exit` は `(if 42 1 0)` の structured report が valid でも戻り値 `0` のままで失敗した（461.46 秒）。GREEN は同じ source harness で diagnostics count / firstErrorCode / message を保持しつつ戻り値 `1` を確認した（577.41 秒）。actual argv の `test_e2e_selfhost_cli_main_with_args_check_json_diagnostic_exit` は Rust `serde_json` で stdout report を parse し、WASI exit code `1` と stdout 1 行を確認した（415.95 秒）。既存の ignored text diagnostic tests も compile error `1` の期待へ更新した。
 
-これは check JSON の non-zero exit verified sliceであり、`--format json` の独立 actual-runtime evidence、enum/string schema、expression 個別 span、全 form evaluator、Wasm artifact/runtime、Mac Apple Silicon / Linux x86_64 の current-source native gate は残件である。selfhost Wasm E2E は Rust host が compile/run する oracle lane であり、native stage0 の証拠には数えない。
+これは check JSON の non-zero exit verified sliceであり、enum/string schema、expression 個別 span、全 form evaluator、Wasm artifact/runtime、Mac Apple Silicon / Linux x86_64 の current-source native gate は残件である。selfhost Wasm E2E は Rust host が compile/run する oracle lane であり、native stage0 の証拠には数えない。
 
 ### EC-M1-02 selfhost typed property runner bridge (2026-07-18)
 
