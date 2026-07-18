@@ -1010,6 +1010,36 @@
     body (vector-get decl (+ 3 param-count))]
     (eval-node program body env)))
 
+;; 移行期 contract evaluator の computation subset。
+;; identity 相当の builder では、各 step の値を順に評価して let! だけ環境へ束縛する。
+(defn eval-computation-loop [program node env idx count last]
+  (if (>= idx count)
+    last
+    (let [step-base (+ 3 (* idx 3))
+      step-kind (vector-get node step-base)
+      aux (vector-get node (+ step-base 1))
+      expr (vector-get node (+ step-base 2))
+      value (eval-node program expr env)
+      next-env (if (= step-kind (computation-step-let-bang))
+        (env-bind env aux value)
+        env)]
+      (eval-computation-loop
+        program
+        node
+        next-env
+        (+ idx 1)
+        count
+        value))))
+
+(defn eval-computation [program node env]
+  (eval-computation-loop
+    program
+    node
+    env
+    0
+    (vector-get node 2)
+    (value-unit)))
+
 (defn eval-apply [program node env]
   (let [callee (vector-get node 1)
     argc (vector-get node 2)
@@ -1044,13 +1074,15 @@
                   init-value (eval-node program (vector-get node 2) env)
                   body-env (env-bind env name-hash init-value)]
                   (eval-node program (vector-get node 3) body-env))
-                (if (= tag (ast-do))
+                  (if (= tag (ast-do))
                   (eval-do-loop program node env 0 (vector-get node 1) (value-unit))
-                  (if (= tag (ast-ann))
-                    (eval-node program (vector-get node 1) env)
-                    (if (= tag (ast-apply))
-                      (eval-apply program node env)
-                      (value-unit))))))))))))
+                  (if (= tag (ast-computation))
+                    (eval-computation program node env)
+                    (if (= tag (ast-ann))
+                      (eval-node program (vector-get node 1) env)
+                      (if (= tag (ast-apply))
+                        (eval-apply program node env)
+                        (value-unit)))))))))))))
 
 (defn depth-total [paren-depth bracket-depth brace-depth]
   (+ (+ paren-depth bracket-depth) brace-depth))

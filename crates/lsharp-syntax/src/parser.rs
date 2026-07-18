@@ -2401,6 +2401,17 @@ mod computation_tests {
         assert!(display.contains("maybe"));
     }
 
+    #[test]
+    fn test_computation_display_roundtrips_to_parser_syntax() {
+        let prog =
+            parse("(defn test [] (computation maybe (let! x (get-value)) (return x)))").unwrap();
+
+        assert_eq!(
+            format!("{}", prog.decls[0]),
+            "(defn test [] (computation maybe (let! x (get-value)) (return x)))"
+        );
+    }
+
     // --- P10-1: Quote/Unquote テスト ---
 
     #[test]

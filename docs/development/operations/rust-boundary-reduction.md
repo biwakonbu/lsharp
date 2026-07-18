@@ -28,6 +28,12 @@ Rust `metadata_check` は legacy `:invariant` 内の lexical `let` binding を s
 
 Evidence: `test_run_metadata_tests_allows_local_let_binding_in_invariant`、`test_run_metadata_tests_reports_unknown_invariant_variable`、`test_e2e_selfhost_test_runner_matches_rust_oracle_for_invariant_local_let_scope`、`test_e2e_selfhost_test_runner_reports_unknown_invariant_lambda_variable`、`test_e2e_selfhost_test_runner_reports_unknown_invariant_computation_variable`、`test_e2e_selfhost_test_runner_reports_unknown_invariant_match_variable`、`cargo run --quiet --bin lsharp -- check selfhost/src/Tools/Test/TestRunner.ls`（`diagnostics:0`）、lambda/computation/match の各 focused test。これは legacy invariant の lexical scope と `LS1001` diagnostic の verified slice であり、selfhost/native runner の全 contract semantics、diagnostic/span parity、computation/match の valid evaluation、Mac/Linux current-source artifact/runtime gate、EC-M1-01 aggregate は未完了である。
 
+### EC-M1-01 invariant computation direct evaluation slice (2026-07-18)
+
+Rust `Expr::Computation` の Display が parser で再読込できる `(computation ...)` 形式を生成するよう修正した。selfhost `Tools.Test.TestRunner` には、identity 相当の computation builder に対して各 step を順に評価し、`let!` の値を後続 step の環境へ束縛する限定 evaluator を追加した。同一 fixture の Rust oracle と selfhost Wasm は `1 invariant / passed=1 / actual=5 / diagnostic=0` で一致する。
+
+Evidence: `test_computation_display_roundtrips_to_parser_syntax`、`test_e2e_selfhost_test_runner_matches_rust_oracle_for_valid_invariant_computation`、computation scope / unknown-variable focused tests、`cargo run --quiet --bin lsharp -- check selfhost/src/Tools/Test/TestRunner.ls`（`diagnostics:0`）。これは direct identity-builder の `let!` / final value に限定した verified sliceであり、一般の builder bind / return semantics、`do!` の effect semantics、computation runtime 全体、match valid evaluation、diagnostic/span parity、Mac/Linux current-source native artifact/runtime gate、EC-M1-01 aggregate は残件である。未完了の computation semantics を変更するときは Rust oracle を保持する。
+
 ### EC-M1-01 selfhost invariant Bool diagnostic (2026-07-17)
 
 Selfhost `Tools.Test.TestRunner` は invariant を各 deterministic sample で評価し、全ての実値が `Bool` であることを確認するようになった。`(defn succ [x] :invariant (+ x 1) (+ x 1))` は Int を truthy として通さず、`diagnostics:1,LS1002` と failure code `2` を返す。未定義変数の `LS1001` と、Bool invariant の `diagnostics:0` は既存経路で維持する。

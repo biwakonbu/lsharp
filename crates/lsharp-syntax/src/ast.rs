@@ -568,19 +568,20 @@ impl std::fmt::Display for Expr {
                 write!(f, "}}")
             }
             Expr::Computation(_, builder, steps) => {
-                write!(f, "({builder} {{")?;
-                for (i, step) in steps.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, "; ")?;
-                    }
+                write!(f, "(computation")?;
+                if !builder.is_empty() {
+                    write!(f, " {builder}")?;
+                }
+                for step in steps {
+                    write!(f, " ")?;
                     match step {
-                        ComputationStep::LetBang(_, pat, expr) => write!(f, "let! {pat} = {expr}")?,
-                        ComputationStep::DoBang(_, expr) => write!(f, "do! {expr}")?,
-                        ComputationStep::Return(_, expr) => write!(f, "return {expr}")?,
+                        ComputationStep::LetBang(_, pat, expr) => write!(f, "(let! {pat} {expr})")?,
+                        ComputationStep::DoBang(_, expr) => write!(f, "(do! {expr})")?,
+                        ComputationStep::Return(_, expr) => write!(f, "(return {expr})")?,
                         ComputationStep::Expr(expr) => write!(f, "{expr}")?,
                     }
                 }
-                write!(f, "}})")
+                write!(f, ")")
             }
             Expr::Quote(_, expr) => write!(f, "'{expr}"),
             Expr::Unquote(_, expr) => write!(f, "~{expr}"),
