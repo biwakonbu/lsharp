@@ -6804,6 +6804,9 @@ fn test_e2e_selfhost_migration_rows_preserve_legacy_owner_and_directive_spans() 
       (print (string-eq
         (vector-get row2 5)
         "legacy :invariant は :property / :postcondition への移行候補です"))
+      (print (= (vector-get row0 6) 1))
+      (print (= (vector-get row1 6) 1))
+      (print (= (vector-get row2 6) 2))
       0)))
 "#;
 
@@ -6816,7 +6819,7 @@ fn test_e2e_selfhost_migration_rows_preserve_legacy_owner_and_directive_spans() 
     assert_eq!(
         lines,
         vec![
-            "3", "6", "6", "6", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1",
+            "3", "7", "7", "7", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1",
         ],
         "selfhost migration row は raw inventory の owner と directive span を共有するべき"
     );

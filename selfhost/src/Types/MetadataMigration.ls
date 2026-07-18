@@ -20,6 +20,9 @@
 (defn legacy-property-disposition [] 3)
 (defn legacy-manual-disposition [] 4)
 
+(defn legacy-selected-semantics-code [code]
+  (if (= code (legacy-invariant-code)) 2 1))
+
 (defn legacy-migration-message [code disposition]
   (if (= code (ambiguous-legacy-code))
     "legacy :example は silent conversion できません。manual review が必要です"
@@ -42,7 +45,9 @@
             (do
               (root_pop)
               (root_pop)
-              result)))))))
+              (vector-push-single-rooted
+                result
+                (legacy-selected-semantics-code code)))))))))
 
 (defn legacy-example-row-for-expression [expression env counter start end owner]
   (let [result (infer-expr expression env (subst-new) counter)]
