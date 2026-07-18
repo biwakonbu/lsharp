@@ -88,7 +88,9 @@
     case-diagnostics-count (vector-get case-check 0)
     property-check (check-canonical-properties-with-analysis program analysis)
     property-diagnostics-count (vector-get property-check 0)
-    migration-summary (legacy-migration-summary (classify-legacy-contracts program))
+    migration-rows (classify-legacy-contracts program)
+    migration-summary (legacy-migration-summary migration-rows)
+    migration-detail (legacy-migration-detail-summary migration-rows)
     case-first-error-code (vector-get case-check 1)
     property-first-error-code (vector-get property-check 1)
     diagnostics-count (+ base-diagnostics-count (+ canonical-diagnostics-count (+ case-diagnostics-count property-diagnostics-count)))
@@ -117,6 +119,11 @@
       (if (> (string-length migration-summary) 0)
         (do
           (print-string migration-summary)
+          (print-string "\n"))
+        (print-string ""))
+      (if (> (string-length migration-detail) 0)
+        (do
+          (print-string migration-detail)
           (print-string "\n"))
         (print-string ""))
       (exit-success))))

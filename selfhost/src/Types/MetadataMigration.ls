@@ -7,7 +7,7 @@
 (import Types.TypeInferAssertions)
 
 ;; legacy metadata を canonical form へ silent conversion せず分類する。
-;; row は [diagnostic-code, disposition, directive-start, directive-end, owner-hash]。
+;; row は [diagnostic-code, disposition, directive-start, directive-end, owner-hash, message, selected-semantics-code]。
 ;; 先頭 4 フィールドは既存 summary/span consumer との互換を維持する。disposition は
 ;; 1=docs-only :example, 2=:assert, 3=:property/:postcondition,
 ;; 4=manual review を表す。
@@ -281,6 +281,23 @@
                         (string-concat
                           "|message="
                           (vector-get row 5))))))))))))))
+
+(defn legacy-migration-detail-summary-loop [rows idx count]
+  (if (>= idx count)
+    ""
+    (let [piece (legacy-migration-row-detail-text (vector-get rows idx))
+      rest (legacy-migration-detail-summary-loop rows (+ idx 1) count)]
+      (if (= (string-length rest) 0)
+        piece
+        (string-concat piece (string-concat "," rest))))))
+
+(defn legacy-migration-detail-summary [rows]
+  (let [count (vector-length rows)]
+    (if (= count 0)
+      ""
+      (string-concat
+        "migration-detail:"
+        (legacy-migration-detail-summary-loop rows 0 count)))))
 
 (defn legacy-migration-row-text [row]
   (string-concat

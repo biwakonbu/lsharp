@@ -6755,16 +6755,21 @@ fn test_e2e_selfhost_cli_check_reports_legacy_migration_summary() {
     });
     let lines: Vec<&str> = output.trim().lines().collect();
 
+    assert_eq!(lines.len(), 5, "selfhost check は migration detail 行を返すべき");
+    assert_eq!(lines[0], "Fn");
+    assert_eq!(lines[1], "diagnostics:0");
     assert_eq!(
-        lines,
-        vec![
-            "Fn",
-            "diagnostics:0",
-            "migration:3,LS2001:docs-only-example,LS2001:assertion,LS2002:property-postcondition",
-            "0",
-        ],
-        "selfhost check は legacy metadata を silent success にせず migration disposition を返すべき"
+        lines[2],
+        "migration:3,LS2001:docs-only-example,LS2001:assertion,LS2002:property-postcondition"
     );
+    assert!(lines[3].starts_with("migration-detail:LS2001|owner="));
+    assert!(lines[3].contains("|selected=legacy-example-truthiness|disposition=docs-only-example|"));
+    assert!(lines[3].contains("|selected=legacy-example-truthiness|disposition=assertion|"));
+    assert!(lines[3].contains("|selected=legacy-invariant-deterministic-smoke|disposition=property-postcondition|"));
+    assert!(lines[3].contains("|message=legacy :example は docs-only :example として保持する候補です"));
+    assert!(lines[3].contains("|message=Bool legacy :example は strict :assert への移行候補です"));
+    assert!(lines[3].contains("|message=legacy :invariant は :property / :postcondition への移行候補です"));
+    assert_eq!(lines[4], "0");
 }
 
 /// EC-M1-03: selfhost migration row が parser-owned owner と directive span を保持すること
@@ -6782,6 +6787,14 @@ fn test_e2e_selfhost_migration_rows_preserve_legacy_owner_and_directive_spans() 
         raw0 (vector-get raw 0)
         raw1 (vector-get raw 1)
         detail0 (legacy-migration-row-detail-text row0)
+        detail1 (legacy-migration-row-detail-text row1)
+        detail2 (legacy-migration-row-detail-text row2)
+        detail-summary (legacy-migration-detail-summary rows)
+        expected-detail-summary (string-concat
+          "migration-detail:"
+          (string-concat
+            detail0
+            (string-concat "," (string-concat detail1 (string-concat "," detail2)))))
         expected-detail0 (string-concat
           "LS2001|owner="
           (string-concat
@@ -6822,6 +6835,7 @@ fn test_e2e_selfhost_migration_rows_preserve_legacy_owner_and_directive_spans() 
       (print (= (vector-get row1 6) 1))
       (print (= (vector-get row2 6) 2))
       (print (string-eq detail0 expected-detail0))
+      (print (string-eq detail-summary expected-detail-summary))
       0)))
 "#;
 
@@ -6834,7 +6848,7 @@ fn test_e2e_selfhost_migration_rows_preserve_legacy_owner_and_directive_spans() 
     assert_eq!(
         lines,
         vec![
-            "3", "7", "7", "7", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1",
+            "3", "7", "7", "7", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1",
         ],
         "selfhost migration row は raw inventory の owner と directive span を共有するべき"
     );
