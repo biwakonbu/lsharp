@@ -760,6 +760,15 @@
         found
         (contract-node-unknown-hash-do-loop program node env allow-result (+ idx 1) count)))))
 
+(defn contract-bind-lambda-params-loop [env node idx count]
+  (if (>= idx count)
+    env
+    (contract-bind-lambda-params-loop
+      (env-bind env (vector-get node (+ 2 idx)) (value-unit))
+      node
+      (+ idx 1)
+      count)))
+
 (defn contract-node-unknown-hash [program node env allow-result]
   (let [tag (vector-get node 0)]
     (if (= tag (ast-var))
@@ -785,11 +794,19 @@
                 init-found
                 (contract-node-unknown-hash program (vector-get node 3)
                   (env-bind env (vector-get node 1) (value-unit)) allow-result)))
-            (if (= tag (ast-do))
-              (contract-node-unknown-hash-do-loop program node env allow-result 0 (vector-get node 1))
-              (if (= tag (ast-ann))
-                (contract-node-unknown-hash program (vector-get node 1) env allow-result)
-                -1))))))))
+            (if (= tag (ast-lambda))
+              (let [param-count (vector-get node 1)
+                lambda-env (contract-bind-lambda-params-loop env node 0 param-count)]
+                (contract-node-unknown-hash
+                  program
+                  (vector-get node (+ 2 param-count))
+                  lambda-env
+                  allow-result))
+              (if (= tag (ast-do))
+                (contract-node-unknown-hash-do-loop program node env allow-result 0 (vector-get node 1))
+                (if (= tag (ast-ann))
+                  (contract-node-unknown-hash program (vector-get node 1) env allow-result)
+                  -1)))))))))
 
 (defn invariant-unknown-variable [program expr decl param-count]
   (let [scope (bind-params-loop
