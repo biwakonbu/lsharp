@@ -6791,6 +6791,9 @@ fn test_e2e_selfhost_migration_rows_preserve_legacy_owner_and_directive_spans() 
         detail2 (legacy-migration-row-detail-text row2)
         detail-summary (legacy-migration-detail-summary rows)
         detail-json0 (legacy-migration-row-detail-json row0)
+        detail-json1 (legacy-migration-row-detail-json row1)
+        detail-json2 (legacy-migration-row-detail-json row2)
+        detail-json-summary (legacy-migration-detail-json-summary rows)
         expected-detail-summary (string-concat
           "migration-detail:"
           (string-concat
@@ -6811,6 +6814,11 @@ fn test_e2e_selfhost_migration_rows_preserve_legacy_owner_and_directive_spans() 
                     (string-concat
                       "},\"message\":\""
                       (string-concat (vector-get row0 5) "\"}"))))))))
+        expected-detail-json-summary (string-concat
+          "["
+          (string-concat
+            detail-json0
+            (string-concat "," (string-concat detail-json1 (string-concat "," (string-concat detail-json2 "]"))))))
         expected-detail0 (string-concat
           "LS2001|owner="
           (string-concat
@@ -6853,7 +6861,10 @@ fn test_e2e_selfhost_migration_rows_preserve_legacy_owner_and_directive_spans() 
       (print (string-eq detail0 expected-detail0))
       (print (string-eq detail-summary expected-detail-summary))
       (print (string-eq detail-json0 expected-detail-json0))
+      (print (string-eq detail-json-summary expected-detail-json-summary))
       (print-string detail-json0)
+      (print-string "\n")
+      (print-string detail-json-summary)
       (print-string "\n")
       0)))
 "#;
@@ -6865,9 +6876,9 @@ fn test_e2e_selfhost_migration_rows_preserve_legacy_owner_and_directive_spans() 
     let lines: Vec<&str> = output.trim().lines().collect();
 
     let expected_check_lines = vec![
-        "3", "7", "7", "7", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1",
+        "3", "7", "7", "7", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1",
     ];
-    assert_eq!(lines.len(), expected_check_lines.len() + 1);
+    assert_eq!(lines.len(), expected_check_lines.len() + 2);
     assert_eq!(
         &lines[..expected_check_lines.len()],
         expected_check_lines.as_slice(),
@@ -6885,6 +6896,9 @@ fn test_e2e_selfhost_migration_rows_preserve_legacy_owner_and_directive_spans() 
     assert!(detail_json["ownerHash"].is_i64());
     assert!(detail_json["span"]["start"].is_i64());
     assert!(detail_json["span"]["end"].is_i64());
+    let detail_json_summary: Value = serde_json::from_str(lines[expected_check_lines.len() + 1])
+        .expect("selfhost migration detail summary は valid JSON であるべき");
+    assert_eq!(detail_json_summary.as_array().map(Vec::len), Some(3));
 }
 
 /// EC-M1-03: selfhost CLI が canonical :assert の件数を結果へ反映すること

@@ -367,6 +367,22 @@
       (legacy-json-field "message" (vector-get row 5)))]
     (string-concat "{" (string-concat fields6 "}"))))
 
+(defn legacy-migration-detail-json-summary-loop [rows idx count]
+  (if (>= idx count)
+    ""
+    (let [piece (legacy-migration-row-detail-json (vector-get rows idx))
+      rest (legacy-migration-detail-json-summary-loop rows (+ idx 1) count)]
+      (if (= (string-length rest) 0)
+        piece
+        (string-concat piece (string-concat "," rest))))))
+
+(defn legacy-migration-detail-json-summary [rows]
+  (string-concat
+    "["
+    (string-concat
+      (legacy-migration-detail-json-summary-loop rows 0 (vector-length rows))
+      "]")))
+
 (defn legacy-migration-detail-summary-loop [rows idx count]
   (if (>= idx count)
     ""
