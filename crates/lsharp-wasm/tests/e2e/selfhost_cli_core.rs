@@ -7760,6 +7760,61 @@ fn test_e2e_selfhost_contract_inventory_includes_canonical_forms() {
     );
 }
 
+/// EC-M1-02: parser-owned ordered forms を canonical/pending suite projection に分けること
+#[test]
+fn test_e2e_selfhost_parser_contract_suite_projection_separates_legacy_forms() {
+    let harness = r#"
+(defn main []
+  (let [src "(defn f [x] :example [(f 1)] :case [(expect (f 1) 2)] :assert [(= 1 1)] :property [(for-all [x Int] :cases 3 :postcondition (= result x))] :invariant (= result (+ x 1)) (+ x 1))"
+        suites (extract-parser-contract-suites src)
+        suite (vector-get suites 0)
+        ordered (vector-get suite 1)
+        executable (vector-get suite 2)
+        pending (vector-get suite 3)]
+    (do
+      (print (vector-length suites))
+      (print (vector-length ordered))
+      (print (vector-length executable))
+      (print (vector-length pending))
+      (print (vector-get (vector-get executable 0) 0))
+      (print (vector-get (vector-get executable 1) 0))
+      (print (vector-get (vector-get executable 2) 0))
+      (print (vector-get (vector-get pending 0) 0))
+      (print (vector-get (vector-get pending 1) 0))
+      (print (vector-length (vector-get (vector-get executable 0) 1)))
+      (print (vector-length (vector-get (vector-get executable 1) 1)))
+      (print-string (vector-get (vector-get executable 2) 1))
+      (print-string "\n")
+      (print (vector-get (vector-get (vector-get pending 1) 1) 0))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_test_runner_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(
+        lines,
+        vec![
+            "1",
+            "5",
+            "3",
+            "2",
+            "4",
+            "3",
+            "5",
+            "1",
+            "2",
+            "1",
+            "1",
+            "(for-all [x Int] :cases 3 :postcondition (= result x))",
+            "5",
+        ],
+        "parser-owned contract suite は canonical forms と legacy migration forms を分離し、順序を保持するべき"
+    );
+}
+
 /// TEST-CLI-02-O2d: selfhost/src/Tools/Test/TestRunner.ls が supported subset の metadata suite を実行できること
 #[test]
 #[ignore]

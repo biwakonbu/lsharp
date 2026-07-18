@@ -138,6 +138,130 @@
         (vector-get meta 5)
         0))))
 
+;; parser-owned contract suite: [owner-hash, ordered-forms, executable-forms, pending-forms]
+(defn make-parser-contract-suite [owner forms executable pending]
+  (vector-push-quad-rooted
+    (vector-new 4)
+    owner
+    forms
+    executable
+    pending))
+
+(defn parser-contract-form-executable? [kind]
+  (if (>= kind (contract-form-assert)) 1 0))
+
+(defn parser-contract-form-pending? [kind]
+  (if (or (= kind (contract-form-example)) (== kind (contract-form-invariant)))
+    1
+    0))
+
+(defn partition-parser-contract-forms-loop
+  [forms idx count executable pending]
+  (if (>= idx count)
+    (vector-push-pair-rooted (vector-new 2) executable pending)
+    (let [form (vector-get forms idx)
+      kind (vector-get form 0)
+      next-executable (if (= (parser-contract-form-executable? kind) 1)
+        (vector-push-single-rooted executable form)
+        executable)
+      next-pending (if (= (parser-contract-form-pending? kind) 1)
+        (vector-push-single-rooted pending form)
+        pending)]
+      (do
+        (root_push next-executable)
+        (root_push next-pending)
+        (let [result (partition-parser-contract-forms-loop
+            forms
+            (+ idx 1)
+            count
+            next-executable
+            next-pending)]
+          (do
+            (root_pop)
+            (root_pop)
+            result))))))
+
+(defn partition-parser-contract-forms [forms]
+  (partition-parser-contract-forms-loop
+    forms
+    0
+    (vector-length forms)
+    (vector-new 0)
+    (vector-new 0)))
+
+(defn append-parser-contract-suite-from-decl [decl results]
+  (let [tag (vector-get decl 0)]
+    (if (= tag (ast-defn))
+      (let [forms (test-defn-ordered-forms decl)]
+        (if (= forms 0)
+          results
+          (do
+            (root_push forms)
+            (let [partitioned (partition-parser-contract-forms forms)]
+              (do
+                (root_push partitioned)
+                (let [suite (make-parser-contract-suite
+                    (vector-get decl 1)
+                    forms
+                    (vector-get partitioned 0)
+                    (vector-get partitioned 1))
+                  result (vector-push-single-rooted results suite)]
+                  (do
+                    (root_pop)
+                    (root_pop)
+                    result)))))))
+      (if (= tag (ast-private))
+        (append-parser-contract-suite-from-decl (vector-get decl 1) results)
+        (if (= tag (ast-module-decl))
+          (append-parser-contract-suites-from-module-loop
+            decl
+            0
+            (vector-get decl 2)
+            results)
+          results)))))
+
+(defn append-parser-contract-suites-from-module-loop [module-node idx count results]
+  (if (>= idx count)
+    results
+    (let [next-results (append-parser-contract-suite-from-decl
+        (vector-get module-node (+ idx 3))
+        results)]
+      (do
+        (root_push next-results)
+        (let [parsed (append-parser-contract-suites-from-module-loop
+            module-node
+            (+ idx 1)
+            count
+            next-results)]
+          (do
+            (root_pop)
+            parsed))))))
+
+(defn extract-parser-contract-suites-loop [program idx count results]
+  (if (>= idx count)
+    results
+    (let [next-results (append-parser-contract-suite-from-decl
+        (vector-get program idx)
+        results)]
+      (do
+        (root_push next-results)
+        (let [parsed (extract-parser-contract-suites-loop
+            program
+            (+ idx 1)
+            count
+            next-results)]
+          (do
+            (root_pop)
+            parsed))))))
+
+(defn extract-parser-contract-suites [src]
+  (let [program (parse-program src)]
+    (extract-parser-contract-suites-loop
+      program
+      0
+      (vector-length program)
+      (vector-new 0))))
+
 ;; 未対応 property profile は実行件数 0 の成功へ流さず、明示的な境界コードを返す。
 (defn has-unsupported-property-form-loop [forms idx count]
   (if (>= idx count)
