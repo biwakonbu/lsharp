@@ -259,6 +259,10 @@
         i2 (emit-to i1 (op-i64-const) field-hash)]
         (emit-to i2 (op-map-get) map-op)))))
 
+(defn next-pattern-temp-base [pattern-temp-base]
+  ;; map-get / map-contains は operand - 1 から operand + 4 までの 6 local を使う。
+  (+ pattern-temp-base 6))
+
 (defn compile-match-record-field-check [pat value-local scratch-base pattern-temp-base ftable idx instrs]
   ;; nested child が親の value local を上書きしないよう、child scratch は pattern-temp-base を起点にする。
   (let [field-hash (vector-get pat (+ 2 (* idx 2)))
@@ -281,7 +285,14 @@
                 pattern-temp-base
                 contains)
         i7 (emit-to i6 (op-local-set) scratch-base)
-        i8 (compile-match-pattern-check-with-scratch child scratch-base pattern-temp-base pattern-temp-base ftable i7)]
+        i8
+          (compile-match-pattern-check-with-scratch
+            child
+            scratch-base
+            pattern-temp-base
+            (next-pattern-temp-base pattern-temp-base)
+            ftable
+            i7)]
         (emit-to i8 (op-i64-and) 0)))))
 
 (defn record-pattern-type-hash-for-compiler [pat]
@@ -382,7 +393,14 @@
         i4 (emit-to i3 (op-i64-const) (adt-constructor-field-key idx))
         i5 (emit-to i4 (op-map-get) map-op)
         i6 (emit-to i5 (op-local-set) scratch-base)
-        i7 (compile-match-pattern-check-with-scratch child scratch-base pattern-temp-base pattern-temp-base ftable i6)]
+        i7
+          (compile-match-pattern-check-with-scratch
+            child
+            scratch-base
+            pattern-temp-base
+            (next-pattern-temp-base pattern-temp-base)
+            ftable
+            i6)]
         (emit-to i7 (op-i64-and) 0)))))
 
 (defn compile-match-constructor-fields [pat idx count value-local scratch-base pattern-temp-base ftable instrs]
@@ -424,7 +442,15 @@
       child (vector-get pat (+ 3 (* idx 2)))
       i3 (compile-record-pattern-field-get-with-fallback ftable value-local field-hash pattern-temp-base instrs)
       i4 (emit-to i3 (op-local-set) scratch-base)
-      i5 (compile-match-pattern-binders child scratch-base env pattern-temp-base pattern-temp-base ftable i4)]
+      i5
+        (compile-match-pattern-binders
+          child
+          scratch-base
+          env
+          pattern-temp-base
+          (next-pattern-temp-base pattern-temp-base)
+          ftable
+          i4)]
       (compile-match-pattern-binders-children
         pat (+ idx 1) count value-local env scratch-base pattern-temp-base ftable i5))))
 
@@ -437,7 +463,15 @@
       i2 (emit-to i1 (op-i64-const) (adt-constructor-field-key idx))
       i3 (emit-to i2 (op-map-get) map-op)
       i4 (emit-to i3 (op-local-set) scratch-base)
-      i5 (compile-match-pattern-binders child scratch-base env pattern-temp-base pattern-temp-base ftable i4)]
+      i5
+        (compile-match-pattern-binders
+          child
+          scratch-base
+          env
+          pattern-temp-base
+          (next-pattern-temp-base pattern-temp-base)
+          ftable
+          i4)]
       (compile-match-constructor-pattern-binders-children
         pat (+ idx 1) count value-local env scratch-base pattern-temp-base ftable i5))))
 
