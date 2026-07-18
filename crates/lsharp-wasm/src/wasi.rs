@@ -44,6 +44,8 @@ const GC_OBJECT_COUNT_GLOBAL_IDX: u32 = 4;
 const GC_FREE_LIST_COUNT_GLOBAL_IDX: u32 = 5;
 const GC_COLLECTION_COUNT_GLOBAL_IDX: u32 = 6;
 const GC_FREED_COUNT_GLOBAL_IDX: u32 = 7;
+const GC_OBJECT_TABLE_BASE_GLOBAL_IDX: u32 = 8;
+const GC_OBJECT_TABLE_CAPACITY_GLOBAL_IDX: u32 = 9;
 const INTERNAL_HEAP_PTR_EXPORT: &str = "__lsharp_heap_ptr";
 const INTERNAL_HEAP_START_EXPORT: &str = "__lsharp_heap_start";
 const INTERNAL_ALLOC_COUNT_EXPORT: &str = "__lsharp_alloc_count";
@@ -52,6 +54,7 @@ const INTERNAL_GC_LIVE_ALLOC_COUNT_EXPORT: &str = "__lsharp_gc_live_alloc_count"
 const INTERNAL_GC_FREE_LIST_COUNT_EXPORT: &str = "__lsharp_gc_free_list_count";
 const INTERNAL_GC_COLLECTION_COUNT_EXPORT: &str = "__lsharp_gc_collection_count";
 const INTERNAL_GC_FREED_COUNT_EXPORT: &str = "__lsharp_gc_freed_count";
+const INTERNAL_GC_OBJECT_CAPACITY_EXPORT: &str = "__lsharp_gc_object_capacity";
 const INTERNAL_GC_COLLECT_EXPORT: &str = "__lsharp_gc_collect";
 
 #[derive(Copy, Clone)]
@@ -60,6 +63,8 @@ struct AllocatorGlobals {
     alloc_count_global_idx: u32,
     object_count_global_idx: u32,
     free_list_count_global_idx: u32,
+    object_table_base_global_idx: u32,
+    object_table_capacity_global_idx: u32,
 }
 
 #[derive(Copy, Clone)]
@@ -69,13 +74,13 @@ struct CollectorGlobals {
     root_stack_top_global_idx: u32,
     object_count_global_idx: u32,
     free_list_count_global_idx: u32,
+    object_table_base_global_idx: u32,
     gc_collection_count_global_idx: u32,
     gc_freed_count_global_idx: u32,
 }
 
 #[derive(Copy, Clone)]
 struct GcRuntimeLayout {
-    gc_object_table_base: i32,
     gc_free_list_base: i32,
     root_stack_base: i32,
 }
@@ -463,6 +468,8 @@ fn emit_wasm_wasi_with_options(
         alloc_count_global_idx: ALLOC_COUNT_GLOBAL_IDX,
         object_count_global_idx: GC_OBJECT_COUNT_GLOBAL_IDX,
         free_list_count_global_idx: GC_FREE_LIST_COUNT_GLOBAL_IDX,
+        object_table_base_global_idx: GC_OBJECT_TABLE_BASE_GLOBAL_IDX,
+        object_table_capacity_global_idx: GC_OBJECT_TABLE_CAPACITY_GLOBAL_IDX,
     };
     let collector_globals = CollectorGlobals {
         heap_ptr_global_idx: HEAP_PTR_GLOBAL_IDX,
@@ -470,11 +477,11 @@ fn emit_wasm_wasi_with_options(
         root_stack_top_global_idx: ROOT_STACK_TOP_GLOBAL_IDX,
         object_count_global_idx: GC_OBJECT_COUNT_GLOBAL_IDX,
         free_list_count_global_idx: GC_FREE_LIST_COUNT_GLOBAL_IDX,
+        object_table_base_global_idx: GC_OBJECT_TABLE_BASE_GLOBAL_IDX,
         gc_collection_count_global_idx: GC_COLLECTION_COUNT_GLOBAL_IDX,
         gc_freed_count_global_idx: GC_FREED_COUNT_GLOBAL_IDX,
     };
     let gc_layout = GcRuntimeLayout {
-        gc_object_table_base,
         gc_free_list_base,
         root_stack_base,
     };
@@ -533,6 +540,22 @@ fn emit_wasm_wasi_with_options(
             &wasm_encoder::ConstExpr::i32_const(0),
         );
     }
+    globals.global(
+        GlobalType {
+            val_type: ValType::I32,
+            mutable: true,
+            shared: false,
+        },
+        &wasm_encoder::ConstExpr::i32_const(gc_object_table_base),
+    );
+    globals.global(
+        GlobalType {
+            val_type: ValType::I32,
+            mutable: true,
+            shared: false,
+        },
+        &wasm_encoder::ConstExpr::i32_const(GC_OBJECT_SLOT_CAPACITY),
+    );
     wasm_module.section(&globals);
 
     // === Export Section ===
@@ -578,6 +601,11 @@ fn emit_wasm_wasi_with_options(
         INTERNAL_GC_FREED_COUNT_EXPORT,
         ExportKind::Global,
         GC_FREED_COUNT_GLOBAL_IDX,
+    );
+    exports.export(
+        INTERNAL_GC_OBJECT_CAPACITY_EXPORT,
+        ExportKind::Global,
+        GC_OBJECT_TABLE_CAPACITY_GLOBAL_IDX,
     );
     exports.export(INTERNAL_GC_COLLECT_EXPORT, ExportKind::Func, gc_collect_idx);
     if export_component_run {
@@ -1047,6 +1075,8 @@ fn emit_wasm_http_handler_core(module: &Module) -> Result<Vec<u8>, CodegenError>
         alloc_count_global_idx: ALLOC_COUNT_GLOBAL_IDX,
         object_count_global_idx: GC_OBJECT_COUNT_GLOBAL_IDX,
         free_list_count_global_idx: GC_FREE_LIST_COUNT_GLOBAL_IDX,
+        object_table_base_global_idx: GC_OBJECT_TABLE_BASE_GLOBAL_IDX,
+        object_table_capacity_global_idx: GC_OBJECT_TABLE_CAPACITY_GLOBAL_IDX,
     };
     let collector_globals = CollectorGlobals {
         heap_ptr_global_idx: HEAP_PTR_GLOBAL_IDX,
@@ -1054,11 +1084,11 @@ fn emit_wasm_http_handler_core(module: &Module) -> Result<Vec<u8>, CodegenError>
         root_stack_top_global_idx: ROOT_STACK_TOP_GLOBAL_IDX,
         object_count_global_idx: GC_OBJECT_COUNT_GLOBAL_IDX,
         free_list_count_global_idx: GC_FREE_LIST_COUNT_GLOBAL_IDX,
+        object_table_base_global_idx: GC_OBJECT_TABLE_BASE_GLOBAL_IDX,
         gc_collection_count_global_idx: GC_COLLECTION_COUNT_GLOBAL_IDX,
         gc_freed_count_global_idx: GC_FREED_COUNT_GLOBAL_IDX,
     };
     let gc_layout = GcRuntimeLayout {
-        gc_object_table_base,
         gc_free_list_base,
         root_stack_base,
     };
@@ -1116,6 +1146,22 @@ fn emit_wasm_http_handler_core(module: &Module) -> Result<Vec<u8>, CodegenError>
             &wasm_encoder::ConstExpr::i32_const(0),
         );
     }
+    globals.global(
+        GlobalType {
+            val_type: ValType::I32,
+            mutable: true,
+            shared: false,
+        },
+        &wasm_encoder::ConstExpr::i32_const(gc_object_table_base),
+    );
+    globals.global(
+        GlobalType {
+            val_type: ValType::I32,
+            mutable: true,
+            shared: false,
+        },
+        &wasm_encoder::ConstExpr::i32_const(GC_OBJECT_SLOT_CAPACITY),
+    );
     wasm_module.section(&globals);
 
     let mut exports = ExportSection::new();
@@ -1433,11 +1479,11 @@ fn emit_alloc_func(codes: &mut CodeSection, globals: AllocatorGlobals, layout: G
         alloc_count_global_idx,
         object_count_global_idx,
         free_list_count_global_idx,
+        object_table_base_global_idx,
+        object_table_capacity_global_idx,
     } = globals;
     let GcRuntimeLayout {
-        gc_object_table_base,
-        gc_free_list_base,
-        ..
+        gc_free_list_base, ..
     } = layout;
 
     let mem32 = |offset: u64| MemArg {
@@ -1446,7 +1492,7 @@ fn emit_alloc_func(codes: &mut CodeSection, globals: AllocatorGlobals, layout: G
         memory_index: 0,
     };
 
-    let mut f = wasm_encoder::Function::new(vec![(11, ValType::I32)]);
+    let mut f = wasm_encoder::Function::new(vec![(20, ValType::I32)]);
 
     // local1 = aligned size
     f.instruction(&W::LocalGet(0));
@@ -1582,12 +1628,95 @@ fn emit_alloc_func(codes: &mut CodeSection, globals: AllocatorGlobals, layout: G
     f.instruction(&W::LocalSet(8));
     f.instruction(&W::End);
 
-    // live object metadata を記録
+    // object table が満杯になったら Wasm memory の末尾へ倍増コピーする。
+    // metadata を heap payload と同じ固定領域に置かず、既存 object address を動かさない。
     f.instruction(&W::GlobalGet(object_count_global_idx));
-    f.instruction(&W::I32Const(GC_OBJECT_SLOT_CAPACITY));
+    f.instruction(&W::GlobalGet(object_table_capacity_global_idx));
+    f.instruction(&W::I32GeU);
+    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::GlobalGet(object_table_base_global_idx));
+    f.instruction(&W::LocalSet(12));
+    f.instruction(&W::GlobalGet(object_table_capacity_global_idx));
+    f.instruction(&W::LocalSet(13));
+    f.instruction(&W::LocalGet(13));
+    f.instruction(&W::I32Const(2));
+    f.instruction(&W::I32Mul);
+    f.instruction(&W::LocalSet(14));
+    f.instruction(&W::LocalGet(14));
+    f.instruction(&W::I32Const(GC_OBJECT_SLOT_BYTES));
+    f.instruction(&W::I32Mul);
+    f.instruction(&W::LocalSet(17));
+    f.instruction(&W::MemorySize(0));
+    f.instruction(&W::I32Const(65536));
+    f.instruction(&W::I32Mul);
+    f.instruction(&W::LocalSet(15));
+    f.instruction(&W::GlobalGet(heap_ptr_global_idx));
+    f.instruction(&W::LocalSet(16));
+    f.instruction(&W::LocalGet(16));
+    f.instruction(&W::LocalGet(15));
     f.instruction(&W::I32LtU);
     f.instruction(&W::If(wasm_encoder::BlockType::Empty));
-    f.instruction(&W::I32Const(gc_object_table_base));
+    f.instruction(&W::LocalGet(15));
+    f.instruction(&W::LocalSet(16));
+    f.instruction(&W::End);
+    f.instruction(&W::LocalGet(16));
+    f.instruction(&W::I32Const(7));
+    f.instruction(&W::I32Add);
+    f.instruction(&W::I32Const(-8));
+    f.instruction(&W::I32And);
+    f.instruction(&W::LocalSet(16));
+    f.instruction(&W::LocalGet(16));
+    f.instruction(&W::LocalGet(17));
+    f.instruction(&W::I32Add);
+    f.instruction(&W::LocalSet(18));
+    f.instruction(&W::LocalGet(18));
+    f.instruction(&W::LocalGet(15));
+    f.instruction(&W::I32GtU);
+    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::LocalGet(18));
+    f.instruction(&W::LocalGet(15));
+    f.instruction(&W::I32Sub);
+    f.instruction(&W::I32Const(65535));
+    f.instruction(&W::I32Add);
+    f.instruction(&W::I32Const(65536));
+    f.instruction(&W::I32DivU);
+    f.instruction(&W::LocalSet(19));
+    f.instruction(&W::Else);
+    f.instruction(&W::I32Const(0));
+    f.instruction(&W::LocalSet(19));
+    f.instruction(&W::End);
+    f.instruction(&W::LocalGet(19));
+    f.instruction(&W::MemoryGrow(0));
+    f.instruction(&W::LocalSet(20));
+    f.instruction(&W::LocalGet(20));
+    f.instruction(&W::I32Const(-1));
+    f.instruction(&W::I32Eq);
+    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::Unreachable);
+    f.instruction(&W::End);
+    f.instruction(&W::LocalGet(16));
+    f.instruction(&W::LocalGet(12));
+    f.instruction(&W::LocalGet(13));
+    f.instruction(&W::I32Const(GC_OBJECT_SLOT_BYTES));
+    f.instruction(&W::I32Mul);
+    f.instruction(&W::MemoryCopy {
+        src_mem: 0,
+        dst_mem: 0,
+    });
+    f.instruction(&W::LocalGet(16));
+    f.instruction(&W::GlobalSet(object_table_base_global_idx));
+    f.instruction(&W::LocalGet(14));
+    f.instruction(&W::GlobalSet(object_table_capacity_global_idx));
+    f.instruction(&W::LocalGet(18));
+    f.instruction(&W::GlobalSet(heap_ptr_global_idx));
+    f.instruction(&W::End);
+
+    // live object metadata を記録
+    f.instruction(&W::GlobalGet(object_count_global_idx));
+    f.instruction(&W::GlobalGet(object_table_capacity_global_idx));
+    f.instruction(&W::I32LtU);
+    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::GlobalGet(object_table_base_global_idx));
     f.instruction(&W::GlobalGet(object_count_global_idx));
     f.instruction(&W::I32Const(4));
     f.instruction(&W::I32Shl);
@@ -1631,10 +1760,8 @@ fn emit_gc_mark_candidate(
         heap_start_global_idx,
         ..
     } = globals;
-    let GcRuntimeLayout {
-        gc_object_table_base,
-        ..
-    } = layout;
+    let _ = layout;
+    let object_table_base_global_idx = globals.object_table_base_global_idx;
     let GcMarkHelperLocals {
         old_count_local,
         candidate_value_local,
@@ -1711,7 +1838,7 @@ fn emit_gc_mark_candidate(
     f.instruction(&W::I32GeU);
     f.instruction(&W::BrIf(1));
 
-    f.instruction(&W::I32Const(gc_object_table_base));
+    f.instruction(&W::GlobalGet(object_table_base_global_idx));
     f.instruction(&W::LocalGet(search_idx_local));
     f.instruction(&W::I32Const(4));
     f.instruction(&W::I32Shl);
@@ -1780,13 +1907,14 @@ fn emit_gc_collect_func(
         root_stack_top_global_idx,
         object_count_global_idx,
         free_list_count_global_idx,
+        object_table_base_global_idx,
         gc_collection_count_global_idx,
         gc_freed_count_global_idx,
     } = globals;
     let GcRuntimeLayout {
-        gc_object_table_base,
         gc_free_list_base,
         root_stack_base,
+        ..
     } = layout;
 
     let mem32 = |offset: u64| MemArg {
@@ -1814,7 +1942,7 @@ fn emit_gc_collect_func(
     f.instruction(&W::LocalGet(OLD_COUNT_LOCAL));
     f.instruction(&W::I32GeU);
     f.instruction(&W::BrIf(1));
-    f.instruction(&W::I32Const(gc_object_table_base));
+    f.instruction(&W::GlobalGet(object_table_base_global_idx));
     f.instruction(&W::LocalGet(READ_IDX_LOCAL));
     f.instruction(&W::I32Const(4));
     f.instruction(&W::I32Shl);
@@ -1883,7 +2011,7 @@ fn emit_gc_collect_func(
     f.instruction(&W::I32GeU);
     f.instruction(&W::BrIf(1));
 
-    f.instruction(&W::I32Const(gc_object_table_base));
+    f.instruction(&W::GlobalGet(object_table_base_global_idx));
     f.instruction(&W::LocalGet(READ_IDX_LOCAL));
     f.instruction(&W::I32Const(4));
     f.instruction(&W::I32Shl);
@@ -2154,7 +2282,7 @@ fn emit_gc_collect_func(
     f.instruction(&W::I32GeU);
     f.instruction(&W::BrIf(1));
 
-    f.instruction(&W::I32Const(gc_object_table_base));
+    f.instruction(&W::GlobalGet(object_table_base_global_idx));
     f.instruction(&W::LocalGet(READ_IDX_LOCAL));
     f.instruction(&W::I32Const(4));
     f.instruction(&W::I32Shl);
@@ -2172,7 +2300,7 @@ fn emit_gc_collect_func(
 
     f.instruction(&W::LocalGet(MARK_STATE_LOCAL));
     f.instruction(&W::If(wasm_encoder::BlockType::Empty));
-    f.instruction(&W::I32Const(gc_object_table_base));
+    f.instruction(&W::GlobalGet(object_table_base_global_idx));
     f.instruction(&W::LocalGet(WRITE_IDX_LOCAL));
     f.instruction(&W::I32Const(4));
     f.instruction(&W::I32Shl);

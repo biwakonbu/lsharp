@@ -246,6 +246,12 @@ current checkout `b0e6c73` の selfhost source（App.Cli standalone Preview1 out
 
 停止後は VM process、lock、workdir を回収し、disk は 11 GiB 中 3.3 GiB 使用（31%）に戻った。この結果は chunk `256` の current-source replay が未完であることだけを示し、既定 chunk `64` または責務分割で再検証すべきことを示す。`LEGACY-IO-01`、`LEGACY-BOOT-01`、`EC-M1-07` は完了扱いにしない。
 
+### LEGACY-RUNTIME-01 object table growth slice (2026-07-18)
+
+WASI codegen の object table base / capacity を mutable runtime globals へ移し、live object metadata が初期容量 `4096` に達したとき Wasm memory の末尾へ容量を倍増して `memory.copy` するようにした。既存の object payload address は移動せず、collector の mark / sweep は更新後の table base を参照する。memory growth failure は現段階では明示 trap の境界として残している。
+
+Evidence: RED の `test_e2e_runtime_object_table_grows_past_initial_capacity`（`alloc_count=4097` に対して `gc_live_alloc_count=4096`）、GREEN の同 test（`alloc_count=4097`、`root_stack_top=4097`、`gc_live_alloc_count=4097`）、collector focused 15 tests、allocator focused 11 tests、`cargo check -p lsharp-wasm`。これは object table の verified growth slice であり、root stack / free-list capacity growth、上限診断、size class、precise sentinel、component/native runtime parity、current-source stage0 gate は残件である。
+
 ### EC-M1-02 legacy metadata invariant slice (2026-07-17)
 
 Selfhost `Syntax.Parser` は legacy `:invariant` predicate を既存 metadata vector の slot 4 に AST として保持し、`Tools.Text.FormatterDecl` の source-aware 経路は `:doc` と invariant を canonical 順で出力する。既存の `:doc` / `:example` / `:params` / `:returns` の slot と、`DocTools` の docs payload 抽出は維持した。RED で invariant と後続 body が skip payload に吸収される failure を固定し、GREEN で parser AST shape、既存 metadata regression、source-aware formatter の string / float / metadata / invariant 4ケースを pass した。

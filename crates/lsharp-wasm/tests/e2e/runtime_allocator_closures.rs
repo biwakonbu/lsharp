@@ -461,6 +461,38 @@ fn test_e2e_alloc_memory_grow() {
     assert!(addr >= 512, "large allocation should succeed, got {}", addr);
 }
 
+#[test]
+fn test_e2e_runtime_object_table_grows_past_initial_capacity() {
+    let (_stdout, telemetry) = compile_and_capture_runtime_telemetry(
+        r#"
+        (defn alloc-rooted [n]
+          (if (<= n 0)
+            0
+            (let [value (__alloc 8)]
+              (do
+                (root_push value)
+                (alloc-rooted (- n 1))))))
+        (defn main [] (alloc-rooted 4097))
+    "#,
+    );
+
+    assert_eq!(
+        telemetry.alloc_count, 4097,
+        "object-table growth fixture は 4097 allocations を完了すべき: {:?}",
+        telemetry
+    );
+    assert_eq!(
+        telemetry.root_stack_top, 4097,
+        "全 allocation が root stack に保持されるべき: {:?}",
+        telemetry
+    );
+    assert_eq!(
+        telemetry.gc_live_alloc_count, 4097,
+        "初期容量 4096 を超えた object metadata も live として追跡されるべき: {:?}",
+        telemetry
+    );
+}
+
 /// CP-05: __alloc メトリクス — peak heap pointer が alloc 後に増加すること
 #[test]
 fn test_e2e_alloc_metrics_peak_usage() {
