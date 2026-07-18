@@ -674,3 +674,11 @@ deterministic property profile を、単一 Bool から 2 binder の `Int`/`Bool
 Evidence: Rust `test_run_metadata_tests_executes_mixed_int_bool_property_binders` / `test_run_metadata_tests_rejects_mixed_int_bool_property_above_two_cases`、selfhost `test_e2e_selfhost_runner_executes_mixed_int_bool_property_binders` / `test_e2e_selfhost_runner_rejects_mixed_int_bool_property_above_two_cases`、single Bool / two-Int regression、`PropertyRunner.ls` / `TestRunner.ls` source check（各 `diagnostics:0`）。
 
 これは mixed type 全体または EC-M1-05 全体の完了ではない。mixed cases 3 以上、複数 Bool binder、3 binder、一般 `TypeExpr`、constraint/type-directed generator、seed/shrink/coverage bucket、predicate/span parity、current-source Mac Apple Silicon / Linux x86_64 native artifact/runtime gate、stage0 provenance は残件である。verified slice の日常開発は Rust なしで進められるが、profile 外 property semantics と Rust oracle / bootstrap / host integration の境界は維持する。
+
+### EC-M1-05 two-Bool property sampling (2026-07-18)
+
+Bool binder の typed profile を、単一 Bool から最大 2 個の Bool binder へ拡張した。対象は `[a Bool b Bool]`、`:cases 1..2` に限定し、source order の deterministic prefix `[false, false]`, `[true, true]` を Rust oracle と selfhost runner で共有する。Rust の binder type vector、selfhost の type-name hash vector、既存の 2 binder sample projection をそのまま利用し、Bool 値を Int に丸めず実 Bool AST として postcondition/owner function へ渡す。
+
+Evidence: Rust `test_run_metadata_tests_executes_two_bool_property_binders` / `test_run_metadata_tests_rejects_two_bool_property_above_two_cases`、selfhost `test_e2e_selfhost_runner_executes_two_bool_property_binders` / `test_e2e_selfhost_runner_rejects_two_bool_property_above_two_cases`、single Bool / Int-Bool mixed / two-Int regression、`PropertyRunner.ls` / `TestRunner.ls` source check（各 `diagnostics:0`）。
+
+これは Bool generator 全体または EC-M1-05 全体の完了ではない。Bool 3 binder、Bool/Int/Bool の一般 mixed arity、一般 `TypeExpr`、constraint/type-directed generator、seed/shrink/coverage bucket、predicate/span parity、current-source Mac Apple Silicon / Linux x86_64 native artifact/runtime gate、stage0 provenance は残件である。verified slice の日常開発は Rust なしで進められるが、profile 外 property semantics と Rust oracle / bootstrap / host integration の境界は維持する。

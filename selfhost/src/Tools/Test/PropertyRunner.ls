@@ -4,7 +4,8 @@
 (import Syntax.Parser)
 
 ;; 移行期 property profile の raw payload projection。
-;; 対応範囲は 1..2 個の Int binder、または単一 Bool binder、`:cases 1..5`、
+;; 対応範囲は 1..2 個の Int binder、1..2 個の Bool binder、または Int/Bool mixed 2 binder、
+;; `:cases 1..5`、
 ;; precondition の conjunction、postcondition とする。二 binder は deterministic
 ;; pair prefix、Bool binder は false/true prefix へ投影する。
 ;; seed / shrink / 未知 option は TestRunner へ渡す前に拒否する。
@@ -650,12 +651,18 @@
     (if (and (= bool-count 1)
         (and (= int-count 1) (= (vector-length binders) 2))) 1 0)))
 
+(defn property-runner-two-bool? [binders]
+  (if (and (= (property-runner-bool-binder-count binders) 2)
+      (= (vector-length binders) 2)) 1 0))
+
 (defn property-runner-bool-profile-supported? [binders cases]
   (if (> cases 2)
     0
     (if (= (vector-length binders) 1)
       1
-      (property-runner-mixed-int-bool? binders))))
+      (if (= (property-runner-mixed-int-bool? binders) 1)
+        1
+        (property-runner-two-bool? binders)))))
 
 (defn property-runner-binder-type-profile-code [contract]
   (let [binders (vector-get contract 1)

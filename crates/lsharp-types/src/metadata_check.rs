@@ -568,6 +568,7 @@ pub fn property_smoke_test_spec(property: &PropertyForm) -> Option<PropertySmoke
     match binder_types.as_slice() {
         [PropertyBinderType::Int] | [PropertyBinderType::Int, PropertyBinderType::Int] => {}
         [PropertyBinderType::Bool]
+        | [PropertyBinderType::Bool, PropertyBinderType::Bool]
         | [PropertyBinderType::Int, PropertyBinderType::Bool]
         | [PropertyBinderType::Bool, PropertyBinderType::Int]
             if cases <= 2 => {}

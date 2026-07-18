@@ -458,6 +458,46 @@ mod tests {
     }
 
     #[test]
+    fn test_run_metadata_tests_executes_two_bool_property_binders() {
+        let dir = unique_temp_dir("deterministic_property_two_bool_binders");
+        let file = dir.join("Main.ls");
+        fs::write(
+            &file,
+            "(defn choose [left right] :property [(for-all [a Bool b Bool] :cases 2 :postcondition (= result (if (or a b) 1 0)))] (if (or left right) 1 0))\n",
+        )
+        .unwrap();
+
+        let run = run_metadata_tests(&file)
+            .expect("二つの Bool binder は deterministic typed prefix として実行できるべき");
+        assert_eq!(run.total(), 1);
+        assert_eq!(run.passed(), 1);
+        assert_eq!(run.failed(), 0);
+        assert_eq!(run.results[0].name, "choose_property_0");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_run_metadata_tests_rejects_two_bool_property_above_two_cases() {
+        let dir = unique_temp_dir("unsupported_two_bool_property_cases");
+        let file = dir.join("Main.ls");
+        fs::write(
+            &file,
+            "(defn choose [left right] :property [(for-all [a Bool b Bool] :cases 3 :postcondition (= result (if (or a b) 1 0)))] (if (or left right) 1 0))\n",
+        )
+        .unwrap();
+
+        let error = run_metadata_tests(&file)
+            .expect_err("二つの Bool property の cases 3 は narrow profile 外であるべき");
+        assert!(
+            error.to_string().contains("[LS3002]"),
+            "二つの Bool property の cases 3 は LS3002 を返すべき: {error}"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn test_run_metadata_tests_rejects_mixed_int_bool_property_above_two_cases() {
         let dir = unique_temp_dir("unsupported_mixed_int_bool_property_cases");
         let file = dir.join("Main.ls");
