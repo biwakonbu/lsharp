@@ -201,10 +201,15 @@ fn generate_sample_args(param_count: usize) -> Vec<Vec<String>> {
 
 fn property_sample_values(spec: &PropertySmokeTestSpec) -> Vec<Vec<String>> {
     let scalar = ["0", "1", "5", "-1", "42"];
+    let strings = ["\"\"", "\"a\"", "\"hello\"", "\"lsharp\"", "\"42\""];
     let mut samples = Vec::new();
     if spec.binder_types == [PropertyBinderType::Bool] {
         samples.push(vec!["false".to_string()]);
         samples.push(vec!["true".to_string()]);
+    } else if spec.binder_types == [PropertyBinderType::String] {
+        for value in strings {
+            samples.push(vec![value.to_string()]);
+        }
     } else if spec.binder_types.len() >= 3
         || (spec.binder_types.len() > 1
             && spec
@@ -231,6 +236,7 @@ fn property_sample_values(spec: &PropertySmokeTestSpec) -> Vec<Vec<String>> {
                             "true"
                         }
                     }
+                    PropertyBinderType::String => "\"\"",
                 })
                 .map(str::to_string)
                 .collect();
@@ -469,6 +475,30 @@ mod tests {
         assert!(
             results[0].passed,
             "invariant は元関数引数 x と result の両方を参照できるべき: {:?}",
+            results[0].error
+        );
+    }
+
+    #[test]
+    fn test_property_string_binder_execution() {
+        let source = r#"(defn identity [x]
+  :property [(for-all [sample String]
+               :cases 5
+               :postcondition (string-eq result sample))]
+  x)
+"#;
+        let program = lsharp_syntax::parse(source).unwrap();
+        let tests = generate_tests(&program);
+        assert_eq!(tests.len(), 1);
+
+        let test_source = generate_test_program(&program, &tests);
+        let output = compile_and_run(&test_source);
+        let results = parse_test_output(&output, &tests, &program);
+
+        assert_eq!(results.len(), 1);
+        assert!(
+            results[0].passed,
+            "String property は5つのdeterministic sampleを通過するべき: {:?}",
             results[0].error
         );
     }

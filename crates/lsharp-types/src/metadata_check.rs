@@ -538,6 +538,7 @@ pub struct PropertySmokeTestSpec {
 pub enum PropertyBinderType {
     Int,
     Bool,
+    String,
 }
 
 const DETERMINISTIC_TYPED_BINDER_LIMIT: usize = 8;
@@ -546,8 +547,9 @@ const DETERMINISTIC_TYPED_BINDER_LIMIT: usize = 8;
 ///
 /// type-directed sampling、seed、shrink は別 slice のため、ここで暗黙に既定値へ
 /// 丸めず、明示的に profile 外として扱う。1〜2 個の Int は legacy prefix、3〜8 個の
-/// Int/Bool は cases 1〜2 の typed prefix とする。precondition は source order の
-/// conjunction として deterministic sample の filter に使う。
+/// Int/Bool は cases 1〜2 の typed prefix、単一の String は cases 1〜5 の typed prefix
+/// とする。precondition は source order の conjunction として deterministic sample の
+/// filter に使う。
 pub fn property_smoke_test_spec(property: &PropertyForm) -> Option<PropertySmokeTestSpec> {
     if !(1..=DETERMINISTIC_TYPED_BINDER_LIMIT).contains(&property.binders().len())
         || property.seed().is_some()
@@ -565,11 +567,15 @@ pub fn property_smoke_test_spec(property: &PropertyForm) -> Option<PropertySmoke
         .map(|binder| match binder.ty() {
             TypeExpr::Named(_, ty_name) if ty_name == "Int" => Some(PropertyBinderType::Int),
             TypeExpr::Named(_, ty_name) if ty_name == "Bool" => Some(PropertyBinderType::Bool),
+            TypeExpr::Named(_, ty_name) if ty_name == "String" => {
+                Some(PropertyBinderType::String)
+            }
             _ => None,
         })
         .collect::<Option<Vec<_>>>()?;
     match binder_types.as_slice() {
         [PropertyBinderType::Int] | [PropertyBinderType::Int, PropertyBinderType::Int] => {}
+        [PropertyBinderType::String] => {}
         [PropertyBinderType::Bool]
         | [PropertyBinderType::Bool, PropertyBinderType::Bool]
         | [PropertyBinderType::Int, PropertyBinderType::Bool]

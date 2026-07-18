@@ -1,3 +1,4 @@
+use lsharp_types::metadata_check::{TestKind, generate_tests};
 use lsharp_types::metadata_contract::{
     DEFAULT_PROPERTY_CASES, DEFAULT_PROPERTY_SEED, ExecutableContract, GeneratorPlan,
     TYPE_DIRECTED_GENERATOR_VERSION, inventory_contract_suites,
@@ -66,4 +67,24 @@ fn property_form_uses_portable_sampling_defaults_when_options_are_omitted() {
     assert_eq!(property.sampling().cases(), DEFAULT_PROPERTY_CASES);
     assert_eq!(property.sampling().seed(), DEFAULT_PROPERTY_SEED);
     assert!(property.sampling().shrink());
+}
+
+#[test]
+fn property_smoke_spec_accepts_single_string_binder() {
+    let source = r#"(defn identity [value]
+  :property [(for-all [sample String]
+               :cases 5
+               :postcondition (string-eq result sample))]
+  value)
+"#;
+    let program = lsharp_syntax::parse(source).expect("String property source は parse できるべき");
+    let tests = generate_tests(&program);
+
+    assert_eq!(
+        tests.len(),
+        1,
+        "single String binder は property test へ投影されるべき"
+    );
+    assert_eq!(tests[0].kind, TestKind::Property);
+    assert!(tests[0].property.is_some());
 }

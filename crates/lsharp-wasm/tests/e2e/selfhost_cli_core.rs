@@ -7068,6 +7068,36 @@ fn test_e2e_selfhost_runner_executes_deterministic_property_smoke() {
     );
 }
 
+/// EC-M1-05: selfhost runner が単一 String binder を deterministic prefix として実行すること
+#[test]
+fn test_e2e_selfhost_runner_executes_string_property_binder() {
+    let harness = r#"
+(defn main []
+  (let [src "(defn identity [x] :property [(for-all [sample String] :cases 5 :postcondition (string-eq result sample))] x)"
+        suite (generate-tests-from-source src)
+        properties (vector-get suite 4)
+        result0 (vector-get properties 0)]
+    (do
+      (print (vector-length properties))
+      (print (vector-get result0 1))
+      (print (vector-get result0 2))
+      (print (vector-get result0 3))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_test_runner_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["1", "1", "5", "0"],
+        "selfhost runner は単一 String binder を 5 cases の string-eq property として評価すべき"
+    );
+}
+
 /// EC-M1-05: selfhost CLI が deterministic property smoke を 0 件へ丸めないこと
 #[test]
 fn test_e2e_selfhost_cli_reports_deterministic_property_smoke() {

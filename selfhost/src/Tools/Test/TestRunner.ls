@@ -747,12 +747,16 @@
 (defn hash-and [] (test-hash-string "and"))
 (defn hash-or [] (test-hash-string "or"))
 (defn hash-not [] (test-hash-string "not"))
+(defn hash-string-eq [] (test-hash-string "string-eq"))
 
 (defn value-int [n]
   (make-lit-int n))
 
 (defn value-bool [b]
   (make-lit-bool b))
+
+(defn value-string [text]
+  (vector-push-pair-rooted (vector-new 2) (ast-lit-string) text))
 
 (defn value-unit []
   (make-lit-unit))
@@ -778,7 +782,9 @@
     (if (= ltag rtag)
       (if (= ltag (ast-lit-unit))
         1
-        (if (= (vector-get left 1) (vector-get right 1)) 1 0))
+        (if (= ltag (ast-lit-string))
+          (if (string-eq (vector-get left 1) (vector-get right 1)) 1 0)
+          (if (= (vector-get left 1) (vector-get right 1)) 1 0)))
       0)))
 
 (defn env-new []
@@ -824,7 +830,9 @@
     1
     (if (= (builtin-hash-compare? name-hash) 1)
       1
-      (builtin-hash-logic? name-hash))))
+      (if (= name-hash (hash-string-eq))
+        1
+        (builtin-hash-logic? name-hash)))))
 
 (defn arg-value [args idx]
   (if (< idx (vector-length args))
@@ -1129,21 +1137,33 @@
         (value-bool (if (= (value-truthy arg0) 1) 0 1))
         0))))
 
+(defn apply-builtin-string [callee-hash arg0 arg1]
+  (if (= callee-hash (hash-string-eq))
+    (if (= (value-tag arg0) (ast-lit-string))
+      (if (= (value-tag arg1) (ast-lit-string))
+        (value-bool (if (string-eq (vector-get arg0 1) (vector-get arg1 1)) 1 0))
+        (value-bool 0))
+      (value-bool 0))
+    0))
+
 (defn apply-builtin [callee-hash args]
   (let [arg0 (arg-value args 0)
     arg1 (arg-value args 1)
     left (value-int-or-bool arg0)
     right (value-int-or-bool arg1)
-    arith (apply-builtin-arith callee-hash args left right)]
-    (if (= arith 0)
-      (let [compare (apply-builtin-compare callee-hash arg0 arg1 left right)]
-        (if (= compare 0)
-          (let [logic (apply-builtin-logic callee-hash arg0 arg1)]
-            (if (= logic 0)
-              (value-unit)
-              logic))
-          compare))
-      arith)))
+    string-result (apply-builtin-string callee-hash arg0 arg1)]
+    (if (= string-result 0)
+      (let [arith (apply-builtin-arith callee-hash args left right)]
+        (if (= arith 0)
+          (let [compare (apply-builtin-compare callee-hash arg0 arg1 left right)]
+            (if (= compare 0)
+              (let [logic (apply-builtin-logic callee-hash arg0 arg1)]
+                (if (= logic 0)
+                  (value-unit)
+                  logic))
+              compare))
+          arith))
+      string-result)))
 
 (defn eval-defn-call [program decl args]
   (let [param-count (vector-get decl 2)
@@ -1769,10 +1789,23 @@
 (defn property-sample-bool [idx]
   (value-bool (if (= (% idx 2) 0) 0 1)))
 
+(defn property-sample-string [idx]
+  (if (= idx 0)
+    (value-string "")
+    (if (= idx 1)
+      (value-string "a")
+      (if (= idx 2)
+        (value-string "hello")
+        (if (= idx 3)
+          (value-string "lsharp")
+          (value-string "42"))))))
+
 (defn property-sample-by-type [type-hash idx]
   (if (= type-hash (property-runner-type-bool-hash))
     (property-sample-bool idx)
-    (property-sample-value idx)))
+    (if (= type-hash (property-runner-type-string-hash))
+      (property-sample-string idx)
+      (property-sample-value idx))))
 
 (defn property-sample-binder-type-bool? [binder-types idx]
   (if (< idx (vector-length binder-types))

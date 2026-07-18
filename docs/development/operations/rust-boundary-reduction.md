@@ -722,3 +722,11 @@ selfhost `TestRunner` の直接 materialize 経路でも、静的に true な `:
 Evidence: selfhost `test_e2e_selfhost_runner_rejects_vacuous_property_postcondition`、`test_e2e_selfhost_runner_rejects_statically_true_property_postcondition`、既存 `test_e2e_selfhost_runner_rejects_vacuous_property_precondition`、Rust tooling の canonical vacuity tests、`TestRunner.ls` source check（`diagnostics:0`）。RED では runner が `postcondition true` と `(= 1 1)` を `passed=1, actual=1, diagnostic=0` としていたが、GREEN ではいずれも `passed=0, actual=0, diagnostic=2005` になった。
 
 これは literal/static comparison と deterministic property runner の non-vacuity slice に限定される。一般的な constant propagation、動的に常に true となる postconditionの検出、一般 `TypeExpr`、type-directed generator、seed/shrink/coverage bucket、structured assurance report、current-source Mac Apple Silicon / Linux x86_64 native artifact/runtime gate、stage0 provenance は残件である。対応済み runner slice の日常開発は Rust なしで進められるが、property evaluator 全体と Rust oracle / bootstrap / host integration の境界は維持する。
+
+### EC-M1-05 single-String property sampling (2026-07-19)
+
+deterministic property smoke profile に単一 `String` binder の verified slice を追加した。対象は `[sample String]`、`:cases 1..5`、`(string-eq result sample)` の postcondition に限定する。Rust `PropertySmokeTestSpec` は `PropertyBinderType::String` を保持し、Wasm test runner は `""`, `"a"`, `"hello"`, `"lsharp"`, `"42"` を source literal として生成する。selfhost `PropertyRunner` は `String` type-name hash と単一 binder profileを認識し、`TestRunner` は実行時StringをAST value wrapperへ保持して `string-eq` を意味比較する。
+
+Evidence: `property_smoke_spec_accepts_single_string_binder`、Rust `test_runner::tests::test_property_string_binder_execution`、selfhost `test_e2e_selfhost_runner_executes_string_property_binder`、`./target/debug/lsharp check selfhost/src/Tools/Test/PropertyRunner.ls`、`./target/debug/lsharp check selfhost/src/Tools/Test/TestRunner.ls`（各 `diagnostics:0`）。Rust oracle と selfhost runner は同じ5 casesを実行し、`passed=1` / `actual=5` / `diagnostic=0` を確認した。
+
+これは単一Stringの deterministic prefix に限定した verified sliceであり、Stringの複数binder・Int/Boolとの混在、一般 `TypeExpr`、constraint/type-directed generator、seed/shrink/coverage bucket、structured assurance report、current-source Mac Apple Silicon / Linux x86_64 native artifact/runtime gate、stage0 provenanceは残件である。対応済みprofileの日常開発はRustなしで進められるが、profile外 property semantics と Rust oracle / bootstrap / host integration の境界は維持する。

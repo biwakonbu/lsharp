@@ -5,7 +5,7 @@
 
 ;; 移行期 property profile の raw payload projection。
 ;; 対応範囲は 1..2 個の Int binder、1..2 個の Bool binder、または Int/Bool mixed 2 binder、
-;; `:cases 1..5`、
+;; 単一の String binder、`:cases 1..5`、
 ;; precondition の conjunction、postcondition とする。二 binder は deterministic
 ;; pair prefix、Bool binder は false/true prefix へ投影する。
 ;; seed / shrink / 未知 option は TestRunner へ渡す前に拒否する。
@@ -104,7 +104,9 @@
     (if (= after-type close)
       (property-runner-push-four
         (name-hash payload name-start name-end)
-        (if (string-eq (substring payload type-start type-end) "Int") 1 0)
+        (if (or
+            (string-eq (substring payload type-start type-end) "Int")
+            (string-eq (substring payload type-start type-end) "String")) 1 0)
         close
         (name-hash payload type-start type-end))
       (property-runner-push-four 0 0 -1 0))))
@@ -117,7 +119,9 @@
         type-start (property-runner-skip-space payload name-end len)
         type-end (property-runner-atom-end payload type-start len)
         type-text (if (> type-end type-start) (substring payload type-start type-end) "")
-        type-supported (if (or (string-eq type-text "Int") (string-eq type-text "Bool")) 1 0)
+        type-supported (if (or
+            (string-eq type-text "Int")
+            (or (string-eq type-text "Bool") (string-eq type-text "String"))) 1 0)
         valid (if (and
             (> name-end name-start)
             (and
@@ -614,13 +618,15 @@
 
 (defn property-runner-type-int-hash [] (name-hash "Int" 0 3))
 (defn property-runner-type-bool-hash [] (name-hash "Bool" 0 4))
+(defn property-runner-type-string-hash [] (name-hash "String" 0 6))
 
 (defn property-runner-binder-types-supported-loop [binders idx count]
   (if (>= idx count)
     1
     (let [type-hash (vector-get (vector-get binders idx) 1)]
       (if (or (= type-hash (property-runner-type-int-hash))
-          (= type-hash (property-runner-type-bool-hash)))
+          (or (= type-hash (property-runner-type-bool-hash))
+            (= type-hash (property-runner-type-string-hash))))
         (property-runner-binder-types-supported-loop binders (+ idx 1) count)
         0))))
 
@@ -644,6 +650,15 @@
 
 (defn property-runner-int-binder-count [binders]
   (property-runner-int-binder-count-loop binders 0 (vector-length binders)))
+
+(defn property-runner-string-binder-count-loop [binders idx count]
+  (if (>= idx count)
+    0
+    (+ (if (= (vector-get (vector-get binders idx) 1) (property-runner-type-string-hash)) 1 0)
+      (property-runner-string-binder-count-loop binders (+ idx 1) count))))
+
+(defn property-runner-string-binder-count [binders]
+  (property-runner-string-binder-count-loop binders 0 (vector-length binders)))
 
 (defn property-runner-mixed-int-bool? [binders]
   (let [bool-count (property-runner-bool-binder-count binders)
@@ -674,16 +689,22 @@
   (let [binders (vector-get contract 1)
     sampling (vector-get contract 4)
     cases (if (> (vector-length sampling) 0) (vector-get sampling 0) 0)
-    bool-count (property-runner-bool-binder-count binders)]
+    bool-count (property-runner-bool-binder-count binders)
+    string-count (property-runner-string-binder-count binders)]
     (if (= (property-runner-binder-types-supported? binders) 0)
       3002
-      (if (= bool-count 0)
+      (if (> string-count 0)
+        (if (and (= (vector-length binders) 1)
+            (and (= string-count 1) (<= cases 5)))
+          0
+          3002)
+        (if (= bool-count 0)
         (if (or (= (vector-length binders) 1) (= (vector-length binders) 2))
           0
           (if (and (>= (vector-length binders) 3) (<= cases 2)) 0 3002))
         (if (= (property-runner-bool-profile-supported? binders cases) 1)
           0
-          3002)))))
+          3002))))))
 
 (defn property-runner-binder-hashes-loop [binders idx count result]
   (if (>= idx count)
