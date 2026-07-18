@@ -8254,9 +8254,9 @@ fn test_e2e_selfhost_cli_check_rejects_unknown_property_option_at_each_boundary(
     );
 }
 
-/// EC-M1-04: selfhost check が scalar property option の値欠落を成功扱いしないこと。
+/// EC-M1-04: selfhost check が property option の値欠落を成功扱いしないこと。
 #[test]
-fn test_e2e_selfhost_cli_check_rejects_missing_property_scalar_option_value() {
+fn test_e2e_selfhost_cli_check_rejects_missing_property_option_value() {
     let harness = r#"
 (defn print-check-result [source]
   (let [program (parse-program source)
@@ -8272,6 +8272,8 @@ fn test_e2e_selfhost_cli_check_rejects_missing_property_scalar_option_value() {
     (print-string "BEGIN\n")
     (print-check-result "(defn identity [x] :property [(for-all [x Int] :cases 1 :seed :postcondition (= result x))] x)")
     (print-check-result "(defn identity [x] :property [(for-all [x Int] :cases 1 :shrink :postcondition (= result x))] x)")
+    (print-check-result "(defn identity [x] :property [(for-all [x Int] :precondition :postcondition (= result x))] x)")
+    (print-check-result "(defn identity [x] :property [(for-all [x Int] :postcondition :cases 1)] x)")
     0))
 "#;
 
@@ -8287,8 +8289,8 @@ fn test_e2e_selfhost_cli_check_rejects_missing_property_scalar_option_value() {
 
     assert_eq!(
         lines,
-        vec!["BEGIN", "1", "2007", "1", "2007"],
-        "selfhost property checker は scalar option の値欠落を成功扱いするべきではない"
+        vec!["BEGIN", "1", "2007", "1", "2007", "1", "2007", "1", "2007"],
+        "selfhost property checker は property option の値欠落を成功扱いするべきではない"
     );
 }
 

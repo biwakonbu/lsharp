@@ -98,6 +98,19 @@ fn property_form_rejects_missing_scalar_option_value() {
 }
 
 #[test]
+fn property_form_rejects_missing_list_and_expression_option_value() {
+    let sources = [
+        "(defn identity [x] :property [(for-all [x Int] :precondition :postcondition (= result x))] x)",
+        "(defn identity [x] :property [(for-all [x Int] :postcondition :cases 1)] x)",
+    ];
+
+    for source in sources {
+        lsharp_syntax::parse(source)
+            .expect_err("値が欠落した list/expression option は拒否するべき");
+    }
+}
+
+#[test]
 fn property_form_rejects_unclosed_outer_bracket() {
     let source = "(defn identity [x] :property [(for-all [x Int] :postcondition (= result x)) x)";
     lsharp_syntax::parse(source).expect_err("閉じていない property bracket は拒否するべき");
