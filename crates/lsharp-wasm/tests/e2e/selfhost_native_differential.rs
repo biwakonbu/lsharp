@@ -11911,6 +11911,65 @@ fn test_native_codegen_emits_x86_direct_call_sixty_one_arg_bundle_bytes() {
 
 /// NATIVE-REAL-09: emit-object が生成した native bytes 全体を object file へ保持すること
 #[test]
+fn test_native_emit_elf_peak_root_depth_does_not_grow_capacity_for_released_roots() {
+    let mut chunk_expr = "bytes".to_string();
+    for _ in 0..64 {
+        chunk_expr = format!("(vector-push {chunk_expr} 0)");
+    }
+    let mut chunk_bindings = String::new();
+    for idx in 0..128 {
+        chunk_bindings.push_str(&format!(
+            "b{} (append-native-code-chunk b{})\n        ",
+            idx + 1,
+            idx
+        ));
+    }
+    let entry_source = format!(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeEmit)
+
+(defn append-native-code-chunk [bytes]
+  {chunk_expr})
+
+(defn main []
+  (let [b0 (vector-new 8193)
+        {chunk_bindings}native-code (vector-push b128 0)
+        object (emit-elf native-code)]
+    (do
+      (print (vector-length native-code))
+      (print (vector-length object))
+      0)))"#
+    );
+    let (output, telemetry) = compile_and_capture_selfhost_fixture_runtime_telemetry(
+        "native-emit-elf-peak-root-depth",
+        &["NativeTarget.ls", "NativeEmit.ls"],
+        "src/Main.ls",
+        &entry_source,
+    );
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(lines.first().copied(), Some("8193"));
+    assert!(
+        lines
+            .get(1)
+            .and_then(|line| line.parse::<usize>().ok())
+            .is_some_and(|len| len > 8193),
+        "ELF object は native payload を含むべき: {:?}",
+        lines
+    );
+    assert_eq!(
+        telemetry.root_stack_top, 0,
+        "emit-elf 完了後に root stack が解放されるべき"
+    );
+    assert_eq!(
+        telemetry.root_stack_capacity, 32768,
+        "解放済みの byte append が root stack capacity を成長させないべき: {:?}",
+        telemetry
+    );
+}
+
+#[test]
 #[ignore]
 fn test_native_emit_object_keeps_full_native_payload() {
     let output = run_native_codegen_harness(

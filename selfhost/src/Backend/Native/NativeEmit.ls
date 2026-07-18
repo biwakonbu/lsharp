@@ -293,28 +293,41 @@
 
 ;; === オブジェクトファイル出力 ===
 
-;; native code 全体を object result へ追記
-(defn append-native-object-bytes [result native-code idx len]
+;; native code を小区間ごとに object result へ追記する。
+;; 1 byte ごとの非末尾再帰は Wasm call stack と root stack を同時に膨らませるため、
+;; bounded step を self-TCO で回し、各区間の一時 root を次の区間へ持ち越さない。
+(defn append-native-object-bytes-bounded [result native-code idx len remaining]
+  (if (if (>= idx len) true (<= remaining 0))
+    idx
+    (let [current (ref-get result)]
+      (do
+        (root_push native-code)
+        (root_push current)
+        (let [next (vector-push current (vector-get native-code idx))]
+          (do
+            (root_push next)
+            (ref-set result next)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (append-native-object-bytes-bounded result native-code (+ idx 1) len (- remaining 1))))))))
+
+(defn continue-append-native-object-bytes-step-64 [result native-code len idx]
   (if (>= idx len)
-    (ref-get result)
+    0
     (do
       (root_push result)
       (root_push native-code)
-      (let [current (ref-get result)
-        byte (vector-get native-code idx)]
+      (let [next-idx (append-native-object-bytes-bounded result native-code idx len 64)]
         (do
-          (root_push current)
-          (let [next (vector-push current byte)]
-            (do
-              (root_push next)
-              (ref-set result next)
-              (let [object (append-native-object-bytes result native-code (+ idx 1) len)]
-                (do
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  object)))))))))
+          (root_pop)
+          (root_pop)
+          (continue-append-native-object-bytes-step-64 result native-code len next-idx))))))
+
+(defn append-native-object-bytes [result native-code idx len]
+  (do
+    (continue-append-native-object-bytes-step-64 result native-code len idx)
+    (ref-get result)))
 
 ;; ネイティブ機械語からオブジェクトファイルを生成
 ;; native-code: 機械語バイト列

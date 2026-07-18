@@ -404,7 +404,9 @@ fn capture_runtime_telemetry_with_context(
     use wasmtime::{Linker, Module, Store};
     use wasmtime_wasi::{WasiCtxBuilder, preview1::WasiP1Ctx};
 
-    let engine = wasmtime::Engine::default();
+    let mut config = wasmtime::Config::new();
+    config.max_wasm_stack(64 * 1024 * 1024);
+    let engine = wasmtime::Engine::new(&config).expect("telemetry Wasmtime engine 構築に失敗");
     let mut linker = Linker::<WasiP1Ctx>::new(&engine);
     wasmtime_wasi::preview1::add_to_linker_sync(&mut linker, |ctx| ctx)
         .expect("WASI linker 構築に失敗");
@@ -1540,6 +1542,34 @@ pub(crate) fn selfhost_native_codegen_bundle() -> &'static str {
 /// エントリ `.ls` ファイルから依存を解決してコンパイルし、WASI 実行結果を返す
 pub(crate) fn compile_and_run_file(path: &std::path::Path) -> String {
     try_compile_and_run_file(path).unwrap()
+}
+
+/// selfhost fixture をコンパイルして実行し、runtime telemetry も取得する。
+pub(crate) fn compile_and_capture_selfhost_fixture_runtime_telemetry(
+    fixture_name: &str,
+    modules: &[&str],
+    entry_file: &str,
+    entry_source: &str,
+) -> (String, RuntimeTelemetry) {
+    let dir = selfhost_fixture_dir(fixture_name);
+    std::fs::create_dir_all(&dir).expect("selfhost telemetry fixture dir 作成失敗");
+    let result = (|| {
+        write_selfhost_fixture_modules(&dir, modules)
+            .expect("selfhost telemetry modules 書き込み失敗");
+        let entry_path = dir.join(entry_file);
+        if let Some(parent) = entry_path.parent() {
+            std::fs::create_dir_all(parent).expect("selfhost telemetry entry parent 作成失敗");
+        }
+        std::fs::write(&entry_path, entry_source).expect("selfhost telemetry entry 書き込み失敗");
+        let wasm =
+            try_compile_file_only(&entry_path).expect("selfhost telemetry fixture compile 失敗");
+        wasmparser::Validator::new()
+            .validate_all(&wasm)
+            .expect("selfhost telemetry fixture Wasm validate 失敗");
+        capture_runtime_telemetry_with_context(&wasm, Some(&dir), &["telemetry"], "", false)
+    })();
+    let _ = std::fs::remove_dir_all(&dir);
+    result
 }
 
 /// 深い selfhost native harness 用に大きめの stack でクロージャを実行する。
