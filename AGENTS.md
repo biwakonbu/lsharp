@@ -171,6 +171,12 @@ L# の最終目標は、Rust 実装を正本として残したまま一部のコ
 
 長時間の stage regeneration / Linux VM gate は仮説ごとに一つだけ実行し、VM-side lock と既存 artifact を再利用する。待機中は同じ replay を重複起動せず、共有しない parser/type/runtime、診断、fixture、contract test、docs を進める。停止する場合は、次の RED、再現 command、blocker、対象 artifact/target、必要な evidence を current docs に残し、次の run は必ず status refresh から再開する。VM の一時 workdir と巨大 artifact は gate 後に回収し、disk 使用量も確認する。
 
+### CI と手動 release の境界
+
+- 当面の supported target build/release は GitHub Actions の CI で実行せず、Mac Apple Silicon 上の native stage0、必要な Linux x86_64 Lima VM gate、ローカルの focused test を正本とする。CI の green、workflow の存在、または CI が生成した stale artifact だけを Rust-free 完了や release readiness の証拠にしない。
+- GitHub Actions は既存の静的検査・docs 契約を壊さない範囲で保持するが、無料枠を消費する native selfhost replay や release build を自動起動しない。release は対象 target、source provenance、artifact/runtime の local evidence を確認してから手動で行う。
+- ローカル VM は同じ仮説の job を一つに制限し、既存 artifact を再利用する。job 完了後は tmux/process、lock、temporary workdir、disk 使用量を確認し、アイドル VM は停止する。容量変更は実測値と次回 gate の必要量に基づいて行い、広い resize/recreate を推測で実施しない。
+
 ### 完了監査の必須条件
 
 完了宣言は、実装が存在することや focused test が通ることではなく、要求された境界ごとの evidence が揃ったことを意味する。各タスクの完了前に次を確認する。
