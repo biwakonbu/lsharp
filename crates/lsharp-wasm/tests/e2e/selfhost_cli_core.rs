@@ -7444,6 +7444,62 @@ fn test_e2e_selfhost_cli_check_source_json_returns_diagnostic_exit() {
     assert_eq!(lines[1], "1");
 }
 
+/// EC-M1-01/06: selfhost test JSON が legacy non-Bool invariant の failure report を返すこと
+#[test]
+fn test_e2e_selfhost_cli_test_source_json_reports_non_bool_invariant() {
+    let harness = r#"
+(defn main []
+  (let [src "(defn succ [x] :invariant (+ x 1) (+ x 1))"]
+    (print (run-test-source src 1))))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines.len(),
+        2,
+        "test --format json 相当の selfhost source runner は report と exit code を返すべき"
+    );
+    let report: Value = serde_json::from_str(lines[0])
+        .expect("non-Bool invariant の selfhost test JSON は valid JSON であるべき");
+    assert_eq!(report["implementation_conformance"]["status"], "fail");
+    assert_eq!(
+        report["implementation_conformance"]["method"],
+        "legacy-deterministic-smoke"
+    );
+    assert_eq!(report["implementation_conformance"]["cases"], 0);
+    assert_eq!(
+        report["implementation_conformance"]["coverage"]["executed"],
+        0
+    );
+    assert_eq!(
+        report["implementation_conformance"]["coverage"]["failed"],
+        1
+    );
+    assert_eq!(
+        report["implementation_conformance"]["diagnostics"]["count"],
+        1
+    );
+    assert_eq!(
+        report["implementation_conformance"]["diagnostics"]["firstErrorCode"],
+        2
+    );
+    assert_eq!(
+        report["implementation_conformance"]["diagnostics"]["firstErrorSpan"]["start"],
+        26
+    );
+    assert_eq!(
+        report["implementation_conformance"]["diagnostics"]["firstErrorSpan"]["end"],
+        33
+    );
+    assert_eq!(report["intent_validation"]["status"], "unknown");
+    assert_eq!(lines[1], "2");
+}
+
 /// EC-M1-03: selfhost migration JSON の文字列値が JSON の escape 規則を守ること
 #[test]
 fn test_e2e_selfhost_migration_json_quote_escapes_delimiters_and_controls() {

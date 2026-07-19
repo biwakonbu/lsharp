@@ -225,11 +225,20 @@
     fields1 (docjson-append fields0 (docjson-int-field "executed" executed))
     fields2 (docjson-append fields1 (docjson-int-field "failed" failed))]
     (docjson-object-wrap fields2)))
-(defn assurance-diagnostics-json [count first-error-code]
+(defn assurance-diagnostic-span-json [start end]
+  (let [fields0 ""
+    fields1 (docjson-append fields0 (docjson-int-field "start" start))
+    fields2 (docjson-append fields1 (docjson-int-field "end" end))]
+    (docjson-object-wrap fields2)))
+(defn assurance-diagnostics-json [count first-error-code first-error-start first-error-end]
   (let [fields0 ""
     fields1 (docjson-append fields0 (docjson-int-field "count" count))
-    fields2 (docjson-append fields1 (docjson-int-field "firstErrorCode" first-error-code))]
-    (docjson-object-wrap fields2)))
+    fields2 (docjson-append fields1 (docjson-int-field "firstErrorCode" first-error-code))
+    fields3 (docjson-append fields2
+      (docjson-object-field
+        "firstErrorSpan"
+        (assurance-diagnostic-span-json first-error-start first-error-end)))]
+    (docjson-object-wrap fields3)))
 (defn assurance-provenance-json []
   (let [fields0 ""
     fields1 (docjson-append fields0 (docjson-string-field "runner" "selfhost"))
@@ -244,7 +253,7 @@
     fields4 (docjson-append fields3 (docjson-int-field "contradicting_observations" 0))]
     (docjson-object-wrap fields4)))
 (defn assurance-conformance-json
-  [status method cases executed failed diagnostic-count diagnostic-code]
+  [status method cases executed failed diagnostic-count diagnostic-code diagnostic-start diagnostic-end]
   (let [fields0 ""
     fields1 (docjson-append fields0 (docjson-string-field "status" status))
     fields2 (docjson-append fields1 (docjson-string-field "method" method))
@@ -253,12 +262,19 @@
     fields5 (docjson-append fields4 (docjson-string-field "generator" (assurance-generator method)))
     fields6 (docjson-append fields5 (docjson-array-field "shrinks" "[]"))
     fields7 (docjson-append fields6 (docjson-object-field "coverage" (assurance-coverage-json executed failed)))
-    fields8 (docjson-append fields7 (docjson-object-field "diagnostics" (assurance-diagnostics-json diagnostic-count diagnostic-code)))
+    fields8 (docjson-append fields7
+      (docjson-object-field
+        "diagnostics"
+        (assurance-diagnostics-json
+          diagnostic-count
+          diagnostic-code
+          diagnostic-start
+          diagnostic-end)))
     fields9 (docjson-append fields8 (docjson-string-field "target" "unknown"))
     fields10 (docjson-append fields9 (docjson-object-field "provenance" (assurance-provenance-json)))]
     (docjson-object-wrap fields10)))
 (defn assurance-report-json
-  [status method cases executed failed diagnostic-count diagnostic-code]
+  [status method cases executed failed diagnostic-count diagnostic-code diagnostic-start diagnostic-end]
   (let [fields0 ""
     fields1 (docjson-append fields0
       (docjson-object-field
@@ -270,7 +286,9 @@
           executed
           failed
           diagnostic-count
-          diagnostic-code)))
+          diagnostic-code
+          diagnostic-start
+          diagnostic-end)))
     fields2 (docjson-append fields1
       (docjson-object-field "intent_validation" (assurance-intent-json)))]
     (docjson-object-wrap fields2)))
@@ -286,7 +304,7 @@
       (vector-length assertions)
       (vector-length examples)
       (vector-length invariants))
-    rendered (assurance-report-json "fail" method 0 0 1 1 diagnostic-code)]
+    rendered (assurance-report-json "fail" method 0 0 1 1 diagnostic-code 0 0)]
     (do
       (print-string rendered)
       (print-string "\n")
@@ -318,6 +336,13 @@
     (vector-get suite 2)
     (vector-get suite 3)
     (vector-get suite 4)))
+(defn assurance-suite-diagnostic-span [suite]
+  (first-test-diagnostic-span-with-properties
+    (vector-get suite 0)
+    (vector-get suite 1)
+    (vector-get suite 2)
+    (vector-get suite 3)
+    (vector-get suite 4)))
 (defn assurance-suite-method [suite]
   (assurance-method
     (vector-length (vector-get suite 4))
@@ -336,6 +361,7 @@
   (let [failed (assurance-suite-failed suite)
     diagnostic-count (assurance-suite-diagnostic-count suite)
     diagnostic-code (assurance-suite-diagnostic-code suite)
+    diagnostic-span (assurance-suite-diagnostic-span suite)
     method (assurance-suite-method suite)
     executed (assurance-suite-executed suite)
     rendered (assurance-report-json
@@ -345,7 +371,9 @@
       executed
       failed
       diagnostic-count
-      diagnostic-code)]
+      diagnostic-code
+      (vector-get diagnostic-span 1)
+      (vector-get diagnostic-span 2))]
     (do
       (print-string rendered)
       (print-string "\n")

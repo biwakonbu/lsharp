@@ -329,6 +329,69 @@ fn test_e2e_selfhost_cli_main_with_args_test_format_json_file() {
     assert_eq!(report["intent_validation"]["contradicting_observations"], 0);
 }
 
+/// EC-M1-01/06: actual selfhost CLI の legacy non-Bool invariant が structured report の failure boundary を保つこと
+#[test]
+fn test_e2e_selfhost_cli_main_with_args_test_format_json_non_bool_invariant() {
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, || {
+        run_cli_main_with_input_file_capture(
+            "test_format_json_non_bool_invariant",
+            "(defn succ [x] :invariant (+ x 1) (+ x 1))",
+            &["test", "input.ls", "--format", "json"],
+        )
+    });
+    assert_eq!(
+        output.exit_code, 2,
+        "non-Bool invariant は test --format json を成功扱いせず exit 2 にするべき"
+    );
+    let lines = output_lines(output.stdout);
+    assert_eq!(
+        lines.len(),
+        1,
+        "test --format json の diagnostic failure は JSON report だけを stdout へ返すべき"
+    );
+    let report: Value = serde_json::from_str(&lines[0])
+        .expect("non-Bool invariant の test --format json output は valid JSON であるべき");
+    assert!(
+        report.get("verified").is_none(),
+        "assurance report は top-level verified を返してはならない"
+    );
+    assert_eq!(report["implementation_conformance"]["status"], "fail");
+    assert_eq!(
+        report["implementation_conformance"]["method"],
+        "legacy-deterministic-smoke"
+    );
+    assert_eq!(report["implementation_conformance"]["cases"], 0);
+    assert_eq!(
+        report["implementation_conformance"]["coverage"]["executed"],
+        0
+    );
+    assert_eq!(
+        report["implementation_conformance"]["coverage"]["failed"],
+        1
+    );
+    assert_eq!(
+        report["implementation_conformance"]["diagnostics"]["count"],
+        1
+    );
+    assert_eq!(
+        report["implementation_conformance"]["diagnostics"]["firstErrorCode"],
+        2
+    );
+    assert_eq!(
+        report["implementation_conformance"]["diagnostics"]["firstErrorSpan"]["start"],
+        26
+    );
+    assert_eq!(
+        report["implementation_conformance"]["diagnostics"]["firstErrorSpan"]["end"],
+        33
+    );
+    assert_eq!(
+        report["implementation_conformance"]["provenance"]["runner"],
+        "selfhost"
+    );
+    assert_eq!(report["intent_validation"]["status"], "unknown");
+}
+
 /// TEST-CLI-02-AP2: actual Cli main は自己再帰 top-level defn を typecheck できること
 #[test]
 #[ignore]

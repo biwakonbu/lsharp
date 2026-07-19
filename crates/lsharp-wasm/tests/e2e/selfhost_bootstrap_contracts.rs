@@ -173,6 +173,14 @@ fn test_e2e_selfhost_embedded_cli_test_json_contract_is_present() {
         "EmbeddedCli に assurance report builder が必要"
     );
     assert!(
+        source.contains("(defn assurance-diagnostic-span-json"),
+        "EmbeddedCli の assurance report は diagnostic span builder を持つ必要がある"
+    );
+    assert!(
+        source.contains("\"firstErrorSpan\""),
+        "EmbeddedCli の assurance diagnostics は firstErrorSpan を返す必要がある"
+    );
+    assert!(
         source.contains("(defn parse-test-cli-option "),
         "EmbeddedCli に test JSON option parser が必要"
     );

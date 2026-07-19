@@ -636,6 +636,45 @@
     (vector-get result 5)
     0))
 
+;; 最初の診断を [found, start, end] で返す。JSON report の source span 用。
+(defn make-diagnostic-span-state [found start end]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) found)
+      start)
+    end))
+
+(defn first-diagnostic-span-loop [results idx count]
+  (if (>= idx count)
+    (make-diagnostic-span-state 0 0 0)
+    (let [result (vector-get results idx)
+      code (test-result-diagnostic result)]
+      (if (> code 0)
+        (make-diagnostic-span-state
+          1
+          (test-result-diagnostic-start result)
+          (test-result-diagnostic-end result))
+        (first-diagnostic-span-loop results (+ idx 1) count)))))
+
+(defn first-diagnostic-span [results]
+  (first-diagnostic-span-loop results 0 (vector-length results)))
+
+(defn first-test-diagnostic-span-with-properties
+  [examples invariants assertions cases properties]
+  (let [example-span (first-diagnostic-span examples)]
+    (if (= (vector-get example-span 0) 1)
+      example-span
+      (let [invariant-span (first-diagnostic-span invariants)]
+        (if (= (vector-get invariant-span 0) 1)
+          invariant-span
+          (let [assertion-span (first-diagnostic-span assertions)]
+            (if (= (vector-get assertion-span 0) 1)
+              assertion-span
+              (let [case-span (first-diagnostic-span cases)]
+                (if (= (vector-get case-span 0) 1)
+                  case-span
+                  (first-diagnostic-span properties))))))))))
+
 (defn contract-diagnostic-undefined [] 1) ;; LS1001: undefined-variable
 (defn contract-diagnostic-non-bool [] 2) ;; LS1002: invariant-predicate-must-be-bool
 (defn contract-diagnostic-empty-case [] 2006) ;; LS2006: empty-case-contract
