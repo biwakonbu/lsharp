@@ -230,6 +230,26 @@ fn canonical_property_rejects_literal_true_postcondition_as_vacuous() {
 }
 
 #[test]
+fn canonical_property_rejects_compound_true_postcondition_as_vacuous() {
+    const SOURCE: &str =
+        "(defn identity [x] :property [(for-all [value Int] :cases 1 :postcondition (or true (= value 0)))] x)";
+    let program = parse(SOURCE)
+        .expect("compound で常に true の property は diagnostic のため parse できるべき");
+
+    let diagnostics = check_metadata(&program);
+
+    assert_eq!(diagnostics.len(), 1, "compound true を成功扱いしてはならない");
+    let diagnostic = &diagnostics[0];
+    assert_eq!(diagnostic.severity, Severity::Error);
+    assert!(diagnostic.message.contains("vacuous"));
+    assert_eq!(diagnostic.function_name, "identity");
+    assert_eq!(
+        &SOURCE[diagnostic.span.start..diagnostic.span.end],
+        "(or true (= value 0))"
+    );
+}
+
+#[test]
 fn canonical_property_rejects_statically_true_integer_comparisons_as_vacuous() {
     for predicate in [
         "(= 1 1)",

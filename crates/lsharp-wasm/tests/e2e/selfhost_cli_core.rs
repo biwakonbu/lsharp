@@ -6540,6 +6540,36 @@ fn test_e2e_selfhost_runner_rejects_statically_true_property_postcondition() {
     );
 }
 
+/// EC-M1-04: selfhost runner が compound で静的に true な postcondition を成功扱いしないこと
+#[test]
+fn test_e2e_selfhost_runner_rejects_compound_true_property_postcondition() {
+    let harness = r#"
+(defn main []
+  (let [src "(defn identity [x] :property [(for-all [value Int] :cases 1 :postcondition (or true (= value 0)))] x)"
+        suite (generate-tests-from-source src)
+        properties (vector-get suite 4)
+        result0 (vector-get properties 0)]
+    (do
+      (print (vector-length properties))
+      (print (vector-get result0 1))
+      (print (vector-get result0 2))
+      (print (vector-get result0 3))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_test_runner_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["1", "0", "0", "2005"],
+        "selfhost runner は compound true postcondition を vacuous success にしてはならない"
+    );
+}
+
 /// EC-M1-02: selfhost runner が二つの Int binder を pair prefix として実行すること
 #[test]
 fn test_e2e_selfhost_runner_executes_two_int_property_binders() {
@@ -8134,6 +8164,62 @@ fn test_e2e_selfhost_test_runner_executes_examples_only() {
         lines,
         vec!["2", "1", "1"],
         "run-examples は supported examples を 2 件成功として実行できるべき"
+    );
+}
+
+#[test]
+fn test_selfhost_test_runner_example_case_roots_nested_ast_value() {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../selfhost/src/Tools/Test/TestRunner.ls");
+    let source = std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("TestRunner.ls 読み込み失敗 {}: {}", path.display(), e));
+
+    assert!(
+        source.contains("vector-push-triple-rooted")
+            && source.contains("(vector-new 3) name input expected"),
+        "example test case は nested AST value を rooted helper で保持するべき"
+    );
+}
+
+#[test]
+fn test_selfhost_test_runner_roots_example_inputs_during_evaluation() {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../selfhost/src/Tools/Test/TestRunner.ls");
+    let source = std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("TestRunner.ls 読み込み失敗 {}: {}", path.display(), e));
+
+    assert!(
+        source.contains("(root_push program)")
+            && source.contains("(root_push test-cases)")
+            && source.contains("(root_push expr)"),
+        "example evaluation は program/test-cases/expr を allocation 中に root するべき"
+    );
+}
+
+#[test]
+fn test_selfhost_test_runner_roots_apply_inputs_during_evaluation() {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../selfhost/src/Tools/Test/TestRunner.ls");
+    let source = std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("TestRunner.ls 読み込み失敗 {}: {}", path.display(), e));
+
+    assert!(
+        source.contains("(root_push node)")
+            && source.contains("(root_push callee)")
+            && source.contains("(root_push args)"),
+        "eval-apply は node/callee/args を allocation 中に root するべき"
+    );
+}
+
+#[test]
+fn test_selfhost_cli_roots_test_source_inputs_before_analysis() {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../selfhost/src/App/Cli.ls");
+    let source = std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("Cli.ls 読み込み失敗 {}: {}", path.display(), e));
+
+    assert!(
+        source.contains("(root_push src)") && source.contains("(root_push program)"),
+        "run-test-source は analysis/generation 中に src/program を root するべき"
     );
 }
 

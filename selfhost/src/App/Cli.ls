@@ -379,10 +379,14 @@
       (print-string "\n")
       (if (> failed 0) (exit-runtime-error) (exit-success)))))
 (defn run-test-source-json [src]
-  (let [program (parse-program src)
+  (let [src-root-slot (root_push src)
+    program (parse-program src)
+    program-root-slot (root_push program)
     analysis (infer-program-analysis program)
+    analysis-root-slot (root_push analysis)
     property-boundary-code (metadata-test-runner-boundary-code program)
-    case-check (check-canonical-cases-with-analysis program analysis)]
+    case-check (check-canonical-cases-with-analysis program analysis)
+    case-check-root-slot (root_push case-check)]
     (if (> property-boundary-code 0)
       (run-test-source-json-preflight program property-boundary-code)
       (if (> (vector-get case-check 0) 0)
@@ -435,10 +439,14 @@
       (print-string "\n")
       (exit-runtime-error))))
 (defn run-test-source-text [src]
-  (let [program (parse-program src)
+  (let [src-root-slot (root_push src)
+    program (parse-program src)
+    program-root-slot (root_push program)
     analysis (infer-program-analysis program)
+    analysis-root-slot (root_push analysis)
     property-boundary-code (metadata-test-runner-boundary-code program)
     case-check (check-canonical-cases-with-analysis program analysis)
+    case-check-root-slot (root_push case-check)
     case-diagnostics-count (vector-get case-check 0)]
     (if (> property-boundary-code 0)
       (run-test-source-case-preflight

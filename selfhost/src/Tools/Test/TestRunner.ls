@@ -30,11 +30,7 @@
 
 ;; テストケース: [name-id, function-name-hash, expr]
 (defn make-test-case [name input expected]
-  (vector-push
-    (vector-push
-      (vector-push (vector-new 3) name)
-      input)
-    expected))
+  (vector-push-triple-rooted (vector-new 3) name input expected))
 
 ;; canonical :case: [name-id, actual-expr, expected-expr, diagnostic-code]
 (defn make-case-test-case [name actual expected diagnostic-code]
@@ -1297,18 +1293,34 @@
     (value-unit)))
 
 (defn eval-apply [program node env]
-  (let [callee (vector-get node 1)
-    argc (vector-get node 2)
-    args (eval-args-loop program node env 0 argc (vector-new (+ argc 1)))]
-    (if (= (vector-get callee 0) (ast-var))
-      (let [callee-hash (vector-get callee 1)]
-        (if (= (builtin-hash? callee-hash) 1)
-          (apply-builtin callee-hash args)
-          (let [decl (find-defn-by-hash program callee-hash 0 (vector-length program))]
-            (if (> (vector-length decl) 0)
-              (eval-defn-call program decl args)
-              (value-unit)))))
-      (value-unit))))
+  (do
+    (root_push program)
+    (root_push node)
+    (root_push env)
+    (let [callee (vector-get node 1)
+      argc (vector-get node 2)]
+      (do
+        (root_push callee)
+        (let [args (eval-args-loop program node env 0 argc (vector-new (+ argc 1)))]
+          (do
+            (root_push args)
+            (let [result
+              (if (= (vector-get callee 0) (ast-var))
+                (let [callee-hash (vector-get callee 1)]
+                  (if (= (builtin-hash? callee-hash) 1)
+                    (apply-builtin callee-hash args)
+                    (let [decl (find-defn-by-hash program callee-hash 0 (vector-length program))]
+                      (if (> (vector-length decl) 0)
+                        (eval-defn-call program decl args)
+                        (value-unit)))))
+                (value-unit))]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result))))))))
 
 (defn eval-node [program node env]
   (let [tag (vector-get node 0)]
@@ -1781,11 +1793,26 @@
     results
     (let [tc (vector-get test-cases idx)
       name (vector-get tc 0)
-      expr (vector-get tc 2)
-      actual (eval-node program expr (env-new))
-      passed (value-truthy actual)]
-      (run-examples-loop program test-cases (+ idx 1) count
-        (vector-push results (make-test-result name passed passed))))))
+      expr (vector-get tc 2)]
+      (do
+        (root_push program)
+        (root_push test-cases)
+        (root_push tc)
+        (root_push expr)
+        (root_push results)
+        (let [actual (eval-node program expr (env-new))
+          passed (value-truthy actual)
+          next-results
+            (vector-push-single-rooted
+              results
+              (make-test-result name passed passed))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (run-examples-loop program test-cases (+ idx 1) count next-results)))))))
 
 (defn run-examples [program test-cases]
   (run-examples-loop program test-cases 0 (vector-length test-cases) (vector-new 16)))
