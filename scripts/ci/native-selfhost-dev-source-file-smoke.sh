@@ -85,6 +85,8 @@ done
 
 INPUT="$WORK_DIR/input.ls"
 METADATA="$WORK_DIR/metadata.ls"
+PROPERTY="$WORK_DIR/property.ls"
+VACUOUS_PROPERTY="$WORK_DIR/vacuous-property.ls"
 COMPILE_OUTPUT="$WORK_DIR/compile.wasm"
 BUILD_OUTPUT="$WORK_DIR/build.wasm"
 
@@ -94,6 +96,16 @@ cat >"$METADATA" <<'LSHARP'
   :example [(= (abs 5) 5) (= (abs (- 0 7)) 7)]
   :invariant (>= result 0)
   (if (< x 0) (- 0 x) x))
+LSHARP
+cat >"$PROPERTY" <<'LSHARP'
+(defn identity [x]
+  :property [(for-all [sample String] :cases 5 :postcondition (string-eq result sample))]
+  x)
+LSHARP
+cat >"$VACUOUS_PROPERTY" <<'LSHARP'
+(defn identity [x]
+  :property [(for-all [sample Int] :cases 1 :postcondition (or true (= sample 0)))]
+  x)
 LSHARP
 
 run_command() {
@@ -156,6 +168,46 @@ require_exact_output() {
   fi
 }
 
+run_expected_failure() {
+  local label="$1"
+  local bootstrap="$2"
+  shift 2
+
+  local status=0
+  set +e
+  if [[ "$bootstrap" == "1" ]]; then
+    PATH="$BLOCKED_TOOL_DIR:$PATH" \
+      "$RUNNER" \
+        --stage0-dir "$STAGE0_DIR" \
+        --source-root "$SOURCE_ROOT" \
+        --stage-dir "$STAGE_DIR" \
+        --bootstrap \
+        "$@" >"$WORK_DIR/$label.stdout" 2>"$WORK_DIR/$label.stderr"
+    status=$?
+  else
+    PATH="$BLOCKED_TOOL_DIR:$PATH" \
+      "$RUNNER" \
+        --stage0-dir "$STAGE0_DIR" \
+        --source-root "$SOURCE_ROOT" \
+        --stage-dir "$STAGE_DIR" \
+        "$@" >"$WORK_DIR/$label.stdout" 2>"$WORK_DIR/$label.stderr"
+    status=$?
+  fi
+  set -e
+
+  [[ "$status" -eq 2 ]] || {
+    echo "ERROR: $label expected exit 2, got $status" >&2
+    cat "$WORK_DIR/$label.stdout" >&2
+    cat "$WORK_DIR/$label.stderr" >&2
+    exit 1
+  }
+  [[ ! -s "$WORK_DIR/$label.stderr" ]] || {
+    echo "ERROR: $label emitted stderr" >&2
+    cat "$WORK_DIR/$label.stderr" >&2
+    exit 1
+  }
+}
+
 run_command parse 1 parse "$INPUT"
 for expected in decls:1 first-decl:defn first-body:int diagnostics:0; do
   require_line parse "$expected"
@@ -174,6 +226,47 @@ require_exact_output test $'examples:0\ninvariants:0\nfailures:0\n'
 
 run_command metadata-test 0 test "$METADATA"
 require_exact_output metadata-test $'examples:2\ninvariants:1\nfailures:0\n'
+
+run_command property-json 0 test "$PROPERTY" --format json
+python3 - "$WORK_DIR/property-json.stdout" <<'PY'
+import json
+import pathlib
+import sys
+
+lines = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8").splitlines()
+if len(lines) != 1:
+    raise SystemExit(f"property JSON must contain one report line: {lines!r}")
+report = json.loads(lines[0])
+conformance = report["implementation_conformance"]
+if conformance["status"] != "pass":
+    raise SystemExit(f"property JSON status is not pass: {report!r}")
+if conformance["method"] != "sampled-property":
+    raise SystemExit(f"property JSON method is invalid: {report!r}")
+if conformance["cases"] != 5 or conformance["coverage"]["executed"] != 5:
+    raise SystemExit(f"property JSON coverage is invalid: {report!r}")
+if report["intent_validation"]["status"] != "unknown":
+    raise SystemExit(f"property JSON intent status is invalid: {report!r}")
+PY
+
+run_expected_failure vacuous-property-json 0 test "$VACUOUS_PROPERTY" --format json
+python3 - "$WORK_DIR/vacuous-property-json.stdout" <<'PY'
+import json
+import pathlib
+import sys
+
+lines = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8").splitlines()
+if len(lines) != 1:
+    raise SystemExit(f"vacuous property JSON must contain one report line: {lines!r}")
+report = json.loads(lines[0])
+conformance = report["implementation_conformance"]
+if conformance["status"] != "fail":
+    raise SystemExit(f"vacuous property JSON status is not fail: {report!r}")
+diagnostics = conformance["diagnostics"]
+if diagnostics["count"] != 1 or diagnostics["firstErrorCode"] != 2005:
+    raise SystemExit(f"vacuous property JSON diagnostic is invalid: {report!r}")
+if report["intent_validation"]["status"] != "unknown":
+    raise SystemExit(f"vacuous property JSON intent status is invalid: {report!r}")
+PY
 
 run_command compile 0 compile "$INPUT" -o "$COMPILE_OUTPUT"
 run_command build 0 build "$INPUT" -o "$BUILD_OUTPUT"
