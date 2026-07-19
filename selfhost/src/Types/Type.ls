@@ -252,6 +252,26 @@
         len
         (type-record-add-field out field-hash (apply-subst subst field-ty))))))
 
+(defn apply-subst-fun-rooted [subst ty]
+  (do
+    (root_push subst)
+    (root_push ty)
+    (let [param-resolved (apply-subst subst (type-fun-param ty))]
+      (do
+        (root_push param-resolved)
+        (let [ret-resolved (apply-subst subst (type-fun-ret ty))]
+          (do
+            (root_push ret-resolved)
+            (let [result (make-type-fun param-resolved ret-resolved)]
+              (do
+                (root_push result)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result))))))))
+
 (defn apply-subst [subst ty]
   (if (= (type-tag ty) 2)
     ;; Var: 置換に存在すれば再帰的に適用
@@ -261,9 +281,7 @@
         (apply-subst subst looked)))
     (if (= (type-tag ty) 3)
       ;; Fun: パラメータと戻り値に適用
-      (make-type-fun
-        (apply-subst subst (type-fun-param ty))
-        (apply-subst subst (type-fun-ret ty)))
+      (apply-subst-fun-rooted subst ty)
       (if (= (type-tag ty) 5)
         ;; App: すべての型引数に置換を適用
         (make-type-app
