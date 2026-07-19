@@ -55,14 +55,38 @@
 
 ;; 変数参照の型推論
 (defn infer-var [node env subst counter]
-  (let [name-hash (vector-get node 1)
-    scheme (type-env-lookup env name-hash)]
-    (if (= scheme 0)
-      ;; 未定義変数: エラー
-      (make-error-result-code (error-code-undefined))
-      ;; 型スキームを具体化
-      (let [ty (apply-subst subst (instantiate scheme counter))]
-        (make-result subst ty)))))
+  (do
+    ;; 型スキームの具体化と結果構築は複数の allocation を跨ぐため、
+    ;; native GC が scheme / instantiated type / result type を回収しないよう保持する。
+    (root_push env)
+    (root_push subst)
+    (root_push counter)
+    (let [name-hash (vector-get node 1)
+      scheme (type-env-lookup env name-hash)]
+      (do
+        (let [result
+                (if (= scheme 0)
+                  ;; 未定義変数: エラー
+                  (make-error-result-code (error-code-undefined))
+                  ;; 型スキームを具体化
+                  (let [instantiated (instantiate scheme counter)]
+                    (do
+                      (root_push instantiated)
+                      (let [ty (apply-subst subst instantiated)]
+                        (do
+                          (root_push ty)
+                          (let [result (make-result subst ty)]
+                            (do
+                              (root_pop)
+                              (root_pop)
+                              result)))))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            result))))))
 
 ;; if 式の型推論
 ;; [6, cond, then, else]
