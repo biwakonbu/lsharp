@@ -229,6 +229,26 @@ exit 99
 SH
 chmod +x "$HOST_BIN/lsharp"
 
+(
+  cd "$TEST_ROOT"
+  git init -q
+  git add -A
+  git -c user.name='L# native selfhost test' \
+    -c user.email='lsharp-native-selfhost-test@example.invalid' \
+    commit -qm 'test native selfhost provenance'
+)
+CURRENT_SOURCE_COMMIT="$(cd "$TEST_ROOT" && git rev-parse HEAD)"
+python3 - "$STAGE0_DIR/manifest.json" "$CURRENT_SOURCE_COMMIT" <<'PY'
+import json
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+manifest = json.loads(path.read_text())
+manifest["source_commit"] = sys.argv[2]
+path.write_text(json.dumps(manifest) + "\n")
+PY
+
 run_runner() {
   (
     cd "$TEST_ROOT"
@@ -294,7 +314,7 @@ run_runner --bootstrap bootstrap
 assert_eq "3" "$(grep -c '^transport|' "$LOG_FILE")"
 assert_file_contains "$LOG_FILE" "program|bootstrap"
 
-python3 - "$STAGE0_DIR/manifest.json" <<'PY'
+python3 - "$STAGE0_DIR/manifest.json" "$CURRENT_SOURCE_COMMIT" <<'PY'
 import json
 import pathlib
 import sys
@@ -363,7 +383,7 @@ assert_file_contains "$LOG_FILE" "component-helper|build --source $DOC_INPUT --o
 assert_eq "component" "$(<"$BUILD_COMPONENT_OUTPUT")"
 assert_file_not_contains "$LOG_FILE" "program|build $DOC_INPUT --output $BUILD_COMPONENT_OUTPUT --target wasm"
 
-python3 - "$STAGE0_DIR/manifest.json" <<'PY'
+python3 - "$STAGE0_DIR/manifest.json" "$CURRENT_SOURCE_COMMIT" <<'PY'
 import json
 import pathlib
 import sys
@@ -379,7 +399,7 @@ if run_runner missing-source-commit >"$TMP_ROOT/missing-source.stdout" 2>"$TMP_R
 fi
 assert_file_contains "$TMP_ROOT/missing-source.stderr" "source_commit"
 
-python3 - "$STAGE0_DIR/manifest.json" <<'PY'
+python3 - "$STAGE0_DIR/manifest.json" "$CURRENT_SOURCE_COMMIT" <<'PY'
 import json
 import pathlib
 import sys
@@ -387,7 +407,34 @@ import sys
 path = pathlib.Path(sys.argv[1])
 manifest = json.loads(path.read_text())
 manifest["target"] = "x86_64-unknown-linux-gnu"
-manifest["source_commit"] = "0000000000000000000000000000000000000000"
+manifest["source_commit"] = sys.argv[2]
+path.write_text(json.dumps(manifest) + "\n")
+PY
+
+rm -rf "$STAGE_DIR"
+python3 - "$STAGE0_DIR/manifest.json" "$CURRENT_SOURCE_COMMIT" <<'PY'
+import json
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+manifest = json.loads(path.read_text())
+manifest["source_commit"] = "0" * 40
+path.write_text(json.dumps(manifest) + "\n")
+PY
+if run_runner stale-source-commit >"$TMP_ROOT/stale-source.stdout" 2>"$TMP_ROOT/stale-source.stderr"; then
+  fail "native runner accepted a stage0 manifest from a different checkout commit"
+fi
+assert_file_contains "$TMP_ROOT/stale-source.stderr" "does not match current checkout"
+
+python3 - "$STAGE0_DIR/manifest.json" "$CURRENT_SOURCE_COMMIT" <<'PY'
+import json
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+manifest = json.loads(path.read_text())
+manifest["source_commit"] = sys.argv[2]
 path.write_text(json.dumps(manifest) + "\n")
 PY
 

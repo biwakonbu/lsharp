@@ -289,6 +289,11 @@ done < <(parse_stage0_manifest)
 [[ ${#manifest_paths[@]} -eq 5 ]] || die "stage0 manifest did not provide target, source commit, and three executables"
 
 TARGET="${manifest_paths[0]}"
+SOURCE_COMMIT="${manifest_paths[1]}"
+CURRENT_SOURCE_COMMIT="$(git rev-parse --verify HEAD 2>/dev/null || true)"
+if [[ -n "$CURRENT_SOURCE_COMMIT" && "$SOURCE_COMMIT" != "$CURRENT_SOURCE_COMMIT" ]]; then
+  die "stage0 manifest source_commit does not match current checkout: manifest=$SOURCE_COMMIT checkout=$CURRENT_SOURCE_COMMIT"
+fi
 COMPILER="$STAGE0_DIR/${manifest_paths[2]}"
 TRANSPORT_DRIVER="$STAGE0_DIR/${manifest_paths[3]}"
 MATERIALIZER="$STAGE0_DIR/${manifest_paths[4]}"
