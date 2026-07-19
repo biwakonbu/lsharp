@@ -12339,7 +12339,7 @@ fn test_native_codegen_x86_print_string_helper_resolves_static_data_offset() {
     );
     assert!(
         size_body.contains("\n  51)")
-            && proc_exit_offset_body.contains("1683")
+            && proc_exit_offset_body.contains("1686")
             && bundle_writer.contains(
                 "(append-native-bytes-rooted result (emit-x86-selfhost-print-string-helper) 51)"
             ),
