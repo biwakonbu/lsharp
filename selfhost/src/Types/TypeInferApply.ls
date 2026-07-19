@@ -38,7 +38,7 @@
 ;; 関数適用の型推論
 ;; [5, func-node, arg-count, arg1, arg2, ...]
 ;; compile-safe な covered slice として 0-4 引数を扱う
-(defn infer-apply [node env subst counter]
+(defn infer-apply-raw [node env subst counter]
   (let [func-node (vector-get node 1)
     argc (vector-get node 2)]
     (if (= argc 0)
@@ -312,3 +312,19 @@
                                                           (make-error-result-code failure-code)
                                                           (make-result s9 (apply-subst s9 ret-ty))))))))))))))))))
                           (make-error-result))))))))))))))
+
+;; 関数適用の型推論は複数の一時型・置換を確保するため、native GC の
+;; collection 中も入力 AST と共有環境を保持する。
+(defn infer-apply [node env subst counter]
+  (do
+    (root_push node)
+    (root_push env)
+    (root_push subst)
+    (root_push counter)
+    (let [result (infer-apply-raw node env subst counter)]
+      (do
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        result))))
