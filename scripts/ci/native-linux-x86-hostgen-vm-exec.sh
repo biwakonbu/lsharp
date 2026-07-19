@@ -760,6 +760,7 @@ limactl shell "${VM_NAME}" -- env \
   LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_SIZE="${LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_SIZE:-64}" \
   LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_RETRIES="${LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_RETRIES:-1}" \
   LSHARP_NATIVE_LINUX_X86_ACTUAL_HEAP_BYTES="${LSHARP_NATIVE_LINUX_X86_ACTUAL_HEAP_BYTES:-4294967296}" \
+  LSHARP_NATIVE_LINUX_X86_FAIL_FAST_ON_OOM="${LSHARP_NATIVE_LINUX_X86_FAIL_FAST_ON_OOM:-1}" \
   LSHARP_NATIVE_LINUX_X86_VM_REPLAY_LOCK_DIR="${LSHARP_NATIVE_LINUX_X86_VM_REPLAY_LOCK_DIR:-/tmp/lsharp-native-linux-x86-hostgen-vm-replay.lock}" \
   LSHARP_NATIVE_LINUX_X86_STAGE2_METADATA_START="${LSHARP_NATIVE_LINUX_X86_STAGE2_METADATA_START:-}" \
   LSHARP_NATIVE_LINUX_X86_STAGE2_METADATA_END="${LSHARP_NATIVE_LINUX_X86_STAGE2_METADATA_END:-}" \
@@ -1429,12 +1430,14 @@ fi
 fi
 
 cat >decode-actual-transport.py <<'PY'
+import os
 import pathlib
 import sys
 
 stdout_path = pathlib.Path(sys.argv[1])
 out_dir = pathlib.Path(sys.argv[2])
 out_dir.mkdir(parents=True, exist_ok=True)
+source_commit = os.environ.get("LSHARP_NATIVE_LINUX_X86_SOURCE_COMMIT", "unknown")
 lines = [line for line in stdout_path.read_bytes().replace(b"\0", b"\n").splitlines() if line]
 
 def parse_int(line: bytes) -> int:
@@ -1552,6 +1555,7 @@ write_code_segment_table(out_dir / "stage-code-segments.tsv", code_segments, fun
 (out_dir / "manifest.json").write_text(
     "{\n"
     '  "target": "x86_64-unknown-linux-gnu",\n'
+    f'  "source_commit": "{source_commit}",\n'
     f'  "code_len": {len(code)},\n'
     f'  "data_len": {len(data)},\n'
     f'  "entrypoint_offset": {entrypoint_offset},\n'
@@ -1564,6 +1568,7 @@ PY
 ACTUAL_TIMEOUT="${LSHARP_NATIVE_LINUX_X86_ACTUAL_TIMEOUT:-900}"
 ACTUAL_CHUNK_SIZE="${LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_SIZE:-64}"
 ACTUAL_CHUNK_RETRIES="${LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_RETRIES:-1}"
+FAIL_FAST_ON_OOM="${LSHARP_NATIVE_LINUX_X86_FAIL_FAST_ON_OOM:-1}"
 STAGE1_PROGRESS="${LSHARP_NATIVE_LINUX_X86_STAGE1_PROGRESS:-}"
 STAGE2_METADATA_START="${LSHARP_NATIVE_LINUX_X86_STAGE2_METADATA_START:-}"
 STAGE2_METADATA_END="${LSHARP_NATIVE_LINUX_X86_STAGE2_METADATA_END:-}"
@@ -1785,6 +1790,11 @@ run_actual_stage_range() {
         return 0
       fi
       rm -f "${chunk_clean}"
+    fi
+    if [[ "${chunk_exit_code}" -eq 137 && "${FAIL_FAST_ON_OOM}" = "1" ]]; then
+      echo "ERROR: native stage range ${stage_dir} ${chunk_start}-${chunk_end} was killed with exit 137; refusing retry/split" >&2
+      rm -f "${chunk_stdout}" "${chunk_stderr}"
+      return 137
     fi
     if [[ "${chunk_attempt}" -lt "${ACTUAL_CHUNK_RETRIES}" ]]; then
       echo "WARN: retrying chunked native run for ${stage_dir} ${chunk_start}-${chunk_end} after exit ${chunk_exit_code}" >&2
