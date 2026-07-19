@@ -1350,8 +1350,27 @@
             (consume-form-loop tokens (+ idx 1) (token-count tokens) 0 0 1)
             (+ idx 1)))))))
 
-;; AST は互換のため expression span を保持しないため、source token から defn span を再取得する。
-(defn find-defn-source-span-loop [src tokens idx count target-hash]
+;; AST は互換のため expression span を保持しないため、source token から invariant payload span を再取得する。
+(defn find-invariant-source-span-loop [src tokens idx end]
+  (if (>= idx end)
+    (vector-push (vector-push (vector-new 2) 0) 0)
+    (if (= (token-kind tokens idx) (tok-colon))
+      (if (< (+ idx 2) end)
+        (if (= (token-kind tokens (+ idx 1)) (tok-symbol))
+          (if (string-eq (token-text src tokens (+ idx 1)) "invariant")
+            (let [payload-start (+ idx 2)
+              payload-end (consume-form tokens payload-start)]
+              (if (< payload-start payload-end)
+                (vector-push
+                  (vector-push (vector-new 2) (token-start tokens payload-start))
+                  (token-end tokens (- payload-end 1)))
+                (find-invariant-source-span-loop src tokens (+ idx 1) end)))
+            (find-invariant-source-span-loop src tokens (+ idx 1) end))
+          (find-invariant-source-span-loop src tokens (+ idx 1) end))
+        (find-invariant-source-span-loop src tokens (+ idx 1) end))
+      (find-invariant-source-span-loop src tokens (+ idx 1) end))))
+
+(defn find-invariant-source-span-loop-by-defn [src tokens idx count target-hash]
   (if (>= idx count)
     (vector-push (vector-push (vector-new 2) 0) 0)
     (if (and
@@ -1361,15 +1380,18 @@
         name-end (token-end tokens (+ idx 2))
         next-idx (consume-form tokens idx)]
         (if (= (name-hash src name-start name-end) target-hash)
-          (vector-push
-            (vector-push (vector-new 2) (token-start tokens idx))
-            (token-end tokens (- next-idx 1)))
-          (find-defn-source-span-loop src tokens next-idx count target-hash)))
-      (find-defn-source-span-loop src tokens (+ idx 1) count target-hash))))
+          (find-invariant-source-span-loop src tokens (+ idx 3) (- next-idx 1))
+          (find-invariant-source-span-loop-by-defn src tokens next-idx count target-hash)))
+      (find-invariant-source-span-loop-by-defn src tokens (+ idx 1) count target-hash))))
 
-(defn find-defn-source-span [src target-hash]
+(defn find-invariant-source-span [src target-hash]
   (let [tokens (tokenize-with-spans src)]
-    (find-defn-source-span-loop src tokens 0 (token-count tokens) target-hash)))
+    (find-invariant-source-span-loop-by-defn
+      src
+      tokens
+      0
+      (token-count tokens)
+      target-hash)))
 
 (defn at-defn-top-level [paren-depth bracket-depth brace-depth]
   (if (= paren-depth 1)
@@ -2344,7 +2366,7 @@
       0)
     actual (if (= diagnostic-code 0) sample-count 0)
     source-span (if (> diagnostic-code 0)
-      (find-defn-source-span src fn-hash)
+      (find-invariant-source-span src fn-hash)
       (vector-push (vector-push (vector-new 2) 0) 0))]
     (if (> diagnostic-code 0)
       (make-test-result-with-diagnostic-span

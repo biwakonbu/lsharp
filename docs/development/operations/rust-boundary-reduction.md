@@ -757,8 +757,16 @@ Evidence: Rust-hosted actual argv `test_e2e_selfhost_cli_main_with_args_test_for
 
 ### EC-M1-01 selfhost invariant diagnostic span slice (2026-07-19)
 
-legacy `:invariant` の未知変数 `LS1001` について、selfhost `TestRunner` の診断結果に Rust oracle と同じ declaration-level source span を保持する slice を追加した。既存 result vector の index `0..3`（name / passed / actual / diagnostic code）は変更せず、failure result の後方 index `4..5` に `span-start` / `span-end` を追加し、`test-result-diagnostic-start` / `test-result-diagnostic-end` accessor から取得できる。AST layout は変更せず、`generate-tests` が受け取った source を tokenizer で走査して対象 `defn` の span を再取得する。
+legacy `:invariant` の未知変数 `LS1001` について、selfhost `TestRunner` の診断結果に Rust oracle と同じ invariant payload expression span を保持する slice を追加した。既存 result vector の index `0..3`（name / passed / actual / diagnostic code）は変更せず、failure result の後方 index `4..5` に `span-start` / `span-end` を追加し、`test-result-diagnostic-start` / `test-result-diagnostic-end` accessor から取得できる。AST layout は変更せず、`generate-tests` が受け取った source を tokenizer で走査して対象 `defn` の `:invariant` payload span を再取得する。
 
 Evidence: RED の `test_e2e_selfhost_test_runner_preserves_unknown_invariant_diagnostic_span` は未実装 accessor の `UndefinedVar` で失敗（529.41s）、GREEN は同 test が 22.73s で passし、Rust `check_metadata` の `MetadataDiagnostic.span.start/end` と selfhost result の start/end が一致した。`./target/debug/lsharp check selfhost/src/Tools/Test/TestRunner.ls` は `diagnostics:0`。同じ focused run で valid invariant scope / local-let / computation / match、unknown lambda / computation / match、ordered invariant/assertion、canonical case の既存回帰も pass した。
 
-これは top-level/module 内 `defn` を source token から照合する legacy invariant failure の verified slice であり、未知識別子 token 単位の詳細 span、全 metadata form の diagnostic/span parity、strict Bool の Rust oracle parity、current-source Mac Apple Silicon / Linux x86_64 native artifact/runtime gate、EC-M1-01 aggregate は残件である。対応済み slice の日常開発は Rust なしで進められるが、未対応 contract semantics と target gate の Rust oracle / bootstrap / host integration 境界は維持する。
+これは top-level/module 内 `defn` の invariant payload expression span を source token から照合する legacy invariant failure の verified slice であり、未知識別子 token 単位の詳細 span、全 metadata form の diagnostic/span parity、current-source Mac Apple Silicon / Linux x86_64 native artifact/runtime gate、EC-M1-01 aggregate は残件である。strict Bool の Rust oracle parity は次の sliceで記録する。対応済み slice の日常開発は Rust なしで進められるが、未対応 contract semantics と target gate の Rust oracle / bootstrap / host integration 境界は維持する。
+
+### EC-M1-01 invariant strict Bool diagnostic/span parity (2026-07-19)
+
+Rust `metadata_check` の legacy `:invariant` strict Bool preflight と selfhost `TestRunner` の failure result を同一 fixture で比較した。`(+ x 1)` は両境界で diagnostic code `LS1002`（selfhost internal code `2`）となり、source span も invariant payload expression に一致する。併せて、unknown variable `LS1001` の span parity regression も維持した。selfhost は defn 全体ではなく `:invariant` payload を source tokenizer から再取得し、既存 result index `0..3` を変更せず `4..5` の span fields を使う。
+
+Evidence: `test_e2e_selfhost_test_runner_preserves_non_bool_invariant_diagnostic_span`、`test_e2e_selfhost_test_runner_preserves_unknown_invariant_diagnostic_span`、`cargo test -p lsharp-types --lib metadata_check -- --nocapture`（29 passed）、`./target/debug/lsharp check selfhost/src/Tools/Test/TestRunner.ls`（`diagnostics:0`）。
+
+これは legacy invariant の strict Bool と unknown-variable の code/span parity に限定した verified sliceであり、structured report、他の metadata form、computation/match の一般 semantics、current-source Mac Apple Silicon / Linux x86_64 native artifact/runtime gate、EC-M1-01 aggregate は残件である。対応済み slice は L# で日常開発できるが、未対応 semantics の Rust oracle / bootstrap / host integration 境界は維持する。

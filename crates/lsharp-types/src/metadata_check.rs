@@ -554,7 +554,6 @@ fn check_defn_metadata(
             name,
             &param_names,
             invariant_expr,
-            span,
             all_names,
         );
     }
@@ -581,7 +580,6 @@ fn check_invariant(
     fn_name: &str,
     param_names: &[&str],
     invariant: &Expr,
-    span: Span,
     all_names: &[String],
 ) {
     let var_refs = collect_scoped_var_references(invariant);
@@ -600,7 +598,7 @@ fn check_invariant(
             diagnostics.push(MetadataDiagnostic {
                 severity: Severity::Error,
                 message: format!(":invariant 内で未定義の識別子 '{ref_name}' が参照されています"),
-                span,
+                span: invariant.span(),
                 function_name: fn_name.to_string(),
             });
         }
