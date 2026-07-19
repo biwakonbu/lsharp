@@ -93,7 +93,9 @@
 (defn render-type-text [ty] (let [tag (ty-tag ty)] (if (= tag 1) (builtin-type-name-text (ty-name ty)) (if (= tag 2) (string-concat "t" (int-to-string (ty-name ty))) (if (= tag 3) "Fn" (if (= tag 4) (string-concat "record-" (int-to-string (ty-name ty))) "Unknown"))))))
 (defn run-check-source [src opts]
   (let [program (parse-program src)
+    program-root-slot (root_push program)
     analysis (infer-program-analysis program)
+    analysis-root-slot (root_push analysis)
     ty (infer-program-analysis-type analysis)
     rendered (render-type-text ty)
     base-diagnostics-count (infer-program-analysis-diagnostic-count analysis)

@@ -100,7 +100,9 @@
 (defn run-parse-source [src opts] (let [program (parse-program src) diagnostics (parse-diagnostics src) diagnostics-count (vector-length diagnostics) diagnostics-text (diagnostics-summary-text diagnostics-count "P0001" (parse-diagnostics-body-text diagnostics))] (do (print-string (parse-decl-count-text program)) (print-string "\n") (print-string (string-concat "first-decl:" (parse-first-decl-text program))) (print-string "\n") (print-string (string-concat "first-body:" (parse-first-body-text program))) (print-string "\n") (print-string diagnostics-text) (print-string "\n") (exit-success))))
 (defn run-check-source [src opts]
   (let [program (parse-program src)
+    program-root-slot (root_push program)
     analysis (infer-program-analysis program)
+    analysis-root-slot (root_push analysis)
     ty (infer-program-analysis-type analysis)
     rendered (render-type-text ty)
     base-diagnostics-count (infer-program-analysis-diagnostic-count analysis)
