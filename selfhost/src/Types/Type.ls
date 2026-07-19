@@ -371,48 +371,69 @@
       (unify-error))
     (unify-error)))
 
+;; apply-subst 済みの型を単一化する。呼び出し側が ty1/ty2/subst を root する。
+(defn unify-substituted [ty1 ty2 subst]
+  (if (= (types-eq ty1 ty2) 1)
+    ;; 同じ型なら置換をそのまま返す
+    subst
+    (if (= (type-tag ty1) 2)
+      ;; ty1 が Var
+      (if (= (occurs-check (type-name ty1) ty2) 1)
+        (unify-error)
+        (subst-bind subst (type-name ty1) ty2))
+      (if (= (type-tag ty2) 2)
+        ;; ty2 が Var
+        (if (= (occurs-check (type-name ty2) ty1) 1)
+          (unify-error)
+          (subst-bind subst (type-name ty2) ty1))
+        (if (= (type-tag ty1) 1)
+          ;; 両方 Con: 名前が一致しないなら失敗
+          (unify-error)
+          (if (= (type-tag ty1) 3)
+            ;; 両方 Fun: パラメータを単一化してから戻り値を単一化
+            (if (= (type-tag ty2) 3)
+              (let [s1 (unify (type-fun-param ty1) (type-fun-param ty2) subst)]
+                (if (= (unify-failed s1) 0)
+                  (unify (type-fun-ret ty1) (type-fun-ret ty2) s1)
+                  (unify-error)))
+              (unify-error))
+            (if (= (type-tag ty1) 5)
+              ;; 両方 App: constructor と arity が同じときだけ型引数を単一化
+              (if (= (type-tag ty2) 5)
+                (if (= (type-app-name ty1) (type-app-name ty2))
+                  (if (= (type-app-arg-count ty1) (type-app-arg-count ty2))
+                    (unify-app-args ty1 ty2 0 (type-app-arg-count ty1) subst)
+                    (unify-error))
+                  (unify-error))
+                (unify-error))
+              (if (= (type-tag ty1) 4)
+                ;; 両方 Record: name、field count、各 field 型を単一化
+                (unify-record-types ty1 ty2 subst)
+                (unify-error)))))))))
+
 ;; 二つの型を単一化し、更新された置換を返す
 ;; 成功時: 置換 (map), 失敗時: エラーマーカー付き map
 (defn unify [t1 t2 subst]
-  (let [ty1 (apply-subst subst t1)
-    ty2 (apply-subst subst t2)]
-    (if (= (types-eq ty1 ty2) 1)
-      ;; 同じ型なら置換をそのまま返す
-      subst
-      (if (= (type-tag ty1) 2)
-        ;; ty1 が Var
-        (if (= (occurs-check (type-name ty1) ty2) 1)
-          (unify-error)
-          (subst-bind subst (type-name ty1) ty2))
-        (if (= (type-tag ty2) 2)
-          ;; ty2 が Var
-          (if (= (occurs-check (type-name ty2) ty1) 1)
-            (unify-error)
-            (subst-bind subst (type-name ty2) ty1))
-          (if (= (type-tag ty1) 1)
-            ;; 両方 Con: 名前が一致しないなら失敗
-            (unify-error)
-              (if (= (type-tag ty1) 3)
-                ;; 両方 Fun: パラメータを単一化してから戻り値を単一化
-                (if (= (type-tag ty2) 3)
-                (let [s1 (unify (type-fun-param ty1) (type-fun-param ty2) subst)]
-                  (if (= (unify-failed s1) 0)
-                    (unify (type-fun-ret ty1) (type-fun-ret ty2) s1)
-                    (unify-error)))
-                (unify-error))
-              (if (= (type-tag ty1) 5)
-                ;; 両方 App: constructor と arity が同じときだけ型引数を単一化
-                (if (= (type-tag ty2) 5)
-                  (if (= (type-app-name ty1) (type-app-name ty2))
-                    (if (= (type-app-arg-count ty1) (type-app-arg-count ty2))
-                      (unify-app-args ty1 ty2 0 (type-app-arg-count ty1) subst)
-                      (unify-error))
-                    (unify-error))
-                  (unify-error))
-                (if (= (type-tag ty1) 4)
-                  ;; 両方 Record: name、field count、各 field 型を単一化
-                  (unify-record-types ty1 ty2 subst)
-                  (unify-error))))))))))
+  (do
+    (root_push t1)
+    (root_push t2)
+    (root_push subst)
+    (let [ty1 (apply-subst subst t1)]
+      (do
+        (root_push ty1)
+        (let [ty2 (apply-subst subst t2)]
+          (do
+            (root_push ty2)
+            (let [result (unify-substituted ty1 ty2 subst)]
+              (do
+                (root_push result)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result))))))))
 
 ;; エントリポイント (テスト用)
 (defn main []
