@@ -1409,7 +1409,7 @@ fn test_native_codegen_x86_vector_and_ref_helper_emitters_return_executable_byte
     assert_eq!(
         lines,
         vec![
-            119, 81, 80, 72, 141, 52, 197, 16, 0, 63, 89, 195, 88, 49, 192, 89, 195, 17, 72, 133,
+            119, 81, 72, 137, 198, 72, 193, 230, 3, 144, 144, 144, 144, 144, 144, 144, 144, 17, 72, 133,
             192, 121, 9, 72, 15, 186, 240, 63, 139, 64, 8, 195, 49, 192, 195, 47, 72, 133, 201,
             121, 39, 72, 129, 249, 0, 240, 255, 255, 127, 30, 72, 15, 186, 241, 63, 72, 137, 202,
             72, 193, 234, 47, 117, 16, 131, 57, 2, 117, 11, 59, 65, 8, 115, 6, 72, 139, 68, 193,
@@ -1423,8 +1423,8 @@ fn test_native_codegen_x86_vector_and_ref_helper_emitters_return_executable_byte
             137, 225, 72, 137, 68, 202, 16, 255, 193, 137, 74, 8, 72, 15, 186, 234, 63, 72, 137,
             208, 65, 93, 65, 92, 195, 72, 131, 196, 16, 65, 93, 65, 92, 49, 192, 195, 72, 137, 68,
             209, 16, 255, 194, 137, 81, 8, 72, 15, 186, 233, 63, 72, 137, 200, 65, 93, 65, 92, 195,
-            65, 93, 65, 92, 49, 192, 195, 73, 81, 80, 72, 49, 255, 72, 199, 198, 63, 89, 195, 88,
-            49, 192, 89, 195, 18, 72, 133, 192, 121, 10, 72, 15, 186, 240, 63, 72, 139, 64, 8, 195,
+            65, 93, 65, 92, 49, 192, 195, 73, 81, 73, 137, 195, 73, 139, 14, 72, 89, 195, 49, 192,
+            89, 195, 144, 144, 18, 72, 133, 192, 121, 10, 72, 15, 186, 240, 63, 72, 139, 64, 8, 195,
             49, 192, 195, 20, 72, 133, 201, 121, 12, 72, 15, 186, 241, 63, 72, 137, 65, 8, 49, 192,
             195, 49, 192, 195,
         ],
@@ -1472,9 +1472,9 @@ fn test_native_codegen_x86_substring_uses_end_minus_start_length() {
 }
 
 #[test]
-fn test_native_codegen_x86_ref_new_preserves_initial_value_across_syscall() {
+fn test_native_codegen_x86_ref_new_preserves_initial_value_in_bounded_heap() {
     let lines = run_x86_selfhost_runtime_helper_harness(
-        "native-stage23-x86-ref-new-syscall-preserve",
+        "native-stage23-x86-ref-new-bounded-heap-preserve",
         r#"  (let [helper (emit-x86-selfhost-ref-new-helper)]
     (do
       (print (vector-length helper))
@@ -1490,13 +1490,32 @@ fn test_native_codegen_x86_ref_new_preserves_initial_value_across_syscall() {
 
     assert_eq!(
         lines,
-        vec![73, 81, 80, 90, 72, 137, 80, 88],
-        "x86_64 ref-new helper は syscall が r11 を壊しても初期値を ref cell に保存する必要がある"
+        vec![73, 81, 73, 0, 0, 0, 0, 192],
+        "x86_64 ref-new helper は bounded heap allocation 後も初期値を ref cell に保存する必要がある"
     );
 }
 
 #[test]
-fn test_native_codegen_x86_vector_new_preserves_capacity_across_syscall() {
+fn test_native_codegen_x86_ref_new_uses_bounded_heap_cursor() {
+    let lines = run_x86_selfhost_runtime_helper_harness(
+        "native-stage23-x86-ref-new-bounded-heap-cursor",
+        r#"  (let [helper (emit-x86-selfhost-ref-new-helper)]
+    (do
+      (print (vector-length helper))
+      (print-bytes-loop helper 0 (vector-length helper))
+      0))"#,
+    );
+
+    assert!(
+        !lines
+            .windows(6)
+            .any(|window| window == [9, 0, 0, 0, 15, 5]),
+        "x86_64 ref-new helper は per-allocation mmap syscall を発行せず、bounded native heap cursor を使うべき"
+    );
+}
+
+#[test]
+fn test_native_codegen_x86_vector_new_preserves_capacity_in_bounded_heap() {
     let lines = run_x86_selfhost_runtime_helper_harness(
         "native-stage23-x86-vector-new-syscall-preserve",
         r#"  (let [helper (emit-x86-selfhost-vector-new-helper)]
@@ -1518,8 +1537,27 @@ fn test_native_codegen_x86_vector_new_preserves_capacity_across_syscall() {
 
     assert_eq!(
         lines,
-        vec![119, 81, 80, 72, 120, 63, 65, 91, 68, 137, 88, 4],
-        "x86_64 vector-new helper は syscall が r11 を壊しても capacity を vector header に保存する必要がある"
+        vec![119, 81, 72, 137, 0, 0, 0, 137, 144, 144, 144, 144],
+        "x86_64 vector-new helper は bounded heap allocation 後も vector header に capacity を保存する必要がある"
+    );
+}
+
+#[test]
+fn test_native_codegen_x86_vector_new_uses_bounded_heap_cursor() {
+    let lines = run_x86_selfhost_runtime_helper_harness(
+        "native-stage23-x86-vector-new-bounded-heap-cursor",
+        r#"  (let [helper (emit-x86-selfhost-vector-new-helper)]
+    (do
+      (print (vector-length helper))
+      (print-bytes-loop helper 0 (vector-length helper))
+      0))"#,
+    );
+
+    assert!(
+        !lines
+            .windows(6)
+            .any(|window| window == [9, 0, 0, 0, 15, 5]),
+        "x86_64 vector-new helper は per-allocation mmap syscall を発行せず、bounded native heap cursor を使うべき"
     );
 }
 
@@ -1545,8 +1583,8 @@ fn test_native_codegen_x86_vector_new_call_targets_executable_entry_after_prefix
 
     assert_eq!(
         lines,
-        vec![4097, 4547, 119, 72, 141, 52, 197, 16, 0, 0, 0],
-        "x86 vector-new call は mmap helper の push prologue を含む実行入口へ分岐するべき"
+        vec![4097, 4547, 119, 137, 198, 72, 193, 230, 3, 72, 131],
+        "x86 vector-new call は bounded heap helper の実行入口へ分岐するべき"
     );
 }
 

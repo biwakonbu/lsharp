@@ -78,6 +78,10 @@ main:
     test %rax, %rax
     je .Lalloc_fail
     mov %rax, %r14
+    movabs ${actual_heap_bytes}, %rcx
+    mov %rcx, 8(%r14)
+    mov $8192, %rcx
+    mov %rcx, (%r14)
     lea 1024(%r14), %rdi
     lea lsharp_data(%rip), %rsi
     mov ${data_len}, %rdx

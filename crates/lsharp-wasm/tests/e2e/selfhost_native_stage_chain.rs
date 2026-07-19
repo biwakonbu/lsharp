@@ -1511,6 +1511,10 @@ fn test_native_linux_x86_hostgen_vm_script_can_reuse_actual_stage1_artifact() {
         "entrypoint = int((stage_dir / sys.argv[3]).read_text().strip())",
         "LSHARP_NATIVE_LINUX_X86_ACTUAL_HEAP_BYTES",
         "LSHARP_NATIVE_LINUX_X86_SKIP_ARGV0",
+        "movabs ${actual_heap_bytes}, %rcx",
+        "mov %rcx, 8(%r14)",
+        "mov $8192, %rcx",
+        "mov %rcx, (%r14)",
         "lea lsharp_data(%rip), %rsi",
         "subprocess.run([\"cc\", \"@linker-response.txt\"], cwd=stage_dir, check=True)",
     ] {
@@ -10256,14 +10260,12 @@ fn test_native_codegen_x86_vector_new_helper_nop_fills_capacity_for_code_vectors
         .expect("x86 bundle trailer に vector-new helper append が存在すること");
 
     assert!(
-        helper_body.contains("part17 (byte-vector-4 191 144 144 144)")
-            && helper_body.contains("part18 (byte-vector-4 144 144 144 144)")
-            && helper_body.contains("part19 (byte-vector-4 144 72 133 201)")
-            && helper_body.contains("part20 (byte-vector-4 116 12 72 137)")
-            && helper_body.contains("part21 (byte-vector-4 58 72 131 194)")
-            && helper_body.contains("72 255 201")
-            && helper_body.contains("117 244"),
-        "x86 vector-new helper は native stage2 code vector の未使用 capacity が混入しても SIGILL にならないよう payload を 0x90 NOP で初期化するべき"
+        helper_body.contains("part1 (byte-vector-5 81 72 137 198 72)")
+            && helper_body.contains("part7 (byte-vector-5 241 73 139 86 8)")
+            && helper_body.contains("part8 (byte-vector-5 72 57 209 119 40)")
+            && helper_body.contains("part16 (byte-vector-5 72 9 200 89 195)")
+            && helper_body.contains("padding1 (byte-vector-5 144 144 144 144 144)"),
+        "x86 vector-new helper は mmap ではなく r14 の bounded heap cursor を使い、未使用 capacity は 0x90 NOP で埋めるべき"
     );
     assert!(
         sizes_body.contains("119") && append_body.trim_start().starts_with("119"),
