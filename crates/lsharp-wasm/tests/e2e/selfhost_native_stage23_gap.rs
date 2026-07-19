@@ -1294,8 +1294,8 @@ fn test_native_codegen_x86_vector_push_helper_has_growth_path() {
 
     assert_eq!(
         lines,
-        vec![205, 65, 84, 65, 85, 184, 9, 0, 0, 0, 15, 5],
-        "x86_64 vector-push helper は capacity 超過時に Linux mmap で grow できる必要がある"
+        vec![205, 65, 84, 65, 85, 0, 0, 128, 72, 15, 71, 194],
+        "x86_64 vector-push helper は capacity 超過時に bounded native heap で grow できる必要がある"
     );
 }
 
@@ -1416,8 +1416,8 @@ fn test_native_codegen_x86_vector_and_ref_helper_emitters_return_executable_byte
             16, 195, 49, 192, 195, 205, 65, 84, 65, 85, 72, 133, 201, 15, 137, 185, 0, 0, 0, 72,
             15, 186, 241, 63, 139, 81, 8, 68, 139, 97, 4, 68, 57, 226, 15, 130, 141, 0, 0, 0, 80,
             81, 69, 137, 229, 65, 137, 212, 69, 133, 237, 117, 8, 65, 189, 1, 0, 0, 0, 235, 3, 69,
-            1, 237, 49, 255, 74, 141, 52, 237, 16, 0, 0, 0, 186, 3, 0, 0, 0, 65, 186, 34, 0, 0, 0,
-            73, 199, 192, 255, 255, 255, 255, 69, 49, 201, 184, 9, 0, 0, 0, 15, 5, 72, 133, 192,
+            1, 237, 49, 255, 73, 139, 6, 74, 141, 124, 237, 16, 72, 1, 199, 73, 139, 78, 8, 72,
+            57, 207, 73, 137, 62, 72, 186, 0, 0, 0, 0, 0, 0, 0, 0, 128, 72, 15, 71, 194, 72, 133, 192,
             120, 63, 199, 0, 2, 0, 0, 0, 68, 137, 104, 4, 68, 137, 96, 8, 72, 137, 194, 72, 139,
             52, 36, 72, 141, 118, 16, 72, 141, 120, 16, 68, 137, 225, 243, 72, 165, 94, 88, 68,
             137, 225, 72, 137, 68, 202, 16, 255, 193, 137, 74, 8, 72, 15, 186, 234, 63, 72, 137,
@@ -1577,6 +1577,25 @@ fn test_native_codegen_x86_map_new_uses_bounded_heap_cursor() {
             .windows(6)
             .any(|window| window == [9, 0, 0, 0, 15, 5]),
         "x86_64 map-new helper は per-allocation mmap syscall を発行せず、bounded native heap cursor を使うべき"
+    );
+}
+
+#[test]
+fn test_native_codegen_x86_vector_push_growth_uses_bounded_heap_cursor() {
+    let lines = run_x86_selfhost_runtime_helper_harness(
+        "native-stage23-x86-vector-push-bounded-heap-growth",
+        r#"  (let [helper (emit-x86-selfhost-vector-push-helper)]
+    (do
+      (print (vector-length helper))
+      (print-bytes-loop helper 0 (vector-length helper))
+      0))"#,
+    );
+
+    assert!(
+        !lines
+            .windows(6)
+            .any(|window| window == [9, 0, 0, 0, 15, 5]),
+        "x86_64 vector-push growth helper は per-growth mmap syscall を発行せず、bounded native heap cursor を使うべき"
     );
 }
 

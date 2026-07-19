@@ -10315,6 +10315,40 @@ fn test_native_codegen_x86_map_new_helper_uses_bounded_heap_cursor() {
 }
 
 #[test]
+fn test_native_codegen_x86_vector_push_helper_uses_bounded_heap_cursor() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let helper_body = source
+        .split("(defn emit-x86-selfhost-vector-push-helper")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn emit-x86-selfhost-ref-new-helper").next())
+        .expect("NativeCodegen.ls に x86 vector-push helper が存在すること");
+    let size_body = source
+        .split("(defn x86-selfhost-vector-push-helper-size")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn x86-selfhost-ref-new-helper-size").next())
+        .expect("NativeCodegen.ls に x86 vector-push helper size が存在すること");
+    let append_body = source
+        .split("(append-native-bytes-rooted result (emit-x86-selfhost-vector-push-helper)")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(append-native-bytes-rooted result (emit-x86-selfhost-ref-new-helper)")
+                .next()
+        })
+        .expect("x86 bundle trailer に vector-push helper append が存在すること");
+
+    assert!(
+        helper_body.contains("part16 (byte-vector-4 73 139 6 74)")
+            && helper_body.contains("part19 (byte-vector-4 139 78 8 72)")
+            && helper_body.contains("part24 (byte-vector-4 72 15 71 194)"),
+        "x86 vector-push grow helper は mmap ではなく r14 の bounded heap cursor を使うべき"
+    );
+    assert!(
+        size_body.contains("205") && append_body.trim_start().starts_with("205"),
+        "x86 vector-push helper の slot size と trailer append 長は 205 bytes のまま維持するべき"
+    );
+}
+
+#[test]
 fn test_native_codegen_x86_vector_get_helper_rejects_non_vector_objects() {
     let source = selfhost_module("NativeCodegen.ls");
     let helper_body = source
