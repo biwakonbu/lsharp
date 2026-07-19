@@ -65,12 +65,21 @@ fn run_cli_main_with_input_file_capture(
     source: &str,
     args: &[&str],
 ) -> lsharp_wasm::wasi_runner::ExecutionOutput {
+    run_main_with_input_file_capture(selfhost_cli_runtime_bundle(), prefix, source, args)
+}
+
+fn run_main_with_input_file_capture(
+    bundle: &str,
+    prefix: &str,
+    source: &str,
+    args: &[&str],
+) -> lsharp_wasm::wasi_runner::ExecutionOutput {
     let dir = cli_main_args_fixture_dir(prefix);
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).expect("fixture directory の作成に失敗");
     std::fs::write(dir.join("input.ls"), source).expect("fixture input.ls の書き込みに失敗");
 
-    let wasm = compile_only(selfhost_cli_runtime_bundle());
+    let wasm = compile_only(bundle);
     let output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_args_and_stdin_capture(
         &wasm,
         Some(&dir),
@@ -329,16 +338,8 @@ fn test_e2e_selfhost_cli_main_with_args_test_format_json_file() {
     assert_eq!(report["intent_validation"]["contradicting_observations"], 0);
 }
 
-/// EC-M1-01/06: actual selfhost CLI の legacy non-Bool invariant が structured report の failure boundary を保つこと
-#[test]
-fn test_e2e_selfhost_cli_main_with_args_test_format_json_non_bool_invariant() {
-    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, || {
-        run_cli_main_with_input_file_capture(
-            "test_format_json_non_bool_invariant",
-            "(defn succ [x] :invariant (+ x 1) (+ x 1))",
-            &["test", "input.ls", "--format", "json"],
-        )
-    });
+// Cli / EmbeddedCli の同一 JSON failure contract を共有して検証する。
+fn assert_non_bool_invariant_json(output: lsharp_wasm::wasi_runner::ExecutionOutput) {
     assert_eq!(
         output.exit_code, 2,
         "non-Bool invariant は test --format json を成功扱いせず exit 2 にするべき"
@@ -390,6 +391,33 @@ fn test_e2e_selfhost_cli_main_with_args_test_format_json_non_bool_invariant() {
         "selfhost"
     );
     assert_eq!(report["intent_validation"]["status"], "unknown");
+}
+
+/// EC-M1-01/06: actual selfhost CLI の legacy non-Bool invariant が structured report の failure boundary を保つこと
+#[test]
+fn test_e2e_selfhost_cli_main_with_args_test_format_json_non_bool_invariant() {
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, || {
+        run_cli_main_with_input_file_capture(
+            "test_format_json_non_bool_invariant",
+            "(defn succ [x] :invariant (+ x 1) (+ x 1))",
+            &["test", "input.ls", "--format", "json"],
+        )
+    });
+    assert_non_bool_invariant_json(output);
+}
+
+/// EC-M1-06: EmbeddedCli の実 argv JSON failure が Cli と同じ contract を返すこと
+#[test]
+fn test_e2e_selfhost_embedded_cli_main_with_args_test_format_json_non_bool_invariant() {
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, || {
+        run_main_with_input_file_capture(
+            selfhost_embedded_cli_runtime_bundle(),
+            "test_format_json_non_bool_invariant_embedded",
+            "(defn succ [x] :invariant (+ x 1) (+ x 1))",
+            &["test", "input.ls", "--format", "json"],
+        )
+    });
+    assert_non_bool_invariant_json(output);
 }
 
 /// TEST-CLI-02-AP2: actual Cli main は自己再帰 top-level defn を typecheck できること

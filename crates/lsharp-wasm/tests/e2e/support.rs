@@ -661,6 +661,7 @@ pub(crate) fn selfhost_source_path(name: &str) -> std::path::PathBuf {
     selfhost_project_root().join(match name {
         "Main.ls" => "selfhost/src/App/Main.ls",
         "Cli.ls" => "selfhost/src/App/Cli.ls",
+        "EmbeddedCli.ls" => "selfhost/src/App/EmbeddedCli.ls",
         "ModuleResolver.ls" => "selfhost/src/App/ModuleResolver.ls",
         "CompilerMode.ls" => "selfhost/src/App/CompilerMode.ls",
         "PipelineSmoke.ls" => "selfhost/src/App/PipelineSmoke.ls",
@@ -1367,6 +1368,7 @@ static SELFHOST_TYPEINFER_RUNTIME_BUNDLE: OnceLock<String> = OnceLock::new();
 static SELFHOST_TEST_RUNNER_RUNTIME_BUNDLE: OnceLock<String> = OnceLock::new();
 static SELFHOST_MIGRATION_RUNTIME_BUNDLE: OnceLock<String> = OnceLock::new();
 static SELFHOST_CLI_RUNTIME_BUNDLE: OnceLock<String> = OnceLock::new();
+static SELFHOST_EMBEDDED_CLI_RUNTIME_BUNDLE: OnceLock<String> = OnceLock::new();
 static SELFHOST_NATIVE_CODEGEN_BUNDLE: OnceLock<String> = OnceLock::new();
 
 pub(crate) fn selfhost_lexer_runtime_bundle() -> &'static str {
@@ -1523,6 +1525,51 @@ pub(crate) fn selfhost_cli_runtime_bundle() -> &'static str {
             "LspServerNav.ls",
             "LspServer.ls",
             "Cli.ls",
+        ],
+    )
+}
+
+/// selfhost/src/App/EmbeddedCli.ls を直接実行するための最小 runtime bundle
+pub(crate) fn selfhost_embedded_cli_runtime_bundle() -> &'static str {
+    cached_selfhost_bundle(
+        &SELFHOST_EMBEDDED_CLI_RUNTIME_BUNDLE,
+        &[
+            "Token.ls",
+            "AST.ls",
+            "Lexer.ls",
+            "Parser.ls",
+            "IR.ls",
+            "Type.ls",
+            "TypeScheme.ls",
+            "TypeInferCore.ls",
+            "TypeInferFunctions.ls",
+            "TypeInferBuiltins.ls",
+            "TypeInfer.ls",
+            "TypeInferApply.ls",
+            "TypeInferBlock.ls",
+            "TypeInferPattern.ls",
+            "TypeInferRecord.ls",
+            "TypeInferRecordDecl.ls",
+            "TypeInferAdt.ls",
+            "TypeInferAssertions.ls",
+            "MetadataMigration.ls",
+            "Compiler.ls",
+            "WasiBackend.ls",
+            "WasmEmit.ls",
+            "ModuleResolver.ls",
+            "CompilerMode.ls",
+            "FormatterExpr.ls",
+            "FormatterDecl.ls",
+            "Formatter.ls",
+            "PropertyRunner.ls",
+            "TestRunner.ls",
+            "DocTools.ls",
+            "DocJson.ls",
+            "JsonRpc.ls",
+            "LspServerCore.ls",
+            "LspServerNav.ls",
+            "LspServer.ls",
+            "EmbeddedCli.ls",
         ],
     )
 }

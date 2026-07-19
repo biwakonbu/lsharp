@@ -778,3 +778,11 @@ legacy `:invariant` の strict Bool failure を `App.Cli` / `App.EmbeddedCli` �
 Evidence: RED で `firstErrorSpan` が JSON に存在せず `Null` になったことを確認し、GREEN の `test_e2e_selfhost_cli_test_source_json_reports_non_bool_invariant` は selfhost source runner で status `fail`、internal diagnostic code `2`、span `26..33`、exit output `2` を確認した（1 passed, 435.44s）。`test_e2e_selfhost_cli_main_with_args_test_format_json_non_bool_invariant` は実 CLI argv 経路で stdout 1 行の valid JSON、exit `2`、同じ code/span、runner `selfhost` を確認した（1 passed, 549.02s）。`test_e2e_selfhost_embedded_cli_test_json_contract_is_present` は EmbeddedCli の span builder / field 同期を確認し、変更ソースの `lsharp check` は diagnostics `0` になった。
 
 これは Rust-hosted Wasm E2E と EmbeddedCli source contract に限定した verified sliceであり、current-source Mac Apple Silicon / Linux x86_64 native stage0 artifact/runtime、EmbeddedCli の実 argv runtime、全 metadata form の structured report、Rust/selfhost differential、EC-M1-01/06 aggregate は残件である。対応済み slice は L# で日常開発できるが、未対応 target gate と公開 surface の Rust oracle / bootstrap / host integration 境界は維持する。
+
+### EC-M1-06 EmbeddedCli actual argv JSON failure slice (2026-07-19)
+
+`App.EmbeddedCli` を `Cli` と同じ non-Bool `:invariant` fixture に接続し、`test input.ls --format json` の実 argv 経路から structured failure report を返す slice を追加した。実行時 bundle は `EmbeddedCli.ls` を最終 entrypoint とし、`implementation_conformance.status=fail`、internal diagnostic code `2`、`firstErrorSpan=26..33`、`exit=2`、`runner=selfhost` を `Cli` と同じ contract で検証する。
+
+Evidence: `test_e2e_selfhost_embedded_cli_main_with_args_test_format_json_non_bool_invariant` は RED で canonical `EmbeddedCli.ls` の test mapping 欠落を検出し、mapping を追加した GREEN で `1 passed`、`407.43s`。既存 `Cli` actual argv failure test と共通 assertion を使い、出力 JSON が 1 行であること、failure status、diagnostics、span、exit boundary を確認した。
+
+これは Rust-hosted Wasm による `EmbeddedCli` の単一 legacy invariant failure fixtureに限定した verified sliceであり、current-source Mac Apple Silicon / Linux x86_64 native stage0 artifact/runtime、EmbeddedCli の全 form parity、Rust/selfhost differential、provenance 注入、EC-M1-06 aggregate は残件である。対応済み経路は Rust なしで L# 開発に使えるが、未検証の公開 surface を Rust fallback で完了扱いにせず、bootstrap / oracle / host integration 境界は維持する。
