@@ -2192,7 +2192,7 @@
         right
         (if (= right 2) left 0)))))
 
-(defn property-runner-expression-shape-equal [left right]
+(defn property-runner-expression-shape-equal-raw [left right]
   (let [left-node (if (= (vector-get left 0) (ast-ann)) (vector-get left 1) left)
     right-node (if (= (vector-get right 0) (ast-ann)) (vector-get right 1) right)
     left-tag (vector-get left-node 0)
@@ -2233,7 +2233,17 @@
                     0)
                   0)))))))))
 
-(defn property-runner-is-not-expression? [node]
+(defn property-runner-expression-shape-equal [left right]
+  (do
+    (root_push left)
+    (root_push right)
+    (let [result (property-runner-expression-shape-equal-raw left right)]
+      (do
+        (root_pop)
+        (root_pop)
+        result))))
+
+(defn property-runner-is-not-expression-raw? [node]
   (if (= (vector-get node 0) (ast-apply))
     (if (= (vector-get node 2) 1)
       (let [callee (vector-get node 1)]
@@ -2243,7 +2253,15 @@
       0)
     0))
 
-(defn property-runner-is-boolean-negation-pair [left right]
+(defn property-runner-is-not-expression? [node]
+  (do
+    (root_push node)
+    (let [result (property-runner-is-not-expression-raw? node)]
+      (do
+        (root_pop)
+        result))))
+
+(defn property-runner-is-boolean-negation-pair-raw [left right]
   (let [left-node (if (= (vector-get left 0) (ast-ann)) (vector-get left 1) left)
     right-node (if (= (vector-get right 0) (ast-ann)) (vector-get right 1) right)
     left-is-not (property-runner-is-not-expression? left-node)
@@ -2268,7 +2286,17 @@
           0)
         0))))
 
-(defn property-runner-statically-boolean-result [predicate]
+(defn property-runner-is-boolean-negation-pair [left right]
+  (do
+    (root_push left)
+    (root_push right)
+    (let [result (property-runner-is-boolean-negation-pair-raw left right)]
+      (do
+        (root_pop)
+        (root_pop)
+        result))))
+
+(defn property-runner-statically-boolean-result-raw [predicate]
   (let [tag (vector-get predicate 0)]
     (if (= tag (ast-ann))
       (property-runner-statically-boolean-result (vector-get predicate 1))
@@ -2308,6 +2336,14 @@
                     0)))
               0))
           0)))))
+
+(defn property-runner-statically-boolean-result [predicate]
+  (do
+    (root_push predicate)
+    (let [result (property-runner-statically-boolean-result-raw predicate)]
+      (do
+        (root_pop)
+        result))))
 
 (defn property-runner-static-precondition-code-loop [preconditions idx count]
   (if (>= idx count)

@@ -208,7 +208,12 @@
                       (let [predicate (property-probe-predicate probe-program)
                         resolved (property-probe-return-type (infer-program-analysis-type analysis))
                         type-code (if (and (= (ty-tag resolved) (ty-con)) (= (ty-name resolved) (hash-bool))) 0 (canonical-property-non-bool-code))
-                        boolean-result (statically-boolean-result predicate)]
+                        boolean-result (do
+                          (root_push predicate)
+                          (let [value (statically-boolean-result predicate)]
+                            (do
+                              (root_pop)
+                              value)))]
                         (if (and (= reject-vacuous 1) (= boolean-result 1))
                           (canonical-assertion-vacuous-code)
                           (if (and (= reject-unreachable 1) (= boolean-result 2))
