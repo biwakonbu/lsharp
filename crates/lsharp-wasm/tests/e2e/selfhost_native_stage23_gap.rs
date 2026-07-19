@@ -1186,8 +1186,8 @@ fn test_native_codegen_x86_map_and_file_helper_emitters_return_executable_byte_v
     assert_eq!(
         lines,
         vec![
-            72, 81, 49, 255, 190, 16, 255, 0, 0, 232, 63, 89, 195, 49, 192, 89, 195, 17, 72, 133,
-            192, 121, 9, 72, 15, 186, 240, 63, 139, 64, 8, 195, 49, 192, 195, 61, 83, 72, 137, 211,
+            72, 81, 73, 139, 6, 72, 137, 199, 185, 49, 192, 89, 195, 144, 144, 144, 144, 17, 72, 133,
+            192, 121, 9, 72, 15, 186, 240, 63, 139, 64, 8, 195, 49, 192, 195, 104, 83, 72, 137, 211,
             72, 133, 219, 121, 232, 63, 91, 195, 49, 192, 91, 195, 62, 83, 65, 84, 72, 133, 201,
             121, 48, 91, 195, 49, 192, 65, 92, 91, 195, 84, 83, 65, 84, 72, 137, 227, 72, 133, 192,
             72, 137, 220, 65, 92, 91, 195,
@@ -1558,6 +1558,25 @@ fn test_native_codegen_x86_vector_new_uses_bounded_heap_cursor() {
             .windows(6)
             .any(|window| window == [9, 0, 0, 0, 15, 5]),
         "x86_64 vector-new helper は per-allocation mmap syscall を発行せず、bounded native heap cursor を使うべき"
+    );
+}
+
+#[test]
+fn test_native_codegen_x86_map_new_uses_bounded_heap_cursor() {
+    let lines = run_x86_selfhost_runtime_helper_harness(
+        "native-stage23-x86-map-new-bounded-heap-cursor",
+        r#"  (let [helper (emit-x86-selfhost-map-new-helper)]
+    (do
+      (print (vector-length helper))
+      (print-bytes-loop helper 0 (vector-length helper))
+      0))"#,
+    );
+
+    assert!(
+        !lines
+            .windows(6)
+            .any(|window| window == [9, 0, 0, 0, 15, 5]),
+        "x86_64 map-new helper は per-allocation mmap syscall を発行せず、bounded native heap cursor を使うべき"
     );
 }
 

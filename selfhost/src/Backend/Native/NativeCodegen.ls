@@ -9919,30 +9919,27 @@
     (concat-byte-vectors-rooted group11 group12)))
 
 (defn emit-x86-selfhost-map-new-helper []
-  (let [
-    part1 (byte-vector-4 81 49 255 190)
-    part2 (byte-vector-4 16 255 0 0)
-    part3 (byte-vector-4 186 3 0 0)
-    part4 (byte-vector-4 0 65 186 34)
-    part5 (byte-vector-4 0 0 0 73)
-    part6 (byte-vector-4 199 192 255 255)
-    part7 (byte-vector-4 255 255 69 49)
-    part8 (byte-vector-4 201 184 9 0)
-    part9 (byte-vector-4 0 0 15 5)
-    part10 (byte-vector-4 72 133 192 120)
-    part11 (byte-vector-4 27 199 0 4)
-    part12 (byte-vector-4 0 0 0 199)
-    part13 (byte-vector-4 64 4 240 15)
-    part14 (byte-vector-4 0 0 199 64)
-    part15 (byte-vector-4 8 0 0 0)
-    part16 (byte-vector-4 0 72 15 186)
-    part17 (byte-vector-4 232 63 89 195)
-    part18 (byte-vector-4 49 192 89 195)
-    group1 (concat-five-byte-vectors-rooted part1 part2 part3 part4 part5)
-    group2 (concat-five-byte-vectors-rooted part6 part7 part8 part9 part10)
-    group3 (concat-five-byte-vectors-rooted part11 part12 part13 part14 part15)
-    group4 (concat-three-byte-vectors-rooted part16 part17 part18)]
-    (concat-four-byte-vectors-rooted group1 group2 group3 group4)))
+  ;; r14 は materializer が確保した native heap。map table は既存の
+  ;; capacity=4080 / 16-byte entry layout を維持し、per-allocation mmap は使わない。
+  (let [part1 (byte-vector-5 81 73 139 6 72)
+    part2 (byte-vector-5 137 199 185 16 255)
+    part3 (byte-vector-5 0 0 72 1 207)
+    part4 (byte-vector-5 73 139 78 8 72)
+    part5 (byte-vector-5 57 207 119 40 73)
+    part6 (byte-vector-5 137 62 199 0 4)
+    part7 (byte-vector-5 0 0 0 199 64)
+    part8 (byte-vector-5 4 240 15 0 0)
+    part9 (byte-vector-5 199 64 8 0 0)
+    part10 (byte-vector-5 0 0 0 0 72)
+    part11 (byte-vector-5 185 0 0 0 0)
+    part12 (byte-vector-5 0 0 0 128 72)
+    part13 (byte-vector-5 9 200 89 195 49)
+    part14 (byte-vector-5 192 89 195 144 144)
+    padding (byte-vector-2 144 144)]
+    (concat-three-byte-vectors-rooted
+      (concat-five-byte-vectors-rooted part1 part2 part3 part4 part5)
+      (concat-five-byte-vectors-rooted part6 part7 part8 part9 part10)
+      (concat-five-byte-vectors-rooted part11 part12 part13 part14 padding))))
 
 (defn emit-x86-selfhost-map-size-helper []
   (let [part1 (byte-vector-4 72 133 192 121)

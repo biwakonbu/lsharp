@@ -10279,6 +10279,42 @@ fn test_native_codegen_x86_vector_new_helper_nop_fills_capacity_for_code_vectors
 }
 
 #[test]
+fn test_native_codegen_x86_map_new_helper_uses_bounded_heap_cursor() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let helper_body = source
+        .split("(defn emit-x86-selfhost-map-new-helper")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn emit-x86-selfhost-map-size-helper").next())
+        .expect("NativeCodegen.ls に x86 map-new helper が存在すること");
+    let size_body = source
+        .split("(defn x86-selfhost-map-new-helper-size")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn x86-selfhost-map-size-helper-size").next())
+        .expect("NativeCodegen.ls に x86 map-new helper size が存在すること");
+    let append_body = source
+        .split("(append-native-bytes-rooted result (emit-x86-selfhost-map-new-helper)")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(append-native-bytes-rooted result (emit-x86-selfhost-map-size-helper)")
+                .next()
+        })
+        .expect("x86 bundle trailer に map-new helper append が存在すること");
+
+    assert!(
+        helper_body.contains("part1 (byte-vector-5 81 73 139 6 72)")
+            && helper_body.contains("part4 (byte-vector-5 73 139 78 8 72)")
+            && helper_body.contains("part5 (byte-vector-5 57 207 119 40 73)")
+            && helper_body.contains("part13 (byte-vector-5 9 200 89 195 49)")
+            && helper_body.contains("padding (byte-vector-2 144 144)"),
+        "x86 map-new helper は mmap ではなく r14 の bounded heap cursor を使うべき"
+    );
+    assert!(
+        size_body.contains("72") && append_body.trim_start().starts_with("72"),
+        "x86 map-new helper の slot size と trailer append 長は 72 bytes のまま維持するべき"
+    );
+}
+
+#[test]
 fn test_native_codegen_x86_vector_get_helper_rejects_non_vector_objects() {
     let source = selfhost_module("NativeCodegen.ls");
     let helper_body = source
