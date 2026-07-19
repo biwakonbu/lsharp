@@ -24,6 +24,10 @@ die() {
   exit 1
 }
 
+SOURCE_COMMIT="$(git -C "$ROOT_DIR" rev-parse --verify HEAD 2>/dev/null || true)"
+[[ "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
+  || die "current checkout source commit is unavailable: $SOURCE_COMMIT"
+
 [[ "${TRANSPORT_CHUNK_SIZE}" =~ ^[1-9][0-9]*$ ]] \
   || die "LSHARP_NATIVE_LINUX_X86_TRANSPORT_CHUNK_SIZE must be a positive integer"
 [[ "${TRANSPORT_TIMEOUT_SECONDS}" =~ ^[1-9][0-9]*$ ]] \
@@ -74,12 +78,13 @@ require_file "${ROOT_DIR}/scripts/native-selfhost-dev.sh" "native selfhost runne
 require_file "${ROOT_DIR}/scripts/ci/native-selfhost-dev-source-file-smoke.sh" "native source-file smoke"
 require_file "${ROOT_DIR}/scripts/ci/decode-native-selfhost-transport.py" "native transport decoder"
 
-python3 - "${STAGE0_DIR}/manifest.json" <<'PY'
+python3 - "${STAGE0_DIR}/manifest.json" "$SOURCE_COMMIT" <<'PY'
 import json
 import pathlib
 import sys
 
 manifest_path = pathlib.Path(sys.argv[1])
+expected_source_commit = sys.argv[2]
 try:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
 except (OSError, json.JSONDecodeError) as error:
@@ -87,6 +92,11 @@ except (OSError, json.JSONDecodeError) as error:
 
 if manifest.get("kind") != "lsharp-native-selfhost-stage0":
     raise SystemExit("native stage0 manifest kind is invalid")
+if manifest.get("source_commit") != expected_source_commit:
+    raise SystemExit(
+        "native stage0 manifest source_commit does not match current checkout: "
+        f"manifest={manifest.get('source_commit')!r} checkout={expected_source_commit}"
+    )
 if manifest.get("target") != "x86_64-unknown-linux-gnu":
     raise SystemExit(f"native stage0 target must be x86_64-unknown-linux-gnu: {manifest.get('target')!r}")
 for field in ("compiler", "transport_driver", "materializer"):

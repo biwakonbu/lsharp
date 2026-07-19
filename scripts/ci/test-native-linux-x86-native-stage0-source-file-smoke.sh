@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+SMOKE="$ROOT/scripts/ci/native-linux-x86-native-stage0-source-file-smoke.sh"
+SOURCE_COMMIT="$(git rev-parse --verify HEAD)"
+
+fail() {
+  echo "FAIL: $*" >&2
+  exit 1
+}
+
+expect_reject() {
+  local label="$1"
+  shift
+
+  local output
+  local exit_code
+  set +e
+  output="$($@ 2>&1)"
+  exit_code=$?
+  set -e
+  [[ "$exit_code" -ne 0 ]] || fail "$label unexpectedly succeeded"
+  [[ -n "$output" ]] || fail "$label did not report an error"
+}
+
+[[ -x "$SMOKE" ]] || fail "Linux native stage0 source-file smoke is missing: $SMOKE"
+
+TMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/lsharp-linux-stage0-source-smoke-test.XXXXXX")"
+trap 'rm -rf "$TMP_ROOT"' EXIT
+
+STAGE0_DIR="$TMP_ROOT/stage0"
+BIN_DIR="$TMP_ROOT/bin"
+mkdir -p "$STAGE0_DIR/bin" "$BIN_DIR"
+
+for executable in compiler transport-driver materializer; do
+  printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$STAGE0_DIR/bin/$executable"
+  chmod 0755 "$STAGE0_DIR/bin/$executable"
+done
+
+cat >"$STAGE0_DIR/manifest.json" <<JSON
+{
+  "kind": "lsharp-native-selfhost-stage0",
+  "target": "x86_64-unknown-linux-gnu",
+  "source_commit": "$SOURCE_COMMIT",
+  "compiler": "bin/compiler",
+  "transport_driver": "bin/transport-driver",
+  "materializer": "bin/materializer"
+}
+JSON
+
+cat >"$BIN_DIR/uname" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+case "${1:-}" in
+  -s) printf 'Darwin\n' ;;
+  -m) printf 'arm64\n' ;;
+  *) exit 1 ;;
+esac
+SH
+chmod 0755 "$BIN_DIR/uname"
+
+cat >"$BIN_DIR/limactl" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+case "${1:-}" in
+  list)
+    printf 'Running\n'
+    ;;
+  shell)
+    if [[ "$*" == *"df -Pk /tmp"* ]]; then
+      printf '10485760\n'
+    fi
+    ;;
+  copy)
+    ;;
+  *)
+    printf 'unexpected limactl invocation: %s\n' "$*" >&2
+    exit 1
+    ;;
+esac
+SH
+chmod 0755 "$BIN_DIR/limactl"
+
+run_smoke() {
+  PATH="$BIN_DIR:$PATH" \
+    LSHARP_NATIVE_LINUX_X86_STAGE0_DIR="$STAGE0_DIR" \
+    LSHARP_NATIVE_LINUX_X86_KEEP_NATIVE_STAGE0_SOURCE_SMOKE_WORK_DIR=1 \
+    "$SMOKE"
+}
+
+run_smoke
+
+python3 - "$STAGE0_DIR/manifest.json" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+manifest = json.load(open(path, encoding="utf-8"))
+manifest["source_commit"] = "0" * 40
+with open(path, "w", encoding="utf-8") as handle:
+    json.dump(manifest, handle)
+    handle.write("\n")
+PY
+
+expect_reject "stale stage0 source commit" run_smoke
+
+echo "Linux native stage0 source-file provenance tests: OK"
