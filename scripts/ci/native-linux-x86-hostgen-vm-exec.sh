@@ -26,6 +26,7 @@ export CARGO_INCREMENTAL="${CARGO_INCREMENTAL:-0}"
 STAGE1_PROGRESS_REQUESTED=0
 STAGE2_METADATA_REQUESTED=0
 SKIP_HOST_PROBES="${LSHARP_NATIVE_LINUX_X86_SKIP_HOST_PROBES:-0}"
+OBJECT_ONLY="${LSHARP_NATIVE_LINUX_X86_OBJECT_ONLY:-0}"
 HOST_VM_WORK_DIR_CREATED=0
 HOST_REPLAY_LOCK_ACQUIRED=0
 
@@ -724,7 +725,7 @@ limactl shell "${VM_NAME}" -- rm -rf "${VM_WORK_DIR}"
 limactl shell "${VM_NAME}" -- mkdir -p "${VM_WORK_DIR}"
 HOST_VM_WORK_DIR_CREATED=1
 limactl copy "${ROOT_DIR}/scripts/ci/materialize-native-linux-x86-bundle.py" "${VM_NAME}:${VM_WORK_DIR}/materialize-actual-bundle.py"
-if [[ "${REUSE_ACTUAL_STAGE2}" -ne 1 && "${REUSE_ACTUAL_STAGE1}" -ne 1 && "${SKIP_HOST_PROBES}" != "1" ]]; then
+if [[ "${REUSE_ACTUAL_STAGE2}" -ne 1 && ( "${REUSE_ACTUAL_STAGE1}" -ne 1 || "${OBJECT_ONLY}" = "1" ) && ( "${SKIP_HOST_PROBES}" != "1" || "${OBJECT_ONLY}" = "1" ) ]]; then
   limactl copy "${CODE_ARTIFACT}" "${VM_NAME}:${VM_WORK_DIR}/code.bin"
   limactl copy "${OBJECT_ARTIFACT}" "${VM_NAME}:${VM_WORK_DIR}/program.o"
   limactl copy "${ARGV_OBJECT_ARTIFACT}" "${VM_NAME}:${VM_WORK_DIR}/argv-program.o"
@@ -788,6 +789,7 @@ limactl shell "${VM_NAME}" -- env \
   LSHARP_NATIVE_LINUX_X86_STAGE3_RAW_PAYLOAD_PRODUCTION_BOUNDARY="${LSHARP_NATIVE_LINUX_X86_STAGE3_RAW_PAYLOAD_PRODUCTION_BOUNDARY:-}" \
   LSHARP_NATIVE_LINUX_X86_STAGE3_RAW_PAYLOAD_PRODUCTION_BOUNDARY_ONLY="${LSHARP_NATIVE_LINUX_X86_STAGE3_RAW_PAYLOAD_PRODUCTION_BOUNDARY_ONLY:-}" \
   LSHARP_NATIVE_LINUX_X86_SKIP_HOST_PROBES="${SKIP_HOST_PROBES}" \
+  LSHARP_NATIVE_LINUX_X86_OBJECT_ONLY="${OBJECT_ONLY}" \
   LSHARP_NATIVE_LINUX_X86_STAGE3_TARGET_SOURCE="${STAGE3_TARGET_SOURCE}" \
   LSHARP_NATIVE_LINUX_X86_STAGE3_TARGET_ONLY="${STAGE3_TARGET_ONLY_REQUESTED}" \
   LSHARP_NATIVE_LINUX_X86_SOURCE_COMMIT="${SOURCE_COMMIT}" \
@@ -808,6 +810,7 @@ REUSE_ACTUAL_STAGE1="${LSHARP_NATIVE_LINUX_X86_REUSE_ACTUAL_STAGE1:-0}"
 REUSE_ACTUAL_STAGE2="${LSHARP_NATIVE_LINUX_X86_REUSE_ACTUAL_STAGE2:-0}"
 STAGE3_TARGET_ONLY="${LSHARP_NATIVE_LINUX_X86_STAGE3_TARGET_ONLY:-}"
 SKIP_HOST_PROBES="${LSHARP_NATIVE_LINUX_X86_SKIP_HOST_PROBES:-0}"
+OBJECT_ONLY="${LSHARP_NATIVE_LINUX_X86_OBJECT_ONLY:-0}"
 ACTUAL_SOURCE_PATH="${LSHARP_NATIVE_LINUX_X86_STAGE3_TARGET_SOURCE:-src/App/Seed.ls}"
 SOURCE_COMMIT="${LSHARP_NATIVE_LINUX_X86_SOURCE_COMMIT:-unknown}"
 STAGE3_SOURCE_TREE_SHA256="${LSHARP_NATIVE_LINUX_X86_SOURCE_TREE_SHA256:-}"
@@ -949,8 +952,17 @@ main:
 
 .Largv_done:
     mov %r14, %r12
-    xor %r14d, %r14d
-    mov %r14, %rdi
+    mov $1048576, %rdi
+    mov $1, %rsi
+    call calloc@PLT
+    test %rax, %rax
+    je .Lalloc_fail
+    mov %rax, %r14
+    mov $1048576, %rcx
+    mov %rcx, 8(%r14)
+    mov $8192, %rcx
+    mov %rcx, (%r14)
+    xor %edi, %edi
     mov %r15, %rsi
     call generated
     jmp .Ldone
@@ -1434,6 +1446,14 @@ cat >file-exists-object-summary.json <<JSON
 JSON
 fi
 fi
+fi
+
+if [[ "${OBJECT_ONLY}" = "1" ]]; then
+  if [[ "${SKIP_HOST_PROBES}" = "1" ]]; then
+    echo "ERROR: object-only mode requires host probes" >&2
+    exit 2
+  fi
+  exit 0
 fi
 
 cat >decode-actual-transport.py <<'PY'

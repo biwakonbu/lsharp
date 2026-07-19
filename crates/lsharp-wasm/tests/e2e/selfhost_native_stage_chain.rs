@@ -8639,7 +8639,7 @@ fn test_native_codegen_x86_map_new_stack_delta_is_explicit_for_stage2_depth_stab
         .expect("NativeCodegen.ls に opcode-stack-delta が存在すること");
 
     assert!(
-        stack_delta.contains("(if (= opcode 60)\n    1"),
+        stack_delta.contains("(if (= opcode 60)\n      1"),
         "x86 stage2 生成では map-new 直後の depth が 1 でなければ entrypoint の value window が壊れるため、opcode 60 の stack delta は明示するべき"
     );
 }
@@ -10273,7 +10273,7 @@ fn test_native_codegen_x86_vector_new_helper_nop_fills_capacity_for_code_vectors
     );
     assert!(
         source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 569)")
-            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1544)"),
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1547)"),
         "x86 vector-new helper の拡張後は後続 runtime helper offset も +37 へ同期するべき"
     );
 }
@@ -10309,8 +10309,64 @@ fn test_native_codegen_x86_map_new_helper_uses_bounded_heap_cursor() {
         "x86 map-new helper は mmap ではなく r14 の bounded heap cursor を使うべき"
     );
     assert!(
-        size_body.contains("72") && append_body.trim_start().starts_with("72"),
-        "x86 map-new helper の slot size と trailer append 長は 72 bytes のまま維持するべき"
+        size_body.contains("75") && append_body.trim_start().starts_with("75"),
+        "x86 map-new helper の base 加算後の slot size と trailer append 長は 75 bytes に同期するべき"
+    );
+}
+
+#[test]
+fn test_native_codegen_x86_map_new_helper_adds_heap_base_before_header() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let helper_body = source
+        .split("(defn emit-x86-selfhost-map-new-helper")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn emit-x86-selfhost-map-size-helper").next())
+        .expect("NativeCodegen.ls に x86 map-new helper が存在すること");
+    let size_body = source
+        .split("(defn x86-selfhost-map-new-helper-size")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn x86-selfhost-map-size-helper-size").next())
+        .expect("NativeCodegen.ls に x86 map-new helper size が存在すること");
+    let append_body = source
+        .split("(append-native-bytes-rooted result (emit-x86-selfhost-map-new-helper)")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(append-native-bytes-rooted result (emit-x86-selfhost-map-size-helper)")
+                .next()
+        })
+        .expect("x86 bundle trailer に map-new helper append が存在すること");
+
+    assert!(
+        helper_body.contains("heap-base (byte-vector-3 76 1 247)"),
+        "x86 map-new helper は cursor offset を native heap base に加算してから header を書くべき"
+    );
+    assert!(
+        helper_body.contains("(byte-vector-3 199 7 4)")
+            && helper_body.contains("part7 (byte-vector-5 0 0 0 199 71)")
+            && helper_body.contains("part9 (byte-vector-5 199 71 8 0 0)")
+            && helper_body.contains("part13 (byte-vector-5 9 200 89 195 49)"),
+        "x86 map-new helper は native heap 上の rdi header を初期化し、tagged rdi を返すべき"
+    );
+    assert!(
+        helper_body.contains("part10 (byte-vector-5 0 0 72 151 72)"),
+        "x86 map-new helper は header 後に rdi を rax へ戻す 2-byte xchg を持つべき"
+    );
+    assert!(
+        size_body.contains("75") && append_body.trim_start().starts_with("75"),
+        "x86 map-new helper の base 加算を含む実バイト長と trailer append 長は 75 bytes に同期するべき"
+    );
+    assert!(
+        source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1364)")
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1381)")
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1485)")
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1547)")
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1631)")
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1635)")
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1686)")
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1698)")
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1885)")
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 2140)"),
+        "x86 map-new helper の拡張後は後続 runtime helper offset も +3 へ同期するべき"
     );
 }
 

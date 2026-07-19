@@ -1210,8 +1210,8 @@ fn test_native_codegen_keeps_x86_map_new_large_capacity_bytes() {
         lines
     );
     assert_eq!(
-        lines[0], "72",
-        "x86_64 map-new helper は既存 offset と互換な 72 bytes であるべき"
+        lines[0], "75",
+        "x86_64 map-new helper は heap base 加算を含む 75 bytes であるべき"
     );
     assert_eq!(
         &lines[1..5],

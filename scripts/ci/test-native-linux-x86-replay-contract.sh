@@ -21,5 +21,11 @@ assert_contains 'LSHARP_NATIVE_LINUX_X86_FAIL_FAST_ON_OOM="${LSHARP_NATIVE_LINUX
 assert_contains 'if [[ "${chunk_exit_code}" -eq 137 && "${FAIL_FAST_ON_OOM}" = "1" ]]; then'
 assert_contains 'source_commit = os.environ.get("LSHARP_NATIVE_LINUX_X86_SOURCE_COMMIT", "unknown")'
 assert_contains '"source_commit": "{source_commit}",'
+assert_contains 'mov %rax, %r14'
+assert_contains 'mov %rcx, 8(%r14)'
+assert_contains 'mov $8192, %rcx'
+assert_contains 'mov %rcx, (%r14)'
+assert_contains 'OBJECT_ONLY="${LSHARP_NATIVE_LINUX_X86_OBJECT_ONLY:-0}"'
+assert_contains 'if [[ "${OBJECT_ONLY}" = "1" ]]; then'
 
 echo "native Linux x86 replay contract passed"
