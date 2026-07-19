@@ -857,8 +857,6 @@
                                         (root_pop)
                                         (root_pop)
                                         (root_pop)
-                                        (root_pop)
-                                        (root_pop)
                                         recur-result))))))))))
                     (typeinfer-program-analysis-loop program (+ idx 1) len placeholders counter alias-env state))]
             (do
