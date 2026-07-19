@@ -8168,6 +8168,47 @@ fn test_e2e_selfhost_test_runner_reports_unknown_invariant_variable() {
     );
 }
 
+/// EC-M1-01: selfhost runner が未知 invariant 診断の source span を保持すること
+#[test]
+fn test_e2e_selfhost_test_runner_preserves_unknown_invariant_diagnostic_span() {
+    let source = "(defn succ [x] :invariant (= result (+ missing 1)) (+ x 1))";
+    let program = lsharp_syntax::parse(source).expect("invariant fixture は parse できるべき");
+    let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
+    assert_eq!(diagnostics.len(), 1, "Rust oracle は未知変数診断を 1 件返すべき");
+    assert!(diagnostics[0].message.contains("未定義"));
+    let oracle_span = diagnostics[0].span;
+
+    let harness = r#"
+(defn main []
+  (let [src "(defn succ [x] :invariant (= result (+ missing 1)) (+ x 1))"
+        suite (generate-tests src)
+        results (vector-get suite 1)
+        result0 (vector-get results 0)]
+    (do
+      (print (test-result-diagnostic result0))
+      (print (test-result-diagnostic-start result0))
+      (print (test-result-diagnostic-end result0))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_test_runner_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(lines.first().copied(), Some("1"), "selfhost は LS1001 を保持するべき");
+    assert_eq!(
+        lines.get(1).and_then(|line| line.parse::<usize>().ok()),
+        Some(oracle_span.start),
+        "selfhost unknown-variable span の開始位置は Rust oracle と一致するべき"
+    );
+    assert_eq!(
+        lines.get(2).and_then(|line| line.parse::<usize>().ok()),
+        Some(oracle_span.end),
+        "selfhost unknown-variable span の終了位置は Rust oracle と一致するべき"
+    );
+}
+
 /// TEST-CLI-02-O2g1: selfhost runner が Bool でない invariant を LS1002 として報告すること
 #[test]
 fn test_e2e_selfhost_test_runner_rejects_non_bool_invariant() {

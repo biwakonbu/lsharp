@@ -68,6 +68,21 @@
       actual)
     diagnostic-code))
 
+;; 診断結果: [name-id, passed, actual, diagnostic-code, span-start, span-end]
+(defn make-test-result-with-diagnostic-span
+  [name passed actual diagnostic-code span-start span-end]
+  (vector-push
+    (vector-push
+      (vector-push
+        (vector-push
+          (vector-push
+            (vector-push (vector-new 6) name)
+            passed)
+          actual)
+        diagnostic-code)
+      span-start)
+    span-end))
+
 (defn make-suite [examples invariants]
   (vector-push
     (vector-push (vector-new 2) examples)
@@ -609,6 +624,16 @@
 (defn test-result-diagnostic [result]
   (if (> (vector-length result) 3)
     (vector-get result 3)
+    0))
+
+(defn test-result-diagnostic-start [result]
+  (if (> (vector-length result) 4)
+    (vector-get result 4)
+    0))
+
+(defn test-result-diagnostic-end [result]
+  (if (> (vector-length result) 5)
+    (vector-get result 5)
     0))
 
 (defn contract-diagnostic-undefined [] 1) ;; LS1001: undefined-variable
@@ -1324,6 +1349,27 @@
           (if (= kind (tok-lbrace))
             (consume-form-loop tokens (+ idx 1) (token-count tokens) 0 0 1)
             (+ idx 1)))))))
+
+;; AST は互換のため expression span を保持しないため、source token から defn span を再取得する。
+(defn find-defn-source-span-loop [src tokens idx count target-hash]
+  (if (>= idx count)
+    (vector-push (vector-push (vector-new 2) 0) 0)
+    (if (and
+        (and (= (token-kind tokens idx) (tok-lparen)) (< (+ idx 2) count))
+        (= (token-kind tokens (+ idx 1)) (tok-defn)))
+      (let [name-start (token-start tokens (+ idx 2))
+        name-end (token-end tokens (+ idx 2))
+        next-idx (consume-form tokens idx)]
+        (if (= (name-hash src name-start name-end) target-hash)
+          (vector-push
+            (vector-push (vector-new 2) (token-start tokens idx))
+            (token-end tokens (- next-idx 1)))
+          (find-defn-source-span-loop src tokens next-idx count target-hash)))
+      (find-defn-source-span-loop src tokens (+ idx 1) count target-hash))))
+
+(defn find-defn-source-span [src target-hash]
+  (let [tokens (tokenize-with-spans src)]
+    (find-defn-source-span-loop src tokens 0 (token-count tokens) target-hash)))
 
 (defn at-defn-top-level [paren-depth bracket-depth brace-depth]
   (if (= paren-depth 1)
@@ -2265,7 +2311,7 @@
         next-passed
         next-bool))))
 
-(defn materialize-invariant [program tc]
+(defn materialize-invariant [program tc src]
   (let [name (vector-get tc 0)
     fn-hash (vector-get tc 1)
     decl (find-defn-by-hash program fn-hash 0 (vector-length program))
@@ -2296,21 +2342,50 @@
     passed (if (= diagnostic-code 0)
       (vector-get sample-summary 0)
       0)
-    actual (if (= diagnostic-code 0) sample-count 0)]
-    (make-test-result-with-diagnostic name passed actual diagnostic-code)))
+    actual (if (= diagnostic-code 0) sample-count 0)
+    source-span (if (> diagnostic-code 0)
+      (find-defn-source-span src fn-hash)
+      (vector-push (vector-push (vector-new 2) 0) 0))]
+    (if (> diagnostic-code 0)
+      (make-test-result-with-diagnostic-span
+        name
+        passed
+        actual
+        diagnostic-code
+        (vector-get source-span 0)
+        (vector-get source-span 1))
+      (make-test-result-with-diagnostic name passed actual diagnostic-code))))
 
-(defn run-invariants-loop [program invariants idx count results]
+(defn run-invariants-loop [program invariants src idx count results]
   (if (>= idx count)
     results
     (run-invariants-loop
       program
       invariants
+      src
       (+ idx 1)
       count
-      (vector-push results (materialize-invariant program (vector-get invariants idx))))))
+      (vector-push
+        results
+        (materialize-invariant program (vector-get invariants idx) src)))))
 
 (defn run-invariants [program invariants]
-  (run-invariants-loop program invariants 0 (vector-length invariants) (vector-new (vector-length invariants))))
+  (run-invariants-loop
+    program
+    invariants
+    ""
+    0
+    (vector-length invariants)
+    (vector-new (vector-length invariants))))
+
+(defn run-invariants-from-source [program invariants src]
+  (run-invariants-loop
+    program
+    invariants
+    src
+    0
+    (vector-length invariants)
+    (vector-new (vector-length invariants))))
 
 (defn count-passed-results-loop [results idx count acc]
   (if (>= idx count)
@@ -2333,7 +2408,7 @@
     cases (extract-cases-from-program program)
     properties (extract-property-test-cases program)
     example-results (run-examples program examples)
-    invariant-results (run-invariants program invariants)
+    invariant-results (run-invariants-from-source program invariants src)
     assertion-results (run-assertions program assertions)
     case-results (run-cases program cases)
     property-results (run-properties program properties)]
