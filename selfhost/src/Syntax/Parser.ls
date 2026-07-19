@@ -737,46 +737,52 @@
     (if (>= idx 0) (span-end spans idx) 0)))
 
 (defn append-defn-metadata-form-v3 [meta kind payload start end]
-  (let [forms (vector-get meta 5)
-    form (vector-push-quad-rooted-v3 (vector-new 4) kind payload start end)]
-    (do
-      (root_push meta)
-      (root_push forms)
-      (root_push form)
-      (let [updated-forms (vector-push-single-rooted-v3 forms form)]
-        (do
-          (root_push updated-forms)
-          (let [updated-meta (vector-set-at-rooted-v3 meta 5 updated-forms)]
-            (do
-              (root_pop)
-              (root_pop)
-              (root_pop)
-              (root_pop)
-              updated-meta)))))))
+  (do
+    ;; forms は form の確保より前に root 化する。native moving GC が meta の子を移動しても参照を保つ。
+    (root_push meta)
+    (let [forms (vector-get meta 5)]
+      (do
+        (root_push forms)
+        (let [form (vector-push-quad-rooted-v3 (vector-new 4) kind payload start end)]
+          (do
+            (root_push form)
+            (let [updated-forms (vector-push-single-rooted-v3 forms form)]
+              (do
+                (root_push updated-forms)
+                (let [updated-meta (vector-set-at-rooted-v3 meta 5 updated-forms)]
+                  (do
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    updated-meta))))))))))
 
 (defn append-defn-metadata-form-with-extra-v3 [meta kind payload start end extra]
-  (let [forms (vector-get meta 5)
-    base-form (vector-push-quad-rooted-v3 (vector-new 4) kind payload start end)]
-    (do
-      (root_push meta)
-      (root_push forms)
-      (root_push base-form)
-      (root_push extra)
-      (let [form (vector-push-single-rooted-v3 base-form extra)]
-        (do
-          (root_push form)
-          (let [updated-forms (vector-push-single-rooted-v3 forms form)]
-            (do
-              (root_push updated-forms)
-              (let [updated-meta (vector-set-at-rooted-v3 meta 5 updated-forms)]
-                (do
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  updated-meta)))))))))
+  (do
+    ;; forms と extra は base-form の確保前から保持し、移動後の値を次の vector 操作へ渡す。
+    (root_push meta)
+    (let [forms (vector-get meta 5)]
+      (do
+        (root_push forms)
+        (root_push extra)
+        (let [base-form (vector-push-quad-rooted-v3 (vector-new 4) kind payload start end)]
+          (do
+            (root_push base-form)
+            (let [form (vector-push-single-rooted-v3 base-form extra)]
+              (do
+                (root_push form)
+                (let [updated-forms (vector-push-single-rooted-v3 forms form)]
+                  (do
+                    (root_push updated-forms)
+                    (let [updated-meta (vector-set-at-rooted-v3 meta 5 updated-forms)]
+                      (do
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        updated-meta))))))))))))
 
 (defn parse-defn-metadata-v3 [spans pos-ref src]
   (parse-defn-metadata-loop-v3 spans pos-ref src (make-empty-defn-metadata-v3)))
