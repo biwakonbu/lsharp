@@ -439,13 +439,18 @@ validate_actual_stage1_artifact() {
       exit 1
     fi
   done
-  python3 - "${artifact_dir}" <<'PY'
+  LSHARP_NATIVE_LINUX_X86_EXPECTED_SOURCE_COMMIT="${SOURCE_COMMIT}" \
+    python3 - "${artifact_dir}" <<'PY'
 import json
+import os
 import pathlib
 import sys
 
 artifact_dir = pathlib.Path(sys.argv[1])
 manifest = json.loads((artifact_dir / "manifest.json").read_text())
+expected_source_commit = os.environ.get("LSHARP_NATIVE_LINUX_X86_EXPECTED_SOURCE_COMMIT", "")
+if not expected_source_commit:
+    raise SystemExit("invalid actual stage1 artifact manifest: expected_source_commit is empty")
 
 def read_int(name: str) -> int:
     return int((artifact_dir / name).read_text().strip())
@@ -458,6 +463,7 @@ main_func_idx = read_int("main-func-idx.txt")
 
 checks = [
     (manifest.get("target") == "x86_64-unknown-linux-gnu", "target"),
+    (manifest.get("source_commit") == expected_source_commit, "source_commit"),
     (manifest.get("code_len") == code_len, "code_len"),
     (manifest.get("data_len") == data_len, "data_len"),
     (manifest.get("entrypoint_offset") == entrypoint_offset, "entrypoint_offset"),
@@ -696,6 +702,7 @@ fi
 fi
 
 LSHARP_NATIVE_LINUX_X86_ACTUAL_STAGE1_ARTIFACT_DIR="${ACTUAL_STAGE1_ARTIFACT_DIR}" \
+  LSHARP_NATIVE_LINUX_X86_SOURCE_COMMIT="${SOURCE_COMMIT}" \
   CARGO_TARGET_DIR="${HOSTGEN_CARGO_TARGET_DIR}" cargo test -q -p lsharp-wasm --test e2e \
   e2e::selfhost_native_stage_chain::test_e2e_native_linux_x86_host_generates_actual_selfregen_stage1_bundle_artifact \
   -- --exact --ignored

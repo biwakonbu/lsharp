@@ -1468,6 +1468,8 @@ fn test_native_linux_x86_hostgen_vm_script_can_reuse_actual_stage1_artifact() {
     }
     for check in [
         r#"manifest.get("target") == "x86_64-unknown-linux-gnu""#,
+        r#"expected_source_commit = os.environ.get("LSHARP_NATIVE_LINUX_X86_EXPECTED_SOURCE_COMMIT", "")"#,
+        r#"manifest.get("source_commit") == expected_source_commit"#,
         r#"manifest.get("code_len") == code_len"#,
         r#"manifest.get("data_len") == data_len"#,
         r#"manifest.get("entrypoint_offset") == entrypoint_offset"#,
@@ -1481,6 +1483,12 @@ fn test_native_linux_x86_hostgen_vm_script_can_reuse_actual_stage1_artifact() {
             "actual-stage1 reuse は manifest と実ファイルの整合性を検証するべき: {check}"
         );
     }
+    assert!(
+        script.contains(
+            r#"LSHARP_NATIVE_LINUX_X86_SOURCE_COMMIT="${SOURCE_COMMIT}" \"#
+        ),
+        "hostgen script は actual stage1 generator に source commit を渡すべき"
+    );
     assert!(
         vm_exec.contains(r#"LSHARP_NATIVE_LINUX_X86_REUSE_ACTUAL_STAGE1="${REUSE_ACTUAL_STAGE1}""#),
         "hostgen VM script は guest に actual-stage1 reuse mode を渡すべき"
@@ -41370,10 +41378,15 @@ fn test_e2e_native_linux_x86_host_generates_actual_selfregen_stage1_bundle_artif
     )
     .expect("main-func-idx.txt 書き込みに失敗");
     std::fs::write(artifact_dir.join("seed.ls"), seed_source).expect("seed.ls 書き込みに失敗");
+    let source_commit = std::env::var("LSHARP_NATIVE_LINUX_X86_SOURCE_COMMIT")
+        .unwrap_or_else(|_| "unknown".to_string());
+    let source_commit_json = serde_json::to_string(&source_commit)
+        .expect("source commit の JSON エスケープに失敗");
     std::fs::write(
         artifact_dir.join("manifest.json"),
         format!(
-            "{{\n  \"target\": \"x86_64-unknown-linux-gnu\",\n  \"code_len\": {},\n  \"data_len\": {},\n  \"entrypoint_offset\": {},\n  \"function_start_len\": {},\n  \"main_func_idx\": {}\n}}\n",
+            "{{\n  \"target\": \"x86_64-unknown-linux-gnu\",\n  \"source_commit\": {},\n  \"code_len\": {},\n  \"data_len\": {},\n  \"entrypoint_offset\": {},\n  \"function_start_len\": {},\n  \"main_func_idx\": {}\n}}\n",
+            source_commit_json,
             stage1_input.code_bytes.len(),
             stage1_input.data_bytes.len(),
             stage1_input.entrypoint_offset,
