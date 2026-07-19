@@ -1294,7 +1294,7 @@ fn test_native_codegen_x86_vector_push_helper_has_growth_path() {
 
     assert_eq!(
         lines,
-        vec![205, 65, 84, 65, 85, 0, 0, 128, 72, 15, 71, 194],
+        vec![205, 65, 84, 65, 85, 0, 128, 72, 15, 71, 194, 72],
         "x86_64 vector-push helper は capacity 超過時に bounded native heap で grow できる必要がある"
     );
 }

@@ -10428,6 +10428,30 @@ fn test_native_codegen_x86_vector_push_helper_uses_bounded_heap_cursor() {
 }
 
 #[test]
+fn test_native_codegen_x86_vector_push_helper_keeps_grow_mask_instruction_aligned() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let helper_body = source
+        .split("(defn emit-x86-selfhost-vector-push-helper")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn emit-x86-selfhost-ref-new-helper").next())
+        .expect("NativeCodegen.ls に x86 vector-push helper が存在すること");
+
+    assert!(
+        helper_body.contains("part21 (byte-vector-3 62 72 186)")
+            && helper_body.contains("part22 (byte-vector-5 0 0 0 0 0)")
+            && helper_body.contains("part23 (byte-vector-3 0 0 128)")
+            && helper_body.contains("part24 (byte-vector-4 72 15 71 194)"),
+        "x86 vector-push grow helper は movabs の 8-byte immediate と cmova を隣接させ、命令境界をずらさないべき"
+    );
+    assert!(
+        helper_body.contains(
+            "part52 (concat-byte-vectors-rooted (byte-vector-1 195) (byte-vector-1 144))"
+        ),
+        "x86 vector-push helper は slot 長を維持するため ret 後に 1 byte padding を追加するべき"
+    );
+}
+
+#[test]
 fn test_native_codegen_x86_vector_get_helper_rejects_non_vector_objects() {
     let source = selfhost_module("NativeCodegen.ls");
     let helper_body = source
