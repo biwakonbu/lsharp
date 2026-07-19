@@ -209,19 +209,30 @@
                         result (if (> diagnostic-count 0)
                           (canonical-property-type-error-code)
                           (let [predicate (property-probe-predicate probe-program)
-                            resolved (property-probe-return-type (infer-program-analysis-type analysis))
-                            type-code (if (and (= (ty-tag resolved) (ty-con)) (= (ty-name resolved) (hash-bool))) 0 (canonical-property-non-bool-code))
-                            boolean-result (do
-                              (root_push predicate)
-                              (let [value (statically-boolean-result predicate)]
+                            raw-type (infer-program-analysis-type analysis)]
+                            (do
+                              ;; apply-subst が返す probe type は analysis から独立した新規 object
+                              ;; になり得るため、native GC 下でも判定中の return type を保持する。
+                              (root_push raw-type)
+                              (let [resolved (property-probe-return-type raw-type)]
                                 (do
-                                  (root_pop)
-                                  value)))]
-                            (if (and (= reject-vacuous 1) (= boolean-result 1))
-                              (canonical-assertion-vacuous-code)
-                              (if (and (= reject-unreachable 1) (= boolean-result 2))
-                                (canonical-assertion-vacuous-code)
-                                type-code))))]
+                                  (root_push resolved)
+                                  (let [type-code (if (and (= (ty-tag resolved) (ty-con)) (= (ty-name resolved) (hash-bool))) 0 (canonical-property-non-bool-code))
+                                    boolean-result (do
+                                      (root_push predicate)
+                                      (let [value (statically-boolean-result predicate)]
+                                        (do
+                                          (root_pop)
+                                          value)))
+                                    result (if (and (= reject-vacuous 1) (= boolean-result 1))
+                                      (canonical-assertion-vacuous-code)
+                                      (if (and (= reject-unreachable 1) (= boolean-result 2))
+                                        (canonical-assertion-vacuous-code)
+                                        type-code))]
+                                    (do
+                                      (root_pop)
+                                      (root_pop)
+                                      result)))))))]
                         (do
                           (root_pop)
                           (root_pop)
