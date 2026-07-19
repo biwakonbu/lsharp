@@ -786,3 +786,13 @@ Evidence: RED で `firstErrorSpan` が JSON に存在せず `Null` になった�
 Evidence: `test_e2e_selfhost_embedded_cli_main_with_args_test_format_json_non_bool_invariant` は RED で canonical `EmbeddedCli.ls` の test mapping 欠落を検出し、mapping を追加した GREEN で `1 passed`、`407.43s`。続く differential assertion の GREEN は `1 passed`、`399.01s` で、Rust `metadata_check` が返す `succ` の diagnostic span と selfhost JSON の `firstErrorSpan` を一致確認した。既存 `Cli` actual argv failure test と共通 assertion を使い、出力 JSON が 1 行であること、failure status、diagnostics、span、exit boundary を確認した。
 
 これは Rust-hosted Wasm による `EmbeddedCli` の単一 legacy invariant failure fixtureと、その diagnostic span の Rust/selfhost differential に限定した verified sliceであり、current-source Mac Apple Silicon / Linux x86_64 native stage0 artifact/runtime、EmbeddedCli の全 form parity、全 report field の differential、provenance 注入、EC-M1-06 aggregate は残件である。対応済み経路は Rust なしで L# 開発に使えるが、未検証の公開 surface を Rust fallback で完了扱いにせず、bootstrap / oracle / host integration 境界は維持する。
+
+### Current-source Mac Apple Silicon native boundary (2026-07-19)
+
+現行 `main` (`abe1e5d7e8f01248f622c15756e26f343f215a9c`) の `selfhost/src` から Mac Apple Silicon native fixed-point を再生成した。`test_e2e_native_macos_aarch64_actual_app_cli_release_program` は `864.77s` で passし、`App.Cli` の `program.native --version` は `lsharp 0.1.0`、manifest は `selfhost_fixed_point=true`、`source_commit` は現行 HEAD、`program_sha256=d1b5db348d8b793dea869597e8859131824d4b0ec9df831091734754d371cca1` となった。
+
+同じ current source の stage23 fixed-point は `test_e2e_stage23_actual_native_self_regeneration_harness_stage2_stage3_match` が `756.38s` で passし、`actual-stage2-native` と `actual-stage3-native` の program/runtime/response/binary/stdout/stderr observation が一致した。stage3 native compiler、Mac transport driver、Mac materializer を `package-native-stage0.sh` で `source_commit` 付き stage0 packageにし、`native-selfhost-dev-source-file-smoke.sh` を Rust toolchain と host `lsharp` を blockした状態で実行した結果、`parse` / `check` / `fmt` / text `test` / metadata `test` / `compile` / `build` と Wasm magic gate が passした。
+
+さらに同じ native `program.native` で non-Bool legacy invariant の `test --format json` を実行し、exit `2`、stdout 1行、stderr空、`status=fail`、`firstErrorCode=2`、`firstErrorSpan=26..33`、`runner=selfhost` を確認した。これにより current-source Mac の core CLI / structured failure slice は Rust なしの実行証跡を持つ。
+
+これは Mac Apple Silicon の `App.Cli` と限定 fixtureに対する current-source evidenceであり、Linux x86_64 current-source stage0/artifact/runtime、`EmbeddedCli` の native実行、全 metadata form、全公開 command、stage0 acquisition/release/rollback、EC-M1-07 aggregate は残件である。stage0 package は bootstrap boundaryとして保持し、Rust oracle / differential と未移行 host integration を成功経路へ混ぜない。
