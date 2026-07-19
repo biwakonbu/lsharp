@@ -270,7 +270,27 @@
 ;; ============================================================
 
 (defn make-result [subst ty]
-  (push-int-vector-local (push-object-vector-local (push-object-vector-local (vector-new 3) subst) ty) 0))
+  (do
+    ;; 推論結果の3要素を段階的に構築する間も、置換・型・中間 vector を
+    ;; native GC から保持する。root slot は vector-push の再配置後に更新する。
+    (root_push subst)
+    (root_push ty)
+    (let [base (vector-new 3)
+      slot (root_push base)]
+      (do
+        (let [with-subst (vector-push base subst)]
+          (do
+            (root_set slot with-subst)
+            (let [with-ty (vector-push with-subst ty)]
+              (do
+                (root_set slot with-ty)
+                (let [result (vector-push with-ty 0)]
+                  (do
+                    (root_set slot result)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    result))))))))))
 
 (defn result-subst [r] (vector-get r 0))
 (defn result-type [r] (vector-get r 1))
