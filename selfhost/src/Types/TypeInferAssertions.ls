@@ -193,39 +193,43 @@
       (do
         (root_push payload)
       (root_push expression)
-      (let [probe-source (string-concat "(defn __lsharp_property_probe " (string-concat (property-probe-parameter-source payload) (string-concat " " (string-concat expression ")"))))]
+      (let [parameter-source (property-probe-parameter-source payload)]
         (do
-          (root_push probe-source)
-          (let [probe-program (parse-program probe-source)]
+          (root_push parameter-source)
+          (let [probe-source (string-concat "(defn __lsharp_property_probe " (string-concat parameter-source (string-concat " " (string-concat expression ")"))))]
             (do
-              (root_push probe-program)
-              (let [analysis (infer-program-analysis probe-program)]
+              (root_push probe-source)
+              (let [probe-program (parse-program probe-source)]
                 (do
-                  (root_push analysis)
-                  (let [diagnostic-count (infer-program-analysis-diagnostic-count analysis)
-                    result (if (> diagnostic-count 0)
-                      (canonical-property-type-error-code)
-                      (let [predicate (property-probe-predicate probe-program)
-                        resolved (property-probe-return-type (infer-program-analysis-type analysis))
-                        type-code (if (and (= (ty-tag resolved) (ty-con)) (= (ty-name resolved) (hash-bool))) 0 (canonical-property-non-bool-code))
-                        boolean-result (do
-                          (root_push predicate)
-                          (let [value (statically-boolean-result predicate)]
-                            (do
-                              (root_pop)
-                              value)))]
-                        (if (and (= reject-vacuous 1) (= boolean-result 1))
-                          (canonical-assertion-vacuous-code)
-                          (if (and (= reject-unreachable 1) (= boolean-result 2))
-                            (canonical-assertion-vacuous-code)
-                            type-code))))]
+                  (root_push probe-program)
+                  (let [analysis (infer-program-analysis probe-program)]
                     (do
-                      (root_pop)
-                      (root_pop)
-                      (root_pop)
-                      (root_pop)
-                      (root_pop)
-                      result))))))))))))
+                      (root_push analysis)
+                      (let [diagnostic-count (infer-program-analysis-diagnostic-count analysis)
+                        result (if (> diagnostic-count 0)
+                          (canonical-property-type-error-code)
+                          (let [predicate (property-probe-predicate probe-program)
+                            resolved (property-probe-return-type (infer-program-analysis-type analysis))
+                            type-code (if (and (= (ty-tag resolved) (ty-con)) (= (ty-name resolved) (hash-bool))) 0 (canonical-property-non-bool-code))
+                            boolean-result (do
+                              (root_push predicate)
+                              (let [value (statically-boolean-result predicate)]
+                                (do
+                                  (root_pop)
+                                  value)))]
+                            (if (and (= reject-vacuous 1) (= boolean-result 1))
+                              (canonical-assertion-vacuous-code)
+                              (if (and (= reject-unreachable 1) (= boolean-result 2))
+                                (canonical-assertion-vacuous-code)
+                                type-code))))]
+                        (do
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          result))))))))))))))
 (defn check-property-postcondition [payload] (let [expression (property-postcondition-text payload)] (if (= (string-length expression) 0) (canonical-property-empty-code) (if (string-eq expression "true") (canonical-assertion-vacuous-code) (check-property-predicate payload expression 1 0)))))
 (defn check-property-preconditions-loop [payload idx close len]
   (let [expression-start (property-skip-space payload idx len)]

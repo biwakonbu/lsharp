@@ -2243,6 +2243,62 @@
         (root_pop)
         result))))
 
+;; native の call/GC 境界でも直接 application の形状比較を失わない narrow fast path。
+(defn property-runner-atom-shape-equal [left right]
+  (let [left-node (if (= (vector-get left 0) (ast-ann)) (vector-get left 1) left)
+    right-node (if (= (vector-get right 0) (ast-ann)) (vector-get right 1) right)
+    left-tag (vector-get left-node 0)
+    right-tag (vector-get right-node 0)]
+    (if (!= left-tag right-tag)
+      0
+      (if (= left-tag (ast-var))
+        (if (= (vector-get left-node 1) (vector-get right-node 1)) 1 0)
+        (if (= left-tag (ast-lit-int))
+          (if (= (vector-get left-node 1) (vector-get right-node 1)) 1 0)
+          (if (= left-tag (ast-lit-bool))
+            (if (= (vector-get left-node 1) (vector-get right-node 1)) 1 0)
+            (if (= left-tag (ast-lit-string))
+              (if (string-eq (vector-get left-node 1) (vector-get right-node 1)) 1 0)
+              (if (= left-tag (ast-lit-unit)) 1 0))))))))
+
+(defn property-runner-direct-application-shape-equal [left right]
+  (let [left-node (if (= (vector-get left 0) (ast-ann)) (vector-get left 1) left)
+    right-node (if (= (vector-get right 0) (ast-ann)) (vector-get right 1) right)
+    left-tag (vector-get left-node 0)
+    right-tag (vector-get right-node 0)]
+    (if (!= left-tag right-tag)
+      0
+      (if (= left-tag (ast-apply))
+        (let [left-count (vector-get left-node 2)
+          right-count (vector-get right-node 2)
+          left-callee (vector-get left-node 1)
+          right-callee (vector-get right-node 1)]
+          (if (!= left-count right-count)
+            0
+            (if (or (< left-count 1) (> left-count 2))
+              0
+              (if (or (!= (vector-get left-callee 0) (ast-var)) (!= (vector-get right-callee 0) (ast-var)))
+                0
+                (if (!= (vector-get left-callee 1) (vector-get right-callee 1))
+                  0
+                  (if (= left-count 1)
+                    (property-runner-atom-shape-equal
+                      (vector-get left-node 3)
+                      (vector-get right-node 3))
+                    (if (= (property-runner-atom-shape-equal
+                        (vector-get left-node 3)
+                        (vector-get right-node 3)) 1)
+                      (property-runner-atom-shape-equal
+                        (vector-get left-node 4)
+                        (vector-get right-node 4))
+                      0)))))))
+        0))))
+
+(defn property-runner-negation-shape-equal [left right]
+  (if (= (property-runner-direct-application-shape-equal left right) 1)
+    1
+    (property-runner-expression-shape-equal left right)))
+
 (defn property-runner-is-not-expression-raw? [node]
   (if (= (vector-get node 0) (ast-apply))
     (if (= (vector-get node 2) 1)
@@ -2267,19 +2323,19 @@
     left-is-not (property-runner-is-not-expression? left-node)
     right-is-not (property-runner-is-not-expression? right-node)]
     (if (= left-is-not 1)
-      (if (= (property-runner-expression-shape-equal
+      (if (= (property-runner-negation-shape-equal
           (vector-get left-node 3)
           right-node) 1)
         1
         (if (= right-is-not 1)
-          (if (= (property-runner-expression-shape-equal
+          (if (= (property-runner-negation-shape-equal
               (vector-get right-node 3)
               left-node) 1)
             1
             0)
           0))
       (if (= right-is-not 1)
-        (if (= (property-runner-expression-shape-equal
+        (if (= (property-runner-negation-shape-equal
             (vector-get right-node 3)
             left-node) 1)
           1
