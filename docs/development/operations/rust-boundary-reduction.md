@@ -50,6 +50,14 @@ Evidence: `test_e2e_selfhost_test_runner_rejects_non_bool_invariant`、`cargo ru
 
 これは selfhost runner の strict Bool verified slice であり、Rust `run_metadata_tests` との diagnostic/span parity、structured report、current-source Mac/Linux native artifact/runtime gate は残件である。したがって、日常開発でこの slice を利用できるが、Rust oracle / bootstrap 境界は引き続き保持する。
 
+### EC-M1-01 Rust legacy invariant Bool preflight (2026-07-19)
+
+Rust `metadata_check` は legacy `:invariant` も、元関数を同じ引数で呼ぶ synthetic probe の戻り値を `result` に束縛して型検査するようになった。`(+ x 1)` のような non-Bool invariant は、生成テストの後段 `E0002` に漏れず、invariant 式の source span と owner を持つ `LS1002` 相当の metadata diagnostic で拒否する。既存の unknown variable は `LS1001` のまま維持し、`(>= result 0)` など Bool invariant は受理する。
+
+Evidence: `legacy_invariant_requires_bool_at_invariant_span`、`test_run_metadata_tests_rejects_non_bool_invariant`、`cargo test -p lsharp-types --test metadata_contract_check -- --nocapture`（23 passed）、`cargo test -p lsharp-types --lib metadata_check -- --nocapture`（29 passed）、`cargo test -p lsharp-tooling metadata_test::tests::test_run_metadata_tests_ -- --nocapture`（32 passed）。
+
+これは Rust tooling の legacy invariant strict Bool preflight に限定した verified slice であり、selfhost runner との detailed diagnostic/span parity、structured report、current-source Mac/Linux native artifact/runtime gate、EC-M1-01 aggregate は残件である。対応済み slice は L# で日常開発できるが、未完了 contract semantics の oracle / bootstrap 境界として Rust は保持する。
+
 ### EC-M1-02 canonical assert inventory bridge (2026-07-17)
 
 Rust syntax は `:assert [predicate ...]` を lossless な ordered metadata form として parse し、metadata inventory は各 predicate を source 順の `ExecutableContract::Assertion` へ投影するようになった。directive span と predicate span を保持し、canonical form は legacy `pending_migration` へ混ぜない。既存の `:example` / `:invariant` aggregate projection と migration queue は変更していない。

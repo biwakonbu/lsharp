@@ -215,6 +215,36 @@ mod tests {
     }
 
     #[test]
+    fn test_run_metadata_tests_rejects_non_bool_invariant() {
+        let dir = unique_temp_dir("non_bool_invariant");
+        let file = dir.join("Main.ls");
+        fs::write(
+            &file,
+            r#"(defn succ
+  [x]
+  :invariant (+ x 1)
+  (+ x 1))
+"#,
+        )
+        .unwrap();
+
+        let error = run_metadata_tests(&file)
+            .expect_err("non-Bool invariant は stable diagnostic で拒否されるべき");
+        assert!(
+            error.to_string().contains("[LS1002]"),
+            "non-Bool invariant は LS1002 を返すべき: {error}"
+        );
+        assert!(
+            !error
+                .to_string()
+                .contains("テストプログラムの型チェックに失敗"),
+            "non-Bool invariant は生成テストの後段エラーへ漏れてはならない: {error}"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn test_run_metadata_tests_allows_local_let_binding_in_invariant() {
         let dir = unique_temp_dir("local_let_invariant");
         let file = dir.join("Main.ls");
