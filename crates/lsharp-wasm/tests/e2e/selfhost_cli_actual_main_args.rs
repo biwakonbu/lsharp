@@ -339,12 +339,12 @@ fn test_e2e_selfhost_cli_main_with_args_test_format_json_file() {
 }
 
 // Cli / EmbeddedCli の同一 JSON failure contract を共有して検証する。
-fn assert_non_bool_invariant_json(output: lsharp_wasm::wasi_runner::ExecutionOutput) {
+fn assert_non_bool_invariant_json(output: &lsharp_wasm::wasi_runner::ExecutionOutput) {
     assert_eq!(
         output.exit_code, 2,
         "non-Bool invariant は test --format json を成功扱いせず exit 2 にするべき"
     );
-    let lines = output_lines(output.stdout);
+    let lines = output_lines(output.stdout.clone());
     assert_eq!(
         lines.len(),
         1,
@@ -393,6 +393,38 @@ fn assert_non_bool_invariant_json(output: lsharp_wasm::wasi_runner::ExecutionOut
     assert_eq!(report["intent_validation"]["status"], "unknown");
 }
 
+// Rust checker は期待値を生成する oracle に限定し、実行結果は selfhost 側で検証する。
+fn assert_non_bool_invariant_json_matches_rust_oracle(
+    output: lsharp_wasm::wasi_runner::ExecutionOutput,
+    source: &str,
+) {
+    assert_non_bool_invariant_json(&output);
+
+    let program = lsharp_syntax::parse(source).expect("oracle fixture は parse できるべき");
+    let diagnostic = lsharp_types::metadata_check::check_metadata(&program)
+        .into_iter()
+        .next()
+        .expect("Rust oracle は non-Bool invariant の diagnostic を返すべき");
+    assert_eq!(diagnostic.function_name, "succ");
+
+    let report: Value = serde_json::from_str(
+        output
+            .stdout
+            .lines()
+            .next()
+            .expect("selfhost report は stdout に 1 行を返すべき"),
+    )
+    .expect("selfhost report は valid JSON であるべき");
+    assert_eq!(
+        report["implementation_conformance"]["diagnostics"]["firstErrorSpan"]["start"],
+        diagnostic.span.start
+    );
+    assert_eq!(
+        report["implementation_conformance"]["diagnostics"]["firstErrorSpan"]["end"],
+        diagnostic.span.end
+    );
+}
+
 /// EC-M1-01/06: actual selfhost CLI の legacy non-Bool invariant が structured report の failure boundary を保つこと
 #[test]
 fn test_e2e_selfhost_cli_main_with_args_test_format_json_non_bool_invariant() {
@@ -403,21 +435,22 @@ fn test_e2e_selfhost_cli_main_with_args_test_format_json_non_bool_invariant() {
             &["test", "input.ls", "--format", "json"],
         )
     });
-    assert_non_bool_invariant_json(output);
+    assert_non_bool_invariant_json(&output);
 }
 
 /// EC-M1-06: EmbeddedCli の実 argv JSON failure が Cli と同じ contract を返すこと
 #[test]
 fn test_e2e_selfhost_embedded_cli_main_with_args_test_format_json_non_bool_invariant() {
+    let source = "(defn succ [x] :invariant (+ x 1) (+ x 1))";
     let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, || {
         run_main_with_input_file_capture(
             selfhost_embedded_cli_runtime_bundle(),
             "test_format_json_non_bool_invariant_embedded",
-            "(defn succ [x] :invariant (+ x 1) (+ x 1))",
+            source,
             &["test", "input.ls", "--format", "json"],
         )
     });
-    assert_non_bool_invariant_json(output);
+    assert_non_bool_invariant_json_matches_rust_oracle(output, source);
 }
 
 /// TEST-CLI-02-AP2: actual Cli main は自己再帰 top-level defn を typecheck できること
