@@ -796,3 +796,13 @@ Evidence: `test_e2e_selfhost_embedded_cli_main_with_args_test_format_json_non_bo
 さらに同じ native `program.native` で non-Bool legacy invariant の `test --format json` を実行し、exit `2`、stdout 1行、stderr空、`status=fail`、`firstErrorCode=2`、`firstErrorSpan=26..33`、`runner=selfhost` を確認した。これにより current-source Mac の core CLI / structured failure slice は Rust なしの実行証跡を持つ。
 
 これは Mac Apple Silicon の `App.Cli` と限定 fixtureに対する current-source evidenceであり、Linux x86_64 current-source stage0/artifact/runtime、`EmbeddedCli` の native実行、全 metadata form、全公開 command、stage0 acquisition/release/rollback、EC-M1-07 aggregate は残件である。stage0 package は bootstrap boundaryとして保持し、Rust oracle / differential と未移行 host integration を成功経路へ混ぜない。
+
+### Current-source Linux x86_64 stage1 boundary and replay blocker (2026-07-19)
+
+現行 `main` (`d1585818e7f0085d10a3bef45771daf4f9d97ec2`) を入力に、Mac Apple Silicon 上の Lima `lsharp-linux-x86` (`x86_64`, 16 GiB RAM, 12 GiB disk) で `scripts/ci/native-linux-x86-selfregen.sh` を再実行した。host-side native artifact probe 12 件はすべて passし、current-source stage1 bundle生成も `1402.27s` で passした。生成された stage1 は target `x86_64-unknown-linux-gnu`、code `4,161,375` bytes、data `1,511` bytes、`function_start_len=3214`、`main_func_idx=3223`、source `seed.ls` `98,720` bytes である。VM の空き容量は `7,961,264,128` bytes、必要量 `4,294,967,296` bytes で、disk free-space gate は通過した。
+
+一方、VM 内の現行 stage1 `program.native` による stage2 transport は、chunk `0-64`、`0-32`、`0-16`、`0-8` の順に自動分割しても exit `137`（memory pressure による kill）となった。各 retry では RSS が約 `15.2`〜`15.8` GiB まで増加し、chunk サイズだけでは failure boundaryを越えられなかった。`actual-stage2-stdout.txt`、stage2/stage3 materialized bundle、`actual-selfregen-summary.json` は未生成であり、stage2/stage3 fixed-point や Linux current-source stage0 source-file smoke の pass evidence には数えない。中断後は VM 内の孤児 replay process、lock、temporary workdir を清掃し、保存済み host artifact と repo の変更は保持した。
+
+この結果は Rust が必要な言語機能の診断ではなく、current-source native compiler の runtime heap/root/data layout または working-set 容量の blocker である。次の RED は保存済み stage1 artifact を再利用した stage2 chunk ごとの RSS/heap 増加量の観測と、`source_commit` を含む stage0 provenance manifest の検証に固定する。stage1 の `1402.27s` 再生成を繰り返さず、原因修正後に stage2 -> stage3 -> materialize -> compare を再開する。
+
+したがって、現時点の運用判断は二層である。current-source Mac Apple Silicon の verified stage0 がある環境では、対応済み core CLI slice の編集・`parse`・`check`・`fmt`・`test`・`compile`・`build` を Rust なしで L# 自身を使って進めてよい。未対応の language semantics、全公開 command、EmbeddedCli の native parity、Linux current-source artifact/runtime、stage0 acquisition/release/rollback は Rust oracle / bootstrap / host integration の明示境界として残し、Rust fallback で全機能対応済みとは扱わない。
