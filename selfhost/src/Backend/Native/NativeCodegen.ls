@@ -9632,7 +9632,7 @@
 
 (defn emit-x86-selfhost-vector-new-helper []
   ;; r14 は materializer が確保した native heap。先頭 16 bytes は cursor/limit、
-  ;; 実オブジェクトは data 領域と衝突しない heap+8192 以降へ bump allocate する。
+  ;; 実オブジェクトは data frontier 以降へ bump allocate する。
   (let [part1 (byte-vector-5 81 72 137 198 72)
     part2 (byte-vector-5 193 230 3 72 131)
     part3 (byte-vector-5 198 16 73 139 14)

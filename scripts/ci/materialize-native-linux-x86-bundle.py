@@ -15,6 +15,14 @@ data_path = stage_dir / data_name
 if not data_path.exists():
     data_path.write_bytes(b"")
 data_len = data_path.stat().st_size if data_path.exists() else 0
+data_base = 1024
+data_frontier = (data_base + data_len + 7) & ~7
+heap_frontier = max(8192, data_frontier)
+if heap_frontier >= actual_heap_bytes:
+    raise SystemExit(
+        "native heap is too small for embedded data: "
+        f"heap_frontier={heap_frontier} actual_heap_bytes={actual_heap_bytes}"
+    )
 if entrypoint < 0 or entrypoint >= code_len:
     raise SystemExit(f"entrypoint out of range: offset={entrypoint} len={code_len}")
 
@@ -80,9 +88,9 @@ main:
     mov %rax, %r14
     movabs ${actual_heap_bytes}, %rcx
     mov %rcx, 8(%r14)
-    mov $8192, %rcx
+    mov ${heap_frontier}, %rcx
     mov %rcx, (%r14)
-    lea 1024(%r14), %rdi
+    lea {data_base}(%r14), %rdi
     lea lsharp_data(%rip), %rsi
     mov ${data_len}, %rdx
     call memcpy@PLT
