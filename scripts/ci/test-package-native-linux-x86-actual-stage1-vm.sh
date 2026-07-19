@@ -37,7 +37,9 @@ trap 'rm -rf "$TMP_ROOT"' EXIT
 
 ACTUAL_STAGE1="$TMP_ROOT/actual-stage1"
 INVALID_STAGE1="$TMP_ROOT/invalid-stage1"
+STALE_STAGE1="$TMP_ROOT/stale-stage1"
 OUTPUT_DIR="$TMP_ROOT/stage0"
+STALE_OUTPUT_DIR="$TMP_ROOT/stale-stage0"
 HOST_BIN="$TMP_ROOT/host-bin"
 LOG="$TMP_ROOT/invocations.log"
 VM_NAME="lsharp-linux-x86-test"
@@ -51,9 +53,10 @@ printf '0\n' >"$ACTUAL_STAGE1/entrypoint-offset.txt"
 printf '1\n' >"$ACTUAL_STAGE1/function-start-len.txt"
 printf '10\n' >"$ACTUAL_STAGE1/main-func-idx.txt"
 printf '(module App.Seed)\n' >"$ACTUAL_STAGE1/seed.ls"
-cat >"$ACTUAL_STAGE1/manifest.json" <<'JSON'
+cat >"$ACTUAL_STAGE1/manifest.json" <<JSON
 {
   "target": "x86_64-unknown-linux-gnu",
+  "source_commit": "$SOURCE_COMMIT",
   "code_len": 1,
   "data_len": 1,
   "entrypoint_offset": 0,
@@ -124,6 +127,23 @@ run_wrapper() {
 expect_reject "missing stage1 artifact" run_wrapper \
   --actual-stage1-dir "$INVALID_STAGE1" \
   --output-dir "$TMP_ROOT/missing-stage1-output"
+
+cp -a "$ACTUAL_STAGE1" "$STALE_STAGE1"
+python3 - "$STALE_STAGE1/manifest.json" <<'PY'
+import json
+import sys
+
+manifest_path = sys.argv[1]
+manifest = json.load(open(manifest_path, encoding="utf-8"))
+manifest["source_commit"] = "0" * 40
+with open(manifest_path, "w", encoding="utf-8") as handle:
+    json.dump(manifest, handle, indent=2)
+    handle.write("\n")
+PY
+
+expect_reject "stale stage1 artifact" run_wrapper \
+  --actual-stage1-dir "$STALE_STAGE1" \
+  --output-dir "$STALE_OUTPUT_DIR"
 
 run_wrapper \
   --actual-stage1-dir "$ACTUAL_STAGE1" \

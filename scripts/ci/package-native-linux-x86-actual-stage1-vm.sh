@@ -29,6 +29,10 @@ die() {
   exit 1
 }
 
+SOURCE_COMMIT="$(git -C "$ROOT" rev-parse --verify HEAD 2>/dev/null || true)"
+[[ "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
+  || die "current checkout source commit is unavailable: $SOURCE_COMMIT"
+
 require_option_value() {
   if [[ $# -lt 2 || -z "$2" ]]; then
     die "$1 requires a value"
@@ -90,13 +94,14 @@ for file in stage1-code.bin stage1-data.bin entrypoint-offset.txt function-start
   [[ -s "$ACTUAL_STAGE1_DIR/$file" ]] || die "actual stage1 artifact is missing: $ACTUAL_STAGE1_DIR/$file"
 done
 
-python3 - "$ACTUAL_STAGE1_DIR" <<'PY'
+python3 - "$ACTUAL_STAGE1_DIR" "$SOURCE_COMMIT" <<'PY'
 import json
 import pathlib
 import sys
 
 artifact_dir = pathlib.Path(sys.argv[1])
 manifest = json.loads((artifact_dir / "manifest.json").read_text(encoding="utf-8"))
+expected_source_commit = sys.argv[2]
 
 def read_int(name: str) -> int:
     return int((artifact_dir / name).read_text(encoding="utf-8").strip())
@@ -109,6 +114,7 @@ main_func_idx = read_int("main-func-idx.txt")
 
 checks = [
     (manifest.get("target") == "x86_64-unknown-linux-gnu", "target"),
+    (manifest.get("source_commit") == expected_source_commit, "source_commit"),
     (manifest.get("code_len") == code_len, "code_len"),
     (manifest.get("data_len") == data_len, "data_len"),
     (manifest.get("entrypoint_offset") == entrypoint_offset, "entrypoint_offset"),
@@ -146,6 +152,7 @@ chmod 0755 "$HOST_COMPILER"
 
 "$PACKAGE_BUILDER" \
   --target x86_64-unknown-linux-gnu \
+  --source-commit "$SOURCE_COMMIT" \
   --compiler "$HOST_COMPILER" \
   --transport-driver "$TRANSPORT_DRIVER" \
   --materializer "$MATERIALIZER" \
