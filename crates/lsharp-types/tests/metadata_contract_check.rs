@@ -250,6 +250,46 @@ fn canonical_property_rejects_compound_true_postcondition_as_vacuous() {
 }
 
 #[test]
+fn canonical_property_rejects_dynamic_complement_postcondition_as_vacuous() {
+    const SOURCE: &str =
+        "(defn identity [x] :property [(for-all [value Int] :cases 1 :postcondition (or (= value 0) (not (= value 0))))] x)";
+    let program = parse(SOURCE)
+        .expect("動的な補集合で常に true の property は diagnostic のため parse できるべき");
+
+    let diagnostics = check_metadata(&program);
+
+    assert_eq!(diagnostics.len(), 1, "dynamic complement を成功扱いしてはならない");
+    let diagnostic = &diagnostics[0];
+    assert_eq!(diagnostic.severity, Severity::Error);
+    assert!(diagnostic.message.contains("vacuous"));
+    assert_eq!(diagnostic.function_name, "identity");
+    assert_eq!(
+        &SOURCE[diagnostic.span.start..diagnostic.span.end],
+        "(or (= value 0) (not (= value 0)))"
+    );
+}
+
+#[test]
+fn canonical_property_rejects_dynamic_contradiction_precondition_as_vacuous() {
+    const SOURCE: &str =
+        "(defn identity [x] :property [(for-all [value Int] :cases 1 :precondition [(and (= value 0) (not (= value 0)))] :postcondition (= result value))] x)";
+    let program = parse(SOURCE)
+        .expect("動的な矛盾で常に false の precondition は diagnostic のため parse できるべき");
+
+    let diagnostics = check_metadata(&program);
+
+    assert_eq!(diagnostics.len(), 1, "dynamic contradiction を成功扱いしてはならない");
+    let diagnostic = &diagnostics[0];
+    assert_eq!(diagnostic.severity, Severity::Error);
+    assert!(diagnostic.message.contains("vacuous"));
+    assert_eq!(diagnostic.function_name, "identity");
+    assert_eq!(
+        &SOURCE[diagnostic.span.start..diagnostic.span.end],
+        "(and (= value 0) (not (= value 0)))"
+    );
+}
+
+#[test]
 fn canonical_property_rejects_statically_true_integer_comparisons_as_vacuous() {
     for predicate in [
         "(= 1 1)",

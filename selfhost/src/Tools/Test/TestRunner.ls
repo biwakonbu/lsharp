@@ -2192,6 +2192,74 @@
         right
         (if (= right 2) left 0)))))
 
+(defn property-runner-expression-shape-equal [left right]
+  (let [left-node (if (= (vector-get left 0) (ast-ann)) (vector-get left 1) left)
+    right-node (if (= (vector-get right 0) (ast-ann)) (vector-get right 1) right)
+    left-tag (vector-get left-node 0)
+    right-tag (vector-get right-node 0)]
+    (if (!= left-tag right-tag)
+      0
+      (if (= left-tag (ast-var))
+        (if (= (vector-get left-node 1) (vector-get right-node 1)) 1 0)
+        (if (= left-tag (ast-lit-int))
+          (if (= (vector-get left-node 1) (vector-get right-node 1)) 1 0)
+          (if (= left-tag (ast-lit-bool))
+            (if (= (vector-get left-node 1) (vector-get right-node 1)) 1 0)
+            (if (= left-tag (ast-lit-string))
+              (if (string-eq (vector-get left-node 1) (vector-get right-node 1)) 1 0)
+              (if (= left-tag (ast-lit-unit))
+                1
+                (if (= left-tag (ast-apply))
+                  (if (= (vector-get left-node 2) (vector-get right-node 2))
+                    (if (= (property-runner-expression-shape-equal
+                        (vector-get left-node 1)
+                        (vector-get right-node 1)) 1)
+                      (if (= (vector-get left-node 2) 1)
+                        (property-runner-expression-shape-equal
+                          (vector-get left-node 3)
+                          (vector-get right-node 3))
+                        (if (= (vector-get left-node 2) 2)
+                          (if (and
+                              (= (property-runner-expression-shape-equal
+                                (vector-get left-node 3)
+                                (vector-get right-node 3)) 1)
+                              (= (property-runner-expression-shape-equal
+                                (vector-get left-node 4)
+                                (vector-get right-node 4)) 1))
+                            1
+                            0)
+                          0))
+                      0)
+                    0)
+                  0)))))))))
+
+(defn property-runner-is-not-expression? [node]
+  (if (= (vector-get node 0) (ast-apply))
+    (if (= (vector-get node 2) 1)
+      (let [callee (vector-get node 1)]
+        (if (= (vector-get callee 0) (ast-var))
+          (if (= (vector-get callee 1) (hash-not)) 1 0)
+          0))
+      0)
+    0))
+
+(defn property-runner-is-boolean-negation-pair [left right]
+  (let [left-node (if (= (vector-get left 0) (ast-ann)) (vector-get left 1) left)
+    right-node (if (= (vector-get right 0) (ast-ann)) (vector-get right 1) right)
+    left-is-not (property-runner-is-not-expression? left-node)
+    right-is-not (property-runner-is-not-expression? right-node)]
+    (if (and (= left-is-not 1)
+        (= (property-runner-expression-shape-equal
+          (vector-get left-node 3)
+          right-node) 1))
+      1
+      (if (and (= right-is-not 1)
+          (= (property-runner-expression-shape-equal
+            (vector-get right-node 3)
+            left-node) 1))
+        1
+        0))))
+
 (defn property-runner-statically-boolean-result [predicate]
   (let [tag (vector-get predicate 0)]
     (if (= tag (ast-ann))
@@ -2213,13 +2281,17 @@
                     (let [left (vector-get predicate 3)
                       right (vector-get predicate 4)]
                       (if (= operator 96727)
-                        (property-runner-static-boolean-and
-                          (property-runner-statically-boolean-result left)
-                          (property-runner-statically-boolean-result right))
-                        (if (= operator 3555)
-                          (property-runner-static-boolean-or
+                        (if (= (property-runner-is-boolean-negation-pair left right) 1)
+                          2
+                          (property-runner-static-boolean-and
                             (property-runner-statically-boolean-result left)
-                            (property-runner-statically-boolean-result right))
+                            (property-runner-statically-boolean-result right)))
+                        (if (= operator 3555)
+                          (if (= (property-runner-is-boolean-negation-pair left right) 1)
+                            1
+                            (property-runner-static-boolean-or
+                              (property-runner-statically-boolean-result left)
+                              (property-runner-statically-boolean-result right)))
                           (if (= (property-runner-statically-integer-comparison? predicate 1) 1)
                             1
                             (if (= (property-runner-statically-integer-comparison? predicate 2) 1)

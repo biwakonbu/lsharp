@@ -312,6 +312,38 @@ fn static_integer_comparison_result_app(expr: &Expr) -> Option<bool> {
     })
 }
 
+fn expression_shape_equal(left: &Expr, right: &Expr) -> bool {
+    match (left, right) {
+        (Expr::Ann(_, left, _), _) => expression_shape_equal(left, right),
+        (_, Expr::Ann(_, right, _)) => expression_shape_equal(left, right),
+        (Expr::Lit(_, left), Expr::Lit(_, right)) => left == right,
+        (Expr::Var(_, left), Expr::Var(_, right)) => left == right,
+        (Expr::App(_, left_callee, left_args), Expr::App(_, right_callee, right_args)) => {
+            left_args.len() == right_args.len()
+                && expression_shape_equal(left_callee, right_callee)
+                && left_args
+                    .iter()
+                    .zip(right_args)
+                    .all(|(left, right)| expression_shape_equal(left, right))
+        }
+        _ => false,
+    }
+}
+
+fn is_boolean_negation_pair(left: &Expr, right: &Expr) -> bool {
+    fn is_not_of(candidate: &Expr, operand: &Expr) -> bool {
+        let Expr::App(_, callee, args) = candidate else {
+            return false;
+        };
+        let Expr::Var(_, operator) = callee.as_ref() else {
+            return false;
+        };
+        args.len() == 1 && operator == "not" && expression_shape_equal(&args[0], operand)
+    }
+
+    is_not_of(left, right) || is_not_of(right, left)
+}
+
 fn static_boolean_result(expr: &Expr) -> Option<bool> {
     if let Expr::Ann(_, inner, _) = expr {
         return static_boolean_result(inner);
@@ -337,16 +369,28 @@ fn static_boolean_result(expr: &Expr) -> Option<bool> {
     let left = static_boolean_result(left);
     let right = static_boolean_result(right);
     match operator.as_str() {
-        "and" => match (left, right) {
-            (Some(false), _) | (_, Some(false)) => Some(false),
-            (Some(true), other) | (other, Some(true)) => other,
-            (None, None) => None,
-        },
-        "or" => match (left, right) {
-            (Some(true), _) | (_, Some(true)) => Some(true),
-            (Some(false), other) | (other, Some(false)) => other,
-            (None, None) => None,
-        },
+        "and" => {
+            if is_boolean_negation_pair(&args[0], &args[1]) {
+                Some(false)
+            } else {
+                match (left, right) {
+                    (Some(false), _) | (_, Some(false)) => Some(false),
+                    (Some(true), other) | (other, Some(true)) => other,
+                    (None, None) => None,
+                }
+            }
+        }
+        "or" => {
+            if is_boolean_negation_pair(&args[0], &args[1]) {
+                Some(true)
+            } else {
+                match (left, right) {
+                    (Some(true), _) | (_, Some(true)) => Some(true),
+                    (Some(false), other) | (other, Some(false)) => other,
+                    (None, None) => None,
+                }
+            }
+        }
         _ => static_integer_comparison_result_app(expr),
     }
 }

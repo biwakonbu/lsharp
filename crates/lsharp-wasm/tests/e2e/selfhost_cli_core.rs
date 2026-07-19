@@ -6570,6 +6570,66 @@ fn test_e2e_selfhost_runner_rejects_compound_true_property_postcondition() {
     );
 }
 
+/// EC-M1-04: selfhost runner が動的な補集合で常に true な postcondition を拒否すること
+#[test]
+fn test_e2e_selfhost_runner_rejects_dynamic_complement_property_postcondition() {
+    let harness = r#"
+(defn main []
+  (let [src "(defn identity [x] :property [(for-all [value Int] :cases 1 :postcondition (or (= value 0) (not (= value 0))))] x)"
+        suite (generate-tests-from-source src)
+        properties (vector-get suite 4)
+        result0 (vector-get properties 0)]
+    (do
+      (print (vector-length properties))
+      (print (vector-get result0 1))
+      (print (vector-get result0 2))
+      (print (vector-get result0 3))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_test_runner_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["1", "0", "0", "2005"],
+        "selfhost runner は dynamic complement postcondition を vacuous success にしてはならない"
+    );
+}
+
+/// EC-M1-04: selfhost runner が動的な矛盾 precondition を拒否すること
+#[test]
+fn test_e2e_selfhost_runner_rejects_dynamic_contradiction_property_precondition() {
+    let harness = r#"
+(defn main []
+  (let [src "(defn identity [x] :property [(for-all [value Int] :cases 1 :precondition [(and (= value 0) (not (= value 0)))] :postcondition (= result value))] x)"
+        suite (generate-tests-from-source src)
+        properties (vector-get suite 4)
+        result0 (vector-get properties 0)]
+    (do
+      (print (vector-length properties))
+      (print (vector-get result0 1))
+      (print (vector-get result0 2))
+      (print (vector-get result0 3))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_test_runner_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["1", "0", "0", "2005"],
+        "selfhost runner は dynamic contradiction precondition を vacuous success にしてはならない"
+    );
+}
+
 /// EC-M1-02: selfhost runner が二つの Int binder を pair prefix として実行すること
 #[test]
 fn test_e2e_selfhost_runner_executes_two_int_property_binders() {
@@ -6605,7 +6665,7 @@ fn test_e2e_selfhost_runner_executes_two_int_property_binders() {
 fn test_e2e_selfhost_runner_executes_bool_property_binder() {
     let harness = r#"
 (defn main []
-  (let [src "(defn identity [x] :property [(for-all [value Bool] :cases 2 :postcondition (or value (not value)))] x)"
+  (let [src "(defn identity [x] :property [(for-all [value Bool] :cases 2 :postcondition (= result value))] x)"
         suite (generate-tests-from-source src)
         properties (vector-get suite 4)
         result0 (vector-get properties 0)]
@@ -6635,7 +6695,7 @@ fn test_e2e_selfhost_runner_executes_bool_property_binder() {
 fn test_e2e_selfhost_runner_executes_mixed_int_bool_property_binders() {
     let harness = r#"
 (defn main []
-  (let [src "(defn choose [input enabled] :property [(for-all [value Int flag Bool] :cases 2 :postcondition (and (>= value 0) (or flag (not flag))))] enabled)"
+  (let [src "(defn choose [input enabled] :property [(for-all [value Int flag Bool] :cases 2 :postcondition (and (= result flag) (>= value 0)))] enabled)"
         suite (generate-tests-from-source src)
         properties (vector-get suite 4)
         result0 (vector-get properties 0)]
@@ -8721,6 +8781,72 @@ fn test_e2e_selfhost_cli_check_rejects_vacuous_property_postcondition() {
         lines,
         vec!["BEGIN", "1", "2005"],
         "selfhost property checker は literal true postcondition を成功扱いするべきではない"
+    );
+}
+
+/// EC-M1-04: selfhost check が動的な補集合で常に true な property を拒否すること。
+#[test]
+fn test_e2e_selfhost_cli_check_rejects_dynamic_complement_property_postcondition() {
+    let harness = r#"
+(defn main []
+  (let [source "(defn identity [x] :property [(for-all [value Int] :postcondition (or (= value 0) (not (= value 0))))] x)"
+        program (parse-program source)
+        analysis (infer-program-analysis program)
+        result (check-canonical-properties-with-analysis program analysis)]
+    (do
+      (print-string "BEGIN\n")
+      (print (vector-get result 0))
+      (print (vector-get result 1))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}",
+        selfhost_parser_typeinfer_runtime_bundle(),
+        harness
+    );
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["BEGIN", "1", "2005"],
+        "selfhost property checker は dynamic complement postcondition を成功扱いするべきではない"
+    );
+}
+
+/// EC-M1-04: selfhost check が動的な矛盾 precondition を拒否すること。
+#[test]
+fn test_e2e_selfhost_cli_check_rejects_dynamic_contradiction_property_precondition() {
+    let harness = r#"
+(defn main []
+  (let [source "(defn identity [x] :property [(for-all [value Int] :precondition [(and (= value 0) (not (= value 0)))] :postcondition (= result value))] x)"
+        program (parse-program source)
+        analysis (infer-program-analysis program)
+        result (check-canonical-properties-with-analysis program analysis)]
+    (do
+      (print-string "BEGIN\n")
+      (print (vector-get result 0))
+      (print (vector-get result 1))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}",
+        selfhost_parser_typeinfer_runtime_bundle(),
+        harness
+    );
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["BEGIN", "1", "2005"],
+        "selfhost property checker は dynamic contradiction precondition を成功扱いするべきではない"
     );
 }
 
