@@ -462,6 +462,136 @@ fn test_native_app_cli_test_format_json_reports_vacuous_failure_source_file_cont
 }
 
 #[test]
+#[ignore = "actual native App.Cli program を LSHARP_NATIVE_APP_CLI_PROGRAM で指定する"]
+fn test_native_app_cli_test_format_json_rejects_dynamic_complement_source_file_contract() {
+    if !cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+        return;
+    }
+
+    let program = PathBuf::from(
+        std::env::var_os("LSHARP_NATIVE_APP_CLI_PROGRAM")
+            .expect("LSHARP_NATIVE_APP_CLI_PROGRAM を指定すること"),
+    );
+    assert!(
+        program.is_file(),
+        "native App.Cli が見つからない: {}",
+        program.display()
+    );
+    let program = std::fs::canonicalize(&program).expect("native App.Cli の絶対パス化に失敗");
+
+    let dir = std::env::temp_dir().join(format!(
+        "lsharp_native_app_cli_test_format_json_dynamic_complement_contract_{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("fixture directory の作成に失敗");
+    std::fs::write(
+        dir.join("input.ls"),
+        "(defn identity [x] :property [(for-all [value Int] :cases 1 :postcondition (or (= value 0) (not (= value 0))))] x)",
+    )
+    .expect("dynamic complement JSON property fixture input.ls の書き込みに失敗");
+
+    let result = (|| {
+        let test = Command::new(&program)
+            .current_dir(&dir)
+            .args(["test", "input.ls", "--format", "json"])
+            .output()
+            .expect("native App.Cli dynamic complement test --format json の実行に失敗");
+        assert_eq!(
+            test.status.code(),
+            Some(2),
+            "native test --format json は dynamic complement property を exit 2 にするべき: stdout={:?} stderr={:?}",
+            String::from_utf8_lossy(&test.stdout),
+            String::from_utf8_lossy(&test.stderr)
+        );
+        let stdout = String::from_utf8_lossy(&test.stdout);
+        let lines: Vec<&str> = stdout.lines().collect();
+        assert_eq!(
+            lines.len(),
+            1,
+            "dynamic complement failure JSON は report 1 行を返すべき"
+        );
+        let report: Value =
+            serde_json::from_str(lines[0]).expect("dynamic complement failure JSON は valid JSON");
+        assert_eq!(report["implementation_conformance"]["status"], "fail");
+        assert_eq!(
+            report["implementation_conformance"]["diagnostics"]["count"],
+            1
+        );
+        assert_eq!(
+            report["implementation_conformance"]["diagnostics"]["firstErrorCode"],
+            2005
+        );
+        assert_eq!(report["intent_validation"]["status"], "unknown");
+    })();
+    let _ = std::fs::remove_dir_all(&dir);
+    result
+}
+
+#[test]
+#[ignore = "actual native App.Cli program を LSHARP_NATIVE_APP_CLI_PROGRAM で指定する"]
+fn test_native_app_cli_check_reports_vacuous_property_source_file_contract() {
+    if !cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+        return;
+    }
+
+    let program = PathBuf::from(
+        std::env::var_os("LSHARP_NATIVE_APP_CLI_PROGRAM")
+            .expect("LSHARP_NATIVE_APP_CLI_PROGRAM を指定すること"),
+    );
+    assert!(
+        program.is_file(),
+        "native App.Cli が見つからない: {}",
+        program.display()
+    );
+    let program = std::fs::canonicalize(&program).expect("native App.Cli の絶対パス化に失敗");
+
+    let dir = std::env::temp_dir().join(format!(
+        "lsharp_native_app_cli_check_vacuous_property_contract_{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("fixture directory の作成に失敗");
+    std::fs::write(
+        dir.join("input.ls"),
+        "(defn identity [x] :property [(for-all [value Int] :postcondition (or (= value 0) (not (= value 0))))] x)",
+    )
+    .expect("vacuous property check fixture input.ls の書き込みに失敗");
+
+    let result = (|| {
+        let check = Command::new(&program)
+            .current_dir(&dir)
+            .args(["check", "input.ls"])
+            .output()
+            .expect("native App.Cli vacuous property check の実行に失敗");
+        assert_eq!(
+            check.status.code(),
+            Some(1),
+            "native check は vacuous property を compile error にするべき: stdout={:?} stderr={:?}",
+            String::from_utf8_lossy(&check.stdout),
+            String::from_utf8_lossy(&check.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&check.stdout)
+                .lines()
+                .collect::<Vec<_>>(),
+            vec![
+                "Fn",
+                "diagnostics:1,T0001@1:1,first-body:property predicate is vacuous",
+            ],
+            "native check は vacuous property の専用 diagnostics body を返すべき"
+        );
+        assert!(
+            check.stderr.is_empty(),
+            "native check stderr は空であるべき: {:?}",
+            String::from_utf8_lossy(&check.stderr)
+        );
+    })();
+    let _ = std::fs::remove_dir_all(&dir);
+    result
+}
+
+#[test]
 #[ignore = "actual native EmbeddedCli program を LSHARP_NATIVE_EMBEDDED_CLI_PROGRAM で指定する"]
 fn test_native_embedded_cli_test_format_json_source_file_contract() {
     if !cfg!(all(target_os = "macos", target_arch = "aarch64")) {

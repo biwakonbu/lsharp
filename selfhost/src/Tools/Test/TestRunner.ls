@@ -806,7 +806,7 @@
 (defn hash-ge [] (test-hash-string ">="))
 (defn hash-and [] (test-hash-string "and"))
 (defn hash-or [] (test-hash-string "or"))
-(defn hash-not [] (test-hash-string "not"))
+(defn hash-not [] 109267)
 (defn hash-string-eq [] (test-hash-string "string-eq"))
 
 (defn value-int [n]
@@ -2219,14 +2219,14 @@
                           (vector-get left-node 3)
                           (vector-get right-node 3))
                         (if (= (vector-get left-node 2) 2)
-                          (if (and
-                              (= (property-runner-expression-shape-equal
-                                (vector-get left-node 3)
-                                (vector-get right-node 3)) 1)
-                              (= (property-runner-expression-shape-equal
-                                (vector-get left-node 4)
-                                (vector-get right-node 4)) 1))
-                            1
+                          (if (= (property-runner-expression-shape-equal
+                              (vector-get left-node 3)
+                              (vector-get right-node 3)) 1)
+                            (if (= (property-runner-expression-shape-equal
+                                  (vector-get left-node 4)
+                                  (vector-get right-node 4)) 1)
+                              1
+                              0)
                             0)
                           0))
                       0)
@@ -2248,16 +2248,24 @@
     right-node (if (= (vector-get right 0) (ast-ann)) (vector-get right 1) right)
     left-is-not (property-runner-is-not-expression? left-node)
     right-is-not (property-runner-is-not-expression? right-node)]
-    (if (and (= left-is-not 1)
-        (= (property-runner-expression-shape-equal
+    (if (= left-is-not 1)
+      (if (= (property-runner-expression-shape-equal
           (vector-get left-node 3)
-          right-node) 1))
-      1
-      (if (and (= right-is-not 1)
-          (= (property-runner-expression-shape-equal
-            (vector-get right-node 3)
-            left-node) 1))
+          right-node) 1)
         1
+        (if (= right-is-not 1)
+          (if (= (property-runner-expression-shape-equal
+              (vector-get right-node 3)
+              left-node) 1)
+            1
+            0)
+          0))
+      (if (= right-is-not 1)
+        (if (= (property-runner-expression-shape-equal
+            (vector-get right-node 3)
+            left-node) 1)
+          1
+          0)
         0))))
 
 (defn property-runner-statically-boolean-result [predicate]

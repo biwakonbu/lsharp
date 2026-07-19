@@ -1164,6 +1164,34 @@ fn test_e2e_selfhost_cli_check_source_undefined_symbol_summary() {
     );
 }
 
+/// EC-M1-04: run-check-source が vacuous property の code 別 diagnostics body を返すこと
+#[test]
+fn test_e2e_selfhost_cli_check_source_vacuous_property_summary() {
+    let harness = r#"
+(defn main []
+  (do
+    (print (run-check-source "(defn identity [x] :property [(for-all [value Int] :postcondition (or (= value 0) (not (= value 0))))] x)" 0))
+    0))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.contains(&"diagnostics:1,T0001@1:1,first-body:property predicate is vacuous"),
+        "check vacuous property summary は code 別 body を含むべき: {:?}",
+        lines
+    );
+    assert_eq!(
+        lines.last(),
+        Some(&"1"),
+        "run-check-source は vacuous property diagnostics 後に compile error を返すべき"
+    );
+}
+
 /// TEST-CLI-02-H: selfhost/src/App/Cli.ls の file-path handler は missing file を compile error で返す
 #[test]
 #[ignore]

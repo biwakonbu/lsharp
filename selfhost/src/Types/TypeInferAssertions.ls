@@ -416,14 +416,14 @@
                           (vector-get left-node 3)
                           (vector-get right-node 3))
                         (if (= (vector-get left-node 2) 2)
-                          (if (and
-                              (= (expression-shape-equal
-                                (vector-get left-node 3)
-                                (vector-get right-node 3)) 1)
-                              (= (expression-shape-equal
-                                (vector-get left-node 4)
-                                (vector-get right-node 4)) 1))
-                            1
+                          (if (= (expression-shape-equal
+                              (vector-get left-node 3)
+                              (vector-get right-node 3)) 1)
+                            (if (= (expression-shape-equal
+                                  (vector-get left-node 4)
+                                  (vector-get right-node 4)) 1)
+                              1
+                              0)
                             0)
                           0))
                       0)
@@ -445,12 +445,18 @@
     right-node (if (= (vector-get right 0) (ast-ann)) (vector-get right 1) right)
     left-is-not (is-not-expression? left-node)
     right-is-not (is-not-expression? right-node)]
-    (if (and (= left-is-not 1)
-        (= (expression-shape-equal (vector-get left-node 3) right-node) 1))
-      1
-      (if (and (= right-is-not 1)
-          (= (expression-shape-equal (vector-get right-node 3) left-node) 1))
+    (if (= left-is-not 1)
+      (if (= (expression-shape-equal (vector-get left-node 3) right-node) 1)
         1
+        (if (= right-is-not 1)
+          (if (= (expression-shape-equal (vector-get right-node 3) left-node) 1)
+            1
+            0)
+          0))
+      (if (= right-is-not 1)
+        (if (= (expression-shape-equal (vector-get right-node 3) left-node) 1)
+          1
+          0)
         0))))
 
 (defn statically-boolean-result [predicate]

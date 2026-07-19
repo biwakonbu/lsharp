@@ -87,6 +87,7 @@ INPUT="$WORK_DIR/input.ls"
 METADATA="$WORK_DIR/metadata.ls"
 PROPERTY="$WORK_DIR/property.ls"
 VACUOUS_PROPERTY="$WORK_DIR/vacuous-property.ls"
+DYNAMIC_COMPLEMENT_PROPERTY="$WORK_DIR/dynamic-complement-property.ls"
 COMPILE_OUTPUT="$WORK_DIR/compile.wasm"
 BUILD_OUTPUT="$WORK_DIR/build.wasm"
 
@@ -105,6 +106,11 @@ LSHARP
 cat >"$VACUOUS_PROPERTY" <<'LSHARP'
 (defn identity [x]
   :property [(for-all [sample Int] :cases 1 :postcondition (or true (= sample 0)))]
+  x)
+LSHARP
+cat >"$DYNAMIC_COMPLEMENT_PROPERTY" <<'LSHARP'
+(defn identity [x]
+  :property [(for-all [value Int] :cases 1 :postcondition (or (= value 0) (not (= value 0))))]
   x)
 LSHARP
 
@@ -266,6 +272,26 @@ if diagnostics["count"] != 1 or diagnostics["firstErrorCode"] != 2005:
     raise SystemExit(f"vacuous property JSON diagnostic is invalid: {report!r}")
 if report["intent_validation"]["status"] != "unknown":
     raise SystemExit(f"vacuous property JSON intent status is invalid: {report!r}")
+PY
+
+run_expected_failure dynamic-complement-property-json 0 test "$DYNAMIC_COMPLEMENT_PROPERTY" --format json
+python3 - "$WORK_DIR/dynamic-complement-property-json.stdout" <<'PY'
+import json
+import pathlib
+import sys
+
+lines = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8").splitlines()
+if len(lines) != 1:
+    raise SystemExit(f"dynamic complement property JSON must contain one report line: {lines!r}")
+report = json.loads(lines[0])
+conformance = report["implementation_conformance"]
+if conformance["status"] != "fail":
+    raise SystemExit(f"dynamic complement property JSON status is not fail: {report!r}")
+diagnostics = conformance["diagnostics"]
+if diagnostics["count"] != 1 or diagnostics["firstErrorCode"] != 2005:
+    raise SystemExit(f"dynamic complement property JSON diagnostic is invalid: {report!r}")
+if report["intent_validation"]["status"] != "unknown":
+    raise SystemExit(f"dynamic complement property JSON intent status is invalid: {report!r}")
 PY
 
 run_command compile 0 compile "$INPUT" -o "$COMPILE_OUTPUT"
