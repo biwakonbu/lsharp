@@ -35,6 +35,61 @@
             fun-ty (typeinfer-build-curried-fun param-types s1 body-ty)]
             (make-result s1 fun-ty)))))))
 
+;; 1 引数 apply の成功結果を、解決済み戻り値型まで root 保持して構築する。
+(defn infer-apply-one-success [s2 ret-ty]
+  (do
+    (root_push s2)
+    (root_push ret-ty)
+    (let [resolved-ret-ty (apply-subst s2 ret-ty)]
+      (do
+        (root_push resolved-ret-ty)
+        (let [result (make-result s2 resolved-ret-ty)]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            result))))))
+
+;; 1 引数 apply の unify 中間値を native GC から保持する。
+(defn infer-apply-one-final [func-ty s1 arg1-ty counter]
+  (do
+    (root_push func-ty)
+    (root_push s1)
+    (root_push arg1-ty)
+    (root_push counter)
+    (let [ret-ty (fresh-type-var counter)]
+      (do
+        (root_push ret-ty)
+        (let [expected (typeinfer-make-fun-rooted arg1-ty ret-ty)]
+          (do
+            (root_push expected)
+            (let [applied-func-ty (apply-subst s1 func-ty)]
+              (do
+                (root_push applied-func-ty)
+                (let [failure-code
+                        (if (= (type-tag applied-func-ty) 2)
+                          (if (= (occurs-check (type-name applied-func-ty) expected) 1)
+                            (error-code-infinite)
+                            (error-code-arg-mismatch))
+                          (error-code-arg-mismatch))
+                  s2 (unify applied-func-ty expected s1)]
+                  (do
+                    (root_push s2)
+                    (let [result
+                            (if (= (unify-failed s2) 1)
+                              (make-error-result-code failure-code)
+                              (infer-apply-one-success s2 ret-ty))]
+                      (do
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        result))))))))))))
+
 ;; 2 引数 apply の期待関数型を、中間の curried function も保持して作る。
 (defn infer-apply-two-expected [arg1-ty arg2-ty ret-ty]
   (do
@@ -277,24 +332,35 @@
             func-ty (result-type func-result)]
             (if (= argc 1)
               ;; 1 引数の適用
-              (let [arg1-result (infer-expr (vector-get node 3) env s1 counter)]
-                (if (= (result-failed arg1-result) 1)
-                  (propagate-error-result arg1-result)
-                  (let [s2 (result-subst arg1-result)
-                    arg1-ty (result-type arg1-result)
-                    ret-ty (fresh-type-var counter)
-                    expected (mk-fun arg1-ty ret-ty)
-                    applied-func-ty (apply-subst s2 func-ty)
-                    failure-code
-                    (if (= (type-tag applied-func-ty) 2)
-                      (if (= (occurs-check (type-name applied-func-ty) expected) 1)
-                        (error-code-infinite)
-                        (error-code-arg-mismatch))
-                      (error-code-arg-mismatch))
-                    s3 (unify applied-func-ty expected s2)]
-                    (if (= (unify-failed s3) 1)
-                      (make-error-result-code failure-code)
-                      (make-result s3 (apply-subst s3 ret-ty))))))
+              (do
+                (root_push s1)
+                (root_push func-ty)
+                (let [arg1-result (infer-expr (vector-get node 3) env s1 counter)]
+                  (do
+                    (root_push arg1-result)
+                    (let [result
+                            (if (= (result-failed arg1-result) 1)
+                              (propagate-error-result arg1-result)
+                              (let [s2 (result-subst arg1-result)
+                                arg1-ty (result-type arg1-result)]
+                                (do
+                                  (root_push s2)
+                                  (root_push arg1-ty)
+                                  (let [next-result
+                                          (infer-apply-one-final
+                                            func-ty
+                                            s2
+                                            arg1-ty
+                                            counter)]
+                                    (do
+                                      (root_pop)
+                                      (root_pop)
+                                      next-result)))))]
+                      (do
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        result)))))
               (if (= argc 2)
                 ;; 2 引数の適用
                 (let [arg1-result (infer-expr (vector-get node 3) env s1 counter)]
