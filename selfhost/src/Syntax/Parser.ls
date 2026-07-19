@@ -740,6 +740,7 @@
   (do
     ;; forms は form の確保より前に root 化する。native moving GC が meta の子を移動しても参照を保つ。
     (root_push meta)
+    (root_push payload)
     (let [forms (vector-get meta 5)]
       (do
         (root_push forms)
@@ -755,12 +756,14 @@
                     (root_pop)
                     (root_pop)
                     (root_pop)
+                    (root_pop)
                     updated-meta))))))))))
 
 (defn append-defn-metadata-form-with-extra-v3 [meta kind payload start end extra]
   (do
     ;; forms と extra は base-form の確保前から保持し、移動後の値を次の vector 操作へ渡す。
     (root_push meta)
+    (root_push payload)
     (let [forms (vector-get meta 5)]
       (do
         (root_push forms)
@@ -776,6 +779,7 @@
                     (root_push updated-forms)
                     (let [updated-meta (vector-set-at-rooted-v3 meta 5 updated-forms)]
                       (do
+                        (root_pop)
                         (root_pop)
                         (root_pop)
                         (root_pop)
