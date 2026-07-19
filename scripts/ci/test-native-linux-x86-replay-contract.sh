@@ -27,5 +27,8 @@ assert_contains 'mov $8192, %rcx'
 assert_contains 'mov %rcx, (%r14)'
 assert_contains 'OBJECT_ONLY="${LSHARP_NATIVE_LINUX_X86_OBJECT_ONLY:-0}"'
 assert_contains 'if [[ "${OBJECT_ONLY}" = "1" ]]; then'
+assert_contains 'MAP_REF_OBJECT_ARTIFACT="${ARTIFACT_DIR}/map-ref-program.o"'
+assert_contains 'test_e2e_native_linux_x86_host_generates_map_ref_get_elf_object_artifact'
+assert_contains 'scope": "host-side selfhost-generated ELF object preserves map-new across ref-new/ref-get'
 
 echo "native Linux x86 replay contract passed"

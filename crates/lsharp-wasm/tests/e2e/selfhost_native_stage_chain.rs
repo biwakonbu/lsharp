@@ -10337,19 +10337,19 @@ fn test_native_codegen_x86_map_new_helper_adds_heap_base_before_header() {
         .expect("x86 bundle trailer に map-new helper append が存在すること");
 
     assert!(
-        helper_body.contains("heap-base (byte-vector-3 76 1 247)"),
-        "x86 map-new helper は cursor offset を native heap base に加算してから header を書くべき"
+        helper_body.contains("heap-base (byte-vector-3 76 1 240)"),
+        "x86 map-new helper は旧 cursor の object offset を native heap base に加算してから header を書くべき"
     );
     assert!(
-        helper_body.contains("(byte-vector-3 199 7 4)")
-            && helper_body.contains("part7 (byte-vector-5 0 0 0 199 71)")
-            && helper_body.contains("part9 (byte-vector-5 199 71 8 0 0)")
+        helper_body.contains("(byte-vector-3 199 0 4)")
+            && helper_body.contains("part7 (byte-vector-5 0 0 0 199 64)")
+            && helper_body.contains("part9 (byte-vector-5 199 64 8 0 0)")
             && helper_body.contains("part13 (byte-vector-5 9 200 89 195 49)"),
         "x86 map-new helper は native heap 上の rdi header を初期化し、tagged rdi を返すべき"
     );
     assert!(
-        helper_body.contains("part10 (byte-vector-5 0 0 72 151 72)"),
-        "x86 map-new helper は header 後に rdi を rax へ戻す 2-byte xchg を持つべき"
+        helper_body.contains("part10 (byte-vector-5 0 0 144 144 72)"),
+        "x86 map-new helper は header 後も object address を rax に保持するべき"
     );
     assert!(
         size_body.contains("75") && append_body.trim_start().starts_with("75"),
@@ -10367,6 +10367,29 @@ fn test_native_codegen_x86_map_new_helper_adds_heap_base_before_header() {
             && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1885)")
             && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 2140)"),
         "x86 map-new helper の拡張後は後続 runtime helper offset も +3 へ同期するべき"
+    );
+}
+
+#[test]
+fn test_native_codegen_x86_map_new_helper_allocates_from_previous_cursor() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let helper_body = source
+        .split("(defn emit-x86-selfhost-map-new-helper")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn emit-x86-selfhost-map-size-helper").next())
+        .expect("NativeCodegen.ls に x86 map-new helper が存在すること");
+
+    assert!(
+        helper_body.contains("heap-base (byte-vector-3 76 1 240)"),
+        "x86 map-new helper は cursor を進める前の rax を heap base に加算し、先頭 object を指すべき"
+    );
+    assert!(
+        helper_body.contains("part10 (byte-vector-5 0 0 144 144 72)"),
+        "x86 map-new helper は object address を rax に保持し、header 後に xchg で cursor を戻さないべき"
+    );
+    assert!(
+        !helper_body.contains("part10 (byte-vector-5 0 0 72 151 72)"),
+        "x86 map-new helper は cursor 後端を object address にする旧 xchg byte 列を残さないべき"
     );
 }
 
@@ -26273,6 +26296,22 @@ fn linux_x86_selfhost_map_insert_get_object_bytes() -> Vec<u8> {
     )
 }
 
+fn linux_x86_selfhost_map_ref_get_object_bytes() -> Vec<u8> {
+    linux_x86_selfhost_function_meta_object_bytes(
+        &[
+            (60, 0),
+            (56, 0),
+            (57, 0),
+            (3, 7),
+            (3, 42),
+            (62, 0),
+            (3, 7),
+            (63, 0),
+        ],
+        0,
+    )
+}
+
 fn linux_x86_selfhost_map_insert_size_object_bytes() -> Vec<u8> {
     linux_x86_selfhost_function_meta_object_bytes(&[(60, 0), (3, 7), (3, 42), (62, 0), (61, 0)], 0)
 }
@@ -41213,6 +41252,40 @@ fn test_e2e_native_linux_x86_host_generates_map_insert_get_elf_object_artifact()
     assert_eq!(
         written, object_bytes,
         "Linux x86_64 map object artifact は生成 ELF object をそのまま保存すること"
+    );
+}
+
+/// NATIVE-LINUX-X86-02j2: map-new の直後に ref-new/ref-get を挟んでも object が上書きされないこと。
+#[test]
+#[ignore]
+fn test_e2e_native_linux_x86_host_generates_map_ref_get_elf_object_artifact() {
+    let artifact_path = std::env::var_os("LSHARP_NATIVE_LINUX_X86_MAP_REF_OBJECT_ARTIFACT")
+        .expect("LSHARP_NATIVE_LINUX_X86_MAP_REF_OBJECT_ARTIFACT に Linux x86_64 map/ref object artifact path を指定すること");
+    let artifact_path = std::path::PathBuf::from(artifact_path);
+    if let Some(parent) = artifact_path.parent() {
+        std::fs::create_dir_all(parent)
+            .expect("Linux x86_64 map/ref object artifact dir 作成に失敗");
+    }
+
+    let object_bytes = linux_x86_selfhost_map_ref_get_object_bytes();
+    assert!(
+        object_bytes.len() > 64,
+        "Linux x86_64 map/ref ELF object は ELF64 section table を持つこと"
+    );
+    assert!(
+        object_bytes
+            .windows("generated".len())
+            .any(|window| window == b"generated"),
+        "Linux x86_64 map/ref ELF object は generated symbol を持つこと"
+    );
+
+    std::fs::write(&artifact_path, &object_bytes)
+        .expect("Linux x86_64 map/ref object artifact 書き込みに失敗");
+    let written = std::fs::read(&artifact_path)
+        .expect("Linux x86_64 map/ref object artifact 読み戻しに失敗");
+    assert_eq!(
+        written, object_bytes,
+        "Linux x86_64 map/ref object artifact は生成 ELF object をそのまま保存すること"
     );
 }
 

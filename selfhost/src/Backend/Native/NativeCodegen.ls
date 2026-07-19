@@ -9927,15 +9927,16 @@
     part3 (byte-vector-5 0 0 72 1 207)
     part4 (byte-vector-5 73 139 78 8 72)
     part5 (byte-vector-5 57 207 119 40 73)
-    heap-base (byte-vector-3 76 1 247)
+    ;; rax は cursor を進める前の object offset。rdi は allocation end を保持する。
+    heap-base (byte-vector-3 76 1 240)
     part6 (concat-three-byte-vectors-rooted
       (byte-vector-2 137 62)
       heap-base
-      (byte-vector-3 199 7 4))
-    part7 (byte-vector-5 0 0 0 199 71)
+      (byte-vector-3 199 0 4))
+    part7 (byte-vector-5 0 0 0 199 64)
     part8 (byte-vector-5 4 240 15 0 0)
-    part9 (byte-vector-5 199 71 8 0 0)
-    part10 (byte-vector-5 0 0 72 151 72)
+    part9 (byte-vector-5 199 64 8 0 0)
+    part10 (byte-vector-5 0 0 144 144 72)
     part11 (byte-vector-5 185 0 0 0 0)
     part12 (byte-vector-5 0 0 0 128 72)
     part13 (byte-vector-5 9 200 89 195 49)
