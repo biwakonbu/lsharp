@@ -904,6 +904,16 @@ legacy `:invariant` の match evaluator に、record literal を evaluator 内�
 
 Evidence: `test_e2e_selfhost_test_runner_matches_rust_oracle_for_valid_invariant_record_match`、既存 match/computation/string/constructor/guard regression を含む 11 tests、`CARGO_INCREMENTAL=0 cargo test -p lsharp-wasm --test e2e e2e::selfhost_cli_core::test_e2e_selfhost_test_runner_matches_rust_oracle_for -- --nocapture`。これは Int field を持つ nominal record の legacy invariant runner sliceに限定した verified evidenceであり、nested/general record、record update、String/Map field semantics、full compiler/type/runtime parity、exhaustiveness、supported 2 targets の current-source artifact/runtime gate、EC-M1-01 aggregate は残件である。したがって TODO の `[~]` と Rust oracle / bootstrap 境界は維持する。
 
+### Linux x86 current-source fixed point after invariant match slices (2026-07-21)
+
+`HEAD=5b861a97e714cfe639c153d687bc9bc222cec8e4` の fresh actual stage1 artifact を入力に、Lima `lsharp-linux-x86`（Linux `x86_64`）で stage1-native → stage2-native → stage3-native を `LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_SIZE=64`、chunk retry `1`、native timeout `900` 秒で実行した。VM free-space gate は `5,467,693,056` bytes available / `4,294,967,296` bytes required で、replay lock により同じ job の重複起動はなかった。
+
+stage1 manifest は target `x86_64-unknown-linux-gnu`、`source_commit=5b861a97e714cfe639c153d687bc9bc222cec8e4`、code/data `4,203,487` / `1,523` bytes、`entrypoint_offset=4201104`、`function_start_len=3237`、`main_func_idx=3246` を記録した。stage2 と stage3 の manifest も同じ source commit、target、function metadata を保持し、code は両方 `10,832,651` bytes、data は `1,523` bytes、entrypoint は `10828220` で一致した。
+
+VM 側の `actual-selfregen-summary.json` は `status=pass`、stage2/stage3 stdout SHA-256 は双方 `2ae6f1406e5c0484a94282a17edac85fad9f3f5649352c43db1826979a576ed6`、stdout は各 `11,646,271` bytes、code length は各 `10,832,651` bytesを示した。host 側の byte compare も `match`、stage2/stage3 stderr は各 0 bytesだった。成功後に VM workdir、VM replay lock、専用 cargo target は削除され、host artifact は `ci-artifacts/native-linux-x86-hostgen-vm/5b861a97-stage2-stage3-current` に保存した。VM は 12 GiB disk 中 5.1 GiB free を維持している。
+
+Evidence command: `env NATIVE_LINUX_X86_HOSTGEN_VM_ARTIFACT_ID=5b861a97-stage2-stage3-current LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_SIZE=64 LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_RETRIES=1 LSHARP_NATIVE_LINUX_X86_ACTUAL_TIMEOUT=900 LSHARP_NATIVE_LINUX_X86_VM_MIN_FREE_BYTES=4294967296 LSHARP_NATIVE_LINUX_X86_SKIP_HOST_PROBES=1 bash scripts/ci/native-linux-x86-hostgen-vm-exec.sh`。これは current-source Linux x86_64 の実バイナリ stage1→stage2→stage3 fixed-point verified sliceであり、guard/record を含む全言語機能、公開 stage0 acquisition/release/rollback、component sidecar、全公開 command、Mac current-source gate、`LEGACY-BOOT-01` / `LEGACY-COMP-01` / `EC-M1-07` 全体の完了を意味しないため、TODO の `[~]` は維持する。
+
 ### EC-M1-01 match arm guard fall-through slice (2026-07-20)
 
 legacy `:invariant` の match evaluator に、`when` guard を既存の `[pattern, body]` arm 配置を保つ内部 wrapper として保持する parser 経路を追加した。TestRunner は pattern binding 後に guard を評価し、false なら次の arm へ fall-through、true なら同じ arm body を評価する。unknown-variable preflight と source-aware evaluation も wrapper の guard/body を再帰的に走査する。同一 fixture の false guard と true guard を Rust oracle と比較し、selfhost は結果数 `2`、各結果の pass `1`、failure/diagnostic `0` を返した。
