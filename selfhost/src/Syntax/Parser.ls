@@ -1187,19 +1187,27 @@
         (let [predicates0 (vector-new 0)]
           (do
             (root_push predicates0)
-            (let [predicates (parse-defn-meta-assert-loop-v3 spans pos-ref src predicates0)]
+            (let [expression-spans (collect-example-expression-spans-v3
+                spans
+                (ref-get pos-ref)
+                (/ (vector-length spans) 3))]
               (do
-                (root_push predicates)
-                (let [updated (append-defn-metadata-form-v3
-                  meta
-                  (contract-form-assert)
-                  predicates
-                  directive-start
-                  (metadata-directive-end-v3 spans pos-ref))]
+                (root_push expression-spans)
+                (let [predicates (parse-defn-meta-assert-loop-v3 spans pos-ref src predicates0)]
                   (do
-                    (root_pop)
-                    (root_pop)
-                    (parse-defn-metadata-loop-v3 spans pos-ref src updated)))))))))
+                    (root_push predicates)
+                    (let [updated (append-defn-metadata-form-with-extra-v3
+                      meta
+                      (contract-form-assert)
+                      predicates
+                      directive-start
+                      (metadata-directive-end-v3 spans pos-ref)
+                      expression-spans)]
+                      (do
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (parse-defn-metadata-loop-v3 spans pos-ref src updated)))))))))))
     (do
       (skip-directive-payload-v3 spans pos-ref)
       (parse-defn-metadata-loop-v3 spans pos-ref src meta))))

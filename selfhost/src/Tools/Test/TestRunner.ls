@@ -172,8 +172,20 @@
     end (if (> (vector-length form) 3) (vector-get form 3) 0)
     payload (if (= kind (contract-form-property))
       (property-runner-form-typed-payload-with-source form owner src)
-      (if (> (vector-length form) 1) (vector-get form 1) 0))]
-    (vector-push-quad-rooted (vector-new 4) kind payload start end)))
+      (if (> (vector-length form) 1) (vector-get form 1) 0))
+    base-form (vector-push-quad-rooted (vector-new 4) kind payload start end)]
+    (if (and
+        (= kind (contract-form-assert))
+        (> (vector-length form) 4))
+      (do
+        (root_push base-form)
+        (let [with-extra (vector-push-single-rooted
+            base-form
+            (vector-get form 4))]
+          (do
+            (root_pop)
+            with-extra)))
+      base-form)))
 
 (defn partition-parser-contract-forms-loop
   [forms idx count owner executable pending src]
