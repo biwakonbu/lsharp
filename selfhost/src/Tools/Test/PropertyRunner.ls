@@ -608,8 +608,9 @@
     (vector-new 0)))
 
 ;; canonical contract を移行期 evaluator の test-case shape へ変換する。
-;; 実行可能なのは 1..2 個の Int binder の legacy prefix、または 3..8 個の
-;; Int/Bool binder を cases 1..2 で評価する deterministic typed prefix に限定する。
+;; 実行可能なのは 1..2 個の Int binder の legacy prefix、単一 String binder、
+;; または 3..8 個の Int/Bool/String binder を cases 1..2 で評価する
+;; deterministic typed prefix に限定する。
 (defn property-runner-execution-profile-code [contract]
   (let [profile-code (vector-get contract 5)
     binders (vector-get contract 1)]
@@ -730,7 +731,7 @@
         (if (and (= (vector-length binders) 1)
             (and (= string-count 1) (<= cases 5)))
           0
-          3002)
+          (if (and (>= (vector-length binders) 3) (<= cases 2)) 0 3002))
         (if (= bool-count 0)
         (if (or (= (vector-length binders) 1) (= (vector-length binders) 2))
           0

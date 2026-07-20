@@ -2159,6 +2159,20 @@
       (property-sample-string idx)
       (property-sample-value idx))))
 
+(defn property-sample-mixed-by-type [type-hash idx]
+  (if (= type-hash (property-runner-type-string-hash))
+    (value-string "")
+    (property-sample-by-type type-hash idx)))
+
+(defn property-sample-for-binders [binder-types idx sample-idx]
+  (if (> (vector-length binder-types) 1)
+    (property-sample-mixed-by-type
+      (vector-get binder-types idx)
+      sample-idx)
+    (property-sample-by-type
+      (vector-get binder-types idx)
+      sample-idx)))
+
 (defn property-sample-binder-type-bool? [binder-types idx]
   (if (< idx (vector-length binder-types))
     (if (= (vector-get binder-types idx) (property-runner-type-bool-hash)) 1 0)
@@ -2180,7 +2194,10 @@
     result
     (let [next-result (vector-push-single-rooted
         result
-        (property-sample-by-type (vector-get binder-types idx) sample-idx))]
+        (property-sample-for-binders
+          binder-types
+          idx
+          sample-idx))]
       (do
         (root_push next-result)
         (let [completed (property-sample-arguments-loop
