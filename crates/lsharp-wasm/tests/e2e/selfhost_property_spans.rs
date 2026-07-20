@@ -140,3 +140,93 @@ fn selfhost_contract_suite_preserves_property_precondition_source_spans() {
         "selfhost canonical property は複数 precondition の個別 source span を保持するべき"
     );
 }
+
+#[test]
+fn selfhost_test_runner_reports_property_unknown_variable_diagnostic_span() {
+    let source = "(defn identity [x] :property [(for-all [value Int] :cases 1 :postcondition missing)] x)";
+    let unknown_start = source
+        .find("missing")
+        .expect("property unknown variable span fixture が見つかる");
+    let unknown_end = unknown_start + "missing".len();
+    let source_literal = source.replace('"', "\\\"");
+    let harness = format!(
+        r#"
+(defn main []
+  (let [src "{source_literal}"
+        suite (generate-tests-from-source src)
+        results (vector-get suite 4)
+        result (vector-get results 0)]
+    (do
+      (print (vector-length result))
+      (print (vector-get result 3))
+      (print (vector-get result 4))
+      (print (vector-get result 5))
+      0)))
+"#
+    );
+    let combined = format!(
+        "{}\n{}",
+        super::support::selfhost_test_runner_runtime_bundle(),
+        harness
+    );
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec![
+            "6",
+            "1",
+            &unknown_start.to_string(),
+            &unknown_end.to_string(),
+        ],
+        "selfhost property unknown-variable 診断は postcondition の source span を結果へ保持するべき"
+    );
+}
+
+#[test]
+fn selfhost_test_runner_reports_property_precondition_unknown_variable_diagnostic_span() {
+    let source = "(defn identity [x] :property [(for-all [value Int] :cases 1 :precondition [(> missing 0)] :postcondition (= result value))] x)";
+    let unknown_start = source
+        .find("missing")
+        .expect("property precondition unknown variable span fixture が見つかる");
+    let unknown_end = unknown_start + "missing".len();
+    let source_literal = source.replace('"', "\\\"");
+    let harness = format!(
+        r#"
+(defn main []
+  (let [src "{source_literal}"
+        suite (generate-tests-from-source src)
+        results (vector-get suite 4)
+        result (vector-get results 0)]
+    (do
+      (print (vector-length result))
+      (print (vector-get result 3))
+      (print (vector-get result 4))
+      (print (vector-get result 5))
+      0)))
+"#
+    );
+    let combined = format!(
+        "{}\n{}",
+        super::support::selfhost_test_runner_runtime_bundle(),
+        harness
+    );
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec![
+            "6",
+            "1",
+            &unknown_start.to_string(),
+            &unknown_end.to_string(),
+        ],
+        "selfhost property unknown-variable 診断は precondition の source span を結果へ保持するべき"
+    );
+}

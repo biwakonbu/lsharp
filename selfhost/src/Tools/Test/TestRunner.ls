@@ -1697,6 +1697,82 @@
           (find-symbol-hash-source-span-loop src tokens (+ idx 1) end target-hash)))
       (find-symbol-hash-source-span-loop src tokens (+ idx 1) end target-hash))))
 
+(defn find-property-unknown-source-span-loop [src tokens idx end target-hash]
+  (if (>= idx end)
+    (vector-push (vector-push (vector-new 2) 0) 0)
+    (if (= (token-kind tokens idx) (tok-colon))
+      (if (< (+ idx 2) end)
+        (if (= (token-kind tokens (+ idx 1)) (tok-symbol))
+          (if (string-eq (token-text src tokens (+ idx 1)) "postcondition")
+            (let [expression-start (+ idx 2)
+              expression-end (consume-form tokens expression-start)]
+              (if (< expression-start expression-end)
+                (find-symbol-hash-source-span-loop
+                  src
+                  tokens
+                  expression-start
+                  expression-end
+                  target-hash)
+                (find-property-unknown-source-span-loop src tokens (+ idx 1) end target-hash)))
+            (if (string-eq (token-text src tokens (+ idx 1)) "precondition")
+              (let [precondition-start (+ idx 2)
+                precondition-end (if (= (token-kind tokens precondition-start) (tok-lbracket))
+                  (consume-form tokens precondition-start)
+                  precondition-start)]
+                (if (> precondition-end (+ precondition-start 1))
+                  (find-symbol-hash-source-span-loop
+                    src
+                    tokens
+                    (+ precondition-start 1)
+                    (- precondition-end 1)
+                    target-hash)
+                  (find-property-unknown-source-span-loop src tokens (+ idx 1) end target-hash)))
+              (find-property-unknown-source-span-loop src tokens (+ idx 1) end target-hash)))
+          (find-property-unknown-source-span-loop src tokens (+ idx 1) end target-hash))
+        (find-property-unknown-source-span-loop src tokens (+ idx 1) end target-hash))
+      (find-property-unknown-source-span-loop src tokens (+ idx 1) end target-hash))))
+
+(defn find-property-unknown-source-span-loop-by-defn [src tokens idx count fn-hash target-hash]
+  (if (>= idx count)
+    (vector-push (vector-push (vector-new 2) 0) 0)
+    (if (and
+        (and (= (token-kind tokens idx) (tok-lparen)) (< (+ idx 2) count))
+        (= (token-kind tokens (+ idx 1)) (tok-defn)))
+      (let [name-start (token-start tokens (+ idx 2))
+        name-end (token-end tokens (+ idx 2))
+        next-idx (consume-form tokens idx)]
+        (if (= (name-hash src name-start name-end) fn-hash)
+          (find-property-unknown-source-span-loop
+            src
+            tokens
+            (+ idx 3)
+            (- next-idx 1)
+            target-hash)
+          (find-property-unknown-source-span-loop-by-defn
+            src
+            tokens
+            next-idx
+            count
+            fn-hash
+            target-hash)))
+      (find-property-unknown-source-span-loop-by-defn
+        src
+        tokens
+        (+ idx 1)
+        count
+        fn-hash
+        target-hash))))
+
+(defn find-property-unknown-source-span [src fn-hash target-hash]
+  (let [tokens (tokenize-with-spans src)]
+    (find-property-unknown-source-span-loop-by-defn
+      src
+      tokens
+      0
+      (token-count tokens)
+      fn-hash
+      target-hash)))
+
 (defn find-invariant-unknown-source-span-loop [src tokens idx end target-hash]
   (if (>= idx end)
     (vector-push (vector-push (vector-new 2) 0) 0)
@@ -2841,8 +2917,19 @@
                 (contract-diagnostic-vacuous-property)
                 0))))))
     passed (if (= diagnostic-code 0) (vector-get sample-summary 0) 0)
-    actual (if (= diagnostic-code 0) actual-count 0)]
-    (make-test-result-with-diagnostic name passed actual diagnostic-code)))
+    actual (if (= diagnostic-code 0) actual-count 0)
+    source-span (if (and (> (string-length src) 0) (>= unknown-hash 0))
+      (find-property-unknown-source-span src owner unknown-hash)
+      (vector-push (vector-push (vector-new 2) 0) 0))]
+    (if (and (> diagnostic-code 0) (> (vector-get source-span 1) (vector-get source-span 0)))
+      (make-test-result-with-diagnostic-span
+        name
+        passed
+        actual
+        diagnostic-code
+        (vector-get source-span 0)
+        (vector-get source-span 1))
+      (make-test-result-with-diagnostic name passed actual diagnostic-code))))
 
 (defn run-properties-loop [program test-cases idx count results]
   (if (>= idx count)
