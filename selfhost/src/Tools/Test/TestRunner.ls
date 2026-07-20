@@ -1309,6 +1309,24 @@
   (let [value (eval-node program (vector-get node 1) env)]
     (eval-match-loop program node env value 0 (vector-get node 2))))
 
+(defn eval-match-loop-with-source [program node env value idx count src]
+  (if (>= idx count)
+    (value-unit)
+    (let [arm-base (+ 3 (* idx 2))
+      pattern (vector-get node arm-base)
+      body (vector-get node (+ arm-base 1))]
+      (if (= (match-pattern? pattern value) 1)
+        (eval-node-with-source
+          program
+          body
+          (match-bind-pattern env pattern value)
+          src)
+        (eval-match-loop-with-source program node env value (+ idx 1) count src)))))
+
+(defn eval-match-with-source [program node env src]
+  (let [value (eval-node-with-source program (vector-get node 1) env src)]
+    (eval-match-loop-with-source program node env value 0 (vector-get node 2) src)))
+
 ;; 移行期 contract evaluator の computation subset。
 ;; identity 相当の builder では、各 step の値を順に評価して let! だけ環境へ束縛する。
 (defn eval-computation-loop [program node env idx count last]
@@ -1497,7 +1515,7 @@
                     body-env (env-bind env name-hash init-value)]
                     (eval-node-with-source program (vector-get node 3) body-env src))
                   (if (= tag (ast-match))
-                    (eval-match program node env)
+                    (eval-match-with-source program node env src)
                     (if (= tag (ast-do))
                       (eval-do-loop-with-source
                         program
