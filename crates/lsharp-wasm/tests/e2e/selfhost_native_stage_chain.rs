@@ -1636,6 +1636,22 @@ fn test_native_linux_x86_hostgen_vm_script_can_reuse_actual_stage2_artifact() {
 }
 
 #[test]
+fn test_native_linux_x86_hostgen_vm_script_rejects_stale_actual_stage2_source_commit() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+    let validate_body = shell_function_body(&script, "validate_actual_stage2_artifact");
+
+    assert!(
+        validate_body.contains("LSHARP_NATIVE_LINUX_X86_EXPECTED_SOURCE_COMMIT")
+            && validate_body.contains("expected_source_commit")
+            && validate_body.contains(r#"manifest.get("source_commit") == expected_source_commit"#),
+        "actual-stage2 reuse は current checkout と source_commit が異なる stale artifact を拒否するべき"
+    );
+}
+
+#[test]
 fn test_native_linux_x86_hostgen_vm_script_can_export_reused_stage2_cli_bundle() {
     let script_path =
         selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");

@@ -505,8 +505,10 @@ validate_actual_stage2_artifact() {
     echo "ERROR: actual stage2 debug source is missing: ${artifact_dir}/stage2-debug/src/App/Seed.ls" >&2
     exit 1
   fi
-  python3 - "${artifact_dir}" <<'PY'
+  LSHARP_NATIVE_LINUX_X86_EXPECTED_SOURCE_COMMIT="${SOURCE_COMMIT}" \
+    python3 - "${artifact_dir}" <<'PY'
 import json
+import os
 import pathlib
 import sys
 
@@ -516,6 +518,9 @@ stdout_path = artifact_dir / "actual-stage2-stdout.txt"
 stderr_path = artifact_dir / "actual-stage2-stderr.txt"
 source_path = artifact_dir / "stage2-debug/src/App/Seed.ls"
 manifest = json.loads((debug_dir / "manifest.json").read_text())
+expected_source_commit = os.environ.get("LSHARP_NATIVE_LINUX_X86_EXPECTED_SOURCE_COMMIT", "")
+if not expected_source_commit:
+    raise SystemExit("invalid actual stage2 artifact manifest: expected_source_commit is empty")
 
 def read_int(name: str) -> int:
     return int((debug_dir / name).read_text().strip())
@@ -533,6 +538,7 @@ checks = [
     (stdout_path.stat().st_size > 0, "actual-stage2-stdout.txt"),
     (source_path.is_file(), "stage2-debug/src/App/Seed.ls"),
     (manifest.get("target") == "x86_64-unknown-linux-gnu", "target"),
+    (manifest.get("source_commit") == expected_source_commit, "source_commit"),
     (manifest.get("code_len") == code_len, "code_len"),
     (manifest.get("data_len") == data_len, "data_len"),
     (manifest.get("entrypoint_offset") == entrypoint_offset, "entrypoint_offset"),
