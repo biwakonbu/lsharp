@@ -36,6 +36,21 @@ fn legacy_invariant_requires_bool_at_invariant_span() {
 }
 
 #[test]
+fn legacy_invariant_not_requires_bool_operand() {
+    const SOURCE: &str = "(defn succ [x] :invariant (not 0) (+ x 1))";
+    let program = parse(SOURCE).expect("non-Bool not operand は parse できるべき");
+
+    let diagnostics = check_metadata(&program);
+
+    assert_eq!(diagnostics.len(), 1, "not の Int operand を成功扱いしてはならない");
+    let diagnostic = &diagnostics[0];
+    assert_eq!(diagnostic.severity, Severity::Error);
+    assert!(diagnostic.message.contains(":invariant"));
+    assert_eq!(&SOURCE[diagnostic.span.start..diagnostic.span.end], "(not 0)");
+    assert_eq!(diagnostic.function_name, "succ");
+}
+
+#[test]
 fn canonical_assertion_requires_bool_at_predicate_span() {
     const SOURCE: &str = "(defn positive [] :assert [(+ 1 2)] true)";
     let program = parse(SOURCE).expect("non-Bool :assert も構文としては parse できるべき");

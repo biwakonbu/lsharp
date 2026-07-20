@@ -1194,7 +1194,9 @@
           1
           (if (= (value-truthy arg1) 1) 1 0)))
       (if (= callee-hash (hash-not))
-        (value-bool (if (= (value-truthy arg0) 1) 0 1))
+        (if (= (value-tag arg0) (ast-lit-bool))
+          (value-bool (if (= (value-truthy arg0) 1) 0 1))
+          (value-int 0))
         0))))
 
 (defn apply-builtin-string [callee-hash arg0 arg1]
