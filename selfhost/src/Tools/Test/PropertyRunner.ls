@@ -591,6 +591,43 @@
   (let [payload (if (> (vector-length form) 1) (vector-get form 1) "")]
     (make-property-typed-contract owner payload)))
 
+(defn property-runner-form-typed-contract-with-source [form owner src]
+  (let [payload (property-runner-form-typed-payload-with-source form owner src)
+    contract (property-runner-form-typed-contract form owner)
+    binders (vector-get payload 0)
+    postcondition-span (if (> (vector-length payload) 5)
+      (vector-get payload 5)
+      (vector-push-pair-rooted (vector-new 2) 0 0))
+    precondition-spans (if (> (vector-length payload) 6)
+      (vector-get payload 6)
+      (vector-new 0))]
+    (do
+      (root_push payload)
+      (root_push contract)
+      (root_push binders)
+      (root_push postcondition-span)
+      (root_push precondition-spans)
+      (let [contract0 (vector-set-at contract 1 binders)]
+        (do
+          (root_push contract0)
+          (let [contract1 (vector-push-single-rooted
+              contract0
+              postcondition-span)]
+            (do
+              (root_pop)
+              (root_push contract1)
+              (let [result (vector-push-single-rooted
+                  contract1
+                  precondition-spans)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  result)))))))))
+
 (defn property-runner-form-typed-payload [form owner]
   (let [contract (property-runner-form-typed-contract form owner)]
     (do
@@ -711,6 +748,29 @@
             (root_pop)
             parsed))))))
 
+(defn property-runner-append-typed-forms-with-source-loop
+  [forms idx count owner src results]
+  (if (>= idx count)
+    results
+    (let [form (vector-get forms idx)
+      next-results (if (= (vector-get form 0) (contract-form-property))
+        (vector-push-single-rooted
+          results
+          (property-runner-form-typed-contract-with-source form owner src))
+        results)]
+      (do
+        (root_push next-results)
+        (let [parsed (property-runner-append-typed-forms-with-source-loop
+            forms
+            (+ idx 1)
+            count
+            owner
+            src
+            next-results)]
+          (do
+            (root_pop)
+            parsed))))))
+
 (defn property-runner-append-typed-decl [decl results]
   (let [tag (vector-get decl 0)]
     (if (= tag (ast-defn))
@@ -733,6 +793,33 @@
             results)
           results)))))
 
+(defn property-runner-append-typed-decl-with-source [decl src results]
+  (let [tag (vector-get decl 0)]
+    (if (= tag (ast-defn))
+      (let [forms (property-runner-ordered-forms decl)]
+        (if (= forms 0)
+          results
+          (property-runner-append-typed-forms-with-source-loop
+            forms
+            0
+            (vector-length forms)
+            (vector-get decl 1)
+            src
+            results)))
+      (if (= tag (ast-private))
+        (property-runner-append-typed-decl-with-source
+          (vector-get decl 1)
+          src
+          results)
+        (if (= tag (ast-module-decl))
+          (property-runner-append-typed-module-with-source-loop
+            decl
+            0
+            (vector-get decl 2)
+            src
+            results)
+          results)))))
+
 (defn property-runner-append-typed-module-loop [module-node idx count results]
   (if (>= idx count)
     results
@@ -742,6 +829,20 @@
       count
       (property-runner-append-typed-decl
         (vector-get module-node (+ idx 3))
+        results))))
+
+(defn property-runner-append-typed-module-with-source-loop
+  [module-node idx count src results]
+  (if (>= idx count)
+    results
+    (property-runner-append-typed-module-with-source-loop
+      module-node
+      (+ idx 1)
+      count
+      src
+      (property-runner-append-typed-decl-with-source
+        (vector-get module-node (+ idx 3))
+        src
         results))))
 
 (defn property-runner-append-typed-program-loop [program idx count results]
@@ -758,6 +859,28 @@
     program
     0
     (vector-length program)
+    (vector-new 0)))
+
+(defn property-runner-append-typed-program-with-source-loop
+  [program idx count src results]
+  (if (>= idx count)
+    results
+    (property-runner-append-typed-program-with-source-loop
+      program
+      (+ idx 1)
+      count
+      src
+      (property-runner-append-typed-decl-with-source
+        (vector-get program idx)
+        src
+        results))))
+
+(defn extract-parser-typed-property-contracts-with-source [program src]
+  (property-runner-append-typed-program-with-source-loop
+    program
+    0
+    (vector-length program)
+    src
     (vector-new 0)))
 
 ;; canonical contract を移行期 evaluator の test-case shape へ変換する。

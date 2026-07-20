@@ -6398,6 +6398,44 @@ fn test_e2e_selfhost_parser_projects_typed_property_sampling_contract() {
     );
 }
 
+/// EC-M1-02: source-aware typed property contract が binder/predicate span を保持すること
+#[test]
+fn test_e2e_selfhost_parser_typed_property_contract_preserves_expression_spans() {
+    let harness = r#"
+(defn main []
+  (let [src "(defn identity [x] :property [(for-all [value Int] :cases 1 :precondition [(>= value 0)] :postcondition (= result value))] x)"
+        program (parse-program src)
+        contracts (extract-parser-typed-property-contracts-with-source program src)
+        contract (vector-get contracts 0)
+        binders (vector-get contract 1)
+        binder (vector-get binders 0)
+        postcondition-span (vector-get contract 8)
+        precondition-spans (vector-get contract 9)
+        precondition-start (vector-get precondition-spans 0)
+        precondition-end (vector-get precondition-spans 1)]
+    (do
+      (print (vector-get binder 3))
+      (print (vector-get binder 4))
+      (print precondition-start)
+      (print precondition-end)
+      (print (vector-get postcondition-span 0))
+      (print (vector-get postcondition-span 1))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_test_runner_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["40", "49", "75", "87", "104", "120"],
+        "source-aware typed property contract は binder/precondition/postcondition の絶対 span を保持するべき"
+    );
+}
+
 /// EC-M1-02: selfhost typed projection が未対応 sampling option を明示拒否すること
 #[test]
 fn test_e2e_selfhost_parser_keeps_typed_property_profile_boundary() {
