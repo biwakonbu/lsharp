@@ -957,6 +957,38 @@ fn test_e2e_selfhost_cli_check_source_core() {
     );
 }
 
+#[test]
+#[ignore]
+fn test_e2e_selfhost_cli_check_source_builtin_application_type_contract() {
+    let harness = r#"
+(defn main []
+  (do
+    (print (run-check-source "(defn probe [] (not true))" 0))
+    0))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 3,
+        "cli check builtin application 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "Bool", "builtin not の戻り値型は Bool であるべき");
+    assert_eq!(
+        lines[1], "diagnostics:0",
+        "builtin not の check は診断0件であるべき"
+    );
+    assert_eq!(
+        lines[2], "0",
+        "builtin not の run-check-source 終了コードは success であるべき"
+    );
+}
+
 /// TEST-CLI-02-F: selfhost/src/App/Cli.ls の run-parse が file-path から source を読めること
 #[test]
 #[ignore]
