@@ -306,7 +306,7 @@
 
 ;; property test case:
 ;; [name-id, owner-function-hash, binder-hashes, postcondition, cases, profile-code,
-;;  preconditions, binder-type-hashes, postcondition-source]
+;;  preconditions, binder-type-hashes, postcondition-source, precondition-source]
 (defn make-property-test-case-with-preconditions
   [name owner binders postcondition cases profile-code preconditions binder-types]
   (let [v1 (vector-push-single-rooted (vector-new 8) name)
@@ -414,17 +414,25 @@
                                 (property-runner-postcondition-text payload)
                                 ""))]
                             (do
-                              (root_pop)
-                              (root_pop)
-                              (root_pop)
-                              (root_pop)
-                              (root_pop)
-                              (root_pop)
-                              (root_pop)
-                              (root_pop)
-                              (root_pop)
-                              (root_pop)
-                              row3)))))))))))))))
+                              (root_push row3)
+                              (let [row4 (vector-push-single-rooted
+                                  row3
+                                  (if (= profile-code 0)
+                                    (property-runner-precondition-text payload)
+                                    ""))]
+                                (do
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  row4)))))))))))))))))
 
 (defn property-runner-form-typed-contract [form owner]
   (let [payload (if (> (vector-length form) 1) (vector-get form 1) "")]
@@ -792,28 +800,37 @@
     postcondition-source (if (> (vector-length contract) 6)
       (vector-get contract 6)
       "")
+    precondition-source (if (> (vector-length contract) 7)
+      (vector-get contract 7)
+      "")
     postcondition (if (= profile-code 0) (vector-get contract 3) 0)
     cases (if (= profile-code 0) (vector-get sampling 0) 0)]
-    (do
-      (root_push binder-hashes)
-      (root_push binder-types)
-      (let [result (make-property-test-case-with-preconditions
-          name
-          owner
-          binder-hashes
-          postcondition
-          cases
-          profile-code
-          preconditions
-          binder-types)]
         (do
-          (root_push result)
-          (let [with-source (vector-push-single-rooted result postcondition-source)]
+          (root_push binder-hashes)
+          (root_push binder-types)
+          (let [result (make-property-test-case-with-preconditions
+              name
+              owner
+              binder-hashes
+              postcondition
+              cases
+              profile-code
+              preconditions
+              binder-types)]
             (do
-              (root_pop)
-              (root_pop)
-              (root_pop)
-              with-source)))))))
+              (root_push result)
+              (let [with-source
+                  (vector-push-single-rooted result postcondition-source)]
+                (do
+                  (root_push with-source)
+                  (let [with-precondition-source
+                      (vector-push-single-rooted with-source precondition-source)]
+                    (do
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      with-precondition-source)))))))))
 
 (defn property-runner-append-typed-test-cases-loop
   [contracts idx count results]
@@ -852,6 +869,11 @@
 (defn property-test-case-postcondition-source [test-case]
   (if (> (vector-length test-case) 8)
     (vector-get test-case 8)
+    ""))
+
+(defn property-test-case-precondition-source [test-case]
+  (if (> (vector-length test-case) 9)
+    (vector-get test-case 9)
     ""))
 
 (defn property-test-case-count [test-case]

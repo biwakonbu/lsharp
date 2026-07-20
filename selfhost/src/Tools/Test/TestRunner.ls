@@ -2283,7 +2283,7 @@
             (+ idx 1)
             src))))))
 
-(defn eval-property-precondition [program test-case sample src]
+(defn eval-property-precondition [program test-case sample]
   (let [preconditions (property-test-case-preconditions test-case)
     env (env-bind
       (env-new)
@@ -2293,8 +2293,9 @@
       env
       (property-test-case-binders test-case)
       sample
-      0)]
-    (eval-property-preconditions-loop program preconditions env 0 src)))
+      0)
+    precondition-source (property-test-case-precondition-source test-case)]
+    (eval-property-preconditions-loop program preconditions env 0 precondition-source)))
 
 (defn eval-property-sample-value [program test-case decl sample src]
   (let [args sample
@@ -2328,8 +2329,7 @@
       precondition (eval-property-precondition
         program
         test-case
-        sample
-        src)
+        sample)
       precondition-bool (if (= (value-tag precondition) (ast-lit-bool)) 1 0)
       precondition-passed (if (= precondition-bool 1) (value-truthy precondition) 0)]
       (if (= precondition-bool 0)
