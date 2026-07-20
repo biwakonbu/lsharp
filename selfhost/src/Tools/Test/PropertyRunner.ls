@@ -883,6 +883,46 @@
     src
     (vector-new 0)))
 
+;; runtime test-case と型制約を共有しない source-span sidecar。
+;; row: [binder-rows, precondition-spans, postcondition-span]
+(defn property-runner-typed-contract-source-span-row [contract]
+  (vector-push-triple-rooted
+    (vector-new 3)
+    (vector-get contract 1)
+    (vector-get contract 9)
+    (vector-get contract 8)))
+
+(defn property-runner-append-typed-contract-source-span-rows-loop
+  [contracts idx count results]
+  (if (>= idx count)
+    results
+    (let [row (property-runner-typed-contract-source-span-row
+        (vector-get contracts idx))
+      next-results (vector-push-single-rooted results row)]
+      (do
+        (root_push next-results)
+        (let [parsed (property-runner-append-typed-contract-source-span-rows-loop
+            contracts
+            (+ idx 1)
+            count
+            next-results)]
+          (do
+            (root_pop)
+            parsed))))))
+
+(defn extract-property-test-case-source-spans [program src]
+  (let [contracts (extract-parser-typed-property-contracts-with-source program src)]
+    (do
+      (root_push contracts)
+      (let [results (property-runner-append-typed-contract-source-span-rows-loop
+          contracts
+          0
+          (vector-length contracts)
+          (vector-new 4))]
+        (do
+          (root_pop)
+          results)))))
+
 ;; canonical contract を移行期 evaluator の test-case shape へ変換する。
 ;; 実行可能なのは 1..2 個の Int binder の legacy prefix、単一 String binder、
 ;; または 3..8 個の Int/Bool/String binder を cases 1..2 で評価する

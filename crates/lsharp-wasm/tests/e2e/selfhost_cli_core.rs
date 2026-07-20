@@ -6436,6 +6436,41 @@ fn test_e2e_selfhost_parser_typed_property_contract_preserves_expression_spans()
     );
 }
 
+/// EC-M1-02: source-aware property test-case span sidecar が contract index と対応すること
+#[test]
+fn test_e2e_selfhost_property_test_case_span_sidecar_preserves_expression_spans() {
+    let harness = r#"
+(defn main []
+  (let [src "(defn identity [x] :property [(for-all [value Int] :cases 1 :precondition [(>= value 0)] :postcondition (= result value))] x)"
+        program (parse-program src)
+        spans (extract-property-test-case-source-spans program src)
+        span-row (vector-get spans 0)
+        binder (vector-get (vector-get span-row 0) 0)
+        precondition-spans (vector-get span-row 1)
+        postcondition-span (vector-get span-row 2)]
+    (do
+      (print (vector-get binder 3))
+      (print (vector-get binder 4))
+      (print (vector-get precondition-spans 0))
+      (print (vector-get precondition-spans 1))
+      (print (vector-get postcondition-span 0))
+      (print (vector-get postcondition-span 1))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_test_runner_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["40", "49", "75", "87", "104", "120"],
+        "source-aware property test-case span sidecar は contract index と同じ絶対 span を保持するべき"
+    );
+}
+
 /// EC-M1-02: selfhost typed projection が未対応 sampling option を明示拒否すること
 #[test]
 fn test_e2e_selfhost_parser_keeps_typed_property_profile_boundary() {
