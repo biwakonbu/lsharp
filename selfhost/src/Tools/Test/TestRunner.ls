@@ -2988,6 +2988,45 @@
             (+ idx 1)
             src))))))
 
+(defn eval-property-preconditions-with-index-loop [program preconditions env idx src]
+  (if (>= idx (vector-length preconditions))
+    (vector-push-pair-rooted (vector-new 2) (value-bool 1) -1)
+    (let [precondition (eval-node-with-source
+        program
+        (vector-get preconditions idx)
+        env
+        src)
+      precondition-bool (if (= (value-tag precondition) (ast-lit-bool)) 1 0)]
+      (if (= precondition-bool 0)
+        (vector-push-pair-rooted (vector-new 2) precondition idx)
+        (if (= (value-truthy precondition) 0)
+          (vector-push-pair-rooted (vector-new 2) precondition -1)
+          (eval-property-preconditions-with-index-loop
+            program
+            preconditions
+            env
+            (+ idx 1)
+            src))))))
+
+(defn eval-property-precondition-with-index [program test-case sample]
+  (let [preconditions (property-test-case-preconditions test-case)
+    env (env-bind
+      (env-new)
+      (hash-result)
+      (value-unit))
+    env (property-bind-binders-loop
+      env
+      (property-test-case-binders test-case)
+      sample
+      0)
+    precondition-source (property-test-case-precondition-source test-case)]
+    (eval-property-preconditions-with-index-loop
+      program
+      preconditions
+      env
+      0
+      precondition-source)))
+
 (defn eval-property-precondition [program test-case sample]
   (let [preconditions (property-test-case-preconditions test-case)
     env (env-bind
@@ -3019,22 +3058,26 @@
       property-env
       postcondition-source)))
 
-(defn property-sample-summary [passed bool-valid actual]
+(defn property-sample-summary [passed bool-valid actual precondition-error-index]
   (vector-push
     (vector-push
-      (vector-push (vector-new 3) passed)
-      bool-valid)
-    actual))
+      (vector-push
+        (vector-push (vector-new 4) passed)
+        bool-valid)
+      actual)
+    precondition-error-index))
 
 (defn run-property-samples-summary-loop
-  [program test-case decl sample-idx sample-count all-passed all-bool actual-count src]
+  [program test-case decl sample-idx sample-count all-passed all-bool actual-count precondition-error-index src]
   (if (>= sample-idx sample-count)
-    (property-sample-summary all-passed all-bool actual-count)
+    (property-sample-summary all-passed all-bool actual-count precondition-error-index)
     (let [sample (property-sample-arguments test-case sample-idx)
-      precondition (eval-property-precondition
+      precondition-result (eval-property-precondition-with-index
         program
         test-case
         sample)
+      precondition (vector-get precondition-result 0)
+      precondition-index (vector-get precondition-result 1)
       precondition-bool (if (= (value-tag precondition) (ast-lit-bool)) 1 0)
       precondition-passed (if (= precondition-bool 1) (value-truthy precondition) 0)]
       (if (= precondition-bool 0)
@@ -3047,6 +3090,7 @@
           0
           0
           actual-count
+          (if (>= precondition-error-index 0) precondition-error-index precondition-index)
           src)
         (if (= precondition-passed 0)
           (run-property-samples-summary-loop
@@ -3058,6 +3102,7 @@
             all-passed
             all-bool
             actual-count
+            precondition-error-index
             src)
           (let [actual (eval-property-sample-value
               program
@@ -3078,6 +3123,7 @@
               next-passed
               next-bool
               (+ actual-count 1)
+              precondition-error-index
               src)))))))
 
 (defn property-runner-static-comparison-result [operator left right]
@@ -3358,7 +3404,7 @@
         0
         (vector-length preconditions)))))
 
-(defn materialize-property-with-span [program test-case src contract-span precondition-span]
+(defn materialize-property-with-span [program test-case src contract-span precondition-spans]
   (let [name (vector-get test-case 0)
     owner (property-test-case-owner test-case)
     decl (find-defn-by-hash program owner 0 (vector-length program))
@@ -3376,7 +3422,7 @@
       0)
     sample-count (property-test-case-count test-case)
     sample-summary (if (or (> profile-code 0) (or (= owner-valid 0) (or (>= unknown-hash 0) (> static-vacuous-code 0))))
-      (property-sample-summary 0 0 0)
+      (property-sample-summary 0 0 0 -1)
       (run-property-samples-summary-loop
         program
         test-case
@@ -3386,9 +3432,11 @@
         1
         1
         0
+        -1
         src))
     bool-valid (vector-get sample-summary 1)
     actual-count (vector-get sample-summary 2)
+    precondition-error-index (vector-get sample-summary 3)
     diagnostic-code (if (> profile-code 0)
       profile-code
       (if (= owner-valid 0)
@@ -3404,6 +3452,9 @@
                 0))))))
     passed (if (= diagnostic-code 0) (vector-get sample-summary 0) 0)
     actual (if (= diagnostic-code 0) actual-count 0)
+    precondition-span (property-runner-precondition-span-from-flat
+      precondition-spans
+      precondition-error-index)
     fallback-source-span (if (> (vector-length contract-span) 1)
       contract-span
       (vector-push (vector-push (vector-new 2) 0) 0))
@@ -3477,7 +3528,7 @@
           (vector-get test-cases idx)
           src
           (property-runner-source-span-at source-spans idx)
-          (property-runner-precondition-span-at source-spans idx)))
+          (property-runner-precondition-spans-at source-spans idx)))
       src)))
 
 (defn run-properties-from-source [program test-cases src]
