@@ -431,6 +431,36 @@ fn test_selfhost_compiler_maps_not_equal_to_native_compare_opcode() {
 }
 
 #[test]
+fn test_native_codegen_x86_bundle_pads_declared_function_slot_before_next_function() {
+    let source = std::fs::read_to_string(
+        selfhost_package_root().join("src/Backend/Native/NativeCodegen.ls"),
+    )
+    .expect("NativeCodegen.ls 読み込みに失敗");
+    let bundle_step = source
+        .split("(defn generate-native-x86-64-bundle-loop-with-import-count-step")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("x86 bundle step が存在すること");
+    let padding_helper = source
+        .split("(defn append-x86-function-padding-step-64")
+        .nth(1)
+        .and_then(|tail| tail.split("\n(defn ").next())
+        .expect("x86 function slot padding step が存在すること");
+
+    assert!(
+        bundle_step.contains(
+            "expected-end (+ (vector-get function-starts idx) (native-function-size-x86 func-meta functions))"
+        ) && bundle_step.contains("actual-end (vector-length (ref-get result))")
+            && bundle_step.contains("append-x86-function-padding result")
+    );
+    assert!(
+        padding_helper.contains("append-native-bytes-rooted")
+            && source.contains("(defn append-x86-function-padding [result padding]")
+            && source.contains("continue-append-x86-function-padding")
+    );
+}
+
+#[test]
 fn test_selfhost_wasm_emit_print_string_appends_runtime_call() {
     let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
         "selfhost-wasm-emit-print-string-runtime-call",

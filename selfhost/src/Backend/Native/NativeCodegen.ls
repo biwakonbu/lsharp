@@ -11511,6 +11511,94 @@
         (root_pop)
         final))))
 
+;; x86 の巨大 IR function は size fallback が予約した declared slot まで NOP で埋める。
+;; 予約と実出力の差を一要素ずつ再帰せず、固定長 chunk で bounded に追加する。
+(defn x86-nop-chunk-16 []
+  (let [a (byte-vector-4 144 144 144 144)
+    b (byte-vector-4 144 144 144 144)
+    c (byte-vector-4 144 144 144 144)
+    d (byte-vector-4 144 144 144 144)]
+    (do
+      (root_push a)
+      (root_push b)
+      (root_push c)
+      (root_push d)
+      (let [result (concat-four-byte-vectors-rooted a b c d)]
+        (do
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          result)))))
+
+(defn x86-nop-chunk-64 []
+  (let [a (x86-nop-chunk-16)
+    b (x86-nop-chunk-16)
+    c (x86-nop-chunk-16)
+    d (x86-nop-chunk-16)]
+    (do
+      (root_push a)
+      (root_push b)
+      (root_push c)
+      (root_push d)
+      (let [result (concat-four-byte-vectors-rooted a b c d)]
+        (do
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          result)))))
+
+(defn make-x86-nop-vector-loop [result idx len]
+  (if (>= idx len)
+    result
+    (do
+      (root_push result)
+      (let [next (vector-push result 144)]
+        (do
+          (root_push next)
+          (let [final (make-x86-nop-vector-loop next (+ idx 1) len)]
+            (do
+              (root_pop)
+              (root_pop)
+              final)))))))
+
+(defn append-x86-function-padding-step-64 [result remaining]
+  (if (>= remaining 64)
+    (do
+      (root_push result)
+      (let [chunk (x86-nop-chunk-64)]
+        (do
+          (root_push chunk)
+          (append-native-bytes-rooted result chunk 64)
+          (root_pop)
+          (root_pop)
+          64)))
+    (if (> remaining 0)
+      (do
+        (root_push result)
+        (let [tail (make-x86-nop-vector-loop (vector-new remaining) 0 remaining)]
+          (do
+            (root_push tail)
+            (append-native-bytes-rooted result tail remaining)
+            (root_pop)
+            (root_pop)
+            remaining)))
+      0)))
+
+(defn continue-append-x86-function-padding [result remaining]
+  (if (<= remaining 0)
+    0
+    (do
+      (root_push result)
+      (let [consumed (append-x86-function-padding-step-64 result remaining)]
+        (do
+          (root_pop)
+          (continue-append-x86-function-padding result (- remaining consumed)))))))
+
+(defn append-x86-function-padding [result padding]
+  (continue-append-x86-function-padding result padding))
+
 (defn append-native-value-window-spill-one-step-x86 [result frame-base-slot-count current-depth]
   (do
     (append-native-bytes-rooted result (emit-mov-rdx-from-local (native-value-window-spill-offset frame-base-slot-count (- current-depth 3))) 7)
@@ -13953,18 +14041,25 @@
         (do
           (root_push func-meta)
           (root_push layout)
-          (generate-native-function-x86-64-bundle-with-layout
-            func-meta
-            result
-            function-starts
-            functions
-            layout)
-          (root_pop)
-          (root_pop)
-          (root_pop)
-          (root_pop)
-          (root_pop)
-          (make-native-x86-bundle-loop-state 0 (+ idx 1)))))))
+          (let [_generated
+                  (generate-native-function-x86-64-bundle-with-layout
+                    func-meta
+                    result
+                    function-starts
+                    functions
+                    layout)
+                actual-end (vector-length (ref-get result))
+                expected-end (+ (vector-get function-starts idx) (native-function-size-x86 func-meta functions))
+                padding (if (> expected-end actual-end) (- expected-end actual-end) 0)]
+            (do
+              ;; size fallback の declared slot と実出力の間だけを埋め、後続 start を保つ。
+              (append-x86-function-padding result padding)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (make-native-x86-bundle-loop-state 0 (+ idx 1)))))))))
 
 (defn generate-native-x86-64-bundle-loop-with-import-count-step-64-loop-bounded [functions result function-starts import-count import-stub-offset idx len remaining]
   (do
