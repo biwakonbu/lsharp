@@ -166,17 +166,17 @@
     1
     0))
 
-(defn make-parser-contract-form [form owner]
+(defn make-parser-contract-form [form owner src]
   (let [kind (vector-get form 0)
     start (if (> (vector-length form) 2) (vector-get form 2) 0)
     end (if (> (vector-length form) 3) (vector-get form 3) 0)
     payload (if (= kind (contract-form-property))
-      (property-runner-form-typed-payload form owner)
+      (property-runner-form-typed-payload-with-source form owner src)
       (if (> (vector-length form) 1) (vector-get form 1) 0))]
     (vector-push-quad-rooted (vector-new 4) kind payload start end)))
 
 (defn partition-parser-contract-forms-loop
-  [forms idx count owner executable pending]
+  [forms idx count owner executable pending src]
   (if (>= idx count)
     (vector-push-pair-rooted (vector-new 2) executable pending)
     (let [form (vector-get forms idx)
@@ -184,7 +184,7 @@
       next-executable (if (= (parser-contract-form-executable? kind) 1)
         (vector-push-single-rooted
           executable
-          (make-parser-contract-form form owner))
+          (make-parser-contract-form form owner src))
         executable)
       next-pending (if (= (parser-contract-form-pending? kind) 1)
         (vector-push-single-rooted pending form)
@@ -198,22 +198,24 @@
             count
             owner
             next-executable
-            next-pending)]
+            next-pending
+            src)]
           (do
             (root_pop)
             (root_pop)
             result))))))
 
-(defn partition-parser-contract-forms [forms owner]
+(defn partition-parser-contract-forms [forms owner src]
   (partition-parser-contract-forms-loop
     forms
     0
     (vector-length forms)
     owner
     (vector-new 0)
-    (vector-new 0)))
+    (vector-new 0)
+    src))
 
-(defn append-parser-contract-suite-from-decl [decl results]
+(defn append-parser-contract-suite-from-decl [decl results src]
   (let [tag (vector-get decl 0)]
     (if (= tag (ast-defn))
       (let [forms (test-defn-ordered-forms decl)]
@@ -222,7 +224,7 @@
           (do
             (root_push forms)
             (let [partitioned
-                (partition-parser-contract-forms forms (vector-get decl 1))]
+                (partition-parser-contract-forms forms (vector-get decl 1) src)]
               (do
                 (root_push partitioned)
                 (let [suite (make-parser-contract-suite
@@ -236,45 +238,51 @@
                     (root_pop)
                     result)))))))
       (if (= tag (ast-private))
-        (append-parser-contract-suite-from-decl (vector-get decl 1) results)
+        (append-parser-contract-suite-from-decl (vector-get decl 1) results src)
         (if (= tag (ast-module-decl))
           (append-parser-contract-suites-from-module-loop
             decl
             0
             (vector-get decl 2)
-            results)
+            results
+            src)
           results)))))
 
-(defn append-parser-contract-suites-from-module-loop [module-node idx count results]
+(defn append-parser-contract-suites-from-module-loop
+  [module-node idx count results src]
   (if (>= idx count)
     results
     (let [next-results (append-parser-contract-suite-from-decl
         (vector-get module-node (+ idx 3))
-        results)]
+        results
+        src)]
       (do
         (root_push next-results)
         (let [parsed (append-parser-contract-suites-from-module-loop
             module-node
             (+ idx 1)
             count
-            next-results)]
+            next-results
+            src)]
           (do
             (root_pop)
             parsed))))))
 
-(defn extract-parser-contract-suites-loop [program idx count results]
+(defn extract-parser-contract-suites-loop [program idx count results src]
   (if (>= idx count)
     results
     (let [next-results (append-parser-contract-suite-from-decl
         (vector-get program idx)
-        results)]
+        results
+        src)]
       (do
         (root_push next-results)
         (let [parsed (extract-parser-contract-suites-loop
             program
             (+ idx 1)
             count
-            next-results)]
+            next-results
+            src)]
           (do
             (root_pop)
             parsed))))))
@@ -285,7 +293,8 @@
       program
       0
       (vector-length program)
-      (vector-new 0))))
+      (vector-new 0)
+      src)))
 
 ;; 未対応 property profile は実行件数 0 の成功へ流さず、明示的な境界コードを返す。
 (defn has-unsupported-property-form-loop [forms idx count]

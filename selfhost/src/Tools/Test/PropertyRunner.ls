@@ -93,7 +93,11 @@
       third)]
     (vector-push-single-rooted with-three fourth)))
 
-;; [binder-name-hash, binder-is-int, binder-close, binder-type-hash]
+(defn property-runner-push-five [first second third fourth fifth]
+  (let [with-four (property-runner-push-four first second third fourth)]
+    (vector-push-single-rooted with-four fifth)))
+
+;; raw fallback binder: [binder-name-hash, binder-is-int, binder-close, binder-type-hash]
 (defn property-runner-binder-info [payload open close]
   (let [len (string-length payload)
     name-start (property-runner-skip-space payload (+ open 1) len)
@@ -133,11 +137,12 @@
                 (= (property-runner-type-supported? payload type-start type-end) 1)))) 1 0)]
         (if (= valid 0)
           (vector-push-pair-rooted (vector-new 2) result 0)
-          (let [binder (vector-push-triple-rooted
-              (vector-new 3)
+          (let [binder (property-runner-push-five
               (name-hash payload name-start name-end)
               (name-hash payload type-start type-end)
-              1)]
+              1
+              name-start
+              type-end)]
             (do
               (root_push result)
               (root_push binder)
@@ -155,6 +160,75 @@
                       (root_pop)
                       (root_pop)
                       parsed)))))))))))
+
+(defn property-runner-binders-with-source-offset-loop
+  [binders idx count offset result]
+  (if (>= idx count)
+    result
+    (let [binder (vector-get binders idx)
+      binder-start (if (> (vector-length binder) 3)
+        (+ offset (vector-get binder 3))
+        offset)
+      binder-end (if (> (vector-length binder) 4)
+        (+ offset (vector-get binder 4))
+        offset)
+      next-result (vector-push-single-rooted
+        result
+        (property-runner-push-five
+          (vector-get binder 0)
+          (vector-get binder 1)
+          (vector-get binder 2)
+          binder-start
+          binder-end))]
+      (do
+        (root_push next-result)
+        (let [parsed (property-runner-binders-with-source-offset-loop
+            binders
+            (+ idx 1)
+            count
+            offset
+            next-result)]
+          (do
+            (root_pop)
+            parsed))))))
+
+(defn property-runner-binders-with-source-offset [binders offset]
+  (property-runner-binders-with-source-offset-loop
+    binders
+    0
+    (vector-length binders)
+    offset
+    (vector-new (vector-length binders))))
+
+;; source-aware ContractSuite projection は binder span を元ソースの offset に戻す。
+(defn property-runner-form-typed-payload-with-source [form owner src]
+  (let [payload (property-runner-form-typed-payload form owner)
+    property-text (if (> (vector-length form) 1) (vector-get form 1) "")
+    directive-start (if (> (vector-length form) 2) (vector-get form 2) 0)
+    payload-start (property-runner-find-from src property-text directive-start)
+    offset (if (>= payload-start 0) payload-start 0)]
+    (do
+      (root_push payload)
+      (let [binders (property-runner-binders-with-source-offset
+          (vector-get payload 0)
+          offset)]
+        (do
+          (root_push binders)
+          (let [payload0 (property-runner-push-four
+              binders
+              (vector-get payload 1)
+              (vector-get payload 2)
+              (vector-get payload 3))]
+            (do
+              (root_push payload0)
+              (let [result (vector-push-single-rooted
+                  payload0
+                  (vector-get payload 4))]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  result)))))))))
 
 (defn property-runner-typed-binders-info [payload]
   (let [close (property-runner-find-from
