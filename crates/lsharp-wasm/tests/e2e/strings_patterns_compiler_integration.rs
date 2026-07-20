@@ -1697,6 +1697,61 @@ fn test_e2e_selfhost_wasmemit_read_file_preserves_fd_close_errno() {
     );
 }
 
+/// selfhost WasmEmit.ls: chunked read body が concat call と終端 end を持つこと
+#[test]
+fn test_e2e_selfhost_wasmemit_chunked_read_body_contract() {
+    let harness = r#"
+(defn scan-read-chunk-contract [body index limit]
+  (if (> index (- limit 11))
+    0
+    (if (= (vector-get body index) 32)
+      (if (= (vector-get body (+ index 1)) 4)
+        (if (= (vector-get body (+ index 2)) 32)
+          (if (= (vector-get body (+ index 3)) 5)
+            (if (= (vector-get body (+ index 4)) 16)
+              (if (= (vector-get body (+ index 5)) 5)
+                (if (= (vector-get body (+ index 6)) 33)
+                  (if (= (vector-get body (+ index 7)) 4)
+                    (if (= (vector-get body (+ index 8)) 12)
+                      (if (= (vector-get body (+ index 9)) 0)
+                        (if (= (vector-get body (+ index 10)) 11)
+                          1
+                          (scan-read-chunk-contract body (+ index 1) limit))
+                        (scan-read-chunk-contract body (+ index 1) limit))
+                      (scan-read-chunk-contract body (+ index 1) limit))
+                    (scan-read-chunk-contract body (+ index 1) limit))
+                  (scan-read-chunk-contract body (+ index 1) limit))
+                (scan-read-chunk-contract body (+ index 1) limit))
+              (scan-read-chunk-contract body (+ index 1) limit))
+            (scan-read-chunk-contract body (+ index 1) limit))
+          (scan-read-chunk-contract body (+ index 1) limit))
+        (scan-read-chunk-contract body (+ index 1) limit))
+      (scan-read-chunk-contract body (+ index 1) limit))))
+
+(defn main []
+  (let [body (emit-standalone-read-file-body-chunked)
+        limit (vector-length body)
+        found (scan-read-chunk-contract body 0 limit)]
+    (do
+      (print (if (= found 1) (if (= (vector-get body (- limit 1)) 11) 1 0) 0))
+      0)))
+"#;
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("IR.ls"),
+        selfhost_module("Compiler.ls"),
+        selfhost_module("WasiBackend.ls"),
+        selfhost_module("WasmEmit.ls"),
+        harness
+    );
+    let output = compile_and_run(&combined);
+    assert_eq!(output.trim(), "1", "chunked read body の raw opcode 契約が崩れている");
+}
+
 /// selfhost WasmEmit.ls: string write-file が fd_close の errno を保持できること
 #[test]
 fn test_e2e_selfhost_wasmemit_write_file_preserves_fd_close_errno() {
