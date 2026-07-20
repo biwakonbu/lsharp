@@ -29,7 +29,7 @@ fn make_executable(path: &std::path::Path) {
 }
 
 #[cfg(unix)]
-fn write_native_stage0_fixture(path: &std::path::Path, target: &str) {
+fn write_native_stage0_fixture(path: &std::path::Path, target: &str, source_commit: &str) {
     let bin_dir = path.join("bin");
     std::fs::create_dir_all(&bin_dir).expect("native stage0 fixture bin の作成に失敗");
     for executable in ["compiler", "transport-driver", "materializer"] {
@@ -49,7 +49,7 @@ fn write_native_stage0_fixture(path: &std::path::Path, target: &str) {
             r#"{{
   "kind": "lsharp-native-selfhost-stage0",
   "target": "{target}",
-  "source_commit": "0000000000000000000000000000000000000000",
+  "source_commit": "{source_commit}",
   "compiler": "bin/compiler",
   "transport_driver": "bin/transport-driver",
   "materializer": "bin/materializer"
@@ -258,18 +258,40 @@ esac
 }
 
 #[cfg(unix)]
-#[test]
-fn test_e2e_ops07_fetch_stage0_script_fetches_native_stage0_fixture_release_asset() {
+fn current_source_commit(project_root: &std::path::Path) -> String {
+    let output = std::process::Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(project_root)
+        .output()
+        .expect("current checkout の source commit 取得に失敗");
+    assert!(
+        output.status.success(),
+        "current checkout の source commit 取得に失敗: stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8(output.stdout)
+        .expect("current checkout の source commit は UTF-8 であるべき")
+        .trim()
+        .to_owned()
+}
+
+#[cfg(unix)]
+fn create_stage0_release_fixture(
+    temp_root: &std::path::Path,
+    source_commit: &str,
+) -> std::path::PathBuf {
     use std::process::Command;
 
     let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let fetch_script = project_root.join("scripts/fetch-stage0.sh");
     let checksum_script = project_root.join("scripts/checksum.sh");
-    let temp_root = ops07_unique_temp_dir("fetch-stage0");
     let release_dir = temp_root.join("release");
     let archive_root = release_dir.join("lsharp-stage0-v0.0.0-test-x86_64-unknown-linux-gnu");
     std::fs::create_dir_all(&archive_root).expect("fixture archive root の作成に失敗");
-    write_native_stage0_fixture(&archive_root, "x86_64-unknown-linux-gnu");
+    write_native_stage0_fixture(
+        &archive_root,
+        "x86_64-unknown-linux-gnu",
+        source_commit,
+    );
 
     let package_checksums = Command::new("bash")
         .arg(&checksum_script)
@@ -312,6 +334,20 @@ fn test_e2e_ops07_fetch_stage0_script_fetches_native_stage0_fixture_release_asse
     std::fs::write(release_dir.join("checksums.txt"), release_checksums.stdout)
         .expect("release checksums.txt 書き込み失敗");
 
+    release_dir
+}
+
+#[cfg(unix)]
+#[test]
+fn test_e2e_ops07_fetch_stage0_script_fetches_native_stage0_fixture_release_asset() {
+    use std::process::Command;
+
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let fetch_script = project_root.join("scripts/fetch-stage0.sh");
+    let source_commit = current_source_commit(&project_root);
+    let temp_root = ops07_unique_temp_dir("fetch-stage0");
+    let release_dir = create_stage0_release_fixture(&temp_root, &source_commit);
+
     let stage0_dir = temp_root.join("stage0");
     let output = Command::new("bash")
         .arg(&fetch_script)
@@ -344,8 +380,58 @@ fn test_e2e_ops07_fetch_stage0_script_fetches_native_stage0_fixture_release_asse
     let manifest = std::fs::read_to_string(stage0_dir.join("manifest.json"))
         .expect("fetched stage0 manifest の読み込みに失敗");
     assert!(
-        manifest.contains("\"source_commit\": \"0000000000000000000000000000000000000000\""),
+        manifest.contains(&format!("\"source_commit\": \"{source_commit}\"")),
         "fetched stage0 manifest は source commit provenance を保持するべき"
+    );
+
+    std::fs::remove_dir_all(&temp_root).ok();
+}
+
+#[cfg(unix)]
+#[test]
+fn test_e2e_ops07_fetch_stage0_script_rejects_stale_source_commit_without_replacing_stage0() {
+    use std::process::Command;
+
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let fetch_script = project_root.join("scripts/fetch-stage0.sh");
+    let temp_root = ops07_unique_temp_dir("fetch-stage0-reject-stale-source");
+    let release_dir = create_stage0_release_fixture(
+        &temp_root,
+        "1111111111111111111111111111111111111111",
+    );
+    let stage0_dir = temp_root.join("stage0");
+    std::fs::create_dir_all(&stage0_dir).expect("existing stage0 の作成に失敗");
+    std::fs::write(stage0_dir.join("keep.txt"), "keep existing stage0\n")
+        .expect("existing stage0 sentinel の書き込みに失敗");
+
+    let output = Command::new("bash")
+        .arg(&fetch_script)
+        .env(
+            "STAGE0_RELEASE_BASE_URL",
+            format!("file://{}", release_dir.display()),
+        )
+        .env("STAGE0_VERSION", "v0.0.0-test")
+        .env("STAGE0_TARGET", "x86_64-unknown-linux-gnu")
+        .env("STAGE0_DIR", &stage0_dir)
+        .current_dir(&project_root)
+        .output()
+        .expect("stale source commit fixture fetch-stage0.sh の実行に失敗");
+
+    assert!(
+        !output.status.success(),
+        "fetch-stage0.sh は current checkout と異なる source_commit を受け入れてはならない"
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("source_commit does not match current checkout"),
+        "stale source commit の診断は checkout との不一致を示すべき: stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        std::fs::read_to_string(stage0_dir.join("keep.txt"))
+            .expect("existing stage0 sentinel の読み込みに失敗"),
+        "keep existing stage0\n",
+        "stale source commit は既存 stage0 を置換してはならない"
     );
 
     std::fs::remove_dir_all(&temp_root).ok();

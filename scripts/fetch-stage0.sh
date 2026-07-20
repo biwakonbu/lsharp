@@ -141,8 +141,9 @@ verify_package_checksums() {
 validate_native_stage0_package() {
   local package_dir="$1"
   local expected_target="$2"
+  local expected_source_commit="$3"
 
-  python3 - "$package_dir" "$expected_target" <<'PY'
+  python3 - "$package_dir" "$expected_target" "$expected_source_commit" <<'PY'
 import json
 import os
 import pathlib
@@ -151,6 +152,7 @@ import sys
 
 package_dir = pathlib.Path(sys.argv[1])
 expected_target = sys.argv[2]
+expected_source_commit = sys.argv[3]
 manifest_path = package_dir / "manifest.json"
 if not manifest_path.is_file() or manifest_path.is_symlink():
     raise SystemExit(f"native stage0 manifest is required: {manifest_path}")
@@ -169,6 +171,11 @@ if manifest.get("target") != expected_target:
 source_commit = manifest.get("source_commit")
 if not isinstance(source_commit, str) or re.fullmatch(r"[0-9a-f]{40}", source_commit) is None:
     raise SystemExit("native stage0 manifest source_commit must be a 40-character lowercase hexadecimal commit")
+if source_commit != expected_source_commit:
+    raise SystemExit(
+        "native stage0 source_commit does not match current checkout: "
+        f"expected={expected_source_commit} actual={source_commit}"
+    )
 
 for field in ("compiler", "transport_driver", "materializer"):
     value = manifest.get(field)
@@ -197,7 +204,7 @@ install_stage0_package() {
   mkdir -p "${parent_dir}"
   temporary_dir="$(mktemp -d "${parent_dir}/.${stage0_name}.new.XXXXXX")"
   cp -pR "${package_dir}/." "${temporary_dir}/"
-  validate_native_stage0_package "${temporary_dir}" "${TARGET}"
+  validate_native_stage0_package "${temporary_dir}" "${TARGET}" "${CURRENT_SOURCE_COMMIT}"
 
   if [[ -e "${STAGE0_DIR}" || -L "${STAGE0_DIR}" ]]; then
     backup_dir="$(mktemp -d "${parent_dir}/.${stage0_name}.previous.XXXXXX")"
@@ -216,6 +223,12 @@ if [[ -z "$VERSION" ]]; then
 fi
 
 TARGET="$(detect_target)"
+CURRENT_SOURCE_COMMIT="$(git -C "$ROOT" rev-parse --verify HEAD 2>/dev/null)" \
+  || { echo "ERROR: current checkout source_commit could not be determined" >&2; exit 1; }
+if [[ ! "$CURRENT_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+  echo "ERROR: current checkout source_commit is not a 40-character lowercase hexadecimal commit" >&2
+  exit 1
+fi
 ARCHIVE_EXT="$(detect_archive_ext "$TARGET")"
 ARCHIVE_ROOT_NAME="lsharp-stage0-${VERSION}-${TARGET}"
 ARCHIVE_NAME="${ARCHIVE_ROOT_NAME}.${ARCHIVE_EXT}"
@@ -249,7 +262,7 @@ ARCHIVE_ROOT="$EXTRACT_DIR/$ARCHIVE_ROOT_NAME"
 
 echo "=== fetch-stage0: verify package checksum ==="
 verify_package_checksums "$ARCHIVE_ROOT"
-validate_native_stage0_package "$ARCHIVE_ROOT" "$TARGET"
+validate_native_stage0_package "$ARCHIVE_ROOT" "$TARGET" "$CURRENT_SOURCE_COMMIT"
 
 echo "=== fetch-stage0: install stage0 package ==="
 install_stage0_package "$ARCHIVE_ROOT"
