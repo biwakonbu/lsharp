@@ -306,7 +306,7 @@
 
 ;; property test case:
 ;; [name-id, owner-function-hash, binder-hashes, postcondition, cases, profile-code,
-;;  preconditions, binder-type-hashes]
+;;  preconditions, binder-type-hashes, postcondition-source]
 (defn make-property-test-case-with-preconditions
   [name owner binders postcondition cases profile-code preconditions binder-types]
   (let [v1 (vector-push-single-rooted (vector-new 8) name)
@@ -406,16 +406,25 @@
                       (root_push row1)
                       (let [row2 (vector-push-single-rooted row1 profile-code)]
                         (do
-                          (root_pop)
-                          (root_pop)
-                          (root_pop)
-                          (root_pop)
-                          (root_pop)
-                          (root_pop)
-                          (root_pop)
-                          (root_pop)
-                          (root_pop)
-                          row2)))))))))))))
+                          (root_push row2)
+                          ;; postcondition AST の offset は切り出し text 基準なので source も保持する。
+                          (let [row3 (vector-push-single-rooted
+                              row2
+                              (if (= profile-code 0)
+                                (property-runner-postcondition-text payload)
+                                ""))]
+                            (do
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              row3)))))))))))))))
 
 (defn property-runner-form-typed-contract [form owner]
   (let [payload (if (> (vector-length form) 1) (vector-get form 1) "")]
@@ -780,6 +789,9 @@
     binder-types (if (= profile-code 0)
       (property-runner-binder-types binders)
       (vector-new 0))
+    postcondition-source (if (> (vector-length contract) 6)
+      (vector-get contract 6)
+      "")
     postcondition (if (= profile-code 0) (vector-get contract 3) 0)
     cases (if (= profile-code 0) (vector-get sampling 0) 0)]
     (do
@@ -795,9 +807,13 @@
           preconditions
           binder-types)]
         (do
-          (root_pop)
-          (root_pop)
-          result)))))
+          (root_push result)
+          (let [with-source (vector-push-single-rooted result postcondition-source)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              with-source)))))))
 
 (defn property-runner-append-typed-test-cases-loop
   [contracts idx count results]
@@ -832,6 +848,11 @@
 
 (defn property-test-case-postcondition [test-case]
   (vector-get test-case 3))
+
+(defn property-test-case-postcondition-source [test-case]
+  (if (> (vector-length test-case) 8)
+    (vector-get test-case 8)
+    ""))
 
 (defn property-test-case-count [test-case]
   (vector-get test-case 4))

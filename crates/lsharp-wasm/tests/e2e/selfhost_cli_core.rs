@@ -7248,6 +7248,40 @@ fn test_e2e_selfhost_runner_executes_string_property_binder() {
     );
 }
 
+/// EC-M1-02/05: selfhost runner が property の String literal を Rust oracle と評価すること
+#[test]
+fn test_e2e_selfhost_runner_matches_rust_oracle_for_string_property_literal() {
+    let source = "(defn constant [sample] :property [(for-all [sample String] :cases 1 :postcondition (string-eq result \"ok\"))] \"ok\")";
+    let oracle = run_metadata_tests(source);
+    assert_eq!(oracle.len(), 1, "Rust oracle は String literal property 1 件を生成するべき");
+    assert!(oracle[0].passed, "Rust oracle の String literal property は pass するべき");
+
+    let harness = r#"
+(defn main []
+  (let [src "(defn constant [sample] :property [(for-all [sample String] :cases 1 :postcondition (string-eq result \"ok\"))] \"ok\")"
+        suite (generate-tests-from-source src)
+        properties (vector-get suite 4)
+        result0 (vector-get properties 0)]
+    (do
+      (print (vector-length properties))
+      (print (vector-get result0 1))
+      (print (vector-get result0 2))
+      (print (vector-get result0 3))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_test_runner_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(
+        lines,
+        vec!["1", "1", "1", "0"],
+        "selfhost String literal property は Rust oracle と同じ success を返すべき"
+    );
+}
+
 /// EC-M1-05: selfhost CLI が deterministic property smoke を 0 件へ丸めないこと
 #[test]
 fn test_e2e_selfhost_cli_reports_deterministic_property_smoke() {

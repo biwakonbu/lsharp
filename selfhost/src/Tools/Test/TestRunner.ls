@@ -2263,10 +2263,14 @@
         env
         1))))
 
-(defn eval-property-preconditions-loop [program preconditions env idx]
+(defn eval-property-preconditions-loop [program preconditions env idx src]
   (if (>= idx (vector-length preconditions))
     (value-bool 1)
-    (let [precondition (eval-node program (vector-get preconditions idx) env)
+    (let [precondition (eval-node-with-source
+        program
+        (vector-get preconditions idx)
+        env
+        src)
       precondition-bool (if (= (value-tag precondition) (ast-lit-bool)) 1 0)]
       (if (= precondition-bool 0)
         precondition
@@ -2276,9 +2280,10 @@
             program
             preconditions
             env
-            (+ idx 1)))))))
+            (+ idx 1)
+            src))))))
 
-(defn eval-property-precondition [program test-case sample]
+(defn eval-property-precondition [program test-case sample src]
   (let [preconditions (property-test-case-preconditions test-case)
     env (env-bind
       (env-new)
@@ -2289,22 +2294,24 @@
       (property-test-case-binders test-case)
       sample
       0)]
-    (eval-property-preconditions-loop program preconditions env 0)))
+    (eval-property-preconditions-loop program preconditions env 0 src)))
 
-(defn eval-property-sample-value [program test-case decl sample]
+(defn eval-property-sample-value [program test-case decl sample src]
   (let [args sample
-    result (eval-defn-call program decl args)
+    result (eval-defn-call-with-source program decl args src)
     owner-env (bind-params-loop (env-new) decl args 0 (vector-get decl 2))
     property-env0 (property-bind-binders-loop
       owner-env
       (property-test-case-binders test-case)
       sample
       0)
-    property-env (env-bind property-env0 (hash-result) result)]
-    (eval-node
+    property-env (env-bind property-env0 (hash-result) result)
+    postcondition-source (property-test-case-postcondition-source test-case)]
+    (eval-node-with-source
       program
       (property-test-case-postcondition test-case)
-      property-env)))
+      property-env
+      postcondition-source)))
 
 (defn property-sample-summary [passed bool-valid actual]
   (vector-push
@@ -2314,14 +2321,15 @@
     actual))
 
 (defn run-property-samples-summary-loop
-  [program test-case decl sample-idx sample-count all-passed all-bool actual-count]
+  [program test-case decl sample-idx sample-count all-passed all-bool actual-count src]
   (if (>= sample-idx sample-count)
     (property-sample-summary all-passed all-bool actual-count)
     (let [sample (property-sample-arguments test-case sample-idx)
       precondition (eval-property-precondition
         program
         test-case
-        sample)
+        sample
+        src)
       precondition-bool (if (= (value-tag precondition) (ast-lit-bool)) 1 0)
       precondition-passed (if (= precondition-bool 1) (value-truthy precondition) 0)]
       (if (= precondition-bool 0)
@@ -2333,7 +2341,8 @@
           sample-count
           0
           0
-          actual-count)
+          actual-count
+          src)
         (if (= precondition-passed 0)
           (run-property-samples-summary-loop
             program
@@ -2343,8 +2352,14 @@
             sample-count
             all-passed
             all-bool
-            actual-count)
-          (let [actual (eval-property-sample-value program test-case decl sample)
+            actual-count
+            src)
+          (let [actual (eval-property-sample-value
+              program
+              test-case
+              decl
+              sample
+              src)
             bool-valid (if (= (value-tag actual) (ast-lit-bool)) 1 0)
             passed (if (= bool-valid 1) (value-truthy actual) 0)
             next-passed (if (= passed 1) all-passed 0)
@@ -2357,7 +2372,8 @@
               sample-count
               next-passed
               next-bool
-            (+ actual-count 1))))))))
+              (+ actual-count 1)
+              src)))))))
 
 (defn property-runner-static-comparison-result [operator left right]
   (if (or (= operator 61) (= operator 1952))
@@ -2637,7 +2653,7 @@
         0
         (vector-length preconditions)))))
 
-(defn materialize-property [program test-case]
+(defn materialize-property [program test-case src]
   (let [name (vector-get test-case 0)
     owner (property-test-case-owner test-case)
     decl (find-defn-by-hash program owner 0 (vector-length program))
@@ -2664,7 +2680,8 @@
         sample-count
         1
         1
-        0))
+        0
+        src))
     bool-valid (vector-get sample-summary 1)
     actual-count (vector-get sample-summary 2)
     diagnostic-code (if (> profile-code 0)
@@ -2694,7 +2711,7 @@
       count
       (vector-push
         results
-        (materialize-property program (vector-get test-cases idx))))))
+        (materialize-property program (vector-get test-cases idx) "")))))
 
 (defn run-properties [program test-cases]
   (run-properties-loop
@@ -2703,6 +2720,29 @@
     0
     (vector-length test-cases)
     (vector-new (vector-length test-cases))))
+
+(defn run-properties-from-source-loop
+  [program test-cases idx count results src]
+  (if (>= idx count)
+    results
+    (run-properties-from-source-loop
+      program
+      test-cases
+      (+ idx 1)
+      count
+      (vector-push
+        results
+        (materialize-property program (vector-get test-cases idx) src))
+      src)))
+
+(defn run-properties-from-source [program test-cases src]
+  (run-properties-from-source-loop
+    program
+    test-cases
+    0
+    (vector-length test-cases)
+    (vector-new (vector-length test-cases))
+    src))
 
 (defn invariant-sample-count [param-count]
   (if (= param-count 0)
@@ -2908,7 +2948,7 @@
     invariant-results (run-invariants-from-source program invariants src)
     assertion-results (run-assertions program assertions)
     case-results (run-cases program cases)
-    property-results (run-properties program properties)]
+    property-results (run-properties-from-source program properties src)]
     (make-suite-with-properties
       example-results
       invariant-results
