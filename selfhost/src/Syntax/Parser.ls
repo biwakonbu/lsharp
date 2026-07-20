@@ -1061,37 +1061,42 @@
                   (root_pop)
                   (parse-defn-metadata-loop-v3 spans pos-ref src with-form))))))))))
 
-;; :case [(expect actual expected) ...] — actual / expected の AST pair を保持する。
+;; :case [(expect actual expected) ...] — actual / expected と entry span を保持する。
 (defn parse-defn-meta-case-expectation-v3 [spans pos-ref src]
   (if (== (p-current spans pos-ref) 0)
-    (do
-      (p-advance pos-ref)
-      (if (== (p-current spans pos-ref) 20)
-        (let [name (current-symbol-text-v3 spans pos-ref src)]
-          (if (string-eq name "expect")
-            (do
-              (p-advance pos-ref)
-              (let [actual (parse-expr-v3 spans pos-ref src)]
-                (do
-                  (root_push actual)
-                  (let [expected (parse-expr-v3 spans pos-ref src)]
-                    (do
-                      (root_push expected)
-                      (p-expect spans pos-ref 1)
-                      (let [pair (vector-push-pair-rooted-v3
-                        (vector-new 2)
-                        actual
-                        expected)]
-                        (do
-                          (root_pop)
-                          (root_pop)
-                          pair)))))))
-            (do
-              (parse-skip-to-close-v3 spans pos-ref 1)
-              (vector-new 0))))
-        (do
-          (parse-skip-to-close-v3 spans pos-ref 1)
-          (vector-new 0))))
+    (let [entry-start (p-start spans pos-ref)]
+      (do
+        (p-advance pos-ref)
+        (if (== (p-current spans pos-ref) 20)
+          (let [name (current-symbol-text-v3 spans pos-ref src)]
+            (if (string-eq name "expect")
+              (do
+                (p-advance pos-ref)
+                (let [actual (parse-expr-v3 spans pos-ref src)]
+                  (do
+                    (root_push actual)
+                    (let [expected (parse-expr-v3 spans pos-ref src)]
+                      (do
+                        (root_push expected)
+                        (let [entry-end (p-end spans pos-ref)]
+                          (do
+                            (p-expect spans pos-ref 1)
+                            (let [pair (vector-push-quad-rooted-v3
+                                (vector-new 4)
+                                actual
+                                expected
+                                entry-start
+                                entry-end)]
+                              (do
+                                (root_pop)
+                                (root_pop)
+                                pair)))))))))
+              (do
+                (parse-skip-to-close-v3 spans pos-ref 1)
+                (vector-new 0))))
+          (do
+            (parse-skip-to-close-v3 spans pos-ref 1)
+            (vector-new 0)))))
     (vector-new 0)))
 
 (defn parse-defn-meta-case-loop-rooted-v3 [spans pos-ref src expectations]

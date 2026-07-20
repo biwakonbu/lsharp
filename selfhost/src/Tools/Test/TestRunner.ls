@@ -540,7 +540,7 @@
     (vector-length program)
     (vector-new 8)))
 
-;; parser-owned canonical :case form [4, [[actual, expected] ...]] を case へ投影する。
+;; parser-owned canonical :case form [4, [[actual, expected, start, end] ...]] を case へ投影する。
 (defn append-parser-case-expectations-loop [expectations idx count results]
   (if (>= idx count)
     results

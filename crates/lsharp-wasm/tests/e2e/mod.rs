@@ -29,6 +29,7 @@ mod selfhost_native_tokenizer_probe;
 mod selfhost_parser_forms;
 mod selfhost_parser_metadata_forms;
 mod selfhost_assertion_spans;
+mod selfhost_case_spans;
 mod selfhost_property_spans;
 mod selfhost_rooting_parity;
 mod selfhost_stage0_scripts;
