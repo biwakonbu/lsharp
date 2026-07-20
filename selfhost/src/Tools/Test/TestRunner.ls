@@ -2634,14 +2634,11 @@
               (+ actual-count 1)
               src)))))))
 
-(defn property-runner-not-equal? [left right]
-  (not (= left right)))
-
 (defn property-runner-static-comparison-result [operator left right]
   (if (or (= operator 61) (= operator 1952))
     (if (= left right) 1 2)
     (if (= operator 1084)
-      (if (property-runner-not-equal? left right) 1 2)
+      (if (!= left right) 1 2)
       (if (= operator 60)
         (if (< left right) 1 2)
         (if (= operator 62)
@@ -2693,7 +2690,7 @@
     right-node (if (= (vector-get right 0) (ast-ann)) (vector-get right 1) right)
     left-tag (vector-get left-node 0)
     right-tag (vector-get right-node 0)]
-    (if (property-runner-not-equal? left-tag right-tag)
+    (if (!= left-tag right-tag)
       0
       (if (= left-tag (ast-var))
         (if (= (vector-get left-node 1) (vector-get right-node 1)) 1 0)
@@ -2745,7 +2742,7 @@
     right-node (if (= (vector-get right 0) (ast-ann)) (vector-get right 1) right)
     left-tag (vector-get left-node 0)
     right-tag (vector-get right-node 0)]
-    (if (property-runner-not-equal? left-tag right-tag)
+    (if (!= left-tag right-tag)
       0
       (if (= left-tag (ast-var))
         (if (= (vector-get left-node 1) (vector-get right-node 1)) 1 0)
@@ -2762,21 +2759,20 @@
     right-node (if (= (vector-get right 0) (ast-ann)) (vector-get right 1) right)
     left-tag (vector-get left-node 0)
     right-tag (vector-get right-node 0)]
-    (if (property-runner-not-equal? left-tag right-tag)
+    (if (!= left-tag right-tag)
       0
       (if (= left-tag (ast-apply))
         (let [left-count (vector-get left-node 2)
           right-count (vector-get right-node 2)
           left-callee (vector-get left-node 1)
           right-callee (vector-get right-node 1)]
-          (if (property-runner-not-equal? left-count right-count)
+          (if (!= left-count right-count)
             0
             (if (or (< left-count 1) (> left-count 2))
               0
-              (if (or (property-runner-not-equal? (vector-get left-callee 0) (ast-var))
-                  (property-runner-not-equal? (vector-get right-callee 0) (ast-var)))
+              (if (or (!= (vector-get left-callee 0) (ast-var)) (!= (vector-get right-callee 0) (ast-var)))
                 0
-                (if (property-runner-not-equal? (vector-get left-callee 1) (vector-get right-callee 1))
+                (if (!= (vector-get left-callee 1) (vector-get right-callee 1))
                   0
                   (if (= left-count 1)
                     (property-runner-atom-shape-equal

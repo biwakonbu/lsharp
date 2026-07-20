@@ -409,6 +409,28 @@ fn test_selfhost_compiler_maps_native_cli_runtime_builtins_to_dedicated_opcodes(
 }
 
 #[test]
+fn test_selfhost_compiler_maps_not_equal_to_native_compare_opcode() {
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
+        "selfhost-native-not-equal-builtin-opcode",
+        &["CompilerBase.ls"],
+        "Main.ls",
+        r#"(module Main)
+(import Backend.Wasm.CompilerBase)
+
+(defn main []
+  (print (builtin-opcode 1084)))"#,
+        &[],
+    )
+    .expect("native != builtin opcode harness 実行に失敗");
+
+    assert_eq!(
+        parse_numeric_lines(&output),
+        vec![31],
+        "!= は native compare opcode 31 に lower される必要がある"
+    );
+}
+
+#[test]
 fn test_selfhost_wasm_emit_print_string_appends_runtime_call() {
     let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
         "selfhost-wasm-emit-print-string-runtime-call",

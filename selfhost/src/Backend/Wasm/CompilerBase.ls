@@ -118,17 +118,19 @@
             28
             (if (= name-hash 61)
               30
-              (if (= name-hash 62)
-                33
-                (if (= name-hash 60)
-                  32
-                  (if (= name-hash 1983)
-                    35
-                    (if (= name-hash 1921)
-                      34
-                      (if (= name-hash 1952)
-                        30
-                        0))))))))))))
+              (if (= name-hash 1084)
+                31
+                (if (= name-hash 62)
+                  33
+                  (if (= name-hash 60)
+                    32
+                    (if (= name-hash 1983)
+                      35
+                      (if (= name-hash 1921)
+                        34
+                        (if (= name-hash 1952)
+                          30
+                          0)))))))))))))
 
 (defn builtin-string-opcode [name-hash]
   (if (= name-hash 6233512424790686798)
