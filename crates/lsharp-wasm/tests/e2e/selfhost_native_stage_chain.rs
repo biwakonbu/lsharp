@@ -12323,6 +12323,35 @@ fn test_wasm_compiler_base_builtin_dispatch_uses_literal_constants() {
 }
 
 #[test]
+fn test_wasm_compiler_not_application_lowers_to_existing_ir_sequence() {
+    let base = std::fs::read_to_string(selfhost_source_path("CompilerBase.ls"))
+        .expect("canonical CompilerBase.ls が読み込めること");
+    let compiler = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("canonical Compiler.ls が読み込めること");
+    assert!(
+        base.contains("(if (= name-hash 109267) (= arg-count 1) false))"),
+        "CompilerBase.ls は argc=1 の not application を builtin として識別するべき"
+    );
+    let not_body = compiler
+        .split("(defn compile-not-instrs")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn compile-not-builtin-with-source").next())
+        .expect("Compiler.ls に not の IR lowering helper が存在すること");
+    assert!(
+        not_body.contains("(emit-to instrs 1 0)")
+            && not_body.contains("(emit-to with-zero 30 0)"),
+        "not は新しい runtime opcode ではなく i64.const 0 と i64.eq へ lower するべき"
+    );
+    assert_eq!(
+        compiler
+            .matches("(builtin-not-application? func-hash arg-count)")
+            .count(),
+        3,
+        "source / diagnostic / ftable の三つの apply 経路が not を同じ条件で扱うべき"
+    );
+}
+
+#[test]
 fn test_wasm_compiler_string_literal_roots_bytes_before_header_allocation() {
     let source = std::fs::read_to_string(selfhost_source_path("CompilerBase.ls"))
         .expect("canonical CompilerBase.ls が読み込めること");

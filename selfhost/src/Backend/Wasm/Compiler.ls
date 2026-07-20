@@ -972,6 +972,37 @@
         (do
           (root_pop)
           result)))))
+
+(defn compile-not-instrs [instrs]
+  (do
+    (root_push instrs)
+    (let [with-zero (emit-to instrs 1 0)]
+      (do
+        (root_push with-zero)
+        (let [result (emit-to with-zero 30 0)]
+          (do
+            (root_pop)
+            (root_pop)
+            result))))))
+
+(defn compile-not-builtin-with-source [node source env ftable instrs data-ref]
+  (let [arg-instrs (compile-expr-with-source (vector-get node 3) source env ftable instrs data-ref)]
+    (do
+      (root_push arg-instrs)
+      (let [result (compile-not-instrs arg-instrs)]
+        (do
+          (root_pop)
+          result)))))
+
+(defn compile-not-builtin-with-ftable [node env ftable instrs]
+  (let [arg-instrs (compile-expr-with-ftable (vector-get node 3) env ftable instrs)]
+    (do
+      (root_push arg-instrs)
+      (let [result (compile-not-instrs arg-instrs)]
+        (do
+          (root_pop)
+          result)))))
+
 (defn compile-simple-builtin-with-source [node source env ftable instrs data-ref bop]
   (let [node-slot (root_push node)
     source-slot (root_push source)
@@ -1232,9 +1263,11 @@
       func-hash (if (= func-tag 4) (vector-get func-node 1) 0)]
       (let [bop (builtin-opcode func-hash)]
         (let [result
-          (if (> bop 0)
-            (compile-builtin-apply-with-source node source env ftable instrs data-ref bop)
-            (compile-user-call-with-source node source env ftable instrs data-ref func-hash arg-count))]
+          (if (builtin-not-application? func-hash arg-count)
+            (compile-not-builtin-with-source node source env ftable instrs data-ref)
+            (if (> bop 0)
+              (compile-builtin-apply-with-source node source env ftable instrs data-ref bop)
+              (compile-user-call-with-source node source env ftable instrs data-ref func-hash arg-count)))]
           (do
             (root_push result)
             (root_pop)
@@ -1255,9 +1288,11 @@
           (print (vector-length instrs))
           (print (vector-length (ref-get data-ref)))
           (let [result
-            (if (> bop 0)
-              (compile-builtin-apply-with-source-normal-setup-diagnostic node source env ftable instrs data-ref bop safe-ftable-path)
-              (compile-user-call-with-source node source env ftable instrs data-ref func-hash arg-count))]
+            (if (builtin-not-application? func-hash arg-count)
+              (compile-not-builtin-with-source node source env ftable instrs data-ref)
+              (if (> bop 0)
+                (compile-builtin-apply-with-source-normal-setup-diagnostic node source env ftable instrs data-ref bop safe-ftable-path)
+                (compile-user-call-with-source node source env ftable instrs data-ref func-hash arg-count)))]
             (do
               (root_push result)
               (print 9000000249)
@@ -4431,11 +4466,14 @@
 
 (defn compile-apply-with-ftable [node env ftable instrs]
   (let [func-node (vector-get node 1)
+    arg-count (vector-get node 2)
     func-hash (if (= (vector-get func-node 0) 4) (vector-get func-node 1) 0)
     bop (builtin-opcode func-hash)]
-    (if (> bop 0)
-      (compile-builtin-apply-with-ftable node env ftable instrs bop)
-      (compile-user-call-with-ftable node env ftable instrs func-hash (vector-get node 2)))))
+    (if (builtin-not-application? func-hash arg-count)
+      (compile-not-builtin-with-ftable node env ftable instrs)
+      (if (> bop 0)
+        (compile-builtin-apply-with-ftable node env ftable instrs bop)
+        (compile-user-call-with-ftable node env ftable instrs func-hash arg-count)))))
 
 (defn compile-if-with-ftable [node env ftable instrs]
   (let [cond-expr (vector-get node 1)

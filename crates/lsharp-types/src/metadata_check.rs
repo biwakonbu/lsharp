@@ -584,7 +584,7 @@ fn check_invariant(
 ) {
     let var_refs = collect_scoped_var_references(invariant);
 
-    for (ref_name, _ref_span) in &var_refs {
+    for (ref_name, ref_span) in &var_refs {
         // 組み込み演算子・関数はスキップ
         if is_builtin(ref_name) {
             continue;
@@ -598,7 +598,7 @@ fn check_invariant(
             diagnostics.push(MetadataDiagnostic {
                 severity: Severity::Error,
                 message: format!(":invariant 内で未定義の識別子 '{ref_name}' が参照されています"),
-                span: invariant.span(),
+                span: *ref_span,
                 function_name: fn_name.to_string(),
             });
         }
@@ -988,6 +988,23 @@ mod tests {
         assert_eq!(errors.len(), 1);
         assert!(errors[0].message.contains("'unknown-fn'"));
         assert!(errors[0].message.contains(":invariant"));
+    }
+
+    #[test]
+    fn test_invariant_unknown_reference_uses_identifier_span() {
+        let source = "(defn succ [x] :invariant (= result (+ missing 1)) (+ x 1))";
+        let diags = check(source);
+        let errors: Vec<_> = diags
+            .iter()
+            .filter(|d| d.severity == Severity::Error)
+            .collect();
+        let missing_start = source
+            .find("missing")
+            .expect("fixture に missing があるべき");
+
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].span.start, missing_start);
+        assert_eq!(errors[0].span.end, missing_start + "missing".len());
     }
 
     #[test]

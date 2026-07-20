@@ -213,6 +213,10 @@
       72
       0)))
 
+;; `not` は単一の IR opcode ではなく、0 との等値比較へ展開する。
+(defn builtin-not-application? [name-hash arg-count]
+  (if (= name-hash 109267) (= arg-count 1) false))
+
 (defn builtin-root-opcode [name-hash]
   (if (= name-hash 100385403511895)
     74
@@ -411,7 +415,7 @@
                 (root_pop)
                 result))))))))
 (defn ftable-with-native-runtime-imports []
-  (ftable-register (ftable-new) (builtin-int-to-string) 6))
+  (ftable-register (ftable-new) (- 0 6637826915257342139) 6))
 (defn ftable-lookup-loop [ftable idx name-hash]
   (if (< idx 0)
     0

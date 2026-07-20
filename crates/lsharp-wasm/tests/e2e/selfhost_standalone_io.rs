@@ -388,6 +388,25 @@ fn compile_standalone_source(source: &str, dir: &Path, cli_cache_env: &str) -> V
 }
 
 #[test]
+fn test_e2e_selfhost_standalone_not_preserves_bool_semantics() {
+    let capture = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, || {
+        let dir = fixture_dir("not_bool_semantics");
+        let _ = std::fs::remove_dir_all(&dir);
+        let standalone_wasm = compile_standalone_source(
+            "(defn main [] (if (not true) (print 1) (print 2)))",
+            &dir,
+            "LSHARP_STANDALONE_NOT_BOOL_CLI_ARTIFACT",
+        );
+        let capture = run_with_partial_fd_write(&standalone_wasm, &dir)
+            .expect("selfhost standalone not 実行に失敗");
+        let _ = std::fs::remove_dir_all(&dir);
+        capture
+    });
+
+    assert_eq!(capture.stdout, b"2\n", "not true は false 側の枝を選ぶべき");
+}
+
+#[test]
 fn test_wasi_fd_write_shim_is_used_for_standalone_import() {
     let dir = fixture_dir("shim");
     let _ = std::fs::remove_dir_all(&dir);

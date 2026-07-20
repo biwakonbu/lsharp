@@ -1421,6 +1421,39 @@
         (find-invariant-source-span-loop src tokens (+ idx 1) end))
       (find-invariant-source-span-loop src tokens (+ idx 1) end))))
 
+(defn find-symbol-hash-source-span-loop [src tokens idx end target-hash]
+  (if (>= idx end)
+    (vector-push (vector-push (vector-new 2) 0) 0)
+    (if (= (token-kind tokens idx) (tok-symbol))
+      (let [start (token-start tokens idx)
+        token-end-pos (token-end tokens idx)]
+        (if (= (name-hash src start token-end-pos) target-hash)
+          (vector-push (vector-push (vector-new 2) start) token-end-pos)
+          (find-symbol-hash-source-span-loop src tokens (+ idx 1) end target-hash)))
+      (find-symbol-hash-source-span-loop src tokens (+ idx 1) end target-hash))))
+
+(defn find-invariant-unknown-source-span-loop [src tokens idx end target-hash]
+  (if (>= idx end)
+    (vector-push (vector-push (vector-new 2) 0) 0)
+    (if (= (token-kind tokens idx) (tok-colon))
+      (if (< (+ idx 2) end)
+        (if (= (token-kind tokens (+ idx 1)) (tok-symbol))
+          (if (string-eq (token-text src tokens (+ idx 1)) "invariant")
+            (let [payload-start (+ idx 2)
+              payload-end (consume-form tokens payload-start)]
+              (if (< payload-start payload-end)
+                (find-symbol-hash-source-span-loop
+                  src
+                  tokens
+                  payload-start
+                  payload-end
+                  target-hash)
+                (find-invariant-unknown-source-span-loop src tokens (+ idx 1) end target-hash)))
+            (find-invariant-unknown-source-span-loop src tokens (+ idx 1) end target-hash))
+          (find-invariant-unknown-source-span-loop src tokens (+ idx 1) end target-hash))
+        (find-invariant-unknown-source-span-loop src tokens (+ idx 1) end target-hash))
+      (find-invariant-unknown-source-span-loop src tokens (+ idx 1) end target-hash))))
+
 (defn find-invariant-source-span-loop-by-defn [src tokens idx count target-hash]
   (if (>= idx count)
     (vector-push (vector-push (vector-new 2) 0) 0)
@@ -1442,6 +1475,30 @@
       tokens
       0
       (token-count tokens)
+      target-hash)))
+
+(defn find-invariant-unknown-source-span-loop-by-defn [src tokens idx count fn-hash target-hash]
+  (if (>= idx count)
+    (vector-push (vector-push (vector-new 2) 0) 0)
+    (if (and
+        (and (= (token-kind tokens idx) (tok-lparen)) (< (+ idx 2) count))
+        (= (token-kind tokens (+ idx 1)) (tok-defn)))
+      (let [name-start (token-start tokens (+ idx 2))
+        name-end (token-end tokens (+ idx 2))
+        next-idx (consume-form tokens idx)]
+        (if (= (name-hash src name-start name-end) fn-hash)
+          (find-invariant-unknown-source-span-loop src tokens (+ idx 3) (- next-idx 1) target-hash)
+          (find-invariant-unknown-source-span-loop-by-defn src tokens next-idx count fn-hash target-hash)))
+      (find-invariant-unknown-source-span-loop-by-defn src tokens (+ idx 1) count fn-hash target-hash))))
+
+(defn find-invariant-unknown-source-span [src fn-hash target-hash]
+  (let [tokens (tokenize-with-spans src)]
+    (find-invariant-unknown-source-span-loop-by-defn
+      src
+      tokens
+      0
+      (token-count tokens)
+      fn-hash
       target-hash)))
 
 (defn at-defn-top-level [paren-depth bracket-depth brace-depth]
@@ -2604,7 +2661,9 @@
       0)
     actual (if (= diagnostic-code 0) sample-count 0)
     source-span (if (> diagnostic-code 0)
-      (find-invariant-source-span src fn-hash)
+      (if (>= unknown-hash 0)
+        (find-invariant-unknown-source-span src fn-hash unknown-hash)
+        (find-invariant-source-span src fn-hash))
       (vector-push (vector-push (vector-new 2) 0) 0))]
     (if (> diagnostic-code 0)
       (make-test-result-with-diagnostic-span
