@@ -296,22 +296,27 @@ run_runner reuse
 assert_eq "1" "$(grep -c '^transport|' "$LOG_FILE")"
 assert_file_contains "$LOG_FILE" "program|reuse"
 
+printf '\n# stage0 refresh\n' >>"$STAGE0_DIR/bin/compiler"
+run_runner stage0-changed
+assert_eq "2" "$(grep -c '^transport|' "$LOG_FILE")"
+assert_file_contains "$LOG_FILE" "program|stage0-changed"
+
 printf '\n;; source refresh\n' >>"$SOURCE_ROOT/src/App/Cli.ls"
 run_runner changed
-assert_eq "2" "$(grep -c '^transport|' "$LOG_FILE")"
+assert_eq "3" "$(grep -c '^transport|' "$LOG_FILE")"
 assert_file_contains "$LOG_FILE" "program|changed"
 
 mkdir -p "$SOURCE_ROOT/target"
 printf '%s\n' 'generated build output' >"$SOURCE_ROOT/target/generated-output.txt"
 run_runner generated-only
-assert_eq "2" "$(grep -c '^transport|' "$LOG_FILE")"
+assert_eq "3" "$(grep -c '^transport|' "$LOG_FILE")"
 assert_file_contains "$LOG_FILE" "program|generated-only"
 if [[ -e "$STAGE_DIR/source/target/generated-output.txt" ]]; then
   fail "native stage source copied generated files outside src/"
 fi
 
 run_runner --bootstrap bootstrap
-assert_eq "3" "$(grep -c '^transport|' "$LOG_FILE")"
+assert_eq "4" "$(grep -c '^transport|' "$LOG_FILE")"
 assert_file_contains "$LOG_FILE" "program|bootstrap"
 
 python3 - "$STAGE0_DIR/manifest.json" "$CURRENT_SOURCE_COMMIT" <<'PY'

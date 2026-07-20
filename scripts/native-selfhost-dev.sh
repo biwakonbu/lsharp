@@ -71,6 +71,19 @@ source_fingerprint() {
   ) | hash_stream
 }
 
+stage0_fingerprint() {
+  {
+    printf '%s\n' "$TARGET" "$SOURCE_COMMIT"
+    for stage0_path in \
+      "$STAGE0_DIR/manifest.json" \
+      "$COMPILER" \
+      "$TRANSPORT_DRIVER" \
+      "$MATERIALIZER"; do
+      printf '%s  %s\n' "$(hash_file "$stage0_path")" "${stage0_path#"$STAGE0_DIR/"}"
+    done
+  } | hash_stream
+}
+
 parse_stage0_manifest() {
   local manifest_path="$STAGE0_DIR/manifest.json"
   [[ -f "$manifest_path" ]] || die "stage0 manifest is required: $manifest_path"
@@ -123,10 +136,14 @@ copy_source_tree() {
 
 stage_is_ready() {
   local expected_fingerprint="$1"
+  local expected_stage0_fingerprint="$2"
   local stamp_path="$STAGE_DIR/.source-fingerprint.sha256"
+  local stage0_stamp_path="$STAGE_DIR/.stage0-fingerprint.sha256"
   [[ -x "$STAGE_DIR/program.native" ]] || return 1
   [[ -f "$stamp_path" ]] || return 1
-  [[ "$(<"$stamp_path")" == "$expected_fingerprint" ]]
+  [[ -f "$stage0_stamp_path" ]] || return 1
+  [[ "$(<"$stamp_path")" == "$expected_fingerprint" ]] || return 1
+  [[ "$(<"$stage0_stamp_path")" == "$expected_stage0_fingerprint" ]]
 }
 
 default_component_output_path() {
@@ -303,8 +320,9 @@ done
 
 mkdir -p "$STAGE_DIR"
 FINGERPRINT="$(source_fingerprint)"
+STAGE0_FINGERPRINT="$(stage0_fingerprint)"
 
-if [[ "$FORCE_BOOTSTRAP" == "1" ]] || ! stage_is_ready "$FINGERPRINT"; then
+if [[ "$FORCE_BOOTSTRAP" == "1" ]] || ! stage_is_ready "$FINGERPRINT" "$STAGE0_FINGERPRINT"; then
   copy_source_tree
   COPIED_SOURCE="$STAGE_DIR/source"
   TRANSPORT_OUTPUT="$STAGE_DIR/transport-output.txt"
@@ -325,6 +343,7 @@ if [[ "$FORCE_BOOTSTRAP" == "1" ]] || ! stage_is_ready "$FINGERPRINT"; then
   esac
   [[ -x "$STAGE_DIR/program.native" ]] || die "materializer did not produce an executable program.native"
   printf '%s\n' "$FINGERPRINT" >"$STAGE_DIR/.source-fingerprint.sha256"
+  printf '%s\n' "$STAGE0_FINGERPRINT" >"$STAGE_DIR/.stage0-fingerprint.sha256"
 fi
 
 if [[ "${1:-}" == "install" ]]; then
