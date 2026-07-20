@@ -1052,7 +1052,8 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                             range-end-arg (parse-positive-int (command-line-arg 3))
                             include-header (if (= range-end-arg 0) 1 (parse-positive-int (command-line-arg 4)))
                             include-tail (if (= range-end-arg 0) 1 (parse-positive-int (command-line-arg 5)))
-                            range-end (if (= range-end-arg 0) (vector-length starts) range-end-arg)]
+                            range-end-request (if (= range-end-arg 0) (vector-length starts) range-end-arg)
+                            range-end (if (> range-end-request (vector-length starts)) (vector-length starts) range-end-request)]
                         (do
                           (if (= include-header 1)
                             (linux-x86-normal-emit-header
@@ -9265,6 +9266,24 @@ fn test_linux_x86_representative_seed_dispatches_normal_transport_through_small_
                 "(compile-file-functions-payload-with-cache path 10 cache-ref parse-count-ref)",
             ),
         "通常 transport helper は診断用 payload 分岐を抱えず、production payload だけを呼ぶべき",
+    );
+}
+
+#[test]
+fn test_linux_x86_normal_transport_caps_first_chunk_to_function_count() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+    let normal_body = source
+        .split("(defn linux-x86-normal-transport-main []")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn linux-x86-diagnostic-mode []").next())
+        .expect("Linux x86 seed に通常 transport helper が存在すること");
+
+    assert!(
+        normal_body.contains("range-end-request (if (= range-end-arg 0) (vector-length starts) range-end-arg)")
+            && normal_body.contains(
+                "range-end (if (> range-end-request (vector-length starts)) (vector-length starts) range-end-request)",
+            ),
+        "Linux x86 normal transport は first chunk の要求範囲が tiny source の function 数を超えても余分な segment を出力しないべき"
     );
 }
 
