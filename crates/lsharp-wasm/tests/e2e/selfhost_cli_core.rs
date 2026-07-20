@@ -8600,6 +8600,75 @@ fn test_e2e_selfhost_test_runner_rejects_non_bool_not_operand() {
     );
 }
 
+/// EC-M1-01: selfhost runner が and/or の non-Bool operand を truthy として受理しないこと
+#[test]
+fn test_e2e_selfhost_test_runner_rejects_non_bool_logic_operands() {
+    let and_source = "(defn and-check [x] :invariant (and 1 true) (+ x 1))";
+    let or_source = "(defn or-check [x] :invariant (or true 1) (+ x 1))";
+    let and_program = lsharp_syntax::parse(and_source).expect("and operand fixture は parse できるべき");
+    let or_program = lsharp_syntax::parse(or_source).expect("or operand fixture は parse できるべき");
+    let and_diagnostics = lsharp_types::metadata_check::check_metadata(&and_program);
+    let or_diagnostics = lsharp_types::metadata_check::check_metadata(&or_program);
+    assert_eq!(
+        and_diagnostics.len(),
+        1,
+        "Rust oracle は and の non-Bool operand を診断するべき: {and_diagnostics:?}"
+    );
+    assert_eq!(
+        or_diagnostics.len(),
+        1,
+        "Rust oracle は or の non-Bool operand を診断するべき: {or_diagnostics:?}"
+    );
+    let and_span = and_diagnostics[0].span;
+    let or_span = or_diagnostics[0].span;
+
+    let harness = r#"
+(defn main []
+  (let [and-src "(defn and-check [x] :invariant (and 1 true) (+ x 1))"
+        or-src "(defn or-check [x] :invariant (or true 1) (+ x 1))"
+        and-suite (generate-tests and-src)
+        or-suite (generate-tests or-src)
+        and-result (vector-get (vector-get and-suite 1) 0)
+        or-result (vector-get (vector-get or-suite 1) 0)]
+    (do
+      (print (test-result-diagnostic and-result))
+      (print (test-result-diagnostic-start and-result))
+      (print (test-result-diagnostic-end and-result))
+      (print (test-result-diagnostic or-result))
+      (print (test-result-diagnostic-start or-result))
+      (print (test-result-diagnostic-end or-result))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_test_runner_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(lines.first().copied(), Some("2"), "and の Int operand は LS1002 にするべき");
+    assert_eq!(
+        lines.get(1).and_then(|line| line.parse::<usize>().ok()),
+        Some(and_span.start),
+        "selfhost and operand diagnostic span の開始位置は Rust oracle と一致するべき"
+    );
+    assert_eq!(
+        lines.get(2).and_then(|line| line.parse::<usize>().ok()),
+        Some(and_span.end),
+        "selfhost and operand diagnostic span の終了位置は Rust oracle と一致するべき"
+    );
+    assert_eq!(lines.get(3).copied(), Some("2"), "or の Int operand は LS1002 にするべき");
+    assert_eq!(
+        lines.get(4).and_then(|line| line.parse::<usize>().ok()),
+        Some(or_span.start),
+        "selfhost or operand diagnostic span の開始位置は Rust oracle と一致するべき"
+    );
+    assert_eq!(
+        lines.get(5).and_then(|line| line.parse::<usize>().ok()),
+        Some(or_span.end),
+        "selfhost or operand diagnostic span の終了位置は Rust oracle と一致するべき"
+    );
+}
+
 /// TEST-CLI-02-O2g1: selfhost runner が Bool でない invariant を LS1002 として報告すること
 #[test]
 fn test_e2e_selfhost_test_runner_rejects_non_bool_invariant() {

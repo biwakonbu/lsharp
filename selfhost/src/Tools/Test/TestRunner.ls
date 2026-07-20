@@ -836,6 +836,11 @@
 (defn value-truthy [value]
   (if (= (value-int-or-bool value) 0) 0 1))
 
+(defn logic-bool-operands? [arg0 arg1]
+  (if (= (value-tag arg0) (ast-lit-bool))
+    (if (= (value-tag arg1) (ast-lit-bool)) 1 0)
+    0))
+
 (defn values-equal [left right]
   (let [ltag (value-tag left)
     rtag (value-tag right)]
@@ -1184,15 +1189,19 @@
 
 (defn apply-builtin-logic [callee-hash arg0 arg1]
   (if (= callee-hash (hash-and))
-    (value-bool
-      (if (= (value-truthy arg0) 1)
-        (if (= (value-truthy arg1) 1) 1 0)
-        0))
-    (if (= callee-hash (hash-or))
+    (if (= (logic-bool-operands? arg0 arg1) 1)
       (value-bool
         (if (= (value-truthy arg0) 1)
-          1
-          (if (= (value-truthy arg1) 1) 1 0)))
+          (if (= (value-truthy arg1) 1) 1 0)
+          0))
+      (value-int 0))
+    (if (= callee-hash (hash-or))
+      (if (= (logic-bool-operands? arg0 arg1) 1)
+        (value-bool
+          (if (= (value-truthy arg0) 1)
+            1
+            (if (= (value-truthy arg1) 1) 1 0)))
+        (value-int 0))
       (if (= callee-hash (hash-not))
         (if (= (value-tag arg0) (ast-lit-bool))
           (value-bool (if (= (value-truthy arg0) 1) 0 1))
