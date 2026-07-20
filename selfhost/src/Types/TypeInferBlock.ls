@@ -3,6 +3,7 @@
 (import Types.Type)
 (import Types.TypeScheme)
 (import Types.TypeInferCore)
+(import Types.TypeInfer)
 
 ;; TypeInferBlock.ls - let 式、do ブロック、computation 式の型推論
 ;;

@@ -3,6 +3,7 @@
 (import Types.Type)
 (import Types.TypeScheme)
 (import Types.TypeInferCore)
+(import Types.TypeInfer)
 
 ;; TypeInferPattern.ls - パターンマッチの型推論
 ;;

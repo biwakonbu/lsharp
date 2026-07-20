@@ -1354,7 +1354,7 @@ fn cached_selfhost_bundle(cell: &'static OnceLock<String>, modules: &[&str]) -> 
                 let path = selfhost_source_path(name);
                 std::fs::read_to_string(&path).unwrap_or_else(|e| {
                     panic!("selfhost bundle 読み込み失敗 {}: {}", path.display(), e)
-                })
+                }).replace("(import Types.TypeInfer)\n", "")
             })
             .collect::<Vec<_>>()
             .join("\n")
@@ -1420,7 +1420,11 @@ pub(crate) fn selfhost_typeinfer_runtime_bundle() -> &'static str {
     cached_selfhost_bundle(
         &SELFHOST_TYPEINFER_RUNTIME_BUNDLE,
         &[
+            "Token.ls",
             "AST.ls",
+            "Lexer.ls",
+            "LexerCompat.ls",
+            "Parser.ls",
             "Type.ls",
             "TypeScheme.ls",
             "TypeInferCore.ls",

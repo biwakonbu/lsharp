@@ -124,8 +124,10 @@ fn test_e2e_selfhost_main_module_structure() {
 ///   Level 3: Types.TypeInferFunctions, Types.TypeInferBuiltins, Backend.Wasm.Compiler,
 ///            Tools.Text.FormatterDecl
 ///   Level 4: Types.TypeInfer, App.CompilerMode, Tools.Text.Formatter
-///   Level 5: App.PipelineSmoke
-///   Level 6: App.Main
+///   Level 5: Types.TypeInferApply, Types.TypeInferBlock, Types.TypeInferPattern,
+///            Types.TypeInferRecord
+///   Level 6: App.PipelineSmoke
+///   Level 7: App.Main
 #[test]
 fn test_e2e_selfhost_module_graph_topological_sort() {
     use std::collections::{HashMap, HashSet, VecDeque};
@@ -412,8 +414,16 @@ fn test_e2e_selfhost_module_graph_topological_sort() {
         );
     }
 
-    // Level 5: App.PipelineSmoke
-    let level_5: HashSet<&str> = ["App.PipelineSmoke"].iter().copied().collect();
+    // Level 5: type infer implementation slices
+    let level_5: HashSet<&str> = [
+        "Types.TypeInferApply",
+        "Types.TypeInferBlock",
+        "Types.TypeInferPattern",
+        "Types.TypeInferRecord",
+    ]
+    .iter()
+    .copied()
+    .collect();
     for module in &level_5 {
         assert_eq!(
             levels[*module], 5,
@@ -422,12 +432,22 @@ fn test_e2e_selfhost_module_graph_topological_sort() {
         );
     }
 
-    // Level 6: App.Main (-> App.CompilerMode, App.PipelineSmoke)
-    let level_6: HashSet<&str> = ["App.Main"].iter().copied().collect();
+    // Level 6: App.PipelineSmoke
+    let level_6: HashSet<&str> = ["App.PipelineSmoke"].iter().copied().collect();
     for module in &level_6 {
         assert_eq!(
             levels[*module], 6,
             "{} は Level 6 であるべき (実際: Level {})",
+            module, levels[*module]
+        );
+    }
+
+    // Level 7: App.Main (-> App.CompilerMode, App.PipelineSmoke)
+    let level_7: HashSet<&str> = ["App.Main"].iter().copied().collect();
+    for module in &level_7 {
+        assert_eq!(
+            levels[*module], 7,
+            "{} は Level 7 であるべき (実際: Level {})",
             module, levels[*module]
         );
     }

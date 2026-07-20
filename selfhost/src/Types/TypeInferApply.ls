@@ -4,6 +4,7 @@
 (import Types.TypeScheme)
 (import Types.TypeInferCore)
 (import Types.TypeInferFunctions)
+(import Types.TypeInfer)
 
 ;; TypeInferApply.ls - lambda 式と関数適用の型推論
 ;;

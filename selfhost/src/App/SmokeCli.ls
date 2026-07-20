@@ -2,6 +2,10 @@
 (import Syntax.Lexer)
 (import Syntax.Parser)
 (import Types.TypeInfer)
+(import Types.TypeInferApply)
+(import Types.TypeInferBlock)
+(import Types.TypeInferPattern)
+(import Types.TypeInferRecord)
 (import Backend.Wasm.Compiler)
 (import Backend.Wasm.WasmEmit)
 

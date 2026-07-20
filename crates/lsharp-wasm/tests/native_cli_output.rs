@@ -270,6 +270,59 @@ fn test_native_app_cli_check_parameterized_function_source_file_contract() {
 
 #[test]
 #[ignore = "actual native App.Cli program を LSHARP_NATIVE_APP_CLI_PROGRAM で指定する"]
+fn test_native_app_cli_check_builtin_application_preserves_return_type() {
+    if !cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+        return;
+    }
+
+    let program = PathBuf::from(
+        std::env::var_os("LSHARP_NATIVE_APP_CLI_PROGRAM")
+            .expect("LSHARP_NATIVE_APP_CLI_PROGRAM を指定すること"),
+    );
+    assert!(
+        program.is_file(),
+        "native App.Cli が見つからない: {}",
+        program.display()
+    );
+    let program = std::fs::canonicalize(&program).expect("native App.Cli の絶対パス化に失敗");
+
+    let dir = std::env::temp_dir().join(format!(
+        "lsharp_native_app_cli_builtin_application_type_contract_{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("fixture directory の作成に失敗");
+    std::fs::write(dir.join("input.ls"), "(defn probe [] (not true))")
+        .expect("fixture input.ls の書き込みに失敗");
+
+    let result = (|| {
+        let check = Command::new(&program)
+            .current_dir(&dir)
+            .args(["check", "input.ls"])
+            .output()
+            .expect("native App.Cli builtin application check の実行に失敗");
+        assert!(
+            check.status.success(),
+            "native check は builtin application を受理するべき: stdout={:?} stderr={:?}",
+            String::from_utf8_lossy(&check.stdout),
+            String::from_utf8_lossy(&check.stderr)
+        );
+        let check_stdout = String::from_utf8_lossy(&check.stdout);
+        assert!(
+            check_stdout.lines().any(|line| line == "Bool"),
+            "native check は builtin application の戻り値型 Bool を保持するべき: {check_stdout:?}"
+        );
+        assert!(
+            check_stdout.lines().any(|line| line == "diagnostics:0"),
+            "native check は builtin application で診断を出さないべき: {check_stdout:?}"
+        );
+    })();
+    let _ = std::fs::remove_dir_all(&dir);
+    result
+}
+
+#[test]
+#[ignore = "actual native App.Cli program を LSHARP_NATIVE_APP_CLI_PROGRAM で指定する"]
 fn test_native_app_cli_test_string_property_source_file_contract() {
     if !cfg!(all(target_os = "macos", target_arch = "aarch64")) {
         return;
