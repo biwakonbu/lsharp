@@ -2308,6 +2308,21 @@
             (root_pop)
             parsed))))))
 
+;; match arm の `when` guard は既存の [pattern, body] 配置を保ったまま body wrapper にする。
+(defn token-is-when-v3 [spans pos-ref src]
+  (if (= (p-current spans pos-ref) 20)
+    (if (string-eq (current-symbol-text-v3 spans pos-ref src) "when") 1 0)
+    0))
+
+(defn parse-match-arm-body-v3 [spans pos-ref src]
+  (if (= (token-is-when-v3 spans pos-ref src) 1)
+    (do
+      (p-advance pos-ref)
+      (let [guard (parse-expr-v3 spans pos-ref src)
+        body (parse-expr-v3 spans pos-ref src)]
+        (make-match-guard guard body)))
+    (parse-expr-v3 spans pos-ref src)))
+
 ;; match の腕を収集
 (defn parse-match-arms-rooted-v3 [spans pos-ref src result count]
   (if (== (p-current spans pos-ref) 1) ;; ) で終了
@@ -2319,7 +2334,7 @@
           (root_push result)
           (p-advance pos-ref) ;; [ を消費
           (let [pat (parse-pattern-v3 spans pos-ref src)
-            body (parse-expr-v3 spans pos-ref src)]
+            body (parse-match-arm-body-v3 spans pos-ref src)]
             (do
               (root_push pat)
               (root_push body)

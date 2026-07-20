@@ -1247,12 +1247,20 @@
             (vector-get pattern 1))
           env)))))
 
+(defn contract-node-unknown-hash-match-arm [program body env allow-result]
+  (if (= (vector-get body 0) (ast-match-guard))
+    (let [guard-found (contract-node-unknown-hash program (vector-get body 1) env allow-result)]
+      (if (>= guard-found 0)
+        guard-found
+        (contract-node-unknown-hash program (vector-get body 2) env allow-result)))
+    (contract-node-unknown-hash program body env allow-result)))
+
 (defn contract-node-unknown-hash-match-loop [program node env allow-result idx count]
   (if (>= idx count)
     -1
     (let [arm-base (+ 3 (* idx 2))
       arm-env (contract-bind-pattern-vars env (vector-get node arm-base))
-      found (contract-node-unknown-hash
+      found (contract-node-unknown-hash-match-arm
         program
         (vector-get node (+ arm-base 1))
         arm-env
@@ -1522,6 +1530,15 @@
           (vector-get pattern 2))
         env))))
 
+(defn eval-match-arm-body [program node env value pattern body idx count]
+  (let [arm-env (match-bind-pattern env pattern value)]
+    (if (= (vector-get body 0) (ast-match-guard))
+      (let [guard-value (eval-node program (vector-get body 1) arm-env)]
+        (if (= (value-truthy guard-value) 1)
+          (eval-node program (vector-get body 2) arm-env)
+          (eval-match-loop program node env value (+ idx 1) count)))
+      (eval-node program body arm-env))))
+
 (defn eval-match-loop [program node env value idx count]
   (if (>= idx count)
     (value-unit)
@@ -1529,12 +1546,29 @@
       pattern (vector-get node arm-base)
       body (vector-get node (+ arm-base 1))]
       (if (= (match-pattern? pattern value) 1)
-        (eval-node program body (match-bind-pattern env pattern value))
+        (eval-match-arm-body program node env value pattern body idx count)
         (eval-match-loop program node env value (+ idx 1) count)))))
 
 (defn eval-match [program node env]
   (let [value (eval-node program (vector-get node 1) env)]
     (eval-match-loop program node env value 0 (vector-get node 2))))
+
+(defn eval-match-arm-body-with-source [program node env value pattern body idx count src]
+  (let [arm-env (match-bind-pattern env pattern value)]
+    (if (= (vector-get body 0) (ast-match-guard))
+      (let [guard-value
+        (eval-node-with-source program (vector-get body 1) arm-env src)]
+        (if (= (value-truthy guard-value) 1)
+          (eval-node-with-source program (vector-get body 2) arm-env src)
+          (eval-match-loop-with-source
+            program
+            node
+            env
+            value
+            (+ idx 1)
+            count
+            src)))
+      (eval-node-with-source program body arm-env src))))
 
 (defn eval-match-loop-with-source [program node env value idx count src]
   (if (>= idx count)
@@ -1543,10 +1577,15 @@
       pattern (vector-get node arm-base)
       body (vector-get node (+ arm-base 1))]
       (if (= (match-pattern? pattern value) 1)
-        (eval-node-with-source
+        (eval-match-arm-body-with-source
           program
+          node
+          env
+          value
+          pattern
           body
-          (match-bind-pattern env pattern value)
+          idx
+          count
           src)
         (eval-match-loop-with-source program node env value (+ idx 1) count src)))))
 

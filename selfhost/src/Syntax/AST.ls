@@ -52,6 +52,7 @@
 (defn ast-pat-lit [] 42)
 (defn ast-pat-constructor [] 43)
 (defn ast-pat-recordpat [] 44)
+(defn ast-match-guard [] 45)
 (defn vector-push-single-rooted [base value]
   (do
     (root_push value)
@@ -240,6 +241,8 @@
 (defn make-quote [expr] (vector-push-pair-rooted (vector-new 2) (ast-quote) expr))
 (defn make-unquote [expr] (vector-push-pair-rooted (vector-new 2) (ast-unquote) expr))
 (defn make-unquote-splice [expr] (vector-push-pair-rooted (vector-new 2) (ast-unquote-splice) expr))
+(defn make-match-guard [guard body]
+  (vector-push-triple-rooted (vector-new 3) (ast-match-guard) guard body))
 (defn ast-tag [node] (vector-get node 0))
 (defn ast-is-leaf [tag] (if (= tag 1) 1 (if (= tag 2) 1 (if (= tag 4) 1 (if (= tag 3) 1 (if (= tag 19) 1 (if (= tag 32) 1 0)))))))
 (defn recordlit-contains-var-loop [node target-hash idx count] (if (>= idx count) 0 (if (= (ast-contains-var (vector-get node (+ 4 (* idx 2))) target-hash) 1) 1 (recordlit-contains-var-loop node target-hash (+ idx 1) count))))
