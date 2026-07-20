@@ -926,6 +926,14 @@ Rust syntax の lexer が `.` token を発行し、parser が `(. expr field)` �
 
 Evidence: `test_e2e_selfhost_test_runner_matches_rust_oracle_for_valid_invariant_record_field_access`、`cargo test -p lsharp-syntax -- --nocapture`（160 unit tests、metadata testsを含む）、record/guard/constructor/match/computation/string regression を含む 12 tests、`CARGO_INCREMENTAL=0 cargo test -p lsharp-wasm --test e2e e2e::selfhost_cli_core::test_e2e_selfhost_test_runner_matches_rust_oracle_for -- --nocapture`。これは Int field の nominal record と legacy invariant runner、直接 field-access syntax の verified sliceに限定した evidenceであり、nested/general record、record update、String/Map field semantics、full compiler/type/runtime parity、exhaustiveness、supported 2 targets の current-source artifact/runtime gate、EC-M1-01 aggregate は残件である。したがって TODO の `[~]` と Rust oracle / bootstrap 境界は維持する。
 
+### EC-M1-01 nested match evaluation regression slices (2026-07-20)
+
+legacy `:invariant` の match evaluator について、既存の再帰実装が nested record と nested ADT constructor の child pattern を同じ source-aware 経路で処理することを追加検証した。nested record は `Box -> Point` の nominal field をたどって child field binder を arm-local environment に束縛し、nested ADT は `Just (Just value)` の constructor tag/hash/arity を再帰照合して payload を束縛する。wildcard fallback、既存の `result` binding、deterministic invariant sample は変更していない。
+
+Evidence: `test_e2e_selfhost_test_runner_matches_rust_oracle_for_valid_invariant_nested_record_match`、`test_e2e_selfhost_test_runner_matches_rust_oracle_for_valid_invariant_nested_constructor_match`、`CARGO_INCREMENTAL=0 cargo test -p lsharp-wasm --test e2e e2e::selfhost_cli_core::test_e2e_selfhost_test_runner_matches_rust_oracle_for -- --nocapture`（15 tests）。両 nested fixture は Rust oracle と selfhost の結果数、pass、actual case count、diagnostic code を一致させた。
+
+これは legacy invariant TestRunner の nested record / nested ordinary ADT pattern に限定した differential evidenceであり、general ADT/record semantics、GADT refinement、exhaustiveness、String/Map field semantics、full compiler/type/runtime parity、supported 2 targets の current-source artifact/runtime gate、EC-M1-01 aggregate は残件である。したがって TODO の `[~]` と Rust oracle / bootstrap 境界は維持する。
+
 ### EC-M1-01 record update evaluation slice (2026-07-20)
 
 Rust AST の `RecordUpdate` display が `{(base) | ...}` を出力していたため、metadata test program の再パース時に `(base)` がゼロ引数関数呼び出しへ変わり、Rust oracle の型推論が record ではなく function を検査する不整合があった。display を `{base | ...}` に修正し、record update の parse/display/parse round-trip を syntax test で固定した。

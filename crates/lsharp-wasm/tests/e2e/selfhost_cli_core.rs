@@ -8517,6 +8517,56 @@ fn test_e2e_selfhost_test_runner_matches_rust_oracle_for_valid_invariant_constru
     );
 }
 
+/// EC-M1-01: legacy invariant の nested ADT constructor pattern が payload を bind すること
+#[test]
+fn test_e2e_selfhost_test_runner_matches_rust_oracle_for_valid_invariant_nested_constructor_match() {
+    let source = r#"
+(type (Maybe a) (Just a) Nothing)
+(defn make-nested-just [x] (Just (Just x)))
+(defn succ [x]
+  :invariant
+  (match (make-nested-just x)
+    [(Just (Just value)) (= result (+ value 1))]
+    [_ false])
+  (+ x 1))
+"#;
+    let oracle = run_metadata_tests(source);
+    assert_eq!(
+        oracle.len(),
+        1,
+        "Rust oracle は nested constructor match invariant 1 件を生成するべき"
+    );
+    assert!(
+        oracle[0].passed,
+        "Rust oracle の nested constructor match invariant は pass するべき"
+    );
+
+    let harness = r#"
+(defn main []
+  (let [src "(type (Maybe a) (Just a) Nothing) (defn make-nested-just [x] (Just (Just x))) (defn succ [x] :invariant (match (make-nested-just x) [(Just (Just value)) (= result (+ value 1))] [_ false]) (+ x 1))"
+        suite (generate-tests src)
+        results (vector-get suite 1)
+        result (vector-get results 0)]
+    (do
+      (print (vector-length results))
+      (print (vector-get result 1))
+      (print (vector-get result 2))
+      (print (vector-get result 3))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_test_runner_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(
+        lines,
+        vec!["1", "1", "5", "0"],
+        "selfhost nested constructor match evaluator は Rust oracle と同じ success を返すべき"
+    );
+}
+
 /// EC-M1-01: match arm guard の false fall-through を Rust oracle と selfhost が評価すること
 #[test]
 fn test_e2e_selfhost_test_runner_matches_rust_oracle_for_valid_invariant_match_guard() {
@@ -8604,6 +8654,51 @@ fn test_e2e_selfhost_test_runner_matches_rust_oracle_for_valid_invariant_record_
         lines,
         vec!["1", "1", "1", "0"],
         "selfhost record match evaluator は Rust oracle と同じ field binding success を返すべき"
+    );
+}
+
+/// EC-M1-01: legacy invariant の nested record pattern が child field を bind すること
+#[test]
+fn test_e2e_selfhost_test_runner_matches_rust_oracle_for_valid_invariant_nested_record_match() {
+    let source = r#"
+(type Point (record (: x Int) (: y Int)))
+(type Box (record (: point Point)))
+(defn nested-point []
+  :invariant (match {Box point {Point x 41 y 2}}
+                    [{Box point {Point x value y _}} (= value 41)]
+                    [_ false])
+  true)
+"#;
+    let oracle = run_metadata_tests(source);
+    assert_eq!(oracle.len(), 1, "Rust oracle は nested record invariant 1 件を生成するべき");
+    assert!(
+        oracle[0].passed,
+        "Rust oracle は nested record child field binder の match invariant を pass するべき"
+    );
+
+    let harness = r#"
+(defn main []
+  (let [src "(type Point (record (: x Int) (: y Int))) (type Box (record (: point Point))) (defn nested-point [] :invariant (match {Box point {Point x 41 y 2}} [{Box point {Point x value y _}} (= value 41)] [_ false]) true)"
+        suite (generate-tests src)
+        results (vector-get suite 1)
+        result (vector-get results 0)]
+    (do
+      (print (vector-length results))
+      (print (vector-get result 1))
+      (print (vector-get result 2))
+      (print (vector-get result 3))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_test_runner_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(
+        lines,
+        vec!["1", "1", "1", "0"],
+        "selfhost nested record match evaluator は Rust oracle と同じ child field binding success を返すべき"
     );
 }
 
