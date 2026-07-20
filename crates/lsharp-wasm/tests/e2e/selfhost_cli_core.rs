@@ -7869,6 +7869,59 @@ fn test_e2e_selfhost_cli_test_source_json_reports_unknown_invariant_span() {
     assert_eq!(lines[1], "2");
 }
 
+/// EC-M1-02/06: selfhost test JSON が property precondition の source span を返すこと
+#[test]
+fn test_e2e_selfhost_cli_test_source_json_reports_property_precondition_span() {
+    let source = "(defn identity [x] :property [(for-all [x Int] :cases 1 :precondition [(+ x 1)] :postcondition (= result x))] x)";
+    let program =
+        lsharp_syntax::parse(source).expect("property precondition fixture は parse できるべき");
+    let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "Rust oracle は non-Bool precondition を 1 件診断するべき"
+    );
+    assert!(
+        diagnostics[0].message.contains("Bool"),
+        "Rust oracle は property precondition の Bool 契約を診断するべき: {diagnostics:?}"
+    );
+    let oracle_span = diagnostics[0].span;
+
+    let harness = r#"
+(defn main []
+  (let [src "(defn identity [x] :property [(for-all [x Int] :cases 1 :precondition [(+ x 1)] :postcondition (= result x))] x)"]
+    (print (run-test-source src 1))))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines.len(),
+        2,
+        "property precondition の test JSON は report と exit code を返すべき"
+    );
+    let report: Value = serde_json::from_str(lines[0])
+        .expect("property precondition の selfhost test JSON は valid JSON であるべき");
+    assert_eq!(report["implementation_conformance"]["status"], "fail");
+    assert_eq!(
+        report["implementation_conformance"]["diagnostics"]["firstErrorCode"],
+        2
+    );
+    assert_eq!(
+        report["implementation_conformance"]["diagnostics"]["firstErrorSpan"]["start"],
+        oracle_span.start
+    );
+    assert_eq!(
+        report["implementation_conformance"]["diagnostics"]["firstErrorSpan"]["end"],
+        oracle_span.end
+    );
+    assert_eq!(lines[1], "2");
+}
+
 /// EC-M1-03: selfhost migration JSON の文字列値が JSON の escape 規則を守ること
 #[test]
 fn test_e2e_selfhost_migration_json_quote_escapes_delimiters_and_controls() {
