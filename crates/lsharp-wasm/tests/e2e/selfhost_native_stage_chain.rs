@@ -975,6 +975,133 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
 	        (root_pop)
 	                      final)))))))))))"#,
     );
+
+    let main_start = source
+        .rfind("(defn main []")
+        .expect("Linux x86 seed source に最後の main が存在すること");
+    let mut source = source;
+    source.replace_range(
+        main_start..main_start + "(defn main []".len(),
+        "(defn linux-x86-diagnostic-main []",
+    );
+    let compact_main_helpers = r#"
+(defn linux-x86-normal-payload [path]
+  (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)]
+    (compile-file-functions-payload-with-cache path 10 cache-ref parse-count-ref)))
+
+(defn linux-x86-normal-emit-header [starts entrypoint-func-idx entrypoint-offset code-len]
+  (do
+    (print 9000000005)
+    (print (vector-length starts))
+    (print entrypoint-func-idx)
+    (print entrypoint-offset)
+    (print 9000000006)
+    (print 9000000001)
+    (print code-len)
+    (print 9000000002)))
+
+(defn linux-x86-normal-emit-code [native-callables starts user-total range-start range-end]
+  (print-x86-function-code-segments-loop
+    native-callables
+    starts
+    10
+    user-total
+    range-start
+    range-end))
+
+(defn linux-x86-normal-emit-tail [data]
+  (let [data-len (vector-length data)]
+    (do
+      (print-x86-code-trailer-segments 10)
+      (print 9000000003)
+      (print data-len)
+      (print 9000000004)
+      (print-packed-code-bytes-loop data 0 data-len))))
+
+(defn linux-x86-normal-transport-main []
+  (let [payload (linux-x86-normal-payload (command-line-arg 1))]
+    (do
+      (root_push payload)
+      (let [functions (vector-get payload 0)
+            data (vector-get payload 1)]
+        (do
+          (root_push functions)
+          (root_push data)
+          (let [callables
+                  (append-vector-loop
+                    (push-import-placeholders 0 10 (vector-new 32))
+                    functions
+                    0
+                    (vector-length functions))]
+            (do
+              (root_push callables)
+              (let [target (make-target 3)
+                    native-callables callables]
+                (do
+                  (root_push native-callables)
+                  (root_push target)
+                  (let [starts (collect-callable-function-slot-starts-x86 native-callables 10)]
+                    (do
+                      (root_push starts)
+                      (let [user-total (callable-user-total-slot-size-x86 native-callables 10)
+                            code-len (+ user-total (x86-selfhost-helper-trailer-size 10))
+                            entrypoint-func-idx (+ 9 (vector-length functions))
+                            entrypoint-offset (vector-get starts (- entrypoint-func-idx 10))
+                            range-start (parse-positive-int (command-line-arg 2))
+                            range-end-arg (parse-positive-int (command-line-arg 3))
+                            include-header (if (= range-end-arg 0) 1 (parse-positive-int (command-line-arg 4)))
+                            include-tail (if (= range-end-arg 0) 1 (parse-positive-int (command-line-arg 5)))
+                            range-end (if (= range-end-arg 0) (vector-length starts) range-end-arg)]
+                        (do
+                          (if (= include-header 1)
+                            (linux-x86-normal-emit-header
+                              starts
+                              entrypoint-func-idx
+                              entrypoint-offset
+                              code-len)
+                            0)
+                          (linux-x86-normal-emit-code
+                            native-callables
+                            starts
+                            user-total
+                            range-start
+                            range-end)
+                          (if (= include-tail 1)
+                            (linux-x86-normal-emit-tail data)
+                            0)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          0)))))))))))))
+
+(defn linux-x86-diagnostic-mode []
+  (if (> (string-length (command-line-arg 6)) 0)
+    1
+    (if (> (string-length (command-line-arg 7)) 0)
+      1
+      (if (> (string-length (command-line-arg 8)) 0)
+        1
+        (if (> (string-length (command-line-arg 10)) 0)
+          1
+          (if (> (string-length (command-line-arg 11)) 0)
+            1
+            (if (> (string-length (command-line-arg 12)) 0)
+              1
+              (if (> (string-length (command-line-arg 13)) 0) 1 0))))))))
+"#;
+    let diagnostic_start = source
+        .find("(defn linux-x86-diagnostic-main []")
+        .expect("Linux x86 seed の diagnostic main が存在すること");
+    let (source_prefix, diagnostic_main) = source.split_at(diagnostic_start);
+    let source = format!(
+        "{}{}{}\n(defn main []\n  (if (= (linux-x86-diagnostic-mode) 1)\n    (linux-x86-diagnostic-main)\n    (linux-x86-normal-transport-main)))",
+        source_prefix, compact_main_helpers, diagnostic_main
+    );
     inline_linux_x86_slot_size_helper(source)
 }
 
@@ -9108,6 +9235,36 @@ fn test_linux_x86_representative_seed_has_opcode40_call_replay_metadata_diagnost
             )
             && source.contains("(print-x86-call-control-replay-diagnostic control-ctx idx opcode operand offset size)"),
         "Linux x86 segmented seed は opcode 40 user call の IR row / direct bundle / emitted bytes / rel32 target を同一 metadata row で出せるべき"
+    );
+}
+
+#[test]
+fn test_linux_x86_representative_seed_dispatches_normal_transport_through_small_main() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+
+    assert!(
+        source.contains("(defn linux-x86-diagnostic-main []")
+            && source.contains("(defn linux-x86-normal-transport-main []")
+            && source.contains("(defn linux-x86-diagnostic-mode []")
+            && source.contains(
+                "(if (= (linux-x86-diagnostic-mode) 1)\n    (linux-x86-diagnostic-main)\n    (linux-x86-normal-transport-main))",
+            ),
+        "Linux x86 seed は巨大な診断用 local binding を通常 transport の entrypoint から分離するべき"
+    );
+
+    let normal_body = source
+        .split("(defn linux-x86-normal-transport-main []")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn linux-x86-diagnostic-mode []").next())
+        .expect("Linux x86 seed に通常 transport helper が存在すること");
+    assert!(
+        !normal_body.contains("compile-file-functions-payload-with-cache-normal-setup-diagnostic")
+            && !normal_body.contains("print-x86-function-ir-owner-window")
+            && normal_body.contains("linux-x86-normal-payload (command-line-arg 1)")
+            && source.contains(
+                "(compile-file-functions-payload-with-cache path 10 cache-ref parse-count-ref)",
+            ),
+        "通常 transport helper は診断用 payload 分岐を抱えず、production payload だけを呼ぶべき",
     );
 }
 
