@@ -13925,6 +13925,60 @@ fn test_selfhost_test_runner_evaluates_all_invariant_samples() {
     );
 }
 
+/// native の parser -> TypeInfer apply 経路が Rust-hosted selfhost と同じ結果を返すべき。
+#[test]
+#[ignore]
+fn test_e2e_selfhost_native_typeinfer_program_apply_matches_selfhost() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.OverrideMain)
+(import Syntax.Parser)
+(import Types.Type)
+(import Types.TypeInfer)
+
+(defn main []
+  (let [analysis (infer-program-analysis (parse-program "(defn p [] (not true))"))
+        ty (infer-program-analysis-type analysis)]
+    (do
+      (print (type-tag ty))
+      (print (type-name ty))
+      (print (infer-program-analysis-diagnostic-count analysis))
+      (print (infer-program-analysis-first-error-code analysis))
+      0)))
+"#;
+
+    assert_representative_override_main_matches_selfhost(
+        "native-typeinfer-program-apply",
+        main_source,
+    );
+}
+
+/// 1 引数の user call は AArch64 の native value window と引数 ABI を保つべき。
+#[test]
+#[ignore]
+fn test_e2e_selfhost_native_aarch64_one_arg_user_call_preserves_argument_and_return() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.OverrideMain)
+
+(defn identity [x] x)
+
+(defn main []
+  (do
+    (print (identity 42))
+    0))
+"#;
+
+    assert_representative_override_main_matches_selfhost(
+        "native-aarch64-one-arg-user-call",
+        main_source,
+    );
+}
+
 fn describe_native_process_exit_status(status: std::process::ExitStatus) -> String {
     #[cfg(unix)]
     {
