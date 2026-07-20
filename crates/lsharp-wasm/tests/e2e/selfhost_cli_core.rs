@@ -8702,6 +8702,43 @@ fn test_e2e_selfhost_test_runner_matches_rust_oracle_for_valid_invariant_nested_
     );
 }
 
+/// EC-M1-02: canonical property の複数 binder / 複数 precondition を Rust oracle と揃えること
+#[test]
+fn test_e2e_selfhost_test_runner_matches_rust_oracle_for_multiple_property_preconditions() {
+    let source = "(defn sum [left right] :property [(for-all [a Int b Int] :cases 5 :precondition [(>= a 0) (< b 5)] :postcondition (= result (+ a b)))] (+ left right))";
+    let oracle = run_metadata_tests(source);
+    assert_eq!(oracle.len(), 1, "Rust oracle は property 1 件を生成するべき");
+    assert!(
+        oracle[0].passed,
+        "Rust oracle は複数 precondition を満たす property を pass するべき"
+    );
+
+    let harness = r#"
+(defn main []
+  (let [src "(defn sum [left right] :property [(for-all [a Int b Int] :cases 5 :precondition [(>= a 0) (< b 5)] :postcondition (= result (+ a b)))] (+ left right))"
+        suite (generate-tests-from-source src)
+        properties (vector-get suite 4)
+        result0 (vector-get properties 0)]
+    (do
+      (print (vector-length properties))
+      (print (vector-get result0 1))
+      (print (vector-get result0 2))
+      (print (vector-get result0 3))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_test_runner_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(
+        lines,
+        vec!["1", "1", "4", "0"],
+        "selfhost property runner は複数 binder / precondition の pass と actual count を Rust oracle と揃えるべき"
+    );
+}
+
 /// EC-M1-01: legacy invariant の record field access が field value を返すこと
 #[test]
 fn test_e2e_selfhost_test_runner_matches_rust_oracle_for_valid_invariant_record_field_access() {

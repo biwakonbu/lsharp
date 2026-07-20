@@ -930,9 +930,17 @@ Evidence: `test_e2e_selfhost_test_runner_matches_rust_oracle_for_valid_invariant
 
 legacy `:invariant` の match evaluator について、既存の再帰実装が nested record と nested ADT constructor の child pattern を同じ source-aware 経路で処理することを追加検証した。nested record は `Box -> Point` の nominal field をたどって child field binder を arm-local environment に束縛し、nested ADT は `Just (Just value)` の constructor tag/hash/arity を再帰照合して payload を束縛する。wildcard fallback、既存の `result` binding、deterministic invariant sample は変更していない。
 
-Evidence: `test_e2e_selfhost_test_runner_matches_rust_oracle_for_valid_invariant_nested_record_match`、`test_e2e_selfhost_test_runner_matches_rust_oracle_for_valid_invariant_nested_constructor_match`、`CARGO_INCREMENTAL=0 cargo test -p lsharp-wasm --test e2e e2e::selfhost_cli_core::test_e2e_selfhost_test_runner_matches_rust_oracle_for -- --nocapture`（15 tests）。両 nested fixture は Rust oracle と selfhost の結果数、pass、actual case count、diagnostic code を一致させた。
+Evidence: `test_e2e_selfhost_test_runner_matches_rust_oracle_for_valid_invariant_nested_record_match`、`test_e2e_selfhost_test_runner_matches_rust_oracle_for_valid_invariant_nested_constructor_match`、`CARGO_INCREMENTAL=0 cargo test -p lsharp-wasm --test e2e e2e::selfhost_cli_core::test_e2e_selfhost_test_runner_matches_rust_oracle_for -- --nocapture`（16 tests）。両 nested fixture は Rust oracle と selfhost の結果数、pass、actual case count、diagnostic code を一致させた。
 
 これは legacy invariant TestRunner の nested record / nested ordinary ADT pattern に限定した differential evidenceであり、general ADT/record semantics、GADT refinement、exhaustiveness、String/Map field semantics、full compiler/type/runtime parity、supported 2 targets の current-source artifact/runtime gate、EC-M1-01 aggregate は残件である。したがって TODO の `[~]` と Rust oracle / bootstrap 境界は維持する。
+
+### EC-M1-02 multiple property preconditions evaluation slice (2026-07-20)
+
+selfhost `TestRunner` の canonical `:property` evaluation について、source-order の複数 typed binder と複数 precondition を同一 sample に適用する経路を Rust oracle と比較した。`Int` binder `a` / `b` に `a >= 0` と `b < 5` を conjunction として適用し、5 cases の deterministic prefix のうち 4 cases を postcondition まで評価する。precondition を一つだけ評価して false sample を誤って実行する挙動や、全件を vacuous success とする挙動は確認されなかった。
+
+Evidence: `test_e2e_selfhost_runner_matches_rust_oracle_for_multiple_property_preconditions`、既存の property binder / conjunction / vacuity regression、`CARGO_INCREMENTAL=0 cargo test -p lsharp-wasm --test e2e e2e::selfhost_cli_core::test_e2e_selfhost_runner_matches_rust_oracle_for -- --nocapture`。fixture は Rust oracle の pass と selfhost の `1 / 1 / 4 / 0`（property count / pass / actual cases / diagnostic）を一致させた。
+
+これは deterministic Int property の複数 precondition evaluator に限定した verified sliceであり、一般 `TypeExpr`、constraint-directed generator、seed/shrink/coverage、全 ContractSuite variant、structured report、supported 2 targets の current-source artifact/runtime evidence、EC-M1-02 aggregate は残件である。したがって TODO の `[~]` と Rust oracle / bootstrap 境界は維持する。
 
 ### EC-M1-01 record update evaluation slice (2026-07-20)
 
