@@ -20,6 +20,14 @@
     (vector-new 2)
     diagnostic-count
     first-error-code))
+(defn assertion-check-state-with-span
+  [diagnostic-count first-error-code first-error-start first-error-end]
+  (vector-push-quad-rooted
+    (vector-new 4)
+    diagnostic-count
+    first-error-code
+    first-error-start
+    first-error-end))
 (defn case-check-state [diagnostic-count first-error-code first-error-start first-error-end]
   (vector-push-quad-rooted
     (vector-new 4)
@@ -546,56 +554,94 @@
                 (canonical-assertion-non-bool-code))
               (canonical-assertion-non-bool-code))))))))
 (defn check-assertion-predicates-loop
-  [predicates idx count decl env counter diagnostic-count first-error-code]
+  [predicates spans idx count decl env counter diagnostic-count first-error-code first-error-start first-error-end]
   (if (>= idx count)
-    (assertion-check-state diagnostic-count first-error-code)
-    (let [code (check-assertion-predicate
+    (assertion-check-state-with-span
+      diagnostic-count
+      first-error-code
+      first-error-start
+      first-error-end)
+    (let [span-count (if (= spans 0) 0 (vector-length spans))
+      span-index (* idx 2)
+      predicate-start
+        (if (> span-count span-index) (vector-get spans span-index) 0)
+      predicate-end
+        (if (> span-count (+ span-index 1))
+          (vector-get spans (+ span-index 1))
+          0)
+      code (check-assertion-predicate
         (vector-get predicates idx)
         decl
         env
         counter)
       next-count (if (> code 0) (+ diagnostic-count 1) diagnostic-count)
       next-first-error-code
-        (if (= first-error-code 0) code first-error-code)]
+        (if (= first-error-code 0) code first-error-code)
+      next-first-error-start
+        (if (= first-error-code 0) predicate-start first-error-start)
+      next-first-error-end
+        (if (= first-error-code 0) predicate-end first-error-end)]
       (check-assertion-predicates-loop
         predicates
+        spans
         (+ idx 1)
         count
         decl
         env
         counter
         next-count
-        next-first-error-code))))
-(defn check-assertion-form [form decl env counter diagnostic-count first-error-code]
+        next-first-error-code
+        next-first-error-start
+        next-first-error-end))))
+(defn check-assertion-form
+  [form decl env counter diagnostic-count first-error-code first-error-start first-error-end]
   (if (= (vector-get form 0) 3)
-    (let [predicates (vector-get form 1)]
+    (let [predicates (vector-get form 1)
+      spans (if (> (vector-length form) 4) (vector-get form 4) 0)
+      directive-start (if (> (vector-length form) 2) (vector-get form 2) 0)
+      directive-end (if (> (vector-length form) 3) (vector-get form 3) 0)]
       (if (= (vector-length predicates) 0)
-        (assertion-check-state
+        (assertion-check-state-with-span
           (+ diagnostic-count 1)
           (if (= first-error-code 0)
             (canonical-assertion-empty-code)
-            first-error-code))
+            first-error-code)
+          (if (= first-error-code 0) directive-start first-error-start)
+          (if (= first-error-code 0) directive-end first-error-end))
         (check-assertion-predicates-loop
           predicates
+          spans
           0
           (vector-length predicates)
           decl
           env
           counter
           diagnostic-count
-          first-error-code)))
-    (assertion-check-state diagnostic-count first-error-code)))
+          first-error-code
+          first-error-start
+          first-error-end)))
+    (assertion-check-state-with-span
+      diagnostic-count
+      first-error-code
+      first-error-start
+      first-error-end)))
 (defn check-assertion-forms-loop
-  [forms idx count decl env counter diagnostic-count first-error-code]
+  [forms idx count decl env counter diagnostic-count first-error-code first-error-start first-error-end]
   (if (>= idx count)
-    (assertion-check-state diagnostic-count first-error-code)
+    (assertion-check-state-with-span
+      diagnostic-count
+      first-error-code
+      first-error-start
+      first-error-end)
     (let [state (check-assertion-form
         (vector-get forms idx)
         decl
         env
         counter
         diagnostic-count
-        first-error-code)]
+        first-error-code
+        first-error-start
+        first-error-end)]
       (check-assertion-forms-loop
         forms
         (+ idx 1)
@@ -604,11 +650,13 @@
         env
         counter
         (vector-get state 0)
-        (vector-get state 1)))))
+        (vector-get state 1)
+        (vector-get state 2)
+        (vector-get state 3)))))
 (defn check-defn-assertions [decl env counter]
   (let [forms (defn-ordered-forms decl)]
     (if (= forms 0)
-      (assertion-check-state 0 0)
+      (assertion-check-state-with-span 0 0 0 0)
       (check-assertion-forms-loop
         forms
         0
@@ -616,6 +664,8 @@
         decl
         env
         counter
+        0
+        0
         0
         0))))
 ;; canonical :case は owner の引数や result を暗黙に束縛しない。
@@ -777,9 +827,13 @@
         0
         0))))
 (defn check-module-program-loop
-  [program idx count env counter diagnostic-count first-error-code]
+  [program idx count env counter diagnostic-count first-error-code first-error-start first-error-end]
   (if (>= idx count)
-    (assertion-check-state diagnostic-count first-error-code)
+    (assertion-check-state-with-span
+      diagnostic-count
+      first-error-code
+      first-error-start
+      first-error-end)
     (let [decl (vector-get program idx)]
       (do
         (root_push decl)
@@ -788,13 +842,17 @@
             (check-defn-assertions decl env counter)
             (if (= tag (ast-module-decl))
               (check-module-assertions decl)
-              (assertion-check-state 0 0)))]
+              (assertion-check-state-with-span 0 0 0 0)))]
           (do
             (root_push state)
             (let [next-count (+ diagnostic-count (vector-get state 0))
               state-first-code (vector-get state 1)
               next-first-code
                 (if (= first-error-code 0) state-first-code first-error-code)
+              next-first-error-start
+                (if (= first-error-code 0) (vector-get state 2) first-error-start)
+              next-first-error-end
+                (if (= first-error-code 0) (vector-get state 3) first-error-end)
               result (check-module-program-loop
                 program
                 (+ idx 1)
@@ -802,7 +860,9 @@
                 env
                 counter
                 next-count
-                next-first-code)]
+                next-first-code
+                next-first-error-start
+                next-first-error-end)]
               (do
                 (root_pop)
                 (root_pop)
@@ -819,11 +879,17 @@
         env
         counter
         0
+        0
+        0
         0))))
 (defn check-program-assertions-loop
-  [program idx count env counter diagnostic-count first-error-code]
+  [program idx count env counter diagnostic-count first-error-code first-error-start first-error-end]
   (if (>= idx count)
-    (assertion-check-state diagnostic-count first-error-code)
+    (assertion-check-state-with-span
+      diagnostic-count
+      first-error-code
+      first-error-start
+      first-error-end)
     (let [decl (vector-get program idx)]
       (do
         (root_push decl)
@@ -839,14 +905,18 @@
                     (check-defn-assertions inner env counter)
                     (if (= inner-tag (ast-module-decl))
                       (check-module-assertions inner)
-                      (assertion-check-state 0 0))))
-                (assertion-check-state 0 0))))]
+                      (assertion-check-state-with-span 0 0 0 0))))
+                (assertion-check-state-with-span 0 0 0 0))))]
           (do
             (root_push state)
             (let [next-count (+ diagnostic-count (vector-get state 0))
               state-first-code (vector-get state 1)
               next-first-code
                 (if (= first-error-code 0) state-first-code first-error-code)
+              next-first-error-start
+                (if (= first-error-code 0) (vector-get state 2) first-error-start)
+              next-first-error-end
+                (if (= first-error-code 0) (vector-get state 3) first-error-end)
               result (check-program-assertions-loop
                 program
                 (+ idx 1)
@@ -854,7 +924,9 @@
                 env
                 counter
                 next-count
-                next-first-code)]
+                next-first-code
+                next-first-error-start
+                next-first-error-end)]
               (do
                 (root_pop)
                 (root_pop)
@@ -868,6 +940,8 @@
       (vector-length program)
       env
       counter
+      0
+      0
       0
       0)))
 (defn check-canonical-assertions [program]
