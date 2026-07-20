@@ -1467,8 +1467,81 @@
     body (vector-get decl (+ 3 param-count))]
     (eval-node program body env)))
 
+(defn make-record-value [type-hash field-count]
+  (vector-push-triple-rooted
+    (vector-new 3)
+    (ast-recordlit)
+    type-hash
+    field-count))
+
+(defn eval-record-fields-loop [program node env result idx count]
+  (if (>= idx count)
+    result
+    (let [field-hash (vector-get node (+ 3 (* idx 2)))
+      value (eval-node program (vector-get node (+ 4 (* idx 2))) env)
+      next-result (vector-push-pair-rooted result field-hash value)]
+      (eval-record-fields-loop
+        program
+        node
+        env
+        next-result
+        (+ idx 1)
+        count))))
+
+(defn eval-record-literal [program node env]
+  (eval-record-fields-loop
+    program
+    node
+    env
+    (make-record-value (vector-get node 1) (vector-get node 2))
+    0
+    (vector-get node 2)))
+
 ;; 移行期 contract evaluator の match subset。
 ;; literal / wildcard / variable に加え、1段の ADT constructor pattern を扱う。
+(defn record-value-field-index-loop [value field-hash idx count]
+  (if (>= idx count)
+    -1
+    (if (= (vector-get value (+ 3 (* idx 2))) field-hash)
+      idx
+      (record-value-field-index-loop value field-hash (+ idx 1) count))))
+
+(defn record-value-field [value field-hash]
+  (let [idx (record-value-field-index-loop
+      value
+      field-hash
+      0
+      (vector-get value 2))]
+    (if (< idx 0)
+      0
+      (vector-get value (+ 4 (* idx 2))))))
+
+(defn match-pattern-record-loop [pattern value idx count]
+  (if (>= idx count)
+    1
+    (let [pattern-base (+ 2 (* idx 2))
+      field-value (record-value-field
+        value
+        (vector-get pattern pattern-base))]
+      (if (= field-value 0)
+        0
+        (if (= (match-pattern?
+            (vector-get pattern (+ pattern-base 1))
+            field-value) 1)
+          (match-pattern-record-loop pattern value (+ idx 1) count)
+          0)))))
+
+(defn match-pattern-record [pattern value]
+  (if (= (value-tag value) (ast-recordlit))
+    (let [field-count (vector-get pattern 1)
+      pattern-type-hash (vector-get pattern (+ 2 (* field-count 2)))]
+      (if (= pattern-type-hash 0)
+        (match-pattern-record-loop pattern value 0 field-count)
+        (if (= pattern-type-hash (vector-get value 1))
+          (match-pattern-record-loop pattern value 0 field-count)
+          0)))
+    0))
+
 (defn match-pattern-constructor-loop [pattern value idx count]
   (if (>= idx count)
     1
@@ -1502,7 +1575,26 @@
                   0)
                 0)
               0)
-            0))))))
+            (if (= tag (ast-pat-recordpat))
+              (match-pattern-record pattern value)
+              0)))))))
+
+(defn match-bind-pattern-record-loop [env pattern value idx count]
+  (if (>= idx count)
+    env
+    (let [pattern-base (+ 2 (* idx 2))
+      field-value (record-value-field
+        value
+        (vector-get pattern pattern-base))]
+      (match-bind-pattern-record-loop
+        (match-bind-pattern
+          env
+          (vector-get pattern (+ pattern-base 1))
+          field-value)
+        pattern
+        value
+        (+ idx 1)
+        count))))
 
 (defn match-bind-pattern-constructor-loop [env pattern value idx count]
   (if (>= idx count)
@@ -1528,7 +1620,14 @@
           value
           0
           (vector-get pattern 2))
-        env))))
+        (if (= tag (ast-pat-recordpat))
+          (match-bind-pattern-record-loop
+            env
+            pattern
+            value
+            0
+            (vector-get pattern 1))
+          env)))))
 
 (defn eval-match-arm-body [program node env value pattern body idx count]
   (let [arm-env (match-bind-pattern env pattern value)]
@@ -1691,9 +1790,11 @@
       node
       (if (= tag (ast-lit-bool))
         node
-          (if (= tag (ast-lit-unit))
-            node
-            (if (= tag (ast-var))
+      (if (= tag (ast-lit-unit))
+        node
+        (if (= tag (ast-recordlit))
+          (eval-record-literal program node env)
+          (if (= tag (ast-var))
             (let [name-hash (vector-get node 1)]
               (if (= (env-has? env name-hash) 1)
                 (env-lookup env name-hash)
@@ -1722,7 +1823,7 @@
                       (eval-node program (vector-get node 1) env)
                       (if (= tag (ast-apply))
                         (eval-apply program node env)
-                        (value-unit))))))))))))))
+                        (value-unit)))))))))))))))
 
 ;; legacy invariant の String literal は AST が source offset を保持するため、
 ;; source-aware evaluator でだけ実値へ materialize する。
@@ -1750,6 +1851,36 @@
     env (bind-params-loop (env-new) decl args 0 param-count)
     body (vector-get decl (+ 3 param-count))]
     (eval-node-with-source program body env src)))
+
+(defn eval-record-fields-loop-with-source
+  [program node env result idx count src]
+  (if (>= idx count)
+    result
+    (let [field-hash (vector-get node (+ 3 (* idx 2)))
+      value (eval-node-with-source
+        program
+        (vector-get node (+ 4 (* idx 2)))
+        env
+        src)
+      next-result (vector-push-pair-rooted result field-hash value)]
+      (eval-record-fields-loop-with-source
+        program
+        node
+        env
+        next-result
+        (+ idx 1)
+        count
+        src))))
+
+(defn eval-record-literal-with-source [program node env src]
+  (eval-record-fields-loop-with-source
+    program
+    node
+    env
+    (make-record-value (vector-get node 1) (vector-get node 2))
+    0
+    (vector-get node 2)
+    src))
 
 (defn eval-apply-with-source [program node env src]
   (do
@@ -1804,6 +1935,8 @@
           (value-string-node-with-source node src)
           (if (= tag (ast-lit-unit))
             node
+            (if (= tag (ast-recordlit))
+              (eval-record-literal-with-source program node env src)
             (if (= tag (ast-var))
               (let [name-hash (vector-get node 1)]
                 (if (= (env-has? env name-hash) 1)
@@ -1841,7 +1974,7 @@
                           (eval-node-with-source program (vector-get node 1) env src)
                           (if (= tag (ast-apply))
                             (eval-apply-with-source program node env src)
-                            (value-unit)))))))))))))))
+                            (value-unit))))))))))))))))
 
 (defn depth-total [paren-depth bracket-depth brace-depth]
   (+ (+ paren-depth bracket-depth) brace-depth))

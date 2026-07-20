@@ -898,6 +898,12 @@ legacy `:invariant` の match evaluator に、型宣言で定義された ADT co
 
 Evidence: `test_e2e_selfhost_test_runner_matches_rust_oracle_for_valid_invariant_constructor_match`、既存 match/computation/string invariant regression を含む 9 tests、`CARGO_INCREMENTAL=0 cargo test -p lsharp-wasm --test e2e e2e::selfhost_cli_core::test_e2e_selfhost_test_runner_matches_rust_oracle_for -- --nocapture`。これは constructor の 1段 payload と legacy invariant runner に限定した verified sliceであり、nested/general ADT、record/GADT/exhaustiveness、full type/runtime parity、supported 2 targets の current-source artifact/runtime gate、EC-M1-01 aggregate は残件である。したがって TODO の `[~]` と Rust oracle / bootstrap 境界は維持する。
 
+### EC-M1-01 record pattern evaluation slice (2026-07-20)
+
+legacy `:invariant` の match evaluator に、record literal を evaluator 内の tagged value として materializeする経路を追加した。record pattern は nominal type hash を比較し、要求された field hash を value から検索して child pattern を再帰評価し、field binder を arm-local environment へ追加する。既存の `[pattern, body]` arm layout と wildcard fallback は維持した。Rust oracle と selfhost TestRunner を同じ `Point` fixtureで比較し、record field binder の invariant が双方で pass することを確認した。
+
+Evidence: `test_e2e_selfhost_test_runner_matches_rust_oracle_for_valid_invariant_record_match`、既存 match/computation/string/constructor/guard regression を含む 11 tests、`CARGO_INCREMENTAL=0 cargo test -p lsharp-wasm --test e2e e2e::selfhost_cli_core::test_e2e_selfhost_test_runner_matches_rust_oracle_for -- --nocapture`。これは Int field を持つ nominal record の legacy invariant runner sliceに限定した verified evidenceであり、nested/general record、record update、String/Map field semantics、full compiler/type/runtime parity、exhaustiveness、supported 2 targets の current-source artifact/runtime gate、EC-M1-01 aggregate は残件である。したがって TODO の `[~]` と Rust oracle / bootstrap 境界は維持する。
+
 ### EC-M1-01 match arm guard fall-through slice (2026-07-20)
 
 legacy `:invariant` の match evaluator に、`when` guard を既存の `[pattern, body]` arm 配置を保つ内部 wrapper として保持する parser 経路を追加した。TestRunner は pattern binding 後に guard を評価し、false なら次の arm へ fall-through、true なら同じ arm body を評価する。unknown-variable preflight と source-aware evaluation も wrapper の guard/body を再帰的に走査する。同一 fixture の false guard と true guard を Rust oracle と比較し、selfhost は結果数 `2`、各結果の pass `1`、failure/diagnostic `0` を返した。
