@@ -14934,6 +14934,38 @@ fn test_e2e_selfhost_cli_main_with_help_lsp_stdio_option() {
     );
 }
 
+/// GC rooting の回帰: shadowed root slot は allocating value の評価中も生存すること
+#[test]
+fn test_e2e_selfhost_root_set_preserves_shadowed_slot_during_allocating_value() {
+    let source = r#"(module App.Main)
+
+(defn main []
+  (let [base (vector-push (vector-new 1) 42)]
+    (do
+      (root_push base)
+      (let [slot (root_push base)]
+        (let [slot (root_push base)
+              _updated (root_set slot (vector-push (vector-new 1) 7))
+              updated (root_pop)]
+          (do
+            (root_push updated)
+            (print (vector-get updated 0))
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            0))))))"#;
+    let output = compile_and_run(&format!(
+        "{}\n{}",
+        selfhost_test_runner_runtime_bundle(),
+        source
+    ));
+
+    assert_eq!(
+        output, "7\n",
+        "root_set は shadowed slot を更新し、allocating value の結果を保持すべき"
+    );
+}
+
 /// TEST-LSP-01: selfhost/src/Tools/Lsp/LspServer.ls 存在 + JSON-RPC dispatch 構造
 ///
 /// T4-2: L# 製 LSP の正式化 -- LspServer.ls が存在し JSON-RPC dispatch を持つこと

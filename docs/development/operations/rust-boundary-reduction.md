@@ -963,3 +963,11 @@ Evidence: `test_e2e_selfhost_parser_typed_property_contract_preserves_expression
 selfhost `Tools.Test.TestRunner` は、既存 property test-case の heterogeneous vector shapeを変更せず、`run-properties-from-source` 内で一度だけ作った source-span sidecarを `materialize-property` の診断生成へ渡すようになった。non-Bool postcondition、static vacuityなどの postcondition 起因 failureでは、既存の unknown-variable span経路を壊さず、Rust oracleの postcondition expression spanを test result の後方 `4..5`へ保持する。source-less `run-properties` は従来どおり `0..0` の明示的な非 source boundaryを使う。
 
 Evidence: RED の `test_e2e_selfhost_property_runner_preserves_non_bool_postcondition_span` は selfhost の `0..0` と Rust oracle の `71..86` の差分で失敗し、GREEN は同じ fixtureで `LS1002 / 71 / 86` を確認した（focused E2E 1 passed、24.32s）。既存の typed contract / sidecar span testsは再実行対象として維持する。precondition の predicate ごとの選択 span、property failureの text/JSON report forwarding、Mac Apple Silicon / Linux x86_64 current-source artifact/runtime、EC-M1-02 aggregateは残件であり、TODOの `[~]` は維持する。
+
+### LEGACY-ROOT-01 shadowed root slot guard slice (2026-07-20)
+
+`root_set` の lexical shadowing と allocating value の組み合わせを、最小 `TestRunner` runtime bundleで回帰固定した。旧値 `42` を外側 root slotへ保持し、内側で同名 `slot` を pushした後、`(root_set slot (vector-push (vector-new 1) 7))` で新しい heap 値を更新する。最内側の slotだけを popしてから値を読むことで、外側 slotを誤って解放・参照する実装を検出できる。期待値は `7\n` である。
+
+Evidence: `test_e2e_selfhost_root_set_preserves_shadowed_slot_during_allocating_value` は、最初の誤った `vector-new` 長さ前提を `vector-push` の意味論に合わせて修正した後、`1 passed`（25.64s）となった。既存の Mac/native stage-chain fixtureも同じ旧値42・新値7の契約へ同期した。rooting 規約は `docs/development/planning/memory-management-roadmap.md` に追加した。
+
+これは Rust/Wasm の current runtime bundle guard と native fixture correction の verified sliceであり、Linux x86_64 current-source native stage0、Mac Apple Silicon current-source native artifact、全 selfhost sourceの lint/guard、GC stress mode、`LEGACY-ROOT-01` aggregate の完了証拠ではない。Linux current-source gateは既存の `9e8dab64` evidenceを超えて再実行していないため、TODOの `[ ]` と残る Rust/bootstrap/host boundary は維持する。

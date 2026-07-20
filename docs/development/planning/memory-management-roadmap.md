@@ -17,6 +17,17 @@
 【事実】2026-03-24 時点の Wasmtime 最新ドキュメントでは `Config::wasm_gc` は既定で有効ではなく、collector の既定は deferred reference counting 系である。cycles を完全には回収しない。mainline の意味論を全面的に委ねる先としてはまだ弱い。  
 【事実】現在の REPL は入力ごとに新しい Wasm module/store を生成して破棄する。したがって現行 REPL 自体は単一 Wasm インスタンス内でヒープを積み上げる構造ではない。ただし、長寿命 Wasm インスタンス、将来の stateful REPL、サーバーモードでは回収不能ヒープが問題になる。
 
+## Selfhost rooting 規約
+
+【規約】selfhost の heap 値 (`Vector` / `String` / record など) を割り当てを起こしうる呼び出しの前後で保持する場合、呼び出し前に `root_push` し、最後の使用後に対応する `root_pop` を行う。割り当てを起こしうるか判定しにくい呼び出しは、保守的に root する。
+
+【規約】ループや shadowing された binding の中で root slot の値を更新する場合は `root_set` を使う。slot を先に作ってから allocating value を評価し、評価後に `root_set` で新しい heap 値へ更新する。内側の同名 binding が外側の slot を誤って解放しないよう、push/pop は lexical scope に対応させる。
+
+【検証済み】`crates/lsharp-wasm/tests/e2e/selfhost_cli_core.rs` の
+`test_e2e_selfhost_root_set_preserves_shadowed_slot_during_allocating_value` は、旧値 `42` と allocating value の新値 `7` を shadowed root slot へ設定し、`7\n` を確認する。native stage-chain にも同じ fixture を保持する。
+
+【残件】この guard は Rust/Wasm の current runtime bundle の証拠であり、Linux x86_64 の current-source native stage0、Mac Apple Silicon native artifact、lint による全 selfhost source の静的検査、GC stress mode の証拠ではない。
+
 ## 採用方針
 
 ### 1. Mainline: precise non-moving tracing GC

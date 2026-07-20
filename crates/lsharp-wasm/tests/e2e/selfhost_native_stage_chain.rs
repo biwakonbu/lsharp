@@ -54403,7 +54403,7 @@ fn test_e2e_selfhost_pipeline_smoke_root_set_keeps_shadowed_slot_during_allocati
     let main_source = r#"(module App.Main)
 
 (defn main []
-  (let [base (vector-new 1)]
+  (let [base (vector-push (vector-new 1) 42)]
     (do
       (root_push base)
       (let [slot (root_push base)]
@@ -54412,7 +54412,7 @@ fn test_e2e_selfhost_pipeline_smoke_root_set_keeps_shadowed_slot_during_allocati
               updated (root_pop)]
           (do
             (root_push updated)
-            (print (vector-length updated))
+            (print (vector-get updated 0))
             (root_pop)
             (root_pop)
             (root_pop)
