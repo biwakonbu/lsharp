@@ -186,6 +186,14 @@ L# の最終目標は、Rust 実装を正本として残したまま一部のコ
 - 未対応、partial parity、Rust-only、bootstrap/oracle、external boundary、未検証 ABI を分類し、未完了のまま `[x]` や完了移行を行わない。完了項目だけを ADR に移し、TODO から削除する。
 - 同じ blocker が解消していない場合でも、停止時は次の RED、再現 command、blocker、残る target/evidence を記録する。再開時はその記録と current state を照合し、重複した heavy replay を起動しない。
 
+### 継続作業と終了条件
+
+- 明示的な一時停止指示がない限り、partial parity や blocker が残った時点で作業を完了扱いにしない。各継続ターンは `git status`、`TODO.md`、target artifact/VM 状態を refresh し、次の具体的な RED または識別実験へ進む。
+- heavy gate の待機中は同じ仮説の replay を増やさず、非共有の parser/type/runtime、診断、fixture、contract test、docs、証跡監査を進める。gate 完了後に結果を統合し、仮説が棄却された場合は実装を残さず次の仮説へ移る。
+- blocker で止まる場合でも、failure value、failure boundary、対象 target、再現 command、次の識別実験、残る evidence を current docs に記録する。停止は未完了の省略ではなく、再開可能な状態を作るための記録工程とする。
+- 「Rust なしで日常開発できる verified slice」は中間状態であり、全機能・全公開 surface・両対応 target・配布 provenance の完了監査を通るまで Rust-free 完了や Rust 削除を宣言しない。
+- 完了判定は実装や単一テストの存在ではなく、TODO/仕様/Issue/ADR の各 requirement と target/evidence の current audit が終わり、残タスクが次の未完項目として残っていないことを確認してから行う。
+
 ## hooks/スキルのトラブルシューティング
 
 hooks やスキルに問題が発生した場合は `.Codex/rules/hook-troubleshooting.md` を参照。
