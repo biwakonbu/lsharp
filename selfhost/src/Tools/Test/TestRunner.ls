@@ -983,6 +983,104 @@
 (defn env-has? [env name-hash]
   (if (= (map-get env name-hash) 0) 0 1))
 
+;; ADT constructor は evaluator 内で [tag, constructor-hash, arity, payload...] として保持する。
+;; 型宣言に登録された constructor だけを値化し、未定義関数を誤って constructor として扱わない。
+(defn find-constructor-in-variants-loop [variants target-hash idx count]
+  (if (>= idx count)
+    0
+    (let [variant (vector-get variants idx)]
+      (if (= (vector-get variant 0) target-hash)
+        1
+        (find-constructor-in-variants-loop
+          variants
+          target-hash
+          (+ idx 1)
+          count)))))
+
+(defn find-constructor-in-module-body-loop [module-node target-hash idx count]
+  (if (>= idx count)
+    0
+    (if (= (find-constructor-in-decl
+        (vector-get module-node (+ idx 3))
+        target-hash) 1)
+      1
+      (find-constructor-in-module-body-loop
+        module-node
+        target-hash
+        (+ idx 1)
+        count))))
+
+(defn find-constructor-in-decl [decl target-hash]
+  (let [tag (vector-get decl 0)]
+    (if (= tag (ast-type-decl))
+      (let [variants-index (if (> (vector-length decl) 3) 3 2)
+        variants (vector-get decl variants-index)]
+        (find-constructor-in-variants-loop
+          variants
+          target-hash
+          0
+          (vector-length variants)))
+      (if (= tag (ast-private))
+        (find-constructor-in-decl (vector-get decl 1) target-hash)
+        (if (= tag (ast-module-decl))
+          (find-constructor-in-module-body-loop
+            decl
+            target-hash
+            0
+            (vector-get decl 2))
+          0)))))
+
+(defn constructor-defined-loop [program target-hash idx count]
+  (if (>= idx count)
+    0
+    (if (= (find-constructor-in-decl (vector-get program idx) target-hash) 1)
+      1
+      (constructor-defined-loop
+        program
+        target-hash
+        (+ idx 1)
+        count))))
+
+(defn constructor-defined? [program target-hash]
+  (constructor-defined-loop
+    program
+    target-hash
+    0
+    (vector-length program)))
+
+(defn make-constructor-value-loop [base args idx count]
+  (if (>= idx count)
+    base
+    (let [arg (vector-get args idx)]
+      (do
+        (root_push arg)
+        (root_push base)
+        (let [next (vector-push base arg)]
+          (do
+            (root_pop)
+            (root_pop)
+            (make-constructor-value-loop next args (+ idx 1) count)))))))
+
+(defn make-constructor-value [constructor-hash args]
+  (do
+    (root_push args)
+    (let [base (vector-push-triple-rooted
+        (vector-new 3)
+        (ast-pat-constructor)
+        constructor-hash
+        (vector-length args))]
+      (do
+        (root_push base)
+        (let [result (make-constructor-value-loop
+            base
+            args
+            0
+            (vector-length args))]
+          (do
+            (root_pop)
+            (root_pop)
+            result))))))
+
 (defn builtin-hash-arith? [name-hash]
   (if (= name-hash (hash-plus)) 1
     (if (= name-hash (hash-minus)) 1
@@ -1362,7 +1460,20 @@
     (eval-node program body env)))
 
 ;; 移行期 contract evaluator の match subset。
-;; literal / wildcard / variable pattern だけを扱い、constructor/record は未対応境界に残す。
+;; literal / wildcard / variable に加え、1段の ADT constructor pattern を扱う。
+(defn match-pattern-constructor-loop [pattern value idx count]
+  (if (>= idx count)
+    1
+    (if (= (match-pattern?
+        (vector-get pattern (+ 3 idx))
+        (vector-get value (+ 3 idx))) 1)
+      (match-pattern-constructor-loop
+        pattern
+        value
+        (+ idx 1)
+        count)
+      0)))
+
 (defn match-pattern? [pattern value]
   (let [tag (vector-get pattern 0)]
     (if (= tag (ast-pat-wildcard))
@@ -1371,12 +1482,45 @@
         1
         (if (= tag (ast-pat-lit))
           (values-equal value (vector-get pattern 1))
-          0)))))
+          (if (= tag (ast-pat-constructor))
+            (if (= (value-tag value) (ast-pat-constructor))
+              (if (= (vector-get pattern 1) (vector-get value 1))
+                (if (= (vector-get pattern 2) (vector-get value 2))
+                  (match-pattern-constructor-loop
+                    pattern
+                    value
+                    0
+                    (vector-get pattern 2))
+                  0)
+                0)
+              0)
+            0))))))
+
+(defn match-bind-pattern-constructor-loop [env pattern value idx count]
+  (if (>= idx count)
+    env
+    (match-bind-pattern-constructor-loop
+      (match-bind-pattern
+        env
+        (vector-get pattern (+ 3 idx))
+        (vector-get value (+ 3 idx)))
+      pattern
+      value
+      (+ idx 1)
+      count)))
 
 (defn match-bind-pattern [env pattern value]
-  (if (= (vector-get pattern 0) (ast-pat-var))
-    (env-bind env (vector-get pattern 1) value)
-    env))
+  (let [tag (vector-get pattern 0)]
+    (if (= tag (ast-pat-var))
+      (env-bind env (vector-get pattern 1) value)
+      (if (= tag (ast-pat-constructor))
+        (match-bind-pattern-constructor-loop
+          env
+          pattern
+          value
+          0
+          (vector-get pattern 2))
+        env))))
 
 (defn eval-match-loop [program node env value idx count]
   (if (>= idx count)
@@ -1490,7 +1634,9 @@
                     (let [decl (find-defn-by-hash program callee-hash 0 (vector-length program))]
                       (if (> (vector-length decl) 0)
                         (eval-defn-call program decl args)
-                        (value-unit)))))
+                        (if (= (constructor-defined? program callee-hash) 1)
+                          (make-constructor-value callee-hash args)
+                          (value-unit))))))
                 (value-unit))]
               (do
                 (root_pop)
@@ -1506,10 +1652,15 @@
       node
       (if (= tag (ast-lit-bool))
         node
-        (if (= tag (ast-lit-unit))
-          node
-          (if (= tag (ast-var))
-            (env-lookup env (vector-get node 1))
+          (if (= tag (ast-lit-unit))
+            node
+            (if (= tag (ast-var))
+            (let [name-hash (vector-get node 1)]
+              (if (= (env-has? env name-hash) 1)
+                (env-lookup env name-hash)
+                (if (= (constructor-defined? program name-hash) 1)
+                  (make-constructor-value name-hash (vector-new 0))
+                  (value-unit))))
             (if (= tag (ast-if))
               (let [cond-value (eval-node program (vector-get node 1) env)]
                 (if (= (value-tag cond-value) (ast-lit-bool))
@@ -1591,7 +1742,9 @@
                       (find-defn-by-hash program callee-hash 0 (vector-length program))]
                       (if (> (vector-length decl) 0)
                         (eval-defn-call-with-source program decl args src)
-                        (value-unit)))))
+                        (if (= (constructor-defined? program callee-hash) 1)
+                          (make-constructor-value callee-hash args)
+                          (value-unit))))))
                 (value-unit))]
               (do
                 (root_pop)
@@ -1613,7 +1766,12 @@
           (if (= tag (ast-lit-unit))
             node
             (if (= tag (ast-var))
-              (env-lookup env (vector-get node 1))
+              (let [name-hash (vector-get node 1)]
+                (if (= (env-has? env name-hash) 1)
+                  (env-lookup env name-hash)
+                  (if (= (constructor-defined? program name-hash) 1)
+                    (make-constructor-value name-hash (vector-new 0))
+                    (value-unit))))
               (if (= tag (ast-if))
                 (let [cond-value
                   (eval-node-with-source program (vector-get node 1) env src)]

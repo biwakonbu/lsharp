@@ -8467,6 +8467,56 @@ fn test_e2e_selfhost_test_runner_matches_rust_oracle_for_valid_invariant_match()
     );
 }
 
+/// EC-M1-01: ADT constructor expression と constructor pattern の invariant を Rust oracle と揃えること
+#[test]
+fn test_e2e_selfhost_test_runner_matches_rust_oracle_for_valid_invariant_constructor_match() {
+    let source = r#"
+(type (Maybe a) (Just a) Nothing)
+(defn make-just [x] (Just x))
+(defn succ [x]
+  :invariant
+  (match (make-just x)
+    [(Just value) (= result (+ value 1))]
+    [Nothing false])
+  (+ x 1))
+"#;
+    let oracle = run_metadata_tests(source);
+    assert_eq!(
+        oracle.len(),
+        1,
+        "Rust oracle は constructor match invariant 1 件を生成するべき"
+    );
+    assert!(
+        oracle[0].passed,
+        "Rust oracle の constructor match invariant は pass するべき"
+    );
+
+    let harness = r#"
+(defn main []
+  (let [src "(type (Maybe a) (Just a) Nothing) (defn make-just [x] (Just x)) (defn succ [x] :invariant (match (make-just x) [(Just value) (= result (+ value 1))] [Nothing false]) (+ x 1))"
+        suite (generate-tests src)
+        results (vector-get suite 1)
+        result0 (vector-get results 0)]
+    (do
+      (print (vector-length results))
+      (print (vector-get result0 1))
+      (print (vector-get result0 2))
+      (print (vector-get result0 3))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_test_runner_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(
+        lines,
+        vec!["1", "1", "5", "0"],
+        "selfhost constructor match evaluator は Rust oracle と同じ success を返すべき"
+    );
+}
+
 /// EC-M1-01: invariant 内 match の literal / wildcard pattern を Rust oracle と selfhost が評価すること
 #[test]
 fn test_e2e_selfhost_test_runner_matches_rust_oracle_for_literal_and_wildcard_match() {
