@@ -818,6 +818,42 @@
 (defn value-string [text]
   (vector-push-pair-rooted (vector-new 2) (ast-lit-string) text))
 
+(defn decode-string-escape [src idx end]
+  (if (>= (+ idx 1) end)
+    "\\"
+    (let [escaped (string-char-at src (+ idx 1))]
+      (if (= escaped 110) "\n"
+        (if (= escaped 116) "\t"
+          (if (= escaped 114) "\r"
+            (if (= escaped 34) "\""
+              (if (= escaped 92) "\\"
+                (substring src (+ idx 1) (+ idx 2))))))))))
+
+(defn decode-string-literal-loop [src idx end out]
+  (if (>= idx end)
+    out
+    (if (= (string-char-at src idx) 92)
+      (decode-string-literal-loop
+        src
+        (+ idx 2)
+        end
+        (string-concat out (decode-string-escape src idx end)))
+      (decode-string-literal-loop
+        src
+        (+ idx 1)
+        end
+        (string-concat out (substring src idx (+ idx 1)))))))
+
+(defn decode-string-literal [src start end]
+  (decode-string-literal-loop src start end ""))
+
+(defn value-string-node-with-source [node src]
+  (value-string
+    (decode-string-literal
+      src
+      (vector-get node 1)
+      (vector-get node 2))))
+
 (defn value-unit []
   (make-lit-unit))
 
@@ -1366,6 +1402,118 @@
                       (if (= tag (ast-apply))
                         (eval-apply program node env)
                         (value-unit))))))))))))))
+
+;; legacy invariant の String literal は AST が source offset を保持するため、
+;; source-aware evaluator でだけ実値へ materialize する。
+(defn eval-do-loop-with-source [program node env idx count last src]
+  (if (>= idx count)
+    last
+    (let [value (eval-node-with-source program (vector-get node (+ 2 idx)) env src)]
+      (eval-do-loop-with-source program node env (+ idx 1) count value src))))
+
+(defn eval-args-loop-with-source [program node env idx count results src]
+  (if (>= idx count)
+    results
+    (let [value (eval-node-with-source program (vector-get node (+ 3 idx)) env src)]
+      (eval-args-loop-with-source
+        program
+        node
+        env
+        (+ idx 1)
+        count
+        (vector-push results value)
+        src))))
+
+(defn eval-defn-call-with-source [program decl args src]
+  (let [param-count (vector-get decl 2)
+    env (bind-params-loop (env-new) decl args 0 param-count)
+    body (vector-get decl (+ 3 param-count))]
+    (eval-node-with-source program body env src)))
+
+(defn eval-apply-with-source [program node env src]
+  (do
+    (root_push program)
+    (root_push node)
+    (root_push env)
+    (root_push src)
+    (let [callee (vector-get node 1)
+      argc (vector-get node 2)]
+      (do
+        (root_push callee)
+        (let [args
+          (eval-args-loop-with-source
+            program
+            node
+            env
+            0
+            argc
+            (vector-new (+ argc 1))
+            src)]
+          (do
+            (root_push args)
+            (let [result
+              (if (= (vector-get callee 0) (ast-var))
+                (let [callee-hash (vector-get callee 1)]
+                  (if (= (builtin-hash? callee-hash) 1)
+                    (apply-builtin callee-hash args)
+                    (let [decl
+                      (find-defn-by-hash program callee-hash 0 (vector-length program))]
+                      (if (> (vector-length decl) 0)
+                        (eval-defn-call-with-source program decl args src)
+                        (value-unit)))))
+                (value-unit))]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result))))))))
+
+(defn eval-node-with-source [program node env src]
+  (let [tag (vector-get node 0)]
+    (if (= tag (ast-lit-int))
+      node
+      (if (= tag (ast-lit-bool))
+        node
+        (if (= tag (ast-lit-string))
+          (value-string-node-with-source node src)
+          (if (= tag (ast-lit-unit))
+            node
+            (if (= tag (ast-var))
+              (env-lookup env (vector-get node 1))
+              (if (= tag (ast-if))
+                (let [cond-value
+                  (eval-node-with-source program (vector-get node 1) env src)]
+                  (if (= (value-tag cond-value) (ast-lit-bool))
+                    (if (= (value-truthy cond-value) 1)
+                      (eval-node-with-source program (vector-get node 2) env src)
+                      (eval-node-with-source program (vector-get node 3) env src))
+                    (value-int 0)))
+                (if (= tag (ast-let))
+                  (let [name-hash (vector-get node 1)
+                    init-value (eval-node-with-source program (vector-get node 2) env src)
+                    body-env (env-bind env name-hash init-value)]
+                    (eval-node-with-source program (vector-get node 3) body-env src))
+                  (if (= tag (ast-match))
+                    (eval-match program node env)
+                    (if (= tag (ast-do))
+                      (eval-do-loop-with-source
+                        program
+                        node
+                        env
+                        0
+                        (vector-get node 1)
+                        (value-unit)
+                        src)
+                      (if (= tag (ast-computation))
+                        (eval-computation program node env)
+                        (if (= tag (ast-ann))
+                          (eval-node-with-source program (vector-get node 1) env src)
+                          (if (= tag (ast-apply))
+                            (eval-apply-with-source program node env src)
+                            (value-unit)))))))))))))))
 
 (defn depth-total [paren-depth bracket-depth brace-depth]
   (+ (+ paren-depth bracket-depth) brace-depth))
@@ -2593,15 +2741,22 @@
         with-second (vector-push with-first second)]
         (append-zero-invariant-args with-second 2 param-count)))))
 
-(defn eval-invariant-sample [program tc decl param-count sample-idx]
-  (value-truthy (eval-invariant-sample-value program tc decl param-count sample-idx)))
+(defn eval-invariant-sample [program tc decl param-count sample-idx src]
+  (value-truthy
+    (eval-invariant-sample-value
+      program
+      tc
+      decl
+      param-count
+      sample-idx
+      src)))
 
-(defn eval-invariant-sample-value [program tc decl param-count sample-idx]
+(defn eval-invariant-sample-value [program tc decl param-count sample-idx src]
   (let [args (invariant-sample-args param-count sample-idx)
-    result (eval-defn-call program decl args)
+    result (eval-defn-call-with-source program decl args src)
     param-env (bind-params-loop (env-new) decl args 0 param-count)
     invariant-env (env-bind param-env (hash-result) result)
-    actual (eval-node program (vector-get tc 2) invariant-env)]
+    actual (eval-node-with-source program (vector-get tc 2) invariant-env src)]
     actual))
 
 (defn invariant-sample-summary [passed bool-valid]
@@ -2609,16 +2764,23 @@
     (vector-push (vector-new 2) passed)
     bool-valid))
 
-(defn run-invariant-samples-loop [program tc decl sample-idx sample-count all-passed]
+(defn run-invariant-samples-loop [program tc decl sample-idx sample-count all-passed src]
   (if (>= sample-idx sample-count)
     all-passed
     (let [param-count (vector-get decl 2)
-      passed (eval-invariant-sample program tc decl param-count sample-idx)
+      passed (eval-invariant-sample program tc decl param-count sample-idx src)
       next-passed (if (= passed 1) all-passed 0)]
-      (run-invariant-samples-loop program tc decl (+ sample-idx 1) sample-count next-passed))))
+      (run-invariant-samples-loop
+        program
+        tc
+        decl
+        (+ sample-idx 1)
+        sample-count
+        next-passed
+        src))))
 
 (defn run-invariant-sample-summary-loop
-  [program tc decl sample-idx sample-count all-passed all-bool]
+  [program tc decl sample-idx sample-count all-passed all-bool src]
   (if (>= sample-idx sample-count)
     (invariant-sample-summary all-passed all-bool)
     (let [param-count (vector-get decl 2)
@@ -2627,7 +2789,8 @@
         tc
         decl
         param-count
-        sample-idx)
+        sample-idx
+        src)
       bool-valid (if (= (value-tag actual) (ast-lit-bool)) 1 0)
       passed (if (= bool-valid 1) (value-truthy actual) 0)
       next-passed (if (= passed 1) all-passed 0)
@@ -2639,7 +2802,8 @@
         (+ sample-idx 1)
         sample-count
         next-passed
-        next-bool))))
+        next-bool
+        src))))
 
 (defn materialize-invariant [program tc src]
   (let [name (vector-get tc 0)
@@ -2661,7 +2825,8 @@
           0
           sample-count
           1
-          1)
+          1
+          src)
         (invariant-sample-summary 0 1)))
     type-valid (vector-get sample-summary 1)
     diagnostic-code (if (>= unknown-hash 0)

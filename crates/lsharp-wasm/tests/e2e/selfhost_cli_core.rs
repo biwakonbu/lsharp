@@ -7650,6 +7650,40 @@ fn test_e2e_selfhost_cli_test_source_json_reports_non_bool_invariant() {
     assert_eq!(lines[1], "2");
 }
 
+/// EC-M1-01/06: selfhost test JSON が unknown invariant identifier の token span を返すこと
+#[test]
+fn test_e2e_selfhost_cli_test_source_json_reports_unknown_invariant_span() {
+    let harness = r#"
+(defn main []
+  (let [src "(defn succ [x] :invariant (= result (+ missing 1)) (+ x 1))"]
+    (print (run-test-source src 1))))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(lines.len(), 2, "unknown invariant の test JSON は report と exit code を返すべき");
+    let report: Value = serde_json::from_str(lines[0])
+        .expect("unknown invariant の selfhost test JSON は valid JSON であるべき");
+    assert_eq!(report["implementation_conformance"]["status"], "fail");
+    assert_eq!(
+        report["implementation_conformance"]["diagnostics"]["firstErrorCode"],
+        1
+    );
+    assert_eq!(
+        report["implementation_conformance"]["diagnostics"]["firstErrorSpan"]["start"],
+        39
+    );
+    assert_eq!(
+        report["implementation_conformance"]["diagnostics"]["firstErrorSpan"]["end"],
+        46
+    );
+    assert_eq!(lines[1], "2");
+}
+
 /// EC-M1-03: selfhost migration JSON の文字列値が JSON の escape 規則を守ること
 #[test]
 fn test_e2e_selfhost_migration_json_quote_escapes_delimiters_and_controls() {
@@ -8161,6 +8195,40 @@ fn test_e2e_selfhost_test_runner_matches_rust_oracle_for_valid_invariant_computa
         lines,
         vec!["1", "1", "5", "0"],
         "selfhost computation evaluator は let! binding を保持し Rust oracle と揃えるべき"
+    );
+}
+
+/// EC-M1-01: selfhost runner が String literal invariant を Rust oracle と評価すること
+#[test]
+fn test_e2e_selfhost_test_runner_matches_rust_oracle_for_valid_invariant_string_literal() {
+    let source = "(defn label [] :invariant (string-eq result \"ok\") \"ok\")";
+    let oracle = run_metadata_tests(source);
+    assert_eq!(oracle.len(), 1, "Rust oracle は String invariant 1 件を生成するべき");
+    assert!(oracle[0].passed, "Rust oracle の String invariant は pass するべき");
+
+    let harness = r#"
+(defn main []
+  (let [src "(defn label [] :invariant (string-eq result \"ok\") \"ok\")"
+        suite (generate-tests src)
+        results (vector-get suite 1)
+        result0 (vector-get results 0)]
+    (do
+      (print (vector-length results))
+      (print (vector-get result0 1))
+      (print (vector-get result0 2))
+      (print (vector-get result0 3))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_test_runner_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(
+        lines,
+        vec!["1", "1", "1", "0"],
+        "selfhost String invariant は Rust oracle と同じ success を返すべき"
     );
 }
 
