@@ -7452,6 +7452,16 @@ fn test_selfhost_cli_sources_route_property_runner_boundary() {
             "{} の check は property 専用診断本文を持つべき",
             file_name
         );
+        assert!(
+            source.contains("case-test-actual-start"),
+            "{} の test JSON preflight は canonical case の actual span を report へ渡すべき",
+            file_name
+        );
+        assert!(
+            source.contains("diagnostic-start") && source.contains("diagnostic-end"),
+            "{} の test JSON preflight は firstErrorSpan を固定 0..0 にせず構築するべき",
+            file_name
+        );
     }
 }
 

@@ -102,6 +102,11 @@ fn canonical_case_rejects_unsupported_string_comparison() {
 
     assert_eq!(diagnostics.len(), 1);
     assert!(diagnostics[0].message.contains("Int / Bool"));
+    assert_eq!(
+        &SOURCE[diagnostics[0].span.start..diagnostics[0].span.end],
+        "\"a\"",
+        "unsupported String case は actual 式の span を正本にするべき"
+    );
     assert_eq!(diagnostics[0].function_name, "noop");
 }
 

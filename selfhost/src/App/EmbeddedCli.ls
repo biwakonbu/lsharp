@@ -279,6 +279,9 @@
     invariants (extract-invariants-from-program program)
     assertions (extract-assertions-from-program program)
     cases (extract-cases-from-program program)
+    first-case (if (> (vector-length cases) 0) (vector-get cases 0) 0)
+    diagnostic-start (if (= first-case 0) 0 (case-test-actual-start first-case))
+    diagnostic-end (if (= first-case 0) 0 (case-test-actual-end first-case))
     properties (extract-property-test-cases program)
     method (assurance-method
       (vector-length properties)
@@ -286,7 +289,16 @@
       (vector-length assertions)
       (vector-length examples)
       (vector-length invariants))
-    rendered (assurance-report-json "fail" method 0 0 1 1 diagnostic-code 0 0)]
+    rendered (assurance-report-json
+      "fail"
+      method
+      0
+      0
+      1
+      1
+      diagnostic-code
+      diagnostic-start
+      diagnostic-end)]
     (do
       (print-string rendered)
       (print-string "\n")

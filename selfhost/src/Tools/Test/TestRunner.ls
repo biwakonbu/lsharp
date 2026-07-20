@@ -32,17 +32,39 @@
 (defn make-test-case [name input expected]
   (vector-push-triple-rooted (vector-new 3) name input expected))
 
-;; canonical :case: [name-id, actual-expr, expected-expr, diagnostic-code]
-(defn make-case-test-case [name actual expected diagnostic-code]
-  (vector-push-quad-rooted
-    (vector-new 4)
-    name
-    actual
-    expected
-    diagnostic-code))
+;; canonical :case: [name-id, actual-expr, expected-expr, diagnostic-code,
+;;                   actual-start, actual-end, expected-start, expected-end]
+(defn make-case-test-case
+  [name actual expected diagnostic-code actual-start actual-end expected-start expected-end]
+  (let [base (vector-push-quad-rooted
+      (vector-new 8)
+      name
+      actual
+      expected
+      diagnostic-code)]
+    (do
+      (root_push base)
+      (let [result (vector-push-quad-rooted
+          base
+          actual-start
+          actual-end
+          expected-start
+          expected-end)]
+        (do
+          (root_pop)
+          result)))))
 
-(defn append-case-test-case-rooted [results name actual expected diagnostic-code]
-  (let [test-case (make-case-test-case name actual expected diagnostic-code)]
+(defn append-case-test-case-rooted
+  [results name actual expected diagnostic-code actual-start actual-end expected-start expected-end]
+  (let [test-case (make-case-test-case
+      name
+      actual
+      expected
+      diagnostic-code
+      actual-start
+      actual-end
+      expected-start
+      expected-end)]
     (vector-push-single-rooted results test-case)))
 
 ;; テスト結果: [name-id, passed, actual, diagnostic-code]
@@ -540,13 +562,18 @@
     (vector-length program)
     (vector-new 8)))
 
-;; parser-owned canonical :case form [4, [[actual, expected, start, end] ...]] を case へ投影する。
+;; parser-owned canonical :case form [4, [[actual, expected, entry-start, entry-end,
+;; actual-start, actual-end, expected-start, expected-end] ...]] を case へ投影する。
 (defn append-parser-case-expectations-loop [expectations idx count results]
   (if (>= idx count)
     results
     (let [pair (vector-get expectations idx)
       actual (vector-get pair 0)
-      expected (vector-get pair 1)]
+      expected (vector-get pair 1)
+      actual-start (if (> (vector-length pair) 4) (vector-get pair 4) 0)
+      actual-end (if (> (vector-length pair) 5) (vector-get pair 5) 0)
+      expected-start (if (> (vector-length pair) 6) (vector-get pair 6) 0)
+      expected-end (if (> (vector-length pair) 7) (vector-get pair 7) 0)]
       (append-parser-case-expectations-loop
         expectations
         (+ idx 1)
@@ -556,7 +583,11 @@
           (vector-length results)
           actual
           expected
-          0)))))
+          0
+          actual-start
+          actual-end
+          expected-start
+          expected-end)))))
 
 (defn append-parser-ordered-case-form [form results]
   (if (= (vector-get form 0) (contract-form-case))
@@ -567,7 +598,11 @@
           (vector-length results)
           (value-unit)
           (value-unit)
-          (contract-diagnostic-empty-case))
+          (contract-diagnostic-empty-case)
+          0
+          0
+          0
+          0)
         (append-parser-case-expectations-loop
           expectations
           0
@@ -2140,12 +2175,26 @@
     (vector-get test-case 3)
     0))
 
+(defn case-test-actual-start [test-case]
+  (if (> (vector-length test-case) 4) (vector-get test-case 4) 0))
+
+(defn case-test-actual-end [test-case]
+  (if (> (vector-length test-case) 5) (vector-get test-case 5) 0))
+
+(defn case-test-expected-start [test-case]
+  (if (> (vector-length test-case) 6) (vector-get test-case 6) 0))
+
+(defn case-test-expected-end [test-case]
+  (if (> (vector-length test-case) 7) (vector-get test-case 7) 0))
+
 (defn run-cases-loop [program test-cases idx count results]
   (if (>= idx count)
     results
     (let [test-case (vector-get test-cases idx)
       name (vector-get test-case 0)
-      diagnostic-code (case-test-diagnostic test-case)]
+      diagnostic-code (case-test-diagnostic test-case)
+      actual-start (case-test-actual-start test-case)
+      actual-end (case-test-actual-end test-case)]
       (if (> diagnostic-code 0)
         (run-cases-loop
           program
@@ -2154,7 +2203,13 @@
           count
           (vector-push
             results
-            (make-test-result-with-diagnostic name 0 0 diagnostic-code)))
+            (make-test-result-with-diagnostic-span
+              name
+              0
+              0
+              diagnostic-code
+              actual-start
+              actual-end)))
         (let [actual-expr (vector-get test-case 1)
           expected-expr (vector-get test-case 2)
           unknown-hash (case-unknown-variable program actual-expr expected-expr)]
@@ -2166,11 +2221,13 @@
               count
               (vector-push
                 results
-                (make-test-result-with-diagnostic
+                (make-test-result-with-diagnostic-span
                   name
                   0
                   0
-                  (contract-diagnostic-undefined))))
+                  (contract-diagnostic-undefined)
+                  actual-start
+                  actual-end)))
             (let [actual (eval-node program actual-expr (env-new))
               expected (eval-node program expected-expr (env-new))
               passed (values-equal actual expected)]
