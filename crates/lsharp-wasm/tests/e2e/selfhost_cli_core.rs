@@ -7499,6 +7499,36 @@ fn test_e2e_selfhost_cli_rejects_non_bool_deterministic_property() {
     );
 }
 
+/// EC-M1-02/06: selfhost CLI の text test が non-Bool property precondition を診断すること
+#[test]
+fn test_e2e_selfhost_cli_text_reports_non_bool_property_precondition() {
+    let harness = r#"
+(defn main []
+  (do
+    (print (run-test-source "(defn identity [x] :property [(for-all [x Int] :cases 1 :precondition [(+ x 1)] :postcondition (= result x))] x)" 0))
+    0))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec![
+            "examples:0",
+            "invariants:0",
+            "properties:1",
+            "failures:1",
+            "diagnostics:1,LS1002",
+            "2",
+        ],
+        "selfhost CLI の text test は non-Bool property precondition を成功扱いせず診断するべき"
+    );
+}
+
 /// EC-M1-03: embedded/native CLI が同じ property runner 境界を呼び出すこと
 #[test]
 fn test_selfhost_cli_sources_route_property_runner_boundary() {

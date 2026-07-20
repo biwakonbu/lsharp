@@ -987,3 +987,11 @@ EmbeddedCli の実 argv `test input.ls --format json` について、non-Bool pr
 Evidence: `test_e2e_selfhost_embedded_cli_main_with_args_test_format_json_property_precondition_span` は `1 passed`、`383.11s`。このテストは `selfhost_embedded_cli_runtime_bundle()` を実 argv で起動し、source file の読み込みから report serialization、exit codeまでを通過させる。既存の EmbeddedCli non-Bool invariant report test と合わせ、EmbeddedCli の structured diagnostic report の property precondition span forwardingを verified sliceとする。
 
 これは EmbeddedCli の一つの property diagnostic boundaryに限定した evidenceであり、text report、全 property failure の report forwarding、EmbeddedCli の全形式・全公開 command、Rust/selfhost differential、Mac Apple Silicon / Linux x86_64 current-source artifact/runtime、EC-M1-06 / EC-M1-02 aggregateの完了を意味しない。TODOの `[~]` と Rust oracle / bootstrap / host integration境界は維持する。
+
+### EC-M1-02 property text failure forwarding slice (2026-07-20)
+
+selfhost CLI の text `test` について、non-Bool property precondition が property を実行済みの成功として隠さず、既存の text summary と diagnostic exit boundaryへ到達することを確認した。source runner は `properties:1`、`failures:1`、`diagnostics:1,LS1002` を順に返し、終了値は `2` となる。
+
+Evidence: `test_e2e_selfhost_cli_text_reports_non_bool_property_precondition` は `1 passed`、`401.00s`。これは `run-test-source` の text preflight 経路を同一 fixtureで実行した verified sliceであり、property precondition の `LS1002` code、failure count、exit codeの forwardingを固定する。text 出力へ正確な source spanを追加する仕様は未確定のため、この sliceでは現行の code-only text contractを維持した。
+
+これは text failure boundaryの code/exit forwardingに限定した evidenceであり、text span表示、全 property failure report forwarding、actual Cli/EmbeddedCli の全 text形式、Rust/selfhost differential、Mac Apple Silicon / Linux x86_64 current-source artifact/runtime、EC-M1-02 / EC-M1-06 aggregateの完了を意味しない。TODOの `[~]` と Rust oracle / bootstrap / host integration境界は維持する。
