@@ -8300,6 +8300,54 @@ fn test_e2e_selfhost_test_runner_matches_rust_oracle_for_valid_invariant_computa
     );
 }
 
+/// EC-M1-01: source-aware evaluator が computation step 内の String literal を評価すること
+#[test]
+fn test_e2e_selfhost_test_runner_matches_rust_oracle_for_valid_invariant_computation_string_literal() {
+    let source = r#"
+(computation-builder maybe-builder mb identity)
+(defn identity [x] x)
+(defn mb [m f] (f m))
+(defn label []
+  :invariant (computation maybe-builder (let! expected "ok") (return (string-eq result expected)))
+  "ok")
+"#;
+    let oracle = run_metadata_tests(source);
+    assert_eq!(
+        oracle.len(),
+        1,
+        "Rust oracle は computation String invariant 1 件を生成するべき"
+    );
+    assert!(
+        oracle[0].passed,
+        "Rust oracle の computation String invariant は pass するべき"
+    );
+
+    let harness = r#"
+(defn main []
+  (let [src "(computation-builder maybe-builder mb identity) (defn identity [x] x) (defn mb [m f] (f m)) (defn label [] :invariant (computation maybe-builder (let! expected \"ok\") (return (string-eq result expected))) \"ok\")"
+        suite (generate-tests src)
+        results (vector-get suite 1)
+        result0 (vector-get results 0)]
+    (do
+      (print (vector-length results))
+      (print (vector-get result0 1))
+      (print (vector-get result0 2))
+      (print (vector-get result0 3))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_test_runner_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(
+        lines,
+        vec!["1", "1", "1", "0"],
+        "selfhost computation String evaluator は Rust oracle と同じ success を返すべき"
+    );
+}
+
 /// EC-M1-01: selfhost runner が String literal invariant を Rust oracle と評価すること
 #[test]
 fn test_e2e_selfhost_test_runner_matches_rust_oracle_for_valid_invariant_string_literal() {

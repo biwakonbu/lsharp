@@ -1357,6 +1357,36 @@
     (vector-get node 2)
     (value-unit)))
 
+(defn eval-computation-loop-with-source [program node env idx count last src]
+  (if (>= idx count)
+    last
+    (let [step-base (+ 3 (* idx 3))
+      step-kind (vector-get node step-base)
+      aux (vector-get node (+ step-base 1))
+      expr (vector-get node (+ step-base 2))
+      value (eval-node-with-source program expr env src)
+      next-env (if (= step-kind (computation-step-let-bang))
+        (env-bind env aux value)
+        env)]
+      (eval-computation-loop-with-source
+        program
+        node
+        next-env
+        (+ idx 1)
+        count
+        value
+        src))))
+
+(defn eval-computation-with-source [program node env src]
+  (eval-computation-loop-with-source
+    program
+    node
+    env
+    0
+    (vector-get node 2)
+    (value-unit)
+    src))
+
 (defn eval-apply [program node env]
   (do
     (root_push program)
@@ -1526,7 +1556,7 @@
                         (value-unit)
                         src)
                       (if (= tag (ast-computation))
-                        (eval-computation program node env)
+                        (eval-computation-with-source program node env src)
                         (if (= tag (ast-ann))
                           (eval-node-with-source program (vector-get node 1) env src)
                           (if (= tag (ast-apply))
