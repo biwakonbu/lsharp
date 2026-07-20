@@ -3358,7 +3358,7 @@
         0
         (vector-length preconditions)))))
 
-(defn materialize-property [program test-case src]
+(defn materialize-property-with-span [program test-case src contract-span]
   (let [name (vector-get test-case 0)
     owner (property-test-case-owner test-case)
     decl (find-defn-by-hash program owner 0 (vector-length program))
@@ -3404,18 +3404,35 @@
                 0))))))
     passed (if (= diagnostic-code 0) (vector-get sample-summary 0) 0)
     actual (if (= diagnostic-code 0) actual-count 0)
+    fallback-source-span (if (> (vector-length contract-span) 1)
+      contract-span
+      (vector-push (vector-push (vector-new 2) 0) 0))
     source-span (if (and (> (string-length src) 0) (>= unknown-hash 0))
       (find-property-unknown-source-span src owner unknown-hash)
-      (vector-push (vector-push (vector-new 2) 0) 0))]
-    (if (and (> diagnostic-code 0) (> (vector-get source-span 1) (vector-get source-span 0)))
-      (make-test-result-with-diagnostic-span
-        name
-        passed
-        actual
-        diagnostic-code
-        (vector-get source-span 0)
-        (vector-get source-span 1))
-      (make-test-result-with-diagnostic name passed actual diagnostic-code))))
+      (if (and (= profile-code 0) (> diagnostic-code 0))
+        fallback-source-span
+        (vector-push (vector-push (vector-new 2) 0) 0)))]
+    (do
+      (root_push source-span)
+      (let [result (if (and (> diagnostic-code 0) (> (vector-get source-span 1) (vector-get source-span 0)))
+        (make-test-result-with-diagnostic-span
+          name
+          passed
+          actual
+          diagnostic-code
+          (vector-get source-span 0)
+          (vector-get source-span 1))
+        (make-test-result-with-diagnostic name passed actual diagnostic-code))]
+        (do
+          (root_pop)
+          result)))))
+
+(defn materialize-property [program test-case src]
+  (materialize-property-with-span
+    program
+    test-case
+    src
+    (vector-new 0)))
 
 (defn run-properties-loop [program test-cases idx count results]
   (if (>= idx count)
@@ -3438,27 +3455,46 @@
     (vector-new (vector-length test-cases))))
 
 (defn run-properties-from-source-loop
-  [program test-cases idx count results src]
+  [program test-cases source-spans idx count results src]
   (if (>= idx count)
     results
     (run-properties-from-source-loop
       program
       test-cases
+      source-spans
       (+ idx 1)
       count
       (vector-push
         results
-        (materialize-property program (vector-get test-cases idx) src))
+        (materialize-property-with-span
+          program
+          (vector-get test-cases idx)
+          src
+          (property-runner-source-span-at source-spans idx)))
       src)))
 
 (defn run-properties-from-source [program test-cases src]
-  (run-properties-from-source-loop
-    program
-    test-cases
-    0
-    (vector-length test-cases)
-    (vector-new (vector-length test-cases))
-    src))
+  (do
+    (root_push program)
+    (root_push test-cases)
+    (root_push src)
+    (let [source-spans (extract-property-test-case-source-spans program src)]
+      (do
+        (root_push source-spans)
+        (let [results (run-properties-from-source-loop
+            program
+            test-cases
+            source-spans
+            0
+            (vector-length test-cases)
+            (vector-new (vector-length test-cases))
+            src)]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            results))))))
 
 (defn invariant-sample-count [param-count]
   (if (= param-count 0)
