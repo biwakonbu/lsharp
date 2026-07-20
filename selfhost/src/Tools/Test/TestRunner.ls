@@ -32,6 +32,16 @@
 (defn make-test-case [name input expected]
   (vector-push-triple-rooted (vector-new 3) name input expected))
 
+;; canonical :assert: [name-id, function-name-hash, expr, span-start, span-end]
+(defn make-assertion-test-case [name input predicate span-start span-end]
+  (let [base (vector-push-quad-rooted
+      (vector-new 5)
+      name
+      input
+      predicate
+      span-start)]
+    (vector-push-single-rooted base span-end)))
+
 ;; canonical :case: [name-id, actual-expr, expected-expr, diagnostic-code,
 ;;                   actual-start, actual-end, expected-start, expected-end]
 (defn make-case-test-case
@@ -468,27 +478,41 @@
     (vector-length program)
     (vector-new 8)))
 
-;; parser-owned canonical :assert form [3, predicate-vector] を assertion case へ投影する。
-(defn append-parser-assertion-predicates-loop [predicates idx count decl results]
+;; parser-owned canonical :assert form [3, predicate-vector, ..., spans] を assertion case へ投影する。
+(defn append-parser-assertion-predicates-loop
+  [predicates spans idx count decl results]
   (if (>= idx count)
     results
-    (append-parser-assertion-predicates-loop
-      predicates
-      (+ idx 1)
-      count
-      decl
-      (vector-push
-        results
-        (make-test-case
-          (vector-length results)
-          (vector-get decl 1)
-          (vector-get predicates idx))))))
+    (let [span-count (if (= spans 0) 0 (vector-length spans))
+      span-index (* idx 2)
+      predicate-start
+        (if (> span-count span-index) (vector-get spans span-index) 0)
+      predicate-end
+        (if (> span-count (+ span-index 1))
+          (vector-get spans (+ span-index 1))
+          0)]
+      (append-parser-assertion-predicates-loop
+        predicates
+        spans
+        (+ idx 1)
+        count
+        decl
+        (vector-push
+          results
+          (make-assertion-test-case
+            (vector-length results)
+            (vector-get decl 1)
+            (vector-get predicates idx)
+            predicate-start
+            predicate-end))))))
 
 (defn append-parser-ordered-assertion-form [form decl results]
   (if (= (vector-get form 0) (contract-form-assert))
-    (let [predicates (vector-get form 1)]
+    (let [predicates (vector-get form 1)
+      spans (if (> (vector-length form) 4) (vector-get form 4) 0)]
       (append-parser-assertion-predicates-loop
         predicates
+        spans
         0
         (vector-length predicates)
         decl
@@ -2227,19 +2251,28 @@
       actual (eval-node program expr (env-new))
       bool-valid (if (= (value-tag actual) (ast-lit-bool)) 1 0)
       passed (if (= bool-valid 1) (value-truthy actual) 0)
-      diagnostic-code (if (= bool-valid 1) 0 (contract-diagnostic-non-bool))]
+      diagnostic-code (if (= bool-valid 1) 0 (contract-diagnostic-non-bool))
+      diagnostic-start (if (> (vector-length tc) 3) (vector-get tc 3) 0)
+      diagnostic-end (if (> (vector-length tc) 4) (vector-get tc 4) 0)
+      result (if (> diagnostic-code 0)
+        (make-test-result-with-diagnostic-span
+          name
+          passed
+          passed
+          diagnostic-code
+          diagnostic-start
+          diagnostic-end)
+        (make-test-result-with-diagnostic
+          name
+          passed
+          passed
+          diagnostic-code))]
       (run-assertions-loop
         program
         test-cases
         (+ idx 1)
         count
-        (vector-push
-          results
-          (make-test-result-with-diagnostic
-            name
-            passed
-            passed
-            diagnostic-code))))))
+        (vector-push results result)))))
 
 (defn run-assertions [program test-cases]
   (run-assertions-loop

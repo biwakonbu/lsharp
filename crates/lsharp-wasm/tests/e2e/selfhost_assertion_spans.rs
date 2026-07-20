@@ -52,3 +52,48 @@ fn selfhost_contract_suite_preserves_assert_predicate_source_spans() {
         "selfhost canonical :assert は predicate ごとの source span を保持するべき"
     );
 }
+
+#[test]
+fn selfhost_test_runner_reports_assertion_diagnostic_span() {
+    let source = "(defn positive [] :assert [(+ 1 2)] true)";
+    let predicate_start = source
+        .find("(+ 1 2)")
+        .expect("assert diagnostic span fixture が見つかる");
+    let predicate_end = predicate_start + "(+ 1 2)".len();
+    let source_literal = source.replace('"', "\\\"");
+    let harness = format!(
+        r#"
+(defn main []
+  (let [src "{source_literal}"
+        suite (generate-tests-from-source src)
+        results (vector-get suite 2)
+        result (vector-get results 0)]
+    (do
+      (print (vector-length result))
+      (print (vector-get result 3))
+      (print (vector-get result 4))
+      (print (vector-get result 5))
+      0)))
+"#
+    );
+    let combined = format!(
+        "{}\n{}",
+        super::support::selfhost_test_runner_runtime_bundle(),
+        harness
+    );
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec![
+            "6",
+            "2",
+            &predicate_start.to_string(),
+            &predicate_end.to_string(),
+        ],
+        "selfhost assert non-Bool 診断は predicate の source span を結果へ保持するべき"
+    );
+}
