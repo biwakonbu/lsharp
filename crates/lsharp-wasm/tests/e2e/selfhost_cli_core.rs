@@ -8669,6 +8669,62 @@ fn test_e2e_selfhost_test_runner_rejects_non_bool_logic_operands() {
     );
 }
 
+/// EC-M1-01: selfhost runner が if の non-Bool condition を truthy として受理しないこと
+#[test]
+fn test_e2e_selfhost_test_runner_rejects_non_bool_if_condition() {
+    let source = "(defn succ [x] :invariant (if 1 true false) (+ x 1))";
+    let valid_source = "(defn succ [x] :invariant (if true true false) (+ x 1))";
+    let program = lsharp_syntax::parse(source).expect("if condition fixture は parse できるべき");
+    let valid_program =
+        lsharp_syntax::parse(valid_source).expect("Bool if condition fixture は parse できるべき");
+    let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
+    let valid_diagnostics = lsharp_types::metadata_check::check_metadata(&valid_program);
+    assert_eq!(diagnostics.len(), 1, "Rust oracle は if の non-Bool condition を診断するべき");
+    assert!(
+        valid_diagnostics.is_empty(),
+        "Rust oracle は Bool if condition を受理するべき: {valid_diagnostics:?}"
+    );
+    let oracle_span = diagnostics[0].span;
+
+    let harness = r#"
+(defn main []
+  (let [src "(defn succ [x] :invariant (if 1 true false) (+ x 1))"
+        valid-src "(defn succ [x] :invariant (if true true false) (+ x 1))"
+        suite (generate-tests src)
+        valid-suite (generate-tests valid-src)
+        result0 (vector-get (vector-get suite 1) 0)
+        valid-result (vector-get (vector-get valid-suite 1) 0)]
+    (do
+      (print (test-result-diagnostic result0))
+      (print (test-result-diagnostic-start result0))
+      (print (test-result-diagnostic-end result0))
+      (print (test-result-diagnostic valid-result))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_test_runner_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(lines.first().copied(), Some("2"), "if の Int condition は LS1002 にするべき");
+    assert_eq!(
+        lines.get(1).and_then(|line| line.parse::<usize>().ok()),
+        Some(oracle_span.start),
+        "selfhost if condition diagnostic span の開始位置は Rust oracle と一致するべき"
+    );
+    assert_eq!(
+        lines.get(2).and_then(|line| line.parse::<usize>().ok()),
+        Some(oracle_span.end),
+        "selfhost if condition diagnostic span の終了位置は Rust oracle と一致するべき"
+    );
+    assert_eq!(
+        lines.get(3).copied(),
+        Some("0"),
+        "selfhost Bool if condition は diagnostic なしで受理するべき"
+    );
+}
+
 /// TEST-CLI-02-O2g1: selfhost runner が Bool でない invariant を LS1002 として報告すること
 #[test]
 fn test_e2e_selfhost_test_runner_rejects_non_bool_invariant() {

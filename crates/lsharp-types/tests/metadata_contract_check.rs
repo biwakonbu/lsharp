@@ -76,6 +76,24 @@ fn legacy_invariant_logic_requires_bool_operands() {
 }
 
 #[test]
+fn legacy_invariant_if_requires_bool_condition() {
+    const SOURCE: &str = "(defn succ [x] :invariant (if 1 true false) (+ x 1))";
+    let program = parse(SOURCE).expect("non-Bool if condition は parse できるべき");
+
+    let diagnostics = check_metadata(&program);
+
+    assert_eq!(diagnostics.len(), 1, "if の Int condition を成功扱いしてはならない");
+    let diagnostic = &diagnostics[0];
+    assert_eq!(diagnostic.severity, Severity::Error);
+    assert!(diagnostic.message.contains(":invariant"));
+    assert_eq!(
+        &SOURCE[diagnostic.span.start..diagnostic.span.end],
+        "(if 1 true false)"
+    );
+    assert_eq!(diagnostic.function_name, "succ");
+}
+
+#[test]
 fn canonical_assertion_requires_bool_at_predicate_span() {
     const SOURCE: &str = "(defn positive [] :assert [(+ 1 2)] true)";
     let program = parse(SOURCE).expect("non-Bool :assert も構文としては parse できるべき");
