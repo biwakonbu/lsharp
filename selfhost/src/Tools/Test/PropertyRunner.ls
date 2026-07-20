@@ -931,6 +931,18 @@
         (vector-push-pair-rooted (vector-new 2) 0 0)))
     (vector-push-pair-rooted (vector-new 2) 0 0)))
 
+(defn property-runner-precondition-span-at [rows idx]
+  (if (and (>= idx 0) (< idx (vector-length rows)))
+    (let [row (vector-get rows idx)
+      spans (if (> (vector-length row) 1) (vector-get row 1) (vector-new 0))]
+      (if (> (vector-length spans) 1)
+        (vector-push-pair-rooted
+          (vector-new 2)
+          (vector-get spans 0)
+          (vector-get spans 1))
+        (vector-push-pair-rooted (vector-new 2) 0 0)))
+    (vector-push-pair-rooted (vector-new 2) 0 0)))
+
 ;; canonical contract を移行期 evaluator の test-case shape へ変換する。
 ;; 実行可能なのは 1..2 個の Int binder の legacy prefix、単一 String binder、
 ;; または 3..8 個の Int/Bool/String binder を cases 1..2 で評価する

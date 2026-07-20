@@ -9561,6 +9561,50 @@ fn test_e2e_selfhost_property_runner_preserves_non_bool_postcondition_span() {
     );
 }
 
+/// EC-M1-02: selfhost property 実行診断が non-Bool precondition の source span を保持すること
+#[test]
+fn test_e2e_selfhost_property_runner_preserves_non_bool_precondition_span() {
+    let source = "(defn identity [x] :property [(for-all [x Int] :cases 1 :precondition [(+ x 1)] :postcondition (= result x))] x)";
+    let program = lsharp_syntax::parse(source).expect("non-Bool precondition fixture は parse できるべき");
+    let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
+    assert_eq!(diagnostics.len(), 1, "Rust oracle は non-Bool precondition を 1 件診断するべき");
+    assert!(
+        diagnostics[0].message.contains("Bool"),
+        "Rust oracle は property precondition の Bool 契約を診断するべき: {diagnostics:?}"
+    );
+    let oracle_span = diagnostics[0].span;
+
+    let harness = r#"
+(defn main []
+  (let [src "(defn identity [x] :property [(for-all [x Int] :cases 1 :precondition [(+ x 1)] :postcondition (= result x))] x)"
+        suite (generate-tests src)
+        results (vector-get suite 4)
+        result0 (vector-get results 0)]
+    (do
+      (print (test-result-diagnostic result0))
+      (print (test-result-diagnostic-start result0))
+      (print (test-result-diagnostic-end result0))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_test_runner_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(lines.first().copied(), Some("2"), "selfhost は LS1002 を保持するべき");
+    assert_eq!(
+        lines.get(1).and_then(|line| line.parse::<usize>().ok()),
+        Some(oracle_span.start),
+        "selfhost non-Bool precondition span の開始位置は Rust oracle と一致するべき"
+    );
+    assert_eq!(
+        lines.get(2).and_then(|line| line.parse::<usize>().ok()),
+        Some(oracle_span.end),
+        "selfhost non-Bool precondition span の終了位置は Rust oracle と一致するべき"
+    );
+}
+
 /// EC-M1-04: selfhost check が typed property binder を postcondition scope へ投影すること。
 #[test]
 fn test_e2e_selfhost_cli_check_accepts_typed_property_binder() {

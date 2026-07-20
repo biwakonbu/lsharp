@@ -971,3 +971,11 @@ Evidence: RED の `test_e2e_selfhost_property_runner_preserves_non_bool_postcond
 Evidence: `test_e2e_selfhost_root_set_preserves_shadowed_slot_during_allocating_value` は、最初の誤った `vector-new` 長さ前提を `vector-push` の意味論に合わせて修正した後、`1 passed`（25.64s）となった。既存の Mac/native stage-chain fixtureも同じ旧値42・新値7の契約へ同期した。rooting 規約は `docs/development/planning/memory-management-roadmap.md` に追加した。
 
 これは Rust/Wasm の current runtime bundle guard と native fixture correction の verified sliceであり、Linux x86_64 current-source native stage0、Mac Apple Silicon current-source native artifact、全 selfhost sourceの lint/guard、GC stress mode、`LEGACY-ROOT-01` aggregate の完了証拠ではない。Linux current-source gateは既存の `9e8dab64` evidenceを超えて再実行していないため、TODOの `[ ]` と残る Rust/bootstrap/host boundary は維持する。
+
+### EC-M1-02 public property precondition diagnostic span slice (2026-07-20)
+
+selfhost `TestRunner` の source-aware property diagnosticについて、non-Bool preconditionをpostconditionのfallback spanへ誤って寄せず、typed contract sidecarの最初の precondition spanへ投影する経路を追加した。unknown-variable spanは従来どおり最優先し、precondition spanは `bool-valid=0` かつ実行済み sample が `0` 件の non-Bool precondition boundaryでのみ選択する。
+
+Evidence: RED の `test_e2e_selfhost_property_runner_preserves_non_bool_precondition_span` は selfhost `95..`（postcondition fallback）と Rust oracle `71..`（precondition）の差分で失敗し、GREEN は同じ fixtureで Rust/selfhost span一致を確認した（focused E2E 1 passed、26.26s）。postcondition span、sidecar span、既存 16-case Rust/selfhost differentialもそれぞれ `1 passed`、`1 passed`、`16 passed` で再確認した。
+
+これは最初の precondition predicateに限定した public diagnostic span verified sliceであり、複数 predicateの失敗要素選択、text/JSON report forwarding、Mac Apple Silicon / Linux x86_64 current-source artifact/runtime、EC-M1-02 aggregateは残件である。TODOの `[~]` と Rust oracle / bootstrap / host integration境界は維持する。
