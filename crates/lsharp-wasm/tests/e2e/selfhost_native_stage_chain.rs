@@ -57025,19 +57025,6 @@ fn x86_metadata_rows_to_ir_call_trace_rows(
         .collect()
 }
 
-fn read_x86_ir_call_trace_rows_from_metadata(path: &std::path::Path) -> Vec<X86IrCallTraceRow> {
-    let metadata = std::fs::read_to_string(path)
-        .unwrap_or_else(|e| panic!("x86 entry metadata 読み込み失敗 ({}): {e}", path.display()));
-    let metadata_rows = parse_linux_x86_function_segment_metadata_rows(&metadata);
-    let trace_rows = x86_metadata_rows_to_ir_call_trace_rows(&metadata_rows);
-    assert!(
-        !trace_rows.is_empty(),
-        "x86 entry metadata に first-8-byte rel32 call row が無い: path={} metadata_rows={metadata_rows:?}",
-        path.display()
-    );
-    trace_rows
-}
-
 fn find_zeroed_x86_runtime_helper_call_rows(
     rows: &[LinuxX86FunctionSegmentMetadataRow],
 ) -> Vec<&LinuxX86FunctionSegmentMetadataRow> {
@@ -57357,6 +57344,54 @@ fn assert_x86_ir_call_trace_matches_entry_calls(
     }
 }
 
+fn assert_x86_metadata_rows_match_entry_calls(
+    bundle: &NativeEntrypointBundle,
+    rows: &[LinuxX86FunctionSegmentMetadataRow],
+) {
+    let call_rows = rows
+        .iter()
+        .filter_map(|row| {
+            let call_offset = x86_metadata_row_rel32_call_offset(row)?;
+            let target_offset = x86_metadata_row_rel32_target(row)?;
+            Some((row, call_offset, target_offset))
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        !call_rows.is_empty(),
+        "x86 entry metadata に opcode/rel32 call row が無い: rows={rows:?}"
+    );
+
+    for (row, call_offset, target_offset) in call_rows {
+        let row_offset = usize::try_from(row.offset)
+            .unwrap_or_else(|_| panic!("x86 entry metadata instruction offset が負: row={row:?}"));
+        let row_size = usize::try_from(row.size)
+            .unwrap_or_else(|_| panic!("x86 entry metadata instruction size が負: row={row:?}"));
+        let byte_count = row_size.min(row.bytes.len());
+        let code_row_offset = bundle.entrypoint_offset + row_offset;
+        let code_row_end = code_row_offset + byte_count;
+        assert!(
+            code_row_end <= bundle.code_bytes.len(),
+            "x86 metadata opcode/bytes/rel32 target が code 範囲外: row={row:?} entry={} code_len={}",
+            bundle.entrypoint_offset,
+            bundle.code_bytes.len()
+        );
+        assert_eq!(
+            &bundle.code_bytes[code_row_offset..code_row_end],
+            &row.bytes[..byte_count],
+            "x86 metadata opcode/bytes/rel32 target が一致しない: row={row:?} code_window={}",
+            byte_window_hex(&bundle.code_bytes, code_row_offset, 8, byte_count + 8)
+        );
+
+        let code_call_offset = code_row_offset + call_offset;
+        let call_site = decode_x86_rel32_call_at(&bundle.code_bytes, code_call_offset);
+        let expected_target = bundle.entrypoint_offset as i64 + target_offset;
+        assert_eq!(
+            call_site.target_offset, expected_target,
+            "x86 metadata opcode/bytes/rel32 target が一致しない: row={row:?} call={call_site:?} expected_target={expected_target}",
+        );
+    }
+}
+
 fn assert_x86_call_targets_do_not_skip_rex_stack_restore_prefix(
     label: &str,
     bundle: &NativeEntrypointBundle,
@@ -57419,6 +57454,98 @@ fn test_x86_ir_trace_rejects_runtime_helper_rel32_target_mismatch() {
     }];
 
     assert_x86_ir_call_trace_matches_entry_calls(&bundle, &rows);
+}
+
+#[test]
+fn test_x86_entry_metadata_correlates_opcode_bytes_and_rel32_target() {
+    let entrypoint_offset = 32;
+    let call_offset = 11;
+    let target_offset = 80;
+    let absolute_call_offset = entrypoint_offset + call_offset;
+    let absolute_target_offset = entrypoint_offset + target_offset;
+    let rel32 = absolute_target_offset as i32 - absolute_call_offset as i32 - 5;
+    let mut code_bytes = vec![0x90; 160];
+    code_bytes[entrypoint_offset..entrypoint_offset + 4].copy_from_slice(&[0x55, 0x48, 0x89, 0xe5]);
+    code_bytes[absolute_call_offset..absolute_call_offset + 5].copy_from_slice(&[
+        0xe8,
+        rel32 as u8,
+        (rel32 >> 8) as u8,
+        (rel32 >> 16) as u8,
+        (rel32 >> 24) as u8,
+    ]);
+
+    let row = LinuxX86FunctionSegmentMetadataRow {
+        function_size: 128,
+        instr_idx: 7,
+        opcode: 60,
+        operand: 0,
+        depth: 0,
+        offset: call_offset as i64,
+        size: 5,
+        bytes: [
+            0xe8,
+            rel32 as u8,
+            (rel32 >> 8) as u8,
+            (rel32 >> 16) as u8,
+            (rel32 >> 24) as u8,
+            0,
+            0,
+            0,
+        ],
+    };
+    let bundle = NativeEntrypointBundle {
+        function_start_len: 1,
+        main_func_idx: 10,
+        declared_code_len: code_bytes.len(),
+        declared_data_len: 0,
+        entrypoint_offset,
+        code_bytes,
+        data_bytes: Vec::new(),
+    };
+
+    assert_x86_metadata_rows_match_entry_calls(&bundle, &[row]);
+}
+
+#[test]
+#[should_panic(expected = "x86 metadata opcode/bytes/rel32 target が一致しない")]
+fn test_x86_entry_metadata_rejects_emitted_byte_mismatch() {
+    let entrypoint_offset = 32;
+    let call_offset = 11;
+    let target_offset = 80;
+    let absolute_call_offset = entrypoint_offset + call_offset;
+    let absolute_target_offset = entrypoint_offset + target_offset;
+    let rel32 = absolute_target_offset as i32 - absolute_call_offset as i32 - 5;
+    let mut code_bytes = vec![0x90; 160];
+    code_bytes[entrypoint_offset..entrypoint_offset + 4].copy_from_slice(&[0x55, 0x48, 0x89, 0xe5]);
+    code_bytes[absolute_call_offset..absolute_call_offset + 5].copy_from_slice(&[
+        0xe8,
+        rel32 as u8,
+        (rel32 >> 8) as u8,
+        (rel32 >> 16) as u8,
+        (rel32 >> 24) as u8,
+    ]);
+
+    let row = LinuxX86FunctionSegmentMetadataRow {
+        function_size: 128,
+        instr_idx: 7,
+        opcode: 60,
+        operand: 0,
+        depth: 0,
+        offset: call_offset as i64,
+        size: 5,
+        bytes: [0xe8, 1, 0, 0, 0, 0, 0, 0],
+    };
+    let bundle = NativeEntrypointBundle {
+        function_start_len: 1,
+        main_func_idx: 10,
+        declared_code_len: code_bytes.len(),
+        declared_data_len: 0,
+        entrypoint_offset,
+        code_bytes,
+        data_bytes: Vec::new(),
+    };
+
+    assert_x86_metadata_rows_match_entry_calls(&bundle, &[row]);
 }
 
 #[test]
@@ -59068,6 +59195,15 @@ fn test_e2e_linux_x86_actual_stage2_entrypoint_call_windows_diagnostic() {
                 .map(|dir| dir.join("actual-stage2-metadata.txt"))
                 .filter(|path| path.exists())
         });
+    let metadata_rows = metadata_path.as_ref().map(|metadata_path| {
+        let metadata = std::fs::read_to_string(metadata_path).unwrap_or_else(|e| {
+            panic!(
+                "x86 entry metadata 読み込み失敗 ({}): {e}",
+                metadata_path.display()
+            )
+        });
+        parse_linux_x86_function_segment_metadata_rows(&metadata)
+    });
     let trace_rows_with_source = if let Some(trace_path) = trace_path {
         Some((
             format!("trace:{}", trace_path.display()),
@@ -59077,11 +59213,18 @@ fn test_e2e_linux_x86_actual_stage2_entrypoint_call_windows_diagnostic() {
         metadata_path.map(|metadata_path| {
             (
                 format!("metadata:{}", metadata_path.display()),
-                read_x86_ir_call_trace_rows_from_metadata(&metadata_path),
+                x86_metadata_rows_to_ir_call_trace_rows(
+                    metadata_rows
+                        .as_ref()
+                        .expect("x86 entry metadata rows が存在すること"),
+                ),
             )
         })
     };
     if let Some((trace_source, trace_rows)) = trace_rows_with_source {
+        if let Some(metadata_rows) = metadata_rows.as_ref() {
+            assert_x86_metadata_rows_match_entry_calls(&stage2_bundle, metadata_rows);
+        }
         assert_x86_ir_call_trace_matches_entry_calls(&stage2_bundle, &trace_rows);
         assert_x86_call_targets_do_not_skip_rex_stack_restore_prefix(
             "Linux x86 stage2 entrypoint rel32 target diagnostic",

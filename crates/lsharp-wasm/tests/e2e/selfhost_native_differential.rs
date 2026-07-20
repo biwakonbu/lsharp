@@ -3006,6 +3006,76 @@ fn test_native_codegen_x86_function_emit_uses_existing_result_len_as_base() {
     );
 }
 
+/// NATIVE-REAL-08f7b1: x86_64 の low-level function emit は明示 caller base を rel32 に使うこと
+#[test]
+#[ignore]
+fn test_native_codegen_x86_function_emit_honors_explicit_function_start() {
+    let output = run_native_codegen_harness(
+        r#"(module Main)
+(import NativeTarget)
+(import NativeCodegen)
+(import IR.IR)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn main []
+  (let [target-ir (vector-push (vector-new 1) (make-instr 1 7))
+        target (make-function-meta 0 0 target-ir)
+        caller-ir (vector-push (vector-new 1) (make-call 0))
+        caller (make-function-meta 0 0 caller-ir)
+        functions (vector-push (vector-push (vector-new 2) target) caller)
+        starts (vector-push (vector-push (vector-new 2) 0) 16)
+        function-start 16
+        result (ref-new (vector-new 0))]
+    (do
+      (generate-native-function-x86-64-bundle caller result starts functions function-start)
+      (print function-start)
+      (print-bytes (ref-get result) 0 (vector-length (ref-get result)))
+      0)))"#,
+    );
+    let mut lines = output.trim().lines();
+    let function_start = lines
+        .next()
+        .expect("explicit function start output")
+        .parse::<isize>()
+        .expect("explicit function start parse");
+    let bytes = lines
+        .map(|line| {
+            line.parse::<u8>().unwrap_or_else(|_| {
+                panic!("x86 explicit function start call byte parse 失敗: {line}")
+            })
+        })
+        .collect::<Vec<_>>();
+    let call_offset = bytes
+        .iter()
+        .position(|byte| *byte == 0xe8)
+        .unwrap_or_else(|| panic!("x86 explicit function start call が無い: bytes={bytes:?}"));
+    let rel = i32::from_le_bytes([
+        bytes[call_offset + 1],
+        bytes[call_offset + 2],
+        bytes[call_offset + 3],
+        bytes[call_offset + 4],
+    ]);
+    let target = call_offset as isize + 5 + rel as isize;
+
+    assert_eq!(
+        target, -function_start,
+        "x86 low-level emit は result 配置と独立した明示 caller base を target 相対値へ使うべき: call_offset={call_offset} rel={rel} target={target} function_start={function_start} bytes={bytes:?}"
+    );
+}
+
 /// NATIVE-REAL-08f7a: x86_64 の 55+ 引数 call は rel32 next offset を実 emit と一致させること
 #[test]
 #[ignore]

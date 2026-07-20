@@ -13928,7 +13928,14 @@
     (vector-length (ref-get result))))
 
 (defn generate-native-function-x86-64-bundle [func-meta result function-starts function-metas function-start]
-  (generate-native-function-x86-64-bundle-with-import-count func-meta result function-starts function-metas 0 0))
+  (generate-native-function-x86-64-bundle-with-import-count-and-base
+    func-meta
+    result
+    function-starts
+    function-metas
+    0
+    0
+    function-start))
 
 (defn make-native-x86-bundle-loop-state [done next-idx]
   (vector-push (vector-push (vector-new 2) done) next-idx))
