@@ -1902,7 +1902,9 @@ mod tests {
     #[test]
     fn test_record_update() {
         let expr = parse_expr_str("{p | x 3.0}");
-        assert_eq!(expr.to_string(), "{(p) | x 3}");
+        assert_eq!(expr.to_string(), "{p | x 3}");
+        let reparsed = parse_expr_str(&expr.to_string());
+        assert_eq!(reparsed.to_string(), "{p | x 3}");
     }
 
     #[test]

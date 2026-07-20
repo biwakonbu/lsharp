@@ -8649,6 +8649,48 @@ fn test_e2e_selfhost_test_runner_matches_rust_oracle_for_valid_invariant_record_
     );
 }
 
+/// EC-M1-01: legacy invariant の record update が更新後の field value を返すこと
+#[test]
+fn test_e2e_selfhost_test_runner_matches_rust_oracle_for_valid_invariant_record_update() {
+    let source = r#"
+(type Point (record (: x Int) (: y Int)))
+(defn point []
+  :invariant (= (. {{Point x 41 y 2} | x 42} x) 42)
+  true)
+"#;
+    let oracle = run_metadata_tests(source);
+    assert_eq!(oracle.len(), 1, "Rust oracle は record update invariant 1 件を生成するべき");
+    assert!(
+        oracle[0].passed,
+        "Rust oracle は更新後の record field invariant を pass するべき"
+    );
+
+    let harness = r#"
+(defn main []
+  (let [src "(type Point (record (: x Int) (: y Int))) (defn point [] :invariant (= (. {{Point x 41 y 2} | x 42} x) 42) true)"
+        suite (generate-tests src)
+        results (vector-get suite 1)
+        result (vector-get results 0)]
+    (do
+      (print (vector-length results))
+      (print (vector-get result 1))
+      (print (vector-get result 2))
+      (print (vector-get result 3))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_test_runner_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(
+        lines,
+        vec!["1", "1", "1", "0"],
+        "selfhost record update evaluator は Rust oracle と同じ updated field success を返すべき"
+    );
+}
+
 /// EC-M1-01: invariant 内 match の literal / wildcard pattern を Rust oracle と selfhost が評価すること
 #[test]
 fn test_e2e_selfhost_test_runner_matches_rust_oracle_for_literal_and_wildcard_match() {

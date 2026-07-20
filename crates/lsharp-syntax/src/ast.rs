@@ -561,7 +561,7 @@ impl std::fmt::Display for Expr {
                 write!(f, "(. {expr} {field})")
             }
             Expr::RecordUpdate(_, base, fields) => {
-                write!(f, "{{({base}) |")?;
+                write!(f, "{{{base} |")?;
                 for (name, val) in fields {
                     write!(f, " {name} {val}")?;
                 }

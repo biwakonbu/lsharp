@@ -1522,6 +1522,60 @@
       (record-value-field record-value (vector-get node 2))
       (value-unit))))
 
+(defn record-value-update-field [record-value field-hash new-value]
+  (do
+    (root_push record-value)
+    (root_push new-value)
+    (let [field-index (record-value-field-index-loop
+        record-value
+        field-hash
+        0
+        (vector-get record-value 2))
+      updated (if (< field-index 0)
+        record-value
+        (vector-set-at
+          record-value
+          (+ 4 (* field-index 2))
+          new-value))]
+      (do
+        (root_pop)
+        (root_pop)
+        updated))))
+
+(defn eval-record-update-fields-loop
+  [program node env record-value idx count]
+  (if (>= idx count)
+    record-value
+    (do
+      (root_push record-value)
+      (let [field-hash (vector-get node (+ 3 (* idx 2)))
+        new-value (eval-node program (vector-get node (+ 4 (* idx 2))) env)]
+        (do
+          (root_push new-value)
+          (let [updated (record-value-update-field record-value field-hash new-value)]
+            (do
+              (root_pop)
+              (root_pop)
+              (eval-record-update-fields-loop
+                program
+                node
+                env
+                updated
+                (+ idx 1)
+                count))))))))
+
+(defn eval-record-update [program node env]
+  (let [record-value (eval-node program (vector-get node 1) env)]
+    (if (= (value-tag record-value) (ast-recordlit))
+      (eval-record-update-fields-loop
+        program
+        node
+        env
+        record-value
+        0
+        (vector-get node 2))
+      (value-unit))))
+
 (defn match-pattern-record-loop [pattern value idx count]
   (if (>= idx count)
     1
@@ -1802,6 +1856,8 @@
           (eval-record-literal program node env)
           (if (= tag (ast-fieldaccess))
             (eval-field-access program node env)
+          (if (= tag (ast-recordupdate))
+            (eval-record-update program node env)
           (if (= tag (ast-var))
             (let [name-hash (vector-get node 1)]
               (if (= (env-has? env name-hash) 1)
@@ -1831,7 +1887,7 @@
                       (eval-node program (vector-get node 1) env)
                       (if (= tag (ast-apply))
                         (eval-apply program node env)
-                        (value-unit))))))))))))))))
+                        (value-unit)))))))))))))))))
 
 ;; legacy invariant の String literal は AST が source offset を保持するため、
 ;; source-aware evaluator でだけ実値へ materialize する。
@@ -1897,6 +1953,47 @@
       (record-value-field record-value (vector-get node 2))
       (value-unit))))
 
+(defn eval-record-update-fields-loop-with-source
+  [program node env record-value idx count src]
+  (if (>= idx count)
+    record-value
+    (do
+      (root_push record-value)
+      (let [field-hash (vector-get node (+ 3 (* idx 2)))
+        new-value (eval-node-with-source
+          program
+          (vector-get node (+ 4 (* idx 2)))
+          env
+          src)]
+        (do
+          (root_push new-value)
+          (let [updated (record-value-update-field record-value field-hash new-value)]
+            (do
+              (root_pop)
+              (root_pop)
+              (eval-record-update-fields-loop-with-source
+                program
+                node
+                env
+                updated
+                (+ idx 1)
+                count
+                src))))))))
+
+(defn eval-record-update-with-source [program node env src]
+  (let [record-value
+    (eval-node-with-source program (vector-get node 1) env src)]
+    (if (= (value-tag record-value) (ast-recordlit))
+      (eval-record-update-fields-loop-with-source
+        program
+        node
+        env
+        record-value
+        0
+        (vector-get node 2)
+        src)
+      (value-unit))))
+
 (defn eval-apply-with-source [program node env src]
   (do
     (root_push program)
@@ -1954,6 +2051,8 @@
               (eval-record-literal-with-source program node env src)
             (if (= tag (ast-fieldaccess))
               (eval-field-access-with-source program node env src)
+            (if (= tag (ast-recordupdate))
+              (eval-record-update-with-source program node env src)
             (if (= tag (ast-var))
               (let [name-hash (vector-get node 1)]
                 (if (= (env-has? env name-hash) 1)
@@ -1991,7 +2090,7 @@
                           (eval-node-with-source program (vector-get node 1) env src)
                           (if (= tag (ast-apply))
                             (eval-apply-with-source program node env src)
-                            (value-unit)))))))))))))))))
+                            (value-unit))))))))))))))))))
 
 (defn depth-total [paren-depth bracket-depth brace-depth]
   (+ (+ paren-depth bracket-depth) brace-depth))
