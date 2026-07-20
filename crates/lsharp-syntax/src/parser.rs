@@ -1281,8 +1281,22 @@ impl Parser {
             Some(TokenKind::Do) => self.parse_do(start_span),
             Some(TokenKind::Colon) => self.parse_ann(start_span),
             Some(TokenKind::Computation) => self.parse_computation(start_span),
+            Some(TokenKind::Dot) => self.parse_field_access(start_span),
             _ => self.parse_app(start_span),
         }
+    }
+
+    /// `(. expr field)` -- レコード field access
+    fn parse_field_access(&mut self, start_span: Span) -> Result<Expr, ParseError> {
+        self.advance(); // .
+        let expr = self.parse_expr()?;
+        let field = self.expect_symbol()?;
+        let end_span = self.expect(TokenKind::RParen)?.span;
+        Ok(Expr::FieldAccess(
+            start_span.merge(end_span),
+            Box::new(expr),
+            field,
+        ))
     }
 
     /// (if cond then else)
@@ -1889,6 +1903,18 @@ mod tests {
     fn test_record_update() {
         let expr = parse_expr_str("{p | x 3.0}");
         assert_eq!(expr.to_string(), "{(p) | x 3}");
+    }
+
+    #[test]
+    fn test_field_access() {
+        let expr = parse_expr_str("(. point x)");
+        assert_eq!(expr.to_string(), "(. point x)");
+        assert!(matches!(
+            expr,
+            Expr::FieldAccess(_, inner, field)
+                if matches!(*inner, Expr::Var(_, ref name) if name == "point")
+                    && field == "x"
+        ));
     }
 
     // --- 型エイリアステスト ---

@@ -1516,6 +1516,12 @@
       0
       (vector-get value (+ 4 (* idx 2))))))
 
+(defn eval-field-access [program node env]
+  (let [record-value (eval-node program (vector-get node 1) env)]
+    (if (= (value-tag record-value) (ast-recordlit))
+      (record-value-field record-value (vector-get node 2))
+      (value-unit))))
+
 (defn match-pattern-record-loop [pattern value idx count]
   (if (>= idx count)
     1
@@ -1794,6 +1800,8 @@
         node
         (if (= tag (ast-recordlit))
           (eval-record-literal program node env)
+          (if (= tag (ast-fieldaccess))
+            (eval-field-access program node env)
           (if (= tag (ast-var))
             (let [name-hash (vector-get node 1)]
               (if (= (env-has? env name-hash) 1)
@@ -1823,7 +1831,7 @@
                       (eval-node program (vector-get node 1) env)
                       (if (= tag (ast-apply))
                         (eval-apply program node env)
-                        (value-unit)))))))))))))))
+                        (value-unit))))))))))))))))
 
 ;; legacy invariant の String literal は AST が source offset を保持するため、
 ;; source-aware evaluator でだけ実値へ materialize する。
@@ -1882,6 +1890,13 @@
     (vector-get node 2)
     src))
 
+(defn eval-field-access-with-source [program node env src]
+  (let [record-value
+    (eval-node-with-source program (vector-get node 1) env src)]
+    (if (= (value-tag record-value) (ast-recordlit))
+      (record-value-field record-value (vector-get node 2))
+      (value-unit))))
+
 (defn eval-apply-with-source [program node env src]
   (do
     (root_push program)
@@ -1937,6 +1952,8 @@
             node
             (if (= tag (ast-recordlit))
               (eval-record-literal-with-source program node env src)
+            (if (= tag (ast-fieldaccess))
+              (eval-field-access-with-source program node env src)
             (if (= tag (ast-var))
               (let [name-hash (vector-get node 1)]
                 (if (= (env-has? env name-hash) 1)
@@ -1974,7 +1991,7 @@
                           (eval-node-with-source program (vector-get node 1) env src)
                           (if (= tag (ast-apply))
                             (eval-apply-with-source program node env src)
-                            (value-unit))))))))))))))))
+                            (value-unit)))))))))))))))))
 
 (defn depth-total [paren-depth bracket-depth brace-depth]
   (+ (+ paren-depth bracket-depth) brace-depth))

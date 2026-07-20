@@ -120,6 +120,10 @@ impl<'src> Lexer<'src> {
                     Ok(Token::new(TokenKind::Pipe, Span::new(start, self.pos)))
                 }
             }
+            '.' => {
+                self.pos += 1;
+                Ok(Token::new(TokenKind::Dot, Span::new(start, self.pos)))
+            }
             // P10-1: Quote トークン
             '\'' => {
                 self.pos += 1;
@@ -553,6 +557,22 @@ mod tests {
                 TokenKind::Symbol("a".to_string()),
                 TokenKind::Int(1),
                 TokenKind::RBrace,
+                TokenKind::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_dot_token() {
+        let tokens = lex("(. point x)");
+        assert_eq!(
+            tokens,
+            vec![
+                TokenKind::LParen,
+                TokenKind::Dot,
+                TokenKind::Symbol("point".to_string()),
+                TokenKind::Symbol("x".to_string()),
+                TokenKind::RParen,
                 TokenKind::Eof,
             ]
         );
