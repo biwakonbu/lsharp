@@ -1222,12 +1222,15 @@
     (contract-node-unknown-hash program expr scope 1)))
 
 ;; canonical :case は owner の引数や result を暗黙に束縛しない。
-(defn case-unknown-variable [program actual expected]
+;; 1=actual、2=expected、0=未検出を返し、診断 span の側を保持する。
+(defn case-unknown-variable-side [program actual expected]
   (let [scope (env-new)
     actual-found (contract-node-unknown-hash program actual scope 0)]
     (if (>= actual-found 0)
-      actual-found
-      (contract-node-unknown-hash program expected scope 0))))
+      1
+      (if (>= (contract-node-unknown-hash program expected scope 0) 0)
+        2
+        0))))
 
 (defn bind-params-loop [env decl args idx count]
   (if (>= idx count)
@@ -2288,8 +2291,12 @@
               actual-end)))
         (let [actual-expr (vector-get test-case 1)
           expected-expr (vector-get test-case 2)
-          unknown-hash (case-unknown-variable program actual-expr expected-expr)]
-          (if (>= unknown-hash 0)
+          expected-start (case-test-expected-start test-case)
+          expected-end (case-test-expected-end test-case)
+          unknown-side (case-unknown-variable-side program actual-expr expected-expr)
+          unknown-start (if (= unknown-side 2) expected-start actual-start)
+          unknown-end (if (= unknown-side 2) expected-end actual-end)]
+          (if (> unknown-side 0)
             (run-cases-loop
               program
               test-cases
@@ -2302,8 +2309,8 @@
                   0
                   0
                   (contract-diagnostic-undefined)
-                  actual-start
-                  actual-end)))
+                  unknown-start
+                  unknown-end)))
             (let [actual (eval-node program actual-expr (env-new))
               expected (eval-node program expected-expr (env-new))
               passed (values-equal actual expected)]

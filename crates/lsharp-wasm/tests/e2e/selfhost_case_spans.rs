@@ -222,3 +222,49 @@ fn selfhost_case_typecheck_selects_expected_span_for_type_mismatch() {
         "selfhost case typecheck は actual/expected 型不一致を expected span へ紐付けるべき"
     );
 }
+
+#[test]
+fn selfhost_test_runner_reports_case_expected_unknown_variable_span() {
+    let source = "(defn noop [] :case [(expect 1 missing)] true)";
+    let expected_start = source
+        .find("(expect 1 missing)")
+        .expect("case expected unknown variable span fixture が見つかる")
+        + "(expect 1 ".len();
+    let expected_end = expected_start + "missing".len();
+    let source_literal = source.replace('"', "\\\"");
+    let harness = format!(
+        r#"
+(defn main []
+  (let [src "{source_literal}"
+        suite (generate-tests-from-source src)
+        results (vector-get suite 3)
+        result (vector-get results 0)]
+    (do
+      (print (vector-length result))
+      (print (vector-get result 3))
+      (print (vector-get result 4))
+      (print (vector-get result 5))
+      0)))
+"#
+    );
+    let combined = format!(
+        "{}\n{}",
+        super::support::selfhost_test_runner_runtime_bundle(),
+        harness
+    );
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec![
+            "6",
+            "1",
+            &expected_start.to_string(),
+            &expected_end.to_string(),
+        ],
+        "selfhost case expected-side unknown-variable 診断は expected span を結果へ保持するべき"
+    );
+}
