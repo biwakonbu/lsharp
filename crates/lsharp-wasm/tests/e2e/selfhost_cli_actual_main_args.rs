@@ -453,6 +453,57 @@ fn test_e2e_selfhost_embedded_cli_main_with_args_test_format_json_non_bool_invar
     assert_non_bool_invariant_json_matches_rust_oracle(output, source);
 }
 
+/// EC-M1-02/06: EmbeddedCli の property precondition span が Rust oracle と一致すること
+#[test]
+fn test_e2e_selfhost_embedded_cli_main_with_args_test_format_json_property_precondition_span() {
+    let source = "(defn identity [x] :property [(for-all [x Int] :cases 1 :precondition [(+ x 1)] :postcondition (= result x))] x)";
+    let program =
+        lsharp_syntax::parse(source).expect("property precondition fixture は parse できるべき");
+    let diagnostic = lsharp_types::metadata_check::check_metadata(&program)
+        .into_iter()
+        .next()
+        .expect("Rust oracle は non-Bool precondition の diagnostic を返すべき");
+    assert!(
+        diagnostic.message.contains("Bool"),
+        "Rust oracle は property precondition の Bool 契約を診断するべき: {diagnostic:?}"
+    );
+
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, || {
+        run_main_with_input_file_capture(
+            selfhost_embedded_cli_runtime_bundle(),
+            "test_format_json_property_precondition_embedded",
+            source,
+            &["test", "input.ls", "--format", "json"],
+        )
+    });
+
+    assert_eq!(
+        output.exit_code, 2,
+        "EmbeddedCli の property precondition diagnostic は exit 2 を返すべき"
+    );
+    let lines = output_lines(output.stdout);
+    assert_eq!(
+        lines.len(),
+        1,
+        "EmbeddedCli の test --format json は report だけを stdout へ返すべき"
+    );
+    let report: Value = serde_json::from_str(&lines[0])
+        .expect("EmbeddedCli の property precondition report は valid JSON であるべき");
+    assert_eq!(report["implementation_conformance"]["status"], "fail");
+    assert_eq!(
+        report["implementation_conformance"]["diagnostics"]["firstErrorCode"],
+        2
+    );
+    assert_eq!(
+        report["implementation_conformance"]["diagnostics"]["firstErrorSpan"]["start"],
+        diagnostic.span.start
+    );
+    assert_eq!(
+        report["implementation_conformance"]["diagnostics"]["firstErrorSpan"]["end"],
+        diagnostic.span.end
+    );
+}
+
 /// TEST-CLI-02-AP2: actual Cli main は自己再帰 top-level defn を typecheck できること
 #[test]
 #[ignore]

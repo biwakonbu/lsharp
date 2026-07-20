@@ -979,3 +979,11 @@ selfhost `TestRunner` の source-aware property diagnosticについて、non-Boo
 Evidence: RED の `test_e2e_selfhost_property_runner_preserves_non_bool_precondition_span` は selfhost `95..`（postcondition fallback）と Rust oracle `71..`（precondition）の差分で失敗し、`test_e2e_selfhost_property_runner_preserves_second_non_bool_precondition_span` は selfhost `71..`（最初の span）と Rust oracle `80..`（2番目の span）の差分で失敗した。GREENでは両 fixtureの Rust/selfhost span一致、postcondition span、sidecar span、既存 16-case Rust/selfhost differentialを再確認した。さらに `test_e2e_selfhost_cli_test_source_json_reports_property_precondition_span` で、同じ Rust oracle span が `test --format json` 相当の `implementation_conformance.diagnostics.firstErrorSpan` へ転送されることを確認した（focused E2E `1 passed`、413.72s）。
 
 これは評価中に最初に non-Boolと判定した precondition predicateの source spanと、その JSON report forwardingに限定した verified sliceであり、text report、静的型診断と動的評価の全ケース parity、全 property failure の report forwarding、Mac Apple Silicon / Linux x86_64 current-source artifact/runtime、EC-M1-02 aggregateは残件である。TODOの `[~]` と Rust oracle / bootstrap / host integration境界は維持する。
+
+### EC-M1-02 EmbeddedCli property diagnostic report forwarding slice (2026-07-20)
+
+EmbeddedCli の実 argv `test input.ls --format json` について、non-Bool property precondition の failure boundary を Cli と同じ structured report へ転送することを追加検証した。stdout は JSON report 1 行、終了値は diagnostic failure の `2` とし、`implementation_conformance.status=fail`、`firstErrorCode=2`、`firstErrorSpan` は同一 fixtureを Rust canonical checkerへ渡して得た spanと比較した。
+
+Evidence: `test_e2e_selfhost_embedded_cli_main_with_args_test_format_json_property_precondition_span` は `1 passed`、`383.11s`。このテストは `selfhost_embedded_cli_runtime_bundle()` を実 argv で起動し、source file の読み込みから report serialization、exit codeまでを通過させる。既存の EmbeddedCli non-Bool invariant report test と合わせ、EmbeddedCli の structured diagnostic report の property precondition span forwardingを verified sliceとする。
+
+これは EmbeddedCli の一つの property diagnostic boundaryに限定した evidenceであり、text report、全 property failure の report forwarding、EmbeddedCli の全形式・全公開 command、Rust/selfhost differential、Mac Apple Silicon / Linux x86_64 current-source artifact/runtime、EC-M1-06 / EC-M1-02 aggregateの完了を意味しない。TODOの `[~]` と Rust oracle / bootstrap / host integration境界は維持する。
