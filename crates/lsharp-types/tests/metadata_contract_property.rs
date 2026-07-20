@@ -35,9 +35,19 @@ fn property_form_projects_to_typed_canonical_ir_with_sampling_plan() {
         &GeneratorPlan::TypeDirected
     );
     assert_eq!(property.preconditions().len(), 1);
+    let precondition_span = property.preconditions()[0].source_span();
+    assert_eq!(
+        &source[precondition_span.start..precondition_span.end],
+        "(>= x -100)"
+    );
     assert_eq!(
         format!("{}", property.preconditions()[0].expression()),
         "(>= x -100)"
+    );
+    let postcondition_span = property.postcondition().source_span();
+    assert_eq!(
+        &source[postcondition_span.start..postcondition_span.end],
+        "(>= result 0)"
     );
     assert_eq!(
         format!("{}", property.postcondition().expression()),

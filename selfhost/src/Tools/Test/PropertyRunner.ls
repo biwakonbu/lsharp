@@ -200,13 +200,33 @@
     offset
     (vector-new (vector-length binders))))
 
-;; source-aware ContractSuite projection は binder span を元ソースの offset に戻す。
+;; source-aware ContractSuite projection は postcondition span を元ソースの offset に戻す。
+(defn property-runner-postcondition-span [payload offset]
+  (let [marker (property-runner-find-from payload ":postcondition" 0)]
+    (if (< marker 0)
+      (vector-push-pair-rooted (vector-new 2) offset offset)
+      (let [len (string-length payload)
+        start (property-runner-skip-space payload (+ marker 14) len)]
+        (if (>= start len)
+          (vector-push-pair-rooted (vector-new 2) offset offset)
+          (let [end (if (= (string-char-at payload start) 40)
+              (property-runner-balanced-end payload start len 0)
+              (property-runner-atom-end payload start len))]
+            (if (and (> end start) (<= end len))
+              (vector-push-pair-rooted
+                (vector-new 2)
+                (+ offset start)
+                (+ offset end))
+              (vector-push-pair-rooted (vector-new 2) offset offset))))))))
+
+;; source-aware ContractSuite projection は binder/postcondition span を元ソースの offset に戻す。
 (defn property-runner-form-typed-payload-with-source [form owner src]
   (let [payload (property-runner-form-typed-payload form owner)
     property-text (if (> (vector-length form) 1) (vector-get form 1) "")
     directive-start (if (> (vector-length form) 2) (vector-get form 2) 0)
     payload-start (property-runner-find-from src property-text directive-start)
-    offset (if (>= payload-start 0) payload-start 0)]
+    offset (if (>= payload-start 0) payload-start 0)
+    postcondition-span (property-runner-postcondition-span property-text offset)]
     (do
       (root_push payload)
       (let [binders (property-runner-binders-with-source-offset
@@ -214,17 +234,20 @@
           offset)]
         (do
           (root_push binders)
-          (let [payload0 (property-runner-push-four
+          (root_push postcondition-span)
+          (let [payload0 (property-runner-push-five
               binders
               (vector-get payload 1)
               (vector-get payload 2)
-              (vector-get payload 3))]
+              (vector-get payload 3)
+              (vector-get payload 4))]
             (do
               (root_push payload0)
               (let [result (vector-push-single-rooted
                   payload0
-                  (vector-get payload 4))]
+                  postcondition-span)]
                 (do
+                  (root_pop)
                   (root_pop)
                   (root_pop)
                   (root_pop)
