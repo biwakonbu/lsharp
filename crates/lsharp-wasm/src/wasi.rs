@@ -3375,10 +3375,18 @@ fn emit_read_file_func(
     f.instruction(&W::LocalSet(7));
     f.instruction(&W::End);
 
-    // fd_close
+    // fd_close の errno を保持し、close 失敗時は payload を公開しない。
     f.instruction(&W::LocalGet(3));
     f.instruction(&W::Call(fd_close_idx));
-    f.instruction(&W::Drop);
+    f.instruction(&W::LocalSet(8));
+
+    f.instruction(&W::LocalGet(8));
+    f.instruction(&W::I32Const(0));
+    f.instruction(&W::I32Ne);
+    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::I32Const(0));
+    f.instruction(&W::LocalSet(7));
+    f.instruction(&W::End);
 
     // String オブジェクトの len を nread に更新
     f.instruction(&W::LocalGet(5));
@@ -4672,6 +4680,12 @@ mod tests {
     fn test_wasi_read_file_preserves_fd_read_errno() {
         let wasm = compile_wasi(r#"(defn main [] (print-string (read-file "input.txt")))"#);
         assert_fd_read_errno_is_saved(&wasm);
+    }
+
+    #[test]
+    fn test_wasi_read_file_preserves_fd_close_errno() {
+        let wasm = compile_wasi(r#"(defn main [] (print-string (read-file "input.txt")))"#);
+        assert_close_errno_is_saved(&wasm, 6);
     }
 
     #[test]
