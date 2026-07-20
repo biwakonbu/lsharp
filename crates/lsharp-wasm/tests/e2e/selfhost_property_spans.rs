@@ -55,11 +55,13 @@ fn selfhost_contract_suite_preserves_property_postcondition_source_span() {
         suites (extract-parser-contract-suites src)
         property (vector-get (vector-get (vector-get suites 0) 2) 0)
         payload (vector-get property 1)
-        post-span (if (> (vector-length payload) 5) (vector-get payload 5) 0)]
+        post-span (if (> (vector-length payload) 5) (vector-get payload 5) 0)
+        precondition-spans (if (> (vector-length payload) 6) (vector-get payload 6) 0)]
     (do
       (print (vector-length payload))
       (print (if (> (vector-length payload) 5) (vector-get post-span 0) -1))
       (print (if (> (vector-length payload) 5) (vector-get post-span 1) -1))
+      (print (if (> (vector-length payload) 6) (vector-length precondition-spans) -1))
       0)))
 "#
     );
@@ -76,10 +78,65 @@ fn selfhost_contract_suite_preserves_property_postcondition_source_span() {
     assert_eq!(
         lines,
         vec![
-            "6",
+            "7",
             &postcondition_start.to_string(),
             &postcondition_end.to_string(),
+            "0",
         ],
         "selfhost canonical property は postcondition の個別 source span を保持するべき"
+    );
+}
+
+#[test]
+fn selfhost_contract_suite_preserves_property_precondition_source_spans() {
+    let source = "(defn identity [x] :property [(for-all [value Int] :cases 1 :precondition [(>= value 0) (= value 0)] :postcondition (= result value))] x)";
+    let first_start = source
+        .find("(>= value 0)")
+        .expect("first precondition span fixture が見つかる");
+    let first_end = first_start + "(>= value 0)".len();
+    let second_start = source
+        .find("(= value 0)")
+        .expect("second precondition span fixture が見つかる");
+    let second_end = second_start + "(= value 0)".len();
+    let source_literal = source.replace('"', "\\\"");
+    let harness = format!(
+        r#"
+(defn main []
+  (let [src "{source_literal}"
+        suites (extract-parser-contract-suites src)
+        property (vector-get (vector-get (vector-get suites 0) 2) 0)
+        payload (vector-get property 1)
+        spans (if (> (vector-length payload) 6) (vector-get payload 6) 0)]
+    (do
+      (print (vector-length payload))
+      (print (if (> (vector-length payload) 6) (vector-length spans) -1))
+      (print (if (> (vector-length payload) 6) (vector-get spans 0) -1))
+      (print (if (> (vector-length payload) 6) (vector-get spans 1) -1))
+      (print (if (> (vector-length payload) 6) (vector-get spans 2) -1))
+      (print (if (> (vector-length payload) 6) (vector-get spans 3) -1))
+      0)))
+"#
+    );
+    let combined = format!(
+        "{}\n{}",
+        super::support::selfhost_test_runner_runtime_bundle(),
+        harness
+    );
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec![
+            "7",
+            "4",
+            &first_start.to_string(),
+            &first_end.to_string(),
+            &second_start.to_string(),
+            &second_end.to_string(),
+        ],
+        "selfhost canonical property は複数 precondition の個別 source span を保持するべき"
     );
 }

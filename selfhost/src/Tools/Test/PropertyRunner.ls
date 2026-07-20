@@ -200,6 +200,53 @@
     offset
     (vector-new (vector-length binders))))
 
+;; precondition の top-level expression を source order の flat span vector へ変換する。
+(defn property-runner-expression-spans-loop [src idx end offset result]
+  (let [start (property-runner-skip-space src idx end)]
+    (if (>= start end)
+      result
+      (let [expression-end (if (= (string-char-at src start) 40)
+          (property-runner-balanced-end src start end 0)
+          (property-runner-atom-end src start end))]
+        (if (<= expression-end start)
+          result
+          (do
+            (root_push result)
+            (let [next-result (vector-push-pair-rooted
+                result
+                (+ offset start)
+                (+ offset expression-end))]
+              (do
+                (root_push next-result)
+                (let [parsed (property-runner-expression-spans-loop
+                    src
+                    expression-end
+                    end
+                    offset
+                    next-result)]
+                  (do
+                    (root_pop)
+                    (root_pop)
+                    parsed))))))))))
+
+(defn property-runner-precondition-spans [payload offset]
+  (let [marker (property-runner-find-from payload ":precondition" 0)]
+    (if (< marker 0)
+      (vector-new 0)
+      (let [len (string-length payload)
+        open (property-runner-find-from payload "[" (+ marker 13))
+        close (if (>= open 0)
+          (property-runner-balanced-bracket-end payload open len 0)
+          -1)]
+        (if (or (< open 0) (<= close (+ open 1)))
+          (vector-new 0)
+          (property-runner-expression-spans-loop
+            payload
+            (+ open 1)
+            (- close 1)
+            offset
+            (vector-new 0)))))))
+
 ;; source-aware ContractSuite projection は postcondition span を元ソースの offset に戻す。
 (defn property-runner-postcondition-span [payload offset]
   (let [marker (property-runner-find-from payload ":postcondition" 0)]
@@ -226,7 +273,8 @@
     directive-start (if (> (vector-length form) 2) (vector-get form 2) 0)
     payload-start (property-runner-find-from src property-text directive-start)
     offset (if (>= payload-start 0) payload-start 0)
-    postcondition-span (property-runner-postcondition-span property-text offset)]
+    postcondition-span (property-runner-postcondition-span property-text offset)
+    precondition-spans (property-runner-precondition-spans property-text offset)]
     (do
       (root_push payload)
       (let [binders (property-runner-binders-with-source-offset
@@ -235,6 +283,7 @@
         (do
           (root_push binders)
           (root_push postcondition-span)
+          (root_push precondition-spans)
           (let [payload0 (property-runner-push-five
               binders
               (vector-get payload 1)
@@ -243,15 +292,22 @@
               (vector-get payload 4))]
             (do
               (root_push payload0)
-              (let [result (vector-push-single-rooted
+              (let [payload1 (vector-push-single-rooted
                   payload0
                   postcondition-span)]
                 (do
                   (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  result)))))))))
+                  (root_push payload1)
+                  (let [result (vector-push-single-rooted
+                      payload1
+                      precondition-spans)]
+                    (do
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      result)))))))))))
 
 (defn property-runner-typed-binders-info [payload]
   (let [close (property-runner-find-from
