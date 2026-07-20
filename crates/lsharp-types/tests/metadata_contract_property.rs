@@ -28,6 +28,8 @@ fn property_form_projects_to_typed_canonical_ir_with_sampling_plan() {
     assert_eq!(property.binders().len(), 1);
     assert_eq!(property.binders()[0].name(), "x");
     assert_eq!(property.binders()[0].ty(), &Type::int());
+    let binder_span = property.binders()[0].source_span();
+    assert_eq!(&source[binder_span.start..binder_span.end], "x Int");
     assert_eq!(
         property.binders()[0].generator(),
         &GeneratorPlan::TypeDirected

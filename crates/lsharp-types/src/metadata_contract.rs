@@ -108,12 +108,17 @@ pub enum GeneratorPlan {
 /// canonical property の typed binder。
 #[derive(Debug, Clone, PartialEq)]
 pub struct Binder {
+    source_span: Span,
     name: String,
     ty: Type,
     generator: GeneratorPlan,
 }
 
 impl Binder {
+    pub fn source_span(&self) -> Span {
+        self.source_span
+    }
+
     pub fn name(&self) -> &str {
         &self.name
     }
@@ -438,6 +443,7 @@ fn canonical_property(property: &lsharp_syntax::metadata::PropertyForm) -> Execu
         .binders()
         .iter()
         .map(|binder| Binder {
+            source_span: binder.source_span(),
             name: binder.name().to_string(),
             ty: canonical_property_type(binder.ty(), &mut type_vars),
             generator: GeneratorPlan::TypeDirected,
