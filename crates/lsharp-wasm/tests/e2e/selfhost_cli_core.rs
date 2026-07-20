@@ -8026,6 +8026,11 @@ fn test_e2e_selfhost_test_runner_reports_unknown_invariant_lambda_variable() {
             .any(|diagnostic| diagnostic.message.contains("未定義")),
         "Rust oracle は lambda 本体の未知変数を診断するべき: {diagnostics:?}"
     );
+    let oracle_span = diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.message.contains("未定義"))
+        .expect("lambda 本体の未知変数診断が存在するべき")
+        .span;
 
     let harness = r#"
 (defn main []
@@ -8038,6 +8043,8 @@ fn test_e2e_selfhost_test_runner_reports_unknown_invariant_lambda_variable() {
       (print (vector-get result0 1))
       (print (vector-get result0 2))
       (print (vector-get result0 3))
+      (print (test-result-diagnostic-start result0))
+      (print (test-result-diagnostic-end result0))
       0)))
 "#;
 
@@ -8046,10 +8053,18 @@ fn test_e2e_selfhost_test_runner_reports_unknown_invariant_lambda_variable() {
         compile_and_run(&combined)
     });
     let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(&lines[..4], ["1", "0", "0", "1"]);
+    let expected_start = oracle_span.start.to_string();
+    let expected_end = oracle_span.end.to_string();
     assert_eq!(
-        lines,
-        vec!["1", "0", "0", "1"],
-        "selfhost contract path は lambda 本体の未知変数を silent Unit/0 fallback にしないべき"
+        lines.get(4).copied(),
+        Some(expected_start.as_str()),
+        "selfhost lambda unknown-variable span の開始位置は Rust oracle と一致するべき"
+    );
+    assert_eq!(
+        lines.get(5).copied(),
+        Some(expected_end.as_str()),
+        "selfhost lambda unknown-variable span の終了位置は Rust oracle と一致するべき"
     );
 }
 
@@ -8066,6 +8081,11 @@ fn test_e2e_selfhost_test_runner_reports_unknown_invariant_computation_variable(
             .any(|diagnostic| diagnostic.message.contains("未定義")),
         "Rust oracle は computation step の未知変数を診断するべき: {diagnostics:?}"
     );
+    let oracle_span = diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.message.contains("未定義"))
+        .expect("computation step の未知変数診断が存在するべき")
+        .span;
 
     let harness = r#"
 (defn main []
@@ -8078,6 +8098,8 @@ fn test_e2e_selfhost_test_runner_reports_unknown_invariant_computation_variable(
       (print (vector-get result0 1))
       (print (vector-get result0 2))
       (print (vector-get result0 3))
+      (print (test-result-diagnostic-start result0))
+      (print (test-result-diagnostic-end result0))
       0)))
 "#;
 
@@ -8086,10 +8108,18 @@ fn test_e2e_selfhost_test_runner_reports_unknown_invariant_computation_variable(
         compile_and_run(&combined)
     });
     let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(&lines[..4], ["1", "0", "0", "1"]);
+    let expected_start = oracle_span.start.to_string();
+    let expected_end = oracle_span.end.to_string();
     assert_eq!(
-        lines,
-        vec!["1", "0", "0", "1"],
-        "selfhost contract path は computation step の未知変数を LS1002 にすり替えず LS1001 として報告するべき"
+        lines.get(4).copied(),
+        Some(expected_start.as_str()),
+        "selfhost computation unknown-variable span の開始位置は Rust oracle と一致するべき"
+    );
+    assert_eq!(
+        lines.get(5).copied(),
+        Some(expected_end.as_str()),
+        "selfhost computation unknown-variable span の終了位置は Rust oracle と一致するべき"
     );
 }
 
@@ -8231,6 +8261,11 @@ fn test_e2e_selfhost_test_runner_reports_unknown_invariant_match_variable() {
             .any(|diagnostic| diagnostic.message.contains("未定義")),
         "Rust oracle は match arm body の未知変数を診断するべき: {diagnostics:?}"
     );
+    let oracle_span = diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.message.contains("未定義"))
+        .expect("match arm body の未知変数診断が存在するべき")
+        .span;
 
     let harness = r#"
 (defn main []
@@ -8243,6 +8278,8 @@ fn test_e2e_selfhost_test_runner_reports_unknown_invariant_match_variable() {
       (print (vector-get result0 1))
       (print (vector-get result0 2))
       (print (vector-get result0 3))
+      (print (test-result-diagnostic-start result0))
+      (print (test-result-diagnostic-end result0))
       0)))
 "#;
 
@@ -8251,10 +8288,18 @@ fn test_e2e_selfhost_test_runner_reports_unknown_invariant_match_variable() {
         compile_and_run(&combined)
     });
     let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(&lines[..4], ["1", "0", "0", "1"]);
+    let expected_start = oracle_span.start.to_string();
+    let expected_end = oracle_span.end.to_string();
     assert_eq!(
-        lines,
-        vec!["1", "0", "0", "1"],
-        "selfhost contract path は match arm body の未知変数を LS1002 にすり替えず LS1001 として報告するべき"
+        lines.get(4).copied(),
+        Some(expected_start.as_str()),
+        "selfhost match unknown-variable span の開始位置は Rust oracle と一致するべき"
+    );
+    assert_eq!(
+        lines.get(5).copied(),
+        Some(expected_end.as_str()),
+        "selfhost match unknown-variable span の終了位置は Rust oracle と一致するべき"
     );
 }
 
