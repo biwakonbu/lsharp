@@ -20,6 +20,15 @@
     (vector-new 2)
     diagnostic-count
     first-error-code))
+(defn case-check-state [diagnostic-count first-error-code first-error-start first-error-end]
+  (vector-push-quad-rooted
+    (vector-new 4)
+    diagnostic-count
+    first-error-code
+    first-error-start
+    first-error-end))
+(defn case-expectation-result [code start end]
+  (vector-push-triple-rooted (vector-new 3) code start end))
 (defn property-space? [ch]
   (if (or (= ch 32) (= ch 9))
     1
@@ -619,43 +628,79 @@
 (defn check-case-expectation [pair decl env counter]
   (let [actual (vector-get pair 0)
     expected (vector-get pair 1)
+    actual-start (if (> (vector-length pair) 4) (vector-get pair 4) 0)
+    actual-end (if (> (vector-length pair) 5) (vector-get pair 5) 0)
+    expected-start (if (> (vector-length pair) 6) (vector-get pair 6) 0)
+    expected-end (if (> (vector-length pair) 7) (vector-get pair 7) 0)
     parameter-count (vector-get decl 2)]
-    (if (or
-      (= (assertion-contains-param-loop actual decl 0 parameter-count) 1)
-      (= (assertion-contains-param-loop expected decl 0 parameter-count) 1))
-      (canonical-case-type-error-code)
-      (let [actual-result (infer-expr actual env (subst-new) counter)]
-        (if (= (result-failed actual-result) 1)
+    (let [actual-has-param (assertion-contains-param-loop actual decl 0 parameter-count)
+      expected-has-param (assertion-contains-param-loop expected decl 0 parameter-count)]
+      (if (= actual-has-param 1)
+        (case-expectation-result
           (canonical-case-type-error-code)
-          (let [actual-type (apply-subst
-              (result-subst actual-result)
-              (result-type actual-result))
-            actual-kind (canonical-case-primitive-kind actual-type)
-            expected-result (infer-expr expected env (subst-new) counter)]
-            (if (= (result-failed expected-result) 1)
-              (canonical-case-type-error-code)
-              (let [expected-type (apply-subst
-                  (result-subst expected-result)
-                  (result-type expected-result))
-                expected-kind (canonical-case-primitive-kind expected-type)]
-                (if (or (= actual-kind 0) (= expected-kind 0))
-                  (canonical-case-value-error-code)
-                  (if (= actual-kind expected-kind)
-                    0
-                    (canonical-case-value-error-code)))))))))))
+          actual-start
+          actual-end)
+        (if (= expected-has-param 1)
+          (case-expectation-result
+            (canonical-case-type-error-code)
+            expected-start
+            expected-end)
+          (let [actual-result (infer-expr actual env (subst-new) counter)]
+            (if (= (result-failed actual-result) 1)
+              (case-expectation-result
+                (canonical-case-type-error-code)
+                actual-start
+                actual-end)
+              (let [actual-type (apply-subst
+                  (result-subst actual-result)
+                  (result-type actual-result))
+                actual-kind (canonical-case-primitive-kind actual-type)
+                expected-result (infer-expr expected env (subst-new) counter)]
+                (if (= (result-failed expected-result) 1)
+                  (case-expectation-result
+                    (canonical-case-type-error-code)
+                    expected-start
+                    expected-end)
+                  (let [expected-type (apply-subst
+                      (result-subst expected-result)
+                      (result-type expected-result))
+                    expected-kind (canonical-case-primitive-kind expected-type)]
+                    (if (or (= actual-kind 0) (= expected-kind 0))
+                      (case-expectation-result
+                        (canonical-case-value-error-code)
+                        (if (= (types-eq actual-type expected-type) 1)
+                          actual-start
+                          expected-start)
+                        (if (= (types-eq actual-type expected-type) 1)
+                          actual-end
+                          expected-end))
+                      (if (= actual-kind expected-kind)
+                        (case-expectation-result 0 0 0)
+                        (case-expectation-result
+                          (canonical-case-value-error-code)
+                          expected-start
+                          expected-end)))))))))))))
 (defn check-case-expectations-loop
-  [expectations idx count decl env counter diagnostic-count first-error-code]
+  [expectations idx count decl env counter diagnostic-count first-error-code first-error-start first-error-end]
   (if (>= idx count)
-    (assertion-check-state diagnostic-count first-error-code)
-    (let [code (check-case-expectation
+    (case-check-state diagnostic-count first-error-code first-error-start first-error-end)
+    (let [check-result (check-case-expectation
         (vector-get expectations idx)
         decl
         env
         counter)
+      check-result-root-slot (root_push check-result)
+      code (vector-get check-result 0)
+      error-start (vector-get check-result 1)
+      error-end (vector-get check-result 2)
       next-count (if (> code 0) (+ diagnostic-count 1) diagnostic-count)
       next-first-error-code
-        (if (= first-error-code 0) code first-error-code)]
-      (check-case-expectations-loop
+        (if (= first-error-code 0) code first-error-code)
+      next-first-error-start
+        (if (= first-error-code 0) error-start first-error-start)
+      next-first-error-end
+        (if (= first-error-code 0) error-end first-error-end)
+      result (check-case-expectations-loop
         expectations
         (+ idx 1)
         count
@@ -663,16 +708,23 @@
         env
         counter
         next-count
-        next-first-error-code))))
-(defn check-case-form [form decl env counter diagnostic-count first-error-code]
+        next-first-error-code
+        next-first-error-start
+        next-first-error-end)]
+      (do
+        (root_pop)
+        result))))
+(defn check-case-form [form decl env counter diagnostic-count first-error-code first-error-start first-error-end]
   (if (= (vector-get form 0) (contract-form-case))
     (let [expectations (vector-get form 1)]
       (if (= (vector-length expectations) 0)
-        (assertion-check-state
+        (case-check-state
           (+ diagnostic-count 1)
           (if (= first-error-code 0)
             (canonical-case-empty-code)
-            first-error-code))
+            first-error-code)
+          (if (= first-error-code 0) 0 first-error-start)
+          (if (= first-error-code 0) 0 first-error-end))
         (check-case-expectations-loop
           expectations
           0
@@ -681,19 +733,23 @@
           env
           counter
           diagnostic-count
-          first-error-code)))
-    (assertion-check-state diagnostic-count first-error-code)))
+          first-error-code
+          first-error-start
+          first-error-end)))
+    (case-check-state diagnostic-count first-error-code first-error-start first-error-end)))
 (defn check-case-forms-loop
-  [forms idx count decl env counter diagnostic-count first-error-code]
+  [forms idx count decl env counter diagnostic-count first-error-code first-error-start first-error-end]
   (if (>= idx count)
-    (assertion-check-state diagnostic-count first-error-code)
+    (case-check-state diagnostic-count first-error-code first-error-start first-error-end)
     (let [state (check-case-form
         (vector-get forms idx)
         decl
         env
         counter
         diagnostic-count
-        first-error-code)]
+        first-error-code
+        first-error-start
+        first-error-end)]
       (check-case-forms-loop
         forms
         (+ idx 1)
@@ -702,11 +758,13 @@
         env
         counter
         (vector-get state 0)
-        (vector-get state 1)))))
+        (vector-get state 1)
+        (vector-get state 2)
+        (vector-get state 3)))))
 (defn check-defn-cases [decl env counter]
   (let [forms (defn-ordered-forms decl)]
     (if (= forms 0)
-      (assertion-check-state 0 0)
+      (case-check-state 0 0 0 0)
       (check-case-forms-loop
         forms
         0
@@ -714,6 +772,8 @@
         decl
         env
         counter
+        0
+        0
         0
         0))))
 (defn check-module-program-loop
@@ -814,9 +874,9 @@
   (let [analysis (infer-program-analysis program)]
     (check-canonical-assertions-with-analysis program analysis)))
 (defn check-case-module-program-loop
-  [program idx count env counter diagnostic-count first-error-code]
+  [program idx count env counter diagnostic-count first-error-code first-error-start first-error-end]
   (if (>= idx count)
-    (assertion-check-state diagnostic-count first-error-code)
+    (case-check-state diagnostic-count first-error-code first-error-start first-error-end)
     (let [decl (vector-get program idx)]
       (do
         (root_push decl)
@@ -825,13 +885,19 @@
             (check-defn-cases decl env counter)
             (if (= tag (ast-module-decl))
               (check-case-module decl)
-              (assertion-check-state 0 0)))]
+              (case-check-state 0 0 0 0)))]
           (do
             (root_push state)
             (let [next-count (+ diagnostic-count (vector-get state 0))
               state-first-code (vector-get state 1)
+              state-first-start (vector-get state 2)
+              state-first-end (vector-get state 3)
               next-first-code
                 (if (= first-error-code 0) state-first-code first-error-code)
+              next-first-start
+                (if (= first-error-code 0) state-first-start first-error-start)
+              next-first-end
+                (if (= first-error-code 0) state-first-end first-error-end)
               result (check-case-module-program-loop
                 program
                 (+ idx 1)
@@ -839,7 +905,9 @@
                 env
                 counter
                 next-count
-                next-first-code)]
+                next-first-code
+                next-first-start
+                next-first-end)]
               (do
                 (root_pop)
                 (root_pop)
@@ -856,11 +924,13 @@
         env
         counter
         0
+        0
+        0
         0))))
 (defn check-case-program-loop
-  [program idx count env counter diagnostic-count first-error-code]
+  [program idx count env counter diagnostic-count first-error-code first-error-start first-error-end]
   (if (>= idx count)
-    (assertion-check-state diagnostic-count first-error-code)
+    (case-check-state diagnostic-count first-error-code first-error-start first-error-end)
     (let [decl (vector-get program idx)]
       (do
         (root_push decl)
@@ -876,14 +946,20 @@
                     (check-defn-cases inner env counter)
                     (if (= inner-tag (ast-module-decl))
                       (check-case-module inner)
-                      (assertion-check-state 0 0))))
-                (assertion-check-state 0 0))))]
+                      (case-check-state 0 0 0 0))))
+                (case-check-state 0 0 0 0))))]
           (do
             (root_push state)
             (let [next-count (+ diagnostic-count (vector-get state 0))
               state-first-code (vector-get state 1)
+              state-first-start (vector-get state 2)
+              state-first-end (vector-get state 3)
               next-first-code
                 (if (= first-error-code 0) state-first-code first-error-code)
+              next-first-start
+                (if (= first-error-code 0) state-first-start first-error-start)
+              next-first-end
+                (if (= first-error-code 0) state-first-end first-error-end)
               result (check-case-program-loop
                 program
                 (+ idx 1)
@@ -891,7 +967,9 @@
                 env
                 counter
                 next-count
-                next-first-code)]
+                next-first-code
+                next-first-start
+                next-first-end)]
               (do
                 (root_pop)
                 (root_pop)
@@ -905,6 +983,8 @@
       (vector-length program)
       env
       counter
+      0
+      0
       0
       0)))
 (defn check-canonical-cases [program]

@@ -176,3 +176,49 @@ fn selfhost_test_runner_reports_case_diagnostic_span() {
         "selfhost test runner は case の unknown-variable 診断 span を結果へ保持するべき"
     );
 }
+
+#[test]
+fn selfhost_case_typecheck_selects_expected_span_for_type_mismatch() {
+    let source = "(defn noop [] :case [(expect 1 true)] true)";
+    let expected_start = source
+        .find("(expect 1 true)")
+        .expect("case mismatch span fixture が見つかる")
+        + "(expect 1 ".len();
+    let expected_end = expected_start + "true".len();
+    let source_literal = source.replace('"', "\\\"");
+    let harness = format!(
+        r#"
+(defn main []
+  (let [program (parse-program "{source_literal}")
+        result (check-canonical-cases program)]
+    (do
+      (print (vector-length result))
+      (print (vector-get result 0))
+      (print (vector-get result 1))
+      (print (vector-get result 2))
+      (print (vector-get result 3))
+      0)))
+"#
+    );
+    let combined = format!(
+        "{}\n{}",
+        super::support::selfhost_typeinfer_runtime_bundle(),
+        harness
+    );
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec![
+            "4",
+            "1",
+            "1002",
+            &expected_start.to_string(),
+            &expected_end.to_string(),
+        ],
+        "selfhost case typecheck は actual/expected 型不一致を expected span へ紐付けるべき"
+    );
+}

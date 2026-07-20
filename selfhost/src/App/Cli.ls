@@ -298,14 +298,11 @@
     fields2 (docjson-append fields1
       (docjson-object-field "intent_validation" (assurance-intent-json)))]
     (docjson-object-wrap fields2)))
-(defn run-test-source-json-preflight [program diagnostic-code]
+(defn run-test-source-json-preflight [program diagnostic-code diagnostic-start diagnostic-end]
   (let [examples (extract-examples-from-program program)
     invariants (extract-invariants-from-program program)
     assertions (extract-assertions-from-program program)
     cases (extract-cases-from-program program)
-    first-case (if (> (vector-length cases) 0) (vector-get cases 0) 0)
-    diagnostic-start (if (= first-case 0) 0 (case-test-actual-start first-case))
-    diagnostic-end (if (= first-case 0) 0 (case-test-actual-end first-case))
     properties (extract-property-test-cases program)
     method (assurance-method
       (vector-length properties)
@@ -406,9 +403,13 @@
     case-check (check-canonical-cases-with-analysis program analysis)
     case-check-root-slot (root_push case-check)]
     (if (> property-boundary-code 0)
-      (run-test-source-json-preflight program property-boundary-code)
+      (run-test-source-json-preflight program property-boundary-code 0 0)
       (if (> (vector-get case-check 0) 0)
-        (run-test-source-json-preflight program (vector-get case-check 1))
+        (run-test-source-json-preflight
+          program
+          (vector-get case-check 1)
+          (vector-get case-check 2)
+          (vector-get case-check 3))
         (run-test-source-json-suite (generate-tests-from-source src))))))
 (defn case-preflight-diagnostics-summary [case-check]
   (let [count (vector-get case-check 0)

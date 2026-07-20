@@ -7453,13 +7453,13 @@ fn test_selfhost_cli_sources_route_property_runner_boundary() {
             file_name
         );
         assert!(
-            source.contains("case-test-actual-start"),
-            "{} の test JSON preflight は canonical case の actual span を report へ渡すべき",
+            source.contains("(vector-get case-check 2)"),
+            "{} の test JSON preflight は canonical case checker の firstErrorStart を report へ渡すべき",
             file_name
         );
         assert!(
-            source.contains("diagnostic-start") && source.contains("diagnostic-end"),
-            "{} の test JSON preflight は firstErrorSpan を固定 0..0 にせず構築するべき",
+            source.contains("(vector-get case-check 3)"),
+            "{} の test JSON preflight は canonical case checker の firstErrorEnd を report へ渡すべき",
             file_name
         );
     }
