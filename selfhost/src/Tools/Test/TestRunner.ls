@@ -111,6 +111,19 @@
       span-start)
     span-end))
 
+;; message を付与する診断結果。既存の span index を維持し、message は末尾へ追加する。
+(defn make-test-result-with-diagnostic-span-message
+  [name passed actual diagnostic-code span-start span-end message]
+  (vector-push
+    (make-test-result-with-diagnostic-span
+      name
+      passed
+      actual
+      diagnostic-code
+      span-start
+      span-end)
+    message))
+
 (defn make-suite [examples invariants]
   (vector-push
     (vector-push (vector-new 2) examples)
@@ -712,6 +725,11 @@
     (vector-get result 5)
     0))
 
+(defn test-result-diagnostic-message [result]
+  (if (> (vector-length result) 6)
+    (vector-get result 6)
+    ""))
+
 ;; 最初の診断を [found, start, end] で返す。JSON report の source span 用。
 (defn make-diagnostic-span-state [found start end]
   (vector-push
@@ -750,6 +768,31 @@
                 (if (= (vector-get case-span 0) 1)
                   case-span
                   (first-diagnostic-span properties))))))))))
+
+(defn first-diagnostic-message-loop [results idx count]
+  (if (>= idx count)
+    ""
+    (let [result (vector-get results idx)
+      code (test-result-diagnostic result)]
+      (if (> code 0)
+        (test-result-diagnostic-message result)
+        (first-diagnostic-message-loop results (+ idx 1) count)))))
+
+(defn first-test-diagnostic-message-with-properties
+  [examples invariants assertions cases properties]
+  (let [example-message (first-diagnostic-message-loop examples 0 (vector-length examples))]
+    (if (> (string-length example-message) 0)
+      example-message
+      (let [invariant-message (first-diagnostic-message-loop invariants 0 (vector-length invariants))]
+        (if (> (string-length invariant-message) 0)
+          invariant-message
+          (let [assertion-message (first-diagnostic-message-loop assertions 0 (vector-length assertions))]
+            (if (> (string-length assertion-message) 0)
+              assertion-message
+              (let [case-message (first-diagnostic-message-loop cases 0 (vector-length cases))]
+                (if (> (string-length case-message) 0)
+                  case-message
+                  (first-diagnostic-message-loop properties 0 (vector-length properties)))))))))))
 
 (defn contract-diagnostic-undefined [] 1) ;; LS1001: undefined-variable
 (defn contract-diagnostic-non-bool [] 2) ;; LS1002: invariant-predicate-must-be-bool
@@ -1521,9 +1564,28 @@
               (invariant-static-bool-kind-with-program program (vector-get node 2))
               (invariant-static-bool-kind-with-program program (vector-get node 3)))]
             (if (= condition-kind 2) 2 branch-kind))
-          (if (= tag (ast-ann))
+            (if (= tag (ast-ann))
             (invariant-static-bool-kind-with-program program (vector-get node 1))
             (invariant-static-bool-kind node)))))))
+
+;; static-kind=2 の代表的な inferred type を診断本文へ投影する。
+;; 未分類の形は Unknown のままにし、誤った具体型を report へ出さない。
+(defn invariant-static-non-bool-type-text [node]
+  (if (= (vector-get node 0) (ast-apply))
+    (let [callee (vector-get node 1)]
+      (if (= (vector-get callee 0) (ast-var))
+        (if (= (builtin-hash-arith? (vector-get callee 1)) 1)
+          "Int"
+          "Unknown")
+        "Unknown"))
+    "Unknown"))
+
+(defn invariant-non-bool-diagnostic-message [expr]
+  (string-concat
+    ":invariant は Bool 必須ですが、"
+    (string-concat
+      (invariant-static-non-bool-type-text expr)
+      " が推論されました")))
 
 (defn invariant-static-param-index-loop [decl target idx count]
   (if (>= idx count)
@@ -4245,13 +4307,16 @@
           (find-invariant-source-span src fn-hash)))
       (vector-push (vector-push (vector-new 2) 0) 0))]
     (if (> diagnostic-code 0)
-      (make-test-result-with-diagnostic-span
+      (make-test-result-with-diagnostic-span-message
         name
         passed
         actual
         diagnostic-code
         (vector-get source-span 0)
-        (vector-get source-span 1))
+        (vector-get source-span 1)
+        (if (= diagnostic-code (contract-diagnostic-non-bool))
+          (invariant-non-bool-diagnostic-message (vector-get tc 2))
+          ""))
       (make-test-result-with-diagnostic name passed actual diagnostic-code))))
 
 (defn run-invariants-loop [program invariants src idx count results]

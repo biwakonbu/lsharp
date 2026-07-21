@@ -236,15 +236,17 @@
     fields1 (docjson-append fields0 (docjson-int-field "start" start))
     fields2 (docjson-append fields1 (docjson-int-field "end" end))]
     (docjson-object-wrap fields2)))
-(defn assurance-diagnostics-json [count first-error-code first-error-start first-error-end]
+(defn assurance-diagnostics-json
+  [count first-error-code first-error-start first-error-end message]
   (let [fields0 ""
     fields1 (docjson-append fields0 (docjson-int-field "count" count))
     fields2 (docjson-append fields1 (docjson-int-field "firstErrorCode" first-error-code))
     fields3 (docjson-append fields2
       (docjson-object-field
         "firstErrorSpan"
-        (assurance-diagnostic-span-json first-error-start first-error-end)))]
-    (docjson-object-wrap fields3)))
+        (assurance-diagnostic-span-json first-error-start first-error-end)))
+    fields4 (docjson-append fields3 (docjson-string-field "message" message))]
+    (docjson-object-wrap fields4)))
 (defn assurance-provenance-json []
   (let [fields0 ""
     fields1 (docjson-append fields0 (docjson-string-field "runner" "selfhost"))
@@ -259,7 +261,7 @@
     fields4 (docjson-append fields3 (docjson-int-field "contradicting_observations" 0))]
     (docjson-object-wrap fields4)))
 (defn assurance-conformance-json
-  [status method cases executed failed diagnostic-count diagnostic-code diagnostic-start diagnostic-end]
+  [status method cases executed failed diagnostic-count diagnostic-code diagnostic-start diagnostic-end diagnostic-message]
   (let [fields0 ""
     fields1 (docjson-append fields0 (docjson-string-field "status" status))
     fields2 (docjson-append fields1 (docjson-string-field "method" method))
@@ -275,12 +277,13 @@
           diagnostic-count
           diagnostic-code
           diagnostic-start
-          diagnostic-end)))
+          diagnostic-end
+          diagnostic-message)))
     fields9 (docjson-append fields8 (docjson-string-field "target" "unknown"))
     fields10 (docjson-append fields9 (docjson-object-field "provenance" (assurance-provenance-json)))]
     (docjson-object-wrap fields10)))
 (defn assurance-report-json
-  [status method cases executed failed diagnostic-count diagnostic-code diagnostic-start diagnostic-end]
+  [status method cases executed failed diagnostic-count diagnostic-code diagnostic-start diagnostic-end diagnostic-message]
   (let [fields0 ""
     fields1 (docjson-append fields0
       (docjson-object-field
@@ -294,7 +297,8 @@
           diagnostic-count
           diagnostic-code
           diagnostic-start
-          diagnostic-end)))
+          diagnostic-end
+          diagnostic-message)))
     fields2 (docjson-append fields1
       (docjson-object-field "intent_validation" (assurance-intent-json)))]
     (docjson-object-wrap fields2)))
@@ -319,7 +323,8 @@
       1
       diagnostic-code
       diagnostic-start
-      diagnostic-end)]
+      diagnostic-end
+      "")]
     (do
       (print-string rendered)
       (print-string "\n")
@@ -351,6 +356,14 @@
     (vector-get suite 2)
     (vector-get suite 3)
     (vector-get suite 4)))
+
+(defn assurance-suite-diagnostic-message [suite]
+  (first-test-diagnostic-message-with-properties
+    (vector-get suite 0)
+    (vector-get suite 1)
+    (vector-get suite 2)
+    (vector-get suite 3)
+    (vector-get suite 4)))
 (defn assurance-suite-diagnostic-span [suite]
   (first-test-diagnostic-span-with-properties
     (vector-get suite 0)
@@ -376,6 +389,7 @@
   (let [failed (assurance-suite-failed suite)
     diagnostic-count (assurance-suite-diagnostic-count suite)
     diagnostic-code (assurance-suite-diagnostic-code suite)
+    diagnostic-message (assurance-suite-diagnostic-message suite)
     diagnostic-span (assurance-suite-diagnostic-span suite)
     method (assurance-suite-method suite)
     executed (assurance-suite-executed suite)
@@ -388,7 +402,8 @@
       diagnostic-count
       diagnostic-code
       (vector-get diagnostic-span 1)
-      (vector-get diagnostic-span 2))]
+      (vector-get diagnostic-span 2)
+      diagnostic-message)]
     (do
       (print-string rendered)
       (print-string "\n")
