@@ -1019,3 +1019,11 @@ selfhost CLI の text `test` について、non-Bool property precondition が p
 Evidence: `test_e2e_selfhost_cli_text_reports_non_bool_property_precondition` は `1 passed`、`401.00s`。これは `run-test-source` の text preflight 経路を同一 fixtureで実行した verified sliceであり、property precondition の `LS1002` code、failure count、exit codeの forwardingを固定する。text 出力へ正確な source spanを追加する仕様は未確定のため、この sliceでは現行の code-only text contractを維持した。
 
 これは text failure boundaryの code/exit forwardingに限定した evidenceであり、text span表示、全 property failure report forwarding、actual Cli/EmbeddedCli の全 text形式、Rust/selfhost differential、Mac Apple Silicon / Linux x86_64 current-source artifact/runtime、EC-M1-02 / EC-M1-06 aggregateの完了を意味しない。TODOの `[~]` と Rust oracle / bootstrap / host integration境界は維持する。
+
+### EC-M1-02 multiple property directive index slice (2026-07-20)
+
+Rust の `generate_tests` が同一関数の複数 `:property` directive ごとに property index を 0 へ戻し、生成テスト名を重複させる不整合を修正した。directive をまたぐ関数単位の counter を使い、deterministic smoke profile として生成された property だけを `property_0`, `property_1`, ... の source order で採番する。unsupported profile は既存の明示的な外部境界を維持し、採番対象へ暗黙に混ぜない。
+
+Evidence: RED `metadata_check::test_generation_tests::test_generate_multiple_property_forms_have_unique_names` は 2 件目が `identity_property_0` となって失敗し、GREEN は `1 passed`。関連する Rust metadata generation 9 tests と metadata checker 22 tests は全件 pass。selfhost 側も同一の二つの `:property` fixtureを `extract-property-test-cases` へ渡し、結果数 `2` と index `0, 1` を `test_e2e_selfhost_property_test_cases_assign_global_indices_across_forms`（`1 passed`、24.99s）で確認した。専用 cargo target は検証後に削除する。
+
+これは property test name/index の directive-boundary parity に限定した verified sliceであり、一般 `TypeExpr`、全 ContractSuite evaluator、structured report、supported 2 targets の current-source artifact/runtime、EC-M1-02 / EC-M1-03 aggregate の完了を意味しない。TODO の `[~]` と Rust oracle / bootstrap / host integration 境界は維持する。

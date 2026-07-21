@@ -10890,6 +10890,35 @@ fn test_e2e_selfhost_parser_contract_suite_projects_multiple_property_binders() 
     );
 }
 
+/// EC-M1-02/03: selfhost property test case の index が複数 directive 間で連番になること
+#[test]
+fn test_e2e_selfhost_property_test_cases_assign_global_indices_across_forms() {
+    let harness = r#"
+(defn main []
+  (let [src "(defn identity [x] :property [(for-all [value Int] :cases 1 :postcondition (= result value))] :property [(for-all [value Int] :cases 1 :postcondition (= result (+ value 0)))] x)"
+        properties (extract-property-test-cases (parse-program src))
+        first (vector-get properties 0)
+        second (vector-get properties 1)]
+    (do
+      (print (vector-length properties))
+      (print (vector-get first 0))
+      (print (vector-get second 0))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_test_runner_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["2", "0", "1"],
+        "selfhost property test case は複数 directive をまたいで source order の index を保持するべき"
+    );
+}
+
 /// TEST-CLI-02-O2d: selfhost/src/Tools/Test/TestRunner.ls が supported subset の metadata suite を実行できること
 #[test]
 #[ignore]

@@ -810,11 +810,12 @@ pub fn generate_tests(program: &Program) -> Vec<GeneratedTest> {
             }
 
             // 移行期 deterministic property smoke profile からテスト生成
+            let mut property_index = 0;
             for form in &meta.forms {
                 let MetadataFormKind::Property { properties } = &form.kind else {
                     continue;
                 };
-                for (property_index, property) in properties.iter().enumerate() {
+                for property in properties {
                     let Some(spec) = property_smoke_test_spec(property) else {
                         continue;
                     };
@@ -826,6 +827,7 @@ pub fn generate_tests(program: &Program) -> Vec<GeneratedTest> {
                         expected: None,
                         property: Some(spec),
                     });
+                    property_index += 1;
                 }
             }
 
@@ -1152,6 +1154,20 @@ mod test_generation_tests {
             tests[1].expected.as_ref().map(ToString::to_string),
             Some("4".to_string())
         );
+    }
+
+    #[test]
+    fn test_generate_multiple_property_forms_have_unique_names() {
+        let tests = gen_tests(
+            r#"(defn identity [x]
+                :property [(for-all [value Int] :cases 1 :postcondition (= result value))]
+                :property [(for-all [value Int] :cases 1 :postcondition (= result (+ value 0)))]
+                x)"#,
+        );
+        assert_eq!(tests.len(), 2);
+        assert_eq!(tests[0].name, "identity_property_0");
+        assert_eq!(tests[1].name, "identity_property_1");
+        assert!(tests.iter().all(|test| test.kind == TestKind::Property));
     }
 
     #[test]
