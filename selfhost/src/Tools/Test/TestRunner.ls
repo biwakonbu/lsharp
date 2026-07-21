@@ -1589,12 +1589,54 @@
                   "Unknown"))
               "Unknown")))))))
 
-(defn invariant-non-bool-diagnostic-message [expr]
-  (string-concat
-    ":invariant は Bool 必須ですが、"
+(defn invariant-static-match-non-bool-type-text-loop [program node idx count]
+  (if (>= idx count)
+    "Unknown"
+    (let [body (vector-get node (+ 4 (* idx 2)))]
+      (if (= (vector-get body 0) (ast-match-guard))
+        (let [guard (vector-get body 1)
+          guard-kind (invariant-static-bool-kind-with-program program guard)]
+          (if (= guard-kind 2)
+            (invariant-static-non-bool-type-text guard)
+            (invariant-static-match-non-bool-type-text-loop
+              program
+              node
+              (+ idx 1)
+              count)))
+        (invariant-static-match-non-bool-type-text-loop
+          program
+          node
+          (+ idx 1)
+          count)))))
+
+(defn invariant-static-match-non-bool-type-text [program node]
+  (invariant-static-match-non-bool-type-text-loop
+    program
+    node
+    0
+    (vector-get node 2)))
+
+(defn invariant-match-type-inference-failure-message [program expr source-span]
+  (let [type-text (invariant-static-match-non-bool-type-text program expr)
+    span-text (string-concat
+      (int-to-string (vector-get source-span 0))
+      (string-concat
+        ".."
+        (string-concat (int-to-string (vector-get source-span 1)) ")")))]
     (string-concat
-      (invariant-static-non-bool-type-text expr)
-      " が推論されました")))
+      ":invariant の型推論に失敗しました: [E0002] 型の不一致: expected "
+      (string-concat
+        type-text
+        (string-concat ", found Bool (" span-text)))))
+
+(defn invariant-non-bool-diagnostic-message [program expr source-span]
+  (if (= (vector-get expr 0) (ast-match))
+    (invariant-match-type-inference-failure-message program expr source-span)
+    (string-concat
+      ":invariant は Bool 必須ですが、"
+      (string-concat
+        (invariant-static-non-bool-type-text expr)
+        " が推論されました"))))
 
 (defn invariant-static-param-index-loop [decl target idx count]
   (if (>= idx count)
@@ -4324,7 +4366,7 @@
         (vector-get source-span 0)
         (vector-get source-span 1)
         (if (= diagnostic-code (contract-diagnostic-non-bool))
-          (invariant-non-bool-diagnostic-message (vector-get tc 2))
+          (invariant-non-bool-diagnostic-message program (vector-get tc 2) source-span)
           ""))
       (make-test-result-with-diagnostic name passed actual diagnostic-code))))
 
