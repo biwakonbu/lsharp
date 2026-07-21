@@ -7961,6 +7961,70 @@ fn test_e2e_selfhost_cli_test_source_json_reports_string_non_bool_invariant_mess
     assert_eq!(lines[1], "2");
 }
 
+/// EC-M1-01: selfhost test JSON が Float literal non-Bool invariant の診断 message を保持すること
+#[test]
+fn test_e2e_selfhost_cli_test_source_json_reports_float_non_bool_invariant_message() {
+    let source = "(defn floaty [x] :invariant 3.14 (+ x 1))";
+    let program = lsharp_syntax::parse(source).expect("Float literal non-Bool invariant fixture は parse できるべき");
+    let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
+    assert_eq!(diagnostics.len(), 1, "Rust oracle は Float literal non-Bool invariant を 1 件診断するべき");
+    let oracle_message = diagnostics[0].message.clone();
+
+    let harness = r#"
+(defn main []
+  (let [src "(defn floaty [x] :invariant 3.14 (+ x 1))"]
+    (print (run-test-source src 1))))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(lines.len(), 2, "Float literal non-Bool invariant の test JSON は report と exit code を返すべき");
+    let report: Value = serde_json::from_str(lines[0])
+        .expect("Float literal non-Bool invariant の selfhost test JSON は valid JSON であるべき");
+    assert_eq!(
+        report["implementation_conformance"]["diagnostics"]["message"],
+        oracle_message,
+        "selfhost test JSON は Rust oracle と同じ Float literal invariant 診断 message を返すべき"
+    );
+    assert_eq!(lines[1], "2");
+}
+
+/// EC-M1-01: selfhost test JSON が Unit literal non-Bool invariant の診断 message を保持すること
+#[test]
+fn test_e2e_selfhost_cli_test_source_json_reports_unit_non_bool_invariant_message() {
+    let source = "(defn unit [x] :invariant () (+ x 1))";
+    let program = lsharp_syntax::parse(source).expect("Unit literal non-Bool invariant fixture は parse できるべき");
+    let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
+    assert_eq!(diagnostics.len(), 1, "Rust oracle は Unit literal non-Bool invariant を 1 件診断するべき");
+    let oracle_message = diagnostics[0].message.clone();
+
+    let harness = r#"
+(defn main []
+  (let [src "(defn unit [x] :invariant () (+ x 1))"]
+    (print (run-test-source src 1))))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(lines.len(), 2, "Unit literal non-Bool invariant の test JSON は report と exit code を返すべき");
+    let report: Value = serde_json::from_str(lines[0])
+        .expect("Unit literal non-Bool invariant の selfhost test JSON は valid JSON であるべき");
+    assert_eq!(
+        report["implementation_conformance"]["diagnostics"]["message"],
+        oracle_message,
+        "selfhost test JSON は Rust oracle と同じ Unit literal invariant 診断 message を返すべき"
+    );
+    assert_eq!(lines[1], "2");
+}
+
 /// EC-M1-03/06: selfhost test JSON が assertion failure を実行件数へ含めること
 #[test]
 fn test_e2e_selfhost_cli_test_source_json_reports_assertion_failure_coverage() {
