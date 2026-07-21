@@ -1600,7 +1600,7 @@
         (if (> (vector-length decl) 0)
           (let [param-count (vector-get decl 2)
             body (vector-get decl (+ 3 param-count))]
-            (if (= param-count 0)
+            (if (or (= param-count 0) (= param-count 1))
               (invariant-static-non-bool-type-text body)
               "Unknown"))
           "Unknown"))
