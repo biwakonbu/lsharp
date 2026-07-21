@@ -1127,3 +1127,11 @@ legacy `:invariant` の match guardについて、root `match` の static non-Bo
 Evidence: RED `test_e2e_selfhost_test_runner_preserves_non_bool_match_guard_diagnostic_message` は Rust oracleの `:invariant の型推論に失敗しました: [E0002] 型の不一致: expected Int, found Bool (46..53)` に対し、selfhostが `:invariant は Bool 必須ですが、Unknown が推論されました` を返して失敗した（`27.64s`）。GREENは同じ fixtureで `1 passed`（`27.37s`）となり、既存 non-Bool match guard regression 10件も `10 passed`（`712.47s`）で code/span と dynamic/lambda境界を維持した。専用 Cargo targetは検証後に削除した。
 
 これは direct arithmetic match guardの diagnostic message projectionに限定した verified sliceであり、compound/root `if` の型推論失敗本文、user-defined/higher-order functionの inferred type本文、full diagnostic parity、text/structured reportの全境界、今回の変更後の Mac Apple Silicon / Linux x86_64 current-source artifact/runtime gate、EC-M1-01 aggregateの完了を意味しない。次の current-source dual-target gateでこの match message projectionの provenanceを確認する。TODOの `[~]` と Rust oracle / bootstrap / host integration境界は維持する。
+
+### EC-M1-01 direct branch `if` diagnostic message slice (2026-07-21)
+
+legacy `:invariant` の root `if` について、non-Bool branchの direct inferred typeを Rust oracle の E0003型推論失敗本文へ投影した。`(if true (+ 1 2) false)` は `expected Int, found Bool` と root `if` spanを保持し、condition non-Bool、dynamic branch、nested control expressionは今回の scope外に残している。
+
+Evidence: RED `test_e2e_selfhost_test_runner_preserves_non_bool_if_diagnostic_message` は Rust oracleの `:invariant の型推論に失敗しました: [E0003] 型の不一致: expected Int, found Bool (26..49)` に対し、selfhostが `:invariant は Bool 必須ですが、Unknown が推論されました` を返して失敗した（`28.63s`）。GREENは同じ fixtureで `1 passed`（`27.50s`）、match/if message projection regression 3件は `3 passed`（`84.33s`）となり、既存 direct literal messageの境界も維持した。専用 Cargo targetは検証後に削除した。
+
+これは direct branch `if` の E0003 message projectionに限定した verified sliceであり、condition non-Bool、nested/compound control expression、user-defined/higher-order functionの inferred type本文、full diagnostic parity、今回の変更後の Mac Apple Silicon / Linux x86_64 current-source artifact/runtime gate、EC-M1-01 aggregateの完了を意味しない。次の current-source dual-target gateで match/if message projectionの provenanceを確認する。TODOの `[~]` と Rust oracle / bootstrap / host integration境界は維持する。

@@ -1616,15 +1616,34 @@
     0
     (vector-get node 2)))
 
+(defn invariant-diagnostic-span-text [source-span]
+  (string-concat
+    (int-to-string (vector-get source-span 0))
+    (string-concat
+      ".."
+      (string-concat (int-to-string (vector-get source-span 1)) ")"))))
+
 (defn invariant-match-type-inference-failure-message [program expr source-span]
   (let [type-text (invariant-static-match-non-bool-type-text program expr)
-    span-text (string-concat
-      (int-to-string (vector-get source-span 0))
-      (string-concat
-        ".."
-        (string-concat (int-to-string (vector-get source-span 1)) ")")))]
+    span-text (invariant-diagnostic-span-text source-span)]
     (string-concat
       ":invariant の型推論に失敗しました: [E0002] 型の不一致: expected "
+      (string-concat
+        type-text
+        (string-concat ", found Bool (" span-text)))))
+
+(defn invariant-static-if-non-bool-type-text [node]
+  (let [then-node (vector-get node 2)
+    else-node (vector-get node 3)]
+    (if (= (invariant-static-bool-kind then-node) 2)
+      (invariant-static-non-bool-type-text then-node)
+      (invariant-static-non-bool-type-text else-node))))
+
+(defn invariant-if-type-inference-failure-message [expr source-span]
+  (let [type-text (invariant-static-if-non-bool-type-text expr)
+    span-text (invariant-diagnostic-span-text source-span)]
+    (string-concat
+      ":invariant の型推論に失敗しました: [E0003] 型の不一致: expected "
       (string-concat
         type-text
         (string-concat ", found Bool (" span-text)))))
@@ -1632,11 +1651,13 @@
 (defn invariant-non-bool-diagnostic-message [program expr source-span]
   (if (= (vector-get expr 0) (ast-match))
     (invariant-match-type-inference-failure-message program expr source-span)
-    (string-concat
-      ":invariant は Bool 必須ですが、"
+    (if (= (vector-get expr 0) (ast-if))
+      (invariant-if-type-inference-failure-message expr source-span)
       (string-concat
-        (invariant-static-non-bool-type-text expr)
-        " が推論されました"))))
+        ":invariant は Bool 必須ですが、"
+        (string-concat
+          (invariant-static-non-bool-type-text expr)
+          " が推論されました")))))
 
 (defn invariant-static-param-index-loop [decl target idx count]
   (if (>= idx count)
