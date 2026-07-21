@@ -1625,18 +1625,87 @@
         (invariant-static-user-function-non-bool-type-text program node)
         "Unknown"))))
 
-(defn invariant-static-computation-non-bool-type-text [program node idx count]
+(defn invariant-static-env-type-text [env node]
+  (if (= (vector-get node 0) (ast-var))
+    (if (= (env-has? env (vector-get node 1)) 1)
+      (let [value (env-lookup env (vector-get node 1))]
+        (if (= (value-tag value) (ast-lit-string))
+          (vector-get value 1)
+          "Unknown"))
+      "Unknown")
+    "Unknown"))
+
+(defn invariant-static-user-function-non-bool-type-text-with-env [program node env]
+  (let [callee (vector-get node 1)]
+    (if (= (vector-get callee 0) (ast-var))
+      (let [decl (find-defn-by-hash
+          program
+          (vector-get callee 1)
+          0
+          (vector-length program))]
+        (if (> (vector-length decl) 0)
+          (let [param-count (vector-get decl 2)
+            body (vector-get decl (+ 3 param-count))]
+            (if (= (vector-get body 0) (ast-var))
+              (let [param-idx (invariant-static-param-index-loop
+                  decl
+                  (vector-get body 1)
+                  0
+                  param-count)]
+                (if (>= param-idx 0)
+                  (invariant-static-non-bool-type-text-with-env
+                    program
+                    (vector-get node (+ 3 param-idx))
+                    env)
+                  "Unknown"))
+              (if (or (= param-count 0) (or (= param-count 1) (= param-count 2)))
+                (invariant-static-non-bool-type-text body)
+                "Unknown")))
+          "Unknown"))
+      "Unknown")))
+
+(defn invariant-static-non-bool-type-text-with-env [program node env]
+  (let [direct-text (invariant-static-non-bool-type-text node)]
+    (if (not (string-eq direct-text "Unknown"))
+      direct-text
+      (if (= (vector-get node 0) (ast-var))
+        (invariant-static-env-type-text env node)
+        (if (= (vector-get node 0) (ast-apply))
+          (invariant-static-user-function-non-bool-type-text-with-env
+            program
+            node
+            env)
+          "Unknown")))))
+
+(defn invariant-static-computation-non-bool-type-text-with-env
+  [program node idx count env]
   (if (>= idx count)
     "Unknown"
     (let [step-base (+ 3 (* idx 3))
+      step-kind (vector-get node step-base)
+      aux (vector-get node (+ step-base 1))
       expression (vector-get node (+ step-base 2))]
       (if (= (+ idx 1) count)
-        (invariant-static-non-bool-type-text-with-program program expression)
-        (invariant-static-computation-non-bool-type-text
-          program
-          node
-          (+ idx 1)
-          count)))))
+        (invariant-static-non-bool-type-text-with-env program expression env)
+        (let [step-text
+          (invariant-static-non-bool-type-text-with-env program expression env)
+          next-env (if (= step-kind (computation-step-let-bang))
+            (env-bind env aux (value-string step-text))
+            env)]
+          (invariant-static-computation-non-bool-type-text-with-env
+            program
+            node
+            (+ idx 1)
+            count
+            next-env))))))
+
+(defn invariant-static-computation-non-bool-type-text [program node idx count]
+  (invariant-static-computation-non-bool-type-text-with-env
+    program
+    node
+    idx
+    count
+    (env-new)))
 
 (defn invariant-static-match-non-bool-type-text-loop [program node idx count]
   (if (>= idx count)
