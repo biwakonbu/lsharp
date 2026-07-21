@@ -2264,27 +2264,77 @@
       start)
     end))
 
-;; AST は expression span を保持しないため、静的に直接判定できる
-;; non-Bool guard の token form だけを識別する。
-(defn invariant-token-non-bool-kind [src tokens start end]
+;; AST は expression span を保持しないため、token sidecar 側も
+;; 0=unknown、1=Bool、2=non-Bool の三値で静的 shape を判定する。
+(defn invariant-token-static-branch-kind [left right]
+  (if (= left 2)
+    2
+    (if (= right 2)
+      2
+      (if (and (= left 1) (= right 1)) 1 0))))
+
+(defn invariant-token-static-bool-kind [src tokens start end]
   (if (>= start end)
     0
     (let [kind (token-kind tokens start)]
-      (if (or (= kind (tok-int))
+      (if (or (= kind (tok-bool-true)) (= kind (tok-bool-false)))
+        1
+        (if (or (= kind (tok-int))
           (or (= kind (tok-float))
             (or (= kind (tok-string)) (= kind (tok-string-escape)))))
-        1
-        (if (= kind (tok-lparen))
-          (if (and (< (+ start 1) end) (= (token-kind tokens (+ start 1)) (tok-symbol)))
-            (let [operator (token-text src tokens (+ start 1))]
-              (if (or (string-eq operator "+")
-                  (or (string-eq operator "-")
-                    (or (string-eq operator "*")
-                      (or (string-eq operator "/") (string-eq operator "%")))))
-                1
-                0))
-            0)
-          0)))))
+          2
+          (if (= kind (tok-lparen))
+            (if (and
+                (< (+ start 1) end)
+                (or
+                  (= (token-kind tokens (+ start 1)) (tok-symbol))
+                  (= (token-kind tokens (+ start 1)) (tok-if))))
+              (let [operator (token-text src tokens (+ start 1))]
+                (if (or (string-eq operator "+")
+                    (or (string-eq operator "-")
+                      (or (string-eq operator "*")
+                        (or (string-eq operator "/") (string-eq operator "%")))))
+                  2
+                  (if (or (string-eq operator "=")
+                      (or (string-eq operator "==")
+                        (or (string-eq operator "<")
+                          (or (string-eq operator "<=")
+                            (or (string-eq operator ">")
+                              (or (string-eq operator ">=")
+                                (string-eq operator "string-eq")))))))
+                    1
+                    (if (string-eq operator "if")
+                      (let [condition-start (+ start 2)
+                        condition-end (consume-form tokens condition-start)
+                        then-start condition-end
+                        then-end (consume-form tokens then-start)
+                        else-start then-end
+                        else-end (consume-form tokens else-start)
+                        condition-kind (invariant-token-static-bool-kind
+                          src tokens condition-start condition-end)
+                        branch-kind (invariant-token-static-branch-kind
+                          (invariant-token-static-bool-kind src tokens then-start then-end)
+                          (invariant-token-static-bool-kind src tokens else-start else-end))]
+                        (if (= condition-kind 2) 2 branch-kind))
+                      (if (string-eq operator "not")
+                        (let [operand-start (+ start 2)
+                          operand-end (consume-form tokens operand-start)
+                          operand-kind (invariant-token-static-bool-kind
+                            src tokens operand-start operand-end)]
+                          (if (= operand-kind 2) 2 (if (= operand-kind 1) 1 0)))
+                        (if (or (string-eq operator "and") (string-eq operator "or"))
+                          (let [left-start (+ start 2)
+                            left-end (consume-form tokens left-start)
+                            right-start left-end
+                            right-end (consume-form tokens right-start)
+                            left-kind (invariant-token-static-bool-kind
+                              src tokens left-start left-end)
+                            right-kind (invariant-token-static-bool-kind
+                              src tokens right-start right-end)]
+                            (invariant-token-static-branch-kind left-kind right-kind))
+                          0))))))
+              0)
+            0))))))
 
 (defn invariant-find-non-bool-guard-sequence [src tokens idx end]
   (if (>= idx end)
@@ -2311,7 +2361,7 @@
           body-end (consume-form tokens body-start)
           nested-guard (invariant-find-non-bool-guard-form src tokens guard-start guard-end)
           nested-body (invariant-find-non-bool-guard-form src tokens body-start body-end)]
-          (if (= (invariant-token-non-bool-kind src tokens guard-start guard-end) 1)
+          (if (= (invariant-token-static-bool-kind src tokens guard-start guard-end) 2)
             (invariant-guard-span-state
               1
               (token-start tokens guard-start)
