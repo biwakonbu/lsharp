@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lsharp.dev/schemas/legacy-migration.schema.json",
+  "title": "L# legacy migration diagnostic row",
+  "description": "Rust MCP と selfhost check JSON が共有する legacy metadata migration row の契約",
+  "oneOf": [
+    { "$ref": "#/$defs/selfhostMigrationRow" },
+    { "$ref": "#/$defs/mcpMigrationDiagnostic" }
+  ],
+  "$defs": {
+    "migrationCode": {
+      "type": "string",
+      "enum": ["LS2001", "LS2002", "LS2003"]
+    },
+    "selectedSemantics": {
+      "type": "string",
+      "enum": [
+        "legacy-example-truthiness",
+        "legacy-invariant-deterministic-smoke"
+      ]
+    },
+    "migrationDisposition": {
+      "type": "string",
+      "enum": [
+        "docs-only-example",
+        "assertion",
+        "property-postcondition",
+        "manual-review"
+      ]
+    },
+    "byteSpan": {
+      "type": "object",
+      "required": ["start", "end"],
+      "properties": {
+        "start": { "type": "integer", "minimum": 0 },
+        "end": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "lspPosition": {
+      "type": "object",
+      "required": ["line", "character"],
+      "properties": {
+        "line": { "type": "integer", "minimum": 0 },
+        "character": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "lspRange": {
+      "type": "object",
+      "required": ["start", "end"],
+      "properties": {
+        "start": { "$ref": "#/$defs/lspPosition" },
+        "end": { "$ref": "#/$defs/lspPosition" }
+      },
+      "additionalProperties": false
+    },
+    "selfhostMigrationRow": {
+      "type": "object",
+      "required": [
+        "code",
+        "ownerHash",
+        "selectedSemantics",
+        "disposition",
+        "span",
+        "message"
+      ],
+      "properties": {
+        "code": { "$ref": "#/$defs/migrationCode" },
+        "ownerHash": { "type": "integer" },
+        "selectedSemantics": { "$ref": "#/$defs/selectedSemantics" },
+        "disposition": { "$ref": "#/$defs/migrationDisposition" },
+        "span": { "$ref": "#/$defs/byteSpan" },
+        "message": { "type": "string" },
+        "expressionSpan": { "$ref": "#/$defs/byteSpan" }
+      },
+      "additionalProperties": false
+    },
+    "mcpMigrationDiagnostic": {
+      "type": "object",
+      "required": [
+        "code",
+        "owner",
+        "selectedSemantics",
+        "disposition",
+        "range",
+        "message"
+      ],
+      "properties": {
+        "code": { "$ref": "#/$defs/migrationCode" },
+        "owner": { "type": "string" },
+        "selectedSemantics": { "$ref": "#/$defs/selectedSemantics" },
+        "disposition": { "$ref": "#/$defs/migrationDisposition" },
+        "range": { "$ref": "#/$defs/lspRange" },
+        "message": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

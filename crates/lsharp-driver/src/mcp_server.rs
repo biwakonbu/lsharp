@@ -244,7 +244,14 @@ fn tool_output_schema(name: &str) -> Value {
                     "type": "array",
                     "items": {
                         "type": "object",
-                        "required": ["code", "owner", "selectedSemantics", "disposition", "range"],
+                        "required": [
+                            "code",
+                            "owner",
+                            "selectedSemantics",
+                            "disposition",
+                            "range",
+                            "message"
+                        ],
                         "properties": {
                             "code": {
                                 "type": "string",
@@ -1065,6 +1072,131 @@ mod tests {
                 "manual-review"
             ])
         );
+    }
+
+    fn legacy_migration_schema() -> Value {
+        let repo_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let path = repo_root.join("docs/schemas/legacy-migration.schema.json");
+        let source = std::fs::read_to_string(&path)
+            .unwrap_or_else(|error| panic!("{} の読み込みに失敗: {error}", path.display()));
+        serde_json::from_str(&source)
+            .unwrap_or_else(|error| panic!("{} は valid JSON であるべき: {error}", path.display()))
+    }
+
+    #[test]
+    fn test_legacy_migration_schema_declares_stable_enum_strings() {
+        let schema = legacy_migration_schema();
+
+        assert_eq!(
+            schema["$defs"]["migrationCode"]["enum"],
+            json!(["LS2001", "LS2002", "LS2003"])
+        );
+        assert_eq!(
+            schema["$defs"]["selectedSemantics"]["enum"],
+            json!([
+                "legacy-example-truthiness",
+                "legacy-invariant-deterministic-smoke"
+            ])
+        );
+        assert_eq!(
+            schema["$defs"]["migrationDisposition"]["enum"],
+            json!([
+                "docs-only-example",
+                "assertion",
+                "property-postcondition",
+                "manual-review"
+            ])
+        );
+    }
+
+    #[test]
+    fn test_legacy_migration_schema_keeps_selfhost_and_mcp_shapes_distinct() {
+        let schema = legacy_migration_schema();
+        let alternatives = schema["oneOf"].as_array().unwrap();
+        assert_eq!(alternatives.len(), 2);
+        assert_eq!(alternatives[0]["$ref"], "#/$defs/selfhostMigrationRow");
+        assert_eq!(alternatives[1]["$ref"], "#/$defs/mcpMigrationDiagnostic");
+
+        let selfhost_required = schema["$defs"]["selfhostMigrationRow"]["required"]
+            .as_array()
+            .unwrap();
+        assert!(selfhost_required.contains(&json!("ownerHash")));
+        assert!(selfhost_required.contains(&json!("span")));
+
+        let mcp_required = schema["$defs"]["mcpMigrationDiagnostic"]["required"]
+            .as_array()
+            .unwrap();
+        assert!(mcp_required.contains(&json!("owner")));
+        assert!(mcp_required.contains(&json!("range")));
+    }
+
+    #[test]
+    fn test_mcp_output_schema_matches_shared_legacy_migration_schema() {
+        let schema = legacy_migration_schema();
+        let response = handle_jsonrpc_message(&json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/list"
+        }));
+        let tool = response["result"]["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|tool| tool["name"] == "lsharp_check")
+            .expect("lsharp_check が tools/list に必要");
+        let migration_item = &tool["outputSchema"]["properties"]["migrationDiagnostics"]["items"];
+        let properties = &migration_item["properties"];
+
+        assert_eq!(
+            migration_item["required"],
+            schema["$defs"]["mcpMigrationDiagnostic"]["required"]
+        );
+
+        assert_eq!(
+            properties["code"]["enum"],
+            schema["$defs"]["migrationCode"]["enum"]
+        );
+        assert_eq!(
+            properties["selectedSemantics"]["enum"],
+            schema["$defs"]["selectedSemantics"]["enum"]
+        );
+        assert_eq!(
+            properties["disposition"]["enum"],
+            schema["$defs"]["migrationDisposition"]["enum"]
+        );
+    }
+
+    #[test]
+    fn test_mcp_migration_rows_stay_inside_shared_legacy_migration_schema() {
+        let schema = legacy_migration_schema();
+        let source = "(defn succ [x] :example [(succ 0) (= (succ 1) 2)] :invariant (= result (+ x 1)) (+ x 1))";
+        let result = call_tool("lsharp_check", &json!({"source": source}))
+            .expect("lsharp_check は legacy migration report を返すべき");
+        let rows = result["migrationDiagnostics"]
+            .as_array()
+            .expect("migrationDiagnostics は配列であるべき");
+
+        assert_eq!(rows.len(), 3);
+        for row in rows {
+            assert!(
+                schema["$defs"]["migrationCode"]["enum"]
+                    .as_array()
+                    .unwrap()
+                    .contains(&row["code"])
+            );
+            assert!(
+                schema["$defs"]["selectedSemantics"]["enum"]
+                    .as_array()
+                    .unwrap()
+                    .contains(&row["selectedSemantics"])
+            );
+            assert!(
+                schema["$defs"]["migrationDisposition"]["enum"]
+                    .as_array()
+                    .unwrap()
+                    .contains(&row["disposition"])
+            );
+        }
     }
 
     #[test]
