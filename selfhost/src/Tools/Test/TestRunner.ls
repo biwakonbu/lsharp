@@ -1681,14 +1681,27 @@
       direct-text
         (if (= (vector-get node 0) (ast-var))
           (invariant-static-env-type-text env node)
-          (if (= (vector-get node 0) (ast-if))
-            (invariant-static-if-non-bool-type-text-with-env program node env)
-            (if (= (vector-get node 0) (ast-apply))
-              (invariant-static-user-function-non-bool-type-text-with-env
+          (if (= (vector-get node 0) (ast-let))
+            (let [init-text (invariant-static-non-bool-type-text-with-env
                 program
-                node
+                (vector-get node 2)
                 env)
-              "Unknown"))))))
+              next-env (env-bind
+                env
+                (vector-get node 1)
+                (value-string init-text))]
+              (invariant-static-non-bool-type-text-with-env
+                program
+                (vector-get node 3)
+                next-env))
+            (if (= (vector-get node 0) (ast-if))
+              (invariant-static-if-non-bool-type-text-with-env program node env)
+              (if (= (vector-get node 0) (ast-apply))
+                (invariant-static-user-function-non-bool-type-text-with-env
+                  program
+                  node
+                  env)
+                "Unknown")))))))
 
 (defn invariant-static-computation-non-bool-type-text-with-env
   [program node idx count env]
