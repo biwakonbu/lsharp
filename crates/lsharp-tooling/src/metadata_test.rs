@@ -32,6 +32,7 @@ impl MetadataTestRun {
 pub fn test_kind_label(kind: &lsharp_types::metadata_check::TestKind) -> &'static str {
     match kind {
         lsharp_types::metadata_check::TestKind::Case => "case",
+        lsharp_types::metadata_check::TestKind::Assertion => "assertion",
         lsharp_types::metadata_check::TestKind::Example => "example",
         lsharp_types::metadata_check::TestKind::Invariant => "invariant",
         lsharp_types::metadata_check::TestKind::Property => "property",
@@ -186,6 +187,36 @@ mod tests {
         assert_eq!(run.results[0].name, "abs_invariant");
         assert_eq!(run.results[1].name, "abs_example_0");
         assert!(run.results.iter().all(|result| result.passed));
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_run_metadata_tests_executes_canonical_assertions() {
+        let dir = unique_temp_dir("canonical_assertion_execution");
+        let file = dir.join("Main.ls");
+        fs::write(
+            &file,
+            r#"(defn truth [] (= 1 1))
+(defn falsehood [] (= 1 2))
+(defn noop [] :assert [(truth) (falsehood)] 0)
+"#,
+        )
+        .unwrap();
+
+        let run = run_metadata_tests(&file)
+            .expect("canonical assertion は実行結果へ materialize されるべき");
+        assert_eq!(run.total(), 2);
+        assert_eq!(run.passed(), 1);
+        assert_eq!(run.failed(), 1);
+        assert_eq!(run.results[0].name, "noop_assertion_0");
+        assert_eq!(run.results[1].name, "noop_assertion_1");
+        assert!(run.results[0].passed);
+        assert!(!run.results[1].passed);
+        assert!(matches!(
+            run.results[0].kind,
+            lsharp_types::metadata_check::TestKind::Assertion
+        ));
 
         let _ = fs::remove_dir_all(&dir);
     }

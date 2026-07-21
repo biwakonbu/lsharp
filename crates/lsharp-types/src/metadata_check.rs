@@ -730,6 +730,8 @@ pub fn property_smoke_test_spec(property: &PropertyForm) -> Option<PropertySmoke
 pub enum TestKind {
     /// canonical `:case` から生成されたテスト
     Case,
+    /// canonical `:assert` から生成されたテスト
+    Assertion,
     /// :invariant から生成されたテスト
     Invariant,
     /// 移行期 deterministic property smoke profile。
@@ -785,6 +787,25 @@ pub fn generate_tests(program: &Program) -> Vec<GeneratedTest> {
                         property: None,
                     });
                     case_index += 1;
+                }
+            }
+
+            // canonical :assert からテスト生成
+            let mut assertion_index = 0;
+            for form in &meta.forms {
+                let MetadataFormKind::Assertion { predicates } = &form.kind else {
+                    continue;
+                };
+                for predicate in predicates {
+                    tests.push(GeneratedTest {
+                        name: format!("{name}_assertion_{assertion_index}"),
+                        function_name: name.clone(),
+                        kind: TestKind::Assertion,
+                        expr: predicate.clone(),
+                        expected: None,
+                        property: None,
+                    });
+                    assertion_index += 1;
                 }
             }
 

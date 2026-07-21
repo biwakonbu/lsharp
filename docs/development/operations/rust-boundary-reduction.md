@@ -122,6 +122,14 @@ Evidence: RED の `test_e2e_selfhost_test_runner_projects_and_runs_ordered_asser
 
 これは parser-owned predicate projection と full selfhost CLI summary の verified slice であり、predicate source span、Rust checker/oracle との assertion diagnostic parity、undefined-variable の専用診断、全 AST/runtime の assertion evaluation、legacy migration、Mac/Linux current-source artifact/runtime gate は残件である。したがって `:assert` は selfhost runner と CLI の supported subset で実行可能になったが、EC-M1-03/04 または全機能 Rust-free 完了とは扱わない。
 
+### EC-M1-03 Rust canonical `:assert` runner materialization (2026-07-20)
+
+Rust `metadata_check::generate_tests` は canonical `:assert` の predicate を `TestKind::Assertion` の ordered test entry へ materialize するようになった。Wasm test runner は predicate ごとに Bool を `1/0` へ変換して一行ずつ実行し、tooling の `test` 経路は assertion の pass/fail、安定名、失敗理由を `MetadataTestRun` へ返す。これにより `:assert` 単独の source が `tests.is_empty()` 経由で空の成功になる Rust runner 境界を閉じた。
+
+Evidence: RED の `test_assertion_execution_reports_each_predicate`（生成件数が `0`）、GREEN の同 test（`1 passed`）、`test_run_metadata_tests_executes_canonical_assertions`（`1 passed`、`total=2 / passed=1 / failed=1`）、`test_runner::tests`（8 tests pass）。
+
+これは Rust metadata runner の predicate materialization / execution verified slice であり、checker の全 assertion diagnostic/span parity、selfhost と Rust の differential report、全 AST/runtime evaluator、legacy migration、Mac/Linux current-source artifact/runtime gate は残件である。今回の変更とは独立した既存 property test 2件は `LS2005` で失敗しており、tooling crate 全体の green には含めていない。
+
 ### EC-M1-04 Rust canonical assert type-check bridge (2026-07-17)
 
 Rust `metadata_check::check_metadata` は canonical contract inventory の `ExecutableContract::Assertion` を検査対象へ追加し、各 predicate を元 program の clone に引数なしの HM probe として付加するようになった。assertion は関数引数や `result` を暗黙に束縛せず、推論結果の戻り値が正確に `Bool` であることを要求する。非 `Bool` は assertion の predicate span、推論エラーは predicate 内の error span に `MetadataDiagnostic` を返す。元の AST と既存の legacy metadata 診断は変更しない。

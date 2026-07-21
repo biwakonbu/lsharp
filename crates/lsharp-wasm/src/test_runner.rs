@@ -72,6 +72,10 @@ pub fn generate_test_program(original: &Program, tests: &[GeneratedTest]) -> Str
                     .expect("canonical case test には expected value が必要");
                 source.push_str(&format!("    (print (if (= {actual} {expected}) 1 0))\n"));
             }
+            TestKind::Assertion => {
+                let predicate = format!("{}", test.expr);
+                source.push_str(&format!("    (print (if {predicate} 1 0))\n"));
+            }
             TestKind::Example => {
                 // :example 式をそのまま評価
                 // 式が真（非ゼロ）なら 1 を、偽なら 0 を print
@@ -297,6 +301,24 @@ pub fn parse_test_output(
                 });
                 line_idx += 1;
             }
+            TestKind::Assertion => {
+                let passed = lines
+                    .get(line_idx)
+                    .map(|line| line.trim() == "1")
+                    .unwrap_or(false);
+                results.push(TestResult {
+                    name: test.name.clone(),
+                    function_name: test.function_name.clone(),
+                    kind: test.kind.clone(),
+                    passed,
+                    error: if passed {
+                        None
+                    } else {
+                        Some(":assert predicate が偽を返しました".to_string())
+                    },
+                });
+                line_idx += 1;
+            }
             TestKind::Example => {
                 let passed = lines
                     .get(line_idx)
@@ -476,6 +498,28 @@ mod tests {
             results[0].passed,
             "invariant は元関数引数 x と result の両方を参照できるべき: {:?}",
             results[0].error
+        );
+    }
+
+    #[test]
+    fn test_assertion_execution_reports_each_predicate() {
+        let source = r#"(defn noop [] :assert [(= 1 1) (= 1 2)] 0)"#;
+        let program = lsharp_syntax::parse(source).unwrap();
+        let tests = generate_tests(&program);
+        assert_eq!(tests.len(), 2);
+
+        let test_source = generate_test_program(&program, &tests);
+        let output = compile_and_run(&test_source);
+        let results = parse_test_output(&output, &tests, &program);
+
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].name, "noop_assertion_0");
+        assert!(results[0].passed, "1件目の assertion は成功するべき");
+        assert_eq!(results[1].name, "noop_assertion_1");
+        assert!(!results[1].passed, "2件目の assertion は失敗するべき");
+        assert_eq!(
+            results[1].error.as_deref(),
+            Some(":assert predicate が偽を返しました")
         );
     }
 
