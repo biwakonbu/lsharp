@@ -1589,14 +1589,40 @@
               "Unknown"))
           "Unknown")))))))
 
-(defn invariant-static-computation-non-bool-type-text [node idx count]
+(defn invariant-static-user-function-non-bool-type-text [program node]
+  (let [callee (vector-get node 1)]
+    (if (= (vector-get callee 0) (ast-var))
+      (let [decl (find-defn-by-hash
+          program
+          (vector-get callee 1)
+          0
+          (vector-length program))]
+        (if (> (vector-length decl) 0)
+          (let [param-count (vector-get decl 2)
+            body (vector-get decl (+ 3 param-count))]
+            (if (= param-count 0)
+              (invariant-static-non-bool-type-text body)
+              "Unknown"))
+          "Unknown"))
+      "Unknown")))
+
+(defn invariant-static-non-bool-type-text-with-program [program node]
+  (let [direct-text (invariant-static-non-bool-type-text node)]
+    (if (not (string-eq direct-text "Unknown"))
+      direct-text
+      (if (= (vector-get node 0) (ast-apply))
+        (invariant-static-user-function-non-bool-type-text program node)
+        "Unknown"))))
+
+(defn invariant-static-computation-non-bool-type-text [program node idx count]
   (if (>= idx count)
     "Unknown"
     (let [step-base (+ 3 (* idx 3))
       expression (vector-get node (+ step-base 2))]
       (if (= (+ idx 1) count)
-        (invariant-static-non-bool-type-text expression)
+        (invariant-static-non-bool-type-text-with-program program expression)
         (invariant-static-computation-non-bool-type-text
+          program
           node
           (+ idx 1)
           count)))))
@@ -1670,6 +1696,7 @@
           ":invariant は Bool 必須ですが、"
           (string-concat
             (invariant-static-computation-non-bool-type-text
+              program
               expr
               0
               (vector-get expr 2))
