@@ -9,6 +9,12 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 - **変数・関数名**: 英語（国際標準）
 - **コード**: 英語（国際標準）
 
+## 作業ディレクトリと worktree の隔離
+
+- Codex が新しく作る worktree、`target`、生成物、一時 checkout は `/Users/biwakonbu/github/tmp/<task>/` 配下に限定する。`/Users/biwakonbu/github` 直下には新規作成しない。
+- root checkout は別セッションとの共有差分を含み得るため、通常の実装作業では直接編集せず、専用 worktree で作業する。
+- 作業完了後は、自分が作った専用 worktree、`target`、VM の一時領域を検証後に削除する。他セッションが所有する worktree や `tmp` 内の作業は移動・削除しない。
+
 ## プロジェクト概要
 
 L# (lsharp) は S 式構文 + Hindley-Milner 型推論の言語。WebAssembly (WASI) をターゲットに、wasmtime で直接実行可能。
