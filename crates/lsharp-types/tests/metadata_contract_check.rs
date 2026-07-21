@@ -94,6 +94,26 @@ fn legacy_invariant_if_requires_bool_condition() {
 }
 
 #[test]
+fn legacy_invariant_match_guard_requires_bool() {
+    const SOURCE: &str =
+        "(defn check [] :invariant (match true [_ when (+ 1 2) true] [_ true]) true)";
+    let program = parse(SOURCE).expect("non-Bool match guard は parse できるべき");
+
+    let diagnostics = check_metadata(&program);
+
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "match guard の non-Bool 式を成功扱いしてはならない"
+    );
+    let diagnostic = &diagnostics[0];
+    assert_eq!(diagnostic.severity, Severity::Error);
+    assert!(diagnostic.message.contains(":invariant"));
+    assert!(diagnostic.message.contains("Bool"));
+    assert_eq!(diagnostic.function_name, "check");
+}
+
+#[test]
 fn canonical_assertion_requires_bool_at_predicate_span() {
     const SOURCE: &str = "(defn positive [] :assert [(+ 1 2)] true)";
     let program = parse(SOURCE).expect("non-Bool :assert も構文としては parse できるべき");

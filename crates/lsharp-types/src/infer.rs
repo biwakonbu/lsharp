@@ -2171,6 +2171,16 @@ impl Infer {
                         arm_env.insert(name.clone(), TypeScheme::mono(ty.apply_subst(&subst)));
                     }
 
+                    if let Some(guard) = &arm.guard {
+                        let (s_guard, guard_ty) = self.infer_expr(&arm_env, guard)?;
+                        subst = subst.compose(&s_guard);
+                        let s_guard_bool = self
+                            .unify(&guard_ty.apply_subst(&subst), &Type::bool(), guard.span())
+                            .map_err(|e| Self::with_error_code(e, TypeErrorCode::IfCondition))?;
+                        subst = subst.compose(&s_guard_bool);
+                        arm_env = arm_env.apply_subst(&subst);
+                    }
+
                     let (s_body, body_ty) = self.infer_expr(&arm_env, &arm.body)?;
                     subst = subst.compose(&s_body);
 

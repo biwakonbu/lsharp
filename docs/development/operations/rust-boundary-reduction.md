@@ -1034,6 +1034,14 @@ Evidence: RED `metadata_check::test_generation_tests::test_generate_multiple_pro
 
 これは property test name/index の directive-boundary parity に限定した verified sliceであり、一般 `TypeExpr`、全 ContractSuite evaluator、structured report、supported 2 targets の current-source artifact/runtime、EC-M1-02 / EC-M1-03 aggregate の完了を意味しない。TODO の `[~]` と Rust oracle / bootstrap / host integration 境界は維持する。
 
+### EC-M1-01 strict match-arm Bool slice (2026-07-20)
+
+legacy `:invariant` の strict Bool 契約について、実際に選択された arm だけが Bool なら成功するという selfhost の欠落を修正した。Rust `Infer::Match` は各 arm の `when` guard も `Bool` として推論し、selfhost `TestRunner` は `match` の全 arm body と guard の静的 Bool shapeを先に確認する。未知の関数戻り値など静的に分類できない式は従来の sample実行と `value-tag` 検査へ委ねるため、既存の dynamic subset boundaryは維持する。
+
+RED fixtureは `make-just x` が常に `Just` を返す一方、未選択の `Nothing` armが `(+ x 1)` を返す `:invariant` で、修正前の selfhost結果は `diagnostic=0` だった。GREENでは Rust oracle の `LS1002` 相当 diagnostic、selfhostの `diagnostic=2`、同一sourceの invariant spanを一致させた。別の Rust RED fixture `(match true [_ when (+ 1 2) true] [_ true])` では、従来 `Infer::Match` が guardを推論せず diagnostics `0` だったが、guardの Bool unify追加後は metadata contract testを通過する。
+
+Evidence: `test_e2e_selfhost_test_runner_rejects_non_bool_unselected_match_arm`（`1 passed`、25.90s）、既存 strict Bool 5件（`5 passed`、425.54s）、既存 valid guarded-match differential（`1 passed`、25.39s）、`legacy_invariant_match_guard_requires_bool` と `metadata_contract_check` 30件（全件 pass）。これは Rust metadata checker と Rust-host Wasm selfhost runnerの match-arm/guard verified sliceに限定され、exact diagnostic message/report forwarding、Mac Apple Silicon / Linux x86_64 current-source native artifact/runtime、EC-M1-01 aggregate、他の未分類 higher-order/type-directed expression parityの完了を意味しない。TODOの `[~]` と Rust oracle / bootstrap / host integration境界は維持する。
+
 ### LEGACY-ROOT-01 selfhost compiler root_set source/ftable IR slice (2026-07-20)
 
 selfhost compiler の source-aware `compile-program-functions-with-source` と ftable `compile-program-functions` について、既存 root slotへ allocating `map-insert` の結果を渡す IR order を別々に固定した。3引数関数 `(m k v)` の fixtureで `map-insert` が先に出力され、`root_set` がその結果を消費し、最後の明示的な `root_pop` より前に root slotを更新することを確認した。source pathは local-count `>=4`、ftable pathは params `3` / local-count `7` の outputで、ftable内部の先行 `root_pop` と明示 slot popを混同しないよう最後の `root_pop` を比較した。

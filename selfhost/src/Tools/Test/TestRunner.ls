@@ -1342,6 +1342,123 @@
                       (contract-node-unknown-hash program (vector-get node 1) env allow-result)
                       -1)))))))))))
 
+;; legacy invariant の root Bool 契約を、選択された sample だけでなく
+;; match の未選択 armにも適用する。0=unknown、1=Bool、2=non-Bool。
+(defn invariant-static-branch-kind [left right]
+  (if (= left 2)
+    2
+    (if (= right 2)
+      2
+      (if (and (= left 1) (= right 1)) 1 0))))
+
+(defn invariant-static-match-arm-kind [body]
+  (if (= (vector-get body 0) (ast-match-guard))
+    (let [guard-kind (invariant-static-bool-kind (vector-get body 1))
+      body-kind (invariant-static-bool-kind (vector-get body 2))]
+      (if (= guard-kind 2) 2 body-kind))
+    (invariant-static-bool-kind body)))
+
+(defn invariant-static-match-loop [node idx count all-bool]
+  (if (>= idx count)
+    all-bool
+    (let [arm-base (+ 3 (* idx 2))
+      kind (invariant-static-match-arm-kind (vector-get node (+ arm-base 1)))]
+      (if (= kind 2)
+        2
+        (invariant-static-match-loop
+          node
+          (+ idx 1)
+          count
+          (if (= kind 1) all-bool 0))))))
+
+(defn invariant-static-match-kind [node]
+  (if (= (vector-get node 2) 0)
+    2
+    (invariant-static-match-loop node 0 (vector-get node 2) 1)))
+
+(defn invariant-static-do-kind [node idx count]
+  (if (>= idx count)
+    2
+    (if (= (+ idx 1) count)
+      (invariant-static-bool-kind (vector-get node (+ 2 idx)))
+      (invariant-static-do-kind node (+ idx 1) count))))
+
+(defn invariant-static-computation-kind [node idx count]
+  (if (>= idx count)
+    2
+    (let [step-base (+ 3 (* idx 3))]
+      (if (= (+ idx 1) count)
+        (invariant-static-bool-kind (vector-get node (+ step-base 2)))
+        (invariant-static-computation-kind node (+ idx 1) count)))))
+
+(defn invariant-static-logic-kind [node operator argc]
+  (if (= operator (hash-not))
+    (if (= argc 1)
+      (let [operand-kind (invariant-static-bool-kind (vector-get node 3))]
+        (if (= operand-kind 2) 2 (if (= operand-kind 1) 1 0)))
+      0)
+    (if (and (= argc 2) (or (= operator (hash-and)) (= operator (hash-or))))
+      (let [left-kind (invariant-static-bool-kind (vector-get node 3))
+        right-kind (invariant-static-bool-kind (vector-get node 4))]
+        (if (or (= left-kind 2) (= right-kind 2))
+          2
+          (if (and (= left-kind 1) (= right-kind 1)) 1 0)))
+      0)))
+
+(defn invariant-static-apply-kind [node]
+  (let [callee (vector-get node 1)
+    argc (vector-get node 2)]
+    (if (= (vector-get callee 0) (ast-var))
+      (let [operator (vector-get callee 1)]
+        (if (= (builtin-hash-arith? operator) 1)
+          2
+          (if (or (= (builtin-hash-compare? operator) 1)
+              (= operator (hash-string-eq)))
+            1
+            (invariant-static-logic-kind node operator argc))))
+      0)))
+
+(defn invariant-static-bool-kind [node]
+  (let [tag (vector-get node 0)]
+    (if (= tag (ast-lit-bool))
+      1
+      (if (or (= tag (ast-lit-int))
+          (or (= tag (ast-lit-string))
+            (or (= tag (ast-lit-float)) (= tag (ast-lit-unit)))))
+        2
+        (if (= tag (ast-var))
+          0
+          (if (= tag (ast-apply))
+            (invariant-static-apply-kind node)
+            (if (= tag (ast-if))
+              (let [condition-kind (invariant-static-bool-kind (vector-get node 1))
+                branch-kind (invariant-static-branch-kind
+                  (invariant-static-bool-kind (vector-get node 2))
+                  (invariant-static-bool-kind (vector-get node 3)))]
+                (if (= condition-kind 2) 2 branch-kind))
+              (if (= tag (ast-let))
+                (invariant-static-bool-kind (vector-get node 3))
+                (if (= tag (ast-lambda))
+                  2
+                  (if (= tag (ast-do))
+                    (invariant-static-do-kind node 0 (vector-get node 1))
+                    (if (= tag (ast-match))
+                      (invariant-static-match-kind node)
+                      (if (= tag (ast-ann))
+                        (invariant-static-bool-kind (vector-get node 1))
+                        (if (or (= tag (ast-recordlit)) (= tag (ast-recordupdate)))
+                          2
+                          (if (= tag (ast-fieldaccess))
+                            0
+                            (if (= tag (ast-computation))
+                              (invariant-static-computation-kind
+                                node
+                                0
+                                (vector-get node 2))
+                              (if (or (= tag (ast-quote)) (= tag (ast-unquote)))
+                                2
+                                (if (= tag (ast-unquote-splice)) 2 0)))))))))))))))))
+
 (defn invariant-unknown-variable [program expr decl param-count]
   (let [scope (bind-params-loop
                 (env-bind (env-new) (hash-result) (value-unit))
@@ -3665,7 +3782,10 @@
     unknown-hash (if (> (vector-length decl) 0)
       (invariant-unknown-variable program (vector-get tc 2) decl (vector-get decl 2))
       -1)
-    sample-summary (if (>= unknown-hash 0)
+    static-kind (if (> (vector-length decl) 0)
+      (invariant-static-bool-kind (vector-get tc 2))
+      0)
+    sample-summary (if (or (>= unknown-hash 0) (= static-kind 2))
       (invariant-sample-summary 0 0)
       (if (> sample-count 0)
         (run-invariant-sample-summary-loop
@@ -3681,9 +3801,11 @@
     type-valid (vector-get sample-summary 1)
     diagnostic-code (if (>= unknown-hash 0)
       (contract-diagnostic-undefined)
-      (if (= type-valid 1)
-        0
-        (contract-diagnostic-non-bool)))
+      (if (= static-kind 2)
+        (contract-diagnostic-non-bool)
+        (if (= type-valid 1)
+          0
+          (contract-diagnostic-non-bool))))
     passed (if (= diagnostic-code 0)
       (vector-get sample-summary 0)
       0)
