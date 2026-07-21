@@ -1033,3 +1033,9 @@ Rust の `generate_tests` が同一関数の複数 `:property` directive ごと�
 Evidence: RED `metadata_check::test_generation_tests::test_generate_multiple_property_forms_have_unique_names` は 2 件目が `identity_property_0` となって失敗し、GREEN は `1 passed`。関連する Rust metadata generation 9 tests と metadata checker 22 tests は全件 pass。selfhost 側も同一の二つの `:property` fixtureを `extract-property-test-cases` へ渡し、結果数 `2` と index `0, 1` を `test_e2e_selfhost_property_test_cases_assign_global_indices_across_forms`（`1 passed`、24.99s）で確認した。専用 cargo target は検証後に削除する。
 
 これは property test name/index の directive-boundary parity に限定した verified sliceであり、一般 `TypeExpr`、全 ContractSuite evaluator、structured report、supported 2 targets の current-source artifact/runtime、EC-M1-02 / EC-M1-03 aggregate の完了を意味しない。TODO の `[~]` と Rust oracle / bootstrap / host integration 境界は維持する。
+
+### LEGACY-ROOT-01 selfhost compiler root_set source/ftable IR slice (2026-07-20)
+
+selfhost compiler の source-aware `compile-program-functions-with-source` と ftable `compile-program-functions` について、既存 root slotへ allocating `map-insert` の結果を渡す IR order を別々に固定した。3引数関数 `(m k v)` の fixtureで `map-insert` が先に出力され、`root_set` がその結果を消費し、最後の明示的な `root_pop` より前に root slotを更新することを確認した。source pathは local-count `>=4`、ftable pathは params `3` / local-count `7` の outputで、ftable内部の先行 `root_pop` と明示 slot popを混同しないよう最後の `root_pop` を比較した。
+
+Evidence: `test_e2e_selfhost_compiler_root_set_consumes_allocating_map_insert_result` と `test_e2e_selfhost_compiler_ftable_root_set_preserves_allocating_map_insert` は各 `1 passed`（38.91s / 39.17s）。最初の ftable RED は first `root_pop` を観測して `['3','7','19','24','20']` と失敗したが、これは内部 map lowering popを明示 slot popと取り違えたテスト観測ミスであり、last-pop観測へ修正後 GREENとなった。今回の evidenceは Rust host上の selfhost compiler IRに限定され、Wasm artifact/runtime、Mac native source/ftable artifact、Linux x86_64 VM gate、全 heap root rule、`LEGACY-ROOT-01` aggregateの完了を意味しない。TODOは `[~]` のまま維持する。

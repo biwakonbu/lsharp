@@ -5,6 +5,7 @@ const OP_SUBSTRING: i64 = 69;
 const OP_STRING_CONCAT: i64 = 70;
 const OP_ROOT_PUSH: i64 = 74;
 const OP_ROOT_POP: i64 = 75;
+const OP_ROOT_SET: i64 = 76;
 const OP_REF_NEW: i64 = 56;
 const OP_VECTOR_NEW: i64 = 54;
 const OP_VECTOR_PUSH: i64 = 55;
@@ -550,16 +551,38 @@ fn test_debug_selfhost_compiler_root_set_map_insert_ir() {
 }
 
 #[test]
-#[ignore]
-fn test_debug_selfhost_compiler_root_set_map_insert_no_binding_ir() {
+fn test_e2e_selfhost_compiler_root_set_consumes_allocating_map_insert_result() {
     let (local_count, instrs) = compile_selfhost_ir_report(
         r#"(defn main [m k v] (let [slot (root_push m)] (do (root_set slot (map-insert m k v)) (root_pop))))"#,
     );
-    eprintln!(
-        "root_set_map_insert_no_binding locals={local_count} instrs={:?}",
+    let map_insert_pos = instrs
+        .iter()
+        .position(|(opcode, _)| *opcode == OP_MAP_INSERT)
+        .expect("allocating root_set fixture は map-insert opcode を含むべき");
+    let root_set_pos = instrs
+        .iter()
+        .position(|(opcode, _)| *opcode == OP_ROOT_SET)
+        .expect("allocating root_set fixture は root_set opcode を含むべき");
+    let root_pop_pos = instrs
+        .iter()
+        .rposition(|(opcode, _)| *opcode == OP_ROOT_POP)
+        .expect("allocating root_set fixture は root_pop opcode を含むべき");
+
+    assert!(
+        local_count >= 4,
+        "allocating root_set は source args と value spill 用 local を確保すべき: {:?}",
         instrs
     );
-    assert!(!instrs.is_empty());
+    assert!(
+        map_insert_pos < root_set_pos,
+        "root_set は allocating map-insert の結果を計算した後に実行すべき: {:?}",
+        instrs
+    );
+    assert!(
+        root_set_pos < root_pop_pos,
+        "root_set は root slot を pop する前に実行すべき: {:?}",
+        instrs
+    );
 }
 
 #[test]

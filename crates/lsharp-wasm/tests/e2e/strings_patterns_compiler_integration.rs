@@ -2099,6 +2099,82 @@ fn test_e2e_selfhost_compiler_root_set_builtin_lowering() {
     assert_eq!(lines[4], "0", "root_set opcode operand は 0 であること");
 }
 
+/// selfhost Compiler.ls: ftable 経路でも allocating root_set の RHS を slot local と分離すること
+#[test]
+fn test_e2e_selfhost_compiler_ftable_root_set_preserves_allocating_map_insert() {
+    let harness = r#"
+(defn find-op-loop [ir idx count target]
+  (if (>= idx count)
+    -1
+    (if (= (vector-get (vector-get ir idx) 0) target)
+      idx
+      (find-op-loop ir (+ idx 1) count target))))
+
+(defn find-last-op-loop [ir idx count target last]
+  (if (>= idx count)
+    last
+    (if (= (vector-get (vector-get ir idx) 0) target)
+      (find-last-op-loop ir (+ idx 1) count target idx)
+      (find-last-op-loop ir (+ idx 1) count target last))))
+
+(defn main []
+  (let [program (parse-program "(defn main [m k v] (let [slot (root_push m)] (do (root_set slot (map-insert m k v)) (root_pop))))")
+        pair (compile-program-functions program)
+        functions (vector-get pair 1)
+        main-fn (vector-get functions 0)
+        main-ir (vector-get main-fn 2)
+        instr-count (vector-length main-ir)
+        map-insert-pos (find-op-loop main-ir 0 instr-count 62)
+        root-set-pos (find-op-loop main-ir 0 instr-count 76)
+        root-pop-pos (find-last-op-loop main-ir 0 instr-count 75 -1)]
+    (do
+      (print (vector-get main-fn 0))
+      (print (vector-get main-fn 1))
+      (print map-insert-pos)
+      (print root-set-pos)
+      (print root-pop-pos)
+      0)))
+"#;
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("IR.ls"),
+        selfhost_module("Compiler.ls"),
+        harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(lines.len(), 5, "ftable root_set probe の行数が不正: {:?}", lines);
+    assert_eq!(lines[0], "3", "ftable root_set fixture は 3 引数関数であること");
+    assert!(
+        lines[1].parse::<i64>().unwrap_or(0) >= 3,
+        "allocating map-insert は slot と RHS 用の temporary local を確保すべき: {:?}",
+        lines
+    );
+    let map_insert_pos = lines[2]
+        .parse::<i64>()
+        .expect("map-insert opcode position は整数であること");
+    let root_set_pos = lines[3]
+        .parse::<i64>()
+        .expect("root_set opcode position は整数であること");
+    let root_pop_pos = lines[4]
+        .parse::<i64>()
+        .expect("root_pop opcode position は整数であること");
+    assert!(
+        map_insert_pos >= 0 && map_insert_pos < root_set_pos,
+        "root_set は allocating map-insert 後に実行すべき: {:?}",
+        lines
+    );
+    assert!(
+        root_set_pos < root_pop_pos,
+        "root_set は slot の root_pop 前に実行すべき: {:?}",
+        lines
+    );
+}
+
 /// selfhost WasmEmit.ls: root_push opcode を runtime import call へ落とせること
 #[test]
 fn test_e2e_selfhost_wasmemit_root_push_instr() {
