@@ -1574,14 +1574,16 @@
   (let [tag (vector-get node 0)]
     (if (= tag (ast-lit-int))
       "Int"
-      (if (= tag (ast-apply))
-        (let [callee (vector-get node 1)]
-          (if (= (vector-get callee 0) (ast-var))
-            (if (= (builtin-hash-arith? (vector-get callee 1)) 1)
-              "Int"
-              "Unknown")
-            "Unknown"))
-        "Unknown"))))
+      (if (= tag (ast-lit-string))
+        "String"
+        (if (= tag (ast-apply))
+          (let [callee (vector-get node 1)]
+            (if (= (vector-get callee 0) (ast-var))
+              (if (= (builtin-hash-arith? (vector-get callee 1)) 1)
+                "Int"
+                "Unknown")
+              "Unknown"))
+          "Unknown")))))
 
 (defn invariant-non-bool-diagnostic-message [expr]
   (string-concat
