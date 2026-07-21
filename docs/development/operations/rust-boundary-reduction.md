@@ -994,7 +994,13 @@ Evidence: RED の `test_e2e_selfhost_property_runner_preserves_non_bool_postcond
 
 Evidence: `test_e2e_selfhost_root_set_preserves_shadowed_slot_during_allocating_value` は、最初の誤った `vector-new` 長さ前提を `vector-push` の意味論に合わせて修正した後、`1 passed`（25.64s）となった。既存の Mac/native stage-chain fixtureも同じ旧値42・新値7の契約へ同期した。rooting 規約は `docs/development/planning/memory-management-roadmap.md` に追加した。
 
-これは Rust/Wasm の current runtime bundle guard と native fixture correction の verified sliceであり、Linux x86_64 current-source native stage0、Mac Apple Silicon current-source native artifact、全 selfhost sourceの lint/guard、GC stress mode、`LEGACY-ROOT-01` aggregate の完了証拠ではない。Linux current-source gateは既存の `9e8dab64` evidenceを超えて再実行していないため、TODOの `[ ]` と残る Rust/bootstrap/host boundary は維持する。
+これは Rust/Wasm の current runtime bundle guard と native fixture correction の verified sliceであり、Linux x86_64 current-source native stage0、Mac Apple Silicon current-source native artifact、全 selfhost sourceの lint/guard、GC stress mode、`LEGACY-ROOT-01` aggregate の完了証拠ではない。Linux current-source gateは既存の `9e8dab64` evidenceを超えて再実行していないため、TODOの `[~]` と残る Rust/bootstrap/host boundary は維持する。
+
+### LEGACY-ROOT-01 Mac native shadowed-slot gate (2026-07-20)
+
+既存の `42 -> 7` shadowed root slot fixtureを native representative bundle の通常実行 gateへ昇格した。`root_set` の右辺で `vector-push` が新しい heap valueを確保する間も、同名の内側 slotと外側 slotを混同せず、`root_pop` 後に更新値 `7` を取得する。native bundle は selfhost/Wasm 期待値と比較され、exit code `0` と空 stderrを要求する。
+
+Evidence: 変更前の ignored baseline `test_e2e_selfhost_pipeline_smoke_root_set_keeps_shadowed_slot_during_allocating_value` は `1 passed`（`321.79s`）。`#[ignore]` 撤去後の通常 filterも同じ testで `1 passed`（`341.69s`）、`2662 filtered out`、失敗なし。これは Mac Apple Silicon の一つの native shadowing/allocating `root_set` contractに限定した verified sliceであり、一般 heap-value root 規律、全 selfhost source lint/guard、GC stress、Linux x86_64 native/VM gate、`LEGACY-ROOT-01` aggregateの完了を意味しない。したがって TODO は `[~]` のまま維持する。
 
 ### EC-M1-02 public property precondition diagnostic span slice (2026-07-20)
 
