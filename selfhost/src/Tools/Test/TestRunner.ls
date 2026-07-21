@@ -1600,9 +1600,20 @@
         (if (> (vector-length decl) 0)
           (let [param-count (vector-get decl 2)
             body (vector-get decl (+ 3 param-count))]
-            (if (or (= param-count 0) (= param-count 1))
-              (invariant-static-non-bool-type-text body)
-              "Unknown"))
+            (if (= (vector-get body 0) (ast-var))
+              (let [param-idx (invariant-static-param-index-loop
+                  decl
+                  (vector-get body 1)
+                  0
+                  param-count)]
+                (if (>= param-idx 0)
+                  (invariant-static-non-bool-type-text-with-program
+                    program
+                    (vector-get node (+ 3 param-idx)))
+                  "Unknown"))
+              (if (or (= param-count 0) (= param-count 1))
+                (invariant-static-non-bool-type-text body)
+                "Unknown")))
           "Unknown"))
       "Unknown")))
 
