@@ -1611,7 +1611,7 @@
                     program
                     (vector-get node (+ 3 param-idx)))
                   "Unknown"))
-              (if (or (= param-count 0) (= param-count 1))
+              (if (or (= param-count 0) (or (= param-count 1) (= param-count 2)))
                 (invariant-static-non-bool-type-text body)
                 "Unknown")))
           "Unknown"))
