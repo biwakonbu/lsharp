@@ -8871,6 +8871,47 @@ fn test_e2e_selfhost_test_runner_rejects_non_bool_compound_match_guard_span() {
     );
 }
 
+/// EC-M1-01: user-defined function の non-Bool match guard を truthy 判定で隠さないこと
+#[test]
+fn test_e2e_selfhost_test_runner_rejects_non_bool_function_match_guard() {
+    let source = "(defn always-int [] (+ 1 2)) (defn check [] :invariant (match true [_ when (always-int) true] [_ true]) true)";
+    let program = lsharp_syntax::parse(source).expect("function match guard fixture は parse できるべき");
+    let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "Rust oracle は user-defined function の non-Bool guard を診断するべき: {diagnostics:?}"
+    );
+    assert!(
+        diagnostics[0].message.contains(":invariant")
+            || diagnostics[0].message.contains("Bool"),
+        "Rust oracle は function guard の Bool 契約を診断するべき: {diagnostics:?}"
+    );
+
+    let harness = r#"
+(defn main []
+  (let [src "(defn always-int [] (+ 1 2)) (defn check [] :invariant (match true [_ when (always-int) true] [_ true]) true)"
+        suite (generate-tests src)
+        results (vector-get suite 1)
+        result0 (vector-get results 0)]
+    (do
+      (print (vector-length results))
+      (print (test-result-diagnostic result0))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_test_runner_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(
+        lines,
+        vec!["1", "2"],
+        "selfhost は user-defined function の non-Bool guard を LS1002 として拒否するべき"
+    );
+}
+
 /// EC-M1-01: legacy invariant の nested ADT constructor pattern が payload を bind すること
 #[test]
 fn test_e2e_selfhost_test_runner_matches_rust_oracle_for_valid_invariant_nested_constructor_match() {

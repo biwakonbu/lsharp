@@ -1459,6 +1459,71 @@
                                 2
                                 (if (= tag (ast-unquote-splice)) 2 0)))))))))))))))))
 
+(defn invariant-static-match-arm-kind-with-program [program body]
+  (if (= (vector-get body 0) (ast-match-guard))
+    (let [guard-kind (invariant-static-bool-kind-with-program program (vector-get body 1))
+      body-kind (invariant-static-bool-kind-with-program program (vector-get body 2))]
+      (if (= guard-kind 2) 2 body-kind))
+    (invariant-static-bool-kind-with-program program body)))
+
+(defn invariant-static-match-loop-with-program [program node idx count all-bool]
+  (if (>= idx count)
+    all-bool
+    (let [arm-base (+ 3 (* idx 2))
+      kind (invariant-static-match-arm-kind-with-program
+        program
+        (vector-get node (+ arm-base 1)))]
+      (if (= kind 2)
+        2
+        (invariant-static-match-loop-with-program
+          program
+          node
+          (+ idx 1)
+          count
+          (if (= kind 1) all-bool 0))))))
+
+(defn invariant-static-match-kind-with-program [program node]
+  (if (= (vector-get node 2) 0)
+    2
+    (invariant-static-match-loop-with-program
+      program
+      node
+      0
+      (vector-get node 2)
+      1)))
+
+(defn invariant-static-bool-kind-with-program [program node]
+  (let [tag (vector-get node 0)]
+    (if (= tag (ast-match))
+      (invariant-static-match-kind-with-program program node)
+      (if (= tag (ast-apply))
+        (let [direct-kind (invariant-static-apply-kind node)]
+          (if (not (= direct-kind 0))
+            direct-kind
+            (let [callee (vector-get node 1)]
+              (if (= (vector-get callee 0) (ast-var))
+                (let [decl (find-defn-by-hash
+                    program
+                    (vector-get callee 1)
+                    0
+                    (vector-length program))]
+                  (if (> (vector-length decl) 0)
+                    (invariant-static-bool-kind
+                      (vector-get decl (+ 3 (vector-get decl 2))))
+                    0))
+                0))))
+        (if (= tag (ast-if))
+          (let [condition-kind (invariant-static-bool-kind-with-program
+              program
+              (vector-get node 1))
+            branch-kind (invariant-static-branch-kind
+              (invariant-static-bool-kind-with-program program (vector-get node 2))
+              (invariant-static-bool-kind-with-program program (vector-get node 3)))]
+            (if (= condition-kind 2) 2 branch-kind))
+          (if (= tag (ast-ann))
+            (invariant-static-bool-kind-with-program program (vector-get node 1))
+            (invariant-static-bool-kind node)))))))
+
 (defn invariant-unknown-variable [program expr decl param-count]
   (let [scope (bind-params-loop
                 (env-bind (env-new) (hash-result) (value-unit))
@@ -3965,7 +4030,7 @@
       (invariant-unknown-variable program (vector-get tc 2) decl (vector-get decl 2))
       -1)
     static-kind (if (> (vector-length decl) 0)
-      (invariant-static-bool-kind (vector-get tc 2))
+      (invariant-static-bool-kind-with-program program (vector-get tc 2))
       0)
     sample-summary (if (or (>= unknown-hash 0) (= static-kind 2))
       (invariant-sample-summary 0 0)
