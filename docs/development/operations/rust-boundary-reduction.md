@@ -1075,3 +1075,11 @@ Evidence: RED `test_e2e_selfhost_cli_test_source_json_reports_non_bool_invariant
 Evidence: `ci-artifacts/native-linux-x86-hostgen-vm/941920a4-stage2-stage3-current/actual-selfregen-summary.json` は `status=pass`、stage2/stage3 code length `10,832,651` bytes、stdout length `11,646,271` bytes、両 stdout SHA-256 `2ae6f1406e5c0484a94282a17edac85fad9f3f5649352c43db1826979a576ed6` の一致を記録する。両 stageの stderrは `0` bytesである。stage1 manifestの `code_len=4,203,487`、`data_len=1,523`、`function_start_len=3,237`、stage2/stage3 manifestの `entrypoint_offset=10,828,220` と `main_func_idx=3,246`も一致した。artifact sizeは約 `100M`で、current-source Linux x86_64 fixed-point evidenceとして保存している。
 
 これは Linux x86_64上の current-source stage1 -> stage2 -> stage3 self-regenerationと固定点に限定した evidenceであり、Mac Apple Siliconのこの commitに対する current-source再実行、EmbeddedCli native artifact、全公開 command、全診断本文の型推論 parity、stage0 acquisition/release/rollback、EC-M1-01 aggregateの完了を意味しない。したがって TODOの `[~]` と Rust oracle / bootstrap / host integration境界は維持する。
+
+### EC-M1-01 literal Int diagnostic message projection slice (2026-07-21)
+
+legacy `:invariant` の direct literal non-Bool failureについて、selfhost `TestRunner` の message projectionが `ast-lit-int` を `Int` として返すようにした。既存の static arithmetic `Int` projection、診断 code/span、result vectorの後方 message field、Cli / EmbeddedCli の JSON forwardingは変更していない。
+
+Evidence: RED `test_e2e_selfhost_cli_test_source_json_reports_literal_non_bool_invariant_message` は Rust oracleの `:invariant は Bool 必須ですが、Int が推論されました` に対し、selfhostが `:invariant は Bool 必須ですが、Unknown が推論されました` を返して失敗した（`431.92s`）。GREENは同じ fixtureで `1 passed`（`445.75s`）となり、Rust metadata checkerとselfhost source runnerの JSON message、diagnostic exit `2`を一致させた。専用 Cargo targetは検証後に削除した。
+
+これは direct `Int` literalの本文投影に限定した verified sliceであり、String/Float/Unit literal、match guard内部の inferred type、user-defined/higher-order functionの戻り型、全診断本文の型推論 parity、text report、今回の変更後の Mac Apple Silicon / Linux x86_64 current-source artifact/runtime gate、EC-M1-01 aggregateの完了を意味しない。前段の `941920a4` Linux fixed-point artifactはこの sliceの変更前 provenanceであるため、新しい current commit gateが完了するまで本変更の target evidenceには採用しない。TODOの `[~]` と Rust oracle / bootstrap / host integration境界は維持する。

@@ -1571,14 +1571,17 @@
 ;; static-kind=2 の代表的な inferred type を診断本文へ投影する。
 ;; 未分類の形は Unknown のままにし、誤った具体型を report へ出さない。
 (defn invariant-static-non-bool-type-text [node]
-  (if (= (vector-get node 0) (ast-apply))
-    (let [callee (vector-get node 1)]
-      (if (= (vector-get callee 0) (ast-var))
-        (if (= (builtin-hash-arith? (vector-get callee 1)) 1)
-          "Int"
-          "Unknown")
-        "Unknown"))
-    "Unknown"))
+  (let [tag (vector-get node 0)]
+    (if (= tag (ast-lit-int))
+      "Int"
+      (if (= tag (ast-apply))
+        (let [callee (vector-get node 1)]
+          (if (= (vector-get callee 0) (ast-var))
+            (if (= (builtin-hash-arith? (vector-get callee 1)) 1)
+              "Int"
+              "Unknown")
+            "Unknown"))
+        "Unknown"))))
 
 (defn invariant-non-bool-diagnostic-message [expr]
   (string-concat
