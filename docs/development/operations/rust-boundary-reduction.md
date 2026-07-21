@@ -118,9 +118,9 @@ Evidence: RED の `test_e2e_selfhost_formatter_roundtrips_canonical_assert_form`
 
 Selfhost `Tools.Test.TestRunner` は parser-owned ordered form kind `3` の predicate vector を predicate 単位の test case へ投影し、既存の result tuple `[name, passed, actual, diagnostic]` を再利用して strict Bool の deterministic assertion 実行を行う。`generate-tests` は既存の examples/invariants slot を保持したまま assertion slot `2` を追加し、`App.Cli` / `App.EmbeddedCli` は assertion 件数を表示し、failure と diagnostic の集計にも含める。assertion がない既存 source の text output は従来どおりである。
 
-Evidence: RED の `test_e2e_selfhost_test_runner_projects_and_runs_ordered_assertion_forms`、GREEN の同 test、`cargo run --bin lsharp -- check selfhost/src/Tools/Test/TestRunner.ls` / `Cli.ls` / `EmbeddedCli.ls`。full CLI bundle は Rust type inference の待ち時間が大きいため default E2E から分離し、`test_e2e_selfhost_cli_reports_canonical_assertions` を ignored manual gate として残す。
+Evidence: RED の `test_e2e_selfhost_test_runner_projects_and_runs_ordered_assertion_forms`、GREEN の同 test、`cargo run --bin lsharp -- check selfhost/src/Tools/Test/TestRunner.ls` / `Cli.ls` / `EmbeddedCli.ls` に加え、`test_e2e_selfhost_cli_reports_canonical_assertions` が full selfhost CLI bundle で `1 passed`（`429.35s`）となった。CLI は `assertions:2`、`failures:0`、exit `0` を返すため、以前の ignored manual gateを通常の focused laneへ昇格した。
 
-これは parser-owned predicate projection と限定 evaluator の verified slice であり、predicate source span、Rust checker/oracle との assertion diagnostic parity、undefined-variable の専用診断、全 AST/runtime の assertion evaluation、legacy migration、Mac/Linux current-source artifact/runtime gate は残件である。したがって `:assert` は selfhost runner の supported subset で実行可能になったが、EC-M1-03/04 または全機能 Rust-free 完了とは扱わない。
+これは parser-owned predicate projection と full selfhost CLI summary の verified slice であり、predicate source span、Rust checker/oracle との assertion diagnostic parity、undefined-variable の専用診断、全 AST/runtime の assertion evaluation、legacy migration、Mac/Linux current-source artifact/runtime gate は残件である。したがって `:assert` は selfhost runner と CLI の supported subset で実行可能になったが、EC-M1-03/04 または全機能 Rust-free 完了とは扱わない。
 
 ### EC-M1-04 Rust canonical assert type-check bridge (2026-07-17)
 

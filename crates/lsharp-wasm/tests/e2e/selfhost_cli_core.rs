@@ -8184,7 +8184,6 @@ fn test_e2e_selfhost_migration_rows_preserve_expression_spans() {
 
 /// EC-M1-03: selfhost CLI が canonical :assert の件数を結果へ反映すること
 #[test]
-#[ignore]
 fn test_e2e_selfhost_cli_reports_canonical_assertions() {
     let harness = r#"
 (defn main []
