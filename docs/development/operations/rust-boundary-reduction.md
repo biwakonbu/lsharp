@@ -764,6 +764,14 @@ Evidence: Rust-hosted actual argv `test_e2e_selfhost_cli_main_with_args_test_for
 
 これは App.Cli の単一 String property と単一 Int vacuous failure、および EmbeddedCli の legacy metadata success と vacuous property failure に限定される。全 form の EmbeddedCli parity、Rust/selfhost differential、provenance 注入、Linux x86_64 current-source artifact/runtime、一般 `TypeExpr` の coverage/seed/shrink、EC-M1-06 全体の完了条件は残件である。対応済み profile の日常開発は Rust なしで進められるが、report の unknown を成功扱いせず、Rust oracle / bootstrap / host integration の境界を維持する。
 
+### EC-M1-06 canonical `:assert` failure coverage accounting (2026-07-20)
+
+`TestRunner.run-assertions-loop` は Bool predicate が失敗しても実行済み件数を `actual=1` として result に保持するようになった。従来は `actual=passed` だったため、2件の assertion のうち1件が失敗すると `assurance-total-actual` が `cases=1` / `coverage.executed=1` と報告していた。修正後は `status=fail`、`method=assert`、`cases=2`、`coverage.executed=2`、`coverage.failed=1`、Bool failure の diagnostics `count=0` を返す。
+
+Evidence: RED の `test_e2e_selfhost_cli_test_source_json_reports_assertion_failure_coverage` は `cases` の実値 `1` と期待値 `2` の差で失敗（`416.54s`）。GREEN は同 test `1 passed`（`406.84s`）、短い selfhost runner differential の `1 passed`（`24.71s`）で assertion result の両件 `actual=1` を確認した。変更後の temporary Cargo target は削除済みである。
+
+これは canonical assertion の failure coverage accounting に限定した verified sliceであり、全 form の executed-count semantics、failure message/schema の Rust/selfhost parity、EmbeddedCli 実 argv、provenance 注入、Linux x86_64 current-source artifact/runtime、EC-M1-06 aggregate は残件である。
+
 ### Historical Mac native stage0 gate for the `10d0983b` snapshot (2026-07-19)
 
 `selfhost/` source snapshot commit `10d0983b4f8e17d8b9ded439161f653c1bf91e4e` から Mac Apple Silicon の actual stage23 fixed-point を再生成し、stage2/stage3 の `program.native` を `source_commit` 付き stage0 package `/tmp/lsharp-stage0-10d0983b-macos-compiler` として materialize した。stage23 test は `765.58s` で pass、stage2/stage3 は exit `0`、stderr `0`、program/runtime/response/stdout/stderr の観測 hash が一致した。ただし `3afab678` と `81457b39` が後続で `selfhost/` を変更しているため、これは現行 `main` の gate ではなく snapshot の履歴 evidence である。

@@ -7865,6 +7865,41 @@ fn test_e2e_selfhost_cli_test_source_json_reports_non_bool_invariant() {
     assert_eq!(lines[1], "2");
 }
 
+/// EC-M1-03/06: selfhost test JSON が assertion failure を実行件数へ含めること
+#[test]
+fn test_e2e_selfhost_cli_test_source_json_reports_assertion_failure_coverage() {
+    let harness = r#"
+(defn main []
+  (let [src "(defn truth [] (= 1 1)) (defn falsehood [] (= 1 2)) (defn positive [] :assert [(truth) (falsehood)] true)"]
+    (print (run-test-source src 1))))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines.len(),
+        2,
+        "assertion failure の test JSON は report と exit code を返すべき"
+    );
+    let report: Value = serde_json::from_str(lines[0])
+        .expect("assertion failure の selfhost test JSON は valid JSON であるべき");
+    assert_eq!(report["implementation_conformance"]["status"], "fail");
+    assert_eq!(report["implementation_conformance"]["method"], "assert");
+    assert_eq!(report["implementation_conformance"]["cases"], 2);
+    assert_eq!(
+        report["implementation_conformance"]["coverage"]["executed"],
+        2
+    );
+    assert_eq!(report["implementation_conformance"]["coverage"]["failed"], 1);
+    assert_eq!(report["implementation_conformance"]["diagnostics"]["count"], 0);
+    assert_eq!(report["implementation_conformance"]["diagnostics"]["firstErrorCode"], 0);
+    assert_eq!(lines[1], "2");
+}
+
 /// EC-M1-01/06: selfhost test JSON が unknown invariant identifier の token span を返すこと
 #[test]
 fn test_e2e_selfhost_cli_test_source_json_reports_unknown_invariant_span() {

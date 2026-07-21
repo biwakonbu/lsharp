@@ -2704,14 +2704,14 @@
         (make-test-result-with-diagnostic-span
           name
           passed
-          passed
+          1
           diagnostic-code
           diagnostic-start
           diagnostic-end)
         (make-test-result-with-diagnostic
           name
           passed
-          passed
+          1
           diagnostic-code))]
       (run-assertions-loop
         program

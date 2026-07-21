@@ -177,7 +177,9 @@ fn selfhost_assertion_results_match_rust_oracle() {
     (do
       (print (vector-length results))
       (print (vector-get result0 1))
+      (print (vector-get result0 2))
       (print (vector-get result1 1))
+      (print (vector-get result1 2))
       (print (test-result-diagnostic result0))
       (print (test-result-diagnostic result1))
       0)))
@@ -195,7 +197,7 @@ fn selfhost_assertion_results_match_rust_oracle() {
 
     assert_eq!(
         lines,
-        vec!["2", "1", "0", "0", "0"],
-        "selfhost assertion の pass/fail と diagnostic code は Rust oracle と一致するべき"
+        vec!["2", "1", "1", "0", "1", "0", "0"],
+        "selfhost assertion の実行数、pass/fail、diagnostic code は Rust oracle と一致するべき"
     );
 }
