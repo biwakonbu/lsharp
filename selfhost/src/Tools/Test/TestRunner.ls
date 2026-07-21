@@ -1586,8 +1586,20 @@
                   (if (= (builtin-hash-arith? (vector-get callee 1)) 1)
                     "Int"
                     "Unknown")
-                  "Unknown"))
-              "Unknown")))))))
+              "Unknown"))
+          "Unknown")))))))
+
+(defn invariant-static-computation-non-bool-type-text [node idx count]
+  (if (>= idx count)
+    "Unknown"
+    (let [step-base (+ 3 (* idx 3))
+      expression (vector-get node (+ step-base 2))]
+      (if (= (+ idx 1) count)
+        (invariant-static-non-bool-type-text expression)
+        (invariant-static-computation-non-bool-type-text
+          node
+          (+ idx 1)
+          count)))))
 
 (defn invariant-static-match-non-bool-type-text-loop [program node idx count]
   (if (>= idx count)
@@ -1653,11 +1665,20 @@
     (invariant-match-type-inference-failure-message program expr source-span)
     (if (= (vector-get expr 0) (ast-if))
       (invariant-if-type-inference-failure-message expr source-span)
-      (string-concat
-        ":invariant は Bool 必須ですが、"
+      (if (= (vector-get expr 0) (ast-computation))
         (string-concat
-          (invariant-static-non-bool-type-text expr)
-          " が推論されました")))))
+          ":invariant は Bool 必須ですが、"
+          (string-concat
+            (invariant-static-computation-non-bool-type-text
+              expr
+              0
+              (vector-get expr 2))
+            " が推論されました"))
+        (string-concat
+          ":invariant は Bool 必須ですが、"
+          (string-concat
+            (invariant-static-non-bool-type-text expr)
+            " が推論されました"))))))
 
 (defn invariant-static-param-index-loop [decl target idx count]
   (if (>= idx count)
