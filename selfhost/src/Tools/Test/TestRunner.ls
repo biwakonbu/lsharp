@@ -2338,7 +2338,20 @@
       2
       (if (and (= left 1) (= right 1)) 1 0))))
 
-(defn invariant-token-static-bool-kind [src tokens start end]
+(defn invariant-token-static-user-function-kind [program src tokens start]
+  (let [operator-start (+ start 1)
+    operator-end (token-end tokens operator-start)
+    decl (find-defn-by-hash
+      program
+      (name-hash src (token-start tokens operator-start) operator-end)
+      0
+      (vector-length program))]
+    (if (> (vector-length decl) 0)
+      (invariant-static-bool-kind
+        (vector-get decl (+ 3 (vector-get decl 2))))
+      0)))
+
+(defn invariant-token-static-bool-kind [program src tokens start end]
   (if (>= start end)
     0
     (let [kind (token-kind tokens start)]
@@ -2376,16 +2389,34 @@
                         else-start then-end
                         else-end (consume-form tokens else-start)
                         condition-kind (invariant-token-static-bool-kind
-                          src tokens condition-start condition-end)
+                          program
+                          src
+                          tokens
+                          condition-start
+                          condition-end)
                         branch-kind (invariant-token-static-branch-kind
-                          (invariant-token-static-bool-kind src tokens then-start then-end)
-                          (invariant-token-static-bool-kind src tokens else-start else-end))]
+                          (invariant-token-static-bool-kind
+                            program
+                            src
+                            tokens
+                            then-start
+                            then-end)
+                          (invariant-token-static-bool-kind
+                            program
+                            src
+                            tokens
+                            else-start
+                            else-end))]
                         (if (= condition-kind 2) 2 branch-kind))
                       (if (string-eq operator "not")
                         (let [operand-start (+ start 2)
                           operand-end (consume-form tokens operand-start)
                           operand-kind (invariant-token-static-bool-kind
-                            src tokens operand-start operand-end)]
+                            program
+                            src
+                            tokens
+                            operand-start
+                            operand-end)]
                           (if (= operand-kind 2) 2 (if (= operand-kind 1) 1 0)))
                         (if (or (string-eq operator "and") (string-eq operator "or"))
                           (let [left-start (+ start 2)
@@ -2393,24 +2424,33 @@
                             right-start left-end
                             right-end (consume-form tokens right-start)
                             left-kind (invariant-token-static-bool-kind
-                              src tokens left-start left-end)
+                              program
+                              src
+                              tokens
+                              left-start
+                              left-end)
                             right-kind (invariant-token-static-bool-kind
-                              src tokens right-start right-end)]
+                              program
+                              src
+                              tokens
+                              right-start
+                              right-end)]
                             (invariant-token-static-branch-kind left-kind right-kind))
-                          0))))))
+                          (invariant-token-static-user-function-kind
+                            program src tokens start)))))))
               0)
             0))))))
 
-(defn invariant-find-non-bool-guard-sequence [src tokens idx end]
+(defn invariant-find-non-bool-guard-sequence [program src tokens idx end]
   (if (>= idx end)
     (invariant-guard-span-state 0 0 0)
     (let [next-idx (consume-form tokens idx)
-      found (invariant-find-non-bool-guard-form src tokens idx next-idx)]
+      found (invariant-find-non-bool-guard-form program src tokens idx next-idx)]
       (if (= (vector-get found 0) 1)
         found
-        (invariant-find-non-bool-guard-sequence src tokens next-idx end)))))
+        (invariant-find-non-bool-guard-sequence program src tokens next-idx end)))))
 
-(defn invariant-find-non-bool-guard-arms [src tokens idx end]
+(defn invariant-find-non-bool-guard-arms [program src tokens idx end]
   (if (or (>= idx end) (not (= (token-kind tokens idx) (tok-lbracket))))
     (invariant-guard-span-state 0 0 0)
     (let [arm-end (consume-form tokens idx)
@@ -2424,9 +2464,12 @@
           guard-end (consume-form tokens guard-start)
           body-start guard-end
           body-end (consume-form tokens body-start)
-          nested-guard (invariant-find-non-bool-guard-form src tokens guard-start guard-end)
-          nested-body (invariant-find-non-bool-guard-form src tokens body-start body-end)]
-          (if (= (invariant-token-static-bool-kind src tokens guard-start guard-end) 2)
+          nested-guard (invariant-find-non-bool-guard-form
+            program src tokens guard-start guard-end)
+          nested-body (invariant-find-non-bool-guard-form
+            program src tokens body-start body-end)]
+          (if (= (invariant-token-static-bool-kind
+              program src tokens guard-start guard-end) 2)
             (invariant-guard-span-state
               1
               (token-start tokens guard-start)
@@ -2435,15 +2478,16 @@
               nested-guard
               (if (= (vector-get nested-body 0) 1)
                 nested-body
-                (invariant-find-non-bool-guard-arms src tokens arm-end end)))))
+                (invariant-find-non-bool-guard-arms program src tokens arm-end end)))))
         (let [body-start pattern-end
           body-end (consume-form tokens body-start)
-          nested-body (invariant-find-non-bool-guard-form src tokens body-start body-end)]
+          nested-body (invariant-find-non-bool-guard-form
+            program src tokens body-start body-end)]
           (if (= (vector-get nested-body 0) 1)
             nested-body
-            (invariant-find-non-bool-guard-arms src tokens arm-end end)))))))
+            (invariant-find-non-bool-guard-arms program src tokens arm-end end)))))))
 
-(defn invariant-find-non-bool-guard-form [src tokens start end]
+(defn invariant-find-non-bool-guard-form [program src tokens start end]
   (if (>= start end)
     (invariant-guard-span-state 0 0 0)
     (if (and
@@ -2453,18 +2497,20 @@
       (let [scrutinee-start (+ start 2)
         scrutinee-end (consume-form tokens scrutinee-start)
         scrutinee-found (invariant-find-non-bool-guard-form
-          src tokens scrutinee-start scrutinee-end)
-        arms-found (invariant-find-non-bool-guard-arms src tokens scrutinee-end (- end 1))]
+          program src tokens scrutinee-start scrutinee-end)
+        arms-found (invariant-find-non-bool-guard-arms
+          program src tokens scrutinee-end (- end 1))]
         (if (= (vector-get scrutinee-found 0) 1)
           scrutinee-found
           arms-found))
       (if (or (= (token-kind tokens start) (tok-lparen))
           (or (= (token-kind tokens start) (tok-lbracket))
             (= (token-kind tokens start) (tok-lbrace))))
-        (invariant-find-non-bool-guard-sequence src tokens (+ start 1) (- end 1))
+        (invariant-find-non-bool-guard-sequence
+          program src tokens (+ start 1) (- end 1))
         (invariant-guard-span-state 0 0 0)))))
 
-(defn invariant-find-non-bool-guard-in-defn [src tokens idx end]
+(defn invariant-find-non-bool-guard-in-defn [program src tokens idx end]
   (if (>= idx end)
     (invariant-guard-span-state 0 0 0)
     (if (and
@@ -2475,10 +2521,11 @@
         (string-eq (token-text src tokens (+ idx 1)) "invariant"))
       (let [payload-start (+ idx 2)
         payload-end (consume-form tokens payload-start)]
-        (invariant-find-non-bool-guard-form src tokens payload-start payload-end))
-      (invariant-find-non-bool-guard-in-defn src tokens (+ idx 1) end))))
+        (invariant-find-non-bool-guard-form
+          program src tokens payload-start payload-end))
+      (invariant-find-non-bool-guard-in-defn program src tokens (+ idx 1) end))))
 
-(defn invariant-find-non-bool-guard-by-defn [src tokens idx count target-hash]
+(defn invariant-find-non-bool-guard-by-defn [program src tokens idx count target-hash]
   (if (>= idx count)
     (invariant-guard-span-state 0 0 0)
     (if (and
@@ -2490,13 +2537,16 @@
         next-idx (consume-form tokens idx)]
         (if (= (name-hash src name-start name-end) target-hash)
           (invariant-find-non-bool-guard-in-defn
-            src tokens (+ idx 3) (- next-idx 1))
-          (invariant-find-non-bool-guard-by-defn src tokens next-idx count target-hash)))
-      (invariant-find-non-bool-guard-by-defn src tokens (+ idx 1) count target-hash))))
+            program src tokens (+ idx 3) (- next-idx 1))
+          (invariant-find-non-bool-guard-by-defn
+            program src tokens next-idx count target-hash)))
+      (invariant-find-non-bool-guard-by-defn
+        program src tokens (+ idx 1) count target-hash))))
 
-(defn find-invariant-non-bool-guard-span [src target-hash]
+(defn find-invariant-non-bool-guard-span [program src target-hash]
   (let [tokens (tokenize-with-spans src)]
     (invariant-find-non-bool-guard-by-defn
+      program
       src
       tokens
       0
@@ -4058,7 +4108,7 @@
       0)
     actual (if (= diagnostic-code 0) sample-count 0)
     guard-source-span (if (and (= diagnostic-code (contract-diagnostic-non-bool)) (= static-kind 2))
-      (find-invariant-non-bool-guard-span src fn-hash)
+      (find-invariant-non-bool-guard-span program src fn-hash)
       (invariant-guard-span-state 0 0 0))
     source-span (if (> diagnostic-code 0)
       (if (>= unknown-hash 0)
