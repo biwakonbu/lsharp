@@ -14,6 +14,10 @@ pub enum NodeKind {
     Claim,
     Assumption,
     OpenQuestion,
+    Contract,
+    Evidence,
+    Review,
+    Change,
 }
 
 impl NodeKind {
@@ -24,6 +28,10 @@ impl NodeKind {
             Self::Claim => "claim",
             Self::Assumption => "assumption",
             Self::OpenQuestion => "open-question",
+            Self::Contract => "contract",
+            Self::Evidence => "evidence",
+            Self::Review => "review",
+            Self::Change => "change",
         }
     }
 }
@@ -138,6 +146,10 @@ define_id!(IntentId, Intent);
 define_id!(ClaimId, Claim);
 define_id!(AssumptionId, Assumption);
 define_id!(OpenQuestionId, OpenQuestion);
+define_id!(ContractId, Contract);
+define_id!(EvidenceId, Evidence);
+define_id!(ReviewId, Review);
+define_id!(ChangeId, Change);
 
 /// AST node の説明文が空の場合のエラー。
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]

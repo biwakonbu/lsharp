@@ -1,5 +1,6 @@
 mod canonical_contract_check;
 pub mod constraints;
+pub mod evidence;
 pub mod infer;
 pub mod intent;
 pub mod metadata_check;
