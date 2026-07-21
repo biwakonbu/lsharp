@@ -3,6 +3,7 @@
 //! legacy form は migration classifier が判断するまで canonical docs / executable
 //! contract へ変換せず、`pending_migration` に lossless なまま保持する。
 
+pub use crate::intent::{ClaimId, IntentId};
 use crate::types::Type;
 use lsharp_syntax::ast::{Decl, Expr, Metadata, Program, TypeExpr};
 use lsharp_syntax::metadata::MetadataFormKind;
@@ -26,14 +27,6 @@ impl SymbolId {
         &self.0
     }
 }
-
-/// M2 で発番方針を決める intent identifier。
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct IntentId(String);
-
-/// M2 で発番方針を決める claim identifier。
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct ClaimId(String);
 
 /// docs-only canonical example。
 #[derive(Debug, Clone, PartialEq)]

@@ -1,6 +1,7 @@
 mod canonical_contract_check;
 pub mod constraints;
 pub mod infer;
+pub mod intent;
 pub mod metadata_check;
 pub mod metadata_contract;
 pub mod metadata_migration;
