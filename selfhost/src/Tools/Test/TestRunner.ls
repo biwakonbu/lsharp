@@ -1508,8 +1508,7 @@
                     0
                     (vector-length program))]
                   (if (> (vector-length decl) 0)
-                    (invariant-static-bool-kind
-                      (vector-get decl (+ 3 (vector-get decl 2))))
+                    (invariant-static-user-function-body-kind program decl node)
                     0))
                 0))))
         (if (= tag (ast-if))
@@ -1523,6 +1522,29 @@
           (if (= tag (ast-ann))
             (invariant-static-bool-kind-with-program program (vector-get node 1))
             (invariant-static-bool-kind node)))))))
+
+(defn invariant-static-param-index-loop [decl target idx count]
+  (if (>= idx count)
+    -1
+    (if (= (vector-get decl (+ 3 idx)) target)
+      idx
+      (invariant-static-param-index-loop decl target (+ idx 1) count))))
+
+(defn invariant-static-user-function-body-kind [program decl call-node]
+  (let [param-count (vector-get decl 2)
+    body (vector-get decl (+ 3 param-count))]
+    (if (= (vector-get body 0) (ast-var))
+      (let [param-idx (invariant-static-param-index-loop
+          decl
+          (vector-get body 1)
+          0
+          param-count)]
+        (if (>= param-idx 0)
+          (invariant-static-bool-kind-with-program
+            program
+            (vector-get call-node (+ 3 param-idx)))
+          0))
+      (invariant-static-bool-kind body))))
 
 (defn invariant-unknown-variable [program expr decl param-count]
   (let [scope (bind-params-loop
@@ -2338,6 +2360,14 @@
       2
       (if (and (= left 1) (= right 1)) 1 0))))
 
+(defn invariant-token-arg-start [tokens start idx]
+  (if (<= idx 0)
+    start
+    (invariant-token-arg-start
+      tokens
+      (consume-form tokens start)
+      (- idx 1))))
+
 (defn invariant-token-static-user-function-kind [program src tokens start]
   (let [operator-start (+ start 1)
     operator-end (token-end tokens operator-start)
@@ -2347,8 +2377,28 @@
       0
       (vector-length program))]
     (if (> (vector-length decl) 0)
-      (invariant-static-bool-kind
-        (vector-get decl (+ 3 (vector-get decl 2))))
+      (let [param-count (vector-get decl 2)
+        body (vector-get decl (+ 3 param-count))]
+        (if (= (vector-get body 0) (ast-var))
+          (let [param-idx (invariant-static-param-index-loop
+              decl
+              (vector-get body 1)
+              0
+              param-count)]
+            (if (>= param-idx 0)
+              (let [arg-start (invariant-token-arg-start
+                  tokens
+                  (+ start 2)
+                  param-idx)
+                arg-end (consume-form tokens arg-start)]
+                (invariant-token-static-bool-kind
+                  program
+                  src
+                  tokens
+                  arg-start
+                  arg-end))
+              0))
+          (invariant-static-bool-kind body)))
       0)))
 
 (defn invariant-token-static-bool-kind [program src tokens start end]
