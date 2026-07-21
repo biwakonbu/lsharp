@@ -1646,6 +1646,53 @@
         (invariant-static-non-bool-type-text-with-env program else-node env)
         "Unknown"))))
 
+(defn invariant-static-match-non-bool-type-text-with-env-loop
+  [program node idx count env]
+  (if (>= idx count)
+    "Unknown"
+    (let [body (vector-get node (+ 4 (* idx 2)))]
+      (if (= (vector-get body 0) (ast-match-guard))
+        (let [guard (vector-get body 1)
+          result (vector-get body 2)
+          guard-text (invariant-static-non-bool-type-text-with-env
+            program
+            guard
+            env)
+          result-text (invariant-static-non-bool-type-text-with-env
+            program
+            result
+            env)]
+          (if (not (string-eq guard-text "Unknown"))
+            guard-text
+            (if (not (string-eq result-text "Unknown"))
+              result-text
+              (invariant-static-match-non-bool-type-text-with-env-loop
+                program
+                node
+                (+ idx 1)
+                count
+                env))))
+        (let [body-text (invariant-static-non-bool-type-text-with-env
+            program
+            body
+            env)]
+          (if (not (string-eq body-text "Unknown"))
+            body-text
+            (invariant-static-match-non-bool-type-text-with-env-loop
+              program
+              node
+              (+ idx 1)
+              count
+              env)))))))
+
+(defn invariant-static-match-non-bool-type-text-with-env [program node env]
+  (invariant-static-match-non-bool-type-text-with-env-loop
+    program
+    node
+    0
+    (vector-get node 2)
+    env))
+
 (defn invariant-static-user-function-non-bool-type-text-with-env [program node env]
   (let [callee (vector-get node 1)]
     (if (= (vector-get callee 0) (ast-var))
@@ -1679,8 +1726,10 @@
   (let [direct-text (invariant-static-non-bool-type-text node)]
     (if (not (string-eq direct-text "Unknown"))
       direct-text
-        (if (= (vector-get node 0) (ast-var))
-          (invariant-static-env-type-text env node)
+      (if (= (vector-get node 0) (ast-var))
+        (invariant-static-env-type-text env node)
+        (if (= (vector-get node 0) (ast-match))
+          (invariant-static-match-non-bool-type-text-with-env program node env)
           (if (= (vector-get node 0) (ast-let))
             (let [init-text (invariant-static-non-bool-type-text-with-env
                 program
@@ -1694,14 +1743,14 @@
                 program
                 (vector-get node 3)
                 next-env))
-            (if (= (vector-get node 0) (ast-if))
-              (invariant-static-if-non-bool-type-text-with-env program node env)
-              (if (= (vector-get node 0) (ast-apply))
-                (invariant-static-user-function-non-bool-type-text-with-env
-                  program
-                  node
-                  env)
-                "Unknown")))))))
+              (if (= (vector-get node 0) (ast-if))
+                (invariant-static-if-non-bool-type-text-with-env program node env)
+                (if (= (vector-get node 0) (ast-apply))
+                  (invariant-static-user-function-non-bool-type-text-with-env
+                    program
+                    node
+                    env)
+                  "Unknown"))))))))
 
 (defn invariant-static-computation-non-bool-type-text-with-env
   [program node idx count env]
