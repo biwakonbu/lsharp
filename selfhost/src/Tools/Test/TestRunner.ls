@@ -1635,6 +1635,17 @@
       "Unknown")
     "Unknown"))
 
+(defn invariant-static-if-non-bool-type-text-with-env [program node env]
+  (let [then-node (vector-get node 2)
+    else-node (vector-get node 3)
+    then-kind (invariant-static-bool-kind-with-program program then-node)
+    else-kind (invariant-static-bool-kind-with-program program else-node)]
+    (if (= then-kind 2)
+      (invariant-static-non-bool-type-text-with-env program then-node env)
+      (if (= else-kind 2)
+        (invariant-static-non-bool-type-text-with-env program else-node env)
+        "Unknown"))))
+
 (defn invariant-static-user-function-non-bool-type-text-with-env [program node env]
   (let [callee (vector-get node 1)]
     (if (= (vector-get callee 0) (ast-var))
@@ -1659,7 +1670,7 @@
                     env)
                   "Unknown"))
               (if (or (= param-count 0) (or (= param-count 1) (= param-count 2)))
-                (invariant-static-non-bool-type-text body)
+                (invariant-static-non-bool-type-text-with-env program body env)
                 "Unknown")))
           "Unknown"))
       "Unknown")))
@@ -1668,14 +1679,16 @@
   (let [direct-text (invariant-static-non-bool-type-text node)]
     (if (not (string-eq direct-text "Unknown"))
       direct-text
-      (if (= (vector-get node 0) (ast-var))
-        (invariant-static-env-type-text env node)
-        (if (= (vector-get node 0) (ast-apply))
-          (invariant-static-user-function-non-bool-type-text-with-env
-            program
-            node
-            env)
-          "Unknown")))))
+        (if (= (vector-get node 0) (ast-var))
+          (invariant-static-env-type-text env node)
+          (if (= (vector-get node 0) (ast-if))
+            (invariant-static-if-non-bool-type-text-with-env program node env)
+            (if (= (vector-get node 0) (ast-apply))
+              (invariant-static-user-function-non-bool-type-text-with-env
+                program
+                node
+                env)
+              "Unknown"))))))
 
 (defn invariant-static-computation-non-bool-type-text-with-env
   [program node idx count env]
