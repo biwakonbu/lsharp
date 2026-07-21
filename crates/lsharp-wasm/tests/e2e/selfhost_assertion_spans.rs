@@ -1,4 +1,6 @@
-use super::support::{NATIVE_HARNESS_STACK_BYTES, compile_and_run, run_with_expanded_stack};
+use super::support::{
+    NATIVE_HARNESS_STACK_BYTES, compile_and_run, run_metadata_tests, run_with_expanded_stack,
+};
 
 #[test]
 fn selfhost_contract_suite_preserves_assert_predicate_source_spans() {
@@ -150,5 +152,50 @@ fn selfhost_test_runner_reports_assertion_diagnostic_span() {
             &predicate_end.to_string(),
         ],
         "selfhost assert non-Bool 診断は predicate の source span を結果へ保持するべき"
+    );
+}
+
+#[test]
+fn selfhost_assertion_results_match_rust_oracle() {
+    let source = "(defn truth [] (= 1 1)) (defn falsehood [] (= 1 2)) (defn positive [] :assert [(truth) (falsehood)] true)";
+    let oracle = run_metadata_tests(source);
+    assert_eq!(oracle.len(), 2, "Rust oracle は assertion 2 件を生成するべき");
+    assert!(oracle[0].passed, "Rust oracle の1件目は pass するべき");
+    assert!(!oracle[1].passed, "Rust oracle の2件目は fail するべき");
+    assert!(oracle[0].error.is_none());
+    assert!(oracle[1].error.is_some());
+
+    let source_literal = source.replace('"', "\\\"");
+    let harness = format!(
+        r#"
+(defn main []
+  (let [src "{source_literal}"
+        suite (generate-tests-from-source src)
+        results (vector-get suite 2)
+        result0 (vector-get results 0)
+        result1 (vector-get results 1)]
+    (do
+      (print (vector-length results))
+      (print (vector-get result0 1))
+      (print (vector-get result1 1))
+      (print (test-result-diagnostic result0))
+      (print (test-result-diagnostic result1))
+      0)))
+"#
+    );
+    let combined = format!(
+        "{}\n{}",
+        super::support::selfhost_test_runner_runtime_bundle(),
+        harness
+    );
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["2", "1", "0", "0", "0"],
+        "selfhost assertion の pass/fail と diagnostic code は Rust oracle と一致するべき"
     );
 }

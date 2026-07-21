@@ -130,6 +130,14 @@ Evidence: RED の `test_assertion_execution_reports_each_predicate`（生成件�
 
 これは Rust metadata runner の predicate materialization / execution verified slice であり、checker の全 assertion diagnostic/span parity、selfhost と Rust の differential report、全 AST/runtime evaluator、legacy migration、Mac/Linux current-source artifact/runtime gate は残件である。今回の変更とは独立した既存 property test 2件は `LS2005` で失敗しており、tooling crate 全体の green には含めていない。
 
+### EC-M1-03 Rust/selfhost canonical `:assert` differential slice (2026-07-20)
+
+同一 source の `(truth)` / `(falsehood)` predicate 2件を Rust metadata runner と selfhost `generate-tests-from-source` へ渡し、両者の件数、pass/fail、Bool predicate の diagnostic code `0` を比較する E2E contract test を追加した。Rust oracle の `1 pass / 1 fail` と selfhost runner の同じ結果を current checkout の Wasm harness で確認した。
+
+Evidence: `e2e::selfhost_assertion_spans::selfhost_assertion_results_match_rust_oracle`（`1 passed`、`26.18s`）。既存の selfhost predicate source span / non-Bool diagnostic span test と組み合わせ、assertion の typed preflight、predicate span、runtime result の境界を分離して記録している。
+
+これは同一 fixture の result parity を閉じる verified slice であり、failure message/schema の Rust/selfhost parity、compound/dynamic predicate の全 evaluator、all-form aggregation、legacy migration、Mac/Linux current-source artifact/runtime gate は残件である。
+
 ### EC-M1-04 Rust canonical assert type-check bridge (2026-07-17)
 
 Rust `metadata_check::check_metadata` は canonical contract inventory の `ExecutableContract::Assertion` を検査対象へ追加し、各 predicate を元 program の clone に引数なしの HM probe として付加するようになった。assertion は関数引数や `result` を暗黙に束縛せず、推論結果の戻り値が正確に `Bool` であることを要求する。非 `Bool` は assertion の predicate span、推論エラーは predicate 内の error span に `MetadataDiagnostic` を返す。元の AST と既存の legacy metadata 診断は変更しない。
