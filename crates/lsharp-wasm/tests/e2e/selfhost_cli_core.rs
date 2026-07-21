@@ -8977,6 +8977,66 @@ fn test_e2e_selfhost_test_runner_rejects_non_bool_dynamic_function_match_guard()
     );
 }
 
+/// EC-M1-01: higher-order lambda call の non-Bool invariant span を Rust oracle と揃えること
+#[test]
+fn test_e2e_selfhost_test_runner_rejects_non_bool_lambda_match_guard() {
+    let source = "(defn check [] :invariant (match true [_ when ((fn [x] x) 1) true] [_ true]) true)";
+    let program = lsharp_syntax::parse(source).expect("lambda match guard fixture は parse できるべき");
+    let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "Rust oracle は higher-order lambda の non-Bool guard を診断するべき: {diagnostics:?}"
+    );
+    assert!(
+        diagnostics[0].message.contains(":invariant")
+            || diagnostics[0].message.contains("Bool"),
+        "Rust oracle は lambda guard の Bool 契約を診断するべき: {diagnostics:?}"
+    );
+    let oracle_span = diagnostics[0].span;
+    assert_eq!(
+        &source[oracle_span.start..oracle_span.end],
+        "((fn [x] x) 1)",
+        "Rust oracle は lambda call 全体の span を返すべき"
+    );
+
+    let harness = r#"
+(defn main []
+  (let [src "(defn check [] :invariant (match true [_ when ((fn [x] x) 1) true] [_ true]) true)"
+        suite (generate-tests src)
+        results (vector-get suite 1)
+        result0 (vector-get results 0)]
+    (do
+      (print (vector-length results))
+      (print (test-result-diagnostic result0))
+      (print (test-result-diagnostic-start result0))
+      (print (test-result-diagnostic-end result0))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_test_runner_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(lines.first().copied(), Some("1"));
+    assert_eq!(
+        lines.get(1).copied(),
+        Some("2"),
+        "selfhost は lambda call の non-Bool guard を LS1002 として拒否するべき"
+    );
+    assert_eq!(
+        lines.get(2).and_then(|line| line.parse::<usize>().ok()),
+        Some(oracle_span.start),
+        "selfhost lambda guard の diagnostic span 開始位置は Rust oracle と一致するべき"
+    );
+    assert_eq!(
+        lines.get(3).and_then(|line| line.parse::<usize>().ok()),
+        Some(oracle_span.end),
+        "selfhost lambda guard の diagnostic span 終了位置は Rust oracle と一致するべき"
+    );
+}
+
 /// EC-M1-01: legacy invariant の nested ADT constructor pattern が payload を bind すること
 #[test]
 fn test_e2e_selfhost_test_runner_matches_rust_oracle_for_valid_invariant_nested_constructor_match() {

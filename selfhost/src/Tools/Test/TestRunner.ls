@@ -1510,7 +1510,9 @@
                   (if (> (vector-length decl) 0)
                     (invariant-static-user-function-body-kind program decl node)
                     0))
-                0))))
+                (if (= (vector-get callee 0) (ast-lambda))
+                  (invariant-static-lambda-call-kind program callee node)
+                  0)))))
         (if (= tag (ast-if))
           (let [condition-kind (invariant-static-bool-kind-with-program
               program
@@ -1545,6 +1547,33 @@
             (vector-get call-node (+ 3 param-idx)))
           0))
       (invariant-static-bool-kind body))))
+
+(defn invariant-static-lambda-param-index-loop [lambda-node target idx count]
+  (if (>= idx count)
+    -1
+    (if (= (vector-get lambda-node (+ 2 idx)) target)
+      idx
+      (invariant-static-lambda-param-index-loop
+        lambda-node
+        target
+        (+ idx 1)
+        count))))
+
+(defn invariant-static-lambda-call-kind [program lambda-node call-node]
+  (let [param-count (vector-get lambda-node 1)
+    body (vector-get lambda-node (+ 2 param-count))]
+    (if (= (vector-get body 0) (ast-var))
+      (let [param-idx (invariant-static-lambda-param-index-loop
+          lambda-node
+          (vector-get body 1)
+          0
+          param-count)]
+        (if (>= param-idx 0)
+          (invariant-static-bool-kind-with-program
+            program
+            (vector-get call-node (+ 3 param-idx)))
+          0))
+      (invariant-static-bool-kind-with-program program body))))
 
 (defn invariant-unknown-variable [program expr decl param-count]
   (let [scope (bind-params-loop
@@ -2401,6 +2430,39 @@
           (invariant-static-bool-kind body)))
       0)))
 
+(defn invariant-token-static-lambda-call-kind [program src tokens start end]
+  (let [lambda-start (+ start 1)
+    lambda-end (consume-form tokens lambda-start)
+    params-start (+ lambda-start 2)
+    params-end (consume-form tokens params-start)
+    body-start params-end
+    body-end (consume-form tokens body-start)
+    arg-start lambda-end
+    arg-end (consume-form tokens arg-start)
+    param-start (+ params-start 1)
+    param-end (consume-form tokens param-start)]
+    (if (and
+        (and
+          (and
+            (and (< lambda-start lambda-end) (< lambda-end end))
+            (= (token-kind tokens (+ lambda-start 1)) (tok-fn)))
+          (and (= (token-kind tokens params-start) (tok-lbracket))
+            (= param-end (- params-end 1))))
+        (and
+          (and (< body-start body-end) (< arg-start arg-end))
+          (and (= (token-kind tokens body-start) (tok-symbol))
+            (= (name-hash src (token-start tokens body-start) (token-end tokens body-start))
+              (name-hash src (token-start tokens param-start) (token-end tokens param-start))))))
+      (invariant-token-static-bool-kind
+        program
+        src
+        tokens
+        arg-start
+        arg-end)
+      (if (and (< body-start body-end) (< arg-start arg-end))
+        (invariant-token-static-bool-kind program src tokens body-start body-end)
+        0))))
+
 (defn invariant-token-static-bool-kind [program src tokens start end]
   (if (>= start end)
     0
@@ -2517,9 +2579,22 @@
           nested-guard (invariant-find-non-bool-guard-form
             program src tokens guard-start guard-end)
           nested-body (invariant-find-non-bool-guard-form
-            program src tokens body-start body-end)]
-          (if (= (invariant-token-static-bool-kind
-              program src tokens guard-start guard-end) 2)
+            program src tokens body-start body-end)
+          lambda-kind (if (= (token-kind tokens guard-start) (tok-lparen))
+            (if (and
+                (< (+ guard-start 1) guard-end)
+                (= (token-kind tokens (+ guard-start 1)) (tok-lparen)))
+              (invariant-token-static-lambda-call-kind
+                program
+                src
+                tokens
+                guard-start
+                guard-end)
+              0)
+            0)
+          static-kind (invariant-token-static-bool-kind
+            program src tokens guard-start guard-end)]
+          (if (or (= lambda-kind 2) (= static-kind 2))
             (invariant-guard-span-state
               1
               (token-start tokens guard-start)
