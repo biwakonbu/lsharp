@@ -8779,6 +8779,7 @@ fn test_e2e_selfhost_test_runner_rejects_non_bool_match_guard() {
             || diagnostics[0].message.contains("Bool"),
         "Rust oracle は match guard の Bool 契約を診断するべき: {diagnostics:?}"
     );
+    let oracle_span = diagnostics[0].span;
 
     let harness = r#"
 (defn main []
@@ -8789,6 +8790,8 @@ fn test_e2e_selfhost_test_runner_rejects_non_bool_match_guard() {
     (do
       (print (vector-length results))
       (print (test-result-diagnostic result0))
+      (print (test-result-diagnostic-start result0))
+      (print (test-result-diagnostic-end result0))
       0)))
 "#;
 
@@ -8797,10 +8800,17 @@ fn test_e2e_selfhost_test_runner_rejects_non_bool_match_guard() {
         compile_and_run(&combined)
     });
     let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(lines.first().copied(), Some("1"));
+    assert_eq!(lines.get(1).copied(), Some("2"));
     assert_eq!(
-        lines,
-        vec!["1", "2"],
-        "selfhost は match guard の non-Bool を LS1002 として拒否するべき"
+        lines.get(2).and_then(|line| line.parse::<usize>().ok()),
+        Some(oracle_span.start),
+        "selfhost match guard の diagnostic span 開始位置は Rust oracle と一致するべき"
+    );
+    assert_eq!(
+        lines.get(3).and_then(|line| line.parse::<usize>().ok()),
+        Some(oracle_span.end),
+        "selfhost match guard の diagnostic span 終了位置は Rust oracle と一致するべき"
     );
 }
 

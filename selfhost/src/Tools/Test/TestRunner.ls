@@ -2256,6 +2256,138 @@
             (consume-form-loop tokens (+ idx 1) (token-count tokens) 0 0 1)
             (+ idx 1)))))))
 
+;; token sidecar から取得した span の状態: [found, start, end]。
+(defn invariant-guard-span-state [found start end]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) found)
+      start)
+    end))
+
+;; AST は expression span を保持しないため、静的に直接判定できる
+;; non-Bool guard の token form だけを識別する。
+(defn invariant-token-non-bool-kind [src tokens start end]
+  (if (>= start end)
+    0
+    (let [kind (token-kind tokens start)]
+      (if (or (= kind (tok-int))
+          (or (= kind (tok-float))
+            (or (= kind (tok-string)) (= kind (tok-string-escape)))))
+        1
+        (if (= kind (tok-lparen))
+          (if (and (< (+ start 1) end) (= (token-kind tokens (+ start 1)) (tok-symbol)))
+            (let [operator (token-text src tokens (+ start 1))]
+              (if (or (string-eq operator "+")
+                  (or (string-eq operator "-")
+                    (or (string-eq operator "*")
+                      (or (string-eq operator "/") (string-eq operator "%")))))
+                1
+                0))
+            0)
+          0)))))
+
+(defn invariant-find-non-bool-guard-sequence [src tokens idx end]
+  (if (>= idx end)
+    (invariant-guard-span-state 0 0 0)
+    (let [next-idx (consume-form tokens idx)
+      found (invariant-find-non-bool-guard-form src tokens idx next-idx)]
+      (if (= (vector-get found 0) 1)
+        found
+        (invariant-find-non-bool-guard-sequence src tokens next-idx end)))))
+
+(defn invariant-find-non-bool-guard-arms [src tokens idx end]
+  (if (or (>= idx end) (not (= (token-kind tokens idx) (tok-lbracket))))
+    (invariant-guard-span-state 0 0 0)
+    (let [arm-end (consume-form tokens idx)
+      pattern-start (+ idx 1)
+      pattern-end (consume-form tokens pattern-start)]
+      (if (and
+          (and (< pattern-end arm-end)
+            (= (token-kind tokens pattern-end) (tok-symbol)))
+          (string-eq (token-text src tokens pattern-end) "when"))
+        (let [guard-start (+ pattern-end 1)
+          guard-end (consume-form tokens guard-start)
+          body-start guard-end
+          body-end (consume-form tokens body-start)
+          nested-guard (invariant-find-non-bool-guard-form src tokens guard-start guard-end)
+          nested-body (invariant-find-non-bool-guard-form src tokens body-start body-end)]
+          (if (= (invariant-token-non-bool-kind src tokens guard-start guard-end) 1)
+            (invariant-guard-span-state
+              1
+              (token-start tokens guard-start)
+              (token-end tokens (- guard-end 1)))
+            (if (= (vector-get nested-guard 0) 1)
+              nested-guard
+              (if (= (vector-get nested-body 0) 1)
+                nested-body
+                (invariant-find-non-bool-guard-arms src tokens arm-end end)))))
+        (let [body-start pattern-end
+          body-end (consume-form tokens body-start)
+          nested-body (invariant-find-non-bool-guard-form src tokens body-start body-end)]
+          (if (= (vector-get nested-body 0) 1)
+            nested-body
+            (invariant-find-non-bool-guard-arms src tokens arm-end end)))))))
+
+(defn invariant-find-non-bool-guard-form [src tokens start end]
+  (if (>= start end)
+    (invariant-guard-span-state 0 0 0)
+    (if (and
+        (and (= (token-kind tokens start) (tok-lparen))
+          (< (+ start 2) end))
+        (= (token-kind tokens (+ start 1)) (tok-match)))
+      (let [scrutinee-start (+ start 2)
+        scrutinee-end (consume-form tokens scrutinee-start)
+        scrutinee-found (invariant-find-non-bool-guard-form
+          src tokens scrutinee-start scrutinee-end)
+        arms-found (invariant-find-non-bool-guard-arms src tokens scrutinee-end (- end 1))]
+        (if (= (vector-get scrutinee-found 0) 1)
+          scrutinee-found
+          arms-found))
+      (if (or (= (token-kind tokens start) (tok-lparen))
+          (or (= (token-kind tokens start) (tok-lbracket))
+            (= (token-kind tokens start) (tok-lbrace))))
+        (invariant-find-non-bool-guard-sequence src tokens (+ start 1) (- end 1))
+        (invariant-guard-span-state 0 0 0)))))
+
+(defn invariant-find-non-bool-guard-in-defn [src tokens idx end]
+  (if (>= idx end)
+    (invariant-guard-span-state 0 0 0)
+    (if (and
+        (and
+          (and (= (token-kind tokens idx) (tok-colon))
+            (< (+ idx 2) end))
+          (= (token-kind tokens (+ idx 1)) (tok-symbol)))
+        (string-eq (token-text src tokens (+ idx 1)) "invariant"))
+      (let [payload-start (+ idx 2)
+        payload-end (consume-form tokens payload-start)]
+        (invariant-find-non-bool-guard-form src tokens payload-start payload-end))
+      (invariant-find-non-bool-guard-in-defn src tokens (+ idx 1) end))))
+
+(defn invariant-find-non-bool-guard-by-defn [src tokens idx count target-hash]
+  (if (>= idx count)
+    (invariant-guard-span-state 0 0 0)
+    (if (and
+        (and (= (token-kind tokens idx) (tok-lparen))
+          (< (+ idx 2) count))
+        (= (token-kind tokens (+ idx 1)) (tok-defn)))
+      (let [name-start (token-start tokens (+ idx 2))
+        name-end (token-end tokens (+ idx 2))
+        next-idx (consume-form tokens idx)]
+        (if (= (name-hash src name-start name-end) target-hash)
+          (invariant-find-non-bool-guard-in-defn
+            src tokens (+ idx 3) (- next-idx 1))
+          (invariant-find-non-bool-guard-by-defn src tokens next-idx count target-hash)))
+      (invariant-find-non-bool-guard-by-defn src tokens (+ idx 1) count target-hash))))
+
+(defn find-invariant-non-bool-guard-span [src target-hash]
+  (let [tokens (tokenize-with-spans src)]
+    (invariant-find-non-bool-guard-by-defn
+      src
+      tokens
+      0
+      (token-count tokens)
+      target-hash)))
+
 ;; AST は互換のため expression span を保持しないため、source token から invariant payload span を再取得する。
 (defn find-invariant-source-span-loop [src tokens idx end]
   (if (>= idx end)
@@ -3810,10 +3942,17 @@
       (vector-get sample-summary 0)
       0)
     actual (if (= diagnostic-code 0) sample-count 0)
+    guard-source-span (if (and (= diagnostic-code (contract-diagnostic-non-bool)) (= static-kind 2))
+      (find-invariant-non-bool-guard-span src fn-hash)
+      (invariant-guard-span-state 0 0 0))
     source-span (if (> diagnostic-code 0)
       (if (>= unknown-hash 0)
         (find-invariant-unknown-source-span src fn-hash unknown-hash)
-        (find-invariant-source-span src fn-hash))
+        (if (= (vector-get guard-source-span 0) 1)
+          (vector-push
+            (vector-push (vector-new 2) (vector-get guard-source-span 1))
+            (vector-get guard-source-span 2))
+          (find-invariant-source-span src fn-hash)))
       (vector-push (vector-push (vector-new 2) 0) 0))]
     (if (> diagnostic-code 0)
       (make-test-result-with-diagnostic-span

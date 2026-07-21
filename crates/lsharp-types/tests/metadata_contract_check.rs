@@ -111,6 +111,11 @@ fn legacy_invariant_match_guard_requires_bool() {
     assert!(diagnostic.message.contains(":invariant"));
     assert!(diagnostic.message.contains("Bool"));
     assert_eq!(diagnostic.function_name, "check");
+    assert_eq!(
+        &SOURCE[diagnostic.span.start..diagnostic.span.end],
+        "(+ 1 2)",
+        "match guard の型診断は guard 式自身の span を返すべき"
+    );
 }
 
 #[test]
