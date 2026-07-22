@@ -438,10 +438,15 @@ fn test_e2e_selfhost_cli_main_with_args_test_format_json_file() {
         report["implementation_conformance"]["coverage"]["executed"],
         5
     );
-    assert_eq!(report["implementation_conformance"]["target"], "unknown");
+    assert_eq!(
+        report["implementation_conformance"]["target"],
+        "runtime-selected",
+        "App.Cli JSON report は text と同じ runtime-selected target を返すべき"
+    );
     assert_eq!(
         report["implementation_conformance"]["provenance"]["runner"],
-        "selfhost"
+        "selfhost-cli",
+        "App.Cli JSON report は入口固有の runner provenance を返すべき"
     );
     assert_eq!(report["intent_validation"]["status"], "unknown");
     assert_eq!(report["intent_validation"]["open_questions"], 0);
@@ -756,8 +761,12 @@ fn test_e2e_selfhost_json_assurance_preflight_failure_matches_text_boundary() {
         )
     });
 
-    assert_preflight_json_report(&cli_output, "selfhost", "unknown");
-    assert_preflight_json_report(&embedded_output, "selfhost", "unknown");
+    assert_preflight_json_report(&cli_output, "selfhost-cli", "runtime-selected");
+    assert_preflight_json_report(
+        &embedded_output,
+        "selfhost-embedded-wasm",
+        "wasm32-wasip1",
+    );
 }
 
 /// EC-M1-06: canonical :case と sampled :property を混在させても executed を payload 値で数えないこと

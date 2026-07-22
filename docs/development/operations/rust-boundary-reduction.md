@@ -1167,3 +1167,11 @@ ADR-190 で text preflight の未知 diagnostic message を `unknown` と表現�
 Evidence: RED `e2e::selfhost_cli_actual_main_args::test_e2e_selfhost_json_assurance_preflight_failure_matches_text_boundary` は両入口の実 argv JSON reportで `diagnostics.message` が `""` となり、期待する `unknown`との差分で失敗した（882.90s）。実装後の同じ E2E は `1 passed`（848.23s）、静的 `test_e2e_selfhost_text_assurance_preflight_matches_json_boundary` は `1 passed`。Cli/EmbeddedCli は status `fail`、method `sampled-property`、cases/executed `0`、failed `1`、diagnostics `1`、code `3002`、zero span、message `unknown`、exit `2` を返し、top-level `verified` は出さない。
 
 これは未確定 message の sentinel parity に限定した Rust-hosted Wasm actual evidenceであり、Rust/native differential、実診断本文/span の完全 parity、Mac Apple Silicon/Linux x86_64 native stage0、provenance 注入、全 form/aggregate parity は残件である。EC-M1-06 の TODO `[~]` と Rust oracle / bootstrap / host integration 境界を維持する。正本 ADR: ADR-191。
+
+### EC-M1-06 JSON assurance provenance and target parity (2026-07-23)
+
+JSON assurance report は両入口で `provenance.runner=selfhost`、`target=unknown` を固定していたが、text report は入口固有の runner/target を既に返していた。この drift は同一 actual execution の JSON/text projection から公開入口の境界を消すため、Cli の JSON helper を `selfhost-cli` / `runtime-selected`、EmbeddedCli を `selfhost-embedded-wasm` / `wasm32-wasip1` へ揃えた。source_commit と artifact_digest は実 provenance 注入まで `unknown` を維持する。
+
+Evidence: RED `e2e::selfhost_cli_actual_main_args::test_e2e_selfhost_cli_main_with_args_test_format_json_file` は `target=unknown` と期待 `runtime-selected` の差分で失敗した（433.65s）。実装後の同 test は `1 passed`（432.42s）。さらに `e2e::selfhost_cli_actual_main_args::test_e2e_selfhost_json_assurance_preflight_failure_matches_text_boundary` は Cli/EmbeddedCli の unsupported property preflight を実 argv JSON で実行し、両入口の status `fail`、method `sampled-property`、cases/executed `0`、failed `1`、diagnostics `1`、code `3002`、zero span、message `unknown`、exit `2`、およびそれぞれの runner/target label を確認した（1 passed、950.16s）。source-wiring regression も `1 passed`。
+
+これは Rust-hosted Wasm の JSON entrypoint label parity に限定した actual evidenceであり、source_commit/artifact_digest の provenance 注入、Rust/native differential、Mac Apple Silicon/Linux x86_64 native stage0、全 form/aggregate parity は残件である。EC-M1-06 の TODO `[~]` と Rust oracle / bootstrap / host integration 境界を維持する。正本 ADR: ADR-192。

@@ -260,9 +260,11 @@
         (assurance-diagnostic-span-json first-error-start first-error-end)))
     fields4 (docjson-append fields3 (docjson-string-field "message" message))]
     (docjson-object-wrap fields4)))
+(defn assurance-json-runner [] "selfhost-cli")
+(defn assurance-json-target [] "runtime-selected")
 (defn assurance-provenance-json []
   (let [fields0 ""
-    fields1 (docjson-append fields0 (docjson-string-field "runner" "selfhost"))
+    fields1 (docjson-append fields0 (docjson-string-field "runner" (assurance-json-runner)))
     fields2 (docjson-append fields1 (docjson-string-field "source_commit" "unknown"))
     fields3 (docjson-append fields2 (docjson-string-field "artifact_digest" "unknown"))]
     (docjson-object-wrap fields3)))
@@ -292,7 +294,7 @@
           diagnostic-start
           diagnostic-end
           diagnostic-message)))
-    fields9 (docjson-append fields8 (docjson-string-field "target" "unknown"))
+    fields9 (docjson-append fields8 (docjson-string-field "target" (assurance-json-target)))
     fields10 (docjson-append fields9 (docjson-object-field "provenance" (assurance-provenance-json)))]
     (docjson-object-wrap fields10)))
 (defn assurance-report-json

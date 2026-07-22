@@ -1046,3 +1046,17 @@ fn test_e2e_selfhost_text_assurance_preflight_matches_json_boundary() {
         );
     }
 }
+
+/// EC-M1-06: JSON assurance の provenance/target label が入口ごとに text と一致すること
+#[test]
+fn test_e2e_selfhost_json_assurance_provenance_labels_are_entry_specific() {
+    let cli = std::fs::read_to_string(selfhost_source_path("Cli.ls"))
+        .expect("Cli.ls の読み込みに失敗");
+    assert!(cli.contains("(defn assurance-json-runner [] \"selfhost-cli\")"));
+    assert!(cli.contains("(defn assurance-json-target [] \"runtime-selected\")"));
+
+    let embedded = std::fs::read_to_string(selfhost_source_path("EmbeddedCli.ls"))
+        .expect("EmbeddedCli.ls の読み込みに失敗");
+    assert!(embedded.contains("(defn assurance-json-runner [] \"selfhost-embedded-wasm\")"));
+    assert!(embedded.contains("(defn assurance-json-target [] \"wasm32-wasip1\")"));
+}
