@@ -1663,19 +1663,21 @@
     "Unknown"))
 
 (defn invariant-static-argument-value-with-env [program node env]
-  (if (= (vector-get node 0) (ast-var))
-    (let [name-hash (vector-get node 1)]
-      (if (= (env-has? env name-hash) 1)
-        (env-lookup env name-hash)
-        (if (> (vector-length (find-defn-by-hash
-              program
-              name-hash
-              0
-              (vector-length program))) 0)
-          (value-function name-hash)
-          (value-string "Unknown"))))
-    (value-string
-      (invariant-static-non-bool-type-text-with-env program node env))))
+  (if (= (vector-get node 0) (ast-lambda))
+    node
+    (if (= (vector-get node 0) (ast-var))
+      (let [name-hash (vector-get node 1)]
+        (if (= (env-has? env name-hash) 1)
+          (env-lookup env name-hash)
+          (if (> (vector-length (find-defn-by-hash
+                program
+                name-hash
+                0
+                (vector-length program))) 0)
+            (value-function name-hash)
+            (value-string "Unknown"))))
+      (value-string
+        (invariant-static-non-bool-type-text-with-env program node env)))))
 
 (defn invariant-static-if-non-bool-type-text-with-env [program node env]
   (let [then-node (vector-get node 2)
@@ -1761,15 +1763,15 @@
         count
         next-env))))
 
-(defn invariant-static-lambda-non-bool-type-text-with-env [program node env]
-  (let [callee (vector-get node 1)
-    param-count (vector-get callee 1)
-    body (vector-get callee (+ 2 param-count))]
+(defn invariant-static-lambda-call-non-bool-type-text-with-env
+  [program lambda-node call-node env]
+  (let [param-count (vector-get lambda-node 1)
+    body (vector-get lambda-node (+ 2 param-count))]
     (if (or (= param-count 0) (or (= param-count 1) (= param-count 2)))
       (let [lambda-env (invariant-static-lambda-bind-params-loop
           program
-          callee
-          node
+          lambda-node
+          call-node
           0
           param-count
           env)]
@@ -1778,6 +1780,13 @@
           body
           lambda-env))
       "Unknown")))
+
+(defn invariant-static-lambda-non-bool-type-text-with-env [program node env]
+  (invariant-static-lambda-call-non-bool-type-text-with-env
+    program
+    (vector-get node 1)
+    node
+    env))
 
 (defn invariant-static-user-function-bind-params-loop
   [program decl call-node idx count env]
@@ -1865,10 +1874,21 @@
                           program
                           node
                           env)
-                        (invariant-static-user-function-non-bool-type-text-with-env
-                          program
-                          node
-                          env)))
+                        (if (and
+                            (= (vector-get callee 0) (ast-var))
+                            (and
+                              (= (env-has? env (vector-get callee 1)) 1)
+                              (= (value-tag (env-lookup env (vector-get callee 1)))
+                                (ast-lambda))))
+                          (invariant-static-lambda-call-non-bool-type-text-with-env
+                            program
+                            (env-lookup env (vector-get callee 1))
+                            node
+                            env)
+                          (invariant-static-user-function-non-bool-type-text-with-env
+                            program
+                            node
+                            env))))
                     "Unknown")))))))))
 
 (defn invariant-static-computation-non-bool-type-text-with-env
