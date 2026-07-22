@@ -589,6 +589,47 @@ fn test_e2e_selfhost_embedded_cli_main_with_args_test_format_text_case_failure()
     );
 }
 
+/// EC-M1-06: App.Cli の text runtime failure が diagnostic failure と分離されること
+#[test]
+fn test_e2e_selfhost_cli_main_with_args_test_format_text_case_failure() {
+    let source =
+        "(defn succ [x] :case [(expect (succ 1) 2) (expect (succ 2) 4)] (+ x 1))";
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, || {
+        run_cli_main_with_input_file_capture(
+            "test_format_text_case_failure_cli",
+            source,
+            &["test", "input.ls", "--format", "text"],
+        )
+    });
+
+    assert_eq!(
+        output.exit_code, 2,
+        "Cli の text case failure は exit code 2 で終了するべき"
+    );
+    let lines = output_lines(output.stdout);
+    assert_eq!(
+        lines.len(),
+        28,
+        "Cli の text failure は deterministic assurance report だけを返すべき"
+    );
+    assert_eq!(lines[0], "schema_version: 1");
+    assert_eq!(lines[1], "implementation_conformance.status: fail");
+    assert_eq!(lines[2], "implementation_conformance.method: explicit-case");
+    assert_eq!(lines[3], "implementation_conformance.generator: direct-evaluation");
+    assert_eq!(lines[4], "implementation_conformance.contracts: 2");
+    assert_eq!(lines[5], "implementation_conformance.cases: 2");
+    assert_eq!(lines[9], "implementation_conformance.coverage.executed: 2");
+    assert_eq!(lines[10], "implementation_conformance.coverage.failed: 1");
+    assert_eq!(lines[11], "implementation_conformance.diagnostics.count: 0");
+    assert_eq!(lines[12], "implementation_conformance.diagnostics.firstErrorCode: 0");
+    assert_eq!(lines[16], "implementation_conformance.runner: selfhost-cli");
+    assert_eq!(lines[17], "implementation_conformance.target: runtime-selected");
+    assert!(
+        lines.iter().all(|line| !line.contains("verified")),
+        "Cli の text runtime failure は overall verified を出してはならない"
+    );
+}
+
 /// EC-M1-06: canonical :case と sampled :property を混在させても executed を payload 値で数えないこと
 #[test]
 fn test_e2e_selfhost_cli_main_with_args_test_format_json_mixed_case_property_success() {
