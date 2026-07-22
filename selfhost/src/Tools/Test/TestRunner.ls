@@ -3346,6 +3346,42 @@
 (defn case-test-expected-end [test-case]
   (if (> (vector-length test-case) 7) (vector-get test-case 7) 0))
 
+(defn case-failure-message [src test-case]
+  (if (> (string-length src) 0)
+    (let [actual-start (case-test-actual-start test-case)
+      actual-end (case-test-actual-end test-case)
+      expected-start (case-test-expected-start test-case)
+      expected-end (case-test-expected-end test-case)]
+      (string-concat
+        ":case が期待値と一致しません: actual="
+        (string-concat
+          (substring src actual-start actual-end)
+          (string-concat
+            ", expected="
+            (substring src expected-start expected-end)))))
+    ""))
+
+(defn make-case-failure-result [name passed actual src test-case]
+  (do
+    (root_push src)
+    (root_push test-case)
+    (let [message (case-failure-message src test-case)]
+      (do
+        (root_push message)
+        (let [result (make-test-result-with-diagnostic-span-message
+            name
+            passed
+            actual
+            0
+            0
+            0
+            message)]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            result))))))
+
 (defn run-cases-loop [program test-cases idx count results]
   (if (>= idx count)
     results
@@ -3414,6 +3450,51 @@
     0
     (vector-length test-cases)
     (vector-new (vector-length test-cases))))
+
+(defn append-case-failure-messages-loop
+  [results test-cases idx count out src]
+  (if (>= idx count)
+    out
+    (let [result (vector-get results idx)
+      test-case (vector-get test-cases idx)
+      passed (vector-get result 1)
+      next-out (vector-push
+        out
+        (if (and (= passed 0) (= (test-result-diagnostic result) 0))
+          (make-case-failure-result
+            (vector-get test-case 0)
+            passed
+            (vector-get result 2)
+            src
+            test-case)
+          result))]
+      (append-case-failure-messages-loop
+        results
+        test-cases
+        (+ idx 1)
+        count
+        next-out
+        src))))
+
+(defn run-cases-from-source [program test-cases src]
+  (do
+    (root_push src)
+    (root_push test-cases)
+    (let [results (run-cases program test-cases)]
+      (do
+        (root_push results)
+        (let [with-messages (append-case-failure-messages-loop
+            results
+            test-cases
+            0
+            (vector-length test-cases)
+            (vector-new (vector-length test-cases))
+            src)]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            with-messages))))))
 
 ;; 移行期 property smoke profile は legacy invariant と同じ固定値を使う。
 (defn property-sample-value [idx]
@@ -4373,7 +4454,7 @@
     example-results (run-examples program examples)
     invariant-results (run-invariants-from-source program invariants src)
     assertion-results (run-assertions program assertions)
-    case-results (run-cases program cases)
+    case-results (run-cases-from-source program cases src)
     property-results (run-properties-from-source program properties src)]
     (make-suite-with-properties
       example-results

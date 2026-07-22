@@ -7932,6 +7932,43 @@ fn test_e2e_selfhost_cli_test_source_json_reports_assertion_failure_coverage() {
     assert_eq!(lines[1], "2");
 }
 
+/// EC-M1-03: selfhost runner が canonical :case の期待値不一致 message を保持すること
+#[test]
+fn test_e2e_selfhost_case_result_preserves_failure_message() {
+    let source = "(defn succ [x] :case [(expect (succ 1) 3)] (+ x 1))";
+    let oracle = run_metadata_tests(source);
+    assert_eq!(oracle.len(), 1, "Rust oracle は canonical case 1 件を生成するべき");
+    assert!(!oracle[0].passed, "fixture の canonical case は期待値不一致になるべき");
+    let oracle_message = oracle[0]
+        .error
+        .clone()
+        .expect("Rust oracle は canonical case failure message を返すべき");
+
+    let harness = r#"
+(defn main []
+  (let [src "(defn succ [x] :case [(expect (succ 1) 3)] (+ x 1))"
+        suite (generate-tests src)
+        results (vector-get suite 3)
+        result0 (vector-get results 0)]
+    (do
+      (print (vector-get result0 1))
+      (print (vector-get result0 2))
+      (print-string (test-result-diagnostic-message result0))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_test_runner_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(lines.len(), 3, "canonical case failure result は pass/actual/message を返すべき");
+    assert_eq!(lines[0], "0", "selfhost case failure は passed=0 を返すべき");
+    assert_eq!(lines[1], "2", "selfhost case failure は actual 値を保持するべき");
+    assert_eq!(lines[2], oracle_message, "selfhost case failure message は Rust oracle と一致するべき");
+}
+
 /// EC-M1-01/06: selfhost test JSON が unknown invariant identifier の token span を返すこと
 #[test]
 fn test_e2e_selfhost_cli_test_source_json_reports_unknown_invariant_span() {
