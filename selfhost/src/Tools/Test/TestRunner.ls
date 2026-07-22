@@ -1801,7 +1801,7 @@
   [program lambda-node call-node argument-env captured-env]
   (let [param-count (vector-get lambda-node 1)
     body (vector-get lambda-node (+ 2 param-count))]
-    (if (or (= param-count 0) (or (= param-count 1) (= param-count 2)))
+    (if (or (= param-count 0) (or (= param-count 1) (or (= param-count 2) (= param-count 3))))
       (let [lambda-env (invariant-static-lambda-bind-params-with-argument-env-loop
           program
           lambda-node
