@@ -1220,3 +1220,13 @@ ADR-197 で EmbeddedCli mixed failure の entry-specific provenance を閉じた
 Evidence: `e2e::selfhost_cli_actual_main_args::test_e2e_selfhost_cli_main_with_args_test_format_json_mixed_case_property_failure` は `1 passed`（440.16s）。Rust oracle は case `passed=false`、property `passed=true` の2 logical resultsを返し、App.Cli stdoutは JSON 1 行、exit 2、status `fail`、method `sampled-property`、`cases=3`、`coverage.executed=3`、`coverage.failed=1`、`diagnostics.count=0`、`intent_validation.status=unknown` を維持した。さらに `target=runtime-selected`、`provenance.runner=selfhost-cli`、`producer=lsharp-selfhost`、`tool_version=0.1.0`、未注入の `source_commit/artifact_digest/source_digest/timestamp=unknown` を確認した。source-wiring regression `test_e2e_selfhost_json_assurance_provenance_labels_are_entry_specific` も `1 passed`。
 
 これは App.Cli Rust-hosted Wasm mixed failure の provenance evidenceに限定した verified sliceであり、Rust/native differential、Mac Apple Silicon/Linux x86_64 native stage0、実 provenance 注入、all-form aggregate parity の完了を意味しない。TODO の `[~]` と Rust oracle / bootstrap / host integration 境界を維持する。正本 ADR: ADR-198。
+
+### EC-M1-06 all-form JSON assurance execution accounting (2026-07-23)
+
+mixed `:case` + `:property` までの report evidenceを全 metadata formへ拡張したところ、現行 `assurance-total-actual` は `:example`、`:invariant`、`:assert` の actual payloadを件数へ加算し、同一 fixtureで期待7件に対して `cases=11` を返した。propertyの sample countだけは既存どおり保持し、その他の formは diagnosticなし resultを1件として数える必要がある。
+
+Decision: App.Cli と EmbeddedCli の共通集計を、`:example`/`:invariant`/`:assert`/`:case` は `assurance-result-executed`、`:property` は sample countを表す `assurance-result-actual` とする形へ揃えた。report schema、method、failure/diagnostic semantics、entry-specific provenanceは変更していない。
+
+Evidence: RED `e2e::selfhost_cli_actual_main_args::test_e2e_selfhost_cli_main_with_args_test_format_json_all_form_aggregate` は valid all-form fixture（Rust oracle 5 logical results）で `cases=11` と期待 `7` の差分を検出した（478.47s）。GREEN は App.Cli 同 test `1 passed`（467.53s）、EmbeddedCli `e2e::selfhost_cli_actual_main_args::test_e2e_selfhost_embedded_cli_main_with_args_test_format_json_all_form_aggregate` `1 passed`（431.23s）。両入口で `status=pass`、`method=sampled-property`、`cases=7`、`coverage.executed=7`、`coverage.failed=0`、`diagnostics.count=0`、exit 0 と、App.Cli `selfhost-cli`/`runtime-selected`、EmbeddedCli `selfhost-embedded-wasm`/`wasm32-wasip1` を確認した。provenance source-wiring regressionも `1 passed`。
+
+これは Rust-hosted Wasm の全 form aggregation verified sliceであり、Rust/native differential、Mac Apple Silicon/Linux x86_64 native stage0、実 provenance 注入、text/all-form failure、EC-M1-06 aggregate完了を意味しない。TODO の `[~]` と Rust oracle / bootstrap / host integration 境界を維持する。正本 ADR: ADR-199。

@@ -1137,6 +1137,117 @@ fn test_e2e_selfhost_cli_main_with_args_test_format_json_mixed_case_property_fai
     }
 }
 
+/// EC-M1-06: 全 metadata form の JSON report は actual payload ではなく実行件数を集計すること
+#[test]
+fn test_e2e_selfhost_cli_main_with_args_test_format_json_all_form_aggregate() {
+    let source = "(defn f [x] :example [(= (f 1) 2)] :case [(expect (f 1) 2)] :assert [(= 1 1)] :property [(for-all [sample Int] :cases 3 :postcondition (= result (+ sample 1)))] :invariant (= result (+ x 1)) (+ x 1))";
+    let oracle = run_metadata_tests(source);
+    assert_eq!(
+        oracle.len(),
+        5,
+        "Rust oracle は example/case/assert/property/invariant の logical result を返すべき: {oracle:?}"
+    );
+    assert!(
+        oracle.iter().all(|result| result.passed),
+        "Rust oracle の全 metadata form は成功するべき: {oracle:?}"
+    );
+
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, || {
+        run_cli_main_with_input_file_capture(
+            "test_format_json_all_form_aggregate_cli",
+            source,
+            &["test", "input.ls", "--format", "json"],
+        )
+    });
+
+    assert_eq!(
+        output.exit_code, 0,
+        "App.Cli の全 form aggregate は exit code 0 で終了するべき"
+    );
+    let lines = output_lines(output.stdout);
+    assert_eq!(lines.len(), 1, "全 form aggregate は JSON report 1 行だけを返すべき");
+    let report: Value =
+        serde_json::from_str(&lines[0]).expect("全 form aggregate report は valid JSON");
+    assert_eq!(report["implementation_conformance"]["status"], "pass");
+    assert_eq!(
+        report["implementation_conformance"]["method"],
+        "sampled-property"
+    );
+    assert_eq!(
+        report["implementation_conformance"]["cases"],
+        7,
+        "全 form aggregate の cases は example 1 + invariant 1 + assert 1 + case 1 + property 3 であるべき"
+    );
+    assert_eq!(
+        report["implementation_conformance"]["coverage"]["executed"],
+        7,
+        "全 form aggregate の executed は actual payload の合計ではなく実行件数であるべき"
+    );
+    assert_eq!(report["implementation_conformance"]["coverage"]["failed"], 0);
+    assert_eq!(report["implementation_conformance"]["diagnostics"]["count"], 0);
+    assert_eq!(report["intent_validation"]["status"], "unknown");
+    assert_eq!(
+        report["implementation_conformance"]["target"],
+        "runtime-selected"
+    );
+    assert_eq!(
+        report["implementation_conformance"]["provenance"]["runner"],
+        "selfhost-cli"
+    );
+}
+
+/// EC-M1-06: EmbeddedCli も全 metadata form の JSON report を実行件数で集計すること
+#[test]
+fn test_e2e_selfhost_embedded_cli_main_with_args_test_format_json_all_form_aggregate() {
+    let source = "(defn f [x] :example [(= (f 1) 2)] :case [(expect (f 1) 2)] :assert [(= 1 1)] :property [(for-all [sample Int] :cases 3 :postcondition (= result (+ sample 1)))] :invariant (= result (+ x 1)) (+ x 1))";
+    let oracle = run_metadata_tests(source);
+    assert_eq!(
+        oracle.len(),
+        5,
+        "Rust oracle は example/case/assert/property/invariant の logical result を返すべき: {oracle:?}"
+    );
+    assert!(
+        oracle.iter().all(|result| result.passed),
+        "Rust oracle の全 metadata form は成功するべき: {oracle:?}"
+    );
+
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, || {
+        run_main_with_input_file_capture(
+            selfhost_embedded_cli_runtime_bundle(),
+            "test_format_json_all_form_aggregate_embedded",
+            source,
+            &["test", "input.ls", "--format", "json"],
+        )
+    });
+
+    assert_eq!(
+        output.exit_code, 0,
+        "EmbeddedCli の全 form aggregate は exit code 0 で終了するべき"
+    );
+    let lines = output_lines(output.stdout);
+    assert_eq!(lines.len(), 1, "全 form aggregate は JSON report 1 行だけを返すべき");
+    let report: Value =
+        serde_json::from_str(&lines[0]).expect("EmbeddedCli 全 form aggregate report は valid JSON");
+    assert_eq!(report["implementation_conformance"]["status"], "pass");
+    assert_eq!(
+        report["implementation_conformance"]["method"],
+        "sampled-property"
+    );
+    assert_eq!(report["implementation_conformance"]["cases"], 7);
+    assert_eq!(report["implementation_conformance"]["coverage"]["executed"], 7);
+    assert_eq!(report["implementation_conformance"]["coverage"]["failed"], 0);
+    assert_eq!(report["implementation_conformance"]["diagnostics"]["count"], 0);
+    assert_eq!(report["intent_validation"]["status"], "unknown");
+    assert_eq!(
+        report["implementation_conformance"]["target"],
+        "wasm32-wasip1"
+    );
+    assert_eq!(
+        report["implementation_conformance"]["provenance"]["runner"],
+        "selfhost-embedded-wasm"
+    );
+}
+
 // Cli / EmbeddedCli の同一 JSON failure contract を共有して検証する。
 fn assert_non_bool_invariant_json(output: &lsharp_wasm::wasi_runner::ExecutionOutput) {
     assert_eq!(

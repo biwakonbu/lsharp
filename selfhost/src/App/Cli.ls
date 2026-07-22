@@ -217,11 +217,11 @@
   (assurance-result-executed-loop results 0 (vector-length results) 0))
 (defn assurance-total-actual [examples invariants assertions cases properties]
   (+
-    (assurance-result-actual examples)
+    (assurance-result-executed examples)
     (+
-      (assurance-result-actual invariants)
+      (assurance-result-executed invariants)
       (+
-        (assurance-result-actual assertions)
+        (assurance-result-executed assertions)
         (+ (assurance-result-executed cases) (assurance-result-actual properties))))))
 (defn assurance-method [property-count case-count assertion-count example-count invariant-count]
   (if (> property-count 0)
