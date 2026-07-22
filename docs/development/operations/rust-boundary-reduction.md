@@ -1506,6 +1506,24 @@ Linux Evidence: `ci-artifacts/native-linux-x86-hostgen-vm/6c14b10e-stage2-stage3
 
 これは direct three-argument lambda-returning closure projectionを含む current-source native artifact/runtime fixed-pointの両対応 target evidenceであり、closure/higher-order/user-functionの4引数以上、partial application、全言語機能、全公開 command、stage0 acquisition/release/rollback、全診断本文の型推論 parity、EC-M1-01 aggregateの完了を意味しない。TODOの `[~]` と Rust oracle / bootstrap / host integration境界は維持する。
 
+### EC-M1-01 computation direct four-argument user-function-returning closure diagnostic message projection slice (2026-07-23)
+
+computation式の最終 `return` stepが、`let! delta 1` で得た値を direct four-argument user-defined function `make-constant4 [x y z q] (fn [w] (+ x (+ y (+ z (+ q w)))))` へ渡し、その戻り値の one-argument closureを同じ computation内で適用する場合について、`invariant-static-user-function-closure-value-with-env` の parameter environment projectionを4引数まで許可した。partial applicationではなく user functionへの4引数 direct callを対象とし、closure bodyの捕捉値と最終引数を使った Rust oracleの non-Bool diagnostic type textを `Int` として投影する。5引数以上、partial application、closure/higher-orderの未解決 callee、dynamic computationは既存の `Unknown` 境界を維持する。
+
+Evidence: RED `test_e2e_selfhost_test_runner_preserves_non_bool_computation_four_arg_user_function_returning_closure_message` は selfhostの `:invariant は Bool 必須ですが、Unknown が推論されました` と Rust oracleの `:invariant は Bool 必須ですが、Int が推論されました` の差分で失敗した（32.78s）。GREENは同じ fixtureで message/spanを一致させて `1 passed`。three-argument user-function-returning closure、three-argument lambda-returning closure、nested closure、direct three-argument user functionの既存 focused regressionも各 `1 passed` である。
+
+これは direct four-argument user functionがclosureを返す computation diagnostic message/span projectionを一段だけ閉じる verified sliceであり、closure内の全型推論、closure/higher-order/user-functionの5引数以上、partial application、nested closureの任意深さ、dynamic/unresolved computationの診断本文、full diagnostic/span parity、structured/text reportの全境界、EC-M1-01 aggregateの完了を意味しない。TODOの `[~]` と Rust oracle / bootstrap / host integration境界は維持する。
+
+### EC-M1-01 current-source dual-target gates after direct four-argument user-function-returning closure projection (2026-07-23)
+
+`f1592ecb379686640d7d8f0b47869b5fa93411a6` を current sourceとして、direct four-argument user-function-returning closure computation diagnostic projection後の Mac Apple Silicon / Linux x86_64 native evidenceを取り直した。共有 root worktreeの無関係な dirty filesを保全するため、clean-worktree wrapperは実行せず、専用 worktree・Cargo target・artifact pathで検証した。
+
+Mac Evidence: `ci-artifacts/native-release/aarch64-apple-darwin/f1592ecb-app-cli-current/manifest.json` は target `aarch64-apple-darwin`、`source_commit=f1592ecb379686640d7d8f0b47869b5fa93411a6`、`selfhost_fixed_point=true`、program SHA-256 `2f2a808f39d216a4c7d099b4d39e75e5ef221e4e6fe9914c02a6e80e09da33de`を記録する。underlying ignored E2Eは `1 passed`（650.35s）。`program.native` は Mach-O arm64、サイズ `3.4M`、`--version` は `lsharp 0.1.0`、stdoutは `12` bytes、stderrは `0` bytesだった。専用 Mac Cargo targetは検証後に削除した。
+
+Linux Evidence: `ci-artifacts/native-linux-x86-hostgen-vm/f1592ecb-stage2-stage3-current/actual-selfregen-summary.json` は target `x86_64-unknown-linux-gnu`、host `Linux/x86_64`、`status=pass`、stage2/stage3 code length `10,832,651` bytes、stdout length `11,646,271` bytes、両 stdout SHA-256 `2ae6f1406e5c0484a94282a17edac85fad9f3f5649352c43db1826979a576ed6`の一致を記録する。`summary.json` は expected/actual exit code `42` の一致を記録し、stage2/stage3 stderrは双方 `0` bytesだった。actual stage1 bundle生成は `558.68s`、VM free spaceは `7,677,603,840` bytes、必要量は `4,294,967,296` bytes、artifact sizeは `101M`だった。全 Linux host probe、actual stage1 -> stage2 -> stage3 transport、materialize、stage2/stage3 byte compareが passし、`program.native` は ELF 64-bit x86-64、`program.o` は ELF 64-bit relocatable x86-64だった。検証後に VMを停止、VM workdir、replay lock、専用 host Cargo targetを削除した。VM設定は `4 CPU / 16GiB memory / 12GiB disk` のまま維持した。
+
+これは direct four-argument user-function-returning closure projectionを含む current-source native artifact/runtime fixed-pointの両対応 target evidenceであり、closure/higher-order/user-functionの5引数以上、partial application、全言語機能、全公開 command、stage0 acquisition/release/rollback、全診断本文の型推論 parity、EC-M1-01 aggregateの完了を意味しない。TODOの `[~]` と Rust oracle / bootstrap / host integration境界は維持する。
+
 ### EC-M1-01 computation direct three-argument user-function-returning closure diagnostic message projection slice (2026-07-23)
 
 computation式の最終 `return` stepが、`let! delta 1` で得た値を direct three-argument user-defined function `make-constant3 [x y z] (fn [w] (+ x w))` へ渡し、その戻り値の one-argument closureを同じ computation内で適用する場合について、`invariant-static-user-function-closure-value-with-env` の parameter environment projectionを3引数まで許可した。partial applicationではなく user functionへの3引数 direct callを対象とし、closure bodyの捕捉値と最終引数を使った Rust oracleの non-Bool diagnostic type textを `Int` として投影する。4引数以上、partial application、closure/higher-orderの未解決 callee、dynamic computationは既存の `Unknown` 境界を維持する。
