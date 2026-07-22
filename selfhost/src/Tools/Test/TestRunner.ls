@@ -1663,12 +1663,18 @@
   (let [then-node (vector-get node 2)
     else-node (vector-get node 3)
     then-kind (invariant-static-bool-kind-with-program program then-node)
-    else-kind (invariant-static-bool-kind-with-program program else-node)]
+    else-kind (invariant-static-bool-kind-with-program program else-node)
+    then-text (invariant-static-non-bool-type-text-with-env program then-node env)
+    else-text (invariant-static-non-bool-type-text-with-env program else-node env)]
     (if (= then-kind 2)
-      (invariant-static-non-bool-type-text-with-env program then-node env)
+      then-text
       (if (= else-kind 2)
-        (invariant-static-non-bool-type-text-with-env program else-node env)
-        "Unknown"))))
+        else-text
+        (if (and
+            (not (string-eq then-text "Unknown"))
+            (string-eq then-text else-text))
+          then-text
+          "Unknown")))))
 
 (defn invariant-static-match-non-bool-type-text-with-env-loop
   [program node idx count env]
@@ -1717,25 +1723,43 @@
     (vector-get node 2)
     env))
 
+(defn invariant-static-lambda-bind-params-loop
+  [program lambda-node call-node idx count env]
+  (if (>= idx count)
+    env
+    (let [argument-text (invariant-static-non-bool-type-text-with-env
+        program
+        (vector-get call-node (+ 3 idx))
+        env)
+      next-env (env-bind
+        env
+        (vector-get lambda-node (+ 2 idx))
+        (value-string argument-text))]
+      (invariant-static-lambda-bind-params-loop
+        program
+        lambda-node
+        call-node
+        (+ idx 1)
+        count
+        next-env))))
+
 (defn invariant-static-lambda-non-bool-type-text-with-env [program node env]
   (let [callee (vector-get node 1)
     param-count (vector-get callee 1)
     body (vector-get callee (+ 2 param-count))]
-    (if (= (vector-get body 0) (ast-var))
-      (let [param-idx (invariant-static-lambda-param-index-loop
+    (if (or (= param-count 0) (or (= param-count 1) (= param-count 2)))
+      (let [lambda-env (invariant-static-lambda-bind-params-loop
+          program
           callee
-          (vector-get body 1)
+          node
           0
-          param-count)]
-        (if (>= param-idx 0)
-          (invariant-static-non-bool-type-text-with-env
-            program
-            (vector-get node (+ 3 param-idx))
-            env)
-          "Unknown"))
-      (if (or (= param-count 0) (or (= param-count 1) (= param-count 2)))
-        (invariant-static-non-bool-type-text-with-env program body env)
-        "Unknown"))))
+          param-count
+          env)]
+        (invariant-static-non-bool-type-text-with-env
+          program
+          body
+          lambda-env))
+      "Unknown")))
 
 (defn invariant-static-user-function-non-bool-type-text-with-env [program node env]
   (let [callee (vector-get node 1)]
