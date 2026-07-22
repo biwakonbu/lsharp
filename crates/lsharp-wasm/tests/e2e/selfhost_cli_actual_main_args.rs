@@ -429,6 +429,87 @@ fn test_e2e_selfhost_embedded_cli_main_with_args_test_format_json_case_failure()
     assert_eq!(report["intent_validation"]["status"], "unknown");
 }
 
+/// EC-M1-06: canonical :case と sampled :property を混在させても executed を payload 値で数えないこと
+#[test]
+fn test_e2e_selfhost_cli_main_with_args_test_format_json_mixed_case_property_success() {
+    let source = "(defn identity [x] :case [(expect (identity 1) 1)] :property [(for-all [sample String] :cases 2 :postcondition (string-eq result sample))] x)";
+    let oracle = run_metadata_tests(source);
+    assert_eq!(
+        oracle.len(),
+        2,
+        "Rust oracle は canonical case と property の論理テストを生成するべき: {oracle:?}"
+    );
+    assert!(
+        oracle.iter().all(|result| result.passed),
+        "Rust oracle の混在 suite は全件成功するべき: {oracle:?}"
+    );
+    let (cli_output, embedded_output) = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, || {
+        (
+            run_cli_main_with_input_file_capture(
+                "test_format_json_mixed_case_property_cli",
+                source,
+                &["test", "input.ls", "--format", "json"],
+            ),
+            run_main_with_input_file_capture(
+                selfhost_embedded_cli_runtime_bundle(),
+                "test_format_json_mixed_case_property_embedded",
+                source,
+                &["test", "input.ls", "--format", "json"],
+            ),
+        )
+    });
+
+    assert_eq!(cli_output.exit_code, 0, "Cli の混在 suite は成功終了するべき");
+    assert_eq!(
+        embedded_output.exit_code, 0,
+        "EmbeddedCli の混在 suite は成功終了するべき"
+    );
+    let cli_lines = output_lines(cli_output.stdout);
+    let embedded_lines = output_lines(embedded_output.stdout);
+    assert_eq!(cli_lines.len(), 1, "Cli は JSON report 1 行だけを返すべき");
+    assert_eq!(
+        embedded_lines.len(),
+        1,
+        "EmbeddedCli は JSON report 1 行だけを返すべき"
+    );
+    let cli_report: Value =
+        serde_json::from_str(&cli_lines[0]).expect("Cli の混在 report は valid JSON");
+    let embedded_report: Value = serde_json::from_str(&embedded_lines[0])
+        .expect("EmbeddedCli の混在 report は valid JSON");
+
+    for (name, report) in [("Cli", &cli_report), ("EmbeddedCli", &embedded_report)] {
+        assert_eq!(
+            report["implementation_conformance"]["status"],
+            "pass",
+            "{name} の混在 suite は pass report を返すべき"
+        );
+        assert_eq!(
+            report["implementation_conformance"]["method"],
+            "sampled-property",
+            "{name} は property を含む混在 suite を sampled-property として報告するべき"
+        );
+        assert_eq!(
+            report["implementation_conformance"]["cases"],
+            3,
+            "{name} の cases は canonical case 1 件 + property 2 件であるべき"
+        );
+        assert_eq!(
+            report["implementation_conformance"]["coverage"]["executed"],
+            3,
+            "{name} の executed は case actual 値の合計ではなく実行件数であるべき"
+        );
+        assert_eq!(
+            report["implementation_conformance"]["coverage"]["failed"],
+            0,
+            "{name} の混在 suite に失敗はないべき"
+        );
+    }
+    assert_eq!(
+        cli_report, embedded_report,
+        "Cli と EmbeddedCli は混在 suite でも同じ structured report を返すべき"
+    );
+}
+
 // Cli / EmbeddedCli の同一 JSON failure contract を共有して検証する。
 fn assert_non_bool_invariant_json(output: &lsharp_wasm::wasi_runner::ExecutionOutput) {
     assert_eq!(
