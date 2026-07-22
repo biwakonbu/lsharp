@@ -10045,6 +10045,55 @@ fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_four_arg_user_fu
     );
 }
 
+/// EC-M1-01: computation 内 five-arg user function return の型本文を揃えること
+#[test]
+fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_five_arg_user_function_message() {
+    let source = "(computation-builder maybe-builder mb identity) (defn identity [x] x) (defn mb [m f] (f m)) (defn sum5 [x y z q r] (+ x (+ y (+ z (+ q r))))) (defn check [] :invariant (computation maybe-builder (let! delta 1) (return (sum5 delta delta delta delta delta))) true)";
+    let program = lsharp_syntax::parse(source).expect("computation five-arg user function message fixture は parse できるべき");
+    let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "Rust oracle は five-arg user function return の non-Bool computation を 1 件診断するべき: {diagnostics:?}"
+    );
+    let oracle_message = diagnostics[0].message.clone();
+    let oracle_span = diagnostics[0].span;
+
+    let harness = r#"
+(defn main []
+  (let [src "(computation-builder maybe-builder mb identity) (defn identity [x] x) (defn mb [m f] (f m)) (defn sum5 [x y z q r] (+ x (+ y (+ z (+ q r))))) (defn check [] :invariant (computation maybe-builder (let! delta 1) (return (sum5 delta delta delta delta delta))) true)"
+        suite (generate-tests src)
+        results (vector-get suite 1)
+        result0 (vector-get results 0)]
+    (do
+      (print (vector-length results))
+      (print (test-result-diagnostic result0))
+      (print-string (string-concat (test-result-diagnostic-message result0) "\n"))
+      (print (test-result-diagnostic-start result0))
+      (print (test-result-diagnostic-end result0))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_test_runner_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(lines.first().copied(), Some("1"));
+    assert_eq!(lines.get(1).copied(), Some("2"));
+    assert_eq!(lines.get(2).copied(), Some(oracle_message.as_str()));
+    assert_eq!(
+        lines.get(3).and_then(|line| line.parse::<usize>().ok()),
+        Some(oracle_span.start),
+        "selfhost computation five-arg user function message の diagnostic span 開始位置は Rust oracle と一致するべき"
+    );
+    assert_eq!(
+        lines.get(4).and_then(|line| line.parse::<usize>().ok()),
+        Some(oracle_span.end),
+        "selfhost computation five-arg user function message の diagnostic span 終了位置は Rust oracle と一致するべき"
+    );
+}
+
 /// EC-M1-01: computation 内 three-arg lambda-returning closure の型本文を揃えること
 #[test]
 fn test_e2e_selfhost_test_runner_preserves_non_bool_computation_three_arg_lambda_returning_closure_message() {
