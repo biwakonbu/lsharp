@@ -1238,3 +1238,11 @@ ADR-199 で全 metadata formの JSON execution accountingを閉じたため、�
 Evidence: `e2e::selfhost_cli_actual_main_args::test_e2e_selfhost_cli_main_with_args_test_format_text_all_form_failure` は Rust oracle 6 logical results / failure 1件を確認し、App.Cli actual argv reportを `1 passed`（436.84s）で閉じた。`e2e::selfhost_cli_actual_main_args::test_e2e_selfhost_embedded_cli_main_with_args_test_format_text_all_form_failure` も `1 passed`（411.83s）で、両入口の28行 text reportが `status=fail`、`method=sampled-property`、`contracts=6`、`cases=8`、`coverage.executed=8`、`coverage.failed=1`、`diagnostics.count=0`、exit 2を返すことを確認した。App.Cli は `runner=selfhost-cli` / `target=runtime-selected`、EmbeddedCli は `runner=selfhost-embedded-wasm` / `target=wasm32-wasip1` を保持し、top-level `verified` は出さない。
 
 これは Rust-hosted Wasm の all-form text failure aggregation verified sliceであり、Rust/native differential、Mac Apple Silicon/Linux x86_64 native stage0、実 provenance 注入、text/JSONの全 failure variant、EC-M1-06 aggregate完了を意味しない。TODO の `[~]` と Rust oracle / bootstrap / host integration 境界を維持する。正本 ADR: ADR-200。
+
+### EC-M1-06 all-form JSON contracts differential parity (2026-07-23)
+
+ADR-200 の all-form failure fixtureを JSON でも Rust oracle と両 selfhost 入口へ接続したところ、既存 JSON schemaには `implementation_conformance.contracts` がなく、Rust oracle 6 logical resultsとの比較値が `null` になった。App.Cli と EmbeddedCli の `assurance-conformance-json` に `contracts` を追加し、preflight/suiteとも `assurance-text-contracts` から form数を渡すようにした。
+
+Evidence: RED `e2e::selfhost_cli_actual_main_args::test_e2e_selfhost_all_form_json_failure_matches_rust_oracle_and_embedded_cli` は `contracts=null` と期待6の差分で失敗した（966.35s）。GREEN は同じ test が `1 passed`（869.99s）。Rust oracle は6 logical results／failure 1件、App.Cli／EmbeddedCli は JSON 1行・exit 2、`status=fail`、`method=sampled-property`、`contracts=6`、`cases=8`、`coverage.executed=8`、`coverage.failed=1`、`diagnostics.count=0` を返し、entry-specific runner/targetを除く JSON semanticsが一致した。
+
+これは Rust-hosted Wasm の all-form JSON contracts/differential verified sliceであり、Rust/native differential、Mac Apple Silicon/Linux x86_64 native stage0、実 provenance 注入、JSON全 failure variant、EC-M1-06 aggregate完了を意味しない。TODO の `[~]` と Rust oracle / bootstrap / host integration 境界を維持する。正本 ADR: ADR-201。

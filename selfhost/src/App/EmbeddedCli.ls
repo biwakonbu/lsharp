@@ -256,16 +256,17 @@
     fields4 (docjson-append fields3 (docjson-int-field "contradicting_observations" 0))]
     (docjson-object-wrap fields4)))
 (defn assurance-conformance-json
-  [status method cases executed failed diagnostic-count diagnostic-code diagnostic-start diagnostic-end diagnostic-message]
+  [status method contracts cases executed failed diagnostic-count diagnostic-code diagnostic-start diagnostic-end diagnostic-message]
   (let [fields0 ""
     fields1 (docjson-append fields0 (docjson-string-field "status" status))
     fields2 (docjson-append fields1 (docjson-string-field "method" method))
-    fields3 (docjson-append fields2 (docjson-int-field "cases" cases))
-    fields4 (docjson-append fields3 (docjson-int-field "seed" 0))
-    fields5 (docjson-append fields4 (docjson-string-field "generator" (assurance-generator method)))
-    fields6 (docjson-append fields5 (docjson-array-field "shrinks" "[]"))
-    fields7 (docjson-append fields6 (docjson-object-field "coverage" (assurance-coverage-json executed failed)))
-    fields8 (docjson-append fields7
+    fields3 (docjson-append fields2 (docjson-int-field "contracts" contracts))
+    fields4 (docjson-append fields3 (docjson-int-field "cases" cases))
+    fields5 (docjson-append fields4 (docjson-int-field "seed" 0))
+    fields6 (docjson-append fields5 (docjson-string-field "generator" (assurance-generator method)))
+    fields7 (docjson-append fields6 (docjson-array-field "shrinks" "[]"))
+    fields8 (docjson-append fields7 (docjson-object-field "coverage" (assurance-coverage-json executed failed)))
+    fields9 (docjson-append fields8
       (docjson-object-field
         "diagnostics"
         (assurance-diagnostics-json
@@ -274,11 +275,11 @@
           diagnostic-start
           diagnostic-end
           diagnostic-message)))
-    fields9 (docjson-append fields8 (docjson-string-field "target" (assurance-json-target)))
-    fields10 (docjson-append fields9 (docjson-object-field "provenance" (assurance-provenance-json)))]
-    (docjson-object-wrap fields10)))
+    fields10 (docjson-append fields9 (docjson-string-field "target" (assurance-json-target)))
+    fields11 (docjson-append fields10 (docjson-object-field "provenance" (assurance-provenance-json)))]
+    (docjson-object-wrap fields11)))
 (defn assurance-report-json
-  [status method cases executed failed diagnostic-count diagnostic-code diagnostic-start diagnostic-end diagnostic-message]
+  [status method contracts cases executed failed diagnostic-count diagnostic-code diagnostic-start diagnostic-end diagnostic-message]
   (let [fields0 ""
     fields1 (docjson-append fields0
       (docjson-object-field
@@ -286,6 +287,7 @@
         (assurance-conformance-json
           status
           method
+          contracts
           cases
           executed
           failed
@@ -309,9 +311,11 @@
       (vector-length assertions)
       (vector-length examples)
       (vector-length invariants))
+    contracts (assurance-text-contracts examples invariants assertions cases properties)
     rendered (assurance-report-json
       "fail"
       method
+      contracts
       0
       0
       1
@@ -374,6 +378,13 @@
     (vector-length (vector-get suite 2))
     (vector-length (vector-get suite 0))
     (vector-length (vector-get suite 1))))
+(defn assurance-suite-contracts [suite]
+  (assurance-text-contracts
+    (vector-get suite 0)
+    (vector-get suite 1)
+    (vector-get suite 2)
+    (vector-get suite 3)
+    (vector-get suite 4)))
 (defn assurance-suite-executed [suite]
   (assurance-total-actual
     (vector-get suite 0)
@@ -388,10 +399,12 @@
     diagnostic-message (assurance-suite-diagnostic-message suite)
     diagnostic-span (assurance-suite-diagnostic-span suite)
     method (assurance-suite-method suite)
+    contracts (assurance-suite-contracts suite)
     executed (assurance-suite-executed suite)
     rendered (assurance-report-json
       (assurance-status failed diagnostic-count)
       method
+      contracts
       executed
       executed
       failed

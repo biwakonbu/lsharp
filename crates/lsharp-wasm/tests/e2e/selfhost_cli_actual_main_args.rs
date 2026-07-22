@@ -1336,6 +1336,135 @@ fn test_e2e_selfhost_embedded_cli_main_with_args_test_format_json_all_form_aggre
     );
 }
 
+fn assert_all_form_json_failure_report(
+    report: &Value,
+    runner: &str,
+    target: &str,
+    oracle: &[lsharp_wasm::test_runner::TestResult],
+) {
+    let conformance = &report["implementation_conformance"];
+    let oracle_failed = oracle.iter().filter(|result| !result.passed).count();
+
+    assert!(
+        report.get("verified").is_none(),
+        "all-form JSON failure は top-level verified を返してはならない"
+    );
+    assert_eq!(
+        conformance["status"],
+        "fail",
+        "Rust oracle に失敗がある all-form suite は fail report を返すべき"
+    );
+    assert_eq!(
+        conformance["method"],
+        "sampled-property",
+        "property を含む all-form suite は sampled-property として報告するべき"
+    );
+    assert_eq!(
+        conformance["generator"],
+        "legacy-deterministic-smoke"
+    );
+    assert_eq!(
+        conformance["contracts"],
+        oracle.len(),
+        "contracts は Rust oracle の logical result 件数と一致するべき"
+    );
+    assert_eq!(conformance["cases"], 8);
+    assert_eq!(
+        conformance["coverage"]["executed"],
+        8,
+        "cases と executed は payload 値ではなく実行件数を表すべき"
+    );
+    assert_eq!(
+        conformance["coverage"]["failed"],
+        oracle_failed,
+        "coverage.failed は Rust oracle の失敗件数と一致するべき"
+    );
+    assert_eq!(conformance["diagnostics"]["count"], 0);
+    assert_eq!(conformance["target"], target);
+    assert_eq!(conformance["provenance"]["runner"], runner);
+    assert_eq!(conformance["provenance"]["producer"], "lsharp-selfhost");
+    assert_eq!(conformance["provenance"]["tool_version"], "0.1.0");
+    for field in ["source_commit", "artifact_digest", "source_digest", "timestamp"] {
+        assert_eq!(
+            conformance["provenance"][field],
+            "unknown",
+            "未注入 {field} は unknown を返すべき"
+        );
+    }
+    assert_eq!(report["intent_validation"]["status"], "unknown");
+}
+
+/// EC-M1-06: all-form JSON failure が Rust oracle と両 selfhost 入口で同じ semantics を返すこと
+#[test]
+fn test_e2e_selfhost_all_form_json_failure_matches_rust_oracle_and_embedded_cli() {
+    let source = ALL_FORM_TEXT_FAILURE_SOURCE;
+    let oracle = run_metadata_tests(source);
+    assert_eq!(oracle.len(), 6, "Rust oracle は all-form failure の logical result を返すべき");
+    assert_eq!(
+        oracle.iter().filter(|result| !result.passed).count(),
+        1,
+        "Rust oracle は all-form failure の失敗件数を 1 とするべき"
+    );
+
+    let (cli_output, embedded_output) = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, || {
+        (
+            run_cli_main_with_input_file_capture(
+                "test_format_json_all_form_failure_differential_cli",
+                source,
+                &["test", "input.ls", "--format", "json"],
+            ),
+            run_main_with_input_file_capture(
+                selfhost_embedded_cli_runtime_bundle(),
+                "test_format_json_all_form_failure_differential_embedded",
+                source,
+                &["test", "input.ls", "--format", "json"],
+            ),
+        )
+    });
+
+    assert_eq!(cli_output.exit_code, 2, "App.Cli の all-form failure は exit 2 で終了するべき");
+    assert_eq!(
+        embedded_output.exit_code, 2,
+        "EmbeddedCli の all-form failure は exit 2 で終了するべき"
+    );
+    let cli_lines = output_lines(cli_output.stdout);
+    let embedded_lines = output_lines(embedded_output.stdout);
+    assert_eq!(cli_lines.len(), 1, "App.Cli は JSON report 1 行だけを返すべき");
+    assert_eq!(
+        embedded_lines.len(),
+        1,
+        "EmbeddedCli は JSON report 1 行だけを返すべき"
+    );
+    let cli_report: Value = serde_json::from_str(&cli_lines[0]).expect("App.Cli report は valid JSON");
+    let embedded_report: Value = serde_json::from_str(&embedded_lines[0])
+        .expect("EmbeddedCli report は valid JSON");
+
+    assert_all_form_json_failure_report(&cli_report, "selfhost-cli", "runtime-selected", &oracle);
+    assert_all_form_json_failure_report(
+        &embedded_report,
+        "selfhost-embedded-wasm",
+        "wasm32-wasip1",
+        &oracle,
+    );
+
+    let mut cli_shared = cli_report;
+    let mut embedded_shared = embedded_report;
+    for report in [&mut cli_shared, &mut embedded_shared] {
+        let conformance = report["implementation_conformance"]
+            .as_object_mut()
+            .expect("implementation_conformance は object であるべき");
+        conformance.remove("target");
+        conformance["provenance"]
+            .as_object_mut()
+            .expect("provenance は object であるべき")
+            .remove("runner");
+    }
+    assert_eq!(
+        cli_shared, embedded_shared,
+        "App.Cli と EmbeddedCli は entry provenance を除く all-form semantics を共有するべき"
+    );
+}
+
 // Cli / EmbeddedCli の同一 JSON failure contract を共有して検証する。
 fn assert_non_bool_invariant_json(output: &lsharp_wasm::wasi_runner::ExecutionOutput) {
     assert_eq!(
