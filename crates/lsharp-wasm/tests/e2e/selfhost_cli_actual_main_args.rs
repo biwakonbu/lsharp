@@ -685,7 +685,40 @@ fn test_e2e_selfhost_embedded_cli_main_with_args_test_format_json_case_failure()
     assert_eq!(report["implementation_conformance"]["coverage"]["executed"], 2);
     assert_eq!(report["implementation_conformance"]["coverage"]["failed"], 1);
     assert_eq!(report["implementation_conformance"]["diagnostics"]["count"], 0);
-    assert_eq!(report["implementation_conformance"]["provenance"]["runner"], "selfhost");
+    assert_eq!(
+        report["implementation_conformance"]["target"],
+        "wasm32-wasip1",
+        "EmbeddedCli JSON failure report は実行 target を保持するべき"
+    );
+    assert_eq!(
+        report["implementation_conformance"]["provenance"]["runner"],
+        "selfhost-embedded-wasm",
+        "EmbeddedCli JSON failure report は入口固有の runner provenance を返すべき"
+    );
+    assert_eq!(
+        report["implementation_conformance"]["provenance"]["producer"],
+        "lsharp-selfhost"
+    );
+    assert_eq!(
+        report["implementation_conformance"]["provenance"]["tool_version"],
+        "0.1.0"
+    );
+    assert_eq!(
+        report["implementation_conformance"]["provenance"]["source_commit"],
+        "unknown"
+    );
+    assert_eq!(
+        report["implementation_conformance"]["provenance"]["artifact_digest"],
+        "unknown"
+    );
+    assert_eq!(
+        report["implementation_conformance"]["provenance"]["source_digest"],
+        "unknown"
+    );
+    assert_eq!(
+        report["implementation_conformance"]["provenance"]["timestamp"],
+        "unknown"
+    );
     assert_eq!(report["intent_validation"]["status"], "unknown");
 }
 

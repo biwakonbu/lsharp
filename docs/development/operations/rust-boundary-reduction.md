@@ -1190,3 +1190,10 @@ ADR-192/193 で EmbeddedCli の JSON helper は入口固有 runner/target と共
 Evidence: RED `e2e::selfhost_cli_actual_main_args::test_e2e_selfhost_embedded_cli_main_with_args_test_format_json_property_success` は actual `wasm32-wasip1` と旧期待値 `unknown` の差分で失敗した（411.47s）。期待値更新後の同 E2E は `1 passed`（415.49s）。既存の source-wiring regression `test_e2e_selfhost_json_assurance_provenance_labels_are_entry_specific` も `1 passed`。
 
 これは EmbeddedCli Rust-hosted Wasm passing JSON の provenance evidence に限定した検証であり、Rust/native differential、Mac Apple Silicon/Linux x86_64 native stage0、実 provenance 注入、preflight/runtime failure を含む全 form/aggregate parity は残件である。EC-M1-06 の TODO `[~]` と Rust oracle / bootstrap / host integration 境界を維持する。正本 ADR: ADR-194。
+### EC-M1-06 EmbeddedCli JSON case failure provenance evidence (2026-07-23)
+
+ADR-194 で EmbeddedCli passing JSON の provenance shape を actual WASI evidenceへ反映したが、canonical `:case` failure test は旧 `provenance.runner=selfhost` のままだった。failure path も passing/preflight と同じ assurance schemaで、入口固有の `runner=selfhost-embedded-wasm`、`target=wasm32-wasip1`、producer/tool version、未注入 sentinel を返すことを検証するよう testを更新した。`status=fail`、`method=explicit-case`、`cases=2`、`coverage.executed=2`、`coverage.failed=1`、`diagnostics.count=0`、exit 2 は維持している。
+
+Evidence: RED `e2e::selfhost_cli_actual_main_args::test_e2e_selfhost_embedded_cli_main_with_args_test_format_json_case_failure` は actual `runner=selfhost-embedded-wasm` と旧 `selfhost` 期待値の差分で失敗した（439.14s）。期待値更新後の同 E2E は `1 passed`（443.74s）。
+
+これは EmbeddedCli Rust-hosted Wasm の canonical case failure provenance evidence に限定した検証であり、Rust/native differential、Mac Apple Silicon/Linux x86_64 native stage0、実 provenance 注入、mixed/all-form aggregate parity は残件である。EC-M1-06 の TODO `[~]` と Rust oracle / bootstrap / host integration 境界を維持する。正本 ADR: ADR-195。
