@@ -941,6 +941,9 @@
 (defn value-string [text]
   (vector-push-pair-rooted (vector-new 2) (ast-lit-string) text))
 
+(defn value-function [name-hash]
+  (vector-push-pair-rooted (vector-new 2) (ast-var) name-hash))
+
 (defn decode-string-escape [src idx end]
   (if (>= (+ idx 1) end)
     "\\"
@@ -1659,6 +1662,21 @@
       "Unknown")
     "Unknown"))
 
+(defn invariant-static-argument-value-with-env [program node env]
+  (if (= (vector-get node 0) (ast-var))
+    (let [name-hash (vector-get node 1)]
+      (if (= (env-has? env name-hash) 1)
+        (env-lookup env name-hash)
+        (if (> (vector-length (find-defn-by-hash
+              program
+              name-hash
+              0
+              (vector-length program))) 0)
+          (value-function name-hash)
+          (value-string "Unknown"))))
+    (value-string
+      (invariant-static-non-bool-type-text-with-env program node env))))
+
 (defn invariant-static-if-non-bool-type-text-with-env [program node env]
   (let [then-node (vector-get node 2)
     else-node (vector-get node 3)
@@ -1765,14 +1783,14 @@
   [program decl call-node idx count env]
   (if (>= idx count)
     env
-    (let [argument-text (invariant-static-non-bool-type-text-with-env
+    (let [argument-value (invariant-static-argument-value-with-env
         program
         (vector-get call-node (+ 3 idx))
         env)
       next-env (env-bind
         env
         (vector-get decl (+ 3 idx))
-        (value-string argument-text))]
+        argument-value)]
       (invariant-static-user-function-bind-params-loop
         program
         decl
@@ -1784,9 +1802,16 @@
 (defn invariant-static-user-function-non-bool-type-text-with-env [program node env]
   (let [callee (vector-get node 1)]
     (if (= (vector-get callee 0) (ast-var))
-      (let [decl (find-defn-by-hash
+      (let [callee-hash (vector-get callee 1)
+        callee-value (env-lookup env callee-hash)
+        target-hash (if (and
+            (= (env-has? env callee-hash) 1)
+            (= (value-tag callee-value) (ast-var)))
+          (vector-get callee-value 1)
+          callee-hash)
+        decl (find-defn-by-hash
           program
-          (vector-get callee 1)
+          target-hash
           0
           (vector-length program))]
         (if (> (vector-length decl) 0)
