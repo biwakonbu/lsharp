@@ -1761,6 +1761,26 @@
           lambda-env))
       "Unknown")))
 
+(defn invariant-static-user-function-bind-params-loop
+  [program decl call-node idx count env]
+  (if (>= idx count)
+    env
+    (let [argument-text (invariant-static-non-bool-type-text-with-env
+        program
+        (vector-get call-node (+ 3 idx))
+        env)
+      next-env (env-bind
+        env
+        (vector-get decl (+ 3 idx))
+        (value-string argument-text))]
+      (invariant-static-user-function-bind-params-loop
+        program
+        decl
+        call-node
+        (+ idx 1)
+        count
+        next-env))))
+
 (defn invariant-static-user-function-non-bool-type-text-with-env [program node env]
   (let [callee (vector-get node 1)]
     (if (= (vector-get callee 0) (ast-var))
@@ -1772,21 +1792,19 @@
         (if (> (vector-length decl) 0)
           (let [param-count (vector-get decl 2)
             body (vector-get decl (+ 3 param-count))]
-            (if (= (vector-get body 0) (ast-var))
-              (let [param-idx (invariant-static-param-index-loop
+            (if (or (= param-count 0) (or (= param-count 1) (= param-count 2)))
+              (let [function-env (invariant-static-user-function-bind-params-loop
+                  program
                   decl
-                  (vector-get body 1)
+                  node
                   0
-                  param-count)]
-                (if (>= param-idx 0)
-                  (invariant-static-non-bool-type-text-with-env
-                    program
-                    (vector-get node (+ 3 param-idx))
-                    env)
-                  "Unknown"))
-              (if (or (= param-count 0) (or (= param-count 1) (= param-count 2)))
-                (invariant-static-non-bool-type-text-with-env program body env)
-                "Unknown")))
+                  param-count
+                  env)]
+                (invariant-static-non-bool-type-text-with-env
+                  program
+                  body
+                  function-env))
+              "Unknown"))
           "Unknown"))
       "Unknown")))
 
