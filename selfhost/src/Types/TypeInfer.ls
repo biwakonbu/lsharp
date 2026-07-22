@@ -84,8 +84,6 @@
             (root_pop)
             (root_pop)
             (root_pop)
-            (root_pop)
-            (root_pop)
             result))))))
 
 ;; if 式の型推論

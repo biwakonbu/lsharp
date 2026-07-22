@@ -1082,4 +1082,12 @@ selfhost `TestRunner` の canonical `:case` について、期待値不一致時
 
 Evidence: `test_e2e_selfhost_case_result_preserves_failure_message` は `1 passed`（35.38s）。fixture `(defn succ [x] :case [(expect (succ 1) 3)] (+ x 1))` で、Rust oracle と selfhost の message `:case が期待値と一致しません: actual=(succ 1), expected=3`、`passed=0`、`actual=2` が一致した。既存 `test_e2e_selfhost_test_runner_materializes_canonical_cases` は `1 passed`（36.22s）、`selfhost_case_spans` の既存 5件は全件 pass（58.21s）だった。
 
-これは Rust oracle と Rust-host Wasm selfhost runner の result-level failure message と既存 case span の verified sliceである。current source-aware bundle の `test_e2e_selfhost_cli_reports_canonical_cases` は `root_set`（Wasm function 24）起点の `unreachable`、stdout `BEGIN`、509.35s で失敗したため、CLI text/JSON report forwarding、root-slot provenance、Mac Apple Silicon / Linux x86_64 current-source native artifact/runtime、EC-M1-03 aggregateの完了を意味しない。次の RED は CLI case path の `root_set` slot provenance/telemetryを固定し、message passを公開入口へ戻すこととする。TODOの `[~]` と Rust oracle / bootstrap / host integration境界は維持する。
+これは Rust oracle と Rust-host Wasm selfhost runner の result-level failure message と既存 case span の verified sliceである。current source-aware bundle の `test_e2e_selfhost_cli_reports_canonical_cases` は `root_set`（Wasm function 24）起点の `unreachable`、stdout `BEGIN`、509.35s で失敗していたため、CLI text/JSON report forwarding、root-slot provenance、Mac Apple Silicon / Linux x86_64 current-source native artifact/runtime、EC-M1-03 aggregateの完了を意味しなかった。root-slot failure の RED/GREEN は ADR-181 へ分離して記録する。TODOの `[~]` と Rust oracle / bootstrap / host integration境界は維持する。
+
+### EC-M1-03 selfhost canonical case root-slot balance (2026-07-22)
+
+canonical `:case` の公開 CLI 経路で、外側 root slot を保持したまま selfhost 型推論と case preflight を実行すると `root_set` (Wasm function 24) が bounds trap していた。静的 IR と source-level root ownership を照合し、`infer-var` と `typeinfer-finalize-defn-result-with-env-vars` の各 2 回の余分な `root_pop` を削除した。WASI の capacity / bounds guard や root ABI は変更していない。
+
+Evidence: RED は外側 3 slot の analysis-only probe で `root_top=1`、apply + `check-canonical-cases-with-analysis` で `root_set` trap を再現した。GREEN は `test_analysis_and_case_check_preserve_outer_root_slots`（`root_top=4`, 71.82s）、`test_generate_tests_preserves_outer_root_slots`（`root_top=2`, 99.54s）、`e2e::selfhost_cli_core::test_e2e_selfhost_cli_reports_canonical_cases`（1 passed, 466.68s）で確認した。root-slot probe の一時 memory telemetry と IR probe は削除済みである。
+
+これは Rust-hosted Wasm の selfhost型推論・case preflight・公開 CLI forwarding に限定した verified sliceであり、Mac Apple Silicon / Linux x86_64 native stage0 artifact/runtime、CLI JSON の全公開形式、EC-M1-03 aggregate の完了を意味しない。次は current-source native gate と残る CLI surface を要件単位で再監査し、TODO の `[~]` と Rust oracle / bootstrap / host integration 境界を維持する。
