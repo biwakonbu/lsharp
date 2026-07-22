@@ -1816,6 +1816,24 @@
           lambda-env))
       "Unknown")))
 
+(defn invariant-static-lambda-call-closure-with-environments
+  [program lambda-node call-node argument-env captured-env]
+  (let [param-count (vector-get lambda-node 1)
+    body (vector-get lambda-node (+ 2 param-count))]
+    (if (or (= param-count 0) (or (= param-count 1) (= param-count 2)))
+      (let [lambda-env (invariant-static-lambda-bind-params-with-argument-env-loop
+          program
+          lambda-node
+          call-node
+          argument-env
+          0
+          param-count
+          captured-env)]
+        (if (= (vector-get body 0) (ast-lambda))
+          (value-closure body lambda-env)
+          0))
+      0)))
+
 (defn invariant-static-lambda-call-non-bool-type-text-with-env
   [program lambda-node call-node env]
   (invariant-static-lambda-call-with-environments
@@ -1878,6 +1896,46 @@
           0))
       0)))
 
+(defn invariant-static-apply-closure-value-with-env [program node env]
+  (let [callee (vector-get node 1)
+    callee-tag (vector-get callee 0)]
+    (if (= callee-tag (ast-lambda))
+      (invariant-static-lambda-call-closure-with-environments
+        program
+        callee
+        node
+        env
+        env)
+      (if (= callee-tag (ast-apply))
+        (let [closure (invariant-static-apply-closure-value-with-env
+            program
+            callee
+            env)]
+          (if (value-closure? closure)
+            (invariant-static-lambda-call-closure-with-environments
+              program
+              (vector-get closure 1)
+              node
+              env
+              (vector-get closure 2))
+            0))
+        (if (= callee-tag (ast-var))
+          (if (and
+              (= (env-has? env (vector-get callee 1)) 1)
+              (value-closure? (env-lookup env (vector-get callee 1))))
+            (let [closure (env-lookup env (vector-get callee 1))]
+              (invariant-static-lambda-call-closure-with-environments
+                program
+                (vector-get closure 1)
+                node
+                env
+                (vector-get closure 2)))
+            (invariant-static-user-function-closure-value-with-env
+              program
+              node
+              env))
+          0)))))
+
 (defn invariant-static-user-function-non-bool-type-text-with-env [program node env]
   (let [callee (vector-get node 1)]
     (if (= (vector-get callee 0) (ast-var))
@@ -1935,42 +1993,55 @@
                   program
                   (vector-get node 3)
                   next-env))
-                (if (= (vector-get node 0) (ast-if))
+                  (if (= (vector-get node 0) (ast-if))
                   (invariant-static-if-non-bool-type-text-with-env program node env)
                   (if (= (vector-get node 0) (ast-apply))
                     (let [callee (vector-get node 1)]
-                      (if (= (vector-get callee 0) (ast-lambda))
-                        (invariant-static-lambda-non-bool-type-text-with-env
-                          program
-                          node
-                          env)
-                        (if (and
-                            (= (vector-get callee 0) (ast-var))
-                            (and
-                              (= (env-has? env (vector-get callee 1)) 1)
-                              (value-closure? (env-lookup env (vector-get callee 1)))))
-                          (let [closure (env-lookup env (vector-get callee 1))]
-                            (invariant-static-lambda-call-with-environments
-                              program
-                              (vector-get closure 1)
-                              node
-                              env
-                              (vector-get closure 2)))
+                      (let [closure (if (= (vector-get callee 0) (ast-apply))
+                          (invariant-static-apply-closure-value-with-env
+                            program
+                            callee
+                            env)
+                          0)]
+                        (if (value-closure? closure)
+                          (invariant-static-lambda-call-with-environments
+                            program
+                            (vector-get closure 1)
+                            node
+                            env
+                            (vector-get closure 2))
                           (if (and
                               (= (vector-get callee 0) (ast-var))
                               (and
                                 (= (env-has? env (vector-get callee 1)) 1)
-                                (= (value-tag (env-lookup env (vector-get callee 1)))
-                                  (ast-lambda))))
-                            (invariant-static-lambda-call-non-bool-type-text-with-env
-                              program
-                              (env-lookup env (vector-get callee 1))
-                              node
-                              env)
-                            (invariant-static-user-function-non-bool-type-text-with-env
-                              program
-                              node
-                              env)))))
+                                (value-closure? (env-lookup env (vector-get callee 1)))))
+                            (let [bound-closure (env-lookup env (vector-get callee 1))]
+                              (invariant-static-lambda-call-with-environments
+                                program
+                                (vector-get bound-closure 1)
+                                node
+                                env
+                                (vector-get bound-closure 2)))
+                            (if (= (vector-get callee 0) (ast-lambda))
+                              (invariant-static-lambda-non-bool-type-text-with-env
+                                program
+                                node
+                                env)
+                              (if (and
+                                  (= (vector-get callee 0) (ast-var))
+                                  (and
+                                    (= (env-has? env (vector-get callee 1)) 1)
+                                    (= (value-tag (env-lookup env (vector-get callee 1)))
+                                      (ast-lambda))))
+                                (invariant-static-lambda-call-non-bool-type-text-with-env
+                                  program
+                                  (env-lookup env (vector-get callee 1))
+                                  node
+                                  env)
+                                (invariant-static-user-function-non-bool-type-text-with-env
+                                  program
+                                  node
+                                  env)))))))
                     "Unknown")))))))))
 
 (defn invariant-static-computation-non-bool-type-text-with-env
