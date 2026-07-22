@@ -266,8 +266,12 @@
   (let [fields0 ""
     fields1 (docjson-append fields0 (docjson-string-field "runner" (assurance-json-runner)))
     fields2 (docjson-append fields1 (docjson-string-field "source_commit" "unknown"))
-    fields3 (docjson-append fields2 (docjson-string-field "artifact_digest" "unknown"))]
-    (docjson-object-wrap fields3)))
+    fields3 (docjson-append fields2 (docjson-string-field "artifact_digest" "unknown"))
+    fields4 (docjson-append fields3 (docjson-string-field "producer" "lsharp-selfhost"))
+    fields5 (docjson-append fields4 (docjson-string-field "tool_version" "0.1.0"))
+    fields6 (docjson-append fields5 (docjson-string-field "source_digest" "unknown"))
+    fields7 (docjson-append fields6 (docjson-string-field "timestamp" "unknown"))]
+    (docjson-object-wrap fields7)))
 (defn assurance-intent-json []
   (let [fields0 ""
     fields1 (docjson-append fields0 (docjson-string-field "status" "unknown"))

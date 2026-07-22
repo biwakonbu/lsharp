@@ -131,6 +131,10 @@ fn assert_preflight_json_report(
     );
     assert_eq!(conformance["provenance"]["runner"], runner);
     assert_eq!(conformance["target"], target);
+    assert_eq!(conformance["provenance"]["producer"], "lsharp-selfhost");
+    assert_eq!(conformance["provenance"]["tool_version"], "0.1.0");
+    assert_eq!(conformance["provenance"]["source_digest"], "unknown");
+    assert_eq!(conformance["provenance"]["timestamp"], "unknown");
     assert_eq!(report["intent_validation"]["status"], "unknown");
     assert!(
         !lines.iter().any(|line| line.contains("verified")),
@@ -447,6 +451,26 @@ fn test_e2e_selfhost_cli_main_with_args_test_format_json_file() {
         report["implementation_conformance"]["provenance"]["runner"],
         "selfhost-cli",
         "App.Cli JSON report は入口固有の runner provenance を返すべき"
+    );
+    assert_eq!(
+        report["implementation_conformance"]["provenance"]["producer"],
+        "lsharp-selfhost",
+        "JSON report は text と同じ producer provenance を返すべき"
+    );
+    assert_eq!(
+        report["implementation_conformance"]["provenance"]["tool_version"],
+        "0.1.0",
+        "JSON report は text と同じ tool_version provenance を返すべき"
+    );
+    assert_eq!(
+        report["implementation_conformance"]["provenance"]["source_digest"],
+        "unknown",
+        "未注入 source digest は unknown を返すべき"
+    );
+    assert_eq!(
+        report["implementation_conformance"]["provenance"]["timestamp"],
+        "unknown",
+        "未注入 timestamp は unknown を返すべき"
     );
     assert_eq!(report["intent_validation"]["status"], "unknown");
     assert_eq!(report["intent_validation"]["open_questions"], 0);

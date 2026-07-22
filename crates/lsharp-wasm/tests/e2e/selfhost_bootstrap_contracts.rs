@@ -1054,9 +1054,28 @@ fn test_e2e_selfhost_json_assurance_provenance_labels_are_entry_specific() {
         .expect("Cli.ls の読み込みに失敗");
     assert!(cli.contains("(defn assurance-json-runner [] \"selfhost-cli\")"));
     assert!(cli.contains("(defn assurance-json-target [] \"runtime-selected\")"));
+    for field in [
+        "(docjson-string-field \"producer\" \"lsharp-selfhost\")",
+        "(docjson-string-field \"tool_version\" \"0.1.0\")",
+        "(docjson-string-field \"source_digest\" \"unknown\")",
+        "(docjson-string-field \"timestamp\" \"unknown\")",
+    ] {
+        assert!(cli.contains(field), "Cli.ls の JSON provenance に {field} が必要");
+    }
 
     let embedded = std::fs::read_to_string(selfhost_source_path("EmbeddedCli.ls"))
         .expect("EmbeddedCli.ls の読み込みに失敗");
     assert!(embedded.contains("(defn assurance-json-runner [] \"selfhost-embedded-wasm\")"));
     assert!(embedded.contains("(defn assurance-json-target [] \"wasm32-wasip1\")"));
+    for field in [
+        "(docjson-string-field \"producer\" \"lsharp-selfhost\")",
+        "(docjson-string-field \"tool_version\" \"0.1.0\")",
+        "(docjson-string-field \"source_digest\" \"unknown\")",
+        "(docjson-string-field \"timestamp\" \"unknown\")",
+    ] {
+        assert!(
+            embedded.contains(field),
+            "EmbeddedCli.ls の JSON provenance に {field} が必要"
+        );
+    }
 }
