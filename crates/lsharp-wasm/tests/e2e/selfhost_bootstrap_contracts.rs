@@ -1011,3 +1011,38 @@ fn test_e2e_selfhost_text_assurance_renderer_is_shared_between_cli_surfaces() {
         );
     }
 }
+
+/// EC-M1-06: text assurance が JSON と同じ preflight boundary を suite 実行前に通すこと
+#[test]
+fn test_e2e_selfhost_text_assurance_preflight_matches_json_boundary() {
+    let renderer = std::fs::read_to_string(selfhost_source_path("AssuranceText.ls"))
+        .expect("AssuranceText.ls の読み込みに失敗");
+    assert!(
+        renderer.contains("(defn assurance-text-preflight-report"),
+        "共有 renderer は preflight report helper を持つべき"
+    );
+
+    for file_name in ["Cli.ls", "EmbeddedCli.ls"] {
+        let source = std::fs::read_to_string(selfhost_source_path(file_name))
+            .unwrap_or_else(|e| panic!("{file_name} の読み込みに失敗: {e}"));
+        let start = source
+            .find("(defn run-test-source-assurance-text ")
+            .unwrap_or_else(|| panic!("{file_name} に text assurance entrypoint が必要"));
+        let end = source
+            .find("(defn case-preflight-diagnostics-summary ")
+            .unwrap_or_else(|| panic!("{file_name} の text assurance boundary が不正"));
+        let body = &source[start..end];
+        assert!(
+            body.contains("(metadata-test-runner-boundary-code program)"),
+            "{file_name} の text assurance は property preflight boundary を確認すべき"
+        );
+        assert!(
+            body.contains("(check-canonical-cases-with-analysis program analysis)"),
+            "{file_name} の text assurance は canonical case preflight boundary を確認すべき"
+        );
+        assert!(
+            body.contains("(run-test-source-assurance-text-preflight"),
+            "{file_name} は preflight failure を共有 text report へ射影すべき"
+        );
+    }
+}

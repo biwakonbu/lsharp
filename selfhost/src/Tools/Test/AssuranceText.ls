@@ -82,3 +82,24 @@
 
 (defn assurance-text-failed? [failed diagnostics]
   (if (or (> failed 0) (> diagnostics 0)) 1 0))
+
+(defn assurance-text-preflight-report
+  [method generator contracts diagnostic-code span-start span-end message runner target]
+  (assurance-text-report
+    "fail"
+    method
+    generator
+    contracts
+    0
+    "unknown"
+    0
+    "[]"
+    0
+    1
+    1
+    diagnostic-code
+    span-start
+    span-end
+    message
+    runner
+    target))

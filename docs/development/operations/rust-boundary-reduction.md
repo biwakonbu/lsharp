@@ -1151,3 +1151,11 @@ App.Cli の text assurance が EmbeddedCli と同じく runtime failure を正�
 Evidence: `e2e::selfhost_cli_actual_main_args::test_e2e_selfhost_cli_main_with_args_test_format_text_case_failure` は `1 passed`（441.04s）。これは App.Cli の実 WASI bundle による runtime assertion failure と preflight diagnostic failure の分離を確認し、EmbeddedCli text failure coverage と公開入口 parity を閉じる actual evidence である。
 
 preflight failure text、Rust/native differential、Mac Apple Silicon/Linux x86_64 native stage0、provenance 注入、全 form/aggregate parity は未検証であり、EC-M1-06 の TODO `[~]` と Rust oracle / bootstrap / host integration 境界を維持する。正本 ADR: ADR-189。
+
+### EC-M1-06 text assurance preflight failure parity (2026-07-23)
+
+Cli/EmbeddedCli の text assurance entrypoint が suite生成前に JSON と同じ preflight boundaryを通り、未対応 property profile を実行済み coverageへ混入させないようにした。共有 `AssuranceText` の preflight renderer は source form の method/generator と contract countを保持し、`cases=0`、`coverage.executed=0`、`coverage.failed=1`、`diagnostics.count=1`、diagnostic code/span、exit 2 を 28 行へ射影する。
+
+Evidence: `e2e::selfhost_cli_actual_main_args::test_e2e_selfhost_text_assurance_preflight_failure` は Cli/EmbeddedCli の同一 unsupported sampling fixture（`:property`、`:cases 3`、`:seed 42`）で `1 passed`（841.21s）。両入口の report は `status=fail`、`method=sampled-property`、`contracts=1`、`cases=0`、`coverage.executed=0`、`coverage.failed=1`、`diagnostics.count=1`、`firstErrorCode=3002`（LS3002）、zero span、top-level `verified` 非採用を返し、runner/target だけを入口固有値として保持した。静的 preflight wiring test も `1 passed`。
+
+Rust/native differential、Mac Apple Silicon/Linux x86_64 native stage0、provenance 注入、全 form/aggregate parity は未検証であり、EC-M1-06 の TODO `[~]` と Rust oracle / bootstrap / host integration 境界を維持する。正本 ADR: ADR-190。

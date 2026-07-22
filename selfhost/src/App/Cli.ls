@@ -439,7 +439,7 @@
           (vector-get case-check 2)
           (vector-get case-check 3))
         (run-test-source-json-suite (generate-tests-from-source src))))))
-(defn run-test-source-assurance-text [src]
+(defn run-test-source-assurance-text-suite [src]
   (let [suite (generate-tests-from-source src)
     examples (vector-get suite 0)
     invariants (vector-get suite 1)
@@ -476,6 +476,57 @@
       (if (= (assurance-text-failed? failed diagnostics) 1)
         (exit-runtime-error)
         (exit-success)))))
+(defn run-test-source-assurance-text-preflight
+  [program diagnostic-code diagnostic-start diagnostic-end]
+  (let [examples (extract-examples-from-program program)
+    invariants (extract-invariants-from-program program)
+    assertions (extract-assertions-from-program program)
+    cases (extract-cases-from-program program)
+    properties (extract-property-test-cases program)
+    method (assurance-method
+      (vector-length properties)
+      (vector-length cases)
+      (vector-length assertions)
+      (vector-length examples)
+      (vector-length invariants))
+    contracts (assurance-text-contracts examples invariants assertions cases properties)
+    rendered (assurance-text-preflight-report
+      method
+      (assurance-generator method)
+      contracts
+      diagnostic-code
+      diagnostic-start
+      diagnostic-end
+      "unknown"
+      "selfhost-cli"
+      "runtime-selected")]
+    (do
+      (print-string rendered)
+      (print-string "\n")
+      (exit-runtime-error))))
+(defn run-test-source-assurance-text [src]
+  (let [src-root-slot (root_push src)
+    program (parse-program src)
+    program-root-slot (root_push program)
+    analysis (infer-program-analysis program)
+    analysis-root-slot (root_push analysis)
+    property-boundary-code (metadata-test-runner-boundary-code program)
+    case-check (check-canonical-cases-with-analysis program analysis)
+    case-check-root-slot (root_push case-check)
+    case-diagnostics-count (vector-get case-check 0)]
+    (if (> property-boundary-code 0)
+      (run-test-source-assurance-text-preflight
+        program
+        property-boundary-code
+        0
+        0)
+      (if (> case-diagnostics-count 0)
+        (run-test-source-assurance-text-preflight
+          program
+          (vector-get case-check 1)
+          (vector-get case-check 2)
+          (vector-get case-check 3))
+        (run-test-source-assurance-text-suite src)))))
 (defn case-preflight-diagnostics-summary [case-check]
   (let [count (vector-get case-check 0)
     raw-code (vector-get case-check 1)

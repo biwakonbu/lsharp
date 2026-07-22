@@ -60,6 +60,43 @@ fn assurance_text_expected_lines(runner: &str, target: &str) -> Vec<String> {
     ]
 }
 
+fn assert_preflight_text_report(
+    output: &lsharp_wasm::wasi_runner::ExecutionOutput,
+    runner: &str,
+    target: &str,
+) {
+    assert_eq!(
+        output.exit_code, 2,
+        "text preflight failure は exit code 2 で終了するべき"
+    );
+    let lines = output_lines(output.stdout.clone());
+    assert_eq!(
+        lines.len(),
+        28,
+        "text preflight failure は deterministic assurance report だけを返すべき"
+    );
+    assert_eq!(lines[0], "schema_version: 1");
+    assert_eq!(lines[1], "implementation_conformance.status: fail");
+    assert_eq!(lines[2], "implementation_conformance.method: sampled-property");
+    assert_eq!(lines[3], "implementation_conformance.generator: legacy-deterministic-smoke");
+    assert_eq!(lines[4], "implementation_conformance.contracts: 1");
+    assert_eq!(lines[5], "implementation_conformance.cases: 0");
+    assert_eq!(lines[6], "implementation_conformance.discarded_cases: unknown");
+    assert_eq!(lines[9], "implementation_conformance.coverage.executed: 0");
+    assert_eq!(lines[10], "implementation_conformance.coverage.failed: 1");
+    assert_eq!(lines[11], "implementation_conformance.diagnostics.count: 1");
+    assert_eq!(lines[12], "implementation_conformance.diagnostics.firstErrorCode: 3002");
+    assert_eq!(lines[13], "implementation_conformance.diagnostics.firstErrorSpan.start: 0");
+    assert_eq!(lines[14], "implementation_conformance.diagnostics.firstErrorSpan.end: 0");
+    assert_eq!(lines[15], "implementation_conformance.diagnostics.message: unknown");
+    assert_eq!(lines[16], format!("implementation_conformance.runner: {runner}"));
+    assert_eq!(lines[17], format!("implementation_conformance.target: {target}"));
+    assert!(
+        lines.iter().all(|line| !line.contains("verified")),
+        "text preflight failure は overall verified を出してはならない"
+    );
+}
+
 fn doctools_json_snapshot(name: &str) -> Value {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../tests/snapshots/doctools")
@@ -627,6 +664,34 @@ fn test_e2e_selfhost_cli_main_with_args_test_format_text_case_failure() {
     assert!(
         lines.iter().all(|line| !line.contains("verified")),
         "Cli の text runtime failure は overall verified を出してはならない"
+    );
+}
+
+/// EC-M1-06: Cli と EmbeddedCli の text preflight failure が JSON と同じ境界を返すこと
+#[test]
+fn test_e2e_selfhost_text_assurance_preflight_failure() {
+    let source = "(defn identity [x] :property [(for-all [value Int] :cases 3 :seed 42 :postcondition (= result value))] x)";
+    let (cli_output, embedded_output) = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, || {
+        (
+            run_cli_main_with_input_file_capture(
+                "test_format_text_preflight_cli",
+                source,
+                &["test", "input.ls", "--format", "text"],
+            ),
+            run_main_with_input_file_capture(
+                selfhost_embedded_cli_runtime_bundle(),
+                "test_format_text_preflight_embedded",
+                source,
+                &["test", "input.ls", "--format", "text"],
+            ),
+        )
+    });
+
+    assert_preflight_text_report(&cli_output, "selfhost-cli", "runtime-selected");
+    assert_preflight_text_report(
+        &embedded_output,
+        "selfhost-embedded-wasm",
+        "wasm32-wasip1",
     );
 }
 
