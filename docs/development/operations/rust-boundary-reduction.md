@@ -1136,3 +1136,10 @@ ADR-186 の共有 `AssuranceText` renderer について、EmbeddedCli runtime bu
 Evidence: `e2e::selfhost_cli_actual_main_args::test_e2e_selfhost_embedded_cli_main_with_args_test_format_text_file` は exit 0、`1 passed`（469.44s）。これは共有 renderer の static wiring ではなく、EmbeddedCli の WASI bundle を実行した actual stdout 契約である。
 
 Rust/native differential、preflight failure text、Mac Apple Silicon/Linux x86_64 native stage0、provenance 注入、全 form/aggregate parity は未検証であり、EC-M1-06 の TODO `[~]` と Rust oracle / bootstrap / host integration 境界を維持する。正本 ADR: ADR-187。
+### EC-M1-06 EmbeddedCli text runtime failure coverage (2026-07-23)
+
+EmbeddedCli の text assurance が passing pathだけでなく runtime failure を正しく表現することを検証した。canonical `:case` 2 件のうち 1 件が失敗する fixtureで、text report は `status=fail`、`method=explicit-case`、`contracts=2`、`cases=2`、`coverage.executed=2`、`coverage.failed=1`、`diagnostics.count=0`、exit 2 を返す。report は 28 行で、top-level `verified` を出さない。
+
+Evidence: `e2e::selfhost_cli_actual_main_args::test_e2e_selfhost_embedded_cli_main_with_args_test_format_text_case_failure` は `1 passed`（410.33s）。これは runtime assertion failure と preflight diagnostic failure を分離した EmbeddedCli actual WASI bundle evidenceである。
+
+Cli failure text、preflight failure text、Rust/native differential、Mac Apple Silicon/Linux x86_64 native stage0、provenance 注入、全 form/aggregate parity は未検証であり、EC-M1-06 の TODO `[~]` と Rust oracle / bootstrap / host integration 境界を維持する。正本 ADR: ADR-188。
