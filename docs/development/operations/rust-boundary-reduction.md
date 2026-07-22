@@ -1129,3 +1129,10 @@ EC-M1-06 の `test --format text` を、JSON report と同じ suite helper の�
 Evidence: RED `e2e::selfhost_cli_actual_main_args::test_e2e_selfhost_cli_main_with_args_test_format_text_file` は `--format text` の旧 option error（exit 1、494.87s）で失敗した。renderer module の selfhost `check` は diagnostics 0。GREEN は同じ実 argv passing property fixtureで 27 行を完全一致させ、exit 0、`1 passed`（468.39s）となった。support bundle へ新 module を明示収録し、実行時 UndefinedVar を解消した。
 
 これは Rust-hosted Wasm の App.Cli passing text path の verified sliceである。EmbeddedCli actual text、preflight failure text、Rust/native differential、Mac Apple Silicon/Linux x86_64 native stage0、provenance 注入、text と JSON の全 form/aggregate parity は未検証であり、EC-M1-06 の TODO `[~]` と Rust oracle / bootstrap / host integration 境界を維持する。正本 ADR: ADR-186。
+### EC-M1-06 EmbeddedCli text assurance parity (2026-07-23)
+
+ADR-186 の共有 `AssuranceText` renderer について、EmbeddedCli runtime bundle の実 argv `test input.ls --format text` を追加検証した。Cli と同じ 27 行の field順序・値・top-level `verified` 非採用を要求し、入口固有値は `runner=selfhost-embedded-wasm`、`target=wasm32-wasip1` として明示した。
+
+Evidence: `e2e::selfhost_cli_actual_main_args::test_e2e_selfhost_embedded_cli_main_with_args_test_format_text_file` は exit 0、`1 passed`（469.44s）。これは共有 renderer の static wiring ではなく、EmbeddedCli の WASI bundle を実行した actual stdout 契約である。
+
+Rust/native differential、preflight failure text、Mac Apple Silicon/Linux x86_64 native stage0、provenance 注入、全 form/aggregate parity は未検証であり、EC-M1-06 の TODO `[~]` と Rust oracle / bootstrap / host integration 境界を維持する。正本 ADR: ADR-187。

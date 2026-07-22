@@ -27,6 +27,39 @@ fn assert_output_lines(lines: &[String], expected: &[&str], message: &str) {
     assert_eq!(actual, expected, "{}", message);
 }
 
+fn assurance_text_expected_lines(runner: &str, target: &str) -> Vec<String> {
+    vec![
+        "schema_version: 1".to_string(),
+        "implementation_conformance.status: pass".to_string(),
+        "implementation_conformance.method: sampled-property".to_string(),
+        "implementation_conformance.generator: legacy-deterministic-smoke".to_string(),
+        "implementation_conformance.contracts: 1".to_string(),
+        "implementation_conformance.cases: 5".to_string(),
+        "implementation_conformance.discarded_cases: unknown".to_string(),
+        "implementation_conformance.seed: 0".to_string(),
+        "implementation_conformance.shrinks: []".to_string(),
+        "implementation_conformance.coverage.executed: 5".to_string(),
+        "implementation_conformance.coverage.failed: 0".to_string(),
+        "implementation_conformance.diagnostics.count: 0".to_string(),
+        "implementation_conformance.diagnostics.firstErrorCode: 0".to_string(),
+        "implementation_conformance.diagnostics.firstErrorSpan.start: 0".to_string(),
+        "implementation_conformance.diagnostics.firstErrorSpan.end: 0".to_string(),
+        "implementation_conformance.diagnostics.message: unknown".to_string(),
+        format!("implementation_conformance.runner: {runner}"),
+        format!("implementation_conformance.target: {target}"),
+        "implementation_conformance.provenance.producer: lsharp-selfhost".to_string(),
+        "implementation_conformance.provenance.tool_version: 0.1.0".to_string(),
+        "implementation_conformance.provenance.source_digest: unknown".to_string(),
+        "implementation_conformance.provenance.source_commit: unknown".to_string(),
+        "implementation_conformance.provenance.artifact_digest: unknown".to_string(),
+        "implementation_conformance.provenance.timestamp: unknown".to_string(),
+        "intent_validation.status: unknown".to_string(),
+        "intent_validation.open_questions: unknown".to_string(),
+        "intent_validation.independent_reviews: unknown".to_string(),
+        "intent_validation.contradicting_observations: unknown".to_string(),
+    ]
+}
+
 fn doctools_json_snapshot(name: &str) -> Value {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../tests/snapshots/doctools")
@@ -390,6 +423,36 @@ fn test_e2e_selfhost_cli_main_with_args_test_format_text_file() {
     assert!(
         lines.iter().all(|line| !line.contains("verified")),
         "Cli main assurance text は overall verified を出してはならない"
+    );
+}
+
+/// EC-M1-06: EmbeddedCli の test --format text が runner/target を含む同じ行契約を返すこと
+#[test]
+fn test_e2e_selfhost_embedded_cli_main_with_args_test_format_text_file() {
+    let source = "(defn identity [x] :property [(for-all [sample String] :cases 5 :postcondition (string-eq result sample))] x)";
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, || {
+        run_main_with_input_file_capture(
+            selfhost_embedded_cli_runtime_bundle(),
+            "test_format_text_property_success_embedded",
+            source,
+            &["test", "input.ls", "--format", "text"],
+        )
+    });
+    assert_eq!(
+        output.exit_code, 0,
+        "EmbeddedCli の test --format text passing property は exit code 0 で終了するべき"
+    );
+    let lines = output_lines(output.stdout);
+    let expected = assurance_text_expected_lines("selfhost-embedded-wasm", "wasm32-wasip1");
+    let expected_refs: Vec<&str> = expected.iter().map(String::as_str).collect();
+    assert_output_lines(
+        &lines,
+        &expected_refs,
+        "EmbeddedCli の test --format text は Cli と同じ assurance 行契約を返すべき",
+    );
+    assert!(
+        lines.iter().all(|line| !line.contains("verified")),
+        "EmbeddedCli の assurance text は overall verified を出してはならない"
     );
 }
 
