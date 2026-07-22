@@ -1881,7 +1881,7 @@
         (if (> (vector-length decl) 0)
           (let [param-count (vector-get decl 2)
             body (vector-get decl (+ 3 param-count))]
-            (if (<= param-count 8)
+            (if (<= param-count 9)
               (let [function-env (invariant-static-user-function-bind-params-loop
                   program
                   decl
@@ -1954,7 +1954,7 @@
         (if (> (vector-length decl) 0)
           (let [param-count (vector-get decl 2)
             body (vector-get decl (+ 3 param-count))]
-            (if (or (= param-count 0) (or (= param-count 1) (or (= param-count 2) (= param-count 3))))
+            (if (<= param-count 4)
               (let [function-env (invariant-static-user-function-bind-params-loop
                   program
                   decl
