@@ -607,10 +607,45 @@ fn test_e2e_selfhost_embedded_cli_main_with_args_test_format_json_property_succe
         report["implementation_conformance"]["coverage"]["executed"],
         5
     );
-    assert_eq!(report["implementation_conformance"]["target"], "unknown");
+    assert_eq!(
+        report["implementation_conformance"]["target"],
+        "wasm32-wasip1",
+        "EmbeddedCli JSON report は実行 target を保持するべき"
+    );
     assert_eq!(
         report["implementation_conformance"]["provenance"]["runner"],
-        "selfhost"
+        "selfhost-embedded-wasm",
+        "EmbeddedCli JSON report は入口固有の runner provenance を返すべき"
+    );
+    assert_eq!(
+        report["implementation_conformance"]["provenance"]["producer"],
+        "lsharp-selfhost",
+        "EmbeddedCli JSON report は text と同じ producer provenance を返すべき"
+    );
+    assert_eq!(
+        report["implementation_conformance"]["provenance"]["source_commit"],
+        "unknown",
+        "未注入 source commit は unknown を返すべき"
+    );
+    assert_eq!(
+        report["implementation_conformance"]["provenance"]["artifact_digest"],
+        "unknown",
+        "未注入 artifact digest は unknown を返すべき"
+    );
+    assert_eq!(
+        report["implementation_conformance"]["provenance"]["tool_version"],
+        "0.1.0",
+        "EmbeddedCli JSON report は text と同じ tool_version provenance を返すべき"
+    );
+    assert_eq!(
+        report["implementation_conformance"]["provenance"]["source_digest"],
+        "unknown",
+        "未注入 source digest は unknown を返すべき"
+    );
+    assert_eq!(
+        report["implementation_conformance"]["provenance"]["timestamp"],
+        "unknown",
+        "未注入 timestamp は unknown を返すべき"
     );
     assert_eq!(report["intent_validation"]["status"], "unknown");
 }

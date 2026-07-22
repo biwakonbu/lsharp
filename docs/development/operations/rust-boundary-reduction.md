@@ -1183,3 +1183,10 @@ ADR-192 で入口固有の runner/target を JSON へ反映した後も、text r
 Evidence: passing JSON の `e2e::selfhost_cli_actual_main_args::test_e2e_selfhost_cli_main_with_args_test_format_json_file` は RED で欠落した `producer` が `null` となった（460.49s）、実装後 GREEN は `1 passed`（434.53s）。Cli/EmbeddedCli の unsupported property preflight JSON E2E `e2e::selfhost_cli_actual_main_args::test_e2e_selfhost_json_assurance_preflight_failure_matches_text_boundary` も `1 passed`（850.22s）で、両入口が同じ provenance shape と既存の failure boundary を返すことを確認した。source-wiring regression は `1 passed`。
 
 これは Rust-hosted Wasm の JSON provenance shape parity に限定した actual evidenceであり、source_commit/artifact_digest の実 provenance 注入、Rust/native differential、Mac Apple Silicon/Linux x86_64 native stage0、全 form/aggregate parity は残件である。EC-M1-06 の TODO `[~]` と Rust oracle / bootstrap / host integration 境界を維持する。正本 ADR: ADR-193。
+### EC-M1-06 EmbeddedCli passing JSON provenance evidence (2026-07-23)
+
+ADR-192/193 で EmbeddedCli の JSON helper は入口固有 runner/target と共通 provenance shape を実装したが、passing property の actual WASI test は旧 `selfhost` / `unknown` 期待値を残していた。テストを `target=wasm32-wasip1`、`runner=selfhost-embedded-wasm`、`producer=lsharp-selfhost`、`tool_version=0.1.0`、`source_commit/artifact_digest/source_digest/timestamp=unknown` の full shape へ更新し、実装済み schema と evidence を一致させた。
+
+Evidence: RED `e2e::selfhost_cli_actual_main_args::test_e2e_selfhost_embedded_cli_main_with_args_test_format_json_property_success` は actual `wasm32-wasip1` と旧期待値 `unknown` の差分で失敗した（411.47s）。期待値更新後の同 E2E は `1 passed`（415.49s）。既存の source-wiring regression `test_e2e_selfhost_json_assurance_provenance_labels_are_entry_specific` も `1 passed`。
+
+これは EmbeddedCli Rust-hosted Wasm passing JSON の provenance evidence に限定した検証であり、Rust/native differential、Mac Apple Silicon/Linux x86_64 native stage0、実 provenance 注入、preflight/runtime failure を含む全 form/aggregate parity は残件である。EC-M1-06 の TODO `[~]` と Rust oracle / bootstrap / host integration 境界を維持する。正本 ADR: ADR-194。
