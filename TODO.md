@@ -919,3 +919,4 @@
 ### リニアメモリランタイム
 > 全項目仕様固定済み → ADR-158
 > 詳細: `docs/development/planning/memory-management-roadmap.md` (Phase 0-6) + `docs/development/planning/runtime-stability-spec.md` (P11-5接続)
+> - **EmbeddedCli canonical case coverage accounting (2026-07-22)**: structured assurance JSON の `cases` / `coverage.executed` で case の actual 値を件数へ足していた不整合を `assurance-result-executed` へ分離した。`e2e::selfhost_cli_actual_main_args::test_e2e_selfhost_embedded_cli_main_with_args_test_format_json_case_failure` の RED (`cases=5`) と GREEN (`cases=2`, `coverage.executed=2`) を記録済み。Cli と EmbeddedCli の共通 report semantics の verified sliceであり、native 2-target / differential / EC-M1-06 aggregate は未完了のため残タスクの `[~]` は維持する。Evidence: ADR-182、`selfhost/src/App/Cli.ls`、`selfhost/src/App/EmbeddedCli.ls`。

@@ -1091,3 +1091,13 @@ canonical `:case` の公開 CLI 経路で、外側 root slot を保持したま�
 Evidence: RED は外側 3 slot の analysis-only probe で `root_top=1`、apply + `check-canonical-cases-with-analysis` で `root_set` trap を再現した。GREEN は `test_analysis_and_case_check_preserve_outer_root_slots`（`root_top=4`, 71.82s）、`test_generate_tests_preserves_outer_root_slots`（`root_top=2`, 99.54s）、`e2e::selfhost_cli_core::test_e2e_selfhost_cli_reports_canonical_cases`（1 passed, 466.68s）で確認した。root-slot probe の一時 memory telemetry と IR probe は削除済みである。
 
 これは Rust-hosted Wasm の selfhost型推論・case preflight・公開 CLI forwarding に限定した verified sliceであり、Mac Apple Silicon / Linux x86_64 native stage0 artifact/runtime、CLI JSON の全公開形式、EC-M1-03 aggregate の完了を意味しない。次は current-source native gate と残る CLI surface を要件単位で再監査し、TODO の `[~]` と Rust oracle / bootstrap / host integration 境界を維持する。
+
+### EC-M1-06 EmbeddedCli canonical case coverage accounting (2026-07-22)
+
+structured assurance JSON の `cases` / `coverage.executed` は、property/assertion の result index `2` を合計する共通経路を持っていた。canonical `:case` の index `2` は実際の値であるため、`(succ 1)=2` と `(succ 2)=3` の failure fixtureでは、EmbeddedCli の report が `method=explicit-case` なのに `cases=5` を返す RED になった。
+
+`Cli` と `EmbeddedCli` の両方に `assurance-result-executed` を追加し、diagnostic code がない case resultを 1 件として数えるよう `assurance-total-actual` の cases 集計だけを切り替えた。case の actual 値、failure message、diagnostic result shapeは変更せず、diagnostic付き caseは実行件数に含めない。
+
+Evidence: RED `e2e::selfhost_cli_actual_main_args::test_e2e_selfhost_embedded_cli_main_with_args_test_format_json_case_failure` は report `cases=5` と期待 `2` の差分で失敗した。GREEN は同 test が `1 passed`（479.36s）となり、実 argv `test input.ls --format json` で `status=fail`、`method=explicit-case`、`cases=2`、`coverage.executed=2`、`coverage.failed=1`、`diagnostics.count=0` を確認した。`e2e::selfhost_bootstrap_contracts::test_e2e_selfhost_assurance_case_counter_is_shared_between_cli_surfaces`（1 passed）は Cli/EmbeddedCli の helper parityを静的に固定し、既存 Cli の structured assertion coverage regression `e2e::selfhost_cli_core::test_e2e_selfhost_cli_test_source_json_reports_assertion_failure_coverage` も `1 passed`（475.21s）で、assertion/property の従来の actual semanticsを維持した。
+
+これは Rust-hosted Wasm の EmbeddedCli/Cli report aggregation と case-count boundaryに限定した verified sliceであり、Rust/native differential の全 form、Mac Apple Silicon / Linux x86_64 current-source artifact/runtime、provenance 注入、EC-M1-06 aggregateの完了を意味しない。ADR-182 を正本とし、TODOの `[~]` と Rust oracle / bootstrap / host integration 境界を維持する。

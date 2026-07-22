@@ -202,6 +202,18 @@
       (+ acc (vector-get (vector-get results idx) 2)))))
 (defn assurance-result-actual [results]
   (assurance-result-actual-loop results 0 (vector-length results) 0))
+(defn assurance-result-executed-loop [results idx count acc]
+  (if (>= idx count)
+    acc
+    (let [result (vector-get results idx)
+      diagnostic-code (test-result-diagnostic result)]
+      (assurance-result-executed-loop
+        results
+        (+ idx 1)
+        count
+        (+ acc (if (= diagnostic-code 0) 1 0))))))
+(defn assurance-result-executed [results]
+  (assurance-result-executed-loop results 0 (vector-length results) 0))
 (defn assurance-total-actual [examples invariants assertions cases properties]
   (+
     (assurance-result-actual examples)
@@ -209,7 +221,7 @@
       (assurance-result-actual invariants)
       (+
         (assurance-result-actual assertions)
-        (+ (assurance-result-actual cases) (assurance-result-actual properties))))))
+        (+ (assurance-result-executed cases) (assurance-result-actual properties))))))
 (defn assurance-method [property-count case-count assertion-count example-count invariant-count]
   (if (> property-count 0)
     "sampled-property"

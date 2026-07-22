@@ -967,3 +967,20 @@ fn test_e2e_selfhost_hkt_gadt_alias_record() {
         "TypeInfer.ls には TypeInferCore へ分割した helper を重複定義すべきではない"
     );
 }
+
+/// EC-M1-06: Cli と EmbeddedCli が同じ case coverage 集計境界を持つこと
+#[test]
+fn test_e2e_selfhost_assurance_case_counter_is_shared_between_cli_surfaces() {
+    for file_name in ["Cli.ls", "EmbeddedCli.ls"] {
+        let source = std::fs::read_to_string(selfhost_source_path(file_name))
+            .unwrap_or_else(|e| panic!("{file_name} の読み込みに失敗: {e}"));
+        assert!(
+            source.contains("(defn assurance-result-executed-loop "),
+            "{file_name} は case の actual 値を件数として扱わない helper を持つべき"
+        );
+        assert!(
+            source.contains("(assurance-result-executed cases)"),
+            "{file_name} の assurance-total-actual は case coverage helper を使うべき"
+        );
+    }
+}

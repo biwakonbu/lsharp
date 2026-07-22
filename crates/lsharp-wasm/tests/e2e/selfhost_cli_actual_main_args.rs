@@ -338,6 +338,97 @@ fn test_e2e_selfhost_cli_main_with_args_test_format_json_file() {
     assert_eq!(report["intent_validation"]["contradicting_observations"], 0);
 }
 
+/// EC-M1-06: EmbeddedCli の passing sampled-property report が Cli と同じ形を返すこと
+#[test]
+fn test_e2e_selfhost_embedded_cli_main_with_args_test_format_json_property_success() {
+    let source = "(defn identity [x] :property [(for-all [sample String] :cases 5 :postcondition (string-eq result sample))] x)";
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, || {
+        run_main_with_input_file_capture(
+            selfhost_embedded_cli_runtime_bundle(),
+            "test_format_json_property_success_embedded",
+            source,
+            &["test", "input.ls", "--format", "json"],
+        )
+    });
+
+    assert_eq!(
+        output.exit_code, 0,
+        "EmbeddedCli の passing property は exit code 0 で終了するべき"
+    );
+    let lines = output_lines(output.stdout);
+    assert_eq!(
+        lines.len(),
+        1,
+        "EmbeddedCli の test --format json は JSON report だけを stdout へ返すべき"
+    );
+    let report: Value = serde_json::from_str(&lines[0])
+        .expect("EmbeddedCli の passing property report は valid JSON であるべき");
+    assert!(
+        report.get("verified").is_none(),
+        "assurance report は top-level verified を返してはならない"
+    );
+    assert_eq!(report["implementation_conformance"]["status"], "pass");
+    assert_eq!(
+        report["implementation_conformance"]["method"],
+        "sampled-property"
+    );
+    assert_eq!(report["implementation_conformance"]["cases"], 5);
+    assert_eq!(report["implementation_conformance"]["seed"], 0);
+    assert_eq!(
+        report["implementation_conformance"]["generator"],
+        "legacy-deterministic-smoke"
+    );
+    assert_eq!(
+        report["implementation_conformance"]["coverage"]["executed"],
+        5
+    );
+    assert_eq!(report["implementation_conformance"]["target"], "unknown");
+    assert_eq!(
+        report["implementation_conformance"]["provenance"]["runner"],
+        "selfhost"
+    );
+    assert_eq!(report["intent_validation"]["status"], "unknown");
+}
+
+/// EC-M1-06: EmbeddedCli の canonical :case failure が structured report へ届くこと
+#[test]
+fn test_e2e_selfhost_embedded_cli_main_with_args_test_format_json_case_failure() {
+    let source =
+        "(defn succ [x] :case [(expect (succ 1) 2) (expect (succ 2) 4)] (+ x 1))";
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, || {
+        run_main_with_input_file_capture(
+            selfhost_embedded_cli_runtime_bundle(),
+            "test_format_json_case_failure_embedded",
+            source,
+            &["test", "input.ls", "--format", "json"],
+        )
+    });
+
+    assert_eq!(
+        output.exit_code, 2,
+        "EmbeddedCli の canonical case failure は exit code 2 で終了するべき"
+    );
+    let lines = output_lines(output.stdout);
+    assert_eq!(
+        lines.len(),
+        1,
+        "EmbeddedCli の case failure は JSON report だけを stdout へ返すべき"
+    );
+    let report: Value = serde_json::from_str(&lines[0])
+        .expect("EmbeddedCli の canonical case failure report は valid JSON であるべき");
+    assert_eq!(report["implementation_conformance"]["status"], "fail");
+    assert_eq!(
+        report["implementation_conformance"]["method"],
+        "explicit-case"
+    );
+    assert_eq!(report["implementation_conformance"]["cases"], 2);
+    assert_eq!(report["implementation_conformance"]["coverage"]["executed"], 2);
+    assert_eq!(report["implementation_conformance"]["coverage"]["failed"], 1);
+    assert_eq!(report["implementation_conformance"]["diagnostics"]["count"], 0);
+    assert_eq!(report["implementation_conformance"]["provenance"]["runner"], "selfhost");
+    assert_eq!(report["intent_validation"]["status"], "unknown");
+}
+
 // Cli / EmbeddedCli の同一 JSON failure contract を共有して検証する。
 fn assert_non_bool_invariant_json(output: &lsharp_wasm::wasi_runner::ExecutionOutput) {
     assert_eq!(
