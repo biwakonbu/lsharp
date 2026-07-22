@@ -202,6 +202,14 @@ Evidence: RED の `test_check_tool_reports_legacy_migration_enum_strings` と `t
 
 これは MCP の migration report schema/射影だけを対象とする。Rust-free の selfhost MCP server、全 form の evaluator、全 diagnostic/span parity、EmbeddedCli/MCP の両対応 target artifact/runtime、Mac Apple Silicon / Linux x86_64 の current-source native gate、stage0 provenance は残件であり、EC-M1-03 全体または全機能 Rust-free 完了とは扱わない。Rust oracle / bootstrap / host integration 境界は維持する。
 
+### EC-M1-03 MCP migration schema shape closure (2026-07-22)
+
+共有 `docs/schemas/legacy-migration.schema.json` の `mcpMigrationDiagnostic`、`lspRange`、`lspPosition` が持つ strict shape を、Rust MCP `tools/list` の `lsharp_check.outputSchema` へ反映した。migration row、range、position は `additionalProperties: false` で未知キーを拒否し、line/character の非負 integer 制約も inline schema に保持する。これにより ADR-178 の enum/string vocabulary に加えて、MCP client が共有 schema より緩い row shape を受理する drift を閉じた。selfhost row の byte span / ownerHash 表現と MCP の LSP range / owner 表現は共有 schema の別 definition として維持する。
+
+Evidence: RED の `test_mcp_output_schema_keeps_legacy_rows_strictly_closed` は row の `additionalProperties` 欠落（`null`）で失敗し、GREEN は同 test で row/range/position の strictness と line/character の minimum `0` を確認した。`cargo test -p lsharp-driver mcp_server::tests::test_`（20 tests）、`cargo test -p lsharp-types --test metadata_migration`（2 tests）、`cargo clippy -p lsharp-driver --bin lsharp -- -D warnings`、`rustfmt --check crates/lsharp-driver/src/mcp_server.rs`、`bash scripts/audit_docs.sh`（エラー 0 / 警告 0）、ADR-179 の JSON parse を通過した。
+
+これは Rust MCP の output schema 境界に限定した verified slice である。selfhost/native の両対応 target artifact/runtime、全 form evaluator、Rust/selfhost differential、Mac Apple Silicon / Linux x86_64 の current-source native gate、stage0 provenance は残件であり、EC-M1-03 全体または Rust-free 完了とは扱わない。先行する 2026-07-18 の各節にある「enum/string schema は残件」という記述は、その時点の slice boundary を示す履歴であり、本節が 2026-07-22 時点の Rust MCP schema closure を追加記録する。
+
 ### EC-M1-04 Rust canonical `:property` predicate type-check bridge (2026-07-18)
 
 Rust `metadata_check::check_metadata` は canonical `ExecutableContract::Property` の precondition / postcondition を property binder と synthetic `result` の lexical scopeで HM 型推論へ渡し、戻り値が正確に `Bool` であることを要求する。非 `Bool` は predicate source span と owner を持つ `MetadataDiagnostic` として拒否し、valid Bool predicates は受理する。元の AST と既存の assertion / case checker は変更しない。
