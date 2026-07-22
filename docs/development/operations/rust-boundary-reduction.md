@@ -1197,3 +1197,10 @@ ADR-194 で EmbeddedCli passing JSON の provenance shape を actual WASI eviden
 Evidence: RED `e2e::selfhost_cli_actual_main_args::test_e2e_selfhost_embedded_cli_main_with_args_test_format_json_case_failure` は actual `runner=selfhost-embedded-wasm` と旧 `selfhost` 期待値の差分で失敗した（439.14s）。期待値更新後の同 E2E は `1 passed`（443.74s）。
 
 これは EmbeddedCli Rust-hosted Wasm の canonical case failure provenance evidence に限定した検証であり、Rust/native differential、Mac Apple Silicon/Linux x86_64 native stage0、実 provenance 注入、mixed/all-form aggregate parity は残件である。EC-M1-06 の TODO `[~]` と Rust oracle / bootstrap / host integration 境界を維持する。正本 ADR: ADR-195。
+### EC-M1-06 mixed JSON provenance boundary (2026-07-23)
+
+mixed `:case` + `:property` success test は、entry-specific provenance導入後も Cli/EmbeddedCli の全 JSON object equalityを要求していた。testを、Rust oracle の logical case/property 2件、selfhostの `cases=3` / `coverage.executed=3`、status/method/coverage/diagnostics/intent、producer/tool version/未注入 sentinelを共通軸として検証し、`target` と `provenance.runner` は App.Cli の `runtime-selected` / `selfhost-cli`、EmbeddedCli の `wasm32-wasip1` / `selfhost-embedded-wasm` と入口別に検証する形へ変更した。比較時はこの2フィールドだけを除いた normalized JSON の一致を固定した。
+
+Evidence: RED `e2e::selfhost_cli_actual_main_args::test_e2e_selfhost_cli_main_with_args_test_format_json_mixed_case_property_success` は共有 semanticsが一致する一方、runner/targetが異なるため旧全体 equalityで失敗した（844.67s）。normalized comparisonとentry-specific provenance assertions後の同 E2E は `1 passed`（842.15s）。
+
+これは mixed success の Rust-hosted Wasm JSON provenance boundaryに限定した検証であり、Rust/native differential、Mac Apple Silicon/Linux x86_64 native stage0、実 provenance 注入、mixed failure/all-form aggregate は残件である。EC-M1-06 の TODO `[~]` と Rust oracle / bootstrap / host integration 境界を維持する。正本 ADR: ADR-196。

@@ -909,7 +909,20 @@ fn test_e2e_selfhost_cli_main_with_args_test_format_json_mixed_case_property_suc
     let embedded_report: Value = serde_json::from_str(&embedded_lines[0])
         .expect("EmbeddedCli の混在 report は valid JSON");
 
-    for (name, report) in [("Cli", &cli_report), ("EmbeddedCli", &embedded_report)] {
+    for (name, report, runner, target) in [
+        (
+            "Cli",
+            &cli_report,
+            "selfhost-cli",
+            "runtime-selected",
+        ),
+        (
+            "EmbeddedCli",
+            &embedded_report,
+            "selfhost-embedded-wasm",
+            "wasm32-wasip1",
+        ),
+    ] {
         assert_eq!(
             report["implementation_conformance"]["status"],
             "pass",
@@ -935,10 +948,48 @@ fn test_e2e_selfhost_cli_main_with_args_test_format_json_mixed_case_property_suc
             0,
             "{name} の混在 suite に失敗はないべき"
         );
+        assert_eq!(
+            report["implementation_conformance"]["target"],
+            target,
+            "{name} は entry-specific target provenance を返すべき"
+        );
+        assert_eq!(
+            report["implementation_conformance"]["provenance"]["runner"],
+            runner,
+            "{name} は entry-specific runner provenance を返すべき"
+        );
+        assert_eq!(
+            report["implementation_conformance"]["provenance"]["producer"],
+            "lsharp-selfhost"
+        );
+        assert_eq!(
+            report["implementation_conformance"]["provenance"]["tool_version"],
+            "0.1.0"
+        );
+        for field in ["source_commit", "artifact_digest", "source_digest", "timestamp"] {
+            assert_eq!(
+                report["implementation_conformance"]["provenance"][field],
+                "unknown",
+                "{name} の未注入 {field} は unknown を返すべき"
+            );
+        }
+    }
+
+    let mut cli_shared = cli_report.clone();
+    let mut embedded_shared = embedded_report.clone();
+    for report in [&mut cli_shared, &mut embedded_shared] {
+        let conformance = report["implementation_conformance"]
+            .as_object_mut()
+            .expect("implementation_conformance は object であるべき");
+        conformance.remove("target");
+        conformance["provenance"]
+            .as_object_mut()
+            .expect("provenance は object であるべき")
+            .remove("runner");
     }
     assert_eq!(
-        cli_report, embedded_report,
-        "Cli と EmbeddedCli は混在 suite でも同じ structured report を返すべき"
+        cli_shared, embedded_shared,
+        "Cli と EmbeddedCli は entry provenance を除く混在 semantics を共有するべき"
     );
 }
 
