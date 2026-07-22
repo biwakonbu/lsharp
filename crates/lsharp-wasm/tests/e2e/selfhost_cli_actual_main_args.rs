@@ -1110,6 +1110,31 @@ fn test_e2e_selfhost_cli_main_with_args_test_format_json_mixed_case_property_fai
     );
     assert_eq!(report["implementation_conformance"]["diagnostics"]["count"], 0);
     assert_eq!(report["intent_validation"]["status"], "unknown");
+    assert_eq!(
+        report["implementation_conformance"]["target"],
+        "runtime-selected",
+        "App.Cli の mixed failure は entry-specific target provenance を返すべき"
+    );
+    assert_eq!(
+        report["implementation_conformance"]["provenance"]["runner"],
+        "selfhost-cli",
+        "App.Cli の mixed failure は entry-specific runner provenance を返すべき"
+    );
+    assert_eq!(
+        report["implementation_conformance"]["provenance"]["producer"],
+        "lsharp-selfhost"
+    );
+    assert_eq!(
+        report["implementation_conformance"]["provenance"]["tool_version"],
+        "0.1.0"
+    );
+    for field in ["source_commit", "artifact_digest", "source_digest", "timestamp"] {
+        assert_eq!(
+            report["implementation_conformance"]["provenance"][field],
+            "unknown",
+            "App.Cli の未注入 {field} は unknown を返すべき"
+        );
+    }
 }
 
 // Cli / EmbeddedCli の同一 JSON failure contract を共有して検証する。
