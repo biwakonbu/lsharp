@@ -204,6 +204,7 @@ pub(crate) fn selfhost_source_path(name: &str) -> std::path::PathBuf {
         "HtmlDoc.ls" => "selfhost/src/Tools/Doc/HtmlDoc.ls",
         "HtmlLayout.ls" => "selfhost/src/Tools/Doc/HtmlLayout.ls",
         "HtmlTemplate.ls" => "selfhost/src/Tools/Doc/HtmlTemplate.ls",
+        "AssuranceText.ls" => "selfhost/src/Tools/Test/AssuranceText.ls",
         "JsonRpc.ls" => "selfhost/src/Tools/Lsp/JsonRpc.ls",
         "Linter.ls" => "selfhost/src/Tools/Text/Linter.ls",
         "MacroExpand.ls" => "selfhost/src/Syntax/MacroExpand.ls",

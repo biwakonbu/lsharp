@@ -1122,3 +1122,10 @@ Evidence: `e2e::selfhost_cli_actual_main_args::test_e2e_selfhost_embedded_cli_ma
 Evidence: `e2e::selfhost_cli_actual_main_args::test_e2e_selfhost_cli_main_with_args_test_format_json_mixed_case_property_failure` は `1 passed`（492.09s）。stdout は JSON 1 行で、case actual payloadを件数へ足し込まず、runtime failureを diagnostic countへ混入しないことを確認した。前回の EmbeddedCli failure testと両入口の mixed success byte equality testと合わせ、Rust oracle / App.Cli / EmbeddedCli の report aggregation boundaryを固定した。
 
 これは Rust-hosted Wasm の App.Cli mixed failure forwarding に限定した verified sliceであり、native stage0、Linux x86_64 VM、provenance 注入、text report、全 form differential、EC-M1-06 aggregate の完了を意味しない。ADR-185 を正本とし、TODO の `[~]` と Rust oracle / bootstrap / host integration 境界を維持する。
+### EC-M1-06 selfhost text assurance projection (2026-07-23)
+
+EC-M1-06 の `test --format text` を、JSON report と同じ suite helper の二軸 semanticsから deterministic な `label: value` 行へ射影する `selfhost/src/Tools/Test/AssuranceText.ls` として切り出した。App.Cli と EmbeddedCli は同じ renderer と option code を使い、runner/target だけを各入口の値へ固定する。text でも status、method、generator、contracts/cases、coverage、diagnostic code/span/message、provenance placeholder、intent validation placeholder を出し、top-level `verified` は出さない。
+
+Evidence: RED `e2e::selfhost_cli_actual_main_args::test_e2e_selfhost_cli_main_with_args_test_format_text_file` は `--format text` の旧 option error（exit 1、494.87s）で失敗した。renderer module の selfhost `check` は diagnostics 0。GREEN は同じ実 argv passing property fixtureで 27 行を完全一致させ、exit 0、`1 passed`（468.39s）となった。support bundle へ新 module を明示収録し、実行時 UndefinedVar を解消した。
+
+これは Rust-hosted Wasm の App.Cli passing text path の verified sliceである。EmbeddedCli actual text、preflight failure text、Rust/native differential、Mac Apple Silicon/Linux x86_64 native stage0、provenance 注入、text と JSON の全 form/aggregate parity は未検証であり、EC-M1-06 の TODO `[~]` と Rust oracle / bootstrap / host integration 境界を維持する。正本 ADR: ADR-186。

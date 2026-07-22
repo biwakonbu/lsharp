@@ -984,3 +984,30 @@ fn test_e2e_selfhost_assurance_case_counter_is_shared_between_cli_surfaces() {
         );
     }
 }
+
+/// EC-M1-06: text assurance renderer と option wiring を両 CLI で共有すること
+#[test]
+fn test_e2e_selfhost_text_assurance_renderer_is_shared_between_cli_surfaces() {
+    let renderer = std::fs::read_to_string(selfhost_source_path("AssuranceText.ls"))
+        .expect("AssuranceText.ls の読み込みに失敗");
+    assert!(renderer.contains("(module Tools.Test.AssuranceText)"));
+    assert!(renderer.contains("(defn assurance-text-report"));
+    assert!(renderer.contains("implementation_conformance.provenance.source_commit"));
+
+    for file_name in ["Cli.ls", "EmbeddedCli.ls"] {
+        let source = std::fs::read_to_string(selfhost_source_path(file_name))
+            .unwrap_or_else(|e| panic!("{file_name} の読み込みに失敗: {e}"));
+        assert!(
+            source.contains("(import Tools.Test.AssuranceText)"),
+            "{file_name} は共有 text renderer を import すべき"
+        );
+        assert!(
+            source.contains("(assurance-text-option)"),
+            "{file_name} は --format text を共有 option code へ接続すべき"
+        );
+        assert!(
+            source.contains("(run-test-source-assurance-text src)"),
+            "{file_name} は text option で共有 renderer を実行すべき"
+        );
+    }
+}

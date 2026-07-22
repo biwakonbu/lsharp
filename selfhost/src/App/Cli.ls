@@ -14,6 +14,7 @@
 (import Tools.Lsp.LspServerNav)
 (import Syntax.Parser)
 (import Tools.Test.TestRunner)
+(import Tools.Test.AssuranceText)
 (import Tools.Test.PropertyRunner)
 (import Types.TypeInfer)
 (import Types.TypeInferApply)
@@ -438,6 +439,43 @@
           (vector-get case-check 2)
           (vector-get case-check 3))
         (run-test-source-json-suite (generate-tests-from-source src))))))
+(defn run-test-source-assurance-text [src]
+  (let [suite (generate-tests-from-source src)
+    examples (vector-get suite 0)
+    invariants (vector-get suite 1)
+    assertions (vector-get suite 2)
+    cases (vector-get suite 3)
+    properties (vector-get suite 4)
+    failed (assurance-suite-failed suite)
+    diagnostics (assurance-suite-diagnostic-count suite)
+    method (assurance-suite-method suite)
+    executed (assurance-suite-executed suite)
+    diagnostic-span (assurance-suite-diagnostic-span suite)
+    rendered (assurance-text-report
+      (assurance-status failed diagnostics)
+      method
+      (assurance-generator method)
+      (assurance-text-contracts examples invariants assertions cases properties)
+      executed
+      (if (> (vector-length properties) 0) "unknown" "0")
+      0
+      "[]"
+      executed
+      failed
+      diagnostics
+      (assurance-suite-diagnostic-code suite)
+      (vector-get diagnostic-span 1)
+      (vector-get diagnostic-span 2)
+      (let [message (assurance-suite-diagnostic-message suite)]
+        (if (= (string-length message) 0) "unknown" message))
+      "selfhost-cli"
+      "runtime-selected")]
+    (do
+      (print-string rendered)
+      (print-string "\n")
+      (if (= (assurance-text-failed? failed diagnostics) 1)
+        (exit-runtime-error)
+        (exit-success)))))
 (defn case-preflight-diagnostics-summary [case-check]
   (let [count (vector-get case-check 0)
     raw-code (vector-get case-check 1)
@@ -563,7 +601,9 @@
 (defn run-test-source [src opts]
   (if (= opts (test-option-json))
     (run-test-source-json src)
-    (run-test-source-text src)))
+    (if (= opts (assurance-text-option))
+      (run-test-source-assurance-text src)
+      (run-test-source-text src))))
 (defn review-option-json [] 1)
 (defn review-json-source-id [] 200)
 (defn run-review-source [src opts] (let [program (parse-program src)] (if (= opts (review-option-json)) (let [review-json (generate-review-schema-json program (review-json-source-id))] (do (print-string review-json) (print-string "
@@ -1198,7 +1238,9 @@
           (if (format-option-flag arg2)
             (if (string-eq (command-line-arg 3) "json")
               (test-option-json)
-              (check-cli-option-invalid))
+              (if (string-eq (command-line-arg 3) "text")
+                (assurance-text-option)
+                (check-cli-option-invalid)))
             (check-cli-option-invalid))
           (check-cli-option-invalid))))))
 (defn parse-doc-cli-option [argc cmd-name]

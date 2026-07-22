@@ -338,6 +338,61 @@ fn test_e2e_selfhost_cli_main_with_args_test_format_json_file() {
     assert_eq!(report["intent_validation"]["contradicting_observations"], 0);
 }
 
+/// EC-M1-06: actual selfhost CLI の test --format text が JSON と同じ二軸を安定した行形式で返すこと
+#[test]
+fn test_e2e_selfhost_cli_main_with_args_test_format_text_file() {
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, || {
+        run_cli_main_with_input_file_capture(
+            "test_format_text",
+            "(defn identity [x] :property [(for-all [sample String] :cases 5 :postcondition (string-eq result sample))] x)",
+            &["test", "input.ls", "--format", "text"],
+        )
+    });
+    assert_eq!(
+        output.exit_code, 0,
+        "test --format text の passing property は exit code 0 で終了するべき"
+    );
+    let lines = output_lines(output.stdout);
+    assert_output_lines(
+        &lines,
+        &[
+            "schema_version: 1",
+            "implementation_conformance.status: pass",
+            "implementation_conformance.method: sampled-property",
+            "implementation_conformance.generator: legacy-deterministic-smoke",
+            "implementation_conformance.contracts: 1",
+            "implementation_conformance.cases: 5",
+            "implementation_conformance.discarded_cases: unknown",
+            "implementation_conformance.seed: 0",
+            "implementation_conformance.shrinks: []",
+            "implementation_conformance.coverage.executed: 5",
+            "implementation_conformance.coverage.failed: 0",
+            "implementation_conformance.diagnostics.count: 0",
+            "implementation_conformance.diagnostics.firstErrorCode: 0",
+            "implementation_conformance.diagnostics.firstErrorSpan.start: 0",
+            "implementation_conformance.diagnostics.firstErrorSpan.end: 0",
+            "implementation_conformance.diagnostics.message: unknown",
+            "implementation_conformance.runner: selfhost-cli",
+            "implementation_conformance.target: runtime-selected",
+            "implementation_conformance.provenance.producer: lsharp-selfhost",
+            "implementation_conformance.provenance.tool_version: 0.1.0",
+            "implementation_conformance.provenance.source_digest: unknown",
+            "implementation_conformance.provenance.source_commit: unknown",
+            "implementation_conformance.provenance.artifact_digest: unknown",
+            "implementation_conformance.provenance.timestamp: unknown",
+            "intent_validation.status: unknown",
+            "intent_validation.open_questions: unknown",
+            "intent_validation.independent_reviews: unknown",
+            "intent_validation.contradicting_observations: unknown",
+        ],
+        "Cli main test --format text は JSON と同じ二軸 assurance summary を返すべき",
+    );
+    assert!(
+        lines.iter().all(|line| !line.contains("verified")),
+        "Cli main assurance text は overall verified を出してはならない"
+    );
+}
+
 /// EC-M1-06: EmbeddedCli の passing sampled-property report が Cli と同じ形を返すこと
 #[test]
 fn test_e2e_selfhost_embedded_cli_main_with_args_test_format_json_property_success() {

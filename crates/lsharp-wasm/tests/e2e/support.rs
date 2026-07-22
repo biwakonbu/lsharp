@@ -723,6 +723,7 @@ pub(crate) fn selfhost_source_path(name: &str) -> std::path::PathBuf {
         "HtmlDoc.ls" => "selfhost/src/Tools/Doc/HtmlDoc.ls",
         "HtmlLayout.ls" => "selfhost/src/Tools/Doc/HtmlLayout.ls",
         "HtmlTemplate.ls" => "selfhost/src/Tools/Doc/HtmlTemplate.ls",
+        "AssuranceText.ls" => "selfhost/src/Tools/Test/AssuranceText.ls",
         "PropertyRunner.ls" => "selfhost/src/Tools/Test/PropertyRunner.ls",
         "TestRunner.ls" => "selfhost/src/Tools/Test/TestRunner.ls",
         "GC.ls" => "selfhost/src/Runtime/GC.ls",
@@ -814,6 +815,9 @@ fn selfhost_module_raw(name: &str) -> &'static str {
         "FormatterDecl.ls" => include_str!("../../../../selfhost/src/Tools/Text/FormatterDecl.ls"),
         "Formatter.ls" => include_str!("../../../../selfhost/src/Tools/Text/Formatter.ls"),
         "TestRunner.ls" => include_str!("../../../../selfhost/src/Tools/Test/TestRunner.ls"),
+        "AssuranceText.ls" => {
+            include_str!("../../../../selfhost/src/Tools/Test/AssuranceText.ls")
+        }
         "DocTools.ls" => include_str!("../../../../selfhost/src/Tools/Doc/DocTools.ls"),
         "DocJson.ls" => include_str!("../../../../selfhost/src/Tools/Doc/DocJson.ls"),
         "HtmlDoc.ls" => include_str!("../../../../selfhost/src/Tools/Doc/HtmlDoc.ls"),
@@ -1522,6 +1526,7 @@ pub(crate) fn selfhost_cli_runtime_bundle() -> &'static str {
             "Formatter.ls",
             "PropertyRunner.ls",
             "TestRunner.ls",
+            "AssuranceText.ls",
             "DocTools.ls",
             "DocJson.ls",
             "JsonRpc.ls",
@@ -1567,6 +1572,7 @@ pub(crate) fn selfhost_embedded_cli_runtime_bundle() -> &'static str {
             "Formatter.ls",
             "PropertyRunner.ls",
             "TestRunner.ls",
+            "AssuranceText.ls",
             "DocTools.ls",
             "DocJson.ls",
             "JsonRpc.ls",
@@ -1771,7 +1777,8 @@ mod tests {
         let second = selfhost_cli_runtime_bundle();
         assert_eq!(first, second);
         assert_eq!(first.as_ptr(), second.as_ptr());
-        assert!(first.contains(selfhost_module("Cli.ls").trim()));
+        let cli_module = selfhost_module("Cli.ls").replace("(import Types.TypeInfer)\n", "");
+        assert!(first.contains(cli_module.trim()));
         assert!(first.contains(selfhost_module("CompilerSplit.ls").trim()));
     }
 

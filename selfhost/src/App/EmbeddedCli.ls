@@ -7,6 +7,7 @@
 (import Tools.Doc.DocJson)
 (import Tools.Doc.DocTools)
 (import Tools.Test.TestRunner)
+(import Tools.Test.AssuranceText)
 (import Tools.Test.PropertyRunner)
 (import Types.TypeInfer)
 (import Types.TypeInferApply)
@@ -411,6 +412,43 @@
           (vector-get case-check 2)
           (vector-get case-check 3))
         (run-test-source-json-suite (generate-tests-from-source src))))))
+(defn run-test-source-assurance-text [src]
+  (let [suite (generate-tests-from-source src)
+    examples (vector-get suite 0)
+    invariants (vector-get suite 1)
+    assertions (vector-get suite 2)
+    cases (vector-get suite 3)
+    properties (vector-get suite 4)
+    failed (assurance-suite-failed suite)
+    diagnostics (assurance-suite-diagnostic-count suite)
+    method (assurance-suite-method suite)
+    executed (assurance-suite-executed suite)
+    diagnostic-span (assurance-suite-diagnostic-span suite)
+    rendered (assurance-text-report
+      (assurance-status failed diagnostics)
+      method
+      (assurance-generator method)
+      (assurance-text-contracts examples invariants assertions cases properties)
+      executed
+      (if (> (vector-length properties) 0) "unknown" "0")
+      0
+      "[]"
+      executed
+      failed
+      diagnostics
+      (assurance-suite-diagnostic-code suite)
+      (vector-get diagnostic-span 1)
+      (vector-get diagnostic-span 2)
+      (let [message (assurance-suite-diagnostic-message suite)]
+        (if (= (string-length message) 0) "unknown" message))
+      "selfhost-embedded-wasm"
+      "wasm32-wasip1")]
+    (do
+      (print-string rendered)
+      (print-string "\n")
+      (if (= (assurance-text-failed? failed diagnostics) 1)
+        (exit-runtime-error)
+        (exit-success)))))
 (defn case-preflight-diagnostics-summary [case-check]
   (let [count (vector-get case-check 0)
     raw-code (vector-get case-check 1)
@@ -532,7 +570,9 @@
 (defn run-test-source [src opts]
   (if (= opts (test-option-json))
     (run-test-source-json src)
-    (run-test-source-text src opts)))
+    (if (= opts (assurance-text-option))
+      (run-test-source-assurance-text src)
+      (run-test-source-text src opts))))
 (defn review-option-json [] 2)
 (defn review-json-source-id [] 200)
 (defn run-review-source [src opts] (let [program (parse-program src)] (if (= opts (review-option-json)) (let [review-json (generate-review-schema-json program (review-json-source-id))] (do (print-string review-json) (print-string "\n") (exit-success))) (let [review (generate-review program opts) diagnostics (vector-get review 1) review-title (review-summary-title diagnostics) review-body (review-summary-body diagnostics) review-severity (review-summary-severity diagnostics) review-code-location (review-summary-code-location diagnostics)] (do (print (vector-length diagnostics)) (print-string review-title) (print-string "\n") (print-string review-body) (print-string "\n") (print-string review-severity) (print-string "\n") (print-string review-code-location) (print-string "\n") (exit-success))))))
@@ -628,7 +668,9 @@
           (if (format-option-flag arg2)
             (if (string-eq (command-line-arg 3) "json")
               (test-option-json)
-              (check-cli-option-invalid))
+              (if (string-eq (command-line-arg 3) "text")
+                (assurance-text-option)
+                (check-cli-option-invalid)))
             (check-cli-option-invalid))
           (check-cli-option-invalid))))))
 (defn doc-cli-option-none [] 0)
