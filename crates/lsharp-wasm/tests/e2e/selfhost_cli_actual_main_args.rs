@@ -97,6 +97,47 @@ fn assert_preflight_text_report(
     );
 }
 
+fn assert_preflight_json_report(
+    output: &lsharp_wasm::wasi_runner::ExecutionOutput,
+    runner: &str,
+    target: &str,
+) {
+    assert_eq!(
+        output.exit_code, 2,
+        "JSON preflight failure は exit code 2 で終了するべき"
+    );
+    let lines = output_lines(output.stdout.clone());
+    assert_eq!(
+        lines.len(),
+        1,
+        "JSON preflight failure は report 1 行だけを返すべき"
+    );
+    let report: Value = serde_json::from_str(&lines[0])
+        .expect("JSON preflight failure は valid JSON report を返すべき");
+    let conformance = &report["implementation_conformance"];
+    assert_eq!(conformance["status"], "fail");
+    assert_eq!(conformance["method"], "sampled-property");
+    assert_eq!(conformance["cases"], 0);
+    assert_eq!(conformance["coverage"]["executed"], 0);
+    assert_eq!(conformance["coverage"]["failed"], 1);
+    assert_eq!(conformance["diagnostics"]["count"], 1);
+    assert_eq!(conformance["diagnostics"]["firstErrorCode"], 3002);
+    assert_eq!(conformance["diagnostics"]["firstErrorSpan"]["start"], 0);
+    assert_eq!(conformance["diagnostics"]["firstErrorSpan"]["end"], 0);
+    assert_eq!(
+        conformance["diagnostics"]["message"],
+        "unknown",
+        "JSON preflight は text と同じ unknown message sentinel を返すべき"
+    );
+    assert_eq!(conformance["provenance"]["runner"], runner);
+    assert_eq!(conformance["target"], target);
+    assert_eq!(report["intent_validation"]["status"], "unknown");
+    assert!(
+        !lines.iter().any(|line| line.contains("verified")),
+        "JSON preflight failure は overall verified を出してはならない"
+    );
+}
+
 fn doctools_json_snapshot(name: &str) -> Value {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../tests/snapshots/doctools")
@@ -693,6 +734,30 @@ fn test_e2e_selfhost_text_assurance_preflight_failure() {
         "selfhost-embedded-wasm",
         "wasm32-wasip1",
     );
+}
+
+/// EC-M1-06: JSON と text の preflight failure が同じ unknown message sentinel を返すこと
+#[test]
+fn test_e2e_selfhost_json_assurance_preflight_failure_matches_text_boundary() {
+    let source = "(defn identity [x] :property [(for-all [value Int] :cases 3 :seed 42 :postcondition (= result value))] x)";
+    let (cli_output, embedded_output) = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, || {
+        (
+            run_cli_main_with_input_file_capture(
+                "test_format_json_preflight_cli",
+                source,
+                &["test", "input.ls", "--format", "json"],
+            ),
+            run_main_with_input_file_capture(
+                selfhost_embedded_cli_runtime_bundle(),
+                "test_format_json_preflight_embedded",
+                source,
+                &["test", "input.ls", "--format", "json"],
+            ),
+        )
+    });
+
+    assert_preflight_json_report(&cli_output, "selfhost", "unknown");
+    assert_preflight_json_report(&embedded_output, "selfhost", "unknown");
 }
 
 /// EC-M1-06: canonical :case と sampled :property を混在させても executed を payload 値で数えないこと

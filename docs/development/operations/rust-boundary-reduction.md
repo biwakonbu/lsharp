@@ -1159,3 +1159,11 @@ Cli/EmbeddedCli の text assurance entrypoint が suite生成前に JSON と同�
 Evidence: `e2e::selfhost_cli_actual_main_args::test_e2e_selfhost_text_assurance_preflight_failure` は Cli/EmbeddedCli の同一 unsupported sampling fixture（`:property`、`:cases 3`、`:seed 42`）で `1 passed`（841.21s）。両入口の report は `status=fail`、`method=sampled-property`、`contracts=1`、`cases=0`、`coverage.executed=0`、`coverage.failed=1`、`diagnostics.count=1`、`firstErrorCode=3002`（LS3002）、zero span、top-level `verified` 非採用を返し、runner/target だけを入口固有値として保持した。静的 preflight wiring test も `1 passed`。
 
 Rust/native differential、Mac Apple Silicon/Linux x86_64 native stage0、provenance 注入、全 form/aggregate parity は未検証であり、EC-M1-06 の TODO `[~]` と Rust oracle / bootstrap / host integration 境界を維持する。正本 ADR: ADR-190。
+
+### EC-M1-06 JSON/text preflight message sentinel parity (2026-07-23)
+
+ADR-190 で text preflight の未知 diagnostic message を `unknown` と表現した一方、Cli/EmbeddedCli の JSON preflight は空文字列を返していた。空文字列を未確定値として扱うと text/JSON の同一 assurance contract が drift するため、両 JSON entrypoint の preflight 引数を `unknown` sentinel へ揃えた。status、method、cases、coverage、diagnostic code/span、exit code は変更していない。
+
+Evidence: RED `e2e::selfhost_cli_actual_main_args::test_e2e_selfhost_json_assurance_preflight_failure_matches_text_boundary` は両入口の実 argv JSON reportで `diagnostics.message` が `""` となり、期待する `unknown`との差分で失敗した（882.90s）。実装後の同じ E2E は `1 passed`（848.23s）、静的 `test_e2e_selfhost_text_assurance_preflight_matches_json_boundary` は `1 passed`。Cli/EmbeddedCli は status `fail`、method `sampled-property`、cases/executed `0`、failed `1`、diagnostics `1`、code `3002`、zero span、message `unknown`、exit `2` を返し、top-level `verified` は出さない。
+
+これは未確定 message の sentinel parity に限定した Rust-hosted Wasm actual evidenceであり、Rust/native differential、実診断本文/span の完全 parity、Mac Apple Silicon/Linux x86_64 native stage0、provenance 注入、全 form/aggregate parity は残件である。EC-M1-06 の TODO `[~]` と Rust oracle / bootstrap / host integration 境界を維持する。正本 ADR: ADR-191。

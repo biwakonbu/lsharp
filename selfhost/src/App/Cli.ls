@@ -337,7 +337,7 @@
       diagnostic-code
       diagnostic-start
       diagnostic-end
-      "")]
+      "unknown")]
     (do
       (print-string rendered)
       (print-string "\n")
