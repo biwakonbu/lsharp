@@ -1108,3 +1108,10 @@ Evidence: RED `e2e::selfhost_cli_actual_main_args::test_e2e_selfhost_embedded_cl
 Evidence: RED では oracle の logical result を実サンプル 3 件と誤って期待したため `left=2, right=3` を観測し、TestResult の logical/executed 境界を明示するようテスト期待値を修正した。GREEN `e2e::selfhost_cli_actual_main_args::test_e2e_selfhost_cli_main_with_args_test_format_json_mixed_case_property_success` は `1 passed`（893.32s）で、Rust oracle の 2 logical results 全件 pass、Cli/EmbeddedCli の exit 0、`method=sampled-property`、`cases=3`、`coverage.executed=3`、`coverage.failed=0`、JSON byte-level equality を確認した。
 
 これは Rust-hosted Wasm の current worktree における mixed-form aggregation と Rust/Cli/EmbeddedCli contract の verified sliceであり、native stage0、Linux x86_64 VM、provenance 注入、text report、全 form differential、EC-M1-06 aggregate の完了を意味しない。ADR-183 を正本とし、TODO の `[~]` と Rust oracle / bootstrap / host integration 境界を維持する。
+### EC-M1-06 mixed case failure coverage boundary (2026-07-23)
+
+canonical `:case` 1 件が失敗し、同じ `defn` の sampled `:property` 2 samples が成功する fixtureで、runtime failure と diagnostic failure、logical test count と executed sample count を分離した。Rust oracle は case failure + property success の 2 logical resultsを返し、EmbeddedCli の structured report は property を含むため `method=sampled-property`、`cases=3`、`coverage.executed=3`、`coverage.failed=1`、`diagnostics.count=0`、exit code 2 となる。
+
+Evidence: `e2e::selfhost_cli_actual_main_args::test_e2e_selfhost_embedded_cli_main_with_args_test_format_json_mixed_case_property_failure` は `1 passed`（452.31s）。Rust oracle の case result は `passed=false`、property result は `passed=true` で、EmbeddedCli の stdout は JSON 1 行、status `fail`、case actual payload の数値を件数へ混入させない executed coverage、diagnostic count 0 を確認した。
+
+これは Rust-hosted Wasm の EmbeddedCli mixed failure aggregation に限定した verified sliceであり、Cli failure parity、native stage0、Linux x86_64 VM、provenance 注入、text report、全 form differential、EC-M1-06 aggregate の完了を意味しない。ADR-184 を正本とし、TODO の `[~]` と Rust oracle / bootstrap / host integration 境界を維持する。
