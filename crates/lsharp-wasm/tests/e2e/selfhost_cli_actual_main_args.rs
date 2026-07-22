@@ -558,6 +558,52 @@ fn test_e2e_selfhost_embedded_cli_main_with_args_test_format_json_mixed_case_pro
     assert_eq!(report["intent_validation"]["status"], "unknown");
 }
 
+/// EC-M1-06: App.Cli の mixed failure report が EmbeddedCli と同じ coverage boundary を返すこと
+#[test]
+fn test_e2e_selfhost_cli_main_with_args_test_format_json_mixed_case_property_failure() {
+    let source = "(defn identity [x] :case [(expect (identity 1) 2)] :property [(for-all [sample String] :cases 2 :postcondition (string-eq result sample))] x)";
+    let oracle = run_metadata_tests(source);
+    assert_eq!(
+        oracle.len(),
+        2,
+        "Rust oracle は mixed suite の logical case/property を生成するべき: {oracle:?}"
+    );
+    assert!(!oracle[0].passed, "Rust oracle の canonical case は失敗するべき");
+    assert!(oracle[1].passed, "Rust oracle の property は成功するべき");
+
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, || {
+        run_cli_main_with_input_file_capture(
+            "test_format_json_mixed_case_property_failure_cli",
+            source,
+            &["test", "input.ls", "--format", "json"],
+        )
+    });
+
+    assert_eq!(
+        output.exit_code, 2,
+        "Cli の mixed suite failure は exit code 2 で終了するべき"
+    );
+    let lines = output_lines(output.stdout);
+    assert_eq!(lines.len(), 1, "Cli mixed failure は JSON report 1 行だけを返すべき");
+    let report: Value = serde_json::from_str(&lines[0]).expect("Cli mixed failure report は valid JSON");
+    assert_eq!(report["implementation_conformance"]["status"], "fail");
+    assert_eq!(
+        report["implementation_conformance"]["method"],
+        "sampled-property"
+    );
+    assert_eq!(report["implementation_conformance"]["cases"], 3);
+    assert_eq!(
+        report["implementation_conformance"]["coverage"]["executed"],
+        3
+    );
+    assert_eq!(
+        report["implementation_conformance"]["coverage"]["failed"],
+        1
+    );
+    assert_eq!(report["implementation_conformance"]["diagnostics"]["count"], 0);
+    assert_eq!(report["intent_validation"]["status"], "unknown");
+}
+
 // Cli / EmbeddedCli の同一 JSON failure contract を共有して検証する。
 fn assert_non_bool_invariant_json(output: &lsharp_wasm::wasi_runner::ExecutionOutput) {
     assert_eq!(

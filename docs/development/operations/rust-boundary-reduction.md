@@ -1115,3 +1115,10 @@ canonical `:case` 1 件が失敗し、同じ `defn` の sampled `:property` 2 sa
 Evidence: `e2e::selfhost_cli_actual_main_args::test_e2e_selfhost_embedded_cli_main_with_args_test_format_json_mixed_case_property_failure` は `1 passed`（452.31s）。Rust oracle の case result は `passed=false`、property result は `passed=true` で、EmbeddedCli の stdout は JSON 1 行、status `fail`、case actual payload の数値を件数へ混入させない executed coverage、diagnostic count 0 を確認した。
 
 これは Rust-hosted Wasm の EmbeddedCli mixed failure aggregation に限定した verified sliceであり、Cli failure parity、native stage0、Linux x86_64 VM、provenance 注入、text report、全 form differential、EC-M1-06 aggregate の完了を意味しない。ADR-184 を正本とし、TODO の `[~]` と Rust oracle / bootstrap / host integration 境界を維持する。
+### EC-M1-06 App.Cli mixed failure parity (2026-07-23)
+
+前回の EmbeddedCli mixed failure evidenceに加え、App.Cli の実 argv `test --format json` でも canonical `:case` failure 1 件と sampled `:property` success 2 samples を実行した。Rust oracle は case failure + property success の 2 logical resultsを返し、Cli report は `status=fail`、`method=sampled-property`、`cases=3`、`coverage.executed=3`、`coverage.failed=1`、`diagnostics.count=0`、exit code 2 を返す。
+
+Evidence: `e2e::selfhost_cli_actual_main_args::test_e2e_selfhost_cli_main_with_args_test_format_json_mixed_case_property_failure` は `1 passed`（492.09s）。stdout は JSON 1 行で、case actual payloadを件数へ足し込まず、runtime failureを diagnostic countへ混入しないことを確認した。前回の EmbeddedCli failure testと両入口の mixed success byte equality testと合わせ、Rust oracle / App.Cli / EmbeddedCli の report aggregation boundaryを固定した。
+
+これは Rust-hosted Wasm の App.Cli mixed failure forwarding に限定した verified sliceであり、native stage0、Linux x86_64 VM、provenance 注入、text report、全 form differential、EC-M1-06 aggregate の完了を意味しない。ADR-185 を正本とし、TODO の `[~]` と Rust oracle / bootstrap / host integration 境界を維持する。
