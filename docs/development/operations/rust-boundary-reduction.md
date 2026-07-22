@@ -1204,3 +1204,11 @@ mixed `:case` + `:property` success test は、entry-specific provenance導入�
 Evidence: RED `e2e::selfhost_cli_actual_main_args::test_e2e_selfhost_cli_main_with_args_test_format_json_mixed_case_property_success` は共有 semanticsが一致する一方、runner/targetが異なるため旧全体 equalityで失敗した（844.67s）。normalized comparisonとentry-specific provenance assertions後の同 E2E は `1 passed`（842.15s）。
 
 これは mixed success の Rust-hosted Wasm JSON provenance boundaryに限定した検証であり、Rust/native differential、Mac Apple Silicon/Linux x86_64 native stage0、実 provenance 注入、mixed failure/all-form aggregate は残件である。EC-M1-06 の TODO `[~]` と Rust oracle / bootstrap / host integration 境界を維持する。正本 ADR: ADR-196。
+
+### EC-M1-06 EmbeddedCli mixed JSON failure provenance (2026-07-23)
+
+ADR-196 で mixed success の共有 assurance semantics と entry-specific provenance を分離した後、EmbeddedCli mixed failure の actual JSON testにも同じ failure-path provenance 契約を追加した。実装側の report schemaは変更せず、canonical `:case` failure 1件と sampled `:property` success 2 samples の実 argv `test --format json` を対象に、既存の runtime failure aggregation と入口固有の provenance shapeを同時に検証する。
+
+Evidence: `e2e::selfhost_cli_actual_main_args::test_e2e_selfhost_embedded_cli_main_with_args_test_format_json_mixed_case_property_failure` は `1 passed`（409.85s）。Rust oracle は case `passed=false`、property `passed=true` の2 logical resultsを返し、EmbeddedCli stdoutは JSON 1 行、exit 2、status `fail`、method `sampled-property`、`cases=3`、`coverage.executed=3`、`coverage.failed=1`、`diagnostics.count=0`、`intent_validation.status=unknown` を維持した。さらに `target=wasm32-wasip1`、`provenance.runner=selfhost-embedded-wasm`、`producer=lsharp-selfhost`、`tool_version=0.1.0`、未注入の `source_commit/artifact_digest/source_digest/timestamp=unknown` を確認した。source-wiring regression `test_e2e_selfhost_json_assurance_provenance_labels_are_entry_specific` も `1 passed`。
+
+これは EmbeddedCli Rust-hosted Wasm mixed failure の provenance evidence に限定した verified sliceであり、Rust/native differential、Mac Apple Silicon/Linux x86_64 native stage0、実 provenance 注入、App.Cli mixed failure、all-form aggregate parity の完了を意味しない。TODO の `[~]` と Rust oracle / bootstrap / host integration 境界を維持する。正本 ADR: ADR-197。

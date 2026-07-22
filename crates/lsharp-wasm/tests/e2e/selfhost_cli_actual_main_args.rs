@@ -1039,6 +1039,31 @@ fn test_e2e_selfhost_embedded_cli_main_with_args_test_format_json_mixed_case_pro
     );
     assert_eq!(report["implementation_conformance"]["diagnostics"]["count"], 0);
     assert_eq!(report["intent_validation"]["status"], "unknown");
+    assert_eq!(
+        report["implementation_conformance"]["target"],
+        "wasm32-wasip1",
+        "EmbeddedCli の mixed failure は entry-specific target provenance を返すべき"
+    );
+    assert_eq!(
+        report["implementation_conformance"]["provenance"]["runner"],
+        "selfhost-embedded-wasm",
+        "EmbeddedCli の mixed failure は entry-specific runner provenance を返すべき"
+    );
+    assert_eq!(
+        report["implementation_conformance"]["provenance"]["producer"],
+        "lsharp-selfhost"
+    );
+    assert_eq!(
+        report["implementation_conformance"]["provenance"]["tool_version"],
+        "0.1.0"
+    );
+    for field in ["source_commit", "artifact_digest", "source_digest", "timestamp"] {
+        assert_eq!(
+            report["implementation_conformance"]["provenance"][field],
+            "unknown",
+            "EmbeddedCli の未注入 {field} は unknown を返すべき"
+        );
+    }
 }
 
 /// EC-M1-06: App.Cli の mixed failure report が EmbeddedCli と同じ coverage boundary を返すこと
