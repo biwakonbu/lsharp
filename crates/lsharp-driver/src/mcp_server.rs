@@ -280,10 +280,12 @@ fn tool_output_schema(name: &str) -> Value {
                                 "properties": {
                                     "start": { "$ref": "#/$defs/position" },
                                     "end": { "$ref": "#/$defs/position" }
-                                }
+                                },
+                                "additionalProperties": false
                             },
                             "message": { "type": "string" }
-                        }
+                        },
+                        "additionalProperties": false
                     }
                 }
             },
@@ -294,7 +296,8 @@ fn tool_output_schema(name: &str) -> Value {
                     "properties": {
                         "line": { "type": "integer", "minimum": 0 },
                         "character": { "type": "integer", "minimum": 0 }
-                    }
+                    },
+                    "additionalProperties": false
                 }
             }
         }),
@@ -1163,6 +1166,50 @@ mod tests {
         assert_eq!(
             properties["disposition"]["enum"],
             schema["$defs"]["migrationDisposition"]["enum"]
+        );
+    }
+
+    #[test]
+    fn test_mcp_output_schema_keeps_legacy_rows_strictly_closed() {
+        let response = handle_jsonrpc_message(&json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/list"
+        }));
+        let tool = response["result"]["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|tool| tool["name"] == "lsharp_check")
+            .expect("lsharp_check が tools/list に必要");
+        let migration_item = &tool["outputSchema"]["properties"]["migrationDiagnostics"]["items"];
+        let range = &migration_item["properties"]["range"];
+        let position = &tool["outputSchema"]["$defs"]["position"];
+
+        assert_eq!(
+            migration_item["additionalProperties"],
+            json!(false),
+            "MCP migration row は共有 schema と同じく未知キーを拒否するべき"
+        );
+        assert_eq!(
+            range["additionalProperties"],
+            json!(false),
+            "MCP migration range は未知キーを拒否するべき"
+        );
+        assert_eq!(
+            position["additionalProperties"],
+            json!(false),
+            "MCP migration position は未知キーを拒否するべき"
+        );
+        assert_eq!(
+            position["properties"]["line"]["minimum"],
+            json!(0),
+            "LSP line は非負整数として固定するべき"
+        );
+        assert_eq!(
+            position["properties"]["character"]["minimum"],
+            json!(0),
+            "LSP character は非負整数として固定するべき"
         );
     }
 
