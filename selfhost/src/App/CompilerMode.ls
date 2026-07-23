@@ -1213,14 +1213,30 @@
       (vector-get step 2)
       (append-check-pairs pairs (vector-get step 1) n (vector-get step 2)))))
 
-;; check の flatten と同じ declaration 順で、各 declaration の module hash を保持する。
-(defn check-pair-module-hash [decls]
+;; check の flatten と同じ declaration 順で、各 declaration の module owner を保持する。
+(defn make-check-module-owner [module-hash module-name]
+  (do
+    (root_push module-name)
+    (let [owner1 (vector-push (vector-new 2) module-hash)]
+      (do
+        (root_push owner1)
+        (let [owner2 (vector-push owner1 module-name)]
+          (do
+            (root_pop)
+            (root_pop)
+            owner2))))))
+(defn check-pair-module-owner [src decls]
   (if (> (vector-length decls) 0)
     (let [first-decl (vector-get decls 0)]
       (if (= (vector-get first-decl 0) 25)
-        (vector-get first-decl 1)
-        -1))
-    -1))
+        (if (> (vector-length first-decl) 4)
+          (let [name-start (vector-get first-decl 3)
+            name-end (vector-get first-decl 4)
+            module-name (substring src name-start name-end)]
+            (make-check-module-owner (vector-get first-decl 1) module-name))
+          (make-check-module-owner (vector-get first-decl 1) ""))
+        (make-check-module-owner -1 "")))
+    (make-check-module-owner -1 "")))
 (defn append-check-owner-decls-step [idx n owners owner]
   (if (>= idx n)
     (make-pairs-step-state 1 idx owners)
@@ -1274,24 +1290,31 @@
       (let [pair (vector-get pairs idx)]
         (do
           (root_push pair)
-          (let [decls (vector-get pair 1)]
+          (let [src (vector-get pair 0)
+            decls (vector-get pair 1)]
             (do
+              (root_push src)
               (root_push decls)
-              (let [next-owners
+              (let [owner (check-pair-module-owner src decls)]
+                (do
+                  (root_push owner)
+                  (let [next-owners
                       (append-check-owner-decls
                         0
                         (vector-length decls)
                         owners
-                        (check-pair-module-hash decls))]
-                (do
-                  (root_push next-owners)
-                  (let [state (make-pairs-step-state 0 (+ idx 1) next-owners)]
+                        owner)]
                     (do
-                      (root_pop)
-                      (root_pop)
-                      (root_pop)
-                      (root_pop)
-                      state)))))))))))
+                      (root_push next-owners)
+                      (let [state (make-pairs-step-state 0 (+ idx 1) next-owners)]
+                        (do
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          state)))))))))))))
 (defn append-check-owners-step-64-loop-bounded [pairs idx n owners remaining]
   (let [step (append-check-owners-step pairs idx n owners)]
     (if (= (vector-get step 0) 1)

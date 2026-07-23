@@ -3130,7 +3130,7 @@
       (do
         (p-advance pos-ref) ;; name を消費
         (let [with-body (parse-decl-body-v3 spans pos-ref src
-            (make-module-decl name-h))]
+            (make-module-decl-with-span name-h name-start name-end))]
           (do
             (root_push with-body)
             (let [parsed (vector-set-at-rooted-v3 with-body 2 (- (vector-length with-body) 3))]

@@ -232,6 +232,10 @@
   (vector-push-quad-rooted (vector-new 4) (ast-typealias) name-hash params target-type-expr))
 (defn make-type-constrained [name-hash] (vector-push-pair-rooted (vector-new 2) (ast-typeconstrained) name-hash))
 (defn make-module-decl [name-hash] (vector-push-triple-rooted (vector-new 8) (ast-module-decl) name-hash 0))
+(defn make-module-decl-with-span [name-hash name-start name-end]
+  (vector-push-single-rooted
+    (vector-push-quad-rooted (vector-new 8) (ast-module-decl) name-hash 0 name-start)
+    name-end))
 (defn make-import-decl [name-hash name-start name-end] (vector-push-pair-rooted (vector-push-pair-rooted (vector-new 4) (ast-import-decl) name-hash) name-start name-end))
 (defn make-trait-def [name-hash] (vector-push-triple-rooted (vector-new 8) (ast-traitdef) name-hash 0))
 (defn make-impl-def [trait-name-hash type-name-hash] (vector-push-pair-rooted (vector-push-pair-rooted (vector-new 8) (ast-impldef) trait-name-hash) type-name-hash 0))

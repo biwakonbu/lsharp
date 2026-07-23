@@ -1051,6 +1051,11 @@ fn test_e2e_selfhost_cli_check_file_reports_first_failed_module_hash() {
         "最初の失敗定義を Lib module hash へ結び付けるべき: {:?}",
         lines
     );
+    assert!(
+        lines.contains(&"first-module-name:Lib"),
+        "最初の失敗定義を Lib module name へ結び付けるべき: {:?}",
+        lines
+    );
 }
 
 #[test]

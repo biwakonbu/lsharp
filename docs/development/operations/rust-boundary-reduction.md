@@ -1839,3 +1839,11 @@ file-check の flatten 結果と同じ declaration 順で module hash の平行�
 Evidence: RED `test_e2e_selfhost_cli_check_file_reports_first_failed_module_hash` は `Lib.helper` の `missing` を使い、出力が module hash `76389`、`Int`、`diagnostics:1,T0001@1:1,first-body:undefined symbol`、exit `1` までで provenance 行がない failure を固定した。GREEN は同じ fixtureで `first-module-hash:76389` を確認し `1 passed`（437.91s）となった。`Cli` と `EmbeddedCli` の context wiringを同期し、component targetの JSON reportへ未検証の fieldは追加していない。
 
 これは module hashの dependency provenanceだけを閉じる verified sliceであり、module name/pathの文字列化、qualified import/private visibility、失敗式の source span、canonical/case/property diagnosticsとの統合、standalone source-check `0`、supported 2 targetsの current-source native gate、EC-M1-01 aggregateの完了を意味しない。次の RED はこの module hashを source pathと失敗式 spanへ分解して観測する narrow contractである。
+
+### EC-M1-01 first failed imported module name provenance slice (2026-07-23)
+
+module declaration の既存 `[tag, hash, body]` slotを維持したまま、selfhost parser が module name の source start/end を追加 slotへ保存するようにした。file-check の owner は `[module-hash, module-name]` となり、`first-error-index` から hash と source name を同じ declarationへ投影する。source-only context は空 ownerのままで、JSON schemaや既存の module body consumerは変更しない。
+
+Evidence: RED は既存 `test_e2e_selfhost_cli_check_file_reports_first_failed_module_hash` に `first-module-name:Lib` の assertion を追加し、hash行までの出力 `76389`, `Int`, `diagnostics:1,T0001@1:1,first-body:undefined symbol`, `first-module-hash:76389`, exit `1` で name 行がないことを確認した。GREEN は同じ Preview1 fixtureで `first-module-name:Lib` を含めて `1 passed`（436.06s）となった。
+
+これは module hashから source module nameへ進めた verified sliceであり、実 filesystem pathの表示、qualified import/private visibility、失敗式の source span、canonical/case/property diagnosticsとの統合、standalone source-check `0`、supported 2 targetsの current-source native gate、EC-M1-01 aggregateの完了を意味しない。次の RED は module nameを resolved source pathと失敗 expression spanへ結び付ける narrow contractである。
