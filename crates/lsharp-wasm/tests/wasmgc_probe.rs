@@ -1,6 +1,7 @@
 use lsharp_ir::{
     Function, GcField, GcTypeDef, GcTypeKind, Instruction, IrType, Module as IrModule,
 };
+use std::sync::{Arc, Mutex};
 use wasmtime::{Config, Engine, Instance, Module, Store};
 
 #[test]
@@ -327,6 +328,151 @@ fn wasm_gc_emitter_offsets_user_calls_after_print_string_import() {
         .get_typed_func::<(), i64>(&mut store, "main")
         .expect("main export が存在する");
     assert_eq!(main.call(&mut store, ()).unwrap(), 42);
+}
+
+#[test]
+fn wasm_gc_host_print_string_reads_packed_bytes() {
+    let module = IrModule {
+        functions: vec![Function {
+            name: "main".to_string(),
+            params: vec![],
+            result: IrType::I64,
+            locals: vec![],
+            body: vec![
+                Instruction::I32Const(195),
+                Instruction::I32Const(169),
+                Instruction::ArrayNewFixed(0, 2),
+                Instruction::Call(4),
+                Instruction::I64Const(0),
+            ],
+            is_export: true,
+        }],
+        gc_types: vec![GcTypeDef {
+            name: "StringBytes".to_string(),
+            kind: GcTypeKind::PackedByteArray,
+        }],
+        imports: vec![],
+        globals: vec![],
+        string_data: vec![],
+    };
+
+    let bytes = lsharp_wasm::wasmgc::emit_wasm_wasmgc(&module)
+        .expect("print-string host read module を生成できる");
+    let mut config = Config::new();
+    config.wasm_gc(true);
+    let engine = Engine::new(&config).expect("WasmGC engine を作成できる");
+    let module = Module::new(&engine, bytes).expect("print-string module を検証できる");
+    let mut store = Store::new(&engine, ());
+    let import = module
+        .imports()
+        .next()
+        .expect("print-string import が存在する");
+    let wasmtime::ExternType::Func(func_type) = import.ty() else {
+        panic!("print-string import は function であるべき");
+    };
+    let printed = Arc::new(Mutex::new(Vec::<Vec<u8>>::new()));
+    let printed_for_host = Arc::clone(&printed);
+    let print_string = lsharp_wasm::wasmgc_host::create_print_string_import(
+        &mut store,
+        func_type.clone(),
+        move |bytes| {
+            printed_for_host.lock().unwrap().push(bytes.to_vec());
+            Ok(())
+        },
+    )
+    .expect("packed StringBytes 用 host import を作成できる");
+    let instance = Instance::new(&mut store, &module, &[print_string.into()])
+        .expect("print-string host import を解決できる");
+    let main = instance
+        .get_typed_func::<(), i64>(&mut store, "main")
+        .expect("main export が存在する");
+    assert_eq!(main.call(&mut store, ()).unwrap(), 0);
+    assert_eq!(*printed.lock().unwrap(), vec![vec![195, 169]]);
+}
+
+#[test]
+fn wasm_gc_host_print_string_rejects_null_reference_at_runtime() {
+    let module = IrModule {
+        functions: vec![Function {
+            name: "main".to_string(),
+            params: vec![],
+            result: IrType::I64,
+            locals: vec![],
+            body: vec![
+                Instruction::RefNull(0),
+                Instruction::Call(4),
+                Instruction::I64Const(0),
+            ],
+            is_export: true,
+        }],
+        gc_types: vec![GcTypeDef {
+            name: "StringBytes".to_string(),
+            kind: GcTypeKind::PackedByteArray,
+        }],
+        imports: vec![],
+        globals: vec![],
+        string_data: vec![],
+    };
+
+    let bytes = lsharp_wasm::wasmgc::emit_wasm_wasmgc(&module)
+        .expect("null StringBytes host boundary module を生成できる");
+    let mut config = Config::new();
+    config.wasm_gc(true);
+    let engine = Engine::new(&config).expect("WasmGC engine を作成できる");
+    let module = Module::new(&engine, bytes).expect("null print-string module を検証できる");
+    let mut store = Store::new(&engine, ());
+    let import = module
+        .imports()
+        .next()
+        .expect("print-string import が存在する");
+    let wasmtime::ExternType::Func(func_type) = import.ty() else {
+        panic!("print-string import は function であるべき");
+    };
+    let print_string = lsharp_wasm::wasmgc_host::create_print_string_import(
+        &mut store,
+        func_type.clone(),
+        |_bytes| Ok(()),
+    )
+    .expect("packed StringBytes 用 host import を作成できる");
+    let instance = Instance::new(&mut store, &module, &[print_string.into()])
+        .expect("null print-string host import を解決できる");
+    let main = instance
+        .get_typed_func::<(), i64>(&mut store, "main")
+        .expect("main export が存在する");
+    let error = main
+        .call(&mut store, ())
+        .expect_err("null reference は trap になる");
+    assert!(format!("{error:#}").contains("null reference"), "{error:?}");
+}
+
+#[test]
+fn wasm_gc_host_print_string_rejects_non_packed_import_signature() {
+    let mut config = Config::new();
+    config.wasm_gc(true);
+    let engine = Engine::new(&config).expect("WasmGC engine を作成できる");
+    let array_type = wasmtime::ArrayType::new(
+        &engine,
+        wasmtime::FieldType::new(
+            wasmtime::Mutability::Var,
+            wasmtime::StorageType::ValType(wasmtime::ValType::I32),
+        ),
+    );
+    let func_type = wasmtime::FuncType::new(
+        &engine,
+        [wasmtime::ValType::Ref(wasmtime::RefType::new(
+            true,
+            wasmtime::HeapType::ConcreteArray(array_type),
+        ))],
+        [],
+    );
+    let mut store = Store::new(&engine, ());
+    let error = lsharp_wasm::wasmgc_host::create_print_string_import(
+        &mut store,
+        func_type,
+        |_bytes| Ok(()),
+    )
+    .expect_err("i32 array signature は拒否する");
+    assert!(error.contains("i8"), "{error}");
 }
 
 #[test]

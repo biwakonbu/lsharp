@@ -371,7 +371,27 @@ WasmGC の String reference を host 側へ渡す最小の external boundary を
 
 これは host callback が GC array の bytes を読み stdout へ出す実装ではない。GC reference の host
 側 read contract、WASI fd_write / component adapter、native/selfhost runtime、Unicode code-point
-semantics は後続 task として残す。
+semantics は後続 task として残す。host-side read contract は Stage 2h で閉じる。
+
+## Stage 2h 検証済み slice: host-side packed String read (2026-07-24)
+
+Stage 2g の synthetic import を、Wasmtime host callback が concrete `PackedByteArray` から
+unsigned bytes へ変換する境界まで進めた。
+
+- `crates/lsharp-wasm/src/wasmgc_host.rs::create_print_string_import` は import signature を
+  `(ref null (concrete array i8)) -> ()` に限定し、i64 pointer、abstract array、i32 array、result
+  付き callback を受け付けない。
+- callback は `Val::AnyRef` を null / array に明示 downcast し、array type の `i8` を確認した後に
+  length と各 byte を `ArrayRef::len` / `ArrayRef::get` で読み出す。null、非 array、length/get
+  failure、unsigned i8 範囲外、sink error は Wasm host error として返し、成功時だけ sink へ
+  immutable `&[u8]` を渡す。
+- direct WasmGC probe は UTF-8 bytes `[195, 169]` の実読出し、null reference の runtime trap、
+  non-packed import signature の拒否を固定する。compiler pipeline test は source の `print-string`
+  を同じ callback で実行し、bytes を確認する。
+
+これは WASI fd_write / component adapter や公開 runner がこの callback を自動接続する実装ではない。
+stdout sink、native/selfhost runtime、Unicode code-point semantics、supported target の native
+evidence は後続 task として残す。
 
 ## 実装戦略
 
@@ -403,10 +423,10 @@ semantics は後続 task として残す。
 - 文字列リテラル/操作を `array.new_data` / `array.get_u` / `array.len` へ。
   WASI fd_write へ渡す際は array → リニアメモリへのコピーが必要
   (`array.copy` 不可のため要素ループまたは `array.init_data` の逆操作を helper 化)
-- Stage 2g の次 task は `env.print-string` callback の host-side read contract を閉じる。まず
-  `PackedByteArray` の nullable ref を安全に検査し、array length/byte access の失敗を明示的な
-  host error にする。その後に WASI/component adapter と native/selfhost の出力 parity を別々に
-  検証し、synthetic import の stub instantiate 成功だけで print 完了とは扱わない。
+- Stage 2h の次 task は WasmGC runner の stdout sink 接続を閉じる。`create_print_string_import`
+  を実 runner に組み込み、sink の partial/error semantics を固定した後に WASI/component adapter
+  と native/selfhost の出力 parity を別々に検証する。synthetic import の instantiate 成功や host
+  callback 単体の byte read だけで公開 print 完了とは扱わない。
 
 ### Stage 3: Closures → funcref + env struct
 
@@ -459,7 +479,9 @@ slice、typed type-application payload slice、scalar GADT refinement execution 
 return-only slice と bind 明示拒否境界、Stage 2a の scalar String GC array slice、Stage 2b の
 scalar String GC equality slice、Stage 2c の scalar String GC concat slice、Stage 2d の scalar
 String GC substring slice、Stage 2e の packed String byte array slice、Stage 2f の substring invalid
-range boundary、Stage 2g の `print-string` external import boundary は 2026-07-24 に検証済み。ADT
-の全表現、Stage 2 の残り (Unicode semantics / host callback / WASI-component I/O)、Stage 3 以降
+range boundary、Stage 2g の `print-string` external import boundary、Stage 2h の host-side packed
+String read は 2026-07-24 に検証済み。ADT
+の全表現、Stage 2 の残り (Unicode code-point semantics / stdout sink / WASI-component I/O /
+native-selfhost parity)、Stage 3 以降
 (closures / traits / selfhost)、supported target
 の actual runtime evidence は未完了であり、`LEGACY-EXEC-01` の完了条件には到達していない。

@@ -10,3 +10,4 @@ pub mod test_runner;
 pub mod wasi;
 pub mod wasi_runner;
 pub mod wasmgc;
+pub mod wasmgc_host;

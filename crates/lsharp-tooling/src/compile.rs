@@ -648,6 +648,62 @@ mod tests {
     }
 
     #[test]
+    fn test_compile_file_wasmgc_backend_reads_print_string_with_host_import() {
+        let dir =
+            std::env::temp_dir().join("lsharp_compile_pipeline_wasmgc_print_string_host_read");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(dir.join(".git")).unwrap();
+
+        let file = dir.join("Main.ls");
+        let output = dir.join("Main.wasm");
+        std::fs::write(&file, "(defn main [] (do (print-string \"é\") 0))\n").unwrap();
+
+        let artifacts = compile_file_with_backend(
+            &file,
+            Some(&output),
+            false,
+            Some(CompileTarget::WebWasm),
+            CompileBackend::WasmGc,
+        )
+        .unwrap();
+        let wasm_bytes = std::fs::read(&artifacts.output_path).unwrap();
+
+        let mut config = wasmtime::Config::new();
+        config.wasm_gc(true);
+        let engine = wasmtime::Engine::new(&config).unwrap();
+        let module = wasmtime::Module::new(&engine, wasm_bytes).unwrap();
+        let mut store = wasmtime::Store::new(&engine, ());
+        let import = module
+            .imports()
+            .next()
+            .expect("print-string import が materialize される");
+        let wasmtime::ExternType::Func(func_type) = import.ty() else {
+            panic!("print-string import は function であるべき");
+        };
+        let printed = std::sync::Arc::new(std::sync::Mutex::new(Vec::<Vec<u8>>::new()));
+        let printed_for_host = std::sync::Arc::clone(&printed);
+        let print_string = lsharp_wasm::wasmgc_host::create_print_string_import(
+            &mut store,
+            func_type.clone(),
+            move |bytes| {
+                printed_for_host.lock().unwrap().push(bytes.to_vec());
+                Ok(())
+            },
+        )
+        .unwrap();
+        let instance = wasmtime::Instance::new(&mut store, &module, &[print_string.into()])
+            .expect("print-string host import を解決できる");
+        let main = instance
+            .get_typed_func::<(), i64>(&mut store, "main")
+            .unwrap();
+        assert_eq!(main.call(&mut store, ()).unwrap(), 0);
+        assert_eq!(*printed.lock().unwrap(), vec![vec![195, 169]]);
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
     fn test_compile_file_wasmgc_backend_executes_string_array_get() {
         let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
             .ancestors()
