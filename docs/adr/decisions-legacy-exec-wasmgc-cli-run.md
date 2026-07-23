@@ -13,9 +13,10 @@ capability と entry point の契約を曖昧にする。
 
 ## Decision
 
-- `wit/lsharp-wasmgc-output.wit` の同一 package/version に `wasmgc-cli` world を追加し、custom
-  `stdout` import と `wasi:cli/run@0.2.3` export だけを宣言する。既存の `wasmgc-output` world と
-  interface/version を重複させない。
+- `wit/lsharp-wasmgc-output.wit` の同一 package/version に `wasmgc-cli` world を追加し、Stage 2q
+  の baseline では custom `stdout` import と `wasi:cli/run@0.2.3` export を宣言する。既存の
+  `wasmgc-output` world と interface/version を重複させず、後続の exit capability は
+  [CLI exit/result parity ADR](decisions-legacy-exec-wasmgc-cli-exit.md) で明示的に追加する。
 - `emit_wasm_wasmgc_component_cli` は WasmGC の exported `main: () -> i64` を呼び出す
   `wasi:cli/run@0.2.3#run: () -> i32` core wrapper を追加する。wrapper は main の値を drop し、
   成功時に `0` を返す。WASI capability import は生成しない。

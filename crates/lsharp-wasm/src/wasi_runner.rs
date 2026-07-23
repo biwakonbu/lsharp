@@ -131,7 +131,7 @@ enum StdinMode<'a> {
     Inherit,
 }
 
-fn extract_i32_exit(err: &wasmtime::Error) -> Option<i32> {
+pub(crate) fn extract_i32_exit(err: &wasmtime::Error) -> Option<i32> {
     for cause in err.chain() {
         if let Some(exit) = cause.downcast_ref::<wasmtime_wasi::I32Exit>() {
             return Some(exit.0);

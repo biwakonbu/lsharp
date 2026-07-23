@@ -18,5 +18,6 @@ world wasmgc-output {
 
 world wasmgc-cli {
   import stdout;
+  import wasi:cli/exit@0.2.3;
   export wasi:cli/run@0.2.3;
 }

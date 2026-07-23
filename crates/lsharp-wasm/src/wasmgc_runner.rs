@@ -397,10 +397,12 @@ fn run_wasm_wasmgc_component_with_preview2_stdout(
                     "WasmGC CLI Component に wasi:cli/run@0.2.3#run export がありません".to_string()
                 })?;
             let mut results = [ComponentVal::Bool(false)];
-            run.call(&mut store, &[], &mut results).map_err(|error| {
-                format!("WasmGC CLI Component wasi:cli/run の実行に失敗: {error:#}")
-            })?;
-            decode_wasmgc_component_run_result(results.first())?
+            match run.call(&mut store, &[], &mut results) {
+                Ok(()) => decode_wasmgc_component_run_result(results.first())?,
+                Err(error) => crate::wasi_runner::extract_i32_exit(&error).ok_or_else(|| {
+                    format!("WasmGC CLI Component wasi:cli/run の実行に失敗: {error:#}")
+                })?,
+            }
         }
     };
 

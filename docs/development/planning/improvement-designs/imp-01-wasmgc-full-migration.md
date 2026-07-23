@@ -564,6 +564,24 @@ Stage 2p の Preview2 stdout stream 接続を、custom `wasmgc-output` package �
 proc-exit/error result parity、Mac Apple Silicon/Linux x86_64 artifact/runtime、native/selfhost
 parity は未完了である。
 
+## Stage 2r 検証済み slice: WasmGC CLI の exit/result parity (2026-07-24)
+
+Stage 2q の `wasi:cli/run` runner に、Preview2 の終了境界と command result の non-zero semantics を
+追加した。
+
+- `wasmgc-cli` world は `wasi:cli/exit@0.2.3` import を明示し、`proc_exit` 相当の capability を
+  custom stdout/run contract と同じ WIT 正本で宣言する。未使用の別 WASI capability は追加しない。
+- `run_wasm_wasmgc_component_cli_with_preview2_stdout` は `wasi:cli/run` 呼び出しが
+  `wasmtime_wasi::I32Exit`（直接 error chain または rendered trap）で終了した場合、その status code
+  を trap として捨てず `ExecutionOutput.exit_code` へ返す。通常の `bool`/`result` return は従来通り
+  0/1 へ decode する。
+- `wasm_gc_component_cli_runner_maps_wasi_cli_exit_to_exit_status` は actual component の
+  `wasi:cli/exit` host call を、`wasm_gc_component_cli_runner_maps_failed_wasi_cli_run_result_to_exit_status`
+  は failed `wasi:cli/run` result をそれぞれ exit code 1 として固定する。
+
+これは exit/result parity の verified partial slice であり、fd table/rights の公開契約、Wasm artifact/runtime
+differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity は未完了である。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線

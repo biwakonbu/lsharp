@@ -32,8 +32,8 @@ WASI Preview2 / Component Model への移行に向けた WIT (WebAssembly Interf
 
 - パッケージバージョンは `0.1.0` (L# 本体に追従)
 - WASI interface は実装上 `@0.2.3` (wasmtime-wasi 29 系の stable Preview2 WIT set) を使用
-- WasmGC の `wasmgc-cli` world は custom stdout import と `wasi:cli/run@0.2.3` export だけを持ち、
-  未使用の WASI capability を core module へ暗黙に追加しない
+- WasmGC の `wasmgc-cli` world は custom stdout import、明示的な `wasi:cli/exit@0.2.3` import、
+  `wasi:cli/run@0.2.3` export を持つ。core module へ未宣言の WASI capability を暗黙に追加しない
 
 ## 関連タスク
 

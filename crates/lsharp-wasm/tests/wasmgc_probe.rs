@@ -773,6 +773,62 @@ fn wasm_gc_component_cli_runner_executes_wasi_cli_run_with_preview2_stdout() {
 }
 
 #[test]
+fn wasm_gc_component_cli_runner_maps_wasi_cli_exit_to_exit_status() {
+    let core = emit_component_output_cli_exit_probe_module(1);
+    let wit_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("wit")
+        .join("lsharp-wasmgc-output.wit");
+    let component = lsharp_wasm::component_adapter::componentize_core_module(
+        &core,
+        &wit_file,
+        "wasmgc-cli",
+        &[],
+    )
+    .expect("wasi:cli/exit を使う WasmGC CLI core を componentize できる");
+
+    let output = lsharp_wasm::wasmgc_runner::run_wasm_wasmgc_component_cli_with_preview2_stdout(
+        &component,
+        None,
+        &[],
+        "",
+    )
+    .expect("wasi:cli/exit は終了コードとして扱える");
+
+    assert_eq!(output.stdout, "");
+    assert_eq!(output.exit_code, 1);
+}
+
+#[test]
+fn wasm_gc_component_cli_runner_maps_failed_wasi_cli_run_result_to_exit_status() {
+    let core = emit_component_output_cli_run_probe_module_with_result(1);
+    let wit_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("wit")
+        .join("lsharp-wasmgc-output.wit");
+    let component = lsharp_wasm::component_adapter::componentize_core_module(
+        &core,
+        &wit_file,
+        "wasmgc-cli",
+        &[],
+    )
+    .expect("失敗 result を返す WasmGC CLI core を componentize できる");
+
+    let output = lsharp_wasm::wasmgc_runner::run_wasm_wasmgc_component_cli_with_preview2_stdout(
+        &component,
+        None,
+        &[],
+        "",
+    )
+    .expect("wasi:cli/run の失敗 result は終了コードとして扱える");
+
+    assert_eq!(output.stdout, "");
+    assert_eq!(output.exit_code, 1);
+}
+
+#[test]
 fn wasm_gc_component_output_propagates_sink_failure_as_trap() {
     let module = IrModule {
         functions: vec![Function {
@@ -1229,7 +1285,11 @@ fn emit_component_output_probe_module(bytes: &[i32], exit_code: i64) -> Vec<u8> 
 }
 
 fn emit_component_output_cli_run_probe_module() -> Vec<u8> {
-    wat::parse_str(
+    emit_component_output_cli_run_probe_module_with_result(0)
+}
+
+fn emit_component_output_cli_run_probe_module_with_result(result: i32) -> Vec<u8> {
+    wat::parse_str(format!(
         r#"
 (module
   (type (func (param i32 i32)))
@@ -1237,11 +1297,30 @@ fn emit_component_output_cli_run_probe_module() -> Vec<u8> {
   (import "lsharp:wasmgc-output/stdout@0.1.0" "write" (func $write (type 0)))
   (memory (export "memory") 1)
   (func (export "wasi:cli/run@0.2.3#run") (type 1)
+    i32.const {result})
+)
+"#
+    ))
+    .expect("canonical wasi:cli/run probe module を生成できる")
+}
+
+fn emit_component_output_cli_exit_probe_module(exit_code: i32) -> Vec<u8> {
+    wat::parse_str(format!(
+        r#"
+(module
+  (type (func (param i32 i32)))
+  (type (func (result i32)))
+  (import "lsharp:wasmgc-output/stdout@0.1.0" "write" (func $write (type 0)))
+  (import "wasi:cli/exit@0.2.3" "exit" (func $exit (param i32)))
+  (memory (export "memory") 1)
+  (func (export "wasi:cli/run@0.2.3#run") (type 1)
+    i32.const {exit_code}
+    call $exit
     i32.const 0)
 )
-"#,
-    )
-    .expect("canonical wasi:cli/run probe module を生成できる")
+"#
+    ))
+    .expect("wasi:cli/exit probe module を生成できる")
 }
 
 #[test]
