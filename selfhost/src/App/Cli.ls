@@ -107,6 +107,8 @@
     base-diagnostics-count (infer-program-analysis-diagnostic-count analysis)
     base-first-error-code (infer-program-analysis-first-error-code analysis)
     base-first-error-index (infer-program-analysis-first-error-index analysis)
+    base-first-error-start (infer-program-analysis-first-error-start analysis)
+    base-first-error-end (infer-program-analysis-first-error-end analysis)
     first-module-owner
       (if (and (> base-diagnostics-count 0)
         (and (>= base-first-error-index 0)
@@ -178,6 +180,16 @@
           (if (> (string-length first-module-path) 0)
             (do
               (print-string (string-concat "first-module-path:" first-module-path))
+              (print-string "\n"))
+            (print-string ""))
+          (if (and (>= base-first-error-start 0) (>= base-first-error-end base-first-error-start))
+            (do
+              (print-string
+                (string-concat
+                  "first-error-span:"
+                  (string-concat
+                    (int-to-string base-first-error-start)
+                    (string-concat ":" (int-to-string base-first-error-end)))))
               (print-string "\n"))
             (print-string "")))
         (print-string ""))

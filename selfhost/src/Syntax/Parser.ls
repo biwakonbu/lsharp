@@ -160,6 +160,10 @@
 (defn make-var-node [h]
   (vector-push-pair-rooted-v3 (vector-new 2) 4 h))
 
+;; parser 由来の変数参照ノード: [4, name-hash, start, end]
+(defn make-var-node-with-span [h start end]
+  (vector-push-quad-rooted-v3 (vector-new 4) 4 h start end))
+
 ;; 文字列ノード: [3, start, end, map-key-hash]
 (defn make-string-node [start end map-key-hash]
   (vector-push-quad-rooted-v3 (vector-new 4) 3 start end map-key-hash))
@@ -1797,7 +1801,7 @@
     h (name-hash src start end)]
     (do
       (p-advance pos-ref)
-      (make-var-node h))))
+      (make-var-node-with-span h start end))))
 
 (defn parse-string-node-v3 [spans pos-ref src]
   (let [start (p-start spans pos-ref)

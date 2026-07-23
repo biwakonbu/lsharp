@@ -67,7 +67,12 @@
         (let [result
                 (if (= scheme 0)
                   ;; 未定義変数: エラー
-                  (make-error-result-code (error-code-undefined))
+                  (if (> (vector-length node) 3)
+                    (make-error-result-code-with-span
+                      (error-code-undefined)
+                      (vector-get node 2)
+                      (vector-get node 3))
+                    (make-error-result-code (error-code-undefined)))
                   ;; 型スキームを具体化
                   (let [instantiated (instantiate scheme counter)]
                     (do
@@ -127,7 +132,7 @@
 (defn infer-ann [node env subst counter]
   (let [expr-result (infer-expr (vector-get node 1) env subst counter)]
     (if (= (result-failed expr-result) 1)
-      (propagate-error-result expr-result)
+      (propagate-error-result-with-span expr-result)
       (if (<= (vector-length node) 2)
         expr-result
         (let [type-expr (vector-get node 2)]
@@ -337,7 +342,7 @@
                                         annotated-param-subst
                                         counter)]
                                 (if (= (result-failed body-result) 1)
-                                  (propagate-error-result body-result)
+                                  (propagate-error-result-with-span body-result)
                                   (let [s (result-subst body-result)
                                     body-ty (result-type body-result)
                                     annotated-subst
@@ -413,7 +418,7 @@
                 (let [body-node (vector-get node 3)
                   result (infer-expr body-node body-env subst counter)]
                   (if (= (result-failed result) 1)
-                    (propagate-error-result result)
+                    (propagate-error-result-with-span result)
                     (let [s (result-subst result)
                       body-ty (result-type result)
                       annotated-subst
@@ -757,15 +762,15 @@
                   (root_pop)
                   result)))))))))
 
-;; program 推論の状態: [env, subst, first-type, first-seen, diagnostic-count, first-error-code, first-error-index, first-error-name-hash]
-(defn typeinfer-program-analysis-state [env subst first-ty first-seen diagnostic-count first-error-code first-error-index first-error-name-hash]
+;; program 推論の状態: [env, subst, first-type, first-seen, diagnostic-count, first-error-code, first-error-index, first-error-name-hash, first-error-start, first-error-end]
+(defn typeinfer-program-analysis-state [env subst first-ty first-seen diagnostic-count first-error-code first-error-index first-error-name-hash first-error-start first-error-end]
   (do
     ;; state の後続フィールドを追加する allocation 中も、先頭の型と
     ;; 中間ベクタを native GC から到達可能に保つ。
     (root_push env)
     (root_push subst)
     (root_push first-ty)
-    (let [base (vector-new 8)]
+    (let [base (vector-new 10)]
       (do
         (root_push base)
         (let [with-env (push-object-vector-local base env)]
@@ -796,23 +801,38 @@
                                           first-error-index)]
                                   (do
                                     (root_push with-first-error-index)
-                                    (let [result
+                                    (let [with-first-error-name-hash
                                             (push-int-vector-local
                                               with-first-error-index
                                               first-error-name-hash)]
                                       (do
-                                    (root_pop)
-                                    (root_pop)
-                                    (root_pop)
-                                    (root_pop)
-                                    (root_pop)
-                                    (root_pop)
-                                    (root_pop)
-                                    (root_pop)
-                                    (root_pop)
-                                    (root_pop)
-                                    (root_pop)
-                                    result))))))))))))))))))))
+                                        (root_push with-first-error-name-hash)
+                                        (let [with-first-error-start
+                                                (push-int-vector-local
+                                                  with-first-error-name-hash
+                                                  first-error-start)]
+                                          (do
+                                            (root_push with-first-error-start)
+                                            (let [result
+                                                    (push-int-vector-local
+                                                      with-first-error-start
+                                                      first-error-end)]
+                                              (do
+                                                (root_pop)
+                                                (root_pop)
+                                                (root_pop)
+                                                (root_pop)
+                                                (root_pop)
+                                                (root_pop)
+                                                (root_pop)
+                                                (root_pop)
+                                                (root_pop)
+                                                (root_pop)
+                                                (root_pop)
+                                                (root_pop)
+                                                (root_pop)
+                                                (root_pop)
+                                                result))))))))))))))))))))))))
 
 (defn infer-program-analysis-env [analysis] (vector-get analysis 0))
 (defn infer-program-analysis-subst [analysis] (vector-get analysis 1))
@@ -822,6 +842,8 @@
 (defn infer-program-analysis-first-error-code [analysis] (vector-get analysis 5))
 (defn infer-program-analysis-first-error-index [analysis] (vector-get analysis 6))
 (defn infer-program-analysis-first-error-name-hash [analysis] (vector-get analysis 7))
+(defn infer-program-analysis-first-error-start [analysis] (vector-get analysis 8))
+(defn infer-program-analysis-first-error-end [analysis] (vector-get analysis 9))
 
 (defn infer-program-analysis-type [analysis]
   (do
@@ -855,6 +877,8 @@
                       first-error-code (infer-program-analysis-first-error-code state)
                       first-error-index (infer-program-analysis-first-error-index state)
                       first-error-name-hash (infer-program-analysis-first-error-name-hash state)
+                      first-error-start (infer-program-analysis-first-error-start state)
+                      first-error-end (infer-program-analysis-first-error-end state)
                       name-hash (vector-get decl 1)
                       placeholder (map-get-safe placeholders name-hash)
                       pending-env-vars (typeinfer-pending-env-vars program (+ idx 1) len placeholders subst)
@@ -878,7 +902,15 @@
                               next-first-error-name-hash
                                 (if (= (result-failed out) 1)
                                   (if (< first-error-index 0) name-hash first-error-name-hash)
-                                  first-error-name-hash)]
+                                  first-error-name-hash)
+                              next-first-error-start
+                                (if (= (result-failed out) 1)
+                                  (if (< first-error-index 0) (result-error-start out) first-error-start)
+                                  first-error-start)
+                              next-first-error-end
+                                (if (= (result-failed out) 1)
+                                  (if (< first-error-index 0) (result-error-end out) first-error-end)
+                                  first-error-end)]
                               (do
                                 (root_push next-env)
                                 (root_push next-subst)
@@ -891,7 +923,9 @@
                                           (if (= (result-failed out) 1) (+ diagnostic-count 1) diagnostic-count)
                                           (if (= (result-failed out) 1) next-first-error-code first-error-code)
                                           next-first-error-index
-                                          next-first-error-name-hash)]
+                                          next-first-error-name-hash
+                                          next-first-error-start
+                                          next-first-error-end)]
                                   (do
                                     (root_push result)
                                     (let [recur-result
@@ -932,6 +966,8 @@
                   recursive-count
                   (error-code-general)
                   -1
+                  -1
+                  -1
                   -1)]
           (do
             (root_pop)
@@ -946,7 +982,7 @@
               predeclared (typeinfer-predeclare-defns program adt-env counter)
               env (vector-get predeclared 0)
               placeholders (vector-get predeclared 1)
-              state (typeinfer-program-analysis-state env (subst-new) (mk-int) 0 0 0 -1 -1)
+              state (typeinfer-program-analysis-state env (subst-new) (mk-int) 0 0 0 -1 -1 -1 -1)
               result
                 (typeinfer-program-analysis-loop
                   program

@@ -1012,9 +1012,10 @@ fn test_e2e_selfhost_cli_check_file_reports_first_failed_module_hash() {
     ));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
+    let lib_source = "(module Lib)\n(defn helper [] missing)\n";
     std::fs::write(
         dir.join("Lib.ls"),
-        "(module Lib)\n(defn helper [] missing)\n",
+        lib_source,
     )
     .unwrap();
     std::fs::write(
@@ -1024,6 +1025,12 @@ fn test_e2e_selfhost_cli_check_file_reports_first_failed_module_hash() {
     .unwrap();
     // 既存 resolver は相対 entry path の表現を保ったまま依存 path を返す。
     let expected_lib_path = "./Lib.ls".to_string();
+    let missing_start = lib_source.find("missing").expect("fixture must contain missing");
+    let expected_span_line = format!(
+        "first-error-span:{}:{}",
+        missing_start,
+        missing_start + "missing".len()
+    );
 
     let harness = r#"
 (defn main []
@@ -1062,6 +1069,11 @@ fn test_e2e_selfhost_cli_check_file_reports_first_failed_module_hash() {
     assert!(
         lines.contains(&expected_path_line.as_str()),
         "最初の失敗定義を Lib source path へ結び付けるべき: {:?}",
+        lines
+    );
+    assert!(
+        lines.contains(&expected_span_line.as_str()),
+        "最初の失敗式を Lib source span へ結び付けるべき: {:?}",
         lines
     );
 }

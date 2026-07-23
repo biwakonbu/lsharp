@@ -266,7 +266,7 @@
   (map-get-safe env name-hash))
 
 ;; ============================================================
-;; 推論結果 = [subst, type, error-code]
+;; 推論結果 = [subst, type, error-code]。失敗時だけ [start, end] を後置できる。
 ;; ============================================================
 
 (defn make-result [subst ty]
@@ -295,6 +295,10 @@
 (defn result-subst [r] (vector-get r 0))
 (defn result-type [r] (vector-get r 1))
 (defn result-error-code [r] (vector-get r 2))
+(defn result-error-start [r]
+  (if (> (vector-length r) 3) (vector-get r 3) -1))
+(defn result-error-end [r]
+  (if (> (vector-length r) 4) (vector-get r 4) -1))
 
 ;; エラー結果 (subst にエラーマーカー付き)
 (defn make-error-result-code [code]
@@ -304,11 +308,30 @@
       (mk-int))
     code))
 
+(defn make-error-result-code-with-span [code start end]
+  (let [base (make-error-result-code code)]
+    (do
+      (let [base-slot (root_push base)
+        with-start (vector-push base start)]
+        (do
+          (root_set base-slot with-start)
+          (let [result (vector-push with-start end)]
+            (do
+              (root_pop)
+              result)))))))
+
 (defn make-error-result []
   (make-error-result-code 6))
 
 (defn propagate-error-result [r]
   (make-error-result-code (result-error-code r)))
+
+(defn propagate-error-result-with-span [r]
+  (let [start (result-error-start r)
+    end (result-error-end r)]
+    (if (and (>= start 0) (>= end start))
+      (make-error-result-code-with-span (result-error-code r) start end)
+      (make-error-result-code (result-error-code r)))))
 
 ;; 結果がエラーか判定
 (defn result-failed [r]

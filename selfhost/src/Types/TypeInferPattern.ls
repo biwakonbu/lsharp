@@ -273,7 +273,9 @@
       pat-env (pat-result-env pat-info)
       gadt-pattern? (match-pattern-gadt? pat env)]
       (if (= (map-get pat-subst -1) 1)
-        (propagate-error-result pat-info)
+        ;; pat-info の slot 3 は更新済み環境 Map であり、通常の infer result
+        ;; の source span slotとは異なるため、pattern failureは既存の codeだけを返す。
+        (make-error-result-code (result-error-code pat-info))
         (let [s2 (unify (apply-subst pat-subst scrut-ty) pat-ty pat-subst)]
           (if (= (unify-failed s2) 1)
             (make-error-result-code (error-code-general))
