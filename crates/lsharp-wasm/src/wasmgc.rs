@@ -1,7 +1,7 @@
-//! WasmGC バックエンドの capability probe と Stage 1 IR emitter。
+//! WasmGC バックエンドの capability probe と Stage 1/2 IR emitter。
 //!
 //! Stage 0 では `wasm-encoder` で GC struct と `struct.new` / `struct.get` を含む
-//! self-contained module を生成し、Wasmtime が実行できることを固定する。Stage 1 では
+//! self-contained module を生成し、Wasmtime が実行できることを固定する。Stage 1/2 では
 //! 同じ型・命令契約を L# IR の `Module` から生成する。
 
 use lsharp_ir::{GcTypeKind, Instruction, IrType, Module};
@@ -21,9 +21,10 @@ const LOWER_RUNTIME_IMPORT_COUNT: u32 = 17;
 
 /// L# IR を WasmGC core module へ変換する。
 ///
-/// Stage 1 では GC 型定義と `StructNew` / `StructGet` / `StructSet` / `RefCast`、
-/// および linear-memory に依存しない基本命令を扱う。WASI や文字列の linear-memory
-/// ABI は後続 stage の責務であり、未対応命令は i64 に黙ってフォールバックせず診断する。
+/// Stage 1/2 では GC 型定義、struct 命令、scalar String array の
+/// `ArrayNewFixed` / `ArrayNewDefault` / `ArrayGet` / `ArraySet` / `ArrayLen`、
+/// および linear-memory に依存しない基本命令を扱う。WASI や文字列の linear-memory ABI は
+/// 後続 stage の責務であり、未対応命令は i64 に黙ってフォールバックせず診断する。
 pub fn emit_wasm_wasmgc(module: &Module) -> Result<Vec<u8>, CodegenError> {
     validate_module(module)?;
 
@@ -207,7 +208,9 @@ fn validate_module(module: &Module) -> Result<(), CodegenError> {
                     validate_gc_type_index(*type_index, module.gc_types.len(), instruction)?;
                 }
                 Instruction::ArrayNewFixed(type_index, _)
+                | Instruction::ArrayNewDefault(type_index)
                 | Instruction::ArrayGet(type_index)
+                | Instruction::ArraySet(type_index)
                 | Instruction::ArrayLen(type_index) => {
                     let Some(GcTypeKind::Array(_)) = module
                         .gc_types
@@ -247,7 +250,7 @@ fn validate_module(module: &Module) -> Result<(), CodegenError> {
                 | Instruction::Block(IrType::Ref(_))
                 | Instruction::Loop(IrType::Ref(_)) => {
                     return Err(codegen_error(
-                        "GC 参照を結果に持つ制御ブロックは Stage 1 では未対応です",
+                        "GC 参照を結果に持つ制御ブロックは WasmGC backend では未対応です",
                     ));
                 }
                 Instruction::StringConst(_)
@@ -269,7 +272,7 @@ fn validate_module(module: &Module) -> Result<(), CodegenError> {
                 | Instruction::CallIndirect(_)
                 | Instruction::FuncIdx(_) => {
                     return Err(codegen_error(format!(
-                        "WasmGC Stage 1 backend が未対応の命令です: {instruction}"
+                        "WasmGC backend が未対応の命令です: {instruction}"
                     )));
                 }
                 _ => {}
@@ -354,8 +357,14 @@ fn emit_wasm_gc_instructions(
                         array_size: *length,
                     });
                 }
+                Instruction::ArrayNewDefault(type_index) => {
+                    function.instruction(&W::ArrayNewDefault(*type_index));
+                }
                 Instruction::ArrayGet(type_index) => {
                     function.instruction(&W::ArrayGet(*type_index));
+                }
+                Instruction::ArraySet(type_index) => {
+                    function.instruction(&W::ArraySet(*type_index));
                 }
                 Instruction::ArrayLen(_) => {
                     function.instruction(&W::ArrayLen);

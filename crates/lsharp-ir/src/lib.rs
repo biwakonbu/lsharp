@@ -220,7 +220,9 @@ pub enum Instruction {
     RefCast(u32),            // ref.cast type_idx (ダウンキャスト)
     RefNull(u32),            // ref.null concrete type_idx
     ArrayNewFixed(u32, u32), // array.new_fixed type_idx length
+    ArrayNewDefault(u32),    // array.new_default type_idx (dynamic length)
     ArrayGet(u32),           // array.get type_idx
+    ArraySet(u32),           // array.set type_idx
     ArrayLen(u32),           // array.len type_idx (validation metadata)
 
     // 関数参照 (vtable/辞書パスイング)
@@ -349,7 +351,9 @@ impl fmt::Display for Instruction {
             Instruction::ArrayNewFixed(type_idx, length) => {
                 write!(f, "array.new_fixed {type_idx} {length}")
             }
+            Instruction::ArrayNewDefault(type_idx) => write!(f, "array.new_default {type_idx}"),
             Instruction::ArrayGet(type_idx) => write!(f, "array.get {type_idx}"),
+            Instruction::ArraySet(type_idx) => write!(f, "array.set {type_idx}"),
             Instruction::ArrayLen(type_idx) => write!(f, "array.len {type_idx}"),
             Instruction::RefFunc(idx) => write!(f, "ref.func {idx}"),
             Instruction::CallRef(idx) => write!(f, "call_ref {idx}"),
@@ -594,7 +598,9 @@ fn remap_instruction_with_imports(
             }
         }
         Instruction::ArrayNewFixed(type_idx, _)
+        | Instruction::ArrayNewDefault(type_idx)
         | Instruction::ArrayGet(type_idx)
+        | Instruction::ArraySet(type_idx)
         | Instruction::ArrayLen(type_idx) => {
             if let Some(&new_idx) = gc_type_remap.get(&(mod_idx, *type_idx)) {
                 *type_idx = new_idx;

@@ -428,6 +428,112 @@ impl Lower {
                     // string-concat: 2 つの文字列を結合
                     Expr::Var(_, name) if name == "string-concat" => {
                         if args.len() >= 2 {
+                            if self.backend == super::LowerBackend::WasmGc {
+                                let type_index = self.string_array_type_index.ok_or_else(|| {
+                                    LowerError::Unsupported {
+                                        msg: "WasmGC String の GC array type が登録されていません"
+                                            .to_string(),
+                                        span: Some(*expr_span),
+                                    }
+                                })?;
+                                let lhs_local = ctx.alloc_local_typed(
+                                    "_str_concat_lhs".to_string(),
+                                    IrType::Ref(type_index),
+                                );
+                                let rhs_local = ctx.alloc_local_typed(
+                                    "_str_concat_rhs".to_string(),
+                                    IrType::Ref(type_index),
+                                );
+                                let lhs_len_local = ctx.alloc_local_typed(
+                                    "_str_concat_lhs_len".to_string(),
+                                    IrType::I32,
+                                );
+                                let rhs_len_local = ctx.alloc_local_typed(
+                                    "_str_concat_rhs_len".to_string(),
+                                    IrType::I32,
+                                );
+                                let total_len_local = ctx.alloc_local_typed(
+                                    "_str_concat_total_len".to_string(),
+                                    IrType::I32,
+                                );
+                                let result_local = ctx.alloc_local_typed(
+                                    "_str_concat_result".to_string(),
+                                    IrType::Ref(type_index),
+                                );
+                                let index_local = ctx.alloc_local_typed(
+                                    "_str_concat_index".to_string(),
+                                    IrType::I32,
+                                );
+
+                                self.lower_expr(ctx, &args[0])?;
+                                ctx.emit(Instruction::LocalSet(lhs_local));
+                                self.lower_expr(ctx, &args[1])?;
+                                ctx.emit(Instruction::LocalSet(rhs_local));
+
+                                ctx.emit(Instruction::LocalGet(lhs_local));
+                                ctx.emit(Instruction::ArrayLen(type_index));
+                                ctx.emit(Instruction::LocalSet(lhs_len_local));
+                                ctx.emit(Instruction::LocalGet(rhs_local));
+                                ctx.emit(Instruction::ArrayLen(type_index));
+                                ctx.emit(Instruction::LocalSet(rhs_len_local));
+                                ctx.emit(Instruction::LocalGet(lhs_len_local));
+                                ctx.emit(Instruction::LocalGet(rhs_len_local));
+                                ctx.emit(Instruction::I32Add);
+                                ctx.emit(Instruction::LocalSet(total_len_local));
+                                ctx.emit(Instruction::LocalGet(total_len_local));
+                                ctx.emit(Instruction::ArrayNewDefault(type_index));
+                                ctx.emit(Instruction::LocalSet(result_local));
+
+                                // lhs の bytes を新しい array の先頭へコピーする。
+                                ctx.emit(Instruction::I32Const(0));
+                                ctx.emit(Instruction::LocalSet(index_local));
+                                ctx.emit(Instruction::BlockEmpty);
+                                ctx.emit(Instruction::LoopEmpty);
+                                ctx.emit(Instruction::LocalGet(index_local));
+                                ctx.emit(Instruction::LocalGet(lhs_len_local));
+                                ctx.emit(Instruction::I32GeU);
+                                ctx.emit(Instruction::BrIf(1));
+                                ctx.emit(Instruction::LocalGet(result_local));
+                                ctx.emit(Instruction::LocalGet(index_local));
+                                ctx.emit(Instruction::LocalGet(lhs_local));
+                                ctx.emit(Instruction::LocalGet(index_local));
+                                ctx.emit(Instruction::ArrayGet(type_index));
+                                ctx.emit(Instruction::ArraySet(type_index));
+                                ctx.emit(Instruction::LocalGet(index_local));
+                                ctx.emit(Instruction::I32Const(1));
+                                ctx.emit(Instruction::I32Add);
+                                ctx.emit(Instruction::LocalSet(index_local));
+                                ctx.emit(Instruction::Br(0));
+                                ctx.emit(Instruction::End);
+                                ctx.emit(Instruction::End);
+
+                                // rhs の bytes は lhs の長さの後ろへコピーする。
+                                ctx.emit(Instruction::I32Const(0));
+                                ctx.emit(Instruction::LocalSet(index_local));
+                                ctx.emit(Instruction::BlockEmpty);
+                                ctx.emit(Instruction::LoopEmpty);
+                                ctx.emit(Instruction::LocalGet(index_local));
+                                ctx.emit(Instruction::LocalGet(rhs_len_local));
+                                ctx.emit(Instruction::I32GeU);
+                                ctx.emit(Instruction::BrIf(1));
+                                ctx.emit(Instruction::LocalGet(result_local));
+                                ctx.emit(Instruction::LocalGet(lhs_len_local));
+                                ctx.emit(Instruction::LocalGet(index_local));
+                                ctx.emit(Instruction::I32Add);
+                                ctx.emit(Instruction::LocalGet(rhs_local));
+                                ctx.emit(Instruction::LocalGet(index_local));
+                                ctx.emit(Instruction::ArrayGet(type_index));
+                                ctx.emit(Instruction::ArraySet(type_index));
+                                ctx.emit(Instruction::LocalGet(index_local));
+                                ctx.emit(Instruction::I32Const(1));
+                                ctx.emit(Instruction::I32Add);
+                                ctx.emit(Instruction::LocalSet(index_local));
+                                ctx.emit(Instruction::Br(0));
+                                ctx.emit(Instruction::End);
+                                ctx.emit(Instruction::End);
+                                ctx.emit(Instruction::LocalGet(result_local));
+                                return Ok(());
+                            }
                             let lhs_local = self.lower_expr_to_rooted_local(
                                 ctx,
                                 &args[0],

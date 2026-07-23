@@ -221,7 +221,9 @@ where
                 func.instruction(&W::I64Const(0));
             }
             Instruction::ArrayNewFixed(_, _)
+            | Instruction::ArrayNewDefault(_)
             | Instruction::ArrayGet(_)
+            | Instruction::ArraySet(_)
             | Instruction::ArrayLen(_) => {
                 return Err(CodegenError::Error {
                     msg: "GC array 命令は WasmGC backend でのみ利用できます".to_string(),
