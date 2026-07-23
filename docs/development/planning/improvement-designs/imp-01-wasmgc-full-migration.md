@@ -59,6 +59,24 @@ WasmGC への移行に必要な **IR レベルの語彙は既に存在する**�
 `--backend=wasmgc`、文字列・closure・trait の移行、対応 target の native E2E を完了した
 ことを意味しない。次の実装単位は Stage 1 の IR 型登録と records の WasmGC emitter である。
 
+## Stage 1 検証済み slice (2026-07-24)
+
+L# IR から self-contained WasmGC core module を生成する最小 emitter を追加した。
+
+- `crates/lsharp-wasm/src/wasmgc.rs::emit_wasm_wasmgc` が `Module.gc_types` の struct 定義を
+  type section へ出力し、`IrType::Ref` を concrete heap type の nullable reference として
+  関数・local・struct field へ反映する。
+- `StructNew` / `StructGet` / `StructSet` / `RefCast` を WasmGC 命令へ変換し、mutable field、
+  nested reference field の実行を Wasmtime で確認した。
+- Stage 1 がまだ扱わない linear-memory / global / indirect-call 命令は、i64 fallback や
+  無効な Wasm を出力せず、明示的な codegen error で停止する。
+- `crates/lsharp-wasm/tests/wasmgc_probe.rs` の IR emitter tests 6 件が、生成・検証・
+  instantiate・actual execution と未対応命令の拒否を固定する。
+
+この slice は Rust `lsharp-wasm` の IR emitter に限定され、CLI の `--backend=wasmgc` 配線、
+既存 lowering からの backend 選択、WASI/component runtime、supported 2 targets の native
+artifact/runtime、selfhost ADT 表現は未完了である。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線
@@ -133,6 +151,6 @@ WasmGC への移行に必要な **IR レベルの語彙は既に存在する**�
 
 ## ステータス
 
-Stage 0 (依存 API / runtime capability probe) は 2026-07-24 に検証済み。
-Stage 1 以降 (L# IR の records/ADT lowering と WasmGC emitter) は未着手であり、
-`LEGACY-EXEC-01` の完了条件には到達していない。
+Stage 0 (依存 API / runtime capability probe) と Stage 1 の IR emitter verified slice は
+2026-07-24 に検証済み。Stage 1 の compiler integration と Stage 2 以降 (strings / closures /
+traits / selfhost) は未完了であり、`LEGACY-EXEC-01` の完了条件には到達していない。
