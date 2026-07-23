@@ -18,6 +18,29 @@ impl Lower {
                 Literal::Float(n) => ctx.emit(Instruction::F64Const(*n)),
                 Literal::Bool(b) => ctx.emit(Instruction::I64Const(if *b { 1 } else { 0 })),
                 Literal::String(s) => {
+                    if self.backend == LowerBackend::WasmGc {
+                        let type_index = self.string_array_type_index.ok_or_else(|| {
+                            LowerError::Unsupported {
+                                msg: "WasmGC String の GC array type が登録されていません"
+                                    .to_string(),
+                                span: Some(*expr_span),
+                            }
+                        })?;
+                        for byte in s.as_bytes() {
+                            ctx.emit(Instruction::I32Const(i32::from(*byte)));
+                        }
+                        ctx.emit(Instruction::ArrayNewFixed(
+                            type_index,
+                            s.len().try_into().map_err(|_| LowerError::Unsupported {
+                                msg:
+                                    "WasmGC String literal が array.new_fixed の長さを超えています"
+                                        .to_string(),
+                                span: Some(*expr_span),
+                            })?,
+                        ));
+                        return Ok(());
+                    }
+
                     // 文字列リテラル: データセクションにバイト列を格納し、
                     // ランタイムでヒープ上に String オブジェクト [tag=1, len, bytes] を確保
                     let bytes = s.as_bytes().to_vec();
@@ -117,15 +140,10 @@ impl Lower {
                                 let previous_type = ctx.local_type_names.get(name).cloned();
                                 let binding_ir_type = inferred_type_name
                                     .as_deref()
-                                    .and_then(|type_name| {
-                                        (self.backend == super::LowerBackend::WasmGc)
-                                            .then(|| {
-                                                self.record_type_indices
-                                                    .get(type_name)
-                                                    .copied()
-                                                    .map(IrType::Ref)
-                                            })
-                                            .flatten()
+                                    .map(|type_name| self.ir_type_for_type_name(type_name))
+                                    .filter(|ty| {
+                                        self.backend == super::LowerBackend::WasmGc
+                                            && matches!(ty, IrType::Ref(_))
                                     })
                                     .unwrap_or(IrType::I64);
                                 let idx =
@@ -270,6 +288,22 @@ impl Lower {
                     // String オブジェクト: [tag:i32=1][len:i32][bytes:u8*]
                     Expr::Var(_, name) if name == "string-char-at" => {
                         if args.len() >= 2 {
+                            if self.backend == LowerBackend::WasmGc {
+                                let type_index = self.string_array_type_index.ok_or_else(|| {
+                                    LowerError::Unsupported {
+                                        msg: "WasmGC String の GC array type が登録されていません"
+                                            .to_string(),
+                                        span: Some(*expr_span),
+                                    }
+                                })?;
+                                self.lower_expr(ctx, &args[0])?;
+                                self.lower_expr(ctx, &args[1])?;
+                                ctx.emit(Instruction::I32WrapI64);
+                                ctx.emit(Instruction::ArrayGet(type_index));
+                                ctx.emit(Instruction::I64ExtendI32U);
+                                return Ok(());
+                            }
+
                             let str_local = self.lower_expr_to_rooted_local(
                                 ctx,
                                 &args[0],
@@ -372,6 +406,18 @@ impl Lower {
                     Expr::Var(_, name) if name == "string-length" => {
                         if let Some(arg) = args.first() {
                             self.lower_expr(ctx, arg)?;
+                        }
+                        if self.backend == LowerBackend::WasmGc {
+                            let type_index = self.string_array_type_index.ok_or_else(|| {
+                                LowerError::Unsupported {
+                                    msg: "WasmGC String の GC array type が登録されていません"
+                                        .to_string(),
+                                    span: Some(*expr_span),
+                                }
+                            })?;
+                            ctx.emit(Instruction::ArrayLen(type_index));
+                            ctx.emit(Instruction::I64ExtendI32U);
+                            return Ok(());
                         }
                         // s はスタックトップ (i64) = ヒープオブジェクトのアドレス
                         // len = i32.load(s + 4)

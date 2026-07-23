@@ -252,6 +252,23 @@ Computation Expression の WasmGC path で、scalar `return` と未対応 `let!`
 multi-step monadic runtime、Stage 3 の GC closure/funcref、HKT、WASI/component、supported target
 の native evidence、selfhost compiler は未完了である。
 
+## Stage 2a 検証済み slice: scalar String GC array (2026-07-24)
+
+Stage 2 の先行境界として、String の値表現を WasmGC の concrete array reference へ接続した。
+
+- record/ADT の既存 GC type index をずらさないよう、program の GC struct 群の末尾に
+  `StringBytes` (`array<i32>`) を登録する。String literal は UTF-8 bytes を
+  `ArrayNewFixed`、`string-length` は `ArrayLen`、`string-char-at` は `ArrayGet` へ lowering する。
+- `String` の function parameter と record field は同じ array reference type を使い、user call の
+  Wasm function signature と local type を concrete ref に揃える。linear backend は従来の i64 pointer
+  表現を変更しない。
+- `test_compile_file_wasmgc_backend_executes_string_array_length`、`..._get`、
+  `..._passes_string_array_to_user_function` が Wasmtime actual execution を固定する。
+
+これは Stage 2 の scalar value slice であり、packed `i8` storage、Unicode code-point semantics、
+concat/substring/equality、print/WASI/component bridge、GC mutation、supported target の native
+evidence、selfhost compiler は未完了である。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線
@@ -331,6 +348,7 @@ Stage 0 (依存 API / runtime capability probe)、Stage 1 の IR emitter、Stage
 Stage 1.75 の direct record lowering/update/user call、scalar ADT constructor/pattern、nested ADT
 payload/pattern、nullable ADT reference payload、scalar literal pattern、record pattern field check
 slice、typed type-application payload slice、scalar GADT refinement execution slice、computation
-return-only slice と bind 明示拒否境界は 2026-07-24 に検証済み。ADT の全表現、Stage 2 以降
-(strings / closures / traits / selfhost)、supported target
+return-only slice と bind 明示拒否境界、Stage 2a の scalar String GC array slice は 2026-07-24 に
+検証済み。ADT の全表現、Stage 2 の残り (packed strings / I/O)、Stage 3 以降
+(closures / traits / selfhost)、supported target
 の actual runtime evidence は未完了であり、`LEGACY-EXEC-01` の完了条件には到達していない。

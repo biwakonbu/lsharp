@@ -220,6 +220,13 @@ where
             Instruction::RefNull(_) => {
                 func.instruction(&W::I64Const(0));
             }
+            Instruction::ArrayNewFixed(_, _)
+            | Instruction::ArrayGet(_)
+            | Instruction::ArrayLen(_) => {
+                return Err(CodegenError::Error {
+                    msg: "GC array 命令は WasmGC backend でのみ利用できます".to_string(),
+                });
+            }
 
             // 関数参照
             Instruction::RefFunc(idx) => {

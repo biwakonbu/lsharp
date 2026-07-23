@@ -214,11 +214,14 @@ pub enum Instruction {
     Drop,
 
     // GC 命令 (WasmGC)
-    StructNew(u32),      // struct.new type_idx
-    StructGet(u32, u32), // struct.get type_idx field_idx
-    StructSet(u32, u32), // struct.set type_idx field_idx
-    RefCast(u32),        // ref.cast type_idx (ダウンキャスト)
-    RefNull(u32),        // ref.null concrete type_idx
+    StructNew(u32),          // struct.new type_idx
+    StructGet(u32, u32),     // struct.get type_idx field_idx
+    StructSet(u32, u32),     // struct.set type_idx field_idx
+    RefCast(u32),            // ref.cast type_idx (ダウンキャスト)
+    RefNull(u32),            // ref.null concrete type_idx
+    ArrayNewFixed(u32, u32), // array.new_fixed type_idx length
+    ArrayGet(u32),           // array.get type_idx
+    ArrayLen(u32),           // array.len type_idx (validation metadata)
 
     // 関数参照 (vtable/辞書パスイング)
     RefFunc(u32), // ref.func func_idx
@@ -343,6 +346,11 @@ impl fmt::Display for Instruction {
             }
             Instruction::RefCast(idx) => write!(f, "ref.cast {idx}"),
             Instruction::RefNull(idx) => write!(f, "ref.null {idx}"),
+            Instruction::ArrayNewFixed(type_idx, length) => {
+                write!(f, "array.new_fixed {type_idx} {length}")
+            }
+            Instruction::ArrayGet(type_idx) => write!(f, "array.get {type_idx}"),
+            Instruction::ArrayLen(type_idx) => write!(f, "array.len {type_idx}"),
             Instruction::RefFunc(idx) => write!(f, "ref.func {idx}"),
             Instruction::CallRef(idx) => write!(f, "call_ref {idx}"),
             Instruction::GlobalGet(idx) => write!(f, "global.get {idx}"),
@@ -583,6 +591,13 @@ fn remap_instruction_with_imports(
         Instruction::RefNull(idx) => {
             if let Some(&new_idx) = gc_type_remap.get(&(mod_idx, *idx)) {
                 *idx = new_idx;
+            }
+        }
+        Instruction::ArrayNewFixed(type_idx, _)
+        | Instruction::ArrayGet(type_idx)
+        | Instruction::ArrayLen(type_idx) => {
+            if let Some(&new_idx) = gc_type_remap.get(&(mod_idx, *type_idx)) {
+                *type_idx = new_idx;
             }
         }
         Instruction::CallIndirect(_) => {

@@ -206,6 +206,19 @@ fn validate_module(module: &Module) -> Result<(), CodegenError> {
                 Instruction::RefNull(type_index) => {
                     validate_gc_type_index(*type_index, module.gc_types.len(), instruction)?;
                 }
+                Instruction::ArrayNewFixed(type_index, _)
+                | Instruction::ArrayGet(type_index)
+                | Instruction::ArrayLen(type_index) => {
+                    let Some(GcTypeKind::Array(_)) = module
+                        .gc_types
+                        .get(*type_index as usize)
+                        .map(|gc_type| &gc_type.kind)
+                    else {
+                        return Err(codegen_error(format!(
+                            "array 命令の型インデックスが array ではありません: {type_index}"
+                        )));
+                    };
+                }
                 Instruction::StructGet(type_index, field_index)
                 | Instruction::StructSet(type_index, field_index) => {
                     let Some(GcTypeKind::Struct(fields)) = module
@@ -334,6 +347,18 @@ fn emit_wasm_gc_instructions(
                 }
                 Instruction::RefNull(type_index) => {
                     function.instruction(&W::RefNull(HeapType::Concrete(*type_index)));
+                }
+                Instruction::ArrayNewFixed(type_index, length) => {
+                    function.instruction(&W::ArrayNewFixed {
+                        array_type_index: *type_index,
+                        array_size: *length,
+                    });
+                }
+                Instruction::ArrayGet(type_index) => {
+                    function.instruction(&W::ArrayGet(*type_index));
+                }
+                Instruction::ArrayLen(_) => {
+                    function.instruction(&W::ArrayLen);
                 }
                 _ => return Ok(false),
             }

@@ -96,6 +96,8 @@ pub struct Lower {
     pub(crate) string_offset: u32,
     /// Computation Builder 情報（ビルダー名 -> (bind関数名, return関数名)）
     pub(crate) computation_builders: HashMap<String, (String, String)>,
+    /// WasmGC String の byte array type index
+    pub(crate) string_array_type_index: Option<u32>,
     /// Lambda Lifting: リフトされた関数のリスト
     pub(crate) lifted_functions: Vec<crate::Function>,
     /// Lambda Lifting: 一意な Lambda 名生成用カウンター
@@ -145,6 +147,7 @@ impl Lower {
             string_data: Vec::new(),
             string_offset: 512, // 文字列データの開始位置（メモリ先頭は数値変換バッファ用）
             computation_builders: HashMap::new(),
+            string_array_type_index: None,
             lifted_functions: Vec::new(),
             lambda_counter: 0,
             lifted_func_indices: HashMap::new(),
@@ -185,6 +188,7 @@ impl Lower {
         self.string_data.clear();
         self.string_offset = 512;
         self.computation_builders.clear();
+        self.string_array_type_index = None;
         self.lifted_functions.clear();
         self.lambda_counter = 0;
         self.lifted_func_indices.clear();
@@ -202,6 +206,20 @@ impl Lower {
         // 型推論結果を保存
         for (name, scheme) in type_results {
             self.type_results.insert(name.clone(), scheme.ty.clone());
+        }
+
+        if self.backend == LowerBackend::WasmGc {
+            let gc_type_count = program
+                .decls
+                .iter()
+                .filter(|decl| {
+                    matches!(
+                        unwrap_private(decl),
+                        Decl::RecordDef { .. } | Decl::TypeDef { .. }
+                    )
+                })
+                .count() as u32;
+            self.string_array_type_index = Some(gc_type_count);
         }
 
         // レコード型定義を GC 型として登録
@@ -353,6 +371,14 @@ impl Lower {
                 }
                 self.adt_type_info.insert(name.clone(), variant_infos);
             }
+        }
+
+        if let Some(type_index) = self.string_array_type_index {
+            debug_assert_eq!(type_index as usize, self.gc_types.len());
+            self.gc_types.push(GcTypeDef {
+                name: "StringBytes".to_string(),
+                kind: GcTypeKind::Array(IrType::I32),
+            });
         }
 
         // import/内部ヘルパー関数を登録
@@ -628,12 +654,20 @@ impl Lower {
                 gc_types.push(self.gc_types[gc_idx as usize].clone());
             }
         }
+        if let Some(gc_idx) = self.string_array_type_index {
+            gc_types.push(self.gc_types[gc_idx as usize].clone());
+        }
         gc_types
     }
 
     /// L# 型を選択した値表現の IR 型へ変換する。
     pub(crate) fn ir_type_for_type(&self, ty: &Type) -> IrType {
         if self.backend == LowerBackend::WasmGc {
+            if matches!(ty, Type::Con(name) if name == "String")
+                && let Some(gc_idx) = self.string_array_type_index
+            {
+                return IrType::Ref(gc_idx);
+            }
             if let Type::Record(name, _) = ty
                 && let Some(&gc_idx) = self.record_type_indices.get(name)
             {
@@ -653,6 +687,11 @@ impl Lower {
         if self.backend == LowerBackend::WasmGc
             && let lsharp_syntax::ast::TypeExpr::Named(_, name) = ty
         {
+            if name == "String"
+                && let Some(gc_idx) = self.string_array_type_index
+            {
+                return IrType::Ref(gc_idx);
+            }
             if let Some(&gc_idx) = self.record_type_indices.get(name) {
                 return IrType::Ref(gc_idx);
             }
@@ -690,6 +729,11 @@ impl Lower {
 
     pub(crate) fn ir_type_for_type_name(&self, type_name: &str) -> IrType {
         if self.backend == LowerBackend::WasmGc {
+            if type_name == "String"
+                && let Some(gc_idx) = self.string_array_type_index
+            {
+                return IrType::Ref(gc_idx);
+            }
             if let Some(&gc_idx) = self.record_type_indices.get(type_name) {
                 return IrType::Ref(gc_idx);
             }
