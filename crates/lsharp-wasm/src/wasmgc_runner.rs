@@ -4,6 +4,7 @@
 //! `env.print-string` host import だけを接続する。WasmGC backend はまだ WASI/component
 //! module を生成しないため、ここで暗黙の WASI fallback を行わない。
 
+use std::io::Write;
 use std::sync::{Arc, Mutex};
 
 use wasmtime::{Config, Engine, ExternType, Instance, Module, Store};
@@ -57,6 +58,33 @@ where
         .call(&mut store, ())
         .map_err(|error| format!("WasmGC 実行に失敗: {error:#}"))?;
     i32::try_from(result).map_err(|error| format!("WasmGC exit code が i32 範囲外です: {error}"))
+}
+
+/// WasmGC core module を `std::io::Write` へ接続して実行する。
+///
+/// 各 `print-string` chunk は `Write::write_all` で全量を消費し、partial write は内部で再試行する。
+/// `WriteZero` や I/O error は sink error として Wasm 実行へ返し、正常終了後には `flush` する。
+pub fn run_wasm_wasmgc_to_writer<W>(wasm_bytes: &[u8], writer: W) -> Result<i32, String>
+where
+    W: Write + Send + 'static,
+{
+    let writer = Arc::new(Mutex::new(writer));
+    let writer_for_sink = Arc::clone(&writer);
+    let exit_code = run_wasm_wasmgc_with_stdout_sink(wasm_bytes, move |bytes| {
+        let mut writer = writer_for_sink
+            .lock()
+            .map_err(|_| "WasmGC stdout writer の mutex が poisoned です".to_string())?;
+        writer
+            .write_all(bytes)
+            .map_err(|error| format!("WasmGC stdout writer failed: {error}"))
+    })?;
+    let mut writer = writer
+        .lock()
+        .map_err(|_| "WasmGC stdout writer の mutex が poisoned です".to_string())?;
+    writer
+        .flush()
+        .map_err(|error| format!("WasmGC stdout writer flush failed: {error}"))?;
+    Ok(exit_code)
 }
 
 /// WasmGC core module を実行し、stdout と exit code を capture する。

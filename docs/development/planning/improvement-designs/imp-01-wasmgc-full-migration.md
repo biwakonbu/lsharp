@@ -412,6 +412,22 @@ Stage 2h の host callback を、WasmGC core module の公開 runner から実�
 adapter、Unicode code-point semantics、native/selfhost runtime、supported target の native evidence
 は後続 task として残す。
 
+## Stage 2j 検証済み slice: WasmGC stdio Write adapter (2026-07-24)
+
+Stage 2i の chunk sink を実際の Rust writer へ接続し、partial write と flush の境界を固定した。
+
+- `crates/lsharp-wasm/src/wasmgc_runner.rs::run_wasm_wasmgc_to_writer` は writer を同期的な
+  `Arc<Mutex<_>>` sink へ包み、各 `print-string` chunk を `Write::write_all` で全量消費する。
+- `write_all` による partial write の再試行、`WriteZero` / write error の停止、正常実行後の `flush`
+  と flush error の伝播を明示する。chunk の再順序化、黙った切り捨て、WASI fd_write への暗黙
+  fallback は行わない。
+- direct probe は 1 byte writer、WriteZero、write error、flush error を固定する。WASI/component
+ adapter や public CLI の output ownership はこの writer slice の対象外である。
+
+これは `std::io::Write` を通じた core runner の host adapter であり、WASI Preview1/Preview2 や
+Component Model の guest adapter を実装したものではない。Unicode code-point semantics、WASI/component
+I/O、native/selfhost runtime、supported target の native evidence は後続 task として残す。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線
@@ -442,10 +458,11 @@ adapter、Unicode code-point semantics、native/selfhost runtime、supported tar
 - 文字列リテラル/操作を `array.new_data` / `array.get_u` / `array.len` へ。
   WASI fd_write へ渡す際は array → リニアメモリへのコピーが必要
   (`array.copy` 不可のため要素ループまたは `array.init_data` の逆操作を helper 化)
-- Stage 2i の次 task は WasmGC bytes を WASI/component adapter へ接続する境界を閉じる。まず
-  `run_wasm_wasmgc_capture` の byte/UTF-8 契約を adapter 側へ写像し、WASI fd_write の partial/error
-  semantics と native/selfhost の出力 parity を別々に検証する。synthetic import の instantiate
-  成功、host callback 単体の byte read、core runner 単体の success だけで公開 print 完了とは扱わない。
+- Stage 2j の次 task は WasmGC bytes を WASI/component adapter へ接続する境界を閉じる。まず
+  `run_wasm_wasmgc_to_writer` の write/flush 契約を adapter 側へ写像し、WASI fd_write の
+  partial/error semantics と native/selfhost の出力 parity を別々に検証する。synthetic import の
+  instantiate 成功、host callback 単体の byte read、core runner 単体の success、writer adapter 単体
+  の success だけで公開 print 完了とは扱わない。
 
 ### Stage 3: Closures → funcref + env struct
 
@@ -499,7 +516,8 @@ return-only slice と bind 明示拒否境界、Stage 2a の scalar String GC ar
 scalar String GC equality slice、Stage 2c の scalar String GC concat slice、Stage 2d の scalar
 String GC substring slice、Stage 2e の packed String byte array slice、Stage 2f の substring invalid
 range boundary、Stage 2g の `print-string` external import boundary、Stage 2h の host-side packed
-String read、Stage 2i の WasmGC runner stdout sink は 2026-07-24 に検証済み。ADT
+String read、Stage 2i の WasmGC runner stdout sink、Stage 2j の `std::io::Write` adapter は
+2026-07-24 に検証済み。ADT
 の全表現、Stage 2 の残り (Unicode code-point semantics / WASI-component I/O /
 native-selfhost parity)、Stage 3 以降
 (closures / traits / selfhost)、supported target

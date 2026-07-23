@@ -1,6 +1,7 @@
 use lsharp_ir::{
     Function, GcField, GcTypeDef, GcTypeKind, Instruction, IrType, Module as IrModule,
 };
+use std::io::{self, Write};
 use std::sync::{Arc, Mutex};
 use wasmtime::{Config, Engine, Instance, Module, Store};
 
@@ -570,6 +571,130 @@ fn wasm_gc_runner_rejects_non_print_string_import_without_wasi_fallback() {
             .expect_err("unsupported import は WASI fallback せず拒否する");
 
     assert!(error.contains("未対応"), "{error}");
+}
+
+#[test]
+fn wasm_gc_runner_write_adapter_retries_partial_writes_until_chunk_is_consumed() {
+    let bytes = emit_print_string_probe_module(&[195, 169], 0);
+    let output = Arc::new(Mutex::new(Vec::new()));
+    let writer = OneByteWriter {
+        output: Arc::clone(&output),
+    };
+    let exit_code = lsharp_wasm::wasmgc_runner::run_wasm_wasmgc_to_writer(&bytes, writer)
+        .expect("partial writer adapter が chunk 全体を書き切れる");
+
+    assert_eq!(exit_code, 0);
+    assert_eq!(*output.lock().unwrap(), vec![195, 169]);
+}
+
+#[test]
+fn wasm_gc_runner_write_adapter_propagates_write_error() {
+    let bytes = emit_print_string_probe_module(&[65], 0);
+    let error = lsharp_wasm::wasmgc_runner::run_wasm_wasmgc_to_writer(&bytes, FailingWriter)
+        .expect_err("writer error は runner error になる");
+
+    assert!(error.contains("stdout closed"), "{error}");
+}
+
+#[test]
+fn wasm_gc_runner_write_adapter_rejects_write_zero() {
+    let bytes = emit_print_string_probe_module(&[65], 0);
+    let error = lsharp_wasm::wasmgc_runner::run_wasm_wasmgc_to_writer(&bytes, ZeroWriter)
+        .expect_err("WriteZero は runner error になる");
+
+    assert!(error.contains("failed"), "{error}");
+}
+
+#[test]
+fn wasm_gc_runner_write_adapter_propagates_flush_error_after_execution() {
+    let bytes = emit_print_string_probe_module(&[65], 0);
+    let error = lsharp_wasm::wasmgc_runner::run_wasm_wasmgc_to_writer(&bytes, FlushFailingWriter)
+        .expect_err("flush error は runner error になる");
+
+    assert!(error.contains("flush failed"), "{error}");
+}
+
+struct OneByteWriter {
+    output: Arc<Mutex<Vec<u8>>>,
+}
+
+impl Write for OneByteWriter {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        let count = usize::from(!bytes.is_empty());
+        if count != 0 {
+            self.output.lock().unwrap().push(bytes[0]);
+        }
+        Ok(count)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+struct FailingWriter;
+
+impl Write for FailingWriter {
+    fn write(&mut self, _bytes: &[u8]) -> io::Result<usize> {
+        Err(io::Error::new(io::ErrorKind::BrokenPipe, "stdout closed"))
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+struct ZeroWriter;
+
+impl Write for ZeroWriter {
+    fn write(&mut self, _bytes: &[u8]) -> io::Result<usize> {
+        Ok(0)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+struct FlushFailingWriter;
+
+impl Write for FlushFailingWriter {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Err(io::Error::other("flush closed"))
+    }
+}
+
+fn emit_print_string_probe_module(bytes: &[i32], exit_code: i64) -> Vec<u8> {
+    let mut body = bytes
+        .iter()
+        .copied()
+        .map(Instruction::I32Const)
+        .collect::<Vec<_>>();
+    body.push(Instruction::ArrayNewFixed(0, bytes.len() as u32));
+    body.push(Instruction::Call(4));
+    body.push(Instruction::I64Const(exit_code));
+    let module = IrModule {
+        functions: vec![Function {
+            name: "main".to_string(),
+            params: vec![],
+            result: IrType::I64,
+            locals: vec![],
+            body,
+            is_export: true,
+        }],
+        gc_types: vec![GcTypeDef {
+            name: "StringBytes".to_string(),
+            kind: GcTypeKind::PackedByteArray,
+        }],
+        imports: vec![],
+        globals: vec![],
+        string_data: vec![],
+    };
+    lsharp_wasm::wasmgc::emit_wasm_wasmgc(&module).expect("writer adapter module を生成できる")
 }
 
 #[test]

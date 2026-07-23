@@ -39,5 +39,7 @@ Add `lsharp_wasm::wasmgc_runner` with an explicit core-module runner contract.
 
 - The WasmGC `print-string` path now has a runnable core-module boundary with deterministic sink/error
   semantics.
+- The `std::io::Write` integration, including partial-write retries and flush errors, is recorded as the
+  separate Stage 2j adapter decision. WASI/component output ownership remains outside this core runner.
 - WASI/component output integration and the aggregate `LEGACY-EXEC-01` parity target remain active tasks;
   this verified slice is not a claim of full public WasmGC execution support.
