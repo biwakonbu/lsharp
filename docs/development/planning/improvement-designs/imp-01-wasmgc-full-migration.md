@@ -266,8 +266,25 @@ Stage 2 の先行境界として、String の値表現を WasmGC の concrete ar
   `..._passes_string_array_to_user_function` が Wasmtime actual execution を固定する。
 
 これは Stage 2 の scalar value slice であり、packed `i8` storage、Unicode code-point semantics、
-concat/substring/equality、print/WASI/component bridge、GC mutation、supported target の native
+concat/substring、print/WASI/component bridge、GC mutation、supported target の native
 evidence、selfhost compiler は未完了である。
+
+## Stage 2b 検証済み slice: scalar String GC equality (2026-07-24)
+
+Stage 2a の `StringBytes` array を使い、WasmGC の `string-eq` を linear runtime import なしで
+実行できるようにした。
+
+- 二つの concrete array reference の長さを先に比較し、同じ場合だけ `array.get` の byte loop を
+  回して全要素を比較する。長さ不一致や最初の byte 不一致は false とし、空配列同士は true とする。
+- 比較対象を local に保存するため、String の user function parameter からの呼び出しも同じ
+  `StringBytes` reference 型で処理する。linear backend の `__string_eq` 経路は変更しない。
+- `test_compile_file_wasmgc_backend_executes_string_equality` が同長一致、同長不一致、長さ不一致、
+  空配列同士を user function 経由で Wasmtime 実行し、結果 `15` を固定する。既存 linear string-eq
+  4 件も回帰確認する。
+
+これは byte-level equality の verified slice であり、packed `i8` representation、Unicode
+code-point semantics、concat/substring、print/WASI/component bridge、GC mutation、supported target
+の native evidence、selfhost compiler は未完了である。
 
 ## 実装戦略
 
@@ -348,7 +365,8 @@ Stage 0 (依存 API / runtime capability probe)、Stage 1 の IR emitter、Stage
 Stage 1.75 の direct record lowering/update/user call、scalar ADT constructor/pattern、nested ADT
 payload/pattern、nullable ADT reference payload、scalar literal pattern、record pattern field check
 slice、typed type-application payload slice、scalar GADT refinement execution slice、computation
-return-only slice と bind 明示拒否境界、Stage 2a の scalar String GC array slice は 2026-07-24 に
-検証済み。ADT の全表現、Stage 2 の残り (packed strings / I/O)、Stage 3 以降
+return-only slice と bind 明示拒否境界、Stage 2a の scalar String GC array slice、Stage 2b の
+scalar String GC equality slice は 2026-07-24 に検証済み。ADT の全表現、Stage 2 の残り
+(packed strings / concat / substring / I/O)、Stage 3 以降
 (closures / traits / selfhost)、supported target
 の actual runtime evidence は未完了であり、`LEGACY-EXEC-01` の完了条件には到達していない。
