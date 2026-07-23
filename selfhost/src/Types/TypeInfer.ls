@@ -102,7 +102,7 @@
     ;; 条件式を推論
     cond-result (infer-expr cond-node env subst counter)]
     (if (= (result-failed cond-result) 1)
-      (make-error-result-code (result-error-code cond-result))
+      (propagate-error-result-with-span cond-result)
       (let [s1 (result-subst cond-result)
         cond-ty (result-type cond-result)
         ;; 条件式は Bool であること
@@ -112,13 +112,13 @@
           ;; then 枝を推論
           (let [then-result (infer-expr then-node env s2 counter)]
             (if (= (result-failed then-result) 1)
-              (make-error-result-code (result-error-code then-result))
+              (propagate-error-result-with-span then-result)
               (let [s3 (result-subst then-result)
                 then-ty (result-type then-result)
                 ;; else 枝を推論
                 else-result (infer-expr else-node env s3 counter)]
                 (if (= (result-failed else-result) 1)
-                  (make-error-result-code (result-error-code else-result))
+                  (propagate-error-result-with-span else-result)
                   ;; then と else の型を統一
                   (let [s4 (result-subst else-result)
                     else-ty (result-type else-result)
