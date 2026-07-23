@@ -693,7 +693,7 @@ fn test_e2e_selfhost_typeinfer_analysis_reports_first_failed_definition_index() 
 (defn main []
   (let [analysis
           (infer-program-analysis
-            (parse-program "(defn ok [] 42) (defn fail [] missing)"))]
+            (parse-program "(defn ok [] 42) (defn fail [] missing) (defn later [] missing-later)"))]
     (do
       (print (infer-program-analysis-diagnostic-count analysis))
       (print (infer-program-analysis-first-error-index analysis))
@@ -708,7 +708,35 @@ fn test_e2e_selfhost_typeinfer_analysis_reports_first_failed_definition_index() 
 
     assert_eq!(
         lines,
-        ["1", "1"],
+        ["2", "1"],
         "最初の失敗定義の index と診断数を保持するべき"
+    );
+}
+
+/// selfhost TypeInfer.ls テスト: 最初に失敗した top-level 定義の name hash を保持する
+#[test]
+fn test_e2e_selfhost_typeinfer_analysis_reports_first_failed_definition_name_hash() {
+    let harness = r#"
+(defn main []
+  (let [program (parse-program "(defn ok [] 42) (defn fail [] missing) (defn later [] missing-later)")
+        analysis (infer-program-analysis program)
+        failed-decl (vector-get program 1)
+        expected-name-hash (vector-get failed-decl 1)
+        actual-name-hash (infer-program-analysis-first-error-name-hash analysis)]
+    (do
+      (print (= expected-name-hash actual-name-hash))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_typeinfer_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["1"],
+        "最初の失敗定義の name hash を AST と一致させるべき"
     );
 }

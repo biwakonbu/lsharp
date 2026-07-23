@@ -1815,3 +1815,11 @@ standalone source-check の失敗定義を後続の name / dependency / span 観
 Evidence: RED `test_e2e_selfhost_typeinfer_analysis_reports_first_failed_definition_index` は未定義 accessorで失敗した。GREEN は `(defn ok [] 42) (defn fail [] missing)` の selfhost fixtureで diagnostics `1`、first-error-index `1` を確認した。既存 typed-defn signature rejection と mutual-recursion program analysis は `RUST_MIN_STACK=128MiB` の focused E2E で各 `1 passed` となり、既存 state accessorと recursive branchの互換性を確認した。通常 stackでの typed-defn testは selfhost bundle実行中に stack overflowとなるため、expanded stackを使う既存運用に合わせた。
 
 これは standalone `TestRunner.ls` の 289 diagnostics を減らす修正ではなく、失敗定義を一件ずつ分類するための観測契約である。失敗定義名、依存先、source spanの native projection、source-file check `0`、EC-M1-01 aggregate、Rust-free全体完了は未達であり、TODOの `[~]` と Rust oracle / bootstrap / host integration境界を維持する。次の RED はこの indexから定義名・依存先・spanを同じ fixtureで取得する narrow contractとする。
+
+### EC-M1-01 standalone source-check first failed definition name-hash provenance slice (2026-07-23)
+
+`infer-program-analysis` の state 末尾へ `first-error-name-hash` を追加し、最初に失敗した top-level defn の name hash を index と同じ provenance として保持する。後続の失敗では既存の index/name hashを維持し、recursive-alias early return と成功時は `-1` とする。既存 state index 0〜6 は変更しない。
+
+Evidence: RED `test_e2e_selfhost_typeinfer_analysis_reports_first_failed_definition_name_hash` は未定義 accessorで失敗した。GREEN は `(defn ok [] 42) (defn fail [] missing) (defn later [] missing-later)` の fixtureで diagnostics `2`、first-error-index `1`、AST index `1` の name hashとの一致を確認し、provenance test 2件が `2 passed`（single-thread）となった。typed-defn signature rejection と mutual-recursion program analysisも state 8要素化後に各 `1 passed`（`RUST_MIN_STACK=128MiB`）だった。
+
+これは name hashの観測契約だけを追加する verified sliceであり、失敗定義名の文字列化、依存先、source spanの native projection、standalone source-check `0`、EC-M1-01 aggregate、Rust-free全体完了を意味しない。次は name hashを依存先・source spanへ結び付ける狭い診断契約を分離して進める。
