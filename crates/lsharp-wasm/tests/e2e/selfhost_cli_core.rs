@@ -1003,6 +1003,56 @@ fn test_e2e_selfhost_cli_check_file_resolves_imported_definition() {
     );
 }
 
+/// EC-M1-01: file check は最初の失敗定義を依存 module hashへ結び付けること
+#[test]
+fn test_e2e_selfhost_cli_check_file_reports_first_failed_module_hash() {
+    let dir = std::env::temp_dir().join(format!(
+        "lsharp_test_cli_check_import_failure_provenance_{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("Lib.ls"),
+        "(module Lib)\n(defn helper [] missing)\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("Main.ls"),
+        "(module Main)\n(import Lib)\n(defn main [] 42)\n",
+    )
+    .unwrap();
+
+    let harness = r#"
+(defn main []
+  (do
+    (print (name-hash "Lib" 0 3))
+    (print (run-check "Main.ls" 0))
+    0))
+"#;
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let run_dir = dir.clone();
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run_with_dir(&combined, &run_dir)
+    });
+    let _ = std::fs::remove_dir_all(&dir);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    let module_hash = lines
+        .first()
+        .copied()
+        .expect("fixture module hash が出力されるべき");
+    assert!(
+        lines.contains(&"diagnostics:1,T0001@1:1,first-body:undefined symbol"),
+        "import 先の失敗定義は undefined symbol を返すべき: {:?}",
+        lines
+    );
+    assert!(
+        lines.contains(&format!("first-module-hash:{module_hash}").as_str()),
+        "最初の失敗定義を Lib module hash へ結び付けるべき: {:?}",
+        lines
+    );
+}
+
 #[test]
 #[ignore]
 fn test_e2e_selfhost_cli_check_source_builtin_application_type_contract() {

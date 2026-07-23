@@ -1831,3 +1831,11 @@ Evidence: RED `test_e2e_selfhost_typeinfer_analysis_reports_first_failed_definit
 Evidence: RED `test_e2e_selfhost_cli_check_file_resolves_imported_definition` は、`Main.ls` から import した `Lib.helper` を解決できず `undefined symbol` になる failure を固定した。GREEN は同じ Preview1 selfhost bundle で `Fn`、`diagnostics:0`、exit `0` を確認した（1 passed、445.78s）。依存 module のない source-only `run-check-source` の既存契約も維持する。`run_wasm_component_capture` は component trap 時にも既に捕捉した stdout を error に残すようにし、`test_component_trap_error_preserves_captured_stdout` で `stdout_lossy` の出力を固定した。
 
 この slice は module/import declaration の flatten と unqualified name resolution に限定される。`import` の `:only` / `:as` / `:open`、qualified name、private visibility、依存先 source span の診断 projection、standalone source-check の全定義成功、supported 2 targets の current-source native gateは未完了である。Preview2 の Rust driver で `selfhost/src/Syntax/Parser.ls` を直接 check すると、temporary marker により import traversal 前の初期 source parse で component trap することを確認した。Preview1 の core harness で到達できることを Preview2 component parityへ拡大解釈せず、root/stack/spill の広い変更は保留する。次の RED は、失敗定義の name hashを依存先・source spanへ結び付ける狭い診断契約である。
+
+### EC-M1-01 first failed imported module provenance slice (2026-07-23)
+
+file-check の flatten 結果と同じ declaration 順で module hash の平行ベクタを作り、`infer-program-analysis-first-error-index` が示す base type error を依存 moduleへ結び付けた。`run-check-source` は空の provenance contextを使うため、source-only の text/JSON 契約は変えず、file-check の text error outputにだけ `first-module-hash:<hash>` を追加する。
+
+Evidence: RED `test_e2e_selfhost_cli_check_file_reports_first_failed_module_hash` は `Lib.helper` の `missing` を使い、出力が module hash `76389`、`Int`、`diagnostics:1,T0001@1:1,first-body:undefined symbol`、exit `1` までで provenance 行がない failure を固定した。GREEN は同じ fixtureで `first-module-hash:76389` を確認し `1 passed`（437.91s）となった。`Cli` と `EmbeddedCli` の context wiringを同期し、component targetの JSON reportへ未検証の fieldは追加していない。
+
+これは module hashの dependency provenanceだけを閉じる verified sliceであり、module name/pathの文字列化、qualified import/private visibility、失敗式の source span、canonical/case/property diagnosticsとの統合、standalone source-check `0`、supported 2 targetsの current-source native gate、EC-M1-01 aggregateの完了を意味しない。次の RED はこの module hashを source pathと失敗式 spanへ分解して観測する narrow contractである。

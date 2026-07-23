@@ -1212,6 +1212,132 @@
     (if (= (vector-get step 0) 1)
       (vector-get step 2)
       (append-check-pairs pairs (vector-get step 1) n (vector-get step 2)))))
+
+;; check の flatten と同じ declaration 順で、各 declaration の module hash を保持する。
+(defn check-pair-module-hash [decls]
+  (if (> (vector-length decls) 0)
+    (let [first-decl (vector-get decls 0)]
+      (if (= (vector-get first-decl 0) 25)
+        (vector-get first-decl 1)
+        -1))
+    -1))
+(defn append-check-owner-decls-step [idx n owners owner]
+  (if (>= idx n)
+    (make-pairs-step-state 1 idx owners)
+    (do
+      (root_push owners)
+      (let [next-owners (vector-push owners owner)]
+        (do
+          (root_push next-owners)
+          (let [state (make-pairs-step-state 0 (+ idx 1) next-owners)]
+            (do
+              (root_pop)
+              (root_pop)
+              state)))))))
+(defn append-check-owner-decls-step-64-loop-bounded [idx n owners owner remaining]
+  (let [step (append-check-owner-decls-step idx n owners owner)]
+    (if (= (vector-get step 0) 1)
+      step
+      (if (<= remaining 1)
+        step
+        (append-check-owner-decls-step-64-loop-bounded
+          (vector-get step 1)
+          n
+          (vector-get step 2)
+          owner
+          (- remaining 1))))))
+(defn append-check-owner-decls-step-64 [idx n owners owner]
+  (append-check-owner-decls-step-64-loop-bounded idx n owners owner 64))
+(defn append-check-owner-decls [idx n owners owner]
+  (let [step (append-check-owner-decls-step-64 idx n owners owner)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push owners)
+        (root_push step)
+        (let [result
+                (append-check-owner-decls
+                  (vector-get step 1)
+                  n
+                  (vector-get step 2)
+                  owner)]
+          (do
+            (root_pop)
+            (root_pop)
+            result))))))
+(defn append-check-owners-step [pairs idx n owners]
+  (if (>= idx n)
+    (make-pairs-step-state 1 idx owners)
+    (do
+      (root_push pairs)
+      (root_push owners)
+      (let [pair (vector-get pairs idx)]
+        (do
+          (root_push pair)
+          (let [decls (vector-get pair 1)]
+            (do
+              (root_push decls)
+              (let [next-owners
+                      (append-check-owner-decls
+                        0
+                        (vector-length decls)
+                        owners
+                        (check-pair-module-hash decls))]
+                (do
+                  (root_push next-owners)
+                  (let [state (make-pairs-step-state 0 (+ idx 1) next-owners)]
+                    (do
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      state)))))))))))
+(defn append-check-owners-step-64-loop-bounded [pairs idx n owners remaining]
+  (let [step (append-check-owners-step pairs idx n owners)]
+    (if (= (vector-get step 0) 1)
+      step
+      (if (<= remaining 1)
+        step
+        (append-check-owners-step-64-loop-bounded
+          pairs
+          (vector-get step 1)
+          n
+          (vector-get step 2)
+          (- remaining 1))))))
+(defn append-check-owners-step-64 [pairs idx n owners]
+  (append-check-owners-step-64-loop-bounded pairs idx n owners 64))
+(defn append-check-owners [pairs idx n owners]
+  (let [step (append-check-owners-step-64 pairs idx n owners)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push pairs)
+        (root_push owners)
+        (root_push step)
+        (let [result
+                (append-check-owners
+                  pairs
+                  (vector-get step 1)
+                  n
+                  (vector-get step 2))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            result))))))
+(defn make-check-program-context [program owners]
+  (do
+    (root_push program)
+    (root_push owners)
+    (let [context1 (vector-push (vector-new 2) program)]
+      (do
+        (root_push context1)
+        (let [context2 (vector-push context1 owners)]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            context2))))))
 (defn load-check-program [path]
   (let [cache-ref (ref-new (map-new))
     parse-count-ref (ref-new 0)]
@@ -1223,10 +1349,19 @@
           (root_push all-pairs)
           (let [program (append-check-pairs all-pairs 0 (vector-length all-pairs) (vector-new 8))]
             (do
-              (root_pop)
-              (root_pop)
-              (root_pop)
-              program)))))))
+              (root_push program)
+              (let [owners (append-check-owners all-pairs 0 (vector-length all-pairs) (vector-new 8))]
+                (do
+                  (root_push owners)
+                  (let [context (make-check-program-context program owners)]
+                    (do
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      context)))))))))))
 (defn compile-file-functions-with-cache [path func-idx cache-ref parse-count-ref data-ref]
   (let [all-pairs (compile-file-pairs-with-cache path cache-ref parse-count-ref)]
     (do
