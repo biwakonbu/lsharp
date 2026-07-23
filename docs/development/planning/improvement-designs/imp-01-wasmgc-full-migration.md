@@ -179,6 +179,26 @@ ADT payload の `Int` / `Bool` / `Unit` literal pattern を、暗黙の linear f
 この slice は literal の型表現全体を閉じたものではなく、GADT、parametric representation、GC
 root/allocator、strings、WASI/component、supported 2 targets、selfhost compiler は未完了である。
 
+## Stage 1.75e 検証済み slice: record pattern field checks (2026-07-24)
+
+WasmGC の record pattern を ADT pattern と同じ field sequence lowering へ接続し、field 値の
+scalar literal と nested record pattern を実行できるようにした。
+
+- record の concrete GC struct から field を typed local へ取り出し、`Int` / `Bool` / `Unit`
+  literal は `I64Eq` で比較する。比較不一致時は同じ scrutinee の次の match arm へ fallback し、
+  一致時だけ後続 field と body を評価する。
+- nested record field は child の GC struct fields を sequence へ展開するため、親・子の literal
+  を組み合わせても fallback の境界を失わない。record field の `Ref` 型は typed local と
+  `local_type_names` へ保持し、後続の field access / nested match で i64 へ暗黙変換しない。
+- `test_compile_file_wasmgc_backend_executes_record_literal_pattern_with_fallback` と
+  `test_compile_file_wasmgc_backend_executes_nested_record_literal_pattern` が成功・不一致を
+  Wasmtime で実行し、String literal など未対応表現は
+  `test_wasmgc_backend_rejects_unsupported_record_string_literal_pattern` で `LS3001` を確認する。
+
+Float/String の value representation、nominal runtime cast、WASI/component、supported 2 targets、
+selfhost compiler は未完了であり、`LEGACY-LANG-01` / `LEGACY-EXEC-01` の aggregate 完了条件には
+到達していない。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線
@@ -256,6 +276,6 @@ root/allocator、strings、WASI/component、supported 2 targets、selfhost compi
 
 Stage 0 (依存 API / runtime capability probe)、Stage 1 の IR emitter、Stage 1.5 の CLI 選択、
 Stage 1.75 の direct record lowering/update/user call、scalar ADT constructor/pattern、nested ADT
-payload/pattern、nullable ADT reference payload、scalar literal pattern slice は 2026-07-24 に
-検証済み。ADT の全表現、Stage 2 以降 (strings / closures / traits / selfhost)、supported target
+payload/pattern、nullable ADT reference payload、scalar literal pattern、record pattern field check
+slice は 2026-07-24 に検証済み。ADT の全表現、Stage 2 以降 (strings / closures / traits / selfhost)、supported target
 の actual runtime evidence は未完了であり、`LEGACY-EXEC-01` の完了条件には到達していない。

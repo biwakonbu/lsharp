@@ -3,9 +3,11 @@
 use lsharp_syntax::ast::*;
 use lsharp_syntax::span::Span;
 
-use crate::{Instruction, IrType};
+use crate::{GcTypeKind, Instruction, IrType};
 
 use super::{FuncCtx, Lower, LowerError};
+
+type WasmGcPatternCheck = (u32, Pattern, Option<String>);
 
 impl Lower {
     /// match の腕を if-else チェインに変換
@@ -122,6 +124,17 @@ impl Lower {
                 ctx.emit(Instruction::End);
             }
             Pattern::RecordPat(_, type_name, field_pats) => {
+                if self.backend == super::LowerBackend::WasmGc {
+                    return self.lower_wasmgc_record_pattern_arm(
+                        ctx,
+                        scrut_local,
+                        type_name,
+                        field_pats,
+                        arms,
+                        arm,
+                        idx,
+                    );
+                }
                 self.bind_record_pattern_fields(ctx, scrut_local, type_name, field_pats, arm.span)?;
                 self.lower_arm_body_with_guard(ctx, scrut_local, arms, arm, idx)?;
             }
@@ -185,6 +198,88 @@ impl Lower {
             }
         }
         Ok(())
+    }
+
+    /// WasmGC レコードパターンを field 値の sequence として lowering する。
+    ///
+    /// `lower_wasmgc_pattern_sequence` は ADT の nested constructor/literal と同じく、
+    /// field pattern が不一致なら同じ scrutinee の次の arm へ戻す。これにより、
+    /// `[{Point x 42} ...] [_ ...]` が不一致を暗黙に受理したり trap で終わったりしない。
+    #[allow(clippy::too_many_arguments)]
+    fn lower_wasmgc_record_pattern_arm(
+        &mut self,
+        ctx: &mut FuncCtx,
+        scrut_local: u32,
+        type_name: &str,
+        field_pats: &[(String, Pattern)],
+        arms: &[MatchArm],
+        arm: &MatchArm,
+        idx: usize,
+    ) -> Result<(), LowerError> {
+        let checks = self.collect_wasmgc_record_pattern_checks(
+            ctx,
+            scrut_local,
+            type_name,
+            field_pats,
+            arm.span,
+        )?;
+        self.lower_wasmgc_pattern_sequence(ctx, checks, arms, idx, scrut_local)
+    }
+
+    fn collect_wasmgc_record_pattern_checks(
+        &self,
+        ctx: &mut FuncCtx,
+        record_local: u32,
+        type_name: &str,
+        field_pats: &[(String, Pattern)],
+        span: Span,
+    ) -> Result<Vec<WasmGcPatternCheck>, LowerError> {
+        let Some(&gc_type_idx) = self.record_type_indices.get(type_name) else {
+            return Err(LowerError::Unsupported {
+                msg: format!("WasmGC record type を解決できません: {type_name}"),
+                span: Some(span),
+            });
+        };
+        let Some(GcTypeKind::Struct(fields)) = self
+            .gc_types
+            .get(gc_type_idx as usize)
+            .map(|type_def| &type_def.kind)
+        else {
+            return Err(LowerError::Unsupported {
+                msg: format!("WasmGC record type が struct ではありません: {type_name}"),
+                span: Some(span),
+            });
+        };
+
+        let mut checks = Vec::with_capacity(field_pats.len());
+        for (field_name, pattern) in field_pats {
+            let Some(field_idx) = self.resolve_field_index(type_name, field_name) else {
+                return Err(LowerError::Unsupported {
+                    msg: format!("WasmGC record field を解決できません: {type_name}.{field_name}"),
+                    span: Some(span),
+                });
+            };
+            let field_type = fields
+                .get(field_idx as usize)
+                .map(|field| field.ty)
+                .unwrap_or(IrType::I64);
+            ctx.emit(Instruction::LocalGet(record_local));
+            ctx.emit(Instruction::StructGet(gc_type_idx, field_idx));
+            let field_local = ctx.alloc_local_typed(
+                format!("_wasmgc_record_pattern_field_{field_name}"),
+                field_type,
+            );
+            ctx.emit(Instruction::LocalSet(field_local));
+            let field_type_name = match field_type {
+                IrType::Ref(type_index) => self
+                    .gc_types
+                    .get(type_index as usize)
+                    .map(|type_def| type_def.name.clone()),
+                _ => None,
+            };
+            checks.push((field_local, pattern.clone(), field_type_name));
+        }
+        Ok(checks)
     }
 
     /// ガード条件がある場合はガード式を評価して分岐、なければ直接 body を実行
@@ -465,7 +560,7 @@ impl Lower {
     fn lower_wasmgc_pattern_sequence(
         &mut self,
         ctx: &mut FuncCtx,
-        checks: Vec<(u32, Pattern, Option<String>)>,
+        checks: Vec<WasmGcPatternCheck>,
         arms: &[MatchArm],
         idx: usize,
         scrut_local: u32,
@@ -569,10 +664,17 @@ impl Lower {
                 ctx.emit(Instruction::End);
                 Ok(())
             }
-            Pattern::RecordPat(_, _, _) => Err(LowerError::Unsupported {
-                msg: "WasmGC ADT の nested/literal pattern".to_string(),
-                span: Some(arm.span),
-            }),
+            Pattern::RecordPat(_, type_name, field_pats) => {
+                let mut nested_checks = self.collect_wasmgc_record_pattern_checks(
+                    ctx,
+                    *value_local,
+                    type_name,
+                    field_pats,
+                    arm.span,
+                )?;
+                nested_checks.extend(rest);
+                self.lower_wasmgc_pattern_sequence(ctx, nested_checks, arms, idx, scrut_local)
+            }
         }
     }
 }

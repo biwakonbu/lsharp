@@ -381,18 +381,16 @@ mod tests {
     }
 
     #[test]
-    fn test_wasmgc_backend_rejects_unsupported_adt_literal_pattern() {
+    fn test_wasmgc_backend_rejects_unsupported_record_string_literal_pattern() {
         let error = compile_module_from_formatted_source(
             Path::new("Main.ls"),
-            "(type Point (record (: x Int)))\n\
+            "(type Point (record (: x String)))\n\
              (type Box (Box Point))\n\
              (defn read-point [value]\n\
-               (match value [(Box {Point x 1}) 1] [_ 0]))\n",
+               (match value [(Box {Point x \"value\"}) 1] [_ 0]))\n",
             CompileBackend::WasmGc,
         )
-        .expect_err(
-            "WasmGC backend は未対応の ADT pattern を暗黙に linear lowering してはならない",
-        );
+        .expect_err("WasmGC backend は未対応の record literal pattern を暗黙に linear lowering してはならない");
         assert!(error.to_string().contains("LS3001"));
         assert!(error.to_string().contains("nested/literal"));
     }
@@ -621,6 +619,101 @@ mod tests {
             .get_typed_func::<(), i64>(&mut store, "main")
             .unwrap();
         assert_eq!(main.call(&mut store, ()).unwrap(), 41);
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_compile_file_wasmgc_backend_executes_record_literal_pattern_with_fallback() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("workspace tmp root")
+            .join("lsharp-wasmgc-record-pattern-red");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(dir.join(".git")).unwrap();
+
+        let file = dir.join("Main.ls");
+        let output = dir.join("Main.wasm");
+        std::fs::write(
+            &file,
+            "(type Point (record (: x Int) (: y Int)))\n\
+             (defn classify [point]\n\
+               (match point [{Point x 42 y value} value] [_ 0]))\n\
+             (defn main [] (+ (classify {Point x 42 y 7})\
+                              (classify {Point x 41 y 7})))\n",
+        )
+        .unwrap();
+
+        let artifacts = compile_file_with_backend(
+            &file,
+            Some(&output),
+            false,
+            Some(CompileTarget::WebWasm),
+            CompileBackend::WasmGc,
+        )
+        .unwrap();
+        let wasm_bytes = std::fs::read(&artifacts.output_path).unwrap();
+
+        let mut config = wasmtime::Config::new();
+        config.wasm_gc(true);
+        let engine = wasmtime::Engine::new(&config).unwrap();
+        let module = wasmtime::Module::new(&engine, wasm_bytes).unwrap();
+        let mut store = wasmtime::Store::new(&engine, ());
+        let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
+        let main = instance
+            .get_typed_func::<(), i64>(&mut store, "main")
+            .unwrap();
+        assert_eq!(main.call(&mut store, ()).unwrap(), 7);
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_compile_file_wasmgc_backend_executes_nested_record_literal_pattern() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("workspace tmp root")
+            .join("lsharp-wasmgc-nested-record-pattern");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(dir.join(".git")).unwrap();
+
+        let file = dir.join("Main.ls");
+        let output = dir.join("Main.wasm");
+        std::fs::write(
+            &file,
+            "(type Inner (record (: x Int)))\n\
+             (type Outer (record (: inner Inner)))\n\
+             (defn classify [outer]\n\
+               (match outer [{Outer inner {Inner x 42}} 1] [_ 0]))\n\
+             (defn main [] (+ (classify {Outer inner {Inner x 42}})\
+                              (classify {Outer inner {Inner x 41}})))\n",
+        )
+        .unwrap();
+
+        let artifacts = compile_file_with_backend(
+            &file,
+            Some(&output),
+            false,
+            Some(CompileTarget::WebWasm),
+            CompileBackend::WasmGc,
+        )
+        .unwrap();
+        let wasm_bytes = std::fs::read(&artifacts.output_path).unwrap();
+
+        let mut config = wasmtime::Config::new();
+        config.wasm_gc(true);
+        let engine = wasmtime::Engine::new(&config).unwrap();
+        let module = wasmtime::Module::new(&engine, wasm_bytes).unwrap();
+        let mut store = wasmtime::Store::new(&engine, ());
+        let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
+        let main = instance
+            .get_typed_func::<(), i64>(&mut store, "main")
+            .unwrap();
+        assert_eq!(main.call(&mut store, ()).unwrap(), 1);
 
         std::fs::remove_dir_all(&dir).unwrap();
     }
