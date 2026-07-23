@@ -10996,6 +10996,59 @@ fn test_e2e_selfhost_test_runner_rejects_non_bool_dynamic_function_match_guard()
     );
 }
 
+/// EC-M1-01: unknown return shape の dynamic match guard message を Rust oracle と揃えること
+#[test]
+fn test_e2e_selfhost_test_runner_preserves_non_bool_dynamic_function_match_guard_message() {
+    let source = "(defn identity [x] x) (defn check [] :invariant (match true [_ when (identity 1) true] [_ true]) true)";
+    let program = lsharp_syntax::parse(source).expect("dynamic function guard message fixture は parse できるべき");
+    let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "Rust oracle は dynamic function guard message を 1 件診断するべき: {diagnostics:?}"
+    );
+    let oracle_message = diagnostics[0].message.clone();
+    let oracle_span = diagnostics[0].span;
+
+    let harness = r#"
+(defn main []
+  (let [src "(defn identity [x] x) (defn check [] :invariant (match true [_ when (identity 1) true] [_ true]) true)"
+        suite (generate-tests src)
+        results (vector-get suite 1)
+        result0 (vector-get results 0)]
+    (do
+      (print (vector-length results))
+      (print (test-result-diagnostic result0))
+      (print-string (string-concat (test-result-diagnostic-message result0) "\n"))
+      (print (test-result-diagnostic-start result0))
+      (print (test-result-diagnostic-end result0))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_test_runner_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(lines.first().copied(), Some("1"));
+    assert_eq!(lines.get(1).copied(), Some("2"));
+    assert_eq!(
+        lines.get(2).copied(),
+        Some(oracle_message.as_str()),
+        "selfhost dynamic function guard message は Rust oracle と一致するべき"
+    );
+    assert_eq!(
+        lines.get(3).and_then(|line| line.parse::<usize>().ok()),
+        Some(oracle_span.start),
+        "selfhost dynamic function guard message の diagnostic span 開始位置は Rust oracle と一致するべき"
+    );
+    assert_eq!(
+        lines.get(4).and_then(|line| line.parse::<usize>().ok()),
+        Some(oracle_span.end),
+        "selfhost dynamic function guard message の diagnostic span 終了位置は Rust oracle と一致するべき"
+    );
+}
+
 /// EC-M1-01: higher-order lambda call の non-Bool invariant span を Rust oracle と揃えること
 #[test]
 fn test_e2e_selfhost_test_runner_rejects_non_bool_lambda_match_guard() {
