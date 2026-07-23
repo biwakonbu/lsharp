@@ -147,8 +147,22 @@ scalar ADT の共通 `i64` slot を一段拡張し、ADT を別の ADT payload �
   `Box Nothing` の成功・fallback を Wasmtime で実行する。literal pattern と String/parametric
   payload は明示拒否テストで境界を固定する。
 
-この slice は同一 ADT 内の nullable reference slot（欠損 variant への default 値）をまだ扱わず、
-全 variant に存在する nested reference payload に限定する。GADT、parametric representation、
+GADT、parametric representation、GC root/allocator、strings、WASI/component、supported 2 targets、
+selfhost compiler は未完了である。
+
+## Stage 1.75c 検証済み slice: nullable ADT reference payload (2026-07-24)
+
+variant によって payload が欠損する ADT でも、WasmGC の nullable concrete reference を明示的に生成する
+経路を追加した。
+
+- `RefNull(type_idx)` を IR に追加し、GC type index の link remap、WasmGC validation/emitter、linear
+  backend の互換 fallback を接続する。ADT constructor の欠損 Ref slot は `ref.null concrete` を
+  `StructNew` 前に積む。
+- `test_compile_file_wasmgc_backend_executes_nullable_adt_payload` が `Present (Just 42)` と
+  `Present Nothing` を実行し、nested `Just` の不一致が wildcard arm へ進む結果 `42` を Wasmtime で
+  確認する。既存 linear constructor と WasmGC probe の回帰も同じ gate で通す。
+
+nullable slot は concrete Ref の default に限定し、literal pattern、GADT、parametric representation、
 GC root/allocator、strings、WASI/component、supported 2 targets、selfhost compiler は未完了である。
 
 ## 実装戦略
@@ -228,6 +242,6 @@ GC root/allocator、strings、WASI/component、supported 2 targets、selfhost co
 
 Stage 0 (依存 API / runtime capability probe)、Stage 1 の IR emitter、Stage 1.5 の CLI 選択、
 Stage 1.75 の direct record lowering/update/user call、scalar ADT constructor/pattern、nested ADT
-payload/pattern slice は 2026-07-24 に検証済み。ADT の全表現、Stage 2 以降 (strings / closures /
-traits / selfhost)、supported target の actual runtime evidence は未完了であり、
-`LEGACY-EXEC-01` の完了条件には到達していない。
+payload/pattern、nullable ADT reference payload slice は 2026-07-24 に検証済み。ADT の全表現、
+Stage 2 以降 (strings / closures / traits / selfhost)、supported target の actual runtime evidence
+は未完了であり、`LEGACY-EXEC-01` の完了条件には到達していない。

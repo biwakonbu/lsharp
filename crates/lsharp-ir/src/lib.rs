@@ -218,6 +218,7 @@ pub enum Instruction {
     StructGet(u32, u32), // struct.get type_idx field_idx
     StructSet(u32, u32), // struct.set type_idx field_idx
     RefCast(u32),        // ref.cast type_idx (ダウンキャスト)
+    RefNull(u32),        // ref.null concrete type_idx
 
     // 関数参照 (vtable/辞書パスイング)
     RefFunc(u32), // ref.func func_idx
@@ -341,6 +342,7 @@ impl fmt::Display for Instruction {
                 write!(f, "struct.set {type_idx} {field_idx}")
             }
             Instruction::RefCast(idx) => write!(f, "ref.cast {idx}"),
+            Instruction::RefNull(idx) => write!(f, "ref.null {idx}"),
             Instruction::RefFunc(idx) => write!(f, "ref.func {idx}"),
             Instruction::CallRef(idx) => write!(f, "call_ref {idx}"),
             Instruction::GlobalGet(idx) => write!(f, "global.get {idx}"),
@@ -574,6 +576,11 @@ fn remap_instruction_with_imports(
             }
         }
         Instruction::RefCast(idx) => {
+            if let Some(&new_idx) = gc_type_remap.get(&(mod_idx, *idx)) {
+                *idx = new_idx;
+            }
+        }
+        Instruction::RefNull(idx) => {
             if let Some(&new_idx) = gc_type_remap.get(&(mod_idx, *idx)) {
                 *idx = new_idx;
             }

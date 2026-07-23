@@ -302,20 +302,6 @@ impl Lower {
                         }
                     }
                 }
-                if slot_types
-                    .iter()
-                    .enumerate()
-                    .any(|(field_idx, field_type)| {
-                        matches!(field_type, Some(IrType::Ref(_)))
-                            && variant_field_types
-                                .iter()
-                                .any(|(_, fields)| fields.len() <= field_idx)
-                    })
-                {
-                    self.adt_field_errors.push(format!(
-                        "WasmGC ADT の nullable reference payload slot は全 variant に必要です: {name}"
-                    ));
-                }
                 let slot_types = slot_types
                     .into_iter()
                     .map(|field_type| field_type.unwrap_or(IrType::I64))

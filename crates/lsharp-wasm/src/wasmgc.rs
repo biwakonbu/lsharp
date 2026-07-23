@@ -203,6 +203,9 @@ fn validate_module(module: &Module) -> Result<(), CodegenError> {
                 Instruction::RefCast(type_index) => {
                     validate_gc_type_index(*type_index, module.gc_types.len(), instruction)?;
                 }
+                Instruction::RefNull(type_index) => {
+                    validate_gc_type_index(*type_index, module.gc_types.len(), instruction)?;
+                }
                 Instruction::StructGet(type_index, field_index)
                 | Instruction::StructSet(type_index, field_index) => {
                     let Some(GcTypeKind::Struct(fields)) = module
@@ -328,6 +331,9 @@ fn emit_wasm_gc_instructions(
                 }
                 Instruction::RefCast(type_index) => {
                     function.instruction(&W::RefCastNullable(HeapType::Concrete(*type_index)));
+                }
+                Instruction::RefNull(type_index) => {
+                    function.instruction(&W::RefNull(HeapType::Concrete(*type_index)));
                 }
                 _ => return Ok(false),
             }

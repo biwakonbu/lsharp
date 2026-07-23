@@ -14,8 +14,8 @@ fallback に落ちていた。未対応表現を成功に見せず、型付き R
 
 program 内の ADT struct index を先に予約し、`TypeExpr::Named` の ADT/record payload は
 `IrType::Ref` として共通 struct slot に保持する。variant field type は slot 間で一致する必要が
-あり、欠損 variant を含む nullable reference slot、String、parametric/GADT 表現は `LS3001` で
-拒否する。
+あり、String、parametric/GADT 表現は `LS3001` で拒否する。欠損 variant の Ref slot は後続の
+`RefNull` slice で扱う。
 
 constructor pattern は親 payload を typed local に取り出し、子 constructor の tag/payload を
 再帰的に検査する。nested pattern が失敗した場合は同じ scrutinee の次の arm へ進み、pattern variable

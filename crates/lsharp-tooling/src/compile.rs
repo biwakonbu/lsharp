@@ -495,6 +495,49 @@ mod tests {
     }
 
     #[test]
+    fn test_compile_file_wasmgc_backend_executes_nullable_adt_payload() {
+        let dir = std::env::temp_dir().join("lsharp_compile_pipeline_wasmgc_nullable_adt");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(dir.join(".git")).unwrap();
+
+        let file = dir.join("Main.ls");
+        let output = dir.join("Main.wasm");
+        std::fs::write(
+            &file,
+            "(type Maybe (Just Int) Nothing)\n\
+             (type MaybeBox (Present Maybe) Empty)\n\
+             (defn unwrap [value]\n\
+               (match value [(Present (Just x)) x] [_ 0]))\n\
+             (defn main [] (+ (unwrap (Present (Just 42))) (unwrap (Present Nothing))))\n",
+        )
+        .unwrap();
+
+        let artifacts = compile_file_with_backend(
+            &file,
+            Some(&output),
+            false,
+            Some(CompileTarget::WebWasm),
+            CompileBackend::WasmGc,
+        )
+        .unwrap();
+        let wasm_bytes = std::fs::read(&artifacts.output_path).unwrap();
+
+        let mut config = wasmtime::Config::new();
+        config.wasm_gc(true);
+        let engine = wasmtime::Engine::new(&config).unwrap();
+        let module = wasmtime::Module::new(&engine, wasm_bytes).unwrap();
+        let mut store = wasmtime::Store::new(&engine, ());
+        let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
+        let main = instance
+            .get_typed_func::<(), i64>(&mut store, "main")
+            .unwrap();
+        assert_eq!(main.call(&mut store, ()).unwrap(), 42);
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
     fn test_compile_file_wasmgc_backend_executes_nested_record_access() {
         let dir = std::env::temp_dir().join("lsharp_compile_pipeline_wasmgc_nested_record");
         let _ = std::fs::remove_dir_all(&dir);

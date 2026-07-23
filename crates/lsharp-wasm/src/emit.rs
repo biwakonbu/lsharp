@@ -216,6 +216,10 @@ where
             }
             // TODO: WasmGC 本格実装時に削除。スタック操作はフォールバック用。
             Instruction::RefCast(_) => { /* nop */ }
+            // TODO: WasmGC 本格実装時に削除。linear backend では null reference を i64 0 にする。
+            Instruction::RefNull(_) => {
+                func.instruction(&W::I64Const(0));
+            }
 
             // 関数参照
             Instruction::RefFunc(idx) => {

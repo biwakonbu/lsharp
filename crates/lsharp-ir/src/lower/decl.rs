@@ -342,8 +342,11 @@ impl Lower {
                     match slot_type {
                         IrType::I64 | IrType::I32 => body.push(Instruction::I64Const(0)),
                         IrType::F64 => body.push(Instruction::F64Const(0.0)),
-                        IrType::Ref(_) | IrType::FuncRef => {
-                            // Ref slot の欠損は prepare_program_state で拒否済み。
+                        IrType::Ref(type_index) => {
+                            body.push(Instruction::RefNull(type_index));
+                        }
+                        IrType::FuncRef => {
+                            // FuncRef slot は WasmGC ADT payload の対象外。
                             body.push(Instruction::Unreachable);
                         }
                     }
