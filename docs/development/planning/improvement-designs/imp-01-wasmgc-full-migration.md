@@ -320,6 +320,24 @@ Stage 2a の mutable `StringBytes` array に valid-range の `substring` を接�
 representation、Unicode code-point semantics、print/WASI/component bridge、GC mutation、
 supported target の native evidence、selfhost compiler は未完了である。
 
+## Stage 2e 検証済み slice: packed String byte array (2026-07-24)
+
+Stage 2a〜2d の `StringBytes` storage を WasmGC の packed `i8` array へ置き換えた。
+
+- 既存 record/ADT の GC type index をずらさないよう、StringBytes を同じ末尾 index の
+  `GcTypeKind::PackedByteArray` として登録し、Wasm type section では mutable `array(i8)` を出力する。
+- IR の array.new/array.set/array.len は再利用し、packed array の `array.get` だけを
+  `array.get_u` へ選択する。`255` を格納した byte の読み出しが `255` になる Wasmtime probe で
+  signed access への退行を防ぐ。
+- `wasm_gc_lowering_registers_string_bytes_as_packed_array`、
+  `wasm_gc_emitter_uses_unsigned_get_for_packed_byte_array`、
+  `test_compile_file_wasmgc_backend_reads_utf8_byte_as_unsigned` と既存の String compile suite が、
+  lowering → emitter → actual core Wasm の境界を固定する。
+
+これは packed byte storage の verified slice であり、Unicode code-point semantics、invalid range
+診断、print/WASI/component bridge、GC mutation の公開契約、supported target の native evidence、
+selfhost compiler は未完了である。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線

@@ -648,6 +648,45 @@ mod tests {
     }
 
     #[test]
+    fn test_compile_file_wasmgc_backend_reads_utf8_byte_as_unsigned() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("workspace tmp root")
+            .join("lsharp-wasmgc-string-packed-byte");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(dir.join(".git")).unwrap();
+
+        let file = dir.join("Main.ls");
+        let output = dir.join("Main.wasm");
+        std::fs::write(&file, "(defn main [] (string-char-at \"é\" 0))\n").unwrap();
+
+        let artifacts = compile_file_with_backend(
+            &file,
+            Some(&output),
+            false,
+            Some(CompileTarget::WebWasm),
+            CompileBackend::WasmGc,
+        )
+        .unwrap();
+        let wasm_bytes = std::fs::read(&artifacts.output_path).unwrap();
+
+        let mut config = wasmtime::Config::new();
+        config.wasm_gc(true);
+        let engine = wasmtime::Engine::new(&config).unwrap();
+        let module = wasmtime::Module::new(&engine, wasm_bytes).unwrap();
+        let mut store = wasmtime::Store::new(&engine, ());
+        let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
+        let main = instance
+            .get_typed_func::<(), i64>(&mut store, "main")
+            .unwrap();
+        assert_eq!(main.call(&mut store, ()).unwrap(), 195);
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
     fn test_compile_file_wasmgc_backend_passes_string_array_to_user_function() {
         let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
             .ancestors()

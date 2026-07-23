@@ -48,6 +48,9 @@ pub fn emit_wasm_wasmgc(module: &Module) -> Result<Vec<u8>, CodegenError> {
                     .ty()
                     .array(&StorageType::Val(wasm_gc_valtype(*element_type)), true);
             }
+            GcTypeKind::PackedByteArray => {
+                types.ty().array(&StorageType::I8, true);
+            }
         }
     }
 
@@ -114,7 +117,12 @@ pub fn emit_wasm_wasmgc(module: &Module) -> Result<Vec<u8>, CodegenError> {
             .map(|ty| (1, wasm_gc_valtype(ty)))
             .collect::<Vec<_>>();
         let mut wasm_function = Function::new(locals);
-        emit_wasm_gc_instructions(&mut wasm_function, &function.body, module.functions.len())?;
+        emit_wasm_gc_instructions(
+            &mut wasm_function,
+            &function.body,
+            module.functions.len(),
+            module,
+        )?;
         wasm_function.instruction(&wasm_encoder::Instruction::End);
         code.function(&wasm_function);
     }
@@ -149,6 +157,7 @@ fn validate_module(module: &Module) -> Result<(), CodegenError> {
             GcTypeKind::Array(element_type) => {
                 validate_gc_ref(*element_type, module.gc_types.len(), "array element")?;
             }
+            GcTypeKind::PackedByteArray => {}
         }
     }
 
@@ -212,7 +221,7 @@ fn validate_module(module: &Module) -> Result<(), CodegenError> {
                 | Instruction::ArrayGet(type_index)
                 | Instruction::ArraySet(type_index)
                 | Instruction::ArrayLen(type_index) => {
-                    let Some(GcTypeKind::Array(_)) = module
+                    let Some(GcTypeKind::Array(_) | GcTypeKind::PackedByteArray) = module
                         .gc_types
                         .get(*type_index as usize)
                         .map(|gc_type| &gc_type.kind)
@@ -306,6 +315,7 @@ fn emit_wasm_gc_instructions(
     function: &mut Function,
     instructions: &[Instruction],
     function_count: usize,
+    module: &Module,
 ) -> Result<(), CodegenError> {
     use wasm_encoder::Instruction as W;
 
@@ -361,7 +371,18 @@ fn emit_wasm_gc_instructions(
                     function.instruction(&W::ArrayNewDefault(*type_index));
                 }
                 Instruction::ArrayGet(type_index) => {
-                    function.instruction(&W::ArrayGet(*type_index));
+                    let is_packed = matches!(
+                        module
+                            .gc_types
+                            .get(*type_index as usize)
+                            .map(|gc_type| &gc_type.kind),
+                        Some(GcTypeKind::PackedByteArray)
+                    );
+                    if is_packed {
+                        function.instruction(&W::ArrayGetU(*type_index));
+                    } else {
+                        function.instruction(&W::ArrayGet(*type_index));
+                    }
                 }
                 Instruction::ArraySet(type_index) => {
                     function.instruction(&W::ArraySet(*type_index));

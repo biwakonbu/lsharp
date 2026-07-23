@@ -100,6 +100,8 @@ pub enum GcTypeKind {
     Struct(Vec<GcField>),
     /// array 型 (文字列等)
     Array(IrType),
+    /// packed `i8` array 型 (UTF-8 byte string 等)
+    PackedByteArray,
 }
 
 /// GC struct のフィールド
@@ -417,6 +419,9 @@ impl Module {
                 }
                 GcTypeKind::Array(elem_ty) => {
                     out.push_str(&format!("array({elem_ty})\n"));
+                }
+                GcTypeKind::PackedByteArray => {
+                    out.push_str("array(i8)\n");
                 }
             }
         }

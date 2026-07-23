@@ -4239,7 +4239,7 @@ fn max_struct_field_count(module: &Module) -> u32 {
         .iter()
         .filter_map(|ty| match &ty.kind {
             GcTypeKind::Struct(fields) => Some(fields.len() as u32),
-            GcTypeKind::Array(_) => None,
+            GcTypeKind::Array(_) | GcTypeKind::PackedByteArray => None,
         })
         .max()
         .unwrap_or(0)
@@ -4257,7 +4257,7 @@ fn struct_field_count(
     };
     match &gc_type.kind {
         GcTypeKind::Struct(fields) => Ok(fields.len() as u32),
-        GcTypeKind::Array(_) => Err(CodegenError::Error {
+        GcTypeKind::Array(_) | GcTypeKind::PackedByteArray => Err(CodegenError::Error {
             msg: format!(
                 "array GC type cannot be emitted as linear-memory struct: {}",
                 gc_type.name

@@ -171,6 +171,47 @@ fn wasm_gc_emitter_rejects_lowered_runtime_call_without_import_boundary() {
 }
 
 #[test]
+fn wasm_gc_emitter_uses_unsigned_get_for_packed_byte_array() {
+    let module = IrModule {
+        functions: vec![Function {
+            name: "read-byte".to_string(),
+            params: vec![],
+            result: IrType::I32,
+            locals: vec![],
+            body: vec![
+                Instruction::I32Const(255),
+                Instruction::ArrayNewFixed(0, 1),
+                Instruction::I32Const(0),
+                Instruction::ArrayGet(0),
+            ],
+            is_export: true,
+        }],
+        gc_types: vec![GcTypeDef {
+            name: "StringBytes".to_string(),
+            kind: GcTypeKind::PackedByteArray,
+        }],
+        imports: vec![],
+        globals: vec![],
+        string_data: vec![],
+    };
+
+    let bytes = lsharp_wasm::wasmgc::emit_wasm_wasmgc(&module)
+        .expect("packed byte array を含む WasmGC module を生成できる");
+    let mut config = Config::new();
+    config.wasm_gc(true);
+    let engine = Engine::new(&config).expect("WasmGC engine を作成できる");
+    let module = Module::new(&engine, bytes).expect("packed byte array module を検証できる");
+    let mut store = Store::new(&engine, ());
+    let instance = Instance::new(&mut store, &module, &[])
+        .expect("packed byte array module を instantiate できる");
+    let read_byte = instance
+        .get_typed_func::<(), i32>(&mut store, "read-byte")
+        .expect("read-byte export が存在する");
+
+    assert_eq!(read_byte.call(&mut store, ()).unwrap(), 255);
+}
+
+#[test]
 fn wasm_gc_emitter_maps_reference_typed_struct_fields() {
     let module = IrModule {
         functions: vec![Function {

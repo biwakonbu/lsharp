@@ -43,6 +43,23 @@ fn call_positions(body: &[Instruction], idx: u32) -> Vec<usize> {
         .collect()
 }
 
+#[test]
+fn wasm_gc_lowering_registers_string_bytes_as_packed_array() {
+    let program = lsharp_syntax::parse(r#"(defn main [] (string-length "hello"))"#).unwrap();
+    let mut infer = Infer::new();
+    let type_results = infer.infer_program(&program).unwrap();
+    let expr_type_results = infer.expr_type_results_snapshot();
+    let mut lowerer = Lower::with_backend(LowerBackend::WasmGc);
+    let module = lowerer
+        .lower_program_with_expr_types(&program, &type_results, &expr_type_results)
+        .unwrap();
+
+    assert!(matches!(
+        module.gc_types.last().map(|gc_type| &gc_type.kind),
+        Some(GcTypeKind::PackedByteArray)
+    ));
+}
+
 const ALLOC_IDX: u32 = 1;
 const ROOT_PUSH_IDX: u32 = 14;
 const ROOT_POP_IDX: u32 = 15;

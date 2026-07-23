@@ -588,10 +588,12 @@ impl<'a> NativeFunctionEmitter<'a> {
         };
         match &gc_type.kind {
             lsharp_ir::GcTypeKind::Struct(fields) => Ok(fields.len()),
-            lsharp_ir::GcTypeKind::Array(_) => Err(miette::miette!(
-                "native backend の Apple Silicon 実装は array GC type をまだ生成できません: {}",
-                gc_type.name
-            )),
+            lsharp_ir::GcTypeKind::Array(_) | lsharp_ir::GcTypeKind::PackedByteArray => {
+                Err(miette::miette!(
+                    "native backend の Apple Silicon 実装は array GC type をまだ生成できません: {}",
+                    gc_type.name
+                ))
+            }
         }
     }
 

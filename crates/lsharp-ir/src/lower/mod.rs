@@ -377,7 +377,7 @@ impl Lower {
             debug_assert_eq!(type_index as usize, self.gc_types.len());
             self.gc_types.push(GcTypeDef {
                 name: "StringBytes".to_string(),
-                kind: GcTypeKind::Array(IrType::I32),
+                kind: GcTypeKind::PackedByteArray,
             });
         }
 
