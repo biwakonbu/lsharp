@@ -15,3 +15,8 @@ world wasmgc-output {
   import stdout;
   export main: func() -> s64;
 }
+
+world wasmgc-cli {
+  import stdout;
+  export wasi:cli/run@0.2.3;
+}

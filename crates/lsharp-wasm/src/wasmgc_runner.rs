@@ -285,6 +285,46 @@ pub fn run_wasm_wasmgc_component_output_component_with_preview2_stdout(
     args: &[&str],
     stdin_data: &str,
 ) -> Result<ExecutionOutput, String> {
+    run_wasm_wasmgc_component_with_preview2_stdout(
+        component_bytes,
+        dir,
+        args,
+        stdin_data,
+        ComponentOutputRun::MainS64,
+    )
+}
+
+/// `wasi:cli/run` export を持つ WasmGC CLI Component を実 WASI Preview2 stdout stream で実行する。
+///
+/// custom output interface は Stage 2p と同じ `WasiCtx`/`ResourceTable` を使い、Component の
+/// command entry point だけを `wasi:cli/run@0.2.3#run` へ切り替える。
+pub fn run_wasm_wasmgc_component_cli_with_preview2_stdout(
+    component_bytes: &[u8],
+    dir: Option<&Path>,
+    args: &[&str],
+    stdin_data: &str,
+) -> Result<ExecutionOutput, String> {
+    run_wasm_wasmgc_component_with_preview2_stdout(
+        component_bytes,
+        dir,
+        args,
+        stdin_data,
+        ComponentOutputRun::WasiCli,
+    )
+}
+
+enum ComponentOutputRun {
+    MainS64,
+    WasiCli,
+}
+
+fn run_wasm_wasmgc_component_with_preview2_stdout(
+    component_bytes: &[u8],
+    dir: Option<&Path>,
+    args: &[&str],
+    stdin_data: &str,
+    run_mode: ComponentOutputRun,
+) -> Result<ExecutionOutput, String> {
     let engine = configured_engine()?;
     let component = Component::new(&engine, component_bytes)
         .map_err(|error| format!("WasmGC output Component の読み込みに失敗: {error}"))?;
@@ -333,20 +373,36 @@ pub fn run_wasm_wasmgc_component_output_component_with_preview2_stdout(
     let instance = linker
         .instantiate(&mut store, &component)
         .map_err(|error| format!("WasmGC output Component の instantiate に失敗: {error}"))?;
-    let main = instance
-        .get_func(&mut store, "main")
-        .ok_or_else(|| "WasmGC output Component に main export がありません".to_string())?;
-    let mut results = [ComponentVal::S64(0)];
-    main.call(&mut store, &[], &mut results)
-        .map_err(|error| format!("WasmGC output Component の実行に失敗: {error:#}"))?;
-    let Some(ComponentVal::S64(exit_code)) = results.first() else {
-        return Err(format!(
-            "WasmGC output Component main の戻り値型が s64 ではありません: {:?}",
-            results.first()
-        ));
+    let exit_code = match run_mode {
+        ComponentOutputRun::MainS64 => {
+            let main = instance
+                .get_func(&mut store, "main")
+                .ok_or_else(|| "WasmGC output Component に main export がありません".to_string())?;
+            let mut results = [ComponentVal::S64(0)];
+            main.call(&mut store, &[], &mut results)
+                .map_err(|error| format!("WasmGC output Component の実行に失敗: {error:#}"))?;
+            let Some(ComponentVal::S64(exit_code)) = results.first() else {
+                return Err(format!(
+                    "WasmGC output Component main の戻り値型が s64 ではありません: {:?}",
+                    results.first()
+                ));
+            };
+            i32::try_from(*exit_code).map_err(|error| {
+                format!("WasmGC output Component exit code が i32 範囲外です: {error}")
+            })?
+        }
+        ComponentOutputRun::WasiCli => {
+            let run =
+                find_wasmgc_cli_run_func(&component, &instance, &mut store).ok_or_else(|| {
+                    "WasmGC CLI Component に wasi:cli/run@0.2.3#run export がありません".to_string()
+                })?;
+            let mut results = [ComponentVal::Bool(false)];
+            run.call(&mut store, &[], &mut results).map_err(|error| {
+                format!("WasmGC CLI Component wasi:cli/run の実行に失敗: {error:#}")
+            })?;
+            decode_wasmgc_component_run_result(results.first())?
+        }
     };
-    let exit_code = i32::try_from(*exit_code)
-        .map_err(|error| format!("WasmGC output Component exit code が i32 範囲外です: {error}"))?;
 
     drop(store);
     let stdout = stdout
@@ -359,6 +415,39 @@ pub fn run_wasm_wasmgc_component_output_component_with_preview2_stdout(
         )
     })?;
     Ok(ExecutionOutput { stdout, exit_code })
+}
+
+fn find_wasmgc_cli_run_func(
+    component: &Component,
+    instance: &wasmtime::component::Instance,
+    store: &mut Store<ComponentPreview2State>,
+) -> Option<wasmtime::component::Func> {
+    for export_name in ["wasi:cli/run@0.2.3#run", "wasi:cli/run@0.2.0#run"] {
+        if let Some(run) = instance.get_func(&mut *store, export_name) {
+            return Some(run);
+        }
+    }
+    for interface_name in ["wasi:cli/run@0.2.3", "wasi:cli/run@0.2.0"] {
+        if let Some((_, interface_index)) = component.export_index(None, interface_name)
+            && let Some((_, run_index)) = component.export_index(Some(&interface_index), "run")
+            && let Some(run) = instance.get_func(&mut *store, run_index)
+        {
+            return Some(run);
+        }
+    }
+    None
+}
+
+fn decode_wasmgc_component_run_result(result: Option<&ComponentVal>) -> Result<i32, String> {
+    match result {
+        Some(ComponentVal::Bool(false)) => Ok(0),
+        Some(ComponentVal::Bool(true)) => Ok(1),
+        Some(ComponentVal::Result(Ok(None))) => Ok(0),
+        Some(ComponentVal::Result(Err(None))) => Ok(1),
+        other => Err(format!(
+            "WasmGC CLI Component wasi:cli/run の戻り値型が想定外です: {other:?}"
+        )),
+    }
 }
 
 struct ComponentPreview2State {

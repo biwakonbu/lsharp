@@ -29,7 +29,7 @@ const COMPONENT_OUTPUT_NAME: &str = "write";
 /// 後続 stage の責務であり、`print-string` 以外の未対応 runtime import は i64 に黙って
 /// フォールバックせず診断する。
 pub fn emit_wasm_wasmgc(module: &Module) -> Result<Vec<u8>, CodegenError> {
-    emit_wasm_wasmgc_internal(module, false)
+    emit_wasm_wasmgc_internal(module, false, false)
 }
 
 /// L# IR を Component Model の output `list<u8>` canonical ABI を持つ
@@ -39,17 +39,38 @@ pub fn emit_wasm_wasmgc(module: &Module) -> Result<Vec<u8>, CodegenError> {
 /// `(ptr, len) -> ()` の WIT canonical import へ渡される。memory は呼び出し中だけ借用され、
 /// host が write error を返した場合は trap として実行を終了する。
 pub fn emit_wasm_wasmgc_component_output(module: &Module) -> Result<Vec<u8>, CodegenError> {
-    emit_wasm_wasmgc_internal(module, true)
+    emit_wasm_wasmgc_internal(module, true, false)
+}
+
+/// L# IR を `wasi:cli/run` export と Component Model の output `list<u8>` canonical ABI を
+/// 持つ WasmGC core module へ変換する。
+///
+/// custom `wasmgc-output` world を command Component へ昇格するため、module 内の `main` を
+/// 呼び出して i32 の成功 exit code を返す canonical run wrapper を追加する。WASI の未使用
+/// interface を core module へ暗黙に import することはしない。
+pub fn emit_wasm_wasmgc_component_cli(module: &Module) -> Result<Vec<u8>, CodegenError> {
+    emit_wasm_wasmgc_internal(module, true, true)
 }
 
 fn emit_wasm_wasmgc_internal(
     module: &Module,
     component_output: bool,
+    component_cli: bool,
 ) -> Result<Vec<u8>, CodegenError> {
     let print_string_import = module_uses_print_string(module);
     if component_output && !print_string_import {
         return Err(codegen_error(
             "Component output backend は print-string を使用する module が必要です",
+        ));
+    }
+    if component_cli
+        && !module
+            .functions
+            .iter()
+            .any(|function| function.name == "main")
+    {
+        return Err(codegen_error(
+            "WasmGC CLI Component backend は main 関数を必要とします",
         ));
     }
     validate_module(module, print_string_import)?;
@@ -120,6 +141,13 @@ fn emit_wasm_wasmgc_internal(
             [wasm_gc_valtype(function.result)],
         );
     }
+    let component_cli_run_type_index = if component_cli {
+        let type_index = types.len();
+        types.ty().function([], [ValType::I32]);
+        Some(type_index)
+    } else {
+        None
+    };
     wasm_module.section(&types);
 
     let mut imports = ImportSection::new();
@@ -147,7 +175,10 @@ fn emit_wasm_wasmgc_internal(
     for type_index in function_type_indices {
         functions.function(type_index);
     }
-    if !module.functions.is_empty() {
+    if let Some(type_index) = component_cli_run_type_index {
+        functions.function(type_index);
+    }
+    if !module.functions.is_empty() || component_cli {
         wasm_module.section(&functions);
     }
 
@@ -177,7 +208,11 @@ fn emit_wasm_wasmgc_internal(
             );
         }
     }
-    if !module.functions.is_empty() {
+    if component_cli {
+        let run_index = import_count + module.functions.len() as u32;
+        exports.export("wasi:cli/run@0.2.3#run", ExportKind::Func, run_index);
+    }
+    if !module.functions.is_empty() || component_cli {
         wasm_module.section(&exports);
     }
 
@@ -223,7 +258,22 @@ fn emit_wasm_wasmgc_internal(
         wasm_function.instruction(&wasm_encoder::Instruction::End);
         code.function(&wasm_function);
     }
-    if !module.functions.is_empty() {
+    if component_cli {
+        let main_index = module
+            .functions
+            .iter()
+            .rposition(|function| function.name == "main")
+            .ok_or_else(|| codegen_error("WasmGC CLI Component の main 関数がありません"))?;
+        let mut run_function = Function::new(vec![]);
+        run_function.instruction(&wasm_encoder::Instruction::Call(
+            import_count + main_index as u32,
+        ));
+        run_function.instruction(&wasm_encoder::Instruction::Drop);
+        run_function.instruction(&wasm_encoder::Instruction::I32Const(0));
+        run_function.instruction(&wasm_encoder::Instruction::End);
+        code.function(&run_function);
+    }
+    if !module.functions.is_empty() || component_cli {
         wasm_module.section(&code);
     }
 

@@ -635,6 +635,144 @@ fn wasm_gc_component_output_component_runner_connects_preview2_stdout_stream() {
 }
 
 #[test]
+fn wasm_gc_component_output_cli_world_rejects_core_without_wasi_cli_run_export() {
+    let core = emit_component_output_probe_module(&[67, 76, 73], 0);
+    let wit_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("wit")
+        .join("lsharp-wasmgc-output.wit");
+
+    let error = lsharp_wasm::component_adapter::componentize_core_module(
+        &core,
+        &wit_file,
+        "wasmgc-cli",
+        &[],
+    )
+    .expect_err("wasi:cli/run export のない core は CLI world に変換できない");
+
+    assert!(error.to_string().contains("wasi:cli/run"), "{error}");
+}
+
+#[test]
+fn wasm_gc_component_output_cli_world_accepts_canonical_run_export() {
+    let core = emit_component_output_cli_run_probe_module();
+    let wit_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("wit")
+        .join("lsharp-wasmgc-output.wit");
+
+    let component = lsharp_wasm::component_adapter::componentize_core_module(
+        &core,
+        &wit_file,
+        "wasmgc-cli",
+        &[],
+    )
+    .expect("canonical wasi:cli/run export を CLI world に変換できる");
+    wasmparser::Validator::new()
+        .validate_all(&component)
+        .expect("WasmGC CLI component が validation に成功する");
+}
+
+#[test]
+fn wasm_gc_component_output_cli_backend_emits_canonical_run_export() {
+    let module = IrModule {
+        functions: vec![Function {
+            name: "main".to_string(),
+            params: vec![],
+            result: IrType::I64,
+            locals: vec![],
+            body: vec![
+                Instruction::I32Const(67),
+                Instruction::I32Const(76),
+                Instruction::ArrayNewFixed(0, 2),
+                Instruction::Call(4),
+                Instruction::I64Const(0),
+            ],
+            is_export: true,
+        }],
+        gc_types: vec![GcTypeDef {
+            name: "StringBytes".to_string(),
+            kind: GcTypeKind::PackedByteArray,
+        }],
+        imports: vec![],
+        globals: vec![],
+        string_data: vec![],
+    };
+    let core = lsharp_wasm::wasmgc::emit_wasm_wasmgc_component_cli(&module)
+        .expect("WasmGC CLI backend が canonical run export を生成できる");
+    let wit_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("wit")
+        .join("lsharp-wasmgc-output.wit");
+
+    let component = lsharp_wasm::component_adapter::componentize_core_module(
+        &core,
+        &wit_file,
+        "wasmgc-cli",
+        &[],
+    )
+    .expect("WasmGC CLI backend の core を componentize できる");
+    wasmparser::Validator::new()
+        .validate_all(&component)
+        .expect("WasmGC CLI component が validation に成功する");
+}
+
+#[test]
+fn wasm_gc_component_cli_runner_executes_wasi_cli_run_with_preview2_stdout() {
+    let module = IrModule {
+        functions: vec![Function {
+            name: "main".to_string(),
+            params: vec![],
+            result: IrType::I64,
+            locals: vec![],
+            body: vec![
+                Instruction::I32Const(67),
+                Instruction::I32Const(76),
+                Instruction::ArrayNewFixed(0, 2),
+                Instruction::Call(4),
+                Instruction::I64Const(0),
+            ],
+            is_export: true,
+        }],
+        gc_types: vec![GcTypeDef {
+            name: "StringBytes".to_string(),
+            kind: GcTypeKind::PackedByteArray,
+        }],
+        imports: vec![],
+        globals: vec![],
+        string_data: vec![],
+    };
+    let core = lsharp_wasm::wasmgc::emit_wasm_wasmgc_component_cli(&module)
+        .expect("WasmGC CLI backend が core を生成できる");
+    let wit_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("wit")
+        .join("lsharp-wasmgc-output.wit");
+    let component = lsharp_wasm::component_adapter::componentize_core_module(
+        &core,
+        &wit_file,
+        "wasmgc-cli",
+        &[],
+    )
+    .expect("WasmGC CLI core を componentize できる");
+
+    let output = lsharp_wasm::wasmgc_runner::run_wasm_wasmgc_component_cli_with_preview2_stdout(
+        &component,
+        None,
+        &[],
+        "",
+    )
+    .expect("WASI Preview2 wasi:cli/run で WasmGC Component を実行できる");
+
+    assert_eq!(output.stdout, "CL");
+    assert_eq!(output.exit_code, 0);
+}
+
+#[test]
 fn wasm_gc_component_output_propagates_sink_failure_as_trap() {
     let module = IrModule {
         functions: vec![Function {
@@ -1088,6 +1226,22 @@ fn emit_component_output_probe_module(bytes: &[i32], exit_code: i64) -> Vec<u8> 
     };
     lsharp_wasm::wasmgc::emit_wasm_wasmgc_component_output(&module)
         .expect("component output writer adapter module を生成できる")
+}
+
+fn emit_component_output_cli_run_probe_module() -> Vec<u8> {
+    wat::parse_str(
+        r#"
+(module
+  (type (func (param i32 i32)))
+  (type (func (result i32)))
+  (import "lsharp:wasmgc-output/stdout@0.1.0" "write" (func $write (type 0)))
+  (memory (export "memory") 1)
+  (func (export "wasi:cli/run@0.2.3#run") (type 1)
+    i32.const 0)
+)
+"#,
+    )
+    .expect("canonical wasi:cli/run probe module を生成できる")
 }
 
 #[test]

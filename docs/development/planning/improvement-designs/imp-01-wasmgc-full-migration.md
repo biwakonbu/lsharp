@@ -543,6 +543,27 @@ Stage 2o の custom Component host を、実 WASI Preview2 context と stdout re
 `wasi:cli/run` を import/export する接続、fd table/rights の公開契約、Mac Apple Silicon/Linux
 x86_64 artifact/runtime、native/selfhost parity は未完了である。
 
+## Stage 2q 検証済み slice: WasmGC CLI world の `wasi:cli/run` 接続 (2026-07-24)
+
+Stage 2p の Preview2 stdout stream 接続を、custom `wasmgc-output` package の command world と
+`wasi:cli/run` export へ拡張した。
+
+- `wit/lsharp-wasmgc-output.wit` に `wasmgc-cli` world を追加し、custom `stdout` import と
+  `wasi:cli/run@0.2.3` export を同じ package/version の正本として固定した。
+- `emit_wasm_wasmgc_component_cli` は WasmGC `main: () -> i64` の後ろに
+  `wasi:cli/run@0.2.3#run: () -> i32` wrapper を追加し、main の値を drop して成功 exit code `0`
+  を返す。未使用 WASI import は生成しない。
+- `run_wasm_wasmgc_component_cli_with_preview2_stdout` は nested interface export を解決し、
+  Stage 2p と同じ `WasiCtx`/stdout resource を通って `wasi:cli/run` を実行する。
+- `wasm_gc_component_output_cli_world_rejects_core_without_wasi_cli_run_export` が core 側の
+  欠落を RED に固定し、`wasm_gc_component_output_cli_backend_emits_canonical_run_export` と
+  `wasm_gc_component_cli_runner_executes_wasi_cli_run_with_preview2_stdout` が componentize、
+  validation、actual Preview2 runtime を GREEN に固定する。
+
+これは custom CLI world の `wasi:cli/run` verified partial slice であり、fd table/rights の全契約、
+proc-exit/error result parity、Mac Apple Silicon/Linux x86_64 artifact/runtime、native/selfhost
+parity は未完了である。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線
@@ -575,9 +596,10 @@ x86_64 artifact/runtime、native/selfhost parity は未完了である。
   (`array.copy` 不可のため要素ループまたは `array.init_data` の逆操作を helper 化)
 - Stage 2k の明示拒否、Stage 2l の `(ptr, len)` ABI、Stage 2m の GC array→linear-memory copy、
   Stage 2n の fd_write handler semantics、Stage 2o の custom Component instantiate、Stage 2p の
-  Preview2 stdout stream 接続を前提に、次の WASI/component adapter 実装を observable contract
-  ごとに分ける。次に `wasi:cli/run` と fd table/rights を閉じ、最後に Preview2 artifact/runtime
-  と native/selfhost parity を検証する。
+  Preview2 stdout stream 接続、Stage 2q の custom CLI `wasi:cli/run` 接続を前提に、次の
+  WASI/component adapter 実装を observable contract ごとに分ける。次に fd table/rights と
+  proc-exit/error result parity を閉じ、最後に Preview2 artifact/runtime と native/selfhost parity
+  を検証する。
   synthetic import の instantiate 成功、host callback 単体の byte read、core runner 単体の success、
   writer adapter 単体の success は、公開 component print 完了の証拠に数えない。
 
@@ -636,8 +658,8 @@ range boundary、Stage 2g の `print-string` external import boundary、Stage 2h
 String read、Stage 2i の WasmGC runner stdout sink、Stage 2j の `std::io::Write` adapter、Stage 2k の
 WasmGC Component bridge 明示拒否、Stage 2l の output `list<u8>` canonical pair 契約、Stage 2m
 の packed GC array→linear-memory output bridge、Stage 2n の fd_write handler 契約、Stage 2o の
-custom `wasmgc-output` Component actual instantiate、Stage 2p の Preview2 stdout stream 接続は
-2026-07-24 に検証済み。ADT
+custom `wasmgc-output` Component actual instantiate、Stage 2p の Preview2 stdout stream 接続、
+Stage 2q の custom CLI `wasi:cli/run` 接続は 2026-07-24 に検証済み。ADT
 の全表現、Stage 2 の残り (Unicode code-point semantics / WASI-component I/O /
 native-selfhost parity)、Stage 3 以降
 (closures / traits / selfhost)、supported target
