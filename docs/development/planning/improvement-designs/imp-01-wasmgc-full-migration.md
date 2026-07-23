@@ -218,6 +218,22 @@ reference として解決する経路を追加した。
 GADT の self-recursive representation、HKT、nominal runtime cast、WASI/component、supported 2 targets、
 selfhost compiler は未完了であり、`LEGACY-EXEC-01` の完了条件には到達していない。
 
+## Stage 1.75g 検証済み slice: scalar GADT refinement execution (2026-07-24)
+
+return type を持つ non-recursive GADT の scalar constructor/pattern を、variant-specific typed slot
+と既存の型推論 refinement の組み合わせで WasmGC 実行へ接続した。
+
+- `(: (IntLit Int) (Expr Int))` と `(: (BoolLit Bool) (Expr Bool))` の constructor は、各 payload
+  を concrete typed slot へ生成する。`get-int` は `Expr Int`、`get-bool` は `Expr Bool` として推論され、
+  異なる refinement の constructor を渡す呼び出しは `LS1004` で拒否する。
+- `test_compile_file_wasmgc_backend_executes_scalar_gadt_refinement` が Int/Bool の各 arm を
+  Wasmtime で実行し、`42 + 1 = 43` を確認する。self-recursive `Expr Int` payload、GADT の recursive
+  evaluator、HKT はこの slice の対象外である。
+
+scalar GADT の型 refinement は verified だが、GADT 全体の recursive representation、nominal runtime
+cast、WASI/component、supported 2 targets、selfhost compiler は未完了であり、`LEGACY-EXEC-01` の
+aggregate 完了条件には到達していない。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線
@@ -296,5 +312,6 @@ selfhost compiler は未完了であり、`LEGACY-EXEC-01` の完了条件には
 Stage 0 (依存 API / runtime capability probe)、Stage 1 の IR emitter、Stage 1.5 の CLI 選択、
 Stage 1.75 の direct record lowering/update/user call、scalar ADT constructor/pattern、nested ADT
 payload/pattern、nullable ADT reference payload、scalar literal pattern、record pattern field check
-slice、typed type-application payload slice は 2026-07-24 に検証済み。ADT の全表現、Stage 2 以降 (strings / closures / traits / selfhost)、supported target
+slice、typed type-application payload slice、scalar GADT refinement execution slice は 2026-07-24 に
+検証済み。ADT の全表現、Stage 2 以降 (strings / closures / traits / selfhost)、supported target
 の actual runtime evidence は未完了であり、`LEGACY-EXEC-01` の完了条件には到達していない。
