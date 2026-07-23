@@ -73,17 +73,34 @@ L# IR から self-contained WasmGC core module を生成する最小 emitter を
 - `crates/lsharp-wasm/tests/wasmgc_probe.rs` の IR emitter tests 6 件が、生成・検証・
   instantiate・actual execution と未対応命令の拒否を固定する。
 
-この slice は Rust `lsharp-wasm` の IR emitter に限定され、CLI の `--backend=wasmgc` 配線、
-既存 lowering からの backend 選択、WASI/component runtime、supported 2 targets の native
-artifact/runtime、selfhost ADT 表現は未完了である。
+この slice は Rust `lsharp-wasm` の IR emitter に限定され、既存 lowering からの backend 選択、
+WASI/component runtime、supported 2 targets の native artifact/runtime、selfhost ADT 表現は
+未完了である。
+
+## Stage 1.5 検証済み slice: CLI backend 選択 (2026-07-24)
+
+compiler integration の最初の境界として、linear と WasmGC を明示的に選択できる API/CLI を追加した。
+
+- `lsharp_tooling::compile::CompileBackend::{Linear,WasmGc}` と
+  `compile_file_with_backend` を追加し、既存 `compile_file` は `Linear` を選ぶ互換 wrapper とした。
+- `lsharp compile --backend wasmgc --target web-wasm` は同じ parse/type/lower パイプラインから
+  `emit_wasm_wasmgc` を呼び、core Wasm を生成して Wasmtime の `main` 実行まで確認する。
+- WasmGC backend は現在 `web-wasm` target のみを受け付け、WASI/component/native との組み合わせは
+  `LS4001` で明示拒否する。backend 未指定時の既定値は linear のまま維持する。
+- 明示 backend がある compile/build は embedded component guest へ delegation せず、host の選択した
+  backend を実行する。これにより guest が未対応の flag を受け取って成功を隠すことを防ぐ。
+
+これは CLI/API の選択境界と最小 core runtime の証跡であり、records/ADT lowering、WASI/component
+runtime、Mac/Linux 2 target の native E2E、selfhost compiler からの backend 選択はまだ未完了である。
 
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線
 
 - CLI には既に 4 target (wasi-preview1 / wasi-component / web-wasm / native) の分岐が
-  `crates/lsharp-driver/src/main.rs` の compile コマンド処理にある。ここに
-  `--backend=wasmgc` (デフォルト: linear) を追加し、`lsharp-wasm` の emit 入口で分岐する
+  `crates/lsharp-driver/src/main.rs` の compile コマンド処理にある。`--backend=wasmgc`
+  (デフォルト: linear) の選択と `web-wasm` target 制約まで検証済みであり、records/ADT の
+  lowering 分岐と runtime 境界は後続 stage とする
 - 新規ファイル `crates/lsharp-wasm/src/wasmgc.rs` に `emit_wasm_wasmgc()` を新設
   (`emit_wasm_wasi` と同じシグネチャ。imp-06 のファイル分割方針に合わせ 800 行以内で分割)
 

@@ -11,6 +11,15 @@ pub enum CompileTarget {
     Native,
 }
 
+/// compile の値表現 backend。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CompileBackend {
+    /// 現行の linear-memory / target 別 backend。
+    Linear,
+    /// WasmGC struct/array を使う optional backend。
+    WasmGc,
+}
+
 /// compile パイプラインの結果
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CompileArtifacts {
@@ -112,10 +121,30 @@ pub fn compile_file(
     emit_ir: bool,
     requested_target: Option<CompileTarget>,
 ) -> miette::Result<CompileArtifacts> {
+    compile_file_with_backend(
+        file,
+        output,
+        emit_ir,
+        requested_target,
+        CompileBackend::Linear,
+    )
+}
+
+/// backend を明示した format -> check -> codegen の統合 compile パイプライン。
+pub fn compile_file_with_backend(
+    file: &Path,
+    output: Option<&Path>,
+    emit_ir: bool,
+    requested_target: Option<CompileTarget>,
+    backend: CompileBackend,
+) -> miette::Result<CompileArtifacts> {
     let (target, output_path) = if let Some(output_path) = output {
         resolve_compile_target(Some(output_path), requested_target)?
     } else {
-        let target = requested_target.unwrap_or(CompileTarget::WasiComponent);
+        let target = requested_target.unwrap_or(match backend {
+            CompileBackend::Linear => CompileTarget::WasiComponent,
+            CompileBackend::WasmGc => CompileTarget::WebWasm,
+        });
         let output_path = default_output_path(file, target);
         (target, output_path)
     };
@@ -130,27 +159,40 @@ pub fn compile_file(
         });
     }
 
-    match target {
-        CompileTarget::WasiPreview1 => {
-            let wasm_bytes = lsharp_wasm::wasi::emit_wasm_wasi(&module)
+    match backend {
+        CompileBackend::Linear => match target {
+            CompileTarget::WasiPreview1 => {
+                let wasm_bytes = lsharp_wasm::wasi::emit_wasm_wasi(&module)
+                    .map_err(|e| miette::miette!("[{}] {e}", e.code()))?;
+                std::fs::write(&output_path, &wasm_bytes)
+                    .map_err(|e| miette::miette!("{}: {}", output_path.display(), e))?;
+            }
+            CompileTarget::WasiComponent => {
+                let wasm_bytes = lsharp_wasm::wasi::emit_wasm_wasi_p2(&module)
+                    .map_err(|e| miette::miette!("[{}] {e}", e.code()))?;
+                std::fs::write(&output_path, &wasm_bytes)
+                    .map_err(|e| miette::miette!("{}: {}", output_path.display(), e))?;
+            }
+            CompileTarget::WebWasm => {
+                let wasm_bytes = lsharp_wasm::codegen::emit_wasm(&module)
+                    .map_err(|e| miette::miette!("[{}] {e}", e.code()))?;
+                std::fs::write(&output_path, &wasm_bytes)
+                    .map_err(|e| miette::miette!("{}: {}", output_path.display(), e))?;
+            }
+            CompileTarget::Native => {
+                crate::native::compile_native_executable(&module, &output_path)?;
+            }
+        },
+        CompileBackend::WasmGc => {
+            if target != CompileTarget::WebWasm {
+                return Err(miette::miette!(
+                    "[LS4001] WasmGC backend は現在 --target web-wasm と組み合わせてください"
+                ));
+            }
+            let wasm_bytes = lsharp_wasm::wasmgc::emit_wasm_wasmgc(&module)
                 .map_err(|e| miette::miette!("[{}] {e}", e.code()))?;
             std::fs::write(&output_path, &wasm_bytes)
                 .map_err(|e| miette::miette!("{}: {}", output_path.display(), e))?;
-        }
-        CompileTarget::WasiComponent => {
-            let wasm_bytes = lsharp_wasm::wasi::emit_wasm_wasi_p2(&module)
-                .map_err(|e| miette::miette!("[{}] {e}", e.code()))?;
-            std::fs::write(&output_path, &wasm_bytes)
-                .map_err(|e| miette::miette!("{}: {}", output_path.display(), e))?;
-        }
-        CompileTarget::WebWasm => {
-            let wasm_bytes = lsharp_wasm::codegen::emit_wasm(&module)
-                .map_err(|e| miette::miette!("[{}] {e}", e.code()))?;
-            std::fs::write(&output_path, &wasm_bytes)
-                .map_err(|e| miette::miette!("{}: {}", output_path.display(), e))?;
-        }
-        CompileTarget::Native => {
-            crate::native::compile_native_executable(&module, &output_path)?;
         }
     }
     Ok(CompileArtifacts {
@@ -203,6 +245,66 @@ mod tests {
 
         assert_eq!(target, CompileTarget::WebWasm);
         assert_eq!(resolved_path, output);
+    }
+
+    #[test]
+    fn test_compile_file_wasmgc_backend_writes_executable_core_wasm() {
+        let dir = std::env::temp_dir().join("lsharp_compile_pipeline_wasmgc_backend");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(dir.join(".git")).unwrap();
+
+        let file = dir.join("Main.ls");
+        let output = dir.join("Main.wasm");
+        std::fs::write(&file, "(defn main [] 42)\n").unwrap();
+
+        let artifacts = compile_file_with_backend(
+            &file,
+            Some(&output),
+            false,
+            Some(CompileTarget::WebWasm),
+            CompileBackend::WasmGc,
+        )
+        .unwrap();
+        let wasm_bytes = std::fs::read(&artifacts.output_path).unwrap();
+
+        let mut config = wasmtime::Config::new();
+        config.wasm_gc(true);
+        let engine = wasmtime::Engine::new(&config).unwrap();
+        let module = wasmtime::Module::new(&engine, wasm_bytes).unwrap();
+        let mut store = wasmtime::Store::new(&engine, ());
+        let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
+        let main = instance
+            .get_typed_func::<(), i64>(&mut store, "main")
+            .unwrap();
+        assert_eq!(main.call(&mut store, ()).unwrap(), 42);
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_compile_file_wasmgc_backend_rejects_non_web_target() {
+        let dir = std::env::temp_dir().join("lsharp_compile_pipeline_wasmgc_target");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(dir.join(".git")).unwrap();
+
+        let file = dir.join("Main.ls");
+        let output = dir.join("Main.wasm");
+        std::fs::write(&file, "(defn main [] 42)\n").unwrap();
+
+        let error = compile_file_with_backend(
+            &file,
+            Some(&output),
+            false,
+            Some(CompileTarget::WasiPreview1),
+            CompileBackend::WasmGc,
+        )
+        .expect_err("WasmGC backend は未対応 target を受け入れてはならない");
+        assert!(error.to_string().contains("[LS4001]"));
+        assert!(error.to_string().contains("--target web-wasm"));
+
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

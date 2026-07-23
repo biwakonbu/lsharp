@@ -80,6 +80,23 @@ impl From<CliCompileTarget> for commands::compile::CompileTarget {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+enum CliCompileBackend {
+    #[value(name = "linear")]
+    Linear,
+    #[value(name = "wasmgc")]
+    WasmGc,
+}
+
+impl From<CliCompileBackend> for commands::compile::CompileBackend {
+    fn from(value: CliCompileBackend) -> Self {
+        match value {
+            CliCompileBackend::Linear => Self::Linear,
+            CliCompileBackend::WasmGc => Self::WasmGc,
+        }
+    }
+}
+
 #[derive(Subcommand)]
 enum Command {
     /// プロジェクトを初期化
@@ -101,6 +118,10 @@ enum Command {
         #[arg(long, value_enum)]
         target: Option<CliCompileTarget>,
 
+        /// 値表現 backend (`linear` / `wasmgc`)
+        #[arg(long, value_enum)]
+        backend: Option<CliCompileBackend>,
+
         /// IR を表示する
         #[arg(long)]
         emit_ir: bool,
@@ -118,6 +139,10 @@ enum Command {
         /// コンパイルターゲット (`wasi-component` / `web-wasm` / `native`, `wasm` は alias)
         #[arg(long, value_enum)]
         target: Option<CliCompileTarget>,
+
+        /// 値表現 backend (`linear` / `wasmgc`)
+        #[arg(long, value_enum)]
+        backend: Option<CliCompileBackend>,
 
         /// IR を表示する
         #[arg(long)]
@@ -253,22 +278,27 @@ fn main() -> miette::Result<()> {
             file,
             output,
             target,
+            backend,
             emit_ir,
         }
         | Command::Build {
             file,
             output,
             target,
+            backend,
             emit_ir,
         } => {
             // P0-1: git リポジトリ必須チェック
             check_git_repo(&file)?;
 
-            let artifacts = commands::compile::compile_file(
+            let artifacts = commands::compile::compile_file_with_backend(
                 &file,
                 output.as_deref(),
                 emit_ir,
                 target.map(Into::into),
+                backend
+                    .map(Into::into)
+                    .unwrap_or(commands::compile::CompileBackend::Linear),
             )?;
             if !emit_ir {
                 print_compile_artifacts_success(&artifacts);
@@ -544,23 +574,25 @@ fn maybe_bridge_compile_build_artifact_with_component(
         Err(_) => return Ok(false),
     };
 
-    let (file, output, target, emit_ir) = match cli.command {
+    let (file, output, target, backend, emit_ir) = match cli.command {
         Command::Compile {
             file,
             output,
             target,
+            backend,
             emit_ir,
         }
         | Command::Build {
             file,
             output,
             target,
+            backend,
             emit_ir,
-        } => (file, output, target, emit_ir),
+        } => (file, output, target, backend, emit_ir),
         _ => return Ok(false),
     };
 
-    if emit_ir {
+    if emit_ir || backend.is_some() {
         return Ok(false);
     }
 
@@ -614,11 +646,12 @@ fn maybe_bridge_compile_build_artifact_with_component(
         std::process::exit(output.exit_code);
     }
 
-    let artifacts = commands::compile::compile_file(
+    let artifacts = commands::compile::compile_file_with_backend(
         &host_file,
         Some(&resolved_output),
         false,
         Some(host_target),
+        commands::compile::CompileBackend::Linear,
     )?;
 
     match guest_output {
@@ -814,7 +847,7 @@ fn should_delegate_compile_build_to_embedded_component_args(args: &[std::ffi::Os
                 };
                 if matches!(
                     value,
-                    "-o" | "--output" | "--target" | "--emit-ir" | "-h" | "--help"
+                    "-o" | "--output" | "--target" | "--backend" | "--emit-ir" | "-h" | "--help"
                 ) {
                     return false;
                 }
@@ -828,6 +861,16 @@ fn should_delegate_compile_build_to_embedded_component_args(args: &[std::ffi::Os
                     return false;
                 }
                 index += 2;
+            }
+            "--backend" => {
+                let Some(value) = args.get(index + 1).and_then(|arg| arg.to_str()) else {
+                    return false;
+                };
+                if !matches!(value, "linear" | "wasmgc") {
+                    return false;
+                }
+                // 明示 backend は embedded component guest が持たないため host 側へ残す。
+                return false;
             }
             "--emit-ir" => return false,
             _ => return false,
@@ -2616,6 +2659,28 @@ mod tests {
     }
 
     #[test]
+    fn test_cli_compile_backend_accepts_wasmgc_with_web_wasm_target() {
+        let cli = Cli::try_parse_from([
+            "lsharp",
+            "compile",
+            "examples/fib.ls",
+            "--backend",
+            "wasmgc",
+            "--target",
+            "web-wasm",
+        ])
+        .expect("wasmgc backend should parse");
+        let Command::Compile {
+            backend, target, ..
+        } = cli.command
+        else {
+            panic!("compile subcommand should parse");
+        };
+        assert_eq!(backend, Some(CliCompileBackend::WasmGc));
+        assert_eq!(target, Some(CliCompileTarget::WebWasm));
+    }
+
+    #[test]
     fn test_should_delegate_to_embedded_component_args_accepts_compile_build_component_subset() {
         assert!(should_delegate_to_embedded_component_args(&os_args(&[
             "compile",
@@ -2679,6 +2744,14 @@ mod tests {
         assert!(!should_delegate_to_embedded_component_args(&os_args(&[
             "compile",
             "examples/fib.ls",
+            "--target",
+            "web-wasm",
+        ])));
+        assert!(!should_delegate_to_embedded_component_args(&os_args(&[
+            "compile",
+            "examples/fib.ls",
+            "--backend",
+            "wasmgc",
             "--target",
             "web-wasm",
         ])));
