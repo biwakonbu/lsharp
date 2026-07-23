@@ -531,10 +531,19 @@ impl Lower {
             .get(name)
             .cloned()
             .unwrap_or_default();
+        let field_offsets = self
+            .adt_variant_field_offsets
+            .get(name)
+            .cloned()
+            .unwrap_or_default();
         let mut checks = Vec::with_capacity(sub_pats.len());
         for (field_idx, pattern) in sub_pats.iter().enumerate() {
             ctx.emit(Instruction::LocalGet(scrut_local));
-            ctx.emit(Instruction::StructGet(gc_type_idx, field_idx as u32 + 1));
+            let slot_idx = field_offsets
+                .get(field_idx)
+                .copied()
+                .unwrap_or(field_idx as u32);
+            ctx.emit(Instruction::StructGet(gc_type_idx, slot_idx + 1));
             let field_type = field_types.get(field_idx).copied().unwrap_or(IrType::I64);
             let field_local =
                 ctx.alloc_local_typed(format!("_wasmgc_pattern_field_{field_idx}"), field_type);
@@ -612,10 +621,19 @@ impl Lower {
                     .get(name)
                     .cloned()
                     .unwrap_or_default();
+                let field_offsets = self
+                    .adt_variant_field_offsets
+                    .get(name)
+                    .cloned()
+                    .unwrap_or_default();
                 let mut nested_checks = Vec::with_capacity(sub_pats.len() + rest.len());
                 for (field_idx, nested_pattern) in sub_pats.iter().enumerate() {
                     ctx.emit(Instruction::LocalGet(*value_local));
-                    ctx.emit(Instruction::StructGet(gc_type_idx, field_idx as u32 + 1));
+                    let slot_idx = field_offsets
+                        .get(field_idx)
+                        .copied()
+                        .unwrap_or(field_idx as u32);
+                    ctx.emit(Instruction::StructGet(gc_type_idx, slot_idx + 1));
                     let field_type = field_types.get(field_idx).copied().unwrap_or(IrType::I64);
                     let field_local = ctx
                         .alloc_local_typed(format!("_wasmgc_nested_field_{field_idx}"), field_type);

@@ -330,13 +330,17 @@ impl Lower {
         tag_val: i32,
         field_types: &[IrType],
         slot_types: &[IrType],
+        field_offsets: &[u32],
     ) -> Function {
         let field_count = field_types.len();
         if self.backend == super::LowerBackend::WasmGc {
             let mut body = Vec::with_capacity(slot_types.len() + 2);
             body.push(Instruction::I64Const(tag_val as i64));
-            for (field_idx, slot_type) in slot_types.iter().copied().enumerate() {
-                if field_idx < field_types.len() {
+            for (slot_idx, slot_type) in slot_types.iter().copied().enumerate() {
+                if let Some(field_idx) = field_offsets
+                    .iter()
+                    .position(|offset| *offset == slot_idx as u32)
+                {
                     body.push(Instruction::LocalGet(field_idx as u32));
                 } else {
                     match slot_type {

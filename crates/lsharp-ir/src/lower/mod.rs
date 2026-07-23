@@ -82,6 +82,8 @@ pub struct Lower {
     pub(crate) adt_type_indices: HashMap<String, u32>,
     /// ADT バリアント名 -> payload field の WasmGC 型
     pub(crate) adt_variant_field_types: HashMap<String, Vec<IrType>>,
+    /// ADT バリアント名 -> 共通 GC struct 内の payload field offset
+    pub(crate) adt_variant_field_offsets: HashMap<String, Vec<u32>>,
     /// ADT バリアント名 -> payload field のソース型名
     pub(crate) adt_variant_field_type_names: HashMap<String, Vec<Option<String>>>,
     /// ADT 型名 -> 共通 payload slot の WasmGC 型
@@ -136,6 +138,7 @@ impl Lower {
             adt_type_info: HashMap::new(),
             adt_type_indices: HashMap::new(),
             adt_variant_field_types: HashMap::new(),
+            adt_variant_field_offsets: HashMap::new(),
             adt_variant_field_type_names: HashMap::new(),
             adt_slot_types: HashMap::new(),
             adt_field_errors: Vec::new(),
@@ -175,6 +178,7 @@ impl Lower {
         self.adt_type_info.clear();
         self.adt_type_indices.clear();
         self.adt_variant_field_types.clear();
+        self.adt_variant_field_offsets.clear();
         self.adt_variant_field_type_names.clear();
         self.adt_slot_types.clear();
         self.adt_field_errors.clear();
@@ -261,12 +265,21 @@ impl Lower {
                     continue;
                 }
                 let gc_idx = self.adt_type_indices.get(name).copied().unwrap_or(0);
-                let mut variant_field_types = Vec::new();
-                let mut max_field_count = 0;
+                let mut slot_types = Vec::new();
                 for variant in variants {
                     let mut field_types = Vec::with_capacity(variant.fields.len());
                     let mut field_type_names = Vec::with_capacity(variant.fields.len());
                     for field in &variant.fields {
+                        if let lsharp_syntax::ast::TypeExpr::App(_, head, _) = field
+                            && let lsharp_syntax::ast::TypeExpr::Named(_, field_type_name) =
+                                head.as_ref()
+                            && field_type_name == name
+                        {
+                            self.adt_field_errors.push(format!(
+                                "WasmGC ADT の自己参照 payload は現在未対応です: {name}::{}",
+                                variant.name
+                            ));
+                        }
                         let Some(field_type) = self.wasm_gc_adt_field_type(field) else {
                             self.adt_field_errors.push(format!(
                                 "WasmGC ADT payload の型を解決できません: {}::{}",
@@ -277,39 +290,37 @@ impl Lower {
                         field_types.push(field_type);
                         field_type_names.push(match field {
                             lsharp_syntax::ast::TypeExpr::Named(_, name) => Some(name.clone()),
+                            lsharp_syntax::ast::TypeExpr::App(_, head, _) => {
+                                if let lsharp_syntax::ast::TypeExpr::Named(_, name) = head.as_ref()
+                                {
+                                    Some(name.clone())
+                                } else {
+                                    None
+                                }
+                            }
                             _ => None,
                         });
                     }
-                    max_field_count = max_field_count.max(field_types.len());
+                    let field_offsets = field_types
+                        .iter()
+                        .map(|field_type| {
+                            let offset = slot_types.len() as u32;
+                            slot_types.push(*field_type);
+                            offset
+                        })
+                        .collect::<Vec<_>>();
                     self.adt_variant_field_types
                         .insert(variant.name.clone(), field_types.clone());
+                    self.adt_variant_field_offsets
+                        .insert(variant.name.clone(), field_offsets);
                     self.adt_variant_field_type_names
                         .insert(variant.name.clone(), field_type_names);
-                    variant_field_types.push((variant.name.clone(), field_types));
                 }
 
-                let mut slot_types = vec![None; max_field_count];
-                for (variant_name, field_types) in &variant_field_types {
-                    for (field_idx, field_type) in field_types.iter().copied().enumerate() {
-                        match slot_types[field_idx] {
-                            None => slot_types[field_idx] = Some(field_type),
-                            Some(existing) if existing != field_type => {
-                                self.adt_field_errors.push(format!(
-                                    "WasmGC ADT payload slot の型が一致しません: {name}::{variant_name}[{field_idx}]"
-                                ));
-                            }
-                            Some(_) => {}
-                        }
-                    }
-                }
-                let slot_types = slot_types
-                    .into_iter()
-                    .map(|field_type| field_type.unwrap_or(IrType::I64))
-                    .collect::<Vec<_>>();
                 self.adt_slot_types.insert(name.clone(), slot_types.clone());
 
                 if self.backend == LowerBackend::WasmGc {
-                    let mut gc_fields = Vec::with_capacity(max_field_count + 1);
+                    let mut gc_fields = Vec::with_capacity(slot_types.len() + 1);
                     gc_fields.push(GcField {
                         name: "tag".to_string(),
                         ty: IrType::I64,
@@ -573,12 +584,21 @@ impl Lower {
                         } else {
                             vec![IrType::I64; variant.fields.len()]
                         };
+                        let field_offsets = if self.backend == LowerBackend::WasmGc {
+                            self.adt_variant_field_offsets
+                                .get(&variant.name)
+                                .cloned()
+                                .unwrap_or_default()
+                        } else {
+                            Vec::new()
+                        };
                         let ctor = self.generate_adt_constructor(
                             &variant.name,
                             gc_type_idx,
                             tag_val,
                             &field_types,
                             &constructor_slot_types,
+                            &field_offsets,
                         );
                         functions.push(ctor);
                     }
@@ -644,17 +664,27 @@ impl Lower {
     }
 
     fn wasm_gc_adt_field_type(&self, ty: &lsharp_syntax::ast::TypeExpr) -> Option<IrType> {
-        let lsharp_syntax::ast::TypeExpr::Named(_, name) = ty else {
-            return None;
-        };
-        match name.as_str() {
-            "Int" | "Float" | "Bool" | "Unit" => Some(type_expr_to_ir(ty)),
-            _ => self
-                .record_type_indices
-                .get(name)
-                .or_else(|| self.adt_type_indices.get(name))
-                .copied()
-                .map(IrType::Ref),
+        match ty {
+            lsharp_syntax::ast::TypeExpr::Named(_, name) => match name.as_str() {
+                "Int" | "Float" | "Bool" | "Unit" => Some(type_expr_to_ir(ty)),
+                _ => self
+                    .record_type_indices
+                    .get(name)
+                    .or_else(|| self.adt_type_indices.get(name))
+                    .copied()
+                    .map(IrType::Ref),
+            },
+            lsharp_syntax::ast::TypeExpr::App(_, head, _) => {
+                let lsharp_syntax::ast::TypeExpr::Named(_, name) = head.as_ref() else {
+                    return None;
+                };
+                self.record_type_indices
+                    .get(name)
+                    .or_else(|| self.adt_type_indices.get(name))
+                    .copied()
+                    .map(IrType::Ref)
+            }
+            _ => None,
         }
     }
 

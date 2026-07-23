@@ -199,6 +199,25 @@ Float/String の value representation、nominal runtime cast、WASI/component、
 selfhost compiler は未完了であり、`LEGACY-LANG-01` / `LEGACY-EXEC-01` の aggregate 完了条件には
 到達していない。
 
+## Stage 1.75f 検証済み slice: typed type-application payload slots (2026-07-24)
+
+ADT payload の `TypeExpr::App` を、型引数を実行時表現へ持ち込まず head type の concrete GC
+reference として解決する経路を追加した。
+
+- `Wrapper (Wrapped (Inner Int))` のような既知 ADT/record への type application は、payload を
+  `IrType::Ref` として登録し、source field type name も constructor pattern へ引き継ぐ。
+- variant 間で payload 型が異なる場合に i64/Ref を同じ slot へ無理に詰めないよう、各 variant の
+  field を共通 struct 内の variant-specific typed slot へ配置する。未使用 slot は `I64Const 0`
+  または concrete `RefNull` で初期化し、constructor/pattern の field offset を同じ表で参照する。
+- `test_compile_file_wasmgc_backend_executes_type_application_payload` が type application payload
+  の nested constructor match を Wasmtime で実行し、42 を確認する。
+- self-recursive `TypeExpr::App` は Wasmtime 29 の GC collection で再現性のある内部 panic が発生する
+  ため、`test_wasmgc_backend_rejects_recursive_type_application_payload_explicitly` で `LS3001` に
+  停止する。これは GADT の型 refinement や recursive runtime support の完了を意味しない。
+
+GADT の self-recursive representation、HKT、nominal runtime cast、WASI/component、supported 2 targets、
+selfhost compiler は未完了であり、`LEGACY-EXEC-01` の完了条件には到達していない。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線
@@ -277,5 +296,5 @@ selfhost compiler は未完了であり、`LEGACY-LANG-01` / `LEGACY-EXEC-01` �
 Stage 0 (依存 API / runtime capability probe)、Stage 1 の IR emitter、Stage 1.5 の CLI 選択、
 Stage 1.75 の direct record lowering/update/user call、scalar ADT constructor/pattern、nested ADT
 payload/pattern、nullable ADT reference payload、scalar literal pattern、record pattern field check
-slice は 2026-07-24 に検証済み。ADT の全表現、Stage 2 以降 (strings / closures / traits / selfhost)、supported target
+slice、typed type-application payload slice は 2026-07-24 に検証済み。ADT の全表現、Stage 2 以降 (strings / closures / traits / selfhost)、supported target
 の actual runtime evidence は未完了であり、`LEGACY-EXEC-01` の完了条件には到達していない。

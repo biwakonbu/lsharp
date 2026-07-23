@@ -381,6 +381,74 @@ mod tests {
     }
 
     #[test]
+    fn test_compile_file_wasmgc_backend_executes_type_application_payload() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("workspace tmp root")
+            .join("lsharp-wasmgc-type-application");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(dir.join(".git")).unwrap();
+
+        let file = dir.join("Main.ls");
+        let output = dir.join("Main.wasm");
+        std::fs::write(
+            &file,
+            "(type (Inner a)\n\
+               (Value Int)\n\
+               Empty)\n\
+             (type (Wrapper a)\n\
+               (Wrapped (Inner Int))\n\
+               EmptyWrapper)\n\
+             (defn unwrap [wrapper]\n\
+               (match wrapper\n\
+                 [(Wrapped (Value value)) value]\n\
+                 [_ 0]))\n\
+             (defn main [] (unwrap (Wrapped (Value 42))))\n",
+        )
+        .unwrap();
+
+        let artifacts = compile_file_with_backend(
+            &file,
+            Some(&output),
+            false,
+            Some(CompileTarget::WebWasm),
+            CompileBackend::WasmGc,
+        )
+        .unwrap();
+        let wasm_bytes = std::fs::read(&artifacts.output_path).unwrap();
+
+        let mut config = wasmtime::Config::new();
+        config.wasm_gc(true);
+        let engine = wasmtime::Engine::new(&config).unwrap();
+        let module = wasmtime::Module::new(&engine, wasm_bytes).unwrap();
+        let mut store = wasmtime::Store::new(&engine, ());
+        let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
+        let main = instance
+            .get_typed_func::<(), i64>(&mut store, "main")
+            .unwrap();
+        assert_eq!(main.call(&mut store, ()).unwrap(), 42);
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_wasmgc_backend_rejects_recursive_type_application_payload_explicitly() {
+        let error = compile_module_from_formatted_source(
+            Path::new("Main.ls"),
+            "(type (Expr a)\n\
+               (Loop (Expr Int))\n\
+               Halt)\n\
+             (defn main [] Halt)\n",
+            CompileBackend::WasmGc,
+        )
+        .expect_err("WasmGC は未検証の自己参照 GC payload を暗黙に実行してはならない");
+        assert!(error.to_string().contains("LS3001"));
+        assert!(error.to_string().contains("自己参照"));
+    }
+
+    #[test]
     fn test_wasmgc_backend_rejects_unsupported_record_string_literal_pattern() {
         let error = compile_module_from_formatted_source(
             Path::new("Main.ls"),
