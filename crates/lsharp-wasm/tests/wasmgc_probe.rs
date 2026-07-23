@@ -607,6 +607,34 @@ fn wasm_gc_component_output_component_runner_propagates_sink_failure() {
 }
 
 #[test]
+fn wasm_gc_component_output_component_runner_connects_preview2_stdout_stream() {
+    let core = emit_component_output_probe_module(&[80, 50], 29);
+    let wit_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("wit")
+        .join("lsharp-wasmgc-output.wit");
+    let component = lsharp_wasm::component_adapter::componentize_core_module(
+        &core,
+        &wit_file,
+        "wasmgc-output",
+        &[],
+    )
+    .expect("WasmGC output core を componentize できる");
+
+    let output = lsharp_wasm::wasmgc_runner::run_wasm_wasmgc_component_output_component_with_preview2_stdout(
+        &component,
+        None,
+        &[],
+        "",
+    )
+    .expect("WASI Preview2 stdout stream を使って Component を実行できる");
+
+    assert_eq!(output.stdout, "P2");
+    assert_eq!(output.exit_code, 29);
+}
+
+#[test]
 fn wasm_gc_component_output_propagates_sink_failure_as_trap() {
     let module = IrModule {
         functions: vec![Function {

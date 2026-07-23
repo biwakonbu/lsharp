@@ -5,16 +5,20 @@
 //! module を生成しないため、ここで暗黙の WASI fallback を行わない。
 
 use std::io::{self, Write};
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use wasmtime::component::{Component, Linker as ComponentLinker, Val as ComponentVal};
-use wasmtime::{Config, Engine, ExternType, Instance, Module, Store};
+use wasmtime::{Config, Engine, ExternType, Instance, Module, Store, StoreContextMut};
+use wasmtime_wasi::bindings::cli::stdout::Host as Preview2StdoutHost;
+use wasmtime_wasi::{HostOutputStream, ResourceTable, WasiCtx, WasiCtxBuilder, WasiImpl, WasiView};
 
 use crate::wasi_runner::ExecutionOutput;
 use crate::wasmgc_host::create_component_output_import;
 use crate::wasmgc_host::create_print_string_import;
 
 const DEFAULT_MAX_WASM_STACK: usize = 64 * 1024 * 1024;
+const DEFAULT_STDOUT_CAPTURE_BYTES: usize = 64 * 1024 * 1024;
 
 /// WasmGC core module を実行し、`print-string` の各 chunk を sink へ渡す。
 ///
@@ -268,6 +272,154 @@ pub fn run_wasm_wasmgc_component_output_component_capture(
         )
     })?;
     Ok(ExecutionOutput { stdout, exit_code })
+}
+
+/// `wasmgc-output` Component を実 WASI Preview2 context の stdout stream へ接続して実行する。
+///
+/// custom `stdout.write(list<u8>)` は Preview2 `WasiCtx` の stdout resource を毎回取得し、
+/// `check-write` / `write` / `flush` の順で消費する。WASI linker は同じ Component linker に
+/// 登録するが、custom world が import しない WASI interface への暗黙 fallback は行わない。
+pub fn run_wasm_wasmgc_component_output_component_with_preview2_stdout(
+    component_bytes: &[u8],
+    dir: Option<&Path>,
+    args: &[&str],
+    stdin_data: &str,
+) -> Result<ExecutionOutput, String> {
+    let engine = configured_engine()?;
+    let component = Component::new(&engine, component_bytes)
+        .map_err(|error| format!("WasmGC output Component の読み込みに失敗: {error}"))?;
+
+    let stdout = wasmtime_wasi::pipe::MemoryOutputPipe::new(DEFAULT_STDOUT_CAPTURE_BYTES);
+    let mut builder = WasiCtxBuilder::new();
+    builder.stdout(stdout.clone());
+    builder.stdin(wasmtime_wasi::pipe::MemoryInputPipe::new(
+        stdin_data.as_bytes().to_vec(),
+    ));
+    builder.args(args);
+    if let Some(dir_path) = dir {
+        builder
+            .preopened_dir(
+                dir_path,
+                ".",
+                wasmtime_wasi::DirPerms::all(),
+                wasmtime_wasi::FilePerms::all(),
+            )
+            .map_err(|error| format!("component preopened_dir に失敗: {error}"))?;
+    }
+
+    let state = ComponentPreview2State {
+        ctx: builder.build(),
+        table: ResourceTable::new(),
+    };
+    let mut store = Store::new(&engine, state);
+    let mut linker = ComponentLinker::<ComponentPreview2State>::new(&engine);
+    wasmtime_wasi::add_to_linker_sync(&mut linker)
+        .map_err(|error| format!("WASI Preview2 リンクに失敗: {error}"))?;
+    let mut stdout_interface = linker
+        .instance("lsharp:wasmgc-output/stdout@0.1.0")
+        .map_err(|error| format!("WasmGC output stdout interface の定義に失敗: {error}"))?;
+    stdout_interface
+        .func_wrap(
+            "write",
+            move |mut store: StoreContextMut<'_, ComponentPreview2State>,
+                  (bytes,): (Vec<u8>,)|
+                  -> Result<(), wasmtime::Error> {
+                write_component_output_to_preview2_stdout(&mut store, &bytes)
+                    .map_err(wasmtime::Error::msg)
+            },
+        )
+        .map_err(|error| format!("WasmGC output stdout write の定義に失敗: {error}"))?;
+
+    let instance = linker
+        .instantiate(&mut store, &component)
+        .map_err(|error| format!("WasmGC output Component の instantiate に失敗: {error}"))?;
+    let main = instance
+        .get_func(&mut store, "main")
+        .ok_or_else(|| "WasmGC output Component に main export がありません".to_string())?;
+    let mut results = [ComponentVal::S64(0)];
+    main.call(&mut store, &[], &mut results)
+        .map_err(|error| format!("WasmGC output Component の実行に失敗: {error:#}"))?;
+    let Some(ComponentVal::S64(exit_code)) = results.first() else {
+        return Err(format!(
+            "WasmGC output Component main の戻り値型が s64 ではありません: {:?}",
+            results.first()
+        ));
+    };
+    let exit_code = i32::try_from(*exit_code)
+        .map_err(|error| format!("WasmGC output Component exit code が i32 範囲外です: {error}"))?;
+
+    drop(store);
+    let stdout = stdout
+        .try_into_inner()
+        .ok_or_else(|| "WasmGC output Component stdout の取得に失敗".to_string())?;
+    let stdout = String::from_utf8(stdout.to_vec()).map_err(|error| {
+        format!(
+            "WasmGC output Component stdout の UTF-8 変換に失敗: {error}; stdout_lossy={:?}",
+            String::from_utf8_lossy(&stdout)
+        )
+    })?;
+    Ok(ExecutionOutput { stdout, exit_code })
+}
+
+struct ComponentPreview2State {
+    ctx: WasiCtx,
+    table: ResourceTable,
+}
+
+impl WasiView for ComponentPreview2State {
+    fn ctx(&mut self) -> &mut WasiCtx {
+        &mut self.ctx
+    }
+
+    fn table(&mut self) -> &mut ResourceTable {
+        &mut self.table
+    }
+}
+
+fn write_component_output_to_preview2_stdout(
+    store: &mut StoreContextMut<'_, ComponentPreview2State>,
+    bytes: &[u8],
+) -> Result<(), String> {
+    let mut wasi = WasiImpl(store.data_mut());
+    let resource =
+        <WasiImpl<&mut ComponentPreview2State> as Preview2StdoutHost>::get_stdout(&mut wasi)
+            .map_err(|error| format!("WASI Preview2 stdout resource の取得に失敗: {error}"))?;
+    let write_result = {
+        let stream = wasi
+            .table()
+            .get_mut(&resource)
+            .map_err(|error| format!("WASI Preview2 stdout stream の取得に失敗: {error}"))?;
+        write_preview2_stream(&mut **stream, bytes)
+    };
+    let delete_result = wasi
+        .table()
+        .delete(resource)
+        .map(|_| ())
+        .map_err(|error| format!("WASI Preview2 stdout resource の解放に失敗: {error}"));
+    write_result.and(delete_result)
+}
+
+fn write_preview2_stream(
+    stream: &mut (impl HostOutputStream + ?Sized),
+    bytes: &[u8],
+) -> Result<(), String> {
+    let mut remaining = bytes;
+    while !remaining.is_empty() {
+        let permit = stream
+            .check_write()
+            .map_err(|error| format!("WASI Preview2 stdout check-write に失敗: {error}"))?;
+        if permit == 0 {
+            return Err("WASI Preview2 stdout check-write が 0 bytes を返しました".to_string());
+        }
+        let chunk_len = permit.min(remaining.len());
+        stream
+            .write(remaining[..chunk_len].to_vec().into())
+            .map_err(|error| format!("WASI Preview2 stdout write に失敗: {error}"))?;
+        remaining = &remaining[chunk_len..];
+    }
+    stream
+        .flush()
+        .map_err(|error| format!("WASI Preview2 stdout flush に失敗: {error}"))
 }
 
 struct ComponentOutputFdWriteAdapter<F> {

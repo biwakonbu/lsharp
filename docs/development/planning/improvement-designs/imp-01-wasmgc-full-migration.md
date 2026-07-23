@@ -526,6 +526,23 @@ Stage 2m/2n の core output を WIT Component として実際に instantiate し
 接続、fd table/rights、Mac Apple Silicon/Linux x86_64 artifact/runtime、native/selfhost parity は
 未完了である。
 
+## Stage 2p 検証済み slice: custom output の Preview2 stdout stream 接続 (2026-07-24)
+
+Stage 2o の custom Component host を、実 WASI Preview2 context と stdout resource へ接続した。
+
+- `run_wasm_wasmgc_component_output_component_with_preview2_stdout` は `WasiCtxBuilder`、
+  `ResourceTable`、`WasiView` を組み立て、同じ Component linker に
+  `wasmtime_wasi::add_to_linker_sync` と custom `wasmgc-output` interface を登録する。
+- custom `stdout.write(list<u8>)` callback は `wasi:cli/stdout.get-stdout` 相当の resource を
+  `WasiImpl` 経由で取得し、`check-write` → `write`（permit 分割）→ `flush` を実行してから
+  resource を解放する。stdout は `WasiCtxBuilder.stdout(MemoryOutputPipe)` へ集約する。
+- `wasm_gc_component_output_component_runner_connects_preview2_stdout_stream` が、componentize、
+  Preview2 linker/context、stdout stream、exit code、UTF-8 output を actual runtime で固定する。
+
+これは custom world の Preview2 context/stream verified partial slice であり、custom world 自体が
+`wasi:cli/run` を import/export する接続、fd table/rights の公開契約、Mac Apple Silicon/Linux
+x86_64 artifact/runtime、native/selfhost parity は未完了である。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線
@@ -557,9 +574,10 @@ Stage 2m/2n の core output を WIT Component として実際に instantiate し
   WASI fd_write へ渡す際は array → リニアメモリへのコピーが必要
   (`array.copy` 不可のため要素ループまたは `array.init_data` の逆操作を helper 化)
 - Stage 2k の明示拒否、Stage 2l の `(ptr, len)` ABI、Stage 2m の GC array→linear-memory copy、
-  Stage 2n の fd_write handler semantics、Stage 2o の custom Component instantiate を前提に、
-  次の WASI/component adapter 実装を三つの observable contract へ分ける。次に実 WASI
-  context/rights と接続し、最後に Preview2 artifact/runtime と native/selfhost parity を検証する。
+  Stage 2n の fd_write handler semantics、Stage 2o の custom Component instantiate、Stage 2p の
+  Preview2 stdout stream 接続を前提に、次の WASI/component adapter 実装を observable contract
+  ごとに分ける。次に `wasi:cli/run` と fd table/rights を閉じ、最後に Preview2 artifact/runtime
+  と native/selfhost parity を検証する。
   synthetic import の instantiate 成功、host callback 単体の byte read、core runner 単体の success、
   writer adapter 単体の success は、公開 component print 完了の証拠に数えない。
 
@@ -618,7 +636,8 @@ range boundary、Stage 2g の `print-string` external import boundary、Stage 2h
 String read、Stage 2i の WasmGC runner stdout sink、Stage 2j の `std::io::Write` adapter、Stage 2k の
 WasmGC Component bridge 明示拒否、Stage 2l の output `list<u8>` canonical pair 契約、Stage 2m
 の packed GC array→linear-memory output bridge、Stage 2n の fd_write handler 契約、Stage 2o の
-custom `wasmgc-output` Component actual instantiate は 2026-07-24 に検証済み。ADT
+custom `wasmgc-output` Component actual instantiate、Stage 2p の Preview2 stdout stream 接続は
+2026-07-24 に検証済み。ADT
 の全表現、Stage 2 の残り (Unicode code-point semantics / WASI-component I/O /
 native-selfhost parity)、Stage 3 以降
 (closures / traits / selfhost)、supported target
