@@ -37,6 +37,23 @@ pub enum Independence {
     ExternalObservation,
 }
 
+/// evidence manifest の required string field が不正な理由。
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum EvidenceValidationError {
+    #[error("evidence の必須 field が空です: {field}")]
+    EmptyField { field: &'static str },
+}
+
+fn validate_required_field(
+    field: &'static str,
+    value: &str,
+) -> Result<(), EvidenceValidationError> {
+    if value.trim().is_empty() {
+        return Err(EvidenceValidationError::EmptyField { field });
+    }
+    Ok(())
+}
+
 /// evidence が対象とする M2 node または executable contract。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EvidenceSubject {
@@ -83,6 +100,14 @@ impl ExecutionIdentity {
 
     pub fn artifact_digest(&self) -> &str {
         &self.artifact_digest
+    }
+
+    /// 実行境界を再現する required identity が欠落していないことを検査する。
+    pub fn validate_required_fields(&self) -> Result<(), EvidenceValidationError> {
+        validate_required_field("runner", &self.runner)?;
+        validate_required_field("target", &self.target)?;
+        validate_required_field("source_commit", &self.source_commit)?;
+        validate_required_field("artifact_digest", &self.artifact_digest)
     }
 }
 
@@ -139,6 +164,11 @@ impl SamplingPlan {
     pub fn coverage(&self) -> &BTreeMap<String, usize> {
         &self.coverage
     }
+
+    /// sampling metadata の required generator が欠落していないことを検査する。
+    pub fn validate_required_fields(&self) -> Result<(), EvidenceValidationError> {
+        validate_required_field("generator", &self.generator)
+    }
 }
 
 /// 実行境界と sampling plan を一つの再現可能な context に束ねる。
@@ -188,6 +218,12 @@ impl ExecutionContext {
     pub fn coverage(&self) -> &BTreeMap<String, usize> {
         self.sampling.coverage()
     }
+
+    /// execution identity と sampling metadata の required field をまとめて検査する。
+    pub fn validate_required_fields(&self) -> Result<(), EvidenceValidationError> {
+        self.identity.validate_required_fields()?;
+        self.sampling.validate_required_fields()
+    }
 }
 
 /// producer/tool/timestamp を固定する provenance。
@@ -221,6 +257,13 @@ impl Provenance {
 
     pub fn timestamp(&self) -> &str {
         &self.timestamp
+    }
+
+    /// provenance の required field が欠落していないことを検査する。
+    pub fn validate_required_fields(&self) -> Result<(), EvidenceValidationError> {
+        validate_required_field("producer", &self.producer)?;
+        validate_required_field("tool_version", &self.tool_version)?;
+        validate_required_field("timestamp", &self.timestamp)
     }
 }
 
@@ -283,6 +326,12 @@ impl Evidence {
 
     pub fn independence(&self) -> Independence {
         self.independence
+    }
+
+    /// evidence を manifest へ投影する前に required field を fail-closed 検査する。
+    pub fn validate_required_fields(&self) -> Result<(), EvidenceValidationError> {
+        self.execution.validate_required_fields()?;
+        self.provenance.validate_required_fields()
     }
 }
 
@@ -348,9 +397,14 @@ impl Edge {
     }
 }
 
-/// graph へ同じ evidence ID を二重登録した場合のエラー。
+/// evidence graph への登録と edge closure に関するエラー。
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum GraphError {
+    #[error("evidence の required field が不正です: {source}")]
+    InvalidEvidence {
+        #[source]
+        source: EvidenceValidationError,
+    },
     #[error("evidence ID が重複しています: {id:?}")]
     DuplicateEvidence { id: EvidenceId },
     #[error("edge が参照する evidence ID が graph にありません: {id:?}")]
@@ -366,6 +420,9 @@ pub struct EvidenceGraph {
 
 impl EvidenceGraph {
     pub fn add_evidence(&mut self, evidence: Evidence) -> Result<(), GraphError> {
+        evidence
+            .validate_required_fields()
+            .map_err(|source| GraphError::InvalidEvidence { source })?;
         if self
             .evidence
             .iter()
