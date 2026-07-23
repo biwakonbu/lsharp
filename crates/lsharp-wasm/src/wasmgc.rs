@@ -12,6 +12,13 @@ use wasm_encoder::{
 
 use crate::codegen::CodegenError;
 
+/// Lower が予約する runtime import の論理インデックス数。
+///
+/// WasmGC backend は現時点で runtime import を materialize しないため、lower が
+/// `Call(17 + user_index)` として保持するユーザー関数呼び出しだけを core module の
+/// ローカル関数 index へ変換する。
+const LOWER_RUNTIME_IMPORT_COUNT: u32 = 17;
+
 /// L# IR を WasmGC core module へ変換する。
 ///
 /// Stage 1 では GC 型定義と `StructNew` / `StructGet` / `StructSet` / `RefCast`、
@@ -106,7 +113,7 @@ pub fn emit_wasm_wasmgc(module: &Module) -> Result<Vec<u8>, CodegenError> {
             .map(|ty| (1, wasm_gc_valtype(ty)))
             .collect::<Vec<_>>();
         let mut wasm_function = Function::new(locals);
-        emit_wasm_gc_instructions(&mut wasm_function, &function.body, import_count)?;
+        emit_wasm_gc_instructions(&mut wasm_function, &function.body, module.functions.len())?;
         wasm_function.instruction(&wasm_encoder::Instruction::End);
         code.function(&wasm_function);
     }
@@ -161,6 +168,24 @@ fn validate_module(module: &Module) -> Result<(), CodegenError> {
         }
         for instruction in &function.body {
             match instruction {
+                Instruction::Call(function_index) => {
+                    let Some(local_index) = function_index.checked_sub(LOWER_RUNTIME_IMPORT_COUNT)
+                    else {
+                        return Err(codegen_error(format!(
+                            "WasmGC backend は runtime import 呼び出しを未対応です: Call({function_index})"
+                        )));
+                    };
+                    if (local_index as usize) >= module.functions.len() {
+                        return Err(codegen_error(format!(
+                            "ユーザー関数の呼び出しインデックスが範囲外です: Call({function_index})"
+                        )));
+                    }
+                }
+                Instruction::CallImport(function_index) => {
+                    return Err(codegen_error(format!(
+                        "WasmGC backend は CallImport を未対応です: {function_index}"
+                    )));
+                }
                 Instruction::StructNew(type_index) => {
                     validate_gc_type_index(*type_index, module.gc_types.len(), instruction)?;
                     if !matches!(
@@ -261,7 +286,7 @@ fn validate_gc_type_index(
 fn emit_wasm_gc_instructions(
     function: &mut Function,
     instructions: &[Instruction],
-    import_count: u32,
+    function_count: usize,
 ) -> Result<(), CodegenError> {
     use wasm_encoder::Instruction as W;
 
@@ -269,7 +294,19 @@ fn emit_wasm_gc_instructions(
         function,
         instructions,
         |function, index| {
-            function.instruction(&W::Call(import_count + index));
+            let local_index = index
+                .checked_sub(LOWER_RUNTIME_IMPORT_COUNT)
+                .ok_or_else(|| {
+                    codegen_error(format!(
+                        "WasmGC backend は runtime import 呼び出しを未対応です: Call({index})"
+                    ))
+                })?;
+            if (local_index as usize) >= function_count {
+                return Err(codegen_error(format!(
+                    "ユーザー関数の呼び出しインデックスが範囲外です: Call({index})"
+                )));
+            }
+            function.instruction(&W::Call(local_index));
             Ok(())
         },
         |function, instruction| {

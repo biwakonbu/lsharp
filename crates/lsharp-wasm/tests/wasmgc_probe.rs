@@ -149,6 +149,28 @@ fn wasm_gc_emitter_rejects_linear_memory_instruction_instead_of_fallback() {
 }
 
 #[test]
+fn wasm_gc_emitter_rejects_lowered_runtime_call_without_import_boundary() {
+    let module = IrModule {
+        functions: vec![Function {
+            name: "main".to_string(),
+            params: vec![],
+            result: IrType::I64,
+            locals: vec![],
+            body: vec![Instruction::Call(0)],
+            is_export: true,
+        }],
+        gc_types: vec![],
+        imports: vec![],
+        globals: vec![],
+        string_data: vec![],
+    };
+
+    let error = lsharp_wasm::wasmgc::emit_wasm_wasmgc(&module)
+        .expect_err("runtime import を local user function として偽装してはならない");
+    assert!(error.to_string().contains("runtime import"));
+}
+
+#[test]
 fn wasm_gc_emitter_maps_reference_typed_struct_fields() {
     let module = IrModule {
         functions: vec![Function {
@@ -202,4 +224,47 @@ fn wasm_gc_emitter_maps_reference_typed_struct_fields() {
         .expect("read-nested-field export が存在する");
 
     assert_eq!(read_nested_field.call(&mut store, ()).unwrap(), 42);
+}
+
+#[test]
+fn wasm_gc_emitter_remaps_lowered_user_call_indices() {
+    let module = IrModule {
+        functions: vec![
+            Function {
+                name: "callee".to_string(),
+                params: vec![],
+                result: IrType::I64,
+                locals: vec![],
+                body: vec![Instruction::I64Const(7)],
+                is_export: false,
+            },
+            Function {
+                name: "main".to_string(),
+                params: vec![],
+                result: IrType::I64,
+                locals: vec![],
+                // Lower は runtime import 17 個の後ろを user function index として持つ。
+                body: vec![Instruction::Call(17)],
+                is_export: true,
+            },
+        ],
+        gc_types: vec![],
+        imports: vec![],
+        globals: vec![],
+        string_data: vec![],
+    };
+
+    let bytes = lsharp_wasm::wasmgc::emit_wasm_wasmgc(&module)
+        .expect("lowered user call index を core Wasm index へ変換できる");
+    let mut config = Config::new();
+    config.wasm_gc(true);
+    let engine = Engine::new(&config).expect("WasmGC engine を作成できる");
+    let module = Module::new(&engine, bytes).expect("user call を含む module を検証できる");
+    let mut store = Store::new(&engine, ());
+    let instance = Instance::new(&mut store, &module, &[]).expect("module を instantiate できる");
+    let main = instance
+        .get_typed_func::<(), i64>(&mut store, "main")
+        .expect("main export が存在する");
+
+    assert_eq!(main.call(&mut store, ()).unwrap(), 7);
 }

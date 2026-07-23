@@ -86,8 +86,17 @@ pub fn prepare_source_for_compile(file: &Path) -> miette::Result<(String, bool)>
     Ok((source, false))
 }
 
-fn compile_module_from_formatted_source(file: &Path, source: &str) -> miette::Result<Module> {
+fn compile_module_from_formatted_source(
+    file: &Path,
+    source: &str,
+    backend: CompileBackend,
+) -> miette::Result<Module> {
     if has_file_imports_from_source(source) {
+        if backend == CompileBackend::WasmGc {
+            return Err(miette::miette!(
+                "[LS4001] WasmGC backend は現時点で import を含む compile をサポートしていません"
+            ));
+        }
         return lsharp_ir::compile_multi_file(file).map_err(|e| miette::miette!("{e}"));
     }
 
@@ -98,7 +107,11 @@ fn compile_module_from_formatted_source(file: &Path, source: &str) -> miette::Re
         .infer_program(&program)
         .map_err(|e| miette::miette!("[{}] {e}", e.code()))?;
     let expr_type_results = infer.expr_type_results_snapshot();
-    let mut lower = lsharp_ir::lower::Lower::new();
+    let lower_backend = match backend {
+        CompileBackend::Linear => lsharp_ir::lower::LowerBackend::Linear,
+        CompileBackend::WasmGc => lsharp_ir::lower::LowerBackend::WasmGc,
+    };
+    let mut lower = lsharp_ir::lower::Lower::with_backend(lower_backend);
     lower
         .lower_program_with_expr_types(&program, &type_results, &expr_type_results)
         .map_err(|e| miette::miette!("[{}] {e}", e.code()))
@@ -149,7 +162,7 @@ pub fn compile_file_with_backend(
         (target, output_path)
     };
     let (formatted_source, formatted) = prepare_source_for_compile(file)?;
-    let module = compile_module_from_formatted_source(file, &formatted_source)?;
+    let module = compile_module_from_formatted_source(file, &formatted_source, backend)?;
 
     if emit_ir {
         print!("{}", module.dump());
@@ -207,9 +220,12 @@ mod tests {
 
     #[test]
     fn compile_diagnostics_preserve_stable_type_error_code() {
-        let error =
-            compile_module_from_formatted_source(Path::new("Main.ls"), "(defn bad [] (+ 1 true))")
-                .expect_err("型エラーは compile を失敗させるべき");
+        let error = compile_module_from_formatted_source(
+            Path::new("Main.ls"),
+            "(defn bad [] (+ 1 true))",
+            CompileBackend::Linear,
+        )
+        .expect_err("型エラーは compile を失敗させるべき");
 
         assert!(
             error.to_string().contains("[LS1004]"),
@@ -283,6 +299,128 @@ mod tests {
     }
 
     #[test]
+    fn test_compile_file_wasmgc_backend_executes_record_access() {
+        let dir = std::env::temp_dir().join("lsharp_compile_pipeline_wasmgc_record");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(dir.join(".git")).unwrap();
+
+        let file = dir.join("Main.ls");
+        let output = dir.join("Main.wasm");
+        std::fs::write(
+            &file,
+            "(type Point (record (: x Int) (: y Int)))\n\
+             (defn make-point [x y] {Point x x y y})\n\
+             (defn main [] (Point.x (make-point 10 20)))\n",
+        )
+        .unwrap();
+
+        let artifacts = compile_file_with_backend(
+            &file,
+            Some(&output),
+            false,
+            Some(CompileTarget::WebWasm),
+            CompileBackend::WasmGc,
+        )
+        .unwrap();
+        let wasm_bytes = std::fs::read(&artifacts.output_path).unwrap();
+
+        let mut config = wasmtime::Config::new();
+        config.wasm_gc(true);
+        let engine = wasmtime::Engine::new(&config).unwrap();
+        let module = wasmtime::Module::new(&engine, wasm_bytes).unwrap();
+        let mut store = wasmtime::Store::new(&engine, ());
+        let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
+        let main = instance
+            .get_typed_func::<(), i64>(&mut store, "main")
+            .unwrap();
+        assert_eq!(main.call(&mut store, ()).unwrap(), 10);
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_compile_file_wasmgc_backend_executes_nested_record_access() {
+        let dir = std::env::temp_dir().join("lsharp_compile_pipeline_wasmgc_nested_record");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(dir.join(".git")).unwrap();
+
+        let file = dir.join("Main.ls");
+        let output = dir.join("Main.wasm");
+        std::fs::write(
+            &file,
+            "(type Inner (record (: x Int)))\n\
+             (type Outer (record (: inner Inner)))\n\
+             (defn main [] (. (. {Outer inner {Inner x 41}} inner) x))\n",
+        )
+        .unwrap();
+
+        let artifacts = compile_file_with_backend(
+            &file,
+            Some(&output),
+            false,
+            Some(CompileTarget::WebWasm),
+            CompileBackend::WasmGc,
+        )
+        .unwrap();
+        let wasm_bytes = std::fs::read(&artifacts.output_path).unwrap();
+
+        let mut config = wasmtime::Config::new();
+        config.wasm_gc(true);
+        let engine = wasmtime::Engine::new(&config).unwrap();
+        let module = wasmtime::Module::new(&engine, wasm_bytes).unwrap();
+        let mut store = wasmtime::Store::new(&engine, ());
+        let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
+        let main = instance
+            .get_typed_func::<(), i64>(&mut store, "main")
+            .unwrap();
+        assert_eq!(main.call(&mut store, ()).unwrap(), 41);
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_compile_file_wasmgc_backend_executes_record_update() {
+        let dir = std::env::temp_dir().join("lsharp_compile_pipeline_wasmgc_record_update");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(dir.join(".git")).unwrap();
+
+        let file = dir.join("Main.ls");
+        let output = dir.join("Main.wasm");
+        std::fs::write(
+            &file,
+            "(type Point (record (: x Int) (: y Int)))\n\
+             (defn main [] (let [p {Point x 10 y 20} q {p | x 42}] (. q y)))\n",
+        )
+        .unwrap();
+
+        let artifacts = compile_file_with_backend(
+            &file,
+            Some(&output),
+            false,
+            Some(CompileTarget::WebWasm),
+            CompileBackend::WasmGc,
+        )
+        .unwrap();
+        let wasm_bytes = std::fs::read(&artifacts.output_path).unwrap();
+
+        let mut config = wasmtime::Config::new();
+        config.wasm_gc(true);
+        let engine = wasmtime::Engine::new(&config).unwrap();
+        let module = wasmtime::Module::new(&engine, wasm_bytes).unwrap();
+        let mut store = wasmtime::Store::new(&engine, ());
+        let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
+        let main = instance
+            .get_typed_func::<(), i64>(&mut store, "main")
+            .unwrap();
+        assert_eq!(main.call(&mut store, ()).unwrap(), 20);
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
     fn test_compile_file_wasmgc_backend_rejects_non_web_target() {
         let dir = std::env::temp_dir().join("lsharp_compile_pipeline_wasmgc_target");
         let _ = std::fs::remove_dir_all(&dir);
@@ -305,6 +443,19 @@ mod tests {
         assert!(error.to_string().contains("--target web-wasm"));
 
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_wasmgc_backend_rejects_file_imports_explicitly() {
+        let error = compile_module_from_formatted_source(
+            Path::new("Main.ls"),
+            "(import Foo)\n(defn main [] 42)\n",
+            CompileBackend::WasmGc,
+        )
+        .expect_err("WasmGC backend は未対応の file import を曖昧に処理してはならない");
+
+        assert!(error.to_string().contains("[LS4001]"));
+        assert!(error.to_string().contains("import"));
     }
 
     #[test]

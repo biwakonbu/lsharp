@@ -70,12 +70,12 @@ L# IR から self-contained WasmGC core module を生成する最小 emitter を
   nested reference field の実行を Wasmtime で確認した。
 - Stage 1 がまだ扱わない linear-memory / global / indirect-call 命令は、i64 fallback や
   無効な Wasm を出力せず、明示的な codegen error で停止する。
-- `crates/lsharp-wasm/tests/wasmgc_probe.rs` の IR emitter tests 6 件が、生成・検証・
+- `crates/lsharp-wasm/tests/wasmgc_probe.rs` の IR emitter tests 8 件が、生成・検証・
   instantiate・actual execution と未対応命令の拒否を固定する。
 
-この slice は Rust `lsharp-wasm` の IR emitter に限定され、既存 lowering からの backend 選択、
-WASI/component runtime、supported 2 targets の native artifact/runtime、selfhost ADT 表現は
-未完了である。
+この slice は Rust `lsharp-wasm` の IR emitter に加えて、直接の record literal/field access
+へ接続する前段までを扱う。ADT lowering、WASI/component runtime、supported 2 targets の native
+artifact/runtime、selfhost ADT 表現は未完了である。
 
 ## Stage 1.5 検証済み slice: CLI backend 選択 (2026-07-24)
 
@@ -90,8 +90,32 @@ compiler integration の最初の境界として、linear と WasmGC を明示�
 - 明示 backend がある compile/build は embedded component guest へ delegation せず、host の選択した
   backend を実行する。これにより guest が未対応の flag を受け取って成功を隠すことを防ぐ。
 
-これは CLI/API の選択境界と最小 core runtime の証跡であり、records/ADT lowering、WASI/component
-runtime、Mac/Linux 2 target の native E2E、selfhost compiler からの backend 選択はまだ未完了である。
+これは CLI/API の選択境界と最小 core runtime の証跡であり、一般 records/ADT lowering、
+WASI/component runtime、Mac/Linux 2 target の native E2E、selfhost compiler からの backend 選択は
+まだ未完了である。
+
+## Stage 1.75 検証済み slice: record lowering と user call (2026-07-24)
+
+既存 linear lowering を壊さずに、WasmGC compile path の直接 record 表現を接続した。
+
+- `lsharp_ir::lower::LowerBackend::{Linear,WasmGc}` と `Lower::with_backend` を追加し、
+  WasmGC 選択時の record 型を `IrType::Ref(gc_type_index)`、record field の型も nested record
+  参照へ変換する。既存 `Lower::new()` は Linear のまま維持する。
+- record literal / direct field access / generated field accessor / record update の function
+  signature と extra local 型を GC struct の参照型に揃え、`{Point ...}`、nested record、update を
+  Wasmtime で実行する。
+- lowering が予約する 17 個の runtime import 論理 index と、WasmGC core module の local function
+  index の差を emitter で明示的に remap する。runtime import / `CallImport` は未対応として診断し、
+  unknown function を出力しない。
+- file import を含む compile は module graph/linker が WasmGC 型境界をまだ持たないため `LS4001` で
+  明示拒否し、linear backend の成功を WasmGC evidence に流用しない。
+- 証跡: `test_compile_file_wasmgc_backend_executes_record_access`、
+  `test_compile_file_wasmgc_backend_executes_nested_record_access`、
+  `test_compile_file_wasmgc_backend_executes_record_update`、WasmGC probe 8 件。
+
+この slice は records の direct construction/access と user-function call に限定される。
+ADT constructor/pattern、GC root/allocator、strings、WASI/component、Mac/Linux 2 target、selfhost
+compiler は次の残件として維持する。
 
 ## 実装戦略
 
@@ -106,9 +130,9 @@ runtime、Mac/Linux 2 target の native E2E、selfhost compiler からの backen
 
 ### Stage 1: Records / ADT → struct 型
 
-1. lowering: 現在リニアメモリ allocator 呼び出しへ落ちているレコード/ADT 構築・
-   フィールドアクセスを、wasmgc backend 選択時は `StructNew` / `StructGet` /
-   `StructSet` / `RefCast` IR 命令 + `Module.gc_types` への型登録で出力する
+1. lowering: record literal/direct field access、field accessor、record update の WasmGC 型変換は
+   Stage 1.75 で検証済み。残る ADT 構築・フィールドアクセス・pattern を
+   `StructNew` / `StructGet` / `StructSet` / `RefCast` IR 命令 + `Module.gc_types` へ接続する
    (IR 命令は定義済みのため lowering の分岐追加のみ)
 2. emit: `wasmgc.rs` で型セクションに struct 型を出力し、4 命令を
    `struct.new type_idx` / `struct.get type_idx field_idx` / `struct.set` / `ref.cast` へ変換。
@@ -168,6 +192,7 @@ runtime、Mac/Linux 2 target の native E2E、selfhost compiler からの backen
 
 ## ステータス
 
-Stage 0 (依存 API / runtime capability probe) と Stage 1 の IR emitter verified slice は
-2026-07-24 に検証済み。Stage 1 の compiler integration と Stage 2 以降 (strings / closures /
-traits / selfhost) は未完了であり、`LEGACY-EXEC-01` の完了条件には到達していない。
+Stage 0 (依存 API / runtime capability probe)、Stage 1 の IR emitter、Stage 1.5 の CLI 選択、
+Stage 1.75 の direct record lowering/update/user call slice は 2026-07-24 に検証済み。ADT、
+Stage 2 以降 (strings / closures / traits / selfhost)、supported target の actual runtime evidence
+は未完了であり、`LEGACY-EXEC-01` の完了条件には到達していない。

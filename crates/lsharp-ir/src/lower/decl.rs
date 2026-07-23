@@ -8,9 +8,7 @@ use lsharp_types::types::{Type, TypeVarId};
 
 use crate::{Function, Instruction, IrType};
 
-use super::{
-    FuncCtx, Lower, LowerError, is_heap_like_type_name, type_expr_to_name, type_to_ir, type_to_name,
-};
+use super::{FuncCtx, Lower, LowerError, is_heap_like_type_name, type_expr_to_name, type_to_name};
 
 impl Lower {
     fn infer_cached_expr_type_name(&self, type_scope_key: &str, expr: &Expr) -> Option<String> {
@@ -291,8 +289,6 @@ impl Lower {
     ) -> Function {
         let accessor_name = format!("{type_name}.{field_name}");
 
-        // MVP: レコードはフラットに i64 として扱う
-        // 将来的に WasmGC struct.get に変換
         let mut body = Vec::new();
         if let Some(&gc_type_idx) = self.record_type_indices.get(type_name) {
             body.push(Instruction::LocalGet(0));
@@ -302,10 +298,21 @@ impl Lower {
             body.push(Instruction::LocalGet(0));
         }
 
+        let receiver_type = if self.backend == super::LowerBackend::WasmGc {
+            self.record_type_indices
+                .get(type_name)
+                .copied()
+                .map(IrType::Ref)
+                .unwrap_or(IrType::I64)
+        } else {
+            IrType::I64
+        };
+        let field_type = self.type_expr_to_ir(_field_type);
+
         Function {
             name: accessor_name,
-            params: vec![IrType::I64],
-            result: IrType::I64,
+            params: vec![receiver_type],
+            result: field_type,
             locals: Vec::new(),
             body,
             is_export: false,
@@ -516,18 +523,21 @@ impl Lower {
             if let Some(ty) = self.type_results.get(name) {
                 match ty {
                     Type::Fun(inferred_params, ret) if inferred_params.len() == params.len() => {
-                        let p: Vec<IrType> = inferred_params.iter().map(type_to_ir).collect();
+                        let p: Vec<IrType> = inferred_params
+                            .iter()
+                            .map(|ty| self.ir_type_for_type(ty))
+                            .collect();
                         let param_type_names = inferred_params.iter().map(type_to_name).collect();
-                        let r = type_to_ir(ret);
+                        let r = self.ir_type_for_type(ret);
                         (p, r, param_type_names)
                     }
                     Type::Fun(_, ret) => {
                         let p = vec![IrType::I64; params.len()];
-                        (p, type_to_ir(ret), vec![None; params.len()])
+                        (p, self.ir_type_for_type(ret), vec![None; params.len()])
                     }
                     _ => (
                         vec![IrType::I64; params.len()],
-                        type_to_ir(ty),
+                        self.ir_type_for_type(ty),
                         vec![None; params.len()],
                     ),
                 }
@@ -552,6 +562,8 @@ impl Lower {
             }
             ctx.param_count += 1;
             ctx.next_local += 1;
+            ctx.local_types
+                .push(param_types.get(param_idx).copied().unwrap_or(IrType::I64));
         }
 
         // 本体を変換
@@ -612,7 +624,15 @@ impl Lower {
         };
 
         // ローカル変数（パラメータ以外）
-        let extra_locals = vec![IrType::I64; (ctx.next_local - ctx.param_count) as usize];
+        let extra_local_count = (ctx.next_local - ctx.param_count) as usize;
+        let extra_locals = ctx
+            .local_types
+            .get(ctx.param_count as usize..)
+            .filter(|types| types.len() == extra_local_count)
+            .map_or_else(
+                || vec![IrType::I64; extra_local_count],
+                |types| types.to_vec(),
+            );
 
         Ok(Function {
             name: name.to_string(),

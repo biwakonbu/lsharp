@@ -25,6 +25,16 @@ pub enum LowerError {
     UndefinedFunction { name: String, span: Option<Span> },
 }
 
+/// Lowering が値表現を選ぶ backend。
+///
+/// `Linear` は既存の tagged pointer / linear-memory 表現を維持し、
+/// `WasmGc` はレコード値を `IrType::Ref` として WasmGC emitter へ渡す。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LowerBackend {
+    Linear,
+    WasmGc,
+}
+
 impl LowerError {
     pub fn code(&self) -> &'static str {
         match self {
@@ -42,6 +52,8 @@ impl LowerError {
 
 /// Lowering コンテキスト
 pub struct Lower {
+    /// 値表現を選択する backend。
+    pub(crate) backend: LowerBackend,
     /// 関数名 -> 関数インデックスのマッピング
     pub(crate) func_indices: HashMap<String, u32>,
     /// import 関数の数（ユーザー関数のインデックスオフセット）
@@ -94,7 +106,13 @@ pub(crate) fn unwrap_private(decl: &Decl) -> &Decl {
 
 impl Lower {
     pub fn new() -> Self {
+        Self::with_backend(LowerBackend::Linear)
+    }
+
+    /// backend を明示して lowering コンテキストを作成する。
+    pub fn with_backend(backend: LowerBackend) -> Self {
         Self {
+            backend,
             func_indices: HashMap::new(),
             import_count: 0,
             type_results: HashMap::new(),
@@ -115,6 +133,10 @@ impl Lower {
             next_func_idx: 0,
             late_func_idx: 0,
         }
+    }
+
+    pub fn backend(&self) -> LowerBackend {
+        self.backend
     }
 
     /// 一意な Lambda 関数名を生成
@@ -168,7 +190,7 @@ impl Lower {
                     .iter()
                     .map(|(fname, ftype)| GcField {
                         name: fname.clone(),
-                        ty: type_expr_to_ir(ftype),
+                        ty: self.type_expr_to_ir(ftype),
                         mutable: false,
                     })
                     .collect();
@@ -444,6 +466,28 @@ impl Lower {
         gc_types
     }
 
+    /// L# 型を選択した値表現の IR 型へ変換する。
+    pub(crate) fn ir_type_for_type(&self, ty: &Type) -> IrType {
+        if self.backend == LowerBackend::WasmGc
+            && let Type::Record(name, _) = ty
+            && let Some(&gc_idx) = self.record_type_indices.get(name)
+        {
+            return IrType::Ref(gc_idx);
+        }
+        type_to_ir(ty)
+    }
+
+    /// 宣言中の型式を選択した値表現の IR 型へ変換する。
+    pub(crate) fn type_expr_to_ir(&self, ty: &lsharp_syntax::ast::TypeExpr) -> IrType {
+        if self.backend == LowerBackend::WasmGc
+            && let lsharp_syntax::ast::TypeExpr::Named(_, name) = ty
+            && let Some(&gc_idx) = self.record_type_indices.get(name)
+        {
+            return IrType::Ref(gc_idx);
+        }
+        type_expr_to_ir(ty)
+    }
+
     /// プログラム全体を IR に変換
     pub fn lower_program(
         &mut self,
@@ -498,6 +542,8 @@ pub(crate) struct FuncCtx {
     pub(crate) local_type_names: HashMap<String, String>,
     pub(crate) param_count: u32,
     pub(crate) next_local: u32,
+    /// Wasm local index ごとの IR 型（param を除く extra local の型生成にも使う）。
+    pub(crate) local_types: Vec<IrType>,
 }
 
 impl FuncCtx {
@@ -510,6 +556,7 @@ impl FuncCtx {
             local_type_names: HashMap::new(),
             param_count: 0,
             next_local: 0,
+            local_types: Vec::new(),
         }
     }
 
@@ -518,11 +565,16 @@ impl FuncCtx {
     }
 
     pub(crate) fn alloc_local(&mut self, name: String) -> u32 {
+        self.alloc_local_typed(name, IrType::I64)
+    }
+
+    pub(crate) fn alloc_local_typed(&mut self, name: String, ty: IrType) -> u32 {
         // compiler が使う `_` prefix の一時ローカルは、入れ子の式で同名再利用すると
         // 外側の一時値を内側の lowering が上書きしてしまうため常に fresh にする。
         if name.starts_with('_') {
             let idx = self.next_local;
             self.next_local += 1;
+            self.local_types.push(ty);
             return idx;
         }
         if let Some(&idx) = self.locals_map.get(&name) {
@@ -531,13 +583,15 @@ impl FuncCtx {
         let idx = self.next_local;
         self.locals_map.insert(name, idx);
         self.next_local += 1;
+        self.local_types.push(ty);
         idx
     }
 
-    pub(crate) fn alloc_scoped_local(&mut self, name: String) -> u32 {
+    pub(crate) fn alloc_scoped_local_typed(&mut self, name: String, ty: IrType) -> u32 {
         let idx = self.next_local;
         self.locals_map.insert(name, idx);
         self.next_local += 1;
+        self.local_types.push(ty);
         idx
     }
 

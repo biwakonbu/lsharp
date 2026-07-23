@@ -115,7 +115,21 @@ impl Lower {
                             Pattern::Var(_, name) => {
                                 let previous_local = ctx.locals_map.get(name).copied();
                                 let previous_type = ctx.local_type_names.get(name).cloned();
-                                let idx = ctx.alloc_scoped_local(name.clone());
+                                let binding_ir_type = inferred_type_name
+                                    .as_deref()
+                                    .and_then(|type_name| {
+                                        (self.backend == super::LowerBackend::WasmGc)
+                                            .then(|| {
+                                                self.record_type_indices
+                                                    .get(type_name)
+                                                    .copied()
+                                                    .map(IrType::Ref)
+                                            })
+                                            .flatten()
+                                    })
+                                    .unwrap_or(IrType::I64);
+                                let idx =
+                                    ctx.alloc_scoped_local_typed(name.clone(), binding_ir_type);
                                 if let Some(type_name) = inferred_type_name {
                                     ctx.local_type_names.insert(name.clone(), type_name);
                                 } else {
@@ -1675,11 +1689,25 @@ impl Lower {
             Expr::RecordUpdate(_, base, update_fields) => {
                 // ベースレコードを評価してローカルに保存
                 self.lower_expr(ctx, base)?;
-                let base_local = ctx.alloc_local("_record_base".to_string());
+                let base_type_name = self.infer_expr_type_name_with_ctx(ctx, base);
+                let base_ir_type = base_type_name
+                    .as_deref()
+                    .and_then(|type_name| {
+                        (self.backend == super::LowerBackend::WasmGc)
+                            .then(|| {
+                                self.record_type_indices
+                                    .get(type_name)
+                                    .copied()
+                                    .map(IrType::Ref)
+                            })
+                            .flatten()
+                    })
+                    .unwrap_or(IrType::I64);
+                let base_local = ctx.alloc_local_typed("_record_base".to_string(), base_ir_type);
                 ctx.emit(Instruction::LocalSet(base_local));
 
                 // 型推論結果からベース式の型名を取得 (R-m3)
-                let type_name_hint = self.infer_expr_type_name(base);
+                let type_name_hint = base_type_name;
                 let mut found_type = None;
 
                 if let Some(ref tn) = type_name_hint {
