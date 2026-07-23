@@ -1627,7 +1627,7 @@
                     program
                     (vector-get node (+ 3 param-idx)))
                   "Unknown"))
-              (if (or (= param-count 0) (or (= param-count 1) (= param-count 2)))
+              (if (or (= param-count 0) (or (= param-count 1) (or (= param-count 2) (= param-count 3))))
                 (invariant-static-non-bool-type-text body)
                 "Unknown")))
           "Unknown"))
@@ -2082,7 +2082,7 @@
         (let [guard (vector-get body 1)
           guard-kind (invariant-static-bool-kind-with-program program guard)]
           (if (= guard-kind 2)
-            (invariant-static-non-bool-type-text guard)
+            (invariant-static-non-bool-type-text-with-program program guard)
             (invariant-static-match-non-bool-type-text-loop
               program
               node
