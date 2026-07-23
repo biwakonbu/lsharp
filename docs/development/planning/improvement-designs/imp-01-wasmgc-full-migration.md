@@ -487,6 +487,45 @@ Stage 2l で固定した canonical pair を、WasmGC core module の実行経路
 native/selfhost parity は未完了である。次の実装 task は canonical output sink を WASI
 `fd_write` または Component host implementation へ接続することとする。
 
+## Stage 2n 検証済み slice: canonical output の `fd_write` handler 契約 (2026-07-24)
+
+Stage 2m の canonical output sink を、WASI `fd_write` に置き換え可能な host handler boundary へ
+接続した。
+
+- `run_wasm_wasmgc_component_output_to_writer` は canonical bytes を `Write::write_all` で消費し、
+  partial write / WriteZero / write error を fail-closed に扱い、main の exit code を受け取った
+  後だけ `flush` する。
+- `run_wasm_wasmgc_component_output_to_fd_write` は `(fd, bytes) -> Result<nwritten, errno>` の
+  handler を受け取り、stdout fd を明示的に渡す。partial write は再試行し、zero、over-report、
+  errno は error/trap として返す。
+- `wasm_gc_component_output_fd_write_retries_partial_writes`、
+  `wasm_gc_component_output_fd_write_propagates_errno`、
+  `wasm_gc_component_output_fd_write_rejects_zero_and_overreported_counts`、
+  `wasm_gc_component_output_writer_flushes_after_nonzero_exit` が observable contract を固定する。
+
+これは actual `WasiP1Ctx`/Preview2 host implementation ではなく、fd_write semantics を差し替え
+可能にした verified partial slice である。実 WASI context、fd table/rights、Component actual
+instantiate/runner、native/selfhost parity は未完了である。
+
+## Stage 2o 検証済み slice: `wasmgc-output` Component actual instantiate (2026-07-24)
+
+Stage 2m/2n の core output を WIT Component として実際に instantiate し、host interface を
+解決する経路を追加した。
+
+- `run_wasm_wasmgc_component_output_component_with_stdout_sink` は
+  `lsharp:wasmgc-output/stdout@0.1.0` の `write(list<u8>)` を Component Linker に定義する。
+  Component 側の `list<u8>` は host callback で `Vec<u8>` として lift され、sink error は
+  Component trap として返る。
+- `main: func() -> s64` export を actual Component API で呼び出し、s64 exit code を i32 へ検証
+  変換する。WASI Preview1/Preview2 linker へ暗黙に fallback しない。
+- `wasm_gc_component_output_component_runner_executes_wit_host` と
+  `wasm_gc_component_output_component_runner_propagates_sink_failure` が、生成 core bytes の
+  componentize、Component validation、instantiate、host output、trap propagation を固定する。
+
+これは custom `wasmgc-output` world の actual Component slice であり、WASI Preview2 `wasi:cli/run`
+接続、fd table/rights、Mac Apple Silicon/Linux x86_64 artifact/runtime、native/selfhost parity は
+未完了である。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線
@@ -517,10 +556,10 @@ native/selfhost parity は未完了である。次の実装 task は canonical o
 - 文字列リテラル/操作を `array.new_data` / `array.get_u` / `array.len` へ。
   WASI fd_write へ渡す際は array → リニアメモリへのコピーが必要
   (`array.copy` 不可のため要素ループまたは `array.init_data` の逆操作を helper 化)
-- Stage 2k の明示拒否、Stage 2l の `(ptr, len)` ABI、Stage 2m の GC array→linear-memory copy を
-  前提に、次の WASI/component adapter 実装を三つの observable contract へ分ける。次に WASI
-  `fd_write` の partial/error semantics を固定し、最後に Component Model の
-  actual instantiate/runner と native/selfhost parity を検証する。
+- Stage 2k の明示拒否、Stage 2l の `(ptr, len)` ABI、Stage 2m の GC array→linear-memory copy、
+  Stage 2n の fd_write handler semantics、Stage 2o の custom Component instantiate を前提に、
+  次の WASI/component adapter 実装を三つの observable contract へ分ける。次に実 WASI
+  context/rights と接続し、最後に Preview2 artifact/runtime と native/selfhost parity を検証する。
   synthetic import の instantiate 成功、host callback 単体の byte read、core runner 単体の success、
   writer adapter 単体の success は、公開 component print 完了の証拠に数えない。
 
@@ -578,7 +617,8 @@ String GC substring slice、Stage 2e の packed String byte array slice、Stage 
 range boundary、Stage 2g の `print-string` external import boundary、Stage 2h の host-side packed
 String read、Stage 2i の WasmGC runner stdout sink、Stage 2j の `std::io::Write` adapter、Stage 2k の
 WasmGC Component bridge 明示拒否、Stage 2l の output `list<u8>` canonical pair 契約、Stage 2m
-の packed GC array→linear-memory output bridge は 2026-07-24 に検証済み。ADT
+の packed GC array→linear-memory output bridge、Stage 2n の fd_write handler 契約、Stage 2o の
+custom `wasmgc-output` Component actual instantiate は 2026-07-24 に検証済み。ADT
 の全表現、Stage 2 の残り (Unicode code-point semantics / WASI-component I/O /
 native-selfhost parity)、Stage 3 以降
 (closures / traits / selfhost)、supported target

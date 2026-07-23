@@ -559,6 +559,54 @@ fn wasm_gc_component_output_componentizes_against_wit_world() {
 }
 
 #[test]
+fn wasm_gc_component_output_component_runner_executes_wit_host() {
+    let core = emit_component_output_probe_module(&[195, 169], 23);
+    let wit_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("wit")
+        .join("lsharp-wasmgc-output.wit");
+    let component = lsharp_wasm::component_adapter::componentize_core_module(
+        &core,
+        &wit_file,
+        "wasmgc-output",
+        &[],
+    )
+    .expect("WasmGC output core を componentize できる");
+    let output =
+        lsharp_wasm::wasmgc_runner::run_wasm_wasmgc_component_output_component_capture(&component)
+            .expect("WIT stdout host を link して Component を実行できる");
+
+    assert_eq!(output.stdout, "é");
+    assert_eq!(output.exit_code, 23);
+}
+
+#[test]
+fn wasm_gc_component_output_component_runner_propagates_sink_failure() {
+    let core = emit_component_output_probe_module(&[65], 0);
+    let wit_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("wit")
+        .join("lsharp-wasmgc-output.wit");
+    let component = lsharp_wasm::component_adapter::componentize_core_module(
+        &core,
+        &wit_file,
+        "wasmgc-output",
+        &[],
+    )
+    .expect("WasmGC output core を componentize できる");
+    let error =
+        lsharp_wasm::wasmgc_runner::run_wasm_wasmgc_component_output_component_with_stdout_sink(
+            &component,
+            |_bytes| Err("component stdout closed".to_string()),
+        )
+        .expect_err("Component host sink error は trap になる");
+
+    assert!(error.contains("component stdout closed"), "{error}");
+}
+
+#[test]
 fn wasm_gc_component_output_propagates_sink_failure_as_trap() {
     let module = IrModule {
         functions: vec![Function {
@@ -756,6 +804,135 @@ fn wasm_gc_runner_write_adapter_propagates_flush_error_after_execution() {
     assert!(error.contains("flush failed"), "{error}");
 }
 
+#[test]
+fn wasm_gc_component_output_writer_retries_partial_writes_until_chunk_is_consumed() {
+    let bytes = emit_component_output_probe_module(&[195, 169], 13);
+    let output = Arc::new(Mutex::new(Vec::new()));
+    let writer = OneByteWriter {
+        output: Arc::clone(&output),
+    };
+    let exit_code =
+        lsharp_wasm::wasmgc_runner::run_wasm_wasmgc_component_output_to_writer(&bytes, writer)
+            .expect("component output writer adapter が chunk 全体を書き切れる");
+
+    assert_eq!(exit_code, 13);
+    assert_eq!(*output.lock().unwrap(), vec![195, 169]);
+}
+
+#[test]
+fn wasm_gc_component_output_writer_propagates_write_error() {
+    let bytes = emit_component_output_probe_module(&[65], 0);
+    let error = lsharp_wasm::wasmgc_runner::run_wasm_wasmgc_component_output_to_writer(
+        &bytes,
+        FailingWriter,
+    )
+    .expect_err("component output writer error は runner error になる");
+
+    assert!(error.contains("stdout closed"), "{error}");
+}
+
+#[test]
+fn wasm_gc_component_output_writer_rejects_write_zero() {
+    let bytes = emit_component_output_probe_module(&[65], 0);
+    let error =
+        lsharp_wasm::wasmgc_runner::run_wasm_wasmgc_component_output_to_writer(&bytes, ZeroWriter)
+            .expect_err("component output WriteZero は runner error になる");
+
+    assert!(error.contains("failed"), "{error}");
+}
+
+#[test]
+fn wasm_gc_component_output_writer_propagates_flush_error_after_execution() {
+    let bytes = emit_component_output_probe_module(&[65], 0);
+    let error = lsharp_wasm::wasmgc_runner::run_wasm_wasmgc_component_output_to_writer(
+        &bytes,
+        FlushFailingWriter,
+    )
+    .expect_err("component output flush error は runner error になる");
+
+    assert!(error.contains("flush failed"), "{error}");
+}
+
+#[test]
+fn wasm_gc_component_output_writer_flushes_after_nonzero_exit() {
+    let bytes = emit_component_output_probe_module(&[65], 7);
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let exit_code = lsharp_wasm::wasmgc_runner::run_wasm_wasmgc_component_output_to_writer(
+        &bytes,
+        EventWriter {
+            events: Arc::clone(&events),
+        },
+    )
+    .expect("nonzero exit 後も component output writer を flush できる");
+
+    assert_eq!(exit_code, 7);
+    assert_eq!(*events.lock().unwrap(), vec!["write", "flush"]);
+}
+
+#[test]
+fn wasm_gc_component_output_fd_write_retries_partial_writes() {
+    let bytes = emit_component_output_probe_module(&[195, 169], 17);
+    let output = Arc::new(Mutex::new(Vec::new()));
+    let calls = Arc::new(Mutex::new(Vec::<(u32, usize)>::new()));
+    let output_for_write = Arc::clone(&output);
+    let calls_for_write = Arc::clone(&calls);
+    let exit_code = lsharp_wasm::wasmgc_runner::run_wasm_wasmgc_component_output_to_fd_write(
+        &bytes,
+        1,
+        move |fd, chunk| {
+            calls_for_write.lock().unwrap().push((fd, chunk.len()));
+            if let Some(byte) = chunk.first() {
+                output_for_write.lock().unwrap().push(*byte);
+                Ok(1)
+            } else {
+                Ok(0)
+            }
+        },
+    )
+    .expect("component output fd_write adapter が partial write を再試行できる");
+
+    assert_eq!(exit_code, 17);
+    assert_eq!(*output.lock().unwrap(), vec![195, 169]);
+    assert_eq!(*calls.lock().unwrap(), vec![(1, 2), (1, 1)]);
+}
+
+#[test]
+fn wasm_gc_component_output_fd_write_propagates_errno() {
+    let bytes = emit_component_output_probe_module(&[65], 0);
+    let error = lsharp_wasm::wasmgc_runner::run_wasm_wasmgc_component_output_to_fd_write(
+        &bytes,
+        1,
+        |_fd, _chunk| Err(28),
+    )
+    .expect_err("component output fd_write errno は runner error になる");
+
+    assert!(error.contains("28"), "{error}");
+}
+
+#[test]
+fn wasm_gc_component_output_fd_write_rejects_zero_and_overreported_counts() {
+    let bytes = emit_component_output_probe_module(&[65], 0);
+    let zero_error = lsharp_wasm::wasmgc_runner::run_wasm_wasmgc_component_output_to_fd_write(
+        &bytes,
+        1,
+        |_fd, _chunk| Ok(0),
+    )
+    .expect_err("component output fd_write zero は拒否する");
+    assert!(zero_error.contains("failed"), "{zero_error}");
+
+    let overreported_error =
+        lsharp_wasm::wasmgc_runner::run_wasm_wasmgc_component_output_to_fd_write(
+            &bytes,
+            1,
+            |_fd, chunk| Ok(chunk.len() + 1),
+        )
+        .expect_err("component output fd_write over-report は拒否する");
+    assert!(
+        overreported_error.contains("over-reported"),
+        "{overreported_error}"
+    );
+}
+
 struct OneByteWriter {
     output: Arc<Mutex<Vec<u8>>>,
 }
@@ -810,6 +987,22 @@ impl Write for FlushFailingWriter {
     }
 }
 
+struct EventWriter {
+    events: Arc<Mutex<Vec<&'static str>>>,
+}
+
+impl Write for EventWriter {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        self.events.lock().unwrap().push("write");
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.events.lock().unwrap().push("flush");
+        Ok(())
+    }
+}
+
 fn emit_print_string_probe_module(bytes: &[i32], exit_code: i64) -> Vec<u8> {
     let mut body = bytes
         .iter()
@@ -837,6 +1030,36 @@ fn emit_print_string_probe_module(bytes: &[i32], exit_code: i64) -> Vec<u8> {
         string_data: vec![],
     };
     lsharp_wasm::wasmgc::emit_wasm_wasmgc(&module).expect("writer adapter module を生成できる")
+}
+
+fn emit_component_output_probe_module(bytes: &[i32], exit_code: i64) -> Vec<u8> {
+    let mut body = bytes
+        .iter()
+        .copied()
+        .map(Instruction::I32Const)
+        .collect::<Vec<_>>();
+    body.push(Instruction::ArrayNewFixed(0, bytes.len() as u32));
+    body.push(Instruction::Call(4));
+    body.push(Instruction::I64Const(exit_code));
+    let module = IrModule {
+        functions: vec![Function {
+            name: "main".to_string(),
+            params: vec![],
+            result: IrType::I64,
+            locals: vec![],
+            body,
+            is_export: true,
+        }],
+        gc_types: vec![GcTypeDef {
+            name: "StringBytes".to_string(),
+            kind: GcTypeKind::PackedByteArray,
+        }],
+        imports: vec![],
+        globals: vec![],
+        string_data: vec![],
+    };
+    lsharp_wasm::wasmgc::emit_wasm_wasmgc_component_output(&module)
+        .expect("component output writer adapter module を生成できる")
 }
 
 #[test]

@@ -4,9 +4,10 @@
 //! `env.print-string` host import だけを接続する。WasmGC backend はまだ WASI/component
 //! module を生成しないため、ここで暗黙の WASI fallback を行わない。
 
-use std::io::Write;
+use std::io::{self, Write};
 use std::sync::{Arc, Mutex};
 
+use wasmtime::component::{Component, Linker as ComponentLinker, Val as ComponentVal};
 use wasmtime::{Config, Engine, ExternType, Instance, Module, Store};
 
 use crate::wasi_runner::ExecutionOutput;
@@ -135,6 +136,167 @@ pub fn run_wasm_wasmgc_component_output_capture(
         )
     })?;
     Ok(ExecutionOutput { stdout, exit_code })
+}
+
+/// WasmGC core module の canonical output を `std::io::Write` へ接続して実行する。
+///
+/// canonical import 一回分の bytes は `Write::write_all` で全量を消費し、partial write は
+/// 内部で再試行する。`WriteZero` / write error は trap として返し、main の正常終了後だけ
+/// `flush` を呼び出すため、exit code と flush error の順序も固定される。
+pub fn run_wasm_wasmgc_component_output_to_writer<W>(
+    wasm_bytes: &[u8],
+    writer: W,
+) -> Result<i32, String>
+where
+    W: Write + Send + 'static,
+{
+    let writer = Arc::new(Mutex::new(writer));
+    let writer_for_sink = Arc::clone(&writer);
+    let exit_code = run_wasm_wasmgc_component_output_with_stdout_sink(wasm_bytes, move |bytes| {
+        let mut writer = writer_for_sink
+            .lock()
+            .map_err(|_| "WasmGC component output writer の mutex が poisoned です".to_string())?;
+        writer
+            .write_all(bytes)
+            .map_err(|error| format!("WasmGC component output writer failed: {error}"))
+    })?;
+    let mut writer = writer
+        .lock()
+        .map_err(|_| "WasmGC component output writer の mutex が poisoned です".to_string())?;
+    writer
+        .flush()
+        .map_err(|error| format!("WasmGC component output writer flush failed: {error}"))?;
+    Ok(exit_code)
+}
+
+/// canonical output を stdout 相当の WASI `fd_write` 境界へ接続して実行する。
+///
+/// `fd_write` handler は fd と一つの bytes chunk を受け取り、実際に消費した byte 数または
+/// WASI errno を返す。partial write は `write_all` が再試行し、zero/over-report/errno は
+/// fail-closed に停止する。handler の背後にある実 WASI context の所有権は呼び出し側に残す。
+pub fn run_wasm_wasmgc_component_output_to_fd_write<F>(
+    wasm_bytes: &[u8],
+    fd: u32,
+    fd_write: F,
+) -> Result<i32, String>
+where
+    F: Fn(u32, &[u8]) -> Result<usize, u16> + Send + Sync + 'static,
+{
+    run_wasm_wasmgc_component_output_to_writer(
+        wasm_bytes,
+        ComponentOutputFdWriteAdapter { fd, fd_write },
+    )
+}
+
+/// WIT `wasmgc-output` Component を実際に instantiate し、stdout interface を sink へ接続する。
+///
+/// Component 境界では `list<u8>` が `Vec<u8>` として lift される。WASI Preview1/Preview2 の
+/// linker へ暗黙に fallback せず、`lsharp:wasmgc-output/stdout@0.1.0` のみを定義する。
+pub fn run_wasm_wasmgc_component_output_component_with_stdout_sink<F>(
+    component_bytes: &[u8],
+    sink: F,
+) -> Result<i32, String>
+where
+    F: Fn(&[u8]) -> Result<(), String> + Send + Sync + 'static,
+{
+    let engine = configured_engine()?;
+    let component = Component::new(&engine, component_bytes)
+        .map_err(|error| format!("WasmGC output Component の読み込みに失敗: {error}"))?;
+    let sink = Arc::new(Mutex::new(sink));
+    let mut linker = ComponentLinker::<()>::new(&engine);
+    let mut stdout = linker
+        .instance("lsharp:wasmgc-output/stdout@0.1.0")
+        .map_err(|error| format!("WasmGC output stdout interface の定義に失敗: {error}"))?;
+    let sink_for_write = Arc::clone(&sink);
+    stdout
+        .func_wrap(
+            "write",
+            move |_store, (bytes,): (Vec<u8>,)| -> Result<(), wasmtime::Error> {
+                let sink = sink_for_write.lock().map_err(|_| {
+                    wasmtime::Error::msg("WasmGC output Component sink mutex が poisoned です")
+                })?;
+                sink(&bytes).map_err(|error| {
+                    wasmtime::Error::msg(format!("WasmGC output Component sink failed: {error}"))
+                })
+            },
+        )
+        .map_err(|error| format!("WasmGC output stdout write の定義に失敗: {error}"))?;
+
+    let mut store = Store::new(&engine, ());
+    let instance = linker
+        .instantiate(&mut store, &component)
+        .map_err(|error| format!("WasmGC output Component の instantiate に失敗: {error}"))?;
+    let main = instance
+        .get_func(&mut store, "main")
+        .ok_or_else(|| "WasmGC output Component に main export がありません".to_string())?;
+    let mut results = [ComponentVal::S64(0)];
+    main.call(&mut store, &[], &mut results)
+        .map_err(|error| format!("WasmGC output Component の実行に失敗: {error:#}"))?;
+    let Some(ComponentVal::S64(exit_code)) = results.first() else {
+        return Err(format!(
+            "WasmGC output Component main の戻り値型が s64 ではありません: {:?}",
+            results.first()
+        ));
+    };
+    i32::try_from(*exit_code)
+        .map_err(|error| format!("WasmGC output Component exit code が i32 範囲外です: {error}"))
+}
+
+/// WIT `wasmgc-output` Component の stdout と exit code を capture する。
+pub fn run_wasm_wasmgc_component_output_component_capture(
+    component_bytes: &[u8],
+) -> Result<ExecutionOutput, String> {
+    let stdout = Arc::new(Mutex::new(Vec::<u8>::new()));
+    let stdout_for_sink = Arc::clone(&stdout);
+    let exit_code = run_wasm_wasmgc_component_output_component_with_stdout_sink(
+        component_bytes,
+        move |bytes| {
+            stdout_for_sink
+                .lock()
+                .map_err(|_| "WasmGC output Component stdout mutex が poisoned です".to_string())?
+                .extend_from_slice(bytes);
+            Ok(())
+        },
+    )?;
+    let stdout = stdout
+        .lock()
+        .map_err(|_| "WasmGC output Component stdout mutex が poisoned です".to_string())?;
+    let stdout = String::from_utf8(stdout.clone()).map_err(|error| {
+        format!(
+            "WasmGC output Component stdout の UTF-8 変換に失敗: {error}; stdout_lossy={:?}",
+            String::from_utf8_lossy(&stdout)
+        )
+    })?;
+    Ok(ExecutionOutput { stdout, exit_code })
+}
+
+struct ComponentOutputFdWriteAdapter<F> {
+    fd: u32,
+    fd_write: F,
+}
+
+impl<F> Write for ComponentOutputFdWriteAdapter<F>
+where
+    F: Fn(u32, &[u8]) -> Result<usize, u16>,
+{
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        let written = (self.fd_write)(self.fd, bytes)
+            .map_err(|errno| io::Error::other(format!("WASI fd_write errno {errno}")))?;
+        if written > bytes.len() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!(
+                    "WASI fd_write over-reported bytes: {written} > {}",
+                    bytes.len()
+                ),
+            ));
+        }
+        Ok(written)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
 }
 
 /// WasmGC core module を `std::io::Write` へ接続して実行する。
