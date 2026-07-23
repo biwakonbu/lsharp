@@ -503,6 +503,73 @@ mod tests {
     }
 
     #[test]
+    fn test_compile_file_wasmgc_backend_executes_computation_return() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("workspace tmp root")
+            .join("lsharp-wasmgc-computation-return");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(dir.join(".git")).unwrap();
+
+        let file = dir.join("Main.ls");
+        let output = dir.join("Main.wasm");
+        std::fs::write(
+            &file,
+            "(defn bind-pass [value continuation] value)\n\
+             (defn add-one [value] (+ value 1))\n\
+             (computation-builder maybe-builder bind-pass add-one)\n\
+             (defn main [] (computation maybe-builder (return 41)))\n",
+        )
+        .unwrap();
+
+        let artifacts = compile_file_with_backend(
+            &file,
+            Some(&output),
+            false,
+            Some(CompileTarget::WebWasm),
+            CompileBackend::WasmGc,
+        )
+        .unwrap();
+        let wasm_bytes = std::fs::read(&artifacts.output_path).unwrap();
+
+        let mut config = wasmtime::Config::new();
+        config.wasm_gc(true);
+        let engine = wasmtime::Engine::new(&config).unwrap();
+        let module = wasmtime::Module::new(&engine, wasm_bytes).unwrap();
+        let mut store = wasmtime::Store::new(&engine, ());
+        let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
+        let main = instance
+            .get_typed_func::<(), i64>(&mut store, "main")
+            .unwrap();
+        assert_eq!(main.call(&mut store, ()).unwrap(), 42);
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_wasmgc_backend_rejects_computation_bind_without_gc_closure() {
+        let error = compile_module_from_formatted_source(
+            Path::new("Main.ls"),
+            "(defn bind-pass [value continuation] value)\n\
+             (defn add-one [value] (+ value 1))\n\
+             (computation-builder maybe-builder bind-pass add-one)\n\
+             (defn main []\n\
+               (computation maybe-builder\n\
+                 (let! value 41)\n\
+                 (return (add-one value))))\n",
+            CompileBackend::WasmGc,
+        )
+        .expect_err(
+            "WasmGC は GC closure 未対応の computation bind を暗黙に直列評価してはならない",
+        );
+        assert!(error.to_string().contains("LS3001"));
+        assert!(error.to_string().contains("computation"));
+        assert!(error.to_string().contains("closure"));
+    }
+
+    #[test]
     fn test_wasmgc_backend_rejects_unsupported_record_string_literal_pattern() {
         let error = compile_module_from_formatted_source(
             Path::new("Main.ls"),

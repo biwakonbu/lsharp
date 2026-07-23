@@ -1762,7 +1762,22 @@ impl Lower {
                     ctx.emit(Instruction::LocalGet(base_local));
                 }
             }
-            Expr::Computation(_, builder_name, steps) => {
+            Expr::Computation(span, builder_name, steps) => {
+                if self.backend == LowerBackend::WasmGc
+                    && steps.iter().any(|step| {
+                        matches!(
+                            step,
+                            ComputationStep::LetBang(..) | ComputationStep::DoBang(..)
+                        )
+                    })
+                {
+                    return Err(LowerError::Unsupported {
+                        msg: "WasmGC backend の computation let!/do! は GC closure を使う bind が未対応です"
+                            .to_string(),
+                        span: Some(*span),
+                    });
+                }
+
                 // Computation Expression: bind/return 関数呼び出しに脱糖
                 let builder_info = self.computation_builders.get(builder_name).cloned();
 

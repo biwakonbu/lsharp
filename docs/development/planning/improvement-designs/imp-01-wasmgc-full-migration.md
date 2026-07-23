@@ -234,6 +234,24 @@ scalar GADT の型 refinement は verified だが、GADT 全体の recursive rep
 cast、WASI/component、supported 2 targets、selfhost compiler は未完了であり、`LEGACY-EXEC-01` の
 aggregate 完了条件には到達していない。
 
+## Stage 1.75h 検証済み slice: computation return と bind 境界 (2026-07-24)
+
+Computation Expression の WasmGC path で、scalar `return` と未対応 `let!` / `do!` の境界を
+成功・拒否の両方で固定した。
+
+- builder の `return` は通常の scalar function call として lowering し、
+  `test_compile_file_wasmgc_backend_executes_computation_return` が `add-one 41 = 42` を Wasmtime
+  で確認する。これは monadic bind 全体の完了ではなく、return-only の verified slice である。
+- `let!` / `do!` は continuation を表す GC closure と bind call が必要だが、WasmGC backend は
+  まだ funcref/closure を emit できない。従来の「式を評価してローカルへ格納するだけ」の挙動を
+  成功扱いしないため、`LS3001` の明示診断で止める。
+- `test_wasmgc_backend_rejects_computation_bind_without_gc_closure` が、この failure boundary と
+  `computation` / `closure` の診断語を固定する。linear backend の既存経路は変更しない。
+
+この slice は D-04 の return-only contract と未対応 bind の安全な境界を閉じる。実際の bind、
+multi-step monadic runtime、Stage 3 の GC closure/funcref、HKT、WASI/component、supported target
+の native evidence、selfhost compiler は未完了である。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線
@@ -312,6 +330,7 @@ aggregate 完了条件には到達していない。
 Stage 0 (依存 API / runtime capability probe)、Stage 1 の IR emitter、Stage 1.5 の CLI 選択、
 Stage 1.75 の direct record lowering/update/user call、scalar ADT constructor/pattern、nested ADT
 payload/pattern、nullable ADT reference payload、scalar literal pattern、record pattern field check
-slice、typed type-application payload slice、scalar GADT refinement execution slice は 2026-07-24 に
-検証済み。ADT の全表現、Stage 2 以降 (strings / closures / traits / selfhost)、supported target
+slice、typed type-application payload slice、scalar GADT refinement execution slice、computation
+return-only slice と bind 明示拒否境界は 2026-07-24 に検証済み。ADT の全表現、Stage 2 以降
+(strings / closures / traits / selfhost)、supported target
 の actual runtime evidence は未完了であり、`LEGACY-EXEC-01` の完了条件には到達していない。
