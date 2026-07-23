@@ -310,7 +310,7 @@
       ;; 引数なし apply は Unit を渡す呼び出しとして扱う。
       (let [func-result (infer-expr func-node env subst counter)]
         (if (= (result-failed func-result) 1)
-          (propagate-error-result func-result)
+          (propagate-error-result-with-span func-result)
           (let [s1 (result-subst func-result)
             func-ty (result-type func-result)
             ret-ty (fresh-type-var counter)
@@ -328,7 +328,7 @@
               (make-result s2 (apply-subst s2 ret-ty))))))
       (let [func-result (infer-expr func-node env subst counter)]
         (if (= (result-failed func-result) 1)
-          (propagate-error-result func-result)
+          (propagate-error-result-with-span func-result)
           (let [s1 (result-subst func-result)
             func-ty (result-type func-result)]
             (if (= argc 1)

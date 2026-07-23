@@ -1871,3 +1871,11 @@ Evidence: RED `test_e2e_selfhost_typeinfer_analysis_reports_first_failed_express
 Evidence: RED `test_e2e_selfhost_typeinfer_analysis_reports_nested_if_failure_span` は `(defn fail [] (if missing 1 2))` で first-error span `-1` を返した（28.51s）。GREEN は同じ selfhost TypeInfer fixtureで diagnostics `1`、`missing` の span `18..25` を確認した（29.04s）。既存 first-error index/name/span を含む analysis 4件は `1 passed`（37.60s）、変更後の `cargo run --quiet --bin lsharp -- check examples/fib.ls` は `Fn`、diagnostics `0` で passした。
 
 これは nested `if` の内側 error span forwardingだけを閉じる verified sliceであり、apply / let / do / record / pattern / computation、branch mismatchの診断 span、line/column projection、standalone source-check `0`、Mac Apple Silicon / Linux x86_64 current-source native artifact/runtime gate、EC-M1-01 aggregateの完了を意味しない。`TODO.md` の `[~]` と Rust oracle / bootstrap / host integration 境界は維持する。次は direct apply / let propagation と standalone source-check failure-definition分類を重複しない REDとして進める。
+
+### EC-M1-01 apply callee error span propagation slice (2026-07-23)
+
+`TypeInferApply` の legacy apply pathで callee failureを code-only resultへ再構築していたため、parser由来の未定義 calleeの spanを失っていた。引数なしと引数ありの callee forwardingだけを `propagate-error-result-with-span` へ接続し、argument forwarding、高 arity、unify failureの spanは別境界として残す。
+
+Evidence: RED `test_e2e_selfhost_typeinfer_analysis_reports_apply_callee_failure_span` は `(defn fail [] (missing 2))` で first-error span `-1` を返した（30.08s）。GREEN は同じ selfhost TypeInfer fixtureで diagnostics `1`、`missing` の span `15..22` を確認した（30.77s）。既存 apply error-code 2件は通常 stackでは既知の stack overflowになるが、`RUST_MIN_STACK=134217728` で `2 passed`（46.11s）。変更後の `cargo run --quiet --bin lsharp -- check examples/fib.ls` は `Fn`、diagnostics `0` で passした。
+
+これは apply callee failureの byte-span forwardingだけを閉じる verified sliceであり、argument failure、lambda body、let/do/computation、record/pattern、0〜7以外の arity、unify failureの diagnostic span、line/column projection、standalone source-check `0`、Mac Apple Silicon / Linux x86_64 current-source native artifact/runtime gate、EC-M1-01 aggregateの完了を意味しない。`TODO.md` の `[~]` と Rust oracle / bootstrap / host integration 境界は維持する。次は apply argumentまたは let initializerのどちらか一つを REDに固定する。
