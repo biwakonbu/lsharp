@@ -476,6 +476,103 @@ fn wasm_gc_host_print_string_rejects_non_packed_import_signature() {
 }
 
 #[test]
+fn wasm_gc_runner_connects_print_string_to_stdout_sink() {
+    let module = IrModule {
+        functions: vec![Function {
+            name: "main".to_string(),
+            params: vec![],
+            result: IrType::I64,
+            locals: vec![],
+            body: vec![
+                Instruction::I32Const(195),
+                Instruction::I32Const(169),
+                Instruction::ArrayNewFixed(0, 2),
+                Instruction::Call(4),
+                Instruction::I64Const(7),
+            ],
+            is_export: true,
+        }],
+        gc_types: vec![GcTypeDef {
+            name: "StringBytes".to_string(),
+            kind: GcTypeKind::PackedByteArray,
+        }],
+        imports: vec![],
+        globals: vec![],
+        string_data: vec![],
+    };
+    let bytes =
+        lsharp_wasm::wasmgc::emit_wasm_wasmgc(&module).expect("runner sink module を生成できる");
+    let printed = Arc::new(Mutex::new(Vec::<Vec<u8>>::new()));
+    let printed_for_sink = Arc::clone(&printed);
+    let exit_code =
+        lsharp_wasm::wasmgc_runner::run_wasm_wasmgc_with_stdout_sink(&bytes, move |bytes| {
+            printed_for_sink.lock().unwrap().push(bytes.to_vec());
+            Ok(())
+        })
+        .expect("runner が print-string sink を接続できる");
+
+    assert_eq!(exit_code, 7);
+    assert_eq!(*printed.lock().unwrap(), vec![vec![195, 169]]);
+
+    let captured = lsharp_wasm::wasmgc_runner::run_wasm_wasmgc_capture(&bytes)
+        .expect("runner が stdout と exit code を capture できる");
+    assert_eq!(captured.stdout, "é");
+    assert_eq!(captured.exit_code, 7);
+}
+
+#[test]
+fn wasm_gc_runner_propagates_stdout_sink_failure() {
+    let module = IrModule {
+        functions: vec![Function {
+            name: "main".to_string(),
+            params: vec![],
+            result: IrType::I64,
+            locals: vec![],
+            body: vec![
+                Instruction::I32Const(65),
+                Instruction::ArrayNewFixed(0, 1),
+                Instruction::Call(4),
+                Instruction::I64Const(0),
+            ],
+            is_export: true,
+        }],
+        gc_types: vec![GcTypeDef {
+            name: "StringBytes".to_string(),
+            kind: GcTypeKind::PackedByteArray,
+        }],
+        imports: vec![],
+        globals: vec![],
+        string_data: vec![],
+    };
+    let bytes = lsharp_wasm::wasmgc::emit_wasm_wasmgc(&module)
+        .expect("runner sink failure module を生成できる");
+    let error = lsharp_wasm::wasmgc_runner::run_wasm_wasmgc_with_stdout_sink(&bytes, |_bytes| {
+        Err("stdout closed".to_string())
+    })
+    .expect_err("sink failure は runner error になる");
+
+    assert!(error.contains("stdout closed"), "{error}");
+}
+
+#[test]
+fn wasm_gc_runner_rejects_non_print_string_import_without_wasi_fallback() {
+    let bytes = wat::parse_str(
+        r#"
+        (module
+          (import "env" "unsupported" (func))
+          (func (export "main") (result i64)
+            i64.const 0))
+        "#,
+    )
+    .expect("unsupported import module を生成できる");
+    let error =
+        lsharp_wasm::wasmgc_runner::run_wasm_wasmgc_with_stdout_sink(&bytes, |_bytes| Ok(()))
+            .expect_err("unsupported import は WASI fallback せず拒否する");
+
+    assert!(error.contains("未対応"), "{error}");
+}
+
+#[test]
 fn wasm_gc_emitter_maps_reference_typed_struct_fields() {
     let module = IrModule {
         functions: vec![Function {

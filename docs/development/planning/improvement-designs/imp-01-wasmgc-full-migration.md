@@ -389,9 +389,28 @@ unsigned bytes へ変換する境界まで進めた。
   non-packed import signature の拒否を固定する。compiler pipeline test は source の `print-string`
   を同じ callback で実行し、bytes を確認する。
 
-これは WASI fd_write / component adapter や公開 runner がこの callback を自動接続する実装ではない。
-stdout sink、native/selfhost runtime、Unicode code-point semantics、supported target の native
-evidence は後続 task として残す。
+これは WASI fd_write / component adapter の実装ではなく、公開 runner へ接続する前の host read
+slice である。runner の stdout sink 契約は Stage 2i で閉じ、native/selfhost runtime、Unicode
+code-point semantics、supported target の native evidence は後続 task として残す。
+
+## Stage 2i 検証済み slice: WasmGC runner stdout sink (2026-07-24)
+
+Stage 2h の host callback を、WasmGC core module の公開 runner から実際に呼び出す経路へ接続した。
+
+- `crates/lsharp-wasm/src/wasmgc_runner.rs::run_wasm_wasmgc_with_stdout_sink` は WasmGC engine を
+  明示的に有効化し、`env.print-string` 以外の import を WASI fallback なしで拒否する。
+- runner は exported `main: () -> i64` を実行し、結果を i32 exit code へ検証変換する。各
+  `print-string` 呼び出しの packed bytes は sink へ一度だけ全量渡し、sink が `Err` を返した場合は
+  再試行せず Wasm error として返す。
+- `run_wasm_wasmgc_capture` / `run_wasm_wasmgc` は同じ runner 経路で stdout を UTF-8 として capture
+  し、non-zero exit code と invalid UTF-8 を既存 runner と同じ Result 境界で返す。
+- direct probe は UTF-8 bytes の sink 到達、sink failure、未知 import の明示拒否を固定する。
+  compiler pipeline test は source compile artifact を公開 runner で実行し、stdout と exit code を
+  確認する。
+
+これは WASI Preview1/Preview2 や Component Model の runner を置き換える実装ではない。WASI/component
+adapter、Unicode code-point semantics、native/selfhost runtime、supported target の native evidence
+は後続 task として残す。
 
 ## 実装戦略
 
@@ -423,10 +442,10 @@ evidence は後続 task として残す。
 - 文字列リテラル/操作を `array.new_data` / `array.get_u` / `array.len` へ。
   WASI fd_write へ渡す際は array → リニアメモリへのコピーが必要
   (`array.copy` 不可のため要素ループまたは `array.init_data` の逆操作を helper 化)
-- Stage 2h の次 task は WasmGC runner の stdout sink 接続を閉じる。`create_print_string_import`
-  を実 runner に組み込み、sink の partial/error semantics を固定した後に WASI/component adapter
-  と native/selfhost の出力 parity を別々に検証する。synthetic import の instantiate 成功や host
-  callback 単体の byte read だけで公開 print 完了とは扱わない。
+- Stage 2i の次 task は WasmGC bytes を WASI/component adapter へ接続する境界を閉じる。まず
+  `run_wasm_wasmgc_capture` の byte/UTF-8 契約を adapter 側へ写像し、WASI fd_write の partial/error
+  semantics と native/selfhost の出力 parity を別々に検証する。synthetic import の instantiate
+  成功、host callback 単体の byte read、core runner 単体の success だけで公開 print 完了とは扱わない。
 
 ### Stage 3: Closures → funcref + env struct
 
@@ -480,8 +499,8 @@ return-only slice と bind 明示拒否境界、Stage 2a の scalar String GC ar
 scalar String GC equality slice、Stage 2c の scalar String GC concat slice、Stage 2d の scalar
 String GC substring slice、Stage 2e の packed String byte array slice、Stage 2f の substring invalid
 range boundary、Stage 2g の `print-string` external import boundary、Stage 2h の host-side packed
-String read は 2026-07-24 に検証済み。ADT
-の全表現、Stage 2 の残り (Unicode code-point semantics / stdout sink / WASI-component I/O /
+String read、Stage 2i の WasmGC runner stdout sink は 2026-07-24 に検証済み。ADT
+の全表現、Stage 2 の残り (Unicode code-point semantics / WASI-component I/O /
 native-selfhost parity)、Stage 3 以降
 (closures / traits / selfhost)、supported target
 の actual runtime evidence は未完了であり、`LEGACY-EXEC-01` の完了条件には到達していない。

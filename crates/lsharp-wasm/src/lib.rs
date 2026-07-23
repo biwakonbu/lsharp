@@ -11,3 +11,4 @@ pub mod wasi;
 pub mod wasi_runner;
 pub mod wasmgc;
 pub mod wasmgc_host;
+pub mod wasmgc_runner;

@@ -704,6 +704,35 @@ mod tests {
     }
 
     #[test]
+    fn test_compile_file_wasmgc_backend_runs_with_public_runner_stdout_sink() {
+        let dir = std::env::temp_dir().join("lsharp_compile_pipeline_wasmgc_runner_stdout");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(dir.join(".git")).unwrap();
+
+        let file = dir.join("Main.ls");
+        let output = dir.join("Main.wasm");
+        std::fs::write(&file, "(defn main [] (do (print-string \"é\") 7))\n").unwrap();
+
+        let artifacts = compile_file_with_backend(
+            &file,
+            Some(&output),
+            false,
+            Some(CompileTarget::WebWasm),
+            CompileBackend::WasmGc,
+        )
+        .unwrap();
+        let wasm_bytes = std::fs::read(&artifacts.output_path).unwrap();
+        let execution = lsharp_wasm::wasmgc_runner::run_wasm_wasmgc_capture(&wasm_bytes)
+            .expect("公開 WasmGC runner が source compile artifact を実行できる");
+
+        assert_eq!(execution.stdout, "é");
+        assert_eq!(execution.exit_code, 7);
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
     fn test_compile_file_wasmgc_backend_executes_string_array_get() {
         let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
             .ancestors()

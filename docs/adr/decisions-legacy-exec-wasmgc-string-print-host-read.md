@@ -39,6 +39,6 @@ Add `lsharp_wasm::wasmgc_host::create_print_string_import` with the following co
 
 - The first host read of a WasmGC String is bounded by the GC array length and cannot fall back to a raw
   pointer ABI.
-- The public WasmGC runner still does not install this helper or define stdout/partial-write semantics;
-  WASI/component/native/selfhost parity and Unicode code-point output remain active under
-  `LEGACY-EXEC-01`.
+- The helper remains an engine-level boundary; the public core runner connection and its no-retry sink
+  semantics are recorded separately in the Stage 2i ADR. WASI/component/native/selfhost parity and
+  Unicode code-point output remain active under `LEGACY-EXEC-01`.
