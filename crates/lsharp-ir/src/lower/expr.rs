@@ -334,6 +334,82 @@ impl Lower {
                     // 新しい String オブジェクト [tag=1, len, bytes] をヒープに確保
                     Expr::Var(_, name) if name == "substring" => {
                         if args.len() >= 3 {
+                            if self.backend == super::LowerBackend::WasmGc {
+                                let type_index = self.string_array_type_index.ok_or_else(|| {
+                                    LowerError::Unsupported {
+                                        msg: "WasmGC String の GC array type が登録されていません"
+                                            .to_string(),
+                                        span: Some(*expr_span),
+                                    }
+                                })?;
+                                let str_local = ctx.alloc_local_typed(
+                                    "_str_substring_source".to_string(),
+                                    IrType::Ref(type_index),
+                                );
+                                let start_local = ctx.alloc_local_typed(
+                                    "_str_substring_start".to_string(),
+                                    IrType::I32,
+                                );
+                                let end_local = ctx.alloc_local_typed(
+                                    "_str_substring_end".to_string(),
+                                    IrType::I32,
+                                );
+                                let length_local = ctx.alloc_local_typed(
+                                    "_str_substring_length".to_string(),
+                                    IrType::I32,
+                                );
+                                let result_local = ctx.alloc_local_typed(
+                                    "_str_substring_result".to_string(),
+                                    IrType::Ref(type_index),
+                                );
+                                let index_local = ctx.alloc_local_typed(
+                                    "_str_substring_index".to_string(),
+                                    IrType::I32,
+                                );
+
+                                self.lower_expr(ctx, &args[0])?;
+                                ctx.emit(Instruction::LocalSet(str_local));
+                                self.lower_expr(ctx, &args[1])?;
+                                ctx.emit(Instruction::I32WrapI64);
+                                ctx.emit(Instruction::LocalSet(start_local));
+                                self.lower_expr(ctx, &args[2])?;
+                                ctx.emit(Instruction::I32WrapI64);
+                                ctx.emit(Instruction::LocalSet(end_local));
+
+                                ctx.emit(Instruction::LocalGet(end_local));
+                                ctx.emit(Instruction::LocalGet(start_local));
+                                ctx.emit(Instruction::I32Sub);
+                                ctx.emit(Instruction::LocalSet(length_local));
+                                ctx.emit(Instruction::LocalGet(length_local));
+                                ctx.emit(Instruction::ArrayNewDefault(type_index));
+                                ctx.emit(Instruction::LocalSet(result_local));
+
+                                ctx.emit(Instruction::I32Const(0));
+                                ctx.emit(Instruction::LocalSet(index_local));
+                                ctx.emit(Instruction::BlockEmpty);
+                                ctx.emit(Instruction::LoopEmpty);
+                                ctx.emit(Instruction::LocalGet(index_local));
+                                ctx.emit(Instruction::LocalGet(length_local));
+                                ctx.emit(Instruction::I32GeU);
+                                ctx.emit(Instruction::BrIf(1));
+                                ctx.emit(Instruction::LocalGet(result_local));
+                                ctx.emit(Instruction::LocalGet(index_local));
+                                ctx.emit(Instruction::LocalGet(str_local));
+                                ctx.emit(Instruction::LocalGet(start_local));
+                                ctx.emit(Instruction::LocalGet(index_local));
+                                ctx.emit(Instruction::I32Add);
+                                ctx.emit(Instruction::ArrayGet(type_index));
+                                ctx.emit(Instruction::ArraySet(type_index));
+                                ctx.emit(Instruction::LocalGet(index_local));
+                                ctx.emit(Instruction::I32Const(1));
+                                ctx.emit(Instruction::I32Add);
+                                ctx.emit(Instruction::LocalSet(index_local));
+                                ctx.emit(Instruction::Br(0));
+                                ctx.emit(Instruction::End);
+                                ctx.emit(Instruction::End);
+                                ctx.emit(Instruction::LocalGet(result_local));
+                                return Ok(());
+                            }
                             let str_local = self.lower_expr_to_rooted_local(
                                 ctx,
                                 &args[0],

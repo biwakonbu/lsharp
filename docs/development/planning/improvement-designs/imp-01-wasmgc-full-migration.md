@@ -304,6 +304,22 @@ Stage 2a の mutable `StringBytes` array に `string-concat` を接続した。
 semantics、substring、print/WASI/component bridge、GC mutation、supported target の native
 evidence、selfhost compiler は未完了である。
 
+## Stage 2d 検証済み slice: scalar String GC substring (2026-07-24)
+
+Stage 2a の mutable `StringBytes` array に valid-range の `substring` を接続した。
+
+- `end - start` の長さで `array.new_default` を作り、source array の `start + index` を
+  `array.get` して結果へ `array.set` する。空 range は長さ 0 の array として扱う。
+- String parameter を受ける user function の戻り値を `string-length` / `string-char-at` へ渡す
+  actual core Wasm 実行を固定する。linear backend の root/import/memory.copy 経路は変更しない。
+- `test_compile_file_wasmgc_backend_executes_string_substring` が `"hello world"[6..11]` の長さと
+  byte access、空 range を user function 経由で実行し、結果 `116` を固定する。既存 linear
+  substring E2E の回帰も確認する。
+
+これは valid byte-range substring の verified slice であり、invalid range 診断、packed `i8`
+representation、Unicode code-point semantics、print/WASI/component bridge、GC mutation、
+supported target の native evidence、selfhost compiler は未完了である。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線
@@ -384,7 +400,8 @@ Stage 1.75 の direct record lowering/update/user call、scalar ADT constructor/
 payload/pattern、nullable ADT reference payload、scalar literal pattern、record pattern field check
 slice、typed type-application payload slice、scalar GADT refinement execution slice、computation
 return-only slice と bind 明示拒否境界、Stage 2a の scalar String GC array slice、Stage 2b の
-scalar String GC equality slice、Stage 2c の scalar String GC concat slice は 2026-07-24 に
-検証済み。ADT の全表現、Stage 2 の残り (packed strings / substring / I/O)、Stage 3 以降
+scalar String GC equality slice、Stage 2c の scalar String GC concat slice、Stage 2d の scalar
+String GC substring slice は 2026-07-24 に検証済み。ADT の全表現、Stage 2 の残り
+(packed strings / invalid-range diagnostics / I/O)、Stage 3 以降
 (closures / traits / selfhost)、supported target
 の actual runtime evidence は未完了であり、`LEGACY-EXEC-01` の完了条件には到達していない。
