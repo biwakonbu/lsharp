@@ -95,9 +95,8 @@
 ") (exit-success))))
 (defn builtin-type-name-text [type-hash] (if (= type-hash 100) "Int" (if (= type-hash 200) "Bool" (if (= type-hash 300) "String" (if (= type-hash 400) "Float" (if (= type-hash 500) "Unit" (string-concat "type-" (int-to-string type-hash))))))))
 (defn render-type-text [ty] (let [tag (ty-tag ty)] (if (= tag 1) (builtin-type-name-text (ty-name ty)) (if (= tag 2) (string-concat "t" (int-to-string (ty-name ty))) (if (= tag 3) "Fn" (if (= tag 4) (string-concat "record-" (int-to-string (ty-name ty))) "Unknown"))))))
-(defn run-check-source [src opts]
-  (let [program (parse-program src)
-    program-root-slot (root_push program)
+(defn run-check-program [program opts]
+  (let [program-root-slot (root_push program)
     analysis (infer-program-analysis program)
     analysis-root-slot (root_push analysis)
     ty (infer-program-analysis-type analysis)
@@ -155,6 +154,7 @@
           (print-string "\n"))
         (print-string ""))
       (check-exit-code diagnostics-count)))))
+(defn run-check-source [src opts] (run-check-program (parse-program src) opts))
 (defn run-fmt-source [src opts] (let [program (parse-program src) formatted (format-program-with-source program src)] (do (print-string formatted) (exit-success))))
 (defn wasm-size-text [size] (string-concat "wasm-size:" (int-to-string size)))
 (defn compile-file-functions-data-with-cache [file-path cache-ref parse-count-ref] (compile-file-functions-payload-with-cache file-path 12 cache-ref parse-count-ref))
@@ -567,7 +567,7 @@
 ") (print-string body) (print-string "
 ") (exit-success))))))
 (defn run-parse [file-path opts] (if (file-exists? file-path) (run-parse-source (read-file file-path) opts) (exit-compile-error)))
-(defn run-check [file-path opts] (if (file-exists? file-path) (run-check-source (read-file file-path) opts) (exit-compile-error)))
+(defn run-check [file-path opts] (if (file-exists? file-path) (run-check-program (load-check-program file-path) opts) (exit-compile-error)))
 (defn run-compile [file-path opts] (if (file-exists? file-path) (if (= opts (compile-target-preview1)) (let [wasm-size (compile-file-wasm-size file-path opts)] (if (= wasm-size 0) (do (cli-stderr (standalone-preview1-capability-boundary-message)) (exit-compile-error)) (do (print-string (wasm-size-text wasm-size)) (print-string "
 ") (exit-success)))) (do (cli-stderr (component-output-boundary-message)) (exit-compile-error))) (exit-compile-error)))
 (defn run-build [file-path opts] (if (file-exists? file-path) (run-compile file-path opts) (exit-compile-error)))

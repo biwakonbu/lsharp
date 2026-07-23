@@ -957,6 +957,52 @@ fn test_e2e_selfhost_cli_check_source_core() {
     );
 }
 
+/// EC-M1-01: file check は import 依存の型環境も含めて検査すること
+#[test]
+fn test_e2e_selfhost_cli_check_file_resolves_imported_definition() {
+    let dir = std::env::temp_dir().join(format!(
+        "lsharp_test_cli_check_import_context_{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("Lib.ls"),
+        "(module Lib)\n(defn helper [value] value)\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("Main.ls"),
+        "(module Main)\n(import Lib)\n(defn main [] (helper 42))\n",
+    )
+    .unwrap();
+
+    let harness = r#"
+(defn main []
+  (do
+    (print (run-check "Main.ls" 0))
+    0))
+"#;
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let run_dir = dir.clone();
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run_with_dir(&combined, &run_dir)
+    });
+    let _ = std::fs::remove_dir_all(&dir);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.contains(&"Fn"),
+        "import 先の helper を含む check は先頭 defn の Fn を返すべき: {:?}",
+        lines
+    );
+    assert!(
+        lines.contains(&"diagnostics:0"),
+        "import 先の helper を含む check は診断0件であるべき: {:?}",
+        lines
+    );
+}
+
 #[test]
 #[ignore]
 fn test_e2e_selfhost_cli_check_source_builtin_application_type_contract() {

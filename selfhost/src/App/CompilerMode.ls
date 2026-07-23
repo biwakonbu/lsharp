@@ -1000,6 +1000,233 @@
                           (root_pop)
                           (root_pop)
                           result)))))))))))))
+
+;; check 用に import 依存を含む AST を一つの型推論入力へ畳み込む。
+;; codegen の名前解決と同じ依存閉包を使うが、module / import 宣言自体は
+;; TypeInfer が無視するため、宣言列だけを依存順に連結する。
+(defn append-check-decls-step [decls idx n program]
+  (if (>= idx n)
+    (make-pairs-step-state 1 idx program)
+    (do
+      (root_push decls)
+      (root_push program)
+      (let [decl (vector-get decls idx)]
+        (do
+          (root_push decl)
+          (let [next-program (vector-push program decl)]
+            (do
+              (root_push next-program)
+              (let [state (make-pairs-step-state 0 (+ idx 1) next-program)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  state)))))))))
+(defn append-check-decls-step-64-loop-bounded [decls idx n program remaining]
+  (do
+    (root_push decls)
+    (root_push program)
+    (let [step (append-check-decls-step decls idx n program)]
+      (do
+        (root_push step)
+        (let [done (vector-get step 0)
+          next-idx (vector-get step 1)
+          next-program (vector-get step 2)]
+          (do
+            (root_push next-program)
+            (let [result
+              (if (= done 1)
+                step
+                (if (<= remaining 1)
+                  step
+                  (append-check-decls-step-64-loop-bounded decls next-idx n next-program (- remaining 1))))]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result))))))))
+(defn append-check-decls-step-64 [decls idx n program]
+  (append-check-decls-step-64-loop-bounded decls idx n program 64))
+(defn append-check-decls-step-512-loop-bounded [decls idx n program remaining]
+  (do
+    (root_push decls)
+    (root_push program)
+    (let [step (append-check-decls-step-64 decls idx n program)]
+      (do
+        (root_push step)
+        (let [done (vector-get step 0)
+          next-idx (vector-get step 1)
+          next-program (vector-get step 2)]
+          (do
+            (root_push next-program)
+            (let [result
+              (if (= done 1)
+                step
+                (if (<= remaining 1)
+                  step
+                  (append-check-decls-step-512-loop-bounded decls next-idx n next-program (- remaining 1))))]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result))))))))
+(defn append-check-decls-step-512 [decls idx n program]
+  (append-check-decls-step-512-loop-bounded decls idx n program 8))
+(defn append-check-decls-step-4096-loop-bounded [decls idx n program remaining]
+  (do
+    (root_push decls)
+    (root_push program)
+    (let [step (append-check-decls-step-512 decls idx n program)]
+      (do
+        (root_push step)
+        (let [done (vector-get step 0)
+          next-idx (vector-get step 1)
+          next-program (vector-get step 2)]
+          (do
+            (root_push next-program)
+            (let [result
+              (if (= done 1)
+                step
+                (if (<= remaining 1)
+                  step
+                  (append-check-decls-step-4096-loop-bounded decls next-idx n next-program (- remaining 1))))]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result))))))))
+(defn append-check-decls-step-4096 [decls idx n program]
+  (append-check-decls-step-4096-loop-bounded decls idx n program 8))
+(defn append-check-decls [decls idx n program]
+  (let [step (append-check-decls-step-4096 decls idx n program)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (append-check-decls decls (vector-get step 1) n (vector-get step 2)))))
+(defn append-check-pairs-step [pairs idx n program]
+  (if (>= idx n)
+    (make-pairs-step-state 1 idx program)
+    (do
+      (root_push pairs)
+      (root_push program)
+      (let [pair (vector-get pairs idx)]
+        (do
+          (root_push pair)
+          (let [decls (vector-get pair 1)]
+            (do
+              (root_push decls)
+              (let [next-program (append-check-decls decls 0 (vector-length decls) program)]
+                (do
+                  (root_push next-program)
+                  (let [state (make-pairs-step-state 0 (+ idx 1) next-program)]
+                    (do
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      state)))))))))))
+(defn append-check-pairs-step-64-loop-bounded [pairs idx n program remaining]
+  (do
+    (root_push pairs)
+    (root_push program)
+    (let [step (append-check-pairs-step pairs idx n program)]
+      (do
+        (root_push step)
+        (let [done (vector-get step 0)
+          next-idx (vector-get step 1)
+          next-program (vector-get step 2)]
+          (do
+            (root_push next-program)
+            (let [result
+              (if (= done 1)
+                step
+                (if (<= remaining 1)
+                  step
+                  (append-check-pairs-step-64-loop-bounded pairs next-idx n next-program (- remaining 1))))]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result))))))))
+(defn append-check-pairs-step-64 [pairs idx n program]
+  (append-check-pairs-step-64-loop-bounded pairs idx n program 64))
+(defn append-check-pairs-step-512-loop-bounded [pairs idx n program remaining]
+  (do
+    (root_push pairs)
+    (root_push program)
+    (let [step (append-check-pairs-step-64 pairs idx n program)]
+      (do
+        (root_push step)
+        (let [done (vector-get step 0)
+          next-idx (vector-get step 1)
+          next-program (vector-get step 2)]
+          (do
+            (root_push next-program)
+            (let [result
+              (if (= done 1)
+                step
+                (if (<= remaining 1)
+                  step
+                  (append-check-pairs-step-512-loop-bounded pairs next-idx n next-program (- remaining 1))))]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result))))))))
+(defn append-check-pairs-step-512 [pairs idx n program]
+  (append-check-pairs-step-512-loop-bounded pairs idx n program 8))
+(defn append-check-pairs-step-4096-loop-bounded [pairs idx n program remaining]
+  (do
+    (root_push pairs)
+    (root_push program)
+    (let [step (append-check-pairs-step-512 pairs idx n program)]
+      (do
+        (root_push step)
+        (let [done (vector-get step 0)
+          next-idx (vector-get step 1)
+          next-program (vector-get step 2)]
+          (do
+            (root_push next-program)
+            (let [result
+              (if (= done 1)
+                step
+                (if (<= remaining 1)
+                  step
+                  (append-check-pairs-step-4096-loop-bounded pairs next-idx n next-program (- remaining 1))))]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result))))))))
+(defn append-check-pairs-step-4096 [pairs idx n program]
+  (append-check-pairs-step-4096-loop-bounded pairs idx n program 8))
+(defn append-check-pairs [pairs idx n program]
+  (let [step (append-check-pairs-step-4096 pairs idx n program)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (append-check-pairs pairs (vector-get step 1) n (vector-get step 2)))))
+(defn load-check-program [path]
+  (let [cache-ref (ref-new (map-new))
+    parse-count-ref (ref-new 0)]
+    (do
+      (root_push cache-ref)
+      (root_push parse-count-ref)
+      (let [all-pairs (compile-file-pairs-with-cache path cache-ref parse-count-ref)]
+        (do
+          (root_push all-pairs)
+          (let [program (append-check-pairs all-pairs 0 (vector-length all-pairs) (vector-new 8))]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              program)))))))
 (defn compile-file-functions-with-cache [path func-idx cache-ref parse-count-ref data-ref]
   (let [all-pairs (compile-file-pairs-with-cache path cache-ref parse-count-ref)]
     (do

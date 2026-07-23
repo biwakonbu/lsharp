@@ -102,9 +102,8 @@
 (defn builtin-type-name-text [type-hash] (if (= type-hash 100) "Int" (if (= type-hash 200) "Bool" (if (= type-hash 300) "String" (if (= type-hash 400) "Float" (if (= type-hash 500) "Unit" (string-concat "type-" (int-to-string type-hash))))))))
 (defn render-type-text [ty] (let [tag (ty-tag ty)] (if (= tag 1) (builtin-type-name-text (ty-name ty)) (if (= tag 2) (string-concat "t" (int-to-string (ty-name ty))) (if (= tag 3) "Fn" (if (= tag 4) (string-concat "record-" (int-to-string (ty-name ty))) "Unknown"))))))
 (defn run-parse-source [src opts] (let [program (parse-program src) diagnostics (parse-diagnostics src) diagnostics-count (vector-length diagnostics) diagnostics-text (diagnostics-summary-text diagnostics-count "P0001" (parse-diagnostics-body-text diagnostics))] (do (print-string (parse-decl-count-text program)) (print-string "\n") (print-string (string-concat "first-decl:" (parse-first-decl-text program))) (print-string "\n") (print-string (string-concat "first-body:" (parse-first-body-text program))) (print-string "\n") (print-string diagnostics-text) (print-string "\n") (exit-success))))
-(defn run-check-source [src opts]
-  (let [program (parse-program src)
-    program-root-slot (root_push program)
+(defn run-check-program [program opts]
+  (let [program-root-slot (root_push program)
     analysis (infer-program-analysis program)
     analysis-root-slot (root_push analysis)
     ty (infer-program-analysis-type analysis)
@@ -162,6 +161,7 @@
           (print-string "\n"))
         (print-string ""))
         (check-exit-code diagnostics-count)))))
+(defn run-check-source [src opts] (run-check-program (parse-program src) opts))
 (defn test-examples-text [count] (string-concat "examples:" (int-to-string count)))
 (defn test-invariants-text [count] (string-concat "invariants:" (int-to-string count)))
 (defn test-assertions-text [count] (string-concat "assertions:" (int-to-string count)))
@@ -553,7 +553,7 @@
 (defn run-compile-output [file-path output-path opts] (if (file-exists? file-path) (if (= opts (compile-target-preview1)) (let [src (read-file file-path)] (if (standalone-preview1-input-layout-safe? src) (let [wasm-bytes (compile-file-wasm-bytes file-path) wasm-size (vector-length wasm-bytes) summary (wasm-size-text wasm-size)] (if (= wasm-size 0) (do (cli-stderr (standalone-preview1-capability-boundary-message)) (exit-compile-error)) (do (write-file-bytes output-path wasm-bytes) (print-string summary) (print-string "\n") (exit-success)))) (do (cli-stderr (standalone-preview1-capability-boundary-message)) (exit-compile-error)))) (do (cli-stderr (component-output-boundary-message)) (exit-compile-error))) (exit-compile-error)))
 (defn run-build-output [file-path output-path opts] (run-compile-output file-path output-path opts))
 (defn run-parse [file-path opts] (if (file-exists? file-path) (run-parse-source (read-file file-path) opts) (exit-compile-error)))
-(defn run-check [file-path opts] (if (file-exists? file-path) (run-check-source (read-file file-path) opts) (exit-compile-error)))
+(defn run-check [file-path opts] (if (file-exists? file-path) (run-check-program (load-check-program file-path) opts) (exit-compile-error)))
 (defn run-compile [file-path opts] (if (file-exists? file-path) (run-compile-output file-path (default-output-path file-path opts) opts) (exit-compile-error)))
 (defn run-build [file-path opts] (if (file-exists? file-path) (run-build-output file-path (default-output-path file-path opts) opts) (exit-compile-error)))
 (defn run-test [file-path opts] (if (file-exists? file-path) (run-test-source (read-file file-path) opts) (exit-compile-error)))

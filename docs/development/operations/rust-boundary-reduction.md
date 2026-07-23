@@ -1823,3 +1823,11 @@ Evidence: RED `test_e2e_selfhost_typeinfer_analysis_reports_first_failed_definit
 Evidence: RED `test_e2e_selfhost_typeinfer_analysis_reports_first_failed_definition_name_hash` は未定義 accessorで失敗した。GREEN は `(defn ok [] 42) (defn fail [] missing) (defn later [] missing-later)` の fixtureで diagnostics `2`、first-error-index `1`、AST index `1` の name hashとの一致を確認し、provenance test 2件が `2 passed`（single-thread）となった。typed-defn signature rejection と mutual-recursion program analysisも state 8要素化後に各 `1 passed`（`RUST_MIN_STACK=128MiB`）だった。
 
 これは name hashの観測契約だけを追加する verified sliceであり、失敗定義名の文字列化、依存先、source spanの native projection、standalone source-check `0`、EC-M1-01 aggregate、Rust-free全体完了を意味しない。次は name hashを依存先・source spanへ結び付ける狭い診断契約を分離して進める。
+
+### EC-M1-01 import-aware selfhost file check slice (2026-07-23)
+
+`run-check-source` の source-only 経路と `run-check` の file 経路を分離し、後者は既存の `compile-file-pairs-with-cache` が作る依存閉包を使って、依存 module の declaration vector を依存順に一つの TypeInfer program へ畳み込むようにした。`Cli` と `EmbeddedCli` の両方を同期し、bounded loop を使って declaration / pair の走査を行う。
+
+Evidence: RED `test_e2e_selfhost_cli_check_file_resolves_imported_definition` は、`Main.ls` から import した `Lib.helper` を解決できず `undefined symbol` になる failure を固定した。GREEN は同じ Preview1 selfhost bundle で `Fn`、`diagnostics:0`、exit `0` を確認した（1 passed、445.78s）。依存 module のない source-only `run-check-source` の既存契約も維持する。`run_wasm_component_capture` は component trap 時にも既に捕捉した stdout を error に残すようにし、`test_component_trap_error_preserves_captured_stdout` で `stdout_lossy` の出力を固定した。
+
+この slice は module/import declaration の flatten と unqualified name resolution に限定される。`import` の `:only` / `:as` / `:open`、qualified name、private visibility、依存先 source span の診断 projection、standalone source-check の全定義成功、supported 2 targets の current-source native gateは未完了である。Preview2 の Rust driver で `selfhost/src/Syntax/Parser.ls` を直接 check すると、temporary marker により import traversal 前の初期 source parse で component trap することを確認した。Preview1 の core harness で到達できることを Preview2 component parityへ拡大解釈せず、root/stack/spill の広い変更は保留する。次の RED は、失敗定義の name hashを依存先・source spanへ結び付ける狭い診断契約である。

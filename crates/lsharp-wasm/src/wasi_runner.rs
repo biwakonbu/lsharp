@@ -118,6 +118,14 @@ fn decode_stdout_bytes(bytes: &[u8]) -> Result<String, String> {
     })
 }
 
+fn format_component_trap_with_stdout(error: String, bytes: &[u8]) -> String {
+    if bytes.is_empty() {
+        error
+    } else {
+        format!("{error}; stdout_lossy={:?}", String::from_utf8_lossy(bytes))
+    }
+}
+
 enum StdinMode<'a> {
     Memory(&'a str),
     Inherit,
@@ -438,10 +446,10 @@ fn run_wasm_component_capture(
         .instantiate(&mut store, &component)
         .map_err(|e| format!("Component インスタンス化に失敗: {e}"))?;
 
-    let exit_code = if let Some(run_export) =
+    let execution = if let Some(run_export) =
         find_component_run_func(&component, &instance, &mut store)
     {
-        call_component_run(&mut store, run_export)?
+        call_component_run(&mut store, run_export)
     } else {
         // P1 の _start 不在時と同様にエラーを返す
         return Err(
@@ -454,6 +462,7 @@ fn run_wasm_component_capture(
     let bytes = stdout
         .try_into_inner()
         .ok_or_else(|| "stdout の取得に失敗".to_string())?;
+    let exit_code = execution.map_err(|error| format_component_trap_with_stdout(error, &bytes))?;
     let stdout = decode_stdout_bytes(&bytes)?;
     Ok(ExecutionOutput { stdout, exit_code })
 }
@@ -925,6 +934,19 @@ mod tests {
         assert!(
             result.is_ok(),
             "plain run export component should execute with preopened dir: {result:?}"
+        );
+    }
+
+    #[test]
+    fn test_component_trap_error_preserves_captured_stdout() {
+        let error = format_component_trap_with_stdout(
+            "Component 実行に失敗: unreachable".to_string(),
+            b"diagnostics:1\n",
+        );
+
+        assert_eq!(
+            error,
+            "Component 実行に失敗: unreachable; stdout_lossy=\"diagnostics:1\\n\""
         );
     }
 
