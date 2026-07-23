@@ -543,10 +543,32 @@ impl Lower {
                 ctx.emit(Instruction::End);
                 Ok(())
             }
-            Pattern::Lit(_, _) => Err(LowerError::Unsupported {
-                msg: "WasmGC ADT の nested/literal pattern".to_string(),
-                span: Some(arm.span),
-            }),
+            Pattern::Lit(_, literal) => {
+                let Some(expected) = (match literal {
+                    Literal::Int(value) => Some(*value),
+                    Literal::Bool(value) => Some(i64::from(*value)),
+                    Literal::Unit => Some(0),
+                    Literal::Float(_) | Literal::String(_) => None,
+                }) else {
+                    return Err(LowerError::Unsupported {
+                        msg: "WasmGC ADT の nested/literal pattern".to_string(),
+                        span: Some(arm.span),
+                    });
+                };
+                ctx.emit(Instruction::LocalGet(*value_local));
+                ctx.emit(Instruction::I64Const(expected));
+                ctx.emit(Instruction::I64Eq);
+                ctx.emit(Instruction::If(IrType::I64));
+                self.lower_wasmgc_pattern_sequence(ctx, rest, arms, idx, scrut_local)?;
+                ctx.emit(Instruction::Else);
+                if idx == arms.len() - 1 {
+                    ctx.emit(Instruction::Unreachable);
+                } else {
+                    self.lower_match_arms(ctx, scrut_local, arms, idx + 1)?;
+                }
+                ctx.emit(Instruction::End);
+                Ok(())
+            }
             Pattern::RecordPat(_, _, _) => Err(LowerError::Unsupported {
                 msg: "WasmGC ADT の nested/literal pattern".to_string(),
                 span: Some(arm.span),

@@ -165,6 +165,20 @@ variant によって payload が欠損する ADT でも、WasmGC の nullable co
 nullable slot は concrete Ref の default に限定し、literal pattern、GADT、parametric representation、
 GC root/allocator、strings、WASI/component、supported 2 targets、selfhost compiler は未完了である。
 
+## Stage 1.75d 検証済み slice: scalar literal ADT pattern (2026-07-24)
+
+ADT payload の `Int` / `Bool` / `Unit` literal pattern を、暗黙の linear fallback ではなく WasmGC
+`StructGet` と value comparison で検査する経路を追加した。
+
+- constructor tag が一致した後、literal payload は `I64Eq` の結果で nested pattern sequence を継続し、
+  不一致時は同じ scrutinee の次の arm へ進む。
+- `test_compile_file_wasmgc_backend_executes_integer_adt_literal_pattern` が `Just 42` / `Just 41` と
+  Bool `Set true` の成功・fallback を Wasmtime で実行して結果 `2` を確認する。
+- Float/String literal と record pattern はこの scalar slice の外側で、`LS3001` の明示拒否を維持する。
+
+この slice は literal の型表現全体を閉じたものではなく、GADT、parametric representation、GC
+root/allocator、strings、WASI/component、supported 2 targets、selfhost compiler は未完了である。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線
@@ -242,6 +256,6 @@ GC root/allocator、strings、WASI/component、supported 2 targets、selfhost co
 
 Stage 0 (依存 API / runtime capability probe)、Stage 1 の IR emitter、Stage 1.5 の CLI 選択、
 Stage 1.75 の direct record lowering/update/user call、scalar ADT constructor/pattern、nested ADT
-payload/pattern、nullable ADT reference payload slice は 2026-07-24 に検証済み。ADT の全表現、
-Stage 2 以降 (strings / closures / traits / selfhost)、supported target の actual runtime evidence
-は未完了であり、`LEGACY-EXEC-01` の完了条件には到達していない。
+payload/pattern、nullable ADT reference payload、scalar literal pattern slice は 2026-07-24 に
+検証済み。ADT の全表現、Stage 2 以降 (strings / closures / traits / selfhost)、supported target
+の actual runtime evidence は未完了であり、`LEGACY-EXEC-01` の完了条件には到達していない。
