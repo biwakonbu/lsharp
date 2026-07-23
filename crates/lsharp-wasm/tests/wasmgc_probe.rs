@@ -2,6 +2,7 @@ use lsharp_ir::{
     Function, GcField, GcTypeDef, GcTypeKind, Instruction, IrType, Module as IrModule,
 };
 use std::io::{self, Write};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use wasmtime::{Config, Engine, Instance, Module, Store};
 
@@ -474,6 +475,147 @@ fn wasm_gc_host_print_string_rejects_non_packed_import_signature() {
     )
     .expect_err("i32 array signature は拒否する");
     assert!(error.contains("i8"), "{error}");
+}
+
+#[test]
+fn wasm_gc_component_output_copies_packed_array_to_linear_memory_import() {
+    let module = IrModule {
+        functions: vec![Function {
+            name: "main".to_string(),
+            params: vec![],
+            result: IrType::I64,
+            locals: vec![],
+            body: vec![
+                Instruction::I32Const(195),
+                Instruction::I32Const(169),
+                Instruction::ArrayNewFixed(0, 2),
+                Instruction::Call(4),
+                Instruction::I64Const(11),
+            ],
+            is_export: true,
+        }],
+        gc_types: vec![GcTypeDef {
+            name: "StringBytes".to_string(),
+            kind: GcTypeKind::PackedByteArray,
+        }],
+        imports: vec![],
+        globals: vec![],
+        string_data: vec![],
+    };
+
+    let bytes = lsharp_wasm::wasmgc::emit_wasm_wasmgc_component_output(&module)
+        .expect("WasmGC component output module を生成できる");
+    let output = lsharp_wasm::wasmgc_runner::run_wasm_wasmgc_component_output_capture(&bytes)
+        .expect("GC array を linear memory へ copy して canonical import を実行できる");
+
+    assert_eq!(output.stdout, "é");
+    assert_eq!(output.exit_code, 11);
+}
+
+#[test]
+fn wasm_gc_component_output_componentizes_against_wit_world() {
+    let module = IrModule {
+        functions: vec![Function {
+            name: "main".to_string(),
+            params: vec![],
+            result: IrType::I64,
+            locals: vec![],
+            body: vec![
+                Instruction::I32Const(65),
+                Instruction::ArrayNewFixed(0, 1),
+                Instruction::Call(4),
+                Instruction::I64Const(0),
+            ],
+            is_export: true,
+        }],
+        gc_types: vec![GcTypeDef {
+            name: "StringBytes".to_string(),
+            kind: GcTypeKind::PackedByteArray,
+        }],
+        imports: vec![],
+        globals: vec![],
+        string_data: vec![],
+    };
+    let core = lsharp_wasm::wasmgc::emit_wasm_wasmgc_component_output(&module)
+        .expect("component output core module を生成できる");
+    let wit_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("wit")
+        .join("lsharp-wasmgc-output.wit");
+    let component = lsharp_wasm::component_adapter::componentize_core_module(
+        &core,
+        &wit_file,
+        "wasmgc-output",
+        &[],
+    )
+    .expect("canonical output core module を WIT component へ変換できる");
+
+    let mut config = Config::new();
+    config.wasm_gc(true);
+    let engine = Engine::new(&config).expect("WasmGC component engine を作成できる");
+    wasmtime::component::Component::new(&engine, component)
+        .expect("canonical output component が validation に成功する");
+}
+
+#[test]
+fn wasm_gc_component_output_propagates_sink_failure_as_trap() {
+    let module = IrModule {
+        functions: vec![Function {
+            name: "main".to_string(),
+            params: vec![],
+            result: IrType::I64,
+            locals: vec![],
+            body: vec![
+                Instruction::I32Const(65),
+                Instruction::ArrayNewFixed(0, 1),
+                Instruction::Call(4),
+                Instruction::I64Const(0),
+            ],
+            is_export: true,
+        }],
+        gc_types: vec![GcTypeDef {
+            name: "StringBytes".to_string(),
+            kind: GcTypeKind::PackedByteArray,
+        }],
+        imports: vec![],
+        globals: vec![],
+        string_data: vec![],
+    };
+    let core = lsharp_wasm::wasmgc::emit_wasm_wasmgc_component_output(&module)
+        .expect("component output sink failure module を生成できる");
+    let error = lsharp_wasm::wasmgc_runner::run_wasm_wasmgc_component_output_with_stdout_sink(
+        &core,
+        |_bytes| Err("stdout closed".to_string()),
+    )
+    .expect_err("component output sink error は trap になる");
+    assert!(error.contains("stdout closed"), "{error}");
+}
+
+#[test]
+fn wasm_gc_component_output_rejects_invalid_linear_memory_range() {
+    let core = wat::parse_str(
+        r#"
+(module
+  (type (func (param i32 i32)))
+  (type (func (result i64)))
+  (import "lsharp:wasmgc-output/stdout@0.1.0" "write" (func $write (type 0)))
+  (memory (export "memory") 1)
+  (func (export "main") (type 1)
+    i32.const 65536
+    i32.const 1
+    call $write
+    i64.const 0)
+)
+"#,
+    )
+    .expect("invalid range module を生成できる");
+    let error = lsharp_wasm::wasmgc_runner::run_wasm_wasmgc_component_output_with_stdout_sink(
+        &core,
+        |_bytes| Ok(()),
+    )
+    .expect_err("linear memory 外の canonical pair は拒否する");
+    assert!(error.contains("linear memory 外"), "{error}");
 }
 
 #[test]

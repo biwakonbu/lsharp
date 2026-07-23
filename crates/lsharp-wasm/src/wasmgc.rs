@@ -7,7 +7,7 @@
 use lsharp_ir::{GcTypeKind, Instruction, IrType, Module};
 use wasm_encoder::{
     CodeSection, EntityType, ExportKind, ExportSection, FieldType, Function, FunctionSection,
-    HeapType, ImportSection, RefType, StorageType, TypeSection, ValType,
+    HeapType, ImportSection, MemorySection, MemoryType, RefType, StorageType, TypeSection, ValType,
 };
 
 use crate::codegen::CodegenError;
@@ -18,6 +18,8 @@ use crate::codegen::CodegenError;
 /// する。`Call(17 + user_index)` はユーザー関数、`Call(4)` は `print-string` を表す。
 const LOWER_RUNTIME_IMPORT_COUNT: u32 = 17;
 const PRINT_STRING_RUNTIME_INDEX: u32 = 4;
+const COMPONENT_OUTPUT_MODULE: &str = "lsharp:wasmgc-output/stdout@0.1.0";
+const COMPONENT_OUTPUT_NAME: &str = "write";
 
 /// L# IR を WasmGC core module へ変換する。
 ///
@@ -27,7 +29,29 @@ const PRINT_STRING_RUNTIME_INDEX: u32 = 4;
 /// 後続 stage の責務であり、`print-string` 以外の未対応 runtime import は i64 に黙って
 /// フォールバックせず診断する。
 pub fn emit_wasm_wasmgc(module: &Module) -> Result<Vec<u8>, CodegenError> {
+    emit_wasm_wasmgc_internal(module, false)
+}
+
+/// L# IR を Component Model の output `list<u8>` canonical ABI を持つ
+/// WasmGC core module へ変換する。
+///
+/// `print-string` の packed GC array は module 内で一時的に linear memory へコピーされ、
+/// `(ptr, len) -> ()` の WIT canonical import へ渡される。memory は呼び出し中だけ借用され、
+/// host が write error を返した場合は trap として実行を終了する。
+pub fn emit_wasm_wasmgc_component_output(module: &Module) -> Result<Vec<u8>, CodegenError> {
+    emit_wasm_wasmgc_internal(module, true)
+}
+
+fn emit_wasm_wasmgc_internal(
+    module: &Module,
+    component_output: bool,
+) -> Result<Vec<u8>, CodegenError> {
     let print_string_import = module_uses_print_string(module);
+    if component_output && !print_string_import {
+        return Err(codegen_error(
+            "Component output backend は print-string を使用する module が必要です",
+        ));
+    }
     validate_module(module, print_string_import)?;
 
     let mut wasm_module = wasm_encoder::Module::new();
@@ -80,6 +104,14 @@ pub fn emit_wasm_wasmgc(module: &Module) -> Result<Vec<u8>, CodegenError> {
         None
     };
 
+    let component_output_type_index = if component_output {
+        let type_index = types.len();
+        types.ty().function([ValType::I32, ValType::I32], []);
+        Some(type_index)
+    } else {
+        None
+    };
+
     let mut function_type_indices = Vec::with_capacity(module.functions.len());
     for function in &module.functions {
         function_type_indices.push(types.len());
@@ -98,7 +130,13 @@ pub fn emit_wasm_wasmgc(module: &Module) -> Result<Vec<u8>, CodegenError> {
             EntityType::Function(type_index),
         );
     }
-    if let Some((type_index, _)) = print_string_type_index {
+    if let Some(type_index) = component_output_type_index {
+        imports.import(
+            COMPONENT_OUTPUT_MODULE,
+            COMPONENT_OUTPUT_NAME,
+            EntityType::Function(type_index),
+        );
+    } else if let Some((type_index, _)) = print_string_type_index {
         imports.import("env", "print-string", EntityType::Function(type_index));
     }
     if !module.imports.is_empty() || print_string_import {
@@ -113,8 +151,23 @@ pub fn emit_wasm_wasmgc(module: &Module) -> Result<Vec<u8>, CodegenError> {
         wasm_module.section(&functions);
     }
 
+    if component_output {
+        let mut memories = MemorySection::new();
+        memories.memory(MemoryType {
+            minimum: 1,
+            maximum: None,
+            memory64: false,
+            shared: false,
+            page_size_log2: None,
+        });
+        wasm_module.section(&memories);
+    }
+
     let mut exports = ExportSection::new();
     let import_count = module.imports.len() as u32 + u32::from(print_string_import);
+    if component_output {
+        exports.export("memory", ExportKind::Memory, 0);
+    }
     for (index, function) in module.functions.iter().enumerate() {
         if function.is_export {
             exports.export(
@@ -130,21 +183,43 @@ pub fn emit_wasm_wasmgc(module: &Module) -> Result<Vec<u8>, CodegenError> {
 
     let mut code = CodeSection::new();
     for function in &module.functions {
-        let locals = function
+        let mut locals = function
             .locals
             .iter()
             .copied()
             .map(|ty| (1, wasm_gc_valtype(ty)))
             .collect::<Vec<_>>();
+        let output_locals = if component_output {
+            let array_type_index = string_array_type_index(module)?;
+            let base = function.params.len() as u32 + function.locals.len() as u32;
+            locals.push((
+                1,
+                ValType::Ref(RefType {
+                    nullable: true,
+                    heap_type: HeapType::Concrete(array_type_index),
+                }),
+            ));
+            locals.push((3, ValType::I32));
+            Some(ComponentOutputLocals {
+                array: base,
+                ptr: base + 1,
+                len: base + 2,
+                index: base + 3,
+            })
+        } else {
+            None
+        };
         let mut wasm_function = Function::new(locals);
-        emit_wasm_gc_instructions(
-            &mut wasm_function,
-            &function.body,
-            module.functions.len(),
+        let emit_options = WasmGcEmitOptions {
             module,
+            function_count: module.functions.len(),
             import_count,
             print_string_import,
-        )?;
+            component_output_import_index: component_output_type_index
+                .map(|_| module.imports.len() as u32),
+            output_locals,
+        };
+        emit_wasm_gc_instructions(&mut wasm_function, &function.body, &emit_options)?;
         wasm_function.instruction(&wasm_encoder::Instruction::End);
         code.function(&wasm_function);
     }
@@ -153,6 +228,23 @@ pub fn emit_wasm_wasmgc(module: &Module) -> Result<Vec<u8>, CodegenError> {
     }
 
     Ok(wasm_module.finish())
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ComponentOutputLocals {
+    array: u32,
+    ptr: u32,
+    len: u32,
+    index: u32,
+}
+
+struct WasmGcEmitOptions<'a> {
+    module: &'a Module,
+    function_count: usize,
+    import_count: u32,
+    print_string_import: bool,
+    component_output_import_index: Option<u32>,
+    output_locals: Option<ComponentOutputLocals>,
 }
 
 fn wasm_gc_valtype(ty: IrType) -> ValType {
@@ -374,10 +466,7 @@ fn validate_gc_type_index(
 fn emit_wasm_gc_instructions(
     function: &mut Function,
     instructions: &[Instruction],
-    function_count: usize,
-    module: &Module,
-    import_count: u32,
-    print_string_import: bool,
+    options: &WasmGcEmitOptions<'_>,
 ) -> Result<(), CodegenError> {
     use wasm_encoder::Instruction as W;
 
@@ -386,12 +475,24 @@ fn emit_wasm_gc_instructions(
         instructions,
         |function, index| {
             if index == PRINT_STRING_RUNTIME_INDEX {
-                if !print_string_import {
+                if !options.print_string_import {
                     return Err(codegen_error(
                         "print-string import boundary が materialize されていません",
                     ));
                 }
-                function.instruction(&W::Call(module.imports.len() as u32));
+                if options.component_output_import_index.is_some() {
+                    let import_index = options.component_output_import_index.ok_or_else(|| {
+                        codegen_error(
+                            "Component output の write import が materialize されていません",
+                        )
+                    })?;
+                    let locals = options.output_locals.ok_or_else(|| {
+                        codegen_error("Component output の linear-memory locals がありません")
+                    })?;
+                    emit_component_output_call(function, options.module, import_index, locals)?;
+                } else {
+                    function.instruction(&W::Call(options.module.imports.len() as u32));
+                }
                 return Ok(());
             }
             let local_index = index
@@ -401,12 +502,12 @@ fn emit_wasm_gc_instructions(
                         "WasmGC backend は runtime import 呼び出しを未対応です: Call({index})"
                     ))
                 })?;
-            if (local_index as usize) >= function_count {
+            if (local_index as usize) >= options.function_count {
                 return Err(codegen_error(format!(
                     "ユーザー関数の呼び出しインデックスが範囲外です: Call({index})"
                 )));
             }
-            function.instruction(&W::Call(import_count + local_index));
+            function.instruction(&W::Call(options.import_count + local_index));
             Ok(())
         },
         |function, instruction| {
@@ -443,7 +544,8 @@ fn emit_wasm_gc_instructions(
                 }
                 Instruction::ArrayGet(type_index) => {
                     let is_packed = matches!(
-                        module
+                        options
+                            .module
                             .gc_types
                             .get(*type_index as usize)
                             .map(|gc_type| &gc_type.kind),
@@ -466,6 +568,72 @@ fn emit_wasm_gc_instructions(
             Ok(true)
         },
     )
+}
+
+fn emit_component_output_call(
+    function: &mut Function,
+    module: &Module,
+    import_index: u32,
+    locals: ComponentOutputLocals,
+) -> Result<(), CodegenError> {
+    use wasm_encoder::Instruction as W;
+
+    let array_type_index = string_array_type_index(module)?;
+
+    // GC reference はこの同期的な copy/write 呼び出しの間だけ借用する。
+    function.instruction(&W::LocalSet(locals.array));
+    function.instruction(&W::I32Const(0));
+    function.instruction(&W::LocalSet(locals.ptr));
+    function.instruction(&W::LocalGet(locals.array));
+    function.instruction(&W::ArrayLen);
+    function.instruction(&W::LocalSet(locals.len));
+
+    // 最初の store 前に memory を grow する。grow 失敗時の -1 は trap に変換する。
+    function.instruction(&W::LocalGet(locals.len));
+    function.instruction(&W::I32Const(65_535));
+    function.instruction(&W::I32Add);
+    function.instruction(&W::I32Const(16));
+    function.instruction(&W::I32ShrU);
+    function.instruction(&W::MemoryGrow(0));
+    function.instruction(&W::I32Const(-1));
+    function.instruction(&W::I32Eq);
+    function.instruction(&W::If(wasm_encoder::BlockType::Empty));
+    function.instruction(&W::Unreachable);
+    function.instruction(&W::End);
+
+    function.instruction(&W::I32Const(0));
+    function.instruction(&W::LocalSet(locals.index));
+    function.instruction(&W::Block(wasm_encoder::BlockType::Empty));
+    function.instruction(&W::Loop(wasm_encoder::BlockType::Empty));
+    function.instruction(&W::LocalGet(locals.index));
+    function.instruction(&W::LocalGet(locals.len));
+    function.instruction(&W::I32GeU);
+    function.instruction(&W::BrIf(1));
+
+    function.instruction(&W::LocalGet(locals.ptr));
+    function.instruction(&W::LocalGet(locals.index));
+    function.instruction(&W::I32Add);
+    function.instruction(&W::LocalGet(locals.array));
+    function.instruction(&W::LocalGet(locals.index));
+    function.instruction(&W::ArrayGetU(array_type_index));
+    function.instruction(&W::I32Store8(wasm_encoder::MemArg {
+        offset: 0,
+        align: 0,
+        memory_index: 0,
+    }));
+
+    function.instruction(&W::LocalGet(locals.index));
+    function.instruction(&W::I32Const(1));
+    function.instruction(&W::I32Add);
+    function.instruction(&W::LocalSet(locals.index));
+    function.instruction(&W::Br(0));
+    function.instruction(&W::End);
+    function.instruction(&W::End);
+
+    function.instruction(&W::LocalGet(locals.ptr));
+    function.instruction(&W::LocalGet(locals.len));
+    function.instruction(&W::Call(import_index));
+    Ok(())
 }
 
 fn codegen_error(message: impl Into<String>) -> CodegenError {

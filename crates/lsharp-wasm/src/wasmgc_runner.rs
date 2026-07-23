@@ -10,6 +10,7 @@ use std::sync::{Arc, Mutex};
 use wasmtime::{Config, Engine, ExternType, Instance, Module, Store};
 
 use crate::wasi_runner::ExecutionOutput;
+use crate::wasmgc_host::create_component_output_import;
 use crate::wasmgc_host::create_print_string_import;
 
 const DEFAULT_MAX_WASM_STACK: usize = 64 * 1024 * 1024;
@@ -58,6 +59,82 @@ where
         .call(&mut store, ())
         .map_err(|error| format!("WasmGC 実行に失敗: {error:#}"))?;
     i32::try_from(result).map_err(|error| format!("WasmGC exit code が i32 範囲外です: {error}"))
+}
+
+/// WasmGC core module の canonical `list<u8>` output import を sink へ接続して実行する。
+///
+/// `lsharp:wasmgc-output/stdout@0.1.0::write` だけを解決し、WASI や GC reference import へ
+/// 暗黙に fallback しない。core module は `memory` export を持ち、host callback は `(ptr, len)`
+/// の範囲を一回の write として消費する。
+pub fn run_wasm_wasmgc_component_output_with_stdout_sink<F>(
+    wasm_bytes: &[u8],
+    sink: F,
+) -> Result<i32, String>
+where
+    F: Fn(&[u8]) -> Result<(), String> + Send + Sync + 'static,
+{
+    let engine = configured_engine()?;
+    let module = Module::new(&engine, wasm_bytes)
+        .map_err(|error| format!("WasmGC component output module の読み込みに失敗: {error}"))?;
+    let mut store = Store::new(&engine, ());
+    let mut imports = Vec::with_capacity(module.imports().len());
+    let mut sink = Some(sink);
+
+    for import in module.imports() {
+        if import.module() != "lsharp:wasmgc-output/stdout@0.1.0" || import.name() != "write" {
+            return Err(format!(
+                "WasmGC component output runner は import {}.{} を未対応のまま実行しません",
+                import.module(),
+                import.name()
+            ));
+        }
+        let ExternType::Func(func_type) = import.ty() else {
+            return Err("component output write import は function である必要があります".into());
+        };
+        let sink = sink
+            .take()
+            .ok_or_else(|| "component output write import が重複しています".to_string())?;
+        let host = create_component_output_import(&mut store, func_type, sink)
+            .map_err(|error| format!("component output host import の作成に失敗: {error}"))?;
+        imports.push(host.into());
+    }
+
+    let instance = Instance::new(&mut store, &module, &imports).map_err(|error| {
+        format!("WasmGC component output module のインスタンス化に失敗: {error}")
+    })?;
+    let main = instance
+        .get_typed_func::<(), i64>(&mut store, "main")
+        .map_err(|error| format!("WasmGC component output main export の取得に失敗: {error}"))?;
+    let result = main
+        .call(&mut store, ())
+        .map_err(|error| format!("WasmGC component output の実行に失敗: {error:#}"))?;
+    i32::try_from(result)
+        .map_err(|error| format!("WasmGC component output exit code が i32 範囲外です: {error}"))
+}
+
+/// WasmGC core module の canonical output bytes と exit code を capture する。
+pub fn run_wasm_wasmgc_component_output_capture(
+    wasm_bytes: &[u8],
+) -> Result<ExecutionOutput, String> {
+    let stdout = Arc::new(Mutex::new(Vec::<u8>::new()));
+    let stdout_for_sink = Arc::clone(&stdout);
+    let exit_code = run_wasm_wasmgc_component_output_with_stdout_sink(wasm_bytes, move |bytes| {
+        stdout_for_sink
+            .lock()
+            .map_err(|_| "WasmGC component output stdout mutex が poisoned です".to_string())?
+            .extend_from_slice(bytes);
+        Ok(())
+    })?;
+    let stdout = stdout
+        .lock()
+        .map_err(|_| "WasmGC component output stdout mutex が poisoned です".to_string())?;
+    let stdout = String::from_utf8(stdout.clone()).map_err(|error| {
+        format!(
+            "WasmGC component output stdout の UTF-8 変換に失敗: {error}; stdout_lossy={:?}",
+            String::from_utf8_lossy(&stdout)
+        )
+    })?;
+    Ok(ExecutionOutput { stdout, exit_code })
 }
 
 /// WasmGC core module を `std::io::Write` へ接続して実行する。

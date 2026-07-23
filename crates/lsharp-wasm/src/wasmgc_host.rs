@@ -84,6 +84,76 @@ where
     ))
 }
 
+/// Component Model canonical `list<u8>` output import 用の host function を作成する。
+///
+/// core module 側の signature は `(ptr: i32, len: i32) -> ()` で、exported `memory` を
+/// 呼び出し中だけ借用する。範囲外、負の値、write sink のエラーはすべて trap へ変換する。
+pub fn create_component_output_import<T, F>(
+    store: &mut Store<T>,
+    func_type: FuncType,
+    sink: F,
+) -> Result<Func, String>
+where
+    F: Fn(&[u8]) -> Result<(), String> + Send + Sync + 'static,
+{
+    validate_component_output_type(&func_type)?;
+
+    Ok(Func::new(
+        store,
+        func_type,
+        move |mut caller: Caller<'_, T>, params, _results| {
+            let Some(Val::I32(pointer)) = params.first() else {
+                return Err(wasmtime::Error::msg(
+                    "component output write の pointer が i32 ではありません",
+                ));
+            };
+            let Some(Val::I32(length)) = params.get(1) else {
+                return Err(wasmtime::Error::msg(
+                    "component output write の length が i32 ではありません",
+                ));
+            };
+            let pointer = usize::try_from(*pointer).map_err(|_| {
+                wasmtime::Error::msg(format!(
+                    "component output write の pointer が負値です: {pointer}"
+                ))
+            })?;
+            let length = usize::try_from(*length).map_err(|_| {
+                wasmtime::Error::msg(format!(
+                    "component output write の length が負値です: {length}"
+                ))
+            })?;
+            let Some(memory) = caller
+                .get_export("memory")
+                .and_then(wasmtime::Extern::into_memory)
+            else {
+                return Err(wasmtime::Error::msg(
+                    "component output write に exported memory がありません",
+                ));
+            };
+            let memory_size = memory.data_size(&caller);
+            let end = pointer.checked_add(length).ok_or_else(|| {
+                wasmtime::Error::msg(
+                    "component output write の pointer+length が overflow しました",
+                )
+            })?;
+            if end > memory_size {
+                return Err(wasmtime::Error::msg(format!(
+                    "component output write の範囲が linear memory 外です: ptr={pointer}, len={length}, memory={memory_size}"
+                )));
+            }
+            let mut bytes = vec![0_u8; length];
+            memory.read(&caller, pointer, &mut bytes).map_err(|error| {
+                wasmtime::Error::msg(format!(
+                    "component output write の linear memory 読み出しに失敗: {error}"
+                ))
+            })?;
+            sink(&bytes).map_err(|error| {
+                wasmtime::Error::msg(format!("component output host sink failed: {error}"))
+            })
+        },
+    ))
+}
+
 fn validate_print_string_type(func_type: &FuncType) -> Result<(), String> {
     let params = func_type.params().collect::<Vec<_>>();
     let results = func_type.results().collect::<Vec<_>>();
@@ -116,6 +186,21 @@ fn validate_print_string_type(func_type: &FuncType) -> Result<(), String> {
         return Err(format!(
             "print-string import の array element type が i8 ではありません: {}",
             array_type.element_type()
+        ));
+    }
+    Ok(())
+}
+
+fn validate_component_output_type(func_type: &FuncType) -> Result<(), String> {
+    let params = func_type.params().collect::<Vec<_>>();
+    let results = func_type.results().collect::<Vec<_>>();
+    if params.len() != 2
+        || !matches!(params.first(), Some(ValType::I32))
+        || !matches!(params.get(1), Some(ValType::I32))
+        || !results.is_empty()
+    {
+        return Err(format!(
+            "component output write import の signature が不正です: params={params:?}, results={results:?}"
         ));
     }
     Ok(())

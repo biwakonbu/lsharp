@@ -464,6 +464,29 @@ GC array を Component Model へ接続する前段として、WIT と core modul
 これは ABI と ownership の verified partial slice であり、WasmGC array→linear-memory copy、
 WASI `fd_write`、host error/trap parity、Component runner、native/selfhost parity は未完了である。
 
+## Stage 2m 検証済み slice: packed GC array→linear-memory output bridge (2026-07-24)
+
+Stage 2l で固定した canonical pair を、WasmGC core module の実行経路へ接続した。
+
+- `emit_wasm_wasmgc_component_output` は `print-string` の packed `i8` array を一時 local に保持し、
+  `array.len` / `array.get_u` の要素ループで exported linear memory へコピーする。memory は
+  `ceil(len / 65536)` pages を先に grow し、失敗時は trap とする。
+- コピー後は `lsharp:wasmgc-output/stdout@0.1.0::write` の `(i32, i32) -> ()` import を呼び出す。
+  `create_component_output_import` は pointer/length の符号、overflow、memory 範囲を検証し、
+  呼び出し中だけ bytes を host sink へ渡す。sink error は trap として伝播する。
+- `run_wasm_wasmgc_component_output_capture` はこの import だけを解決し、WASI や GC reference
+  import へ fallback しない。生成 core module の WIT componentize/validation も actual bytes で
+  固定した。
+- RED/green は `wasm_gc_component_output_copies_packed_array_to_linear_memory_import`、
+  `wasm_gc_component_output_rejects_invalid_linear_memory_range`、
+  `wasm_gc_component_output_propagates_sink_failure_as_trap`、
+  `wasm_gc_component_output_componentizes_against_wit_world` で固定する。
+
+これは GC→linear-memory と canonical host sink の verified partial slice であり、WASI
+`fd_write` の partial/error/errno、flush/exit ordering、Component actual instantiate/runner、
+native/selfhost parity は未完了である。次の実装 task は canonical output sink を WASI
+`fd_write` または Component host implementation へ接続することとする。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線
@@ -494,9 +517,9 @@ WASI `fd_write`、host error/trap parity、Component runner、native/selfhost pa
 - 文字列リテラル/操作を `array.new_data` / `array.get_u` / `array.len` へ。
   WASI fd_write へ渡す際は array → リニアメモリへのコピーが必要
   (`array.copy` 不可のため要素ループまたは `array.init_data` の逆操作を helper 化)
-- Stage 2k の明示拒否と Stage 2l の `(ptr, len)` ABI を前提に、次の WASI/component adapter
-  実装を三つの observable contract へ分ける。まず GC array→linear-memory copy を ABI に合わせて
-  実装し、次に WASI `fd_write` の partial/error semantics を固定し、最後に Component Model の
+- Stage 2k の明示拒否、Stage 2l の `(ptr, len)` ABI、Stage 2m の GC array→linear-memory copy を
+  前提に、次の WASI/component adapter 実装を三つの observable contract へ分ける。次に WASI
+  `fd_write` の partial/error semantics を固定し、最後に Component Model の
   actual instantiate/runner と native/selfhost parity を検証する。
   synthetic import の instantiate 成功、host callback 単体の byte read、core runner 単体の success、
   writer adapter 単体の success は、公開 component print 完了の証拠に数えない。
@@ -554,8 +577,8 @@ scalar String GC equality slice、Stage 2c の scalar String GC concat slice、S
 String GC substring slice、Stage 2e の packed String byte array slice、Stage 2f の substring invalid
 range boundary、Stage 2g の `print-string` external import boundary、Stage 2h の host-side packed
 String read、Stage 2i の WasmGC runner stdout sink、Stage 2j の `std::io::Write` adapter、Stage 2k の
-WasmGC Component bridge 明示拒否、Stage 2l の output `list<u8>` canonical pair 契約は
-2026-07-24 に検証済み。ADT
+WasmGC Component bridge 明示拒否、Stage 2l の output `list<u8>` canonical pair 契約、Stage 2m
+の packed GC array→linear-memory output bridge は 2026-07-24 に検証済み。ADT
 の全表現、Stage 2 の残り (Unicode code-point semantics / WASI-component I/O /
 native-selfhost parity)、Stage 3 以降
 (closures / traits / selfhost)、supported target
