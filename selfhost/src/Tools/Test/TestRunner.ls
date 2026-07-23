@@ -2108,14 +2108,70 @@
       ".."
       (string-concat (int-to-string (vector-get source-span 1)) ")"))))
 
+(defn invariant-static-if-branch-mismatch [program node]
+  (if (= (vector-get node 0) (ast-if))
+    (let [condition-kind (invariant-static-bool-kind-with-program
+        program
+        (vector-get node 1))
+      then-kind (invariant-static-bool-kind-with-program
+        program
+        (vector-get node 2))
+      else-kind (invariant-static-bool-kind-with-program
+        program
+        (vector-get node 3))
+      known-branches (and (not (= then-kind 0)) (not (= else-kind 0)))]
+      (if (and
+          (not (= condition-kind 2))
+          (and known-branches (not (= then-kind else-kind))))
+        1
+        0))
+    0))
+
+(defn invariant-match-branch-mismatch-index [program node idx count]
+  (if (>= idx count)
+    -1
+    (let [body (vector-get node (+ 4 (* idx 2)))]
+      (if (= (vector-get body 0) (ast-match-guard))
+        (if (= (invariant-static-if-branch-mismatch program (vector-get body 1)) 1)
+          idx
+          (invariant-match-branch-mismatch-index
+            program
+            node
+            (+ idx 1)
+            count))
+        (invariant-match-branch-mismatch-index
+          program
+          node
+          (+ idx 1)
+          count)))))
+
 (defn invariant-match-type-inference-failure-message [program expr source-span]
-  (let [type-text (invariant-static-match-non-bool-type-text program expr)
-    span-text (invariant-diagnostic-span-text source-span)]
-    (string-concat
-      ":invariant の型推論に失敗しました: [E0002] 型の不一致: expected "
-      (string-concat
-        type-text
-        (string-concat ", found Bool (" span-text)))))
+  (let [branch-mismatch-idx (invariant-match-branch-mismatch-index
+      program
+      expr
+      0
+      (vector-get expr 2))]
+    (if (>= branch-mismatch-idx 0)
+      (let [body (vector-get expr (+ 4 (* branch-mismatch-idx 2)))
+        guard (vector-get body 1)
+        then-node (vector-get guard 2)
+        else-node (vector-get guard 3)
+        type-text (if (= (invariant-static-bool-kind then-node) 2)
+          (invariant-static-non-bool-type-text then-node)
+          (invariant-static-non-bool-type-text else-node))
+        span-text (invariant-diagnostic-span-text source-span)]
+        (string-concat
+          ":invariant の型推論に失敗しました: [E0003] 型の不一致: expected "
+          (string-concat
+            type-text
+            (string-concat ", found Bool (" span-text))))
+      (let [type-text (invariant-static-match-non-bool-type-text program expr)
+        span-text (invariant-diagnostic-span-text source-span)]
+        (string-concat
+          ":invariant の型推論に失敗しました: [E0002] 型の不一致: expected "
+          (string-concat
+            type-text
+            (string-concat ", found Bool (" span-text)))))))
 
 (defn invariant-static-if-non-bool-type-text [node]
   (let [then-node (vector-get node 2)

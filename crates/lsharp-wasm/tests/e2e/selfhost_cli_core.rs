@@ -7897,6 +7897,55 @@ fn test_e2e_selfhost_cli_test_source_json_reports_non_bool_invariant_message() {
     assert_eq!(lines[1], "2");
 }
 
+/// EC-M1-01/06: selfhost test JSON が compound match guard の message/span を保持すること
+#[test]
+fn test_e2e_selfhost_cli_test_source_json_reports_compound_match_guard_message() {
+    let source =
+        "(defn check [] :invariant (match true [_ when (if true (+ 1 2) false) true] [_ true]) true)";
+    let program = lsharp_syntax::parse(source).expect("compound match guard JSON fixture は parse できるべき");
+    let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "Rust oracle は compound match guard JSON fixtureを 1 件診断するべき"
+    );
+    let oracle_message = diagnostics[0].message.clone();
+    let oracle_span = diagnostics[0].span;
+
+    let harness = r#"
+(defn main []
+  (let [src "(defn check [] :invariant (match true [_ when (if true (+ 1 2) false) true] [_ true]) true)"]
+    (print (run-test-source src 1))))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(lines.len(), 2, "compound match guardのtest JSONはreportとexit codeを返すべき");
+    let report: Value = serde_json::from_str(lines[0])
+        .expect("compound match guardのselfhost test JSONはvalid JSONであるべき");
+    assert_eq!(
+        report["implementation_conformance"]["diagnostics"]["message"],
+        oracle_message,
+        "selfhost test JSON は Rust oracle と同じ compound guard message を返すべき"
+    );
+    assert_eq!(
+        report["implementation_conformance"]["diagnostics"]["firstErrorCode"],
+        2
+    );
+    assert_eq!(
+        report["implementation_conformance"]["diagnostics"]["firstErrorSpan"]["start"],
+        oracle_span.start
+    );
+    assert_eq!(
+        report["implementation_conformance"]["diagnostics"]["firstErrorSpan"]["end"],
+        oracle_span.end
+    );
+    assert_eq!(lines[1], "2");
+}
+
 /// EC-M1-01: selfhost test JSON が literal non-Bool invariant の診断 message を保持すること
 #[test]
 fn test_e2e_selfhost_cli_test_source_json_reports_literal_non_bool_invariant_message() {
@@ -8864,6 +8913,57 @@ fn test_e2e_selfhost_test_runner_matches_rust_oracle_for_valid_invariant_constru
         lines,
         vec!["1", "1", "5", "0"],
         "selfhost constructor match evaluator は Rust oracle と同じ success を返すべき"
+    );
+}
+
+/// EC-M1-01: constructor pattern の false guard が次の armへ fall-through すること
+#[test]
+fn test_e2e_selfhost_test_runner_matches_rust_oracle_for_valid_invariant_guarded_constructor_match()
+{
+    let source = r#"
+(type (Maybe a) (Just a) Nothing)
+(defn make-just [x] (Just x))
+(defn check []
+  :invariant
+  (match (make-just 1)
+    [(Just value) when false false]
+    [_ true])
+  true)
+"#;
+    let oracle = run_metadata_tests(source);
+    assert_eq!(
+        oracle.len(),
+        1,
+        "Rust oracle は guarded constructor match invariant 1 件を生成するべき"
+    );
+    assert!(
+        oracle[0].passed,
+        "Rust oracle は false guard 後に wildcard armへ fall-throughして pass するべき"
+    );
+
+    let harness = r#"
+(defn main []
+  (let [src "(type (Maybe a) (Just a) Nothing) (defn make-just [x] (Just x)) (defn check [] :invariant (match (make-just 1) [(Just value) when false false] [_ true]) true)"
+        suite (generate-tests src)
+        results (vector-get suite 1)
+        result0 (vector-get results 0)]
+    (do
+      (print (vector-length results))
+      (print (vector-get result0 1))
+      (print (vector-get result0 2))
+      (print (vector-get result0 3))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_test_runner_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(
+        lines,
+        vec!["1", "1", "1", "0"],
+        "selfhost guarded constructor match evaluator は Rust oracle と同じ fall-through success を返すべき"
     );
 }
 
@@ -10834,6 +10934,60 @@ fn test_e2e_selfhost_test_runner_rejects_non_bool_compound_match_guard_span() {
         lines.get(3).and_then(|line| line.parse::<usize>().ok()),
         Some(oracle_span.end),
         "selfhost compound match guard の diagnostic span 終了位置は Rust oracle と一致するべき"
+    );
+}
+
+/// EC-M1-01: compound match guard の non-Bool message を Rust oracle と揃えること
+#[test]
+fn test_e2e_selfhost_test_runner_preserves_non_bool_compound_match_guard_message() {
+    let source =
+        "(defn check [] :invariant (match true [_ when (if true (+ 1 2) false) true] [_ true]) true)";
+    let program = lsharp_syntax::parse(source).expect("compound guard message fixture は parse できるべき");
+    let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "Rust oracle は compound guard message を 1 件診断するべき: {diagnostics:?}"
+    );
+    let oracle_message = diagnostics[0].message.clone();
+    let oracle_span = diagnostics[0].span;
+
+    let harness = r#"
+(defn main []
+  (let [src "(defn check [] :invariant (match true [_ when (if true (+ 1 2) false) true] [_ true]) true)"
+        suite (generate-tests src)
+        results (vector-get suite 1)
+        result0 (vector-get results 0)]
+    (do
+      (print (vector-length results))
+      (print (test-result-diagnostic result0))
+      (print-string (string-concat (test-result-diagnostic-message result0) "\n"))
+      (print (test-result-diagnostic-start result0))
+      (print (test-result-diagnostic-end result0))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_test_runner_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(lines.first().copied(), Some("1"));
+    assert_eq!(lines.get(1).copied(), Some("2"));
+    assert_eq!(
+        lines.get(2).copied(),
+        Some(oracle_message.as_str()),
+        "selfhost compound guard message は Rust oracle と一致するべき"
+    );
+    assert_eq!(
+        lines.get(3).and_then(|line| line.parse::<usize>().ok()),
+        Some(oracle_span.start),
+        "selfhost compound guard message の diagnostic span 開始位置は Rust oracle と一致するべき"
+    );
+    assert_eq!(
+        lines.get(4).and_then(|line| line.parse::<usize>().ok()),
+        Some(oracle_span.end),
+        "selfhost compound guard message の diagnostic span 終了位置は Rust oracle と一致するべき"
     );
 }
 
