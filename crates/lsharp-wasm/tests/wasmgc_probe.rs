@@ -4,6 +4,7 @@ use lsharp_ir::{
 use std::io::{self, Write};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use std::time::{SystemTime, UNIX_EPOCH};
 use wasmtime::{Config, Engine, Instance, Module, Store};
 
 #[test]
@@ -829,6 +830,71 @@ fn wasm_gc_component_cli_runner_maps_failed_wasi_cli_run_result_to_exit_status()
 }
 
 #[test]
+fn wasm_gc_component_cli_fs_runner_enforces_preopen_rights() {
+    let core = emit_component_cli_preopen_write_probe_module();
+    let wit_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("wit")
+        .join("lsharp-wasmgc-output.wit");
+    let component = lsharp_wasm::component_adapter::componentize_core_module(
+        &core,
+        &wit_file,
+        "wasmgc-cli-fs",
+        &[],
+    )
+    .expect("filesystem capability を持つ WasmGC CLI core を componentize できる");
+
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock は unix epoch より後であるべき")
+        .as_nanos();
+    let dir = std::env::temp_dir().join(format!("lsharp_wasmgc_fd_rights_{nonce}"));
+    std::fs::create_dir_all(&dir).expect("fd rights fixture directory を作成できる");
+    let probe_file = dir.join("rights.txt");
+
+    let no_preopen = lsharp_wasm::wasmgc_runner::run_wasm_wasmgc_component_cli_with_preview2_stdout_and_preopen_rights(
+        &component,
+        None,
+        &[],
+        "",
+        lsharp_wasm::wasmgc_runner::Preview2PreopenRights::read_write(),
+    )
+    .expect("preopen がない Component も明示的な失敗 result を返せる");
+    assert_eq!(no_preopen.exit_code, 1);
+
+    let read_only = lsharp_wasm::wasmgc_runner::run_wasm_wasmgc_component_cli_with_preview2_stdout_and_preopen_rights(
+        &component,
+        Some(&dir),
+        &[],
+        "",
+        lsharp_wasm::wasmgc_runner::Preview2PreopenRights::read_only(),
+    )
+    .expect("read-only preopen は Component を実行できる");
+    assert_eq!(read_only.exit_code, 1);
+    assert!(
+        !probe_file.exists(),
+        "read-only preopen は create を許可しない"
+    );
+
+    let read_write = lsharp_wasm::wasmgc_runner::run_wasm_wasmgc_component_cli_with_preview2_stdout_and_preopen_rights(
+        &component,
+        Some(&dir),
+        &[],
+        "",
+        lsharp_wasm::wasmgc_runner::Preview2PreopenRights::read_write(),
+    )
+    .expect("read-write preopen は Component を実行できる");
+    assert_eq!(read_write.exit_code, 0);
+    assert!(
+        probe_file.exists(),
+        "read-write preopen は create を許可する"
+    );
+
+    std::fs::remove_dir_all(&dir).expect("fd rights fixture directory を削除できる");
+}
+
+#[test]
 fn wasm_gc_component_output_propagates_sink_failure_as_trap() {
     let module = IrModule {
         functions: vec![Function {
@@ -1321,6 +1387,70 @@ fn emit_component_output_cli_exit_probe_module(exit_code: i32) -> Vec<u8> {
 "#
     ))
     .expect("wasi:cli/exit probe module を生成できる")
+}
+
+fn emit_component_cli_preopen_write_probe_module() -> Vec<u8> {
+    wat::parse_str(
+        r#"
+(module
+  (type (func (param i32 i32)))
+  (type (func (param i32)))
+  (type (func (result i32)))
+  (type (func (param i32 i32 i32 i32 i32 i32 i32)))
+  (import "lsharp:wasmgc-output/stdout@0.1.0" "write" (func $write (type 0)))
+  (import "wasi:filesystem/preopens@0.2.3" "get-directories" (func $get-directories (type 1)))
+  (import "wasi:filesystem/types@0.2.3" "[method]descriptor.open-at" (func $open-at (type 3)))
+  (memory (export "memory") 2)
+  (global $heap (mut i32) (i32.const 1024))
+  (func (export "cabi_realloc")
+    (param $old i32) (param $old-len i32) (param $align i32) (param $new-len i32)
+    (result i32)
+    (local $mask i32)
+    (local $ptr i32)
+    local.get $align
+    i32.const 1
+    i32.sub
+    local.set $mask
+    global.get $heap
+    local.get $mask
+    i32.add
+    local.get $mask
+    i32.const -1
+    i32.xor
+    i32.and
+    local.set $ptr
+    local.get $ptr
+    local.get $new-len
+    i32.add
+    global.set $heap
+    local.get $ptr)
+  (data (i32.const 128) "rights.txt")
+  (func (export "wasi:cli/run@0.2.3#run") (type 2)
+    i32.const 16
+    call $get-directories
+    i32.const 20
+    i32.load
+    i32.eqz
+    if (result i32)
+      i32.const 1
+    else
+      i32.const 16
+      i32.load
+      i32.load
+      i32.const 0
+      i32.const 128
+      i32.const 10
+      i32.const 1
+      i32.const 2
+      i32.const 32
+      call $open-at
+      i32.const 32
+      i32.load
+    end)
+)
+"#,
+    )
+    .expect("preopen rights probe module を生成できる")
 }
 
 #[test]

@@ -21,3 +21,12 @@ world wasmgc-cli {
   import wasi:cli/exit@0.2.3;
   export wasi:cli/run@0.2.3;
 }
+
+/// Filesystem-enabled CLI world used to validate explicit preopen/rights wiring.
+world wasmgc-cli-fs {
+  import stdout;
+  import wasi:cli/exit@0.2.3;
+  import wasi:filesystem/preopens@0.2.3;
+  import wasi:filesystem/types@0.2.3;
+  export wasi:cli/run@0.2.3;
+}

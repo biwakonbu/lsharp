@@ -582,6 +582,24 @@ Stage 2q の `wasi:cli/run` runner に、Preview2 の終了境界と command res
 これは exit/result parity の verified partial slice であり、fd table/rights の公開契約、Wasm artifact/runtime
 differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity は未完了である。
 
+## Stage 2s 検証済み slice: WasmGC CLI の preopen/rights 境界 (2026-07-24)
+
+Stage 2r の exit/result parity に、WASI Preview2 filesystem descriptor の preopen table と rights
+を明示的に渡す境界を追加した。
+
+- `wasmgc-cli-fs` world は `wasi:filesystem/preopens@0.2.3` と `types@0.2.3` を明示的に import する。
+  通常の `wasmgc-cli` world へ filesystem capability を暗黙追加しない。
+- `Preview2PreopenRights` は `read_only()` と `read_write()` を持ち、CLI/output runner の
+  `...with_preopen_rights` API が `WasiCtxBuilder.preopened_dir` へ directory/file rights をそのまま
+ 渡す。既存 API は後方互換の read-write default を使う。
+- `wasm_gc_component_cli_fs_runner_enforces_preopen_rights` は actual Component で
+  `get-directories` と `descriptor.open-at(create, write)` を通し、preopen なしを exit 1、
+  read-only を `read-only` 相当の exit 1、read-write を file creation/exit 0 として固定する。
+
+これは preopen table/rights の verified partial slice であり、descriptor の全 operation、stream
+read/write、fd close/lifecycle、Wasm artifact/runtime differential、Mac Apple Silicon/Linux x86_64、
+native/selfhost parity は未完了である。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線

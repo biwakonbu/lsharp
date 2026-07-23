@@ -8,7 +8,7 @@ WASI Preview2 / Component Model への移行に向けた WIT (WebAssembly Interf
 |---------|------|
 | `lsharp-compiler.wit` | CLI コンパイラ component world (wasi:cli + wasi:filesystem) |
 | `lsharp-http-handler.wit` | HTTP handler component world (wasi:http/incoming-handler) |
-| `lsharp-wasmgc-output.wit` | WasmGC `print-string` の `list<u8>` output interface と `wasmgc-output` / `wasmgc-cli` world |
+| `lsharp-wasmgc-output.wit` | WasmGC `print-string` の `list<u8>` output interface と `wasmgc-output` / `wasmgc-cli` / `wasmgc-cli-fs` world |
 | `lsharp-core.wit` | 共有インターフェース (compiler, host-fs, host-process) |
 | `deps/http.wit` | `lsharp-http-handler.wit` が参照する vendored `wasi:http` package |
 
@@ -34,6 +34,9 @@ WASI Preview2 / Component Model への移行に向けた WIT (WebAssembly Interf
 - WASI interface は実装上 `@0.2.3` (wasmtime-wasi 29 系の stable Preview2 WIT set) を使用
 - WasmGC の `wasmgc-cli` world は custom stdout import、明示的な `wasi:cli/exit@0.2.3` import、
   `wasi:cli/run@0.2.3` export を持つ。core module へ未宣言の WASI capability を暗黙に追加しない
+- `wasmgc-cli-fs` は `wasmgc-cli` に `wasi:filesystem/preopens@0.2.3` / `types@0.2.3` を明示的に
+  加えた検証用 world であり、preopen がない場合や rights が read-only の場合に filesystem access
+  を成功扱いにしない
 
 ## 関連タスク
 

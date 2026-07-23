@@ -285,12 +285,30 @@ pub fn run_wasm_wasmgc_component_output_component_with_preview2_stdout(
     args: &[&str],
     stdin_data: &str,
 ) -> Result<ExecutionOutput, String> {
+    run_wasm_wasmgc_component_output_component_with_preview2_stdout_and_preopen_rights(
+        component_bytes,
+        dir,
+        args,
+        stdin_data,
+        Preview2PreopenRights::read_write(),
+    )
+}
+
+/// `wasmgc-output` Component を指定した preopen rights で実行する。
+pub fn run_wasm_wasmgc_component_output_component_with_preview2_stdout_and_preopen_rights(
+    component_bytes: &[u8],
+    dir: Option<&Path>,
+    args: &[&str],
+    stdin_data: &str,
+    preopen_rights: Preview2PreopenRights,
+) -> Result<ExecutionOutput, String> {
     run_wasm_wasmgc_component_with_preview2_stdout(
         component_bytes,
         dir,
         args,
         stdin_data,
         ComponentOutputRun::MainS64,
+        preopen_rights,
     )
 }
 
@@ -304,13 +322,62 @@ pub fn run_wasm_wasmgc_component_cli_with_preview2_stdout(
     args: &[&str],
     stdin_data: &str,
 ) -> Result<ExecutionOutput, String> {
+    run_wasm_wasmgc_component_cli_with_preview2_stdout_and_preopen_rights(
+        component_bytes,
+        dir,
+        args,
+        stdin_data,
+        Preview2PreopenRights::read_write(),
+    )
+}
+
+/// `wasi:cli/run` export を持つ Component を指定した preopen rights で実行する。
+pub fn run_wasm_wasmgc_component_cli_with_preview2_stdout_and_preopen_rights(
+    component_bytes: &[u8],
+    dir: Option<&Path>,
+    args: &[&str],
+    stdin_data: &str,
+    preopen_rights: Preview2PreopenRights,
+) -> Result<ExecutionOutput, String> {
     run_wasm_wasmgc_component_with_preview2_stdout(
         component_bytes,
         dir,
         args,
         stdin_data,
         ComponentOutputRun::WasiCli,
+        preopen_rights,
     )
+}
+
+/// Preview2 preopen に付与する directory/file rights。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Preview2PreopenRights {
+    pub dir: wasmtime_wasi::DirPerms,
+    pub file: wasmtime_wasi::FilePerms,
+}
+
+impl Preview2PreopenRights {
+    /// directory/file の読み込みだけを許可する。
+    pub fn read_only() -> Self {
+        Self {
+            dir: wasmtime_wasi::DirPerms::READ,
+            file: wasmtime_wasi::FilePerms::READ,
+        }
+    }
+
+    /// 既存 runner と同じ directory/file の読み書きを許可する。
+    pub fn read_write() -> Self {
+        Self {
+            dir: wasmtime_wasi::DirPerms::all(),
+            file: wasmtime_wasi::FilePerms::all(),
+        }
+    }
+}
+
+impl Default for Preview2PreopenRights {
+    fn default() -> Self {
+        Self::read_write()
+    }
 }
 
 enum ComponentOutputRun {
@@ -324,6 +391,7 @@ fn run_wasm_wasmgc_component_with_preview2_stdout(
     args: &[&str],
     stdin_data: &str,
     run_mode: ComponentOutputRun,
+    preopen_rights: Preview2PreopenRights,
 ) -> Result<ExecutionOutput, String> {
     let engine = configured_engine()?;
     let component = Component::new(&engine, component_bytes)
@@ -338,12 +406,7 @@ fn run_wasm_wasmgc_component_with_preview2_stdout(
     builder.args(args);
     if let Some(dir_path) = dir {
         builder
-            .preopened_dir(
-                dir_path,
-                ".",
-                wasmtime_wasi::DirPerms::all(),
-                wasmtime_wasi::FilePerms::all(),
-            )
+            .preopened_dir(dir_path, ".", preopen_rights.dir, preopen_rights.file)
             .map_err(|error| format!("component preopened_dir に失敗: {error}"))?;
     }
 
