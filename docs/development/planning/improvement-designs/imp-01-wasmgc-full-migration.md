@@ -353,6 +353,26 @@ WasmGC `substring` の invalid byte range を、allocation/array access 前の�
 diagnostic message、Unicode code-point semantics、print/WASI/component bridge、GC mutation の公開
 契約、supported target の native evidence、selfhost compiler は未完了である。
 
+## Stage 2g 検証済み slice: `print-string` external import boundary (2026-07-24)
+
+WasmGC の String reference を host 側へ渡す最小の external boundary を、未対応 runtime import の
+暗黙 fallback なしで固定した。
+
+- lowering が予約する `Call(4)` を WasmGC backend の `print-string` 呼び出しとしてだけ認識し、
+  `Module.gc_types` の `PackedByteArray` を `StringBytes` の concrete heap type として選ぶ。
+- backend は `(ref null $StringBytes) -> ()` の function type と `env.print-string` import を必要時
+ だけ materialize する。既存の `Module.imports` がある場合はそれを先に保持し、synthetic import の
+  後ろへ user function index を remap する。
+- `Call(4)` 以外の未対応 runtime logical index、`CallImport`、WASI/component/native の host
+  integration は従来どおり明示的 codegen error とし、linear backend の import ABI は変更しない。
+- direct WasmGC probe は生成 module の validation、`env.print-string` の型確認、stub import による
+  instantiate、`main` 実行までを確認する。compiler pipeline test は
+  `--backend=wasmgc --target=web-wasm` の `print-string` source が同じ import を出すことを確認する。
+
+これは host callback が GC array の bytes を読み stdout へ出す実装ではない。GC reference の host
+側 read contract、WASI fd_write / component adapter、native/selfhost runtime、Unicode code-point
+semantics は後続 task として残す。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線
@@ -383,6 +403,10 @@ diagnostic message、Unicode code-point semantics、print/WASI/component bridge�
 - 文字列リテラル/操作を `array.new_data` / `array.get_u` / `array.len` へ。
   WASI fd_write へ渡す際は array → リニアメモリへのコピーが必要
   (`array.copy` 不可のため要素ループまたは `array.init_data` の逆操作を helper 化)
+- Stage 2g の次 task は `env.print-string` callback の host-side read contract を閉じる。まず
+  `PackedByteArray` の nullable ref を安全に検査し、array length/byte access の失敗を明示的な
+  host error にする。その後に WASI/component adapter と native/selfhost の出力 parity を別々に
+  検証し、synthetic import の stub instantiate 成功だけで print 完了とは扱わない。
 
 ### Stage 3: Closures → funcref + env struct
 
@@ -434,7 +458,8 @@ payload/pattern、nullable ADT reference payload、scalar literal pattern、reco
 slice、typed type-application payload slice、scalar GADT refinement execution slice、computation
 return-only slice と bind 明示拒否境界、Stage 2a の scalar String GC array slice、Stage 2b の
 scalar String GC equality slice、Stage 2c の scalar String GC concat slice、Stage 2d の scalar
-String GC substring slice は 2026-07-24 に検証済み。ADT の全表現、Stage 2 の残り
-(packed strings / invalid-range diagnostics / I/O)、Stage 3 以降
+String GC substring slice、Stage 2e の packed String byte array slice、Stage 2f の substring invalid
+range boundary、Stage 2g の `print-string` external import boundary は 2026-07-24 に検証済み。ADT
+の全表現、Stage 2 の残り (Unicode semantics / host callback / WASI-component I/O)、Stage 3 以降
 (closures / traits / selfhost)、supported target
 の actual runtime evidence は未完了であり、`LEGACY-EXEC-01` の完了条件には到達していない。

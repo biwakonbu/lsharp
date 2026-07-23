@@ -212,6 +212,124 @@ fn wasm_gc_emitter_uses_unsigned_get_for_packed_byte_array() {
 }
 
 #[test]
+fn wasm_gc_emitter_materializes_print_string_import_boundary() {
+    let module = IrModule {
+        functions: vec![Function {
+            name: "main".to_string(),
+            params: vec![],
+            result: IrType::I64,
+            locals: vec![],
+            body: vec![
+                Instruction::I32Const(65),
+                Instruction::ArrayNewFixed(0, 1),
+                Instruction::Call(4),
+                Instruction::I64Const(0),
+            ],
+            is_export: true,
+        }],
+        gc_types: vec![GcTypeDef {
+            name: "StringBytes".to_string(),
+            kind: GcTypeKind::PackedByteArray,
+        }],
+        imports: vec![],
+        globals: vec![],
+        string_data: vec![],
+    };
+
+    let bytes = lsharp_wasm::wasmgc::emit_wasm_wasmgc(&module)
+        .expect("print-string の external import boundary を生成できる");
+    let mut config = Config::new();
+    config.wasm_gc(true);
+    let engine = Engine::new(&config).expect("WasmGC engine を作成できる");
+    let module = Module::new(&engine, bytes).expect("print-string import module を検証できる");
+    let import = module
+        .imports()
+        .next()
+        .expect("print-string import が存在する");
+    assert_eq!(import.module(), "env");
+    assert_eq!(import.name(), "print-string");
+
+    let mut store = Store::new(&engine, ());
+    let wasmtime::ExternType::Func(func_type) = import.ty() else {
+        panic!("print-string import は function であるべき");
+    };
+    let print_string = wasmtime::Func::new(
+        &mut store,
+        func_type.clone(),
+        |_caller, _params, _results| Ok(()),
+    );
+    let instance = Instance::new(&mut store, &module, &[print_string.into()])
+        .expect("print-string import を stub で解決できる");
+    let main = instance
+        .get_typed_func::<(), i64>(&mut store, "main")
+        .expect("main export が存在する");
+    assert_eq!(main.call(&mut store, ()).unwrap(), 0);
+}
+
+#[test]
+fn wasm_gc_emitter_offsets_user_calls_after_print_string_import() {
+    let module = IrModule {
+        functions: vec![
+            Function {
+                name: "main".to_string(),
+                params: vec![],
+                result: IrType::I64,
+                locals: vec![],
+                body: vec![
+                    Instruction::I32Const(65),
+                    Instruction::ArrayNewFixed(0, 1),
+                    Instruction::Call(4),
+                    Instruction::I64Const(41),
+                    Instruction::Call(18),
+                ],
+                is_export: true,
+            },
+            Function {
+                name: "answer".to_string(),
+                params: vec![IrType::I64],
+                result: IrType::I64,
+                locals: vec![],
+                body: vec![Instruction::I64Const(42)],
+                is_export: false,
+            },
+        ],
+        gc_types: vec![GcTypeDef {
+            name: "StringBytes".to_string(),
+            kind: GcTypeKind::PackedByteArray,
+        }],
+        imports: vec![],
+        globals: vec![],
+        string_data: vec![],
+    };
+
+    let bytes = lsharp_wasm::wasmgc::emit_wasm_wasmgc(&module)
+        .expect("print-string import 後の user call を生成できる");
+    let mut config = Config::new();
+    config.wasm_gc(true);
+    let engine = Engine::new(&config).expect("WasmGC engine を作成できる");
+    let module = Module::new(&engine, bytes).expect("user call module を検証できる");
+    let mut store = Store::new(&engine, ());
+    let import = module
+        .imports()
+        .next()
+        .expect("print-string import が存在する");
+    let wasmtime::ExternType::Func(func_type) = import.ty() else {
+        panic!("print-string import は function であるべき");
+    };
+    let print_string = wasmtime::Func::new(
+        &mut store,
+        func_type.clone(),
+        |_caller, _params, _results| Ok(()),
+    );
+    let instance = Instance::new(&mut store, &module, &[print_string.into()])
+        .expect("print-string import と user call を解決できる");
+    let main = instance
+        .get_typed_func::<(), i64>(&mut store, "main")
+        .expect("main export が存在する");
+    assert_eq!(main.call(&mut store, ()).unwrap(), 42);
+}
+
+#[test]
 fn wasm_gc_emitter_maps_reference_typed_struct_fields() {
     let module = IrModule {
         functions: vec![Function {

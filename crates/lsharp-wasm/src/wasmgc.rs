@@ -14,19 +14,21 @@ use crate::codegen::CodegenError;
 
 /// Lower が予約する runtime import の論理インデックス数。
 ///
-/// WasmGC backend は現時点で runtime import を materialize しないため、lower が
-/// `Call(17 + user_index)` として保持するユーザー関数呼び出しだけを core module の
-/// ローカル関数 index へ変換する。
+/// WasmGC backend は runtime import を論理 index から必要な external boundary だけ materialize
+/// する。`Call(17 + user_index)` はユーザー関数、`Call(4)` は `print-string` を表す。
 const LOWER_RUNTIME_IMPORT_COUNT: u32 = 17;
+const PRINT_STRING_RUNTIME_INDEX: u32 = 4;
 
 /// L# IR を WasmGC core module へ変換する。
 ///
 /// Stage 1/2 では GC 型定義、struct 命令、scalar String array の
 /// `ArrayNewFixed` / `ArrayNewDefault` / `ArrayGet` / `ArraySet` / `ArrayLen`、
 /// および linear-memory に依存しない基本命令を扱う。WASI や文字列の linear-memory ABI は
-/// 後続 stage の責務であり、未対応命令は i64 に黙ってフォールバックせず診断する。
+/// 後続 stage の責務であり、`print-string` 以外の未対応 runtime import は i64 に黙って
+/// フォールバックせず診断する。
 pub fn emit_wasm_wasmgc(module: &Module) -> Result<Vec<u8>, CodegenError> {
-    validate_module(module)?;
+    let print_string_import = module_uses_print_string(module);
+    validate_module(module, print_string_import)?;
 
     let mut wasm_module = wasm_encoder::Module::new();
     let mut types = TypeSection::new();
@@ -63,6 +65,21 @@ pub fn emit_wasm_wasmgc(module: &Module) -> Result<Vec<u8>, CodegenError> {
         );
     }
 
+    let print_string_type_index = if print_string_import {
+        let string_type_index = string_array_type_index(module)?;
+        let type_index = types.len();
+        types.ty().function(
+            [ValType::Ref(RefType {
+                nullable: true,
+                heap_type: HeapType::Concrete(string_type_index),
+            })],
+            [],
+        );
+        Some((type_index, string_type_index))
+    } else {
+        None
+    };
+
     let mut function_type_indices = Vec::with_capacity(module.functions.len());
     for function in &module.functions {
         function_type_indices.push(types.len());
@@ -81,7 +98,10 @@ pub fn emit_wasm_wasmgc(module: &Module) -> Result<Vec<u8>, CodegenError> {
             EntityType::Function(type_index),
         );
     }
-    if !module.imports.is_empty() {
+    if let Some((type_index, _)) = print_string_type_index {
+        imports.import("env", "print-string", EntityType::Function(type_index));
+    }
+    if !module.imports.is_empty() || print_string_import {
         wasm_module.section(&imports);
     }
 
@@ -94,7 +114,7 @@ pub fn emit_wasm_wasmgc(module: &Module) -> Result<Vec<u8>, CodegenError> {
     }
 
     let mut exports = ExportSection::new();
-    let import_count = module.imports.len() as u32;
+    let import_count = module.imports.len() as u32 + u32::from(print_string_import);
     for (index, function) in module.functions.iter().enumerate() {
         if function.is_export {
             exports.export(
@@ -122,6 +142,8 @@ pub fn emit_wasm_wasmgc(module: &Module) -> Result<Vec<u8>, CodegenError> {
             &function.body,
             module.functions.len(),
             module,
+            import_count,
+            print_string_import,
         )?;
         wasm_function.instruction(&wasm_encoder::Instruction::End);
         code.function(&wasm_function);
@@ -146,7 +168,37 @@ fn wasm_gc_valtype(ty: IrType) -> ValType {
     }
 }
 
-fn validate_module(module: &Module) -> Result<(), CodegenError> {
+fn module_uses_print_string(module: &Module) -> bool {
+    module.functions.iter().any(|function| {
+        function
+            .body
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::Call(PRINT_STRING_RUNTIME_INDEX)))
+    })
+}
+
+fn string_array_type_index(module: &Module) -> Result<u32, CodegenError> {
+    module
+        .gc_types
+        .iter()
+        .enumerate()
+        .rev()
+        .find_map(|(index, gc_type)| {
+            matches!(&gc_type.kind, GcTypeKind::PackedByteArray).then_some(index as u32)
+        })
+        .ok_or_else(|| codegen_error("print-string の StringBytes GC array type がありません"))
+}
+
+fn validate_module(module: &Module, print_string_import: bool) -> Result<(), CodegenError> {
+    if print_string_import {
+        let string_type_index = string_array_type_index(module)?;
+        validate_gc_type_index(
+            string_type_index,
+            module.gc_types.len(),
+            "print-string parameter",
+        )?;
+    }
+
     for gc_type in &module.gc_types {
         match &gc_type.kind {
             GcTypeKind::Struct(fields) => {
@@ -179,6 +231,14 @@ fn validate_module(module: &Module) -> Result<(), CodegenError> {
         for instruction in &function.body {
             match instruction {
                 Instruction::Call(function_index) => {
+                    if *function_index == PRINT_STRING_RUNTIME_INDEX {
+                        if !print_string_import {
+                            return Err(codegen_error(
+                                "print-string import boundary が materialize されていません",
+                            ));
+                        }
+                        continue;
+                    }
                     let Some(local_index) = function_index.checked_sub(LOWER_RUNTIME_IMPORT_COUNT)
                     else {
                         return Err(codegen_error(format!(
@@ -316,6 +376,8 @@ fn emit_wasm_gc_instructions(
     instructions: &[Instruction],
     function_count: usize,
     module: &Module,
+    import_count: u32,
+    print_string_import: bool,
 ) -> Result<(), CodegenError> {
     use wasm_encoder::Instruction as W;
 
@@ -323,6 +385,15 @@ fn emit_wasm_gc_instructions(
         function,
         instructions,
         |function, index| {
+            if index == PRINT_STRING_RUNTIME_INDEX {
+                if !print_string_import {
+                    return Err(codegen_error(
+                        "print-string import boundary が materialize されていません",
+                    ));
+                }
+                function.instruction(&W::Call(module.imports.len() as u32));
+                return Ok(());
+            }
             let local_index = index
                 .checked_sub(LOWER_RUNTIME_IMPORT_COUNT)
                 .ok_or_else(|| {
@@ -335,7 +406,7 @@ fn emit_wasm_gc_instructions(
                     "ユーザー関数の呼び出しインデックスが範囲外です: Call({index})"
                 )));
             }
-            function.instruction(&W::Call(local_index));
+            function.instruction(&W::Call(import_count + local_index));
             Ok(())
         },
         |function, instruction| {

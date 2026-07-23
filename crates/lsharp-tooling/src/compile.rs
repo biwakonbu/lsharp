@@ -609,6 +609,45 @@ mod tests {
     }
 
     #[test]
+    fn test_compile_file_wasmgc_backend_emits_print_string_import() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("workspace tmp root")
+            .join("lsharp-wasmgc-string-print-import");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(dir.join(".git")).unwrap();
+
+        let file = dir.join("Main.ls");
+        let output = dir.join("Main.wasm");
+        std::fs::write(&file, "(defn main [] (do (print-string \"hello\") 0))\n").unwrap();
+
+        let artifacts = compile_file_with_backend(
+            &file,
+            Some(&output),
+            false,
+            Some(CompileTarget::WebWasm),
+            CompileBackend::WasmGc,
+        )
+        .unwrap();
+        let wasm_bytes = std::fs::read(&artifacts.output_path).unwrap();
+
+        let mut config = wasmtime::Config::new();
+        config.wasm_gc(true);
+        let engine = wasmtime::Engine::new(&config).unwrap();
+        let module = wasmtime::Module::new(&engine, wasm_bytes).unwrap();
+        let import = module
+            .imports()
+            .next()
+            .expect("print-string import が materialize される");
+        assert_eq!(import.module(), "env");
+        assert_eq!(import.name(), "print-string");
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
     fn test_compile_file_wasmgc_backend_executes_string_array_get() {
         let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
             .ancestors()
