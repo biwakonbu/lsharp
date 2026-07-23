@@ -428,6 +428,24 @@ Stage 2i の chunk sink を実際の Rust writer へ接続し、partial write �
 Component Model の guest adapter を実装したものではない。Unicode code-point semantics、WASI/component
 I/O、native/selfhost runtime、supported target の native evidence は後続 task として残す。
 
+## Stage 2k 検証済み slice: WasmGC Component bridge の明示拒否 (2026-07-24)
+
+Stage 2j の core runner を既存の Component Model encoder へ渡すとき、GC reference を WIT の
+canonical ABI へ暗黙変換しない失敗境界を固定した。
+
+- `componentize_core_module` は、`env::print-string` の import interface 解決に失敗した場合、
+  一般的な `env` import エラーではなく `WasmGC component bridge は未実装です` として返す。
+- 実際の `PackedByteArray` と `env.print-string` を含む WasmGC core module を
+  `wit-component 0.245.1` へ渡す RED を追加し、GC array reference を WIT `list<u8>` 相当へ
+  変換する実装が無いことを確認する。
+- linear/WASI component の generic error、WasmGC core runner、`std::io::Write` adapter の
+  成功経路は変更しない。WASI/component への暗黙 fallback や fake component artifact は作らない。
+
+これは component artifact の実装完了ではなく、未実装の guest bridge を誤って成功扱いしない
+verified boundary である。次の実装 task は、(1) GC array→canonical `list<u8>` の ABI 設計、
+(2) core module 内の array→linear-memory copy と WASI `fd_write` の partial/error parity、
+(3) Component Model の actual instantiate/runner evidence、の三つに分ける。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線
@@ -458,11 +476,12 @@ I/O、native/selfhost runtime、supported target の native evidence は後続 t
 - 文字列リテラル/操作を `array.new_data` / `array.get_u` / `array.len` へ。
   WASI fd_write へ渡す際は array → リニアメモリへのコピーが必要
   (`array.copy` 不可のため要素ループまたは `array.init_data` の逆操作を helper 化)
-- Stage 2j の次 task は WasmGC bytes を WASI/component adapter へ接続する境界を閉じる。まず
-  `run_wasm_wasmgc_to_writer` の write/flush 契約を adapter 側へ写像し、WASI fd_write の
-  partial/error semantics と native/selfhost の出力 parity を別々に検証する。synthetic import の
-  instantiate 成功、host callback 単体の byte read、core runner 単体の success、writer adapter 単体
-  の success だけで公開 print 完了とは扱わない。
+- Stage 2k の明示拒否を前提に、次の WASI/component adapter 実装を三つの observable contract
+  へ分ける。まず GC array→canonical `list<u8>` の ABI を決め、次に core module 内の
+  array→linear-memory copy と WASI `fd_write` の partial/error semantics を固定し、最後に
+  Component Model の actual instantiate/runner と native/selfhost parity を検証する。
+  synthetic import の instantiate 成功、host callback 単体の byte read、core runner 単体の success、
+  writer adapter 単体の success は、公開 component print 完了の証拠に数えない。
 
 ### Stage 3: Closures → funcref + env struct
 
@@ -516,8 +535,8 @@ return-only slice と bind 明示拒否境界、Stage 2a の scalar String GC ar
 scalar String GC equality slice、Stage 2c の scalar String GC concat slice、Stage 2d の scalar
 String GC substring slice、Stage 2e の packed String byte array slice、Stage 2f の substring invalid
 range boundary、Stage 2g の `print-string` external import boundary、Stage 2h の host-side packed
-String read、Stage 2i の WasmGC runner stdout sink、Stage 2j の `std::io::Write` adapter は
-2026-07-24 に検証済み。ADT
+String read、Stage 2i の WasmGC runner stdout sink、Stage 2j の `std::io::Write` adapter、Stage 2k の
+WasmGC Component bridge 明示拒否は 2026-07-24 に検証済み。ADT
 の全表現、Stage 2 の残り (Unicode code-point semantics / WASI-component I/O /
 native-selfhost parity)、Stage 3 以降
 (closures / traits / selfhost)、supported target

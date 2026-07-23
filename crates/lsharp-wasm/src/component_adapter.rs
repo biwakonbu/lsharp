@@ -30,6 +30,17 @@ pub struct NamedAdapter<'a> {
     pub bytes: &'a [u8],
 }
 
+fn componentize_error(world_name: &str, phase: &str, rendered: String) -> ComponentAdapterError {
+    let msg = if rendered.contains("env::print-string") {
+        format!(
+            "WasmGC component bridge は未実装です: `env.print-string` の GC array reference を WIT import interface へ変換できません (world `{world_name}`): {rendered}"
+        )
+    } else {
+        format!("{phase} (world `{world_name}`): {rendered}")
+    };
+    ComponentAdapterError::Error { msg }
+}
+
 fn resolve_world(wit_dir: &Path, world_name: &str) -> Result<ResolvedWorld> {
     let mut candidates: Vec<PathBuf> = if wit_dir.is_dir() {
         fs::read_dir(wit_dir)
@@ -205,29 +216,32 @@ pub fn componentize_core_module(
 
     let encoder = ComponentEncoder::default()
         .module(&main_module)
-        .map_err(|err| ComponentAdapterError::Error {
-            msg: format!(
-                "main core module の component 化準備に失敗しました (world `{world_name}`): {err:#}"
-            ),
+        .map_err(|err| {
+            componentize_error(
+                world_name,
+                "main core module の component 化準備に失敗しました",
+                format!("{err:#}"),
+            )
         })?;
 
     let encoder = adapters.iter().try_fold(encoder, |encoder, adapter| {
-        encoder
-            .adapter(adapter.name, adapter.bytes)
-            .map_err(|err| ComponentAdapterError::Error {
-                msg: format!(
-                    "adapter `{}` の登録に失敗しました (world `{world_name}`): {err:#}",
-                    adapter.name
-                ),
-            })
+        encoder.adapter(adapter.name, adapter.bytes).map_err(|err| {
+            componentize_error(
+                world_name,
+                &format!("adapter `{}` の登録に失敗しました", adapter.name),
+                format!("{err:#}"),
+            )
+        })
     })?;
 
     let mut encoder = encoder;
-    encoder
-        .encode()
-        .map_err(|err| ComponentAdapterError::Error {
-            msg: format!("component の生成に失敗しました (world `{world_name}`): {err:#}"),
-        })
+    encoder.encode().map_err(|err| {
+        componentize_error(
+            world_name,
+            "component の生成に失敗しました",
+            format!("{err:#}"),
+        )
+    })
 }
 
 #[cfg(test)]
@@ -383,5 +397,56 @@ world preview1-adapter {
         let mut module = wat::parse_str("(module)").unwrap();
         embed_component_metadata_for_world(&mut module, &wit_dir, "lsharp-http-handler")
             .expect("http handler world は vendored wasi:http deps で解決できるべき");
+    }
+
+    #[test]
+    fn test_componentize_wasmgc_core_reports_missing_gc_component_bridge() {
+        let wit_dir = unique_temp_dir("wasmgc_bridge");
+        fs::write(
+            wit_dir.join("world.wit"),
+            r#"
+package test:adapter;
+
+world app {
+  export main: func() -> s64;
+}
+"#,
+        )
+        .unwrap();
+
+        let core_wasm = crate::wasmgc::emit_wasm_wasmgc(&lsharp_ir::Module {
+            functions: vec![lsharp_ir::Function {
+                name: "main".to_string(),
+                params: vec![],
+                result: lsharp_ir::IrType::I64,
+                locals: vec![],
+                body: vec![
+                    lsharp_ir::Instruction::I32Const(65),
+                    lsharp_ir::Instruction::ArrayNewFixed(0, 1),
+                    lsharp_ir::Instruction::Call(4),
+                    lsharp_ir::Instruction::I64Const(0),
+                ],
+                is_export: true,
+            }],
+            gc_types: vec![lsharp_ir::GcTypeDef {
+                name: "StringBytes".to_string(),
+                kind: lsharp_ir::GcTypeKind::PackedByteArray,
+            }],
+            imports: vec![],
+            globals: vec![],
+            string_data: vec![],
+        })
+        .expect("WasmGC print-string core module should be generated");
+        let error = componentize_core_module(&core_wasm, &wit_dir, "app", &[])
+            .expect_err("WasmGC core は GC bridge 未実装のまま component 化してはならない");
+
+        assert!(
+            error.to_string().contains("WasmGC")
+                && error.to_string().contains("GC")
+                && error.to_string().contains("component"),
+            "WasmGC component bridge の失敗境界を明示するべき: {error}"
+        );
+
+        let _ = fs::remove_dir_all(&wit_dir);
     }
 }
