@@ -397,6 +397,47 @@ fn test_lower_string_concat_roots_lhs_before_lowering_rhs() {
 }
 
 #[test]
+fn test_wasmgc_substring_rejects_static_invalid_range() {
+    let program = lsharp_syntax::parse(r#"(defn main [] (substring "abc" 3 2))"#).unwrap();
+    let mut infer = Infer::new();
+    let type_results = infer.infer_program(&program).unwrap();
+    let expr_type_results = infer.expr_type_results_snapshot();
+    let mut lowerer = Lower::with_backend(LowerBackend::WasmGc);
+    let result = lowerer.lower_program_with_expr_types(&program, &type_results, &expr_type_results);
+
+    let error = result.expect_err("WasmGC の静的 invalid substring range は診断すべき");
+    assert_eq!(error.code(), "LS3001");
+    assert!(error.to_string().contains("substring"));
+    assert!(error.span().is_some());
+}
+
+#[test]
+fn test_wasmgc_substring_emits_dynamic_range_trap() {
+    let source = r#"
+        (defn slice [value start end] (substring value start end))
+        (defn main [] (string-length (slice "abc" 1 2)))
+    "#;
+    let program = lsharp_syntax::parse(source).unwrap();
+    let mut infer = Infer::new();
+    let type_results = infer.infer_program(&program).unwrap();
+    let expr_type_results = infer.expr_type_results_snapshot();
+    let mut lowerer = Lower::with_backend(LowerBackend::WasmGc);
+    let module = lowerer
+        .lower_program_with_expr_types(&program, &type_results, &expr_type_results)
+        .unwrap();
+    let slice = module.functions.iter().find(|f| f.name == "slice").unwrap();
+
+    assert!(
+        slice
+            .body
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::Unreachable)),
+        "動的 substring range は invalid 値を trap する guard を含むべき: {:?}",
+        slice.body
+    );
+}
+
+#[test]
 fn test_lower_substring_roots_source_before_lowering_index_exprs() {
     let module = lower(r#"(defn main [] (substring "abcd" (string-length "xy") 2))"#);
     let main_fn = module.functions.iter().find(|f| f.name == "main").unwrap();

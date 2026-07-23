@@ -335,6 +335,7 @@ impl Lower {
                     Expr::Var(_, name) if name == "substring" => {
                         if args.len() >= 3 {
                             if self.backend == super::LowerBackend::WasmGc {
+                                validate_wasmgc_substring_static_range(&args[..3], *expr_span)?;
                                 let type_index = self.string_array_type_index.ok_or_else(|| {
                                     LowerError::Unsupported {
                                         msg: "WasmGC String の GC array type が登録されていません"
@@ -350,9 +351,17 @@ impl Lower {
                                     "_str_substring_start".to_string(),
                                     IrType::I32,
                                 );
+                                let start_value_local = ctx.alloc_local_typed(
+                                    "_str_substring_start_value".to_string(),
+                                    IrType::I64,
+                                );
                                 let end_local = ctx.alloc_local_typed(
                                     "_str_substring_end".to_string(),
                                     IrType::I32,
+                                );
+                                let end_value_local = ctx.alloc_local_typed(
+                                    "_str_substring_end_value".to_string(),
+                                    IrType::I64,
                                 );
                                 let length_local = ctx.alloc_local_typed(
                                     "_str_substring_length".to_string(),
@@ -370,9 +379,22 @@ impl Lower {
                                 self.lower_expr(ctx, &args[0])?;
                                 ctx.emit(Instruction::LocalSet(str_local));
                                 self.lower_expr(ctx, &args[1])?;
+                                ctx.emit(Instruction::LocalSet(start_value_local));
+                                self.lower_expr(ctx, &args[2])?;
+                                ctx.emit(Instruction::LocalSet(end_value_local));
+
+                                self.emit_wasmgc_substring_range_guard(
+                                    ctx,
+                                    str_local,
+                                    start_value_local,
+                                    end_value_local,
+                                    type_index,
+                                );
+
+                                ctx.emit(Instruction::LocalGet(start_value_local));
                                 ctx.emit(Instruction::I32WrapI64);
                                 ctx.emit(Instruction::LocalSet(start_local));
-                                self.lower_expr(ctx, &args[2])?;
+                                ctx.emit(Instruction::LocalGet(end_value_local));
                                 ctx.emit(Instruction::I32WrapI64);
                                 ctx.emit(Instruction::LocalSet(end_local));
 
@@ -2328,4 +2350,59 @@ impl Lower {
             )
         )
     }
+
+    fn emit_wasmgc_substring_range_guard(
+        &self,
+        ctx: &mut FuncCtx,
+        source_local: u32,
+        start_local: u32,
+        end_local: u32,
+        type_index: u32,
+    ) {
+        // invalid = start < 0 || end < 0 || start > end || end > source.length
+        ctx.emit(Instruction::LocalGet(start_local));
+        ctx.emit(Instruction::I64Const(0));
+        ctx.emit(Instruction::I64LtS);
+        ctx.emit(Instruction::LocalGet(end_local));
+        ctx.emit(Instruction::I64Const(0));
+        ctx.emit(Instruction::I64LtS);
+        ctx.emit(Instruction::I32Or);
+        ctx.emit(Instruction::LocalGet(start_local));
+        ctx.emit(Instruction::LocalGet(end_local));
+        ctx.emit(Instruction::I64GtS);
+        ctx.emit(Instruction::I32Or);
+        ctx.emit(Instruction::LocalGet(end_local));
+        ctx.emit(Instruction::LocalGet(source_local));
+        ctx.emit(Instruction::ArrayLen(type_index));
+        ctx.emit(Instruction::I64ExtendI32U);
+        ctx.emit(Instruction::I64GtS);
+        ctx.emit(Instruction::I32Or);
+        ctx.emit(Instruction::IfEmpty);
+        ctx.emit(Instruction::Unreachable);
+        ctx.emit(Instruction::End);
+    }
+}
+
+fn validate_wasmgc_substring_static_range(args: &[Expr], span: Span) -> Result<(), LowerError> {
+    let [
+        Expr::Lit(_, Literal::String(source)),
+        Expr::Lit(_, Literal::Int(start)),
+        Expr::Lit(_, Literal::Int(end)),
+        ..,
+    ] = args
+    else {
+        return Ok(());
+    };
+
+    let length = source.len() as i64;
+    if *start < 0 || *end < 0 || *start > *end || *end > length {
+        return Err(LowerError::Unsupported {
+            msg: format!(
+                "WasmGC substring の範囲が不正です: start={start}, end={end}, length={length}"
+            ),
+            span: Some(span),
+        });
+    }
+
+    Ok(())
 }

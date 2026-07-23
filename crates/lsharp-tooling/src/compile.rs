@@ -873,6 +873,71 @@ mod tests {
     }
 
     #[test]
+    fn test_compile_file_wasmgc_backend_traps_dynamic_invalid_substring_ranges() {
+        let cases = [
+            ("negative-start", "(- 0 1)", "1"),
+            ("reversed-range", "2", "1"),
+            ("end-overflow", "1", "4"),
+        ];
+
+        for (case_name, start, end) in cases {
+            let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+                .ancestors()
+                .nth(3)
+                .expect("workspace tmp root")
+                .join(format!(
+                    "lsharp-wasmgc-string-substring-invalid-{case_name}"
+                ));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::create_dir_all(dir.join(".git")).unwrap();
+
+            let file = dir.join("Main.ls");
+            let output = dir.join("Main.wasm");
+            std::fs::write(
+                &file,
+                format!(
+                    "(defn slice [value start end] (substring value start end))\n\
+                     (defn main [] (string-length (slice \"abc\" {start} {end})))\n"
+                ),
+            )
+            .unwrap();
+
+            let artifacts = compile_file_with_backend(
+                &file,
+                Some(&output),
+                false,
+                Some(CompileTarget::WebWasm),
+                CompileBackend::WasmGc,
+            )
+            .unwrap();
+            let wasm_bytes = std::fs::read(&artifacts.output_path).unwrap();
+
+            let mut config = wasmtime::Config::new();
+            config.wasm_gc(true);
+            let engine = wasmtime::Engine::new(&config).unwrap();
+            let module = wasmtime::Module::new(&engine, wasm_bytes).unwrap();
+            let mut store = wasmtime::Store::new(&engine, ());
+            let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
+            let main = instance
+                .get_typed_func::<(), i64>(&mut store, "main")
+                .unwrap();
+            let error = main
+                .call(&mut store, ())
+                .expect_err("invalid substring range は Wasm unreachable で止まるべき");
+            assert!(
+                matches!(
+                    error.downcast_ref::<wasmtime::Trap>(),
+                    Some(wasmtime::Trap::UnreachableCodeReached)
+                ),
+                "invalid substring range の trap が unreachable ではない: {error}"
+            );
+
+            std::fs::remove_dir_all(&dir).unwrap();
+        }
+    }
+
+    #[test]
     fn test_wasmgc_backend_rejects_unsupported_record_string_literal_pattern() {
         let error = compile_module_from_formatted_source(
             Path::new("Main.ls"),

@@ -338,6 +338,21 @@ Stage 2a〜2d の `StringBytes` storage を WasmGC の packed `i8` array へ置�
 診断、print/WASI/component bridge、GC mutation の公開契約、supported target の native evidence、
 selfhost compiler は未完了である。
 
+## Stage 2f 検証済み slice: substring invalid range boundary (2026-07-24)
+
+WasmGC `substring` の invalid byte range を、allocation/array access 前の明示境界へ固定した。
+
+- start/end を i64 のまま保持し、負値、`start > end`、source byte length 超過を検証してから i32
+  へ変換する。これにより i64 の巨大値を wrap して有効値に見せる経路を閉じる。
+- source/start/end がすべて literal で静的に判定できる場合は `LS3001` と source span を返す。
+  動的な場合は `if(unreachable)` guard を出力し、Wasm runtime の explicit trap として停止する。
+- linear backend の tagged pointer/memory.copy/import 経路は変更せず、既存 valid byte-range
+  substring の結果を維持する。
+
+これは invalid range の fail-closed boundary の verified slice であり、dynamic trap の structured
+diagnostic message、Unicode code-point semantics、print/WASI/component bridge、GC mutation の公開
+契約、supported target の native evidence、selfhost compiler は未完了である。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線
