@@ -1895,3 +1895,11 @@ Evidence: RED `test_e2e_selfhost_typeinfer_analysis_reports_apply_argument_failu
 Evidence: RED `test_e2e_selfhost_typeinfer_analysis_reports_let_initializer_failure_span` は `(defn fail [] (let [value missing] value))` で first-error span `-1` を返した（28.46s）。GREEN は同じ selfhost TypeInfer fixtureで diagnostics `1`、`missing` の span `26..33` を確認した（29.01s）。変更後の `cargo run --quiet --bin lsharp -- check examples/fib.ls` は `Fn`、diagnostics `0` で passした。
 
 これは let initializerの byte-span forwardingだけを閉じる verified sliceであり、let body、do/computation step、2〜7引数 apply、lambda、record/pattern、unify failureの diagnostic span、line/column projection、standalone source-check `0`、Mac Apple Silicon / Linux x86_64 current-source native artifact/runtime gate、EC-M1-01 aggregateの完了を意味しない。`TODO.md` の `[~]` と Rust oracle / bootstrap / host integration 境界は維持する。次は let bodyまたは do/computation stepのどちらか一つを REDに固定する。
+
+### EC-M1-01 computation let-bang step error span propagation slice (2026-07-23)
+
+2-step computation の `let!` step で initializer が失敗した場合の forwardingだけを `propagate-error-result-with-span` へ接続し、後続の `return` 式へ進む前に未定義式の byte spanを保持するようにした。step 2以降、`do!`、3-step computation、let body、generalization/unify failureは既存の code-only境界のまま残す。
+
+Evidence: RED `test_e2e_selfhost_typeinfer_analysis_reports_computation_step_failure_span` は `(computation maybe-builder (let! x missing) (return x))` で diagnostics `1` を返したが、first-error spanの startが `-1` だった（29.66s）。GREEN は同じ selfhost TypeInfer fixtureで `missing` の span `49..56` を確認した（28.76s）。
+
+これは computation の最初の `let!` step の byte-span forwardingだけを閉じる verified sliceであり、computation全体、do/computationの他step、2〜7引数 apply、lambda、record/pattern、unify failureの diagnostic span、line/column projection、standalone source-check `0`、Mac Apple Silicon / Linux x86_64 current-source native artifact/runtime gate、EC-M1-01 aggregateの完了を意味しない。`TODO.md` の `[~]` と Rust oracle / bootstrap / host integration境界は維持する。次は computation の残る step または standalone source-check failure-definition分類を REDに固定する。

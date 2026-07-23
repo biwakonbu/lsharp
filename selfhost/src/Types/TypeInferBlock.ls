@@ -52,7 +52,7 @@
               (if (= step1-kind (comp-step-let-bang))
                 (let [step1-result (infer-expr step1-expr env subst counter)]
                   (if (= (result-failed step1-result) 1)
-                    (propagate-error-result step1-result)
+                    (propagate-error-result-with-span step1-result)
                     (let [s1 (result-subst step1-result)
                       bound-ty (result-type step1-result)
                       env2 (type-env-insert env step1-aux (mono bound-ty))]
