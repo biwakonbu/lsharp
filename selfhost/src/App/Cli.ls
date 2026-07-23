@@ -115,6 +115,7 @@
         (vector-new 0))
     first-module-hash (if (> (vector-length first-module-owner) 0) (vector-get first-module-owner 0) -1)
     first-module-name (if (> (vector-length first-module-owner) 1) (vector-get first-module-owner 1) "")
+    first-module-path (if (> (vector-length first-module-owner) 2) (vector-get first-module-owner 2) "")
     canonical-check (check-canonical-assertions-with-analysis program analysis)
     canonical-diagnostics-count (vector-get canonical-check 0)
     canonical-first-error-code (vector-get canonical-check 1)
@@ -172,6 +173,11 @@
           (if (> (string-length first-module-name) 0)
             (do
               (print-string (string-concat "first-module-name:" first-module-name))
+              (print-string "\n"))
+            (print-string ""))
+          (if (> (string-length first-module-path) 0)
+            (do
+              (print-string (string-concat "first-module-path:" first-module-path))
               (print-string "\n"))
             (print-string "")))
         (print-string ""))

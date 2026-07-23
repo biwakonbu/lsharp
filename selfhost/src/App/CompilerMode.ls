@@ -1214,18 +1214,24 @@
       (append-check-pairs pairs (vector-get step 1) n (vector-get step 2)))))
 
 ;; check の flatten と同じ declaration 順で、各 declaration の module owner を保持する。
-(defn make-check-module-owner [module-hash module-name]
+(defn make-check-module-owner [module-hash module-name module-path]
   (do
     (root_push module-name)
-    (let [owner1 (vector-push (vector-new 2) module-hash)]
+    (root_push module-path)
+    (let [owner1 (vector-push (vector-new 3) module-hash)]
       (do
         (root_push owner1)
         (let [owner2 (vector-push owner1 module-name)]
           (do
-            (root_pop)
-            (root_pop)
-            owner2))))))
-(defn check-pair-module-owner [src decls]
+            (root_push owner2)
+            (let [owner3 (vector-push owner2 module-path)]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                owner3))))))))
+(defn check-pair-module-owner [src decls source-root package-root cache-ref]
   (if (> (vector-length decls) 0)
     (let [first-decl (vector-get decls 0)]
       (if (= (vector-get first-decl 0) 25)
@@ -1233,10 +1239,21 @@
           (let [name-start (vector-get first-decl 3)
             name-end (vector-get first-decl 4)
             module-name (substring src name-start name-end)]
-            (make-check-module-owner (vector-get first-decl 1) module-name))
-          (make-check-module-owner (vector-get first-decl 1) ""))
-        (make-check-module-owner -1 "")))
-    (make-check-module-owner -1 "")))
+            (do
+              (root_push module-name)
+              (let [module-path
+                (resolve-module-path-with-cache module-name source-root package-root cache-ref)]
+                (do
+                  (root_push module-path)
+                  (let [owner
+                    (make-check-module-owner (vector-get first-decl 1) module-name module-path)]
+                    (do
+                      (root_pop)
+                      (root_pop)
+                      owner))))))
+          (make-check-module-owner (vector-get first-decl 1) "" ""))
+        (make-check-module-owner -1 "" "")))
+    (make-check-module-owner -1 "" "")))
 (defn append-check-owner-decls-step [idx n owners owner]
   (if (>= idx n)
     (make-pairs-step-state 1 idx owners)
@@ -1281,7 +1298,7 @@
             (root_pop)
             (root_pop)
             result))))))
-(defn append-check-owners-step [pairs idx n owners]
+(defn append-check-owners-step [pairs idx n owners source-root package-root cache-ref]
   (if (>= idx n)
     (make-pairs-step-state 1 idx owners)
     (do
@@ -1295,7 +1312,8 @@
             (do
               (root_push src)
               (root_push decls)
-              (let [owner (check-pair-module-owner src decls)]
+              (let [owner
+                (check-pair-module-owner src decls source-root package-root cache-ref)]
                 (do
                   (root_push owner)
                   (let [next-owners
@@ -1315,8 +1333,8 @@
                           (root_pop)
                           (root_pop)
                           state)))))))))))))
-(defn append-check-owners-step-64-loop-bounded [pairs idx n owners remaining]
-  (let [step (append-check-owners-step pairs idx n owners)]
+(defn append-check-owners-step-64-loop-bounded [pairs idx n owners source-root package-root cache-ref remaining]
+  (let [step (append-check-owners-step pairs idx n owners source-root package-root cache-ref)]
     (if (= (vector-get step 0) 1)
       step
       (if (<= remaining 1)
@@ -1326,11 +1344,14 @@
           (vector-get step 1)
           n
           (vector-get step 2)
+          source-root
+          package-root
+          cache-ref
           (- remaining 1))))))
-(defn append-check-owners-step-64 [pairs idx n owners]
-  (append-check-owners-step-64-loop-bounded pairs idx n owners 64))
-(defn append-check-owners [pairs idx n owners]
-  (let [step (append-check-owners-step-64 pairs idx n owners)]
+(defn append-check-owners-step-64 [pairs idx n owners source-root package-root cache-ref]
+  (append-check-owners-step-64-loop-bounded pairs idx n owners source-root package-root cache-ref 64))
+(defn append-check-owners [pairs idx n owners source-root package-root cache-ref]
+  (let [step (append-check-owners-step-64 pairs idx n owners source-root package-root cache-ref)]
     (if (= (vector-get step 0) 1)
       (vector-get step 2)
       (do
@@ -1342,7 +1363,10 @@
                   pairs
                   (vector-get step 1)
                   n
-                  (vector-get step 2))]
+                  (vector-get step 2)
+                  source-root
+                  package-root
+                  cache-ref)]
           (do
             (root_pop)
             (root_pop)
@@ -1363,21 +1387,35 @@
             context2))))))
 (defn load-check-program [path]
   (let [cache-ref (ref-new (map-new))
-    parse-count-ref (ref-new 0)]
+    parse-count-ref (ref-new 0)
+    source-root (resolve-source-root path)
+    package-root (resolve-package-root path)]
     (do
       (root_push cache-ref)
       (root_push parse-count-ref)
+      (root_push source-root)
+      (root_push package-root)
       (let [all-pairs (compile-file-pairs-with-cache path cache-ref parse-count-ref)]
         (do
           (root_push all-pairs)
           (let [program (append-check-pairs all-pairs 0 (vector-length all-pairs) (vector-new 8))]
             (do
               (root_push program)
-              (let [owners (append-check-owners all-pairs 0 (vector-length all-pairs) (vector-new 8))]
+              (let [owners
+                (append-check-owners
+                  all-pairs
+                  0
+                  (vector-length all-pairs)
+                  (vector-new 8)
+                  source-root
+                  package-root
+                  cache-ref)]
                 (do
                   (root_push owners)
                   (let [context (make-check-program-context program owners)]
                     (do
+                      (root_pop)
+                      (root_pop)
                       (root_pop)
                       (root_pop)
                       (root_pop)

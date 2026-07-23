@@ -1022,6 +1022,8 @@ fn test_e2e_selfhost_cli_check_file_reports_first_failed_module_hash() {
         "(module Main)\n(import Lib)\n(defn main [] 42)\n",
     )
     .unwrap();
+    // 既存 resolver は相対 entry path の表現を保ったまま依存 path を返す。
+    let expected_lib_path = "./Lib.ls".to_string();
 
     let harness = r#"
 (defn main []
@@ -1054,6 +1056,12 @@ fn test_e2e_selfhost_cli_check_file_reports_first_failed_module_hash() {
     assert!(
         lines.contains(&"first-module-name:Lib"),
         "最初の失敗定義を Lib module name へ結び付けるべき: {:?}",
+        lines
+    );
+    let expected_path_line = format!("first-module-path:{expected_lib_path}");
+    assert!(
+        lines.contains(&expected_path_line.as_str()),
+        "最初の失敗定義を Lib source path へ結び付けるべき: {:?}",
         lines
     );
 }

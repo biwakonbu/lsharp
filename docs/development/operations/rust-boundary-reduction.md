@@ -1847,3 +1847,11 @@ module declaration の既存 `[tag, hash, body]` slotを維持したまま、sel
 Evidence: RED は既存 `test_e2e_selfhost_cli_check_file_reports_first_failed_module_hash` に `first-module-name:Lib` の assertion を追加し、hash行までの出力 `76389`, `Int`, `diagnostics:1,T0001@1:1,first-body:undefined symbol`, `first-module-hash:76389`, exit `1` で name 行がないことを確認した。GREEN は同じ Preview1 fixtureで `first-module-name:Lib` を含めて `1 passed`（436.06s）となった。
 
 これは module hashから source module nameへ進めた verified sliceであり、実 filesystem pathの表示、qualified import/private visibility、失敗式の source span、canonical/case/property diagnosticsとの統合、standalone source-check `0`、supported 2 targetsの current-source native gate、EC-M1-01 aggregateの完了を意味しない。次の RED は module nameを resolved source pathと失敗 expression spanへ結び付ける narrow contractである。
+
+### EC-M1-01 first failed imported module resolved path provenance slice (2026-07-23)
+
+file-check の module owner を `[module-hash, module-name, module-path]` とし、`load-check-program` が既存の `ModuleResolver` の source root / package root / cache を使って module name から resolved source pathを保存するようにした。`Cli` と `EmbeddedCli` の text reportは、最初の base type errorに対応する ownerへ `first-module-path:<path>` を追加する。source-only check の空 owner、JSON report、既存の resolver優先順位は変更しない。
+
+Evidence: RED は既存の `test_e2e_selfhost_cli_check_file_reports_first_failed_module_hash` に path assertionを追加し、実装前の出力に hash/name までしかないことを固定した。実装後の同じ Preview1 fixtureは `76389`、`Int`、`diagnostics:1,T0001@1:1,first-body:undefined symbol`、`first-module-hash:76389`、`first-module-name:Lib`、`first-module-path:./Lib.ls`、exit `1` を返し、`1 passed`（603.01s）となった。相対 entry pathに対して既存 resolverが返す `./Lib.ls` をそのまま契約とし、診断側で未検証の絶対 path正規化は追加していない。通常の `check examples/fib.ls` も diagnostics `0`、exit `0` で確認した。
+
+これは resolved module pathの dependency provenanceだけを閉じる verified sliceであり、qualified import/private visibility、絶対 pathの canonicalization、失敗 expressionの source span、canonical/case/property diagnosticsとの統合、standalone source-check `0`、supported 2 targetsの current-source native gate、EC-M1-01 aggregateの完了を意味しない。次の RED は同じ first-error indexから失敗式の source spanを取得する narrow contractである。
