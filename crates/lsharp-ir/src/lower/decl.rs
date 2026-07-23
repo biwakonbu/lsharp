@@ -328,24 +328,32 @@ impl Lower {
         variant_name: &str,
         gc_type_idx: u32,
         tag_val: i32,
-        field_count: usize,
-        max_field_count: usize,
+        field_types: &[IrType],
+        slot_types: &[IrType],
     ) -> Function {
+        let field_count = field_types.len();
         if self.backend == super::LowerBackend::WasmGc {
-            let mut body = Vec::with_capacity(max_field_count + 2);
+            let mut body = Vec::with_capacity(slot_types.len() + 2);
             body.push(Instruction::I64Const(tag_val as i64));
-            for field_idx in 0..max_field_count {
-                if field_idx < field_count {
+            for (field_idx, slot_type) in slot_types.iter().copied().enumerate() {
+                if field_idx < field_types.len() {
                     body.push(Instruction::LocalGet(field_idx as u32));
                 } else {
-                    body.push(Instruction::I64Const(0));
+                    match slot_type {
+                        IrType::I64 | IrType::I32 => body.push(Instruction::I64Const(0)),
+                        IrType::F64 => body.push(Instruction::F64Const(0.0)),
+                        IrType::Ref(_) | IrType::FuncRef => {
+                            // Ref slot の欠損は prepare_program_state で拒否済み。
+                            body.push(Instruction::Unreachable);
+                        }
+                    }
                 }
             }
             body.push(Instruction::StructNew(gc_type_idx));
 
             return Function {
                 name: variant_name.to_string(),
-                params: vec![IrType::I64; field_count],
+                params: field_types.to_vec(),
                 result: IrType::Ref(gc_type_idx),
                 locals: Vec::new(),
                 body,

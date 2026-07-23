@@ -64,7 +64,7 @@ impl Lower {
             }
             Pattern::Constructor(_, name, sub_pats) if sub_pats.is_empty() => {
                 if self.backend == super::LowerBackend::WasmGc {
-                    return self.lower_wasmgc_constructor_arm(ctx, scrut_local, arms, arm, idx);
+                    return self.lower_wasmgc_constructor_arm(ctx, scrut_local, arms, idx);
                 }
                 // 引数なしコンストラクタ: リニアメモリからバリアントタグを読み出して比較
                 // BUG-3 修正: 最後の腕でもタグ比較を行う（デフォルト扱いしない）
@@ -91,7 +91,7 @@ impl Lower {
             }
             Pattern::Constructor(_, name, sub_pats) => {
                 if self.backend == super::LowerBackend::WasmGc {
-                    return self.lower_wasmgc_constructor_arm(ctx, scrut_local, arms, arm, idx);
+                    return self.lower_wasmgc_constructor_arm(ctx, scrut_local, arms, idx);
                 }
                 // 引数付きコンストラクタ: リニアメモリからバリアントタグとフィールドを読み出す
                 let tag = self
@@ -403,24 +403,15 @@ impl Lower {
         ctx: &mut FuncCtx,
         scrut_local: u32,
         arms: &[MatchArm],
-        arm: &MatchArm,
         idx: usize,
     ) -> Result<(), LowerError> {
+        let arm = &arms[idx];
         let Pattern::Constructor(_, name, sub_pats) = &arm.pattern else {
             return Err(LowerError::Unsupported {
                 msg: "WasmGC ADT pattern の内部形式が不正です".to_string(),
                 span: Some(arm.span),
             });
         };
-        if sub_pats
-            .iter()
-            .any(|pattern| !matches!(pattern, Pattern::Var(_, _) | Pattern::Wildcard(_)))
-        {
-            return Err(LowerError::Unsupported {
-                msg: format!("WasmGC ADT の nested/literal pattern: {name}"),
-                span: Some(arm.span),
-            });
-        }
 
         let Some(&(gc_type_idx, tag)) = self.adt_variant_indices.get(name) else {
             return Err(LowerError::Unsupported {
@@ -435,15 +426,31 @@ impl Lower {
         ctx.emit(Instruction::I64Eq);
         ctx.emit(Instruction::If(IrType::I64));
 
+        let field_types = self
+            .adt_variant_field_types
+            .get(name)
+            .cloned()
+            .unwrap_or_default();
+        let field_type_names = self
+            .adt_variant_field_type_names
+            .get(name)
+            .cloned()
+            .unwrap_or_default();
+        let mut checks = Vec::with_capacity(sub_pats.len());
         for (field_idx, pattern) in sub_pats.iter().enumerate() {
-            if let Pattern::Var(_, var_name) = pattern {
-                ctx.emit(Instruction::LocalGet(scrut_local));
-                ctx.emit(Instruction::StructGet(gc_type_idx, field_idx as u32 + 1));
-                let var_local = ctx.alloc_local_typed(var_name.clone(), IrType::I64);
-                ctx.emit(Instruction::LocalSet(var_local));
-            }
+            ctx.emit(Instruction::LocalGet(scrut_local));
+            ctx.emit(Instruction::StructGet(gc_type_idx, field_idx as u32 + 1));
+            let field_type = field_types.get(field_idx).copied().unwrap_or(IrType::I64);
+            let field_local =
+                ctx.alloc_local_typed(format!("_wasmgc_pattern_field_{field_idx}"), field_type);
+            ctx.emit(Instruction::LocalSet(field_local));
+            checks.push((
+                field_local,
+                pattern.clone(),
+                field_type_names.get(field_idx).cloned().flatten(),
+            ));
         }
-        self.lower_arm_body_with_guard(ctx, scrut_local, arms, arm, idx)?;
+        self.lower_wasmgc_pattern_sequence(ctx, checks, arms, idx, scrut_local)?;
 
         ctx.emit(Instruction::Else);
         if idx == arms.len() - 1 {
@@ -453,5 +460,97 @@ impl Lower {
         }
         ctx.emit(Instruction::End);
         Ok(())
+    }
+
+    fn lower_wasmgc_pattern_sequence(
+        &mut self,
+        ctx: &mut FuncCtx,
+        checks: Vec<(u32, Pattern, Option<String>)>,
+        arms: &[MatchArm],
+        idx: usize,
+        scrut_local: u32,
+    ) -> Result<(), LowerError> {
+        let arm = &arms[idx];
+        let Some((value_local, pattern, value_type_name)) = checks.first() else {
+            return self.lower_arm_body_with_guard(ctx, scrut_local, arms, arm, idx);
+        };
+        let rest = checks.iter().skip(1).cloned().collect::<Vec<_>>();
+
+        match pattern {
+            Pattern::Var(_, name) => {
+                ctx.emit(Instruction::LocalGet(*value_local));
+                let value_type = ctx
+                    .local_types
+                    .get(*value_local as usize)
+                    .copied()
+                    .unwrap_or(IrType::I64);
+                let var_local = ctx.alloc_local_typed(name.clone(), value_type);
+                ctx.emit(Instruction::LocalSet(var_local));
+                if let Some(type_name) = value_type_name {
+                    ctx.local_type_names.insert(name.clone(), type_name.clone());
+                }
+                self.lower_wasmgc_pattern_sequence(ctx, rest, arms, idx, scrut_local)
+            }
+            Pattern::Wildcard(_) => {
+                self.lower_wasmgc_pattern_sequence(ctx, rest, arms, idx, scrut_local)
+            }
+            Pattern::Constructor(_, name, sub_pats) => {
+                let Some(&(gc_type_idx, tag)) = self.adt_variant_indices.get(name) else {
+                    return Err(LowerError::Unsupported {
+                        msg: format!("WasmGC ADT variant を解決できません: {name}"),
+                        span: Some(arm.span),
+                    });
+                };
+                ctx.emit(Instruction::LocalGet(*value_local));
+                ctx.emit(Instruction::StructGet(gc_type_idx, 0));
+                ctx.emit(Instruction::I64Const(tag as i64));
+                ctx.emit(Instruction::I64Eq);
+                ctx.emit(Instruction::If(IrType::I64));
+
+                let field_types = self
+                    .adt_variant_field_types
+                    .get(name)
+                    .cloned()
+                    .unwrap_or_default();
+                let field_type_names = self
+                    .adt_variant_field_type_names
+                    .get(name)
+                    .cloned()
+                    .unwrap_or_default();
+                let mut nested_checks = Vec::with_capacity(sub_pats.len() + rest.len());
+                for (field_idx, nested_pattern) in sub_pats.iter().enumerate() {
+                    ctx.emit(Instruction::LocalGet(*value_local));
+                    ctx.emit(Instruction::StructGet(gc_type_idx, field_idx as u32 + 1));
+                    let field_type = field_types.get(field_idx).copied().unwrap_or(IrType::I64);
+                    let field_local = ctx
+                        .alloc_local_typed(format!("_wasmgc_nested_field_{field_idx}"), field_type);
+                    ctx.emit(Instruction::LocalSet(field_local));
+                    nested_checks.push((
+                        field_local,
+                        nested_pattern.clone(),
+                        field_type_names.get(field_idx).cloned().flatten(),
+                    ));
+                }
+                nested_checks.extend(rest);
+                self.lower_wasmgc_pattern_sequence(ctx, nested_checks, arms, idx, scrut_local)?;
+
+                ctx.emit(Instruction::Else);
+                if idx == arms.len() - 1 {
+                    ctx.emit(Instruction::Unreachable);
+                } else {
+                    self.lower_match_arms(ctx, scrut_local, arms, idx + 1)?;
+                }
+                ctx.emit(Instruction::End);
+                Ok(())
+            }
+            Pattern::Lit(_, _) => Err(LowerError::Unsupported {
+                msg: "WasmGC ADT の nested/literal pattern".to_string(),
+                span: Some(arm.span),
+            }),
+            Pattern::RecordPat(_, _, _) => Err(LowerError::Unsupported {
+                msg: "WasmGC ADT の nested/literal pattern".to_string(),
+                span: Some(arm.span),
+            }),
+        }
     }
 }

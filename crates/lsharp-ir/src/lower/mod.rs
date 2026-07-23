@@ -80,6 +80,14 @@ pub struct Lower {
     pub(crate) adt_type_info: HashMap<String, Vec<(String, u32, i32, usize)>>,
     /// ADT 型名 -> WasmGC struct 型インデックス
     pub(crate) adt_type_indices: HashMap<String, u32>,
+    /// ADT バリアント名 -> payload field の WasmGC 型
+    pub(crate) adt_variant_field_types: HashMap<String, Vec<IrType>>,
+    /// ADT バリアント名 -> payload field のソース型名
+    pub(crate) adt_variant_field_type_names: HashMap<String, Vec<Option<String>>>,
+    /// ADT 型名 -> 共通 payload slot の WasmGC 型
+    pub(crate) adt_slot_types: HashMap<String, Vec<IrType>>,
+    /// WasmGC ADT の表現上の未対応理由
+    pub(crate) adt_field_errors: Vec<String>,
     /// 文字列定数データ [(label, bytes)]
     pub(crate) string_data: Vec<(String, Vec<u8>)>,
     /// 次の文字列データオフセット
@@ -127,6 +135,10 @@ impl Lower {
             adt_variant_indices: HashMap::new(),
             adt_type_info: HashMap::new(),
             adt_type_indices: HashMap::new(),
+            adt_variant_field_types: HashMap::new(),
+            adt_variant_field_type_names: HashMap::new(),
+            adt_slot_types: HashMap::new(),
+            adt_field_errors: Vec::new(),
             string_data: Vec::new(),
             string_offset: 512, // 文字列データの開始位置（メモリ先頭は数値変換バッファ用）
             computation_builders: HashMap::new(),
@@ -162,6 +174,10 @@ impl Lower {
         self.adt_variant_indices.clear();
         self.adt_type_info.clear();
         self.adt_type_indices.clear();
+        self.adt_variant_field_types.clear();
+        self.adt_variant_field_type_names.clear();
+        self.adt_slot_types.clear();
+        self.adt_field_errors.clear();
         self.string_data.clear();
         self.string_offset = 512;
         self.computation_builders.clear();
@@ -210,42 +226,121 @@ impl Lower {
             }
         }
 
-        // ADT 型定義を WasmGC struct として登録する。
-        //
-        // Stage 1 では全バリアントを同じ struct に載せ、field 0 を variant tag、
-        // 残りを i64 payload slot とする。異なる payload 型や nested constructor は
-        // 後続 slice で型付きフィールドへ拡張する。
-        for decl in &program.decls {
-            if let Decl::TypeDef { name, variants, .. } = unwrap_private(decl) {
-                let max_field_count = variants
-                    .iter()
-                    .map(|variant| variant.fields.len())
-                    .max()
-                    .unwrap_or(0);
-                let gc_idx = if self.backend == LowerBackend::WasmGc {
+        // WasmGC の ADT struct index を先に予約する。payload が別の ADT を参照していても、
+        // 宣言順に依存せず concrete reference type を解決できるようにする。
+        if self.backend == LowerBackend::WasmGc {
+            for decl in &program.decls {
+                if let Decl::TypeDef { name, .. } = unwrap_private(decl) {
                     let gc_idx = self.gc_types.len() as u32;
                     self.adt_type_indices.insert(name.clone(), gc_idx);
+                    self.gc_types.push(GcTypeDef {
+                        name: name.clone(),
+                        kind: GcTypeKind::Struct(Vec::new()),
+                    });
+                }
+            }
+        }
+
+        // ADT 型定義を WasmGC struct として登録する。
+        // field 0 は variant tag、残りは variant 間で共有する typed payload slot とする。
+        for decl in &program.decls {
+            if let Decl::TypeDef { name, variants, .. } = unwrap_private(decl) {
+                if self.backend != LowerBackend::WasmGc {
+                    let variant_infos = variants
+                        .iter()
+                        .enumerate()
+                        .map(|(tag, variant)| {
+                            (variant.name.clone(), 0, tag as i32, variant.fields.len())
+                        })
+                        .collect();
+                    for (tag, variant) in variants.iter().enumerate() {
+                        self.adt_variant_indices
+                            .insert(variant.name.clone(), (0, tag as i32));
+                    }
+                    self.adt_type_info.insert(name.clone(), variant_infos);
+                    continue;
+                }
+                let gc_idx = self.adt_type_indices.get(name).copied().unwrap_or(0);
+                let mut variant_field_types = Vec::new();
+                let mut max_field_count = 0;
+                for variant in variants {
+                    let mut field_types = Vec::with_capacity(variant.fields.len());
+                    let mut field_type_names = Vec::with_capacity(variant.fields.len());
+                    for field in &variant.fields {
+                        let Some(field_type) = self.wasm_gc_adt_field_type(field) else {
+                            self.adt_field_errors.push(format!(
+                                "WasmGC ADT payload の型を解決できません: {}::{}",
+                                name, variant.name
+                            ));
+                            continue;
+                        };
+                        field_types.push(field_type);
+                        field_type_names.push(match field {
+                            lsharp_syntax::ast::TypeExpr::Named(_, name) => Some(name.clone()),
+                            _ => None,
+                        });
+                    }
+                    max_field_count = max_field_count.max(field_types.len());
+                    self.adt_variant_field_types
+                        .insert(variant.name.clone(), field_types.clone());
+                    self.adt_variant_field_type_names
+                        .insert(variant.name.clone(), field_type_names);
+                    variant_field_types.push((variant.name.clone(), field_types));
+                }
+
+                let mut slot_types = vec![None; max_field_count];
+                for (variant_name, field_types) in &variant_field_types {
+                    for (field_idx, field_type) in field_types.iter().copied().enumerate() {
+                        match slot_types[field_idx] {
+                            None => slot_types[field_idx] = Some(field_type),
+                            Some(existing) if existing != field_type => {
+                                self.adt_field_errors.push(format!(
+                                    "WasmGC ADT payload slot の型が一致しません: {name}::{variant_name}[{field_idx}]"
+                                ));
+                            }
+                            Some(_) => {}
+                        }
+                    }
+                }
+                if slot_types
+                    .iter()
+                    .enumerate()
+                    .any(|(field_idx, field_type)| {
+                        matches!(field_type, Some(IrType::Ref(_)))
+                            && variant_field_types
+                                .iter()
+                                .any(|(_, fields)| fields.len() <= field_idx)
+                    })
+                {
+                    self.adt_field_errors.push(format!(
+                        "WasmGC ADT の nullable reference payload slot は全 variant に必要です: {name}"
+                    ));
+                }
+                let slot_types = slot_types
+                    .into_iter()
+                    .map(|field_type| field_type.unwrap_or(IrType::I64))
+                    .collect::<Vec<_>>();
+                self.adt_slot_types.insert(name.clone(), slot_types.clone());
+
+                if self.backend == LowerBackend::WasmGc {
                     let mut gc_fields = Vec::with_capacity(max_field_count + 1);
                     gc_fields.push(GcField {
                         name: "tag".to_string(),
                         ty: IrType::I64,
                         mutable: false,
                     });
-                    for field_idx in 0..max_field_count {
-                        gc_fields.push(GcField {
+                    gc_fields.extend(slot_types.iter().enumerate().map(
+                        |(field_idx, field_type)| GcField {
                             name: format!("field_{field_idx}"),
-                            ty: IrType::I64,
+                            ty: *field_type,
                             mutable: false,
-                        });
-                    }
-                    self.gc_types.push(GcTypeDef {
+                        },
+                    ));
+                    self.gc_types[gc_idx as usize] = GcTypeDef {
                         name: name.clone(),
                         kind: GcTypeKind::Struct(gc_fields),
-                    });
-                    gc_idx
-                } else {
-                    0
-                };
+                    };
+                }
 
                 let mut variant_infos = Vec::new();
                 for (tag, variant) in variants.iter().enumerate() {
@@ -476,19 +571,28 @@ impl Lower {
         for decl in &program.decls {
             if let Decl::TypeDef { name, variants, .. } = unwrap_private(decl) {
                 let gc_type_idx = self.adt_type_indices.get(name).copied().unwrap_or(0);
-                let max_field_count = variants
-                    .iter()
-                    .map(|variant| variant.fields.len())
-                    .max()
-                    .unwrap_or(0);
+                let slot_types = self.adt_slot_types.get(name).cloned().unwrap_or_default();
                 for variant in variants {
                     if let Some(&(_, tag_val)) = self.adt_variant_indices.get(&variant.name) {
+                        let field_types = if self.backend == LowerBackend::WasmGc {
+                            self.adt_variant_field_types
+                                .get(&variant.name)
+                                .cloned()
+                                .unwrap_or_default()
+                        } else {
+                            vec![IrType::I64; variant.fields.len()]
+                        };
+                        let constructor_slot_types = if self.backend == LowerBackend::WasmGc {
+                            slot_types.clone()
+                        } else {
+                            vec![IrType::I64; variant.fields.len()]
+                        };
                         let ctor = self.generate_adt_constructor(
                             &variant.name,
                             gc_type_idx,
                             tag_val,
-                            variant.fields.len(),
-                            max_field_count,
+                            &field_types,
+                            &constructor_slot_types,
                         );
                         functions.push(ctor);
                     }
@@ -553,6 +657,21 @@ impl Lower {
         type_expr_to_ir(ty)
     }
 
+    fn wasm_gc_adt_field_type(&self, ty: &lsharp_syntax::ast::TypeExpr) -> Option<IrType> {
+        let lsharp_syntax::ast::TypeExpr::Named(_, name) = ty else {
+            return None;
+        };
+        match name.as_str() {
+            "Int" | "Float" | "Bool" | "Unit" => Some(type_expr_to_ir(ty)),
+            _ => self
+                .record_type_indices
+                .get(name)
+                .or_else(|| self.adt_type_indices.get(name))
+                .copied()
+                .map(IrType::Ref),
+        }
+    }
+
     pub(crate) fn ir_type_for_type_name(&self, type_name: &str) -> IrType {
         if self.backend == LowerBackend::WasmGc {
             if let Some(&gc_idx) = self.record_type_indices.get(type_name) {
@@ -582,6 +701,14 @@ impl Lower {
         expr_type_results: &HashMap<ExprTypeKey, Type>,
     ) -> Result<Module, LowerError> {
         self.prepare_program_state(program, type_results);
+        if self.backend == LowerBackend::WasmGc
+            && let Some(message) = self.adt_field_errors.first()
+        {
+            return Err(LowerError::Unsupported {
+                msg: message.clone(),
+                span: None,
+            });
+        }
         self.expr_type_results = expr_type_results.clone();
 
         let mut functions = self.lower_defn_functions(program)?;

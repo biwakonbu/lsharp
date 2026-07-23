@@ -121,16 +121,35 @@ record slice と同じ WasmGC core compile path に、非パラメトリック A
   共有する `i64` payload slot とする。各 constructor は tag と payload を `StructNew` で生成し、
   nullary constructor は残りの slot を 0 で埋める。
 - constructor pattern は `StructGet(type, 0)` の tag 比較で分岐し、`Var` / wildcard payload を
-  `StructGet` して typed local へ束縛する。nested / literal pattern、型付き payload、GADT、
-  パラメトリック ADT はこの slice の外側であり、WasmGC 未対応診断へ止める。
+  `StructGet` して typed local へ束縛する。literal pattern、GADT、パラメトリック ADT はこの
+  slice の外側であり、WasmGC 未対応診断へ止める。
 - `test_compile_file_wasmgc_backend_executes_adt_constructor_and_match` が `(Just 42)` と
   `Nothing` の両方を実際に構築・match し、`--backend=wasmgc --target=web-wasm` の Wasmtime
   実行結果を確認する。WasmGC の user-call 経路では linear GC root 操作を挿入しないため、
   root stack / allocator / strings / collections の一般対応をこの証跡へ拡大解釈しない。
 
 この段階で records と scalar ADT の direct construction/access/pattern は検証済みだが、
-ADT の全表現、GC root/allocator、strings、WASI/component、Mac/Linux 2 target、selfhost
-compiler は次の残件として維持する。
+ADT の typed payload と nested pattern、GC root/allocator、strings、WASI/component、Mac/Linux
+2 target、selfhost compiler は次の残件として維持する。
+
+## Stage 1.75b 検証済み slice: nested ADT payload と pattern (2026-07-24)
+
+scalar ADT の共通 `i64` slot を一段拡張し、ADT を別の ADT payload として保持する最小経路を接続した。
+
+- program 内の ADT struct index を先に予約し、宣言順に依存せず `TypeExpr::Named` の ADT/record
+  payload を concrete `IrType::Ref` として解決する。各 variant の field type と共通 slot type が
+  一致しない場合は `LS3001` で止め、未対応 payload を i64 に暗黙変換しない。
+- nested constructor pattern は親の tag と payload `StructGet` を確認した後、子 ADT の tag を
+  再帰的に検査する。nested pattern の不一致は次の match arm へ戻り、変数束縛には payload の
+  Ref 型名を引き継ぐため、その値をさらに `match` できる。
+- `test_compile_file_wasmgc_backend_executes_nested_adt_constructor_and_pattern` と
+  `test_compile_file_wasmgc_backend_preserves_nested_adt_binding_type` が `Box (Just 42)` /
+  `Box Nothing` の成功・fallback を Wasmtime で実行する。literal pattern と String/parametric
+  payload は明示拒否テストで境界を固定する。
+
+この slice は同一 ADT 内の nullable reference slot（欠損 variant への default 値）をまだ扱わず、
+全 variant に存在する nested reference payload に限定する。GADT、parametric representation、
+GC root/allocator、strings、WASI/component、supported 2 targets、selfhost compiler は未完了である。
 
 ## 実装戦略
 
@@ -208,7 +227,7 @@ compiler は次の残件として維持する。
 ## ステータス
 
 Stage 0 (依存 API / runtime capability probe)、Stage 1 の IR emitter、Stage 1.5 の CLI 選択、
-Stage 1.75 の direct record lowering/update/user call と scalar ADT constructor/pattern slice は
-2026-07-24 に検証済み。ADT の全表現、Stage 2 以降 (strings / closures / traits / selfhost)、
-supported target の actual runtime evidence は未完了であり、`LEGACY-EXEC-01` の完了条件には
-到達していない。
+Stage 1.75 の direct record lowering/update/user call、scalar ADT constructor/pattern、nested ADT
+payload/pattern slice は 2026-07-24 に検証済み。ADT の全表現、Stage 2 以降 (strings / closures /
+traits / selfhost)、supported target の actual runtime evidence は未完了であり、
+`LEGACY-EXEC-01` の完了条件には到達していない。

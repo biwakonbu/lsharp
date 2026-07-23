@@ -397,6 +397,104 @@ mod tests {
     }
 
     #[test]
+    fn test_compile_file_wasmgc_backend_executes_nested_adt_constructor_and_pattern() {
+        let dir = std::env::temp_dir().join("lsharp_compile_pipeline_wasmgc_nested_adt");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(dir.join(".git")).unwrap();
+
+        let file = dir.join("Main.ls");
+        let output = dir.join("Main.wasm");
+        std::fs::write(
+            &file,
+            "(type Maybe (Just Int) Nothing)\n\
+             (type Box (Box Maybe))\n\
+             (defn unwrap-box [value] (match value [(Box (Just x)) x] [_ 0]))\n\
+             (defn main [] (+ (unwrap-box (Box (Just 42))) (unwrap-box (Box Nothing))))\n",
+        )
+        .unwrap();
+
+        let artifacts = compile_file_with_backend(
+            &file,
+            Some(&output),
+            false,
+            Some(CompileTarget::WebWasm),
+            CompileBackend::WasmGc,
+        )
+        .unwrap();
+        let wasm_bytes = std::fs::read(&artifacts.output_path).unwrap();
+
+        let mut config = wasmtime::Config::new();
+        config.wasm_gc(true);
+        let engine = wasmtime::Engine::new(&config).unwrap();
+        let module = wasmtime::Module::new(&engine, wasm_bytes).unwrap();
+        let mut store = wasmtime::Store::new(&engine, ());
+        let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
+        let main = instance
+            .get_typed_func::<(), i64>(&mut store, "main")
+            .unwrap();
+        assert_eq!(main.call(&mut store, ()).unwrap(), 42);
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_wasmgc_backend_rejects_unresolved_adt_payload_type() {
+        let error = compile_module_from_formatted_source(
+            Path::new("Main.ls"),
+            "(type Box (Box String))\n(defn main [] (Box \"value\"))\n",
+            CompileBackend::WasmGc,
+        )
+        .expect_err("WasmGC backend は未対応 payload を i64 に暗黙変換してはならない");
+
+        assert!(error.to_string().contains("LS3001"));
+        assert!(error.to_string().contains("payload"));
+    }
+
+    #[test]
+    fn test_compile_file_wasmgc_backend_preserves_nested_adt_binding_type() {
+        let dir = std::env::temp_dir().join("lsharp_compile_pipeline_wasmgc_nested_adt_binding");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(dir.join(".git")).unwrap();
+
+        let file = dir.join("Main.ls");
+        let output = dir.join("Main.wasm");
+        std::fs::write(
+            &file,
+            "(type Maybe (Just Int) Nothing)\n\
+             (type Box (Box Maybe))\n\
+             (defn unwrap-box [value]\n\
+               (match value [(Box inner) (match inner [(Just x) x] [_ 0])] [_ 0]))\n\
+             (defn main [] (+ (unwrap-box (Box (Just 42))) (unwrap-box (Box Nothing))))\n",
+        )
+        .unwrap();
+
+        let artifacts = compile_file_with_backend(
+            &file,
+            Some(&output),
+            false,
+            Some(CompileTarget::WebWasm),
+            CompileBackend::WasmGc,
+        )
+        .unwrap();
+        let wasm_bytes = std::fs::read(&artifacts.output_path).unwrap();
+
+        let mut config = wasmtime::Config::new();
+        config.wasm_gc(true);
+        let engine = wasmtime::Engine::new(&config).unwrap();
+        let module = wasmtime::Module::new(&engine, wasm_bytes).unwrap();
+        let mut store = wasmtime::Store::new(&engine, ());
+        let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
+        let main = instance
+            .get_typed_func::<(), i64>(&mut store, "main")
+            .unwrap();
+        assert_eq!(main.call(&mut store, ()).unwrap(), 42);
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
     fn test_compile_file_wasmgc_backend_executes_nested_record_access() {
         let dir = std::env::temp_dir().join("lsharp_compile_pipeline_wasmgc_nested_record");
         let _ = std::fs::remove_dir_all(&dir);
