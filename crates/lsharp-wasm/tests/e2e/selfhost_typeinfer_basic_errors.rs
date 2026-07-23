@@ -860,3 +860,33 @@ fn test_e2e_selfhost_typeinfer_analysis_reports_apply_argument_failure_span() {
     assert_eq!(lines[1], expected_start.to_string());
     assert_eq!(lines[2], expected_end.to_string());
 }
+
+/// selfhost TypeInfer.ls テスト: let initializer failure も source span を保持する
+#[test]
+fn test_e2e_selfhost_typeinfer_analysis_reports_let_initializer_failure_span() {
+    let source = "(defn fail [] (let [value missing] value))";
+    let expected_start = source.find("missing").expect("fixture must contain missing");
+    let expected_end = expected_start + "missing".len();
+    let harness = r#"
+(defn main []
+  (let [analysis
+          (infer-program-analysis
+            (parse-program "(defn fail [] (let [value missing] value))"))]
+    (do
+      (print (infer-program-analysis-diagnostic-count analysis))
+      (print (infer-program-analysis-first-error-start analysis))
+      (print (infer-program-analysis-first-error-end analysis))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_typeinfer_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(lines.len(), 3, "let initializer span 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "1");
+    assert_eq!(lines[1], expected_start.to_string());
+    assert_eq!(lines[2], expected_end.to_string());
+}

@@ -1887,3 +1887,11 @@ arity-1 applyの argument failure forwardingを `propagate-error-result-with-spa
 Evidence: RED `test_e2e_selfhost_typeinfer_analysis_reports_apply_argument_failure_span` は `(defn fail [] (not missing))` で first-error span `-1` を返した（28.54s）。GREEN は同じ selfhost TypeInfer fixtureで diagnostics `1`、`missing` の span `19..26` を確認した（29.59s）。変更後の `cargo run --quiet --bin lsharp -- check examples/fib.ls` は `Fn`、diagnostics `0` で passした。
 
 これは arity-1 apply argumentの byte-span forwardingだけを閉じる verified sliceであり、2〜7引数の argument forwarding、lambda body、let/do/computation、record/pattern、unify failureの diagnostic span、line/column projection、standalone source-check `0`、Mac Apple Silicon / Linux x86_64 current-source native artifact/runtime gate、EC-M1-01 aggregateの完了を意味しない。`TODO.md` の `[~]` と Rust oracle / bootstrap / host integration 境界は維持する。次は let initializerの span propagationまたは standalone source-check failure-definition分類を REDに固定する。
+
+### EC-M1-01 let initializer error span propagation slice (2026-07-23)
+
+`TypeInferBlock.infer-let` の initializer failure forwardingを `propagate-error-result-with-span` へ接続し、binding bodyへ進む前に失敗した未定義 initializerの byte spanを保持する。let body、do/computationの step、generalization/unify failureは既存 code-only境界のまま残す。
+
+Evidence: RED `test_e2e_selfhost_typeinfer_analysis_reports_let_initializer_failure_span` は `(defn fail [] (let [value missing] value))` で first-error span `-1` を返した（28.46s）。GREEN は同じ selfhost TypeInfer fixtureで diagnostics `1`、`missing` の span `26..33` を確認した（29.01s）。変更後の `cargo run --quiet --bin lsharp -- check examples/fib.ls` は `Fn`、diagnostics `0` で passした。
+
+これは let initializerの byte-span forwardingだけを閉じる verified sliceであり、let body、do/computation step、2〜7引数 apply、lambda、record/pattern、unify failureの diagnostic span、line/column projection、standalone source-check `0`、Mac Apple Silicon / Linux x86_64 current-source native artifact/runtime gate、EC-M1-01 aggregateの完了を意味しない。`TODO.md` の `[~]` と Rust oracle / bootstrap / host integration 境界は維持する。次は let bodyまたは do/computation stepのどちらか一つを REDに固定する。

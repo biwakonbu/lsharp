@@ -21,7 +21,7 @@
     ;; init を推論
     init-result (infer-expr init-node env subst counter)]
     (if (= (result-failed init-result) 1)
-      (propagate-error-result init-result)
+      (propagate-error-result-with-span init-result)
       (let [s1 (result-subst init-result)
         init-ty (result-type init-result)
         ;; 汎化して環境に追加
