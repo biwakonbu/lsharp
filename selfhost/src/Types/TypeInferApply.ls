@@ -341,7 +341,7 @@
                     (root_push arg1-result)
                     (let [result
                             (if (= (result-failed arg1-result) 1)
-                              (propagate-error-result arg1-result)
+                              (propagate-error-result-with-span arg1-result)
                               (let [s2 (result-subst arg1-result)
                                 arg1-ty (result-type arg1-result)]
                                 (do

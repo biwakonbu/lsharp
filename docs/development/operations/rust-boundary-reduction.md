@@ -1879,3 +1879,11 @@ Evidence: RED `test_e2e_selfhost_typeinfer_analysis_reports_nested_if_failure_sp
 Evidence: RED `test_e2e_selfhost_typeinfer_analysis_reports_apply_callee_failure_span` は `(defn fail [] (missing 2))` で first-error span `-1` を返した（30.08s）。GREEN は同じ selfhost TypeInfer fixtureで diagnostics `1`、`missing` の span `15..22` を確認した（30.77s）。既存 apply error-code 2件は通常 stackでは既知の stack overflowになるが、`RUST_MIN_STACK=134217728` で `2 passed`（46.11s）。変更後の `cargo run --quiet --bin lsharp -- check examples/fib.ls` は `Fn`、diagnostics `0` で passした。
 
 これは apply callee failureの byte-span forwardingだけを閉じる verified sliceであり、argument failure、lambda body、let/do/computation、record/pattern、0〜7以外の arity、unify failureの diagnostic span、line/column projection、standalone source-check `0`、Mac Apple Silicon / Linux x86_64 current-source native artifact/runtime gate、EC-M1-01 aggregateの完了を意味しない。`TODO.md` の `[~]` と Rust oracle / bootstrap / host integration 境界は維持する。次は apply argumentまたは let initializerのどちらか一つを REDに固定する。
+
+### EC-M1-01 arity-1 apply argument error span propagation slice (2026-07-23)
+
+arity-1 applyの argument failure forwardingを `propagate-error-result-with-span` へ接続し、callee成功後に未定義 argumentが失敗した場合も source spanを保持するようにした。既存の callee forwarding、arg mismatch code、2引数以上の arity分岐は変更しない。
+
+Evidence: RED `test_e2e_selfhost_typeinfer_analysis_reports_apply_argument_failure_span` は `(defn fail [] (not missing))` で first-error span `-1` を返した（28.54s）。GREEN は同じ selfhost TypeInfer fixtureで diagnostics `1`、`missing` の span `19..26` を確認した（29.59s）。変更後の `cargo run --quiet --bin lsharp -- check examples/fib.ls` は `Fn`、diagnostics `0` で passした。
+
+これは arity-1 apply argumentの byte-span forwardingだけを閉じる verified sliceであり、2〜7引数の argument forwarding、lambda body、let/do/computation、record/pattern、unify failureの diagnostic span、line/column projection、standalone source-check `0`、Mac Apple Silicon / Linux x86_64 current-source native artifact/runtime gate、EC-M1-01 aggregateの完了を意味しない。`TODO.md` の `[~]` と Rust oracle / bootstrap / host integration 境界は維持する。次は let initializerの span propagationまたは standalone source-check failure-definition分類を REDに固定する。
