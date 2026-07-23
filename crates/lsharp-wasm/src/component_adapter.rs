@@ -400,6 +400,34 @@ world preview1-adapter {
     }
 
     #[test]
+    fn test_componentize_linear_list_u8_output_exposes_canonical_pair_contract() {
+        let wit_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .join("wit")
+            .join("lsharp-wasmgc-output.wit");
+
+        let core_wasm = wat::parse_str(
+            r#"
+(module
+  (type (func (param i32 i32)))
+  (type (func (result i64)))
+  (import "lsharp:wasmgc-output/stdout@0.1.0" "write" (func $write (type 0)))
+  (memory (export "memory") 1)
+  (func (export "main") (type 1)
+    i64.const 0)
+)
+"#,
+        )
+        .unwrap();
+
+        let component = componentize_core_module(&core_wasm, &wit_file, "wasmgc-output", &[])
+            .expect("linear list<u8> import は canonical pair へ lower できるべき");
+        Component::new(&Engine::default(), &component)
+            .expect("canonical list<u8> の component は validation に成功するべき");
+    }
+
+    #[test]
     fn test_componentize_wasmgc_core_reports_missing_gc_component_bridge() {
         let wit_dir = unique_temp_dir("wasmgc_bridge");
         fs::write(

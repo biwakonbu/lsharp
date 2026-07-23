@@ -446,6 +446,24 @@ verified boundary である。次の実装 task は、(1) GC array→canonical `
 (2) core module 内の array→linear-memory copy と WASI `fd_write` の partial/error parity、
 (3) Component Model の actual instantiate/runner evidence、の三つに分ける。
 
+## Stage 2l 検証済み slice: output `list<u8>` canonical pair 契約 (2026-07-24)
+
+GC array を Component Model へ接続する前段として、WIT と core module の ABI を linear probe で
+固定した。
+
+- `wit/lsharp-wasmgc-output.wit` は `lsharp:wasmgc-output@0.1.0` の `stdout` interface と
+  `write(bytes: list<u8>)` を定義する。bytes は呼び出し中だけ有効な opaque byte list とし、
+  UTF-8/code-point 解釈は上位の String/runtime 層へ残す。
+- `wit-component` の canonical lowering では core import
+  `lsharp:wasmgc-output/stdout@0.1.0::write` が `(i32, i32) -> ()` となり、core module の
+  exported `memory` を読む。入力 list だけの contract では `cabi_realloc` を要求しない。
+- `test_componentize_linear_list_u8_output_exposes_canonical_pair_contract` が、この WIT world と
+  pair signature を componentize/validate する。WasmGC `env.print-string` の GC reference を
+  この pair へ copy する実装はまだ追加しない。
+
+これは ABI と ownership の verified partial slice であり、WasmGC array→linear-memory copy、
+WASI `fd_write`、host error/trap parity、Component runner、native/selfhost parity は未完了である。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線
@@ -476,10 +494,10 @@ verified boundary である。次の実装 task は、(1) GC array→canonical `
 - 文字列リテラル/操作を `array.new_data` / `array.get_u` / `array.len` へ。
   WASI fd_write へ渡す際は array → リニアメモリへのコピーが必要
   (`array.copy` 不可のため要素ループまたは `array.init_data` の逆操作を helper 化)
-- Stage 2k の明示拒否を前提に、次の WASI/component adapter 実装を三つの observable contract
-  へ分ける。まず GC array→canonical `list<u8>` の ABI を決め、次に core module 内の
-  array→linear-memory copy と WASI `fd_write` の partial/error semantics を固定し、最後に
-  Component Model の actual instantiate/runner と native/selfhost parity を検証する。
+- Stage 2k の明示拒否と Stage 2l の `(ptr, len)` ABI を前提に、次の WASI/component adapter
+  実装を三つの observable contract へ分ける。まず GC array→linear-memory copy を ABI に合わせて
+  実装し、次に WASI `fd_write` の partial/error semantics を固定し、最後に Component Model の
+  actual instantiate/runner と native/selfhost parity を検証する。
   synthetic import の instantiate 成功、host callback 単体の byte read、core runner 単体の success、
   writer adapter 単体の success は、公開 component print 完了の証拠に数えない。
 
@@ -536,7 +554,8 @@ scalar String GC equality slice、Stage 2c の scalar String GC concat slice、S
 String GC substring slice、Stage 2e の packed String byte array slice、Stage 2f の substring invalid
 range boundary、Stage 2g の `print-string` external import boundary、Stage 2h の host-side packed
 String read、Stage 2i の WasmGC runner stdout sink、Stage 2j の `std::io::Write` adapter、Stage 2k の
-WasmGC Component bridge 明示拒否は 2026-07-24 に検証済み。ADT
+WasmGC Component bridge 明示拒否、Stage 2l の output `list<u8>` canonical pair 契約は
+2026-07-24 に検証済み。ADT
 の全表現、Stage 2 の残り (Unicode code-point semantics / WASI-component I/O /
 native-selfhost parity)、Stage 3 以降
 (closures / traits / selfhost)、supported target

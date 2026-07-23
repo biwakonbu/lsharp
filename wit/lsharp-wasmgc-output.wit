@@ -1,0 +1,17 @@
+/// L# WasmGC output bridge
+///
+/// WasmGC の packed byte array を Component Model の canonical ABI へ渡すための
+/// 最小 output interface。実装時には core module 内で array→linear-memory の copy を
+/// 行い、host は一回の呼び出しで bytes 全量を消費する。
+
+package lsharp:wasmgc-output@0.1.0;
+
+interface stdout {
+  /// opaque bytes。呼び出し中だけ有効で、host 側の所有権を持たない。
+  write: func(bytes: list<u8>);
+}
+
+world wasmgc-output {
+  import stdout;
+  export main: func() -> s64;
+}

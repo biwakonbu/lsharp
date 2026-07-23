@@ -8,6 +8,7 @@ WASI Preview2 / Component Model への移行に向けた WIT (WebAssembly Interf
 |---------|------|
 | `lsharp-compiler.wit` | CLI コンパイラ component world (wasi:cli + wasi:filesystem) |
 | `lsharp-http-handler.wit` | HTTP handler component world (wasi:http/incoming-handler) |
+| `lsharp-wasmgc-output.wit` | WasmGC `print-string` を `list<u8>` output へ接続する候補 interface |
 | `lsharp-core.wit` | 共有インターフェース (compiler, host-fs, host-process) |
 | `deps/http.wit` | `lsharp-http-handler.wit` が参照する vendored `wasi:http` package |
 
