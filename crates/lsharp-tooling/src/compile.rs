@@ -340,6 +340,63 @@ mod tests {
     }
 
     #[test]
+    fn test_compile_file_wasmgc_backend_executes_adt_constructor_and_match() {
+        let dir = std::env::temp_dir().join("lsharp_compile_pipeline_wasmgc_adt");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(dir.join(".git")).unwrap();
+
+        let file = dir.join("Main.ls");
+        let output = dir.join("Main.wasm");
+        std::fs::write(
+            &file,
+            "(type Maybe (Just Int) Nothing)\n\
+             (defn unwrap [value] (match value [(Just x) x] [Nothing 0]))\n\
+             (defn main [] (+ (unwrap (Just 42)) (unwrap Nothing)))\n",
+        )
+        .unwrap();
+
+        let artifacts = compile_file_with_backend(
+            &file,
+            Some(&output),
+            false,
+            Some(CompileTarget::WebWasm),
+            CompileBackend::WasmGc,
+        )
+        .unwrap();
+        let wasm_bytes = std::fs::read(&artifacts.output_path).unwrap();
+
+        let mut config = wasmtime::Config::new();
+        config.wasm_gc(true);
+        let engine = wasmtime::Engine::new(&config).unwrap();
+        let module = wasmtime::Module::new(&engine, wasm_bytes).unwrap();
+        let mut store = wasmtime::Store::new(&engine, ());
+        let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
+        let main = instance
+            .get_typed_func::<(), i64>(&mut store, "main")
+            .unwrap();
+        assert_eq!(main.call(&mut store, ()).unwrap(), 42);
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_wasmgc_backend_rejects_nested_or_literal_adt_pattern() {
+        let error = compile_module_from_formatted_source(
+            Path::new("Main.ls"),
+            "(type Maybe (Just Int) Nothing)\n\
+             (defn unwrap [value] (match value [(Just 1) 1] [Nothing 0]))\n",
+            CompileBackend::WasmGc,
+        )
+        .expect_err(
+            "WasmGC backend は未対応の ADT pattern を暗黙に linear lowering してはならない",
+        );
+
+        assert!(error.to_string().contains("LS3001"));
+        assert!(error.to_string().contains("nested/literal"));
+    }
+
+    #[test]
     fn test_compile_file_wasmgc_backend_executes_nested_record_access() {
         let dir = std::env::temp_dir().join("lsharp_compile_pipeline_wasmgc_nested_record");
         let _ = std::fs::remove_dir_all(&dir);

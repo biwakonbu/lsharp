@@ -78,6 +78,8 @@ pub struct Lower {
     pub(crate) adt_variant_indices: HashMap<String, (u32, i32)>,
     /// ADT 型名 -> バリアント情報リスト [(name, gc_idx, tag, field_count)]
     pub(crate) adt_type_info: HashMap<String, Vec<(String, u32, i32, usize)>>,
+    /// ADT 型名 -> WasmGC struct 型インデックス
+    pub(crate) adt_type_indices: HashMap<String, u32>,
     /// 文字列定数データ [(label, bytes)]
     pub(crate) string_data: Vec<(String, Vec<u8>)>,
     /// 次の文字列データオフセット
@@ -124,6 +126,7 @@ impl Lower {
             trait_method_names: HashMap::new(),
             adt_variant_indices: HashMap::new(),
             adt_type_info: HashMap::new(),
+            adt_type_indices: HashMap::new(),
             string_data: Vec::new(),
             string_offset: 512, // 文字列データの開始位置（メモリ先頭は数値変換バッファ用）
             computation_builders: HashMap::new(),
@@ -158,6 +161,7 @@ impl Lower {
         self.trait_method_names.clear();
         self.adt_variant_indices.clear();
         self.adt_type_info.clear();
+        self.adt_type_indices.clear();
         self.string_data.clear();
         self.string_offset = 512;
         self.computation_builders.clear();
@@ -206,17 +210,54 @@ impl Lower {
             }
         }
 
-        // ADT 型定義のバリアント情報を登録
-        // リニアメモリ版では GC 型は不要 (ヒープに直接書き込む)
+        // ADT 型定義を WasmGC struct として登録する。
+        //
+        // Stage 1 では全バリアントを同じ struct に載せ、field 0 を variant tag、
+        // 残りを i64 payload slot とする。異なる payload 型や nested constructor は
+        // 後続 slice で型付きフィールドへ拡張する。
         for decl in &program.decls {
             if let Decl::TypeDef { name, variants, .. } = unwrap_private(decl) {
+                let max_field_count = variants
+                    .iter()
+                    .map(|variant| variant.fields.len())
+                    .max()
+                    .unwrap_or(0);
+                let gc_idx = if self.backend == LowerBackend::WasmGc {
+                    let gc_idx = self.gc_types.len() as u32;
+                    self.adt_type_indices.insert(name.clone(), gc_idx);
+                    let mut gc_fields = Vec::with_capacity(max_field_count + 1);
+                    gc_fields.push(GcField {
+                        name: "tag".to_string(),
+                        ty: IrType::I64,
+                        mutable: false,
+                    });
+                    for field_idx in 0..max_field_count {
+                        gc_fields.push(GcField {
+                            name: format!("field_{field_idx}"),
+                            ty: IrType::I64,
+                            mutable: false,
+                        });
+                    }
+                    self.gc_types.push(GcTypeDef {
+                        name: name.clone(),
+                        kind: GcTypeKind::Struct(gc_fields),
+                    });
+                    gc_idx
+                } else {
+                    0
+                };
+
                 let mut variant_infos = Vec::new();
                 for (tag, variant) in variants.iter().enumerate() {
                     let tag_val = tag as i32;
-                    // gc_idx は互換性のため 0 を設定 (リニアメモリ版では未使用)
                     self.adt_variant_indices
-                        .insert(variant.name.clone(), (0, tag_val));
-                    variant_infos.push((variant.name.clone(), 0, tag_val, variant.fields.len()));
+                        .insert(variant.name.clone(), (gc_idx, tag_val));
+                    variant_infos.push((
+                        variant.name.clone(),
+                        gc_idx,
+                        tag_val,
+                        variant.fields.len(),
+                    ));
                 }
                 self.adt_type_info.insert(name.clone(), variant_infos);
             }
@@ -433,14 +474,21 @@ impl Lower {
     pub(crate) fn lower_adt_constructors(&self, program: &Program) -> Vec<crate::Function> {
         let mut functions = Vec::new();
         for decl in &program.decls {
-            if let Decl::TypeDef { variants, .. } = unwrap_private(decl) {
+            if let Decl::TypeDef { name, variants, .. } = unwrap_private(decl) {
+                let gc_type_idx = self.adt_type_indices.get(name).copied().unwrap_or(0);
+                let max_field_count = variants
+                    .iter()
+                    .map(|variant| variant.fields.len())
+                    .max()
+                    .unwrap_or(0);
                 for variant in variants {
-                    if let Some(&(gc_idx, tag_val)) = self.adt_variant_indices.get(&variant.name) {
+                    if let Some(&(_, tag_val)) = self.adt_variant_indices.get(&variant.name) {
                         let ctor = self.generate_adt_constructor(
                             &variant.name,
-                            gc_idx,
+                            gc_type_idx,
                             tag_val,
                             variant.fields.len(),
+                            max_field_count,
                         );
                         functions.push(ctor);
                     }
@@ -463,16 +511,29 @@ impl Lower {
                 gc_types.push(self.gc_types[gc_idx as usize].clone());
             }
         }
+        for decl in &program.decls {
+            if let Decl::TypeDef { name, .. } = unwrap_private(decl)
+                && let Some(&gc_idx) = self.adt_type_indices.get(name)
+            {
+                gc_types.push(self.gc_types[gc_idx as usize].clone());
+            }
+        }
         gc_types
     }
 
     /// L# 型を選択した値表現の IR 型へ変換する。
     pub(crate) fn ir_type_for_type(&self, ty: &Type) -> IrType {
-        if self.backend == LowerBackend::WasmGc
-            && let Type::Record(name, _) = ty
-            && let Some(&gc_idx) = self.record_type_indices.get(name)
-        {
-            return IrType::Ref(gc_idx);
+        if self.backend == LowerBackend::WasmGc {
+            if let Type::Record(name, _) = ty
+                && let Some(&gc_idx) = self.record_type_indices.get(name)
+            {
+                return IrType::Ref(gc_idx);
+            }
+            if let Some(name) = type_to_name(ty)
+                && let Some(&gc_idx) = self.adt_type_indices.get(&name)
+            {
+                return IrType::Ref(gc_idx);
+            }
         }
         type_to_ir(ty)
     }
@@ -481,11 +542,27 @@ impl Lower {
     pub(crate) fn type_expr_to_ir(&self, ty: &lsharp_syntax::ast::TypeExpr) -> IrType {
         if self.backend == LowerBackend::WasmGc
             && let lsharp_syntax::ast::TypeExpr::Named(_, name) = ty
-            && let Some(&gc_idx) = self.record_type_indices.get(name)
         {
-            return IrType::Ref(gc_idx);
+            if let Some(&gc_idx) = self.record_type_indices.get(name) {
+                return IrType::Ref(gc_idx);
+            }
+            if let Some(&gc_idx) = self.adt_type_indices.get(name) {
+                return IrType::Ref(gc_idx);
+            }
         }
         type_expr_to_ir(ty)
+    }
+
+    pub(crate) fn ir_type_for_type_name(&self, type_name: &str) -> IrType {
+        if self.backend == LowerBackend::WasmGc {
+            if let Some(&gc_idx) = self.record_type_indices.get(type_name) {
+                return IrType::Ref(gc_idx);
+            }
+            if let Some(&gc_idx) = self.adt_type_indices.get(type_name) {
+                return IrType::Ref(gc_idx);
+            }
+        }
+        IrType::I64
     }
 
     /// プログラム全体を IR に変換

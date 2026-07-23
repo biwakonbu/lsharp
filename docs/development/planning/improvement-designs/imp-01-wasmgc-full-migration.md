@@ -113,8 +113,23 @@ WASI/component runtime、Mac/Linux 2 target の native E2E、selfhost compiler �
   `test_compile_file_wasmgc_backend_executes_nested_record_access`、
   `test_compile_file_wasmgc_backend_executes_record_update`、WasmGC probe 8 件。
 
-この slice は records の direct construction/access と user-function call に限定される。
-ADT constructor/pattern、GC root/allocator、strings、WASI/component、Mac/Linux 2 target、selfhost
+## Stage 1.75a 検証済み slice: scalar ADT constructor と pattern (2026-07-24)
+
+record slice と同じ WasmGC core compile path に、非パラメトリック ADT の最小構築・分岐を接続した。
+
+- `TypeDef` ごとに GC struct type を登録し、フィールド 0 を `i64` の tag、後続を variant 間で
+  共有する `i64` payload slot とする。各 constructor は tag と payload を `StructNew` で生成し、
+  nullary constructor は残りの slot を 0 で埋める。
+- constructor pattern は `StructGet(type, 0)` の tag 比較で分岐し、`Var` / wildcard payload を
+  `StructGet` して typed local へ束縛する。nested / literal pattern、型付き payload、GADT、
+  パラメトリック ADT はこの slice の外側であり、WasmGC 未対応診断へ止める。
+- `test_compile_file_wasmgc_backend_executes_adt_constructor_and_match` が `(Just 42)` と
+  `Nothing` の両方を実際に構築・match し、`--backend=wasmgc --target=web-wasm` の Wasmtime
+  実行結果を確認する。WasmGC の user-call 経路では linear GC root 操作を挿入しないため、
+  root stack / allocator / strings / collections の一般対応をこの証跡へ拡大解釈しない。
+
+この段階で records と scalar ADT の direct construction/access/pattern は検証済みだが、
+ADT の全表現、GC root/allocator、strings、WASI/component、Mac/Linux 2 target、selfhost
 compiler は次の残件として維持する。
 
 ## 実装戦略
@@ -193,6 +208,7 @@ compiler は次の残件として維持する。
 ## ステータス
 
 Stage 0 (依存 API / runtime capability probe)、Stage 1 の IR emitter、Stage 1.5 の CLI 選択、
-Stage 1.75 の direct record lowering/update/user call slice は 2026-07-24 に検証済み。ADT、
-Stage 2 以降 (strings / closures / traits / selfhost)、supported target の actual runtime evidence
-は未完了であり、`LEGACY-EXEC-01` の完了条件には到達していない。
+Stage 1.75 の direct record lowering/update/user call と scalar ADT constructor/pattern slice は
+2026-07-24 に検証済み。ADT の全表現、Stage 2 以降 (strings / closures / traits / selfhost)、
+supported target の actual runtime evidence は未完了であり、`LEGACY-EXEC-01` の完了条件には
+到達していない。

@@ -32,7 +32,12 @@ impl Lower {
             Pattern::Var(_, name) => {
                 // scrutinee を変数に束縛
                 ctx.emit(Instruction::LocalGet(scrut_local));
-                let var_local = ctx.alloc_local(name.clone());
+                let var_type = ctx
+                    .local_types
+                    .get(scrut_local as usize)
+                    .copied()
+                    .unwrap_or(IrType::I64);
+                let var_local = ctx.alloc_local_typed(name.clone(), var_type);
                 ctx.emit(Instruction::LocalSet(var_local));
                 self.lower_arm_body_with_guard(ctx, scrut_local, arms, arm, idx)?;
             }
@@ -58,6 +63,9 @@ impl Lower {
                 ctx.emit(Instruction::End);
             }
             Pattern::Constructor(_, name, sub_pats) if sub_pats.is_empty() => {
+                if self.backend == super::LowerBackend::WasmGc {
+                    return self.lower_wasmgc_constructor_arm(ctx, scrut_local, arms, arm, idx);
+                }
                 // 引数なしコンストラクタ: リニアメモリからバリアントタグを読み出して比較
                 // BUG-3 修正: 最後の腕でもタグ比較を行う（デフォルト扱いしない）
                 let tag = self
@@ -82,6 +90,9 @@ impl Lower {
                 ctx.emit(Instruction::End);
             }
             Pattern::Constructor(_, name, sub_pats) => {
+                if self.backend == super::LowerBackend::WasmGc {
+                    return self.lower_wasmgc_constructor_arm(ctx, scrut_local, arms, arm, idx);
+                }
                 // 引数付きコンストラクタ: リニアメモリからバリアントタグとフィールドを読み出す
                 let tag = self
                     .adt_variant_indices
@@ -384,6 +395,63 @@ impl Lower {
                 }
             }
         }
+        Ok(())
+    }
+
+    fn lower_wasmgc_constructor_arm(
+        &mut self,
+        ctx: &mut FuncCtx,
+        scrut_local: u32,
+        arms: &[MatchArm],
+        arm: &MatchArm,
+        idx: usize,
+    ) -> Result<(), LowerError> {
+        let Pattern::Constructor(_, name, sub_pats) = &arm.pattern else {
+            return Err(LowerError::Unsupported {
+                msg: "WasmGC ADT pattern の内部形式が不正です".to_string(),
+                span: Some(arm.span),
+            });
+        };
+        if sub_pats
+            .iter()
+            .any(|pattern| !matches!(pattern, Pattern::Var(_, _) | Pattern::Wildcard(_)))
+        {
+            return Err(LowerError::Unsupported {
+                msg: format!("WasmGC ADT の nested/literal pattern: {name}"),
+                span: Some(arm.span),
+            });
+        }
+
+        let Some(&(gc_type_idx, tag)) = self.adt_variant_indices.get(name) else {
+            return Err(LowerError::Unsupported {
+                msg: format!("WasmGC ADT variant を解決できません: {name}"),
+                span: Some(arm.span),
+            });
+        };
+
+        ctx.emit(Instruction::LocalGet(scrut_local));
+        ctx.emit(Instruction::StructGet(gc_type_idx, 0));
+        ctx.emit(Instruction::I64Const(tag as i64));
+        ctx.emit(Instruction::I64Eq);
+        ctx.emit(Instruction::If(IrType::I64));
+
+        for (field_idx, pattern) in sub_pats.iter().enumerate() {
+            if let Pattern::Var(_, var_name) = pattern {
+                ctx.emit(Instruction::LocalGet(scrut_local));
+                ctx.emit(Instruction::StructGet(gc_type_idx, field_idx as u32 + 1));
+                let var_local = ctx.alloc_local_typed(var_name.clone(), IrType::I64);
+                ctx.emit(Instruction::LocalSet(var_local));
+            }
+        }
+        self.lower_arm_body_with_guard(ctx, scrut_local, arms, arm, idx)?;
+
+        ctx.emit(Instruction::Else);
+        if idx == arms.len() - 1 {
+            ctx.emit(Instruction::Unreachable);
+        } else {
+            self.lower_match_arms(ctx, scrut_local, arms, idx + 1)?;
+        }
+        ctx.emit(Instruction::End);
         Ok(())
     }
 }

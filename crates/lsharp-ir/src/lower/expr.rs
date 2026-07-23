@@ -7,7 +7,7 @@ use lsharp_syntax::span::Span;
 
 use crate::{Function, Instruction, IrType, closure};
 
-use super::{FuncCtx, Lower, LowerError, is_builtin_binop, is_heap_like_type_name};
+use super::{FuncCtx, Lower, LowerBackend, LowerError, is_builtin_binop, is_heap_like_type_name};
 
 impl Lower {
     /// 式を IR 命令に変換（スタックマシン方式）
@@ -1441,10 +1441,17 @@ impl Lower {
             }
 
             Expr::Match(_, scrutinee, arms) => {
-                // MVP: 簡易パターンマッチ（ADT なし、リテラル/変数のみ）
                 // scrutinee を評価してローカルに保存
                 self.lower_expr(ctx, scrutinee)?;
-                let scrut_local = ctx.alloc_local("_match".to_string());
+                let scrut_type_name = self.infer_expr_type_name_with_ctx(ctx, scrutinee);
+                let scrut_ir_type = scrut_type_name
+                    .as_deref()
+                    .map(|name| self.ir_type_for_type_name(name))
+                    .unwrap_or(IrType::I64);
+                let scrut_local = ctx.alloc_local_typed("_match".to_string(), scrut_ir_type);
+                if let Some(type_name) = scrut_type_name {
+                    ctx.local_type_names.insert("_match".to_string(), type_name);
+                }
                 ctx.emit(Instruction::LocalSet(scrut_local));
 
                 // ネストした if-else チェインで変換
@@ -1975,6 +1982,10 @@ impl Lower {
     }
 
     fn should_root_user_call_argument(&self, ctx: &FuncCtx, expr: &Expr) -> bool {
+        if self.backend == LowerBackend::WasmGc {
+            return false;
+        }
+
         self.infer_expr_type_name_with_ctx(ctx, expr)
             .map(|type_name| is_heap_like_type_name(&type_name))
             .unwrap_or_else(|| self.should_conservatively_root_unknown_argument(expr))

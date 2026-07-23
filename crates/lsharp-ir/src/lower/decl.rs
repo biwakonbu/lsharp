@@ -319,17 +319,40 @@ impl Lower {
         }
     }
 
-    /// ADT コンストラクタ関数を生成 (リニアメモリ版)
+    /// ADT コンストラクタ関数を生成する。
     ///
     /// ヒープレイアウト: [heap_tag=3: i32, variant_tag: i32, field_0: i64, ...]
     /// __alloc でメモリ確保 → ヘッダ書き込み → フィールド書き込み → タグ付きポインタ返却
     pub(crate) fn generate_adt_constructor(
         &self,
         variant_name: &str,
-        _gc_type_idx: u32,
+        gc_type_idx: u32,
         tag_val: i32,
         field_count: usize,
+        max_field_count: usize,
     ) -> Function {
+        if self.backend == super::LowerBackend::WasmGc {
+            let mut body = Vec::with_capacity(max_field_count + 2);
+            body.push(Instruction::I64Const(tag_val as i64));
+            for field_idx in 0..max_field_count {
+                if field_idx < field_count {
+                    body.push(Instruction::LocalGet(field_idx as u32));
+                } else {
+                    body.push(Instruction::I64Const(0));
+                }
+            }
+            body.push(Instruction::StructNew(gc_type_idx));
+
+            return Function {
+                name: variant_name.to_string(),
+                params: vec![IrType::I64; field_count],
+                result: IrType::Ref(gc_type_idx),
+                locals: Vec::new(),
+                body,
+                is_export: false,
+            };
+        }
+
         let mut body = Vec::new();
         // ローカル変数の割り当て:
         // 0..field_count: パラメータ (フィールド値)
@@ -576,10 +599,11 @@ impl Lower {
                 .cloned()
                 .flatten()
                 .or_else(|| param.ty.as_ref().and_then(type_expr_to_name));
-            if type_name
-                .as_deref()
-                .map(is_heap_like_type_name)
-                .unwrap_or(false)
+            if self.backend == super::LowerBackend::Linear
+                && type_name
+                    .as_deref()
+                    .map(is_heap_like_type_name)
+                    .unwrap_or(false)
             {
                 let slot_local = ctx.alloc_local(format!("_self_tco_param{param_idx}_root_slot"));
                 self_tco_root_slots.push((param_idx as u32, slot_local));
