@@ -685,3 +685,30 @@ fn test_e2e_selfhost_typeinfer_error_computation_propagates_infinite_code() {
         "computation step failure の infinite error code は E0005 を維持すべき"
     );
 }
+
+/// selfhost TypeInfer.ls テスト: 最初に失敗した top-level 定義の位置を保持する
+#[test]
+fn test_e2e_selfhost_typeinfer_analysis_reports_first_failed_definition_index() {
+    let harness = r#"
+(defn main []
+  (let [analysis
+          (infer-program-analysis
+            (parse-program "(defn ok [] 42) (defn fail [] missing)"))]
+    (do
+      (print (infer-program-analysis-diagnostic-count analysis))
+      (print (infer-program-analysis-first-error-index analysis))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_typeinfer_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["1", "1"],
+        "最初の失敗定義の index と診断数を保持するべき"
+    );
+}
