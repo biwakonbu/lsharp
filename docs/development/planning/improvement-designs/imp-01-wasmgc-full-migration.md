@@ -41,6 +41,24 @@ WasmGC への移行に必要な **IR レベルの語彙は既に存在する**�
   3. 不足する場合は wasmtime / wasm-encoder の更新を先行タスク化し、
      更新後に既存 E2E 全件 green を確認する
 
+## Stage 0 検証結果 (2026-07-24)
+
+依存バージョンの前提を、最小の self-contained module で検証した。
+
+- `wasm-encoder 0.245.1` の `TypeSection::struct_` と
+  `Instruction::{StructNew, StructGet}` で `struct { i64 }` を符号化できる。
+- `wasmtime 29.0.1` は `Config::wasm_gc(true)` を有効にした engine で、その module を
+  検証・instantiate・実行できる。`struct.new` で `42` を格納し、`struct.get` で読み出す
+  `read-field` の結果 `42` を確認した。
+- GC feature を有効化しない engine では同じ module が検証拒否されるため、backend は
+  WasmGC capability を明示的に有効化する必要がある。
+- 実行契約は `crates/lsharp-wasm/src/wasmgc.rs` と
+  `crates/lsharp-wasm/tests/wasmgc_probe.rs` に固定した。
+
+これは依存 API と runtime capability の確認であり、L# IR の records/ADT lowering、CLI の
+`--backend=wasmgc`、文字列・closure・trait の移行、対応 target の native E2E を完了した
+ことを意味しない。次の実装単位は Stage 1 の IR 型登録と records の WasmGC emitter である。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線
@@ -115,5 +133,6 @@ WasmGC への移行に必要な **IR レベルの語彙は既に存在する**�
 
 ## ステータス
 
-設計 (2026-06-12 起草、同日コード検証に基づき具体化)。
-着手時は TODO.md に Phase B-1 として Stage 単位の項目を作成する。
+Stage 0 (依存 API / runtime capability probe) は 2026-07-24 に検証済み。
+Stage 1 以降 (L# IR の records/ADT lowering と WasmGC emitter) は未着手であり、
+`LEGACY-EXEC-01` の完了条件には到達していない。
