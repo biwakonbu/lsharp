@@ -1790,6 +1790,14 @@ Evidence: RED `test_e2e_selfhost_test_runner_preserves_non_bool_compound_match_g
 
 この slice は known compound match guard の message projectionだけを閉じるもので、全 match predicate、全診断本文の型推論 parity、structured/text report の全境界、EC-M1-01 aggregate の完了を意味しない。Standalone source check は `cargo run --quiet --bin lsharp -- check selfhost/src/Tools/Test/TestRunner.ls` を試行したが、既存の `undefined symbol` 289 diagnostics で失敗したため、この slice の focused bundle GREEN を source-file check 全体の成功へ拡大解釈しない。TODO の `[~]` と Rust oracle / bootstrap / host integration 境界は維持する。
 
+### EC-M1-01 standalone TestRunner source-check failure classification (2026-07-23)
+
+current source の `cargo run --quiet --bin lsharp -- check selfhost/src/Tools/Test/TestRunner.ls` は、復元した実装で `diagnostics.count=289`、`firstErrorCode=1`、exit `1` を返した。専用 worktree 内の識別実験で、新規の `invariant-static-if-branch-mismatch` と `invariant-match-branch-mismatch-index` の本体を両方 no-op にすると `287`、片方だけ本体を戻すと `288`、両方を戻すと `289` になった。追加の2件は各 helper 定義に対応する。
+
+definition-index trace では、両 helper が呼ぶ既存の `invariant-static-bool-kind-with-program` 自体が standalone checker の既存 failure definition であり、failed definition を環境から除去する現在の単一ファイル解析により、新しい caller 側が `undefined symbol` として数えられることを確認した。`ast-if` / `ast-match-guard` を数値 tagへ置換する識別実験でも `289` は変わらず、import symbolだけを置換してもこの境界は解消しない。
+
+これは compound guard の focused runtime / full CLI JSON / Mac Apple Silicon / Linux x86_64 native gateの失敗ではなく、standalone source-check の定義別 provenance・import-aware resolution不足である。次の RED はこの集計を広く書き換えず、失敗した定義名・依存先・source spanを一件ずつ観測できる診断契約に固定する。source-file checkが `0` になるまで、EC-M1-01 aggregateの完了やRust-free全体完了とは扱わない。
+
 ### EC-M1-01 current-source dual-target gates after compound match guard branch diagnostic projection (2026-07-23)
 
 `fafd8063b39985a098bbe388b8c079caebdd169e` を current source として、compound match guard branch diagnostic projection 後の Mac Apple Silicon / Linux x86_64 native evidence を取り直した。共有 root worktree の無関係な dirty files を保全するため、専用 worktree・Cargo target・artifact path で検証し、完了後に専用 worktree と target を削除した。
