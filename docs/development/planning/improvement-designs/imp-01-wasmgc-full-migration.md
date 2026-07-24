@@ -1065,6 +1065,24 @@ check-write contract、stream error/resource failure、`subscribe`/poll readines
 stream の残る operation、Wasm artifact/runtime differential、Mac Apple Silicon/Linux x86_64、
 native/selfhost parity は未完了である。
 
+## Stage 2av 検証済み slice: output-stream direct write-zeroes lifecycle (2026-07-24)
+
+Stage 2au の readiness/write/flush boundary に加えて、read-write named preopen の output stream
+から `check-write` の permit を取得して直接 `write-zeroes` を行う precondition、
+`blocking-flush`、result/drop、host artifact 境界を actual Component で検証した。
+
+- `wasm_gc_component_cli_fs_runner_writes_zeroes_after_check_write_then_drops_resources` は
+  `direct-zeroes.bin` を create+truncate+write で開き、`write-via-stream(0)` で得た output stream に
+  `check-write` を実行する。
+- 4 bytes 以上の permit を確認した後、`write-zeroes(4)` と `blocking-flush` の success result を
+  確認する。output stream、file descriptor、preopen を drop し、host file が `[0, 0, 0, 0]`、
+  stdout empty、`wasi:cli/run` exit 0 になることを同じ実行で確認する。
+
+これは output-stream direct zero-fill の verified partial slice であり、stream error/resource
+failure、zero-length write、`subscribe`/poll readiness、`splice`、input stream の残る operation、
+Wasm artifact/runtime differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity は未完了
+である。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線
