@@ -21,8 +21,8 @@ input stream、descriptor、preopen を drop する。
 ## Evidence
 
 - Test: `crates/lsharp-wasm/tests/wasmgc_probe.rs`
-- Test: `wasm_gc_component_cli_fs_runner_reads_nonblocking_input_stream_and_completes_remaining_bytes`
-- Focused gate: `cargo test -p lsharp-wasm --test wasmgc_probe wasm_gc_component_cli_fs_runner_reads_nonblocking_input_stream_and_completes_remaining_bytes -- --nocapture`
+- Test: `wasm_gc_component_cli_fs_runner_reads_nonblocking_input_stream_and_completes_remaining_bytes_and_reports_eof`
+- Focused gate: `cargo test -p lsharp-wasm --test wasmgc_probe wasm_gc_component_cli_fs_runner_reads_nonblocking_input_stream_and_completes_remaining_bytes_and_reports_eof -- --nocapture`
 - Expected boundary: `read(0)` は空 list、`read(5)` と残量の `blocking-read` は success、stdout is `hello`、
   exit code is 0。
 

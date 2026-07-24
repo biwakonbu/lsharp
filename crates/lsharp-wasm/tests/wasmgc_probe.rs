@@ -1051,7 +1051,8 @@ fn wasm_gc_component_cli_fs_runner_skips_input_stream_then_reads_remaining_bytes
 }
 
 #[test]
-fn wasm_gc_component_cli_fs_runner_reads_nonblocking_input_stream_and_completes_remaining_bytes() {
+fn wasm_gc_component_cli_fs_runner_reads_nonblocking_input_stream_and_completes_remaining_bytes_and_reports_eof(
+) {
     let core = emit_component_cli_read_stream_probe_module();
     let wit_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
@@ -1094,7 +1095,7 @@ fn wasm_gc_component_cli_fs_runner_reads_nonblocking_input_stream_and_completes_
     )
     .expect("input-stream read を実行できる");
 
-    assert_eq!(output.stdout, "hello");
+    assert_eq!(output.stdout, "helloE");
     assert_eq!(output.exit_code, 0);
     std::fs::remove_dir_all(&dir).expect("read fixture directory を削除できる");
     std::fs::remove_dir_all(&extra_dir).expect("second read fixture directory を削除できる");
@@ -7017,6 +7018,7 @@ fn emit_component_cli_read_stream_probe_module() -> Vec<u8> {
     global.set $heap
     local.get $ptr)
   (data (i32.const 128) "input.txt")
+  (data (i32.const 144) "E")
   (func (export "wasi:cli/run@0.2.3#run") (type 2)
     (local $preopen i32)
     (local $descriptor i32)
@@ -7171,12 +7173,43 @@ fn emit_component_cli_read_stream_probe_module() -> Vec<u8> {
                       i32.load
                       call $write-stdout
                       local.get $stream
-                      call $drop-input-stream
-                      local.get $descriptor
-                      call $drop-descriptor
-                      local.get $preopen
-                      call $drop-descriptor
-                      i32.const 0
+                      i64.const 1
+                      i32.const 96
+                      call $read
+                      i32.const 96
+                      i32.load8_u
+                      if (result i32)
+                        local.get $stream
+                        call $drop-input-stream
+                        local.get $descriptor
+                        call $drop-descriptor
+                        local.get $preopen
+                        call $drop-descriptor
+                        i32.const 1
+                      else
+                        i32.const 104
+                        i32.load
+                        if (result i32)
+                          local.get $stream
+                          call $drop-input-stream
+                          local.get $descriptor
+                          call $drop-descriptor
+                          local.get $preopen
+                          call $drop-descriptor
+                          i32.const 1
+                        else
+                          i32.const 144
+                          i32.const 1
+                          call $write-stdout
+                          local.get $stream
+                          call $drop-input-stream
+                          local.get $descriptor
+                          call $drop-descriptor
+                          local.get $preopen
+                          call $drop-descriptor
+                          i32.const 0
+                        end
+                      end
                     end
                   end
                 end

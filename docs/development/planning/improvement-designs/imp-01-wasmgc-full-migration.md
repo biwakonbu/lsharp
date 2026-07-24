@@ -1121,15 +1121,30 @@ differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity は未完
 Stage 2ax の skip boundary に続き、read-only named preopen の input stream で non-blocking
 `read` の上限・空リスト契約と、残量を `blocking-read` で補完する Component 境界を検証した。
 
-- `wasm_gc_component_cli_fs_runner_reads_nonblocking_input_stream_and_completes_remaining_bytes`
+- `wasm_gc_component_cli_fs_runner_reads_nonblocking_input_stream_and_completes_remaining_bytes_and_reports_eof`
   は `input.txt` (`hello`) を開き、`read-via-stream(0)` で input stream を取得する。
 - `read(0)` が success かつ空 list を返すことを確認した後、`read(5)` の list length が要求値を
   超えないことを確認し、取得した bytes を stdout に渡す。
 - `5 - first_read_len` を `blocking-read` に渡し、残りの bytes を stdout に渡した後、input
   stream、descriptor、preopen を drop して `wasi:cli/run` exit 0、stdout `hello` を確認する。
 
-これは input-stream read の verified partial slice であり、stream error/closed、EOF・empty
-source、複数回の partial read、poll readiness、Wasm artifact/runtime differential、Mac Apple
+これは input-stream read の verified partial slice であり、stream error/closed、empty source、
+複数回の partial read、poll readiness、Wasm artifact/runtime differential、Mac Apple
+Silicon/Linux x86_64、native/selfhost parity は未完了である。
+
+## Stage 2az 検証済み slice: input-stream EOF read (2026-07-24)
+
+Stage 2ay の `hello` fixture を読み切った後、non-blocking `read(1)` が stream error ではなく
+success の空 list を返す EOF boundary を同じ actual Component で検証した。
+
+- `wasm_gc_component_cli_fs_runner_reads_nonblocking_input_stream_and_completes_remaining_bytes_and_reports_eof`
+  は `read(0)`、`read(5)`、残量の `blocking-read` で `hello` を消費する。
+- 直後に `read(1)` を呼び、result discriminant が success、list length が 0 であることを確認し、
+  EOF 確認 marker `E` を stdout に追加する。input stream、descriptor、preopen の drop と
+  `wasi:cli/run` exit 0、stdout `helloE` を同じ実行で確認する。
+
+これは regular-file EOF の verified partial slice であり、stream error/closed、empty source、
+複数回の partial read、poll readiness、Wasm artifact/runtime differential、Mac Apple
 Silicon/Linux x86_64、native/selfhost parity は未完了である。
 
 ## 実装戦略
