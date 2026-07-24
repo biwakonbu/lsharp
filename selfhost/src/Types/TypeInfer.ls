@@ -603,6 +603,58 @@
             qualified-env))))
     env))
 
+(defn typeinfer-qualify-import-record-accessors-loop
+  [raw-fields idx len alias-hash only-hashes open-flag env]
+  (if (>= idx len)
+    env
+    (let [accessor-hash (vector-get raw-fields (+ idx 1))]
+      (if (= (typeinfer-import-only-allows? only-hashes accessor-hash) 1)
+        (let [qualified-key (ast-qualified-name-hash alias-hash accessor-hash)
+          scheme (type-env-lookup env accessor-hash)]
+          (if (= scheme 0)
+            (typeinfer-qualify-import-record-accessors-loop
+              raw-fields
+              (+ idx 3)
+              len
+              alias-hash
+              only-hashes
+              open-flag
+              env)
+            (let [qualified-env (type-env-insert env qualified-key scheme)
+              next-env
+                (if (= open-flag 1)
+                  (type-env-insert qualified-env accessor-hash scheme)
+                  qualified-env)]
+              (typeinfer-qualify-import-record-accessors-loop
+                raw-fields
+                (+ idx 3)
+                len
+                alias-hash
+                only-hashes
+                open-flag
+                next-env))))
+        (typeinfer-qualify-import-record-accessors-loop
+          raw-fields
+          (+ idx 3)
+          len
+          alias-hash
+          only-hashes
+          open-flag
+          env)))))
+
+(defn typeinfer-qualify-import-record-accessors
+  [raw-fields alias-hash only-hashes open-flag env]
+  (if (= raw-fields 0)
+    env
+    (typeinfer-qualify-import-record-accessors-loop
+      raw-fields
+      0
+      (vector-length raw-fields)
+      alias-hash
+      only-hashes
+      open-flag
+      env)))
+
 (defn typeinfer-qualify-import-source-loop
   [program idx limit current-module target-module alias-hash only-hashes open-flag env]
   (if (>= idx limit)
@@ -646,23 +698,30 @@
           (if (and
               (= tag (ast-recorddef))
               (= current-module target-module))
-            (let [next-env
+            (let [constructor-env
                     (typeinfer-qualify-import-named-export
                       (vector-get decl 1)
                       alias-hash
                       only-hashes
                       open-flag
                       env)]
-              (typeinfer-qualify-import-source-loop
-                program
-                (+ idx 1)
-                limit
-                current-module
-                target-module
-                alias-hash
-                only-hashes
-                open-flag
-                next-env))
+              (let [next-env
+                      (typeinfer-qualify-import-record-accessors
+                        (typeinfer-record-decl-field-exprs decl)
+                        alias-hash
+                        only-hashes
+                        open-flag
+                        constructor-env)]
+                (typeinfer-qualify-import-source-loop
+                  program
+                  (+ idx 1)
+                  limit
+                  current-module
+                  target-module
+                  alias-hash
+                  only-hashes
+                  open-flag
+                  next-env)))
             (if (and
               (= tag (ast-defn))
               (and

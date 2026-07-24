@@ -1711,6 +1711,141 @@ fn test_e2e_selfhost_typeinfer_analysis_filters_import_alias_only_adt_constructo
     );
 }
 
+/// EC-M1-01: import の module prefix 経由で record field accessor を解決すること
+#[test]
+fn test_e2e_selfhost_typeinfer_analysis_resolves_import_qualified_record_accessor() {
+    let source = "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib) (defn get-x [] Lib.Point.x)";
+    let oracle_source = "(module Main) (import Lib) (defn get-x [] Lib.Point.x)";
+    let oracle_program = lsharp_syntax::parse(oracle_source)
+        .expect("qualified record accessor fixture は parse できるべき");
+    let mut oracle = Infer::new();
+    let accessor_type = lsharp_types::types::Type::Fun(
+        vec![lsharp_types::types::Type::Con("Lib.Point".to_string())],
+        Box::new(lsharp_types::types::Type::int()),
+    );
+    oracle.inject_external_types(&[(
+        "Lib.Point.x".to_string(),
+        lsharp_types::types::TypeScheme::mono(accessor_type),
+    )]);
+    assert!(
+        oracle.infer_program(&oracle_program).is_ok(),
+        "Rust oracle は qualified record accessor lookup を受理するべき"
+    );
+
+    let harness = format!(
+        r#"
+(defn main []
+  (let [analysis
+          (infer-program-analysis
+            (parse-program "{}"))
+        kinds (infer-program-analysis-failure-kinds analysis)]
+    (do
+      (print (infer-program-analysis-diagnostic-count analysis))
+      (print (vector-length kinds))
+      (print (vector-get kinds 0))
+      0)))
+"#,
+        source
+    );
+    let combined = format!("{}\n{}", selfhost_typeinfer_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "1", "0"],
+        "qualified record accessor は module prefix 付き export lookup で解決されるべき"
+    );
+}
+
+/// EC-M1-01: import の alias + :only が record field accessor export 境界を守ること
+#[test]
+fn test_e2e_selfhost_typeinfer_analysis_filters_import_alias_only_record_accessor() {
+    let selected_source =
+        "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib :as L :only [Point.x]) (defn get-x [] L.Point.x)";
+    let selected_oracle_source = "(module Main) (import Lib :as L :only [Point.x]) (defn get-x [] L.Point.x)";
+    let selected_program = lsharp_syntax::parse(selected_oracle_source)
+        .expect("selected alias + :only record accessor oracle fixture は parse できるべき");
+    let accessor_type = lsharp_types::types::Type::Fun(
+        vec![lsharp_types::types::Type::Con("Lib.Point".to_string())],
+        Box::new(lsharp_types::types::Type::int()),
+    );
+    let mut selected_oracle = Infer::new();
+    selected_oracle.inject_external_types_for_import(
+        "Lib",
+        Some(&["Point.x".to_string()]),
+        &std::collections::HashSet::new(),
+        &[(
+            "Lib.Point.x".to_string(),
+            lsharp_types::types::TypeScheme::mono(accessor_type),
+        )],
+    );
+    assert!(
+        selected_oracle.infer_program(&selected_program).is_ok(),
+        "Rust oracle は alias + :only の selected record accessor を受理するべき"
+    );
+
+    let excluded_source =
+        "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib :as L :only [Point.x]) (defn get-y [] L.Point.y)";
+    let excluded_oracle_source = "(module Main) (import Lib :as L :only [Point.x]) (defn get-y [] L.Point.y)";
+    let excluded_program = lsharp_syntax::parse(excluded_oracle_source)
+        .expect("excluded alias + :only record accessor oracle fixture は parse できるべき");
+    let excluded_type = lsharp_types::types::Type::Fun(
+        vec![lsharp_types::types::Type::Con("Lib.Point".to_string())],
+        Box::new(lsharp_types::types::Type::int()),
+    );
+    let mut excluded_oracle = Infer::new();
+    excluded_oracle.inject_external_types_for_import(
+        "Lib",
+        Some(&["Point.x".to_string()]),
+        &std::collections::HashSet::new(),
+        &[(
+            "Lib.Point.x".to_string(),
+            lsharp_types::types::TypeScheme::mono(excluded_type),
+        )],
+    );
+    assert!(
+        excluded_oracle.infer_program(&excluded_program).is_err(),
+        "Rust oracle は :only で除外された record accessor を拒否するべき"
+    );
+
+    let harness = format!(
+        r#"
+(defn main []
+  (let [selected
+          (infer-program-analysis
+            (parse-program "{}"))
+        selected-kinds (infer-program-analysis-failure-kinds selected)
+        excluded
+          (infer-program-analysis
+            (parse-program "{}"))
+        excluded-kinds (infer-program-analysis-failure-kinds excluded)]
+    (do
+      (print (infer-program-analysis-diagnostic-count selected))
+      (print (vector-length selected-kinds))
+      (print (vector-get selected-kinds 0))
+      (print (infer-program-analysis-diagnostic-count excluded))
+      (print (vector-length excluded-kinds))
+      (print (vector-get excluded-kinds 0))
+      0)))
+"#,
+        selected_source, excluded_source
+    );
+    let combined = format!("{}\n{}", selfhost_typeinfer_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "1", "0", "1", "1", "1"],
+        "alias + :only は selected record accessor だけを qualified export へ公開するべき"
+    );
+}
+
 /// EC-M1-01: import の module prefix 経由で record constructor を解決すること
 #[test]
 fn test_e2e_selfhost_typeinfer_analysis_resolves_import_qualified_record_constructor() {
