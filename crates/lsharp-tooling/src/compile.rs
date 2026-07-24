@@ -4,6 +4,12 @@ use crate::artifact_cache::ArtifactCache;
 use lsharp_ir::{CompilationCache, Module, SourceFingerprint};
 use lsharp_wasm::validation::WasmValidationMode;
 
+const DRIVER_IO_ERROR_CODE: &str = "LS5001";
+
+fn driver_io_error(message: impl std::fmt::Display) -> miette::Report {
+    miette::miette!("[{DRIVER_IO_ERROR_CODE}] {message}")
+}
+
 /// compile バックエンドターゲット
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CompileTarget {
@@ -76,7 +82,7 @@ impl CompileCacheKey {
 
         for (module_name, module_path) in sorted_files {
             let source = std::fs::read_to_string(&module_path)
-                .map_err(|error| miette::miette!("{}: {error}", module_path.display()))?;
+                .map_err(|error| driver_io_error(format!("{}: {error}", module_path.display())))?;
             let canonical_path = std::fs::canonicalize(&module_path)
                 .unwrap_or(module_path)
                 .display()
@@ -181,7 +187,7 @@ pub fn resolve_compile_target(
 ) -> miette::Result<(CompileTarget, PathBuf)> {
     let output_path = output
         .map(Path::to_path_buf)
-        .ok_or_else(|| miette::miette!("output path が必要です"))?;
+        .ok_or_else(|| driver_io_error("output path が必要です"))?;
     let target = requested_target.unwrap_or_else(|| infer_target_from_output_path(&output_path));
     Ok((target, output_path))
 }
@@ -219,14 +225,14 @@ fn default_output_path(file: &Path, target: CompileTarget) -> PathBuf {
 
 /// コンパイル前にフォーマットを適用し、必要ならソースを書き戻す
 pub fn prepare_source_for_compile(file: &Path) -> miette::Result<(String, bool)> {
-    let source =
-        std::fs::read_to_string(file).map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
+    let source = std::fs::read_to_string(file)
+        .map_err(|e| driver_io_error(format!("{}: {}", file.display(), e)))?;
     let formatted =
         crate::fmt::format_source(&source).map_err(|e| miette::miette!("フォーマット失敗: {e}"))?;
 
     if formatted != source {
         std::fs::write(file, &formatted)
-            .map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
+            .map_err(|e| driver_io_error(format!("{}: {}", file.display(), e)))?;
         return Ok((formatted, true));
     }
 
@@ -288,7 +294,7 @@ fn has_file_imports_from_source(source: &str) -> bool {
 
 fn write_compile_artifact(path: &Path, bytes: &[u8]) -> miette::Result<()> {
     lsharp_wasm::component_adapter::write_wasm_artifact(path, bytes)
-        .map_err(|error| miette::miette!("{}: {}", path.display(), error))
+        .map_err(|error| driver_io_error(format!("{}: {}", path.display(), error)))
 }
 
 /// format -> check -> codegen の統合 compile パイプライン
@@ -2786,6 +2792,57 @@ mod tests {
             .status()
             .unwrap();
         assert_eq!(status.code(), Some(42));
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn compile_file_missing_source_preserves_driver_io_error_code() {
+        let dir = std::env::temp_dir().join(format!(
+            "lsharp_compile_missing_source_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock は unix epoch より後であるべき")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("Missing.ls");
+        let output = dir.join("missing.wasm");
+
+        let error = compile_file(&file, Some(&output), false, Some(CompileTarget::WebWasm))
+            .expect_err("存在しない source file は compile を失敗させるべき");
+        assert!(
+            error.to_string().starts_with("[LS5001]"),
+            "driver I/O error code が必要: {error}"
+        );
+        assert!(error.to_string().contains("Missing.ls"));
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn compile_file_artifact_write_failure_preserves_driver_io_error_code() {
+        let dir = std::env::temp_dir().join(format!(
+            "lsharp_compile_artifact_write_failure_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock は unix epoch より後であるべき")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("Main.ls");
+        let output = dir.join("missing-parent").join("main.wasm");
+        std::fs::write(&file, "(defn main [] 42)\n").unwrap();
+
+        let error = compile_file(&file, Some(&output), false, Some(CompileTarget::WebWasm))
+            .expect_err("存在しない artifact parent は compile を失敗させるべき");
+        assert!(
+            error.to_string().starts_with("[LS5001]"),
+            "driver I/O error code が必要: {error}"
+        );
+        assert!(error.to_string().contains("main.wasm"));
 
         std::fs::remove_dir_all(&dir).unwrap();
     }

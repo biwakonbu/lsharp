@@ -2,7 +2,7 @@
 
 このページは L# の `LS####` エラーコード体系の利用者向け正本です。MCP の `lsharp_errors` tool も同じ driver 側 table を参照します。
 
-現時点の scope は error code reference と MCP lookup の統一です。lexer/parser/macro/type/lowering/codegen の下層エラーは stable code/span まで接続済みで、LSP の syntax/type diagnostics と MCP `lsharp_check` も code と source range を forwarding します。CodegenError は source span を持たないため `span = None` とし、CLI の全診断経路、LSP incremental/module/codegen diagnostics の range/code forwarding は I-02 / imp-02 の残タスクとして扱います。
+現時点の scope は error code reference と MCP lookup の統一です。lexer/parser/macro/type/lowering/codegen の下層エラーは stable code/span まで接続済みで、LSP の syntax/type diagnostics と MCP `lsharp_check` も code と source range を forwarding します。CodegenError は source span を持たないため `span = None` とします。`compile` の source/artifact file I/O は `LS5001` を返しますが、CLI の他の診断経路、LSP incremental/module/codegen diagnostics の range/code forwarding は I-02 / imp-02 の残タスクとして扱います。
 
 ## Code Ranges
 
@@ -14,6 +14,7 @@
 - `LS3001` - `LS3104`: lowering and module graph
 - `LS4001`: codegen
 - `LS4002`: runtime
+- `LS5001`: driver/tooling file I/O
 
 ## Legacy Codes
 
@@ -66,6 +67,7 @@
 | `LS3104` | duplicate-module | module が重複しています | source file の配置と module declaration を整理してください。 |
 | `LS4001` | codegen-error | codegen が失敗しました | 直前の type / lowering diagnostics と対象 backend の既知制限を確認してください。 |
 | `LS4002` | gc-capacity-exceeded | GC / linear memory の容量上限に達しました | 対応 runtime の memory limit、object/free/root capacity、target parity を確認してください。 |
+| `LS5001` | driver-io-error | driver が file I/O に失敗しました | 対象 path の存在、親 directory、権限、空き容量を確認してください。 |
 
 ## MCP Lookup
 

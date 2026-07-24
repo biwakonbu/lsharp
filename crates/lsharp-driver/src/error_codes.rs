@@ -291,6 +291,14 @@ pub(crate) const ERROR_CODES: &[ErrorCodeEntry] = &[
         detail: "WASI runtime が object table、free-list、root stack、または heap の拡張に失敗しました。",
         fix: "入力の同時生存データ量を減らすか、対応 runtime memory limit と target parity を確認してください。",
     },
+    ErrorCodeEntry {
+        code: "LS5001",
+        legacy_code: None,
+        name: "driver-io-error",
+        summary: "driver が file I/O に失敗しました",
+        detail: "source、生成 artifact、または compile pipeline の管理対象ファイルを読み書きできませんでした。",
+        fix: "対象 path の存在、親 directory、権限、空き容量を確認してください。",
+    },
 ];
 
 pub(crate) fn find_error_code(query: &str) -> Option<&'static ErrorCodeEntry> {
