@@ -673,6 +673,22 @@ Stage 2v の output-stream path に対応して、filesystem descriptor の dire
 directory-entry stream、pollable、Wasm artifact/runtime differential、Mac Apple Silicon/Linux
 x86_64、native/selfhost parity は未完了である。
 
+## Stage 2x 検証済み slice: direct write error と descriptor drop lifecycle (2026-07-24)
+
+Stage 2w の成功 path に加えて、read-only descriptor で direct write が失敗した後の resource lifecycle
+を actual Component で閉じた。
+
+- `wasm_gc_component_cli_fs_runner_drops_descriptor_after_direct_write_error` は既存 `input.txt` を
+  read-only descriptor として開き、`descriptor.write` の result discriminant が error になることを
+  確認する。
+- エラー後に descriptor と preopen を drop し、`wasi:cli/run` が exit 0 で収束すること、host bytes が
+  元の `seed` から変化しないことを確認する。成功扱いにしたり、error path で resource を残したり
+  しない契約を固定する。
+
+これは direct write error/drop の verified partial slice であり、read-directory、directory-entry
+stream、pollable、Wasm artifact/runtime differential、Mac Apple Silicon/Linux x86_64、native/selfhost
+parity は未完了である。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線
