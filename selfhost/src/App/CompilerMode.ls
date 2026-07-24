@@ -337,7 +337,6 @@
                         (do
                           (root_pop)
                           (root_pop)
-                          (root_pop)
                           state))))))
               (make-pairs-step-state 0 (+ idx 1) pairs))]
             (do
@@ -515,7 +514,6 @@
                       (root_push updated-pairs)
                       (let [state (make-pairs-step-state 0 (+ idx 1) updated-pairs)]
                         (do
-                          (root_pop)
                           (root_pop)
                           (root_pop)
                           state))))))
@@ -741,7 +739,6 @@
                       (root_push updated-pairs)
                       (let [state (make-pairs-step-state 0 (+ idx 1) updated-pairs)]
                         (do
-                          (root_pop)
                           (root_pop)
                           (root_pop)
                           state))))))
@@ -1332,6 +1329,7 @@
                           (root_pop)
                           (root_pop)
                           (root_pop)
+                          (root_pop)
                           state)))))))))))))
 (defn append-check-owners-step-64-loop-bounded [pairs idx n owners source-root package-root cache-ref remaining]
   (let [step (append-check-owners-step pairs idx n owners source-root package-root cache-ref)]
@@ -1414,7 +1412,6 @@
                   (root_push owners)
                   (let [context (make-check-program-context program owners)]
                     (do
-                      (root_pop)
                       (root_pop)
                       (root_pop)
                       (root_pop)
@@ -2502,6 +2499,7 @@
                           (root_pop)
                           (root_pop)
                           (root_pop)
+                          (root_pop)
                           0)))))))))))))
 (defn compile-file-mode-cache-functions-probe []
   (let [path (command-line-arg 1)]
@@ -2560,6 +2558,7 @@
                       (root_pop)
                       (root_pop)
                       (root_pop)
+                      (root_pop)
                       0)))))))))))
 (defn compile-file-mode-cache-pre-normalize-probe []
   (let [path (command-line-arg 1)]
@@ -2583,6 +2582,7 @@
                       (print (vector-length functions))
                       (print (+ 10 (vector-length functions)))
                       (print (ref-get parse-count-ref))
+                      (root_pop)
                       (root_pop)
                       (root_pop)
                       (root_pop)
@@ -2888,6 +2888,7 @@
                             (root_pop)
                             (print-progress-decl-body-shape 9000000155 1 parsed)
                             (root_pop)
+                            (root_pop)
                             (print 191)
                             (print-progress-decl-body-shape 9000000156 1 parsed)
                             0))))))))))))))
@@ -2985,6 +2986,7 @@
                       (root_pop)
                       (root_pop)
                       (root_pop)
+                      (root_pop)
                       0)))))))))))
 (defn compile-file-mode-cache-compile-phase-probe []
   (let [path (command-line-arg 1)
@@ -3017,6 +3019,7 @@
                       (print (vector-length functions))
                       (print 154)
                       (print (vector-length (ref-get data-ref)))
+                      (root_pop)
                       (root_pop)
                       (root_pop)
                       (root_pop)
@@ -3154,6 +3157,7 @@
                         (root_pop)
                         (root_pop)
                         (root_pop)
+                        (root_pop)
                         first-pair-debug))))))))))))
 (defn compile-file-mode-ast-chunked-step-progress-probe []
   (let [path (command-line-arg 1)
@@ -3185,6 +3189,7 @@
                   (root_push functions0)
                   (print 153)
                   (print (vector-length functions0))
+                  (root_pop)
                   (root_pop)
                   (root_pop)
                   (root_pop)
@@ -5793,6 +5798,7 @@
                   (root_pop)
                   (root_pop)
                   (root_pop)
+                  (root_pop)
                   0)))))))))
 (defn compile-file-mode-target-defn-parity-probe []
   (let [path (command-line-arg 1)
@@ -5970,6 +5976,9 @@
                               (root_push function-meta)
                               (print 144)
                               (print (vector-length (function-meta-ir function-meta)))
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
                               (root_pop)
                               (root_pop)
                               (root_pop)
@@ -6173,8 +6182,6 @@
                                           (root_push functions)
                                           (print 4)
                                           (print (vector-length functions))
-                                          (root_pop)
-                                          (root_pop)
                                           (root_pop)
                                           (root_pop)
                                           (root_pop)

@@ -444,6 +444,17 @@
       (do
         (root_pop)
         value))))
+;; qualified var node の slot 1 は source 全体の hash を保持する一方、
+;; ftable は export 名の raw hash を登録する。raw lookup が外れた場合だけ
+;; qualified node の suffix を export 名として解決し、未検出なら 0 を返す。
+(defn ftable-lookup-call-target [ftable func-node func-hash]
+  (let [local-func-hash (if (= (vector-get func-node 0) 4) (vector-get func-node 1) func-hash)
+    raw-target (ftable-lookup ftable local-func-hash)]
+    (if (> raw-target 0)
+      raw-target
+      (if (and (= (vector-get func-node 0) 4) (> (vector-length func-node) 5))
+        (ftable-lookup ftable (vector-get func-node 5))
+        0))))
 (defn ftable-size [ftable] (/ (vector-length ftable) 2))
 (defn ftable-register-map-legacy [ftable name-hash func-idx]
   (let [ftable-slot (root_push ftable)]

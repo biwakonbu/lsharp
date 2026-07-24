@@ -443,8 +443,8 @@
     instrs-slot (root_push instrs)
     data-slot (root_push data-ref)
     func-node (vector-get node 1)
-    local-func-hash (if (= (vector-get func-node 0) 4) (vector-get func-node 1) func-hash)
-    call-instrs (emit-to (vector-new 1) 40 (ftable-lookup ftable local-func-hash))]
+    call-target (ftable-lookup-call-target ftable func-node func-hash)
+    call-instrs (emit-to (vector-new 1) 40 call-target)]
     (do
       (root_push call-instrs)
       (let [arg-instrs-list (compile-user-call-arg-instrs-with-source node source env ftable 0 arg-count (vector-new 8) data-ref)]
@@ -474,8 +474,8 @@
     env-slot (root_push env)
     instrs-slot (root_push instrs)
     func-node (vector-get node 1)
-    local-func-hash (if (= (vector-get func-node 0) 4) (vector-get func-node 1) func-hash)
-    call-instrs (emit-to (vector-new 1) 40 (ftable-lookup ftable local-func-hash))]
+    call-target (ftable-lookup-call-target ftable func-node func-hash)
+    call-instrs (emit-to (vector-new 1) 40 call-target)]
     (do
       (root_push call-instrs)
       (let [arg-instrs-list (compile-user-call-arg-instrs-with-ftable node env ftable 0 arg-count (vector-new 8))]
