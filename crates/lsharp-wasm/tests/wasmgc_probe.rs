@@ -2800,6 +2800,62 @@ fn wasm_gc_component_cli_fs_runner_polls_empty_input_stream_list_as_ready() {
 }
 
 #[test]
+fn wasm_gc_component_cli_fs_runner_traps_on_empty_poll_list() {
+    let core = emit_component_cli_poll_list_probe_module_with_list_len(0);
+    let wit_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("wit")
+        .join("lsharp-wasmgc-output.wit");
+    let component = lsharp_wasm::component_adapter::componentize_core_module(
+        &core,
+        &wit_file,
+        "wasmgc-cli-fs-streams",
+        &[],
+    )
+    .expect("empty poll list trap probe を componentize できる");
+
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock は unix epoch より後であるべき")
+        .as_nanos();
+    let dir = std::env::temp_dir().join(format!("lsharp_wasmgc_poll_list_trap_{nonce}"));
+    let extra_dir =
+        std::env::temp_dir().join(format!("lsharp_wasmgc_poll_list_trap_extra_{nonce}"));
+    std::fs::create_dir_all(&dir).expect("empty poll list trap fixture directory を作成できる");
+    std::fs::create_dir_all(&extra_dir)
+        .expect("second empty poll list trap fixture directory を作成できる");
+    std::fs::write(dir.join("input.txt"), b"")
+        .expect("empty poll list trap fixture file を作成できる");
+
+    let preopen = lsharp_wasm::wasmgc_runner::Preview2Preopen::new(
+        &dir,
+        "data",
+        lsharp_wasm::wasmgc_runner::Preview2PreopenRights::read_only(),
+    );
+    let extra_preopen = lsharp_wasm::wasmgc_runner::Preview2Preopen::new(
+        &extra_dir,
+        "extra",
+        lsharp_wasm::wasmgc_runner::Preview2PreopenRights::read_only(),
+    );
+    let error = lsharp_wasm::wasmgc_runner::run_wasm_wasmgc_component_cli_with_preview2_stdout_and_preopens(
+        &component,
+        &[],
+        "",
+        &[preopen, extra_preopen],
+    )
+    .expect_err("empty poll list は trap になるべき");
+
+    assert!(
+        error.contains("poll"),
+        "empty poll list trap の境界を示すべき: {error}"
+    );
+    std::fs::remove_dir_all(&dir).expect("empty poll list trap fixture directory を削除できる");
+    std::fs::remove_dir_all(&extra_dir)
+        .expect("second empty poll list trap fixture directory を削除できる");
+}
+
+#[test]
 fn wasm_gc_component_output_propagates_sink_failure_as_trap() {
     let module = IrModule {
         functions: vec![Function {
@@ -5747,8 +5803,11 @@ fn emit_component_cli_set_times_at_probe_module() -> Vec<u8> {
 }
 
 fn emit_component_cli_poll_list_probe_module() -> Vec<u8> {
-    wat::parse_str(
-        r#"
+    emit_component_cli_poll_list_probe_module_with_list_len(1)
+}
+
+fn emit_component_cli_poll_list_probe_module_with_list_len(list_len: u32) -> Vec<u8> {
+    let wat = r#"
 (module
   (type (func (param i32 i32)))
   (type (func (param i32)))
@@ -5872,7 +5931,7 @@ fn emit_component_cli_poll_list_probe_module() -> Vec<u8> {
       local.get $pollable
       i32.store
       i32.const 64
-      i32.const 1
+      i32.const __POLL_LIST_LEN__
       i32.const 72
       call $poll
       i32.const 76
@@ -5923,9 +5982,9 @@ fn emit_component_cli_poll_list_probe_module() -> Vec<u8> {
       return
     end)
 )
-"#,
-    )
-    .expect("poll list probe module を生成できる")
+"#
+    .replace("__POLL_LIST_LEN__", &list_len.to_string());
+    wat::parse_str(wat).expect("poll list probe module を生成できる")
 }
 
 fn emit_component_cli_read_directory_probe_module() -> Vec<u8> {

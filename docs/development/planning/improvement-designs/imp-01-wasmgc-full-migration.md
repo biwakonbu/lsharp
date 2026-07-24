@@ -1190,8 +1190,20 @@ ready index として返ることを actual Component で検証した。
   確認する。非空 `hello` fixture でも同じ marker を観測する。
 
 これは poll list の empty/EOF readiness verified partial slice であり、stream error/closed、
-empty list input の trap contract、Wasm artifact/runtime differential、Mac Apple Silicon/Linux
+Wasm artifact/runtime differential、Mac Apple Silicon/Linux
 x86_64、native/selfhost parity は未完了である。
+
+## Stage 2bd 検証済み slice: poll list empty input trap (2026-07-24)
+
+`wasi:io/poll.poll` の空 list 入力が trap になる契約を actual Component で検証した。
+
+- `wasm_gc_component_cli_fs_runner_traps_on_empty_poll_list` は空の `input.txt` から input stream と
+  pollable を作り、list 長 `0` の borrowed pollable list を `poll` に渡す。
+- Component 実行が正常な `ExecutionOutput` ではなく error になり、error 境界に `poll` が含まれることを
+  確認する。これは空 list trap が `wasi:cli/run` の成功や stdout marker に変換されないことを示す。
+
+これは poll list の empty input trap verified partial slice であり、stream error/closed、Wasm
+artifact/runtime differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity は未完了である。
 
 ## 実装戦略
 
