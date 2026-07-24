@@ -631,6 +631,62 @@ fn test_e2e_selfhost_parser_import_alias() {
     assert_eq!(lines[4], "1", "alias hash は L と一致すべき");
 }
 
+/// EC-M1-01: selfhost parser が import の :only symbols を AST に保持すること
+#[test]
+fn test_e2e_selfhost_parser_import_only() {
+    let source = "(import Lib :only [helper extra])";
+    let rust_program =
+        lsharp_syntax::parse(source).expect("Rust oracle は import :only を parse できるべき");
+    match &rust_program.decls[0] {
+        lsharp_syntax::ast::Decl::ImportDecl {
+            module,
+            alias,
+            only,
+            open,
+            ..
+        } => {
+            assert_eq!(module, "Lib");
+            assert_eq!(*alias, None);
+            assert_eq!(only, &Some(vec!["helper".to_string(), "extra".to_string()]));
+            assert!(!open);
+        }
+        decl => panic!("Rust oracle の import decl が不正: {decl:?}"),
+    }
+
+    let (token_ls, ast_ls, lexer_ls, parser_ls) = parser_runtime_modules();
+
+    let harness = r#"
+(defn main []
+  (let [src "(import Lib :only [helper extra])"
+        program (parse-program src)
+        node (vector-get program 0)
+        only (vector-get node 5)]
+    (do
+      (print (vector-length program))
+      (print (vector-get node 0))
+      (print (if (= (vector-get node 1) (name-hash "Lib" 0 3)) 1 0))
+      (print (if (= (vector-length node) 6) 1 0))
+      (print (vector-get node 4))
+      (print (vector-length only))
+      (print (if (= (vector-get only 0) (name-hash "helper" 0 6)) 1 0))
+      (print (if (= (vector-get only 1) (name-hash "extra" 0 5)) 1 0))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        token_ls, ast_ls, lexer_ls, parser_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["1", "26", "1", "1", "0", "2", "1", "1"],
+        ":only import は alias slot と選択 symbol hash vector を AST に保持するべき"
+    );
+}
+
 /// TEST-SYNTAX-02c4: 2 import 後の defn は compiler register/compile でも拾える
 #[test]
 fn test_e2e_selfhost_compiler_sees_defn_after_multiple_imports() {

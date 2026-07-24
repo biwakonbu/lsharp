@@ -298,3 +298,25 @@ fn test_e2e_selfhost_formatter_preserves_import_alias() {
         "formatter は import alias を canonical text に保持するべき"
     );
 }
+
+/// EC-M1-01: formatter が import の :only symbols を canonical text に保持すること
+#[test]
+fn test_e2e_selfhost_formatter_preserves_import_only() {
+    let output = run_formatter_source_harness(
+        r#"
+(module Main)
+(defn main []
+  (let [src "(import Lib :only [helper extra])"
+        program (parse-program src)]
+    (do
+      (print-string (format-program program 0))
+      0)))
+"#,
+    );
+
+    assert_eq!(
+        output,
+        "(import Lib :only [helper extra])\n",
+        "formatter は import :only を canonical text に保持するべき"
+    );
+}

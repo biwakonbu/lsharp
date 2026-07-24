@@ -562,10 +562,17 @@
 
 (defn format-import-decl [decl]
   (let [module-text (symbol-from-hash (vector-get decl 1))
-    alias-hash (if (> (vector-length decl) 4) (vector-get decl 4) 0)]
-    (if (= alias-hash 0)
-      (str3 "(import " module-text ")")
-      (str5 "(import " module-text " :as " (symbol-from-hash alias-hash) ")"))))
+    alias-hash (if (> (vector-length decl) 4) (vector-get decl 4) 0)
+    only-hashes (if (> (vector-length decl) 5) (vector-get decl 5) 0)
+    only-text (if (= only-hashes 0)
+      ""
+      (str3 " :only ["
+        (format-hash-list only-hashes 0 (vector-length only-hashes))
+        "]"))
+    base-text (if (= alias-hash 0)
+      (str3 "(import " module-text "")
+      (str4 "(import " module-text " :as " (symbol-from-hash alias-hash)))]
+    (str3 base-text only-text ")")))
 
 (defn format-impl-decl [decl indent-level]
   (let [trait-text (symbol-from-hash (vector-get decl 1))
