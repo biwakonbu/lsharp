@@ -43,8 +43,9 @@
 | `crates/lsharp-ir/src/module_graph.rs` | 1597 | グラフ構築 / 解決 / (imp-04 の SCC・キャッシュ導入前に分割) |
 | `crates/lsharp-lsp/src/lib.rs` | 1397 | ハンドラ単位 (hover / completion / definition...) は既に別ファイルがあるため、残る統合部から診断変換等を切り出し |
 
-`crates/lsharp-ir/src/lower/tests.rs` (3400 行) はテストのため優先度を下げるが、
-機能領域別 (expr / pattern / module / trait) へ分割する (I-08 の切り分け性改善)。
+`crates/lsharp-ir/src/lower/tests.rs` (3913 行) は production 変更と分離した test-only slice として、
+helper/定数だけを親へ残し、WasmGC/root、core、allocating call、self-TCO、language/trait、record/ADT、
+module/lambda、closure call、heap/ADT の9 moduleへ分割する (I-08 の切り分け性改善)。
 
 ### 3. 優先順位
 
@@ -70,8 +71,8 @@ CI (または契約テスト) に「`crates/**/src/**/*.rs` の行数が 800 を
 
 ## 検証済み部分実装 (2026-07-25)
 
-`module_graph.rs` の inline unit test 43 件を `src/module_graph/` 配下の 4 test module へ移動し、続けて `ModuleSearchPaths`、path resolver、entry graph builder を `src/module_graph/resolve.rs` へ分離した。さらに Rust parser の inline test 61 件を `src/parser/` 配下の 3 test module、constraints の inline test 43 件を `src/constraints/` 配下の 4 test module、macro expand の inline test 35 件を `src/macro_expand/` 配下の 3 test module、regex の inline test 25 件を `src/regex/tests.rs`、lexer の inline test 37 件を `src/lexer/` 配下の 3 test module、metadata_check の inline test 31 件を `src/metadata_check/` 配下の 2 test moduleへ移動し、macro expand production を `error.rs` / `builtins.rs` / `expand.rs`、constraints production を `eval.rs` / `hierarchy.rs` / `conversion.rs` / `runtime.rs`、regex production を `node.rs` / `parser.rs` / `matcher.rs` へ分離した。module graph 親は 552 行、resolver は 473 行、parser production は 1,790 行、constraints 親は 31 行、macro expand 親は 186 行、regex 親は 19 行、lexer 親は 378 行、metadata_check 親は 846 行となり、公開 API と parser/graph/constraints/macro/regex/lexer/metadata のロジックは変更していない。focused tests、large-stack `lsharp-ir` 257 tests、syntax/types clippy/rustfmt が passし、default stack の Formatter incremental fixture overflow は imp-04 C-1n の既知境界として分離した。詳細は各 `decisions-legacy-*split.md` ADR に記録する。
+`module_graph.rs` の inline unit test 43 件を `src/module_graph/` 配下の 4 test module へ移動し、続けて `ModuleSearchPaths`、path resolver、entry graph builder を `src/module_graph/resolve.rs` へ分離した。さらに Rust parser の inline test 61 件を `src/parser/` 配下の 3 test module、constraints の inline test 43 件を `src/constraints/` 配下の 4 test module、macro expand の inline test 35 件を `src/macro_expand/` 配下の 3 test module、regex の inline test 25 件を `src/regex/tests.rs`、lexer の inline test 37 件を `src/lexer/` 配下の 3 test module、metadata_check の inline test 31 件を `src/metadata_check/` 配下の 2 test moduleへ移動し、macro expand production を `error.rs` / `builtins.rs` / `expand.rs`、constraints production を `eval.rs` / `hierarchy.rs` / `conversion.rs` / `runtime.rs`、regex production を `node.rs` / `parser.rs` / `matcher.rs` へ分離した。さらに `lsharp-ir/src/lower/tests.rs` の inline test 143 件を helper/定数だけの親 133 行と、WasmGC/root・core・allocating call・self-TCO・language/trait・record/ADT・module/lambda・closure call・heap/ADT の9 test module（129/692/414/531/531/228/598/290/390 行）へ移動した。公開 API・production logic・test body は変更していない。focused lower 143 tests、large-stack `lsharp-ir` 257 tests、`lsharp-ir` clippy/rustfmt、`git diff --check` が passし、default stack の Formatter incremental fixture overflow は imp-04 C-1n の既知境界として分離した。詳細は各 `decisions-legacy-*split.md` ADR に記録する。
 
 ## ステータス
 
-設計 + module graph のテスト/path-resolution 分離、parser・constraints・macro expand・regex・lexer・metadata_check のテスト分離、macro expand・constraints・regex production split、lexer/metadata_check test split verified partial slice (2026-07-25)。parser の expr/decl production 分割、lexer/metadata production の責務分割、graph/SCC core の追加分割、`wasi.rs` / `main.rs` / `infer.rs` / `ir/lib.rs` の責務分割、I-01 / I-08 aggregate 完了は未着手または未完了である。着手時は TODO.md に Phase A-2 / D-4 としてファイル単位の項目を作成する。
+設計 + module graph のテスト/path-resolution 分離、parser・constraints・macro expand・regex・lexer・metadata_check・lower のテスト分離、macro expand・constraints・regex production split、lexer/metadata_check test split verified partial slice (2026-07-25)。lower tests は parent 133 行 + 9 module（最大 692 行）で、production lower の分割は未着手である。parser の expr/decl production 分割、lexer/metadata production の責務分割、graph/SCC core の追加分割、`wasi.rs` / `main.rs` / `infer.rs` / `ir/lib.rs` の責務分割、I-01 / I-08 aggregate 完了は未着手または未完了である。着手時は TODO.md に Phase A-2 / D-4 としてファイル単位の項目を作成する。
