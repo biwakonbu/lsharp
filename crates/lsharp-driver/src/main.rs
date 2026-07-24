@@ -566,6 +566,11 @@ fn driver_config_error(project_dir: &Path, error: config::ConfigError) -> miette
     }
 }
 
+fn canonicalize_driver_path(path: &Path) -> miette::Result<PathBuf> {
+    std::fs::canonicalize(path)
+        .map_err(|e| driver_io_error(format!("パスの正規化に失敗 '{}': {e}", path.display())))
+}
+
 const ARTIFACT_CACHE_DIR_ENV: &str = "LSHARP_ARTIFACT_CACHE_DIR";
 const ARTIFACT_CACHE_MAX_ENTRIES_ENV: &str = "LSHARP_ARTIFACT_CACHE_MAX_ENTRIES";
 const ARTIFACT_CACHE_MAX_BYTES_ENV: &str = "LSHARP_ARTIFACT_CACHE_MAX_BYTES";
@@ -2368,9 +2373,7 @@ fn cmd_install_in(project_dir: &Path) -> miette::Result<()> {
                     continue;
                 }
 
-                let abs_resolved = resolved.canonicalize().map_err(|e| {
-                    miette::miette!("パスの正規化に失敗 '{}': {e}", resolved.display())
-                })?;
+                let abs_resolved = canonicalize_driver_path(&resolved)?;
                 let source_id = dependency_source_string(spec, project_dir);
                 let link_path = installed_package_dir(&packages_dir, name, &source_id);
                 // 既存のシンボリックリンクがあれば削除
@@ -3440,6 +3443,25 @@ mod tests {
         );
 
         std::fs::remove_file(&project_file).unwrap();
+    }
+
+    #[test]
+    fn test_driver_path_canonicalize_failure_preserves_driver_io_error_code() {
+        let base_file = std::env::temp_dir().join("lsharp_driver_canonicalize_failure");
+        let _ = std::fs::remove_dir_all(&base_file);
+        let _ = std::fs::remove_file(&base_file);
+        std::fs::write(&base_file, "not a directory").unwrap();
+        let blocked_path = base_file.join("child");
+
+        let error = canonicalize_driver_path(&blocked_path)
+            .expect_err("ファイル配下の canonicalize は失敗するべき");
+
+        assert!(
+            error.to_string().starts_with("[LS5001]"),
+            "driver I/O 診断コードを保持するべき: {error:?}"
+        );
+
+        std::fs::remove_file(&base_file).unwrap();
     }
 
     #[test]
