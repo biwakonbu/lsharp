@@ -389,7 +389,7 @@ fn main() -> miette::Result<()> {
             let mut status = lsharp_docs::tracker::load_doc_status(status_path);
             lsharp_docs::tracker::acknowledge(&mut status, &name, &reviewer);
             lsharp_docs::tracker::save_doc_status(&status, status_path)
-                .map_err(|e| miette::miette!("doc-status 保存失敗: {e}"))?;
+                .map_err(|e| driver_io_error(format!("doc-status 保存失敗: {e}")))?;
             println!("'{name}' を確認済みとしてマーク ({reviewer})");
         }
 
@@ -1178,10 +1178,10 @@ fn maybe_delegate_to_external_compiler() -> miette::Result<()> {
         }
         ExternalLsharpPath::Wasm(delegate_path) => {
             let wasm_bytes = std::fs::read(&delegate_path).map_err(|e| {
-                miette::miette!(
+                driver_io_error(format!(
                     "LSHARP_PATH 先の Wasm artifact 読み込みに失敗しました ({}): {e}",
                     delegate_path.display()
-                )
+                ))
             })?;
             let current_dir = std::env::current_dir()
                 .map_err(|e| miette::miette!("current dir の取得に失敗: {e}"))?;
@@ -1208,10 +1208,10 @@ fn maybe_delegate_to_external_compiler() -> miette::Result<()> {
         }
         ExternalLsharpPath::Component(delegate_path) => {
             let component_bytes = std::fs::read(&delegate_path).map_err(|e| {
-                miette::miette!(
+                driver_io_error(format!(
                     "LSHARP_PATH 先の component artifact 読み込みに失敗しました ({}): {e}",
                     delegate_path.display()
-                )
+                ))
             })?;
             if should_delegate_compile_build_to_embedded_component_args(
                 &std::env::args_os().skip(1).collect::<Vec<_>>(),
@@ -1629,7 +1629,7 @@ fn resolve_import_module_recursive(
         })?;
 
         let import_source = std::fs::read_to_string(&import_path)
-            .map_err(|e| miette::miette!("{}: {}", import_path.display(), e))?;
+            .map_err(|e| driver_io_error(format!("{}: {}", import_path.display(), e)))?;
         let import_program = lsharp_syntax::parse(&import_source)
             .map_err(|e| miette::miette!("{}: {e}", import_path.display()))?;
         let import_module_name = declared_module_name(&import_program, &import_path);
@@ -2322,7 +2322,7 @@ fn cmd_install_in(project_dir: &Path) -> miette::Result<()> {
     let lsharp_dir = project_dir.join(".lsharp");
     let packages_dir = lsharp_dir.join("packages");
     std::fs::create_dir_all(&packages_dir)
-        .map_err(|e| miette::miette!(".lsharp/packages/ の作成に失敗: {e}"))?;
+        .map_err(|e| driver_io_error(format!(".lsharp/packages/ の作成に失敗: {e}")))?;
 
     if deps.is_empty() {
         rebuild_installed_module_index(project_dir)?;
@@ -2365,16 +2365,17 @@ fn cmd_install_in(project_dir: &Path) -> miette::Result<()> {
                 if link_path.exists() || link_path.symlink_metadata().is_ok() {
                     std::fs::remove_file(&link_path)
                         .or_else(|_| std::fs::remove_dir_all(&link_path))
-                        .map_err(|e| miette::miette!("既存リンクの削除に失敗: {e}"))?;
+                        .map_err(|e| driver_io_error(format!("既存リンクの削除に失敗: {e}")))?;
                 }
 
                 #[cfg(unix)]
-                std::os::unix::fs::symlink(&abs_resolved, &link_path)
-                    .map_err(|e| miette::miette!("シンボリックリンク作成に失敗 '{name}': {e}"))?;
+                std::os::unix::fs::symlink(&abs_resolved, &link_path).map_err(|e| {
+                    driver_io_error(format!("シンボリックリンク作成に失敗 '{name}': {e}"))
+                })?;
 
                 #[cfg(not(unix))]
                 std::fs::copy(&abs_resolved, &link_path)
-                    .map_err(|e| miette::miette!("依存コピーに失敗 '{name}': {e}"))?;
+                    .map_err(|e| driver_io_error(format!("依存コピーに失敗 '{name}': {e}")))?;
 
                 let _ = generate_api_json_for_package(&link_path);
                 println!("  インストール: {name} -> {}", abs_resolved.display());
@@ -2436,9 +2437,10 @@ fn cmd_install_in(project_dir: &Path) -> miette::Result<()> {
     // ロックファイルを生成・書き出し
     let lock = lockfile::generate_lockfile_from_entries(resolved_entries);
     std::fs::create_dir_all(&lsharp_dir)
-        .map_err(|e| miette::miette!("{}: {}", lsharp_dir.display(), e))?;
+        .map_err(|e| driver_io_error(format!("{}: {}", lsharp_dir.display(), e)))?;
     let lock_path = lsharp_dir.join("lock.toml");
-    lockfile::write_lockfile(&lock, &lock_path).map_err(|e| miette::miette!("{e}"))?;
+    lockfile::write_lockfile(&lock, &lock_path)
+        .map_err(|e| driver_io_error(format!("{}: {e}", lock_path.display())))?;
     println!("ロックファイルを生成しました: {}", lock_path.display());
     rebuild_installed_module_index(project_dir)?;
 
@@ -2505,10 +2507,10 @@ fn generate_api_json_for_package(package_root: &Path) -> miette::Result<Option<P
         .map_err(|e| miette::miette!("api.json の直列化に失敗: {e}"))?;
     let docs_dir = package_root.join("docs");
     std::fs::create_dir_all(&docs_dir)
-        .map_err(|e| miette::miette!("{}: {}", docs_dir.display(), e))?;
+        .map_err(|e| driver_io_error(format!("{}: {}", docs_dir.display(), e)))?;
     let output_path = docs_dir.join("api.json");
     std::fs::write(&output_path, json)
-        .map_err(|e| miette::miette!("{}: {}", output_path.display(), e))?;
+        .map_err(|e| driver_io_error(format!("{}: {}", output_path.display(), e)))?;
     Ok(Some(output_path))
 }
 
@@ -2516,7 +2518,7 @@ fn rebuild_installed_module_index(project_dir: &Path) -> miette::Result<()> {
     let index_root = project_dir.join(".lsharp").join("module-index");
     if index_root.exists() {
         std::fs::remove_dir_all(&index_root)
-            .map_err(|e| miette::miette!("{}: {}", index_root.display(), e))?;
+            .map_err(|e| driver_io_error(format!("{}: {}", index_root.display(), e)))?;
     }
 
     let package_dirs = list_installed_package_dirs(project_dir);
@@ -2572,7 +2574,7 @@ fn write_package_module_index(
         }
         if let Some(parent) = index_path.parent() {
             std::fs::create_dir_all(parent)
-                .map_err(|e| miette::miette!("{}: {}", parent.display(), e))?;
+                .map_err(|e| driver_io_error(format!("{}: {}", parent.display(), e)))?;
         }
 
         let target = file
@@ -2581,7 +2583,7 @@ fn write_package_module_index(
             .to_string_lossy()
             .replace('\\', "/");
         std::fs::write(&index_path, target)
-            .map_err(|e| miette::miette!("{}: {}", index_path.display(), e))?;
+            .map_err(|e| driver_io_error(format!("{}: {}", index_path.display(), e)))?;
     }
 
     Ok(())
@@ -2592,9 +2594,9 @@ fn collect_package_source_files(dir: &Path, out: &mut Vec<PathBuf>) -> miette::R
         return Ok(());
     }
     let entries =
-        std::fs::read_dir(dir).map_err(|e| miette::miette!("{}: {}", dir.display(), e))?;
+        std::fs::read_dir(dir).map_err(|e| driver_io_error(format!("{}: {}", dir.display(), e)))?;
     for entry in entries {
-        let entry = entry.map_err(|e| miette::miette!("{}: {}", dir.display(), e))?;
+        let entry = entry.map_err(|e| driver_io_error(format!("{}: {}", dir.display(), e)))?;
         let path = entry.path();
         if path.is_dir() {
             collect_package_source_files(&path, out)?;
@@ -3404,6 +3406,28 @@ mod tests {
         );
 
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_cmd_install_creation_failure_preserves_driver_io_error_code() {
+        let project_file = std::env::temp_dir().join(format!(
+            "lsharp_test_install_creation_error_{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&project_file);
+        let _ = std::fs::remove_file(&project_file);
+        std::fs::write(&project_file, "not a directory").unwrap();
+
+        let error = cmd_install_in(&project_file).expect_err(
+            "project path が file の install は package directory を作れず失敗するべき",
+        );
+
+        assert!(
+            error.to_string().starts_with("[LS5001]"),
+            "install の package directory I/O 失敗は driver I/O code を保持するべき: {error}"
+        );
+
+        std::fs::remove_file(&project_file).unwrap();
     }
 
     #[test]
