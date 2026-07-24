@@ -1927,3 +1927,11 @@ Evidence: `LSHARP_NATIVE_MACOS_AARCH64_RELEASE_ARTIFACT_DIR=/tmp/lsharp-native-m
 Evidence: `NATIVE_LINUX_X86_HOSTGEN_VM_ARTIFACT_ID=main-current-a4b69b79 NATIVE_LINUX_X86_HOSTGEN_VM_ARTIFACT_DIR=ci-artifacts/native-linux-x86-hostgen-vm/main-current-a4b69b79 NATIVE_LINUX_X86_ACTUAL_TIMEOUT=1200 NATIVE_LINUX_X86_ACTUAL_CHUNK_SIZE=64 NATIVE_LINUX_X86_REJECT_DIRTY_STAGE1_SEED=1 bash scripts/ci/native-linux-x86-selfregen.sh`、host probe 13件、`test_e2e_native_linux_x86_host_generates_actual_selfregen_stage1_bundle_artifact`（1 passed、601.52s）、actual self-regeneration summary（`status=pass`）。stage2/stage3 stdout SHA-256 はともに `4facb5f6da344ad22e1bb048683182e6b3624a8cc2c71421f5e5bcfca35edee3`、stdout は各 `11,727,461` bytesで一致した。VM workdir、host artifact、Cargo targetを検証後に回収し、VM は `Stopped` に戻した。
 
 これは current-source Linux x86_64 の host-generated stage1 → stage2 → stage3 fixed-point evidenceだけを閉じるものであり、EmbeddedCli native artifact、stage0 acquisition/package/rollback、全公開 command、qualified/private import、非-`undefined symbol` の dependency分類、EC-M1-01/EC-M1-07 aggregateの完了を意味しない。`TODO.md` の `[~]` と Rust oracle / bootstrap / host integration境界は維持する。
+
+### EC-M1-01 selfhost private definition local visibility slice (2026-07-24)
+
+`private` wrapper を同一プログラム内の TypeInfer 入力として扱い、predeclare、pending-env、analysis、failure-kind の各ループが wrapper 内の `defn` を登録・推論するようにした。対象は `(private (defn helper [value] (+ value 1)))` と同一プログラム内の `(helper 1)` に限定し、private declaration を公開 import へ漏らす処理や no-argument apply は変更していない。
+
+Evidence: RED `test_e2e_selfhost_typeinfer_analysis_accepts_private_definition_call` は Rust oracle の `Infer::infer_program` 成功に対し、selfhost が `diagnostics=1`、`failureKinds=[1]` を返した（34.57s）。GREEN は同じ fixtureで selfhost `diagnostics=0`、`failureKinds=[0,0]` を確認した（35.28s）。既存の span/classification を含む analysis regression 11件も `11 passed`（133.65s）となった。
+
+これは同一 flattened program 内の private `defn` local visibilityだけを閉じる verified sliceであり、import 先 private symbol の非公開境界、qualified import、`:only` / `:as` / `:open`、private type/record/ADT、no-argument apply、Mac Apple Silicon / Linux x86_64 のこの変更後 current-source native gate、EC-M1-01 aggregateの完了を意味しない。`TODO.md` の `[~]` と Rust oracle / bootstrap / host integration境界は維持する。次は imported private function の module boundary または qualified import parser/lookupのどちらか一つを RED に固定する。

@@ -475,11 +475,17 @@
       len
       (map-insert-int-safe env-vars (vector-get vars idx) 1))))
 
+;; private wrapper は同一 module 内の型推論では内側の宣言を使う。
+(defn typeinfer-unprivate-defn [decl]
+  (if (= (vector-get decl 0) (ast-private))
+    (typeinfer-unprivate-defn (vector-get decl 1))
+    decl))
+
 ;; 後続 top-level defn の placeholder に残る自由型変数を集める。
 (defn typeinfer-pending-env-vars-loop [program idx len placeholders subst env-vars]
   (if (>= idx len)
     env-vars
-    (let [decl (vector-get program idx)
+    (let [decl (typeinfer-unprivate-defn (vector-get program idx))
       tag (vector-get decl 0)]
       (if (= tag 20)
         (let [name-hash (vector-get decl 1)
@@ -497,7 +503,7 @@
 (defn typeinfer-predeclare-defns-loop [program idx len env placeholders counter]
   (if (>= idx len)
     (push-object-vector-local (push-object-vector-local (vector-new 2) env) placeholders)
-    (let [decl (vector-get program idx)
+    (let [decl (typeinfer-unprivate-defn (vector-get program idx))
       tag (vector-get decl 0)]
       (if (= tag 20)
         (let [name-hash (vector-get decl 1)
@@ -768,7 +774,7 @@
 (defn typeinfer-prior-definition-failed-loop [program scan-idx defn-idx current-idx failure-kinds target-hash]
   (if (>= scan-idx current-idx)
     0
-    (let [decl (vector-get program scan-idx)
+    (let [decl (typeinfer-unprivate-defn (vector-get program scan-idx))
       tag (vector-get decl 0)]
       (if (= tag 20)
         (if (= (vector-get decl 1) target-hash)
@@ -919,7 +925,7 @@
       ;; native backend では state / out と、その中から取り出した live object を
       ;; 次の allocation と再帰呼び出しの間も明示的に保持する。
       (root_push state)
-      (let [decl (vector-get program idx)
+      (let [decl (typeinfer-unprivate-defn (vector-get program idx))
         tag (vector-get decl 0)]
         (do
           (root_push decl)
