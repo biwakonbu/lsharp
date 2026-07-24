@@ -556,6 +556,16 @@ fn print_compile_artifacts_success(artifacts: &commands::compile::CompileArtifac
     );
 }
 
+fn driver_config_error(project_dir: &Path, error: config::ConfigError) -> miette::Report {
+    match error {
+        config::ConfigError::Read(message) => driver_io_error(format!(
+            "{}: lsharp.toml の読み込みに失敗: {message}",
+            project_dir.join("lsharp.toml").display()
+        )),
+        other => miette::miette!("{other}"),
+    }
+}
+
 const ARTIFACT_CACHE_DIR_ENV: &str = "LSHARP_ARTIFACT_CACHE_DIR";
 const ARTIFACT_CACHE_MAX_ENTRIES_ENV: &str = "LSHARP_ARTIFACT_CACHE_MAX_ENTRIES";
 const ARTIFACT_CACHE_MAX_BYTES_ENV: &str = "LSHARP_ARTIFACT_CACHE_MAX_BYTES";
@@ -1925,7 +1935,8 @@ fn cmd_check_package_in(
 ) -> miette::Result<String> {
     let mut out = String::new();
     out.push_str("Validating lsharp.toml ... ");
-    let config = config::load_config_result(project_dir).map_err(|e| miette::miette!("{e}"))?;
+    let config =
+        config::load_config_result(project_dir).map_err(|e| driver_config_error(project_dir, e))?;
     out.push_str("ok\n");
 
     let package = if config.project.name.is_empty() {
@@ -2315,7 +2326,8 @@ fn cmd_add_in(project_dir: &Path, github_url: &str, tag: Option<&str>) -> miette
 
 /// 指定ディレクトリを基点に依存パッケージをインストール (テスト用に分離)
 fn cmd_install_in(project_dir: &Path) -> miette::Result<()> {
-    let config = config::load_config_result(project_dir).map_err(|e| miette::miette!("{e}"))?;
+    let config =
+        config::load_config_result(project_dir).map_err(|e| driver_config_error(project_dir, e))?;
 
     let deps = &config.dependencies;
 
@@ -3428,6 +3440,27 @@ mod tests {
         );
 
         std::fs::remove_file(&project_file).unwrap();
+    }
+
+    #[test]
+    fn test_cmd_install_config_read_failure_preserves_driver_io_error_code() {
+        let project_dir = std::env::temp_dir().join(format!(
+            "lsharp_test_install_config_read_error_{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&project_dir);
+        std::fs::create_dir_all(project_dir.join("lsharp.toml")).unwrap();
+
+        let error = cmd_install_in(&project_dir).expect_err(
+            "directory になっている lsharp.toml は install の設定読み込みに失敗するべき",
+        );
+
+        assert!(
+            error.to_string().starts_with("[LS5001]"),
+            "config read failure は driver I/O code を保持するべき: {error}"
+        );
+
+        std::fs::remove_dir_all(&project_dir).unwrap();
     }
 
     #[test]
