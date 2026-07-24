@@ -88,6 +88,7 @@ imp-03 のテスト戦略と共有する:
 
 - `lsharp-syntax`: arbitrary bytes（0〜127 bytes）を入力して parser が panic せず `Ok` または parse/lex error を返す。
 - `lsharp-types`: 深さ・要素数を制限した `Type` を生成し、`unify(a, b)` と `unify(b, a)` の成否が一致する。
+- `lsharp-types`: 深さ・要素数を制限した expression source を `defn main` に包み、parser → type inference を 64 cases 実行して panic しない。
 
 さらに `lsharp-syntax` に深さ 3・要素数 bounded の式 generator を追加し、literal/variable/if/let/lambda/application/do/annotation/record/quote の
 pretty-print → re-parse 安定性を 64 cases で固定した。full crate gate 中に `"\\` と不正 UTF-8 置換文字の組み合わせが lexer の char boundary panic を検出したため、
@@ -99,5 +100,5 @@ pretty-print → re-parse 安定性を 64 cases で固定した。full crate gat
 
 ## ステータス
 
-設計 + parser panic-safety / type-unify symmetry / syntax roundtrip verified slice (2026-07-24)。着手時は TODO.md に Phase B-4 / D-3 / D-4 として項目を作成する。
+設計 + parser panic-safety / type-unify symmetry / bounded inference / syntax roundtrip verified slice (2026-07-24)。着手時は TODO.md に Phase B-4 / D-3 / D-4 として項目を作成する。
 `LEGACY-TEST-01` aggregate の完了条件は満たしていない。

@@ -4001,3 +4001,55 @@ mod gadt_tests {
         );
     }
 }
+
+#[cfg(test)]
+mod inference_property_tests {
+    use super::*;
+    use proptest::prelude::*;
+
+    fn arb_expression_source() -> impl Strategy<Value = String> {
+        let leaves = prop_oneof![
+            Just("0".to_string()),
+            Just("1".to_string()),
+            Just("true".to_string()),
+            Just("false".to_string()),
+            Just("\"x\"".to_string()),
+            Just("x".to_string()),
+            Just("y".to_string()),
+            Just("()".to_string()),
+        ];
+
+        leaves.prop_recursive(3, 32, 4, |inner| {
+            prop_oneof![
+                (inner.clone(), inner.clone(), inner.clone())
+                    .prop_map(|(cond, then, else_)| { format!("(if {cond} {then} {else_})") }),
+                (inner.clone(), inner.clone())
+                    .prop_map(|(value, body)| format!("(let [x {value}] {body})")),
+                inner.clone().prop_map(|body| format!("(fn [x] {body})")),
+                (inner.clone(), prop::collection::vec(inner.clone(), 1..3))
+                    .prop_map(|(func, args)| format!("({func} {})", args.join(" "))),
+                prop::collection::vec(inner.clone(), 1..3)
+                    .prop_map(|exprs| format!("(do {})", exprs.join(" "))),
+                inner.clone().prop_map(|expr| format!("(: {expr} Int)")),
+                inner.prop_map(|expr| format!("'{expr}")),
+            ]
+        })
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(64))]
+
+        #[test]
+        fn bounded_expression_inference_never_panics(source in arb_expression_source()) {
+            let program_source = format!("(defn main [] {source})");
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let program = lsharp_syntax::parse(&program_source)
+                    .expect("generated expression source must parse");
+                let mut infer = Infer::new();
+                let _ = infer.infer_program(&program);
+            }));
+
+            prop_assert!(result.is_ok(), "type inference panicked for source: {program_source}");
+        }
+    }
+}
