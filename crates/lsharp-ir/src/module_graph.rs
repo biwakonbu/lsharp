@@ -191,7 +191,9 @@ impl ModuleGraph {
         let mut in_stack = HashSet::new();
         let mut path = Vec::new();
 
-        for name in self.modules.keys() {
+        let mut module_names: Vec<&String> = self.modules.keys().collect();
+        module_names.sort();
+        for name in module_names {
             if !visited.contains(name)
                 && let Some(cycle) =
                     self.dfs_detect_cycle(name, &mut visited, &mut in_stack, &mut path)
@@ -216,7 +218,9 @@ impl ModuleGraph {
         path.push(node.to_string());
 
         if let Some(module) = self.modules.get(node) {
-            for import in &module.imports {
+            let mut imports = module.imports.clone();
+            imports.sort();
+            for import in &imports {
                 if !visited.contains(import) {
                     if let Some(cycle) = self.dfs_detect_cycle(import, visited, in_stack, path) {
                         return Some(cycle);
@@ -1270,6 +1274,35 @@ mod tests {
             ]
         );
         assert_eq!(groups, graph.scc_groups());
+    }
+
+    #[test]
+    fn test_cycle_diagnostic_is_stable_across_module_insertion_order() {
+        fn build_graph(order: &[&str]) -> ModuleGraph {
+            let mut graph = ModuleGraph::new();
+            for name in order {
+                let imports = match *name {
+                    "A" => vec!["B".to_string()],
+                    "B" => vec!["C".to_string()],
+                    "C" => vec!["A".to_string()],
+                    _ => Vec::new(),
+                };
+                graph
+                    .add_module((*name).to_string(), imports, None)
+                    .unwrap();
+            }
+            graph
+        }
+
+        let first = build_graph(&["A", "B", "C"])
+            .detect_cycles()
+            .expect("A -> B -> C -> A は循環として検出されるべき");
+        let second = build_graph(&["C", "B", "A"])
+            .detect_cycles()
+            .expect("挿入順が違っても同じ循環が検出されるべき");
+
+        assert_eq!(first, vec!["A", "B", "C", "A"]);
+        assert_eq!(second, first);
     }
 
     #[test]
