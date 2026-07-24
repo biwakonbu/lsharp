@@ -1729,6 +1729,24 @@ field に残る module-local type index も linked module の index 空間へリ
 これは module-link 型境界の verified partial slice であり、closure 全体および
 `LEGACY-EXEC-01` の完了条件には到達していない。
 
+### Stage 3k: linked WasmGC module の emitter/Wasmtime validation (検証済み partial slice)
+
+Stage 3j の型 index remap を、リンク済み IR から実際の WasmGC module へ渡す境界で検証した。
+2 module の GC struct field、typed funcref params/locals、異なる function type prefix を
+`link_modules` で結合し、recursive type group を使う emitter、Wasmtime validation/instantiate、
+exported function 実行まで同じ成果物で通す。
+
+- `wasm_gc_emitter_validates_linked_typed_funcref_and_gc_types` は、left/right の module-local
+  `Ref(0)` / `TypedFuncRef(1)` を linked `Ref(0/1)` / `TypedFuncRef(2/4)` へ変換し、GC type field と
+  function signature の具体的 index を IR で確認する。
+- 同テストは `wasm_gc(true)`、reference types、typed function references を有効化した Wasmtime 29
+  で linked bytes を validate/instantiate し、`right-main` の `42` を実行する。
+- import signature の remap、component/WASI/native stage0、Linux x86_64 runtime、returned/general
+  higher-order closure はこの slice の外側であり、未検証 boundary として残す。
+
+これは linked WasmGC artifact の validation/runtime verified partial slice であり、closure 全体および
+`LEGACY-EXEC-01` の完了条件には到達していない。
+
 ### Stage 3: Closures → funcref + env struct
 
 - 現行の lambda lifting (`lower/closure.rs`) は維持し、env をリニアメモリ tuple から
@@ -1790,7 +1808,8 @@ Stage 3b の module-link funcref index/type remap、Stage 3c の captured closur
 Stage 3d の non-capturing lambda funcref lowering、Stage 3e の source-level direct `call_ref`、
 Stage 3f の local non-capturing alias `call_ref`、Stage 3g の concrete typed local、Stage 3h の
 direct captured env struct `call_ref`、Stage 3i の captured env `let` alias `call_ref`、Stage 3j の
-module-link typed funcref / GC type remap は 2026-07-24 に検証済み。ADT
+module-link typed funcref / GC type remap、Stage 3k の linked artifact validation/runtime は 2026-07-24
+に検証済み。ADT
 の全表現、Stage 2 の残り (Unicode code-point semantics / WASI-component I/O /
 native-selfhost parity)、Stage 3 の captured env/call を含む closure 全体、traits / selfhost、supported target
 の actual runtime evidence は未完了であり、`LEGACY-EXEC-01` の完了条件には到達していない。
