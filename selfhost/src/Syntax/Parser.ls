@@ -3233,15 +3233,23 @@
             (root_pop)
             parsed))))))
 
+(defn parse-import-open-v3 [spans pos-ref name-h name-start name-end]
+  (do
+    (p-advance pos-ref) ;; open を消費
+    (p-expect spans pos-ref 1) ;; ) を消費
+    (make-import-decl-with-open name-h name-start name-end)))
+
 (defn parse-import-option-v3 [spans pos-ref src name-h name-start name-end]
   (let [option-name (current-symbol-text-v3 spans pos-ref src)]
     (if (string-eq option-name "as")
       (parse-import-alias-v3 spans pos-ref src name-h name-start name-end)
       (if (string-eq option-name "only")
         (parse-import-only-v3 spans pos-ref src name-h name-start name-end)
-        (do
-          (p-expect spans pos-ref 1)
-          (make-import-decl name-h name-start name-end))))))
+        (if (string-eq option-name "open")
+          (parse-import-open-v3 spans pos-ref name-h name-start name-end)
+          (do
+            (p-expect spans pos-ref 1)
+            (make-import-decl name-h name-start name-end)))))))
 
 (defn parse-import-v3 [spans pos-ref src]
   (do
@@ -3254,11 +3262,13 @@
         (if (== (p-current spans pos-ref) 50)
           (do
             (p-advance pos-ref) ;; : を消費
-            (if (== (p-current spans pos-ref) 20)
-              (parse-import-option-v3 spans pos-ref src name-h name-start name-end)
-              (do
-                (p-expect spans pos-ref 1)
-                (make-import-decl name-h name-start name-end))))
+            (if (== (p-current spans pos-ref) 49)
+              (parse-import-open-v3 spans pos-ref name-h name-start name-end)
+              (if (== (p-current spans pos-ref) 20)
+                (parse-import-option-v3 spans pos-ref src name-h name-start name-end)
+                (do
+                  (p-expect spans pos-ref 1)
+                  (make-import-decl name-h name-start name-end)))))
           (do
             (p-expect spans pos-ref 1) ;; ) を消費
             (make-import-decl name-h name-start name-end)))))))

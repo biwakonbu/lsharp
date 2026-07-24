@@ -320,3 +320,24 @@ fn test_e2e_selfhost_formatter_preserves_import_only() {
         "formatter は import :only を canonical text に保持するべき"
     );
 }
+
+/// EC-M1-01: formatter が import の :open を canonical text に保持すること
+#[test]
+fn test_e2e_selfhost_formatter_preserves_import_open() {
+    let output = run_formatter_source_harness(
+        r#"
+(module Main)
+(defn main []
+  (let [src "(import Lib :open)"
+        program (parse-program src)]
+    (do
+      (print-string (format-program program 0))
+      0)))
+"#,
+    );
+
+    assert_eq!(
+        output, "(import Lib :open)\n",
+        "formatter は import :open を canonical text に保持するべき"
+    );
+}

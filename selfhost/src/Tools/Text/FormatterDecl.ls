@@ -564,6 +564,7 @@
   (let [module-text (symbol-from-hash (vector-get decl 1))
     alias-hash (if (> (vector-length decl) 4) (vector-get decl 4) 0)
     only-hashes (if (> (vector-length decl) 5) (vector-get decl 5) 0)
+    open-flag (if (> (vector-length decl) 6) (vector-get decl 6) 0)
     only-text (if (= only-hashes 0)
       ""
       (str3 " :only ["
@@ -571,8 +572,9 @@
         "]"))
     base-text (if (= alias-hash 0)
       (str3 "(import " module-text "")
-      (str4 "(import " module-text " :as " (symbol-from-hash alias-hash)))]
-    (str3 base-text only-text ")")))
+      (str4 "(import " module-text " :as " (symbol-from-hash alias-hash)))
+    open-text (if (= open-flag 1) " :open" "")]
+    (str4 base-text only-text open-text ")")))
 
 (defn format-impl-decl [decl indent-level]
   (let [trait-text (symbol-from-hash (vector-get decl 1))
