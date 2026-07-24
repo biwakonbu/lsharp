@@ -90,11 +90,29 @@ Tarjan 法で強連結成分を求め、モジュール名と import の走査�
 `CycleA`/`CycleB` → `Consumer` の順序と反復安定性を固定した。これは SCC 検出 API の
 契約を閉じた verified partial slice であり、推論経路の変更ではない。
 
+続く Phase C-1b では `build_from_entry_with_scc()` を compile 専用の入口として追加し、
+既存の `build_from_entry()` / `topological_sort()` の循環エラー契約を維持したまま、SCC
+依存順のファイル列を返すようにした。`compile_multi_file_with_mode` は全ファイルを先に
+parse し、SCC ごとに宣言を連結した一つの `Program` を `Infer` へ渡す。SCC 外の依存だけを
+既存 `ModuleTypeSurface` から注入し、得られた相互再帰の型を使って元の各 module を import
+visibility 付きで再検証する。推論結果と式型表を宣言 origin / scope でモジュール別に分割してから、
+従来どおり modular または merged lowering へ渡す。
+
+`test_compile_multi_file_infers_mutual_recursive_scc` は `A` ↔ `B` の相互再帰と `Main` の
+依存を実ファイルで構成し、循環エラーなしで `a-step` / `b-step` / `main` の IR が生成される
+ことを固定した。`test_compile_multi_file_scc_preserves_import_only_visibility` は同じ SCC 内でも
+`:only` 外の symbol を拒否することを固定する。`test_e2e_multi_file_mutual_recursive_scc` は同じ
+fixture を Wasm/WASI で実行し、`a-step 4` の結果 `1` を確認する。既存の multi-file import/private、
+merged/modular parity を含む lsharp-ir lib 238 tests、focused Wasm runtime、clippy、rustfmt が通過している。
+
 ### 未完了の後続作業
 
-- `compile_multi_file_with_mode` を SCC ごとの宣言連結・一括 `infer_program` に変更する。
 - Formatter 3 モジュールの merged 特別扱いを除去し、相互再帰 fixture の IR/runtime parity を確認する。
 - CLI の `CompilationCache` 統合、依存 SCC key、selfhost compiler への移植を行う。
+- `compile_multi_file_incremental` / source override 入口はまだ strict な graph build を使っており、
+  SCC と cache の統合は C-2 で扱う。
+- 今回の Wasm/WASI evidence は Rust host の Mac 実行に限定され、Mac Apple Silicon / Linux x86_64 の
+  native stage0 実行証跡は未取得である。
 - `LEGACY-MODULE-01` の aggregate 完了条件（両対応 target、native stage0、公開 command）を満たすまで、
   TODO の active item は完了扱いにしない。
 
@@ -108,6 +126,7 @@ Tarjan 法で強連結成分を求め、モジュール名と import の走査�
 ## ステータス
 
 設計 (2026-06-12 起草、同日コード検証に基づき大幅訂正・具体化)。2026-07-24 に
-Phase C-1a の deterministic SCC 検出 API と unit test を検証済み部分実装として反映した。
-一括推論、CLI キャッシュ、selfhost 移植は未着手のため、Phase C-1 / C-2 の aggregate 完了とは扱わない。
+Phase C-1a の deterministic SCC 検出 API と unit test、C-1b の compile/infer 接続と相互再帰
+fixture を検証済み部分実装として反映した。一括推論の runtime/native parity、CLI キャッシュ、
+selfhost 移植は未着手のため、Phase C-1 / C-2 の aggregate 完了とは扱わない。
 着手時は TODO.md に Phase C-1 / C-2 として項目を作成する。

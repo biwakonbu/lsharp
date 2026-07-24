@@ -2144,6 +2144,40 @@ fn test_e2e_multi_file_chain() {
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
+/// マルチファイルコンパイル: SCC 単位の相互再帰を Wasm/WASI まで実行する
+#[test]
+fn test_e2e_multi_file_mutual_recursive_scc() {
+    let dir = std::env::temp_dir().join(format!(
+        "lsharp_e2e_mutual_recursive_scc_{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+
+    std::fs::write(
+        dir.join("A.ls"),
+        "(module A)\n(import B)\n(defn a-step [n] (if (= n 0) 1 (b-step (- n 1))))",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("B.ls"),
+        "(module B)\n(import A)\n(defn b-step [n] (if (= n 0) 0 (a-step (- n 1))))",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("main.ls"),
+        "(module Main)\n(import A)\n(defn main [] (print (a-step 4)))",
+    )
+    .unwrap();
+
+    let linked_module = lsharp_ir::compile_multi_file(&dir.join("main.ls")).unwrap();
+    let wasm_bytes = lsharp_wasm::wasi::emit_wasm_wasi(&linked_module).unwrap();
+    let output = lsharp_wasm::wasi_runner::run_wasm_wasi(&wasm_bytes).unwrap();
+    assert_eq!(output, "1\n");
+
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
 /// マルチファイルコンパイル: 単一ファイルの場合はリンク不要
 #[test]
 fn test_e2e_multi_file_single() {

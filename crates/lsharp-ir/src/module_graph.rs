@@ -669,6 +669,24 @@ impl ModuleGraph {
         entry_file: &std::path::Path,
         source_overrides: &HashMap<PathBuf, String>,
     ) -> Result<(Self, Vec<(String, std::path::PathBuf)>), ModuleGraphError> {
+        Self::build_from_entry_with_overrides_mode(entry_file, source_overrides, false)
+    }
+
+    /// SCC を含むエントリから、依存先が先に来る順序でファイルを探索する。
+    ///
+    /// 通常の `build_from_entry` は既存互換のため循環をエラーにする。この経路は
+    /// SCC 単位の一括推論を行う compile pipeline 専用で、循環したグループを許容する。
+    pub fn build_from_entry_with_scc(
+        entry_file: &std::path::Path,
+    ) -> Result<(Self, Vec<(String, std::path::PathBuf)>), ModuleGraphError> {
+        Self::build_from_entry_with_overrides_mode(entry_file, &HashMap::new(), true)
+    }
+
+    fn build_from_entry_with_overrides_mode(
+        entry_file: &std::path::Path,
+        source_overrides: &HashMap<PathBuf, String>,
+        allow_cycles: bool,
+    ) -> Result<(Self, Vec<(String, std::path::PathBuf)>), ModuleGraphError> {
         use std::collections::VecDeque;
 
         let search_paths = ModuleSearchPaths::discover(entry_file);
@@ -713,8 +731,14 @@ impl ModuleGraph {
             }
         }
 
-        // トポロジカルソート順に並べ替え
-        let sorted = graph.topological_sort()?;
+        // トポロジカルソート順に並べ替え。SCC compile 経路だけは循環群を flatten する。
+        let sorted = match graph.topological_sort() {
+            Ok(sorted) => sorted,
+            Err(ModuleGraphError::CyclicDependency { .. }) if allow_cycles => {
+                graph.scc_groups().into_iter().flatten().collect()
+            }
+            Err(error) => return Err(error),
+        };
         let sorted_list: Vec<(String, std::path::PathBuf)> = sorted
             .iter()
             .filter_map(|name| file_list.iter().find(|(n, _)| n == name).cloned())

@@ -1812,6 +1812,195 @@ fn lower_multi_file_modular(
     Ok(link_module_ir_segments(&lowering.segments))
 }
 
+fn collect_private_surface_names(
+    decls: &[lsharp_syntax::ast::Decl],
+    module_prefix: Option<&str>,
+    out: &mut HashSet<String>,
+) {
+    use lsharp_syntax::ast::Decl;
+
+    for decl in decls {
+        match decl {
+            Decl::Private { inner, .. } => match inner.as_ref() {
+                Decl::Defn { name, .. }
+                | Decl::TypeDef { name, .. }
+                | Decl::RecordDef { name, .. }
+                | Decl::TypeAlias { name, .. }
+                | Decl::TypeConstrained { name, .. } => {
+                    let qualified = module_prefix
+                        .map(|prefix| format!("{prefix}.{name}"))
+                        .unwrap_or_else(|| name.clone());
+                    out.insert(qualified);
+                }
+                Decl::ModuleDecl { name, body, .. } => {
+                    let qualified = module_prefix
+                        .map(|prefix| format!("{prefix}.{name}"))
+                        .unwrap_or_else(|| name.clone());
+                    collect_private_surface_names(body, Some(&qualified), out);
+                }
+                _ => {}
+            },
+            Decl::ModuleDecl { name, body, .. } if !body.is_empty() => {
+                let qualified = module_prefix
+                    .map(|prefix| format!("{prefix}.{name}"))
+                    .unwrap_or_else(|| name.clone());
+                collect_private_surface_names(body, Some(&qualified), out);
+            }
+            _ => {}
+        }
+    }
+}
+
+fn infer_scc_type_surfaces(
+    group: &[String],
+    graph: &module_graph::ModuleGraph,
+    parsed_modules: &HashMap<String, lsharp_syntax::ast::Program>,
+    module_paths: &HashMap<String, std::path::PathBuf>,
+    direct_imports: &HashMap<String, HashMap<String, ImportVisibilitySpec>>,
+    known_surfaces: &HashMap<String, ModuleTypeSurface>,
+) -> Result<HashMap<String, ModuleTypeSurface>, String> {
+    use lsharp_syntax::ast::{Decl, Program};
+
+    let group_set: HashSet<&str> = group.iter().map(String::as_str).collect();
+    let mut merged_decls = Vec::new();
+    let mut defn_origins = Vec::new();
+
+    for module_name in group {
+        let program = parsed_modules
+            .get(module_name)
+            .ok_or_else(|| format!("SCC 内のモジュールが parse 結果にありません: {module_name}"))?;
+        for decl in &program.decls {
+            match decl {
+                Decl::ModuleDecl { body, .. } if body.is_empty() => {}
+                Decl::ImportDecl { .. } => merged_decls.push(decl.clone()),
+                _ => {
+                    push_defn_origins_infer_order(
+                        std::slice::from_ref(decl),
+                        module_name,
+                        None,
+                        &mut defn_origins,
+                    );
+                    merged_decls.push(decl.clone());
+                }
+            }
+        }
+    }
+
+    let mut infer = lsharp_types::infer::Infer::new();
+    for module_name in group {
+        let imports = direct_imports.get(module_name).cloned().unwrap_or_default();
+        for dependency in graph.dependency_closure(module_name) {
+            if group_set.contains(dependency.as_str()) {
+                continue;
+            }
+            if let Some(import_spec) = imports.get(&dependency)
+                && let Some(surface) = known_surfaces.get(&dependency)
+            {
+                infer.inject_external_types_for_import(
+                    &dependency,
+                    import_spec.only.as_deref(),
+                    &surface.hidden,
+                    &surface.results,
+                );
+            }
+        }
+    }
+
+    let merged = Program {
+        decls: merged_decls,
+    };
+    let type_results = infer.infer_program(&merged).map_err(|error| {
+        let path = group
+            .first()
+            .and_then(|module| module_paths.get(module))
+            .map(|path| path.display().to_string())
+            .unwrap_or_else(|| group.join(", "));
+        format!("{path}: {error}")
+    })?;
+    if type_results.len() != defn_origins.len() {
+        return Err(format!(
+            "SCC の型結果数が宣言数と一致しません: modules={}, results={}, origins={}",
+            group.join(", "),
+            type_results.len(),
+            defn_origins.len()
+        ));
+    }
+
+    let mut results_by_module: HashMap<String, Vec<(String, lsharp_types::types::TypeScheme)>> =
+        HashMap::new();
+    for ((name, scheme), origin) in type_results.into_iter().zip(defn_origins) {
+        results_by_module
+            .entry(origin)
+            .or_default()
+            .push((name, scheme));
+    }
+
+    let inferred_private_names = infer.module_env.privates.clone();
+    let mut provisional_surfaces = HashMap::new();
+    for module_name in group {
+        let results = results_by_module.remove(module_name).unwrap_or_default();
+        let mut private_names = HashSet::new();
+        if let Some(program) = parsed_modules.get(module_name) {
+            collect_private_surface_names(&program.decls, None, &mut private_names);
+        }
+        let hidden = inferred_private_names
+            .iter()
+            .filter(|name| private_names.contains(*name))
+            .cloned()
+            .collect();
+        provisional_surfaces.insert(
+            module_name.clone(),
+            ModuleTypeSurface {
+                results,
+                hidden,
+                expr_types: HashMap::new(),
+            },
+        );
+    }
+
+    // merged prepass で相互再帰の型を確定した後、各 module を元の import visibility
+    // で再検証する。これにより SCC 内でも `:only` / private の境界を失わない。
+    let mut surfaces = HashMap::new();
+    for module_name in group {
+        let mut module_infer = lsharp_types::infer::Infer::new();
+        let imports = direct_imports.get(module_name).cloned().unwrap_or_default();
+        for dependency in graph.dependency_closure(module_name) {
+            if let Some(import_spec) = imports.get(&dependency)
+                && let Some(surface) = provisional_surfaces
+                    .get(&dependency)
+                    .or_else(|| known_surfaces.get(&dependency))
+            {
+                module_infer.inject_external_types_for_import(
+                    &dependency,
+                    import_spec.only.as_deref(),
+                    &surface.hidden,
+                    &surface.results,
+                );
+            }
+        }
+        let program = parsed_modules
+            .get(module_name)
+            .ok_or_else(|| format!("SCC 内のモジュールが parse 結果にありません: {module_name}"))?;
+        let results = module_infer.infer_program(program).map_err(|error| {
+            let path = module_paths
+                .get(module_name)
+                .map(|path| path.display().to_string())
+                .unwrap_or_else(|| module_name.clone());
+            format!("{path}: {error}")
+        })?;
+        surfaces.insert(
+            module_name.clone(),
+            ModuleTypeSurface {
+                results,
+                hidden: module_infer.module_env.privates.iter().cloned().collect(),
+                expr_types: module_infer.expr_type_results_snapshot(),
+            },
+        );
+    }
+
+    Ok(surfaces)
+}
+
 fn compile_multi_file_with_mode(
     entry_file: &std::path::Path,
     lowering_mode: MultiFileLoweringMode,
@@ -1819,7 +2008,7 @@ fn compile_multi_file_with_mode(
     use module_graph::ModuleGraph;
 
     // 1. モジュールグラフの構築とファイル探索
-    let (graph, sorted_files) = ModuleGraph::build_from_entry(entry_file)
+    let (graph, sorted_files) = ModuleGraph::build_from_entry_with_scc(entry_file)
         .map_err(|e| format!("モジュールグラフ構築エラー: {e}"))?;
 
     if sorted_files.is_empty() {
@@ -1844,13 +2033,15 @@ fn compile_multi_file_with_mode(
             .map_err(|e| format!("{}: {e}", mod_path.display()));
     }
 
-    // 2. 全モジュールをトポロジカルソート順にパース → 型チェック
-    //    全宣言を結合して、1つの Program として扱う
+    // 2. 全モジュールを依存順にパースし、SCC ごとに型チェックする。
     let mut all_decls: Vec<lsharp_syntax::ast::Decl> = Vec::new();
     let mut all_type_results: Vec<(String, lsharp_types::types::TypeScheme)> = Vec::new();
     let mut all_expr_type_results: HashMap<ExprTypeKey, lsharp_types::types::Type> = HashMap::new();
     let mut per_module_type_results: HashMap<String, ModuleTypeSurface> = HashMap::new();
     let mut module_programs: Vec<lsharp_syntax::ast::Program> = Vec::new();
+    let mut parsed_modules = HashMap::new();
+    let mut module_paths = HashMap::new();
+    let mut direct_imports = HashMap::new();
 
     let formatter_trio_batch = try_infer_formatter_trio_batch(&sorted_files);
 
@@ -1860,65 +2051,55 @@ fn compile_multi_file_with_mode(
 
         let program =
             lsharp_syntax::parse(&source).map_err(|e| format!("{}: {e}", mod_path.display()))?;
-        let direct_imports = collect_import_visibility(&program);
+        direct_imports.insert(mod_name.clone(), collect_import_visibility(&program));
+        module_paths.insert(mod_name.clone(), mod_path.clone());
+        parsed_modules.insert(mod_name.clone(), program);
+    }
 
-        let surface = if let Some(ref batch) = formatter_trio_batch
-            && let Some(surface) = batch.get(mod_name)
-        {
-            surface.clone()
-        } else {
-            // 型チェック（直接 import されたモジュールの公開シンボルだけを注入）
-            let mut infer = lsharp_types::infer::Infer::new();
-            for dep_name in graph.dependency_closure(mod_name) {
-                if let Some(import_spec) = direct_imports.get(&dep_name)
-                    && let Some(dep_surface) = per_module_type_results.get(&dep_name)
-                {
-                    infer.inject_external_types_for_import(
-                        &dep_name,
-                        import_spec.only.as_deref(),
-                        &dep_surface.hidden,
-                        &dep_surface.results,
-                    );
+    for group in graph.scc_groups() {
+        let formatter_surface = formatter_trio_batch.as_ref().filter(|batch| {
+            group
+                .iter()
+                .all(|module_name| batch.contains_key(module_name))
+        });
+        if let Some(batch) = formatter_surface {
+            for module_name in &group {
+                if let Some(surface) = batch.get(module_name) {
+                    per_module_type_results.insert(module_name.clone(), surface.clone());
                 }
             }
-            let type_results = infer
-                .infer_program(&program)
-                .map_err(|e| format!("{}: {e}", mod_path.display()))?;
-            let hidden: HashSet<String> = infer.module_env.privates.iter().cloned().collect();
-            let expr_types = infer.expr_type_results_snapshot();
-            ModuleTypeSurface {
-                results: type_results,
-                hidden,
-                expr_types,
-            }
-        };
-        let ModuleTypeSurface {
-            results: type_results,
-            hidden: surface_hidden,
-            expr_types: surface_expr_types,
-        } = surface;
+        } else {
+            let surfaces = infer_scc_type_surfaces(
+                &group,
+                &graph,
+                &parsed_modules,
+                &module_paths,
+                &direct_imports,
+                &per_module_type_results,
+            )?;
+            per_module_type_results.extend(surfaces);
+        }
+    }
 
-        // 型結果を蓄積
-        all_type_results.extend(type_results.clone());
-        all_expr_type_results.extend(surface_expr_types.clone());
-        per_module_type_results.insert(
-            mod_name.clone(),
-            ModuleTypeSurface {
-                results: type_results,
-                hidden: surface_hidden,
-                expr_types: surface_expr_types,
-            },
-        );
+    for (mod_name, _) in &sorted_files {
+        let surface = per_module_type_results
+            .get(mod_name)
+            .ok_or_else(|| format!("モジュールの SCC 型結果がありません: {mod_name}"))?;
+        all_type_results.extend(surface.results.clone());
+        all_expr_type_results.extend(surface.expr_types.clone());
 
+        let program = parsed_modules
+            .get(mod_name)
+            .ok_or_else(|| format!("モジュールの parse 結果がありません: {mod_name}"))?;
         // 宣言を収集（module 宣言と import 宣言は除外）
         let mut module_decls = Vec::new();
-        for decl in program.decls {
-            match &decl {
-                lsharp_syntax::ast::Decl::ModuleDecl { .. } => {}
-                lsharp_syntax::ast::Decl::ImportDecl { .. } => {}
+        for decl in &program.decls {
+            match decl {
+                lsharp_syntax::ast::Decl::ModuleDecl { .. }
+                | lsharp_syntax::ast::Decl::ImportDecl { .. } => {}
                 _ => {
                     all_decls.push(decl.clone());
-                    module_decls.push(decl);
+                    module_decls.push(decl.clone());
                 }
             }
         }
@@ -2948,6 +3129,102 @@ mod multifile_compile_tests {
         assert!(
             result.is_err(),
             ":only で除外されたシンボルは compile でも参照できないべき"
+        );
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_compile_multi_file_infers_mutual_recursive_scc() {
+        let dir = std::env::temp_dir().join(format!(
+            "lsharp_compile_multi_file_mutual_recursive_scc_{}",
+            std::process::id()
+        ));
+        if dir.exists() {
+            std::fs::remove_dir_all(&dir).unwrap();
+        }
+        std::fs::create_dir_all(&dir).unwrap();
+
+        std::fs::write(
+            dir.join("A.ls"),
+            "(module A)\n(import B)\n(defn a-step [n] (if (= n 0) 1 (b-step (- n 1))))\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("B.ls"),
+            "(module B)\n(import A)\n(defn b-step [n] (if (= n 0) 0 (a-step (- n 1))))\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("Main.ls"),
+            "(module Main)\n(import A)\n(defn main [] (a-step 4))\n",
+        )
+        .unwrap();
+
+        let result = compile_multi_file(&dir.join("Main.ls"));
+        assert!(
+            result.is_ok(),
+            "相互再帰 SCC はモジュール単位の循環エラーではなく一括推論へ進めるべき: {result:?}"
+        );
+        let module = result.unwrap();
+        assert!(
+            module
+                .functions
+                .iter()
+                .any(|function| function.name == "a-step")
+        );
+        assert!(
+            module
+                .functions
+                .iter()
+                .any(|function| function.name == "b-step")
+        );
+        assert!(
+            module
+                .functions
+                .iter()
+                .any(|function| function.name == "main")
+        );
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_compile_multi_file_scc_preserves_import_only_visibility() {
+        let dir = std::env::temp_dir().join(format!(
+            "lsharp_compile_multi_file_scc_import_only_{}",
+            std::process::id()
+        ));
+        if dir.exists() {
+            std::fs::remove_dir_all(&dir).unwrap();
+        }
+        std::fs::create_dir_all(&dir).unwrap();
+
+        std::fs::write(
+            dir.join("A.ls"),
+            "(module A)\n(import B :only [b-step])\n(defn a-step [] (secret))\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("B.ls"),
+            "(module B)\n(import A)\n(defn b-step [] (a-step))\n(defn secret [] 2)\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("Main.ls"),
+            "(module Main)\n(import A)\n(defn main [] (a-step))\n",
+        )
+        .unwrap();
+
+        let result = compile_multi_file(&dir.join("Main.ls"));
+        assert!(
+            result.is_err(),
+            "SCC 内でも import :only の境界を越えてはならない"
+        );
+        let error = result.unwrap_err();
+        assert!(
+            error.contains("secret"),
+            "診断に拒否された symbol を含めるべき: {error}"
         );
 
         std::fs::remove_dir_all(&dir).unwrap();
