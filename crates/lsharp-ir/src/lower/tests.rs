@@ -82,6 +82,54 @@ fn wasm_gc_closure_lowering_rejects_linear_memory_fallback_explicitly() {
 }
 
 #[test]
+fn wasm_gc_captured_lambda_direct_call_lowers_to_env_struct_call_ref() {
+    let program = lsharp_syntax::parse(
+        r#"
+        (defn main [n] ((fn [x] (+ x n)) 41))
+        "#,
+    )
+    .unwrap();
+    let mut infer = Infer::new();
+    let type_results = infer.infer_program(&program).unwrap();
+    let expr_type_results = infer.expr_type_results_snapshot();
+    let mut lowerer = Lower::with_backend(LowerBackend::WasmGc);
+    let module = lowerer
+        .lower_program_with_expr_types(&program, &type_results, &expr_type_results)
+        .expect("captured lambda direct call は env struct + call_ref へ lowering できる");
+
+    let main = module
+        .functions
+        .iter()
+        .find(|function| function.name == "main")
+        .expect("main が存在する");
+    assert!(
+        main.body
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::StructNew(_))),
+        "captured lambda は env struct を生成するべき: {:?}",
+        main.body
+    );
+    assert!(
+        main.body
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::CallRef(_))),
+        "captured lambda direct call は typed call_ref を生成するべき: {:?}",
+        main.body
+    );
+    assert!(
+        main.body.iter().all(|instruction| !matches!(
+            instruction,
+            Instruction::CallIndirect(_)
+                | Instruction::FuncIdx(_)
+                | Instruction::I64Load { .. }
+                | Instruction::I64Store { .. }
+        )),
+        "captured lambda は linear-memory closure fallback を生成しない: {:?}",
+        main.body
+    );
+}
+
+#[test]
 fn wasm_gc_non_capturing_lambda_lowers_to_funcref() {
     let program = lsharp_syntax::parse(
         r#"

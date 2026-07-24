@@ -6,11 +6,12 @@
 
 use std::borrow::Cow;
 
-use lsharp_ir::{GcTypeKind, Instruction, IrType, Module};
+use lsharp_ir::{GcTypeDef, GcTypeKind, Instruction, IrType, Module};
 use wasm_encoder::{
-    CodeSection, ElementSection, Elements, EntityType, ExportKind, ExportSection, FieldType,
-    Function, FunctionSection, HeapType, ImportSection, MemorySection, MemoryType, RefType,
-    StorageType, TypeSection, ValType,
+    ArrayType, CodeSection, CompositeInnerType, CompositeType, ElementSection, Elements,
+    EntityType, ExportKind, ExportSection, FieldType, FuncType, Function, FunctionSection,
+    HeapType, ImportSection, MemorySection, MemoryType, RefType, StorageType, StructType, SubType,
+    TypeSection, ValType,
 };
 
 use crate::codegen::CodegenError;
@@ -80,98 +81,135 @@ fn emit_wasm_wasmgc_internal(
 
     let mut wasm_module = wasm_encoder::Module::new();
     let mut types = TypeSection::new();
+    let mut import_type_indices = Vec::with_capacity(module.imports.len());
+    let mut function_type_indices = Vec::with_capacity(module.functions.len());
+    let mut print_string_type_index = None;
+    let mut component_output_type_index = None;
+    let mut component_cli_run_type_index = None;
+    let synthetic_import_offset = u32::from(print_string_import);
 
-    for gc_type in &module.gc_types {
-        match &gc_type.kind {
-            GcTypeKind::Struct(fields) => {
-                let fields = fields
-                    .iter()
-                    .map(|field| FieldType {
-                        element_type: StorageType::Val(wasm_gc_valtype(
-                            field.ty,
-                            u32::from(print_string_import),
-                        )),
-                        mutable: field.mutable,
-                    })
-                    .collect::<Vec<_>>();
-                types.ty().struct_(fields);
-            }
-            GcTypeKind::Array(element_type) => {
-                types.ty().array(
-                    &StorageType::Val(wasm_gc_valtype(
-                        *element_type,
-                        u32::from(print_string_import),
-                    )),
-                    true,
-                );
-            }
-            GcTypeKind::PackedByteArray => {
-                types.ty().array(&StorageType::I8, true);
+    if module_uses_typed_funcref(module) {
+        let mut recursive_types = Vec::new();
+        for gc_type in &module.gc_types {
+            recursive_types.push(wasm_gc_gc_subtype(gc_type, synthetic_import_offset));
+        }
+        for import in &module.imports {
+            import_type_indices.push(recursive_types.len() as u32);
+            recursive_types.push(wasm_gc_function_subtype(
+                &import.params,
+                &[import.result],
+                synthetic_import_offset,
+            ));
+        }
+        if print_string_import {
+            let string_type_index = string_array_type_index(module)?;
+            let type_index = recursive_types.len() as u32;
+            recursive_types.push(wasm_gc_function_subtype(
+                &[IrType::Ref(string_type_index)],
+                &[],
+                synthetic_import_offset,
+            ));
+            print_string_type_index = Some((type_index, string_type_index));
+        }
+        if component_output {
+            let type_index = recursive_types.len() as u32;
+            recursive_types.push(wasm_gc_function_subtype(
+                &[IrType::I32, IrType::I32],
+                &[],
+                synthetic_import_offset,
+            ));
+            component_output_type_index = Some(type_index);
+        }
+        for function in &module.functions {
+            function_type_indices.push(recursive_types.len() as u32);
+            recursive_types.push(wasm_gc_function_subtype(
+                &function.params,
+                &[function.result],
+                synthetic_import_offset,
+            ));
+        }
+        if component_cli {
+            let type_index = recursive_types.len() as u32;
+            recursive_types.push(wasm_gc_function_subtype(
+                &[],
+                &[IrType::I32],
+                synthetic_import_offset,
+            ));
+            component_cli_run_type_index = Some(type_index);
+        }
+        types.ty().rec(recursive_types);
+    } else {
+        for gc_type in &module.gc_types {
+            match &gc_type.kind {
+                GcTypeKind::Struct(fields) => {
+                    let fields = fields
+                        .iter()
+                        .map(|field| FieldType {
+                            element_type: StorageType::Val(wasm_gc_valtype(
+                                field.ty,
+                                synthetic_import_offset,
+                            )),
+                            mutable: field.mutable,
+                        })
+                        .collect::<Vec<_>>();
+                    types.ty().struct_(fields);
+                }
+                GcTypeKind::Array(element_type) => {
+                    types.ty().array(
+                        &StorageType::Val(wasm_gc_valtype(*element_type, synthetic_import_offset)),
+                        true,
+                    );
+                }
+                GcTypeKind::PackedByteArray => {
+                    types.ty().array(&StorageType::I8, true);
+                }
             }
         }
+        for import in &module.imports {
+            import_type_indices.push(types.len());
+            types.ty().function(
+                import
+                    .params
+                    .iter()
+                    .copied()
+                    .map(|ty| wasm_gc_valtype(ty, synthetic_import_offset)),
+                [wasm_gc_valtype(import.result, synthetic_import_offset)],
+            );
+        }
+        if print_string_import {
+            let string_type_index = string_array_type_index(module)?;
+            let type_index = types.len();
+            types.ty().function(
+                [ValType::Ref(RefType {
+                    nullable: true,
+                    heap_type: HeapType::Concrete(string_type_index),
+                })],
+                [],
+            );
+            print_string_type_index = Some((type_index, string_type_index));
+        }
+        if component_output {
+            let type_index = types.len();
+            types.ty().function([ValType::I32, ValType::I32], []);
+            component_output_type_index = Some(type_index);
+        }
+        for function in &module.functions {
+            function_type_indices.push(types.len());
+            types.ty().function(
+                function
+                    .params
+                    .iter()
+                    .copied()
+                    .map(|ty| wasm_gc_valtype(ty, synthetic_import_offset)),
+                [wasm_gc_valtype(function.result, synthetic_import_offset)],
+            );
+        }
+        if component_cli {
+            let type_index = types.len();
+            types.ty().function([], [ValType::I32]);
+            component_cli_run_type_index = Some(type_index);
+        }
     }
-
-    let mut import_type_indices = Vec::with_capacity(module.imports.len());
-    for import in &module.imports {
-        import_type_indices.push(types.len());
-        types.ty().function(
-            import
-                .params
-                .iter()
-                .copied()
-                .map(|ty| wasm_gc_valtype(ty, u32::from(print_string_import))),
-            [wasm_gc_valtype(
-                import.result,
-                u32::from(print_string_import),
-            )],
-        );
-    }
-
-    let print_string_type_index = if print_string_import {
-        let string_type_index = string_array_type_index(module)?;
-        let type_index = types.len();
-        types.ty().function(
-            [ValType::Ref(RefType {
-                nullable: true,
-                heap_type: HeapType::Concrete(string_type_index),
-            })],
-            [],
-        );
-        Some((type_index, string_type_index))
-    } else {
-        None
-    };
-
-    let component_output_type_index = if component_output {
-        let type_index = types.len();
-        types.ty().function([ValType::I32, ValType::I32], []);
-        Some(type_index)
-    } else {
-        None
-    };
-
-    let mut function_type_indices = Vec::with_capacity(module.functions.len());
-    for function in &module.functions {
-        function_type_indices.push(types.len());
-        types.ty().function(
-            function
-                .params
-                .iter()
-                .copied()
-                .map(|ty| wasm_gc_valtype(ty, u32::from(print_string_import))),
-            [wasm_gc_valtype(
-                function.result,
-                u32::from(print_string_import),
-            )],
-        );
-    }
-    let component_cli_run_type_index = if component_cli {
-        let type_index = types.len();
-        types.ty().function([], [ValType::I32]);
-        Some(type_index)
-    } else {
-        None
-    };
     wasm_module.section(&types);
 
     let mut imports = ImportSection::new();
@@ -356,6 +394,84 @@ fn wasm_gc_valtype(ty: IrType, synthetic_import_offset: u32) -> ValType {
             heap_type: HeapType::Concrete(index + synthetic_import_offset),
         }),
     }
+}
+
+fn wasm_gc_subtype(inner: CompositeInnerType) -> SubType {
+    SubType {
+        is_final: true,
+        supertype_idx: None,
+        composite_type: CompositeType {
+            inner,
+            shared: false,
+            descriptor: None,
+            describes: None,
+        },
+    }
+}
+
+fn wasm_gc_gc_subtype(gc_type: &GcTypeDef, synthetic_import_offset: u32) -> SubType {
+    match &gc_type.kind {
+        GcTypeKind::Struct(fields) => wasm_gc_subtype(CompositeInnerType::Struct(StructType {
+            fields: fields
+                .iter()
+                .map(|field| FieldType {
+                    element_type: StorageType::Val(wasm_gc_valtype(
+                        field.ty,
+                        synthetic_import_offset,
+                    )),
+                    mutable: field.mutable,
+                })
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
+        })),
+        GcTypeKind::Array(element_type) => {
+            wasm_gc_subtype(CompositeInnerType::Array(ArrayType(FieldType {
+                element_type: StorageType::Val(wasm_gc_valtype(
+                    *element_type,
+                    synthetic_import_offset,
+                )),
+                mutable: true,
+            })))
+        }
+        GcTypeKind::PackedByteArray => {
+            wasm_gc_subtype(CompositeInnerType::Array(ArrayType(FieldType {
+                element_type: StorageType::I8,
+                mutable: true,
+            })))
+        }
+    }
+}
+
+fn wasm_gc_function_subtype(
+    params: &[IrType],
+    results: &[IrType],
+    synthetic_import_offset: u32,
+) -> SubType {
+    wasm_gc_subtype(CompositeInnerType::Func(FuncType::new(
+        params
+            .iter()
+            .copied()
+            .map(|ty| wasm_gc_valtype(ty, synthetic_import_offset)),
+        results
+            .iter()
+            .copied()
+            .map(|ty| wasm_gc_valtype(ty, synthetic_import_offset)),
+    )))
+}
+
+fn module_uses_typed_funcref(module: &Module) -> bool {
+    let uses_typed_funcref = |ty: IrType| matches!(ty, IrType::TypedFuncRef(_));
+    module.gc_types.iter().any(|gc_type| match &gc_type.kind {
+        GcTypeKind::Struct(fields) => fields.iter().any(|field| uses_typed_funcref(field.ty)),
+        GcTypeKind::Array(element_type) => uses_typed_funcref(*element_type),
+        GcTypeKind::PackedByteArray => false,
+    }) || module.imports.iter().any(|import| {
+        import.params.iter().copied().any(uses_typed_funcref) || uses_typed_funcref(import.result)
+    }) || module.functions.iter().any(|function| {
+        function.params.iter().copied().any(uses_typed_funcref)
+            || uses_typed_funcref(function.result)
+            || function.locals.iter().copied().any(uses_typed_funcref)
+    })
 }
 
 fn module_uses_print_string(module: &Module) -> bool {

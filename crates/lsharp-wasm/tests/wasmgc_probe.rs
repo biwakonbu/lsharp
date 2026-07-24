@@ -10519,3 +10519,68 @@ fn wasm_gc_emitter_offsets_local_typed_funcref_after_print_string_import() {
     let engine = Engine::new(&config).expect("typed funcref を有効化した engine を作成できる");
     Module::new(&engine, bytes).expect("print import 付き typed local lambda module を検証できる");
 }
+
+#[test]
+fn wasm_gc_emitter_executes_captured_lambda_env_struct_call_ref() {
+    let program = lsharp_syntax::parse(
+        r#"
+        (defn main [n] ((fn [x] (+ x n)) 41))
+        "#,
+    )
+    .expect("captured lambda call source を parse できる");
+    let mut infer = lsharp_types::infer::Infer::new();
+    let type_results = infer
+        .infer_program(&program)
+        .expect("captured lambda call source を型推論できる");
+    let expr_type_results = infer.expr_type_results_snapshot();
+    let mut lowerer = lsharp_ir::lower::Lower::with_backend(lsharp_ir::lower::LowerBackend::WasmGc);
+    let ir = lowerer
+        .lower_program_with_expr_types(&program, &type_results, &expr_type_results)
+        .expect("captured lambda を WasmGC env struct IR へ lowering できる");
+    let bytes = lsharp_wasm::wasmgc::emit_wasm_wasmgc(&ir)
+        .expect("captured lambda env struct module を生成できる");
+    let mut config = Config::new();
+    config.wasm_gc(true);
+    config.wasm_reference_types(true);
+    config.wasm_function_references(true);
+    let engine = Engine::new(&config).expect("WasmGC engine を作成できる");
+    let module = Module::new(&engine, bytes).expect("captured lambda module を検証できる");
+    let mut store = Store::new(&engine, ());
+    let instance = Instance::new(&mut store, &module, &[]).expect("module を instantiate できる");
+    let main = instance
+        .get_typed_func::<i64, i64>(&mut store, "main")
+        .expect("main export が存在する");
+
+    assert_eq!(main.call(&mut store, 1).unwrap(), 42);
+}
+
+#[test]
+fn wasm_gc_emitter_offsets_captured_env_funcref_after_print_string_import() {
+    let program = lsharp_syntax::parse(
+        r#"
+        (defn main [n]
+          (do
+            (print "hello")
+            ((fn [x] (+ x n)) 41)))
+        "#,
+    )
+    .expect("print と captured lambda call source を parse できる");
+    let mut infer = lsharp_types::infer::Infer::new();
+    let type_results = infer
+        .infer_program(&program)
+        .expect("print と captured lambda call source を型推論できる");
+    let expr_type_results = infer.expr_type_results_snapshot();
+    let mut lowerer = lsharp_ir::lower::Lower::with_backend(lsharp_ir::lower::LowerBackend::WasmGc);
+    let ir = lowerer
+        .lower_program_with_expr_types(&program, &type_results, &expr_type_results)
+        .expect("print と captured lambda を WasmGC env struct IR へ lowering できる");
+
+    let bytes = lsharp_wasm::wasmgc::emit_wasm_wasmgc(&ir)
+        .expect("print import 付き captured lambda module を生成できる");
+    let mut config = Config::new();
+    config.wasm_gc(true);
+    config.wasm_reference_types(true);
+    config.wasm_function_references(true);
+    let engine = Engine::new(&config).expect("WasmGC engine を作成できる");
+    Module::new(&engine, bytes).expect("print import 付き captured lambda module を検証できる");
+}

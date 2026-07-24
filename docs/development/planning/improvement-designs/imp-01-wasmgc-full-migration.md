@@ -1668,6 +1668,29 @@ Stage 3f の call-site 再 materialize を廃止し、`let` に束縛する non-
 これは concrete typed local の verified partial slice であり、closure 全体および
 `LEGACY-EXEC-01` の完了条件には到達していない。
 
+### Stage 3h: WasmGC captured env struct の direct `call_ref` (検証済み partial slice)
+
+captured lambda の direct application に限り、linear-memory closure object を生成せず、GC struct
+として環境を materialize する経路を追加した。env struct の field 0 は lifted function の
+`TypedFuncRef`、後続 field はソート済みの captured local であり、lifted function は末尾に
+`Ref(env_type)` parameter を受け取る。call site は `args → env_ref → StructGet(function) → CallRef`
+の順で実行する。
+
+- `(defn main [n] ((fn [x] (+ x n)) 41))` を env struct の `StructNew` と concrete `CallRef` へ
+  lowering し、`wasm_gc_captured_lambda_direct_call_lowers_to_env_struct_call_ref` で
+  `CallIndirect` / `FuncIdx` / linear-memory load/store が出ないことを固定する。
+- `wasm_gc_emitter_executes_captured_lambda_env_struct_call_ref` が Wasmtime 29 で `n=1` の結果
+  `42` を実行する。env struct field が後続の function type を参照するため、typed funcref を含む
+  type section は GC type と function type を一つの recursive type group として出力する。
+- `wasm_gc_emitter_offsets_captured_env_funcref_after_print_string_import` が synthetic
+  `print-string` import による function/type index offset を検証する。
+- captured lambda を `let` に束縛する経路、関数の戻り値として返す経路、一般の function
+  parameter/local、nested/parametric closure、trait vtable、Mac/Linux native-selfhost parity は
+  未完了であり、Stage 3c の明示拒否を維持する。
+
+これは direct captured env の verified partial slice であり、closure 全体および
+`LEGACY-EXEC-01` の完了条件には到達していない。
+
 ### Stage 3: Closures → funcref + env struct
 
 - 現行の lambda lifting (`lower/closure.rs`) は維持し、env をリニアメモリ tuple から
@@ -1727,7 +1750,8 @@ custom `wasmgc-output` Component actual instantiate、Stage 2p の Preview2 stdo
 Stage 2q の custom CLI `wasi:cli/run` 接続、Stage 3a の typed funcref emitter/runtime capability、
 Stage 3b の module-link funcref index/type remap、Stage 3c の captured closure lowering 明示境界、
 Stage 3d の non-capturing lambda funcref lowering、Stage 3e の source-level direct `call_ref`、
-Stage 3f の local non-capturing alias `call_ref` と Stage 3g の concrete typed local は 2026-07-24 に検証済み。ADT
+Stage 3f の local non-capturing alias `call_ref`、Stage 3g の concrete typed local、Stage 3h の
+direct captured env struct `call_ref` は 2026-07-24 に検証済み。ADT
 の全表現、Stage 2 の残り (Unicode code-point semantics / WASI-component I/O /
 native-selfhost parity)、Stage 3 の captured env/call を含む closure 全体、traits / selfhost、supported target
 の actual runtime evidence は未完了であり、`LEGACY-EXEC-01` の完了条件には到達していない。
