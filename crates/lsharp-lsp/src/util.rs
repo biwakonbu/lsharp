@@ -491,7 +491,10 @@ fn diagnostic_error_at(
 
 fn diagnostic_error_from_message(source: &str, message: String) -> Diagnostic {
     let code = stable_code_from_message(&message).map(str::to_owned);
-    diagnostic_error_at(source, message, code.as_deref(), None)
+    let span = code
+        .as_deref()
+        .and_then(|code| diagnostic_span_from_message(source, code, &message));
+    diagnostic_error_at(source, message, code.as_deref(), span)
 }
 
 fn stable_code_from_message(message: &str) -> Option<&str> {
@@ -507,6 +510,24 @@ fn stable_code_from_message(message: &str) -> Option<&str> {
         }
     }
     None
+}
+
+fn diagnostic_span_from_message(source: &str, code: &str, message: &str) -> Option<Span> {
+    if code != "LS3102" {
+        return None;
+    }
+
+    let prefix = "モジュール '";
+    let suffix = "' が見つかりません";
+    let module_start = message.find(prefix)? + prefix.len();
+    let module_end = module_start + message[module_start..].find(suffix)?;
+    let missing_module = &message[module_start..module_end];
+    let program = lsharp_syntax::parse(source).ok()?;
+
+    program.decls.iter().find_map(|decl| match decl {
+        Decl::ImportDecl { span, module, .. } if module == missing_module => Some(*span),
+        _ => None,
+    })
 }
 
 fn parse_program(source: &str) -> std::result::Result<Program, Box<Diagnostic>> {
@@ -760,6 +781,10 @@ mod tests {
             Some(NumberOrString::String("LS3102".to_string()))
         );
         assert!(diagnostics[0].message.contains("Missing"));
+        assert_eq!(
+            diagnostics[0].range,
+            Range::new(Position::new(1, 0), Position::new(1, 16))
+        );
 
         std::fs::remove_dir_all(&dir).unwrap();
     }
