@@ -1492,3 +1492,83 @@ fn test_e2e_selfhost_typeinfer_analysis_filters_import_open_unqualified_definiti
         "import :open は public symbol だけを unqualified lookup へ公開するべき"
     );
 }
+
+/// EC-M1-01: import の :open + :only が selected symbol だけを unqualified lookup へ公開すること
+#[test]
+fn test_e2e_selfhost_typeinfer_analysis_filters_import_open_only_unqualified_definition() {
+    let selected_source =
+        "(module Lib) (defn helper [value] (+ value 1)) (defn hidden [value] (+ value 2)) (module Main) (import Lib :open :only [helper]) (defn main [] (helper 42))";
+    let selected_oracle_source =
+        "(module Main) (import Lib :open :only [helper]) (defn main [] (helper 42))";
+    let selected_program = lsharp_syntax::parse(selected_oracle_source)
+        .expect("selected :open + :only oracle fixture は parse できるべき");
+    let mut selected_oracle = Infer::new();
+    let helper_type = lsharp_types::types::Type::Fun(
+        vec![lsharp_types::types::Type::int()],
+        Box::new(lsharp_types::types::Type::int()),
+    );
+    let selected_only = vec!["helper".to_string()];
+    selected_oracle.inject_external_types_for_import(
+        "Lib",
+        Some(selected_only.as_slice()),
+        &std::collections::HashSet::new(),
+        &[(
+            "helper".to_string(),
+            lsharp_types::types::TypeScheme::mono(helper_type.clone()),
+        )],
+    );
+    assert!(
+        selected_oracle.infer_program(&selected_program).is_ok(),
+        "Rust oracle は :open + :only の selected definition を受理するべき"
+    );
+
+    let excluded_source =
+        "(module Lib) (defn helper [value] (+ value 1)) (defn hidden [value] (+ value 2)) (module Main) (import Lib :open :only [helper]) (defn main [] (hidden 42))";
+    let excluded_oracle_source =
+        "(module Main) (import Lib :open :only [helper]) (defn main [] (hidden 42))";
+    let excluded_program = lsharp_syntax::parse(excluded_oracle_source)
+        .expect("excluded :open + :only oracle fixture は parse できるべき");
+    let mut excluded_oracle = Infer::new();
+    excluded_oracle.inject_external_types_for_import(
+        "Lib",
+        Some(selected_only.as_slice()),
+        &std::collections::HashSet::new(),
+        &[(
+            "hidden".to_string(),
+            lsharp_types::types::TypeScheme::mono(helper_type),
+        )],
+    );
+    assert!(
+        excluded_oracle.infer_program(&excluded_program).is_err(),
+        "Rust oracle は :open + :only で除外された definition を拒否するべき"
+    );
+
+    let harness = format!(
+        r#"
+(defn main []
+  (let [selected
+          (infer-program-analysis
+            (parse-program "{}"))
+        excluded
+          (infer-program-analysis
+            (parse-program "{}"))]
+    (do
+      (print (infer-program-analysis-diagnostic-count selected))
+      (print (infer-program-analysis-diagnostic-count excluded))
+      0)))
+"#,
+        selected_source, excluded_source
+    );
+
+    let combined = format!("{}\n{}", selfhost_typeinfer_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "1"],
+        "import :open + :only は selected symbol だけを unqualified lookup へ公開するべき"
+    );
+}

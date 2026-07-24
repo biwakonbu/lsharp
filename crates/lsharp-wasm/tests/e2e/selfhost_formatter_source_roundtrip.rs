@@ -362,3 +362,25 @@ fn test_e2e_selfhost_formatter_preserves_import_alias_only() {
         "formatter は import :as + :only を canonical text に保持するべき"
     );
 }
+
+/// EC-M1-01: formatter が import の :open + :only を canonical option 順へ正規化すること
+#[test]
+fn test_e2e_selfhost_formatter_preserves_import_open_only() {
+    let output = run_formatter_source_harness(
+        r#"
+(module Main)
+(defn main []
+  (let [src "(import Lib :open :only [helper])"
+        program (parse-program src)]
+    (do
+      (print-string (format-program program 0))
+      0)))
+"#,
+    );
+
+    assert_eq!(
+        output,
+        "(import Lib :only [helper] :open)\n",
+        "formatter は import :open + :only を canonical option 順へ保持するべき"
+    );
+}
