@@ -134,6 +134,11 @@
         (name-hash src (+ dot-pos 1) end))
       (name-hash src start end))))
 
+(defn current-type-name-qualified-v3 [spans pos-ref src]
+  (let [start (p-start spans pos-ref)
+    end (p-end spans pos-ref)]
+    (if (>= (symbol-dot-position src start end) 0) 1 0)))
+
 ;; ftable 経路は AST だけを受け取るため、Map の文字列キー用 hash を
 ;; パース時に保持する。source 経路と同じく、エスケープ後の文字列を hash する。
 (defn string-literal-map-hash-escaped-char [escaped]
@@ -306,16 +311,20 @@
   (do
     (p-advance pos-ref) ;; { を消費
     (if (== (p-current spans pos-ref) 20)
-      (let [type-h (current-type-name-hash-v3 spans pos-ref src)
+      (let [type-qualified (current-type-name-qualified-v3 spans pos-ref src)
+        type-h (current-type-name-hash-v3 spans pos-ref src)
         result (make-recordlit type-h)
         result-slot (root_push result)]
         (do
           (p-advance pos-ref) ;; type 名を消費
           (let [with-fields (parse-recordlit-fields-v3 spans pos-ref src result 0)
             field-count (/ (- (vector-length with-fields) 3) 2)
-            parsed (do
+            normalized (do
               (root_set result-slot with-fields)
-              (vector-set-at-rooted-v3 with-fields 2 field-count))]
+              (vector-set-at-rooted-v3 with-fields 2 field-count))
+            parsed (do
+              (root_set result-slot normalized)
+              (vector-push-single-rooted-v3 normalized type-qualified))]
             (do
               (root_pop)
               parsed))))

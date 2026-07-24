@@ -2118,3 +2118,11 @@ Evidence: RED は `test_e2e_selfhost_typeinfer_analysis_resolves_import_qualifie
 Evidence: `test_e2e_selfhost_typeinfer_finalize_defn_root_lifetime_is_balanced`、`test_e2e_selfhost_infer_var_root_lifetime_is_balanced`、`test_e2e_selfhost_typeinfer_program_analysis_state_base_root_lifetime_is_balanced`、`test_e2e_selfhost_typeinfer_register_adt_variants_root_lifetime_is_balanced` は全て passした。加えて `test_e2e_selfhost_typeinfer_analysis_resolves_import_qualified_record_literal` が root ledger の underflow / branch-depth failureなしに selected `diagnostics=0`、invalid `diagnostics=1` を確認した。
 
 これは selfhost TypeInfer の4関数と qualified record literal fixtureに対する current Rust oracle/native harness の回帰修正であり、全 selfhost sourceの root lifetime parity、stateful REPL/LSP、Mac Apple Silicon / Linux x86_64 native stage0、Wasm artifact/runtime、`LEGACY-ROOT-01` aggregateの完了を意味しない。残る不均衡候補は対象 fixtureで実行された範囲に限定して次の RED で切り出す。
+
+### EC-M1-01 selfhost alias-qualified record literal visibility slice (2026-07-25)
+
+selfhost Parser は named record literal の既存 field index を維持したまま、末尾 marker で type name が module/alias-qualified かを保持するようにした。TypeInferRecord は visible な alias-qualified constructor schemaを使う場合だけ field 型検査を行い、`:only [Point]` で除外された `L.Hidden` は未知 record fallbackへ落とさず明示的な診断へ進める。unqualified と anonymous record literal の既存 fallbackは維持する。
+
+Evidence: RED `test_e2e_selfhost_typeinfer_analysis_filters_import_alias_only_record_literal` は selected `L.Point` と excluded `L.Hidden` をともに diagnostics `0` で受理していた。GREEN は selected `diagnostics=0`、excluded `diagnostics=1` を Rust oracleの可視 registry縮約と同じ fixtureで確認した。`test_e2e_selfhost_typeinfer_analysis_resolves_import_alias_qualified_record_literal`、既存 qualified record regression 5件、`test_e2e_selfhost_parser_record_literal` も passした。
+
+これは alias-qualified record literal の `:only` visibility と field schema validationだけを閉じる verified sliceである。unqualified `:open` literal、record update、parametric record literal、qualified/alias-qualified annotation、constructor pattern、private record、複数 moduleの forward visibility、standalone native stage0、Wasm artifact/runtime、Mac Apple Silicon / Linux x86_64 のこの変更後 current-source native gate、EC-M1-01 aggregateの完了を意味しない。`TODO.md` の `[~]` と Rust oracle / bootstrap / host integration境界は維持する。次は qualified record annotationの alias parityまたは private record export filteringを一つの REDに固定する。

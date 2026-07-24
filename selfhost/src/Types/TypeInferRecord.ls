@@ -131,6 +131,12 @@
         (root_pop)
         result))))
 
+(defn infer-recordlit-is-qualified [node]
+  (let [marker-index (+ 3 (* (vector-get node 2) 2))]
+    (if (> (vector-length node) marker-index)
+      (vector-get node marker-index)
+      0)))
+
 ;; record literal の型推論
 ;; [12, type-name-hash, field-count, field1-hash, expr1, ...]
 (defn infer-recordlit [node env subst counter]
@@ -142,7 +148,9 @@
         (let [visible-record-ty
                 (infer-recordlit-visible-record-type node env counter)]
           (if (= visible-record-ty 0)
-            (infer-record-fields node 0 field-count env subst counter)
+            (if (= (infer-recordlit-is-qualified node) 1)
+              (make-error-result-code (error-code-general))
+              (infer-record-fields node 0 field-count env subst counter))
             (do
               (root_push visible-record-ty)
               (let [result
