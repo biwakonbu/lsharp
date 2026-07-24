@@ -70,8 +70,8 @@ CI (または契約テスト) に「`crates/**/src/**/*.rs` の行数が 800 を
 
 ## 検証済み部分実装 (2026-07-25)
 
-`module_graph.rs` の inline unit test 43 件を `src/module_graph/` 配下の 4 test module へ移動し、続けて `ModuleSearchPaths`、path resolver、entry graph builder を `src/module_graph/resolve.rs` へ分離した。親ファイルは 552 行、resolver は 473 行となり、公開 API と graph/SCC ロジックは変更していない。移動後の module graph focused 43 tests と `RUST_MIN_STACK=33554432 cargo test -p lsharp-ir --lib`（257 tests）が passし、default stack の Formatter incremental fixture overflow は imp-04 C-1n の既知境界として分離した。詳細は `docs/adr/decisions-legacy-test-module-graph-split.md` と `docs/adr/decisions-legacy-module-graph-production-split.md` に記録する。
+`module_graph.rs` の inline unit test 43 件を `src/module_graph/` 配下の 4 test module へ移動し、続けて `ModuleSearchPaths`、path resolver、entry graph builder を `src/module_graph/resolve.rs` へ分離した。さらに Rust parser の inline test 61 件を `src/parser/` 配下の 3 test module へ移動した。module graph 親は 552 行、resolver は 473 行、parser production は 1,790 行となり、公開 API と parser/graph のロジックは変更していない。focused tests、large-stack `lsharp-ir` 257 tests、syntax clippy/rustfmt が passし、default stack の Formatter incremental fixture overflow は imp-04 C-1n の既知境界として分離した。詳細は各 `decisions-legacy-*test-*split.md` ADR に記録する。
 
 ## ステータス
 
-設計 + `module_graph.rs` のテスト分離と path-resolution 分離 verified partial slice (2026-07-25)。graph/SCC core の追加分割、`wasi.rs` / `main.rs` / `infer.rs` / `ir/lib.rs` の責務分割、I-01 / I-08 aggregate 完了は未着手または未完了である。着手時は TODO.md に Phase A-2 / D-4 としてファイル単位の項目を作成する。
+設計 + module graph のテスト/path-resolution 分離と parser のテスト分離 verified partial slice (2026-07-25)。parser の expr/decl production 分割、graph/SCC core の追加分割、`wasi.rs` / `main.rs` / `infer.rs` / `ir/lib.rs` の責務分割、I-01 / I-08 aggregate 完了は未着手または未完了である。着手時は TODO.md に Phase A-2 / D-4 としてファイル単位の項目を作成する。
