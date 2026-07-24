@@ -93,6 +93,7 @@ imp-03 のテスト戦略と共有する:
 - `lsharp-types` integration contract: self-application `(defn omega [f] (f f))` は occurs check により `InfiniteType` / `LS1003` を返す。
 - `lsharp-types` integration limit contract: `Box` を 32 / 64 / 128 段ネストした型注釈を parse → inference しても panic せず成功する。
 - `lsharp-types` integration limit contract: `Int` フィールド 128 / 256 個の `Wide` レコード型注釈を parse → inference しても panic せず成功する。
+- `lsharp-types` Criterion baseline: `Box` 128 段と `Wide` 256 fields の parse → inference benchmark を `infer_limits` bench target として再現できる。
 - `lsharp-wasm` actual runtime contract: 4097 個の unrooted allocation の回収、free-list 再利用、10 回 repeated-start の heap plateau を telemetry で確認する。
 
 さらに `lsharp-syntax` に深さ 3・要素数 bounded の式 generator を追加し、literal/variable/if/let/lambda/application/do/annotation/record/quote の
@@ -100,7 +101,7 @@ pretty-print → re-parse 安定性を 64 cases で固定した。full crate gat
 未知 escape の非 ASCII code point を一文字分消費する修正と regression seed を追加した。
 
 これらは arbitrary input/type の panic regression、unification の成否対称性、深い型注釈・巨大レコードの限界値、GC leak / free-list の actual runtime、限定した AST roundtrip に対する verified slice であり、
-小さな式全体の型推論、nightly 4096 cases、GC slot 32768、runtime memory.grow 上限、rooting stress、native stage0 の GC gate は未着手のまま残る。property test は dev-dependency と `cfg(test)` に閉じ、
+小さな式全体の型推論、nightly 4096 cases、性能回帰の閾値・issue 化、GC slot 32768、runtime memory.grow 上限、rooting stress、native stage0 の GC gate は未着手のまま残る。property test と benchmark は dev-dependency に閉じ、
 配布 artifact の依存関係や公開 CLI の挙動を変更しない。
 
 ## ステータス
