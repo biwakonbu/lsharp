@@ -773,6 +773,33 @@ fn test_e2e_selfhost_typeinfer_analysis_classifies_definition_failure_kinds() {
     assert_eq!(lines, ["3", "1", "2", "1"]);
 }
 
+/// EC-M1-01: 複数段の失敗定義連鎖を dependency failure として分類する
+#[test]
+fn test_e2e_selfhost_typeinfer_analysis_classifies_multilevel_definition_failure_kinds() {
+    let harness = r#"
+(defn main []
+  (let [analysis
+          (infer-program-analysis
+            (parse-program "(defn primary [] missing) (defn middle [] primary) (defn dependent [] middle) (defn independent [] missing-later)"))
+        kinds (infer-program-analysis-failure-kinds analysis)]
+    (do
+      (print (infer-program-analysis-diagnostic-count analysis))
+      (print (vector-get kinds 0))
+      (print (vector-get kinds 1))
+      (print (vector-get kinds 2))
+      (print (vector-get kinds 3))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_typeinfer_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(lines, ["4", "1", "2", "2", "1"]);
+}
+
 /// selfhost TypeInfer.ls テスト: 最初に失敗した式の source span を保持する
 #[test]
 fn test_e2e_selfhost_typeinfer_analysis_reports_first_failed_expression_span() {
