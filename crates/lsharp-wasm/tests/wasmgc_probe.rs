@@ -1275,8 +1275,8 @@ fn wasm_gc_component_cli_fs_runner_skips_input_stream_then_reads_remaining_bytes
 }
 
 #[test]
-fn wasm_gc_component_cli_fs_runner_reads_nonblocking_input_stream_and_completes_remaining_bytes_and_reports_eof(
-) {
+fn wasm_gc_component_cli_fs_runner_reads_nonblocking_input_stream_and_completes_remaining_bytes_and_reports_eof()
+ {
     let core = emit_component_cli_read_stream_probe_module();
     let wit_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
@@ -1600,8 +1600,8 @@ fn wasm_gc_component_cli_fs_runner_maps_pending_output_stream_failure_to_filesys
 }
 
 #[test]
-fn wasm_gc_component_cli_fs_runner_maps_nonblocking_flush_pending_output_stream_failure_to_filesystem_error_code(
-) {
+fn wasm_gc_component_cli_fs_runner_maps_nonblocking_flush_pending_output_stream_failure_to_filesystem_error_code()
+ {
     let core = emit_component_cli_nonblocking_flush_pending_output_stream_failure_probe_module();
     let wit_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
@@ -10345,4 +10345,45 @@ fn wasm_gc_emitter_executes_typed_funcref_call_ref() {
         .expect("main export が存在する");
 
     assert_eq!(main.call(&mut store, ()).unwrap(), 41);
+}
+
+#[test]
+fn wasm_gc_emitter_accepts_lowered_non_capturing_lambda_funcref() {
+    let program = lsharp_syntax::parse(
+        r#"
+        (defn make-inc [] (fn [x] (+ x 1)))
+        (defn main [] 0)
+        "#,
+    )
+    .expect("non-capturing lambda source を parse できる");
+    let mut infer = lsharp_types::infer::Infer::new();
+    let type_results = infer
+        .infer_program(&program)
+        .expect("non-capturing lambda source を型推論できる");
+    let expr_type_results = infer.expr_type_results_snapshot();
+    let mut lowerer = lsharp_ir::lower::Lower::with_backend(lsharp_ir::lower::LowerBackend::WasmGc);
+    let ir = lowerer
+        .lower_program_with_expr_types(&program, &type_results, &expr_type_results)
+        .expect("non-capturing lambda を WasmGC funcref IR へ lowering できる");
+    let make_inc = ir
+        .functions
+        .iter()
+        .find(|function| function.name == "make-inc")
+        .expect("make-inc が存在する");
+    assert_eq!(make_inc.result, IrType::FuncRef);
+    assert!(
+        make_inc
+            .body
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::RefFunc(_)))
+    );
+
+    let bytes = lsharp_wasm::wasmgc::emit_wasm_wasmgc(&ir)
+        .expect("lowered non-capturing lambda module を生成できる");
+    let mut config = Config::new();
+    config.wasm_gc(true);
+    config.wasm_reference_types(true);
+    config.wasm_function_references(true);
+    let engine = Engine::new(&config).expect("typed funcref を有効化した engine を作成できる");
+    Module::new(&engine, bytes).expect("lowered non-capturing lambda module を検証できる");
 }

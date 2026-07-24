@@ -1571,20 +1571,40 @@ type index を linked module の index 空間へリベースする。
 これは IR linker の verified partial slice であり、closure env lowering、synthetic backend import
 を含む最終 Wasm type/index mapping、trait vtable、Mac/Linux native/selfhost parity は未完了である。
 
-### Stage 3c: WasmGC closure lowering の明示境界 (検証済み partial slice)
+### Stage 3c: WasmGC captured closure lowering の明示境界 (検証済み partial slice)
 
 現行の lambda lifting は linear-memory closure object、`FuncIdx`、`I64Load`/`I64Store`、
 `CallIndirect` を生成する。これらを WasmGC backend が暗黙に受け入れると、typed funcref/env
-struct へ移行していない IR が誤った Wasm を出力するため、WasmGC lowering の `Expr::Lambda` は
-現時点で明示的な `LowerError::Unsupported` を返す。
+struct へ移行していない IR が誤った Wasm を出力するため、captured な `Expr::Lambda` は
+現時点で明示的な `LowerError::Unsupported` を返す。自由変数を持たない lambda は Stage 3d の
+verified slice へ進める。
 
-- `wasm_gc_closure_lowering_rejects_linear_memory_fallback_explicitly` で、non-capturing lambda
-  でも linear-memory fallback を生成せず `typed funcref/env struct` 境界で停止することを確認する。
+- `wasm_gc_closure_lowering_rejects_linear_memory_fallback_explicitly` で、captured lambda が
+  linear-memory fallback を生成せず `typed funcref/env struct` 境界で停止することを確認する。
 - RED では従来 IR が `Call(1)`、`I32Store`、`FuncIdx` を含む closure object を生成した。GREEN
   では同じ fixture が lowering 段階で診断され、WasmGC emitter まで不正 IR を渡さない。
 
 これは安全な外部境界の verified partial slice であり、closure env struct の実装、typed
-`CallRef` type allocation、captured value の GC field lowering、closure E2E は未完了である。
+`CallRef` type allocation、captured value の GC field lowering、closure call E2E は未完了である。
+
+### Stage 3d: WasmGC non-capturing lambda の typed funcref lowering (検証済み partial slice)
+
+自由変数を持たない lambda は環境を必要としないため、linear-memory closure object を生成せず、
+`FuncRef` / `RefFunc` と通常の lifted function へ直接 lowering する経路を追加した。
+
+- WasmGC の関数型 `Type::Fun` は `IrType::FuncRef` として保持し、親関数の戻り値に
+  `funcref` を設定する。
+- lifted function は元の引数だけを持ち、`closure_ptr`、`I64Load`、`I64Store`、`FuncIdx`、
+  allocator 呼び出しを生成しない。`RefFunc` は runtime import の論理 index から core module
+  の user function index へ明示的に変換する。
+- `wasm_gc_non_capturing_lambda_lowers_to_funcref` が IR の `FuncRef` / `RefFunc` と linear
+  memory 命令の不在を固定し、`wasm_gc_emitter_accepts_lowered_non_capturing_lambda_funcref`
+  が WasmGC + typed function references を有効にした Wasmtime 29 で生成物を検証する。
+- captured lambda、lambda の env struct、closure call の `CallRef`、nested/parametric closure、
+  Mac/Linux native-selfhost parity はこの slice の外側で、Stage 3c の明示拒否を維持する。
+
+これは non-capturing lambda の verified partial slice であり、closure 全体および
+`LEGACY-EXEC-01` の完了条件には到達していない。
 
 ### Stage 3: Closures → funcref + env struct
 
@@ -1643,9 +1663,8 @@ WasmGC Component bridge 明示拒否、Stage 2l の output `list<u8>` canonical 
 の packed GC array→linear-memory output bridge、Stage 2n の fd_write handler 契約、Stage 2o の
 custom `wasmgc-output` Component actual instantiate、Stage 2p の Preview2 stdout stream 接続、
 Stage 2q の custom CLI `wasi:cli/run` 接続、Stage 3a の typed funcref emitter/runtime capability、
-Stage 3b の module-link funcref index/type remap、Stage 3c の WasmGC closure lowering 明示境界は
-2026-07-24 に検証済み。ADT
+Stage 3b の module-link funcref index/type remap、Stage 3c の captured closure lowering 明示境界、
+Stage 3d の non-capturing lambda funcref lowering は 2026-07-24 に検証済み。ADT
 の全表現、Stage 2 の残り (Unicode code-point semantics / WASI-component I/O /
-native-selfhost parity)、Stage 3 以降
-(closures / traits / selfhost)、supported target
+native-selfhost parity)、Stage 3 の captured env/call を含む closure 全体、traits / selfhost、supported target
 の actual runtime evidence は未完了であり、`LEGACY-EXEC-01` の完了条件には到達していない。

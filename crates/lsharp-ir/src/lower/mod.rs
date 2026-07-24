@@ -663,6 +663,9 @@ impl Lower {
     /// L# 型を選択した値表現の IR 型へ変換する。
     pub(crate) fn ir_type_for_type(&self, ty: &Type) -> IrType {
         if self.backend == LowerBackend::WasmGc {
+            if matches!(ty, Type::Fun(_, _)) {
+                return IrType::FuncRef;
+            }
             if matches!(ty, Type::Con(name) if name == "String")
                 && let Some(gc_idx) = self.string_array_type_index
             {

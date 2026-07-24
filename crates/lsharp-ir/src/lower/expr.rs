@@ -4,10 +4,14 @@ use std::collections::HashMap;
 
 use lsharp_syntax::ast::*;
 use lsharp_syntax::span::Span;
+use lsharp_types::{infer::ExprTypeKey, types::Type};
 
 use crate::{Function, Instruction, IrType, closure};
 
-use super::{FuncCtx, Lower, LowerBackend, LowerError, is_builtin_binop, is_heap_like_type_name};
+use super::{
+    FuncCtx, Lower, LowerBackend, LowerError, is_builtin_binop, is_heap_like_type_name,
+    type_to_name,
+};
 
 impl Lower {
     /// 式を IR 命令に変換（スタックマシン方式）
@@ -1807,14 +1811,6 @@ impl Lower {
             }
 
             Expr::Lambda(_, params, body) => {
-                if self.backend == LowerBackend::WasmGc {
-                    return Err(LowerError::Unsupported {
-                        msg: "WasmGC closure lowering は typed funcref/env struct への変換が未実装です"
-                            .to_string(),
-                        span: Some(expr.span()),
-                    });
-                }
-
                 // Lambda Lifting: Lambda 式をトップレベル関数にリフト
                 let lambda_name = self.fresh_lambda_name();
 
@@ -1836,6 +1832,109 @@ impl Lower {
                     })
                     .collect();
                 free_var_list.sort();
+
+                if self.backend == LowerBackend::WasmGc && !free_var_list.is_empty() {
+                    return Err(LowerError::Unsupported {
+                        msg: "WasmGC captured closure は typed funcref/env struct への変換が未実装です"
+                            .to_string(),
+                        span: Some(expr.span()),
+                    });
+                }
+
+                if self.backend == LowerBackend::WasmGc {
+                    let lambda_type = self
+                        .expr_type_results
+                        .get(&ExprTypeKey::new(&ctx.type_scope_key, expr.span()))
+                        .cloned();
+                    let (param_types, param_type_names, inferred_result_type) = match lambda_type {
+                        Some(Type::Fun(inferred_params, ret))
+                            if inferred_params.len() == params.len() =>
+                        {
+                            (
+                                inferred_params
+                                    .iter()
+                                    .map(|ty| self.ir_type_for_type(ty))
+                                    .collect::<Vec<_>>(),
+                                inferred_params.iter().map(type_to_name).collect::<Vec<_>>(),
+                                Some(self.ir_type_for_type(&ret)),
+                            )
+                        }
+                        _ => (
+                            params
+                                .iter()
+                                .map(|param| {
+                                    param
+                                        .ty
+                                        .as_ref()
+                                        .map(|ty| self.type_expr_to_ir(ty))
+                                        .unwrap_or(IrType::I64)
+                                })
+                                .collect::<Vec<_>>(),
+                            params
+                                .iter()
+                                .map(|param| param.ty.as_ref().and_then(super::type_expr_to_name))
+                                .collect::<Vec<_>>(),
+                            None,
+                        ),
+                    };
+
+                    let mut lifted_ctx =
+                        FuncCtx::with_type_scope(lambda_name.clone(), ctx.type_scope_key.clone());
+                    for (param_idx, param) in params.iter().enumerate() {
+                        let idx = lifted_ctx.next_local;
+                        lifted_ctx.locals_map.insert(param.name.clone(), idx);
+                        if let Some(type_name) = param_type_names.get(param_idx).cloned().flatten()
+                        {
+                            lifted_ctx
+                                .local_type_names
+                                .insert(param.name.clone(), type_name);
+                        }
+                        lifted_ctx.param_count += 1;
+                        lifted_ctx.next_local += 1;
+                        lifted_ctx
+                            .local_types
+                            .push(param_types.get(param_idx).copied().unwrap_or(IrType::I64));
+                    }
+
+                    self.lower_expr(&mut lifted_ctx, body)?;
+                    let result_type = inferred_result_type
+                        .or_else(|| {
+                            self.infer_expr_type_name_with_ctx(&lifted_ctx, body)
+                                .map(|name| self.ir_type_for_type_name(&name))
+                        })
+                        .unwrap_or(IrType::I64);
+                    let extra_local_count =
+                        (lifted_ctx.next_local - lifted_ctx.param_count) as usize;
+                    let extra_locals = lifted_ctx
+                        .local_types
+                        .get(lifted_ctx.param_count as usize..)
+                        .filter(|types| types.len() == extra_local_count)
+                        .map_or_else(
+                            || vec![IrType::I64; extra_local_count],
+                            |types| types.to_vec(),
+                        );
+                    let lifted_func = Function {
+                        name: lambda_name.clone(),
+                        params: param_types,
+                        result: result_type,
+                        locals: extra_locals,
+                        body: lifted_ctx.instructions,
+                        is_export: false,
+                    };
+                    let func_idx = self.next_func_idx + self.lifted_functions.len() as u32;
+                    let local_func_idx =
+                        func_idx.checked_sub(self.import_count).ok_or_else(|| {
+                            LowerError::Unsupported {
+                            msg: "WasmGC lambda の function index が runtime import 境界より前です"
+                                .to_string(),
+                            span: Some(expr.span()),
+                        }
+                        })?;
+                    self.lifted_func_indices.insert(lambda_name, func_idx);
+                    self.lifted_functions.push(lifted_func);
+                    ctx.emit(Instruction::RefFunc(local_func_idx));
+                    return Ok(());
+                }
 
                 // リフト先関数を構築:
                 // 統一呼び出し規約: (元パラメータ..., closure_ptr) -> result

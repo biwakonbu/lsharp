@@ -64,7 +64,7 @@ fn wasm_gc_lowering_registers_string_bytes_as_packed_array() {
 fn wasm_gc_closure_lowering_rejects_linear_memory_fallback_explicitly() {
     let program = lsharp_syntax::parse(
         r#"
-        (defn make-inc [] (fn [x] (+ x 1)))
+        (defn make-adder [n] (fn [x] (+ x n)))
         (defn main [] 0)
         "#,
     )
@@ -79,6 +79,61 @@ fn wasm_gc_closure_lowering_rejects_linear_memory_fallback_explicitly() {
 
     assert!(matches!(error, LowerError::Unsupported { .. }));
     assert!(error.to_string().contains("typed funcref/env struct"));
+}
+
+#[test]
+fn wasm_gc_non_capturing_lambda_lowers_to_funcref() {
+    let program = lsharp_syntax::parse(
+        r#"
+        (defn make-inc [] (fn [x] (+ x 1)))
+        (defn main [] 0)
+        "#,
+    )
+    .unwrap();
+    let mut infer = Infer::new();
+    let type_results = infer.infer_program(&program).unwrap();
+    let expr_type_results = infer.expr_type_results_snapshot();
+    let mut lowerer = Lower::with_backend(LowerBackend::WasmGc);
+    let module = lowerer
+        .lower_program_with_expr_types(&program, &type_results, &expr_type_results)
+        .expect("captured なし lambda は WasmGC funcref slice へ lowering できる");
+
+    let make_inc = module
+        .functions
+        .iter()
+        .find(|function| function.name == "make-inc")
+        .expect("make-inc が存在する");
+    assert_eq!(make_inc.result, IrType::FuncRef);
+    assert!(
+        make_inc
+            .body
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::RefFunc(_))),
+        "non-capturing lambda は ref.func を生成するべき: {:?}",
+        make_inc.body
+    );
+    assert!(make_inc.body.iter().all(|instruction| {
+        !matches!(
+            instruction,
+            Instruction::Call(1)
+                | Instruction::FuncIdx(_)
+                | Instruction::I32Store { .. }
+                | Instruction::I64Store { .. }
+        )
+    }));
+
+    let lifted = module
+        .functions
+        .iter()
+        .find(|function| function.name.starts_with("__lambda"))
+        .expect("lifted lambda が存在する");
+    assert_eq!(lifted.params, vec![IrType::I64]);
+    assert!(
+        lifted
+            .body
+            .iter()
+            .all(|instruction| !matches!(instruction, Instruction::I64Load { .. }))
+    );
 }
 
 const ALLOC_IDX: u32 = 1;
