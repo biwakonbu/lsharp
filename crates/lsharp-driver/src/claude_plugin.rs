@@ -1,3 +1,4 @@
+use crate::error_codes::driver_io_error;
 use serde_json::{Map, Value, json};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -24,7 +25,7 @@ fn claude_dir() -> miette::Result<std::path::PathBuf> {
 
 pub(crate) fn cmd_claude_plugin_in(claude_dir: &Path, template_path: &Path) -> miette::Result<()> {
     fs::create_dir_all(claude_dir)
-        .map_err(|e| miette::miette!("{}: {}", claude_dir.display(), e))?;
+        .map_err(|e| driver_io_error(format!("{}: {}", claude_dir.display(), e)))?;
     install_mcp_settings(claude_dir)?;
     install_skill(claude_dir, template_path)?;
 
@@ -45,7 +46,7 @@ fn install_mcp_settings(claude_dir: &Path) -> miette::Result<()> {
     let settings_path = claude_dir.join("settings.json");
     let mut root = if settings_path.exists() {
         let content = fs::read_to_string(&settings_path)
-            .map_err(|e| miette::miette!("{}: {}", settings_path.display(), e))?;
+            .map_err(|e| driver_io_error(format!("{}: {}", settings_path.display(), e)))?;
         serde_json::from_str::<Value>(&content)
             .map_err(|e| miette::miette!("{}: JSON パース失敗: {e}", settings_path.display()))?
     } else {
@@ -66,20 +67,20 @@ fn install_mcp_settings(claude_dir: &Path) -> miette::Result<()> {
     let content = serde_json::to_string_pretty(&root)
         .map_err(|e| miette::miette!("settings.json 直列化失敗: {e}"))?;
     fs::write(&settings_path, format!("{content}\n"))
-        .map_err(|e| miette::miette!("{}: {}", settings_path.display(), e))?;
+        .map_err(|e| driver_io_error(format!("{}: {}", settings_path.display(), e)))?;
     Ok(())
 }
 
 fn install_skill(claude_dir: &Path, template_path: &Path) -> miette::Result<()> {
     let skill_dir = claude_dir.join("skills/lsharp-language-guide");
     fs::create_dir_all(&skill_dir)
-        .map_err(|e| miette::miette!("{}: {}", skill_dir.display(), e))?;
+        .map_err(|e| driver_io_error(format!("{}: {}", skill_dir.display(), e)))?;
 
     let template = fs::read_to_string(template_path)
-        .map_err(|e| miette::miette!("{}: {}", template_path.display(), e))?;
+        .map_err(|e| driver_io_error(format!("{}: {}", template_path.display(), e)))?;
     let skill_path = skill_dir.join("SKILL.md");
     fs::write(&skill_path, template)
-        .map_err(|e| miette::miette!("{}: {}", skill_path.display(), e))?;
+        .map_err(|e| driver_io_error(format!("{}: {}", skill_path.display(), e)))?;
     Ok(())
 }
 
@@ -168,6 +169,27 @@ mod tests {
         assert_eq!(settings["mcpServers"]["lsharp"]["args"][0], "mcp-server");
 
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_cmd_claude_plugin_creation_failure_preserves_driver_io_error_code() {
+        let base = std::env::temp_dir().join("lsharp_claude_plugin_creation_failure");
+        let _ = std::fs::remove_dir_all(&base);
+        let _ = std::fs::remove_file(&base);
+        std::fs::write(&base, "not a directory").unwrap();
+        let claude_dir = base.join(".claude");
+        let template_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("templates/lsharp-language-guide.md");
+
+        let error = cmd_claude_plugin_in(&claude_dir, &template_path)
+            .expect_err("ファイル配下の Claude ディレクトリ作成は失敗するべき");
+
+        assert!(
+            error.to_string().starts_with("[LS5001]"),
+            "driver I/O 診断コードを保持するべき: {error:?}"
+        );
+
+        std::fs::remove_file(&base).unwrap();
     }
 
     #[test]
