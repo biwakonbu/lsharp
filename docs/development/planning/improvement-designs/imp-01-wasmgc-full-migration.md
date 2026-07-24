@@ -1220,6 +1220,21 @@ empty source に対する `input-stream.blocking-read` は、non-blocking `read`
 filesystem error-code downcast、複数回の blocking partial read、Wasm artifact/runtime differential、
 Mac Apple Silicon/Linux x86_64、native/selfhost parity は未完了である。
 
+## Stage 2bf 検証済み slice: poll list multiple ready indices (2026-07-24)
+
+`wasi:io/poll.poll` に同じ input stream から派生した二つの pollable を渡した場合、両方の ready
+index が result list に返ることを actual Component で検証した。
+
+- `wasm_gc_component_cli_fs_runner_polls_multiple_input_stream_pollables_as_ready` は空の
+  `input.txt` から input stream を作り、二つの `input-stream.subscribe` を呼ぶ。
+- 二つの pollable をそれぞれ `block` / `ready` で確認し、`poll` の result list length `2`、index `0`
+  と `1` を確認する。marker `P` を stdout に渡し、二つの pollable、input stream、descriptor、preopen
+  を drop して `wasi:cli/run` exit 0 を確認する。
+
+これは poll list の複数 ready index verified partial slice であり、`last-operation-failed` と
+filesystem error-code downcast、異なる input source の複数 pollable、Wasm artifact/runtime
+differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity は未完了である。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線

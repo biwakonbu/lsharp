@@ -2854,6 +2854,60 @@ fn wasm_gc_component_cli_fs_runner_polls_empty_input_stream_list_as_ready() {
 }
 
 #[test]
+fn wasm_gc_component_cli_fs_runner_polls_multiple_input_stream_pollables_as_ready() {
+    let core = emit_component_cli_poll_list_probe_module_with_list_len(2);
+    let wit_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("wit")
+        .join("lsharp-wasmgc-output.wit");
+    let component = lsharp_wasm::component_adapter::componentize_core_module(
+        &core,
+        &wit_file,
+        "wasmgc-cli-fs-streams",
+        &[],
+    )
+    .expect("multiple poll list probe を componentize できる");
+
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock は unix epoch より後であるべき")
+        .as_nanos();
+    let dir = std::env::temp_dir().join(format!("lsharp_wasmgc_poll_list_multiple_{nonce}"));
+    let extra_dir =
+        std::env::temp_dir().join(format!("lsharp_wasmgc_poll_list_multiple_extra_{nonce}"));
+    std::fs::create_dir_all(&dir).expect("multiple poll list fixture directory を作成できる");
+    std::fs::create_dir_all(&extra_dir)
+        .expect("second multiple poll list fixture directory を作成できる");
+    std::fs::write(dir.join("input.txt"), b"")
+        .expect("multiple poll list fixture file を作成できる");
+
+    let preopen = lsharp_wasm::wasmgc_runner::Preview2Preopen::new(
+        &dir,
+        "data",
+        lsharp_wasm::wasmgc_runner::Preview2PreopenRights::read_only(),
+    );
+    let extra_preopen = lsharp_wasm::wasmgc_runner::Preview2Preopen::new(
+        &extra_dir,
+        "extra",
+        lsharp_wasm::wasmgc_runner::Preview2PreopenRights::read_only(),
+    );
+    let output = lsharp_wasm::wasmgc_runner::run_wasm_wasmgc_component_cli_with_preview2_stdout_and_preopens(
+        &component,
+        &[],
+        "",
+        &[preopen, extra_preopen],
+    )
+    .expect("multiple poll list を実行できる");
+
+    assert_eq!(output.stdout, "P");
+    assert_eq!(output.exit_code, 0);
+    std::fs::remove_dir_all(&dir).expect("multiple poll list fixture directory を削除できる");
+    std::fs::remove_dir_all(&extra_dir)
+        .expect("second multiple poll list fixture directory を削除できる");
+}
+
+#[test]
 fn wasm_gc_component_cli_fs_runner_traps_on_empty_poll_list() {
     let core = emit_component_cli_poll_list_probe_module_with_list_len(0);
     let wit_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -5912,6 +5966,7 @@ fn emit_component_cli_poll_list_probe_module_with_list_len(list_len: u32) -> Vec
     (local $descriptor i32)
     (local $stream i32)
     (local $pollable i32)
+    (local $pollable2 i32)
     i32.const 16
     call $get-directories
     i32.const 20
@@ -5964,6 +6019,9 @@ fn emit_component_cli_poll_list_probe_module_with_list_len(list_len: u32) -> Vec
       local.get $stream
       call $subscribe
       local.set $pollable
+      local.get $stream
+      call $subscribe
+      local.set $pollable2
       local.get $pollable
       call $block
       local.get $pollable
@@ -5981,8 +6039,30 @@ fn emit_component_cli_poll_list_probe_module_with_list_len(list_len: u32) -> Vec
         i32.const 1
         return
       end
+      local.get $pollable2
+      call $block
+      local.get $pollable2
+      call $ready
+      i32.eqz
+      if
+        local.get $pollable2
+        call $drop-pollable
+        local.get $pollable
+        call $drop-pollable
+        local.get $stream
+        call $drop-input-stream
+        local.get $descriptor
+        call $drop-descriptor
+        local.get $preopen
+        call $drop-descriptor
+        i32.const 1
+        return
+      end
       i32.const 64
       local.get $pollable
+      i32.store
+      i32.const 68
+      local.get $pollable2
       i32.store
       i32.const 64
       i32.const __POLL_LIST_LEN__
@@ -5990,9 +6070,11 @@ fn emit_component_cli_poll_list_probe_module_with_list_len(list_len: u32) -> Vec
       call $poll
       i32.const 76
       i32.load
-      i32.const 1
+      i32.const __POLL_LIST_LEN__
       i32.ne
       if
+        local.get $pollable2
+        call $drop-pollable
         local.get $pollable
         call $drop-pollable
         local.get $stream
@@ -6010,6 +6092,8 @@ fn emit_component_cli_poll_list_probe_module_with_list_len(list_len: u32) -> Vec
       i32.const 0
       i32.ne
       if
+        local.get $pollable2
+        call $drop-pollable
         local.get $pollable
         call $drop-pollable
         local.get $stream
@@ -6021,9 +6105,35 @@ fn emit_component_cli_poll_list_probe_module_with_list_len(list_len: u32) -> Vec
         i32.const 1
         return
       end
+      i32.const __CHECK_SECOND__
+      if
+        i32.const 72
+        i32.load
+        i32.const 4
+        i32.add
+        i32.load
+        i32.const 1
+        i32.ne
+        if
+          local.get $pollable2
+          call $drop-pollable
+          local.get $pollable
+          call $drop-pollable
+          local.get $stream
+          call $drop-input-stream
+          local.get $descriptor
+          call $drop-descriptor
+          local.get $preopen
+          call $drop-descriptor
+          i32.const 1
+          return
+        end
+      end
       i32.const 144
       i32.const 1
       call $stdout-write
+      local.get $pollable2
+      call $drop-pollable
       local.get $pollable
       call $drop-pollable
       local.get $stream
@@ -6037,7 +6147,8 @@ fn emit_component_cli_poll_list_probe_module_with_list_len(list_len: u32) -> Vec
     end)
 )
 "#
-    .replace("__POLL_LIST_LEN__", &list_len.to_string());
+    .replace("__POLL_LIST_LEN__", &list_len.to_string())
+    .replace("__CHECK_SECOND__", if list_len == 2 { "1" } else { "0" });
     wat::parse_str(wat).expect("poll list probe module を生成できる")
 }
 
