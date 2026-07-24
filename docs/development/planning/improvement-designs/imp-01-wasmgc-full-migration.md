@@ -936,6 +936,23 @@ Stage 2al の hard-link artifact に加えて、同一 underlying object を指�
 Wasm artifact/runtime differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity
 は未完了である。
 
+## Stage 2an 検証済み slice: descriptor metadata-hash lifecycle (2026-07-24)
+
+Stage 2am の object identity に加えて、descriptor metadata の 128-bit hash を Component canonical
+record として読み出す `descriptor.metadata-hash` 境界を actual Component で検証した。
+
+- `wasm_gc_component_cli_fs_runner_reads_stable_descriptor_metadata_hash_and_drops_resources` は
+  `source.txt` を read-only descriptor として開き、二回の `metadata-hash` 呼び出しを実行する。
+- 二回の `result<metadata-hash-value, error-code>` success discriminant と `lower` / `upper` の
+  64-bit payload が一致することを guest linear memory 上で確認し、同一 metadata に対する stable
+  hash の境界を固定する。
+- descriptor と preopen descriptor を drop し、`wasi:cli/run` exit 0、stdout empty、host bytes
+  `hello` unchanged を同じ実行で確認する。
+
+これは descriptor metadata-hash の verified partial slice であり、残る descriptor operation、
+Wasm artifact/runtime differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity
+は未完了である。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線
