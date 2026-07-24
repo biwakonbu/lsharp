@@ -365,11 +365,18 @@ impl ModuleGraph {
     pub fn check_imports(&self) -> Vec<ModuleGraphError> {
         let mut errors = Vec::new();
 
-        for (name, module) in &self.modules {
-            for import in &module.imports {
-                if !self.modules.contains_key(import) {
+        let mut module_names: Vec<&String> = self.modules.keys().collect();
+        module_names.sort();
+        for name in module_names {
+            let Some(module) = self.modules.get(name) else {
+                continue;
+            };
+            let mut imports = module.imports.clone();
+            imports.sort();
+            for import in imports {
+                if !self.modules.contains_key(&import) {
                     errors.push(ModuleGraphError::ModuleNotFound {
-                        name: import.clone(),
+                        name: import,
                         from: name.clone(),
                     });
                 }
@@ -1302,6 +1309,43 @@ mod tests {
             .expect("挿入順が違っても同じ循環が検出されるべき");
 
         assert_eq!(first, vec!["A", "B", "C", "A"]);
+        assert_eq!(second, first);
+    }
+
+    #[test]
+    fn test_missing_import_diagnostics_are_stable_and_sorted() {
+        fn build_graph(order: &[&str]) -> ModuleGraph {
+            let mut graph = ModuleGraph::new();
+            for name in order {
+                let imports = match *name {
+                    "Main" => vec!["MissingB".to_string(), "MissingA".to_string()],
+                    "Other" => vec!["MissingC".to_string()],
+                    _ => Vec::new(),
+                };
+                graph
+                    .add_module((*name).to_string(), imports, None)
+                    .unwrap();
+            }
+            graph
+        }
+
+        let expected = vec![
+            "モジュール 'MissingA' が見つかりません ('Main' からインポート)",
+            "モジュール 'MissingB' が見つかりません ('Main' からインポート)",
+            "モジュール 'MissingC' が見つかりません ('Other' からインポート)",
+        ];
+        let first: Vec<String> = build_graph(&["Other", "Main"])
+            .check_imports()
+            .into_iter()
+            .map(|error| error.to_string())
+            .collect();
+        let second: Vec<String> = build_graph(&["Main", "Other"])
+            .check_imports()
+            .into_iter()
+            .map(|error| error.to_string())
+            .collect();
+
+        assert_eq!(first, expected);
         assert_eq!(second, first);
     }
 
