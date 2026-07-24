@@ -126,4 +126,18 @@ mod tests {
         let refs = find_references(source, pos, true);
         assert_eq!(refs.len(), 0, "空白上では参照なし");
     }
+
+    #[test]
+    fn test_find_references_traverses_annotation_and_field_access() {
+        let source = "(defn f [] (let [value 1] (: (. value field) Int)))";
+        let binding_offset = source.find("value").expect("value binding should exist");
+        let pos = crate::util::offset_to_position(source, binding_offset);
+        let refs = find_references(source, pos, true);
+
+        assert_eq!(
+            refs.len(),
+            2,
+            "annotation/field access 内の value も参照されるべき"
+        );
+    }
 }

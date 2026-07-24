@@ -1,6 +1,6 @@
 use tower_lsp::lsp_types::*;
 
-use lsharp_syntax::ast::{Decl, Expr, Pattern, Program};
+use lsharp_syntax::ast::{ComputationStep, Decl, Expr, Pattern, Program};
 use lsharp_syntax::span::Span;
 
 /// バイトオフセットを LSP Position (行・列) に変換する
@@ -256,6 +256,23 @@ fn collect_expr_definitions(expr: &Expr, source: &str, defs: &mut Vec<SymbolDef>
                 collect_expr_definitions(arg, source, defs);
             }
         }
+        Expr::Ann(_, expr, _) => {
+            collect_expr_definitions(expr, source, defs);
+        }
+        Expr::RecordLit(_, _, fields) => {
+            for (_, value) in fields {
+                collect_expr_definitions(value, source, defs);
+            }
+        }
+        Expr::FieldAccess(_, expr, _) => {
+            collect_expr_definitions(expr, source, defs);
+        }
+        Expr::RecordUpdate(_, expr, fields) => {
+            collect_expr_definitions(expr, source, defs);
+            for (_, value) in fields {
+                collect_expr_definitions(value, source, defs);
+            }
+        }
         Expr::Lambda(_, params, body) => {
             for param in params {
                 let param_span = symbol_span_in_source(source, param.span, &param.name);
@@ -279,6 +296,25 @@ fn collect_expr_definitions(expr: &Expr, source: &str, defs: &mut Vec<SymbolDef>
                 collect_expr_definitions(e, source, defs);
             }
         }
+        Expr::Computation(_, _, steps) => {
+            for step in steps {
+                match step {
+                    ComputationStep::LetBang(_, pattern, expr) => {
+                        collect_pattern_definitions(pattern, source, defs);
+                        collect_expr_definitions(expr, source, defs);
+                    }
+                    ComputationStep::DoBang(_, expr)
+                    | ComputationStep::Return(_, expr)
+                    | ComputationStep::Expr(expr) => {
+                        collect_expr_definitions(expr, source, defs);
+                    }
+                }
+            }
+        }
+        Expr::Unquote(_, expr) | Expr::UnquoteSplice(_, expr) => {
+            collect_expr_definitions(expr, source, defs);
+        }
+        Expr::Quote(_, _) => {}
         _ => {}
     }
 }
@@ -357,12 +393,32 @@ fn collect_expr_usages(expr: &Expr, usages: &mut Vec<SymbolUsage>) {
                 collect_expr_usages(arg, usages);
             }
         }
+        Expr::Ann(_, expr, _) => {
+            collect_expr_usages(expr, usages);
+        }
+        Expr::RecordLit(_, _, fields) => {
+            for (_, value) in fields {
+                collect_expr_usages(value, usages);
+            }
+        }
+        Expr::FieldAccess(_, expr, _) => {
+            collect_expr_usages(expr, usages);
+        }
+        Expr::RecordUpdate(_, expr, fields) => {
+            collect_expr_usages(expr, usages);
+            for (_, value) in fields {
+                collect_expr_usages(value, usages);
+            }
+        }
         Expr::Lambda(_, _, body) => {
             collect_expr_usages(body, usages);
         }
         Expr::Match(_, scrutinee, arms) => {
             collect_expr_usages(scrutinee, usages);
             for arm in arms {
+                if let Some(guard) = &arm.guard {
+                    collect_expr_usages(guard, usages);
+                }
                 collect_expr_usages(&arm.body, usages);
             }
         }
@@ -371,6 +427,22 @@ fn collect_expr_usages(expr: &Expr, usages: &mut Vec<SymbolUsage>) {
                 collect_expr_usages(e, usages);
             }
         }
+        Expr::Computation(_, _, steps) => {
+            for step in steps {
+                match step {
+                    ComputationStep::LetBang(_, _, expr)
+                    | ComputationStep::DoBang(_, expr)
+                    | ComputationStep::Return(_, expr)
+                    | ComputationStep::Expr(expr) => {
+                        collect_expr_usages(expr, usages);
+                    }
+                }
+            }
+        }
+        Expr::Unquote(_, expr) | Expr::UnquoteSplice(_, expr) => {
+            collect_expr_usages(expr, usages);
+        }
+        Expr::Quote(_, _) => {}
         _ => {}
     }
 }
