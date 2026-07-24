@@ -969,6 +969,22 @@ Stage 2an の descriptor metadata hash に加えて、directory descriptor と�
 Wasm artifact/runtime differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity
 は未完了である。
 
+## Stage 2ap 検証済み slice: descriptor stat-at lifecycle (2026-07-24)
+
+Stage 2ao の path-based metadata hash に加えて、directory descriptor と相対 path から
+`descriptor.stat-at` の canonical `descriptor-stat` record を取得する境界を actual Component で検証した。
+
+- `wasm_gc_component_cli_fs_runner_stats_file_at_and_drops_resources` は named preopen の directory
+  descriptor に path-flags `0` と `source.txt` を渡す。
+- `descriptor.stat-at` の `result<descriptor-stat, error-code>` success discriminant、regular-file
+  type `6`、size `5` の record payload を guest linear memory の canonical offsets で確認する。
+- directory descriptor を drop し、`wasi:cli/run` exit 0、stdout empty、host bytes `hello`
+  unchanged を同じ実行で確認する。
+
+これは descriptor stat-at の verified partial slice であり、残る descriptor operation、
+Wasm artifact/runtime differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity
+は未完了である。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線

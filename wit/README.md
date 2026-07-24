@@ -50,7 +50,8 @@ WASI Preview2 / Component Model への移行に向けた WIT (WebAssembly Interf
   `descriptor.link-at` の host hard-link artifact/drop lifecycle、
   `descriptor.is-same-object` の bool result/drop lifecycle、
   `descriptor.metadata-hash` の 128-bit record/drop lifecycle、
-  `descriptor.metadata-hash-at` の 128-bit record/drop lifecycle もこの world で検証する
+  `descriptor.metadata-hash-at` の 128-bit record/drop lifecycle、
+  `descriptor.stat-at` の type/size record/drop lifecycle もこの world で検証する
 - `wasmgc-cli-fs-streams` は `wasmgc-cli-fs` に `wasi:io/streams@0.2.3` を明示的に加えた world であり、
   descriptor の `read-via-stream` / `write-via-stream` / `append-via-stream` と input/output-stream の
   resource lifecycle、`input-stream.subscribe` から `wasi:io/poll` の `pollable.block` /
