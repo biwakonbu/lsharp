@@ -1,5 +1,6 @@
 (module Tools.Text.FormatterExpr)
 (import Syntax.AST)
+(import Tools.Text.Formatter)
 
 ;; FormatterExpr.ls - 式フォーマット・ユーティリティ関数
 ;;

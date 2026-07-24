@@ -142,11 +142,16 @@ Phase C-1c として、`compile_multi_file_incremental` も `build_from_entry_wi
 `test_compile_multi_file_incremental_infers_mutual_recursive_scc` は A ↔ B の相互再帰を incremental compile
 し、2 回目の clean rebuild と linked IR が一致することを固定する。
 
+Phase C-1d として、FormatterExpr / FormatterDecl が `Tools.Text.Formatter` を明示 import するようにし、
+`compile_multi_file_with_mode` と incremental compile から Formatter 3 module 専用の
+`try_infer_formatter_trio_batch` 特例を除去した。一般 SCC 推論と import visibility の focused regression、
+canonical source の explicit-import contract は通過している。一方、canonical `Cli.ls` の clean-cache probe
+は 90 秒超で完了せず停止したため、Formatter 全体の compile/runtime parity は未確定のまま残す。
+
 ### 未完了の後続作業
 
-- Formatter 3 モジュールの merged 特別扱いを除去し、相互再帰 fixture の IR/runtime parity を確認する。
-- generic SCC 経路から Formatter batch を外す probe では、canonical `FormatterExpr.ls` の
-  `format-expr` 未定義 (`E0001`, span `3962..3973`) で停止した。この診断を解消してから特例撤去を再試行する。
+- Formatter 3 モジュールの explicit-import 後の canonical compile/runtime parity と長時間 probe の failure
+  boundary を確定する。現状は batch 特例を除去済みだが、`Cli.ls` clean-cache probe が 90 秒超で完了しない。
 - CLI driver の既定経路へ `CompilationCache` を接続し、依存 SCC を含む cache key、process 間永続化、
   selfhost compiler への移植を行う。
 - source override 入口はまだ strict な graph build と module 単位推論を使っており、SCC-aware override
@@ -168,9 +173,10 @@ Phase C-1c として、`compile_multi_file_incremental` も `build_from_entry_wi
 
 設計 (2026-06-12 起草、同日コード検証に基づき大幅訂正・具体化)。2026-07-24 に
 Phase C-1a の deterministic SCC 検出 API と unit test、C-1b の compile/infer 接続と相互再帰
-fixture、C-1c の incremental SCC fallback と clean rebuild parity、および Phase C-2a の明示的 cache compile
-API と cold/warm parity test、C-2b の entry scope isolation、C-2c の dependency surface key、C-2d の
-tooling cache API、C-2e の source override scope isolation を検証済み部分実装として反映した。一括推論の
-native parity、SCC の segment reuse、CLI driver の既定 cache 接続、依存 SCC key、selfhost
+fixture、C-1c の incremental SCC fallback と clean rebuild parity、C-1d の Formatter explicit imports と
+batch 特例除去、および Phase C-2a の明示的 cache compile API と cold/warm parity test、C-2b の entry scope
+isolation、C-2c の dependency surface key、C-2d の tooling cache API、C-2e の source override scope
+isolation を検証済み部分実装として反映した。一括推論の native parity、Formatter canonical runtime parity、
+SCC の segment reuse、CLI driver の既定 cache 接続、依存 SCC key、selfhost
 移植は未着手のため、Phase C-1 / C-2 の aggregate 完了とは扱わない。
 着手時は TODO.md に Phase C-1 / C-2 として項目を作成する。

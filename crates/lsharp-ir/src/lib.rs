@@ -15,7 +15,6 @@ use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
 use lsharp_types::infer::ExprTypeKey;
-use module_graph::{FORMATTER_TRIO_DECL, FORMATTER_TRIO_EXPR, FORMATTER_TRIO_MAIN};
 use sha2::{Digest, Sha256};
 
 pub use cache::{CompilationCache, ModuleCacheEntry, ModuleIrSegments};
@@ -842,77 +841,6 @@ fn push_defn_origins_infer_order(
             _ => {}
         }
     }
-}
-
-fn try_infer_formatter_trio_batch(
-    sorted_files: &[(String, std::path::PathBuf)],
-) -> Option<HashMap<String, ModuleTypeSurface>> {
-    use lsharp_syntax::ast::{Decl, Program};
-
-    let path_map: HashMap<String, std::path::PathBuf> = sorted_files.iter().cloned().collect();
-    let p_expr = path_map.get(FORMATTER_TRIO_EXPR)?;
-    let p_decl = path_map.get(FORMATTER_TRIO_DECL)?;
-    let p_fmt = path_map.get(FORMATTER_TRIO_MAIN)?;
-
-    let mut merged_decls: Vec<Decl> = Vec::new();
-    let mut defn_origins: Vec<String> = Vec::new();
-    let mut seen_import: HashSet<String> = HashSet::new();
-
-    for (mod_name, path) in [
-        (FORMATTER_TRIO_EXPR, p_expr),
-        (FORMATTER_TRIO_DECL, p_decl),
-        (FORMATTER_TRIO_MAIN, p_fmt),
-    ] {
-        let source = std::fs::read_to_string(path).ok()?;
-        let program = lsharp_syntax::parse(&source).ok()?;
-        for decl in program.decls {
-            match &decl {
-                Decl::ImportDecl { module, .. } => {
-                    if seen_import.insert(module.clone()) {
-                        merged_decls.push(decl);
-                    }
-                }
-                Decl::ModuleDecl { .. } => {}
-                _ => {
-                    push_defn_origins_infer_order(
-                        std::slice::from_ref(&decl),
-                        mod_name,
-                        None,
-                        &mut defn_origins,
-                    );
-                    merged_decls.push(decl);
-                }
-            }
-        }
-    }
-
-    let merged = Program {
-        decls: merged_decls,
-    };
-    let mut infer = lsharp_types::infer::Infer::new();
-    let type_results = infer.infer_program(&merged).ok()?;
-    if type_results.len() != defn_origins.len() {
-        return None;
-    }
-
-    let mut by_mod: HashMap<String, Vec<(String, lsharp_types::types::TypeScheme)>> =
-        HashMap::new();
-    for ((name, scheme), origin) in type_results.into_iter().zip(defn_origins) {
-        by_mod.entry(origin).or_default().push((name, scheme));
-    }
-
-    let mut out_map: HashMap<String, ModuleTypeSurface> = HashMap::new();
-    for (k, v) in by_mod {
-        out_map.insert(
-            k,
-            ModuleTypeSurface {
-                results: v,
-                hidden: HashSet::new(),
-                expr_types: HashMap::new(),
-            },
-        );
-    }
-    Some(out_map)
 }
 
 fn collect_import_visibility(
@@ -2081,8 +2009,6 @@ fn compile_multi_file_with_mode(
     let mut module_paths = HashMap::new();
     let mut direct_imports = HashMap::new();
 
-    let formatter_trio_batch = try_infer_formatter_trio_batch(&sorted_files);
-
     for (mod_name, mod_path) in &sorted_files {
         let source = std::fs::read_to_string(mod_path)
             .map_err(|e| format!("{}: {e}", mod_path.display()))?;
@@ -2095,28 +2021,15 @@ fn compile_multi_file_with_mode(
     }
 
     for group in graph.scc_groups() {
-        let formatter_surface = formatter_trio_batch.as_ref().filter(|batch| {
-            group
-                .iter()
-                .all(|module_name| batch.contains_key(module_name))
-        });
-        if let Some(batch) = formatter_surface {
-            for module_name in &group {
-                if let Some(surface) = batch.get(module_name) {
-                    per_module_type_results.insert(module_name.clone(), surface.clone());
-                }
-            }
-        } else {
-            let surfaces = infer_scc_type_surfaces(
-                &group,
-                &graph,
-                &parsed_modules,
-                &module_paths,
-                &direct_imports,
-                &per_module_type_results,
-            )?;
-            per_module_type_results.extend(surfaces);
-        }
+        let surfaces = infer_scc_type_surfaces(
+            &group,
+            &graph,
+            &parsed_modules,
+            &module_paths,
+            &direct_imports,
+            &per_module_type_results,
+        )?;
+        per_module_type_results.extend(surfaces);
     }
 
     for (mod_name, _) in &sorted_files {
@@ -2370,18 +2283,6 @@ pub fn analyze_multi_file_incremental_with_overrides(
         return Ok(());
     }
 
-    let formatter_trio_dirty = changed_modules.iter().any(|module| {
-        matches!(
-            module.as_str(),
-            FORMATTER_TRIO_EXPR | FORMATTER_TRIO_DECL | FORMATTER_TRIO_MAIN
-        )
-    });
-    let mut formatter_trio_batch = if formatter_trio_dirty {
-        try_infer_formatter_trio_batch(&sorted_files)
-    } else {
-        None
-    };
-
     let mut per_module_type_results: HashMap<String, ModuleTypeSurface> = HashMap::new();
     let mut cache_entries: Vec<(String, ModuleCacheEntry)> = Vec::new();
     let mut surface_changed_modules: HashSet<String> = HashSet::new();
@@ -2398,33 +2299,15 @@ pub fn analyze_multi_file_incremental_with_overrides(
             .get(&mod_name)
             .is_some_and(|entry| entry.deps_key() == deps_key);
 
-        let is_formatter_module = matches!(
-            mod_name.as_str(),
-            FORMATTER_TRIO_EXPR | FORMATTER_TRIO_DECL | FORMATTER_TRIO_MAIN
-        );
         let direct_dep_surface_changed = direct_imports
             .keys()
             .any(|dep_name| surface_changed_modules.contains(dep_name));
-        let formatter_trio_needs_batch = is_formatter_module
-            && (formatter_trio_dirty || direct_dep_surface_changed || !clean_hit);
-        if formatter_trio_needs_batch && formatter_trio_batch.is_none() {
-            formatter_trio_batch = try_infer_formatter_trio_batch(&sorted_files);
-        }
 
-        let type_surface = if clean_hit
-            && deps_hit
-            && !direct_dep_surface_changed
-            && (!is_formatter_module || !formatter_trio_dirty)
-        {
+        let type_surface = if clean_hit && deps_hit && !direct_dep_surface_changed {
             cache
                 .get(&mod_name)
                 .expect("clean hit should have cache entry")
                 .type_surface_clone()
-        } else if formatter_trio_needs_batch
-            && let Some(ref batch) = formatter_trio_batch
-            && let Some(surface) = batch.get(&mod_name)
-        {
-            surface.clone()
         } else {
             let mut infer = lsharp_types::infer::Infer::new();
             for dep_name in graph.dependency_closure(&mod_name) {
@@ -2549,12 +2432,6 @@ pub fn compile_multi_file_incremental(
         }
         module_inputs.push((mod_name.clone(), mod_path.clone(), source, fingerprint));
     }
-    let formatter_trio_dirty = changed_modules.iter().any(|module| {
-        matches!(
-            module.as_str(),
-            FORMATTER_TRIO_EXPR | FORMATTER_TRIO_DECL | FORMATTER_TRIO_MAIN
-        )
-    });
     if changed_modules.is_empty() {
         let first_clean_entry = module_inputs
             .first()
@@ -2562,11 +2439,6 @@ pub fn compile_multi_file_incremental(
             .expect("all clean hits should have cache entries");
         return Ok(first_clean_entry);
     }
-    let mut formatter_trio_batch = if formatter_trio_dirty {
-        try_infer_formatter_trio_batch(&sorted_files)
-    } else {
-        None
-    };
     let mut all_decls: Vec<lsharp_syntax::ast::Decl> = Vec::new();
     let mut all_type_results: Vec<(String, lsharp_types::types::TypeScheme)> = Vec::new();
     let mut all_expr_type_results: HashMap<ExprTypeKey, lsharp_types::types::Type> = HashMap::new();
@@ -2588,37 +2460,16 @@ pub fn compile_multi_file_incremental(
             .get(&mod_name)
             .is_some_and(|entry| entry.deps_key() == deps_key);
 
-        let is_formatter_module = matches!(
-            mod_name.as_str(),
-            FORMATTER_TRIO_EXPR | FORMATTER_TRIO_DECL | FORMATTER_TRIO_MAIN
-        );
         let direct_dep_surface_changed = direct_imports
             .keys()
             .any(|dep_name| surface_changed_modules.contains(dep_name));
-        let formatter_trio_needs_batch = is_formatter_module
-            && (formatter_trio_dirty || direct_dep_surface_changed || !clean_hit);
-        let segment_reuse_candidate = clean_hit
-            && deps_hit
-            && !direct_dep_surface_changed
-            && (!is_formatter_module || !formatter_trio_dirty);
-        if formatter_trio_needs_batch && formatter_trio_batch.is_none() {
-            formatter_trio_batch = try_infer_formatter_trio_batch(&sorted_files);
-        }
+        let segment_reuse_candidate = clean_hit && deps_hit && !direct_dep_surface_changed;
 
-        let type_surface = if clean_hit
-            && deps_hit
-            && !direct_dep_surface_changed
-            && (!is_formatter_module || !formatter_trio_dirty)
-        {
+        let type_surface = if clean_hit && deps_hit && !direct_dep_surface_changed {
             cache
                 .get(&mod_name)
                 .expect("clean hit should have cache entry")
                 .type_surface_clone()
-        } else if formatter_trio_needs_batch
-            && let Some(ref batch) = formatter_trio_batch
-            && let Some(surface) = batch.get(&mod_name)
-        {
-            surface.clone()
         } else {
             let mut infer = lsharp_types::infer::Infer::new();
             for dep_name in graph.dependency_closure(&mod_name) {
@@ -4565,6 +4416,25 @@ mod incremental_compile_tests {
         assert!(
             second.is_ok(),
             "clean rebuild with formatter trio cache should not fail: {second:?}"
+        );
+    }
+
+    #[test]
+    fn test_formatter_modules_declare_cross_module_dispatch_imports() {
+        let source_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../selfhost/src/Tools/Text");
+        let expr = std::fs::read_to_string(source_root.join("FormatterExpr.ls")).unwrap();
+        let decl = std::fs::read_to_string(source_root.join("FormatterDecl.ls")).unwrap();
+
+        assert!(
+            expr.lines()
+                .any(|line| line.trim() == "(import Tools.Text.Formatter)"),
+            "FormatterExpr は dispatch 関数の提供元を明示 import するべき"
+        );
+        assert!(
+            decl.lines()
+                .any(|line| line.trim() == "(import Tools.Text.Formatter)"),
+            "FormatterDecl は dispatch 関数の提供元を明示 import するべき"
         );
     }
 }
