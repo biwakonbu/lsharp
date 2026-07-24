@@ -2127,6 +2127,17 @@ pub fn compile_multi_file(entry_file: &std::path::Path) -> Result<Module, String
     compile_multi_file_with_mode(entry_file, MultiFileLoweringMode::Modular)
 }
 
+/// CLI compile で再利用できる解析/IR cache 付きの multi-file compile 入口。
+///
+/// 既存の `compile_multi_file_incremental` は互換 API として残し、公開 surface には
+/// cache の意図が名前に現れるこちらを推奨する。
+pub fn compile_multi_file_with_cache(
+    entry_file: &std::path::Path,
+    cache: &mut CompilationCache,
+) -> Result<Module, String> {
+    compile_multi_file_incremental(entry_file, cache)
+}
+
 fn read_source_with_overrides(
     path: &std::path::Path,
     source_overrides: &HashMap<std::path::PathBuf, String>,
@@ -3454,6 +3465,41 @@ mod incremental_compile_tests {
             main_entry.imports(),
             ["Lib"],
             "cache entry は direct import module 名を保持するべき"
+        );
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_compile_multi_file_with_cache_matches_fresh_and_warm_compile() {
+        let dir = std::env::temp_dir().join(format!(
+            "lsharp_compile_multi_file_with_cache_api_{}",
+            std::process::id()
+        ));
+        if dir.exists() {
+            std::fs::remove_dir_all(&dir).unwrap();
+        }
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let lib_source = "(module Lib)\n(defn helper [] 7)\n";
+        let main_source = "(module Main)\n(import Lib)\n(defn main [] (+ (helper) 1))\n";
+        std::fs::write(dir.join("Lib.ls"), lib_source).unwrap();
+        std::fs::write(dir.join("Main.ls"), main_source).unwrap();
+
+        let fresh = compile_multi_file(&dir.join("Main.ls")).unwrap();
+        let mut cache = CompilationCache::new();
+        let tracker = IncrementalTypeInferTracker::new();
+        let cold = compile_multi_file_with_cache(&dir.join("Main.ls"), &mut cache).unwrap();
+        assert_eq!(fresh.dump(), cold.dump());
+        assert_eq!(cache.len(), 2);
+
+        tracker.reset();
+        let warm = compile_multi_file_with_cache(&dir.join("Main.ls"), &mut cache).unwrap();
+        assert_eq!(cold.dump(), warm.dump());
+        assert_eq!(
+            tracker.count(),
+            0,
+            "warm cache compile は再型推論しないべき"
         );
 
         std::fs::remove_dir_all(&dir).unwrap();

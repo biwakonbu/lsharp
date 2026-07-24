@@ -103,14 +103,21 @@ visibility 付きで再検証する。推論結果と式型表を宣言 origin /
 ことを固定した。`test_compile_multi_file_scc_preserves_import_only_visibility` は同じ SCC 内でも
 `:only` 外の symbol を拒否することを固定する。`test_e2e_multi_file_mutual_recursive_scc` は同じ
 fixture を Wasm/WASI で実行し、`a-step 4` の結果 `1` を確認する。既存の multi-file import/private、
-merged/modular parity を含む lsharp-ir lib 238 tests、focused Wasm runtime、clippy、rustfmt が通過している。
+merged/modular parity を含む lsharp-ir lib 239 tests、focused Wasm runtime、clippy、rustfmt が通過している。
+
+Phase C-2a として、既存の `compile_multi_file_incremental` を明示的な公開名
+`compile_multi_file_with_cache(entry_file, cache)` から呼べる薄い入口を追加した。既存名は互換のため
+残し、cache を使う CLI / host integration が意図を API 名から判別できるようにした。
+`test_compile_multi_file_with_cache_matches_fresh_and_warm_compile` は fresh compile と cold cache の
+IR 一致、warm cache の IR 一致、warm 時の型推論カウンタ 0 件を固定する verified partial slice である。
 
 ### 未完了の後続作業
 
 - Formatter 3 モジュールの merged 特別扱いを除去し、相互再帰 fixture の IR/runtime parity を確認する。
 - generic SCC 経路から Formatter batch を外す probe では、canonical `FormatterExpr.ls` の
   `format-expr` 未定義 (`E0001`, span `3962..3973`) で停止した。この診断を解消してから特例撤去を再試行する。
-- CLI の `CompilationCache` 統合、依存 SCC key、selfhost compiler への移植を行う。
+- CLI driver の既定経路へ `CompilationCache` を接続し、依存 SCC を含む cache key、process 間永続化、
+  selfhost compiler への移植を行う。
 - `compile_multi_file_incremental` / source override 入口はまだ strict な graph build を使っており、
   SCC と cache の統合は C-2 で扱う。
 - 今回の Wasm/WASI evidence は Rust host の Mac 実行に限定され、Mac Apple Silicon / Linux x86_64 の
@@ -129,6 +136,7 @@ merged/modular parity を含む lsharp-ir lib 238 tests、focused Wasm runtime�
 
 設計 (2026-06-12 起草、同日コード検証に基づき大幅訂正・具体化)。2026-07-24 に
 Phase C-1a の deterministic SCC 検出 API と unit test、C-1b の compile/infer 接続と相互再帰
-fixture を検証済み部分実装として反映した。一括推論の runtime/native parity、CLI キャッシュ、
-selfhost 移植は未着手のため、Phase C-1 / C-2 の aggregate 完了とは扱わない。
+fixture、および Phase C-2a の明示的 cache compile API と cold/warm parity test を検証済み部分実装
+として反映した。一括推論の native parity、CLI driver の既定 cache 接続、依存 SCC key、selfhost
+移植は未着手のため、Phase C-1 / C-2 の aggregate 完了とは扱わない。
 着手時は TODO.md に Phase C-1 / C-2 として項目を作成する。
