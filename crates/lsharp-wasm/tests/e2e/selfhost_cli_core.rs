@@ -7952,6 +7952,30 @@ fn test_e2e_selfhost_cli_check_source_json_returns_diagnostic_exit() {
     assert_eq!(lines[1], "1");
 }
 
+/// EC-M1-01: selfhost check の JSON report が定義ごとの failure kind を返すこと
+#[test]
+fn test_e2e_selfhost_cli_check_source_json_reports_definition_failure_kinds() {
+    let harness = r#"
+(defn main []
+  (let [result (run-check-source "(defn primary [] missing) (defn dependent [] primary) (defn independent [] missing-later)" 1)]
+    (do
+      (print result)
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(lines.len(), 2, "definition failure JSON は report と終了コードを返すべき");
+    let report: Value = serde_json::from_str(lines[0])
+        .expect("definition failure JSON report は valid JSON であるべき");
+    assert_eq!(report["failureKinds"], serde_json::json!([1, 2, 1]));
+    assert_eq!(lines[1], "1");
+}
+
 /// EC-M1-01/06: selfhost test JSON が legacy non-Bool invariant の failure report を返すこと
 #[test]
 fn test_e2e_selfhost_cli_test_source_json_reports_non_bool_invariant() {

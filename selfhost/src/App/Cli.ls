@@ -80,14 +80,15 @@
     fields2 (legacy-json-append-field fields1 (legacy-json-int-field "firstErrorCode" first-error-code))
     fields3 (legacy-json-append-field fields2 (legacy-json-field "message" body))]
     (string-concat "{" (string-concat fields3 "}"))))
-(defn check-json-report [rendered diagnostics-count first-error-code diagnostics-body migration-rows]
+(defn check-json-report [rendered diagnostics-count first-error-code diagnostics-body migration-rows failure-kinds]
   (let [fields0 ""
     fields1 (legacy-json-append-field fields0 (legacy-json-field "command" "check"))
     fields2 (legacy-json-append-field fields1 (legacy-json-field "type" rendered))
     diagnostics (check-json-diagnostics diagnostics-count first-error-code diagnostics-body)
     fields3 (legacy-json-append-field fields2 (string-concat "\"diagnostics\":" diagnostics))
-    fields4 (legacy-json-append-field fields3 (string-concat "\"migration\":" (legacy-migration-detail-json-summary migration-rows)))]
-    (string-concat "{" (string-concat fields4 "}"))))
+    fields4 (legacy-json-append-field fields3 (string-concat "\"migration\":" (legacy-migration-detail-json-summary migration-rows)))
+    fields5 (legacy-json-append-field fields4 (string-concat "\"failureKinds\":" (check-failure-kinds-json failure-kinds)))]
+    (string-concat "{" (string-concat fields5 "}"))))
 (defn run-parse-source [src opts] (let [program (parse-program src) diagnostics (parse-diagnostics src) diagnostics-count (vector-length diagnostics) diagnostics-text (diagnostics-summary-text diagnostics-count "P0001" (parse-diagnostics-body-text diagnostics))] (do (print-string (parse-decl-count-text program)) (print-string "
 ") (print-string (string-concat "first-decl:" (parse-first-decl-text program))) (print-string "
 ") (print-string (string-concat "first-body:" (parse-first-body-text program))) (print-string "
@@ -105,6 +106,16 @@
         (check-failure-kinds-text-loop kinds (+ idx 1) count)))))
 (defn check-failure-kinds-text [kinds]
   (string-concat "failure-kinds:" (check-failure-kinds-text-loop kinds 0 (vector-length kinds))))
+(defn check-failure-kinds-json-loop [kinds idx count]
+  (if (>= idx count)
+    ""
+    (string-concat
+      (if (= idx 0) "" ",")
+      (string-concat
+        (int-to-string (vector-get kinds idx))
+        (check-failure-kinds-json-loop kinds (+ idx 1) count)))))
+(defn check-failure-kinds-json [kinds]
+  (string-concat "[" (string-concat (check-failure-kinds-json-loop kinds 0 (vector-length kinds)) "]")))
 (defn run-check-program [context opts]
   (let [context-root-slot (root_push context)
     program (vector-get context 0)
@@ -161,7 +172,7 @@
     diagnostics-text (diagnostics-summary-text diagnostics-count "T0001" diagnostics-body)]
     (if (= opts (check-option-json))
       (do
-        (print-string (check-json-report rendered diagnostics-count first-error-code diagnostics-body migration-rows))
+        (print-string (check-json-report rendered diagnostics-count first-error-code diagnostics-body migration-rows base-failure-kinds))
         (print-string "\n")
         (check-exit-code diagnostics-count))
       (do

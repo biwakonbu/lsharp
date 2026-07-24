@@ -139,6 +139,14 @@ fn test_e2e_selfhost_embedded_cli_check_json_contract_is_present() {
         "EmbeddedCli に check JSON report builder が必要"
     );
     assert!(
+        source.contains("(defn check-failure-kinds-json "),
+        "EmbeddedCli に definition failure kind の JSON projection が必要"
+    );
+    assert!(
+        source.contains("\\\"failureKinds\\\":"),
+        "EmbeddedCli の check JSON report は failureKinds を返す必要がある"
+    );
+    assert!(
         source.contains("(defn parse-check-cli-option "),
         "EmbeddedCli に check JSON option parser が必要"
     );
