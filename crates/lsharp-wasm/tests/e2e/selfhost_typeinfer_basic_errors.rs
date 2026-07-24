@@ -1572,3 +1572,53 @@ fn test_e2e_selfhost_typeinfer_analysis_filters_import_open_only_unqualified_def
         "import :open + :only は selected symbol だけを unqualified lookup へ公開するべき"
     );
 }
+
+/// EC-M1-01: import の module prefix 経由で ADT constructor を解決すること
+#[test]
+fn test_e2e_selfhost_typeinfer_analysis_resolves_import_qualified_adt_constructor() {
+    let source =
+        "(module Lib) (type Option (Some Int) None) (module Main) (import Lib) (defn main [] (Lib.Some 42))";
+    let oracle_source = "(module Main) (import Lib) (defn main [] (Lib.Some 42))";
+    let oracle_program =
+        lsharp_syntax::parse(oracle_source).expect("qualified ADT constructor fixture は parse できるべき");
+    let mut oracle = Infer::new();
+    let some_type = lsharp_types::types::Type::Fun(
+        vec![lsharp_types::types::Type::int()],
+        Box::new(lsharp_types::types::Type::Con("Lib.Option".to_string())),
+    );
+    oracle.inject_external_types(&[(
+        "Lib.Some".to_string(),
+        lsharp_types::types::TypeScheme::mono(some_type),
+    )]);
+    assert!(
+        oracle.infer_program(&oracle_program).is_ok(),
+        "Rust oracle は qualified ADT constructor lookup を受理するべき"
+    );
+
+    let harness = format!(
+        r#"
+(defn main []
+  (let [analysis
+          (infer-program-analysis
+            (parse-program "{}"))
+        kinds (infer-program-analysis-failure-kinds analysis)]
+    (do
+      (print (infer-program-analysis-diagnostic-count analysis))
+      (print (vector-length kinds))
+      (print (vector-get kinds 0))
+      0)))
+"#,
+        source
+    );
+    let combined = format!("{}\n{}", selfhost_typeinfer_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "1", "0"],
+        "qualified ADT constructor は module prefix 付き export lookup で解決されるべき"
+    );
+}

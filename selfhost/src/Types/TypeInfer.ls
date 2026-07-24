@@ -550,6 +550,46 @@
         1
         (typeinfer-import-only-contains-loop only-hashes 0 only-count name-hash)))))
 
+(defn typeinfer-qualify-import-adt-variants-loop
+  [variants idx len alias-hash only-hashes open-flag env]
+  (if (>= idx len)
+    env
+    (let [variant (vector-get variants idx)
+      name-hash (vector-get variant 0)]
+      (if (= (typeinfer-import-only-allows? only-hashes name-hash) 1)
+        (let [qualified-key (ast-qualified-name-hash alias-hash name-hash)
+          scheme (type-env-lookup env name-hash)]
+          (if (= scheme 0)
+            (typeinfer-qualify-import-adt-variants-loop
+              variants
+              (+ idx 1)
+              len
+              alias-hash
+              only-hashes
+              open-flag
+              env)
+            (let [qualified-env (type-env-insert env qualified-key scheme)
+              next-env
+                (if (= open-flag 1)
+                  (type-env-insert qualified-env name-hash scheme)
+                  qualified-env)]
+              (typeinfer-qualify-import-adt-variants-loop
+                variants
+                (+ idx 1)
+                len
+                alias-hash
+                only-hashes
+                open-flag
+                next-env))))
+        (typeinfer-qualify-import-adt-variants-loop
+          variants
+          (+ idx 1)
+          len
+          alias-hash
+          only-hashes
+          open-flag
+          env)))))
+
 (defn typeinfer-qualify-import-source-loop
   [program idx limit current-module target-module alias-hash only-hashes open-flag env]
   (if (>= idx limit)
@@ -568,6 +608,29 @@
           open-flag
           env)
         (if (and
+              (= tag (ast-type-decl))
+              (= current-module target-module))
+          (let [variants (typeinfer-adt-decl-variants decl)]
+            (if (= variants 0)
+              (typeinfer-qualify-import-source-loop
+                program
+                (+ idx 1)
+                limit
+                current-module
+                target-module
+                alias-hash
+                only-hashes
+                open-flag
+                env)
+              (typeinfer-qualify-import-adt-variants-loop
+                variants
+                0
+                (vector-length variants)
+                alias-hash
+                only-hashes
+                open-flag
+                env)))
+          (if (and
               (= tag (ast-defn))
               (and
                 (= current-module target-module)
@@ -611,7 +674,7 @@
             alias-hash
             only-hashes
             open-flag
-            env))))))
+            env)))))))
 
 (defn typeinfer-qualify-imports-loop-with-open
   [program idx len env allow-open]
