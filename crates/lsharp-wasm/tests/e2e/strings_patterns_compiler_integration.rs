@@ -3395,6 +3395,53 @@ fn test_e2e_selfhost_ftable_compiler_alias_qualified_function_call_runs() {
     assert_eq!(output, "42\n");
 }
 
+/// selfhost ftable compiler: alias-qualified record pattern を actual Wasm で実行できること
+#[test]
+fn test_e2e_selfhost_ftable_compiler_alias_qualified_record_pattern_runs() {
+    let harness = r#"
+(defn print-bytes-loop [bytes idx count]
+  (if (>= idx count)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes-loop bytes (+ idx 1) count))))
+
+(defn main []
+  (let [source "(type Point (record (: x Int) (: y Int))) (import App.Shapes :as S :only [Point]) (defn read-x [point] (match point [{S.Point x x} x] [_ 0])) (defn main [] (let [point (S.Point 41 2)] (print (read-x point)) 0))"
+        program (parse-program source)
+        pair (compile-program-functions-with-base program 11)
+        functions (vector-get pair 1)
+        wasm-bytes (build-wasm-bytes-wasi functions (vector-new 0))]
+    (do
+      (print (vector-length wasm-bytes))
+      (print-bytes-loop wasm-bytes 0 (vector-length wasm-bytes))
+      0)))
+"#;
+    let compiler_mode = format!("{}\n{}", selfhost_module("CompilerMode.ls"), harness);
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("IR.ls"),
+        selfhost_module("Compiler.ls"),
+        selfhost_module("WasiBackend.ls"),
+        selfhost_module("WasmEmit.ls"),
+        selfhost_module("ModuleResolver.ls"),
+        compiler_mode
+    );
+    let emitted = compile_and_run(&combined);
+    let wasm_bytes = parse_printed_wasm_bytes(&emitted);
+    let output = super::selfhost_bootstrap_four_layer::run_wasm_with_eleven_imports_compiler_mode(
+        &wasm_bytes,
+        "",
+        &[],
+    )
+    .expect("selfhost ftable alias-qualified record pattern module should run");
+    assert_eq!(output, "41\n");
+}
+
 /// selfhost ftable compiler: record pattern の field binder と nominal mismatch を実行できること
 #[test]
 fn test_e2e_selfhost_ftable_compiler_record_pattern_runs() {
@@ -3636,6 +3683,57 @@ fn test_e2e_selfhost_compiler_mode_imported_record_update_runs() {
     .expect("alias-qualified import 先 record update を含む selfhost compiler-mode module should run");
     assert_eq!(output, "41\n2\n");
     std::fs::remove_dir_all(&temp_root).expect("record update import fixture を削除できない");
+}
+
+/// selfhost compiler-mode: alias-qualified import 先 record pattern を actual Wasm で実行できること
+#[test]
+fn test_e2e_selfhost_compiler_mode_imported_alias_qualified_record_pattern_runs() {
+    let temp_root = std::env::temp_dir().join(format!(
+        "lsharp-selfhost-record-import-pattern-runtime-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&temp_root);
+    let app_dir = temp_root.join("src/App");
+    std::fs::create_dir_all(&app_dir).expect("record pattern import fixture の directory を作れない");
+    std::fs::write(
+        app_dir.join("Shapes.ls"),
+        "(module App.Shapes)\n(type Point (record (: x Int) (: y Int)))\n",
+    )
+    .expect("record pattern import fixture の Shapes.ls を書けない");
+    std::fs::write(
+        app_dir.join("Main.ls"),
+        "(module App.Main)\n(import App.Shapes :as S :only [Point])\n(defn read-x [point] (match point [{S.Point x x} x] [_ 0]))\n(defn main [] (let [point (S.Point 41 2)] (print (read-x point)) 0))\n",
+    )
+    .expect("record pattern import fixture の Main.ls を書けない");
+
+    let compiler_mode = format!(
+        "{}\n(defn main [] (compile-file-mode))",
+        selfhost_module("CompilerMode.ls")
+    );
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("IR.ls"),
+        selfhost_module("Compiler.ls"),
+        selfhost_module("WasiBackend.ls"),
+        selfhost_module("WasmEmit.ls"),
+        selfhost_module("ModuleResolver.ls"),
+        compiler_mode
+    );
+    let emitted =
+        compile_and_run_with_dir_and_args(&combined, &temp_root, &["compiler", "src/App/Main.ls"]);
+    let wasm_bytes = parse_printed_wasm_bytes(&emitted);
+    let output = super::selfhost_bootstrap_four_layer::run_wasm_with_eleven_imports_compiler_mode_fs(
+        &wasm_bytes,
+        &temp_root,
+        &[],
+    )
+    .expect("alias-qualified import 先 record pattern を含む selfhost compiler-mode module should run");
+    assert_eq!(output, "41\n");
+    std::fs::remove_dir_all(&temp_root).expect("record pattern import fixture を削除できない");
 }
 
 /// selfhost compiler-mode: root_set を do 位置で使って map を更新できること

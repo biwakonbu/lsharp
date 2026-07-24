@@ -266,8 +266,16 @@
       (vector-get pat type-slot)
       0)))
 
+(defn record-pattern-raw-type-hash-for-compiler [pat]
+  (let [field-count (vector-get pat 1)
+    type-slot (+ 2 (* field-count 2))
+    raw-type-slot (+ type-slot 1)]
+    (if (> (vector-length pat) raw-type-slot)
+      (vector-get pat raw-type-slot)
+      (record-pattern-type-hash-for-compiler pat))))
+
 (defn compile-match-record-type-check [pat value-local scratch-base instrs]
-  (let [type-hash (record-pattern-type-hash-for-compiler pat)]
+  (let [type-hash (record-pattern-raw-type-hash-for-compiler pat)]
     (if (= type-hash 0)
       instrs
       (let [map-op (+ scratch-base 1)

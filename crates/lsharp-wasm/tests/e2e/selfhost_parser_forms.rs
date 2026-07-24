@@ -529,6 +529,29 @@ fn test_e2e_selfhost_parser_match_record_pattern_retains_type_hash() {
     );
 }
 
+/// TEST-SYNTAX-02l4c: qualified record pattern は marker 用の raw suffix hash も保持する
+#[test]
+fn test_e2e_selfhost_parser_match_qualified_record_pattern_retains_raw_type_hash() {
+    let harness = r#"
+(defn main []
+  (let [node (vector-get (parse-program "(match value [{S.Point x rest} rest])") 0)
+        pat (vector-get node 3)
+        type-slot (+ 2 (* (vector-get pat 1) 2))
+        qualified-hash (ast-qualified-name-hash (name-hash "S" 0 1) (name-hash "Point" 0 5))]
+    (do
+      (print (if (= (vector-get pat type-slot) qualified-hash) 1 0))
+      (print (if (and (> (vector-length pat) (+ type-slot 1)) (= (vector-get pat (+ type-slot 1)) (name-hash "Point" 0 5))) 1 0))
+      0)))
+"#;
+
+    let output = run_parser_runtime(harness);
+    assert_eq!(
+        output.trim(),
+        "1\n1",
+        "qualified record pattern は full hash と raw suffix hash を保持すべき"
+    );
+}
+
 /// TEST-SYNTAX-02l4b: GADT variant の return type を AST に保持できる
 #[test]
 fn test_e2e_selfhost_parser_gadt_variant_retains_return_type() {

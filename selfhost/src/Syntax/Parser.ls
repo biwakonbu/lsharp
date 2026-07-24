@@ -134,6 +134,15 @@
         (name-hash src (+ dot-pos 1) end))
       (name-hash src start end))))
 
+;; qualified type name の record marker 用 raw suffix hashを返す。
+(defn current-type-name-suffix-hash-v3 [spans pos-ref src]
+  (let [start (p-start spans pos-ref)
+    end (p-end spans pos-ref)
+    dot-pos (symbol-dot-position src start end)]
+    (if (>= dot-pos 0)
+      (name-hash src (+ dot-pos 1) end)
+      (name-hash src start end))))
+
 (defn current-type-name-qualified-v3 [spans pos-ref src]
   (let [start (p-start spans pos-ref)
     end (p-end spans pos-ref)]
@@ -2276,20 +2285,23 @@
     (p-advance pos-ref) ;; { を消費
     (let [type-hash
           (if (== (p-current spans pos-ref) 20)
-            (let [name-hash (current-type-name-hash-v3 spans pos-ref src)]
-              (do
-                (p-advance pos-ref)
-                name-hash))
+            (current-type-name-hash-v3 spans pos-ref src)
             0)
+      raw-type-hash
+        (if (== (p-current spans pos-ref) 20)
+          (current-type-name-suffix-hash-v3 spans pos-ref src)
+          0)
       result (vector-push-pair-rooted-v3 (vector-new 8) (ast-pat-recordpat) 0)]
       (do
+        (if (== (p-current spans pos-ref) 20) (do (p-advance pos-ref) 0) 0)
         (root_push result)
         (let [with-fields (parse-recordpat-fields-v3 spans pos-ref src result 0)
           field-count (/ (- (vector-length with-fields) 2) 2)
-          with-type-hash (vector-push-single-rooted-v3 with-fields type-hash)]
+          with-type-hash (vector-push-single-rooted-v3 with-fields type-hash)
+          with-raw-type-hash (vector-push-single-rooted-v3 with-type-hash raw-type-hash)]
           (do
-            (root_push with-type-hash)
-            (let [parsed (vector-set-at-rooted-v3 with-type-hash 1 field-count)]
+            (root_push with-raw-type-hash)
+            (let [parsed (vector-set-at-rooted-v3 with-raw-type-hash 1 field-count)]
               (do
                 (root_pop)
                 (root_pop)
