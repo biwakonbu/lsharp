@@ -3674,6 +3674,46 @@ mod kind_tests {
 }
 
 #[cfg(test)]
+mod unify_property_tests {
+    use super::*;
+    use proptest::prelude::*;
+
+    fn arb_type() -> impl Strategy<Value = Type> {
+        let leaves = prop_oneof![
+            Just(Type::int()),
+            Just(Type::bool()),
+            Just(Type::string()),
+            (0u32..8).prop_map(Type::Var),
+        ];
+
+        leaves.prop_recursive(3, 32, 4, |inner| {
+            prop_oneof![
+                (prop::collection::vec(inner.clone(), 0..3), inner.clone())
+                    .prop_map(|(params, ret)| Type::Fun(params, Box::new(ret))),
+                prop::collection::vec(inner.clone(), 0..3)
+                    .prop_map(|args| Type::App("Box".to_string(), args)),
+                prop::collection::vec((Just("value".to_string()), inner.clone()), 0..3)
+                    .prop_map(|fields| Type::Record("Box".to_string(), fields)),
+            ]
+        })
+    }
+
+    fn unifies(left: &Type, right: &Type) -> bool {
+        let mut infer = Infer::new();
+        infer.unify(left, right, Span::new(0, 0)).is_ok()
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(64))]
+
+        #[test]
+        fn unify_success_is_symmetric(left in arb_type(), right in arb_type()) {
+            prop_assert_eq!(unifies(&left, &right), unifies(&right, &left));
+        }
+    }
+}
+
+#[cfg(test)]
 mod mutual_recursion_tests {
     use super::*;
 
