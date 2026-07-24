@@ -1943,3 +1943,11 @@ Evidence: RED `test_e2e_selfhost_typeinfer_analysis_accepts_private_definition_c
 Evidence: RED `test_e2e_selfhost_typeinfer_analysis_classifies_do_dependency_failure_kind` は Rust oracle の拒否に対し、selfhost が `diagnostics=2`、`failureKinds=[1,1]` を返した（35.68s）。GREEN は同じ fixtureで `diagnostics=2`、`failureKinds=[1,2]` を確認した（1 passed、33.09s）。既存の span/classification を含む analysis regression 12件も `12 passed`（118.62s）となり、`CARGO_TARGET_DIR=/tmp/lsharp-do-failure-red-target cargo run --quiet --bin lsharp -- check examples/fib.ls` は `Fn`、diagnostics `0`、failureKinds `[0,0]` で成功した。
 
 これは2式 `do` の先頭 failure name-hash propagationだけを閉じる verified sliceであり、`do` の他の式数・位置、非-`undefined symbol` の dependency分類、import/private module boundary、standalone `TypeInfer.ls` source-check `0`、Mac Apple Silicon / Linux x86_64 のこの変更後 current-source native gate、EC-M1-01 aggregateの完了を意味しない。`TODO.md` の `[~]` と Rust oracle / bootstrap / host integration境界は維持する。次は imported private function の module boundary または qualified import parser/lookupのどちらか一つを RED に固定する。
+
+### EC-M1-01 imported private definition module-boundary slice (2026-07-24)
+
+file-check の flatten 順で `module` 境界に到達したとき、先行 module の `private (defn ...)` name hashだけを selfhost TypeInfer の環境から除去するようにした。private declaration自体は flatten から削除せず、同じ module 内では public definitionの推論に利用できる状態を維持する。対象は `Lib` の arity-1 private `secret` と `Main` からの unqualified参照に限定した。
+
+Evidence: RED `test_e2e_selfhost_cli_check_file_blocks_imported_private_definition` は、Rust oracle が import 先 private symbolを拒否する fixtureに対して selfhost が `Fn`、`diagnostics:0` を返した（548.95s）。GREEN は module 境界 cleanup後、同じ file-check fixtureで `1 passed`（484.90s）となり、`diagnostics:1,T0001@1:1,first-body:undefined symbol`、`first-module-name:Main`、`failure-kinds:0,1` を確認した。既存の同一プログラム内 private visibility focused testも変更後 `1 passed`（35.73s）である。
+
+これは imported private functionの unqualified参照を module 境界で拒否する verified sliceであり、qualified import、`:only` / `:as` / `:open`、private type/record/ADT、複数 module の forward visibility、standalone `TypeInfer.ls` source-check `0`、Mac Apple Silicon / Linux x86_64 のこの変更後 current-source native gate、EC-M1-01 aggregateの完了を意味しない。`TODO.md` の `[~]` と Rust oracle / bootstrap / host integration境界は維持する。次は qualified import parser/lookupまたは `:only` export filteringのどちらか一つを RED に固定する。

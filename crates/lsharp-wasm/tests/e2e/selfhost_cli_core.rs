@@ -1003,6 +1003,50 @@ fn test_e2e_selfhost_cli_check_file_resolves_imported_definition() {
     );
 }
 
+/// EC-M1-01: file check は import 先 private 定義を公開環境へ漏らさないこと
+#[test]
+fn test_e2e_selfhost_cli_check_file_blocks_imported_private_definition() {
+    let dir = std::env::temp_dir().join(format!(
+        "lsharp_test_cli_check_import_private_{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let lib_source =
+        "(module Lib)\n(private (defn secret [value] (+ value 1)))\n";
+    let main_source = "(module Main)\n(import Lib)\n(defn main [] (secret 42))\n";
+    std::fs::write(dir.join("Lib.ls"), lib_source).unwrap();
+    std::fs::write(dir.join("Main.ls"), main_source).unwrap();
+
+    let main_program = lsharp_syntax::parse(main_source)
+        .expect("Main private import fixture は parse できるべき");
+    let mut oracle = Infer::new();
+    assert!(
+        oracle.infer_program(&main_program).is_err(),
+        "Rust oracle は import 先 private symbol を Main の公開環境へ注入せず拒否するべき"
+    );
+
+    let harness = r#"
+(defn main []
+  (do
+    (print (run-check "Main.ls" 0))
+    0))
+"#;
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let run_dir = dir.clone();
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run_with_dir(&combined, &run_dir)
+    });
+    let _ = std::fs::remove_dir_all(&dir);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.iter().any(|line| line.starts_with("diagnostics:1")),
+        "import 先 private symbol は selfhost file check でも拒否されるべき: {:?}",
+        lines
+    );
+}
+
 /// EC-M1-01: file check は最初の失敗定義を依存 module hashへ結び付けること
 #[test]
 fn test_e2e_selfhost_cli_check_file_reports_first_failed_module_hash() {

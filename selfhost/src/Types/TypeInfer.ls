@@ -481,6 +481,26 @@
     (typeinfer-unprivate-defn (vector-get decl 1))
     decl))
 
+;; 次の module に進む前に、先行 module の private defn だけを型環境から隠す。
+(defn typeinfer-remove-private-defns-loop [program env idx limit]
+  (if (>= idx limit)
+    env
+    (let [raw-decl (vector-get program idx)
+      raw-tag (vector-get raw-decl 0)]
+      (if (= raw-tag (ast-private))
+        (let [decl (typeinfer-unprivate-defn raw-decl)]
+          (if (= (vector-get decl 0) (ast-defn))
+            (typeinfer-remove-private-defns-loop
+              program
+              (type-env-remove env (vector-get decl 1))
+              (+ idx 1)
+              limit)
+            (typeinfer-remove-private-defns-loop program env (+ idx 1) limit)))
+        (typeinfer-remove-private-defns-loop program env (+ idx 1) limit)))))
+
+(defn typeinfer-remove-private-defns-before-module [program env limit]
+  (typeinfer-remove-private-defns-loop program env 0 limit))
+
 ;; 後続 top-level defn の placeholder に残る自由型変数を集める。
 (defn typeinfer-pending-env-vars-loop [program idx len placeholders subst env-vars]
   (if (>= idx len)
@@ -895,6 +915,28 @@
       first-error-end)
     failure-kinds))
 
+(defn typeinfer-program-analysis-state-with-env [state env]
+  (do
+    (root_push state)
+    (root_push env)
+    (let [result
+            (typeinfer-program-analysis-state
+              env
+              (infer-program-analysis-subst state)
+              (infer-program-analysis-raw-type state)
+              (infer-program-analysis-first-seen state)
+              (infer-program-analysis-diagnostic-count state)
+              (infer-program-analysis-first-error-code state)
+              (infer-program-analysis-first-error-index state)
+              (infer-program-analysis-first-error-name-hash state)
+              (infer-program-analysis-first-error-start state)
+              (infer-program-analysis-first-error-end state)
+              (infer-program-analysis-failure-kinds state))]
+      (do
+        (root_pop)
+        (root_pop)
+        result))))
+
 (defn infer-program-analysis-env [analysis] (vector-get analysis 0))
 (defn infer-program-analysis-subst [analysis] (vector-get analysis 1))
 (defn infer-program-analysis-raw-type [analysis] (vector-get analysis 2))
@@ -921,7 +963,29 @@
 (defn typeinfer-program-analysis-loop [program idx len placeholders counter alias-env state]
   (if (>= idx len)
     state
-    (do
+    (if (= (vector-get (vector-get program idx) 0) (ast-module-decl))
+      (let [env (infer-program-analysis-env state)
+        visible-env (typeinfer-remove-private-defns-before-module program env idx)]
+        (do
+          (root_push visible-env)
+          (let [next-state
+                  (typeinfer-program-analysis-state-with-env state visible-env)]
+            (do
+              (root_pop)
+              (root_push next-state)
+              (let [result
+                      (typeinfer-program-analysis-loop
+                        program
+                        (+ idx 1)
+                        len
+                        placeholders
+                        counter
+                        alias-env
+                        next-state)]
+                (do
+                  (root_pop)
+                  result))))))
+      (do
       ;; native backend では state / out と、その中から取り出した live object を
       ;; 次の allocation と再帰呼び出しの間も明示的に保持する。
       (root_push state)
@@ -1017,7 +1081,7 @@
             (do
               (root_pop)
               (root_pop)
-              next-state)))))))
+              next-state))))))))
 
 ;; top-level defn を先行登録して一度だけ推論し、CLI/LSP が共有する結果を返す。
 (defn infer-program-analysis [program]
