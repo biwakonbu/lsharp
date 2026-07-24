@@ -1691,6 +1691,26 @@ captured lambda の direct application に限り、linear-memory closure object 
 これは direct captured env の verified partial slice であり、closure 全体および
 `LEGACY-EXEC-01` の完了条件には到達していない。
 
+### Stage 3i: WasmGC captured env の `let` alias `call_ref` (検証済み partial slice)
+
+Stage 3h の direct application で生成した captured env を `let` binding に保持し、その alias を
+同じ関数内で呼び出す経路を追加した。binding の型は単なる abstract `funcref` ではなく
+`Ref(env_type)` とし、env struct の field 0 にある concrete `TypedFuncRef` を call site で取得する。
+
+- `(defn main [n] (let [f (fn [x] (+ x n))] (f 41)))` を
+  `RefFunc → StructNew → LocalSet → I64Const(41) → LocalGet(env) → StructGet(field 0) → CallRef`
+  として lowering し、`wasm_gc_captured_lambda_let_alias_lowers_to_env_struct_call_ref` で
+  linear-memory closure pointer、`FuncIdx`、`CallIndirect` が出ないことを固定する。
+- `wasm_gc_emitter_executes_captured_lambda_let_alias_call_ref` が Wasmtime 29 の
+  `wasm_gc(true)`、reference types、typed function references で `n=1` の結果 `42` を実行する。
+  recursive type group と synthetic `print-string` import offset は Stage 3h の契約をそのまま再利用する。
+- captured closure の戻り値、function parameter/local、nested/parametric closure、module-link 後の
+  env remap、GC rooting、trait vtable、Mac/Linux native-selfhost parity は未完了であり、一般の
+  higher-order closure をこの slice の成功から推論しない。
+
+これは captured env `let` alias の verified partial slice であり、closure 全体および
+`LEGACY-EXEC-01` の完了条件には到達していない。
+
 ### Stage 3: Closures → funcref + env struct
 
 - 現行の lambda lifting (`lower/closure.rs`) は維持し、env をリニアメモリ tuple から
@@ -1751,7 +1771,8 @@ Stage 2q の custom CLI `wasi:cli/run` 接続、Stage 3a の typed funcref emitt
 Stage 3b の module-link funcref index/type remap、Stage 3c の captured closure lowering 明示境界、
 Stage 3d の non-capturing lambda funcref lowering、Stage 3e の source-level direct `call_ref`、
 Stage 3f の local non-capturing alias `call_ref`、Stage 3g の concrete typed local、Stage 3h の
-direct captured env struct `call_ref` は 2026-07-24 に検証済み。ADT
+direct captured env struct `call_ref`、Stage 3i の captured env `let` alias `call_ref` は 2026-07-24 に
+検証済み。ADT
 の全表現、Stage 2 の残り (Unicode code-point semantics / WASI-component I/O /
 native-selfhost parity)、Stage 3 の captured env/call を含む closure 全体、traits / selfhost、supported target
 の actual runtime evidence は未完了であり、`LEGACY-EXEC-01` の完了条件には到達していない。

@@ -130,6 +130,48 @@ fn wasm_gc_captured_lambda_direct_call_lowers_to_env_struct_call_ref() {
 }
 
 #[test]
+fn wasm_gc_captured_lambda_let_alias_lowers_to_env_struct_call_ref() {
+    let program = lsharp_syntax::parse(
+        r#"
+        (defn main [n]
+          (let [f (fn [x] (+ x n))]
+            (f 41)))
+        "#,
+    )
+    .unwrap();
+    let mut infer = Infer::new();
+    let type_results = infer.infer_program(&program).unwrap();
+    let expr_type_results = infer.expr_type_results_snapshot();
+    let mut lowerer = Lower::with_backend(LowerBackend::WasmGc);
+    let module = lowerer
+        .lower_program_with_expr_types(&program, &type_results, &expr_type_results)
+        .expect("captured lambda let alias は env struct + call_ref へ lowering できる");
+
+    let main = module
+        .functions
+        .iter()
+        .find(|function| function.name == "main")
+        .expect("main が存在する");
+    assert!(
+        main.body.windows(2).any(|instructions| {
+            matches!(
+                instructions,
+                [Instruction::LocalGet(_), Instruction::StructGet(_, 0)]
+            )
+        }),
+        "captured env alias は local から function field を取得するべき: {:?}",
+        main.body
+    );
+    assert!(
+        main.body
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::CallRef(_))),
+        "captured lambda let alias は typed call_ref を生成するべき: {:?}",
+        main.body
+    );
+}
+
+#[test]
 fn wasm_gc_non_capturing_lambda_lowers_to_funcref() {
     let program = lsharp_syntax::parse(
         r#"

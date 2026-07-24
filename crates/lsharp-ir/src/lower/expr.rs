@@ -13,6 +13,12 @@ use super::{
     type_to_name,
 };
 
+#[derive(Debug, Clone, Copy)]
+struct WasmGcCapturedLambdaInfo {
+    env_type_index: u32,
+    call_ref_type_index: u32,
+}
+
 impl Lower {
     fn wasmgc_lambda_free_vars(&self, params: &[Param], body: &Expr) -> Vec<String> {
         let param_names: Vec<String> = params.iter().map(|param| param.name.clone()).collect();
@@ -31,15 +37,14 @@ impl Lower {
         free_vars
     }
 
-    fn lower_wasmgc_captured_lambda_call(
+    fn lower_wasmgc_captured_lambda_value(
         &mut self,
         ctx: &mut FuncCtx,
         lambda_span: Span,
         params: &[Param],
         body: &Expr,
-        args: &[Expr],
         free_var_list: &[String],
-    ) -> Result<(), LowerError> {
+    ) -> Result<WasmGcCapturedLambdaInfo, LowerError> {
         let lambda_name = self.fresh_lambda_name();
         let lambda_type = self
             .expr_type_results
@@ -197,20 +202,20 @@ impl Lower {
             ctx.emit(Instruction::LocalGet(local_idx));
         }
         ctx.emit(Instruction::StructNew(env_type_index));
-        let env_local = ctx.alloc_local_typed(
-            "_wasmgc_closure_env".to_string(),
-            IrType::Ref(env_type_index),
-        );
-        ctx.emit(Instruction::LocalSet(env_local));
+        Ok(WasmGcCapturedLambdaInfo {
+            env_type_index,
+            call_ref_type_index,
+        })
+    }
 
-        for arg in args {
-            self.lower_expr(ctx, arg)?;
+    fn wasmgc_env_call_ref_type(&self, env_type_index: u32) -> Option<u32> {
+        let GcTypeKind::Struct(fields) = &self.gc_types.get(env_type_index as usize)?.kind else {
+            return None;
+        };
+        match fields.first().map(|field| field.ty) {
+            Some(IrType::TypedFuncRef(type_index)) => Some(type_index),
+            _ => None,
         }
-        ctx.emit(Instruction::LocalGet(env_local));
-        ctx.emit(Instruction::LocalGet(env_local));
-        ctx.emit(Instruction::StructGet(env_type_index, 0));
-        ctx.emit(Instruction::CallRef(call_ref_type_index));
-        Ok(())
     }
 
     /// 式を IR 命令に変換（スタックマシン方式）
@@ -336,7 +341,28 @@ impl Lower {
                 let result = (|| -> Result<(), LowerError> {
                     for (pat, val) in bindings {
                         let inferred_type_name = self.infer_expr_type_name_with_ctx(ctx, val);
-                        self.lower_expr(ctx, val)?;
+                        let is_captured_lambda = if self.backend == super::LowerBackend::WasmGc
+                            && let Expr::Lambda(lambda_span, params, body) = val
+                        {
+                            let free_var_list = self.wasmgc_lambda_free_vars(params, body);
+                            if free_var_list.is_empty() {
+                                false
+                            } else {
+                                self.lower_wasmgc_captured_lambda_value(
+                                    ctx,
+                                    *lambda_span,
+                                    params,
+                                    body,
+                                    &free_var_list,
+                                )?;
+                                true
+                            }
+                        } else {
+                            false
+                        };
+                        if !is_captured_lambda {
+                            self.lower_expr(ctx, val)?;
+                        }
                         let lambda_func_index = if self.backend == super::LowerBackend::WasmGc
                             && matches!(val, Expr::Lambda(_, _, _))
                         {
@@ -349,12 +375,23 @@ impl Lower {
                         };
                         let lambda_func_type_index =
                             lambda_func_index.map(|index| self.gc_types.len() as u32 + index);
+                        let lambda_env_type_index = if self.backend == super::LowerBackend::WasmGc
+                            && matches!(val, Expr::Lambda(_, _, _))
+                        {
+                            match ctx.instructions.last() {
+                                Some(Instruction::StructNew(type_index)) => Some(*type_index),
+                                _ => None,
+                            }
+                        } else {
+                            None
+                        };
                         match pat {
                             Pattern::Var(_, name) => {
                                 let previous_local = ctx.locals_map.get(name).copied();
                                 let previous_type = ctx.local_type_names.get(name).cloned();
-                                let binding_ir_type = lambda_func_type_index
-                                    .map(IrType::TypedFuncRef)
+                                let binding_ir_type = lambda_env_type_index
+                                    .map(IrType::Ref)
+                                    .or_else(|| lambda_func_type_index.map(IrType::TypedFuncRef))
                                     .or_else(|| {
                                         inferred_type_name
                                             .as_deref()
@@ -399,14 +436,26 @@ impl Lower {
                 {
                     let free_var_list = self.wasmgc_lambda_free_vars(params, body);
                     if !free_var_list.is_empty() {
-                        return self.lower_wasmgc_captured_lambda_call(
+                        let info = self.lower_wasmgc_captured_lambda_value(
                             ctx,
                             *lambda_span,
                             params,
                             body,
-                            args,
                             &free_var_list,
+                        )?;
+                        let env_local = ctx.alloc_local_typed(
+                            "_wasmgc_closure_env".to_string(),
+                            IrType::Ref(info.env_type_index),
                         );
+                        ctx.emit(Instruction::LocalSet(env_local));
+                        for arg in args {
+                            self.lower_expr(ctx, arg)?;
+                        }
+                        ctx.emit(Instruction::LocalGet(env_local));
+                        ctx.emit(Instruction::LocalGet(env_local));
+                        ctx.emit(Instruction::StructGet(info.env_type_index, 0));
+                        ctx.emit(Instruction::CallRef(info.call_ref_type_index));
+                        return Ok(());
                     }
                     // WasmGC の non-capturing lambda は、引数を先に積んでから
                     // `ref.func` を積み、lambda の user function type を指定した
@@ -1973,6 +2022,22 @@ impl Lower {
                                 self.lower_expr(ctx, arg)?;
                             }
                             ctx.emit(Instruction::LocalGet(local_idx));
+                            ctx.emit(Instruction::CallRef(call_ref_type_index));
+                        } else if self.backend == super::LowerBackend::WasmGc
+                            && let Some(&local_idx) = ctx.locals_map.get(name)
+                            && let Some(IrType::Ref(env_type_index)) =
+                                ctx.local_types.get(local_idx as usize).copied()
+                            && let Some(call_ref_type_index) =
+                                self.wasmgc_env_call_ref_type(env_type_index)
+                        {
+                            // captured env local は関数 ref と env ref を同じ struct から取り出し、
+                            // lifted function の末尾 env parameter として call_ref する。
+                            for arg in args {
+                                self.lower_expr(ctx, arg)?;
+                            }
+                            ctx.emit(Instruction::LocalGet(local_idx));
+                            ctx.emit(Instruction::LocalGet(local_idx));
+                            ctx.emit(Instruction::StructGet(env_type_index, 0));
                             ctx.emit(Instruction::CallRef(call_ref_type_index));
                         } else if let Some(idx) = self.resolve_trait_dispatch(ctx, name, args) {
                             // P5-6: トレイトメソッドの静的ディスパッチ自動解決
