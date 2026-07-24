@@ -1846,6 +1846,138 @@ fn test_e2e_selfhost_typeinfer_analysis_filters_import_alias_only_record_accesso
     );
 }
 
+/// EC-M1-01: import の :open が record field accessor だけを unqualified lookup へ公開すること
+#[test]
+fn test_e2e_selfhost_typeinfer_analysis_filters_import_open_record_accessor() {
+    let open_source =
+        "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib :open) (defn get-x [] Point.x)";
+    let open_oracle_source = "(module Main) (import Lib :open) (defn get-x [] Point.x)";
+    let open_program =
+        lsharp_syntax::parse(open_oracle_source).expect("open record accessor oracle は parse できるべき");
+    let accessor_type = lsharp_types::types::Type::Fun(
+        vec![lsharp_types::types::Type::Con("Lib.Point".to_string())],
+        Box::new(lsharp_types::types::Type::int()),
+    );
+    let mut open_oracle = Infer::new();
+    open_oracle.inject_external_types(&[(
+        "Point.x".to_string(),
+        lsharp_types::types::TypeScheme::mono(accessor_type.clone()),
+    )]);
+    assert!(
+        open_oracle.infer_program(&open_program).is_ok(),
+        "Rust oracle は :open の unqualified record accessor を受理するべき"
+    );
+
+    let closed_source =
+        "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib) (defn get-x [] Point.x)";
+    let closed_oracle_source = "(module Main) (import Lib) (defn get-x [] Point.x)";
+    let closed_program =
+        lsharp_syntax::parse(closed_oracle_source).expect("closed record accessor oracle は parse できるべき");
+    let mut closed_oracle = Infer::new();
+    closed_oracle.inject_external_types(&[(
+        "Lib.Point.x".to_string(),
+        lsharp_types::types::TypeScheme::mono(accessor_type),
+    )]);
+    assert!(
+        closed_oracle.infer_program(&closed_program).is_err(),
+        "Rust oracle は :open なしの unqualified record accessor を拒否するべき"
+    );
+
+    let harness = format!(
+        r#"
+(defn main []
+  (let [open-analysis
+          (infer-program-analysis
+            (parse-program "{}"))
+        closed-analysis
+          (infer-program-analysis
+            (parse-program "{}"))]
+    (do
+      (print (infer-program-analysis-diagnostic-count open-analysis))
+      (print (infer-program-analysis-diagnostic-count closed-analysis))
+      0)))
+"#,
+        open_source, closed_source
+    );
+    let combined = format!("{}\n{}", selfhost_typeinfer_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "1"],
+        "import :open だけが unqualified record accessor を公開するべき"
+    );
+}
+
+/// EC-M1-01: import の :open + :only が selected record field accessor だけを公開すること
+#[test]
+fn test_e2e_selfhost_typeinfer_analysis_filters_import_open_only_record_accessor() {
+    let selected_source =
+        "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib :open :only [Point.x]) (defn get-x [] Point.x)";
+    let selected_oracle_source = "(module Main) (import Lib :open :only [Point.x]) (defn get-x [] Point.x)";
+    let selected_program = lsharp_syntax::parse(selected_oracle_source)
+        .expect("selected open + only record accessor oracle は parse できるべき");
+    let accessor_type = lsharp_types::types::Type::Fun(
+        vec![lsharp_types::types::Type::Con("Lib.Point".to_string())],
+        Box::new(lsharp_types::types::Type::int()),
+    );
+    let mut selected_oracle = Infer::new();
+    selected_oracle.inject_external_types(&[(
+        "Point.x".to_string(),
+        lsharp_types::types::TypeScheme::mono(accessor_type.clone()),
+    )]);
+    assert!(
+        selected_oracle.infer_program(&selected_program).is_ok(),
+        "Rust oracle は open + only の selected record accessor を受理するべき"
+    );
+
+    let excluded_source =
+        "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib :open :only [Point.x]) (defn get-y [] Point.y)";
+    let excluded_oracle_source = "(module Main) (import Lib :open :only [Point.x]) (defn get-y [] Point.y)";
+    let excluded_program = lsharp_syntax::parse(excluded_oracle_source)
+        .expect("excluded open + only record accessor oracle は parse できるべき");
+    let mut excluded_oracle = Infer::new();
+    excluded_oracle.inject_external_types(&[(
+        "Lib.Point.y".to_string(),
+        lsharp_types::types::TypeScheme::mono(accessor_type),
+    )]);
+    assert!(
+        excluded_oracle.infer_program(&excluded_program).is_err(),
+        "Rust oracle は open + only で除外された record accessor を拒否するべき"
+    );
+
+    let harness = format!(
+        r#"
+(defn main []
+  (let [selected
+          (infer-program-analysis
+            (parse-program "{}"))
+        excluded
+          (infer-program-analysis
+            (parse-program "{}"))]
+    (do
+      (print (infer-program-analysis-diagnostic-count selected))
+      (print (infer-program-analysis-diagnostic-count excluded))
+      0)))
+"#,
+        selected_source, excluded_source
+    );
+    let combined = format!("{}\n{}", selfhost_typeinfer_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "1"],
+        "import :open + :only は selected record accessor だけを unqualified lookup へ公開するべき"
+    );
+}
+
 /// EC-M1-01: import の module prefix 経由で record constructor を解決すること
 #[test]
 fn test_e2e_selfhost_typeinfer_analysis_resolves_import_qualified_record_constructor() {

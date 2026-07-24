@@ -25,6 +25,98 @@
       (vector-get decl 2)
       0)))
 
+(defn typeinfer-record-remove-accessors-loop [raw-fields idx len env]
+  (if (>= idx len)
+    env
+    (typeinfer-record-remove-accessors-loop
+      raw-fields
+      (+ idx 3)
+      len
+      (type-env-remove env (vector-get raw-fields (+ idx 1))))))
+
+(defn typeinfer-remove-record-def [decl env]
+  (let [raw-fields (typeinfer-record-decl-field-exprs decl)
+    constructor-env (type-env-remove env (vector-get decl 1))]
+    (if (= raw-fields 0)
+      constructor-env
+      (typeinfer-record-remove-accessors-loop
+        raw-fields
+        0
+        (vector-length raw-fields)
+        constructor-env))))
+
+(defn typeinfer-remove-record-defs-before-module-loop [program env idx limit]
+  (if (>= idx limit)
+    env
+    (let [decl (vector-get program idx)
+      tag (vector-get decl 0)]
+      (if (= tag (ast-recorddef))
+        (typeinfer-remove-record-defs-before-module-loop
+          program
+          (typeinfer-remove-record-def decl env)
+          (+ idx 1)
+          limit)
+        (typeinfer-remove-record-defs-before-module-loop
+          program
+          env
+          (+ idx 1)
+          limit)))))
+
+(defn typeinfer-remove-record-defs-before-module [program env limit]
+  (typeinfer-remove-record-defs-before-module-loop program env 0 limit))
+
+(defn typeinfer-record-only-contains-loop [only-hashes idx len name-hash]
+  (if (>= idx len)
+    0
+    (if (= (vector-get only-hashes idx) name-hash)
+      1
+      (typeinfer-record-only-contains-loop
+        only-hashes
+        (+ idx 1)
+        len
+        name-hash))))
+
+(defn typeinfer-record-export-allowed? [only-hashes name-hash]
+  (if (= only-hashes 0)
+    1
+    (let [only-count (vector-length only-hashes)]
+      (if (= only-count 0)
+        1
+        (typeinfer-record-only-contains-loop only-hashes 0 only-count name-hash)))))
+
+(defn typeinfer-record-remove-unallowed-accessors-loop
+  [raw-fields idx len only-hashes env]
+  (if (>= idx len)
+    env
+    (let [accessor-hash (vector-get raw-fields (+ idx 1))
+      next-env
+        (if (= (typeinfer-record-export-allowed? only-hashes accessor-hash) 1)
+          env
+          (type-env-remove env accessor-hash))]
+      (typeinfer-record-remove-unallowed-accessors-loop
+        raw-fields
+        (+ idx 3)
+        len
+        only-hashes
+        next-env))))
+
+(defn typeinfer-clean-record-import-export [decl only-hashes open-flag env]
+  (if (= open-flag 1)
+    (let [raw-fields (typeinfer-record-decl-field-exprs decl)
+      constructor-env
+        (if (= (typeinfer-record-export-allowed? only-hashes (vector-get decl 1)) 1)
+          env
+          (type-env-remove env (vector-get decl 1)))]
+      (if (= raw-fields 0)
+        constructor-env
+        (typeinfer-record-remove-unallowed-accessors-loop
+          raw-fields
+          0
+          (vector-length raw-fields)
+          only-hashes
+          constructor-env)))
+    (typeinfer-remove-record-def decl env)))
+
 (defn typeinfer-record-make-param-state [param-env bound-vars]
   (vector-push-pair-rooted (vector-new 2) param-env bound-vars))
 
