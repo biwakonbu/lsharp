@@ -78,12 +78,12 @@ pub(crate) struct SymbolUsage {
     pub end: usize,
 }
 
+fn is_symbol_char(c: char) -> bool {
+    c.is_alphanumeric() || c == '_' || c == '-' || c == '?' || c == '!'
+}
+
 /// 指定位置のシンボル名を取得する
 pub(crate) fn symbol_at_position(source: &str, offset: usize) -> Option<String> {
-    fn is_symbol_char(c: char) -> bool {
-        c.is_alphanumeric() || c == '_' || c == '-' || c == '?' || c == '!'
-    }
-
     if offset >= source.len() {
         return None;
     }
@@ -125,10 +125,6 @@ pub(crate) fn symbol_range_at_position(
     source: &str,
     offset: usize,
 ) -> Option<(String, usize, usize)> {
-    fn is_symbol_char(c: char) -> bool {
-        c.is_alphanumeric() || c == '_' || c == '-' || c == '?' || c == '!'
-    }
-
     if offset >= source.len() {
         return None;
     }
@@ -164,16 +160,47 @@ pub(crate) fn symbol_range_at_position(
 }
 
 /// AST からシンボル定義を収集する
-pub(crate) fn collect_definitions(program: &Program) -> Vec<SymbolDef> {
+pub(crate) fn collect_definitions(program: &Program, source: &str) -> Vec<SymbolDef> {
     let mut defs = Vec::new();
     for decl in &program.decls {
-        collect_decl_definitions(decl, &mut defs);
+        collect_decl_definitions(decl, source, &mut defs);
     }
     defs
 }
 
+fn symbol_span_in_source(source: &str, span: Span, name: &str) -> Span {
+    let start = span.start.min(source.len());
+    let end = span.end.min(source.len());
+    if start >= end || !source.is_char_boundary(start) || !source.is_char_boundary(end) {
+        return Span::new(start, end);
+    }
+
+    let mut search_start = start;
+    while search_start < end {
+        let Some(relative_start) = source[search_start..end].find(name) else {
+            break;
+        };
+        let candidate_start = search_start + relative_start;
+        let candidate_end = candidate_start + name.len();
+        let preceded_by_symbol = source[..candidate_start]
+            .chars()
+            .next_back()
+            .is_some_and(is_symbol_char);
+        let followed_by_symbol = source[candidate_end..]
+            .chars()
+            .next()
+            .is_some_and(is_symbol_char);
+        if !preceded_by_symbol && !followed_by_symbol {
+            return Span::new(candidate_start, candidate_end);
+        }
+        search_start = candidate_end;
+    }
+
+    Span::new(start, end)
+}
+
 /// 宣言からシンボル定義を収集する
-fn collect_decl_definitions(decl: &Decl, defs: &mut Vec<SymbolDef>) {
+fn collect_decl_definitions(decl: &Decl, source: &str, defs: &mut Vec<SymbolDef>) {
     match decl {
         Decl::Defn {
             span,
@@ -183,70 +210,73 @@ fn collect_decl_definitions(decl: &Decl, defs: &mut Vec<SymbolDef>) {
             ..
         } => {
             // 関数名の定義位置
+            let name_span = symbol_span_in_source(source, *span, name);
             defs.push(SymbolDef {
                 name: name.clone(),
-                start: span.start,
-                end: span.end,
+                start: name_span.start,
+                end: name_span.end,
             });
             // パラメータの定義位置
             for param in params {
+                let param_span = symbol_span_in_source(source, param.span, &param.name);
                 defs.push(SymbolDef {
                     name: param.name.clone(),
-                    start: param.span.start,
-                    end: param.span.end,
+                    start: param_span.start,
+                    end: param_span.end,
                 });
             }
             // body 内の let バインディングを収集
-            collect_expr_definitions(body, defs);
+            collect_expr_definitions(body, source, defs);
         }
         Decl::Private { inner, .. } => {
-            collect_decl_definitions(inner, defs);
+            collect_decl_definitions(inner, source, defs);
         }
         _ => {}
     }
 }
 
 /// 式内の let バインディング等からシンボル定義を収集する
-fn collect_expr_definitions(expr: &Expr, defs: &mut Vec<SymbolDef>) {
+fn collect_expr_definitions(expr: &Expr, source: &str, defs: &mut Vec<SymbolDef>) {
     match expr {
         Expr::Let(_, bindings, body) => {
             for (pat, val) in bindings {
-                collect_pattern_definitions(pat, defs);
-                collect_expr_definitions(val, defs);
+                collect_pattern_definitions(pat, source, defs);
+                collect_expr_definitions(val, source, defs);
             }
-            collect_expr_definitions(body, defs);
+            collect_expr_definitions(body, source, defs);
         }
         Expr::If(_, cond, then_br, else_br) => {
-            collect_expr_definitions(cond, defs);
-            collect_expr_definitions(then_br, defs);
-            collect_expr_definitions(else_br, defs);
+            collect_expr_definitions(cond, source, defs);
+            collect_expr_definitions(then_br, source, defs);
+            collect_expr_definitions(else_br, source, defs);
         }
         Expr::App(_, func, args) => {
-            collect_expr_definitions(func, defs);
+            collect_expr_definitions(func, source, defs);
             for arg in args {
-                collect_expr_definitions(arg, defs);
+                collect_expr_definitions(arg, source, defs);
             }
         }
         Expr::Lambda(_, params, body) => {
             for param in params {
+                let param_span = symbol_span_in_source(source, param.span, &param.name);
                 defs.push(SymbolDef {
                     name: param.name.clone(),
-                    start: param.span.start,
-                    end: param.span.end,
+                    start: param_span.start,
+                    end: param_span.end,
                 });
             }
-            collect_expr_definitions(body, defs);
+            collect_expr_definitions(body, source, defs);
         }
         Expr::Match(_, scrutinee, arms) => {
-            collect_expr_definitions(scrutinee, defs);
+            collect_expr_definitions(scrutinee, source, defs);
             for arm in arms {
-                collect_pattern_definitions(&arm.pattern, defs);
-                collect_expr_definitions(&arm.body, defs);
+                collect_pattern_definitions(&arm.pattern, source, defs);
+                collect_expr_definitions(&arm.body, source, defs);
             }
         }
         Expr::Do(_, exprs) => {
             for e in exprs {
-                collect_expr_definitions(e, defs);
+                collect_expr_definitions(e, source, defs);
             }
         }
         _ => {}
@@ -254,23 +284,24 @@ fn collect_expr_definitions(expr: &Expr, defs: &mut Vec<SymbolDef>) {
 }
 
 /// パターンからシンボル定義を収集する
-fn collect_pattern_definitions(pat: &Pattern, defs: &mut Vec<SymbolDef>) {
+fn collect_pattern_definitions(pat: &Pattern, source: &str, defs: &mut Vec<SymbolDef>) {
     match pat {
         Pattern::Var(span, name) => {
+            let name_span = symbol_span_in_source(source, *span, name);
             defs.push(SymbolDef {
                 name: name.clone(),
-                start: span.start,
-                end: span.end,
+                start: name_span.start,
+                end: name_span.end,
             });
         }
         Pattern::Constructor(_, _, fields) => {
             for f in fields {
-                collect_pattern_definitions(f, defs);
+                collect_pattern_definitions(f, source, defs);
             }
         }
         Pattern::RecordPat(_, _, fields) => {
             for (_, p) in fields {
-                collect_pattern_definitions(p, defs);
+                collect_pattern_definitions(p, source, defs);
             }
         }
         _ => {}
@@ -349,7 +380,7 @@ pub fn find_definition(source: &str, position: Position) -> Option<Range> {
     let offset = position_to_offset(source, position)?;
     let symbol_name = symbol_at_position(source, offset)?;
     let program = lsharp_syntax::parse(source).ok()?;
-    let definitions = collect_definitions(&program);
+    let definitions = collect_definitions(&program, source);
 
     for def in &definitions {
         if def.name == symbol_name {

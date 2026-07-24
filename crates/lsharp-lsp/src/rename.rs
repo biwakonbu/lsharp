@@ -64,6 +64,12 @@ mod tests {
             "関数リネームで 2 箇所以上の TextEdit が生成されるべき, 実際: {}",
             edits.len()
         );
+        assert!(
+            edits
+                .iter()
+                .any(|edit| { edit.range == Range::new(Position::new(0, 6), Position::new(0, 9)) }),
+            "関数定義の TextEdit は関数名だけを置換する範囲であるべき: {edits:?}"
+        );
         for edit in &edits {
             assert_eq!(edit.new_text, "sum");
         }
@@ -84,6 +90,23 @@ mod tests {
         for edit in &edits {
             assert_eq!(edit.new_text, "y");
         }
+    }
+
+    #[test]
+    fn test_rename_typed_parameter_replaces_name_only() {
+        let source = "(defn f [(: value Int)] value)";
+        let edits = compute_rename_edits(source, Position::new(0, 12), "item");
+
+        assert!(
+            edits.iter().any(|edit| {
+                edit.range == Range::new(Position::new(0, 12), Position::new(0, 17))
+            }),
+            "typed parameter の TextEdit は name だけを置換する範囲であるべき: {edits:?}"
+        );
+        assert!(
+            edits.iter().all(|edit| edit.range.end.character <= 29),
+            "typed parameter の annotation や宣言末尾まで置換範囲に含めてはいけない: {edits:?}"
+        );
     }
 
     #[test]

@@ -31,7 +31,7 @@ pub fn find_references(source: &str, position: Position, include_declaration: bo
 
     // 定義箇所を含める場合
     if include_declaration {
-        let definitions = collect_definitions(&program);
+        let definitions = collect_definitions(&program, source);
         for def in &definitions {
             if def.name == symbol_name {
                 let start = offset_to_position(source, def.start);

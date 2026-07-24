@@ -643,7 +643,7 @@ mod tests {
         let result = find_definition(source, pos);
         assert!(result.is_some(), "トップレベル関数の定義が見つかるべき");
         let range = result.unwrap();
-        assert_eq!(range.start.line, 0);
+        assert_eq!(range, Range::new(Position::new(0, 6), Position::new(0, 9)));
     }
 
     #[test]
