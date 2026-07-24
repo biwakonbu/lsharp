@@ -15,8 +15,9 @@ list に入り、source 順の index を返す契約は未固定だった。
 同じ read-only preopen 配下に空の `source-a.txt` と `source-b.txt` を用意する。それぞれを
 別 descriptor の `read-via-stream` で input stream にし、`input-stream.subscribe` から二つの pollable
 を作る。二つを `[pollable0, pollable1]` の順で `poll` に渡し、両方を `block` / `ready` で確認した上で
-result list length `2`、index `0` と `1` を guest 側で検証する。marker `P`、exit code `0`、全 resource
-drop を同じ actual Component 実行で確認する。
+result list length `2`、index `0` と `1` を guest 側で検証する。二つの pollable、stream、descriptor、
+preopen の drop を先に完了してから marker `P` を stdout に渡し、exit code `0` を同じ actual Component
+実行で確認する。
 
 ## Evidence
 

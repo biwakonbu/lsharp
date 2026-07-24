@@ -1244,8 +1244,8 @@ differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity は未完
   `source-b.txt` をそれぞれ descriptor 経由で `read-via-stream` し、独立した二つの
   `input-stream.subscribe` を呼ぶ。両方を EOF の fixture として source の違いに焦点を固定する。
 - 二つの pollable を `block` / `ready` で確認して `poll` の result list length `2`、index `0` と `1`
-  を guest 側で検証する。marker `P`、exit code `0`、二つの pollable、stream、descriptor、preopen の
-  drop を同じ actual Component 実行で確認する。
+  を guest 側で検証する。二つの pollable、stream、descriptor、preopen の drop を先に完了してから
+  marker `P` を stdout に渡し、exit code `0` を同じ actual Component 実行で確認する。
 
 これは異なる input source の複数 ready index verified partial slice であり、pollable が異なる
 ready/error 状態になる場合の projection、Wasm artifact/runtime differential、Mac Apple
@@ -1282,8 +1282,26 @@ downcast できる境界を actual Component で検証した。
   code `0`、error/output stream/descriptor/preopen の drop を同じ actual Component 実行で固定する。
 
 これは filesystem output write の invalid-offset downcast verified partial slice であり、非同期
-`write` 後の `flush`/`check-write` error、他の OS error mapping、Wasm artifact/runtime differential、
-Mac Apple Silicon/Linux x86_64、native/selfhost parity は未完了である。
+`write` 後の `check-write` error、他の OS error mapping、Wasm artifact/runtime differential、Mac
+Apple Silicon/Linux x86_64、native/selfhost parity は未完了である。
+
+## Stage 2bj 検証済み slice: 非同期 output-stream write 後の blocking-flush failure downcast (2026-07-24)
+
+output stream の non-blocking `write` が開始した filesystem I/O を `blocking-flush` で待機し、失敗を
+`stream-error::last-operation-failed` として受け取って `filesystem-error-code` へ downcast できる
+状態遷移を actual Component で検証した。
+
+- `wasm_gc_component_cli_fs_runner_maps_async_output_stream_failure_to_filesystem_error_code` は
+  read-write preopen の `output.txt` に offset `u64::MAX` の output stream を作る。`check-write` の
+  permit を確認してから `write(1)` を開始し、`blocking-flush` が完了待ち後に返す outer error と
+  `last-operation-failed` case（discriminant `0`）を確認する。
+- error resource を borrowed `filesystem-error-code` に渡し、option が `Some`、payload が
+  `error-code::invalid`（discriminant `12`）であることを確認する。marker `A`、`wasi:cli/run` exit
+  code `0`、error/output stream/descriptor/preopen の drop を同じ actual Component 実行で固定する。
+
+これは非同期 output write → blocking-flush の invalid-offset downcast verified partial slice であり、
+pending write 後の `check-write` / non-blocking `flush` projection、他の OS error mapping、Wasm
+artifact/runtime differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity は未完了である。
 
 ## 実装戦略
 
