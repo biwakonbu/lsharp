@@ -15,6 +15,7 @@ pub fn ir_to_wasm_valtype(ty: IrType) -> ValType {
         IrType::I32 => ValType::I32,
         IrType::Ref(_) => ValType::I64, // MVP: GC 参照は i64 にフォールバック
         IrType::FuncRef => ValType::FUNCREF,
+        IrType::TypedFuncRef(_) => ValType::FUNCREF,
     }
 }
 

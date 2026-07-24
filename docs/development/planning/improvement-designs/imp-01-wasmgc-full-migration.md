@@ -1625,10 +1625,14 @@ non-capturing lambda literal を直接 application する場合も linear-memory
 これは non-capturing lambda の direct call までを閉じた verified partial slice であり、closure 全体
 および `LEGACY-EXEC-01` の完了条件には到達していない。
 
-### Stage 3f: WasmGC local non-capturing funcref alias の `call_ref` (検証済み partial slice)
+### Stage 3f: WasmGC local non-capturing funcref alias の `call_ref` (初期 verified partial slice)
 
 `let` で束縛した non-capturing lambda の呼び出しを local linear-memory closure pointer として
-扱わず、元の concrete `ref.func` と typed `call_ref` へ再 materialize する経路を追加した。
+扱わず、元の concrete `ref.func` と typed `call_ref` へ接続する初期経路を追加した。
+
+この段階では WasmGC の abstract `funcref` local を typed `call_ref` へ渡せなかったため、call site
+で `ref.func` を再生成する暫定実装を採用した。暫定実装は Stage 3g の concrete typed local で
+置き換えられており、以下はその時点の設計と evidence を記録する。
 
 - `(let [f (fn [x] (+ x 1))] (f 41))` を `RefFunc → LocalSet → I64Const(41) → RefFunc → CallRef`
   として lowering し、`wasm_gc_local_non_capturing_lambda_call_lowers_to_call_ref` で契約を固定する。
@@ -1639,14 +1643,36 @@ non-capturing lambda literal を直接 application する場合も linear-memory
 - captured closure、function parameter/local の一般 funcref、env struct、parametric/nested closure、
   Mac/Linux native-selfhost parity は未完了であり、Stage 3c の明示拒否を維持する。
 
-これは local non-capturing alias の verified partial slice であり、closure 全体および
+これは local non-capturing alias の初期 verified partial slice であり、closure 全体および
+`LEGACY-EXEC-01` の完了条件には到達していない。
+
+### Stage 3g: WasmGC concrete typed funcref local (検証済み partial slice)
+
+Stage 3f の call-site 再 materialize を廃止し、`let` に束縛する non-capturing lambda の local 自体が
+関数型インデックスを保持する `IrType::TypedFuncRef(u32)` になるようにした。これにより、binding
+時の `ref.func → local.set` と call site の `local.get → call_ref` が同じ concrete function type を
+保ち、抽象 `funcref` からの暗黙昇格や linear-memory `CallIndirect` fallback を必要としない。
+
+- `(let [f (fn [x] (+ x 1))] (f 41))` の IR を
+  `RefFunc → LocalSet → I64Const(41) → LocalGet → CallRef` として固定し、
+  `wasm_gc_local_non_capturing_lambda_call_lowers_to_call_ref` で call-site 再 materialize がないことを確認する。
+- WasmGC emitter は `TypedFuncRef` を concrete `ref null $function_type` として出力し、
+  `print-string` synthetic import がある場合も type index offset を適用する。
+  `wasm_gc_emitter_executes_local_non_capturing_lambda_call_ref` と
+  `wasm_gc_emitter_offsets_local_typed_funcref_after_print_string_import` が Wasmtime 29 の
+  validation / instantiate / `42` 実行を確認する。
+- 一般の function parameter/local funcref、captured env struct、parametric/nested closure、
+  module-link 後の typed local remap、Mac/Linux native-selfhost parity は未完了であり、Stage 3c の
+  明示拒否を維持する。
+
+これは concrete typed local の verified partial slice であり、closure 全体および
 `LEGACY-EXEC-01` の完了条件には到達していない。
 
 ### Stage 3: Closures → funcref + env struct
 
 - 現行の lambda lifting (`lower/closure.rs`) は維持し、env をリニアメモリ tuple から
   struct 型へ置換。呼び出しは `call_ref` (typed funcref)。
-  `IrType::FuncRef` は既存のため IR 拡張は env の型インデックス保持のみ
+  `IrType::TypedFuncRef(u32)` で concrete function type index を保持し、env の型インデックスも追加する。
 - 検証: `examples/hkt.ls` / `examples/computation.ls` の実行 E2E (D-03 / D-04 の resolved 条件)
 
 ### Stage 4: トレイト vtable
@@ -1701,7 +1727,7 @@ custom `wasmgc-output` Component actual instantiate、Stage 2p の Preview2 stdo
 Stage 2q の custom CLI `wasi:cli/run` 接続、Stage 3a の typed funcref emitter/runtime capability、
 Stage 3b の module-link funcref index/type remap、Stage 3c の captured closure lowering 明示境界、
 Stage 3d の non-capturing lambda funcref lowering、Stage 3e の source-level direct `call_ref`、
-Stage 3f の local non-capturing alias `call_ref` は 2026-07-24 に検証済み。ADT
+Stage 3f の local non-capturing alias `call_ref` と Stage 3g の concrete typed local は 2026-07-24 に検証済み。ADT
 の全表現、Stage 2 の残り (Unicode code-point semantics / WASI-component I/O /
 native-selfhost parity)、Stage 3 の captured env/call を含む closure 全体、traits / selfhost、supported target
 の actual runtime evidence は未完了であり、`LEGACY-EXEC-01` の完了条件には到達していない。

@@ -87,16 +87,23 @@ fn emit_wasm_wasmgc_internal(
                 let fields = fields
                     .iter()
                     .map(|field| FieldType {
-                        element_type: StorageType::Val(wasm_gc_valtype(field.ty)),
+                        element_type: StorageType::Val(wasm_gc_valtype(
+                            field.ty,
+                            u32::from(print_string_import),
+                        )),
                         mutable: field.mutable,
                     })
                     .collect::<Vec<_>>();
                 types.ty().struct_(fields);
             }
             GcTypeKind::Array(element_type) => {
-                types
-                    .ty()
-                    .array(&StorageType::Val(wasm_gc_valtype(*element_type)), true);
+                types.ty().array(
+                    &StorageType::Val(wasm_gc_valtype(
+                        *element_type,
+                        u32::from(print_string_import),
+                    )),
+                    true,
+                );
             }
             GcTypeKind::PackedByteArray => {
                 types.ty().array(&StorageType::I8, true);
@@ -108,8 +115,15 @@ fn emit_wasm_wasmgc_internal(
     for import in &module.imports {
         import_type_indices.push(types.len());
         types.ty().function(
-            import.params.iter().copied().map(wasm_gc_valtype),
-            [wasm_gc_valtype(import.result)],
+            import
+                .params
+                .iter()
+                .copied()
+                .map(|ty| wasm_gc_valtype(ty, u32::from(print_string_import))),
+            [wasm_gc_valtype(
+                import.result,
+                u32::from(print_string_import),
+            )],
         );
     }
 
@@ -140,8 +154,15 @@ fn emit_wasm_wasmgc_internal(
     for function in &module.functions {
         function_type_indices.push(types.len());
         types.ty().function(
-            function.params.iter().copied().map(wasm_gc_valtype),
-            [wasm_gc_valtype(function.result)],
+            function
+                .params
+                .iter()
+                .copied()
+                .map(|ty| wasm_gc_valtype(ty, u32::from(print_string_import))),
+            [wasm_gc_valtype(
+                function.result,
+                u32::from(print_string_import),
+            )],
         );
     }
     let component_cli_run_type_index = if component_cli {
@@ -245,7 +266,7 @@ fn emit_wasm_wasmgc_internal(
             .locals
             .iter()
             .copied()
-            .map(|ty| (1, wasm_gc_valtype(ty)))
+            .map(|ty| (1, wasm_gc_valtype(ty, u32::from(print_string_import))))
             .collect::<Vec<_>>();
         let output_locals = if component_output {
             let array_type_index = string_array_type_index(module)?;
@@ -320,7 +341,7 @@ struct WasmGcEmitOptions<'a> {
     output_locals: Option<ComponentOutputLocals>,
 }
 
-fn wasm_gc_valtype(ty: IrType) -> ValType {
+fn wasm_gc_valtype(ty: IrType, synthetic_import_offset: u32) -> ValType {
     match ty {
         IrType::I64 => ValType::I64,
         IrType::F64 => ValType::F64,
@@ -330,6 +351,10 @@ fn wasm_gc_valtype(ty: IrType) -> ValType {
             heap_type: HeapType::Concrete(index),
         }),
         IrType::FuncRef => ValType::FUNCREF,
+        IrType::TypedFuncRef(index) => ValType::Ref(RefType {
+            nullable: true,
+            heap_type: HeapType::Concrete(index + synthetic_import_offset),
+        }),
     }
 }
 
@@ -355,6 +380,8 @@ fn string_array_type_index(module: &Module) -> Result<u32, CodegenError> {
 }
 
 fn validate_module(module: &Module, print_string_import: bool) -> Result<(), CodegenError> {
+    let function_type_start = module.gc_types.len() + module.imports.len();
+    let function_type_count = module.functions.len();
     if print_string_import {
         let string_type_index = string_array_type_index(module)?;
         validate_gc_type_index(
@@ -368,11 +395,23 @@ fn validate_module(module: &Module, print_string_import: bool) -> Result<(), Cod
         match &gc_type.kind {
             GcTypeKind::Struct(fields) => {
                 for field in fields {
-                    validate_gc_ref(field.ty, module.gc_types.len(), "struct field")?;
+                    validate_ir_type(
+                        field.ty,
+                        module.gc_types.len(),
+                        function_type_start,
+                        function_type_count,
+                        "struct field",
+                    )?;
                 }
             }
             GcTypeKind::Array(element_type) => {
-                validate_gc_ref(*element_type, module.gc_types.len(), "array element")?;
+                validate_ir_type(
+                    *element_type,
+                    module.gc_types.len(),
+                    function_type_start,
+                    function_type_count,
+                    "array element",
+                )?;
             }
             GcTypeKind::PackedByteArray => {}
         }
@@ -380,18 +419,48 @@ fn validate_module(module: &Module, print_string_import: bool) -> Result<(), Cod
 
     for import in &module.imports {
         for &param in &import.params {
-            validate_gc_ref(param, module.gc_types.len(), "import parameter")?;
+            validate_ir_type(
+                param,
+                module.gc_types.len(),
+                function_type_start,
+                function_type_count,
+                "import parameter",
+            )?;
         }
-        validate_gc_ref(import.result, module.gc_types.len(), "import result")?;
+        validate_ir_type(
+            import.result,
+            module.gc_types.len(),
+            function_type_start,
+            function_type_count,
+            "import result",
+        )?;
     }
 
     for function in &module.functions {
-        validate_gc_ref(function.result, module.gc_types.len(), "function result")?;
+        validate_ir_type(
+            function.result,
+            module.gc_types.len(),
+            function_type_start,
+            function_type_count,
+            "function result",
+        )?;
         for &param in &function.params {
-            validate_gc_ref(param, module.gc_types.len(), "function parameter")?;
+            validate_ir_type(
+                param,
+                module.gc_types.len(),
+                function_type_start,
+                function_type_count,
+                "function parameter",
+            )?;
         }
         for &local in &function.locals {
-            validate_gc_ref(local, module.gc_types.len(), "function local")?;
+            validate_ir_type(
+                local,
+                module.gc_types.len(),
+                function_type_start,
+                function_type_count,
+                "function local",
+            )?;
         }
         for instruction in &function.body {
             match instruction {
@@ -450,16 +519,12 @@ fn validate_module(module: &Module, print_string_import: bool) -> Result<(), Cod
                     }
                 }
                 Instruction::CallRef(type_index) => {
-                    let function_type_start = module.gc_types.len() + module.imports.len();
-                    let function_type_count = module.functions.len();
-                    let function_type_end = function_type_start + function_type_count;
-                    if (*type_index as usize) < function_type_start
-                        || (*type_index as usize) >= function_type_end
-                    {
-                        return Err(codegen_error(format!(
-                            "call_ref の関数型インデックスが範囲外です: {type_index}"
-                        )));
-                    }
+                    validate_function_type_index(
+                        *type_index,
+                        function_type_start,
+                        function_type_count,
+                        "call_ref",
+                    )?;
                 }
                 Instruction::ArrayNewFixed(type_index, _)
                 | Instruction::ArrayNewDefault(type_index)
@@ -537,6 +602,35 @@ fn validate_module(module: &Module, print_string_import: bool) -> Result<(), Cod
 fn validate_gc_ref(ty: IrType, gc_type_count: usize, context: &str) -> Result<(), CodegenError> {
     if let IrType::Ref(index) = ty {
         validate_gc_type_index(index, gc_type_count, context)?;
+    }
+    Ok(())
+}
+
+fn validate_ir_type(
+    ty: IrType,
+    gc_type_count: usize,
+    function_type_start: usize,
+    function_type_count: usize,
+    context: &str,
+) -> Result<(), CodegenError> {
+    validate_gc_ref(ty, gc_type_count, context)?;
+    if let IrType::TypedFuncRef(index) = ty {
+        validate_function_type_index(index, function_type_start, function_type_count, context)?;
+    }
+    Ok(())
+}
+
+fn validate_function_type_index(
+    index: u32,
+    function_type_start: usize,
+    function_type_count: usize,
+    context: impl std::fmt::Display,
+) -> Result<(), CodegenError> {
+    let function_type_end = function_type_start + function_type_count;
+    if (index as usize) < function_type_start || (index as usize) >= function_type_end {
+        return Err(codegen_error(format!(
+            "{context} の関数型インデックスが範囲外です: {index}"
+        )));
     }
     Ok(())
 }

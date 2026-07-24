@@ -353,6 +353,10 @@ impl Lower {
                             // FuncRef slot は WasmGC ADT payload の対象外。
                             body.push(Instruction::Unreachable);
                         }
+                        IrType::TypedFuncRef(_) => {
+                            // concrete funcref slot も WasmGC ADT payload の対象外。
+                            body.push(Instruction::Unreachable);
+                        }
                     }
                 }
             }

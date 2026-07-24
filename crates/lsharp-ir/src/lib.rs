@@ -133,6 +133,12 @@ pub enum IrType {
     Ref(u32),
     /// 関数参照型 (funcref)
     FuncRef,
+    /// 特定の関数型を指す non-nullable ではない concrete funcref。
+    ///
+    /// 値は IR の型セクション上の関数型インデックスを保持する。WasmGC
+    /// emitter は synthetic import の有無に応じて最終的な型インデックスへ
+    /// rebasing する。
+    TypedFuncRef(u32),
 }
 
 impl fmt::Display for IrType {
@@ -143,6 +149,7 @@ impl fmt::Display for IrType {
             IrType::I32 => write!(f, "i32"),
             IrType::Ref(idx) => write!(f, "ref({idx})"),
             IrType::FuncRef => write!(f, "funcref"),
+            IrType::TypedFuncRef(idx) => write!(f, "funcref({idx})"),
         }
     }
 }

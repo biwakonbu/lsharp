@@ -196,12 +196,22 @@ fn wasm_gc_local_non_capturing_lambda_call_lowers_to_call_ref() {
         main.body.windows(2).any(|instructions| {
             matches!(
                 instructions,
+                [Instruction::LocalGet(_), Instruction::CallRef(_)]
+            )
+        }),
+        "local alias は concrete typed funcref local をそのまま call_ref へ渡すべき: main: {:?}, locals: {:?}",
+        main.body,
+        main.locals
+    );
+    assert!(
+        main.body.windows(2).all(|instructions| {
+            !matches!(
+                instructions,
                 [Instruction::RefFunc(_), Instruction::CallRef(_)]
             )
         }),
-        "main: {:?}, locals: {:?}",
-        main.body,
-        main.locals
+        "local alias の call site は ref.func を再 materialize しない: {:?}",
+        main.body
     );
 }
 

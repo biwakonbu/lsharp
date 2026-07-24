@@ -155,7 +155,7 @@ impl Lower {
                                 let previous_local = ctx.locals_map.get(name).copied();
                                 let previous_type = ctx.local_type_names.get(name).cloned();
                                 let binding_ir_type = lambda_func_type_index
-                                    .map(|_| IrType::FuncRef)
+                                    .map(IrType::TypedFuncRef)
                                     .or_else(|| {
                                         inferred_type_name
                                             .as_deref()
@@ -168,12 +168,6 @@ impl Lower {
                                     .unwrap_or(IrType::I64);
                                 let idx =
                                     ctx.alloc_scoped_local_typed(name.clone(), binding_ir_type);
-                                if let Some(function_index) = lambda_func_index {
-                                    ctx.local_func_indices.insert(idx, function_index);
-                                }
-                                if let Some(type_index) = lambda_func_type_index {
-                                    ctx.local_func_type_indices.insert(idx, type_index);
-                                }
                                 if let Some(type_name) = inferred_type_name {
                                     ctx.local_type_names.insert(name.clone(), type_name);
                                 } else {
@@ -1759,22 +1753,16 @@ impl Lower {
                             ctx.emit(Instruction::Call(idx));
                         } else if self.backend == super::LowerBackend::WasmGc
                             && let Some(&local_idx) = ctx.locals_map.get(name)
-                            && matches!(
-                                ctx.local_types.get(local_idx as usize),
-                                Some(IrType::FuncRef)
-                            )
-                            && let Some(&function_index) = ctx.local_func_indices.get(&local_idx)
-                            && let Some(&call_ref_type_index) =
-                                ctx.local_func_type_indices.get(&local_idx)
+                            && let Some(IrType::TypedFuncRef(call_ref_type_index)) =
+                                ctx.local_types.get(local_idx as usize).copied()
                         {
                             // WasmGC の local funcref は linear-memory closure pointer として
-                            // 扱わず、引数の後ろに funcref を積んで typed `call_ref` する。
+                            // 扱わず、concrete typed funcref local を引数の後ろに積んで
+                            // typed `call_ref` する。
                             for arg in args {
                                 self.lower_expr(ctx, arg)?;
                             }
-                            // abstract `funcref` local からは typed `call_ref` へ昇格できないため、
-                            // non-capturing alias の concrete function ref を再 materialize する。
-                            ctx.emit(Instruction::RefFunc(function_index));
+                            ctx.emit(Instruction::LocalGet(local_idx));
                             ctx.emit(Instruction::CallRef(call_ref_type_index));
                         } else if let Some(idx) = self.resolve_trait_dispatch(ctx, name, args) {
                             // P5-6: トレイトメソッドの静的ディスパッチ自動解決

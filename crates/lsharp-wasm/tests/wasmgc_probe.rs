@@ -10487,3 +10487,35 @@ fn wasm_gc_emitter_executes_local_non_capturing_lambda_call_ref() {
 
     assert_eq!(main.call(&mut store, ()).unwrap(), 42);
 }
+
+#[test]
+fn wasm_gc_emitter_offsets_local_typed_funcref_after_print_string_import() {
+    let program = lsharp_syntax::parse(
+        r#"
+        (defn main []
+          (do
+            (print "hello")
+            (let [f (fn [x] (+ x 1))]
+              (f 41))))
+        "#,
+    )
+    .expect("print と local non-capturing lambda call source を parse できる");
+    let mut infer = lsharp_types::infer::Infer::new();
+    let type_results = infer
+        .infer_program(&program)
+        .expect("print と local non-capturing lambda call source を型推論できる");
+    let expr_type_results = infer.expr_type_results_snapshot();
+    let mut lowerer = lsharp_ir::lower::Lower::with_backend(lsharp_ir::lower::LowerBackend::WasmGc);
+    let ir = lowerer
+        .lower_program_with_expr_types(&program, &type_results, &expr_type_results)
+        .expect("print と local non-capturing lambda call を WasmGC IR へ lowering できる");
+
+    let bytes = lsharp_wasm::wasmgc::emit_wasm_wasmgc(&ir)
+        .expect("print import 付き local lambda call module を生成できる");
+    let mut config = Config::new();
+    config.wasm_gc(true);
+    config.wasm_reference_types(true);
+    config.wasm_function_references(true);
+    let engine = Engine::new(&config).expect("typed funcref を有効化した engine を作成できる");
+    Module::new(&engine, bytes).expect("print import 付き typed local lambda module を検証できる");
+}
