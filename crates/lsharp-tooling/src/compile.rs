@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 
 use crate::artifact_cache::ArtifactCache;
 use lsharp_ir::{CompilationCache, Module, SourceFingerprint};
+use lsharp_wasm::validation::WasmValidationMode;
 
 /// compile バックエンドターゲット
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -365,6 +366,7 @@ fn compile_file_with_backend_and_cache_internal(
     };
     if let (Some(artifact_cache), Some(artifact_key)) = (artifact_cache, artifact_key.as_ref())
         && let Some(bytes) = artifact_cache.load(artifact_key)?
+        && validate_cached_artifact(artifact_key, &bytes)
     {
         write_compile_artifact(&output_path, &bytes)?;
         return Ok(CompileArtifacts {
@@ -441,12 +443,30 @@ fn compile_file_with_backend_and_cache_internal(
     })
 }
 
+fn validate_cached_artifact(key: &CompileCacheKey, bytes: &[u8]) -> bool {
+    let mode = match (key.target(), key.backend()) {
+        (CompileTarget::WasiComponent, CompileBackend::Linear) => WasmValidationMode::Component,
+        (CompileTarget::WasiPreview1, CompileBackend::Linear)
+        | (CompileTarget::WebWasm, CompileBackend::Linear) => WasmValidationMode::Core,
+        (CompileTarget::WebWasm, CompileBackend::WasmGc) => WasmValidationMode::CoreWasmGc,
+        (CompileTarget::Native, _) | (_, CompileBackend::WasmGc) => return false,
+    };
+    lsharp_wasm::validation::validate_wasm_artifact(bytes, mode).is_ok()
+}
+
 fn write_compile_artifact_and_cache(
     output_path: &Path,
     bytes: &[u8],
     artifact_cache: Option<&ArtifactCache>,
     artifact_key: Option<&CompileCacheKey>,
 ) -> miette::Result<()> {
+    if let (Some(_artifact_cache), Some(artifact_key)) = (artifact_cache, artifact_key)
+        && !validate_cached_artifact(artifact_key, bytes)
+    {
+        return Err(miette::miette!(
+            "生成された Wasm artifact が target/backend の検証に失敗しました"
+        ));
+    }
     write_compile_artifact(output_path, bytes)?;
     if let (Some(artifact_cache), Some(artifact_key)) = (artifact_cache, artifact_key) {
         artifact_cache.store(artifact_key, bytes)?;
@@ -732,6 +752,63 @@ mod tests {
             first_bytes,
             std::fs::read(&changed_output).unwrap(),
             "source 変更後に stale artifact を返してはいけない"
+        );
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_compile_session_artifact_cache_rejects_invalid_wasm_payload() {
+        let dir = std::env::temp_dir().join(format!(
+            "lsharp_tooling_compile_session_artifact_invalid_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock は unix epoch より後であるべき")
+                .as_nanos()
+        ));
+        let cache_root = dir.join("artifact-cache");
+        std::fs::create_dir_all(&dir).unwrap();
+        let lib_path = dir.join("Lib.ls");
+        let source_path = dir.join("Main.ls");
+        let output_path = dir.join("Main.wasm");
+        std::fs::write(&lib_path, "(module Lib)\n(defn helper [] 7)\n").unwrap();
+        std::fs::write(
+            &source_path,
+            "(module Main)\n(import Lib)\n(defn main [] (helper))\n",
+        )
+        .unwrap();
+
+        let key = CompileCacheKey::from_entry(
+            &source_path,
+            CompileTarget::WasiPreview1,
+            CompileBackend::Linear,
+        )
+        .unwrap();
+        ArtifactCache::new(&cache_root)
+            .store(&key, b"not-a-wasm")
+            .unwrap();
+
+        let mut session = CompileSession::with_artifact_cache(&cache_root);
+        session
+            .compile_file_with_backend(
+                &source_path,
+                Some(&output_path),
+                false,
+                Some(CompileTarget::WasiPreview1),
+                CompileBackend::Linear,
+            )
+            .unwrap();
+        let output = std::fs::read(&output_path).unwrap();
+        assert_eq!(
+            &output[..4],
+            b"\0asm",
+            "不正な cache payload を output に出してはいけない"
+        );
+        assert_eq!(
+            session.cache_len(),
+            2,
+            "Wasm validation failure は fresh compile へ戻るべき"
         );
 
         std::fs::remove_dir_all(&dir).unwrap();
