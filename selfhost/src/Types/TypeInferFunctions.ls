@@ -67,6 +67,71 @@
     (typeinfer-signature-record-result-type (ty-fr ty))
     (if (= (ty-tag ty) (ty-record)) ty 0)))
 
+(defn typeinfer-resolve-signature-fun-params-loop
+  [type-expr idx count return-type alias-env type-param-env env counter]
+  (if (>= idx count)
+    return-type
+    (let [param-type
+            (typeinfer-resolve-signature-type-expr
+              (vector-get type-expr (+ idx 2))
+              alias-env
+              type-param-env
+              env
+              counter)]
+      (do
+        (root_push param-type)
+        (let [rest-type
+                (typeinfer-resolve-signature-fun-params-loop
+                  type-expr
+                  (+ idx 1)
+                  count
+                  return-type
+                  alias-env
+                  type-param-env
+                  env
+                  counter)]
+          (do
+            (root_push rest-type)
+            (let [result (mk-fun param-type rest-type)]
+              (do
+                (root_pop)
+                (root_pop)
+                result))))))))
+
+(defn typeinfer-resolve-signature-fun-type
+  [type-expr alias-env type-param-env env counter]
+  (do
+    (root_push type-expr)
+    (root_push alias-env)
+    (root_push type-param-env)
+    (let [param-count (vector-get type-expr 1)
+      return-type-expr (vector-get type-expr (+ param-count 2))
+      return-type
+        (typeinfer-resolve-signature-type-expr
+          return-type-expr
+          alias-env
+          type-param-env
+          env
+          counter)]
+      (do
+        (root_push return-type)
+        (let [result
+                (typeinfer-resolve-signature-fun-params-loop
+                  type-expr
+                  0
+                  param-count
+                  return-type
+                  alias-env
+                  type-param-env
+                  env
+                  counter)]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            result))))))
+
 (defn typeinfer-resolve-signature-type-expr
   [type-expr alias-env type-param-env env counter]
   (if (= (vector-get type-expr 0) (ast-type-named))
@@ -91,10 +156,17 @@
                       alias-env
                       type-param-env)
                     record-ty))))))))
-    (typeinfer-resolve-type-expr-with-aliases-and-params
-      type-expr
-      alias-env
-      type-param-env)))
+    (if (= (vector-get type-expr 0) (ast-type-fun))
+      (typeinfer-resolve-signature-fun-type
+        type-expr
+        alias-env
+        type-param-env
+        env
+        counter)
+      (typeinfer-resolve-type-expr-with-aliases-and-params
+        type-expr
+        alias-env
+        type-param-env))))
 
 (defn typeinfer-bind-signature-type-var [type-param-env name-hash counter]
   (let [bound (map-get-safe type-param-env name-hash)]
