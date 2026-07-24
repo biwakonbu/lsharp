@@ -1402,3 +1402,93 @@ fn test_e2e_selfhost_typeinfer_analysis_filters_import_alias_only_qualified_defi
         "import :as + :only は selected symbol だけを alias-qualified lookup へ公開するべき"
     );
 }
+
+/// EC-M1-01: import の :open は public function だけを unqualified lookup へ公開すること
+#[test]
+fn test_e2e_selfhost_typeinfer_analysis_filters_import_open_unqualified_definition() {
+    let selected_source =
+        "(module Lib) (defn helper [value] (+ value 1)) (private (defn secret [value] (+ value 2))) (module Main) (import Lib :open) (defn main [] (helper 42))";
+    let selected_oracle_source = "(module Main) (import Lib :open) (defn main [] (helper 42))";
+    let selected_program = lsharp_syntax::parse(selected_oracle_source)
+        .expect("selected :open oracle fixture は parse できるべき");
+    let mut selected_oracle = Infer::new();
+    let helper_type = lsharp_types::types::Type::Fun(
+        vec![lsharp_types::types::Type::int()],
+        Box::new(lsharp_types::types::Type::int()),
+    );
+    selected_oracle.inject_external_types(&[(
+        "helper".to_string(),
+        lsharp_types::types::TypeScheme::mono(helper_type),
+    )]);
+    assert!(
+        selected_oracle.infer_program(&selected_program).is_ok(),
+        "Rust oracle は :open の public definition を unqualified lookup で受理するべき"
+    );
+
+    let closed_source =
+        "(module Lib) (defn helper [value] (+ value 1)) (module Main) (import Lib) (defn main [] (helper 42))";
+    let closed_oracle_source = "(module Main) (import Lib) (defn main [] (helper 42))";
+    let closed_program = lsharp_syntax::parse(closed_oracle_source)
+        .expect("closed import oracle fixture は parse できるべき");
+    let mut closed_oracle = Infer::new();
+    assert!(
+        closed_oracle.infer_program(&closed_program).is_err(),
+        "Rust oracle は :open なしの unqualified definition を拒否するべき"
+    );
+
+    let private_source =
+        "(module Lib) (defn helper [value] (+ value 1)) (private (defn secret [value] (+ value 2))) (module Main) (import Lib :open) (defn main [] (secret 42))";
+    let private_oracle_source = "(module Main) (import Lib :open) (defn main [] (secret 42))";
+    let private_program = lsharp_syntax::parse(private_oracle_source)
+        .expect("private :open oracle fixture は parse できるべき");
+    let mut private_oracle = Infer::new();
+    assert!(
+        private_oracle.infer_program(&private_program).is_err(),
+        "Rust oracle は :open でも private definition を拒否するべき"
+    );
+
+    let harness = format!(
+        r#"
+(defn main []
+  (let [selected
+          (infer-program-analysis
+            (parse-program "{}"))
+        selected-kinds (infer-program-analysis-failure-kinds selected)
+        closed
+          (infer-program-analysis
+            (parse-program "{}"))
+        closed-kinds (infer-program-analysis-failure-kinds closed)
+        blocked
+          (infer-program-analysis
+            (parse-program "{}"))
+        blocked-kinds (infer-program-analysis-failure-kinds blocked)]
+    (do
+      (print (infer-program-analysis-diagnostic-count selected))
+      (print (vector-length selected-kinds))
+      (print (vector-get selected-kinds 0))
+      (print (vector-get selected-kinds 1))
+      (print (infer-program-analysis-diagnostic-count closed))
+      (print (vector-length closed-kinds))
+      (print (vector-get closed-kinds 0))
+      (print (vector-get closed-kinds 1))
+      (print (infer-program-analysis-diagnostic-count blocked))
+      (print (vector-length blocked-kinds))
+      (print (vector-get blocked-kinds 0))
+      (print (vector-get blocked-kinds 1))
+      0)))
+"#,
+        selected_source, closed_source, private_source
+    );
+
+    let combined = format!("{}\n{}", selfhost_typeinfer_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "3", "0", "0", "1", "2", "0", "1", "1", "3", "0", "0"],
+        "import :open は public symbol だけを unqualified lookup へ公開するべき"
+    );
+}

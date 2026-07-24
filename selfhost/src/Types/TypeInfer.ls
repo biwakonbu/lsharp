@@ -522,7 +522,15 @@
     (if (= alias-hash 0) (vector-get decl 1) alias-hash)))
 
 (defn typeinfer-import-only-hashes [decl]
-  (if (> (vector-length decl) 5) (vector-get decl 5) (vector-new 0)))
+  (if (> (vector-length decl) 5)
+    (let [only-hashes (vector-get decl 5)]
+      (if (= only-hashes 0) (vector-new 0) only-hashes))
+    (vector-new 0)))
+
+(defn typeinfer-import-open? [decl]
+  (if (> (vector-length decl) 6)
+    (if (= (vector-get decl 6) 1) 1 0)
+    0))
 
 (defn typeinfer-import-open-flag [decl]
   (if (and (> (vector-length decl) 6) (= (vector-get decl 6) 1)) 1 0))
@@ -535,10 +543,18 @@
       (typeinfer-import-only-contains-loop only-hashes (+ idx 1) len name-hash))))
 
 (defn typeinfer-import-only-allows? [only-hashes name-hash]
-  (let [only-count (vector-length only-hashes)]
-    (if (= only-count 0)
-      1
-      (typeinfer-import-only-contains-loop only-hashes 0 only-count name-hash))))
+  (if (= only-hashes 0)
+    1
+    (let [only-count (vector-length only-hashes)]
+      (if (= only-count 0)
+        1
+        (typeinfer-import-only-contains-loop only-hashes 0 only-count name-hash)))))
+
+(defn typeinfer-import-source-scheme [env target-module name-hash]
+  (let [raw-scheme (type-env-lookup env name-hash)]
+    (if (= raw-scheme 0)
+      (type-env-lookup env (ast-qualified-name-hash target-module name-hash))
+      raw-scheme)))
 
 (defn typeinfer-qualify-import-source-loop
   [program idx limit current-module target-module alias-hash only-hashes open-flag env]
@@ -649,6 +665,20 @@
     (if (= (vector-get (vector-get program idx) 0) (ast-module-decl))
       idx
       (typeinfer-next-module-index program (+ idx 1) len))))
+
+(defn typeinfer-open-import-source [program import-idx decl env]
+  (if (= (typeinfer-import-open? decl) 1)
+    (typeinfer-qualify-import-source-loop
+      program
+      0
+      import-idx
+      0
+      (vector-get decl 1)
+      (vector-get decl 1)
+      (typeinfer-import-only-hashes decl)
+      1
+      env)
+    env))
 
 ;; 後続 top-level defn の placeholder に残る自由型変数を集める。
 (defn typeinfer-pending-env-vars-loop [program idx len placeholders subst env-vars]
@@ -1150,8 +1180,30 @@
         (do
           (root_push decl)
           (let [next-state
-                  (if (= tag 20)
+                  (if (= tag (ast-import-decl))
                     (let [env (infer-program-analysis-env state)
+                      open-env (typeinfer-open-import-source program idx decl env)]
+                      (do
+                        (root_push open-env)
+                        (let [next-state
+                                (typeinfer-program-analysis-state-with-env state open-env)]
+                          (do
+                            (root_pop)
+                            (root_push next-state)
+                            (let [result
+                                    (typeinfer-program-analysis-loop
+                                      program
+                                      (+ idx 1)
+                                      len
+                                      placeholders
+                                      counter
+                                      alias-env
+                                      next-state)]
+                              (do
+                                (root_pop)
+                                result))))))
+                    (if (= tag 20)
+                      (let [env (infer-program-analysis-env state)
                       subst (infer-program-analysis-subst state)
                       first-ty (infer-program-analysis-raw-type state)
                       first-seen (infer-program-analysis-first-seen state)
@@ -1233,7 +1285,7 @@
                                         (root_pop)
                                         (root_pop)
                                         recur-result))))))))))
-                    (typeinfer-program-analysis-loop program (+ idx 1) len placeholders counter alias-env state))]
+                    (typeinfer-program-analysis-loop program (+ idx 1) len placeholders counter alias-env state)))]
             (do
               (root_pop)
               (root_pop)
