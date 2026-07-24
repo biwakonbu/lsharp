@@ -868,6 +868,23 @@ Stage 2ah の file unlink に加えて、二つの read-write named preopen と�
 Wasm artifact/runtime differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity
 は未完了である。
 
+## Stage 2aj 検証済み slice: descriptor symlink-at lifecycle (2026-07-24)
+
+Stage 2ai の file rename に加えて、write-enabled preopen descriptor の
+`descriptor.symlink-at` path mutation と host symbolic-link artifact を actual Component で検証した。
+
+- `wasm_gc_component_cli_fs_runner_creates_symlink_and_drops_resources` は二つの read-write named
+  preopen を受け取り、最初の preopen descriptor に `target.txt` を old path、`link.txt` を new path
+  として渡す。
+- `descriptor.symlink-at` の `result<_, error-code>` success discriminant を確認し、host 側の
+  symlink target が `target.txt`、symlink 経由の bytes が `hello` になることを確認する。
+- preopen descriptor を drop し、`wasi:cli/run` exit 0、stdout empty、symlink 済み host artifact を
+  同じ実行で確認する。
+
+これは descriptor symlink-at の verified partial slice であり、残る descriptor operation、
+Wasm artifact/runtime differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity
+は未完了である。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線
