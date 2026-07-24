@@ -378,8 +378,24 @@ fn diagnostic_error_at(
     }
 }
 
-fn diagnostic_error(message: String) -> Diagnostic {
-    diagnostic_error_at("", message, None, None)
+fn diagnostic_error_from_message(source: &str, message: String) -> Diagnostic {
+    let code = stable_code_from_message(&message).map(str::to_owned);
+    diagnostic_error_at(source, message, code.as_deref(), None)
+}
+
+fn stable_code_from_message(message: &str) -> Option<&str> {
+    let bytes = message.as_bytes();
+    for start in 0..bytes.len().saturating_sub(7) {
+        if bytes[start] == b'['
+            && bytes[start + 1] == b'L'
+            && bytes[start + 2] == b'S'
+            && bytes[start + 3..start + 7].iter().all(u8::is_ascii_digit)
+            && bytes[start + 7] == b']'
+        {
+            return message.get(start + 1..start + 7);
+        }
+    }
+    None
 }
 
 fn parse_program(source: &str) -> std::result::Result<Program, Box<Diagnostic>> {
@@ -467,7 +483,14 @@ pub(crate) fn parse_and_check_incremental(
 ) -> Vec<Diagnostic> {
     match lsharp_ir::analyze_single_file_incremental(module_key, source, cache) {
         Ok(()) => Vec::new(),
-        Err(message) => vec![diagnostic_error(message)],
+        Err(message) => {
+            let diagnostics = parse_and_check(source);
+            if diagnostics.is_empty() {
+                vec![diagnostic_error_from_message(source, message)]
+            } else {
+                diagnostics
+            }
+        }
     }
 }
 
@@ -486,7 +509,7 @@ pub(crate) fn parse_and_check_uri_incremental(
             &path, &overrides, cache,
         ) {
             Ok(()) => Vec::new(),
-            Err(message) => vec![diagnostic_error(message)],
+            Err(message) => vec![diagnostic_error_from_message(source, message)],
         };
     }
 
@@ -566,5 +589,52 @@ mod tests {
             Some(NumberOrString::String("LS1004".to_string()))
         );
         assert_ne!(diagnostics[0].range, Range::default());
+    }
+
+    #[test]
+    fn incremental_type_diagnostics_forward_stable_code_and_source_range() {
+        let mut cache = lsharp_ir::CompilationCache::new();
+        let diagnostics =
+            parse_and_check_incremental("Main", "(defn bad [] (+ 1 true))", &mut cache);
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(
+            diagnostics[0].code,
+            Some(NumberOrString::String("LS1004".to_string()))
+        );
+        assert_ne!(diagnostics[0].range, Range::default());
+    }
+
+    #[test]
+    fn incremental_module_diagnostics_forward_stable_code() {
+        use std::collections::HashMap;
+
+        let dir = std::env::temp_dir().join(format!(
+            "lsharp_lsp_incremental_module_diagnostic_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock は unix epoch より後であるべき")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let entry = dir.join("Main.ls");
+        let source = "(module Main)\n(import Missing)\n(defn main [] 1)\n";
+        std::fs::write(&entry, source).unwrap();
+
+        let uri = Url::from_file_path(&entry).expect("entry path は file URI へ変換できるべき");
+        let mut overrides = HashMap::new();
+        overrides.insert(entry.clone(), source.to_string());
+        let mut cache = lsharp_ir::CompilationCache::new();
+        let diagnostics = parse_and_check_uri_incremental(&uri, source, &overrides, &mut cache);
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(
+            diagnostics[0].code,
+            Some(NumberOrString::String("LS3102".to_string()))
+        );
+        assert!(diagnostics[0].message.contains("Missing"));
+
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }
