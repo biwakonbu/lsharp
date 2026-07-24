@@ -1205,6 +1205,21 @@ x86_64、native/selfhost parity は未完了である。
 これは poll list の empty input trap verified partial slice であり、stream error/closed、Wasm
 artifact/runtime differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity は未完了である。
 
+## Stage 2be 検証済み slice: input-stream blocking-read EOF closed (2026-07-24)
+
+empty source に対する `input-stream.blocking-read` は、non-blocking `read` のように success の空 list
+を返すのではなく、`stream-error::closed` を返す契約を actual Component で検証した。
+
+- `wasm_gc_component_cli_fs_runner_blocking_reads_empty_input_stream_reports_closed` は空の
+  `input.txt` から input stream を作り、`blocking-read(1)` を呼ぶ。
+- outer result が error になり、`stream-error` の closed case（discriminant `1`）を確認して marker `C`
+  を stdout に渡す。input stream、descriptor、preopen を drop して `wasi:cli/run` exit 0、stdout `C`
+  を同じ実行で確認する。
+
+これは blocking-read EOF/closed の verified partial slice であり、`last-operation-failed` と
+filesystem error-code downcast、複数回の blocking partial read、Wasm artifact/runtime differential、
+Mac Apple Silicon/Linux x86_64、native/selfhost parity は未完了である。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線

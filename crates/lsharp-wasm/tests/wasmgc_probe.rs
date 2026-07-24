@@ -1152,6 +1152,60 @@ fn wasm_gc_component_cli_fs_runner_reads_empty_input_stream_as_empty_success() {
 }
 
 #[test]
+fn wasm_gc_component_cli_fs_runner_blocking_reads_empty_input_stream_reports_closed() {
+    let core = emit_component_cli_empty_blocking_read_stream_probe_module();
+    let wit_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("wit")
+        .join("lsharp-wasmgc-output.wit");
+    let component = lsharp_wasm::component_adapter::componentize_core_module(
+        &core,
+        &wit_file,
+        "wasmgc-cli-fs-streams",
+        &[],
+    )
+    .expect("empty blocking-read stream probe を componentize できる");
+
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock は unix epoch より後であるべき")
+        .as_nanos();
+    let dir = std::env::temp_dir().join(format!("lsharp_wasmgc_empty_blocking_read_{nonce}"));
+    let extra_dir =
+        std::env::temp_dir().join(format!("lsharp_wasmgc_empty_blocking_read_extra_{nonce}"));
+    std::fs::create_dir_all(&dir).expect("empty blocking-read fixture directory を作成できる");
+    std::fs::create_dir_all(&extra_dir)
+        .expect("second empty blocking-read fixture directory を作成できる");
+    std::fs::write(dir.join("input.txt"), b"")
+        .expect("empty blocking-read fixture file を作成できる");
+
+    let preopen = lsharp_wasm::wasmgc_runner::Preview2Preopen::new(
+        &dir,
+        "data",
+        lsharp_wasm::wasmgc_runner::Preview2PreopenRights::read_only(),
+    );
+    let extra_preopen = lsharp_wasm::wasmgc_runner::Preview2Preopen::new(
+        &extra_dir,
+        "extra",
+        lsharp_wasm::wasmgc_runner::Preview2PreopenRights::read_only(),
+    );
+    let output = lsharp_wasm::wasmgc_runner::run_wasm_wasmgc_component_cli_with_preview2_stdout_and_preopens(
+        &component,
+        &[],
+        "",
+        &[preopen, extra_preopen],
+    )
+    .expect("empty input-stream blocking-read を実行できる");
+
+    assert_eq!(output.stdout, "C");
+    assert_eq!(output.exit_code, 0);
+    std::fs::remove_dir_all(&dir).expect("empty blocking-read fixture directory を削除できる");
+    std::fs::remove_dir_all(&extra_dir)
+        .expect("second empty blocking-read fixture directory を削除できる");
+}
+
+#[test]
 fn wasm_gc_component_cli_fs_runner_reads_descriptor_directly_and_reports_eof() {
     let core = emit_component_cli_direct_read_probe_module();
     let wit_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -7449,8 +7503,18 @@ fn emit_component_cli_read_stream_probe_module() -> Vec<u8> {
 }
 
 fn emit_component_cli_empty_read_stream_probe_module() -> Vec<u8> {
-    wat::parse_str(
-        r#"
+    emit_component_cli_empty_read_stream_probe_module_with_method("read", "Z")
+}
+
+fn emit_component_cli_empty_blocking_read_stream_probe_module() -> Vec<u8> {
+    emit_component_cli_empty_read_stream_probe_module_with_method("blocking-read", "B")
+}
+
+fn emit_component_cli_empty_read_stream_probe_module_with_method(
+    read_method: &str,
+    marker: &str,
+) -> Vec<u8> {
+    let wat = r#"
 (module
   (type (func (param i32 i32)))
   (type (func (param i32)))
@@ -7461,7 +7525,7 @@ fn emit_component_cli_empty_read_stream_probe_module() -> Vec<u8> {
   (import "wasi:filesystem/preopens@0.2.3" "get-directories" (func $get-directories (type 1)))
   (import "wasi:filesystem/types@0.2.3" "[method]descriptor.open-at" (func $open-at (type 3)))
   (import "wasi:filesystem/types@0.2.3" "[method]descriptor.read-via-stream" (func $read-via-stream (type 4)))
-  (import "wasi:io/streams@0.2.3" "[method]input-stream.read" (func $read (type 4)))
+  (import "wasi:io/streams@0.2.3" "[method]input-stream.__READ_METHOD__" (func $__READ_METHOD__ (type 4)))
   (import "wasi:io/streams@0.2.3" "[resource-drop]input-stream" (func $drop-input-stream (param i32)))
   (import "wasi:filesystem/types@0.2.3" "[resource-drop]descriptor" (func $drop-descriptor (param i32)))
   (memory (export "memory") 2)
@@ -7489,7 +7553,8 @@ fn emit_component_cli_empty_read_stream_probe_module() -> Vec<u8> {
     global.set $heap
     local.get $ptr)
   (data (i32.const 128) "input.txt")
-  (data (i32.const 144) "Z")
+  (data (i32.const 144) "__READ_MARKER__")
+  (data (i32.const 160) "C")
   (func (export "wasi:cli/run@0.2.3#run") (type 2)
     (local $preopen i32)
     (local $descriptor i32)
@@ -7544,17 +7609,34 @@ fn emit_component_cli_empty_read_stream_probe_module() -> Vec<u8> {
           local.get $stream
           i64.const 1
           i32.const 48
-          call $read
+          call $__READ_METHOD__
           i32.const 48
           i32.load8_u
           if (result i32)
-            local.get $stream
-            call $drop-input-stream
-            local.get $descriptor
-            call $drop-descriptor
-            local.get $preopen
-            call $drop-descriptor
+            i32.const 52
+            i32.load
             i32.const 1
+            i32.eq
+            if (result i32)
+              i32.const 160
+              i32.const 1
+              call $write-stdout
+              local.get $stream
+              call $drop-input-stream
+              local.get $descriptor
+              call $drop-descriptor
+              local.get $preopen
+              call $drop-descriptor
+              i32.const 0
+            else
+              local.get $stream
+              call $drop-input-stream
+              local.get $descriptor
+              call $drop-descriptor
+              local.get $preopen
+              call $drop-descriptor
+              i32.const 1
+            end
           else
             i32.const 56
             i32.load
@@ -7583,9 +7665,10 @@ fn emit_component_cli_empty_read_stream_probe_module() -> Vec<u8> {
       end
     end)
 )
-"#,
-    )
-    .expect("empty read stream probe module を生成できる")
+"#
+    .replace("__READ_METHOD__", read_method)
+    .replace("__READ_MARKER__", marker);
+    wat::parse_str(wat).expect("empty read stream probe module を生成できる")
 }
 
 #[test]
