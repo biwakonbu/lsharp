@@ -10298,3 +10298,51 @@ fn wasm_gc_emitter_remaps_lowered_user_call_indices() {
 
     assert_eq!(main.call(&mut store, ()).unwrap(), 7);
 }
+
+#[test]
+fn wasm_gc_emitter_executes_typed_funcref_call_ref() {
+    let module = IrModule {
+        functions: vec![
+            Function {
+                name: "identity".to_string(),
+                params: vec![IrType::I64],
+                result: IrType::I64,
+                locals: vec![],
+                body: vec![Instruction::LocalGet(0)],
+                is_export: false,
+            },
+            Function {
+                name: "main".to_string(),
+                params: vec![],
+                result: IrType::I64,
+                locals: vec![],
+                body: vec![
+                    Instruction::I64Const(41),
+                    Instruction::RefFunc(0),
+                    Instruction::CallRef(0),
+                ],
+                is_export: true,
+            },
+        ],
+        gc_types: vec![],
+        imports: vec![],
+        globals: vec![],
+        string_data: vec![],
+    };
+
+    let bytes = lsharp_wasm::wasmgc::emit_wasm_wasmgc(&module)
+        .expect("typed funcref と call_ref を含む WasmGC module を生成できる");
+    let mut config = Config::new();
+    config.wasm_gc(true);
+    config.wasm_reference_types(true);
+    config.wasm_function_references(true);
+    let engine = Engine::new(&config).expect("WasmGC engine を作成できる");
+    let module = Module::new(&engine, bytes).expect("typed funcref module を検証できる");
+    let mut store = Store::new(&engine, ());
+    let instance = Instance::new(&mut store, &module, &[]).expect("module を instantiate できる");
+    let main = instance
+        .get_typed_func::<(), i64>(&mut store, "main")
+        .expect("main export が存在する");
+
+    assert_eq!(main.call(&mut store, ()).unwrap(), 41);
+}

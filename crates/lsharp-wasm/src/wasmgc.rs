@@ -4,10 +4,13 @@
 //! self-contained module を生成し、Wasmtime が実行できることを固定する。Stage 1/2 では
 //! 同じ型・命令契約を L# IR の `Module` から生成する。
 
+use std::borrow::Cow;
+
 use lsharp_ir::{GcTypeKind, Instruction, IrType, Module};
 use wasm_encoder::{
-    CodeSection, EntityType, ExportKind, ExportSection, FieldType, Function, FunctionSection,
-    HeapType, ImportSection, MemorySection, MemoryType, RefType, StorageType, TypeSection, ValType,
+    CodeSection, ElementSection, Elements, EntityType, ExportKind, ExportSection, FieldType,
+    Function, FunctionSection, HeapType, ImportSection, MemorySection, MemoryType, RefType,
+    StorageType, TypeSection, ValType,
 };
 
 use crate::codegen::CodegenError;
@@ -216,6 +219,21 @@ fn emit_wasm_wasmgc_internal(
         wasm_module.section(&exports);
     }
 
+    let referenced_funcrefs = module
+        .functions
+        .iter()
+        .flat_map(|function| function.body.iter())
+        .filter_map(|instruction| match instruction {
+            Instruction::RefFunc(index) => Some(*index),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    if !referenced_funcrefs.is_empty() {
+        let mut elements = ElementSection::new();
+        elements.declared(Elements::Functions(Cow::Owned(referenced_funcrefs)));
+        wasm_module.section(&elements);
+    }
+
     let mut code = CodeSection::new();
     for function in &module.functions {
         let mut locals = function
@@ -418,6 +436,26 @@ fn validate_module(module: &Module, print_string_import: bool) -> Result<(), Cod
                 Instruction::RefNull(type_index) => {
                     validate_gc_type_index(*type_index, module.gc_types.len(), instruction)?;
                 }
+                Instruction::RefFunc(function_index) => {
+                    let function_count = module.imports.len() + module.functions.len();
+                    if (*function_index as usize) >= function_count {
+                        return Err(codegen_error(format!(
+                            "ref.func の関数インデックスが範囲外です: {function_index}"
+                        )));
+                    }
+                }
+                Instruction::CallRef(type_index) => {
+                    let function_type_start = module.gc_types.len() + module.imports.len();
+                    let function_type_count = module.functions.len();
+                    let function_type_end = function_type_start + function_type_count;
+                    if (*type_index as usize) < function_type_start
+                        || (*type_index as usize) >= function_type_end
+                    {
+                        return Err(codegen_error(format!(
+                            "call_ref の関数型インデックスが範囲外です: {type_index}"
+                        )));
+                    }
+                }
                 Instruction::ArrayNewFixed(type_index, _)
                 | Instruction::ArrayNewDefault(type_index)
                 | Instruction::ArrayGet(type_index)
@@ -478,8 +516,6 @@ fn validate_module(module: &Module, print_string_import: bool) -> Result<(), Cod
                 | Instruction::MemoryFill
                 | Instruction::GlobalGet(_)
                 | Instruction::GlobalSet(_)
-                | Instruction::RefFunc(_)
-                | Instruction::CallRef(_)
                 | Instruction::CallIndirect(_)
                 | Instruction::FuncIdx(_) => {
                     return Err(codegen_error(format!(
@@ -582,6 +618,12 @@ fn emit_wasm_gc_instructions(
                 }
                 Instruction::RefNull(type_index) => {
                     function.instruction(&W::RefNull(HeapType::Concrete(*type_index)));
+                }
+                Instruction::RefFunc(function_index) => {
+                    function.instruction(&W::RefFunc(*function_index));
+                }
+                Instruction::CallRef(type_index) => {
+                    function.instruction(&W::CallRef(*type_index));
                 }
                 Instruction::ArrayNewFixed(type_index, length) => {
                     function.instruction(&W::ArrayNewFixed {

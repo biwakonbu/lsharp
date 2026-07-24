@@ -1539,6 +1539,23 @@ bundle、rollback provenance は未完了である。
   synthetic import の instantiate 成功、host callback 単体の byte read、core runner 単体の success、
   writer adapter 単体の success は、公開 component print 完了の証拠に数えない。
 
+### Stage 3a: typed funcref emitter capability (検証済み partial slice)
+
+Stage 3 の closure lowering に先立ち、L# IR の `RefFunc` / `CallRef` を WasmGC の
+`ref.func` / `call_ref` へ直接出力する最小 capability を閉じた。typed function references は
+GC/ref-types と別に Wasmtime の feature flag が必要なため、runtime probe は
+`wasm_gc(true)`、`wasm_reference_types(true)`、`wasm_function_references(true)` を明示する。
+
+- `RefFunc` の function index を検証し、参照された関数を declared element segment に登録する。
+- `CallRef` の function type index を検証し、typed `call_ref` を出力する。
+- hand-written IR の `i64.const 41 → ref.func identity → call_ref` を Wasmtime 29 で validate、
+  instantiate、execute し、`41` を返す E2E probe を追加した。
+
+これは emitter と runtime proposal の verified partial slice であり、closure の env struct
+lowering、`lower/closure.rs` の `CallIndirect` 置換、module-link 時の funcref index/type remap、
+trait vtable、Mac/Linux native/selfhost parity は未完了である。したがって Stage 3 全体および
+`LEGACY-EXEC-01` の完了条件には到達していない。
+
 ### Stage 3: Closures → funcref + env struct
 
 - 現行の lambda lifting (`lower/closure.rs`) は維持し、env をリニアメモリ tuple から
@@ -1595,7 +1612,8 @@ String read、Stage 2i の WasmGC runner stdout sink、Stage 2j の `std::io::Wr
 WasmGC Component bridge 明示拒否、Stage 2l の output `list<u8>` canonical pair 契約、Stage 2m
 の packed GC array→linear-memory output bridge、Stage 2n の fd_write handler 契約、Stage 2o の
 custom `wasmgc-output` Component actual instantiate、Stage 2p の Preview2 stdout stream 接続、
-Stage 2q の custom CLI `wasi:cli/run` 接続は 2026-07-24 に検証済み。ADT
+Stage 2q の custom CLI `wasi:cli/run` 接続、Stage 3a の typed funcref emitter/runtime capability
+は 2026-07-24 に検証済み。ADT
 の全表現、Stage 2 の残り (Unicode code-point semantics / WASI-component I/O /
 native-selfhost parity)、Stage 3 以降
 (closures / traits / selfhost)、supported target
