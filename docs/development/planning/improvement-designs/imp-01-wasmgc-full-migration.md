@@ -1247,9 +1247,27 @@ differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity は未完
   を guest 側で検証する。marker `P`、exit code `0`、二つの pollable、stream、descriptor、preopen の
   drop を同じ actual Component 実行で確認する。
 
-これは異なる input source の複数 ready index verified partial slice であり、`last-operation-failed`
-と filesystem error-code downcast、pollable が異なる ready/error 状態になる場合の projection、
-Wasm artifact/runtime differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity は未完了である。
+これは異なる input source の複数 ready index verified partial slice であり、pollable が異なる
+ready/error 状態になる場合の projection、Wasm artifact/runtime differential、Mac Apple
+Silicon/Linux x86_64、native/selfhost parity は未完了である。
+
+## Stage 2bh 検証済み slice: input-stream last-operation-failed の filesystem error-code downcast (2026-07-24)
+
+filesystem descriptor から作った input stream の `blocking-read` が返す
+`stream-error::last-operation-failed` を、`wasi:filesystem/types` の
+`filesystem-error-code` で filesystem `error-code` へ downcast できる境界を actual Component で検証した。
+
+- `wasm_gc_component_cli_fs_runner_maps_stream_failure_to_filesystem_error_code` は read-only preopen の
+  `input.txt` から descriptor/input stream を作り、offset `u64::MAX` の `read-via-stream` に続けて
+  `blocking-read(1)` を呼ぶ。失敗の outer result と `stream-error` の
+  `last-operation-failed` case（discriminant `0`）を確認する。
+- error resource を borrowed `filesystem-error-code` に渡し、option が `Some`、payload が
+  `error-code::invalid`（discriminant `12`）であることを確認する。marker `E`、`wasi:cli/run` exit
+  code `0`、error/input stream/descriptor/preopen の drop を同じ actual Component 実行で固定する。
+
+これは filesystem read の invalid-offset downcast verified partial slice であり、write/flush 由来の
+`last-operation-failed`、他の OS error mapping、Wasm artifact/runtime differential、Mac Apple
+Silicon/Linux x86_64、native/selfhost parity は未完了である。
 
 ## 実装戦略
 

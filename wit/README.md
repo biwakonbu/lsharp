@@ -65,6 +65,7 @@ WASI Preview2 / Component Model への移行に向けた WIT (WebAssembly Interf
   `output-stream.splice` / `blocking-splice` の borrowed input/output transfer contract と、
   `input-stream.skip` / `blocking-skip` の partial/remaining read contract と、
   `input-stream.read` / `blocking-read` の空 list・partial read・remaining bytes・EOF/empty-source contract（blocking-read の EOF は `stream-error::closed`）と、
+  `last-operation-failed` の error resource を `filesystem-error-code` へ downcast する invalid-offset contract、
   `output-stream.blocking-write-zeroes-and-flush` の zero-fill/flush/host artifact/drop lifecycle も
   この world で検証する。暗黙の別 resource table に分離しない
 
