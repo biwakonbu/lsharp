@@ -1722,6 +1722,8 @@ field に残る module-local type index も linked module の index 空間へリ
   params/result/locals、`GcTypeKind::Struct` の fields、`GcTypeKind::Array` の element type を更新する。
 - `test_link_funcref_rebases_typed_local_and_gc_field_types` は、2 module の異なる GC/import/function
   prefix を持つ `Ref` / `TypedFuncRef` signature と env 相当 field を linked index へ変換することを固定する。
+- `test_link_funcref_rebases_array_element_type` は、2 module の array element `TypedFuncRef` を
+  linked function type `2` / `3` へ変換する helper の array 分岐を固定する。
 - 命令内の `RefFunc` / `CallRef` remap、import dedup、recursive type group の emitter contract は
   既存 Stage 3b/3h のまま利用する。global/cache/module graph の全 parity、Mac/Linux native-selfhost
   runtime evidence は未完了である。

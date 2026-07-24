@@ -2724,6 +2724,43 @@ mod linker_tests {
         assert_gc_field_types(&linked.gc_types[0], 0, 4);
         assert_gc_field_types(&linked.gc_types[1], 1, 5);
     }
+
+    #[test]
+    fn test_link_funcref_rebases_array_element_type() {
+        fn module(name: &str) -> Module {
+            Module {
+                functions: vec![Function {
+                    name: name.to_string(),
+                    params: vec![],
+                    result: IrType::I64,
+                    locals: vec![],
+                    body: vec![Instruction::I64Const(0)],
+                    is_export: false,
+                }],
+                gc_types: vec![GcTypeDef {
+                    name: format!("{name}-array"),
+                    kind: GcTypeKind::Array(IrType::TypedFuncRef(1)),
+                }],
+                imports: vec![],
+                globals: vec![],
+                string_data: vec![],
+            }
+        }
+
+        let linked = link_modules(&[module("left"), module("right")]);
+        assert_eq!(linked.gc_types.len(), 2);
+        assert_eq!(linked.functions.len(), 2);
+
+        assert_array_element_type(&linked.gc_types[0], IrType::TypedFuncRef(2));
+        assert_array_element_type(&linked.gc_types[1], IrType::TypedFuncRef(3));
+
+        fn assert_array_element_type(gc_type: &GcTypeDef, expected: IrType) {
+            let GcTypeKind::Array(element_type) = &gc_type.kind else {
+                panic!("expected array GC type: {gc_type:?}");
+            };
+            assert_eq!(*element_type, expected);
+        }
+    }
 }
 
 #[cfg(test)]

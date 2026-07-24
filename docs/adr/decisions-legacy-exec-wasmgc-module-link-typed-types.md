@@ -27,7 +27,9 @@ module-local の `Ref` / `TypedFuncRef` index を保持したままだった。
   `TypedFuncRef(2)` が `TypedFuncRef(4)` へ移らず失敗した。
 - GREEN: 同テストは 2 module の function params/result/locals、import signature、GC struct fields の
   `Ref`/`TypedFuncRef` が、GC prefix と import prefix を含む linked index へ変換されることを確認する。
-- Regression: `cargo test -p lsharp-ir linker_tests`（6 tests）、focused linker test、clippy、rustfmt、docs
+- `test_link_funcref_rebases_array_element_type` は `GcTypeKind::Array` の element
+  `TypedFuncRef` も linked function type index へ変換されることを確認する。
+- Regression: `cargo test -p lsharp-ir linker_tests`（7 tests）、focused linker test、clippy、rustfmt、docs
   audit を通過し、命令 remap の既存 `RefFunc` / `CallRef` 契約を維持した。lib 全体 234 tests も実行し
   233 件は通過したが、既存の `incremental_compile_tests::test_compile_multi_file_incremental_clean_formatter_trio_cache_hit_succeeds`
   が Formatter の `format-expr` undefined 診断で失敗しており、本 slice 外の既知 failure として残す。
