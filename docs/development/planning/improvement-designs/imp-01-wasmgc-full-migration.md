@@ -1571,6 +1571,21 @@ type index を linked module の index 空間へリベースする。
 これは IR linker の verified partial slice であり、closure env lowering、synthetic backend import
 を含む最終 Wasm type/index mapping、trait vtable、Mac/Linux native/selfhost parity は未完了である。
 
+### Stage 3c: WasmGC closure lowering の明示境界 (検証済み partial slice)
+
+現行の lambda lifting は linear-memory closure object、`FuncIdx`、`I64Load`/`I64Store`、
+`CallIndirect` を生成する。これらを WasmGC backend が暗黙に受け入れると、typed funcref/env
+struct へ移行していない IR が誤った Wasm を出力するため、WasmGC lowering の `Expr::Lambda` は
+現時点で明示的な `LowerError::Unsupported` を返す。
+
+- `wasm_gc_closure_lowering_rejects_linear_memory_fallback_explicitly` で、non-capturing lambda
+  でも linear-memory fallback を生成せず `typed funcref/env struct` 境界で停止することを確認する。
+- RED では従来 IR が `Call(1)`、`I32Store`、`FuncIdx` を含む closure object を生成した。GREEN
+  では同じ fixture が lowering 段階で診断され、WasmGC emitter まで不正 IR を渡さない。
+
+これは安全な外部境界の verified partial slice であり、closure env struct の実装、typed
+`CallRef` type allocation、captured value の GC field lowering、closure E2E は未完了である。
+
 ### Stage 3: Closures → funcref + env struct
 
 - 現行の lambda lifting (`lower/closure.rs`) は維持し、env をリニアメモリ tuple から
@@ -1628,7 +1643,8 @@ WasmGC Component bridge 明示拒否、Stage 2l の output `list<u8>` canonical 
 の packed GC array→linear-memory output bridge、Stage 2n の fd_write handler 契約、Stage 2o の
 custom `wasmgc-output` Component actual instantiate、Stage 2p の Preview2 stdout stream 接続、
 Stage 2q の custom CLI `wasi:cli/run` 接続、Stage 3a の typed funcref emitter/runtime capability、
-Stage 3b の module-link funcref index/type remap は 2026-07-24 に検証済み。ADT
+Stage 3b の module-link funcref index/type remap、Stage 3c の WasmGC closure lowering 明示境界は
+2026-07-24 に検証済み。ADT
 の全表現、Stage 2 の残り (Unicode code-point semantics / WASI-component I/O /
 native-selfhost parity)、Stage 3 以降
 (closures / traits / selfhost)、supported target

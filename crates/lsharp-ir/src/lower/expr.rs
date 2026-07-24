@@ -1807,6 +1807,14 @@ impl Lower {
             }
 
             Expr::Lambda(_, params, body) => {
+                if self.backend == LowerBackend::WasmGc {
+                    return Err(LowerError::Unsupported {
+                        msg: "WasmGC closure lowering は typed funcref/env struct への変換が未実装です"
+                            .to_string(),
+                        span: Some(expr.span()),
+                    });
+                }
+
                 // Lambda Lifting: Lambda 式をトップレベル関数にリフト
                 let lambda_name = self.fresh_lambda_name();
 

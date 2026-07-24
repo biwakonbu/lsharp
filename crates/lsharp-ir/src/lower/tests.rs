@@ -60,6 +60,27 @@ fn wasm_gc_lowering_registers_string_bytes_as_packed_array() {
     ));
 }
 
+#[test]
+fn wasm_gc_closure_lowering_rejects_linear_memory_fallback_explicitly() {
+    let program = lsharp_syntax::parse(
+        r#"
+        (defn make-inc [] (fn [x] (+ x 1)))
+        (defn main [] 0)
+        "#,
+    )
+    .unwrap();
+    let mut infer = Infer::new();
+    let type_results = infer.infer_program(&program).unwrap();
+    let expr_type_results = infer.expr_type_results_snapshot();
+    let mut lowerer = Lower::with_backend(LowerBackend::WasmGc);
+    let error = lowerer
+        .lower_program_with_expr_types(&program, &type_results, &expr_type_results)
+        .expect_err("WasmGC closure は linear-memory fallback を生成してはならない");
+
+    assert!(matches!(error, LowerError::Unsupported { .. }));
+    assert!(error.to_string().contains("typed funcref/env struct"));
+}
+
 const ALLOC_IDX: u32 = 1;
 const ROOT_PUSH_IDX: u32 = 14;
 const ROOT_POP_IDX: u32 = 15;
