@@ -45,6 +45,7 @@
 | `crates/lsharp-ir/src/closure.rs` | 304 | :1-137 free-variable analysis production / :138-304 inline tests | inline tests を `closure_tests.rs` へ移し、解析 production と AST fixture の ownership を分離 |
 | `crates/lsharp-docs/src/tracker.rs` | 280 | :1-131 document tracking production / :133-280 inline tests | inline tests を `tracker_tests.rs` へ移し、tracking production と hash/freshness fixture の ownership を分離 |
 | `crates/lsharp-driver/src/lockfile.rs` | 276 | :1-139 lockfile generation/read-write production / :141-276 inline tests | inline tests を `lockfile_tests.rs` へ移し、lockfile production と dependency fixture の ownership を分離 |
+| `crates/lsharp-driver/src/resolver.rs` | 233 | :1-180 semver/cache resolver production / :182-233 inline tests | inline tests を `resolver_tests.rs` へ移し、resolver production と version-selection fixture の ownership を分離 |
 | `crates/lsharp-ir/src/lower/expr.rs` | 1897 | パターンマッチ lowering / 計算式 lowering を切り出し |
 | `crates/lsharp-ir/src/lower/decl.rs` | 823 | :1-690 宣言 lowering / :691 Self-TCO helper | Self-TCO helper を `lower/decl/self_tco.rs` へ移し、親は 800 行未満へする。残る宣言 lowering の責務分割は後続 |
 | `crates/lsharp-driver/src/doc_site.rs` | 840 | :1-573 production doc-site generation / :574-840 inline tests | inline tests を `doc_site/tests.rs` へ移し、production parent を 800 行未満へする。サイト生成責務の分割は後続 |
@@ -74,6 +75,8 @@ module/lambda、closure call、heap/ADT の9 moduleへ分割する (I-08 の切�
 
 `crates/lsharp-driver/src/lockfile.rs` (276 行) は inline test 5 件を `lockfile_tests.rs` (133 行) へ移動し、production parent を 143 行へ縮小した。`lockfile::tests` focused 5 件、driver unit 132 件、clippy、Rust 2024 rustfmt、`git diff --check`、docs audit が pass した。driver の `default_path_delegation` 12 件は embedded component / selfhost artifact の今回の差分外 failure boundary として残る。
 
+`crates/lsharp-driver/src/resolver.rs` (233 行) は inline test 4 件を `resolver_tests.rs` (49 行) へ移動し、production parent を 184 行へ縮小した。`resolver::tests` focused 4 件、driver unit 132 件、clippy、Rust 2024 rustfmt、`git diff --check`、docs audit が pass した。
+
 ### 3. 優先順位
 
 1. **imp-02 (エラー統一) の対象になるファイルを先に分割しない** — A-1 のエラー型変更を
@@ -102,6 +105,6 @@ CI (または契約テスト) に「`crates/**/src/**/*.rs` の行数が 800 を
 
 ## ステータス
 
-`derive.rs`、`codegen.rs`、`closure.rs`、`tracker.rs`、`lockfile.rs` の test-only 分離を含む verified partial slice は、公開 API と production semantics を変更せず、各 focused/package gate と docs audit で確認済みである。derive/codegen/closure/tracker/lockfile production の追加責務分割と I-01 / I-08 aggregate は未完了である。
+`derive.rs`、`codegen.rs`、`closure.rs`、`tracker.rs`、`lockfile.rs`、`resolver.rs` の test-only 分離を含む verified partial slice は、公開 API と production semantics を変更せず、各 focused/package gate と docs audit で確認済みである。derive/codegen/closure/tracker/lockfile/resolver production の追加責務分割と I-01 / I-08 aggregate は未完了である。
 
-設計 + module graph のテスト/path-resolution 分離、parser・constraints・macro expand・regex・lexer・metadata_check・hygiene・lower のテスト分離、lower/decl Self-TCO production split、doc_site test split、regex DFA/codegen/closure/tracker/lockfile test split、macro expand・constraints・regex production split、lexer/metadata_check test split verified partial slice (2026-07-25)。lower tests は parent 133 行 + 9 module（最大 692 行）、lower/decl は parent 692 行 + `decl/self_tco.rs` 139 行、doc_site は parent 575 行 + `doc_site/tests.rs` 266 行、hygiene は parent 297 行 + `hygiene/tests.rs` 249 行、regex DFA は parent 594 行 + `regex/dfa_tests.rs` 107 行、codegen は parent 237 行 + `codegen_tests.rs` 279 行、closure は parent 140 行 + `closure_tests.rs` 164 行、tracker は parent 135 行 + `tracker_tests.rs` 140 行、lockfile は parent 143 行 + `lockfile_tests.rs` 133 行となった。lower expr/mod の production 分割は未着手である。parser の expr/decl production 分割、lexer/metadata production の責務分割、doc_site/tracker/lockfile production の責務分割、regex parser/matcher の追加分割、codegen/closure production の追加分割、graph/SCC core の追加分割、`wasi.rs` / `main.rs` / `infer.rs` / `ir/lib.rs` の責務分割、I-01 / I-08 aggregate 完了は未着手または未完了である。着手時は TODO.md に Phase A-2 / D-4 としてファイル単位の項目を作成する。
+設計 + module graph のテスト/path-resolution 分離、parser・constraints・macro expand・regex・lexer・metadata_check・hygiene・lower のテスト分離、lower/decl Self-TCO production split、doc_site test split、regex DFA/codegen/closure/tracker/lockfile/resolver test split、macro expand・constraints・regex production split、lexer/metadata_check test split verified partial slice (2026-07-25)。lower tests は parent 133 行 + 9 module（最大 692 行）、lower/decl は parent 692 行 + `decl/self_tco.rs` 139 行、doc_site は parent 575 行 + `doc_site/tests.rs` 266 行、hygiene は parent 297 行 + `hygiene/tests.rs` 249 行、regex DFA は parent 594 行 + `regex/dfa_tests.rs` 107 行、codegen は parent 237 行 + `codegen_tests.rs` 279 行、closure は parent 140 行 + `closure_tests.rs` 164 行、tracker は parent 135 行 + `tracker_tests.rs` 140 行、lockfile は parent 143 行 + `lockfile_tests.rs` 133 行、resolver は parent 184 行 + `resolver_tests.rs` 49 行となった。lower expr/mod の production 分割は未着手である。parser の expr/decl production 分割、lexer/metadata production の責務分割、doc_site/tracker/lockfile/resolver production の責務分割、regex parser/matcher の追加分割、codegen/closure production の追加分割、graph/SCC core の追加分割、`wasi.rs` / `main.rs` / `infer.rs` / `ir/lib.rs` の責務分割、I-01 / I-08 aggregate 完了は未着手または未完了である。着手時は TODO.md に Phase A-2 / D-4 としてファイル単位の項目を作成する。
