@@ -127,6 +127,11 @@ fn has_file_imports_from_source(source: &str) -> bool {
     }
 }
 
+fn write_compile_artifact(path: &Path, bytes: &[u8]) -> miette::Result<()> {
+    lsharp_wasm::component_adapter::write_wasm_artifact(path, bytes)
+        .map_err(|error| miette::miette!("{}: {}", path.display(), error))
+}
+
 /// format -> check -> codegen の統合 compile パイプライン
 pub fn compile_file(
     file: &Path,
@@ -177,20 +182,17 @@ pub fn compile_file_with_backend(
             CompileTarget::WasiPreview1 => {
                 let wasm_bytes = lsharp_wasm::wasi::emit_wasm_wasi(&module)
                     .map_err(|e| miette::miette!("[{}] {e}", e.code()))?;
-                std::fs::write(&output_path, &wasm_bytes)
-                    .map_err(|e| miette::miette!("{}: {}", output_path.display(), e))?;
+                write_compile_artifact(&output_path, &wasm_bytes)?;
             }
             CompileTarget::WasiComponent => {
                 let wasm_bytes = lsharp_wasm::wasi::emit_wasm_wasi_p2(&module)
                     .map_err(|e| miette::miette!("[{}] {e}", e.code()))?;
-                std::fs::write(&output_path, &wasm_bytes)
-                    .map_err(|e| miette::miette!("{}: {}", output_path.display(), e))?;
+                write_compile_artifact(&output_path, &wasm_bytes)?;
             }
             CompileTarget::WebWasm => {
                 let wasm_bytes = lsharp_wasm::codegen::emit_wasm(&module)
                     .map_err(|e| miette::miette!("[{}] {e}", e.code()))?;
-                std::fs::write(&output_path, &wasm_bytes)
-                    .map_err(|e| miette::miette!("{}: {}", output_path.display(), e))?;
+                write_compile_artifact(&output_path, &wasm_bytes)?;
             }
             CompileTarget::Native => {
                 crate::native::compile_native_executable(&module, &output_path)?;
@@ -217,6 +219,34 @@ pub fn compile_file_with_backend(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_compile_artifact_writer_uses_atomic_wasm_boundary() {
+        let dir = std::env::temp_dir().join(format!(
+            "lsharp_compile_atomic_artifact_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock は unix epoch より後であるべき")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).expect("compile artifact directory を作成できる");
+        let path = dir.join("Main.wasm");
+        write_compile_artifact(&path, b"compiled-wasm")
+            .expect("compile artifact を atomic に保存できる");
+        assert_eq!(
+            lsharp_wasm::component_adapter::read_wasm_artifact(&path)
+                .expect("compile artifact を再読込できる"),
+            b"compiled-wasm"
+        );
+        let entries = std::fs::read_dir(&dir)
+            .expect("compile artifact directory を列挙できる")
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .expect("compile artifact directory entry を取得できる");
+        assert_eq!(entries.len(), 1, "compile artifact の一時 file を残さない");
+        assert_eq!(entries[0].file_name(), "Main.wasm");
+        std::fs::remove_dir_all(&dir).expect("compile artifact directory を削除できる");
+    }
 
     #[test]
     fn compile_diagnostics_preserve_stable_type_error_code() {

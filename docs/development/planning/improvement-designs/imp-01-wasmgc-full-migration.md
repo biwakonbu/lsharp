@@ -1424,6 +1424,25 @@ world の Component を途中状態で公開しない保存契約を追加した
 compiler の全 target release pipeline、artifact provenance/manifest、Mac Apple Silicon/Linux
 x86_64 native stage0、selfhost parity、rollback の durable evidence は未完了である。
 
+## Stage 2bq 検証済み slice: compile pipeline の Wasm artifact atomic I/O (2026-07-24)
+
+CLI Component だけでなく、通常の compiler が出力する Preview1 / Preview2 Component / WebWasm の
+bytes も同じ artifact boundary へ集約した。
+
+- `lsharp_tooling::compile::write_compile_artifact` は
+  `lsharp_wasm::component_adapter::write_wasm_artifact` を共有し、`compile_file` の
+  `WasiPreview1`、`WasiComponent`、`WebWasm` の出力を一時 path → rename の atomic replacement
+  で保存する。既存 output を直接 truncate する経路を残さない。
+- `compile::tests::test_compile_artifact_writer_uses_atomic_wasm_boundary` は `.wasm` artifact の
+  bytes 再読込と temporary file 残留なしを固定し、既存 compile target tests は生成物の validation・
+  runtime を引き続き確認する。
+- Native executable は linker/compiler の別成果物であり、この slice の Wasm writer へ暗黙に混ぜず、
+  native release atomicity は別タスクとして残す。
+
+これは compile pipeline の Wasm artifact I/O verified partial slice であり、source fingerprint/
+manifest、durable fsync、native executable release、Mac Apple Silicon/Linux x86_64 stage0、selfhost
+parity、rollback provenance は未完了である。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線

@@ -244,14 +244,14 @@ pub fn componentize_core_module(
     })
 }
 
-/// Component bytes を一時ファイル経由で atomic に artifact path へ保存する。
-pub fn write_component_artifact(path: &Path, bytes: &[u8]) -> Result<()> {
+/// Wasm bytes を一時ファイル経由で atomic に artifact path へ保存する。
+pub fn write_wasm_artifact(path: &Path, bytes: &[u8]) -> Result<()> {
     let file_name = path
         .file_name()
         .and_then(|name| name.to_str())
         .ok_or_else(|| ComponentAdapterError::Error {
             msg: format!(
-                "Component artifact の file name を取得できません: {}",
+                "Wasm artifact の file name を取得できません: {}",
                 path.display()
             ),
         })?;
@@ -259,7 +259,7 @@ pub fn write_component_artifact(path: &Path, bytes: &[u8]) -> Result<()> {
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|err| ComponentAdapterError::Error {
-            msg: format!("Component artifact の一時 path 用時刻取得に失敗しました: {err:#}"),
+            msg: format!("Wasm artifact の一時 path 用時刻取得に失敗しました: {err:#}"),
         })?
         .as_nanos();
     let sequence = STAGED_WIT_COUNTER.fetch_add(1, Ordering::Relaxed);
@@ -270,13 +270,13 @@ pub fn write_component_artifact(path: &Path, bytes: &[u8]) -> Result<()> {
     let result = (|| {
         fs::write(&temporary_path, bytes).map_err(|err| ComponentAdapterError::Error {
             msg: format!(
-                "Component artifact の一時保存に失敗しました ({}): {err:#}",
+                "Wasm artifact の一時保存に失敗しました ({}): {err:#}",
                 temporary_path.display()
             ),
         })?;
         fs::rename(&temporary_path, path).map_err(|err| ComponentAdapterError::Error {
             msg: format!(
-                "Component artifact の置換に失敗しました ({}): {err:#}",
+                "Wasm artifact の置換に失敗しました ({}): {err:#}",
                 path.display()
             ),
         })
@@ -287,14 +287,24 @@ pub fn write_component_artifact(path: &Path, bytes: &[u8]) -> Result<()> {
     result
 }
 
-/// 保存済み Component artifact を bytes として読み込む。
-pub fn read_component_artifact(path: &Path) -> Result<Vec<u8>> {
+/// 保存済み Wasm artifact を bytes として読み込む。
+pub fn read_wasm_artifact(path: &Path) -> Result<Vec<u8>> {
     fs::read(path).map_err(|err| ComponentAdapterError::Error {
         msg: format!(
-            "Component artifact の再読込に失敗しました ({}): {err:#}",
+            "Wasm artifact の再読込に失敗しました ({}): {err:#}",
             path.display()
         ),
     })
+}
+
+/// Component bytes を一時ファイル経由で atomic に artifact path へ保存する。
+pub fn write_component_artifact(path: &Path, bytes: &[u8]) -> Result<()> {
+    write_wasm_artifact(path, bytes)
+}
+
+/// 保存済み Component artifact を bytes として読み込む。
+pub fn read_component_artifact(path: &Path) -> Result<Vec<u8>> {
+    read_wasm_artifact(path)
 }
 
 #[cfg(test)]
@@ -339,6 +349,20 @@ mod tests {
         assert_eq!(entries[0].file_name(), "Main.component.wasm");
 
         fs::remove_dir_all(&dir).expect("artifact directory を削除できる");
+    }
+
+    #[test]
+    fn test_wasm_artifact_round_trip_supports_non_component_output() {
+        let dir = unique_temp_dir("wasm_artifact_round_trip");
+        let path = dir.join("Main.wasm");
+        write_wasm_artifact(&path, b"core-wasm")
+            .expect("non-component Wasm artifact を atomic に保存できる");
+
+        assert_eq!(
+            read_wasm_artifact(&path).expect("non-component Wasm artifact を再読込できる"),
+            b"core-wasm"
+        );
+        fs::remove_dir_all(&dir).expect("non-component artifact directory を削除できる");
     }
 
     #[test]
