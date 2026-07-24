@@ -819,6 +819,22 @@ Stage 2ae の file-size mutation に加えて、write-enabled preopen descriptor
 これは descriptor create-directory-at の verified partial slice であり、残る descriptor operation、
 Wasm artifact/runtime differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity は未完了である。
 
+## Stage 2ag 検証済み slice: descriptor remove-directory-at lifecycle (2026-07-24)
+
+Stage 2af の directory creation に加えて、write-enabled preopen descriptor の
+`descriptor.remove-directory-at` path mutation と host directory deletion artifact を actual Component
+で検証した。
+
+- `wasm_gc_component_cli_fs_runner_removes_directory_and_drops_resources` は二つの read-write named
+  preopen を受け取り、fixture の `to-remove/` directory を最初の preopen descriptor から削除する。
+- `descriptor.remove-directory-at` の `result<_, error-code>` success discriminant を確認し、host
+  側の directory が実行後に存在しないことを確認する。
+- preopen descriptor を drop し、`wasi:cli/run` exit 0、stdout empty、削除済み host artifact を
+  同じ実行で確認する。
+
+これは descriptor remove-directory-at の verified partial slice であり、残る descriptor operation、
+Wasm artifact/runtime differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity は未完了である。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線
