@@ -1462,6 +1462,24 @@ Wasm artifact に続き、対応 target の Mac Apple Silicon native backend も
 backend、source fingerprint/manifest、durable fsync、selfhost stage0、release bundle、rollback
 provenance は未完了である。
 
+## Stage 2bs 検証済み slice: WasmGC compile output の atomic artifact 境界 (2026-07-24)
+
+Stage 2bq で linear backend の Preview1 / Preview2 Component / WebWasm output を共通 writer
+へ移行した後も、`CompileBackend::WasmGc` だけは `std::fs::write` を直接呼んでいた。この差を
+閉じ、backend に依存せず Wasm compile artifact の保存契約を同じにした。
+
+- `compile_file_with_backend` の WasmGC `WebWasm` output は
+  `write_compile_artifact` を通り、一時 path → rename の atomic replacement で保存する。
+- `compile::tests::test_compile_file_wasmgc_backend_uses_atomic_artifact_boundary` は destination
+  directory による置換失敗で共通診断を確認し、既存 destination の保持と一時 artifact 残留なしを
+  固定する。
+- WasmGC backend の actual module validation/runtime tests は従来どおり同じ compile path を通り、
+  output bytes の意味論を変更しない。
+
+これは WasmGC compile output の atomic I/O verified partial slice であり、source
+fingerprint/manifest、durable fsync、Linux x86_64 native backend、selfhost stage0、release bundle、
+rollback provenance は未完了である。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線

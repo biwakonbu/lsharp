@@ -206,8 +206,7 @@ pub fn compile_file_with_backend(
             }
             let wasm_bytes = lsharp_wasm::wasmgc::emit_wasm_wasmgc(&module)
                 .map_err(|e| miette::miette!("[{}] {e}", e.code()))?;
-            std::fs::write(&output_path, &wasm_bytes)
-                .map_err(|e| miette::miette!("{}: {}", output_path.display(), e))?;
+            write_compile_artifact(&output_path, &wasm_bytes)?;
         }
     }
     Ok(CompileArtifacts {
@@ -324,6 +323,57 @@ mod tests {
             .get_typed_func::<(), i64>(&mut store, "main")
             .unwrap();
         assert_eq!(main.call(&mut store, ()).unwrap(), 42);
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_compile_file_wasmgc_backend_uses_atomic_artifact_boundary() {
+        let dir = std::env::temp_dir().join(format!(
+            "lsharp_compile_pipeline_wasmgc_atomic_failure_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock は unix epoch より後であるべき")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).expect("WasmGC atomic failure directory を作成できる");
+        let file = dir.join("Main.ls");
+        let output = dir.join("Main.wasm");
+        std::fs::write(&file, "(defn main [] 42)\n").unwrap();
+        std::fs::create_dir(&output)
+            .expect("置換失敗を誘発する destination directory を作成できる");
+
+        let error = compile_file_with_backend(
+            &file,
+            Some(&output),
+            false,
+            Some(CompileTarget::WebWasm),
+            CompileBackend::WasmGc,
+        )
+        .expect_err("WasmGC artifact の directory 置換は失敗するべき");
+        let message = error.to_string();
+        assert!(
+            message.contains("Wasm artifact の置換"),
+            "WasmGC output は共有 atomic artifact writer の境界を通るべき: {message}"
+        );
+        assert!(
+            output.is_dir(),
+            "置換失敗時も既存 destination を保持するべき"
+        );
+        let temporary_residue = std::fs::read_dir(&dir)
+            .expect("WasmGC atomic failure directory を列挙できる")
+            .filter_map(Result::ok)
+            .any(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with(".Main.wasm.tmp-")
+            });
+        assert!(
+            !temporary_residue,
+            "WasmGC atomic writer は一時 artifact を残さないべき"
+        );
 
         std::fs::remove_dir_all(&dir).unwrap();
     }
