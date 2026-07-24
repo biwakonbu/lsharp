@@ -706,6 +706,23 @@ directory-entry stream を取得し、entries と end-of-stream を Component AB
 operation、Wasm artifact/runtime differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity
 は未完了である。
 
+## Stage 2z 検証済み slice: descriptor get-type/get-flags lifecycle (2026-07-24)
+
+Stage 2y の directory entry path に加えて、open 済み descriptor の動的 type と access flags を
+Component canonical ABI から取得し、resource を解放する境界を閉じた。
+
+- `wasm_gc_component_cli_fs_runner_reports_descriptor_type_and_flags` は二つの read-only named
+  preopen を受け取り、最初の preopen から `input.txt` を `descriptor.open-at` で開く。
+- `descriptor.get-type` の `regular-file` と `descriptor.get-flags` の `read` bit を result の
+  discriminant/payload として確認する。descriptor type/flags の enum/flags payload は byte
+  alignment を保ち、未初期化の word offset を契約にしない。
+- descriptor と両 preopen を drop し、`wasi:cli/run` exit 0、stdout empty、host bytes unchanged
+  (`hello`) を actual Component の一実行で固定する。
+
+これは descriptor type/flags/drop の verified partial slice であり、pollable、残る descriptor
+operation、Wasm artifact/runtime differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity
+は未完了である。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線

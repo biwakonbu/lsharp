@@ -38,8 +38,8 @@ WASI Preview2 / Component Model への移行に向けた WIT (WebAssembly Interf
   加えた検証用 world であり、preopen がない場合や rights が read-only の場合に filesystem access
   を成功扱いにしない。`descriptor.open-at`、direct `descriptor.read` の bytes/EOF/drop boundary、
   direct `descriptor.write` / `descriptor.stat` の host artifact boundary、read-only write error 後の
-  descriptor/preopen drop、`read-directory` / `directory-entry-stream` の some/none/drop lifecycle も
-  この world で検証する
+  descriptor/preopen drop、`read-directory` / `directory-entry-stream` の some/none/drop lifecycle、
+  `descriptor.get-type` / `descriptor.get-flags` の type/flags/drop lifecycle もこの world で検証する
 - `wasmgc-cli-fs-streams` は `wasmgc-cli-fs` に `wasi:io/streams@0.2.3` を明示的に加えた world であり、
   descriptor の `read-via-stream` / `write-via-stream` / `append-via-stream` と input/output-stream の
   resource lifecycle を暗黙の別 resource table に分離しない
