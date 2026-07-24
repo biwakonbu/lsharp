@@ -4,7 +4,7 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
     time::{SystemTime, UNIX_EPOCH},
 };
-use wit_component::{ComponentEncoder, StringEncoding, embed_component_metadata};
+use wit_component::{embed_component_metadata, ComponentEncoder, StringEncoding};
 use wit_parser::{Resolve, WorldId};
 
 /// Component adapter 変換エラー
@@ -244,6 +244,59 @@ pub fn componentize_core_module(
     })
 }
 
+/// Component bytes を一時ファイル経由で atomic に artifact path へ保存する。
+pub fn write_component_artifact(path: &Path, bytes: &[u8]) -> Result<()> {
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| ComponentAdapterError::Error {
+            msg: format!(
+                "Component artifact の file name を取得できません: {}",
+                path.display()
+            ),
+        })?;
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|err| ComponentAdapterError::Error {
+            msg: format!("Component artifact の一時 path 用時刻取得に失敗しました: {err:#}"),
+        })?
+        .as_nanos();
+    let sequence = STAGED_WIT_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let temporary_path = parent.join(format!(
+        ".{file_name}.tmp-{}-{nonce}-{sequence}",
+        std::process::id()
+    ));
+    let result = (|| {
+        fs::write(&temporary_path, bytes).map_err(|err| ComponentAdapterError::Error {
+            msg: format!(
+                "Component artifact の一時保存に失敗しました ({}): {err:#}",
+                temporary_path.display()
+            ),
+        })?;
+        fs::rename(&temporary_path, path).map_err(|err| ComponentAdapterError::Error {
+            msg: format!(
+                "Component artifact の置換に失敗しました ({}): {err:#}",
+                path.display()
+            ),
+        })
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(&temporary_path);
+    }
+    result
+}
+
+/// 保存済み Component artifact を bytes として読み込む。
+pub fn read_component_artifact(path: &Path) -> Result<Vec<u8>> {
+    fs::read(path).map_err(|err| ComponentAdapterError::Error {
+        msg: format!(
+            "Component artifact の再読込に失敗しました ({}): {err:#}",
+            path.display()
+        ),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -265,6 +318,27 @@ mod tests {
         ));
         fs::create_dir_all(&dir).expect("temp dir creation failed");
         dir
+    }
+
+    #[test]
+    fn test_component_artifact_round_trip_replaces_without_temp_residue() {
+        let dir = unique_temp_dir("artifact_round_trip");
+        let path = dir.join("Main.component.wasm");
+        write_component_artifact(&path, b"first").expect("first Component artifact を保存できる");
+        write_component_artifact(&path, b"second").expect("既存 Component artifact を置換できる");
+
+        assert_eq!(
+            read_component_artifact(&path).expect("Component artifact を再読込できる"),
+            b"second"
+        );
+        let entries = fs::read_dir(&dir)
+            .expect("artifact directory を列挙できる")
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .expect("artifact directory entry を取得できる");
+        assert_eq!(entries.len(), 1, "atomic 保存後に一時 artifact を残さない");
+        assert_eq!(entries[0].file_name(), "Main.component.wasm");
+
+        fs::remove_dir_all(&dir).expect("artifact directory を削除できる");
     }
 
     #[test]

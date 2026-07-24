@@ -36,6 +36,8 @@ WASI Preview2 / Component Model への移行に向けた WIT (WebAssembly Interf
   `wasi:cli/run@0.2.3` export を持つ。core module へ未宣言の WASI capability を暗黙に追加しない
 - `wasmgc-output` Component は `output.component.wasm` として保存・再読込した bytes の一致、
   Component validation、Preview2 stdout host runtime の出力/exit parity までを同じ artifact 境界で検証する
+- `wasmgc-cli` Component は production artifact writer/reader の atomic 保存・再読込を通し、
+  `wasi:cli/run` の stdout/exit parity と一時 file cleanup を検証する
 - `wasmgc-cli-fs` は `wasmgc-cli` に `wasi:filesystem/preopens@0.2.3` / `types@0.2.3` を明示的に
   加えた検証用 world であり、preopen がない場合や rights が read-only の場合に filesystem access
   を成功扱いにしない。`descriptor.open-at`、direct `descriptor.read` の bytes/EOF/drop boundary、

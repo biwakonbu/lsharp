@@ -817,6 +817,96 @@ fn wasm_gc_component_cli_runner_executes_wasi_cli_run_with_preview2_stdout() {
 }
 
 #[test]
+fn wasm_gc_component_cli_artifact_round_trip_preserves_wasi_cli_run() {
+    let module = IrModule {
+        functions: vec![Function {
+            name: "main".to_string(),
+            params: vec![],
+            result: IrType::I64,
+            locals: vec![],
+            body: vec![
+                Instruction::I32Const(67),
+                Instruction::I32Const(76),
+                Instruction::ArrayNewFixed(0, 2),
+                Instruction::Call(4),
+                Instruction::I64Const(0),
+            ],
+            is_export: true,
+        }],
+        gc_types: vec![GcTypeDef {
+            name: "StringBytes".to_string(),
+            kind: GcTypeKind::PackedByteArray,
+        }],
+        imports: vec![],
+        globals: vec![],
+        string_data: vec![],
+    };
+    let core = lsharp_wasm::wasmgc::emit_wasm_wasmgc_component_cli(&module)
+        .expect("WasmGC CLI backend が core を生成できる");
+    let wit_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("wit")
+        .join("lsharp-wasmgc-output.wit");
+    let component = lsharp_wasm::component_adapter::componentize_core_module(
+        &core,
+        &wit_file,
+        "wasmgc-cli",
+        &[],
+    )
+    .expect("WasmGC CLI core を componentize できる");
+    let direct = lsharp_wasm::wasmgc_runner::run_wasm_wasmgc_component_cli_with_preview2_stdout(
+        &component,
+        None,
+        &[],
+        "",
+    )
+    .expect("in-memory wasi:cli/run を実行できる");
+
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock は unix epoch より後であるべき")
+        .as_nanos();
+    let dir = std::env::temp_dir().join(format!(
+        "lsharp_wasmgc_cli_component_artifact_{}_{}",
+        std::process::id(),
+        nonce
+    ));
+    std::fs::create_dir_all(&dir).expect("CLI Component artifact directory を作成できる");
+    let path = dir.join("Main.component.wasm");
+    lsharp_wasm::component_adapter::write_component_artifact(&path, &component)
+        .expect("CLI Component artifact を atomic に保存できる");
+    let artifact = lsharp_wasm::component_adapter::read_component_artifact(&path)
+        .expect("CLI Component artifact を再読込できる");
+    assert_eq!(
+        artifact, component,
+        "保存・再読込で Component bytes を変質させない"
+    );
+    wasmparser::Validator::new()
+        .validate_all(&artifact)
+        .expect("再読込した CLI Component artifact が validation に成功する");
+    let mut config = Config::new();
+    config.wasm_gc(true);
+    let engine = Engine::new(&config).expect("CLI artifact runtime 用 WasmGC engine を作成できる");
+    wasmtime::component::Component::new(&engine, &artifact)
+        .expect("再読込した CLI Component artifact を検証できる");
+
+    let round_trip =
+        lsharp_wasm::wasmgc_runner::run_wasm_wasmgc_component_cli_with_preview2_stdout(
+            &artifact,
+            None,
+            &[],
+            "",
+        )
+        .expect("再読込した CLI Component artifact を同じ Preview2 runtime で実行できる");
+    assert_eq!(round_trip.stdout, direct.stdout);
+    assert_eq!(round_trip.exit_code, direct.exit_code);
+    assert_eq!(round_trip.stdout, "CL");
+    assert_eq!(round_trip.exit_code, 0);
+    std::fs::remove_dir_all(&dir).expect("CLI Component artifact directory を削除できる");
+}
+
+#[test]
 fn wasm_gc_component_cli_runner_maps_wasi_cli_exit_to_exit_status() {
     let core = emit_component_output_cli_exit_probe_module(1);
     let wit_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -3751,9 +3841,9 @@ fn persist_and_reload_wasmgc_component_artifact(component: &[u8]) -> Result<Vec<
         .map_err(|error| format!("Component artifact の一時ディレクトリを作成できない: {error}"))?;
     let path = dir.join("output.component.wasm");
     let result = (|| {
-        std::fs::write(&path, component)
+        lsharp_wasm::component_adapter::write_component_artifact(&path, component)
             .map_err(|error| format!("Component artifact を保存できない: {error}"))?;
-        std::fs::read(&path)
+        lsharp_wasm::component_adapter::read_component_artifact(&path)
             .map_err(|error| format!("Component artifact を再読込できない: {error}"))
     })();
     let cleanup = std::fs::remove_dir_all(&dir);

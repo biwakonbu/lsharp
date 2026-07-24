@@ -1404,6 +1404,26 @@ validation と Preview2 host runtime へ通す round-trip を追加した。
 compiler が生成する release artifact、Mac Apple Silicon/Linux x86_64 native gate、selfhost parity、
 複数 target の配布・rollback provenance は未完了である。
 
+## Stage 2bp 検証済み slice: CLI Component artifact の atomic 保存と再実行 (2026-07-24)
+
+Stage 2bo の test-only temporary file round-trip を production artifact boundary へ引き上げ、CLI
+world の Component を途中状態で公開しない保存契約を追加した。
+
+- `lsharp_wasm::component_adapter::write_component_artifact` は同じ directory の一時 path へ bytes を
+  書き、rename で `Main.component.wasm` を atomic に置換する。保存に失敗した一時 path は cleanup し、
+  既存 artifact を残したままエラーへ収束する。`read_component_artifact` は保存済み bytes を明示的に
+  再読込する。
+- `wasm_gc_component_cli_artifact_round_trip_preserves_wasi_cli_run` は WasmGC CLI backend の
+  `wasi:cli/run` Component を production writer/reader 経由で保存・再読込し、bytes 一致、Wasm
+  validation、Preview2 stdout `CL`、exit code `0` の direct/round-trip parity を actual runtime で
+  固定する。
+- `component_adapter::tests::test_component_artifact_round_trip_replaces_without_temp_residue` は
+  既存 artifact の置換後に一時 file を残さないことを固定する。
+
+これは CLI Component artifact の atomic I/O と runtime parity の verified partial slice であり、
+compiler の全 target release pipeline、artifact provenance/manifest、Mac Apple Silicon/Linux
+x86_64 native stage0、selfhost parity、rollback の durable evidence は未完了である。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線
