@@ -37,7 +37,7 @@
 | `crates/lsharp-types/src/infer.rs` | 3783 | :21-99 TypeError / :177-245 Infer struct / :308-435 `infer_program` / :2500-2621 instantiate・generalize・unify / :2652 tests 開始 (約 1130 行 = 30%) | `infer/error.rs` (TypeError)、`infer/unify.rs` (unify + occur check)、`infer/generalize.rs`、`infer/expr.rs` (式推論)、`infer/decl.rs` (`infer_program` と宣言処理)、`infer/tests.rs` |
 | `crates/lsharp-ir/src/lib.rs` | 3640 | :1-441 構造体定義 / :442 `link_modules()` / :1647 `compile_multi_file_with_mode` / :1777 `compile_multi_file` / :1792 incremental 系 / :2211 tests 開始 (約 1430 行 = 39%) | `ir.rs` (Module / Function / Instruction / IrType 定義)、`linker.rs` (`link_modules`)、`compile.rs` (compile_multi_file 系 + incremental 系、imp-04 と接続)、`tests.rs` |
 | `crates/lsharp-syntax/src/parser.rs` | 2242 | `parser/expr.rs` / `parser/decl.rs` / `parser/tests.rs` |
-| `crates/lsharp-types/src/constraints.rs` | 1961 | `constraints/def.rs` (定義・登録)、`constraints/eval.rs` (評価)、`constraints/pattern.rs` (簡易正規表現)、`constraints/tests.rs` |
+| `crates/lsharp-types/src/constraints.rs` | 1961 | `constraints/def.rs` (定義・登録)、`constraints/eval.rs` (評価)、`constraints/pattern.rs` (簡易正規表現)、`constraints/tests.rs`。まず inline tests を責務別 test files へ分離し、production 分割は後続 |
 | `crates/lsharp-ir/src/lower/expr.rs` | 1897 | パターンマッチ lowering / 計算式 lowering を切り出し |
 | `crates/lsharp-syntax/src/macro_expand.rs` | 1681 | 展開器本体 / 組み込みマクロ / tests |
 | `crates/lsharp-ir/src/module_graph.rs` | 1597 | グラフ構築 / 解決 / (imp-04 の SCC・キャッシュ導入前に分割) |
@@ -70,8 +70,8 @@ CI (または契約テスト) に「`crates/**/src/**/*.rs` の行数が 800 を
 
 ## 検証済み部分実装 (2026-07-25)
 
-`module_graph.rs` の inline unit test 43 件を `src/module_graph/` 配下の 4 test module へ移動し、続けて `ModuleSearchPaths`、path resolver、entry graph builder を `src/module_graph/resolve.rs` へ分離した。さらに Rust parser の inline test 61 件を `src/parser/` 配下の 3 test module へ移動した。module graph 親は 552 行、resolver は 473 行、parser production は 1,790 行となり、公開 API と parser/graph のロジックは変更していない。focused tests、large-stack `lsharp-ir` 257 tests、syntax clippy/rustfmt が passし、default stack の Formatter incremental fixture overflow は imp-04 C-1n の既知境界として分離した。詳細は各 `decisions-legacy-*test-*split.md` ADR に記録する。
+`module_graph.rs` の inline unit test 43 件を `src/module_graph/` 配下の 4 test module へ移動し、続けて `ModuleSearchPaths`、path resolver、entry graph builder を `src/module_graph/resolve.rs` へ分離した。さらに Rust parser の inline test 61 件を `src/parser/` 配下の 3 test module、constraints の inline test 43 件を `src/constraints/` 配下の 4 test module へ移動した。module graph 親は 552 行、resolver は 473 行、parser production は 1,790 行、constraints production は 543 行となり、公開 API と parser/graph/constraints のロジックは変更していない。focused tests、large-stack `lsharp-ir` 257 tests、syntax/types clippy/rustfmt が passし、default stack の Formatter incremental fixture overflow は imp-04 C-1n の既知境界として分離した。詳細は各 `decisions-legacy-*test-*split.md` ADR に記録する。
 
 ## ステータス
 
-設計 + module graph のテスト/path-resolution 分離と parser のテスト分離 verified partial slice (2026-07-25)。parser の expr/decl production 分割、graph/SCC core の追加分割、`wasi.rs` / `main.rs` / `infer.rs` / `ir/lib.rs` の責務分割、I-01 / I-08 aggregate 完了は未着手または未完了である。着手時は TODO.md に Phase A-2 / D-4 としてファイル単位の項目を作成する。
+設計 + module graph のテスト/path-resolution 分離、parser のテスト分離、constraints のテスト分離 verified partial slice (2026-07-25)。parser の expr/decl production 分割、constraints production の責務分割、graph/SCC core の追加分割、`wasi.rs` / `main.rs` / `infer.rs` / `ir/lib.rs` の責務分割、I-01 / I-08 aggregate 完了は未着手または未完了である。着手時は TODO.md に Phase A-2 / D-4 としてファイル単位の項目を作成する。
