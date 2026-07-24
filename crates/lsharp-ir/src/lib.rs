@@ -2017,6 +2017,58 @@ fn try_build_unrestricted_merged_scc_surfaces(
     Some(surfaces)
 }
 
+/// SCC の merged inference 用に宣言を連結する。
+///
+/// 同じ import 宣言が SCC 内の複数 module に現れても、型環境への注入は一度で足りる。
+/// ただし `:only`、alias、`open` が異なる import は意味が異なるため、完全一致する宣言
+/// だけを重複除去する。宣言の順序と defn の所属 module は維持する。
+type SccImportKey = (String, Option<String>, Option<Vec<String>>, bool);
+
+fn merge_scc_declarations(
+    group: &[String],
+    parsed_modules: &HashMap<String, lsharp_syntax::ast::Program>,
+) -> Result<(Vec<lsharp_syntax::ast::Decl>, Vec<String>), String> {
+    use lsharp_syntax::ast::Decl;
+
+    let mut merged_decls = Vec::new();
+    let mut defn_origins = Vec::new();
+    let mut seen_imports: HashSet<SccImportKey> = HashSet::new();
+
+    for module_name in group {
+        let program = parsed_modules
+            .get(module_name)
+            .ok_or_else(|| format!("SCC 内のモジュールが parse 結果にありません: {module_name}"))?;
+        for decl in &program.decls {
+            match decl {
+                Decl::ModuleDecl { body, .. } if body.is_empty() => {}
+                Decl::ImportDecl {
+                    module,
+                    alias,
+                    only,
+                    open,
+                    ..
+                } => {
+                    let key = (module.clone(), alias.clone(), only.clone(), *open);
+                    if seen_imports.insert(key) {
+                        merged_decls.push(decl.clone());
+                    }
+                }
+                _ => {
+                    push_defn_origins_infer_order(
+                        std::slice::from_ref(decl),
+                        module_name,
+                        None,
+                        &mut defn_origins,
+                    );
+                    merged_decls.push(decl.clone());
+                }
+            }
+        }
+    }
+
+    Ok((merged_decls, defn_origins))
+}
+
 fn infer_scc_type_surfaces(
     group: &[String],
     graph: &module_graph::ModuleGraph,
@@ -2025,7 +2077,7 @@ fn infer_scc_type_surfaces(
     direct_imports: &HashMap<String, HashMap<String, ImportVisibilitySpec>>,
     known_surfaces: &HashMap<String, ModuleTypeSurface>,
 ) -> Result<HashMap<String, ModuleTypeSurface>, String> {
-    use lsharp_syntax::ast::{Decl, Program};
+    use lsharp_syntax::ast::Program;
 
     let group_set: HashSet<&str> = group.iter().map(String::as_str).collect();
     if group.len() == 1 {
@@ -2068,29 +2120,7 @@ fn infer_scc_type_surfaces(
         )]));
     }
 
-    let mut merged_decls = Vec::new();
-    let mut defn_origins = Vec::new();
-
-    for module_name in group {
-        let program = parsed_modules
-            .get(module_name)
-            .ok_or_else(|| format!("SCC 内のモジュールが parse 結果にありません: {module_name}"))?;
-        for decl in &program.decls {
-            match decl {
-                Decl::ModuleDecl { body, .. } if body.is_empty() => {}
-                Decl::ImportDecl { .. } => merged_decls.push(decl.clone()),
-                _ => {
-                    push_defn_origins_infer_order(
-                        std::slice::from_ref(decl),
-                        module_name,
-                        None,
-                        &mut defn_origins,
-                    );
-                    merged_decls.push(decl.clone());
-                }
-            }
-        }
-    }
+    let (merged_decls, defn_origins) = merge_scc_declarations(group, parsed_modules)?;
 
     let mut infer = lsharp_types::infer::Infer::new();
     for module_name in group {
@@ -3537,6 +3567,54 @@ mod import_dedup_tests {
 #[cfg(test)]
 mod multifile_compile_tests {
     use super::*;
+
+    #[test]
+    fn test_merged_scc_declarations_deduplicate_identical_imports() {
+        let module_a =
+            lsharp_syntax::parse("(module A) (import Shared) (import Shared) (defn a [] 1)")
+                .expect("module A should parse");
+        let module_b = lsharp_syntax::parse("(module B) (import Shared) (defn b [] 2)")
+            .expect("module B should parse");
+        let parsed_modules =
+            HashMap::from([("A".to_string(), module_a), ("B".to_string(), module_b)]);
+        let group = vec!["A".to_string(), "B".to_string()];
+
+        let (merged_decls, defn_origins) =
+            merge_scc_declarations(&group, &parsed_modules).expect("SCC declarations should merge");
+        let imports = merged_decls
+            .iter()
+            .filter_map(|decl| match decl {
+                lsharp_syntax::ast::Decl::ImportDecl { module, .. } => Some(module.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(imports, vec!["Shared"]);
+        assert_eq!(defn_origins, vec!["A", "B"]);
+    }
+
+    #[test]
+    fn test_merged_scc_declarations_keep_distinct_import_visibility() {
+        let module_a = lsharp_syntax::parse("(module A) (import Shared :only [x]) (defn a [] 1)")
+            .expect("module A should parse");
+        let module_b = lsharp_syntax::parse("(module B) (import Shared :only [y]) (defn b [] 2)")
+            .expect("module B should parse");
+        let parsed_modules =
+            HashMap::from([("A".to_string(), module_a), ("B".to_string(), module_b)]);
+        let group = vec!["A".to_string(), "B".to_string()];
+
+        let (merged_decls, _) =
+            merge_scc_declarations(&group, &parsed_modules).expect("SCC declarations should merge");
+        let imports = merged_decls
+            .iter()
+            .filter_map(|decl| match decl {
+                lsharp_syntax::ast::Decl::ImportDecl { only, .. } => only.clone(),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(imports, vec![vec!["x".to_string()], vec!["y".to_string()]]);
+    }
 
     fn main_function(module: &Module) -> &Function {
         module
