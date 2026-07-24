@@ -2176,7 +2176,15 @@ actual compiler-mode fixtureの RED で検出した `CompilerMode` の import tr
 
 Evidence: `test_e2e_selfhost_compiler_mode_imported_record_update_runs` は alias-qualified `(S.Point 40 2)` と `{point | x 41}` を actual generated Wasmで実行し `41\n2\n` を返した（75.20s）。`test_e2e_selfhost_compiler_mode_imported_record_constructor_and_static_accessor_run` は unqualified imported constructor/accessorの既存 `41\n2\n` を再確認した（70.73s）。`cargo test -q -p lsharp-wasm --test e2e selfhost_compiler_mode_imported_record_update_runs --no-run`、`git diff --check` も passした。
 
-これは alias-qualified record constructor callと record updateの source compiler-mode runtimeに対する verified sliceである。ftable direct alias/import targetの専用 actual E2E、複数 moduleの同名 export衝突、record pattern runtime、standalone native stage0、Wasm artifact/runtimeの Mac Apple Silicon / Linux x86_64 parity、EC-M1-01 aggregateの完了を意味しない。`TODO.md` の `[~]` と Rust oracle / bootstrap / host integration境界は維持する。次は ftable direct targetまたは alias-qualified function callの同じ observable contractを一つの REDに固定する。
+これは alias-qualified record constructor callと record updateの source compiler-mode runtimeに対する verified sliceである。ftable direct alias/import target、複数 moduleの同名 export衝突、record pattern runtime、standalone native stage0、Wasm artifact/runtimeの Mac Apple Silicon / Linux x86_64 parity、EC-M1-01 aggregateの完了を意味しない。`TODO.md` の `[~]` と Rust oracle / bootstrap / host integration境界は維持する。次の ftable alias-qualified function sliceで、flat export/importの actual runtime contractを固定する。
+
+### EC-M1-01 selfhost alias-qualified ftable function call slice (2026-07-25)
+
+legacy `program-functions-base` の flat declaration sequenceに、`inc` の exportと `App.Math :as M :only [inc]` の importを置き、`(M.inc 41)` を actual Wasmで実行する fixtureを追加した。qualified var nodeの raw source hashが ftableの raw export hashに一致しない場合だけ suffix hashへ fallbackする `ftable-lookup-call-target` を source/ftable user-call両経路で共有するため、unqualified callの既存 lookup順序は変えていない。module declaration内の定義はこの legacy entryが flattenしないため、fixtureは意図的に flat scopeへ限定している。
+
+REDは helperを除いた root-balanced comparison checkoutで `65536\n` となった。これは `M.inc` が未解決の target `0`、すなわち runtime `__alloc(41)` の戻り値を出力した値である。GREENは current `test_e2e_selfhost_ftable_compiler_alias_qualified_function_call_runs` で `42\n` を確認した。`RUST_MIN_STACK=33554432 cargo test -q -p lsharp-wasm --test e2e selfhost_ftable_compiler_alias_qualified_function_call_runs -- --nocapture` は current 129.44s、comparison 69.13s、`git diff --check` は passした。
+
+これは flat legacy ftable compilerの alias-qualified function callだけを閉じる verified sliceである。CompilerModeの module/file import graph、module declaration flatten、qualified name collision防止、record pattern/updateの ftable import runtime、standalone native stage0、Mac Apple Silicon / Linux x86_64 の current-source artifact/runtime gate、EC-M1-01 aggregateの完了を意味しない。`TODO.md` の `[~]` と Rust oracle / bootstrap / host integration境界は維持する。
 
 ### EC-M1-01 selfhost imported record update compiler-mode initial RED (2026-07-25)
 
