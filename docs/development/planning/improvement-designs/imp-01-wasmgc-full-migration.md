@@ -1326,6 +1326,27 @@ Component で検証した。
 partial slice であり、non-blocking `flush` 後の projection、他の OS error mapping、Wasm
 artifact/runtime differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity は未完了である。
 
+## Stage 2bl 検証済み slice: non-blocking flush 後の pending output-stream failure downcast (2026-07-24)
+
+output stream の pending filesystem write に対して non-blocking `flush` を呼び、flush が即時の
+success result を返した後、`output-stream.subscribe` → `pollable.block` で I/O 完了を待って
+`check-write` から failure を観測する状態遷移を actual Component で検証した。
+
+- `wasm_gc_component_cli_fs_runner_maps_nonblocking_flush_pending_output_stream_failure_to_filesystem_error_code`
+  は read-write preopen の `output.txt` に offset `u64::MAX` の output stream を作る。`check-write` の
+  permit を確認して `write(1)` を開始し、直後の non-blocking `flush` が成功 result になることを確認する。
+  その後 `output-stream.subscribe`、`pollable.block`、`check-write` を順に呼び、`result<u64,
+  stream-error>` の outer error、`last-operation-failed` case（discriminant `0`）、error handle の
+  canonical ABI alignment（case `+8`、handle `+12`）を固定する。
+- error resource を borrowed `filesystem-error-code` に渡し、option が `Some`、payload が
+  `error-code::invalid`（discriminant `12`）であることを確認する。marker `F`、`wasi:cli/run` exit
+  code `0`、error/pollable/output stream/descriptor/preopen の drop を同じ actual Component 実行で
+  固定する。
+
+これは pending output write → non-blocking flush → subscribe/block → check-write の
+invalid-offset downcast verified partial slice であり、他の OS error mapping、Wasm artifact/runtime
+differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity は未完了である。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線

@@ -70,6 +70,8 @@ WASI Preview2 / Component Model への移行に向けた WIT (WebAssembly Interf
   output-stream の `check-write` → `write` → `blocking-flush` pending failure contract、
   `output-stream.check-write` → `write` → `output-stream.subscribe` → `pollable.block` →
   `check-write` の pending failure と `filesystem-error-code` downcast contract、
+  pending `write` 後の non-blocking `flush` → `subscribe` → `pollable.block` → `check-write` の
+  success/failure projection と `filesystem-error-code` downcast contract、
   `output-stream.blocking-write-zeroes-and-flush` の zero-fill/flush/host artifact/drop lifecycle も
   この world で検証する。暗黙の別 resource table に分離しない
 
