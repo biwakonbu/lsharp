@@ -1817,6 +1817,64 @@ fn wasm_gc_component_cli_fs_runner_reads_symlink_target_and_drops_resources() {
 }
 
 #[test]
+fn wasm_gc_component_cli_fs_runner_creates_hard_link_and_drops_resources() {
+    let core = emit_component_cli_link_file_probe_module();
+    let wit_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("wit")
+        .join("lsharp-wasmgc-output.wit");
+    let component = lsharp_wasm::component_adapter::componentize_core_module(
+        &core,
+        &wit_file,
+        "wasmgc-cli-fs",
+        &[],
+    )
+    .expect("link-at probe を componentize できる");
+
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock は unix epoch より後であるべき")
+        .as_nanos();
+    let dir = std::env::temp_dir().join(format!("lsharp_wasmgc_link_file_{nonce}"));
+    let extra_dir = std::env::temp_dir().join(format!("lsharp_wasmgc_link_file_extra_{nonce}"));
+    std::fs::create_dir_all(&dir).expect("link-at fixture directory を作成できる");
+    std::fs::create_dir_all(&extra_dir).expect("second link-at fixture directory を作成できる");
+    std::fs::write(dir.join("source.txt"), b"hello").expect("link-at source file を作成できる");
+
+    let preopen = lsharp_wasm::wasmgc_runner::Preview2Preopen::new(
+        &dir,
+        "data",
+        lsharp_wasm::wasmgc_runner::Preview2PreopenRights::read_write(),
+    );
+    let extra_preopen = lsharp_wasm::wasmgc_runner::Preview2Preopen::new(
+        &extra_dir,
+        "extra",
+        lsharp_wasm::wasmgc_runner::Preview2PreopenRights::read_write(),
+    );
+    let output = lsharp_wasm::wasmgc_runner::run_wasm_wasmgc_component_cli_with_preview2_stdout_and_preopens(
+        &component,
+        &[],
+        "",
+        &[preopen, extra_preopen],
+    )
+    .expect("descriptor link-at を実行できる");
+
+    assert_eq!(output.stdout, "");
+    assert_eq!(output.exit_code, 0);
+    assert_eq!(
+        std::fs::read(dir.join("source.txt")).expect("link-at source file を読める"),
+        b"hello"
+    );
+    assert_eq!(
+        std::fs::read(dir.join("hardlink.txt")).expect("link-at 後の hard link を読める"),
+        b"hello"
+    );
+    std::fs::remove_dir_all(&dir).expect("link-at fixture directory を削除できる");
+    std::fs::remove_dir_all(&extra_dir).expect("second link-at fixture directory を削除できる");
+}
+
+#[test]
 fn wasm_gc_component_cli_fs_runner_polls_subscribed_input_stream_list() {
     let core = emit_component_cli_poll_list_probe_module();
     let wit_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -4011,6 +4069,87 @@ fn emit_component_cli_readlink_file_probe_module() -> Vec<u8> {
 "#,
     )
     .expect("readlink-at probe module を生成できる")
+}
+
+fn emit_component_cli_link_file_probe_module() -> Vec<u8> {
+    wat::parse_str(
+        r#"
+(module
+  (type (func (param i32 i32)))
+  (type (func (param i32)))
+  (type (func (result i32)))
+  (type (func (param i32 i32 i32 i32 i32 i32 i32 i32)))
+  (import "lsharp:wasmgc-output/stdout@0.1.0" "write" (func $stdout-write (type 0)))
+  (import "wasi:filesystem/preopens@0.2.3" "get-directories" (func $get-directories (type 1)))
+  (import "wasi:filesystem/types@0.2.3" "[method]descriptor.link-at" (func $link-at (type 3)))
+  (import "wasi:filesystem/types@0.2.3" "[resource-drop]descriptor" (func $drop-descriptor (param i32)))
+  (memory (export "memory") 2)
+  (global $heap (mut i32) (i32.const 1024))
+  (func (export "cabi_realloc")
+    (param $old i32) (param $old-len i32) (param $align i32) (param $new-len i32)
+    (result i32)
+    (local $mask i32)
+    (local $ptr i32)
+    local.get $align
+    i32.const 1
+    i32.sub
+    local.set $mask
+    global.get $heap
+    local.get $mask
+    i32.add
+    local.get $mask
+    i32.const -1
+    i32.xor
+    i32.and
+    local.set $ptr
+    local.get $ptr
+    local.get $new-len
+    i32.add
+    global.set $heap
+    local.get $ptr)
+  (data (i32.const 128) "source.txt")
+  (data (i32.const 160) "hardlink.txt")
+  (func (export "wasi:cli/run@0.2.3#run") (type 2)
+    (local $preopen i32)
+    i32.const 16
+    call $get-directories
+    i32.const 20
+    i32.load
+    i32.const 2
+    i32.ne
+    if (result i32)
+      i32.const 1
+    else
+      i32.const 16
+      i32.load
+      i32.load
+      local.set $preopen
+      local.get $preopen
+      i32.const 0
+      i32.const 128
+      i32.const 10
+      local.get $preopen
+      i32.const 160
+      i32.const 12
+      i32.const 32
+      call $link-at
+      i32.const 32
+      i32.load8_u
+      if
+        local.get $preopen
+        call $drop-descriptor
+        i32.const 1
+        return
+      end
+      local.get $preopen
+      call $drop-descriptor
+      i32.const 0
+      return
+    end)
+)
+"#,
+    )
+    .expect("link-at probe module を生成できる")
 }
 
 fn emit_component_cli_poll_list_probe_module() -> Vec<u8> {

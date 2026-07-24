@@ -903,6 +903,23 @@ Stage 2aj の symbolic-link creation に加えて、host symlink の target stri
 Wasm artifact/runtime differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity
 は未完了である。
 
+## Stage 2al 検証済み slice: descriptor link-at lifecycle (2026-07-24)
+
+Stage 2ak の symbolic-link readback に加えて、old-path-flags を明示した
+`descriptor.link-at` hard-link mutation と host artifact を actual Component で検証した。
+
+- `wasm_gc_component_cli_fs_runner_creates_hard_link_and_drops_resources` は二つの read-write named
+  preopen を受け取り、最初の preopen descriptor に old-path-flags `0`、`source.txt`、同じ
+  destination base、`hardlink.txt` を渡す。
+- `descriptor.link-at` の `result<_, error-code>` success discriminant を確認し、host 側で source
+  と hard link の両方が存在し、bytes `hello` を保持することを確認する。
+- preopen descriptor を drop し、`wasi:cli/run` exit 0、stdout empty、hard-link host artifact を
+  同じ実行で確認する。
+
+これは descriptor link-at の verified partial slice であり、残る descriptor operation、
+Wasm artifact/runtime differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity
+は未完了である。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線
