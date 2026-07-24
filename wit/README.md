@@ -36,7 +36,8 @@ WASI Preview2 / Component Model への移行に向けた WIT (WebAssembly Interf
   `wasi:cli/run@0.2.3` export を持つ。core module へ未宣言の WASI capability を暗黙に追加しない
 - `wasmgc-cli-fs` は `wasmgc-cli` に `wasi:filesystem/preopens@0.2.3` / `types@0.2.3` を明示的に
   加えた検証用 world であり、preopen がない場合や rights が read-only の場合に filesystem access
-  を成功扱いにしない
+  を成功扱いにしない。`descriptor.open-at` と direct `descriptor.read` の bytes/EOF/drop boundary も
+  この world で検証する
 - `wasmgc-cli-fs-streams` は `wasmgc-cli-fs` に `wasi:io/streams@0.2.3` を明示的に加えた world であり、
   descriptor の `read-via-stream` と input-stream の resource lifecycle を暗黙の別 resource table
   に分離しない

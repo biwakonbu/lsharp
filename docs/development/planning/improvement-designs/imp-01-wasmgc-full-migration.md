@@ -619,6 +619,24 @@ read stream lifecycle へ拡張した。
 `read`/`write`/`stat`、write/append stream、close-after-error、directory-entry stream、pollable、
 Wasm artifact/runtime differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity は未完了である。
 
+## Stage 2u 検証済み slice: descriptor direct read と EOF lifecycle (2026-07-24)
+
+Stage 2t の stream path に加え、`wasi:filesystem/types` の direct `descriptor.read` を既存の
+`wasmgc-cli-fs` world で actual Component から実行できることを固定した。
+
+- `descriptor.read(length, offset)` の `result<tuple<list<u8>, bool>, error-code>` を canonical ABI で
+  lift し、guest の `cabi_realloc` が返却 bytes を linear memory に受ける。
+- `wasm_gc_component_cli_fs_runner_reads_descriptor_directly_and_reports_eof` は guest path `data` の
+  read-only preopen から `input.txt` を direct read して `hello` を stdout へ出力し、その後 offset 5
+  から length 1 を read して empty list と EOF bool を確認する。最後に descriptor を resource-drop
+  して exit 0 を返す。
+- EOF bool は exact-length read の時点では false になり得るため、0-byte read を別の observable
+  operation として要求する。この意味論を曖昧な「短い read」判定へ置き換えない。
+
+これは direct read/EOF/drop の verified partial slice であり、direct `write`/`stat`、read-directory、
+write/append stream、close-after-error、directory-entry stream、pollable、Wasm artifact/runtime
+differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity は未完了である。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線
