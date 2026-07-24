@@ -68,7 +68,10 @@ CI (または契約テスト) に「`crates/**/src/**/*.rs` の行数が 800 を
 - 進行中ブランチとのコンフリクトが最大のコスト。各ファイルの分割タイミングは
   当該ファイルを触る作業の合間を選ぶ
 
+## 検証済み部分実装 (2026-07-25)
+
+`module_graph.rs` の inline unit test 43 件を `src/module_graph/` 配下の 4 test module へ移動した。親ファイルは test 宣言と production graph logic だけを保持し、公開 API とロジックは変更していない。移動後の module graph focused 43 tests と `RUST_MIN_STACK=33554432 cargo test -p lsharp-ir --lib`（257 tests）が passし、default stack の Formatter incremental fixture overflow は imp-04 C-1n の既知境界として分離した。詳細は `docs/adr/decisions-legacy-test-module-graph-split.md` に記録する。
+
 ## ステータス
 
-設計のみ (2026-06-12 起草)。着手時は TODO.md に Phase A-2 / D-4 として
-ファイル単位の項目を作成する。
+設計 + `module_graph.rs` のテスト分離 verified partial slice (2026-07-25)。production のグラフ構築 / 解決 / SCC 分割、`wasi.rs` / `main.rs` / `infer.rs` / `ir/lib.rs` の責務分割、I-01 / I-08 aggregate 完了は未着手または未完了である。着手時は TODO.md に Phase A-2 / D-4 としてファイル単位の項目を作成する。
