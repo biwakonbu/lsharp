@@ -95,6 +95,16 @@
 ") (exit-success))))
 (defn builtin-type-name-text [type-hash] (if (= type-hash 100) "Int" (if (= type-hash 200) "Bool" (if (= type-hash 300) "String" (if (= type-hash 400) "Float" (if (= type-hash 500) "Unit" (string-concat "type-" (int-to-string type-hash))))))))
 (defn render-type-text [ty] (let [tag (ty-tag ty)] (if (= tag 1) (builtin-type-name-text (ty-name ty)) (if (= tag 2) (string-concat "t" (int-to-string (ty-name ty))) (if (= tag 3) "Fn" (if (= tag 4) (string-concat "record-" (int-to-string (ty-name ty))) "Unknown"))))))
+(defn check-failure-kinds-text-loop [kinds idx count]
+  (if (>= idx count)
+    ""
+    (string-concat
+      (if (= idx 0) "" ",")
+      (string-concat
+        (int-to-string (vector-get kinds idx))
+        (check-failure-kinds-text-loop kinds (+ idx 1) count)))))
+(defn check-failure-kinds-text [kinds]
+  (string-concat "failure-kinds:" (check-failure-kinds-text-loop kinds 0 (vector-length kinds))))
 (defn run-check-program [context opts]
   (let [context-root-slot (root_push context)
     program (vector-get context 0)
@@ -109,6 +119,7 @@
     base-first-error-index (infer-program-analysis-first-error-index analysis)
     base-first-error-start (infer-program-analysis-first-error-start analysis)
     base-first-error-end (infer-program-analysis-first-error-end analysis)
+    base-failure-kinds (infer-program-analysis-failure-kinds analysis)
     first-module-owner
       (if (and (> base-diagnostics-count 0)
         (and (>= base-first-error-index 0)
@@ -192,6 +203,11 @@
                     (string-concat ":" (int-to-string base-first-error-end)))))
               (print-string "\n"))
             (print-string "")))
+        (print-string ""))
+      (if (> base-diagnostics-count 0)
+        (do
+          (print-string (check-failure-kinds-text base-failure-kinds))
+          (print-string "\n"))
         (print-string ""))
       (check-exit-code diagnostics-count)))))
 (defn run-check-source [src opts] (run-check-program (make-check-program-context (parse-program src) (vector-new 0)) opts))

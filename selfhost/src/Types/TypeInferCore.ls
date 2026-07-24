@@ -299,6 +299,8 @@
   (if (> (vector-length r) 3) (vector-get r 3) -1))
 (defn result-error-end [r]
   (if (> (vector-length r) 4) (vector-get r 4) -1))
+(defn result-error-name-hash [r]
+  (if (> (vector-length r) 5) (vector-get r 5) -1))
 
 ;; エラー結果 (subst にエラーマーカー付き)
 (defn make-error-result-code [code]
@@ -320,6 +322,18 @@
               (root_pop)
               result)))))))
 
+(defn make-error-result-code-and-name [code name-hash]
+  (make-error-result-code-with-span-and-name code -1 -1 name-hash))
+
+(defn make-error-result-code-with-span-and-name [code start end name-hash]
+  (let [base (make-error-result-code-with-span code start end)]
+    (do
+      (root_push base)
+      (let [result (vector-push base name-hash)]
+        (do
+          (root_pop)
+          result)))))
+
 (defn make-error-result []
   (make-error-result-code 6))
 
@@ -332,6 +346,16 @@
     (if (and (>= start 0) (>= end start))
       (make-error-result-code-with-span (result-error-code r) start end)
       (make-error-result-code (result-error-code r)))))
+
+(defn propagate-error-result-with-span-and-name [r]
+  (let [start (result-error-start r)
+    end (result-error-end r)
+    name-hash (result-error-name-hash r)]
+    (if (>= name-hash 0)
+      (if (and (>= start 0) (>= end start))
+        (make-error-result-code-with-span-and-name (result-error-code r) start end name-hash)
+        (make-error-result-code-and-name (result-error-code r) name-hash))
+      (propagate-error-result-with-span r))))
 
 ;; 結果がエラーか判定
 (defn result-failed [r]

@@ -1317,6 +1317,28 @@ fn test_e2e_selfhost_cli_check_source_undefined_symbol_summary() {
     );
 }
 
+/// EC-M1-01: source check は定義ごとの直接/依存 failure kind を text report へ投影すること
+#[test]
+fn test_e2e_selfhost_cli_check_source_reports_definition_failure_kinds() {
+    let harness = r#"
+(defn main []
+  (do
+    (print (run-check-source "(defn primary [] missing) (defn dependent [] primary) (defn independent [] missing-later)" 0))
+    0))
+"#;
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.contains(&"failure-kinds:1,2,1"),
+        "source check は定義ごとの failure kind を返すべき: {:?}",
+        lines
+    );
+}
+
 /// EC-M1-04: run-check-source が vacuous property の code 別 diagnostics body を返すこと
 #[test]
 fn test_e2e_selfhost_cli_check_source_vacuous_property_summary() {

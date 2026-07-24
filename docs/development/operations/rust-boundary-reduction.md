@@ -1903,3 +1903,11 @@ Evidence: RED `test_e2e_selfhost_typeinfer_analysis_reports_let_initializer_fail
 Evidence: RED `test_e2e_selfhost_typeinfer_analysis_reports_computation_step_failure_span` は `(computation maybe-builder (let! x missing) (return x))` で diagnostics `1` を返したが、first-error spanの startが `-1` だった（29.66s）。GREEN は同じ selfhost TypeInfer fixtureで `missing` の span `49..56` を確認した（28.76s）。
 
 これは computation の最初の `let!` step の byte-span forwardingだけを閉じる verified sliceであり、computation全体、do/computationの他step、2〜7引数 apply、lambda、record/pattern、unify failureの diagnostic span、line/column projection、standalone source-check `0`、Mac Apple Silicon / Linux x86_64 current-source native artifact/runtime gate、EC-M1-01 aggregateの完了を意味しない。`TODO.md` の `[~]` と Rust oracle / bootstrap / host integration境界は維持する。次は computation の残る step または standalone source-check failure-definition分類を REDに固定する。
+
+### EC-M1-01 standalone source-check definition failure-kind classification slice (2026-07-24)
+
+standalone source-check の連鎖失敗を分類するため、undefined-variable error resultに参照先 name hashを保持し、span-aware forwardingでもその hashを失わないようにした。`infer-program-analysis` は top-level defn の推論順に `failure-kinds` を保存し、`0=success`、`1=direct failure`、`2=dependency failure` と定義する。先行して失敗した defn の name hashを参照する `undefined symbol` だけを dependency failure とし、それ以外の error code / name は direct failureに分類する。
+
+Evidence: `test_e2e_selfhost_typeinfer_analysis_classifies_definition_failure_kinds` は `(defn primary [] missing) (defn dependent [] primary) (defn independent [] missing-later)` を同一 selfhost TypeInfer fixtureで実行し、diagnostics `3` と failure kinds `1,2,1` を確認した（`RUST_MIN_STACK=128MiB`、1 passed、43.67s）。既存の first-error index/name-hash/span、nested if、apply、let、computation の analysis regression群も同じ変更後 targetで `9 passed`（67.94s）となった。
+
+これは TypeInfer analysis と `Cli` / `EmbeddedCli` の text reportへの定義別分類投影だけを閉じる verified sliceであり、JSON projection、依存定義の複数段連鎖、qualified/private import、非-`undefined symbol` の dependency分類、standalone `TestRunner.ls` source-check の 289 diagnostics 解消、Mac Apple Silicon / Linux x86_64 current-source native gate、EC-M1-01 aggregateの完了を意味しない。`TODO.md` の `[~]` と Rust oracle / bootstrap / host integration境界は維持する。次は JSON reportへの同じ provenance投影または複数段 dependency chainを REDに固定する。

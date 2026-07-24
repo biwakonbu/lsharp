@@ -217,6 +217,9 @@ fn test_e2e_selfhost_typeinfer_error_undefined_var_code() {
     (do
       (print (result-failed result))
       (print (result-error-code result))
+      (print (result-error-start result))
+      (print (result-error-end result))
+      (print (result-error-name-hash result))
       0)))
 "#;
 
@@ -231,6 +234,9 @@ fn test_e2e_selfhost_typeinfer_error_undefined_var_code() {
     );
     assert_eq!(lines[0], "1", "未定義変数 infer は失敗すべき");
     assert_eq!(lines[1], "1", "未定義変数 error code は E0001 であるべき");
+    assert_eq!(lines[2], "-1", "spanなし undefined error の start は -1 であるべき");
+    assert_eq!(lines[3], "-1", "spanなし undefined error の end は -1 であるべき");
+    assert_eq!(lines[4], "99999", "spanなし undefined error の name hash を保持すべき");
 }
 
 /// selfhost TypeInfer.ls テスト: if 条件不一致は if-cond error code を返せる
@@ -739,6 +745,32 @@ fn test_e2e_selfhost_typeinfer_analysis_reports_first_failed_definition_name_has
         ["1"],
         "最初の失敗定義の name hash を AST と一致させるべき"
     );
+}
+
+/// selfhost TypeInfer.ls テスト: 失敗定義を直接失敗と依存失敗へ分類する
+#[test]
+fn test_e2e_selfhost_typeinfer_analysis_classifies_definition_failure_kinds() {
+    let harness = r#"
+(defn main []
+  (let [analysis
+          (infer-program-analysis
+            (parse-program "(defn primary [] missing) (defn dependent [] primary) (defn independent [] missing-later)"))
+        kinds (infer-program-analysis-failure-kinds analysis)]
+    (do
+      (print (infer-program-analysis-diagnostic-count analysis))
+      (print (vector-get kinds 0))
+      (print (vector-get kinds 1))
+      (print (vector-get kinds 2))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_typeinfer_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(lines, ["3", "1", "2", "1"]);
 }
 
 /// selfhost TypeInfer.ls テスト: 最初に失敗した式の source span を保持する
