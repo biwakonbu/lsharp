@@ -82,6 +82,14 @@ imp-03 のテスト戦略と共有する:
 - proptest は dev-dependency のみで配布物に影響しない
 - stress モード (3-3) は wasi.rs の emit 変更を伴うため imp-03 と調整して実施する
 
+## 検証済み部分実装 (2026-07-24)
+
+`lsharp-syntax` の dev-dependency に `proptest` を追加し、bounded arbitrary bytes（0〜127 bytes）を入力として parser が panic せず
+`Ok` または parse/lex error を返す property test を 64 cases で固定した。これは arbitrary source の panic-safety に限定した verified slice であり、
+AST generator、pretty-print roundtrip、型推論 property、nightly 4096 cases、GC leak/limit、rooting stress は未着手のまま残る。
+property test は dev-dependency と `cfg(test)` に閉じ、配布 artifact の依存関係や公開 CLI の挙動を変更しない。
+
 ## ステータス
 
-設計 (2026-06-12 起草)。着手時は TODO.md に Phase B-4 / D-3 / D-4 として項目を作成する。
+設計 + parser panic-safety verified slice (2026-07-24)。着手時は TODO.md に Phase B-4 / D-3 / D-4 として項目を作成する。
+`LEGACY-TEST-01` aggregate の完了条件は満たしていない。

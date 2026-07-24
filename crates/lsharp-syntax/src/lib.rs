@@ -106,3 +106,21 @@ mod diagnostic_tests {
         assert_eq!(error.span(), Some(Span::new(4, 6)));
     }
 }
+
+#[cfg(test)]
+mod property_tests {
+    use proptest::prelude::*;
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(64))]
+
+        #[test]
+        fn parser_never_panics_for_bounded_arbitrary_bytes(
+            bytes in prop::collection::vec(any::<u8>(), 0..128)
+        ) {
+            let source = String::from_utf8_lossy(&bytes);
+            let result = std::panic::catch_unwind(|| super::parse(&source));
+            prop_assert!(result.is_ok(), "parser panicked for generated input");
+        }
+    }
+}

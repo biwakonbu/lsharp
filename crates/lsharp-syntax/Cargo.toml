@@ -10,3 +10,4 @@ stacker = "0.1"
 
 [dev-dependencies]
 insta.workspace = true
+proptest = "1"
