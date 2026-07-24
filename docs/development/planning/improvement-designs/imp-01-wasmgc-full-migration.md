@@ -1235,6 +1235,22 @@ index が result list に返ることを actual Component で検証した。
 filesystem error-code downcast、異なる input source の複数 pollable、Wasm artifact/runtime
 differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity は未完了である。
 
+## Stage 2bg 検証済み slice: poll list multiple input sources (2026-07-24)
+
+同じ preopen 配下の異なるファイルから作った二つの input stream を poll list に渡した場合、
+両方の ready index が source の順序を保って result list に返ることを actual Component で検証した。
+
+- `wasm_gc_component_cli_fs_runner_polls_multiple_input_sources_as_ready` は `source-a.txt` と
+  `source-b.txt` をそれぞれ descriptor 経由で `read-via-stream` し、独立した二つの
+  `input-stream.subscribe` を呼ぶ。両方を EOF の fixture として source の違いに焦点を固定する。
+- 二つの pollable を `block` / `ready` で確認して `poll` の result list length `2`、index `0` と `1`
+  を guest 側で検証する。marker `P`、exit code `0`、二つの pollable、stream、descriptor、preopen の
+  drop を同じ actual Component 実行で確認する。
+
+これは異なる input source の複数 ready index verified partial slice であり、`last-operation-failed`
+と filesystem error-code downcast、pollable が異なる ready/error 状態になる場合の projection、
+Wasm artifact/runtime differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity は未完了である。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線
