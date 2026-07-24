@@ -1869,6 +1869,46 @@ fn infer_scc_type_surfaces(
     use lsharp_syntax::ast::{Decl, Program};
 
     let group_set: HashSet<&str> = group.iter().map(String::as_str).collect();
+    if group.len() == 1 {
+        let module_name = &group[0];
+        let imports = direct_imports.get(module_name).cloned().unwrap_or_default();
+        let mut infer = lsharp_types::infer::Infer::new();
+        for dependency in graph.dependency_closure(module_name) {
+            if group_set.contains(dependency.as_str()) {
+                continue;
+            }
+            if let Some(import_spec) = imports.get(&dependency)
+                && let Some(surface) = known_surfaces.get(&dependency)
+            {
+                infer.inject_external_types_for_import(
+                    &dependency,
+                    import_spec.only.as_deref(),
+                    &surface.hidden,
+                    &surface.results,
+                );
+            }
+        }
+        let program = parsed_modules
+            .get(module_name)
+            .ok_or_else(|| format!("SCC 内のモジュールが parse 結果にありません: {module_name}"))?;
+        note_incremental_type_infer();
+        let results = infer.infer_program(program).map_err(|error| {
+            let path = module_paths
+                .get(module_name)
+                .map(|path| path.display().to_string())
+                .unwrap_or_else(|| module_name.clone());
+            format!("{path}: {error}")
+        })?;
+        return Ok(HashMap::from([(
+            module_name.clone(),
+            ModuleTypeSurface {
+                results,
+                hidden: infer.module_env.privates.iter().cloned().collect(),
+                expr_types: infer.expr_type_results_snapshot(),
+            },
+        )]));
+    }
+
     let mut merged_decls = Vec::new();
     let mut defn_origins = Vec::new();
 
@@ -3383,11 +3423,19 @@ mod multifile_compile_tests {
         .unwrap();
 
         let mut cache = CompilationCache::new();
+        let type_tracker = IncrementalTypeInferTracker::new();
+        type_tracker.reset();
         let first = compile_multi_file_incremental(&dir.join("Main.ls"), &mut cache);
         assert!(
             first.is_ok(),
             "incremental compile も相互再帰 SCC を受理するべき: {first:?}"
         );
+        assert_eq!(
+            type_tracker.count(),
+            1,
+            "singleton SCC は module-local inference を 1 回だけ実行するべき"
+        );
+        drop(type_tracker);
         let first = first.unwrap();
         let tracker = IncrementalSccInferTracker::new();
         tracker.reset();

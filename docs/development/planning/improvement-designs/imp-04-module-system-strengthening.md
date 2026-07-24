@@ -159,11 +159,21 @@ Phase C-1f として、`compile_multi_file_incremental_scc` の入口で全 modu
 一括推論するが、clean rebuild は全 singleton SCC を再推論しない。`test_compile_multi_file_incremental_infers_mutual_recursive_scc`
 は clean rebuild の SCC inference count 0 と、A の source 変更後に count > 0 となる invalidation を固定する。
 
+Phase C-1g として、型 surface を構築する `infer_scc_type_surfaces` に singleton SCC の直接推論経路を追加した。
+従来はサイズ 1 の SCC も cyclic SCC と同じ merged prepass と module 単位 visibility revalidation を通っていたため、
+相互再帰を含まない通常の module まで同じ宣言を二重に処理していた。singleton では依存 closure の既知 surface
+を import の `:only` / private visibility に従って注入し、当該 module を一度だけ推論する。サイズ 2 以上の
+cyclic SCC は merged 推論と visibility revalidation を維持し、相互再帰の契約を変えない。focused test は
+相互再帰 fixture の Main singleton 推論回数を 0 から 1 に固定し、既存の import-only visibility と merged parity
+回帰も通過している。これは重複推論を除く verified partial slice であり、dirty SCC の局所再推論や disk persistence
+を実装したものではない。
+
 ### 未完了の後続作業
 
 - Formatter 3 モジュールの explicit-import 後の canonical compile/runtime parity と長時間 probe の failure
-  boundary を確定する。現状は batch 特例を除去済みで warm SCC linked-IR hit も閉じたが、`Cli.ls` の初回
-  full inference は 38 module graph 上で 90 秒超かかるため、性能/初回 compile の failure boundary は未確定。
+  boundary を確定する。現状は batch 特例を除去済みで warm SCC linked-IR hit と singleton の重複推論除去も閉じたが、
+  `Cli.ls` の初回 full inference は 38 module graph 上で 90 秒超かかるため、性能/初回 compile の failure boundary
+  は未確定。
 - CLI driver の既定経路へ `CompilationCache` を接続し、依存 SCC を含む cache key、process 間永続化、
   selfhost compiler への移植を行う。
 - source override 入口はまだ strict な graph build と module 単位推論を使っており、SCC-aware override
@@ -188,7 +198,7 @@ Phase C-1a の deterministic SCC 検出 API と unit test、C-1b の compile/inf
 fixture、C-1c の incremental SCC fallback と clean rebuild parity、C-1d の Formatter explicit imports と
 batch 特例除去、および Phase C-2a の明示的 cache compile API と cold/warm parity test、C-2b の entry scope
 isolation、C-2c の dependency surface key、C-2d の tooling cache API、C-2e の source override scope
-isolation、C-1e の source override SCC inference、C-1f の SCC clean linked-IR hit を検証済み部分実装として
+isolation、C-1e の source override SCC inference、C-1f の SCC clean linked-IR hit、C-1g の singleton SCC 直接推論を検証済み部分実装として
 反映した。一括推論の native parity、Formatter canonical runtime parity、SCC の segment reuse、CLI driver の
 既定 cache 接続、依存 SCC key、selfhost
 移植は未着手のため、Phase C-1 / C-2 の aggregate 完了とは扱わない。
