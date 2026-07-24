@@ -106,6 +106,7 @@ imp-03 のテスト戦略と共有する:
 - GC rooting regression lane: `scripts/ci/test-gc-rooting.sh` が allocation crossing の root/ref/map/closure/heap-param/let/opaque-call/pattern/sentinel guard を 9 exact E2E で検証する。full stress mode とは別 boundary とする。
 - selfhost rooting IR guard lane: `scripts/ci/test-selfhost-rooting-guards.sh` が string/substring/ref/vector/map/user-call/let の root push/pop と lowering order を 13 exact E2E で検証する。全 source static lint と GC stress は別 boundary とする。
 - rooting contract: `test_e2e_selfhost_root_set_preserves_shadowed_slot_during_allocating_value` が shadowed slot の allocating update 後に `7\n` を確認する。
+- GC soak telemetry lane: `scripts/ci/test-gc-soak-telemetry.sh --profile verified` が unrooted reclaim / rooted reuse / legacy sentinel の 3 exact E2E を実行する。`--profile soak` は ignored の in-session REPL / actual `lsp --stdio` telemetry 2 件を明示実行するが、現状は両方とも stack overflow で RED となるため、verified slice と blocker を分離して記録する。
 - property wide lane: `scripts/ci/test-property-nightly.sh` が固定 seed (`20260725`) で syntax/types の 4 property test を 4096 cases ずつ直列実行する。通常の 64-case gate とは分離し、`--dry-run` と contract test で command/profile を固定する。
 
 さらに `lsharp-syntax` に深さ 3・要素数 bounded の式 generator を追加し、literal/variable/if/let/lambda/application/do/annotation/record/quote の
@@ -118,5 +119,5 @@ pretty-print → re-parse 安定性を 64 cases で固定した。full crate gat
 
 ## ステータス
 
-設計 + parser panic-safety / type-unify symmetry / bounded inference / occurs-check / type inference limit lane / syntax roundtrip / test-distribution / property 4096-case lane / runtime limit lane / runtime recursion limit lane / GC rooting regression lane / selfhost rooting IR guard lane / core-WASI GC capacity `LS4002` / root capacity / rooting contract verified slice (2026-07-25)。各 lane の判断と evidence は ADR-legacy-test-property-4096-lane / type-inference-limit-lane / runtime-limits / runtime-recursion-limit / gc-rooting-lane / selfhost-rooting-guards / gc-root-capacity / gc-capacity-diagnostic / rooting-contract に記録する。着手時は TODO.md に Phase B-4 / D-3 / D-4 として項目を作成する。
+設計 + parser panic-safety / type-unify symmetry / bounded inference / occurs-check / type inference limit lane / syntax roundtrip / test-distribution / property 4096-case lane / runtime limit lane / runtime recursion limit lane / GC rooting regression lane / selfhost rooting IR guard lane / GC soak telemetry verified slice / core-WASI GC capacity `LS4002` / root capacity / rooting contract verified slice (2026-07-25)。各 lane の判断と evidence は ADR-legacy-test-property-4096-lane / type-inference-limit-lane / runtime-limits / runtime-recursion-limit / gc-rooting-lane / selfhost-rooting-guards / gc-soak-telemetry / gc-root-capacity / gc-capacity-diagnostic / rooting-contract に記録する。着手時は TODO.md に Phase B-4 / D-3 / D-4 として項目を作成する。
 `LEGACY-TEST-01` aggregate の完了条件は満たしていない。
