@@ -100,16 +100,17 @@ imp-03 のテスト戦略と共有する:
 - `lsharp-types` Criterion baseline: `Box` 128 段と `Wide` 256 fields の parse → inference benchmark を `infer_limits` bench target として再現できる。
 - `lsharp-wasm` actual runtime contract: 4097 個の unrooted allocation の回収、free-list 再利用、10 回 repeated-start の heap plateau を telemetry で確認する。
 - rooting contract: `test_e2e_selfhost_root_set_preserves_shadowed_slot_during_allocating_value` が shadowed slot の allocating update 後に `7\n` を確認する。
+- property wide lane: `scripts/ci/test-property-nightly.sh` が固定 seed (`20260725`) で syntax/types の 4 property test を 4096 cases ずつ直列実行する。通常の 64-case gate とは分離し、`--dry-run` と contract test で command/profile を固定する。
 
 さらに `lsharp-syntax` に深さ 3・要素数 bounded の式 generator を追加し、literal/variable/if/let/lambda/application/do/annotation/record/quote の
 pretty-print → re-parse 安定性を 64 cases で固定した。full crate gate 中に `"\\` と不正 UTF-8 置換文字の組み合わせが lexer の char boundary panic を検出したため、
 未知 escape の非 ASCII code point を一文字分消費する修正と regression seed を追加した。
 
-これらは arbitrary input/type の panic regression、unification の成否対称性、深い型注釈・巨大レコードの限界値、GC leak / free-list の actual runtime、限定した AST roundtrip に対する verified slice であり、
-小さな式全体の型推論、nightly 4096 cases、性能回帰の閾値・issue 化、GC slot 32768、runtime memory.grow 上限、rooting stress/static lint、native stage0 の GC gate は未着手のまま残る。property test と benchmark は dev-dependency に閉じ、
+これらは arbitrary input/type の panic regression、unification の成否対称性、深い型注釈・巨大レコードの限界値、GC leak / free-list の actual runtime、限定した AST roundtrip、固定 seed の 4096-case wide lane に対する verified slice であり、
+小さな式全体の型推論の full-program parity、性能回帰の閾値・issue 化、GC slot 32768、runtime memory.grow 上限、rooting stress/static lint、native stage0 の GC gate は未着手のまま残る。property test と benchmark は dev-dependency に閉じ、
 配布 artifact の依存関係や公開 CLI の挙動を変更しない。
 
 ## ステータス
 
-設計 + parser panic-safety / type-unify symmetry / bounded inference / occurs-check / syntax roundtrip / test-distribution / rooting contract verified slice (2026-07-25)。着手時は TODO.md に Phase B-4 / D-3 / D-4 として項目を作成する。
+設計 + parser panic-safety / type-unify symmetry / bounded inference / occurs-check / syntax roundtrip / test-distribution / property 4096-case lane / rooting contract verified slice (2026-07-25)。各 lane の判断と evidence は ADR-legacy-test-property-4096-lane / rooting-contract に記録する。着手時は TODO.md に Phase B-4 / D-3 / D-4 として項目を作成する。
 `LEGACY-TEST-01` aggregate の完了条件は満たしていない。
