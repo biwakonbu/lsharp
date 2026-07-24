@@ -936,6 +936,17 @@ fn note_incremental_scc_infer() {
     }
 }
 
+fn note_incremental_scc_merged_fast_path() {
+    #[cfg(test)]
+    {
+        INCREMENTAL_SCC_MERGED_FAST_PATH_TRACKING_ENABLED.with(|enabled| {
+            if enabled.get() {
+                INCREMENTAL_SCC_MERGED_FAST_PATH_COUNT.with(|count| count.set(count.get() + 1));
+            }
+        });
+    }
+}
+
 fn note_incremental_lower() {
     #[cfg(test)]
     {
@@ -1045,6 +1056,8 @@ thread_local! {
     static INCREMENTAL_TYPE_INFER_TRACKING_ENABLED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static INCREMENTAL_SCC_INFER_COUNT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
     static INCREMENTAL_SCC_INFER_TRACKING_ENABLED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static INCREMENTAL_SCC_MERGED_FAST_PATH_COUNT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    static INCREMENTAL_SCC_MERGED_FAST_PATH_TRACKING_ENABLED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
 #[cfg(test)]
@@ -1100,6 +1113,34 @@ impl Drop for IncrementalSccInferTracker {
     fn drop(&mut self) {
         INCREMENTAL_SCC_INFER_TRACKING_ENABLED.with(|enabled| enabled.set(false));
         INCREMENTAL_SCC_INFER_COUNT.with(|count| count.set(0));
+    }
+}
+
+#[cfg(test)]
+struct IncrementalSccMergedFastPathTracker;
+
+#[cfg(test)]
+impl IncrementalSccMergedFastPathTracker {
+    fn new() -> Self {
+        INCREMENTAL_SCC_MERGED_FAST_PATH_TRACKING_ENABLED.with(|enabled| enabled.set(true));
+        INCREMENTAL_SCC_MERGED_FAST_PATH_COUNT.with(|count| count.set(0));
+        Self
+    }
+
+    fn reset(&self) {
+        INCREMENTAL_SCC_MERGED_FAST_PATH_COUNT.with(|count| count.set(0));
+    }
+
+    fn count(&self) -> usize {
+        INCREMENTAL_SCC_MERGED_FAST_PATH_COUNT.with(|count| count.get())
+    }
+}
+
+#[cfg(test)]
+impl Drop for IncrementalSccMergedFastPathTracker {
+    fn drop(&mut self) {
+        INCREMENTAL_SCC_MERGED_FAST_PATH_TRACKING_ENABLED.with(|enabled| enabled.set(false));
+        INCREMENTAL_SCC_MERGED_FAST_PATH_COUNT.with(|count| count.set(0));
     }
 }
 
@@ -1858,6 +1899,124 @@ fn collect_private_surface_names(
     }
 }
 
+fn register_expr_scope_owner(
+    owners: &mut HashMap<String, Option<String>>,
+    scope: String,
+    module_name: &str,
+) {
+    if let Some(existing) = owners.get_mut(&scope) {
+        if existing.as_deref() != Some(module_name) {
+            *existing = None;
+        }
+    } else {
+        owners.insert(scope, Some(module_name.to_string()));
+    }
+}
+
+fn collect_expr_scope_owners(
+    decls: &[lsharp_syntax::ast::Decl],
+    module_prefix: Option<&str>,
+    module_name: &str,
+    owners: &mut HashMap<String, Option<String>>,
+) {
+    use lsharp_syntax::ast::Decl;
+
+    for decl in decls {
+        let actual_decl = match decl {
+            Decl::Private { inner, .. } => inner.as_ref(),
+            other => other,
+        };
+        match actual_decl {
+            Decl::Defn { name, .. } => {
+                let scope = module_prefix
+                    .map(|prefix| format!("{prefix}.{name}"))
+                    .unwrap_or_else(|| name.clone());
+                register_expr_scope_owner(owners, scope, module_name);
+            }
+            Decl::ModuleDecl { name, body, .. } if !body.is_empty() => {
+                let prefix = module_prefix
+                    .map(|outer| format!("{outer}.{name}"))
+                    .unwrap_or_else(|| name.clone());
+                collect_expr_scope_owners(body, Some(&prefix), module_name, owners);
+            }
+            Decl::ImplDef {
+                trait_name,
+                type_name,
+                methods,
+                ..
+            } => {
+                for method in methods {
+                    let method = match method {
+                        Decl::Private { inner, .. } => inner.as_ref(),
+                        other => other,
+                    };
+                    if let Decl::Defn { name, .. } = method {
+                        register_expr_scope_owner(
+                            owners,
+                            format!("{}::{}{}{}", trait_name, name, '$', type_name),
+                            module_name,
+                        );
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+fn try_build_unrestricted_merged_scc_surfaces(
+    group: &[String],
+    parsed_modules: &HashMap<String, lsharp_syntax::ast::Program>,
+    direct_imports: &HashMap<String, HashMap<String, ImportVisibilitySpec>>,
+    inferred_private_names: &[String],
+    merged_expr_types: &HashMap<ExprTypeKey, lsharp_types::types::Type>,
+    results_by_module: &mut HashMap<String, Vec<(String, lsharp_types::types::TypeScheme)>>,
+) -> Option<HashMap<String, ModuleTypeSurface>> {
+    if !inferred_private_names.is_empty()
+        || group.iter().any(|module_name| {
+            direct_imports
+                .get(module_name)
+                .into_iter()
+                .flat_map(HashMap::values)
+                .any(|import| import.only.is_some())
+        })
+    {
+        return None;
+    }
+
+    let mut owners = HashMap::new();
+    for module_name in group {
+        let program = parsed_modules.get(module_name)?;
+        collect_expr_scope_owners(&program.decls, None, module_name, &mut owners);
+        results_by_module.get(module_name)?;
+    }
+
+    let mut expr_types_by_module: HashMap<String, HashMap<ExprTypeKey, lsharp_types::types::Type>> =
+        HashMap::new();
+    for (key, ty) in merged_expr_types {
+        let Some(Some(module_name)) = owners.get(&key.scope) else {
+            return None;
+        };
+        expr_types_by_module
+            .entry(module_name.clone())
+            .or_default()
+            .insert(key.clone(), ty.clone());
+    }
+
+    let mut surfaces = HashMap::new();
+    for module_name in group {
+        surfaces.insert(
+            module_name.clone(),
+            ModuleTypeSurface {
+                results: results_by_module.remove(module_name)?,
+                hidden: HashSet::new(),
+                expr_types: expr_types_by_module.remove(module_name).unwrap_or_default(),
+            },
+        );
+    }
+    Some(surfaces)
+}
+
 fn infer_scc_type_surfaces(
     group: &[String],
     graph: &module_graph::ModuleGraph,
@@ -1983,6 +2142,19 @@ fn infer_scc_type_surfaces(
     }
 
     let inferred_private_names = infer.module_env.privates.clone();
+    let merged_expr_types = infer.expr_type_results_snapshot();
+    if let Some(surfaces) = try_build_unrestricted_merged_scc_surfaces(
+        group,
+        parsed_modules,
+        direct_imports,
+        &inferred_private_names,
+        &merged_expr_types,
+        &mut results_by_module,
+    ) {
+        note_incremental_scc_merged_fast_path();
+        return Ok(surfaces);
+    }
+
     let mut provisional_surfaces = HashMap::new();
     for module_name in group {
         let results = results_by_module.remove(module_name).unwrap_or_default();
@@ -3496,6 +3668,49 @@ mod multifile_compile_tests {
                 .functions
                 .iter()
                 .any(|function| function.name == "main")
+        );
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_compile_multi_file_unrestricted_scc_uses_merged_surface_fast_path() {
+        let dir = std::env::temp_dir().join(format!(
+            "lsharp_compile_multi_file_unrestricted_scc_fast_path_{}",
+            std::process::id()
+        ));
+        if dir.exists() {
+            std::fs::remove_dir_all(&dir).unwrap();
+        }
+        std::fs::create_dir_all(&dir).unwrap();
+
+        std::fs::write(
+            dir.join("A.ls"),
+            "(module A)\n(import B)\n(defn a-step [n] (if (= n 0) 1 (b-step (- n 1))))\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("B.ls"),
+            "(module B)\n(import A)\n(defn b-step [n] (if (= n 0) 0 (a-step (- n 1))))\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("Main.ls"),
+            "(module Main)\n(import A)\n(defn main [] (a-step 4))\n",
+        )
+        .unwrap();
+
+        let tracker = IncrementalSccMergedFastPathTracker::new();
+        tracker.reset();
+        let result = compile_multi_file(&dir.join("Main.ls"));
+        assert!(
+            result.is_ok(),
+            "公開 import の SCC は compile できるべき: {result:?}"
+        );
+        assert_eq!(
+            tracker.count(),
+            1,
+            "可視性制約のない A↔B SCC は merged inference の surface を再検証なしで利用するべき"
         );
 
         std::fs::remove_dir_all(&dir).unwrap();

@@ -187,12 +187,18 @@ SCC だけを再推論する。A↔B cycle + Base + Main で A の未保存実�
 A↔B の 1 SCC だけを再推論することを固定した。lowering は行わない既存の override 境界を維持し、segment cache と disk
 persistence は未着手のままとする。
 
+Phase C-1k として、visibility 制約のない cyclic SCC に限り、merged inference の結果を module surface として直接分配する
+fast path を追加した。全 import が unrestricted、private 宣言がなく、merged expression type の scope が一つの module に
+決定的に帰属できる場合だけ適用し、それ以外は従来の module 単位 visibility revalidation へ戻す。A↔B の公開 import fixture は
+merged surface fast path を 1 回通過し、SCC visibility / full IR parity 回帰を維持した。canonical Cli.ls の bounded probe は
+45 秒で完了せず exit 142 となったため、Formatter の初回 compile/runtime parity は依然として未確定である。
+
 ### 未完了の後続作業
 
 - Formatter 3 モジュールの explicit-import 後の canonical compile/runtime parity と長時間 probe の failure
   boundary を確定する。現状は batch 特例を除去済みで warm SCC linked-IR hit、singleton の重複推論除去、dirty
-  SCC の lowering/link segment reuse も閉じたが、
-  `Cli.ls` の初回 full inference は 38 module graph 上で 90 秒超かかるため、性能/初回 compile の failure boundary
+  SCC の lowering/link segment reuse、visibility-unrestricted cyclic SCC の merged surface fast path も閉じたが、
+  `Cli.ls` の初回 full inference は 45 秒 bounded probe でも完了しなかったため、性能/初回 compile の failure boundary
   は未確定。
 - CLI driver の既定経路へ `CompilationCache` を接続し、依存 SCC を含む cache key、process 間永続化、
   selfhost compiler への移植を行う。
@@ -219,8 +225,8 @@ fixture、C-1c の incremental SCC fallback と clean rebuild parity、C-1d の 
 batch 特例除去、および Phase C-2a の明示的 cache compile API と cold/warm parity test、C-2b の entry scope
 isolation、C-2c の dependency surface key、C-2d の tooling cache API、C-2e の source override scope
 isolation、C-1e の source override SCC inference、C-1f の SCC clean linked-IR hit、C-1g の singleton SCC 直接推論、
-C-1h の dirty SCC lowering/link segment reuse、C-1i の dirty SCC type surface reuse、C-1j の override SCC type surface reuse を
-検証済み部分実装として反映した。一括推論の native parity、Formatter canonical runtime parity、override 経路の segment cache、CLI driver の
+C-1h の dirty SCC lowering/link segment reuse、C-1i の dirty SCC type surface reuse、C-1j の override SCC type surface reuse、
+C-1k の unrestricted cyclic SCC merged surface fast path を検証済み部分実装として反映した。一括推論の native parity、Formatter canonical runtime parity、override 経路の segment cache、CLI driver の
 既定 cache 接続、依存 SCC key、selfhost
 移植は未着手のため、Phase C-1 / C-2 の aggregate 完了とは扱わない。
 着手時は TODO.md に Phase C-1 / C-2 として項目を作成する。
