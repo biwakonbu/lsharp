@@ -40,6 +40,7 @@
 | `crates/lsharp-types/src/constraints.rs` | 1961 | `constraints/def.rs` (定義・登録)、`constraints/eval.rs` (評価)、`constraints/pattern.rs` (簡易正規表現)、`constraints/tests.rs`。まず inline tests を責務別 test files へ分離し、production 分割は後続 |
 | `crates/lsharp-ir/src/lower/expr.rs` | 1897 | パターンマッチ lowering / 計算式 lowering を切り出し |
 | `crates/lsharp-ir/src/lower/decl.rs` | 823 | :1-690 宣言 lowering / :691 Self-TCO helper | Self-TCO helper を `lower/decl/self_tco.rs` へ移し、親は 800 行未満へする。残る宣言 lowering の責務分割は後続 |
+| `crates/lsharp-driver/src/doc_site.rs` | 840 | :1-573 production doc-site generation / :574-840 inline tests | inline tests を `doc_site/tests.rs` へ移し、production parent を 800 行未満へする。サイト生成責務の分割は後続 |
 | `crates/lsharp-syntax/src/macro_expand.rs` | 1681 | 展開器本体 / 組み込みマクロ / tests |
 | `crates/lsharp-ir/src/module_graph.rs` | 1597 | グラフ構築 / 解決 / (imp-04 の SCC・キャッシュ導入前に分割) |
 | `crates/lsharp-lsp/src/lib.rs` | 1397 | ハンドラ単位 (hover / completion / definition...) は既に別ファイルがあるため、残る統合部から診断変換等を切り出し |
@@ -49,6 +50,8 @@ helper/定数だけを親へ残し、WasmGC/root、core、allocating call、self
 module/lambda、closure call、heap/ADT の9 moduleへ分割する (I-08 の切り分け性改善)。
 
 `crates/lsharp-ir/src/lower/decl.rs` (823 行) は Self-TCO helper を `decl/self_tco.rs` (139 行) へ分離し、親を 692 行へ縮小した。
+
+`crates/lsharp-driver/src/doc_site.rs` (840 行) は inline test 8 件を `doc_site/tests.rs` (266 行) へ移動し、production parent を 575 行へ縮小した。`doc_site::tests` focused 8 件、driver unit 132 件、clippy、rustfmt、`git diff --check` が pass した。full driver integration lane の `default_path_delegation` 12 件は embedded component / selfhost artifact の今回の差分外 failure boundary として残る。
 
 ### 3. 優先順位
 
@@ -78,4 +81,4 @@ CI (または契約テスト) に「`crates/**/src/**/*.rs` の行数が 800 を
 
 ## ステータス
 
-設計 + module graph のテスト/path-resolution 分離、parser・constraints・macro expand・regex・lexer・metadata_check・lower のテスト分離、lower/decl Self-TCO production split、macro expand・constraints・regex production split、lexer/metadata_check test split verified partial slice (2026-07-25)。lower tests は parent 133 行 + 9 module（最大 692 行）、lower/decl は parent 692 行 + `decl/self_tco.rs` 139 行となった。lower expr/mod の production 分割は未着手である。parser の expr/decl production 分割、lexer/metadata production の責務分割、graph/SCC core の追加分割、`wasi.rs` / `main.rs` / `infer.rs` / `ir/lib.rs` の責務分割、I-01 / I-08 aggregate 完了は未着手または未完了である。着手時は TODO.md に Phase A-2 / D-4 としてファイル単位の項目を作成する。
+設計 + module graph のテスト/path-resolution 分離、parser・constraints・macro expand・regex・lexer・metadata_check・lower のテスト分離、lower/decl Self-TCO production split、doc_site test split、macro expand・constraints・regex production split、lexer/metadata_check test split verified partial slice (2026-07-25)。lower tests は parent 133 行 + 9 module（最大 692 行）、lower/decl は parent 692 行 + `decl/self_tco.rs` 139 行、doc_site は parent 575 行 + `doc_site/tests.rs` 266 行となった。lower expr/mod の production 分割は未着手である。parser の expr/decl production 分割、lexer/metadata production の責務分割、doc_site の production 責務分割、graph/SCC core の追加分割、`wasi.rs` / `main.rs` / `infer.rs` / `ir/lib.rs` の責務分割、I-01 / I-08 aggregate 完了は未着手または未完了である。着手時は TODO.md に Phase A-2 / D-4 としてファイル単位の項目を作成する。
