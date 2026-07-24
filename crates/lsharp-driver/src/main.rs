@@ -268,6 +268,7 @@ fn main() -> miette::Result<()> {
     maybe_hint_shadow_command_requires_lsharp_path()?;
 
     let cli = Cli::parse();
+    let mut compile_session = commands::compile::CompileSession::new();
 
     match cli.command {
         Command::Init { name } => {
@@ -291,7 +292,7 @@ fn main() -> miette::Result<()> {
             // P0-1: git リポジトリ必須チェック
             check_git_repo(&file)?;
 
-            let artifacts = commands::compile::compile_file_with_backend(
+            let artifacts = compile_session.compile_file_with_backend(
                 &file,
                 output.as_deref(),
                 emit_ir,
@@ -646,7 +647,8 @@ fn maybe_bridge_compile_build_artifact_with_component(
         std::process::exit(output.exit_code);
     }
 
-    let artifacts = commands::compile::compile_file_with_backend(
+    let mut compile_session = commands::compile::CompileSession::new();
+    let artifacts = compile_session.compile_file_with_backend(
         &host_file,
         Some(&resolved_output),
         false,

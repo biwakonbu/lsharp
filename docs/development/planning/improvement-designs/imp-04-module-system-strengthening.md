@@ -135,6 +135,13 @@ linked IR を再利用しない。`test_analyze_multi_file_incremental_with_over
 は first workspace の 2 module 解析後に second workspace の単一 module を解析し、cache が 1 entry に
 戻ることを固定する。
 
+Phase C-2f として、`lsharp-tooling::compile::CompileSession` を追加し、`CompilationCache` の session lifetime を
+型で表現した。既存の `compile_file_with_backend` は一時 session を作る互換 wrapper とし、同一 process で複数回
+compile する caller は `CompileSession::compile_file_with_backend` を使える。driver の default `compile` / `build`
+path と embedded component fallback も session 境界を通る。`test_compile_session_reuses_default_cache_for_multi_file_compile`
+は 2 module cache、warm Wasm bytes parity、cache scope 維持を固定する。process 間 persistence、cache artifact versioning、
+selfhost/native stage0 parity は後続である。
+
 Phase C-1c として、`compile_multi_file_incremental` も `build_from_entry_with_scc` を使い、サイズ 2 以上
 の SCC を `infer_scc_type_surfaces` で一括推論する fallback を追加した。SCC 経路は現時点では
 `ModuleIrSegments` の再利用を行わず、SCC 全体を modular lowering して linked IR と型 surface を cache
@@ -221,8 +228,8 @@ validation は `test_e2e_bootstrap_cli_fixed_input_compile_gate` (`66.36 s`, 1 p
   linked-IR hit、singleton の重複推論除去、dirty SCC の lowering/link segment reuse、visibility-unrestricted cyclic
   SCC の merged surface fast path、merged SCC の完全一致 import deduplication、空置換 / 単相 scheme の走査省略は
   verified partial slice のまま残る。
-- CLI driver の既定経路へ `CompilationCache` を接続し、依存 SCC を含む cache key、process 間永続化、
-  selfhost compiler への移植を行う。
+- CLI driver の既定経路は C-2f で process 内 session cache へ接続した。依存 SCC を含む公開 cache key、process 間
+  永続化、selfhost compiler への移植を行う。
 - source override 入口はまだ strict な graph build と module 単位推論を使っており、SCC-aware override
   inference は C-1e で閉じた。compile / override の dirty type surface 再利用は C-1i/C-1j、compile の dirty lowering は
   C-1h で閉じたが、override 経路への segment cache と disk persistence は未着手である。
@@ -247,8 +254,9 @@ batch 特例除去、および Phase C-2a の明示的 cache compile API と col
 isolation、C-2c の dependency surface key、C-2d の tooling cache API、C-2e の source override scope
 isolation、C-1e の source override SCC inference、C-1f の SCC clean linked-IR hit、C-1g の singleton SCC 直接推論、
 C-1h の dirty SCC lowering/link segment reuse、C-1i の dirty SCC type surface reuse、C-1j の override SCC type surface reuse、
-C-1k の unrestricted cyclic SCC merged surface fast path、C-1l の merged SCC 重複 import 除去、C-1m の型置換 fast path を検証済み部分実装として反映した。一括推論の native parity、Formatter canonical runtime parity、override 経路の segment cache、CLI driver の
-既定 cache 接続、依存 SCC key、selfhost
+C-1k の unrestricted cyclic SCC merged surface fast path、C-1l の merged SCC 重複 import 除去、C-1m の型置換 fast path、
+C-2f の tooling/driver compile session を検証済み部分実装として反映した。一括推論の native parity、Formatter canonical
+runtime parity、override 経路の segment cache、process 間 cache persistence、依存 SCC key、selfhost
 移植は未着手のため、Phase C-1 / C-2 の aggregate 完了とは扱わない。C-1n の canonical boundary ADR は、既定
 test stack overflow、CLI driver artifact、Formatter SCC timing を別々の evidence として記録する。
 着手時は TODO.md に Phase C-1 / C-2 として項目を作成する。

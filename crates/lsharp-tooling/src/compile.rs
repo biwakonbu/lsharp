@@ -27,6 +27,45 @@ pub struct CompileArtifacts {
     pub formatted: bool,
 }
 
+/// 同一 process / host session 内で compile cache を保持する境界。
+///
+/// cache は entry root の切り替え時に `CompilationCache` が scope を分離する。
+/// process をまたぐ永続化はこの型の責務に含めず、呼び出し元が session の寿命を決める。
+#[derive(Debug, Default)]
+pub struct CompileSession {
+    cache: CompilationCache,
+}
+
+impl CompileSession {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// session が保持している module cache entry 数を返す。
+    pub fn cache_len(&self) -> usize {
+        self.cache.len()
+    }
+
+    /// session cache を使って compile する。
+    pub fn compile_file_with_backend(
+        &mut self,
+        file: &Path,
+        output: Option<&Path>,
+        emit_ir: bool,
+        requested_target: Option<CompileTarget>,
+        backend: CompileBackend,
+    ) -> miette::Result<CompileArtifacts> {
+        compile_file_with_backend_and_cache(
+            file,
+            output,
+            emit_ir,
+            requested_target,
+            backend,
+            &mut self.cache,
+        )
+    }
+}
+
 /// 明示指定または出力拡張子から compile target を決定する
 pub fn resolve_compile_target(
     output: Option<&Path>,
@@ -168,15 +207,8 @@ pub fn compile_file_with_backend(
     requested_target: Option<CompileTarget>,
     backend: CompileBackend,
 ) -> miette::Result<CompileArtifacts> {
-    let mut cache = CompilationCache::new();
-    compile_file_with_backend_and_cache(
-        file,
-        output,
-        emit_ir,
-        requested_target,
-        backend,
-        &mut cache,
-    )
+    let mut session = CompileSession::new();
+    session.compile_file_with_backend(file, output, emit_ir, requested_target, backend)
 }
 
 /// backend を明示し、呼び出し元が保持する解析/IR cache を使う compile パイプライン。
@@ -305,6 +337,64 @@ mod tests {
             cache.len(),
             2,
             "warm tooling compile は cache scope を維持するべき"
+        );
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_compile_session_reuses_default_cache_for_multi_file_compile() {
+        let dir = std::env::temp_dir().join(format!(
+            "lsharp_tooling_compile_session_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock は unix epoch より後であるべき")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let lib_path = dir.join("Lib.ls");
+        let main_path = dir.join("Main.ls");
+        let output_path = dir.join("Main.wasm");
+        std::fs::write(&lib_path, "(module Lib)\n(defn helper [] 7)\n").unwrap();
+        std::fs::write(
+            &main_path,
+            "(module Main)\n(import Lib)\n(defn main [] (+ (helper) 1))\n",
+        )
+        .unwrap();
+
+        let mut session = CompileSession::new();
+        let first = session
+            .compile_file_with_backend(
+                &main_path,
+                Some(&output_path),
+                false,
+                Some(CompileTarget::WasiPreview1),
+                CompileBackend::Linear,
+            )
+            .unwrap();
+        let first_bytes = std::fs::read(&first.output_path).unwrap();
+        assert_eq!(
+            session.cache_len(),
+            2,
+            "session は multi-file cache を保持するべき"
+        );
+
+        let second = session
+            .compile_file_with_backend(
+                &main_path,
+                Some(&output_path),
+                false,
+                Some(CompileTarget::WasiPreview1),
+                CompileBackend::Linear,
+            )
+            .unwrap();
+        assert_eq!(first.output_path, second.output_path);
+        assert_eq!(first_bytes, std::fs::read(&second.output_path).unwrap());
+        assert_eq!(
+            session.cache_len(),
+            2,
+            "warm session compile は cache scope を維持するべき"
         );
 
         std::fs::remove_dir_all(&dir).unwrap();
