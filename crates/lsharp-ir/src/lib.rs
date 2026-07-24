@@ -8,8 +8,10 @@ pub mod closure;
 pub mod lower;
 pub mod module_graph;
 
+use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
+use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
 use lsharp_types::infer::ExprTypeKey;
@@ -781,6 +783,40 @@ impl ModuleTypeSurface {
     }
 }
 
+fn type_surface_key(surface: &ModuleTypeSurface) -> u64 {
+    let mut results = surface.results.clone();
+    results.sort_by(|left, right| left.0.cmp(&right.0));
+    let mut hidden = surface.hidden.iter().cloned().collect::<Vec<_>>();
+    hidden.sort();
+
+    let mut hasher = DefaultHasher::new();
+    results.hash(&mut hasher);
+    hidden.hash(&mut hasher);
+    hasher.finish()
+}
+
+fn dependency_surface_key(
+    direct_imports: &HashMap<String, ImportVisibilitySpec>,
+    current_surfaces: &HashMap<String, ModuleTypeSurface>,
+    cache: &CompilationCache,
+) -> u64 {
+    let mut dependencies = direct_imports.keys().cloned().collect::<Vec<_>>();
+    dependencies.sort();
+
+    let mut hasher = DefaultHasher::new();
+    for dependency in dependencies {
+        dependency.hash(&mut hasher);
+        if let Some(surface) = current_surfaces.get(&dependency) {
+            type_surface_key(surface).hash(&mut hasher);
+        } else if let Some(entry) = cache.get(&dependency) {
+            type_surface_key(&entry.type_surface_clone()).hash(&mut hasher);
+        } else {
+            0u8.hash(&mut hasher);
+        }
+    }
+    hasher.finish()
+}
+
 fn push_defn_origins_infer_order(
     decls: &[lsharp_syntax::ast::Decl],
     file_module: &str,
@@ -1009,11 +1045,13 @@ fn note_incremental_link_cache_hit() {
 
 fn build_module_cache_entry(
     fingerprint: SourceFingerprint,
+    deps_key: u64,
     program: &Arc<lsharp_syntax::ast::Program>,
     type_surface: ModuleTypeSurface,
 ) -> ModuleCacheEntry {
     ModuleCacheEntry::new(
         fingerprint,
+        deps_key,
         Arc::clone(program),
         type_surface,
         Module {
@@ -2175,7 +2213,7 @@ pub fn analyze_single_file_incremental(
         hidden: infer.module_env.privates.iter().cloned().collect(),
         expr_types: infer.expr_type_results_snapshot(),
     };
-    let entry = build_module_cache_entry(fingerprint, &program, type_surface);
+    let entry = build_module_cache_entry(fingerprint, 0, &program, type_surface);
     cache.insert_module(module_name.to_string(), entry);
     Ok(())
 }
@@ -2243,6 +2281,10 @@ pub fn analyze_multi_file_incremental_with_overrides(
         let program = cached_program_or_parse(&mod_name, &source, fingerprint, cache)
             .map_err(|e| format!("{}: {e}", mod_path.display()))?;
         let direct_imports = collect_import_visibility(program.as_ref());
+        let deps_key = dependency_surface_key(&direct_imports, &per_module_type_results, cache);
+        let deps_hit = cache
+            .get(&mod_name)
+            .is_some_and(|entry| entry.deps_key() == deps_key);
 
         let is_formatter_module = matches!(
             mod_name.as_str(),
@@ -2258,6 +2300,7 @@ pub fn analyze_multi_file_incremental_with_overrides(
         }
 
         let type_surface = if clean_hit
+            && deps_hit
             && !direct_dep_surface_changed
             && (!is_formatter_module || !formatter_trio_dirty)
         {
@@ -2302,7 +2345,7 @@ pub fn analyze_multi_file_incremental_with_overrides(
             surface_changed_modules.insert(mod_name.clone());
         }
 
-        let entry = build_module_cache_entry(fingerprint, &program, type_surface.clone());
+        let entry = build_module_cache_entry(fingerprint, deps_key, &program, type_surface.clone());
         cache_entries.push((mod_name.clone(), entry));
         per_module_type_results.insert(mod_name, type_surface);
     }
@@ -2370,7 +2413,7 @@ pub fn compile_multi_file_incremental(
                 &type_surface.expr_types,
             )
             .map_err(|e| format!("{}: {e}", mod_path.display()))?;
-        let mut entry = build_module_cache_entry(fingerprint, &program, type_surface);
+        let mut entry = build_module_cache_entry(fingerprint, 0, &program, type_surface);
         entry.set_ir(module.clone());
         cache.insert_module(mod_name.clone(), entry);
         return Ok(module);
@@ -2424,6 +2467,10 @@ pub fn compile_multi_file_incremental(
         let program = cached_program_or_parse(&mod_name, &source, fingerprint, cache)
             .map_err(|e| format!("{}: {e}", mod_path.display()))?;
         let direct_imports = collect_import_visibility(program.as_ref());
+        let deps_key = dependency_surface_key(&direct_imports, &per_module_type_results, cache);
+        let deps_hit = cache
+            .get(&mod_name)
+            .is_some_and(|entry| entry.deps_key() == deps_key);
 
         let is_formatter_module = matches!(
             mod_name.as_str(),
@@ -2435,6 +2482,7 @@ pub fn compile_multi_file_incremental(
         let formatter_trio_needs_batch = is_formatter_module
             && (formatter_trio_dirty || direct_dep_surface_changed || !clean_hit);
         let segment_reuse_candidate = clean_hit
+            && deps_hit
             && !direct_dep_surface_changed
             && (!is_formatter_module || !formatter_trio_dirty);
         if formatter_trio_needs_batch && formatter_trio_batch.is_none() {
@@ -2442,6 +2490,7 @@ pub fn compile_multi_file_incremental(
         }
 
         let type_surface = if clean_hit
+            && deps_hit
             && !direct_dep_surface_changed
             && (!is_formatter_module || !formatter_trio_dirty)
         {
@@ -2503,7 +2552,7 @@ pub fn compile_multi_file_incremental(
             decls: module_decls,
         });
 
-        let entry = build_module_cache_entry(fingerprint, &program, type_surface.clone());
+        let entry = build_module_cache_entry(fingerprint, deps_key, &program, type_surface.clone());
         cache_entries.push((mod_name.clone(), entry));
         per_module_type_results.insert(mod_name.clone(), type_surface);
         segment_reuse_candidates.push(segment_reuse_candidate);
@@ -3549,6 +3598,48 @@ mod incremental_compile_tests {
         );
 
         std::fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn test_compile_multi_file_with_cache_tracks_dependency_surface_key() {
+        let dir = std::env::temp_dir().join(format!(
+            "lsharp_compile_multi_file_with_cache_dependency_key_{}",
+            std::process::id()
+        ));
+        if dir.exists() {
+            std::fs::remove_dir_all(&dir).unwrap();
+        }
+        std::fs::create_dir_all(&dir).unwrap();
+        let lib_path = dir.join("Lib.ls");
+        let main_path = dir.join("Main.ls");
+        std::fs::write(&lib_path, "(module Lib)\n(defn helper [] 7)\n").unwrap();
+        std::fs::write(
+            &main_path,
+            "(module Main)\n(import Lib)\n(defn main [] (helper))\n",
+        )
+        .unwrap();
+
+        let mut cache = CompilationCache::new();
+        compile_multi_file_with_cache(&main_path, &mut cache).unwrap();
+        let initial_key = cache.get("Main").unwrap().deps_key();
+
+        std::fs::write(&lib_path, "(module Lib)\n(defn helper [] 8)\n").unwrap();
+        compile_multi_file_with_cache(&main_path, &mut cache).unwrap();
+        let implementation_only_key = cache.get("Main").unwrap().deps_key();
+        assert_eq!(
+            initial_key, implementation_only_key,
+            "依存 module の実装だけが変わった場合、公開型 key は維持するべき"
+        );
+
+        std::fs::write(&lib_path, "(module Lib)\n(defn helper [] true)\n").unwrap();
+        compile_multi_file_with_cache(&main_path, &mut cache).unwrap();
+        let surface_changed_key = cache.get("Main").unwrap().deps_key();
+        assert_ne!(
+            implementation_only_key, surface_changed_key,
+            "依存 module の公開型が変わった場合、依存 key も変わるべき"
+        );
+
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

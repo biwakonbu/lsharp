@@ -118,6 +118,11 @@ project を順に compile しても、同名 module の stale entry が残らな
 `test_compile_multi_file_with_cache_isolated_by_entry_root` は first project の 2 module cache 後に
 別 root の単一 module を compile し、cache が 1 entry に戻ることを固定する。
 
+Phase C-2c として、`ModuleCacheEntry` に `deps_key` を追加した。各 module の direct dependency 名と
+公開型 surface (`TypeScheme` と private 名) を安定した順序で hash し、実装だけの変更では downstream
+の key を維持し、公開型 surface の変更では downstream の cache hit を無効化する。既存の依存変更
+テストと `test_compile_multi_file_with_cache_tracks_dependency_surface_key` で、IR parity と再推論境界を固定する。
+
 ### 未完了の後続作業
 
 - Formatter 3 モジュールの merged 特別扱いを除去し、相互再帰 fixture の IR/runtime parity を確認する。
@@ -144,6 +149,6 @@ project を順に compile しても、同名 module の stale entry が残らな
 設計 (2026-06-12 起草、同日コード検証に基づき大幅訂正・具体化)。2026-07-24 に
 Phase C-1a の deterministic SCC 検出 API と unit test、C-1b の compile/infer 接続と相互再帰
 fixture、および Phase C-2a の明示的 cache compile API と cold/warm parity test、C-2b の entry scope
-isolation を検証済み部分実装として反映した。一括推論の native parity、CLI driver の既定 cache 接続、依存 SCC key、selfhost
+isolation、C-2c の dependency surface key を検証済み部分実装として反映した。一括推論の native parity、CLI driver の既定 cache 接続、依存 SCC key、selfhost
 移植は未着手のため、Phase C-1 / C-2 の aggregate 完了とは扱わない。
 着手時は TODO.md に Phase C-1 / C-2 として項目を作成する。

@@ -121,6 +121,7 @@ impl ModuleIrSegments {
 #[derive(Debug, Clone)]
 pub struct ModuleCacheEntry {
     fingerprint: SourceFingerprint,
+    deps_key: u64,
     ast: Arc<Program>,
     type_surface: ModuleTypeSurface,
     ir: Module,
@@ -131,6 +132,7 @@ pub struct ModuleCacheEntry {
 impl ModuleCacheEntry {
     pub(crate) fn new(
         fingerprint: SourceFingerprint,
+        deps_key: u64,
         ast: Arc<Program>,
         type_surface: ModuleTypeSurface,
         ir: Module,
@@ -139,6 +141,7 @@ impl ModuleCacheEntry {
     ) -> Self {
         Self {
             fingerprint,
+            deps_key,
             ast,
             type_surface,
             ir,
@@ -149,6 +152,11 @@ impl ModuleCacheEntry {
 
     pub fn fingerprint(&self) -> SourceFingerprint {
         self.fingerprint
+    }
+
+    /// Direct dependency の公開型 surface に基づく cache key。
+    pub fn deps_key(&self) -> u64 {
+        self.deps_key
     }
 
     pub fn ast(&self) -> &Program {
