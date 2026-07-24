@@ -59,8 +59,10 @@ WASI Preview2 / Component Model への移行に向けた WIT (WebAssembly Interf
   descriptor の `read-via-stream` / `write-via-stream` / `append-via-stream` と input/output-stream の
   resource lifecycle、`input-stream.subscribe` から `wasi:io/poll` の `pollable.block` /
   `pollable.ready`、`wasi:io/poll.poll` の borrowed pollable list/ready index、resource-drop までを
-  同じ Component resource table で検証する。`output-stream.blocking-write-zeroes-and-flush` の
-  zero-fill/flush/host artifact/drop lifecycle もこの world で検証する。暗黙の別 resource table に分離しない
+  同じ Component resource table で検証する。`output-stream.check-write` / `write` / `flush` /
+  `blocking-flush` の permit/write/flush/host artifact/drop lifecycle と、
+  `output-stream.blocking-write-zeroes-and-flush` の zero-fill/flush/host artifact/drop lifecycle も
+  この world で検証する。暗黙の別 resource table に分離しない
 
 ## 関連タスク
 

@@ -1047,6 +1047,24 @@ Stage 2as の descriptor advisory boundary に加えて、read-write named preop
 contract、separate flush / blocking-flush、stream error、残る streams operation、Wasm artifact/runtime
 differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity は未完了である。
 
+## Stage 2au 検証済み slice: output-stream check-write/write/flush lifecycle (2026-07-24)
+
+Stage 2at の zero-fill boundary に加えて、read-write named preopen の output stream から
+`check-write` の permit、direct `write`、`flush`、`blocking-flush`、result/drop、host artifact 境界を
+actual Component で検証した。
+
+- `wasm_gc_component_cli_fs_runner_checks_writes_and_flushes_stream_then_drops_resources` は
+  `checked.txt` を create+truncate+write で開き、`write-via-stream(0)` で得た output stream に
+  `check-write` を実行する。
+- 正の permit を確認した後、permit 以下の `hello` を直接 `write` し、`flush` と `blocking-flush` の
+  success result を確認する。output stream、file descriptor、preopen を drop し、host file が
+  `hello`、stdout empty、`wasi:cli/run` exit 0 になることを同じ実行で確認する。
+
+これは output-stream readiness/write/flush の verified partial slice であり、`write-zeroes` の
+check-write contract、stream error/resource failure、`subscribe`/poll readiness、`splice`、input
+stream の残る operation、Wasm artifact/runtime differential、Mac Apple Silicon/Linux x86_64、
+native/selfhost parity は未完了である。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線
