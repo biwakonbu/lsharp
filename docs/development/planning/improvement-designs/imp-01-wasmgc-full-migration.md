@@ -1600,11 +1600,29 @@ verified slice へ進める。
 - `wasm_gc_non_capturing_lambda_lowers_to_funcref` が IR の `FuncRef` / `RefFunc` と linear
   memory 命令の不在を固定し、`wasm_gc_emitter_accepts_lowered_non_capturing_lambda_funcref`
   が WasmGC + typed function references を有効にした Wasmtime 29 で生成物を検証する。
-- captured lambda、lambda の env struct、closure call の `CallRef`、nested/parametric closure、
-  Mac/Linux native-selfhost parity はこの slice の外側で、Stage 3c の明示拒否を維持する。
+- captured lambda、lambda の env struct、nested/parametric closure、Mac/Linux native-selfhost parity
+  はこの slice の外側で、Stage 3c の明示拒否を維持する。source-level direct call は Stage 3e
+  で別に検証する。
 
 これは non-capturing lambda の verified partial slice であり、closure 全体および
 `LEGACY-EXEC-01` の完了条件には到達していない。
+
+### Stage 3e: WasmGC non-capturing lambda の source-level `call_ref` (検証済み partial slice)
+
+non-capturing lambda literal を直接 application する場合も linear-memory `CallIndirect` へ
+落とさず、引数を評価してから `ref.func` と typed `call_ref` を生成する経路を追加した。
+
+- `(defn main [] ((fn [x] (+ x 1)) 41))` を `I64Const(41) → RefFunc → CallRef` として lowering
+  し、`wasm_gc_non_capturing_lambda_call_lowers_to_call_ref` で function/type index を固定する。
+- `wasm_gc_emitter_executes_lowered_non_capturing_lambda_call_ref` が Wasmtime 29 で実行結果 `42`
+  を確認する。`print-string` の synthetic import がある module では、emitter が element/function
+  index と function type index を同じ offset で補正し、`wasm_gc_emitter_offsets_lowered_lambda_call_ref_after_print_string_import`
+  で生成 module の validation を確認する。
+- captured closure、local に保存した funcref の indirect call、env struct、parametric/nested
+  closure はこの slice の外側で、WasmGC backend は linear-memory closure fallback を生成しない。
+
+これは non-capturing lambda の direct call までを閉じた verified partial slice であり、closure 全体
+および `LEGACY-EXEC-01` の完了条件には到達していない。
 
 ### Stage 3: Closures → funcref + env struct
 
@@ -1664,7 +1682,8 @@ WasmGC Component bridge 明示拒否、Stage 2l の output `list<u8>` canonical 
 custom `wasmgc-output` Component actual instantiate、Stage 2p の Preview2 stdout stream 接続、
 Stage 2q の custom CLI `wasi:cli/run` 接続、Stage 3a の typed funcref emitter/runtime capability、
 Stage 3b の module-link funcref index/type remap、Stage 3c の captured closure lowering 明示境界、
-Stage 3d の non-capturing lambda funcref lowering は 2026-07-24 に検証済み。ADT
+Stage 3d の non-capturing lambda funcref lowering、Stage 3e の source-level direct `call_ref` は
+2026-07-24 に検証済み。ADT
 の全表現、Stage 2 の残り (Unicode code-point semantics / WASI-component I/O /
 native-selfhost parity)、Stage 3 の captured env/call を含む closure 全体、traits / selfhost、supported target
 の actual runtime evidence は未完了であり、`LEGACY-EXEC-01` の完了条件には到達していない。

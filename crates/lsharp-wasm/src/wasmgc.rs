@@ -229,6 +229,11 @@ fn emit_wasm_wasmgc_internal(
         })
         .collect::<Vec<_>>();
     if !referenced_funcrefs.is_empty() {
+        let synthetic_import_offset = u32::from(print_string_import);
+        let referenced_funcrefs = referenced_funcrefs
+            .into_iter()
+            .map(|index| index + synthetic_import_offset)
+            .collect::<Vec<_>>();
         let mut elements = ElementSection::new();
         elements.declared(Elements::Functions(Cow::Owned(referenced_funcrefs)));
         wasm_module.section(&elements);
@@ -620,10 +625,14 @@ fn emit_wasm_gc_instructions(
                     function.instruction(&W::RefNull(HeapType::Concrete(*type_index)));
                 }
                 Instruction::RefFunc(function_index) => {
-                    function.instruction(&W::RefFunc(*function_index));
+                    function.instruction(&W::RefFunc(
+                        *function_index + u32::from(options.print_string_import),
+                    ));
                 }
                 Instruction::CallRef(type_index) => {
-                    function.instruction(&W::CallRef(*type_index));
+                    function.instruction(&W::CallRef(
+                        *type_index + u32::from(options.print_string_import),
+                    ));
                 }
                 Instruction::ArrayNewFixed(type_index, length) => {
                     function.instruction(&W::ArrayNewFixed {

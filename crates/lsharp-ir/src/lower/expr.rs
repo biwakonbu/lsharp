@@ -179,6 +179,36 @@ impl Lower {
             }
 
             Expr::App(expr_span, func, args) => {
+                if self.backend == LowerBackend::WasmGc
+                    && matches!(func.as_ref(), Expr::Lambda(_, _, _))
+                {
+                    // WasmGC の non-capturing lambda は、引数を先に積んでから
+                    // `ref.func` を積み、lambda の user function type を指定した
+                    // typed `call_ref` へ接続する。captured lambda は lower_expr 側の
+                    // 明示拒否境界を通るため、linear-memory closure へ戻らない。
+                    for arg in args {
+                        self.lower_expr(ctx, arg)?;
+                    }
+                    self.lower_expr(ctx, func)?;
+                    let function_index = match ctx.instructions.last() {
+                        Some(Instruction::RefFunc(index)) => *index,
+                        _ => {
+                            return Err(LowerError::Unsupported {
+                                msg: "WasmGC lambda call の ref.func が生成されませんでした"
+                                    .to_string(),
+                                span: Some(*expr_span),
+                            });
+                        }
+                    };
+                    // WasmGC emitter の type section は GC type → import function type →
+                    // user function type の順序で構築される。lowerer が生成する module
+                    // は import を持たないため、ここでは GC type 数を user function index
+                    // に加えれば lambda の function type index になる。
+                    ctx.emit(Instruction::CallRef(
+                        self.gc_types.len() as u32 + function_index,
+                    ));
+                    return Ok(());
+                }
                 match func.as_ref() {
                     // and/or 論理演算子（i64 -> i32 変換が必要）
                     Expr::Var(_, op) if (op == "and" || op == "or") && args.len() == 2 => {
