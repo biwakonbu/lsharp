@@ -189,6 +189,12 @@ Phase C-2o として、`compile` / `build` に `--artifact-cache-max-bytes <N>` 
 から削除して byte budget 以下へ戻す。entry count と byte count を併用した場合も deterministic に順番適用し、既定 cache location、
 Native/selfhost、mtime/LRU は変えない verified partial slice である。
 
+Phase C-2p として、`LSHARP_ARTIFACT_CACHE_DIR` を `--artifact-cache-dir` の opt-in default として追加した。CLI flag を優先し、
+環境変数が未設定なら従来どおり artifact cache を作成せず、空の環境変数は current directory への暗黙 fallback にならないよう明示エラーにする。
+entry/byte limit は解決済み root に対して従来の成功後 maintenance を適用する。環境変数が設定された compile/build では embedded component
+delegation を抑止し、filesystem を使う Rust host 境界を曖昧にしない。これは CLI/env opt-in の verified partial slice であり、公開 cache key
+の再設計、自動 eviction policy、Native/selfhost compiler への移植は未完了である。
+
 Phase C-1c として、`compile_multi_file_incremental` も `build_from_entry_with_scc` を使い、サイズ 2 以上
 の SCC を `infer_scc_type_surfaces` で一括推論する fallback を追加した。SCC 経路は現時点では
 `ModuleIrSegments` の再利用を行わず、SCC 全体を modular lowering して linked IR と型 surface を cache
@@ -278,8 +284,9 @@ validation は `test_e2e_bootstrap_cli_fixed_input_compile_gate` (`66.36 s`, 1 p
 - CLI driver の既定経路は C-2f で process 内 session cache へ接続し、C-2g で process 間 cache の identity key、C-2h で
   明示 root の atomic artifact store/load、C-2i で `CompileSession` の opt-in Wasm 接続と source-change miss、C-2j で
   target-aware Wasm validation、C-2k で `--artifact-cache-dir` の host-only opt-in、C-2l で cached Wasm runtime execution、
-  C-2m で明示 bounded maintenance、C-2n で CLI の明示 entry limit、C-2o で CLI の明示 byte budget を固定した。CLI/env default、
-  依存 SCC を含む公開 cache key の統合、自動 eviction policy、Native/selfhost compiler への移植を行う。
+  C-2m で明示 bounded maintenance、C-2n で CLI の明示 entry limit、C-2o で CLI の明示 byte budget、C-2p で
+  `LSHARP_ARTIFACT_CACHE_DIR` の opt-in default を固定した。依存 SCC を含む公開 cache key の統合、自動 eviction policy、
+  Native/selfhost compiler への移植を行う。
 - source override 入口はまだ strict な graph build と module 単位推論を使っており、SCC-aware override
   inference は C-1e で閉じた。compile / override の dirty type surface 再利用は C-1i/C-1j、compile の dirty lowering は
   C-1h で閉じたが、override 経路への segment cache と disk persistence は未着手である。

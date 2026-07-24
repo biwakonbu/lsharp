@@ -122,7 +122,7 @@ enum Command {
         #[arg(long, value_enum)]
         backend: Option<CliCompileBackend>,
 
-        /// process 間 Wasm artifact cache の root（明示時のみ有効）
+        /// process 間 Wasm artifact cache の root（未指定時は LSHARP_ARTIFACT_CACHE_DIR を参照）
         #[arg(long)]
         artifact_cache_dir: Option<PathBuf>,
 
@@ -156,7 +156,7 @@ enum Command {
         #[arg(long, value_enum)]
         backend: Option<CliCompileBackend>,
 
-        /// process 間 Wasm artifact cache の root（明示時のみ有効）
+        /// process 間 Wasm artifact cache の root（未指定時は LSHARP_ARTIFACT_CACHE_DIR を参照）
         #[arg(long)]
         artifact_cache_dir: Option<PathBuf>,
 
@@ -318,6 +318,7 @@ fn main() -> miette::Result<()> {
             artifact_cache_max_bytes,
             emit_ir,
         } => {
+            let artifact_cache_dir = resolve_artifact_cache_dir(artifact_cache_dir)?;
             validate_artifact_cache_options(
                 artifact_cache_dir.as_deref(),
                 artifact_cache_max_entries,
@@ -547,6 +548,29 @@ fn print_compile_artifacts_success(artifacts: &commands::compile::CompileArtifac
         artifacts.output_path.display(),
         output_size
     );
+}
+
+const ARTIFACT_CACHE_DIR_ENV: &str = "LSHARP_ARTIFACT_CACHE_DIR";
+
+fn resolve_artifact_cache_dir(explicit: Option<PathBuf>) -> miette::Result<Option<PathBuf>> {
+    resolve_artifact_cache_dir_from_values(explicit, std::env::var_os(ARTIFACT_CACHE_DIR_ENV))
+}
+
+fn resolve_artifact_cache_dir_from_values(
+    explicit: Option<PathBuf>,
+    environment: Option<std::ffi::OsString>,
+) -> miette::Result<Option<PathBuf>> {
+    if explicit.is_some() {
+        return Ok(explicit);
+    }
+
+    match environment {
+        None => Ok(None),
+        Some(value) if value.is_empty() => Err(miette::miette!(
+            "{ARTIFACT_CACHE_DIR_ENV} が空です。cache root の path を指定してください"
+        )),
+        Some(value) => Ok(Some(PathBuf::from(value))),
+    }
 }
 
 fn validate_artifact_cache_options(
@@ -883,6 +907,23 @@ fn should_delegate_to_embedded_component() -> bool {
 }
 
 fn should_delegate_to_embedded_component_args(args: &[std::ffi::OsString]) -> bool {
+    let cache_env = std::env::var_os(ARTIFACT_CACHE_DIR_ENV);
+    should_delegate_to_embedded_component_args_with_cache_env(args, cache_env.as_deref())
+}
+
+fn should_delegate_to_embedded_component_args_with_cache_env(
+    args: &[std::ffi::OsString],
+    cache_env: Option<&std::ffi::OsStr>,
+) -> bool {
+    if cache_env.is_some()
+        && matches!(
+            args.first().and_then(|arg| arg.to_str()),
+            Some("compile" | "build")
+        )
+    {
+        return false;
+    }
+
     match args.first().and_then(|arg| arg.to_str()) {
         Some("parse" | "check" | "test" | "fmt") => true,
         Some("review") => should_delegate_review_command_args(args),
@@ -2817,6 +2858,44 @@ mod tests {
     }
 
     #[test]
+    fn test_resolve_artifact_cache_dir_prefers_cli_over_environment() {
+        let resolved = resolve_artifact_cache_dir_from_values(
+            Some(PathBuf::from("cli-cache")),
+            Some(std::ffi::OsString::from("env-cache")),
+        )
+        .expect("CLI cache root は解決できるべき");
+
+        assert_eq!(resolved, Some(PathBuf::from("cli-cache")));
+    }
+
+    #[test]
+    fn test_resolve_artifact_cache_dir_uses_environment_when_cli_is_absent() {
+        let resolved = resolve_artifact_cache_dir_from_values(
+            None,
+            Some(std::ffi::OsString::from("env-cache")),
+        )
+        .expect("環境変数の cache root は解決できるべき");
+
+        assert_eq!(resolved, Some(PathBuf::from("env-cache")));
+    }
+
+    #[test]
+    fn test_resolve_artifact_cache_dir_keeps_cache_disabled_when_unset() {
+        let resolved = resolve_artifact_cache_dir_from_values(None, None)
+            .expect("未設定の cache root はエラーにならないべき");
+
+        assert_eq!(resolved, None);
+    }
+
+    #[test]
+    fn test_resolve_artifact_cache_dir_rejects_empty_environment_value() {
+        let error = resolve_artifact_cache_dir_from_values(None, Some(std::ffi::OsString::new()))
+            .expect_err("空の cache root は暗黙の current directory になってはいけない");
+
+        assert!(error.to_string().contains("LSHARP_ARTIFACT_CACHE_DIR"));
+    }
+
+    #[test]
     fn test_cli_compile_artifact_cache_max_entries_is_explicit() {
         let cli = Cli::try_parse_from([
             "lsharp",
@@ -2998,6 +3077,20 @@ mod tests {
             "examples/fib.ls",
             "--strict",
         ])));
+    }
+
+    #[test]
+    fn test_embedded_component_delegation_rejects_environment_cache_root() {
+        let args = os_args(&["compile", "examples/fib.ls"]);
+        let cache_env = std::ffi::OsString::from("tmp/lsharp-cache");
+
+        assert!(should_delegate_to_embedded_component_args_with_cache_env(
+            &args, None
+        ));
+        assert!(!should_delegate_to_embedded_component_args_with_cache_env(
+            &args,
+            Some(cache_env.as_os_str()),
+        ));
     }
 
     #[test]
