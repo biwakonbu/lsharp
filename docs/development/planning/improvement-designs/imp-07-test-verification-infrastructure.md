@@ -74,8 +74,9 @@ imp-03 のテスト戦略と共有する:
 - E2E の失敗事例 (過去の rooting バグ、parser バグ) から逆引きして、
   各レイヤの最小再現ユニットテストを起こす (失敗駆動でテストを増やす)
 - インラインテストの分離は imp-06 §1 の規則 (tests.rs 分離) に従う
-- 機械検査: クレートごとのテスト関数数を出すスクリプトを `scripts/` に置き、
-  偏りの推移を確認できるようにする (目標値は設けず、可視化のみ)
+- 機械検査: `scripts/test-distribution.py` でクレートごとの Rust test attribute/function、proptest macro、ignore 数を
+  deterministic な TSV/JSON として出力し、`scripts/ci/test-test-distribution.sh` で schema・crate 集合・出力安定性を契約検査する。
+  目標値は設けず、偏りの推移を可視化する。
 
 ## 影響範囲
 
@@ -100,5 +101,5 @@ pretty-print → re-parse 安定性を 64 cases で固定した。full crate gat
 
 ## ステータス
 
-設計 + parser panic-safety / type-unify symmetry / bounded inference / syntax roundtrip verified slice (2026-07-24)。着手時は TODO.md に Phase B-4 / D-3 / D-4 として項目を作成する。
+設計 + parser panic-safety / type-unify symmetry / bounded inference / syntax roundtrip / test-distribution verified slice (2026-07-24)。着手時は TODO.md に Phase B-4 / D-3 / D-4 として項目を作成する。
 `LEGACY-TEST-01` aggregate の完了条件は満たしていない。
