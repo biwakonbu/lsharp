@@ -61,6 +61,9 @@ impl ParseAllError {
 }
 
 #[cfg(test)]
+mod test_gen;
+
+#[cfg(test)]
 mod diagnostic_tests {
     use super::{ParseAllError, parse};
     use crate::lexer::Lexer;
@@ -121,6 +124,28 @@ mod property_tests {
             let source = String::from_utf8_lossy(&bytes);
             let result = std::panic::catch_unwind(|| super::parse(&source));
             prop_assert!(result.is_ok(), "parser panicked for generated input");
+        }
+    }
+}
+
+#[cfg(test)]
+mod roundtrip_property_tests {
+    use super::parse;
+    use super::test_gen::arb_expr;
+    use proptest::prelude::*;
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(64))]
+
+        #[test]
+        fn pretty_printed_ast_reparses_to_the_same_source(body in arb_expr()) {
+            let source = format!("(defn main [] {body})");
+            let program = parse(&source).expect("generated AST source must parse");
+            let displayed = program.to_string();
+            prop_assert_eq!(&displayed, &source);
+
+            let reparsed = parse(&displayed).expect("pretty-printed source must reparse");
+            prop_assert_eq!(reparsed.to_string(), displayed);
         }
     }
 }

@@ -216,7 +216,16 @@ impl<'src> Lexer<'src> {
                         b'"' => value.push('"'),
                         _ => {
                             value.push('\\');
-                            value.push(escaped as char);
+                            // 未知 escape は従来どおり文字列へ残すが、非 ASCII の場合は
+                            // UTF-8 の先頭 byte だけを消費して char boundary を壊さない。
+                            let remaining = &self.source[self.pos..];
+                            if let Some(ch) = remaining.chars().next() {
+                                value.push(ch);
+                                self.pos += ch.len_utf8();
+                            } else {
+                                self.pos += 1;
+                            }
+                            continue;
                         }
                     }
                     self.pos += 1;
@@ -441,6 +450,21 @@ mod tests {
         assert_eq!(
             tokens,
             vec![TokenKind::String("hello world".to_string()), TokenKind::Eof]
+        );
+    }
+
+    #[test]
+    fn test_invalid_utf8_after_escape_returns_error_without_panic() {
+        let source = String::from_utf8_lossy(&[b'"', b'\\', 0x80]);
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let mut lexer = Lexer::new(&source);
+            lexer.tokenize()
+        }));
+
+        assert!(result.is_ok(), "invalid UTF-8 escape must not panic");
+        assert!(
+            result.unwrap().is_err(),
+            "unterminated string must be rejected"
         );
     }
 

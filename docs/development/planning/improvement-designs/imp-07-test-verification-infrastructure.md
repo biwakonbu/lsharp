@@ -89,11 +89,15 @@ imp-03 のテスト戦略と共有する:
 - `lsharp-syntax`: arbitrary bytes（0〜127 bytes）を入力して parser が panic せず `Ok` または parse/lex error を返す。
 - `lsharp-types`: 深さ・要素数を制限した `Type` を生成し、`unify(a, b)` と `unify(b, a)` の成否が一致する。
 
-いずれも arbitrary input/type の panic regression と unification の成否対称性に限定した verified slice であり、AST generator、pretty-print roundtrip、
+さらに `lsharp-syntax` に深さ 3・要素数 bounded の式 generator を追加し、literal/variable/if/let/lambda/application/do/annotation/record/quote の
+pretty-print → re-parse 安定性を 64 cases で固定した。full crate gate 中に `"\\` と不正 UTF-8 置換文字の組み合わせが lexer の char boundary panic を検出したため、
+未知 escape の非 ASCII code point を一文字分消費する修正と regression seed を追加した。
+
+これらは arbitrary input/type の panic regression、unification の成否対称性、限定した AST roundtrip に対する verified slice であり、
 小さな式全体の型推論、nightly 4096 cases、GC leak/limit、rooting stress は未着手のまま残る。property test は dev-dependency と `cfg(test)` に閉じ、
 配布 artifact の依存関係や公開 CLI の挙動を変更しない。
 
 ## ステータス
 
-設計 + parser panic-safety / type-unify symmetry verified slice (2026-07-24)。着手時は TODO.md に Phase B-4 / D-3 / D-4 として項目を作成する。
+設計 + parser panic-safety / type-unify symmetry / syntax roundtrip verified slice (2026-07-24)。着手時は TODO.md に Phase B-4 / D-3 / D-4 として項目を作成する。
 `LEGACY-TEST-01` aggregate の完了条件は満たしていない。
