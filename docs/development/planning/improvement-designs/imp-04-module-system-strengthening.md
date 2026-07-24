@@ -111,6 +111,13 @@ Phase C-2a として、既存の `compile_multi_file_incremental` を明示的�
 `test_compile_multi_file_with_cache_matches_fresh_and_warm_compile` は fresh compile と cold cache の
 IR 一致、warm cache の IR 一致、warm 時の型推論カウンタ 0 件を固定する verified partial slice である。
 
+Phase C-2b として、`CompilationCache::prepare_for_entry` を追加した。cache の既存キーは互換性の
+ため module 名のままだが、entry file の canonical directory を process 内の scope として保持し、
+scope が変わったときは module entry と linked IR を同時に破棄する。これにより同一 process で別
+project を順に compile しても、同名 module の stale entry が残らない。
+`test_compile_multi_file_with_cache_isolated_by_entry_root` は first project の 2 module cache 後に
+別 root の単一 module を compile し、cache が 1 entry に戻ることを固定する。
+
 ### 未完了の後続作業
 
 - Formatter 3 モジュールの merged 特別扱いを除去し、相互再帰 fixture の IR/runtime parity を確認する。
@@ -136,7 +143,7 @@ IR 一致、warm cache の IR 一致、warm 時の型推論カウンタ 0 件を
 
 設計 (2026-06-12 起草、同日コード検証に基づき大幅訂正・具体化)。2026-07-24 に
 Phase C-1a の deterministic SCC 検出 API と unit test、C-1b の compile/infer 接続と相互再帰
-fixture、および Phase C-2a の明示的 cache compile API と cold/warm parity test を検証済み部分実装
-として反映した。一括推論の native parity、CLI driver の既定 cache 接続、依存 SCC key、selfhost
+fixture、および Phase C-2a の明示的 cache compile API と cold/warm parity test、C-2b の entry scope
+isolation を検証済み部分実装として反映した。一括推論の native parity、CLI driver の既定 cache 接続、依存 SCC key、selfhost
 移植は未着手のため、Phase C-1 / C-2 の aggregate 完了とは扱わない。
 着手時は TODO.md に Phase C-1 / C-2 として項目を作成する。

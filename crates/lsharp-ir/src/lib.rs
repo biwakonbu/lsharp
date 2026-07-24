@@ -2135,6 +2135,7 @@ pub fn compile_multi_file_with_cache(
     entry_file: &std::path::Path,
     cache: &mut CompilationCache,
 ) -> Result<Module, String> {
+    cache.prepare_for_entry(entry_file);
     compile_multi_file_incremental(entry_file, cache)
 }
 
@@ -3503,6 +3504,51 @@ mod incremental_compile_tests {
         );
 
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_compile_multi_file_with_cache_isolated_by_entry_root() {
+        let base = std::env::temp_dir().join(format!(
+            "lsharp_compile_multi_file_with_cache_scope_{}",
+            std::process::id()
+        ));
+        if base.exists() {
+            std::fs::remove_dir_all(&base).unwrap();
+        }
+        let first = base.join("first");
+        let second = base.join("second");
+        std::fs::create_dir_all(&first).unwrap();
+        std::fs::create_dir_all(&second).unwrap();
+
+        std::fs::write(first.join("Lib.ls"), "(module Lib)\n(defn helper [] 7)\n").unwrap();
+        std::fs::write(
+            first.join("Main.ls"),
+            "(module Main)\n(import Lib)\n(defn main [] (+ (helper) 1))\n",
+        )
+        .unwrap();
+        std::fs::write(second.join("Main.ls"), "(module Main)\n(defn main [] 42)\n").unwrap();
+
+        let mut cache = CompilationCache::new();
+        compile_multi_file_with_cache(&first.join("Main.ls"), &mut cache).unwrap();
+        assert_eq!(
+            cache.len(),
+            2,
+            "first project は Main と Lib を cache するべき"
+        );
+
+        let second_module = compile_multi_file_with_cache(&second.join("Main.ls"), &mut cache)
+            .expect("entry root が変わっても compile できるべき");
+        assert!(matches!(
+            main_function(&second_module).body.as_slice(),
+            [Instruction::I64Const(42)]
+        ));
+        assert_eq!(
+            cache.len(),
+            1,
+            "別 project の stale module は cache に残さないべき"
+        );
+
+        std::fs::remove_dir_all(&base).unwrap();
     }
 
     #[test]

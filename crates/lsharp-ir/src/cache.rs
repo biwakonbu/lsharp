@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use lsharp_syntax::ast::Program;
@@ -215,6 +216,7 @@ impl LinkedModuleCache {
 pub struct CompilationCache {
     entries: HashMap<String, ModuleCacheEntry>,
     linked_module: Option<LinkedModuleCache>,
+    entry_root: Option<PathBuf>,
 }
 
 impl CompilationCache {
@@ -228,6 +230,25 @@ impl CompilationCache {
 
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
+    }
+
+    /// エントリの所在が変わったとき、別プロジェクトの module 名を再利用しない。
+    ///
+    /// キャッシュのキーは既存 caller との互換性のため module 名のままなので、同じ
+    /// process で別の entry を compile する前に entry directory を scope として固定する。
+    /// scope が変わった場合は module / link cache をまとめて破棄する。
+    pub fn prepare_for_entry(&mut self, entry_file: &Path) {
+        let entry_root = std::fs::canonicalize(entry_file)
+            .ok()
+            .and_then(|path| path.parent().map(Path::to_path_buf))
+            .or_else(|| entry_file.parent().map(Path::to_path_buf))
+            .unwrap_or_default();
+        if self.entry_root.as_ref() == Some(&entry_root) {
+            return;
+        }
+        self.entries.clear();
+        self.linked_module = None;
+        self.entry_root = Some(entry_root);
     }
 
     pub fn get(&self, module: &str) -> Option<&ModuleCacheEntry> {
