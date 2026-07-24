@@ -98,6 +98,7 @@ imp-03 のテスト戦略と共有する:
 - `lsharp-types` integration limit contract: `Box` を 32 / 64 / 128 段ネストした型注釈を parse → inference しても panic せず成功する。
 - `lsharp-types` integration limit contract: `Int` フィールド 128 / 256 個の `Wide` レコード型注釈を parse → inference しても panic せず成功する。
 - `lsharp-types` Criterion baseline: `Box` 128 段と `Wide` 256 fields の parse → inference benchmark を `infer_limits` bench target として再現できる。
+- type inference limit lane: `scripts/ci/test-type-inference-limits.sh` が occurs-check、深い `Box`、巨大 `Wide` record の 3 exact integration test を直列実行する。性能比較と native parity は別 boundary とする。
 - `lsharp-wasm` actual runtime contract: 4097 個の unrooted allocation の回収、free-list 再利用、10 回 repeated-start の heap plateau を telemetry で確認する。
 - root capacity contract: `test_e2e_runtime_root_stack_grows_past_initial_capacity` が初期 32768 slot 超過後の `root_stack_top=32769` / `root_stack_capacity=65536` を確認し、`test_e2e_runtime_root_stack_growth_preserves_root_api` が移動後の `root_set/root_pop` を確認する（WASI actual runtime）。
 - runtime limit lane: `scripts/ci/test-runtime-limits.sh` が memory.grow failure、core-WASI stable `LS4002`、object/free-list/root capacity、root API preservation、repeated-start collector reuse の 8 exact E2E を直列実行する。generic trap safety と stable diagnostic を別 boundary として記録する。
@@ -116,5 +117,5 @@ pretty-print → re-parse 安定性を 64 cases で固定した。full crate gat
 
 ## ステータス
 
-設計 + parser panic-safety / type-unify symmetry / bounded inference / occurs-check / syntax roundtrip / test-distribution / property 4096-case lane / runtime limit lane / runtime recursion limit lane / GC rooting regression lane / core-WASI GC capacity `LS4002` / root capacity / rooting contract verified slice (2026-07-25)。各 lane の判断と evidence は ADR-legacy-test-property-4096-lane / runtime-limits / runtime-recursion-limit / gc-rooting-lane / gc-root-capacity / gc-capacity-diagnostic / rooting-contract に記録する。着手時は TODO.md に Phase B-4 / D-3 / D-4 として項目を作成する。
+設計 + parser panic-safety / type-unify symmetry / bounded inference / occurs-check / type inference limit lane / syntax roundtrip / test-distribution / property 4096-case lane / runtime limit lane / runtime recursion limit lane / GC rooting regression lane / core-WASI GC capacity `LS4002` / root capacity / rooting contract verified slice (2026-07-25)。各 lane の判断と evidence は ADR-legacy-test-property-4096-lane / type-inference-limit-lane / runtime-limits / runtime-recursion-limit / gc-rooting-lane / gc-root-capacity / gc-capacity-diagnostic / rooting-contract に記録する。着手時は TODO.md に Phase B-4 / D-3 / D-4 として項目を作成する。
 `LEGACY-TEST-01` aggregate の完了条件は満たしていない。
