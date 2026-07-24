@@ -1,5 +1,93 @@
 use super::support::*;
 
+#[test]
+fn test_e2e_selfhost_typeinfer_finalize_defn_root_lifetime_is_balanced() {
+    let source = std::fs::read_to_string(selfhost_source_path("TypeInferFunctions.ls"))
+        .expect("canonical TypeInferFunctions.ls が読み込めない");
+    let start = source
+        .find("(defn typeinfer-finalize-defn-result-with-env-vars ")
+        .expect("typeinfer-finalize-defn-result-with-env-vars が見つからない");
+    let body = &source[start..];
+    let end = body[1..]
+        .find("(defn ")
+        .map(|offset| offset + 1)
+        .unwrap_or(body.len());
+    let function_source = &body[..end];
+    let pushes = function_source.matches("(root_push ").count();
+    let pops = function_source.matches("(root_pop)").count();
+
+    assert_eq!(
+        pushes, pops,
+        "typeinfer-finalize-defn-result-with-env-vars の root slot lifetime が不均衡: push={pushes}, pop={pops}"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_infer_var_root_lifetime_is_balanced() {
+    let source = std::fs::read_to_string(selfhost_source_path("TypeInfer.ls"))
+        .expect("canonical TypeInfer.ls が読み込めない");
+    let start = source
+        .find("(defn infer-var ")
+        .expect("infer-var が見つからない");
+    let body = &source[start..];
+    let end = body[1..]
+        .find("(defn ")
+        .map(|offset| offset + 1)
+        .unwrap_or(body.len());
+    let function_source = &body[..end];
+    let pushes = function_source.matches("(root_push ").count();
+    let pops = function_source.matches("(root_pop)").count();
+
+    assert_eq!(
+        pushes, pops,
+        "infer-var の root slot lifetime が不均衡: push={pushes}, pop={pops}"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_typeinfer_program_analysis_state_base_root_lifetime_is_balanced() {
+    let source = std::fs::read_to_string(selfhost_source_path("TypeInfer.ls"))
+        .expect("canonical TypeInfer.ls が読み込めない");
+    let start = source
+        .find("(defn typeinfer-program-analysis-state-base ")
+        .expect("typeinfer-program-analysis-state-base が見つからない");
+    let body = &source[start..];
+    let end = body[1..]
+        .find("(defn ")
+        .map(|offset| offset + 1)
+        .unwrap_or(body.len());
+    let function_source = &body[..end];
+    let pushes = function_source.matches("(root_push ").count();
+    let pops = function_source.matches("(root_pop)").count();
+
+    assert_eq!(
+        pushes, pops,
+        "typeinfer-program-analysis-state-base の root slot lifetime が不均衡: push={pushes}, pop={pops}"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_typeinfer_register_adt_variants_root_lifetime_is_balanced() {
+    let source = std::fs::read_to_string(selfhost_source_path("TypeInferAdt.ls"))
+        .expect("canonical TypeInferAdt.ls が読み込めない");
+    let start = source
+        .find("(defn typeinfer-register-adt-variants-loop ")
+        .expect("typeinfer-register-adt-variants-loop が見つからない");
+    let body = &source[start..];
+    let end = body[1..]
+        .find("(defn ")
+        .map(|offset| offset + 1)
+        .unwrap_or(body.len());
+    let function_source = &body[..end];
+    let pushes = function_source.matches("(root_push ").count();
+    let pops = function_source.matches("(root_pop)").count();
+
+    assert_eq!(
+        pushes, pops,
+        "typeinfer-register-adt-variants-loop の root slot lifetime が不均衡: push={pushes}, pop={pops}"
+    );
+}
+
 // === TEST-BOOT-01-A: canonical Main import-only パイプラインの compile 成功テスト ===
 
 /// `selfhost/src/App/Main.ls` が import-only パイプラインとして構成されていること、

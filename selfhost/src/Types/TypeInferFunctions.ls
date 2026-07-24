@@ -273,8 +273,6 @@
                     (root_pop)
                     (root_pop)
                     (root_pop)
-                    (root_pop)
-                    (root_pop)
                     result))))))))))
 
 (defn typeinfer-finalize-defn-result [env name-hash subst value-ty]

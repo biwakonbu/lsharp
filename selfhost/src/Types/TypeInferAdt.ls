@@ -202,6 +202,7 @@
                               (root_pop)
                               (root_pop)
                               (root_pop)
+                              (root_pop)
                               parsed)))))))))))))))
 
 (defn typeinfer-register-adt-decl [decl env counter alias-env]

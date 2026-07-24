@@ -103,8 +103,6 @@
             (root_pop)
             (root_pop)
             (root_pop)
-            (root_pop)
-            (root_pop)
             result))))))
 
 ;; if 式の型推論
@@ -1273,7 +1271,6 @@
                                                       with-first-error-start
                                                       first-error-end)]
                                               (do
-                                                (root_pop)
                                                 (root_pop)
                                                 (root_pop)
                                                 (root_pop)
