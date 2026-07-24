@@ -1386,6 +1386,24 @@ Component で検証した。
 error mapping、Wasm artifact/runtime differential、Mac Apple Silicon/Linux x86_64、native/selfhost
 parity は未完了である。
 
+## Stage 2bo 検証済み slice: WasmGC Component artifact の保存・再読込・実行 (2026-07-24)
+
+in-memory Component の validation/runtime だけでは、生成物を配布・再利用する境界を証明できないため、
+同じ `wasmgc-output` Component bytes を `.component.wasm` artifact として保存し、再読込した実体を
+validation と Preview2 host runtime へ通す round-trip を追加した。
+
+- `wasm_gc_component_output_artifact_round_trip_preserves_preview2_runtime` は core module を
+  `componentize_core_module` で Component 化し、`output.component.wasm` へ保存した後に再読込する。
+  再読込 bytes が生成時 bytes と一致すること、`wasmparser::Validator` と `wasmtime::component::Component`
+  の両方で検証できることを固定する。
+- direct in-memory 実行と再読込 artifact の実行を同じ `wasmgc-output` Preview2 stdout host で比較し、
+  stdout `AB` と exit code `37` が一致することを actual runtime で確認する。テスト helper は一時
+  directory を必ず cleanup し、実行後に artifact を残さない。
+
+これは serialized Component の byte-preservation/validation/runtime verified partial slice であり、
+compiler が生成する release artifact、Mac Apple Silicon/Linux x86_64 native gate、selfhost parity、
+複数 target の配布・rollback provenance は未完了である。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線

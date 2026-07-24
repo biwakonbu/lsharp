@@ -583,6 +583,49 @@ fn wasm_gc_component_output_component_runner_executes_wit_host() {
 }
 
 #[test]
+fn wasm_gc_component_output_artifact_round_trip_preserves_preview2_runtime() {
+    let core = emit_component_output_probe_module(&[65, 66], 37);
+    let wit_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("wit")
+        .join("lsharp-wasmgc-output.wit");
+    let component = lsharp_wasm::component_adapter::componentize_core_module(
+        &core,
+        &wit_file,
+        "wasmgc-output",
+        &[],
+    )
+    .expect("WasmGC output core を componentize できる");
+    let direct =
+        lsharp_wasm::wasmgc_runner::run_wasm_wasmgc_component_output_component_capture(&component)
+            .expect("in-memory Component を実行できる");
+
+    let artifact = persist_and_reload_wasmgc_component_artifact(&component)
+        .expect("Component artifact を保存して再読込できる");
+    assert_eq!(
+        artifact, component,
+        "保存・再読込で Component bytes を変質させない"
+    );
+    wasmparser::Validator::new()
+        .validate_all(&artifact)
+        .expect("再読込した Component artifact が validation に成功する");
+    let mut config = Config::new();
+    config.wasm_gc(true);
+    let engine = Engine::new(&config).expect("artifact runtime 用 WasmGC engine を作成できる");
+    wasmtime::component::Component::new(&engine, &artifact)
+        .expect("再読込した Component artifact を instantiate 可能な形で検証できる");
+
+    let round_trip =
+        lsharp_wasm::wasmgc_runner::run_wasm_wasmgc_component_output_component_capture(&artifact)
+            .expect("再読込した Component artifact を同じ host runtime で実行できる");
+    assert_eq!(round_trip.stdout, direct.stdout);
+    assert_eq!(round_trip.exit_code, direct.exit_code);
+    assert_eq!(round_trip.stdout, "AB");
+    assert_eq!(round_trip.exit_code, 37);
+}
+
+#[test]
 fn wasm_gc_component_output_component_runner_propagates_sink_failure() {
     let core = emit_component_output_probe_module(&[65], 0);
     let wit_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -3691,6 +3734,38 @@ impl Write for FlushFailingWriter {
 
     fn flush(&mut self) -> io::Result<()> {
         Err(io::Error::other("flush closed"))
+    }
+}
+
+fn persist_and_reload_wasmgc_component_artifact(component: &[u8]) -> Result<Vec<u8>, String> {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|error| format!("artifact nonce を取得できない: {error}"))?
+        .as_nanos();
+    let dir = std::env::temp_dir().join(format!(
+        "lsharp_wasmgc_component_artifact_{}_{}",
+        std::process::id(),
+        nonce
+    ));
+    std::fs::create_dir_all(&dir)
+        .map_err(|error| format!("Component artifact の一時ディレクトリを作成できない: {error}"))?;
+    let path = dir.join("output.component.wasm");
+    let result = (|| {
+        std::fs::write(&path, component)
+            .map_err(|error| format!("Component artifact を保存できない: {error}"))?;
+        std::fs::read(&path)
+            .map_err(|error| format!("Component artifact を再読込できない: {error}"))
+    })();
+    let cleanup = std::fs::remove_dir_all(&dir);
+    match (result, cleanup) {
+        (Ok(bytes), Ok(())) => Ok(bytes),
+        (Err(error), Ok(())) => Err(error),
+        (Ok(_), Err(error)) => Err(format!(
+            "Component artifact は再読込できたが一時ディレクトリを削除できない: {error}"
+        )),
+        (Err(error), Err(cleanup_error)) => Err(format!(
+            "{error}; 一時ディレクトリの削除にも失敗した: {cleanup_error}"
+        )),
     }
 }
 
