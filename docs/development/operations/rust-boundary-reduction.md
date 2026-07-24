@@ -2062,6 +2062,14 @@ Evidence: RED `test_root_set_invalid_slot_records_failure_ledger_before_trap` �
 
 これは runtime の failure observability だけを閉じる verified sliceであり、compiler safe-point ledger、REPL/LSP stateful runtime、Mac Apple Silicon / Linux x86_64 native stage0、HTTP component runtime、`LEGACY-ROOT-01` aggregateの完了を意味しない。次は compiler が各 safe-point で生成する `root_push` slot、`root_set` target、`root_pop` lexical lifetime を同じ failure ledgerへ対応づける contract testである。
 
+### EC-M1-01 selfhost alias-qualified record constructor `:only` contract (2026-07-25)
+
+既存の record named export helper が `alias-hash` と `only-hashes` を同時に適用することを、`(import Lib :as L :only [Point])` の実 fixtureで固定した。`L.Point` は qualified constructorとして解決し、同じ moduleの `Hidden` は `:only` から除外して拒否する。実装差分は不要で、qualified record constructor export sliceの filtering contractを追加で検証した。
+
+Evidence: `test_e2e_selfhost_typeinfer_analysis_filters_import_alias_only_record_constructor` は Rust oracleへ `Lib.Point : Int -> Int -> Lib.Point` / `Lib.Hidden : Int -> Int -> Lib.Hidden` を import visibility付きで注入し、selected fixtureが成功、excluded fixtureが失敗することを確認した。selfhost native harnessの結果は selected `diagnostics=0`、excluded `diagnostics=1` である。これは parser/formatterや record field accessorではなく、record constructor schemeの alias-qualified `:only` export boundaryだけを対象にする。
+
+この contractで public record constructorの alias + `:only` function-position lookupを閉じたが、qualified record literal/type annotation、constructor pattern、private record、複数 moduleの forward visibility、standalone native stage0、Wasm artifact/runtime、Mac Apple Silicon / Linux x86_64 のこの変更後 current-source native gate、EC-M1-01 aggregateの完了は未検証のまま残る。`TODO.md` の `[~]` と Rust oracle / bootstrap / host integration境界は維持する。次は qualified record type annotation / literal、または private record export filteringを一つの REDに固定する。
+
 ### EC-M1-01 selfhost `:open` record field accessor boundary slice (2026-07-25)
 
 selfhost `TypeInfer` が module 境界で先行 record declaration の raw constructor/accessor schemeを除去し、import export scan中だけ record schemaから一時的に schemeを再構築するようにした。qualified key (`Lib.Point`, `Lib.Point.x`) は保持し、closed importでは raw keyを残さず、`:open` では `:only` の選択範囲に限って raw constructor/accessorを戻す。これにより record accessorの unqualified visibilityを function exportと同じ module boundaryへ揃えた。
