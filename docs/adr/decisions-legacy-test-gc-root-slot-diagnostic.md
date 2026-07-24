@@ -28,6 +28,8 @@ root slot の push/set/pop lifetime や compiler-side safe-point spill の修正
 - GREEN: `cargo test -p lsharp-wasm wasi_runner::tests::test_classify_wasi_runtime_failure -- --nocapture` → 5 passed。`unreachable` trap 文言が無い実際の Wasmtime backtraceも含め、`LS4003` と元の backtrace を保持し、function 27 の user trap は generic のまま維持。
 - Contract: `cargo test -p lsharp-driver --bin lsharp mcp_server::tests::test_error_reference_doc_mentions_all_mcp_error_codes -- --exact --nocapture` → 1 passed。
 - Stateful failure boundary: in-session REPL telemetry exact test は 128 MiB stack 拡大後も 452.67 秒で function 24 に到達した。これは compiler-side root slot ledger の次の RED として扱う。
+- Runtime ledger RED: `test_root_set_invalid_slot_records_failure_ledger_before_trap` は、failure ledger の export が存在しないため `get_global(...).unwrap()` で失敗した。
+- Runtime ledger GREEN: 同じ fixtureで Wasmtime trap 前に `__lsharp_root_slot_failure_slot=0`、`__lsharp_root_slot_failure_top=0`、`__lsharp_root_slot_failure_count=1` を観測できるようになった。これは runtime の観測可能性だけを追加し、compiler-side safe-point ledger の修正完了を意味しない。
 
 ## Consequences
 

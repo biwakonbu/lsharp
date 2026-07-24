@@ -2045,3 +2045,11 @@ Evidence: RED `test_e2e_selfhost_typeinfer_analysis_resolves_import_qualified_re
 stateful REPL/LSP telemetry の Wasm backtrace `<wasm function 24>` が core WASI helper `root_set` に対応することを固定し、allocator (`__alloc`) / root-stack capacity (`root_push`) の `LS4002` と compiler-side safe-point spill の slot 不整合を分類上分離した。function 24 は trap text が省略された Wasmtime backtraceでも `LS4003: GC root slot の整合性が壊れました` へ分類し、元の backtraceを保持する。function 27 など user code の trap と Component Model の generic boundaryは変更していない。
 
 Evidence: `cargo test -p lsharp-wasm wasi_runner::tests::test_classify_wasi_runtime_failure -- --nocapture`（5 passed）、`cargo test -p lsharp-driver --bin lsharp mcp_server::tests::test_error_reference_doc_mentions_all_mcp_error_codes -- --exact --nocapture`（1 passed）、`bash scripts/audit_docs.sh`（error 0 / warning 0）。128 MiB host/Wasmtime stackでも stateful REPL failureは function 24で再現したため、これは観測可能性の verified sliceであり、compiler safe-point ledger、REPL/LSP stateful runtime、Mac Apple Silicon / Linux x86_64 native stage0、`LEGACY-ROOT-01` aggregateの完了ではない。次は `root_push` が返す slot、`root_set` の更新対象、`root_pop` の lexical lifetimeを compiler-side ledger/contract testで固定する。
+
+### LEGACY-ROOT-01 root_set failure ledger slice (2026-07-25)
+
+`root_set` が `root_stack_top` より大きい slot を受け取り `unreachable` へ到達する直前に、runtime が要求 slot、観測時の root stack top、失敗回数を mutable global へ保存するようにした。WASI Preview1 では 3 globals を内部 export し、HTTP core でも同じ global layout と helper contract を保つ。これにより compiler-side safe-point spill の不整合を Wasmtime trap 後に slot/top/count として回収できる。
+
+Evidence: RED `test_root_set_invalid_slot_records_failure_ledger_before_trap` は未実装時に failure ledger export の `get_global` が `None` で失敗した。GREEN は `(defn main [] (root_set 0 42))` で Wasmtime function 24 trap 前に `slot=0`、`top=0`、`count=1` を確認した。既存の `wasi_runner` classifier 5件も維持して passしている。
+
+これは runtime の failure observability だけを閉じる verified sliceであり、compiler safe-point ledger、REPL/LSP stateful runtime、Mac Apple Silicon / Linux x86_64 native stage0、HTTP component runtime、`LEGACY-ROOT-01` aggregateの完了を意味しない。次は compiler が各 safe-point で生成する `root_push` slot、`root_set` target、`root_pop` lexical lifetime を同じ failure ledgerへ対応づける contract testである。

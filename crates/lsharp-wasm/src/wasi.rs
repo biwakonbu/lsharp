@@ -50,12 +50,18 @@ const GC_FREE_LIST_BASE_GLOBAL_IDX: u32 = 10;
 const GC_FREE_LIST_CAPACITY_GLOBAL_IDX: u32 = 11;
 const ROOT_STACK_BASE_GLOBAL_IDX: u32 = 12;
 const ROOT_STACK_CAPACITY_GLOBAL_IDX: u32 = 13;
+const ROOT_SLOT_FAILURE_SLOT_GLOBAL_IDX: u32 = 14;
+const ROOT_SLOT_FAILURE_TOP_GLOBAL_IDX: u32 = 15;
+const ROOT_SLOT_FAILURE_COUNT_GLOBAL_IDX: u32 = 16;
 const INTERNAL_HEAP_PTR_EXPORT: &str = "__lsharp_heap_ptr";
 const INTERNAL_HEAP_START_EXPORT: &str = "__lsharp_heap_start";
 const INTERNAL_ALLOC_COUNT_EXPORT: &str = "__lsharp_alloc_count";
 const INTERNAL_ROOT_STACK_TOP_EXPORT: &str = "__lsharp_root_stack_top";
 const INTERNAL_ROOT_STACK_BASE_EXPORT: &str = "__lsharp_root_stack_base";
 const INTERNAL_ROOT_STACK_CAPACITY_EXPORT: &str = "__lsharp_root_stack_capacity";
+const INTERNAL_ROOT_SLOT_FAILURE_SLOT_EXPORT: &str = "__lsharp_root_slot_failure_slot";
+const INTERNAL_ROOT_SLOT_FAILURE_TOP_EXPORT: &str = "__lsharp_root_slot_failure_top";
+const INTERNAL_ROOT_SLOT_FAILURE_COUNT_EXPORT: &str = "__lsharp_root_slot_failure_count";
 const INTERNAL_GC_LIVE_ALLOC_COUNT_EXPORT: &str = "__lsharp_gc_live_alloc_count";
 const INTERNAL_GC_FREE_LIST_COUNT_EXPORT: &str = "__lsharp_gc_free_list_count";
 const INTERNAL_GC_COLLECTION_COUNT_EXPORT: &str = "__lsharp_gc_collection_count";
@@ -606,6 +612,16 @@ fn emit_wasm_wasi_with_options(
         },
         &wasm_encoder::ConstExpr::i32_const(ROOT_STACK_SLOT_CAPACITY),
     );
+    for _ in 0..3 {
+        globals.global(
+            GlobalType {
+                val_type: ValType::I32,
+                mutable: true,
+                shared: false,
+            },
+            &wasm_encoder::ConstExpr::i32_const(0),
+        );
+    }
     wasm_module.section(&globals);
 
     // === Export Section ===
@@ -631,6 +647,21 @@ fn emit_wasm_wasi_with_options(
         INTERNAL_ROOT_STACK_CAPACITY_EXPORT,
         ExportKind::Global,
         ROOT_STACK_CAPACITY_GLOBAL_IDX,
+    );
+    exports.export(
+        INTERNAL_ROOT_SLOT_FAILURE_SLOT_EXPORT,
+        ExportKind::Global,
+        ROOT_SLOT_FAILURE_SLOT_GLOBAL_IDX,
+    );
+    exports.export(
+        INTERNAL_ROOT_SLOT_FAILURE_TOP_EXPORT,
+        ExportKind::Global,
+        ROOT_SLOT_FAILURE_TOP_GLOBAL_IDX,
+    );
+    exports.export(
+        INTERNAL_ROOT_SLOT_FAILURE_COUNT_EXPORT,
+        ExportKind::Global,
+        ROOT_SLOT_FAILURE_COUNT_GLOBAL_IDX,
     );
     exports.export(
         INTERNAL_ALLOC_COUNT_EXPORT,
@@ -721,7 +752,14 @@ fn emit_wasm_wasi_with_options(
         ROOT_STACK_CAPACITY_GLOBAL_IDX,
     );
     emit_root_pop_func(&mut codes, ROOT_STACK_TOP_GLOBAL_IDX, ROOT_STACK_BASE_GLOBAL_IDX);
-    emit_root_set_func(&mut codes, ROOT_STACK_TOP_GLOBAL_IDX, ROOT_STACK_BASE_GLOBAL_IDX);
+    emit_root_set_func(
+        &mut codes,
+        ROOT_STACK_TOP_GLOBAL_IDX,
+        ROOT_STACK_BASE_GLOBAL_IDX,
+        ROOT_SLOT_FAILURE_SLOT_GLOBAL_IDX,
+        ROOT_SLOT_FAILURE_TOP_GLOBAL_IDX,
+        ROOT_SLOT_FAILURE_COUNT_GLOBAL_IDX,
+    );
     emit_write_file_bytes_func(
         &mut codes,
         alloc_func_idx,
@@ -1259,6 +1297,16 @@ fn emit_wasm_http_handler_core(module: &Module) -> Result<Vec<u8>, CodegenError>
         },
         &wasm_encoder::ConstExpr::i32_const(ROOT_STACK_SLOT_CAPACITY),
     );
+    for _ in 0..3 {
+        globals.global(
+            GlobalType {
+                val_type: ValType::I32,
+                mutable: true,
+                shared: false,
+            },
+            &wasm_encoder::ConstExpr::i32_const(0),
+        );
+    }
     wasm_module.section(&globals);
 
     let mut exports = ExportSection::new();
@@ -1304,7 +1352,14 @@ fn emit_wasm_http_handler_core(module: &Module) -> Result<Vec<u8>, CodegenError>
         ROOT_STACK_CAPACITY_GLOBAL_IDX,
     );
     emit_root_pop_func(&mut codes, ROOT_STACK_TOP_GLOBAL_IDX, ROOT_STACK_BASE_GLOBAL_IDX);
-    emit_root_set_func(&mut codes, ROOT_STACK_TOP_GLOBAL_IDX, ROOT_STACK_BASE_GLOBAL_IDX);
+    emit_root_set_func(
+        &mut codes,
+        ROOT_STACK_TOP_GLOBAL_IDX,
+        ROOT_STACK_BASE_GLOBAL_IDX,
+        ROOT_SLOT_FAILURE_SLOT_GLOBAL_IDX,
+        ROOT_SLOT_FAILURE_TOP_GLOBAL_IDX,
+        ROOT_SLOT_FAILURE_COUNT_GLOBAL_IDX,
+    );
     emit_gc_collect_func(&mut codes, collector_globals);
 
     let struct_scratch_fields = max_struct_field_count(module);
@@ -2726,6 +2781,9 @@ fn emit_root_set_func(
     codes: &mut CodeSection,
     root_stack_top_global_idx: u32,
     root_stack_base_global_idx: u32,
+    failure_slot_global_idx: u32,
+    failure_top_global_idx: u32,
+    failure_count_global_idx: u32,
 ) {
     use wasm_encoder::{Instruction as W, MemArg};
 
@@ -2746,9 +2804,17 @@ fn emit_root_set_func(
     f.instruction(&W::GlobalGet(root_stack_top_global_idx));
     f.instruction(&W::LocalSet(3));
     f.instruction(&W::LocalGet(2));
+    f.instruction(&W::GlobalSet(failure_slot_global_idx));
+    f.instruction(&W::LocalGet(3));
+    f.instruction(&W::GlobalSet(failure_top_global_idx));
+    f.instruction(&W::LocalGet(2));
     f.instruction(&W::LocalGet(3));
     f.instruction(&W::I32GeU);
     f.instruction(&W::If(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::GlobalGet(failure_count_global_idx));
+    f.instruction(&W::I32Const(1));
+    f.instruction(&W::I32Add);
+    f.instruction(&W::GlobalSet(failure_count_global_idx));
     f.instruction(&W::Unreachable);
     f.instruction(&W::End);
     f.instruction(&W::GlobalGet(root_stack_base_global_idx));
@@ -4540,6 +4606,64 @@ mod tests {
         drop(store);
         let bytes = stdout.try_into_inner().unwrap();
         String::from_utf8(bytes.to_vec()).unwrap()
+    }
+
+    fn run_wasi_with_root_slot_failure_ledger(wasm_bytes: &[u8]) -> (String, i32, i32, i32) {
+        use wasmtime::*;
+        use wasmtime_wasi::{preview1::WasiP1Ctx, WasiCtxBuilder};
+
+        let engine = Engine::default();
+        let mut linker = Linker::<WasiP1Ctx>::new(&engine);
+        wasmtime_wasi::preview1::add_to_linker_sync(&mut linker, |t| t).unwrap();
+        let stdout = wasmtime_wasi::pipe::MemoryOutputPipe::new(1024);
+        let wasi = WasiCtxBuilder::new().stdout(stdout).build_p1();
+        let mut store = Store::new(&engine, wasi);
+        let module = wasmtime::Module::new(&engine, wasm_bytes).unwrap();
+        let instance = linker.instantiate(&mut store, &module).unwrap();
+        let start = instance
+            .get_typed_func::<(), ()>(&mut store, "_start")
+            .unwrap();
+        let error = start.call(&mut store, ()).unwrap_err();
+        let failure_slot = instance
+            .get_global(&mut store, "__lsharp_root_slot_failure_slot")
+            .unwrap()
+            .get(&mut store)
+            .i32()
+            .unwrap();
+        let failure_top = instance
+            .get_global(&mut store, "__lsharp_root_slot_failure_top")
+            .unwrap()
+            .get(&mut store)
+            .i32()
+            .unwrap();
+        let failure_count = instance
+            .get_global(&mut store, "__lsharp_root_slot_failure_count")
+            .unwrap()
+            .get(&mut store)
+            .i32()
+            .unwrap();
+        (
+            format!("{error:#}"),
+            failure_slot,
+            failure_top,
+            failure_count,
+        )
+    }
+
+    #[test]
+    fn test_root_set_invalid_slot_records_failure_ledger_before_trap() {
+        let wasm = compile_wasi("(defn main [] (root_set 0 42))");
+
+        let (error, failure_slot, failure_top, failure_count) =
+            run_wasi_with_root_slot_failure_ledger(&wasm);
+
+        assert!(
+            error.contains("<wasm function 24>"),
+            "root_set trap: {error}"
+        );
+        assert_eq!(failure_slot, 0);
+        assert_eq!(failure_top, 0);
+        assert_eq!(failure_count, 1);
     }
 
     fn assert_close_errno_is_saved(wasm_bytes: &[u8], code_ordinal: usize) {
