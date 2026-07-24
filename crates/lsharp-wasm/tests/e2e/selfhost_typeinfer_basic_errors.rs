@@ -1622,3 +1622,91 @@ fn test_e2e_selfhost_typeinfer_analysis_resolves_import_qualified_adt_constructo
         "qualified ADT constructor は module prefix 付き export lookup で解決されるべき"
     );
 }
+
+/// EC-M1-01: import の alias + :only が ADT constructor export 境界を守ること
+#[test]
+fn test_e2e_selfhost_typeinfer_analysis_filters_import_alias_only_adt_constructor() {
+    let selected_source =
+        "(module Lib) (type Option (Some Int) (Other Bool) None) (module Main) (import Lib :as L :only [Some]) (defn main [] (L.Some 42))";
+    let selected_oracle_source =
+        "(module Main) (import Lib :as L :only [Some]) (defn main [] (L.Some 42))";
+    let selected_program = lsharp_syntax::parse(selected_oracle_source)
+        .expect("selected alias + :only ADT oracle fixture は parse できるべき");
+    let some_type = lsharp_types::types::Type::Fun(
+        vec![lsharp_types::types::Type::int()],
+        Box::new(lsharp_types::types::Type::Con("Lib.Option".to_string())),
+    );
+    let mut selected_oracle = Infer::new();
+    selected_oracle.inject_external_types_for_import(
+        "Lib",
+        Some(&["Some".to_string()]),
+        &std::collections::HashSet::new(),
+        &[(
+            "Lib.Some".to_string(),
+            lsharp_types::types::TypeScheme::mono(some_type),
+        )],
+    );
+    assert!(
+        selected_oracle.infer_program(&selected_program).is_ok(),
+        "Rust oracle は alias + :only の selected ADT constructor を受理するべき"
+    );
+
+    let excluded_source =
+        "(module Lib) (type Option (Some Int) (Other Bool) None) (module Main) (import Lib :as L :only [Some]) (defn main [] (L.Other true))";
+    let excluded_oracle_source =
+        "(module Main) (import Lib :as L :only [Some]) (defn main [] (L.Other true))";
+    let excluded_program = lsharp_syntax::parse(excluded_oracle_source)
+        .expect("excluded alias + :only ADT oracle fixture は parse できるべき");
+    let other_type = lsharp_types::types::Type::Fun(
+        vec![lsharp_types::types::Type::bool()],
+        Box::new(lsharp_types::types::Type::Con("Lib.Option".to_string())),
+    );
+    let mut excluded_oracle = Infer::new();
+    excluded_oracle.inject_external_types_for_import(
+        "Lib",
+        Some(&["Some".to_string()]),
+        &std::collections::HashSet::new(),
+        &[(
+            "Lib.Other".to_string(),
+            lsharp_types::types::TypeScheme::mono(other_type),
+        )],
+    );
+    assert!(
+        excluded_oracle.infer_program(&excluded_program).is_err(),
+        "Rust oracle は alias + :only で除外された ADT constructor を拒否するべき"
+    );
+
+    let harness = format!(
+        r#"
+(defn main []
+  (let [selected
+          (infer-program-analysis
+            (parse-program "{}"))
+        selected-kinds (infer-program-analysis-failure-kinds selected)
+        excluded
+          (infer-program-analysis
+            (parse-program "{}"))
+        excluded-kinds (infer-program-analysis-failure-kinds excluded)]
+    (do
+      (print (infer-program-analysis-diagnostic-count selected))
+      (print (vector-length selected-kinds))
+      (print (vector-get selected-kinds 0))
+      (print (infer-program-analysis-diagnostic-count excluded))
+      (print (vector-length excluded-kinds))
+      (print (vector-get excluded-kinds 0))
+      0)))
+"#,
+        selected_source, excluded_source
+    );
+    let combined = format!("{}\n{}", selfhost_typeinfer_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "1", "0", "1", "1", "1"],
+        "alias + :only は selected ADT constructor だけを qualified export へ公開するべき"
+    );
+}
