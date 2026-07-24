@@ -580,6 +580,53 @@ mod tests {
     }
 
     #[test]
+    fn test_compile_cache_key_changes_when_import_graph_changes() {
+        let dir = std::env::temp_dir().join(format!(
+            "lsharp_tooling_compile_key_graph_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock は unix epoch より後であるべき")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let lib_path = dir.join("Lib.ls");
+        let alt_path = dir.join("Alt.ls");
+        let main_path = dir.join("Main.ls");
+        std::fs::write(&lib_path, "(module Lib)\n(defn helper [] 7)\n").unwrap();
+        std::fs::write(&alt_path, "(module Alt)\n(defn helper [] 7)\n").unwrap();
+        std::fs::write(
+            &main_path,
+            "(module Main)\n(import Lib)\n(defn main [] (helper))\n",
+        )
+        .unwrap();
+
+        let first = CompileCacheKey::from_entry(
+            &main_path,
+            CompileTarget::WasiPreview1,
+            CompileBackend::Linear,
+        )
+        .unwrap();
+        std::fs::write(
+            &main_path,
+            "(module Main)\n(import Alt)\n(defn main [] (helper))\n",
+        )
+        .unwrap();
+        let second = CompileCacheKey::from_entry(
+            &main_path,
+            CompileTarget::WasiPreview1,
+            CompileBackend::Linear,
+        )
+        .unwrap();
+
+        assert_ne!(
+            first, second,
+            "依存 SCC を含む module graph の変更は artifact compile key を変えるべき"
+        );
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
     fn test_compile_cache_key_includes_target_and_backend() {
         let dir = std::env::temp_dir().join(format!(
             "lsharp_tooling_compile_key_target_{}_{}",

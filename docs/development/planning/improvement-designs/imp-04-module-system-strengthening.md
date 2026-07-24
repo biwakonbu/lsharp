@@ -200,6 +200,13 @@ CLI flag を優先し、未設定時は limit を無効のままにする。空�
 compile/build では embedded component delegation も抑止する。解決済み root と limits を組み合わせて成功後の deterministic trim を行う
 verified partial slice であり、公開 cache key の再設計、自動 eviction policy、Native/selfhost compiler への移植は未完了である。
 
+Phase C-2r として、process 間 artifact key と process 内 module cache key の責務を監査した。`CompileCacheKey` は SCC 解決後の全 module について
+module name、canonical path、source fingerprint を deterministic manifest に含めるため、import graph/SCC の変更と実装変更をどちらも Wasm artifact
+miss へ導く。一方、`ModuleCacheEntry::deps_key` は direct dependency の公開 type surface を使う process 内再解析境界であり、artifact key に
+public surface だけを混ぜない。実装変更で Wasm bytes が変わるため、public-only artifact reuse は stale bytes を許すからである。
+`test_compile_cache_key_changes_when_import_graph_changes` で graph 変更の key invalidation を固定した。これは identity scope の verified partial
+slice であり、`LEGACY-MODULE-01` aggregate、Native/selfhost persistence、automatic eviction は未完了のまま残る。
+
 Phase C-1c として、`compile_multi_file_incremental` も `build_from_entry_with_scc` を使い、サイズ 2 以上
 の SCC を `infer_scc_type_surfaces` で一括推論する fallback を追加した。SCC 経路は現時点では
 `ModuleIrSegments` の再利用を行わず、SCC 全体を modular lowering して linked IR と型 surface を cache
@@ -290,8 +297,9 @@ validation は `test_e2e_bootstrap_cli_fixed_input_compile_gate` (`66.36 s`, 1 p
   明示 root の atomic artifact store/load、C-2i で `CompileSession` の opt-in Wasm 接続と source-change miss、C-2j で
   target-aware Wasm validation、C-2k で `--artifact-cache-dir` の host-only opt-in、C-2l で cached Wasm runtime execution、
   C-2m で明示 bounded maintenance、C-2n で CLI の明示 entry limit、C-2o で CLI の明示 byte budget、C-2p で
-  `LSHARP_ARTIFACT_CACHE_DIR` の opt-in default、C-2q で maintenance limit の env default を固定した。依存 SCC を含む公開 cache key の統合、
-  自動 eviction policy、Native/selfhost compiler への移植を行う。
+  `LSHARP_ARTIFACT_CACHE_DIR` の opt-in default、C-2q で maintenance limit の env default、C-2r で artifact key と module `deps_key` の
+  責務境界を固定した。自動 eviction policy、Native/selfhost compiler への移植、`LEGACY-MODULE-01` aggregate の両対応 target/public command
+  evidence を行う。
 - source override 入口はまだ strict な graph build と module 単位推論を使っており、SCC-aware override
   inference は C-1e で閉じた。compile / override の dirty type surface 再利用は C-1i/C-1j、compile の dirty lowering は
   C-1h で閉じたが、override 経路への segment cache と disk persistence は未着手である。
