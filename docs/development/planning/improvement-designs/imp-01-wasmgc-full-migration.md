@@ -1162,6 +1162,21 @@ Silicon/Linux x86_64、native/selfhost parity は未完了である。
 poll readiness、Wasm artifact/runtime differential、Mac Apple Silicon/Linux x86_64、native/selfhost
 parity は未完了である。
 
+## Stage 2bb 検証済み slice: input-stream pollable empty/EOF readiness (2026-07-24)
+
+空の regular file から作った input stream でも、`subscribe` → `pollable.block` が完了し、
+`pollable.ready` が true になる EOF/readiness boundary を actual Component で検証した。
+
+- `wasm_gc_component_cli_fs_runner_polls_empty_input_stream_as_ready` は空の `input.txt` を
+  read-only named preopen から開き、`read-via-stream(0)` → `input-stream.subscribe` を呼ぶ。
+- `pollable.block` 後に `pollable.ready` が true であることを確認し、ready marker `R` を stdout に
+  渡す。pollable、input stream、descriptor、preopen を drop して `wasi:cli/run` exit 0、stdout
+  `R` を確認する。既存の非空 fixture でも同じ marker を観測し、ready path を実行証跡にする。
+
+これは input-stream pollable の empty/EOF readiness verified partial slice であり、stream error/
+closed、poll list の empty input、Wasm artifact/runtime differential、Mac Apple Silicon/Linux
+x86_64、native/selfhost parity は未完了である。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線
