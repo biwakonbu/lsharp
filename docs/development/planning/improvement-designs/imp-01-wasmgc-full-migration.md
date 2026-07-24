@@ -739,6 +739,23 @@ Stage 2t の input-stream resource に、non-blocking I/O の readiness boundary
 残る descriptor operation、Wasm artifact/runtime differential、Mac Apple Silicon/Linux x86_64、
 native/selfhost parity は未完了である。
 
+## Stage 2ab 検証済み slice: descriptor sync-data lifecycle (2026-07-24)
+
+Stage 2z の descriptor metadata path に加えて、open descriptor の data synchronization operation と
+success/error の drop boundary を actual Component で検証した。
+
+- `wasm_gc_component_cli_fs_runner_syncs_descriptor_data_and_drops_resources` は二つの read-only
+  named preopen を受け取り、最初の preopen から `input.txt` を `descriptor.open-at` で開く。
+- `descriptor.sync-data` の `result<_, error-code>` discriminant が success になることを確認する。
+  read-only descriptor でも POSIX-compatible host implementation が成功扱いにする契約を、単なる
+  synthetic import ではなく実ファイルで固定する。
+- descriptor と両 preopen を drop し、`wasi:cli/run` exit 0、stdout empty、host bytes unchanged
+  (`hello`) を同一実行で確認する。
+
+これは descriptor sync-data/drop の verified partial slice であり、poll list API、残る descriptor
+operation、Wasm artifact/runtime differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity
+は未完了である。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線
