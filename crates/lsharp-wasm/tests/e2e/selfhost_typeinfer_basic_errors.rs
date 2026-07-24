@@ -1098,3 +1098,53 @@ fn test_e2e_selfhost_typeinfer_analysis_resolves_import_alias_qualified_definiti
         "alias qualified lookup は selfhost TypeInfer でも成功するべき"
     );
 }
+
+/// EC-M1-01: import の module 名経由の qualified function lookup を selfhost でも解決すること
+#[test]
+fn test_e2e_selfhost_typeinfer_analysis_resolves_import_module_qualified_definition() {
+    let source =
+        "(module Lib) (defn helper [value] (+ value 1)) (module Main) (import Lib) (defn main [] (Lib.helper 42))";
+    let program =
+        lsharp_syntax::parse(source).expect("module-qualified import fixture は parse できるべき");
+    let mut oracle = Infer::new();
+    let helper_type = lsharp_types::types::Type::Fun(
+        vec![lsharp_types::types::Type::int()],
+        Box::new(lsharp_types::types::Type::int()),
+    );
+    oracle.inject_external_types(&[(
+        "Lib.helper".to_string(),
+        lsharp_types::types::TypeScheme::mono(helper_type),
+    )]);
+    let oracle_result = oracle.infer_program(&program);
+    assert!(
+        oracle_result.is_ok(),
+        "Rust oracle は module 名経由の qualified definition lookup を受理するべき: {:?}",
+        oracle_result.err()
+    );
+
+    let harness = r#"
+(defn main []
+  (let [analysis
+          (infer-program-analysis
+            (parse-program "(module Lib) (defn helper [value] (+ value 1)) (module Main) (import Lib) (defn main [] (Lib.helper 42))"))
+        kinds (infer-program-analysis-failure-kinds analysis)]
+    (do
+      (print (infer-program-analysis-diagnostic-count analysis))
+      (print (vector-length kinds))
+      (print (vector-get kinds 0))
+      (print (vector-get kinds 1))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_typeinfer_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "2", "0", "0"],
+        "module-qualified lookup は selfhost TypeInfer でも成功するべき"
+    );
+}

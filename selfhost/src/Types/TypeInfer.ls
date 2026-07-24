@@ -514,10 +514,15 @@
 (defn typeinfer-remove-private-defns-before-module [program env limit]
   (typeinfer-remove-private-defns-loop program env 0 limit))
 
-;; import :as の alias-qualified key を、依存 module の public defn にだけ追加する。
+;; import の qualified key を、依存 module の public defn にだけ追加する。
+;; :as があれば alias、無ければ module name を prefix に使う。
 ;; raw name hash は維持し、parser が保持する prefix/suffix hashから同じ keyを作る。
 (defn typeinfer-import-alias-hash [decl]
   (if (> (vector-length decl) 4) (vector-get decl 4) 0))
+
+(defn typeinfer-import-prefix-hash [decl]
+  (let [alias-hash (typeinfer-import-alias-hash decl)]
+    (if (= alias-hash 0) (vector-get decl 1) alias-hash)))
 
 (defn typeinfer-qualify-import-source-loop
   [program idx limit current-module target-module alias-hash env]
@@ -572,23 +577,21 @@
     (let [decl (vector-get program idx)
       tag (vector-get decl 0)]
       (if (= tag (ast-import-decl))
-        (let [alias-hash (typeinfer-import-alias-hash decl)]
-          (if (= alias-hash 0)
-            (typeinfer-qualify-imports-loop program (+ idx 1) len env)
-            (let [qualified-env
-                    (typeinfer-qualify-import-source-loop
-                      program
-                      0
-                      idx
-                      0
-                      (vector-get decl 1)
-                      alias-hash
-                      env)]
-              (typeinfer-qualify-imports-loop
-                program
-                (+ idx 1)
-                len
-                qualified-env))))
+        (let [prefix-hash (typeinfer-import-prefix-hash decl)
+          qualified-env
+            (typeinfer-qualify-import-source-loop
+              program
+              0
+              idx
+              0
+              (vector-get decl 1)
+              prefix-hash
+              env)]
+          (typeinfer-qualify-imports-loop
+            program
+            (+ idx 1)
+            len
+            qualified-env))
         (typeinfer-qualify-imports-loop program (+ idx 1) len env)))))
 
 (defn typeinfer-predeclare-qualified-imports [program env]
