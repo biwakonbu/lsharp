@@ -2112,7 +2112,7 @@ fn infer_scc_type_surfaces(
                 .get(module_name)
                 .map(|path| path.display().to_string())
                 .unwrap_or_else(|| module_name.clone());
-            format!("{path}: {error}")
+            format!("{path}: [{}] {error}", error.code())
         })?;
         return Ok(HashMap::from([(
             module_name.clone(),
@@ -2155,7 +2155,7 @@ fn infer_scc_type_surfaces(
             .and_then(|module| module_paths.get(module))
             .map(|path| path.display().to_string())
             .unwrap_or_else(|| group.join(", "));
-        format!("{path}: {error}")
+        format!("{path}: [{}] {error}", error.code())
     })?;
     if type_results.len() != defn_origins.len() {
         return Err(format!(
@@ -2239,7 +2239,7 @@ fn infer_scc_type_surfaces(
                 .get(module_name)
                 .map(|path| path.display().to_string())
                 .unwrap_or_else(|| module_name.clone());
-            format!("{path}: {error}")
+            format!("{path}: [{}] {error}", error.code())
         })?;
         surfaces.insert(
             module_name.clone(),
@@ -2278,7 +2278,7 @@ fn compile_multi_file_with_mode(
         let mut infer = lsharp_types::infer::Infer::new();
         let type_results = infer
             .infer_program(&program)
-            .map_err(|e| format!("{}: {e}", mod_path.display()))?;
+            .map_err(|e| format!("{}: [{}] {e}", mod_path.display(), e.code()))?;
         let expr_type_results = infer.expr_type_results_snapshot();
         let mut lower_ctx = lower::Lower::new();
         return lower_ctx
@@ -2712,7 +2712,7 @@ pub fn analyze_single_file_incremental(
     note_incremental_type_infer();
     let type_results = infer
         .infer_program(program.as_ref())
-        .map_err(|e| format!("{e}"))?;
+        .map_err(|e| format!("[{}] {e}", e.code()))?;
     let type_surface = ModuleTypeSurface {
         results: type_results,
         hidden: infer.module_env.privates.iter().cloned().collect(),
@@ -2815,7 +2815,7 @@ pub fn analyze_multi_file_incremental_with_overrides(
             note_incremental_type_infer();
             let type_results = infer
                 .infer_program(program.as_ref())
-                .map_err(|e| format!("{}: {e}", mod_path.display()))?;
+                .map_err(|e| format!("{}: [{}] {e}", mod_path.display(), e.code()))?;
             ModuleTypeSurface {
                 results: type_results,
                 hidden: infer.module_env.privates.iter().cloned().collect(),
@@ -2882,7 +2882,7 @@ pub fn compile_multi_file_incremental(
             note_incremental_type_infer();
             let type_results = infer
                 .infer_program(program.as_ref())
-                .map_err(|e| format!("{}: {e}", mod_path.display()))?;
+                .map_err(|e| format!("{}: [{}] {e}", mod_path.display(), e.code()))?;
             ModuleTypeSurface {
                 results: type_results,
                 hidden: infer.module_env.privates.iter().cloned().collect(),
@@ -2977,7 +2977,7 @@ pub fn compile_multi_file_incremental(
             note_incremental_type_infer();
             let type_results = infer
                 .infer_program(program.as_ref())
-                .map_err(|e| format!("{}: {e}", mod_path.display()))?;
+                .map_err(|e| format!("{}: [{}] {e}", mod_path.display(), e.code()))?;
             ModuleTypeSurface {
                 results: type_results,
                 hidden: infer.module_env.privates.iter().cloned().collect(),
