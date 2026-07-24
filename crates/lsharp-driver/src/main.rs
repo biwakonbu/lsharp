@@ -126,6 +126,10 @@ enum Command {
         #[arg(long)]
         artifact_cache_dir: Option<PathBuf>,
 
+        /// 明示 artifact cache に残す最大 entry 数（cache root と併用）
+        #[arg(long)]
+        artifact_cache_max_entries: Option<usize>,
+
         /// IR を表示する
         #[arg(long)]
         emit_ir: bool,
@@ -151,6 +155,10 @@ enum Command {
         /// process 間 Wasm artifact cache の root（明示時のみ有効）
         #[arg(long)]
         artifact_cache_dir: Option<PathBuf>,
+
+        /// 明示 artifact cache に残す最大 entry 数（cache root と併用）
+        #[arg(long)]
+        artifact_cache_max_entries: Option<usize>,
 
         /// IR を表示する
         #[arg(long)]
@@ -288,6 +296,7 @@ fn main() -> miette::Result<()> {
             target,
             backend,
             artifact_cache_dir,
+            artifact_cache_max_entries,
             emit_ir,
         }
         | Command::Build {
@@ -296,12 +305,18 @@ fn main() -> miette::Result<()> {
             target,
             backend,
             artifact_cache_dir,
+            artifact_cache_max_entries,
             emit_ir,
         } => {
+            validate_artifact_cache_options(
+                artifact_cache_dir.as_deref(),
+                artifact_cache_max_entries,
+            )?;
             // P0-1: git リポジトリ必須チェック
             check_git_repo(&file)?;
 
             let mut compile_session = artifact_cache_dir
+                .clone()
                 .map(commands::compile::CompileSession::with_artifact_cache)
                 .unwrap_or_else(commands::compile::CompileSession::new);
             let artifacts = compile_session.compile_file_with_backend(
@@ -313,6 +328,7 @@ fn main() -> miette::Result<()> {
                     .map(Into::into)
                     .unwrap_or(commands::compile::CompileBackend::Linear),
             )?;
+            maintain_artifact_cache(artifact_cache_dir.as_deref(), artifact_cache_max_entries)?;
             if !emit_ir {
                 print_compile_artifacts_success(&artifacts);
             }
@@ -518,6 +534,30 @@ fn print_compile_artifacts_success(artifacts: &commands::compile::CompileArtifac
     );
 }
 
+fn validate_artifact_cache_options(
+    artifact_cache_dir: Option<&Path>,
+    max_entries: Option<usize>,
+) -> miette::Result<()> {
+    if max_entries.is_some() && artifact_cache_dir.is_none() {
+        return Err(miette::miette!(
+            "--artifact-cache-max-entries は --artifact-cache-dir と併用してください"
+        ));
+    }
+    Ok(())
+}
+
+fn maintain_artifact_cache(
+    artifact_cache_dir: Option<&Path>,
+    max_entries: Option<usize>,
+) -> miette::Result<usize> {
+    validate_artifact_cache_options(artifact_cache_dir, max_entries)?;
+    let (Some(root), Some(max_entries)) = (artifact_cache_dir, max_entries) else {
+        return Ok(0);
+    };
+    lsharp_tooling::artifact_cache::ArtifactCache::new(root.to_path_buf())
+        .trim_to_entries(max_entries)
+}
+
 fn maybe_delegate_to_embedded_component() -> miette::Result<()> {
     if option_env!("LSHARP_EMBEDDED_COMPONENT_PRESENT") != Some("1") {
         return Ok(());
@@ -587,27 +627,42 @@ fn maybe_bridge_compile_build_artifact_with_component(
         Err(_) => return Ok(false),
     };
 
-    let (file, output, target, backend, artifact_cache_dir, emit_ir) = match cli.command {
-        Command::Compile {
-            file,
-            output,
-            target,
-            backend,
-            artifact_cache_dir,
-            emit_ir,
-        }
-        | Command::Build {
-            file,
-            output,
-            target,
-            backend,
-            artifact_cache_dir,
-            emit_ir,
-        } => (file, output, target, backend, artifact_cache_dir, emit_ir),
-        _ => return Ok(false),
-    };
+    let (file, output, target, backend, artifact_cache_dir, artifact_cache_max_entries, emit_ir) =
+        match cli.command {
+            Command::Compile {
+                file,
+                output,
+                target,
+                backend,
+                artifact_cache_dir,
+                artifact_cache_max_entries,
+                emit_ir,
+            }
+            | Command::Build {
+                file,
+                output,
+                target,
+                backend,
+                artifact_cache_dir,
+                artifact_cache_max_entries,
+                emit_ir,
+            } => (
+                file,
+                output,
+                target,
+                backend,
+                artifact_cache_dir,
+                artifact_cache_max_entries,
+                emit_ir,
+            ),
+            _ => return Ok(false),
+        };
 
-    if emit_ir || backend.is_some() || artifact_cache_dir.is_some() {
+    if emit_ir
+        || backend.is_some()
+        || artifact_cache_dir.is_some()
+        || artifact_cache_max_entries.is_some()
+    {
         return Ok(false);
     }
 
@@ -888,7 +943,7 @@ fn should_delegate_compile_build_to_embedded_component_args(args: &[std::ffi::Os
                 // 明示 backend は embedded component guest が持たないため host 側へ残す。
                 return false;
             }
-            "--artifact-cache-dir" => {
+            "--artifact-cache-dir" | "--artifact-cache-max-entries" => {
                 // artifact cache は Rust host の明示的 filesystem boundary を使う。
                 return false;
             }
@@ -2724,6 +2779,84 @@ mod tests {
     }
 
     #[test]
+    fn test_cli_compile_artifact_cache_max_entries_is_explicit() {
+        let cli = Cli::try_parse_from([
+            "lsharp",
+            "compile",
+            "examples/fib.ls",
+            "--artifact-cache-max-entries",
+            "3",
+        ])
+        .expect("artifact cache entry limit は parse できるべき");
+        let Command::Compile {
+            artifact_cache_max_entries,
+            ..
+        } = cli.command
+        else {
+            panic!("compile subcommand should parse");
+        };
+        assert_eq!(
+            artifact_cache_max_entries,
+            Some(3),
+            "entry limit は明示した値を保持するべき"
+        );
+    }
+
+    #[test]
+    fn test_cli_compile_artifact_cache_max_entries_requires_cache_root() {
+        let error = validate_artifact_cache_options(None, Some(3))
+            .expect_err("entry limit 単独は cache root がないため拒否するべき");
+        assert!(error.to_string().contains("--artifact-cache-dir"));
+        assert!(validate_artifact_cache_options(None, None).is_ok());
+    }
+
+    #[test]
+    fn test_maintain_artifact_cache_trims_explicit_root() {
+        let dir = std::env::temp_dir().join(format!(
+            "lsharp_driver_cache_maintenance_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock は unix epoch より後であるべき")
+                .as_nanos()
+        ));
+        let source = dir.join("Main.ls");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(&source, "(module Main)\n(defn main [] 7)\n").unwrap();
+        let key = lsharp_tooling::compile::CompileCacheKey::from_entry(
+            &source,
+            lsharp_tooling::compile::CompileTarget::WasiPreview1,
+            lsharp_tooling::compile::CompileBackend::Linear,
+        )
+        .unwrap();
+        let cache_root = dir.join("cache");
+        let cache = lsharp_tooling::artifact_cache::ArtifactCache::new(&cache_root);
+        cache.store(&key, b"artifact").unwrap();
+        let second_source = dir.join("Second.ls");
+        std::fs::write(&second_source, "(module Second)\n(defn main [] 8)\n").unwrap();
+        let second_key = lsharp_tooling::compile::CompileCacheKey::from_entry(
+            &second_source,
+            lsharp_tooling::compile::CompileTarget::WasiPreview1,
+            lsharp_tooling::compile::CompileBackend::Linear,
+        )
+        .unwrap();
+        cache.store(&second_key, b"second-artifact").unwrap();
+
+        assert_eq!(
+            maintain_artifact_cache(Some(&cache_root), Some(1)).unwrap(),
+            1,
+            "CLI maintenance は明示 root の artifact を上限まで削除するべき"
+        );
+        assert_eq!(
+            std::fs::read_dir(cache_root.join("lsharp-compile-artifact-v1"))
+                .unwrap()
+                .count(),
+            1
+        );
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
     fn test_should_delegate_to_embedded_component_args_accepts_compile_build_component_subset() {
         assert!(should_delegate_to_embedded_component_args(&os_args(&[
             "compile",
@@ -2803,6 +2936,12 @@ mod tests {
             "examples/fib.ls",
             "--artifact-cache-dir",
             "tmp/lsharp-cache",
+        ])));
+        assert!(!should_delegate_to_embedded_component_args(&os_args(&[
+            "compile",
+            "examples/fib.ls",
+            "--artifact-cache-max-entries",
+            "3",
         ])));
         assert!(!should_delegate_to_embedded_component_args(&os_args(&[
             "build",

@@ -179,6 +179,11 @@ Phase C-2m として、明示 root の `ArtifactCache::trim_to_entries(max_entri
 entry は変更しない。directory が未作成なら no-op とし、既定 compile path や CLI からは自動実行しない bounded maintenance
 の verified partial slice である。自動 eviction policy、CLI/env default、Native/selfhost persistence は未完了である。
 
+Phase C-2n として、`compile` / `build` に `--artifact-cache-max-entries <N>` を追加した。`--artifact-cache-dir` との併用を必須にし、
+compile/build が成功した後だけ明示 root の `trim_to_entries(N)` を呼ぶ。embedded component delegation では host-only flag として
+拒否し、既定 cache location、Native/selfhost、mtime/LRU policy は有効化しない。CLI から bounded maintenance を選択できる
+verified partial slice であり、自動 policy と byte budget は未完了である。
+
 Phase C-1c として、`compile_multi_file_incremental` も `build_from_entry_with_scc` を使い、サイズ 2 以上
 の SCC を `infer_scc_type_surfaces` で一括推論する fallback を追加した。SCC 経路は現時点では
 `ModuleIrSegments` の再利用を行わず、SCC 全体を modular lowering して linked IR と型 surface を cache
@@ -268,8 +273,8 @@ validation は `test_e2e_bootstrap_cli_fixed_input_compile_gate` (`66.36 s`, 1 p
 - CLI driver の既定経路は C-2f で process 内 session cache へ接続し、C-2g で process 間 cache の identity key、C-2h で
   明示 root の atomic artifact store/load、C-2i で `CompileSession` の opt-in Wasm 接続と source-change miss、C-2j で
   target-aware Wasm validation、C-2k で `--artifact-cache-dir` の host-only opt-in、C-2l で cached Wasm runtime execution、
-  C-2m で明示 bounded maintenance を固定した。CLI/env default、依存 SCC を含む公開 cache key の統合、自動 eviction policy、
-  Native/selfhost compiler への移植を行う。
+  C-2m で明示 bounded maintenance、C-2n で CLI の明示 entry limit を固定した。CLI/env default、依存 SCC を含む公開 cache key の
+  統合、自動 eviction policy、byte budget、Native/selfhost compiler への移植を行う。
 - source override 入口はまだ strict な graph build と module 単位推論を使っており、SCC-aware override
   inference は C-1e で閉じた。compile / override の dirty type surface 再利用は C-1i/C-1j、compile の dirty lowering は
   C-1h で閉じたが、override 経路への segment cache と disk persistence は未着手である。
@@ -297,8 +302,9 @@ C-1h の dirty SCC lowering/link segment reuse、C-1i の dirty SCC type surface
 C-1k の unrestricted cyclic SCC merged surface fast path、C-1l の merged SCC 重複 import 除去、C-1m の型置換 fast path、
 C-2f の tooling/driver compile session、C-2g の deterministic compile key、C-2h の明示 root artifact envelope、C-2i の
 `CompileSession` opt-in Wasm 接続、C-2j の target-aware validation、C-2k の CLI host-only cache root、C-2l の cached Wasm runtime
-execution、C-2m の bounded artifact maintenance を検証済み部分実装として反映した。一括推論の native parity、Formatter canonical
-runtime parity、override 経路の segment cache、process 間 cache の CLI/env default 接続、依存 SCC key、自動 eviction policy、selfhost
+execution、C-2m の bounded artifact maintenance、C-2n の CLI entry limit を検証済み部分実装として反映した。一括推論の native parity、
+Formatter canonical runtime parity、override 経路の segment cache、process 間 cache の CLI/env default 接続、依存 SCC key、自動 eviction policy、
+byte budget、selfhost
 移植は未着手のため、Phase C-1 / C-2 の aggregate 完了とは扱わない。C-1n の canonical boundary ADR は、既定
 test stack overflow、CLI driver artifact、Formatter SCC timing を別々の evidence として記録する。
 着手時は TODO.md に Phase C-1 / C-2 として項目を作成する。
