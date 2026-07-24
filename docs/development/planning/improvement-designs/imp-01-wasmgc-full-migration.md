@@ -953,6 +953,22 @@ record として読み出す `descriptor.metadata-hash` 境界を actual Compone
 Wasm artifact/runtime differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity
 は未完了である。
 
+## Stage 2ao 検証済み slice: descriptor metadata-hash-at lifecycle (2026-07-24)
+
+Stage 2an の descriptor metadata hash に加えて、directory descriptor と相対 path から同じ
+128-bit metadata hash を取得する `descriptor.metadata-hash-at` 境界を actual Component で検証した。
+
+- `wasm_gc_component_cli_fs_runner_reads_stable_metadata_hash_at_and_drops_resources` は named
+  preopen の directory descriptor に path-flags `0`、`source.txt`、二つの retptr を渡す。
+- 二回の `result<metadata-hash-value, error-code>` success discriminant と `lower` / `upper` の
+  64-bit payload が一致することを guest linear memory 上で確認する。
+- directory descriptor を drop し、`wasi:cli/run` exit 0、stdout empty、host bytes `hello`
+  unchanged を同じ実行で確認する。
+
+これは descriptor metadata-hash-at の verified partial slice であり、残る descriptor operation、
+Wasm artifact/runtime differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity
+は未完了である。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線
