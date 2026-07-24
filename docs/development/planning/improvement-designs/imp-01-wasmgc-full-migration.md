@@ -920,6 +920,22 @@ Stage 2ak の symbolic-link readback に加えて、old-path-flags を明示し�
 Wasm artifact/runtime differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity
 は未完了である。
 
+## Stage 2am 検証済み slice: descriptor is-same-object lifecycle (2026-07-24)
+
+Stage 2al の hard-link artifact に加えて、同一 underlying object を指す二つの descriptor を
+`descriptor.is-same-object` で比較する Component 境界を actual Component で検証した。
+
+- `wasm_gc_component_cli_fs_runner_compares_same_file_descriptors_and_drops_resources` は host fixture
+  の `source.txt` と hard link `hardlink.txt` を二つの descriptor として同じ preopen から開く。
+- `descriptor.is-same-object` の bool result が true になることを確認し、`wasi:cli/run` exit 0 と
+  source/hard-link の bytes `hello` unchanged を同じ実行で確認する。
+- 二つの file descriptor と preopen descriptor を drop し、stdout empty と resource lifecycle を
+  確認する。
+
+これは descriptor is-same-object の verified partial slice であり、残る descriptor operation、
+Wasm artifact/runtime differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity
+は未完了である。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線
