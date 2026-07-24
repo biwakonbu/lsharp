@@ -81,6 +81,66 @@ impl ArtifactCache {
         )
     }
 
+    /// `max_entries` を超えた artifact を deterministic に削除する。
+    ///
+    /// fingerprint は opaque なため、mtime/LRU を意味論として仮定せず、`.artifact` の
+    /// file name が辞書順で小さいものから削除する。既定 compile path からは自動実行せず、
+    /// 明示 root を管理する caller が頻度と上限を決める。cache directory がまだなければ
+    /// no-op とし、schema 外のファイルや `.artifact` 以外の entry は変更しない。
+    pub fn trim_to_entries(&self, max_entries: usize) -> miette::Result<usize> {
+        let directory = self.root.join(ARTIFACT_CACHE_SCHEMA);
+        let entries = match std::fs::read_dir(&directory) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+            Err(error) => {
+                return Err(miette::miette!(
+                    "compile artifact cache directory の列挙に失敗しました ({}): {error}",
+                    directory.display()
+                ));
+            }
+        };
+        let mut artifact_paths = Vec::new();
+        for entry in entries {
+            let entry = entry.map_err(|error| {
+                miette::miette!(
+                    "compile artifact cache entry の読み込みに失敗しました ({}): {error}",
+                    directory.display()
+                )
+            })?;
+            let file_type = entry.file_type().map_err(|error| {
+                miette::miette!(
+                    "compile artifact cache entry の種別取得に失敗しました ({}): {error}",
+                    entry.path().display()
+                )
+            })?;
+            if file_type.is_file()
+                && entry
+                    .path()
+                    .extension()
+                    .is_some_and(|extension| extension == "artifact")
+            {
+                artifact_paths.push(entry.path());
+            }
+        }
+        artifact_paths.sort_by(|left, right| left.file_name().cmp(&right.file_name()));
+
+        let remove_count = artifact_paths.len().saturating_sub(max_entries);
+        let mut removed = 0;
+        for path in artifact_paths.into_iter().take(remove_count) {
+            match std::fs::remove_file(&path) {
+                Ok(()) => removed += 1,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => {
+                    return Err(miette::miette!(
+                        "compile artifact cache entry の削除に失敗しました ({}): {error}",
+                        path.display()
+                    ));
+                }
+            }
+        }
+        Ok(removed)
+    }
+
     fn path_for(&self, key: &CompileCacheKey) -> PathBuf {
         self.root
             .join(ARTIFACT_CACHE_SCHEMA)
@@ -177,6 +237,78 @@ mod tests {
             "cache entry は deterministic artifact path を使うべき"
         );
 
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_artifact_cache_trim_to_entries_removes_deterministic_lowest_keys() {
+        let dir = unique_temp_dir("trim");
+        let cache = ArtifactCache::new(&dir);
+        let first = test_key(&dir, CompileTarget::WasiPreview1, CompileBackend::Linear);
+        std::fs::write(dir.join("Second.ls"), "(module Second)\n(defn main [] 8)\n").unwrap();
+        let second = CompileCacheKey::from_entry(
+            &dir.join("Second.ls"),
+            CompileTarget::WasiPreview1,
+            CompileBackend::Linear,
+        )
+        .unwrap();
+        std::fs::write(dir.join("Third.ls"), "(module Third)\n(defn main [] 9)\n").unwrap();
+        let third = CompileCacheKey::from_entry(
+            &dir.join("Third.ls"),
+            CompileTarget::WasiPreview1,
+            CompileBackend::Linear,
+        )
+        .unwrap();
+        cache.store(&first, b"first").unwrap();
+        cache.store(&second, b"second").unwrap();
+        cache.store(&third, b"third").unwrap();
+        std::fs::write(
+            dir.join("lsharp-compile-artifact-v1").join("notes.txt"),
+            "caller-owned metadata",
+        )
+        .unwrap();
+
+        let mut fingerprints = [
+            first.fingerprint().to_string(),
+            second.fingerprint().to_string(),
+            third.fingerprint().to_string(),
+        ];
+        fingerprints.sort();
+        let removed = cache
+            .trim_to_entries(1)
+            .expect("bounded cache maintenance は成功するべき");
+        assert_eq!(removed, 2);
+        assert_eq!(
+            cache.load(&first).unwrap(),
+            if first.fingerprint().to_string() == fingerprints[2] {
+                Some(b"first".to_vec())
+            } else {
+                None
+            }
+        );
+        assert_eq!(
+            cache.load(&second).unwrap(),
+            if second.fingerprint().to_string() == fingerprints[2] {
+                Some(b"second".to_vec())
+            } else {
+                None
+            }
+        );
+        assert_eq!(
+            cache.load(&third).unwrap(),
+            if third.fingerprint().to_string() == fingerprints[2] {
+                Some(b"third".to_vec())
+            } else {
+                None
+            }
+        );
+        assert!(
+            dir.join("lsharp-compile-artifact-v1/notes.txt").exists(),
+            "schema directory内の非artifact file は caller-owned として残すべき"
+        );
+
+        let missing = ArtifactCache::new(dir.join("missing"));
+        assert_eq!(missing.trim_to_entries(0).unwrap(), 0);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
