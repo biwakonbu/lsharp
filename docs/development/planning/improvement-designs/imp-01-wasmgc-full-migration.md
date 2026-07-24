@@ -600,6 +600,25 @@ Stage 2r の exit/result parity に、WASI Preview2 filesystem descriptor の pr
 read/write、fd close/lifecycle、Wasm artifact/runtime differential、Mac Apple Silicon/Linux x86_64、
 native/selfhost parity は未完了である。
 
+## Stage 2t 検証済み slice: 名前付き preopen と descriptor read stream lifecycle (2026-07-24)
+
+Stage 2s の単一 host path preopen を、guest-visible な名前付き preopen table と descriptor の
+read stream lifecycle へ拡張した。
+
+- `Preview2Preopen` は host path、guest path、directory/file rights を一つの capability として保持し、
+  `...with_preview2_stdout_and_preopens` API が複数の preopen を `WasiCtxBuilder` へ順序通り登録する。
+  既存の `Option<&Path>` API は guest path `"."` の read-write default wrapper として維持する。
+- `wasmgc-cli-fs-streams` world は `wasi:io/streams@0.2.3` を明示的に import し、filesystem/types
+  が返す `input-stream` resource と stream methods を同じ Component resource boundary で解決する。
+- `wasm_gc_component_cli_fs_runner_reads_named_preopen_stream_and_drops_resources` は actual Component
+  で guest path `data` の read-only preopen から `input.txt` を `descriptor.open-at`、
+  `descriptor.read-via-stream`、`input-stream.blocking-read` の順に読み、stdout に `hello` を返した後、
+  input-stream と descriptor の resource-drop を実行して exit 0 になることを固定する。
+
+これは named preopen と read-stream/drop の verified partial slice であり、descriptor の direct
+`read`/`write`/`stat`、write/append stream、close-after-error、directory-entry stream、pollable、
+Wasm artifact/runtime differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity は未完了である。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線

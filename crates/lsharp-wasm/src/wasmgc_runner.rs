@@ -302,13 +302,30 @@ pub fn run_wasm_wasmgc_component_output_component_with_preview2_stdout_and_preop
     stdin_data: &str,
     preopen_rights: Preview2PreopenRights,
 ) -> Result<ExecutionOutput, String> {
+    let preopens = dir
+        .map(|host_path| vec![Preview2Preopen::new(host_path, ".", preopen_rights)])
+        .unwrap_or_default();
+    run_wasm_wasmgc_component_output_component_with_preview2_stdout_and_preopens(
+        component_bytes,
+        args,
+        stdin_data,
+        &preopens,
+    )
+}
+
+/// `wasmgc-output` Component を複数の名前付き preopen と指定 rights で実行する。
+pub fn run_wasm_wasmgc_component_output_component_with_preview2_stdout_and_preopens(
+    component_bytes: &[u8],
+    args: &[&str],
+    stdin_data: &str,
+    preopens: &[Preview2Preopen<'_>],
+) -> Result<ExecutionOutput, String> {
     run_wasm_wasmgc_component_with_preview2_stdout(
         component_bytes,
-        dir,
         args,
         stdin_data,
         ComponentOutputRun::MainS64,
-        preopen_rights,
+        preopens,
     )
 }
 
@@ -339,13 +356,30 @@ pub fn run_wasm_wasmgc_component_cli_with_preview2_stdout_and_preopen_rights(
     stdin_data: &str,
     preopen_rights: Preview2PreopenRights,
 ) -> Result<ExecutionOutput, String> {
+    let preopens = dir
+        .map(|host_path| vec![Preview2Preopen::new(host_path, ".", preopen_rights)])
+        .unwrap_or_default();
+    run_wasm_wasmgc_component_cli_with_preview2_stdout_and_preopens(
+        component_bytes,
+        args,
+        stdin_data,
+        &preopens,
+    )
+}
+
+/// `wasi:cli/run` Component を複数の名前付き preopen と指定 rights で実行する。
+pub fn run_wasm_wasmgc_component_cli_with_preview2_stdout_and_preopens(
+    component_bytes: &[u8],
+    args: &[&str],
+    stdin_data: &str,
+    preopens: &[Preview2Preopen<'_>],
+) -> Result<ExecutionOutput, String> {
     run_wasm_wasmgc_component_with_preview2_stdout(
         component_bytes,
-        dir,
         args,
         stdin_data,
         ComponentOutputRun::WasiCli,
-        preopen_rights,
+        preopens,
     )
 }
 
@@ -380,6 +414,28 @@ impl Default for Preview2PreopenRights {
     }
 }
 
+/// Preview2 に公開する一つの preopen。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Preview2Preopen<'a> {
+    /// ホスト側で公開するディレクトリ。
+    pub host_path: &'a Path,
+    /// guest の preopen table に見せる相対パス名。
+    pub guest_path: &'a str,
+    /// この preopen に付与する directory/file rights。
+    pub rights: Preview2PreopenRights,
+}
+
+impl<'a> Preview2Preopen<'a> {
+    /// host path、guest path、rights から preopen を作成する。
+    pub fn new(host_path: &'a Path, guest_path: &'a str, rights: Preview2PreopenRights) -> Self {
+        Self {
+            host_path,
+            guest_path,
+            rights,
+        }
+    }
+}
+
 enum ComponentOutputRun {
     MainS64,
     WasiCli,
@@ -387,11 +443,10 @@ enum ComponentOutputRun {
 
 fn run_wasm_wasmgc_component_with_preview2_stdout(
     component_bytes: &[u8],
-    dir: Option<&Path>,
     args: &[&str],
     stdin_data: &str,
     run_mode: ComponentOutputRun,
-    preopen_rights: Preview2PreopenRights,
+    preopens: &[Preview2Preopen<'_>],
 ) -> Result<ExecutionOutput, String> {
     let engine = configured_engine()?;
     let component = Component::new(&engine, component_bytes)
@@ -404,9 +459,14 @@ fn run_wasm_wasmgc_component_with_preview2_stdout(
         stdin_data.as_bytes().to_vec(),
     ));
     builder.args(args);
-    if let Some(dir_path) = dir {
+    for preopen in preopens {
         builder
-            .preopened_dir(dir_path, ".", preopen_rights.dir, preopen_rights.file)
+            .preopened_dir(
+                preopen.host_path,
+                preopen.guest_path,
+                preopen.rights.dir,
+                preopen.rights.file,
+            )
             .map_err(|error| format!("component preopened_dir に失敗: {error}"))?;
     }
 

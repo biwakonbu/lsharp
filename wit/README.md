@@ -8,7 +8,7 @@ WASI Preview2 / Component Model への移行に向けた WIT (WebAssembly Interf
 |---------|------|
 | `lsharp-compiler.wit` | CLI コンパイラ component world (wasi:cli + wasi:filesystem) |
 | `lsharp-http-handler.wit` | HTTP handler component world (wasi:http/incoming-handler) |
-| `lsharp-wasmgc-output.wit` | WasmGC `print-string` の `list<u8>` output interface と `wasmgc-output` / `wasmgc-cli` / `wasmgc-cli-fs` world |
+| `lsharp-wasmgc-output.wit` | WasmGC `print-string` の `list<u8>` output interface と `wasmgc-output` / `wasmgc-cli` / `wasmgc-cli-fs` / `wasmgc-cli-fs-streams` world |
 | `lsharp-core.wit` | 共有インターフェース (compiler, host-fs, host-process) |
 | `deps/http.wit` | `lsharp-http-handler.wit` が参照する vendored `wasi:http` package |
 
@@ -37,6 +37,9 @@ WASI Preview2 / Component Model への移行に向けた WIT (WebAssembly Interf
 - `wasmgc-cli-fs` は `wasmgc-cli` に `wasi:filesystem/preopens@0.2.3` / `types@0.2.3` を明示的に
   加えた検証用 world であり、preopen がない場合や rights が read-only の場合に filesystem access
   を成功扱いにしない
+- `wasmgc-cli-fs-streams` は `wasmgc-cli-fs` に `wasi:io/streams@0.2.3` を明示的に加えた world であり、
+  descriptor の `read-via-stream` と input-stream の resource lifecycle を暗黙の別 resource table
+  に分離しない
 
 ## 関連タスク
 

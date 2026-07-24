@@ -30,3 +30,13 @@ world wasmgc-cli-fs {
   import wasi:filesystem/types@0.2.3;
   export wasi:cli/run@0.2.3;
 }
+
+/// Filesystem-enabled CLI world with explicit stream resource operations.
+world wasmgc-cli-fs-streams {
+  import stdout;
+  import wasi:cli/exit@0.2.3;
+  import wasi:filesystem/preopens@0.2.3;
+  import wasi:filesystem/types@0.2.3;
+  import wasi:io/streams@0.2.3;
+  export wasi:cli/run@0.2.3;
+}
