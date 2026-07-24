@@ -62,6 +62,15 @@ pub struct ModuleGraph {
     reverse_deps: HashMap<String, Vec<String>>,
 }
 
+#[derive(Default)]
+struct SccState {
+    next_index: usize,
+    indices: HashMap<String, usize>,
+    lowlinks: HashMap<String, usize>,
+    stack: Vec<String>,
+    on_stack: HashSet<String>,
+}
+
 /// モジュールノード
 #[derive(Debug, Clone)]
 pub struct ModuleNode {
@@ -240,6 +249,81 @@ impl ModuleGraph {
         }
 
         Ok(order)
+    }
+
+    /// 強連結成分を、依存先が先に来る安定した順序で返す。
+    ///
+    /// import edge は「module -> dependency」を向くため、Tarjan の出力順は
+    /// compile 用の dependency-first order（設計書でいう reverse topological order）になる。
+    /// 各 SCC 内と DFS の開始/import 順は module 名で安定化し、未解決 import は
+    /// `check_imports` の責務としてグラフへ暗黙に追加しない。
+    pub fn scc_groups(&self) -> Vec<Vec<String>> {
+        let mut module_names: Vec<String> = self.modules.keys().cloned().collect();
+        module_names.sort();
+
+        let mut state = SccState::default();
+        let mut groups = Vec::new();
+
+        for name in module_names {
+            if !state.indices.contains_key(&name) {
+                self.scc_visit(&name, &mut state, &mut groups);
+            }
+        }
+
+        groups
+    }
+
+    fn scc_visit(&self, node: &str, state: &mut SccState, groups: &mut Vec<Vec<String>>) {
+        let index = state.next_index;
+        state.next_index += 1;
+        state.indices.insert(node.to_string(), index);
+        state.lowlinks.insert(node.to_string(), index);
+        state.stack.push(node.to_string());
+        state.on_stack.insert(node.to_string());
+
+        let mut imports = self
+            .modules
+            .get(node)
+            .map(|module| module.imports.clone())
+            .unwrap_or_default();
+        imports.sort();
+
+        for import in imports {
+            if !self.modules.contains_key(&import) {
+                continue;
+            }
+            if !state.indices.contains_key(&import) {
+                self.scc_visit(&import, state, groups);
+                let child_lowlink = state.lowlinks[&import];
+                let current_lowlink = state.lowlinks[node];
+                state
+                    .lowlinks
+                    .insert(node.to_string(), current_lowlink.min(child_lowlink));
+            } else if state.on_stack.contains(&import) {
+                let import_index = state.indices[&import];
+                let current_lowlink = state.lowlinks[node];
+                state
+                    .lowlinks
+                    .insert(node.to_string(), current_lowlink.min(import_index));
+            }
+        }
+
+        if state.lowlinks[node] == state.indices[node] {
+            let mut group = Vec::new();
+            loop {
+                let member = state
+                    .stack
+                    .pop()
+                    .expect("SCC root must have a member on the stack");
+                state.on_stack.remove(&member);
+                group.push(member.clone());
+                if member == node {
+                    break;
+                }
+            }
+            group.sort();
+            groups.push(group);
+        }
     }
 
     /// トポロジカルソートの DFS
@@ -1108,6 +1192,40 @@ mod tests {
         assert_eq!(o1, o2);
         // import 名ソートにより A → Z → M（M の依存先を辞書順に処理）
         assert_eq!(o1, vec!["A", "Z", "M"]);
+    }
+
+    #[test]
+    fn test_scc_groups_are_stable_and_dependency_first() {
+        let mut graph = ModuleGraph::new();
+        graph
+            .add_module("Consumer".to_string(), vec!["CycleA".to_string()], None)
+            .unwrap();
+        graph
+            .add_module(
+                "CycleB".to_string(),
+                vec!["Base".to_string(), "CycleA".to_string()],
+                None,
+            )
+            .unwrap();
+        graph
+            .add_module(
+                "CycleA".to_string(),
+                vec!["CycleB".to_string(), "Base".to_string()],
+                None,
+            )
+            .unwrap();
+        graph.add_module("Base".to_string(), vec![], None).unwrap();
+
+        let groups = graph.scc_groups();
+        assert_eq!(
+            groups,
+            vec![
+                vec!["Base".to_string()],
+                vec!["CycleA".to_string(), "CycleB".to_string()],
+                vec!["Consumer".to_string()],
+            ]
+        );
+        assert_eq!(groups, graph.scc_groups());
     }
 
     #[test]

@@ -78,6 +78,26 @@
    を CLI 経路でも流用
 4. 依存変更の無効化: モジュール A の公開シグネチャ変更で依存先 B が再解析されるテスト
 
+## 検証済み部分実装 (2026-07-24)
+
+Phase C-1 の最初の狭い slice として、`ModuleGraph::scc_groups()` を追加した。
+Tarjan 法で強連結成分を求め、モジュール名と import の走査順をソートして、結果を
+依存先が先に来る deterministic order で返す。SCC 内のモジュール名もソートするため、
+同じグラフを複数回処理しても結果が変わらない。グラフにない import は暗黙に追加せず、
+既存の `check_imports` による未解決 import 検証を維持する。
+
+`test_scc_groups_are_stable_and_dependency_first` で、`Base` → 相互再帰する
+`CycleA`/`CycleB` → `Consumer` の順序と反復安定性を固定した。これは SCC 検出 API の
+契約を閉じた verified partial slice であり、推論経路の変更ではない。
+
+### 未完了の後続作業
+
+- `compile_multi_file_with_mode` を SCC ごとの宣言連結・一括 `infer_program` に変更する。
+- Formatter 3 モジュールの merged 特別扱いを除去し、相互再帰 fixture の IR/runtime parity を確認する。
+- CLI の `CompilationCache` 統合、依存 SCC key、selfhost compiler への移植を行う。
+- `LEGACY-MODULE-01` の aggregate 完了条件（両対応 target、native stage0、公開 command）を満たすまで、
+  TODO の active item は完了扱いにしない。
+
 ## 影響範囲
 
 - `module_graph.rs` (1597 行) と `lib.rs` の compile 系が主対象。imp-06 の分割を
@@ -87,5 +107,7 @@
 
 ## ステータス
 
-設計 (2026-06-12 起草、同日コード検証に基づき大幅訂正・具体化)。
+設計 (2026-06-12 起草、同日コード検証に基づき大幅訂正・具体化)。2026-07-24 に
+Phase C-1a の deterministic SCC 検出 API と unit test を検証済み部分実装として反映した。
+一括推論、CLI キャッシュ、selfhost 移植は未着手のため、Phase C-1 / C-2 の aggregate 完了とは扱わない。
 着手時は TODO.md に Phase C-1 / C-2 として項目を作成する。
