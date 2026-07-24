@@ -39,17 +39,30 @@ fn position_to_char_index(rope: &Rope, position: Position) -> Option<usize> {
 
     let line_start = rope.line_to_char(line);
     let line_slice = rope.line(line);
-    let mut max_char = line_slice.len_chars();
-    if max_char > 0 && line_slice.char(max_char - 1) == '\n' {
-        max_char -= 1;
+    let mut char_index = 0usize;
+    let mut utf16_column = 0u32;
+    for ch in line_slice.chars() {
+        if position.character == utf16_column {
+            return Some(line_start + char_index);
+        }
+        if ch == '\n' {
+            break;
+        }
+
+        let next_column = utf16_column + ch.len_utf16() as u32;
+        if position.character < next_column {
+            // サロゲートペアの途中など、文字境界でない位置は文字の先頭へ寄せる
+            return Some(line_start + char_index);
+        }
+        utf16_column = next_column;
+        char_index += 1;
     }
 
-    let char_in_line = position.character as usize;
-    if char_in_line > max_char {
-        return None;
+    if position.character == utf16_column {
+        Some(line_start + char_index)
+    } else {
+        None
     }
-
-    Some(line_start + char_in_line)
 }
 
 #[cfg(test)]
@@ -83,6 +96,14 @@ mod tests {
         .expect("single range change should succeed");
 
         assert_eq!(updated, "(defn main [] (+ 1 3))\n");
+    }
+
+    #[test]
+    fn test_apply_content_changes_uses_utf16_positions() {
+        let updated = apply_content_changes("😀x\n", &[ranged_change(0, 2, 0, 3, "y")])
+            .expect("UTF-16 range change should succeed");
+
+        assert_eq!(updated, "😀y\n");
     }
 
     #[test]
