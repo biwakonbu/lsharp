@@ -126,11 +126,11 @@ enum Command {
         #[arg(long)]
         artifact_cache_dir: Option<PathBuf>,
 
-        /// 明示 artifact cache に残す最大 entry 数（cache root と併用）
+        /// 明示 artifact cache に残す最大 entry 数（未指定時は LSHARP_ARTIFACT_CACHE_MAX_ENTRIES を参照）
         #[arg(long)]
         artifact_cache_max_entries: Option<usize>,
 
-        /// 明示 artifact cache に残す最大 bytes 数（cache root と併用）
+        /// 明示 artifact cache に残す最大 bytes 数（未指定時は LSHARP_ARTIFACT_CACHE_MAX_BYTES を参照）
         #[arg(long)]
         artifact_cache_max_bytes: Option<u64>,
 
@@ -160,11 +160,11 @@ enum Command {
         #[arg(long)]
         artifact_cache_dir: Option<PathBuf>,
 
-        /// 明示 artifact cache に残す最大 entry 数（cache root と併用）
+        /// 明示 artifact cache に残す最大 entry 数（未指定時は LSHARP_ARTIFACT_CACHE_MAX_ENTRIES を参照）
         #[arg(long)]
         artifact_cache_max_entries: Option<usize>,
 
-        /// 明示 artifact cache に残す最大 bytes 数（cache root と併用）
+        /// 明示 artifact cache に残す最大 bytes 数（未指定時は LSHARP_ARTIFACT_CACHE_MAX_BYTES を参照）
         #[arg(long)]
         artifact_cache_max_bytes: Option<u64>,
 
@@ -319,6 +319,11 @@ fn main() -> miette::Result<()> {
             emit_ir,
         } => {
             let artifact_cache_dir = resolve_artifact_cache_dir(artifact_cache_dir)?;
+            let (artifact_cache_max_entries, artifact_cache_max_bytes) =
+                resolve_artifact_cache_limits(
+                    artifact_cache_max_entries,
+                    artifact_cache_max_bytes,
+                )?;
             validate_artifact_cache_options(
                 artifact_cache_dir.as_deref(),
                 artifact_cache_max_entries,
@@ -551,6 +556,8 @@ fn print_compile_artifacts_success(artifacts: &commands::compile::CompileArtifac
 }
 
 const ARTIFACT_CACHE_DIR_ENV: &str = "LSHARP_ARTIFACT_CACHE_DIR";
+const ARTIFACT_CACHE_MAX_ENTRIES_ENV: &str = "LSHARP_ARTIFACT_CACHE_MAX_ENTRIES";
+const ARTIFACT_CACHE_MAX_BYTES_ENV: &str = "LSHARP_ARTIFACT_CACHE_MAX_BYTES";
 
 fn resolve_artifact_cache_dir(explicit: Option<PathBuf>) -> miette::Result<Option<PathBuf>> {
     resolve_artifact_cache_dir_from_values(explicit, std::env::var_os(ARTIFACT_CACHE_DIR_ENV))
@@ -571,6 +578,61 @@ fn resolve_artifact_cache_dir_from_values(
         )),
         Some(value) => Ok(Some(PathBuf::from(value))),
     }
+}
+
+fn resolve_artifact_cache_limits(
+    explicit_max_entries: Option<usize>,
+    explicit_max_bytes: Option<u64>,
+) -> miette::Result<(Option<usize>, Option<u64>)> {
+    resolve_artifact_cache_limits_from_values(
+        explicit_max_entries,
+        explicit_max_bytes,
+        std::env::var_os(ARTIFACT_CACHE_MAX_ENTRIES_ENV),
+        std::env::var_os(ARTIFACT_CACHE_MAX_BYTES_ENV),
+    )
+}
+
+fn resolve_artifact_cache_limits_from_values(
+    explicit_max_entries: Option<usize>,
+    explicit_max_bytes: Option<u64>,
+    environment_max_entries: Option<std::ffi::OsString>,
+    environment_max_bytes: Option<std::ffi::OsString>,
+) -> miette::Result<(Option<usize>, Option<u64>)> {
+    let max_entries = match explicit_max_entries {
+        Some(value) => Some(value),
+        None => {
+            parse_artifact_cache_limit(ARTIFACT_CACHE_MAX_ENTRIES_ENV, environment_max_entries)?
+        }
+    };
+    let max_bytes = match explicit_max_bytes {
+        Some(value) => Some(value),
+        None => parse_artifact_cache_limit(ARTIFACT_CACHE_MAX_BYTES_ENV, environment_max_bytes)?,
+    };
+    Ok((max_entries, max_bytes))
+}
+
+fn parse_artifact_cache_limit<T>(
+    environment_name: &str,
+    value: Option<std::ffi::OsString>,
+) -> miette::Result<Option<T>>
+where
+    T: std::str::FromStr,
+    T::Err: std::fmt::Display,
+{
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    if value.is_empty() {
+        return Err(miette::miette!(
+            "{environment_name} が空です。数値の limit を指定してください"
+        ));
+    }
+    let value = value
+        .to_str()
+        .ok_or_else(|| miette::miette!("{environment_name} は UTF-8 の数値で指定してください"))?;
+    value.parse::<T>().map(Some).map_err(|error| {
+        miette::miette!("{environment_name} の値 '{value}' を数値として解釈できません: {error}")
+    })
 }
 
 fn validate_artifact_cache_options(
@@ -908,14 +970,21 @@ fn should_delegate_to_embedded_component() -> bool {
 
 fn should_delegate_to_embedded_component_args(args: &[std::ffi::OsString]) -> bool {
     let cache_env = std::env::var_os(ARTIFACT_CACHE_DIR_ENV);
-    should_delegate_to_embedded_component_args_with_cache_env(args, cache_env.as_deref())
+    let cache_limits_env_configured = std::env::var_os(ARTIFACT_CACHE_MAX_ENTRIES_ENV).is_some()
+        || std::env::var_os(ARTIFACT_CACHE_MAX_BYTES_ENV).is_some();
+    should_delegate_to_embedded_component_args_with_cache_env(
+        args,
+        cache_env.as_deref(),
+        cache_limits_env_configured,
+    )
 }
 
 fn should_delegate_to_embedded_component_args_with_cache_env(
     args: &[std::ffi::OsString],
     cache_env: Option<&std::ffi::OsStr>,
+    cache_limits_env_configured: bool,
 ) -> bool {
-    if cache_env.is_some()
+    if (cache_env.is_some() || cache_limits_env_configured)
         && matches!(
             args.first().and_then(|arg| arg.to_str()),
             Some("compile" | "build")
@@ -2896,6 +2965,74 @@ mod tests {
     }
 
     #[test]
+    fn test_resolve_artifact_cache_limits_prefers_cli_over_environment() {
+        let resolved = resolve_artifact_cache_limits_from_values(
+            Some(2),
+            Some(4096),
+            Some(std::ffi::OsString::from("3")),
+            Some(std::ffi::OsString::from("8192")),
+        )
+        .expect("CLI maintenance limit は解決できるべき");
+
+        assert_eq!(resolved, (Some(2), Some(4096)));
+    }
+
+    #[test]
+    fn test_resolve_artifact_cache_limits_uses_environment_when_cli_is_absent() {
+        let resolved = resolve_artifact_cache_limits_from_values(
+            None,
+            None,
+            Some(std::ffi::OsString::from("3")),
+            Some(std::ffi::OsString::from("8192")),
+        )
+        .expect("環境変数の maintenance limit は解決できるべき");
+
+        assert_eq!(resolved, (Some(3), Some(8192)));
+    }
+
+    #[test]
+    fn test_resolve_artifact_cache_limits_keeps_limits_disabled_when_unset() {
+        let resolved = resolve_artifact_cache_limits_from_values(None, None, None, None)
+            .expect("未設定の maintenance limit はエラーにならないべき");
+
+        assert_eq!(resolved, (None, None));
+    }
+
+    #[test]
+    fn test_resolve_artifact_cache_limits_rejects_invalid_entry_value() {
+        let error = resolve_artifact_cache_limits_from_values(
+            None,
+            None,
+            Some(std::ffi::OsString::from("many")),
+            None,
+        )
+        .expect_err("不正な entry limit は暗黙に無視してはいけない");
+
+        assert!(
+            error
+                .to_string()
+                .contains("LSHARP_ARTIFACT_CACHE_MAX_ENTRIES")
+        );
+    }
+
+    #[test]
+    fn test_resolve_artifact_cache_limits_rejects_empty_byte_value() {
+        let error = resolve_artifact_cache_limits_from_values(
+            None,
+            None,
+            None,
+            Some(std::ffi::OsString::new()),
+        )
+        .expect_err("空の byte limit は暗黙に無視してはいけない");
+
+        assert!(
+            error
+                .to_string()
+                .contains("LSHARP_ARTIFACT_CACHE_MAX_BYTES")
+        );
+    }
+
+    #[test]
     fn test_cli_compile_artifact_cache_max_entries_is_explicit() {
         let cli = Cli::try_parse_from([
             "lsharp",
@@ -3085,11 +3222,15 @@ mod tests {
         let cache_env = std::ffi::OsString::from("tmp/lsharp-cache");
 
         assert!(should_delegate_to_embedded_component_args_with_cache_env(
-            &args, None
+            &args, None, false
         ));
         assert!(!should_delegate_to_embedded_component_args_with_cache_env(
             &args,
             Some(cache_env.as_os_str()),
+            false,
+        ));
+        assert!(!should_delegate_to_embedded_component_args_with_cache_env(
+            &args, None, true,
         ));
     }
 

@@ -195,6 +195,11 @@ entry/byte limit は解決済み root に対して従来の成功後 maintenance
 delegation を抑止し、filesystem を使う Rust host 境界を曖昧にしない。これは CLI/env opt-in の verified partial slice であり、公開 cache key
 の再設計、自動 eviction policy、Native/selfhost compiler への移植は未完了である。
 
+Phase C-2q として、`LSHARP_ARTIFACT_CACHE_MAX_ENTRIES` / `LSHARP_ARTIFACT_CACHE_MAX_BYTES` を CLI maintenance limit の env default として追加した。
+CLI flag を優先し、未設定時は limit を無効のままにする。空値、非 UTF-8、数値でない値は compile 前に stable error とし、limit env が設定された
+compile/build では embedded component delegation も抑止する。解決済み root と limits を組み合わせて成功後の deterministic trim を行う
+verified partial slice であり、公開 cache key の再設計、自動 eviction policy、Native/selfhost compiler への移植は未完了である。
+
 Phase C-1c として、`compile_multi_file_incremental` も `build_from_entry_with_scc` を使い、サイズ 2 以上
 の SCC を `infer_scc_type_surfaces` で一括推論する fallback を追加した。SCC 経路は現時点では
 `ModuleIrSegments` の再利用を行わず、SCC 全体を modular lowering して linked IR と型 surface を cache
@@ -285,8 +290,8 @@ validation は `test_e2e_bootstrap_cli_fixed_input_compile_gate` (`66.36 s`, 1 p
   明示 root の atomic artifact store/load、C-2i で `CompileSession` の opt-in Wasm 接続と source-change miss、C-2j で
   target-aware Wasm validation、C-2k で `--artifact-cache-dir` の host-only opt-in、C-2l で cached Wasm runtime execution、
   C-2m で明示 bounded maintenance、C-2n で CLI の明示 entry limit、C-2o で CLI の明示 byte budget、C-2p で
-  `LSHARP_ARTIFACT_CACHE_DIR` の opt-in default を固定した。依存 SCC を含む公開 cache key の統合、自動 eviction policy、
-  Native/selfhost compiler への移植を行う。
+  `LSHARP_ARTIFACT_CACHE_DIR` の opt-in default、C-2q で maintenance limit の env default を固定した。依存 SCC を含む公開 cache key の統合、
+  自動 eviction policy、Native/selfhost compiler への移植を行う。
 - source override 入口はまだ strict な graph build と module 単位推論を使っており、SCC-aware override
   inference は C-1e で閉じた。compile / override の dirty type surface 再利用は C-1i/C-1j、compile の dirty lowering は
   C-1h で閉じたが、override 経路への segment cache と disk persistence は未着手である。
