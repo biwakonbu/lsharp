@@ -37,6 +37,9 @@ canonical compile の証跡を次の境界に分けて記録する。
 - default stack の CLI driver 経路でも
   `cargo run -p lsharp-driver -- compile selfhost/src/App/Cli.ls -o <tmp>/Cli.wasm` は成功し、
   `1,132,259 bytes` の artifact を生成した。Wasm validation、runtime、Mac/Linux native stage0 は別 gate とする。
+- `cargo test -p lsharp-wasm --test e2e test_e2e_bootstrap_cli_fixed_input_compile_gate -- --nocapture` は
+  expanded-stack acceptance harness 上で `66.36 s`、`1 passed; 0 failed` となった。canonical `Cli.ls` の
+  Rust host compile と `wasmparser` validation は確認できるが、selfhost/native stage0 や Wasm runtime 実行の証拠ではない。
 
 ## Consequences
 

@@ -211,7 +211,8 @@ artifact に分離した。Formatter 単体 entry は `927 ms`、Formatter merge
 2 MiB stack は `App.Cli` singleton 後に overflow するが、`RUST_MIN_STACK=33554432` では同じ cold/warm
 incremental test が `67.05 s` で成功した。default stack の CLI driver compile も `1,132,259 bytes` の Wasm
 artifact を生成した。この slice は failure を semantic error と誤分類しないための証跡契約であり、Wasm
-validation/runtime、native stage0、CLI cache 接続の完了を意味しない。
+validation は `test_e2e_bootstrap_cli_fixed_input_compile_gate` (`66.36 s`, 1 passed) で確認済みだが、runtime
+実行、native stage0、CLI cache 接続の完了を意味しない。
 
 ### 未完了の後続作業
 
