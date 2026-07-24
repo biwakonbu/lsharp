@@ -2225,6 +2225,7 @@ pub fn analyze_multi_file_incremental_with_overrides(
 ) -> Result<(), String> {
     use module_graph::ModuleGraph;
 
+    cache.prepare_for_entry(entry_file);
     let (graph, sorted_files) =
         ModuleGraph::build_from_entry_with_overrides(entry_file, source_overrides)
             .map_err(|e| format!("モジュールグラフ構築エラー: {e}"))?;
@@ -3972,6 +3973,56 @@ mod incremental_compile_tests {
             error.contains("Missing"),
             "error は unsaved source の import 先 Missing を含むべき: {error}"
         );
+    }
+
+    #[test]
+    fn test_analyze_multi_file_incremental_with_overrides_isolated_by_entry_root() {
+        use std::collections::HashMap;
+
+        let base = std::env::temp_dir().join(format!(
+            "lsharp_analyze_multi_file_incremental_overlay_scope_{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&base);
+        let first = base.join("first");
+        let second = base.join("second");
+        std::fs::create_dir_all(&first).unwrap();
+        std::fs::create_dir_all(&second).unwrap();
+        std::fs::write(first.join("Lib.ls"), "(module Lib)\n(defn helper [] 7)\n").unwrap();
+        std::fs::write(
+            first.join("Main.ls"),
+            "(module Main)\n(import Lib)\n(defn main [] (helper))\n",
+        )
+        .unwrap();
+        std::fs::write(second.join("Main.ls"), "(module Main)\n(defn main [] 42)\n").unwrap();
+
+        let overrides = HashMap::new();
+        let mut cache = CompilationCache::new();
+        analyze_multi_file_incremental_with_overrides(
+            &first.join("Main.ls"),
+            &overrides,
+            &mut cache,
+        )
+        .unwrap();
+        assert_eq!(
+            cache.len(),
+            2,
+            "first workspace は Main と Lib を cache するべき"
+        );
+
+        analyze_multi_file_incremental_with_overrides(
+            &second.join("Main.ls"),
+            &overrides,
+            &mut cache,
+        )
+        .unwrap();
+        assert_eq!(
+            cache.len(),
+            1,
+            "別 workspace の override analysis は stale module を残さないべき"
+        );
+
+        std::fs::remove_dir_all(&base).unwrap();
     }
 
     #[test]

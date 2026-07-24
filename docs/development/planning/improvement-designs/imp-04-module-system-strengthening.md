@@ -128,6 +128,13 @@ Phase C-2d として、`lsharp-tooling` に `compile_file_with_backend_and_cache
 保持する場合は明示 API を使える。`test_compile_file_with_backend_and_cache_reuses_multi_file_cache`
 は tooling 層の cold/warm compile で 2 module cache と Wasm artifact parity を固定する。
 
+Phase C-2e として、`analyze_multi_file_incremental_with_overrides` の入口でも
+`CompilationCache::prepare_for_entry` を呼ぶようにした。LSP の未保存 source override を含む解析でも
+entry directory が cache scope となり、別 workspace を同じ process で開いたとき stale module entry と
+linked IR を再利用しない。`test_analyze_multi_file_incremental_with_overrides_isolated_by_entry_root`
+は first workspace の 2 module 解析後に second workspace の単一 module を解析し、cache が 1 entry に
+戻ることを固定する。
+
 ### 未完了の後続作業
 
 - Formatter 3 モジュールの merged 特別扱いを除去し、相互再帰 fixture の IR/runtime parity を確認する。
@@ -154,6 +161,7 @@ Phase C-2d として、`lsharp-tooling` に `compile_file_with_backend_and_cache
 設計 (2026-06-12 起草、同日コード検証に基づき大幅訂正・具体化)。2026-07-24 に
 Phase C-1a の deterministic SCC 検出 API と unit test、C-1b の compile/infer 接続と相互再帰
 fixture、および Phase C-2a の明示的 cache compile API と cold/warm parity test、C-2b の entry scope
-isolation、C-2c の dependency surface key、C-2d の tooling cache API を検証済み部分実装として反映した。一括推論の native parity、CLI driver の既定 cache 接続、依存 SCC key、selfhost
+isolation、C-2c の dependency surface key、C-2d の tooling cache API、C-2e の source override scope
+isolation を検証済み部分実装として反映した。一括推論の native parity、CLI driver の既定 cache 接続、依存 SCC key、selfhost
 移植は未着手のため、Phase C-1 / C-2 の aggregate 完了とは扱わない。
 着手時は TODO.md に Phase C-1 / C-2 として項目を作成する。
