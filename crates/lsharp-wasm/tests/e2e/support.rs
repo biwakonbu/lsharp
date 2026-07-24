@@ -257,8 +257,8 @@ pub(crate) fn try_compile_and_run_with_memory_limit(
     let module = lower
         .lower_program(&program, &type_results)
         .map_err(|e| format!("IR変換エラー: {e:?}"))?;
-    let wasm_bytes = lsharp_wasm::wasi::emit_wasm_wasi(&module)
-        .map_err(|e| format!("Wasm生成エラー: {e:?}"))?;
+    let wasm_bytes =
+        lsharp_wasm::wasi::emit_wasm_wasi(&module).map_err(|e| format!("Wasm生成エラー: {e:?}"))?;
 
     use wasmtime::{Linker, Module, Store, StoreLimitsBuilder};
     use wasmtime_wasi::{WasiCtxBuilder, preview1::WasiP1Ctx};
@@ -279,17 +279,18 @@ pub(crate) fn try_compile_and_run_with_memory_limit(
     let mut store = Store::new(&engine, (wasi, limits));
     store.limiter(|state| &mut state.1);
 
-    let module = Module::new(&engine, wasm_bytes)
-        .map_err(|e| format!("Wasm module 構築失敗: {e}"))?;
+    let module =
+        Module::new(&engine, wasm_bytes).map_err(|e| format!("Wasm module 構築失敗: {e}"))?;
     let instance = linker
         .instantiate(&mut store, &module)
         .map_err(|e| format!("WASI instance 化失敗: {e}"))?;
     let start = instance
         .get_typed_func::<(), ()>(&mut store, "_start")
         .map_err(|e| format!("_start export 取得失敗: {e}"))?;
-    start
-        .call(&mut store, ())
-        .map_err(|e| format!("runtime trap: {e:#}"))?;
+    start.call(&mut store, ()).map_err(|e| {
+        let rendered = format!("runtime trap: {e:#}");
+        lsharp_wasm::wasi_runner::classify_wasi_runtime_failure(&rendered)
+    })?;
 
     drop(store);
     let bytes = stdout

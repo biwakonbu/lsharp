@@ -151,6 +151,23 @@ pub(crate) fn extract_i32_exit(err: &wasmtime::Error) -> Option<i32> {
     None
 }
 
+/// WASI core runtime の容量拡張失敗を安定した診断コードへ分類する。
+///
+/// Wasmtime は `memory.grow` の失敗を、helper 関数内の `unreachable` trap として
+/// 報告する。core WASI の helper 関数 index と trap の形を同時に確認し、ユーザー
+/// 関数や Component Model の trap を誤って `LS4002` に分類しない。
+pub fn classify_wasi_runtime_failure(error: &str) -> String {
+    let is_capacity_trap = error.contains("unreachable")
+        && crate::wasi::CAPACITY_FAILURE_FUNCTION_INDICES
+            .iter()
+            .any(|index| error.contains(&format!("<wasm function {index}>")));
+    if is_capacity_trap {
+        format!("LS4002: GC / linear memory の容量上限に達しました; {error}")
+    } else {
+        error.to_string()
+    }
+}
+
 /// Wasm バイナリを WASI 環境で実行し、stdout 出力を返す
 pub fn run_wasm_wasi(wasm_bytes: &[u8]) -> Result<String, String> {
     run_wasm_wasi_with_dir_args_and_stdin(wasm_bytes, None, &[], "")
@@ -279,7 +296,8 @@ fn run_wasm_wasi_capture_raw(
             if let Some(exit) = extract_i32_exit(&e) {
                 exit
             } else {
-                trap_error = Some(format!("実行に失敗: {e:#}"));
+                let rendered = format!("実行に失敗: {e:#}");
+                trap_error = Some(classify_wasi_runtime_failure(&rendered));
                 1
             }
         }
@@ -585,6 +603,32 @@ mod tests {
                 .unwrap_err()
                 .contains("Wasm モジュールの読み込みに失敗")
         );
+    }
+
+    #[test]
+    fn test_classify_wasi_runtime_failure_maps_allocator_capacity_trap() {
+        let error = "実行に失敗: error while executing at wasm backtrace:\n    0: <unknown>!<wasm function 10>: wasm trap: wasm `unreachable` instruction executed";
+
+        let classified = classify_wasi_runtime_failure(error);
+
+        assert!(classified.starts_with("LS4002:"), "分類結果: {classified}");
+        assert!(classified.contains(error));
+    }
+
+    #[test]
+    fn test_classify_wasi_runtime_failure_maps_root_capacity_trap() {
+        let error = "実行に失敗: error while executing at wasm backtrace:\n    0: <unknown>!<wasm function 22>: wasm trap: wasm `unreachable` instruction executed";
+
+        let classified = classify_wasi_runtime_failure(error);
+
+        assert!(classified.starts_with("LS4002:"), "分類結果: {classified}");
+    }
+
+    #[test]
+    fn test_classify_wasi_runtime_failure_preserves_other_traps() {
+        let error = "実行に失敗: error while executing at wasm backtrace:\n    0: <unknown>!<wasm function 27>: wasm trap: wasm `unreachable` instruction executed";
+
+        assert_eq!(classify_wasi_runtime_failure(error), error);
     }
 
     #[test]

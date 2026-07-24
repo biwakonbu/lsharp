@@ -108,6 +108,16 @@ const IR_IMPORT_COUNT: u32 = 17;
 /// WASI import 関数数
 const WASI_IMPORT_COUNT: u32 = 9;
 
+/// `memory.grow` failure を起こしうる core WASI runtime helper の関数 index。
+///
+/// ユーザー関数は `WASI_IMPORT_COUNT + 18` 以降から始まるため、これらの index は
+/// allocator/root capacity trap の classifier が user code の `unreachable` と
+/// 区別するために使える。
+pub(crate) const CAPACITY_FAILURE_FUNCTION_INDICES: [u32; 2] = [
+    WASI_IMPORT_COUNT + 1,  // __alloc
+    WASI_IMPORT_COUNT + 13, // root_push
+];
+
 fn emit_tagged_pointer_from_i32_local(func: &mut wasm_encoder::Function, local_idx: u32) {
     use wasm_encoder::Instruction as W;
 

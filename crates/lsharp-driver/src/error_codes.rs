@@ -283,6 +283,14 @@ pub(crate) const ERROR_CODES: &[ErrorCodeEntry] = &[
         detail: "IR から target artifact を生成する段階でエラーが発生しました。",
         fix: "直前の type / lowering diagnostics と対象 backend の既知制限を確認してください。",
     },
+    ErrorCodeEntry {
+        code: "LS4002",
+        legacy_code: None,
+        name: "gc-capacity-exceeded",
+        summary: "GC / linear memory の容量上限に達しました",
+        detail: "WASI runtime が object table、free-list、root stack、または heap の拡張に失敗しました。",
+        fix: "入力の同時生存データ量を減らすか、対応 runtime memory limit と target parity を確認してください。",
+    },
 ];
 
 pub(crate) fn find_error_code(query: &str) -> Option<&'static ErrorCodeEntry> {
