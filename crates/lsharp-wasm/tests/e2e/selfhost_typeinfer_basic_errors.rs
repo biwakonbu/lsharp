@@ -2445,6 +2445,61 @@ fn test_e2e_selfhost_typeinfer_analysis_resolves_import_alias_qualified_record_p
     );
 }
 
+/// EC-M1-01: alias + :only の record pattern は選択された型だけを可視化すること
+#[test]
+fn test_e2e_selfhost_typeinfer_analysis_filters_import_alias_only_qualified_record_pattern() {
+    let selected_source =
+        "(module Lib) (type Point (record (: x Int) (: y Int))) (type Hidden (record (: x Int) (: y Int))) (module Main) (import Lib :as L :only [Point]) (defn get-x [point] : Int (match point [{L.Point x x} x] [_ 0]))";
+    let excluded_source =
+        "(module Lib) (type Point (record (: x Int) (: y Int))) (type Hidden (record (: x Int) (: y Int))) (module Main) (import Lib :as L :only [Point]) (defn get-x [point] : Int (match point [{L.Hidden x x} x] [_ 0]))";
+    let selected_oracle_source =
+        "(type L.Point (record (: x Int) (: y Int))) (defn get-x [point] : Int (match point [{L.Point x x} x] [_ 0]))";
+    let selected_program = lsharp_syntax::parse(selected_oracle_source)
+        .expect("selected alias + :only record pattern oracle は parse できるべき");
+    let mut selected_oracle = Infer::new();
+    assert!(
+        selected_oracle.infer_program(&selected_program).is_ok(),
+        "Rust oracle は alias + :only の selected record pattern を受理するべき"
+    );
+    let excluded_oracle_source =
+        "(type L.Point (record (: x Int) (: y Int))) (defn get-x [point] : Int (match point [{L.Hidden x x} x] [_ 0]))";
+    let excluded_program = lsharp_syntax::parse(excluded_oracle_source)
+        .expect("excluded alias + :only record pattern oracle は parse できるべき");
+    let mut excluded_oracle = Infer::new();
+    assert!(
+        excluded_oracle.infer_program(&excluded_program).is_err(),
+        "Rust oracle は :only で除外された record pattern を拒否するべき"
+    );
+
+    let harness = format!(
+        r#"
+(defn main []
+  (let [selected
+          (infer-program-analysis
+            (parse-program "{}"))
+        excluded
+          (infer-program-analysis
+            (parse-program "{}"))]
+    (do
+      (print (infer-program-analysis-diagnostic-count selected))
+      (print (infer-program-analysis-diagnostic-count excluded))
+      0)))
+"#,
+        selected_source, excluded_source
+    );
+    let combined = format!("{}\n{}", selfhost_typeinfer_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "1"],
+        "alias + :only は selected record pattern だけを qualified schemaへ公開するべき"
+    );
+}
+
 /// EC-M1-01: imported record は qualified record literal として構築できること
 #[test]
 fn test_e2e_selfhost_typeinfer_analysis_resolves_import_qualified_record_literal() {
