@@ -2418,6 +2418,30 @@ fn analyze_multi_file_incremental_scc_with_overrides(
 
     let mut per_module_type_results = HashMap::new();
     for group in graph.scc_groups() {
+        let group_cache_hit = group.iter().all(|module_name| {
+            let Some(fingerprint) = fingerprints.get(module_name) else {
+                return false;
+            };
+            let Some(imports) = direct_imports.get(module_name) else {
+                return false;
+            };
+            let deps_key = dependency_surface_key(imports, &per_module_type_results, cache);
+            cache.get(module_name).is_some_and(|entry| {
+                entry.fingerprint() == *fingerprint && entry.deps_key() == deps_key
+            })
+        });
+        if group_cache_hit {
+            for module_name in &group {
+                let surface = cache
+                    .get(module_name)
+                    .map(|entry| entry.type_surface_clone())
+                    .ok_or_else(|| format!("型 surface cache がありません: {module_name}"))?;
+                per_module_type_results.insert(module_name.clone(), surface);
+            }
+            continue;
+        }
+
+        note_incremental_scc_infer();
         let surfaces = infer_scc_type_surfaces(
             &group,
             graph,
@@ -4511,6 +4535,71 @@ mod incremental_compile_tests {
             "source override analysis も相互再帰 SCC を受理するべき: {result:?}"
         );
         assert_eq!(cache.len(), 3, "SCC 内外の 3 module を cache するべき");
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_analyze_multi_file_incremental_with_overrides_reuses_clean_scc_type_surfaces() {
+        use std::collections::HashMap;
+
+        let dir = std::env::temp_dir().join(format!(
+            "lsharp_analyze_multi_file_incremental_overlay_type_cache_{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("Base.ls"),
+            "(module Base)\n(defn base-val [] 10)\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("A.ls"),
+            "(module A)\n(import B)\n(import Base)\n(defn a-step [n] (if (= n 0) 1 (b-step (- n 1))))\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("B.ls"),
+            "(module B)\n(import A)\n(import Base)\n(defn b-step [n] (if (= n 0) 0 (a-step (- n 1))))\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("Main.ls"),
+            "(module Main)\n(import A)\n(defn main [] (a-step 4))\n",
+        )
+        .unwrap();
+
+        let mut overrides = HashMap::new();
+        overrides.insert(
+            dir.join("A.ls"),
+            "(module A)\n(import B)\n(import Base)\n(defn a-step [n] (if (= n 0) 1 (b-step (- n 1))))\n"
+                .to_string(),
+        );
+        let mut cache = CompilationCache::new();
+        let tracker = IncrementalSccInferTracker::new();
+        tracker.reset();
+        analyze_multi_file_incremental_with_overrides(&dir.join("Main.ls"), &overrides, &mut cache)
+            .unwrap();
+        assert_eq!(
+            tracker.count(),
+            3,
+            "override の初回分析は Base / A↔B / Main の3 SCCを型推論するべき"
+        );
+
+        overrides.insert(
+            dir.join("A.ls"),
+            "(module A)\n(import B)\n(import Base)\n(defn a-step [n] (if (= n 0) 2 (b-step (- n 1))))\n"
+                .to_string(),
+        );
+        tracker.reset();
+        analyze_multi_file_incremental_with_overrides(&dir.join("Main.ls"), &overrides, &mut cache)
+            .unwrap();
+        assert_eq!(
+            tracker.count(),
+            1,
+            "override で A の実装だけが dirty な場合は A↔B SCC だけを再推論するべき"
+        );
 
         std::fs::remove_dir_all(&dir).unwrap();
     }

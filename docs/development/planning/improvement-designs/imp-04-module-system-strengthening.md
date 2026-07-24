@@ -181,6 +181,12 @@ visibility revalidation を再実行しない。A↔B cycle + Base + Main の fi
 A↔B の 1 SCC に限定し、Base/Main の clean SCC を再利用した。full compile と linked IR の parity は維持される。
 型 surface cache は compile 経路に限定し、source override の segment/type cache と process 間 persistence は後続とする。
 
+Phase C-1j として、LSP の source override SCC analysis にも group 単位の type surface cache hit を接続した。override source
+から計算した fingerprint と dependency surface key が全 module で一致する clean SCC は保存 surface を復元し、変更された
+SCC だけを再推論する。A↔B cycle + Base + Main で A の未保存実装だけを変えた fixtureは、初回 3 SCC の推論後、2 回目に
+A↔B の 1 SCC だけを再推論することを固定した。lowering は行わない既存の override 境界を維持し、segment cache と disk
+persistence は未着手のままとする。
+
 ### 未完了の後続作業
 
 - Formatter 3 モジュールの explicit-import 後の canonical compile/runtime parity と長時間 probe の failure
@@ -191,8 +197,8 @@ A↔B の 1 SCC に限定し、Base/Main の clean SCC を再利用した。full
 - CLI driver の既定経路へ `CompilationCache` を接続し、依存 SCC を含む cache key、process 間永続化、
   selfhost compiler への移植を行う。
 - source override 入口はまだ strict な graph build と module 単位推論を使っており、SCC-aware override
-  inference は C-1e で閉じた。incremental compile の dirty lowering / 局所型 surface 再利用は C-1h/C-1i で閉じたが、
-  override 経路への segment/type cache、disk persistence は未着手である。
+  inference は C-1e で閉じた。compile / override の dirty type surface 再利用は C-1i/C-1j、compile の dirty lowering は
+  C-1h で閉じたが、override 経路への segment cache と disk persistence は未着手である。
 - 今回の Wasm/WASI evidence は Rust host の Mac 実行に限定され、Mac Apple Silicon / Linux x86_64 の
   native stage0 実行証跡は未取得である。
 - `LEGACY-MODULE-01` の aggregate 完了条件（両対応 target、native stage0、公開 command）を満たすまで、
@@ -213,8 +219,8 @@ fixture、C-1c の incremental SCC fallback と clean rebuild parity、C-1d の 
 batch 特例除去、および Phase C-2a の明示的 cache compile API と cold/warm parity test、C-2b の entry scope
 isolation、C-2c の dependency surface key、C-2d の tooling cache API、C-2e の source override scope
 isolation、C-1e の source override SCC inference、C-1f の SCC clean linked-IR hit、C-1g の singleton SCC 直接推論、
-C-1h の dirty SCC lowering/link segment reuse、C-1i の dirty SCC type surface reuse を検証済み部分実装として
-反映した。一括推論の native parity、Formatter canonical runtime parity、override 経路の cache、CLI driver の
+C-1h の dirty SCC lowering/link segment reuse、C-1i の dirty SCC type surface reuse、C-1j の override SCC type surface reuse を
+検証済み部分実装として反映した。一括推論の native parity、Formatter canonical runtime parity、override 経路の segment cache、CLI driver の
 既定 cache 接続、依存 SCC key、selfhost
 移植は未着手のため、Phase C-1 / C-2 の aggregate 完了とは扱わない。
 着手時は TODO.md に Phase C-1 / C-2 として項目を作成する。
