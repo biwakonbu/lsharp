@@ -1149,6 +1149,72 @@ fn test_e2e_selfhost_typeinfer_analysis_resolves_import_module_qualified_definit
     );
 }
 
+/// EC-M1-01: import の :open が namespace なしの function lookup を selfhost でも解決すること
+#[test]
+fn test_e2e_selfhost_typeinfer_analysis_resolves_import_open_definition() {
+    let open_source = "(module Main) (import Lib :open) (defn main [] (helper 42))";
+    let open_program =
+        lsharp_syntax::parse(open_source).expect("open import fixture は parse できるべき");
+    let helper_type = lsharp_types::types::Type::Fun(
+        vec![lsharp_types::types::Type::int()],
+        Box::new(lsharp_types::types::Type::int()),
+    );
+    let mut open_oracle = Infer::new();
+    open_oracle.inject_external_types(&[(
+        "helper".to_string(),
+        lsharp_types::types::TypeScheme::mono(helper_type.clone()),
+    )]);
+    let open_oracle_result = open_oracle.infer_program(&open_program);
+    assert!(
+        open_oracle_result.is_ok(),
+        "Rust oracle は open import の unqualified definition lookup を受理するべき: {:?}",
+        open_oracle_result.err()
+    );
+
+    let closed_source = "(module Main) (import Lib) (defn main [] (helper 42))";
+    let closed_program =
+        lsharp_syntax::parse(closed_source).expect("closed import fixture は parse できるべき");
+    let mut closed_oracle = Infer::new();
+    closed_oracle.inject_external_types(&[(
+        "Lib.helper".to_string(),
+        lsharp_types::types::TypeScheme::mono(helper_type),
+    )]);
+    assert!(
+        closed_oracle.infer_program(&closed_program).is_err(),
+        "Rust oracle は open でない import の unqualified lookup を拒否するべき"
+    );
+
+    let harness = r#"
+(defn main []
+  (let [open-analysis
+          (infer-program-analysis
+            (parse-program "(module Lib) (defn helper [value] (+ value 1)) (module Main) (import Lib :open) (defn main [] (helper 42))"))
+        closed-analysis
+          (infer-program-analysis
+            (parse-program "(module Lib) (defn helper [value] (+ value 1)) (module Main) (import Lib) (defn main [] (helper 42))"))
+        leak-analysis
+          (infer-program-analysis
+            (parse-program "(module Lib) (defn helper [value] (+ value 1)) (module Mid) (import Lib :open) (defn mid [] (helper 42)) (module Main) (defn main [] (helper 42))"))]
+    (do
+      (print (infer-program-analysis-diagnostic-count open-analysis))
+      (print (infer-program-analysis-diagnostic-count closed-analysis))
+      (print (infer-program-analysis-diagnostic-count leak-analysis))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_typeinfer_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "1", "1"],
+        "import :open だけが namespace なしの lookup を許可し、後続 module へ漏らさないべき"
+    );
+}
+
 /// EC-M1-01: import の :only が qualified lookup の公開 symbol 境界を守ること
 #[test]
 fn test_e2e_selfhost_typeinfer_analysis_filters_import_only_qualified_definition() {

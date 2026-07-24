@@ -494,25 +494,22 @@
     (typeinfer-unprivate-defn (vector-get decl 1))
     decl))
 
-;; 次の module に進む前に、先行 module の private defn だけを型環境から隠す。
-(defn typeinfer-remove-private-defns-loop [program env idx limit]
+;; 次の module に進む前に、先行 module の unqualified defn を型環境から隠す。
+(defn typeinfer-remove-defns-before-module-loop [program env idx limit]
   (if (>= idx limit)
     env
-    (let [raw-decl (vector-get program idx)
-      raw-tag (vector-get raw-decl 0)]
-      (if (= raw-tag (ast-private))
-        (let [decl (typeinfer-unprivate-defn raw-decl)]
-          (if (= (vector-get decl 0) (ast-defn))
-            (typeinfer-remove-private-defns-loop
-              program
-              (type-env-remove env (vector-get decl 1))
-              (+ idx 1)
-              limit)
-            (typeinfer-remove-private-defns-loop program env (+ idx 1) limit)))
-        (typeinfer-remove-private-defns-loop program env (+ idx 1) limit)))))
+    (let [decl (typeinfer-unprivate-defn (vector-get program idx))
+      tag (vector-get decl 0)]
+      (if (= tag (ast-defn))
+        (typeinfer-remove-defns-before-module-loop
+          program
+          (type-env-remove env (vector-get decl 1))
+          (+ idx 1)
+          limit)
+        (typeinfer-remove-defns-before-module-loop program env (+ idx 1) limit)))))
 
-(defn typeinfer-remove-private-defns-before-module [program env limit]
-  (typeinfer-remove-private-defns-loop program env 0 limit))
+(defn typeinfer-remove-defns-before-module [program env limit]
+  (typeinfer-remove-defns-before-module-loop program env 0 limit))
 
 ;; import の qualified key を、依存 module の public defn にだけ追加する。
 ;; :as があれば alias、無ければ module name を prefix に使う。
@@ -526,6 +523,9 @@
 
 (defn typeinfer-import-only-hashes [decl]
   (if (> (vector-length decl) 5) (vector-get decl 5) (vector-new 0)))
+
+(defn typeinfer-import-open-flag [decl]
+  (if (and (> (vector-length decl) 6) (= (vector-get decl 6) 1)) 1 0))
 
 (defn typeinfer-import-only-contains-loop [only-hashes idx len name-hash]
   (if (>= idx len)
@@ -541,7 +541,7 @@
       (typeinfer-import-only-contains-loop only-hashes 0 only-count name-hash))))
 
 (defn typeinfer-qualify-import-source-loop
-  [program idx limit current-module target-module alias-hash only-hashes env]
+  [program idx limit current-module target-module alias-hash only-hashes open-flag env]
   (if (>= idx limit)
     env
     (let [decl (vector-get program idx)
@@ -555,6 +555,7 @@
           target-module
           alias-hash
           only-hashes
+          open-flag
           env)
         (if (and
               (= tag (ast-defn))
@@ -562,7 +563,9 @@
                 (= current-module target-module)
                 (= (typeinfer-import-only-allows? only-hashes (vector-get decl 1)) 1)))
           (let [name-hash (vector-get decl 1)
-            scheme (type-env-lookup env name-hash)]
+            qualified-key (ast-qualified-name-hash alias-hash name-hash)
+            raw-scheme (type-env-lookup env name-hash)
+            scheme (if (= raw-scheme 0) (type-env-lookup env qualified-key) raw-scheme)]
             (if (= scheme 0)
               (typeinfer-qualify-import-source-loop
                 program
@@ -572,10 +575,13 @@
                 target-module
                 alias-hash
                 only-hashes
+                open-flag
                 env)
-              (let [qualified-key
-                      (ast-qualified-name-hash alias-hash name-hash)
-                next-env (type-env-insert env qualified-key scheme)]
+              (let [qualified-env (type-env-insert env qualified-key scheme)
+                next-env
+                  (if (= open-flag 1)
+                    (type-env-insert qualified-env name-hash scheme)
+                    qualified-env)]
                 (typeinfer-qualify-import-source-loop
                   program
                   (+ idx 1)
@@ -584,6 +590,7 @@
                   target-module
                   alias-hash
                   only-hashes
+                  open-flag
                   next-env))))
           (typeinfer-qualify-import-source-loop
             program
@@ -593,9 +600,11 @@
             target-module
             alias-hash
             only-hashes
+            open-flag
             env))))))
 
-(defn typeinfer-qualify-imports-loop [program idx len env]
+(defn typeinfer-qualify-imports-loop-with-open
+  [program idx len env allow-open]
   (if (>= idx len)
     env
     (let [decl (vector-get program idx)
@@ -603,6 +612,7 @@
       (if (= tag (ast-import-decl))
         (let [prefix-hash (typeinfer-import-prefix-hash decl)
           only-hashes (typeinfer-import-only-hashes decl)
+          open-flag (if (= allow-open 1) (typeinfer-import-open-flag decl) 0)
           qualified-env
             (typeinfer-qualify-import-source-loop
               program
@@ -612,16 +622,33 @@
               (vector-get decl 1)
               prefix-hash
               only-hashes
+              open-flag
               env)]
-          (typeinfer-qualify-imports-loop
+          (typeinfer-qualify-imports-loop-with-open
             program
             (+ idx 1)
             len
-            qualified-env))
-        (typeinfer-qualify-imports-loop program (+ idx 1) len env)))))
+            qualified-env
+            allow-open))
+        (typeinfer-qualify-imports-loop-with-open
+          program
+          (+ idx 1)
+          len
+          env
+          allow-open)))))
 
 (defn typeinfer-predeclare-qualified-imports [program env]
-  (typeinfer-qualify-imports-loop program 0 (vector-length program) env))
+  (typeinfer-qualify-imports-loop-with-open program 0 (vector-length program) env 0))
+
+(defn typeinfer-predeclare-qualified-imports-for-module [program start end env]
+  (typeinfer-qualify-imports-loop-with-open program start end env 1))
+
+(defn typeinfer-next-module-index [program idx len]
+  (if (>= idx len)
+    len
+    (if (= (vector-get (vector-get program idx) 0) (ast-module-decl))
+      idx
+      (typeinfer-next-module-index program (+ idx 1) len))))
 
 ;; 後続 top-level defn の placeholder に残る自由型変数を集める。
 (defn typeinfer-pending-env-vars-loop [program idx len placeholders subst env-vars]
@@ -1087,7 +1114,14 @@
     state
     (if (= (vector-get (vector-get program idx) 0) (ast-module-decl))
       (let [env (infer-program-analysis-env state)
-        visible-env (typeinfer-remove-private-defns-before-module program env idx)]
+        module-end (typeinfer-next-module-index program (+ idx 1) len)
+        removed-env (typeinfer-remove-defns-before-module program env idx)
+        visible-env
+          (typeinfer-predeclare-qualified-imports-for-module
+            program
+            (+ idx 1)
+            module-end
+            removed-env)]
         (do
           (root_push visible-env)
           (let [next-state
