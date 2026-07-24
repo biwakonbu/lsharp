@@ -123,6 +123,11 @@ Phase C-2c として、`ModuleCacheEntry` に `deps_key` を追加した。各 m
 の key を維持し、公開型 surface の変更では downstream の cache hit を無効化する。既存の依存変更
 テストと `test_compile_multi_file_with_cache_tracks_dependency_surface_key` で、IR parity と再推論境界を固定する。
 
+Phase C-2d として、`lsharp-tooling` に `compile_file_with_backend_and_cache(..., cache)` を追加した。
+既存 `compile_file_with_backend` は一時 cache を作る互換 wrapper とし、LSP / host session が cache を
+保持する場合は明示 API を使える。`test_compile_file_with_backend_and_cache_reuses_multi_file_cache`
+は tooling 層の cold/warm compile で 2 module cache と Wasm artifact parity を固定する。
+
 ### 未完了の後続作業
 
 - Formatter 3 モジュールの merged 特別扱いを除去し、相互再帰 fixture の IR/runtime parity を確認する。
@@ -149,6 +154,6 @@ Phase C-2c として、`ModuleCacheEntry` に `deps_key` を追加した。各 m
 設計 (2026-06-12 起草、同日コード検証に基づき大幅訂正・具体化)。2026-07-24 に
 Phase C-1a の deterministic SCC 検出 API と unit test、C-1b の compile/infer 接続と相互再帰
 fixture、および Phase C-2a の明示的 cache compile API と cold/warm parity test、C-2b の entry scope
-isolation、C-2c の dependency surface key を検証済み部分実装として反映した。一括推論の native parity、CLI driver の既定 cache 接続、依存 SCC key、selfhost
+isolation、C-2c の dependency surface key、C-2d の tooling cache API を検証済み部分実装として反映した。一括推論の native parity、CLI driver の既定 cache 接続、依存 SCC key、selfhost
 移植は未着手のため、Phase C-1 / C-2 の aggregate 完了とは扱わない。
 着手時は TODO.md に Phase C-1 / C-2 として項目を作成する。

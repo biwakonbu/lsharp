@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use lsharp_ir::Module;
+use lsharp_ir::{CompilationCache, Module};
 
 /// compile バックエンドターゲット
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -86,10 +86,21 @@ pub fn prepare_source_for_compile(file: &Path) -> miette::Result<(String, bool)>
     Ok((source, false))
 }
 
+#[cfg(test)]
 fn compile_module_from_formatted_source(
     file: &Path,
     source: &str,
     backend: CompileBackend,
+) -> miette::Result<Module> {
+    let mut cache = CompilationCache::new();
+    compile_module_from_formatted_source_with_cache(file, source, backend, &mut cache)
+}
+
+fn compile_module_from_formatted_source_with_cache(
+    file: &Path,
+    source: &str,
+    backend: CompileBackend,
+    cache: &mut CompilationCache,
 ) -> miette::Result<Module> {
     if has_file_imports_from_source(source) {
         if backend == CompileBackend::WasmGc {
@@ -97,7 +108,8 @@ fn compile_module_from_formatted_source(
                 "[LS4001] WasmGC backend は現時点で import を含む compile をサポートしていません"
             ));
         }
-        return lsharp_ir::compile_multi_file(file).map_err(|e| miette::miette!("{e}"));
+        return lsharp_ir::compile_multi_file_with_cache(file, cache)
+            .map_err(|e| miette::miette!("{e}"));
     }
 
     let program =
@@ -156,6 +168,29 @@ pub fn compile_file_with_backend(
     requested_target: Option<CompileTarget>,
     backend: CompileBackend,
 ) -> miette::Result<CompileArtifacts> {
+    let mut cache = CompilationCache::new();
+    compile_file_with_backend_and_cache(
+        file,
+        output,
+        emit_ir,
+        requested_target,
+        backend,
+        &mut cache,
+    )
+}
+
+/// backend を明示し、呼び出し元が保持する解析/IR cache を使う compile パイプライン。
+///
+/// 通常の `compile_file_with_backend` は互換性のため一時 cache を生成する。LSP や host
+/// session のように同一 process で複数回 compile する caller はこの入口へ cache を渡す。
+pub fn compile_file_with_backend_and_cache(
+    file: &Path,
+    output: Option<&Path>,
+    emit_ir: bool,
+    requested_target: Option<CompileTarget>,
+    backend: CompileBackend,
+    cache: &mut CompilationCache,
+) -> miette::Result<CompileArtifacts> {
     let (target, output_path) = if let Some(output_path) = output {
         resolve_compile_target(Some(output_path), requested_target)?
     } else {
@@ -167,7 +202,8 @@ pub fn compile_file_with_backend(
         (target, output_path)
     };
     let (formatted_source, formatted) = prepare_source_for_compile(file)?;
-    let module = compile_module_from_formatted_source(file, &formatted_source, backend)?;
+    let module =
+        compile_module_from_formatted_source_with_cache(file, &formatted_source, backend, cache)?;
 
     if emit_ir {
         print!("{}", module.dump());
@@ -218,6 +254,61 @@ pub fn compile_file_with_backend(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_compile_file_with_backend_and_cache_reuses_multi_file_cache() {
+        let dir = std::env::temp_dir().join(format!(
+            "lsharp_tooling_compile_with_cache_{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let lib_path = dir.join("Lib.ls");
+        let main_path = dir.join("Main.ls");
+        let output_path = dir.join("Main.wasm");
+        std::fs::write(&lib_path, "(module Lib)\n(defn helper [] 7)\n").unwrap();
+        std::fs::write(
+            &main_path,
+            "(module Main)\n(import Lib)\n(defn main [] (+ (helper) 1))\n",
+        )
+        .unwrap();
+
+        let mut cache = lsharp_ir::CompilationCache::new();
+        let first = compile_file_with_backend_and_cache(
+            &main_path,
+            Some(&output_path),
+            false,
+            Some(CompileTarget::WasiPreview1),
+            CompileBackend::Linear,
+            &mut cache,
+        )
+        .unwrap();
+        let first_bytes = std::fs::read(&first.output_path).unwrap();
+        assert_eq!(
+            cache.len(),
+            2,
+            "tooling compile は multi-file cache を埋めるべき"
+        );
+
+        let second = compile_file_with_backend_and_cache(
+            &main_path,
+            Some(&output_path),
+            false,
+            Some(CompileTarget::WasiPreview1),
+            CompileBackend::Linear,
+            &mut cache,
+        )
+        .unwrap();
+        assert_eq!(first.output_path, second.output_path);
+        assert_eq!(first_bytes, std::fs::read(&second.output_path).unwrap());
+        assert_eq!(
+            cache.len(),
+            2,
+            "warm tooling compile は cache scope を維持するべき"
+        );
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 
     #[test]
     fn test_compile_artifact_writer_uses_atomic_wasm_boundary() {
