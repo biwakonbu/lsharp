@@ -4,6 +4,7 @@ mod core_language_semantics;
 mod file_io_selfhost_compiler_ir;
 mod incremental_benchmark;
 mod runtime_allocator_closures;
+mod runtime_recursion_limits;
 mod selfhost_bootstrap_acceptance;
 mod selfhost_bootstrap_contracts;
 mod selfhost_bootstrap_four_layer;
