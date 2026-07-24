@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 
+use crate::artifact_cache::ArtifactCache;
 use lsharp_ir::{CompilationCache, Module, SourceFingerprint};
 
 /// compile バックエンドターゲット
@@ -122,16 +123,25 @@ fn backend_tag(backend: CompileBackend) -> &'static str {
 
 /// 同一 process / host session 内で compile cache を保持する境界。
 ///
-/// cache は entry root の切り替え時に `CompilationCache` が scope を分離する。
-/// process をまたぐ永続化はこの型の責務に含めず、呼び出し元が session の寿命を決める。
+/// cache は entry root の切り替え時に `CompilationCache` が scope を分離する。process 間 artifact
+/// persistence は `with_artifact_cache` で明示的に有効化した場合だけ行う。
 #[derive(Debug, Default)]
 pub struct CompileSession {
     cache: CompilationCache,
+    artifact_cache: Option<ArtifactCache>,
 }
 
 impl CompileSession {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// 明示 root の process 間 artifact cache を使う compile session を作る。
+    pub fn with_artifact_cache(root: impl Into<PathBuf>) -> Self {
+        Self {
+            cache: CompilationCache::new(),
+            artifact_cache: Some(ArtifactCache::new(root)),
+        }
     }
 
     /// session が保持している module cache entry 数を返す。
@@ -148,13 +158,14 @@ impl CompileSession {
         requested_target: Option<CompileTarget>,
         backend: CompileBackend,
     ) -> miette::Result<CompileArtifacts> {
-        compile_file_with_backend_and_cache(
+        compile_file_with_backend_and_cache_internal(
             file,
             output,
             emit_ir,
             requested_target,
             backend,
             &mut self.cache,
+            self.artifact_cache.as_ref(),
         )
     }
 }
@@ -316,6 +327,26 @@ pub fn compile_file_with_backend_and_cache(
     backend: CompileBackend,
     cache: &mut CompilationCache,
 ) -> miette::Result<CompileArtifacts> {
+    compile_file_with_backend_and_cache_internal(
+        file,
+        output,
+        emit_ir,
+        requested_target,
+        backend,
+        cache,
+        None,
+    )
+}
+
+fn compile_file_with_backend_and_cache_internal(
+    file: &Path,
+    output: Option<&Path>,
+    emit_ir: bool,
+    requested_target: Option<CompileTarget>,
+    backend: CompileBackend,
+    cache: &mut CompilationCache,
+    artifact_cache: Option<&ArtifactCache>,
+) -> miette::Result<CompileArtifacts> {
     let (target, output_path) = if let Some(output_path) = output {
         resolve_compile_target(Some(output_path), requested_target)?
     } else {
@@ -327,6 +358,20 @@ pub fn compile_file_with_backend_and_cache(
         (target, output_path)
     };
     let (formatted_source, formatted) = prepare_source_for_compile(file)?;
+    let artifact_key = if artifact_cache.is_some() && !emit_ir && target != CompileTarget::Native {
+        Some(CompileCacheKey::from_entry(file, target, backend)?)
+    } else {
+        None
+    };
+    if let (Some(artifact_cache), Some(artifact_key)) = (artifact_cache, artifact_key.as_ref())
+        && let Some(bytes) = artifact_cache.load(artifact_key)?
+    {
+        write_compile_artifact(&output_path, &bytes)?;
+        return Ok(CompileArtifacts {
+            output_path,
+            formatted,
+        });
+    }
     let module =
         compile_module_from_formatted_source_with_cache(file, &formatted_source, backend, cache)?;
 
@@ -343,17 +388,32 @@ pub fn compile_file_with_backend_and_cache(
             CompileTarget::WasiPreview1 => {
                 let wasm_bytes = lsharp_wasm::wasi::emit_wasm_wasi(&module)
                     .map_err(|e| miette::miette!("[{}] {e}", e.code()))?;
-                write_compile_artifact(&output_path, &wasm_bytes)?;
+                write_compile_artifact_and_cache(
+                    &output_path,
+                    &wasm_bytes,
+                    artifact_cache,
+                    artifact_key.as_ref(),
+                )?;
             }
             CompileTarget::WasiComponent => {
                 let wasm_bytes = lsharp_wasm::wasi::emit_wasm_wasi_p2(&module)
                     .map_err(|e| miette::miette!("[{}] {e}", e.code()))?;
-                write_compile_artifact(&output_path, &wasm_bytes)?;
+                write_compile_artifact_and_cache(
+                    &output_path,
+                    &wasm_bytes,
+                    artifact_cache,
+                    artifact_key.as_ref(),
+                )?;
             }
             CompileTarget::WebWasm => {
                 let wasm_bytes = lsharp_wasm::codegen::emit_wasm(&module)
                     .map_err(|e| miette::miette!("[{}] {e}", e.code()))?;
-                write_compile_artifact(&output_path, &wasm_bytes)?;
+                write_compile_artifact_and_cache(
+                    &output_path,
+                    &wasm_bytes,
+                    artifact_cache,
+                    artifact_key.as_ref(),
+                )?;
             }
             CompileTarget::Native => {
                 crate::native::compile_native_executable(&module, &output_path)?;
@@ -367,13 +427,31 @@ pub fn compile_file_with_backend_and_cache(
             }
             let wasm_bytes = lsharp_wasm::wasmgc::emit_wasm_wasmgc(&module)
                 .map_err(|e| miette::miette!("[{}] {e}", e.code()))?;
-            write_compile_artifact(&output_path, &wasm_bytes)?;
+            write_compile_artifact_and_cache(
+                &output_path,
+                &wasm_bytes,
+                artifact_cache,
+                artifact_key.as_ref(),
+            )?;
         }
     }
     Ok(CompileArtifacts {
         output_path,
         formatted,
     })
+}
+
+fn write_compile_artifact_and_cache(
+    output_path: &Path,
+    bytes: &[u8],
+    artifact_cache: Option<&ArtifactCache>,
+    artifact_key: Option<&CompileCacheKey>,
+) -> miette::Result<()> {
+    write_compile_artifact(output_path, bytes)?;
+    if let (Some(artifact_cache), Some(artifact_key)) = (artifact_cache, artifact_key) {
+        artifact_cache.store(artifact_key, bytes)?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -567,6 +645,93 @@ mod tests {
             session.cache_len(),
             2,
             "warm session compile は cache scope を維持するべき"
+        );
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_compile_session_opt_in_artifact_cache_reuses_across_sessions() {
+        let dir = std::env::temp_dir().join(format!(
+            "lsharp_tooling_compile_session_artifact_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock は unix epoch より後であるべき")
+                .as_nanos()
+        ));
+        let cache_root = dir.join("artifact-cache");
+        std::fs::create_dir_all(&dir).unwrap();
+        let lib_path = dir.join("Lib.ls");
+        let source_path = dir.join("Main.ls");
+        let first_output = dir.join("first.wasm");
+        let second_output = dir.join("second.wasm");
+        std::fs::write(&lib_path, "(module Lib)\n(defn helper [] 7)\n").unwrap();
+        std::fs::write(
+            &source_path,
+            "(module Main)\n(import Lib)\n(defn main [] (helper))\n",
+        )
+        .unwrap();
+
+        let mut cold = CompileSession::with_artifact_cache(&cache_root);
+        let first = cold
+            .compile_file_with_backend(
+                &source_path,
+                Some(&first_output),
+                false,
+                Some(CompileTarget::WasiPreview1),
+                CompileBackend::Linear,
+            )
+            .unwrap();
+        let first_bytes = std::fs::read(&first.output_path).unwrap();
+        assert_eq!(
+            cold.cache_len(),
+            2,
+            "cold compile は IR cache を構築するべき"
+        );
+
+        let mut warm = CompileSession::with_artifact_cache(&cache_root);
+        let second = warm
+            .compile_file_with_backend(
+                &source_path,
+                Some(&second_output),
+                false,
+                Some(CompileTarget::WasiPreview1),
+                CompileBackend::Linear,
+            )
+            .unwrap();
+        assert_eq!(first_bytes, std::fs::read(&second.output_path).unwrap());
+        assert_eq!(
+            warm.cache_len(),
+            0,
+            "artifact cache hit は同一 process の IR compile を再実行しないべき"
+        );
+
+        std::fs::write(
+            &source_path,
+            "(module Main)\n(import Lib)\n(defn main [] (+ (helper) 1))\n",
+        )
+        .unwrap();
+        let changed_output = dir.join("changed.wasm");
+        let mut changed = CompileSession::with_artifact_cache(&cache_root);
+        changed
+            .compile_file_with_backend(
+                &source_path,
+                Some(&changed_output),
+                false,
+                Some(CompileTarget::WasiPreview1),
+                CompileBackend::Linear,
+            )
+            .unwrap();
+        assert_eq!(
+            changed.cache_len(),
+            2,
+            "source fingerprint が変わった場合は fresh compile へ戻るべき"
+        );
+        assert_ne!(
+            first_bytes,
+            std::fs::read(&changed_output).unwrap(),
+            "source 変更後に stale artifact を返してはいけない"
         );
 
         std::fs::remove_dir_all(&dir).unwrap();
