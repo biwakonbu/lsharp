@@ -25,8 +25,12 @@ pub struct SourceFingerprint([u8; 32]);
 
 impl SourceFingerprint {
     pub fn from_source(source: &str) -> Self {
+        Self::from_bytes(source.as_bytes())
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> Self {
         let mut hasher = Sha256::new();
-        hasher.update(source.as_bytes());
+        hasher.update(bytes);
         let digest = hasher.finalize();
         Self(digest.into())
     }

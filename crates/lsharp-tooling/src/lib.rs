@@ -1,4 +1,5 @@
 pub mod api_doc;
+pub mod artifact_cache;
 pub mod compile;
 pub mod doc_html;
 pub mod fmt;
