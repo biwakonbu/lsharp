@@ -110,6 +110,18 @@ pub enum ModuleGraphError {
     DuplicateModule { name: String },
 }
 
+impl ModuleGraphError {
+    /// 利用者向けの安定した診断コードを返す。
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::CyclicDependency { .. } => "LS3101",
+            Self::ModuleNotFound { .. } => "LS3102",
+            Self::ModuleNotExported { .. } => "LS3103",
+            Self::DuplicateModule { .. } => "LS3104",
+        }
+    }
+}
+
 impl ModuleGraph {
     pub fn new() -> Self {
         Self::default()

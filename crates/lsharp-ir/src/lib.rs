@@ -2262,7 +2262,7 @@ fn compile_multi_file_with_mode(
 
     // 1. モジュールグラフの構築とファイル探索
     let (graph, sorted_files) = ModuleGraph::build_from_entry_with_scc(entry_file)
-        .map_err(|e| format!("モジュールグラフ構築エラー: {e}"))?;
+        .map_err(|e| format!("[{}] モジュールグラフ構築エラー: {e}", e.code()))?;
 
     if sorted_files.is_empty() {
         return Err("コンパイル対象のファイルがありません".to_string());
@@ -2733,7 +2733,7 @@ pub fn analyze_multi_file_incremental_with_overrides(
     cache.prepare_for_entry(entry_file);
     let (graph, sorted_files) =
         ModuleGraph::build_from_entry_with_overrides_scc(entry_file, source_overrides)
-            .map_err(|e| format!("モジュールグラフ構築エラー: {e}"))?;
+            .map_err(|e| format!("[{}] モジュールグラフ構築エラー: {e}", e.code()))?;
 
     if sorted_files.is_empty() {
         return Err("コンパイル対象のファイルがありません".to_string());
@@ -2849,7 +2849,7 @@ pub fn compile_multi_file_incremental(
     use module_graph::ModuleGraph;
 
     let (graph, sorted_files) = ModuleGraph::build_from_entry_with_scc(entry_file)
-        .map_err(|e| format!("モジュールグラフ構築エラー: {e}"))?;
+        .map_err(|e| format!("[{}] モジュールグラフ構築エラー: {e}", e.code()))?;
 
     if sorted_files.is_empty() {
         return Err("コンパイル対象のファイルがありません".to_string());

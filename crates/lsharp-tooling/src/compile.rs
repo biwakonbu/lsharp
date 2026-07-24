@@ -53,8 +53,9 @@ impl CompileCacheKey {
         backend: CompileBackend,
     ) -> miette::Result<Self> {
         let (_, mut sorted_files) =
-            lsharp_ir::module_graph::ModuleGraph::build_from_entry_with_scc(entry_file)
-                .map_err(|error| miette::miette!("モジュールグラフ構築エラー: {error}"))?;
+            lsharp_ir::module_graph::ModuleGraph::build_from_entry_with_scc(entry_file).map_err(
+                |error| miette::miette!("[{}] モジュールグラフ構築エラー: {error}", error.code()),
+            )?;
         sorted_files.sort_by(|left, right| left.0.cmp(&right.0).then_with(|| left.1.cmp(&right.1)));
 
         let entry_identity = std::fs::canonicalize(entry_file)
@@ -931,6 +932,35 @@ mod tests {
             error.to_string().contains("[LS1004]"),
             "compile diagnostics は stable code を含むべき: {error}"
         );
+    }
+
+    #[test]
+    fn compile_diagnostics_preserve_module_graph_error_code() {
+        let dir = std::env::temp_dir().join(format!(
+            "lsharp_tooling_compile_module_graph_diagnostic_{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("module graph diagnostic directory を作成できる");
+        let main_path = dir.join("Main.ls");
+        std::fs::write(
+            &main_path,
+            "(module Main)\n(import Missing)\n(defn main [] 0)\n",
+        )
+        .expect("module graph diagnostic fixture を書き込める");
+
+        let error = compile_module_from_formatted_source(
+            &main_path,
+            &std::fs::read_to_string(&main_path).unwrap(),
+            CompileBackend::Linear,
+        )
+        .expect_err("missing module は compile を失敗させるべき");
+
+        assert!(
+            error.to_string().contains("[LS3102]"),
+            "module graph diagnostics は stable code を含むべき: {error}"
+        );
+        std::fs::remove_dir_all(&dir).expect("module graph diagnostic directory を削除できる");
     }
 
     #[test]
