@@ -852,6 +852,22 @@ Stage 2ag の directory removal に加えて、write-enabled preopen descriptor 
 Wasm artifact/runtime differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity
 は未完了である。
 
+## Stage 2ai 検証済み slice: descriptor rename-at lifecycle (2026-07-24)
+
+Stage 2ah の file unlink に加えて、二つの read-write named preopen と同一 directory 内の
+`descriptor.rename-at` path mutation を actual Component で検証した。
+
+- `wasm_gc_component_cli_fs_runner_renames_file_and_drops_resources` は最初の preopen descriptor
+  に `old.txt` を渡し、同じ descriptor を destination base として `renamed.txt` へ rename する。
+- `descriptor.rename-at` の `result<_, error-code>` success discriminant を確認し、host 側で
+  source が消え、destination の bytes が `hello` のまま保持されることを確認する。
+- preopen descriptor を drop し、`wasi:cli/run` exit 0、stdout empty、rename 済み host artifact を
+  同じ実行で確認する。
+
+これは descriptor rename-at の verified partial slice であり、残る descriptor operation、
+Wasm artifact/runtime differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity
+は未完了である。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線
