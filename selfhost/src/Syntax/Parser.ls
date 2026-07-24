@@ -322,6 +322,7 @@
     (if (== (p-current spans pos-ref) 20)
       (let [type-qualified (current-type-name-qualified-v3 spans pos-ref src)
         type-h (current-type-name-hash-v3 spans pos-ref src)
+        raw-type-h (current-type-name-suffix-hash-v3 spans pos-ref src)
         result (make-recordlit type-h)
         result-slot (root_push result)]
         (do
@@ -331,12 +332,12 @@
             normalized (do
               (root_set result-slot with-fields)
               (vector-set-at-rooted-v3 with-fields 2 field-count))
-            parsed (do
+            parsed-with-flag (do
               (root_set result-slot normalized)
               (vector-push-single-rooted-v3 normalized type-qualified))]
             (do
               (root_pop)
-              parsed))))
+              (vector-push-single-rooted-v3 parsed-with-flag raw-type-h)))))
       (let [result (make-recordlit 0)
         result-slot (root_push result)]
         (do

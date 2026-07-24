@@ -1581,6 +1581,14 @@
 ;; nominal discriminator は record pattern lowering と同時に追加する。
 (defn record-update-base-key [] -1)
 
+(defn record-literal-type-hash-for-compiler [node]
+  (let [field-count (vector-get node 2)
+    qualified-slot (+ 3 (* field-count 2))
+    raw-type-slot (+ qualified-slot 1)]
+    (if (> (vector-length node) raw-type-slot)
+      (vector-get node raw-type-slot)
+      (vector-get node 1))))
+
 (defn compile-record-nominal-marker [env instrs record-local type-hash]
   (if (= type-hash 0)
     instrs
@@ -1840,7 +1848,7 @@
           instrs3 (emit-root-push-drop instrs2 record-local)]
           (do
             (root_set instrs-slot instrs3)
-            (let [with-marker (compile-record-nominal-marker env instrs3 record-local (vector-get node 1))]
+            (let [with-marker (compile-record-nominal-marker env instrs3 record-local (record-literal-type-hash-for-compiler node))]
               (do
                 (root_push with-marker)
                 (let [with-fields (compile-recordlit-fields-with-source node source env ftable 0 (vector-get node 2) with-marker record-local data-ref)]
@@ -1901,7 +1909,7 @@
           instrs3 (emit-root-push-drop instrs2 record-local)]
           (do
             (root_set instrs-slot instrs3)
-            (let [with-marker (compile-record-nominal-marker env instrs3 record-local (vector-get node 1))]
+            (let [with-marker (compile-record-nominal-marker env instrs3 record-local (record-literal-type-hash-for-compiler node))]
               (do
                 (root_push with-marker)
                 (let [with-fields (compile-recordlit-fields-with-ftable node env ftable 0 (vector-get node 2) with-marker record-local)]
