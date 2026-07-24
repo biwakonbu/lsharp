@@ -1749,19 +1749,22 @@ fn cmd_init_in(base_dir: &Path, name: &str) -> miette::Result<()> {
         return Err(miette::miette!("ディレクトリ '{name}' は既に存在します"));
     }
 
-    fs::create_dir_all(&project_dir).map_err(|e| miette::miette!("ディレクトリ作成失敗: {e}"))?;
+    fs::create_dir_all(&project_dir)
+        .map_err(|e| driver_io_error(format!("ディレクトリ作成失敗: {e}")))?;
 
     // 標準ディレクトリ作成
     let src_dir = project_dir.join("src");
     let examples_dir = project_dir.join("examples");
     let tests_dir = project_dir.join("tests");
     let docs_dir = project_dir.join("docs");
-    fs::create_dir_all(&src_dir).map_err(|e| miette::miette!("src ディレクトリ作成失敗: {e}"))?;
+    fs::create_dir_all(&src_dir)
+        .map_err(|e| driver_io_error(format!("src ディレクトリ作成失敗: {e}")))?;
     fs::create_dir_all(&examples_dir)
-        .map_err(|e| miette::miette!("examples ディレクトリ作成失敗: {e}"))?;
+        .map_err(|e| driver_io_error(format!("examples ディレクトリ作成失敗: {e}")))?;
     fs::create_dir_all(&tests_dir)
-        .map_err(|e| miette::miette!("tests ディレクトリ作成失敗: {e}"))?;
-    fs::create_dir_all(&docs_dir).map_err(|e| miette::miette!("docs ディレクトリ作成失敗: {e}"))?;
+        .map_err(|e| driver_io_error(format!("tests ディレクトリ作成失敗: {e}")))?;
+    fs::create_dir_all(&docs_dir)
+        .map_err(|e| driver_io_error(format!("docs ディレクトリ作成失敗: {e}")))?;
 
     // lsharp.toml 生成
     let toml_content = format!(
@@ -1772,7 +1775,7 @@ entry = "src/Main.ls"
 "#
     );
     fs::write(project_dir.join("lsharp.toml"), toml_content)
-        .map_err(|e| miette::miette!("lsharp.toml 作成失敗: {e}"))?;
+        .map_err(|e| driver_io_error(format!("lsharp.toml 作成失敗: {e}")))?;
 
     // Main.ls 生成
     let main_content = r#"(module Main)
@@ -1781,12 +1784,12 @@ entry = "src/Main.ls"
   (print 42))
 "#;
     fs::write(src_dir.join("Main.ls"), main_content)
-        .map_err(|e| miette::miette!("Main.ls 作成失敗: {e}"))?;
+        .map_err(|e| driver_io_error(format!("Main.ls 作成失敗: {e}")))?;
 
     // .gitignore 生成
     let gitignore_content = "*.wasm\n/target/\n/.lsharp/\n";
     fs::write(project_dir.join(".gitignore"), gitignore_content)
-        .map_err(|e| miette::miette!(".gitignore 作成失敗: {e}"))?;
+        .map_err(|e| driver_io_error(format!(".gitignore 作成失敗: {e}")))?;
 
     // git init
     let git_result = ProcessCommand::new("git")
@@ -3401,6 +3404,27 @@ mod tests {
         );
 
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_cmd_init_creation_failure_preserves_driver_io_error_code() {
+        let base_file = std::env::temp_dir().join(format!(
+            "lsharp_test_init_creation_error_{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&base_file);
+        let _ = std::fs::remove_file(&base_file);
+        std::fs::write(&base_file, "not a directory").unwrap();
+
+        let error = cmd_init_in(&base_file, "demo")
+            .expect_err("親 path が file の init は project layout を作れず失敗するべき");
+
+        assert!(
+            error.to_string().starts_with("[LS5001]"),
+            "init の project layout I/O 失敗は driver I/O code を保持するべき: {error}"
+        );
+
+        std::fs::remove_file(&base_file).unwrap();
     }
 
     #[test]
