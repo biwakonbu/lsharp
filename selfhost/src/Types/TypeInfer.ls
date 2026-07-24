@@ -368,7 +368,9 @@
                           param-types
                           subst
                           alias-env
-                          type-param-env)]
+                          type-param-env
+                          next-env
+                          counter)]
                   (do
                     (root_push annotated-param-subst)
                     (let [result
@@ -391,7 +393,9 @@
                                         body-ty
                                         s
                                         alias-env
-                                        type-param-env)]
+                                        type-param-env
+                                        next-env
+                                        counter)]
                                     (if (= (unify-failed annotated-subst) 1)
                                       (make-error-result-code (error-code-general))
                                       (let [fun-ty
@@ -467,7 +471,9 @@
                           body-ty
                           s
                           alias-env
-                          type-param-env)]
+                          type-param-env
+                          body-env
+                          counter)]
                       (if (= (unify-failed annotated-subst) 1)
                         (make-error-result-code (error-code-general))
                         (let [next-subst (unify placeholder body-ty annotated-subst)]

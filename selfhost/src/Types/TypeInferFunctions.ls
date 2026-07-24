@@ -60,6 +60,42 @@
     0
     (vector-get signature (+ (vector-get signature 1) 2))))
 
+;; defn signature の named record は、値環境へ登録済みの constructor scheme
+;; の戻り値を使って解決する。未登録名と非-record scheme は既存の nominal resolverへ戻す。
+(defn typeinfer-signature-record-result-type [ty]
+  (if (= (ty-tag ty) (ty-fun))
+    (typeinfer-signature-record-result-type (ty-fr ty))
+    (if (= (ty-tag ty) (ty-record)) ty 0)))
+
+(defn typeinfer-resolve-signature-type-expr
+  [type-expr alias-env type-param-env env counter]
+  (if (= (vector-get type-expr 0) (ast-type-named))
+    (let [scheme (type-env-lookup env (vector-get type-expr 1))]
+      (if (= scheme 0)
+        (typeinfer-resolve-type-expr-with-aliases-and-params
+          type-expr
+          alias-env
+          type-param-env)
+        (do
+          (root_push scheme)
+          (let [instantiated (instantiate scheme counter)]
+            (do
+              (root_push instantiated)
+              (let [record-ty (typeinfer-signature-record-result-type instantiated)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (if (= record-ty 0)
+                    (typeinfer-resolve-type-expr-with-aliases-and-params
+                      type-expr
+                      alias-env
+                      type-param-env)
+                    record-ty))))))))
+    (typeinfer-resolve-type-expr-with-aliases-and-params
+      type-expr
+      alias-env
+      type-param-env)))
+
 (defn typeinfer-bind-signature-type-var [type-param-env name-hash counter]
   (let [bound (map-get-safe type-param-env name-hash)]
     (if (= bound 0)
@@ -131,7 +167,7 @@
           after-params)))))
 
 (defn typeinfer-unify-defn-param-annotations-loop
-  [signature param-types idx count subst alias-env type-param-env]
+  [signature param-types idx count subst alias-env type-param-env env counter]
   (if (>= idx count)
     subst
     (let [type-expr (typeinfer-defn-signature-param-expr signature idx)]
@@ -143,14 +179,18 @@
           count
           subst
           alias-env
-          type-param-env)
+          type-param-env
+          env
+          counter)
         (let [next-subst
                 (unify
                   (vector-get param-types idx)
-                  (typeinfer-resolve-type-expr-with-aliases-and-params
+                  (typeinfer-resolve-signature-type-expr
                     type-expr
                     alias-env
-                    type-param-env)
+                    type-param-env
+                    env
+                    counter)
                   subst)]
           (if (= (unify-failed next-subst) 1)
             next-subst
@@ -161,10 +201,12 @@
               count
               next-subst
               alias-env
-              type-param-env)))))))
+              type-param-env
+              env
+              counter)))))))
 
 (defn typeinfer-defn-param-annotation-subst
-  [node param-count param-types subst alias-env type-param-env]
+  [node param-count param-types subst alias-env type-param-env env counter]
   (let [signature (typeinfer-defn-signature node param-count)]
     (if (= signature 0)
       subst
@@ -175,10 +217,12 @@
         param-count
         subst
         alias-env
-        type-param-env))))
+        type-param-env
+        env
+        counter))))
 
 (defn typeinfer-defn-return-annotation-subst
-  [node param-count body-ty subst alias-env type-param-env]
+  [node param-count body-ty subst alias-env type-param-env env counter]
   (let [signature (typeinfer-defn-signature node param-count)]
     (if (= signature 0)
       subst
@@ -187,10 +231,12 @@
           subst
           (unify
             body-ty
-            (typeinfer-resolve-type-expr-with-aliases-and-params
+            (typeinfer-resolve-signature-type-expr
               return-expr
               alias-env
-              type-param-env)
+              type-param-env
+              env
+              counter)
             subst))))))
 
 (defn typeinfer-make-fun-rooted [param-ty ret-ty]
