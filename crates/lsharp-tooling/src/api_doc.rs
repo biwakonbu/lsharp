@@ -183,11 +183,12 @@ pub fn build_api_doc(
 pub fn build_api_doc_for_file(package: &str, version: &str, file: &Path) -> miette::Result<ApiDoc> {
     let source =
         std::fs::read_to_string(file).map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
-    let program = lsharp_syntax::parse(&source).map_err(|e| miette::miette!("{e}"))?;
+    let program = lsharp_syntax::parse(&source)
+        .map_err(|e| miette::miette!("[{}] API doc 用 parse に失敗しました: {e}", e.code()))?;
     let mut infer = Infer::new();
     let type_results = infer
         .infer_program(&program)
-        .map_err(|e| miette::miette!("{e}"))?;
+        .map_err(|e| miette::miette!("[{}] API doc 用 type check に失敗しました: {e}", e.code()))?;
     let mut api = build_api_doc(package, version, &program, &type_results, &infer);
     if let Some(module) = api.modules.first_mut() {
         module.name = infer
@@ -486,5 +487,24 @@ mod tests {
         }
 
         assert!(public_functions >= 40, "stdlib 公開関数数が少なすぎる");
+    }
+
+    #[test]
+    fn test_build_api_doc_for_file_preserves_parse_error_code() {
+        let dir =
+            std::env::temp_dir().join(format!("lsharp_api_doc_diagnostic_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("api diagnostic directory を作成できる");
+        let file = dir.join("Broken.ls");
+        std::fs::write(&file, "(").expect("api diagnostic fixture を書き込める");
+
+        let error = build_api_doc_for_file("demo", "0.1.0", &file)
+            .expect_err("壊れた source は API doc 生成を失敗させるべき");
+        assert!(
+            error.to_string().contains("[LS0103]"),
+            "API doc diagnostics は stable code を含むべき: {error}"
+        );
+
+        std::fs::remove_dir_all(&dir).expect("api diagnostic directory を削除できる");
     }
 }

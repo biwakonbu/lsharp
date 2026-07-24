@@ -4,11 +4,12 @@ use std::path::Path;
 pub fn render_doc_html(file: &Path) -> miette::Result<String> {
     let source =
         std::fs::read_to_string(file).map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
-    let program = lsharp_syntax::parse(&source).map_err(|e| miette::miette!("{e}"))?;
+    let program = lsharp_syntax::parse(&source)
+        .map_err(|e| miette::miette!("[{}] doc 用 parse に失敗しました: {e}", e.code()))?;
     let mut infer = lsharp_types::infer::Infer::new();
     let type_results = infer
         .infer_program(&program)
-        .map_err(|e| miette::miette!("{e}"))?;
+        .map_err(|e| miette::miette!("[{}] doc 用 type check に失敗しました: {e}", e.code()))?;
 
     let mut html = String::new();
     html.push_str("<!DOCTYPE html>\n<html><head><meta charset=\"utf-8\">\n");
@@ -151,6 +152,21 @@ mod tests {
         assert!(html.contains("挨拶を返す"));
         assert!(html.contains("<code>name</code> - 名前"));
         assert!(html.contains("<strong>戻り値:</strong> 挨拶文字列"));
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_render_doc_html_preserves_type_error_code() {
+        let dir = unique_temp_dir("diagnostic");
+        let file = dir.join("Main.ls");
+        fs::write(&file, "(defn bad [] (+ 1 true))\n").expect("diagnostic fixture write failed");
+
+        let error = render_doc_html(&file).expect_err("型不一致は doc 生成を失敗させるべき");
+        assert!(
+            error.to_string().contains("[LS1004]"),
+            "doc diagnostics は stable code を含むべき: {error}"
+        );
 
         let _ = fs::remove_dir_all(&dir);
     }

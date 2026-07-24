@@ -43,7 +43,8 @@ pub fn test_kind_label(kind: &lsharp_types::metadata_check::TestKind) -> &'stati
 pub fn run_metadata_tests(file: &Path) -> miette::Result<MetadataTestRun> {
     let source =
         std::fs::read_to_string(file).map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
-    let program = lsharp_syntax::parse(&source).map_err(|e| miette::miette!("{e}"))?;
+    let program = lsharp_syntax::parse(&source)
+        .map_err(|e| miette::miette!("[{}] metadata test parse に失敗しました: {e}", e.code()))?;
     if let Some(diagnostic) = lsharp_types::metadata_check::check_metadata(&program)
         .into_iter()
         .find(|diagnostic| diagnostic.severity == lsharp_types::metadata_check::Severity::Error)
@@ -104,21 +105,21 @@ pub fn run_metadata_tests(file: &Path) -> miette::Result<MetadataTestRun> {
 
     let test_source = lsharp_wasm::test_runner::generate_test_program(&program, &tests);
     let test_program = lsharp_syntax::parse(&test_source)
-        .map_err(|e| miette::miette!("テストプログラムのパースに失敗: {e}"))?;
+        .map_err(|e| miette::miette!("[{}] テストプログラムのパースに失敗: {e}", e.code()))?;
 
     let mut infer = lsharp_types::infer::Infer::new();
     let type_results = infer
         .infer_program(&test_program)
-        .map_err(|e| miette::miette!("テストプログラムの型チェックに失敗: {e}"))?;
+        .map_err(|e| miette::miette!("[{}] テストプログラムの型チェックに失敗: {e}", e.code()))?;
     let expr_type_results = infer.expr_type_results_snapshot();
 
     let mut lower = lsharp_ir::lower::Lower::new();
     let module = lower
         .lower_program_with_expr_types(&test_program, &type_results, &expr_type_results)
-        .map_err(|e| miette::miette!("テストプログラムの IR 変換に失敗: {e}"))?;
+        .map_err(|e| miette::miette!("[{}] テストプログラムの IR 変換に失敗: {e}", e.code()))?;
 
     let wasm_bytes = lsharp_wasm::wasi::emit_wasm_wasi(&module)
-        .map_err(|e| miette::miette!("テストプログラムの Wasm 生成に失敗: {e}"))?;
+        .map_err(|e| miette::miette!("[{}] テストプログラムの Wasm 生成に失敗: {e}", e.code()))?;
     let output = lsharp_wasm::wasi_runner::run_wasm_wasi(&wasm_bytes)
         .map_err(|e| miette::miette!("テスト実行に失敗: {e}"))?;
     let results = lsharp_wasm::test_runner::parse_test_output(&output, &tests, &program);
@@ -162,6 +163,22 @@ mod tests {
         assert_eq!(run.failed(), 0);
 
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_run_metadata_tests_preserves_parse_error_code() {
+        let dir = unique_temp_dir("parse_diagnostic");
+        let file = dir.join("Broken.ls");
+        fs::write(&file, "@").expect("metadata parse diagnostic fixture write failed");
+
+        let error =
+            run_metadata_tests(&file).expect_err("不正な source は metadata test を失敗させるべき");
+        assert!(
+            error.to_string().contains("[LS0001]"),
+            "metadata test parse diagnostics は stable code を含むべき: {error}"
+        );
+
+        fs::remove_dir_all(&dir).expect("metadata parse diagnostic directory cleanup failed");
     }
 
     #[test]

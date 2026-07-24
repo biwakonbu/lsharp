@@ -1,19 +1,19 @@
 /// REPL で入力された単一式をコンパイル・実行する。
 pub fn evaluate_expression(line: &str) -> miette::Result<String> {
     let source = format!("(defn main [] {})", line.trim());
-    let program =
-        lsharp_syntax::parse(&source).map_err(|e| miette::miette!("パースエラー: {e}"))?;
+    let program = lsharp_syntax::parse(&source)
+        .map_err(|e| miette::miette!("[{}] パースエラー: {e}", e.code()))?;
     let mut infer = lsharp_types::infer::Infer::new();
     let type_results = infer
         .infer_program(&program)
-        .map_err(|e| miette::miette!("型エラー: {e}"))?;
+        .map_err(|e| miette::miette!("[{}] 型エラー: {e}", e.code()))?;
     let expr_type_results = infer.expr_type_results_snapshot();
     let mut lower = lsharp_ir::lower::Lower::new();
     let module = lower
         .lower_program_with_expr_types(&program, &type_results, &expr_type_results)
-        .map_err(|e| miette::miette!("IR 変換エラー: {e}"))?;
+        .map_err(|e| miette::miette!("[{}] IR 変換エラー: {e}", e.code()))?;
     let wasm_bytes = lsharp_wasm::wasi::emit_wasm_wasi(&module)
-        .map_err(|e| miette::miette!("コード生成エラー: {e}"))?;
+        .map_err(|e| miette::miette!("[{}] コード生成エラー: {e}", e.code()))?;
     lsharp_wasm::wasi_runner::run_wasm_wasi(&wasm_bytes)
         .map_err(|e| miette::miette!("実行エラー: {e}"))
 }
@@ -27,5 +27,26 @@ mod tests {
         let output =
             evaluate_expression("(print (+ 1 2))").expect("REPL helper should evaluate source");
         assert_eq!(output, "3\n");
+    }
+
+    #[test]
+    fn test_evaluate_expression_preserves_parse_error_code() {
+        let error = evaluate_expression("(if true 1").expect_err("壊れた式は parse 失敗するべき");
+
+        assert!(
+            error.to_string().contains("[LS0101]"),
+            "REPL parse diagnostics は stable code を含むべき: {error}"
+        );
+    }
+
+    #[test]
+    fn test_evaluate_expression_preserves_type_error_code() {
+        let error =
+            evaluate_expression("(+ 1 true)").expect_err("型不一致は REPL を失敗させるべき");
+
+        assert!(
+            error.to_string().contains("[LS1004]"),
+            "REPL type diagnostics は stable code を含むべき: {error}"
+        );
     }
 }

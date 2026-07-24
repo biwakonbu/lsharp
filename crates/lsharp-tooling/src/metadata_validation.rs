@@ -1,6 +1,7 @@
 /// ソース文字列に対して metadata diagnostics を文字列化して返す。
 pub fn check_metadata_strings(source: &str) -> miette::Result<Vec<String>> {
-    let program = lsharp_syntax::parse(source).map_err(|e| miette::miette!("{e}"))?;
+    let program = lsharp_syntax::parse(source)
+        .map_err(|e| miette::miette!("[{}] metadata parse に失敗しました: {e}", e.code()))?;
     Ok(lsharp_types::metadata_check::check_metadata(&program)
         .into_iter()
         .map(|diagnostic| diagnostic.to_string())
@@ -34,7 +35,12 @@ mod migration_tests {
 
 /// legacy metadata を source order の migration report へ文字列化する。
 pub fn migration_diagnostic_strings(source: &str) -> miette::Result<Vec<String>> {
-    let program = lsharp_syntax::parse(source).map_err(|e| miette::miette!("{e}"))?;
+    let program = lsharp_syntax::parse(source).map_err(|e| {
+        miette::miette!(
+            "[{}] metadata migration parse に失敗しました: {e}",
+            e.code()
+        )
+    })?;
     let diagnostics = lsharp_types::metadata_migration::classify_legacy_contracts(&program)
         .map_err(|e| miette::miette!("{e}"))?;
     Ok(diagnostics
@@ -69,5 +75,15 @@ mod tests {
         assert!(diagnostics[0].contains("unknown-fn"));
         assert!(diagnostics[0].contains(":invariant"));
         assert!(diagnostics[0].contains("[error]"));
+    }
+
+    #[test]
+    fn test_check_metadata_strings_preserves_parse_error_code() {
+        let error = check_metadata_strings("@").expect_err("不正な source は parse 失敗するべき");
+
+        assert!(
+            error.to_string().contains("[LS0001]"),
+            "metadata parse diagnostics は stable code を含むべき: {error}"
+        );
     }
 }
