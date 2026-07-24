@@ -3536,6 +3536,53 @@ fn test_e2e_selfhost_ftable_compiler_alias_qualified_record_literal_pattern_runs
     assert_eq!(output, "41\n");
 }
 
+/// selfhost ftable compiler: alias-qualified parametric record literal/pattern を actual Wasm で実行できること
+#[test]
+fn test_e2e_selfhost_ftable_compiler_alias_qualified_parametric_record_literal_pattern_runs() {
+    let harness = r#"
+(defn print-bytes-loop [bytes idx count]
+  (if (>= idx count)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes-loop bytes (+ idx 1) count))))
+
+(defn main []
+  (let [source "(type (Box a) (record (: value a))) (import App.Shapes :as S :only [Box]) (defn main [] (let [box {S.Box value 41}] (print (match box [{S.Box value x} x] [_ 0])) 0))"
+        program (parse-program source)
+        pair (compile-program-functions-with-base program 11)
+        functions (vector-get pair 1)
+        wasm-bytes (build-wasm-bytes-wasi functions (vector-new 0))]
+    (do
+      (print (vector-length wasm-bytes))
+      (print-bytes-loop wasm-bytes 0 (vector-length wasm-bytes))
+      0)))
+"#;
+    let compiler_mode = format!("{}\n{}", selfhost_module("CompilerMode.ls"), harness);
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("IR.ls"),
+        selfhost_module("Compiler.ls"),
+        selfhost_module("WasiBackend.ls"),
+        selfhost_module("WasmEmit.ls"),
+        selfhost_module("ModuleResolver.ls"),
+        compiler_mode
+    );
+    let emitted = compile_and_run(&combined);
+    let wasm_bytes = parse_printed_wasm_bytes(&emitted);
+    let output = super::selfhost_bootstrap_four_layer::run_wasm_with_eleven_imports_compiler_mode(
+        &wasm_bytes,
+        "",
+        &[],
+    )
+    .expect("selfhost ftable alias-qualified parametric record literal pattern module should run");
+    assert_eq!(output, "41\n");
+}
+
 /// selfhost ftable compiler: record pattern の field binder と nominal mismatch を実行できること
 #[test]
 fn test_e2e_selfhost_ftable_compiler_record_pattern_runs() {

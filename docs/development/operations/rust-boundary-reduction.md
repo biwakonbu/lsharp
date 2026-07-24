@@ -2208,6 +2208,14 @@ REDは `test_e2e_selfhost_ftable_compiler_alias_qualified_record_literal_pattern
 
 これは flat ftableの qualified record literal markerと pattern nominal checkだけを閉じる verified sliceである。CompilerMode file-import literal、parametric/private record、record update全形式、同名 export衝突、standalone native stage0、Mac Apple Silicon / Linux x86_64 の current-source artifact/runtime gate、EC-M1-01 aggregateの完了を意味しない。`TODO.md` の `[~]` と Rust oracle / bootstrap / host integration境界は維持する。
 
+### EC-M1-01 selfhost alias-qualified parametric record literal/pattern runtime slice (2026-07-25)
+
+既存の raw nominal marker経路を、`(type (Box a) (record (: value a)))` の parametric recordへ一つの concrete `Int` instantiationとして適用した。flat ftable compilerの fixtureでは、`App.Shapes :as S :only [Box]` の `{S.Box value 41}` literalを `{S.Box value x}` patternへ渡し、生成した Wasmを実行して `41\n` を確認した。これは literalの qualified visibility用 full hashと、runtime nominal marker用 raw `Box` hashを分離した実装が、non-parametric `Point` 以外でも同じ境界を保つことを確認する。
+
+REDは `test_e2e_selfhost_ftable_compiler_alias_qualified_parametric_record_literal_pattern_runs` の追加前にはこの concrete instantiationに actual Wasm evidenceがなく、parametric marker parityは未検証だった。GREENは同テストを `RUST_MIN_STACK=33554432 cargo test -q -p lsharp-wasm --test e2e selfhost_ftable_compiler_alias_qualified_parametric_record_literal_pattern_runs -- --nocapture` で実行し、`41\n`、1 passed、85.14sを確認した。
+
+これは flat ftableの parametric `Int` instantiation一つだけを閉じる verified sliceである。CompilerMode file-import側の parametric record、独立した `Bool` / 複数 concrete instantiation、private record、record update全形式、同名 export衝突、standalone native stage0、Mac Apple Silicon / Linux x86_64 の current-source artifact/runtime gate、EC-M1-01 aggregateの完了を意味しない。`TODO.md` の `[~]` と Rust oracle / bootstrap / host integration境界を維持する。
+
 ### EC-M1-01 selfhost imported record update compiler-mode initial RED (2026-07-25)
 
 actual Wasm runtimeの最小 fixtureとして `App.Shapes.Point` を `App.Main` から alias + `:only [Point]` で importし、`(S.Point 40 2)` を `{point | x 41}` へ updateして `(. updated x)` / `(. updated y)` を出力する testを追加した。初回は `RUST_MIN_STACK=33554432` で `load-imports-from-decls-step` instruction 78の root ledger `BranchDepthMismatch` (`then_depth=6`, `else_depth=7`) に到達し、Wasm runtimeへ進めなかった。同じ failure valueは変更なし `origin/main` の record-pattern compiler-mode baselineでも再現したため、fixtureの parser/type-inference差分とは分離した。
