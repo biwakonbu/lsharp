@@ -5,13 +5,21 @@ use std::path::PathBuf;
 
 use lsharp_ir::Module;
 
+const NATIVE_BACKEND_ERROR_CODE: &str = "LS4001";
+
+fn native_backend_error(message: impl std::fmt::Display) -> miette::Report {
+    miette::miette!("[{NATIVE_BACKEND_ERROR_CODE}] {message}")
+}
+
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 pub(crate) fn compile_native_executable(module: &Module, output_path: &Path) -> miette::Result<()> {
-    let asm = native_module_assembly(module)?;
-    let asm_path = native_temp_asm_path(output_path)?;
-    let temporary_output_path = native_temp_output_path(output_path)?;
+    let asm = native_module_assembly(module).map_err(native_backend_error)?;
+    let asm_path = native_temp_asm_path(output_path).map_err(native_backend_error)?;
+    let temporary_output_path =
+        native_temp_output_path(output_path).map_err(native_backend_error)?;
 
-    std::fs::write(&asm_path, asm).map_err(|e| miette::miette!("{}: {}", asm_path.display(), e))?;
+    std::fs::write(&asm_path, asm)
+        .map_err(|e| native_backend_error(format!("{}: {}", asm_path.display(), e)))?;
     let linker_output = match std::process::Command::new("cc")
         .arg(&asm_path)
         .arg("-o")
@@ -22,7 +30,9 @@ pub(crate) fn compile_native_executable(module: &Module, output_path: &Path) -> 
         Err(error) => {
             let _ = std::fs::remove_file(&asm_path);
             let _ = std::fs::remove_file(&temporary_output_path);
-            return Err(miette::miette!("native linker 起動失敗: {error}"));
+            return Err(native_backend_error(format!(
+                "native linker 起動失敗: {error}"
+            )));
         }
     };
     let _ = std::fs::remove_file(&asm_path);
@@ -30,33 +40,33 @@ pub(crate) fn compile_native_executable(module: &Module, output_path: &Path) -> 
     if !linker_output.status.success() {
         let _ = std::fs::remove_file(&temporary_output_path);
         let stderr = String::from_utf8_lossy(&linker_output.stderr);
-        return Err(miette::miette!(
+        return Err(native_backend_error(format!(
             "native linker が失敗しました: status={}; stderr={stderr}",
             linker_output.status
-        ));
+        )));
     }
 
     if let Err(error) = lsharp_wasm::component_adapter::sync_artifact_file(&temporary_output_path) {
         let _ = std::fs::remove_file(&temporary_output_path);
-        return Err(miette::miette!(
+        return Err(native_backend_error(format!(
             "native artifact file の同期に失敗しました ({}): {error}",
             temporary_output_path.display()
-        ));
+        )));
     }
 
     std::fs::rename(&temporary_output_path, output_path).map_err(|error| {
         let _ = std::fs::remove_file(&temporary_output_path);
-        miette::miette!(
+        native_backend_error(format!(
             "native artifact の atomic replacement に失敗しました ({}): {error}",
             output_path.display()
-        )
+        ))
     })?;
 
     lsharp_wasm::component_adapter::sync_artifact_parent(output_path).map_err(|error| {
-        miette::miette!(
+        native_backend_error(format!(
             "native artifact parent directory の同期に失敗しました ({}): {error}",
             output_path.display()
-        )
+        ))
     })?;
 
     Ok(())
@@ -67,10 +77,10 @@ pub(crate) fn compile_native_executable(
     _module: &Module,
     output_path: &Path,
 ) -> miette::Result<()> {
-    Err(miette::miette!(
+    Err(native_backend_error(format!(
         "native backend は未サポートです。この host の Rust driver native path は aarch64-apple-darwin のみ生成できます: {}",
         output_path.display()
-    ))
+    )))
 }
 
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
@@ -872,6 +882,32 @@ mod tests {
     }
 
     #[test]
+    fn native_codegen_failure_preserves_backend_diagnostic_code() {
+        let module = Module {
+            functions: vec![],
+            gc_types: vec![],
+            imports: vec![],
+            globals: vec![],
+            string_data: vec![],
+        };
+        let output_path = std::env::temp_dir().join(format!(
+            "lsharp_native_missing_main_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock は unix epoch より後であるべき")
+                .as_nanos()
+        ));
+
+        let error = compile_native_executable(&module, &output_path)
+            .expect_err("main がない native module は codegen error になるべき");
+        assert!(
+            error.to_string().starts_with("[LS4001]"),
+            "native backend error code が必要: {error}"
+        );
+    }
+
+    #[test]
     fn native_link_failure_cleans_temporary_output_before_returning() {
         let dir = std::env::temp_dir().join(format!(
             "lsharp_native_atomic_failure_test_{}_{}",
@@ -902,6 +938,10 @@ mod tests {
 
         let error = compile_native_executable(&module, &output_path)
             .expect_err("directory destination への atomic replacement は失敗するべき");
+        assert!(
+            error.to_string().starts_with("[LS4001]"),
+            "native backend error code が必要: {error}"
+        );
         assert!(error.to_string().contains("atomic replacement"));
         assert!(output_path.is_dir(), "失敗時も既存 destination を壊さない");
         let temporary_outputs = std::fs::read_dir(&dir)

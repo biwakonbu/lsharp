@@ -2805,6 +2805,10 @@ mod tests {
         let err = compile_file(&file, Some(&output), false, None).unwrap_err();
         let message = err.to_string();
         assert!(
+            message.contains("[LS4001]"),
+            "native target の診断コードが必要: {message}"
+        );
+        assert!(
             message.contains("native backend は未サポート"),
             "native target の明示エラーが必要: {message}"
         );
