@@ -560,7 +560,11 @@
         (str5 "(module " name-text " " body-text ")")))))
 
 (defn format-import-decl [decl]
-  (str3 "(import " (symbol-from-hash (vector-get decl 1)) ")"))
+  (let [module-text (symbol-from-hash (vector-get decl 1))
+    alias-hash (if (> (vector-length decl) 4) (vector-get decl 4) 0)]
+    (if (= alias-hash 0)
+      (str3 "(import " module-text ")")
+      (str5 "(import " module-text " :as " (symbol-from-hash alias-hash) ")"))))
 
 (defn format-impl-decl [decl indent-level]
   (let [trait-text (symbol-from-hash (vector-get decl 1))

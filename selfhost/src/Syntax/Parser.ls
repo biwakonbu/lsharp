@@ -24,6 +24,7 @@
 ;; tag=21: type-decl [21, name-hash]
 ;; tag=25: module-decl [25, name-hash]
 ;; tag=26: import-decl [26, name-hash, name-start, name-end]
+;; :as を含む場合は [26, name-hash, name-start, name-end, alias-hash]
 
 ;; トークン種別定数 (Token.ls より)
 ;; 0=LParen, 1=RParen, 2=LBracket, 3=RBracket, 4=LBrace, 5=RBrace
@@ -3151,8 +3152,34 @@
       name-h (name-hash src name-start name-end)]
       (do
         (p-advance pos-ref) ;; name を消費
-        (p-expect spans pos-ref 1) ;; ) を消費
-        (make-import-decl name-h name-start name-end)))))
+        (if (== (p-current spans pos-ref) 50)
+          (do
+            (p-advance pos-ref) ;; : を消費
+            (if (== (p-current spans pos-ref) 20)
+              (let [option-name (current-symbol-text-v3 spans pos-ref src)]
+                (if (string-eq option-name "as")
+                  (do
+                    (p-advance pos-ref) ;; as を消費
+                    (let [alias-start (p-start spans pos-ref)
+                      alias-end (p-end spans pos-ref)
+                      alias-h (name-hash src alias-start alias-end)]
+                      (do
+                        (p-advance pos-ref) ;; alias を消費
+                        (p-expect spans pos-ref 1) ;; ) を消費
+                        (make-import-decl-with-alias
+                          name-h
+                          name-start
+                          name-end
+                          alias-h))))
+                  (do
+                    (p-expect spans pos-ref 1)
+                    (make-import-decl name-h name-start name-end))))
+              (do
+                (p-expect spans pos-ref 1)
+                (make-import-decl name-h name-start name-end))))
+          (do
+            (p-expect spans pos-ref 1) ;; ) を消費
+            (make-import-decl name-h name-start name-end)))))))
 
 ;; === apply (関数呼び出し) ===
 (defn parse-apply-v3 [spans pos-ref src]

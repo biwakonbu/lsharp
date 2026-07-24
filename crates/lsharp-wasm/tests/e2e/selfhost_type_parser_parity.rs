@@ -593,6 +593,44 @@ fn test_e2e_selfhost_parser_bare_module_with_multiple_imports() {
     assert_eq!(lines[10], "1", "defn 名 hash が一致すべき");
 }
 
+/// EC-M1-01: selfhost parser が import の :as alias を AST に保持すること
+#[test]
+fn test_e2e_selfhost_parser_import_alias() {
+    let (token_ls, ast_ls, lexer_ls, parser_ls) = parser_runtime_modules();
+
+    let harness = r#"
+(defn main []
+  (let [src "(import Lib :as L)"
+        program (parse-program src)
+        node (vector-get program 0)]
+    (do
+      (print (vector-length program))
+      (print (vector-get node 0))
+      (print (if (= (vector-get node 1) (name-hash "Lib" 0 3)) 1 0))
+      (print (if (= (vector-length node) 5) 1 0))
+      (print (if (= (vector-get node 4) (name-hash "L" 0 1)) 1 0))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        token_ls, ast_ls, lexer_ls, parser_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 5,
+        "import alias parser 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "1", ":as import は単一 AST decl を返すべき");
+    assert_eq!(lines[1], "26", ":as import は ast-import-decl を返すべき");
+    assert_eq!(lines[2], "1", "module 名 hash は Lib と一致すべき");
+    assert_eq!(lines[3], "1", ":as import AST は alias slot を持つべき");
+    assert_eq!(lines[4], "1", "alias hash は L と一致すべき");
+}
+
 /// TEST-SYNTAX-02c4: 2 import 後の defn は compiler register/compile でも拾える
 #[test]
 fn test_e2e_selfhost_compiler_sees_defn_after_multiple_imports() {

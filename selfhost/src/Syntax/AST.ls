@@ -236,7 +236,19 @@
   (vector-push-single-rooted
     (vector-push-quad-rooted (vector-new 8) (ast-module-decl) name-hash 0 name-start)
     name-end))
-(defn make-import-decl [name-hash name-start name-end] (vector-push-pair-rooted (vector-push-pair-rooted (vector-new 4) (ast-import-decl) name-hash) name-start name-end))
+;; import 宣言: [26, module-name-hash, module-start, module-end]
+;; :as を含む場合は [26, module-name-hash, module-start, module-end, alias-hash]
+(defn make-import-decl [name-hash name-start name-end]
+  (vector-push-pair-rooted
+    (vector-push-pair-rooted (vector-new 4) (ast-import-decl) name-hash)
+    name-start
+    name-end))
+(defn make-import-decl-with-alias [name-hash name-start name-end alias-hash]
+  (vector-push-single-rooted
+    (vector-push-quad-rooted (vector-new 5) (ast-import-decl) name-hash name-start name-end)
+    alias-hash))
+(defn import-decl-alias-hash [decl]
+  (if (> (vector-length decl) 4) (vector-get decl 4) 0))
 (defn make-trait-def [name-hash] (vector-push-triple-rooted (vector-new 8) (ast-traitdef) name-hash 0))
 (defn make-impl-def [trait-name-hash type-name-hash] (vector-push-pair-rooted (vector-push-pair-rooted (vector-new 8) (ast-impldef) trait-name-hash) type-name-hash 0))
 (defn make-private [inner-node] (vector-push-pair-rooted (vector-new 2) (ast-private) inner-node))

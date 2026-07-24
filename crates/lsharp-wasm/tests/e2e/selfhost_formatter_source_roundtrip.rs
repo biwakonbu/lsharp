@@ -276,3 +276,25 @@ fn test_e2e_selfhost_formatter_preserves_multiple_ordered_contract_forms() {
         "formatter は複数の canonical contract form の順序と payload を保持するべき"
     );
 }
+
+/// EC-M1-01: formatter が import の :as alias を canonical text に保持すること
+#[test]
+fn test_e2e_selfhost_formatter_preserves_import_alias() {
+    let output = run_formatter_source_harness(
+        r#"
+(module Main)
+(defn main []
+  (let [src "(import Lib :as L)"
+        program (parse-program src)]
+    (do
+      (print-string (format-program program 0))
+      0)))
+"#,
+    );
+
+    assert_eq!(
+        output,
+        "(import Lib :as L)\n",
+        "formatter は import alias を canonical text に保持するべき"
+    );
+}
