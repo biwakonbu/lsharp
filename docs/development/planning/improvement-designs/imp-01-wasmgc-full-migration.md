@@ -689,6 +689,23 @@ Stage 2w の成功 path に加えて、read-only descriptor で direct write が
 stream、pollable、Wasm artifact/runtime differential、Mac Apple Silicon/Linux x86_64、native/selfhost
 parity は未完了である。
 
+## Stage 2y 検証済み slice: read-directory と directory-entry stream lifecycle (2026-07-24)
+
+Stage 2x の descriptor error/drop path に加えて、named preopen の directory descriptor から
+directory-entry stream を取得し、entries と end-of-stream を Component ABI で確認した。
+
+- `wasm_gc_component_cli_fs_runner_reads_directory_entries_and_drops_stream` は二つの read-only named
+  preopen を受け取り、最初の directory descriptor に `descriptor.read-directory` を呼ぶ。
+- `directory-entry-stream.read-directory-entry` の `option<directory-entry>` を canonical ABI で liftし、
+  `input.txt` の regular-file entry を custom stdout へ出力した後、二回目の read が `none` になることを
+  確認する。`.` / `..` を期待値へ混ぜず、WASI が明示する directory entry semantics を保つ。
+- directory-entry stream と directory descriptor を drop して `wasi:cli/run` が exit 0 になることを
+  actual Component で固定する。
+
+これは read-directory/entry-stream/drop の verified partial slice であり、pollable、残る descriptor
+operation、Wasm artifact/runtime differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity
+は未完了である。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線

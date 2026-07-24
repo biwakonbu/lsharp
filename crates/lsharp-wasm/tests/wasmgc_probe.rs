@@ -1160,6 +1160,60 @@ fn wasm_gc_component_cli_fs_runner_drops_descriptor_after_direct_write_error() {
 }
 
 #[test]
+fn wasm_gc_component_cli_fs_runner_reads_directory_entries_and_drops_stream() {
+    let core = emit_component_cli_read_directory_probe_module();
+    let wit_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("wit")
+        .join("lsharp-wasmgc-output.wit");
+    let component = lsharp_wasm::component_adapter::componentize_core_module(
+        &core,
+        &wit_file,
+        "wasmgc-cli-fs",
+        &[],
+    )
+    .expect("read-directory probe を componentize できる");
+
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock は unix epoch より後であるべき")
+        .as_nanos();
+    let dir = std::env::temp_dir().join(format!("lsharp_wasmgc_read_directory_{nonce}"));
+    let extra_dir =
+        std::env::temp_dir().join(format!("lsharp_wasmgc_read_directory_extra_{nonce}"));
+    std::fs::create_dir_all(&dir).expect("read-directory fixture directory を作成できる");
+    std::fs::create_dir_all(&extra_dir)
+        .expect("second read-directory fixture directory を作成できる");
+    std::fs::write(dir.join("input.txt"), b"hello")
+        .expect("read-directory fixture file を作成できる");
+
+    let preopen = lsharp_wasm::wasmgc_runner::Preview2Preopen::new(
+        &dir,
+        "data",
+        lsharp_wasm::wasmgc_runner::Preview2PreopenRights::read_only(),
+    );
+    let extra_preopen = lsharp_wasm::wasmgc_runner::Preview2Preopen::new(
+        &extra_dir,
+        "extra",
+        lsharp_wasm::wasmgc_runner::Preview2PreopenRights::read_only(),
+    );
+    let output = lsharp_wasm::wasmgc_runner::run_wasm_wasmgc_component_cli_with_preview2_stdout_and_preopens(
+        &component,
+        &[],
+        "",
+        &[preopen, extra_preopen],
+    )
+    .expect("read-directory と directory-entry stream を実行できる");
+
+    assert_eq!(output.stdout, "input.txt");
+    assert_eq!(output.exit_code, 0);
+    std::fs::remove_dir_all(&dir).expect("read-directory fixture directory を削除できる");
+    std::fs::remove_dir_all(&extra_dir)
+        .expect("second read-directory fixture directory を削除できる");
+}
+
+#[test]
 fn wasm_gc_component_output_propagates_sink_failure_as_trap() {
     let module = IrModule {
         functions: vec![Function {
@@ -2251,6 +2305,152 @@ fn emit_component_cli_direct_write_error_probe_module() -> Vec<u8> {
 "#,
     )
     .expect("descriptor direct write error probe module を生成できる")
+}
+
+fn emit_component_cli_read_directory_probe_module() -> Vec<u8> {
+    wat::parse_str(
+        r#"
+(module
+  (type (func (param i32 i32)))
+  (type (func (param i32)))
+  (type (func (result i32)))
+  (type (func (param i32 i32)))
+  (import "lsharp:wasmgc-output/stdout@0.1.0" "write" (func $stdout-write (type 0)))
+  (import "wasi:filesystem/preopens@0.2.3" "get-directories" (func $get-directories (type 1)))
+  (import "wasi:filesystem/types@0.2.3" "[method]descriptor.read-directory" (func $read-directory (type 3)))
+  (import "wasi:filesystem/types@0.2.3" "[method]directory-entry-stream.read-directory-entry" (func $read-directory-entry (type 3)))
+  (import "wasi:filesystem/types@0.2.3" "[resource-drop]descriptor" (func $drop-descriptor (param i32)))
+  (import "wasi:filesystem/types@0.2.3" "[resource-drop]directory-entry-stream" (func $drop-directory-entry-stream (param i32)))
+  (memory (export "memory") 2)
+  (global $heap (mut i32) (i32.const 1024))
+  (func (export "cabi_realloc")
+    (param $old i32) (param $old-len i32) (param $align i32) (param $new-len i32)
+    (result i32)
+    (local $mask i32)
+    (local $ptr i32)
+    local.get $align
+    i32.const 1
+    i32.sub
+    local.set $mask
+    global.get $heap
+    local.get $mask
+    i32.add
+    local.get $mask
+    i32.const -1
+    i32.xor
+    i32.and
+    local.set $ptr
+    local.get $ptr
+    local.get $new-len
+    i32.add
+    global.set $heap
+    local.get $ptr)
+  (func (export "wasi:cli/run@0.2.3#run") (type 2)
+    (local $preopen i32)
+    (local $stream i32)
+    i32.const 16
+    call $get-directories
+    i32.const 20
+    i32.load
+    i32.const 2
+    i32.ne
+    if (result i32)
+      i32.const 1
+    else
+      i32.const 16
+      i32.load
+      i32.load
+      local.set $preopen
+      local.get $preopen
+      i32.const 24
+      call $read-directory
+      i32.const 24
+      i32.load8_u
+      if
+        local.get $preopen
+        call $drop-descriptor
+        i32.const 1
+        return
+      end
+      i32.const 28
+      i32.load
+      local.set $stream
+      local.get $stream
+      i32.const 32
+      call $read-directory-entry
+      i32.const 32
+      i32.load8_u
+      if
+        local.get $stream
+        call $drop-directory-entry-stream
+        local.get $preopen
+        call $drop-descriptor
+        i32.const 1
+        return
+      end
+      i32.const 36
+      i32.load8_u
+      i32.const 1
+      i32.ne
+      if
+        local.get $stream
+        call $drop-directory-entry-stream
+        local.get $preopen
+        call $drop-descriptor
+        i32.const 1
+        return
+      end
+      i32.const 40
+      i32.load
+      i32.const 6
+      i32.ne
+      if
+        local.get $stream
+        call $drop-directory-entry-stream
+        local.get $preopen
+        call $drop-descriptor
+        i32.const 1
+        return
+      end
+      i32.const 44
+      i32.load
+      i32.const 48
+      i32.load
+      call $stdout-write
+      local.get $stream
+      i32.const 64
+      call $read-directory-entry
+      i32.const 64
+      i32.load8_u
+      if
+        local.get $stream
+        call $drop-directory-entry-stream
+        local.get $preopen
+        call $drop-descriptor
+        i32.const 1
+        return
+      end
+      i32.const 68
+      i32.load8_u
+      if
+        local.get $stream
+        call $drop-directory-entry-stream
+        local.get $preopen
+        call $drop-descriptor
+        i32.const 1
+        return
+      end
+      local.get $stream
+      call $drop-directory-entry-stream
+      local.get $preopen
+      call $drop-descriptor
+      i32.const 0
+      return
+    end)
+)
+"#,
+    )
+    .expect("read-directory probe module を生成できる")
 }
 
 fn emit_component_cli_write_stream_probe_module() -> Vec<u8> {
