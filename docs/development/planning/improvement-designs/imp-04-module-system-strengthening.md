@@ -135,6 +135,13 @@ linked IR を再利用しない。`test_analyze_multi_file_incremental_with_over
 は first workspace の 2 module 解析後に second workspace の単一 module を解析し、cache が 1 entry に
 戻ることを固定する。
 
+Phase C-1c として、`compile_multi_file_incremental` も `build_from_entry_with_scc` を使い、サイズ 2 以上
+の SCC を `infer_scc_type_surfaces` で一括推論する fallback を追加した。SCC 経路は現時点では
+`ModuleIrSegments` の再利用を行わず、SCC 全体を modular lowering して linked IR と型 surface を cache
+へ保存する。acyclic 経路の既存の module/segment incremental optimization は変更しない。
+`test_compile_multi_file_incremental_infers_mutual_recursive_scc` は A ↔ B の相互再帰を incremental compile
+し、2 回目の clean rebuild と linked IR が一致することを固定する。
+
 ### 未完了の後続作業
 
 - Formatter 3 モジュールの merged 特別扱いを除去し、相互再帰 fixture の IR/runtime parity を確認する。
@@ -142,8 +149,9 @@ linked IR を再利用しない。`test_analyze_multi_file_incremental_with_over
   `format-expr` 未定義 (`E0001`, span `3962..3973`) で停止した。この診断を解消してから特例撤去を再試行する。
 - CLI driver の既定経路へ `CompilationCache` を接続し、依存 SCC を含む cache key、process 間永続化、
   selfhost compiler への移植を行う。
-- `compile_multi_file_incremental` / source override 入口はまだ strict な graph build を使っており、
-  SCC と cache の統合は C-2 で扱う。
+- source override 入口はまだ strict な graph build と module 単位推論を使っており、SCC-aware override
+  inference は未着手である。incremental compile の SCC 経路も segment reuse、dirty SCC の局所再推論、
+  disk persistence は未着手で、Formatter の import 修正と special-case 除去を別 slice で検証する。
 - 今回の Wasm/WASI evidence は Rust host の Mac 実行に限定され、Mac Apple Silicon / Linux x86_64 の
   native stage0 実行証跡は未取得である。
 - `LEGACY-MODULE-01` の aggregate 完了条件（両対応 target、native stage0、公開 command）を満たすまで、
@@ -160,8 +168,9 @@ linked IR を再利用しない。`test_analyze_multi_file_incremental_with_over
 
 設計 (2026-06-12 起草、同日コード検証に基づき大幅訂正・具体化)。2026-07-24 に
 Phase C-1a の deterministic SCC 検出 API と unit test、C-1b の compile/infer 接続と相互再帰
-fixture、および Phase C-2a の明示的 cache compile API と cold/warm parity test、C-2b の entry scope
-isolation、C-2c の dependency surface key、C-2d の tooling cache API、C-2e の source override scope
-isolation を検証済み部分実装として反映した。一括推論の native parity、CLI driver の既定 cache 接続、依存 SCC key、selfhost
+fixture、C-1c の incremental SCC fallback と clean rebuild parity、および Phase C-2a の明示的 cache compile
+API と cold/warm parity test、C-2b の entry scope isolation、C-2c の dependency surface key、C-2d の
+tooling cache API、C-2e の source override scope isolation を検証済み部分実装として反映した。一括推論の
+native parity、SCC の segment reuse、CLI driver の既定 cache 接続、依存 SCC key、selfhost
 移植は未着手のため、Phase C-1 / C-2 の aggregate 完了とは扱わない。
 着手時は TODO.md に Phase C-1 / C-2 として項目を作成する。

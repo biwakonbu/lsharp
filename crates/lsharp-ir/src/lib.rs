@@ -2177,6 +2177,117 @@ pub fn compile_multi_file_with_cache(
     compile_multi_file_incremental(entry_file, cache)
 }
 
+/// 循環を含む multi-file compile の incremental cache 更新を行う。
+///
+/// SCC は module 単位のトポロジカル推論では扱えないため、SCC ごとに一括推論してから
+/// modular lowering を行う。SCC 内は現時点では segment reuse を行わず、cache には次回の
+/// clean hit と型 surface 比較に必要な成果物だけを保持する。
+fn compile_multi_file_incremental_scc(
+    graph: &module_graph::ModuleGraph,
+    sorted_files: &[(String, std::path::PathBuf)],
+    cache: &mut CompilationCache,
+) -> Result<Module, String> {
+    let mut parsed_modules = HashMap::new();
+    let mut module_paths = HashMap::new();
+    let mut direct_imports = HashMap::new();
+    let mut fingerprints = HashMap::new();
+
+    for (mod_name, mod_path) in sorted_files {
+        let source = std::fs::read_to_string(mod_path)
+            .map_err(|e| format!("{}: {e}", mod_path.display()))?;
+        let fingerprint = SourceFingerprint::from_source(&source);
+        let program = cached_program_or_parse(mod_name, &source, fingerprint, cache)
+            .map_err(|e| format!("{}: {e}", mod_path.display()))?;
+        direct_imports.insert(
+            mod_name.clone(),
+            collect_import_visibility(program.as_ref()),
+        );
+        fingerprints.insert(mod_name.clone(), fingerprint);
+        module_paths.insert(mod_name.clone(), mod_path.clone());
+        parsed_modules.insert(mod_name.clone(), program.as_ref().clone());
+    }
+
+    let mut per_module_type_results = HashMap::new();
+    for group in graph.scc_groups() {
+        let surfaces = infer_scc_type_surfaces(
+            &group,
+            graph,
+            &parsed_modules,
+            &module_paths,
+            &direct_imports,
+            &per_module_type_results,
+        )?;
+        per_module_type_results.extend(surfaces);
+    }
+
+    let mut all_decls = Vec::new();
+    let mut all_type_results = Vec::new();
+    let mut all_expr_type_results = HashMap::new();
+    let mut module_programs = Vec::new();
+    for (mod_name, _) in sorted_files {
+        let surface = per_module_type_results
+            .get(mod_name)
+            .ok_or_else(|| format!("モジュールの SCC 型結果がありません: {mod_name}"))?;
+        all_type_results.extend(surface.results.clone());
+        all_expr_type_results.extend(surface.expr_types.clone());
+
+        let program = parsed_modules
+            .get(mod_name)
+            .ok_or_else(|| format!("モジュールの parse 結果がありません: {mod_name}"))?;
+        let mut module_decls = Vec::new();
+        for decl in &program.decls {
+            match decl {
+                lsharp_syntax::ast::Decl::ModuleDecl { .. }
+                | lsharp_syntax::ast::Decl::ImportDecl { .. } => {}
+                _ => {
+                    all_decls.push(decl.clone());
+                    module_decls.push(decl.clone());
+                }
+            }
+        }
+        module_programs.push(lsharp_syntax::ast::Program {
+            decls: module_decls,
+        });
+    }
+
+    note_incremental_lower();
+    let final_module = lower_multi_file_modular(
+        &module_programs,
+        &all_decls,
+        &all_type_results,
+        &all_expr_type_results,
+    )
+    .map_err(|e| format!("IR 変換エラー: {e}"))?;
+
+    let module_order = sorted_files
+        .iter()
+        .map(|(mod_name, _)| mod_name.clone())
+        .collect::<Vec<_>>();
+    for (mod_name, _) in sorted_files {
+        let program = parsed_modules
+            .get(mod_name)
+            .ok_or_else(|| format!("モジュールの parse 結果がありません: {mod_name}"))?;
+        let surface = per_module_type_results
+            .get(mod_name)
+            .ok_or_else(|| format!("モジュールの SCC 型結果がありません: {mod_name}"))?;
+        let direct_imports = direct_imports
+            .get(mod_name)
+            .ok_or_else(|| format!("モジュールの import 情報がありません: {mod_name}"))?;
+        let fingerprint = fingerprints
+            .get(mod_name)
+            .copied()
+            .ok_or_else(|| format!("モジュールの fingerprint がありません: {mod_name}"))?;
+        let program = std::sync::Arc::new(program.clone());
+        let deps_key = dependency_surface_key(direct_imports, &per_module_type_results, cache);
+        let mut entry = build_module_cache_entry(fingerprint, deps_key, &program, surface.clone());
+        entry.set_ir(final_module.clone());
+        cache.insert_module(mod_name.clone(), entry);
+    }
+    cache.set_linked_module(module_order, final_module.clone());
+
+    Ok(final_module)
+}
+
 fn read_source_with_overrides(
     path: &std::path::Path,
     source_overrides: &HashMap<std::path::PathBuf, String>,
@@ -2364,7 +2475,7 @@ pub fn compile_multi_file_incremental(
 ) -> Result<Module, String> {
     use module_graph::ModuleGraph;
 
-    let (graph, sorted_files) = ModuleGraph::build_from_entry(entry_file)
+    let (graph, sorted_files) = ModuleGraph::build_from_entry_with_scc(entry_file)
         .map_err(|e| format!("モジュールグラフ構築エラー: {e}"))?;
 
     if sorted_files.is_empty() {
@@ -2418,6 +2529,10 @@ pub fn compile_multi_file_incremental(
         entry.set_ir(module.clone());
         cache.insert_module(mod_name.clone(), entry);
         return Ok(module);
+    }
+
+    if graph.scc_groups().iter().any(|group| group.len() > 1) {
+        return compile_multi_file_incremental_scc(&graph, &sorted_files, cache);
     }
 
     let mut module_inputs = Vec::new();
@@ -3246,6 +3361,50 @@ mod multifile_compile_tests {
                 .functions
                 .iter()
                 .any(|function| function.name == "main")
+        );
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_compile_multi_file_incremental_infers_mutual_recursive_scc() {
+        let dir = std::env::temp_dir().join(format!(
+            "lsharp_compile_multi_file_incremental_mutual_recursive_scc_{}",
+            std::process::id()
+        ));
+        if dir.exists() {
+            std::fs::remove_dir_all(&dir).unwrap();
+        }
+        std::fs::create_dir_all(&dir).unwrap();
+
+        std::fs::write(
+            dir.join("A.ls"),
+            "(module A)\n(import B)\n(defn a-step [n] (if (= n 0) 1 (b-step (- n 1))))\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("B.ls"),
+            "(module B)\n(import A)\n(defn b-step [n] (if (= n 0) 0 (a-step (- n 1))))\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("Main.ls"),
+            "(module Main)\n(import A)\n(defn main [] (a-step 4))\n",
+        )
+        .unwrap();
+
+        let mut cache = CompilationCache::new();
+        let first = compile_multi_file_incremental(&dir.join("Main.ls"), &mut cache);
+        assert!(
+            first.is_ok(),
+            "incremental compile も相互再帰 SCC を受理するべき: {first:?}"
+        );
+        let first = first.unwrap();
+        let second = compile_multi_file_incremental(&dir.join("Main.ls"), &mut cache).unwrap();
+        assert_eq!(
+            first.dump(),
+            second.dump(),
+            "SCC の clean rebuild は同じ linked IR を返すべき"
         );
 
         std::fs::remove_dir_all(&dir).unwrap();
