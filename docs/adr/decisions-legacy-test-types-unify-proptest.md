@@ -14,7 +14,7 @@
 ## Decision
 
 - `proptest` は `lsharp-types` の dev-dependency に限定し、runtime / 配布依存には追加しない。
-- `unify_property_tests::arb_type` は `Con` の代表型、型変数、`Fun`、`App` を深さ 3・要素数 0〜2 に制限して生成する。
+- `unify_property_tests::arb_type` は `Con` の代表型、型変数、`Fun`、`App`、`Record` を深さ 3・要素数 0〜2 に制限して生成する。
 - 各方向で新しい `Infer` を作り、同じ span で `unify(a, b)` と `unify(b, a)` を実行する。property の契約は `is_ok()` の一致に限定し、
   置換 map の具体的な形や型変数番号の割り当て順を契約にしない。
 - 通常の local test は 64 cases とし、入力サイズを bounded に固定する。nightly/fuzz、式全体の推論、AST generator の再利用はこの slice の対象外とする。
