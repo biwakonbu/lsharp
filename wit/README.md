@@ -63,6 +63,7 @@ WASI Preview2 / Component Model への移行に向けた WIT (WebAssembly Interf
   `blocking-flush` の permit/write/flush/host artifact/drop lifecycle と、
   `output-stream.write-zeroes` の check-write/zero-fill/blocking-flush contract、さらに
   `output-stream.splice` / `blocking-splice` の borrowed input/output transfer contract と、
+  `input-stream.skip` / `blocking-skip` の partial/remaining read contract と、
   `output-stream.blocking-write-zeroes-and-flush` の zero-fill/flush/host artifact/drop lifecycle も
   この world で検証する。暗黙の別 resource table に分離しない
 

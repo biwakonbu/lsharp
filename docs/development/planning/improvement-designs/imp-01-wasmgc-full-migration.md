@@ -1100,6 +1100,22 @@ Stage 2av の direct zero-fill boundary に加えて、read-write named preopen 
 error/resource failure、zero-length splice、poll readiness、input stream の残る operation、Wasm
 artifact/runtime differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity は未完了である。
 
+## Stage 2ax 検証済み slice: input-stream skip / blocking-skip lifecycle (2026-07-24)
+
+Stage 2aw の splice boundary に加えて、read-only named preopen の input stream から non-blocking
+`skip` の partial result、残量を補完する `blocking-skip`、`blocking-read` の host stdout artifact、
+result/drop 境界を actual Component で検証した。
+
+- `wasm_gc_component_cli_fs_runner_skips_input_stream_then_reads_remaining_bytes` は `input.txt`
+  (`hello!`) を開き、`read-via-stream(0)` で input stream を取得する。
+- `skip(2)` の success count を受け取り、`2 - count` を `blocking-skip` に渡して合計 2 bytes を消費
+  する。続く `blocking-read(4)` が `llo!` を返し、stdout、`wasi:cli/run` exit 0、input stream /
+  descriptor / preopen drop を同じ実行で確認する。
+
+これは input-stream skip の verified partial slice であり、stream error/resource failure、EOF/
+zero-length skip、poll readiness、`read` の non-blocking data contract、Wasm artifact/runtime
+differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity は未完了である。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線
