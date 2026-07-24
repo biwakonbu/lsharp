@@ -1031,6 +1031,22 @@ Stage 2ar の descriptor timestamp boundary に加えて、read-only named preop
 残る descriptor operation、Wasm artifact/runtime differential、Mac Apple Silicon/Linux x86_64、
 native/selfhost parity は未完了である。
 
+## Stage 2at 検証済み slice: output-stream blocking-write-zeroes lifecycle (2026-07-24)
+
+Stage 2as の descriptor advisory boundary に加えて、read-write named preopen の output stream から
+`blocking-write-zeroes-and-flush` の zero-fill、flush、result/drop、host artifact 境界を actual Component
+で検証した。
+
+- `wasm_gc_component_cli_fs_runner_writes_zeroes_and_drops_resources` は `zeros.bin` を create+truncate+
+  write で開き、`write-via-stream(0)` で得た output stream に 3 zero bytes の blocking write/flush を
+  実行する。
+- success result を確認して output stream、file descriptor、preopen を drop し、host file が `[0, 0, 0]`、
+  stdout empty、`wasi:cli/run` exit 0 になることを同じ実行で確認する。
+
+これは output-stream zero-fill の verified partial slice であり、直接 `write-zeroes` の check-write
+contract、separate flush / blocking-flush、stream error、残る streams operation、Wasm artifact/runtime
+differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity は未完了である。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線
