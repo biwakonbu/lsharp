@@ -1443,6 +1443,25 @@ bytes も同じ artifact boundary へ集約した。
 manifest、durable fsync、native executable release、Mac Apple Silicon/Linux x86_64 stage0、selfhost
 parity、rollback provenance は未完了である。
 
+## Stage 2br 検証済み slice: Mac Native executable の atomic link output (2026-07-24)
+
+Wasm artifact に続き、対応 target の Mac Apple Silicon native backend も linker の出力を destination
+へ直接書かない保存境界へ移行した。
+
+- `compile_native_executable` は `cc -o` の出力を destination と同じ directory の一時 executable
+  へ生成し、link 成功後に `rename` で destination を置換する。link 起動・link failure・rename
+  failure のいずれでも assembly と temporary executable を cleanup し、既存 destination を直接
+  truncate しない。
+- `native::tests::native_output_temp_path_is_a_unique_sibling` は destination sibling の unique temp
+  naming を、`native::tests::native_link_failure_cleans_temporary_output_before_returning` は rename
+  failure 後の destination 保持と temporary executable 残留なしを固定する。
+- 既存 Mac native compile tests 8 件は実 executable を生成・起動し、atomic rename 後の stdout/exit
+  parity を確認する。Linux x86_64 は未対応 boundary のまま別 gate とする。
+
+これは Mac native link output の atomic I/O verified partial slice であり、Linux x86_64 native
+backend、source fingerprint/manifest、durable fsync、selfhost stage0、release bundle、rollback
+provenance は未完了である。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線
