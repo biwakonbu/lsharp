@@ -2390,6 +2390,61 @@ fn test_e2e_selfhost_typeinfer_analysis_resolves_nested_alias_qualified_record_t
     );
 }
 
+/// EC-M1-01: imported record を alias-qualified record pattern として分解すること
+#[test]
+fn test_e2e_selfhost_typeinfer_analysis_resolves_import_alias_qualified_record_pattern() {
+    let source =
+        "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib :as L) (defn get-x [point] : Int (match point [{L.Point x x} x] [_ 0]))";
+    let invalid_source =
+        "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib :as L) (defn get-x [point] : Int (match point [{L.Point x true} x] [_ 0]))";
+    let oracle_source =
+        "(type L.Point (record (: x Int) (: y Int))) (defn get-x [point] : Int (match point [{L.Point x x} x] [_ 0]))";
+    let oracle_program = lsharp_syntax::parse(oracle_source)
+        .expect("alias-qualified record pattern fixture は parse できるべき");
+    let mut oracle = Infer::new();
+    assert!(
+        oracle.infer_program(&oracle_program).is_ok(),
+        "Rust oracle は alias-qualified record pattern を受理するべき"
+    );
+    let invalid_oracle_source =
+        "(type L.Point (record (: x Int) (: y Int))) (defn get-x [point] : Int (match point [{L.Point x true} x] [_ 0]))";
+    let invalid_oracle_program = lsharp_syntax::parse(invalid_oracle_source)
+        .expect("invalid alias-qualified record pattern fixture は parse できるべき");
+    let mut invalid_oracle = Infer::new();
+    assert!(
+        invalid_oracle.infer_program(&invalid_oracle_program).is_err(),
+        "Rust oracle は alias-qualified record pattern の field mismatch を拒否するべき"
+    );
+
+    let harness = format!(
+        r#"
+(defn main []
+  (let [selected
+          (infer-program-analysis
+            (parse-program "{}"))
+        invalid
+          (infer-program-analysis
+            (parse-program "{}"))]
+    (do
+      (print (infer-program-analysis-diagnostic-count selected))
+      (print (infer-program-analysis-diagnostic-count invalid))
+      0)))
+"#,
+        source, invalid_source
+    );
+    let combined = format!("{}\n{}", selfhost_typeinfer_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "1"],
+        "alias-qualified record pattern は imported schema と child field type を unify するべき"
+    );
+}
+
 /// EC-M1-01: imported record は qualified record literal として構築できること
 #[test]
 fn test_e2e_selfhost_typeinfer_analysis_resolves_import_qualified_record_literal() {

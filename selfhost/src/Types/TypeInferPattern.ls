@@ -96,6 +96,29 @@
       (vector-get pat type-slot)
       0)))
 
+;; import された qualified record pattern は raw record-env に key がなくても、
+;; visible な constructor scheme の戻り型から schema を取得する。
+(defn infer-record-pattern-constructor-result-type [ty]
+  (if (= (ty-tag ty) (ty-fun))
+    (infer-record-pattern-constructor-result-type (ty-fr ty))
+    (if (= (ty-tag ty) (ty-record)) ty 0)))
+
+(defn infer-record-pattern-visible-record-type [pat env counter]
+  (let [scheme (type-env-lookup env (record-pattern-type-hash pat))]
+    (if (= scheme 0)
+      0
+      (do
+        (root_push scheme)
+        (let [instantiated (instantiate scheme counter)]
+          (do
+            (root_push instantiated)
+            (let [result
+                    (infer-record-pattern-constructor-result-type instantiated)]
+              (do
+                (root_pop)
+                (root_pop)
+                result))))))))
+
 ;; schema がある record pattern の field を左から推論し、schema field 型と unify する。
 (defn infer-record-pattern-schema-children [node idx count env subst counter record-ty]
   (if (>= idx count)
@@ -216,7 +239,11 @@
                       (let [fc (vector-get pat 1)
                         type-hash (if (= tag 44) (record-pattern-type-hash pat) 0)
                         record-env (var-counter-record-env counter)
-                        record-schema (if (= type-hash 0) 0 (map-get-safe record-env type-hash))]
+                        record-schema (if (= type-hash 0) 0 (map-get-safe record-env type-hash))
+                        visible-record-ty
+                          (if (= type-hash 0)
+                            0
+                            (infer-record-pattern-visible-record-type pat env counter))]
                         (if (= type-hash 0)
                           (let [child-info
                                 (infer-pattern-children
@@ -231,10 +258,19 @@
                               (let [ty (fresh-type-var counter)]
                                 (vector-push (make-result child-subst ty) child-env))))
                           (if (= record-schema 0)
-                            ;; parser が保持した record 名が未登録なら未定義 record として拒否する。
-                            (vector-push
-                              (make-error-result-code (error-code-undefined))
-                              env)
+                            (if (= visible-record-ty 0)
+                              ;; parser が保持した record 名が未登録なら未定義 record として拒否する。
+                              (vector-push
+                                (make-error-result-code (error-code-undefined))
+                                env)
+                              (infer-record-pattern-schema-children
+                                pat
+                                0
+                                fc
+                                env
+                                subst
+                                counter
+                                visible-record-ty))
                             (let [record-ty (instantiate record-schema counter)]
                               (infer-record-pattern-schema-children
                                 pat

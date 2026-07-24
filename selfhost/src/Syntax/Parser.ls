@@ -2276,7 +2276,7 @@
     (p-advance pos-ref) ;; { を消費
     (let [type-hash
           (if (== (p-current spans pos-ref) 20)
-            (let [name-hash (current-symbol-hash-v3 spans pos-ref src)]
+            (let [name-hash (current-type-name-hash-v3 spans pos-ref src)]
               (do
                 (p-advance pos-ref)
                 name-hash))
