@@ -2736,7 +2736,7 @@ fn wasm_gc_component_cli_fs_runner_polls_subscribed_input_stream_list() {
     )
     .expect("poll list を実行できる");
 
-    assert_eq!(output.stdout, "");
+    assert_eq!(output.stdout, "P");
     assert_eq!(output.exit_code, 0);
     assert_eq!(
         std::fs::read(dir.join("input.txt")).expect("poll list fixture を読める"),
@@ -2744,6 +2744,59 @@ fn wasm_gc_component_cli_fs_runner_polls_subscribed_input_stream_list() {
     );
     std::fs::remove_dir_all(&dir).expect("poll list fixture directory を削除できる");
     std::fs::remove_dir_all(&extra_dir).expect("second poll list fixture directory を削除できる");
+}
+
+#[test]
+fn wasm_gc_component_cli_fs_runner_polls_empty_input_stream_list_as_ready() {
+    let core = emit_component_cli_poll_list_probe_module();
+    let wit_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("wit")
+        .join("lsharp-wasmgc-output.wit");
+    let component = lsharp_wasm::component_adapter::componentize_core_module(
+        &core,
+        &wit_file,
+        "wasmgc-cli-fs-streams",
+        &[],
+    )
+    .expect("empty poll list probe を componentize できる");
+
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock は unix epoch より後であるべき")
+        .as_nanos();
+    let dir = std::env::temp_dir().join(format!("lsharp_wasmgc_poll_list_empty_{nonce}"));
+    let extra_dir =
+        std::env::temp_dir().join(format!("lsharp_wasmgc_poll_list_empty_extra_{nonce}"));
+    std::fs::create_dir_all(&dir).expect("empty poll list fixture directory を作成できる");
+    std::fs::create_dir_all(&extra_dir)
+        .expect("second empty poll list fixture directory を作成できる");
+    std::fs::write(dir.join("input.txt"), b"").expect("empty poll list fixture file を作成できる");
+
+    let preopen = lsharp_wasm::wasmgc_runner::Preview2Preopen::new(
+        &dir,
+        "data",
+        lsharp_wasm::wasmgc_runner::Preview2PreopenRights::read_only(),
+    );
+    let extra_preopen = lsharp_wasm::wasmgc_runner::Preview2Preopen::new(
+        &extra_dir,
+        "extra",
+        lsharp_wasm::wasmgc_runner::Preview2PreopenRights::read_only(),
+    );
+    let output = lsharp_wasm::wasmgc_runner::run_wasm_wasmgc_component_cli_with_preview2_stdout_and_preopens(
+        &component,
+        &[],
+        "",
+        &[preopen, extra_preopen],
+    )
+    .expect("empty poll list を実行できる");
+
+    assert_eq!(output.stdout, "P");
+    assert_eq!(output.exit_code, 0);
+    std::fs::remove_dir_all(&dir).expect("empty poll list fixture directory を削除できる");
+    std::fs::remove_dir_all(&extra_dir)
+        .expect("second empty poll list fixture directory を削除できる");
 }
 
 #[test]
@@ -5740,6 +5793,7 @@ fn emit_component_cli_poll_list_probe_module() -> Vec<u8> {
     global.set $heap
     local.get $ptr)
   (data (i32.const 128) "input.txt")
+  (data (i32.const 144) "P")
   (func (export "wasi:cli/run@0.2.3#run") (type 2)
     (local $preopen i32)
     (local $descriptor i32)
@@ -5854,6 +5908,9 @@ fn emit_component_cli_poll_list_probe_module() -> Vec<u8> {
         i32.const 1
         return
       end
+      i32.const 144
+      i32.const 1
+      call $stdout-write
       local.get $pollable
       call $drop-pollable
       local.get $stream
