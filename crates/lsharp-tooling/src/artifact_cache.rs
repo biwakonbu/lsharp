@@ -88,10 +88,64 @@ impl ArtifactCache {
     /// 明示 root を管理する caller が頻度と上限を決める。cache directory がまだなければ
     /// no-op とし、schema 外のファイルや `.artifact` 以外の entry は変更しない。
     pub fn trim_to_entries(&self, max_entries: usize) -> miette::Result<usize> {
+        let artifact_paths = self.artifact_paths()?;
+        let remove_count = artifact_paths.len().saturating_sub(max_entries);
+        remove_artifact_paths(artifact_paths.into_iter().take(remove_count))
+    }
+
+    /// `max_bytes` を超えた artifact を deterministic に削除する。
+    ///
+    /// file name の辞書順で小さいものから削除し、entry count trim と同じ deterministic policy
+    /// を使う。単一 artifact が上限より大きい場合はその artifact 自体を削除する。cache directory
+    /// がまだなければ no-op とし、非 `.artifact` entry は変更しない。
+    pub fn trim_to_bytes(&self, max_bytes: u64) -> miette::Result<usize> {
+        let mut sized_paths = Vec::new();
+        let mut total_bytes = 0_u64;
+        for path in self.artifact_paths()? {
+            let size = match std::fs::metadata(&path) {
+                Ok(metadata) => metadata.len(),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(error) => {
+                    return Err(miette::miette!(
+                        "compile artifact cache entry の metadata 取得に失敗しました ({}): {error}",
+                        path.display()
+                    ));
+                }
+            };
+            total_bytes = total_bytes.saturating_add(size);
+            sized_paths.push((path, size));
+        }
+        if total_bytes <= max_bytes {
+            return Ok(0);
+        }
+
+        let mut removed = 0;
+        for (path, size) in sized_paths {
+            if total_bytes <= max_bytes {
+                break;
+            }
+            match std::fs::remove_file(&path) {
+                Ok(()) => {
+                    total_bytes = total_bytes.saturating_sub(size);
+                    removed += 1;
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => {
+                    return Err(miette::miette!(
+                        "compile artifact cache entry の削除に失敗しました ({}): {error}",
+                        path.display()
+                    ));
+                }
+            }
+        }
+        Ok(removed)
+    }
+
+    fn artifact_paths(&self) -> miette::Result<Vec<PathBuf>> {
         let directory = self.root.join(ARTIFACT_CACHE_SCHEMA);
         let entries = match std::fs::read_dir(&directory) {
             Ok(entries) => entries,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
             Err(error) => {
                 return Err(miette::miette!(
                     "compile artifact cache directory の列挙に失敗しました ({}): {error}",
@@ -123,22 +177,7 @@ impl ArtifactCache {
             }
         }
         artifact_paths.sort_by(|left, right| left.file_name().cmp(&right.file_name()));
-
-        let remove_count = artifact_paths.len().saturating_sub(max_entries);
-        let mut removed = 0;
-        for path in artifact_paths.into_iter().take(remove_count) {
-            match std::fs::remove_file(&path) {
-                Ok(()) => removed += 1,
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-                Err(error) => {
-                    return Err(miette::miette!(
-                        "compile artifact cache entry の削除に失敗しました ({}): {error}",
-                        path.display()
-                    ));
-                }
-            }
-        }
-        Ok(removed)
+        Ok(artifact_paths)
     }
 
     fn path_for(&self, key: &CompileCacheKey) -> PathBuf {
@@ -146,6 +185,23 @@ impl ArtifactCache {
             .join(ARTIFACT_CACHE_SCHEMA)
             .join(format!("{}.artifact", key.fingerprint()))
     }
+}
+
+fn remove_artifact_paths(paths: impl Iterator<Item = PathBuf>) -> miette::Result<usize> {
+    let mut removed = 0;
+    for path in paths {
+        match std::fs::remove_file(&path) {
+            Ok(()) => removed += 1,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(miette::miette!(
+                    "compile artifact cache entry の削除に失敗しました ({}): {error}",
+                    path.display()
+                ));
+            }
+        }
+    }
+    Ok(removed)
 }
 
 fn fixed_prefix(key: &CompileCacheKey) -> Vec<u8> {
@@ -309,6 +365,59 @@ mod tests {
 
         let missing = ArtifactCache::new(dir.join("missing"));
         assert_eq!(missing.trim_to_entries(0).unwrap(), 0);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_artifact_cache_trim_to_bytes_removes_deterministic_lowest_keys() {
+        let dir = unique_temp_dir("byte-trim");
+        let cache = ArtifactCache::new(&dir);
+        let first = test_key(&dir, CompileTarget::WasiPreview1, CompileBackend::Linear);
+        std::fs::write(dir.join("Second.ls"), "(module Second)\n(defn main [] 8)\n").unwrap();
+        let second = CompileCacheKey::from_entry(
+            &dir.join("Second.ls"),
+            CompileTarget::WasiPreview1,
+            CompileBackend::Linear,
+        )
+        .unwrap();
+        std::fs::write(dir.join("Third.ls"), "(module Third)\n(defn main [] 9)\n").unwrap();
+        let third = CompileCacheKey::from_entry(
+            &dir.join("Third.ls"),
+            CompileTarget::WasiPreview1,
+            CompileBackend::Linear,
+        )
+        .unwrap();
+        for key in [&first, &second, &third] {
+            cache.store(key, b"same-payload").unwrap();
+        }
+        std::fs::write(
+            dir.join("lsharp-compile-artifact-v1").join("notes.txt"),
+            "caller-owned metadata",
+        )
+        .unwrap();
+        let one_entry_bytes = std::fs::metadata(cache.path_for(&first)).unwrap().len();
+
+        assert_eq!(
+            cache.trim_to_bytes(one_entry_bytes).unwrap(),
+            2,
+            "byte budget は deterministic entry を上限まで削除するべき"
+        );
+        assert_eq!(
+            std::fs::read_dir(dir.join("lsharp-compile-artifact-v1"))
+                .unwrap()
+                .filter_map(Result::ok)
+                .filter(|entry| entry
+                    .path()
+                    .extension()
+                    .is_some_and(|ext| ext == "artifact"))
+                .count(),
+            1
+        );
+        assert!(dir.join("lsharp-compile-artifact-v1/notes.txt").exists());
+        assert_eq!(cache.trim_to_bytes(0).unwrap(), 1);
+
+        let missing = ArtifactCache::new(dir.join("missing"));
+        assert_eq!(missing.trim_to_bytes(0).unwrap(), 0);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
