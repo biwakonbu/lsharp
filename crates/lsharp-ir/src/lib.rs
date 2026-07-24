@@ -2229,6 +2229,29 @@ fn compile_multi_file_incremental_scc(
 
     let mut per_module_type_results = HashMap::new();
     for group in graph.scc_groups() {
+        let group_cache_hit = group.iter().all(|module_name| {
+            let Some(fingerprint) = current_fingerprints.get(module_name) else {
+                return false;
+            };
+            let Some(imports) = direct_imports.get(module_name) else {
+                return false;
+            };
+            let deps_key = dependency_surface_key(imports, &per_module_type_results, cache);
+            cache.get(module_name).is_some_and(|entry| {
+                entry.fingerprint() == *fingerprint && entry.deps_key() == deps_key
+            })
+        });
+        if group_cache_hit {
+            for module_name in &group {
+                let surface = cache
+                    .get(module_name)
+                    .map(|entry| entry.type_surface_clone())
+                    .ok_or_else(|| format!("型 surface cache がありません: {module_name}"))?;
+                per_module_type_results.insert(module_name.clone(), surface);
+            }
+            continue;
+        }
+
         note_incremental_scc_infer();
         let surfaces = infer_scc_type_surfaces(
             &group,
@@ -3605,6 +3628,66 @@ mod multifile_compile_tests {
         assert_eq!(
             incremental.string_data, full.string_data,
             "SCC の dirty segment reuse 後も string_data は full compile と一致するべき"
+        );
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_compile_multi_file_incremental_scc_reuses_clean_type_surfaces_after_impl_change() {
+        let dir = std::env::temp_dir().join(format!(
+            "lsharp_compile_multi_file_incremental_scc_type_cache_{}",
+            std::process::id()
+        ));
+        if dir.exists() {
+            std::fs::remove_dir_all(&dir).unwrap();
+        }
+        std::fs::create_dir_all(&dir).unwrap();
+
+        std::fs::write(
+            dir.join("Base.ls"),
+            "(module Base)\n(defn base-val [] 10)\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("A.ls"),
+            "(module A)\n(import B)\n(import Base)\n(defn a-step [n] (if (= n 0) 1 (b-step (- n 1))))\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("B.ls"),
+            "(module B)\n(import A)\n(import Base)\n(defn b-step [n] (if (= n 0) 0 (a-step (- n 1))))\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("Main.ls"),
+            "(module Main)\n(import A)\n(defn main [] (a-step 4))\n",
+        )
+        .unwrap();
+
+        let mut cache = CompilationCache::new();
+        compile_multi_file_incremental(&dir.join("Main.ls"), &mut cache).unwrap();
+
+        std::fs::write(
+            dir.join("A.ls"),
+            "(module A)\n(import B)\n(import Base)\n(defn a-step [n] (if (= n 0) 2 (b-step (- n 1))))\n",
+        )
+        .unwrap();
+
+        let tracker = IncrementalSccInferTracker::new();
+        tracker.reset();
+        let incremental = compile_multi_file_incremental(&dir.join("Main.ls"), &mut cache).unwrap();
+        let full = compile_multi_file(&dir.join("Main.ls")).unwrap();
+
+        assert_eq!(
+            tracker.count(),
+            1,
+            "A の実装だけが dirty な場合は Base/Main の clean SCC を再推論せず、A↔B SCC だけを再推論するべき"
+        );
+        assert_eq!(
+            incremental.dump(),
+            full.dump(),
+            "SCC type surface reuse 後も final linked IR は full compile と一致するべき"
         );
 
         std::fs::remove_dir_all(&dir).unwrap();
