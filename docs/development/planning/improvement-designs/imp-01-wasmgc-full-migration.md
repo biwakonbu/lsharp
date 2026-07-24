@@ -803,6 +803,22 @@ Stage 2ad の descriptor synchronization に加えて、write-enabled open descr
 これは descriptor set-size の verified partial slice であり、残る descriptor operation、Wasm
 artifact/runtime differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity は未完了である。
 
+## Stage 2af 検証済み slice: descriptor create-directory-at lifecycle (2026-07-24)
+
+Stage 2ae の file-size mutation に加えて、write-enabled preopen descriptor の
+`descriptor.create-directory-at` path mutation と host directory artifact を actual Component で
+検証した。
+
+- `wasm_gc_component_cli_fs_runner_creates_directory_and_drops_resources` は二つの read-write named
+  preopen を受け取り、最初の preopen descriptor に `created` path を渡す。
+- `descriptor.create-directory-at` の `result<_, error-code>` success discriminant を確認し、host
+  側に `created/` directory が生成されることを実行後に確認する。
+- preopen descriptor を drop し、`wasi:cli/run` exit 0、stdout empty、host directory artifact を
+  同じ実行で確認する。
+
+これは descriptor create-directory-at の verified partial slice であり、残る descriptor operation、
+Wasm artifact/runtime differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity は未完了である。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線

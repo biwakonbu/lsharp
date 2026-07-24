@@ -41,7 +41,8 @@ WASI Preview2 / Component Model への移行に向けた WIT (WebAssembly Interf
   descriptor/preopen drop、`read-directory` / `directory-entry-stream` の some/none/drop lifecycle、
   `descriptor.get-type` / `descriptor.get-flags` の type/flags/drop lifecycle、`descriptor.sync-data`
   / `descriptor.sync` の success/drop lifecycle、write-enabled `descriptor.set-size` の host artifact
-  lifecycle もこの world で検証する
+  lifecycle、`descriptor.create-directory-at` の host directory artifact/drop lifecycle もこの world
+  で検証する
 - `wasmgc-cli-fs-streams` は `wasmgc-cli-fs` に `wasi:io/streams@0.2.3` を明示的に加えた world であり、
   descriptor の `read-via-stream` / `write-via-stream` / `append-via-stream` と input/output-stream の
   resource lifecycle、`input-stream.subscribe` から `wasi:io/poll` の `pollable.block` /
