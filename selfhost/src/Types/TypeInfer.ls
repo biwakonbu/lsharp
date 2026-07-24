@@ -590,6 +590,19 @@
           open-flag
           env)))))
 
+(defn typeinfer-qualify-import-named-export
+  [name-hash alias-hash only-hashes open-flag env]
+  (if (= (typeinfer-import-only-allows? only-hashes name-hash) 1)
+    (let [qualified-key (ast-qualified-name-hash alias-hash name-hash)
+      scheme (type-env-lookup env name-hash)]
+      (if (= scheme 0)
+        env
+        (let [qualified-env (type-env-insert env qualified-key scheme)]
+          (if (= open-flag 1)
+            (type-env-insert qualified-env name-hash scheme)
+            qualified-env))))
+    env))
+
 (defn typeinfer-qualify-import-source-loop
   [program idx limit current-module target-module alias-hash only-hashes open-flag env]
   (if (>= idx limit)
@@ -631,6 +644,26 @@
                 open-flag
                 env)))
           (if (and
+              (= tag (ast-recorddef))
+              (= current-module target-module))
+            (let [next-env
+                    (typeinfer-qualify-import-named-export
+                      (vector-get decl 1)
+                      alias-hash
+                      only-hashes
+                      open-flag
+                      env)]
+              (typeinfer-qualify-import-source-loop
+                program
+                (+ idx 1)
+                limit
+                current-module
+                target-module
+                alias-hash
+                only-hashes
+                open-flag
+                next-env))
+            (if (and
               (= tag (ast-defn))
               (and
                 (= current-module target-module)
@@ -674,7 +707,7 @@
             alias-hash
             only-hashes
             open-flag
-            env)))))))
+            env))))))))
 
 (defn typeinfer-qualify-imports-loop-with-open
   [program idx len env allow-open]
