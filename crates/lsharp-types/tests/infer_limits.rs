@@ -1,6 +1,16 @@
 use lsharp_syntax::parse;
 use lsharp_types::infer::{Infer, TypeError};
 
+fn nested_type_annotation_program(depth: usize) -> String {
+    assert!(
+        depth > 0,
+        "the limit fixture needs at least one constructor"
+    );
+
+    let nested = (0..depth).fold(String::from("Int"), |inner, _| format!("(Box {inner})"));
+    format!("(defn identity [(: value {nested})] : {nested} value)")
+}
+
 #[test]
 fn self_application_reports_infinite_type() {
     let program = parse("(defn omega [f] (f f))").expect("self-application fixture must parse");
@@ -14,4 +24,22 @@ fn self_application_reports_infinite_type() {
         "self-application should expose InfiniteType, got {error:?}"
     );
     assert_eq!(error.code(), "LS1003");
+}
+
+#[test]
+fn deeply_nested_type_annotations_do_not_panic() {
+    for depth in [32, 64, 128] {
+        let source = nested_type_annotation_program(depth);
+        let outcome = std::panic::catch_unwind(|| {
+            let program = parse(&source).expect("deep type fixture must parse");
+            let mut infer = Infer::new();
+            infer.infer_program(&program)
+        });
+
+        let result = outcome.unwrap_or_else(|_| panic!("type inference panicked at depth {depth}"));
+        assert!(
+            result.is_ok(),
+            "type inference failed at depth {depth}: {result:?}"
+        );
+    }
 }

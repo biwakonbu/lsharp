@@ -91,12 +91,13 @@ imp-03 のテスト戦略と共有する:
 - `lsharp-types`: 深さ・要素数を制限した `Type` を生成し、`unify(a, b)` と `unify(b, a)` の成否が一致する。
 - `lsharp-types`: 深さ・要素数を制限した expression source を `defn main` に包み、parser → type inference を 64 cases 実行して panic しない。
 - `lsharp-types` integration contract: self-application `(defn omega [f] (f f))` は occurs check により `InfiniteType` / `LS1003` を返す。
+- `lsharp-types` integration limit contract: `Box` を 32 / 64 / 128 段ネストした型注釈を parse → inference しても panic せず成功する。
 
 さらに `lsharp-syntax` に深さ 3・要素数 bounded の式 generator を追加し、literal/variable/if/let/lambda/application/do/annotation/record/quote の
 pretty-print → re-parse 安定性を 64 cases で固定した。full crate gate 中に `"\\` と不正 UTF-8 置換文字の組み合わせが lexer の char boundary panic を検出したため、
 未知 escape の非 ASCII code point を一文字分消費する修正と regression seed を追加した。
 
-これらは arbitrary input/type の panic regression、unification の成否対称性、限定した AST roundtrip に対する verified slice であり、
+これらは arbitrary input/type の panic regression、unification の成否対称性、深い型注釈の限界値、限定した AST roundtrip に対する verified slice であり、
 小さな式全体の型推論、nightly 4096 cases、GC leak/limit、rooting stress は未着手のまま残る。property test は dev-dependency と `cfg(test)` に閉じ、
 配布 artifact の依存関係や公開 CLI の挙動を変更しない。
 
