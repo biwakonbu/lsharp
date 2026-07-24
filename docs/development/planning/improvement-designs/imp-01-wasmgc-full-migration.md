@@ -1552,9 +1552,24 @@ GC/ref-types と別に Wasmtime の feature flag が必要なため、runtime pr
   instantiate、execute し、`41` を返す E2E probe を追加した。
 
 これは emitter と runtime proposal の verified partial slice であり、closure の env struct
-lowering、`lower/closure.rs` の `CallIndirect` 置換、module-link 時の funcref index/type remap、
-trait vtable、Mac/Linux native/selfhost parity は未完了である。したがって Stage 3 全体および
-`LEGACY-EXEC-01` の完了条件には到達していない。
+lowering、`lower/closure.rs` の `CallIndirect` 置換、trait vtable、Mac/Linux native/selfhost parity
+は未完了である。module-link 時の funcref index/type remap は Stage 3b で別に検証する。したがって
+Stage 3 全体および `LEGACY-EXEC-01` の完了条件には到達していない。
+
+### Stage 3b: module-link funcref index/type remap (検証済み partial slice)
+
+複数 IR module を WasmGC backend へ渡す前に、module-local な function/import index と function
+type index を linked module の index 空間へリベースする。
+
+- `RefFunc` は import dedup の `import_remap` または user function の `func_remap` を通す。
+- `CallRef` は GC type → import function type → user function type の type-section 順序を保った
+  `function_type_remap` を通す。deduplicated import type と各 module の user function type の
+  両方を含む。
+- `test_link_funcref_rebases_function_and_type_indices` で、GC type/import/function の先行要素
+  と異なる imports を持つ 2 module の import/user `RefFunc`、import/user `CallRef` を検証する。
+
+これは IR linker の verified partial slice であり、closure env lowering、synthetic backend import
+を含む最終 Wasm type/index mapping、trait vtable、Mac/Linux native/selfhost parity は未完了である。
 
 ### Stage 3: Closures → funcref + env struct
 
@@ -1612,8 +1627,8 @@ String read、Stage 2i の WasmGC runner stdout sink、Stage 2j の `std::io::Wr
 WasmGC Component bridge 明示拒否、Stage 2l の output `list<u8>` canonical pair 契約、Stage 2m
 の packed GC array→linear-memory output bridge、Stage 2n の fd_write handler 契約、Stage 2o の
 custom `wasmgc-output` Component actual instantiate、Stage 2p の Preview2 stdout stream 接続、
-Stage 2q の custom CLI `wasi:cli/run` 接続、Stage 3a の typed funcref emitter/runtime capability
-は 2026-07-24 に検証済み。ADT
+Stage 2q の custom CLI `wasi:cli/run` 接続、Stage 3a の typed funcref emitter/runtime capability、
+Stage 3b の module-link funcref index/type remap は 2026-07-24 に検証済み。ADT
 の全表現、Stage 2 の残り (Unicode code-point semantics / WASI-component I/O /
 native-selfhost parity)、Stage 3 以降
 (closures / traits / selfhost)、supported target

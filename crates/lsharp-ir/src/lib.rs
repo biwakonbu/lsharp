@@ -523,6 +523,32 @@ pub fn link_modules(modules: &[Module]) -> Module {
         }
     }
 
+    // `CallRef` が参照する function type index のリベースマップ。
+    // IR の type section は GC 型 → import 関数型 → user 関数型の順で構成する。
+    let mut function_type_remap: HashMap<(usize, u32), u32> = HashMap::new();
+    let linked_function_type_start = linked_gc_types.len() as u32 + total_imports;
+    let mut linked_function_offset = 0u32;
+    for (mod_idx, module) in modules.iter().enumerate() {
+        let old_import_type_start = module.gc_types.len() as u32;
+        for (old_import_idx, _) in module.imports.iter().enumerate() {
+            if let Some(&new_import_idx) = import_remap.get(&(mod_idx, old_import_idx as u32)) {
+                function_type_remap.insert(
+                    (mod_idx, old_import_type_start + old_import_idx as u32),
+                    linked_gc_types.len() as u32 + new_import_idx,
+                );
+            }
+        }
+
+        let old_function_type_start = old_import_type_start + module.imports.len() as u32;
+        for old_function_idx in 0..module.functions.len() as u32 {
+            function_type_remap.insert(
+                (mod_idx, old_function_type_start + old_function_idx),
+                linked_function_type_start + linked_function_offset + old_function_idx,
+            );
+        }
+        linked_function_offset += module.functions.len() as u32;
+    }
+
     // 全関数を集約（命令のインデックスをリベース）
     for (mod_idx, module) in modules.iter().enumerate() {
         let module_import_count = module.imports.len() as u32;
@@ -538,6 +564,7 @@ pub fn link_modules(modules: &[Module]) -> Module {
                     &func_remap,
                     &import_remap,
                     &gc_type_remap,
+                    &function_type_remap,
                 );
             }
 
@@ -562,9 +589,10 @@ fn remap_instruction_with_imports(
     func_remap: &std::collections::HashMap<(usize, u32), u32>,
     import_remap: &std::collections::HashMap<(usize, u32), u32>,
     gc_type_remap: &std::collections::HashMap<(usize, u32), u32>,
+    function_type_remap: &std::collections::HashMap<(usize, u32), u32>,
 ) {
     match instr {
-        Instruction::Call(idx) => {
+        Instruction::Call(idx) | Instruction::RefFunc(idx) => {
             if *idx < module_import_count {
                 // import 関数の呼び出し
                 if let Some(&new_idx) = import_remap.get(&(mod_idx, *idx)) {
@@ -608,6 +636,11 @@ fn remap_instruction_with_imports(
         | Instruction::ArraySet(type_idx)
         | Instruction::ArrayLen(type_idx) => {
             if let Some(&new_idx) = gc_type_remap.get(&(mod_idx, *type_idx)) {
+                *type_idx = new_idx;
+            }
+        }
+        Instruction::CallRef(type_idx) => {
+            if let Some(&new_idx) = function_type_remap.get(&(mod_idx, *type_idx)) {
                 *type_idx = new_idx;
             }
         }
@@ -2382,6 +2415,97 @@ mod linker_tests {
             assert_eq!(*idx, 1);
         } else {
             panic!("Expected StructNew");
+        }
+    }
+
+    #[test]
+    fn test_link_funcref_rebases_function_and_type_indices() {
+        let module_a = Module {
+            functions: vec![Function {
+                name: "a".to_string(),
+                params: vec![],
+                result: IrType::I64,
+                locals: vec![],
+                body: vec![
+                    Instruction::RefFunc(0),
+                    Instruction::Drop,
+                    Instruction::RefFunc(1),
+                    Instruction::Drop,
+                    Instruction::CallRef(1),
+                    Instruction::Drop,
+                    Instruction::CallRef(2),
+                ],
+                is_export: false,
+            }],
+            gc_types: vec![GcTypeDef {
+                name: "A".to_string(),
+                kind: GcTypeKind::Struct(vec![]),
+            }],
+            imports: vec![ImportFunc {
+                module: "env".to_string(),
+                name: "a-import".to_string(),
+                params: vec![],
+                result: IrType::I64,
+            }],
+            globals: vec![],
+            string_data: vec![],
+        };
+        let module_b = Module {
+            functions: vec![Function {
+                name: "b".to_string(),
+                params: vec![],
+                result: IrType::I64,
+                locals: vec![],
+                body: vec![
+                    Instruction::RefFunc(0),
+                    Instruction::Drop,
+                    Instruction::RefFunc(1),
+                    Instruction::Drop,
+                    Instruction::CallRef(1),
+                    Instruction::Drop,
+                    Instruction::CallRef(2),
+                ],
+                is_export: false,
+            }],
+            gc_types: vec![GcTypeDef {
+                name: "B".to_string(),
+                kind: GcTypeKind::Struct(vec![]),
+            }],
+            imports: vec![ImportFunc {
+                module: "env".to_string(),
+                name: "b-import".to_string(),
+                params: vec![],
+                result: IrType::I64,
+            }],
+            globals: vec![],
+            string_data: vec![],
+        };
+
+        let linked = link_modules(&[module_a, module_b]);
+        assert_eq!(linked.imports.len(), 2);
+        assert_eq!(linked.functions.len(), 2);
+
+        assert_ref_func(&linked.functions[0].body[0], 0);
+        assert_ref_func(&linked.functions[0].body[2], 2);
+        assert_call_ref(&linked.functions[0].body[4], 2);
+        assert_call_ref(&linked.functions[0].body[6], 4);
+        assert_ref_func(&linked.functions[1].body[0], 1);
+        assert_ref_func(&linked.functions[1].body[2], 3);
+        assert_call_ref(&linked.functions[1].body[4], 3);
+        assert_call_ref(&linked.functions[1].body[6], 5);
+
+        fn assert_ref_func(instruction: &Instruction, expected: u32) {
+            match instruction {
+                Instruction::RefFunc(index) => assert_eq!(*index, expected),
+                other => panic!("expected RefFunc, got {other:?}"),
+            }
+        }
+
+        fn assert_call_ref(instruction: &Instruction, expected: u32) {
+            match instruction {
+                Instruction::CallRef(index) => assert_eq!(*index, expected),
+                other => panic!("expected CallRef, got {other:?}"),
+            }
         }
     }
 }

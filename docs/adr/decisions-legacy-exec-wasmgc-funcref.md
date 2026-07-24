@@ -32,7 +32,7 @@ failure boundary が分からなくなる。
 ## Residual risk
 
 `lower/closure.rs` はまだ `CallIndirect` を生成し、closure env は linear-memory 表現のままで
-ある。module-link 時の funcref index/type remap、synthetic import を含む index 空間の統合、
-`examples/hkt.ls` / `examples/computation.ls` の closure E2E、Mac Apple Silicon / Linux x86_64
-native stage0 と selfhost parity は未検証である。したがって Stage 3 と
-`LEGACY-EXEC-01` の完了証拠には拡大解釈しない。
+ある。module-link 時の funcref index/type remap は別 ADR の Stage 3b で検証したが、synthetic
+import を含む最終 Wasm type/index mapping、`examples/hkt.ls` / `examples/computation.ls` の
+closure E2E、Mac Apple Silicon / Linux x86_64 native stage0 と selfhost parity は未検証である。
+したがって Stage 3 と `LEGACY-EXEC-01` の完了証拠には拡大解釈しない。
