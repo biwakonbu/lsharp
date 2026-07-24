@@ -1,6 +1,7 @@
 pub mod api_doc;
 pub mod artifact_cache;
 pub mod compile;
+mod diagnostics;
 pub mod doc_html;
 pub mod fmt;
 pub mod metadata_test;

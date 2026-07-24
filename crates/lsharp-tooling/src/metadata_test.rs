@@ -2,6 +2,7 @@ use std::path::Path;
 
 pub use lsharp_wasm::test_runner::TestResult;
 
+use crate::diagnostics::driver_io_error;
 use lsharp_types::metadata_contract::{ExecutableContract, inventory_contract_suites};
 
 /// metadata test 実行結果。
@@ -41,8 +42,8 @@ pub fn test_kind_label(kind: &lsharp_types::metadata_check::TestKind) -> &'stati
 
 /// `:example` / `:invariant` metadata tests を実行する。
 pub fn run_metadata_tests(file: &Path) -> miette::Result<MetadataTestRun> {
-    let source =
-        std::fs::read_to_string(file).map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
+    let source = std::fs::read_to_string(file)
+        .map_err(|e| driver_io_error(format!("{}: {}", file.display(), e)))?;
     let program = lsharp_syntax::parse(&source)
         .map_err(|e| miette::miette!("[{}] metadata test parse に失敗しました: {e}", e.code()))?;
     if let Some(diagnostic) = lsharp_types::metadata_check::check_metadata(&program)
@@ -179,6 +180,22 @@ mod tests {
         );
 
         fs::remove_dir_all(&dir).expect("metadata parse diagnostic directory cleanup failed");
+    }
+
+    #[test]
+    fn test_run_metadata_tests_missing_source_preserves_driver_io_error_code() {
+        let dir = unique_temp_dir("missing-source");
+        let file = dir.join("Missing.ls");
+
+        let error = run_metadata_tests(&file)
+            .expect_err("存在しない source は metadata test を失敗させるべき");
+        assert!(
+            error.to_string().starts_with("[LS5001]"),
+            "metadata test file I/O diagnostics は stable code を含むべき: {error}"
+        );
+        assert!(error.to_string().contains("Missing.ls"));
+
+        fs::remove_dir_all(&dir).expect("metadata missing source directory cleanup failed");
     }
 
     #[test]

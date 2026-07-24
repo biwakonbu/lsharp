@@ -1,9 +1,11 @@
 use std::path::Path;
 
+use crate::diagnostics::driver_io_error;
+
 /// `doc` コマンド向けの HTML ドキュメントを生成する。
 pub fn render_doc_html(file: &Path) -> miette::Result<String> {
-    let source =
-        std::fs::read_to_string(file).map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
+    let source = std::fs::read_to_string(file)
+        .map_err(|e| driver_io_error(format!("{}: {}", file.display(), e)))?;
     let program = lsharp_syntax::parse(&source)
         .map_err(|e| miette::miette!("[{}] doc 用 parse に失敗しました: {e}", e.code()))?;
     let mut infer = lsharp_types::infer::Infer::new();
@@ -167,6 +169,22 @@ mod tests {
             error.to_string().contains("[LS1004]"),
             "doc diagnostics は stable code を含むべき: {error}"
         );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_render_doc_html_missing_source_preserves_driver_io_error_code() {
+        let dir = unique_temp_dir("missing-source");
+        let file = dir.join("Missing.ls");
+
+        let error =
+            render_doc_html(&file).expect_err("存在しない source は doc 生成を失敗させるべき");
+        assert!(
+            error.to_string().starts_with("[LS5001]"),
+            "doc file I/O diagnostics は stable code を含むべき: {error}"
+        );
+        assert!(error.to_string().contains("Missing.ls"));
 
         let _ = fs::remove_dir_all(&dir);
     }

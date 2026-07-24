@@ -1,14 +1,9 @@
 use std::path::{Path, PathBuf};
 
 use crate::artifact_cache::ArtifactCache;
+use crate::diagnostics::driver_io_error;
 use lsharp_ir::{CompilationCache, Module, SourceFingerprint};
 use lsharp_wasm::validation::WasmValidationMode;
-
-const DRIVER_IO_ERROR_CODE: &str = "LS5001";
-
-fn driver_io_error(message: impl std::fmt::Display) -> miette::Report {
-    miette::miette!("[{DRIVER_IO_ERROR_CODE}] {message}")
-}
 
 /// compile バックエンドターゲット
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

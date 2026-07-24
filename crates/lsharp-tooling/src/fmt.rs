@@ -1,5 +1,7 @@
 use std::path::Path;
 
+use crate::diagnostics::driver_io_error;
+
 /// ソースコードのフォーマット結果
 #[allow(dead_code)]
 pub enum FmtResult {
@@ -35,8 +37,8 @@ pub fn check_format(source: &str) -> Result<FmtResult, String> {
 /// fmt サブコマンドのエントリポイント
 #[allow(dead_code)]
 pub fn cmd_fmt(file: &Path, check: bool, write: bool) -> miette::Result<()> {
-    let source =
-        std::fs::read_to_string(file).map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
+    let source = std::fs::read_to_string(file)
+        .map_err(|e| driver_io_error(format!("{}: {}", file.display(), e)))?;
 
     let formatted = format_source(&source).map_err(|e| miette::miette!("フォーマット失敗: {e}"))?;
 
@@ -56,7 +58,7 @@ pub fn cmd_fmt(file: &Path, check: bool, write: bool) -> miette::Result<()> {
         // --write モード: ファイルを上書き
         if formatted != source {
             std::fs::write(file, &formatted)
-                .map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
+                .map_err(|e| driver_io_error(format!("{}: {}", file.display(), e)))?;
             println!("{}: フォーマット完了", file.display());
         } else {
             println!("{}: 変更なし", file.display());
@@ -124,5 +126,26 @@ mod tests {
         // パースエラーの場合はエラーを返す
         let source = "(defn";
         assert!(format_source(source).is_err());
+    }
+
+    #[test]
+    fn test_cmd_fmt_missing_source_preserves_driver_io_error_code() {
+        let file = std::env::temp_dir().join(format!(
+            "lsharp_fmt_missing_source_{}_{}.ls",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock は unix epoch より後であるべき")
+                .as_nanos()
+        ));
+        let _ = std::fs::remove_file(&file);
+
+        let error =
+            cmd_fmt(&file, false, false).expect_err("存在しない source は fmt を失敗させるべき");
+        assert!(
+            error.to_string().starts_with("[LS5001]"),
+            "fmt file I/O diagnostics は stable code を含むべき: {error}"
+        );
+        assert!(error.to_string().contains(file.to_string_lossy().as_ref()));
     }
 }

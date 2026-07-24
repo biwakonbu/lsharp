@@ -3,6 +3,8 @@ use lsharp_types::{infer::Infer, types::TypeScheme};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
+use crate::diagnostics::driver_io_error;
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ApiDoc {
     pub package: String,
@@ -181,8 +183,8 @@ pub fn build_api_doc(
 }
 
 pub fn build_api_doc_for_file(package: &str, version: &str, file: &Path) -> miette::Result<ApiDoc> {
-    let source =
-        std::fs::read_to_string(file).map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
+    let source = std::fs::read_to_string(file)
+        .map_err(|e| driver_io_error(format!("{}: {}", file.display(), e)))?;
     let program = lsharp_syntax::parse(&source)
         .map_err(|e| miette::miette!("[{}] API doc 用 parse に失敗しました: {e}", e.code()))?;
     let mut infer = Infer::new();
@@ -238,9 +240,9 @@ fn collect_lsharp_files(dir: &Path, out: &mut Vec<PathBuf>) -> miette::Result<()
         return Ok(());
     }
     let entries =
-        std::fs::read_dir(dir).map_err(|e| miette::miette!("{}: {}", dir.display(), e))?;
+        std::fs::read_dir(dir).map_err(|e| driver_io_error(format!("{}: {}", dir.display(), e)))?;
     for entry in entries {
-        let entry = entry.map_err(|e| miette::miette!("{}: {}", dir.display(), e))?;
+        let entry = entry.map_err(|e| driver_io_error(format!("{}: {}", dir.display(), e)))?;
         let path = entry.path();
         if path.is_dir() {
             collect_lsharp_files(&path, out)?;
@@ -506,5 +508,26 @@ mod tests {
         );
 
         std::fs::remove_dir_all(&dir).expect("api diagnostic directory を削除できる");
+    }
+
+    #[test]
+    fn test_build_api_doc_for_file_missing_source_preserves_driver_io_error_code() {
+        let dir = std::env::temp_dir().join(format!(
+            "lsharp_api_doc_missing_source_{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("api missing source directory を作成できる");
+        let file = dir.join("Missing.ls");
+
+        let error = build_api_doc_for_file("demo", "0.1.0", &file)
+            .expect_err("存在しない source は API doc 生成を失敗させるべき");
+        assert!(
+            error.to_string().starts_with("[LS5001]"),
+            "API doc file I/O diagnostics は stable code を含むべき: {error}"
+        );
+        assert!(error.to_string().contains("Missing.ls"));
+
+        std::fs::remove_dir_all(&dir).expect("api missing source directory を削除できる");
     }
 }

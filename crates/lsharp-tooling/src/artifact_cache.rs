@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::compile::{COMPILE_CACHE_KEY_SCHEMA, CompileCacheKey};
+use crate::diagnostics::driver_io_error;
 use lsharp_ir::SourceFingerprint;
 
 const ARTIFACT_CACHE_SCHEMA: &str = "lsharp-compile-artifact-v1";
@@ -33,10 +34,10 @@ impl ArtifactCache {
             Ok(bytes) => bytes,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
             Err(error) => {
-                return Err(miette::miette!(
+                return Err(driver_io_error(format!(
                     "compile artifact cache の読み込みに失敗しました ({}): {error}",
                     path.display()
-                ));
+                )));
             }
         };
 
@@ -62,10 +63,10 @@ impl ArtifactCache {
     pub fn store(&self, key: &CompileCacheKey, payload: &[u8]) -> miette::Result<()> {
         let directory = self.root.join(ARTIFACT_CACHE_SCHEMA);
         std::fs::create_dir_all(&directory).map_err(|error| {
-            miette::miette!(
+            driver_io_error(format!(
                 "compile artifact cache directory の作成に失敗しました ({}): {error}",
                 directory.display()
-            )
+            ))
         })?;
 
         let mut bytes = fixed_prefix(key);
@@ -77,7 +78,11 @@ impl ArtifactCache {
         bytes.push(b'\n');
         bytes.extend_from_slice(payload);
         lsharp_wasm::component_adapter::write_wasm_artifact(&self.path_for(key), &bytes).map_err(
-            |error| miette::miette!("compile artifact cache の保存に失敗しました: {error}"),
+            |error| {
+                driver_io_error(format!(
+                    "compile artifact cache の保存に失敗しました: {error}"
+                ))
+            },
         )
     }
 
@@ -106,10 +111,10 @@ impl ArtifactCache {
                 Ok(metadata) => metadata.len(),
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
                 Err(error) => {
-                    return Err(miette::miette!(
+                    return Err(driver_io_error(format!(
                         "compile artifact cache entry の metadata 取得に失敗しました ({}): {error}",
                         path.display()
-                    ));
+                    )));
                 }
             };
             total_bytes = total_bytes.saturating_add(size);
@@ -131,10 +136,10 @@ impl ArtifactCache {
                 }
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
                 Err(error) => {
-                    return Err(miette::miette!(
+                    return Err(driver_io_error(format!(
                         "compile artifact cache entry の削除に失敗しました ({}): {error}",
                         path.display()
-                    ));
+                    )));
                 }
             }
         }
@@ -147,25 +152,25 @@ impl ArtifactCache {
             Ok(entries) => entries,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
             Err(error) => {
-                return Err(miette::miette!(
+                return Err(driver_io_error(format!(
                     "compile artifact cache directory の列挙に失敗しました ({}): {error}",
                     directory.display()
-                ));
+                )));
             }
         };
         let mut artifact_paths = Vec::new();
         for entry in entries {
             let entry = entry.map_err(|error| {
-                miette::miette!(
+                driver_io_error(format!(
                     "compile artifact cache entry の読み込みに失敗しました ({}): {error}",
                     directory.display()
-                )
+                ))
             })?;
             let file_type = entry.file_type().map_err(|error| {
-                miette::miette!(
+                driver_io_error(format!(
                     "compile artifact cache entry の種別取得に失敗しました ({}): {error}",
                     entry.path().display()
-                )
+                ))
             })?;
             if file_type.is_file()
                 && entry
@@ -194,10 +199,10 @@ fn remove_artifact_paths(paths: impl Iterator<Item = PathBuf>) -> miette::Result
             Ok(()) => removed += 1,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
             Err(error) => {
-                return Err(miette::miette!(
+                return Err(driver_io_error(format!(
                     "compile artifact cache entry の削除に失敗しました ({}): {error}",
                     path.display()
-                ));
+                )));
             }
         }
     }
@@ -418,6 +423,24 @@ mod tests {
 
         let missing = ArtifactCache::new(dir.join("missing"));
         assert_eq!(missing.trim_to_bytes(0).unwrap(), 0);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_artifact_cache_store_failure_preserves_driver_io_error_code() {
+        let dir = unique_temp_dir("store-failure");
+        let key = test_key(&dir, CompileTarget::WasiPreview1, CompileBackend::Linear);
+        let cache_root = dir.join("cache-file");
+        std::fs::write(&cache_root, "not a directory").unwrap();
+
+        let error = ArtifactCache::new(&cache_root)
+            .store(&key, b"compiled-wasm")
+            .expect_err("file を cache root に使うと store は失敗するべき");
+        assert!(
+            error.to_string().starts_with("[LS5001]"),
+            "artifact cache file I/O diagnostics は stable code を含むべき: {error}"
+        );
+
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
