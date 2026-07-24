@@ -550,12 +550,6 @@
         1
         (typeinfer-import-only-contains-loop only-hashes 0 only-count name-hash)))))
 
-(defn typeinfer-import-source-scheme [env target-module name-hash]
-  (let [raw-scheme (type-env-lookup env name-hash)]
-    (if (= raw-scheme 0)
-      (type-env-lookup env (ast-qualified-name-hash target-module name-hash))
-      raw-scheme)))
-
 (defn typeinfer-qualify-import-source-loop
   [program idx limit current-module target-module alias-hash only-hashes open-flag env]
   (if (>= idx limit)
