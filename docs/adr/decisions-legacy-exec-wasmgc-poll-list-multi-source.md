@@ -8,16 +8,17 @@
 
 これまでの `wasi:io/poll.poll` 検証は、同じ input stream から派生した複数 pollable の ready index
 projection に限られていた。異なるファイルを source とする input stream が同じ borrowed pollable
-list に入り、source 順の index を返す契約は未固定だった。
+list に入り、両方の source が ready になる契約は未固定だった。WASI は ready index の集合を返すが、
+host の内部走査順までは指定しない。
 
 ## Decision
 
 同じ read-only preopen 配下に空の `source-a.txt` と `source-b.txt` を用意する。それぞれを
 別 descriptor の `read-via-stream` で input stream にし、`input-stream.subscribe` から二つの pollable
 を作る。二つを `[pollable0, pollable1]` の順で `poll` に渡し、両方を `block` / `ready` で確認した上で
-result list length `2`、index `0` と `1` を guest 側で検証する。二つの pollable、stream、descriptor、
-preopen の drop を先に完了してから marker `P` を stdout に渡し、exit code `0` を同じ actual Component
-実行で確認する。
+result list length `2`、ready index の集合 `{0, 1}` を guest 側で検証する。結果順は `[0, 1]` と
+`[1, 0]` のどちらも受け入れる。二つの pollable、stream、descriptor、preopen の drop を先に完了して
+から marker `P` を stdout に渡し、exit code `0` を同じ actual Component 実行で確認する。
 
 ## Evidence
 
@@ -25,7 +26,7 @@ preopen の drop を先に完了してから marker `P` を stdout に渡し、e
 - Test: `wasm_gc_component_cli_fs_runner_polls_multiple_input_sources_as_ready`
 - Focused gate:
   - `cargo test -p lsharp-wasm --test wasmgc_probe wasm_gc_component_cli_fs_runner_polls_multiple_input_sources_as_ready -- --nocapture`
-- Expected boundary: stdout `P`、exit code `0`、result indices `[0, 1]`。
+- Expected boundary: stdout `P`、exit code `0`、result indices の集合 `{0, 1}`（順序非依存）。
 
 ## Residual risk
 

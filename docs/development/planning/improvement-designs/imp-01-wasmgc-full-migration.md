@@ -1238,14 +1238,16 @@ differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity は未完
 ## Stage 2bg 検証済み slice: poll list multiple input sources (2026-07-24)
 
 同じ preopen 配下の異なるファイルから作った二つの input stream を poll list に渡した場合、
-両方の ready index が source の順序を保って result list に返ることを actual Component で検証した。
+両方の ready index `0` / `1` が result list に返ることを actual Component で検証した。WASI の
+contract は index の集合を定めるため、host の内部走査順に依存せず、`[0, 1]` / `[1, 0]` の両方を受け入れる。
 
 - `wasm_gc_component_cli_fs_runner_polls_multiple_input_sources_as_ready` は `source-a.txt` と
   `source-b.txt` をそれぞれ descriptor 経由で `read-via-stream` し、独立した二つの
   `input-stream.subscribe` を呼ぶ。両方を EOF の fixture として source の違いに焦点を固定する。
-- 二つの pollable を `block` / `ready` で確認して `poll` の result list length `2`、index `0` と `1`
-  を guest 側で検証する。二つの pollable、stream、descriptor、preopen の drop を先に完了してから
-  marker `P` を stdout に渡し、exit code `0` を同じ actual Component 実行で確認する。
+- 二つの pollable を `block` / `ready` で確認して `poll` の result list length `2`、ready index の値が
+  `0` と `1` の集合であることを guest 側で検証する。二つの pollable、stream、descriptor、preopen の
+  drop を先に完了してから marker `P` を stdout に渡し、exit code `0` を同じ actual Component 実行で
+  確認する。
 
 これは異なる input source の複数 ready index verified partial slice であり、pollable が異なる
 ready/error 状態になる場合の projection、Wasm artifact/runtime differential、Mac Apple
@@ -1300,7 +1302,28 @@ output stream の non-blocking `write` が開始した filesystem I/O を `block
   code `0`、error/output stream/descriptor/preopen の drop を同じ actual Component 実行で固定する。
 
 これは非同期 output write → blocking-flush の invalid-offset downcast verified partial slice であり、
-pending write 後の `check-write` / non-blocking `flush` projection、他の OS error mapping、Wasm
+pending write 後の non-blocking `flush` projection、他の OS error mapping、Wasm artifact/runtime
+differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity は未完了である。
+
+## Stage 2bk 検証済み slice: pending output-stream check-write failure の filesystem error-code downcast (2026-07-24)
+
+output stream の non-blocking `write` を開始した後、`output-stream.subscribe` から
+`pollable.block` で I/O 完了を待ち、再度 `check-write` を呼ぶ pending failure 状態を actual
+Component で検証した。
+
+- `wasm_gc_component_cli_fs_runner_maps_pending_output_stream_failure_to_filesystem_error_code` は
+  read-write preopen の `output.txt` に offset `u64::MAX` の output stream を作る。`check-write` の
+  permit を確認してから `write(1)`、`output-stream.subscribe`、`pollable.block` を順に呼び、完了後の
+  `check-write` が返す outer error と `stream-error::last-operation-failed` case（discriminant `0`）を
+  確認する。`result<u64, stream-error>` の 8-byte payload alignment を保った canonical ABI layout
+  （stream-error case `+8`、error handle `+12`）もこの probe で固定する。
+- error resource を borrowed `filesystem-error-code` に渡し、option が `Some`、payload が
+  `error-code::invalid`（discriminant `12`）であることを確認する。marker `C`、`wasi:cli/run` exit
+  code `0`、error/pollable/output stream/descriptor/preopen の drop を同じ actual Component 実行で
+  固定する。
+
+これは pending output write → subscribe/block → check-write の invalid-offset downcast verified
+partial slice であり、non-blocking `flush` 後の projection、他の OS error mapping、Wasm
 artifact/runtime differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity は未完了である。
 
 ## 実装戦略

@@ -68,6 +68,8 @@ WASI Preview2 / Component Model への移行に向けた WIT (WebAssembly Interf
   input/output stream の `last-operation-failed` error resource を `filesystem-error-code` へ downcast する
   read/write invalid-offset contract、
   output-stream の `check-write` → `write` → `blocking-flush` pending failure contract、
+  `output-stream.check-write` → `write` → `output-stream.subscribe` → `pollable.block` →
+  `check-write` の pending failure と `filesystem-error-code` downcast contract、
   `output-stream.blocking-write-zeroes-and-flush` の zero-fill/flush/host artifact/drop lifecycle も
   この world で検証する。暗黙の別 resource table に分離しない
 
