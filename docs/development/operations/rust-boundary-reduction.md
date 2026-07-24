@@ -2204,7 +2204,7 @@ Evidence: `test_e2e_selfhost_ftable_compiler_alias_qualified_record_update_runs`
 
 qualified record literal `{S.Point x 41 y 2}` は TypeInferの可視性 lookup用 full qualified hashと、record constructorの runtime nominal marker用 raw `Point` hashを分けて保持する必要がある。Parserは既存の qualified flagを維持したままraw suffix hashを末尾へ追加し、`compile-recordlit-with-source` / `compile-recordlit-with-ftable` は新しい raw hashを markerへ書く。旧ASTは record nodeの type hashへfallbackする。
 
-REDは `test_e2e_selfhost_ftable_compiler_alias_qualified_record_literal_pattern_runs` で literalから `{S.Point ...}` patternへ渡した結果が `0\n`、`test_e2e_selfhost_parser_qualified_record_literal_retains_raw_type_hash` で `1\n1\n0` となった。GREENは parser focused testの `1\n1\n1` と ftable actual Wasmの `41\n`（70.54s）で確認した。qualified record TypeInfer/`:only` regressionと既存 record pattern runtimeも維持する。
+REDは `test_e2e_selfhost_ftable_compiler_alias_qualified_record_literal_pattern_runs` で literalから `{S.Point ...}` patternへ渡した結果が `0\n`、`test_e2e_selfhost_parser_qualified_record_literal_retains_raw_type_hash` で `1\n1\n0` となった。GREENは parser focused testの `1\n1\n1`、ftable actual Wasmの `41\n`（70.54s）、CompilerMode file-import actual Wasmの `41\n`（68.89s）で確認した。qualified record TypeInfer/`:only` regressionと既存 record pattern runtimeも維持する。
 
 これは flat ftableの qualified record literal markerと pattern nominal checkだけを閉じる verified sliceである。CompilerMode file-import literal、parametric/private record、record update全形式、同名 export衝突、standalone native stage0、Mac Apple Silicon / Linux x86_64 の current-source artifact/runtime gate、EC-M1-01 aggregateの完了を意味しない。`TODO.md` の `[~]` と Rust oracle / bootstrap / host integration境界は維持する。
 

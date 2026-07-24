@@ -3830,6 +3830,57 @@ fn test_e2e_selfhost_compiler_mode_imported_alias_qualified_record_pattern_runs(
     std::fs::remove_dir_all(&temp_root).expect("record pattern import fixture を削除できない");
 }
 
+/// selfhost compiler-mode: alias-qualified record literal を pattern と nominal に接続できること
+#[test]
+fn test_e2e_selfhost_compiler_mode_imported_alias_qualified_record_literal_pattern_runs() {
+    let temp_root = std::env::temp_dir().join(format!(
+        "lsharp-selfhost-record-import-literal-pattern-runtime-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&temp_root);
+    let app_dir = temp_root.join("src/App");
+    std::fs::create_dir_all(&app_dir).expect("record literal import fixture の directory を作れない");
+    std::fs::write(
+        app_dir.join("Shapes.ls"),
+        "(module App.Shapes)\n(type Point (record (: x Int) (: y Int)))\n",
+    )
+    .expect("record literal import fixture の Shapes.ls を書けない");
+    std::fs::write(
+        app_dir.join("Main.ls"),
+        "(module App.Main)\n(import App.Shapes :as S :only [Point])\n(defn main [] (let [point {S.Point x 41 y 2}] (print (match point [{S.Point x x} x] [_ 0])) 0))\n",
+    )
+    .expect("record literal import fixture の Main.ls を書けない");
+
+    let compiler_mode = format!(
+        "{}\n(defn main [] (compile-file-mode))",
+        selfhost_module("CompilerMode.ls")
+    );
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("IR.ls"),
+        selfhost_module("Compiler.ls"),
+        selfhost_module("WasiBackend.ls"),
+        selfhost_module("WasmEmit.ls"),
+        selfhost_module("ModuleResolver.ls"),
+        compiler_mode
+    );
+    let emitted =
+        compile_and_run_with_dir_and_args(&combined, &temp_root, &["compiler", "src/App/Main.ls"]);
+    let wasm_bytes = parse_printed_wasm_bytes(&emitted);
+    let output = super::selfhost_bootstrap_four_layer::run_wasm_with_eleven_imports_compiler_mode_fs(
+        &wasm_bytes,
+        &temp_root,
+        &[],
+    )
+    .expect("alias-qualified import 先 record literal pattern を含む selfhost compiler-mode module should run");
+    assert_eq!(output, "41\n");
+    std::fs::remove_dir_all(&temp_root).expect("record literal import fixture を削除できない");
+}
+
 /// selfhost compiler-mode: root_set を do 位置で使って map を更新できること
 #[test]
 fn test_e2e_selfhost_compiler_mode_root_set_updates_map_without_binding_result() {
