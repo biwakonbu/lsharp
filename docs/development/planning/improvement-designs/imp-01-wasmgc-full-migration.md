@@ -1347,6 +1347,27 @@ success result を返した後、`output-stream.subscribe` → `pollable.block` 
 invalid-offset downcast verified partial slice であり、他の OS error mapping、Wasm artifact/runtime
 differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity は未完了である。
 
+## Stage 2bm 検証済み slice: non-blocking input-stream read failure downcast (2026-07-24)
+
+input stream の filesystem read を pending 状態で開始し、`input-stream.subscribe` →
+`pollable.block` で I/O 完了を待ってから non-blocking `input-stream.read` の failure を観測する
+状態遷移を actual Component で検証した。
+
+- `wasm_gc_component_cli_fs_runner_maps_nonblocking_input_stream_failure_to_filesystem_error_code`
+  は read-only preopen の `input.txt` に offset `u64::MAX` の input stream を作る。stream を
+  subscribe して block した後、`read(1)` が outer error を返し、`stream-error::last-operation-failed`
+  （discriminant `0`）になることを確認する。
+- `result<list<u8>, stream-error>` の canonical ABI（result case `+0`、stream-error case `+4`、
+  error handle `+8`）を固定し、error resource を borrowed `filesystem-error-code` に渡すと
+  `Some(error-code::invalid)`（discriminant `12`）になることを確認する。marker `R`、
+  `wasi:cli/run` exit code `0`、error/pollable/input stream/descriptor/preopen の drop を同じ
+  actual Component 実行で固定する。
+
+`wasi:io/streams@0.2.3` に `input-stream.check-read` は存在しないため、WIT を拡張せず、実在する
+`subscribe`/`block`/`read` API の failure projection を正本とした。これは non-blocking input
+read の invalid-offset downcast verified partial slice であり、他の OS error mapping、Wasm
+artifact/runtime differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity は未完了である。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線
