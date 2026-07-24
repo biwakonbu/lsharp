@@ -673,4 +673,39 @@ mod tests {
 
         std::fs::remove_dir_all(&dir).unwrap();
     }
+
+    #[test]
+    fn incremental_module_parse_diagnostics_forward_stable_code() {
+        use std::collections::HashMap;
+
+        let dir = std::env::temp_dir().join(format!(
+            "lsharp_lsp_incremental_module_parse_diagnostic_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock は unix epoch より後であるべき")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let entry = dir.join("Main.ls");
+        let helper = dir.join("Helpers.ls");
+        let main_source = "(module Main)\n(import Helpers)\n(defn main []";
+        std::fs::write(&entry, main_source).unwrap();
+        std::fs::write(&helper, "(module Helpers)\n(defn helper [] 1)\n").unwrap();
+
+        let uri = Url::from_file_path(&entry).expect("entry path は file URI へ変換できるべき");
+        let mut overrides = HashMap::new();
+        overrides.insert(entry.clone(), main_source.to_string());
+        let mut cache = lsharp_ir::CompilationCache::new();
+        let diagnostics =
+            parse_and_check_uri_incremental(&uri, main_source, &overrides, &mut cache);
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(
+            diagnostics[0].code,
+            Some(NumberOrString::String("LS0101".to_string()))
+        );
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 }

@@ -2273,8 +2273,8 @@ fn compile_multi_file_with_mode(
         let (_, mod_path) = &sorted_files[0];
         let source = std::fs::read_to_string(mod_path)
             .map_err(|e| format!("{}: {e}", mod_path.display()))?;
-        let program =
-            lsharp_syntax::parse(&source).map_err(|e| format!("{}: {e}", mod_path.display()))?;
+        let program = lsharp_syntax::parse(&source)
+            .map_err(|e| format!("{}: [{}] {e}", mod_path.display(), e.code()))?;
         let mut infer = lsharp_types::infer::Infer::new();
         let type_results = infer
             .infer_program(&program)
@@ -2300,8 +2300,8 @@ fn compile_multi_file_with_mode(
         let source = std::fs::read_to_string(mod_path)
             .map_err(|e| format!("{}: {e}", mod_path.display()))?;
 
-        let program =
-            lsharp_syntax::parse(&source).map_err(|e| format!("{}: {e}", mod_path.display()))?;
+        let program = lsharp_syntax::parse(&source)
+            .map_err(|e| format!("{}: [{}] {e}", mod_path.display(), e.code()))?;
         direct_imports.insert(mod_name.clone(), collect_import_visibility(&program));
         module_paths.insert(mod_name.clone(), mod_path.clone());
         parsed_modules.insert(mod_name.clone(), program);
@@ -2423,7 +2423,7 @@ fn compile_multi_file_incremental_scc(
             .copied()
             .unwrap_or_else(|| SourceFingerprint::from_source(&source));
         let program = cached_program_or_parse(mod_name, &source, fingerprint, cache)
-            .map_err(|e| format!("{}: {e}", mod_path.display()))?;
+            .map_err(|e| format!("{}: [{}] {e}", mod_path.display(), e.code()))?;
         direct_imports.insert(
             mod_name.clone(),
             collect_import_visibility(program.as_ref()),
@@ -2612,7 +2612,7 @@ fn analyze_multi_file_incremental_scc_with_overrides(
         let source = read_source_with_overrides(mod_path, source_overrides)?;
         let fingerprint = SourceFingerprint::from_source(&source);
         let program = cached_program_or_parse(mod_name, &source, fingerprint, cache)
-            .map_err(|e| format!("{}: {e}", mod_path.display()))?;
+            .map_err(|e| format!("{}: [{}] {e}", mod_path.display(), e.code()))?;
         direct_imports.insert(
             mod_name.clone(),
             collect_import_visibility(program.as_ref()),
@@ -2707,7 +2707,7 @@ pub fn analyze_single_file_incremental(
     }
 
     let program = cached_program_or_parse(module_name, source, fingerprint, cache)
-        .map_err(|e| format!("{e}"))?;
+        .map_err(|e| format!("[{}] {e}", e.code()))?;
     let mut infer = lsharp_types::infer::Infer::new();
     note_incremental_type_infer();
     let type_results = infer
@@ -2782,7 +2782,7 @@ pub fn analyze_multi_file_incremental_with_overrides(
             .get(&mod_name)
             .is_some_and(|entry| entry.fingerprint() == fingerprint);
         let program = cached_program_or_parse(&mod_name, &source, fingerprint, cache)
-            .map_err(|e| format!("{}: {e}", mod_path.display()))?;
+            .map_err(|e| format!("{}: [{}] {e}", mod_path.display(), e.code()))?;
         let direct_imports = collect_import_visibility(program.as_ref());
         let deps_key = dependency_surface_key(&direct_imports, &per_module_type_results, cache);
         let deps_hit = cache
@@ -2871,7 +2871,7 @@ pub fn compile_multi_file_incremental(
                 .clone());
         }
         let program = cached_program_or_parse(mod_name, &source, fingerprint, cache)
-            .map_err(|e| format!("{}: {e}", mod_path.display()))?;
+            .map_err(|e| format!("{}: [{}] {e}", mod_path.display(), e.code()))?;
         let type_surface = if clean_hit {
             cache
                 .get(mod_name)
@@ -2943,7 +2943,7 @@ pub fn compile_multi_file_incremental(
             .get(&mod_name)
             .is_some_and(|entry| entry.fingerprint() == fingerprint);
         let program = cached_program_or_parse(&mod_name, &source, fingerprint, cache)
-            .map_err(|e| format!("{}: {e}", mod_path.display()))?;
+            .map_err(|e| format!("{}: [{}] {e}", mod_path.display(), e.code()))?;
         let direct_imports = collect_import_visibility(program.as_ref());
         let deps_key = dependency_surface_key(&direct_imports, &per_module_type_results, cache);
         let deps_hit = cache
