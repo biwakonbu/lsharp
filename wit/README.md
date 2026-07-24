@@ -42,7 +42,9 @@ WASI Preview2 / Component Model への移行に向けた WIT (WebAssembly Interf
   `descriptor.get-type` / `descriptor.get-flags` の type/flags/drop lifecycle もこの world で検証する
 - `wasmgc-cli-fs-streams` は `wasmgc-cli-fs` に `wasi:io/streams@0.2.3` を明示的に加えた world であり、
   descriptor の `read-via-stream` / `write-via-stream` / `append-via-stream` と input/output-stream の
-  resource lifecycle を暗黙の別 resource table に分離しない
+  resource lifecycle、`input-stream.subscribe` から `wasi:io/poll` の `pollable.block` /
+  `pollable.ready` / resource-drop までを同じ Component resource table で検証する。暗黙の別 resource
+  table に分離しない
 
 ## 関連タスク
 

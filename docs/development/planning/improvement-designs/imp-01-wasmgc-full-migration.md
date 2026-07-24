@@ -723,6 +723,22 @@ Component canonical ABI から取得し、resource を解放する境界を閉�
 operation、Wasm artifact/runtime differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity
 は未完了である。
 
+## Stage 2aa 検証済み slice: input-stream pollable lifecycle (2026-07-24)
+
+Stage 2t の input-stream resource に、non-blocking I/O の readiness boundary を追加した。
+
+- `wasm_gc_component_cli_fs_runner_subscribes_and_polls_input_stream` は二つの read-only named
+  preopen から `input.txt` を `descriptor.open-at` → `descriptor.read-via-stream` で開く。
+- `input-stream.subscribe` で child `pollable` を作り、`pollable.block` でデータ準備を待った後に
+  `pollable.ready` が true になることを actual Component で確認する。subscribe 直後の
+  non-blocking `ready` の値を常に true と仮定しない。
+- pollable、input-stream、descriptor、両 preopen を drop し、`wasi:cli/run` exit 0、stdout empty、
+  host bytes unchanged (`hello`) を一実行で固定する。
+
+これは input-stream の subscribe/block/ready/drop の verified partial slice であり、poll list API、
+残る descriptor operation、Wasm artifact/runtime differential、Mac Apple Silicon/Linux x86_64、
+native/selfhost parity は未完了である。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線
