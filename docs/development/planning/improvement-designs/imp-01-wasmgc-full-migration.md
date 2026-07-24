@@ -985,6 +985,21 @@ Stage 2ao の path-based metadata hash に加えて、directory descriptor と�
 Wasm artifact/runtime differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity
 は未完了である。
 
+## Stage 2aq 検証済み slice: descriptor set-times-at lifecycle (2026-07-24)
+
+Stage 2ap の path-based stat に加えて、write-enabled named preopen の directory descriptor から
+`descriptor.set-times-at` の `new-timestamp` variant と result/drop 境界を actual Component で検証した。
+
+- `wasm_gc_component_cli_fs_runner_sets_file_times_at_without_changing_no_change_values` は read-write
+  named preopen の directory descriptor に path-flags `0` と `source.txt` を渡し、access/modify の
+  timestamp をともに `no-change` として呼び出す。
+- `result<_, error-code>` success discriminant を確認し、directory descriptor を drop する。実行後の
+  host file bytes `hello`、stdout empty、`wasi:cli/run` exit 0 を同じ実行で確認する。
+
+これは descriptor set-times-at の verified partial slice であり、`now` / explicit `timestamp` payload、
+descriptor.set-times、残る descriptor operation、Wasm artifact/runtime differential、Mac Apple
+Silicon/Linux x86_64、native/selfhost parity は未完了である。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線
