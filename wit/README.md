@@ -39,8 +39,8 @@ WASI Preview2 / Component Model への移行に向けた WIT (WebAssembly Interf
   を成功扱いにしない。`descriptor.open-at` と direct `descriptor.read` の bytes/EOF/drop boundary も
   この world で検証する
 - `wasmgc-cli-fs-streams` は `wasmgc-cli-fs` に `wasi:io/streams@0.2.3` を明示的に加えた world であり、
-  descriptor の `read-via-stream` と input-stream の resource lifecycle を暗黙の別 resource table
-  に分離しない
+  descriptor の `read-via-stream` / `write-via-stream` / `append-via-stream` と input/output-stream の
+  resource lifecycle を暗黙の別 resource table に分離しない
 
 ## 関連タスク
 

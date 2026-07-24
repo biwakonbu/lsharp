@@ -637,6 +637,25 @@ Stage 2t の stream path に加え、`wasi:filesystem/types` の direct `descrip
 write/append stream、close-after-error、directory-entry stream、pollable、Wasm artifact/runtime
 differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity は未完了である。
 
+## Stage 2v 検証済み slice: write/append stream lifecycle (2026-07-24)
+
+Stage 2t/2u の read path に対応して、`wasi:io/streams` の output resource を descriptor の
+write/append operation から host filesystem bytes まで閉じた。
+
+- `wasm_gc_component_cli_fs_runner_writes_and_appends_streams_then_drops_resources` は read-write
+  named preopen から create+truncate/write flags の descriptor を開き、`write-via-stream(0)` と
+  `blocking-write-and-flush` で `hello` を作る。
+- 同じ descriptor を drop した後に既存ファイルを再度開き、`append-via-stream` と
+  `blocking-write-and-flush` で `!` を追加する。output-stream、descriptor、preopen の drop と
+  `wasi:cli/run` exit 0 を actual Component で確認し、host 側の最終 bytes が `hello!` になることを
+  検証する。
+- stream result の error discriminant を成功扱いにせず、write/flush が失敗した場合は resource を
+  解放して非成功 result へ収束させる。
+
+これは write/append stream の verified partial slice であり、direct `write`/`stat`、read-directory、
+close-after-error、directory-entry stream、pollable、Wasm artifact/runtime differential、Mac Apple
+Silicon/Linux x86_64、native/selfhost parity は未完了である。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線
