@@ -1,5 +1,6 @@
 use super::*;
-use crate::types::{ConstrainedTypeInfo, Type};
+use crate::types::{ConstrainedTypeInfo, ConstraintDef, Type};
+use std::collections::HashMap;
 
 fn make_registry() -> HashMap<String, ConstrainedTypeInfo> {
     let mut registry = HashMap::new();

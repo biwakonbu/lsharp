@@ -1,4 +1,5 @@
 use super::*;
+use crate::types::ConstraintDef;
 
 #[test]
 fn test_gte_satisfied() {
