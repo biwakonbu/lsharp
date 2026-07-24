@@ -2194,6 +2194,12 @@ REDは `test_e2e_selfhost_compiler_mode_imported_alias_qualified_record_pattern_
 
 これは alias-qualified record patternの nominal marker runtimeと source/file + flat ftableの二経路だけを閉じる verified sliceである。constructor pattern、private record、record update全形式、同名 export衝突、standalone native stage0、Mac Apple Silicon / Linux x86_64 の current-source artifact/runtime gate、EC-M1-01 aggregateの完了を意味しない。`TODO.md` の `[~]` と Rust oracle / bootstrap / host integration境界は維持する。
 
+### EC-M1-01 selfhost alias-qualified ftable record update runtime slice (2026-07-25)
+
+qualified constructor codegenの suffix export lookupと record updateの patch/base fallbackを同じ flat ftable fixtureへ接続し、`(S.Point 40 2)` を `{point | x 41}` へ更新して field accessを実行した。CompilerMode file-import側の `41\n2\n` に加え、`compile-program-functions-with-base` の ftable側でも alias + `:only [Point]` の actual Wasm結果 `41\n2\n` を確認した。実装差分は追加していない。
+
+Evidence: `test_e2e_selfhost_ftable_compiler_alias_qualified_record_update_runs` は `RUST_MIN_STACK=33554432` で 70.28s、stderrなしで passした。これは flat ftable alias-qualified record updateの constructor/patch/base runtimeだけを閉じる verified sliceであり、record update全形式、複数 moduleの同名 export衝突、standalone native stage0、Mac Apple Silicon / Linux x86_64 の current-source artifact/runtime gate、EC-M1-01 aggregateの完了を意味しない。`TODO.md` の `[~]` と Rust oracle / bootstrap / host integration境界は維持する。
+
 ### EC-M1-01 selfhost imported record update compiler-mode initial RED (2026-07-25)
 
 actual Wasm runtimeの最小 fixtureとして `App.Shapes.Point` を `App.Main` から alias + `:only [Point]` で importし、`(S.Point 40 2)` を `{point | x 41}` へ updateして `(. updated x)` / `(. updated y)` を出力する testを追加した。初回は `RUST_MIN_STACK=33554432` で `load-imports-from-decls-step` instruction 78の root ledger `BranchDepthMismatch` (`then_depth=6`, `else_depth=7`) に到達し、Wasm runtimeへ進めなかった。同じ failure valueは変更なし `origin/main` の record-pattern compiler-mode baselineでも再現したため、fixtureの parser/type-inference差分とは分離した。

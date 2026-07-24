@@ -3442,6 +3442,53 @@ fn test_e2e_selfhost_ftable_compiler_alias_qualified_record_pattern_runs() {
     assert_eq!(output, "41\n");
 }
 
+/// selfhost ftable compiler: alias-qualified record update を actual Wasm で実行できること
+#[test]
+fn test_e2e_selfhost_ftable_compiler_alias_qualified_record_update_runs() {
+    let harness = r#"
+(defn print-bytes-loop [bytes idx count]
+  (if (>= idx count)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes-loop bytes (+ idx 1) count))))
+
+(defn main []
+  (let [source "(type Point (record (: x Int) (: y Int))) (import App.Shapes :as S :only [Point]) (defn main [] (let [point (S.Point 40 2) updated {point | x 41}] (do (print (. updated x)) (print (. updated y)) 0)))"
+        program (parse-program source)
+        pair (compile-program-functions-with-base program 11)
+        functions (vector-get pair 1)
+        wasm-bytes (build-wasm-bytes-wasi functions (vector-new 0))]
+    (do
+      (print (vector-length wasm-bytes))
+      (print-bytes-loop wasm-bytes 0 (vector-length wasm-bytes))
+      0)))
+"#;
+    let compiler_mode = format!("{}\n{}", selfhost_module("CompilerMode.ls"), harness);
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("IR.ls"),
+        selfhost_module("Compiler.ls"),
+        selfhost_module("WasiBackend.ls"),
+        selfhost_module("WasmEmit.ls"),
+        selfhost_module("ModuleResolver.ls"),
+        compiler_mode
+    );
+    let emitted = compile_and_run(&combined);
+    let wasm_bytes = parse_printed_wasm_bytes(&emitted);
+    let output = super::selfhost_bootstrap_four_layer::run_wasm_with_eleven_imports_compiler_mode(
+        &wasm_bytes,
+        "",
+        &[],
+    )
+    .expect("selfhost ftable alias-qualified record update module should run");
+    assert_eq!(output, "41\n2\n");
+}
+
 /// selfhost ftable compiler: record pattern の field binder と nominal mismatch を実行できること
 #[test]
 fn test_e2e_selfhost_ftable_compiler_record_pattern_runs() {
