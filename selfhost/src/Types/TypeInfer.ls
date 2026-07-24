@@ -524,8 +524,24 @@
   (let [alias-hash (typeinfer-import-alias-hash decl)]
     (if (= alias-hash 0) (vector-get decl 1) alias-hash)))
 
+(defn typeinfer-import-only-hashes [decl]
+  (if (> (vector-length decl) 5) (vector-get decl 5) (vector-new 0)))
+
+(defn typeinfer-import-only-contains-loop [only-hashes idx len name-hash]
+  (if (>= idx len)
+    0
+    (if (= (vector-get only-hashes idx) name-hash)
+      1
+      (typeinfer-import-only-contains-loop only-hashes (+ idx 1) len name-hash))))
+
+(defn typeinfer-import-only-allows? [only-hashes name-hash]
+  (let [only-count (vector-length only-hashes)]
+    (if (= only-count 0)
+      1
+      (typeinfer-import-only-contains-loop only-hashes 0 only-count name-hash))))
+
 (defn typeinfer-qualify-import-source-loop
-  [program idx limit current-module target-module alias-hash env]
+  [program idx limit current-module target-module alias-hash only-hashes env]
   (if (>= idx limit)
     env
     (let [decl (vector-get program idx)
@@ -538,8 +554,13 @@
           (vector-get decl 1)
           target-module
           alias-hash
+          only-hashes
           env)
-        (if (and (= tag (ast-defn)) (= current-module target-module))
+        (if (and
+              (= tag (ast-defn))
+              (and
+                (= current-module target-module)
+                (= (typeinfer-import-only-allows? only-hashes (vector-get decl 1)) 1)))
           (let [name-hash (vector-get decl 1)
             scheme (type-env-lookup env name-hash)]
             (if (= scheme 0)
@@ -550,6 +571,7 @@
                 current-module
                 target-module
                 alias-hash
+                only-hashes
                 env)
               (let [qualified-key
                       (ast-qualified-name-hash alias-hash name-hash)
@@ -561,6 +583,7 @@
                   current-module
                   target-module
                   alias-hash
+                  only-hashes
                   next-env))))
           (typeinfer-qualify-import-source-loop
             program
@@ -569,6 +592,7 @@
             current-module
             target-module
             alias-hash
+            only-hashes
             env))))))
 
 (defn typeinfer-qualify-imports-loop [program idx len env]
@@ -578,6 +602,7 @@
       tag (vector-get decl 0)]
       (if (= tag (ast-import-decl))
         (let [prefix-hash (typeinfer-import-prefix-hash decl)
+          only-hashes (typeinfer-import-only-hashes decl)
           qualified-env
             (typeinfer-qualify-import-source-loop
               program
@@ -586,6 +611,7 @@
               0
               (vector-get decl 1)
               prefix-hash
+              only-hashes
               env)]
           (typeinfer-qualify-imports-loop
             program
