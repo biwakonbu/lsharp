@@ -148,6 +148,12 @@ Phase C-1d として、FormatterExpr / FormatterDecl が `Tools.Text.Formatter` 
 canonical source の explicit-import contract は通過している。一方、canonical `Cli.ls` の clean-cache probe
 は 90 秒超で完了せず停止したため、Formatter 全体の compile/runtime parity は未確定のまま残す。
 
+Phase C-1e として、`ModuleGraph::build_from_entry_with_overrides_scc` を追加し、LSP の
+`analyze_multi_file_incremental_with_overrides` でも source override を反映した SCC graph と
+`infer_scc_type_surfaces` を使うようにした。SCC の解析結果は parse AST、型 surface、dependency key として
+cache に保存し、lowering は行わない。`test_analyze_multi_file_incremental_with_overrides_infers_mutual_recursive_scc`
+は A↔B の相互再帰で A を未保存 override に差し替え、3 module が解析 cache に入ることを固定する。
+
 ### 未完了の後続作業
 
 - Formatter 3 モジュールの explicit-import 後の canonical compile/runtime parity と長時間 probe の failure
@@ -155,8 +161,8 @@ canonical source の explicit-import contract は通過している。一方、c
 - CLI driver の既定経路へ `CompilationCache` を接続し、依存 SCC を含む cache key、process 間永続化、
   selfhost compiler への移植を行う。
 - source override 入口はまだ strict な graph build と module 単位推論を使っており、SCC-aware override
-  inference は未着手である。incremental compile の SCC 経路も segment reuse、dirty SCC の局所再推論、
-  disk persistence は未着手で、Formatter の import 修正と special-case 除去を別 slice で検証する。
+  inference は C-1e で閉じた。incremental compile / override SCC 経路とも segment reuse、dirty SCC の局所
+  再推論、disk persistence は未着手である。
 - 今回の Wasm/WASI evidence は Rust host の Mac 実行に限定され、Mac Apple Silicon / Linux x86_64 の
   native stage0 実行証跡は未取得である。
 - `LEGACY-MODULE-01` の aggregate 完了条件（両対応 target、native stage0、公開 command）を満たすまで、
@@ -176,7 +182,7 @@ Phase C-1a の deterministic SCC 検出 API と unit test、C-1b の compile/inf
 fixture、C-1c の incremental SCC fallback と clean rebuild parity、C-1d の Formatter explicit imports と
 batch 特例除去、および Phase C-2a の明示的 cache compile API と cold/warm parity test、C-2b の entry scope
 isolation、C-2c の dependency surface key、C-2d の tooling cache API、C-2e の source override scope
-isolation を検証済み部分実装として反映した。一括推論の native parity、Formatter canonical runtime parity、
-SCC の segment reuse、CLI driver の既定 cache 接続、依存 SCC key、selfhost
+isolation、C-1e の source override SCC inference を検証済み部分実装として反映した。一括推論の native parity、
+Formatter canonical runtime parity、SCC の segment reuse、CLI driver の既定 cache 接続、依存 SCC key、selfhost
 移植は未着手のため、Phase C-1 / C-2 の aggregate 完了とは扱わない。
 着手時は TODO.md に Phase C-1 / C-2 として項目を作成する。

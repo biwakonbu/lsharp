@@ -682,6 +682,14 @@ impl ModuleGraph {
         Self::build_from_entry_with_overrides_mode(entry_file, &HashMap::new(), true)
     }
 
+    /// source override を含むエントリから、循環を許容した SCC compile 用 graph を構築する。
+    pub fn build_from_entry_with_overrides_scc(
+        entry_file: &std::path::Path,
+        source_overrides: &HashMap<PathBuf, String>,
+    ) -> Result<(Self, Vec<(String, std::path::PathBuf)>), ModuleGraphError> {
+        Self::build_from_entry_with_overrides_mode(entry_file, source_overrides, true)
+    }
+
     fn build_from_entry_with_overrides_mode(
         entry_file: &std::path::Path,
         source_overrides: &HashMap<PathBuf, String>,

@@ -2201,6 +2201,71 @@ fn compile_multi_file_incremental_scc(
     Ok(final_module)
 }
 
+/// source override を含む循環 module の incremental analysis を行う。
+///
+/// LSP の未保存 source でも compile と同じ SCC 推論境界を使い、解析結果だけを cache に保存する。
+/// lowering はこの入口の責務ではないため、IR は空のまま保持する。
+fn analyze_multi_file_incremental_scc_with_overrides(
+    graph: &module_graph::ModuleGraph,
+    sorted_files: &[(String, std::path::PathBuf)],
+    source_overrides: &HashMap<std::path::PathBuf, String>,
+    cache: &mut CompilationCache,
+) -> Result<(), String> {
+    let mut parsed_modules = HashMap::new();
+    let mut module_paths = HashMap::new();
+    let mut direct_imports = HashMap::new();
+    let mut fingerprints = HashMap::new();
+
+    for (mod_name, mod_path) in sorted_files {
+        let source = read_source_with_overrides(mod_path, source_overrides)?;
+        let fingerprint = SourceFingerprint::from_source(&source);
+        let program = cached_program_or_parse(mod_name, &source, fingerprint, cache)
+            .map_err(|e| format!("{}: {e}", mod_path.display()))?;
+        direct_imports.insert(
+            mod_name.clone(),
+            collect_import_visibility(program.as_ref()),
+        );
+        fingerprints.insert(mod_name.clone(), fingerprint);
+        module_paths.insert(mod_name.clone(), mod_path.clone());
+        parsed_modules.insert(mod_name.clone(), program.as_ref().clone());
+    }
+
+    let mut per_module_type_results = HashMap::new();
+    for group in graph.scc_groups() {
+        let surfaces = infer_scc_type_surfaces(
+            &group,
+            graph,
+            &parsed_modules,
+            &module_paths,
+            &direct_imports,
+            &per_module_type_results,
+        )?;
+        per_module_type_results.extend(surfaces);
+    }
+
+    for (mod_name, _) in sorted_files {
+        let program = parsed_modules
+            .get(mod_name)
+            .ok_or_else(|| format!("モジュールの parse 結果がありません: {mod_name}"))?;
+        let surface = per_module_type_results
+            .get(mod_name)
+            .ok_or_else(|| format!("モジュールの SCC 型結果がありません: {mod_name}"))?;
+        let direct_imports = direct_imports
+            .get(mod_name)
+            .ok_or_else(|| format!("モジュールの import 情報がありません: {mod_name}"))?;
+        let fingerprint = fingerprints
+            .get(mod_name)
+            .copied()
+            .ok_or_else(|| format!("モジュールの fingerprint がありません: {mod_name}"))?;
+        let program = std::sync::Arc::new(program.clone());
+        let deps_key = dependency_surface_key(direct_imports, &per_module_type_results, cache);
+        let entry = build_module_cache_entry(fingerprint, deps_key, &program, surface.clone());
+        cache.insert_module(mod_name.clone(), entry);
+    }
+
+    Ok(())
+}
+
 fn read_source_with_overrides(
     path: &std::path::Path,
     source_overrides: &HashMap<std::path::PathBuf, String>,
@@ -2251,7 +2316,7 @@ pub fn analyze_multi_file_incremental_with_overrides(
 
     cache.prepare_for_entry(entry_file);
     let (graph, sorted_files) =
-        ModuleGraph::build_from_entry_with_overrides(entry_file, source_overrides)
+        ModuleGraph::build_from_entry_with_overrides_scc(entry_file, source_overrides)
             .map_err(|e| format!("モジュールグラフ構築エラー: {e}"))?;
 
     if sorted_files.is_empty() {
@@ -2263,6 +2328,15 @@ pub fn analyze_multi_file_incremental_with_overrides(
         let source = read_source_with_overrides(mod_path, source_overrides)?;
         return analyze_single_file_incremental(mod_name, &source, cache)
             .map_err(|e| format!("{}: {e}", mod_path.display()));
+    }
+
+    if graph.scc_groups().iter().any(|group| group.len() > 1) {
+        return analyze_multi_file_incremental_scc_with_overrides(
+            &graph,
+            &sorted_files,
+            source_overrides,
+            cache,
+        );
     }
 
     let mut module_inputs = Vec::new();
@@ -4033,6 +4107,54 @@ mod incremental_compile_tests {
         );
 
         std::fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn test_analyze_multi_file_incremental_with_overrides_infers_mutual_recursive_scc() {
+        use std::collections::HashMap;
+
+        let dir = std::env::temp_dir().join(format!(
+            "lsharp_analyze_multi_file_incremental_overlay_scc_{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("A.ls"),
+            "(module A)\n(import B)\n(defn a-step [n] (if (= n 0) 1 (b-step (- n 1))))\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("B.ls"),
+            "(module B)\n(import A)\n(defn b-step [n] (if (= n 0) 0 (a-step (- n 1))))\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("Main.ls"),
+            "(module Main)\n(import A)\n(defn main [] (a-step 4))\n",
+        )
+        .unwrap();
+
+        let mut overrides = HashMap::new();
+        overrides.insert(
+            dir.join("A.ls"),
+            "(module A)\n(import B)\n(defn a-step [n] (if (= n 0) 1 (b-step (- n 1))))\n"
+                .to_string(),
+        );
+        let mut cache = CompilationCache::new();
+        let result = analyze_multi_file_incremental_with_overrides(
+            &dir.join("Main.ls"),
+            &overrides,
+            &mut cache,
+        );
+
+        assert!(
+            result.is_ok(),
+            "source override analysis も相互再帰 SCC を受理するべき: {result:?}"
+        );
+        assert_eq!(cache.len(), 3, "SCC 内外の 3 module を cache するべき");
+
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
