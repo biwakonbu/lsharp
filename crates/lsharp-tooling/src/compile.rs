@@ -27,6 +27,8 @@ pub enum CompileBackend {
 pub struct CompileArtifacts {
     pub output_path: PathBuf,
     pub formatted: bool,
+    /// artifact cache hit で pipeline を短絡したか。
+    pub from_cache: bool,
 }
 
 /// process 間 artifact cache が再利用対象を識別するための deterministic key。
@@ -372,6 +374,7 @@ fn compile_file_with_backend_and_cache_internal(
         return Ok(CompileArtifacts {
             output_path,
             formatted,
+            from_cache: true,
         });
     }
     let module =
@@ -382,6 +385,7 @@ fn compile_file_with_backend_and_cache_internal(
         return Ok(CompileArtifacts {
             output_path,
             formatted,
+            from_cache: false,
         });
     }
 
@@ -440,6 +444,7 @@ fn compile_file_with_backend_and_cache_internal(
     Ok(CompileArtifacts {
         output_path,
         formatted,
+        from_cache: false,
     })
 }
 
@@ -689,7 +694,7 @@ mod tests {
         std::fs::write(&lib_path, "(module Lib)\n(defn helper [] 7)\n").unwrap();
         std::fs::write(
             &source_path,
-            "(module Main)\n(import Lib)\n(defn main [] (helper))\n",
+            "(module Main)\n(import Lib)\n(defn main [] (print (helper)))\n",
         )
         .unwrap();
 
@@ -704,6 +709,10 @@ mod tests {
             )
             .unwrap();
         let first_bytes = std::fs::read(&first.output_path).unwrap();
+        assert!(
+            !first.from_cache,
+            "cold compile は cache miss として記録するべき"
+        );
         assert_eq!(
             cold.cache_len(),
             2,
@@ -721,6 +730,17 @@ mod tests {
             )
             .unwrap();
         assert_eq!(first_bytes, std::fs::read(&second.output_path).unwrap());
+        let second_runtime_output =
+            lsharp_wasm::wasi_runner::run_wasm_wasi(&std::fs::read(&second.output_path).unwrap())
+                .expect("artifact cache hit の Wasm は runtime 実行できるべき");
+        assert_eq!(
+            second_runtime_output, "7\n",
+            "cache hit output の runtime semantics は cold compile と一致するべき"
+        );
+        assert!(
+            second.from_cache,
+            "cross-session artifact cache hit を observable にするべき"
+        );
         assert_eq!(
             warm.cache_len(),
             0,
@@ -729,12 +749,12 @@ mod tests {
 
         std::fs::write(
             &source_path,
-            "(module Main)\n(import Lib)\n(defn main [] (+ (helper) 1))\n",
+            "(module Main)\n(import Lib)\n(defn main [] (print (+ (helper) 1)))\n",
         )
         .unwrap();
         let changed_output = dir.join("changed.wasm");
         let mut changed = CompileSession::with_artifact_cache(&cache_root);
-        changed
+        let changed_artifacts = changed
             .compile_file_with_backend(
                 &source_path,
                 Some(&changed_output),
@@ -743,14 +763,23 @@ mod tests {
                 CompileBackend::Linear,
             )
             .unwrap();
+        assert!(
+            !changed_artifacts.from_cache,
+            "source fingerprint が変わった compile は cache miss として記録するべき"
+        );
         assert_eq!(
             changed.cache_len(),
             2,
             "source fingerprint が変わった場合は fresh compile へ戻るべき"
         );
+        let changed_runtime_output = lsharp_wasm::wasi_runner::run_wasm_wasi(
+            &std::fs::read(&changed_artifacts.output_path).unwrap(),
+        )
+        .expect("source change 後の fresh Wasm は runtime 実行できるべき");
+        assert_eq!(changed_runtime_output, "8\n");
         assert_ne!(
             first_bytes,
-            std::fs::read(&changed_output).unwrap(),
+            std::fs::read(&changed_artifacts.output_path).unwrap(),
             "source 変更後に stale artifact を返してはいけない"
         );
 
