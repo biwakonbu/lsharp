@@ -788,6 +788,21 @@ operation `descriptor.sync` と success/error の drop boundary を actual Compo
 これは descriptor sync/drop の verified partial slice であり、残る descriptor operation、Wasm
 artifact/runtime differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity は未完了である。
 
+## Stage 2ae 検証済み slice: descriptor set-size lifecycle (2026-07-24)
+
+Stage 2ad の descriptor synchronization に加えて、write-enabled open descriptor の
+`descriptor.set-size` operation と host artifact boundary を actual Component で検証した。
+
+- `wasm_gc_component_cli_fs_runner_sets_descriptor_size_and_drops_resources` は二つの read-write
+  named preopen を受け取り、最初の preopen から `input.txt` を write descriptor として開く。
+- `descriptor.set-size(7)` の `result<_, error-code>` success discriminant を確認し、host file が
+  `hello` から `hello\0\0` へ拡張されることを byte-for-byte で確認する。
+- descriptor と preopen を drop し、`wasi:cli/run` exit 0、stdout empty、Component 実行後の host
+  artifact を同一テストで確認する。
+
+これは descriptor set-size の verified partial slice であり、残る descriptor operation、Wasm
+artifact/runtime differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity は未完了である。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線
