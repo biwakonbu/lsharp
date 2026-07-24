@@ -2335,6 +2335,61 @@ fn test_e2e_selfhost_typeinfer_analysis_resolves_nested_alias_qualified_record_s
     );
 }
 
+/// EC-M1-01: nested TypeApp の record 引数を alias-qualified schema として解決すること
+#[test]
+fn test_e2e_selfhost_typeinfer_analysis_resolves_nested_alias_qualified_record_type_app_signature() {
+    let source =
+        "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib :as L) (defn read-x [(: point (Ref L.Point))] : Int (L.Point.x (ref-get point)))";
+    let invalid_source =
+        "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib :as L) (defn read-x [(: point (Ref L.Point))] : Bool (L.Point.x (ref-get point)))";
+    let oracle_source =
+        "(type L.Point (record (: x Int) (: y Int))) (defn read-x [(: point (Ref L.Point))] : Int (L.Point.x (ref-get point)))";
+    let oracle_program = lsharp_syntax::parse(oracle_source)
+        .expect("nested alias-qualified record TypeApp signature fixture は parse できるべき");
+    let mut oracle = Infer::new();
+    assert!(
+        oracle.infer_program(&oracle_program).is_ok(),
+        "Rust oracle は nested alias-qualified record TypeApp signature を受理するべき"
+    );
+    let invalid_oracle_source =
+        "(type L.Point (record (: x Int) (: y Int))) (defn read-x [(: point (Ref L.Point))] : Bool (L.Point.x (ref-get point)))";
+    let invalid_oracle_program = lsharp_syntax::parse(invalid_oracle_source)
+        .expect("invalid nested alias-qualified record TypeApp signature fixture は parse できるべき");
+    let mut invalid_oracle = Infer::new();
+    assert!(
+        invalid_oracle.infer_program(&invalid_oracle_program).is_err(),
+        "Rust oracle は nested alias-qualified record TypeApp signature の return mismatch を拒否するべき"
+    );
+
+    let harness = format!(
+        r#"
+(defn main []
+  (let [selected
+          (infer-program-analysis
+            (parse-program "{}"))
+        invalid
+          (infer-program-analysis
+            (parse-program "{}"))]
+    (do
+      (print (infer-program-analysis-diagnostic-count selected))
+      (print (infer-program-analysis-diagnostic-count invalid))
+      0)))
+"#,
+        source, invalid_source
+    );
+    let combined = format!("{}\n{}", selfhost_typeinfer_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "1"],
+        "nested TypeApp は alias-qualified record schema と accessor result を unify するべき"
+    );
+}
+
 /// EC-M1-01: imported record は qualified record literal として構築できること
 #[test]
 fn test_e2e_selfhost_typeinfer_analysis_resolves_import_qualified_record_literal() {

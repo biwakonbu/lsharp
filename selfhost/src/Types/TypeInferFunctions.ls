@@ -67,6 +67,86 @@
     (typeinfer-signature-record-result-type (ty-fr ty))
     (if (= (ty-tag ty) (ty-record)) ty 0)))
 
+(defn typeinfer-resolve-signature-app-args-loop
+  [type-expr idx count args alias-env type-param-env env counter]
+  (if (>= idx count)
+    args
+    (do
+      (root_push args)
+      (let [arg-type
+              (typeinfer-resolve-signature-type-expr
+                (vector-get type-expr (+ idx 3))
+                alias-env
+                type-param-env
+                env
+                counter)]
+        (do
+          (root_push arg-type)
+          (let [next-args (push-object-vector-local args arg-type)]
+            (do
+              (root_push next-args)
+              (let [resolved
+                      (typeinfer-resolve-signature-app-args-loop
+                        type-expr
+                        (+ idx 1)
+                        count
+                        next-args
+                        alias-env
+                        type-param-env
+                        env
+                        counter)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  resolved)))))))))
+
+(defn typeinfer-resolve-signature-app-type
+  [type-expr alias-env type-param-env env counter]
+  (do
+    (root_push type-expr)
+    (root_push alias-env)
+    (root_push type-param-env)
+    (let [name-hash (vector-get type-expr 1)
+      arg-count (vector-get type-expr 2)
+      args
+        (typeinfer-resolve-signature-app-args-loop
+          type-expr
+          0
+          arg-count
+          (vector-new arg-count)
+          alias-env
+          type-param-env
+          env
+          counter)]
+      (do
+        (root_push args)
+        (let [parametric-aliases (type-alias-env-parametric alias-env)]
+          (do
+            (root_push parametric-aliases)
+            (let [entry (map-get-safe parametric-aliases name-hash)
+              result
+                (if (= entry 0)
+                  (mk-app (typeinfer-resolve-app-name name-hash) args)
+                  (do
+                    (root_push entry)
+                    (let [expanded
+                            (typeinfer-resolve-parametric-alias-application
+                              entry
+                              args)]
+                      (do
+                        (root_pop)
+                        (if (= expanded 0)
+                          (mk-app (typeinfer-resolve-app-name name-hash) args)
+                          expanded)))))]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result))))))))
+
 (defn typeinfer-resolve-signature-fun-params-loop
   [type-expr idx count return-type alias-env type-param-env env counter]
   (if (>= idx count)
@@ -163,10 +243,17 @@
         type-param-env
         env
         counter)
-      (typeinfer-resolve-type-expr-with-aliases-and-params
-        type-expr
-        alias-env
-        type-param-env))))
+      (if (= (vector-get type-expr 0) (ast-type-app))
+        (typeinfer-resolve-signature-app-type
+          type-expr
+          alias-env
+          type-param-env
+          env
+          counter)
+        (typeinfer-resolve-type-expr-with-aliases-and-params
+          type-expr
+          alias-env
+          type-param-env)))))
 
 (defn typeinfer-bind-signature-type-var [type-param-env name-hash counter]
   (let [bound (map-get-safe type-param-env name-hash)]
