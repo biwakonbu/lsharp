@@ -772,6 +772,22 @@ ready index の canonical list ABI を actual Component で検証した。
 これは poll list と resource-drop の verified partial slice であり、残る descriptor operation、Wasm
 artifact/runtime differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity は未完了である。
 
+## Stage 2ad 検証済み slice: descriptor sync lifecycle (2026-07-24)
+
+Stage 2ab の data-only synchronization に加えて、open descriptor の metadata/data synchronization
+operation `descriptor.sync` と success/error の drop boundary を actual Component で検証した。
+
+- `wasm_gc_component_cli_fs_runner_syncs_descriptor_and_drops_resources` は二つの read-only named
+  preopen を受け取り、最初の preopen から `input.txt` を `descriptor.open-at` で開く。
+- `descriptor.sync` の `result<_, error-code>` discriminant が success になることを確認する。
+  read-only descriptor でも POSIX-compatible host implementation が成功扱いにする契約を、単なる
+  synthetic import ではなく実ファイルで固定する。
+- descriptor と preopen を drop し、`wasi:cli/run` exit 0、stdout empty、host bytes unchanged
+  (`hello`) を同一実行で確認する。
+
+これは descriptor sync/drop の verified partial slice であり、残る descriptor operation、Wasm
+artifact/runtime differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity は未完了である。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線
