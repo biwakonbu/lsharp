@@ -122,6 +122,10 @@ enum Command {
         #[arg(long, value_enum)]
         backend: Option<CliCompileBackend>,
 
+        /// process 間 Wasm artifact cache の root（明示時のみ有効）
+        #[arg(long)]
+        artifact_cache_dir: Option<PathBuf>,
+
         /// IR を表示する
         #[arg(long)]
         emit_ir: bool,
@@ -143,6 +147,10 @@ enum Command {
         /// 値表現 backend (`linear` / `wasmgc`)
         #[arg(long, value_enum)]
         backend: Option<CliCompileBackend>,
+
+        /// process 間 Wasm artifact cache の root（明示時のみ有効）
+        #[arg(long)]
+        artifact_cache_dir: Option<PathBuf>,
 
         /// IR を表示する
         #[arg(long)]
@@ -268,7 +276,6 @@ fn main() -> miette::Result<()> {
     maybe_hint_shadow_command_requires_lsharp_path()?;
 
     let cli = Cli::parse();
-    let mut compile_session = commands::compile::CompileSession::new();
 
     match cli.command {
         Command::Init { name } => {
@@ -280,6 +287,7 @@ fn main() -> miette::Result<()> {
             output,
             target,
             backend,
+            artifact_cache_dir,
             emit_ir,
         }
         | Command::Build {
@@ -287,11 +295,15 @@ fn main() -> miette::Result<()> {
             output,
             target,
             backend,
+            artifact_cache_dir,
             emit_ir,
         } => {
             // P0-1: git リポジトリ必須チェック
             check_git_repo(&file)?;
 
+            let mut compile_session = artifact_cache_dir
+                .map(commands::compile::CompileSession::with_artifact_cache)
+                .unwrap_or_else(commands::compile::CompileSession::new);
             let artifacts = compile_session.compile_file_with_backend(
                 &file,
                 output.as_deref(),
@@ -575,12 +587,13 @@ fn maybe_bridge_compile_build_artifact_with_component(
         Err(_) => return Ok(false),
     };
 
-    let (file, output, target, backend, emit_ir) = match cli.command {
+    let (file, output, target, backend, artifact_cache_dir, emit_ir) = match cli.command {
         Command::Compile {
             file,
             output,
             target,
             backend,
+            artifact_cache_dir,
             emit_ir,
         }
         | Command::Build {
@@ -588,12 +601,13 @@ fn maybe_bridge_compile_build_artifact_with_component(
             output,
             target,
             backend,
+            artifact_cache_dir,
             emit_ir,
-        } => (file, output, target, backend, emit_ir),
+        } => (file, output, target, backend, artifact_cache_dir, emit_ir),
         _ => return Ok(false),
     };
 
-    if emit_ir || backend.is_some() {
+    if emit_ir || backend.is_some() || artifact_cache_dir.is_some() {
         return Ok(false);
     }
 
@@ -872,6 +886,10 @@ fn should_delegate_compile_build_to_embedded_component_args(args: &[std::ffi::Os
                     return false;
                 }
                 // 明示 backend は embedded component guest が持たないため host 側へ残す。
+                return false;
+            }
+            "--artifact-cache-dir" => {
+                // artifact cache は Rust host の明示的 filesystem boundary を使う。
                 return false;
             }
             "--emit-ir" => return false,
@@ -2683,6 +2701,29 @@ mod tests {
     }
 
     #[test]
+    fn test_cli_compile_artifact_cache_dir_is_explicit() {
+        let cli = Cli::try_parse_from([
+            "lsharp",
+            "compile",
+            "examples/fib.ls",
+            "--artifact-cache-dir",
+            "tmp/lsharp-cache",
+        ])
+        .expect("artifact cache directory は明示指定できるべき");
+        let Command::Compile {
+            artifact_cache_dir, ..
+        } = cli.command
+        else {
+            panic!("compile subcommand should parse");
+        };
+        assert_eq!(
+            artifact_cache_dir,
+            Some(PathBuf::from("tmp/lsharp-cache")),
+            "cache root は CLI の明示指定だけで有効になるべき"
+        );
+    }
+
+    #[test]
     fn test_should_delegate_to_embedded_component_args_accepts_compile_build_component_subset() {
         assert!(should_delegate_to_embedded_component_args(&os_args(&[
             "compile",
@@ -2756,6 +2797,12 @@ mod tests {
             "wasmgc",
             "--target",
             "web-wasm",
+        ])));
+        assert!(!should_delegate_to_embedded_component_args(&os_args(&[
+            "compile",
+            "examples/fib.ls",
+            "--artifact-cache-dir",
+            "tmp/lsharp-cache",
         ])));
         assert!(!should_delegate_to_embedded_component_args(&os_args(&[
             "build",
