@@ -1,9 +1,9 @@
 use std::path::{Path, PathBuf};
 
-use lsharp_ir::{CompilationCache, Module};
+use lsharp_ir::{CompilationCache, Module, SourceFingerprint};
 
 /// compile バックエンドターゲット
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CompileTarget {
     WasiPreview1,
     WasiComponent,
@@ -12,7 +12,7 @@ pub enum CompileTarget {
 }
 
 /// compile の値表現 backend。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CompileBackend {
     /// 現行の linear-memory / target 別 backend。
     Linear,
@@ -25,6 +25,99 @@ pub enum CompileBackend {
 pub struct CompileArtifacts {
     pub output_path: PathBuf,
     pub formatted: bool,
+}
+
+/// process 間 artifact cache が再利用対象を識別するための deterministic key。
+///
+/// module graph の全 source fingerprint、canonical path、compiler package version、target/backend を
+/// 含める。artifact persistence はこの key を使う後続 sliceで接続し、key schemaを変更した場合は
+/// `COMPILE_CACHE_KEY_SCHEMA` を更新する。
+pub const COMPILE_CACHE_KEY_SCHEMA: &str = "lsharp-compile-key-v1";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct CompileCacheKey {
+    graph_fingerprint: SourceFingerprint,
+    target: CompileTarget,
+    backend: CompileBackend,
+}
+
+impl CompileCacheKey {
+    /// entry file から解決された全 module source を読み、compile identityを作る。
+    pub fn from_entry(
+        entry_file: &Path,
+        target: CompileTarget,
+        backend: CompileBackend,
+    ) -> miette::Result<Self> {
+        let (_, mut sorted_files) =
+            lsharp_ir::module_graph::ModuleGraph::build_from_entry_with_scc(entry_file)
+                .map_err(|error| miette::miette!("モジュールグラフ構築エラー: {error}"))?;
+        sorted_files.sort_by(|left, right| left.0.cmp(&right.0).then_with(|| left.1.cmp(&right.1)));
+
+        let entry_identity = std::fs::canonicalize(entry_file)
+            .unwrap_or_else(|_| entry_file.to_path_buf())
+            .display()
+            .to_string();
+        let mut manifest = String::new();
+        manifest.push_str(COMPILE_CACHE_KEY_SCHEMA);
+        manifest.push('\n');
+        manifest.push_str(env!("CARGO_PKG_VERSION"));
+        manifest.push('\n');
+        manifest.push_str(&entry_identity);
+        manifest.push('\n');
+        manifest.push_str(target_tag(target));
+        manifest.push('\n');
+        manifest.push_str(backend_tag(backend));
+        manifest.push('\n');
+
+        for (module_name, module_path) in sorted_files {
+            let source = std::fs::read_to_string(&module_path)
+                .map_err(|error| miette::miette!("{}: {error}", module_path.display()))?;
+            let canonical_path = std::fs::canonicalize(&module_path)
+                .unwrap_or(module_path)
+                .display()
+                .to_string();
+            manifest.push_str(&module_name);
+            manifest.push('\0');
+            manifest.push_str(&canonical_path);
+            manifest.push('\0');
+            manifest.push_str(&SourceFingerprint::from_source(&source).to_string());
+            manifest.push('\n');
+        }
+
+        Ok(Self {
+            graph_fingerprint: SourceFingerprint::from_source(&manifest),
+            target,
+            backend,
+        })
+    }
+
+    pub fn fingerprint(&self) -> SourceFingerprint {
+        self.graph_fingerprint
+    }
+
+    pub fn target(&self) -> CompileTarget {
+        self.target
+    }
+
+    pub fn backend(&self) -> CompileBackend {
+        self.backend
+    }
+}
+
+fn target_tag(target: CompileTarget) -> &'static str {
+    match target {
+        CompileTarget::WasiPreview1 => "wasi-preview1",
+        CompileTarget::WasiComponent => "wasi-component",
+        CompileTarget::WebWasm => "web-wasm",
+        CompileTarget::Native => "native",
+    }
+}
+
+fn backend_tag(backend: CompileBackend) -> &'static str {
+    match backend {
+        CompileBackend::Linear => "linear",
+        CompileBackend::WasmGc => "wasmgc",
+    }
 }
 
 /// 同一 process / host session 内で compile cache を保持する境界。
@@ -339,6 +432,85 @@ mod tests {
             "warm tooling compile は cache scope を維持するべき"
         );
 
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_compile_cache_key_changes_when_imported_source_changes() {
+        let dir = std::env::temp_dir().join(format!(
+            "lsharp_tooling_compile_key_import_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock は unix epoch より後であるべき")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let lib_path = dir.join("Lib.ls");
+        let main_path = dir.join("Main.ls");
+        std::fs::write(&lib_path, "(module Lib)\n(defn helper [] 7)\n").unwrap();
+        std::fs::write(
+            &main_path,
+            "(module Main)\n(import Lib)\n(defn main [] (helper))\n",
+        )
+        .unwrap();
+
+        let first = CompileCacheKey::from_entry(
+            &main_path,
+            CompileTarget::WasiPreview1,
+            CompileBackend::Linear,
+        )
+        .unwrap();
+        std::fs::write(&lib_path, "(module Lib)\n(defn helper [] 8)\n").unwrap();
+        let second = CompileCacheKey::from_entry(
+            &main_path,
+            CompileTarget::WasiPreview1,
+            CompileBackend::Linear,
+        )
+        .unwrap();
+
+        assert_ne!(
+            first, second,
+            "imported source の変更は compile key を変えるべき"
+        );
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_compile_cache_key_includes_target_and_backend() {
+        let dir = std::env::temp_dir().join(format!(
+            "lsharp_tooling_compile_key_target_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock は unix epoch より後であるべき")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let main_path = dir.join("Main.ls");
+        std::fs::write(&main_path, "(module Main)\n(defn main [] 7)\n").unwrap();
+
+        let linear = CompileCacheKey::from_entry(
+            &main_path,
+            CompileTarget::WasiPreview1,
+            CompileBackend::Linear,
+        )
+        .unwrap();
+        let component = CompileCacheKey::from_entry(
+            &main_path,
+            CompileTarget::WasiComponent,
+            CompileBackend::Linear,
+        )
+        .unwrap();
+        let wasmgc =
+            CompileCacheKey::from_entry(&main_path, CompileTarget::WebWasm, CompileBackend::WasmGc)
+                .unwrap();
+
+        assert_ne!(
+            linear, component,
+            "output target は compile key に含めるべき"
+        );
+        assert_ne!(linear, wasmgc, "backend は compile key に含めるべき");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
