@@ -1083,6 +1083,23 @@ failure、zero-length write、`subscribe`/poll readiness、`splice`、input stre
 Wasm artifact/runtime differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity は未完了
 である。
 
+## Stage 2aw 検証済み slice: output-stream splice / blocking-splice lifecycle (2026-07-24)
+
+Stage 2av の direct zero-fill boundary に加えて、read-write named preopen の input/output stream
+から borrowed input resource を渡す `splice`、non-blocking の partial-transfer を補完する
+`blocking-splice`、result/drop、host artifact 境界を actual Component で検証した。
+
+- `wasm_gc_component_cli_fs_runner_splices_input_into_output_and_drops_resources` は `input.txt` を
+  read descriptor、`spliced.txt` を create+truncate+write descriptor として開き、それぞれ
+  `read-via-stream(0)` / `write-via-stream(0)` で input/output stream を取得する。
+- `output-stream.splice(5)` の success result を確認した後、`blocking-splice(5)` を呼ぶ。direct
+  operation が要求長未満を返す場合も含め、host file が `hello`、stdout empty、`wasi:cli/run` exit 0
+  になることを同じ実行で確認し、全 resource を drop する。
+
+これは output/input splice の verified partial slice であり、exact transferred-byte count、stream
+error/resource failure、zero-length splice、poll readiness、input stream の残る operation、Wasm
+artifact/runtime differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity は未完了である。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線
