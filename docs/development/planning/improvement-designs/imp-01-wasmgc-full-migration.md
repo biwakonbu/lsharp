@@ -885,6 +885,24 @@ Stage 2ai の file rename に加えて、write-enabled preopen descriptor の
 Wasm artifact/runtime differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity
 は未完了である。
 
+## Stage 2ak 検証済み slice: descriptor readlink-at lifecycle (2026-07-24)
+
+Stage 2aj の symbolic-link creation に加えて、host symlink の target string を
+`descriptor.readlink-at` の Component canonical string result から読み戻す境界を actual Component で
+検証した。
+
+- `wasm_gc_component_cli_fs_runner_reads_symlink_target_and_drops_resources` は二つの read-write
+  named preopen を受け取り、fixture の `link.txt -> target.txt` symlink を最初の preopen descriptor
+  から読む。
+- `descriptor.readlink-at` の `result<string, error-code>` success discriminant と string payload
+  (`ptr`, `len`) を guest linear memory から lift し、custom stdout へ `target.txt` を出力する。
+- preopen descriptor を drop し、`wasi:cli/run` exit 0、host symlink target unchanged、stdout
+  `target.txt` を同じ実行で確認する。
+
+これは descriptor readlink-at の verified partial slice であり、残る descriptor operation、
+Wasm artifact/runtime differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity
+は未完了である。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線
