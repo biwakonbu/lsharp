@@ -1116,6 +1116,22 @@ result/drop 境界を actual Component で検証した。
 zero-length skip、poll readiness、`read` の non-blocking data contract、Wasm artifact/runtime
 differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity は未完了である。
 
+## Stage 2ay 検証済み slice: input-stream read / blocking-read lifecycle (2026-07-24)
+
+Stage 2ax の skip boundary に続き、read-only named preopen の input stream で non-blocking
+`read` の上限・空リスト契約と、残量を `blocking-read` で補完する Component 境界を検証した。
+
+- `wasm_gc_component_cli_fs_runner_reads_nonblocking_input_stream_and_completes_remaining_bytes`
+  は `input.txt` (`hello`) を開き、`read-via-stream(0)` で input stream を取得する。
+- `read(0)` が success かつ空 list を返すことを確認した後、`read(5)` の list length が要求値を
+  超えないことを確認し、取得した bytes を stdout に渡す。
+- `5 - first_read_len` を `blocking-read` に渡し、残りの bytes を stdout に渡した後、input
+  stream、descriptor、preopen を drop して `wasi:cli/run` exit 0、stdout `hello` を確認する。
+
+これは input-stream read の verified partial slice であり、stream error/closed、EOF・empty
+source、複数回の partial read、poll readiness、Wasm artifact/runtime differential、Mac Apple
+Silicon/Linux x86_64、native/selfhost parity は未完了である。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線
