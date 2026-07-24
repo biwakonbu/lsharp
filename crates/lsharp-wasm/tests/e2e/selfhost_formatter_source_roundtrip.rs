@@ -341,7 +341,6 @@ fn test_e2e_selfhost_formatter_preserves_import_open() {
         "formatter は import :open を canonical text に保持するべき"
     );
 }
-
 /// EC-M1-01: formatter が import の :as と :only を canonical text に保持すること
 #[test]
 fn test_e2e_selfhost_formatter_preserves_import_alias_only() {

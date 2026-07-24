@@ -795,7 +795,6 @@ fn test_e2e_selfhost_parser_import_alias_only() {
         ":as + :only import は alias と選択 symbol hash vector を AST に保持するべき"
     );
 }
-
 /// TEST-SYNTAX-02c4: 2 import 後の defn は compiler register/compile でも拾える
 #[test]
 fn test_e2e_selfhost_compiler_sees_defn_after_multiple_imports() {

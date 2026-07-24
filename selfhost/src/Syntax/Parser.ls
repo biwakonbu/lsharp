@@ -3311,7 +3311,6 @@
     (p-advance pos-ref) ;; open を消費
     (p-expect spans pos-ref 1) ;; ) を消費
     (make-import-decl-with-open name-h name-start name-end)))
-
 (defn parse-import-v3 [spans pos-ref src]
   (do
     (p-advance pos-ref) ;; import を消費
