@@ -108,6 +108,8 @@ merged/modular parity を含む lsharp-ir lib 238 tests、focused Wasm runtime�
 ### 未完了の後続作業
 
 - Formatter 3 モジュールの merged 特別扱いを除去し、相互再帰 fixture の IR/runtime parity を確認する。
+- generic SCC 経路から Formatter batch を外す probe では、canonical `FormatterExpr.ls` の
+  `format-expr` 未定義 (`E0001`, span `3962..3973`) で停止した。この診断を解消してから特例撤去を再試行する。
 - CLI の `CompilationCache` 統合、依存 SCC key、selfhost compiler への移植を行う。
 - `compile_multi_file_incremental` / source override 入口はまだ strict な graph build を使っており、
   SCC と cache の統合は C-2 で扱う。

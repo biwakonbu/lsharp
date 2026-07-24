@@ -45,3 +45,7 @@
 `compile_multi_file_incremental` と source override の SCC/cache 統合、Formatter batch 特例の撤去、
 selfhost compiler、Mac Apple Silicon / Linux x86_64 native stage0 parity は未完了で、
 `LEGACY-MODULE-01` の aggregate 完了条件には到達していない。
+
+Formatter 特例撤去の識別 probe は、canonical `FormatterExpr.ls` の `format-expr` 未定義
+(`E0001`, span `3962..3973`) で失敗した。これは C-1 の generic SCC 実装ではなく、Formatter
+source/API 側の先行 blocker として残す。
