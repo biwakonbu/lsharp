@@ -13,7 +13,7 @@
 - `LS2001` - `LS2006`: metadata contract validation and migration
 - `LS3001` - `LS3104`: lowering and module graph
 - `LS4001`: codegen
-- `LS4002`: runtime
+- `LS4002` - `LS4003`: runtime
 - `LS5001`: driver/tooling file I/O
 
 ## Legacy Codes
@@ -67,6 +67,7 @@
 | `LS3104` | duplicate-module | module が重複しています | source file の配置と module declaration を整理してください。 |
 | `LS4001` | codegen-error | codegen が失敗しました | 直前の type / lowering diagnostics と対象 backend の既知制限を確認してください。 |
 | `LS4002` | gc-capacity-exceeded | GC / linear memory の容量上限に達しました | 対応 runtime の memory limit、object/free/root capacity、target parity を確認してください。 |
+| `LS4003` | gc-root-slot-invariant | GC root slot の整合性が壊れました | compiler の safe-point spill と root slot の lexical lifetime を確認してください。 |
 | `LS5001` | driver-io-error | driver が file I/O に失敗しました | 対象 path の存在、親 directory、権限、空き容量を確認してください。 |
 
 ## MCP Lookup

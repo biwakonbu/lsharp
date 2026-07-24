@@ -301,6 +301,14 @@ pub(crate) const ERROR_CODES: &[ErrorCodeEntry] = &[
         fix: "入力の同時生存データ量を減らすか、対応 runtime memory limit と target parity を確認してください。",
     },
     ErrorCodeEntry {
+        code: "LS4003",
+        legacy_code: None,
+        name: "gc-root-slot-invariant",
+        summary: "GC root slot の整合性が壊れました",
+        detail: "WASI runtime が現在の root stack に存在しない slot を更新しようとしました。",
+        fix: "compiler の safe-point spill と root_push/root_set/root_pop の lexical lifetime を確認してください。",
+    },
+    ErrorCodeEntry {
         code: "LS5001",
         legacy_code: None,
         name: "driver-io-error",

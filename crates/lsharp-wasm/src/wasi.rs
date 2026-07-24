@@ -118,6 +118,11 @@ pub(crate) const CAPACITY_FAILURE_FUNCTION_INDICES: [u32; 2] = [
     WASI_IMPORT_COUNT + 13, // root_push
 ];
 
+/// GC-safe-point の root slot 更新失敗を識別する Wasm helper function index。
+pub(crate) const ROOT_SLOT_INVARIANT_FUNCTION_INDICES: [u32; 1] = [
+    WASI_IMPORT_COUNT + 15, // root_set
+];
+
 fn emit_tagged_pointer_from_i32_local(func: &mut wasm_encoder::Function, local_idx: u32) {
     use wasm_encoder::Instruction as W;
 

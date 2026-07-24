@@ -157,6 +157,13 @@ pub(crate) fn extract_i32_exit(err: &wasmtime::Error) -> Option<i32> {
 /// 報告する。core WASI の helper 関数 index と trap の形を同時に確認し、ユーザー
 /// 関数や Component Model の trap を誤って `LS4002` に分類しない。
 pub fn classify_wasi_runtime_failure(error: &str) -> String {
+    let is_root_slot_invariant_trap = crate::wasi::ROOT_SLOT_INVARIANT_FUNCTION_INDICES
+        .iter()
+        .any(|index| error.contains(&format!("<wasm function {index}>")));
+    if is_root_slot_invariant_trap {
+        return format!("LS4003: GC root slot の整合性が壊れました; {error}");
+    }
+
     let is_capacity_trap = error.contains("unreachable")
         && crate::wasi::CAPACITY_FAILURE_FUNCTION_INDICES
             .iter()
@@ -622,6 +629,25 @@ mod tests {
         let classified = classify_wasi_runtime_failure(error);
 
         assert!(classified.starts_with("LS4002:"), "分類結果: {classified}");
+    }
+
+    #[test]
+    fn test_classify_wasi_runtime_failure_maps_root_slot_invariant_trap() {
+        let error = "実行に失敗: error while executing at wasm backtrace:\n    0: <unknown>!<wasm function 24>: wasm trap: wasm `unreachable` instruction executed";
+
+        let classified = classify_wasi_runtime_failure(error);
+
+        assert!(classified.starts_with("LS4003:"), "分類結果: {classified}");
+        assert!(classified.contains(error));
+    }
+
+    #[test]
+    fn test_classify_wasi_runtime_failure_maps_root_slot_backtrace_without_trap_text() {
+        let error = "_start 実行に失敗: error while executing at wasm backtrace:\n    0: <unknown>!<wasm function 24>";
+
+        let classified = classify_wasi_runtime_failure(error);
+
+        assert!(classified.starts_with("LS4003:"), "分類結果: {classified}");
     }
 
     #[test]

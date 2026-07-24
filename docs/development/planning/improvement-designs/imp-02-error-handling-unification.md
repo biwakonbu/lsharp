@@ -57,6 +57,7 @@
 | LS3101-LS3104 | ModuleGraphError の 4 バリアント |
 | LS4001 | CodegenError::Error |
 | LS4002 | GC 容量超過 (imp-03 の grow 失敗診断、新設) |
+| LS4003 | GC root slot invariant failure (compiler-side safe-point spill の slot 不整合診断) |
 | LS5001+ | driver 固有 (lsharp.toml 不正、パッケージ解決失敗 等) |
 
 規則: 一度割り当てたコードの意味は変えない。欠番は再利用しない。
