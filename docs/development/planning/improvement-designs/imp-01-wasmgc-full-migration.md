@@ -656,6 +656,23 @@ write/append operation から host filesystem bytes まで閉じた。
 close-after-error、directory-entry stream、pollable、Wasm artifact/runtime differential、Mac Apple
 Silicon/Linux x86_64、native/selfhost parity は未完了である。
 
+## Stage 2w 検証済み slice: descriptor direct write/stat lifecycle (2026-07-24)
+
+Stage 2v の output-stream path に対応して、filesystem descriptor の direct `write` と `stat` を
+同じ named preopen の実ファイル境界まで閉じた。
+
+- `wasm_gc_component_cli_fs_runner_writes_descriptor_directly_and_stats_file` は二つの read-write
+  named preopen を受け取り、`descriptor.open-at(create+truncate, write)` で `output.txt` を開く。
+- `descriptor.write(buffer, offset)` の canonical `list<u8>` / `result<filesize, error-code>` を使って
+  offset 0 に `hello` を書き、戻り値の書込長 `5` を確認する。
+- 同じ descriptor の `descriptor.stat` から regular-file type と size `5` を確認し、descriptor と
+  preopen を drop した後に `wasi:cli/run` が exit 0 になること、host bytes が `hello` になることを
+  actual Component で固定する。
+
+これは direct write/stat の verified partial slice であり、read-directory、close-after-error、
+directory-entry stream、pollable、Wasm artifact/runtime differential、Mac Apple Silicon/Linux
+x86_64、native/selfhost parity は未完了である。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線
