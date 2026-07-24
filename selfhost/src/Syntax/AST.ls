@@ -131,6 +131,8 @@
 (defn make-lit-unit [] (vector-push-single-rooted (vector-new 1) (ast-lit-unit)))
 (defn make-if [cond-expr then-expr else-expr] (vector-push-triple-rooted (vector-push-single-rooted (vector-new 4) (ast-if)) cond-expr then-expr else-expr))
 (defn make-let [name-hash init-expr body-expr] (vector-push-pair-rooted (vector-push-pair-rooted (vector-new 4) (ast-let) name-hash) init-expr body-expr))
+(defn ast-qualified-name-hash [prefix-hash suffix-hash]
+  (+ (* prefix-hash 131) suffix-hash))
 ;; 互換用の annotation constructor。型 payload 不在は 0 として扱う。
 (defn make-ann [expr]
   (vector-push-triple-rooted (vector-new 3) (ast-ann) expr 0))

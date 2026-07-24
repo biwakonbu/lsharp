@@ -54,6 +54,19 @@
               (mk-int))))))))
 
 ;; 変数参照の型推論
+(defn typeinfer-var-scheme [node env]
+  (let [name-hash (vector-get node 1)
+    direct-scheme (type-env-lookup env name-hash)]
+    (if (= direct-scheme 0)
+      (if (> (vector-length node) 5)
+        (type-env-lookup
+          env
+          (ast-qualified-name-hash
+            (vector-get node 4)
+            (vector-get node 5)))
+        0)
+      direct-scheme)))
+
 (defn infer-var [node env subst counter]
   (do
     ;; 型スキームの具体化と結果構築は複数の allocation を跨ぐため、
@@ -62,7 +75,7 @@
     (root_push subst)
     (root_push counter)
     (let [name-hash (vector-get node 1)
-      scheme (type-env-lookup env name-hash)]
+      scheme (typeinfer-var-scheme node env)]
       (do
         (let [result
                 (if (= scheme 0)
@@ -500,6 +513,86 @@
 
 (defn typeinfer-remove-private-defns-before-module [program env limit]
   (typeinfer-remove-private-defns-loop program env 0 limit))
+
+;; import :as の alias-qualified key を、依存 module の public defn にだけ追加する。
+;; raw name hash は維持し、parser が保持する prefix/suffix hashから同じ keyを作る。
+(defn typeinfer-import-alias-hash [decl]
+  (if (> (vector-length decl) 4) (vector-get decl 4) 0))
+
+(defn typeinfer-qualify-import-source-loop
+  [program idx limit current-module target-module alias-hash env]
+  (if (>= idx limit)
+    env
+    (let [decl (vector-get program idx)
+      tag (vector-get decl 0)]
+      (if (= tag (ast-module-decl))
+        (typeinfer-qualify-import-source-loop
+          program
+          (+ idx 1)
+          limit
+          (vector-get decl 1)
+          target-module
+          alias-hash
+          env)
+        (if (and (= tag (ast-defn)) (= current-module target-module))
+          (let [name-hash (vector-get decl 1)
+            scheme (type-env-lookup env name-hash)]
+            (if (= scheme 0)
+              (typeinfer-qualify-import-source-loop
+                program
+                (+ idx 1)
+                limit
+                current-module
+                target-module
+                alias-hash
+                env)
+              (let [qualified-key
+                      (ast-qualified-name-hash alias-hash name-hash)
+                next-env (type-env-insert env qualified-key scheme)]
+                (typeinfer-qualify-import-source-loop
+                  program
+                  (+ idx 1)
+                  limit
+                  current-module
+                  target-module
+                  alias-hash
+                  next-env))))
+          (typeinfer-qualify-import-source-loop
+            program
+            (+ idx 1)
+            limit
+            current-module
+            target-module
+            alias-hash
+            env))))))
+
+(defn typeinfer-qualify-imports-loop [program idx len env]
+  (if (>= idx len)
+    env
+    (let [decl (vector-get program idx)
+      tag (vector-get decl 0)]
+      (if (= tag (ast-import-decl))
+        (let [alias-hash (typeinfer-import-alias-hash decl)]
+          (if (= alias-hash 0)
+            (typeinfer-qualify-imports-loop program (+ idx 1) len env)
+            (let [qualified-env
+                    (typeinfer-qualify-import-source-loop
+                      program
+                      0
+                      idx
+                      0
+                      (vector-get decl 1)
+                      alias-hash
+                      env)]
+              (typeinfer-qualify-imports-loop
+                program
+                (+ idx 1)
+                len
+                qualified-env))))
+        (typeinfer-qualify-imports-loop program (+ idx 1) len env)))))
+
+(defn typeinfer-predeclare-qualified-imports [program env]
+  (typeinfer-qualify-imports-loop program 0 (vector-length program) env))
 
 ;; 後続 top-level defn の placeholder に残る自由型変数を集める。
 (defn typeinfer-pending-env-vars-loop [program idx len placeholders subst env-vars]
@@ -1114,7 +1207,8 @@
               record-env (typeinfer-register-record-defs program initial-env counter)
               adt-env (typeinfer-register-adt-defs program record-env counter)
               predeclared (typeinfer-predeclare-defns program adt-env counter)
-              env (vector-get predeclared 0)
+              env0 (vector-get predeclared 0)
+              env (typeinfer-predeclare-qualified-imports program env0)
               placeholders (vector-get predeclared 1)
               state (typeinfer-program-analysis-state env (subst-new) (mk-int) 0 0 0 -1 -1 -1 -1 (vector-new 0))
               result

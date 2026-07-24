@@ -88,6 +88,16 @@
 (defn name-hash [src start end]
   (name-hash-loop src start end 0))
 
+(defn symbol-dot-position-loop [src pos end]
+  (if (>= pos end)
+    -1
+    (if (= (string-char-at src pos) 46)
+      pos
+      (symbol-dot-position-loop src (+ pos 1) end))))
+
+(defn symbol-dot-position [src start end]
+  (symbol-dot-position-loop src start end))
+
 ;; === 数値パース ===
 
 (defn parse-int-digits-from-str [src pos end acc]
@@ -164,6 +174,13 @@
 ;; parser 由来の変数参照ノード: [4, name-hash, start, end]
 (defn make-var-node-with-span [h start end]
   (vector-push-quad-rooted-v3 (vector-new 4) 4 h start end))
+
+;; qualified symbol の変数参照ノード: [4, name-hash, start, end, prefix-hash, suffix-hash]
+(defn make-var-node-with-qualified-span [h start end prefix-hash suffix-hash]
+  (vector-push-pair-rooted-v3
+    (vector-push-quad-rooted-v3 (vector-new 6) 4 h start end)
+    prefix-hash
+    suffix-hash))
 
 ;; 文字列ノード: [3, start, end, map-key-hash]
 (defn make-string-node [start end map-key-hash]
@@ -1799,10 +1816,18 @@
 (defn parse-symbol-var-v3 [spans pos-ref src]
   (let [start (p-start spans pos-ref)
     end (p-end spans pos-ref)
-    h (name-hash src start end)]
+    h (name-hash src start end)
+    dot-pos (symbol-dot-position src start end)]
     (do
       (p-advance pos-ref)
-      (make-var-node-with-span h start end))))
+      (if (>= dot-pos 0)
+        (make-var-node-with-qualified-span
+          h
+          start
+          end
+          (name-hash src start dot-pos)
+          (name-hash src (+ dot-pos 1) end))
+        (make-var-node-with-span h start end)))))
 
 (defn parse-string-node-v3 [spans pos-ref src]
   (let [start (p-start spans pos-ref)
