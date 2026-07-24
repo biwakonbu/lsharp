@@ -925,6 +925,17 @@ fn note_incremental_type_infer() {
     }
 }
 
+fn note_incremental_scc_infer() {
+    #[cfg(test)]
+    {
+        INCREMENTAL_SCC_INFER_TRACKING_ENABLED.with(|enabled| {
+            if enabled.get() {
+                INCREMENTAL_SCC_INFER_COUNT.with(|count| count.set(count.get() + 1));
+            }
+        });
+    }
+}
+
 fn note_incremental_lower() {
     #[cfg(test)]
     {
@@ -1032,6 +1043,8 @@ impl Drop for IncrementalParseTracker {
 thread_local! {
     static INCREMENTAL_TYPE_INFER_COUNT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
     static INCREMENTAL_TYPE_INFER_TRACKING_ENABLED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static INCREMENTAL_SCC_INFER_COUNT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    static INCREMENTAL_SCC_INFER_TRACKING_ENABLED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
 #[cfg(test)]
@@ -1059,6 +1072,34 @@ impl Drop for IncrementalTypeInferTracker {
     fn drop(&mut self) {
         INCREMENTAL_TYPE_INFER_TRACKING_ENABLED.with(|enabled| enabled.set(false));
         INCREMENTAL_TYPE_INFER_COUNT.with(|count| count.set(0));
+    }
+}
+
+#[cfg(test)]
+struct IncrementalSccInferTracker;
+
+#[cfg(test)]
+impl IncrementalSccInferTracker {
+    fn new() -> Self {
+        INCREMENTAL_SCC_INFER_TRACKING_ENABLED.with(|enabled| enabled.set(true));
+        INCREMENTAL_SCC_INFER_COUNT.with(|count| count.set(0));
+        Self
+    }
+
+    fn reset(&self) {
+        INCREMENTAL_SCC_INFER_COUNT.with(|count| count.set(0));
+    }
+
+    fn count(&self) -> usize {
+        INCREMENTAL_SCC_INFER_COUNT.with(|count| count.get())
+    }
+}
+
+#[cfg(test)]
+impl Drop for IncrementalSccInferTracker {
+    fn drop(&mut self) {
+        INCREMENTAL_SCC_INFER_TRACKING_ENABLED.with(|enabled| enabled.set(false));
+        INCREMENTAL_SCC_INFER_COUNT.with(|count| count.set(0));
     }
 }
 
@@ -2100,6 +2141,29 @@ fn compile_multi_file_incremental_scc(
     sorted_files: &[(String, std::path::PathBuf)],
     cache: &mut CompilationCache,
 ) -> Result<Module, String> {
+    let module_order = sorted_files
+        .iter()
+        .map(|(mod_name, _)| mod_name.clone())
+        .collect::<Vec<_>>();
+    let mut current_fingerprints = HashMap::new();
+    let mut all_clean = true;
+    for (mod_name, mod_path) in sorted_files {
+        let source = std::fs::read_to_string(mod_path)
+            .map_err(|e| format!("{}: {e}", mod_path.display()))?;
+        let fingerprint = SourceFingerprint::from_source(&source);
+        all_clean &= cache
+            .get(mod_name)
+            .is_some_and(|entry| entry.fingerprint() == fingerprint);
+        current_fingerprints.insert(mod_name.clone(), fingerprint);
+    }
+    if all_clean
+        && let Some(linked) = cache
+            .linked_module()
+            .filter(|linked| linked.module_order() == module_order)
+    {
+        return Ok(linked.final_module().clone());
+    }
+
     let mut parsed_modules = HashMap::new();
     let mut module_paths = HashMap::new();
     let mut direct_imports = HashMap::new();
@@ -2108,7 +2172,10 @@ fn compile_multi_file_incremental_scc(
     for (mod_name, mod_path) in sorted_files {
         let source = std::fs::read_to_string(mod_path)
             .map_err(|e| format!("{}: {e}", mod_path.display()))?;
-        let fingerprint = SourceFingerprint::from_source(&source);
+        let fingerprint = current_fingerprints
+            .get(mod_name)
+            .copied()
+            .unwrap_or_else(|| SourceFingerprint::from_source(&source));
         let program = cached_program_or_parse(mod_name, &source, fingerprint, cache)
             .map_err(|e| format!("{}: {e}", mod_path.display()))?;
         direct_imports.insert(
@@ -2122,6 +2189,7 @@ fn compile_multi_file_incremental_scc(
 
     let mut per_module_type_results = HashMap::new();
     for group in graph.scc_groups() {
+        note_incremental_scc_infer();
         let surfaces = infer_scc_type_surfaces(
             &group,
             graph,
@@ -2172,10 +2240,6 @@ fn compile_multi_file_incremental_scc(
     )
     .map_err(|e| format!("IR 変換エラー: {e}"))?;
 
-    let module_order = sorted_files
-        .iter()
-        .map(|(mod_name, _)| mod_name.clone())
-        .collect::<Vec<_>>();
     for (mod_name, _) in sorted_files {
         let program = parsed_modules
             .get(mod_name)
@@ -3325,11 +3389,31 @@ mod multifile_compile_tests {
             "incremental compile も相互再帰 SCC を受理するべき: {first:?}"
         );
         let first = first.unwrap();
+        let tracker = IncrementalSccInferTracker::new();
+        tracker.reset();
         let second = compile_multi_file_incremental(&dir.join("Main.ls"), &mut cache).unwrap();
+        assert_eq!(
+            tracker.count(),
+            0,
+            "SCC の clean rebuild は module inference を再実行しないべき"
+        );
         assert_eq!(
             first.dump(),
             second.dump(),
             "SCC の clean rebuild は同じ linked IR を返すべき"
+        );
+
+        std::fs::write(
+            dir.join("A.ls"),
+            "(module A)\n(import B)\n(defn a-step [n] (if (= n 0) 2 (b-step (- n 1))))\n",
+        )
+        .unwrap();
+        let tracker = IncrementalSccInferTracker::new();
+        tracker.reset();
+        compile_multi_file_incremental(&dir.join("Main.ls"), &mut cache).unwrap();
+        assert!(
+            tracker.count() > 0,
+            "SCC の dirty rebuild は型推論を再実行するべき"
         );
 
         std::fs::remove_dir_all(&dir).unwrap();

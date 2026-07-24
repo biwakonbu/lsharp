@@ -154,10 +154,16 @@ Phase C-1e として、`ModuleGraph::build_from_entry_with_overrides_scc` を追
 cache に保存し、lowering は行わない。`test_analyze_multi_file_incremental_with_overrides_infers_mutual_recursive_scc`
 は A↔B の相互再帰で A を未保存 override に差し替え、3 module が解析 cache に入ることを固定する。
 
+Phase C-1f として、`compile_multi_file_incremental_scc` の入口で全 module fingerprint と linked module order
+を確認し、clean hit なら cached linked IR を返す fast path を追加した。SCC の初回/dirty compile は従来どおり
+一括推論するが、clean rebuild は全 singleton SCC を再推論しない。`test_compile_multi_file_incremental_infers_mutual_recursive_scc`
+は clean rebuild の SCC inference count 0 と、A の source 変更後に count > 0 となる invalidation を固定する。
+
 ### 未完了の後続作業
 
 - Formatter 3 モジュールの explicit-import 後の canonical compile/runtime parity と長時間 probe の failure
-  boundary を確定する。現状は batch 特例を除去済みだが、`Cli.ls` clean-cache probe が 90 秒超で完了しない。
+  boundary を確定する。現状は batch 特例を除去済みで warm SCC linked-IR hit も閉じたが、`Cli.ls` の初回
+  full inference は 38 module graph 上で 90 秒超かかるため、性能/初回 compile の failure boundary は未確定。
 - CLI driver の既定経路へ `CompilationCache` を接続し、依存 SCC を含む cache key、process 間永続化、
   selfhost compiler への移植を行う。
 - source override 入口はまだ strict な graph build と module 単位推論を使っており、SCC-aware override
@@ -182,7 +188,8 @@ Phase C-1a の deterministic SCC 検出 API と unit test、C-1b の compile/inf
 fixture、C-1c の incremental SCC fallback と clean rebuild parity、C-1d の Formatter explicit imports と
 batch 特例除去、および Phase C-2a の明示的 cache compile API と cold/warm parity test、C-2b の entry scope
 isolation、C-2c の dependency surface key、C-2d の tooling cache API、C-2e の source override scope
-isolation、C-1e の source override SCC inference を検証済み部分実装として反映した。一括推論の native parity、
-Formatter canonical runtime parity、SCC の segment reuse、CLI driver の既定 cache 接続、依存 SCC key、selfhost
+isolation、C-1e の source override SCC inference、C-1f の SCC clean linked-IR hit を検証済み部分実装として
+反映した。一括推論の native parity、Formatter canonical runtime parity、SCC の segment reuse、CLI driver の
+既定 cache 接続、依存 SCC key、selfhost
 移植は未着手のため、Phase C-1 / C-2 の aggregate 完了とは扱わない。
 着手時は TODO.md に Phase C-1 / C-2 として項目を作成する。
