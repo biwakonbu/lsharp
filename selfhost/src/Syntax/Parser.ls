@@ -124,6 +124,16 @@
 (defn current-symbol-hash-v3 [spans pos-ref src]
   (name-hash src (p-start spans pos-ref) (p-end spans pos-ref)))
 
+(defn current-type-name-hash-v3 [spans pos-ref src]
+  (let [start (p-start spans pos-ref)
+    end (p-end spans pos-ref)
+    dot-pos (symbol-dot-position src start end)]
+    (if (>= dot-pos 0)
+      (ast-qualified-name-hash
+        (name-hash src start dot-pos)
+        (name-hash src (+ dot-pos 1) end))
+      (name-hash src start end))))
+
 ;; ftable 経路は AST だけを受け取るため、Map の文字列キー用 hash を
 ;; パース時に保持する。source 経路と同じく、エスケープ後の文字列を hash する。
 (defn string-literal-map-hash-escaped-char [escaped]
@@ -632,7 +642,7 @@
 ;; raw TypeExpr parser。Named、applied type、function type を保持する。
 (defn parse-type-expr-v3 [spans pos-ref src]
   (if (== (p-current spans pos-ref) 20)
-    (let [name-hash (current-symbol-hash-v3 spans pos-ref src)
+    (let [name-hash (current-type-name-hash-v3 spans pos-ref src)
       uppercase (current-symbol-starts-uppercase-v3 spans pos-ref src)]
       (do
         (p-advance pos-ref)

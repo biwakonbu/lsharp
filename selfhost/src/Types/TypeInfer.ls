@@ -143,6 +143,28 @@
 
 ;; ann 式の型推論
 ;; [11, expr, raw-type-expr]。旧 AST の payload 不在は内側の式をそのまま返す。
+(defn typeinfer-record-constructor-result-type [ty]
+  (if (= (ty-tag ty) (ty-fun))
+    (typeinfer-record-constructor-result-type (ty-fr ty))
+    (if (= (ty-tag ty) (ty-record)) ty 0)))
+
+(defn typeinfer-visible-record-annotation-type [type-expr env counter]
+  (if (= (vector-get type-expr 0) (tag-type-named))
+    (let [scheme (type-env-lookup env (vector-get type-expr 1))]
+      (if (= scheme 0)
+        0
+        (do
+          (root_push scheme)
+          (let [instantiated (instantiate scheme counter)]
+            (do
+              (root_push instantiated)
+              (let [result (typeinfer-record-constructor-result-type instantiated)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  result)))))))
+    0))
+
 (defn infer-ann [node env subst counter]
   (let [expr-result (infer-expr (vector-get node 1) env subst counter)]
     (if (= (result-failed expr-result) 1)
@@ -157,7 +179,12 @@
               alias-env (var-counter-alias-env counter)]
               (do
                 (root_push alias-env)
-                (let [ann-ty (typeinfer-resolve-type-expr-with-aliases type-expr alias-env)
+                (let [visible-record-ty
+                        (typeinfer-visible-record-annotation-type type-expr env counter)
+                  ann-ty
+                    (if (= visible-record-ty 0)
+                      (typeinfer-resolve-type-expr-with-aliases type-expr alias-env)
+                      visible-record-ty)
                   s2 (unify expr-ty ann-ty s1)]
                   (do
                     (root_pop)

@@ -2118,3 +2118,54 @@ fn test_e2e_selfhost_typeinfer_analysis_resolves_import_qualified_record_constru
         "qualified record constructor は module prefix 付き export lookup で解決されるべき"
     );
 }
+
+/// EC-M1-01: qualified record constructor の結果を qualified record 型として注釈できること
+#[test]
+fn test_e2e_selfhost_typeinfer_analysis_resolves_import_qualified_record_type_annotation() {
+    let source =
+        "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib) (defn main [] (: (Lib.Point 1 2) Lib.Point))";
+    let oracle_source =
+        "(module Main) (import Lib) (defn main [] (: (Lib.Point 1 2) Lib.Point))";
+    let oracle_program = lsharp_syntax::parse(oracle_source)
+        .expect("qualified record type annotation fixture は parse できるべき");
+    let mut oracle = Infer::new();
+    let point_type = lsharp_types::types::Type::Fun(
+        vec![
+            lsharp_types::types::Type::int(),
+            lsharp_types::types::Type::int(),
+        ],
+        Box::new(lsharp_types::types::Type::Con("Lib.Point".to_string())),
+    );
+    oracle.inject_external_types(&[(
+        "Lib.Point".to_string(),
+        lsharp_types::types::TypeScheme::mono(point_type),
+    )]);
+    assert!(
+        oracle.infer_program(&oracle_program).is_ok(),
+        "Rust oracle は qualified record type annotation を受理するべき"
+    );
+
+    let harness = format!(
+        r#"
+(defn main []
+  (let [analysis
+          (infer-program-analysis
+            (parse-program "{}"))]
+    (do
+      (print (infer-program-analysis-diagnostic-count analysis))
+      0)))
+"#,
+        source
+    );
+    let combined = format!("{}\n{}", selfhost_typeinfer_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0"],
+        "qualified record constructor の結果は同じ qualified record 型 annotation と unify されるべき"
+    );
+}
