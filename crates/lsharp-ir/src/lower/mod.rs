@@ -807,6 +807,10 @@ pub(crate) struct FuncCtx {
     pub(crate) instructions: Vec<crate::Instruction>,
     pub(crate) locals_map: HashMap<String, u32>,
     pub(crate) local_type_names: HashMap<String, String>,
+    /// WasmGC funcref local ごとの function type index。
+    pub(crate) local_func_type_indices: HashMap<u32, u32>,
+    /// WasmGC funcref local ごとの concrete function index。
+    pub(crate) local_func_indices: HashMap<u32, u32>,
     pub(crate) param_count: u32,
     pub(crate) next_local: u32,
     /// Wasm local index ごとの IR 型（param を除く extra local の型生成にも使う）。
@@ -821,6 +825,8 @@ impl FuncCtx {
             instructions: Vec::new(),
             locals_map: HashMap::new(),
             local_type_names: HashMap::new(),
+            local_func_type_indices: HashMap::new(),
+            local_func_indices: HashMap::new(),
             param_count: 0,
             next_local: 0,
             local_types: Vec::new(),

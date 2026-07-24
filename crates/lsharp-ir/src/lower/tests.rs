@@ -169,6 +169,42 @@ fn wasm_gc_non_capturing_lambda_call_lowers_to_call_ref() {
     );
 }
 
+#[test]
+fn wasm_gc_local_non_capturing_lambda_call_lowers_to_call_ref() {
+    let program = lsharp_syntax::parse(
+        r#"
+        (defn main []
+          (let [f (fn [x] (+ x 1))]
+            (f 41)))
+        "#,
+    )
+    .unwrap();
+    let mut infer = Infer::new();
+    let type_results = infer.infer_program(&program).unwrap();
+    let expr_type_results = infer.expr_type_results_snapshot();
+    let mut lowerer = Lower::with_backend(LowerBackend::WasmGc);
+    let module = lowerer
+        .lower_program_with_expr_types(&program, &type_results, &expr_type_results)
+        .expect("local non-capturing lambda call は WasmGC call_ref へ lowering できる");
+
+    let main = module
+        .functions
+        .iter()
+        .find(|function| function.name == "main")
+        .expect("main が存在する");
+    assert!(
+        main.body.windows(2).any(|instructions| {
+            matches!(
+                instructions,
+                [Instruction::RefFunc(_), Instruction::CallRef(_)]
+            )
+        }),
+        "main: {:?}, locals: {:?}",
+        main.body,
+        main.locals
+    );
+}
+
 const ALLOC_IDX: u32 = 1;
 const ROOT_PUSH_IDX: u32 = 14;
 const ROOT_POP_IDX: u32 = 15;
