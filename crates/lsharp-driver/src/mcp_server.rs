@@ -5,6 +5,15 @@ use std::path::{Path, PathBuf};
 
 const MCP_PROTOCOL_VERSION: &str = "2025-11-25";
 
+fn mcp_io_error(path: impl std::fmt::Display, error: impl std::fmt::Display) -> String {
+    format!(
+        "[{}] {}: {}",
+        error_codes::DRIVER_IO_ERROR_CODE,
+        path,
+        error
+    )
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct McpTool {
     pub name: String,
@@ -510,8 +519,9 @@ fn stdlib_api_tool(arguments: &Value) -> Result<Value, String> {
     let target_module = arguments.get("module").and_then(Value::as_str);
 
     let entries =
-        std::fs::read_dir(&stdlib_root).map_err(|e| format!("{}: {e}", stdlib_root.display()))?;
-    for entry in entries.flatten() {
+        std::fs::read_dir(&stdlib_root).map_err(|e| mcp_io_error(stdlib_root.display(), e))?;
+    for entry in entries {
+        let entry = entry.map_err(|e| mcp_io_error(stdlib_root.display(), e))?;
         let path = entry.path();
         if path.extension().and_then(|ext| ext.to_str()) != Some("ls") {
             continue;
@@ -537,17 +547,15 @@ fn stdlib_api_tool(arguments: &Value) -> Result<Value, String> {
 fn compile_run_tool(arguments: &Value) -> Result<Value, String> {
     let temp_dir = std::env::temp_dir().join("lsharp_mcp_compile_run");
     let _ = std::fs::remove_dir_all(&temp_dir);
-    std::fs::create_dir_all(&temp_dir).map_err(|e| format!("{}: {e}", temp_dir.display()))?;
+    std::fs::create_dir_all(&temp_dir).map_err(|e| mcp_io_error(temp_dir.display(), e))?;
     let input_path = temp_dir.join("Main.ls");
     let output_path = temp_dir.join("Main.wasm");
 
     if let Some(source) = arguments.get("source").and_then(Value::as_str) {
-        std::fs::write(&input_path, source)
-            .map_err(|e| format!("{}: {e}", input_path.display()))?;
+        std::fs::write(&input_path, source).map_err(|e| mcp_io_error(input_path.display(), e))?;
     } else if let Some(file) = arguments.get("file").and_then(Value::as_str) {
-        let content = std::fs::read_to_string(file).map_err(|e| format!("{file}: {e}"))?;
-        std::fs::write(&input_path, content)
-            .map_err(|e| format!("{}: {e}", input_path.display()))?;
+        let content = std::fs::read_to_string(file).map_err(|e| mcp_io_error(file, e))?;
+        std::fs::write(&input_path, content).map_err(|e| mcp_io_error(input_path.display(), e))?;
     } else {
         return Err("source または file が必要です".to_string());
     }
@@ -559,10 +567,10 @@ fn compile_run_tool(arguments: &Value) -> Result<Value, String> {
         Some(commands::compile::CompileTarget::WasiPreview1),
     )
     .map_err(|e| e.to_string())?;
-    let formatted = std::fs::read_to_string(&input_path)
-        .map_err(|e| format!("{}: {e}", input_path.display()))?;
+    let formatted =
+        std::fs::read_to_string(&input_path).map_err(|e| mcp_io_error(input_path.display(), e))?;
     let wasm_bytes = std::fs::read(&artifacts.output_path)
-        .map_err(|e| format!("{}: {e}", artifacts.output_path.display()))?;
+        .map_err(|e| mcp_io_error(artifacts.output_path.display(), e))?;
     let stdout = lsharp_wasm::wasi_runner::run_wasm_wasi(&wasm_bytes)
         .map_err(|e| format!("実行失敗: {e}"))?;
 
@@ -623,7 +631,7 @@ fn source_argument(arguments: &Value) -> Result<String, String> {
         return Ok(source.to_string());
     }
     if let Some(file) = arguments.get("file").and_then(Value::as_str) {
-        return std::fs::read_to_string(file).map_err(|e| format!("{file}: {e}"));
+        return std::fs::read_to_string(file).map_err(|e| mcp_io_error(file, e));
     }
     Err("source または file が必要です".to_string())
 }
@@ -776,8 +784,8 @@ fn find_installed_package_dir(project_dir: &Path, name: &str) -> Option<PathBuf>
 fn read_or_generate_package_api(package_dir: &Path) -> Result<Value, String> {
     let api_path = package_dir.join("docs").join("api.json");
     if api_path.exists() {
-        let content = std::fs::read_to_string(&api_path)
-            .map_err(|e| format!("{}: {e}", api_path.display()))?;
+        let content =
+            std::fs::read_to_string(&api_path).map_err(|e| mcp_io_error(api_path.display(), e))?;
         return serde_json::from_str(&content).map_err(|e| format!("{}: {e}", api_path.display()));
     }
 
@@ -998,6 +1006,20 @@ mod tests {
         assert_eq!(diagnostic["range"]["start"]["line"], 0);
         assert_eq!(diagnostic["range"]["start"]["character"], 1);
         assert_eq!(diagnostic["range"]["end"]["character"], 13);
+    }
+
+    #[test]
+    fn test_mcp_file_input_preserves_driver_io_error_code() {
+        let path = std::env::temp_dir().join("lsharp_mcp_missing_source.ls");
+        let _ = std::fs::remove_file(&path);
+
+        let error = call_tool("lsharp_check", &json!({"file": path.display().to_string()}))
+            .expect_err("存在しない MCP source file は失敗するべき");
+
+        assert!(
+            error.starts_with("[LS5001]"),
+            "MCP の driver I/O 診断コードを保持するべき: {error}"
+        );
     }
 
     #[test]
