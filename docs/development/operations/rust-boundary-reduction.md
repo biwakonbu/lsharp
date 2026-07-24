@@ -2102,3 +2102,11 @@ Evidence: `cargo test -p lsharp-ir --lib`（255 passed）、
 `git diff --check`。rooting parity の並列全件は multifile stateful fixtureの stack overflowで終了したため、
 REPL/LSP stateful runtime、Mac/Linux native stage0、全 control-flow / indirect-call coverage、
 runtime failure ledgerとの actual slot/top/count differentialは未完了である。TODOの `[~]` と Rust/bootstrap/host境界を維持する。
+
+### EC-M1-01 selfhost qualified record literal schema slice (2026-07-25)
+
+Rust parser が dotted record name (`{Lib.Point ...}`) を record literal として受理し、selfhost parser も record type hashを qualified export keyへ揃えるようにした。selfhost の qualified record literal は visible な constructor schemeの戻り record typeを schemaとして使い、field count と各 field 型を宣言 schemaへ unify する。未可視名は従来の未宣言 literal fallbackを維持し、record visibility全体をこの変更で再設計していない。
+
+Evidence: RED は `test_e2e_selfhost_typeinfer_analysis_resolves_import_qualified_record_literal` の Rust parserで dotted record nameが拒否され、parser修正後は Rust oracleの qualified declarationと selfhost の import fixtureを受理した。GREEN は selected `{Lib.Point x 1 y 2}` の diagnostics `0` と、invalid `{Lib.Point x true y 2}` の diagnostics `1` を同じ native harnessで確認した。qualified record regression 4件、record accessor regression 4件、`cargo run --bin lsharp -- parse selfhost/src/Syntax/Parser.ls` (`decls:241`, `diagnostics:0`)、`cargo run --bin lsharp -- parse selfhost/src/Types/TypeInferRecord.ls` (`decls:18`, `diagnostics:0`)、`git diff --check` が passした。
+
+これは module-qualified record literalの parser と field schema validationだけを閉じる verified sliceである。alias-qualified `L.Point` literal、unqualified `:open` literal、record update、parametric record literal、constructor pattern、private record、複数 moduleの forward visibility、standalone native stage0、Wasm artifact/runtime、Mac Apple Silicon / Linux x86_64 のこの変更後 current-source native gate、EC-M1-01 aggregateの完了を意味しない。Rust oracleは flattened module importの既存境界を避ける qualified record declarationで型を構築しており、import visibility parityの証拠とは分離して扱う。`TODO.md` の `[~]` と Rust oracle / bootstrap / host integration境界は維持する。次は alias-qualified record annotation/literalまたは private record export filteringを一つの REDに固定する。

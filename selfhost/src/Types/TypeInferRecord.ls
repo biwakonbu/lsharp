@@ -90,6 +90,47 @@
         (root_pop)
         result))))
 
+;; qualified record literal は visible な constructor scheme の戻り型から
+;; record schema を取得する。record-env に raw 名しかない import 境界でも、
+;; qualified export key が値環境に存在する間だけ field 型検査を有効にする。
+(defn infer-recordlit-constructor-result-type [ty]
+  (if (= (ty-tag ty) (ty-fun))
+    (infer-recordlit-constructor-result-type (ty-fr ty))
+    (if (= (ty-tag ty) (ty-record)) ty 0)))
+
+(defn infer-recordlit-visible-record-type [node env counter]
+  (let [scheme (type-env-lookup env (vector-get node 1))]
+    (if (= scheme 0)
+      0
+      (do
+        (root_push scheme)
+        (let [instantiated (instantiate scheme counter)]
+          (do
+            (root_push instantiated)
+            (let [result (infer-recordlit-constructor-result-type instantiated)]
+              (do
+                (root_pop)
+                (root_pop)
+                result))))))))
+
+(defn infer-recordlit-with-record-type [node field-count env subst counter record-ty]
+  (do
+    (root_push record-ty)
+    (let [result
+            (if (= field-count (/ (- (vector-length record-ty) 2) 2))
+              (infer-declared-recordlit-fields
+                node
+                0
+                field-count
+                env
+                subst
+                counter
+                record-ty)
+              (make-error-result-code (error-code-general)))]
+      (do
+        (root_pop)
+        result))))
+
 ;; record literal の型推論
 ;; [12, type-name-hash, field-count, field1-hash, expr1, ...]
 (defn infer-recordlit [node env subst counter]
@@ -98,23 +139,36 @@
     record-schema (map-get-safe (var-counter-record-env counter) type-name-hash)
     fields-result
       (if (= record-schema 0)
-        (infer-record-fields node 0 field-count env subst counter)
+        (let [visible-record-ty
+                (infer-recordlit-visible-record-type node env counter)]
+          (if (= visible-record-ty 0)
+            (infer-record-fields node 0 field-count env subst counter)
+            (do
+              (root_push visible-record-ty)
+              (let [result
+                      (infer-recordlit-with-record-type
+                        node
+                        field-count
+                        env
+                        subst
+                        counter
+                        visible-record-ty)]
+                (do
+                  (root_pop)
+                  result)))))
         (do
           (root_push record-schema)
           (let [record-ty (instantiate record-schema counter)]
             (do
               (root_push record-ty)
               (let [result
-                      (if (= field-count (/ (- (vector-length record-ty) 2) 2))
-                        (infer-declared-recordlit-fields
-                          node
-                          0
-                          field-count
-                          env
-                          subst
-                          counter
-                          record-ty)
-                        (make-error-result-code (error-code-general)))]
+                      (infer-recordlit-with-record-type
+                        node
+                        field-count
+                        env
+                        subst
+                        counter
+                        record-ty)]
                 (do
                   (root_pop)
                   (root_pop)
@@ -122,7 +176,9 @@
     (if (= (result-failed fields-result) 1)
       (propagate-error-result fields-result)
       (if (= record-schema 0)
-        (make-result (result-subst fields-result) (mk-con type-name-hash))
+        (if (= (ty-tag (result-type fields-result)) (ty-record))
+          fields-result
+          (make-result (result-subst fields-result) (mk-con type-name-hash)))
         fields-result))))
 
 ;; field access の型推論

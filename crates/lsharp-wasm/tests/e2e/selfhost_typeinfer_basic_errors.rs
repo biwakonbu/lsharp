@@ -2169,3 +2169,58 @@ fn test_e2e_selfhost_typeinfer_analysis_resolves_import_qualified_record_type_an
         "qualified record constructor の結果は同じ qualified record 型 annotation と unify されるべき"
     );
 }
+
+/// EC-M1-01: imported record は qualified record literal として構築できること
+#[test]
+fn test_e2e_selfhost_typeinfer_analysis_resolves_import_qualified_record_literal() {
+    let source =
+        "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib) (defn main [] {Lib.Point x 1 y 2})";
+    let invalid_source =
+        "(module Lib) (type Point (record (: x Int) (: y Int))) (module Main) (import Lib) (defn main [] {Lib.Point x true y 2})";
+    let oracle_source =
+        "(type Lib.Point (record (: x Int) (: y Int))) (defn main [] {Lib.Point x 1 y 2})";
+    let oracle_program = lsharp_syntax::parse(oracle_source)
+        .expect("qualified record literal fixture は parse できるべき");
+    let mut oracle = Infer::new();
+    assert!(
+        oracle.infer_program(&oracle_program).is_ok(),
+        "Rust oracle は qualified record literal を受理するべき"
+    );
+    let invalid_oracle_source =
+        "(type Lib.Point (record (: x Int) (: y Int))) (defn main [] {Lib.Point x true y 2})";
+    let invalid_oracle_program = lsharp_syntax::parse(invalid_oracle_source)
+        .expect("invalid qualified record literal fixture は parse できるべき");
+    let mut invalid_oracle = Infer::new();
+    assert!(
+        invalid_oracle.infer_program(&invalid_oracle_program).is_err(),
+        "Rust oracle は qualified record literal の field type mismatch を拒否するべき"
+    );
+
+    let harness = format!(
+        r#"
+(defn main []
+  (let [selected
+          (infer-program-analysis
+            (parse-program "{}"))
+        invalid
+          (infer-program-analysis
+            (parse-program "{}"))]
+    (do
+      (print (infer-program-analysis-diagnostic-count selected))
+      (print (infer-program-analysis-diagnostic-count invalid))
+      0)))
+"#,
+        source, invalid_source
+    );
+    let combined = format!("{}\n{}", selfhost_typeinfer_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "1"],
+        "qualified record literal は import された record schema と field 型を unify するべき"
+    );
+}

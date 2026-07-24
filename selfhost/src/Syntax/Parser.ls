@@ -306,9 +306,7 @@
   (do
     (p-advance pos-ref) ;; { を消費
     (if (== (p-current spans pos-ref) 20)
-      (let [type-start (p-start spans pos-ref)
-        type-end (p-end spans pos-ref)
-        type-h (name-hash src type-start type-end)
+      (let [type-h (current-type-name-hash-v3 spans pos-ref src)
         result (make-recordlit type-h)
         result-slot (root_push result)]
         (do

@@ -1237,7 +1237,6 @@ impl Parser {
         // 最初のトークンが大文字シンボルならレコードリテラル
         if let Expr::Var(_, ref name) = first
             && name.starts_with(|c: char| c.is_ascii_uppercase())
-            && !name.contains('.')
         {
             let type_name = name.clone();
             let mut fields = Vec::new();
