@@ -17,6 +17,7 @@ mod mcp_server;
 mod resolver;
 
 use clap::{Parser, Subcommand, ValueEnum};
+use error_codes::driver_io_error;
 use sha2::{Digest, Sha256};
 use std::borrow::Cow;
 use std::collections::BTreeSet;
@@ -43,10 +44,10 @@ fn resolve_default_component_bytes() -> miette::Result<Cow<'static, [u8]>> {
     }
 
     let bytes = std::fs::read(&sidecar_path).map_err(|e| {
-        miette::miette!(
+        driver_io_error(format!(
             "adjacent component sidecar の読み込みに失敗しました ({}): {e}",
             sidecar_path.display()
-        )
+        ))
     })?;
     Ok(Cow::Owned(bytes))
 }
@@ -361,7 +362,7 @@ fn main() -> miette::Result<()> {
 
         Command::Review { file } => {
             let source = std::fs::read_to_string(&file)
-                .map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
+                .map_err(|e| driver_io_error(format!("{}: {}", file.display(), e)))?;
 
             // ドキュメントステータス読み込み
             let status_path = std::path::Path::new(".lsharp-doc-status");
@@ -403,7 +404,7 @@ fn main() -> miette::Result<()> {
             }
 
             let source = std::fs::read_to_string(&file)
-                .map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
+                .map_err(|e| driver_io_error(format!("{}: {}", file.display(), e)))?;
 
             // パースとメタデータ検証
             let diagnostics = lsharp_tooling::metadata_validation::check_metadata_strings(&source)?;
@@ -1838,7 +1839,7 @@ fn cmd_doc(file: &Path, output: Option<&Path>, json: bool) -> miette::Result<()>
 
     if let Some(output_path) = output {
         std::fs::write(output_path, &html)
-            .map_err(|e| miette::miette!("{}: {}", output_path.display(), e))?;
+            .map_err(|e| driver_io_error(format!("{}: {}", output_path.display(), e)))?;
         println!("ドキュメント生成: {}", output_path.display());
     } else {
         print!("{}", html);
@@ -1862,10 +1863,10 @@ fn cmd_doc_json(file: &Path, output: Option<&Path>) -> miette::Result<()> {
         .unwrap_or_else(|| project_root.join("docs").join("api.json"));
     if let Some(parent) = output_path.parent() {
         std::fs::create_dir_all(parent)
-            .map_err(|e| miette::miette!("{}: {}", parent.display(), e))?;
+            .map_err(|e| driver_io_error(format!("{}: {}", parent.display(), e)))?;
     }
     std::fs::write(&output_path, json)
-        .map_err(|e| miette::miette!("{}: {}", output_path.display(), e))?;
+        .map_err(|e| driver_io_error(format!("{}: {}", output_path.display(), e)))?;
     println!("Generated {}", output_path.display());
 
     Ok(())
@@ -1943,10 +1944,10 @@ fn cmd_check_package_in(
         .map_err(|e| miette::miette!("api.json の直列化に失敗: {e}"))?;
     let docs_dir = project_dir.join("docs");
     std::fs::create_dir_all(&docs_dir)
-        .map_err(|e| miette::miette!("{}: {}", docs_dir.display(), e))?;
+        .map_err(|e| driver_io_error(format!("{}: {}", docs_dir.display(), e)))?;
     let api_path = docs_dir.join("api.json");
     std::fs::write(&api_path, &api_json)
-        .map_err(|e| miette::miette!("{}: {}", api_path.display(), e))?;
+        .map_err(|e| driver_io_error(format!("{}: {}", api_path.display(), e)))?;
     out.push_str("Generating api.json ... ok\n");
 
     if let Some((label, previous_doc)) =
@@ -2019,8 +2020,8 @@ fn cmd_info_in(project_dir: &Path, package: &str) -> miette::Result<String> {
 }
 
 fn read_api_doc(path: &Path) -> miette::Result<api_doc::ApiDoc> {
-    let content =
-        std::fs::read_to_string(path).map_err(|e| miette::miette!("{}: {}", path.display(), e))?;
+    let content = std::fs::read_to_string(path)
+        .map_err(|e| driver_io_error(format!("{}: {}", path.display(), e)))?;
     serde_json::from_str(&content).map_err(|e| miette::miette!("{}: {}", path.display(), e))
 }
 
@@ -2292,7 +2293,7 @@ fn cmd_add_in(project_dir: &Path, github_url: &str, tag: Option<&str>) -> miette
     }
 
     let mut content = std::fs::read_to_string(&config_path)
-        .map_err(|e| miette::miette!("{}: {}", config_path.display(), e))?;
+        .map_err(|e| driver_io_error(format!("{}: {}", config_path.display(), e)))?;
     if !content.ends_with('\n') {
         content.push('\n');
     }
@@ -2304,7 +2305,7 @@ fn cmd_add_in(project_dir: &Path, github_url: &str, tag: Option<&str>) -> miette
     }
 
     std::fs::write(&config_path, content)
-        .map_err(|e| miette::miette!("{}: {}", config_path.display(), e))?;
+        .map_err(|e| driver_io_error(format!("{}: {}", config_path.display(), e)))?;
     println!("Added {package_name} to lsharp.toml");
     Ok(())
 }
@@ -3426,6 +3427,36 @@ mod tests {
         assert!(content.contains("\"package\": \"demo\""));
         assert!(content.contains("\"version\": \"0.2.0\""));
         assert!(content.contains("\"name\": \"Geometry\""));
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_cmd_doc_json_output_write_preserves_driver_io_error_code() {
+        let dir = std::env::temp_dir().join(format!(
+            "lsharp_test_doc_json_output_error_{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("src")).unwrap();
+        std::fs::write(
+            dir.join("src/Main.ls"),
+            "(module Main)\n(defn main [] 42)\n",
+        )
+        .unwrap();
+        let blocked_parent = dir.join("blocked");
+        std::fs::write(&blocked_parent, "not a directory").unwrap();
+
+        let error = cmd_doc_json(
+            &dir.join("src/Main.ls"),
+            Some(&blocked_parent.join("api.json")),
+        )
+        .expect_err("書き込み先の親が file の doc --json は失敗するべき");
+
+        assert!(
+            error.to_string().starts_with("[LS5001]"),
+            "doc --json の artifact I/O 失敗は driver I/O code を保持するべき: {error}"
+        );
 
         std::fs::remove_dir_all(&dir).unwrap();
     }

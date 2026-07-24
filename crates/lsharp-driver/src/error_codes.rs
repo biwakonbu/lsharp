@@ -1,3 +1,7 @@
+use std::fmt::Display;
+
+use miette::Report;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ErrorCodeEntry {
     pub(crate) code: &'static str,
@@ -9,6 +13,11 @@ pub(crate) struct ErrorCodeEntry {
 }
 
 pub(crate) const ERROR_REFERENCE_DOC: &str = "docs/guides/error-reference.md";
+pub(crate) const DRIVER_IO_ERROR_CODE: &str = "LS5001";
+
+pub(crate) fn driver_io_error(message: impl Display) -> Report {
+    miette::miette!("[{DRIVER_IO_ERROR_CODE}] {message}")
+}
 
 pub(crate) const ERROR_CODES: &[ErrorCodeEntry] = &[
     ErrorCodeEntry {

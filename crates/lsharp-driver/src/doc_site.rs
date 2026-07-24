@@ -1,4 +1,5 @@
 use crate::api_doc::{self, ApiDoc, ApiModule};
+use crate::error_codes::driver_io_error;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs;
@@ -49,17 +50,19 @@ pub(crate) fn cmd_doc_site_in(repo_root: &Path, output: &Path) -> miette::Result
     let api_out = output.join("api");
     let manifest = load_site_manifest(repo_root)?;
 
-    fs::create_dir_all(output).map_err(|e| miette::miette!("{}: {}", output.display(), e))?;
-    fs::create_dir_all(&api_out).map_err(|e| miette::miette!("{}: {}", api_out.display(), e))?;
+    fs::create_dir_all(output)
+        .map_err(|e| driver_io_error(format!("{}: {}", output.display(), e)))?;
+    fs::create_dir_all(&api_out)
+        .map_err(|e| driver_io_error(format!("{}: {}", api_out.display(), e)))?;
 
     for page in manifest.all_pages() {
         let source_path = repo_root.join(&page.source);
         let markdown = fs::read_to_string(&source_path)
-            .map_err(|e| miette::miette!("{}: {}", source_path.display(), e))?;
+            .map_err(|e| driver_io_error(format!("{}: {}", source_path.display(), e)))?;
         let output_path = output.join(&page.output);
         if let Some(parent) = output_path.parent() {
             fs::create_dir_all(parent)
-                .map_err(|e| miette::miette!("{}: {}", parent.display(), e))?;
+                .map_err(|e| driver_io_error(format!("{}: {}", parent.display(), e)))?;
         }
 
         let html = render_page(
@@ -69,15 +72,19 @@ pub(crate) fn cmd_doc_site_in(repo_root: &Path, output: &Path) -> miette::Result
             &home_href(&page.output),
             &site_nav_links(&manifest, &page.output),
         );
-        fs::write(&output_path, html)
-            .map_err(|e| miette::miette!("site page 出力失敗: {}: {e}", output_path.display()))?;
+        fs::write(&output_path, html).map_err(|e| {
+            driver_io_error(format!(
+                "site page 出力失敗: {}: {e}",
+                output_path.display()
+            ))
+        })?;
     }
 
     let stdlib_api = build_stdlib_api(&stdlib_root)?;
     let stdlib_json = serde_json::to_string_pretty(&stdlib_api)
         .map_err(|e| miette::miette!("stdlib.json 直列化失敗: {e}"))?;
     fs::write(api_out.join("stdlib.json"), stdlib_json)
-        .map_err(|e| miette::miette!("stdlib.json 出力失敗: {e}"))?;
+        .map_err(|e| driver_io_error(format!("stdlib.json 出力失敗: {e}")))?;
 
     for module in &stdlib_api.modules {
         let output_name = format!("api/{}.html", module.name);
@@ -89,7 +96,7 @@ pub(crate) fn cmd_doc_site_in(repo_root: &Path, output: &Path) -> miette::Result
             &site_nav_links(&manifest, &output_name),
         );
         fs::write(api_out.join(format!("{}.html", module.name)), html)
-            .map_err(|e| miette::miette!("API ページ出力失敗: {e}"))?;
+            .map_err(|e| driver_io_error(format!("API ページ出力失敗: {e}")))?;
     }
 
     let index_html = render_page(
@@ -100,18 +107,18 @@ pub(crate) fn cmd_doc_site_in(repo_root: &Path, output: &Path) -> miette::Result
         &site_nav_links_from_index(&manifest),
     );
     fs::write(output.join("index.html"), index_html)
-        .map_err(|e| miette::miette!("index.html 出力失敗: {e}"))?;
+        .map_err(|e| driver_io_error(format!("index.html 出力失敗: {e}")))?;
     fs::write(output.join(".nojekyll"), "")
-        .map_err(|e| miette::miette!(".nojekyll 出力失敗: {e}"))?;
+        .map_err(|e| driver_io_error(format!(".nojekyll 出力失敗: {e}")))?;
     fs::write(
         output.join("sitemap.xml"),
         render_sitemap(&manifest, &stdlib_api),
     )
-    .map_err(|e| miette::miette!("sitemap.xml 出力失敗: {e}"))?;
+    .map_err(|e| driver_io_error(format!("sitemap.xml 出力失敗: {e}")))?;
     let manifest_json = serde_json::to_string_pretty(&manifest)
         .map_err(|e| miette::miette!("docs-site-manifest.json 直列化失敗: {e}"))?;
     fs::write(output.join("docs-site-manifest.json"), manifest_json)
-        .map_err(|e| miette::miette!("docs-site-manifest.json 出力失敗: {e}"))?;
+        .map_err(|e| driver_io_error(format!("docs-site-manifest.json 出力失敗: {e}")))?;
 
     println!("Site manifest ({}) ... ok", manifest.source);
     println!("Pages ({} pages) ... ok", manifest.all_pages().len());
@@ -124,7 +131,7 @@ pub(crate) fn cmd_doc_site_in(repo_root: &Path, output: &Path) -> miette::Result
 fn load_site_manifest(repo_root: &Path) -> miette::Result<SiteManifest> {
     let manifest_path = repo_root.join("docs/site.toml");
     let text = fs::read_to_string(&manifest_path)
-        .map_err(|e| miette::miette!("{}: {}", manifest_path.display(), e))?;
+        .map_err(|e| driver_io_error(format!("{}: {}", manifest_path.display(), e)))?;
     let manifest: SiteManifest =
         toml::from_str(&text).map_err(|e| miette::miette!("docs/site.toml の読み込み失敗: {e}"))?;
     validate_site_manifest(repo_root, &manifest)?;
@@ -211,10 +218,10 @@ fn is_safe_relative_path(path: &Path) -> bool {
 fn build_stdlib_api(stdlib_root: &Path) -> miette::Result<ApiDoc> {
     let mut files = Vec::new();
     for entry in fs::read_dir(stdlib_root)
-        .map_err(|e| miette::miette!("{}: {}", stdlib_root.display(), e))?
+        .map_err(|e| driver_io_error(format!("{}: {}", stdlib_root.display(), e)))?
     {
         let path = entry
-            .map_err(|e| miette::miette!("{}: {}", stdlib_root.display(), e))?
+            .map_err(|e| driver_io_error(format!("{}: {}", stdlib_root.display(), e)))?
             .path();
         if path.extension().and_then(|ext| ext.to_str()) == Some("ls") {
             files.push(path);
@@ -649,6 +656,26 @@ mod tests {
         assert!(api.contains("\"name\": \"Core\""));
 
         std::fs::remove_dir_all(&output).unwrap();
+    }
+
+    #[test]
+    fn test_cmd_doc_site_missing_manifest_preserves_driver_io_error_code() {
+        let repo_root = std::env::temp_dir().join(format!(
+            "lsharp_doc_site_missing_manifest_{}",
+            std::process::id()
+        ));
+        let output = repo_root.join("generated");
+        let _ = std::fs::remove_dir_all(&repo_root);
+
+        let error = cmd_doc_site_in(&repo_root, &output)
+            .expect_err("存在しない docs/site.toml は doc site 生成を失敗させるべき");
+
+        assert!(
+            error.to_string().starts_with("[LS5001]"),
+            "manifest の読み込み失敗は driver I/O code を保持するべき: {error}"
+        );
+
+        let _ = std::fs::remove_dir_all(&repo_root);
     }
 
     #[test]
