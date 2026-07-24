@@ -123,6 +123,10 @@ impl Type {
 
     /// 型変数を置換する
     pub fn apply_subst(&self, subst: &Substitution) -> Type {
+        if subst.is_empty() {
+            return self.clone();
+        }
+
         match self {
             Type::Con(name) => Type::Con(name.clone()),
             // 型変数の連鎖 (t0 -> t1 -> ... -> 具体型) を再帰で辿ると
@@ -226,6 +230,18 @@ impl TypeScheme {
 
     /// 置換を適用（束縛変数は除外）
     pub fn apply_subst(&self, subst: &Substitution) -> TypeScheme {
+        if subst.is_empty() {
+            return self.clone();
+        }
+
+        if self.vars.is_empty() {
+            return TypeScheme {
+                vars: Vec::new(),
+                constraints: self.constraints.clone(),
+                ty: self.ty.apply_subst(subst),
+            };
+        }
+
         let restricted = subst.without(&self.vars);
         TypeScheme {
             vars: self.vars.clone(),
@@ -269,6 +285,11 @@ impl Substitution {
         Self {
             map: BTreeMap::new(),
         }
+    }
+
+    /// 置換が空で、型を走査する必要がないかを返す。
+    pub fn is_empty(&self) -> bool {
+        self.map.is_empty()
     }
 
     /// 型変数に型を割り当てる
@@ -379,6 +400,10 @@ impl TypeEnv {
 
     /// 置換を適用
     pub fn apply_subst(&self, subst: &Substitution) -> TypeEnv {
+        if subst.is_empty() {
+            return self.clone();
+        }
+
         TypeEnv {
             bindings: self
                 .bindings
@@ -451,7 +476,33 @@ pub enum ConstraintDef {
 
 #[cfg(test)]
 mod apply_subst_tests {
-    use super::{Substitution, Type};
+    use super::{Substitution, Type, TypeScheme};
+
+    #[test]
+    fn substitution_reports_empty_without_allocating_a_map() {
+        let empty = Substitution::new();
+        assert!(empty.is_empty());
+
+        let mut non_empty = Substitution::new();
+        non_empty.insert(0, Type::int());
+        assert!(!non_empty.is_empty());
+    }
+
+    #[test]
+    fn apply_subst_preserves_mono_and_bound_scheme_semantics() {
+        let mut substitution = Substitution::new();
+        substitution.insert(0, Type::int());
+
+        let mono = TypeScheme::mono(Type::Var(0));
+        assert_eq!(mono.apply_subst(&substitution).ty, Type::int());
+
+        let bound = TypeScheme {
+            vars: vec![0],
+            constraints: Vec::new(),
+            ty: Type::Var(0),
+        };
+        assert_eq!(bound.apply_subst(&substitution).ty, Type::Var(0));
+    }
 
     /// 長い型変数連鎖でも apply_subst がスタックを食いつぶさないこと（selfhost Lower* compile 退避用）
     #[test]

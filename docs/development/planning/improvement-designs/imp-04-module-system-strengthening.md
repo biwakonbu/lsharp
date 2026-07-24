@@ -199,12 +199,18 @@ defn の所属 module、宣言順序、missing parse の明示エラーを維持
 保持の focused test、および既存 SCC / IR parity 回帰を通過した。canonical `Cli.ls` の bounded probe は
 変更後も 45 秒で exit 142 のため、初回 Formatter compile/runtime parity の failure boundary は未確定である。
 
+Phase C-1m として、`Substitution::is_empty` を導入し、空の置換に対する `Type` / `TypeScheme` / `TypeEnv`
+の再帰走査を省略した。束縛型変数を持たない単相 `TypeScheme` は `Substitution::without` による map 全体の
+ 複製も行わず、元の置換を直接適用する。型結果・generalization の parity を維持したまま、stack sampling で
+ 確認した inference の map 再構築負荷を局所的に削減する verified partial slice である。canonical `Cli.ls`
+ probe は 45 秒で exit 142 のため、初回 parity の成功証拠にはならない。
+
 ### 未完了の後続作業
 
 - Formatter 3 モジュールの explicit-import 後の canonical compile/runtime parity と長時間 probe の failure
   boundary を確定する。現状は batch 特例を除去済みで warm SCC linked-IR hit、singleton の重複推論除去、dirty
   SCC の lowering/link segment reuse、visibility-unrestricted cyclic SCC の merged surface fast path、merged
-  SCC の完全一致 import deduplication も閉じたが、
+  SCC の完全一致 import deduplication、空置換 / 単相 scheme の走査省略も閉じたが、
   `Cli.ls` の初回 full inference は 45 秒 bounded probe でも完了しなかったため、性能/初回 compile の failure boundary
   は未確定。
 - CLI driver の既定経路へ `CompilationCache` を接続し、依存 SCC を含む cache key、process 間永続化、
@@ -233,7 +239,7 @@ batch 特例除去、および Phase C-2a の明示的 cache compile API と col
 isolation、C-2c の dependency surface key、C-2d の tooling cache API、C-2e の source override scope
 isolation、C-1e の source override SCC inference、C-1f の SCC clean linked-IR hit、C-1g の singleton SCC 直接推論、
 C-1h の dirty SCC lowering/link segment reuse、C-1i の dirty SCC type surface reuse、C-1j の override SCC type surface reuse、
-C-1k の unrestricted cyclic SCC merged surface fast path、C-1l の merged SCC 重複 import 除去を検証済み部分実装として反映した。一括推論の native parity、Formatter canonical runtime parity、override 経路の segment cache、CLI driver の
+C-1k の unrestricted cyclic SCC merged surface fast path、C-1l の merged SCC 重複 import 除去、C-1m の型置換 fast path を検証済み部分実装として反映した。一括推論の native parity、Formatter canonical runtime parity、override 経路の segment cache、CLI driver の
 既定 cache 接続、依存 SCC key、selfhost
 移植は未着手のため、Phase C-1 / C-2 の aggregate 完了とは扱わない。
 着手時は TODO.md に Phase C-1 / C-2 として項目を作成する。
