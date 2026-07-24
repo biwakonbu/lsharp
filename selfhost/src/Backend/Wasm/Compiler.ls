@@ -119,6 +119,7 @@
                   (root_pop)
                   (root_pop)
                   (root_pop)
+                  (root_pop)
                   result)))))))))
 
 (defn continue-compile-user-call-arg-instrs-step-with-source [node source env ftable arg-count state data-ref]
@@ -1781,8 +1782,6 @@
                         result (emit-root-pop-drop instrs10)]
                         (do
                           (root_set instrs-slot result)
-                          (root_pop)
-                          (root_pop)
                           (root_pop)
                           (root_pop)
                           (root_pop)
@@ -3523,6 +3522,7 @@
                           (root_pop)
                           (root_pop)
                           (root_pop)
+                          (root_pop)
                           result)))))))))))))
 
 (defn register-adt-decl [decl ftable func-idx functions]
@@ -4357,6 +4357,7 @@
       (let [result (maybe-root-pop-drop body-instrs init-root)]
         (do
           (root_push result)
+          (root_pop)
           (root_pop)
           (root_pop)
           (root_pop)

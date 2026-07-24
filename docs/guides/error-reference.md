@@ -61,6 +61,7 @@
 | `LS2006` | empty-case-contract | canonical case に検査対象がありません | `:case` に actual / expected の組を少なくとも 1 件追加してください。 |
 | `LS3001` | unsupported-lowering | lowering が未対応の構文です | 対応済みの言語機能へ書き換えるか、該当機能の lowering 実装を追加してください。 |
 | `LS3002` | undefined-lowered-function | lowering 後に未定義関数が残っています | module import、関数定義、stdlib 参照を確認してください。 |
+| `LS3003` | root-lifetime-invariant | GC root slot の lifetime が不整合です | compiler safe-point の root slot と lexical lifetime を確認してください。 |
 | `LS3101` | cyclic-module-dependency | module dependency に循環があります | module 境界を分割するか、循環 import をなくしてください。 |
 | `LS3102` | module-not-found | module が見つかりません | file path、module 名、package install 状態を確認してください。 |
 | `LS3103` | module-not-exported | module が package から export されていません | `lsharp.toml` の exports または import 先を確認してください。 |

@@ -23,6 +23,12 @@ pub enum LowerError {
 
     #[error("未定義の関数: {name}")]
     UndefinedFunction { name: String, span: Option<Span> },
+
+    #[error("GC root slot lifetime の不整合: {error}")]
+    RootLifetime {
+        #[source]
+        error: crate::root_lifetime::RootLifetimeError,
+    },
 }
 
 /// Lowering が値表現を選ぶ backend。
@@ -40,12 +46,14 @@ impl LowerError {
         match self {
             Self::Unsupported { .. } => "LS3001",
             Self::UndefinedFunction { .. } => "LS3002",
+            Self::RootLifetime { .. } => "LS3003",
         }
     }
 
     pub fn span(&self) -> Option<Span> {
         match self {
             Self::Unsupported { span, .. } | Self::UndefinedFunction { span, .. } => *span,
+            Self::RootLifetime { .. } => None,
         }
     }
 }
@@ -784,13 +792,16 @@ impl Lower {
         let lifted = self.lifted_functions.clone();
         functions.extend(lifted);
 
-        Ok(Module {
+        let module = Module {
             functions,
             gc_types: self.gc_types.clone(),
             imports: Vec::new(),
             globals: Vec::new(),
             string_data: self.string_data.clone(),
-        })
+        };
+        crate::root_lifetime::validate_module(&module)
+            .map_err(|error| LowerError::RootLifetime { error })?;
+        Ok(module)
     }
 }
 

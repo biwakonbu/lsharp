@@ -253,6 +253,14 @@ pub(crate) const ERROR_CODES: &[ErrorCodeEntry] = &[
         fix: "module import、関数定義、stdlib 参照を確認してください。",
     },
     ErrorCodeEntry {
+        code: "LS3003",
+        legacy_code: None,
+        name: "root-lifetime-invariant",
+        summary: "GC root slot の lifetime が不整合です",
+        detail: "IR lowering が root_push / root_set / root_pop の slot lifetime 不整合を検出しました。",
+        fix: "compiler safe-point の root slot と lexical lifetime を確認してください。",
+    },
+    ErrorCodeEntry {
         code: "LS3101",
         legacy_code: None,
         name: "cyclic-module-dependency",

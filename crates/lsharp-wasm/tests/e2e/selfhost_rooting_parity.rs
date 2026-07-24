@@ -1,4 +1,5 @@
 use super::support::*;
+use std::collections::HashMap;
 
 const OP_I64_CONST: i64 = 1;
 const OP_SUBSTRING: i64 = 69;
@@ -14,6 +15,82 @@ const OP_MAP_INSERT: i64 = 62;
 const OP_MAP_GET: i64 = 63;
 const OP_FILE_EXISTS: i64 = 73;
 const OP_CALL: i64 = 40;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum SelfhostRootValue {
+    Unknown,
+    Slot(u64),
+}
+
+/// selfhost が出力した raw opcode 列について、root slot の lexical lifetime を検査する。
+///
+/// この helper は Rust lower の個数検査とは別に、selfhost compiler が生成する
+/// `root_push → root_set → root_pop` の対象 slot を追跡する。slot を local に保存して
+/// `root_pop` 後に再利用するケースは、個数だけでは検出できないため明示的に拒否する。
+fn assert_selfhost_root_lifetime(instrs: &[(i64, i64)], context: &str) {
+    let mut stack = Vec::new();
+    let mut locals = HashMap::new();
+    let mut active_slots = Vec::new();
+    let mut next_slot = 0;
+
+    let pop = |stack: &mut Vec<SelfhostRootValue>| {
+        stack.pop().unwrap_or(SelfhostRootValue::Unknown)
+    };
+
+    for (index, (opcode, operand)) in instrs.iter().enumerate() {
+        match *opcode {
+            OP_I64_CONST => stack.push(SelfhostRootValue::Unknown),
+            10 => stack.push(
+                locals
+                    .get(operand)
+                    .cloned()
+                    .unwrap_or(SelfhostRootValue::Unknown),
+            ),
+            11 => {
+                let value = pop(&mut stack);
+                locals.insert(*operand, value);
+            }
+            44 => {
+                pop(&mut stack);
+            }
+            OP_ROOT_PUSH => {
+                pop(&mut stack);
+                let slot = next_slot;
+                next_slot += 1;
+                active_slots.push(slot);
+                stack.push(SelfhostRootValue::Slot(slot));
+            }
+            OP_ROOT_POP => {
+                assert!(
+                    active_slots.pop().is_some(),
+                    "{context}: instruction {index} が空の root stack を pop している: {instrs:?}"
+                );
+                stack.push(SelfhostRootValue::Unknown);
+            }
+            OP_ROOT_SET => {
+                pop(&mut stack);
+                let slot = pop(&mut stack);
+                assert!(
+                    !active_slots.is_empty(),
+                    "{context}: instruction {index} が空の root stack に root_set している: {instrs:?}"
+                );
+                if let SelfhostRootValue::Slot(slot) = slot {
+                    assert!(
+                        active_slots.contains(&slot),
+                        "{context}: instruction {index} が stale root slot {slot} を root_set に渡している: {instrs:?}"
+                    );
+                }
+                stack.push(SelfhostRootValue::Unknown);
+            }
+            _ => {}
+        }
+    }
+
+    assert!(
+        active_slots.is_empty(),
+        "{context}: function end に active root slot が残っている: {active_slots:?}, instrs={instrs:?}"
+    );
+}
 
 fn escape_lsharp_string(text: &str) -> String {
     text.replace('\\', "\\\\").replace('"', "\\\"")
@@ -583,6 +660,16 @@ fn test_e2e_selfhost_compiler_root_set_consumes_allocating_map_insert_result() {
         "root_set は root slot を pop する前に実行すべき: {:?}",
         instrs
     );
+    assert_selfhost_root_lifetime(&instrs, "allocating root_set");
+}
+
+#[test]
+fn test_e2e_selfhost_compiler_root_lifetime_ledger_tracks_nested_map_safe_point() {
+    let (_local_count, instrs) = compile_selfhost_ir_report(
+        r#"(defn main [] (let [slot (root_push (map-new))] (do (root_set slot (map-insert (map-new) 1 2)) (root_pop))))"#,
+    );
+
+    assert_selfhost_root_lifetime(&instrs, "nested map safe point");
 }
 
 #[test]

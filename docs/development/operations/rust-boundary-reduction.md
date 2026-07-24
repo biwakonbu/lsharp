@@ -2085,3 +2085,20 @@ selfhost parser の dotted type name を、qualified value lookup と同じ `ast
 Evidence: RED `test_e2e_selfhost_typeinfer_analysis_resolves_import_qualified_record_type_annotation` は Rust oracleへ `Lib.Point : Int -> Int -> Lib.Point` を注入した Main fixtureで、selfhostが `diagnostics=1` を返した。GREEN は qualified type hashの parser変更と visible constructor schemeの record-return projection後に `diagnostics=0` を確認した。qualified record accessor 3件、record accessor visibility 4件、alias + `:only` record constructor 1件、`cargo run --bin lsharp -- parse selfhost/src/Syntax/Parser.ls` (`decls:241`, `diagnostics:0`)、`cargo run --bin lsharp -- parse selfhost/src/Types/TypeInfer.ls` (`decls:103`, `diagnostics:0`)、`git diff --check` が passした。
 
 これは module-qualified record の式 annotationだけを閉じる verified sliceである。qualified record literal、alias-qualified `L.Point` annotation、defn parameter/return signature、constructor pattern、private record、複数 moduleの forward visibility、standalone native stage0、Wasm artifact/runtime、Mac Apple Silicon / Linux x86_64 のこの変更後 current-source native gate、EC-M1-01 aggregateの完了を意味しない。`TODO.md` の `[~]` と Rust oracle / bootstrap / host integration境界は維持する。次は qualified record literalの parser/oracle contractまたは private record export filteringを一つの REDに固定する。
+### LEGACY-ROOT-01 compiler safe-point root lifetime ledger slice (2026-07-25)
+
+Rust IR lowering に `crates/lsharp-ir/src/root_lifetime.rs` の抽象 ledger を接続し、`root_push` が返す
+slot identity、`root_set` の active target、`root_pop` の lexical lifetime、structured branch の root depth を
+codegen 前に検証するようにした。違反は `LS3003` として fail-closed にし、driver error table / error referenceへ登録した。
+
+RED では selfhost Compiler.ls の `compile-user-call-arg-instrs-step-with-source` の不足 pop、
+`compile-recordupdate-with-ftable` の過剰 pop、`register-adt-variants` と
+`compile-let-with-ftable-impl-body-impl-3` の不足 popを ledger が実際の IR body で検出した。
+修正後は selfhost nested map safe-point fixtureで、生成 IRの local slotを追跡しながら `root_set` 前後と関数 exit
+の root depth 0 を確認した。
+
+Evidence: `cargo test -p lsharp-ir --lib`（255 passed）、
+`test_e2e_selfhost_compiler_root_lifetime_ledger_tracks_nested_map_safe_point`（1 passed）、
+`git diff --check`。rooting parity の並列全件は multifile stateful fixtureの stack overflowで終了したため、
+REPL/LSP stateful runtime、Mac/Linux native stage0、全 control-flow / indirect-call coverage、
+runtime failure ledgerとの actual slot/top/count differentialは未完了である。TODOの `[~]` と Rust/bootstrap/host境界を維持する。

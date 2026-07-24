@@ -37,3 +37,24 @@ runtime 容量不足と root slot invariant failure を machine-readable に区�
 compiler の safe-point ごとに `root_push` が返す slot、`root_set` の更新対象、`root_pop` の lexical lifetime
 を記録する ledger/contract test を追加し、REPL と LSP の stateful telemetry を再び GREEN にすることである。
 Mac Apple Silicon / Linux x86_64 native stage0、Component parity、全 selfhost GC-safe-point 列挙はこの ADR の完了条件に含めない。
+
+## 2026-07-25 compiler safe-point ledger slice
+
+`crates/lsharp-ir/src/root_lifetime.rs` に、lowering が生成した `Instruction::Call(14/15/16)` を対象とする
+抽象 ledger を追加した。ledger は local に保存された slot identity を追跡し、active slot が無い
+`root_pop`、pop 済み slot の `root_set`、分岐ごとの root depth 不一致、関数 exit 時の残留 slot を検出する。
+`Lower::lower_program_with_expr_types` は codegen 前に `validate_module` を実行し、違反は `LS3003`
+(`root-lifetime-invariant`) として fail-closed にする。`LS3003` は driver error table と error reference にも登録した。
+
+この RED で selfhost Compiler.ls の `compile-user-call-arg-instrs-step-with-source`、
+`compile-recordupdate-with-ftable`、`register-adt-variants`、`compile-let-with-ftable-impl-body-impl-3`
+の push/pop 不整合を検出し、対応する pop の不足・過剰を修正した。これは compiler の生成物を
+runtime failure ledger の slot/top/count と対応付けるための最初の fail-closed sliceである。
+
+Evidence: `cargo test -p lsharp-ir --lib`（255 passed）、
+`cargo test -p lsharp-wasm --test e2e e2e::selfhost_rooting_parity::test_e2e_selfhost_compiler_root_lifetime_ledger_tracks_nested_map_safe_point -- --nocapture`
+（1 passed）。rooting parity の並列 full filter は multifile stateful fixtureで stack overflow となったため、
+この slice の全公開 surface / native runtime gate の GREEN とは扱わない。
+
+残る作業は REPL/LSP stateful native/runtime gate、Mac Apple Silicon と Linux x86_64 の current-source
+stage0、indirect branch/call を含む ledger coverage、runtime ledger との actual slot/top/count differential である。

@@ -7,6 +7,7 @@ pub mod cache;
 pub mod closure;
 pub mod lower;
 pub mod module_graph;
+pub mod root_lifetime;
 
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
