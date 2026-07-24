@@ -74,6 +74,8 @@ WASI Preview2 / Component Model への移行に向けた WIT (WebAssembly Interf
   success/failure projection と `filesystem-error-code` downcast contract、
   `input-stream.subscribe` → `pollable.block` → non-blocking `input-stream.read` の pending failure と
   `filesystem-error-code` downcast contract、
+  `input-stream.subscribe` → `pollable.block` → non-blocking `input-stream.skip` の pending failure と
+  `filesystem-error-code` downcast contract、
   `output-stream.blocking-write-zeroes-and-flush` の zero-fill/flush/host artifact/drop lifecycle も
   この world で検証する。暗黙の別 resource table に分離しない
 

@@ -1368,6 +1368,24 @@ input stream の filesystem read を pending 状態で開始し、`input-stream.
 read の invalid-offset downcast verified partial slice であり、他の OS error mapping、Wasm
 artifact/runtime differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity は未完了である。
 
+## Stage 2bn 検証済み slice: non-blocking input-stream skip failure downcast (2026-07-24)
+
+input stream の pending filesystem read に対して `input-stream.subscribe` → `pollable.block` で
+I/O 完了を待ち、non-blocking `input-stream.skip` の failure を観測する状態遷移を actual
+Component で検証した。
+
+- `wasm_gc_component_cli_fs_runner_maps_nonblocking_input_skip_failure_to_filesystem_error_code`
+  は read-only preopen の `input.txt` に offset `u64::MAX` の input stream を作り、subscribe/block
+  後に `skip(1)` を呼ぶ。outer error の `stream-error::last-operation-failed`（discriminant `0`）と
+  `result<u64, stream-error>` の canonical ABI（stream-error case `+8`、error handle `+12`）を固定する。
+- error resource を borrowed `filesystem-error-code` に渡すと `Some(error-code::invalid)`
+  （discriminant `12`）になることを確認する。marker `S`、`wasi:cli/run` exit code `0`、
+  error/pollable/input stream/descriptor/preopen の drop を同じ actual Component 実行で固定する。
+
+これは non-blocking input skip の invalid-offset downcast verified partial slice であり、他の OS
+error mapping、Wasm artifact/runtime differential、Mac Apple Silicon/Linux x86_64、native/selfhost
+parity は未完了である。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線
