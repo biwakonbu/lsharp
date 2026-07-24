@@ -1711,6 +1711,24 @@ Stage 3h の direct application で生成した captured env を `let` binding �
 これは captured env `let` alias の verified partial slice であり、closure 全体および
 `LEGACY-EXEC-01` の完了条件には到達していない。
 
+### Stage 3j: WasmGC module-link の typed funcref / GC type remap (検証済み partial slice)
+
+複数 IR module をリンクするとき、命令列だけでなく function signature、local、GC struct/array
+field に残る module-local type index も linked module の index 空間へリベースする経路を追加した。
+これにより Stage 3g の `TypedFuncRef` local と Stage 3h/3i の env struct が module-link 後も
+同じ concrete function/GC type を参照する。
+
+- `IrType::Ref` は GC type remap、`IrType::TypedFuncRef` は function type remap を通し、関数の
+  params/result/locals、`GcTypeKind::Struct` の fields、`GcTypeKind::Array` の element type を更新する。
+- `test_link_funcref_rebases_typed_local_and_gc_field_types` は、2 module の異なる GC/import/function
+  prefix を持つ `Ref` / `TypedFuncRef` signature と env 相当 field を linked index へ変換することを固定する。
+- 命令内の `RefFunc` / `CallRef` remap、import dedup、recursive type group の emitter contract は
+  既存 Stage 3b/3h のまま利用する。global/cache/module graph の全 parity、Mac/Linux native-selfhost
+  runtime evidence は未完了である。
+
+これは module-link 型境界の verified partial slice であり、closure 全体および
+`LEGACY-EXEC-01` の完了条件には到達していない。
+
 ### Stage 3: Closures → funcref + env struct
 
 - 現行の lambda lifting (`lower/closure.rs`) は維持し、env をリニアメモリ tuple から
@@ -1771,8 +1789,8 @@ Stage 2q の custom CLI `wasi:cli/run` 接続、Stage 3a の typed funcref emitt
 Stage 3b の module-link funcref index/type remap、Stage 3c の captured closure lowering 明示境界、
 Stage 3d の non-capturing lambda funcref lowering、Stage 3e の source-level direct `call_ref`、
 Stage 3f の local non-capturing alias `call_ref`、Stage 3g の concrete typed local、Stage 3h の
-direct captured env struct `call_ref`、Stage 3i の captured env `let` alias `call_ref` は 2026-07-24 に
-検証済み。ADT
+direct captured env struct `call_ref`、Stage 3i の captured env `let` alias `call_ref`、Stage 3j の
+module-link typed funcref / GC type remap は 2026-07-24 に検証済み。ADT
 の全表現、Stage 2 の残り (Unicode code-point semantics / WASI-component I/O /
 native-selfhost parity)、Stage 3 の captured env/call を含む closure 全体、traits / selfhost、supported target
 の actual runtime evidence は未完了であり、`LEGACY-EXEC-01` の完了条件には到達していない。

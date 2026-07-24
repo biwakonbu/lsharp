@@ -482,6 +482,8 @@ pub fn link_modules(modules: &[Module]) -> Module {
     let mut import_dedup: HashMap<(String, String), u32> = HashMap::new();
     // (モジュールindex, 旧import_index) -> 新import_index
     let mut import_remap: HashMap<(usize, u32), u32> = HashMap::new();
+    // linked import が採用した module-local signature の出所。
+    let mut import_sources: Vec<(usize, u32)> = Vec::new();
 
     for (mod_idx, module) in modules.iter().enumerate() {
         for (old_idx, imp) in module.imports.iter().enumerate() {
@@ -493,6 +495,7 @@ pub fn link_modules(modules: &[Module]) -> Module {
                 import_dedup.insert(key, new_idx);
                 import_remap.insert((mod_idx, old_idx as u32), new_idx);
                 linked_imports.push(imp.clone());
+                import_sources.push((mod_idx, old_idx as u32));
             }
         }
     }
@@ -556,11 +559,55 @@ pub fn link_modules(modules: &[Module]) -> Module {
         linked_function_offset += module.functions.len() as u32;
     }
 
+    // 関数シグネチャと GC 型定義にも module-local な型 index が残るため、
+    // 命令列と同じ remap を適用する。WasmGC の env struct は field に
+    // `Ref(gc_type)` と `TypedFuncRef(function_type)` の両方を持つため、
+    // 命令だけを直しても linked module の型境界が壊れる。
+    for (mod_idx, module) in modules.iter().enumerate() {
+        for (old_idx, gc_type) in module.gc_types.iter().enumerate() {
+            let Some(&new_idx) = gc_type_remap.get(&(mod_idx, old_idx as u32)) else {
+                continue;
+            };
+            let mut remapped = gc_type.clone();
+            remap_gc_type_definition(&mut remapped, mod_idx, &gc_type_remap, &function_type_remap);
+            linked_gc_types[new_idx as usize] = remapped;
+        }
+    }
+
+    // import の params/result も linked type index の境界に含める。重複 import は最初に
+    // 採用した module-local signature を正本として remap する。
+    for (linked_idx, (source_mod_idx, source_import_idx)) in import_sources.iter().enumerate() {
+        let source_import = &modules[*source_mod_idx].imports[*source_import_idx as usize];
+        let linked_import = &mut linked_imports[linked_idx];
+        for ty in &mut linked_import.params {
+            *ty = remap_ir_type(*ty, *source_mod_idx, &gc_type_remap, &function_type_remap);
+        }
+        linked_import.result = remap_ir_type(
+            source_import.result,
+            *source_mod_idx,
+            &gc_type_remap,
+            &function_type_remap,
+        );
+    }
+
     // 全関数を集約（命令のインデックスをリベース）
     for (mod_idx, module) in modules.iter().enumerate() {
         let module_import_count = module.imports.len() as u32;
         for func in &module.functions {
             let mut new_func = func.clone();
+
+            for ty in &mut new_func.params {
+                *ty = remap_ir_type(*ty, mod_idx, &gc_type_remap, &function_type_remap);
+            }
+            new_func.result = remap_ir_type(
+                new_func.result,
+                mod_idx,
+                &gc_type_remap,
+                &function_type_remap,
+            );
+            for ty in &mut new_func.locals {
+                *ty = remap_ir_type(*ty, mod_idx, &gc_type_remap, &function_type_remap);
+            }
 
             // 命令内のインデックスをリベース
             for instr in &mut new_func.body {
@@ -585,6 +632,49 @@ pub fn link_modules(modules: &[Module]) -> Module {
         imports: linked_imports,
         globals: Vec::new(),
         string_data: Vec::new(),
+    }
+}
+
+/// module-local な GC/function type index を linked module の index へ変換する。
+fn remap_ir_type(
+    ty: IrType,
+    mod_idx: usize,
+    gc_type_remap: &std::collections::HashMap<(usize, u32), u32>,
+    function_type_remap: &std::collections::HashMap<(usize, u32), u32>,
+) -> IrType {
+    match ty {
+        IrType::Ref(index) => gc_type_remap
+            .get(&(mod_idx, index))
+            .copied()
+            .map(IrType::Ref)
+            .unwrap_or(IrType::Ref(index)),
+        IrType::TypedFuncRef(index) => function_type_remap
+            .get(&(mod_idx, index))
+            .copied()
+            .map(IrType::TypedFuncRef)
+            .unwrap_or(IrType::TypedFuncRef(index)),
+        other => other,
+    }
+}
+
+/// GC struct/array の field type に linked module の型 index を適用する。
+fn remap_gc_type_definition(
+    gc_type: &mut GcTypeDef,
+    mod_idx: usize,
+    gc_type_remap: &std::collections::HashMap<(usize, u32), u32>,
+    function_type_remap: &std::collections::HashMap<(usize, u32), u32>,
+) {
+    match &mut gc_type.kind {
+        GcTypeKind::Struct(fields) => {
+            for field in fields {
+                field.ty = remap_ir_type(field.ty, mod_idx, gc_type_remap, function_type_remap);
+            }
+        }
+        GcTypeKind::Array(element_type) => {
+            *element_type =
+                remap_ir_type(*element_type, mod_idx, gc_type_remap, function_type_remap);
+        }
+        GcTypeKind::PackedByteArray => {}
     }
 }
 
@@ -2514,6 +2604,125 @@ mod linker_tests {
                 other => panic!("expected CallRef, got {other:?}"),
             }
         }
+    }
+
+    #[test]
+    fn test_link_funcref_rebases_typed_local_and_gc_field_types() {
+        let module_a = Module {
+            functions: vec![Function {
+                name: "a".to_string(),
+                params: vec![IrType::Ref(0), IrType::TypedFuncRef(2)],
+                result: IrType::TypedFuncRef(2),
+                locals: vec![IrType::Ref(0), IrType::TypedFuncRef(1)],
+                body: vec![
+                    Instruction::RefFunc(0),
+                    Instruction::RefFunc(1),
+                    Instruction::CallRef(2),
+                ],
+                is_export: false,
+            }],
+            gc_types: vec![GcTypeDef {
+                name: "A".to_string(),
+                kind: GcTypeKind::Struct(vec![
+                    GcField {
+                        name: "value".to_string(),
+                        ty: IrType::Ref(0),
+                        mutable: false,
+                    },
+                    GcField {
+                        name: "call".to_string(),
+                        ty: IrType::TypedFuncRef(2),
+                        mutable: false,
+                    },
+                ]),
+            }],
+            imports: vec![ImportFunc {
+                module: "env".to_string(),
+                name: "a-import".to_string(),
+                params: vec![IrType::Ref(0), IrType::TypedFuncRef(2)],
+                result: IrType::Ref(0),
+            }],
+            globals: vec![],
+            string_data: vec![],
+        };
+        let module_b = Module {
+            functions: vec![Function {
+                name: "b".to_string(),
+                params: vec![IrType::Ref(0), IrType::TypedFuncRef(2)],
+                result: IrType::TypedFuncRef(2),
+                locals: vec![IrType::Ref(0), IrType::TypedFuncRef(1)],
+                body: vec![
+                    Instruction::RefFunc(0),
+                    Instruction::RefFunc(1),
+                    Instruction::CallRef(2),
+                ],
+                is_export: false,
+            }],
+            gc_types: vec![GcTypeDef {
+                name: "B".to_string(),
+                kind: GcTypeKind::Struct(vec![
+                    GcField {
+                        name: "value".to_string(),
+                        ty: IrType::Ref(0),
+                        mutable: false,
+                    },
+                    GcField {
+                        name: "call".to_string(),
+                        ty: IrType::TypedFuncRef(2),
+                        mutable: false,
+                    },
+                ]),
+            }],
+            imports: vec![ImportFunc {
+                module: "env".to_string(),
+                name: "b-import".to_string(),
+                params: vec![IrType::Ref(0), IrType::TypedFuncRef(2)],
+                result: IrType::Ref(0),
+            }],
+            globals: vec![],
+            string_data: vec![],
+        };
+
+        let linked = link_modules(&[module_a, module_b]);
+        assert_eq!(
+            linked.imports[0].params,
+            vec![IrType::Ref(0), IrType::TypedFuncRef(4)]
+        );
+        assert_eq!(linked.imports[0].result, IrType::Ref(0));
+        assert_eq!(
+            linked.imports[1].params,
+            vec![IrType::Ref(1), IrType::TypedFuncRef(5)]
+        );
+        assert_eq!(linked.imports[1].result, IrType::Ref(1));
+        assert_eq!(
+            linked.functions[0].params,
+            vec![IrType::Ref(0), IrType::TypedFuncRef(4)]
+        );
+        assert_eq!(linked.functions[0].result, IrType::TypedFuncRef(4));
+        assert_eq!(
+            linked.functions[0].locals,
+            vec![IrType::Ref(0), IrType::TypedFuncRef(2)]
+        );
+        assert_eq!(
+            linked.functions[1].params,
+            vec![IrType::Ref(1), IrType::TypedFuncRef(5)]
+        );
+        assert_eq!(linked.functions[1].result, IrType::TypedFuncRef(5));
+        assert_eq!(
+            linked.functions[1].locals,
+            vec![IrType::Ref(1), IrType::TypedFuncRef(3)]
+        );
+
+        fn assert_gc_field_types(gc_type: &GcTypeDef, expected_ref: u32, expected_func: u32) {
+            let GcTypeKind::Struct(fields) = &gc_type.kind else {
+                panic!("expected struct GC type: {gc_type:?}");
+            };
+            assert_eq!(fields[0].ty, IrType::Ref(expected_ref));
+            assert_eq!(fields[1].ty, IrType::TypedFuncRef(expected_func));
+        }
+
+        assert_gc_field_types(&linked.gc_types[0], 0, 4);
+        assert_gc_field_types(&linked.gc_types[1], 1, 5);
     }
 }
 
