@@ -3209,47 +3209,108 @@
         (root_pop)
         parsed))))
 
-(defn parse-import-alias-v3 [spans pos-ref src name-h name-start name-end]
-  (do
-    (p-advance pos-ref) ;; as を消費
-    (let [alias-start (p-start spans pos-ref)
-      alias-end (p-end spans pos-ref)
-      alias-h (name-hash src alias-start alias-end)]
+(defn parse-import-options-v3
+  [spans pos-ref src name-h name-start name-end alias-hash only-present only-hashes]
+  (if (== (p-current spans pos-ref) 1)
+    (do
+      (p-advance pos-ref) ;; ) を消費
+      (make-import-decl-from-options
+        name-h
+        name-start
+        name-end
+        alias-hash
+        only-present
+        only-hashes))
+    (if (== (p-current spans pos-ref) 50)
       (do
-        (p-advance pos-ref) ;; alias を消費
-        (p-expect spans pos-ref 1) ;; ) を消費
-        (make-import-decl-with-alias name-h name-start name-end alias-h)))))
-
-(defn parse-import-only-v3 [spans pos-ref src name-h name-start name-end]
-  (do
-    (p-advance pos-ref) ;; only を消費
-    (p-expect spans pos-ref 2) ;; [ を消費
-    (let [only-hashes (parse-import-only-symbols-v3 spans pos-ref src (vector-new 0))]
-      (do
-        (root_push only-hashes)
-        (p-expect spans pos-ref 1) ;; ) を消費
-        (let [parsed (make-import-decl-with-only name-h name-start name-end only-hashes)]
+        (p-advance pos-ref) ;; : を消費
+        (if (== (p-current spans pos-ref) 20)
+          (let [option-name (current-symbol-text-v3 spans pos-ref src)]
+            (if (string-eq option-name "as")
+              (do
+                (p-advance pos-ref) ;; as を消費
+                (let [alias-start (p-start spans pos-ref)
+                  alias-end (p-end spans pos-ref)
+                  next-alias-hash (name-hash src alias-start alias-end)]
+                  (do
+                    (p-advance pos-ref) ;; alias を消費
+                    (root_push only-hashes)
+                    (let [parsed
+                            (parse-import-options-v3
+                              spans
+                              pos-ref
+                              src
+                              name-h
+                              name-start
+                              name-end
+                              next-alias-hash
+                              only-present
+                              only-hashes)]
+                      (do
+                        (root_pop)
+                        parsed)))))
+              (if (string-eq option-name "only")
+                (do
+                  (p-advance pos-ref) ;; only を消費
+                  (p-expect spans pos-ref 2) ;; [ を消費
+                  (let [parsed-only
+                          (parse-import-only-symbols-v3
+                            spans
+                            pos-ref
+                            src
+                            (vector-new 0))]
+                    (do
+                      (root_push parsed-only)
+                      (let [parsed
+                              (parse-import-options-v3
+                                spans
+                                pos-ref
+                                src
+                                name-h
+                                name-start
+                                name-end
+                                alias-hash
+                                1
+                                parsed-only)]
+                        (do
+                          (root_pop)
+                          parsed)))))
+                (do
+                  (p-advance pos-ref) ;; 未知 option を消費
+                  (parse-import-options-v3
+                    spans
+                    pos-ref
+                    src
+                    name-h
+                    name-start
+                    name-end
+                    alias-hash
+                    only-present
+                    only-hashes)))))
           (do
-            (root_pop)
-            parsed))))))
+            (p-expect spans pos-ref 1)
+            (make-import-decl-from-options
+              name-h
+              name-start
+              name-end
+              alias-hash
+              only-present
+              only-hashes))))
+      (do
+        (p-expect spans pos-ref 1)
+        (make-import-decl-from-options
+          name-h
+          name-start
+          name-end
+          alias-hash
+          only-present
+          only-hashes)))))
 
 (defn parse-import-open-v3 [spans pos-ref name-h name-start name-end]
   (do
     (p-advance pos-ref) ;; open を消費
     (p-expect spans pos-ref 1) ;; ) を消費
     (make-import-decl-with-open name-h name-start name-end)))
-
-(defn parse-import-option-v3 [spans pos-ref src name-h name-start name-end]
-  (let [option-name (current-symbol-text-v3 spans pos-ref src)]
-    (if (string-eq option-name "as")
-      (parse-import-alias-v3 spans pos-ref src name-h name-start name-end)
-      (if (string-eq option-name "only")
-        (parse-import-only-v3 spans pos-ref src name-h name-start name-end)
-        (if (string-eq option-name "open")
-          (parse-import-open-v3 spans pos-ref name-h name-start name-end)
-          (do
-            (p-expect spans pos-ref 1)
-            (make-import-decl name-h name-start name-end)))))))
 
 (defn parse-import-v3 [spans pos-ref src]
   (do
@@ -3260,15 +3321,27 @@
       (do
         (p-advance pos-ref) ;; name を消費
         (if (== (p-current spans pos-ref) 50)
-          (do
-            (p-advance pos-ref) ;; : を消費
-            (if (== (p-current spans pos-ref) 49)
-              (parse-import-open-v3 spans pos-ref name-h name-start name-end)
-              (if (== (p-current spans pos-ref) 20)
-                (parse-import-option-v3 spans pos-ref src name-h name-start name-end)
-                (do
-                  (p-expect spans pos-ref 1)
-                  (make-import-decl name-h name-start name-end)))))
+          (if (== (span-kind spans (+ (ref-get pos-ref) 1)) 49)
+            (do
+              (p-advance pos-ref) ;; : を消費
+              (parse-import-open-v3 spans pos-ref name-h name-start name-end))
+            (let [empty-only (vector-new 0)]
+              (do
+                (root_push empty-only)
+                (let [parsed
+                        (parse-import-options-v3
+                          spans
+                          pos-ref
+                          src
+                          name-h
+                          name-start
+                          name-end
+                          0
+                          0
+                          empty-only)]
+                  (do
+                    (root_pop)
+                    parsed)))))
           (do
             (p-expect spans pos-ref 1) ;; ) を消費
             (make-import-decl name-h name-start name-end)))))))

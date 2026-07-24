@@ -242,6 +242,7 @@
 ;; :as を含む場合は [26, module-name-hash, module-start, module-end, alias-hash]
 ;; :only を含む場合は [26, module-name-hash, module-start, module-end, alias-hash, only-hashes]
 ;; :open を含む場合は [26, module-name-hash, module-start, module-end, 0, 0, 1]
+;; :as + :only を含む場合は [26, module-name-hash, module-start, module-end, alias-hash, only-hashes]
 (defn make-import-decl [name-hash name-start name-end]
   (vector-push-pair-rooted
     (vector-push-pair-rooted (vector-new 4) (ast-import-decl) name-hash)
@@ -262,6 +263,19 @@
     0
     0
     1))
+(defn make-import-decl-with-alias-and-only [name-hash name-start name-end alias-hash only-hashes]
+  (vector-push-pair-rooted
+    (vector-push-quad-rooted (vector-new 6) (ast-import-decl) name-hash name-start name-end)
+    alias-hash
+    only-hashes))
+(defn make-import-decl-from-options [name-hash name-start name-end alias-hash only-present only-hashes]
+  (if (= only-present 1)
+    (if (= alias-hash 0)
+      (make-import-decl-with-only name-hash name-start name-end only-hashes)
+      (make-import-decl-with-alias-and-only name-hash name-start name-end alias-hash only-hashes))
+    (if (= alias-hash 0)
+      (make-import-decl name-hash name-start name-end)
+      (make-import-decl-with-alias name-hash name-start name-end alias-hash))))
 (defn import-decl-alias-hash [decl]
   (if (> (vector-length decl) 4) (vector-get decl 4) 0))
 (defn make-trait-def [name-hash] (vector-push-triple-rooted (vector-new 8) (ast-traitdef) name-hash 0))
