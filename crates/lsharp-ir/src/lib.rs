@@ -2174,8 +2174,8 @@ pub fn compile_multi_file_with_cache(
 /// 循環を含む multi-file compile の incremental cache 更新を行う。
 ///
 /// SCC は module 単位のトポロジカル推論では扱えないため、SCC ごとに一括推論してから
-/// modular lowering を行う。SCC 内は現時点では segment reuse を行わず、cache には次回の
-/// clean hit と型 surface 比較に必要な成果物だけを保持する。
+/// modular lowering を行う。型推論は SCC 単位で行うが、lowering は clean module の
+/// segment を再利用し、dirty module の segment だけを生成し直す。
 fn compile_multi_file_incremental_scc(
     graph: &module_graph::ModuleGraph,
     sorted_files: &[(String, std::path::PathBuf)],
@@ -2245,6 +2245,9 @@ fn compile_multi_file_incremental_scc(
     let mut all_type_results = Vec::new();
     let mut all_expr_type_results = HashMap::new();
     let mut module_programs = Vec::new();
+    let mut cache_entries = Vec::new();
+    let mut surface_changed_modules = HashSet::new();
+    let mut segment_reuse_candidates = Vec::new();
     for (mod_name, _) in sorted_files {
         let surface = per_module_type_results
             .get(mod_name)
@@ -2269,24 +2272,7 @@ fn compile_multi_file_incremental_scc(
         module_programs.push(lsharp_syntax::ast::Program {
             decls: module_decls,
         });
-    }
 
-    note_incremental_lower();
-    let final_module = lower_multi_file_modular(
-        &module_programs,
-        &all_decls,
-        &all_type_results,
-        &all_expr_type_results,
-    )
-    .map_err(|e| format!("IR 変換エラー: {e}"))?;
-
-    for (mod_name, _) in sorted_files {
-        let program = parsed_modules
-            .get(mod_name)
-            .ok_or_else(|| format!("モジュールの parse 結果がありません: {mod_name}"))?;
-        let surface = per_module_type_results
-            .get(mod_name)
-            .ok_or_else(|| format!("モジュールの SCC 型結果がありません: {mod_name}"))?;
         let direct_imports = direct_imports
             .get(mod_name)
             .ok_or_else(|| format!("モジュールの import 情報がありません: {mod_name}"))?;
@@ -2294,10 +2280,83 @@ fn compile_multi_file_incremental_scc(
             .get(mod_name)
             .copied()
             .ok_or_else(|| format!("モジュールの fingerprint がありません: {mod_name}"))?;
-        let program = std::sync::Arc::new(program.clone());
+        let clean_hit = cache
+            .get(mod_name)
+            .is_some_and(|entry| entry.fingerprint() == fingerprint);
         let deps_key = dependency_surface_key(direct_imports, &per_module_type_results, cache);
-        let mut entry = build_module_cache_entry(fingerprint, deps_key, &program, surface.clone());
+        let deps_hit = cache
+            .get(mod_name)
+            .is_some_and(|entry| entry.deps_key() == deps_key);
+        let direct_dep_surface_changed = direct_imports
+            .keys()
+            .any(|dep_name| surface_changed_modules.contains(dep_name));
+        let segment_reuse_candidate = clean_hit && deps_hit && !direct_dep_surface_changed;
+        let surface_changed = cache
+            .get(mod_name)
+            .map(|entry| !entry.type_surface_clone().export_surface_eq(surface))
+            .unwrap_or(true);
+        if surface_changed {
+            surface_changed_modules.insert(mod_name.clone());
+        }
+
+        let program = parsed_modules
+            .get(mod_name)
+            .ok_or_else(|| format!("モジュールの parse 結果がありません: {mod_name}"))?;
+        let program = std::sync::Arc::new(program.clone());
+        let entry = build_module_cache_entry(fingerprint, deps_key, &program, surface.clone());
+        cache_entries.push((mod_name.clone(), entry));
+        segment_reuse_candidates.push(segment_reuse_candidate);
+    }
+
+    let mut reusable_segments = vec![None; module_programs.len()];
+    for (idx, (mod_name, _)) in cache_entries.iter().enumerate() {
+        if let Some(cached_entry) = cache.get(mod_name)
+            && !cached_entry.ir_segments().is_empty()
+        {
+            reusable_segments[idx] = Some(cached_entry.ir_segments().clone());
+        }
+    }
+
+    note_incremental_lower();
+    let lowering = lower_multi_file_modular_with_segments(
+        &module_programs,
+        &all_decls,
+        &all_type_results,
+        &all_expr_type_results,
+        &reusable_segments,
+        &segment_reuse_candidates,
+    )
+    .map_err(|e| format!("IR 変換エラー: {e}"))?;
+    note_incremental_module_segment_lower_by(lowering.fresh_defn_lower_count);
+    let new_segments = lowering.segments;
+    let old_segments: Option<Vec<ModuleIrSegments>> = if cache
+        .linked_module()
+        .is_some_and(|linked| linked.module_order() == module_order)
+    {
+        cache_entries
+            .iter()
+            .map(|(mod_name, _)| cache.get(mod_name).map(|entry| entry.ir_segments().clone()))
+            .collect()
+    } else {
+        None
+    };
+    let final_module =
+        if let (Some(old_segments), Some(linked)) = (old_segments, cache.linked_module()) {
+            if can_patch_linked_module(cache, &module_order, &old_segments, &new_segments) {
+                note_incremental_link_cache_hit();
+                patch_linked_module(linked.final_module(), &old_segments, &new_segments)
+            } else {
+                note_incremental_link_full();
+                link_module_ir_segments(&new_segments)
+            }
+        } else {
+            note_incremental_link_full();
+            link_module_ir_segments(&new_segments)
+        };
+
+    for ((mod_name, mut entry), segments) in cache_entries.into_iter().zip(new_segments) {
         entry.set_ir(final_module.clone());
+        entry.set_ir_segments(segments);
         cache.insert_module(mod_name.clone(), entry);
     }
     cache.set_linked_module(module_order, final_module.clone());
@@ -3462,6 +3521,90 @@ mod multifile_compile_tests {
         assert!(
             tracker.count() > 0,
             "SCC の dirty rebuild は型推論を再実行するべき"
+        );
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_compile_multi_file_incremental_scc_reuses_clean_ir_segments_after_dirty_module() {
+        let dir = std::env::temp_dir().join(format!(
+            "lsharp_compile_multi_file_incremental_scc_segments_{}",
+            std::process::id()
+        ));
+        if dir.exists() {
+            std::fs::remove_dir_all(&dir).unwrap();
+        }
+        std::fs::create_dir_all(&dir).unwrap();
+
+        std::fs::write(
+            dir.join("Base.ls"),
+            "(module Base)\n(defn base-val [] 10)\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("A.ls"),
+            "(module A)\n(import B)\n(import Base)\n(defn a-step [n] (if (= n 0) 1 (b-step (- n 1))))\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("B.ls"),
+            "(module B)\n(import A)\n(import Base)\n(defn b-step [n] (if (= n 0) 0 (a-step (- n 1))))\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("Main.ls"),
+            "(module Main)\n(import A)\n(defn main [] (a-step 4))\n",
+        )
+        .unwrap();
+
+        let mut cache = CompilationCache::new();
+        compile_multi_file_incremental(&dir.join("Main.ls"), &mut cache).unwrap();
+        assert!(
+            !cache
+                .get("Base")
+                .expect("Base module should be cached")
+                .ir_segments()
+                .is_empty(),
+            "SCC compile 後も独立した module の IR segment を cache するべき"
+        );
+
+        std::fs::write(
+            dir.join("A.ls"),
+            "(module A)\n(import B)\n(import Base)\n(defn a-step [n] (if (= n 0) 2 (b-step (- n 1))))\n",
+        )
+        .unwrap();
+
+        let tracker = IncrementalModuleSegmentLowerTracker::new();
+        tracker.reset();
+        let link_tracker = IncrementalLinkTracker::new();
+        link_tracker.reset();
+        let incremental = compile_multi_file_incremental(&dir.join("Main.ls"), &mut cache).unwrap();
+        let full = compile_multi_file(&dir.join("Main.ls")).unwrap();
+
+        assert_eq!(
+            tracker.count(),
+            1,
+            "SCC 内の A だけが dirty なら clean module の segment を再利用し、fresh lower は A のみにするべき"
+        );
+        assert_eq!(
+            link_tracker.cache_hit_count(),
+            1,
+            "SCC の segment 長が不変なら cached final module を range patch するべき"
+        );
+        assert_eq!(
+            link_tracker.full_count(),
+            0,
+            "SCC の segment 長が不変なら full relink を再実行しないべき"
+        );
+        assert_eq!(
+            incremental.dump(),
+            full.dump(),
+            "SCC の dirty segment reuse 後も final linked IR は full compile と一致するべき"
+        );
+        assert_eq!(
+            incremental.string_data, full.string_data,
+            "SCC の dirty segment reuse 後も string_data は full compile と一致するべき"
         );
 
         std::fs::remove_dir_all(&dir).unwrap();

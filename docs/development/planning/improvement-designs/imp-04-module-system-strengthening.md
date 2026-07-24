@@ -168,17 +168,25 @@ cyclic SCC は merged 推論と visibility revalidation を維持し、相互再
 回帰も通過している。これは重複推論を除く verified partial slice であり、dirty SCC の局所再推論や disk persistence
 を実装したものではない。
 
+Phase C-1h として、SCC を含む incremental compile でも `ModuleIrSegments` を cache に保存し、clean module の
+lowering を再利用する経路を接続した。segment の再利用候補は source fingerprint、依存 type surface key、直接依存の
+surface 変更を同時に確認し、dirty module だけを fresh lower する。module order と各 segment の layout が不変なら、
+既存 linked IR を range patch して full relink も省略する。A↔B cycle と独立した Base、Main の fixture で、A の実装だけを
+変更した場合に fresh defn lower が 1 件、linked patch が 1 件となり、full compile と IR/string data が一致することを
+固定した。型推論自体は SCC 単位で再実行するため、これは lowering/link の verified partial slice である。
+
 ### 未完了の後続作業
 
 - Formatter 3 モジュールの explicit-import 後の canonical compile/runtime parity と長時間 probe の failure
-  boundary を確定する。現状は batch 特例を除去済みで warm SCC linked-IR hit と singleton の重複推論除去も閉じたが、
+  boundary を確定する。現状は batch 特例を除去済みで warm SCC linked-IR hit、singleton の重複推論除去、dirty
+  SCC の lowering/link segment reuse も閉じたが、
   `Cli.ls` の初回 full inference は 38 module graph 上で 90 秒超かかるため、性能/初回 compile の failure boundary
   は未確定。
 - CLI driver の既定経路へ `CompilationCache` を接続し、依存 SCC を含む cache key、process 間永続化、
   selfhost compiler への移植を行う。
 - source override 入口はまだ strict な graph build と module 単位推論を使っており、SCC-aware override
-  inference は C-1e で閉じた。incremental compile / override SCC 経路とも segment reuse、dirty SCC の局所
-  再推論、disk persistence は未着手である。
+  inference は C-1e で閉じた。incremental compile の dirty lowering は C-1h で閉じたが、override 経路への
+  segment reuse、dirty SCC の局所型再推論、disk persistence は未着手である。
 - 今回の Wasm/WASI evidence は Rust host の Mac 実行に限定され、Mac Apple Silicon / Linux x86_64 の
   native stage0 実行証跡は未取得である。
 - `LEGACY-MODULE-01` の aggregate 完了条件（両対応 target、native stage0、公開 command）を満たすまで、
@@ -198,8 +206,9 @@ Phase C-1a の deterministic SCC 検出 API と unit test、C-1b の compile/inf
 fixture、C-1c の incremental SCC fallback と clean rebuild parity、C-1d の Formatter explicit imports と
 batch 特例除去、および Phase C-2a の明示的 cache compile API と cold/warm parity test、C-2b の entry scope
 isolation、C-2c の dependency surface key、C-2d の tooling cache API、C-2e の source override scope
-isolation、C-1e の source override SCC inference、C-1f の SCC clean linked-IR hit、C-1g の singleton SCC 直接推論を検証済み部分実装として
-反映した。一括推論の native parity、Formatter canonical runtime parity、SCC の segment reuse、CLI driver の
+isolation、C-1e の source override SCC inference、C-1f の SCC clean linked-IR hit、C-1g の singleton SCC 直接推論、
+C-1h の dirty SCC lowering/link segment reuse を検証済み部分実装として
+反映した。一括推論の native parity、Formatter canonical runtime parity、SCC の局所型再推論、CLI driver の
 既定 cache 接続、依存 SCC key、selfhost
 移植は未着手のため、Phase C-1 / C-2 の aggregate 完了とは扱わない。
 着手時は TODO.md に Phase C-1 / C-2 として項目を作成する。
