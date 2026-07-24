@@ -1016,6 +1016,21 @@ Stage 2aq の path-based timestamp boundary に加えて、write-enabled named p
 directory descriptor mutation、残る descriptor operation、Wasm artifact/runtime differential、Mac
 Apple Silicon/Linux x86_64、native/selfhost parity は未完了である。
 
+## Stage 2as 検証済み slice: descriptor advise lifecycle (2026-07-24)
+
+Stage 2ar の descriptor timestamp boundary に加えて、read-only named preopen の open file descriptor
+から `descriptor.advise` の `advice` enum、success result、resource-drop 境界を actual Component で
+検証した。
+
+- `wasm_gc_component_cli_fs_runner_advises_descriptor_and_drops_resources` は `input.txt` を read-only
+  descriptor として開き、offset `0`、length `5`、`advice::normal` を渡す。
+- `result<_, error-code>` success discriminant を確認し、file/preopen descriptor を drop する。実行後の
+  host file bytes `hello`、stdout empty、`wasi:cli/run` exit 0 を同じ実行で確認する。
+
+これは descriptor advise の verified partial slice であり、他の advice variant、range/error behavior、
+残る descriptor operation、Wasm artifact/runtime differential、Mac Apple Silicon/Linux x86_64、
+native/selfhost parity は未完了である。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線
