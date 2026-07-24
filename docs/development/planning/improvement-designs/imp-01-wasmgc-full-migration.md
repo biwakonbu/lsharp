@@ -1128,8 +1128,8 @@ Stage 2ax の skip boundary に続き、read-only named preopen の input stream
 - `5 - first_read_len` を `blocking-read` に渡し、残りの bytes を stdout に渡した後、input
   stream、descriptor、preopen を drop して `wasi:cli/run` exit 0、stdout `hello` を確認する。
 
-これは input-stream read の verified partial slice であり、stream error/closed、empty source、
-複数回の partial read、poll readiness、Wasm artifact/runtime differential、Mac Apple
+これは input-stream read の verified partial slice であり、stream error/closed、複数回の partial read、
+poll readiness、Wasm artifact/runtime differential、Mac Apple
 Silicon/Linux x86_64、native/selfhost parity は未完了である。
 
 ## Stage 2az 検証済み slice: input-stream EOF read (2026-07-24)
@@ -1143,9 +1143,24 @@ success の空 list を返す EOF boundary を同じ actual Component で検証�
   EOF 確認 marker `E` を stdout に追加する。input stream、descriptor、preopen の drop と
   `wasi:cli/run` exit 0、stdout `helloE` を同じ実行で確認する。
 
-これは regular-file EOF の verified partial slice であり、stream error/closed、empty source、
-複数回の partial read、poll readiness、Wasm artifact/runtime differential、Mac Apple
+これは regular-file EOF の verified partial slice であり、stream error/closed、複数回の partial read、
+poll readiness、Wasm artifact/runtime differential、Mac Apple
 Silicon/Linux x86_64、native/selfhost parity は未完了である。
+
+## Stage 2ba 検証済み slice: input-stream empty source read (2026-07-24)
+
+空の regular file を input stream として開いた場合も、non-blocking `read(1)` が stream error
+ではなく success の空 list を返す境界を actual Component で検証した。
+
+- `wasm_gc_component_cli_fs_runner_reads_empty_input_stream_as_empty_success` は空の `input.txt`
+  を read-only named preopen から開き、`read-via-stream(0)` で input stream を取得する。
+- `read(1)` の result discriminant が success、list length が 0 であることを確認し、empty-source
+  marker `Z` を stdout に渡す。input stream、descriptor、preopen を drop して `wasi:cli/run`
+  exit 0、stdout `Z` を同じ実行で確認する。
+
+これは empty source の verified partial slice であり、stream error/closed、複数回の partial read、
+poll readiness、Wasm artifact/runtime differential、Mac Apple Silicon/Linux x86_64、native/selfhost
+parity は未完了である。
 
 ## 実装戦略
 

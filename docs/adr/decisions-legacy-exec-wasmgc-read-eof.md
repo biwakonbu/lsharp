@@ -26,6 +26,6 @@ marker `E` を stdout に追加する。最後に input stream、descriptor、pr
 
 ## Residual risk
 
-これは regular-file EOF の verified partial slice である。stream error/closed、empty source、複数回の
-partial read、poll readiness、Wasm artifact/runtime differential、Mac Apple Silicon/Linux x86_64
+これは regular-file EOF の verified partial slice である。stream error/closed、複数回の partial read、
+poll readiness、Wasm artifact/runtime differential、Mac Apple Silicon/Linux x86_64
 native evidence、native/selfhost parity は別途必要であり、aggregate completion とは扱わない。

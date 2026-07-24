@@ -28,6 +28,6 @@ input stream、descriptor、preopen を drop する。
 
 ## Residual risk
 
-これは input-stream read の verified partial slice である。stream error/closed、EOF・empty source、
-複数回の partial read、poll readiness、Wasm artifact/runtime differential、Mac Apple Silicon/Linux
+これは input-stream read の verified partial slice である。stream error/closed、複数回の partial read、
+poll readiness、Wasm artifact/runtime differential、Mac Apple Silicon/Linux
 x86_64 native evidence、native/selfhost parity は別途必要であり、aggregate completion とは扱わない。
