@@ -1017,3 +1017,36 @@ fn test_e2e_selfhost_typeinfer_analysis_accepts_private_definition_call() {
         "private defn 呼び出しは selfhost TypeInfer でも成功し、定義 failure を増やさないべき"
     );
 }
+
+/// EC-M1-01: do ブロック内の依存失敗も dependency failure として分類する
+#[test]
+fn test_e2e_selfhost_typeinfer_analysis_classifies_do_dependency_failure_kind() {
+    let source = "(defn primary [] missing) (defn dependent [] (do primary 42))";
+    let program = lsharp_syntax::parse(source).expect("do dependency fixture は parse できるべき");
+    let mut oracle = Infer::new();
+    assert!(
+        oracle.infer_program(&program).is_err(),
+        "Rust oracle は未定義 primary を含む do dependency fixture を拒否するべき"
+    );
+
+    let harness = r#"
+(defn main []
+  (let [analysis
+          (infer-program-analysis
+            (parse-program "(defn primary [] missing) (defn dependent [] (do primary 42))"))
+        kinds (infer-program-analysis-failure-kinds analysis)]
+    (do
+      (print (infer-program-analysis-diagnostic-count analysis))
+      (print (vector-get kinds 0))
+      (print (vector-get kinds 1))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_typeinfer_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(lines, ["2", "1", "2"]);
+}

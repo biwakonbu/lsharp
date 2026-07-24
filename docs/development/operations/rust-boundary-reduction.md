@@ -1935,3 +1935,11 @@ Evidence: `NATIVE_LINUX_X86_HOSTGEN_VM_ARTIFACT_ID=main-current-a4b69b79 NATIVE_
 Evidence: RED `test_e2e_selfhost_typeinfer_analysis_accepts_private_definition_call` は Rust oracle の `Infer::infer_program` 成功に対し、selfhost が `diagnostics=1`、`failureKinds=[1]` を返した（34.57s）。GREEN は同じ fixtureで selfhost `diagnostics=0`、`failureKinds=[0,0]` を確認した（35.28s）。既存の span/classification を含む analysis regression 11件も `11 passed`（133.65s）となった。
 
 これは同一 flattened program 内の private `defn` local visibilityだけを閉じる verified sliceであり、import 先 private symbol の非公開境界、qualified import、`:only` / `:as` / `:open`、private type/record/ADT、no-argument apply、Mac Apple Silicon / Linux x86_64 のこの変更後 current-source native gate、EC-M1-01 aggregateの完了を意味しない。`TODO.md` の `[~]` と Rust oracle / bootstrap / host integration境界は維持する。次は imported private function の module boundary または qualified import parser/lookupのどちらか一つを RED に固定する。
+
+### EC-M1-01 two-expression do dependency failure-kind slice (2026-07-24)
+
+2式の `do` ブロックの先頭式で失敗した undefined symbol を `propagate-error-result-with-span-and-name` へ渡し、先行して失敗した top-level 定義の name hash を failure-kind 分類まで保持する経路を閉じた。対象は `(defn primary [] missing) (defn dependent [] (do primary 42))` に限定し、3式以上の `do`、後続式、computation、import 境界は変更していない。
+
+Evidence: RED `test_e2e_selfhost_typeinfer_analysis_classifies_do_dependency_failure_kind` は Rust oracle の拒否に対し、selfhost が `diagnostics=2`、`failureKinds=[1,1]` を返した（35.68s）。GREEN は同じ fixtureで `diagnostics=2`、`failureKinds=[1,2]` を確認した（1 passed、33.09s）。既存の span/classification を含む analysis regression 12件も `12 passed`（118.62s）となり、`CARGO_TARGET_DIR=/tmp/lsharp-do-failure-red-target cargo run --quiet --bin lsharp -- check examples/fib.ls` は `Fn`、diagnostics `0`、failureKinds `[0,0]` で成功した。
+
+これは2式 `do` の先頭 failure name-hash propagationだけを閉じる verified sliceであり、`do` の他の式数・位置、非-`undefined symbol` の dependency分類、import/private module boundary、standalone `TypeInfer.ls` source-check `0`、Mac Apple Silicon / Linux x86_64 のこの変更後 current-source native gate、EC-M1-01 aggregateの完了を意味しない。`TODO.md` の `[~]` と Rust oracle / bootstrap / host integration境界は維持する。次は imported private function の module boundary または qualified import parser/lookupのどちらか一つを RED に固定する。

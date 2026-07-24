@@ -131,7 +131,7 @@
         ;; 2 式以上: 各式を順次推論、最後の型を返す
         (let [r1 (infer-expr (vector-get node 2) env subst counter)]
           (if (= (result-failed r1) 1)
-            (propagate-error-result r1)
+            (propagate-error-result-with-span-and-name r1)
             (let [s1 (result-subst r1)]
               (if (= ec 2)
                 (infer-expr (vector-get node 3) env s1 counter)
