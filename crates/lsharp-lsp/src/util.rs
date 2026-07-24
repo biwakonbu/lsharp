@@ -11,11 +11,14 @@ pub(crate) fn offset_to_position(source: &str, offset: usize) -> Position {
         if i >= offset {
             break;
         }
+        if i + ch.len_utf8() > offset {
+            break;
+        }
         if ch == '\n' {
             line += 1;
             col = 0;
         } else {
-            col += 1;
+            col += ch.len_utf16() as u32;
         }
     }
     Position::new(line, col)
@@ -37,7 +40,12 @@ pub(crate) fn position_to_offset(source: &str, position: Position) -> Option<usi
             line += 1;
             col = 0;
         } else {
-            col += 1;
+            let next_col = col + ch.len_utf16() as u32;
+            if line == position.line && position.character < next_col {
+                // サロゲートペアの途中など、文字境界でない位置は文字の先頭へ寄せる
+                return Some(i);
+            }
+            col = next_col;
         }
     }
     // ファイル末尾
@@ -535,6 +543,21 @@ mod tests {
         assert_eq!(position_to_offset(source, Position::new(0, 0)), Some(0));
         assert_eq!(position_to_offset(source, Position::new(1, 0)), Some(6));
         assert_eq!(position_to_offset(source, Position::new(1, 2)), Some(8));
+    }
+
+    #[test]
+    fn positions_use_utf16_code_units_for_non_ascii_source() {
+        let source = "😀 x\n日本語";
+
+        assert_eq!(offset_to_position(source, 1), Position::new(0, 0));
+        assert_eq!(offset_to_position(source, 4), Position::new(0, 2));
+        assert_eq!(offset_to_position(source, 6), Position::new(0, 4));
+        assert_eq!(offset_to_position(source, 16), Position::new(1, 3));
+
+        assert_eq!(position_to_offset(source, Position::new(0, 1)), Some(0));
+        assert_eq!(position_to_offset(source, Position::new(0, 2)), Some(4));
+        assert_eq!(position_to_offset(source, Position::new(0, 3)), Some(5));
+        assert_eq!(position_to_offset(source, Position::new(1, 3)), Some(16));
     }
 
     #[test]
