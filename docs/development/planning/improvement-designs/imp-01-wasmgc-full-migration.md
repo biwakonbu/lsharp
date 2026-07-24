@@ -1265,9 +1265,25 @@ filesystem descriptor から作った input stream の `blocking-read` が返す
   `error-code::invalid`（discriminant `12`）であることを確認する。marker `E`、`wasi:cli/run` exit
   code `0`、error/input stream/descriptor/preopen の drop を同じ actual Component 実行で固定する。
 
-これは filesystem read の invalid-offset downcast verified partial slice であり、write/flush 由来の
-`last-operation-failed`、他の OS error mapping、Wasm artifact/runtime differential、Mac Apple
-Silicon/Linux x86_64、native/selfhost parity は未完了である。
+これは filesystem read の invalid-offset downcast verified partial slice であり、他の OS error mapping、
+Wasm artifact/runtime differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity は未完了である。
+
+## Stage 2bi 検証済み slice: output-stream last-operation-failed の filesystem error-code downcast (2026-07-24)
+
+filesystem descriptor から作った output stream の `blocking-write-and-flush` が返す
+`stream-error::last-operation-failed` も、`filesystem-error-code` で filesystem `error-code` へ
+downcast できる境界を actual Component で検証した。
+
+- `wasm_gc_component_cli_fs_runner_maps_output_stream_failure_to_filesystem_error_code` は read-write
+  preopen の `output.txt` に offset `u64::MAX` の `write-via-stream` を作り、`blocking-write-and-flush(1)`
+  を呼ぶ。outer result が error、`stream-error` の `last-operation-failed` case（discriminant `0`）を確認する。
+- error resource を borrowed `filesystem-error-code` に渡し、option が `Some`、payload が
+  `error-code::invalid`（discriminant `12`）であることを確認する。marker `O`、`wasi:cli/run` exit
+  code `0`、error/output stream/descriptor/preopen の drop を同じ actual Component 実行で固定する。
+
+これは filesystem output write の invalid-offset downcast verified partial slice であり、非同期
+`write` 後の `flush`/`check-write` error、他の OS error mapping、Wasm artifact/runtime differential、
+Mac Apple Silicon/Linux x86_64、native/selfhost parity は未完了である。
 
 ## 実装戦略
 
