@@ -44,8 +44,8 @@ WASI Preview2 / Component Model への移行に向けた WIT (WebAssembly Interf
 - `wasmgc-cli-fs-streams` は `wasmgc-cli-fs` に `wasi:io/streams@0.2.3` を明示的に加えた world であり、
   descriptor の `read-via-stream` / `write-via-stream` / `append-via-stream` と input/output-stream の
   resource lifecycle、`input-stream.subscribe` から `wasi:io/poll` の `pollable.block` /
-  `pollable.ready` / resource-drop までを同じ Component resource table で検証する。暗黙の別 resource
-  table に分離しない
+  `pollable.ready`、`wasi:io/poll.poll` の borrowed pollable list/ready index、resource-drop までを
+  同じ Component resource table で検証する。暗黙の別 resource table に分離しない
 
 ## 関連タスク
 

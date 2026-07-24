@@ -756,6 +756,22 @@ success/error の drop boundary を actual Component で検証した。
 operation、Wasm artifact/runtime differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity
 は未完了である。
 
+## Stage 2ac 検証済み slice: poll list lifecycle (2026-07-24)
+
+Stage 2aa の単一 pollable boundary に加えて、`wasi:io/poll.poll` の borrowed pollable list と
+ready index の canonical list ABI を actual Component で検証した。
+
+- `wasm_gc_component_cli_fs_runner_polls_subscribed_input_stream_list` は read-only named preopen
+  から input-stream を作り、subscribe → block → ready の後に pollable handle の list を `poll` へ渡す。
+- `poll` が返す `list<u32>` の length `1` と ready index `0` を guest linear memory で確認する。
+  empty list や別 index を成功扱いにせず、list input/output の realloc・memory boundary を component
+  canonical ABI の実行で固定する。
+- pollable、input-stream、descriptor、preopen を drop し、`wasi:cli/run` exit 0、stdout empty、
+  host bytes unchanged (`hello`) を一実行で確認する。
+
+これは poll list と resource-drop の verified partial slice であり、残る descriptor operation、Wasm
+artifact/runtime differential、Mac Apple Silicon/Linux x86_64、native/selfhost parity は未完了である。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線
