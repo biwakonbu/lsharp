@@ -1480,6 +1480,26 @@ Stage 2bq で linear backend の Preview1 / Preview2 Component / WebWasm output 
 fingerprint/manifest、durable fsync、Linux x86_64 native backend、selfhost stage0、release bundle、
 rollback provenance は未完了である。
 
+## Stage 2bt 検証済み slice: artifact の file/parent directory durability sync (2026-07-24)
+
+atomic rename だけでは、temporary file の bytes と rename metadata が crash 後も durable である
+ことを保証できない。Wasm と Mac native executable の publish boundary を同じ durability 手順へ
+拡張した。
+
+- `sync_artifact_file` は temporary artifact の `sync_all` を、`sync_artifact_parent` は Unix の
+  親 directory metadata の `sync_all` を共通 API として提供する。
+- `write_wasm_artifact` は `File::create` → `write_all` → file `sync_all` → `rename` → parent
+  directory `sync_all` の順に実行し、sync/rename failure では temporary artifact を cleanup する。
+- Mac `compile_native_executable` も linker 成功後の temporary executable を file sync し、rename
+  後に parent directory を sync する。parent sync failure は rename 後に起こり得るため、artifact
+  が置換済みで durability confirmation に失敗した診断として返す。
+- `component_adapter::tests::test_artifact_sync_helpers_flush_file_and_parent_directory`、既存の
+  artifact round-trip、Mac native linker failure/runtime tests で境界を確認する。
+
+これは Unix 対応 artifact durability の verified partial slice であり、source
+fingerprint/manifest、Linux x86_64 native backend の実 artifact/runtime、selfhost stage0、release
+bundle、rollback provenance は未完了である。
+
 ## 実装戦略
 
 ### Stage 0: backend フラグの配線

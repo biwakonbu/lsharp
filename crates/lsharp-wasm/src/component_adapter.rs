@@ -1,5 +1,6 @@
 use std::{
     fs,
+    io::Write,
     path::{Path, PathBuf},
     sync::atomic::{AtomicU64, Ordering},
     time::{SystemTime, UNIX_EPOCH},
@@ -244,6 +245,51 @@ pub fn componentize_core_module(
     })
 }
 
+/// artifact file の内容を durable storage へ flush する。
+pub fn sync_artifact_file(path: &Path) -> Result<()> {
+    let file = fs::OpenOptions::new()
+        .read(true)
+        .open(path)
+        .map_err(|err| ComponentAdapterError::Error {
+            msg: format!(
+                "artifact file の同期対象を開けません ({}): {err:#}",
+                path.display()
+            ),
+        })?;
+    file.sync_all().map_err(|err| ComponentAdapterError::Error {
+        msg: format!(
+            "artifact file の同期に失敗しました ({}): {err:#}",
+            path.display()
+        ),
+    })
+}
+
+/// artifact の rename を含む親 directory metadata を durable storage へ flush する。
+#[cfg(unix)]
+pub fn sync_artifact_parent(path: &Path) -> Result<()> {
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    let directory = fs::File::open(parent).map_err(|err| ComponentAdapterError::Error {
+        msg: format!(
+            "artifact parent directory の同期対象を開けません ({}): {err:#}",
+            parent.display()
+        ),
+    })?;
+    directory
+        .sync_all()
+        .map_err(|err| ComponentAdapterError::Error {
+            msg: format!(
+                "artifact parent directory の同期に失敗しました ({}): {err:#}",
+                parent.display()
+            ),
+        })
+}
+
+/// directory metadata の同期 API がない target では file sync までを durability 境界とする。
+#[cfg(not(unix))]
+pub fn sync_artifact_parent(_path: &Path) -> Result<()> {
+    Ok(())
+}
+
 /// Wasm bytes を一時ファイル経由で atomic に artifact path へ保存する。
 pub fn write_wasm_artifact(path: &Path, bytes: &[u8]) -> Result<()> {
     let file_name = path
@@ -268,18 +314,35 @@ pub fn write_wasm_artifact(path: &Path, bytes: &[u8]) -> Result<()> {
         std::process::id()
     ));
     let result = (|| {
-        fs::write(&temporary_path, bytes).map_err(|err| ComponentAdapterError::Error {
-            msg: format!(
-                "Wasm artifact の一時保存に失敗しました ({}): {err:#}",
-                temporary_path.display()
-            ),
-        })?;
+        let mut file =
+            fs::File::create(&temporary_path).map_err(|err| ComponentAdapterError::Error {
+                msg: format!(
+                    "Wasm artifact の一時保存に失敗しました ({}): {err:#}",
+                    temporary_path.display()
+                ),
+            })?;
+        file.write_all(bytes)
+            .map_err(|err| ComponentAdapterError::Error {
+                msg: format!(
+                    "Wasm artifact の一時保存に失敗しました ({}): {err:#}",
+                    temporary_path.display()
+                ),
+            })?;
+        file.sync_all()
+            .map_err(|err| ComponentAdapterError::Error {
+                msg: format!(
+                    "Wasm artifact の一時保存同期に失敗しました ({}): {err:#}",
+                    temporary_path.display()
+                ),
+            })?;
+        drop(file);
         fs::rename(&temporary_path, path).map_err(|err| ComponentAdapterError::Error {
             msg: format!(
                 "Wasm artifact の置換に失敗しました ({}): {err:#}",
                 path.display()
             ),
-        })
+        })?;
+        sync_artifact_parent(path)
     })();
     if result.is_err() {
         let _ = fs::remove_file(&temporary_path);
@@ -363,6 +426,22 @@ mod tests {
             b"core-wasm"
         );
         fs::remove_dir_all(&dir).expect("non-component artifact directory を削除できる");
+    }
+
+    #[test]
+    fn test_artifact_sync_helpers_flush_file_and_parent_directory() {
+        let dir = unique_temp_dir("artifact_sync");
+        let path = dir.join("Main.wasm");
+        fs::write(&path, b"durable-wasm").expect("durable artifact fixture を保存できる");
+
+        sync_artifact_file(&path).expect("artifact file を sync できる");
+        sync_artifact_parent(&path).expect("artifact parent directory を sync できる");
+        assert_eq!(
+            fs::read(&path).expect("synced artifact を再読込できる"),
+            b"durable-wasm"
+        );
+
+        fs::remove_dir_all(&dir).expect("artifact sync directory を削除できる");
     }
 
     #[test]

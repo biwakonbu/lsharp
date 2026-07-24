@@ -36,10 +36,25 @@ pub(crate) fn compile_native_executable(module: &Module, output_path: &Path) -> 
         ));
     }
 
+    if let Err(error) = lsharp_wasm::component_adapter::sync_artifact_file(&temporary_output_path) {
+        let _ = std::fs::remove_file(&temporary_output_path);
+        return Err(miette::miette!(
+            "native artifact file の同期に失敗しました ({}): {error}",
+            temporary_output_path.display()
+        ));
+    }
+
     std::fs::rename(&temporary_output_path, output_path).map_err(|error| {
         let _ = std::fs::remove_file(&temporary_output_path);
         miette::miette!(
             "native artifact の atomic replacement に失敗しました ({}): {error}",
+            output_path.display()
+        )
+    })?;
+
+    lsharp_wasm::component_adapter::sync_artifact_parent(output_path).map_err(|error| {
+        miette::miette!(
+            "native artifact parent directory の同期に失敗しました ({}): {error}",
             output_path.display()
         )
     })?;
