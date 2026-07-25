@@ -16,6 +16,7 @@ mod selfhost_gc_runtime_bootstrap;
 mod selfhost_gc_stateful_soak;
 mod selfhost_html_layout;
 mod selfhost_html_template;
+mod selfhost_intent_source_adapter;
 mod selfhost_jsonrpc_transport;
 mod selfhost_lexer_parser;
 mod selfhost_lowering_ir_bootstrap;
