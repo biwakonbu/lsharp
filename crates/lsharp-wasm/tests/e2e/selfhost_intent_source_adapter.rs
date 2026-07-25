@@ -293,6 +293,41 @@ fn test_e2e_selfhost_source_adapter_rejects_extra_edge_payload() {
     );
 }
 
+/// EC-M2-01 boundary: source node payload は ID と本文の2要素だけを受理する。
+#[test]
+fn test_e2e_selfhost_source_adapter_rejects_extra_node_payload() {
+    let harness = r#"
+(defn main []
+  (let [payload (vector-push-triple-rooted-v3
+                  (vector-new 0)
+                  "claim:checkout/rejects"
+                  "Shipped orders are rejected"
+                  "unexpected")
+        form (vector-push-quad-rooted-v3
+               (vector-new 4)
+               (source-node-claim)
+               payload
+               10
+               20)
+        result (source-node-form-result form)
+        error (source-result-error result)]
+    (do
+      (print (source-result-status result))
+      (print (source-graph-error-code error))
+      (print (source-graph-error-kind error))
+      0)))
+"#;
+
+    let output = run_source_adapter_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "1", "7"],
+        "source node の余分な payload は malformed として fail-closed にするべき"
+    );
+}
+
 /// EC-M2-02 boundary: evidence registry が未接続の supports/contradicts は成功にしない。
 #[test]
 fn test_e2e_selfhost_source_adapter_rejects_unregistered_evidence_edge() {

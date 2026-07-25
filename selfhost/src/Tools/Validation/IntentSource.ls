@@ -204,7 +204,7 @@
       payload (vector-get form 1)
       start (vector-get form 2)
       end (vector-get form 3)]
-      (if (< (vector-length payload) 2)
+      (if (!= (vector-length payload) 2)
         (source-result 0 (source-graph-error-at (source-error-malformed) kind "" start end))
         (let [id (vector-get payload 0)
           text (vector-get payload 1)]
