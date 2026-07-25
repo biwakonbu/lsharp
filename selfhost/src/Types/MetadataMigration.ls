@@ -370,8 +370,39 @@
       counter
       (vector-new 0))))
 
+(defn legacy-migration-code-valid? [code]
+  (or (= code (legacy-example-code))
+    (or (= code (legacy-invariant-code)) (= code (ambiguous-legacy-code)))))
+
+(defn legacy-migration-disposition-valid? [disposition]
+  (or (= disposition (legacy-doc-example-disposition))
+    (or (= disposition (legacy-assertion-disposition))
+      (or (= disposition (legacy-property-disposition))
+        (= disposition (legacy-manual-disposition))))))
+
+(defn legacy-migration-selected-semantics-valid? [selected]
+  (or (= selected 1) (= selected 2)))
+
+(defn legacy-migration-row-schema-valid? [row]
+  (if (< (vector-length row) 7)
+    0
+    (let [code (vector-get row 0)
+      disposition (vector-get row 1)
+      selected (vector-get row 6)]
+      (if (legacy-migration-code-valid? code)
+        (if (legacy-migration-disposition-valid? disposition)
+          (if (legacy-migration-selected-semantics-valid? selected)
+            (if (= code (legacy-invariant-code))
+              (if (= selected 2) 1 0)
+              (if (= selected 1) 1 0))
+            0)
+          0)
+        0))))
+
 (defn legacy-code-text [code]
-  (string-concat "LS" (int-to-string code)))
+  (if (legacy-migration-code-valid? code)
+    (string-concat "LS" (int-to-string code))
+    ""))
 
 (defn legacy-disposition-text [disposition]
   (if (= disposition (legacy-doc-example-disposition))
@@ -380,39 +411,41 @@
       "assertion"
       (if (= disposition (legacy-property-disposition))
         "property-postcondition"
-        "manual-review"))))
+        (if (= disposition (legacy-manual-disposition)) "manual-review" "")))))
 
-(defn legacy-selected-semantics-text [code]
-  (if (= code 2)
+(defn legacy-selected-semantics-text [selected]
+  (if (= selected 2)
     "legacy-invariant-deterministic-smoke"
-    "legacy-example-truthiness"))
+    (if (= selected 1) "legacy-example-truthiness" "")))
 
 (defn legacy-migration-row-detail-text [row]
-  (string-concat
-    (legacy-code-text (vector-get row 0))
+  (if (= (legacy-migration-row-schema-valid? row) 0)
+    ""
     (string-concat
-      "|owner="
+      (legacy-code-text (vector-get row 0))
       (string-concat
-        (int-to-string (vector-get row 4))
+        "|owner="
         (string-concat
-          "|selected="
+          (int-to-string (vector-get row 4))
           (string-concat
-            (legacy-selected-semantics-text (vector-get row 6))
+            "|selected="
             (string-concat
-              "|disposition="
+              (legacy-selected-semantics-text (vector-get row 6))
               (string-concat
-                (legacy-disposition-text (vector-get row 1))
+                "|disposition="
                 (string-concat
-                  "|span="
+                  (legacy-disposition-text (vector-get row 1))
                   (string-concat
-                    (int-to-string (vector-get row 2))
+                    "|span="
                     (string-concat
-                      "-"
+                      (int-to-string (vector-get row 2))
                       (string-concat
-                        (int-to-string (vector-get row 3))
+                        "-"
                         (string-concat
-                          "|message="
-                          (vector-get row 5))))))))))))))
+                          (int-to-string (vector-get row 3))
+                          (string-concat
+                            "|message="
+                            (vector-get row 5)))))))))))))))
 
 (defn legacy-json-hex-digit [digit]
   (if (= digit 0)
@@ -526,33 +559,35 @@
         (string-concat (int-to-string (vector-get row 8)) "}")))))
 
 (defn legacy-migration-row-detail-json [row]
-  (let [fields0 ""
-    fields1 (legacy-json-append-field
-      fields0
-      (legacy-json-field "code" (legacy-code-text (vector-get row 0))))
-    fields2 (legacy-json-append-field
-      fields1
-      (legacy-json-int-field "ownerHash" (vector-get row 4)))
-    fields3 (legacy-json-append-field
-      fields2
-      (legacy-json-field
-        "selectedSemantics"
-        (legacy-selected-semantics-text (vector-get row 6))))
-    fields4 (legacy-json-append-field
-      fields3
-      (legacy-json-field
-        "disposition"
-        (legacy-disposition-text (vector-get row 1))))
-    fields5 (legacy-json-append-field
-      fields4
-      (legacy-json-span-field (vector-get row 2) (vector-get row 3)))
-    fields6 (legacy-json-append-field
-      fields5
-      (legacy-json-field "message" (vector-get row 5)))
-    fields7 (if (> (vector-length row) 8)
-      (legacy-json-append-field fields6 (legacy-json-expression-span-field row))
-      fields6)]
-    (string-concat "{" (string-concat fields7 "}"))))
+  (if (= (legacy-migration-row-schema-valid? row) 0)
+    ""
+    (let [fields0 ""
+      fields1 (legacy-json-append-field
+        fields0
+        (legacy-json-field "code" (legacy-code-text (vector-get row 0))))
+      fields2 (legacy-json-append-field
+        fields1
+        (legacy-json-int-field "ownerHash" (vector-get row 4)))
+      fields3 (legacy-json-append-field
+        fields2
+        (legacy-json-field
+          "selectedSemantics"
+          (legacy-selected-semantics-text (vector-get row 6))))
+      fields4 (legacy-json-append-field
+        fields3
+        (legacy-json-field
+          "disposition"
+          (legacy-disposition-text (vector-get row 1))))
+      fields5 (legacy-json-append-field
+        fields4
+        (legacy-json-span-field (vector-get row 2) (vector-get row 3)))
+      fields6 (legacy-json-append-field
+        fields5
+        (legacy-json-field "message" (vector-get row 5)))
+      fields7 (if (> (vector-length row) 8)
+        (legacy-json-append-field fields6 (legacy-json-expression-span-field row))
+        fields6)]
+      (string-concat "{" (string-concat fields7 "}")))))
 
 (defn legacy-migration-detail-json-summary-loop [rows idx count]
   (if (>= idx count)
@@ -588,9 +623,11 @@
         (legacy-migration-detail-summary-loop rows 0 count)))))
 
 (defn legacy-migration-row-text [row]
-  (string-concat
-    (legacy-code-text (vector-get row 0))
-    (string-concat ":" (legacy-disposition-text (vector-get row 1)))))
+  (if (= (legacy-migration-row-schema-valid? row) 0)
+    ""
+    (string-concat
+      (legacy-code-text (vector-get row 0))
+      (string-concat ":" (legacy-disposition-text (vector-get row 1))))))
 
 (defn legacy-migration-summary-loop [rows idx count]
   (if (>= idx count)

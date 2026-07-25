@@ -398,6 +398,28 @@ Evidence: RED では rows が `[code, disposition]` の 2 要素で、`:example`
 
 これは migration row の owner・directive-level span・disposition-specific message・selected semantics code・typed detail text・source-order row JSON object/array projection・`run-check-source` の text output 接続に限定した verified sliceであり、enum/string schema、CLI `check --json` と structured diagnostic/exit code、module/private owner parity、Wasm artifact/runtime、Mac Apple Silicon / Linux x86_64 の current-source native gate は残件である。row shape/helper と text/row JSON projection の拡張だけで legacy metadata の migration 完了や全機能 Rust-free 完了とは扱わず、Rust oracle / bootstrap 境界を維持する。
 
+### EC-M1-03 selfhost migration enum/string schema fail-closed (2026-07-25)
+
+`Types.MetadataMigration` に migration row の canonical schema validator を追加した。row は少なくとも
+`[diagnostic-code, disposition, directive-start, directive-end, owner-hash, message,
+selected-semantics-code]` を持ち、diagnostic code は `2001/2002/2003`、disposition は `1..4`、
+selected semantics は `1/2` の wire enum だけを受理する。`LS2002` は selected semantics `2`、
+それ以外の code は `1` でなければ invalid とする。未知の値を `manual-review`、
+`legacy-example-truthiness`、または `LS<number>` へ丸めず、row detail text/JSON/summary text の
+projection は空文字で fail-closed に停止する。
+
+Evidence: RED の `test_e2e_selfhost_migration_row_schema_rejects_unknown_enum_values` は未定義の
+`legacy-migration-row-schema-valid?` で失敗した。GREEN は同じ migration-only selfhost Wasm bundle
+で、valid row `1`、unknown code/disposition/selected semantics 各 `0`、valid detail text の存在、
+invalid text/JSON/summary projection の空文字を確認した。Rust `metadata_migration` の typed enum
+oracle は変更せず、selfhost Wasm E2E は Rust host compile/run の oracle laneとして記録する。
+
+これは selfhost の row enum/string boundary と fail-closed projection に限定した verified sliceであり、
+CLI `check --json` の structured diagnostic/exit code、全 legacy form evaluator、module/private owner
+parity、Mac Apple Silicon / Linux x86_64 の current-source native stage0、EC-M1-03 aggregate は残件で
+ある。TODO の migration 全体は `[~]` のまま扱い、この sliceだけで legacy metadata migration 完了や
+全機能 Rust-free 完了とは宣言しない。
+
 ### EC-M1-03 selfhost migration expression span projection (2026-07-18)
 
 `Syntax.Parser` の ordered legacy form に optional field `4` として `:example` の各 top-level expression span、および `:invariant` predicate span を保持するようにした。`Types.MetadataMigration` は row の先頭 7 fields を維持したまま index `7/8` に expression の absolute source `start/end` を追加し、JSON object には `expressionSpan` を追加する。既存の directive-level `span`、owner、message、selected semantics code、text detail は変更しない。複数の bracketed example expression は source order の row と span order を対応させ、scanner は開き括弧を消費した既存 depth 契約と flat span vector の token 数境界を共有する。
