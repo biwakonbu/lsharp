@@ -386,7 +386,7 @@ fn test_run_metadata_tests_executes_bool_property_binder() {
     let file = dir.join("Main.ls");
     fs::write(
         &file,
-        "(defn identity [x] :property [(for-all [value Bool] :cases 2 :postcondition (or value (not value)))] x)\n",
+        "(defn identity [x] :property [(for-all [value Bool] :cases 2 :postcondition (= result (if value 1 0)))] (if x 1 0))\n",
     )
     .unwrap();
 
@@ -396,6 +396,26 @@ fn test_run_metadata_tests_executes_bool_property_binder() {
     assert_eq!(run.passed(), 1);
     assert_eq!(run.failed(), 0);
     assert_eq!(run.results[0].name, "identity_property_0");
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn test_run_metadata_tests_rejects_vacuous_bool_property() {
+    let dir = unique_temp_dir("vacuous_bool_property");
+    let file = dir.join("Main.ls");
+    fs::write(
+        &file,
+        "(defn identity [x] :property [(for-all [value Bool] :cases 2 :postcondition (or value (not value)))] x)\n",
+    )
+    .unwrap();
+
+    let error =
+        run_metadata_tests(&file).expect_err("vacuous Bool property を成功扱いしてはならない");
+    assert!(
+        error.to_string().contains("[LS2005]"),
+        "vacuous Bool property は LS2005 を返すべき: {error}"
+    );
 
     let _ = fs::remove_dir_all(&dir);
 }
@@ -666,7 +686,7 @@ fn test_run_metadata_tests_rejects_bool_property_above_two_cases() {
     let file = dir.join("Main.ls");
     fs::write(
         &file,
-        "(defn identity [x] :property [(for-all [value Bool] :cases 3 :postcondition (or value (not value)))] x)\n",
+        "(defn identity [x] :property [(for-all [value Bool] :cases 3 :postcondition (= result (if value 1 0)))] (if x 1 0))\n",
     )
     .unwrap();
 
