@@ -14596,7 +14596,6 @@ fn test_e2e_selfhost_cli_main_with_args_parse_file() {
 
 /// EC-M2-01: selfhost Cli の source validation は Rust oracle と同じ unknown report を返す
 #[test]
-#[ignore = "既存 typeinfer-builtin-root-value の関数間 root lease が lowering ledger で未対応のため"]
 fn test_e2e_selfhost_cli_validate_source_json_reports_trace_gap() {
     let dir = std::env::temp_dir().join(format!(
         "lsharp_test_cli_validate_source_json_{}",

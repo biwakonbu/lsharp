@@ -567,10 +567,10 @@ code `2` を追加した。`selfhost_cli_validation_contract` は command/help/o
 contract を RED から GREEN へ確認している。
 
 同じ fixtureを actual Wasm で実行する `test_e2e_selfhost_cli_validate_source_json_reports_trace_gap` は、
-lowering前に既存 `typeinfer-builtin-root-value` の関数間 root leaseを検出していた。専用 helperの
-acquire/release shape checkを追加し、`run-check-program` の3 slotと `run-test-source-json/text` の
-各4 slotを全経路で解放する focused RED/GREENを通した。actual Wasm testはこの変更後の再実行が必要な
-ため、現時点では明示 ignore 中である。
+lowering前に検出されていた既存 `typeinfer-builtin-root-value` の関数間 root leaseを修正した後、
+`1 passed`（291.84s）で完走した。専用 helperの acquire/release shape checkを追加し、
+`run-check-program` の3 slotと `run-test-source-json/text` の各4 slotを全経路で解放する focused
+RED/GREENを通し、argv/filesystem、unknown exit `2`、JSON status/trace gapを同じ fixtureで確認した。
 typed signature、nested traversal、evidence/contract registry、manifest emission、EmbeddedCli/MCP、
 native stage0 と対応2 targetの current-source parityは未完了である。
 

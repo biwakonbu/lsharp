@@ -31,8 +31,8 @@ lsharp validate --source <source.ls> --format json
 GREEN へ確認した。Rust-host actual Wasm の `test_e2e_selfhost_cli_validate_source_json_reports_trace_gap`
 は同じ fixture、argv、filesystem、exit code、JSON reportを検証する。既存の関数間 root lease helperを
 明示的な shape checkへ切り出し、`App.Cli` の `run-check-program` と test runner の caller rootを
-focused ledger/static contractで balanceしたが、actual Wasm testはこの変更後の再実行が必要なため、
-現時点では明示的に ignore している。
+focused ledger/static contractで balanceした。変更後の actual Wasm testは `1 passed`（291.84s）で、
+同じ fixtureの argv/filesystem、unknown exit `2`、JSON status/trace gapを確認した。
 
 typed signature metadata、nested module/private/impl traversal、parse/duplicate/orphan diagnostic、
 evidence/contract registry、`--emit-manifest`、EmbeddedCli/MCP、native stage0 と Mac Apple Silicon /
