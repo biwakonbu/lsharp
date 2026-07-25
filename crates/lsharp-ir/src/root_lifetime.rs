@@ -3,6 +3,10 @@
 //! `root_push` が返す slot は、対応する `root_pop` まで有効でなければならない。
 //! Lowering の個数検査だけでは、pop 済み slot を `root_set` に渡す事故や、分岐ごとの
 //! lifetime のずれを検出できないため、ここでは軽量な抽象実行で検査する。
+//!
+//! selfhost の builtin 型環境だけは、helper 関数が root slot を acquire して caller が
+//! 後段で release する関数間 lease を使う。その2 helperは下の専用 shape checkで検査し、
+//! 通常の関数へ不均衡な root lifetime を広げない。
 
 use std::collections::HashMap;
 
@@ -12,6 +16,9 @@ use crate::{Function, Instruction, Module};
 pub const ROOT_PUSH_INDEX: u32 = 14;
 pub const ROOT_POP_INDEX: u32 = 15;
 pub const ROOT_SET_INDEX: u32 = 16;
+
+const ROOT_LEASE_ACQUIRE_HELPER: &str = "typeinfer-builtin-root-value";
+const ROOT_LEASE_RELEASE_HELPER: &str = "typeinfer-builtin-release-roots";
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum RootLifetimeError {
@@ -46,6 +53,9 @@ pub enum RootLifetimeError {
 
     #[error("{function}: function exits with {depth} active root slots")]
     ImbalancedExit { function: String, depth: usize },
+
+    #[error("{function}: cross-function root lease helper has an invalid shape")]
+    RootLeaseContract { function: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -141,6 +151,13 @@ impl State {
 
 /// 1 関数の root slot lifetime を検証する。
 pub fn validate_function(function: &Function) -> Result<(), RootLifetimeError> {
+    if function.name == ROOT_LEASE_ACQUIRE_HELPER {
+        return validate_root_lease_acquire(function);
+    }
+    if function.name == ROOT_LEASE_RELEASE_HELPER {
+        return validate_root_lease_release(function);
+    }
+
     let state = State::new(function);
     let state = validate_range(
         &function.body,
@@ -156,6 +173,50 @@ pub fn validate_function(function: &Function) -> Result<(), RootLifetimeError> {
         });
     }
     Ok(())
+}
+
+fn validate_root_lease_acquire(function: &Function) -> Result<(), RootLifetimeError> {
+    if count_call(&function.body, ROOT_PUSH_INDEX) != 1
+        || count_call(&function.body, ROOT_POP_INDEX) != 0
+        || count_call(&function.body, ROOT_SET_INDEX) != 0
+    {
+        return Err(RootLifetimeError::RootLeaseContract {
+            function: function.name.clone(),
+        });
+    }
+
+    let state = validate_range(
+        &function.body,
+        0,
+        function.body.len(),
+        State::new(function),
+        &function.name,
+    )?;
+    if state.roots.len() != 1 {
+        return Err(RootLifetimeError::ImbalancedExit {
+            function: function.name.clone(),
+            depth: state.roots.len(),
+        });
+    }
+    Ok(())
+}
+
+fn validate_root_lease_release(function: &Function) -> Result<(), RootLifetimeError> {
+    if count_call(&function.body, ROOT_PUSH_INDEX) != 0
+        || count_call(&function.body, ROOT_POP_INDEX) == 0
+        || count_call(&function.body, ROOT_SET_INDEX) != 0
+    {
+        return Err(RootLifetimeError::RootLeaseContract {
+            function: function.name.clone(),
+        });
+    }
+    Ok(())
+}
+
+fn count_call(body: &[Instruction], call_index: u32) -> usize {
+    body.iter()
+        .filter(|instruction| matches!(instruction, Instruction::Call(index) if *index == call_index))
+        .count()
 }
 
 /// モジュール内の全関数を検証する。

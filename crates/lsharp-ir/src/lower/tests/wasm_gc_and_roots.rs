@@ -341,6 +341,61 @@ fn test_root_lifetime_ledger_rejects_branch_depth_mismatch() {
 }
 
 #[test]
+fn test_root_lifetime_ledger_accepts_explicit_cross_function_root_lease_helpers() {
+    let acquire = Function {
+        name: "typeinfer-builtin-root-value".to_string(),
+        params: vec![IrType::I64],
+        result: IrType::I64,
+        locals: Vec::new(),
+        body: vec![
+            Instruction::LocalGet(0),
+            Instruction::Call(ROOT_PUSH_IDX),
+            Instruction::Drop,
+            Instruction::LocalGet(0),
+        ],
+        is_export: false,
+    };
+    let release = Function {
+        name: "typeinfer-builtin-release-roots".to_string(),
+        params: vec![IrType::I64],
+        result: IrType::I64,
+        locals: Vec::new(),
+        body: vec![
+            Instruction::LocalGet(0),
+            Instruction::IfEmpty,
+            Instruction::I64Const(0),
+            Instruction::Else,
+            Instruction::Call(ROOT_POP_IDX),
+            Instruction::Drop,
+            Instruction::I64Const(0),
+            Instruction::End,
+        ],
+        is_export: false,
+    };
+
+    validate_function(&acquire).expect("builtin root acquire helper は lease を返せるべき");
+    validate_function(&release).expect("builtin root release helper は caller の lease を解放できるべき");
+}
+
+#[test]
+fn test_root_lifetime_ledger_rejects_unannotated_cross_function_root_lease() {
+    let function = Function {
+        name: "unannotated-root-lease".to_string(),
+        params: Vec::new(),
+        result: IrType::I64,
+        locals: Vec::new(),
+        body: vec![Instruction::I64Const(42), Instruction::Call(ROOT_PUSH_IDX), Instruction::Drop],
+        is_export: false,
+    };
+
+    let error = validate_function(&function).expect_err("未登録 helper の root lease は拒否すべき");
+    assert!(
+        matches!(error, RootLifetimeError::ImbalancedExit { depth: 1, .. }),
+        "通常関数の root lease は ImbalancedExit として拒否すべき: {error:?}"
+    );
+}
+
+#[test]
 fn test_root_lifetime_ledger_accepts_lowered_allocating_fixtures() {
     for source in [
         r#"(defn main [] (string-concat "a" "b"))"#,

@@ -320,6 +320,9 @@
       (do
         (print-string (check-json-report rendered diagnostics-count first-error-code diagnostics-body migration-rows base-failure-kinds))
         (print-string "\n")
+        (root_pop)
+        (root_pop)
+        (root_pop)
         (check-exit-code diagnostics-count))
       (do
       (print-string rendered)
@@ -366,6 +369,9 @@
           (print-string (check-failure-kinds-text base-failure-kinds))
           (print-string "\n"))
         (print-string ""))
+      (root_pop)
+      (root_pop)
+      (root_pop)
       (check-exit-code diagnostics-count)))))
 (defn run-check-source [src opts] (run-check-program (make-check-program-context (parse-program src) (vector-new 0)) opts))
 (defn run-fmt-source [src opts] (let [program (parse-program src) formatted (format-program-with-source program src)] (do (print-string formatted) (exit-success))))
