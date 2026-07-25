@@ -267,6 +267,68 @@ fn validate_source_accepts_registered_evidence_edges() {
 }
 
 #[test]
+fn validate_source_projects_record_definition_metadata_into_report_and_manifest() {
+    let source = source_path(
+        "source-record-definition",
+        r#"
+        (type Point
+          (record (: x Int))
+          :claim "claim:geometry/point-typed" "The point coordinate is an integer"
+          :evidence "evidence:geometry/point-proof"
+            :subject "claim:geometry/point-typed"
+            :method "case"
+            :outcome "pass"
+            :runner "source-record-test"
+            :target "aarch64-apple-darwin"
+            :source-commit "source-record-commit"
+            :artifact-digest "sha256:source-record"
+            :cases 1
+            :seed 0
+            :generator "source-record-generator"
+            :producer "source-record-producer"
+            :tool-version "0.2.0-dev"
+            :timestamp "2026-07-26T00:00:00Z"
+            :independence "same-author"
+          :supports "evidence:geometry/point-proof" "claim:geometry/point-typed")
+        "#,
+    );
+    let output_dir = project_dir("source-record-definition-output");
+    fs::create_dir_all(&output_dir).expect("manifest output directory should be writable");
+    let manifest = output_dir.join("intent-graph.json");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+        .args([
+            "validate",
+            "--source",
+            source.to_str().unwrap(),
+            "--format",
+            "json",
+            "--emit-manifest",
+            manifest.to_str().unwrap(),
+        ])
+        .output()
+        .expect("record definition source validation should run");
+    let report: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("source report should be JSON");
+    let emitted: serde_json::Value =
+        serde_json::from_slice(&fs::read(&manifest).expect("record manifest should be emitted"))
+            .expect("record manifest should be JSON");
+    fs::remove_file(&source).ok();
+    fs::remove_dir_all(&output_dir).ok();
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stderr.is_empty());
+    assert_eq!(report["status"], "unknown");
+    assert_eq!(emitted["schema_version"], 1);
+    assert_eq!(emitted["nodes"][0]["kind"], "claim");
+    assert_eq!(emitted["nodes"][0]["namespace"], "geometry");
+    assert_eq!(emitted["nodes"][0]["key"], "point-typed");
+    assert_eq!(emitted["evidence"][0]["namespace"], "geometry");
+    assert_eq!(emitted["evidence"][0]["key"], "point-proof");
+    assert_eq!(emitted["edges"][0]["relation"], "supports");
+}
+
+#[test]
 fn validate_source_emits_manifest_without_mixing_report_stdout() {
     let source = source_path(
         "source-emit-manifest",

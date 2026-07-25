@@ -30,9 +30,13 @@ source node contract が不統一だった。
   typed `IntentGraph` node registry へ投影する。
 - `source_adapter_projects_record_definition_evidence_and_support_edges` は RecordDef 上の
   evidence registry と `supports` edge も node collection 後に投影することを検証する。
+- `validate_source_projects_record_definition_metadata_into_report_and_manifest` は同じ
+  RecordDef source を公開 Rust `validate --source --emit-manifest` へ通し、report の status と
+  version 1 manifest の node/evidence/edge wire fields を検証する。
 - `cargo check --workspace`
 - `cargo test -p lsharp-syntax --test intent_metadata`
 - `cargo test -p lsharp-types --test validation_source`
+- `cargo test -p lsharp-driver --test validate_cli validate_source_projects_record_definition_metadata_into_report_and_manifest`
 
 ## Boundary
 
