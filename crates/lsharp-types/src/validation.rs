@@ -5,7 +5,7 @@
 //! `Fail` は contradiction が観測された場合に限定する。
 
 use crate::evidence::{Edge, Evidence, EvidenceGraph, EvidenceMethod, EvidenceOutcome, GraphError};
-use crate::intent::{ClaimId, IntentId, IntentNode};
+use crate::intent::{ClaimId, IntentId, IntentNode, StableId};
 use serde::Serialize;
 
 /// node の trace が欠けている箇所。
@@ -192,6 +192,7 @@ impl IntentGraph {
     }
 
     pub fn add_edge(&mut self, edge: Edge) -> Result<(), GraphError> {
+        self.validate_edge_node_endpoints(&edge)?;
         self.evidence.add_edge(edge)
     }
 
@@ -209,6 +210,43 @@ impl IntentGraph {
 
     pub fn validate(&self) -> ValidationReport {
         validate_graph(self)
+    }
+
+    fn validate_edge_node_endpoints(&self, edge: &Edge) -> Result<(), GraphError> {
+        match edge {
+            Edge::Motivates { intent, claim } => {
+                self.require_node(intent.stable_id())?;
+                self.require_node(claim.stable_id())?;
+            }
+            Edge::ConstrainedBy { claim, assumption } => {
+                self.require_node(claim.stable_id())?;
+                self.require_node(assumption.stable_id())?;
+            }
+            Edge::TestedBy { claim, .. }
+            | Edge::Supports { claim, .. }
+            | Edge::Contradicts { claim, .. } => {
+                self.require_node(claim.stable_id())?;
+            }
+            Edge::Evaluates { subject, .. } => match subject {
+                crate::evidence::ReviewSubject::Intent(intent) => {
+                    self.require_node(intent.stable_id())?;
+                }
+                crate::evidence::ReviewSubject::Claim(claim) => {
+                    self.require_node(claim.stable_id())?;
+                }
+                crate::evidence::ReviewSubject::Evidence(_) => {}
+            },
+            Edge::Invalidates { .. } => {}
+        }
+        Ok(())
+    }
+
+    fn require_node(&self, id: &StableId) -> Result<(), GraphError> {
+        if self.nodes.iter().any(|node| node.stable_id() == id) {
+            Ok(())
+        } else {
+            Err(GraphError::MissingNode { id: id.clone() })
+        }
     }
 }
 

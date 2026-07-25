@@ -91,11 +91,12 @@
   `docs/adr/decisions-v0.2-source-manifest-emission.md`。
 
 - [~] `EC-M2-01`〜`EC-M2-03` の types-only wire/model slice — `StableId` の fail-closed parser、
-  typed `IntentNode` wire conversion、duplicate/required-field を検査する `IntentGraph`、
-  `pass` / `fail` / `unknown` validation report、strict JSON/text projection、deterministic
+  typed `IntentNode` wire conversion、duplicate/required-field と graph-owned endpoint を検査する
+  `IntentGraph`、`pass` / `fail` / `unknown` validation report、strict JSON/text projection、deterministic
   graph manifest output と schema、version 1 JSON input parser、Rust `validate` CLI を固定した。
   selfhost/native parity、EmbeddedCli/MCP、Mac Apple Silicon / Linux x86_64 artifact/runtime
   evidence は未完了のため `[~]` を維持する。Evidence: `docs/adr/decisions-v0.2-validation-types-slice.md`,
+  `docs/adr/decisions-v0.2-intent-edge-closure.md`,
   `docs/adr/decisions-v0.2-validation-cli.md`, `docs/development/planning/v0.2-validation-model.md`,
   `cargo test -p lsharp-types`、`cargo test -p lsharp-driver --test validate_cli`、
   `cargo clippy -p lsharp-types --all-targets -- -D warnings`。
