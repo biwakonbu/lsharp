@@ -8,6 +8,13 @@ fn selfhost_cli_source() -> String {
         .unwrap_or_else(|error| panic!("selfhost Cli.ls の読み込みに失敗 {}: {error}", path.display()))
 }
 
+fn selfhost_evidence_source() -> String {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../selfhost/src/Tools/Validation/Evidence.ls");
+    fs::read_to_string(&path)
+        .unwrap_or_else(|error| panic!("selfhost Evidence.ls の読み込みに失敗 {}: {error}", path.display()))
+}
+
 #[test]
 fn selfhost_cli_validation_surface_is_registered() {
     let source = selfhost_cli_source();
@@ -51,6 +58,11 @@ fn selfhost_cli_validation_surface_is_registered() {
     assert!(
         source.contains("validation-source-manifest-json"),
         "App.Cli は source graph の version 1 manifest JSON projection を利用するべき"
+    );
+    let evidence = selfhost_evidence_source();
+    assert!(
+        evidence.contains("validation-source-manifest-json-state"),
+        "source manifest serializer は native x86 の多引数再帰を避ける state-loop を持つべき"
     );
     let check_start = source
         .find("(defn run-check-program")

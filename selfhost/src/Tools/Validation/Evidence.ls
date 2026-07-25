@@ -378,6 +378,11 @@
 (defn validation-json-object-field [name value-json]
   (validation-json-field name value-json))
 
+;; native x86 では object/string を含む多引数再帰を state へ畳み、
+;; serializer の各 step を一引数の tail call として保持する。
+(defn validation-source-manifest-json-state [items idx len out]
+  (vector-push-quad-rooted-v3 (vector-new 4) items idx len out))
+
 ;; source graph を Rust の version 1 manifest serializer と同じ wire shape へ投影する。
 (defn validation-source-node-kind-text [kind]
   (if (= kind (source-node-intent)) "intent"
@@ -429,35 +434,50 @@
         (validation-source-span-json (source-node-start node) (source-node-end node))))]
     (validation-json-object-wrap fields5)))
 
-(defn validation-source-nodes-json-loop [nodes idx len out]
-  (if (>= idx len)
-    out
-    (validation-source-nodes-json-loop
-      nodes
-      (+ idx 1)
-      len
-      (validation-json-append out (validation-source-node-json (vector-get nodes idx))))))
+(defn validation-source-nodes-json-state-loop [state]
+  (let [nodes (vector-get state 0)
+    idx (vector-get state 1)
+    len (vector-get state 2)
+    out (vector-get state 3)]
+    (if (>= idx len)
+      out
+      (validation-source-nodes-json-state-loop
+        (validation-source-manifest-json-state
+          nodes
+          (+ idx 1)
+          len
+          (validation-json-append out (validation-source-node-json (vector-get nodes idx))))))))
 
-(defn validation-source-int-array-json-loop [items idx len out]
-  (if (>= idx len)
-    out
-    (validation-source-int-array-json-loop
-      items
-      (+ idx 1)
-      len
-      (validation-json-append out (int-to-string (vector-get items idx))))))
+(defn validation-source-int-array-json-state-loop [state]
+  (let [items (vector-get state 0)
+    idx (vector-get state 1)
+    len (vector-get state 2)
+    out (vector-get state 3)]
+    (if (>= idx len)
+      out
+      (validation-source-int-array-json-state-loop
+        (validation-source-manifest-json-state
+          items
+          (+ idx 1)
+          len
+          (validation-json-append out (int-to-string (vector-get items idx))))))))
 
-(defn validation-source-coverage-json-loop [coverage idx len out]
-  (if (>= idx len)
-    out
-    (let [entry (vector-get coverage idx)
-      bucket (vector-get entry 0)
-      count (vector-get entry 1)]
-      (validation-source-coverage-json-loop
-        coverage
-        (+ idx 1)
-        len
-        (validation-json-append out (validation-json-int-field bucket count))))))
+(defn validation-source-coverage-json-state-loop [state]
+  (let [coverage (vector-get state 0)
+    idx (vector-get state 1)
+    len (vector-get state 2)
+    out (vector-get state 3)]
+    (if (>= idx len)
+      out
+      (let [entry (vector-get coverage idx)
+        bucket (vector-get entry 0)
+        count (vector-get entry 1)]
+        (validation-source-coverage-json-state-loop
+          (validation-source-manifest-json-state
+            coverage
+            (+ idx 1)
+            len
+            (validation-json-append out (validation-json-int-field bucket count))))))))
 
 (defn validation-source-subject-kind-text [subject]
   (let [kind (source-evidence-subject-kind subject)]
@@ -507,19 +527,21 @@
     sample-fields3 (validation-json-append sample-fields2
       (validation-json-array-field "shrinks"
         (validation-json-array-wrap
-          (validation-source-int-array-json-loop
-            (source-evidence-record-shrinks evidence-record)
-            0
-            (vector-length (source-evidence-record-shrinks evidence-record))
-            ""))))
+          (validation-source-int-array-json-state-loop
+            (validation-source-manifest-json-state
+              (source-evidence-record-shrinks evidence-record)
+              0
+              (vector-length (source-evidence-record-shrinks evidence-record))
+              "")))))
     sample-fields4 (validation-json-append sample-fields3
       (validation-json-object-field "coverage"
         (validation-json-object-wrap
-          (validation-source-coverage-json-loop
-            (source-evidence-record-coverage evidence-record)
-            0
-            (vector-length (source-evidence-record-coverage evidence-record))
-            ""))))
+          (validation-source-coverage-json-state-loop
+            (validation-source-manifest-json-state
+              (source-evidence-record-coverage evidence-record)
+              0
+              (vector-length (source-evidence-record-coverage evidence-record))
+              "")))))
     execution-fields (string-concat sampling3
       (string-concat "," (validation-json-object-field "sampling" (validation-json-object-wrap sample-fields4))))
     fields6 (validation-json-append fields5 (validation-json-object-field "execution" (validation-json-object-wrap execution-fields)))
@@ -530,14 +552,19 @@
     fields8 (validation-json-append fields7 (validation-json-string-field "independence" (source-evidence-record-independence evidence-record)))]
     (validation-json-object-wrap fields8)))
 
-(defn validation-source-evidence-json-loop [registry idx len out]
-  (if (>= idx len)
-    out
-    (validation-source-evidence-json-loop
-      registry
-      (+ idx 1)
-      len
-      (validation-json-append out (validation-source-evidence-json (vector-get registry idx))))))
+(defn validation-source-evidence-json-state-loop [state]
+  (let [registry (vector-get state 0)
+    idx (vector-get state 1)
+    len (vector-get state 2)
+    out (vector-get state 3)]
+    (if (>= idx len)
+      out
+      (validation-source-evidence-json-state-loop
+        (validation-source-manifest-json-state
+          registry
+          (+ idx 1)
+          len
+          (validation-json-append out (validation-source-evidence-json (vector-get registry idx))))))))
 
 (defn validation-source-edge-json [edge]
   (let [relation (source-edge-kind edge)
@@ -562,29 +589,40 @@
             (validation-json-append fields1 (validation-json-object-field "claim" (validation-source-id-json right))))))]
     (validation-json-object-wrap fields2)))
 
-(defn validation-source-edges-json-loop [edges idx len out]
-  (if (>= idx len)
-    out
-    (validation-source-edges-json-loop
-      edges
-      (+ idx 1)
-      len
-      (validation-json-append out (validation-source-edge-json (vector-get edges idx))))))
+(defn validation-source-edges-json-state-loop [state]
+  (let [edges (vector-get state 0)
+    idx (vector-get state 1)
+    len (vector-get state 2)
+    out (vector-get state 3)]
+    (if (>= idx len)
+      out
+      (validation-source-edges-json-state-loop
+        (validation-source-manifest-json-state
+          edges
+          (+ idx 1)
+          len
+          (validation-json-append out (validation-source-edge-json (vector-get edges idx))))))))
 
 (defn validation-source-manifest-json [graph]
   (let [nodes (source-graph-nodes graph)
     edges (source-graph-edges graph)
     registry (source-evidence-graph-registry graph)
+    nodes-state (validation-source-manifest-json-state nodes 0 (vector-length nodes) "")
+    evidence-state (validation-source-manifest-json-state registry 0 (vector-length registry) "")
+    edges-state (validation-source-manifest-json-state edges 0 (vector-length edges) "")
+    nodes-json (validation-source-nodes-json-state-loop nodes-state)
+    evidence-json (validation-source-evidence-json-state-loop evidence-state)
+    edges-json (validation-source-edges-json-state-loop edges-state)
     fields0 (validation-json-int-field "schema_version" 1)
     fields1 (validation-json-append fields0
       (validation-json-array-field "nodes"
-        (validation-json-array-wrap (validation-source-nodes-json-loop nodes 0 (vector-length nodes) ""))))
+        (validation-json-array-wrap nodes-json)))
     fields2 (validation-json-append fields1
       (validation-json-array-field "evidence"
-        (validation-json-array-wrap (validation-source-evidence-json-loop registry 0 (vector-length registry) ""))))
+        (validation-json-array-wrap evidence-json)))
     fields3 (validation-json-append fields2
       (validation-json-array-field "edges"
-        (validation-json-array-wrap (validation-source-edges-json-loop edges 0 (vector-length edges) ""))))]
+        (validation-json-array-wrap edges-json)))]
     (validation-json-object-wrap fields3)))
 
 (defn source-evidence-edge-form-result [form registry nodes]
