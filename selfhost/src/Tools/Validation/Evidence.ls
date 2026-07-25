@@ -442,8 +442,11 @@
     (if (>= idx len)
       out
       (let [next-out (validation-json-append out (validation-source-node-json (vector-get nodes idx)))
-        next-indexed-state (vector-set-at-rooted-v3 state 1 (+ idx 1))
-        next-state (vector-set-at-rooted-v3 next-indexed-state 3 next-out)]
+        state0 (vector-new 4)
+        state1 (vector-push-single-rooted-v3 state0 nodes)
+        state2 (vector-push-single-rooted-v3 state1 (+ idx 1))
+        state3 (vector-push-single-rooted-v3 state2 len)
+        next-state (vector-push-single-rooted-v3 state3 next-out)]
         (validation-source-nodes-json-state-loop next-state)))))
 
 (defn validation-source-int-array-json-state-loop [state]

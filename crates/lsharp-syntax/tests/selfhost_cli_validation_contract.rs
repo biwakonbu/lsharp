@@ -74,6 +74,20 @@ fn selfhost_cli_validation_surface_is_registered() {
         evidence.contains("(defn validation-source-manifest-json-state [state]"),
         "source manifest serializer の state boundary は native x86 の 1 引数に限定するべき"
     );
+    let node_loop_start = evidence
+        .find("(defn validation-source-nodes-json-state-loop")
+        .expect("source manifest serializer は node state loop を持つべき");
+    let node_loop_end = evidence[node_loop_start..]
+        .find("(defn validation-source-int-array-json-state-loop")
+        .map(|offset| node_loop_start + offset)
+        .expect("node state loop の終端を特定できるべき");
+    let node_loop = &evidence[node_loop_start..node_loop_end];
+    assert!(
+        node_loop.contains("state0 (vector-new 4)")
+            && node_loop.contains("(vector-push-single-rooted-v3 state0")
+            && !node_loop.contains("(vector-set-at-rooted-v3 state 1 (+ idx 1))"),
+        "native x86 の node manifest loop は object/string を含む state を vector-set で更新せず fresh rooted state として進めるべき"
+    );
     let check_start = source
         .find("(defn run-check-program")
         .expect("App.Cli は run-check-program を持つべき");
