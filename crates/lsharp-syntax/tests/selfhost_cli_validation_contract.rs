@@ -64,6 +64,12 @@ fn selfhost_cli_validation_surface_is_registered() {
         evidence.contains("validation-source-manifest-json-state"),
         "source manifest serializer は native x86 の多引数再帰を避ける state-loop を持つべき"
     );
+    assert!(
+        !evidence.contains(
+            "(vector-push-quad-rooted-v3 (vector-new 4) items idx len out)"
+        ),
+        "source manifest serializer の state constructor は native x86 の 4 引数 rooted helper を避けるべき"
+    );
     let check_start = source
         .find("(defn run-check-program")
         .expect("App.Cli は run-check-program を持つべき");

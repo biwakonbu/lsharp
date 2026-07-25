@@ -381,7 +381,12 @@
 ;; native x86 では object/string を含む多引数再帰を state へ畳み、
 ;; serializer の各 step を一引数の tail call として保持する。
 (defn validation-source-manifest-json-state [items idx len out]
-  (vector-push-quad-rooted-v3 (vector-new 4) items idx len out))
+  (let [state0 (vector-new 4)
+    state1 (vector-push-single-rooted-v3 state0 items)
+    state2 (vector-push-single-rooted-v3 state1 idx)
+    state3 (vector-push-single-rooted-v3 state2 len)
+    state4 (vector-push-single-rooted-v3 state3 out)]
+    state4))
 
 ;; source graph を Rust の version 1 manifest serializer と同じ wire shape へ投影する。
 (defn validation-source-node-kind-text [kind]
@@ -441,12 +446,10 @@
     out (vector-get state 3)]
     (if (>= idx len)
       out
-      (validation-source-nodes-json-state-loop
-        (validation-source-manifest-json-state
-          nodes
-          (+ idx 1)
-          len
-          (validation-json-append out (validation-source-node-json (vector-get nodes idx))))))))
+      (let [next-out (validation-json-append out (validation-source-node-json (vector-get nodes idx)))
+        next-indexed-state (vector-set-at-rooted-v3 state 1 (+ idx 1))
+        next-state (vector-set-at-rooted-v3 next-indexed-state 3 next-out)]
+        (validation-source-nodes-json-state-loop next-state)))))
 
 (defn validation-source-int-array-json-state-loop [state]
   (let [items (vector-get state 0)
@@ -455,12 +458,10 @@
     out (vector-get state 3)]
     (if (>= idx len)
       out
-      (validation-source-int-array-json-state-loop
-        (validation-source-manifest-json-state
-          items
-          (+ idx 1)
-          len
-          (validation-json-append out (int-to-string (vector-get items idx))))))))
+      (let [next-out (validation-json-append out (int-to-string (vector-get items idx)))
+        next-indexed-state (vector-set-at-rooted-v3 state 1 (+ idx 1))
+        next-state (vector-set-at-rooted-v3 next-indexed-state 3 next-out)]
+        (validation-source-int-array-json-state-loop next-state)))))
 
 (defn validation-source-coverage-json-state-loop [state]
   (let [coverage (vector-get state 0)
@@ -471,13 +472,11 @@
       out
       (let [entry (vector-get coverage idx)
         bucket (vector-get entry 0)
-        count (vector-get entry 1)]
-        (validation-source-coverage-json-state-loop
-          (validation-source-manifest-json-state
-            coverage
-            (+ idx 1)
-            len
-            (validation-json-append out (validation-json-int-field bucket count))))))))
+        count (vector-get entry 1)
+        next-out (validation-json-append out (validation-json-int-field bucket count))
+        next-indexed-state (vector-set-at-rooted-v3 state 1 (+ idx 1))
+        next-state (vector-set-at-rooted-v3 next-indexed-state 3 next-out)]
+        (validation-source-coverage-json-state-loop next-state)))))
 
 (defn validation-source-subject-kind-text [subject]
   (let [kind (source-evidence-subject-kind subject)]
@@ -559,12 +558,10 @@
     out (vector-get state 3)]
     (if (>= idx len)
       out
-      (validation-source-evidence-json-state-loop
-        (validation-source-manifest-json-state
-          registry
-          (+ idx 1)
-          len
-          (validation-json-append out (validation-source-evidence-json (vector-get registry idx))))))))
+      (let [next-out (validation-json-append out (validation-source-evidence-json (vector-get registry idx)))
+        next-indexed-state (vector-set-at-rooted-v3 state 1 (+ idx 1))
+        next-state (vector-set-at-rooted-v3 next-indexed-state 3 next-out)]
+        (validation-source-evidence-json-state-loop next-state)))))
 
 (defn validation-source-edge-json [edge]
   (let [relation (source-edge-kind edge)
@@ -596,12 +593,10 @@
     out (vector-get state 3)]
     (if (>= idx len)
       out
-      (validation-source-edges-json-state-loop
-        (validation-source-manifest-json-state
-          edges
-          (+ idx 1)
-          len
-          (validation-json-append out (validation-source-edge-json (vector-get edges idx))))))))
+      (let [next-out (validation-json-append out (validation-source-edge-json (vector-get edges idx)))
+        next-indexed-state (vector-set-at-rooted-v3 state 1 (+ idx 1))
+        next-state (vector-set-at-rooted-v3 next-indexed-state 3 next-out)]
+        (validation-source-edges-json-state-loop next-state)))))
 
 (defn validation-source-manifest-json [graph]
   (let [nodes (source-graph-nodes graph)
