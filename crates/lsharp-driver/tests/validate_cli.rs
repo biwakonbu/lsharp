@@ -522,13 +522,18 @@ fn validate_source_does_not_emit_manifest_for_adapter_errors() {
         .output()
         .expect("lsharp validate --source --emit-manifest should run");
     let stderr = String::from_utf8_lossy(&output.stderr);
+    let manifest_exists = manifest.exists();
     fs::remove_file(&source).ok();
     fs::remove_dir_all(manifest.parent().unwrap()).ok();
 
     assert!(!output.status.success());
     assert!(stderr.contains("evidence registry"));
     assert!(
-        !manifest.exists(),
+        stderr.contains(":supports \"evidence:checkout/missing\" \"claim:checkout/cancel\""),
+        "adapter diagnostic should include the source directive: {stderr}"
+    );
+    assert!(
+        !manifest_exists,
         "adapter error 時に manifest を作らないべき"
     );
 }

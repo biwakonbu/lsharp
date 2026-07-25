@@ -154,6 +154,12 @@
   `docs/adr/decisions-v0.2-source-evidence-boundary.md`,
   `docs/adr/decisions-v0.2-source-tested-by.md`,
   `crates/lsharp-driver/tests/validate_cli.rs`。
+  Rust CLI の adapter error は、`SourceGraphError` が保持する duplicate/edge/evidence field の
+  directive span を `miette` source label へ forwardingし、`validate_source_does_not_emit_manifest_for_adapter_errors`
+  で source directive の表示と manifest 未生成を確認した。span を持たない graph-only error の診断、stable
+  source-adapter error code taxonomy、selfhost/native parity、全 diagnostic/status、両 target runtime は未完了。
+  Evidence: `docs/adr/decisions-v0.2-source-cli-adapter-span.md`,
+  `crates/lsharp-types/src/validation_source.rs`, `crates/lsharp-driver/tests/validate_cli.rs`。
   selfhost `App.Cli` の最初の slice は `validate --source <file> --format json`、top-level `defn`
   metadata の intent/claim/motivates/tested-by 集計、claim trace gap JSON、unknown exit `2`、未対応 option
   の明示拒否まで source contract として追加した。既存の関数間 root lease helperは専用 shape checkへ

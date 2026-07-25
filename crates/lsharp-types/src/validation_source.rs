@@ -83,6 +83,25 @@ pub enum SourceGraphError {
     },
 }
 
+impl SourceGraphError {
+    /// source adapter が保持している primary span を返す。
+    ///
+    /// graph-only の内部エラーは source directive に対応する span をまだ持たないため、
+    /// CLI は従来どおりメッセージだけを表示する。重複エラーは後続の declaration を
+    /// primary span とし、最初の declaration はエラーメッセージ内の補助情報として残す。
+    pub fn source_span(&self) -> Option<Span> {
+        match self {
+            Self::DuplicateNode { duplicate_span, .. }
+            | Self::DuplicateEvidence { duplicate_span, .. } => Some(*duplicate_span),
+            Self::EdgeIdAt { span, .. }
+            | Self::MissingNodeReference { span, .. }
+            | Self::EvidenceRegistryRequired { span, .. }
+            | Self::InvalidEvidenceField { span, .. } => Some(*span),
+            Self::Node(_) | Self::Graph(_) | Self::EdgeId(_) | Self::KindMismatch { .. } => None,
+        }
+    }
+}
+
 /// source の明示 node metadata と typed edge を version 1 graph へ投影する。
 ///
 /// `:intent` / `:claim` / `:assumption` / `:open-question` 以外の metadata は

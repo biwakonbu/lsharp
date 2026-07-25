@@ -1464,9 +1464,32 @@ fn cmd_validate_source(
     let program = lsharp_syntax::parse(&source)
         .map_err(|e| miette::miette!("[{}] {}: {}", e.code(), file.display(), e))?;
     let graph = lsharp_types::validation_source::source_program_to_intent_graph(&program)
-        .map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
+        .map_err(|e| source_graph_error(file, &source, e))?;
     emit_validation_manifest(&graph, emit_manifest)?;
     emit_validation_report(&graph, format)
+}
+
+/// source adapter の directive span を CLI の miette 診断へ接続する。
+fn source_graph_error(
+    file: &Path,
+    source: &str,
+    error: lsharp_types::validation_source::SourceGraphError,
+) -> miette::Report {
+    let message = format!("{}: {}", file.display(), error);
+    let Some(span) = error.source_span() else {
+        return miette::miette!("{message}");
+    };
+    miette::miette!(
+        labels = vec![miette::LabeledSpan::at(
+            span.start..span.end,
+            "source adapter error"
+        )],
+        "{message}"
+    )
+    .with_source_code(miette::NamedSource::new(
+        file.display().to_string(),
+        source.to_owned(),
+    ))
 }
 
 fn emit_validation_manifest(
