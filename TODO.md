@@ -167,6 +167,22 @@
   Evidence: `crates/lsharp-syntax/tests/selfhost_cli_validation_contract.rs`,
   `crates/lsharp-wasm/tests/e2e/selfhost_cli_core.rs`,
   `docs/adr/decisions-v0.2-selfhost-source-validation-cli.md`。
+  Rust MCP の `lsharp_validate` も `tools/list` / `tools/call` へ接続し、`source` / `file` の
+  どちらからも canonical `ValidationReport` の fact-oriented JSON (`status`、trace gap、
+  open question、independent review、contradiction) を `structuredContent` として返す。
+  parse/graph adapter error は `isError: true` で fail-closed に返し、`verified` shortcut は
+  生成しない。これは Rust MCP source/file wiring の verified sliceであり、manifest、
+  EmbeddedCli、selfhost/native parity、両 target runtime/artifact evidence は未完了。Evidence:
+  `crates/lsharp-driver/src/mcp_server.rs`,
+  `docs/adr/decisions-v0.2-mcp-validation-tool.md`。
+  続く Rust MCP slice では `lsharp_validate` が `manifest`（JSON object/string）または
+  `manifest_file`（JSON path）を `parse_intent_graph_json` へ渡し、source/file と同じ
+  `ValidationReport` を返す。入力は四種類のうち一つだけを受理し、schema version、unknown field、
+  referential error、複数入力は `isError: true` で fail-closed にする。これは Rust MCP manifest
+  input の verified sliceであり、manifest emission、EmbeddedCli、selfhost/native parity、両 target
+  runtime/artifact evidence は未完了。Evidence:
+  `crates/lsharp-driver/src/mcp_server.rs`,
+  `docs/adr/decisions-v0.2-mcp-validation-manifest.md`。
 
 ## 2026-07-25 current-source native stage0 evidence refresh
 
