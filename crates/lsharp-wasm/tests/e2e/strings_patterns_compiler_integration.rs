@@ -4198,6 +4198,57 @@ fn test_e2e_selfhost_compiler_mode_imported_alias_qualified_same_schema_record_l
     std::fs::remove_dir_all(&temp_root).expect("same-schema record literal fixture を削除できない");
 }
 
+/// selfhost compiler-mode: 同名 record static accessor の alias-qualified ftable key を分離すること
+#[test]
+fn test_e2e_selfhost_compiler_mode_imported_alias_same_name_record_accessor_ftable_keys_are_separate() {
+    let temp_root = std::env::temp_dir().join(format!(
+        "lsharp-selfhost-same-name-record-accessor-alias-ftable-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&temp_root);
+    let app_dir = temp_root.join("src/App");
+    std::fs::create_dir_all(&app_dir)
+        .expect("record accessor alias ftable fixture の directory を作れない");
+    std::fs::write(
+        app_dir.join("Left.ls"),
+        "(module App.Left)\n(type Point (record (: x Int) (: y Int)))\n",
+    )
+    .expect("same-name record accessor alias ftable fixture の Left.ls を書けない");
+    std::fs::write(
+        app_dir.join("Right.ls"),
+        "(module App.Right)\n(type Point (record (: x Int) (: y Int)))\n",
+    )
+    .expect("same-name record accessor alias ftable fixture の Right.ls を書けない");
+    std::fs::write(
+        app_dir.join("Main.ls"),
+        "(module App.Main)\n(import App.Left :as L :only [Point.x])\n(import App.Right :as R :only [Point.x])\n(defn main [] 0)\n",
+    )
+    .expect("same-name record accessor alias ftable fixture の Main.ls を書けない");
+
+    let compiler_mode = format!(
+        "{}\n(defn main []\n  (let [path (command-line-arg 1)\n        cache-ref (ref-new (map-new))\n        parse-count-ref (ref-new 0)\n        all-pairs (compile-file-pairs-with-cache path cache-ref parse-count-ref)\n        n (vector-length all-pairs)\n        prelude (compile-record-prelude-all-pairs all-pairs 0 n (ftable-new) 10 (vector-new 8))\n        ftable (vector-get prelude 2)\n        accessor-hash (name-hash \"Point.x\" 0 7)\n        left-key (ast-qualified-name-hash (name-hash \"L\" 0 1) accessor-hash)\n        right-key (ast-qualified-name-hash (name-hash \"R\" 0 1) accessor-hash)\n        left-target (ftable-lookup ftable left-key)\n        right-target (ftable-lookup ftable right-key)]\n    (do\n      (print (if (> left-target 0) (if (> right-target 0) (if (= left-target right-target) 0 1) 0) 0))\n      0)))",
+        selfhost_module("CompilerMode.ls")
+    );
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("IR.ls"),
+        selfhost_module("Compiler.ls"),
+        selfhost_module("WasiBackend.ls"),
+        selfhost_module("WasmEmit.ls"),
+        selfhost_module("ModuleResolver.ls"),
+        compiler_mode
+    );
+    let emitted =
+        compile_and_run_with_dir_and_args(&combined, &temp_root, &["probe", "src/App/Main.ls"]);
+    assert_eq!(emitted.trim(), "1");
+    std::fs::remove_dir_all(&temp_root)
+        .expect("same-name record accessor alias ftable fixture を削除できない");
+}
+
 /// selfhost compiler-mode: root_set を do 位置で使って map を更新できること
 #[test]
 fn test_e2e_selfhost_compiler_mode_root_set_updates_map_without_binding_result() {

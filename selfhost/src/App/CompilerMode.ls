@@ -3340,55 +3340,124 @@
         (vector-length only-hashes)
         target-hash))))
 
+(defn compiler-register-record-accessor-import-aliases-loop
+  [fields idx count target-module alias-hash only-hashes ftable]
+  (if (>= idx count)
+    ftable
+    (let [accessor-hash (vector-get fields (+ idx 1))
+      module-key (ast-qualified-name-hash target-module accessor-hash)
+      target-index (ftable-lookup ftable module-key)
+      alias-key (ast-qualified-name-hash alias-hash accessor-hash)]
+      (if (= (compiler-import-only-allows only-hashes accessor-hash) 1)
+        (if (= target-index 0)
+          (compiler-register-record-accessor-import-aliases-loop
+            fields
+            (+ idx 3)
+            count
+            target-module
+            alias-hash
+            only-hashes
+            ftable)
+          (let [next-ftable (ftable-register ftable alias-key target-index)]
+            (do
+              (root_push next-ftable)
+              (let [result
+                      (compiler-register-record-accessor-import-aliases-loop
+                        fields
+                        (+ idx 3)
+                        count
+                        target-module
+                        alias-hash
+                        only-hashes
+                        next-ftable)]
+                (do
+                  (root_pop)
+                  result)))))
+        (compiler-register-record-accessor-import-aliases-loop
+          fields
+          (+ idx 3)
+          count
+          target-module
+          alias-hash
+          only-hashes
+          ftable)))))
+
+(defn compiler-register-record-import-aliases-for-decl
+  [decl target-module alias-hash only-hashes ftable]
+  (let [constructor-hash (vector-get decl 1)
+    fields (record-def-fields decl)
+    field-count (vector-length fields)
+    constructor-allowed (compiler-import-only-allows only-hashes constructor-hash)
+    module-key (ast-qualified-name-hash target-module constructor-hash)
+    target-index (ftable-lookup ftable module-key)
+    alias-key (ast-qualified-name-hash alias-hash constructor-hash)
+    marker-key (record-nominal-marker-lookup-key alias-key)
+    marker-hash (ast-qualified-name-hash target-module constructor-hash)]
+    (if (= constructor-allowed 1)
+      (if (= target-index 0)
+        (compiler-register-record-accessor-import-aliases-loop
+          fields
+          0
+          field-count
+          target-module
+          alias-hash
+          only-hashes
+          ftable)
+        (let [with-alias (ftable-register ftable alias-key target-index)]
+          (do
+            (root_push with-alias)
+            (let [with-marker (ftable-register with-alias marker-key marker-hash)]
+              (do
+                (root_push with-marker)
+                (let [with-accessors
+                        (compiler-register-record-accessor-import-aliases-loop
+                          fields
+                          0
+                          field-count
+                          target-module
+                          alias-hash
+                          only-hashes
+                          with-marker)]
+                  (do
+                    (root_pop)
+                    (root_pop)
+                    with-accessors)))))))
+      (compiler-register-record-accessor-import-aliases-loop
+        fields
+        0
+        field-count
+        target-module
+        alias-hash
+        only-hashes
+        ftable))))
+
 (defn compiler-register-record-import-aliases-loop
   [decls idx n target-module alias-hash only-hashes ftable]
   (if (>= idx n)
     ftable
     (let [decl (vector-get decls idx)]
       (if (= (vector-get decl 0) 22)
-        (let [constructor-hash (vector-get decl 1)]
-          (if (= (compiler-import-only-allows only-hashes constructor-hash) 1)
-            (let [module-key (ast-qualified-name-hash target-module constructor-hash)
-              target-index (ftable-lookup ftable module-key)
-              alias-key (ast-qualified-name-hash alias-hash constructor-hash)
-              marker-key (record-nominal-marker-lookup-key alias-key)
-              marker-hash (ast-qualified-name-hash target-module constructor-hash)]
-              (if (= target-index 0)
-                (compiler-register-record-import-aliases-loop
-                  decls
-                  (+ idx 1)
-                  n
+        (let [next-ftable
+                (compiler-register-record-import-aliases-for-decl
+                  decl
                   target-module
                   alias-hash
                   only-hashes
-                  ftable)
-                (let [next-ftable (ftable-register ftable alias-key target-index)]
-                  (do
-                    (root_push next-ftable)
-                    (let [with-marker (ftable-register next-ftable marker-key marker-hash)]
-                      (do
-                        (root_push with-marker)
-                        (let [result
-                                (compiler-register-record-import-aliases-loop
-                                  decls
-                                  (+ idx 1)
-                                  n
-                                  target-module
-                                  alias-hash
-                                  only-hashes
-                                  with-marker)]
-                          (do
-                            (root_pop)
-                            (root_pop)
-                            result))))))))
-            (compiler-register-record-import-aliases-loop
-              decls
-              (+ idx 1)
-              n
-              target-module
-              alias-hash
-              only-hashes
-              ftable)))
+                  ftable)]
+          (do
+            (root_push next-ftable)
+            (let [result
+                    (compiler-register-record-import-aliases-loop
+                      decls
+                      (+ idx 1)
+                      n
+                      target-module
+                      alias-hash
+                      only-hashes
+                      next-ftable)]
+              (do
+                (root_pop)
+                result))))
         (compiler-register-record-import-aliases-loop
           decls
           (+ idx 1)

@@ -2232,6 +2232,14 @@ RED `test_e2e_selfhost_compiler_mode_imported_alias_qualified_same_schema_record
 
 これは同名 recordの cross-module nominal constructor/literal/pattern境界を閉じる verified sliceであり、same-name static accessor、unqualified同名 exportの曖昧性方針、private/local visibility、record update全形式、standalone native stage0、Mac Apple Silicon / Linux x86_64 の current-source artifact/runtime gate、EC-M1-01 aggregateの完了を意味しない。`TODO.md` の `[~]` と Rust oracle / bootstrap / host integration境界を維持する。
 
+### EC-M1-01 selfhost same-name record static accessor ftable target slice (2026-07-25)
+
+record accessorは raw `Point.x` function keyだけでは、異なる moduleの同名 recordで alias-qualified targetを区別できない。record preludeに `module-qualified(accessor)` keyを登録し、CompilerModeの importごとに `alias-qualified(accessor) -> target index` を追加する。`:only [Point.x]` では constructor aliasを登録せず、accessor exportだけを登録する。
+
+RED `test_e2e_selfhost_compiler_mode_imported_alias_same_name_record_accessor_ftable_keys_are_separate` は、`App.Left.Point.x` / `App.Right.Point.x` の `L` / `R` alias keyが未登録で `0` になった。GREENは module-qualified accessor keyと alias keyを分離して ftableへ登録し、両 targetが存在し異なる indexであることを `1` として確認した（1 passed、77.11s）。CompilerMode alias-qualified record 6件と flat ftable alias-qualified record 6件も再実行してすべて passした。
+
+これは static accessorの ftable target分離だけを閉じる verified sliceであり、static accessor actual runtimeの nominal guard、unqualified同名 exportの曖昧性方針、private/local visibility、record update全形式、standalone native stage0、Mac Apple Silicon / Linux x86_64 の current-source artifact/runtime gate、EC-M1-01 aggregateの完了を意味しない。`TODO.md` の `[~]` と Rust oracle / bootstrap / host integration境界を維持する。
+
 ### EC-M1-01 selfhost imported private record export filtering slice (2026-07-25)
 
 `(private (type Secret (record (: x Int))))` を含む `Lib` から `:as L :only [Secret]` で importした `{L.Secret x 1}` を、selfhost TypeInferが公開 environmentへ漏らさず拒否する境界を追加した。Rust oracleは現在 private typeの同一 module local visibilityを表現できないため、oracle側は `Secret` を公開 registryへ注入しない synthetic sourceで qualified lookup拒否を確認し、selfhost側は private wrapperを含む実 sourceを解析する。

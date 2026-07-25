@@ -3425,7 +3425,7 @@
                 (root_pop)
                 result))))))))
 
-(defn register-record-accessors [fields idx count ftable func-idx functions]
+(defn register-record-accessors [module-hash fields idx count ftable func-idx functions]
   (if (>= idx count)
     (make-record-register-result ftable func-idx functions)
     (do
@@ -3434,6 +3434,10 @@
       (root_push functions)
       (let [field-hash (vector-get fields (* idx 3))
         accessor-hash (vector-get fields (+ (* idx 3) 1))
+        module-qualified-hash
+          (if (= module-hash 0)
+            0
+            (ast-qualified-name-hash module-hash accessor-hash))
         accessor-meta (make-record-accessor-meta field-hash)
         presence-meta (make-record-pattern-field-presence-meta field-hash)]
         (do
@@ -3442,50 +3446,58 @@
           (let [with-accessor (ftable-register ftable accessor-hash func-idx)]
             (do
               (root_push with-accessor)
-              (let [with-get
-                      (ftable-register
+              (let [with-module
+                      (if (= module-qualified-hash 0)
                         with-accessor
-                        (record-pattern-field-get-key field-hash)
-                        func-idx)]
+                        (ftable-register with-accessor module-qualified-hash func-idx))]
                 (do
-                  (root_push with-get)
-                  (let [next-ftable
+                  (root_push with-module)
+                  (let [with-get
                           (ftable-register
-                            with-get
-                            (record-pattern-field-presence-key field-hash)
-                            (+ func-idx 1))]
+                            with-module
+                            (record-pattern-field-get-key field-hash)
+                            func-idx)]
                     (do
-                      (root_push next-ftable)
-                      (let [with-accessor-function
-                              (push-object-vector functions accessor-meta)]
+                      (root_push with-get)
+                      (let [next-ftable
+                              (ftable-register
+                                with-get
+                                (record-pattern-field-presence-key field-hash)
+                                (+ func-idx 1))]
                         (do
-                          (root_push with-accessor-function)
-                          (let [next-functions
-                                  (push-object-vector
-                                    with-accessor-function
-                                    presence-meta)]
+                          (root_push next-ftable)
+                          (let [with-accessor-function
+                                  (push-object-vector functions accessor-meta)]
                             (do
-                              (root_push next-functions)
-                              (let [result
-                                      (register-record-accessors
-                                        fields
-                                        (+ idx 1)
-                                        count
-                                        next-ftable
-                                        (+ func-idx 2)
-                                        next-functions)]
+                              (root_push with-accessor-function)
+                              (let [next-functions
+                                      (push-object-vector
+                                        with-accessor-function
+                                        presence-meta)]
                                 (do
-                                  (root_pop)
-                                  (root_pop)
-                                  (root_pop)
-                                  (root_pop)
-                                  (root_pop)
-                                  (root_pop)
-                                  (root_pop)
-                                  (root_pop)
-                                  (root_pop)
-                                  (root_pop)
-                                  result)))))))))))))))))
+                                  (root_push next-functions)
+                                  (let [result
+                                          (register-record-accessors
+                                            module-hash
+                                            fields
+                                            (+ idx 3)
+                                            count
+                                            next-ftable
+                                            (+ func-idx 2)
+                                            next-functions)]
+                                    (do
+                                      (root_pop)
+                                      (root_pop)
+                                      (root_pop)
+                                      (root_pop)
+                                      (root_pop)
+                                      (root_pop)
+                                      (root_pop)
+                                      (root_pop)
+                                      (root_pop)
+                                      (root_pop)
+                                      (root_pop)
+                                      result)))))))))))))))))))
 
 (defn record-prelude-module-hash-loop [decls idx]
   (if (< idx 0)
@@ -3522,7 +3534,15 @@
                 (let [next-functions (push-object-vector functions constructor-meta)]
                   (do
                     (root_push next-functions)
-                    (let [result (register-record-accessors fields 0 (/ (vector-length fields) 3) next-ftable (+ func-idx 1) next-functions)]
+                    (let [result
+                            (register-record-accessors
+                              module-hash
+                              fields
+                              0
+                              (vector-length fields)
+                              next-ftable
+                              (+ func-idx 1)
+                              next-functions)]
                       (do
                         (root_pop)
                         (root_pop)
