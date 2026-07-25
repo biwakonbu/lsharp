@@ -662,7 +662,7 @@
           (root_pop)
           (root_pop)
           (root_pop)
-          (exit-success)))))
+          (exit-success))))))
 (defn case-preflight-diagnostics-summary [case-check]
   (let [count (vector-get case-check 0)
     raw-code (vector-get case-check 1)
