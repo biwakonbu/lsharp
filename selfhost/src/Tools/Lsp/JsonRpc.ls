@@ -151,32 +151,61 @@
                   (substring src idx (+ idx 1)))))))))))
 
 (defn json-escape-string-state-loop [state]
-  (let [src (vector-get state 0)
-    idx (vector-get state 1)
-    len (vector-get state 2)
-    out (vector-get state 3)]
-    (if (>= idx len)
-      out
-      (let [ch (string-char-at src idx)
-        piece (json-escape-char src idx ch)
-        next-out (string-concat out piece)
-        state0 (vector-new 4)
-        state1 (push-state-vector-local state0 src)
-        state2 (push-state-vector-local state1 (+ idx 1))
-        state3 (push-state-vector-local state2 len)
-        next-state (push-state-vector-local state3 next-out)]
-        (json-escape-string-state-loop next-state)))))
+  (do
+    (root_push state)
+    (let [src (vector-get state 0)
+      idx (vector-get state 1)
+      len (vector-get state 2)
+      out (vector-get state 3)]
+      (if (>= idx len)
+        (do
+          (root_pop)
+          out)
+        (do
+          (root_push src)
+          (root_push out)
+          (let [ch (string-char-at src idx)
+            piece (json-escape-char src idx ch)]
+            (do
+              (root_push piece)
+              (let [next-out (string-concat out piece)]
+                (do
+                  (root_push next-out)
+                  (let [state0 (vector-new 4)
+                    state1 (push-state-vector-local state0 src)
+                    state2 (push-state-vector-local state1 (+ idx 1))
+                    state3 (push-state-vector-local state2 len)
+                    next-state (push-state-vector-local state3 next-out)]
+                    (do
+                      (root_push next-state)
+                      (let [result (json-escape-string-state-loop next-state)]
+                        (do
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          result)))))))))))))
 
 (defn json-escape-string-loop [state]
   (json-escape-string-state-loop state))
 
 (defn json-escape-string [src]
-  (let [state0 (vector-new 4)
-    state1 (push-state-vector-local state0 src)
-    state2 (push-state-vector-local state1 0)
-    state3 (push-state-vector-local state2 (string-length src))
-    state4 (push-state-vector-local state3 "")]
-    (json-escape-string-loop state4)))
+  (do
+    (root_push src)
+    (let [state0 (vector-new 4)
+      state1 (push-state-vector-local state0 src)
+      state2 (push-state-vector-local state1 0)
+      state3 (push-state-vector-local state2 (string-length src))
+      state4 (push-state-vector-local state3 "")]
+      (do
+        (root_push state4)
+        (let [result (json-escape-string-loop state4)]
+          (do
+            (root_pop)
+            (root_pop)
+            result))))))
 
 (defn render-rpc-int-response [id result]
   (string-concat

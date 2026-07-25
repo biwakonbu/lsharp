@@ -156,6 +156,8 @@ fn selfhost_json_escape_loop_uses_one_arg_state_boundary() {
 
     assert!(
         state_body.contains("(json-escape-string-state-loop next-state)")
+            && state_body.contains("(root_push state)")
+            && state_body.contains("(root_push next-state)")
             && wrapper_body.contains("(json-escape-string-state-loop state)")
             && !source.contains("(defn json-escape-string-loop [src idx len out]")
             && !state_body.contains(
