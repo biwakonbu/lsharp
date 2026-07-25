@@ -12,10 +12,22 @@
   `:open-question` が `kind:namespace/key` wire ID、本文、directive span を lossless に保持し、
   `validation_source::source_program_to_intent_graph` が nested module/private/impl を含む
   `IntentGraph` node registry へ typed projection する。ID 省略、wire kind mismatch、duplicate ID
-  は fail-closed。edge/evidence、project manifest との統合、selfhost/native parity は残件。
+  は fail-closed。`motivates` / `constrained-by` の source edge は接続済みだが、contract/evidence
+  edge、project manifest との完全統合、selfhost/native parity は残件。
   Evidence: `crates/lsharp-syntax/tests/intent_metadata.rs`,
   `crates/lsharp-types/tests/validation_source.rs`,
   `docs/adr/decisions-v0.2-source-intent-nodes.md`。
+
+## 2026-07-25 EC-M2 source node-to-node edges
+
+- [~] `EC-M2-01` source intent edges — `:motivates`（Intent→Claim）と `:constrained-by`
+  （Claim→Assumption）が二つの wire ID と directive span を lossless に保持し、
+  `validation_source::source_program_to_intent_graph` が全 node を先に収集してから typed edge を
+  登録する。endpoint の wire kind mismatch、orphan reference、不正 ID は fail-closed。`tested-by`
+  （Contract）と evidence edge は contract/evidence registry の入力境界が未接続のため残件。
+  Evidence: `crates/lsharp-syntax/tests/intent_edges.rs`,
+  `crates/lsharp-types/tests/validation_source.rs`,
+  `docs/adr/decisions-v0.2-source-intent-edges.md`。
 
 - [~] `EC-M2-01`〜`EC-M2-03` の types-only wire/model slice — `StableId` の fail-closed parser、
   typed `IntentNode` wire conversion、duplicate/required-field を検査する `IntentGraph`、
@@ -33,8 +45,9 @@
   `lsharp validate [<manifest>] [--format text|json]` の parser → graph → validate → report
   接続と `pass=0` / `fail=1` / `unknown=2` の Rust CLI exit codeまで確認した。manifest を
   省略した場合は `[validation].manifest` を project root 内へ安全に解決し、絶対 path、`..`、
-  missing、root 外 symlink を拒否する。source node forms/Rust node adapter は実装済みだが、
-  graph edge/evidence の source 接続、selfhost/native parity、
+  missing、root 外 symlink を拒否する。source node forms/Rust node adapter と
+  `motivates` / `constrained-by` edge は実装済みだが、`tested-by`/evidence の source 接続、
+  selfhost/native parity、
   EmbeddedCli/MCP、両 target の artifact/runtime evidence は未完了。Evidence:
   `docs/adr/decisions-v0.2-validation-input-parser.md`, `docs/adr/decisions-v0.2-validation-cli.md`,
   `docs/adr/decisions-v0.2-validation-config.md`, `crates/lsharp-types/tests/validation_input.rs`,

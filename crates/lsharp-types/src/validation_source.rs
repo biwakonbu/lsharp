@@ -4,7 +4,10 @@
 //! evidence は別の入力境界で扱う。ID の省略や kind の推測は行わず、同じ ID の重複と
 //! typed kind mismatch を既存の canonical model のエラーとして返す。
 
-use crate::intent::{IntentNode, IntentNodeError, NodeKind};
+use crate::evidence::Edge;
+use crate::intent::{
+    AssumptionId, ClaimId, IntentId, IntentNode, IntentNodeError, NodeKind, StableIdError,
+};
 use crate::validation::IntentGraph;
 use lsharp_syntax::ast::{Decl, Metadata, Program};
 use lsharp_syntax::metadata::MetadataFormKind;
@@ -16,6 +19,10 @@ pub enum SourceGraphError {
     Node(#[from] IntentNodeError),
     #[error("source intent graph の登録に失敗しました: {0}")]
     Graph(#[from] crate::evidence::GraphError),
+    #[error("source intent edge の ID 解析に失敗しました: {0}")]
+    EdgeId(#[from] StableIdError),
+    #[error("source intent edge が参照する node がありません (relation={relation}, id={id})")]
+    MissingNodeReference { relation: &'static str, id: String },
     #[error(
         "source metadata の node kind と stable ID が不一致です (expected={expected:?}, actual={actual:?}, id={wire_id})"
     )]
@@ -26,15 +33,20 @@ pub enum SourceGraphError {
     },
 }
 
-/// source の明示 node metadata を version 1 graph の node registry へ投影する。
+/// source の明示 node metadata と node-to-node edge を version 1 graph へ投影する。
 ///
 /// `:intent` / `:claim` / `:assumption` / `:open-question` 以外の metadata は
-/// presentation または executable contract として別の adapter が扱うため、ここでは
-/// 無視する。edge/evidence はこの slice では生成しない。
+/// presentation または executable contract として別の adapter が扱うため、node/edge
+/// registry では無視する。source edge は endpoint を node registry へ解決できる
+/// `:motivates` と `:constrained-by` だけを生成し、contract/evidence を必要とする
+/// `:tested-by` などは別の adapter の責務として残す。
 pub fn source_program_to_intent_graph(program: &Program) -> Result<IntentGraph, SourceGraphError> {
     let mut graph = IntentGraph::default();
     for decl in &program.decls {
         add_decl_nodes(decl, &mut graph)?;
+    }
+    for decl in &program.decls {
+        add_decl_edges(decl, &mut graph)?;
     }
     Ok(graph)
 }
@@ -83,4 +95,66 @@ fn add_metadata_nodes(
         graph.add_node(node)?;
     }
     Ok(())
+}
+
+fn add_decl_edges(decl: &Decl, graph: &mut IntentGraph) -> Result<(), SourceGraphError> {
+    match decl {
+        Decl::Defn {
+            metadata: Some(metadata),
+            ..
+        }
+        | Decl::TypeDef {
+            metadata: Some(metadata),
+            ..
+        } => add_metadata_edges(metadata, graph),
+        Decl::ModuleDecl { body, .. } | Decl::ImplDef { methods: body, .. } => {
+            for nested in body {
+                add_decl_edges(nested, graph)?;
+            }
+            Ok(())
+        }
+        Decl::Private { inner, .. } => add_decl_edges(inner, graph),
+        _ => Ok(()),
+    }
+}
+
+fn add_metadata_edges(
+    metadata: &Metadata,
+    graph: &mut IntentGraph,
+) -> Result<(), SourceGraphError> {
+    for form in &metadata.forms {
+        match &form.kind {
+            MetadataFormKind::Motivates { intent, claim } => {
+                let intent = IntentId::parse(intent.clone())?;
+                let claim = ClaimId::parse(claim.clone())?;
+                require_node(graph, "motivates.intent", intent.stable_id())?;
+                require_node(graph, "motivates.claim", claim.stable_id())?;
+                graph.add_edge(Edge::Motivates { intent, claim })?;
+            }
+            MetadataFormKind::ConstrainedBy { claim, assumption } => {
+                let claim = ClaimId::parse(claim.clone())?;
+                let assumption = AssumptionId::parse(assumption.clone())?;
+                require_node(graph, "constrained-by.claim", claim.stable_id())?;
+                require_node(graph, "constrained-by.assumption", assumption.stable_id())?;
+                graph.add_edge(Edge::ConstrainedBy { claim, assumption })?;
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+fn require_node(
+    graph: &IntentGraph,
+    relation: &'static str,
+    id: &crate::intent::StableId,
+) -> Result<(), SourceGraphError> {
+    if graph.nodes().iter().any(|node| node.stable_id() == id) {
+        Ok(())
+    } else {
+        Err(SourceGraphError::MissingNodeReference {
+            relation,
+            id: id.as_str().to_string(),
+        })
+    }
 }

@@ -56,12 +56,22 @@ source から node identity を持たせる場合は、宣言 metadata に stabl
 ```
 
 `:assumption` と `:open-question` も同じ形式で記述できます。wire ID の kind と directive
-kind が一致しない、本文が空、同じ ID が重複する入力は fail-closed です。現時点の source
-adapter は node registry と span を保持するところまでで、edge/evidence の生成と selfhost/native
-実行は未接続です。
+kind が一致しない、本文が空、同じ ID が重複する入力は fail-closed です。node 間の trace を
+source に明示する場合は、次の edge metadata を使います。
+
+```lisp
+(defn cancel []
+  :motivates "intent:checkout/safe-cancel" "claim:checkout/cancel-rejects-shipped"
+  :constrained-by "claim:checkout/cancel-rejects-shipped" "assumption:checkout/state-authoritative"
+  true)
+```
+
+Rust source adapter は全 node を先に登録し、`motivates` / `constrained-by` の typed endpoint
+kind と存在を検査してから graph edge を追加します。`tested-by`、evidence edge、manifest
+emission、selfhost/native 実行は後続境界です。
 
 ## 現在の境界
 
-この slice は Rust の manifest parser/CLI と source node registry を graph model へ接続し、
-project config から安全に入力を発見するものです。source edge/evidence、selfhost/native の report parity、
+この slice は Rust の manifest parser/CLI と source node/edge registry を graph model へ接続し、
+project config から安全に入力を発見するものです。contract/evidence source edge、selfhost/native の report parity、
 EmbeddedCli/MCP、Mac/Linux の artifact/runtime evidence は後続の M2-03 task として残ります。

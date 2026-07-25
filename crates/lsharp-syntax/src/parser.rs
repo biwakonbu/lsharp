@@ -369,6 +369,33 @@ impl Parser {
                             ));
                             found = true;
                         }
+                        "motivates" => {
+                            let form_start = self.peek_span();
+                            self.advance(); // :
+                            self.advance(); // motivates
+                            let (intent, _) = self.expect_metadata_string("motivates intent ID")?;
+                            let (claim, claim_span) =
+                                self.expect_metadata_string("motivates claim ID")?;
+                            metadata.forms.push(MetadataForm::new(
+                                form_start.merge(claim_span),
+                                MetadataFormKind::Motivates { intent, claim },
+                            ));
+                            found = true;
+                        }
+                        "constrained-by" => {
+                            let form_start = self.peek_span();
+                            self.advance(); // :
+                            self.advance(); // constrained-by
+                            let (claim, _) =
+                                self.expect_metadata_string("constrained-by claim ID")?;
+                            let (assumption, assumption_span) =
+                                self.expect_metadata_string("constrained-by assumption ID")?;
+                            metadata.forms.push(MetadataForm::new(
+                                form_start.merge(assumption_span),
+                                MetadataFormKind::ConstrainedBy { claim, assumption },
+                            ));
+                            found = true;
+                        }
                         "since" => {
                             self.advance(); // :
                             self.advance(); // since
@@ -1733,6 +1760,8 @@ impl Parser {
                     | "claim"
                     | "assumption"
                     | "open-question"
+                    | "motivates"
+                    | "constrained-by"
                     | "doc"
                     | "params"
                     | "returns"

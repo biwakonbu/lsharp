@@ -155,6 +155,10 @@ pub enum MetadataFormKind {
     Assumption { id: String, text: String },
     /// source から明示した open-question node。ID は `open-question:namespace/key` wire 形式。
     OpenQuestion { id: String, text: String },
+    /// source から intent と claim を接続する typed edge。
+    Motivates { intent: String, claim: String },
+    /// source から claim と assumption を接続する typed edge。
+    ConstrainedBy { claim: String, assumption: String },
     /// legacy `:example [expr ...]`。一つの directive 内の grouping を維持する。
     LegacyExample { expressions: Vec<Expr> },
     /// legacy `:invariant predicate`。
