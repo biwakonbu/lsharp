@@ -1,12 +1,13 @@
 //! L# source metadata を intent graph の node registry へ投影する adapter。
 //!
-//! source syntax では node の wire ID、本文、span だけを明示的に受け取り、edge と
-//! evidence は別の入力境界で扱う。ID の省略や kind の推測は行わず、同じ ID の重複と
-//! typed kind mismatch を既存の canonical model のエラーとして返す。
+//! source syntax では node の wire ID、本文、span と typed edge endpoint を明示的に受け取り、
+//! evidence record 自体は別の入力境界で扱う。ID の省略や kind の推測は行わず、同じ ID の
+//! 重複と typed kind mismatch を既存の canonical model のエラーとして返す。
 
 use crate::evidence::Edge;
 use crate::intent::{
-    AssumptionId, ClaimId, IntentId, IntentNode, IntentNodeError, NodeKind, StableIdError,
+    AssumptionId, ClaimId, ContractId, IntentId, IntentNode, IntentNodeError, NodeKind,
+    StableIdError,
 };
 use crate::validation::IntentGraph;
 use lsharp_syntax::ast::{Decl, Metadata, Program};
@@ -33,13 +34,13 @@ pub enum SourceGraphError {
     },
 }
 
-/// source の明示 node metadata と node-to-node edge を version 1 graph へ投影する。
+/// source の明示 node metadata と typed edge を version 1 graph へ投影する。
 ///
 /// `:intent` / `:claim` / `:assumption` / `:open-question` 以外の metadata は
 /// presentation または executable contract として別の adapter が扱うため、node/edge
 /// registry では無視する。source edge は endpoint を node registry へ解決できる
-/// `:motivates` と `:constrained-by` だけを生成し、contract/evidence を必要とする
-/// `:tested-by` などは別の adapter の責務として残す。
+/// `:motivates`、`:constrained-by`、`:tested-by` を生成する。contract/evidence の
+/// 実体定義と evidence record 投入は別の adapter の責務として残す。
 pub fn source_program_to_intent_graph(program: &Program) -> Result<IntentGraph, SourceGraphError> {
     let mut graph = IntentGraph::default();
     for decl in &program.decls {
@@ -137,6 +138,12 @@ fn add_metadata_edges(
                 require_node(graph, "constrained-by.claim", claim.stable_id())?;
                 require_node(graph, "constrained-by.assumption", assumption.stable_id())?;
                 graph.add_edge(Edge::ConstrainedBy { claim, assumption })?;
+            }
+            MetadataFormKind::TestedBy { claim, contract } => {
+                let claim = ClaimId::parse(claim.clone())?;
+                let contract = ContractId::parse(contract.clone())?;
+                require_node(graph, "tested-by.claim", claim.stable_id())?;
+                graph.add_edge(Edge::TestedBy { claim, contract })?;
             }
             _ => {}
         }

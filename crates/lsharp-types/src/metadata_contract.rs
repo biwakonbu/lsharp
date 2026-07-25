@@ -350,7 +350,8 @@ fn inventory_decl(decl: &Decl) -> Result<Option<ContractSuite>, ContractInventor
             | MetadataFormKind::Assumption { .. }
             | MetadataFormKind::OpenQuestion { .. }
             | MetadataFormKind::Motivates { .. }
-            | MetadataFormKind::ConstrainedBy { .. } => {}
+            | MetadataFormKind::ConstrainedBy { .. }
+            | MetadataFormKind::TestedBy { .. } => {}
             MetadataFormKind::LegacyExample { expressions } => {
                 pending_migration.push(LegacyContract::Example {
                     expressions: expressions.clone(),
@@ -433,7 +434,8 @@ fn validate_compatibility_projection(
             | MetadataFormKind::Assumption { .. }
             | MetadataFormKind::OpenQuestion { .. }
             | MetadataFormKind::Motivates { .. }
-            | MetadataFormKind::ConstrainedBy { .. } => {}
+            | MetadataFormKind::ConstrainedBy { .. }
+            | MetadataFormKind::TestedBy { .. } => {}
             MetadataFormKind::LegacyExample { expressions } => {
                 examples.extend(expressions.iter().cloned());
             }

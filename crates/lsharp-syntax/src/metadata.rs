@@ -159,6 +159,8 @@ pub enum MetadataFormKind {
     Motivates { intent: String, claim: String },
     /// source から claim と assumption を接続する typed edge。
     ConstrainedBy { claim: String, assumption: String },
+    /// source から claim と executable contract を接続する typed edge。
+    TestedBy { claim: String, contract: String },
     /// legacy `:example [expr ...]`。一つの directive 内の grouping を維持する。
     LegacyExample { expressions: Vec<Expr> },
     /// legacy `:invariant predicate`。

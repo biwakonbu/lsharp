@@ -144,6 +144,37 @@ fn validate_source_rejects_orphan_edges_as_input_errors() {
 }
 
 #[test]
+fn validate_source_tested_by_closes_claim_trace_gap() {
+    let path = source_path(
+        "source-tested-by",
+        r#"
+        (defn cancel []
+          :claim "claim:checkout/cancel-rejects-shipped" "The API rejects shipped orders"
+          :tested-by "claim:checkout/cancel-rejects-shipped" "contract:checkout/cancel-case"
+          true)
+        "#,
+    );
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+        .args([
+            "validate",
+            "--source",
+            path.to_str().unwrap(),
+            "--format",
+            "json",
+        ])
+        .output()
+        .expect("lsharp validate --source should run");
+    fs::remove_file(&path).ok();
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stderr.is_empty());
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("valid JSON");
+    assert_eq!(value["status"], "unknown");
+    assert_eq!(value["trace_gaps"].as_array().unwrap().len(), 0);
+}
+
+#[test]
 fn validate_source_cannot_be_combined_with_manifest_path() {
     let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
         .args(["validate", "intent-graph.json", "--source", "source.ls"])

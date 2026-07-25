@@ -137,3 +137,49 @@ fn source_adapter_rejects_orphan_and_mismatched_edge_endpoints() {
         Err(SourceGraphError::EdgeId(_))
     ));
 }
+
+#[test]
+fn source_adapter_registers_tested_by_claim_contract_edges() {
+    let program = parse(
+        r#"
+        (defn cancel []
+          :claim "claim:checkout/cancel-rejects-shipped" "The API rejects shipped orders"
+          :tested-by "claim:checkout/cancel-rejects-shipped" "contract:checkout/cancel-case"
+          true)
+        "#,
+    )
+    .expect("tested-by source fixture は parse できるべき");
+
+    let graph =
+        source_program_to_intent_graph(&program).expect("tested-by source graph が構築できるべき");
+    assert!(matches!(
+        &graph.edges()[0],
+        lsharp_types::evidence::Edge::TestedBy { claim, contract }
+            if claim.as_str() == "claim:checkout/cancel-rejects-shipped"
+                && contract.as_str() == "contract:checkout/cancel-case"
+    ));
+}
+
+#[test]
+fn source_adapter_rejects_orphan_or_mismatched_tested_by_claims() {
+    let orphan = parse(
+        r#"(defn cancel [] :tested-by "claim:checkout/missing" "contract:checkout/case" true)"#,
+    )
+    .expect("orphan tested-by fixture は parse できるべき");
+    assert!(matches!(
+        source_program_to_intent_graph(&orphan),
+        Err(SourceGraphError::MissingNodeReference {
+            relation: "tested-by.claim",
+            ..
+        })
+    ));
+
+    let mismatch = parse(
+        r#"(defn cancel [] :tested-by "intent:checkout/wrong-kind" "contract:checkout/case" true)"#,
+    )
+    .expect("kind mismatch tested-by fixture は parse できるべき");
+    assert!(matches!(
+        source_program_to_intent_graph(&mismatch),
+        Err(SourceGraphError::EdgeId(_))
+    ));
+}

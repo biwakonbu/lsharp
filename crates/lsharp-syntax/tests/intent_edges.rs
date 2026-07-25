@@ -41,3 +41,29 @@ fn intent_edge_metadata_requires_both_wire_ids() {
         .expect_err("edge endpoint がない入力は拒否するべき");
     assert_eq!(missing_target.code(), "LS0101");
 }
+
+#[test]
+fn tested_by_metadata_preserves_claim_and_contract_wire_ids() {
+    let program = parse(
+        r#"
+        (defn cancel []
+          :tested-by "claim:checkout/cancel-rejects-shipped" "contract:checkout/cancel-case"
+          true)
+        "#,
+    )
+    .expect("tested-by metadata は parse できるべき");
+    let Decl::Defn {
+        metadata: Some(metadata),
+        ..
+    } = &program.decls[0]
+    else {
+        panic!("metadata 付き defn を期待しました");
+    };
+
+    assert!(matches!(
+        &metadata.forms[0].kind,
+        MetadataFormKind::TestedBy { claim, contract }
+            if claim == "claim:checkout/cancel-rejects-shipped"
+                && contract == "contract:checkout/cancel-case"
+    ));
+}

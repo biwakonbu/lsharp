@@ -396,6 +396,19 @@ impl Parser {
                             ));
                             found = true;
                         }
+                        "tested-by" => {
+                            let form_start = self.peek_span();
+                            self.advance(); // :
+                            self.advance(); // tested-by
+                            let (claim, _) = self.expect_metadata_string("tested-by claim ID")?;
+                            let (contract, contract_span) =
+                                self.expect_metadata_string("tested-by contract ID")?;
+                            metadata.forms.push(MetadataForm::new(
+                                form_start.merge(contract_span),
+                                MetadataFormKind::TestedBy { claim, contract },
+                            ));
+                            found = true;
+                        }
                         "since" => {
                             self.advance(); // :
                             self.advance(); // since
@@ -1762,6 +1775,7 @@ impl Parser {
                     | "open-question"
                     | "motivates"
                     | "constrained-by"
+                    | "tested-by"
                     | "doc"
                     | "params"
                     | "returns"
