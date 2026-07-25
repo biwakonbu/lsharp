@@ -14594,6 +14594,52 @@ fn test_e2e_selfhost_cli_main_with_args_parse_file() {
     assert_eq!(lines[3], "diagnostics:0");
 }
 
+/// EC-M2-01: selfhost Cli の source validation は Rust oracle と同じ unknown report を返す
+#[test]
+#[ignore = "既存 typeinfer-builtin-root-value の関数間 root lease が lowering ledger で未対応のため"]
+fn test_e2e_selfhost_cli_validate_source_json_reports_trace_gap() {
+    let dir = std::env::temp_dir().join(format!(
+        "lsharp_test_cli_validate_source_json_{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("input.ls"),
+        r#"
+(defn cancel []
+  :intent "intent:checkout/safe-cancel" "Users can cancel an order"
+  :claim "claim:checkout/cancel-rejects-shipped" "The API rejects shipped orders"
+  :motivates "intent:checkout/safe-cancel" "claim:checkout/cancel-rejects-shipped"
+  true)
+"#,
+    )
+    .unwrap();
+
+    let wasm = compile_only(selfhost_cli_runtime_bundle());
+    let output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_args_and_stdin_capture(
+        &wasm,
+        Some(&dir),
+        &["validate", "--source", "input.ls", "--format", "json"],
+        "",
+    )
+    .unwrap();
+    let _ = std::fs::remove_dir_all(&dir);
+
+    assert_eq!(output.exit_code, 2, "unknown validation は exit code 2 を返すべき");
+    let value: Value = serde_json::from_str(output.stdout.trim())
+        .expect("selfhost validate --source は JSON report を返すべき");
+    assert_eq!(value["status"], "unknown");
+    assert_eq!(
+        value["trace_gaps"][0]["code"],
+        "trace-gap.claim-without-test"
+    );
+    assert_eq!(value["trace_gaps"][0]["subject_id"], "claim:checkout/cancel-rejects-shipped");
+    assert_eq!(value["open_questions"], 0);
+    assert_eq!(value["independent_reviews"], 0);
+    assert_eq!(value["contradicting_observations"], 0);
+    assert!(value.get("verified").is_none());
+}
+
 /// TEST-CLI-02-AF2: actual Cli main は argv 経由で compile file command を処理できること
 #[test]
 #[ignore]

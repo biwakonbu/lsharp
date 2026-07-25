@@ -559,6 +559,21 @@ typed graph validationを行わない。`intent`、`claim`、`motivates` の dir
 TypeDef、nested module/private/impl traversal、evidence record、typed graph projection、`validate` /
 `--emit-manifest`、EmbeddedCli/MCP、Mac Apple Silicon / Linux x86_64 artifact/runtime parityは残件である。
 
+### EC-M2-03 selfhost `validate --source` initial CLI slice (2026-07-25)
+
+`selfhost/src/App/Cli.ls` に `validate` command、`--source <file> --format json` option、top-level
+`defn` metadata の intent/claim/motivates/tested-by 集計、claim trace gap JSON projection、unknown exit
+code `2` を追加した。`selfhost_cli_validation_contract` は command/help/option/report-code の source
+contract を RED から GREEN へ確認している。
+
+同じ fixtureを actual Wasm で実行する `test_e2e_selfhost_cli_validate_source_json_reports_trace_gap` は、
+lowering前に既存 `typeinfer-builtin-root-value` の関数間 root lease を
+`typeinfer-builtin-root-value: function exits with 1 active root slots` と検出するため明示 ignore 中で
+ある。次の狭い blocker は、caller 側で後から `root_pop` する selfhost helperを除外することではなく、
+root acquire/release の関数間 effect を ledger へ正しく渡してから actual Wasm を GREEN にすることである。
+typed signature、nested traversal、evidence/contract registry、manifest emission、EmbeddedCli/MCP、
+native stage0 と対応2 targetの current-source parityは未完了である。
+
 ## Native 開発経路
 
 `fetch-stage0.sh` が配置した `./stage0` package があれば、通常のコア開発は次の runner を使う。

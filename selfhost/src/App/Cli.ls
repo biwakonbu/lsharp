@@ -53,7 +53,8 @@
 (defn cmd-lsp [] 11)
 (defn cmd-fmt [] 12)
 (defn cmd-doc [] 13)
-(defn arg-parse [cmd-name] (if (string-eq cmd-name "parse") (cmd-parse) (if (string-eq cmd-name "check") (cmd-check) (if (string-eq cmd-name "compile") (cmd-compile) (if (string-eq cmd-name "build") (cmd-build) (if (string-eq cmd-name "test") (cmd-test) (if (string-eq cmd-name "review") (cmd-review) (if (string-eq cmd-name "doc-ack") (cmd-doc-ack) (if (string-eq cmd-name "doc-check") (cmd-doc-check) (if (string-eq cmd-name "install") (cmd-install) (if (string-eq cmd-name "repl") (cmd-repl) (if (string-eq cmd-name "lsp") (cmd-lsp) (if (string-eq cmd-name "fmt") (cmd-fmt) (if (string-eq cmd-name "doc") (cmd-doc) 0))))))))))))))
+(defn cmd-validate [] 14)
+(defn arg-parse [cmd-name] (if (string-eq cmd-name "parse") (cmd-parse) (if (string-eq cmd-name "check") (cmd-check) (if (string-eq cmd-name "compile") (cmd-compile) (if (string-eq cmd-name "build") (cmd-build) (if (string-eq cmd-name "test") (cmd-test) (if (string-eq cmd-name "review") (cmd-review) (if (string-eq cmd-name "doc-ack") (cmd-doc-ack) (if (string-eq cmd-name "doc-check") (cmd-doc-check) (if (string-eq cmd-name "install") (cmd-install) (if (string-eq cmd-name "repl") (cmd-repl) (if (string-eq cmd-name "lsp") (cmd-lsp) (if (string-eq cmd-name "fmt") (cmd-fmt) (if (string-eq cmd-name "doc") (cmd-doc) (if (string-eq cmd-name "validate") (cmd-validate) 0)))))))))))))))
 (defn parse-first-decl-tag [program] (if (> (vector-length program) 0) (vector-get (vector-get program 0) 0) 0))
 (defn parse-decl-tag-text [tag] (if (= tag 20) "defn" (if (= tag 25) "module" (if (= tag 26) "import" (string-concat "decl-" (int-to-string tag))))))
 (defn parse-expr-tag-text [tag] (if (= tag 1) "int" (if (= tag 2) "bool" (if (= tag 3) "string" (if (= tag 4) "var" (if (= tag 5) "apply" (if (= tag 6) "if" (if (= tag 7) "let" (if (= tag 8) "fn" (if (= tag 9) "do" (if (= tag 10) "match" (if (= tag 32) "unit" (string-concat "expr-" (int-to-string tag))))))))))))))
@@ -94,6 +95,151 @@
 ") (print-string (string-concat "first-body:" (parse-first-body-text program))) (print-string "
 ") (print-string diagnostics-text) (print-string "
 ") (exit-success))))
+;; EC-M2-01 の最初の selfhost validation slice。parser が保持した
+;; defn metadata を source node/edge の wire payload として集計し、未接続
+;; の trace gap を unknown report へ投影する。evidence registry は後段で接続する。
+(defn validation-state-new []
+  (let [state0 (vector-new 5)
+    state1 (push-object-vector-local state0 (ref-new (vector-new 0)))
+    state2 (push-object-vector-local state1 (ref-new (vector-new 0)))
+    state3 (push-object-vector-local state2 (ref-new (vector-new 0)))
+    state4 (push-object-vector-local state3 (ref-new (vector-new 0)))]
+    (push-object-vector-local state4 (ref-new 0))))
+(defn validation-state-add-object [state slot value]
+  (let [items-ref (vector-get state slot)
+    items (ref-get items-ref)
+    updated (push-object-vector-local items value)]
+    (do
+      (ref-set items-ref updated)
+      state)))
+(defn validation-source-pair [left right]
+  (let [pair (vector-new 2)
+    with-left (push-object-vector-local pair left)]
+    (push-object-vector-local with-left right)))
+(defn validation-defn-metadata [decl]
+  (let [decl-len (vector-length decl)
+    body-end (+ 4 (vector-get decl 2))]
+    (if (< body-end decl-len)
+      (vector-get decl body-end)
+      (vector-new 0))))
+(defn validation-defn-forms [decl]
+  (let [meta (validation-defn-metadata decl)]
+    (if (> (vector-length meta) 5)
+      (vector-get meta 5)
+      (vector-new 0))))
+(defn validation-state-consume-form [state form]
+  (let [kind (vector-get form 0)
+    payload (vector-get form 1)
+    payload-len (vector-length payload)]
+    (if (= kind 6)
+      (if (= payload-len 2)
+        (validation-state-add-object state 0 (vector-get payload 0))
+        state)
+      (if (= kind 7)
+        (if (= payload-len 2)
+          (validation-state-add-object state 1 (vector-get payload 0))
+          state)
+        (if (= kind 9)
+          (do
+            (ref-set (vector-get state 4) (+ (ref-get (vector-get state 4)) 1))
+            state)
+          (if (= kind 10)
+            (if (= payload-len 2)
+              (validation-state-add-object
+                state
+                2
+                (validation-source-pair (vector-get payload 0) (vector-get payload 1)))
+              state)
+            (if (= kind 12)
+              (if (= payload-len 2)
+                (validation-state-add-object
+                  state
+                  3
+                  (validation-source-pair (vector-get payload 0) (vector-get payload 1)))
+                state)
+              state)))))))
+(defn validation-forms-loop [forms idx state]
+  (if (>= idx (vector-length forms))
+    state
+    (validation-forms-loop
+      forms
+      (+ idx 1)
+      (validation-state-consume-form state (vector-get forms idx)))))
+(defn validation-program-loop [program idx state]
+  (if (>= idx (vector-length program))
+    state
+    (let [decl (vector-get program idx)
+      next-state
+        (if (= (vector-get decl 0) (ast-defn))
+          (validation-forms-loop (validation-defn-forms decl) 0 state)
+          state)]
+      (validation-program-loop program (+ idx 1) next-state))))
+(defn validation-source-state [program]
+  (validation-program-loop program 0 (validation-state-new)))
+(defn validation-edge-links-id? [edges idx target]
+  (if (>= idx (vector-length edges))
+    0
+    (let [edge (vector-get edges idx)]
+      (if (string-eq (vector-get edge 0) target)
+        1
+        (validation-edge-links-id? edges (+ idx 1) target)))))
+(defn validation-gap-json [code subject]
+  (let [fields0 ""
+    fields1 (docjson-append fields0 (docjson-string-field "code" code))
+    fields2 (docjson-append fields1 (docjson-string-field "subject_id" subject))]
+    (docjson-object-wrap fields2)))
+(defn validation-intent-gaps-loop [intents motives idx out]
+  (if (>= idx (vector-length intents))
+    out
+    (let [intent (vector-get intents idx)
+      next-out
+        (if (= (validation-edge-links-id? motives 0 intent) 1)
+          out
+          (docjson-append
+            out
+            (validation-gap-json "trace-gap.intent-without-claim" intent)))]
+      (validation-intent-gaps-loop intents motives (+ idx 1) next-out))))
+(defn validation-claim-gaps-loop [claims tested-by idx out]
+  (if (>= idx (vector-length claims))
+    out
+    (let [claim (vector-get claims idx)
+      next-out
+        (if (= (validation-edge-links-id? tested-by 0 claim) 1)
+          out
+          (docjson-append
+            out
+            (validation-gap-json "trace-gap.claim-without-test" claim)))]
+      (validation-claim-gaps-loop claims tested-by (+ idx 1) next-out))))
+(defn validation-trace-gaps-json [state]
+  (let [intents (ref-get (vector-get state 0))
+    claims (ref-get (vector-get state 1))
+    motives (ref-get (vector-get state 2))
+    tested-by (ref-get (vector-get state 3))
+    intent-gaps (validation-intent-gaps-loop intents motives 0 "")
+    all-gaps (validation-claim-gaps-loop claims tested-by 0 intent-gaps)]
+    (docjson-array-wrap all-gaps)))
+(defn validation-source-report-json [state]
+  (let [fields0 ""
+    fields1 (docjson-append fields0 (docjson-string-field "status" "unknown"))
+    fields2 (docjson-append fields1 (docjson-array-field "trace_gaps" (validation-trace-gaps-json state)))
+    fields3 (docjson-append fields2 (docjson-int-field "open_questions" (ref-get (vector-get state 4))))
+    fields4 (docjson-append fields3 (docjson-int-field "independent_reviews" 0))
+    fields5 (docjson-append fields4 (docjson-int-field "contradicting_observations" 0))]
+    (docjson-object-wrap fields5)))
+(defn run-validate-source [src opts]
+  (let [program (parse-program src)
+    state (validation-source-state program)
+    report (validation-source-report-json state)]
+    (do
+      (print-string report)
+      (print-string "\n")
+      (exit-code-runtime-error))))
+(defn run-validate [file-path opts]
+  (if (file-exists? file-path)
+    (run-validate-source (read-file file-path) opts)
+    (do
+      (cli-stderr "source file not found")
+      (exit-code-compile-error))))
 (defn builtin-type-name-text [type-hash] (if (= type-hash 100) "Int" (if (= type-hash 200) "Bool" (if (= type-hash 300) "String" (if (= type-hash 400) "Float" (if (= type-hash 500) "Unit" (string-concat "type-" (int-to-string type-hash))))))))
 (defn render-type-text [ty] (let [tag (ty-tag ty)] (if (= tag 1) (builtin-type-name-text (ty-name ty)) (if (= tag 2) (string-concat "t" (int-to-string (ty-name ty))) (if (= tag 3) "Fn" (if (= tag 4) (string-concat "record-" (int-to-string (ty-name ty))) "Unknown"))))))
 (defn check-failure-kinds-text-loop [kinds idx count]
@@ -1189,9 +1335,27 @@
 (defn check-diagnostics-count-program [program] (infer-program-analysis-diagnostic-count (infer-program-analysis program)))
 (defn check-diagnostics-first-code [program] (infer-program-analysis-first-error-code (infer-program-analysis program)))
 (defn check-diagnostics-count [src] (let [program (parse-program src)] (check-diagnostics-count-program program)))
-(defn dispatch-command-tail [cmd-id file-path opts] (if (= cmd-id (cmd-doc-ack)) (run-doc-ack file-path opts) (if (= cmd-id (cmd-doc-check)) (run-doc-check file-path opts) (if (= cmd-id (cmd-install)) (run-install file-path opts) (if (= cmd-id (cmd-repl)) (run-repl opts) (if (= cmd-id (cmd-lsp)) (run-lsp opts) (if (= cmd-id (cmd-fmt)) (run-fmt file-path opts) (if (= cmd-id (cmd-doc)) (run-doc file-path opts) (exit-unknown-command)))))))))
+(defn dispatch-command-tail [cmd-id file-path opts]
+  (if (= cmd-id (cmd-validate))
+    (run-validate file-path opts)
+    (if (= cmd-id (cmd-doc-ack))
+      (run-doc-ack file-path opts)
+      (if (= cmd-id (cmd-doc-check))
+        (run-doc-check file-path opts)
+        (if (= cmd-id (cmd-install))
+          (run-install file-path opts)
+          (if (= cmd-id (cmd-repl))
+            (run-repl opts)
+            (if (= cmd-id (cmd-lsp))
+              (run-lsp opts)
+              (if (= cmd-id (cmd-fmt))
+                (run-fmt file-path opts)
+                (if (= cmd-id (cmd-doc))
+                  (run-doc file-path opts)
+                  (exit-unknown-command))))))))))
 (defn dispatch-command [cmd-id file-path opts] (if (= cmd-id (cmd-parse)) (run-parse file-path opts) (if (= cmd-id (cmd-check)) (run-check file-path opts) (if (= cmd-id (cmd-compile)) (run-compile file-path opts) (if (= cmd-id (cmd-build)) (run-build file-path opts) (if (= cmd-id (cmd-test)) (run-test file-path opts) (if (= cmd-id (cmd-review)) (run-review file-path opts) (dispatch-command-tail cmd-id file-path opts))))))))
-(defn help-text [] "Usage: lsharp <command> [options] Commands: parse check compile build test review doc-ack doc-check install repl lsp fmt doc")
+(defn help-text [] "Usage: lsharp <command> [options] Commands: parse check compile build test review doc-ack doc-check install repl lsp fmt doc validate")
+(defn validate-help-text [] "validate --source <file> --format json - Validate source intent graph")
 (defn version-text [] "lsharp 0.1.0")
 (defn show-help [] (do (print-string (help-text)) (exit-success)))
 (defn show-version [] (do (print-string (version-text)) (exit-success)))
@@ -1199,7 +1363,7 @@
 ") 0))
 (defn cli-stderr [msg] (do (print-string (string-concat "error: " msg)) (print-string "
 ") 0))
-(defn format-subcommand-help [cmd] (if (string-eq cmd "parse") "parse <file> - Parse source and show AST" (if (string-eq cmd "check") "check <file> - Type-check source" (if (string-eq cmd "compile") "compile <file> [-o <file>] [--target <wasi-preview1|wasi-component|wasm>] - Compile to Wasm" (if (string-eq cmd "build") "build <file> [--output <file>] [--target <wasi-preview1|wasi-component|wasm>] - Build project" (if (string-eq cmd "test") "test <file> - Run metadata tests" (if (string-eq cmd "review") "review <file> - Code review" (if (string-eq cmd "doc-ack") "doc-ack <file> - Acknowledge docs" (if (string-eq cmd "doc-check") "doc-check <file> - Check doc consistency" (if (string-eq cmd "install") "install <pkg> - Install package" (if (string-eq cmd "repl") "repl - Interactive REPL" (if (string-eq cmd "lsp") "lsp [--stdio] - Start LSP server" (if (string-eq cmd "fmt") "fmt <file> - Format source" (if (string-eq cmd "doc") "doc <file> - Generate docs" "unknown command"))))))))))))))
+(defn format-subcommand-help [cmd] (if (string-eq cmd "validate") (validate-help-text) (if (string-eq cmd "parse") "parse <file> - Parse source and show AST" (if (string-eq cmd "check") "check <file> - Type-check source" (if (string-eq cmd "compile") "compile <file> [-o <file>] [--target <wasi-preview1|wasi-component|wasm>] - Compile to Wasm" (if (string-eq cmd "build") "build <file> [--output <file>] [--target <wasi-preview1|wasi-component|wasm>] - Build project" (if (string-eq cmd "test") "test <file> - Run metadata tests" (if (string-eq cmd "review") "review <file> - Code review" (if (string-eq cmd "doc-ack") "doc-ack <file> - Acknowledge docs" (if (string-eq cmd "doc-check") "doc-check <file> - Check doc consistency" (if (string-eq cmd "install") "install <pkg> - Install package" (if (string-eq cmd "repl") "repl - Interactive REPL" (if (string-eq cmd "lsp") "lsp [--stdio] - Start LSP server" (if (string-eq cmd "fmt") "fmt <file> - Format source" (if (string-eq cmd "doc") "doc <file> - Generate docs" "unknown command")))))))))))))))
 (defn run-command [cmd-name file-path opts] (if (or (string-eq cmd-name "--help") (string-eq cmd-name "-h")) (show-help) (if (or (string-eq cmd-name "--version") (string-eq cmd-name "-v")) (show-version) (if (string-eq cmd-name "help") (do (cli-stdout (format-subcommand-help file-path)) (exit-success)) (if (or (string-eq file-path "--help") (string-eq file-path "-h")) (do (cli-stdout (format-subcommand-help cmd-name)) (exit-success)) (let [cmd-id (arg-parse cmd-name)] (if (= cmd-id 0) (do (cli-stderr (string-concat "unknown command: " cmd-name)) (exit-code-unknown-command)) (dispatch-command cmd-id file-path opts))))))))
 (defn main-dispatch [cmd-name file-path opts] (run-command cmd-name file-path opts))
 (defn compile-or-build-command [cmd-name] (or (string-eq cmd-name "compile") (string-eq cmd-name "build")))
@@ -1220,6 +1384,22 @@
 (defn parse-cli-options [argc] (parse-cli-options-loop 2 argc (default-compile-target) ""))
 (defn cli-option-error-message [result] (let [status (cli-option-result-status result) detail (cli-option-result-detail result)] (if (= status (cli-option-status-invalid-target)) (string-concat "unsupported target: " detail) (if (= status (cli-option-status-missing-value)) (string-concat "missing value for option: " detail) (string-concat "unsupported option: " detail)))))
 (defn run-command-with-cli-options [cmd-name file-path result] (let [target (cli-option-result-target result) output-path (cli-option-result-output-path result)] (if (> (string-length output-path) 0) (if (string-eq cmd-name "compile") (run-compile-output file-path output-path target) (if (string-eq cmd-name "build") (run-build-output file-path output-path target) (run-command cmd-name file-path target))) (run-command cmd-name file-path target))))
+(defn validate-option-json [] 1)
+(defn validate-option-invalid [] (- 0 1))
+(defn parse-validate-cli-option [argc]
+  (if (and (= argc 5)
+      (and (string-eq (command-line-arg 1) "--source")
+        (and (format-option-flag (command-line-arg 3))
+          (string-eq (command-line-arg 4) "json"))))
+    (validate-option-json)
+    (validate-option-invalid)))
+(defn run-validate-command [argc]
+  (let [option (parse-validate-cli-option argc)]
+    (if (>= option 0)
+      (run-validate (command-line-arg 2) option)
+      (do
+        (cli-stderr "validate requires --source <file> --format json")
+        (exit-code-compile-error)))))
 (defn doc-cli-option-none [] 0)
 (defn doc-cli-option-invalid [] (- 0 1))
 (defn doc-cli-option-error-message [argc]
@@ -1289,28 +1469,30 @@
 (defn run-main-command-core [argc cmd-name file-path]
   (if (and (string-eq cmd-name "lsp") (string-eq file-path "--stdio"))
     (run-lsp-stdio-server)
-    (if (and (compile-or-build-command cmd-name) (> argc 2))
-      (let [options (parse-cli-options argc)]
-        (if (= (cli-option-result-status options) (cli-option-status-ok))
-          (run-command-with-cli-options cmd-name file-path options)
-          (do
-            (cli-stderr (cli-option-error-message options))
-            (exit-code-compile-error))))
-      (if (and (string-eq cmd-name "check") (> argc 2))
-        (let [check-option (parse-check-cli-option argc)]
-          (if (>= check-option 0)
-            (run-command cmd-name file-path check-option)
+    (if (string-eq cmd-name "validate")
+      (run-validate-command argc)
+      (if (and (compile-or-build-command cmd-name) (> argc 2))
+        (let [options (parse-cli-options argc)]
+          (if (= (cli-option-result-status options) (cli-option-status-ok))
+            (run-command-with-cli-options cmd-name file-path options)
             (do
-              (cli-stderr (doc-cli-option-error-message argc))
+              (cli-stderr (cli-option-error-message options))
               (exit-code-compile-error))))
-        (if (> argc 2)
-          (let [doc-option (parse-doc-cli-option argc cmd-name)]
-            (if (= doc-option (doc-cli-option-invalid))
+        (if (and (string-eq cmd-name "check") (> argc 2))
+          (let [check-option (parse-check-cli-option argc)]
+            (if (>= check-option 0)
+              (run-command cmd-name file-path check-option)
               (do
                 (cli-stderr (doc-cli-option-error-message argc))
-                (exit-code-compile-error))
-              (run-command-with-doc-option cmd-name file-path doc-option)))
-          (run-command cmd-name file-path (default-compile-target)))))))
+                (exit-code-compile-error))))
+          (if (> argc 2)
+            (let [doc-option (parse-doc-cli-option argc cmd-name)]
+              (if (= doc-option (doc-cli-option-invalid))
+                (do
+                  (cli-stderr (doc-cli-option-error-message argc))
+                  (exit-code-compile-error))
+                (run-command-with-doc-option cmd-name file-path doc-option)))
+            (run-command cmd-name file-path (default-compile-target))))))))
 (defn run-test-command [argc cmd-name file-path]
   (if (> argc 2)
     (let [test-option (parse-test-cli-option argc)]
