@@ -35,6 +35,8 @@ source でも値を補完せず明示的に受け取る必要がある。
   source node registry に存在することを要求する。Contract registry は別境界として残す。
 - `supports` / `contradicts` は登録済み `EvidenceId` にだけ接続する。record がない場合は
   `EvidenceRegistryRequired`、enum/value/required field が不正な場合は入力エラーとして返す。
+- 同じ `EvidenceId` を複数の source record が宣言した場合は graph 登録前に検出し、最初の record
+  span と重複 record span を含む source-level diagnostic として fail-closed にする。
 - optional `shrinks` / `coverage` は source でも named field として明示し、非負値・重複 bucket を
   fail-closed に検査した上で canonical `SamplingPlan` と manifest へ投影する。selfhost/native parity
   と generator policy の実行証跡は後続 task とする。
@@ -52,6 +54,7 @@ source でも値を補完せず明示的に受け取る必要がある。
 
 - `crates/lsharp-syntax/tests/intent_edges.rs`
 - `crates/lsharp-types/tests/validation_source.rs`
+- `source_adapter_reports_duplicate_evidence_with_both_source_spans`
 - `crates/lsharp-driver/tests/validate_cli.rs`
 - `cargo test -p lsharp-syntax`
 - `cargo test -p lsharp-types`

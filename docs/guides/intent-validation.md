@@ -112,9 +112,10 @@ edge として claim trace gap を閉じます。`evidence` record は全 requir
 shrinks/coverage は canonical `SamplingPlan` と manifest へ投影されますが、selfhost/native 実行と
 generator/shrink policy の parity は後続境界です。
 
-`--emit-manifest <output.json>` を指定すると、graph 構築後の version 1 manifest を明示 path へ保存します。
+`--emit-manifest <output.json>` を指定すると、graph 構築後の version 1 manifest を明示 path へ atomic/durable に保存します。
 report は従来どおり stdout へ出し、`unknown` (exit code `2`) でも graph が構築できれば manifest を残します。
-parse/adapter error では manifest を作らず、出力先の親 directory も暗黙には作成しません。
+既存の出力は symlink を追従せず destination 自体を置換し、parse/adapter error では manifest を作りません。
+出力先の親 directory は暗黙には作成しません。
 
 ## 現在の境界
 

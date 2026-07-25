@@ -12,10 +12,12 @@
   `:open-question` が `kind:namespace/key` wire ID、本文、directive span を lossless に保持し、
   `validation_source::source_program_to_intent_graph` が nested module/private/impl を含む
   `IntentGraph` node registry へ typed projection する。ID 省略、wire kind mismatch、duplicate ID
-  は fail-closed。`motivates` / `constrained-by` / `tested-by` の source edge と required fields を
-  持つ evidence record は接続済みだが、project manifest との完全統合、selfhost/native parity は残件。
+  は fail-closed とし、source adapter は最初の宣言 span と重複宣言 span を含む
+  project-level diagnostic を返す。`motivates` / `constrained-by` / `tested-by` の source edge と
+  required fields を持つ evidence record は接続済みだが、ID 省略の命名規則、project manifest
+  との完全統合、selfhost/native parity は残件。
   Evidence: `crates/lsharp-syntax/tests/intent_metadata.rs`,
-  `crates/lsharp-types/tests/validation_source.rs`,
+  `crates/lsharp-types/tests/validation_source.rs`（nested duplicate span diagnostic を含む）、
   `docs/adr/decisions-v0.2-source-intent-nodes.md`。
   2026-07-25 の selfhost parser slice では、`defn` metadata の
   `intent` / `claim` / `assumption` / `open-question` と node/edge の2-string payloadを
@@ -29,7 +31,8 @@
 - [~] `EC-M2-01` source intent edges — `:motivates`（Intent→Claim）と `:constrained-by`
   （Claim→Assumption）、`:tested-by`（Claim→Contract）が二つの wire ID と directive span を lossless に保持し、
   `validation_source::source_program_to_intent_graph` が全 node を先に収集してから typed edge を
-  登録する。endpoint の wire kind mismatch、orphan reference、不正 ID は fail-closed。Contract の
+  登録する。endpoint の wire kind mismatch、不正 ID、orphan reference は directive span 付きで
+  fail-closed に拒否する。Contract の
   実体定義と optional な shrink/coverage source fields は contract/evidence registry の入力境界が残件。
   Evidence: `crates/lsharp-syntax/tests/intent_edges.rs`,
   `crates/lsharp-types/tests/validation_source.rs`,
@@ -42,8 +45,8 @@
   `evidence:namespace/key` と Claim の wire ID、directive span を lossless に保持する。
   Rust source adapter は両 ID と Claim endpoint の kind/existence、evidence registry を検査し、
   登録済み record の edge を graph へ追加する。未登録 evidence は `EvidenceRegistryRequired` として
-  明示的に拒否し、黙って無視したり実体のない edge を追加したりしない。selfhost/native parity は
-  残件。Evidence: `crates/lsharp-syntax/tests/intent_edges.rs`,
+  directive span 付きで明示的に拒否し、黙って無視したり実体のない edge を追加したりしない。
+  selfhost/native parity は残件。Evidence: `crates/lsharp-syntax/tests/intent_edges.rs`,
   `crates/lsharp-types/tests/validation_source.rs`, `crates/lsharp-driver/tests/validate_cli.rs`,
   `docs/adr/decisions-v0.2-source-evidence-boundary.md`,
   `docs/adr/decisions-v0.2-source-evidence-record.md`。
@@ -55,7 +58,9 @@
   producer/tool version/timestamp、independence を named fields で lossless に受理する。
   `source_program_to_intent_graph` は全 node → evidence record → evidence edge の順で投影し、
   required field、typed subject、duplicate ID、missing edge registry を canonical model の
-  fail-closed error として返す。selfhost/native parity は未完了。Evidence: `crates/lsharp-syntax/tests/intent_edges.rs`,
+  fail-closed error として返す。duplicate evidence ID は最初の record span と重複 record span を
+  含む source-level diagnostic として返す。selfhost/native parity は未完了。Evidence:
+  `crates/lsharp-syntax/tests/intent_edges.rs`,
   `crates/lsharp-types/tests/validation_source.rs`, `crates/lsharp-driver/tests/validate_cli.rs`,
   `docs/adr/decisions-v0.2-source-evidence-record.md`。
 
@@ -75,9 +80,12 @@
   --emit-manifest <output.json>` が graph 構築後に version 1 manifest を明示 path へ出力し、
   validation report の stdout と混ぜない。`unknown` report でも graph が構築できれば manifest を
   保存し、parse/adapter error 前には出力しない。JSON manifest input mode も同じ serializer を使う。
-  selfhost/native manifest producer、atomic/durable release artifact、EmbeddedCli/MCP、Mac Apple
+  Rust CLI の同一 directory staging → file sync → rename → parent directory sync による
+  atomic/durable artifact boundary は接続済み。selfhost/native manifest producer、release-level
+  provenance、EmbeddedCli/MCP、Mac Apple
   Silicon / Linux x86_64 runtime evidence は未完了。Evidence:
   `crates/lsharp-driver/tests/validate_cli.rs`,
+  `crates/lsharp-driver/src/atomic_write.rs`,
   `docs/adr/decisions-v0.2-source-manifest-emission.md`。
 
 - [~] `EC-M2-01`〜`EC-M2-03` の types-only wire/model slice — `StableId` の fail-closed parser、

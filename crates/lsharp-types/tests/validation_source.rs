@@ -44,7 +44,7 @@ fn source_adapter_rejects_duplicate_ids_and_typed_kind_mismatch() {
     .expect("duplicate fixture は parse できるべき");
     assert!(matches!(
         source_program_to_intent_graph(&duplicate),
-        Err(SourceGraphError::Graph(_))
+        Err(SourceGraphError::DuplicateNode { .. })
     ));
 
     let mismatch = parse(r#"(defn cancel [] :claim "intent:checkout/wrong-kind" "claim" true)"#)
@@ -60,6 +60,100 @@ fn source_adapter_rejects_duplicate_ids_and_typed_kind_mismatch() {
         source_program_to_intent_graph(&empty),
         Err(SourceGraphError::Node(_))
     ));
+}
+
+#[test]
+fn source_adapter_reports_duplicate_node_with_both_source_spans() {
+    const SOURCE: &str = r#"
+        (module Checkout
+          (private
+            (defn first []
+              :intent "intent:checkout/same" "first declaration"
+              true))
+          (impl (Show Int)
+            (defn second []
+              :intent "intent:checkout/same" "second declaration"
+              true)))
+        "#;
+    let program = parse(SOURCE).expect("nested duplicate fixture は parse できるべき");
+
+    let error = source_program_to_intent_graph(&program)
+        .expect_err("duplicate source node は span 付きで拒否するべき");
+    let SourceGraphError::DuplicateNode {
+        id,
+        first_span,
+        duplicate_span,
+    } = error
+    else {
+        panic!("duplicate node の source diagnostic を期待しました: {error:?}");
+    };
+
+    assert_eq!(id, "intent:checkout/same");
+    assert!(first_span.start < duplicate_span.start);
+    assert!(first_span.end <= duplicate_span.start);
+    assert!(SOURCE[first_span.start..first_span.end].contains("first declaration"));
+    assert!(SOURCE[duplicate_span.start..duplicate_span.end].contains("second declaration"));
+}
+
+#[test]
+fn source_adapter_reports_duplicate_evidence_with_both_source_spans() {
+    const SOURCE: &str = r#"
+        (defn claim []
+          :claim "claim:checkout/cancel" "The API rejects shipped orders"
+          true)
+        (defn first []
+          :evidence "evidence:checkout/same"
+            :subject "claim:checkout/cancel"
+            :method "case"
+            :outcome "pass"
+            :runner "first-runner"
+            :target "aarch64-apple-darwin"
+            :source-commit "0123456789abcdef"
+            :artifact-digest "sha256:first"
+            :cases 1
+            :seed 42
+            :generator "checkout-cancel-fixture"
+            :producer "lsharp-test"
+            :tool-version "0.2.0"
+            :timestamp "2026-07-25T00:00:00Z"
+            :independence "same-author"
+          true)
+        (defn second []
+          :evidence "evidence:checkout/same"
+            :subject "claim:checkout/cancel"
+            :method "case"
+            :outcome "pass"
+            :runner "second-runner"
+            :target "aarch64-apple-darwin"
+            :source-commit "0123456789abcdef"
+            :artifact-digest "sha256:second"
+            :cases 1
+            :seed 42
+            :generator "checkout-cancel-fixture"
+            :producer "lsharp-test"
+            :tool-version "0.2.0"
+            :timestamp "2026-07-25T00:00:00Z"
+            :independence "same-author"
+          true)
+        "#;
+    let program = parse(SOURCE).expect("duplicate evidence fixture は parse できるべき");
+
+    let error = source_program_to_intent_graph(&program)
+        .expect_err("duplicate source evidence は span 付きで拒否するべき");
+    let SourceGraphError::DuplicateEvidence {
+        id,
+        first_span,
+        duplicate_span,
+    } = error
+    else {
+        panic!("duplicate evidence の source diagnostic を期待しました: {error:?}");
+    };
+
+    assert_eq!(id, "evidence:checkout/same");
+    assert!(first_span.start < duplicate_span.start);
+    assert!(first_span.end <= duplicate_span.start);
+    assert!(SOURCE[first_span.start..first_span.end].contains("first-runner"));
+    assert!(SOURCE[duplicate_span.start..duplicate_span.end].contains("second-runner"));
 }
 
 #[test]
@@ -134,8 +228,40 @@ fn source_adapter_rejects_orphan_and_mismatched_edge_endpoints() {
     .expect("mismatch fixture は parse できるべき");
     assert!(matches!(
         source_program_to_intent_graph(&mismatch),
-        Err(SourceGraphError::EdgeId(_))
+        Err(SourceGraphError::EdgeIdAt { .. })
     ));
+}
+
+#[test]
+fn source_adapter_reports_orphan_edge_with_directive_span() {
+    const SOURCE: &str =
+        r#"(defn cancel [] :motivates "intent:checkout/missing" "claim:checkout/cancel" true)"#;
+    let program = parse(SOURCE).expect("orphan span fixture は parse できるべき");
+    let error = source_program_to_intent_graph(&program)
+        .expect_err("orphan edge は directive span 付きで拒否するべき");
+    let SourceGraphError::MissingNodeReference { relation, span, .. } = error else {
+        panic!("orphan edge の source diagnostic を期待しました: {error:?}");
+    };
+
+    assert_eq!(relation, "motivates.intent");
+    assert!(span.start < span.end);
+    assert!(SOURCE[span.start..span.end].starts_with(":motivates"));
+}
+
+#[test]
+fn source_adapter_reports_malformed_edge_id_with_directive_span() {
+    const SOURCE: &str =
+        r#"(defn cancel [] :motivates "intent:checkout" "claim:checkout/cancel" true)"#;
+    let program = parse(SOURCE).expect("malformed edge ID fixture は parse できるべき");
+    let error = source_program_to_intent_graph(&program)
+        .expect_err("malformed edge ID は directive span 付きで拒否するべき");
+    let SourceGraphError::EdgeIdAt { relation, span, .. } = error else {
+        panic!("malformed edge ID の source diagnostic を期待しました: {error:?}");
+    };
+
+    assert_eq!(relation, "motivates.intent");
+    assert!(span.start < span.end);
+    assert!(SOURCE[span.start..span.end].starts_with(":motivates"));
 }
 
 #[test]
@@ -208,6 +334,32 @@ fn source_adapter_registers_evidence_records_before_support_edges() {
 }
 
 #[test]
+fn source_adapter_reports_unregistered_evidence_edge_with_directive_span() {
+    const SOURCE: &str = r#"
+        (defn cancel []
+          :claim "claim:checkout/cancel" "The API rejects shipped orders"
+          :supports "evidence:checkout/missing" "claim:checkout/cancel"
+          true)
+        "#;
+    let program = parse(SOURCE).expect("unregistered evidence span fixture は parse できるべき");
+    let error = source_program_to_intent_graph(&program)
+        .expect_err("unregistered evidence edge は directive span 付きで拒否するべき");
+    let SourceGraphError::EvidenceRegistryRequired {
+        relation,
+        evidence_id,
+        span,
+    } = error
+    else {
+        panic!("unregistered evidence edge の source diagnostic を期待しました: {error:?}");
+    };
+
+    assert_eq!(relation, "supports");
+    assert_eq!(evidence_id, "evidence:checkout/missing");
+    assert!(span.start < span.end);
+    assert!(SOURCE[span.start..span.end].contains(":supports"));
+}
+
+#[test]
 fn source_adapter_projects_optional_sampling_fields() {
     let program = parse(
         r#"
@@ -274,7 +426,7 @@ fn source_adapter_rejects_orphan_or_mismatched_tested_by_claims() {
     .expect("kind mismatch tested-by fixture は parse できるべき");
     assert!(matches!(
         source_program_to_intent_graph(&mismatch),
-        Err(SourceGraphError::EdgeId(_))
+        Err(SourceGraphError::EdgeIdAt { .. })
     ));
 }
 
@@ -293,7 +445,8 @@ fn source_adapter_rejects_evidence_edges_without_registry_entries() {
         source_program_to_intent_graph(&supports),
         Err(SourceGraphError::EvidenceRegistryRequired {
             relation: "supports",
-            evidence_id
+            evidence_id,
+            ..
         }) if evidence_id == "evidence:checkout/cancel-observation"
     ));
 
@@ -310,7 +463,8 @@ fn source_adapter_rejects_evidence_edges_without_registry_entries() {
         source_program_to_intent_graph(&contradicts),
         Err(SourceGraphError::EvidenceRegistryRequired {
             relation: "contradicts",
-            evidence_id
+            evidence_id,
+            ..
         }) if evidence_id == "evidence:checkout/cancel-counterexample"
     ));
 }

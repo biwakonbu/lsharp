@@ -378,6 +378,45 @@ fn validate_manifest_input_can_emit_normalized_manifest() {
     assert_eq!(manifest["nodes"].as_array().unwrap().len(), 2);
 }
 
+#[cfg(unix)]
+#[test]
+fn validate_manifest_emit_replaces_symlink_without_following_target() {
+    use std::os::unix::fs::symlink;
+
+    let input = manifest_path(
+        "emit-manifest-symlink-input",
+        include_str!("fixtures/intent-graph-pass.json"),
+    );
+    let output_dir = project_dir("emit-manifest-symlink-output");
+    fs::create_dir_all(&output_dir).expect("manifest output directory should be writable");
+    let sentinel = output_dir.join("sentinel.json");
+    let output_path = output_dir.join("intent-graph.json");
+    fs::write(&sentinel, b"keep-this-content").expect("sentinel should be writable");
+    symlink(&sentinel, &output_path).expect("manifest output symlink should be writable");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+        .args([
+            "validate",
+            input.to_str().unwrap(),
+            "--format",
+            "json",
+            "--emit-manifest",
+            output_path.to_str().unwrap(),
+        ])
+        .output()
+        .expect("lsharp validate --emit-manifest should run");
+    let manifest = fs::read(&output_path).expect("manifest should replace the symlink");
+    let sentinel_contents = fs::read(&sentinel).expect("symlink target should remain readable");
+    fs::remove_file(&input).ok();
+    fs::remove_dir_all(&output_dir).ok();
+
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(sentinel_contents, b"keep-this-content");
+    let manifest_value: serde_json::Value =
+        serde_json::from_slice(&manifest).expect("manifest should be valid JSON");
+    assert_eq!(manifest_value["schema_version"], 1);
+}
+
 #[test]
 fn validate_source_cannot_be_combined_with_manifest_path() {
     let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
