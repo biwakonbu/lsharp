@@ -89,7 +89,7 @@ pub fn handle_jsonrpc_message(request: &Value) -> Value {
                             "description": tool.description,
                             "inputSchema": tool_input_schema(&tool.name),
                         });
-                        if tool.name == "lsharp_check" {
+                        if matches!(tool.name.as_str(), "lsharp_check" | "lsharp_validate") {
                             descriptor["outputSchema"] = tool_output_schema(&tool.name);
                         }
                         descriptor
@@ -141,6 +141,10 @@ pub fn handle_jsonrpc_message(request: &Value) -> Value {
 pub fn list_tools() -> Vec<McpTool> {
     vec![
         tool("lsharp_check", "L# source を型チェックする"),
+        tool(
+            "lsharp_validate",
+            "L# source の intent/evidence graph を fact-oriented に検証する",
+        ),
         tool("lsharp_hover", "カーソル位置の型と :doc を返す"),
         tool("lsharp_completion", "補完候補を返す"),
         tool("lsharp_format", "L# source を整形する"),
@@ -162,6 +166,7 @@ pub fn call_tool(name: &str, arguments: &Value) -> Result<Value, String> {
     match name {
         "lsharp_hover" => hover_tool(arguments),
         "lsharp_check" => check_tool(arguments),
+        "lsharp_validate" => validate_tool(arguments),
         "lsharp_completion" => completion_tool(arguments),
         "lsharp_format" => format_tool(arguments),
         "lsharp_definition" => definition_tool(arguments),
@@ -185,7 +190,7 @@ fn tool(name: &str, description: &str) -> McpTool {
 
 fn tool_input_schema(name: &str) -> Value {
     match name {
-        "lsharp_check" => json_schema(&["source"], &["file"]),
+        "lsharp_check" | "lsharp_validate" => json_schema(&["source"], &["file"]),
         "lsharp_hover" | "lsharp_completion" | "lsharp_definition" | "lsharp_references" => {
             json!({
                 "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -300,6 +305,37 @@ fn tool_output_schema(name: &str) -> Value {
                 }
             }
         }),
+        "lsharp_validate" => json!({
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "required": [
+                "status",
+                "trace_gaps",
+                "open_questions",
+                "independent_reviews",
+                "contradicting_observations"
+            ],
+            "properties": {
+                "status": {
+                    "type": "string",
+                    "enum": ["pass", "fail", "unknown"]
+                },
+                "trace_gaps": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "required": ["code", "subject_id"],
+                        "properties": {
+                            "code": { "type": "string" },
+                            "subject_id": { "type": "string" }
+                        }
+                    }
+                },
+                "open_questions": { "type": "integer", "minimum": 0 },
+                "independent_reviews": { "type": "integer", "minimum": 0 },
+                "contradicting_observations": { "type": "integer", "minimum": 0 }
+            }
+        }),
         _ => json!({
             "$schema": "https://json-schema.org/draft/2020-12/schema",
             "type": "object"
@@ -365,6 +401,15 @@ fn check_tool(arguments: &Value) -> Result<Value, String> {
         })).collect::<Vec<_>>(),
         "migrationDiagnostics": migration_diagnostics,
     }))
+}
+
+fn validate_tool(arguments: &Value) -> Result<Value, String> {
+    let source = source_argument(arguments)?;
+    let program = lsharp_syntax::parse(&source)
+        .map_err(|error| format!("validation source の parse に失敗しました: {error}"))?;
+    let graph = lsharp_types::validation_source::source_program_to_intent_graph(&program)
+        .map_err(|error| format!("validation source graph の構築に失敗しました: {error}"))?;
+    Ok(graph.validate().to_json_value())
 }
 
 fn legacy_migration_diagnostics_json(source: &str) -> Vec<Value> {
@@ -873,6 +918,108 @@ mod tests {
         assert_eq!(response["jsonrpc"], "2.0");
         assert_eq!(response["id"], 1);
         assert!(response["result"]["tools"].is_array());
+    }
+
+    #[test]
+    fn test_validate_tool_declares_source_input_and_report_output_schema() {
+        let response = handle_jsonrpc_message(&json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/list"
+        }));
+        let tool = response["result"]["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|tool| tool["name"] == "lsharp_validate")
+            .expect("lsharp_validate が tools/list に必要");
+
+        assert_eq!(tool["inputSchema"]["type"], "object");
+        assert_eq!(
+            tool["inputSchema"]["anyOf"],
+            json!([
+                { "required": ["source"] },
+                { "required": ["file"] }
+            ])
+        );
+        assert_eq!(
+            tool["outputSchema"]["required"],
+            json!([
+                "status",
+                "trace_gaps",
+                "open_questions",
+                "independent_reviews",
+                "contradicting_observations"
+            ])
+        );
+        assert_eq!(
+            tool["outputSchema"]["properties"]["status"]["enum"],
+            json!(["pass", "fail", "unknown"])
+        );
+    }
+
+    #[test]
+    fn test_validate_tool_projects_source_to_fact_oriented_report() {
+        let result = call_tool(
+            "lsharp_validate",
+            &json!({
+                "source": r#"
+                    (defn cancel []
+                      :intent "intent:checkout/safe-cancel" "Users can cancel an order"
+                      :claim "claim:checkout/cancel-rejects-shipped" "The API rejects shipped orders"
+                      true)
+                "#,
+            }),
+        )
+        .expect("lsharp_validate は source graph report を返すべき");
+
+        assert_eq!(result["status"], "unknown");
+        assert!(result["trace_gaps"].is_array());
+        assert_eq!(result["open_questions"], 0);
+        assert_eq!(result["independent_reviews"], 0);
+        assert_eq!(result["contradicting_observations"], 0);
+        assert!(result.get("verified").is_none());
+    }
+
+    #[test]
+    fn test_validate_tool_is_available_through_jsonrpc_tools_call() {
+        let response = handle_jsonrpc_message(&json!({
+            "jsonrpc": "2.0",
+            "id": 7,
+            "method": "tools/call",
+            "params": {
+                "name": "lsharp_validate",
+                "arguments": {
+                    "source": "(defn main [] true)"
+                }
+            }
+        }));
+
+        assert_eq!(response["result"]["isError"], false);
+        assert_eq!(response["result"]["structuredContent"]["status"], "unknown");
+    }
+
+    #[test]
+    fn test_validate_tool_accepts_file_input() {
+        let path = std::env::temp_dir().join("lsharp_mcp_validate_file.ls");
+        std::fs::write(&path, "(defn main [] true)").unwrap();
+
+        let result = call_tool(
+            "lsharp_validate",
+            &json!({ "file": path.display().to_string() }),
+        )
+        .expect("lsharp_validate は file 入力を受け付けるべき");
+
+        assert_eq!(result["status"], "unknown");
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn test_validate_tool_reports_source_parse_errors() {
+        let error = call_tool("lsharp_validate", &json!({ "source": "(" }))
+            .expect_err("不正な source は MCP エラーになるべき");
+
+        assert!(error.starts_with("validation source の parse に失敗しました:"));
     }
 
     #[test]
