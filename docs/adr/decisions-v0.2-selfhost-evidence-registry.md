@@ -47,12 +47,14 @@ parityはこの決定の範囲外である。
 - `selfhost/src/Syntax/Parser.ls`
 - `crates/lsharp-wasm/tests/e2e/selfhost_evidence_registry.rs`
 - `CARGO_PROFILE_DEV_DEBUG=0 cargo test -p lsharp-wasm --test e2e selfhost_evidence_registry -- --nocapture`
-  （5 passed）、`selfhost_intent_source_adapter`（8 passed）
+  （7 passed）、`selfhost_intent_source_adapter`（8 passed）
 
 ## Consequences and residual work
 
-- selfhost parserのrequired fieldsとsamplingを含む初期 `:evidence` formは検証済みだが、malformed/unknown
-  fieldの診断 parity、source edgeとの完全統合、nested source graphの全要件は未完了である。
+- selfhost parserのrequired fieldsとsamplingを含む初期 `:evidence` form、および
+  `source-evidence-graph-from-program` の registry後 `supports` / `contradicts` 投影は検証済みだが、
+  malformed/unknown fieldの診断 parity、既存 validate graph/CLI との接続、nested source graphの全要件は
+  未完了である。
 - `validate --source` / manifest serializer / EmbeddedCli・MCP、Contract registry、generator policy、
   Mac Apple Silicon / Linux x86_64 native stage0 の実行証跡はこの slice に含めない。
 - これらが揃うまで EC-M2-02 は TODO の `[~]` を維持し、この ADR を completed task の移動先には

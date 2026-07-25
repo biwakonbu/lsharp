@@ -157,6 +157,78 @@ fn test_e2e_selfhost_evidence_registry_consumes_parser_form() {
     );
 }
 
+/// EC-M2-02: parser の evidence registry と supports/contradicts edge を同じ graph に投影する。
+#[test]
+fn test_e2e_selfhost_evidence_registry_wires_source_edges() {
+    let harness = r#"
+(defn main []
+  (let [program (parse-program "(defn verify [] :claim \"claim:checkout/rejects\" \"Shipped orders are rejected\" :evidence \"evidence:checkout/verified\" :subject \"claim:checkout/rejects\" :method \"case\" :outcome \"pass\" :runner \"cargo-test\" :target \"aarch64-apple-darwin\" :source-commit \"deadbeef\" :artifact-digest \"sha256:abc\" :cases 3 :seed 42 :generator \"checkout-generator\" :producer \"lsharp-test\" :tool-version \"0.2\" :timestamp \"2026-07-25T00:00:00Z\" :independence \"same-author\" :evidence \"evidence:checkout/counterexample\" :subject \"claim:checkout/rejects\" :method \"case\" :outcome \"fail\" :runner \"cargo-test\" :target \"aarch64-apple-darwin\" :source-commit \"deadbeef\" :artifact-digest \"sha256:def\" :cases 1 :seed 7 :generator \"checkout-generator\" :producer \"lsharp-test\" :tool-version \"0.2\" :timestamp \"2026-07-25T00:00:00Z\" :independence \"same-author\" :supports \"evidence:checkout/verified\" \"claim:checkout/rejects\" :contradicts \"evidence:checkout/counterexample\" \"claim:checkout/rejects\" true)")
+        result (source-evidence-graph-from-program program)
+        graph (source-result-value result)
+        nodes (source-graph-nodes graph)
+        edges (source-graph-edges graph)
+        registry (source-evidence-graph-registry graph)
+        supports (vector-get edges 0)
+        contradicts (vector-get edges 1)]
+    (do
+      (print (source-result-status result))
+      (print (vector-length nodes))
+      (print (vector-length registry))
+      (print (vector-length edges))
+      (print (source-edge-kind supports))
+      (print-string (source-edge-left supports))
+      (print-string "\n")
+      (print (source-edge-kind contradicts))
+      (print-string (source-edge-left contradicts))
+      (print-string "\n")
+      0)))
+"#;
+
+    let output = run_evidence_registry_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        [
+            "1",
+            "1",
+            "2",
+            "2",
+            "13",
+            "evidence:checkout/verified",
+            "14",
+            "evidence:checkout/counterexample",
+        ],
+        "parser の evidence registry は supports/contradicts edge と同じ graph に接続されるべき"
+    );
+}
+
+/// EC-M2-02: 新しい source graph 経路も未登録 evidence edge を fail-closed にする。
+#[test]
+fn test_e2e_selfhost_evidence_registry_rejects_unregistered_source_edge() {
+    let harness = r#"
+(defn main []
+  (let [result (source-evidence-graph-from-program
+                 (parse-program "(defn counterexample [] :claim \"claim:checkout/rejects\" \"Shipped orders are rejected\" :supports \"evidence:checkout/missing\" \"claim:checkout/rejects\" true)"))
+        error (source-result-error result)]
+    (do
+      (print (source-result-status result))
+      (print (source-graph-error-code error))
+      (print-string (source-graph-error-id error))
+      (print-string "\n")
+      0)))
+"#;
+
+    let output = run_evidence_registry_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "6", "evidence:checkout/missing"],
+        "source graph 経路は未登録 evidence edge を明示的に拒否するべき"
+    );
+}
+
 /// EC-M2-02: required field 欠落は evidence registry に登録しない。
 #[test]
 fn test_e2e_selfhost_evidence_registry_rejects_empty_required_field() {

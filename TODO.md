@@ -74,9 +74,11 @@
   optional `:shrinks` / `:coverage` を canonical `EvidenceForm` と同じ 17-field payloadへ変換し、
   `Tools.Validation.Evidence` が required field、typed subject、method/outcome/independence、sampling
   と duplicate ID を fail-closed に検査する。top-level source text → parser form → registryの実行を
-  `test_e2e_selfhost_evidence_registry_consumes_parser_form` で確認し、registry 全5件、既存 source
-  adapter 回帰8件が green である。source `supports` / `contradicts` の graph wiring、manifest/CLI、
-  native stage0 の parity はまだ含まないため、EC-M2-02 の aggregate は `[~]` のまま維持する。
+  `test_e2e_selfhost_evidence_registry_consumes_parser_form` で確認した。さらに
+  `source-evidence-graph-from-program` が registry 登録後に source `supports` / `contradicts` を
+  graphへ投影し、登録済み2件の edgeと未登録 edgeの fail-closedを registry focused 7件で確認した。
+  既存 source adapter 回帰8件も green である。manifest/CLI、native stage0 の parity はまだ含まないため、
+  EC-M2-02 の aggregate は `[~]` のまま維持する。
   Evidence: `selfhost/src/Tools/Validation/Evidence.ls`,
   `crates/lsharp-wasm/tests/e2e/selfhost_evidence_registry.rs`,
   `docs/adr/decisions-v0.2-selfhost-evidence-registry.md`。

@@ -350,3 +350,132 @@
         (vector-length program)
         (source-evidence-registry-new)
         (source-result-value nodes-result)))))
+
+(defn source-evidence-graph [nodes edges registry]
+  (let [base (source-graph nodes edges)]
+    (vector-push-single-rooted-v3 base registry)))
+
+(defn source-evidence-graph-registry [graph]
+  (vector-get graph 2))
+
+(defn source-evidence-edge-form-result [form registry nodes]
+  (if (< (vector-length form) 4)
+    (source-result 0 (source-graph-error (source-error-malformed) 0 ""))
+    (let [relation (vector-get form 0)
+      payload (vector-get form 1)
+      start (vector-get form 2)
+      end (vector-get form 3)]
+      (if (or (< (vector-length payload) 2)
+          (and (!= relation (source-edge-supports)) (!= relation (source-edge-contradicts))))
+        (source-edge-form-result form nodes)
+        (let [evidence-id (vector-get payload 0)
+          claim-id (vector-get payload 1)]
+          (if (or (= (string-length evidence-id) 0) (= (string-length claim-id) 0))
+            (source-result 0 (source-graph-error-at (source-error-malformed) relation evidence-id start end))
+            (if (= (source-wire-valid? evidence-id (source-edge-supports)) 0)
+              (source-result 0 (source-graph-error-at (source-error-invalid-id) relation evidence-id start end))
+              (if (= (source-wire-valid? claim-id (source-node-claim)) 0)
+                (source-result 0 (source-graph-error-at (source-error-invalid-id) relation claim-id start end))
+                (if (= (source-node-id-exists? nodes claim-id) 0)
+                  (source-result 0 (source-graph-error-at (source-error-missing-node) relation claim-id start end))
+                  (if (= (source-evidence-id-exists? registry evidence-id) 0)
+                    (source-result 0 (source-graph-error-at (source-error-evidence-registry-required) relation evidence-id start end))
+                    (source-result 1 (source-edge-record relation evidence-id claim-id start end))))))))))))
+
+(defn source-evidence-append-edge-forms [forms idx len registry nodes edges]
+  (if (>= idx len)
+    (source-result 1 edges)
+    (let [form (vector-get forms idx)
+      kind (vector-get form 0)]
+      (if (source-edge-kind? kind)
+        (let [parsed (source-evidence-edge-form-result form registry nodes)]
+          (if (= (source-result-status parsed) 0)
+            parsed
+            (source-evidence-append-edge-forms
+              forms
+              (+ idx 1)
+              len
+              registry
+              nodes
+              (vector-push-single-rooted-v3 edges (source-result-value parsed)))))
+        (source-evidence-append-edge-forms forms (+ idx 1) len registry nodes edges)))))
+
+(defn source-evidence-collect-edge-children [decl idx len registry nodes edges]
+  (if (>= idx len)
+    (source-result 1 edges)
+    (let [child (vector-get decl idx)
+      parsed (source-evidence-collect-edges-decl child registry nodes edges)]
+      (if (= (source-result-status parsed) 0)
+        parsed
+        (source-evidence-collect-edge-children
+          decl
+          (+ idx 1)
+          len
+          registry
+          nodes
+          (source-result-value parsed))))))
+
+(defn source-evidence-collect-edges-decl [decl registry nodes edges]
+  (let [tag (vector-get decl 0)]
+    (if (= tag (ast-defn))
+      (let [forms (source-ordered-forms decl)]
+        (source-evidence-append-edge-forms
+          forms
+          0
+          (vector-length forms)
+          registry
+          nodes
+          edges))
+      (if (= tag (ast-private))
+        (source-evidence-collect-edges-decl (vector-get decl 1) registry nodes edges)
+        (if (= tag (ast-module-decl))
+          (source-evidence-collect-edge-children decl 5 (vector-length decl) registry nodes edges)
+          (if (= tag (ast-impldef))
+            (source-evidence-collect-edge-children decl 4 (vector-length decl) registry nodes edges)
+            (source-result 1 edges)))))))
+
+(defn source-evidence-collect-edges-program-loop [program idx len registry nodes edges]
+  (if (>= idx len)
+    (source-result 1 edges)
+    (let [parsed (source-evidence-collect-edges-decl
+        (vector-get program idx)
+        registry
+        nodes
+        edges)]
+      (if (= (source-result-status parsed) 0)
+        parsed
+        (source-evidence-collect-edges-program-loop
+          program
+          (+ idx 1)
+          len
+          registry
+          nodes
+          (source-result-value parsed))))))
+
+(defn source-evidence-collect-edges [program registry nodes]
+  (source-evidence-collect-edges-program-loop
+    program
+    0
+    (vector-length program)
+    registry
+    nodes
+    (vector-new 0)))
+
+(defn source-evidence-graph-from-program [program]
+  (let [nodes-result (source-collect-nodes program)]
+    (if (= (source-result-status nodes-result) 0)
+      nodes-result
+      (let [nodes (source-result-value nodes-result)
+        registry-result (source-evidence-registry-from-program program)]
+        (if (= (source-result-status registry-result) 0)
+          registry-result
+          (let [registry (source-result-value registry-result)
+            edges-result (source-evidence-collect-edges program registry nodes)]
+            (if (= (source-result-status edges-result) 0)
+              edges-result
+              (source-result
+                1
+                (source-evidence-graph
+                  nodes
+                  (source-result-value edges-result)
+                  registry)))))))))

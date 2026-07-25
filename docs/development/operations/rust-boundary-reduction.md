@@ -586,10 +586,12 @@ TypeDef、nested module/private/impl traversal、evidence record、typed graph p
 `selfhost/src/Syntax/Parser.ls` が `:evidence` の named required fieldsと `:shrinks` / `:coverage` を
 17-field payloadへ変換し、`selfhost/src/Tools/Validation/Evidence.ls` の registry consumerへ渡す。
 top-level source textからの parser → registry、required field/typed subject、sampling、duplicate IDの
-fail-closed boundaryを `test_e2e_selfhost_evidence_registry_consumes_parser_form` と registry全5件で確認し、
-既存 `selfhost_intent_source_adapter` 8件も再実行して passした。これは Rust-host actual Wasm の
-selfhost runtime evidenceであり、source `supports` / `contradicts` の graph wiring、manifest/CLI、native
-stage0、Mac Apple Silicon / Linux x86_64 current-source parityは未完了である。
+fail-closed boundaryを `test_e2e_selfhost_evidence_registry_consumes_parser_form` と registry focused 7件で
+確認した。`source-evidence-graph-from-program` は registry 登録後に `supports` / `contradicts` を
+graphへ投影し、登録済み edgeと未登録 edgeの拒否を確認する。既存 `selfhost_intent_source_adapter` 8件も
+再実行して passした。これは Rust-host actual Wasm の selfhost runtime evidenceであり、既存 validate
+graph/CLIへの接続、manifest、native stage0、Mac Apple Silicon / Linux x86_64 current-source parityは
+未完了である。
 
 ### EC-M2-03 selfhost `validate --source` initial CLI slice (2026-07-25)
 
