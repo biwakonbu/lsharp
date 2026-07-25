@@ -208,6 +208,20 @@ fn parse_manifest_rejects_duplicate_evidence_ids() {
 }
 
 #[test]
+fn parse_manifest_rejects_edges_that_reference_missing_evidence() {
+    let manifest = complete_manifest().replace(
+        "\"subject\": {\"kind\": \"evidence\", \"namespace\": \"checkout\", \"key\": \"review-001\"}",
+        "\"subject\": {\"kind\": \"evidence\", \"namespace\": \"checkout\", \"key\": \"missing-evidence\"}",
+    );
+
+    assert!(matches!(
+        parse_intent_graph_json(&manifest),
+        Err(ValidationInputError::Graph(GraphError::MissingEvidence { id }))
+            if id.as_str() == "evidence:checkout/missing-evidence"
+    ));
+}
+
+#[test]
 fn empty_manifest_is_a_valid_unknown_graph() {
     let graph: IntentGraph =
         parse_intent_graph_json(r#"{"schema_version":1,"nodes":[],"evidence":[],"edges":[]}"#)
