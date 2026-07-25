@@ -190,7 +190,8 @@ fn tool(name: &str, description: &str) -> McpTool {
 
 fn tool_input_schema(name: &str) -> Value {
     match name {
-        "lsharp_check" | "lsharp_validate" => json_schema(&["source"], &["file"]),
+        "lsharp_check" => json_schema(&["source"], &["file"]),
+        "lsharp_validate" => validate_input_schema(),
         "lsharp_hover" | "lsharp_completion" | "lsharp_definition" | "lsharp_references" => {
             json!({
                 "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -358,6 +359,30 @@ fn json_schema(required_primary: &[&str], required_secondary: &[&str]) -> Value 
     })
 }
 
+fn validate_input_schema() -> Value {
+    json!({
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+            "source": { "type": "string" },
+            "file": { "type": "string" },
+            "manifest": {
+                "oneOf": [
+                    { "type": "object" },
+                    { "type": "string" }
+                ]
+            },
+            "manifest_file": { "type": "string" }
+        },
+        "oneOf": [
+            { "required": ["source"] },
+            { "required": ["file"] },
+            { "required": ["manifest"] },
+            { "required": ["manifest_file"] }
+        ]
+    })
+}
+
 fn hover_tool(arguments: &Value) -> Result<Value, String> {
     let source = source_argument(arguments)?;
     let position = position_argument(arguments)?;
@@ -404,11 +429,61 @@ fn check_tool(arguments: &Value) -> Result<Value, String> {
 }
 
 fn validate_tool(arguments: &Value) -> Result<Value, String> {
+    let input_names = ["source", "file", "manifest", "manifest_file"]
+        .into_iter()
+        .filter(|name| arguments.get(*name).is_some())
+        .collect::<Vec<_>>();
+    if input_names.len() != 1 {
+        return Err(
+            "lsharp_validate は source、file、manifest、manifest_file のいずれか一つが必要です"
+                .to_string(),
+        );
+    }
+
+    match input_names[0] {
+        "source" | "file" => validate_source_input(arguments),
+        "manifest" => {
+            let manifest = manifest_input_argument(
+                arguments
+                    .get("manifest")
+                    .expect("manifest input name was collected"),
+            )?;
+            validate_manifest_input(&manifest)
+        }
+        "manifest_file" => {
+            let file = arguments
+                .get("manifest_file")
+                .and_then(Value::as_str)
+                .ok_or_else(|| "manifest_file は文字列 path が必要です".to_string())?;
+            let manifest =
+                std::fs::read_to_string(file).map_err(|error| mcp_io_error(file, error))?;
+            validate_manifest_input(&manifest)
+        }
+        _ => unreachable!("input name is restricted to the validation schema"),
+    }
+}
+
+fn validate_source_input(arguments: &Value) -> Result<Value, String> {
     let source = source_argument(arguments)?;
     let program = lsharp_syntax::parse(&source)
         .map_err(|error| format!("validation source の parse に失敗しました: {error}"))?;
     let graph = lsharp_types::validation_source::source_program_to_intent_graph(&program)
         .map_err(|error| format!("validation source graph の構築に失敗しました: {error}"))?;
+    Ok(graph.validate().to_json_value())
+}
+
+fn manifest_input_argument(value: &Value) -> Result<String, String> {
+    match value {
+        Value::Object(_) => serde_json::to_string(value)
+            .map_err(|error| format!("validation manifest の JSON 化に失敗しました: {error}")),
+        Value::String(source) => Ok(source.clone()),
+        _ => Err("manifest は JSON object または JSON string が必要です".to_string()),
+    }
+}
+
+fn validate_manifest_input(manifest: &str) -> Result<Value, String> {
+    let graph = lsharp_types::validation_input::parse_intent_graph_json(manifest)
+        .map_err(|error| format!("validation manifest の parse に失敗しました: {error}"))?;
     Ok(graph.validate().to_json_value())
 }
 
@@ -936,10 +1011,12 @@ mod tests {
 
         assert_eq!(tool["inputSchema"]["type"], "object");
         assert_eq!(
-            tool["inputSchema"]["anyOf"],
+            tool["inputSchema"]["oneOf"],
             json!([
                 { "required": ["source"] },
-                { "required": ["file"] }
+                { "required": ["file"] },
+                { "required": ["manifest"] },
+                { "required": ["manifest_file"] }
             ])
         );
         assert_eq!(
@@ -1020,6 +1097,143 @@ mod tests {
             .expect_err("不正な source は MCP エラーになるべき");
 
         assert!(error.starts_with("validation source の parse に失敗しました:"));
+    }
+
+    #[test]
+    fn test_validate_tool_declares_manifest_inputs() {
+        let response = handle_jsonrpc_message(&json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/list"
+        }));
+        let tool = response["result"]["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|tool| tool["name"] == "lsharp_validate")
+            .expect("lsharp_validate が tools/list に必要");
+
+        assert_eq!(
+            tool["inputSchema"]["oneOf"],
+            json!([
+                { "required": ["source"] },
+                { "required": ["file"] },
+                { "required": ["manifest"] },
+                { "required": ["manifest_file"] }
+            ])
+        );
+        assert_eq!(
+            tool["inputSchema"]["properties"]["manifest"]["oneOf"]
+                .as_array()
+                .unwrap()
+                .len(),
+            2
+        );
+        assert_eq!(
+            tool["inputSchema"]["properties"]["manifest_file"]["type"],
+            "string"
+        );
+    }
+
+    #[test]
+    fn test_validate_tool_accepts_manifest_input() {
+        let manifest = json!({
+            "schema_version": 1,
+            "nodes": [],
+            "evidence": [],
+            "edges": []
+        });
+        let result = call_tool("lsharp_validate", &json!({ "manifest": manifest }))
+            .expect("lsharp_validate は manifest object を受け付けるべき");
+
+        assert_eq!(result["status"], "unknown");
+        assert!(result["trace_gaps"].is_array());
+        assert!(result.get("verified").is_none());
+
+        let manifest_text = r#"{"schema_version":1,"nodes":[],"evidence":[],"edges":[]}"#;
+        let string_result = call_tool("lsharp_validate", &json!({ "manifest": manifest_text }))
+            .expect("lsharp_validate は manifest JSON string も受け付けるべき");
+        assert_eq!(string_result["status"], "unknown");
+    }
+
+    #[test]
+    fn test_validate_tool_accepts_manifest_file_input() {
+        let path = std::env::temp_dir().join("lsharp_mcp_validate_manifest.json");
+        std::fs::write(
+            &path,
+            r#"{"schema_version":1,"nodes":[],"evidence":[],"edges":[]}"#,
+        )
+        .unwrap();
+
+        let result = call_tool(
+            "lsharp_validate",
+            &json!({ "manifest_file": path.display().to_string() }),
+        )
+        .expect("lsharp_validate は manifest_file 入力を受け付けるべき");
+
+        assert_eq!(result["status"], "unknown");
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn test_validate_tool_reports_manifest_input_errors() {
+        let error = call_tool(
+            "lsharp_validate",
+            &json!({
+                "manifest": {
+                    "schema_version": 99,
+                    "nodes": [],
+                    "evidence": [],
+                    "edges": []
+                }
+            }),
+        )
+        .expect_err("未対応 schema_version は MCP エラーになるべき");
+
+        assert!(error.contains("validation manifest の parse に失敗しました:"));
+        assert!(error.contains("schema_version 99"));
+    }
+
+    #[test]
+    fn test_validate_tool_rejects_multiple_input_kinds() {
+        let error = call_tool(
+            "lsharp_validate",
+            &json!({
+                "source": "(defn main [] true)",
+                "manifest": {
+                    "schema_version": 1,
+                    "nodes": [],
+                    "evidence": [],
+                    "edges": []
+                }
+            }),
+        )
+        .expect_err("複数の validation input は拒否するべき");
+
+        assert!(error.contains("いずれか一つが必要です"));
+    }
+
+    #[test]
+    fn test_validate_tool_manifest_is_available_through_jsonrpc_tools_call() {
+        let response = handle_jsonrpc_message(&json!({
+            "jsonrpc": "2.0",
+            "id": 8,
+            "method": "tools/call",
+            "params": {
+                "name": "lsharp_validate",
+                "arguments": {
+                    "manifest": {
+                        "schema_version": 1,
+                        "nodes": [],
+                        "evidence": [],
+                        "edges": []
+                    }
+                }
+            }
+        }));
+
+        assert_eq!(response["result"]["isError"], false);
+        assert_eq!(response["result"]["structuredContent"]["status"], "unknown");
     }
 
     #[test]

@@ -122,5 +122,7 @@ report は従来どおり stdout へ出し、`unknown` (exit code `2`) でも gr
 この slice は Rust の manifest parser/CLI と source node/edge registry を graph model へ接続し、
 project config から安全に入力を発見するものです。`validate --source` は source parser → graph →
 report までを Rust CLI で実行できます。required-field evidence record を含む source edge は実行でき、
-evidence registry 未接続の source edge は明示的に拒否します。selfhost/native の report
-parity、EmbeddedCli/MCP、Mac/Linux の artifact/runtime evidence は後続の M2-03 task として残ります。
+evidence registry 未接続の source edge は明示的に拒否します。Rust MCP の `lsharp_validate` は
+`source` / `file` に加えて `manifest`（JSON object/string）/ `manifest_file` を受け取り、同じ
+version 1 parser と fact-oriented report を返します。manifest emission、selfhost/native の report
+parity、EmbeddedCli、Mac/Linux の artifact/runtime evidence は後続の M2-03 task として残ります。
