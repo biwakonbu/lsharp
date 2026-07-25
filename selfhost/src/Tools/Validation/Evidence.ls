@@ -435,8 +435,12 @@
         (validation-json-object-field "span"
           (validation-source-span-json (source-node-start node) (source-node-end node))))]
       (do
+        (root_push fields5)
         (root_pop)
-        (validation-json-object-wrap fields5)))))
+        (let [result (validation-json-object-wrap fields5)]
+          (do
+            (root_pop)
+            result))))))
 
 (defn validation-source-nodes-json-state-loop [state]
   (do

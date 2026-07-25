@@ -106,8 +106,10 @@ fn selfhost_cli_validation_surface_is_registered() {
         .expect("node JSON helper の終端を特定できるべき");
     let node_json = &evidence[node_json_start..node_json_end];
     assert!(
-        node_json.contains("(root_push node)") && node_json.contains("(root_pop)"),
-        "native x86 の node JSON helper は子 string を読む node を GC root として保持するべき"
+        node_json.contains("(root_push node)")
+            && node_json.contains("(root_push fields5)")
+            && node_json.contains("(root_pop)"),
+        "native x86 の node JSON helper は入力 node と最終 fields を GC root として保持するべき"
     );
     let manifest_start = evidence
         .find("(defn validation-source-manifest-json [graph]")
