@@ -1154,6 +1154,47 @@ fn test_e2e_selfhost_cli_check_source_builtin_application_type_contract() {
     );
 }
 
+#[test]
+fn test_selfhost_typeinfer_builtin_env_roots_intermediate_values() {
+    let source_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../selfhost/src/Types/TypeInferBuiltins.ls");
+    let source = std::fs::read_to_string(&source_path).unwrap_or_else(|error| {
+        panic!(
+            "TypeInferBuiltins.ls の読み込みに失敗: {}: {}",
+            source_path.display(),
+            error
+        )
+    });
+
+    assert!(
+        source.contains("(defn typeinfer-builtin-root-value [value]"),
+        "builtin 型環境の中間 object を allocation 中も root に保持する helper が必要"
+    );
+    for expected in [
+        "env (typeinfer-builtin-root-value (type-env-new))",
+        "int-ty (typeinfer-builtin-root-value (mk-int))",
+        "bool-ty (typeinfer-builtin-root-value (mk-bool))",
+        "add-ty (typeinfer-builtin-root-value (typeinfer-builtin-int-binop int-ty))",
+        "print-var (typeinfer-builtin-root-value (mk-var 901))",
+        "env1 (typeinfer-builtin-root-value (type-env-insert env 43 (mono add-ty)))",
+        "env53 (typeinfer-builtin-root-value (type-env-insert env52 3555 (mono bool-binop-ty)))",
+    ] {
+        assert!(
+            source.contains(expected),
+            "builtin env の allocation 中間値は rooted helper を通るべき: {expected}"
+        );
+    }
+    assert_eq!(
+        source.matches("(typeinfer-builtin-root-value ").count(),
+        126,
+        "builtin env の root push 数は release 数と一致するべき"
+    );
+    assert!(
+        source.contains("(typeinfer-builtin-release-roots 126)"),
+        "builtin env の root push を全て release する必要がある"
+    );
+}
+
 /// TEST-CLI-02-F: selfhost/src/App/Cli.ls の run-parse が file-path から source を読めること
 #[test]
 #[ignore]
