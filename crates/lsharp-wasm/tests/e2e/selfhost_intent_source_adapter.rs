@@ -328,6 +328,65 @@ fn test_e2e_selfhost_source_adapter_rejects_extra_node_payload() {
     );
 }
 
+/// EC-M2-01 boundary: tagged node/edge form は [kind, payload, start, end] だけを受理する。
+#[test]
+fn test_e2e_selfhost_source_adapter_rejects_extra_form_fields() {
+    let harness = r#"
+(defn main []
+  (let [node-payload (vector-push-pair-rooted-v3
+                       (vector-new 0)
+                       "claim:checkout/rejects"
+                       "Shipped orders are rejected")
+        node-base (vector-push-quad-rooted-v3
+                    (vector-new 4)
+                    (source-node-claim)
+                    node-payload
+                    10
+                    20)
+        node-form (vector-push-single-rooted-v3 node-base "unexpected")
+        node-result (source-node-form-result node-form)
+        node-error (source-result-error node-result)
+        nodes (vector-push-pair-rooted-v3
+                (vector-new 0)
+                (source-node-record (source-node-intent) "intent:checkout/cancel" "Users can cancel" 1 2)
+                (source-node-record (source-node-claim) "claim:checkout/rejects" "Shipped orders are rejected" 3 4))
+        edge-payload (vector-push-pair-rooted-v3
+                       (vector-new 0)
+                       "intent:checkout/cancel"
+                       "claim:checkout/rejects")
+        edge-base (vector-push-quad-rooted-v3
+                    (vector-new 4)
+                    (source-edge-motivates)
+                    edge-payload
+                    30
+                    40)
+        edge-form (vector-push-single-rooted-v3 edge-base "unexpected")
+        edge-result (source-edge-form-result edge-form nodes)
+        edge-error (source-result-error edge-result)]
+    (do
+      (print (source-result-status node-result))
+      (print (source-graph-error-code node-error))
+      (print (source-graph-error-kind node-error))
+      (print (source-graph-error-start node-error))
+      (print (source-graph-error-end node-error))
+      (print (source-result-status edge-result))
+      (print (source-graph-error-code edge-error))
+      (print (source-graph-error-kind edge-error))
+      (print (source-graph-error-start edge-error))
+      (print (source-graph-error-end edge-error))
+      0)))
+"#;
+
+    let output = run_source_adapter_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "1", "7", "10", "20", "0", "1", "10", "30", "40"],
+        "source node/edge の余分な form field は span 付き malformed として拒否するべき"
+    );
+}
+
 /// EC-M2-02 boundary: evidence registry が未接続の supports/contradicts は成功にしない。
 #[test]
 fn test_e2e_selfhost_source_adapter_rejects_unregistered_evidence_edge() {

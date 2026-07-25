@@ -204,17 +204,19 @@
       payload (vector-get form 1)
       start (vector-get form 2)
       end (vector-get form 3)]
-      (if (!= (vector-length payload) 2)
+      (if (!= (vector-length form) 4)
         (source-result 0 (source-graph-error-at (source-error-malformed) kind "" start end))
-        (let [id (vector-get payload 0)
-          text (vector-get payload 1)]
-          (if (or (= (string-length id) 0) (= (string-length text) 0))
-            (source-result 0 (source-graph-error-at (source-error-malformed) kind id start end))
-            (if (= (source-wire-valid? id kind) 0)
-              (if (source-wire-valid-node? id)
-                (source-result 0 (source-graph-error-at (source-error-kind-mismatch) kind id start end))
-                (source-result 0 (source-graph-error-at (source-error-invalid-id) kind id start end)))
-              (source-result 1 (source-node-record kind id text start end)))))))))
+        (if (!= (vector-length payload) 2)
+          (source-result 0 (source-graph-error-at (source-error-malformed) kind "" start end))
+          (let [id (vector-get payload 0)
+            text (vector-get payload 1)]
+            (if (or (= (string-length id) 0) (= (string-length text) 0))
+              (source-result 0 (source-graph-error-at (source-error-malformed) kind id start end))
+              (if (= (source-wire-valid? id kind) 0)
+                (if (source-wire-valid-node? id)
+                  (source-result 0 (source-graph-error-at (source-error-kind-mismatch) kind id start end))
+                  (source-result 0 (source-graph-error-at (source-error-invalid-id) kind id start end)))
+                (source-result 1 (source-node-record kind id text start end))))))))))
 
 (defn source-append-node-forms [forms idx len nodes]
   (if (>= idx len)
@@ -297,33 +299,35 @@
       payload (vector-get form 1)
       start (vector-get form 2)
       end (vector-get form 3)]
-      (if (!= (vector-length payload) 2)
+      (if (!= (vector-length form) 4)
         (source-result 0 (source-graph-error-at (source-error-malformed) relation "" start end))
-        (let [left (vector-get payload 0)
-          right (vector-get payload 1)
-          left-kind (source-edge-endpoint-kind relation 0)
-          right-kind (source-edge-endpoint-kind relation 1)]
-          (if (or (= (string-length left) 0) (= (string-length right) 0))
-            (source-result 0 (source-graph-error-at (source-error-malformed) relation left start end))
-            (if (or (= relation (source-edge-supports)) (= relation (source-edge-contradicts)))
-              (source-result 0
-                (source-graph-error-at
-                  (source-error-evidence-registry-required)
-                  relation
-                  left
-                  start
-                  end))
-              (if (= (source-wire-valid? left left-kind) 0)
-                (source-result 0 (source-graph-error-at (source-error-invalid-id) relation left start end))
-                (if (= (source-wire-valid? right right-kind) 0)
-                  (source-result 0 (source-graph-error-at (source-error-invalid-id) relation right start end))
-                  (if (= (source-node-id-exists? nodes left) 0)
-                    (source-result 0 (source-graph-error-at (source-error-missing-node) relation left start end))
-                    (if (and
-                          (!= right-kind (source-edge-tested-by))
-                          (= (source-node-id-exists? nodes right) 0))
-                      (source-result 0 (source-graph-error-at (source-error-missing-node) relation right start end))
-                      (source-result 1 (source-edge-record relation left right start end)))))))))))))
+        (if (!= (vector-length payload) 2)
+          (source-result 0 (source-graph-error-at (source-error-malformed) relation "" start end))
+          (let [left (vector-get payload 0)
+            right (vector-get payload 1)
+            left-kind (source-edge-endpoint-kind relation 0)
+            right-kind (source-edge-endpoint-kind relation 1)]
+            (if (or (= (string-length left) 0) (= (string-length right) 0))
+              (source-result 0 (source-graph-error-at (source-error-malformed) relation left start end))
+              (if (or (= relation (source-edge-supports)) (= relation (source-edge-contradicts)))
+                (source-result 0
+                  (source-graph-error-at
+                    (source-error-evidence-registry-required)
+                    relation
+                    left
+                    start
+                    end))
+                (if (= (source-wire-valid? left left-kind) 0)
+                  (source-result 0 (source-graph-error-at (source-error-invalid-id) relation left start end))
+                  (if (= (source-wire-valid? right right-kind) 0)
+                    (source-result 0 (source-graph-error-at (source-error-invalid-id) relation right start end))
+                    (if (= (source-node-id-exists? nodes left) 0)
+                      (source-result 0 (source-graph-error-at (source-error-missing-node) relation left start end))
+                      (if (and
+                            (!= right-kind (source-edge-tested-by))
+                            (= (source-node-id-exists? nodes right) 0))
+                        (source-result 0 (source-graph-error-at (source-error-missing-node) relation right start end))
+                        (source-result 1 (source-edge-record relation left right start end))))))))))))))
 
 (defn source-append-edge-forms [forms idx len nodes edges]
   (if (>= idx len)

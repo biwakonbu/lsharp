@@ -26,8 +26,9 @@ endpoint を解決し、欠落を成功として隠さない producer が必要�
 - parser AST の module/private/impl body を宣言順に再帰走査し、node を全て登録してから edge を解決する。
 - node は Intent / Claim / Assumption / OpenQuestion の wire prefix と本文を検証する。
 - edge は `motivates`、`constrained-by`、`tested-by` の typed endpoint を検証する。
-- node form の payload は stable ID と本文、edge form の payload は endpoint ID の2要素に限定し、
-  内部 tagged vector に余分な値があっても payload を黙って切り捨てず malformed error とする。
+- tagged node/edge form 自体は `[kind, payload, start, end]` の4要素に限定し、node payload は
+  stable ID と本文、edge payload は endpoint ID の2要素に限定する。内部 tagged vector に余分な
+  値があっても payload/form を黙って切り捨てず、directive span 付き malformed error とする。
 - duplicate node、stable ID の kind mismatch / invalid format、未登録 graph-owned endpoint は
   error record を返し、graph を成功扱いにしない。
 - `supports` / `contradicts` は evidence registry がまだ selfhost にないため、
@@ -46,6 +47,7 @@ source form の順序と directive span は record に保持し、後続の mani
 - `test_e2e_selfhost_source_adapter_rejects_missing_edge_node`
 - `test_e2e_selfhost_source_adapter_rejects_extra_edge_payload`
 - `test_e2e_selfhost_source_adapter_rejects_extra_node_payload`
+- `test_e2e_selfhost_source_adapter_rejects_extra_form_fields`
 - `test_e2e_selfhost_source_adapter_rejects_unregistered_evidence_edge`
 - `test_e2e_selfhost_source_adapter_reports_error_spans`: duplicate の first/current span と orphan edge span
 - `cargo test -p lsharp-wasm --test e2e selfhost_intent_source_adapter -- --nocapture`
