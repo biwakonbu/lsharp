@@ -34,10 +34,16 @@
   （Claim→Assumption）、`:tested-by`（Claim→Contract）が二つの wire ID と directive span を lossless に保持し、
   `validation_source::source_program_to_intent_graph` が全 node を先に収集してから typed edge を
   登録する。endpoint の wire kind mismatch、不正 ID、orphan reference は directive span 付きで
-  fail-closed に拒否する。Contract の
-  実体定義と optional な shrink/coverage source fields は contract/evidence registry の入力境界が残件。
+  fail-closed に拒否する。selfhost `Tools.Validation.IntentSource` も ordered source form を同じ
+  node/edge record へ投影し、duplicate、orphan、未接続 evidence edge を fail-closed に拒否する。
+  nested `module` / `private` / `impl` の宣言順と node/edge directive span、fail-closed error の現在 span
+  と duplicate の first span も selfhost E2E で確認済み。
+  Contract の実体定義、`:evidence` record の selfhost parser、optional な shrink/coverage source
+  fields は contract/evidence registry の入力境界が残件。
   Evidence: `crates/lsharp-syntax/tests/intent_edges.rs`,
   `crates/lsharp-types/tests/validation_source.rs`,
+  `crates/lsharp-wasm/tests/e2e/selfhost_intent_source_adapter.rs`,
+  `docs/adr/decisions-v0.2-selfhost-source-adapter.md`,
   `docs/adr/decisions-v0.2-source-intent-edges.md`,
   `docs/adr/decisions-v0.2-source-tested-by.md`。
 
