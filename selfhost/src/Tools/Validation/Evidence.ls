@@ -220,12 +220,14 @@
                         (source-result 0 (source-evidence-error (source-evidence-error-invalid-independence) "independence" (vector-get payload 16) start end))
                         (if (< (vector-get payload 8) 0)
                           (source-result 0 (source-evidence-error (source-evidence-error-invalid-sampling) "cases" "" start end))
-                          (if (= (source-evidence-shrinks-valid-loop (vector-get payload 11) 0 (vector-length (vector-get payload 11))) 0)
-                            (source-result 0 (source-evidence-error (source-evidence-error-invalid-sampling) "shrinks" "" start end))
-                            (let [coverage-result (source-evidence-coverage-valid-loop (vector-get payload 12) 0 (vector-length (vector-get payload 12)))]
-                              (if (= (source-result-status coverage-result) 0)
-                                coverage-result
-                                (source-result 1 form)))))))))))))))))
+                          (if (< (vector-get payload 9) 0)
+                            (source-result 0 (source-evidence-error (source-evidence-error-invalid-sampling) "seed" "" start end))
+                            (if (= (source-evidence-shrinks-valid-loop (vector-get payload 11) 0 (vector-length (vector-get payload 11))) 0)
+                              (source-result 0 (source-evidence-error (source-evidence-error-invalid-sampling) "shrinks" "" start end))
+                              (let [coverage-result (source-evidence-coverage-valid-loop (vector-get payload 12) 0 (vector-length (vector-get payload 12)))]
+                                (if (= (source-result-status coverage-result) 0)
+                                  coverage-result
+                                  (source-result 1 form))))))))))))))))))
 
 (defn source-evidence-registry-new [] (vector-new 0))
 (defn source-evidence-registry-length [registry] (vector-length registry))

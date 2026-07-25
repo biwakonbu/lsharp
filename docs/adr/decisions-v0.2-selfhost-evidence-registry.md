@@ -47,14 +47,14 @@ parityはこの決定の範囲外である。
 - `selfhost/src/Syntax/Parser.ls`
 - `crates/lsharp-wasm/tests/e2e/selfhost_evidence_registry.rs`
 - `cargo test -p lsharp-wasm --test e2e selfhost_evidence_registry -- --nocapture`
-  （10 passed）、`selfhost_intent_source_adapter`（既存 8 passed）。負の shrink 値、重複
+  （11 passed）、`selfhost_intent_source_adapter`（既存 8 passed）。負の seed / shrink 値、重複
   coverage bucket、duplicate evidence ID は同じ selfhost registry error contract として確認した。
 
 ## Consequences and residual work
 
 - selfhost parserのrequired fieldsとsamplingを含む初期 `:evidence` form、および
   `source-evidence-graph-from-program` の registry後 `supports` / `contradicts` 投影は検証済みで、
-  負の shrink 値も `invalid-sampling` code `11` / field `shrinks` として fail-closed に固定したが、
+  負の seed / shrink 値も `invalid-sampling` code `11` / field `seed`・`shrinks` として fail-closed に固定したが、
   malformed/unknown fieldの診断 parity、既存 validate graph/CLI との接続、nested source graphの全要件は
   未完了である。
 - `validate --source` / manifest serializer / EmbeddedCli・MCP、Contract registry、generator policy、

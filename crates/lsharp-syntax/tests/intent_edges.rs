@@ -207,6 +207,22 @@ fn evidence_record_metadata_preserves_optional_sampling_fields() {
 
 #[test]
 fn evidence_record_metadata_rejects_invalid_optional_sampling_fields() {
+    let negative_seed = parse(
+        r#"
+        (defn cancel []
+          :evidence "evidence:checkout/cancel-observation"
+            :subject "claim:checkout/cancel-rejects-shipped" :method "property"
+            :outcome "pass" :runner "cargo-test" :target "aarch64-apple-darwin"
+            :source-commit "0123456789abcdef" :artifact-digest "sha256:abc123"
+            :cases 1 :seed -1 :generator "fixture"
+            :producer "lsharp-test" :tool-version "0.2.0"
+            :timestamp "2026-07-25T00:00:00Z" :independence "same-author"
+          true)
+        "#,
+    )
+    .expect_err("負の seed は拒否するべき");
+    assert_eq!(negative_seed.code(), "LS0101");
+
     let negative_shrink = parse(
         r#"
         (defn cancel []
