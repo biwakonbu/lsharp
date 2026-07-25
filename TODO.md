@@ -53,6 +53,16 @@
   `docs/adr/decisions-v0.2-validation-config.md`, `crates/lsharp-types/tests/validation_input.rs`,
   `crates/lsharp-driver/src/config_tests.rs`, `crates/lsharp-driver/tests/validate_cli.rs`。
 
+## 2026-07-25 EC-M2 source validation CLI
+
+- [~] `EC-M2-03` source input wiring — `lsharp validate --source <source.ls> [--format text|json]`
+  が source parser → `validation_source::source_program_to_intent_graph` → `validate` → report を
+  実行する。contract/evidence 未接続の妥当な source は `unknown` (2)、parse/duplicate/orphan/
+  typed endpoint error は入力診断として fail-closed、positional manifest との併用は拒否する。
+  `tested-by`/evidence 投入、manifest emission、selfhost/native parity、EmbeddedCli/MCP、両 target の
+  artifact/runtime evidence は未完了。Evidence: `docs/adr/decisions-v0.2-validation-source-cli.md`,
+  `crates/lsharp-driver/tests/validate_cli.rs`。
+
 ## 2026-07-25 current-source native stage0 evidence refresh
 
 - [~] current-source Mac Apple Silicon native stage0 smoke — source commit `f3e63270fb70d5a47a4e4ec4fe0ed60422950cf2` から actual `stage1 -> stage2 -> stage3` を `test_e2e_stage23_actual_native_self_regeneration_harness_stage2_stage3_match` で再生成し、保持した stage3 compilerを `aarch64-apple-darwin` stage0 packageへ materializeした。`NATIVE_STAGE0_DIR=... NATIVE_SELFHOST_STAGE_DIR=... bash scripts/ci/native-selfhost-dev-source-file-smoke.sh` を `cargo` / `rustc` / host `lsharp` 遮断環境で実行し、`parse` / `check` / `fmt` / `test` / metadata/property test / `compile` / `build` と拒否ケースが passした。これは current-source Mac の verified daily sliceであり、Linux x86_64 current-source artifact/runtime、二 target parity、公開 surface全体、EC-M1-01 aggregateは未完了。`App.Cli` release programはstage0 compilerではないため、stage0にはactual stage3 `program.native`を使う。Evidence: `test_e2e_stage23_actual_native_self_regeneration_harness_stage2_stage3_match`（1 passed, 435.38s）、`scripts/ci/native-selfhost-dev-source-file-smoke.sh`（`aarch64-apple-darwin native selfhost source-file smoke passed`）。

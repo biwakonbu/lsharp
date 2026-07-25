@@ -6,9 +6,8 @@
 
 ## JSON manifest を検証する
 
-現在の入力境界は [`intent-graph.schema.json`](../schemas/intent-graph.schema.json) に
-定義した `schema_version: 1` JSON manifest です。node、evidence、typed edge を記述し、
-次のように実行します。
+JSON manifest の入力境界は [`intent-graph.schema.json`](../schemas/intent-graph.schema.json) に
+定義した `schema_version: 1` です。node、evidence、typed edge を記述し、次のように実行します。
 
 ```bash
 lsharp validate intent-graph.json
@@ -44,6 +43,22 @@ text と JSON は同じ facts を返します。
 エラーとして非ゼロで終了します。欠落を pass と解釈しないため、CI やレビュー自動化では
 `unknown` を別のアクションとして扱えます。
 
+## L# source から検証する
+
+source metadata を直接 graph へ投影する場合は、明示的に `--source` を指定します。
+
+```bash
+lsharp validate --source src/Checkout.ls
+lsharp validate --source src/Checkout.ls --format json
+```
+
+source は parse 後に `:intent` / `:claim` / `:assumption` / `:open-question` node と
+`:motivates` / `:constrained-by` edge へ変換されます。contract/evidence (`:tested-by` を含む)
+がまだ接続されていない source は、欠落を補完せず `unknown`（exit code `2`）を返します。
+parse error、duplicate node、typed endpoint mismatch、orphan edge は入力エラーとして
+report とは別に非ゼロ終了します。`--source` と positional JSON manifest path は同時に指定
+できません。
+
 ## Source の intent node
 
 source から node identity を持たせる場合は、宣言 metadata に stable ID と本文を明示します。
@@ -73,5 +88,6 @@ emission、selfhost/native 実行は後続境界です。
 ## 現在の境界
 
 この slice は Rust の manifest parser/CLI と source node/edge registry を graph model へ接続し、
-project config から安全に入力を発見するものです。contract/evidence source edge、selfhost/native の report parity、
-EmbeddedCli/MCP、Mac/Linux の artifact/runtime evidence は後続の M2-03 task として残ります。
+project config から安全に入力を発見するものです。`validate --source` は source parser → graph →
+report までを Rust CLI で実行できます。contract/evidence source edge、selfhost/native の report
+parity、EmbeddedCli/MCP、Mac/Linux の artifact/runtime evidence は後続の M2-03 task として残ります。
