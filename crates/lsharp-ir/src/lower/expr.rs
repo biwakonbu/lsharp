@@ -16,6 +16,9 @@ mod application_tests;
 mod computation;
 #[cfg(test)]
 mod computation_tests;
+mod do_expr;
+#[cfg(test)]
+mod do_expr_tests;
 mod helpers;
 #[cfg(test)]
 mod helpers_tests;
@@ -171,16 +174,7 @@ impl Lower {
             }
 
             Expr::Do(_, exprs) => {
-                for (i, expr) in exprs.iter().enumerate() {
-                    self.lower_expr(ctx, expr)?;
-                    // 最後の式以外は結果を捨てる
-                    if i < exprs.len() - 1 {
-                        ctx.emit(Instruction::Drop);
-                    }
-                }
-                if exprs.is_empty() {
-                    ctx.emit(Instruction::I64Const(0)); // unit
-                }
+                self.lower_do(ctx, exprs)?;
             }
 
             Expr::Lambda(_, params, body) => {
