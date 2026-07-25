@@ -1,11 +1,11 @@
 use lsharp_syntax::span::Span;
 use lsharp_types::evidence::{
     Edge, Evidence, EvidenceMethod, EvidenceOutcome, EvidenceSubject, ExecutionContext,
-    ExecutionIdentity, Independence, Provenance, SamplingPlan,
+    ExecutionIdentity, GraphError, Independence, Provenance, SamplingPlan,
 };
 use lsharp_types::intent::{
-    Claim, ClaimId, ContractId, EvidenceId, Intent, IntentId, IntentNode, OpenQuestion,
-    OpenQuestionId, ReviewId,
+    AssumptionId, Claim, ClaimId, ContractId, EvidenceId, Intent, IntentId, IntentNode,
+    OpenQuestion, OpenQuestionId, ReviewId,
 };
 use lsharp_types::validation::{IntentGraph, TraceGap, ValidationStatus};
 
@@ -219,5 +219,63 @@ fn graph_rejects_duplicate_intent_node_ids() {
         graph.add_node(second),
         Err(lsharp_types::evidence::GraphError::DuplicateNode { duplicate })
             if duplicate == *id.stable_id()
+    ));
+}
+
+#[test]
+fn graph_rejects_typed_edges_with_missing_node_endpoints() {
+    let (mut graph, intent_id, claim_id) = intent_graph();
+    let missing_claim = ClaimId::new("checkout", "missing-claim").unwrap();
+    assert!(matches!(
+        graph.clone().add_edge(Edge::Motivates {
+            intent: intent_id.clone(),
+            claim: missing_claim.clone(),
+        }),
+        Err(GraphError::MissingNode { id }) if id == *missing_claim.stable_id()
+    ));
+    let missing_assumption = AssumptionId::new("checkout", "missing-assumption").unwrap();
+    assert!(matches!(
+        graph.clone().add_edge(Edge::ConstrainedBy {
+            claim: claim_id.clone(),
+            assumption: missing_assumption.clone(),
+        }),
+        Err(GraphError::MissingNode { id }) if id == *missing_assumption.stable_id()
+    ));
+    assert!(matches!(
+        graph.add_edge(Edge::Evaluates {
+            review: ReviewId::new("checkout", "reviewer-001").unwrap(),
+            subject: lsharp_types::evidence::ReviewSubject::Claim(missing_claim.clone()),
+        }),
+        Err(GraphError::MissingNode { id }) if id == *missing_claim.stable_id()
+    ));
+}
+
+#[test]
+fn graph_rejects_evidence_edges_with_missing_claim_endpoints() {
+    let (mut graph, _intent_id, _claim_id) = intent_graph();
+    let observation = evidence(
+        "observation-001",
+        EvidenceMethod::Case,
+        EvidenceSubject::Claim(ClaimId::new("checkout", "cancel-rejects-shipped").unwrap()),
+        EvidenceOutcome::Pass,
+        Independence::SameAuthor,
+    );
+    let observation_id = observation.id().clone();
+    graph.add_evidence(observation).unwrap();
+    let missing_claim = ClaimId::new("checkout", "missing-claim").unwrap();
+
+    assert!(matches!(
+        graph.clone().add_edge(Edge::Supports {
+            observation: observation_id.clone(),
+            claim: missing_claim.clone(),
+        }),
+        Err(GraphError::MissingNode { id }) if id == *missing_claim.stable_id()
+    ));
+    assert!(matches!(
+        graph.add_edge(Edge::Contradicts {
+            observation: observation_id,
+            claim: missing_claim.clone(),
+        }),
+        Err(GraphError::MissingNode { id }) if id == *missing_claim.stable_id()
     ));
 }

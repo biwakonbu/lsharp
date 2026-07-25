@@ -409,6 +409,8 @@ pub enum GraphError {
     },
     #[error("graph node ID が重複しています: {duplicate:?}")]
     DuplicateNode { duplicate: StableId },
+    #[error("edge が参照する graph node ID がありません: {id:?}")]
+    MissingNode { id: StableId },
     #[error("evidence ID が重複しています: {id:?}")]
     DuplicateEvidence { id: EvidenceId },
     #[error("edge が参照する evidence ID が graph にありません: {id:?}")]

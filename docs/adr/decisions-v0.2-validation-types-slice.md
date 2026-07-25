@@ -17,8 +17,10 @@ projection の契約は先に固定できる。
 
 - `StableId::parse` と typed ID parser は `kind:namespace/key` を fail-closed に検証し、
   kind mismatch と graph-only kind を暗黙変換しない。
-- `IntentGraph` は node/evidence の登録順を保持し、duplicate node、required evidence
-  field、missing evidence reference を検査する。
+- `IntentGraph` は node/evidence の登録順を保持し、duplicate node、graph-owned node endpoint、
+  required evidence field、missing evidence reference を検査する。direct `add_edge` でも
+  source/manifest adapter と同じ fail-closed closure を適用する詳細は
+  `decisions-v0.2-intent-edge-closure.md` に固定する。
 - `IntentGraph::validate()` は `pass` / `fail` / `unknown` と trace gap、open question、
   independent review、contradiction の fact を返す。欠落を pass や `verified` shortcut に
   変換しない。
