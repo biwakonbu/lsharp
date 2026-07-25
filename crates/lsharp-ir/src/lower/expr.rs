@@ -37,6 +37,9 @@ mod let_expr_tests;
 mod match_expr;
 #[cfg(test)]
 mod match_expr_tests;
+mod quote_expr;
+#[cfg(test)]
+mod quote_expr_tests;
 mod record;
 #[cfg(test)]
 mod record_tests;
@@ -189,15 +192,9 @@ impl Lower {
             Expr::Computation(span, builder_name, steps) => {
                 self.lower_computation(ctx, *span, builder_name, steps)?;
             }
-            // P10-1: Quote/Unquote/UnquoteSplice はマクロ展開後には残らない
             Expr::Quote(expr_span, _)
             | Expr::Unquote(expr_span, _)
-            | Expr::UnquoteSplice(expr_span, _) => {
-                return Err(LowerError::Unsupported {
-                    msg: "quote/unquote はマクロ展開後に使用できません".to_string(),
-                    span: Some(*expr_span),
-                });
-            }
+            | Expr::UnquoteSplice(expr_span, _) => self.lower_quote(*expr_span)?,
         }
 
         Ok(())
