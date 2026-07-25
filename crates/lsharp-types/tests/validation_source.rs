@@ -93,6 +93,53 @@ fn source_adapter_projects_type_definition_metadata_nodes() {
 }
 
 #[test]
+fn source_adapter_projects_nested_module_private_and_impl_metadata_in_declaration_order() {
+    const SOURCE: &str = r#"
+        (module Checkout
+          (defn top []
+            :intent "intent:checkout/top" "Top declaration"
+            true)
+          (private
+            (defn hidden []
+              :claim "claim:checkout/hidden" "Private declaration"
+              true))
+          (impl (Show Int)
+            (defn render []
+              :assumption "assumption:checkout/render" "Render is deterministic"
+              :open-question "open-question:checkout/render" "Need external review"
+              true)))
+        "#;
+    let program = parse(SOURCE).expect("nested declaration metadata fixture は parse できるべき");
+
+    let graph = source_program_to_intent_graph(&program)
+        .expect("nested module/private/impl metadata が投影できるべき");
+    assert_eq!(
+        graph
+            .nodes()
+            .iter()
+            .map(|node| (node.stable_id().as_str(), node.text()))
+            .collect::<Vec<_>>(),
+        vec![
+            ("intent:checkout/top", "Top declaration"),
+            ("claim:checkout/hidden", "Private declaration"),
+            ("assumption:checkout/render", "Render is deterministic"),
+            ("open-question:checkout/render", "Need external review"),
+        ]
+    );
+
+    let spans = graph
+        .nodes()
+        .iter()
+        .map(|node| node.source_span())
+        .collect::<Vec<_>>();
+    assert!(spans.windows(2).all(|pair| pair[0].start < pair[1].start));
+    assert!(SOURCE[spans[0].start..spans[0].end].contains("Top declaration"));
+    assert!(SOURCE[spans[1].start..spans[1].end].contains("Private declaration"));
+    assert!(SOURCE[spans[2].start..spans[2].end].contains("Render is deterministic"));
+    assert!(SOURCE[spans[3].start..spans[3].end].contains("Need external review"));
+}
+
+#[test]
 fn source_adapter_rejects_duplicate_ids_and_typed_kind_mismatch() {
     let duplicate = parse(
         r#"
