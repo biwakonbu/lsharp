@@ -1461,8 +1461,8 @@ fn cmd_validate_source(
 ) -> miette::Result<i32> {
     let source =
         std::fs::read_to_string(file).map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
-    let program =
-        lsharp_syntax::parse(&source).map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
+    let program = lsharp_syntax::parse(&source)
+        .map_err(|e| miette::miette!("[{}] {}: {}", e.code(), file.display(), e))?;
     let graph = lsharp_types::validation_source::source_program_to_intent_graph(&program)
         .map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
     emit_validation_manifest(&graph, emit_manifest)?;

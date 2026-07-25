@@ -167,6 +167,46 @@ fn validate_source_rejects_orphan_edges_as_input_errors() {
 }
 
 #[test]
+fn validate_source_forwards_parser_code_and_does_not_emit_manifest() {
+    let source = source_path(
+        "source-parser-error",
+        r#"
+        (type Point
+          (record (: x Int))
+          :claim "claim:geometry/point-typed" true)
+        "#,
+    );
+    let output_dir = project_dir("source-parser-error-output");
+    fs::create_dir_all(&output_dir).expect("manifest output directory should be writable");
+    let manifest = output_dir.join("intent-graph.json");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+        .args([
+            "validate",
+            "--source",
+            source.to_str().unwrap(),
+            "--format",
+            "json",
+            "--emit-manifest",
+            manifest.to_str().unwrap(),
+        ])
+        .output()
+        .expect("malformed source validation should run");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let manifest_exists = manifest.exists();
+    fs::remove_file(&source).ok();
+    fs::remove_dir_all(&output_dir).ok();
+
+    assert!(!output.status.success());
+    assert!(output.stdout.is_empty());
+    assert!(
+        stderr.contains("[LS0101]"),
+        "stable parser code missing: {stderr}"
+    );
+    assert!(!manifest_exists, "parse error 時に manifest を作らないべき");
+}
+
+#[test]
 fn validate_source_tested_by_closes_claim_trace_gap() {
     let path = source_path(
         "source-tested-by",
