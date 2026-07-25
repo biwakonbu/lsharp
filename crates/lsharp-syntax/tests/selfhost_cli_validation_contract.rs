@@ -92,8 +92,10 @@ fn selfhost_cli_validation_surface_is_registered() {
     assert!(
         node_loop.contains("state0 (vector-new 4)")
             && node_loop.contains("(vector-push-single-rooted-v3 state0")
+            && node_loop.contains("(root_push state)")
+            && node_loop.contains("(root_pop)")
             && !node_loop.contains("(vector-set-at-rooted-v3 state 1 (+ idx 1))"),
-        "native x86 の node manifest loop は object/string を含む state を vector-set で更新せず fresh rooted state として進めるべき"
+        "native x86 の node manifest loop は state を root し、object/string を含む state を vector-set で更新せず fresh rooted state として進めるべき"
     );
     let check_start = source
         .find("(defn run-check-program")

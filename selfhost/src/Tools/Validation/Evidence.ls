@@ -435,19 +435,32 @@
     (validation-json-object-wrap fields5)))
 
 (defn validation-source-nodes-json-state-loop [state]
-  (let [nodes (vector-get state 0)
-    idx (vector-get state 1)
-    len (vector-get state 2)
-    out (vector-get state 3)]
-    (if (>= idx len)
-      out
-      (let [next-out (validation-json-append out (validation-source-node-json (vector-get nodes idx)))
-        state0 (vector-new 4)
-        state1 (vector-push-single-rooted-v3 state0 nodes)
-        state2 (vector-push-single-rooted-v3 state1 (+ idx 1))
-        state3 (vector-push-single-rooted-v3 state2 len)
-        next-state (vector-push-single-rooted-v3 state3 next-out)]
-        (validation-source-nodes-json-state-loop next-state)))))
+  (do
+    (root_push state)
+    (let [nodes (vector-get state 0)
+      idx (vector-get state 1)
+      len (vector-get state 2)
+      out (vector-get state 3)]
+      (if (>= idx len)
+        (do
+          (root_pop)
+          out)
+        (let [next-out (validation-json-append out (validation-source-node-json (vector-get nodes idx)))]
+          (do
+            (root_push next-out)
+            (let [state0 (vector-new 4)
+              state1 (vector-push-single-rooted-v3 state0 nodes)
+              state2 (vector-push-single-rooted-v3 state1 (+ idx 1))
+              state3 (vector-push-single-rooted-v3 state2 len)
+              next-state (vector-push-single-rooted-v3 state3 next-out)]
+              (do
+                (root_push next-state)
+                (root_pop)
+                (root_pop)
+                (let [result (validation-source-nodes-json-state-loop next-state)]
+                  (do
+                    (root_pop)
+                    result))))))))))
 
 (defn validation-source-int-array-json-state-loop [state]
   (let [items (vector-get state 0)
