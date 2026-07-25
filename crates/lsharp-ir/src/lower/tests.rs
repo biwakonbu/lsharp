@@ -65,6 +65,54 @@ fn function_index(module: &Module, name: &str) -> u32 {
             .unwrap_or_else(|| panic!("function not found: {name}")) as u32
 }
 
+#[test]
+fn lower_context_reuse_matches_a_fresh_context() {
+    let first_program = lsharp_syntax::parse(
+        r#"
+        (type User (record (: name String)))
+        (defn first [] "first")
+        "#,
+    )
+    .unwrap();
+    let second_program = lsharp_syntax::parse(r#"(defn second [] 42)"#).unwrap();
+
+    let mut first_infer = Infer::new();
+    let first_type_results = first_infer.infer_program(&first_program).unwrap();
+    let first_expr_type_results = first_infer.expr_type_results_snapshot();
+    let mut second_infer = Infer::new();
+    let second_type_results = second_infer.infer_program(&second_program).unwrap();
+    let second_expr_type_results = second_infer.expr_type_results_snapshot();
+
+    let mut reused = Lower::with_backend(LowerBackend::WasmGc);
+    reused
+        .lower_program_with_expr_types(
+            &first_program,
+            &first_type_results,
+            &first_expr_type_results,
+        )
+        .unwrap();
+    let reused_module = reused
+        .lower_program_with_expr_types(
+            &second_program,
+            &second_type_results,
+            &second_expr_type_results,
+        )
+        .unwrap();
+
+    let mut fresh = Lower::with_backend(LowerBackend::WasmGc);
+    let fresh_module = fresh
+        .lower_program_with_expr_types(
+            &second_program,
+            &second_type_results,
+            &second_expr_type_results,
+        )
+        .unwrap();
+
+    assert_eq!(reused_module.dump(), fresh_module.dump());
+    assert_eq!(reused_module.string_data, fresh_module.string_data);
+    assert_eq!(reused_module.gc_types.len(), fresh_module.gc_types.len());
+}
+
 fn call_position(body: &[Instruction], idx: u32) -> usize {
     body.iter()
         .position(|instr| matches!(instr, Instruction::Call(call_idx) if *call_idx == idx))
