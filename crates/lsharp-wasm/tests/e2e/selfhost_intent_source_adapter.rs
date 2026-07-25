@@ -387,6 +387,57 @@ fn test_e2e_selfhost_source_adapter_rejects_extra_form_fields() {
     );
 }
 
+/// EC-M2-01 boundary: short tagged form でも利用可能な kind/span を失わずに拒否する。
+#[test]
+fn test_e2e_selfhost_source_adapter_preserves_partial_malformed_form_context() {
+    let harness = r#"
+(defn main []
+  (let [node-payload (vector-push-pair-rooted-v3
+                       (vector-new 0)
+                       "claim:checkout/rejects"
+                       "Shipped orders are rejected")
+        node-form (vector-push-triple-rooted-v3
+                    (vector-new 3)
+                    (source-node-claim)
+                    node-payload
+                    10)
+        node-result (source-node-form-result node-form)
+        node-error (source-result-error node-result)
+        edge-payload (vector-push-pair-rooted-v3
+                       (vector-new 0)
+                       "intent:checkout/cancel"
+                       "claim:checkout/rejects")
+        edge-form (vector-push-triple-rooted-v3
+                    (vector-new 3)
+                    (source-edge-motivates)
+                    edge-payload
+                    30)
+        edge-result (source-edge-form-result edge-form (vector-new 0))
+        edge-error (source-result-error edge-result)]
+    (do
+      (print (source-result-status node-result))
+      (print (source-graph-error-code node-error))
+      (print (source-graph-error-kind node-error))
+      (print (source-graph-error-start node-error))
+      (print (source-graph-error-end node-error))
+      (print (source-result-status edge-result))
+      (print (source-graph-error-code edge-error))
+      (print (source-graph-error-kind edge-error))
+      (print (source-graph-error-start edge-error))
+      (print (source-graph-error-end edge-error))
+      0)))
+"#;
+
+    let output = run_source_adapter_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "1", "7", "10", "-1", "0", "1", "10", "30", "-1"],
+        "短い source node/edge form は利用可能な kind と開始位置を保持するべき"
+    );
+}
+
 /// EC-M2-02 boundary: evidence registry が未接続の supports/contradicts は成功にしない。
 #[test]
 fn test_e2e_selfhost_source_adapter_rejects_unregistered_evidence_edge() {

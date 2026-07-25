@@ -60,6 +60,33 @@
 (defn source-graph-error-related [code kind id start end related-start related-end]
   (source-graph-error-record code kind id start end related-start related-end))
 
+;; malformed tagged form でも、存在する kind/span は診断へ引き継ぐ。
+;; 欠落したフィールドの offset は未取得を示す -1 とする。
+(defn source-form-kind-or-zero [form]
+  (if (> (vector-length form) 0)
+    (vector-get form 0)
+    0))
+
+(defn source-form-start-or-minus-one [form]
+  (if (> (vector-length form) 2)
+    (vector-get form 2)
+    -1))
+
+(defn source-form-end-or-minus-one [form]
+  (if (> (vector-length form) 3)
+    (vector-get form 3)
+    -1))
+
+(defn source-form-malformed-error [form]
+  (source-graph-error-record
+    (source-error-malformed)
+    (source-form-kind-or-zero form)
+    ""
+    (source-form-start-or-minus-one form)
+    (source-form-end-or-minus-one form)
+    -1
+    -1))
+
 (defn source-graph-error-code [error] (vector-get error 0))
 (defn source-graph-error-kind [error] (vector-get error 1))
 (defn source-graph-error-id [error] (vector-get error 2))
@@ -199,7 +226,7 @@
 
 (defn source-node-form-result [form]
   (if (< (vector-length form) 4)
-    (source-result 0 (source-graph-error (source-error-malformed) 0 ""))
+    (source-result 0 (source-form-malformed-error form))
     (let [kind (vector-get form 0)
       payload (vector-get form 1)
       start (vector-get form 2)
@@ -294,7 +321,7 @@
 
 (defn source-edge-form-result [form nodes]
   (if (< (vector-length form) 4)
-    (source-result 0 (source-graph-error (source-error-malformed) 0 ""))
+    (source-result 0 (source-form-malformed-error form))
     (let [relation (vector-get form 0)
       payload (vector-get form 1)
       start (vector-get form 2)
