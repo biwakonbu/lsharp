@@ -22,7 +22,7 @@ L# は「Lisp + F#」で終わらず、型の表現力そのものを広げる�
 
 - **trait + `:where`** - アドホック多相と制約付き多相
 - **`type-constrained`** - 値の意味的な制約を型定義に載せる
-- **構造化 metadata** - `:doc`, `:params`, `:returns`, `:example`, `:invariant`, `:transitions`
+- **構造化 metadata** - `:doc`, `:params`, `:returns`, `:example`, `:invariant`, `:transitions` と v0.2 intent node
 - **metadata-driven test / docs** - `test` や `doc` が metadata を直接利用
 - **高度な型機能を探求中** - 高カインド型、GADT、computation expressions は一部実装 / 検証中
 

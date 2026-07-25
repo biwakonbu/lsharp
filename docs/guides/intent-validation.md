@@ -44,8 +44,24 @@ text と JSON は同じ facts を返します。
 エラーとして非ゼロで終了します。欠落を pass と解釈しないため、CI やレビュー自動化では
 `unknown` を別のアクションとして扱えます。
 
+## Source の intent node
+
+source から node identity を持たせる場合は、宣言 metadata に stable ID と本文を明示します。
+
+```lisp
+(defn cancel []
+  :intent "intent:checkout/safe-cancel" "Users can cancel an order"
+  :claim "claim:checkout/cancel-rejects-shipped" "The API rejects shipped orders"
+  true)
+```
+
+`:assumption` と `:open-question` も同じ形式で記述できます。wire ID の kind と directive
+kind が一致しない、本文が空、同じ ID が重複する入力は fail-closed です。現時点の source
+adapter は node registry と span を保持するところまでで、edge/evidence の生成と selfhost/native
+実行は未接続です。
+
 ## 現在の境界
 
-この slice は Rust の manifest parser と CLI を graph model へ接続し、project config から
-安全に入力を発見するものです。L# source syntax、selfhost/native の report parity、
+この slice は Rust の manifest parser/CLI と source node registry を graph model へ接続し、
+project config から安全に入力を発見するものです。source edge/evidence、selfhost/native の report parity、
 EmbeddedCli/MCP、Mac/Linux の artifact/runtime evidence は後続の M2-03 task として残ります。

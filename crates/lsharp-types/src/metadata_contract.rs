@@ -6,7 +6,7 @@
 pub use crate::intent::{ClaimId, IntentId};
 use crate::types::Type;
 use lsharp_syntax::ast::{Decl, Expr, Metadata, Program, TypeExpr};
-use lsharp_syntax::metadata::MetadataFormKind;
+use lsharp_syntax::metadata::{MetadataForm, MetadataFormKind};
 use lsharp_syntax::span::Span;
 use std::collections::BTreeMap;
 
@@ -332,17 +332,23 @@ fn inventory_decl(decl: &Decl) -> Result<Option<ContractSuite>, ContractInventor
     };
 
     validate_compatibility_projection(name, metadata)?;
-    let Some(first) = metadata.forms.first() else {
+    let Some(first) = metadata.forms.iter().find(|form| is_contract_form(form)) else {
         return Ok(None);
     };
     let last = metadata
         .forms
-        .last()
+        .iter()
+        .rev()
+        .find(|form| is_contract_form(form))
         .expect("first があれば last も存在する");
     let mut executable = Vec::new();
     let mut pending_migration = Vec::new();
     for form in &metadata.forms {
         match &form.kind {
+            MetadataFormKind::Intent { .. }
+            | MetadataFormKind::Claim { .. }
+            | MetadataFormKind::Assumption { .. }
+            | MetadataFormKind::OpenQuestion { .. } => {}
             MetadataFormKind::LegacyExample { expressions } => {
                 pending_migration.push(LegacyContract::Example {
                     expressions: expressions.clone(),
@@ -390,6 +396,17 @@ fn inventory_decl(decl: &Decl) -> Result<Option<ContractSuite>, ContractInventor
     }))
 }
 
+fn is_contract_form(form: &MetadataForm) -> bool {
+    matches!(
+        &form.kind,
+        MetadataFormKind::LegacyExample { .. }
+            | MetadataFormKind::LegacyInvariant { .. }
+            | MetadataFormKind::Case { .. }
+            | MetadataFormKind::Assertion { .. }
+            | MetadataFormKind::Property { .. }
+    )
+}
+
 fn validate_compatibility_projection(
     owner: &str,
     metadata: &Metadata,
@@ -409,6 +426,10 @@ fn validate_compatibility_projection(
     let mut invariant = None;
     for form in &metadata.forms {
         match &form.kind {
+            MetadataFormKind::Intent { .. }
+            | MetadataFormKind::Claim { .. }
+            | MetadataFormKind::Assumption { .. }
+            | MetadataFormKind::OpenQuestion { .. } => {}
             MetadataFormKind::LegacyExample { expressions } => {
                 examples.extend(expressions.iter().cloned());
             }

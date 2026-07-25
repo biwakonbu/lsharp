@@ -147,6 +147,14 @@ impl PropertyForm {
 /// source から lossless に保持する contract form。
 #[derive(Debug, Clone, PartialEq)]
 pub enum MetadataFormKind {
+    /// source から明示した intent node。ID は `intent:namespace/key` wire 形式。
+    Intent { id: String, text: String },
+    /// source から明示した claim node。ID は `claim:namespace/key` wire 形式。
+    Claim { id: String, text: String },
+    /// source から明示した assumption node。ID は `assumption:namespace/key` wire 形式。
+    Assumption { id: String, text: String },
+    /// source から明示した open-question node。ID は `open-question:namespace/key` wire 形式。
+    OpenQuestion { id: String, text: String },
     /// legacy `:example [expr ...]`。一つの directive 内の grouping を維持する。
     LegacyExample { expressions: Vec<Expr> },
     /// legacy `:invariant predicate`。

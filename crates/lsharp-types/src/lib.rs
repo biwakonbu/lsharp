@@ -11,6 +11,7 @@ pub mod types;
 pub mod validation;
 pub mod validation_input;
 pub mod validation_output;
+pub mod validation_source;
 
 #[cfg(test)]
 mod diagnostic_tests {

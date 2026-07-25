@@ -319,6 +319,56 @@ impl Parser {
                                 }
                             }
                         }
+                        "intent" => {
+                            let form_start = self.peek_span();
+                            self.advance(); // :
+                            self.advance(); // intent
+                            let (id, _) = self.expect_metadata_string("intent stable ID")?;
+                            let (text, text_span) = self.expect_metadata_string("intent text")?;
+                            metadata.forms.push(MetadataForm::new(
+                                form_start.merge(text_span),
+                                MetadataFormKind::Intent { id, text },
+                            ));
+                            found = true;
+                        }
+                        "claim" => {
+                            let form_start = self.peek_span();
+                            self.advance(); // :
+                            self.advance(); // claim
+                            let (id, _) = self.expect_metadata_string("claim stable ID")?;
+                            let (text, text_span) = self.expect_metadata_string("claim text")?;
+                            metadata.forms.push(MetadataForm::new(
+                                form_start.merge(text_span),
+                                MetadataFormKind::Claim { id, text },
+                            ));
+                            found = true;
+                        }
+                        "assumption" => {
+                            let form_start = self.peek_span();
+                            self.advance(); // :
+                            self.advance(); // assumption
+                            let (id, _) = self.expect_metadata_string("assumption stable ID")?;
+                            let (text, text_span) =
+                                self.expect_metadata_string("assumption text")?;
+                            metadata.forms.push(MetadataForm::new(
+                                form_start.merge(text_span),
+                                MetadataFormKind::Assumption { id, text },
+                            ));
+                            found = true;
+                        }
+                        "open-question" => {
+                            let form_start = self.peek_span();
+                            self.advance(); // :
+                            self.advance(); // open-question
+                            let (id, _) = self.expect_metadata_string("open-question stable ID")?;
+                            let (text, text_span) =
+                                self.expect_metadata_string("open-question text")?;
+                            metadata.forms.push(MetadataForm::new(
+                                form_start.merge(text_span),
+                                MetadataFormKind::OpenQuestion { id, text },
+                            ));
+                            found = true;
+                        }
                         "since" => {
                             self.advance(); // :
                             self.advance(); // since
@@ -1679,6 +1729,10 @@ impl Parser {
                 s.as_str(),
                 "where"
                     | "constraints"
+                    | "intent"
+                    | "claim"
+                    | "assumption"
+                    | "open-question"
                     | "doc"
                     | "params"
                     | "returns"
@@ -1697,6 +1751,26 @@ impl Parser {
     }
 
     // --- ヘルパーメソッド ---
+
+    fn expect_metadata_string(&mut self, expected: &str) -> Result<(String, Span), ParseError> {
+        match self.peek_kind() {
+            Some(TokenKind::String(_)) => {
+                let token = self.advance();
+                match token.kind {
+                    TokenKind::String(value) => Ok((value, token.span)),
+                    _ => unreachable!("peek_kind が String を返した後に変化しない"),
+                }
+            }
+            Some(kind) => Err(ParseError::Unexpected {
+                expected: expected.to_string(),
+                found: kind.to_string(),
+                span: self.peek_span(),
+            }),
+            None => Err(ParseError::UnexpectedEof {
+                expected: expected.to_string(),
+            }),
+        }
+    }
 
     fn peek(&self) -> Option<&Token> {
         self.tokens.get(self.pos)

@@ -91,6 +91,20 @@ L# の利用者向けリファレンスです。実装詳細ではなく、日�
 - `:returns` は戻り値説明
 - `:example` はサンプル式
 
+intent/evidence graph の node identity は、stable ID を明示する metadata で記述できます。
+
+```lisp
+(defn cancel
+  []
+  :intent "intent:checkout/safe-cancel" "Users can cancel an order"
+  :claim "claim:checkout/cancel-rejects-shipped" "The API rejects shipped orders"
+  true)
+```
+
+`:assumption` と `:open-question` も同じ形式です。ID の kind と directive が一致しない入力や
+重複 ID は拒否されます。source node の graph edge/evidence と selfhost/native parity は v0.2 の
+後続 slice です。
+
 ## Stdlib Modules
 
 - `Core`
