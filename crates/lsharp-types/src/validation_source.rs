@@ -15,12 +15,21 @@ use crate::intent::{
 use crate::validation::IntentGraph;
 use lsharp_syntax::ast::{Decl, Metadata, Program};
 use lsharp_syntax::metadata::MetadataFormKind;
+use lsharp_syntax::span::Span;
 
 /// source node adapter が入力を graph へ投影できない理由。
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum SourceGraphError {
     #[error("source intent node の生成に失敗しました: {0}")]
     Node(#[from] IntentNodeError),
+    #[error(
+        "source intent node の stable ID が重複しています (id={id}, first_span={first_span}, duplicate_span={duplicate_span})"
+    )]
+    DuplicateNode {
+        id: String,
+        first_span: Span,
+        duplicate_span: Span,
+    },
     #[error("source intent graph の登録に失敗しました: {0}")]
     Graph(#[from] crate::evidence::GraphError),
     #[error("source intent edge の ID 解析に失敗しました: {0}")]
@@ -107,6 +116,17 @@ fn add_metadata_nodes(
                 expected: expected_kind,
                 actual: node.kind(),
                 wire_id: wire_id.clone(),
+            });
+        }
+        if let Some(existing) = graph
+            .nodes()
+            .iter()
+            .find(|existing| existing.stable_id() == node.stable_id())
+        {
+            return Err(SourceGraphError::DuplicateNode {
+                id: node.stable_id().as_str().to_string(),
+                first_span: existing.source_span(),
+                duplicate_span: form.span(),
             });
         }
         graph.add_node(node)?;

@@ -12,10 +12,12 @@
   `:open-question` が `kind:namespace/key` wire ID、本文、directive span を lossless に保持し、
   `validation_source::source_program_to_intent_graph` が nested module/private/impl を含む
   `IntentGraph` node registry へ typed projection する。ID 省略、wire kind mismatch、duplicate ID
-  は fail-closed。`motivates` / `constrained-by` / `tested-by` の source edge と required fields を
-  持つ evidence record は接続済みだが、project manifest との完全統合、selfhost/native parity は残件。
+  は fail-closed とし、source adapter は最初の宣言 span と重複宣言 span を含む
+  project-level diagnostic を返す。`motivates` / `constrained-by` / `tested-by` の source edge と
+  required fields を持つ evidence record は接続済みだが、ID 省略の命名規則、project manifest
+  との完全統合、selfhost/native parity は残件。
   Evidence: `crates/lsharp-syntax/tests/intent_metadata.rs`,
-  `crates/lsharp-types/tests/validation_source.rs`,
+  `crates/lsharp-types/tests/validation_source.rs`（nested duplicate span diagnostic を含む）、
   `docs/adr/decisions-v0.2-source-intent-nodes.md`。
 
 ## 2026-07-25 EC-M2 source node-to-node edges

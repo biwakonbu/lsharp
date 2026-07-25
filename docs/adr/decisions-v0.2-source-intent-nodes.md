@@ -24,7 +24,9 @@ evidence subject が変わる。
 
 parser は source order と directive span を `MetadataForm` に保持する。`validation_source` adapter
 は form kind と wire prefix を照合し、`IntentNode` を `IntentGraph` の node registry へ登録する。
-duplicate ID、空本文、不正 wire、kind mismatch は fail-closed にする。既存の `:doc`、`:rationale`、
+duplicate ID は graph 登録へ渡す前に検出し、最初の宣言 span と重複宣言 span を含む
+project-level diagnostic として fail-closed にする。空本文、不正 wire、kind mismatch も
+fail-closed にする。既存の `:doc`、`:rationale`、
 contract forms は別の metadata/contract projection として扱い、この adapter が自由に intent や
 evidence へ変換しない。
 
@@ -39,5 +41,6 @@ evidence へ変換しない。
 
 - `crates/lsharp-syntax/tests/intent_metadata.rs`
 - `crates/lsharp-types/tests/validation_source.rs`
+- `source_adapter_reports_duplicate_node_with_both_source_spans`
 - `cargo test -p lsharp-syntax --test intent_metadata`
 - `cargo test -p lsharp-types --test validation_source`
