@@ -70,6 +70,10 @@ fn selfhost_cli_validation_surface_is_registered() {
         ),
         "source manifest serializer の state constructor は native x86 の 4 引数 rooted helper を避けるべき"
     );
+    assert!(
+        evidence.contains("(defn validation-source-manifest-json-state [state]"),
+        "source manifest serializer の state boundary は native x86 の 1 引数に限定するべき"
+    );
     let check_start = source
         .find("(defn run-check-program")
         .expect("App.Cli は run-check-program を持つべき");

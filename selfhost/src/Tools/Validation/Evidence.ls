@@ -380,13 +380,8 @@
 
 ;; native x86 では object/string を含む多引数再帰を state へ畳み、
 ;; serializer の各 step を一引数の tail call として保持する。
-(defn validation-source-manifest-json-state [items idx len out]
-  (let [state0 (vector-new 4)
-    state1 (vector-push-single-rooted-v3 state0 items)
-    state2 (vector-push-single-rooted-v3 state1 idx)
-    state3 (vector-push-single-rooted-v3 state2 len)
-    state4 (vector-push-single-rooted-v3 state3 out)]
-    state4))
+(defn validation-source-manifest-json-state [state]
+  state)
 
 ;; source graph を Rust の version 1 manifest serializer と同じ wire shape へ投影する。
 (defn validation-source-node-kind-text [kind]
@@ -528,19 +523,29 @@
         (validation-json-array-wrap
           (validation-source-int-array-json-state-loop
             (validation-source-manifest-json-state
-              (source-evidence-record-shrinks evidence-record)
-              0
-              (vector-length (source-evidence-record-shrinks evidence-record))
-              "")))))
+              (vector-push-single-rooted-v3
+                (vector-push-single-rooted-v3
+                  (vector-push-single-rooted-v3
+                    (vector-push-single-rooted-v3
+                      (vector-new 4)
+                      (source-evidence-record-shrinks evidence-record))
+                    0)
+                  (vector-length (source-evidence-record-shrinks evidence-record)))
+                ""))))))
     sample-fields4 (validation-json-append sample-fields3
       (validation-json-object-field "coverage"
         (validation-json-object-wrap
           (validation-source-coverage-json-state-loop
             (validation-source-manifest-json-state
-              (source-evidence-record-coverage evidence-record)
-              0
-              (vector-length (source-evidence-record-coverage evidence-record))
-              "")))))
+              (vector-push-single-rooted-v3
+                (vector-push-single-rooted-v3
+                  (vector-push-single-rooted-v3
+                    (vector-push-single-rooted-v3
+                      (vector-new 4)
+                      (source-evidence-record-coverage evidence-record))
+                    0)
+                  (vector-length (source-evidence-record-coverage evidence-record)))
+                ""))))))
     execution-fields (string-concat sampling3
       (string-concat "," (validation-json-object-field "sampling" (validation-json-object-wrap sample-fields4))))
     fields6 (validation-json-append fields5 (validation-json-object-field "execution" (validation-json-object-wrap execution-fields)))
@@ -602,9 +607,30 @@
   (let [nodes (source-graph-nodes graph)
     edges (source-graph-edges graph)
     registry (source-evidence-graph-registry graph)
-    nodes-state (validation-source-manifest-json-state nodes 0 (vector-length nodes) "")
-    evidence-state (validation-source-manifest-json-state registry 0 (vector-length registry) "")
-    edges-state (validation-source-manifest-json-state edges 0 (vector-length edges) "")
+    nodes-state (validation-source-manifest-json-state
+      (vector-push-single-rooted-v3
+        (vector-push-single-rooted-v3
+          (vector-push-single-rooted-v3
+            (vector-push-single-rooted-v3 (vector-new 4) nodes)
+            0)
+          (vector-length nodes))
+        ""))
+    evidence-state (validation-source-manifest-json-state
+      (vector-push-single-rooted-v3
+        (vector-push-single-rooted-v3
+          (vector-push-single-rooted-v3
+            (vector-push-single-rooted-v3 (vector-new 4) registry)
+            0)
+          (vector-length registry))
+        ""))
+    edges-state (validation-source-manifest-json-state
+      (vector-push-single-rooted-v3
+        (vector-push-single-rooted-v3
+          (vector-push-single-rooted-v3
+            (vector-push-single-rooted-v3 (vector-new 4) edges)
+            0)
+          (vector-length edges))
+        ""))
     nodes-json (validation-source-nodes-json-state-loop nodes-state)
     evidence-json (validation-source-evidence-json-state-loop evidence-state)
     edges-json (validation-source-edges-json-state-loop edges-state)
