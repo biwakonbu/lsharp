@@ -8,6 +8,7 @@ use lsharp_types::intent::{
     IntentNode, OpenQuestion, OpenQuestionId, ReviewId,
 };
 use lsharp_types::validation::IntentGraph;
+use lsharp_types::validation_input::parse_intent_graph_json;
 
 fn all_edges_graph() -> IntentGraph {
     let intent_id = IntentId::new("checkout", "safe-cancel").unwrap();
@@ -218,4 +219,18 @@ fn manifest_output_is_deterministic_and_has_only_schema_fields() {
             "invalidates",
         ]
     );
+}
+
+#[test]
+fn manifest_output_round_trips_all_edge_variants() {
+    let graph = all_edges_graph();
+    let manifest = graph
+        .to_manifest_json_string()
+        .expect("all edge variants should be serializable");
+
+    let decoded = parse_intent_graph_json(&manifest)
+        .expect("every emitted edge variant should be accepted by the input parser");
+
+    assert_eq!(decoded, graph);
+    assert_eq!(decoded.validate(), graph.validate());
 }
