@@ -105,6 +105,12 @@ fn selfhost_cli_validation_surface_is_registered() {
         .map(|offset| node_json_start + offset)
         .expect("node JSON helper の終端を特定できるべき");
     let node_json = &evidence[node_json_start..node_json_end];
+    for field in ["fields0", "fields1", "fields2", "fields3", "fields4", "fields5"] {
+        assert!(
+            node_json.contains(&format!("(root_push {field})")),
+            "node JSON helper は {field} を次の field 計算中も root するべき"
+        );
+    }
     let fields_root = node_json
         .find("(root_push fields5)")
         .expect("node JSON helper は最終 fields を root するべき");
