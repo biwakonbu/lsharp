@@ -324,6 +324,42 @@ manifest["compiler"] = "bin/compiler"
 path.write_text(json.dumps(manifest) + "\n")
 PY
 
+# package 内の payload symlink が外部 executable を指す場合も実行前に拒否する。
+cat >"$TMP_ROOT/outside-compiler" <<'SH'
+#!/usr/bin/env bash
+printf 'outside-compiler|%s\n' "$*" >>"$NATIVE_TEST_LOG"
+exit 99
+SH
+chmod +x "$TMP_ROOT/outside-compiler"
+ln -s "$TMP_ROOT/outside-compiler" "$STAGE0_DIR/bin/compiler-link"
+python3 - "$STAGE0_DIR/manifest.json" <<'PY'
+import json
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+manifest = json.loads(path.read_text())
+manifest["compiler"] = "bin/compiler-link"
+path.write_text(json.dumps(manifest) + "\n")
+PY
+rm -rf "$STAGE_DIR"
+if run_runner unsafe-manifest-symlink >"$TMP_ROOT/unsafe-symlink.stdout" 2>"$TMP_ROOT/unsafe-symlink.stderr"; then
+  fail "native runner accepted a stage0 payload symlink outside the package"
+fi
+assert_file_contains "$TMP_ROOT/unsafe-symlink.stderr" "compiler must be a regular file inside the stage0 package"
+assert_file_not_contains "$LOG_FILE" "outside-compiler|"
+rm "$STAGE0_DIR/bin/compiler-link"
+python3 - "$STAGE0_DIR/manifest.json" <<'PY'
+import json
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+manifest = json.loads(path.read_text())
+manifest["compiler"] = "bin/compiler"
+path.write_text(json.dumps(manifest) + "\n")
+PY
+
 printf '\n# stage0 refresh\n' >>"$STAGE0_DIR/bin/compiler"
 run_runner stage0-changed
 assert_eq "2" "$(grep -c '^transport|' "$LOG_FILE")"

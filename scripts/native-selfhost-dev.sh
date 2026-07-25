@@ -127,6 +127,47 @@ for field in ("compiler", "transport_driver", "materializer"):
 PY
 }
 
+validate_stage0_payload() {
+  local field="$1"
+  local payload_path="$2"
+
+  python3 - "$STAGE0_DIR" "$payload_path" "$field" <<'PY'
+import pathlib
+import sys
+
+root, payload, field = map(pathlib.Path, sys.argv[1:])
+try:
+    relative = payload.relative_to(root)
+except ValueError:
+    raise SystemExit(
+        f"error: stage0 manifest {field} must be a regular file inside the stage0 package"
+    )
+
+current = root
+for component in relative.parts:
+    current /= component
+    if current.is_symlink():
+        raise SystemExit(
+            f"error: stage0 manifest {field} must be a regular file inside the stage0 package"
+        )
+
+try:
+    resolved_root = root.resolve(strict=True)
+    resolved_payload = payload.resolve(strict=True)
+except OSError as error:
+    raise SystemExit(f"error: stage0 manifest {field} is unavailable: {error}")
+
+if resolved_root != resolved_payload and resolved_root not in resolved_payload.parents:
+    raise SystemExit(
+        f"error: stage0 manifest {field} must be a regular file inside the stage0 package"
+    )
+if not payload.is_file():
+    raise SystemExit(
+        f"error: stage0 manifest {field} must be a regular file inside the stage0 package"
+    )
+PY
+}
+
 copy_source_tree() {
   local copied_source="$STAGE_DIR/source"
   rm -rf "$copied_source"
@@ -314,6 +355,9 @@ fi
 COMPILER="$STAGE0_DIR/${manifest_paths[2]}"
 TRANSPORT_DRIVER="$STAGE0_DIR/${manifest_paths[3]}"
 MATERIALIZER="$STAGE0_DIR/${manifest_paths[4]}"
+validate_stage0_payload "compiler" "$COMPILER"
+validate_stage0_payload "transport_driver" "$TRANSPORT_DRIVER"
+validate_stage0_payload "materializer" "$MATERIALIZER"
 for executable in "$COMPILER" "$TRANSPORT_DRIVER" "$MATERIALIZER"; do
   [[ -x "$executable" ]] || die "stage0 manifest executable is unavailable: $executable"
 done

@@ -16,8 +16,12 @@ package 内の payload として読み込む。source commit の一致だけを�
 
 - stage0 manifest の payload path は非空の相対 path とし、絶対 path、`.`、`..` を含む path、
   package 外へ正規化される path を native runner の実行前に拒否する。
-- 拒否時は `error: stage0 manifest <field> must be a relative path` を stderr に返し、transport
-  driver、materializer、`program.native` を起動しない。
+- payload path の各 component と最終 executable は symlink であってはならず、解決後の regular
+  file が stage0 package 内にあることを確認する。これにより package 内 symlink から外部 executable
+  へ escape する経路も拒否する。
+- 拒否時は path 形式なら `error: stage0 manifest <field> must be a relative path`、symlink/解決先
+  形式なら `error: stage0 manifest <field> must be a regular file inside the stage0 package` を
+  stderr に返し、transport driver、materializer、`program.native` を起動しない。
 - この boundary は source commit / target / stage0 file fingerprint の検証に加わる防御線であり、
   実 target の artifact/runtime evidence や rollback archive の検証を代替しない。
 
@@ -25,7 +29,8 @@ package 内の payload として読み込む。source commit の一致だけを�
 
 - `bash scripts/ci/test-native-selfhost-dev.sh`
   （`native selfhost dev runner tests: OK`）。fixture の `compiler: ../outside/compiler` を
-  source commit が一致する stage0 に投入し、明示拒否と program 未起動を確認した。
+  source commit が一致する stage0 に投入し、明示拒否と program 未起動を確認した。さらに
+  `bin/compiler-link` が package 外 executable を指す symlink fixture も同じ境界で拒否した。
 - `bash -n scripts/ci/test-native-selfhost-dev.sh scripts/native-selfhost-dev.sh`
   と `git diff --check` を通過した。
 
