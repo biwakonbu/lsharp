@@ -1,5 +1,5 @@
 use lsharp_types::validation::{IntentGraph, ValidationStatus};
-use lsharp_types::validation_input::{ValidationInputError, parse_intent_graph_json};
+use lsharp_types::validation_input::{parse_intent_graph_json, ValidationInputError};
 
 fn complete_manifest() -> &'static str {
     r#"
@@ -171,6 +171,47 @@ fn parse_manifest_rejects_unknown_fields_and_reversed_spans() {
         parse_intent_graph_json(&reversed_span),
         Err(ValidationInputError::InvalidSpan { start: 10, end: 0 })
     ));
+}
+
+#[test]
+fn parse_manifest_rejects_negative_unsigned_numeric_fields() {
+    let cases = [
+        (
+            "span.start",
+            complete_manifest().replace("\"start\": 0", "\"start\": -1"),
+        ),
+        (
+            "span.end",
+            complete_manifest().replace("\"end\": 10", "\"end\": -1"),
+        ),
+        (
+            "sampling.cases",
+            complete_manifest().replace("\"cases\": 1", "\"cases\": -1"),
+        ),
+        (
+            "sampling.seed",
+            complete_manifest().replace("\"seed\": 0", "\"seed\": -1"),
+        ),
+        (
+            "sampling.shrinks",
+            complete_manifest().replace("\"shrinks\": []", "\"shrinks\": [-1]"),
+        ),
+        (
+            "sampling.coverage",
+            complete_manifest()
+                .replace("\"coverage\": {\"all\": 1}", "\"coverage\": {\"all\": -1}"),
+        ),
+    ];
+
+    for (field, manifest) in cases {
+        assert!(
+            matches!(
+                parse_intent_graph_json(&manifest),
+                Err(ValidationInputError::Json(_))
+            ),
+            "negative {field} must fail during JSON decoding"
+        );
+    }
 }
 
 #[test]
