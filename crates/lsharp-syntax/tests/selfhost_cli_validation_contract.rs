@@ -15,6 +15,13 @@ fn selfhost_evidence_source() -> String {
         .unwrap_or_else(|error| panic!("selfhost Evidence.ls の読み込みに失敗 {}: {error}", path.display()))
 }
 
+fn selfhost_json_rpc_source() -> String {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../selfhost/src/Tools/Lsp/JsonRpc.ls");
+    fs::read_to_string(&path)
+        .unwrap_or_else(|error| panic!("selfhost JsonRpc.ls の読み込みに失敗 {}: {error}", path.display()))
+}
+
 #[test]
 fn selfhost_cli_validation_surface_is_registered() {
     let source = selfhost_cli_source();
@@ -128,5 +135,31 @@ fn selfhost_cli_validation_surface_is_registered() {
             .count(),
         12,
         "run-test-source-text は preflight/suite 各経路で4つの root leaseを解放するべき"
+    );
+}
+
+#[test]
+fn selfhost_json_escape_loop_uses_one_arg_state_boundary() {
+    let source = selfhost_json_rpc_source();
+    let state_start = source
+        .find("(defn json-escape-string-state-loop [state]")
+        .expect("JsonRpc は json escape state-loop を持つべき");
+    let wrapper_start = source
+        .find("(defn json-escape-string-loop [src idx len out]")
+        .expect("JsonRpc は json escape wrapper を持つべき");
+    let wrapper_end = source[wrapper_start..]
+        .find("(defn json-escape-string [src]")
+        .map(|offset| wrapper_start + offset)
+        .expect("json escape wrapper の終端を特定できるべき");
+    let state_body = &source[state_start..wrapper_start];
+    let wrapper_body = &source[wrapper_start..wrapper_end];
+
+    assert!(
+        state_body.contains("(json-escape-string-state-loop next-state)")
+            && wrapper_body.contains("(json-escape-string-state-loop state4)")
+            && !state_body.contains(
+                "(json-escape-string-loop src (+ idx 1) len (string-concat out piece))"
+            ),
+        "native x86 の JSON escape 再帰は string/object を含む4引数 call ではなく1引数 state-loopへ分離するべき"
     );
 }

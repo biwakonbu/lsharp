@@ -31,6 +31,17 @@
         (root_pop)
         next-dst))))
 
+(defn push-state-vector-local [dst value]
+  (do
+    (root_push value)
+    (let [base-slot (root_push dst)
+      next-dst (vector-push dst value)]
+      (do
+        (root_set base-slot next-dst)
+        (root_pop)
+        (root_pop)
+        next-dst))))
+
 ;; JSON-RPC メッセージ構築
 ;; [type, id, method-hash, params-count]
 (defn make-rpc-request [id method-hash param-count]
@@ -139,12 +150,30 @@
                   (json-control-escape ch)
                   (substring src idx (+ idx 1)))))))))))
 
+(defn json-escape-string-state-loop [state]
+  (let [src (vector-get state 0)
+    idx (vector-get state 1)
+    len (vector-get state 2)
+    out (vector-get state 3)]
+    (if (>= idx len)
+      out
+      (let [ch (string-char-at src idx)
+        piece (json-escape-char src idx ch)
+        next-out (string-concat out piece)
+        state0 (vector-new 4)
+        state1 (push-state-vector-local state0 src)
+        state2 (push-state-vector-local state1 (+ idx 1))
+        state3 (push-state-vector-local state2 len)
+        next-state (push-state-vector-local state3 next-out)]
+        (json-escape-string-state-loop next-state)))))
+
 (defn json-escape-string-loop [src idx len out]
-  (if (>= idx len)
-    out
-    (let [ch (string-char-at src idx)
-      piece (json-escape-char src idx ch)]
-      (json-escape-string-loop src (+ idx 1) len (string-concat out piece)))))
+  (let [state0 (vector-new 4)
+    state1 (push-state-vector-local state0 src)
+    state2 (push-state-vector-local state1 idx)
+    state3 (push-state-vector-local state2 len)
+    state4 (push-state-vector-local state3 out)]
+    (json-escape-string-state-loop state4)))
 
 (defn json-escape-string [src]
   (json-escape-string-loop src 0 (string-length src) ""))
