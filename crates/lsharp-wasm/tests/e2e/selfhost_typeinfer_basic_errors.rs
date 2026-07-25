@@ -2720,3 +2720,42 @@ fn test_e2e_selfhost_typeinfer_analysis_filters_import_alias_only_record_literal
         "alias + :only は selected record literal だけを schema lookup へ公開するべき"
     );
 }
+
+/// EC-M1-01: private record は同一 module 内だけで可視、import 先へ漏れないこと
+#[test]
+fn test_e2e_selfhost_typeinfer_analysis_filters_imported_private_record() {
+    let blocked_source =
+        "(module Lib) (private (type Secret (record (: x Int)))) (module Main) (import Lib :as L :only [Secret]) (defn main [] {L.Secret x 1})";
+    let mut blocked_oracle = Infer::new();
+    let blocked_oracle_source = "(defn main [] {L.Secret x 1})";
+    let blocked_oracle_program = lsharp_syntax::parse(blocked_oracle_source)
+        .expect("private record import oracle は parse できるべき");
+    assert!(
+        blocked_oracle.infer_program(&blocked_oracle_program).is_err(),
+        "Rust oracle は公開 registry にない private record を拒否するべき"
+    );
+
+    let harness = format!(
+        r#"
+(defn main []
+  (let [blocked
+          (infer-program-analysis
+            (parse-program "{}"))]
+    (do
+      (print (infer-program-analysis-diagnostic-count blocked))
+      0)))
+"#,
+        blocked_source
+    );
+    let combined = format!("{}\n{}", selfhost_typeinfer_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["1"],
+        "private record は import 先の qualified lookup へ漏らさず拒否するべき"
+    );
+}

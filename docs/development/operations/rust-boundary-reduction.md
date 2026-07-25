@@ -2224,6 +2224,14 @@ RED `test_e2e_selfhost_compiler_mode_imported_alias_qualified_same_name_record_c
 
 これは CompilerMode file-import の alias-qualified record constructor collision一例だけを閉じる verified sliceである。same-name static accessor、record literal/patternを跨ぐ cross-module nominal collision、unqualified同名 exportの曖昧性方針、private record、record update全形式、standalone native stage0、Mac Apple Silicon / Linux x86_64 の current-source artifact/runtime gate、EC-M1-01 aggregateの完了を意味しない。`TODO.md` の `[~]` と Rust oracle / bootstrap / host integration境界を維持する。
 
+### EC-M1-01 selfhost imported private record export filtering slice (2026-07-25)
+
+`(private (type Secret (record (: x Int))))` を含む `Lib` から `:as L :only [Secret]` で importした `{L.Secret x 1}` を、selfhost TypeInferが公開 environmentへ漏らさず拒否する境界を追加した。Rust oracleは現在 private typeの同一 module local visibilityを表現できないため、oracle側は `Secret` を公開 registryへ注入しない synthetic sourceで qualified lookup拒否を確認し、selfhost側は private wrapperを含む実 sourceを解析する。
+
+Evidence `test_e2e_selfhost_typeinfer_analysis_filters_imported_private_record` は Rust oracleの reject と selfhostの diagnostics `1` を確認した（17.54s）。これは export filteringの evidence-only sliceであり、private recordを同一 module内で使う type-inference contractや constructor/literal/pattern runtimeを実装完了した証拠ではない。
+
+同一 module内の private record local visibility、private record constructor/literal/pattern、同名 export collisionの nominal marker、record update全形式、standalone native stage0、Mac Apple Silicon / Linux x86_64 の current-source artifact/runtime gate、EC-M1-01 aggregateは未完了のまま残す。`TODO.md` の `[~]` と Rust oracle / bootstrap / host integration境界を維持する。
+
 ### EC-M1-01 selfhost imported record update compiler-mode initial RED (2026-07-25)
 
 actual Wasm runtimeの最小 fixtureとして `App.Shapes.Point` を `App.Main` から alias + `:only [Point]` で importし、`(S.Point 40 2)` を `{point | x 41}` へ updateして `(. updated x)` / `(. updated y)` を出力する testを追加した。初回は `RUST_MIN_STACK=33554432` で `load-imports-from-decls-step` instruction 78の root ledger `BranchDepthMismatch` (`then_depth=6`, `else_depth=7`) に到達し、Wasm runtimeへ進めなかった。同じ failure valueは変更なし `origin/main` の record-pattern compiler-mode baselineでも再現したため、fixtureの parser/type-inference差分とは分離した。
