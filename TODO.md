@@ -25,8 +25,8 @@
 - [~] `EC-M2-01` source intent edges — `:motivates`（Intent→Claim）と `:constrained-by`
   （Claim→Assumption）、`:tested-by`（Claim→Contract）が二つの wire ID と directive span を lossless に保持し、
   `validation_source::source_program_to_intent_graph` が全 node を先に収集してから typed edge を
-  登録する。endpoint の wire kind mismatch、不正 ID は fail-closed、orphan reference は directive
-  span 付きで拒否する。Contract の
+  登録する。endpoint の wire kind mismatch、不正 ID、orphan reference は directive span 付きで
+  fail-closed に拒否する。Contract の
   実体定義と optional な shrink/coverage source fields は contract/evidence registry の入力境界が残件。
   Evidence: `crates/lsharp-syntax/tests/intent_edges.rs`,
   `crates/lsharp-types/tests/validation_source.rs`,

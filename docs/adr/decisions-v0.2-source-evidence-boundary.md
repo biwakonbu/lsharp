@@ -26,6 +26,8 @@ source metadata では次の form を受理し、wire ID と span を lossless �
 - evidence registry が未接続の間は `SourceGraphError::EvidenceRegistryRequired` を返す。
   この段階では edge を `IntentGraph` に追加せず、未登録 evidence を黙って無視しない。診断には
   対応する edge directive の source span を含める。
+- `supports` / `contradicts` の malformed wire ID や typed kind mismatch も、同じ directive span
+  付きの edge-ID diagnostic として fail-closed にする。
 - `validate --source` はこの境界を入力エラーとして返す。evidence record が存在しない通常の
   node/`tested-by` source は従来どおり `unknown` になり、`pass` を補完しない。
 - evidence record の source registry、実 edge 投入、manifest emission、selfhost/native parity は

@@ -228,7 +228,7 @@ fn source_adapter_rejects_orphan_and_mismatched_edge_endpoints() {
     .expect("mismatch fixture は parse できるべき");
     assert!(matches!(
         source_program_to_intent_graph(&mismatch),
-        Err(SourceGraphError::EdgeId(_))
+        Err(SourceGraphError::EdgeIdAt { .. })
     ));
 }
 
@@ -241,6 +241,22 @@ fn source_adapter_reports_orphan_edge_with_directive_span() {
         .expect_err("orphan edge は directive span 付きで拒否するべき");
     let SourceGraphError::MissingNodeReference { relation, span, .. } = error else {
         panic!("orphan edge の source diagnostic を期待しました: {error:?}");
+    };
+
+    assert_eq!(relation, "motivates.intent");
+    assert!(span.start < span.end);
+    assert!(SOURCE[span.start..span.end].starts_with(":motivates"));
+}
+
+#[test]
+fn source_adapter_reports_malformed_edge_id_with_directive_span() {
+    const SOURCE: &str =
+        r#"(defn cancel [] :motivates "intent:checkout" "claim:checkout/cancel" true)"#;
+    let program = parse(SOURCE).expect("malformed edge ID fixture は parse できるべき");
+    let error = source_program_to_intent_graph(&program)
+        .expect_err("malformed edge ID は directive span 付きで拒否するべき");
+    let SourceGraphError::EdgeIdAt { relation, span, .. } = error else {
+        panic!("malformed edge ID の source diagnostic を期待しました: {error:?}");
     };
 
     assert_eq!(relation, "motivates.intent");
@@ -410,7 +426,7 @@ fn source_adapter_rejects_orphan_or_mismatched_tested_by_claims() {
     .expect("kind mismatch tested-by fixture は parse できるべき");
     assert!(matches!(
         source_program_to_intent_graph(&mismatch),
-        Err(SourceGraphError::EdgeId(_))
+        Err(SourceGraphError::EdgeIdAt { .. })
     ));
 }
 
