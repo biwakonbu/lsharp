@@ -15,6 +15,23 @@ lsharp validate intent-graph.json
 lsharp validate intent-graph.json --format json
 ```
 
+project の `lsharp.toml` に manifest を登録すると、入力 path を省略して同じ検証を実行できます。
+
+```toml
+[validation]
+manifest = "docs/intent-graph.json"
+```
+
+```bash
+lsharp validate
+lsharp validate --format json
+```
+
+設定から解決する path は project-relative に限定されます。絶対 path、`..` を含む path、
+存在しない path、project root 外を指す symlink は診断として拒否します。設定がない場合は
+暗黙の既定 manifest を探さず、明示 path または `[validation].manifest` が必要です。
+project の下位 directory から実行した場合も、祖先の `lsharp.toml` を探索します。
+
 text と JSON は同じ facts を返します。
 
 | status | 意味 | exit code |
@@ -29,6 +46,6 @@ text と JSON は同じ facts を返します。
 
 ## 現在の境界
 
-この slice は Rust の manifest parser と CLI を graph model へ接続したものです。
-L# source syntax、selfhost/native の report parity、EmbeddedCli/MCP、Mac/Linux の
-artifact/runtime evidence は後続の M2-03 task として残ります。
+この slice は Rust の manifest parser と CLI を graph model へ接続し、project config から
+安全に入力を発見するものです。L# source syntax、selfhost/native の report parity、
+EmbeddedCli/MCP、Mac/Linux の artifact/runtime evidence は後続の M2-03 task として残ります。

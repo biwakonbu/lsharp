@@ -1,7 +1,7 @@
 //! lsharp.toml 設定ファイルの読み込み
 
 use serde::Deserialize;
-use std::path::Path;
+use std::path::{Component, Path, PathBuf};
 
 /// L# プロジェクト設定
 #[allow(dead_code)]
@@ -18,6 +18,10 @@ pub struct Config {
     /// [doc-review] セクション
     #[serde(rename = "doc-review", default)]
     pub doc_review: DocReviewConfig,
+
+    /// [validation] セクション
+    #[serde(default)]
+    pub validation: ValidationConfig,
 
     /// [dependencies] セクション (P9-3)
     #[serde(default)]
@@ -98,6 +102,15 @@ pub struct ProjectConfig {
 pub struct ProjectExportsConfig {
     #[serde(default)]
     pub modules: Vec<String>,
+}
+
+/// [validation] セクション
+#[allow(dead_code)]
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct ValidationConfig {
+    /// `lsharp validate` が入力を省略した場合に使う manifest
+    #[serde(default)]
+    pub manifest: Option<String>,
 }
 
 fn default_version() -> String {
@@ -284,6 +297,62 @@ pub fn load_config(dir: &Path) -> Config {
         }
         Err(_) => Config::default(),
     }
+}
+
+/// `[validation].manifest` を project root から安全に解決する。
+///
+/// 設定ファイル経由の入力だけは project-relative に限定し、絶対 path、親方向への
+/// traversal、存在しないファイル、project root 外へ出る symlink を受け付けない。
+pub fn resolve_validation_manifest_path(
+    project_dir: &Path,
+    configured: Option<&str>,
+) -> Result<PathBuf, String> {
+    let configured = configured.ok_or_else(|| {
+        "[validation].manifest が未設定です。manifest を明示するか lsharp.toml に設定してください"
+            .to_string()
+    })?;
+    if configured.trim().is_empty() {
+        return Err("[validation].manifest は空にできません".to_string());
+    }
+
+    let relative = Path::new(configured);
+    if relative.is_absolute() {
+        return Err(format!(
+            "[validation].manifest は project-relative path が必要です: {configured}"
+        ));
+    }
+    if relative
+        .components()
+        .any(|component| matches!(component, Component::ParentDir))
+    {
+        return Err(format!(
+            "[validation].manifest に project root 外への '..' は指定できません: {configured}"
+        ));
+    }
+
+    let project_root = project_dir
+        .canonicalize()
+        .map_err(|error| format!("project root の解決に失敗しました: {error}"))?;
+    let manifest_path = project_root.join(relative);
+    let resolved = manifest_path.canonicalize().map_err(|error| {
+        format!(
+            "[validation].manifest が見つかりません ({}): {error}",
+            manifest_path.display()
+        )
+    })?;
+    if !resolved.starts_with(&project_root) {
+        return Err(format!(
+            "[validation].manifest は project root 外を指せません: {configured}"
+        ));
+    }
+    if !resolved.is_file() {
+        return Err(format!(
+            "[validation].manifest は通常のファイルを指してください: {}",
+            resolved.display()
+        ));
+    }
+
+    Ok(resolved)
 }
 
 #[cfg(test)]

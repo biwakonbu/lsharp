@@ -55,6 +55,80 @@ warning-level = "error"
 }
 
 #[test]
+fn test_parse_validation_manifest() {
+    let content = r#"
+[validation]
+manifest = "docs/intent-graph.json"
+"#;
+    let config: Config = toml::from_str(content).unwrap();
+    assert_eq!(
+        config.validation.manifest.as_deref(),
+        Some("docs/intent-graph.json")
+    );
+}
+
+#[test]
+fn test_resolve_validation_manifest_accepts_project_relative_file() {
+    let dir = unique_temp_dir("lsharp-validation-manifest");
+    std::fs::create_dir_all(dir.join("docs")).unwrap();
+    let manifest = dir.join("docs/intent-graph.json");
+    std::fs::write(&manifest, "{}").unwrap();
+
+    let resolved = resolve_validation_manifest_path(&dir, Some("docs/intent-graph.json"))
+        .expect("project-relative manifest should resolve");
+    assert_eq!(resolved, manifest.canonicalize().unwrap());
+
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn test_resolve_validation_manifest_rejects_unsafe_configuration() {
+    let dir = unique_temp_dir("lsharp-validation-manifest-rejections");
+    std::fs::create_dir_all(&dir).unwrap();
+
+    for configured in [
+        Some("/tmp/intent-graph.json"),
+        Some("../intent-graph.json"),
+        Some(""),
+        Some("missing.json"),
+        None,
+    ] {
+        assert!(
+            resolve_validation_manifest_path(&dir, configured).is_err(),
+            "設定 {:?} は拒否されるべき",
+            configured
+        );
+    }
+
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn test_resolve_validation_manifest_rejects_symlink_outside_project_root() {
+    use std::os::unix::fs::symlink;
+
+    let root = unique_temp_dir("lsharp-validation-manifest-symlink-root");
+    let outside = unique_temp_dir("lsharp-validation-manifest-symlink-outside");
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::create_dir_all(&outside).unwrap();
+    std::fs::write(outside.join("intent-graph.json"), "{}").unwrap();
+    symlink(
+        outside.join("intent-graph.json"),
+        root.join("intent-graph.json"),
+    )
+    .unwrap();
+
+    assert!(
+        resolve_validation_manifest_path(&root, Some("intent-graph.json")).is_err(),
+        "project root 外を指す symlink は拒否されるべき"
+    );
+
+    std::fs::remove_dir_all(&root).unwrap();
+    std::fs::remove_dir_all(&outside).unwrap();
+}
+
+#[test]
 fn test_parse_empty_toml() {
     let content = "";
     let config: Config = toml::from_str(content).unwrap();
@@ -313,4 +387,12 @@ fn test_config_error_display() {
     let msg = err.to_string();
     assert!(msg.contains("err1"));
     assert!(msg.contains("err2"));
+}
+
+fn unique_temp_dir(label: &str) -> std::path::PathBuf {
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("clock should be after epoch")
+        .as_nanos();
+    std::env::temp_dir().join(format!("{label}-{}-{nonce}", std::process::id()))
 }

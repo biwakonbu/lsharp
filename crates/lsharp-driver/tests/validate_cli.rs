@@ -96,3 +96,107 @@ fn cli_help_lists_validate_command() {
     assert!(output.status.success());
     assert!(String::from_utf8_lossy(&output.stdout).contains("validate"));
 }
+
+#[test]
+fn validate_uses_project_config_manifest_when_path_is_omitted() {
+    let project = project_dir("config-pass");
+    fs::create_dir_all(project.join("docs")).expect("project docs should be writable");
+    fs::write(
+        project.join("lsharp.toml"),
+        "[validation]\nmanifest = \"docs/intent-graph.json\"\n",
+    )
+    .expect("project config should be writable");
+    fs::write(
+        project.join("docs/intent-graph.json"),
+        include_str!("fixtures/intent-graph-pass.json"),
+    )
+    .expect("manifest should be writable");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+        .current_dir(&project)
+        .args(["validate", "--format", "json"])
+        .output()
+        .expect("lsharp validate should run");
+    fs::remove_dir_all(&project).ok();
+
+    assert_eq!(output.status.code(), Some(0));
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("valid JSON");
+    assert_eq!(value["status"], "pass");
+}
+
+#[test]
+fn validate_discovers_project_config_from_nested_directory() {
+    let project = project_dir("config-nested");
+    fs::create_dir_all(project.join("docs")).expect("project docs should be writable");
+    fs::create_dir_all(project.join("src/nested")).expect("nested directory should be writable");
+    fs::write(
+        project.join("lsharp.toml"),
+        "[validation]\nmanifest = \"docs/intent-graph.json\"\n",
+    )
+    .expect("project config should be writable");
+    fs::write(
+        project.join("docs/intent-graph.json"),
+        include_str!("fixtures/intent-graph-pass.json"),
+    )
+    .expect("manifest should be writable");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+        .current_dir(project.join("src/nested"))
+        .args(["validate", "--format", "json"])
+        .output()
+        .expect("lsharp validate should run");
+    fs::remove_dir_all(&project).ok();
+
+    assert_eq!(output.status.code(), Some(0));
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("valid JSON");
+    assert_eq!(value["status"], "pass");
+}
+
+#[test]
+fn validate_without_manifest_configuration_fails_closed() {
+    let project = project_dir("config-missing");
+    fs::create_dir_all(&project).expect("project should be writable");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+        .current_dir(&project)
+        .args(["validate"])
+        .output()
+        .expect("lsharp validate should run");
+    fs::remove_dir_all(&project).ok();
+
+    assert_ne!(output.status.code(), Some(0));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("[validation].manifest"));
+}
+
+#[test]
+fn validate_rejects_project_config_path_traversal() {
+    let project = project_dir("config-traversal");
+    fs::create_dir_all(&project).expect("project should be writable");
+    fs::write(
+        project.join("lsharp.toml"),
+        "[validation]\nmanifest = \"../outside.json\"\n",
+    )
+    .expect("project config should be writable");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+        .current_dir(&project)
+        .args(["validate"])
+        .output()
+        .expect("lsharp validate should run");
+    fs::remove_dir_all(&project).ok();
+
+    assert_ne!(output.status.code(), Some(0));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("project root") || stderr.contains(".."));
+}
+
+fn project_dir(name: &str) -> std::path::PathBuf {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock should be after epoch")
+        .as_nanos();
+    std::env::temp_dir().join(format!(
+        "lsharp-validate-{name}-{}-{nonce}",
+        std::process::id()
+    ))
+}

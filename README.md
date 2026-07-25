@@ -95,6 +95,10 @@ lsharp validate intent-graph.json
 lsharp validate intent-graph.json --format json
 ```
 
+project の `lsharp.toml` に `[validation].manifest = "docs/intent-graph.json"` を設定すれば、
+manifest path を省略して `lsharp validate` を実行できます。設定由来の path は project
+root 内の project-relative file に限定されます。
+
 manifest の schema と `pass` / `fail` / `unknown` の終了値は
 [`docs/guides/intent-validation.md`](docs/guides/intent-validation.md) にまとめています。
 

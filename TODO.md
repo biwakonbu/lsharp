@@ -19,12 +19,14 @@
 - [~] `EC-M2-03` version 1 JSON manifest input — `parse_intent_graph_json` が typed node/evidence/
   edge を `IntentGraph` へ構築し、unknown field、schema version、duplicate node、逆順 span、
   空の required evidence field、未知の node/evidence reference を fail-closed に拒否する。
-  `lsharp validate <manifest> [--format text|json]` の parser → graph → validate → report
-  接続と `pass=0` / `fail=1` / `unknown=2` の Rust CLI exit code まで確認した。source syntax
-  adapter、selfhost/native parity、EmbeddedCli/MCP、両 target の artifact/runtime evidence
-  は未完了。Evidence: `docs/adr/decisions-v0.2-validation-input-parser.md`,
-  `docs/adr/decisions-v0.2-validation-cli.md`, `crates/lsharp-types/tests/validation_input.rs`,
-  `crates/lsharp-driver/tests/validate_cli.rs`。
+  `lsharp validate [<manifest>] [--format text|json]` の parser → graph → validate → report
+  接続と `pass=0` / `fail=1` / `unknown=2` の Rust CLI exit codeまで確認した。manifest を
+  省略した場合は `[validation].manifest` を project root 内へ安全に解決し、絶対 path、`..`、
+  missing、root 外 symlink を拒否する。L# source syntax adapter、selfhost/native parity、
+  EmbeddedCli/MCP、両 target の artifact/runtime evidence は未完了。Evidence:
+  `docs/adr/decisions-v0.2-validation-input-parser.md`, `docs/adr/decisions-v0.2-validation-cli.md`,
+  `docs/adr/decisions-v0.2-validation-config.md`, `crates/lsharp-types/tests/validation_input.rs`,
+  `crates/lsharp-driver/src/config_tests.rs`, `crates/lsharp-driver/tests/validate_cli.rs`。
 
 ## 2026-07-25 current-source native stage0 evidence refresh
 

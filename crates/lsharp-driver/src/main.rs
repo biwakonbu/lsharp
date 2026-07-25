@@ -191,8 +191,8 @@ enum Command {
 
     /// intent/evidence graph manifest を検証
     Validate {
-        /// versioned JSON manifest
-        file: PathBuf,
+        /// versioned JSON manifest (省略時は lsharp.toml の [validation].manifest)
+        file: Option<PathBuf>,
 
         /// 出力形式
         #[arg(long, value_enum, default_value = "text")]
@@ -380,6 +380,7 @@ fn main() -> miette::Result<()> {
         }
 
         Command::Validate { file, format } => {
+            let file = resolve_validate_manifest(file)?;
             let exit_code = cmd_validate(&file, format)?;
             if exit_code != 0 {
                 std::process::exit(exit_code);
@@ -1397,6 +1398,20 @@ fn cmd_test(file: &Path) -> miette::Result<()> {
     }
 
     Ok(())
+}
+
+fn resolve_validate_manifest(file: Option<PathBuf>) -> miette::Result<PathBuf> {
+    if let Some(file) = file {
+        return Ok(file);
+    }
+
+    let current_dir = std::env::current_dir()
+        .map_err(|error| miette::miette!("current dir の取得に失敗: {error}"))?;
+    let project_dir = find_project_root(&current_dir);
+    let config = config::load_config_result(&project_dir)
+        .map_err(|error| miette::miette!("プロジェクト設定の読み込みに失敗しました: {error}"))?;
+    config::resolve_validation_manifest_path(&project_dir, config.validation.manifest.as_deref())
+        .map_err(|error| miette::miette!("validation manifest の解決に失敗しました: {error}"))
 }
 
 /// M2-03: versioned intent/evidence graph manifest の fact-oriented validation。
