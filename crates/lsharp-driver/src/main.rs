@@ -201,6 +201,10 @@ enum Command {
         /// 出力形式
         #[arg(long, value_enum, default_value = "text")]
         format: CliValidationFormat,
+
+        /// 構築した graph を versioned JSON manifest として出力
+        #[arg(long, value_name = "OUTPUT")]
+        emit_manifest: Option<PathBuf>,
     },
 
     /// ドキュメントレビュー (YAML チェックポイント出力)
@@ -387,12 +391,13 @@ fn main() -> miette::Result<()> {
             file,
             source,
             format,
+            emit_manifest,
         } => {
             let exit_code = if let Some(source) = source {
-                cmd_validate_source(&source, format)?
+                cmd_validate_source(&source, format, emit_manifest.as_deref())?
             } else {
                 let file = resolve_validate_manifest(file)?;
-                cmd_validate(&file, format)?
+                cmd_validate(&file, format, emit_manifest.as_deref())?
             };
             if exit_code != 0 {
                 std::process::exit(exit_code);
@@ -1431,11 +1436,16 @@ fn resolve_validate_manifest(file: Option<PathBuf>) -> miette::Result<PathBuf> {
 /// `test` の implementation conformance と混同しないよう、pass=0、fail=1、
 /// unknown=2 を別の exit code として返す。JSON manifest と source adapter は同じ
 /// `IntentGraph` に投影し、report の status/format を共有する。
-fn cmd_validate(file: &Path, format: CliValidationFormat) -> miette::Result<i32> {
+fn cmd_validate(
+    file: &Path,
+    format: CliValidationFormat,
+    emit_manifest: Option<&Path>,
+) -> miette::Result<i32> {
     let source =
         std::fs::read_to_string(file).map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
     let graph = lsharp_types::validation_input::parse_intent_graph_json(&source)
         .map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
+    emit_validation_manifest(&graph, emit_manifest)?;
     emit_validation_report(&graph, format)
 }
 
@@ -1443,14 +1453,33 @@ fn cmd_validate(file: &Path, format: CliValidationFormat) -> miette::Result<i32>
 ///
 /// source 側では node と node-to-node edge までを受け付ける。contract/evidence が
 /// まだ接続されていないため、入力が妥当でも report は unknown を返す。
-fn cmd_validate_source(file: &Path, format: CliValidationFormat) -> miette::Result<i32> {
+fn cmd_validate_source(
+    file: &Path,
+    format: CliValidationFormat,
+    emit_manifest: Option<&Path>,
+) -> miette::Result<i32> {
     let source =
         std::fs::read_to_string(file).map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
     let program =
         lsharp_syntax::parse(&source).map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
     let graph = lsharp_types::validation_source::source_program_to_intent_graph(&program)
         .map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
+    emit_validation_manifest(&graph, emit_manifest)?;
     emit_validation_report(&graph, format)
+}
+
+fn emit_validation_manifest(
+    graph: &lsharp_types::validation::IntentGraph,
+    output: Option<&Path>,
+) -> miette::Result<()> {
+    let Some(output) = output else {
+        return Ok(());
+    };
+    let json = graph
+        .to_manifest_json_string()
+        .map_err(|e| miette::miette!("validation manifest JSON の生成に失敗しました: {e}"))?;
+    std::fs::write(output, json)
+        .map_err(|e| driver_io_error(format!("{}: {}", output.display(), e)))
 }
 
 fn emit_validation_report(

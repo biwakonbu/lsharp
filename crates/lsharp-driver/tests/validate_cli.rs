@@ -244,6 +244,141 @@ fn validate_source_accepts_registered_evidence_edges() {
 }
 
 #[test]
+fn validate_source_emits_manifest_without_mixing_report_stdout() {
+    let source = source_path(
+        "source-emit-manifest",
+        r#"
+        (defn cancel []
+          :claim "claim:checkout/cancel-rejects-shipped" "The API rejects shipped orders"
+          :evidence "evidence:checkout/cancel-observation"
+            :subject "claim:checkout/cancel-rejects-shipped"
+            :method "property"
+            :outcome "pass"
+            :runner "cargo-test"
+            :target "aarch64-apple-darwin"
+            :source-commit "0123456789abcdef"
+            :artifact-digest "sha256:abc123"
+            :cases 3
+            :seed 42
+            :generator "checkout-cancel-fixture"
+            :shrinks [8 3 1]
+            :coverage [("negative" 2) ("positive" 1)]
+            :producer "lsharp-test"
+            :tool-version "0.2.0"
+            :timestamp "2026-07-25T00:00:00Z"
+            :independence "same-author"
+          :supports "evidence:checkout/cancel-observation" "claim:checkout/cancel-rejects-shipped"
+          true)
+        "#,
+    );
+    let manifest = project_dir("source-emit-manifest-output").join("intent-graph.json");
+    fs::create_dir_all(manifest.parent().unwrap()).expect("manifest parent should be writable");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+        .args([
+            "validate",
+            "--source",
+            source.to_str().unwrap(),
+            "--format",
+            "json",
+            "--emit-manifest",
+            manifest.to_str().unwrap(),
+        ])
+        .output()
+        .expect("lsharp validate --source --emit-manifest should run");
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout)
+        .expect("stdout は validation report JSON のままであるべき");
+    let manifest_value: serde_json::Value =
+        serde_json::from_slice(&fs::read(&manifest).expect("manifest が出力されるべき"))
+            .expect("manifest は valid JSON であるべき");
+    fs::remove_file(&source).ok();
+    fs::remove_dir_all(manifest.parent().unwrap()).ok();
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stderr.is_empty());
+    assert_eq!(report["status"], "unknown");
+    assert_eq!(manifest_value["schema_version"], 1);
+    assert_eq!(
+        manifest_value["evidence"][0]["execution"]["sampling"]["shrinks"],
+        serde_json::json!([8, 3, 1])
+    );
+    assert_eq!(
+        manifest_value["evidence"][0]["execution"]["sampling"]["coverage"],
+        serde_json::json!({"negative": 2, "positive": 1})
+    );
+    assert_eq!(manifest_value["edges"].as_array().unwrap().len(), 1);
+}
+
+#[test]
+fn validate_source_does_not_emit_manifest_for_adapter_errors() {
+    let source = source_path(
+        "source-emit-manifest-error",
+        r#"(defn cancel []
+          :claim "claim:checkout/cancel" "The API rejects shipped orders"
+          :supports "evidence:checkout/missing" "claim:checkout/cancel"
+          true)"#,
+    );
+    let manifest = project_dir("source-emit-manifest-error-output").join("intent-graph.json");
+    fs::create_dir_all(manifest.parent().unwrap()).expect("manifest parent should be writable");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+        .args([
+            "validate",
+            "--source",
+            source.to_str().unwrap(),
+            "--emit-manifest",
+            manifest.to_str().unwrap(),
+        ])
+        .output()
+        .expect("lsharp validate --source --emit-manifest should run");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    fs::remove_file(&source).ok();
+    fs::remove_dir_all(manifest.parent().unwrap()).ok();
+
+    assert!(!output.status.success());
+    assert!(stderr.contains("evidence registry"));
+    assert!(
+        !manifest.exists(),
+        "adapter error 時に manifest を作らないべき"
+    );
+}
+
+#[test]
+fn validate_manifest_input_can_emit_normalized_manifest() {
+    let input = manifest_path(
+        "emit-manifest-input",
+        include_str!("fixtures/intent-graph-pass.json"),
+    );
+    let output_dir = project_dir("emit-manifest-input-output");
+    fs::create_dir_all(&output_dir).expect("manifest output directory should be writable");
+    let output_path = output_dir.join("intent-graph.json");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+        .args([
+            "validate",
+            input.to_str().unwrap(),
+            "--format",
+            "json",
+            "--emit-manifest",
+            output_path.to_str().unwrap(),
+        ])
+        .output()
+        .expect("lsharp validate --emit-manifest should run");
+    let report: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("valid report JSON");
+    let manifest: serde_json::Value =
+        serde_json::from_slice(&fs::read(&output_path).expect("manifest should be emitted"))
+            .expect("valid manifest JSON");
+    fs::remove_file(&input).ok();
+    fs::remove_dir_all(&output_dir).ok();
+
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(report["status"], "pass");
+    assert_eq!(manifest["schema_version"], 1);
+    assert_eq!(manifest["nodes"].as_array().unwrap().len(), 2);
+}
+
+#[test]
 fn validate_source_cannot_be_combined_with_manifest_path() {
     let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
         .args(["validate", "intent-graph.json", "--source", "source.ls"])

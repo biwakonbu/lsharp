@@ -42,6 +42,7 @@ lsharp validate --source <source.ls> [--format text|json]
 
 ## Remaining boundary
 
-この ADR は Rust CLI の source input wiring だけを決定する。`tested-by`/evidence の source
-投影、manifest emission、selfhost/native parity、EmbeddedCli/MCP、対応 target の
+この ADR は Rust CLI の source input wiring を決定する。`tested-by`/evidence の source
+投影と `--emit-manifest` による version 1 manifest 出力は後続 ADR で接続済みである。
+selfhost/native parity、EmbeddedCli/MCP、対応 target の
 artifact/runtime evidence は EC-M2 の後続タスクであり、完了扱いにしない。
