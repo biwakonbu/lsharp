@@ -1,12 +1,16 @@
 # Native Backend 仕様
 
-> **Status: Native-only official replacement track active (2026-05-09)**
+> **Status: Native-only official replacement track complete; Rust boundary reduction active (2026-07-25)**
 >
 > V2-08〜V2-10 で Darwin arm64 の actual native self-regeneration と experimental native-only RC は完了した。
-> 次の目標は native-only official replacement track として、host launcher + embedded guest component 配布を rollback compatibility へ降格し、native-only を公式配布へ完全置換すること。
+> V2-13〜V2-15 で native-only official replacement、artifact layout、release smoke / rollback も完了した。
 > Supported product/release targets は Mac Apple Silicon (`aarch64-apple-darwin`) と Linux x86_64 (`x86_64-unknown-linux-gnu`) の 2 つに固定する。`x86_64-apple-darwin` と Windows (`x86_64-pc-windows-msvc`) は support scope 外であり、公式置換 blocker として扱わない。
-> V2-13〜V2-15 はこの 2 target を正本として TODO.md に積む。
-> 詳細は `TODO.md` の現在の残タスク一覧、`docs/development/planning/v2-designs/v2-08-native-backend-self-regeneration.md`、`docs/development/planning/v2-designs/v2-09-wasm-native-differential-zero.md`、`docs/development/planning/v2-designs/v2-10-native-only-rc-distribution.md` および `backend-boundary.md` を参照。
+> 完了 evidence は本書と release 運用文書に保持し、TODO.md には bootstrap provenance、
+> rooting、public surface など未完の Rust boundary aggregate だけを置く。
+> 詳細は `docs/development/planning/v2-designs/v2-08-native-backend-self-regeneration.md`、
+> `docs/development/planning/v2-designs/v2-09-wasm-native-differential-zero.md`、
+> `docs/development/planning/v2-designs/v2-10-native-only-rc-distribution.md`、
+> `docs/development/operations/release-playbook.md` および `backend-boundary.md` を参照。
 
 ## 目的
 

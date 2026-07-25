@@ -4,7 +4,7 @@
 > 改善フェーズへマッピングし、各フェーズの完了条件 (exit criteria) を定める。
 > タスク化して着手する際は TODO.md (タスク正本) に項目を作成し、本書とは ID で相互参照する。
 >
-> **新設計の正本**: [improvement-designs/](improvement-designs/README.md) (テーマ別 6 本)。
+> **新設計の正本**: [improvement-designs/](improvement-designs/README.md) (テーマ別 8 本)。
 > WasmGC バックエンドの設計正本は [v2-designs/v2-07](v2-designs/v2-07-wasmgc-optional-backend.md) であり、
 > imp-01 はその補遺として扱う。
 >
@@ -33,8 +33,8 @@ B 以降は依存が薄いものから並行着手してよい。
 | Issue | 問題 (要約) | フェーズ | 設計 doc | 備考 |
 |-------|------------|---------|----------|------|
 | I-01 | ファイルサイズ規約超過 | A | [imp-06](improvement-designs/imp-06-large-file-decomposition.md) | |
-| I-02 | エラーハンドリング不統一 | A | [imp-02](improvement-designs/imp-02-error-handling-unification.md) | |
-| I-03 | GC 固定スロット上限 | A | [imp-03](improvement-designs/imp-03-dynamic-memory-layout.md) | |
+| I-02 | 診断 code/span の全 surface 貫通 | A | [imp-02](improvement-designs/imp-02-error-handling-unification.md) | representative slice は実装済み |
+| I-03 | GC grow の全 runtime/backend 貫通 | A | [imp-03](improvement-designs/imp-03-dynamic-memory-layout.md) | core WASI slice は実装済み |
 | DOC-06 | エラーコード体系未定義 | A | imp-02 | error-reference / MCP lookup は完了、診断貫通は I-02 |
 | D-01 | WasmGC i64 フォールバック | B | [imp-01](improvement-designs/imp-01-wasmgc-full-migration.md) | v2-07 補遺 |
 | D-02 | GADT 実行未検証 | B | imp-01 | D-01 依存 |
@@ -46,15 +46,15 @@ B 以降は依存が薄いものから並行着手してよい。
 | D-10 | GC sentinel edge case (G1) | B | imp-03 | documented limitation 維持、精密判別は任意 |
 | I-04 | GC フリーリスト線形探索 | B | imp-03 | |
 | I-07 | rooting 修正の頻発 | B | [imp-07](improvement-designs/imp-07-test-verification-infrastructure.md) | rooting 規約の明文化 (下記 B-4) |
-| D-07 | 相互再帰モジュール一括推論 | C | [imp-04](improvement-designs/imp-04-module-system-strengthening.md) | |
-| I-05 | CLI 経路の未キャッシュ・SCC なし | C | imp-04 | V2-01 と接続 |
-| D-08 | Native backend research scope | C | -- | V2-08/V2-09 へ委譲済み、追跡のみ |
+| D-07 | SCC 推論の canonical/native parity | C | [imp-04](improvement-designs/imp-04-module-system-strengthening.md) | Rust host SCC は実装済み |
+| I-05 | cache の selfhost/native persistence | C | imp-04 | Rust host cache は部分実装済み |
+| D-08 | Native backend self-regeneration / differential track | C | [native backend 仕様](../../language/native-backend-spec.md) | resolved。完了履歴のみ |
 | DOC-01 | ユーザーガイド不足 | D | [imp-05](improvement-designs/imp-05-docs-restructure.md) | |
 | DOC-02 | book/ 読者層混在 | D | imp-05 | |
 | DOC-03 | doc-status 未運用 | D | imp-05 | |
 | DOC-04 | examples 連携不足 | D | imp-05 | |
 | DOC-05 | language-guide 二重管理 | D | imp-05 | |
-| I-06 | fuzz/リーク/限界テスト欠落 | D | imp-07 | 下記 D-3 |
+| I-06 | full fuzz/leak/perf gate 未完 | D | imp-07 | property/limit slice は実装済み |
 | I-08 | テストカバレッジ偏り | D | imp-07, imp-06 | テスト分割と同時 |
 
 ---
@@ -66,9 +66,9 @@ B 以降は依存が薄いものから並行着手してよい。
 
 | # | 作業 | 対象 issue | 設計 |
 |---|------|-----------|------|
-| A-1 | エラーハンドリング統一: 下層クレートへ miette Diagnostic を貫通させ、本番経路の panic を排除。`LS####` エラーコード体系を導入 | I-02, DOC-06 | imp-02 |
+| A-1 | エラーハンドリング統一: representative `LS####` code/span は実装済み。残る surface への貫通と本番経路の panic 排除 | I-02 | imp-02 |
 | A-2 | 大規模ファイル分割: wasi.rs / main.rs / infer.rs / ir/lib.rs を筆頭に規約 (500-800 行) へ分割 | I-01 | imp-06 |
-| A-3 | GC メモリレイアウト動的化: 固定スロット (4096 / 32768) の grow 戦略導入 | I-03 | imp-03 |
+| A-3 | GC メモリレイアウト動的化: core WASI の grow/LS4002 を他 runtime/backend と native stage0 へ拡張 | I-03 | imp-03 |
 
 **順序**: A-1 を最初に行う (エラー型のシグネチャ変更がファイル分割の切断面に影響するため)。
 A-2 と A-3 は独立に並行可。
@@ -77,7 +77,8 @@ A-2 と A-3 は独立に並行可。
 - [pending] 下層 4 クレートの本番経路に `panic!` / `unwrap()` / `expect()` による異常終了経路がない (テストコードは除く)
 - [pending] 全診断に `LS####` コードが付与され、CLI / LSP / MCP が同一コードを返す
 - [pending] `crates/**/src/*.rs` の全ファイルが 800 行以下 (`wc -l` で機械検査可能)
-- [pending] GC オブジェクトテーブル / root stack が初期容量超過時に grow し、上限到達時は panic ではなく診断付きエラーになる
+- [in-progress] core WASI の object/free/root は初期容量超過時に grow し、失敗時の
+  stable `LS4002` まで verified。HTTP/component/selfhost/native と両 target は未完
 - [pending] 既存テストが全件 green を維持 (`cargo test`)
 
 ## Phase B: 型システム・実行系
@@ -104,18 +105,21 @@ A-2 と A-3 は独立に並行可。
 ## Phase C: モジュール・配布
 
 **目的**: モジュール単位の独立解析を可能にし、インクリメンタルコンパイル / LSP 応答性の
-基盤を作る。native backend は V2 トラックの進捗を追跡する。
+基盤を作る。完了済み native backend track の履歴は仕様文書から参照する。
 
 | # | 作業 | 対象 issue | 設計 |
 |---|------|-----------|------|
-| C-1 | SCC (強連結成分) 単位の型推論: 相互再帰モジュール群を SCC として検出し、SCC 単位で推論。単一モジュールの個別推論を可能にする | D-07 | imp-04 |
-| C-2 | モジュールグラフ / 解析結果のキャッシュ: fingerprint ベースの再利用。V2-01 (LSP incremental sync) の前提を提供 | I-05 | imp-04 |
-| C-3 | Native backend 追跡: V2-13a-5 (Linux x86_64 stage chain) / V2-08 / V2-09 は TODO.md を正本として進捗を追う。本ロードマップでは新規作業を定義しない | D-08 | -- |
+| C-1 | SCC 単位の型推論: general SCC と Formatter batch 特例除去は実装済み。canonical runtime/native parity と Formatter 固有 dirty-set を閉じる | D-07 | imp-04 |
+| C-2 | cache generalization: Rust host の process/artifact cache は部分実装済み。override persistence、自動 policy、selfhost/native を閉じる | I-05 | imp-04 |
+| C-3 | Native backend completion history: V2-08〜V2-10 / V2-13〜V2-15 の結果と target evidence を仕様・release 運用文書に保持する。bootstrap/rooting/public surface の残件は独立した TODO aggregate として扱う | D-08 (resolved) | [native backend 仕様](../../language/native-backend-spec.md) |
 
 **Exit criteria**:
-- [pending] Formatter 3 モジュール (FormatterExpr / FormatterDecl / Formatter) が SCC として自動検出され、`compile_multi_file` の特別扱いコメント (completion-criteria.md:18 記載の制約) が不要になる
-- [pending] 無変更モジュールの再コンパイルがキャッシュヒットする計測証跡 (2 回目コンパイルの解析スキップ)
-- [pending] D-08 は V2-08 / V2-09 / V2-13 の close をもって ISSUES.md 上で resolved に遷移 (本フェーズの成果物ではない)
+- [in-progress] Formatter 3 モジュールの一般 SCC 検出と batch 特例除去は verified。
+  Formatter 固有 dirty-set と canonical runtime/native parity は未完
+- [in-progress] Rust host は無変更 SCC/IR と process 間 Wasm artifact の cache hit を検証済み。
+  source override persistence、自動 eviction、selfhost/native と両 target は未完
+- [done] D-08 は V2-08〜V2-10 / V2-13〜V2-15 の完了 evidence を native backend 仕様と
+  release 運用文書へ保持し、ISSUES.md 上で resolved に遷移
 
 ## Phase D: ドキュメント・品質
 
@@ -125,7 +129,7 @@ A-2 と A-3 は独立に並行可。
 |---|------|-----------|------|
 | D-1 | docs/guides/ 拡張: metadata 仕様 / IDE セットアップ / デプロイターゲット / stdlib ガイドを追加。エラーコードリファレンスは LS#### 体系導入後に DOC-06 として追加 | DOC-01, DOC-06 | imp-05 |
 | D-2 | book/ 読者層分離、examples ↔ 機能マトリクス整備、language-guide テンプレートの正本一本化、doc-status の CI 運用開始 | DOC-02, DOC-03, DOC-04, DOC-05 | imp-05 |
-| D-3 | テスト体系強化: パーサー/型推論の property-based テスト (proptest) 導入、GC リーク検出テスト、スロット上限・再帰深度の限界値テスト、occur check 性能計測 | I-06 | imp-07 |
+| D-3 | テスト体系強化: bounded property/limit/recursion/GC lane は実装済み。full fuzz、長時間 leak/rooting stress、performance threshold、native evidence を閉じる | I-06 | imp-07 |
 | D-4 | テスト配置の再編: 巨大インラインテストの分離、syntax/types のユニットテスト増強 | I-08 | imp-06, imp-07 |
 
 **Exit criteria**:
@@ -135,8 +139,10 @@ A-2 と A-3 は独立に並行可。
 - [done] examples の全 .ls がドキュメントの機能マトリクスから参照され、「型チェックのみ」サンプルが明示される。Evidence: `test_doc_site_manifest_exposes_examples_matrix`
 - [done] language-guide テンプレートが docs/guides/ と docs/site.toml を SSOT として明記する。Evidence: `test_lsharp_language_guide_template_points_to_docs_guides_as_ssot`
 - [done] `.lsharp-doc-status` がリポジトリで運用され、CI で doc-check が走る。Evidence: `test_repo_doc_status_dogfooding_is_wired_for_metadata_fixture`, `scripts/ci/doc-status-check.sh`
-- [pending] fuzz ターゲットが CI (または定期ジョブ) で実行される
-- [pending] I-06 記載の限界値 (GC スロット / 再帰深度) が計測され、ドキュメント化される
+- [in-progress] 固定 seed の bounded proptest lane は実装済み。常設 full fuzz target と
+  reusable cross-layer generator は未完
+- [in-progress] core WASI の GC capacity、再帰深度、type inference limit は計測済み。
+  performance threshold、長時間 leak/rooting stress、native stage0 と両 target は未完
 
 ---
 
@@ -145,4 +151,5 @@ A-2 と A-3 は独立に並行可。
 - フェーズ内の作業に着手する際は TODO.md に項目を作成し、本書の `A-1` 等の ID を記載する
 - exit criteria の `[pending]` は達成時に `[done]` + 証跡 (テスト名 / コミット) へ更新する
 - 対象 issue が resolved になったら ISSUES.md 側の状態も更新する (本書からは状態を二重管理しない)
-- 完了条件の正本が他文書にあるもの (D-08 → completion-criteria.md / TODO.md、D-10 → runtime-stability-spec.md) は本書で再定義しない
+- 完了条件の正本が他文書にあるもの (D-08 → native-backend-spec.md / release 運用文書、
+  D-10 → runtime-stability-spec.md) は本書で再定義しない

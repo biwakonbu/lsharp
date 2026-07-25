@@ -7,6 +7,10 @@ Phase 11-2 (Wasm bootstrap + toolchain parity) の完了を判定するための
 本書では「証跡が文書化されていること」と「完了条件を閉じたこと」を分けて扱い、proxy/構造テストや補助 smoke test だけでは `done` に上げない。
 
 > **2026-03-30 方針転換**: Wasmtime embedding + Component Model を正式配布モデルに据えることとし、native self-regeneration / Wasm-native differential zero / Rust workspace 物理撤去は Phase 11 の completion gate から外した。native 関連の条件 (旧条件 1-3) は Deferred/v2 (V2-08, V2-09) へ移動。Rust workspace は host launcher として残存する。
+>
+> **2026-07-25 状態更新**: V2-08〜V2-10 / V2-13〜V2-15 は完了済み。
+> native completion evidence は `docs/language/native-backend-spec.md` と release 運用文書へ保持し、
+> TODO.md には bootstrap provenance、rooting、public surface など未完 aggregate だけを置く。
 
 ## 2026-03-25 現況メモ
 
@@ -15,7 +19,10 @@ Phase 11-2 (Wasm bootstrap + toolchain parity) の完了を判定するための
 - `selfhost/src/IR/Lower.ls` / `LowerPattern.ls` の stage0 stack overflow は `lsharp-types` の `apply_subst` 改修で解消済み（compile gate に含める）。
 - **OPS-05 第1段**: `scripts/ci/default-path-smoke.sh` + CI job `default-path-smoke` でビルド済み `lsharp` バイナリ経路を blocking 検証。command surface 上の Rust built-in default / selfhost surface / `LSHARP_PATH` delegation の読み分けは `docs/development/operations/default-path-migration.md` と `docs/development/planning/compatibility-matrix.md` を正本とする。
 - **OPS-07 現行 gate**: `scripts/ci/test-fresh-clone.sh` は CI 上で 2 系統に分かれる。`test-fresh-clone` は `fresh-clone-artifact` が同一 workflow 内で生成した release-style archive を download し、Rust toolchain 無しで `release-smoke.sh` / `default-path-smoke.sh` / `smoke_test_readme.sh` を通す **closest viable binary-only gate**。`fresh-clone-smoke` は clean checkout 相当コピーからの `lsharp` 再ビルド、default-path smoke 再実行、`selfhost/src/Syntax/Token.ls` / `stdlib/Core.ls` の代表 compile を継続検知する Rust-dependent 補完 gate。加えて手元検証用 scaffold として `scripts/fetch-stage0.sh` / `scripts/bootstrap.sh` / `scripts/release-bundle.sh` を追加し、release asset → stage1/stage2 compare → rebundle を operator path で試せる。**ただし** GitHub Releases 上の stage0 package を required gate から直接取得する true no-Rust end-state は mainline 未接続。
-- **マルチファイル型検査 / Formatter**: `Tools.Text.FormatterExpr` / `FormatterDecl` / `Formatter` は bundler 前提の相互再帰のため、`lsharp_ir::compile_multi_file` が当該 3 モジュールをまとめて 1 回型推論する（個別モジュール順だと `format-expr` が未束縛になる）。LSP ランタイム fixture（`SELFHOST_LSP_RUNTIME_MODULES`）の `compile_multi_file` 経路で利用される。
+- **マルチファイル型検査 / Formatter (2026-07-25)**: `Tools.Text.FormatterExpr` /
+  `FormatterDecl` / `Formatter` は明示 import と一般 SCC 推論を使い、旧 Formatter 専用 batch
+  特例は除去済み。Rust host の compile / incremental / source override と Wasm validation は
+  verified slice を持つが、canonical runtime、native stage0、両 supported target の parity は未完。
 - **OPS-06 暫定 gate**: `scripts/release-playbook.sh` は release binary を用いて `compile-phase11-inputs.sh` / `default-path-smoke.sh` を再利用し、`.github/workflows/release.yml` は build job 内 smoke に加えて downloaded artifact を再検証する `release-smoke` job でも `scripts/ci/release-smoke.sh` を実行する。Supported product/release targets は Mac Apple Silicon (`aarch64-apple-darwin`) と Linux x86_64 (`x86_64-unknown-linux-gnu`) の 2 つであり、macOS x86_64 / Windows / Linux aarch64 は out of support scope として release blocker に含めない。release asset には host launcher archive に加えて companion sidecar `lsharp-{version}-{target}.component.wasm` と release-level `dist/checksums.txt` も添付される。Mac Apple Silicon の macOS notarization workflow hook は secret-gated で接続済みだが、credential 未設定時は skip する。**ただし** 実署名完了と GitHub Releases 直結の true no-Rust end-state は未完了。
 - **監査整理 / bootstrap**: stage0 による selfhost 再コンパイル、`test_e2e_bootstrap_fixed_point_stage2_stage3` による `Main.ls` の true fixed point、`test_e2e_bootstrap_stage2_self_feed_fixed_input_set` による fixed input set 54 件の stage2 self-feed 決定性、さらに `test_e2e_bootstrap_fixed_input_set_stage_chain_match` による同 54 件の `stage1.wasm -> stage2.wasm -> stage3.wasm` 実体生成・比較が提示済みであり、BOOT-04 完了証跡は full input set compare まで到達した。
 - **監査整理 / native**: native 系の既存テストは stage chain の構造確認や 5 観測点比較フレームワークの存在確認として読む。true native self-regeneration と allowlist なし differential zero の完了証跡ではない。

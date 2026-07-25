@@ -6,10 +6,13 @@ Phase 11 の監査において、Rust 実装と L# 実装の差分を以下の 5
 
 ### 1. spec-diff: 仕様差分 (Specification Gap)
 
-**定義**: TODO.md, README.md, book/ の記述と実装の間に不一致がある状態。
+**定義**: active-only の TODO.md、accepted な仕様・ADR、README.md、book/ の記述と
+実装の間に不一致がある状態。
 
 **検出方法**:
-- TODO.md の完了表示 (`[x]`) とコード・テストの実在を突合
+- TODO.md に完了済み (`[x]`) が残っていないことを確認し、active aggregate と
+  ISSUES.md の未完項目を突合
+- 完了主張は ADR・仕様・運用記録とコード・テストの実在を突合
 - README.md の導入手順を実行して再現性を確認
 - book/ の説明と現行パイプラインの動作を比較
 
@@ -105,7 +108,8 @@ Phase 11 の監査において、Rust 実装と L# 実装の差分を以下の 5
 
 `scripts/audit_docs.sh` で以下の差分を自動検出する:
 
-- 仕様差分: TODO.md の `[x]` 項目にエビデンスが紐付いているか
+- 仕様差分: TODO.md が active-only で、ISSUES.md の未完項目と current milestone を
+  aggregate として保持しているか
 - 実装欠落: selfhost/src/ の必須ファイルが存在するか
 - 出力差分: `#[ignore]` 付きテストの数
 - 運用差分: README の導入手順のコマンドが実行可能か

@@ -246,11 +246,11 @@ fn test_meta_05_branch_protection_required_check_contract() {
     );
 }
 
-/// TEST-META-06: selfhosting completion track の正本同期
+/// TEST-META-06: active-only TODO と selfhosting completion evidence の正本同期
 ///
 /// 以下を検証:
-/// 1. `TODO.md` の「現在の残タスク一覧（正本）」が V2-08 / V2-09 / V2-10 の完了状態を持つ
-/// 2. `TODO.md` の Deferred / v2 節が V2-09 / V2-10 を完了済み selfhosting completion evidence として保持する
+/// 1. `TODO.md` が `[x]` や完了済み V2 task を checklist として保持しない
+/// 2. `TODO.md` が current milestone と未完 aggregate を保持する
 /// 3. `phase11-implementation-plan.md` に V2-08 / V2-09 / V2-10 節が存在する
 /// 4. V2-08 / V2-09 / V2-10 の設計 docs が完了 evidence と実行 gate を説明している
 #[test]
@@ -262,41 +262,48 @@ fn test_meta_06_selfhosting_completion_docs_are_synced() {
 
     let todo_path = project_root.join("TODO.md");
     let todo_content = std::fs::read_to_string(&todo_path).expect("TODO.md の読み込みに失敗");
-    let current_remaining_section = todo_content
-        .split("## 現在の残タスク一覧（正本）")
-        .nth(1)
-        .and_then(|rest| rest.split("## Phase 11: Rust 完全撤去").next())
-        .expect("TODO.md の現在の残タスク一覧 section が見つからない");
-    let deferred_section = todo_content
-        .split("### Deferred / v2")
-        .nth(1)
-        .expect("TODO.md の Deferred / v2 section が見つからない");
-    for expected in [
-        "- [x] `V2-08` Native backend self-regeneration",
-        "- [x] `V2-09` Wasm/native differential zero",
-        "- [x] `V2-10` Native-only RC distribution",
-    ] {
-        assert!(
-            current_remaining_section.contains(expected),
-            "TODO.md の現在の残タスク一覧に完了済み selfhosting task `{expected}` が必要"
-        );
-    }
-    for unexpected in [
-        "[DEFERRED] `V2-09`",
-        "[DEFERRED] `V2-10`",
-        "[DEFERRED] V2-09",
-        "[DEFERRED] V2-10",
-    ] {
-        assert!(
-            !todo_content.contains(unexpected),
-            "V2-09/V2-10 は selfhosting completion track に昇格したため Deferred 表記を残さないこと: {unexpected}"
-        );
-    }
     assert!(
-        deferred_section.contains("- [x] V2-09 Wasm/native differential zero")
-            && deferred_section.contains("- [x] V2-10 Native-only RC distribution"),
-        "TODO.md の Deferred / v2 節は V2-09/V2-10 を完了済み evidence として保持すること"
+        !todo_content
+            .lines()
+            .any(|line| line.trim_start().starts_with("- [x]")),
+        "TODO.md は active-only backlog とし、完了済み `[x]` を保持しないこと"
     );
+    for completed in ["V2-08", "V2-09", "V2-10", "V2-13", "V2-14", "V2-15"] {
+        assert!(
+            !todo_content.lines().any(|line| {
+                let line = line.trim_start();
+                line.starts_with("- [") && line.contains(&format!("`{completed}`"))
+            }),
+            "完了済み task `{completed}` は TODO.md の checklist ではなく仕様・設計文書へ保持すること"
+        );
+    }
+    for expected in [
+        "## Current priority — v0.2 Milestone 2",
+        "`EC-M2-01`",
+        "`EC-M2-02`",
+        "`EC-M2-03`",
+        "`EC-M1-01`",
+        "`EC-M1-07`",
+        "`LEGACY-LANG-01`",
+        "`LEGACY-COMP-01`",
+        "`LEGACY-IO-01`",
+        "`LEGACY-TOOL-01`",
+        "`LEGACY-BOOT-01`",
+        "`LEGACY-DIAG-01`",
+        "`LEGACY-RUNTIME-01`",
+        "`LEGACY-EXEC-01`",
+        "`LEGACY-ROOT-01`",
+        "`LEGACY-MODULE-01`",
+        "`LEGACY-MAINT-01`",
+        "`LEGACY-TEST-01`",
+        "docs/development/planning/v0.2-milestone-02.md",
+        "docs/development/operations/rust-boundary-reduction.md",
+    ] {
+        assert!(
+            todo_content.contains(expected),
+            "TODO.md は未完 aggregate または current plan `{expected}` を保持すること"
+        );
+    }
 
     let plan_path = project_root.join("docs/development/planning/phase11-implementation-plan.md");
     let plan_content = std::fs::read_to_string(&plan_path)

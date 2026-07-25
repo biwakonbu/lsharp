@@ -2580,37 +2580,10 @@ fn test_e2e_native_ops02_native_only_rc_smoke_accepts_empty_output_files() {
     );
 }
 
-/// TEST-NATIVE-OPS-03: native-only replacement の完了済み基盤と target 固有残件を正本化すること
+/// TEST-NATIVE-OPS-03: native-only replacement の完了済み基盤を仕様・運用文書で正本化すること
 #[test]
 fn test_e2e_native_ops03_official_native_only_replacement_backlog_contract() {
     let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-
-    let todo = project_root.join("TODO.md");
-    let todo_content = std::fs::read_to_string(&todo).expect("TODO.md の読み込みに失敗");
-    let current_remaining_section = todo_content
-        .split("## 現在の残タスク一覧（正本）")
-        .nth(1)
-        .and_then(|rest| rest.split("## Phase 11: Rust 完全撤去").next())
-        .expect("TODO.md の現在の残タスク一覧 section が見つからない");
-    assert!(
-        current_remaining_section
-            .contains("- [x] `V2-13` Native-only official replacement target matrix"),
-        "TODO.md の V2-13 target matrix は正本化済みとして完了扱いにすること"
-    );
-    assert!(
-        current_remaining_section
-            .contains("- [x] `V2-15` Native-only official release smoke and rollback"),
-        "TODO.md の V2-15 は両 supported target の actual App.Cli / rollback / local official smoke 完了後に完了扱いにすること"
-    );
-    assert!(
-        current_remaining_section.contains("native official release local gate: OK"),
-        "TODO.md の V2-15 は actual App.Cli input と両 target official local smoke の実測を記録すること"
-    );
-    assert!(
-        current_remaining_section
-            .contains("- [x] `V2-14` Native-only official release artifact layout"),
-        "TODO.md の V2-14 native-only official release artifact layout は完了扱いにすること"
-    );
 
     let native_spec = project_root.join("docs/language/native-backend-spec.md");
     let native_spec_content =
@@ -2628,7 +2601,7 @@ fn test_e2e_native_ops03_official_native_only_replacement_backlog_contract() {
         "out of support scope",
         "GitHub Actions の required CI には含めない",
         "Mac + Lima VM local gate",
-        "20GiB memory",
+        "16GiB memory",
         "12GiB disk",
     ] {
         assert!(
@@ -2765,47 +2738,6 @@ fn test_e2e_native_ops03_official_native_only_replacement_backlog_contract() {
 fn test_e2e_native_ops04_linux_x86_server_target_contract() {
     let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
-    let todo = project_root.join("TODO.md");
-    let todo_content = std::fs::read_to_string(&todo).expect("TODO.md の読み込みに失敗");
-    let current_remaining_section = todo_content
-        .split("## 現在の残タスク一覧（正本）")
-        .nth(1)
-        .and_then(|rest| rest.split("## Phase 11: Rust 完全撤去").next())
-        .expect("TODO.md の現在の残タスク一覧 section が見つからない");
-    assert!(
-        current_remaining_section.contains("- [x] `V2-13a` Linux x86_64 native server target"),
-        "TODO.md の正本で Linux x86_64 server target を完了扱いにすること"
-    );
-    for expected in [
-        "x86 selfhost runtime helper parity",
-        "Linux runtime trampoline",
-        "real ELF object/link artifact",
-        "V2-13a-5e",
-        "Mac Apple Silicon 上の local Lima VM gate",
-        "stage2/stage3 compare summary",
-        "[x] `V2-13a-5` actual Linux x86_64 stage2/stage3 VM regeneration",
-        "stage23-map-insert-staged-merge-full-compare-v1",
-        "9196a2e5ef859ddcfa93d8b898282f0b0b18d2d0ac9071a4a3e9e311ed7f4ff9",
-        "stage2/stage3 stdout byte-for-byte compare",
-        "stage2/stage3 stderr 0",
-        "local VM release gate policy",
-    ] {
-        assert!(
-            current_remaining_section.contains(expected),
-            "TODO.md の V2-13a は current Linux x86_64 blocker `{}` を明記すること",
-            expected
-        );
-    }
-    assert!(
-        !current_remaining_section.contains("disk: 30GiB"),
-        "TODO.md の V2-13a は古い Lima disk 30GiB 記述を残さないこと"
-    );
-    assert!(
-        !current_remaining_section.contains("selfhost compiler determinism を修正する必要がある")
-            && !current_remaining_section.contains("code-section fingerprint を返す兆候"),
-        "TODO.md の正本は検証済み selfhost determinism を stale blocker として残さないこと"
-    );
-
     let native_spec = project_root.join("docs/language/native-backend-spec.md");
     let native_spec_content =
         std::fs::read_to_string(&native_spec).expect("native-backend-spec.md の読み込みに失敗");
@@ -2822,7 +2754,7 @@ fn test_e2e_native_ops04_linux_x86_server_target_contract() {
         "`x86_64-unknown-linux-gnu` | Linux x86_64",
         "supported product/release target",
         "Mac Apple Silicon 上の Ubuntu x86_64 Lima VM",
-        "20GiB memory",
+        "16GiB memory",
         "12GiB disk",
         "scripts/ci/lima/lsharp-linux-x86.yaml",
         "scripts/ci/native-linux-x86-local-vm-smoke.sh",
@@ -3067,22 +2999,6 @@ fn test_e2e_native_ops04_linux_x86_server_target_contract() {
 #[test]
 fn test_e2e_native_ops05_macos_x86_rosetta_smoke_contract() {
     let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-
-    let todo = project_root.join("TODO.md");
-    let todo_content = std::fs::read_to_string(&todo).expect("TODO.md の読み込みに失敗");
-    let current_remaining_section = todo_content
-        .split("## 現在の残タスク一覧（正本）")
-        .nth(1)
-        .and_then(|rest| rest.split("## Phase 11: Rust 完全撤去").next())
-        .expect("TODO.md の現在の残タスク一覧 section が見つからない");
-    assert!(
-        current_remaining_section
-            .contains("`V2-13` Native-only official replacement target matrix")
-            && current_remaining_section.contains("`x86_64-apple-darwin`")
-            && current_remaining_section.contains("support scope 外")
-            && !current_remaining_section.contains("`V2-13b`"),
-        "TODO.md は Intel Mac を独立 release task に戻さず out of support scope とすること"
-    );
 
     let native_spec = project_root.join("docs/language/native-backend-spec.md");
     let native_spec_content =

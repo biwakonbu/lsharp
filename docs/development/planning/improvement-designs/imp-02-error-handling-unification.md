@@ -3,7 +3,16 @@
 > 対象 issue: [I-02](../../../../ISSUES.md#i-02) (エラーハンドリング不統一)、[DOC-06](../../../../ISSUES.md#doc-06) (エラーコード体系未定義)
 > ロードマップ: [improvement-roadmap.md](../improvement-roadmap.md) Phase A-1
 
-## 現状の正確な把握 (2026-06-12 コード検証済み)
+## Current status (2026-07-25)
+
+`LS####` の定義、error-reference、parser/type/lowering/module/codegen の code、代表的な
+CLI/LSP/MCP forwarding は verified。LSP の parser/type/module diagnostic も実 range を返す。
+残る aggregate は multi-file / REPL / doc / metadata / native linker / incremental codegen の
+code/span 貫通、一部の span-less error、本番経路の panic-free 契約である。以下は設計着手時の
+baseline とし、最新の task boundary は `ISSUES.md` の I-02 と `TODO.md` の
+`LEGACY-DIAG-01` を正本とする。
+
+## Initial baseline (2026-06-12 コード検証)
 
 ### エラー型の現状一覧
 
@@ -111,4 +120,5 @@
 
 ## ステータス
 
-設計 (2026-06-12 起草、同日コード検証に基づき具体化)。着手時は TODO.md に Phase A-1 として項目を作成する。
+設計 + representative code/span forwarding verified slice (2026-07-25)。
+DOC-06 は解消済み。I-02 / `LEGACY-DIAG-01` の aggregate 完了条件は満たしていない。

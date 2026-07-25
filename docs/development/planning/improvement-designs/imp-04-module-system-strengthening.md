@@ -1,14 +1,23 @@
 # imp-04: モジュールシステム強化 (SCC 推論と CLI キャッシュ統合)
 
-> 対象 issue: [D-07](../../../../ISSUES.md#d-07) (相互再帰モジュールの一括推論)、[I-05](../../../../ISSUES.md#i-05) (CLI 経路の未キャッシュ・SCC なし)
+> 対象 issue: [D-07](../../../../ISSUES.md#d-07) (SCC の canonical/native parity)、
+> [I-05](../../../../ISSUES.md#i-05) (cache の selfhost/native persistence)
 > ロードマップ: [improvement-roadmap.md](../improvement-roadmap.md) Phase C-1 / C-2
 > 関連: [v2-designs/v2-01-lsp-incremental-sync.md](../v2-designs/v2-01-lsp-incremental-sync.md) (LSP 側の受け皿)
 
-## 現状の正確な把握 (2026-06-12 コード検証済み)
+## Current status (2026-07-25)
 
-> 注: 本書の初版は「キャッシュ機構なし」を前提としていたが、コード検証で訂正した。
-> インクリメンタルキャッシュは**既に存在し LSP で稼働している**。残る問題は
-> (a) CLI 経路の未統合、(b) SCC 検出の不在、の 2 点である。
+general SCC の compile / incremental / source override、Formatter batch 特例除去、Rust host の
+process/artifact cache、target validation、cached Wasm runtime、CLI/env opt-in と明示 maintenance は
+verified slice を持つ。残る aggregate は Formatter 固有 dirty-set と canonical runtime、
+source override の segment/disk persistence、自動 eviction、Native artifact、selfhost/native compiler、
+public command と両 supported target の evidence である。詳細は「検証済み部分実装」と
+「未完了の後続作業」を正本とする。
+
+## Initial baseline (2026-06-12 コード検証)
+
+> 注: 本書の初版は「キャッシュ機構なし」を前提としていたが、当時のコード検証で訂正した。
+> 以下は実装開始前の差分であり、current state ではない。
 
 ### 既にあるもの
 
@@ -22,7 +31,7 @@
 | LSP での利用 | `crates/lsharp-lsp/src/lib.rs:37-38` | `compilation_cache: Arc<RwLock<CompilationCache>>` を常駐保持 |
 | ベンチ | `crates/lsharp-wasm/tests/e2e/incremental_benchmark.rs` | キャッシュ効果の計測が既にある |
 
-### 足りないもの
+### 当時足りなかったもの
 
 1. **CLI 経路**: `compile_multi_file(entry_file: &Path) -> Result<Module, String>`
    (`lib.rs:1777-1779`) はキャッシュを受け取らない。実処理 `compile_multi_file_with_mode`
@@ -328,8 +337,8 @@ C-1k の unrestricted cyclic SCC merged surface fast path、C-1l の merged SCC 
 C-2f の tooling/driver compile session、C-2g の deterministic compile key、C-2h の明示 root artifact envelope、C-2i の
 `CompileSession` opt-in Wasm 接続、C-2j の target-aware validation、C-2k の CLI host-only cache root、C-2l の cached Wasm runtime
 execution、C-2m の bounded artifact maintenance、C-2n の CLI entry limit、C-2o の CLI byte budget を検証済み部分実装として反映した。
-一括推論の native parity、Formatter canonical runtime parity、override 経路の segment cache、process 間 cache の CLI/env default 接続、
-依存 SCC key、自動 eviction policy、selfhost
-移植は未着手のため、Phase C-1 / C-2 の aggregate 完了とは扱わない。C-1n の canonical boundary ADR は、既定
-test stack overflow、CLI driver artifact、Formatter SCC timing を別々の evidence として記録する。
-着手時は TODO.md に Phase C-1 / C-2 として項目を作成する。
+Formatter canonical/native parity、Formatter 固有 dirty-set、override 経路の segment/disk
+persistence、自動 eviction policy、Native artifact、selfhost/native compiler、両 supported target と
+public command evidence は未完のため、Phase C-1 / C-2 の aggregate 完了とは扱わない。
+C-1n の canonical boundary ADR は、既定 test stack overflow、CLI driver artifact、
+Formatter SCC timing を別々の evidence として記録する。

@@ -27,8 +27,9 @@ imp-01 は補遺として現行コードからの移行手順のみを扱う。
 | [imp-07](imp-07-test-verification-infrastructure.md) | テスト・検証基盤強化 (fuzz / 限界値 / rooting 規約) | I-06, I-07, I-08 | Phase B-4 / D-3 / D-4 |
 | [imp-08](imp-08-regex-constraint-engine.md) | 正規表現制約エンジン (WG-2 の実体化) | D-05 | Phase B-3 |
 
-設計 doc を持たない issue は D-08 (V2-08/V2-09/V2-13 へ委譲済み、TODO.md が正本) のみ。
-扱いは improvement-roadmap.md のマッピング表を参照。
+D-08 は V2-08〜V2-10 / V2-13〜V2-15 の完了により resolved であり、履歴の正本は
+[native backend 仕様](../../../language/native-backend-spec.md) と release 運用文書に置く。
+active issue の実行順と completion boundary は TODO.md の aggregate から参照する。
 
 各設計は 2026-06-12 のコード検証 (型名・関数名・行番号の実測) に基づいて
 「現状の正確な把握」節を持ち、引き継ぎ時はその節の記載と実コードの一致を

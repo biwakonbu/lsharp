@@ -2,7 +2,8 @@
 
 ## 位置づけ
 
-- `TODO.md` は実行順の master checklist。
+- `TODO.md` は current milestone と未完 aggregate だけを持つ active-only master checklist。
+  完了履歴と evidence は本書、ADR、仕様・運用記録へ保持する。
 - この文書は task ID ごとの implementation bridge。仕様変更の正本ではなく、既存 spec を実コードへ落とすための実装方針・依存・受入条件を固定する。
 - 正本 spec は `docs/development/planning/rust-parity-spec.md`, `docs/development/planning/toolchain-parity-spec.md`, `docs/development/validation/verification-spec.md`, `docs/development/planning/completion-criteria.md`, `docs/development/planning/runtime-stability-spec.md`, `docs/development/operations/ci-gate-v2-job-graph.md`, `docs/development/operations/artifact-policy.md`, `docs/development/operations/default-path-migration.md`, `docs/development/operations/release-playbook.md`, `docs/development/operations/fresh-clone-spec.md`, `docs/development/operations/adr-rust-removal.md`, `docs/development/operations/rollback-procedure.md` を優先する。
 
@@ -45,10 +46,12 @@
 ### META-02 Completion marker sync
 
 - Goal: TODO/README/book/docs 間の完了表示を実装状況と一致させる。
-- Current state: 仕様固定済みの `[x]` と、実装完了の `[x]` が混在している。
+- Current state: TODO.md は active-only へ移行済み。完了項目は evidence の正本へ退避し、
+  未完 aggregate だけを `[ ]` / `[~]` で保持する。
 - Rust source: `README.md`, `book/`, `docs/*.md`, `docs/adr/*.jsonl`
 - L# target: `TODO.md`, `README.md`, `book/`, `docs/*.md`
-- Implementation direction: `仕様固定済み`, `部分実装`, `完了` の 3 状態を明示し、実装完了ではない `[x]` を `仕様固定済み` 注記へ置換する。以後、実装完了の記法は acceptance/evidence を持つ task だけに使う。
+- Implementation direction: `仕様固定済み`, `部分実装`, `完了` を evidence 文書で区別する。
+  TODO.md では未着手 `[ ]` と partial `[~]` だけを使い、完了 task は削除する。
 - Dependencies: `META-01`
 - Acceptance: Phase 11 関連文書に「仕様固定済みだが未実装」を `[x]` で表す箇所が残らない。
 - Evidence: `TODO.md`, `README.md`, `book/`, `scripts/audit_docs.sh`

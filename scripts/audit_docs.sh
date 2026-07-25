@@ -1,6 +1,6 @@
 #!/bin/bash
-# P11-1 正本監査: TODO.md/README.md/book/ と実装の差分を検出
-# 完了表示 ([x]) に一次エビデンス (テスト名, commit hash) が紐付いているか検証
+# docs 正本監査: TODO.md/ISSUES.md/README.md/book/ と実装の差分を検出
+# TODO.md は active-only とし、完了 evidence は ADR・仕様・運用記録で保持する
 # P11-1c: 差分5種の自動検出機能
 # P11-1d: エビデンス紐付け検証強化 + README smoke test 統合
 # P12-0: 公開 CLI の docs/script を compile 中心に統一しているか確認
@@ -17,45 +17,67 @@ count_matches() {
     printf "%d" "$result"
 }
 
-echo "=== P11-1 正本監査 ==="
+echo "=== docs 正本監査 ==="
 echo ""
 
 # =============================================================================
-# 1. TODO.md の [x] 項目にエビデンスがあるか確認 (P11-1d: エビデンス紐付け)
+# 1. TODO.md の active-only 契約と ISSUES.md の未完項目反映
 # =============================================================================
-echo "--- [仕様差分] TODO.md: 完了表示のエビデンス確認 ---"
-FILE_EVIDENCE_PATTERN='[A-Za-z0-9_./-]+\.(rs|ls|md|json|lua|yml|yaml|toml)'
-EVIDENCE_PATTERN="(test_|ADR-|${FILE_EVIDENCE_PATTERN}|TASK-|docs/|TODO\.md|compatibility-matrix|RESEARCH|lsharp-lsp|JsonRpc|E2E [0-9]+件|ユニットテスト|棚卸し完了|[0-9]+ 区分|仕様固定|scripts/|smoke|gap-classification|gate|紐付け)"
-NO_EVIDENCE=0
-while IFS= read -r line; do
-    if echo "$line" | grep -q '^\- \[x\]' && ! echo "$line" | grep -qE "$EVIDENCE_PATTERN"; then
-        echo "  ERROR: エビデンスなし: $(echo "$line" | head -c 120)"
-        NO_EVIDENCE=$((NO_EVIDENCE + 1))
+echo "--- [仕様差分] TODO.md: active-only backlog 契約 ---"
+COMPLETED_TODO_COUNT=$(grep -cE '^[[:space:]]*-[[:space:]]+\[x\]' TODO.md 2>/dev/null) || COMPLETED_TODO_COUNT=0
+if [ "$COMPLETED_TODO_COUNT" -eq 0 ]; then
+    echo "  OK: TODO.md に完了済み [x] 項目なし"
+else
+    echo "  ERROR: TODO.md に完了済み [x] 項目が $COMPLETED_TODO_COUNT 件残っている"
+    ERRORS=$((ERRORS + COMPLETED_TODO_COUNT))
+fi
+
+ACTIVE_ISSUE_IDS=$(awk -F'|' '
+function trim(value) {
+    gsub(/^[ \t]+|[ \t]+$/, "", value)
+    return value
+}
+/^\| \[[DI][O0-9C-]*\]/ {
+    issue = trim($2)
+    status = trim($5)
+    if (status == "open" || status == "in-design" || status == "documented-limitation") {
+        sub(/^\[/, "", issue)
+        sub(/\].*$/, "", issue)
+        print issue
+    }
+}
+' ISSUES.md)
+MISSING_ACTIVE_ISSUES=0
+while IFS= read -r issue_id; do
+    [ -n "$issue_id" ] || continue
+    if grep -qF "\`$issue_id\`" TODO.md; then
+        echo "  OK: active issue $issue_id は TODO.md の aggregate に反映済み"
+    else
+        echo "  ERROR: active issue $issue_id が TODO.md に見つからない"
+        MISSING_ACTIVE_ISSUES=$((MISSING_ACTIVE_ISSUES + 1))
     fi
-done < TODO.md
-if [ "$NO_EVIDENCE" -eq 0 ]; then
-    echo "  OK: 全 [x] 項目にエビデンスあり"
-else
-    echo "  エビデンスなし: $NO_EVIDENCE 件"
-    ERRORS=$((ERRORS + NO_EVIDENCE))
+done <<< "$ACTIVE_ISSUE_IDS"
+if [ -z "$ACTIVE_ISSUE_IDS" ]; then
+    echo "  ERROR: ISSUES.md から active issue を抽出できない"
+    ERRORS=$((ERRORS + 1))
+elif [ "$MISSING_ACTIVE_ISSUES" -gt 0 ]; then
+    ERRORS=$((ERRORS + MISSING_ACTIVE_ISSUES))
 fi
 
 # =============================================================================
-# 1b. Phase 11 完了主張と completion criteria の整合性
+# 1b. current milestone と TODO.md の整合性
 # =============================================================================
 echo ""
-echo "--- [仕様差分] Phase 11 完了主張の整合性確認 ---"
-P11_CLAIM_COMPLETE=0
-if grep -qE '完了済みフェーズ.*P11|Phase 11 全[0-9]+タスク完了|Phase 11 実装完了 ADR' TODO.md; then
-    P11_CLAIM_COMPLETE=1
-fi
-P11_PENDING_COUNT=$(grep -cE '\[(pending|in-progress)\]' docs/development/planning/completion-criteria.md 2>/dev/null) || P11_PENDING_COUNT=0
-if [ "$P11_CLAIM_COMPLETE" -eq 1 ] && [ "$P11_PENDING_COUNT" -gt 0 ]; then
-    echo "  ERROR: TODO.md が Phase 11 完了を主張しているが、docs/development/planning/completion-criteria.md に pending/in-progress が $P11_PENDING_COUNT 件残っている"
-    ERRORS=$((ERRORS + 1))
-else
-    echo "  OK: TODO.md の Phase 11 状態表示と completion criteria に矛盾なし"
-fi
+echo "--- [仕様差分] v0.2 Milestone 2 の active task 同期 ---"
+M2_PLAN="docs/development/planning/v0.2-milestone-02.md"
+for TASK_ID in EC-M2-01 EC-M2-02 EC-M2-03; do
+    if grep -qF "\`$TASK_ID\`" TODO.md && grep -qF "$TASK_ID" "$M2_PLAN"; then
+        echo "  OK: $TASK_ID は TODO.md と Milestone 2 plan に存在"
+    else
+        echo "  ERROR: $TASK_ID を TODO.md と $M2_PLAN の両方へ記載すること"
+        ERRORS=$((ERRORS + 1))
+    fi
+done
 
 # =============================================================================
 # 1c. compatibility-matrix の active row が証跡を持つか確認
@@ -337,17 +359,17 @@ else
 fi
 
 # =============================================================================
-# 10. Phase 11 完了条件とテスト/gate の紐付け確認 (P11-1d)
+# 10. current milestone 完了条件とテスト/gate の紐付け確認
 # =============================================================================
 echo ""
-echo "--- [P11-1d] Phase 11 完了条件のテスト紐付け ---"
-# TODO.md 50-55行目の完了条件にテスト名/gate が紐付いているか
-CONDITION_LINES=$(sed -n '50,55p' TODO.md)
-GATE_PATTERN='(test_|CI|gate|E2E|bootstrap|smoke|verification|fixed.point)'
+echo "--- [仕様差分] current milestone の gate 紐付け ---"
+CONDITION_LINES=$(sed -n '/^## Gate/,$p' "$M2_PLAN")
+GATE_PATTERN='(test_|gate|E2E|bootstrap|smoke|verification|fixed.point|parser.*graph.*validate|Mac Apple Silicon|Linux x86_64)'
 if echo "$CONDITION_LINES" | grep -qE "$GATE_PATTERN"; then
-    echo "  OK: 完了条件にテスト/gate 参照あり"
+    echo "  OK: Milestone 2 の完了条件に runtime/target gate 参照あり"
 else
-    echo "  INFO: 完了条件のテスト紐付けは P11-2 以降で実装予定"
+    echo "  ERROR: $M2_PLAN の Gate 節に runtime/target gate 参照がない"
+    ERRORS=$((ERRORS + 1))
 fi
 
 # =============================================================================
