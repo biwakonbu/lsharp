@@ -26,6 +26,12 @@ const GC_OBJECT_TABLE_BYTES: i32 = GC_OBJECT_SLOT_CAPACITY * GC_OBJECT_SLOT_BYTE
 const GC_FREE_LIST_SLOT_CAPACITY: i32 = 4096;
 const GC_FREE_LIST_SLOT_BYTES: i32 = 8;
 const GC_FREE_LIST_BYTES: i32 = GC_FREE_LIST_SLOT_CAPACITY * GC_FREE_LIST_SLOT_BYTES;
+/// 小さい allocation はサイズクラスの singly-linked free-list で再利用する。
+/// 最後の class (index 7) は 1024 bytes 超の oversize fallback である。
+const GC_FREE_CLASS_COUNT: i32 = 8;
+const GC_FREE_CLASS_HEAD_GLOBAL_BASE_IDX: u32 = 17;
+const GC_FREE_LIST_SCAN_STEPS_GLOBAL_IDX: u32 = 25;
+const GC_FREE_CLASS_LIMITS: [i32; 7] = [16, 32, 64, 128, 256, 512, 1024];
 const TAGGED_POINTER_MASK: i64 = 1i64 << 63;
 const HEAP_TAG_RECORD: i32 = 2;
 const HEAP_TAG_ADT: i32 = 3;
@@ -66,6 +72,7 @@ const INTERNAL_GC_LIVE_ALLOC_COUNT_EXPORT: &str = "__lsharp_gc_live_alloc_count"
 const INTERNAL_GC_FREE_LIST_COUNT_EXPORT: &str = "__lsharp_gc_free_list_count";
 const INTERNAL_GC_COLLECTION_COUNT_EXPORT: &str = "__lsharp_gc_collection_count";
 const INTERNAL_GC_FREED_COUNT_EXPORT: &str = "__lsharp_gc_freed_count";
+const INTERNAL_GC_FREE_LIST_SCAN_STEPS_EXPORT: &str = "__lsharp_gc_free_list_scan_steps";
 const INTERNAL_GC_OBJECT_CAPACITY_EXPORT: &str = "__lsharp_gc_object_capacity";
 const INTERNAL_GC_COLLECT_EXPORT: &str = "__lsharp_gc_collect";
 
@@ -78,6 +85,8 @@ struct AllocatorGlobals {
     free_list_base_global_idx: u32,
     object_table_base_global_idx: u32,
     object_table_capacity_global_idx: u32,
+    free_class_heads_base_global_idx: u32,
+    free_list_scan_steps_global_idx: u32,
 }
 
 #[derive(Copy, Clone)]
@@ -93,6 +102,7 @@ struct CollectorGlobals {
     object_table_base_global_idx: u32,
     gc_collection_count_global_idx: u32,
     gc_freed_count_global_idx: u32,
+    free_class_heads_base_global_idx: u32,
 }
 
 #[derive(Copy, Clone)]
@@ -496,6 +506,8 @@ fn emit_wasm_wasi_with_options(
         free_list_base_global_idx: GC_FREE_LIST_BASE_GLOBAL_IDX,
         object_table_base_global_idx: GC_OBJECT_TABLE_BASE_GLOBAL_IDX,
         object_table_capacity_global_idx: GC_OBJECT_TABLE_CAPACITY_GLOBAL_IDX,
+        free_class_heads_base_global_idx: GC_FREE_CLASS_HEAD_GLOBAL_BASE_IDX,
+        free_list_scan_steps_global_idx: GC_FREE_LIST_SCAN_STEPS_GLOBAL_IDX,
     };
     let collector_globals = CollectorGlobals {
         heap_ptr_global_idx: HEAP_PTR_GLOBAL_IDX,
@@ -509,6 +521,7 @@ fn emit_wasm_wasi_with_options(
         object_table_base_global_idx: GC_OBJECT_TABLE_BASE_GLOBAL_IDX,
         gc_collection_count_global_idx: GC_COLLECTION_COUNT_GLOBAL_IDX,
         gc_freed_count_global_idx: GC_FREED_COUNT_GLOBAL_IDX,
+        free_class_heads_base_global_idx: GC_FREE_CLASS_HEAD_GLOBAL_BASE_IDX,
     };
     let mut memories = MemorySection::new();
     memories.memory(MemoryType {
@@ -622,6 +635,24 @@ fn emit_wasm_wasi_with_options(
             &wasm_encoder::ConstExpr::i32_const(0),
         );
     }
+    for _ in 0..GC_FREE_CLASS_COUNT {
+        globals.global(
+            GlobalType {
+                val_type: ValType::I32,
+                mutable: true,
+                shared: false,
+            },
+            &wasm_encoder::ConstExpr::i32_const(0),
+        );
+    }
+    globals.global(
+        GlobalType {
+            val_type: ValType::I32,
+            mutable: true,
+            shared: false,
+        },
+        &wasm_encoder::ConstExpr::i32_const(0),
+    );
     wasm_module.section(&globals);
 
     // === Export Section ===
@@ -692,6 +723,11 @@ fn emit_wasm_wasi_with_options(
         INTERNAL_GC_FREED_COUNT_EXPORT,
         ExportKind::Global,
         GC_FREED_COUNT_GLOBAL_IDX,
+    );
+    exports.export(
+        INTERNAL_GC_FREE_LIST_SCAN_STEPS_EXPORT,
+        ExportKind::Global,
+        GC_FREE_LIST_SCAN_STEPS_GLOBAL_IDX,
     );
     exports.export(
         INTERNAL_GC_OBJECT_CAPACITY_EXPORT,
@@ -1186,6 +1222,8 @@ fn emit_wasm_http_handler_core(module: &Module) -> Result<Vec<u8>, CodegenError>
         free_list_base_global_idx: GC_FREE_LIST_BASE_GLOBAL_IDX,
         object_table_base_global_idx: GC_OBJECT_TABLE_BASE_GLOBAL_IDX,
         object_table_capacity_global_idx: GC_OBJECT_TABLE_CAPACITY_GLOBAL_IDX,
+        free_class_heads_base_global_idx: GC_FREE_CLASS_HEAD_GLOBAL_BASE_IDX,
+        free_list_scan_steps_global_idx: GC_FREE_LIST_SCAN_STEPS_GLOBAL_IDX,
     };
     let collector_globals = CollectorGlobals {
         heap_ptr_global_idx: HEAP_PTR_GLOBAL_IDX,
@@ -1199,6 +1237,7 @@ fn emit_wasm_http_handler_core(module: &Module) -> Result<Vec<u8>, CodegenError>
         object_table_base_global_idx: GC_OBJECT_TABLE_BASE_GLOBAL_IDX,
         gc_collection_count_global_idx: GC_COLLECTION_COUNT_GLOBAL_IDX,
         gc_freed_count_global_idx: GC_FREED_COUNT_GLOBAL_IDX,
+        free_class_heads_base_global_idx: GC_FREE_CLASS_HEAD_GLOBAL_BASE_IDX,
     };
     let mut memories = MemorySection::new();
     memories.memory(MemoryType {
@@ -1311,6 +1350,24 @@ fn emit_wasm_http_handler_core(module: &Module) -> Result<Vec<u8>, CodegenError>
             &wasm_encoder::ConstExpr::i32_const(0),
         );
     }
+    for _ in 0..GC_FREE_CLASS_COUNT {
+        globals.global(
+            GlobalType {
+                val_type: ValType::I32,
+                mutable: true,
+                shared: false,
+            },
+            &wasm_encoder::ConstExpr::i32_const(0),
+        );
+    }
+    globals.global(
+        GlobalType {
+            val_type: ValType::I32,
+            mutable: true,
+            shared: false,
+        },
+        &wasm_encoder::ConstExpr::i32_const(0),
+    );
     wasm_module.section(&globals);
 
     let mut exports = ExportSection::new();
@@ -1636,7 +1693,114 @@ fn emit_print_i64_func(codes: &mut CodeSection) {
     codes.function(&f);
 }
 
-/// __alloc: free-list reuse を持つ allocator
+fn emit_free_class_index(f: &mut wasm_encoder::Function, size_local: u32, class_local: u32) {
+    use wasm_encoder::Instruction as W;
+
+    // まず oversize class を選び、下限を満たす小さい class で上書きする。
+    f.instruction(&W::I32Const(GC_FREE_CLASS_COUNT - 1));
+    f.instruction(&W::LocalSet(class_local));
+    for (idx, limit) in GC_FREE_CLASS_LIMITS.iter().enumerate().rev() {
+        f.instruction(&W::LocalGet(size_local));
+        f.instruction(&W::I32Const(*limit));
+        f.instruction(&W::I32LeU);
+        f.instruction(&W::If(wasm_encoder::BlockType::Empty));
+        f.instruction(&W::I32Const(idx as i32));
+        f.instruction(&W::LocalSet(class_local));
+        f.instruction(&W::End);
+    }
+}
+
+fn emit_free_class_capacity(f: &mut wasm_encoder::Function, size_local: u32, capacity_local: u32) {
+    use wasm_encoder::Instruction as W;
+
+    // bump allocation は従来の linear-memory ABI を保ち、要求された aligned size
+    // だけを進める。サイズ class は free-list の探索分岐にだけ使い、既存の
+    // heap_ptr/telemetry の差分を発生させない。
+    f.instruction(&W::LocalGet(size_local));
+    f.instruction(&W::LocalSet(capacity_local));
+}
+
+fn emit_small_free_class_pop(
+    f: &mut wasm_encoder::Function,
+    class_local: u32,
+    addr_local: u32,
+    capacity_local: u32,
+    next_local: u32,
+    free_class_heads_base_global_idx: u32,
+    free_list_count_global_idx: u32,
+) {
+    use wasm_encoder::{Instruction as W, MemArg};
+    let mem32 = |offset: u64| MemArg {
+        offset,
+        align: 2,
+        memory_index: 0,
+    };
+
+    // class 7 は oversize fallback の線形探索に残す。
+    for idx in 0..(GC_FREE_CLASS_COUNT - 1) {
+        f.instruction(&W::LocalGet(class_local));
+        f.instruction(&W::I32Const(idx));
+        f.instruction(&W::I32Eq);
+        f.instruction(&W::If(wasm_encoder::BlockType::Empty));
+        f.instruction(&W::GlobalGet(free_class_heads_base_global_idx + idx as u32));
+        f.instruction(&W::LocalSet(next_local));
+        f.instruction(&W::LocalGet(next_local));
+        f.instruction(&W::I32Eqz);
+        f.instruction(&W::If(wasm_encoder::BlockType::Empty));
+        f.instruction(&W::Else);
+        f.instruction(&W::LocalGet(next_local));
+        f.instruction(&W::LocalSet(addr_local));
+        f.instruction(&W::LocalGet(next_local));
+        f.instruction(&W::I32Load(mem32(4)));
+        f.instruction(&W::LocalSet(capacity_local));
+        f.instruction(&W::LocalGet(next_local));
+        f.instruction(&W::I32Load(mem32(0)));
+        f.instruction(&W::GlobalSet(free_class_heads_base_global_idx + idx as u32));
+        f.instruction(&W::GlobalGet(free_list_count_global_idx));
+        f.instruction(&W::I32Const(1));
+        f.instruction(&W::I32Sub);
+        f.instruction(&W::GlobalSet(free_list_count_global_idx));
+        f.instruction(&W::End);
+        f.instruction(&W::End);
+    }
+}
+
+fn emit_free_class_push(
+    f: &mut wasm_encoder::Function,
+    class_local: u32,
+    addr_local: u32,
+    capacity_local: u32,
+    next_local: u32,
+    free_class_heads_base_global_idx: u32,
+) {
+    use wasm_encoder::{Instruction as W, MemArg};
+    let mem32 = |offset: u64| MemArg {
+        offset,
+        align: 2,
+        memory_index: 0,
+    };
+
+    for idx in 0..GC_FREE_CLASS_COUNT {
+        f.instruction(&W::LocalGet(class_local));
+        f.instruction(&W::I32Const(idx));
+        f.instruction(&W::I32Eq);
+        f.instruction(&W::If(wasm_encoder::BlockType::Empty));
+        f.instruction(&W::GlobalGet(free_class_heads_base_global_idx + idx as u32));
+        f.instruction(&W::LocalSet(next_local));
+        // 既に解放された object の先頭 8 bytes を free-list node として使う。
+        f.instruction(&W::LocalGet(addr_local));
+        f.instruction(&W::LocalGet(next_local));
+        f.instruction(&W::I32Store(mem32(0)));
+        f.instruction(&W::LocalGet(addr_local));
+        f.instruction(&W::LocalGet(capacity_local));
+        f.instruction(&W::I32Store(mem32(4)));
+        f.instruction(&W::LocalGet(addr_local));
+        f.instruction(&W::GlobalSet(free_class_heads_base_global_idx + idx as u32));
+        f.instruction(&W::End);
+    }
+}
+
+/// __alloc: サイズクラス別 free-list と oversize fallback を持つ allocator
 fn emit_alloc_func(codes: &mut CodeSection, globals: AllocatorGlobals) {
     use wasm_encoder::{Instruction as W, MemArg};
 
@@ -1648,6 +1812,8 @@ fn emit_alloc_func(codes: &mut CodeSection, globals: AllocatorGlobals) {
         free_list_base_global_idx,
         object_table_base_global_idx,
         object_table_capacity_global_idx,
+        free_class_heads_base_global_idx,
+        free_list_scan_steps_global_idx,
     } = globals;
     let mem32 = |offset: u64| MemArg {
         offset,
@@ -1655,7 +1821,7 @@ fn emit_alloc_func(codes: &mut CodeSection, globals: AllocatorGlobals) {
         memory_index: 0,
     };
 
-    let mut f = wasm_encoder::Function::new(vec![(20, ValType::I32)]);
+    let mut f = wasm_encoder::Function::new(vec![(24, ValType::I32)]);
 
     // local1 = aligned size
     f.instruction(&W::LocalGet(0));
@@ -1665,12 +1831,113 @@ fn emit_alloc_func(codes: &mut CodeSection, globals: AllocatorGlobals) {
     f.instruction(&W::I32Const(-8));
     f.instruction(&W::I32And);
     f.instruction(&W::LocalSet(1));
+    // free-list node の next/capacity を置ける最小 block を保証する。
+    f.instruction(&W::LocalGet(1));
+    f.instruction(&W::I32Const(8));
+    f.instruction(&W::I32LtU);
+    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::I32Const(8));
+    f.instruction(&W::LocalSet(1));
+    f.instruction(&W::End);
 
     // local8 = allocated address (0 means not found in free-list)
     f.instruction(&W::I32Const(0));
     f.instruction(&W::LocalSet(8));
 
+    // local21 = class, local22 = physical capacity, local24 = linked-list next
+    emit_free_class_index(&mut f, 1, 21);
+    emit_small_free_class_pop(
+        &mut f,
+        21,
+        8,
+        22,
+        24,
+        free_class_heads_base_global_idx,
+        free_list_count_global_idx,
+    );
+
+    // oversize class は block size を確認する first-fit fallback とする。
+    f.instruction(&W::LocalGet(21));
+    f.instruction(&W::I32Const(GC_FREE_CLASS_COUNT - 1));
+    f.instruction(&W::I32Eq);
+    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::GlobalGet(
+        free_class_heads_base_global_idx + (GC_FREE_CLASS_COUNT as u32 - 1),
+    ));
+    f.instruction(&W::LocalSet(5));
+    f.instruction(&W::I32Const(0));
+    f.instruction(&W::LocalSet(6));
+    // local4 = oversize search hit flag (0 = miss, 1 = reused)
+    f.instruction(&W::I32Const(0));
+    f.instruction(&W::LocalSet(4));
+    f.instruction(&W::Block(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::Loop(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::LocalGet(5));
+    f.instruction(&W::I32Eqz);
+    f.instruction(&W::BrIf(1));
+    f.instruction(&W::LocalGet(5));
+    f.instruction(&W::I32Load(mem32(4)));
+    f.instruction(&W::LocalSet(22));
+    f.instruction(&W::GlobalGet(free_list_scan_steps_global_idx));
+    f.instruction(&W::I32Const(1));
+    f.instruction(&W::I32Add);
+    f.instruction(&W::GlobalSet(free_list_scan_steps_global_idx));
+    f.instruction(&W::LocalGet(22));
+    f.instruction(&W::LocalGet(1));
+    f.instruction(&W::I32LtU);
+    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::LocalGet(5));
+    f.instruction(&W::LocalSet(6));
+    f.instruction(&W::LocalGet(5));
+    f.instruction(&W::I32Load(mem32(0)));
+    f.instruction(&W::LocalSet(5));
+    f.instruction(&W::Br(0));
+    f.instruction(&W::Else);
+    f.instruction(&W::LocalGet(5));
+    f.instruction(&W::I32Load(mem32(0)));
+    f.instruction(&W::LocalSet(24));
+    f.instruction(&W::LocalGet(6));
+    f.instruction(&W::I32Eqz);
+    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::LocalGet(24));
+    f.instruction(&W::GlobalSet(
+        free_class_heads_base_global_idx + (GC_FREE_CLASS_COUNT as u32 - 1),
+    ));
+    f.instruction(&W::Else);
+    f.instruction(&W::LocalGet(6));
+    f.instruction(&W::LocalGet(24));
+    f.instruction(&W::I32Store(mem32(0)));
+    f.instruction(&W::End);
+    f.instruction(&W::LocalGet(5));
+    f.instruction(&W::LocalSet(8));
+    f.instruction(&W::I32Const(1));
+    f.instruction(&W::LocalSet(4));
+    f.instruction(&W::Br(2));
+    f.instruction(&W::End);
+    f.instruction(&W::End);
+    f.instruction(&W::End);
+    f.instruction(&W::LocalGet(4));
+    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::GlobalGet(free_list_count_global_idx));
+    f.instruction(&W::I32Const(1));
+    f.instruction(&W::I32Sub);
+    f.instruction(&W::GlobalSet(free_list_count_global_idx));
+    f.instruction(&W::End);
+    f.instruction(&W::End);
+
+    // free-list miss (または oversize miss) だけ class 境界まで予約する。
+    // 再利用時は free-list node に保存した実容量をそのまま使う。
+    f.instruction(&W::LocalGet(8));
+    f.instruction(&W::I32Eqz);
+    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
+    emit_free_class_capacity(&mut f, 1, 22);
+    f.instruction(&W::End);
+
     // free-list first-fit search
+    f.instruction(&W::Block(wasm_encoder::BlockType::Empty));
+    // 旧 table は新しい class heads と併用しない。コードは ABI 差分を
+    // 小さく保つため残すが、常に bump/class path へ進む。
+    f.instruction(&W::Br(0));
     f.instruction(&W::I32Const(0));
     f.instruction(&W::LocalSet(4));
     f.instruction(&W::Block(wasm_encoder::BlockType::Empty));
@@ -1756,6 +2023,7 @@ fn emit_alloc_func(codes: &mut CodeSection, globals: AllocatorGlobals) {
     f.instruction(&W::Br(1));
     f.instruction(&W::End);
     f.instruction(&W::End);
+    f.instruction(&W::End);
 
     // free-list miss -> bump allocate
     f.instruction(&W::LocalGet(8));
@@ -1764,7 +2032,7 @@ fn emit_alloc_func(codes: &mut CodeSection, globals: AllocatorGlobals) {
     f.instruction(&W::GlobalGet(heap_ptr_global_idx));
     f.instruction(&W::LocalSet(2));
     f.instruction(&W::LocalGet(2));
-    f.instruction(&W::LocalGet(1));
+    f.instruction(&W::LocalGet(22));
     f.instruction(&W::I32Add);
     f.instruction(&W::LocalSet(3));
     f.instruction(&W::LocalGet(3));
@@ -1900,6 +2168,9 @@ fn emit_alloc_func(codes: &mut CodeSection, globals: AllocatorGlobals) {
     f.instruction(&W::LocalGet(5));
     f.instruction(&W::I32Const(GC_MARK_UNMARKED));
     f.instruction(&W::I32Store(mem32(8)));
+    f.instruction(&W::LocalGet(5));
+    f.instruction(&W::LocalGet(22));
+    f.instruction(&W::I32Store(mem32(12)));
     f.instruction(&W::GlobalGet(object_count_global_idx));
     f.instruction(&W::I32Const(1));
     f.instruction(&W::I32Add);
@@ -2072,6 +2343,9 @@ fn emit_gc_collect_func(codes: &mut CodeSection, globals: CollectorGlobals) {
     const NEW_END_LOCAL: u32 = 28;
     const GROW_PAGES_LOCAL: u32 = 29;
     const GROW_RESULT_LOCAL: u32 = 30;
+    const OBJ_CAPACITY_LOCAL: u32 = 31;
+    const CLASS_INDEX_LOCAL: u32 = 32;
+    const NEXT_FREE_LOCAL: u32 = 33;
 
     let CollectorGlobals {
         heap_ptr_global_idx,
@@ -2085,6 +2359,7 @@ fn emit_gc_collect_func(codes: &mut CodeSection, globals: CollectorGlobals) {
         object_table_base_global_idx,
         gc_collection_count_global_idx,
         gc_freed_count_global_idx,
+        free_class_heads_base_global_idx,
     } = globals;
     let mem32 = |offset: u64| MemArg {
         offset,
@@ -2101,6 +2376,7 @@ fn emit_gc_collect_func(codes: &mut CodeSection, globals: CollectorGlobals) {
         (19, ValType::I32),
         (3, ValType::I64),
         (9, ValType::I32),
+        (3, ValType::I32),
     ]);
 
     // mark bit をクリアしてから root stack を seed に fixed-point で trace する。
@@ -2192,6 +2468,19 @@ fn emit_gc_collect_func(codes: &mut CodeSection, globals: CollectorGlobals) {
     f.instruction(&W::LocalGet(ENTRY_PTR_LOCAL));
     f.instruction(&W::I32Load(mem32(8)));
     f.instruction(&W::LocalSet(MARK_STATE_LOCAL));
+    f.instruction(&W::LocalGet(ENTRY_PTR_LOCAL));
+    f.instruction(&W::I32Load(mem32(4)));
+    f.instruction(&W::LocalSet(OBJ_SIZE_LOCAL));
+    f.instruction(&W::LocalGet(ENTRY_PTR_LOCAL));
+    f.instruction(&W::I32Load(mem32(12)));
+    f.instruction(&W::LocalSet(OBJ_CAPACITY_LOCAL));
+    f.instruction(&W::LocalGet(OBJ_CAPACITY_LOCAL));
+    f.instruction(&W::I32Const(8));
+    f.instruction(&W::I32LtU);
+    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::LocalGet(OBJ_SIZE_LOCAL));
+    f.instruction(&W::LocalSet(OBJ_CAPACITY_LOCAL));
+    f.instruction(&W::End);
 
     f.instruction(&W::LocalGet(MARK_STATE_LOCAL));
     f.instruction(&W::I32Const(GC_MARK_PENDING));
@@ -2464,6 +2753,16 @@ fn emit_gc_collect_func(codes: &mut CodeSection, globals: CollectorGlobals) {
     f.instruction(&W::LocalGet(ENTRY_PTR_LOCAL));
     f.instruction(&W::I32Load(mem32(8)));
     f.instruction(&W::LocalSet(MARK_STATE_LOCAL));
+    f.instruction(&W::LocalGet(ENTRY_PTR_LOCAL));
+    f.instruction(&W::I32Load(mem32(12)));
+    f.instruction(&W::LocalSet(OBJ_CAPACITY_LOCAL));
+    f.instruction(&W::LocalGet(OBJ_CAPACITY_LOCAL));
+    f.instruction(&W::I32Const(8));
+    f.instruction(&W::I32LtU);
+    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::LocalGet(OBJ_SIZE_LOCAL));
+    f.instruction(&W::LocalSet(OBJ_CAPACITY_LOCAL));
+    f.instruction(&W::End);
 
     f.instruction(&W::LocalGet(MARK_STATE_LOCAL));
     f.instruction(&W::If(wasm_encoder::BlockType::Empty));
@@ -2482,11 +2781,35 @@ fn emit_gc_collect_func(codes: &mut CodeSection, globals: CollectorGlobals) {
     f.instruction(&W::LocalGet(ENTRY_PTR_LOCAL));
     f.instruction(&W::I32Const(GC_MARK_UNMARKED));
     f.instruction(&W::I32Store(mem32(8)));
+    f.instruction(&W::LocalGet(ENTRY_PTR_LOCAL));
+    f.instruction(&W::LocalGet(OBJ_CAPACITY_LOCAL));
+    f.instruction(&W::I32Store(mem32(12)));
     f.instruction(&W::LocalGet(WRITE_IDX_LOCAL));
     f.instruction(&W::I32Const(1));
     f.instruction(&W::I32Add);
     f.instruction(&W::LocalSet(WRITE_IDX_LOCAL));
     f.instruction(&W::Else);
+    emit_free_class_index(&mut f, OBJ_CAPACITY_LOCAL, CLASS_INDEX_LOCAL);
+    emit_free_class_push(
+        &mut f,
+        CLASS_INDEX_LOCAL,
+        OBJ_ADDR_LOCAL,
+        OBJ_CAPACITY_LOCAL,
+        NEXT_FREE_LOCAL,
+        free_class_heads_base_global_idx,
+    );
+    f.instruction(&W::GlobalGet(free_list_count_global_idx));
+    f.instruction(&W::I32Const(1));
+    f.instruction(&W::I32Add);
+    f.instruction(&W::GlobalSet(free_list_count_global_idx));
+    f.instruction(&W::LocalGet(FREED_THIS_CYCLE_LOCAL));
+    f.instruction(&W::I32Const(1));
+    f.instruction(&W::I32Add);
+    f.instruction(&W::LocalSet(FREED_THIS_CYCLE_LOCAL));
+    // 旧 free-list table の grow/append 経路は後方互換用に残すが、
+    // サイズクラス node を登録した後は実行しない。
+    f.instruction(&W::Block(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::Br(0));
     f.instruction(&W::GlobalGet(free_list_count_global_idx));
     f.instruction(&W::GlobalGet(free_list_capacity_global_idx));
     f.instruction(&W::I32GeU);
@@ -2587,6 +2910,7 @@ fn emit_gc_collect_func(codes: &mut CodeSection, globals: CollectorGlobals) {
     f.instruction(&W::I32Const(1));
     f.instruction(&W::I32Add);
     f.instruction(&W::LocalSet(FREED_THIS_CYCLE_LOCAL));
+    f.instruction(&W::End);
     f.instruction(&W::End);
 
     f.instruction(&W::LocalGet(READ_IDX_LOCAL));

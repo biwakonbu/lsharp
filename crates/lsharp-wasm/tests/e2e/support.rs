@@ -86,6 +86,7 @@ pub(crate) struct RuntimeTelemetry {
     pub(crate) gc_collection_count: i32,
     pub(crate) gc_freed_count: i32,
     pub(crate) gc_free_list_count: i32,
+    pub(crate) gc_free_list_scan_steps: i32,
     pub(crate) gc_live_alloc_count: i32,
     pub(crate) root_stack_top: i32,
     pub(crate) root_stack_base: i32,
@@ -584,6 +585,8 @@ fn read_runtime_telemetry(
     let gc_collection_count = read_i32_global(instance, store, "__lsharp_gc_collection_count");
     let gc_freed_count = read_i32_global(instance, store, "__lsharp_gc_freed_count");
     let gc_free_list_count = read_i32_global(instance, store, "__lsharp_gc_free_list_count");
+    let gc_free_list_scan_steps =
+        read_i32_global(instance, store, "__lsharp_gc_free_list_scan_steps");
     let gc_live_alloc_count = read_i32_global(instance, store, "__lsharp_gc_live_alloc_count");
     let root_stack_top = read_i32_global(instance, store, "__lsharp_root_stack_top");
     let root_stack_base = read_i32_global(instance, store, "__lsharp_root_stack_base");
@@ -603,6 +606,7 @@ fn read_runtime_telemetry(
         gc_collection_count,
         gc_freed_count,
         gc_free_list_count,
+        gc_free_list_scan_steps,
         gc_live_alloc_count,
         root_stack_top,
         root_stack_base,

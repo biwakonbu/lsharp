@@ -95,3 +95,17 @@ G1 (意図的に heap range へ入る i64 値の false-mark) は documented limi
 ## ステータス
 
 設計 (2026-06-12 起草、同日コード検証に基づき具体化)。着手時は TODO.md に Phase A-3 / B-2 として項目を作成する。
+
+2026-07-25 時点で Phase B-2 の Rust/WASI verified slice を実装した。`__alloc` は
+16/32/64/128/256/512/1024 bytes と oversize の 8 class に分かれ、small class は
+class head の pop、oversize は従来互換の first-fit scan を使う。free node は解放済み
+block の payload 先頭 8 bytes (`next`, `capacity`) に保存し、GC sweep は object table
+の physical capacity を読み直してから class を選ぶ。bump allocation は既存の
+`heap_ptr` / telemetry ABI を保つため aligned requested size だけを物理容量とする。
+`__lsharp_gc_free_list_scan_steps` で oversize scan を観測できる。
+
+Evidence: `e2e::runtime_allocator_size_classes::test_e2e_runtime_allocator_reuses_small_blocks_without_linear_scan`、
+`e2e::runtime_allocator_size_classes::test_e2e_runtime_allocator_uses_oversize_fallback_scan`、
+`cargo check -p lsharp-wasm --tests`。これは Rust driver が生成した core-WASI Wasm の
+verified slice であり、I-03 の動的 grow、HTTP/component parity、native stage0
+(Mac/Linux)、CI artifact の scan-step 集計、D-10 sentinel の再評価は未完了とする。

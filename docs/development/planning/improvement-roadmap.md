@@ -88,7 +88,7 @@ A-2 と A-3 は独立に並行可。
 | # | 作業 | 対象 issue | 設計 |
 |---|------|-----------|------|
 | B-1 | WasmGC バックエンド実装 (v2-07 の段階移行: Records/ADT → Strings → Closures)。i64 フォールバック TODO (emit.rs) の解消 | D-01, D-02, D-03, D-04, D-06, D-09 | imp-01 |
-| B-2 | GC フリーリストのサイズクラス化 (線形探索の解消) | I-04 | imp-03 |
+| B-2 | GC フリーリストのサイズクラス化 (線形探索の解消) — Rust/WASI verified slice (2026-07-25); oversize/native/component/metrics parity pending | I-04 | imp-03 |
 | B-3 | 正規表現エンジン (WG-2) による `matches` 制約の完全化 | D-05 | imp-08 (done) |
 | B-4 | GC rooting 規約の明文化と lint 化: 「heap 値を helper 呼び出しを跨いで保持する場合は root する」規律を selfhost コード規約 + 契約テストとして固定 | I-07 | imp-07 |
 | B-5 | (任意) G1 precise discrimination の再評価 | D-10 | imp-03 |
