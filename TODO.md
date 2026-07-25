@@ -14,11 +14,13 @@
   `IntentGraph` node registry へ typed projection する。ID 省略、wire kind mismatch、duplicate ID
   は fail-closed とし、source adapter は最初の宣言 span と重複宣言 span を含む
   project-level diagnostic を返す。`motivates` / `constrained-by` / `tested-by` の source edge と
-  required fields を持つ evidence record は接続済みだが、ID 省略の命名規則、project manifest
-  との完全統合、selfhost/native parity は残件。
+  required fields を持つ evidence record は接続済みだが、project manifest との完全統合、
+  selfhost/native parity は残件。ID 省略は自動命名せず `LS0101` で拒否する方針を
+  `docs/adr/decisions-v0.2-source-intent-id-policy.md` に固定した。
   Evidence: `crates/lsharp-syntax/tests/intent_metadata.rs`,
   `crates/lsharp-types/tests/validation_source.rs`（nested duplicate span diagnostic を含む）、
-  `docs/adr/decisions-v0.2-source-intent-nodes.md`。
+  `docs/adr/decisions-v0.2-source-intent-nodes.md`,
+  `docs/adr/decisions-v0.2-source-intent-id-policy.md`。
   2026-07-25 の selfhost parser slice では、`defn` metadata の
   `intent` / `claim` / `assumption` / `open-question` と node/edge の2-string payloadを
   ordered form の kind・payload・directive span として保持する。`intent` / `claim` / `motivates`
