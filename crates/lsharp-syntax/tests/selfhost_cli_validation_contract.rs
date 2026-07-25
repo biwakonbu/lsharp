@@ -105,11 +105,21 @@ fn selfhost_cli_validation_surface_is_registered() {
         .map(|offset| node_json_start + offset)
         .expect("node JSON helper の終端を特定できるべき");
     let node_json = &evidence[node_json_start..node_json_end];
+    let fields_root = node_json
+        .find("(root_push fields5)")
+        .expect("node JSON helper は最終 fields を root するべき");
+    let fields_wrap = node_json
+        .find("(validation-json-object-wrap fields5)")
+        .expect("node JSON helper は最終 fields を object へ wrap するべき");
+    let first_pop = node_json
+        .find("(root_pop)")
+        .expect("node JSON helper は root を解放するべき");
     assert!(
         node_json.contains("(root_push node)")
             && node_json.contains("(root_push fields5)")
-            && node_json.contains("(root_pop)"),
-        "native x86 の node JSON helper は入力 node と最終 fields を GC root として保持するべき"
+            && fields_root < fields_wrap
+            && fields_wrap < first_pop,
+        "native x86 の node JSON helper は wrap 完了まで入力 node と最終 fields を GC root として保持するべき"
     );
     let manifest_start = evidence
         .find("(defn validation-source-manifest-json [graph]")

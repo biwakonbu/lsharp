@@ -436,9 +436,9 @@
           (validation-source-span-json (source-node-start node) (source-node-end node))))]
       (do
         (root_push fields5)
-        (root_pop)
         (let [result (validation-json-object-wrap fields5)]
           (do
+            (root_pop)
             (root_pop)
             result))))))
 
