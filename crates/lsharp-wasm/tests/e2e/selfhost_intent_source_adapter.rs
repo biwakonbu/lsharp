@@ -277,3 +277,38 @@ fn test_e2e_selfhost_source_adapter_rejects_unregistered_evidence_edge() {
         "evidence registry 未接続の contradicts は明示 boundary error にするべき"
     );
 }
+
+/// EC-M2-01: fail-closed error は現在の directive span と関連する最初の span を返す。
+#[test]
+fn test_e2e_selfhost_source_adapter_reports_error_spans() {
+    let harness = r#"
+(defn main []
+  (let [duplicate (source-graph-from-program
+                    (parse-program "(defn duplicate [] :intent \"intent:checkout/cancel\" \"first\" :intent \"intent:checkout/cancel\" \"second\" true)"))
+        duplicate-error (source-graph-result-error duplicate)
+        missing (source-graph-from-program
+                  (parse-program "(defn missing [] :claim \"claim:checkout/rejects-shipped\" \"Shipped orders are rejected\" :motivates \"intent:checkout/absent\" \"claim:checkout/rejects-shipped\" true)"))
+        missing-error (source-graph-result-error missing)]
+    (do
+      (print (source-graph-error-code duplicate-error))
+      (print (source-graph-error-start duplicate-error))
+      (print (source-graph-error-end duplicate-error))
+      (print (source-graph-error-related-start duplicate-error))
+      (print (source-graph-error-related-end duplicate-error))
+      (print (source-graph-error-code missing-error))
+      (print (source-graph-error-start missing-error))
+      (print (source-graph-error-end missing-error))
+      (print (source-graph-error-related-start missing-error))
+      (print (source-graph-error-related-end missing-error))
+      0)))
+"#;
+
+    let output = run_source_adapter_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["4", "60", "101", "19", "59", "5", "87", "155", "-1", "-1"],
+        "selfhost source adapter は現在の directive span と duplicate の first span を保持するべき"
+    );
+}

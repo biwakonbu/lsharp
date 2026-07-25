@@ -36,7 +36,8 @@
   登録する。endpoint の wire kind mismatch、不正 ID、orphan reference は directive span 付きで
   fail-closed に拒否する。selfhost `Tools.Validation.IntentSource` も ordered source form を同じ
   node/edge record へ投影し、duplicate、orphan、未接続 evidence edge を fail-closed に拒否する。
-  nested `module` / `private` / `impl` の宣言順と node/edge directive span も selfhost E2E で確認済み。
+  nested `module` / `private` / `impl` の宣言順と node/edge directive span、fail-closed error の現在 span
+  と duplicate の first span も selfhost E2E で確認済み。
   Contract の実体定義、`:evidence` record の selfhost parser、optional な shrink/coverage source
   fields は contract/evidence registry の入力境界が残件。
   Evidence: `crates/lsharp-syntax/tests/intent_edges.rs`,

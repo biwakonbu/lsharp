@@ -20,6 +20,9 @@ endpoint を解決し、欠落を成功として隠さない producer が必要�
 - node record は `[kind, stable-id, text, span-start, span-end]` とする。
 - edge record は `[relation, left-id, right-id, span-start, span-end]` とする。
 - graph は `[nodes, edges]`、結果は `[status, graph-or-error]` とする。
+- error record は `[code, form-kind, offending-id, span-start, span-end, related-start, related-end]`
+  とし、現在の directive span を常に保持する。duplicate node だけは related span に最初の宣言を
+  入れ、関連 span がない error は `-1/-1` とする。
 - parser AST の module/private/impl body を宣言順に再帰走査し、node を全て登録してから edge を解決する。
 - node は Intent / Claim / Assumption / OpenQuestion の wire prefix と本文を検証する。
 - edge は `motivates`、`constrained-by`、`tested-by` の typed endpoint を検証する。
@@ -40,6 +43,7 @@ source form の順序と directive span は record に保持し、後続の mani
 - `test_e2e_selfhost_source_adapter_rejects_duplicate_nodes`
 - `test_e2e_selfhost_source_adapter_rejects_missing_edge_node`
 - `test_e2e_selfhost_source_adapter_rejects_unregistered_evidence_edge`
+- `test_e2e_selfhost_source_adapter_reports_error_spans`: duplicate の first/current span と orphan edge span
 - `cargo test -p lsharp-wasm --test e2e selfhost_intent_source_adapter -- --nocapture`
 
 ## Residual risk and boundary
