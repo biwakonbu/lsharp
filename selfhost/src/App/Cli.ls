@@ -281,6 +281,11 @@
     fields4 (docjson-append fields3 (docjson-int-field "independent_reviews" independent-reviews))
     fields5 (docjson-append fields4 (docjson-int-field "contradicting_observations" contradicting-observations))]
     (docjson-object-wrap fields5)))
+(defn validation-option-manifest-path [opts] (vector-get opts 1))
+(defn validation-source-write-manifest [graph manifest-path]
+  (if (> (string-length manifest-path) 0)
+    (write-file manifest-path (validation-source-manifest-json graph))
+    0))
 (defn run-validate-source [src opts]
   (let [program (parse-program src)
     graph-result (source-evidence-graph-from-program program)]
@@ -293,17 +298,23 @@
               (int-to-string (source-graph-error-code error))))
           (exit-code-compile-error)))
       (let [graph (source-result-value graph-result)
+        manifest-path (validation-option-manifest-path opts)
         state (validation-source-state program)
         metrics (validation-evidence-metrics graph)
         independent-reviews (vector-get metrics 0)
         contradicting-observations (vector-get metrics 1)
         report (validation-source-report-json state independent-reviews contradicting-observations)]
-        (do
-          (print-string report)
-          (print-string "\n")
-          (if (> contradicting-observations 0)
-            (exit-code-compile-error)
-            (exit-code-runtime-error)))))))
+        (if (and (> (string-length manifest-path) 0)
+            (< (validation-source-write-manifest graph manifest-path) 0))
+          (do
+            (cli-stderr "source validation manifest write failed")
+            (exit-code-compile-error))
+          (do
+            (print-string report)
+            (print-string "\n")
+            (if (> contradicting-observations 0)
+              (exit-code-compile-error)
+              (exit-code-runtime-error))))))))
 (defn run-validate [file-path opts]
   (if (file-exists? file-path)
     (run-validate-source (read-file file-path) opts)
@@ -1465,7 +1476,7 @@
                   (exit-unknown-command))))))))))
 (defn dispatch-command [cmd-id file-path opts] (if (= cmd-id (cmd-parse)) (run-parse file-path opts) (if (= cmd-id (cmd-check)) (run-check file-path opts) (if (= cmd-id (cmd-compile)) (run-compile file-path opts) (if (= cmd-id (cmd-build)) (run-build file-path opts) (if (= cmd-id (cmd-test)) (run-test file-path opts) (if (= cmd-id (cmd-review)) (run-review file-path opts) (dispatch-command-tail cmd-id file-path opts))))))))
 (defn help-text [] "Usage: lsharp <command> [options] Commands: parse check compile build test review doc-ack doc-check install repl lsp fmt doc validate")
-(defn validate-help-text [] "validate --source <file> --format json - Validate source intent graph")
+(defn validate-help-text [] "validate --source <file> --format json [--emit-manifest <output.json>] - Validate source intent graph")
 (defn version-text [] "lsharp 0.1.0")
 (defn show-help [] (do (print-string (help-text)) (exit-success)))
 (defn show-version [] (do (print-string (version-text)) (exit-success)))
@@ -1496,19 +1507,75 @@
 (defn run-command-with-cli-options [cmd-name file-path result] (let [target (cli-option-result-target result) output-path (cli-option-result-output-path result)] (if (> (string-length output-path) 0) (if (string-eq cmd-name "compile") (run-compile-output file-path output-path target) (if (string-eq cmd-name "build") (run-build-output file-path output-path target) (run-command cmd-name file-path target))) (run-command cmd-name file-path target))))
 (defn validate-option-json [] 1)
 (defn validate-option-invalid [] (- 0 1))
+(defn validate-options-result [status manifest-path detail source-path]
+  (let [result (vector-new 4)
+    with-status (push-int-vector-local result status)
+    with-path (push-object-vector-local with-status manifest-path)
+    with-detail (push-object-vector-local with-path detail)]
+    (push-object-vector-local with-detail source-path)))
+(defn validate-options-status [result] (vector-get result 0))
+(defn validate-options-manifest-path [result] (vector-get result 1))
+(defn validate-options-detail [result] (vector-get result 2))
+(defn validate-options-source-path [result] (vector-get result 3))
+(defn parse-validate-cli-options-loop [idx argc source-path manifest-path source-seen format-seen]
+  (if (>= idx argc)
+    (if (and (= source-seen 1) (= format-seen 1))
+      (validate-options-result (validate-option-json) manifest-path "" source-path)
+      (validate-options-result
+        (validate-option-invalid)
+        manifest-path
+        "validate requires --source <file> --format json"
+        source-path))
+    (let [flag (command-line-arg idx)]
+      (if (or
+            (or (string-eq flag "--source") (format-option-flag flag))
+            (string-eq flag "--emit-manifest"))
+        (if (>= (+ idx 1) argc)
+          (validate-options-result (validate-option-invalid) manifest-path flag source-path)
+          (let [value (command-line-arg (+ idx 1))]
+            (if (string-eq flag "--emit-manifest")
+              (if (> (string-length value) 0)
+                (parse-validate-cli-options-loop
+                  (+ idx 2)
+                  argc
+                  source-path
+                  value
+                  source-seen
+                  format-seen)
+                (validate-options-result (validate-option-invalid) manifest-path flag source-path))
+              (if (format-option-flag flag)
+                (if (string-eq value "json")
+                  (parse-validate-cli-options-loop
+                    (+ idx 2)
+                    argc
+                    source-path
+                    manifest-path
+                    source-seen
+                    1)
+                  (validate-options-result (validate-option-invalid) manifest-path value source-path))
+                (if (> (string-length value) 0)
+                  (parse-validate-cli-options-loop
+                    (+ idx 2)
+                    argc
+                    value
+                    manifest-path
+                    1
+                    format-seen)
+                  (validate-options-result (validate-option-invalid) manifest-path flag source-path))))))
+        (validate-options-result (validate-option-invalid) manifest-path flag source-path)))))
+(defn parse-validate-cli-options [argc]
+  (parse-validate-cli-options-loop 1 argc "" "" 0 0))
 (defn parse-validate-cli-option [argc]
-  (if (and (= argc 5)
-      (and (string-eq (command-line-arg 1) "--source")
-        (and (format-option-flag (command-line-arg 3))
-          (string-eq (command-line-arg 4) "json"))))
-    (validate-option-json)
-    (validate-option-invalid)))
+  (let [result (parse-validate-cli-options argc)]
+    (if (= (validate-options-status result) (validate-option-json))
+      (validate-option-json)
+      (validate-option-invalid))))
 (defn run-validate-command [argc]
-  (let [option (parse-validate-cli-option argc)]
-    (if (>= option 0)
-      (run-validate (command-line-arg 2) option)
+  (let [options (parse-validate-cli-options argc)]
+    (if (= (validate-options-status options) (validate-option-json))
+      (run-validate (validate-options-source-path options) options)
       (do
-        (cli-stderr "validate requires --source <file> --format json")
+        (cli-stderr (string-concat "validate option error: " (validate-options-detail options)))
         (exit-code-compile-error)))))
 (defn doc-cli-option-none [] 0)
 (defn doc-cli-option-invalid [] (- 0 1))

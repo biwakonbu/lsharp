@@ -1,5 +1,6 @@
 (module Tools.Validation.Evidence)
 (import Tools.Validation.IntentSource)
+(import Tools.Lsp.JsonRpc)
 
 ;; Rust の EvidenceForm を将来の selfhost parser から渡せる registry 境界。
 ;; form: [15, payload, span-start, span-end]
@@ -357,6 +358,234 @@
 
 (defn source-evidence-graph-registry [graph]
   (vector-get graph 2))
+
+(defn validation-json-object-wrap [body]
+  (string-concat "{" (string-concat body "}")))
+(defn validation-json-array-wrap [body]
+  (string-concat "[" (string-concat body "]")))
+(defn validation-json-append [out piece]
+  (if (= (string-length out) 0) piece (string-concat out (string-concat "," piece))))
+(defn validation-json-field [name value-json]
+  (string-concat "\"" (string-concat name (string-concat "\":" value-json))))
+(defn validation-json-string-literal [value]
+  (string-concat "\"" (string-concat (json-escape-string value) "\"")))
+(defn validation-json-string-field [name value]
+  (validation-json-field name (validation-json-string-literal value)))
+(defn validation-json-int-field [name value]
+  (validation-json-field name (int-to-string value)))
+(defn validation-json-array-field [name value-json]
+  (validation-json-field name value-json))
+(defn validation-json-object-field [name value-json]
+  (validation-json-field name value-json))
+
+;; source graph を Rust の version 1 manifest serializer と同じ wire shape へ投影する。
+(defn validation-source-node-kind-text [kind]
+  (if (= kind (source-node-intent)) "intent"
+    (if (= kind (source-node-claim)) "claim"
+      (if (= kind (source-node-assumption)) "assumption" "open-question"))))
+
+(defn validation-source-edge-relation-text [relation]
+  (if (= relation (source-edge-motivates)) "motivates"
+    (if (= relation (source-edge-constrained-by)) "constrained-by"
+      (if (= relation (source-edge-tested-by)) "tested-by"
+        (if (= relation (source-edge-supports)) "supports" "contradicts")))))
+
+(defn validation-source-id-json [wire-id]
+  (let [len (string-length wire-id)
+    colon (source-find-char wire-id 58 0 len)
+    slash (if (>= colon 0) (source-find-char wire-id 47 (+ colon 1) len) -1)
+    ns-text (if (and (> colon 0) (> slash colon)) (substring wire-id (+ colon 1) slash) "")
+    key-text (if (and (> slash 0) (< slash len)) (substring wire-id (+ slash 1) len) "")
+    fields0 ""
+    fields1 (validation-json-append fields0 (validation-json-string-field "namespace" ns-text))
+    fields2 (validation-json-append fields1 (validation-json-string-field "key" key-text))]
+    (validation-json-object-wrap fields2)))
+
+(defn validation-source-span-json [start end]
+  (let [fields0 ""
+    fields1 (validation-json-append fields0 (validation-json-int-field "start" start))
+    fields2 (validation-json-append fields1 (validation-json-int-field "end" end))]
+    (validation-json-object-wrap fields2)))
+
+(defn validation-source-node-json [node]
+  (let [fields0 ""
+    fields1 (validation-json-append fields0
+      (validation-json-string-field "kind" (validation-source-node-kind-text (source-node-kind node))))
+    fields2 (validation-json-append fields1
+      (validation-json-string-field "namespace"
+        (let [wire-id (source-node-id node)
+          colon (source-find-char wire-id 58 0 (string-length wire-id))]
+          (substring wire-id (+ colon 1)
+            (source-find-char wire-id 47 (+ colon 1) (string-length wire-id))))))
+    fields3 (validation-json-append fields2
+      (validation-json-string-field "key"
+        (let [wire-id (source-node-id node)
+          colon (source-find-char wire-id 58 0 (string-length wire-id))
+          slash (source-find-char wire-id 47 (+ colon 1) (string-length wire-id))]
+          (substring wire-id (+ slash 1) (string-length wire-id)))))
+    fields4 (validation-json-append fields3 (validation-json-string-field "text" (source-node-text node)))
+    fields5 (validation-json-append fields4
+      (validation-json-object-field "span"
+        (validation-source-span-json (source-node-start node) (source-node-end node))))]
+    (validation-json-object-wrap fields5)))
+
+(defn validation-source-nodes-json-loop [nodes idx len out]
+  (if (>= idx len)
+    out
+    (validation-source-nodes-json-loop
+      nodes
+      (+ idx 1)
+      len
+      (validation-json-append out (validation-source-node-json (vector-get nodes idx))))))
+
+(defn validation-source-int-array-json-loop [items idx len out]
+  (if (>= idx len)
+    out
+    (validation-source-int-array-json-loop
+      items
+      (+ idx 1)
+      len
+      (validation-json-append out (int-to-string (vector-get items idx))))))
+
+(defn validation-source-coverage-json-loop [coverage idx len out]
+  (if (>= idx len)
+    out
+    (let [entry (vector-get coverage idx)
+      bucket (vector-get entry 0)
+      count (vector-get entry 1)]
+      (validation-source-coverage-json-loop
+        coverage
+        (+ idx 1)
+        len
+        (validation-json-append out (validation-json-int-field bucket count))))))
+
+(defn validation-source-subject-kind-text [subject]
+  (let [kind (source-evidence-subject-kind subject)]
+    (if (= kind (source-node-intent)) "intent"
+      (if (= kind (source-node-claim)) "claim" "contract"))))
+
+(defn validation-source-subject-json [subject]
+  (let [fields0 (validation-json-string-field "kind" (validation-source-subject-kind-text subject))
+    id-object-fields (string-concat
+      (validation-json-string-field "namespace"
+        (let [wire-id subject
+          colon (source-find-char wire-id 58 0 (string-length wire-id))
+          slash (source-find-char wire-id 47 (+ colon 1) (string-length wire-id))]
+          (substring wire-id (+ colon 1) slash)))
+      (string-concat ","
+        (validation-json-string-field "key"
+          (let [wire-id subject
+            colon (source-find-char wire-id 58 0 (string-length wire-id))
+            slash (source-find-char wire-id 47 (+ colon 1) (string-length wire-id))]
+            (substring wire-id (+ slash 1) (string-length wire-id))))))]
+    (validation-json-object-wrap (string-concat fields0 (string-concat "," id-object-fields)))))
+
+(defn validation-source-evidence-json [evidence-record]
+  (let [id (source-evidence-record-id evidence-record)
+    fields0 ""
+    fields1 (validation-json-append fields0
+      (validation-json-string-field "namespace"
+        (let [colon (source-find-char id 58 0 (string-length id))
+          slash (source-find-char id 47 (+ colon 1) (string-length id))]
+          (substring id (+ colon 1) slash))))
+    fields2 (validation-json-append fields1
+      (validation-json-string-field "key"
+        (let [colon (source-find-char id 58 0 (string-length id))
+          slash (source-find-char id 47 (+ colon 1) (string-length id))]
+          (substring id (+ slash 1) (string-length id)))))
+    fields3 (validation-json-append fields2 (validation-json-string-field "method" (source-evidence-record-method evidence-record)))
+    fields4 (validation-json-append fields3
+      (validation-json-object-field "subject" (validation-source-subject-json (source-evidence-record-subject evidence-record))))
+    fields5 (validation-json-append fields4 (validation-json-string-field "outcome" (source-evidence-record-outcome evidence-record)))
+    sampling0 (validation-json-string-field "runner" (source-evidence-record-runner evidence-record))
+    sampling1 (validation-json-append sampling0 (validation-json-string-field "target" (source-evidence-record-target evidence-record)))
+    sampling2 (validation-json-append sampling1 (validation-json-string-field "source_commit" (source-evidence-record-source-commit evidence-record)))
+    sampling3 (validation-json-append sampling2 (validation-json-string-field "artifact_digest" (source-evidence-record-artifact-digest evidence-record)))
+    sample-fields0 (validation-json-int-field "cases" (source-evidence-record-cases evidence-record))
+    sample-fields1 (validation-json-append sample-fields0 (validation-json-int-field "seed" (source-evidence-record-seed evidence-record)))
+    sample-fields2 (validation-json-append sample-fields1 (validation-json-string-field "generator" (source-evidence-record-generator evidence-record)))
+    sample-fields3 (validation-json-append sample-fields2
+      (validation-json-array-field "shrinks"
+        (validation-json-array-wrap
+          (validation-source-int-array-json-loop
+            (source-evidence-record-shrinks evidence-record)
+            0
+            (vector-length (source-evidence-record-shrinks evidence-record))
+            ""))))
+    sample-fields4 (validation-json-append sample-fields3
+      (validation-json-object-field "coverage"
+        (validation-json-object-wrap
+          (validation-source-coverage-json-loop
+            (source-evidence-record-coverage evidence-record)
+            0
+            (vector-length (source-evidence-record-coverage evidence-record))
+            ""))))
+    execution-fields (string-concat sampling3
+      (string-concat "," (validation-json-object-field "sampling" (validation-json-object-wrap sample-fields4))))
+    fields6 (validation-json-append fields5 (validation-json-object-field "execution" (validation-json-object-wrap execution-fields)))
+    provenance0 (validation-json-string-field "producer" (source-evidence-record-producer evidence-record))
+    provenance1 (validation-json-append provenance0 (validation-json-string-field "tool_version" (source-evidence-record-tool-version evidence-record)))
+    provenance2 (validation-json-append provenance1 (validation-json-string-field "timestamp" (source-evidence-record-timestamp evidence-record)))
+    fields7 (validation-json-append fields6 (validation-json-object-field "provenance" (validation-json-object-wrap provenance2)))
+    fields8 (validation-json-append fields7 (validation-json-string-field "independence" (source-evidence-record-independence evidence-record)))]
+    (validation-json-object-wrap fields8)))
+
+(defn validation-source-evidence-json-loop [registry idx len out]
+  (if (>= idx len)
+    out
+    (validation-source-evidence-json-loop
+      registry
+      (+ idx 1)
+      len
+      (validation-json-append out (validation-source-evidence-json (vector-get registry idx))))))
+
+(defn validation-source-edge-json [edge]
+  (let [relation (source-edge-kind edge)
+    left (source-edge-left edge)
+    right (source-edge-right edge)
+    fields0 (validation-json-string-field "relation" (validation-source-edge-relation-text relation))
+    fields1
+      (if (= relation (source-edge-motivates))
+        (validation-json-append fields0 (validation-json-object-field "intent" (validation-source-id-json left)))
+        (if (= relation (source-edge-constrained-by))
+          (validation-json-append fields0 (validation-json-object-field "claim" (validation-source-id-json left)))
+          (if (= relation (source-edge-tested-by))
+            (validation-json-append fields0 (validation-json-object-field "claim" (validation-source-id-json left)))
+            (validation-json-append fields0 (validation-json-object-field "observation" (validation-source-id-json left))))))
+    fields2
+      (if (= relation (source-edge-motivates))
+        (validation-json-append fields1 (validation-json-object-field "claim" (validation-source-id-json right)))
+        (if (= relation (source-edge-constrained-by))
+          (validation-json-append fields1 (validation-json-object-field "assumption" (validation-source-id-json right)))
+          (if (= relation (source-edge-tested-by))
+            (validation-json-append fields1 (validation-json-object-field "contract" (validation-source-id-json right)))
+            (validation-json-append fields1 (validation-json-object-field "claim" (validation-source-id-json right))))))]
+    (validation-json-object-wrap fields2)))
+
+(defn validation-source-edges-json-loop [edges idx len out]
+  (if (>= idx len)
+    out
+    (validation-source-edges-json-loop
+      edges
+      (+ idx 1)
+      len
+      (validation-json-append out (validation-source-edge-json (vector-get edges idx))))))
+
+(defn validation-source-manifest-json [graph]
+  (let [nodes (source-graph-nodes graph)
+    edges (source-graph-edges graph)
+    registry (source-evidence-graph-registry graph)
+    fields0 (validation-json-int-field "schema_version" 1)
+    fields1 (validation-json-append fields0
+      (validation-json-array-field "nodes"
+        (validation-json-array-wrap (validation-source-nodes-json-loop nodes 0 (vector-length nodes) ""))))
+    fields2 (validation-json-append fields1
+      (validation-json-array-field "evidence"
+        (validation-json-array-wrap (validation-source-evidence-json-loop registry 0 (vector-length registry) ""))))
+    fields3 (validation-json-append fields2
+      (validation-json-array-field "edges"
+        (validation-json-array-wrap (validation-source-edges-json-loop edges 0 (vector-length edges) ""))))]
+    (validation-json-object-wrap fields3)))
 
 (defn source-evidence-edge-form-result [form registry nodes]
   (if (< (vector-length form) 4)

@@ -2,8 +2,19 @@ use super::support::*;
 use serde_json::Value;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::OnceLock;
 
 static CLI_TEST_FIXTURE_COUNTER: AtomicUsize = AtomicUsize::new(0);
+static SELFHOST_CLI_VALIDATION_WASM: OnceLock<Vec<u8>> = OnceLock::new();
+
+fn selfhost_cli_validation_wasm() -> &'static [u8] {
+    SELFHOST_CLI_VALIDATION_WASM
+        .get_or_init(|| {
+            let bundle = selfhost_cli_runtime_bundle().to_string();
+            run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || compile_only(&bundle))
+        })
+        .as_slice()
+}
 
 fn lsp_stdio_snapshot(name: &str) -> Vec<Value> {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -14614,9 +14625,9 @@ fn test_e2e_selfhost_cli_validate_source_json_reports_trace_gap() {
     )
     .unwrap();
 
-    let wasm = compile_only(selfhost_cli_runtime_bundle());
+    let wasm = selfhost_cli_validation_wasm();
     let output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_args_and_stdin_capture(
-        &wasm,
+        wasm,
         Some(&dir),
         &["validate", "--source", "input.ls", "--format", "json"],
         "",
@@ -14674,9 +14685,9 @@ fn test_e2e_selfhost_cli_validate_source_json_reports_contradicting_evidence() {
     )
     .unwrap();
 
-    let wasm = compile_only(selfhost_cli_runtime_bundle());
+    let wasm = selfhost_cli_validation_wasm();
     let output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_args_and_stdin_capture(
-        &wasm,
+        wasm,
         Some(&dir),
         &["validate", "--source", "input.ls", "--format", "json"],
         "",
@@ -14691,6 +14702,122 @@ fn test_e2e_selfhost_cli_validate_source_json_reports_contradicting_evidence() {
     assert_eq!(value["trace_gaps"].as_array().unwrap().len(), 0);
     assert_eq!(value["independent_reviews"], 1);
     assert_eq!(value["contradicting_observations"], 1);
+}
+
+/// EC-M2-03: selfhost validate は report stdout と source manifest file を分離して出力する。
+#[test]
+fn test_e2e_selfhost_cli_validate_source_emits_manifest() {
+    let dir = std::env::temp_dir().join(format!(
+        "lsharp_test_cli_validate_source_manifest_{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("input.ls"),
+        r#"
+(defn cancel []
+  :claim "claim:checkout/cancel-rejects-shipped" "The API rejects shipped orders"
+  :tested-by "claim:checkout/cancel-rejects-shipped" "contract:checkout/cancel-case"
+  :evidence "evidence:checkout/cancel-observation"
+    :subject "claim:checkout/cancel-rejects-shipped"
+    :method "property"
+    :outcome "pass"
+    :runner "selfhost-test"
+    :target "aarch64-apple-darwin"
+    :source-commit "0123456789abcdef"
+    :artifact-digest "sha256:abc123"
+    :cases 3
+    :seed 42
+    :generator "checkout-cancel-fixture"
+    :shrinks [8 3 1]
+    :coverage [("negative" 2) ("positive" 1)]
+    :producer "lsharp-test"
+    :tool-version "0.2.0"
+    :timestamp "2026-07-25T00:00:00Z"
+    :independence "same-author"
+  :supports "evidence:checkout/cancel-observation" "claim:checkout/cancel-rejects-shipped"
+  true)
+"#,
+    )
+    .unwrap();
+
+    let wasm = selfhost_cli_validation_wasm();
+    let output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_args_and_stdin_capture(
+        wasm,
+        Some(&dir),
+        &[
+            "validate",
+            "--source",
+            "input.ls",
+            "--format",
+            "json",
+            "--emit-manifest",
+            "intent-graph.json",
+        ],
+        "",
+    )
+    .unwrap();
+    let report: Value = serde_json::from_str(output.stdout.trim())
+        .expect("selfhost validate report は stdout の valid JSON であるべき");
+    let manifest: Value = serde_json::from_slice(
+        &std::fs::read(dir.join("intent-graph.json")).expect("manifest file が出力されるべき"),
+    )
+    .expect("source manifest は valid JSON であるべき");
+    let _ = std::fs::remove_dir_all(&dir);
+
+    assert_eq!(output.exit_code, 2, "未確定 validation は exit code 2 を返すべき");
+    assert_eq!(report["status"], "unknown");
+    assert_eq!(manifest["schema_version"], 1);
+    assert_eq!(manifest["nodes"][0]["kind"], "claim");
+    assert_eq!(manifest["nodes"][0]["namespace"], "checkout");
+    assert_eq!(manifest["nodes"][0]["key"], "cancel-rejects-shipped");
+    assert_eq!(manifest["evidence"][0]["method"], "property");
+    assert_eq!(manifest["evidence"][0]["execution"]["sampling"]["shrinks"], serde_json::json!([8, 3, 1]));
+    assert_eq!(manifest["evidence"][0]["execution"]["sampling"]["coverage"], serde_json::json!({"negative": 2, "positive": 1}));
+    assert_eq!(manifest["edges"][0]["relation"], "tested-by");
+    assert_eq!(manifest["edges"][1]["relation"], "supports");
+}
+
+/// EC-M2-03: selfhost validate は source graph error 前に manifest を作らない。
+#[test]
+fn test_e2e_selfhost_cli_validate_source_does_not_emit_manifest_for_graph_error() {
+    let dir = std::env::temp_dir().join(format!(
+        "lsharp_test_cli_validate_source_manifest_error_{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("input.ls"),
+        r#"
+(defn invalid []
+  :claim "claim:checkout/cancel-rejects-shipped" "The API rejects shipped orders"
+  :supports "evidence:checkout/missing" "claim:checkout/cancel-rejects-shipped"
+  true)
+"#,
+    )
+    .unwrap();
+
+    let wasm = selfhost_cli_validation_wasm();
+    let output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_args_and_stdin_capture(
+        wasm,
+        Some(&dir),
+        &[
+            "validate",
+            "--source",
+            "input.ls",
+            "--format",
+            "json",
+            "--emit-manifest",
+            "intent-graph.json",
+        ],
+        "",
+    )
+    .unwrap();
+    let manifest_exists = dir.join("intent-graph.json").exists();
+    let _ = std::fs::remove_dir_all(&dir);
+
+    assert_eq!(output.exit_code, 1, "graph error は exit code 1 を返すべき");
+    assert!(!manifest_exists, "graph error 前に manifest を作らないべき");
 }
 
 /// TEST-CLI-02-AF2: actual Cli main は argv 経由で compile file command を処理できること

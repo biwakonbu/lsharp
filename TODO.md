@@ -100,12 +100,16 @@
   validation report の stdout と混ぜない。`unknown` report でも graph が構築できれば manifest を
   保存し、parse/adapter error 前には出力しない。JSON manifest input mode も同じ serializer を使う。
   Rust CLI の同一 directory staging → file sync → rename → parent directory sync による
-  atomic/durable artifact boundary は接続済み。selfhost/native manifest producer、release-level
-  provenance、EmbeddedCli/MCP、Mac Apple
-  Silicon / Linux x86_64 runtime evidence は未完了。Evidence:
+  atomic/durable artifact boundary は接続済み。selfhost `Tools.Validation.Evidence` の version 1
+  serializer と `App.Cli` の `--emit-manifest` file output は、Rust-host actual Wasm の同一 source
+  fixtureで report stdout 分離、nodes/evidence/edges、sampling/provenance、unknown exit `2` を確認した。
+  selfhost/native stage0、durable atomic write、release-level provenance、EmbeddedCli/MCP、Mac Apple
+  Silicon / Linux x86_64 current-source runtime evidence は未完了。Evidence:
   `crates/lsharp-driver/tests/validate_cli.rs`,
   `crates/lsharp-driver/src/atomic_write.rs`,
-  `docs/adr/decisions-v0.2-source-manifest-emission.md`。
+  `docs/adr/decisions-v0.2-source-manifest-emission.md`,
+  `crates/lsharp-wasm/tests/e2e/selfhost_evidence_registry.rs`,
+  `crates/lsharp-wasm/tests/e2e/selfhost_cli_core.rs`（success/error manifest boundaryを含む）。
 
 - [~] `EC-M2-01`〜`EC-M2-03` の types-only wire/model slice — `StableId` の fail-closed parser、
   typed `IntentNode` wire conversion、duplicate/required-field と graph-owned endpoint を検査する
@@ -139,7 +143,10 @@
   実行する。contract/evidence 未接続の妥当な source は `unknown` (2)、parse/duplicate/orphan/
   typed endpoint error は入力診断として fail-closed、positional manifest との併用は拒否する。
   supports/contradicts は登録済み evidence にだけ接続し、registry 未接続時は明示的な入力エラーとなる。
-  `--emit-manifest` による source graph artifact は接続済みだが、selfhost/native parity、EmbeddedCli/MCP、
+  `--emit-manifest` による source graph artifact は Rust-host actual Wasm の selfhost `App.Cli` へ接続済みで、
+  `test_e2e_selfhost_cli_validate_source_emits_manifest` と serializer focused test が version 1 JSON、
+  report stdout 分離、sampling/provenance、unknown exit `2` を確認した。typed signature、nested
+  traversal、全 diagnostic/status、selfhost/native stage0 parity、durable atomic write、EmbeddedCli/MCP、
   両 target の artifact/runtime evidence は未完了。
   Evidence: `docs/adr/decisions-v0.2-validation-source-cli.md`,
   `docs/adr/decisions-v0.2-source-evidence-boundary.md`,

@@ -32,6 +32,26 @@ fn selfhost_cli_validation_surface_is_registered() {
         source.contains("(defn parse-validate-cli-option"),
         "App.Cli は validate の source/json option 契約を検査するべき"
     );
+    assert!(
+        source.contains("--emit-manifest"),
+        "App.Cli help/options は source validation manifest 出力を公開するべき"
+    );
+    assert!(
+        source.contains("(defn parse-validate-cli-options"),
+        "App.Cli は validate の manifest output option を解析するべき"
+    );
+    assert!(
+        source.contains("format-seen"),
+        "App.Cli は validate の format option を必須として追跡するべき"
+    );
+    assert!(
+        source.contains("validate-options-source-path"),
+        "App.Cli は option の並び順に依存せず source path を保持するべき"
+    );
+    assert!(
+        source.contains("validation-source-manifest-json"),
+        "App.Cli は source graph の version 1 manifest JSON projection を利用するべき"
+    );
     let check_start = source
         .find("(defn run-check-program")
         .expect("App.Cli は run-check-program を持つべき");
