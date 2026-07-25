@@ -7889,10 +7889,121 @@ fn test_linux_x86_metadata_replays_entrypoint_call_reports_identity() {
             && source.contains("entrypoint-func-idx")
             && source.contains("entrypoint-offset")
             && source.contains(
-                "(print-x86-entrypoint-call-control-replay-diagnostic control-ctx function-index entrypoint-func-idx entrypoint-offset idx opcode operand offset size)"
+                "(print-x86-entrypoint-call-control-replay-diagnostic control-ctx actual-idx entrypoint-func-idx entrypoint-offset idx opcode operand offset size)"
             ),
         "Linux x86 metadata mode は stage2-generated entrypoint の opcode40 IR row と emitted bytes/rel32 target を function identity 付きで相関できるべき"
     );
+}
+
+#[test]
+fn test_linux_x86_metadata_parser_accepts_entrypoint_wrapper_records() {
+    let metadata = "\
+9000000289
+3324
+3325
+10
+3335
+3325
+9000000290
+3324
+3334
+11113489
+3
+9000000291
+3324
+0
+0
+8
+9000000292
+3324
+1
+1040
+2121
+9000000020
+3324
+3334
+11113489
+2121
+0
+0
+1
+1040
+0
+11
+8
+9000000346
+0
+0
+1
+1040
+0
+11
+8
+9000000347
+11
+11
+9000000348
+8
+9
+9
+11
+11113489
+9000000345
+0
+40
+3332
+0
+11
+16
+13
+18446744073709551615
+232
+221
+158
+255
+255
+0
+0
+0
+9000000051
+3334
+3334
+11113489
+0
+40
+3332
+11
+5
+9000000046
+0
+40
+3332
+0
+11
+5
+1
+5
+18446744073709526765
+18446744073709526749
+5
+18446744073709526765
+232
+221
+158
+255
+255
+0
+0
+0
+";
+
+    let rows = parse_linux_x86_function_segment_metadata_rows(metadata);
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].opcode, 40);
+    assert_eq!(rows[0].operand, 3332);
+    assert_eq!(rows[0].offset, 11);
+    assert_eq!(rows[0].size, 16);
+    assert_eq!(x86_metadata_row_rel32_target(&rows[0]), Some(-24851));
 }
 
 #[test]
@@ -18235,7 +18346,7 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
         (print-x86-i64-ge-control-replay-diagnostic control-ctx idx opcode operand offset size)
         (print-x86-control-if-control-replay-diagnostic control-ctx idx opcode operand offset size)
         (print-x86-map-new-control-replay-diagnostic control-ctx idx opcode operand offset size)
-        (print-x86-entrypoint-call-control-replay-diagnostic control-ctx function-index entrypoint-func-idx entrypoint-offset idx opcode operand offset size)
+        (print-x86-entrypoint-call-control-replay-diagnostic control-ctx actual-idx entrypoint-func-idx entrypoint-offset idx opcode operand offset size)
         (print-x86-call-control-replay-diagnostic control-ctx idx opcode operand offset size)
         (print-x86-function-ir-prefix-loop
           segment
@@ -56431,7 +56542,7 @@ fn extract_linux_x86_user_call_direct_replay_records(output: &str) -> String {
 fn parse_linux_x86_function_segment_metadata_rows(
     output: &str,
 ) -> Vec<LinuxX86FunctionSegmentMetadataRow> {
-    let lines = parse_numeric_lines(output);
+    let lines = parse_numeric_lines_i128(output);
     let mut idx = 0;
     let mut rows = Vec::new();
     let mut current_function_size = 0;
@@ -56442,7 +56553,10 @@ fn parse_linux_x86_function_segment_metadata_rows(
                     idx + 12 <= lines.len(),
                     "x86 function metadata header が不足: idx={idx} lines={lines:?}"
                 );
-                current_function_size = lines[idx + 4];
+                current_function_size = numeric_i128_to_i64(
+                    lines[idx + 4],
+                    "x86 function metadata function_size",
+                );
                 idx += 12;
             }
             9_000_000_021 => {
@@ -56451,26 +56565,98 @@ fn parse_linux_x86_function_segment_metadata_rows(
                     "x86 function metadata row が不足: idx={idx} lines={lines:?}"
                 );
                 let bytes = [
-                    lines[idx + 7] as u8,
-                    lines[idx + 8] as u8,
-                    lines[idx + 9] as u8,
-                    lines[idx + 10] as u8,
-                    lines[idx + 11] as u8,
-                    lines[idx + 12] as u8,
-                    lines[idx + 13] as u8,
-                    lines[idx + 14] as u8,
+                    numeric_i128_to_i64(lines[idx + 7], "x86 metadata byte 0") as u8,
+                    numeric_i128_to_i64(lines[idx + 8], "x86 metadata byte 1") as u8,
+                    numeric_i128_to_i64(lines[idx + 9], "x86 metadata byte 2") as u8,
+                    numeric_i128_to_i64(lines[idx + 10], "x86 metadata byte 3") as u8,
+                    numeric_i128_to_i64(lines[idx + 11], "x86 metadata byte 4") as u8,
+                    numeric_i128_to_i64(lines[idx + 12], "x86 metadata byte 5") as u8,
+                    numeric_i128_to_i64(lines[idx + 13], "x86 metadata byte 6") as u8,
+                    numeric_i128_to_i64(lines[idx + 14], "x86 metadata byte 7") as u8,
                 ];
                 rows.push(LinuxX86FunctionSegmentMetadataRow {
                     function_size: current_function_size,
-                    instr_idx: lines[idx + 1],
-                    opcode: lines[idx + 2],
-                    operand: lines[idx + 3],
-                    depth: lines[idx + 4],
-                    offset: lines[idx + 5],
-                    size: lines[idx + 6],
+                    instr_idx: numeric_i128_to_i64(lines[idx + 1], "x86 metadata instr_idx"),
+                    opcode: numeric_i128_to_i64(lines[idx + 2], "x86 metadata opcode"),
+                    operand: numeric_i128_to_i64(lines[idx + 3], "x86 metadata operand"),
+                    depth: numeric_i128_to_i64(lines[idx + 4], "x86 metadata depth"),
+                    offset: numeric_i128_to_i64(lines[idx + 5], "x86 metadata offset"),
+                    size: numeric_i128_to_i64(lines[idx + 6], "x86 metadata size"),
                     bytes,
                 });
                 idx += 15;
+            }
+            9_000_000_289 => {
+                idx += 6;
+            }
+            9_000_000_290 | 9_000_000_291 | 9_000_000_292 => {
+                idx += 5;
+            }
+            9_000_000_344 | 9_000_000_345 => {
+                if lines[idx] == 9_000_000_345 {
+                    assert!(
+                        idx + 17 <= lines.len(),
+                        "x86 function metadata emitted row が不足: idx={idx} lines={lines:?}"
+                    );
+                    let bytes = [
+                        numeric_i128_to_i64(lines[idx + 9], "x86 emitted byte 0") as u8,
+                        numeric_i128_to_i64(lines[idx + 10], "x86 emitted byte 1") as u8,
+                        numeric_i128_to_i64(lines[idx + 11], "x86 emitted byte 2") as u8,
+                        numeric_i128_to_i64(lines[idx + 12], "x86 emitted byte 3") as u8,
+                        numeric_i128_to_i64(lines[idx + 13], "x86 emitted byte 4") as u8,
+                        numeric_i128_to_i64(lines[idx + 14], "x86 emitted byte 5") as u8,
+                        numeric_i128_to_i64(lines[idx + 15], "x86 emitted byte 6") as u8,
+                        numeric_i128_to_i64(lines[idx + 16], "x86 emitted byte 7") as u8,
+                    ];
+                    rows.push(LinuxX86FunctionSegmentMetadataRow {
+                        function_size: current_function_size,
+                        instr_idx: numeric_i128_to_i64(lines[idx + 1], "x86 emitted instr_idx"),
+                        opcode: numeric_i128_to_i64(lines[idx + 2], "x86 emitted opcode"),
+                        operand: numeric_i128_to_i64(lines[idx + 3], "x86 emitted operand"),
+                        depth: numeric_i128_to_i64(lines[idx + 4], "x86 emitted depth"),
+                        offset: numeric_i128_to_i64(lines[idx + 5], "x86 emitted offset"),
+                        size: numeric_i128_to_i64(lines[idx + 6], "x86 emitted size"),
+                        bytes,
+                    });
+                }
+                idx += 17;
+            }
+            9_000_000_346 => {
+                idx += 8;
+            }
+            9_000_000_347 => {
+                idx += 3;
+            }
+            9_000_000_348 => {
+                idx += 6;
+            }
+            9_000_000_349 => {
+                idx += 8;
+            }
+            9_000_000_350 | 9_000_000_351 | 9_000_000_352 | 9_000_000_358
+            | 9_000_000_359 => {
+                idx += 2;
+            }
+            9_000_000_357 => {
+                idx += 3;
+            }
+            9_000_000_353 => {
+                idx += 10;
+            }
+            9_000_000_354 => {
+                idx += 10;
+            }
+            9_000_000_355 => {
+                idx += 8;
+            }
+            9_000_000_356 => {
+                idx += 1;
+            }
+            9_000_000_050 => {
+                idx += 21;
+            }
+            9_000_000_051 => {
+                idx += 9;
             }
             9_000_000_022 | 9_000_000_023 => {
                 assert!(
@@ -57561,7 +57747,7 @@ fn assert_x86_ir_call_trace_matches_entry_calls(
 ) {
     let call_rows = rows
         .iter()
-        .filter(|row| row.target_offset >= 0)
+        .filter(|row| row.target_offset != -1)
         .collect::<Vec<_>>();
     assert!(
         !call_rows.is_empty(),
@@ -57699,6 +57885,45 @@ fn test_x86_ir_trace_rejects_runtime_helper_rel32_target_mismatch() {
         size: 5,
         param_count: -1,
         target_offset: 95,
+    }];
+
+    assert_x86_ir_call_trace_matches_entry_calls(&bundle, &rows);
+}
+
+#[test]
+fn test_x86_ir_trace_accepts_negative_relative_helper_target() {
+    let entrypoint_offset = 32usize;
+    let call_offset = 11usize;
+    let target_offset = -20i64;
+    let absolute_call_offset = entrypoint_offset + call_offset;
+    let absolute_target_offset = (entrypoint_offset as i64 + target_offset) as usize;
+    let rel32 = absolute_target_offset as i32 - absolute_call_offset as i32 - 5;
+    let mut code_bytes = vec![0x90; 128];
+    code_bytes[absolute_call_offset..absolute_call_offset + 5].copy_from_slice(&[
+        0xe8,
+        rel32 as u8,
+        (rel32 >> 8) as u8,
+        (rel32 >> 16) as u8,
+        (rel32 >> 24) as u8,
+    ]);
+    let bundle = NativeEntrypointBundle {
+        function_start_len: 1,
+        main_func_idx: 10,
+        declared_code_len: code_bytes.len(),
+        declared_data_len: 0,
+        entrypoint_offset,
+        code_bytes,
+        data_bytes: Vec::new(),
+    };
+    let rows = vec![X86IrCallTraceRow {
+        instr_idx: 0,
+        opcode: 60,
+        operand: 0,
+        depth: 0,
+        offset: call_offset as i64,
+        size: 5,
+        param_count: -1,
+        target_offset,
     }];
 
     assert_x86_ir_call_trace_matches_entry_calls(&bundle, &rows);
