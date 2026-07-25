@@ -54,6 +54,29 @@ fn validate_rejects_invalid_manifest_with_nonzero_status() {
 }
 
 #[test]
+fn validate_rejects_manifest_missing_required_field_without_report_stdout() {
+    let path = manifest_path(
+        "missing-required-field",
+        r#"{"schema_version":1,"nodes":[],"evidence":[]}"#,
+    );
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+        .args(["validate", path.to_str().unwrap(), "--format", "json"])
+        .output()
+        .expect("lsharp validate should run");
+    fs::remove_file(&path).ok();
+
+    assert_ne!(output.status.code(), Some(0));
+    assert!(
+        output.stdout.is_empty(),
+        "input errors must not be serialized as a validation report: {:?}",
+        output.stdout
+    );
+    assert!(!output.stderr.is_empty());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("missing field"));
+}
+
+#[test]
 fn validate_passes_with_zero_exit_code_for_complete_manifest() {
     let path = manifest_path("pass", include_str!("fixtures/intent-graph-pass.json"));
 
