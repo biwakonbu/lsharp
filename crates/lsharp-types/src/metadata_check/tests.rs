@@ -1,4 +1,6 @@
+use super::references::{collect_var_references, extract_doc_identifiers};
 use super::*;
+use lsharp_syntax::ast::Expr;
 
 fn check(source: &str) -> Vec<MetadataDiagnostic> {
     let program = lsharp_syntax::parse(source).unwrap();
