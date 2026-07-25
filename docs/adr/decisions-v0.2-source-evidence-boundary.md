@@ -24,7 +24,8 @@ source metadata では次の form を受理し、wire ID と span を lossless �
 - source adapter は `EvidenceId` / `ClaimId` を parse し、Claim endpoint の kind と registry 上の存在を
   検査する。
 - evidence registry が未接続の間は `SourceGraphError::EvidenceRegistryRequired` を返す。
-  この段階では edge を `IntentGraph` に追加せず、未登録 evidence を黙って無視しない。
+  この段階では edge を `IntentGraph` に追加せず、未登録 evidence を黙って無視しない。診断には
+  対応する edge directive の source span を含める。
 - `validate --source` はこの境界を入力エラーとして返す。evidence record が存在しない通常の
   node/`tested-by` source は従来どおり `unknown` になり、`pass` を補完しない。
 - evidence record の source registry、実 edge 投入、manifest emission、selfhost/native parity は
@@ -41,6 +42,7 @@ source metadata では次の form を受理し、wire ID と span を lossless �
 
 - `crates/lsharp-syntax/tests/intent_edges.rs`
 - `crates/lsharp-types/tests/validation_source.rs`
+- `source_adapter_reports_unregistered_evidence_edge_with_directive_span`
 - `crates/lsharp-driver/tests/validate_cli.rs`
 - `cargo test -p lsharp-syntax --test intent_edges evidence_edges`
 - `cargo test -p lsharp-types --test validation_source source_adapter_rejects_evidence_edges`

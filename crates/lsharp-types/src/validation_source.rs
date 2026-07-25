@@ -42,14 +42,21 @@ pub enum SourceGraphError {
     Graph(#[from] crate::evidence::GraphError),
     #[error("source intent edge の ID 解析に失敗しました: {0}")]
     EdgeId(#[from] StableIdError),
-    #[error("source intent edge が参照する node がありません (relation={relation}, id={id})")]
-    MissingNodeReference { relation: &'static str, id: String },
+    #[error(
+        "source intent edge が参照する node がありません (relation={relation}, id={id}, span={span})"
+    )]
+    MissingNodeReference {
+        relation: &'static str,
+        id: String,
+        span: Span,
+    },
     #[error(
         "source evidence edge は evidence registry の登録を要求します (relation={relation}, evidence_id={evidence_id})"
     )]
     EvidenceRegistryRequired {
         relation: &'static str,
         evidence_id: String,
+        span: Span,
     },
     #[error("source evidence の {field} が不正です: {value}")]
     InvalidEvidenceField { field: &'static str, value: String },
@@ -177,7 +184,7 @@ fn add_metadata_evidence(
         let MetadataFormKind::Evidence { record } = &form.kind else {
             continue;
         };
-        let evidence = build_source_evidence(record, graph)?;
+        let evidence = build_source_evidence(record, graph, form.span())?;
         let id = evidence.id().as_str().to_string();
         if let Some((_, first_span)) = evidence_spans.iter().find(|(existing, _)| existing == &id) {
             return Err(SourceGraphError::DuplicateEvidence {
@@ -195,9 +202,10 @@ fn add_metadata_evidence(
 fn build_source_evidence(
     record: &lsharp_syntax::metadata::EvidenceForm,
     graph: &IntentGraph,
+    span: Span,
 ) -> Result<Evidence, SourceGraphError> {
     let id = EvidenceId::parse(record.id().to_string())?;
-    let subject = parse_evidence_subject(record.subject(), graph)?;
+    let subject = parse_evidence_subject(record.subject(), graph, span)?;
     let method = parse_evidence_method(record.method())?;
     let outcome = parse_evidence_outcome(record.outcome())?;
     let independence = parse_independence(record.independence())?;
@@ -234,17 +242,18 @@ fn build_source_evidence(
 fn parse_evidence_subject(
     wire_id: &str,
     graph: &IntentGraph,
+    span: Span,
 ) -> Result<EvidenceSubject, SourceGraphError> {
     let stable_id = StableId::parse(wire_id.to_string())?;
     match stable_id.kind() {
         NodeKind::Intent => {
             let id = IntentId::parse(wire_id.to_string())?;
-            require_node(graph, "evidence.subject", id.stable_id())?;
+            require_node(graph, "evidence.subject", id.stable_id(), span)?;
             Ok(EvidenceSubject::Intent(id))
         }
         NodeKind::Claim => {
             let id = ClaimId::parse(wire_id.to_string())?;
-            require_node(graph, "evidence.subject", id.stable_id())?;
+            require_node(graph, "evidence.subject", id.stable_id(), span)?;
             Ok(EvidenceSubject::Claim(id))
         }
         NodeKind::Contract => Ok(EvidenceSubject::Contract(ContractId::parse(
@@ -330,35 +339,45 @@ fn add_metadata_edges(
             MetadataFormKind::Motivates { intent, claim } => {
                 let intent = IntentId::parse(intent.clone())?;
                 let claim = ClaimId::parse(claim.clone())?;
-                require_node(graph, "motivates.intent", intent.stable_id())?;
-                require_node(graph, "motivates.claim", claim.stable_id())?;
+                require_node(graph, "motivates.intent", intent.stable_id(), form.span())?;
+                require_node(graph, "motivates.claim", claim.stable_id(), form.span())?;
                 graph.add_edge(Edge::Motivates { intent, claim })?;
             }
             MetadataFormKind::ConstrainedBy { claim, assumption } => {
                 let claim = ClaimId::parse(claim.clone())?;
                 let assumption = AssumptionId::parse(assumption.clone())?;
-                require_node(graph, "constrained-by.claim", claim.stable_id())?;
-                require_node(graph, "constrained-by.assumption", assumption.stable_id())?;
+                require_node(
+                    graph,
+                    "constrained-by.claim",
+                    claim.stable_id(),
+                    form.span(),
+                )?;
+                require_node(
+                    graph,
+                    "constrained-by.assumption",
+                    assumption.stable_id(),
+                    form.span(),
+                )?;
                 graph.add_edge(Edge::ConstrainedBy { claim, assumption })?;
             }
             MetadataFormKind::TestedBy { claim, contract } => {
                 let claim = ClaimId::parse(claim.clone())?;
                 let contract = ContractId::parse(contract.clone())?;
-                require_node(graph, "tested-by.claim", claim.stable_id())?;
+                require_node(graph, "tested-by.claim", claim.stable_id(), form.span())?;
                 graph.add_edge(Edge::TestedBy { claim, contract })?;
             }
             MetadataFormKind::Supports { observation, claim } => {
                 let observation = EvidenceId::parse(observation.clone())?;
                 let claim = ClaimId::parse(claim.clone())?;
-                require_node(graph, "supports.claim", claim.stable_id())?;
-                require_evidence(graph, "supports", &observation)?;
+                require_node(graph, "supports.claim", claim.stable_id(), form.span())?;
+                require_evidence(graph, "supports", &observation, form.span())?;
                 graph.add_edge(Edge::Supports { observation, claim })?;
             }
             MetadataFormKind::Contradicts { observation, claim } => {
                 let observation = EvidenceId::parse(observation.clone())?;
                 let claim = ClaimId::parse(claim.clone())?;
-                require_node(graph, "contradicts.claim", claim.stable_id())?;
-                require_evidence(graph, "contradicts", &observation)?;
+                require_node(graph, "contradicts.claim", claim.stable_id(), form.span())?;
+                require_evidence(graph, "contradicts", &observation, form.span())?;
                 graph.add_edge(Edge::Contradicts { observation, claim })?;
             }
             _ => {}
@@ -371,6 +390,7 @@ fn require_node(
     graph: &IntentGraph,
     relation: &'static str,
     id: &crate::intent::StableId,
+    span: Span,
 ) -> Result<(), SourceGraphError> {
     if graph.nodes().iter().any(|node| node.stable_id() == id) {
         Ok(())
@@ -378,6 +398,7 @@ fn require_node(
         Err(SourceGraphError::MissingNodeReference {
             relation,
             id: id.as_str().to_string(),
+            span,
         })
     }
 }
@@ -386,6 +407,7 @@ fn require_evidence(
     graph: &IntentGraph,
     relation: &'static str,
     id: &EvidenceId,
+    span: Span,
 ) -> Result<(), SourceGraphError> {
     if graph.evidence().iter().any(|evidence| evidence.id() == id) {
         Ok(())
@@ -393,6 +415,7 @@ fn require_evidence(
         Err(SourceGraphError::EvidenceRegistryRequired {
             relation,
             evidence_id: id.as_str().to_string(),
+            span,
         })
     }
 }

@@ -24,6 +24,7 @@ parser は form の source order と directive span を保持する。`validatio
 node registry を構築し、その後 edge を走査する二段階 projection とする。これにより edge が
 node 宣言より先に現れても解決できる。各 endpoint は `IntentId` / `ClaimId` / `AssumptionId`
 として parse し、kind mismatch、不正 wire、存在しない node は fail-closed で拒否する。
+存在しない node の診断には、その edge directive の source span を含め、入力位置を失わない。
 
 `tested-by` は Contract node と legacy contract suite の ID 解決、`supports` / `contradicts`
 は evidence record の生成を必要とするため、この slice では parser/adapter に追加しない。
@@ -43,5 +44,6 @@ manifest の既存 typed edge model は変更せず、source adapter が構築�
 
 - `crates/lsharp-syntax/tests/intent_edges.rs`
 - `crates/lsharp-types/tests/validation_source.rs`
+- `source_adapter_reports_orphan_edge_with_directive_span`
 - `cargo test -p lsharp-syntax --test intent_edges`
 - `cargo test -p lsharp-types --test validation_source`

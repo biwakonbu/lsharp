@@ -25,7 +25,8 @@
 - [~] `EC-M2-01` source intent edges — `:motivates`（Intent→Claim）と `:constrained-by`
   （Claim→Assumption）、`:tested-by`（Claim→Contract）が二つの wire ID と directive span を lossless に保持し、
   `validation_source::source_program_to_intent_graph` が全 node を先に収集してから typed edge を
-  登録する。endpoint の wire kind mismatch、orphan reference、不正 ID は fail-closed。Contract の
+  登録する。endpoint の wire kind mismatch、不正 ID は fail-closed、orphan reference は directive
+  span 付きで拒否する。Contract の
   実体定義と optional な shrink/coverage source fields は contract/evidence registry の入力境界が残件。
   Evidence: `crates/lsharp-syntax/tests/intent_edges.rs`,
   `crates/lsharp-types/tests/validation_source.rs`,
@@ -38,8 +39,8 @@
   `evidence:namespace/key` と Claim の wire ID、directive span を lossless に保持する。
   Rust source adapter は両 ID と Claim endpoint の kind/existence、evidence registry を検査し、
   登録済み record の edge を graph へ追加する。未登録 evidence は `EvidenceRegistryRequired` として
-  明示的に拒否し、黙って無視したり実体のない edge を追加したりしない。selfhost/native parity は
-  残件。Evidence: `crates/lsharp-syntax/tests/intent_edges.rs`,
+  directive span 付きで明示的に拒否し、黙って無視したり実体のない edge を追加したりしない。
+  selfhost/native parity は残件。Evidence: `crates/lsharp-syntax/tests/intent_edges.rs`,
   `crates/lsharp-types/tests/validation_source.rs`, `crates/lsharp-driver/tests/validate_cli.rs`,
   `docs/adr/decisions-v0.2-source-evidence-boundary.md`,
   `docs/adr/decisions-v0.2-source-evidence-record.md`。

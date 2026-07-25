@@ -233,6 +233,22 @@ fn source_adapter_rejects_orphan_and_mismatched_edge_endpoints() {
 }
 
 #[test]
+fn source_adapter_reports_orphan_edge_with_directive_span() {
+    const SOURCE: &str =
+        r#"(defn cancel [] :motivates "intent:checkout/missing" "claim:checkout/cancel" true)"#;
+    let program = parse(SOURCE).expect("orphan span fixture は parse できるべき");
+    let error = source_program_to_intent_graph(&program)
+        .expect_err("orphan edge は directive span 付きで拒否するべき");
+    let SourceGraphError::MissingNodeReference { relation, span, .. } = error else {
+        panic!("orphan edge の source diagnostic を期待しました: {error:?}");
+    };
+
+    assert_eq!(relation, "motivates.intent");
+    assert!(span.start < span.end);
+    assert!(SOURCE[span.start..span.end].starts_with(":motivates"));
+}
+
+#[test]
 fn source_adapter_registers_tested_by_claim_contract_edges() {
     let program = parse(
         r#"
@@ -299,6 +315,32 @@ fn source_adapter_registers_evidence_records_before_support_edges() {
             if observation.as_str() == "evidence:checkout/cancel-observation"
                 && claim.as_str() == "claim:checkout/cancel-rejects-shipped"
     ));
+}
+
+#[test]
+fn source_adapter_reports_unregistered_evidence_edge_with_directive_span() {
+    const SOURCE: &str = r#"
+        (defn cancel []
+          :claim "claim:checkout/cancel" "The API rejects shipped orders"
+          :supports "evidence:checkout/missing" "claim:checkout/cancel"
+          true)
+        "#;
+    let program = parse(SOURCE).expect("unregistered evidence span fixture は parse できるべき");
+    let error = source_program_to_intent_graph(&program)
+        .expect_err("unregistered evidence edge は directive span 付きで拒否するべき");
+    let SourceGraphError::EvidenceRegistryRequired {
+        relation,
+        evidence_id,
+        span,
+    } = error
+    else {
+        panic!("unregistered evidence edge の source diagnostic を期待しました: {error:?}");
+    };
+
+    assert_eq!(relation, "supports");
+    assert_eq!(evidence_id, "evidence:checkout/missing");
+    assert!(span.start < span.end);
+    assert!(SOURCE[span.start..span.end].contains(":supports"));
 }
 
 #[test]
@@ -387,7 +429,8 @@ fn source_adapter_rejects_evidence_edges_without_registry_entries() {
         source_program_to_intent_graph(&supports),
         Err(SourceGraphError::EvidenceRegistryRequired {
             relation: "supports",
-            evidence_id
+            evidence_id,
+            ..
         }) if evidence_id == "evidence:checkout/cancel-observation"
     ));
 
@@ -404,7 +447,8 @@ fn source_adapter_rejects_evidence_edges_without_registry_entries() {
         source_program_to_intent_graph(&contradicts),
         Err(SourceGraphError::EvidenceRegistryRequired {
             relation: "contradicts",
-            evidence_id
+            evidence_id,
+            ..
         }) if evidence_id == "evidence:checkout/cancel-counterexample"
     ));
 }
