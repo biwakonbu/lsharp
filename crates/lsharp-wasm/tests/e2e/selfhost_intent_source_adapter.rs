@@ -252,6 +252,47 @@ fn test_e2e_selfhost_source_adapter_rejects_missing_edge_node() {
     );
 }
 
+/// EC-M2-01 boundary: source edge payload は endpoint の2要素だけを受理する。
+#[test]
+fn test_e2e_selfhost_source_adapter_rejects_extra_edge_payload() {
+    let harness = r#"
+(defn main []
+  (let [nodes (vector-push-pair-rooted-v3
+                (vector-new 0)
+                (source-node-record (source-node-intent) "intent:checkout/cancel" "Users can cancel" 1 2)
+                (source-node-record (source-node-claim) "claim:checkout/rejects" "Shipped orders are rejected" 3 4))
+        payload (vector-push-triple-rooted-v3
+                  (vector-new 0)
+                  "intent:checkout/cancel"
+                  "claim:checkout/rejects"
+                  "unexpected")
+        form (vector-push-quad-rooted-v3
+               (vector-new 4)
+               (source-edge-motivates)
+               payload
+               10
+               20)
+        result (source-edge-form-result form nodes)
+        error (source-graph-result-error result)]
+    (do
+      (print (source-graph-result-status result))
+      (print (source-graph-error-code error))
+      (print (source-graph-error-kind error))
+      (print-string (source-graph-error-id error))
+      (print-string "\n")
+      0)))
+"#;
+
+    let output = run_source_adapter_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "1", "10"],
+        "source edge の余分な payload は malformed として fail-closed にするべき"
+    );
+}
+
 /// EC-M2-02 boundary: evidence registry が未接続の supports/contradicts は成功にしない。
 #[test]
 fn test_e2e_selfhost_source_adapter_rejects_unregistered_evidence_edge() {
