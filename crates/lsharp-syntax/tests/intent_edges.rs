@@ -256,6 +256,23 @@ fn evidence_record_metadata_rejects_invalid_optional_sampling_fields() {
     .expect_err("重複 coverage bucket は拒否するべき");
     assert_eq!(duplicate_bucket.code(), "LS0101");
 
+    let malformed_coverage_entry = parse(
+        r#"
+        (defn cancel []
+          :evidence "evidence:checkout/cancel-observation"
+            :subject "claim:checkout/cancel-rejects-shipped" :method "property"
+            :outcome "pass" :runner "cargo-test" :target "aarch64-apple-darwin"
+            :source-commit "0123456789abcdef" :artifact-digest "sha256:abc123"
+            :cases 1 :seed 42 :generator "fixture"
+            :coverage [("same" 1 2)]
+            :producer "lsharp-test" :tool-version "0.2.0"
+            :timestamp "2026-07-25T00:00:00Z" :independence "same-author"
+          true)
+        "#,
+    )
+    .expect_err("malformed coverage entry は拒否するべき");
+    assert_eq!(malformed_coverage_entry.code(), "LS0104");
+
     let unclosed_shrinks = parse(
         r#"
         (defn cancel []

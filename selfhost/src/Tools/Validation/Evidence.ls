@@ -175,7 +175,7 @@
   (if (>= idx len)
     (source-result 1 0)
     (let [entry (vector-get coverage idx)]
-      (if (< (vector-length entry) 2)
+      (if (!= (vector-length entry) 2)
         (source-result 0 (source-evidence-error (source-evidence-error-invalid-sampling) "coverage" "" -1 -1))
         (let [bucket (vector-get entry 0)
           count (vector-get entry 1)]
