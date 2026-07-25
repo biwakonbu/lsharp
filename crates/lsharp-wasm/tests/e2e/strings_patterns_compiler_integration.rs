@@ -4027,6 +4027,63 @@ fn test_e2e_selfhost_compiler_mode_imported_alias_qualified_parametric_record_li
     std::fs::remove_dir_all(&temp_root).expect("parametric record literal import fixture を削除できない");
 }
 
+/// selfhost compiler-mode: 異なる module の同名 record constructor を alias-qualified に分離できること
+#[test]
+fn test_e2e_selfhost_compiler_mode_imported_alias_qualified_same_name_record_constructors_run() {
+    let temp_root = std::env::temp_dir().join(format!(
+        "lsharp-selfhost-same-name-record-import-runtime-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&temp_root);
+    let app_dir = temp_root.join("src/App");
+    std::fs::create_dir_all(&app_dir)
+        .expect("same-name record import fixture の directory を作れない");
+    std::fs::write(
+        app_dir.join("Left.ls"),
+        "(module App.Left)\n(type Point (record (: x Int)))\n",
+    )
+    .expect("same-name record import fixture の Left.ls を書けない");
+    std::fs::write(
+        app_dir.join("Right.ls"),
+        "(module App.Right)\n(type Point (record (: x Int) (: y Int)))\n",
+    )
+    .expect("same-name record import fixture の Right.ls を書けない");
+    std::fs::write(
+        app_dir.join("Main.ls"),
+        "(module App.Main)\n(import App.Left :as L :only [Point])\n(import App.Right :as R :only [Point])\n(defn main [] (let [left (L.Point 41) right (R.Point 2 3)] (do (print (. left x)) (print (. right x)) (print (. right y)) 0)))\n",
+    )
+    .expect("same-name record import fixture の Main.ls を書けない");
+
+    let compiler_mode = format!(
+        "{}\n(defn main [] (compile-file-mode))",
+        selfhost_module("CompilerMode.ls")
+    );
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("IR.ls"),
+        selfhost_module("Compiler.ls"),
+        selfhost_module("WasiBackend.ls"),
+        selfhost_module("WasmEmit.ls"),
+        selfhost_module("ModuleResolver.ls"),
+        compiler_mode
+    );
+    let emitted =
+        compile_and_run_with_dir_and_args(&combined, &temp_root, &["compiler", "src/App/Main.ls"]);
+    let wasm_bytes = parse_printed_wasm_bytes(&emitted);
+    let output = super::selfhost_bootstrap_four_layer::run_wasm_with_eleven_imports_compiler_mode_fs(
+        &wasm_bytes,
+        &temp_root,
+        &[],
+    )
+    .expect("same-name alias-qualified record constructors を含む selfhost compiler-mode module should run");
+    assert_eq!(output, "41\n2\n3\n");
+    std::fs::remove_dir_all(&temp_root).expect("same-name record import fixture を削除できない");
+}
+
 /// selfhost compiler-mode: root_set を do 位置で使って map を更新できること
 #[test]
 fn test_e2e_selfhost_compiler_mode_root_set_updates_map_without_binding_result() {

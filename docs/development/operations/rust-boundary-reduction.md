@@ -2216,6 +2216,14 @@ REDは `test_e2e_selfhost_ftable_compiler_alias_qualified_parametric_record_lite
 
 これは flat ftableの parametric `Int`/`Bool` 複数 instantiationとCompilerMode file-importの `Int` instantiationを閉じる verified sliceである。CompilerMode file-import側の複数 concrete instantiation、private record、record update全形式、同名 export衝突、standalone native stage0、Mac Apple Silicon / Linux x86_64 の current-source artifact/runtime gate、EC-M1-01 aggregateの完了を意味しない。`TODO.md` の `[~]` と Rust oracle / bootstrap / host integration境界を維持する。
 
+### EC-M1-01 selfhost alias-qualified same-name record constructor collision slice (2026-07-25)
+
+異なる module の同名 record constructorを raw suffix hashだけで解決すると、`L.Point` と `R.Point` が同じ ftable entryへ落ちる。`App.Left.Point` は `x` だけ、`App.Right.Point` は `x`/`y` の2 fieldという異なる arityの file-import fixtureでこの衝突を固定した。
+
+RED `test_e2e_selfhost_compiler_mode_imported_alias_qualified_same_name_record_constructors_run` は、修正前に `L.Point` が `R.Point` の constructor indexへ誤解決され、Wasm translationが `offset 2929: type mismatch: expected i64 but nothing on stack` で失敗した。GREENは record preludeへ module-qualified constructor keyを追加し、CompilerModeの importごとに alias-qualified keyを登録したうえで、`ftable-lookup-call-target` の lookup順を raw full hash → `ast-qualified-name-hash(prefix, suffix)` → raw suffixへ変更し、同テストで `41\n2\n3\n`、1 passed、84.04sを確認した。既存の flat ftable alias-qualified function call `42\n` と CompilerMode qualified record literal/pattern `41\n` も再実行して passした。
+
+これは CompilerMode file-import の alias-qualified record constructor collision一例だけを閉じる verified sliceである。same-name static accessor、record literal/patternを跨ぐ cross-module nominal collision、unqualified同名 exportの曖昧性方針、private record、record update全形式、standalone native stage0、Mac Apple Silicon / Linux x86_64 の current-source artifact/runtime gate、EC-M1-01 aggregateの完了を意味しない。`TODO.md` の `[~]` と Rust oracle / bootstrap / host integration境界を維持する。
+
 ### EC-M1-01 selfhost imported record update compiler-mode initial RED (2026-07-25)
 
 actual Wasm runtimeの最小 fixtureとして `App.Shapes.Point` を `App.Main` から alias + `:only [Point]` で importし、`(S.Point 40 2)` を `{point | x 41}` へ updateして `(. updated x)` / `(. updated y)` を出力する testを追加した。初回は `RUST_MIN_STACK=33554432` で `load-imports-from-decls-step` instruction 78の root ledger `BranchDepthMismatch` (`then_depth=6`, `else_depth=7`) に到達し、Wasm runtimeへ進めなかった。同じ failure valueは変更なし `origin/main` の record-pattern compiler-mode baselineでも再現したため、fixtureの parser/type-inference差分とは分離した。

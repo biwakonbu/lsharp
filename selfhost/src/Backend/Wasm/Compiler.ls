@@ -3467,7 +3467,15 @@
                                   (root_pop)
                                   result)))))))))))))))))
 
-(defn register-record-decl [decl ftable func-idx functions]
+(defn record-prelude-module-hash-loop [decls idx]
+  (if (< idx 0)
+    0
+    (let [decl (vector-get decls idx)]
+      (if (= (vector-get decl 0) 25)
+        (vector-get decl 1)
+        (record-prelude-module-hash-loop decls (- idx 1))))))
+
+(defn register-record-decl [decl module-hash ftable func-idx functions]
   (do
     (root_push decl)
     (root_push ftable)
@@ -3478,22 +3486,33 @@
       (do
         (root_push fields)
         (root_push constructor-meta)
-        (let [next-ftable (ftable-register ftable constructor-hash func-idx)]
+        (let [with-raw (ftable-register ftable constructor-hash func-idx)
+          module-qualified-hash
+            (if (= module-hash 0)
+              0
+              (ast-qualified-name-hash module-hash constructor-hash))]
           (do
-            (root_push next-ftable)
-            (let [next-functions (push-object-vector functions constructor-meta)]
+            (root_push with-raw)
+            (let [next-ftable
+                    (if (= module-qualified-hash 0)
+                      with-raw
+                      (ftable-register with-raw module-qualified-hash func-idx))]
               (do
-                (root_push next-functions)
-                (let [result (register-record-accessors fields 0 (/ (vector-length fields) 3) next-ftable (+ func-idx 1) next-functions)]
+                (root_push next-ftable)
+                (let [next-functions (push-object-vector functions constructor-meta)]
                   (do
-                    (root_pop)
-                    (root_pop)
-                    (root_pop)
-                    (root_pop)
-                    (root_pop)
-                    (root_pop)
-                    (root_pop)
-                    result))))))))))
+                    (root_push next-functions)
+                    (let [result (register-record-accessors fields 0 (/ (vector-length fields) 3) next-ftable (+ func-idx 1) next-functions)]
+                      (do
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        result))))))))))))
 
 (defn register-adt-variants [variants idx count ftable func-idx functions]
   (if (>= idx count)
@@ -3575,11 +3594,12 @@
       (root_push decls)
       (root_push ftable)
       (root_push functions)
-      (let [decl (vector-get decls idx)]
+      (let [decl (vector-get decls idx)
+        module-hash (record-prelude-module-hash-loop decls (- idx 1))]
         (do
           (root_push decl)
           (if (= (vector-get decl 0) 22)
-            (let [record-result (register-record-decl decl ftable func-idx functions)]
+            (let [record-result (register-record-decl decl module-hash ftable func-idx functions)]
               (do
                 (root_push record-result)
                 (let [result (make-record-prelude-state 0 (+ idx 1) (vector-get record-result 0) (vector-get record-result 1) (vector-get record-result 2))]

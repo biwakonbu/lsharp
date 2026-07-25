@@ -1,5 +1,6 @@
 (module App.CompilerMode)
 (import App.ModuleResolver)
+(import Syntax.AST)
 (import Syntax.Parser)
 (import Syntax.Lexer)
 (import Backend.Wasm.WasmEmit)
@@ -3301,6 +3302,191 @@
                   (root_pop)
                   result)))))))))
 
+(defn compiler-pair-module-hash-loop [decls idx n current-hash]
+  (if (>= idx n)
+    current-hash
+    (let [decl (vector-get decls idx)]
+      (if (= (vector-get decl 0) 25)
+        (compiler-pair-module-hash-loop decls (+ idx 1) n (vector-get decl 1))
+        (compiler-pair-module-hash-loop decls (+ idx 1) n current-hash)))))
+
+(defn compiler-pair-module-hash [pair]
+  (let [decls (vector-get pair 1)]
+    (compiler-pair-module-hash-loop decls 0 (vector-length decls) 0)))
+
+(defn compiler-find-pair-by-module-loop [pairs idx n target-module]
+  (if (>= idx n)
+    0
+    (let [pair (vector-get pairs idx)]
+      (if (= (compiler-pair-module-hash pair) target-module)
+        pair
+        (compiler-find-pair-by-module-loop pairs (+ idx 1) n target-module)))))
+
+(defn compiler-import-only-contains-loop [only-hashes idx n target-hash]
+  (if (>= idx n)
+    0
+    (if (= (vector-get only-hashes idx) target-hash)
+      1
+      (compiler-import-only-contains-loop only-hashes (+ idx 1) n target-hash))))
+
+(defn compiler-import-only-allows [only-hashes target-hash]
+  (if (= only-hashes 0)
+    1
+    (if (= (vector-length only-hashes) 0)
+      1
+      (compiler-import-only-contains-loop
+        only-hashes
+        0
+        (vector-length only-hashes)
+        target-hash))))
+
+(defn compiler-register-record-import-aliases-loop
+  [decls idx n target-module alias-hash only-hashes ftable]
+  (if (>= idx n)
+    ftable
+    (let [decl (vector-get decls idx)]
+      (if (= (vector-get decl 0) 22)
+        (let [constructor-hash (vector-get decl 1)]
+          (if (= (compiler-import-only-allows only-hashes constructor-hash) 1)
+            (let [module-key (ast-qualified-name-hash target-module constructor-hash)
+              target-index (ftable-lookup ftable module-key)
+              alias-key (ast-qualified-name-hash alias-hash constructor-hash)]
+              (if (= target-index 0)
+                (compiler-register-record-import-aliases-loop
+                  decls
+                  (+ idx 1)
+                  n
+                  target-module
+                  alias-hash
+                  only-hashes
+                  ftable)
+                (let [next-ftable (ftable-register ftable alias-key target-index)]
+                  (do
+                    (root_push next-ftable)
+                    (let [result
+                            (compiler-register-record-import-aliases-loop
+                              decls
+                              (+ idx 1)
+                              n
+                              target-module
+                              alias-hash
+                              only-hashes
+                              next-ftable)]
+                      (do
+                        (root_pop)
+                        result))))))
+            (compiler-register-record-import-aliases-loop
+              decls
+              (+ idx 1)
+              n
+              target-module
+              alias-hash
+              only-hashes
+              ftable)))
+        (compiler-register-record-import-aliases-loop
+          decls
+          (+ idx 1)
+          n
+          target-module
+          alias-hash
+          only-hashes
+          ftable)))))
+
+(defn compiler-register-record-imports-loop [pairs decls idx n ftable]
+  (do
+    (root_push pairs)
+    (root_push decls)
+    (root_push ftable)
+    (let [result
+            (if (>= idx n)
+              ftable
+              (let [decl (vector-get decls idx)]
+                (if (= (vector-get decl 0) 26)
+                  (let [target-module (vector-get decl 1)
+                    alias-hash
+                      (if (>= (vector-length decl) 5)
+                        (let [parsed-alias (vector-get decl 4)]
+                          (if (= parsed-alias 0) target-module parsed-alias))
+                        target-module)
+                    only-hashes
+                      (if (>= (vector-length decl) 6)
+                        (vector-get decl 5)
+                        0)
+                    target-pair
+                      (compiler-find-pair-by-module-loop
+                        pairs
+                        0
+                        (vector-length pairs)
+                        target-module)]
+                    (do
+                      (root_push target-pair)
+                      (let [target-decls
+                              (if (= target-pair 0)
+                                0
+                                (vector-get target-pair 1))]
+                        (do
+                          (root_push target-decls)
+                          (let [registered-ftable
+                                  (if (= target-pair 0)
+                                    ftable
+                                    (compiler-register-record-import-aliases-loop
+                                      target-decls
+                                      0
+                                      (vector-length target-decls)
+                                      target-module
+                                      alias-hash
+                                      only-hashes
+                                      ftable))]
+                            (do
+                              (root_push registered-ftable)
+                              (let [next-result
+                                      (compiler-register-record-imports-loop
+                                        pairs
+                                        decls
+                                        (+ idx 1)
+                                        n
+                                        registered-ftable)]
+                                (do
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  next-result))))))))
+                  (compiler-register-record-imports-loop
+                    pairs
+                    decls
+                    (+ idx 1)
+                    n
+                    ftable))))]
+      (do
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        result))))
+
+(defn compiler-register-record-import-aliases-pairs-loop [pairs idx n ftable]
+  (if (>= idx n)
+    ftable
+    (let [pair (vector-get pairs idx)
+      decls (vector-get pair 1)
+      next-ftable
+        (compiler-register-record-imports-loop
+          pairs
+          decls
+          0
+          (vector-length decls)
+          ftable)]
+      (do
+        (root_push next-ftable)
+        (let [result
+                (compiler-register-record-import-aliases-pairs-loop
+                  pairs
+                  (+ idx 1)
+                  n
+                  next-ftable)]
+          (do
+            (root_pop)
+            result))))))
+
 (defn compile-record-prelude-all-pairs [pairs idx n ftable func-idx functions]
   (do
     (root_push pairs)
@@ -3309,13 +3495,33 @@
     (let [state (compile-record-prelude-all-pairs-step-64 pairs idx n ftable func-idx functions)]
       (do
         (root_push state)
-        (let [result (continue-compile-record-prelude-all-pairs-step-64 pairs n state)]
+        (let [prelude-state
+                (continue-compile-record-prelude-all-pairs-step-64 pairs n state)]
           (do
-            (root_pop)
-            (root_pop)
-            (root_pop)
-            (root_pop)
-            result))))))
+            (root_push prelude-state)
+            (let [aliased-ftable
+                    (compiler-register-record-import-aliases-pairs-loop
+                      pairs
+                      0
+                      n
+                      (vector-get prelude-state 2))]
+              (do
+                (root_push aliased-ftable)
+                (let [result
+                        (make-record-prelude-state
+                          (vector-get prelude-state 0)
+                          (vector-get prelude-state 1)
+                          aliased-ftable
+                          (vector-get prelude-state 3)
+                          (vector-get prelude-state 4))]
+                  (do
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    result))))))))))
 
 (defn make-register-pairs-state [done next-idx next-ftable next-func-idx]
   (do
