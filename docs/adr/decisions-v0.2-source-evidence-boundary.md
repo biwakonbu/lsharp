@@ -45,3 +45,9 @@ source metadata では次の form を受理し、wire ID と span を lossless �
 - `cargo test -p lsharp-syntax --test intent_edges evidence_edges`
 - `cargo test -p lsharp-types --test validation_source source_adapter_rejects_evidence_edges`
 - `cargo test -p lsharp-driver --test validate_cli validate_source`
+
+## Follow-up
+
+`decisions-v0.2-source-evidence-record.md` で required-field の `:evidence` registry と登録済み
+record への edge 投入を追加した。この ADR の未登録 evidence に対する fail-closed boundary は、
+record が存在しない source に対して引き続き有効である。

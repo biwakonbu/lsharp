@@ -1,0 +1,55 @@
+# ADR: source `:evidence` record の required-field registry
+
+- Status: Accepted (partial)
+- Date: 2026-07-25
+- Scope: EC-M2-02 / EC-M2-03
+- Supersedes: `decisions-v0.2-source-evidence-boundary.md` の未接続 registry 境界を、登録済み record に限って更新する
+
+## Context
+
+`supports` / `contradicts` は evidence ID の存在を必要とするが、source から evidence record を
+登録する入力契約がなければ、edge を安全に接続できない。canonical `Evidence` は runner/target、
+source commit、artifact digest、sampling、provenance、independence を required field として持つため、
+source でも値を補完せず明示的に受け取る必要がある。
+
+## Decision
+
+宣言 metadata に次の named-field form を追加する。
+
+```lisp
+:evidence "evidence:checkout/cancel-observation"
+  :subject "claim:checkout/cancel-rejects-shipped"
+  :method "case" :outcome "pass"
+  :runner "cargo-test" :target "aarch64-apple-darwin"
+  :source-commit "0123456789abcdef" :artifact-digest "sha256:abc123"
+  :cases 1 :seed 42 :generator "checkout-cancel-fixture"
+  :producer "lsharp-test" :tool-version "0.2.0"
+  :timestamp "2026-07-25T00:00:00Z" :independence "same-author"
+```
+
+- parser は source order と directive span を保ち、raw string enum を暗黙に補正しない。
+- source adapter は全 node を登録した後に evidence record を登録し、その後で edge を解決する。
+  これにより declaration order に依存しない。
+- subject は `IntentId` / `ClaimId` / `ContractId` の wire prefix を検証し、Intent/Claim subject は
+  source node registry に存在することを要求する。Contract registry は別境界として残す。
+- `supports` / `contradicts` は登録済み `EvidenceId` にだけ接続する。record がない場合は
+  `EvidenceRegistryRequired`、enum/value/required field が不正な場合は入力エラーとして返す。
+- `shrinks` / `coverage` の source projection、manifest emission、selfhost/native parity は後続 task とする。
+
+## Consequences
+
+- evidence edge が未登録 record を黙って参照したり、空の record を自動生成したりしない。
+- `validate --source` は required-field evidence が揃った source では graph/report へ進み、未登録 edge では
+  report status と混同しない入力エラーを返す。
+- source と JSON manifest は同じ canonical `Evidence` / `Edge` model を共有するが、optional sampling
+  fields と selfhost/native parity はまだ閉じていない。
+
+## Evidence
+
+- `crates/lsharp-syntax/tests/intent_edges.rs`
+- `crates/lsharp-types/tests/validation_source.rs`
+- `crates/lsharp-driver/tests/validate_cli.rs`
+- `cargo test -p lsharp-syntax`
+- `cargo test -p lsharp-types`
+- `cargo test -p lsharp-driver --test validate_cli validate_source`
+- `cargo clippy -p lsharp-syntax -p lsharp-types --lib -- -D warnings`

@@ -101,3 +101,62 @@ fn evidence_edges_preserve_observation_and_claim_wire_ids() {
     ));
     assert!(metadata.forms[0].span().start < metadata.forms[1].span().start);
 }
+
+#[test]
+fn evidence_record_metadata_preserves_required_fields_and_source_span() {
+    let program = parse(
+        r#"
+        (defn cancel []
+          :evidence "evidence:checkout/cancel-observation"
+            :subject "claim:checkout/cancel-rejects-shipped"
+            :method "case"
+            :outcome "pass"
+            :runner "cargo-test"
+            :target "aarch64-apple-darwin"
+            :source-commit "0123456789abcdef"
+            :artifact-digest "sha256:abc123"
+            :cases 1
+            :seed 42
+            :generator "checkout-cancel-fixture"
+            :producer "lsharp-test"
+            :tool-version "0.2.0"
+            :timestamp "2026-07-25T00:00:00Z"
+            :independence "same-author"
+          true)
+        "#,
+    )
+    .expect("evidence record metadata は parse できるべき");
+    let Decl::Defn {
+        metadata: Some(metadata),
+        ..
+    } = &program.decls[0]
+    else {
+        panic!("metadata 付き defn を期待しました");
+    };
+
+    let MetadataFormKind::Evidence { record } = &metadata.forms[0].kind else {
+        panic!("evidence record form を期待しました");
+    };
+    assert_eq!(record.id(), "evidence:checkout/cancel-observation");
+    assert_eq!(record.subject(), "claim:checkout/cancel-rejects-shipped");
+    assert_eq!(record.method(), "case");
+    assert_eq!(record.outcome(), "pass");
+    assert_eq!(record.cases(), 1);
+    assert_eq!(record.seed(), 42);
+    assert_eq!(record.independence(), "same-author");
+    assert!(metadata.forms[0].span().start < metadata.forms[0].span().end);
+}
+
+#[test]
+fn evidence_record_metadata_requires_all_named_fields() {
+    let error = parse(
+        r#"
+        (defn cancel []
+          :evidence "evidence:checkout/cancel-observation"
+            :subject "claim:checkout/cancel-rejects-shipped"
+          true)
+        "#,
+    )
+    .expect_err("evidence record の required field 欠落は拒否するべき");
+    assert_eq!(error.code(), "LS0101");
+}

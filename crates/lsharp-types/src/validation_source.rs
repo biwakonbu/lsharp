@@ -1,13 +1,16 @@
 //! L# source metadata を intent graph の node registry へ投影する adapter。
 //!
-//! source syntax では node の wire ID、本文、span と typed edge endpoint を明示的に受け取り、
-//! evidence record 自体は別の入力境界で扱う。ID の省略や kind の推測は行わず、同じ ID の
-//! 重複と typed kind mismatch を既存の canonical model のエラーとして返す。
+//! source syntax では node の wire ID、本文、span、evidence record と typed edge endpoint を
+//! 明示的に受け取る。ID の省略や kind の推測は行わず、同じ ID の重複と typed kind mismatch
+//! を既存の canonical model のエラーとして返す。
 
-use crate::evidence::Edge;
+use crate::evidence::{
+    Edge, Evidence, EvidenceMethod, EvidenceOutcome, EvidenceSubject, ExecutionContext,
+    ExecutionIdentity, Independence, Provenance, SamplingPlan,
+};
 use crate::intent::{
     AssumptionId, ClaimId, ContractId, EvidenceId, IntentId, IntentNode, IntentNodeError, NodeKind,
-    StableIdError,
+    StableId, StableIdError,
 };
 use crate::validation::IntentGraph;
 use lsharp_syntax::ast::{Decl, Metadata, Program};
@@ -31,6 +34,8 @@ pub enum SourceGraphError {
         relation: &'static str,
         evidence_id: String,
     },
+    #[error("source evidence の {field} が不正です: {value}")]
+    InvalidEvidenceField { field: &'static str, value: String },
     #[error(
         "source metadata の node kind と stable ID が不一致です (expected={expected:?}, actual={actual:?}, id={wire_id})"
     )]
@@ -44,16 +49,18 @@ pub enum SourceGraphError {
 /// source の明示 node metadata と typed edge を version 1 graph へ投影する。
 ///
 /// `:intent` / `:claim` / `:assumption` / `:open-question` 以外の metadata は
-/// presentation または executable contract として別の adapter が扱うため、node/edge
-/// registry では無視する。source edge は endpoint を node registry へ解決できる
-/// `:motivates`、`:constrained-by`、`:tested-by` を生成する。`:supports` と
-/// `:contradicts` は evidence registry が未接続のため、ID と claim endpoint を検証した
-/// うえで明示的なエラーを返す。contract/evidence の実体定義と evidence record 投入は
-/// 別の adapter の責務として残す。
+/// presentation または executable contract として別の adapter が扱うため、node registry
+/// では無視する。source の `:evidence` record は required provenance/sampling fields を
+/// canonical `Evidence` へ投影し、source edge は endpoint を registry へ解決できる
+/// `:motivates`、`:constrained-by`、`:tested-by`、`:supports`、`:contradicts` を生成する。
+/// evidence record がない supports/contradicts は明示的な registry-required error とする。
 pub fn source_program_to_intent_graph(program: &Program) -> Result<IntentGraph, SourceGraphError> {
     let mut graph = IntentGraph::default();
     for decl in &program.decls {
         add_decl_nodes(decl, &mut graph)?;
+    }
+    for decl in &program.decls {
+        add_decl_evidence(decl, &mut graph)?;
     }
     for decl in &program.decls {
         add_decl_edges(decl, &mut graph)?;
@@ -107,6 +114,148 @@ fn add_metadata_nodes(
     Ok(())
 }
 
+fn add_decl_evidence(decl: &Decl, graph: &mut IntentGraph) -> Result<(), SourceGraphError> {
+    match decl {
+        Decl::Defn {
+            metadata: Some(metadata),
+            ..
+        }
+        | Decl::TypeDef {
+            metadata: Some(metadata),
+            ..
+        } => add_metadata_evidence(metadata, graph),
+        Decl::ModuleDecl { body, .. } | Decl::ImplDef { methods: body, .. } => {
+            for nested in body {
+                add_decl_evidence(nested, graph)?;
+            }
+            Ok(())
+        }
+        Decl::Private { inner, .. } => add_decl_evidence(inner, graph),
+        _ => Ok(()),
+    }
+}
+
+fn add_metadata_evidence(
+    metadata: &Metadata,
+    graph: &mut IntentGraph,
+) -> Result<(), SourceGraphError> {
+    for form in &metadata.forms {
+        let MetadataFormKind::Evidence { record } = &form.kind else {
+            continue;
+        };
+        graph.add_evidence(build_source_evidence(record, graph)?)?;
+    }
+    Ok(())
+}
+
+fn build_source_evidence(
+    record: &lsharp_syntax::metadata::EvidenceForm,
+    graph: &IntentGraph,
+) -> Result<Evidence, SourceGraphError> {
+    let id = EvidenceId::parse(record.id().to_string())?;
+    let subject = parse_evidence_subject(record.subject(), graph)?;
+    let method = parse_evidence_method(record.method())?;
+    let outcome = parse_evidence_outcome(record.outcome())?;
+    let independence = parse_independence(record.independence())?;
+    let execution = ExecutionContext::new(
+        ExecutionIdentity::new(
+            record.runner().to_string(),
+            record.target().to_string(),
+            record.source_commit().to_string(),
+            record.artifact_digest().to_string(),
+        ),
+        SamplingPlan::new(
+            record.cases(),
+            record.seed(),
+            record.generator().to_string(),
+            Vec::new(),
+            Vec::<(String, usize)>::new(),
+        ),
+    );
+    Ok(Evidence::new(
+        id,
+        method,
+        subject,
+        outcome,
+        execution,
+        Provenance::new(
+            record.producer().to_string(),
+            record.tool_version().to_string(),
+            record.timestamp().to_string(),
+        ),
+        independence,
+    ))
+}
+
+fn parse_evidence_subject(
+    wire_id: &str,
+    graph: &IntentGraph,
+) -> Result<EvidenceSubject, SourceGraphError> {
+    let stable_id = StableId::parse(wire_id.to_string())?;
+    match stable_id.kind() {
+        NodeKind::Intent => {
+            let id = IntentId::parse(wire_id.to_string())?;
+            require_node(graph, "evidence.subject", id.stable_id())?;
+            Ok(EvidenceSubject::Intent(id))
+        }
+        NodeKind::Claim => {
+            let id = ClaimId::parse(wire_id.to_string())?;
+            require_node(graph, "evidence.subject", id.stable_id())?;
+            Ok(EvidenceSubject::Claim(id))
+        }
+        NodeKind::Contract => Ok(EvidenceSubject::Contract(ContractId::parse(
+            wire_id.to_string(),
+        )?)),
+        _ => Err(SourceGraphError::InvalidEvidenceField {
+            field: "subject",
+            value: wire_id.to_string(),
+        }),
+    }
+}
+
+fn parse_evidence_method(value: &str) -> Result<EvidenceMethod, SourceGraphError> {
+    match value {
+        "example" => Ok(EvidenceMethod::Example),
+        "case" => Ok(EvidenceMethod::Case),
+        "assert" => Ok(EvidenceMethod::Assert),
+        "property" => Ok(EvidenceMethod::Property),
+        "production" => Ok(EvidenceMethod::Production),
+        "reference" => Ok(EvidenceMethod::Reference),
+        "proof" => Ok(EvidenceMethod::Proof),
+        "review" => Ok(EvidenceMethod::Review),
+        _ => Err(SourceGraphError::InvalidEvidenceField {
+            field: "method",
+            value: value.to_string(),
+        }),
+    }
+}
+
+fn parse_evidence_outcome(value: &str) -> Result<EvidenceOutcome, SourceGraphError> {
+    match value {
+        "pass" => Ok(EvidenceOutcome::Pass),
+        "fail" => Ok(EvidenceOutcome::Fail),
+        "contradicted" => Ok(EvidenceOutcome::Contradicted),
+        "unknown" => Ok(EvidenceOutcome::Unknown),
+        "stale" => Ok(EvidenceOutcome::Stale),
+        _ => Err(SourceGraphError::InvalidEvidenceField {
+            field: "outcome",
+            value: value.to_string(),
+        }),
+    }
+}
+
+fn parse_independence(value: &str) -> Result<Independence, SourceGraphError> {
+    match value {
+        "same-author" => Ok(Independence::SameAuthor),
+        "independent-review" => Ok(Independence::IndependentReview),
+        "external-observation" => Ok(Independence::ExternalObservation),
+        _ => Err(SourceGraphError::InvalidEvidenceField {
+            field: "independence",
+            value: value.to_string(),
+        }),
+    }
+}
+
 fn add_decl_edges(decl: &Decl, graph: &mut IntentGraph) -> Result<(), SourceGraphError> {
     match decl {
         Decl::Defn {
@@ -158,19 +307,15 @@ fn add_metadata_edges(
                 let observation = EvidenceId::parse(observation.clone())?;
                 let claim = ClaimId::parse(claim.clone())?;
                 require_node(graph, "supports.claim", claim.stable_id())?;
-                return Err(SourceGraphError::EvidenceRegistryRequired {
-                    relation: "supports",
-                    evidence_id: observation.as_str().to_string(),
-                });
+                require_evidence(graph, "supports", &observation)?;
+                graph.add_edge(Edge::Supports { observation, claim })?;
             }
             MetadataFormKind::Contradicts { observation, claim } => {
                 let observation = EvidenceId::parse(observation.clone())?;
                 let claim = ClaimId::parse(claim.clone())?;
                 require_node(graph, "contradicts.claim", claim.stable_id())?;
-                return Err(SourceGraphError::EvidenceRegistryRequired {
-                    relation: "contradicts",
-                    evidence_id: observation.as_str().to_string(),
-                });
+                require_evidence(graph, "contradicts", &observation)?;
+                graph.add_edge(Edge::Contradicts { observation, claim })?;
             }
             _ => {}
         }
@@ -189,6 +334,21 @@ fn require_node(
         Err(SourceGraphError::MissingNodeReference {
             relation,
             id: id.as_str().to_string(),
+        })
+    }
+}
+
+fn require_evidence(
+    graph: &IntentGraph,
+    relation: &'static str,
+    id: &EvidenceId,
+) -> Result<(), SourceGraphError> {
+    if graph.evidence().iter().any(|evidence| evidence.id() == id) {
+        Ok(())
+    } else {
+        Err(SourceGraphError::EvidenceRegistryRequired {
+            relation,
+            evidence_id: id.as_str().to_string(),
         })
     }
 }

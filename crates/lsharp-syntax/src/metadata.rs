@@ -22,6 +22,129 @@ impl MetadataForm {
     }
 }
 
+/// source から lossless に受け取る evidence record の required fields。
+///
+/// 文字列 enum は source と canonical model の間で勝手に補正せず、types adapter が
+/// typed value へ変換するときに検証する。sampling の shrinks/coverage は次の slice で
+/// 拡張するため、現段階では cases/seed/generator を必須に保持する。
+#[derive(Debug, Clone, PartialEq)]
+pub struct EvidenceForm {
+    id: String,
+    subject: String,
+    method: String,
+    outcome: String,
+    runner: String,
+    target: String,
+    source_commit: String,
+    artifact_digest: String,
+    cases: usize,
+    seed: u64,
+    generator: String,
+    producer: String,
+    tool_version: String,
+    timestamp: String,
+    independence: String,
+}
+
+impl EvidenceForm {
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn new(
+        id: String,
+        subject: String,
+        method: String,
+        outcome: String,
+        runner: String,
+        target: String,
+        source_commit: String,
+        artifact_digest: String,
+        cases: usize,
+        seed: u64,
+        generator: String,
+        producer: String,
+        tool_version: String,
+        timestamp: String,
+        independence: String,
+    ) -> Self {
+        Self {
+            id,
+            subject,
+            method,
+            outcome,
+            runner,
+            target,
+            source_commit,
+            artifact_digest,
+            cases,
+            seed,
+            generator,
+            producer,
+            tool_version,
+            timestamp,
+            independence,
+        }
+    }
+
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    pub fn subject(&self) -> &str {
+        &self.subject
+    }
+
+    pub fn method(&self) -> &str {
+        &self.method
+    }
+
+    pub fn outcome(&self) -> &str {
+        &self.outcome
+    }
+
+    pub fn runner(&self) -> &str {
+        &self.runner
+    }
+
+    pub fn target(&self) -> &str {
+        &self.target
+    }
+
+    pub fn source_commit(&self) -> &str {
+        &self.source_commit
+    }
+
+    pub fn artifact_digest(&self) -> &str {
+        &self.artifact_digest
+    }
+
+    pub fn cases(&self) -> usize {
+        self.cases
+    }
+
+    pub fn seed(&self) -> u64 {
+        self.seed
+    }
+
+    pub fn generator(&self) -> &str {
+        &self.generator
+    }
+
+    pub fn producer(&self) -> &str {
+        &self.producer
+    }
+
+    pub fn tool_version(&self) -> &str {
+        &self.tool_version
+    }
+
+    pub fn timestamp(&self) -> &str {
+        &self.timestamp
+    }
+
+    pub fn independence(&self) -> &str {
+        &self.independence
+    }
+}
+
 /// canonical `:case` 内の `(expect actual expected)` entry。
 #[derive(Debug, Clone, PartialEq)]
 pub struct CaseExpectation {
@@ -165,6 +288,8 @@ pub enum MetadataFormKind {
     Supports { observation: String, claim: String },
     /// source から contradictory observation evidence と claim を接続する typed edge。
     Contradicts { observation: String, claim: String },
+    /// source から required provenance 付き evidence record を登録する。
+    Evidence { record: Box<EvidenceForm> },
     /// legacy `:example [expr ...]`。一つの directive 内の grouping を維持する。
     LegacyExample { expressions: Vec<Expr> },
     /// legacy `:invariant predicate`。

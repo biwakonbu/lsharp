@@ -53,9 +53,10 @@ lsharp validate --source src/Checkout.ls --format json
 ```
 
 source は parse 後に `:intent` / `:claim` / `:assumption` / `:open-question` node と
-`:motivates` / `:constrained-by` / `:tested-by` edge へ変換されます。`:supports` / `:contradicts` は
-evidence ID と Claim endpoint を parse しますが、evidence registry がまだ接続されていないため
-入力エラーとして拒否されます。Contract の実体や evidence record がまだ接続されていない source は、
+`:motivates` / `:constrained-by` / `:tested-by` edge へ変換されます。`:evidence` は required
+provenance/sampling fields を持つ record として登録され、`:supports` / `:contradicts` は登録済み
+evidence にだけ接続されます。record がない evidence edge は入力エラーとして拒否されます。
+Contract の executable definition や optional sampling fields がまだ接続されていない source は、
 欠落を補完せず `unknown`（exit code `2`）を返します。
 parse error、duplicate node、typed endpoint mismatch、orphan edge は入力エラーとして
 report とは別に非ゼロ終了します。`--source` と positional JSON manifest path は同時に指定
@@ -84,16 +85,33 @@ source に明示する場合は、次の edge metadata を使います。
   true)
 ```
 
+観測 evidence は required provenance/sampling fields を省略せず named metadata で登録します。
+
+```lisp
+(defn cancel []
+  :evidence "evidence:checkout/cancel-observation"
+    :subject "claim:checkout/cancel-rejects-shipped"
+    :method "case" :outcome "pass"
+    :runner "cargo-test" :target "aarch64-apple-darwin"
+    :source-commit "0123456789abcdef" :artifact-digest "sha256:abc123"
+    :cases 1 :seed 42 :generator "checkout-cancel-fixture"
+    :producer "lsharp-test" :tool-version "0.2.0"
+    :timestamp "2026-07-25T00:00:00Z" :independence "same-author"
+  :supports "evidence:checkout/cancel-observation" "claim:checkout/cancel-rejects-shipped"
+  true)
+```
+
 Rust source adapter は全 node を先に登録し、`motivates` / `constrained-by` の typed endpoint
 kind と存在を検査してから graph edge を追加します。`tested-by` は Claim→Contract の typed
-edge として claim trace gap を閉じます。`supports` / `contradicts` は evidence registry 未接続を
-`EvidenceRegistryRequired` として返し、未登録 evidence を黙って無視しません。manifest emission、
-selfhost/native 実行、evidence record の source 投入は後続境界です。
+edge として claim trace gap を閉じます。`evidence` record は全 required fields を canonical
+`Evidence` へ投影し、`supports` / `contradicts` は evidence registry closure を検査します。
+未登録 evidence は `EvidenceRegistryRequired` として返し、黙って無視しません。manifest emission、
+selfhost/native 実行、shrinks/coverage の source 投入は後続境界です。
 
 ## 現在の境界
 
 この slice は Rust の manifest parser/CLI と source node/edge registry を graph model へ接続し、
 project config から安全に入力を発見するものです。`validate --source` は source parser → graph →
-report までを Rust CLI で実行できます。evidence registry 未接続の source edge は明示的に拒否し、
-selfhost/native の report
+report までを Rust CLI で実行できます。required-field evidence record を含む source edge は実行でき、
+evidence registry 未接続の source edge は明示的に拒否します。selfhost/native の report
 parity、EmbeddedCli/MCP、Mac/Linux の artifact/runtime evidence は後続の M2-03 task として残ります。
