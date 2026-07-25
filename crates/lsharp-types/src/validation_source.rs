@@ -30,6 +30,14 @@ pub enum SourceGraphError {
         first_span: Span,
         duplicate_span: Span,
     },
+    #[error(
+        "source evidence の stable ID が重複しています (id={id}, first_span={first_span}, duplicate_span={duplicate_span})"
+    )]
+    DuplicateEvidence {
+        id: String,
+        first_span: Span,
+        duplicate_span: Span,
+    },
     #[error("source intent graph の登録に失敗しました: {0}")]
     Graph(#[from] crate::evidence::GraphError),
     #[error("source intent edge の ID 解析に失敗しました: {0}")]
@@ -68,8 +76,9 @@ pub fn source_program_to_intent_graph(program: &Program) -> Result<IntentGraph, 
     for decl in &program.decls {
         add_decl_nodes(decl, &mut graph)?;
     }
+    let mut evidence_spans = Vec::new();
     for decl in &program.decls {
-        add_decl_evidence(decl, &mut graph)?;
+        add_decl_evidence(decl, &mut graph, &mut evidence_spans)?;
     }
     for decl in &program.decls {
         add_decl_edges(decl, &mut graph)?;
@@ -134,7 +143,11 @@ fn add_metadata_nodes(
     Ok(())
 }
 
-fn add_decl_evidence(decl: &Decl, graph: &mut IntentGraph) -> Result<(), SourceGraphError> {
+fn add_decl_evidence(
+    decl: &Decl,
+    graph: &mut IntentGraph,
+    evidence_spans: &mut Vec<(String, Span)>,
+) -> Result<(), SourceGraphError> {
     match decl {
         Decl::Defn {
             metadata: Some(metadata),
@@ -143,14 +156,14 @@ fn add_decl_evidence(decl: &Decl, graph: &mut IntentGraph) -> Result<(), SourceG
         | Decl::TypeDef {
             metadata: Some(metadata),
             ..
-        } => add_metadata_evidence(metadata, graph),
+        } => add_metadata_evidence(metadata, graph, evidence_spans),
         Decl::ModuleDecl { body, .. } | Decl::ImplDef { methods: body, .. } => {
             for nested in body {
-                add_decl_evidence(nested, graph)?;
+                add_decl_evidence(nested, graph, evidence_spans)?;
             }
             Ok(())
         }
-        Decl::Private { inner, .. } => add_decl_evidence(inner, graph),
+        Decl::Private { inner, .. } => add_decl_evidence(inner, graph, evidence_spans),
         _ => Ok(()),
     }
 }
@@ -158,12 +171,23 @@ fn add_decl_evidence(decl: &Decl, graph: &mut IntentGraph) -> Result<(), SourceG
 fn add_metadata_evidence(
     metadata: &Metadata,
     graph: &mut IntentGraph,
+    evidence_spans: &mut Vec<(String, Span)>,
 ) -> Result<(), SourceGraphError> {
     for form in &metadata.forms {
         let MetadataFormKind::Evidence { record } = &form.kind else {
             continue;
         };
-        graph.add_evidence(build_source_evidence(record, graph)?)?;
+        let evidence = build_source_evidence(record, graph)?;
+        let id = evidence.id().as_str().to_string();
+        if let Some((_, first_span)) = evidence_spans.iter().find(|(existing, _)| existing == &id) {
+            return Err(SourceGraphError::DuplicateEvidence {
+                id,
+                first_span: *first_span,
+                duplicate_span: form.span(),
+            });
+        }
+        graph.add_evidence(evidence)?;
+        evidence_spans.push((id, form.span()));
     }
     Ok(())
 }

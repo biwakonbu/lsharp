@@ -96,6 +96,67 @@ fn source_adapter_reports_duplicate_node_with_both_source_spans() {
 }
 
 #[test]
+fn source_adapter_reports_duplicate_evidence_with_both_source_spans() {
+    const SOURCE: &str = r#"
+        (defn claim []
+          :claim "claim:checkout/cancel" "The API rejects shipped orders"
+          true)
+        (defn first []
+          :evidence "evidence:checkout/same"
+            :subject "claim:checkout/cancel"
+            :method "case"
+            :outcome "pass"
+            :runner "first-runner"
+            :target "aarch64-apple-darwin"
+            :source-commit "0123456789abcdef"
+            :artifact-digest "sha256:first"
+            :cases 1
+            :seed 42
+            :generator "checkout-cancel-fixture"
+            :producer "lsharp-test"
+            :tool-version "0.2.0"
+            :timestamp "2026-07-25T00:00:00Z"
+            :independence "same-author"
+          true)
+        (defn second []
+          :evidence "evidence:checkout/same"
+            :subject "claim:checkout/cancel"
+            :method "case"
+            :outcome "pass"
+            :runner "second-runner"
+            :target "aarch64-apple-darwin"
+            :source-commit "0123456789abcdef"
+            :artifact-digest "sha256:second"
+            :cases 1
+            :seed 42
+            :generator "checkout-cancel-fixture"
+            :producer "lsharp-test"
+            :tool-version "0.2.0"
+            :timestamp "2026-07-25T00:00:00Z"
+            :independence "same-author"
+          true)
+        "#;
+    let program = parse(SOURCE).expect("duplicate evidence fixture は parse できるべき");
+
+    let error = source_program_to_intent_graph(&program)
+        .expect_err("duplicate source evidence は span 付きで拒否するべき");
+    let SourceGraphError::DuplicateEvidence {
+        id,
+        first_span,
+        duplicate_span,
+    } = error
+    else {
+        panic!("duplicate evidence の source diagnostic を期待しました: {error:?}");
+    };
+
+    assert_eq!(id, "evidence:checkout/same");
+    assert!(first_span.start < duplicate_span.start);
+    assert!(first_span.end <= duplicate_span.start);
+    assert!(SOURCE[first_span.start..first_span.end].contains("first-runner"));
+    assert!(SOURCE[duplicate_span.start..duplicate_span.end].contains("second-runner"));
+}
+
+#[test]
 fn source_only_metadata_does_not_create_an_empty_contract_suite() {
     let program =
         parse(r#"(defn cancel [] :intent "intent:checkout/safe-cancel" "Users can cancel" true)"#)

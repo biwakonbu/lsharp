@@ -51,7 +51,9 @@
   producer/tool version/timestamp、independence を named fields で lossless に受理する。
   `source_program_to_intent_graph` は全 node → evidence record → evidence edge の順で投影し、
   required field、typed subject、duplicate ID、missing edge registry を canonical model の
-  fail-closed error として返す。selfhost/native parity は未完了。Evidence: `crates/lsharp-syntax/tests/intent_edges.rs`,
+  fail-closed error として返す。duplicate evidence ID は最初の record span と重複 record span を
+  含む source-level diagnostic として返す。selfhost/native parity は未完了。Evidence:
+  `crates/lsharp-syntax/tests/intent_edges.rs`,
   `crates/lsharp-types/tests/validation_source.rs`, `crates/lsharp-driver/tests/validate_cli.rs`,
   `docs/adr/decisions-v0.2-source-evidence-record.md`。
 
