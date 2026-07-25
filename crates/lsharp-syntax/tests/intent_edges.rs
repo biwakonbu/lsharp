@@ -67,3 +67,37 @@ fn tested_by_metadata_preserves_claim_and_contract_wire_ids() {
                 && contract == "contract:checkout/cancel-case"
     ));
 }
+
+#[test]
+fn evidence_edges_preserve_observation_and_claim_wire_ids() {
+    let program = parse(
+        r#"
+        (defn cancel []
+          :supports "evidence:checkout/cancel-observation" "claim:checkout/cancel-rejects-shipped"
+          :contradicts "evidence:checkout/cancel-counterexample" "claim:checkout/cancel-rejects-shipped"
+          true)
+        "#,
+    )
+    .expect("evidence edge metadata は parse できるべき");
+    let Decl::Defn {
+        metadata: Some(metadata),
+        ..
+    } = &program.decls[0]
+    else {
+        panic!("metadata 付き defn を期待しました");
+    };
+
+    assert!(matches!(
+        &metadata.forms[0].kind,
+        MetadataFormKind::Supports { observation, claim }
+            if observation == "evidence:checkout/cancel-observation"
+                && claim == "claim:checkout/cancel-rejects-shipped"
+    ));
+    assert!(matches!(
+        &metadata.forms[1].kind,
+        MetadataFormKind::Contradicts { observation, claim }
+            if observation == "evidence:checkout/cancel-counterexample"
+                && claim == "claim:checkout/cancel-rejects-shipped"
+    ));
+    assert!(metadata.forms[0].span().start < metadata.forms[1].span().start);
+}

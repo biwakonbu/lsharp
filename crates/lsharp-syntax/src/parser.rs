@@ -409,6 +409,34 @@ impl Parser {
                             ));
                             found = true;
                         }
+                        "supports" => {
+                            let form_start = self.peek_span();
+                            self.advance(); // :
+                            self.advance(); // supports
+                            let (observation, _) =
+                                self.expect_metadata_string("supports observation ID")?;
+                            let (claim, claim_span) =
+                                self.expect_metadata_string("supports claim ID")?;
+                            metadata.forms.push(MetadataForm::new(
+                                form_start.merge(claim_span),
+                                MetadataFormKind::Supports { observation, claim },
+                            ));
+                            found = true;
+                        }
+                        "contradicts" => {
+                            let form_start = self.peek_span();
+                            self.advance(); // :
+                            self.advance(); // contradicts
+                            let (observation, _) =
+                                self.expect_metadata_string("contradicts observation ID")?;
+                            let (claim, claim_span) =
+                                self.expect_metadata_string("contradicts claim ID")?;
+                            metadata.forms.push(MetadataForm::new(
+                                form_start.merge(claim_span),
+                                MetadataFormKind::Contradicts { observation, claim },
+                            ));
+                            found = true;
+                        }
                         "since" => {
                             self.advance(); // :
                             self.advance(); // since
@@ -1776,6 +1804,8 @@ impl Parser {
                     | "motivates"
                     | "constrained-by"
                     | "tested-by"
+                    | "supports"
+                    | "contradicts"
                     | "doc"
                     | "params"
                     | "returns"

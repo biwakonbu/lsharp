@@ -6,7 +6,7 @@
 
 use crate::evidence::Edge;
 use crate::intent::{
-    AssumptionId, ClaimId, ContractId, IntentId, IntentNode, IntentNodeError, NodeKind,
+    AssumptionId, ClaimId, ContractId, EvidenceId, IntentId, IntentNode, IntentNodeError, NodeKind,
     StableIdError,
 };
 use crate::validation::IntentGraph;
@@ -25,6 +25,13 @@ pub enum SourceGraphError {
     #[error("source intent edge が参照する node がありません (relation={relation}, id={id})")]
     MissingNodeReference { relation: &'static str, id: String },
     #[error(
+        "source evidence edge は evidence registry の登録を要求します (relation={relation}, evidence_id={evidence_id})"
+    )]
+    EvidenceRegistryRequired {
+        relation: &'static str,
+        evidence_id: String,
+    },
+    #[error(
         "source metadata の node kind と stable ID が不一致です (expected={expected:?}, actual={actual:?}, id={wire_id})"
     )]
     KindMismatch {
@@ -39,8 +46,10 @@ pub enum SourceGraphError {
 /// `:intent` / `:claim` / `:assumption` / `:open-question` 以外の metadata は
 /// presentation または executable contract として別の adapter が扱うため、node/edge
 /// registry では無視する。source edge は endpoint を node registry へ解決できる
-/// `:motivates`、`:constrained-by`、`:tested-by` を生成する。contract/evidence の
-/// 実体定義と evidence record 投入は別の adapter の責務として残す。
+/// `:motivates`、`:constrained-by`、`:tested-by` を生成する。`:supports` と
+/// `:contradicts` は evidence registry が未接続のため、ID と claim endpoint を検証した
+/// うえで明示的なエラーを返す。contract/evidence の実体定義と evidence record 投入は
+/// 別の adapter の責務として残す。
 pub fn source_program_to_intent_graph(program: &Program) -> Result<IntentGraph, SourceGraphError> {
     let mut graph = IntentGraph::default();
     for decl in &program.decls {
@@ -144,6 +153,24 @@ fn add_metadata_edges(
                 let contract = ContractId::parse(contract.clone())?;
                 require_node(graph, "tested-by.claim", claim.stable_id())?;
                 graph.add_edge(Edge::TestedBy { claim, contract })?;
+            }
+            MetadataFormKind::Supports { observation, claim } => {
+                let observation = EvidenceId::parse(observation.clone())?;
+                let claim = ClaimId::parse(claim.clone())?;
+                require_node(graph, "supports.claim", claim.stable_id())?;
+                return Err(SourceGraphError::EvidenceRegistryRequired {
+                    relation: "supports",
+                    evidence_id: observation.as_str().to_string(),
+                });
+            }
+            MetadataFormKind::Contradicts { observation, claim } => {
+                let observation = EvidenceId::parse(observation.clone())?;
+                let claim = ClaimId::parse(claim.clone())?;
+                require_node(graph, "contradicts.claim", claim.stable_id())?;
+                return Err(SourceGraphError::EvidenceRegistryRequired {
+                    relation: "contradicts",
+                    evidence_id: observation.as_str().to_string(),
+                });
             }
             _ => {}
         }

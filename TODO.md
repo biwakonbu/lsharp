@@ -24,12 +24,22 @@
   （Claim→Assumption）、`:tested-by`（Claim→Contract）が二つの wire ID と directive span を lossless に保持し、
   `validation_source::source_program_to_intent_graph` が全 node を先に収集してから typed edge を
   登録する。endpoint の wire kind mismatch、orphan reference、不正 ID は fail-closed。Contract の
-  実体定義、evidence record、supports/contradicts edge は contract/evidence registry の入力境界が
-  未接続のため残件。
+  実体定義と evidence record は contract/evidence registry の入力境界が未接続のため残件。
   Evidence: `crates/lsharp-syntax/tests/intent_edges.rs`,
   `crates/lsharp-types/tests/validation_source.rs`,
   `docs/adr/decisions-v0.2-source-intent-edges.md`,
   `docs/adr/decisions-v0.2-source-tested-by.md`。
+
+## 2026-07-25 EC-M2 source evidence edge boundary
+
+- [~] `EC-M2-02` source `supports` / `contradicts` boundary — parser は Observation の
+  `evidence:namespace/key` と Claim の wire ID、directive span を lossless に保持する。
+  Rust source adapter は両 ID と Claim endpoint の kind/existence を検査し、evidence registry が
+  未接続の間は `EvidenceRegistryRequired` として明示的に拒否する。未登録 evidence を黙って無視したり、
+  実体のない edge を graph に追加したりしない。evidence record の source registry、実 edge 投入、
+  selfhost/native parity は残件。Evidence: `crates/lsharp-syntax/tests/intent_edges.rs`,
+  `crates/lsharp-types/tests/validation_source.rs`, `crates/lsharp-driver/tests/validate_cli.rs`,
+  `docs/adr/decisions-v0.2-source-evidence-boundary.md`。
 
 - [~] `EC-M2-01`〜`EC-M2-03` の types-only wire/model slice — `StableId` の fail-closed parser、
   typed `IntentNode` wire conversion、duplicate/required-field を検査する `IntentGraph`、
@@ -61,8 +71,10 @@
   が source parser → `validation_source::source_program_to_intent_graph` → `validate` → report を
   実行する。contract/evidence 未接続の妥当な source は `unknown` (2)、parse/duplicate/orphan/
   typed endpoint error は入力診断として fail-closed、positional manifest との併用は拒否する。
-  evidence record 投入、supports/contradicts、manifest emission、selfhost/native parity、EmbeddedCli/MCP、両 target の
-  artifact/runtime evidence は未完了。Evidence: `docs/adr/decisions-v0.2-validation-source-cli.md`,
+  supports/contradicts は evidence registry 未接続時に明示的な入力エラーとなる。evidence record
+  投入、manifest emission、selfhost/native parity、EmbeddedCli/MCP、両 target の artifact/runtime evidence は未完了。
+  Evidence: `docs/adr/decisions-v0.2-validation-source-cli.md`,
+  `docs/adr/decisions-v0.2-source-evidence-boundary.md`,
   `docs/adr/decisions-v0.2-source-tested-by.md`,
   `crates/lsharp-driver/tests/validate_cli.rs`。
 

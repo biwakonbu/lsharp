@@ -53,8 +53,10 @@ lsharp validate --source src/Checkout.ls --format json
 ```
 
 source は parse 後に `:intent` / `:claim` / `:assumption` / `:open-question` node と
-`:motivates` / `:constrained-by` / `:tested-by` edge へ変換されます。Contract の実体や
-evidence record がまだ接続されていない source は、欠落を補完せず `unknown`（exit code `2`）を返します。
+`:motivates` / `:constrained-by` / `:tested-by` edge へ変換されます。`:supports` / `:contradicts` は
+evidence ID と Claim endpoint を parse しますが、evidence registry がまだ接続されていないため
+入力エラーとして拒否されます。Contract の実体や evidence record がまだ接続されていない source は、
+欠落を補完せず `unknown`（exit code `2`）を返します。
 parse error、duplicate node、typed endpoint mismatch、orphan edge は入力エラーとして
 report とは別に非ゼロ終了します。`--source` と positional JSON manifest path は同時に指定
 できません。
@@ -84,12 +86,14 @@ source に明示する場合は、次の edge metadata を使います。
 
 Rust source adapter は全 node を先に登録し、`motivates` / `constrained-by` の typed endpoint
 kind と存在を検査してから graph edge を追加します。`tested-by` は Claim→Contract の typed
-edge として claim trace gap を閉じます。evidence edge、manifest emission、selfhost/native 実行は
-後続境界です。
+edge として claim trace gap を閉じます。`supports` / `contradicts` は evidence registry 未接続を
+`EvidenceRegistryRequired` として返し、未登録 evidence を黙って無視しません。manifest emission、
+selfhost/native 実行、evidence record の source 投入は後続境界です。
 
 ## 現在の境界
 
 この slice は Rust の manifest parser/CLI と source node/edge registry を graph model へ接続し、
 project config から安全に入力を発見するものです。`validate --source` は source parser → graph →
-report までを Rust CLI で実行できます。evidence source edge、selfhost/native の report
+report までを Rust CLI で実行できます。evidence registry 未接続の source edge は明示的に拒否し、
+selfhost/native の report
 parity、EmbeddedCli/MCP、Mac/Linux の artifact/runtime evidence は後続の M2-03 task として残ります。

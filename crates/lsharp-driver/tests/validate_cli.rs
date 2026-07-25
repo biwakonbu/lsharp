@@ -175,6 +175,28 @@ fn validate_source_tested_by_closes_claim_trace_gap() {
 }
 
 #[test]
+fn validate_source_rejects_evidence_edges_without_registry() {
+    let path = source_path(
+        "source-supports",
+        r#"
+        (defn cancel []
+          :claim "claim:checkout/cancel-rejects-shipped" "The API rejects shipped orders"
+          :supports "evidence:checkout/cancel-observation" "claim:checkout/cancel-rejects-shipped"
+          true)
+        "#,
+    );
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+        .args(["validate", "--source", path.to_str().unwrap()])
+        .output()
+        .expect("lsharp validate --source should run");
+    fs::remove_file(&path).ok();
+
+    assert_ne!(output.status.code(), Some(0));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("evidence registry"));
+}
+
+#[test]
 fn validate_source_cannot_be_combined_with_manifest_path() {
     let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
         .args(["validate", "intent-graph.json", "--source", "source.ls"])

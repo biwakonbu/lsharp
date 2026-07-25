@@ -183,3 +183,40 @@ fn source_adapter_rejects_orphan_or_mismatched_tested_by_claims() {
         Err(SourceGraphError::EdgeId(_))
     ));
 }
+
+#[test]
+fn source_adapter_rejects_evidence_edges_without_registry_entries() {
+    let supports = parse(
+        r#"
+        (defn cancel []
+          :claim "claim:checkout/cancel-rejects-shipped" "The API rejects shipped orders"
+          :supports "evidence:checkout/cancel-observation" "claim:checkout/cancel-rejects-shipped"
+          true)
+        "#,
+    )
+    .expect("supports source fixture は parse できるべき");
+    assert!(matches!(
+        source_program_to_intent_graph(&supports),
+        Err(SourceGraphError::EvidenceRegistryRequired {
+            relation: "supports",
+            evidence_id
+        }) if evidence_id == "evidence:checkout/cancel-observation"
+    ));
+
+    let contradicts = parse(
+        r#"
+        (defn cancel []
+          :claim "claim:checkout/cancel-rejects-shipped" "The API rejects shipped orders"
+          :contradicts "evidence:checkout/cancel-counterexample" "claim:checkout/cancel-rejects-shipped"
+          true)
+        "#,
+    )
+    .expect("contradicts source fixture は parse できるべき");
+    assert!(matches!(
+        source_program_to_intent_graph(&contradicts),
+        Err(SourceGraphError::EvidenceRegistryRequired {
+            relation: "contradicts",
+            evidence_id
+        }) if evidence_id == "evidence:checkout/cancel-counterexample"
+    ));
+}
