@@ -7882,14 +7882,20 @@ fn test_linux_x86_metadata_replays_control_if_reports_rel32_targets() {
 #[test]
 fn test_linux_x86_metadata_replays_entrypoint_call_reports_identity() {
     let source = linux_x86_representative_actual_stage23_seed_source();
+    let prefix_loop = source
+        .split("(defn print-x86-function-ir-prefix-loop")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn print-x86-function-segment-metadata-loop").next())
+        .expect("Linux x86 metadata seed は prefix loop の本体を抽出できるべき");
     assert!(
         source.contains("(defn print-x86-entrypoint-call-control-replay-diagnostic")
             && source.contains("(print 9000000051)")
             && source.contains("function-index")
             && source.contains("entrypoint-func-idx")
             && source.contains("entrypoint-offset")
+            && !prefix_loop.contains("actual-idx")
             && source.contains(
-                "(print-x86-entrypoint-call-control-replay-diagnostic control-ctx actual-idx entrypoint-func-idx entrypoint-offset idx opcode operand offset size)"
+                "(print-x86-function-ir-prefix-loop segment ir-func offsets functions control-ctx actual-idx entrypoint-func-idx entrypoint-offset 0 prefix-len 0)"
             ),
         "Linux x86 metadata mode は stage2-generated entrypoint の opcode40 IR row と emitted bytes/rel32 target を function identity 付きで相関できるべき"
     );
@@ -18346,7 +18352,7 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
         (print-x86-i64-ge-control-replay-diagnostic control-ctx idx opcode operand offset size)
         (print-x86-control-if-control-replay-diagnostic control-ctx idx opcode operand offset size)
         (print-x86-map-new-control-replay-diagnostic control-ctx idx opcode operand offset size)
-        (print-x86-entrypoint-call-control-replay-diagnostic control-ctx actual-idx entrypoint-func-idx entrypoint-offset idx opcode operand offset size)
+        (print-x86-entrypoint-call-control-replay-diagnostic control-ctx function-index entrypoint-func-idx entrypoint-offset idx opcode operand offset size)
         (print-x86-call-control-replay-diagnostic control-ctx idx opcode operand offset size)
         (print-x86-function-ir-prefix-loop
           segment
@@ -18453,7 +18459,7 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
                                           prefix-len (if (< (vector-length ir-func) prefix-limit) (vector-length ir-func) prefix-limit)]
                                       (do
                                         (root_push control-ctx)
-                                        (print-x86-function-ir-prefix-loop segment ir-func offsets functions control-ctx idx entrypoint-func-idx entrypoint-offset 0 prefix-len 0)
+                                        (print-x86-function-ir-prefix-loop segment ir-func offsets functions control-ctx actual-idx entrypoint-func-idx entrypoint-offset 0 prefix-len 0)
                                         (root_pop)))
                                     (root_pop)))
                                 (root_pop)))
