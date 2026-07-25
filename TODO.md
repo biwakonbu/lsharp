@@ -71,6 +71,17 @@
   `crates/lsharp-syntax/tests/intent_edges.rs`,
   `crates/lsharp-types/tests/validation_source.rs`, `crates/lsharp-driver/tests/validate_cli.rs`,
   `docs/adr/decisions-v0.2-source-evidence-record.md`。
+  2026-07-25 の selfhost registry consumer slice では、canonical `EvidenceForm` と同じ 17-field
+  payload を `[form-kind, payload, span-start, span-end]` として受け取り、required field、typed
+  subject、method/outcome/independence、sampling の非負値と重複 coverage bucket、duplicate ID を
+  fail-closed に検査する `Tools.Validation.Evidence` を追加した。登録済み record だけを
+  `supports` / `contradicts` edge に接続し、duplicate ID は current/first span を返す。
+  `test_e2e_selfhost_evidence_registry` の 4 ケース（登録＋edge、required field、coverage 重複、ID 重複）
+  が native selfhost runtime で green である。これは parser の `:evidence` source form、manifest/CLI
+  wiring、native stage0 の parity をまだ含まないため、EC-M2-02 の aggregate は `[~]` のまま維持する。
+  Evidence: `selfhost/src/Tools/Validation/Evidence.ls`,
+  `crates/lsharp-wasm/tests/e2e/selfhost_evidence_registry.rs`,
+  `docs/adr/decisions-v0.2-selfhost-evidence-registry.md`。
 
 ## 2026-07-25 EC-M2 source evidence sampling projection
 
