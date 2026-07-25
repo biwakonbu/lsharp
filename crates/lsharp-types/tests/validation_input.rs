@@ -1,3 +1,4 @@
+use lsharp_types::evidence::GraphError;
 use lsharp_types::validation::{IntentGraph, ValidationStatus};
 use lsharp_types::validation_input::{parse_intent_graph_json, ValidationInputError};
 
@@ -142,6 +143,67 @@ fn parse_manifest_rejects_duplicate_nodes() {
     assert!(matches!(
         parse_intent_graph_json(manifest),
         Err(ValidationInputError::Graph(_))
+    ));
+}
+
+#[test]
+fn parse_manifest_rejects_duplicate_evidence_ids() {
+    let manifest = r#"
+    {
+      "schema_version": 1,
+      "nodes": [
+        {"kind":"claim","namespace":"checkout","key":"cancel-rejects-shipped","text":"API rejects shipped"}
+      ],
+      "evidence": [
+        {
+          "namespace": "checkout",
+          "key": "review-001",
+          "method": "review",
+          "subject": {"kind": "claim", "namespace": "checkout", "key": "cancel-rejects-shipped"},
+          "outcome": "pass",
+          "execution": {
+            "runner": "validator-test",
+            "target": "host",
+            "source_commit": "commit-1",
+            "artifact_digest": "sha256:artifact",
+            "sampling": {"cases": 1, "seed": 0, "generator": "fixture"}
+          },
+          "provenance": {
+            "producer": "validator-test",
+            "tool_version": "0.2",
+            "timestamp": "2026-07-23T00:00:00Z"
+          },
+          "independence": "independent-review"
+        },
+        {
+          "namespace": "checkout",
+          "key": "review-001",
+          "method": "review",
+          "subject": {"kind": "claim", "namespace": "checkout", "key": "cancel-rejects-shipped"},
+          "outcome": "pass",
+          "execution": {
+            "runner": "validator-test",
+            "target": "host",
+            "source_commit": "commit-1",
+            "artifact_digest": "sha256:artifact",
+            "sampling": {"cases": 1, "seed": 0, "generator": "fixture"}
+          },
+          "provenance": {
+            "producer": "validator-test",
+            "tool_version": "0.2",
+            "timestamp": "2026-07-23T00:00:00Z"
+          },
+          "independence": "independent-review"
+        }
+      ],
+      "edges": []
+    }
+    "#;
+
+    assert!(matches!(
+        parse_intent_graph_json(manifest),
+        Err(ValidationInputError::Graph(GraphError::DuplicateEvidence { id }))
+            if id.as_str() == "evidence:checkout/review-001"
     ));
 }
 
