@@ -43,6 +43,9 @@ mod quote_expr_tests;
 mod record;
 #[cfg(test)]
 mod record_tests;
+mod var_expr;
+#[cfg(test)]
+mod var_expr_tests;
 mod wasmgc_lambda;
 #[cfg(test)]
 mod wasmgc_lambda_tests;
@@ -142,22 +145,7 @@ impl Lower {
                 Literal::Unit => ctx.emit(Instruction::I64Const(0)),
             },
 
-            Expr::Var(expr_span, name) => {
-                if let Some(&idx) = ctx.locals_map.get(name) {
-                    ctx.emit(Instruction::LocalGet(idx));
-                } else if let Some(&func_idx) = self.func_indices.get(name) {
-                    // 引数なし ADT コンストラクタ（または引数なし関数）を呼び出し
-                    ctx.emit(Instruction::Call(func_idx));
-                } else if let Some(&func_idx) = self.lifted_func_indices.get(name) {
-                    // Lambda Lifting で生成された関数の呼び出し
-                    ctx.emit(Instruction::Call(func_idx));
-                } else {
-                    return Err(LowerError::UndefinedFunction {
-                        name: name.clone(),
-                        span: Some(*expr_span),
-                    });
-                }
-            }
+            Expr::Var(expr_span, name) => self.lower_var(ctx, *expr_span, name)?,
 
             Expr::If(_, cond, then, else_) => self.lower_if(ctx, cond, then, else_)?,
 
