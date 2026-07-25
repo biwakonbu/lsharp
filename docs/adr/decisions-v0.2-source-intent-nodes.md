@@ -34,8 +34,10 @@ evidence へ変換しない。
 
 - source node identity が JSON manifest と同じ stable ID contract を使える。
 - nested module、private、impl の宣言を同じ adapter で走査できる。
-- source edge/evidence、ID 省略の命名規則、manifest emission、selfhost/native parity は未接続の
-  まま明示される。node registry だけで `validate` の pass を宣言しない。
+- source edge/evidence、manifest emission、selfhost/native parity は未接続のまま明示される。
+  ID 省略は自動命名せず fail-closed に拒否する方針を
+  `decisions-v0.2-source-intent-id-policy.md` で固定した。node registry だけで `validate` の
+  pass を宣言しない。
 
 ## Evidence
 
