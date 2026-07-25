@@ -194,6 +194,10 @@ enum Command {
         /// versioned JSON manifest (省略時は lsharp.toml の [validation].manifest)
         file: Option<PathBuf>,
 
+        /// L# source file を intent graph として検証 (contract/evidence 未接続時は unknown)
+        #[arg(long, conflicts_with = "file", value_name = "SOURCE")]
+        source: Option<PathBuf>,
+
         /// 出力形式
         #[arg(long, value_enum, default_value = "text")]
         format: CliValidationFormat,
@@ -379,9 +383,17 @@ fn main() -> miette::Result<()> {
             cmd_test(&file)?;
         }
 
-        Command::Validate { file, format } => {
-            let file = resolve_validate_manifest(file)?;
-            let exit_code = cmd_validate(&file, format)?;
+        Command::Validate {
+            file,
+            source,
+            format,
+        } => {
+            let exit_code = if let Some(source) = source {
+                cmd_validate_source(&source, format)?
+            } else {
+                let file = resolve_validate_manifest(file)?;
+                cmd_validate(&file, format)?
+            };
             if exit_code != 0 {
                 std::process::exit(exit_code);
             }
@@ -1417,13 +1429,34 @@ fn resolve_validate_manifest(file: Option<PathBuf>) -> miette::Result<PathBuf> {
 /// M2-03: versioned intent/evidence graph manifest の fact-oriented validation。
 ///
 /// `test` の implementation conformance と混同しないよう、pass=0、fail=1、
-/// unknown=2 を別の exit code として返す。入力 parser の未接続範囲は JSON manifest
-/// に限定し、source syntax は後続の parser adapter で同じ `IntentGraph` に接続する。
+/// unknown=2 を別の exit code として返す。JSON manifest と source adapter は同じ
+/// `IntentGraph` に投影し、report の status/format を共有する。
 fn cmd_validate(file: &Path, format: CliValidationFormat) -> miette::Result<i32> {
     let source =
         std::fs::read_to_string(file).map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
     let graph = lsharp_types::validation_input::parse_intent_graph_json(&source)
         .map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
+    emit_validation_report(&graph, format)
+}
+
+/// source metadata を intent graph へ投影して fact-oriented validation を実行する。
+///
+/// source 側では node と node-to-node edge までを受け付ける。contract/evidence が
+/// まだ接続されていないため、入力が妥当でも report は unknown を返す。
+fn cmd_validate_source(file: &Path, format: CliValidationFormat) -> miette::Result<i32> {
+    let source =
+        std::fs::read_to_string(file).map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
+    let program =
+        lsharp_syntax::parse(&source).map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
+    let graph = lsharp_types::validation_source::source_program_to_intent_graph(&program)
+        .map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
+    emit_validation_report(&graph, format)
+}
+
+fn emit_validation_report(
+    graph: &lsharp_types::validation::IntentGraph,
+    format: CliValidationFormat,
+) -> miette::Result<i32> {
     let report = graph.validate();
 
     match format {

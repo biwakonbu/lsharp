@@ -137,3 +137,180 @@ fn source_adapter_rejects_orphan_and_mismatched_edge_endpoints() {
         Err(SourceGraphError::EdgeId(_))
     ));
 }
+
+#[test]
+fn source_adapter_registers_tested_by_claim_contract_edges() {
+    let program = parse(
+        r#"
+        (defn cancel []
+          :claim "claim:checkout/cancel-rejects-shipped" "The API rejects shipped orders"
+          :tested-by "claim:checkout/cancel-rejects-shipped" "contract:checkout/cancel-case"
+          true)
+        "#,
+    )
+    .expect("tested-by source fixture は parse できるべき");
+
+    let graph =
+        source_program_to_intent_graph(&program).expect("tested-by source graph が構築できるべき");
+    assert!(matches!(
+        &graph.edges()[0],
+        lsharp_types::evidence::Edge::TestedBy { claim, contract }
+            if claim.as_str() == "claim:checkout/cancel-rejects-shipped"
+                && contract.as_str() == "contract:checkout/cancel-case"
+    ));
+}
+
+#[test]
+fn source_adapter_registers_evidence_records_before_support_edges() {
+    let program = parse(
+        r#"
+        (defn cancel []
+          :claim "claim:checkout/cancel-rejects-shipped" "The API rejects shipped orders"
+          :evidence "evidence:checkout/cancel-observation"
+            :subject "claim:checkout/cancel-rejects-shipped"
+            :method "case"
+            :outcome "pass"
+            :runner "cargo-test"
+            :target "aarch64-apple-darwin"
+            :source-commit "0123456789abcdef"
+            :artifact-digest "sha256:abc123"
+            :cases 1
+            :seed 42
+            :generator "checkout-cancel-fixture"
+            :producer "lsharp-test"
+            :tool-version "0.2.0"
+            :timestamp "2026-07-25T00:00:00Z"
+            :independence "same-author"
+          :supports "evidence:checkout/cancel-observation" "claim:checkout/cancel-rejects-shipped"
+          true)
+        "#,
+    )
+    .expect("evidence source fixture は parse できるべき");
+
+    let graph = source_program_to_intent_graph(&program)
+        .expect("evidence record と supports edge が構築できるべき");
+    assert_eq!(graph.evidence().len(), 1);
+    assert_eq!(
+        graph.evidence()[0].id().as_str(),
+        "evidence:checkout/cancel-observation"
+    );
+    assert!(matches!(
+        graph.evidence()[0].subject(),
+        lsharp_types::evidence::EvidenceSubject::Claim(claim)
+            if claim.as_str() == "claim:checkout/cancel-rejects-shipped"
+    ));
+    assert!(matches!(
+        &graph.edges()[0],
+        lsharp_types::evidence::Edge::Supports { observation, claim }
+            if observation.as_str() == "evidence:checkout/cancel-observation"
+                && claim.as_str() == "claim:checkout/cancel-rejects-shipped"
+    ));
+}
+
+#[test]
+fn source_adapter_projects_optional_sampling_fields() {
+    let program = parse(
+        r#"
+        (defn cancel []
+          :claim "claim:checkout/cancel-rejects-shipped" "The API rejects shipped orders"
+          :evidence "evidence:checkout/cancel-observation"
+            :subject "claim:checkout/cancel-rejects-shipped"
+            :method "property"
+            :outcome "pass"
+            :runner "cargo-test"
+            :target "aarch64-apple-darwin"
+            :source-commit "0123456789abcdef"
+            :artifact-digest "sha256:abc123"
+            :cases 3
+            :seed 42
+            :generator "checkout-cancel-fixture"
+            :shrinks [8 3 1]
+            :coverage [("negative" 2) ("positive" 1)]
+            :producer "lsharp-test"
+            :tool-version "0.2.0"
+            :timestamp "2026-07-25T00:00:00Z"
+            :independence "same-author"
+          true)
+        "#,
+    )
+    .expect("optional sampling source fixture は parse できるべき");
+
+    let graph = source_program_to_intent_graph(&program)
+        .expect("optional sampling fields は canonical evidence に投影されるべき");
+    let execution = graph.evidence()[0].execution();
+    assert_eq!(execution.shrinks(), &[8, 3, 1]);
+    assert_eq!(
+        execution.coverage().get("negative"),
+        Some(&2),
+        "coverage は bucket 名を保持するべき"
+    );
+    assert_eq!(execution.coverage().get("positive"), Some(&1));
+
+    let sampling = graph.to_manifest_json_value()["evidence"][0]["execution"]["sampling"].clone();
+    assert_eq!(sampling["shrinks"], serde_json::json!([8, 3, 1]));
+    assert_eq!(
+        sampling["coverage"],
+        serde_json::json!({"negative": 2, "positive": 1})
+    );
+}
+
+#[test]
+fn source_adapter_rejects_orphan_or_mismatched_tested_by_claims() {
+    let orphan = parse(
+        r#"(defn cancel [] :tested-by "claim:checkout/missing" "contract:checkout/case" true)"#,
+    )
+    .expect("orphan tested-by fixture は parse できるべき");
+    assert!(matches!(
+        source_program_to_intent_graph(&orphan),
+        Err(SourceGraphError::MissingNodeReference {
+            relation: "tested-by.claim",
+            ..
+        })
+    ));
+
+    let mismatch = parse(
+        r#"(defn cancel [] :tested-by "intent:checkout/wrong-kind" "contract:checkout/case" true)"#,
+    )
+    .expect("kind mismatch tested-by fixture は parse できるべき");
+    assert!(matches!(
+        source_program_to_intent_graph(&mismatch),
+        Err(SourceGraphError::EdgeId(_))
+    ));
+}
+
+#[test]
+fn source_adapter_rejects_evidence_edges_without_registry_entries() {
+    let supports = parse(
+        r#"
+        (defn cancel []
+          :claim "claim:checkout/cancel-rejects-shipped" "The API rejects shipped orders"
+          :supports "evidence:checkout/cancel-observation" "claim:checkout/cancel-rejects-shipped"
+          true)
+        "#,
+    )
+    .expect("supports source fixture は parse できるべき");
+    assert!(matches!(
+        source_program_to_intent_graph(&supports),
+        Err(SourceGraphError::EvidenceRegistryRequired {
+            relation: "supports",
+            evidence_id
+        }) if evidence_id == "evidence:checkout/cancel-observation"
+    ));
+
+    let contradicts = parse(
+        r#"
+        (defn cancel []
+          :claim "claim:checkout/cancel-rejects-shipped" "The API rejects shipped orders"
+          :contradicts "evidence:checkout/cancel-counterexample" "claim:checkout/cancel-rejects-shipped"
+          true)
+        "#,
+    )
+    .expect("contradicts source fixture は parse できるべき");
+    assert!(matches!(
+        source_program_to_intent_graph(&contradicts),
+        Err(SourceGraphError::EvidenceRegistryRequired {
+            relation: "contradicts",
+            evidence_id
+        }) if evidence_id == "evidence:checkout/cancel-counterexample"
+    ));
+}

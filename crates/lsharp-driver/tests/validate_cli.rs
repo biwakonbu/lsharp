@@ -87,6 +87,175 @@ fn validate_fail_has_distinct_exit_code_for_contradiction() {
 }
 
 #[test]
+fn validate_source_reports_unknown_without_contract_evidence() {
+    let path = source_path(
+        "source-unknown",
+        r#"
+        (defn cancel []
+          :intent "intent:checkout/safe-cancel" "Users can cancel an order"
+          :claim "claim:checkout/cancel-rejects-shipped" "The API rejects shipped orders"
+          :motivates "intent:checkout/safe-cancel" "claim:checkout/cancel-rejects-shipped"
+          true)
+        "#,
+    );
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+        .args([
+            "validate",
+            "--source",
+            path.to_str().unwrap(),
+            "--format",
+            "json",
+        ])
+        .output()
+        .expect("lsharp validate --source should run");
+    fs::remove_file(&path).ok();
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(
+        output.stderr.is_empty(),
+        "unexpected stderr: {:?}",
+        output.stderr
+    );
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("valid JSON");
+    assert_eq!(value["status"], "unknown");
+    assert_eq!(
+        value["trace_gaps"][0]["code"],
+        "trace-gap.claim-without-test"
+    );
+    assert!(value.get("verified").is_none());
+}
+
+#[test]
+fn validate_source_rejects_orphan_edges_as_input_errors() {
+    let path = source_path(
+        "source-orphan",
+        r#"(defn cancel [] :motivates "intent:checkout/missing" "claim:checkout/cancel" true)"#,
+    );
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+        .args(["validate", "--source", path.to_str().unwrap()])
+        .output()
+        .expect("lsharp validate --source should run");
+    fs::remove_file(&path).ok();
+
+    assert_ne!(output.status.code(), Some(0));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("source intent edge"));
+}
+
+#[test]
+fn validate_source_tested_by_closes_claim_trace_gap() {
+    let path = source_path(
+        "source-tested-by",
+        r#"
+        (defn cancel []
+          :claim "claim:checkout/cancel-rejects-shipped" "The API rejects shipped orders"
+          :tested-by "claim:checkout/cancel-rejects-shipped" "contract:checkout/cancel-case"
+          true)
+        "#,
+    );
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+        .args([
+            "validate",
+            "--source",
+            path.to_str().unwrap(),
+            "--format",
+            "json",
+        ])
+        .output()
+        .expect("lsharp validate --source should run");
+    fs::remove_file(&path).ok();
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stderr.is_empty());
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("valid JSON");
+    assert_eq!(value["status"], "unknown");
+    assert_eq!(value["trace_gaps"].as_array().unwrap().len(), 0);
+}
+
+#[test]
+fn validate_source_rejects_evidence_edges_without_registry() {
+    let path = source_path(
+        "source-supports",
+        r#"
+        (defn cancel []
+          :claim "claim:checkout/cancel-rejects-shipped" "The API rejects shipped orders"
+          :supports "evidence:checkout/cancel-observation" "claim:checkout/cancel-rejects-shipped"
+          true)
+        "#,
+    );
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+        .args(["validate", "--source", path.to_str().unwrap()])
+        .output()
+        .expect("lsharp validate --source should run");
+    fs::remove_file(&path).ok();
+
+    assert_ne!(output.status.code(), Some(0));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("evidence registry"));
+}
+
+#[test]
+fn validate_source_accepts_registered_evidence_edges() {
+    let path = source_path(
+        "source-evidence",
+        r#"
+        (defn cancel []
+          :claim "claim:checkout/cancel-rejects-shipped" "The API rejects shipped orders"
+          :tested-by "claim:checkout/cancel-rejects-shipped" "contract:checkout/cancel-case"
+          :evidence "evidence:checkout/cancel-observation"
+            :subject "claim:checkout/cancel-rejects-shipped"
+            :method "case"
+            :outcome "pass"
+            :runner "cargo-test"
+            :target "aarch64-apple-darwin"
+            :source-commit "0123456789abcdef"
+            :artifact-digest "sha256:abc123"
+            :cases 1
+            :seed 42
+            :generator "checkout-cancel-fixture"
+            :producer "lsharp-test"
+            :tool-version "0.2.0"
+            :timestamp "2026-07-25T00:00:00Z"
+            :independence "same-author"
+          :supports "evidence:checkout/cancel-observation" "claim:checkout/cancel-rejects-shipped"
+          true)
+        "#,
+    );
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+        .args([
+            "validate",
+            "--source",
+            path.to_str().unwrap(),
+            "--format",
+            "json",
+        ])
+        .output()
+        .expect("lsharp validate --source should run");
+    fs::remove_file(&path).ok();
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stderr.is_empty());
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("valid JSON");
+    assert_eq!(value["status"], "unknown");
+    assert_eq!(value["trace_gaps"].as_array().unwrap().len(), 0);
+}
+
+#[test]
+fn validate_source_cannot_be_combined_with_manifest_path() {
+    let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+        .args(["validate", "intent-graph.json", "--source", "source.ls"])
+        .output()
+        .expect("lsharp validate should run");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("cannot be used with") || stderr.contains("conflict"));
+}
+
+#[test]
 fn cli_help_lists_validate_command() {
     let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
         .arg("--help")
@@ -199,4 +368,14 @@ fn project_dir(name: &str) -> std::path::PathBuf {
         "lsharp-validate-{name}-{}-{nonce}",
         std::process::id()
     ))
+}
+
+fn source_path(name: &str, body: &str) -> std::path::PathBuf {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock should be after epoch")
+        .as_nanos();
+    let path = std::env::temp_dir().join(format!("lsharp-validate-{name}-{nonce}.ls"));
+    fs::write(&path, body).expect("source should be writable");
+    path
 }
