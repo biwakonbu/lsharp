@@ -69,9 +69,12 @@
   --emit-manifest <output.json>` が graph 構築後に version 1 manifest を明示 path へ出力し、
   validation report の stdout と混ぜない。`unknown` report でも graph が構築できれば manifest を
   保存し、parse/adapter error 前には出力しない。JSON manifest input mode も同じ serializer を使う。
-  selfhost/native manifest producer、atomic/durable release artifact、EmbeddedCli/MCP、Mac Apple
+  Rust CLI の同一 directory staging → file sync → rename → parent directory sync による
+  atomic/durable artifact boundary は接続済み。selfhost/native manifest producer、release-level
+  provenance、EmbeddedCli/MCP、Mac Apple
   Silicon / Linux x86_64 runtime evidence は未完了。Evidence:
   `crates/lsharp-driver/tests/validate_cli.rs`,
+  `crates/lsharp-driver/src/atomic_write.rs`,
   `docs/adr/decisions-v0.2-source-manifest-emission.md`。
 
 - [~] `EC-M2-01`〜`EC-M2-03` の types-only wire/model slice — `StableId` の fail-closed parser、

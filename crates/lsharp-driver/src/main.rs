@@ -5,6 +5,7 @@
 //! - 検証: `scripts/ci/default-path-smoke.sh` が `target/debug/lsharp` 単体で embedded default path の `compile` / `build` を含む smoke を通す。
 
 mod api_doc;
+mod atomic_write;
 mod claude_plugin;
 mod commands;
 mod config;
@@ -1478,7 +1479,7 @@ fn emit_validation_manifest(
     let json = graph
         .to_manifest_json_string()
         .map_err(|e| miette::miette!("validation manifest JSON の生成に失敗しました: {e}"))?;
-    std::fs::write(output, json)
+    atomic_write::write_durable_atomic(output, json.as_bytes())
         .map_err(|e| driver_io_error(format!("{}: {}", output.display(), e)))
 }
 
