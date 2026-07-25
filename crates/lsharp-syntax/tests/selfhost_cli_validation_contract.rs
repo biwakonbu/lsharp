@@ -97,6 +97,36 @@ fn selfhost_cli_validation_surface_is_registered() {
             && !node_loop.contains("(vector-set-at-rooted-v3 state 1 (+ idx 1))"),
         "native x86 の node manifest loop は state を root し、object/string を含む state を vector-set で更新せず fresh rooted state として進めるべき"
     );
+    let node_json_start = evidence
+        .find("(defn validation-source-node-json")
+        .expect("source manifest serializer は node JSON helper を持つべき");
+    let node_json_end = evidence[node_json_start..]
+        .find("(defn validation-source-nodes-json-state-loop")
+        .map(|offset| node_json_start + offset)
+        .expect("node JSON helper の終端を特定できるべき");
+    let node_json = &evidence[node_json_start..node_json_end];
+    assert!(
+        node_json.contains("(root_push node)") && node_json.contains("(root_pop)"),
+        "native x86 の node JSON helper は子 string を読む node を GC root として保持するべき"
+    );
+    let manifest_start = evidence
+        .find("(defn validation-source-manifest-json [graph]")
+        .expect("source manifest serializer の manifest helper を特定できるべき");
+    let manifest_end = evidence[manifest_start..]
+        .find("(defn source-evidence-edge-form-result")
+        .map(|offset| manifest_start + offset)
+        .expect("manifest helper の終端を特定できるべき");
+    let manifest = &evidence[manifest_start..manifest_end];
+    assert!(
+        manifest.contains("(root_push graph)")
+            && manifest.contains("(root_push nodes)")
+            && manifest.contains("(root_push edges)")
+            && manifest.contains("(root_push registry)")
+            && manifest.contains("(root_push nodes-state)")
+            && manifest.contains("(root_push evidence-state)")
+            && manifest.contains("(root_push edges-state)"),
+        "native x86 の manifest helper は複数 serializer state を作る間 graph/vector を GC root として保持するべき"
+    );
     let check_start = source
         .find("(defn run-check-program")
         .expect("App.Cli は run-check-program を持つべき");

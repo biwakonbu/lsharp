@@ -413,26 +413,30 @@
     (validation-json-object-wrap fields2)))
 
 (defn validation-source-node-json [node]
-  (let [fields0 ""
-    fields1 (validation-json-append fields0
-      (validation-json-string-field "kind" (validation-source-node-kind-text (source-node-kind node))))
-    fields2 (validation-json-append fields1
-      (validation-json-string-field "namespace"
-        (let [wire-id (source-node-id node)
-          colon (source-find-char wire-id 58 0 (string-length wire-id))]
-          (substring wire-id (+ colon 1)
-            (source-find-char wire-id 47 (+ colon 1) (string-length wire-id))))))
-    fields3 (validation-json-append fields2
-      (validation-json-string-field "key"
-        (let [wire-id (source-node-id node)
-          colon (source-find-char wire-id 58 0 (string-length wire-id))
-          slash (source-find-char wire-id 47 (+ colon 1) (string-length wire-id))]
-          (substring wire-id (+ slash 1) (string-length wire-id)))))
-    fields4 (validation-json-append fields3 (validation-json-string-field "text" (source-node-text node)))
-    fields5 (validation-json-append fields4
-      (validation-json-object-field "span"
-        (validation-source-span-json (source-node-start node) (source-node-end node))))]
-    (validation-json-object-wrap fields5)))
+  (do
+    (root_push node)
+    (let [fields0 ""
+      fields1 (validation-json-append fields0
+        (validation-json-string-field "kind" (validation-source-node-kind-text (source-node-kind node))))
+      fields2 (validation-json-append fields1
+        (validation-json-string-field "namespace"
+          (let [wire-id (source-node-id node)
+            colon (source-find-char wire-id 58 0 (string-length wire-id))]
+            (substring wire-id (+ colon 1)
+              (source-find-char wire-id 47 (+ colon 1) (string-length wire-id))))))
+      fields3 (validation-json-append fields2
+        (validation-json-string-field "key"
+          (let [wire-id (source-node-id node)
+            colon (source-find-char wire-id 58 0 (string-length wire-id))
+            slash (source-find-char wire-id 47 (+ colon 1) (string-length wire-id))]
+            (substring wire-id (+ slash 1) (string-length wire-id)))))
+      fields4 (validation-json-append fields3 (validation-json-string-field "text" (source-node-text node)))
+      fields5 (validation-json-append fields4
+        (validation-json-object-field "span"
+          (validation-source-span-json (source-node-start node) (source-node-end node))))]
+      (do
+        (root_pop)
+        (validation-json-object-wrap fields5)))))
 
 (defn validation-source-nodes-json-state-loop [state]
   (do
@@ -620,47 +624,76 @@
         (validation-source-edges-json-state-loop next-state)))))
 
 (defn validation-source-manifest-json [graph]
-  (let [nodes (source-graph-nodes graph)
-    edges (source-graph-edges graph)
-    registry (source-evidence-graph-registry graph)
-    nodes-state (validation-source-manifest-json-state
-      (vector-push-single-rooted-v3
-        (vector-push-single-rooted-v3
-          (vector-push-single-rooted-v3
-            (vector-push-single-rooted-v3 (vector-new 4) nodes)
-            0)
-          (vector-length nodes))
-        ""))
-    evidence-state (validation-source-manifest-json-state
-      (vector-push-single-rooted-v3
-        (vector-push-single-rooted-v3
-          (vector-push-single-rooted-v3
-            (vector-push-single-rooted-v3 (vector-new 4) registry)
-            0)
-          (vector-length registry))
-        ""))
-    edges-state (validation-source-manifest-json-state
-      (vector-push-single-rooted-v3
-        (vector-push-single-rooted-v3
-          (vector-push-single-rooted-v3
-            (vector-push-single-rooted-v3 (vector-new 4) edges)
-            0)
-          (vector-length edges))
-        ""))
-    nodes-json (validation-source-nodes-json-state-loop nodes-state)
-    evidence-json (validation-source-evidence-json-state-loop evidence-state)
-    edges-json (validation-source-edges-json-state-loop edges-state)
-    fields0 (validation-json-int-field "schema_version" 1)
-    fields1 (validation-json-append fields0
-      (validation-json-array-field "nodes"
-        (validation-json-array-wrap nodes-json)))
-    fields2 (validation-json-append fields1
-      (validation-json-array-field "evidence"
-        (validation-json-array-wrap evidence-json)))
-    fields3 (validation-json-append fields2
-      (validation-json-array-field "edges"
-        (validation-json-array-wrap edges-json)))]
-    (validation-json-object-wrap fields3)))
+  (do
+    (root_push graph)
+    (let [nodes (source-graph-nodes graph)
+      edges (source-graph-edges graph)
+      registry (source-evidence-graph-registry graph)]
+      (do
+        (root_push nodes)
+        (root_push edges)
+        (root_push registry)
+        (let [nodes-state (validation-source-manifest-json-state
+            (vector-push-single-rooted-v3
+              (vector-push-single-rooted-v3
+                (vector-push-single-rooted-v3
+                  (vector-push-single-rooted-v3 (vector-new 4) nodes)
+                  0)
+                (vector-length nodes))
+              ""))]
+          (do
+            (root_push nodes-state)
+            (let [evidence-state (validation-source-manifest-json-state
+                (vector-push-single-rooted-v3
+                  (vector-push-single-rooted-v3
+                    (vector-push-single-rooted-v3
+                      (vector-push-single-rooted-v3 (vector-new 4) registry)
+                      0)
+                    (vector-length registry))
+                  ""))]
+              (do
+                (root_push evidence-state)
+                (let [edges-state (validation-source-manifest-json-state
+                    (vector-push-single-rooted-v3
+                      (vector-push-single-rooted-v3
+                        (vector-push-single-rooted-v3
+                          (vector-push-single-rooted-v3 (vector-new 4) edges)
+                          0)
+                        (vector-length edges))
+                      ""))]
+                  (do
+                    (root_push edges-state)
+                    (let [nodes-json (validation-source-nodes-json-state-loop nodes-state)]
+                      (do
+                        (root_push nodes-json)
+                        (let [evidence-json (validation-source-evidence-json-state-loop evidence-state)]
+                          (do
+                            (root_push evidence-json)
+                            (let [edges-json (validation-source-edges-json-state-loop edges-state)]
+                              (do
+                                (root_push edges-json)
+                                (let [fields0 (validation-json-int-field "schema_version" 1)
+                                  fields1 (validation-json-append fields0
+                                    (validation-json-array-field "nodes"
+                                      (validation-json-array-wrap nodes-json)))
+                                  fields2 (validation-json-append fields1
+                                    (validation-json-array-field "evidence"
+                                      (validation-json-array-wrap evidence-json)))
+                                  fields3 (validation-json-append fields2
+                                    (validation-json-array-field "edges"
+                                      (validation-json-array-wrap edges-json)))]
+                                  (do
+                                    (root_pop)
+                                    (root_pop)
+                                    (root_pop)
+                                    (root_pop)
+                                    (root_pop)
+                                    (root_pop)
+                                    (root_pop)
+                                    (root_pop)
+                                    (root_pop)
+                                    (root_pop)
+                                    (validation-json-object-wrap fields3)))))))))))))))))))
 
 (defn source-evidence-edge-form-result [form registry nodes]
   (if (< (vector-length form) 4)
