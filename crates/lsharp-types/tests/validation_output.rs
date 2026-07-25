@@ -151,6 +151,43 @@ fn all_edges_graph() -> IntentGraph {
     graph
 }
 
+fn add_matrix_evidence(
+    graph: &mut IntentGraph,
+    key: &str,
+    method: EvidenceMethod,
+    outcome: EvidenceOutcome,
+    independence: Independence,
+) {
+    let claim_id = ClaimId::new("checkout", "cancel-rejects-shipped").unwrap();
+    let execution = ExecutionContext::new(
+        ExecutionIdentity::new(
+            "enum-matrix-runner",
+            "aarch64-apple-darwin",
+            "source-commit-enum-matrix",
+            "sha256:enum-matrix",
+        ),
+        SamplingPlan::new(
+            1,
+            0,
+            "enum-matrix-generator",
+            Vec::new(),
+            Vec::<(String, usize)>::new(),
+        ),
+    );
+    let provenance = Provenance::new("enum-matrix-producer", "0.2.0-dev", "2026-07-26T00:00:00Z");
+    graph
+        .add_evidence(Evidence::new(
+            EvidenceId::new("enum-matrix", key).unwrap(),
+            method,
+            EvidenceSubject::Claim(claim_id),
+            outcome,
+            execution,
+            provenance,
+            independence,
+        ))
+        .unwrap();
+}
+
 #[test]
 fn manifest_output_preserves_every_graph_edge_and_validation_facts() {
     let graph = all_edges_graph();
@@ -233,4 +270,72 @@ fn manifest_output_round_trips_all_edge_variants() {
 
     assert_eq!(decoded, graph);
     assert_eq!(decoded.validate(), graph.validate());
+}
+
+#[test]
+fn manifest_output_round_trips_every_evidence_enum_variant() {
+    let mut graph = all_edges_graph();
+    for (index, method) in [
+        EvidenceMethod::Example,
+        EvidenceMethod::Case,
+        EvidenceMethod::Assert,
+        EvidenceMethod::Property,
+        EvidenceMethod::Production,
+        EvidenceMethod::Reference,
+        EvidenceMethod::Proof,
+        EvidenceMethod::Review,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        add_matrix_evidence(
+            &mut graph,
+            &format!("method-{index}"),
+            method,
+            EvidenceOutcome::Pass,
+            Independence::SameAuthor,
+        );
+    }
+    for (index, outcome) in [
+        EvidenceOutcome::Pass,
+        EvidenceOutcome::Fail,
+        EvidenceOutcome::Contradicted,
+        EvidenceOutcome::Unknown,
+        EvidenceOutcome::Stale,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        add_matrix_evidence(
+            &mut graph,
+            &format!("outcome-{index}"),
+            EvidenceMethod::Case,
+            outcome,
+            Independence::SameAuthor,
+        );
+    }
+    for (index, independence) in [
+        Independence::SameAuthor,
+        Independence::IndependentReview,
+        Independence::ExternalObservation,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        add_matrix_evidence(
+            &mut graph,
+            &format!("independence-{index}"),
+            EvidenceMethod::Case,
+            EvidenceOutcome::Pass,
+            independence,
+        );
+    }
+
+    let manifest = graph
+        .to_manifest_json_string()
+        .expect("every evidence enum variant should be serializable");
+    let decoded = parse_intent_graph_json(&manifest)
+        .expect("every emitted evidence enum variant should be accepted by the input parser");
+
+    assert_eq!(decoded, graph);
 }
