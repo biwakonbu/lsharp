@@ -17,7 +17,9 @@ M2 の Rust serializer と selfhost serializer は、schema version、node、evi
 - 同じ source fixture を Rust `source_program_to_intent_graph` と selfhost
   `source-evidence-graph-from-program` に入力する。
 - Rust `IntentGraph::to_manifest_json_value()` を oracle とし、selfhost の
-  `validation-source-manifest-json` を JSON value として比較する。
+  `validation-source-manifest-json` を JSON value として比較する。さらに
+  `IntentGraph::to_manifest_json_string()` と selfhost の canonical bytes を比較し、
+  field order の drift も検出する。
 - fixture は intent / claim / assumption / open-question、motivates / constrained-by /
   tested-by / supports、sampling、provenance を含める。
 - このテストは Rust-host actual Wasm の selfhost execution を検証するが、native stage0、
@@ -26,7 +28,7 @@ M2 の Rust serializer と selfhost serializer は、schema version、node、evi
 ## Evidence
 
 - `test_e2e_selfhost_evidence_manifest_matches_rust_canonical_value` が全 wire value の一致を
-  `serde_json::Value` equality で固定した。
+  `serde_json::Value` equality と canonical JSON string equality で固定した。
 - focused gate: `cargo test -p lsharp-wasm --test e2e selfhost_evidence_manifest_matches_rust_canonical_value -- --nocapture`
   （1 passed）。
 - `rustfmt --edition 2024` と `git diff --check` を通過した。

@@ -344,16 +344,22 @@ fn test_e2e_selfhost_evidence_manifest_matches_rust_canonical_value() {
     let output = run_evidence_registry_runtime(&harness);
     let mut lines = output.trim().lines();
     assert_eq!(lines.next(), Some("1"));
-    let actual: serde_json::Value = serde_json::from_str(
-        lines
-            .next()
-            .expect("selfhost manifest JSON が出力されるべき"),
-    )
-    .expect("selfhost manifest JSON は parse 可能であるべき");
+    let actual_json = lines
+        .next()
+        .expect("selfhost manifest JSON が出力されるべき");
+    let actual: serde_json::Value =
+        serde_json::from_str(actual_json).expect("selfhost manifest JSON は parse 可能であるべき");
+    let expected_json = graph
+        .to_manifest_json_string()
+        .expect("Rust canonical manifest JSON を出力できるべき");
 
     assert_eq!(
         actual, expected,
         "selfhost/Rust manifest の wire value が一致するべき"
+    );
+    assert_eq!(
+        actual_json, expected_json,
+        "selfhost/Rust manifest の canonical bytes が一致するべき"
     );
 }
 
