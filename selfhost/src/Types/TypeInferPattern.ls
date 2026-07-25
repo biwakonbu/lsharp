@@ -271,15 +271,21 @@
                                 subst
                                 counter
                                 visible-record-ty))
-                            (let [record-ty (instantiate record-schema counter)]
-                              (infer-record-pattern-schema-children
-                                pat
-                                0
-                                fc
-                                env
-                                subst
-                                counter
-                                record-ty)))))
+                            (if (= visible-record-ty 0)
+                              ;; record-env は全 program の schema を保持するため、
+                              ;; 現在 module の env にない raw/private name は拒否する。
+                              (vector-push
+                                (make-error-result-code (error-code-undefined))
+                                env)
+                              (let [record-ty (instantiate record-schema counter)]
+                                (infer-record-pattern-schema-children
+                                  pat
+                                  0
+                                  fc
+                                  env
+                                  subst
+                                  counter
+                                  record-ty))))))
                       ;; 未知のパターン: 新しい型変数 (ワイルドカード扱い)
                       (let [ty (fresh-type-var counter)]
                         (vector-push (make-result subst ty) env)))))))))))))

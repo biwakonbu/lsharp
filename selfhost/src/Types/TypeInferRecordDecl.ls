@@ -25,6 +25,13 @@
       (vector-get decl 2)
       0)))
 
+;; private wrapper 内の record も宣言元 module の schema 登録対象にする。
+;; import traversal は wrapper を開かないため、公開 export には追加されない。
+(defn typeinfer-record-decl-unprivate [decl]
+  (if (= (vector-get decl 0) (ast-private))
+    (typeinfer-record-decl-unprivate (vector-get decl 1))
+    decl))
+
 (defn typeinfer-record-remove-accessors-loop [raw-fields idx len env]
   (if (>= idx len)
     env
@@ -48,7 +55,7 @@
 (defn typeinfer-remove-record-defs-before-module-loop [program env idx limit]
   (if (>= idx limit)
     env
-    (let [decl (vector-get program idx)
+    (let [decl (typeinfer-record-decl-unprivate (vector-get program idx))
       tag (vector-get decl 0)]
       (if (= tag (ast-recorddef))
         (typeinfer-remove-record-defs-before-module-loop
@@ -326,7 +333,7 @@
 (defn typeinfer-predeclare-record-env-loop [program idx len alias-env record-env counter]
   (if (>= idx len)
     record-env
-    (let [decl (vector-get program idx)
+    (let [decl (typeinfer-record-decl-unprivate (vector-get program idx))
       tag (vector-get decl 0)]
       (if (= tag (ast-recorddef))
         (let [schema (typeinfer-record-decl-schema decl alias-env counter)]
@@ -532,7 +539,7 @@
 (defn typeinfer-register-record-defs-loop [program idx len env record-env]
   (if (>= idx len)
     env
-    (let [decl (vector-get program idx)
+    (let [decl (typeinfer-record-decl-unprivate (vector-get program idx))
       tag (vector-get decl 0)]
       (if (= tag (ast-recorddef))
         (let [next-env (typeinfer-register-record-def decl env record-env)]

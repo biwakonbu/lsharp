@@ -164,23 +164,27 @@
                 (do
                   (root_pop)
                   result)))))
-        (do
-          (root_push record-schema)
-          (let [record-ty (instantiate record-schema counter)]
-            (do
-              (root_push record-ty)
-              (let [result
-                      (infer-recordlit-with-record-type
-                        node
-                        field-count
-                        env
-                        subst
-                        counter
-                        record-ty)]
-                (do
-                  (root_pop)
-                  (root_pop)
-                  result))))))]
+        (if (= (type-env-lookup env type-name-hash) 0)
+          ;; record-env は全 program の schema を保持するため、module 境界を
+          ;; 越えた raw/private name は現在の value env に公開されていなければ拒否する。
+          (make-error-result-code (error-code-undefined))
+          (do
+            (root_push record-schema)
+            (let [record-ty (instantiate record-schema counter)]
+              (do
+                (root_push record-ty)
+                (let [result
+                        (infer-recordlit-with-record-type
+                          node
+                          field-count
+                          env
+                          subst
+                          counter
+                          record-ty)]
+                  (do
+                    (root_pop)
+                    (root_pop)
+                    result)))))))]
     (if (= (result-failed fields-result) 1)
       (propagate-error-result fields-result)
       (if (= record-schema 0)

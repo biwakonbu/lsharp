@@ -44,6 +44,7 @@ mod selfhost_typeinfer_curried_defn_field_access;
 mod selfhost_typeinfer_curried_lambda;
 mod selfhost_typeinfer_match_errors;
 mod selfhost_typeinfer_pipeline_bootstrap;
+mod selfhost_typeinfer_private_visibility;
 mod selfhost_typeinfer_quote_patterns;
 mod selfhost_typeinfer_records_computation;
 mod selfhost_typeinfer_recursive_defns;
