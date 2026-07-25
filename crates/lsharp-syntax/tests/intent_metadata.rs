@@ -107,3 +107,45 @@ fn type_definition_metadata_preserves_source_forms_and_span() {
     assert!(metadata.forms[0].span().start < metadata.forms[1].span().start);
     assert!(metadata.forms[1].span().end <= source.len());
 }
+
+#[test]
+fn record_definition_metadata_preserves_source_forms_and_span() {
+    let source = r#"
+    (type (Point a)
+      (record
+        (: x Int)
+        (: y a))
+      :intent "intent:geometry/point" "A point has two coordinates"
+      :claim "claim:geometry/point-typed" "Each coordinate follows the declared type")
+    "#;
+    let program = parse(source).expect("record definition metadata は parse できるべき");
+    let Decl::RecordDef {
+        name,
+        type_params,
+        fields,
+        metadata: Some(metadata),
+        ..
+    } = &program.decls[0]
+    else {
+        panic!("metadata 付き record definition を期待しました");
+    };
+
+    assert_eq!(name, "Point");
+    assert_eq!(type_params, &["a"]);
+    assert_eq!(fields.len(), 2);
+    assert_eq!(metadata.forms.len(), 2);
+    assert!(matches!(
+        &metadata.forms[0].kind,
+        MetadataFormKind::Intent { id, text }
+            if id == "intent:geometry/point"
+                && text == "A point has two coordinates"
+    ));
+    assert!(matches!(
+        &metadata.forms[1].kind,
+        MetadataFormKind::Claim { id, text }
+            if id == "claim:geometry/point-typed"
+                && text == "Each coordinate follows the declared type"
+    ));
+    assert!(metadata.forms[0].span().start < metadata.forms[1].span().start);
+    assert!(metadata.forms[1].span().end <= source.len());
+}

@@ -790,6 +790,7 @@ impl Parser {
         }
         self.advance(); // ) (record を閉じる)
 
+        let metadata = self.try_parse_metadata()?;
         let end_span = self.expect(TokenKind::RParen)?.span; // (type を閉じる)
 
         Ok(Decl::RecordDef {
@@ -797,6 +798,7 @@ impl Parser {
             name,
             type_params,
             fields,
+            metadata,
         })
     }
 

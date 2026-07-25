@@ -115,6 +115,10 @@ fn add_decl_nodes(decl: &Decl, graph: &mut IntentGraph) -> Result<(), SourceGrap
         | Decl::TypeDef {
             metadata: Some(metadata),
             ..
+        }
+        | Decl::RecordDef {
+            metadata: Some(metadata),
+            ..
         } => add_metadata_nodes(metadata, graph),
         Decl::ModuleDecl { body, .. } | Decl::ImplDef { methods: body, .. } => {
             for nested in body {
@@ -174,6 +178,10 @@ fn add_decl_evidence(
             ..
         }
         | Decl::TypeDef {
+            metadata: Some(metadata),
+            ..
+        }
+        | Decl::RecordDef {
             metadata: Some(metadata),
             ..
         } => add_metadata_evidence(metadata, graph, evidence_spans),
@@ -333,6 +341,10 @@ fn add_decl_edges(decl: &Decl, graph: &mut IntentGraph) -> Result<(), SourceGrap
             ..
         }
         | Decl::TypeDef {
+            metadata: Some(metadata),
+            ..
+        }
+        | Decl::RecordDef {
             metadata: Some(metadata),
             ..
         } => add_metadata_edges(metadata, graph),

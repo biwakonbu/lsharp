@@ -93,6 +93,78 @@ fn source_adapter_projects_type_definition_metadata_nodes() {
 }
 
 #[test]
+fn source_adapter_projects_record_definition_metadata_nodes() {
+    let program = parse(
+        r#"
+        (type (Point a)
+          (record
+            (: x Int)
+            (: y a))
+          :intent "intent:geometry/point" "A point has two coordinates"
+          :claim "claim:geometry/point-typed" "Each coordinate follows the declared type")
+        "#,
+    )
+    .expect("record definition metadata fixture は parse できるべき");
+
+    let graph =
+        source_program_to_intent_graph(&program).expect("record definition nodes が投影できるべき");
+    assert_eq!(
+        graph
+            .nodes()
+            .iter()
+            .map(|node| (node.stable_id().as_str(), node.text()))
+            .collect::<Vec<_>>(),
+        vec![
+            ("intent:geometry/point", "A point has two coordinates"),
+            (
+                "claim:geometry/point-typed",
+                "Each coordinate follows the declared type"
+            ),
+        ]
+    );
+    assert!(graph.nodes().iter().all(|node| node.source_span().end > 0));
+}
+
+#[test]
+fn source_adapter_projects_record_definition_evidence_and_support_edges() {
+    let program = parse(
+        r#"
+        (type Point
+          (record (: x Int))
+          :claim "claim:geometry/point-typed" "The point coordinate is an integer"
+          :evidence "evidence:geometry/point-proof"
+            :subject "claim:geometry/point-typed"
+            :method "case"
+            :outcome "pass"
+            :runner "source-record-test"
+            :target "aarch64-apple-darwin"
+            :source-commit "source-record-commit"
+            :artifact-digest "sha256:source-record"
+            :cases 1
+            :seed 0
+            :generator "source-record-generator"
+            :producer "source-record-producer"
+            :tool-version "0.2.0-dev"
+            :timestamp "2026-07-26T00:00:00Z"
+            :independence "same-author"
+          :supports "evidence:geometry/point-proof" "claim:geometry/point-typed")
+        "#,
+    )
+    .expect("record definition evidence fixture は parse できるべき");
+
+    let graph = source_program_to_intent_graph(&program)
+        .expect("record definition evidence graph が構築できるべき");
+    assert_eq!(graph.evidence().len(), 1);
+    assert_eq!(graph.edges().len(), 1);
+    assert!(matches!(
+        &graph.edges()[0],
+        lsharp_types::evidence::Edge::Supports { observation, claim }
+            if observation.as_str() == "evidence:geometry/point-proof"
+                && claim.as_str() == "claim:geometry/point-typed"
+    ));
+}
+
+#[test]
 fn source_adapter_projects_nested_module_private_and_impl_metadata_in_declaration_order() {
     const SOURCE: &str = r#"
         (module Checkout

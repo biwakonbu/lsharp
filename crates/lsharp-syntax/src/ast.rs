@@ -220,6 +220,7 @@ pub enum Decl {
         name: String,
         type_params: Vec<String>,
         fields: Vec<(String, TypeExpr)>,
+        metadata: Option<Metadata>,
     },
     /// 型エイリアス (type-alias Name Type)
     TypeAlias {
