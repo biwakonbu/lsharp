@@ -167,16 +167,16 @@
         next-state (push-state-vector-local state3 next-out)]
         (json-escape-string-state-loop next-state)))))
 
-(defn json-escape-string-loop [src idx len out]
-  (let [state0 (vector-new 4)
-    state1 (push-state-vector-local state0 src)
-    state2 (push-state-vector-local state1 idx)
-    state3 (push-state-vector-local state2 len)
-    state4 (push-state-vector-local state3 out)]
-    (json-escape-string-state-loop state4)))
+(defn json-escape-string-loop [state]
+  (json-escape-string-state-loop state))
 
 (defn json-escape-string [src]
-  (json-escape-string-loop src 0 (string-length src) ""))
+  (let [state0 (vector-new 4)
+    state1 (push-state-vector-local state0 src)
+    state2 (push-state-vector-local state1 0)
+    state3 (push-state-vector-local state2 (string-length src))
+    state4 (push-state-vector-local state3 "")]
+    (json-escape-string-loop state4)))
 
 (defn render-rpc-int-response [id result]
   (string-concat

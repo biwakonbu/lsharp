@@ -145,7 +145,7 @@ fn selfhost_json_escape_loop_uses_one_arg_state_boundary() {
         .find("(defn json-escape-string-state-loop [state]")
         .expect("JsonRpc は json escape state-loop を持つべき");
     let wrapper_start = source
-        .find("(defn json-escape-string-loop [src idx len out]")
+        .find("(defn json-escape-string-loop [state]")
         .expect("JsonRpc は json escape wrapper を持つべき");
     let wrapper_end = source[wrapper_start..]
         .find("(defn json-escape-string [src]")
@@ -156,10 +156,11 @@ fn selfhost_json_escape_loop_uses_one_arg_state_boundary() {
 
     assert!(
         state_body.contains("(json-escape-string-state-loop next-state)")
-            && wrapper_body.contains("(json-escape-string-state-loop state4)")
+            && wrapper_body.contains("(json-escape-string-state-loop state)")
+            && !source.contains("(defn json-escape-string-loop [src idx len out]")
             && !state_body.contains(
                 "(json-escape-string-loop src (+ idx 1) len (string-concat out piece))"
             ),
-        "native x86 の JSON escape 再帰は string/object を含む4引数 call ではなく1引数 state-loopへ分離するべき"
+        "native x86 の JSON escape は string/object を含む4引数 call を公開経路に残さず1引数 state-loopへ分離するべき"
     );
 }
