@@ -6,6 +6,9 @@ use crate::Instruction;
 
 use super::{FuncCtx, Lower, LowerBackend, LowerError};
 
+mod ann_expr;
+#[cfg(test)]
+mod ann_expr_tests;
 mod application;
 mod application_calls;
 mod application_map;
@@ -172,10 +175,7 @@ impl Lower {
             Expr::Lambda(_, params, body) => {
                 self.lower_lambda(ctx, expr.span(), params, body)?;
             }
-            Expr::Ann(_, expr, _) => {
-                // 型注釈は無視して中身を変換
-                self.lower_expr(ctx, expr)?;
-            }
+            Expr::Ann(_, expr, _) => self.lower_ann(ctx, expr)?,
 
             Expr::RecordLit(_, type_name, fields) => {
                 self.lower_record_lit(ctx, type_name, fields)?;
