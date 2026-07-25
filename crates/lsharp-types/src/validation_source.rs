@@ -168,8 +168,8 @@ fn build_source_evidence(
             record.cases(),
             record.seed(),
             record.generator().to_string(),
-            Vec::new(),
-            Vec::<(String, usize)>::new(),
+            record.shrinks().to_vec(),
+            record.coverage().iter().cloned(),
         ),
     );
     Ok(Evidence::new(

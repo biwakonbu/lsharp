@@ -160,3 +160,96 @@ fn evidence_record_metadata_requires_all_named_fields() {
     .expect_err("evidence record の required field 欠落は拒否するべき");
     assert_eq!(error.code(), "LS0101");
 }
+
+#[test]
+fn evidence_record_metadata_preserves_optional_sampling_fields() {
+    let program = parse(
+        r#"
+        (defn cancel []
+          :evidence "evidence:checkout/cancel-observation"
+            :subject "claim:checkout/cancel-rejects-shipped"
+            :method "property"
+            :outcome "pass"
+            :runner "cargo-test"
+            :target "aarch64-apple-darwin"
+            :source-commit "0123456789abcdef"
+            :artifact-digest "sha256:abc123"
+            :cases 3
+            :seed 42
+            :generator "checkout-cancel-fixture"
+            :shrinks [8 3 1]
+            :coverage [("negative" 2) ("positive" 1)]
+            :producer "lsharp-test"
+            :tool-version "0.2.0"
+            :timestamp "2026-07-25T00:00:00Z"
+            :independence "same-author"
+          true)
+        "#,
+    )
+    .expect("optional sampling fields 付き evidence record は parse できるべき");
+    let Decl::Defn {
+        metadata: Some(metadata),
+        ..
+    } = &program.decls[0]
+    else {
+        panic!("metadata 付き defn を期待しました");
+    };
+
+    let MetadataFormKind::Evidence { record } = &metadata.forms[0].kind else {
+        panic!("evidence record form を期待しました");
+    };
+    assert_eq!(record.shrinks(), &[8, 3, 1]);
+    assert_eq!(
+        record.coverage(),
+        &[("negative".to_string(), 2), ("positive".to_string(), 1)]
+    );
+}
+
+#[test]
+fn evidence_record_metadata_rejects_invalid_optional_sampling_fields() {
+    let negative_shrink = parse(
+        r#"
+        (defn cancel []
+          :evidence "evidence:checkout/cancel-observation"
+            :subject "claim:checkout/cancel-rejects-shipped" :method "property"
+            :outcome "pass" :runner "cargo-test" :target "aarch64-apple-darwin"
+            :source-commit "0123456789abcdef" :artifact-digest "sha256:abc123"
+            :cases 1 :seed 42 :generator "fixture" :shrinks [-1]
+            :producer "lsharp-test" :tool-version "0.2.0"
+            :timestamp "2026-07-25T00:00:00Z" :independence "same-author"
+          true)
+        "#,
+    )
+    .expect_err("負の shrink は拒否するべき");
+    assert_eq!(negative_shrink.code(), "LS0101");
+
+    let duplicate_bucket = parse(
+        r#"
+        (defn cancel []
+          :evidence "evidence:checkout/cancel-observation"
+            :subject "claim:checkout/cancel-rejects-shipped" :method "property"
+            :outcome "pass" :runner "cargo-test" :target "aarch64-apple-darwin"
+            :source-commit "0123456789abcdef" :artifact-digest "sha256:abc123"
+            :cases 1 :seed 42 :generator "fixture"
+            :coverage [("same" 1) ("same" 2)]
+            :producer "lsharp-test" :tool-version "0.2.0"
+            :timestamp "2026-07-25T00:00:00Z" :independence "same-author"
+          true)
+        "#,
+    )
+    .expect_err("重複 coverage bucket は拒否するべき");
+    assert_eq!(duplicate_bucket.code(), "LS0101");
+
+    let unclosed_shrinks = parse(
+        r#"
+        (defn cancel []
+          :evidence "evidence:checkout/cancel-observation"
+            :subject "claim:checkout/cancel-rejects-shipped" :method "property"
+            :outcome "pass" :runner "cargo-test" :target "aarch64-apple-darwin"
+            :source-commit "0123456789abcdef" :artifact-digest "sha256:abc123"
+            :cases 1 :seed 42 :generator "fixture" :shrinks [1
+        "#,
+    )
+    .expect_err("閉じていない shrink list は診断するべき");
+    assert_eq!(unclosed_shrinks.code(), "LS0102");
+}

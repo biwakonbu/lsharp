@@ -56,7 +56,7 @@ source は parse 後に `:intent` / `:claim` / `:assumption` / `:open-question` 
 `:motivates` / `:constrained-by` / `:tested-by` edge へ変換されます。`:evidence` は required
 provenance/sampling fields を持つ record として登録され、`:supports` / `:contradicts` は登録済み
 evidence にだけ接続されます。record がない evidence edge は入力エラーとして拒否されます。
-Contract の executable definition や optional sampling fields がまだ接続されていない source は、
+Contract の executable definition や selfhost/native parity がまだ接続されていない source は、
 欠落を補完せず `unknown`（exit code `2`）を返します。
 parse error、duplicate node、typed endpoint mismatch、orphan edge は入力エラーとして
 report とは別に非ゼロ終了します。`--source` と positional JSON manifest path は同時に指定
@@ -95,6 +95,7 @@ source に明示する場合は、次の edge metadata を使います。
     :runner "cargo-test" :target "aarch64-apple-darwin"
     :source-commit "0123456789abcdef" :artifact-digest "sha256:abc123"
     :cases 1 :seed 42 :generator "checkout-cancel-fixture"
+    :shrinks [8 3 1] :coverage [("negative" 2) ("positive" 1)]
     :producer "lsharp-test" :tool-version "0.2.0"
     :timestamp "2026-07-25T00:00:00Z" :independence "same-author"
   :supports "evidence:checkout/cancel-observation" "claim:checkout/cancel-rejects-shipped"
@@ -105,8 +106,9 @@ Rust source adapter は全 node を先に登録し、`motivates` / `constrained-
 kind と存在を検査してから graph edge を追加します。`tested-by` は Claim→Contract の typed
 edge として claim trace gap を閉じます。`evidence` record は全 required fields を canonical
 `Evidence` へ投影し、`supports` / `contradicts` は evidence registry closure を検査します。
-未登録 evidence は `EvidenceRegistryRequired` として返し、黙って無視しません。manifest emission、
-selfhost/native 実行、shrinks/coverage の source 投入は後続境界です。
+未登録 evidence は `EvidenceRegistryRequired` として返し、黙って無視しません。source の optional
+shrinks/coverage は canonical `SamplingPlan` と manifest へ投影されますが、selfhost/native 実行と
+generator/shrink policy の parity は後続境界です。
 
 ## 現在の境界
 

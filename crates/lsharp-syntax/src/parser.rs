@@ -1876,6 +1876,8 @@ impl Parser {
         let mut cases = None;
         let mut seed = None;
         let mut generator = None;
+        let mut shrinks = None;
+        let mut coverage = None;
         let mut producer = None;
         let mut tool_version = None;
         let mut timestamp = None;
@@ -1900,6 +1902,8 @@ impl Parser {
                 "cases" => self.parse_evidence_usize(&mut cases, "cases")?,
                 "seed" => self.parse_evidence_u64(&mut seed, "seed")?,
                 "generator" => self.parse_evidence_string(&mut generator, "generator")?,
+                "shrinks" => self.parse_evidence_shrinks(&mut shrinks)?,
+                "coverage" => self.parse_evidence_coverage(&mut coverage)?,
                 "producer" => self.parse_evidence_string(&mut producer, "producer")?,
                 "tool-version" => self.parse_evidence_string(&mut tool_version, "tool-version")?,
                 "timestamp" => self.parse_evidence_string(&mut timestamp, "timestamp")?,
@@ -1920,6 +1924,8 @@ impl Parser {
             self.require_evidence_usize(cases, "cases")?,
             self.require_evidence_u64(seed, "seed")?,
             self.require_evidence_string(generator, "generator")?,
+            shrinks.unwrap_or_default(),
+            coverage.unwrap_or_default(),
             self.require_evidence_string(producer, "producer")?,
             self.require_evidence_string(tool_version, "tool-version")?,
             self.require_evidence_string(timestamp, "timestamp")?,
@@ -1951,6 +1957,8 @@ impl Parser {
                 | "cases"
                 | "seed"
                 | "generator"
+                | "shrinks"
+                | "coverage"
                 | "producer"
                 | "tool-version"
                 | "timestamp"
@@ -2036,6 +2044,97 @@ impl Parser {
             });
         }
         Ok(token.span)
+    }
+
+    fn parse_evidence_shrinks(&mut self, slot: &mut Option<Vec<u64>>) -> Result<Span, ParseError> {
+        let start = self.expect(TokenKind::LBracket)?.span;
+        let mut values = Vec::new();
+        while !self.check(TokenKind::RBracket) {
+            if self.is_eof() {
+                return Err(ParseError::UnexpectedEof {
+                    expected: "]:evidence shrinks".to_string(),
+                });
+            }
+            let token = self.advance();
+            let value = match token.kind {
+                TokenKind::Int(value) if value >= 0 => {
+                    u64::try_from(value).map_err(|_| ParseError::Unexpected {
+                        expected: ":evidence shrinks".to_string(),
+                        found: value.to_string(),
+                        span: token.span,
+                    })?
+                }
+                kind => {
+                    return Err(ParseError::Unexpected {
+                        expected: ":evidence shrinks".to_string(),
+                        found: kind.to_string(),
+                        span: token.span,
+                    });
+                }
+            };
+            values.push(value);
+        }
+        let end = self.advance().span;
+        if slot.replace(values).is_some() {
+            return Err(ParseError::Unexpected {
+                expected: "one :evidence shrinks".to_string(),
+                found: "duplicate :shrinks".to_string(),
+                span: start,
+            });
+        }
+        Ok(start.merge(end))
+    }
+
+    fn parse_evidence_coverage(
+        &mut self,
+        slot: &mut Option<Vec<(String, usize)>>,
+    ) -> Result<Span, ParseError> {
+        let start = self.expect(TokenKind::LBracket)?.span;
+        let mut values = Vec::new();
+        while !self.check(TokenKind::RBracket) {
+            if self.is_eof() {
+                return Err(ParseError::UnexpectedEof {
+                    expected: "]:evidence coverage".to_string(),
+                });
+            }
+            self.expect(TokenKind::LParen)?;
+            let bucket = self.expect_metadata_string("evidence coverage bucket")?.0;
+            let token = self.advance();
+            let count = match token.kind {
+                TokenKind::Int(value) if value >= 0 => {
+                    usize::try_from(value).map_err(|_| ParseError::Unexpected {
+                        expected: ":evidence coverage".to_string(),
+                        found: value.to_string(),
+                        span: token.span,
+                    })?
+                }
+                kind => {
+                    return Err(ParseError::Unexpected {
+                        expected: ":evidence coverage".to_string(),
+                        found: kind.to_string(),
+                        span: token.span,
+                    });
+                }
+            };
+            let end = self.expect(TokenKind::RParen)?.span;
+            if values.iter().any(|(name, _)| name == &bucket) {
+                return Err(ParseError::Unexpected {
+                    expected: "unique :evidence coverage buckets".to_string(),
+                    found: format!("duplicate coverage bucket {bucket}"),
+                    span: end,
+                });
+            }
+            values.push((bucket, count));
+        }
+        let end = self.advance().span;
+        if slot.replace(values).is_some() {
+            return Err(ParseError::Unexpected {
+                expected: "one :evidence coverage".to_string(),
+                found: "duplicate :coverage".to_string(),
+                span: start,
+            });
+        }
+        Ok(start.merge(end))
     }
 
     fn require_evidence_string(

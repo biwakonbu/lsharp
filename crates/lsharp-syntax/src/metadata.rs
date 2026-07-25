@@ -25,8 +25,8 @@ impl MetadataForm {
 /// source から lossless に受け取る evidence record の required fields。
 ///
 /// 文字列 enum は source と canonical model の間で勝手に補正せず、types adapter が
-/// typed value へ変換するときに検証する。sampling の shrinks/coverage は次の slice で
-/// 拡張するため、現段階では cases/seed/generator を必須に保持する。
+/// typed value へ変換するときに検証する。sampling の shrinks/coverage は optional field
+/// として保持し、省略時は空の deterministic plan へ投影する。
 #[derive(Debug, Clone, PartialEq)]
 pub struct EvidenceForm {
     id: String,
@@ -40,6 +40,8 @@ pub struct EvidenceForm {
     cases: usize,
     seed: u64,
     generator: String,
+    shrinks: Vec<u64>,
+    coverage: Vec<(String, usize)>,
     producer: String,
     tool_version: String,
     timestamp: String,
@@ -60,6 +62,8 @@ impl EvidenceForm {
         cases: usize,
         seed: u64,
         generator: String,
+        shrinks: Vec<u64>,
+        coverage: Vec<(String, usize)>,
         producer: String,
         tool_version: String,
         timestamp: String,
@@ -77,6 +81,8 @@ impl EvidenceForm {
             cases,
             seed,
             generator,
+            shrinks,
+            coverage,
             producer,
             tool_version,
             timestamp,
@@ -126,6 +132,14 @@ impl EvidenceForm {
 
     pub fn generator(&self) -> &str {
         &self.generator
+    }
+
+    pub fn shrinks(&self) -> &[u64] {
+        &self.shrinks
+    }
+
+    pub fn coverage(&self) -> &[(String, usize)] {
+        &self.coverage
     }
 
     pub fn producer(&self) -> &str {

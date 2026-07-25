@@ -36,8 +36,8 @@
   `evidence:namespace/key` と Claim の wire ID、directive span を lossless に保持する。
   Rust source adapter は両 ID と Claim endpoint の kind/existence、evidence registry を検査し、
   登録済み record の edge を graph へ追加する。未登録 evidence は `EvidenceRegistryRequired` として
-  明示的に拒否し、黙って無視したり実体のない edge を追加したりしない。optional な sampling
-  fields、selfhost/native parity は残件。Evidence: `crates/lsharp-syntax/tests/intent_edges.rs`,
+  明示的に拒否し、黙って無視したり実体のない edge を追加したりしない。selfhost/native parity は
+  残件。Evidence: `crates/lsharp-syntax/tests/intent_edges.rs`,
   `crates/lsharp-types/tests/validation_source.rs`, `crates/lsharp-driver/tests/validate_cli.rs`,
   `docs/adr/decisions-v0.2-source-evidence-boundary.md`,
   `docs/adr/decisions-v0.2-source-evidence-record.md`。
@@ -49,10 +49,19 @@
   producer/tool version/timestamp、independence を named fields で lossless に受理する。
   `source_program_to_intent_graph` は全 node → evidence record → evidence edge の順で投影し、
   required field、typed subject、duplicate ID、missing edge registry を canonical model の
-  fail-closed error として返す。shrinks/coverage の source projection、manifest emission、
-  selfhost/native parity は未完了。Evidence: `crates/lsharp-syntax/tests/intent_edges.rs`,
+  fail-closed error として返す。selfhost/native parity は未完了。Evidence: `crates/lsharp-syntax/tests/intent_edges.rs`,
   `crates/lsharp-types/tests/validation_source.rs`, `crates/lsharp-driver/tests/validate_cli.rs`,
   `docs/adr/decisions-v0.2-source-evidence-record.md`。
+
+## 2026-07-25 EC-M2 source evidence sampling projection
+
+- [~] `EC-M2-02` source sampling projection — `:evidence` の optional `:shrinks [非負整数...]` と
+  `:coverage [("bucket" 非負整数)...]` を source order のまま parser が保持し、負数・重複 field・重複
+  bucket を fail-closed に拒否する。source adapter は値を canonical `SamplingPlan` の shrink path /
+  coverage map へ投影し、既存の deterministic manifest serializer でも同じ値を出力する。selfhost/native
+  parser parity、実行 trace と generator policy、Mac Apple Silicon / Linux x86_64 artifact/runtime
+  evidence は未完了。Evidence: `crates/lsharp-syntax/tests/intent_edges.rs`,
+  `crates/lsharp-types/tests/validation_source.rs`, `docs/adr/decisions-v0.2-source-evidence-record.md`。
 
 - [~] `EC-M2-01`〜`EC-M2-03` の types-only wire/model slice — `StableId` の fail-closed parser、
   typed `IntentNode` wire conversion、duplicate/required-field を検査する `IntentGraph`、
@@ -72,7 +81,7 @@
   省略した場合は `[validation].manifest` を project root 内へ安全に解決し、絶対 path、`..`、
   missing、root 外 symlink を拒否する。source node forms/Rust node adapter と
   `motivates` / `constrained-by` / `tested-by` edge と required-field evidence record の source 接続は
-  実装済みだが、optional sampling fields、selfhost/native parity、
+  実装済みだが、selfhost/native parity、
   EmbeddedCli/MCP、両 target の artifact/runtime evidence は未完了。Evidence:
   `docs/adr/decisions-v0.2-validation-input-parser.md`, `docs/adr/decisions-v0.2-validation-cli.md`,
   `docs/adr/decisions-v0.2-validation-config.md`, `crates/lsharp-types/tests/validation_input.rs`,
@@ -85,7 +94,7 @@
   実行する。contract/evidence 未接続の妥当な source は `unknown` (2)、parse/duplicate/orphan/
   typed endpoint error は入力診断として fail-closed、positional manifest との併用は拒否する。
   supports/contradicts は登録済み evidence にだけ接続し、registry 未接続時は明示的な入力エラーとなる。
-  optional sampling fields、manifest emission、selfhost/native parity、EmbeddedCli/MCP、両 target の artifact/runtime evidence は未完了。
+  selfhost/native parity、EmbeddedCli/MCP、両 target の artifact/runtime evidence は未完了。
   Evidence: `docs/adr/decisions-v0.2-validation-source-cli.md`,
   `docs/adr/decisions-v0.2-source-evidence-boundary.md`,
   `docs/adr/decisions-v0.2-source-tested-by.md`,
