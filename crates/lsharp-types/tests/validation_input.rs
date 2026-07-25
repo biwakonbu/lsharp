@@ -250,6 +250,27 @@ fn parse_manifest_rejects_unknown_fields_and_reversed_spans() {
 }
 
 #[test]
+fn parse_manifest_rejects_missing_top_level_required_fields() {
+    for field in ["schema_version", "nodes", "evidence", "edges"] {
+        let mut value: serde_json::Value =
+            serde_json::from_str(complete_manifest()).expect("complete fixture should be JSON");
+        value
+            .as_object_mut()
+            .expect("manifest fixture should be an object")
+            .remove(field);
+        let manifest = serde_json::to_string(&value).expect("manifest mutation should serialize");
+
+        assert!(
+            matches!(
+                parse_intent_graph_json(&manifest),
+                Err(ValidationInputError::Json(_))
+            ),
+            "missing top-level {field} must fail during JSON decoding"
+        );
+    }
+}
+
+#[test]
 fn parse_manifest_rejects_negative_unsigned_numeric_fields() {
     let cases = [
         (
