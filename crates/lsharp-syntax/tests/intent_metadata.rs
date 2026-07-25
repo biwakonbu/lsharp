@@ -66,3 +66,44 @@ fn intent_metadata_requires_wire_id_and_non_empty_text() {
         .expect_err("claim text がない入力は拒否するべき");
     assert_eq!(missing_text.code(), "LS0101");
 }
+
+#[test]
+fn type_definition_metadata_preserves_source_forms_and_span() {
+    let source = r#"
+    (type (Result e)
+      (Ok Int)
+      (Err e)
+      :intent "intent:checkout/result" "The result models checkout completion"
+      :claim "claim:checkout/result-total" "Every checkout returns a result")
+    "#;
+    let program = parse(source).expect("type definition metadata は parse できるべき");
+    let Decl::TypeDef {
+        name,
+        type_params,
+        variants,
+        metadata: Some(metadata),
+        ..
+    } = &program.decls[0]
+    else {
+        panic!("metadata 付き type definition を期待しました");
+    };
+
+    assert_eq!(name, "Result");
+    assert_eq!(type_params, &["e"]);
+    assert_eq!(variants.len(), 2);
+    assert_eq!(metadata.forms.len(), 2);
+    assert!(matches!(
+        &metadata.forms[0].kind,
+        MetadataFormKind::Intent { id, text }
+            if id == "intent:checkout/result"
+                && text == "The result models checkout completion"
+    ));
+    assert!(matches!(
+        &metadata.forms[1].kind,
+        MetadataFormKind::Claim { id, text }
+            if id == "claim:checkout/result-total"
+                && text == "Every checkout returns a result"
+    ));
+    assert!(metadata.forms[0].span().start < metadata.forms[1].span().start);
+    assert!(metadata.forms[1].span().end <= source.len());
+}

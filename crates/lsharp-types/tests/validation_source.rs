@@ -2,7 +2,7 @@ use lsharp_syntax::parse;
 use lsharp_types::evidence::{EvidenceMethod, EvidenceOutcome, Independence};
 use lsharp_types::metadata_contract::inventory_contract_suites;
 use lsharp_types::validation_input::parse_intent_graph_json;
-use lsharp_types::validation_source::{source_program_to_intent_graph, SourceGraphError};
+use lsharp_types::validation_source::{SourceGraphError, source_program_to_intent_graph};
 
 fn source_evidence_form(key: &str, method: &str, outcome: &str, independence: &str) -> String {
     format!(
@@ -51,6 +51,41 @@ fn source_adapter_registers_typed_nodes_without_deriving_ids_from_span_or_order(
             (
                 "claim:checkout/cancel-rejects-shipped",
                 "The API rejects shipped orders"
+            ),
+        ]
+    );
+    assert!(graph.nodes().iter().all(|node| node.source_span().end > 0));
+}
+
+#[test]
+fn source_adapter_projects_type_definition_metadata_nodes() {
+    let program = parse(
+        r#"
+        (type (Result e)
+          (Ok Int)
+          (Err e)
+          :intent "intent:checkout/result" "The result models checkout completion"
+          :claim "claim:checkout/result-total" "Every checkout returns a result")
+        "#,
+    )
+    .expect("type definition metadata fixture は parse できるべき");
+
+    let graph =
+        source_program_to_intent_graph(&program).expect("type definition nodes が投影できるべき");
+    assert_eq!(
+        graph
+            .nodes()
+            .iter()
+            .map(|node| (node.stable_id().as_str(), node.text()))
+            .collect::<Vec<_>>(),
+        vec![
+            (
+                "intent:checkout/result",
+                "The result models checkout completion"
+            ),
+            (
+                "claim:checkout/result-total",
+                "Every checkout returns a result"
             ),
         ]
     );

@@ -752,18 +752,18 @@ impl Parser {
         }
 
         let mut variants = Vec::new();
-        while !self.check(TokenKind::RParen) {
+        while !self.check(TokenKind::RParen) && !self.check(TokenKind::Colon) {
             variants.push(self.parse_variant()?);
         }
+        let metadata = self.try_parse_metadata()?;
         let end_span = self.advance().span; // )
 
-        // オプションのメタデータ（型定義後）はスキップ（外側の ) 前で処理済み）
         Ok(Decl::TypeDef {
             span: start_span.merge(end_span),
             name,
             type_params,
             variants,
-            metadata: None,
+            metadata,
         })
     }
 
