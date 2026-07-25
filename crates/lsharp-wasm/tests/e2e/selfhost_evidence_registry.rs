@@ -9,10 +9,9 @@ fn run_evidence_registry_runtime(harness: &str) -> String {
         selfhost_project_root().join("selfhost/src/Tools/Validation/Evidence.ls"),
     )
     .expect("canonical Evidence.ls が読み込めない");
-    let json_rpc = std::fs::read_to_string(
-        selfhost_project_root().join("selfhost/src/Tools/Lsp/JsonRpc.ls"),
-    )
-    .expect("canonical JsonRpc.ls が読み込めない");
+    let json_rpc =
+        std::fs::read_to_string(selfhost_project_root().join("selfhost/src/Tools/Lsp/JsonRpc.ls"))
+            .expect("canonical JsonRpc.ls が読み込めない");
     compile_and_run(&format!(
         "{}\n{}\n{}\n{}\n{}",
         selfhost_parser_runtime_bundle(),
@@ -302,19 +301,60 @@ fn test_e2e_selfhost_evidence_manifest_serializer_matches_version_one_shape() {
     let output = run_evidence_registry_runtime(harness);
     let mut lines = output.trim().lines();
     assert_eq!(lines.next(), Some("1"));
-    let manifest: serde_json::Value = serde_json::from_str(
-        lines.next().expect("manifest JSON が出力されるべき"),
-    )
-    .expect("manifest JSON は parse 可能であるべき");
+    let manifest: serde_json::Value =
+        serde_json::from_str(lines.next().expect("manifest JSON が出力されるべき"))
+            .expect("manifest JSON は parse 可能であるべき");
 
     assert_eq!(manifest["schema_version"], 1);
     assert_eq!(manifest["nodes"][0]["kind"], "claim");
     assert_eq!(manifest["nodes"][0]["namespace"], "checkout");
     assert_eq!(manifest["nodes"][0]["key"], "rejects");
     assert_eq!(manifest["evidence"][0]["execution"]["sampling"]["cases"], 3);
-    assert_eq!(manifest["evidence"][0]["execution"]["sampling"]["shrinks"], serde_json::json!([8, 3, 1]));
+    assert_eq!(
+        manifest["evidence"][0]["execution"]["sampling"]["shrinks"],
+        serde_json::json!([8, 3, 1])
+    );
     assert_eq!(manifest["edges"][0]["relation"], "tested-by");
     assert_eq!(manifest["edges"][1]["relation"], "supports");
+}
+
+/// EC-M3-01: selfhost の manifest は Rust canonical serializer と同じ JSON value を返す。
+#[test]
+fn test_e2e_selfhost_evidence_manifest_matches_rust_canonical_value() {
+    let source = r#"(defn verify [] :intent "intent:checkout/safe-cancel" "Users can cancel an order" :claim "claim:checkout/rejects" "Shipped orders are rejected" :assumption "assumption:checkout/state-authoritative" "Shipment state is authoritative" :open-question "open-question:checkout/after-label" "Can cancellation happen after a label?" :motivates "intent:checkout/safe-cancel" "claim:checkout/rejects" :constrained-by "claim:checkout/rejects" "assumption:checkout/state-authoritative" :tested-by "claim:checkout/rejects" "contract:checkout/case" :evidence "evidence:checkout/verified" :subject "claim:checkout/rejects" :method "case" :outcome "pass" :runner "cargo-test" :target "aarch64-apple-darwin" :source-commit "deadbeef" :artifact-digest "sha256:abc" :cases 3 :seed 42 :generator "checkout-generator" :shrinks [8 3 1] :coverage [("smoke" 3)] :producer "lsharp-test" :tool-version "0.2" :timestamp "2026-07-25T00:00:00Z" :independence "same-author" :supports "evidence:checkout/verified" "claim:checkout/rejects" true)"#;
+    let program = lsharp_syntax::parse(source).expect("Rust oracle source は parse できるべき");
+    let graph = lsharp_types::validation_source::source_program_to_intent_graph(&program)
+        .expect("Rust oracle source graph は構築できるべき");
+    let expected = graph.to_manifest_json_value();
+    let escaped_source = source.replace('\\', "\\\\").replace('"', "\\\"");
+    let harness = format!(
+        r#"
+(defn main []
+  (let [program (parse-program "{escaped_source}")
+        result (source-evidence-graph-from-program program)
+        graph (source-result-value result)]
+    (do
+      (print (source-result-status result))
+      (print-string (validation-source-manifest-json graph))
+      (print-string "\n")
+      0)))
+"#
+    );
+
+    let output = run_evidence_registry_runtime(&harness);
+    let mut lines = output.trim().lines();
+    assert_eq!(lines.next(), Some("1"));
+    let actual: serde_json::Value = serde_json::from_str(
+        lines
+            .next()
+            .expect("selfhost manifest JSON が出力されるべき"),
+    )
+    .expect("selfhost manifest JSON は parse 可能であるべき");
+
+    assert_eq!(
+        actual, expected,
+        "selfhost/Rust manifest の wire value が一致するべき"
+    );
 }
 
 /// EC-M2-02: coverage bucket の重複は deterministic sampling plan を壊すため拒否する。
