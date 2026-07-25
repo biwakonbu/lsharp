@@ -1179,6 +1179,85 @@ fn test_native_codegen_emits_x86_map_size_guard_targets_zero_return() {
     assert_eq!(lines[8], "195", "zero-return path は ret で終わること");
 }
 
+/// NATIVE-REAL-08b2-map-remove: x86_64 map-remove helper の tombstone ABI を固定する。
+#[test]
+#[ignore]
+fn test_native_codegen_emits_x86_map_remove_tombstone_helper_bytes() {
+    let output = run_native_codegen_harness(
+        r#"(module Main)
+(import NativeTarget)
+(import NativeCodegen)
+
+(defn main []
+  (let [native (emit-x86-selfhost-map-remove-helper)]
+    (do
+      (print (vector-length native))
+      (print (vector-get native 0))
+      (print (vector-get native 1))
+      (print (vector-get native 2))
+      (print (vector-get native 3))
+      (print (vector-get native 4))
+      (print (vector-get native 5))
+      (print (vector-get native 51))
+      (print (vector-get native 52))
+      (print (vector-get native 53))
+      (print (vector-get native 54))
+      (print (vector-get native 55))
+      (print (vector-get native 56))
+      (print (vector-get native 57))
+      (print (vector-get native 58))
+      (print (vector-get native 61))
+      (print (vector-get native 62))
+      (print (vector-get native 63))
+      (print (vector-get native 64))
+      (print (vector-get native 65))
+      (print (vector-get native 66))
+      (print (vector-get native 70))
+      (print (vector-get native 76))
+      0)))"#,
+    );
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        [
+            "77", "83", "65", "84", "72", "137", "207", "73", "199", "192", "255",
+            "255", "255", "255", "76", "255", "75", "8", "72", "137", "248", "195",
+            "195",
+        ],
+        "opcode=66 helper の emitted bytes は map-get ABI、tombstone=-1、size--、tagged-map return の順序を保持するべき"
+    );
+}
+
+/// NATIVE-REAL-08b2-map-remove-rel32: opcode 66 の runtime bundle が helper offset を指すこと。
+#[test]
+#[ignore]
+fn test_native_codegen_emits_x86_map_remove_runtime_bundle_rel32_target() {
+    let output = run_native_codegen_harness(
+        r#"(module Main)
+(import NativeTarget)
+(import NativeCodegen)
+
+(defn main []
+  (let [native (codegen-selfhost-runtime-bundle-x86-core 66 1000 2000 0 20 0)]
+    (do
+      (print (vector-length native))
+      (print (vector-get native 0))
+      (print (vector-get native 1))
+      (print (vector-get native 2))
+      (print (vector-get native 3))
+      (print (vector-get native 4))
+      0)))"#,
+    );
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["5", "232", "238", "9", "0", "0"],
+        "opcode=66 の emitted E8 rel32 は current-offset=1000 の call-next=5 から map-remove helper target=3547 を指すべき"
+    );
+}
+
 /// NATIVE-REAL-08b3-map: x86_64 map-new helper は stage2 ftable 向けの大きい容量を持つこと。
 #[test]
 #[ignore]

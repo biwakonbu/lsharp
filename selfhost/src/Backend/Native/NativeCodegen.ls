@@ -8963,19 +8963,21 @@
                                               7
                                               (if (= opcode 62)
                                                 (if (>= current-depth 4) (+ 19 (* (- current-depth 4) 14)) 12)
-                                                (if (= opcode 63)
-                                                  (if (>= current-depth 3) (+ 12 (* (- current-depth 3) 14)) 5)
+                                                  (if (= opcode 63)
+                                                    (if (>= current-depth 3) (+ 12 (* (- current-depth 3) 14)) 5)
+                                                  (if (= opcode 66)
+                                                    (if (>= current-depth 3) (+ 12 (* (- current-depth 3) 14)) 5)
                                                   (if (= opcode 73)
                                                     7
                                                     (if (= opcode 86)
                                                       (if (>= current-depth 2) (+ 14 (* (- current-depth 2) 14)) (if (= current-depth 1) 7 5))
                                                       (if (= opcode 87)
                                                         7
-                                                        (if (= opcode 88)
+                                                          (if (= opcode 88)
                                                           7
                                                           (if (= (x86-plain-two-to-one-needs-window-restore opcode) 1)
                                                             (native-plain-two-to-one-bundle-size-x86 opcode operand current-depth)
-                                                            (native-plain-instr-size-x86 opcode operand))))))))))))))))))))))))))))))))))
+                                                            (native-plain-instr-size-x86 opcode operand)))))))))))))))))))))))))))))))))))
 
 (defn native-instr-size-x86 [opcode operand function-metas current-depth]
   (if (if (= opcode 41) true (if (= opcode 81) true (= opcode 83)))
@@ -10018,6 +10020,34 @@
     group3 (concat-five-byte-vectors-rooted part11 part12 part13 part14 part15)]
     (concat-four-byte-vectors-rooted group1 group2 group3 part16)))
 
+(defn emit-x86-selfhost-map-remove-helper []
+  ;; map-get と同じ consume-two ABI (rax=key, rcx=tagged map) で
+  ;; tombstone を書き、map の live count を減らして tagged map を返す。
+  (let [
+    part1 (byte-vector-5 83 65 84 72 137)
+    part2 (byte-vector-5 207 72 133 201 121)
+    part3 (byte-vector-5 60 72 137 203 72)
+    part4 (byte-vector-5 15 186 243 63 68)
+    part5 (byte-vector-5 139 99 8 49 201)
+    part6 (byte-vector-5 68 57 225 115 34)
+    part7 (byte-vector-5 72 137 202 72 193)
+    part8 (byte-vector-5 226 4 72 141 84)
+    part9 (byte-vector-5 19 16 72 57 2)
+    part10 (byte-vector-5 116 4 255 193 235)
+    part11 (byte-vector-5 230 73 199 192 255)
+    part12 (byte-vector-5 255 255 255 76 137)
+    part13 (byte-vector-5 2 255 75 8 72)
+    part14 (byte-vector-5 137 248 65 92 91)
+    part15 (byte-vector-5 195 49 192 65 92)
+    part16 (byte-vector-2 91 195)
+    group1 (concat-five-byte-vectors-rooted part1 part2 part3 part4 part5)
+    group2 (concat-five-byte-vectors-rooted part6 part7 part8 part9 part10)
+    group3 (concat-five-byte-vectors-rooted part11 part12 part13 part14 part15)]
+    (concat-three-byte-vectors-rooted
+      (concat-three-byte-vectors-rooted group1 group2 group3)
+      part16
+      (vector-new 0))))
+
 (defn emit-x86-selfhost-file-exists-helper []
   (let [
     part1 (byte-vector-4 83 65 84 72)
@@ -10535,6 +10565,9 @@
 (defn x86-selfhost-map-get-helper-size []
   62)
 
+(defn x86-selfhost-map-remove-helper-size []
+  77)
+
 (defn x86-selfhost-file-exists-helper-size []
   84)
 
@@ -10576,13 +10609,14 @@
                                                    (+ (x86-selfhost-map-size-helper-size)
                                                       (+ (x86-selfhost-map-insert-helper-size)
                                                          (+ (x86-selfhost-map-get-helper-size)
-                                                            (+ (x86-selfhost-file-exists-helper-size)
+                                                            (+ (x86-selfhost-map-remove-helper-size)
+                                                               (+ (x86-selfhost-file-exists-helper-size)
                                                                (+ (x86-selfhost-command-line-args-helper-size)
                                                                   (+ (x86-selfhost-print-string-helper-size)
                                                                      (+ (x86-selfhost-proc-exit-helper-size)
                                                                         (+ (x86-selfhost-write-file-helper-size)
                                                                            (+ (x86-selfhost-write-file-bytes-helper-size)
-                                                                              (x86-selfhost-int-to-string-helper-size)))))))))))))))))))))))))))
+                                                                              (x86-selfhost-int-to-string-helper-size))))))))))))))))))))))))))))
 
 (defn x86-helper-base-offset [import-stub-offset import-count]
   (+ import-stub-offset (x86-import-stub-size import-count)))
@@ -10641,26 +10675,29 @@
 (defn x86-selfhost-map-get-helper-offset [import-stub-offset import-count]
   (+ (x86-helper-base-offset import-stub-offset import-count) 1485))
 
-(defn x86-selfhost-file-exists-helper-offset [import-stub-offset import-count]
+(defn x86-selfhost-map-remove-helper-offset [import-stub-offset import-count]
   (+ (x86-helper-base-offset import-stub-offset import-count) 1547))
 
+(defn x86-selfhost-file-exists-helper-offset [import-stub-offset import-count]
+  (+ (x86-helper-base-offset import-stub-offset import-count) 1624))
+
 (defn x86-selfhost-command-line-args-helper-offset [import-stub-offset import-count]
-  (+ (x86-helper-base-offset import-stub-offset import-count) 1631))
+  (+ (x86-helper-base-offset import-stub-offset import-count) 1708))
 
 (defn x86-selfhost-print-string-helper-offset [import-stub-offset import-count]
-  (+ (x86-helper-base-offset import-stub-offset import-count) 1635))
+  (+ (x86-helper-base-offset import-stub-offset import-count) 1712))
 
 (defn x86-selfhost-proc-exit-helper-offset [import-stub-offset import-count]
-  (+ (x86-helper-base-offset import-stub-offset import-count) 1686))
+  (+ (x86-helper-base-offset import-stub-offset import-count) 1763))
 
 (defn x86-selfhost-write-file-helper-offset [import-stub-offset import-count]
-  (+ (x86-helper-base-offset import-stub-offset import-count) 1698))
+  (+ (x86-helper-base-offset import-stub-offset import-count) 1775))
 
 (defn x86-selfhost-write-file-bytes-helper-offset [import-stub-offset import-count]
-  (+ (x86-helper-base-offset import-stub-offset import-count) 1885))
+  (+ (x86-helper-base-offset import-stub-offset import-count) 1962))
 
 (defn x86-selfhost-int-to-string-helper-offset [import-stub-offset import-count]
-  (+ (x86-helper-base-offset import-stub-offset import-count) 2140))
+  (+ (x86-helper-base-offset import-stub-offset import-count) 2217))
 
 (defn is-selfhost-runtime-opcode-x86-core [opcode]
   (if (= opcode 64)
@@ -10699,6 +10736,8 @@
                                     1
                                     (if (= opcode 63)
                                       1
+                                      (if (= opcode 66)
+                                        1
                                       (if (= opcode 73)
                                         1
                                         (if (= opcode 86)
@@ -10707,7 +10746,7 @@
                                             1
                                             (if (= opcode 88)
                                               1
-                                              0)))))))))))))))))))))))
+                                              0))))))))))))))))))))))))
 
 (defn codegen-selfhost-runtime-bundle-x86-core [opcode current-offset import-stub-offset import-count frame-base-slot-count current-depth]
   (if (= opcode 86)
@@ -10819,17 +10858,24 @@
                                   (emit-x86-helper-call-preserving-rcx
                                     (- (x86-selfhost-map-size-helper-offset import-stub-offset import-count)
                                        (+ current-offset 6)))
-                                  (if (= opcode 62)
+                                                  (if (= opcode 62)
 	                                    (emit-map-insert-bundle-x86
 	                                      (- (x86-selfhost-map-insert-helper-offset import-stub-offset import-count)
 	                                         (+ current-offset 12))
 	                                      frame-base-slot-count
 	                                      current-depth)
+	                                    (if (= opcode 66)
+	                                      (emit-consume-two-bundle-x86
+	                                        (emit-call-rel32
+	                                          (- (x86-selfhost-map-remove-helper-offset import-stub-offset import-count)
+	                                             (+ current-offset 5)))
+	                                        frame-base-slot-count
+	                                        current-depth)
 	                                    (if (= opcode 73)
 	                                      (emit-x86-helper-call-preserving-rcx
 	                                        (- (x86-selfhost-file-exists-helper-offset import-stub-offset import-count)
 	                                           (+ current-offset 6)))
-	                              (vector-new 0)))))))))))))))))))
+                              (vector-new 0))))))))))))))))))))
 
 (defn x86-selfhost-file-write-opcode [opcode]
   (if (= opcode 89)
@@ -11416,6 +11462,15 @@
               frame-base-slot-count
               current-depth)
             (continue-native-control-instr-bundle-loop-x86 ctx idx remaining))
+        (if (= opcode 66)
+          (do
+            (append-consume-two-helper-call-x86
+              result
+              (- (x86-selfhost-map-remove-helper-offset import-stub-offset import-count)
+                 (+ (x86-current-emitted-offset result emit-start-base) 5))
+              frame-base-slot-count
+              current-depth)
+            (continue-native-control-instr-bundle-loop-x86 ctx idx remaining))
         (if (= (direct-append-x86-opcode opcode) 1)
           (do
             (append-produce-one-bundle-x86 result (direct-append-produce-one-bytes-x86 opcode operand) frame-base-slot-count current-depth)
@@ -11444,7 +11499,7 @@
                       native-len (vector-length native)]
                       (do
                         (append-native-bytes-loop result native 0 native-len)
-                        (continue-native-control-instr-bundle-loop-x86 ctx idx remaining))))))))))))))))))))))))))))))))))))
+                        (continue-native-control-instr-bundle-loop-x86 ctx idx remaining)))))))))))))))))))))))))))))))))))))
 (defn generate-native-control-instr-bundle-loop-x86-with-import-count-and-base [ir-func result meta offsets function-starts function-metas import-count import-stub-offset function-start-base frame-base-slot-count current-depth idx len]
   (let [emit-start-base (vector-length (ref-get result))
     layout (make-x86-function-emit-layout import-count import-stub-offset function-start-base emit-start-base)]
@@ -14150,6 +14205,7 @@
           (append-native-bytes-rooted result (emit-x86-selfhost-map-size-helper) 17)
           (append-native-bytes-rooted result (emit-x86-selfhost-map-insert-helper) 104)
           (append-native-bytes-rooted result (emit-x86-selfhost-map-get-helper) 62)
+          (append-native-bytes-rooted result (emit-x86-selfhost-map-remove-helper) 77)
           (append-native-bytes-rooted result (emit-x86-selfhost-file-exists-helper) 84)
           (append-native-bytes-rooted result (emit-x86-selfhost-command-line-args-helper) 4)
           (append-native-bytes-rooted result (emit-x86-selfhost-print-string-helper) 51)

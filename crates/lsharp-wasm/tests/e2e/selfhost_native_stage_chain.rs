@@ -2943,6 +2943,7 @@ fn test_linux_x86_file_segmented_harness_writes_segments_from_append_emit_vector
         "emit-x86-selfhost-write-file-helper",
         "emit-x86-selfhost-write-file-bytes-helper",
         "emit-x86-selfhost-int-to-string-helper",
+        "emit-x86-selfhost-map-remove-helper",
     ] {
         assert!(
             trailer_writer.contains(helper),
@@ -2967,6 +2968,7 @@ fn test_linux_x86_representative_seed_printed_trailer_includes_all_declared_help
         "emit-x86-selfhost-write-file-helper",
         "emit-x86-selfhost-write-file-bytes-helper",
         "emit-x86-selfhost-int-to-string-helper",
+        "emit-x86-selfhost-map-remove-helper",
     ] {
         assert!(
             trailer_printer.contains(helper),
@@ -8519,6 +8521,57 @@ fn test_native_codegen_x86_map_insert_runtime_call_direct_appends_in_stage1() {
 }
 
 #[test]
+fn test_native_codegen_x86_map_remove_opcode_correlates_ir_bytes_and_rel32_target() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let seed_template = include_str!("selfhost_native_stage_chain.rs");
+    let control_loop = source
+        .split("(defn generate-native-control-instr-bundle-loop-x86-with-context")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split(
+                "(defn generate-native-control-instr-bundle-loop-x86-with-import-count-and-base",
+            )
+            .next()
+        })
+        .expect("NativeCodegen.ls に x86 control bundle loop が存在すること");
+    let runtime_bundle = source
+        .split("(defn codegen-selfhost-runtime-bundle-x86-core")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn x86-selfhost-file-write-opcode").next())
+        .expect("NativeCodegen.ls に x86 runtime bundle が存在すること");
+
+    assert!(
+        source.contains("(defn emit-x86-selfhost-map-remove-helper")
+            && source.contains("(defn x86-selfhost-map-remove-helper-size")
+            && source.contains("(defn x86-selfhost-map-remove-helper-offset")
+            && source.contains("(defn is-selfhost-runtime-opcode-x86-core")
+            && source.contains("(if (= opcode 66)"),
+        "opcode=66 の stage2 IR が emitted bytes / rel32 target へ到達するための map-remove helper 契約が必要"
+    );
+    assert!(
+        runtime_bundle.contains("(x86-selfhost-map-remove-helper-offset import-stub-offset import-count)")
+            && runtime_bundle.contains("(+ current-offset 5)")
+            && runtime_bundle.contains("(emit-consume-two-bundle-x86"),
+        "opcode=66 の runtime bundle は emitted bytes の call 直後を基準に map-remove helper への rel32 target を計算するべき"
+    );
+    assert!(
+        control_loop.contains("(= opcode 66)")
+            && control_loop.contains("(append-consume-two-helper-call-x86")
+            && control_loop.contains("(x86-selfhost-map-remove-helper-offset")
+            && control_loop.contains("(+ (x86-current-emitted-offset result emit-start-base) 5)"),
+        "stage2 entrypoint の opcode=66 row は actual emitted bytes と direct append の rel32 target を同じ offset 基準で再現するべき"
+    );
+    assert!(
+        source.contains("(append-native-bytes-rooted result (emit-x86-selfhost-map-remove-helper)")
+            && seed_template.contains("(print-packed-code-segment (emit-x86-selfhost-map-remove-helper))")
+            && seed_template.contains(
+                "c19 (write-packed-code-segment prefix (emit-x86-selfhost-map-remove-helper) c18)",
+            ),
+        "map-remove helper の trailer bytes は code segment と生成 bundle の両方へ同じ順序で materialize するべき"
+    );
+}
+
+#[test]
 fn test_native_codegen_x86_map_insert_helper_stages_group_merge_for_native_selfhost() {
     let source = selfhost_module("NativeCodegen.ls");
     let helper = source
@@ -8693,7 +8746,7 @@ fn test_native_codegen_x86_read_file_runtime_call_direct_appends_in_stage1() {
         .expect("NativeCodegen.ls に x86 control bundle loop が存在すること");
 
     assert!(
-        control_loop.contains("(if (if (= opcode 64) true (if (= opcode 67) true (= opcode 59)))")
+        control_loop.contains("(if (if (= opcode 64) true (if (= opcode 67) true (if (= opcode 59) true")
             && control_loop.contains("(append-x86-helper-call-preserving-rcx")
             && control_loop.contains("(x86-selfhost-read-file-helper-offset")
             && control_loop.contains("(+ (x86-current-emitted-offset result emit-start-base) 6)"),
@@ -8745,7 +8798,7 @@ fn test_native_codegen_x86_print_runtime_call_direct_appends_in_stage1() {
         .expect("NativeCodegen.ls に x86 control bundle loop が存在すること");
 
     assert!(
-        control_loop.contains("(if (if (= opcode 64) true (if (= opcode 67) true (= opcode 59)))")
+        control_loop.contains("(if (if (= opcode 64) true (if (= opcode 67) true (if (= opcode 59) true")
             && control_loop.contains("(append-x86-helper-call-preserving-rcx")
             && control_loop.contains("(x86-selfhost-read-file-helper-offset")
             && control_loop.contains("(x86-selfhost-command-line-arg-helper-offset")
@@ -8830,7 +8883,7 @@ fn test_native_codegen_x86_command_line_arg_runtime_bundle_uses_rel32_helper() {
 
     assert!(
         runtime_bundle
-            .contains("(if (if (= opcode 64) true (if (= opcode 67) true (= opcode 59)))")
+            .contains("(if (if (= opcode 64) true (if (= opcode 67) true (if (= opcode 59) true")
             && runtime_bundle.contains("(emit-x86-helper-call-preserving-rcx")
             && runtime_bundle.contains("(x86-selfhost-command-line-arg-helper-offset")
             && runtime_bundle.contains("(x86-selfhost-print-helper-offset")
@@ -8855,7 +8908,7 @@ fn test_native_codegen_x86_command_line_arg_runtime_call_direct_appends_in_stage
         })
         .expect("NativeCodegen.ls に x86 control bundle loop が存在すること");
     assert!(
-        control_loop.contains("(if (if (= opcode 64) true (if (= opcode 67) true (= opcode 59)))")
+        control_loop.contains("(if (if (= opcode 64) true (if (= opcode 67) true (if (= opcode 59) true")
             && control_loop.contains("(append-x86-helper-call-preserving-rcx")
             && control_loop.contains("(x86-selfhost-read-file-helper-offset")
             && control_loop.contains("(x86-selfhost-command-line-arg-helper-offset")
@@ -10557,13 +10610,14 @@ fn test_native_codegen_x86_map_new_helper_adds_heap_base_before_header() {
             && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1381)")
             && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1485)")
             && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1547)")
-            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1631)")
-            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1635)")
-            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1686)")
-            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1698)")
-            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1885)")
-            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 2140)"),
-        "x86 map-new helper の拡張後は後続 runtime helper offset も +3 へ同期するべき"
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1624)")
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1708)")
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1712)")
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1763)")
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1775)")
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1962)")
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 2217)"),
+        "x86 map-new helper の拡張後は map-remove を含む後続 runtime helper offset も同期するべき"
     );
 }
 
@@ -10720,8 +10774,9 @@ fn test_native_codegen_x86_vector_get_helper_rejects_non_vector_objects() {
     );
     assert!(
         source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 633)")
-            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1501)"),
-        "x86 vector-get helper の短縮 tag guard 後は後続 runtime helper offset も +14 へ同期するべき"
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1485)")
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1547)"),
+        "x86 vector-get helper の短縮 tag guard 後は map-get/map-remove を含む後続 runtime helper offset と同期するべき"
     );
 }
 
@@ -11835,7 +11890,7 @@ fn test_native_codegen_x86_call_target_offset_is_computed_after_target_param_cou
         .find("target-param-count (native-function-param-count target-meta)")
         .expect("x86 call helper は target param count を計算すること");
     let target_offset_pos = opcode_call_branch
-        .find("target-offset (if (< (ref-get operand-ref) import-count)")
+        .find("target-offset (if (= (ref-get operand-ref) 6)")
         .expect("x86 call helper は target offset を計算すること");
     let call_next_offset_pos = opcode_call_branch
         .find("call-next-offset (native-call-rel-next-offset-x86 target-param-count current-depth)")
@@ -11886,7 +11941,7 @@ fn test_native_codegen_x86_call_rel_uses_stable_operand_and_current_offset_refs(
         .find("target-meta (vector-get function-metas (ref-get operand-ref))")
         .expect("target metadata は安定化した operand ref から取得すること");
     let target_offset_pos = opcode_call_branch
-        .find("target-offset (if (< (ref-get operand-ref) import-count)")
+        .find("target-offset (if (= (ref-get operand-ref) 6)")
         .expect("target offset は安定化した operand ref から計算すること");
     let target_starts_pos = opcode_call_branch
         .find("(vector-get (ref-get function-starts-ref) (- (ref-get operand-ref) import-count))")
@@ -12640,7 +12695,7 @@ fn test_native_codegen_x86_print_string_helper_resolves_static_data_offset() {
     );
     assert!(
         size_body.contains("\n  51)")
-            && proc_exit_offset_body.contains("1686")
+            && proc_exit_offset_body.contains("1763")
             && bundle_writer.contains(
                 "(append-native-bytes-rooted result (emit-x86-selfhost-print-string-helper) 51)"
             ),
@@ -18336,6 +18391,7 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
     (print-packed-code-segment (emit-x86-selfhost-map-size-helper))
     (print-packed-code-segment (emit-x86-selfhost-map-insert-helper))
     (print-packed-code-segment (emit-x86-selfhost-map-get-helper))
+    (print-packed-code-segment (emit-x86-selfhost-map-remove-helper))
     (print-packed-code-segment (emit-x86-selfhost-file-exists-helper))
     (print-packed-code-segment (emit-x86-selfhost-command-line-args-helper))
     (print-packed-code-segment (emit-x86-selfhost-print-string-helper))
@@ -18541,13 +18597,14 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
         c16 (write-packed-code-segment prefix (emit-x86-selfhost-map-size-helper) c15)
         c17 (write-packed-code-segment prefix (emit-x86-selfhost-map-insert-helper) c16)
         c18 (write-packed-code-segment prefix (emit-x86-selfhost-map-get-helper) c17)
-        c19 (write-packed-code-segment prefix (emit-x86-selfhost-file-exists-helper) c18)
-        c20 (write-packed-code-segment prefix (emit-x86-selfhost-command-line-args-helper) c19)
-        c21 (write-packed-code-segment prefix (emit-x86-selfhost-print-string-helper) c20)
-        c22 (write-packed-code-segment prefix (emit-x86-selfhost-proc-exit-helper) c21)
-        c23 (write-packed-code-segment prefix (emit-x86-selfhost-write-file-helper) c22)
-        c24 (write-packed-code-segment prefix (emit-x86-selfhost-write-file-bytes-helper) c23)]
-    (write-packed-code-segment prefix (emit-x86-selfhost-int-to-string-helper) c24)))
+        c19 (write-packed-code-segment prefix (emit-x86-selfhost-map-remove-helper) c18)
+        c20 (write-packed-code-segment prefix (emit-x86-selfhost-file-exists-helper) c19)
+        c21 (write-packed-code-segment prefix (emit-x86-selfhost-command-line-args-helper) c20)
+        c22 (write-packed-code-segment prefix (emit-x86-selfhost-print-string-helper) c21)
+        c23 (write-packed-code-segment prefix (emit-x86-selfhost-proc-exit-helper) c22)
+        c24 (write-packed-code-segment prefix (emit-x86-selfhost-write-file-helper) c23)
+        c25 (write-packed-code-segment prefix (emit-x86-selfhost-write-file-bytes-helper) c24)]
+    (write-packed-code-segment prefix (emit-x86-selfhost-int-to-string-helper) c25)))
 
 (defn write-x86-code-segments [prefix functions starts import-count import-stub-offset]
   (do
