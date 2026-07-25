@@ -1,6 +1,30 @@
 use lsharp_syntax::parse;
+use lsharp_types::evidence::{EvidenceMethod, EvidenceOutcome, Independence};
 use lsharp_types::metadata_contract::inventory_contract_suites;
-use lsharp_types::validation_source::{SourceGraphError, source_program_to_intent_graph};
+use lsharp_types::validation_input::parse_intent_graph_json;
+use lsharp_types::validation_source::{source_program_to_intent_graph, SourceGraphError};
+
+fn source_evidence_form(key: &str, method: &str, outcome: &str, independence: &str) -> String {
+    format!(
+        r#"
+          :evidence "evidence:matrix/{key}"
+            :subject "claim:checkout/cancel"
+            :method "{method}"
+            :outcome "{outcome}"
+            :runner "source-enum-matrix"
+            :target "aarch64-apple-darwin"
+            :source-commit "source-commit-enum-matrix"
+            :artifact-digest "sha256:source-enum-matrix"
+            :cases 1
+            :seed 0
+            :generator "source-enum-matrix-generator"
+            :producer "source-enum-matrix-producer"
+            :tool-version "0.2.0-dev"
+            :timestamp "2026-07-26T00:00:00Z"
+            :independence "{independence}"
+        "#,
+    )
+}
 
 #[test]
 fn source_adapter_registers_typed_nodes_without_deriving_ids_from_span_or_order() {
@@ -467,4 +491,109 @@ fn source_adapter_rejects_evidence_edges_without_registry_entries() {
             ..
         }) if evidence_id == "evidence:checkout/cancel-counterexample"
     ));
+}
+
+#[test]
+fn source_adapter_preserves_every_evidence_enum_variant() {
+    let methods = [
+        ("example", EvidenceMethod::Example),
+        ("case", EvidenceMethod::Case),
+        ("assert", EvidenceMethod::Assert),
+        ("property", EvidenceMethod::Property),
+        ("production", EvidenceMethod::Production),
+        ("reference", EvidenceMethod::Reference),
+        ("proof", EvidenceMethod::Proof),
+        ("review", EvidenceMethod::Review),
+    ];
+    let outcomes = [
+        ("pass", EvidenceOutcome::Pass),
+        ("fail", EvidenceOutcome::Fail),
+        ("contradicted", EvidenceOutcome::Contradicted),
+        ("unknown", EvidenceOutcome::Unknown),
+        ("stale", EvidenceOutcome::Stale),
+    ];
+    let independences = [
+        ("same-author", Independence::SameAuthor),
+        ("independent-review", Independence::IndependentReview),
+        ("external-observation", Independence::ExternalObservation),
+    ];
+
+    let mut evidence_forms = String::new();
+    for (index, (wire, _)) in methods.iter().enumerate() {
+        evidence_forms.push_str(&source_evidence_form(
+            &format!("method-{index}"),
+            wire,
+            "pass",
+            "same-author",
+        ));
+    }
+    for (index, (wire, _)) in outcomes.iter().enumerate() {
+        evidence_forms.push_str(&source_evidence_form(
+            &format!("outcome-{index}"),
+            "case",
+            wire,
+            "same-author",
+        ));
+    }
+    for (index, (wire, _)) in independences.iter().enumerate() {
+        evidence_forms.push_str(&source_evidence_form(
+            &format!("independence-{index}"),
+            "case",
+            "pass",
+            wire,
+        ));
+    }
+
+    let source = format!(
+        r#"(defn cancel []
+          :claim "claim:checkout/cancel" "The API rejects shipped orders"
+          {evidence_forms}
+          true)"#
+    );
+    let program = parse(&source).expect("全 Evidence enum source fixture は parse できるべき");
+    let graph = source_program_to_intent_graph(&program)
+        .expect("source adapter は全 Evidence enum variant を保持するべき");
+
+    assert_eq!(
+        graph.evidence().len(),
+        methods.len() + outcomes.len() + independences.len()
+    );
+    assert_eq!(
+        graph
+            .evidence()
+            .iter()
+            .take(methods.len())
+            .map(|evidence| evidence.method())
+            .collect::<Vec<_>>(),
+        methods.iter().map(|(_, value)| *value).collect::<Vec<_>>()
+    );
+    assert_eq!(
+        graph
+            .evidence()
+            .iter()
+            .skip(methods.len())
+            .take(outcomes.len())
+            .map(|evidence| evidence.outcome())
+            .collect::<Vec<_>>(),
+        outcomes.iter().map(|(_, value)| *value).collect::<Vec<_>>()
+    );
+    assert_eq!(
+        graph
+            .evidence()
+            .iter()
+            .skip(methods.len() + outcomes.len())
+            .map(|evidence| evidence.independence())
+            .collect::<Vec<_>>(),
+        independences
+            .iter()
+            .map(|(_, value)| *value)
+            .collect::<Vec<_>>()
+    );
+
+    let manifest = graph
+        .to_manifest_json_string()
+        .expect("source evidence graph は manifest 化できるべき");
+    let decoded = parse_intent_graph_json(&manifest)
+        .expect("source evidence manifest は input parser で復元できるべき");
+    assert_eq!(decoded, graph);
 }
