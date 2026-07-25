@@ -296,6 +296,34 @@ run_runner reuse
 assert_eq "1" "$(grep -c '^transport|' "$LOG_FILE")"
 assert_file_contains "$LOG_FILE" "program|reuse"
 
+# stage0 manifest の相対パスが source root の外へ出る場合は実行前に拒否する。
+python3 - "$STAGE0_DIR/manifest.json" <<'PY'
+import json
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+manifest = json.loads(path.read_text())
+manifest["compiler"] = "../outside/compiler"
+path.write_text(json.dumps(manifest) + "\n")
+PY
+rm -rf "$STAGE_DIR"
+if run_runner unsafe-manifest-path >"$TMP_ROOT/unsafe-manifest.stdout" 2>"$TMP_ROOT/unsafe-manifest.stderr"; then
+  fail "native runner accepted a stage0 manifest path outside the package"
+fi
+assert_file_contains "$TMP_ROOT/unsafe-manifest.stderr" "compiler must be a relative path"
+assert_file_not_contains "$LOG_FILE" "program|unsafe-manifest-path"
+python3 - "$STAGE0_DIR/manifest.json" <<'PY'
+import json
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+manifest = json.loads(path.read_text())
+manifest["compiler"] = "bin/compiler"
+path.write_text(json.dumps(manifest) + "\n")
+PY
+
 printf '\n# stage0 refresh\n' >>"$STAGE0_DIR/bin/compiler"
 run_runner stage0-changed
 assert_eq "2" "$(grep -c '^transport|' "$LOG_FILE")"
