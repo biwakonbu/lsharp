@@ -100,7 +100,7 @@
     "node": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind", "namespace", "key", "text", "span"],
+      "required": ["kind", "namespace", "key", "text"],
       "properties": {
         "kind": {"enum": ["intent", "claim", "assumption", "open-question"]},
         "namespace": {"type": "string", "pattern": "^[A-Za-z0-9_.-]+$"},
@@ -139,7 +139,7 @@
             "sampling": {
               "type": "object",
               "additionalProperties": false,
-              "required": ["cases", "seed", "generator", "shrinks", "coverage"],
+              "required": ["cases", "seed", "generator"],
               "properties": {
                 "cases": {"type": "integer", "minimum": 0},
                 "seed": {"type": "integer", "minimum": 0},

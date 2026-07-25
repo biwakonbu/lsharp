@@ -15,6 +15,13 @@
   `docs/development/planning/v0.2-validation-model.md`, `cargo test -p lsharp-types`、
   `cargo clippy -p lsharp-types --all-targets -- -D warnings`。
 
+- [~] `EC-M2-03` version 1 JSON manifest input — `parse_intent_graph_json` が typed node/evidence/
+  edge を `IntentGraph` へ構築し、unknown field、schema version、duplicate node、逆順 span、
+  空の required evidence field、未知の node/evidence reference を fail-closed に拒否する。
+  source syntax adapter、`validate` CLI/exit code、selfhost/native parity、両 target の
+  artifact/runtime evidence は未完了。Evidence: `docs/adr/decisions-v0.2-validation-input-parser.md`,
+  `crates/lsharp-types/tests/validation_input.rs`。
+
 ## 2026-07-25 current-source native stage0 evidence refresh
 
 - [~] current-source Mac Apple Silicon native stage0 smoke — source commit `f3e63270fb70d5a47a4e4ec4fe0ed60422950cf2` から actual `stage1 -> stage2 -> stage3` を `test_e2e_stage23_actual_native_self_regeneration_harness_stage2_stage3_match` で再生成し、保持した stage3 compilerを `aarch64-apple-darwin` stage0 packageへ materializeした。`NATIVE_STAGE0_DIR=... NATIVE_SELFHOST_STAGE_DIR=... bash scripts/ci/native-selfhost-dev-source-file-smoke.sh` を `cargo` / `rustc` / host `lsharp` 遮断環境で実行し、`parse` / `check` / `fmt` / `test` / metadata/property test / `compile` / `build` と拒否ケースが passした。これは current-source Mac の verified daily sliceであり、Linux x86_64 current-source artifact/runtime、二 target parity、公開 surface全体、EC-M1-01 aggregateは未完了。`App.Cli` release programはstage0 compilerではないため、stage0にはactual stage3 `program.native`を使う。Evidence: `test_e2e_stage23_actual_native_self_regeneration_harness_stage2_stage3_match`（1 passed, 435.38s）、`scripts/ci/native-selfhost-dev-source-file-smoke.sh`（`aarch64-apple-darwin native selfhost source-file smoke passed`）。
