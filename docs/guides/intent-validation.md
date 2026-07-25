@@ -117,6 +117,48 @@ report は従来どおり stdout へ出し、`unknown` (exit code `2`) でも gr
 既存の出力は symlink を追従せず destination 自体を置換し、parse/adapter error では manifest を作りません。
 出力先の親 directory は暗黙には作成しません。
 
+## MCP から inline manifest を取得する
+
+MCP の `lsharp_validate` は `source` / `file` / `manifest` / `manifest_file` のいずれか一つを
+受け取り、`include_manifest: true` を指定したときだけ report に canonical manifest を追加します。
+manifest は [`intent-graph.schema.json`](../schemas/intent-graph.schema.json) の version 1 wire shape
+で、report は [`intent-validation.schema.json`](../schemas/intent-validation.schema.json) に従います。
+
+```json
+{
+  "method": "tools/call",
+  "params": {
+    "name": "lsharp_validate",
+    "arguments": {
+      "source": "(defn cancel [] :claim \"claim:checkout/cancel\" \"Users can cancel\" true)",
+      "include_manifest": true
+    }
+  }
+}
+```
+
+成功時の `structuredContent` は従来の report fields に加えて、次の optional property を持ちます。
+
+```json
+{
+  "status": "unknown",
+  "trace_gaps": [],
+  "open_questions": 0,
+  "independent_reviews": 0,
+  "contradicting_observations": 0,
+  "manifest": {
+    "schema_version": 1,
+    "nodes": [],
+    "evidence": [],
+    "edges": []
+  }
+}
+```
+
+`include_manifest` の既定値は `false` で、MCP は filesystem write を行いません。保存可能な
+artifact が必要な場合は CLI の `--emit-manifest <output.json>` を使います。入力の parse / graph
+error は `isError: true` の fail-closed response になり、report や manifest を成功扱いにしません。
+
 ## 現在の境界
 
 この slice は Rust の manifest parser/CLI と source node/edge registry を graph model へ接続し、
