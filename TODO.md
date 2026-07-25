@@ -17,6 +17,12 @@
   Evidence: `crates/lsharp-syntax/tests/intent_metadata.rs`,
   `crates/lsharp-types/tests/validation_source.rs`,
   `docs/adr/decisions-v0.2-source-intent-nodes.md`。
+  2026-07-25 の selfhost parser slice では、`defn` metadata の
+  `intent` / `claim` / `assumption` / `open-question` と node/edge の2-string payloadを
+  ordered form の kind・payload・directive span として保持する。`intent` / `claim` / `motivates`
+  の directive 順、wire ID、本文/endpoint は `test_e2e_selfhost_parser_preserves_source_intent_metadata_forms`
+  の実行結果で確認した。これは `defn` parser の lossless storage に限定され、TypeDef、nested
+  module/private/impl、typed graph projection、`validate` CLI、native stage0 の parity は未完了。
 
 ## 2026-07-25 EC-M2 source node-to-node edges
 

@@ -546,6 +546,19 @@ ordinary ADT は parser が variant 名と raw field TypeExpr を保持し、`Ty
 - `LSHARP_NATIVE_MACOS_AARCH64_CODESIGN_IDENTITY` は macOS host policy 上、生成済み Mach-O の実行に署名が必要な環境でだけ指定する。成功時の codesign 出力は command stderr に漏らさず、失敗時だけ診断として返す。
 - GitHub Actions の自動 build は使わない。検証と release は Mac と Lima VM の手動 local gate で行う。
 
+### EC-M2-01 selfhost source metadata storage (2026-07-25)
+
+Selfhost `Syntax.Parser` は `defn` metadata の `:intent` / `:claim` / `:assumption` /
+`:open-question` と `:motivates` / `:constrained-by` / `:tested-by` / `:supports` /
+`:contradicts` を既存 ordered form の `[kind, payload, directive-start, directive-end]` として保持する。
+payload は2つの string を `[wire-id, text-or-endpoint]` の vector にし、parser では ID の kind推測や
+typed graph validationを行わない。`intent`、`claim`、`motivates` の directive順・wire ID・本文/endpointを
+`test_e2e_selfhost_parser_preserves_source_intent_metadata_forms` の selfhost parser runtimeで確認した。
+
+これは Rust host が compile/run する parser bundle の verified sliceであり、native stage0 の証拠ではない。
+TypeDef、nested module/private/impl traversal、evidence record、typed graph projection、`validate` /
+`--emit-manifest`、EmbeddedCli/MCP、Mac Apple Silicon / Linux x86_64 artifact/runtime parityは残件である。
+
 ## Native 開発経路
 
 `fetch-stage0.sh` が配置した `./stage0` package があれば、通常のコア開発は次の runner を使う。

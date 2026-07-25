@@ -672,6 +672,17 @@
         (skip-type-expr-v3 spans pos-ref)
         (make-type-named 0)))))
 
+(defn source-directive-symbol-v3 [name]
+  (if (string-eq name "intent") 1
+    (if (string-eq name "claim") 1
+      (if (string-eq name "assumption") 1
+        (if (string-eq name "open-question") 1
+          (if (string-eq name "motivates") 1
+            (if (string-eq name "constrained-by") 1
+              (if (string-eq name "tested-by") 1
+                (if (string-eq name "supports") 1
+                  (if (string-eq name "contradicts") 1 0))))))))))
+
 (defn directive-symbol-v3 [name]
   (if (string-eq name "where") 1
     (if (string-eq name "doc") 1
@@ -687,7 +698,7 @@
                         (if (string-eq name "property") 1
                           (if (string-eq name "transitions") 1
                             (if (string-eq name "constraints") 1
-                              0)))))))))))))))
+                              (source-directive-symbol-v3 name))))))))))))))))
 
 (defn colon-directive-v3 [spans pos-ref src]
   (if (== (p-current spans pos-ref) 50)
@@ -872,9 +883,12 @@
                           (parse-defn-meta-assert-v3 spans pos-ref src meta)
                           (if (string-eq dir-name "property")
                             (parse-defn-meta-property-v3 spans pos-ref src meta)
-                            (do
-                              (skip-directive-payload-v3 spans pos-ref)
-                              (parse-defn-metadata-loop-rooted-v3 spans pos-ref src meta))))))))))]
+                            (let [source-kind (source-metadata-form-kind-v3 dir-name)]
+                              (if (> source-kind 0)
+                                (parse-defn-meta-source-pair-v3 spans pos-ref src meta source-kind)
+                                (do
+                                  (skip-directive-payload-v3 spans pos-ref)
+                                  (parse-defn-metadata-loop-rooted-v3 spans pos-ref src meta))))))))))))]
             (do
               (root_pop)
               (root_pop)
@@ -1323,6 +1337,58 @@
     (do
       (skip-directive-payload-v3 spans pos-ref)
       (parse-defn-metadata-loop-v3 spans pos-ref src meta))))
+
+;; M2 source node/edge form: valid な2つの文字列を
+;; [wire-id, text-or-endpoint] として保持する。typed graph 投影は後段の境界で行う。
+(defn source-metadata-form-kind-v3 [name]
+  (if (string-eq name "intent") 6
+    (if (string-eq name "claim") 7
+      (if (string-eq name "assumption") 8
+        (if (string-eq name "open-question") 9
+          (if (string-eq name "motivates") 10
+            (if (string-eq name "constrained-by") 11
+              (if (string-eq name "tested-by") 12
+                (if (string-eq name "supports") 13
+                  (if (string-eq name "contradicts") 14 0))))))))))
+
+(defn parse-source-metadata-string-v3 [spans pos-ref src]
+  (if (== (p-current spans pos-ref) 12)
+    (let [start (p-start spans pos-ref)
+      end (p-end spans pos-ref)
+      value (substring src (+ start 1) (- end 1))]
+      (do
+        (p-advance pos-ref)
+        value))
+    ""))
+
+(defn parse-source-metadata-pair-v3 [spans pos-ref src]
+  (let [first (parse-source-metadata-string-v3 spans pos-ref src)]
+    (do
+      (root_push first)
+      (let [second (parse-source-metadata-string-v3 spans pos-ref src)]
+        (do
+          (root_push second)
+          (let [result (vector-push-pair-rooted-v3 (vector-new 2) first second)]
+            (do
+              (root_pop)
+              (root_pop)
+              result)))))))
+
+(defn parse-defn-meta-source-pair-v3 [spans pos-ref src meta form-kind]
+  (let [directive-start (metadata-directive-start-v3 spans pos-ref)
+    payload (parse-source-metadata-pair-v3 spans pos-ref src)
+    directive-end (metadata-directive-end-v3 spans pos-ref)]
+    (do
+      (root_push payload)
+      (let [updated (append-defn-metadata-form-v3
+          meta
+          form-kind
+          payload
+          directive-start
+          directive-end)]
+        (do
+          (root_pop)
+          (parse-defn-metadata-loop-v3 spans pos-ref src updated))))))
 
 (defn defn-metadata-present-v3 [meta]
   (if (> (string-length (vector-get meta 0)) 0)

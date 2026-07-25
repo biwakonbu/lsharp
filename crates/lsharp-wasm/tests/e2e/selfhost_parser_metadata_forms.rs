@@ -915,6 +915,63 @@ fn test_e2e_selfhost_parser_defn_preserves_ordered_metadata_forms() {
     );
 }
 
+/// EC-M2-01: source intent node / edge metadata を directive 順と wire payload のまま保持する
+#[test]
+fn test_e2e_selfhost_parser_preserves_source_intent_metadata_forms() {
+    let harness = r#"
+(defn main []
+  (let [node (vector-get (parse-program "(defn cancel [] :intent \"intent:checkout/safe-cancel\" \"Users can cancel an order\" :claim \"claim:checkout/cancel-rejects-shipped\" \"The API rejects shipped orders\" :motivates \"intent:checkout/safe-cancel\" \"claim:checkout/cancel-rejects-shipped\" true)") 0)
+        node-len (vector-length node)
+        last (vector-get node (- node-len 1))]
+    (do
+      (print node-len)
+      (if (= (vector-length last) 6)
+        (let [forms (vector-get last 5)
+              intent (vector-get forms 0)
+              claim (vector-get forms 1)
+              motivates (vector-get forms 2)]
+          (do
+            (print (vector-length forms))
+            (print (vector-get intent 0))
+            (print-string (vector-get (vector-get intent 1) 0))
+            (print-string "\n")
+            (print-string (vector-get (vector-get intent 1) 1))
+            (print-string "\n")
+            (print (vector-get claim 0))
+            (print-string (vector-get (vector-get claim 1) 0))
+            (print-string "\n")
+            (print (vector-get motivates 0))
+            (print-string (vector-get (vector-get motivates 1) 0))
+            (print-string "\n")
+            (print-string (vector-get (vector-get motivates 1) 1))
+            (print-string "\n")
+            0))
+        (do
+          (print 0)
+          0)))))
+"#;
+
+    let output = run_parser_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        [
+            "5",
+            "3",
+            "6",
+            "intent:checkout/safe-cancel",
+            "Users can cancel an order",
+            "7",
+            "claim:checkout/cancel-rejects-shipped",
+            "10",
+            "intent:checkout/safe-cancel",
+            "claim:checkout/cancel-rejects-shipped",
+        ],
+        "selfhost parser は M2 source metadata を directive 順と payload のまま保持するべき"
+    );
+}
+
 /// TEST-SYNTAX-04: Hygiene.ls gensym/scope-id/expansion trace
 ///
 /// selfhost/src/Syntax/Hygiene.ls が存在し、gensym, scope-id, expansion-trace 関数を公開していることを検証。
