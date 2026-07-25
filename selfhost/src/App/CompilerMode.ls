@@ -3350,7 +3350,9 @@
           (if (= (compiler-import-only-allows only-hashes constructor-hash) 1)
             (let [module-key (ast-qualified-name-hash target-module constructor-hash)
               target-index (ftable-lookup ftable module-key)
-              alias-key (ast-qualified-name-hash alias-hash constructor-hash)]
+              alias-key (ast-qualified-name-hash alias-hash constructor-hash)
+              marker-key (record-nominal-marker-lookup-key alias-key)
+              marker-hash (ast-qualified-name-hash target-module constructor-hash)]
               (if (= target-index 0)
                 (compiler-register-record-import-aliases-loop
                   decls
@@ -3363,18 +3365,22 @@
                 (let [next-ftable (ftable-register ftable alias-key target-index)]
                   (do
                     (root_push next-ftable)
-                    (let [result
-                            (compiler-register-record-import-aliases-loop
-                              decls
-                              (+ idx 1)
-                              n
-                              target-module
-                              alias-hash
-                              only-hashes
-                              next-ftable)]
+                    (let [with-marker (ftable-register next-ftable marker-key marker-hash)]
                       (do
-                        (root_pop)
-                        result))))))
+                        (root_push with-marker)
+                        (let [result
+                                (compiler-register-record-import-aliases-loop
+                                  decls
+                                  (+ idx 1)
+                                  n
+                                  target-module
+                                  alias-hash
+                                  only-hashes
+                                  with-marker)]
+                          (do
+                            (root_pop)
+                            (root_pop)
+                            result))))))))
             (compiler-register-record-import-aliases-loop
               decls
               (+ idx 1)

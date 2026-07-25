@@ -274,8 +274,15 @@
       (vector-get pat raw-type-slot)
       (record-pattern-type-hash-for-compiler pat))))
 
-(defn compile-match-record-type-check [pat value-local scratch-base instrs]
-  (let [type-hash (record-pattern-raw-type-hash-for-compiler pat)]
+(defn record-pattern-nominal-marker-for-compiler [pat ftable]
+  (let [type-hash (record-pattern-type-hash-for-compiler pat)
+    marker (ftable-lookup ftable (record-nominal-marker-lookup-key type-hash))]
+    (if (> marker 0)
+      marker
+      (record-pattern-raw-type-hash-for-compiler pat))))
+
+(defn compile-match-record-type-check [pat value-local scratch-base ftable instrs]
+  (let [type-hash (record-pattern-nominal-marker-for-compiler pat ftable)]
     (if (= type-hash 0)
       instrs
       (let [map-op (+ scratch-base 1)
@@ -330,10 +337,10 @@
     (if (= count 0)
       (if (= type-hash 0)
         (emit-to instrs (op-i64-const) 1)
-        (compile-match-record-type-check pat value-local scratch-base instrs))
+        (compile-match-record-type-check pat value-local scratch-base ftable instrs))
       (let [seed (if (= type-hash 0)
         instrs
-        (compile-match-record-type-check pat value-local scratch-base instrs))]
+        (compile-match-record-type-check pat value-local scratch-base ftable instrs))]
         (if (= type-hash 0)
           (compile-match-record-fields pat 0 count value-local scratch-base pattern-temp-base ftable seed)
           (compile-match-record-fields-with-seed pat 0 count value-local scratch-base pattern-temp-base ftable seed))))))

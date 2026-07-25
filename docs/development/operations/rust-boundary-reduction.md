@@ -2222,7 +2222,15 @@ REDは `test_e2e_selfhost_ftable_compiler_alias_qualified_parametric_record_lite
 
 RED `test_e2e_selfhost_compiler_mode_imported_alias_qualified_same_name_record_constructors_run` は、修正前に `L.Point` が `R.Point` の constructor indexへ誤解決され、Wasm translationが `offset 2929: type mismatch: expected i64 but nothing on stack` で失敗した。GREENは record preludeへ module-qualified constructor keyを追加し、CompilerModeの importごとに alias-qualified keyを登録したうえで、`ftable-lookup-call-target` の lookup順を raw full hash → `ast-qualified-name-hash(prefix, suffix)` → raw suffixへ変更し、同テストで `41\n2\n3\n`、1 passed、84.04sを確認した。既存の flat ftable alias-qualified function call `42\n` と CompilerMode qualified record literal/pattern `41\n` も再実行して passした。
 
-これは CompilerMode file-import の alias-qualified record constructor collision一例だけを閉じる verified sliceである。same-name static accessor、record literal/patternを跨ぐ cross-module nominal collision、unqualified同名 exportの曖昧性方針、private record、record update全形式、standalone native stage0、Mac Apple Silicon / Linux x86_64 の current-source artifact/runtime gate、EC-M1-01 aggregateの完了を意味しない。`TODO.md` の `[~]` と Rust oracle / bootstrap / host integration境界を維持する。
+これは CompilerMode file-import の alias-qualified record constructor collision一例だけを閉じる verified sliceである。same-name static accessor、unqualified同名 exportの曖昧性方針、private record、record update全形式、standalone native stage0、Mac Apple Silicon / Linux x86_64 の current-source artifact/runtime gate、EC-M1-01 aggregateの完了を意味しない。cross-module nominal markerの pattern境界は後続の verified sliceで固定した。`TODO.md` の `[~]` と Rust oracle / bootstrap / host integration境界を維持する。
+
+### EC-M1-01 selfhost cross-module same-schema record nominal marker slice (2026-07-25)
+
+異なる module の同名 recordが同じ schemaでも、runtime nominal markerが raw suffix `Point` だけでは `L.Point` の値へ `R.Point` patternが誤って一致する。CompilerMode file-import fixtureで `App.Left.Point` と `App.Right.Point` をそれぞれ alias importし、同じ `x: Int` fieldを持つ constructor/patternを実行境界まで固定した。
+
+RED `test_e2e_selfhost_compiler_mode_imported_alias_qualified_same_schema_record_patterns_are_nominal` は、修正前に `(L.Point 41)` と `{R.Point x x}` の matchが `1\n` となった。GREENは record constructorの markerを module-qualified hashへ変更し、CompilerMode import alias登録時に `alias-qualified key -> canonical module marker` を既存 ftableへ追加した。record literal/pattern compilerは marker mappingを優先し、flat ftableと旧ASTでは従来の raw hashへfallbackする。同テストは `RUST_MIN_STACK=33554432 cargo test -q -p lsharp-wasm --test e2e selfhost_compiler_mode_imported_alias_qualified_same_schema_record_patterns_are_nominal -- --nocapture` で `0\n`、1 passed、69.49sとなった。CompilerMode alias-qualified record関連の既存回帰5件も同じ focused filterで `5 passed`、138.82sを確認した。
+
+これは同名 recordの cross-module nominal pattern境界を閉じる verified sliceであり、same-name static accessor、literal cross-moduleの専用 fixture、unqualified同名 exportの曖昧性方針、private/local visibility、record update全形式、standalone native stage0、Mac Apple Silicon / Linux x86_64 の current-source artifact/runtime gate、EC-M1-01 aggregateの完了を意味しない。`TODO.md` の `[~]` と Rust oracle / bootstrap / host integration境界を維持する。
 
 ### EC-M1-01 selfhost imported private record export filtering slice (2026-07-25)
 

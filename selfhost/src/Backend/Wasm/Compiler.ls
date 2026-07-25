@@ -1589,6 +1589,13 @@
       (vector-get node raw-type-slot)
       (vector-get node 1))))
 
+(defn record-literal-nominal-marker-for-compiler [node ftable]
+  (let [type-hash (vector-get node 1)
+    marker (ftable-lookup ftable (record-nominal-marker-lookup-key type-hash))]
+    (if (> marker 0)
+      marker
+      (record-literal-type-hash-for-compiler node))))
+
 (defn compile-record-nominal-marker [env instrs record-local type-hash]
   (if (= type-hash 0)
     instrs
@@ -1848,7 +1855,12 @@
           instrs3 (emit-root-push-drop instrs2 record-local)]
           (do
             (root_set instrs-slot instrs3)
-            (let [with-marker (compile-record-nominal-marker env instrs3 record-local (record-literal-type-hash-for-compiler node))]
+            (let [with-marker
+                    (compile-record-nominal-marker
+                      env
+                      instrs3
+                      record-local
+                      (record-literal-nominal-marker-for-compiler node ftable))]
               (do
                 (root_push with-marker)
                 (let [with-fields (compile-recordlit-fields-with-source node source env ftable 0 (vector-get node 2) with-marker record-local data-ref)]
@@ -1909,7 +1921,12 @@
           instrs3 (emit-root-push-drop instrs2 record-local)]
           (do
             (root_set instrs-slot instrs3)
-            (let [with-marker (compile-record-nominal-marker env instrs3 record-local (record-literal-type-hash-for-compiler node))]
+            (let [with-marker
+                    (compile-record-nominal-marker
+                      env
+                      instrs3
+                      record-local
+                      (record-literal-nominal-marker-for-compiler node ftable))]
               (do
                 (root_push with-marker)
                 (let [with-fields (compile-recordlit-fields-with-ftable node env ftable 0 (vector-get node 2) with-marker record-local)]
@@ -3139,13 +3156,15 @@
                   (root_pop)
                   result)))))))))
 
-(defn compile-record-constructor-fields-with-nominal [decl fields idx count record-local env instrs]
+(defn compile-record-constructor-fields-with-nominal [decl module-hash fields idx count record-local env instrs]
   (let [with-marker
           (compile-record-nominal-marker
             env
             instrs
             record-local
-            (vector-get decl 1))]
+            (if (= module-hash 0)
+              (vector-get decl 1)
+              (ast-qualified-name-hash module-hash (vector-get decl 1))))]
     (do
       (root_push with-marker)
       (let [with-fields
@@ -3160,7 +3179,7 @@
           (root_pop)
           with-fields)))))
 
-(defn make-record-constructor-meta [decl]
+(defn make-record-constructor-meta [decl module-hash]
   (do
     (root_push decl)
     (let [fields (record-def-fields decl)]
@@ -3182,6 +3201,7 @@
                     (let [with-fields
                             (compile-record-constructor-fields-with-nominal
                               decl
+                              module-hash
                               fields
                               0
                               field-count
@@ -3482,7 +3502,7 @@
     (root_push functions)
     (let [fields (record-def-fields decl)
       constructor-hash (vector-get decl 1)
-      constructor-meta (make-record-constructor-meta decl)]
+      constructor-meta (make-record-constructor-meta decl module-hash)]
       (do
         (root_push fields)
         (root_push constructor-meta)

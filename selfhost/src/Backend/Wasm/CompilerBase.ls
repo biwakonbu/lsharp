@@ -57,6 +57,10 @@
 ;; Map runtime の 0 は空スロット判定に使うため、ADT field key は 1 始まりにする。
 (defn adt-constructor-field-key [idx] (+ idx 1))
 (defn record-nominal-type-key [] -3)
+;; record の canonical marker lookup は constructor/accessor の function key と分離する。
+;; import alias の source hashから、module-qualified markerを参照するために使う。
+(defn record-nominal-marker-lookup-key [name-hash]
+  (- 0 (+ 7000000000000000000 name-hash)))
 (defn op-command-line-arg [] 67)
 (defn op-runtime-hash-string [] 68)
 (defn op-substring [] 69)
