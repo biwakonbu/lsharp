@@ -93,3 +93,30 @@ fn test_private_function_test_generation() {
     assert_eq!(tests.len(), 1);
     assert_eq!(tests[0].function_name, "helper");
 }
+
+#[test]
+fn test_generation_module_exposes_property_smoke_profile() {
+    let program = lsharp_syntax::parse(
+        r#"(defn identity [value]
+              :property [(for-all [sample Int] :cases 2 :postcondition (= result sample))]
+              value)"#,
+    )
+    .expect("property source should parse");
+    let lsharp_syntax::ast::Decl::Defn {
+        metadata: Some(metadata),
+        ..
+    } = &program.decls[0]
+    else {
+        panic!("property fixture should contain metadata");
+    };
+    let lsharp_syntax::metadata::MetadataFormKind::Property { properties } =
+        &metadata.forms[0].kind
+    else {
+        panic!("property fixture should contain a property form");
+    };
+
+    let spec = super::test_generation::property_smoke_test_spec(&properties[0])
+        .expect("supported property should expose its smoke profile");
+    assert_eq!(spec.binder_names, vec!["sample"]);
+    assert_eq!(spec.cases, 2);
+}
