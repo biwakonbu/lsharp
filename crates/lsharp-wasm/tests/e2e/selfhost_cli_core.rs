@@ -14639,6 +14639,60 @@ fn test_e2e_selfhost_cli_validate_source_json_reports_trace_gap() {
     assert!(value.get("verified").is_none());
 }
 
+/// EC-M2-02: selfhost validate は registered contradictory evidence を fail report へ投影する。
+#[test]
+fn test_e2e_selfhost_cli_validate_source_json_reports_contradicting_evidence() {
+    let dir = std::env::temp_dir().join(format!(
+        "lsharp_test_cli_validate_source_evidence_{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("input.ls"),
+        r#"
+(defn counterexample []
+  :claim "claim:checkout/cancel-rejects-shipped" "The API rejects shipped orders"
+  :tested-by "claim:checkout/cancel-rejects-shipped" "contract:checkout/cancel-case"
+  :evidence "evidence:checkout/cancel-counterexample"
+    :subject "claim:checkout/cancel-rejects-shipped"
+    :method "review"
+    :outcome "contradicted"
+    :runner "cargo-test"
+    :target "aarch64-apple-darwin"
+    :source-commit "0123456789abcdef"
+    :artifact-digest "sha256:abc123"
+    :cases 1
+    :seed 42
+    :generator "checkout-cancel-fixture"
+    :producer "lsharp-test"
+    :tool-version "0.2.0"
+    :timestamp "2026-07-25T00:00:00Z"
+    :independence "independent-review"
+  :contradicts "evidence:checkout/cancel-counterexample" "claim:checkout/cancel-rejects-shipped"
+  true)
+"#,
+    )
+    .unwrap();
+
+    let wasm = compile_only(selfhost_cli_runtime_bundle());
+    let output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_args_and_stdin_capture(
+        &wasm,
+        Some(&dir),
+        &["validate", "--source", "input.ls", "--format", "json"],
+        "",
+    )
+    .unwrap();
+    let _ = std::fs::remove_dir_all(&dir);
+
+    assert_eq!(output.exit_code, 1, "contradictory evidence は fail code 1 を返すべき");
+    let value: Value = serde_json::from_str(output.stdout.trim())
+        .expect("selfhost validate --source は evidence JSON report を返すべき");
+    assert_eq!(value["status"], "fail");
+    assert_eq!(value["trace_gaps"].as_array().unwrap().len(), 0);
+    assert_eq!(value["independent_reviews"], 1);
+    assert_eq!(value["contradicting_observations"], 1);
+}
+
 /// TEST-CLI-02-AF2: actual Cli main は argv 経由で compile file command を処理できること
 #[test]
 #[ignore]

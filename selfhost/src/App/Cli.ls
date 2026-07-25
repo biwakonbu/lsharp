@@ -25,6 +25,8 @@
 (import Types.TypeInferAssertions)
 (import Types.MetadataMigration)
 (import Backend.Wasm.CompilerBase)
+(import Tools.Validation.IntentSource)
+(import Tools.Validation.Evidence)
 (defn push-int-vector-local [dst value] (do (root_push dst) (let [next-dst (vector-push dst value)] (do (root_pop) next-dst))))
 (defn push-object-vector-local [dst value] (do (root_push dst) (root_push value) (let [next-dst (vector-push dst value)] (do (root_pop) (root_pop) next-dst))))
 (defn exit-success [] 0)
@@ -218,22 +220,90 @@
     intent-gaps (validation-intent-gaps-loop intents motives 0 "")
     all-gaps (validation-claim-gaps-loop claims tested-by 0 intent-gaps)]
     (docjson-array-wrap all-gaps)))
-(defn validation-source-report-json [state]
+(defn validation-string-id-exists-loop [ids id idx len]
+  (if (>= idx len)
+    0
+    (if (string-eq (vector-get ids idx) id)
+      1
+      (validation-string-id-exists-loop ids id (+ idx 1) len))))
+(defn validation-string-id-exists? [ids id]
+  (validation-string-id-exists-loop ids id 0 (vector-length ids)))
+(defn validation-add-evidence-id [ids id]
+  (if (= (validation-string-id-exists? ids id) 1)
+    ids
+    (push-object-vector-local ids id)))
+(defn validation-independent-review-count-loop [registry idx len count]
+  (if (>= idx len)
+    count
+    (let [evidence-record (vector-get registry idx)
+      next-count
+        (if (and
+              (string-eq (source-evidence-record-method evidence-record) "review")
+              (string-eq (source-evidence-record-independence evidence-record) "independent-review"))
+          (+ count 1)
+          count)]
+      (validation-independent-review-count-loop registry (+ idx 1) len next-count))))
+(defn validation-contradictory-records-loop [registry idx len ids]
+  (if (>= idx len)
+    ids
+    (let [evidence-record (vector-get registry idx)
+      next-ids
+        (if (string-eq (source-evidence-record-outcome evidence-record) "contradicted")
+          (validation-add-evidence-id ids (source-evidence-record-id evidence-record))
+          ids)]
+      (validation-contradictory-records-loop registry (+ idx 1) len next-ids))))
+(defn validation-contradictory-edges-loop [edges idx len ids]
+  (if (>= idx len)
+    ids
+    (let [edge (vector-get edges idx)
+      next-ids
+        (if (= (source-edge-kind edge) (source-edge-contradicts))
+          (validation-add-evidence-id ids (source-edge-left edge))
+          ids)]
+      (validation-contradictory-edges-loop edges (+ idx 1) len next-ids))))
+(defn validation-evidence-metrics [graph]
+  (let [registry (source-evidence-graph-registry graph)
+    edges (source-graph-edges graph)
+    independent-reviews
+      (validation-independent-review-count-loop registry 0 (vector-length registry) 0)
+    ids0 (vector-new 0)
+    ids1 (validation-contradictory-records-loop registry 0 (vector-length registry) ids0)
+    ids2 (validation-contradictory-edges-loop edges 0 (vector-length edges) ids1)
+    metrics0 (vector-new 0)
+    metrics1 (push-int-vector-local metrics0 independent-reviews)]
+    (push-int-vector-local metrics1 (vector-length ids2))))
+(defn validation-source-report-json [state independent-reviews contradicting-observations]
   (let [fields0 ""
-    fields1 (docjson-append fields0 (docjson-string-field "status" "unknown"))
+    status (if (> contradicting-observations 0) "fail" "unknown")
+    fields1 (docjson-append fields0 (docjson-string-field "status" status))
     fields2 (docjson-append fields1 (docjson-array-field "trace_gaps" (validation-trace-gaps-json state)))
     fields3 (docjson-append fields2 (docjson-int-field "open_questions" (ref-get (vector-get state 4))))
-    fields4 (docjson-append fields3 (docjson-int-field "independent_reviews" 0))
-    fields5 (docjson-append fields4 (docjson-int-field "contradicting_observations" 0))]
+    fields4 (docjson-append fields3 (docjson-int-field "independent_reviews" independent-reviews))
+    fields5 (docjson-append fields4 (docjson-int-field "contradicting_observations" contradicting-observations))]
     (docjson-object-wrap fields5)))
 (defn run-validate-source [src opts]
   (let [program (parse-program src)
-    state (validation-source-state program)
-    report (validation-source-report-json state)]
-    (do
-      (print-string report)
-      (print-string "\n")
-      (exit-code-runtime-error))))
+    graph-result (source-evidence-graph-from-program program)]
+    (if (= (source-result-status graph-result) 0)
+      (let [error (source-result-error graph-result)]
+        (do
+          (cli-stderr
+            (string-concat
+              "source validation error:"
+              (int-to-string (source-graph-error-code error))))
+          (exit-code-compile-error)))
+      (let [graph (source-result-value graph-result)
+        state (validation-source-state program)
+        metrics (validation-evidence-metrics graph)
+        independent-reviews (vector-get metrics 0)
+        contradicting-observations (vector-get metrics 1)
+        report (validation-source-report-json state independent-reviews contradicting-observations)]
+        (do
+          (print-string report)
+          (print-string "\n")
+          (if (> contradicting-observations 0)
+            (exit-code-compile-error)
+            (exit-code-runtime-error)))))))
 (defn run-validate [file-path opts]
   (if (file-exists? file-path)
     (run-validate-source (read-file file-path) opts)

@@ -597,8 +597,10 @@ graph/CLIへの接続、manifest、native stage0、Mac Apple Silicon / Linux x86
 
 `selfhost/src/App/Cli.ls` に `validate` command、`--source <file> --format json` option、top-level
 `defn` metadata の intent/claim/motivates/tested-by 集計、claim trace gap JSON projection、unknown exit
-code `2` を追加した。`selfhost_cli_validation_contract` は command/help/option/report-code の source
-contract を RED から GREEN へ確認している。
+code `2` を追加した。さらに `Tools.Validation.Evidence` の registry/edge consumerを bundleへ接続し、
+contradictory evidenceだけは `fail` / exit `1`、独立 review数、contradicting observation数を reportへ
+投影する。`selfhost_cli_validation_contract` は command/help/option/report-code の source contractを
+RED から GREEN へ確認している。
 
 同じ fixtureを actual Wasm で実行する `test_e2e_selfhost_cli_validate_source_json_reports_trace_gap` は、
 lowering前に検出されていた既存 `typeinfer-builtin-root-value` の関数間 root leaseを修正した後、
@@ -606,7 +608,8 @@ lowering前に検出されていた既存 `typeinfer-builtin-root-value` の関�
 `run-check-program` の3 slotと `run-test-source-json/text` の各4 slotを全経路で解放する focused
 RED/GREENを通し、argv/filesystem、unknown exit `2`、JSON status/trace gapを同じ fixtureで確認した。
 typed signature、nested traversal、evidence/contract registry、manifest emission、EmbeddedCli/MCP、
-native stage0 と対応2 targetの current-source parityは未完了である。
+native stage0 と対応2 targetの current-source parityは未完了である。Evidence: registered contradictory
+fixtureの `test_e2e_selfhost_cli_validate_source_json_reports_contradicting_evidence`（1 passed, 280.40s）。
 
 ## Native 開発経路
 

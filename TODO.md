@@ -150,9 +150,11 @@
   の明示拒否まで source contract として追加した。既存の関数間 root lease helperは専用 shape checkへ
   切り出し、`run-check-program` の3 slotと `run-test-source-json/text` の各4 slotを全経路で解放する
   focused RED/GREENを通した。Rust-host actual Wasm の同一 fixture testは変更後に `1 passed`（291.84s）で、
-  argv/filesystem、unknown exit `2`、JSON status/trace gap を確認した。native stage0 の current-source
-  evidenceは未取得である。typed signature、
-  nested traversal、evidence/manifest、EmbeddedCli/MCP、両 target runtime parity は残件。
+  argv/filesystem、unknown exit `2`、JSON status/trace gap を確認した。続く selfhost evidence CLI slice は
+  `source-evidence-graph-from-program` を `App.Cli` と bundleへ接続し、registered contradictory evidenceの
+  actual Wasmで `fail` / exit `1` / `independent_reviews=1` / `contradicting_observations=1` を確認した。
+  native stage0 の current-source evidenceは未取得である。typed signature、nested traversal、全 evidence
+  diagnostic/status、manifest、EmbeddedCli/MCP、両 target runtime parity は残件。
   Evidence: `crates/lsharp-syntax/tests/selfhost_cli_validation_contract.rs`,
   `crates/lsharp-wasm/tests/e2e/selfhost_cli_core.rs`,
   `docs/adr/decisions-v0.2-selfhost-source-validation-cli.md`。

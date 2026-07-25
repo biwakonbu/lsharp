@@ -21,7 +21,9 @@ lsharp validate --source <source.ls> --format json
 
 - `defn` の ordered metadata に保持された `intent` / `claim` / `motivates` / `tested-by` を
   集計し、未接続 claim を `trace-gap.claim-without-test` として JSON report へ投影する。
-- contract/evidence registry が未接続のため report status は `unknown`、終了コードは `2` に固定する。
+- contract/evidence registry が未接続の source は従来どおり `unknown` / 終了コード `2` とする。
+  registered contradictory evidence は canonical report の `fail`、終了コード `1`、
+  `independent_reviews` / `contradicting_observations` へ投影する。
 - `validate` の option は `--source` と `--format json` の組み合わせだけを受理し、未対応形式は
   compile error として拒否する。
 
@@ -35,5 +37,11 @@ focused ledger/static contractで balanceした。変更後の actual Wasm test�
 同じ fixtureの argv/filesystem、unknown exit `2`、JSON status/trace gapを確認した。
 
 typed signature metadata、nested module/private/impl traversal、parse/duplicate/orphan diagnostic、
-evidence/contract registry、`--emit-manifest`、EmbeddedCli/MCP、native stage0 と Mac Apple Silicon /
-Linux x86_64 の current-source parity は未完了である。
+evidence の全 report/status parity、`--emit-manifest`、EmbeddedCli/MCP、native stage0 と Mac Apple Silicon /
+Linux x86_64 の current-source parity は未完了である。`source-evidence-graph-from-program` を使う
+registry/edge の initial CLI projection は Rust-host actual Wasm で確認済みだが、CLI の全 fail-closed
+diagnostic と manifest wiring は残件である。
+
+追加の actual Wasm evidenceとして `test_e2e_selfhost_cli_validate_source_json_reports_contradicting_evidence`
+が `1 passed`（280.40s）となり、registered `review` / `independent-review` / `contradicted` record と
+`:contradicts` edgeを `fail`、exit `1`、`independent_reviews=1`、`contradicting_observations=1` へ投影する。
