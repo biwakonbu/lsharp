@@ -3627,6 +3627,13 @@
                         (root_pop)
                         result))))))))))))
 
+;; private 宣言も宣言元 module の constructor/ADT prelude へ登録する。
+;; import/export の可視性は TypeInfer 側で制御するため、ここでは宣言を生成対象へ戻すだけにする。
+(defn compiler-unprivate-decl [decl]
+  (if (= (vector-get decl 0) (ast-private))
+    (compiler-unprivate-decl (vector-get decl 1))
+    decl))
+
 (defn record-prelude-step [decls idx n ftable func-idx functions]
   (if (>= idx n)
     (make-record-prelude-state 1 idx ftable func-idx functions)
@@ -3634,7 +3641,7 @@
       (root_push decls)
       (root_push ftable)
       (root_push functions)
-      (let [decl (vector-get decls idx)
+      (let [decl (compiler-unprivate-decl (vector-get decls idx))
         module-hash (record-prelude-module-hash-loop decls (- idx 1))]
         (do
           (root_push decl)

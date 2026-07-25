@@ -516,7 +516,9 @@ Selfhost の record schema prepass / value-env 登録は `private` wrapper 内�
 
 Evidence: `test_e2e_selfhost_typeinfer_analysis_accepts_private_record_in_same_module`、`test_e2e_selfhost_typeinfer_analysis_filters_imported_private_record`、qualified record type/literal/pattern/update regression 6件、`cargo run --quiet --bin lsharp -- parse selfhost/src/Types/TypeInferRecordDecl.ls` / `TypeInferRecord.ls` / `TypeInferPattern.ls` (`diagnostics:0`)。Rust oracle は private wrapper 内 record schema を現状登録しないため、local public-record equivalent で field/pattern 型契約を照合する。
 
-追加で、同一スコープの `compile-program-functions-with-base` から Wasmを生成し、private record literal を同じ record patternへ渡す CompilerMode runtime sliceを `test_e2e_selfhost_compiler_mode_private_record_literal_pattern_runs` で実行して `41\n` を確認した。これは private constructor単体や module import境界を含む完了証拠ではなく、TypeInfer visibilityを既存の ftable/Wasm runtimeへ接続した verified sliceである。private constructor runtime、import alias/`:only` runtime、standalone native stage0、Wasm artifact/runtime の Mac Apple Silicon / Linux x86_64 parity、EC-M1-01 aggregateは未完了である。
+追加で、同一スコープの `compile-program-functions-with-base` から Wasmを生成し、private record literal を同じ record patternへ渡す runtime sliceを `test_e2e_selfhost_compiler_mode_private_record_literal_pattern_runs` で実行して `41\n` を確認した。さらに `(Secret 41)` と `(Secret.x value)` の constructor/accessorを `test_e2e_selfhost_compiler_mode_private_record_constructor_runs` で実行し、同じく `41\n` を確認した。REDでは private wrapperが compiler preludeの直接 `RecordDef` 判定から外れ、constructor callが本体へ到達せず `65577\n` となった。GREENは `record-prelude-step` の宣言走査で private wrapperだけを unwrap する narrow fixであり、TypeInferの import/export visibilityや ftable lookup順は変更していない。
+
+これは private record の同一 source scopeにおける TypeInfer、constructor/literal/pattern runtimeを閉じる verified sliceであり、private declarationの module import alias/`:only` runtime、standalone native stage0、Wasm artifact/runtime の Mac Apple Silicon / Linux x86_64 parity、EC-M1-01 aggregateは未完了である。
 
 ### record runtime 更新 (2026-07-14)
 
