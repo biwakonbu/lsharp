@@ -181,6 +181,89 @@ fn source_adapter_reports_duplicate_evidence_with_both_source_spans() {
 }
 
 #[test]
+fn source_adapter_reports_invalid_evidence_enum_with_directive_span() {
+    let cases = [
+        (
+            "method",
+            "not-a-method",
+            "claim:checkout/cancel",
+            "not-a-method",
+            "pass",
+            "same-author",
+        ),
+        (
+            "outcome",
+            "not-an-outcome",
+            "claim:checkout/cancel",
+            "case",
+            "not-an-outcome",
+            "same-author",
+        ),
+        (
+            "independence",
+            "not-an-independence",
+            "claim:checkout/cancel",
+            "case",
+            "pass",
+            "not-an-independence",
+        ),
+        (
+            "subject",
+            "evidence:checkout/wrong-kind",
+            "evidence:checkout/wrong-kind",
+            "case",
+            "pass",
+            "same-author",
+        ),
+    ];
+
+    for (index, (field, expected_value, subject, method, outcome, independence)) in
+        cases.iter().enumerate()
+    {
+        let source = format!(
+            r#"
+            (defn cancel []
+              :claim "claim:checkout/cancel" "The API rejects shipped orders"
+              :evidence "evidence:checkout/invalid-{index}"
+                :subject "{subject}"
+                :method "{method}"
+                :outcome "{outcome}"
+                :runner "source-enum-test"
+                :target "aarch64-apple-darwin"
+                :source-commit "source-commit-enum-test"
+                :artifact-digest "sha256:source-enum-test"
+                :cases 1
+                :seed 0
+                :generator "source-enum-test-generator"
+                :producer "source-enum-test-producer"
+                :tool-version "0.2.0"
+                :timestamp "2026-07-26T00:00:00Z"
+                :independence "{independence}"
+              true)
+            "#,
+        );
+        let program = parse(&source).expect("invalid evidence enum fixture は parse できるべき");
+        let error = source_program_to_intent_graph(&program)
+            .expect_err("invalid evidence enum は source diagnostic になるべき");
+        let SourceGraphError::InvalidEvidenceField {
+            field: actual_field,
+            value,
+            span,
+        } = error
+        else {
+            panic!("invalid evidence enum の span 付き診断を期待しました: {error:?}");
+        };
+
+        assert_eq!(actual_field, *field);
+        assert_eq!(value, *expected_value);
+        assert!(span.start < span.end);
+        let diagnostic_source = &source[span.start..span.end];
+        assert!(diagnostic_source.contains(":evidence"));
+        assert!(diagnostic_source.contains(&format!(":{field}")));
+    }
+}
+
+#[test]
 fn source_only_metadata_does_not_create_an_empty_contract_suite() {
     let program =
         parse(r#"(defn cancel [] :intent "intent:checkout/safe-cancel" "Users can cancel" true)"#)

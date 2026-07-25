@@ -67,8 +67,12 @@ pub enum SourceGraphError {
         evidence_id: String,
         span: Span,
     },
-    #[error("source evidence の {field} が不正です: {value}")]
-    InvalidEvidenceField { field: &'static str, value: String },
+    #[error("source evidence の {field} が不正です (span={span}): {value}")]
+    InvalidEvidenceField {
+        field: &'static str,
+        value: String,
+        span: Span,
+    },
     #[error(
         "source metadata の node kind と stable ID が不一致です (expected={expected:?}, actual={actual:?}, id={wire_id})"
     )]
@@ -215,9 +219,9 @@ fn build_source_evidence(
 ) -> Result<Evidence, SourceGraphError> {
     let id = EvidenceId::parse(record.id().to_string())?;
     let subject = parse_evidence_subject(record.subject(), graph, span)?;
-    let method = parse_evidence_method(record.method())?;
-    let outcome = parse_evidence_outcome(record.outcome())?;
-    let independence = parse_independence(record.independence())?;
+    let method = parse_evidence_method(record.method(), span)?;
+    let outcome = parse_evidence_outcome(record.outcome(), span)?;
+    let independence = parse_independence(record.independence(), span)?;
     let execution = ExecutionContext::new(
         ExecutionIdentity::new(
             record.runner().to_string(),
@@ -271,11 +275,12 @@ fn parse_evidence_subject(
         _ => Err(SourceGraphError::InvalidEvidenceField {
             field: "subject",
             value: wire_id.to_string(),
+            span,
         }),
     }
 }
 
-fn parse_evidence_method(value: &str) -> Result<EvidenceMethod, SourceGraphError> {
+fn parse_evidence_method(value: &str, span: Span) -> Result<EvidenceMethod, SourceGraphError> {
     match value {
         "example" => Ok(EvidenceMethod::Example),
         "case" => Ok(EvidenceMethod::Case),
@@ -288,11 +293,12 @@ fn parse_evidence_method(value: &str) -> Result<EvidenceMethod, SourceGraphError
         _ => Err(SourceGraphError::InvalidEvidenceField {
             field: "method",
             value: value.to_string(),
+            span,
         }),
     }
 }
 
-fn parse_evidence_outcome(value: &str) -> Result<EvidenceOutcome, SourceGraphError> {
+fn parse_evidence_outcome(value: &str, span: Span) -> Result<EvidenceOutcome, SourceGraphError> {
     match value {
         "pass" => Ok(EvidenceOutcome::Pass),
         "fail" => Ok(EvidenceOutcome::Fail),
@@ -302,11 +308,12 @@ fn parse_evidence_outcome(value: &str) -> Result<EvidenceOutcome, SourceGraphErr
         _ => Err(SourceGraphError::InvalidEvidenceField {
             field: "outcome",
             value: value.to_string(),
+            span,
         }),
     }
 }
 
-fn parse_independence(value: &str) -> Result<Independence, SourceGraphError> {
+fn parse_independence(value: &str, span: Span) -> Result<Independence, SourceGraphError> {
     match value {
         "same-author" => Ok(Independence::SameAuthor),
         "independent-review" => Ok(Independence::IndependentReview),
@@ -314,6 +321,7 @@ fn parse_independence(value: &str) -> Result<Independence, SourceGraphError> {
         _ => Err(SourceGraphError::InvalidEvidenceField {
             field: "independence",
             value: value.to_string(),
+            span,
         }),
     }
 }
