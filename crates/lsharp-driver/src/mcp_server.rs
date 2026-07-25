@@ -334,7 +334,17 @@ fn tool_output_schema(name: &str) -> Value {
                 },
                 "open_questions": { "type": "integer", "minimum": 0 },
                 "independent_reviews": { "type": "integer", "minimum": 0 },
-                "contradicting_observations": { "type": "integer", "minimum": 0 }
+                "contradicting_observations": { "type": "integer", "minimum": 0 },
+                "manifest": {
+                    "type": "object",
+                    "required": ["schema_version", "nodes", "evidence", "edges"],
+                    "properties": {
+                        "schema_version": { "type": "integer", "const": 1 },
+                        "nodes": { "type": "array" },
+                        "evidence": { "type": "array" },
+                        "edges": { "type": "array" }
+                    }
+                }
             }
         }),
         _ => json!({
@@ -372,7 +382,8 @@ fn validate_input_schema() -> Value {
                     { "type": "string" }
                 ]
             },
-            "manifest_file": { "type": "string" }
+            "manifest_file": { "type": "string" },
+            "include_manifest": { "type": "boolean" }
         },
         "oneOf": [
             { "required": ["source"] },
@@ -429,6 +440,16 @@ fn check_tool(arguments: &Value) -> Result<Value, String> {
 }
 
 fn validate_tool(arguments: &Value) -> Result<Value, String> {
+    let graph = validation_graph(arguments)?;
+    let include_manifest = include_manifest_argument(arguments)?;
+    let mut report = graph.validate().to_json_value();
+    if include_manifest {
+        report["manifest"] = graph.to_manifest_json_value();
+    }
+    Ok(report)
+}
+
+fn validation_graph(arguments: &Value) -> Result<lsharp_types::validation::IntentGraph, String> {
     let input_names = ["source", "file", "manifest", "manifest_file"]
         .into_iter()
         .filter(|name| arguments.get(*name).is_some())
@@ -441,14 +462,14 @@ fn validate_tool(arguments: &Value) -> Result<Value, String> {
     }
 
     match input_names[0] {
-        "source" | "file" => validate_source_input(arguments),
+        "source" | "file" => source_graph_input(arguments),
         "manifest" => {
             let manifest = manifest_input_argument(
                 arguments
                     .get("manifest")
                     .expect("manifest input name was collected"),
             )?;
-            validate_manifest_input(&manifest)
+            manifest_graph_input(&manifest)
         }
         "manifest_file" => {
             let file = arguments
@@ -457,19 +478,19 @@ fn validate_tool(arguments: &Value) -> Result<Value, String> {
                 .ok_or_else(|| "manifest_file は文字列 path が必要です".to_string())?;
             let manifest =
                 std::fs::read_to_string(file).map_err(|error| mcp_io_error(file, error))?;
-            validate_manifest_input(&manifest)
+            manifest_graph_input(&manifest)
         }
         _ => unreachable!("input name is restricted to the validation schema"),
     }
 }
 
-fn validate_source_input(arguments: &Value) -> Result<Value, String> {
+fn source_graph_input(arguments: &Value) -> Result<lsharp_types::validation::IntentGraph, String> {
     let source = source_argument(arguments)?;
     let program = lsharp_syntax::parse(&source)
         .map_err(|error| format!("validation source の parse に失敗しました: {error}"))?;
     let graph = lsharp_types::validation_source::source_program_to_intent_graph(&program)
         .map_err(|error| format!("validation source graph の構築に失敗しました: {error}"))?;
-    Ok(graph.validate().to_json_value())
+    Ok(graph)
 }
 
 fn manifest_input_argument(value: &Value) -> Result<String, String> {
@@ -481,10 +502,17 @@ fn manifest_input_argument(value: &Value) -> Result<String, String> {
     }
 }
 
-fn validate_manifest_input(manifest: &str) -> Result<Value, String> {
-    let graph = lsharp_types::validation_input::parse_intent_graph_json(manifest)
-        .map_err(|error| format!("validation manifest の parse に失敗しました: {error}"))?;
-    Ok(graph.validate().to_json_value())
+fn manifest_graph_input(manifest: &str) -> Result<lsharp_types::validation::IntentGraph, String> {
+    lsharp_types::validation_input::parse_intent_graph_json(manifest)
+        .map_err(|error| format!("validation manifest の parse に失敗しました: {error}"))
+}
+
+fn include_manifest_argument(arguments: &Value) -> Result<bool, String> {
+    match arguments.get("include_manifest") {
+        None => Ok(false),
+        Some(Value::Bool(value)) => Ok(*value),
+        Some(_) => Err("include_manifest は boolean が必要です".to_string()),
+    }
 }
 
 fn legacy_migration_diagnostics_json(source: &str) -> Vec<Value> {
@@ -1033,6 +1061,10 @@ mod tests {
             tool["outputSchema"]["properties"]["status"]["enum"],
             json!(["pass", "fail", "unknown"])
         );
+        assert_eq!(
+            tool["outputSchema"]["properties"]["manifest"]["type"],
+            "object"
+        );
     }
 
     #[test]
@@ -1132,6 +1164,10 @@ mod tests {
         assert_eq!(
             tool["inputSchema"]["properties"]["manifest_file"]["type"],
             "string"
+        );
+        assert_eq!(
+            tool["inputSchema"]["properties"]["include_manifest"]["type"],
+            "boolean"
         );
     }
 
@@ -1234,6 +1270,64 @@ mod tests {
 
         assert_eq!(response["result"]["isError"], false);
         assert_eq!(response["result"]["structuredContent"]["status"], "unknown");
+    }
+
+    #[test]
+    fn test_validate_tool_can_include_canonical_manifest() {
+        let result = call_tool(
+            "lsharp_validate",
+            &json!({
+                "manifest": {
+                    "schema_version": 1,
+                    "nodes": [],
+                    "evidence": [],
+                    "edges": []
+                },
+                "include_manifest": true
+            }),
+        )
+        .expect("include_manifest は canonical manifest を返すべき");
+
+        assert_eq!(result["status"], "unknown");
+        assert_eq!(result["manifest"]["schema_version"], 1);
+        assert!(result["manifest"]["nodes"].is_array());
+        assert!(result["manifest"]["evidence"].is_array());
+        assert!(result["manifest"]["edges"].is_array());
+    }
+
+    #[test]
+    fn test_validate_tool_projects_source_into_canonical_manifest() {
+        let result = call_tool(
+            "lsharp_validate",
+            &json!({
+                "source": r#"
+                    (defn cancel []
+                      :intent "intent:checkout/safe-cancel" "Users can cancel an order"
+                      :claim "claim:checkout/cancel-rejects-shipped" "The API rejects shipped orders"
+                      true)
+                "#,
+                "include_manifest": true
+            }),
+        )
+        .expect("source validation は canonical manifest を返すべき");
+
+        assert_eq!(result["manifest"]["schema_version"], 1);
+        assert_eq!(result["manifest"]["nodes"].as_array().unwrap().len(), 2);
+        assert!(result["manifest"]["edges"].is_array());
+    }
+
+    #[test]
+    fn test_validate_tool_rejects_invalid_include_manifest_option() {
+        let error = call_tool(
+            "lsharp_validate",
+            &json!({
+                "source": "(defn main [] true)",
+                "include_manifest": "yes"
+            }),
+        )
+        .expect_err("include_manifest は boolean 以外を拒否するべき");
+
+        assert!(error.contains("include_manifest は boolean が必要です"));
     }
 
     #[test]

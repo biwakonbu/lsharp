@@ -310,6 +310,71 @@ fn validate_source_emits_manifest_without_mixing_report_stdout() {
 }
 
 #[test]
+fn validate_source_and_emitted_manifest_have_same_report_and_exit_code() {
+    let source = source_path(
+        "source-manifest-report-parity",
+        r#"
+        (defn cancel []
+          :intent "intent:checkout/safe-cancel" "Users can cancel an order"
+          :claim "claim:checkout/cancel-rejects-shipped" "The API rejects shipped orders"
+          :motivates "intent:checkout/safe-cancel" "claim:checkout/cancel-rejects-shipped"
+          :tested-by "claim:checkout/cancel-rejects-shipped" "contract:checkout/cancel-case"
+          :evidence "evidence:checkout/cancel-observation"
+            :subject "claim:checkout/cancel-rejects-shipped"
+            :method "property"
+            :outcome "pass"
+            :runner "cargo-test"
+            :target "aarch64-apple-darwin"
+            :source-commit "0123456789abcdef"
+            :artifact-digest "sha256:abc123"
+            :cases 3
+            :seed 42
+            :generator "checkout-cancel-fixture"
+            :shrinks [8 3 1]
+            :coverage [("negative" 2) ("positive" 1)]
+            :producer "lsharp-test"
+            :tool-version "0.2.0"
+            :timestamp "2026-07-25T00:00:00Z"
+            :independence "same-author"
+          :supports "evidence:checkout/cancel-observation" "claim:checkout/cancel-rejects-shipped"
+          true)
+        "#,
+    );
+    let output_dir = project_dir("source-manifest-report-parity-output");
+    fs::create_dir_all(&output_dir).expect("manifest output directory should be writable");
+    let manifest = output_dir.join("intent-graph.json");
+
+    let source_output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+        .args([
+            "validate",
+            "--source",
+            source.to_str().unwrap(),
+            "--format",
+            "json",
+            "--emit-manifest",
+            manifest.to_str().unwrap(),
+        ])
+        .output()
+        .expect("source validation should run");
+    let source_report: serde_json::Value =
+        serde_json::from_slice(&source_output.stdout).expect("source report should be JSON");
+
+    let manifest_output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+        .args(["validate", manifest.to_str().unwrap(), "--format", "json"])
+        .output()
+        .expect("manifest validation should run");
+    let manifest_report: serde_json::Value =
+        serde_json::from_slice(&manifest_output.stdout).expect("manifest report should be JSON");
+
+    fs::remove_file(&source).ok();
+    fs::remove_dir_all(&output_dir).ok();
+
+    assert_eq!(source_output.status.code(), Some(2));
+    assert_eq!(manifest_output.status.code(), source_output.status.code());
+    assert_eq!(manifest_report, source_report);
+}
+
+#[test]
 fn validate_source_does_not_emit_manifest_for_adapter_errors() {
     let source = source_path(
         "source-emit-manifest-error",

@@ -183,6 +183,13 @@
   runtime/artifact evidence は未完了。Evidence:
   `crates/lsharp-driver/src/mcp_server.rs`,
   `docs/adr/decisions-v0.2-mcp-validation-manifest.md`。
+  さらに `include_manifest: true` を指定すると、source/manifest のどちらからも同じ
+  `IntentGraph::to_manifest_json_value()` による canonical version 1 manifest を
+  `structuredContent.manifest` として返す。既定 report は変更せず、MCP は filesystem write を行わない。
+  これは Rust MCP inline artifact wiring の verified sliceであり、CLI の atomic/durable file emission、
+  EmbeddedCli、selfhost/native parity、両 target runtime/artifact evidence は未完了。Evidence:
+  `crates/lsharp-driver/src/mcp_server.rs`,
+  `docs/adr/decisions-v0.2-mcp-inline-manifest.md`。
 
 ## 2026-07-25 current-source native stage0 evidence refresh
 

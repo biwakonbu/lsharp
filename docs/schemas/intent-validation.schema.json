@@ -46,6 +46,9 @@
     "contradicting_observations": {
       "type": "integer",
       "minimum": 0
+    },
+    "manifest": {
+      "$ref": "intent-graph.schema.json"
     }
   }
 }
