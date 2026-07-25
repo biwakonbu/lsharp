@@ -2,7 +2,7 @@
 
 use lsharp_syntax::ast::*;
 
-use crate::{Instruction, IrType};
+use crate::Instruction;
 
 use super::{FuncCtx, Lower, LowerBackend, LowerError};
 
@@ -22,6 +22,9 @@ mod do_expr_tests;
 mod helpers;
 #[cfg(test)]
 mod helpers_tests;
+mod if_expr;
+#[cfg(test)]
+mod if_expr_tests;
 mod lambda;
 #[cfg(test)]
 mod lambda_tests;
@@ -150,18 +153,7 @@ impl Lower {
                 }
             }
 
-            Expr::If(_, cond, then, else_) => {
-                // 条件式
-                self.lower_expr(ctx, cond)?;
-                // Bool (i64) -> i32 に変換
-                ctx.emit(Instruction::I32WrapI64);
-                // if-then-else
-                ctx.emit(Instruction::If(IrType::I64));
-                self.lower_expr(ctx, then)?;
-                ctx.emit(Instruction::Else);
-                self.lower_expr(ctx, else_)?;
-                ctx.emit(Instruction::End);
-            }
+            Expr::If(_, cond, then, else_) => self.lower_if(ctx, cond, then, else_)?,
 
             Expr::Let(_, bindings, body) => {
                 self.lower_let(ctx, bindings, body)?;
