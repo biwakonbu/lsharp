@@ -586,9 +586,10 @@ TypeDef、nested module/private/impl traversal、evidence record、typed graph p
 `selfhost/src/Syntax/Parser.ls` が `:evidence` の named required fieldsと `:shrinks` / `:coverage` を
 17-field payloadへ変換し、`selfhost/src/Tools/Validation/Evidence.ls` の registry consumerへ渡す。
 top-level source textからの parser → registry、required field/typed subject、sampling、duplicate IDの
-fail-closed boundaryを `test_e2e_selfhost_evidence_registry_consumes_parser_form` と registry focused 12件で
+fail-closed boundaryを `test_e2e_selfhost_evidence_registry_consumes_parser_form` と registry focused 13件で
 確認した。sampling では負の seed / shrink 値と malformed coverage entry を `invalid-sampling` code `11` と
 それぞれの field で拒否し、
+17-field 以外の evidence payload は `malformed` code `1` / field `form` として拒否する。
 `source-evidence-graph-from-program` は registry 登録後に `supports` / `contradicts` を
 graphへ投影し、登録済み edgeと未登録 edgeの拒否を確認する。既存 `selfhost_intent_source_adapter` 8件も
 再実行して passした。これは Rust-host actual Wasm の selfhost runtime evidenceであり、既存 validate

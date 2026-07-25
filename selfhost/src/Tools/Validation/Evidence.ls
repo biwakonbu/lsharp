@@ -194,7 +194,7 @@
       payload (vector-get form 1)
       start (vector-get form 2)
       end (vector-get form 3)]
-      (if (or (!= kind (source-evidence-form-kind)) (< (vector-length payload) 17))
+      (if (or (!= kind (source-evidence-form-kind)) (!= (vector-length payload) 17))
         (source-result 0 (source-evidence-error (source-evidence-error-malformed) "form" "" start end))
         (let [empty-field (source-evidence-empty-field payload)
           id (vector-get payload 0)

@@ -482,6 +482,65 @@ fn test_e2e_selfhost_evidence_registry_rejects_malformed_coverage_entry() {
     );
 }
 
+/// EC-M2-02: evidence payload は canonical 17-field shape だけを受理する。
+#[test]
+fn test_e2e_selfhost_evidence_registry_rejects_extra_payload_field() {
+    let harness = r#"
+(defn main []
+  (let [nodes (vector-push-single-rooted-v3
+                (vector-new 0)
+                (source-node-record
+                  (source-node-claim)
+                  "claim:checkout/rejects"
+                  "rejects shipped orders"
+                  1
+                  2))
+        base-payload (source-evidence-payload
+          "evidence:checkout/extra-field"
+          "claim:checkout/rejects"
+          "property"
+          "pass"
+          "runner"
+          "aarch64-apple-darwin"
+          "deadbeef"
+          "sha256:abc"
+          1
+          0
+          "generator"
+          (vector-new 0)
+          (vector-new 0)
+          "producer"
+          "0.2"
+          "2026-07-25T00:00:00Z"
+          "same-author")
+        payload (vector-push-single-rooted-v3 base-payload "unexpected")
+        result (source-evidence-register-form
+          (source-evidence-registry-new)
+          nodes
+          (source-evidence-form payload 10 20))
+        error (source-result-error result)]
+    (do
+      (print (source-result-status result))
+      (print (source-evidence-error-code error))
+      (print-string (source-evidence-error-field error))
+      (print-string "\n")
+      (print-string (source-evidence-error-value error))
+      (print-string "\n")
+      (print (source-evidence-error-start error))
+      (print (source-evidence-error-end error))
+      0)))
+"#;
+
+    let output = run_evidence_registry_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "1", "form", "", "10", "20"],
+        "extra payload field は malformed form として fail-closed にするべき"
+    );
+}
+
 /// EC-M2-02: 負の shrink 値は canonical sampling と同じ fail-closed code で拒否する。
 #[test]
 fn test_e2e_selfhost_evidence_registry_rejects_negative_shrink() {
