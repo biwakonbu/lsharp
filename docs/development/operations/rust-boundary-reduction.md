@@ -614,8 +614,8 @@ typed signature、nested traversal、全 evidence/contract report parity、Embed
 serializer focused test `test_e2e_selfhost_evidence_manifest_serializer_matches_version_one_shape` も
 passしている。これは Rust-host actual Wasm の verified sliceであり、native stage0、durable atomic
 write、release provenanceの証拠ではない。registry/contradictory fixtureの
-`test_e2e_selfhost_cli_validate_source_json_reports_contradicting_evidence` を含む validation 4件が
-同一 bundle compileで passした（manifest graph-error negativeを含む、283.84s）。
+`test_e2e_selfhost_cli_validate_source_json_reports_contradicting_evidence` を含む validation 5件が
+同一 bundle compileで passした（manifest graph-error/write-failure negativeを含む、write-failure単体は324.56s）。
 
 ## Native 開発経路
 

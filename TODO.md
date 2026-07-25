@@ -103,6 +103,8 @@
   atomic/durable artifact boundary は接続済み。selfhost `Tools.Validation.Evidence` の version 1
   serializer と `App.Cli` の `--emit-manifest` file output は、Rust-host actual Wasm の同一 source
   fixtureで report stdout 分離、nodes/evidence/edges、sampling/provenance、unknown exit `2` を確認した。
+  親 directory がない output path では error 行のみを返し、validation report/status と manifest を残さない
+  fail-closed 境界も actual Wasm で確認した。
   selfhost/native stage0、durable atomic write、release-level provenance、EmbeddedCli/MCP、Mac Apple
   Silicon / Linux x86_64 current-source runtime evidence は未完了。Evidence:
   `crates/lsharp-driver/tests/validate_cli.rs`,
@@ -145,8 +147,8 @@
   supports/contradicts は登録済み evidence にだけ接続し、registry 未接続時は明示的な入力エラーとなる。
   `--emit-manifest` による source graph artifact は Rust-host actual Wasm の selfhost `App.Cli` へ接続済みで、
   `test_e2e_selfhost_cli_validate_source_emits_manifest` と serializer focused test が version 1 JSON、
-  report stdout 分離、sampling/provenance、unknown exit `2` を確認した。typed signature、nested
-  traversal、全 diagnostic/status、selfhost/native stage0 parity、durable atomic write、EmbeddedCli/MCP、
+  report stdout 分離、sampling/provenance、unknown exit `2` を確認した。write failure の実行境界、typed
+  signature、nested traversal、全 diagnostic/status、selfhost/native stage0 parity、durable atomic write、EmbeddedCli/MCP、
   両 target の artifact/runtime evidence は未完了。
   Evidence: `docs/adr/decisions-v0.2-validation-source-cli.md`,
   `docs/adr/decisions-v0.2-source-evidence-boundary.md`,

@@ -57,3 +57,5 @@ stage0、durable atomic write、CLIの全 fail-closed diagnostic、release prove
 あり、`test_e2e_selfhost_cli_validate_source_does_not_emit_manifest_for_graph_error` は未登録 evidence
 edgeで exit `1` と manifest未生成を確認した。native stage0/current-source target parityの証拠には
 拡大解釈しない。
+`test_e2e_selfhost_cli_validate_source_rejects_manifest_write_failure` は親 directory がない output pathで
+error 行と exit `1` を返し、validation report/status と manifestを残さない fail-closed boundaryを確認した。

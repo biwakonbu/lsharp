@@ -14820,6 +14820,59 @@ fn test_e2e_selfhost_cli_validate_source_does_not_emit_manifest_for_graph_error(
     assert!(!manifest_exists, "graph error 前に manifest を作らないべき");
 }
 
+/// EC-M2-03: manifest write failure は validation report を成功扱いにしない。
+#[test]
+fn test_e2e_selfhost_cli_validate_source_rejects_manifest_write_failure() {
+    let dir = std::env::temp_dir().join(format!(
+        "lsharp_test_cli_validate_source_manifest_write_error_{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("input.ls"),
+        r#"
+(defn valid []
+  :claim "claim:checkout/cancel-rejects-shipped" "The API rejects shipped orders"
+  true)
+"#,
+    )
+    .unwrap();
+
+    let wasm = selfhost_cli_validation_wasm();
+    let output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_args_and_stdin_capture(
+        wasm,
+        Some(&dir),
+        &[
+            "validate",
+            "--source",
+            "input.ls",
+            "--format",
+            "json",
+            "--emit-manifest",
+            "missing/intent-graph.json",
+        ],
+        "",
+    )
+    .unwrap();
+    let manifest_exists = dir.join("missing/intent-graph.json").exists();
+    let _ = std::fs::remove_dir_all(&dir);
+
+    assert_eq!(output.exit_code, 1, "manifest write failure は exit code 1 を返すべき");
+    assert!(
+        output
+            .stdout
+            .contains("error: source validation manifest write failed"),
+        "write failure の診断を出すべき: {}",
+        output.stdout
+    );
+    assert!(
+        !output.stdout.contains("\"status\""),
+        "write failure では validation report を出さないべき: {}",
+        output.stdout
+    );
+    assert!(!manifest_exists, "write failure では manifest を残さないべき");
+}
+
 /// TEST-CLI-02-AF2: actual Cli main は argv 経由で compile file command を処理できること
 #[test]
 #[ignore]
