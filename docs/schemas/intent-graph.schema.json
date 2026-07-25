@@ -1,0 +1,167 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lsharp.dev/schemas/intent-graph.schema.json",
+  "title": "L# intent/evidence graph manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "nodes", "evidence", "edges"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "nodes": {"type": "array", "items": {"$ref": "#/$defs/node"}},
+    "evidence": {"type": "array", "items": {"$ref": "#/$defs/evidence"}},
+    "edges": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["relation", "intent", "claim"],
+            "properties": {
+              "relation": {"const": "motivates"},
+              "intent": {"$ref": "#/$defs/id"},
+              "claim": {"$ref": "#/$defs/id"}
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["relation", "claim", "assumption"],
+            "properties": {
+              "relation": {"const": "constrained-by"},
+              "claim": {"$ref": "#/$defs/id"},
+              "assumption": {"$ref": "#/$defs/id"}
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["relation", "claim", "contract"],
+            "properties": {
+              "relation": {"const": "tested-by"},
+              "claim": {"$ref": "#/$defs/id"},
+              "contract": {"$ref": "#/$defs/id"}
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["relation", "observation", "claim"],
+            "properties": {
+              "relation": {"enum": ["supports", "contradicts"]},
+              "observation": {"$ref": "#/$defs/id"},
+              "claim": {"$ref": "#/$defs/id"}
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["relation", "review", "subject"],
+            "properties": {
+              "relation": {"const": "evaluates"},
+              "review": {"$ref": "#/$defs/id"},
+              "subject": {"$ref": "#/$defs/subject"}
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["relation", "change", "subject"],
+            "properties": {
+              "relation": {"const": "invalidates"},
+              "change": {"$ref": "#/$defs/id"},
+              "subject": {"$ref": "#/$defs/subject"}
+            }
+          }
+        ]
+      }
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["namespace", "key"],
+      "properties": {
+        "namespace": {"type": "string", "pattern": "^[A-Za-z0-9_.-]+$"},
+        "key": {"type": "string", "pattern": "^[A-Za-z0-9_.-]+$"}
+      }
+    },
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "namespace", "key"],
+      "properties": {
+        "kind": {"enum": ["intent", "claim", "contract", "evidence", "review"]},
+        "namespace": {"type": "string", "pattern": "^[A-Za-z0-9_.-]+$"},
+        "key": {"type": "string", "pattern": "^[A-Za-z0-9_.-]+$"}
+      }
+    },
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "namespace", "key", "text", "span"],
+      "properties": {
+        "kind": {"enum": ["intent", "claim", "assumption", "open-question"]},
+        "namespace": {"type": "string", "pattern": "^[A-Za-z0-9_.-]+$"},
+        "key": {"type": "string", "pattern": "^[A-Za-z0-9_.-]+$"},
+        "text": {"type": "string", "minLength": 1},
+        "span": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["start", "end"],
+          "properties": {
+            "start": {"type": "integer", "minimum": 0},
+            "end": {"type": "integer", "minimum": 0}
+          }
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["namespace", "key", "method", "subject", "outcome", "execution", "provenance", "independence"],
+      "properties": {
+        "namespace": {"type": "string", "pattern": "^[A-Za-z0-9_.-]+$"},
+        "key": {"type": "string", "pattern": "^[A-Za-z0-9_.-]+$"},
+        "method": {"enum": ["example", "case", "assert", "property", "production", "reference", "proof", "review"]},
+        "subject": {"$ref": "#/$defs/subject"},
+        "outcome": {"enum": ["pass", "fail", "contradicted", "unknown", "stale"]},
+        "execution": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["runner", "target", "source_commit", "artifact_digest", "sampling"],
+          "properties": {
+            "runner": {"type": "string"},
+            "target": {"type": "string"},
+            "source_commit": {"type": "string"},
+            "artifact_digest": {"type": "string"},
+            "sampling": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["cases", "seed", "generator", "shrinks", "coverage"],
+              "properties": {
+                "cases": {"type": "integer", "minimum": 0},
+                "seed": {"type": "integer", "minimum": 0},
+                "generator": {"type": "string"},
+                "shrinks": {"type": "array", "items": {"type": "integer", "minimum": 0}},
+                "coverage": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}}
+              }
+            }
+          }
+        },
+        "provenance": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["producer", "tool_version", "timestamp"],
+          "properties": {
+            "producer": {"type": "string"},
+            "tool_version": {"type": "string"},
+            "timestamp": {"type": "string"}
+          }
+        },
+        "independence": {"enum": ["same-author", "independent-review", "external-observation"]}
+      }
+    }
+  }
+}

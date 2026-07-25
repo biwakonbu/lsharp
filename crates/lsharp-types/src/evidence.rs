@@ -3,7 +3,9 @@
 //! edge の向きを typed ID で表し、異なる node kind を文字列で暗黙に結び付けない。
 //! graph の referential closure や欠落検査は M2-03 `validate` の責務として残す。
 
-use crate::intent::{AssumptionId, ChangeId, ClaimId, ContractId, EvidenceId, IntentId, ReviewId};
+use crate::intent::{
+    AssumptionId, ChangeId, ClaimId, ContractId, EvidenceId, IntentId, ReviewId, StableId,
+};
 use std::collections::BTreeMap;
 
 /// executable / observed evidence の生成方法。
@@ -405,6 +407,8 @@ pub enum GraphError {
         #[source]
         source: EvidenceValidationError,
     },
+    #[error("graph node ID が重複しています: {duplicate:?}")]
+    DuplicateNode { duplicate: StableId },
     #[error("evidence ID が重複しています: {id:?}")]
     DuplicateEvidence { id: EvidenceId },
     #[error("edge が参照する evidence ID が graph にありません: {id:?}")]

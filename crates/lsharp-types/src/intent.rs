@@ -41,6 +41,14 @@ impl NodeKind {
 pub enum StableIdError {
     #[error("stable ID の {field} は空でない ASCII segment にしてください: {value:?}")]
     InvalidSegment { field: &'static str, value: String },
+    #[error("stable ID wire format が不正です: {value:?}")]
+    InvalidWireFormat { value: String },
+    #[error("stable ID の kind が不一致です (expected={expected:?}, actual={actual:?}): {value:?}")]
+    UnexpectedKind {
+        expected: NodeKind,
+        actual: NodeKind,
+        value: String,
+    },
 }
 
 /// node kind、namespace、key からなる cross-target stable ID。
@@ -77,6 +85,29 @@ impl StableId {
 
     pub fn as_str(&self) -> &str {
         &self.wire
+    }
+
+    /// `kind:namespace/key` wire value を検証付きで復元する。
+    pub fn parse(wire: impl Into<String>) -> Result<Self, StableIdError> {
+        let wire = wire.into();
+        let Some((kind_text, subject)) = wire.split_once(':') else {
+            return Err(StableIdError::InvalidWireFormat { value: wire });
+        };
+        let kind = match kind_text {
+            "intent" => NodeKind::Intent,
+            "claim" => NodeKind::Claim,
+            "assumption" => NodeKind::Assumption,
+            "open-question" => NodeKind::OpenQuestion,
+            "contract" => NodeKind::Contract,
+            "evidence" => NodeKind::Evidence,
+            "review" => NodeKind::Review,
+            "change" => NodeKind::Change,
+            _ => return Err(StableIdError::InvalidWireFormat { value: wire }),
+        };
+        let Some((namespace, key)) = subject.split_once('/') else {
+            return Err(StableIdError::InvalidWireFormat { value: wire });
+        };
+        Self::new(kind, namespace, key)
     }
 
     pub fn kind(&self) -> NodeKind {
@@ -123,6 +154,20 @@ macro_rules! define_id {
                 self.0.as_str()
             }
 
+            /// typed ID が宣言する kind と wire prefix を検証して復元する。
+            pub fn parse(wire: impl Into<String>) -> Result<Self, StableIdError> {
+                let wire = wire.into();
+                let stable_id = StableId::parse(wire.clone())?;
+                if stable_id.kind() != NodeKind::$kind {
+                    return Err(StableIdError::UnexpectedKind {
+                        expected: NodeKind::$kind,
+                        actual: stable_id.kind(),
+                        value: wire,
+                    });
+                }
+                Ok(Self(stable_id))
+            }
+
             pub fn kind(&self) -> NodeKind {
                 self.0.kind()
             }
@@ -156,6 +201,17 @@ define_id!(ChangeId, Change);
 pub enum NodeTextError {
     #[error("intent graph node の text は空にできません")]
     EmptyText,
+}
+
+/// wire identity と source node を結び付けられない理由。
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum IntentNodeError {
+    #[error("stable ID の解析に失敗しました: {0}")]
+    StableId(#[from] StableIdError),
+    #[error("graph-only kind {kind:?} は IntentNode として構築できません")]
+    UnsupportedKind { kind: NodeKind },
+    #[error("intent graph node の生成に失敗しました: {0}")]
+    NodeText(#[from] NodeTextError),
 }
 
 macro_rules! define_node {
@@ -218,6 +274,43 @@ pub enum IntentNode {
 }
 
 impl IntentNode {
+    /// `kind:namespace/key`、text、source span から typed node を構築する。
+    ///
+    /// graph の evidence/review/change identity は `StableId` では表現できるが、
+    /// `IntentNode` の AST node ではないため、ここで暗黙に変換せず拒否する。
+    pub fn from_wire_parts(
+        wire: impl Into<String>,
+        text: impl Into<String>,
+        source_span: Span,
+    ) -> Result<Self, IntentNodeError> {
+        let wire = wire.into();
+        let stable_id = StableId::parse(wire.clone())?;
+        let text = text.into();
+        match stable_id.kind() {
+            NodeKind::Intent => Ok(Self::Intent(Intent::new(
+                IntentId::parse(wire)?,
+                text,
+                source_span,
+            )?)),
+            NodeKind::Claim => Ok(Self::Claim(Claim::new(
+                ClaimId::parse(wire)?,
+                text,
+                source_span,
+            )?)),
+            NodeKind::Assumption => Ok(Self::Assumption(Assumption::new(
+                AssumptionId::parse(wire)?,
+                text,
+                source_span,
+            )?)),
+            NodeKind::OpenQuestion => Ok(Self::OpenQuestion(OpenQuestion::new(
+                OpenQuestionId::parse(wire)?,
+                text,
+                source_span,
+            )?)),
+            kind => Err(IntentNodeError::UnsupportedKind { kind }),
+        }
+    }
+
     pub fn kind(&self) -> NodeKind {
         match self {
             Self::Intent(node) => node.kind(),

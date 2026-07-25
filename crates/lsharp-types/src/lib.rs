@@ -8,6 +8,8 @@ pub mod metadata_contract;
 pub mod metadata_migration;
 pub(crate) mod regex;
 pub mod types;
+pub mod validation;
+pub mod validation_output;
 
 #[cfg(test)]
 mod diagnostic_tests {

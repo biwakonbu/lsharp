@@ -5,11 +5,14 @@ edition.workspace = true
 
 [dependencies]
 lsharp-syntax = { path = "../lsharp-syntax" }
+serde.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
 miette.workspace = true
 
 [dev-dependencies]
 insta.workspace = true
+serde_json.workspace = true
 proptest = "1"
 criterion.workspace = true
 

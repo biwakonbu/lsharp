@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lsharp.dev/schemas/intent-validation.schema.json",
+  "title": "L# intent validation report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "status",
+    "trace_gaps",
+    "open_questions",
+    "independent_reviews",
+    "contradicting_observations"
+  ],
+  "properties": {
+    "status": {
+      "enum": ["pass", "fail", "unknown"]
+    },
+    "trace_gaps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "subject_id"],
+        "properties": {
+          "code": {
+            "enum": [
+              "trace-gap.intent-without-claim",
+              "trace-gap.claim-without-test"
+            ]
+          },
+          "subject_id": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "open_questions": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "independent_reviews": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "contradicting_observations": {
+      "type": "integer",
+      "minimum": 0
+    }
+  }
+}
