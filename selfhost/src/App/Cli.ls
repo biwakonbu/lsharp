@@ -637,14 +637,32 @@
     case-check (check-canonical-cases-with-analysis program analysis)
     case-check-root-slot (root_push case-check)]
     (if (> property-boundary-code 0)
-      (run-test-source-json-preflight program property-boundary-code 0 0)
+      (do
+        (run-test-source-json-preflight program property-boundary-code 0 0)
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        (exit-runtime-error))
       (if (> (vector-get case-check 0) 0)
-        (run-test-source-json-preflight
-          program
-          (vector-get case-check 1)
-          (vector-get case-check 2)
-          (vector-get case-check 3))
-        (run-test-source-json-suite (generate-tests-from-source src))))))
+        (do
+          (run-test-source-json-preflight
+            program
+            (vector-get case-check 1)
+            (vector-get case-check 2)
+            (vector-get case-check 3))
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (exit-runtime-error))
+        (do
+          (run-test-source-json-suite (generate-tests-from-source src))
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (exit-success)))))
 (defn case-preflight-diagnostics-summary [case-check]
   (let [count (vector-get case-check 0)
     raw-code (vector-get case-check 1)
@@ -702,13 +720,25 @@
     case-check-root-slot (root_push case-check)
     case-diagnostics-count (vector-get case-check 0)]
     (if (> property-boundary-code 0)
-      (run-test-source-case-preflight
-        program
-        (vector-push
-          (vector-push (vector-new 2) 1)
-          property-boundary-code))
+      (do
+        (run-test-source-case-preflight
+          program
+          (vector-push
+            (vector-push (vector-new 2) 1)
+            property-boundary-code))
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        (exit-runtime-error))
       (if (> case-diagnostics-count 0)
-        (run-test-source-case-preflight program case-check)
+        (do
+          (run-test-source-case-preflight program case-check)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (exit-runtime-error))
         (let [suite (generate-tests-from-source src)
     example-results (vector-get suite 0)
     invariant-results (vector-get suite 1)
@@ -766,6 +796,10 @@
           (print-string diagnostic-summary)
           (print-string "\n"))
         (print-string ""))
+      (root_pop)
+      (root_pop)
+      (root_pop)
+      (root_pop)
       (if (> failed 0) (exit-runtime-error) (exit-success))))))))
 (defn run-test-source [src opts]
   (if (= opts (test-option-json))

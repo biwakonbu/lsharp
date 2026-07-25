@@ -29,9 +29,10 @@ lsharp validate --source <source.ls> --format json
 
 `selfhost_cli_validation_contract` は command、option、report code の source contract を RED から
 GREEN へ確認した。Rust-host actual Wasm の `test_e2e_selfhost_cli_validate_source_json_reports_trace_gap`
-は同じ fixture、argv、filesystem、exit code、JSON reportを検証するが、現在の lowering ledger が
-既存 `typeinfer-builtin-root-value` の関数間 root lease を `ImbalancedExit` として検出するため、
-実行は明示的に ignore している。この blocker を解消してから actual Wasm の GREEN とする。
+は同じ fixture、argv、filesystem、exit code、JSON reportを検証する。既存の関数間 root lease helperを
+明示的な shape checkへ切り出し、`App.Cli` の `run-check-program` と test runner の caller rootを
+focused ledger/static contractで balanceしたが、actual Wasm testはこの変更後の再実行が必要なため、
+現時点では明示的に ignore している。
 
 typed signature metadata、nested module/private/impl traversal、parse/duplicate/orphan diagnostic、
 evidence/contract registry、`--emit-manifest`、EmbeddedCli/MCP、native stage0 と Mac Apple Silicon /

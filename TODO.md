@@ -136,9 +136,10 @@
   `crates/lsharp-driver/tests/validate_cli.rs`。
   selfhost `App.Cli` の最初の slice は `validate --source <file> --format json`、top-level `defn`
   metadata の intent/claim/motivates/tested-by 集計、claim trace gap JSON、unknown exit `2`、未対応 option
-  の明示拒否まで source contract として追加した。Rust-host actual Wasm の同一 fixture test は、既存
-  `typeinfer-builtin-root-value` / `typeinfer-builtin-release-roots` の関数間 root lease を lowering ledger
-  が未対応であるため ignore 中で、native stage0 の current-source evidenceも未取得である。typed signature、
+  の明示拒否まで source contract として追加した。既存の関数間 root lease helperは専用 shape checkへ
+  切り出し、`run-check-program` の3 slotと `run-test-source-json/text` の各4 slotを全経路で解放する
+  focused RED/GREENを通した。Rust-host actual Wasm の同一 fixture testは変更後の再実行待ちで ignore 中、
+  native stage0 の current-source evidenceも未取得である。typed signature、
   nested traversal、evidence/manifest、EmbeddedCli/MCP、両 target runtime parity は残件。
   Evidence: `crates/lsharp-syntax/tests/selfhost_cli_validation_contract.rs`,
   `crates/lsharp-wasm/tests/e2e/selfhost_cli_core.rs`,
