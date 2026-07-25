@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "nodes": [
+    {"kind":"intent","namespace":"checkout","key":"safe-cancel","text":"Users can cancel before shipment"},
+    {"kind":"claim","namespace":"checkout","key":"cancel-rejects-shipped","text":"The API rejects shipped orders"}
+  ],
+  "evidence": [
+    {
+      "namespace":"checkout",
+      "key":"review-001",
+      "method":"review",
+      "subject":{"kind":"claim","namespace":"checkout","key":"cancel-rejects-shipped"},
+      "outcome":"pass",
+      "execution":{"runner":"fixture","target":"host","source_commit":"commit-1","artifact_digest":"sha256:fixture","sampling":{"cases":1,"seed":0,"generator":"fixture","coverage":{"all":1}}},
+      "provenance":{"producer":"fixture","tool_version":"0.2","timestamp":"2026-07-23T00:00:00Z"},
+      "independence":"independent-review"
+    }
+  ],
+  "edges": [
+    {"relation":"motivates","intent":{"namespace":"checkout","key":"safe-cancel"},"claim":{"namespace":"checkout","key":"cancel-rejects-shipped"}},
+    {"relation":"tested-by","claim":{"namespace":"checkout","key":"cancel-rejects-shipped"},"contract":{"namespace":"checkout","key":"cancel-case"}},
+    {"relation":"evaluates","review":{"namespace":"checkout","key":"reviewer-001"},"subject":{"kind":"evidence","namespace":"checkout","key":"review-001"}}
+  ]
+}

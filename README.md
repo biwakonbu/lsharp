@@ -87,6 +87,17 @@ lsharp test metadata.ls
 lsharp doc metadata.ls -o metadata.html
 ```
 
+v0.2 の intent/evidence graph を JSON manifest から検証する場合は、implementation
+conformance の `test` と分離した `validate` を使います。
+
+```bash
+lsharp validate intent-graph.json
+lsharp validate intent-graph.json --format json
+```
+
+manifest の schema と `pass` / `fail` / `unknown` の終了値は
+[`docs/guides/intent-validation.md`](docs/guides/intent-validation.md) にまとめています。
+
 IDE / AI 連携は次の入口を使います。
 
 ```bash

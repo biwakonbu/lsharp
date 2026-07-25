@@ -73,6 +73,12 @@ enum CliCompileTarget {
     Native,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+enum CliValidationFormat {
+    Text,
+    Json,
+}
+
 impl From<CliCompileTarget> for commands::compile::CompileTarget {
     fn from(value: CliCompileTarget) -> Self {
         match value {
@@ -181,6 +187,16 @@ enum Command {
     Test {
         /// 入力ファイル
         file: PathBuf,
+    },
+
+    /// intent/evidence graph manifest を検証
+    Validate {
+        /// versioned JSON manifest
+        file: PathBuf,
+
+        /// 出力形式
+        #[arg(long, value_enum, default_value = "text")]
+        format: CliValidationFormat,
     },
 
     /// ドキュメントレビュー (YAML チェックポイント出力)
@@ -361,6 +377,13 @@ fn main() -> miette::Result<()> {
 
         Command::Test { file } => {
             cmd_test(&file)?;
+        }
+
+        Command::Validate { file, format } => {
+            let exit_code = cmd_validate(&file, format)?;
+            if exit_code != 0 {
+                std::process::exit(exit_code);
+            }
         }
 
         Command::Review { file } => {
@@ -1374,6 +1397,35 @@ fn cmd_test(file: &Path) -> miette::Result<()> {
     }
 
     Ok(())
+}
+
+/// M2-03: versioned intent/evidence graph manifest の fact-oriented validation。
+///
+/// `test` の implementation conformance と混同しないよう、pass=0、fail=1、
+/// unknown=2 を別の exit code として返す。入力 parser の未接続範囲は JSON manifest
+/// に限定し、source syntax は後続の parser adapter で同じ `IntentGraph` に接続する。
+fn cmd_validate(file: &Path, format: CliValidationFormat) -> miette::Result<i32> {
+    let source =
+        std::fs::read_to_string(file).map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
+    let graph = lsharp_types::validation_input::parse_intent_graph_json(&source)
+        .map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
+    let report = graph.validate();
+
+    match format {
+        CliValidationFormat::Text => print!("{}", report.to_text()),
+        CliValidationFormat::Json => {
+            let json = report
+                .to_json_string()
+                .map_err(|e| miette::miette!("validation report JSON の生成に失敗しました: {e}"))?;
+            println!("{json}");
+        }
+    }
+
+    Ok(match report.status() {
+        lsharp_types::validation::ValidationStatus::Pass => 0,
+        lsharp_types::validation::ValidationStatus::Fail => 1,
+        lsharp_types::validation::ValidationStatus::Unknown => 2,
+    })
 }
 
 fn has_metadata_errors(diagnostics: &[String]) -> bool {

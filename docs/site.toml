@@ -37,6 +37,13 @@ summary = "metadata をテスト、ドキュメント、review の入力とし�
 audience = "L# でアプリやライブラリを書く開発者"
 
 [[sections.pages]]
+title = "Intent Validation"
+source = "docs/guides/intent-validation.md"
+output = "guides/intent-validation.html"
+summary = "intent/evidence graph と lsharp validate の status、report、exit code。"
+audience = "L# を使う開発者"
+
+[[sections.pages]]
 title = "IDE and LSP Setup"
 source = "docs/guides/ide-setup.md"
 output = "guides/ide-setup.html"

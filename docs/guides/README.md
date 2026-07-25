@@ -8,6 +8,7 @@
 - [`language-reference.md`](./language-reference.md) -- 構文・型・module・metadata・stdlib の利用者向けリファレンス
 - [`package-layout.md`](./package-layout.md) -- パッケージ標準レイアウトと `lsharp init` の生成物
 - [`metadata-driven-development.md`](./metadata-driven-development.md) -- `:doc` / `:example` / `:invariant` をテストと docs へ使う手順
+- [`intent-validation.md`](./intent-validation.md) -- intent/evidence graph と `lsharp validate` の status/exit code
 - [`ide-setup.md`](./ide-setup.md) -- `lsharp lsp` と editor / AI tool 連携
 - [`deployment-targets.md`](./deployment-targets.md) -- `wasi-component` / `wasi-preview1` / `web-wasm` / `native` の選び方
 - [`stdlib-guide.md`](./stdlib-guide.md) -- stdlib API の探し方と generated docs / MCP での参照

@@ -9,18 +9,22 @@
 - [~] `EC-M2-01`〜`EC-M2-03` の types-only wire/model slice — `StableId` の fail-closed parser、
   typed `IntentNode` wire conversion、duplicate/required-field を検査する `IntentGraph`、
   `pass` / `fail` / `unknown` validation report、strict JSON/text projection、deterministic
-  graph manifest output と schema を `lsharp-types` に固定した。source/manifest input parser、
-  `validate` CLI/exit code、selfhost/native parity、Mac Apple Silicon / Linux x86_64 artifact/runtime
+  graph manifest output と schema、version 1 JSON input parser、Rust `validate` CLI を固定した。
+  selfhost/native parity、EmbeddedCli/MCP、Mac Apple Silicon / Linux x86_64 artifact/runtime
   evidence は未完了のため `[~]` を維持する。Evidence: `docs/adr/decisions-v0.2-validation-types-slice.md`,
-  `docs/development/planning/v0.2-validation-model.md`, `cargo test -p lsharp-types`、
+  `docs/adr/decisions-v0.2-validation-cli.md`, `docs/development/planning/v0.2-validation-model.md`,
+  `cargo test -p lsharp-types`、`cargo test -p lsharp-driver --test validate_cli`、
   `cargo clippy -p lsharp-types --all-targets -- -D warnings`。
 
 - [~] `EC-M2-03` version 1 JSON manifest input — `parse_intent_graph_json` が typed node/evidence/
   edge を `IntentGraph` へ構築し、unknown field、schema version、duplicate node、逆順 span、
   空の required evidence field、未知の node/evidence reference を fail-closed に拒否する。
-  source syntax adapter、`validate` CLI/exit code、selfhost/native parity、両 target の
-  artifact/runtime evidence は未完了。Evidence: `docs/adr/decisions-v0.2-validation-input-parser.md`,
-  `crates/lsharp-types/tests/validation_input.rs`。
+  `lsharp validate <manifest> [--format text|json]` の parser → graph → validate → report
+  接続と `pass=0` / `fail=1` / `unknown=2` の Rust CLI exit code まで確認した。source syntax
+  adapter、selfhost/native parity、EmbeddedCli/MCP、両 target の artifact/runtime evidence
+  は未完了。Evidence: `docs/adr/decisions-v0.2-validation-input-parser.md`,
+  `docs/adr/decisions-v0.2-validation-cli.md`, `crates/lsharp-types/tests/validation_input.rs`,
+  `crates/lsharp-driver/tests/validate_cli.rs`。
 
 ## 2026-07-25 current-source native stage0 evidence refresh
 
