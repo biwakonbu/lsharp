@@ -50,6 +50,8 @@ source metadata を直接 graph へ投影する場合は、明示的に `--sourc
 ```bash
 lsharp validate --source src/Checkout.ls
 lsharp validate --source src/Checkout.ls --format json
+lsharp validate --source src/Checkout.ls \
+  --emit-manifest target/intent-graph.json --format json
 ```
 
 source は parse 後に `:intent` / `:claim` / `:assumption` / `:open-question` node と
@@ -109,6 +111,10 @@ edge として claim trace gap を閉じます。`evidence` record は全 requir
 未登録 evidence は `EvidenceRegistryRequired` として返し、黙って無視しません。source の optional
 shrinks/coverage は canonical `SamplingPlan` と manifest へ投影されますが、selfhost/native 実行と
 generator/shrink policy の parity は後続境界です。
+
+`--emit-manifest <output.json>` を指定すると、graph 構築後の version 1 manifest を明示 path へ保存します。
+report は従来どおり stdout へ出し、`unknown` (exit code `2`) でも graph が構築できれば manifest を残します。
+parse/adapter error では manifest を作らず、出力先の親 directory も暗黙には作成しません。
 
 ## 現在の境界
 

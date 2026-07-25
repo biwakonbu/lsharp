@@ -63,6 +63,17 @@
   evidence は未完了。Evidence: `crates/lsharp-syntax/tests/intent_edges.rs`,
   `crates/lsharp-types/tests/validation_source.rs`, `docs/adr/decisions-v0.2-source-evidence-record.md`。
 
+## 2026-07-25 EC-M2 source manifest emission
+
+- [~] `EC-M2-03` source manifest emission — `lsharp validate --source <source.ls>
+  --emit-manifest <output.json>` が graph 構築後に version 1 manifest を明示 path へ出力し、
+  validation report の stdout と混ぜない。`unknown` report でも graph が構築できれば manifest を
+  保存し、parse/adapter error 前には出力しない。JSON manifest input mode も同じ serializer を使う。
+  selfhost/native manifest producer、atomic/durable release artifact、EmbeddedCli/MCP、Mac Apple
+  Silicon / Linux x86_64 runtime evidence は未完了。Evidence:
+  `crates/lsharp-driver/tests/validate_cli.rs`,
+  `docs/adr/decisions-v0.2-source-manifest-emission.md`。
+
 - [~] `EC-M2-01`〜`EC-M2-03` の types-only wire/model slice — `StableId` の fail-closed parser、
   typed `IntentNode` wire conversion、duplicate/required-field を検査する `IntentGraph`、
   `pass` / `fail` / `unknown` validation report、strict JSON/text projection、deterministic
@@ -94,7 +105,8 @@
   実行する。contract/evidence 未接続の妥当な source は `unknown` (2)、parse/duplicate/orphan/
   typed endpoint error は入力診断として fail-closed、positional manifest との併用は拒否する。
   supports/contradicts は登録済み evidence にだけ接続し、registry 未接続時は明示的な入力エラーとなる。
-  selfhost/native parity、EmbeddedCli/MCP、両 target の artifact/runtime evidence は未完了。
+  `--emit-manifest` による source graph artifact は接続済みだが、selfhost/native parity、EmbeddedCli/MCP、
+  両 target の artifact/runtime evidence は未完了。
   Evidence: `docs/adr/decisions-v0.2-validation-source-cli.md`,
   `docs/adr/decisions-v0.2-source-evidence-boundary.md`,
   `docs/adr/decisions-v0.2-source-tested-by.md`,
