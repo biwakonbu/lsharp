@@ -279,3 +279,74 @@
             (source-result 0 (source-evidence-error (source-evidence-error-registry-required) "observation" evidence-id start end))
             (source-result 1 (source-edge-record relation evidence-id claim-id start end))))))
     (source-result 0 (source-evidence-error (source-evidence-error-invalid-edge) "relation" "" start end))))
+
+(defn source-evidence-append-forms [forms idx len registry nodes]
+  (if (>= idx len)
+    (source-result 1 registry)
+    (let [form (vector-get forms idx)
+      kind (vector-get form 0)]
+      (if (= kind (source-evidence-form-kind))
+        (let [parsed (source-evidence-register-form registry nodes form)]
+          (if (= (source-result-status parsed) 0)
+            parsed
+            (source-evidence-append-forms
+              forms
+              (+ idx 1)
+              len
+              (source-result-value parsed)
+              nodes)))
+        (source-evidence-append-forms forms (+ idx 1) len registry nodes)))))
+
+(defn source-evidence-collect-children [decl idx len registry nodes]
+  (if (>= idx len)
+    (source-result 1 registry)
+    (let [child (vector-get decl idx)
+      parsed (source-evidence-collect-decl child registry nodes)]
+      (if (= (source-result-status parsed) 0)
+        parsed
+        (source-evidence-collect-children
+          decl
+          (+ idx 1)
+          len
+          (source-result-value parsed)
+          nodes)))))
+
+(defn source-evidence-collect-decl [decl registry nodes]
+  (let [tag (vector-get decl 0)]
+    (if (= tag (ast-defn))
+      (let [forms (source-ordered-forms decl)]
+        (source-evidence-append-forms forms 0 (vector-length forms) registry nodes))
+      (if (= tag (ast-private))
+        (source-evidence-collect-decl (vector-get decl 1) registry nodes)
+        (if (= tag (ast-module-decl))
+          (source-evidence-collect-children decl 5 (vector-length decl) registry nodes)
+          (if (= tag (ast-impldef))
+            (source-evidence-collect-children decl 4 (vector-length decl) registry nodes)
+            (source-result 1 registry)))))))
+
+(defn source-evidence-collect-program-loop [program idx len registry nodes]
+  (if (>= idx len)
+    (source-result 1 registry)
+    (let [parsed (source-evidence-collect-decl
+        (vector-get program idx)
+        registry
+        nodes)]
+      (if (= (source-result-status parsed) 0)
+        parsed
+        (source-evidence-collect-program-loop
+          program
+          (+ idx 1)
+          len
+          (source-result-value parsed)
+          nodes)))))
+
+(defn source-evidence-registry-from-program [program]
+  (let [nodes-result (source-collect-nodes program)]
+    (if (= (source-result-status nodes-result) 0)
+      nodes-result
+      (source-evidence-collect-program-loop
+        program
+        0
+        (vector-length program)
+        (source-evidence-registry-new)
+        (source-result-value nodes-result)))))

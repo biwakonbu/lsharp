@@ -559,6 +559,16 @@ typed graph validationを行わない。`intent`、`claim`、`motivates` の dir
 TypeDef、nested module/private/impl traversal、evidence record、typed graph projection、`validate` /
 `--emit-manifest`、EmbeddedCli/MCP、Mac Apple Silicon / Linux x86_64 artifact/runtime parityは残件である。
 
+### EC-M2-02 selfhost evidence registry initial source-form slice (2026-07-25)
+
+`selfhost/src/Syntax/Parser.ls` が `:evidence` の named required fieldsと `:shrinks` / `:coverage` を
+17-field payloadへ変換し、`selfhost/src/Tools/Validation/Evidence.ls` の registry consumerへ渡す。
+top-level source textからの parser → registry、required field/typed subject、sampling、duplicate IDの
+fail-closed boundaryを `test_e2e_selfhost_evidence_registry_consumes_parser_form` と registry全5件で確認し、
+既存 `selfhost_intent_source_adapter` 8件も再実行して passした。これは Rust-host actual Wasm の
+selfhost runtime evidenceであり、source `supports` / `contradicts` の graph wiring、manifest/CLI、native
+stage0、Mac Apple Silicon / Linux x86_64 current-source parityは未完了である。
+
 ### EC-M2-03 selfhost `validate --source` initial CLI slice (2026-07-25)
 
 `selfhost/src/App/Cli.ls` に `validate` command、`--source <file> --format json` option、top-level

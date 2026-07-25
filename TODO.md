@@ -38,8 +38,7 @@
   node/edge record へ投影し、duplicate、orphan、未接続 evidence edge を fail-closed に拒否する。
   nested `module` / `private` / `impl` の宣言順と node/edge directive span、fail-closed error の現在 span
   と duplicate の first span も selfhost E2E で確認済み。
-  Contract の実体定義、`:evidence` record の selfhost parser、optional な shrink/coverage source
-  fields は contract/evidence registry の入力境界が残件。
+  Contract の実体定義、source-level registry/edge/manifest との完全統合、native parity は残件。
   Evidence: `crates/lsharp-syntax/tests/intent_edges.rs`,
   `crates/lsharp-types/tests/validation_source.rs`,
   `crates/lsharp-wasm/tests/e2e/selfhost_intent_source_adapter.rs`,
@@ -71,14 +70,13 @@
   `crates/lsharp-syntax/tests/intent_edges.rs`,
   `crates/lsharp-types/tests/validation_source.rs`, `crates/lsharp-driver/tests/validate_cli.rs`,
   `docs/adr/decisions-v0.2-source-evidence-record.md`。
-  2026-07-25 の selfhost registry consumer slice では、canonical `EvidenceForm` と同じ 17-field
-  payload を `[form-kind, payload, span-start, span-end]` として受け取り、required field、typed
-  subject、method/outcome/independence、sampling の非負値と重複 coverage bucket、duplicate ID を
-  fail-closed に検査する `Tools.Validation.Evidence` を追加した。登録済み record だけを
-  `supports` / `contradicts` edge に接続し、duplicate ID は current/first span を返す。
-  `test_e2e_selfhost_evidence_registry` の 4 ケース（登録＋edge、required field、coverage 重複、ID 重複）
-  が native selfhost runtime で green である。これは parser の `:evidence` source form、manifest/CLI
-  wiring、native stage0 の parity をまだ含まないため、EC-M2-02 の aggregate は `[~]` のまま維持する。
+  2026-07-25 の selfhost registry consumer slice では、parser が named `:evidence` fields と
+  optional `:shrinks` / `:coverage` を canonical `EvidenceForm` と同じ 17-field payloadへ変換し、
+  `Tools.Validation.Evidence` が required field、typed subject、method/outcome/independence、sampling
+  と duplicate ID を fail-closed に検査する。top-level source text → parser form → registryの実行を
+  `test_e2e_selfhost_evidence_registry_consumes_parser_form` で確認し、registry 全5件、既存 source
+  adapter 回帰8件が green である。source `supports` / `contradicts` の graph wiring、manifest/CLI、
+  native stage0 の parity はまだ含まないため、EC-M2-02 の aggregate は `[~]` のまま維持する。
   Evidence: `selfhost/src/Tools/Validation/Evidence.ls`,
   `crates/lsharp-wasm/tests/e2e/selfhost_evidence_registry.rs`,
   `docs/adr/decisions-v0.2-selfhost-evidence-registry.md`。
@@ -89,8 +87,8 @@
   `:coverage [("bucket" 非負整数)...]` を source order のまま parser が保持し、負数・重複 field・重複
   bucket を fail-closed に拒否する。source adapter は値を canonical `SamplingPlan` の shrink path /
   coverage map へ投影し、既存の deterministic manifest serializer でも同じ値を出力する。selfhost/native
-  parser parity、実行 trace と generator policy、Mac Apple Silicon / Linux x86_64 artifact/runtime
-  evidence は未完了。Evidence: `crates/lsharp-syntax/tests/intent_edges.rs`,
+  selfhost parser の malformed/unknown field diagnostics、実行 trace と generator policy、Mac Apple Silicon /
+  Linux x86_64 artifact/runtime evidence は未完了。Evidence: `crates/lsharp-syntax/tests/intent_edges.rs`,
   `crates/lsharp-types/tests/validation_source.rs`, `docs/adr/decisions-v0.2-source-evidence-record.md`。
 
 ## 2026-07-25 EC-M2 source manifest emission

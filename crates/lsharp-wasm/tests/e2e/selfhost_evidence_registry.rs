@@ -112,6 +112,51 @@ fn test_e2e_selfhost_evidence_registry_registers_record_and_edge() {
     );
 }
 
+/// EC-M2-02: parser の :evidence form を registry consumer へ直接渡す。
+#[test]
+fn test_e2e_selfhost_evidence_registry_consumes_parser_form() {
+    let harness = r#"
+(defn main []
+  (let [program (parse-program "(defn verify [] :intent \"intent:checkout/cancel\" \"Users can cancel\" :claim \"claim:checkout/rejects\" \"Shipped orders are rejected\" :evidence \"evidence:checkout/verified\" :subject \"claim:checkout/rejects\" :method \"case\" :outcome \"pass\" :runner \"cargo-test\" :target \"aarch64-apple-darwin\" :source-commit \"deadbeef\" :artifact-digest \"sha256:abc\" :cases 3 :seed 42 :generator \"checkout-generator\" :shrinks [8 3 1] :coverage [(\"smoke\" 3)] :producer \"lsharp-test\" :tool-version \"0.2\" :timestamp \"2026-07-25T00:00:00Z\" :independence \"same-author\" true)")
+        result (source-evidence-registry-from-program program)
+        registry (source-result-value result)
+        evidence-record (vector-get registry 0)]
+    (do
+      (print (source-result-status result))
+      (print (vector-length registry))
+      (print-string (source-evidence-record-id evidence-record))
+      (print-string "\n")
+      (print-string (source-evidence-record-subject evidence-record))
+      (print-string "\n")
+      (print-string (source-evidence-record-method evidence-record))
+      (print-string "\n")
+      (print (source-evidence-record-cases evidence-record))
+      (print (source-evidence-record-seed evidence-record))
+      (print (vector-length (source-evidence-record-shrinks evidence-record)))
+      (print (vector-length (source-evidence-record-coverage evidence-record)))
+      0)))
+"#;
+
+    let output = run_evidence_registry_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        [
+            "1",
+            "1",
+            "evidence:checkout/verified",
+            "claim:checkout/rejects",
+            "case",
+            "3",
+            "42",
+            "3",
+            "1",
+        ],
+        "parser の evidence form は selfhost registry に登録されるべき"
+    );
+}
+
 /// EC-M2-02: required field 欠落は evidence registry に登録しない。
 #[test]
 fn test_e2e_selfhost_evidence_registry_rejects_empty_required_field() {

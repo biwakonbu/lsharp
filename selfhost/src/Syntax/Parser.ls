@@ -681,7 +681,8 @@
             (if (string-eq name "constrained-by") 1
               (if (string-eq name "tested-by") 1
                 (if (string-eq name "supports") 1
-                  (if (string-eq name "contradicts") 1 0))))))))))
+                (if (string-eq name "contradicts") 1
+                  (if (string-eq name "evidence") 1 0)))))))))))
 
 (defn directive-symbol-v3 [name]
   (if (string-eq name "where") 1
@@ -885,7 +886,9 @@
                             (parse-defn-meta-property-v3 spans pos-ref src meta)
                             (let [source-kind (source-metadata-form-kind-v3 dir-name)]
                               (if (> source-kind 0)
-                                (parse-defn-meta-source-pair-v3 spans pos-ref src meta source-kind)
+                                (if (= source-kind 15)
+                                  (parse-defn-meta-evidence-v3 spans pos-ref src meta)
+                                  (parse-defn-meta-source-pair-v3 spans pos-ref src meta source-kind))
                                 (do
                                   (skip-directive-payload-v3 spans pos-ref)
                                   (parse-defn-metadata-loop-rooted-v3 spans pos-ref src meta))))))))))))]
@@ -1349,7 +1352,8 @@
             (if (string-eq name "constrained-by") 11
               (if (string-eq name "tested-by") 12
                 (if (string-eq name "supports") 13
-                  (if (string-eq name "contradicts") 14 0))))))))))
+                (if (string-eq name "contradicts") 14
+                  (if (string-eq name "evidence") 15 0)))))))))))
 
 (defn parse-source-metadata-string-v3 [spans pos-ref src]
   (if (== (p-current spans pos-ref) 12)
@@ -1373,6 +1377,183 @@
               (root_pop)
               (root_pop)
               result)))))))
+
+(defn parse-source-evidence-int-v3 [spans pos-ref src]
+  (if (== (p-current spans pos-ref) 10)
+    (let [start (p-start spans pos-ref)
+      end (p-end spans pos-ref)
+      value (parse-int-from-str src start end 0)]
+      (do
+        (p-advance pos-ref)
+        value))
+    -1))
+
+(defn advance-if-token-v3 [spans pos-ref token]
+  (if (== (p-current spans pos-ref) token)
+    (do
+      (p-advance pos-ref)
+      0)
+    0))
+
+(defn parse-source-evidence-shrinks-loop-v3 [spans pos-ref src values]
+  (if (or (== (p-current spans pos-ref) 3) (== (p-current spans pos-ref) 99))
+    (do
+      (advance-if-token-v3 spans pos-ref 3)
+      values)
+    (if (== (p-current spans pos-ref) 10)
+      (let [value (parse-source-evidence-int-v3 spans pos-ref src)]
+        (parse-source-evidence-shrinks-loop-v3
+          spans
+          pos-ref
+          src
+          (vector-push-single-rooted-v3 values value)))
+      values)))
+
+(defn parse-source-evidence-shrinks-v3 [spans pos-ref src]
+  (if (== (p-current spans pos-ref) 2)
+    (do
+      (p-advance pos-ref)
+      (parse-source-evidence-shrinks-loop-v3 spans pos-ref src (vector-new 0)))
+    (vector-new 0)))
+
+(defn parse-source-evidence-coverage-loop-v3 [spans pos-ref src values]
+  (if (or (== (p-current spans pos-ref) 3) (== (p-current spans pos-ref) 99))
+    (do
+      (advance-if-token-v3 spans pos-ref 3)
+      values)
+    (if (== (p-current spans pos-ref) 0)
+      (do
+        (p-advance pos-ref)
+        (let [bucket (parse-source-metadata-string-v3 spans pos-ref src)
+          count (parse-source-evidence-int-v3 spans pos-ref src)]
+          (do
+            (advance-if-token-v3 spans pos-ref 1)
+            (let [entry (vector-push-pair-rooted-v3 (vector-new 0) bucket count)]
+              (parse-source-evidence-coverage-loop-v3
+                spans
+                pos-ref
+                src
+                (vector-push-single-rooted-v3 values entry))))))
+      values)))
+
+(defn parse-source-evidence-coverage-v3 [spans pos-ref src]
+  (if (== (p-current spans pos-ref) 2)
+    (do
+      (p-advance pos-ref)
+      (parse-source-evidence-coverage-loop-v3 spans pos-ref src (vector-new 0)))
+    (vector-new 0)))
+
+(defn source-evidence-field-kind-v3 [name]
+  (if (string-eq name "subject") 1
+    (if (string-eq name "method") 2
+      (if (string-eq name "outcome") 3
+        (if (string-eq name "runner") 4
+          (if (string-eq name "target") 5
+            (if (string-eq name "source-commit") 6
+              (if (string-eq name "artifact-digest") 7
+                (if (string-eq name "cases") 8
+                  (if (string-eq name "seed") 9
+                    (if (string-eq name "generator") 10
+                      (if (string-eq name "shrinks") 11
+                        (if (string-eq name "coverage") 12
+                          (if (string-eq name "producer") 13
+                            (if (string-eq name "tool-version") 14
+                              (if (string-eq name "timestamp") 15
+                                (if (string-eq name "independence") 16 0)))))))))))))))))
+
+(defn parse-source-evidence-int-field-v3 [spans pos-ref src payload field-kind]
+  (do
+    (root_push payload)
+    (let [value (parse-source-evidence-int-v3 spans pos-ref src)
+      updated (vector-set-at-rooted-v3 payload field-kind value)]
+      (do
+        (root_pop)
+        (parse-source-evidence-fields-loop-v3 spans pos-ref src updated)))))
+
+(defn parse-source-evidence-string-field-v3 [spans pos-ref src payload field-kind]
+  (do
+    (root_push payload)
+    (let [value (parse-source-metadata-string-v3 spans pos-ref src)]
+      (do
+        (root_push value)
+        (let [updated (vector-set-at-rooted-v3 payload field-kind value)]
+          (do
+            (root_pop)
+            (root_pop)
+            (parse-source-evidence-fields-loop-v3 spans pos-ref src updated)))))))
+
+(defn parse-source-evidence-vector-field-v3 [spans pos-ref src payload field-kind]
+  (do
+    (root_push payload)
+    (let [value (if (= field-kind 11)
+      (parse-source-evidence-shrinks-v3 spans pos-ref src)
+      (parse-source-evidence-coverage-v3 spans pos-ref src))]
+      (do
+        (root_push value)
+        (let [updated (vector-set-at-rooted-v3 payload field-kind value)]
+          (do
+            (root_pop)
+            (root_pop)
+            (parse-source-evidence-fields-loop-v3 spans pos-ref src updated)))))))
+
+(defn parse-source-evidence-fields-loop-v3 [spans pos-ref src payload]
+  (if (== (p-current spans pos-ref) 50)
+    (do
+      (root_push payload)
+      (let [field-name-idx (+ (ref-get pos-ref) 1)
+        field-name (substring src (span-start spans field-name-idx) (span-end spans field-name-idx))
+        field-kind (source-evidence-field-kind-v3 field-name)]
+        (do
+          (root_push field-name)
+          (if (> field-kind 0)
+            (do
+              (p-advance pos-ref)
+              (p-advance pos-ref)
+              (root_pop)
+              (root_pop)
+              (if (or (= field-kind 8) (= field-kind 9))
+                (parse-source-evidence-int-field-v3 spans pos-ref src payload field-kind)
+                (if (or (= field-kind 11) (= field-kind 12))
+                  (parse-source-evidence-vector-field-v3 spans pos-ref src payload field-kind)
+                  (parse-source-evidence-string-field-v3 spans pos-ref src payload field-kind))))
+            (do
+              (root_pop)
+              (root_pop)
+              payload)))))
+    payload))
+
+(defn make-empty-source-evidence-payload-v3 [id]
+  (do
+    (root_push id)
+    (let [shrinks (vector-new 0)
+      coverage (vector-new 0)
+      first (vector-push-quad-rooted-v3 (vector-new 0) id "" "" "")
+      second (vector-push-quad-rooted-v3 first "" "" "" "")
+      third (vector-push-quad-rooted-v3 second -1 -1 "" shrinks)
+      fourth (vector-push-quad-rooted-v3 third coverage "" "" "")
+      result (vector-push-single-rooted-v3 fourth "")]
+      (do
+        (root_pop)
+        result))))
+
+(defn parse-defn-meta-evidence-v3 [spans pos-ref src meta]
+  (let [directive-start (metadata-directive-start-v3 spans pos-ref)
+    id (parse-source-metadata-string-v3 spans pos-ref src)
+    payload0 (make-empty-source-evidence-payload-v3 id)
+    payload (parse-source-evidence-fields-loop-v3 spans pos-ref src
+      (vector-set-at-rooted-v3 payload0 0 id))
+    directive-end (metadata-directive-end-v3 spans pos-ref)]
+    (do
+      (root_push payload)
+      (let [updated (append-defn-metadata-form-v3
+          meta
+          15
+          payload
+          directive-start
+          directive-end)]
+        (do
+          (root_pop)
+          (parse-defn-metadata-loop-v3 spans pos-ref src updated))))))
 
 (defn parse-defn-meta-source-pair-v3 [spans pos-ref src meta form-kind]
   (let [directive-start (metadata-directive-start-v3 spans pos-ref)
