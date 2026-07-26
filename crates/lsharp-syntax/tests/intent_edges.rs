@@ -162,6 +162,26 @@ fn evidence_record_metadata_requires_all_named_fields() {
 }
 
 #[test]
+fn evidence_record_metadata_rejects_duplicate_named_field() {
+    let error = parse(
+        r#"
+        (defn cancel []
+          :evidence "evidence:checkout/cancel-observation"
+            :subject "claim:checkout/cancel-rejects-shipped"
+            :subject "claim:checkout/cancel-rejects-shipped"
+            :method "case" :outcome "pass" :runner "cargo-test"
+            :target "aarch64-apple-darwin" :source-commit "0123456789abcdef"
+            :artifact-digest "sha256:abc123" :cases 1 :seed 42
+            :generator "fixture" :producer "lsharp-test" :tool-version "0.2.0"
+            :timestamp "2026-07-25T00:00:00Z" :independence "same-author"
+          true)
+        "#,
+    )
+    .expect_err("重複した evidence named field は拒否するべき");
+    assert_eq!(error.code(), "LS0101");
+}
+
+#[test]
 fn evidence_record_metadata_preserves_optional_sampling_fields() {
     let program = parse(
         r#"

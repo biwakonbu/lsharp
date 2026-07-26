@@ -19,6 +19,7 @@ mod selfhost_html_layout;
 mod selfhost_html_template;
 mod selfhost_intent_source_adapter;
 mod selfhost_evidence_registry;
+mod selfhost_evidence_parser_contract;
 mod selfhost_migration_schema;
 mod selfhost_jsonrpc_transport;
 mod selfhost_lexer_parser;

@@ -1461,16 +1461,16 @@
                               (if (string-eq name "timestamp") 15
                                 (if (string-eq name "independence") 16 0)))))))))))))))))
 
-(defn parse-source-evidence-int-field-v3 [spans pos-ref src payload field-kind]
+(defn parse-source-evidence-int-field-v3 [spans pos-ref src payload field-kind seen-ref]
   (do
     (root_push payload)
     (let [value (parse-source-evidence-int-v3 spans pos-ref src)
       updated (vector-set-at-rooted-v3 payload field-kind value)]
       (do
         (root_pop)
-        (parse-source-evidence-fields-loop-v3 spans pos-ref src updated)))))
+        (parse-source-evidence-fields-loop-v3 spans pos-ref src updated seen-ref)))))
 
-(defn parse-source-evidence-string-field-v3 [spans pos-ref src payload field-kind]
+(defn parse-source-evidence-string-field-v3 [spans pos-ref src payload field-kind seen-ref]
   (do
     (root_push payload)
     (let [value (parse-source-metadata-string-v3 spans pos-ref src)]
@@ -1480,9 +1480,9 @@
           (do
             (root_pop)
             (root_pop)
-            (parse-source-evidence-fields-loop-v3 spans pos-ref src updated)))))))
+            (parse-source-evidence-fields-loop-v3 spans pos-ref src updated seen-ref)))))))
 
-(defn parse-source-evidence-vector-field-v3 [spans pos-ref src payload field-kind]
+(defn parse-source-evidence-vector-field-v3 [spans pos-ref src payload field-kind seen-ref]
   (do
     (root_push payload)
     (let [value (if (= field-kind 11)
@@ -1494,33 +1494,60 @@
           (do
             (root_pop)
             (root_pop)
-            (parse-source-evidence-fields-loop-v3 spans pos-ref src updated)))))))
+            (parse-source-evidence-fields-loop-v3 spans pos-ref src updated seen-ref)))))))
 
-(defn parse-source-evidence-fields-loop-v3 [spans pos-ref src payload]
+(defn parse-source-evidence-fields-loop-v3 [spans pos-ref src payload seen-ref]
   (if (== (p-current spans pos-ref) 50)
     (do
+      ;; seen-ref は named field の存在を保持し、同じ field の上書きを許さない。
+      (root_push seen-ref)
       (root_push payload)
       (let [field-name-idx (+ (ref-get pos-ref) 1)
         field-name (substring src (span-start spans field-name-idx) (span-end spans field-name-idx))
         field-kind (source-evidence-field-kind-v3 field-name)]
         (do
           (root_push field-name)
-          (if (> field-kind 0)
+          (let [seen (ref-get seen-ref)
+            duplicate (if (> field-kind 0) (vector-get seen field-kind) 0)
+            updated-seen (if (> field-kind 0)
+              (vector-set-at-rooted-v3 seen field-kind 1)
+              seen)]
             (do
-              (p-advance pos-ref)
-              (p-advance pos-ref)
-              (root_pop)
-              (root_pop)
-              (if (or (= field-kind 8) (= field-kind 9))
-                (parse-source-evidence-int-field-v3 spans pos-ref src payload field-kind)
-                (if (or (= field-kind 11) (= field-kind 12))
-                  (parse-source-evidence-vector-field-v3 spans pos-ref src payload field-kind)
-                  (parse-source-evidence-string-field-v3 spans pos-ref src payload field-kind))))
-            (do
-              (root_pop)
-              (root_pop)
-              payload)))))
+              (if (> field-kind 0) (do (ref-set seen-ref updated-seen) 0) 0)
+              (if (> field-kind 0)
+                (do
+                  (p-advance pos-ref)
+                  (p-advance pos-ref)
+                  (let [parsed (if (or (= field-kind 8) (= field-kind 9))
+                    (parse-source-evidence-int-field-v3 spans pos-ref src payload field-kind seen-ref)
+                    (if (or (= field-kind 11) (= field-kind 12))
+                      (parse-source-evidence-vector-field-v3 spans pos-ref src payload field-kind seen-ref)
+                      (parse-source-evidence-string-field-v3 spans pos-ref src payload field-kind seen-ref)))
+                    result (if (= duplicate 1)
+                      (vector-push-single-rooted-v3 parsed -1)
+                      parsed)]
+                    (do
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      result)))
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  payload)))))))
     payload))
+
+(defn source-evidence-seen-new-v3-loop [idx seen]
+  (if (>= idx 17)
+    seen
+    (source-evidence-seen-new-v3-loop
+      (+ idx 1)
+      (vector-push-single-rooted-v3 seen 0))))
+
+(defn source-evidence-seen-new-v3 []
+  ;; vector-new は capacity だけを確保するため、field 数分の 0 を明示的に詰める。
+  (source-evidence-seen-new-v3-loop 0 (vector-new 17)))
 
 (defn make-empty-source-evidence-payload-v3 [id]
   (do
@@ -1540,20 +1567,25 @@
   (let [directive-start (metadata-directive-start-v3 spans pos-ref)
     id (parse-source-metadata-string-v3 spans pos-ref src)
     payload0 (make-empty-source-evidence-payload-v3 id)
-    payload (parse-source-evidence-fields-loop-v3 spans pos-ref src
-      (vector-set-at-rooted-v3 payload0 0 id))
+    seen-ref (ref-new (source-evidence-seen-new-v3))
     directive-end (metadata-directive-end-v3 spans pos-ref)]
     (do
-      (root_push payload)
-      (let [updated (append-defn-metadata-form-v3
-          meta
-          15
-          payload
-          directive-start
-          directive-end)]
+      (root_push seen-ref)
+      (let [payload (parse-source-evidence-fields-loop-v3 spans pos-ref src
+          (vector-set-at-rooted-v3 payload0 0 id)
+          seen-ref)]
         (do
-          (root_pop)
-          (parse-defn-metadata-loop-v3 spans pos-ref src updated))))))
+          (root_push payload)
+          (let [updated (append-defn-metadata-form-v3
+              meta
+              15
+              payload
+              directive-start
+              directive-end)]
+            (do
+              (root_pop)
+              (root_pop)
+              (parse-defn-metadata-loop-v3 spans pos-ref src updated))))))))
 
 (defn parse-defn-meta-source-pair-v3 [spans pos-ref src meta form-kind]
   (let [directive-start (metadata-directive-start-v3 spans pos-ref)
