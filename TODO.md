@@ -322,6 +322,10 @@
 
 - [~] `imp-06` driver MCP compile split — `crates/lsharp-driver/src/mcp_server.rs` の temporary source→Wasm→WASI execution helper（29 行）を `mcp_compile.rs`（37 行）へ移動し、parent を 1240 行から 1211 行へ縮小した。`include!` によって source/file input、Preview1 compile target、formatted source/WASI stdout/exit code response、driver I/O diagnostics の既存 private path と runtime semantics を維持し、missing source/file contract test を追加した。RED `E0583` → GREEN、MCP focused 34 件と `lsharp-driver` unit は pass。`default_path_delegation` integration の origin/main 由来既知 7 failures（embedded component/selfhost default-path contract）は今回の移動とは切り分ける。残る MCP error/search/tool implementation の分割、selfhost/native parity、I-01 / I-08 aggregate は未完了。Evidence: `docs/adr/decisions-legacy-driver-mcp-compile-split.md`。
 
+## 2026-07-26 driver MCP language-tool implementation 責務分離
+
+- [~] `imp-06` driver MCP language tools split — `crates/lsharp-driver/src/mcp_server.rs` の hover/check、legacy migration diagnostics、completion、format、definition、references、errors と source/position helper（218 行）を `mcp_language.rs`（217 行）へ移動し、parent を 1211 行から 1001 行へ縮小した。`include!` によって既存 `call_tool` dispatch、LSP analysis/format API、project context module candidates、error reference、source/file I/O diagnostics の private path と response semantics を維持し、missing `error_code` contract test を追加した。RED `E0583` → GREEN、MCP focused 35 件と `lsharp-driver` unit 157 件は pass。`default_path_delegation` integration の origin/main 由来既知 7 failures（embedded component/selfhost default-path contract）は今回の移動とは切り分ける。残る MCP search/tool implementation の分割、selfhost/native parity、I-01 / I-08 aggregate は未完了。Evidence: `docs/adr/decisions-legacy-driver-mcp-language-tools-split.md`。
+
 > 凡例: `[x]` 完了 / `[ ]` 未着手 / `[~]` 部分実装 / `[BLOCKED: ...]` 依存待ち / `[DEFERRED]` 後続トラック送り
 >
 > **完了済みフェーズ**: Phase 0-7, P8, P9-1/2/3/4/6, P10, P12, P13, P14。
