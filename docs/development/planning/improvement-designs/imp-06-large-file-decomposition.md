@@ -178,6 +178,8 @@ HashMap の allocation/size lowering（`map-new`、`map-size`、62 行）を `ex
 
 `crates/lsharp-driver/src/main.rs` の artifact cache environment/limit parser と maintenance helper（112 行）を `artifact_cache_options.rs` へ移動し、parent を 2591 行から 2480 行へ縮小した。`include!` によって既存 private function/constant path、CLI compile/build wiring、cache validation/trim semantics を維持し、zero limit parsing contract test を追加した。RED (`E0583`) → GREEN、`lsharp-driver` unit 152件と focused cache test は pass。`default_path_delegation` integration は origin/main 由来の既知 7 failures（embedded component/selfhost default-path contract）を再確認しており、今回の移動起因とは切り分けている。clippy、workspace check、対象 Rust 2024 rustfmt、`git diff --check`、docs audit が passした。production driver の追加分割、selfhost/native parity、I-01 / I-08 aggregate は未完了である。Evidence: `docs/adr/decisions-legacy-driver-artifact-cache-options-split.md`。
 
+`crates/lsharp-driver/src/mcp_server.rs` の stdio transport と JSON-RPC dispatch（118 行）を `mcp_protocol.rs`（119 行）へ移動し、parent を 1578 行から 1476 行へ縮小した。`include!` によって `run_stdio_server` / `handle_jsonrpc_message`、MCP protocol version、tool list/call wiring、JSON-RPC result/error semantics を同一 private namespace に維持し、initialize response の protocol/capability contract test を追加した。RED (`E0583`) → GREEN、MCP focused 31件と `lsharp-driver` unit は pass。`default_path_delegation` integration の origin/main 由来既知 7 failures（embedded component/selfhost default-path contract）は今回の移動とは切り分ける。clippy、workspace check、対象 Rust 2024 rustfmt、`git diff --check`、docs audit が passした。production MCP tool の追加分割、selfhost/native parity、I-01 / I-08 aggregate は未完了である。Evidence: `docs/adr/decisions-legacy-driver-mcp-protocol-split.md`。
+
 ### 3. 優先順位
 
 1. **imp-02 (エラー統一) の対象になるファイルを先に分割しない** — A-1 のエラー型変更を

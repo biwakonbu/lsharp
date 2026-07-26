@@ -306,6 +306,10 @@
 
 - [~] `imp-06` driver artifact cache options split — `crates/lsharp-driver/src/main.rs` の artifact cache environment/limit parser と maintenance helper（112 行）を `artifact_cache_options.rs` へ移動し、parent を 2591 行から 2480 行へ縮小した。`include!` によって既存 private function/constant path、CLI compile/build wiring、cache validation/trim semantics を維持し、zero limit parsing contract test を追加した。RED `E0583` → GREEN、`lsharp-driver` unit 152 件と focused cache test は pass。`default_path_delegation` integration は origin/main 由来の既知 7 failures（embedded component/selfhost default-path contract）を再確認しており、今回の移動起因とは切り分けている。production driver の追加分割、selfhost/native parity、I-01 / I-08 aggregate は未完了。Evidence: `docs/adr/decisions-legacy-driver-artifact-cache-options-split.md`。
 
+## 2026-07-26 driver MCP protocol transport 責務分離
+
+- [~] `imp-06` driver MCP protocol split — `crates/lsharp-driver/src/mcp_server.rs` の stdio transport と JSON-RPC dispatch（118 行）を `mcp_protocol.rs`（119 行）へ移動し、parent を 1578 行から 1476 行へ縮小した。`include!` によって `run_stdio_server` / `handle_jsonrpc_message`、MCP protocol version、tool list/call wiring、JSON-RPC result/error semantics を同一 private namespace に維持し、initialize response の protocol/capability contract test を追加した。RED `E0583` → GREEN、MCP focused 31 件と `lsharp-driver` unit は pass。`default_path_delegation` integration の origin/main 由来既知 7 failures（embedded component/selfhost default-path contract）は今回の移動とは切り分ける。production MCP tool の追加分割、selfhost/native parity、I-01 / I-08 aggregate は未完了。Evidence: `docs/adr/decisions-legacy-driver-mcp-protocol-split.md`。
+
 > 凡例: `[x]` 完了 / `[ ]` 未着手 / `[~]` 部分実装 / `[BLOCKED: ...]` 依存待ち / `[DEFERRED]` 後続トラック送り
 >
 > **完了済みフェーズ**: Phase 0-7, P8, P9-1/2/3/4/6, P10, P12, P13, P14。
