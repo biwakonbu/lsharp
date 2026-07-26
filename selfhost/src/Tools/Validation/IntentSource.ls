@@ -225,6 +225,23 @@
         (vector-get metadata 5)
         (vector-new 0)))))
 
+;; type / record 宣言は metadata を payload の末尾へ保持する。
+;; metadata がない短い宣言 ([tag, name]) は整数の name を誤って読むため除外する。
+(defn source-type-metadata [decl]
+  (let [decl-length (vector-length decl)]
+    (if (> decl-length 2)
+      (let [candidate (vector-get decl (- decl-length 1))]
+        (if (> (vector-length candidate) 5)
+          candidate
+          0))
+      0)))
+
+(defn source-type-ordered-forms [decl]
+  (let [metadata (source-type-metadata decl)]
+    (if (= metadata 0)
+      (vector-new 0)
+      (vector-get metadata 5))))
+
 (defn source-node-form-result [form]
   (if (< (vector-length form) 4)
     (source-result 0 (source-form-malformed-error form))
@@ -294,7 +311,10 @@
           (if (= tag (ast-impldef))
             ;; impl: [tag, trait, type, count, child...]
             (source-collect-node-children decl 4 (vector-length decl) nodes)
-            (source-result 1 nodes)))))))
+            (if (or (= tag (ast-typedef)) (= tag (ast-recorddef)))
+              (let [forms (source-type-ordered-forms decl)]
+                (source-append-node-forms forms 0 (vector-length forms) nodes))
+              (source-result 1 nodes))))))))
 
 (defn source-collect-nodes-program-loop [program idx len nodes]
   (if (>= idx len)
@@ -394,7 +414,10 @@
           (source-collect-edge-children decl 5 (vector-length decl) nodes edges)
           (if (= tag (ast-impldef))
             (source-collect-edge-children decl 4 (vector-length decl) nodes edges)
-            (source-result 1 edges)))))))
+            (if (or (= tag (ast-typedef)) (= tag (ast-recorddef)))
+              (let [forms (source-type-ordered-forms decl)]
+                (source-append-edge-forms forms 0 (vector-length forms) nodes edges))
+              (source-result 1 edges))))))))
 
 (defn source-collect-edges-program-loop [program idx len nodes edges]
   (if (>= idx len)

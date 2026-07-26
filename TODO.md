@@ -24,7 +24,9 @@
 - [~] `EC-M2-01` intent AST と stable ID — Rust canonical model、source の
   `:intent` / `:claim` / `:assumption` / `:open-question`、`motivates` /
   `constrained-by` / `tested-by`、fail-closed な typed ID は verified。ID 省略時の命名規則、
-  project-level duplicate 検査、selfhost/native parity を閉じる。
+  project-level duplicate 検査、selfhost/native parity を閉じる。selfhost parser の ADT/record
+  定義 metadata 保持と `IntentSource` の node/typed-edge projection は Rust-host actual Wasm
+  の verified slice として ADR に記録したが、native stage0 parity は残る。
 - [~] `EC-M2-02` evidence graph — required provenance を持つ evidence record、
   `supports` / `contradicts` の registry closure、source の `shrinks` / `coverage`、
   canonical manifest projection は verified。実行 trace と generator policy、

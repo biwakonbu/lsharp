@@ -578,8 +578,13 @@ typed graph validationを行わない。`intent`、`claim`、`motivates` の dir
 `test_e2e_selfhost_parser_preserves_source_intent_metadata_forms` の selfhost parser runtimeで確認した。
 
 これは Rust host が compile/run する parser bundle の verified sliceであり、native stage0 の証拠ではない。
-TypeDef、nested module/private/impl traversal、evidence record、typed graph projection、`validate` /
-`--emit-manifest`、EmbeddedCli/MCP、Mac Apple Silicon / Linux x86_64 artifact/runtime parityは残件である。
+追加で、TypeDef / RecordDef 後の source metadata を parser が保持し、`IntentSource` が node と typed edge へ
+投影する境界を `test_e2e_selfhost_source_adapter_projects_type_definition_metadata` と
+`test_e2e_selfhost_source_adapter_projects_record_definition_metadata` で確認した。これは
+`docs/adr/decisions-v0.2-selfhost-source-type-record-metadata.md` に記録した partial parity slice である。
+TypeDef / RecordDef の native stage0 parity、evidence record、全 nested declaration と typed graph
+projection、`validate` / `--emit-manifest`、EmbeddedCli/MCP、Mac Apple Silicon / Linux x86_64
+artifact/runtime parityは残件である。
 
 ### EC-M2-02 selfhost evidence registry initial source-form slice (2026-07-25)
 

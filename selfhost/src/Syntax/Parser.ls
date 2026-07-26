@@ -3135,15 +3135,23 @@
       (do
         (root_push fields)
         (root_push params)
-        (p-expect spans pos-ref 1) ;; type 宣言の ) を消費
-        (let [parsed
-                (if (= (vector-length params) 0)
-                  (make-record-def-with-fields name-hash fields)
-                  (make-record-def-with-params name-hash params fields))]
+        (let [metadata (parse-defn-metadata-v3 spans pos-ref src)]
           (do
-            (root_pop)
-            (root_pop)
-            parsed))))))
+            (root_push metadata)
+            (p-expect spans pos-ref 1) ;; type 宣言の ) を消費
+            (let [parsed
+                    (if (= (vector-length params) 0)
+                      (make-record-def-with-fields name-hash fields)
+                      (make-record-def-with-params name-hash params fields))]
+              (do
+                (root_push parsed)
+                (let [with-metadata (maybe-append-defn-meta-v3 parsed metadata)]
+                  (do
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    with-metadata))))))))))
 
 ;; ADT variant の field 型を左から保持する。末尾の ) はここで消費する。
 (defn parse-type-variant-fields-rooted-v3 [spans pos-ref src fields]
@@ -3269,37 +3277,37 @@
         (p-advance pos-ref)
         0))))
 
-;; type 宣言の outer ) まで ADT variant を収集する。
+;; type 宣言の outer ) 直前まで ADT variant を収集する。
 (defn parse-type-variants-rooted-v3 [spans pos-ref src variants]
   (if (== (p-current spans pos-ref) 1)
-    (do
-      (p-advance pos-ref)
-      variants)
-    (if (== (p-current spans pos-ref) 99)
+    variants
+    (if (== (p-current spans pos-ref) 50)
       variants
-      (do
-        (root_push variants)
-        (let [variant (parse-type-variant-v3 spans pos-ref src)]
-          (if (= variant 0)
-            (do
-              (root_pop)
-              (parse-type-variants-rooted-v3 spans pos-ref src variants))
-            (do
-              (root_push variant)
-              (let [next-variants (vector-push-single-rooted-v3 variants variant)]
-                (do
-                  (root_push next-variants)
-                  (let [parsed
-                          (parse-type-variants-rooted-v3
-                            spans
-                            pos-ref
-                            src
-                            next-variants)]
-                    (do
-                      (root_pop)
-                      (root_pop)
-                      (root_pop)
-                      parsed)))))))))))
+      (if (== (p-current spans pos-ref) 99)
+        variants
+        (do
+          (root_push variants)
+          (let [variant (parse-type-variant-v3 spans pos-ref src)]
+            (if (= variant 0)
+              (do
+                (root_pop)
+                (parse-type-variants-rooted-v3 spans pos-ref src variants))
+              (do
+                (root_push variant)
+                (let [next-variants (vector-push-single-rooted-v3 variants variant)]
+                  (do
+                    (root_push next-variants)
+                    (let [parsed
+                            (parse-type-variants-rooted-v3
+                              spans
+                              pos-ref
+                              src
+                              next-variants)]
+                      (do
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        parsed))))))))))))
 
 (defn parse-type-variants-v3 [spans pos-ref src]
   (do
@@ -3337,19 +3345,28 @@
                 (do
                   (root_push variants)
                   (root_push params)
-                  (let [result
-                          (if (= (vector-length variants) 0)
-                            (make-type-decl name-hash)
-                            (if (= (vector-length params) 0)
-                              (make-type-decl-with-variants name-hash variants)
-                              (make-type-decl-with-params-and-variants
-                                name-hash
-                                params
-                                variants)))]
+                  (let [metadata (parse-defn-metadata-v3 spans pos-ref src)]
                     (do
-                      (root_pop)
-                      (root_pop)
-                      result)))))]
+                      (root_push metadata)
+                      (p-expect spans pos-ref 1) ;; type 宣言の ) を消費
+                      (let [result
+                              (if (= (vector-length variants) 0)
+                                (make-type-decl name-hash)
+                                (if (= (vector-length params) 0)
+                                  (make-type-decl-with-variants name-hash variants)
+                                  (make-type-decl-with-params-and-variants
+                                    name-hash
+                                    params
+                                    variants)))]
+                        (do
+                          (root_push result)
+                          (let [with-metadata (maybe-append-defn-meta-v3 result metadata)]
+                            (do
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              with-metadata)))))))))]
           (do
             (root_pop)
             parsed))))))

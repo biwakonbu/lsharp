@@ -20,6 +20,7 @@ mod selfhost_gc_stateful_soak;
 mod selfhost_html_layout;
 mod selfhost_html_template;
 mod selfhost_intent_source_adapter;
+mod selfhost_intent_type_source_adapter;
 mod selfhost_evidence_registry;
 mod selfhost_evidence_parser_contract;
 mod selfhost_migration_schema;
