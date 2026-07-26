@@ -19,6 +19,9 @@ mod argv_tests;
 mod file_exists;
 #[cfg(test)]
 mod file_exists_tests;
+mod free_list;
+#[cfg(test)]
+mod free_list_tests;
 mod hash;
 #[cfg(test)]
 mod hash_tests;
@@ -1621,113 +1624,6 @@ fn emit_trap_func(codes: &mut CodeSection, locals: Vec<(u32, ValType)>) {
     codes.function(&f);
 }
 
-fn emit_free_class_index(f: &mut wasm_encoder::Function, size_local: u32, class_local: u32) {
-    use wasm_encoder::Instruction as W;
-
-    // まず oversize class を選び、下限を満たす小さい class で上書きする。
-    f.instruction(&W::I32Const(GC_FREE_CLASS_COUNT - 1));
-    f.instruction(&W::LocalSet(class_local));
-    for (idx, limit) in GC_FREE_CLASS_LIMITS.iter().enumerate().rev() {
-        f.instruction(&W::LocalGet(size_local));
-        f.instruction(&W::I32Const(*limit));
-        f.instruction(&W::I32LeU);
-        f.instruction(&W::If(wasm_encoder::BlockType::Empty));
-        f.instruction(&W::I32Const(idx as i32));
-        f.instruction(&W::LocalSet(class_local));
-        f.instruction(&W::End);
-    }
-}
-
-fn emit_free_class_capacity(f: &mut wasm_encoder::Function, size_local: u32, capacity_local: u32) {
-    use wasm_encoder::Instruction as W;
-
-    // bump allocation は従来の linear-memory ABI を保ち、要求された aligned size
-    // だけを進める。サイズ class は free-list の探索分岐にだけ使い、既存の
-    // heap_ptr/telemetry の差分を発生させない。
-    f.instruction(&W::LocalGet(size_local));
-    f.instruction(&W::LocalSet(capacity_local));
-}
-
-fn emit_small_free_class_pop(
-    f: &mut wasm_encoder::Function,
-    class_local: u32,
-    addr_local: u32,
-    capacity_local: u32,
-    next_local: u32,
-    free_class_heads_base_global_idx: u32,
-    free_list_count_global_idx: u32,
-) {
-    use wasm_encoder::{Instruction as W, MemArg};
-    let mem32 = |offset: u64| MemArg {
-        offset,
-        align: 2,
-        memory_index: 0,
-    };
-
-    // class 7 は oversize fallback の線形探索に残す。
-    for idx in 0..(GC_FREE_CLASS_COUNT - 1) {
-        f.instruction(&W::LocalGet(class_local));
-        f.instruction(&W::I32Const(idx));
-        f.instruction(&W::I32Eq);
-        f.instruction(&W::If(wasm_encoder::BlockType::Empty));
-        f.instruction(&W::GlobalGet(free_class_heads_base_global_idx + idx as u32));
-        f.instruction(&W::LocalSet(next_local));
-        f.instruction(&W::LocalGet(next_local));
-        f.instruction(&W::I32Eqz);
-        f.instruction(&W::If(wasm_encoder::BlockType::Empty));
-        f.instruction(&W::Else);
-        f.instruction(&W::LocalGet(next_local));
-        f.instruction(&W::LocalSet(addr_local));
-        f.instruction(&W::LocalGet(next_local));
-        f.instruction(&W::I32Load(mem32(4)));
-        f.instruction(&W::LocalSet(capacity_local));
-        f.instruction(&W::LocalGet(next_local));
-        f.instruction(&W::I32Load(mem32(0)));
-        f.instruction(&W::GlobalSet(free_class_heads_base_global_idx + idx as u32));
-        f.instruction(&W::GlobalGet(free_list_count_global_idx));
-        f.instruction(&W::I32Const(1));
-        f.instruction(&W::I32Sub);
-        f.instruction(&W::GlobalSet(free_list_count_global_idx));
-        f.instruction(&W::End);
-        f.instruction(&W::End);
-    }
-}
-
-fn emit_free_class_push(
-    f: &mut wasm_encoder::Function,
-    class_local: u32,
-    addr_local: u32,
-    capacity_local: u32,
-    next_local: u32,
-    free_class_heads_base_global_idx: u32,
-) {
-    use wasm_encoder::{Instruction as W, MemArg};
-    let mem32 = |offset: u64| MemArg {
-        offset,
-        align: 2,
-        memory_index: 0,
-    };
-
-    for idx in 0..GC_FREE_CLASS_COUNT {
-        f.instruction(&W::LocalGet(class_local));
-        f.instruction(&W::I32Const(idx));
-        f.instruction(&W::I32Eq);
-        f.instruction(&W::If(wasm_encoder::BlockType::Empty));
-        f.instruction(&W::GlobalGet(free_class_heads_base_global_idx + idx as u32));
-        f.instruction(&W::LocalSet(next_local));
-        // 既に解放された object の先頭 8 bytes を free-list node として使う。
-        f.instruction(&W::LocalGet(addr_local));
-        f.instruction(&W::LocalGet(next_local));
-        f.instruction(&W::I32Store(mem32(0)));
-        f.instruction(&W::LocalGet(addr_local));
-        f.instruction(&W::LocalGet(capacity_local));
-        f.instruction(&W::I32Store(mem32(4)));
-        f.instruction(&W::LocalGet(addr_local));
-        f.instruction(&W::GlobalSet(free_class_heads_base_global_idx + idx as u32));
-        f.instruction(&W::End);
-    }
-}
-
 /// __alloc: サイズクラス別 free-list と oversize fallback を持つ allocator
 fn emit_alloc_func(codes: &mut CodeSection, globals: AllocatorGlobals) {
     use wasm_encoder::{Instruction as W, MemArg};
@@ -1773,8 +1669,8 @@ fn emit_alloc_func(codes: &mut CodeSection, globals: AllocatorGlobals) {
     f.instruction(&W::LocalSet(8));
 
     // local21 = class, local22 = physical capacity, local24 = linked-list next
-    emit_free_class_index(&mut f, 1, 21);
-    emit_small_free_class_pop(
+    free_list::emit_free_class_index(&mut f, 1, 21);
+    free_list::emit_small_free_class_pop(
         &mut f,
         21,
         8,
@@ -1858,7 +1754,7 @@ fn emit_alloc_func(codes: &mut CodeSection, globals: AllocatorGlobals) {
     f.instruction(&W::LocalGet(8));
     f.instruction(&W::I32Eqz);
     f.instruction(&W::If(wasm_encoder::BlockType::Empty));
-    emit_free_class_capacity(&mut f, 1, 22);
+    free_list::emit_free_class_capacity(&mut f, 1, 22);
     f.instruction(&W::End);
 
     // free-list first-fit search
@@ -2717,8 +2613,8 @@ fn emit_gc_collect_func(codes: &mut CodeSection, globals: CollectorGlobals) {
     f.instruction(&W::I32Add);
     f.instruction(&W::LocalSet(WRITE_IDX_LOCAL));
     f.instruction(&W::Else);
-    emit_free_class_index(&mut f, OBJ_CAPACITY_LOCAL, CLASS_INDEX_LOCAL);
-    emit_free_class_push(
+    free_list::emit_free_class_index(&mut f, OBJ_CAPACITY_LOCAL, CLASS_INDEX_LOCAL);
+    free_list::emit_free_class_push(
         &mut f,
         CLASS_INDEX_LOCAL,
         OBJ_ADDR_LOCAL,
