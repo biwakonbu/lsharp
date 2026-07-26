@@ -192,6 +192,8 @@ HashMap の allocation/size lowering（`map-new`、`map-size`、62 行）を `ex
 
 `crates/lsharp-ir/src/lib.rs` の test-only incremental telemetry tracker（parse/type-infer/SCC merged fast path/lower/module-segment/link/cache-hit、約241 行）を `incremental_trackers.rs`（240 行）へ移動し、parent を 3080 行から 2842 行へ縮小した。`#[cfg(test)] include!` によって `lib_tests` の private tracker names、thread-local enable/count/reset/drop semantics と incremental pipeline の `note_incremental_*` call path を維持し、parse tracker reset contract test を追加した。RED (`E0583`) → GREEN、incremental compile focused 11件、incremental analysis focused 15件、`cargo test -p lsharp-ir --lib` 284件が pass。clippy、workspace check、対象 Rust 2024 rustfmt、`git diff --check`、docs audit も passした。lower/compiler production split、Rust/native parity、I-01 / I-08 aggregate は未完了である。Evidence: `docs/adr/decisions-legacy-ir-incremental-trackers-split.md`。
 
+`crates/lsharp-driver/src/mcp_server.rs` の inline `tests` module（697 行）を `mcp_tests.rs` へ移動し、parent を 796 行から 110 行へ縮小した。`#[cfg(test)] include!` によって既存の `mcp_server::tests::*` namespace、private protocol/tool helper access、MCP JSON-RPC/schema/validation/context/compile/language fixtures を維持し、private `jsonrpc_result` helper access contract test を追加した。RED (`E0583`) → GREEN、MCP focused 37件、`lsharp-driver` unit 159件、clippy、workspace check、対象 Rust 2024 rustfmt、`git diff --check` が passした。`default_path_delegation` integration の origin/main 由来既知 failure boundary、MCP search production split、selfhost/native parity、I-01 / I-08 aggregate は未完了である。Evidence: `docs/adr/decisions-legacy-driver-mcp-tests-split.md`。
+
 ### 3. 優先順位
 
 1. **imp-02 (エラー統一) の対象になるファイルを先に分割しない** — A-1 のエラー型変更を
