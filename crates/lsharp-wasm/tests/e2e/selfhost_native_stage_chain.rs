@@ -20557,6 +20557,16 @@ fn test_e2e_selfhost_cli_source_node_record_call_bytes_rel32_diagnostic() {
       idx
       (first-call-offset bytes (+ idx 1) len))))
 
+(defn find-ir-call-index [ir idx len target]
+  (if (>= idx len)
+    -1
+    (let [row (vector-get ir idx)]
+      (if (if (= (vector-get row 0) 40)
+            (= (vector-get row 1) target)
+            false)
+        idx
+        (find-ir-call-index ir (+ idx 1) len target)))))
+
 (defn print-byte-window [bytes idx end]
   (if (>= idx end)
     0
@@ -20580,6 +20590,134 @@ fn test_e2e_selfhost_cli_source_node_record_call_bytes_rel32_diagnostic() {
               (if (= param-count 2)
                 14
                 (if (= param-count 1) 7 0)))))))))
+
+(defn print-entry-call-correlation-missing [caller-target callee-target]
+  (do
+    (print 9000000389)
+    (print caller-target)
+    (print callee-target)
+    (print -1)
+    (print -1)
+    (print -1)
+    (print -1)
+    (print -1)
+    (print 0)
+    (print -1)
+    (print 0)
+    (print -1)
+    (print -1)
+    (print -1)
+    (print -1)
+    (print -1)
+    (print -1)
+    0))
+
+(defn print-entry-call-correlation [functions callables starts import-stub-offset caller-target callee-target]
+  (let [caller-func (vector-get callables caller-target)
+        caller-ir (function-meta-ir (vector-get functions (- caller-target 10)))
+        row-index (find-ir-call-index caller-ir 0 (vector-length caller-ir) callee-target)]
+    (if (< row-index 0)
+      (print-entry-call-correlation-missing caller-target callee-target)
+      (do
+        (root_push functions)
+        (root_push callables)
+        (root_push starts)
+        (root_push caller-func)
+        (root_push caller-ir)
+        (let [caller-param-count (native-function-param-count caller-func)
+              caller-local-count (native-function-local-count caller-func)
+              caller-frame-base-slot-count
+                (native-frame-base-slot-count
+                  caller-ir
+                  (+ (+ caller-param-count caller-local-count) 1))
+              caller-stack-bytes
+                (native-local-stack-bytes-with-window-x86
+                  caller-ir
+                  (+ (+ caller-param-count caller-local-count) 1)
+                  callables)
+              caller-body-offset
+                (+ (+ 4 (if (> caller-stack-bytes 0) 7 0))
+                  (x86-param-spill-prefix-size caller-param-count))
+              caller-offset-depths
+                (collect-native-bundle-offset-depths-x86
+                  caller-ir
+                  callables
+                  caller-body-offset)]
+          (do
+            (root_push caller-offset-depths)
+            (let [caller-offsets (vector-get caller-offset-depths 2)
+                  caller-depths (vector-get caller-offset-depths 3)
+                  row (vector-get caller-ir row-index)
+                  row-opcode (vector-get row 0)
+                  row-operand (vector-get row 1)
+                  row-offset (vector-get caller-offsets row-index)
+                  row-depth (vector-get caller-depths row-index)
+                  call-bundle
+                    (codegen-ir-instr-bundle-x86-with-import-count-and-base
+                      row-opcode
+                      row-operand
+                      row-offset
+                      starts
+                      callables
+                      10
+                      import-stub-offset
+                      (vector-get starts (- caller-target 10))
+                      caller-frame-base-slot-count
+                      row-depth)
+                  call-offset
+                    (first-call-offset
+                      call-bundle
+                      0
+                      (vector-length call-bundle))
+                  rel32
+                    (if (>= call-offset 0)
+                      (rel32-at call-bundle call-offset)
+                      0)
+                  actual-target
+                    (if (>= call-offset 0)
+                      (+ row-offset (+ call-offset (+ 5 rel32)))
+                      -1)
+                  expected-target
+                    (- (vector-get starts (- callee-target 10))
+                      (vector-get starts (- caller-target 10)))]
+              (do
+                (root_push row)
+                (root_push call-bundle)
+                (print 9000000389)
+                (print caller-target)
+                (print callee-target)
+                (print row-index)
+                (print row-opcode)
+                (print row-operand)
+                (print row-depth)
+                (print row-offset)
+                (print (vector-length call-bundle))
+                (print call-offset)
+                (print rel32)
+                (print actual-target)
+                (print expected-target)
+                (if (>= call-offset 0)
+                  (do
+                    (print (byte-at call-bundle call-offset))
+                    (print (byte-at call-bundle (+ call-offset 1)))
+                    (print (byte-at call-bundle (+ call-offset 2)))
+                    (print (byte-at call-bundle (+ call-offset 3)))
+                    (print (byte-at call-bundle (+ call-offset 4))))
+                  (do
+                    (print -1)
+                    (print -1)
+                    (print -1)
+                    (print -1)
+                    (print -1)))
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                0))))))))
 
 (defn main []
   (let [cache-ref (ref-new (map-new))
@@ -20614,6 +20752,10 @@ fn test_e2e_selfhost_cli_source_node_record_call_bytes_rel32_diagnostic() {
           (vector-length functions))
         record-target (ftable-lookup ftable (hash-name "source-node-record"))
         quad-target (ftable-lookup ftable (hash-name "vector-push-quad-rooted-v3"))
+        entry-manifest-target (ftable-lookup ftable (hash-name "validation-source-manifest-json"))
+        entry-write-target (ftable-lookup ftable (hash-name "validation-source-write-manifest"))
+        entry-source-target (ftable-lookup ftable (hash-name "run-validate-source"))
+        entry-validate-target (ftable-lookup ftable (hash-name "run-validate"))
         record-ir (function-meta-ir (vector-get functions (- record-target 10)))
         starts (collect-callable-function-starts-x86 callables 10)
         record-start (vector-get starts (- record-target 10))
@@ -20687,6 +20829,27 @@ fn test_e2e_selfhost_cli_source_node_record_call_bytes_rel32_diagnostic() {
           record-bundle-call-offset
           (+ record-bundle-call-offset 8))
         0)
+      (print-entry-call-correlation
+        functions
+        callables
+        starts
+        import-stub-offset
+        entry-write-target
+        entry-manifest-target)
+      (print-entry-call-correlation
+        functions
+        callables
+        starts
+        import-stub-offset
+        entry-source-target
+        entry-write-target)
+      (print-entry-call-correlation
+        functions
+        callables
+        starts
+        import-stub-offset
+        entry-validate-target
+        entry-source-target)
       0)))"#;
     let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
         try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
@@ -20708,6 +20871,22 @@ fn test_e2e_selfhost_cli_source_node_record_call_bytes_rel32_diagnostic() {
     assert_eq!(lines[7], 24, "5 引数 call bundle の CALL は 4 つの引数 setup 後に置かれるべき: {lines:?}");
     assert_eq!(lines[8], lines[9], "emitted rel32 target は vector-push-quad-rooted-v3 の期待位置と一致するべき: {lines:?}");
     assert_eq!(lines[10], 232, "5 引数 call bundle は CALL rel32 opcode を出力するべき: {lines:?}");
+    let entry_call_marker = 9_000_000_389_i64;
+    let entry_call_records = lines
+        .windows(18)
+        .filter(|record| record[0] == entry_call_marker)
+        .map(|record| record[1..].to_vec())
+        .collect::<Vec<_>>();
+    assert_eq!(entry_call_records.len(), 3, "current-source entrypoint call correlation が三段分出力されるべき: {lines:?}");
+    assert_eq!(
+        entry_call_records,
+        vec![
+            vec![3717, 3633, 17, 40, 3633, 1, 147, 10, 4, -44874, -44718, -44718, 232, 182, 80, 255, 255],
+            vec![3718, 3717, 208, 40, 3717, 4, 1855, 32, 6, -2213, -347, -347, 232, 91, 247, 255, 255],
+            vec![3719, 3718, 16, 40, 3718, 2, 144, 11, 6, -2683, -2528, -2528, 232, 133, 245, 255, 255],
+        ],
+        "current-source entrypoint の IR opcode/emitted bytes/rel32 target が一致するべき"
+    );
 }
 
 #[test]
