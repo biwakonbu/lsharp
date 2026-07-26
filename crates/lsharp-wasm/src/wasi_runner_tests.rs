@@ -279,6 +279,17 @@ fn test_wasi_mode_enum_exists() {
 }
 
 #[test]
+fn test_run_wasm_with_mode_keeps_mode_specific_invalid_artifact_diagnostics() {
+    let preview1 = run_wasm_with_mode(&[0, 1, 2, 3], WasiMode::Preview1)
+        .expect_err("Preview1 の不正 artifact は拒否されるべき");
+    assert!(preview1.contains("Wasm モジュールの読み込みに失敗"));
+
+    let preview2 = run_wasm_with_mode(&[0, 1, 2, 3], WasiMode::Preview2)
+        .expect_err("Preview2 の不正 artifact は拒否されるべき");
+    assert!(preview2.contains("Component の読み込みに失敗"));
+}
+
+#[test]
 fn test_wasi_mode_debug_display() {
     // WasiMode の Debug 表示が正しいこと
     assert_eq!(format!("{:?}", WasiMode::Preview1), "Preview1");
