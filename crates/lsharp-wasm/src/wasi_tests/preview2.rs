@@ -69,7 +69,10 @@ fn test_emit_wasm_wasi_p2_supports_file_roundtrip() {
         "#,
     );
 
-    let dir = std::env::temp_dir().join("lsharp_wasi_p2_file_roundtrip");
+    let dir = std::env::temp_dir().join(format!(
+        "lsharp_wasi_p2_file_roundtrip_{}",
+        std::process::id()
+    ));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
 

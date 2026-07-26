@@ -1250,6 +1250,8 @@
 
 ---
 
+  - 2026-07-26 maintenance slice: `crates/lsharp-wasm/src/wasmgc_runner_component_output.rs` の writer/fd adapter と core writer helper を `wasmgc_runner_output_writer.rs`（112 行）へ移動し、親を 642 行から 543 行へ縮小した。既存 public runner path、partial-write、flush、zero/over-report/errno の fail-closed contract は維持した。writer seam、`wasmgc_probe` 101 passed、`lsharp-wasm --lib` 109 passed / 1 existing `RootLifetime::RootSetWithoutActiveSlot` failure、clippy、workspace check、対象 Rust 2024 rustfmt、`git diff --check` を pass。Preview2 file-roundtrip fixture の一時 directory は process id を含む名前へ更新した。Evidence: `docs/adr/decisions-legacy-wasmgc-output-writer-split.md`。WasmGC parity、advanced runtime、I-01 / I-08 aggregate は未完了。
+
 ## 既知の制限事項
 
 ### リニアメモリランタイム
