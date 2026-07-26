@@ -884,17 +884,23 @@
                                     (validation-json-array-field "edges"
                                       (validation-json-array-wrap edges-json)))]
                                   (do
-                                    (root_pop)
-                                    (root_pop)
-                                    (root_pop)
-                                    (root_pop)
-                                    (root_pop)
-                                    (root_pop)
-                                    (root_pop)
-                                    (root_pop)
-                                    (root_pop)
-                                    (root_pop)
-                                    (validation-json-object-wrap fields3)))))))))))))))))))
+                                    (root_push fields3)
+                                    (let [result (validation-json-object-wrap fields3)]
+                                      (do
+                                        (root_push result)
+                                        (root_pop)
+                                        (root_pop)
+                                        (root_pop)
+                                        (root_pop)
+                                        (root_pop)
+                                        (root_pop)
+                                        (root_pop)
+                                        (root_pop)
+                                        (root_pop)
+                                        (root_pop)
+                                        (root_pop)
+                                        (root_pop)
+                                        result))))))))))))))))))))
 
 (defn source-evidence-edge-form-result [form registry nodes]
   (if (< (vector-length form) 4)

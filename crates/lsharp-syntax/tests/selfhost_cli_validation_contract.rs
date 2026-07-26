@@ -420,6 +420,27 @@ fn selfhost_validation_evidence_subject_json_roots_nested_payload() {
 }
 
 #[test]
+fn selfhost_validation_manifest_json_roots_final_wrapper_input() {
+    let evidence = selfhost_evidence_source();
+    let manifest_start = evidence
+        .find("(defn validation-source-manifest-json [graph]")
+        .expect("validation-source-manifest-json を特定できるべき");
+    let manifest_end = evidence[manifest_start..]
+        .find("(defn source-evidence-edge-form-result")
+        .map(|offset| manifest_start + offset)
+        .expect("validation-source-manifest-json の終端を特定できるべき");
+    let body = &evidence[manifest_start..manifest_end];
+
+    assert!(
+        body.contains("(root_push fields3)")
+            && body.contains("(let [result (validation-json-object-wrap fields3)]")
+            && body.contains("(root_push result)")
+            && !body.contains("(root_pop)\n                                    (validation-json-object-wrap fields3)"),
+        "native x86 の manifest JSON は最終 object wrapper の入力と戻り値を root lease で保持してから outer roots を解放するべき"
+    );
+}
+
+#[test]
 fn selfhost_json_escape_loop_uses_one_arg_state_boundary() {
     let source = selfhost_json_rpc_source();
     let state_start = source
