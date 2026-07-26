@@ -1,5 +1,6 @@
 use lsharp_syntax::parse;
 use lsharp_types::evidence::{EvidenceMethod, EvidenceOutcome, Independence};
+use lsharp_types::intent::NodeKind;
 use lsharp_types::metadata_contract::inventory_contract_suites;
 use lsharp_types::validation_input::parse_intent_graph_json;
 use lsharp_types::validation_source::{SourceGraphError, source_program_to_intent_graph};
@@ -55,6 +56,53 @@ fn source_adapter_registers_typed_nodes_without_deriving_ids_from_span_or_order(
         ]
     );
     assert!(graph.nodes().iter().all(|node| node.source_span().end > 0));
+}
+
+#[test]
+fn source_adapter_preserves_every_graph_owned_node_kind() {
+    let program = parse(
+        r#"
+        (defn checkout []
+          :intent "intent:checkout/safe-cancel" "Users can cancel an order"
+          :claim "claim:checkout/cancel" "The API rejects shipped orders"
+          :assumption "assumption:checkout/state" "Shipment state is authoritative"
+          :open-question "open-question:checkout/label" "Can cancellation happen after a label?"
+          true)
+        "#,
+    )
+    .expect("all graph-owned node kind fixture は parse できるべき");
+
+    let graph =
+        source_program_to_intent_graph(&program).expect("all graph-owned node が投影できるべき");
+    assert_eq!(
+        graph
+            .nodes()
+            .iter()
+            .map(|node| (node.kind(), node.stable_id().as_str(), node.text()))
+            .collect::<Vec<_>>(),
+        vec![
+            (
+                NodeKind::Intent,
+                "intent:checkout/safe-cancel",
+                "Users can cancel an order"
+            ),
+            (
+                NodeKind::Claim,
+                "claim:checkout/cancel",
+                "The API rejects shipped orders"
+            ),
+            (
+                NodeKind::Assumption,
+                "assumption:checkout/state",
+                "Shipment state is authoritative"
+            ),
+            (
+                NodeKind::OpenQuestion,
+                "open-question:checkout/label",
+                "Can cancellation happen after a label?"
+            ),
+        ]
+    );
 }
 
 #[test]
