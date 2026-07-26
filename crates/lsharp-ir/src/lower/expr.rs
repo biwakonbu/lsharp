@@ -12,6 +12,7 @@ mod application_calls;
 mod application_map;
 mod application_ref_vector;
 mod application_scalar;
+mod application_strings;
 #[cfg(test)]
 mod application_tests;
 mod computation;
