@@ -62,6 +62,21 @@ fn test_module_dump_preserves_public_model_display_contract() {
     );
 }
 
+#[test]
+fn test_compile_surface_preserves_import_visibility_aggregation_contract() {
+    let program =
+        lsharp_syntax::parse("(import Lib :only [a b]) (import Lib :only [c]) (import Other)")
+            .expect("import visibility fixture は parse できるべき");
+
+    let visibility = collect_import_visibility(&program);
+    let expected = vec!["a".to_string(), "b".to_string(), "c".to_string()];
+    assert_eq!(
+        visibility.get("Lib").and_then(|spec| spec.only.as_deref()),
+        Some(expected.as_slice())
+    );
+    assert_eq!(collect_import_modules(&program), vec!["Lib", "Other"]);
+}
+
 #[cfg(test)]
 mod import_dedup_tests {
     use super::*;

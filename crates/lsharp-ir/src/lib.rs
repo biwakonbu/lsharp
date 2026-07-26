@@ -5,6 +5,7 @@
 
 pub mod cache;
 pub mod closure;
+mod compile_surface;
 mod instruction;
 mod linker;
 pub mod lower;
@@ -12,10 +13,8 @@ mod model;
 pub mod module_graph;
 pub mod root_lifetime;
 
-use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
-use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
 use lsharp_types::infer::ExprTypeKey;
@@ -25,6 +24,11 @@ pub use cache::{CompilationCache, ModuleCacheEntry, ModuleIrSegments};
 pub use instruction::{Instruction, IrType};
 pub use linker::link_modules;
 pub use model::{Function, GcField, GcTypeDef, GcTypeKind, GlobalDef, ImportFunc, Module};
+
+use compile_surface::{
+    ImportVisibilitySpec, ModuleTypeSurface, collect_import_modules, collect_import_visibility,
+    dependency_surface_key, push_defn_origins_infer_order,
+};
 
 #[cfg(test)]
 include!("incremental_trackers.rs");
@@ -62,133 +66,6 @@ impl fmt::Display for SourceFingerprint {
         }
         Ok(())
     }
-}
-
-/// マルチファイルコンパイルのパイプライン
-///
-/// エントリファイルから依存関係を解決し、トポロジカルソート順に
-/// パース → 型チェックを行い、全モジュールの AST を結合してから
-/// IR 変換することで、関数インデックスの一貫性を保つ。
-#[derive(Debug, Clone, Default)]
-struct ImportVisibilitySpec {
-    only: Option<Vec<String>>,
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(crate) struct ModuleTypeSurface {
-    results: Vec<(String, lsharp_types::types::TypeScheme)>,
-    hidden: HashSet<String>,
-    expr_types: HashMap<ExprTypeKey, lsharp_types::types::Type>,
-}
-
-impl ModuleTypeSurface {
-    fn export_surface_eq(&self, other: &Self) -> bool {
-        self.results == other.results && self.hidden == other.hidden
-    }
-}
-
-fn type_surface_key(surface: &ModuleTypeSurface) -> u64 {
-    let mut results = surface.results.clone();
-    results.sort_by(|left, right| left.0.cmp(&right.0));
-    let mut hidden = surface.hidden.iter().cloned().collect::<Vec<_>>();
-    hidden.sort();
-
-    let mut hasher = DefaultHasher::new();
-    results.hash(&mut hasher);
-    hidden.hash(&mut hasher);
-    hasher.finish()
-}
-
-fn dependency_surface_key(
-    direct_imports: &HashMap<String, ImportVisibilitySpec>,
-    current_surfaces: &HashMap<String, ModuleTypeSurface>,
-    cache: &CompilationCache,
-) -> u64 {
-    let mut dependencies = direct_imports.keys().cloned().collect::<Vec<_>>();
-    dependencies.sort();
-
-    let mut hasher = DefaultHasher::new();
-    for dependency in dependencies {
-        dependency.hash(&mut hasher);
-        if let Some(surface) = current_surfaces.get(&dependency) {
-            type_surface_key(surface).hash(&mut hasher);
-        } else if let Some(entry) = cache.get(&dependency) {
-            type_surface_key(&entry.type_surface_clone()).hash(&mut hasher);
-        } else {
-            0u8.hash(&mut hasher);
-        }
-    }
-    hasher.finish()
-}
-
-fn push_defn_origins_infer_order(
-    decls: &[lsharp_syntax::ast::Decl],
-    file_module: &str,
-    module_prefix: Option<&str>,
-    out: &mut Vec<String>,
-) {
-    use lsharp_syntax::ast::Decl;
-    for decl in decls {
-        let actual_decl = match decl {
-            Decl::Private { inner, .. } => inner.as_ref(),
-            other => other,
-        };
-        match actual_decl {
-            Decl::Defn { .. } => out.push(file_module.to_string()),
-            Decl::ModuleDecl { name, body, .. } if !body.is_empty() => {
-                let prefix = if let Some(outer) = module_prefix {
-                    format!("{outer}.{name}")
-                } else {
-                    name.clone()
-                };
-                push_defn_origins_infer_order(body, file_module, Some(prefix.as_str()), out);
-            }
-            _ => {}
-        }
-    }
-}
-
-fn collect_import_visibility(
-    program: &lsharp_syntax::ast::Program,
-) -> HashMap<String, ImportVisibilitySpec> {
-    let mut imports = HashMap::new();
-    for decl in &program.decls {
-        if let lsharp_syntax::ast::Decl::ImportDecl { module, only, .. } = decl {
-            let entry = imports
-                .entry(module.clone())
-                .or_insert_with(ImportVisibilitySpec::default);
-            match (&mut entry.only, only.as_ref()) {
-                (None, None) => {}
-                (slot @ None, Some(next)) => {
-                    *slot = Some(next.clone());
-                }
-                (Some(existing), Some(next)) => {
-                    for symbol in next {
-                        if !existing.contains(symbol) {
-                            existing.push(symbol.clone());
-                        }
-                    }
-                }
-                (Some(_), None) => {
-                    entry.only = None;
-                }
-            }
-        }
-    }
-    imports
-}
-
-fn collect_import_modules(program: &lsharp_syntax::ast::Program) -> Vec<String> {
-    let mut imports = Vec::new();
-    let mut seen = HashSet::new();
-    for decl in &program.decls {
-        if let lsharp_syntax::ast::Decl::ImportDecl { module, .. } = decl
-            && seen.insert(module.clone())
-        {
-            imports.push(module.clone());
-        }
-    }
-    imports
 }
 
 fn parse_program_for_incremental(
