@@ -314,6 +314,10 @@
 
 - [~] `imp-06` driver MCP validation split — `crates/lsharp-driver/src/mcp_server.rs` の validation tool、source/file/manifest/manifest_file input selection、graph parse、canonical report helper（76 行）を `mcp_validation.rs`（75 行）へ移動し、parent を 1476 行から 1412 行へ縮小した。`include!` によって `lsharp_validate` の input exclusivity、source/manifest parse diagnostics、`include_manifest` semantics と既存 `call_tool` wiring を同一 private namespace に維持し、missing-input contract test を追加した。RED `E0583` → GREEN、validation focused 15 件と `lsharp-driver` unit は pass。`default_path_delegation` integration の origin/main 由来既知 7 failures（embedded component/selfhost default-path contract）は今回の移動とは切り分ける。残る MCP tool implementation の分割、selfhost/native parity、I-01 / I-08 aggregate は未完了。Evidence: `docs/adr/decisions-legacy-driver-mcp-validation-split.md`。
 
+## 2026-07-26 driver MCP context/read-only 責務分離
+
+- [~] `imp-06` driver MCP context split — `crates/lsharp-driver/src/mcp_server.rs` の project context、package API、stdlib API と dependency/package/module discovery helper（204 行）を `mcp_context.rs`（203 行）へ移動し、parent を 1412 行から 1240 行へ縮小した。`include!` によって explicit `project_dir`、dependency summary、installed package search、completion module candidates、package API generation、stdlib API filtering の既存 private path と response semantics を維持し、explicit project directory contract test を追加した。RED `E0583` → GREEN、MCP focused 33 件と `lsharp-driver` unit は pass。`default_path_delegation` integration の origin/main 由来既知 7 failures（embedded component/selfhost default-path contract）は今回の移動とは切り分ける。残る MCP compile/error/search/tool implementation の分割、selfhost/native parity、I-01 / I-08 aggregate は未完了。Evidence: `docs/adr/decisions-legacy-driver-mcp-context-split.md`。
+
 > 凡例: `[x]` 完了 / `[ ]` 未着手 / `[~]` 部分実装 / `[BLOCKED: ...]` 依存待ち / `[DEFERRED]` 後続トラック送り
 >
 > **完了済みフェーズ**: Phase 0-7, P8, P9-1/2/3/4/6, P10, P12, P13, P14。
