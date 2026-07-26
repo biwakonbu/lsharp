@@ -226,9 +226,14 @@ fn selfhost_node_manifest_uses_one_arg_state_boundary() {
         "native x86 の node JSON state-loop は state を root し、1 引数 state だけで再帰するべき"
     );
     assert!(
+        state_loop.contains("(vector-push-triple-rooted-v3 (vector-new 3)")
+            && !state_loop.contains("state0 (vector-new 3)"),
+        "node JSON state-loop は各段階の中間 state vector を残さず、3 要素の rooted state を一度に構築するべき"
+    );
+    assert!(
         node_wrapper.contains("(root_push node)")
             && node_wrapper.contains("(validation-source-node-json-state-loop state)")
-            && node_wrapper.contains("(vector-new 3)"),
+            && node_wrapper.contains("(vector-push-triple-rooted-v3 (vector-new 3)"),
         "node JSON wrapper は入力 node を保持し、rooted state を 1 引数 loop へ渡すべき"
     );
     assert!(

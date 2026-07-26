@@ -423,10 +423,7 @@
             (validation-json-string-field "kind" (validation-source-node-kind-text (source-node-kind node))))]
           (do
             (root_push next-fields)
-            (let [state0 (vector-new 3)
-              state1 (vector-push-single-rooted-v3 state0 node)
-              state2 (vector-push-single-rooted-v3 state1 1)
-              next-state (vector-push-single-rooted-v3 state2 next-fields)]
+            (let [next-state (vector-push-triple-rooted-v3 (vector-new 3) node 1 next-fields)]
               (do
                 (root_push next-state)
                 (let [result (validation-source-node-json-state-loop next-state)]
@@ -446,10 +443,7 @@
                     (source-find-char wire-id 47 (+ colon 1) (string-length wire-id))))))]
             (do
               (root_push next-fields)
-              (let [state0 (vector-new 3)
-                state1 (vector-push-single-rooted-v3 state0 node)
-                state2 (vector-push-single-rooted-v3 state1 2)
-                next-state (vector-push-single-rooted-v3 state2 next-fields)]
+              (let [next-state (vector-push-triple-rooted-v3 (vector-new 3) node 2 next-fields)]
                 (do
                   (root_push next-state)
                   (let [result (validation-source-node-json-state-loop next-state)]
@@ -469,10 +463,7 @@
                     (substring wire-id (+ slash 1) (string-length wire-id)))))]
               (do
                 (root_push next-fields)
-                (let [state0 (vector-new 3)
-                  state1 (vector-push-single-rooted-v3 state0 node)
-                  state2 (vector-push-single-rooted-v3 state1 3)
-                  next-state (vector-push-single-rooted-v3 state2 next-fields)]
+                (let [next-state (vector-push-triple-rooted-v3 (vector-new 3) node 3 next-fields)]
                   (do
                     (root_push next-state)
                     (let [result (validation-source-node-json-state-loop next-state)]
@@ -488,10 +479,7 @@
                   (validation-json-string-field "text" (source-node-text node)))]
                 (do
                   (root_push next-fields)
-                  (let [state0 (vector-new 3)
-                    state1 (vector-push-single-rooted-v3 state0 node)
-                    state2 (vector-push-single-rooted-v3 state1 4)
-                    next-state (vector-push-single-rooted-v3 state2 next-fields)]
+                  (let [next-state (vector-push-triple-rooted-v3 (vector-new 3) node 4 next-fields)]
                     (do
                       (root_push next-state)
                       (let [result (validation-source-node-json-state-loop next-state)]
@@ -508,10 +496,7 @@
                       (validation-source-span-json (source-node-start node) (source-node-end node))))]
                   (do
                     (root_push next-fields)
-                    (let [state0 (vector-new 3)
-                      state1 (vector-push-single-rooted-v3 state0 node)
-                      state2 (vector-push-single-rooted-v3 state1 5)
-                      next-state (vector-push-single-rooted-v3 state2 next-fields)]
+                    (let [next-state (vector-push-triple-rooted-v3 (vector-new 3) node 5 next-fields)]
                       (do
                         (root_push next-state)
                         (let [result (validation-source-node-json-state-loop next-state)]
@@ -532,10 +517,7 @@
 (defn validation-source-node-json [node]
   (do
     (root_push node)
-    (let [state0 (vector-new 3)
-      state1 (vector-push-single-rooted-v3 state0 node)
-      state2 (vector-push-single-rooted-v3 state1 0)
-      state (vector-push-single-rooted-v3 state2 "")]
+    (let [state (vector-push-triple-rooted-v3 (vector-new 3) node 0 "")]
       (do
         (root_push state)
         (let [result (validation-source-node-json-state-loop state)]
