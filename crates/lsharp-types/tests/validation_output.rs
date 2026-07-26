@@ -259,6 +259,18 @@ fn manifest_output_is_deterministic_and_has_only_schema_fields() {
 }
 
 #[test]
+fn empty_manifest_output_keeps_schema_boundary_without_policy_shortcut() {
+    let graph = IntentGraph::default();
+    let value = graph.to_manifest_json_value();
+
+    assert_eq!(value["schema_version"], 1);
+    assert_eq!(value["nodes"], serde_json::json!([]));
+    assert_eq!(value["evidence"], serde_json::json!([]));
+    assert_eq!(value["edges"], serde_json::json!([]));
+    assert!(!value.as_object().unwrap().contains_key("verified"));
+}
+
+#[test]
 fn manifest_output_round_trips_all_edge_variants() {
     let graph = all_edges_graph();
     let manifest = graph
