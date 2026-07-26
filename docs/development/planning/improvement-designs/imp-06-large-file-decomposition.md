@@ -200,6 +200,8 @@ HashMap の allocation/size lowering（`map-new`、`map-size`、62 行）を `ex
 
 さらに IR linker production slice として、`crates/lsharp-ir/src/lib.rs` の `link_modules` と module-local の型・命令 index remap helpers（290 行）を `linker.rs`（292 行）へ移動し、parent を 2428 行から 2139 行へ縮小した。`mod linker` と `pub use linker::link_modules` により既存の `lsharp_ir::link_modules` public path、import deduplication、function/GC/function-type remap、WasmGC instruction remap を保持した。RED (`E0583`) → GREEN、public linker seam contract 1件、既存 linker focused 7件、`cargo test -p lsharp-ir --lib` は 286件 pass / 1件が origin/main 由来の `IntentSource.ls` における `vector-push-pair-rooted-v3` 未定義 failure。clippy、workspace check、対象 Rust 2024 rustfmt、`git diff --check` は pass。lowering/incremental orchestration、Rust/native parity、I-01 / I-08 aggregate は未完了である。Evidence: `docs/adr/decisions-legacy-ir-linker-module-split.md`。
 
+M2 source adapter の production seam として、`crates/lsharp-types/src/validation_source.rs` の evidence record 投影、method/outcome/independence enum 解決、sampling/provenance construction（168 行）を `validation_source/source_evidence.rs`（177 行）へ移動し、parent を 504 行から 336 行へ縮小した。`mod source_evidence` と private dispatch により `source_program_to_intent_graph`、`SourceGraphError`、required evidence/registry closure、source span の public contract を維持した。RED (`E0583`) → GREEN、sampling/provenance public seam contract 1件、`cargo test -p lsharp-types --tests` 339件、clippy、workspace check、対象 Rust 2024 rustfmt、`git diff --check` は pass。selfhost/native evidence producer parity、manifest/runtime target gate、EC-M2 aggregate は未完了である。Evidence: `docs/adr/decisions-legacy-validation-source-evidence-split.md`。
+
 ### 3. 優先順位
 
 1. **imp-02 (エラー統一) の対象になるファイルを先に分割しない** — A-1 のエラー型変更を

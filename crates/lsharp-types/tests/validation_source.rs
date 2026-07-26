@@ -165,6 +165,48 @@ fn source_adapter_projects_record_definition_evidence_and_support_edges() {
 }
 
 #[test]
+fn source_adapter_preserves_evidence_sampling_projection_through_public_seam() {
+    let program = parse(
+        r#"
+        (defn claim []
+          :claim "claim:checkout/cancel" "The API rejects shipped orders"
+          :evidence "evidence:checkout/cancel-case"
+            :subject "claim:checkout/cancel"
+            :method "case"
+            :outcome "pass"
+            :runner "source-sampling-test"
+            :target "aarch64-apple-darwin"
+            :source-commit "source-sampling-commit"
+            :artifact-digest "sha256:source-sampling"
+            :cases 3
+            :seed 42
+            :generator "checkout-cancel-fixture"
+            :shrinks [8 3 1]
+            :coverage [("negative" 2) ("positive" 1)]
+            :producer "lsharp-test"
+            :tool-version "0.2.0"
+            :timestamp "2026-07-26T00:00:00Z"
+            :independence "same-author"
+          true)
+        "#,
+    )
+    .expect("sampling evidence fixture は parse できるべき");
+
+    let graph =
+        source_program_to_intent_graph(&program).expect("sampling evidence graph が構築できるべき");
+    let evidence = &graph.evidence()[0];
+    assert_eq!(evidence.method(), EvidenceMethod::Case);
+    assert_eq!(evidence.outcome(), EvidenceOutcome::Pass);
+    assert_eq!(evidence.execution().cases(), 3);
+    assert_eq!(evidence.execution().seed(), 42);
+    assert_eq!(evidence.execution().shrinks(), &[8, 3, 1]);
+    assert_eq!(evidence.execution().coverage().get("negative"), Some(&2));
+    assert_eq!(evidence.execution().coverage().get("positive"), Some(&1));
+    assert_eq!(evidence.provenance().producer(), "lsharp-test");
+    assert_eq!(evidence.independence(), Independence::SameAuthor);
+}
+
+#[test]
 fn source_adapter_projects_nested_module_private_and_impl_metadata_in_declaration_order() {
     const SOURCE: &str = r#"
         (module Checkout
