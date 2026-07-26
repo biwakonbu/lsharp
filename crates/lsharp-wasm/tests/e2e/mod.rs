@@ -29,6 +29,7 @@ mod selfhost_macro_compiler;
 mod selfhost_main_module_determinism;
 mod selfhost_module_resolver_cache;
 mod selfhost_native_differential;
+mod selfhost_native_differential_file_size;
 mod selfhost_native_stage23_gap;
 mod selfhost_native_stage_chain;
 mod selfhost_native_tokenizer_probe;
