@@ -294,6 +294,10 @@
 
 - [~] `imp-06` LSP params normalizer split — `crates/lsharp-lsp/src/lib.rs` の tower-lsp `params_normalizer`（128 行）を `crates/lsharp-lsp/src/params_normalizer.rs`（134 行）へ移動し、parent を 1397 行から 1270 行へ縮小した。`ParamsNormalizer` の `shutdown` null/empty params stripping、non-empty params preservation、request id/method forwarding、`Service` の `poll_ready` / `call` semantics は変更していない。RED `E0583` → GREEN、focused 1 件、`cargo test -p lsharp-lsp -- --nocapture`（unit 62 / main 0 / doc-test 0）、`cargo clippy -p lsharp-lsp --all-targets -- -D warnings`、`cargo check --workspace`（専用 target）、対象 Rust 2024 rustfmt、`git diff --check` は passした。LSP backend handler の追加分割、selfhost/native parity、I-01 / I-08 aggregate は未完了。Evidence: `docs/adr/decisions-legacy-lsp-params-normalizer-split.md`。
 
+## 2026-07-26 LSP inline test suite 責務分離
+
+- [~] `imp-06` LSP inline test suite split — `crates/lsharp-lsp/src/lib.rs` の inline `tests` module（788 行）を `crates/lsharp-lsp/src/lib_tests.rs` へ移動し、parent を 1270 行から 504 行へ縮小した。`include!` によって既存の `tests::*` module path、fixture、LSP backend behavior は維持し、incremental sync と formatting capability の protocol contract test を追加した。RED `E0583` → GREEN、`cargo test -p lsharp-lsp -- --nocapture`（unit 63 / main 0 / doc-test 0）、`cargo clippy -p lsharp-lsp --all-targets -- -D warnings`、`cargo check --workspace`（専用 target）、対象 Rust 2024 rustfmt、`git diff --check` は pass。LSP production backend の追加分割、selfhost/native parity、I-01 / I-08 aggregate は未完了。Evidence: `docs/adr/decisions-legacy-lsp-inline-tests-split.md`。
+
 > 凡例: `[x]` 完了 / `[ ]` 未着手 / `[~]` 部分実装 / `[BLOCKED: ...]` 依存待ち / `[DEFERRED]` 後続トラック送り
 >
 > **完了済みフェーズ**: Phase 0-7, P8, P9-1/2/3/4/6, P10, P12, P13, P14。
