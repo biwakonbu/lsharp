@@ -6,6 +6,7 @@
 use std::collections::{HashMap, HashSet};
 
 mod resolve;
+mod scc;
 pub use resolve::ModuleSearchPaths;
 
 pub const FORMATTER_TRIO_EXPR: &str = "Tools.Text.FormatterExpr";
@@ -26,15 +27,6 @@ pub struct ModuleGraph {
     file_map: HashMap<String, String>,
     /// モジュール名 -> 直接それを参照しているモジュール群
     reverse_deps: HashMap<String, Vec<String>>,
-}
-
-#[derive(Default)]
-struct SccState {
-    next_index: usize,
-    indices: HashMap<String, usize>,
-    lowlinks: HashMap<String, usize>,
-    stack: Vec<String>,
-    on_stack: HashSet<String>,
 }
 
 /// モジュールノード
@@ -217,72 +209,7 @@ impl ModuleGraph {
     /// 各 SCC 内と DFS の開始/import 順は module 名で安定化し、未解決 import は
     /// `check_imports` の責務としてグラフへ暗黙に追加しない。
     pub fn scc_groups(&self) -> Vec<Vec<String>> {
-        let mut module_names: Vec<String> = self.modules.keys().cloned().collect();
-        module_names.sort();
-
-        let mut state = SccState::default();
-        let mut groups = Vec::new();
-
-        for name in module_names {
-            if !state.indices.contains_key(&name) {
-                self.scc_visit(&name, &mut state, &mut groups);
-            }
-        }
-
-        groups
-    }
-
-    fn scc_visit(&self, node: &str, state: &mut SccState, groups: &mut Vec<Vec<String>>) {
-        let index = state.next_index;
-        state.next_index += 1;
-        state.indices.insert(node.to_string(), index);
-        state.lowlinks.insert(node.to_string(), index);
-        state.stack.push(node.to_string());
-        state.on_stack.insert(node.to_string());
-
-        let mut imports = self
-            .modules
-            .get(node)
-            .map(|module| module.imports.clone())
-            .unwrap_or_default();
-        imports.sort();
-
-        for import in imports {
-            if !self.modules.contains_key(&import) {
-                continue;
-            }
-            if !state.indices.contains_key(&import) {
-                self.scc_visit(&import, state, groups);
-                let child_lowlink = state.lowlinks[&import];
-                let current_lowlink = state.lowlinks[node];
-                state
-                    .lowlinks
-                    .insert(node.to_string(), current_lowlink.min(child_lowlink));
-            } else if state.on_stack.contains(&import) {
-                let import_index = state.indices[&import];
-                let current_lowlink = state.lowlinks[node];
-                state
-                    .lowlinks
-                    .insert(node.to_string(), current_lowlink.min(import_index));
-            }
-        }
-
-        if state.lowlinks[node] == state.indices[node] {
-            let mut group = Vec::new();
-            loop {
-                let member = state
-                    .stack
-                    .pop()
-                    .expect("SCC root must have a member on the stack");
-                state.on_stack.remove(&member);
-                group.push(member.clone());
-                if member == node {
-                    break;
-                }
-            }
-            group.sort();
-            groups.push(group);
-        }
+        scc::compute_groups(&self.modules)
     }
 
     /// トポロジカルソートの DFS
@@ -546,3 +473,6 @@ mod resolve_tests;
 
 #[cfg(test)]
 mod hierarchy_tests;
+
+#[cfg(test)]
+mod scc_tests;
