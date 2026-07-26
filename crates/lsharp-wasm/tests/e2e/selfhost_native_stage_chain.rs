@@ -20159,6 +20159,214 @@ fn test_e2e_selfhost_minimal_main_ir_call_operand_points_to_id1() {
 }
 
 #[test]
+fn test_e2e_selfhost_minimal_x86_entrypoint_ir_opcode_bytes_rel32_target_correlate() {
+    let source = "(module Main)\n(defn id1 [x] x)\n(defn main []\n  (id1 3))\n";
+    let escaped_source = escape_lsharp_string(source);
+    let ir_harness = format!(
+        r#"(module App.HarnessMain)
+(import App.CompilerMode)
+(import Backend.Wasm.CompilerBase)
+
+(defn first-call-opcode [ir idx len]
+  (if (>= idx len)
+    -1
+    (let [instr (vector-get ir idx)]
+      (if (= (vector-get instr 0) 40)
+        (vector-get instr 0)
+        (first-call-opcode ir (+ idx 1) len)))))
+
+(defn first-call-operand [ir idx len]
+  (if (>= idx len)
+    -1
+    (let [instr (vector-get ir idx)]
+      (if (= (vector-get instr 0) 40)
+        (vector-get instr 1)
+        (first-call-operand ir (+ idx 1) len)))))
+
+(defn main []
+  (do
+    (write-file "src/App/MinCall.ls" "{escaped_source}")
+    (let [cache-ref (ref-new (map-new))
+          parse-count-ref (ref-new 0)
+          payload (compile-file-functions-payload-with-cache "src/App/MinCall.ls" 10 cache-ref parse-count-ref)
+          functions (vector-get payload 0)
+          main-func (vector-get functions 1)
+          ir (function-meta-ir main-func)]
+      (do
+        (print (first-call-opcode ir 0 (vector-length ir)))
+        (print (first-call-operand ir 0 (vector-length ir)))))))"#
+    );
+    let ir_output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
+            "selfhost-minimal-entrypoint-ir-opcode-operand",
+            SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+            "src/App/HarnessMain.ls",
+            &ir_harness,
+            &[],
+        )
+    })
+    .expect("minimal entrypoint IR opcode/operand probe 実行に失敗");
+    let ir_lines = parse_numeric_lines(&ir_output);
+    assert_eq!(
+        ir_lines,
+        vec![40, 10],
+        "stage2 entrypoint IR は id1 への opcode 40 / absolute ftable operand 10 を保持するべき"
+    );
+
+    let payload_expr = format!(
+        r#"(do
+            (write-file "src/App/MinCall.ls" "{escaped_source}")
+            (compile-file-functions-payload-with-cache "src/App/MinCall.ls" 10 cache-ref parse-count-ref))"#
+    );
+    let bundle = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        run_selfhost_main_native_x86_segmented_host_bytes_harness_with_payload_and_args(
+            "native-x86-minimal-entrypoint-ir-bytes-rel32-correlation",
+            &payload_expr,
+            &[],
+        )
+    });
+    let entry = bundle.entrypoint_offset;
+    let call_offset = (entry..(entry + 96).min(bundle.code_bytes.len().saturating_sub(5)))
+        .find(|offset| bundle.code_bytes[*offset] == 0xe8)
+        .unwrap_or_else(|| panic!("stage2 entrypoint に opcode 40 相当の rel32 call が無い: entry={entry}"));
+    let call_site = decode_x86_rel32_call_at(&bundle.code_bytes, call_offset);
+    let expected_callee_func_idx = bundle.main_func_idx - 1;
+
+    assert_eq!(ir_lines[1] as usize, expected_callee_func_idx);
+    assert!(
+        call_site.target_offset >= 0
+            && (call_site.target_offset as usize) < entry
+            && is_x86_prologue_at(&bundle.code_bytes, call_site.target_offset as usize),
+        "stage2 emitted rel32 target は id1 の function start を指すべき: ir={ir_lines:?} entry={entry} call={call_site:?} bytes={}",
+        byte_window_hex(&bundle.code_bytes, call_site.call_offset, 8, 16)
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_cli_manifest_call_ir_target_matches_ftable() {
+    let mut modules = SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES.to_vec();
+    modules.extend_from_slice(&[
+        "Cli.ls",
+        "DocTools.ls",
+        "DocJson.ls",
+        "FormatterExpr.ls",
+        "FormatterDecl.ls",
+        "Formatter.ls",
+        "JsonRpc.ls",
+        "LspServerCore.ls",
+        "LspServerNav.ls",
+        "LspServer.ls",
+        "TestRunner.ls",
+        "PropertyRunner.ls",
+        "TypeInferAssertions.ls",
+        "MetadataMigration.ls",
+        "IntentSource.ls",
+        "Evidence.ls",
+    ]);
+    let harness = r#"(module App.HarnessMain)
+(import App.CompilerMode)
+(import Backend.Wasm.CompilerBase)
+
+(defn hash-name-loop [src idx len acc]
+  (if (>= idx len)
+    acc
+    (hash-name-loop src (+ idx 1) len
+      (+ (string-char-at src idx) (* acc 31)))))
+
+(defn hash-name [src]
+  (hash-name-loop src 0 (string-length src) 0))
+
+(defn ir-has-call-target [ir idx len target]
+  (if (>= idx len)
+    0
+    (let [instr (vector-get ir idx)]
+      (if (= (vector-get instr 0) 40)
+        (if (= (vector-get instr 1) target)
+          1
+          (ir-has-call-target ir (+ idx 1) len target))
+        (ir-has-call-target ir (+ idx 1) len target)))))
+
+(defn main []
+  (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        pairs (compile-file-pairs-with-cache "src/App/Cli.ls" cache-ref parse-count-ref)
+        pair-count (vector-length pairs)
+        start-ftable (ftable-with-native-runtime-imports)
+        prelude (compile-record-prelude-all-pairs
+          pairs
+          0
+          pair-count
+          start-ftable
+          10
+          (vector-new 8))
+        prelude-ftable (vector-get prelude 2)
+        prelude-func-idx (vector-get prelude 3)
+        prelude-functions (vector-get prelude 4)
+        reg (register-all-pairs pairs 0 pair-count prelude-ftable prelude-func-idx)
+        ftable (vector-get reg 0)
+        data-ref (ref-new (vector-new 8))
+        functions (compile-all-src-decl-pairs-chunked
+          pairs
+          0
+          pair-count
+          ftable
+          data-ref
+          prelude-functions)
+        manifest-hash (hash-name "validation-source-manifest-json")
+        manifest-target
+          (ftable-lookup ftable manifest-hash)
+        writer-target
+          (ftable-lookup ftable (hash-name "validation-source-write-manifest"))
+        writer-ir
+          (if (> writer-target 0)
+            (function-meta-ir (vector-get functions (- writer-target 10)))
+            (vector-new 0))
+        manifest-call-present
+          (if (> manifest-target 0)
+            (ir-has-call-target
+              writer-ir
+              0
+              (vector-length writer-ir)
+              manifest-target)
+            0)]
+    (do
+      (print manifest-hash)
+      (print (vector-length ftable))
+      (print manifest-target)
+      (print writer-target)
+      (print manifest-call-present)
+      (print (vector-length pairs))
+      (print (vector-length functions))
+      0)))"#;
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
+            "selfhost-cli-manifest-call-ir-target",
+            &modules,
+            "src/App/HarnessMain.ls",
+            harness,
+            &[],
+        )
+    })
+    .expect("App.Cli manifest call IR target probe 実行に失敗");
+    let lines = parse_numeric_lines(&output);
+    assert!(
+        lines.len() >= 6,
+        "App.Cli manifest call target probe の観測値が不足: {:?}",
+        lines
+    );
+    assert!(
+        lines[2] > 0,
+        "validation-source-manifest-json は ftable に正の user function index で登録されるべき: {:?}",
+        lines
+    );
+    assert!(
+        lines[3] > 0 && lines[4] == 1,
+        "validation-source-write-manifest の opcode 40 は manifest serializer の ftable target を参照するべき: {:?}",
+        lines
+    );
+}
+
+#[test]
 fn test_e2e_selfhost_int_to_string_ir_call_operand_points_to_runtime_import_six() {
     let source = "(module Main)\n(defn main []\n  (int-to-string 42))\n";
     let escaped_source = escape_lsharp_string(source);

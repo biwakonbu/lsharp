@@ -881,6 +881,10 @@ fn selfhost_module_raw(name: &str) -> &'static str {
         "PropertyRunner.ls" => {
             include_str!("../../../../selfhost/src/Tools/Test/PropertyRunner.ls")
         }
+        "IntentSource.ls" => {
+            include_str!("../../../../selfhost/src/Tools/Validation/IntentSource.ls")
+        }
+        "Evidence.ls" => include_str!("../../../../selfhost/src/Tools/Validation/Evidence.ls"),
         "JsonRpc.ls" => include_str!("../../../../selfhost/src/Tools/Lsp/JsonRpc.ls"),
         "Linter.ls" => include_str!("../../../../selfhost/src/Tools/Text/Linter.ls"),
         "LspServerCore.ls" => include_str!("../../../../selfhost/src/Tools/Lsp/LspServerCore.ls"),

@@ -705,7 +705,7 @@
                                     (root_pop)
                                     (root_pop)
                                     (root_pop)
-                                    result))))))))))))
+                                    result))))))))))))))))))
 
 (defn validation-source-evidence-json [evidence-record]
   (let [id (source-evidence-record-id evidence-record)
