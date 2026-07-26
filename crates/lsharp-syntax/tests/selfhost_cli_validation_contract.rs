@@ -367,6 +367,33 @@ fn selfhost_validation_json_subject_roots_outer_concat() {
 }
 
 #[test]
+fn selfhost_validation_manifest_write_roots_nested_payload() {
+    let source = selfhost_cli_source();
+    let writer_start = source
+        .find("(defn validation-source-write-manifest [graph manifest-path]")
+        .expect("App.Cli は source manifest writer を持つべき");
+    let writer_end = source[writer_start..]
+        .find("(defn run-validate-source")
+        .map(|offset| writer_start + offset)
+        .expect("source manifest writer の終端を特定できるべき");
+    let writer = &source[writer_start..writer_end];
+
+    assert!(
+        writer.contains("(root_push graph)")
+            && writer.contains("(root_push manifest-path)")
+            && writer.contains(
+                "(let [manifest-json (validation-source-manifest-json graph)]"
+            )
+            && writer.contains("(root_push manifest-json)")
+            && writer.contains("(write-file manifest-path manifest-json)")
+            && !writer.contains(
+                "(write-file manifest-path (validation-source-manifest-json graph))"
+            ),
+        "native x86 の manifest writer は path を serializer 呼び出し中に保持し、戻り文字列を root してから write-file に渡すべき"
+    );
+}
+
+#[test]
 fn selfhost_json_escape_loop_uses_one_arg_state_boundary() {
     let source = selfhost_json_rpc_source();
     let state_start = source

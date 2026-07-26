@@ -284,7 +284,16 @@
 (defn validation-option-manifest-path [opts] (vector-get opts 1))
 (defn validation-source-write-manifest [graph manifest-path]
   (if (> (string-length manifest-path) 0)
-    (write-file manifest-path (validation-source-manifest-json graph))
+    (do
+      (root_push graph)
+      (root_push manifest-path)
+      (let [manifest-json (validation-source-manifest-json graph)]
+        (root_push manifest-json)
+        (let [result (write-file manifest-path manifest-json)]
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          result)))
     0))
 (defn run-validate-source [src opts]
   (let [program (parse-program src)
