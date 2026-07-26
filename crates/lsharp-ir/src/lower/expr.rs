@@ -17,6 +17,7 @@ mod application_string_heap;
 mod application_strings;
 #[cfg(test)]
 mod application_tests;
+mod application_vector;
 mod computation;
 #[cfg(test)]
 mod computation_tests;
