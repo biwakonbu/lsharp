@@ -7,6 +7,7 @@ mod runtime_allocator_closures;
 mod runtime_allocator_size_classes;
 mod runtime_recursion_limits;
 mod selfhost_bootstrap_acceptance;
+mod selfhost_bootstrap_acceptance_file_size;
 mod selfhost_bootstrap_contracts;
 mod selfhost_bootstrap_four_layer;
 mod selfhost_bootstrap_four_layer_file_size;
