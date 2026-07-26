@@ -290,6 +290,10 @@
 
 - [~] `imp-06` Infer declaration/registration split — `infer_program`、`register_nested_module_types`、`infer_decl_functions`、signature helper/`infer_defn` を `infer/decl.rs`（458 行）へ、ADT/record/type alias/constrained/trait/impl registration を `infer/registration.rs`（489 行）へ移動し、parent を 1414 行から 474 行へ縮小した。`infer_program` の公開 API、宣言順序、nested module の修飾名、2-pass defn inference、constructor/accessor/type scheme、trait/default impl、constraint registration と `pub(super)` internal seams は維持した。RED `E0583` → GREEN、declaration focused 1 件、registration focused 1 件、`RUST_MIN_STACK=33554432 cargo test -p lsharp-types -- --nocapture`（unit 221 / integration 117 / doc-test 0）、`cargo clippy -p lsharp-types --all-targets -- -D warnings`、`cargo check --workspace`（専用 target）、対象 Rust 2024 rustfmt、`git diff --check` は pass。selfhost/native parity、I-01 / I-08 aggregate は未完了。Evidence: `docs/adr/decisions-legacy-infer-decl-registration-split.md`。
 
+## 2026-07-26 LSP params normalizer 責務分離
+
+- [~] `imp-06` LSP params normalizer split — `crates/lsharp-lsp/src/lib.rs` の tower-lsp `params_normalizer`（128 行）を `crates/lsharp-lsp/src/params_normalizer.rs`（134 行）へ移動し、parent を 1397 行から 1270 行へ縮小した。`ParamsNormalizer` の `shutdown` null/empty params stripping、non-empty params preservation、request id/method forwarding、`Service` の `poll_ready` / `call` semantics は変更していない。RED `E0583` → GREEN、focused 1 件、`cargo test -p lsharp-lsp -- --nocapture`（unit 62 / main 0 / doc-test 0）、`cargo clippy -p lsharp-lsp --all-targets -- -D warnings`、`cargo check --workspace`（専用 target）、対象 Rust 2024 rustfmt、`git diff --check` は passした。LSP backend handler の追加分割、selfhost/native parity、I-01 / I-08 aggregate は未完了。Evidence: `docs/adr/decisions-legacy-lsp-params-normalizer-split.md`。
+
 > 凡例: `[x]` 完了 / `[ ]` 未着手 / `[~]` 部分実装 / `[BLOCKED: ...]` 依存待ち / `[DEFERRED]` 後続トラック送り
 >
 > **完了済みフェーズ**: Phase 0-7, P8, P9-1/2/3/4/6, P10, P12, P13, P14。
