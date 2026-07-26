@@ -3,6 +3,36 @@
 mod linker_tests;
 
 #[test]
+fn test_link_modules_public_seam_preserves_import_rebase_contract() {
+    let module = Module {
+        functions: vec![Function {
+            name: "write".to_string(),
+            params: vec![],
+            result: IrType::I32,
+            locals: vec![],
+            body: vec![Instruction::Call(0), Instruction::Return],
+            is_export: false,
+        }],
+        gc_types: vec![],
+        imports: vec![ImportFunc {
+            module: "env".to_string(),
+            name: "write".to_string(),
+            params: vec![IrType::I32],
+            result: IrType::I32,
+        }],
+        globals: vec![],
+        string_data: vec![],
+    };
+
+    let linked = link_modules(&[module]);
+
+    assert_eq!(linked.imports.len(), 1);
+    assert_eq!(linked.imports[0].name, "write");
+    assert_eq!(linked.functions.len(), 1);
+    assert!(matches!(linked.functions[0].body[0], Instruction::Call(0)));
+}
+
+#[test]
 fn test_module_dump_preserves_public_model_display_contract() {
     let module = Module {
         functions: vec![Function {

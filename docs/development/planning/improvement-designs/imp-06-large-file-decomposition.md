@@ -198,6 +198,8 @@ HashMap の allocation/size lowering（`map-new`、`map-size`、62 行）を `ex
 
 続く IR production slice として、`crates/lsharp-ir/src/lib.rs` の `Module`、`ImportFunc`、`GlobalDef`、`GcTypeDef`、`GcTypeKind`、`GcField`、`Function` と `Module::dump`（138 行）を `model.rs` へ移動し、parent を 2564 行から 2428 行へ縮小した。`mod model` と `pub use model::{...}` により既存の `lsharp_ir::*` public path、モデルの field/variant、`Module::dump` の表示契約を維持した。RED (`E0583`) → GREEN、model display contract 1件、`cargo test -p lsharp-ir --lib` は 285件 pass / 1件が origin/main 由来の `IntentSource.ls` における `vector-push-pair-rooted-v3` 未定義 failure。`cargo clippy -p lsharp-ir --all-targets -- -D warnings`、workspace `cargo check`、対象 Rust 2024 rustfmt、`git diff --check` は pass。linker/lowering/incremental orchestration、Rust/native parity、I-01 / I-08 aggregate は未完了である。Evidence: `docs/adr/decisions-legacy-ir-module-model-split.md`。
 
+さらに IR linker production slice として、`crates/lsharp-ir/src/lib.rs` の `link_modules` と module-local の型・命令 index remap helpers（290 行）を `linker.rs`（292 行）へ移動し、parent を 2428 行から 2139 行へ縮小した。`mod linker` と `pub use linker::link_modules` により既存の `lsharp_ir::link_modules` public path、import deduplication、function/GC/function-type remap、WasmGC instruction remap を保持した。RED (`E0583`) → GREEN、public linker seam contract 1件、既存 linker focused 7件、`cargo test -p lsharp-ir --lib` は 286件 pass / 1件が origin/main 由来の `IntentSource.ls` における `vector-push-pair-rooted-v3` 未定義 failure。clippy、workspace check、対象 Rust 2024 rustfmt、`git diff --check` は pass。lowering/incremental orchestration、Rust/native parity、I-01 / I-08 aggregate は未完了である。Evidence: `docs/adr/decisions-legacy-ir-linker-module-split.md`。
+
 ### 3. 優先順位
 
 1. **imp-02 (エラー統一) の対象になるファイルを先に分割しない** — A-1 のエラー型変更を
