@@ -926,6 +926,20 @@ mod unify_property_tests {
         infer.unify(left, right, Span::new(0, 0)).is_ok()
     }
 
+    #[test]
+    fn unify_preserves_occurs_check_diagnostic_boundary() {
+        let mut infer = Infer::new();
+        let variable = Type::Var(0);
+        let recursive = Type::Fun(vec![variable.clone()], Box::new(variable.clone()));
+        let error = infer
+            .unify(&variable, &recursive, Span::new(4, 9))
+            .expect_err("recursive type must fail the occurs check");
+
+        assert!(
+            matches!(error, TypeError::InfiniteType { var: 0, span, .. } if span == Span::new(4, 9))
+        );
+    }
+
     proptest! {
         #![proptest_config(ProptestConfig::with_cases(64))]
 

@@ -274,6 +274,10 @@
 
 - [~] `imp-06` Infer error split — `crates/lsharp-types/src/infer.rs` の `TypeError` / `TypeErrorCode` と stable code/span 実装（153 行）を `infer/error.rs`（155 行）へ移動し、parent を 2319 行から 2168 行へ縮小した。`infer::TypeError` / `infer::TypeErrorCode` の公開 path は parent の re-export で維持し、診断 variant、error code、span、Display、Error trait の semantics は変更していない。RED `E0583` → GREEN、公開 re-export focused 1 件、`RUST_MIN_STACK=33554432 cargo test -p lsharp-types -- --nocapture`（unit 216 / integration 117 / doc-test 0）、clippy、workspace check（専用 target）、対象 rustfmt、`git diff --check` は pass。infer の他 production 責務、selfhost/native parity、I-01 / I-08 aggregate は未完了。Evidence: `docs/adr/decisions-legacy-infer-error-split.md`。
 
+## 2026-07-26 Infer unify 責務分離
+
+- [~] `imp-06` Infer unify split — `crates/lsharp-types/src/infer.rs` の unification / `int_heap_compatible` / occurs-check 付き `bind_var`（108 行）を `infer/unify.rs`（118 行）へ移動し、parent を 2168 行から 2061 行へ縮小した。既存の `Infer` 内部呼び出しと `unify` test seam は `pub(super)` で維持し、関数・型適用・record・Int/heap compatibility、代入合成、`TypeError` variant、`global_subst` 更新の semantics は変更していない。RED `E0583` → GREEN、`unify_property_tests` 2 件、`RUST_MIN_STACK=33554432 cargo test -p lsharp-types -- --nocapture`（unit 217 / integration 117 / doc-test 0）、`cargo clippy -p lsharp-types --all-targets -- -D warnings`、`cargo check --workspace`（専用 target）、対象 Rust 2024 rustfmt、`git diff --check` は pass。infer の他 production 責務、selfhost/native parity、I-01 / I-08 aggregate は未完了。Evidence: `docs/adr/decisions-legacy-infer-unify-split.md`。
+
 > 凡例: `[x]` 完了 / `[ ]` 未着手 / `[~]` 部分実装 / `[BLOCKED: ...]` 依存待ち / `[DEFERRED]` 後続トラック送り
 >
 > **完了済みフェーズ**: Phase 0-7, P8, P9-1/2/3/4/6, P10, P12, P13, P14。
