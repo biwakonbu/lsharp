@@ -1,6 +1,37 @@
 #[cfg(test)]
 #[path = "lib_tests/linker.rs"]
 mod linker_tests;
+
+#[test]
+fn test_module_dump_preserves_public_model_display_contract() {
+    let module = Module {
+        functions: vec![Function {
+            name: "main".to_string(),
+            params: vec![IrType::I64],
+            result: IrType::I64,
+            locals: vec![],
+            body: vec![Instruction::I64Const(7), Instruction::Return],
+            is_export: true,
+        }],
+        gc_types: vec![GcTypeDef {
+            name: "Pair".to_string(),
+            kind: GcTypeKind::Struct(vec![GcField {
+                name: "value".to_string(),
+                ty: IrType::I64,
+                mutable: false,
+            }]),
+        }],
+        imports: vec![],
+        globals: vec![],
+        string_data: vec![],
+    };
+
+    assert_eq!(
+        module.dump(),
+        "gc_type Pair = struct {value: i64}\n\nfn main(i64) -> i64:\n  i64.const 7\n  return\n\n"
+    );
+}
+
 #[cfg(test)]
 mod import_dedup_tests {
     use super::*;

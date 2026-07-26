@@ -113,7 +113,8 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   source override の segment/disk persistence、自動 eviction、selfhost/native compiler、
   public command と両 supported target の evidence を閉じる。
 - [~] `LEGACY-MAINT-01` large-file decomposition — Issues `I-01` / `I-08`。多数の test/
-  production split は verified。`wasi.rs`、`lsharp-ir/src/lib.rs`、`lsharp-tooling/src/compile.rs`、
+  production split と `lsharp-ir/src/lib.rs` の `Instruction` / `IrType` および
+  `Module` / `Function` / GC model seam は verified。`wasi.rs`、`lsharp-ir/src/lib.rs`、`lsharp-tooling/src/compile.rs`、
   `infer.rs`、parser/lower/driver/LSP の責務分割を、型・focused test・snapshot parity を保って完了する。
 - [~] `LEGACY-TEST-01` property/fuzz/limit coverage — Issues `I-06` / `I-08`。syntax/types
   property test と複数の GC/type/runtime limit lane は verified。再利用可能な generator、
