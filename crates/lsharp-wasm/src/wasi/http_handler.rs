@@ -466,7 +466,7 @@ fn emit_wasm_http_handler_core(module: &Module) -> Result<Vec<u8>, CodegenError>
         ROOT_SLOT_FAILURE_TOP_GLOBAL_IDX,
         ROOT_SLOT_FAILURE_COUNT_GLOBAL_IDX,
     );
-    emit_gc_collect_func(&mut codes, collector_globals);
+    super::gc_collect::emit_gc_collect_func(&mut codes, collector_globals);
 
     let struct_scratch_fields = structs::max_struct_field_count(module);
     for func in &module.functions {
