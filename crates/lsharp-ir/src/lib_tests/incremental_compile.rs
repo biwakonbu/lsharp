@@ -1,5 +1,15 @@
 use super::*;
 
+#[test]
+fn test_incremental_parse_tracker_resets_count() {
+    let tracker = IncrementalParseTracker::new();
+    parse_program_for_incremental("(defn main [] 1)\n").unwrap();
+
+    assert_eq!(tracker.count(), 1);
+    tracker.reset();
+    assert_eq!(tracker.count(), 0);
+}
+
 fn main_function(module: &Module) -> &Function {
     module
         .functions

@@ -330,6 +330,10 @@
 
 - [~] `imp-06` driver MCP schema split — `crates/lsharp-driver/src/mcp_server.rs` の tool constructor、input/output schema、JSON schema helper、validation input schema（213 行）を `mcp_schema.rs`（212 行）へ移動し、parent を 1001 行から 796 行へ縮小した。`include!` によって `McpTool`/`list_tools`、JSON-RPC protocol、tool dispatch と schema helper の既存 private path、各 tool の required/properties/diagnostic output semantics を維持し、`lsharp_errors` input schema の `error_code` required contract test を追加した。RED `E0583` → GREEN、MCP focused 36 件と `lsharp-driver` unit 158 件は pass。`default_path_delegation` integration の origin/main 由来既知 7 failures（embedded component/selfhost default-path contract）は今回の移動とは切り分ける。残る MCP search/tool implementation の分割、selfhost/native parity、I-01 / I-08 aggregate は未完了。Evidence: `docs/adr/decisions-legacy-driver-mcp-schema-split.md`。
 
+## 2026-07-26 lsharp-ir incremental telemetry tracker 責務分離
+
+- [~] `imp-06` lsharp-ir incremental tracker split — `crates/lsharp-ir/src/lib.rs` の test-only incremental telemetry tracker（parse/type-infer/SCC merged fast path/lower/module-segment/link/cache-hit、約241 行）を `incremental_trackers.rs`（240 行）へ移動し、parent を 3080 行から 2842 行へ縮小した。`#[cfg(test)] include!` によって `lib_tests` の private tracker names、thread-local enable/count/reset/drop semantics と incremental pipeline の `note_incremental_*` call path を維持し、parse tracker reset contract test を追加した。RED `E0583` → GREEN、incremental compile focused 11 件、incremental analysis focused 15 件、`cargo test -p lsharp-ir --lib` 284 件が pass。clippy、workspace check、対象 Rust 2024 rustfmt、`git diff --check`、docs audit も passした。lower/compiler production split、Rust/native parity、I-01 / I-08 aggregate は未完了。Evidence: `docs/adr/decisions-legacy-ir-incremental-trackers-split.md`。
+
 > 凡例: `[x]` 完了 / `[ ]` 未着手 / `[~]` 部分実装 / `[BLOCKED: ...]` 依存待ち / `[DEFERRED]` 後続トラック送り
 >
 > **完了済みフェーズ**: Phase 0-7, P8, P9-1/2/3/4/6, P10, P12, P13, P14。
