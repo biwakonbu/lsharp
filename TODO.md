@@ -1251,6 +1251,7 @@
 ---
 
   - 2026-07-26 maintenance slice: `crates/lsharp-wasm/src/wasmgc_runner_component_output.rs` の writer/fd adapter と core writer helper を `wasmgc_runner_output_writer.rs`（112 行）へ移動し、親を 642 行から 543 行へ縮小した。既存 public runner path、partial-write、flush、zero/over-report/errno の fail-closed contract は維持した。writer seam、`wasmgc_probe` 101 passed、`lsharp-wasm --lib` 109 passed / 1 existing `RootLifetime::RootSetWithoutActiveSlot` failure、clippy、workspace check、対象 Rust 2024 rustfmt、`git diff --check` を pass。Preview2 file-roundtrip fixture の一時 directory は process id を含む名前へ更新した。Evidence: `docs/adr/decisions-legacy-wasmgc-output-writer-split.md`。WasmGC parity、advanced runtime、I-01 / I-08 aggregate は未完了。
+  - 2026-07-26 maintenance slice: `crates/lsharp-ir/src/lower/decl.rs` の型名推定 helper 群を `decl/type_inference.rs`（215 行）へ移動し、親を 692 行から 486 行へ縮小した。既存 `Lower` 内部 API、trait/ADT dispatch、宣言 lowering semantics は維持した。`lower::` focused 167 passed、large-stack `lsharp-ir --lib` 282 passed / 1 existing `IntentSource.ls` の `vector-push-pair-rooted-v3` 未定義 failure、clippy、workspace check、対象 Rust 2024 rustfmt、`git diff --check` を pass。Evidence: `docs/adr/decisions-legacy-lower-decl-type-inference-split.md`。lower 全体の責務分割、Rust/native parity、I-01 / I-08 aggregate は未完了。
 
 ## 既知の制限事項
 
