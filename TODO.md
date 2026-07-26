@@ -32,9 +32,10 @@
 - [~] `EC-M2-03` `lsharp validate` — version 1 manifest parser、source adapter、
   `--emit-manifest` の atomic/durable file boundary、deterministic text/JSON report、
   `pass=0` / `fail=1` / `unknown=2` の Rust CLI は verified。selfhost `App.Cli` と
-  `EmbeddedCli` の source/report/exit slice は verified。selfhost/native の manifest
-  producer/parser、report/exit parity、release-level provenance、EmbeddedCli の manifest
-  emission/MCP、両 supported target の runtime evidence を閉じる。
+  `EmbeddedCli` の source/report/pass-fail-unknown/exit と未移行 manifest filesystem の
+  external-boundary slice は actual Wasm で verified。selfhost/native の manifest
+  producer/parser、native canonical parity、atomic/durable emission、release-level provenance、
+  MCP、両 supported target の runtime evidence を閉じる。
 
 次の実装は `EC-M2-01`〜`EC-M2-03` の未接続入力を一つの RED に絞る。current plan の
 acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展開しない。

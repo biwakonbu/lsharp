@@ -361,6 +361,33 @@
             out
             (validation-gap-json "trace-gap.claim-without-test" claim)))]
       (validation-claim-gaps-loop claims tested-by (+ idx 1) next-out))))
+(defn validation-intent-gap-count-loop [intents motives idx count]
+  (if (>= idx (vector-length intents))
+    count
+    (validation-intent-gap-count-loop
+      intents
+      motives
+      (+ idx 1)
+      (if (= (validation-edge-links-id? motives 0 (vector-get intents idx)) 1)
+        count
+        (+ count 1)))))
+(defn validation-claim-gap-count-loop [claims tested-by idx count]
+  (if (>= idx (vector-length claims))
+    count
+    (validation-claim-gap-count-loop
+      claims
+      tested-by
+      (+ idx 1)
+      (if (= (validation-edge-links-id? tested-by 0 (vector-get claims idx)) 1)
+        count
+        (+ count 1)))))
+(defn validation-trace-gap-count [state]
+  (let [intents (ref-get (vector-get state 0))
+    claims (ref-get (vector-get state 1))
+    motives (ref-get (vector-get state 2))
+    tested-by (ref-get (vector-get state 3))
+    intent-count (validation-intent-gap-count-loop intents motives 0 0)]
+    (validation-claim-gap-count-loop claims tested-by 0 intent-count)))
 (defn validation-trace-gaps-json [state]
   (let [intents (ref-get (vector-get state 0))
     claims (ref-get (vector-get state 1))
@@ -421,9 +448,18 @@
     metrics0 (vector-new 0)
     metrics1 (push-int-vector-local metrics0 independent-reviews)]
     (push-int-vector-local metrics1 (vector-length ids2))))
+(defn validation-source-status-code [state independent-reviews contradicting-observations]
+  (if (> contradicting-observations 0)
+    1
+    (if (> (validation-trace-gap-count state) 0)
+      2
+      (if (> (ref-get (vector-get state 4)) 0)
+        2
+        (if (= independent-reviews 0) 2 0)))))
 (defn validation-source-report-json [state independent-reviews contradicting-observations]
   (let [fields0 ""
-    status (if (> contradicting-observations 0) "fail" "unknown")
+    status-code (validation-source-status-code state independent-reviews contradicting-observations)
+    status (if (= status-code 1) "fail" (if (= status-code 0) "pass" "unknown"))
     fields1 (docjson-append fields0 (docjson-string-field "status" status))
     fields2 (docjson-append fields1 (docjson-array-field "trace_gaps" (validation-trace-gaps-json state)))
     fields3 (docjson-append fields2 (docjson-int-field "open_questions" (ref-get (vector-get state 4))))
@@ -431,10 +467,6 @@
     fields5 (docjson-append fields4 (docjson-int-field "contradicting_observations" contradicting-observations))]
     (docjson-object-wrap fields5)))
 (defn validation-option-manifest-path [opts] (vector-get opts 1))
-(defn validation-source-write-manifest [graph manifest-path]
-  (if (> (string-length manifest-path) 0)
-    (write-file manifest-path (validation-source-manifest-json graph))
-    0))
 (defn run-validate-source [src opts]
   (let [program (parse-program src)
     graph-result (source-evidence-graph-from-program program)]
@@ -452,18 +484,20 @@
         metrics (validation-evidence-metrics graph)
         independent-reviews (vector-get metrics 0)
         contradicting-observations (vector-get metrics 1)
+        status-code (validation-source-status-code state independent-reviews contradicting-observations)
         report (validation-source-report-json state independent-reviews contradicting-observations)]
-        (if (and (> (string-length manifest-path) 0)
-            (< (validation-source-write-manifest graph manifest-path) 0))
+        (if (> (string-length manifest-path) 0)
           (do
-            (cli-stderr "source validation manifest write failed")
+            (cli-stderr "external-boundary:embedded-cli-manifest-output")
             (exit-compile-error))
           (do
             (print-string report)
             (print-string "\n")
-            (if (> contradicting-observations 0)
+            (if (= status-code 1)
               (exit-compile-error)
-              (exit-runtime-error))))))))
+              (if (= status-code 0)
+                (exit-success)
+                (exit-runtime-error)))))))))
 (defn run-check-source [src opts] (run-check-program (make-check-program-context (parse-program src) (vector-new 0)) opts))
 (defn test-examples-text [count] (string-concat "examples:" (int-to-string count)))
 (defn test-invariants-text [count] (string-concat "invariants:" (int-to-string count)))

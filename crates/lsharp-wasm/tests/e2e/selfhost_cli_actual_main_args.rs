@@ -92,6 +92,29 @@ fn run_main_with_input_file_capture(
     output
 }
 
+fn run_main_with_input_file_capture_preserve_dir(
+    bundle: &str,
+    prefix: &str,
+    source: &str,
+    args: &[&str],
+) -> (lsharp_wasm::wasi_runner::ExecutionOutput, PathBuf) {
+    let dir = cli_main_args_fixture_dir(prefix);
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("fixture directory の作成に失敗");
+    std::fs::write(dir.join("input.ls"), source).expect("fixture input.ls の書き込みに失敗");
+
+    let wasm = compile_only(bundle);
+    let output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_args_and_stdin_capture(
+        &wasm,
+        Some(&dir),
+        args,
+        "",
+    )
+    .expect("Cli main capture 実行に失敗");
+
+    (output, dir)
+}
+
 #[test]
 fn test_e2e_selfhost_cli_main_compile_and_build_output_actual_preview1_wasm() {
     run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, || {
@@ -543,6 +566,141 @@ fn test_e2e_selfhost_embedded_cli_main_with_args_validate_source_json_trace_gap(
     assert_eq!(report["independent_reviews"], 0);
     assert_eq!(report["contradicting_observations"], 0);
     assert!(report.get("verified").is_none());
+}
+
+/// EC-M3-03: EmbeddedCli の manifest filesystem write は外部境界として明示拒否すること
+#[test]
+fn test_e2e_selfhost_embedded_cli_validate_source_rejects_manifest_boundary() {
+    let source = r#"(defn verify [] :claim "claim:checkout/rejects" "Shipped orders are rejected" true)"#;
+    let (output, dir) = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, || {
+        run_main_with_input_file_capture_preserve_dir(
+            selfhost_embedded_cli_runtime_bundle(),
+            "embedded_validate_manifest_boundary",
+            source,
+            &[
+                "validate",
+                "--source",
+                "input.ls",
+                "--format",
+                "json",
+                "--emit-manifest",
+                "intent-graph.json",
+            ],
+        )
+    });
+    let manifest_exists = dir.join("intent-graph.json").exists();
+    let _ = std::fs::remove_dir_all(&dir);
+
+    assert_eq!(output.exit_code, 1, "EmbeddedCli の filesystem 境界は exit 1 で拒否するべき");
+    assert!(
+        output
+            .stdout
+            .contains("external-boundary:embedded-cli-manifest-output"),
+        "EmbeddedCli の manifest 境界診断は stable code を返すべき: {}",
+        output.stdout
+    );
+    assert!(!output.stdout.contains("\"status\""));
+    assert!(!manifest_exists, "EmbeddedCli は external boundary で manifest を作らないべき");
+}
+
+/// EC-M3-03: EmbeddedCli の validation は独立 review を含む complete graph を pass にすること
+#[test]
+fn test_e2e_selfhost_embedded_cli_validate_source_reports_pass() {
+    let source = r#"
+(defn verify []
+  :intent "intent:checkout/safe-cancel" "Users can cancel an order"
+  :claim "claim:checkout/rejects" "Shipped orders are rejected"
+  :motivates "intent:checkout/safe-cancel" "claim:checkout/rejects"
+  :tested-by "claim:checkout/rejects" "contract:checkout/review"
+  :evidence "evidence:checkout/review"
+    :subject "claim:checkout/rejects"
+    :method "review"
+    :outcome "pass"
+    :runner "reviewer"
+    :target "aarch64-apple-darwin"
+    :source-commit "deadbeef"
+    :artifact-digest "sha256:abc"
+    :cases 1
+    :seed 42
+    :generator "checkout-review"
+    :producer "lsharp-test"
+    :tool-version "0.2"
+    :timestamp "2026-07-25T00:00:00Z"
+    :independence "independent-review"
+  :supports "evidence:checkout/review" "claim:checkout/rejects"
+  true)
+"#;
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, || {
+        run_main_with_input_file_capture(
+            selfhost_embedded_cli_runtime_bundle(),
+            "embedded_validate_pass",
+            source,
+            &["validate", "--source", "input.ls", "--format", "json"],
+        )
+    });
+
+    assert_eq!(
+        output.exit_code, 0,
+        "complete graph with independent review は pass exit 0 であるべき: stdout={:?}",
+        output.stdout
+    );
+    let report: Value = serde_json::from_str(output.stdout.trim())
+        .expect("EmbeddedCli pass report は valid JSON であるべき");
+    assert_eq!(report["status"], "pass");
+    assert_eq!(report["trace_gaps"].as_array().unwrap().len(), 0);
+    assert_eq!(report["open_questions"], 0);
+    assert_eq!(report["independent_reviews"], 1);
+    assert_eq!(report["contradicting_observations"], 0);
+}
+
+/// EC-M3-03: EmbeddedCli の contradiction は fail report と exit 1 になること
+#[test]
+fn test_e2e_selfhost_embedded_cli_validate_source_reports_fail() {
+    let source = r#"
+(defn verify []
+  :intent "intent:checkout/safe-cancel" "Users can cancel an order"
+  :claim "claim:checkout/rejects" "Shipped orders are rejected"
+  :motivates "intent:checkout/safe-cancel" "claim:checkout/rejects"
+  :tested-by "claim:checkout/rejects" "contract:checkout/review"
+  :evidence "evidence:checkout/review"
+    :subject "claim:checkout/rejects"
+    :method "review"
+    :outcome "contradicted"
+    :runner "reviewer"
+    :target "aarch64-apple-darwin"
+    :source-commit "deadbeef"
+    :artifact-digest "sha256:abc"
+    :cases 1
+    :seed 42
+    :generator "checkout-review"
+    :producer "lsharp-test"
+    :tool-version "0.2"
+    :timestamp "2026-07-25T00:00:00Z"
+    :independence "independent-review"
+  :contradicts "evidence:checkout/review" "claim:checkout/rejects"
+  true)
+"#;
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, || {
+        run_main_with_input_file_capture(
+            selfhost_embedded_cli_runtime_bundle(),
+            "embedded_validate_fail",
+            source,
+            &["validate", "--source", "input.ls", "--format", "json"],
+        )
+    });
+
+    assert_eq!(
+        output.exit_code, 1,
+        "contradicting evidence は fail exit 1 であるべき: stdout={:?}",
+        output.stdout
+    );
+    let report: Value = serde_json::from_str(output.stdout.trim())
+        .expect("EmbeddedCli fail report は valid JSON であるべき");
+    assert_eq!(report["status"], "fail");
+    assert_eq!(report["trace_gaps"].as_array().unwrap().len(), 0);
+    assert_eq!(report["open_questions"], 0);
+    assert_eq!(report["independent_reviews"], 1);
+    assert_eq!(report["contradicting_observations"], 1);
 }
 
 /// TEST-CLI-02-AP2: actual Cli main は自己再帰 top-level defn を typecheck できること
