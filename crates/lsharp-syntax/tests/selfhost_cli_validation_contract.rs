@@ -216,6 +216,34 @@ fn selfhost_validation_json_append_roots_nested_concat() {
 }
 
 #[test]
+fn selfhost_validation_json_string_literal_roots_nested_concat() {
+    let evidence = selfhost_evidence_source();
+    let literal_start = evidence
+        .find("(defn validation-json-string-literal [value]")
+        .expect("validation-json-string-literal を特定できるべき");
+    let literal_end = evidence[literal_start..]
+        .find("(defn validation-json-string-field")
+        .map(|offset| literal_start + offset)
+        .expect("validation-json-string-literal の終端を特定できるべき");
+    let literal = &evidence[literal_start..literal_end];
+
+    assert!(
+        literal.contains("(root_push value)")
+            && literal.contains("(let [escaped (json-escape-string value)]")
+            && literal.contains("(root_push escaped)")
+            && literal.contains(r#"(let [quoted (string-concat escaped "\"")]"#)
+            && literal.contains("(root_push quoted)")
+            && literal.contains(r#"(let [result (string-concat "\"" quoted)]"#)
+            && literal.contains("(root_push result)"),
+        "native x86 の JSON string literal は各 concat の入力と中間結果を root lease で保持するべき"
+    );
+    assert!(
+        !literal.contains(r#"(string-concat "\"" (string-concat (json-escape-string value) "\""))"#),
+        "native x86 の JSON string literal は nested string-concat を直接評価するべきではない"
+    );
+}
+
+#[test]
 fn selfhost_json_escape_loop_uses_one_arg_state_boundary() {
     let source = selfhost_json_rpc_source();
     let state_start = source

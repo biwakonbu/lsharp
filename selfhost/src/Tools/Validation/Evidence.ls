@@ -383,7 +383,22 @@
 (defn validation-json-field [name value-json]
   (string-concat "\"" (string-concat name (string-concat "\":" value-json))))
 (defn validation-json-string-literal [value]
-  (string-concat "\"" (string-concat (json-escape-string value) "\"")))
+  (do
+    (root_push value)
+    (let [escaped (json-escape-string value)]
+      (do
+        (root_push escaped)
+        (let [quoted (string-concat escaped "\"")]
+          (do
+            (root_push quoted)
+            (let [result (string-concat "\"" quoted)]
+              (do
+                (root_push result)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result))))))))
 (defn validation-json-string-field [name value]
   (validation-json-field name (validation-json-string-literal value)))
 (defn validation-json-int-field [name value]
