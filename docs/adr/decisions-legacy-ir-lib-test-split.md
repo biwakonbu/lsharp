@@ -29,7 +29,8 @@ include!("lib_tests.rs");
 ## Evidence
 
 - `lib.rs`: 5462 行 → parent 3080 行
-- `lib_tests.rs`: 2383 行、7 module / 61 tests
+- linker 分離前の `lib_tests.rs`: 2384 行、7 module / 61 tests
+- linker 分離後は `lib_tests.rs` 2000 行 + `lib_tests/linker.rs` 383 行
 - `RUST_MIN_STACK=33554432 cargo test -p lsharp-ir`: 257 passed
 - `cargo test -p lsharp-ir --doc`: 0/0 passed
 - `cargo clippy -p lsharp-ir --all-targets -- -D warnings`: passed
