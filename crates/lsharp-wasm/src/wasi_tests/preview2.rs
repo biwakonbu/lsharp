@@ -87,3 +87,12 @@ fn test_emit_wasm_wasi_p2_supports_file_roundtrip() {
 
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn test_emit_wasm_http_handler_p2_remains_component_compatible() {
+    let component = compile_wasi_p2(r#"(defn handle [request] "ok")"#);
+
+    let engine = wasmtime::Engine::default();
+    wasmtime::component::Component::new(&engine, &component)
+        .expect("HTTP handler P2 entrypoint は valid component を生成するべき");
+}
