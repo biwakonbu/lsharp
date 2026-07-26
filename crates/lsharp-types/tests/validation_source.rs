@@ -637,6 +637,36 @@ fn source_adapter_registers_evidence_records_before_support_edges() {
 }
 
 #[test]
+fn source_adapter_registers_contradicts_evidence_edge() {
+    let program = parse(&format!(
+        r#"
+        (defn cancel []
+          :claim "claim:checkout/cancel" "The API rejects shipped orders"
+          {}
+          :contradicts "evidence:matrix/cancel-counterexample" "claim:checkout/cancel"
+          true)
+        "#,
+        source_evidence_form(
+            "cancel-counterexample",
+            "case",
+            "contradicted",
+            "same-author"
+        )
+    ))
+    .expect("contradicts source fixture は parse できるべき");
+
+    let graph = source_program_to_intent_graph(&program)
+        .expect("contradicts evidence graph が構築できるべき");
+    assert_eq!(graph.evidence().len(), 1);
+    assert!(matches!(
+        &graph.edges()[0],
+        lsharp_types::evidence::Edge::Contradicts { observation, claim }
+            if observation.as_str() == "evidence:matrix/cancel-counterexample"
+                && claim.as_str() == "claim:checkout/cancel"
+    ));
+}
+
+#[test]
 fn source_adapter_reports_unregistered_evidence_edge_with_directive_span() {
     const SOURCE: &str = r#"
         (defn cancel []
