@@ -118,7 +118,72 @@ assert manifest == {
     "function_start_len": expected_layout[1],
     "main_func_idx": expected_layout[2],
 }
+
 PY
+}
+
+write_overlong_fixture() {
+  local fixture_kind="$1"
+  local fixture_path="$2"
+
+  python3 - "${fixture_kind}" "${fixture_path}" <<'PY'
+import pathlib
+import sys
+
+fixture_kind = sys.argv[1]
+fixture_path = pathlib.Path(sys.argv[2])
+
+
+def packed_lines(payload: bytes) -> list[str]:
+    return [str(int.from_bytes(payload[index:index + 8], "little")) for index in range(0, len(payload), 8)]
+
+
+code_lines = packed_lines(b"C")
+data_lines = packed_lines(b"D")
+code_len = "1"
+if fixture_kind == "code":
+    code_lines += packed_lines(b"unexpected-code")
+elif fixture_kind == "data":
+    data_lines += packed_lines(b"unexpected-data")
+elif fixture_kind == "negative":
+    code_lines = []
+    code_len = "-1"
+else:
+    raise SystemExit(f"unknown overlong fixture kind: {fixture_kind}")
+
+lines = [
+    "9000000005",
+    "1",
+    "10",
+    "0",
+    "9000000006",
+    "9000000001",
+    code_len,
+    "9000000002",
+    *code_lines,
+    "9000000003",
+    "1",
+    "9000000004",
+    *data_lines,
+]
+fixture_path.write_text("\n".join(lines) + "\n")
+PY
+}
+
+expect_reject() {
+  local fixture_path="$1"
+  local output_dir="$2"
+  local expected_message="$3"
+  local stderr_path="${output_dir}.stderr"
+
+  if python3 "${decoder}" "${fixture_path}" "${output_dir}" 2>"${stderr_path}"; then
+    printf 'decoder accepted malformed fixture: %s\n' "${fixture_path}" >&2
+    exit 1
+  fi
+  grep -Fq "${expected_message}" "${stderr_path}" || {
+    printf 'decoder diagnostic did not contain %s: %s\n' "${expected_message}" "$(cat "${stderr_path}")" >&2
+    exit 1
+  }
 }
 
 flat_fixture="${tmp_dir}/flat.transport"
@@ -132,5 +197,20 @@ segmented_output="${tmp_dir}/segmented-output"
 write_fixture segmented "${segmented_fixture}"
 python3 "${decoder}" --target aarch64-unknown-linux-gnu "${segmented_fixture}" "${segmented_output}"
 assert_output segmented "${segmented_output}" aarch64-unknown-linux-gnu
+
+overlong_code_fixture="${tmp_dir}/overlong-code.transport"
+overlong_code_output="${tmp_dir}/overlong-code-output"
+write_overlong_fixture code "${overlong_code_fixture}"
+expect_reject "${overlong_code_fixture}" "${overlong_code_output}" "packed payload line count mismatch"
+
+overlong_data_fixture="${tmp_dir}/overlong-data.transport"
+overlong_data_output="${tmp_dir}/overlong-data-output"
+write_overlong_fixture data "${overlong_data_fixture}"
+expect_reject "${overlong_data_fixture}" "${overlong_data_output}" "packed payload line count mismatch"
+
+negative_length_fixture="${tmp_dir}/negative-length.transport"
+negative_length_output="${tmp_dir}/negative-length-output"
+write_overlong_fixture negative "${negative_length_fixture}"
+expect_reject "${negative_length_fixture}" "${negative_length_output}" "payload length must be non-negative"
 
 printf 'decode-native-selfhost-transport: PASS\n'

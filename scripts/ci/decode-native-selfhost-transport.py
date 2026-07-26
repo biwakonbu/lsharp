@@ -35,6 +35,13 @@ def parse_int(line: bytes) -> int:
 
 
 def decode_packed_flat(packed_lines: List[bytes], declared_len: int) -> bytes:
+    expected_line_count = packed_line_count(declared_len)
+    if len(packed_lines) != expected_line_count:
+        raise SystemExit(
+            "packed payload line count mismatch: "
+            f"declared={declared_len} expected={expected_line_count} "
+            f"actual={len(packed_lines)}"
+        )
     decoded = bytearray()
     mask = (1 << 64) - 1
     for raw in packed_lines:
@@ -51,12 +58,16 @@ def decode_packed_flat(packed_lines: List[bytes], declared_len: int) -> bytes:
 
 
 def packed_line_count(byte_len: int) -> int:
+    if byte_len < 0:
+        raise SystemExit(f"payload length must be non-negative: {byte_len}")
     return (byte_len + 7) // 8
 
 
 def decode_packed_payload_at(
     lines: List[bytes], index: int, declared_len: int, end_sentinel: Optional[int]
 ) -> Tuple[bytes, int, List[Tuple[int, int, int, bytes]]]:
+    if declared_len < 0:
+        raise SystemExit(f"payload length must be non-negative: {declared_len}")
     if index < len(lines) and parse_int(lines[index]) == SEGMENT_MARKER:
         decoded = bytearray()
         segments = []
