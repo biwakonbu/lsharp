@@ -20,6 +20,15 @@ mod diagnostic_tests {
     use lsharp_syntax::span::Span;
 
     #[test]
+    fn infer_error_types_remain_exported_from_infer_module() {
+        let error = crate::infer::TypeError::UndefinedVar {
+            name: "missing".to_string(),
+            span: Span::new(1, 2),
+        };
+        assert_eq!(error.code(), "LS1001");
+    }
+
+    #[test]
     fn type_errors_expose_stable_codes_and_spans_for_all_variants() {
         let span = Span::new(3, 8);
         let errors = vec![

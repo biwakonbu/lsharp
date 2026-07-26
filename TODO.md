@@ -270,6 +270,10 @@
 
 - [~] `imp-06` Infer builtin environment split — `crates/lsharp-types/src/infer.rs` の `Infer::builtin_env`（472 行）を `infer/builtin_env.rs`（475 行）へ移動し、parent を 2789 行から 2319 行へ縮小した。組み込み演算子・string/ref/vector/map/file/argv/root helper と Functor/Monad kind/trait 登録、`Infer` の内部 API・型 scheme・登録順序は維持した。RED `E0583` → GREEN、builtin scheme focused 1 件、`RUST_MIN_STACK=33554432 cargo test -p lsharp-types -- --nocapture`、`cargo clippy -p lsharp-types --all-targets -- -D warnings`、`cargo check --workspace`（専用 target）、対象 rustfmt、`git diff --check` は pass。infer の他 production 責務、selfhost/native parity、I-01 / I-08 aggregate は未完了。Evidence: `docs/adr/decisions-legacy-infer-builtin-env-split.md`。
 
+## 2026-07-26 Infer error 責務分離
+
+- [~] `imp-06` Infer error split — `crates/lsharp-types/src/infer.rs` の `TypeError` / `TypeErrorCode` と stable code/span 実装（153 行）を `infer/error.rs`（155 行）へ移動し、parent を 2319 行から 2168 行へ縮小した。`infer::TypeError` / `infer::TypeErrorCode` の公開 path は parent の re-export で維持し、診断 variant、error code、span、Display、Error trait の semantics は変更していない。RED `E0583` → GREEN、公開 re-export focused 1 件、`RUST_MIN_STACK=33554432 cargo test -p lsharp-types -- --nocapture`（unit 216 / integration 117 / doc-test 0）、clippy、workspace check（専用 target）、対象 rustfmt、`git diff --check` は pass。infer の他 production 責務、selfhost/native parity、I-01 / I-08 aggregate は未完了。Evidence: `docs/adr/decisions-legacy-infer-error-split.md`。
+
 > 凡例: `[x]` 完了 / `[ ]` 未着手 / `[~]` 部分実装 / `[BLOCKED: ...]` 依存待ち / `[DEFERRED]` 後続トラック送り
 >
 > **完了済みフェーズ**: Phase 0-7, P8, P9-1/2/3/4/6, P10, P12, P13, P14。
