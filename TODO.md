@@ -33,7 +33,9 @@
   `--emit-manifest` の atomic/durable file boundary、deterministic text/JSON report、
   `pass=0` / `fail=1` / `unknown=2` の Rust CLI は verified。selfhost `App.Cli` と
   `EmbeddedCli` の source/report/pass-fail-unknown/exit と未移行 manifest filesystem の
-  external-boundary slice は actual Wasm で verified。selfhost/native の manifest
+  external-boundary slice は actual Wasm で verified。EC-M3-01 の Rust canonical source/
+  manifest fixture、native source-file smoke の report/exit/bytes 契約、Cargo/Rust/host
+  lsharp を成功経路から遮断する harness contract も verified。selfhost/native の manifest
   producer/parser、native canonical parity、atomic/durable emission、release-level provenance、
   MCP、両 supported target の runtime evidence を閉じる。
 

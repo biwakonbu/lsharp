@@ -111,7 +111,11 @@ PY
 ensure_vm_running
 require_vm_free_space
 limactl shell "${VM_NAME}" -- rm -rf "${VM_WORK_DIR}"
-limactl shell "${VM_NAME}" -- mkdir -p "${VM_WORK_DIR}/stage0" "${VM_WORK_DIR}/selfhost" "${VM_WORK_DIR}/scripts/ci"
+limactl shell "${VM_NAME}" -- mkdir -p \
+  "${VM_WORK_DIR}/stage0" \
+  "${VM_WORK_DIR}/selfhost" \
+  "${VM_WORK_DIR}/scripts/ci" \
+  "${VM_WORK_DIR}/tests/fixtures/validation"
 VM_WORK_DIR_CREATED=1
 
 limactl copy --recursive "${STAGE0_DIR}/." "${VM_NAME}:${VM_WORK_DIR}/stage0"
@@ -121,6 +125,10 @@ limactl copy "${ROOT_DIR}/scripts/ci/native-selfhost-dev-source-file-smoke.sh" \
   "${VM_NAME}:${VM_WORK_DIR}/scripts/ci/native-selfhost-dev-source-file-smoke.sh"
 limactl copy "${ROOT_DIR}/scripts/ci/decode-native-selfhost-transport.py" \
   "${VM_NAME}:${VM_WORK_DIR}/scripts/ci/decode-native-selfhost-transport.py"
+limactl copy "${ROOT_DIR}/tests/fixtures/validation/ec-m3-canonical-source.ls" \
+  "${VM_NAME}:${VM_WORK_DIR}/tests/fixtures/validation/ec-m3-canonical-source.ls"
+limactl copy "${ROOT_DIR}/tests/fixtures/validation/ec-m3-canonical-manifest.json" \
+  "${VM_NAME}:${VM_WORK_DIR}/tests/fixtures/validation/ec-m3-canonical-manifest.json"
 
 limactl shell "${VM_NAME}" -- env \
   NATIVE_STAGE0_DIR="${VM_WORK_DIR}/stage0" \

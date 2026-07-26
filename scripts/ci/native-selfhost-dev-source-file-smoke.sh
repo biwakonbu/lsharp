@@ -3,6 +3,8 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 RUNNER="$ROOT/scripts/native-selfhost-dev.sh"
+VALIDATION_SOURCE="$ROOT/tests/fixtures/validation/ec-m3-canonical-source.ls"
+EXPECTED_VALIDATION_MANIFEST="$ROOT/tests/fixtures/validation/ec-m3-canonical-manifest.json"
 STAGE0_DIR="${NATIVE_STAGE0_DIR:-}"
 SOURCE_ROOT="${NATIVE_SELFHOST_SOURCE_ROOT:-$ROOT/selfhost}"
 STAGE_DIR="${NATIVE_SELFHOST_STAGE_DIR:-}"
@@ -35,6 +37,8 @@ require_file() {
 [[ -x "$RUNNER" ]] || die "native selfhost runner is missing: $RUNNER"
 require_file "$STAGE0_DIR/manifest.json" "native stage0 manifest"
 require_file "$SOURCE_ROOT/src/App/Cli.ls" "native selfhost App.Cli source"
+require_file "$VALIDATION_SOURCE" "EC-M3-01 validation source fixture"
+require_file "$EXPECTED_VALIDATION_MANIFEST" "EC-M3-01 canonical manifest fixture"
 
 stage0_target="$(python3 - "$STAGE0_DIR/manifest.json" <<'PY'
 import json
@@ -90,6 +94,7 @@ VACUOUS_PROPERTY="$WORK_DIR/vacuous-property.ls"
 DYNAMIC_COMPLEMENT_PROPERTY="$WORK_DIR/dynamic-complement-property.ls"
 COMPILE_OUTPUT="$WORK_DIR/compile.wasm"
 BUILD_OUTPUT="$WORK_DIR/build.wasm"
+VALIDATION_MANIFEST="$WORK_DIR/ec-m3-canonical-manifest.json"
 
 printf '%s\n' '(defn main [] 42)' >"$INPUT"
 cat >"$METADATA" <<'LSHARP'
@@ -292,6 +297,29 @@ if diagnostics["count"] != 1 or diagnostics["firstErrorCode"] != 2005:
     raise SystemExit(f"dynamic complement property JSON diagnostic is invalid: {report!r}")
 if report["intent_validation"]["status"] != "unknown":
     raise SystemExit(f"dynamic complement property JSON intent status is invalid: {report!r}")
+PY
+
+run_expected_failure validation-manifest-unknown 0 validate \
+  --source "$VALIDATION_SOURCE" \
+  --format json \
+  --emit-manifest "$VALIDATION_MANIFEST"
+cmp -s "$EXPECTED_VALIDATION_MANIFEST" "$VALIDATION_MANIFEST" \
+  || die "EC-M3-01 native manifest bytes differ from the Rust canonical fixture"
+python3 - "$WORK_DIR/validation-manifest-unknown.stdout" <<'PY'
+import json
+import pathlib
+import sys
+
+lines = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8").splitlines()
+if len(lines) != 1:
+    raise SystemExit(f"validation JSON must contain one report line: {lines!r}")
+report = json.loads(lines[0])
+if report.get("status") != "unknown":
+    raise SystemExit(f"validation status must be unknown: {report!r}")
+if report.get("open_questions") != 1 or report.get("independent_reviews") != 0:
+    raise SystemExit(f"validation unknown metrics are invalid: {report!r}")
+if report.get("trace_gaps") != [] or report.get("contradicting_observations") != 0:
+    raise SystemExit(f"validation trace/contradiction metrics are invalid: {report!r}")
 PY
 
 run_command compile 0 compile "$INPUT" -o "$COMPILE_OUTPUT"

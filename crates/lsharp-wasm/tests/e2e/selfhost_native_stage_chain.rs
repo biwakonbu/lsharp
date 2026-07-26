@@ -1955,6 +1955,18 @@ fn test_native_selfhost_dev_source_file_smoke_script_contract() {
         "build",
         "compile.wasm",
         "build.wasm",
+        "EC-M3-01",
+        "ec-m3-canonical-source.ls",
+        "ec-m3-canonical-manifest.json",
+        "VALIDATION_SOURCE",
+        "VALIDATION_MANIFEST",
+        "validate",
+        "--source",
+        "--format json",
+        "--emit-manifest",
+        "cmp -s",
+        "unknown",
+        "exit 2",
         "decls:1",
         "examples:2",
         "invariants:1",
@@ -1983,6 +1995,34 @@ fn test_native_selfhost_dev_source_file_smoke_script_contract() {
 }
 
 #[test]
+fn test_native_selfhost_dev_source_file_smoke_covers_ec_m3_manifest_parity() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-selfhost-dev-source-file-smoke.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+
+    for required in [
+        "EC-M3-01",
+        "ec-m3-canonical-source.ls",
+        "ec-m3-canonical-manifest.json",
+        "VALIDATION_SOURCE",
+        "VALIDATION_MANIFEST",
+        "validate",
+        "--source",
+        "--format json",
+        "--emit-manifest",
+        "cmp -s",
+        "unknown",
+        "exit 2",
+    ] {
+        assert!(
+            script.contains(required),
+            "native selfhost source-file smoke は EC-M3-01 boundary `{required}` を固定するべき"
+        );
+    }
+}
+
+#[test]
 fn test_native_linux_x86_native_stage0_source_file_smoke_script_contract() {
     let script_path = selfhost_project_root()
         .join("scripts/ci/native-linux-x86-native-stage0-source-file-smoke.sh");
@@ -1996,6 +2036,9 @@ fn test_native_linux_x86_native_stage0_source_file_smoke_script_contract() {
         "NATIVE_SELFHOST_SOURCE_ROOT",
         "NATIVE_SELFHOST_STAGE_DIR",
         "limactl copy",
+        "tests/fixtures/validation",
+        "ec-m3-canonical-source.ls",
+        "ec-m3-canonical-manifest.json",
         "selfhost",
         "VM free space gate",
         "trap cleanup EXIT",

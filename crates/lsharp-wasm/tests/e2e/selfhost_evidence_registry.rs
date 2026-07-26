@@ -363,6 +363,38 @@ fn test_e2e_selfhost_evidence_manifest_matches_rust_canonical_value() {
     );
 }
 
+/// EC-M3-01: native stage0 smoke が再利用する source/manifest fixture は Rust oracle と一致する。
+#[test]
+fn test_e2e_ec_m3_canonical_manifest_fixture_matches_rust_oracle() {
+    let source_path =
+        selfhost_project_root().join("tests/fixtures/validation/ec-m3-canonical-source.ls");
+    let manifest_path =
+        selfhost_project_root().join("tests/fixtures/validation/ec-m3-canonical-manifest.json");
+    let source = std::fs::read_to_string(&source_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", source_path.display()));
+    let expected_json = std::fs::read_to_string(&manifest_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", manifest_path.display()));
+    let program =
+        lsharp_syntax::parse(&source).expect("EC-M3-01 fixture は Rust oracle で parse できるべき");
+    let graph = lsharp_types::validation_source::source_program_to_intent_graph(&program)
+        .expect("EC-M3-01 fixture は Rust oracle で graph 化できるべき");
+    let expected_value: serde_json::Value =
+        serde_json::from_str(&expected_json).expect("canonical fixture は JSON であるべき");
+
+    assert_eq!(
+        graph.to_manifest_json_value(),
+        expected_value,
+        "EC-M3-01 fixture の manifest value は Rust canonical oracle と一致するべき"
+    );
+    assert_eq!(
+        graph
+            .to_manifest_json_string()
+            .expect("canonical fixture の bytes を生成できるべき"),
+        expected_json.trim_end_matches(['\n', '\r']),
+        "EC-M3-01 fixture の manifest bytes は Rust canonical serializer と一致するべき"
+    );
+}
+
 /// EC-M2-02: coverage bucket の重複は deterministic sampling plan を壊すため拒否する。
 #[test]
 fn test_e2e_selfhost_evidence_registry_rejects_duplicate_coverage_bucket() {
