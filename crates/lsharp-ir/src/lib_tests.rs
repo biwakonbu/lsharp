@@ -163,6 +163,11 @@ mod memory_instruction_tests {
     use super::*;
 
     #[test]
+    fn test_instruction_display_preserves_call_import_format() {
+        assert_eq!(Instruction::CallImport(7).to_string(), "call_import 7");
+    }
+
+    #[test]
     fn test_memory_load_store_instructions() {
         let instructions = [
             Instruction::I32Const(100),

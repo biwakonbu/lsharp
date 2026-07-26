@@ -338,6 +338,10 @@
 
 - [~] `imp-06` driver MCP test suite split — `crates/lsharp-driver/src/mcp_server.rs` の inline `tests` module（697 行）を `mcp_tests.rs` へ移動し、parent を 796 行から 110 行へ縮小した。`#[cfg(test)] include!` によって既存の `mcp_server::tests::*` namespace、private protocol/tool helper access、MCP JSON-RPC/schema/validation/context/compile/language fixtures を維持し、private `jsonrpc_result` helper access contract test を追加した。RED `E0583` → GREEN、MCP focused 37 件、`lsharp-driver` unit 159 件、clippy、workspace check、対象 Rust 2024 rustfmt、`git diff --check` が passした。`default_path_delegation` integration の origin/main 由来既知 failure boundary、MCP search production split、selfhost/native parity、I-01 / I-08 aggregate は未完了。Evidence: `docs/adr/decisions-legacy-driver-mcp-tests-split.md`。
 
+## 2026-07-26 lsharp-ir public Instruction/IrType model 責務分離
+
+- [~] `imp-06` lsharp-ir instruction model split — `crates/lsharp-ir/src/lib.rs` の public `IrType`/`Instruction` 定義と Display 実装（281 行）を `instruction.rs`（282 行）へ移動し、parent を 2842 行から 2564 行へ縮小した。`mod instruction` と `pub use instruction::{Instruction, IrType}` によって既存の `lsharp_ir::Instruction` / `lsharp_ir::IrType` public path、Instruction→IrType 型参照、opcode/display semantics を維持し、`CallImport(7)` の display contract test を追加した。RED `E0583` → GREEN、focused display 1 件、`cargo test -p lsharp-ir --lib` は 284 件 pass / 1 件が origin/main 由来の `IntentSource.ls` `vector-push-pair-rooted-v3` 未定義 failure。clippy、workspace check、対象 Rust 2024 rustfmt、`git diff --check` は pass。Module/Function/GC model、linker/lowering production split、Rust/native parity、I-01 / I-08 aggregate は未完了。Evidence: `docs/adr/decisions-legacy-ir-instruction-model-split.md`。
+
 > 凡例: `[x]` 完了 / `[ ]` 未着手 / `[~]` 部分実装 / `[BLOCKED: ...]` 依存待ち / `[DEFERRED]` 後続トラック送り
 >
 > **完了済みフェーズ**: Phase 0-7, P8, P9-1/2/3/4/6, P10, P12, P13, P14。
