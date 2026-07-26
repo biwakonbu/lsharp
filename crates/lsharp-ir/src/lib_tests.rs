@@ -188,6 +188,10 @@ mod import_dedup_tests {
 mod multifile_compile_tests;
 
 #[cfg(test)]
+#[path = "lib_tests/compile.rs"]
+mod compile_tests;
+
+#[cfg(test)]
 mod fingerprint_tests {
     use super::*;
 
