@@ -3,7 +3,7 @@
 //! wasmtime で直接実行可能な Wasm バイナリを生成する。
 //! print 関数を WASI の fd_write で実装し、_start エントリポイントを生成。
 
-use lsharp_ir::{GcTypeKind, Instruction, Module};
+use lsharp_ir::{Instruction, Module};
 use std::{collections::HashMap, path::PathBuf};
 use wasm_encoder::{
     CodeSection, DataSection, ElementSection, Elements, EntityType, ExportKind, ExportSection,
@@ -43,6 +43,9 @@ mod string_concat_tests;
 mod string_eq;
 #[cfg(test)]
 mod string_eq_tests;
+mod structs;
+#[cfg(test)]
+mod structs_tests;
 mod write_file;
 mod write_file_bytes;
 #[cfg(test)]
@@ -852,7 +855,7 @@ fn emit_wasm_wasi_with_options(
     );
     emit_gc_collect_func(&mut codes, collector_globals);
 
-    let struct_scratch_fields = max_struct_field_count(module);
+    let struct_scratch_fields = structs::max_struct_field_count(module);
     for func in &module.functions {
         let scratch_base = func.params.len() as u32 + func.locals.len() as u32;
         let mut locals = func
@@ -863,7 +866,7 @@ fn emit_wasm_wasi_with_options(
         locals.push((struct_scratch_fields, ValType::I64));
         locals.push((1, ValType::I64));
         locals.push((1, ValType::I32));
-        let scratch = WasiStructScratch {
+        let scratch = structs::WasiStructScratch {
             field_base: scratch_base,
             ptr_local: scratch_base + struct_scratch_fields,
             addr_local: scratch_base + struct_scratch_fields + 1,
@@ -1470,7 +1473,7 @@ fn emit_wasm_http_handler_core(module: &Module) -> Result<Vec<u8>, CodegenError>
     );
     emit_gc_collect_func(&mut codes, collector_globals);
 
-    let struct_scratch_fields = max_struct_field_count(module);
+    let struct_scratch_fields = structs::max_struct_field_count(module);
     for func in &module.functions {
         let scratch_base = func.params.len() as u32 + func.locals.len() as u32;
         let mut locals = func
@@ -1481,7 +1484,7 @@ fn emit_wasm_http_handler_core(module: &Module) -> Result<Vec<u8>, CodegenError>
         locals.push((struct_scratch_fields, ValType::I64));
         locals.push((1, ValType::I64));
         locals.push((1, ValType::I32));
-        let scratch = WasiStructScratch {
+        let scratch = structs::WasiStructScratch {
             field_base: scratch_base,
             ptr_local: scratch_base + struct_scratch_fields,
             addr_local: scratch_base + struct_scratch_fields + 1,
@@ -2980,119 +2983,12 @@ fn emit_gc_collect_func(codes: &mut CodeSection, globals: CollectorGlobals) {
     codes.function(&f);
 }
 
-/// IR 命令を WASI 用にリマップして出力
-#[derive(Debug, Clone, Copy)]
-struct WasiStructScratch {
-    field_base: u32,
-    ptr_local: u32,
-    addr_local: u32,
-}
-
-fn max_struct_field_count(module: &Module) -> u32 {
-    module
-        .gc_types
-        .iter()
-        .filter_map(|ty| match &ty.kind {
-            GcTypeKind::Struct(fields) => Some(fields.len() as u32),
-            GcTypeKind::Array(_) | GcTypeKind::PackedByteArray => None,
-        })
-        .max()
-        .unwrap_or(0)
-        .max(1)
-}
-
-fn struct_field_count(
-    gc_types: &[lsharp_ir::GcTypeDef],
-    type_index: u32,
-) -> Result<u32, CodegenError> {
-    let Some(gc_type) = gc_types.get(type_index as usize) else {
-        return Err(CodegenError::Error {
-            msg: format!("struct type index out of bounds: {type_index}"),
-        });
-    };
-    match &gc_type.kind {
-        GcTypeKind::Struct(fields) => Ok(fields.len() as u32),
-        GcTypeKind::Array(_) | GcTypeKind::PackedByteArray => Err(CodegenError::Error {
-            msg: format!(
-                "array GC type cannot be emitted as linear-memory struct: {}",
-                gc_type.name
-            ),
-        }),
-    }
-}
-
-fn emit_wasi_struct_instruction(
-    func: &mut wasm_encoder::Function,
-    instruction: &Instruction,
-    gc_types: &[lsharp_ir::GcTypeDef],
-    alloc_func_idx: u32,
-    scratch: WasiStructScratch,
-) -> Result<bool, CodegenError> {
-    use wasm_encoder::{Instruction as W, MemArg};
-
-    let mem64 = |offset: u64| MemArg {
-        offset,
-        align: 3,
-        memory_index: 0,
-    };
-
-    match instruction {
-        Instruction::StructNew(type_index) => {
-            let field_count = struct_field_count(gc_types, *type_index)?;
-            for field_index in (0..field_count).rev() {
-                func.instruction(&W::LocalSet(scratch.field_base + field_index));
-            }
-            func.instruction(&W::I64Const(i64::from(field_count * 8)));
-            func.instruction(&W::Call(alloc_func_idx));
-            func.instruction(&W::LocalTee(scratch.ptr_local));
-            func.instruction(&W::I32WrapI64);
-            func.instruction(&W::LocalSet(scratch.addr_local));
-            for field_index in 0..field_count {
-                func.instruction(&W::LocalGet(scratch.addr_local));
-                func.instruction(&W::LocalGet(scratch.field_base + field_index));
-                func.instruction(&W::I64Store(mem64(u64::from(field_index * 8))));
-            }
-            func.instruction(&W::LocalGet(scratch.ptr_local));
-            Ok(true)
-        }
-        Instruction::StructGet(type_index, field_index) => {
-            let field_count = struct_field_count(gc_types, *type_index)?;
-            if *field_index >= field_count {
-                return Err(CodegenError::Error {
-                    msg: format!(
-                        "struct field index out of bounds: type={type_index} field={field_index}"
-                    ),
-                });
-            }
-            func.instruction(&W::I32WrapI64);
-            func.instruction(&W::I64Load(mem64(u64::from(field_index * 8))));
-            Ok(true)
-        }
-        Instruction::StructSet(type_index, field_index) => {
-            let field_count = struct_field_count(gc_types, *type_index)?;
-            if *field_index >= field_count {
-                return Err(CodegenError::Error {
-                    msg: format!(
-                        "struct field index out of bounds: type={type_index} field={field_index}"
-                    ),
-                });
-            }
-            func.instruction(&W::LocalSet(scratch.field_base));
-            func.instruction(&W::I32WrapI64);
-            func.instruction(&W::LocalGet(scratch.field_base));
-            func.instruction(&W::I64Store(mem64(u64::from(field_index * 8))));
-            Ok(true)
-        }
-        _ => Ok(false),
-    }
-}
-
 #[allow(clippy::too_many_arguments)]
 fn emit_instructions_wasi(
     func: &mut wasm_encoder::Function,
     instructions: &[Instruction],
     gc_types: &[lsharp_ir::GcTypeDef],
-    scratch: WasiStructScratch,
+    scratch: structs::WasiStructScratch,
     print_helper_idx: u32,
     alloc_func_idx: u32,
     string_concat_idx: u32,
@@ -3228,7 +3124,7 @@ fn emit_instructions_wasi(
                 return Ok(true);
             }
 
-            emit_wasi_struct_instruction(f, instruction, gc_types, alloc_func_idx, scratch)
+            structs::emit_wasi_struct_instruction(f, instruction, gc_types, alloc_func_idx, scratch)
         },
     )
 }
