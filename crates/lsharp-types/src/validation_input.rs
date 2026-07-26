@@ -6,8 +6,8 @@
 //! 無視せず診断する。
 
 use crate::evidence::{
-    Edge, Evidence, EvidenceMethod, EvidenceOutcome, EvidenceSubject, ExecutionContext,
-    ExecutionIdentity, Independence, InvalidationSubject, Provenance, ReviewSubject, SamplingPlan,
+    Edge, Evidence, EvidenceSubject, ExecutionContext, ExecutionIdentity, InvalidationSubject,
+    Provenance, ReviewSubject, SamplingPlan,
 };
 use crate::intent::{
     Assumption, AssumptionId, Claim, ClaimId, ContractId, EvidenceId, Intent, IntentId, IntentNode,
@@ -15,10 +15,13 @@ use crate::intent::{
 };
 use crate::validation::IntentGraph;
 use lsharp_syntax::span::Span;
-use serde::Deserialize;
-use std::collections::BTreeMap;
 
-const SUPPORTED_SCHEMA_VERSION: u32 = 1;
+mod manifest;
+
+use manifest::{
+    EdgeInput, EvidenceInput, IdInput, Manifest, NodeInput, NodeKindInput,
+    SUPPORTED_SCHEMA_VERSION, SpanInput, SubjectInput, SubjectKindInput,
+};
 
 /// JSON manifest を graph に変換できない理由。
 #[derive(Debug, thiserror::Error)]
@@ -64,174 +67,6 @@ pub fn parse_intent_graph_json(source: &str) -> Result<IntentGraph, ValidationIn
     }
 
     Ok(graph)
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Manifest {
-    schema_version: u32,
-    nodes: Vec<NodeInput>,
-    evidence: Vec<EvidenceInput>,
-    edges: Vec<EdgeInput>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-enum NodeKindInput {
-    Intent,
-    Claim,
-    Assumption,
-    OpenQuestion,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct NodeInput {
-    kind: NodeKindInput,
-    namespace: String,
-    key: String,
-    text: String,
-    #[serde(default)]
-    span: SpanInput,
-}
-
-#[derive(Debug, Default, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct SpanInput {
-    start: usize,
-    end: usize,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-enum EvidenceMethodInput {
-    Example,
-    Case,
-    Assert,
-    Property,
-    Production,
-    Reference,
-    Proof,
-    Review,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-enum EvidenceOutcomeInput {
-    Pass,
-    Fail,
-    Contradicted,
-    Unknown,
-    Stale,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-enum IndependenceInput {
-    SameAuthor,
-    IndependentReview,
-    ExternalObservation,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-enum SubjectKindInput {
-    Intent,
-    Claim,
-    Contract,
-    Evidence,
-    Review,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct IdInput {
-    namespace: String,
-    key: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct SubjectInput {
-    kind: SubjectKindInput,
-    namespace: String,
-    key: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct EvidenceInput {
-    namespace: String,
-    key: String,
-    method: EvidenceMethodInput,
-    subject: SubjectInput,
-    outcome: EvidenceOutcomeInput,
-    execution: ExecutionInput,
-    provenance: ProvenanceInput,
-    independence: IndependenceInput,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct ExecutionInput {
-    runner: String,
-    target: String,
-    source_commit: String,
-    artifact_digest: String,
-    sampling: SamplingInput,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct SamplingInput {
-    cases: usize,
-    seed: u64,
-    generator: String,
-    #[serde(default)]
-    shrinks: Vec<u64>,
-    #[serde(default)]
-    coverage: BTreeMap<String, usize>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct ProvenanceInput {
-    producer: String,
-    tool_version: String,
-    timestamp: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(tag = "relation", rename_all = "kebab-case")]
-enum EdgeInput {
-    Motivates {
-        intent: IdInput,
-        claim: IdInput,
-    },
-    ConstrainedBy {
-        claim: IdInput,
-        assumption: IdInput,
-    },
-    TestedBy {
-        claim: IdInput,
-        contract: IdInput,
-    },
-    Supports {
-        observation: IdInput,
-        claim: IdInput,
-    },
-    Contradicts {
-        observation: IdInput,
-        claim: IdInput,
-    },
-    Evaluates {
-        review: IdInput,
-        subject: SubjectInput,
-    },
-    Invalidates {
-        change: IdInput,
-        subject: SubjectInput,
-    },
 }
 
 fn build_node(input: NodeInput) -> Result<IntentNode, ValidationInputError> {
@@ -483,53 +318,4 @@ fn missing_node(relation: &'static str, id: &StableId) -> Result<(), ValidationI
         relation,
         id: id.as_str().to_string(),
     })
-}
-
-impl SubjectKindInput {
-    const fn as_str(&self) -> &'static str {
-        match self {
-            Self::Intent => "intent",
-            Self::Claim => "claim",
-            Self::Contract => "contract",
-            Self::Evidence => "evidence",
-            Self::Review => "review",
-        }
-    }
-}
-
-impl From<EvidenceMethodInput> for EvidenceMethod {
-    fn from(value: EvidenceMethodInput) -> Self {
-        match value {
-            EvidenceMethodInput::Example => Self::Example,
-            EvidenceMethodInput::Case => Self::Case,
-            EvidenceMethodInput::Assert => Self::Assert,
-            EvidenceMethodInput::Property => Self::Property,
-            EvidenceMethodInput::Production => Self::Production,
-            EvidenceMethodInput::Reference => Self::Reference,
-            EvidenceMethodInput::Proof => Self::Proof,
-            EvidenceMethodInput::Review => Self::Review,
-        }
-    }
-}
-
-impl From<EvidenceOutcomeInput> for EvidenceOutcome {
-    fn from(value: EvidenceOutcomeInput) -> Self {
-        match value {
-            EvidenceOutcomeInput::Pass => Self::Pass,
-            EvidenceOutcomeInput::Fail => Self::Fail,
-            EvidenceOutcomeInput::Contradicted => Self::Contradicted,
-            EvidenceOutcomeInput::Unknown => Self::Unknown,
-            EvidenceOutcomeInput::Stale => Self::Stale,
-        }
-    }
-}
-
-impl From<IndependenceInput> for Independence {
-    fn from(value: IndependenceInput) -> Self {
-        match value {
-            IndependenceInput::SameAuthor => Self::SameAuthor,
-            IndependenceInput::IndependentReview => Self::IndependentReview,
-            IndependenceInput::ExternalObservation => Self::ExternalObservation,
-        }
-    }
 }

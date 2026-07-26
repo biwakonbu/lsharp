@@ -1,6 +1,6 @@
 use lsharp_types::evidence::GraphError;
 use lsharp_types::validation::{IntentGraph, ValidationStatus};
-use lsharp_types::validation_input::{parse_intent_graph_json, ValidationInputError};
+use lsharp_types::validation_input::{ValidationInputError, parse_intent_graph_json};
 
 fn complete_manifest() -> &'static str {
     r#"
@@ -101,6 +101,29 @@ fn parse_manifest_preserves_unknown_status_for_trace_gaps_and_open_questions() {
     assert_eq!(report.status(), ValidationStatus::Unknown);
     assert_eq!(report.open_questions(), 1);
     assert_eq!(report.trace_gaps().len(), 2);
+}
+
+#[test]
+fn parse_manifest_wire_schema_uses_kebab_case_node_kind() {
+    let manifest = r#"
+    {
+      "schema_version": 1,
+      "nodes": [
+        {"kind":"open-question","namespace":"checkout","key":"after-label","text":"Can cancellation happen after a label?"}
+      ],
+      "evidence": [],
+      "edges": []
+    }
+    "#;
+
+    let graph = parse_intent_graph_json(manifest).expect("kebab-case node kind should parse");
+    assert_eq!(graph.validate().open_questions(), 1);
+
+    let invalid = manifest.replace("open-question", "open_question");
+    assert!(matches!(
+        parse_intent_graph_json(&invalid),
+        Err(ValidationInputError::Json(_))
+    ));
 }
 
 #[test]
