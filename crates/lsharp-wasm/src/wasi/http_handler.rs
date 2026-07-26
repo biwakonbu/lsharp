@@ -433,7 +433,7 @@ fn emit_wasm_http_handler_core(module: &Module) -> Result<Vec<u8>, CodegenError>
 
     let mut codes = CodeSection::new();
     emit_trap_i64_to_unit_func(&mut codes);
-    emit_alloc_func(&mut codes, allocator_globals);
+    super::allocator::emit_alloc_func(&mut codes, allocator_globals);
     string_concat::emit_string_concat_func(&mut codes, alloc_func_idx);
     string_eq::emit_string_eq_func(&mut codes);
     emit_trap_i64_to_unit_func(&mut codes);
