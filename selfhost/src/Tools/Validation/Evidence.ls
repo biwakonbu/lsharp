@@ -360,9 +360,31 @@
   (vector-get graph 2))
 
 (defn validation-json-object-wrap [body]
-  (string-concat "{" (string-concat body "}")))
+  (do
+    (root_push body)
+    (let [closed-body (string-concat body "}")]
+      (do
+        (root_push closed-body)
+        (let [result (string-concat "{" closed-body)]
+          (do
+            (root_push result)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            result))))))
 (defn validation-json-array-wrap [body]
-  (string-concat "[" (string-concat body "]")))
+  (do
+    (root_push body)
+    (let [closed-body (string-concat body "]")]
+      (do
+        (root_push closed-body)
+        (let [result (string-concat "[" closed-body)]
+          (do
+            (root_push result)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            result))))))
 (defn validation-json-append [out piece]
   (if (= (string-length out) 0)
     piece

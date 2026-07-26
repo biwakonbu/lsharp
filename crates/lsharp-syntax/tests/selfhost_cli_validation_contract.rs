@@ -273,6 +273,58 @@ fn selfhost_validation_json_field_roots_nested_concat() {
 }
 
 #[test]
+fn selfhost_validation_json_object_wrap_roots_nested_concat() {
+    let evidence = selfhost_evidence_source();
+    let object_start = evidence
+        .find("(defn validation-json-object-wrap [body]")
+        .expect("validation-json-object-wrap を特定できるべき");
+    let object_end = evidence[object_start..]
+        .find("(defn validation-json-array-wrap")
+        .map(|offset| object_start + offset)
+        .expect("validation-json-object-wrap の終端を特定できるべき");
+    let object = &evidence[object_start..object_end];
+
+    assert!(
+        object.contains("(root_push body)")
+            && object.contains("(let [closed-body (string-concat body")
+            && object.contains("(root_push closed-body)")
+            && object.contains("(let [result (string-concat")
+            && object.contains("(root_push result)"),
+        "native x86 の JSON object wrapper は body と各 concat 結果を root lease で保持するべき"
+    );
+    assert!(
+        !object.contains("(string-concat \"{\" (string-concat body"),
+        "native x86 の JSON object wrapper は nested string-concat を直接評価するべきではない"
+    );
+}
+
+#[test]
+fn selfhost_validation_json_array_wrap_roots_nested_concat() {
+    let evidence = selfhost_evidence_source();
+    let array_start = evidence
+        .find("(defn validation-json-array-wrap [body]")
+        .expect("validation-json-array-wrap を特定できるべき");
+    let array_end = evidence[array_start..]
+        .find("(defn validation-json-append")
+        .map(|offset| array_start + offset)
+        .expect("validation-json-array-wrap の終端を特定できるべき");
+    let array = &evidence[array_start..array_end];
+
+    assert!(
+        array.contains("(root_push body)")
+            && array.contains("(let [closed-body (string-concat body")
+            && array.contains("(root_push closed-body)")
+            && array.contains("(let [result (string-concat")
+            && array.contains("(root_push result)"),
+        "native x86 の JSON array wrapper は body と各 concat 結果を root lease で保持するべき"
+    );
+    assert!(
+        !array.contains("(string-concat \"[\" (string-concat body"),
+        "native x86 の JSON array wrapper は nested string-concat を直接評価するべきではない"
+    );
+}
+
+#[test]
 fn selfhost_json_escape_loop_uses_one_arg_state_boundary() {
     let source = selfhost_json_rpc_source();
     let state_start = source
