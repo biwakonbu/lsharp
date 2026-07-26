@@ -1634,6 +1634,8 @@ pub(crate) fn selfhost_embedded_cli_runtime_bundle() -> &'static str {
             "LspServerCore.ls",
             "LspServerNav.ls",
             "LspServer.ls",
+            "IntentSource.ls",
+            "Evidence.ls",
             "EmbeddedCli.ls",
         ],
     )

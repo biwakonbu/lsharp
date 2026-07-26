@@ -4,6 +4,7 @@
 (import Backend.Wasm.CompilerBase)
 (import Syntax.Lexer)
 (import Syntax.Parser)
+(import Syntax.AST)
 (import Tools.Doc.DocJson)
 (import Tools.Doc.DocTools)
 (import Tools.Test.TestRunner)
@@ -17,7 +18,11 @@
 (import Types.TypeScheme)
 (import Types.TypeInferAssertions)
 (import Types.MetadataMigration)
+(import Tools.Validation.IntentSource)
+(import Tools.Validation.Evidence)
 
+(defn push-int-vector-local [dst value] (do (root_push dst) (let [next-dst (vector-push dst value)] (do (root_pop) next-dst))))
+(defn push-object-vector-local [dst value] (do (root_push dst) (root_push value) (let [next-dst (vector-push dst value)] (do (root_pop) (root_pop) next-dst))))
 (defn exit-success [] 0)
 (defn exit-compile-error [] 1)
 (defn exit-runtime-error [] 2)
@@ -30,6 +35,7 @@
 (defn cmd-doc-ack [] 7)
 (defn cmd-doc-check [] 8)
 (defn cmd-fmt [] 9)
+(defn cmd-validate [] 10)
 (defn compile-target-preview1 [] 0)
 (defn compile-target-component [] 1)
 (defn compile-target-invalid [] (- 0 1))
@@ -54,7 +60,9 @@
                   (cmd-doc-check)
                   (if (string-eq cmd-name "fmt")
                     (cmd-fmt)
-                    0))))))))))
+                    (if (string-eq cmd-name "validate")
+                      (cmd-validate)
+                      0)))))))))))
 (defn parse-first-decl-tag [program] (if (> (vector-length program) 0) (vector-get (vector-get program 0) 0) 0))
 (defn parse-decl-tag-text [tag] (if (= tag 20) "defn" (if (= tag 25) "module" (if (= tag 26) "import" (string-concat "decl-" (int-to-string tag))))))
 (defn parse-expr-tag-text [tag] (if (= tag 1) "int" (if (= tag 2) "bool" (if (= tag 3) "string" (if (= tag 4) "var" (if (= tag 5) "apply" (if (= tag 6) "if" (if (= tag 7) "let" (if (= tag 8) "fn" (if (= tag 9) "do" (if (= tag 10) "match" (if (= tag 32) "unit" (string-concat "expr-" (int-to-string tag))))))))))))))
@@ -181,7 +189,12 @@
       (do
         (print-string (check-json-report rendered diagnostics-count first-error-code diagnostics-body migration-rows base-failure-kinds))
         (print-string "\n")
-        (check-exit-code diagnostics-count))
+        (let [exit-code (check-exit-code diagnostics-count)]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            exit-code)))
       (do
       (print-string rendered)
       (print-string "\n")
@@ -227,7 +240,230 @@
             (print-string (check-failure-kinds-text base-failure-kinds))
             (print-string "\n"))
           (print-string ""))
-        (check-exit-code diagnostics-count)))))
+        (let [exit-code (check-exit-code diagnostics-count)]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            exit-code))))))
+;; EC-M2-01 の最初の selfhost validation slice。parser が保持した
+;; defn metadata を source node/edge の wire payload として集計し、未接続
+;; の trace gap を unknown report へ投影する。evidence registry は後段で接続する。
+(defn validation-state-new []
+  (let [state0 (vector-new 5)
+    state1 (push-object-vector-local state0 (ref-new (vector-new 0)))
+    state2 (push-object-vector-local state1 (ref-new (vector-new 0)))
+    state3 (push-object-vector-local state2 (ref-new (vector-new 0)))
+    state4 (push-object-vector-local state3 (ref-new (vector-new 0)))]
+    (push-object-vector-local state4 (ref-new 0))))
+(defn validation-state-add-object [state slot value]
+  (let [items-ref (vector-get state slot)
+    items (ref-get items-ref)
+    updated (push-object-vector-local items value)]
+    (do
+      (ref-set items-ref updated)
+      state)))
+(defn validation-source-pair [left right]
+  (let [pair (vector-new 2)
+    with-left (push-object-vector-local pair left)]
+    (push-object-vector-local with-left right)))
+(defn validation-defn-metadata [decl]
+  (let [decl-len (vector-length decl)
+    body-end (+ 4 (vector-get decl 2))]
+    (if (< body-end decl-len)
+      (vector-get decl body-end)
+      (vector-new 0))))
+(defn validation-defn-forms [decl]
+  (let [meta (validation-defn-metadata decl)]
+    (if (> (vector-length meta) 5)
+      (vector-get meta 5)
+      (vector-new 0))))
+(defn validation-state-consume-form [state form]
+  (let [kind (vector-get form 0)
+    payload (vector-get form 1)
+    payload-len (vector-length payload)]
+    (if (= kind 6)
+      (if (= payload-len 2)
+        (validation-state-add-object state 0 (vector-get payload 0))
+        state)
+      (if (= kind 7)
+        (if (= payload-len 2)
+          (validation-state-add-object state 1 (vector-get payload 0))
+          state)
+        (if (= kind 9)
+          (do
+            (ref-set (vector-get state 4) (+ (ref-get (vector-get state 4)) 1))
+            state)
+          (if (= kind 10)
+            (if (= payload-len 2)
+              (validation-state-add-object
+                state
+                2
+                (validation-source-pair (vector-get payload 0) (vector-get payload 1)))
+              state)
+            (if (= kind 12)
+              (if (= payload-len 2)
+                (validation-state-add-object
+                  state
+                  3
+                  (validation-source-pair (vector-get payload 0) (vector-get payload 1)))
+                state)
+              state)))))))
+(defn validation-forms-loop [forms idx state]
+  (if (>= idx (vector-length forms))
+    state
+    (validation-forms-loop
+      forms
+      (+ idx 1)
+      (validation-state-consume-form state (vector-get forms idx)))))
+(defn validation-program-loop [program idx state]
+  (if (>= idx (vector-length program))
+    state
+    (let [decl (vector-get program idx)
+      next-state
+        (if (= (vector-get decl 0) (ast-defn))
+          (validation-forms-loop (validation-defn-forms decl) 0 state)
+          state)]
+      (validation-program-loop program (+ idx 1) next-state))))
+(defn validation-source-state [program]
+  (validation-program-loop program 0 (validation-state-new)))
+(defn validation-edge-links-id? [edges idx target]
+  (if (>= idx (vector-length edges))
+    0
+    (let [edge (vector-get edges idx)]
+      (if (string-eq (vector-get edge 0) target)
+        1
+        (validation-edge-links-id? edges (+ idx 1) target)))))
+(defn validation-gap-json [code subject]
+  (let [fields0 ""
+    fields1 (docjson-append fields0 (docjson-string-field "code" code))
+    fields2 (docjson-append fields1 (docjson-string-field "subject_id" subject))]
+    (docjson-object-wrap fields2)))
+(defn validation-intent-gaps-loop [intents motives idx out]
+  (if (>= idx (vector-length intents))
+    out
+    (let [intent (vector-get intents idx)
+      next-out
+        (if (= (validation-edge-links-id? motives 0 intent) 1)
+          out
+          (docjson-append
+            out
+            (validation-gap-json "trace-gap.intent-without-claim" intent)))]
+      (validation-intent-gaps-loop intents motives (+ idx 1) next-out))))
+(defn validation-claim-gaps-loop [claims tested-by idx out]
+  (if (>= idx (vector-length claims))
+    out
+    (let [claim (vector-get claims idx)
+      next-out
+        (if (= (validation-edge-links-id? tested-by 0 claim) 1)
+          out
+          (docjson-append
+            out
+            (validation-gap-json "trace-gap.claim-without-test" claim)))]
+      (validation-claim-gaps-loop claims tested-by (+ idx 1) next-out))))
+(defn validation-trace-gaps-json [state]
+  (let [intents (ref-get (vector-get state 0))
+    claims (ref-get (vector-get state 1))
+    motives (ref-get (vector-get state 2))
+    tested-by (ref-get (vector-get state 3))
+    intent-gaps (validation-intent-gaps-loop intents motives 0 "")
+    all-gaps (validation-claim-gaps-loop claims tested-by 0 intent-gaps)]
+    (docjson-array-wrap all-gaps)))
+(defn validation-string-id-exists-loop [ids id idx len]
+  (if (>= idx len)
+    0
+    (if (string-eq (vector-get ids idx) id)
+      1
+      (validation-string-id-exists-loop ids id (+ idx 1) len))))
+(defn validation-string-id-exists? [ids id]
+  (validation-string-id-exists-loop ids id 0 (vector-length ids)))
+(defn validation-add-evidence-id [ids id]
+  (if (= (validation-string-id-exists? ids id) 1)
+    ids
+    (push-object-vector-local ids id)))
+(defn validation-independent-review-count-loop [registry idx len count]
+  (if (>= idx len)
+    count
+    (let [evidence-record (vector-get registry idx)
+      next-count
+        (if (and
+              (string-eq (source-evidence-record-method evidence-record) "review")
+              (string-eq (source-evidence-record-independence evidence-record) "independent-review"))
+          (+ count 1)
+          count)]
+      (validation-independent-review-count-loop registry (+ idx 1) len next-count))))
+(defn validation-contradictory-records-loop [registry idx len ids]
+  (if (>= idx len)
+    ids
+    (let [evidence-record (vector-get registry idx)
+      next-ids
+        (if (string-eq (source-evidence-record-outcome evidence-record) "contradicted")
+          (validation-add-evidence-id ids (source-evidence-record-id evidence-record))
+          ids)]
+      (validation-contradictory-records-loop registry (+ idx 1) len next-ids))))
+(defn validation-contradictory-edges-loop [edges idx len ids]
+  (if (>= idx len)
+    ids
+    (let [edge (vector-get edges idx)
+      next-ids
+        (if (= (source-edge-kind edge) (source-edge-contradicts))
+          (validation-add-evidence-id ids (source-edge-left edge))
+          ids)]
+      (validation-contradictory-edges-loop edges (+ idx 1) len next-ids))))
+(defn validation-evidence-metrics [graph]
+  (let [registry (source-evidence-graph-registry graph)
+    edges (source-graph-edges graph)
+    independent-reviews
+      (validation-independent-review-count-loop registry 0 (vector-length registry) 0)
+    ids0 (vector-new 0)
+    ids1 (validation-contradictory-records-loop registry 0 (vector-length registry) ids0)
+    ids2 (validation-contradictory-edges-loop edges 0 (vector-length edges) ids1)
+    metrics0 (vector-new 0)
+    metrics1 (push-int-vector-local metrics0 independent-reviews)]
+    (push-int-vector-local metrics1 (vector-length ids2))))
+(defn validation-source-report-json [state independent-reviews contradicting-observations]
+  (let [fields0 ""
+    status (if (> contradicting-observations 0) "fail" "unknown")
+    fields1 (docjson-append fields0 (docjson-string-field "status" status))
+    fields2 (docjson-append fields1 (docjson-array-field "trace_gaps" (validation-trace-gaps-json state)))
+    fields3 (docjson-append fields2 (docjson-int-field "open_questions" (ref-get (vector-get state 4))))
+    fields4 (docjson-append fields3 (docjson-int-field "independent_reviews" independent-reviews))
+    fields5 (docjson-append fields4 (docjson-int-field "contradicting_observations" contradicting-observations))]
+    (docjson-object-wrap fields5)))
+(defn validation-option-manifest-path [opts] (vector-get opts 1))
+(defn validation-source-write-manifest [graph manifest-path]
+  (if (> (string-length manifest-path) 0)
+    (write-file manifest-path (validation-source-manifest-json graph))
+    0))
+(defn run-validate-source [src opts]
+  (let [program (parse-program src)
+    graph-result (source-evidence-graph-from-program program)]
+    (if (= (source-result-status graph-result) 0)
+      (let [error (source-result-error graph-result)]
+        (do
+          (cli-stderr
+            (string-concat
+              "source validation error:"
+              (int-to-string (source-graph-error-code error))))
+          (exit-compile-error)))
+      (let [graph (source-result-value graph-result)
+        manifest-path (validation-option-manifest-path opts)
+        state (validation-source-state program)
+        metrics (validation-evidence-metrics graph)
+        independent-reviews (vector-get metrics 0)
+        contradicting-observations (vector-get metrics 1)
+        report (validation-source-report-json state independent-reviews contradicting-observations)]
+        (if (and (> (string-length manifest-path) 0)
+            (< (validation-source-write-manifest graph manifest-path) 0))
+          (do
+            (cli-stderr "source validation manifest write failed")
+            (exit-compile-error))
+          (do
+            (print-string report)
+            (print-string "\n")
+            (if (> contradicting-observations 0)
+              (exit-compile-error)
+              (exit-runtime-error))))))))
 (defn run-check-source [src opts] (run-check-program (make-check-program-context (parse-program src) (vector-new 0)) opts))
 (defn test-examples-text [count] (string-concat "examples:" (int-to-string count)))
 (defn test-invariants-text [count] (string-concat "invariants:" (int-to-string count)))
@@ -628,6 +864,12 @@
 (defn run-doc-ack [file-path opts] (if (file-exists? file-path) (run-doc-ack-source (read-file file-path) opts) (exit-compile-error)))
 (defn run-doc-check [file-path opts] (if (file-exists? file-path) (run-doc-check-source (read-file file-path) opts) (exit-compile-error)))
 (defn run-fmt [file-path opts] (if (file-exists? file-path) (run-fmt-source (read-file file-path) opts) (exit-compile-error)))
+(defn run-validate [file-path opts]
+  (if (file-exists? file-path)
+    (run-validate-source (read-file file-path) opts)
+    (do
+      (cli-stderr "source file not found")
+      (exit-compile-error))))
 (defn output-option-flag [arg] (or (string-eq arg "-o") (string-eq arg "--output")))
 (defn target-option-flag [arg] (string-eq arg "--target"))
 (defn json-option-flag [arg] (string-eq arg "--json"))
@@ -686,6 +928,78 @@
               (check-cli-option-invalid))
             (check-cli-option-invalid))
           (check-cli-option-invalid))))))
+(defn validate-option-json [] 1)
+(defn validate-option-invalid [] (- 0 1))
+(defn validate-options-result [status manifest-path detail source-path]
+  (let [result (vector-new 4)
+    with-status (push-int-vector-local result status)
+    with-path (push-object-vector-local with-status manifest-path)
+    with-detail (push-object-vector-local with-path detail)]
+    (push-object-vector-local with-detail source-path)))
+(defn validate-options-status [result] (vector-get result 0))
+(defn validate-options-manifest-path [result] (vector-get result 1))
+(defn validate-options-detail [result] (vector-get result 2))
+(defn validate-options-source-path [result] (vector-get result 3))
+(defn parse-validate-cli-options-loop [idx argc source-path manifest-path source-seen format-seen]
+  (if (>= idx argc)
+    (if (and (= source-seen 1) (= format-seen 1))
+      (validate-options-result (validate-option-json) manifest-path "" source-path)
+      (validate-options-result
+        (validate-option-invalid)
+        manifest-path
+        "validate requires --source <file> --format json"
+        source-path))
+    (let [flag (command-line-arg idx)]
+      (if (or
+            (or (string-eq flag "--source") (format-option-flag flag))
+            (string-eq flag "--emit-manifest"))
+        (if (>= (+ idx 1) argc)
+          (validate-options-result (validate-option-invalid) manifest-path flag source-path)
+          (let [value (command-line-arg (+ idx 1))]
+            (if (string-eq flag "--emit-manifest")
+              (if (> (string-length value) 0)
+                (parse-validate-cli-options-loop
+                  (+ idx 2)
+                  argc
+                  source-path
+                  value
+                  source-seen
+                  format-seen)
+                (validate-options-result (validate-option-invalid) manifest-path flag source-path))
+              (if (format-option-flag flag)
+                (if (string-eq value "json")
+                  (parse-validate-cli-options-loop
+                    (+ idx 2)
+                    argc
+                    source-path
+                    manifest-path
+                    source-seen
+                    1)
+                  (validate-options-result (validate-option-invalid) manifest-path value source-path))
+                (if (> (string-length value) 0)
+                  (parse-validate-cli-options-loop
+                    (+ idx 2)
+                    argc
+                    value
+                    manifest-path
+                    1
+                    format-seen)
+                  (validate-options-result (validate-option-invalid) manifest-path flag source-path))))))
+        (validate-options-result (validate-option-invalid) manifest-path flag source-path)))))
+(defn parse-validate-cli-options [argc]
+  (parse-validate-cli-options-loop 1 argc "" "" 0 0))
+(defn parse-validate-cli-option [argc]
+  (let [result (parse-validate-cli-options argc)]
+    (if (= (validate-options-status result) (validate-option-json))
+      (validate-option-json)
+      (validate-option-invalid))))
+(defn run-validate-command [argc]
+  (let [options (parse-validate-cli-options argc)]
+    (if (= (validate-options-status options) (validate-option-json))
+      (run-validate (validate-options-source-path options) options)
+      (do
+        (cli-stderr (string-concat "validate option error: " (validate-options-detail options)))
+        (exit-compile-error)))))
 (defn doc-cli-option-none [] 0)
 (defn doc-cli-option-invalid [] (- 0 1))
 (defn parse-doc-cli-option [argc cmd-name]
@@ -724,11 +1038,15 @@
                     (run-doc-check file-path opts)
                     (if (= cmd-id (cmd-fmt))
                       (run-fmt file-path opts)
-                      (exit-compile-error))))))))))))
+                      (if (= cmd-id (cmd-validate))
+                        (run-validate file-path opts)
+                        (exit-compile-error)))))))))))))
 (defn run-command-with-cli-options [cmd-name file-path result] (let [target (cli-option-result-target result) output-path (cli-option-result-output-path result)] (if (> (string-length output-path) 0) (if (string-eq cmd-name "compile") (run-compile-output file-path output-path target) (if (string-eq cmd-name "build") (run-build-output file-path output-path target) (run-command cmd-name file-path target))) (run-command cmd-name file-path target))))
 (defn compile-or-build-command [cmd-name] (or (string-eq cmd-name "compile") (string-eq cmd-name "build")))
 (defn run-main-command [argc cmd-name file-path]
-  (if (and (compile-or-build-command cmd-name) (> argc 2))
+  (if (string-eq cmd-name "validate")
+    (run-validate-command argc)
+    (if (and (compile-or-build-command cmd-name) (> argc 2))
     (let [options (parse-cli-options argc)]
       (if (= (cli-option-result-status options) (cli-option-status-ok))
         (run-command-with-cli-options cmd-name file-path options)
@@ -753,7 +1071,7 @@
               (if (>= doc-option 0)
                 (run-command-with-doc-option cmd-name file-path doc-option)
                 (exit-compile-error)))
-            (run-command cmd-name file-path (default-compile-target))))))))
+            (run-command cmd-name file-path (default-compile-target)))))))))
 (defn exit-main [code] (do (proc-exit code) 0))
 (defn main []
   (let [argc (command-line-args)]

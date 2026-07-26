@@ -1,5 +1,7 @@
 (module Tools.Validation.Evidence)
 (import Tools.Validation.IntentSource)
+(import Syntax.AST)
+(import Syntax.Parser)
 (import Tools.Lsp.JsonRpc)
 
 ;; Rust の EvidenceForm を将来の selfhost parser から渡せる registry 境界。

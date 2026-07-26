@@ -1,5 +1,6 @@
 (module Tools.Validation.IntentSource)
 (import Syntax.AST)
+(import Syntax.Parser)
 
 ;; M2 source metadata を selfhost の tagged vector graph へ投影する。
 ;;

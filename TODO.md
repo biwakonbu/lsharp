@@ -31,9 +31,10 @@
   review/evaluates/invalidates、外部 provenance と privacy policy、selfhost/native parity を閉じる。
 - [~] `EC-M2-03` `lsharp validate` — version 1 manifest parser、source adapter、
   `--emit-manifest` の atomic/durable file boundary、deterministic text/JSON report、
-  `pass=0` / `fail=1` / `unknown=2` の Rust CLI は verified。selfhost/native の manifest
-  producer/parser/report/exit code、release-level provenance、EmbeddedCli/MCP、
-  両 supported target の runtime evidence を閉じる。
+  `pass=0` / `fail=1` / `unknown=2` の Rust CLI は verified。selfhost `App.Cli` と
+  `EmbeddedCli` の source/report/exit slice は verified。selfhost/native の manifest
+  producer/parser、report/exit parity、release-level provenance、EmbeddedCli の manifest
+  emission/MCP、両 supported target の runtime evidence を閉じる。
 
 次の実装は `EC-M2-01`〜`EC-M2-03` の未接続入力を一つの RED に絞る。current plan の
 acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展開しない。

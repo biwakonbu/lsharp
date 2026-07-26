@@ -504,6 +504,47 @@ fn test_e2e_selfhost_embedded_cli_main_with_args_test_format_json_property_preco
     );
 }
 
+/// EC-M2-03: EmbeddedCli の validate source/report/exit contract は Cli と同じ unknown を返す。
+#[test]
+fn test_e2e_selfhost_embedded_cli_main_with_args_validate_source_json_trace_gap() {
+    let source =
+        "(defn cancel [] :intent \"intent:checkout/safe-cancel\" \"Users can cancel\" true)";
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, || {
+        run_main_with_input_file_capture(
+            selfhost_embedded_cli_runtime_bundle(),
+            "validate_source_trace_gap_embedded",
+            source,
+            &["validate", "--source", "input.ls", "--format", "json"],
+        )
+    });
+
+    assert_eq!(
+        output.exit_code, 2,
+        "EmbeddedCli の未接続 intent は unknown exit 2 で返すべき: stdout={:?}",
+        output.stdout
+    );
+    let lines: Vec<&str> = output.stdout.trim().lines().collect();
+    assert_eq!(
+        lines.len(),
+        1,
+        "validate report は stdout 1 行の JSON であるべき"
+    );
+    let report: Value = serde_json::from_str(lines[0]).expect("validate report は valid JSON");
+    assert_eq!(report["status"], "unknown");
+    assert_eq!(
+        report["trace_gaps"][0]["code"],
+        "trace-gap.intent-without-claim"
+    );
+    assert_eq!(
+        report["trace_gaps"][0]["subject_id"],
+        "intent:checkout/safe-cancel"
+    );
+    assert_eq!(report["open_questions"], 0);
+    assert_eq!(report["independent_reviews"], 0);
+    assert_eq!(report["contradicting_observations"], 0);
+    assert!(report.get("verified").is_none());
+}
+
 /// TEST-CLI-02-AP2: actual Cli main は自己再帰 top-level defn を typecheck できること
 #[test]
 #[ignore]
