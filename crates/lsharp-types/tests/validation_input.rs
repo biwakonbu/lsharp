@@ -1,6 +1,6 @@
 use lsharp_types::evidence::GraphError;
 use lsharp_types::validation::{IntentGraph, ValidationStatus};
-use lsharp_types::validation_input::{ValidationInputError, parse_intent_graph_json};
+use lsharp_types::validation_input::{parse_intent_graph_json, ValidationInputError};
 
 fn complete_manifest() -> &'static str {
     r#"
@@ -136,6 +136,34 @@ fn parse_manifest_rejects_unknown_node_references() {
     assert!(matches!(
         parse_intent_graph_json(&manifest),
         Err(ValidationInputError::MissingNodeReference { .. })
+    ));
+}
+
+#[test]
+fn parse_manifest_reports_missing_edge_endpoint_relation_and_id() {
+    let manifest = r#"
+    {
+      "schema_version": 1,
+      "nodes": [
+        {"kind":"claim","namespace":"checkout","key":"cancel-rejects-shipped","text":"API rejects shipped"}
+      ],
+      "evidence": [],
+      "edges": [
+        {
+          "relation": "constrained-by",
+          "claim": {"namespace":"checkout","key":"cancel-rejects-shipped"},
+          "assumption": {"namespace":"checkout","key":"missing-assumption"}
+        }
+      ]
+    }
+    "#;
+
+    assert!(matches!(
+        parse_intent_graph_json(manifest),
+        Err(ValidationInputError::MissingNodeReference {
+            relation: "constrained-by.assumption",
+            id,
+        }) if id == "assumption:checkout/missing-assumption"
     ));
 }
 

@@ -11,17 +11,19 @@ use crate::evidence::{
 };
 use crate::intent::{
     Assumption, AssumptionId, Claim, ClaimId, ContractId, EvidenceId, Intent, IntentId, IntentNode,
-    OpenQuestion, OpenQuestionId, ReviewId, StableId, StableIdError,
+    OpenQuestion, OpenQuestionId, ReviewId, StableIdError,
 };
 use crate::validation::IntentGraph;
 use lsharp_syntax::span::Span;
 
 mod manifest;
+mod references;
 
 use manifest::{
-    EdgeInput, EvidenceInput, IdInput, Manifest, NodeInput, NodeKindInput,
-    SUPPORTED_SCHEMA_VERSION, SpanInput, SubjectInput, SubjectKindInput,
+    EdgeInput, EvidenceInput, IdInput, Manifest, NodeInput, NodeKindInput, SpanInput, SubjectInput,
+    SubjectKindInput, SUPPORTED_SCHEMA_VERSION,
 };
+use references::{validate_edge_references, validate_evidence_subject};
 
 /// JSON manifest を graph に変換できない理由。
 #[derive(Debug, thiserror::Error)]
@@ -247,75 +249,5 @@ fn invalidation_subject(input: SubjectInput) -> Result<InvalidationSubject, Vali
                 id: format!("{}:{}/{}", input.kind.as_str(), input.namespace, input.key),
             });
         }
-    })
-}
-
-fn validate_evidence_subject(
-    graph: &IntentGraph,
-    subject: &EvidenceSubject,
-) -> Result<(), ValidationInputError> {
-    match subject {
-        EvidenceSubject::Intent(id) if !has_node(graph, id.stable_id()) => {
-            missing_node("evidence.subject", id.stable_id())
-        }
-        EvidenceSubject::Claim(id) if !has_node(graph, id.stable_id()) => {
-            missing_node("evidence.subject", id.stable_id())
-        }
-        EvidenceSubject::Intent(_) | EvidenceSubject::Claim(_) | EvidenceSubject::Contract(_) => {
-            Ok(())
-        }
-    }
-}
-
-fn validate_edge_references(graph: &IntentGraph, edge: &Edge) -> Result<(), ValidationInputError> {
-    match edge {
-        Edge::Motivates { intent, claim } => {
-            require_node(graph, "motivates.intent", intent.stable_id())?;
-            require_node(graph, "motivates.claim", claim.stable_id())?;
-        }
-        Edge::ConstrainedBy { claim, assumption } => {
-            require_node(graph, "constrained-by.claim", claim.stable_id())?;
-            require_node(graph, "constrained-by.assumption", assumption.stable_id())?;
-        }
-        Edge::TestedBy { claim, .. } => {
-            require_node(graph, "tested-by.claim", claim.stable_id())?;
-        }
-        Edge::Supports { claim, .. } | Edge::Contradicts { claim, .. } => {
-            require_node(graph, edge.relation(), claim.stable_id())?;
-        }
-        Edge::Evaluates { subject, .. } => match subject {
-            ReviewSubject::Intent(id) => {
-                require_node(graph, "evaluates.subject", id.stable_id())?;
-            }
-            ReviewSubject::Claim(id) => {
-                require_node(graph, "evaluates.subject", id.stable_id())?;
-            }
-            ReviewSubject::Evidence(_) => {}
-        },
-        Edge::Invalidates { .. } => {}
-    }
-    Ok(())
-}
-
-fn require_node(
-    graph: &IntentGraph,
-    relation: &'static str,
-    id: &StableId,
-) -> Result<(), ValidationInputError> {
-    if has_node(graph, id) {
-        Ok(())
-    } else {
-        missing_node(relation, id)
-    }
-}
-
-fn has_node(graph: &IntentGraph, id: &StableId) -> bool {
-    graph.nodes().iter().any(|node| node.stable_id() == id)
-}
-
-fn missing_node(relation: &'static str, id: &StableId) -> Result<(), ValidationInputError> {
-    Err(ValidationInputError::MissingNodeReference {
-        relation,
-        id: id.as_str().to_string(),
     })
 }
