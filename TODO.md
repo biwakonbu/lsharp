@@ -258,6 +258,10 @@
 
 - [~] `imp-06` canonical metadata contract checker split — `crates/lsharp-types/src/canonical_contract_check.rs` の非空性/vacuity 判定を `canonical_contract_check/non_vacuity.rs`、canonical `:assert` / `:case` / `:property` の synthetic HM probe と型診断を `canonical_contract_check/types.rs` へ移動し、parent を 794 行から 11 行へ縮小した。既存 re-export、metadata checker の診断・lexical scope、production semantics は維持し、empty-program seam test と metadata contract 30 tests、package 214 unit + 117 integration、clippy、workspace check、対象 rustfmt、docs audit を passした。canonical checker の追加分割、selfhost/native parity、I-01 / I-08 aggregate、Mac/Linux runtime evidence は未完了。Evidence: `docs/adr/decisions-legacy-canonical-contract-check-split.md`。
 
+## 2026-07-26 metadata test suite 責務分離
+
+- [~] `imp-06` tooling metadata test suite split — `crates/lsharp-tooling/src/metadata_test_tests.rs` の 36 tests を shared fixture/basic diagnostics、canonical assertion/case、deterministic property profile の 3 fragment (`metadata_test_tests/basic.rs`, `canonical.rs`, `property.rs`) へ移動し、parent を 742 行から 24 行へ縮小した。`include!` によって既存 `metadata_test::tests` namespace と test body、production API/runtime semantics を維持した。focused 36 tests、package 134 unit + doc-test 0、clippy、workspace check、対象 rustfmt、docs audit を passした。metadata runner production split、selfhost/native parity、I-01 / I-08 aggregate は未完了。Evidence: `docs/adr/decisions-legacy-metadata-test-tests-split.md`。
+
 > 凡例: `[x]` 完了 / `[ ]` 未着手 / `[~]` 部分実装 / `[BLOCKED: ...]` 依存待ち / `[DEFERRED]` 後続トラック送り
 >
 > **完了済みフェーズ**: Phase 0-7, P8, P9-1/2/3/4/6, P10, P12, P13, P14。
