@@ -105,27 +105,11 @@ fn selfhost_cli_validation_surface_is_registered() {
         .map(|offset| node_json_start + offset)
         .expect("node JSON helper の終端を特定できるべき");
     let node_json = &evidence[node_json_start..node_json_end];
-    for field in ["fields0", "fields1", "fields2", "fields3", "fields4", "fields5"] {
-        assert!(
-            node_json.contains(&format!("(root_push {field})")),
-            "node JSON helper は {field} を次の field 計算中も root するべき"
-        );
-    }
-    let fields_root = node_json
-        .find("(root_push fields5)")
-        .expect("node JSON helper は最終 fields を root するべき");
-    let fields_wrap = node_json
-        .find("(validation-json-object-wrap fields5)")
-        .expect("node JSON helper は最終 fields を object へ wrap するべき");
-    let first_pop = node_json
-        .find("(root_pop)")
-        .expect("node JSON helper は root を解放するべき");
     assert!(
         node_json.contains("(root_push node)")
-            && node_json.contains("(root_push fields5)")
-            && fields_root < fields_wrap
-            && fields_wrap < first_pop,
-        "native x86 の node JSON helper は wrap 完了まで入力 node と最終 fields を GC root として保持するべき"
+            && node_json.contains("(validation-source-node-json-state-loop state)")
+            && node_json.contains("(vector-new 3)"),
+        "native x86 の node JSON helper は入力 node と rooted state を 1 引数 state-loop へ渡すべき"
     );
     let manifest_start = evidence
         .find("(defn validation-source-manifest-json [graph]")
@@ -214,5 +198,45 @@ fn selfhost_json_escape_loop_uses_one_arg_state_boundary() {
                 "(json-escape-string-loop src (+ idx 1) len (string-concat out piece))"
             ),
         "native x86 の JSON escape は string/object を含む4引数 call を公開経路に残さず1引数 state-loopへ分離するべき"
+    );
+}
+
+#[test]
+fn selfhost_node_manifest_uses_one_arg_state_boundary() {
+    let source = selfhost_evidence_source();
+    let node_start = source
+        .find("(defn validation-source-node-json [node]")
+        .expect("Evidence は node JSON wrapper を持つべき");
+    let nodes_loop_start = source
+        .find("(defn validation-source-nodes-json-state-loop")
+        .expect("Evidence は node collection loop を持つべき");
+    let node_wrapper = &source[node_start..nodes_loop_start];
+    let state_start = source
+        .find("(defn validation-source-node-json-state-loop [state]")
+        .expect("Evidence は node JSON の 1 引数 state-loop を持つべき");
+    let state_end = source[state_start..]
+        .find("(defn validation-source-nodes-json-state-loop")
+        .map(|offset| state_start + offset)
+        .expect("node JSON state-loop の終端を特定できるべき");
+    let state_loop = &source[state_start..state_end];
+
+    assert!(
+        state_loop.contains("(root_push state)")
+            && state_loop.contains("(validation-source-node-json-state-loop next-state)"),
+        "native x86 の node JSON state-loop は state を root し、1 引数 state だけで再帰するべき"
+    );
+    assert!(
+        node_wrapper.contains("(root_push node)")
+            && node_wrapper.contains("(validation-source-node-json-state-loop state)")
+            && node_wrapper.contains("(vector-new 3)"),
+        "node JSON wrapper は入力 node を保持し、rooted state を 1 引数 loop へ渡すべき"
+    );
+    assert!(
+        !node_wrapper.contains("fields1")
+            && !node_wrapper.contains("fields2")
+            && !node_wrapper.contains("fields3")
+            && !node_wrapper.contains("fields4")
+            && !node_wrapper.contains("fields5"),
+        "node JSON wrapper は複数 field intermediate を同一 call frame に積まないべき"
     );
 }

@@ -412,51 +412,139 @@
     fields2 (validation-json-append fields1 (validation-json-int-field "end" end))]
     (validation-json-object-wrap fields2)))
 
+(defn validation-source-node-json-state-loop [state]
+  (do
+    (root_push state)
+    (let [node (vector-get state 0)
+      stage (vector-get state 1)
+      fields (vector-get state 2)]
+      (if (= stage 0)
+        (let [next-fields (validation-json-append fields
+            (validation-json-string-field "kind" (validation-source-node-kind-text (source-node-kind node))))]
+          (do
+            (root_push next-fields)
+            (let [state0 (vector-new 3)
+              state1 (vector-push-single-rooted-v3 state0 node)
+              state2 (vector-push-single-rooted-v3 state1 1)
+              next-state (vector-push-single-rooted-v3 state2 next-fields)]
+              (do
+                (root_push next-state)
+                (let [result (validation-source-node-json-state-loop next-state)]
+                  (do
+                    (root_push result)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    result))))))
+        (if (= stage 1)
+          (let [next-fields (validation-json-append fields
+              (validation-json-string-field "namespace"
+                (let [wire-id (source-node-id node)
+                  colon (source-find-char wire-id 58 0 (string-length wire-id))]
+                  (substring wire-id (+ colon 1)
+                    (source-find-char wire-id 47 (+ colon 1) (string-length wire-id))))))]
+            (do
+              (root_push next-fields)
+              (let [state0 (vector-new 3)
+                state1 (vector-push-single-rooted-v3 state0 node)
+                state2 (vector-push-single-rooted-v3 state1 2)
+                next-state (vector-push-single-rooted-v3 state2 next-fields)]
+                (do
+                  (root_push next-state)
+                  (let [result (validation-source-node-json-state-loop next-state)]
+                    (do
+                      (root_push result)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      result))))))
+          (if (= stage 2)
+            (let [next-fields (validation-json-append fields
+                (validation-json-string-field "key"
+                  (let [wire-id (source-node-id node)
+                    colon (source-find-char wire-id 58 0 (string-length wire-id))
+                    slash (source-find-char wire-id 47 (+ colon 1) (string-length wire-id))]
+                    (substring wire-id (+ slash 1) (string-length wire-id)))))]
+              (do
+                (root_push next-fields)
+                (let [state0 (vector-new 3)
+                  state1 (vector-push-single-rooted-v3 state0 node)
+                  state2 (vector-push-single-rooted-v3 state1 3)
+                  next-state (vector-push-single-rooted-v3 state2 next-fields)]
+                  (do
+                    (root_push next-state)
+                    (let [result (validation-source-node-json-state-loop next-state)]
+                      (do
+                        (root_push result)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        result))))))
+            (if (= stage 3)
+              (let [next-fields (validation-json-append fields
+                  (validation-json-string-field "text" (source-node-text node)))]
+                (do
+                  (root_push next-fields)
+                  (let [state0 (vector-new 3)
+                    state1 (vector-push-single-rooted-v3 state0 node)
+                    state2 (vector-push-single-rooted-v3 state1 4)
+                    next-state (vector-push-single-rooted-v3 state2 next-fields)]
+                    (do
+                      (root_push next-state)
+                      (let [result (validation-source-node-json-state-loop next-state)]
+                        (do
+                          (root_push result)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          result))))))
+              (if (= stage 4)
+                (let [next-fields (validation-json-append fields
+                    (validation-json-object-field "span"
+                      (validation-source-span-json (source-node-start node) (source-node-end node))))]
+                  (do
+                    (root_push next-fields)
+                    (let [state0 (vector-new 3)
+                      state1 (vector-push-single-rooted-v3 state0 node)
+                      state2 (vector-push-single-rooted-v3 state1 5)
+                      next-state (vector-push-single-rooted-v3 state2 next-fields)]
+                      (do
+                        (root_push next-state)
+                        (let [result (validation-source-node-json-state-loop next-state)]
+                          (do
+                            (root_push result)
+                            (root_pop)
+                            (root_pop)
+                            (root_pop)
+                            (root_pop)
+                            result))))))
+                (let [result (validation-json-object-wrap fields)]
+                  (do
+                    (root_push result)
+                    (root_pop)
+                    (root_pop)
+                    result))))))))))
+
 (defn validation-source-node-json [node]
   (do
     (root_push node)
-    (let [fields0 ""]
+    (let [state0 (vector-new 3)
+      state1 (vector-push-single-rooted-v3 state0 node)
+      state2 (vector-push-single-rooted-v3 state1 0)
+      state (vector-push-single-rooted-v3 state2 "")]
       (do
-        (root_push fields0)
-        (let [fields1 (validation-json-append fields0
-            (validation-json-string-field "kind" (validation-source-node-kind-text (source-node-kind node))))]
+        (root_push state)
+        (let [result (validation-source-node-json-state-loop state)]
           (do
-            (root_push fields1)
-            (let [fields2 (validation-json-append fields1
-                (validation-json-string-field "namespace"
-                  (let [wire-id (source-node-id node)
-                    colon (source-find-char wire-id 58 0 (string-length wire-id))]
-                    (substring wire-id (+ colon 1)
-                      (source-find-char wire-id 47 (+ colon 1) (string-length wire-id))))))]
-              (do
-                (root_push fields2)
-                (let [fields3 (validation-json-append fields2
-                    (validation-json-string-field "key"
-                      (let [wire-id (source-node-id node)
-                        colon (source-find-char wire-id 58 0 (string-length wire-id))
-                        slash (source-find-char wire-id 47 (+ colon 1) (string-length wire-id))]
-                        (substring wire-id (+ slash 1) (string-length wire-id)))))]
-                  (do
-                    (root_push fields3)
-                    (let [fields4 (validation-json-append fields3
-                        (validation-json-string-field "text" (source-node-text node)))]
-                      (do
-                        (root_push fields4)
-                        (let [fields5 (validation-json-append fields4
-                            (validation-json-object-field "span"
-                              (validation-source-span-json (source-node-start node) (source-node-end node))))]
-                          (do
-                            (root_push fields5)
-                            (let [result (validation-json-object-wrap fields5)]
-                              (do
-                                (root_pop)
-                                (root_pop)
-                                (root_pop)
-                                (root_pop)
-                                (root_pop)
-                                (root_pop)
-                                (root_pop)
-                                result))))))))))))))))
+            (root_push result)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            result))))))
 
 (defn validation-source-nodes-json-state-loop [state]
   (do
