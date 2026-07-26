@@ -20367,6 +20367,119 @@ fn test_e2e_selfhost_cli_manifest_call_ir_target_matches_ftable() {
 }
 
 #[test]
+fn test_e2e_selfhost_cli_manifest_json_call_chain_targets_named_ftable_functions() {
+    let mut modules = SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES.to_vec();
+    modules.extend_from_slice(&[
+        "Cli.ls",
+        "DocTools.ls",
+        "DocJson.ls",
+        "FormatterExpr.ls",
+        "FormatterDecl.ls",
+        "Formatter.ls",
+        "JsonRpc.ls",
+        "LspServerCore.ls",
+        "LspServerNav.ls",
+        "LspServer.ls",
+        "TestRunner.ls",
+        "PropertyRunner.ls",
+        "TypeInferAssertions.ls",
+        "MetadataMigration.ls",
+        "IntentSource.ls",
+        "Evidence.ls",
+    ]);
+    let harness = r#"(module App.HarnessMain)
+(import App.CompilerMode)
+(import Backend.Wasm.CompilerBase)
+
+(defn hash-name-loop [src idx len acc]
+  (if (>= idx len)
+    acc
+    (hash-name-loop src (+ idx 1) len
+      (+ (string-char-at src idx) (* acc 31)))))
+
+(defn hash-name [src]
+  (hash-name-loop src 0 (string-length src) 0))
+
+(defn ir-has-call-target [ir idx len target]
+  (if (>= idx len)
+    0
+    (let [instr (vector-get ir idx)]
+      (if (= (vector-get instr 0) 40)
+        (if (= (vector-get instr 1) target)
+          1
+          (ir-has-call-target ir (+ idx 1) len target))
+        (ir-has-call-target ir (+ idx 1) len target)))))
+
+(defn named-call-present [ftable functions caller callee]
+  (let [caller-target (ftable-lookup ftable (hash-name caller))
+    callee-target (ftable-lookup ftable (hash-name callee))]
+    (if (or (<= caller-target 0) (<= callee-target 0))
+      0
+      (let [ir (function-meta-ir (vector-get functions (- caller-target 10)))]
+        (ir-has-call-target ir 0 (vector-length ir) callee-target)))))
+
+(defn main []
+  (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        pairs (compile-file-pairs-with-cache "src/App/Cli.ls" cache-ref parse-count-ref)
+        pair-count (vector-length pairs)
+        start-ftable (ftable-with-native-runtime-imports)
+        prelude (compile-record-prelude-all-pairs
+          pairs
+          0
+          pair-count
+          start-ftable
+          10
+          (vector-new 8))
+        prelude-ftable (vector-get prelude 2)
+        prelude-func-idx (vector-get prelude 3)
+        prelude-functions (vector-get prelude 4)
+        reg (register-all-pairs pairs 0 pair-count prelude-ftable prelude-func-idx)
+        ftable (vector-get reg 0)
+        data-ref (ref-new (vector-new 8))
+        functions (compile-all-src-decl-pairs-chunked
+          pairs
+          0
+          pair-count
+          ftable
+          data-ref
+          prelude-functions)]
+    (do
+      (print (named-call-present ftable functions
+        "validation-source-write-manifest"
+        "validation-source-manifest-json"))
+      (print (named-call-present ftable functions
+        "validation-source-manifest-json"
+        "validation-source-evidence-json-state-loop"))
+      (print (named-call-present ftable functions
+        "validation-source-evidence-json-state-loop"
+        "validation-source-evidence-json"))
+      (print (named-call-present ftable functions
+        "validation-source-evidence-json-state-loop"
+        "validation-source-evidence-json-state-loop"))
+      (print (named-call-present ftable functions
+        "validation-source-evidence-json"
+        "validation-source-subject-json"))
+      0)))"#;
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
+            "selfhost-cli-manifest-json-call-chain-targets",
+            &modules,
+            "src/App/HarnessMain.ls",
+            harness,
+            &[],
+        )
+    })
+    .expect("App.Cli manifest JSON call chain target probe 実行に失敗");
+    let lines = parse_numeric_lines(&output);
+    assert_eq!(
+        lines,
+        vec![1, 1, 1, 1, 1],
+        "App.Cli manifest JSON call chain は named ftable target を保持するべき: {lines:?}"
+    );
+}
+
+#[test]
 fn test_e2e_selfhost_int_to_string_ir_call_operand_points_to_runtime_import_six() {
     let source = "(module Main)\n(defn main []\n  (int-to-string 42))\n";
     let escaped_source = escape_lsharp_string(source);
