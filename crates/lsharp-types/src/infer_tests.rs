@@ -104,6 +104,33 @@ mod tests {
     }
 
     #[test]
+    fn infer_declaration_pipeline_preserves_definition_order() {
+        let results = infer("(defn first [] 41) (defn second [] 42)").unwrap();
+
+        assert_eq!(results[0].0, "first");
+        assert_eq!(results[0].1.to_string(), "() -> Int");
+        assert_eq!(results[1].0, "second");
+        assert_eq!(results[1].1.to_string(), "() -> Int");
+    }
+
+    #[test]
+    fn infer_registration_preserves_record_constructor_scheme() {
+        let results = infer(
+            "(type Point (record (: x Int) (: y Int)))
+             (defn make-point [] (Point 1 2))",
+        )
+        .unwrap();
+
+        assert_eq!(results[0].0, "make-point");
+        let scheme = results[0].1.to_string();
+        assert!(
+            scheme.contains("Point"),
+            "expected Point record type: {scheme}"
+        );
+        assert!(scheme.contains("Int"), "expected Int fields: {scheme}");
+    }
+
+    #[test]
     fn test_type_error_mismatch() {
         let result = infer("(defn bad [] (+ 1 true))");
         assert!(result.is_err());
