@@ -1958,8 +1958,11 @@ fn test_native_selfhost_dev_source_file_smoke_script_contract() {
         "EC-M3-01",
         "ec-m3-canonical-source.ls",
         "ec-m3-canonical-manifest.json",
+        "ec-m3-duplicate-node-source.ls",
         "VALIDATION_SOURCE",
         "VALIDATION_MANIFEST",
+        "VALIDATION_INVALID_SOURCE",
+        "VALIDATION_INVALID_MANIFEST",
         "validate",
         "--source",
         "--format json",
@@ -2023,6 +2026,30 @@ fn test_native_selfhost_dev_source_file_smoke_covers_ec_m3_manifest_parity() {
 }
 
 #[test]
+fn test_native_selfhost_dev_source_file_smoke_covers_ec_m3_duplicate_rejection() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-selfhost-dev-source-file-smoke.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+
+    for required in [
+        "EC-M3-01",
+        "ec-m3-duplicate-node-source.ls",
+        "VALIDATION_INVALID_SOURCE",
+        "VALIDATION_INVALID_MANIFEST",
+        "run_expected_validation_error",
+        "exit 1",
+        "source validation error:2",
+        "no report or manifest",
+    ] {
+        assert!(
+            script.contains(required),
+            "native selfhost source-file smoke は duplicate rejection boundary `{required}` を固定するべき"
+        );
+    }
+}
+
+#[test]
 fn test_native_linux_x86_native_stage0_source_file_smoke_script_contract() {
     let script_path = selfhost_project_root()
         .join("scripts/ci/native-linux-x86-native-stage0-source-file-smoke.sh");
@@ -2039,6 +2066,7 @@ fn test_native_linux_x86_native_stage0_source_file_smoke_script_contract() {
         "tests/fixtures/validation",
         "ec-m3-canonical-source.ls",
         "ec-m3-canonical-manifest.json",
+        "ec-m3-duplicate-node-source.ls",
         "selfhost",
         "VM free space gate",
         "trap cleanup EXIT",

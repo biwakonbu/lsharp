@@ -5,6 +5,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 RUNNER="$ROOT/scripts/native-selfhost-dev.sh"
 VALIDATION_SOURCE="$ROOT/tests/fixtures/validation/ec-m3-canonical-source.ls"
 EXPECTED_VALIDATION_MANIFEST="$ROOT/tests/fixtures/validation/ec-m3-canonical-manifest.json"
+VALIDATION_INVALID_SOURCE="$ROOT/tests/fixtures/validation/ec-m3-duplicate-node-source.ls"
 STAGE0_DIR="${NATIVE_STAGE0_DIR:-}"
 SOURCE_ROOT="${NATIVE_SELFHOST_SOURCE_ROOT:-$ROOT/selfhost}"
 STAGE_DIR="${NATIVE_SELFHOST_STAGE_DIR:-}"
@@ -39,6 +40,7 @@ require_file "$STAGE0_DIR/manifest.json" "native stage0 manifest"
 require_file "$SOURCE_ROOT/src/App/Cli.ls" "native selfhost App.Cli source"
 require_file "$VALIDATION_SOURCE" "EC-M3-01 validation source fixture"
 require_file "$EXPECTED_VALIDATION_MANIFEST" "EC-M3-01 canonical manifest fixture"
+require_file "$VALIDATION_INVALID_SOURCE" "EC-M3-01 duplicate node source fixture"
 
 stage0_target="$(python3 - "$STAGE0_DIR/manifest.json" <<'PY'
 import json
@@ -95,6 +97,7 @@ DYNAMIC_COMPLEMENT_PROPERTY="$WORK_DIR/dynamic-complement-property.ls"
 COMPILE_OUTPUT="$WORK_DIR/compile.wasm"
 BUILD_OUTPUT="$WORK_DIR/build.wasm"
 VALIDATION_MANIFEST="$WORK_DIR/ec-m3-canonical-manifest.json"
+VALIDATION_INVALID_MANIFEST="$WORK_DIR/ec-m3-duplicate-node-manifest.json"
 
 printf '%s\n' '(defn main [] 42)' >"$INPUT"
 cat >"$METADATA" <<'LSHARP'
@@ -219,6 +222,38 @@ run_expected_failure() {
   }
 }
 
+run_expected_validation_error() {
+  local label="$1"
+  shift
+
+  local status=0
+  set +e
+  PATH="$BLOCKED_TOOL_DIR:$PATH" \
+    "$RUNNER" \
+      --stage0-dir "$STAGE0_DIR" \
+      --source-root "$SOURCE_ROOT" \
+      --stage-dir "$STAGE_DIR" \
+      "$@" >"$WORK_DIR/$label.stdout" 2>"$WORK_DIR/$label.stderr"
+  status=$?
+  set -e
+
+  [[ "$status" -eq 1 ]] || {
+    echo "ERROR: $label expected exit 1, got $status" >&2
+    cat "$WORK_DIR/$label.stdout" >&2
+    cat "$WORK_DIR/$label.stderr" >&2
+    exit 1
+  }
+  [[ ! -s "$WORK_DIR/$label.stdout" ]] || {
+    echo "ERROR: $label must not emit a report on validation error" >&2
+    cat "$WORK_DIR/$label.stdout" >&2
+    exit 1
+  }
+  [[ -s "$WORK_DIR/$label.stderr" ]] || {
+    echo "ERROR: $label must emit a diagnostic on validation error" >&2
+    exit 1
+  }
+}
+
 run_command parse 1 parse "$INPUT"
 for expected in decls:1 first-decl:defn first-body:int diagnostics:0; do
   require_line parse "$expected"
@@ -321,6 +356,18 @@ if report.get("open_questions") != 1 or report.get("independent_reviews") != 0:
 if report.get("trace_gaps") != [] or report.get("contradicting_observations") != 0:
     raise SystemExit(f"validation trace/contradiction metrics are invalid: {report!r}")
 PY
+
+run_expected_validation_error validation-duplicate-node \
+  validate \
+  --source "$VALIDATION_INVALID_SOURCE" \
+  --format json \
+  --emit-manifest "$VALIDATION_INVALID_MANIFEST"
+grep -F "source validation error" "$WORK_DIR/validation-duplicate-node.stderr" >/dev/null \
+  || die "duplicate validation must expose a source validation error diagnostic"
+grep -F "source validation error:2" "$WORK_DIR/validation-duplicate-node.stderr" >/dev/null \
+  || die "duplicate validation diagnostic must expose the canonical duplicate-node code"
+[[ ! -e "$VALIDATION_INVALID_MANIFEST" ]] \
+  || die "duplicate validation must produce no report or manifest"
 
 run_command compile 0 compile "$INPUT" -o "$COMPILE_OUTPUT"
 run_command build 0 build "$INPUT" -o "$BUILD_OUTPUT"

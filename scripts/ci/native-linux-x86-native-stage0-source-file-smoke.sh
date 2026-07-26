@@ -129,6 +129,8 @@ limactl copy "${ROOT_DIR}/tests/fixtures/validation/ec-m3-canonical-source.ls" \
   "${VM_NAME}:${VM_WORK_DIR}/tests/fixtures/validation/ec-m3-canonical-source.ls"
 limactl copy "${ROOT_DIR}/tests/fixtures/validation/ec-m3-canonical-manifest.json" \
   "${VM_NAME}:${VM_WORK_DIR}/tests/fixtures/validation/ec-m3-canonical-manifest.json"
+limactl copy "${ROOT_DIR}/tests/fixtures/validation/ec-m3-duplicate-node-source.ls" \
+  "${VM_NAME}:${VM_WORK_DIR}/tests/fixtures/validation/ec-m3-duplicate-node-source.ls"
 
 limactl shell "${VM_NAME}" -- env \
   NATIVE_STAGE0_DIR="${VM_WORK_DIR}/stage0" \

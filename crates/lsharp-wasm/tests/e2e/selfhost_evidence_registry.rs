@@ -395,6 +395,26 @@ fn test_e2e_ec_m3_canonical_manifest_fixture_matches_rust_oracle() {
     );
 }
 
+/// EC-M3-01: duplicate source node は Rust oracle でも fail-closed にする。
+#[test]
+fn test_e2e_ec_m3_duplicate_node_fixture_is_rejected_by_rust_oracle() {
+    let source_path =
+        selfhost_project_root().join("tests/fixtures/validation/ec-m3-duplicate-node-source.ls");
+    let source = std::fs::read_to_string(&source_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", source_path.display()));
+    let program = lsharp_syntax::parse(&source)
+        .expect("EC-M3-01 duplicate fixture は Rust oracle で parse できるべき");
+
+    let error = lsharp_types::validation_source::source_program_to_intent_graph(&program)
+        .expect_err("duplicate node は Rust oracle で fail-closed に拒否するべき");
+    match error {
+        lsharp_types::validation_source::SourceGraphError::DuplicateNode { id, .. } => {
+            assert_eq!(id, "claim:checkout/rejects");
+        }
+        other => panic!("duplicate node 以外の source graph error: {other:?}"),
+    }
+}
+
 /// EC-M2-02: coverage bucket の重複は deterministic sampling plan を壊すため拒否する。
 #[test]
 fn test_e2e_selfhost_evidence_registry_rejects_duplicate_coverage_bucket() {
