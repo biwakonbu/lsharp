@@ -198,6 +198,33 @@ impl Parser {
                             ));
                             found = true;
                         }
+                        "evaluates" => {
+                            let form_start = self.peek_span();
+                            self.advance(); // :
+                            self.advance(); // evaluates
+                            let (review, _) = self.expect_metadata_string("evaluates review ID")?;
+                            let (subject, subject_span) =
+                                self.expect_metadata_string("evaluates subject ID")?;
+                            metadata.forms.push(MetadataForm::new(
+                                form_start.merge(subject_span),
+                                MetadataFormKind::Evaluates { review, subject },
+                            ));
+                            found = true;
+                        }
+                        "invalidates" => {
+                            let form_start = self.peek_span();
+                            self.advance(); // :
+                            self.advance(); // invalidates
+                            let (change, _) =
+                                self.expect_metadata_string("invalidates change ID")?;
+                            let (subject, subject_span) =
+                                self.expect_metadata_string("invalidates subject ID")?;
+                            metadata.forms.push(MetadataForm::new(
+                                form_start.merge(subject_span),
+                                MetadataFormKind::Invalidates { change, subject },
+                            ));
+                            found = true;
+                        }
                         "evidence" => {
                             let form_start = self.peek_span();
                             self.advance(); // :

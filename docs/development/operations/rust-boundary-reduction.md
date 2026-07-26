@@ -601,6 +601,21 @@ graphへ投影し、登録済み edgeと未登録 edgeの拒否を確認する�
 graph/CLIへの接続、manifest、native stage0、Mac Apple Silicon / Linux x86_64 current-source parityは
 未完了である。
 
+### EC-M2-02 source review/invalidation edge adapter (2026-07-27)
+
+Rust source metadata parser が `:evaluates "review:namespace/key" "intent|claim|evidence:namespace/key"` と
+`:invalidates "change:namespace/key" "review|evidence:namespace/key"` を ordered typed form として保持する。
+`validation_source` は ReviewId/ChangeId と subject kind を fail-closed に復元し、Intent/Claim subject は
+node registry、Evidence subject は evidence registry へ解決してから `Edge::Evaluates` /
+`Edge::Invalidates` を追加する。外部 ReviewId は invalidation endpoint として保持するが、Review/Evidence
+の provenance 認証は後続境界である。
+
+`crates/lsharp-syntax/tests/intent_edges.rs` の parser contract 10件と
+`crates/lsharp-types/tests/validation_source/edges.rs` の source adapter contract 12件で、ordered
+wire ID、review subject、change invalidation、orphan/mismatch/registry-required failure を確認した。
+これは Rust-host source→graph の verified sliceであり、selfhost parser/IntentSource、manifest/CLI、
+native stage0、Mac Apple Silicon / Linux x86_64 parity、review provenance/privacy policy は未完了である。
+
 ### EC-M2-03 selfhost `validate --source` initial CLI slice (2026-07-25)
 
 `selfhost/src/App/Cli.ls` に `validate` command、`--source <file> --format json` option、top-level

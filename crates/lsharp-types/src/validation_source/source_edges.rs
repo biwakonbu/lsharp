@@ -1,6 +1,9 @@
 use super::{SourceGraphError, require_evidence, require_node};
-use crate::evidence::Edge;
-use crate::intent::{AssumptionId, ClaimId, ContractId, EvidenceId, IntentId, StableIdError};
+use crate::evidence::{Edge, InvalidationSubject, ReviewSubject};
+use crate::intent::{
+    AssumptionId, ChangeId, ClaimId, ContractId, EvidenceId, IntentId, NodeKind, ReviewId,
+    StableId, StableIdError,
+};
 use crate::validation::IntentGraph;
 use lsharp_syntax::ast::{Decl, Metadata};
 use lsharp_syntax::metadata::MetadataFormKind;
@@ -103,6 +106,33 @@ fn add_metadata_edges(
                 require_evidence(graph, "contradicts", &observation, form.span())?;
                 graph.add_edge(Edge::Contradicts { observation, claim })?;
             }
+            MetadataFormKind::Evaluates { review, subject } => {
+                let review =
+                    parse_edge_id(review, "evaluates.review", form.span(), ReviewId::parse)?;
+                let subject = parse_review_subject(subject, "evaluates.subject", form.span())?;
+                match &subject {
+                    ReviewSubject::Intent(intent) => {
+                        require_node(graph, "evaluates.subject", intent.stable_id(), form.span())?
+                    }
+                    ReviewSubject::Claim(claim) => {
+                        require_node(graph, "evaluates.subject", claim.stable_id(), form.span())?
+                    }
+                    ReviewSubject::Evidence(evidence) => {
+                        require_evidence(graph, "evaluates.subject", evidence, form.span())?
+                    }
+                }
+                graph.add_edge(Edge::Evaluates { review, subject })?;
+            }
+            MetadataFormKind::Invalidates { change, subject } => {
+                let change =
+                    parse_edge_id(change, "invalidates.change", form.span(), ChangeId::parse)?;
+                let subject =
+                    parse_invalidation_subject(subject, "invalidates.subject", form.span())?;
+                if let InvalidationSubject::Evidence(evidence) = &subject {
+                    require_evidence(graph, "invalidates.subject", evidence, form.span())?;
+                }
+                graph.add_edge(Edge::Invalidates { change, subject })?;
+            }
             _ => {}
         }
     }
@@ -113,11 +143,73 @@ fn parse_edge_id<T>(
     wire: &str,
     relation: &'static str,
     span: Span,
-    parse: fn(String) -> Result<T, StableIdError>,
+    parse: impl Fn(String) -> Result<T, StableIdError>,
 ) -> Result<T, SourceGraphError> {
     parse(wire.to_string()).map_err(|source| SourceGraphError::EdgeIdAt {
         relation,
         span,
         source,
     })
+}
+
+fn parse_review_subject(
+    wire: &str,
+    relation: &'static str,
+    span: Span,
+) -> Result<ReviewSubject, SourceGraphError> {
+    let stable = parse_edge_id(wire, relation, span, StableId::parse)?;
+    match stable.kind() {
+        NodeKind::Intent => Ok(ReviewSubject::Intent(parse_edge_id(
+            wire,
+            relation,
+            span,
+            IntentId::parse,
+        )?)),
+        NodeKind::Claim => Ok(ReviewSubject::Claim(parse_edge_id(
+            wire,
+            relation,
+            span,
+            ClaimId::parse,
+        )?)),
+        NodeKind::Evidence => Ok(ReviewSubject::Evidence(parse_edge_id(
+            wire,
+            relation,
+            span,
+            EvidenceId::parse,
+        )?)),
+        actual => Err(SourceGraphError::EdgeSubjectKindMismatch {
+            relation,
+            actual,
+            wire_id: wire.to_string(),
+            span,
+        }),
+    }
+}
+
+fn parse_invalidation_subject(
+    wire: &str,
+    relation: &'static str,
+    span: Span,
+) -> Result<InvalidationSubject, SourceGraphError> {
+    let stable = parse_edge_id(wire, relation, span, StableId::parse)?;
+    match stable.kind() {
+        NodeKind::Review => Ok(InvalidationSubject::Review(parse_edge_id(
+            wire,
+            relation,
+            span,
+            ReviewId::parse,
+        )?)),
+        NodeKind::Evidence => Ok(InvalidationSubject::Evidence(parse_edge_id(
+            wire,
+            relation,
+            span,
+            EvidenceId::parse,
+        )?)),
+        actual => Err(SourceGraphError::EdgeSubjectKindMismatch {
+            relation,
+            actual,
+            wire_id: wire.to_string(),
+            span,
+        }),
+    }
 }

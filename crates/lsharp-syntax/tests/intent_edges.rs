@@ -103,6 +103,41 @@ fn evidence_edges_preserve_observation_and_claim_wire_ids() {
 }
 
 #[test]
+fn review_and_change_edges_preserve_typed_wire_ids_and_source_order() {
+    let program = parse(
+        r#"
+        (defn review []
+          :evaluates "review:checkout/reviewer-001" "claim:checkout/cancel-rejects-shipped"
+          :invalidates "change:checkout/api-v2" "evidence:checkout/review-001"
+          true)
+        "#,
+    )
+    .expect("review/change edge metadata は parse できるべき");
+    let Decl::Defn {
+        metadata: Some(metadata),
+        ..
+    } = &program.decls[0]
+    else {
+        panic!("metadata 付き defn を期待しました");
+    };
+
+    assert_eq!(metadata.forms.len(), 2);
+    assert!(matches!(
+        &metadata.forms[0].kind,
+        MetadataFormKind::Evaluates { review, subject }
+            if review == "review:checkout/reviewer-001"
+                && subject == "claim:checkout/cancel-rejects-shipped"
+    ));
+    assert!(matches!(
+        &metadata.forms[1].kind,
+        MetadataFormKind::Invalidates { change, subject }
+            if change == "change:checkout/api-v2"
+                && subject == "evidence:checkout/review-001"
+    ));
+    assert!(metadata.forms[0].span().start < metadata.forms[1].span().start);
+}
+
+#[test]
 fn evidence_record_metadata_preserves_required_fields_and_source_span() {
     let program = parse(
         r#"

@@ -679,6 +679,8 @@ impl Parser {
                     | "tested-by"
                     | "supports"
                     | "contradicts"
+                    | "evaluates"
+                    | "invalidates"
                     | "evidence"
                     | "doc"
                     | "params"

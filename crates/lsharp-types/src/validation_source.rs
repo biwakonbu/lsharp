@@ -77,6 +77,15 @@ pub enum SourceGraphError {
         actual: NodeKind,
         wire_id: String,
     },
+    #[error(
+        "source intent edge の subject kind が relation に対して不正です (relation={relation}, actual={actual:?}, id={wire_id}, span={span})"
+    )]
+    EdgeSubjectKindMismatch {
+        relation: &'static str,
+        actual: NodeKind,
+        wire_id: String,
+        span: Span,
+    },
 }
 
 impl SourceGraphError {
@@ -94,6 +103,7 @@ impl SourceGraphError {
             | Self::EvidenceRegistryRequired { span, .. }
             | Self::InvalidEvidenceField { span, .. } => Some(*span),
             Self::Node(_) | Self::Graph(_) | Self::EdgeId(_) | Self::KindMismatch { .. } => None,
+            Self::EdgeSubjectKindMismatch { span, .. } => Some(*span),
         }
     }
 }

@@ -302,6 +302,10 @@ pub enum MetadataFormKind {
     Supports { observation: String, claim: String },
     /// source から contradictory observation evidence と claim を接続する typed edge。
     Contradicts { observation: String, claim: String },
+    /// source から review と intent/claim/evidence subject を接続する typed edge。
+    Evaluates { review: String, subject: String },
+    /// source から change と review/evidence subject を接続する typed edge。
+    Invalidates { change: String, subject: String },
     /// source から required provenance 付き evidence record を登録する。
     Evidence { record: Box<EvidenceForm> },
     /// legacy `:example [expr ...]`。一つの directive 内の grouping を維持する。

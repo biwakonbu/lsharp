@@ -184,3 +184,150 @@ fn source_adapter_rejects_evidence_edges_without_registry_entries() {
         }) if evidence_id == "evidence:checkout/cancel-counterexample"
     ));
 }
+
+#[test]
+fn source_adapter_registers_review_and_change_edges_after_evidence_collection() {
+    let program = parse(
+        r#"
+        (defn review []
+          :claim "claim:checkout/cancel-rejects-shipped" "The API rejects shipped orders"
+          :evidence "evidence:checkout/review-001"
+            :subject "claim:checkout/cancel-rejects-shipped"
+            :method "review"
+            :outcome "pass"
+            :runner "review-tool"
+            :target "aarch64-apple-darwin"
+            :source-commit "commit-review-1"
+            :artifact-digest "sha256:review-1"
+            :cases 1
+            :seed 42
+            :generator "review-fixture"
+            :producer "review-tool"
+            :tool-version "0.2.0"
+            :timestamp "2026-07-27T00:00:00Z"
+            :independence "independent-review"
+          :evaluates "review:checkout/reviewer-001" "claim:checkout/cancel-rejects-shipped"
+          :invalidates "change:checkout/api-v2" "evidence:checkout/review-001"
+          true)
+        "#,
+    )
+    .expect("review/change edge source fixture は parse できるべき");
+
+    let graph = source_program_to_intent_graph(&program)
+        .expect("review/change edge graph が構築できるべき");
+    assert_eq!(graph.edges().len(), 2);
+    assert!(matches!(
+        &graph.edges()[0],
+        lsharp_types::evidence::Edge::Evaluates { review, subject }
+            if review.as_str() == "review:checkout/reviewer-001"
+                && matches!(subject, lsharp_types::evidence::ReviewSubject::Claim(claim)
+                    if claim.as_str() == "claim:checkout/cancel-rejects-shipped")
+    ));
+    assert!(matches!(
+        &graph.edges()[1],
+        lsharp_types::evidence::Edge::Invalidates { change, subject }
+            if change.as_str() == "change:checkout/api-v2"
+                && matches!(subject, lsharp_types::evidence::InvalidationSubject::Evidence(evidence)
+                    if evidence.as_str() == "evidence:checkout/review-001")
+    ));
+}
+
+#[test]
+fn source_adapter_rejects_review_subjects_without_registered_nodes() {
+    let program = parse(
+        r#"
+        (defn review []
+          :evaluates "review:checkout/reviewer-001" "intent:checkout/missing"
+          true)
+        "#,
+    )
+    .expect("orphan evaluates fixture は parse できるべき");
+
+    assert!(matches!(
+        source_program_to_intent_graph(&program),
+        Err(SourceGraphError::MissingNodeReference {
+            relation: "evaluates.subject",
+            id,
+            ..
+        }) if id == "intent:checkout/missing"
+    ));
+}
+
+#[test]
+fn source_adapter_rejects_invalidated_evidence_without_registry_entry() {
+    let program = parse(
+        r#"
+        (defn change []
+          :invalidates "change:checkout/api-v2" "evidence:checkout/missing"
+          true)
+        "#,
+    )
+    .expect("orphan invalidates fixture は parse できるべき");
+
+    assert!(matches!(
+        source_program_to_intent_graph(&program),
+        Err(SourceGraphError::EvidenceRegistryRequired {
+            relation: "invalidates.subject",
+            evidence_id,
+            ..
+        }) if evidence_id == "evidence:checkout/missing"
+    ));
+}
+
+#[test]
+fn source_adapter_allows_invalidating_an_external_review_identity() {
+    let program = parse(
+        r#"
+        (defn change []
+          :invalidates "change:checkout/api-v2" "review:checkout/reviewer-001"
+          true)
+        "#,
+    )
+    .expect("review invalidation fixture は parse できるべき");
+
+    let graph =
+        source_program_to_intent_graph(&program).expect("external review edge は構築できるべき");
+    assert!(matches!(
+        &graph.edges()[0],
+        lsharp_types::evidence::Edge::Invalidates { change, subject }
+            if change.as_str() == "change:checkout/api-v2"
+                && matches!(subject, lsharp_types::evidence::InvalidationSubject::Review(review)
+                    if review.as_str() == "review:checkout/reviewer-001")
+    ));
+}
+
+#[test]
+fn source_adapter_rejects_review_and_invalidation_kind_mismatches() {
+    let review_mismatch = parse(
+        r#"
+        (defn review []
+          :evaluates "claim:checkout/not-a-review" "claim:checkout/cancel"
+          true)
+        "#,
+    )
+    .expect("review kind mismatch fixture は parse できるべき");
+    assert!(matches!(
+        source_program_to_intent_graph(&review_mismatch),
+        Err(SourceGraphError::EdgeIdAt {
+            relation: "evaluates.review",
+            ..
+        })
+    ));
+
+    let invalidation_mismatch = parse(
+        r#"
+        (defn change []
+          :invalidates "change:checkout/api-v2" "claim:checkout/not-review-or-evidence"
+          true)
+        "#,
+    )
+    .expect("invalidation kind mismatch fixture は parse できるべき");
+    assert!(matches!(
+        source_program_to_intent_graph(&invalidation_mismatch),
+        Err(SourceGraphError::EdgeSubjectKindMismatch {
+            relation: "invalidates.subject",
+            actual: lsharp_types::intent::NodeKind::Claim,
+            ..
+        })
+    ));
+}
