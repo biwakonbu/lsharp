@@ -1259,6 +1259,8 @@
 
   - 2026-07-26 maintenance slice: `crates/lsharp-ir/src/lower/expr/application_map.rs` の read-only lookup（`map-get`、`map-contains?`、160 行）を `expr/application_map_lookup.rs`（181 行）へ移動し、parent を 451 行から 295 行へ縮小した。key/map rooting、empty/tombstone をまたぐ線形探索、未存在時の `0` / `false`、Wasm opcode 順序を維持し、map-new/size/insert/remove の allocation・storage・mutation は parent に残した。lower 167 passed、rooting 28 passed、`wasmgc_probe` 101 passed、large-stack `lsharp-ir --lib` 282 passed / 1 existing `IntentSource.ls` の `vector-push-pair-rooted-v3` 未定義 failure、clippy、workspace check、対象 Rust 2024 rustfmt、`git diff --check` を pass。HashMap mutation/storage、lower expr 全体の責務分割、Rust/native parity、I-01 / I-08 aggregate は未完了。Evidence: `docs/adr/decisions-legacy-lower-application-map-lookup-split.md`。
 
+  - 2026-07-26 maintenance slice: `crates/lsharp-ir/src/lower/expr/application_map.rs` の mutation（`map-insert`、`map-remove`、214 行）を `expr/application_map_mutation.rs`（236 行）へ移動し、parent を 295 行から 84 行へ縮小した。map key/value rooting、empty slot insertion、既存 key 上書き、tombstone、size 更新、tagged pointer 返却、opcode 順序を維持し、map-new/size は parent に残した。lower 167 passed、rooting 28 passed、`wasmgc_probe` 101 passed、large-stack `lsharp-ir --lib` 282 passed / 1 existing `IntentSource.ls` の `vector-push-pair-rooted-v3` 未定義 failure、clippy、workspace check、対象 Rust 2024 rustfmt、`git diff --check` を pass。HashMap allocation/size、lower expr 全体の責務分割、Rust/native parity、I-01 / I-08 aggregate は未完了。Evidence: `docs/adr/decisions-legacy-lower-application-map-mutation-split.md`。
+
 ## 既知の制限事項
 
 ### リニアメモリランタイム

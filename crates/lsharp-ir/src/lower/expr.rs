@@ -11,6 +11,7 @@ mod application;
 mod application_calls;
 mod application_map;
 mod application_map_lookup;
+mod application_map_mutation;
 mod application_ref;
 mod application_ref_vector;
 mod application_scalar;
