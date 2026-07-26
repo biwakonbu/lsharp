@@ -662,20 +662,40 @@
       (if (= kind (source-node-claim)) "claim" "contract"))))
 
 (defn validation-source-subject-json [subject]
-  (let [fields0 (validation-json-string-field "kind" (validation-source-subject-kind-text subject))
-    id-object-fields (string-concat
-      (validation-json-string-field "namespace"
-        (let [wire-id subject
-          colon (source-find-char wire-id 58 0 (string-length wire-id))
-          slash (source-find-char wire-id 47 (+ colon 1) (string-length wire-id))]
-          (substring wire-id (+ colon 1) slash)))
-      (string-concat ","
-        (validation-json-string-field "key"
+  (do
+    (root_push subject)
+    (let [fields0 (validation-json-string-field "kind" (validation-source-subject-kind-text subject))
+      id-object-fields (string-concat
+        (validation-json-string-field "namespace"
           (let [wire-id subject
             colon (source-find-char wire-id 58 0 (string-length wire-id))
             slash (source-find-char wire-id 47 (+ colon 1) (string-length wire-id))]
-            (substring wire-id (+ slash 1) (string-length wire-id))))))]
-    (validation-json-object-wrap (string-concat fields0 (string-concat "," id-object-fields)))))
+            (substring wire-id (+ colon 1) slash)))
+        (string-concat ","
+          (validation-json-string-field "key"
+            (let [wire-id subject
+              colon (source-find-char wire-id 58 0 (string-length wire-id))
+              slash (source-find-char wire-id 47 (+ colon 1) (string-length wire-id))]
+              (substring wire-id (+ slash 1) (string-length wire-id))))))]
+      (do
+        (root_push fields0)
+        (root_push id-object-fields)
+        (let [comma-id-fields (string-concat "," id-object-fields)]
+          (do
+            (root_push comma-id-fields)
+            (let [all-fields (string-concat fields0 comma-id-fields)]
+              (do
+                (root_push all-fields)
+                (let [result (validation-json-object-wrap all-fields)]
+                  (do
+                    (root_push result)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    result)))))))))
 
 (defn validation-source-evidence-json [evidence-record]
   (let [id (source-evidence-record-id evidence-record)

@@ -325,6 +325,36 @@ fn selfhost_validation_json_array_wrap_roots_nested_concat() {
 }
 
 #[test]
+fn selfhost_validation_json_subject_roots_outer_concat() {
+    let evidence = selfhost_evidence_source();
+    let subject_start = evidence
+        .find("(defn validation-source-subject-json [subject]")
+        .expect("validation-source-subject-json を特定できるべき");
+    let subject_end = evidence[subject_start..]
+        .find("(defn validation-source-evidence-json")
+        .map(|offset| subject_start + offset)
+        .expect("validation-source-subject-json の終端を特定できるべき");
+    let subject = &evidence[subject_start..subject_end];
+
+    assert!(
+        subject.contains("(root_push subject)")
+            && subject.contains("(root_push fields0)")
+            && subject.contains("(root_push id-object-fields)")
+            && subject.contains("(let [comma-id-fields (string-concat \",\" id-object-fields)]")
+            && subject.contains("(root_push comma-id-fields)")
+            && subject.contains("(let [all-fields (string-concat fields0 comma-id-fields)]")
+            && subject.contains("(root_push all-fields)"),
+        "native x86 の JSON subject は outer concat の入力と中間結果を root lease で保持するべき"
+    );
+    assert!(
+        !subject.contains(
+            "(validation-json-object-wrap (string-concat fields0 (string-concat \",\" id-object-fields)))"
+        ),
+        "native x86 の JSON subject は nested string-concat を直接評価するべきではない"
+    );
+}
+
+#[test]
 fn selfhost_json_escape_loop_uses_one_arg_state_boundary() {
     let source = selfhost_json_rpc_source();
     let state_start = source
