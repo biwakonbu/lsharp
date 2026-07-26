@@ -8,6 +8,7 @@ use lsharp_syntax::span::Span;
 
 mod builtin_env;
 mod error;
+mod generalize;
 mod unify;
 pub use error::{TypeError, TypeErrorCode};
 
@@ -2036,21 +2037,6 @@ impl Infer {
             });
         }
         scheme.ty.apply_subst(&subst)
-    }
-
-    /// 型を汎化
-    fn generalize(&self, env: &TypeEnv, ty: &Type) -> TypeScheme {
-        let env_vars = env.free_vars();
-        let ty_vars = ty.free_vars();
-        let vars: Vec<TypeVarId> = ty_vars
-            .into_iter()
-            .filter(|v| !env_vars.contains(v))
-            .collect();
-        TypeScheme {
-            vars,
-            constraints: Vec::new(),
-            ty: ty.clone(),
-        }
     }
 }
 

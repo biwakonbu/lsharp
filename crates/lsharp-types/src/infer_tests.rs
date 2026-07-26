@@ -1,4 +1,21 @@
 #[cfg(test)]
+mod generalize_tests {
+    use super::*;
+
+    #[test]
+    fn generalize_excludes_environment_free_vars() {
+        let infer = Infer::new();
+        let mut env = TypeEnv::new();
+        env.insert("held".to_string(), TypeScheme::mono(Type::Var(0)));
+        let ty = Type::Fun(vec![Type::Var(0)], Box::new(Type::Var(1)));
+
+        let scheme = infer.generalize(&env, &ty);
+
+        assert_eq!(scheme.vars, vec![1]);
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
