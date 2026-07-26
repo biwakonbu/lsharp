@@ -201,11 +201,13 @@ fn selfhost_validation_json_append_roots_nested_concat() {
     let append = &evidence[append_start..append_end];
 
     assert!(
-        append.contains("(let [comma-piece (string-concat \",\" piece)]")
+        append.contains("(root_push out)")
+            && append.contains("(root_push piece)")
+            && append.contains("(let [comma-piece (string-concat \",\" piece)]")
             && append.contains("(root_push comma-piece)")
             && append.contains("(let [result (string-concat out comma-piece)]")
             && append.contains("(root_push result)"),
-        "native x86 の JSON append は inner concat と outer concat の結果を root lease で保持するべき"
+        "native x86 の JSON append は concat 前に out/piece を保持し、inner concat と outer concat の結果も root lease で保持するべき"
     );
     assert!(
         !append.contains("(string-concat out (string-concat \",\" piece))"),
