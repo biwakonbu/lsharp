@@ -298,6 +298,10 @@
 
 - [~] `imp-06` LSP inline test suite split — `crates/lsharp-lsp/src/lib.rs` の inline `tests` module（788 行）を `crates/lsharp-lsp/src/lib_tests.rs` へ移動し、parent を 1270 行から 504 行へ縮小した。`include!` によって既存の `tests::*` module path、fixture、LSP backend behavior は維持し、incremental sync と formatting capability の protocol contract test を追加した。RED `E0583` → GREEN、`cargo test -p lsharp-lsp -- --nocapture`（unit 63 / main 0 / doc-test 0）、`cargo clippy -p lsharp-lsp --all-targets -- -D warnings`、`cargo check --workspace`（専用 target）、対象 Rust 2024 rustfmt、`git diff --check` は pass。LSP production backend の追加分割、selfhost/native parity、I-01 / I-08 aggregate は未完了。Evidence: `docs/adr/decisions-legacy-lsp-inline-tests-split.md`。
 
+## 2026-07-26 tooling compile test suite 責務分離
+
+- [~] `imp-06` tooling compile test suite split — `crates/lsharp-tooling/src/compile.rs` の inline compile tests（66 件）を `compile_tests_cache.rs`（486 行）、`compile_tests_wasmgc_a.rs`（544 行）、`compile_tests_wasmgc_b.rs`（708 行）、`compile_tests_outputs.rs`（635 行）へ移動し、parent を 2870 行から 492 行へ縮小した。`include!` で既存 `compile::tests::*` namespace、private helper access、compile/cache/WasmGC/native/output fixtures を維持し、target/backend tag contract test を追加した。RED `E0583` → GREEN、`cargo test -p lsharp-tooling -- --nocapture`（unit 135 / doc-test 0）、`cargo clippy -p lsharp-tooling --all-targets -- -D warnings`、`cargo check --workspace`（専用 target）、対象 Rust 2024 rustfmt、`git diff --check` は pass。tooling compile production の追加分割、selfhost/native parity、I-01 / I-08 aggregate は未完了。Evidence: `docs/adr/decisions-legacy-tooling-compile-tests-split.md`。
+
 > 凡例: `[x]` 完了 / `[ ]` 未着手 / `[~]` 部分実装 / `[BLOCKED: ...]` 依存待ち / `[DEFERRED]` 後続トラック送り
 >
 > **完了済みフェーズ**: Phase 0-7, P8, P9-1/2/3/4/6, P10, P12, P13, P14。
