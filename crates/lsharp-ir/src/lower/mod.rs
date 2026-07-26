@@ -16,6 +16,7 @@ mod decl;
 mod expr;
 mod heap_helpers;
 mod pattern;
+mod pattern_wasmgc;
 mod state;
 mod type_helpers;
 #[cfg(test)]

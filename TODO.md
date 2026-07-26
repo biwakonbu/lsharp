@@ -1263,6 +1263,8 @@
 
   - 2026-07-26 maintenance slice: HashMap の allocation/size lowering（`map-new`、`map-size`、62 行）を `expr/application_map_allocation.rs`（79 行）へ移動し、`application_map.rs` を 84 行から 26 行の dispatch wrapper へ縮小した。`map-new` の header/entry zero-fill、`__alloc` diagnostic span、`map-size` の pointer unwrap/size load と既存 opcode 契約を維持した。lower 167 passed、rooting 28 passed、`wasmgc_probe` 101 passed、large-stack `lsharp-ir --lib` 282 passed / 1 existing `IntentSource.ls` の `vector-push-pair-rooted-v3` 未定義 failure、clippy、workspace check、対象 Rust 2024 rustfmt、`git diff --check` を pass。HashMap 3責務以外の lower expr 分割、Rust/native parity、I-01 / I-08 aggregate は未完了。Evidence: `docs/adr/decisions-legacy-lower-application-map-allocation-split.md`。
 
+  - 2026-07-26 maintenance slice: `crates/lsharp-ir/src/lower/pattern.rs` の WasmGC-specific pattern lowering（約280行）を `pattern_wasmgc.rs`（297行）へ移動し、parent を 698 行から 411 行へ縮小した。WasmGC constructor/record arm、nested sequence、field type/name 解決と fail-through を child に集約し、linear-memory pattern と `lower_arm_body_with_guard` は parent に残した。`pub(super)` の内部 dispatch、ADT/record semantics、StructGet/If/Unreachable opcode、diagnostic 境界を維持した。heap/ADT 11 passed、lower 167 passed、rooting 28 passed、`wasmgc_probe` 101 passed、large-stack `lsharp-ir --lib` 282 passed / 1 existing `IntentSource.ls` の `vector-push-pair-rooted-v3` 未定義 failure、clippy、workspace check、対象 files の Rust 2024 rustfmt、`git diff --check` を pass。pattern 全体の parity、lower expr 全体、Rust/native parity、I-01 / I-08 aggregate は未完了。Evidence: `docs/adr/decisions-legacy-lower-pattern-wasmgc-split.md`。
+
 ## 既知の制限事項
 
 ### リニアメモリランタイム
