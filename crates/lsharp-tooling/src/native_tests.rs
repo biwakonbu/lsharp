@@ -106,3 +106,30 @@ fn native_link_failure_cleans_temporary_output_before_returning() {
     );
     std::fs::remove_dir_all(&dir).expect("native failure test directory を削除できる");
 }
+
+#[test]
+fn native_emitter_module_preserves_main_assembly_contract() {
+    let module = Module {
+        functions: vec![lsharp_ir::Function {
+            name: "main".to_string(),
+            params: vec![],
+            result: lsharp_ir::IrType::I64,
+            locals: vec![],
+            body: vec![lsharp_ir::Instruction::I64Const(7)],
+            is_export: true,
+        }],
+        gc_types: vec![],
+        imports: vec![],
+        globals: vec![],
+        string_data: vec![],
+    };
+    let mut asm = String::new();
+
+    native_emitter::NativeFunctionEmitter::new(&module, 0, &module.functions[0])
+        .emit(&mut asm)
+        .expect("native emitter が main の assembly を生成できる");
+
+    assert!(asm.contains(".globl _main"));
+    assert!(asm.contains("movz x9, #7"));
+    assert!(asm.contains("L_lsharp_return_0_main:"));
+}
