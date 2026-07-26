@@ -1267,6 +1267,8 @@
 
   - 2026-07-26 maintenance slice: `crates/lsharp-ir/src/lower/mod.rs` の program orchestration（宣言/trait/constraint/ADT function collection、GC data collection、`lower_program*`）を `program.rs`（227 行）へ移動し、parent を 536 行から 324 行へ縮小した。既存 `pub(crate)` helper/public `lower_program*` API、`prepare_program_state`、function collection 順序、lambda lifting、root-lifetime validation、Module assembly を維持した。lower 167 passed、rooting 28 passed、`wasmgc_probe` 101 passed、large-stack `lsharp-ir --lib` 282 passed / 1 existing `IntentSource.ls` の `vector-push-pair-rooted-v3` 未定義 failure、clippy、workspace check、対象 Rust 2024 rustfmt、`git diff --check` を pass。Lower state/type representation、lower 全体、Rust/native parity、I-01 / I-08 aggregate は未完了。Evidence: `docs/adr/decisions-legacy-lower-program-orchestration-split.md`。
 
+  - 2026-07-26 maintenance slice: `crates/lsharp-types/src/regex/matcher.rs` の capture/backreference と capture-aware bounded repeat を `regex/matcher_advanced.rs`（270 行）へ移動し、parent を 699 行から 443 行へ縮小した。既存 `simple_pattern_match` / `has_advanced_features` の crate-private API、DFA fast path、backreference・lookahead・bounded-repeat の判定契約を維持した。capture seam RED (`E0583`) → GREEN、regex 40 tests、`RUST_MIN_STACK=33554432 cargo test -p lsharp-types -- --nocapture`、`cargo clippy -p lsharp-types --all-targets -- -D warnings`、対象 Rust 2024 rustfmt、`git diff --check` を pass。regex parser の追加分割、matcher algorithm の改善、selfhost/native parity、I-01 / I-08 aggregate は未完了。Evidence: `docs/adr/decisions-legacy-regex-matcher-advanced-split.md`。
+
 ## 既知の制限事項
 
 ### リニアメモリランタイム

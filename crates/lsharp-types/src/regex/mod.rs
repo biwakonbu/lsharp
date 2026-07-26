@@ -6,6 +6,7 @@
 
 pub(crate) mod dfa;
 mod matcher;
+mod matcher_advanced;
 mod node;
 mod parser;
 

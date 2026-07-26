@@ -135,6 +135,22 @@ fn test_regex_backreference() {
 }
 
 #[test]
+fn test_advanced_matcher_capture_module_preserves_backreference_contract() {
+    let nodes = parse_regex("(abc)\\1");
+    let text: Vec<char> = "abcabc".chars().collect();
+    let mut captures = Vec::new();
+
+    assert!(super::matcher_advanced::regex_match_with_captures(
+        &nodes,
+        &text,
+        0,
+        0,
+        true,
+        &mut captures,
+    ));
+}
+
+#[test]
 fn test_regex_lookahead() {
     assert!(simple_pattern_match("foobar", "^foo(?=bar)"));
     assert!(!simple_pattern_match("foobaz", "^foo(?=bar)"));
