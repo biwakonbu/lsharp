@@ -216,6 +216,8 @@ M2-03 validation input の production seam として、`crates/lsharp-types/src/
 
 続く M2-03 validation input の referential-closure seam として、`crates/lsharp-types/src/validation_input.rs` の evidence subject、graph-owned edge endpoint、missing-node 診断 helper（約 74 行）を `validation_input/references.rs`（80 行）へ移動し、parent を 321 行から 253 行へ縮小した。`mod references` と `pub(super)` dispatch により、evidence subject の node closure、edge relation ごとの endpoint 検証、stable ID を含む `MissingNodeReference` の relation/span semantics を維持した。RED (`E0583`) → GREEN、欠落 `constrained-by.assumption` の relation と stable ID contract test、`cargo test -p lsharp-types --tests` は 221 unit + 123 integration = 344件 pass、clippy、workspace check、対象 Rust 2024 rustfmt、`git diff --check` は pass。selfhost/native producer parity、manifest/runtime target gate、EC-M2 aggregate は未完了である。Evidence: `docs/adr/decisions-legacy-validation-input-references-split.md`。
 
+M2-03 の atomic/durable writer test seam として、`crates/lsharp-driver/src/atomic_write.rs` の inline tests（60 行）を `atomic_write/tests.rs`（79 行）へ移動し、production parent を 124 行から 69 行へ縮小した。`#[path]` による test module 接続で `write_durable_atomic` の crate-private path、symlink replacement、temporary file cleanup の semantics を維持し、rename failure 後に一時ファイルを残さない contract test を追加した。RED (`E0583`) → GREEN、`cargo test -p lsharp-driver --bin lsharp` は 160件 pass、clippy、workspace check、対象 Rust 2024 rustfmt、`git diff --check` は pass。selfhost/native manifest parity、release-level durability evidence、I-01 / I-08 aggregate は未完了である。Evidence: `docs/adr/decisions-legacy-atomic-write-tests-split.md`。
+
 ### 3. 優先順位
 
 1. **imp-02 (エラー統一) の対象になるファイルを先に分割しない** — A-1 のエラー型変更を
