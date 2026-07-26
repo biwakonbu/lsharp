@@ -22,6 +22,9 @@ mod file_exists_tests;
 mod hash;
 #[cfg(test)]
 mod hash_tests;
+mod print_string;
+#[cfg(test)]
+mod print_string_tests;
 mod read_file;
 #[cfg(test)]
 mod read_file_tests;
@@ -801,7 +804,7 @@ fn emit_wasm_wasi_with_options(
     emit_alloc_func(&mut codes, allocator_globals);
     string_concat::emit_string_concat_func(&mut codes, alloc_func_idx);
     string_eq::emit_string_eq_func(&mut codes);
-    emit_print_string_func(&mut codes);
+    print_string::emit_print_string_func(&mut codes);
     emit_int_to_string_func(&mut codes, alloc_func_idx);
     read_file::emit_read_file_func(
         &mut codes,
@@ -2970,65 +2973,6 @@ fn emit_gc_collect_func(codes: &mut CodeSection, globals: CollectorGlobals) {
     f.instruction(&W::GlobalSet(gc_freed_count_global_idx));
     f.instruction(&W::LocalGet(FREED_THIS_CYCLE_LOCAL));
     f.instruction(&W::I64ExtendI32U);
-    f.instruction(&W::End);
-    codes.function(&f);
-}
-
-/// __print_string: ヒープ上 String オブジェクトを stdout に出力 (改行なし)
-/// String オブジェクト: [tag:i32=1][len:i32][bytes:u8*]
-fn emit_print_string_func(codes: &mut CodeSection) {
-    use wasm_encoder::Instruction as W;
-    use wasm_encoder::MemArg;
-
-    let mem32 = |offset: u64| MemArg {
-        offset,
-        align: 2,
-        memory_index: 0,
-    };
-
-    let mut f = wasm_encoder::Function::new(vec![
-        (1, ValType::I32), // local 1: addr (String オブジェクトのアドレス)
-        (1, ValType::I32), // local 2: len
-    ]);
-
-    // addr = s as i32 (String オブジェクトのアドレス)
-    f.instruction(&W::LocalGet(0));
-    f.instruction(&W::I32WrapI64);
-    f.instruction(&W::LocalSet(1));
-    // len = i32.load(addr + 4)
-    f.instruction(&W::LocalGet(1));
-    f.instruction(&W::I32Load(wasm_encoder::MemArg {
-        offset: 4,
-        align: 2,
-        memory_index: 0,
-    }));
-    f.instruction(&W::LocalSet(2));
-
-    // len == 0 なら何もしない
-    f.instruction(&W::LocalGet(2));
-    f.instruction(&W::I32Eqz);
-    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
-    f.instruction(&W::Return);
-    f.instruction(&W::End);
-
-    // iov[0].buf = addr + 8 (bytes の開始位置)
-    f.instruction(&W::I32Const(IOV_ADDR));
-    f.instruction(&W::LocalGet(1));
-    f.instruction(&W::I32Const(8));
-    f.instruction(&W::I32Add);
-    f.instruction(&W::I32Store(mem32(0)));
-    // iov[0].len = len
-    f.instruction(&W::I32Const(IOV_ADDR + 4));
-    f.instruction(&W::LocalGet(2));
-    f.instruction(&W::I32Store(mem32(0)));
-    // fd_write(1, iov, 1, nwritten)
-    f.instruction(&W::I32Const(1));
-    f.instruction(&W::I32Const(IOV_ADDR));
-    f.instruction(&W::I32Const(1));
-    f.instruction(&W::I32Const(NWRITTEN_ADDR));
-    f.instruction(&W::Call(0)); // fd_write
-    f.instruction(&W::Drop);
-
     f.instruction(&W::End);
     codes.function(&f);
 }
