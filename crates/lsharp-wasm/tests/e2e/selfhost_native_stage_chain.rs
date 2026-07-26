@@ -20480,6 +20480,237 @@ fn test_e2e_selfhost_cli_manifest_json_call_chain_targets_named_ftable_functions
 }
 
 #[test]
+fn test_e2e_selfhost_cli_source_node_record_call_bytes_rel32_diagnostic() {
+    let mut modules = SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES.to_vec();
+    modules.extend_from_slice(&[
+        "Cli.ls",
+        "DocTools.ls",
+        "DocJson.ls",
+        "FormatterExpr.ls",
+        "FormatterDecl.ls",
+        "Formatter.ls",
+        "JsonRpc.ls",
+        "LspServerCore.ls",
+        "LspServerNav.ls",
+        "LspServer.ls",
+        "TestRunner.ls",
+        "PropertyRunner.ls",
+        "TypeInferAssertions.ls",
+        "MetadataMigration.ls",
+        "IntentSource.ls",
+        "Evidence.ls",
+    ]);
+    let harness = r#"(module App.HarnessMain)
+(import App.CompilerMode)
+(import Backend.Wasm.CompilerBase)
+(import Backend.Native.NativeCodegen)
+
+(defn hash-name-loop [src idx len acc]
+  (if (>= idx len)
+    acc
+    (hash-name-loop src (+ idx 1) len
+      (+ (string-char-at src idx) (* acc 31)))))
+
+(defn hash-name [src]
+  (hash-name-loop src 0 (string-length src) 0))
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn push-import-placeholders [idx count result]
+  (if (>= idx count)
+    result
+    (push-import-placeholders
+      (+ idx 1)
+      count
+      (vector-push result (make-function-meta 0 0 (vector-new 0))))))
+
+(defn append-vector-loop [dst src idx len]
+  (if (>= idx len)
+    dst
+    (append-vector-loop
+      (vector-push dst (vector-get src idx))
+      src
+      (+ idx 1)
+      len)))
+
+(defn byte-at [bytes idx]
+  (let [value (vector-get bytes idx)]
+    (if (< value 0) (+ value 256) value)))
+
+(defn rel32-at [bytes offset]
+  (let [b0 (byte-at bytes (+ offset 1))
+    b1 (byte-at bytes (+ offset 2))
+    b2 (byte-at bytes (+ offset 3))
+    b3 (byte-at bytes (+ offset 4))
+    value (+ b0 (+ (* b1 256) (+ (* b2 65536) (* b3 16777216))))]
+    (if (>= value 2147483648) (- value 4294967296) value)))
+
+(defn first-call-offset [bytes idx len]
+  (if (>= idx len)
+    -1
+    (if (= (byte-at bytes idx) 232)
+      idx
+      (first-call-offset bytes (+ idx 1) len))))
+
+(defn print-byte-window [bytes idx end]
+  (if (>= idx end)
+    0
+    (do
+      (print (byte-at bytes idx))
+      (print-byte-window bytes (+ idx 1) end))))
+
+(defn x86-param-spill-prefix-size [param-count]
+  (if (>= param-count 20)
+    (native-param-spill-bytes-x86-twenty-plus param-count)
+    (if (> param-count 6)
+      (+ 53 (* (- param-count 7) 11))
+      (if (= param-count 6)
+        42
+        (if (= param-count 5)
+          35
+          (if (= param-count 4)
+            28
+            (if (= param-count 3)
+              21
+              (if (= param-count 2)
+                14
+                (if (= param-count 1) 7 0)))))))))
+
+(defn main []
+  (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        pairs (compile-file-pairs-with-cache "src/App/Cli.ls" cache-ref parse-count-ref)
+        pair-count (vector-length pairs)
+        start-ftable (ftable-with-native-runtime-imports)
+        prelude (compile-record-prelude-all-pairs
+          pairs
+          0
+          pair-count
+          start-ftable
+          10
+          (vector-new 8))
+        prelude-ftable (vector-get prelude 2)
+        prelude-func-idx (vector-get prelude 3)
+        prelude-functions (vector-get prelude 4)
+        reg (register-all-pairs pairs 0 pair-count prelude-ftable prelude-func-idx)
+        ftable (vector-get reg 0)
+        data-ref (ref-new (vector-new 8))
+        functions (compile-all-src-decl-pairs-chunked
+          pairs
+          0
+          pair-count
+          ftable
+          data-ref
+          prelude-functions)
+        callables (append-vector-loop
+          (push-import-placeholders 0 10 (vector-new 32))
+          functions
+          0
+          (vector-length functions))
+        record-target (ftable-lookup ftable (hash-name "source-node-record"))
+        quad-target (ftable-lookup ftable (hash-name "vector-push-quad-rooted-v3"))
+        record-ir (function-meta-ir (vector-get functions (- record-target 10)))
+        starts (collect-callable-function-starts-x86 callables 10)
+        record-start (vector-get starts (- record-target 10))
+        quad-start (vector-get starts (- quad-target 10))
+        import-stub-offset (callable-user-total-size-x86 callables 10)
+        record-func (vector-get callables record-target)
+        record-param-count (native-function-param-count record-func)
+        record-local-count (native-function-local-count record-func)
+        record-frame-base-slot-count
+          (native-frame-base-slot-count
+            record-ir
+            (+ (+ record-param-count record-local-count) 1))
+        record-stack-bytes
+          (native-local-stack-bytes-with-window-x86
+            record-ir
+            (+ (+ record-param-count record-local-count) 1)
+            callables)
+        record-body-offset
+          (+ (+ 4 (if (> record-stack-bytes 0) 7 0))
+            (x86-param-spill-prefix-size record-param-count))
+        record-offset-depths
+          (collect-native-bundle-offset-depths-x86
+            record-ir
+            callables
+            record-body-offset)
+        record-offsets (vector-get record-offset-depths 2)
+        record-depths (vector-get record-offset-depths 3)
+        record-row (vector-get record-ir 31)
+        record-opcode (vector-get record-row 0)
+        record-operand (vector-get record-row 1)
+        record-call-offset (vector-get record-offsets 31)
+        record-call-depth (vector-get record-depths 31)
+        record-call-bundle
+          (codegen-ir-instr-bundle-x86-with-import-count-and-base
+            record-opcode
+            record-operand
+            record-call-offset
+            starts
+            callables
+            10
+            import-stub-offset
+            record-start
+            record-frame-base-slot-count
+            record-call-depth)
+        record-bundle-call-offset
+          (first-call-offset
+            record-call-bundle
+            0
+            (vector-length record-call-bundle))
+        record-expected-target (- quad-start record-start)
+        record-actual-target
+          (if (>= record-bundle-call-offset 0)
+            (+ record-call-offset
+              (+ record-bundle-call-offset
+                (+ 5 (rel32-at record-call-bundle record-bundle-call-offset))))
+            -1)]
+    (do
+      (print record-target)
+      (print quad-target)
+      (print record-opcode)
+      (print record-operand)
+      (print record-call-depth)
+      (print record-call-offset)
+      (print (vector-length record-call-bundle))
+      (print record-bundle-call-offset)
+      (print record-expected-target)
+      (print record-actual-target)
+      (if (>= record-bundle-call-offset 0)
+        (print-byte-window
+          record-call-bundle
+          record-bundle-call-offset
+          (+ record-bundle-call-offset 8))
+        0)
+      0)))"#;
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
+            "selfhost-cli-source-node-record-call-bytes-rel32-diagnostic",
+            &modules,
+            "src/App/HarnessMain.ls",
+            harness,
+            &[],
+        )
+    })
+    .expect("source-node-record call depth diagnostic 実行に失敗");
+    let lines = parse_numeric_lines(&output);
+    println!("source-node-record call bytes/rel32 diagnostic lines: {lines:?}");
+    assert!(lines.len() >= 18, "call bytes/rel32 diagnostic の出力が不足: {lines:?}");
+    assert!(lines[0] > 10 && lines[1] > 10, "source-node-record / vector-push-quad-rooted-v3 が解決されない: {lines:?}");
+    assert_eq!(lines[2], 40, "source-node-record row は opcode 40 call であるべき: {lines:?}");
+    assert_eq!(lines[3], lines[1], "source-node-record row は vector-push-quad-rooted-v3 を呼ぶべき: {lines:?}");
+    assert_eq!(lines[4], 5, "source-node-record call depth は 5 であるべき: {lines:?}");
+    assert_eq!(lines[7], 24, "5 引数 call bundle の CALL は 4 つの引数 setup 後に置かれるべき: {lines:?}");
+    assert_eq!(lines[8], lines[9], "emitted rel32 target は vector-push-quad-rooted-v3 の期待位置と一致するべき: {lines:?}");
+    assert_eq!(lines[10], 232, "5 引数 call bundle は CALL rel32 opcode を出力するべき: {lines:?}");
+}
+
+#[test]
 fn test_e2e_selfhost_int_to_string_ir_call_operand_points_to_runtime_import_six() {
     let source = "(module Main)\n(defn main []\n  (int-to-string 42))\n";
     let escaped_source = escape_lsharp_string(source);
