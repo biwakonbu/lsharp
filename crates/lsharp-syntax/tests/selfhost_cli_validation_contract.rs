@@ -394,6 +394,32 @@ fn selfhost_validation_manifest_write_roots_nested_payload() {
 }
 
 #[test]
+fn selfhost_validation_evidence_subject_json_roots_nested_payload() {
+    let evidence = selfhost_evidence_source();
+    let evidence_start = evidence
+        .find("(defn validation-source-evidence-json [evidence-record]")
+        .expect("validation-source-evidence-json を特定できるべき");
+    let evidence_end = evidence[evidence_start..]
+        .find("(defn validation-source-evidence-json-state-loop")
+        .map(|offset| evidence_start + offset)
+        .expect("validation-source-evidence-json の終端を特定できるべき");
+    let body = &evidence[evidence_start..evidence_end];
+
+    assert!(
+        body.contains(
+            "subject-json (validation-source-subject-json (source-evidence-record-subject evidence-record))"
+        ) && body.contains("(root_push subject-json)")
+            && body.contains(
+                "(validation-json-object-field \"subject\" subject-json)"
+            )
+            && !body.contains(
+                "(validation-json-object-field \"subject\" (validation-source-subject-json"
+            ),
+        "native x86 の evidence JSON は nested subject JSON を root lease で保持してから object field に渡すべき"
+    );
+}
+
+#[test]
 fn selfhost_json_escape_loop_uses_one_arg_state_boundary() {
     let source = selfhost_json_rpc_source();
     let state_start = source

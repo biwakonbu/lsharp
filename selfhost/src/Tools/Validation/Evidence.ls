@@ -721,53 +721,61 @@
           slash (source-find-char id 47 (+ colon 1) (string-length id))]
           (substring id (+ slash 1) (string-length id)))))
     fields3 (validation-json-append fields2 (validation-json-string-field "method" (source-evidence-record-method evidence-record)))
-    fields4 (validation-json-append fields3
-      (validation-json-object-field "subject" (validation-source-subject-json (source-evidence-record-subject evidence-record))))
-    fields5 (validation-json-append fields4 (validation-json-string-field "outcome" (source-evidence-record-outcome evidence-record)))
-    sampling0 (validation-json-string-field "runner" (source-evidence-record-runner evidence-record))
-    sampling1 (validation-json-append sampling0 (validation-json-string-field "target" (source-evidence-record-target evidence-record)))
-    sampling2 (validation-json-append sampling1 (validation-json-string-field "source_commit" (source-evidence-record-source-commit evidence-record)))
-    sampling3 (validation-json-append sampling2 (validation-json-string-field "artifact_digest" (source-evidence-record-artifact-digest evidence-record)))
-    sample-fields0 (validation-json-int-field "cases" (source-evidence-record-cases evidence-record))
-    sample-fields1 (validation-json-append sample-fields0 (validation-json-int-field "seed" (source-evidence-record-seed evidence-record)))
-    sample-fields2 (validation-json-append sample-fields1 (validation-json-string-field "generator" (source-evidence-record-generator evidence-record)))
-    sample-fields3 (validation-json-append sample-fields2
-      (validation-json-array-field "shrinks"
-        (validation-json-array-wrap
-          (validation-source-int-array-json-state-loop
-            (validation-source-manifest-json-state
-              (vector-push-single-rooted-v3
-                (vector-push-single-rooted-v3
+    subject-json (validation-source-subject-json (source-evidence-record-subject evidence-record))]
+    (do
+      (root_push subject-json)
+      (let [fields4 (validation-json-append fields3
+          (validation-json-object-field "subject" subject-json))
+        fields5 (validation-json-append fields4 (validation-json-string-field "outcome" (source-evidence-record-outcome evidence-record)))
+        sampling0 (validation-json-string-field "runner" (source-evidence-record-runner evidence-record))
+        sampling1 (validation-json-append sampling0 (validation-json-string-field "target" (source-evidence-record-target evidence-record)))
+        sampling2 (validation-json-append sampling1 (validation-json-string-field "source_commit" (source-evidence-record-source-commit evidence-record)))
+        sampling3 (validation-json-append sampling2 (validation-json-string-field "artifact_digest" (source-evidence-record-artifact-digest evidence-record)))
+        sample-fields0 (validation-json-int-field "cases" (source-evidence-record-cases evidence-record))
+        sample-fields1 (validation-json-append sample-fields0 (validation-json-int-field "seed" (source-evidence-record-seed evidence-record)))
+        sample-fields2 (validation-json-append sample-fields1 (validation-json-string-field "generator" (source-evidence-record-generator evidence-record)))
+        sample-fields3 (validation-json-append sample-fields2
+          (validation-json-array-field "shrinks"
+            (validation-json-array-wrap
+              (validation-source-int-array-json-state-loop
+                (validation-source-manifest-json-state
                   (vector-push-single-rooted-v3
                     (vector-push-single-rooted-v3
-                      (vector-new 4)
-                      (source-evidence-record-shrinks evidence-record))
-                    0)
-                  (vector-length (source-evidence-record-shrinks evidence-record)))
-                ""))))))
-    sample-fields4 (validation-json-append sample-fields3
-      (validation-json-object-field "coverage"
-        (validation-json-object-wrap
-          (validation-source-coverage-json-state-loop
-            (validation-source-manifest-json-state
-              (vector-push-single-rooted-v3
-                (vector-push-single-rooted-v3
+                      (vector-push-single-rooted-v3
+                        (vector-push-single-rooted-v3
+                          (vector-new 4)
+                          (source-evidence-record-shrinks evidence-record))
+                        0)
+                      (vector-length (source-evidence-record-shrinks evidence-record)))
+                    ""))))))
+        sample-fields4 (validation-json-append sample-fields3
+          (validation-json-object-field "coverage"
+            (validation-json-object-wrap
+              (validation-source-coverage-json-state-loop
+                (validation-source-manifest-json-state
                   (vector-push-single-rooted-v3
                     (vector-push-single-rooted-v3
-                      (vector-new 4)
-                      (source-evidence-record-coverage evidence-record))
-                    0)
-                  (vector-length (source-evidence-record-coverage evidence-record)))
-                ""))))))
-    execution-fields (string-concat sampling3
-      (string-concat "," (validation-json-object-field "sampling" (validation-json-object-wrap sample-fields4))))
-    fields6 (validation-json-append fields5 (validation-json-object-field "execution" (validation-json-object-wrap execution-fields)))
-    provenance0 (validation-json-string-field "producer" (source-evidence-record-producer evidence-record))
-    provenance1 (validation-json-append provenance0 (validation-json-string-field "tool_version" (source-evidence-record-tool-version evidence-record)))
-    provenance2 (validation-json-append provenance1 (validation-json-string-field "timestamp" (source-evidence-record-timestamp evidence-record)))
-    fields7 (validation-json-append fields6 (validation-json-object-field "provenance" (validation-json-object-wrap provenance2)))
-    fields8 (validation-json-append fields7 (validation-json-string-field "independence" (source-evidence-record-independence evidence-record)))]
-    (validation-json-object-wrap fields8)))
+                      (vector-push-single-rooted-v3
+                        (vector-push-single-rooted-v3
+                          (vector-new 4)
+                          (source-evidence-record-coverage evidence-record))
+                        0)
+                      (vector-length (source-evidence-record-coverage evidence-record)))
+                    ""))))))
+        execution-fields (string-concat sampling3
+          (string-concat "," (validation-json-object-field "sampling" (validation-json-object-wrap sample-fields4))))
+        fields6 (validation-json-append fields5 (validation-json-object-field "execution" (validation-json-object-wrap execution-fields)))
+        provenance0 (validation-json-string-field "producer" (source-evidence-record-producer evidence-record))
+        provenance1 (validation-json-append provenance0 (validation-json-string-field "tool_version" (source-evidence-record-tool-version evidence-record)))
+        provenance2 (validation-json-append provenance1 (validation-json-string-field "timestamp" (source-evidence-record-timestamp evidence-record)))
+        fields7 (validation-json-append fields6 (validation-json-object-field "provenance" (validation-json-object-wrap provenance2)))
+        fields8 (validation-json-append fields7 (validation-json-string-field "independence" (source-evidence-record-independence evidence-record)))]
+        (let [result (validation-json-object-wrap fields8)]
+          (do
+            (root_push result)
+            (root_pop)
+            (root_pop)
+            result))))))
 
 (defn validation-source-evidence-json-state-loop [state]
   (let [registry (vector-get state 0)
