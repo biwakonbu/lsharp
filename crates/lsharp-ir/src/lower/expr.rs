@@ -10,6 +10,7 @@ mod ann_expr_tests;
 mod application;
 mod application_calls;
 mod application_map;
+mod application_map_allocation;
 mod application_map_lookup;
 mod application_map_mutation;
 mod application_ref;
