@@ -302,6 +302,10 @@
 
 - [~] `imp-06` tooling compile test suite split — `crates/lsharp-tooling/src/compile.rs` の inline compile tests（66 件）を `compile_tests_cache.rs`（486 行）、`compile_tests_wasmgc_a.rs`（544 行）、`compile_tests_wasmgc_b.rs`（708 行）、`compile_tests_outputs.rs`（635 行）へ移動し、parent を 2870 行から 492 行へ縮小した。`include!` で既存 `compile::tests::*` namespace、private helper access、compile/cache/WasmGC/native/output fixtures を維持し、target/backend tag contract test を追加した。RED `E0583` → GREEN、`cargo test -p lsharp-tooling -- --nocapture`（unit 135 / doc-test 0）、`cargo clippy -p lsharp-tooling --all-targets -- -D warnings`、`cargo check --workspace`（専用 target）、対象 Rust 2024 rustfmt、`git diff --check` は pass。tooling compile production の追加分割、selfhost/native parity、I-01 / I-08 aggregate は未完了。Evidence: `docs/adr/decisions-legacy-tooling-compile-tests-split.md`。
 
+## 2026-07-26 driver artifact cache option helper 責務分離
+
+- [~] `imp-06` driver artifact cache options split — `crates/lsharp-driver/src/main.rs` の artifact cache environment/limit parser と maintenance helper（112 行）を `artifact_cache_options.rs` へ移動し、parent を 2591 行から 2480 行へ縮小した。`include!` によって既存 private function/constant path、CLI compile/build wiring、cache validation/trim semantics を維持し、zero limit parsing contract test を追加した。RED `E0583` → GREEN、`lsharp-driver` unit 152 件と focused cache test は pass。`default_path_delegation` integration は origin/main 由来の既知 7 failures（embedded component/selfhost default-path contract）を再確認しており、今回の移動起因とは切り分けている。production driver の追加分割、selfhost/native parity、I-01 / I-08 aggregate は未完了。Evidence: `docs/adr/decisions-legacy-driver-artifact-cache-options-split.md`。
+
 > 凡例: `[x]` 完了 / `[ ]` 未着手 / `[~]` 部分実装 / `[BLOCKED: ...]` 依存待ち / `[DEFERRED]` 後続トラック送り
 >
 > **完了済みフェーズ**: Phase 0-7, P8, P9-1/2/3/4/6, P10, P12, P13, P14。

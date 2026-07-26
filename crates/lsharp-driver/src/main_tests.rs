@@ -614,6 +614,19 @@ fn test_resolve_artifact_cache_limits_rejects_empty_byte_value() {
 }
 
 #[test]
+fn test_resolve_artifact_cache_limits_accepts_zero_values() {
+    let resolved = resolve_artifact_cache_limits_from_values(
+        None,
+        None,
+        Some(std::ffi::OsString::from("0")),
+        Some(std::ffi::OsString::from("0")),
+    )
+    .expect("zero の maintenance limit は明示値として解釈できるべき");
+
+    assert_eq!(resolved, (Some(0), Some(0)));
+}
+
+#[test]
 fn test_cli_compile_artifact_cache_max_entries_is_explicit() {
     let cli = Cli::try_parse_from([
         "lsharp",
