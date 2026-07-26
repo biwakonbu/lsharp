@@ -1,0 +1,62 @@
+use std::fs;
+use std::path::PathBuf;
+
+fn line_count(path: &std::path::Path) -> usize {
+    fs::read_to_string(path)
+        .unwrap_or_else(|error| panic!("{} 読み込み失敗: {error}", path.display()))
+        .lines()
+        .count()
+}
+
+#[test]
+fn wasmgc_probe_source_stays_within_file_size_budget() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let source = root.join("tests/wasmgc_probe.rs");
+    let lines = line_count(&source);
+    assert!(
+        lines <= 800,
+        "wasmgc_probe.rs は 500〜800 行の責務単位へ分割すること: {lines} 行"
+    );
+    let manifest = fs::read_to_string(&source)
+        .unwrap_or_else(|error| panic!("{} 読み込み失敗: {error}", source.display()));
+
+    let fragment_dir = root.join("tests/wasmgc_probe");
+    if !fragment_dir.exists() {
+        return;
+    }
+    let mut fragments = fs::read_dir(&fragment_dir)
+        .unwrap_or_else(|error| panic!("{} 読み込み失敗: {error}", fragment_dir.display()))
+        .map(|entry| entry.expect("fragment entry の読み込みに失敗").path())
+        .filter(|path| path.extension().is_some_and(|extension| extension == "rs"))
+        .collect::<Vec<_>>();
+    fragments.sort();
+    assert!(!fragments.is_empty(), "fragment directory は空にしないこと");
+    let expected_includes = fragments
+        .iter()
+        .map(|path| {
+            format!(
+                "include!(\"wasmgc_probe/{}\");",
+                path.file_name()
+                    .expect("fragment filename が必要")
+                    .to_string_lossy()
+            )
+        })
+        .collect::<Vec<_>>();
+    let actual_includes = manifest
+        .lines()
+        .filter(|line| line.starts_with("include!(\"wasmgc_probe/"))
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        actual_includes, expected_includes,
+        "root manifest は全 fragment を順序通り include すること"
+    );
+    for fragment in fragments {
+        let lines = line_count(&fragment);
+        assert!(
+            lines <= 800,
+            "{} は 800 行以下の責務単位へ分割すること: {lines} 行",
+            fragment.display()
+        );
+    }
+}
