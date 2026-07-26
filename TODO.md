@@ -262,6 +262,10 @@
 
 - [~] `imp-06` tooling metadata test suite split — `crates/lsharp-tooling/src/metadata_test_tests.rs` の 36 tests を shared fixture/basic diagnostics、canonical assertion/case、deterministic property profile の 3 fragment (`metadata_test_tests/basic.rs`, `canonical.rs`, `property.rs`) へ移動し、parent を 742 行から 24 行へ縮小した。`include!` によって既存 `metadata_test::tests` namespace と test body、production API/runtime semantics を維持した。focused 36 tests、package 134 unit + doc-test 0、clippy、workspace check、対象 rustfmt、docs audit を passした。metadata runner production split、selfhost/native parity、I-01 / I-08 aggregate は未完了。Evidence: `docs/adr/decisions-legacy-metadata-test-tests-split.md`。
 
+## 2026-07-26 WASI compiler-world code section 分離
+
+- [~] `imp-06` WASI compiler-world code section split — `crates/lsharp-wasm/src/wasi/compiler_world.rs` の Code Section helper emission を `wasi/compiler_world/code.rs` へ移動し、parent を 761 行から 693 行へ縮小した。`emit_wasm_wasi_with_options`、section order、function/table/memory/global/export/data layout、runtime imports/ABI、optional component runner は変更していない。RED `E0583` → GREEN、compiler_world focused 1 件、WASI filtered 48 passed / 1 existing root-lifetime failure、Wasm lib clippy、workspace check、対象 rustfmt、docs audit を passした。all-targets clippy の既存 test warnings と full Rust/native parity、I-01 / I-08 aggregate は未完了。Evidence: `docs/adr/decisions-legacy-wasi-compiler-world-code-split.md`。
+
 > 凡例: `[x]` 完了 / `[ ]` 未着手 / `[~]` 部分実装 / `[BLOCKED: ...]` 依存待ち / `[DEFERRED]` 後続トラック送り
 >
 > **完了済みフェーズ**: Phase 0-7, P8, P9-1/2/3/4/6, P10, P12, P13, P14。

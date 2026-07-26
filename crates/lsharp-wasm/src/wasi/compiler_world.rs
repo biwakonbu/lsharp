@@ -1,5 +1,39 @@
 use super::*;
 
+mod code;
+
+struct WasiCodegenIndices {
+    fd_write_idx: u32,
+    proc_exit_wasm_idx: u32,
+    args_get_idx: u32,
+    args_sizes_get_idx: u32,
+    fd_read_idx: u32,
+    fd_close_idx: u32,
+    path_open_idx: u32,
+    fd_filestat_get_idx: u32,
+    print_helper_idx: u32,
+    alloc_func_idx: u32,
+    string_concat_idx: u32,
+    string_eq_idx: u32,
+    print_string_idx: u32,
+    int_to_string_idx: u32,
+    read_file_idx: u32,
+    write_file_idx: u32,
+    file_exists_idx: u32,
+    command_line_args_idx: u32,
+    command_line_arg_idx: u32,
+    read_stdin_idx: u32,
+    fnv1a_hash_idx: u32,
+    root_push_idx: u32,
+    root_pop_idx: u32,
+    root_set_idx: u32,
+    write_file_bytes_idx: u32,
+    gc_collect_idx: u32,
+    user_func_base: u32,
+    proc_exit_helper_idx: u32,
+    start_func_idx: u32,
+}
+
 pub(super) fn emit_wasm_wasi_with_options(
     module: &Module,
     export_component_run: bool,
@@ -597,148 +631,46 @@ pub(super) fn emit_wasm_wasi_with_options(
         wasm_module.section(&elements);
     }
 
-    // === Code Section ===
-    let mut codes = CodeSection::new();
-    print_i64::emit_print_i64_func(&mut codes);
-    allocator::emit_alloc_func(&mut codes, allocator_globals);
-    string_concat::emit_string_concat_func(&mut codes, alloc_func_idx);
-    string_eq::emit_string_eq_func(&mut codes);
-    print_string::emit_print_string_func(&mut codes);
-    int_to_string::emit_int_to_string_func(&mut codes, alloc_func_idx);
-    read_file::emit_read_file_func(
-        &mut codes,
-        alloc_func_idx,
-        path_open_idx,
+    let codegen_indices = WasiCodegenIndices {
+        fd_write_idx,
+        proc_exit_wasm_idx,
+        args_get_idx,
+        args_sizes_get_idx,
         fd_read_idx,
         fd_close_idx,
-        fd_filestat_get_idx,
-    );
-    write_file::emit_write_file_func(&mut codes, path_open_idx, fd_write_idx, fd_close_idx);
-    file_exists::emit_file_exists_func(&mut codes, path_open_idx, fd_close_idx);
-    argv::emit_command_line_args_func(&mut codes, args_sizes_get_idx);
-    argv::emit_command_line_arg_func(&mut codes, alloc_func_idx, args_get_idx, args_sizes_get_idx);
-    stdin::emit_read_stdin_func(&mut codes, alloc_func_idx, string_concat_idx, fd_read_idx);
-    hash::emit_fnv1a_hash_func(&mut codes);
-    root::emit_root_push_func(
-        &mut codes,
-        HEAP_PTR_GLOBAL_IDX,
-        ROOT_STACK_TOP_GLOBAL_IDX,
-        ROOT_STACK_BASE_GLOBAL_IDX,
-        ROOT_STACK_CAPACITY_GLOBAL_IDX,
-    );
-    root::emit_root_pop_func(
-        &mut codes,
-        ROOT_STACK_TOP_GLOBAL_IDX,
-        ROOT_STACK_BASE_GLOBAL_IDX,
-    );
-    root::emit_root_set_func(
-        &mut codes,
-        ROOT_STACK_TOP_GLOBAL_IDX,
-        ROOT_STACK_BASE_GLOBAL_IDX,
-        ROOT_SLOT_FAILURE_SLOT_GLOBAL_IDX,
-        ROOT_SLOT_FAILURE_TOP_GLOBAL_IDX,
-        ROOT_SLOT_FAILURE_COUNT_GLOBAL_IDX,
-    );
-    write_file_bytes::emit_write_file_bytes_func(
-        &mut codes,
-        alloc_func_idx,
         path_open_idx,
-        fd_write_idx,
-        fd_close_idx,
-    );
-    gc_collect::emit_gc_collect_func(&mut codes, collector_globals);
-
-    let struct_scratch_fields = structs::max_struct_field_count(module);
-    for func in &module.functions {
-        let scratch_base = func.params.len() as u32 + func.locals.len() as u32;
-        let mut locals = func
-            .locals
-            .iter()
-            .map(|t| (1, crate::emit::ir_to_wasm_valtype(*t)))
-            .collect::<Vec<_>>();
-        locals.push((struct_scratch_fields, ValType::I64));
-        locals.push((1, ValType::I64));
-        locals.push((1, ValType::I32));
-        let scratch = structs::WasiStructScratch {
-            field_base: scratch_base,
-            ptr_local: scratch_base + struct_scratch_fields,
-            addr_local: scratch_base + struct_scratch_fields + 1,
-        };
-        let mut f = wasm_encoder::Function::new(locals);
-        instructions::emit_instructions_wasi(
-            &mut f,
-            &func.body,
-            &module.gc_types,
-            scratch,
-            print_helper_idx,
-            alloc_func_idx,
-            string_concat_idx,
-            string_eq_idx,
-            print_string_idx,
-            proc_exit_helper_idx,
-            int_to_string_idx,
-            read_file_idx,
-            write_file_idx,
-            Some(write_file_bytes_idx),
-            file_exists_idx,
-            command_line_args_idx,
-            command_line_arg_idx,
-            read_stdin_idx,
-            fnv1a_hash_idx,
-            root_push_idx,
-            root_pop_idx,
-            root_set_idx,
-            user_func_base,
-            &call_indirect_type_map,
-        )?;
-        f.instruction(&wasm_encoder::Instruction::End);
-        codes.function(&f);
-    }
-
-    // __proc_exit_with_collect
-    {
-        let mut f = wasm_encoder::Function::new(vec![]);
-        f.instruction(&wasm_encoder::Instruction::LocalGet(0));
-        f.instruction(&wasm_encoder::Instruction::I32Eqz);
-        f.instruction(&wasm_encoder::Instruction::If(
-            wasm_encoder::BlockType::Empty,
-        ));
-        f.instruction(&wasm_encoder::Instruction::Call(gc_collect_idx));
-        f.instruction(&wasm_encoder::Instruction::Drop);
-        f.instruction(&wasm_encoder::Instruction::End);
-        f.instruction(&wasm_encoder::Instruction::LocalGet(0));
-        f.instruction(&wasm_encoder::Instruction::Call(proc_exit_wasm_idx));
-        f.instruction(&wasm_encoder::Instruction::End);
-        codes.function(&f);
-    }
-
-    // _start
-    {
-        let mut f = wasm_encoder::Function::new(vec![]);
-        // マルチファイル結合時に各モジュールが (defn main []) を持つため、先頭の main は先頭ファイルのテスト用になる。
-        // エントリ Main.ls の main を選ぶため、最後に定義された main を呼ぶ。
-        if let Some(main_idx) = module.functions.iter().rposition(|f| f.name == "main") {
-            f.instruction(&wasm_encoder::Instruction::Call(
-                user_func_base + main_idx as u32,
-            ));
-            f.instruction(&wasm_encoder::Instruction::Drop);
-            f.instruction(&wasm_encoder::Instruction::Call(gc_collect_idx));
-            f.instruction(&wasm_encoder::Instruction::Drop);
-        }
-        f.instruction(&wasm_encoder::Instruction::End);
-        codes.function(&f);
-    }
-
-    if export_component_run {
-        let mut f = wasm_encoder::Function::new(vec![]);
-        f.instruction(&wasm_encoder::Instruction::Call(start_func_idx));
-        f.instruction(&wasm_encoder::Instruction::I32Const(0));
-        f.instruction(&wasm_encoder::Instruction::End);
-        codes.function(&f);
-    }
-
+        fd_filestat_get_idx,
+        print_helper_idx,
+        alloc_func_idx,
+        string_concat_idx,
+        string_eq_idx,
+        print_string_idx,
+        int_to_string_idx,
+        read_file_idx,
+        write_file_idx,
+        file_exists_idx,
+        command_line_args_idx,
+        command_line_arg_idx,
+        read_stdin_idx,
+        fnv1a_hash_idx,
+        root_push_idx,
+        root_pop_idx,
+        root_set_idx,
+        write_file_bytes_idx,
+        gc_collect_idx,
+        user_func_base,
+        proc_exit_helper_idx,
+        start_func_idx,
+    };
+    let codes = code::emit_code_section(
+        module,
+        export_component_run,
+        &codegen_indices,
+        allocator_globals,
+        collector_globals,
+        &call_indirect_type_map,
+    )?;
     wasm_module.section(&codes);
-
     // === Data Section ===
     let mut data = DataSection::new();
     data.active(
