@@ -548,11 +548,11 @@
               state3 (vector-push-single-rooted-v3 state2 len)
               next-state (vector-push-single-rooted-v3 state3 next-out)]
               (do
+                (root_pop)
                 (root_push next-state)
-                (root_pop)
-                (root_pop)
                 (let [result (validation-source-nodes-json-state-loop next-state)]
                   (do
+                    (root_pop)
                     (root_pop)
                     result))))))))))
 
