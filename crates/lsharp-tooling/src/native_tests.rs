@@ -133,3 +133,41 @@ fn native_emitter_module_preserves_main_assembly_contract() {
     assert!(asm.contains("movz x9, #7"));
     assert!(asm.contains("L_lsharp_return_0_main:"));
 }
+
+#[test]
+fn native_emitter_memory_seam_preserves_struct_access_contract() {
+    let module = Module {
+        functions: vec![lsharp_ir::Function {
+            name: "main".to_string(),
+            params: vec![],
+            result: lsharp_ir::IrType::I64,
+            locals: vec![],
+            body: vec![
+                lsharp_ir::Instruction::I64Const(7),
+                lsharp_ir::Instruction::StructNew(0),
+                lsharp_ir::Instruction::StructGet(0, 0),
+            ],
+            is_export: true,
+        }],
+        gc_types: vec![lsharp_ir::GcTypeDef {
+            name: "Pair".to_string(),
+            kind: lsharp_ir::GcTypeKind::Struct(vec![lsharp_ir::GcField {
+                name: "value".to_string(),
+                ty: lsharp_ir::IrType::I64,
+                mutable: false,
+            }]),
+        }],
+        imports: vec![],
+        globals: vec![],
+        string_data: vec![],
+    };
+    let mut asm = String::new();
+
+    native_emitter::NativeFunctionEmitter::new(&module, 0, &module.functions[0])
+        .emit(&mut asm)
+        .expect("native emitter が struct allocation/access assembly を生成できる");
+
+    assert!(asm.contains("_lsharp_heap_next@PAGE"));
+    assert!(asm.contains("str x10, [x11, #0]"));
+    assert!(asm.contains("ldr x9, [x11, #0]"));
+}
