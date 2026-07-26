@@ -340,6 +340,12 @@ fn selfhost_validation_json_subject_roots_outer_concat() {
         subject.contains("(root_push subject)")
             && subject.contains("(root_push fields0)")
             && subject.contains("(root_push id-object-fields)")
+            && subject.contains("namespace-field (validation-json-string-field")
+            && subject.contains("key-field (validation-json-string-field")
+            && subject.contains("(root_push namespace-field)")
+            && subject.contains("(root_push key-field)")
+            && subject.contains("comma-key-fields (string-concat \",\" key-field)")
+            && subject.contains("(root_push comma-key-fields)")
             && subject.contains("(let [comma-id-fields (string-concat \",\" id-object-fields)]")
             && subject.contains("(root_push comma-id-fields)")
             && subject.contains("(let [all-fields (string-concat fields0 comma-id-fields)]")
@@ -349,7 +355,13 @@ fn selfhost_validation_json_subject_roots_outer_concat() {
     assert!(
         !subject.contains(
             "(validation-json-object-wrap (string-concat fields0 (string-concat \",\" id-object-fields)))"
-        ),
+        )
+            && !subject.contains(
+                "(string-concat\n        (validation-json-string-field \"namespace\""
+            )
+            && !subject.contains(
+                "(string-concat \",\"\n          (validation-json-string-field \"key\""
+            ),
         "native x86 の JSON subject は nested string-concat を直接評価するべきではない"
     );
 }
