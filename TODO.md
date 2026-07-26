@@ -254,6 +254,10 @@
 - [x] `SmokeCli` source/file full-program compile boundary — `compile-source-wasm-bytes` が `compile-program-functions-with-source` の全 functions/data payload を `build-wasm-bytes-wasi` へ渡し、`run-compile-output` が summary text ではなく raw Wasm bytes を書くことを固定した。Evidence: `test_e2e_selfhost_smoke_cli_source_compile_uses_full_program_builder`, `./target/debug/lsharp check selfhost/src/App/SmokeCli.ls`。
 - [~] remaining legacy source compile surfaces — `PipelineSmoke` の `compile-source` / `compile-full-pipeline` は `compile-program-functions-with-source` と `build-wasm-bytes-wasi` の full-program builder へ移行し、Rust host compile と Wasm validate まで確認した。`run-main-smoke` に残る単一 AST 用の legacy `lower` は診断用であり、no-arg pipeline entrypoint の full-program runtime/native E2E、component sidecar は未完了とする。`App.Cli` / `EmbeddedCli` / `SmokeCli` の Preview1 source/file helper は移行済みで、canonical/embedded CLI の source-string slice だけで legacy 全体を完了扱いにしない。Evidence: `test_e2e_selfhost_pipeline_smoke_uses_full_program_builder`、`LSHARP_DISABLE_EMBEDDED_COMPONENT=1 cargo run --quiet --bin lsharp -- compile selfhost/src/App/PipelineSmoke.ls -o /tmp/lsharp-pipeline-smoke.wasm --target wasi-preview1`、`wasm-tools validate /tmp/lsharp-pipeline-smoke.wasm`。
 
+## 2026-07-26 canonical contract checker 責務分離
+
+- [~] `imp-06` canonical metadata contract checker split — `crates/lsharp-types/src/canonical_contract_check.rs` の非空性/vacuity 判定を `canonical_contract_check/non_vacuity.rs`、canonical `:assert` / `:case` / `:property` の synthetic HM probe と型診断を `canonical_contract_check/types.rs` へ移動し、parent を 794 行から 11 行へ縮小した。既存 re-export、metadata checker の診断・lexical scope、production semantics は維持し、empty-program seam test と metadata contract 30 tests、package 214 unit + 117 integration、clippy、workspace check、対象 rustfmt、docs audit を passした。canonical checker の追加分割、selfhost/native parity、I-01 / I-08 aggregate、Mac/Linux runtime evidence は未完了。Evidence: `docs/adr/decisions-legacy-canonical-contract-check-split.md`。
+
 > 凡例: `[x]` 完了 / `[ ]` 未着手 / `[~]` 部分実装 / `[BLOCKED: ...]` 依存待ち / `[DEFERRED]` 後続トラック送り
 >
 > **完了済みフェーズ**: Phase 0-7, P8, P9-1/2/3/4/6, P10, P12, P13, P14。
