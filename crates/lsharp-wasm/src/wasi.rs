@@ -22,6 +22,9 @@ mod file_exists_tests;
 mod free_list;
 #[cfg(test)]
 mod free_list_tests;
+mod gc_mark;
+#[cfg(test)]
+mod gc_mark_tests;
 mod hash;
 #[cfg(test)]
 mod hash_tests;
@@ -2011,128 +2014,6 @@ fn emit_alloc_func(codes: &mut CodeSection, globals: AllocatorGlobals) {
     codes.function(&f);
 }
 
-fn emit_gc_mark_candidate(
-    f: &mut wasm_encoder::Function,
-    globals: CollectorGlobals,
-    locals: GcMarkHelperLocals,
-) {
-    use wasm_encoder::{Instruction as W, MemArg};
-
-    let CollectorGlobals {
-        heap_ptr_global_idx,
-        heap_start_global_idx,
-        ..
-    } = globals;
-    let object_table_base_global_idx = globals.object_table_base_global_idx;
-    let GcMarkHelperLocals {
-        old_count_local,
-        candidate_value_local,
-        candidate_addr_local,
-        search_idx_local,
-        search_entry_ptr_local,
-        temp_i64_local,
-    } = locals;
-
-    let mem32 = |offset: u64| MemArg {
-        offset,
-        align: 2,
-        memory_index: 0,
-    };
-
-    // raw address または tagged handle からヒープ先頭アドレスを抽出する。
-    f.instruction(&W::I32Const(0));
-    f.instruction(&W::LocalSet(candidate_addr_local));
-
-    f.instruction(&W::LocalGet(candidate_value_local));
-    f.instruction(&W::GlobalGet(heap_start_global_idx));
-    f.instruction(&W::I64ExtendI32U);
-    f.instruction(&W::I64GeS);
-    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
-    f.instruction(&W::LocalGet(candidate_value_local));
-    f.instruction(&W::GlobalGet(heap_ptr_global_idx));
-    f.instruction(&W::I64ExtendI32U);
-    f.instruction(&W::I64LtS);
-    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
-    f.instruction(&W::LocalGet(candidate_value_local));
-    f.instruction(&W::I32WrapI64);
-    f.instruction(&W::LocalSet(candidate_addr_local));
-    f.instruction(&W::End);
-    f.instruction(&W::End);
-
-    f.instruction(&W::LocalGet(candidate_addr_local));
-    f.instruction(&W::I32Eqz);
-    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
-    f.instruction(&W::LocalGet(candidate_value_local));
-    f.instruction(&W::I64Const(TAGGED_POINTER_MASK));
-    f.instruction(&W::I64GeU);
-    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
-    f.instruction(&W::LocalGet(candidate_value_local));
-    f.instruction(&W::I64Const(TAGGED_POINTER_MASK));
-    f.instruction(&W::I64Sub);
-    f.instruction(&W::LocalSet(temp_i64_local));
-    f.instruction(&W::LocalGet(temp_i64_local));
-    f.instruction(&W::GlobalGet(heap_start_global_idx));
-    f.instruction(&W::I64ExtendI32U);
-    f.instruction(&W::I64GeS);
-    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
-    f.instruction(&W::LocalGet(temp_i64_local));
-    f.instruction(&W::GlobalGet(heap_ptr_global_idx));
-    f.instruction(&W::I64ExtendI32U);
-    f.instruction(&W::I64LtS);
-    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
-    f.instruction(&W::LocalGet(temp_i64_local));
-    f.instruction(&W::I32WrapI64);
-    f.instruction(&W::LocalSet(candidate_addr_local));
-    f.instruction(&W::End);
-    f.instruction(&W::End);
-    f.instruction(&W::End);
-    f.instruction(&W::End);
-
-    // object table 上の matching entry を探し、未マークなら pending にする。
-    f.instruction(&W::LocalGet(candidate_addr_local));
-    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
-    f.instruction(&W::I32Const(0));
-    f.instruction(&W::LocalSet(search_idx_local));
-    f.instruction(&W::Block(wasm_encoder::BlockType::Empty));
-    f.instruction(&W::Loop(wasm_encoder::BlockType::Empty));
-    f.instruction(&W::LocalGet(search_idx_local));
-    f.instruction(&W::LocalGet(old_count_local));
-    f.instruction(&W::I32GeU);
-    f.instruction(&W::BrIf(1));
-
-    f.instruction(&W::GlobalGet(object_table_base_global_idx));
-    f.instruction(&W::LocalGet(search_idx_local));
-    f.instruction(&W::I32Const(4));
-    f.instruction(&W::I32Shl);
-    f.instruction(&W::I32Add);
-    f.instruction(&W::LocalSet(search_entry_ptr_local));
-
-    f.instruction(&W::LocalGet(search_entry_ptr_local));
-    f.instruction(&W::I32Load(mem32(0)));
-    f.instruction(&W::LocalGet(candidate_addr_local));
-    f.instruction(&W::I32Eq);
-    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
-    f.instruction(&W::LocalGet(search_entry_ptr_local));
-    f.instruction(&W::I32Load(mem32(8)));
-    f.instruction(&W::I32Eqz);
-    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
-    f.instruction(&W::LocalGet(search_entry_ptr_local));
-    f.instruction(&W::I32Const(GC_MARK_PENDING));
-    f.instruction(&W::I32Store(mem32(8)));
-    f.instruction(&W::End);
-    f.instruction(&W::Br(2));
-    f.instruction(&W::End);
-
-    f.instruction(&W::LocalGet(search_idx_local));
-    f.instruction(&W::I32Const(1));
-    f.instruction(&W::I32Add);
-    f.instruction(&W::LocalSet(search_idx_local));
-    f.instruction(&W::Br(0));
-    f.instruction(&W::End);
-    f.instruction(&W::End);
-    f.instruction(&W::End);
-}
-
 fn emit_gc_collect_func(codes: &mut CodeSection, globals: CollectorGlobals) {
     use wasm_encoder::{Instruction as W, MemArg};
 
@@ -2249,7 +2130,7 @@ fn emit_gc_collect_func(codes: &mut CodeSection, globals: CollectorGlobals) {
     f.instruction(&W::LocalGet(SLOT_ADDR_LOCAL));
     f.instruction(&W::I64Load(mem64(0)));
     f.instruction(&W::LocalSet(SLOT_VALUE_LOCAL));
-    emit_gc_mark_candidate(
+    gc_mark::emit_gc_mark_candidate(
         &mut f,
         globals,
         GcMarkHelperLocals {
@@ -2330,7 +2211,7 @@ fn emit_gc_collect_func(codes: &mut CodeSection, globals: CollectorGlobals) {
     f.instruction(&W::LocalGet(OBJ_ADDR_LOCAL));
     f.instruction(&W::I64Load(mem64(8)));
     f.instruction(&W::LocalSet(CHILD_VALUE_LOCAL));
-    emit_gc_mark_candidate(
+    gc_mark::emit_gc_mark_candidate(
         &mut f,
         globals,
         GcMarkHelperLocals {
@@ -2370,7 +2251,7 @@ fn emit_gc_collect_func(codes: &mut CodeSection, globals: CollectorGlobals) {
     f.instruction(&W::LocalGet(CHILD_ENTRY_ADDR_LOCAL));
     f.instruction(&W::I64Load(mem64(0)));
     f.instruction(&W::LocalSet(CHILD_VALUE_LOCAL));
-    emit_gc_mark_candidate(
+    gc_mark::emit_gc_mark_candidate(
         &mut f,
         globals,
         GcMarkHelperLocals {
@@ -2427,7 +2308,7 @@ fn emit_gc_collect_func(codes: &mut CodeSection, globals: CollectorGlobals) {
     f.instruction(&W::I64Eq);
     f.instruction(&W::If(wasm_encoder::BlockType::Empty));
     f.instruction(&W::Else);
-    emit_gc_mark_candidate(
+    gc_mark::emit_gc_mark_candidate(
         &mut f,
         globals,
         GcMarkHelperLocals {
@@ -2442,7 +2323,7 @@ fn emit_gc_collect_func(codes: &mut CodeSection, globals: CollectorGlobals) {
     f.instruction(&W::LocalGet(CHILD_ENTRY_ADDR_LOCAL));
     f.instruction(&W::I64Load(mem64(8)));
     f.instruction(&W::LocalSet(CHILD_VALUE_LOCAL));
-    emit_gc_mark_candidate(
+    gc_mark::emit_gc_mark_candidate(
         &mut f,
         globals,
         GcMarkHelperLocals {
@@ -2508,7 +2389,7 @@ fn emit_gc_collect_func(codes: &mut CodeSection, globals: CollectorGlobals) {
     f.instruction(&W::LocalGet(CHILD_ENTRY_ADDR_LOCAL));
     f.instruction(&W::I64Load(mem64(0)));
     f.instruction(&W::LocalSet(CHILD_VALUE_LOCAL));
-    emit_gc_mark_candidate(
+    gc_mark::emit_gc_mark_candidate(
         &mut f,
         globals,
         GcMarkHelperLocals {
