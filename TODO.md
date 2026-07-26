@@ -266,6 +266,10 @@
 
 - [~] `imp-06` WASI compiler-world code section split — `crates/lsharp-wasm/src/wasi/compiler_world.rs` の Code Section helper emission を `wasi/compiler_world/code.rs` へ移動し、parent を 761 行から 693 行へ縮小した。`emit_wasm_wasi_with_options`、section order、function/table/memory/global/export/data layout、runtime imports/ABI、optional component runner は変更していない。RED `E0583` → GREEN、compiler_world focused 1 件、WASI filtered 48 passed / 1 existing root-lifetime failure、Wasm lib clippy、workspace check、対象 rustfmt、docs audit を passした。all-targets clippy の既存 test warnings と full Rust/native parity、I-01 / I-08 aggregate は未完了。Evidence: `docs/adr/decisions-legacy-wasi-compiler-world-code-split.md`。
 
+## 2026-07-26 Infer builtin environment 責務分離
+
+- [~] `imp-06` Infer builtin environment split — `crates/lsharp-types/src/infer.rs` の `Infer::builtin_env`（472 行）を `infer/builtin_env.rs`（475 行）へ移動し、parent を 2789 行から 2319 行へ縮小した。組み込み演算子・string/ref/vector/map/file/argv/root helper と Functor/Monad kind/trait 登録、`Infer` の内部 API・型 scheme・登録順序は維持した。RED `E0583` → GREEN、builtin scheme focused 1 件、`RUST_MIN_STACK=33554432 cargo test -p lsharp-types -- --nocapture`、`cargo clippy -p lsharp-types --all-targets -- -D warnings`、`cargo check --workspace`（専用 target）、対象 rustfmt、`git diff --check` は pass。infer の他 production 責務、selfhost/native parity、I-01 / I-08 aggregate は未完了。Evidence: `docs/adr/decisions-legacy-infer-builtin-env-split.md`。
+
 > 凡例: `[x]` 完了 / `[ ]` 未着手 / `[~]` 部分実装 / `[BLOCKED: ...]` 依存待ち / `[DEFERRED]` 後続トラック送り
 >
 > **完了済みフェーズ**: Phase 0-7, P8, P9-1/2/3/4/6, P10, P12, P13, P14。

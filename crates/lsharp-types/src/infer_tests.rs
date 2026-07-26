@@ -28,6 +28,16 @@ mod tests {
     }
 
     #[test]
+    fn test_builtin_env_keeps_core_operator_scheme() {
+        let mut infer = Infer::new();
+        let env = infer.builtin_env();
+        assert_eq!(
+            env.get("+").map(ToString::to_string),
+            Some("(Int, Int) -> Int".to_string())
+        );
+    }
+
+    #[test]
     fn test_bool_expr() {
         let result = infer_one("(defn is-zero [n] (== n 0))");
         assert_eq!(result, "(Int) -> Bool");
