@@ -189,6 +189,31 @@ fn selfhost_cli_validation_surface_is_registered() {
 }
 
 #[test]
+fn selfhost_validation_json_append_roots_nested_concat() {
+    let evidence = selfhost_evidence_source();
+    let append_start = evidence
+        .find("(defn validation-json-append [out piece]")
+        .expect("validation-json-append を特定できるべき");
+    let append_end = evidence[append_start..]
+        .find("(defn validation-json-field")
+        .map(|offset| append_start + offset)
+        .expect("validation-json-append の終端を特定できるべき");
+    let append = &evidence[append_start..append_end];
+
+    assert!(
+        append.contains("(let [comma-piece (string-concat \",\" piece)]")
+            && append.contains("(root_push comma-piece)")
+            && append.contains("(let [result (string-concat out comma-piece)]")
+            && append.contains("(root_push result)"),
+        "native x86 の JSON append は inner concat と outer concat の結果を root lease で保持するべき"
+    );
+    assert!(
+        !append.contains("(string-concat out (string-concat \",\" piece))"),
+        "native x86 の JSON append は nested string-concat を直接評価するべきではない"
+    );
+}
+
+#[test]
 fn selfhost_json_escape_loop_uses_one_arg_state_boundary() {
     let source = selfhost_json_rpc_source();
     let state_start = source

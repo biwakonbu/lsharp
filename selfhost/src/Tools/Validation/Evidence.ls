@@ -364,7 +364,17 @@
 (defn validation-json-array-wrap [body]
   (string-concat "[" (string-concat body "]")))
 (defn validation-json-append [out piece]
-  (if (= (string-length out) 0) piece (string-concat out (string-concat "," piece))))
+  (if (= (string-length out) 0)
+    piece
+    (let [comma-piece (string-concat "," piece)]
+      (do
+        (root_push comma-piece)
+        (let [result (string-concat out comma-piece)]
+          (do
+            (root_push result)
+            (root_pop)
+            (root_pop)
+            result))))))
 (defn validation-json-field [name value-json]
   (string-concat "\"" (string-concat name (string-concat "\":" value-json))))
 (defn validation-json-string-literal [value]
