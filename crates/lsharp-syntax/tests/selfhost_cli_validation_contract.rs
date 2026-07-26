@@ -244,6 +244,35 @@ fn selfhost_validation_json_string_literal_roots_nested_concat() {
 }
 
 #[test]
+fn selfhost_validation_json_field_roots_nested_concat() {
+    let evidence = selfhost_evidence_source();
+    let field_start = evidence
+        .find("(defn validation-json-field [name value-json]")
+        .expect("validation-json-field を特定できるべき");
+    let field_end = evidence[field_start..]
+        .find("(defn validation-json-string-literal")
+        .map(|offset| field_start + offset)
+        .expect("validation-json-field の終端を特定できるべき");
+    let field = &evidence[field_start..field_end];
+
+    assert!(
+        field.contains("(root_push name)")
+            && field.contains("(root_push value-json)")
+            && field.contains("(let [colon-value (string-concat")
+            && field.contains("(root_push colon-value)")
+            && field.contains("(let [name-colon (string-concat name colon-value)]")
+            && field.contains("(root_push name-colon)")
+            && field.contains("(let [result (string-concat")
+            && field.contains("(root_push result)"),
+        "native x86 の JSON field は各 concat の入力と中間結果を root lease で保持するべき"
+    );
+    assert!(
+        !field.contains("(string-concat name (string-concat"),
+        "native x86 の JSON field は nested string-concat を直接評価するべきではない"
+    );
+}
+
+#[test]
 fn selfhost_json_escape_loop_uses_one_arg_state_boundary() {
     let source = selfhost_json_rpc_source();
     let state_start = source
