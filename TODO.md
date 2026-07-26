@@ -282,6 +282,10 @@
 
 - [~] `imp-06` Infer generalize split — `crates/lsharp-types/src/infer.rs` の `Infer::generalize`（14 行）を `infer/generalize.rs`（19 行）へ移動し、parent を 2061 行から 2047 行へ縮小した。`TypeEnv` / `Type` の free variable 集合から environment-bound variable を除外して `TypeScheme` を構築する既存 semantics と、親の内部呼び出しは `pub(super)` seam で維持した。RED `E0583` → GREEN、generalize focused 1 件、`RUST_MIN_STACK=33554432 cargo test -p lsharp-types -- --nocapture`（unit 218 / integration 117 / doc-test 0）、`cargo clippy -p lsharp-types --all-targets -- -D warnings`、`cargo check --workspace`（専用 target）、対象 Rust 2024 rustfmt、`git diff --check` は pass。infer の他 production 責務、selfhost/native parity、I-01 / I-08 aggregate は未完了。Evidence: `docs/adr/decisions-legacy-infer-generalize-split.md`。
 
+## 2026-07-26 Infer expr 責務分離
+
+- [~] `imp-06` Infer expr split — `crates/lsharp-types/src/infer.rs` の `infer_expr` と record/pattern helper 群（約 637 行）を `infer/expr.rs`（644 行）へ移動し、parent を 2047 行から 1414 行へ縮小した。`infer_expr` の親呼び出しは `pub(super)`、共有 resolver/diagnostic/instantiate helpers は child seam のため `pub(super)` にした。式/let/lambda/application/match/do/annotation/computation、record literal/access/update、constructor/record pattern、binding/literal typing、unification/generalization/diagnostic semantics は変更していない。RED `E0583` → GREEN、expr focused 1 件、`RUST_MIN_STACK=33554432 cargo test -p lsharp-types -- --nocapture`（unit 219 / integration 117 / doc-test 0）、`cargo clippy -p lsharp-types --all-targets -- -D warnings`、`cargo check --workspace`（専用 target）、対象 Rust 2024 rustfmt、`git diff --check` は pass。infer の `infer_program`/宣言責務、selfhost/native parity、I-01 / I-08 aggregate は未完了。Evidence: `docs/adr/decisions-legacy-infer-expr-split.md`。
+
 > 凡例: `[x]` 完了 / `[ ]` 未着手 / `[~]` 部分実装 / `[BLOCKED: ...]` 依存待ち / `[DEFERRED]` 後続トラック送り
 >
 > **完了済みフェーズ**: Phase 0-7, P8, P9-1/2/3/4/6, P10, P12, P13, P14。

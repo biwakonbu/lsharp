@@ -16,6 +16,25 @@ mod generalize_tests {
 }
 
 #[cfg(test)]
+mod expr_tests {
+    use super::*;
+
+    #[test]
+    fn infer_expr_preserves_if_branch_unification() {
+        let program = lsharp_syntax::parse("(defn choose [] (if true 1 2))").unwrap();
+        let Decl::Defn { body, .. } = &program.decls[0] else {
+            panic!("expected defn fixture");
+        };
+        let mut infer = Infer::new();
+        let env = infer.builtin_env();
+
+        let (_, ty) = infer.infer_expr(&env, body).unwrap();
+
+        assert_eq!(ty, Type::int());
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
