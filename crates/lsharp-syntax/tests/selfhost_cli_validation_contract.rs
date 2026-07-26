@@ -98,11 +98,20 @@ fn selfhost_cli_validation_surface_is_registered() {
         "native x86 の node manifest loop は state を root し、object/string を含む state を vector-set で更新せず fresh rooted state として進めるべき"
     );
     assert!(
-        node_loop.contains("(root_pop)\n                (root_push next-state)\n                (let [result (validation-source-nodes-json-state-loop next-state)]")
+        node_loop.contains("(root_pop)\n                    (root_push next-state)\n                    (let [result (validation-source-nodes-json-state-loop next-state)]")
             && !node_loop.contains(
-                "(root_push next-state)\n                (root_pop)\n                (root_pop)\n                (let [result (validation-source-nodes-json-state-loop next-state)]"
+                "(root_push next-state)\n                    (root_pop)\n                    (root_pop)\n                    (let [result (validation-source-nodes-json-state-loop next-state)]"
             ),
         "native x86 の node manifest loop は next-state を recursive call の直前まで root として保持するべき"
+    );
+    assert!(
+        node_loop.contains("(let [node-json (validation-source-node-json")
+            && node_loop.contains("(root_push node-json)")
+            && node_loop.contains("(validation-json-append out node-json)")
+            && !node_loop.contains(
+                "(validation-json-append out (validation-source-node-json"
+            ),
+        "native x86 の node manifest loop は string return を root してから append call へ渡すべき"
     );
     let node_json_start = evidence
         .find("(defn validation-source-node-json")

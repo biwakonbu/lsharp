@@ -539,22 +539,26 @@
         (do
           (root_pop)
           out)
-        (let [next-out (validation-json-append out (validation-source-node-json (vector-get nodes idx)))]
+        (let [node-json (validation-source-node-json (vector-get nodes idx))]
           (do
-            (root_push next-out)
-            (let [state0 (vector-new 4)
-              state1 (vector-push-single-rooted-v3 state0 nodes)
-              state2 (vector-push-single-rooted-v3 state1 (+ idx 1))
-              state3 (vector-push-single-rooted-v3 state2 len)
-              next-state (vector-push-single-rooted-v3 state3 next-out)]
+            (root_push node-json)
+            (let [next-out (validation-json-append out node-json)]
               (do
-                (root_pop)
-                (root_push next-state)
-                (let [result (validation-source-nodes-json-state-loop next-state)]
+                (root_push next-out)
+                (let [state0 (vector-new 4)
+                  state1 (vector-push-single-rooted-v3 state0 nodes)
+                  state2 (vector-push-single-rooted-v3 state1 (+ idx 1))
+                  state3 (vector-push-single-rooted-v3 state2 len)
+                  next-state (vector-push-single-rooted-v3 state3 next-out)]
                   (do
                     (root_pop)
-                    (root_pop)
-                    result))))))))))
+                    (root_push next-state)
+                    (let [result (validation-source-nodes-json-state-loop next-state)]
+                      (do
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        result))))))))))))
 
 (defn validation-source-int-array-json-state-loop [state]
   (let [items (vector-get state 0)
