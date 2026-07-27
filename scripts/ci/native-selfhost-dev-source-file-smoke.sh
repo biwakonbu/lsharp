@@ -109,6 +109,7 @@ VALIDATION_INVALID_REVIEW_MANIFEST="$WORK_DIR/ec-m3-invalid-review-manifest.json
 VALIDATION_INVALID_REVIEW_DIGEST_MANIFEST="$WORK_DIR/ec-m3-invalid-review-digest-manifest.json"
 VALIDATION_INVALID_REVIEW_ID_MANIFEST="$WORK_DIR/ec-m3-invalid-review-id-manifest.json"
 VALIDATION_EMPTY_REVIEW_ID_MANIFEST="$WORK_DIR/ec-m3-empty-review-id-manifest.json"
+VALIDATION_MALFORMED_REVIEW_MANIFEST="$WORK_DIR/ec-m3-malformed-review-manifest.json"
 VALIDATION_REVIEW_SUBJECT_KIND_MANIFEST="$WORK_DIR/ec-m3-review-subject-kind-manifest.json"
 VALIDATION_INVALIDATION_SUBJECT_KIND_MANIFEST="$WORK_DIR/ec-m3-invalidation-subject-kind-manifest.json"
 VALIDATION_INVALIDATION_MISSING_REVIEW_MANIFEST="$WORK_DIR/ec-m3-invalidation-missing-review-manifest.json"
@@ -129,6 +130,7 @@ VALIDATION_INVALID_REVIEW_SOURCE="$WORK_DIR/ec-m3-invalid-review-source.ls"
 VALIDATION_INVALID_REVIEW_DIGEST_SOURCE="$WORK_DIR/ec-m3-invalid-review-digest-source.ls"
 VALIDATION_INVALID_REVIEW_ID_SOURCE="$WORK_DIR/ec-m3-invalid-review-id-source.ls"
 VALIDATION_EMPTY_REVIEW_ID_SOURCE="$WORK_DIR/ec-m3-empty-review-id-source.ls"
+VALIDATION_MALFORMED_REVIEW_SOURCE="$WORK_DIR/ec-m3-malformed-review-source.ls"
 VALIDATION_REVIEW_SUBJECT_KIND_SOURCE="$WORK_DIR/ec-m3-review-subject-kind-source.ls"
 VALIDATION_INVALIDATION_SUBJECT_KIND_SOURCE="$WORK_DIR/ec-m3-invalidation-subject-kind-source.ls"
 VALIDATION_INVALIDATION_MISSING_REVIEW_SOURCE="$WORK_DIR/ec-m3-invalidation-missing-review-source.ls"
@@ -293,6 +295,12 @@ cat >"$VALIDATION_EMPTY_REVIEW_ID_SOURCE" <<'LSHARP'
 (defn empty-review-id []
   :claim "claim:checkout/rejects" "The API rejects shipped orders"
   :review "" "sha256:review-provenance" "redacted"
+  true)
+LSHARP
+cat >"$VALIDATION_MALFORMED_REVIEW_SOURCE" <<'LSHARP'
+(defn malformed-review []
+  :claim "claim:checkout/rejects" "The API rejects shipped orders"
+  :review "review:checkout/malformed" "sha256:review-provenance"
   true)
 LSHARP
 cat >"$VALIDATION_REVIEW_SUBJECT_KIND_SOURCE" <<'LSHARP'
@@ -806,6 +814,16 @@ grep -F "source validation error:8" "$WORK_DIR/validation-empty-review-id.stderr
   || die "empty review ID validation must expose the invalid-review error code"
 [[ ! -e "$VALIDATION_EMPTY_REVIEW_ID_MANIFEST" ]] \
   || die "empty review ID validation must produce no report or manifest"
+
+run_expected_validation_error validation-malformed-review \
+  validate \
+  --source "$VALIDATION_MALFORMED_REVIEW_SOURCE" \
+  --format json \
+  --emit-manifest "$VALIDATION_MALFORMED_REVIEW_MANIFEST"
+grep -F "source validation error:1" "$WORK_DIR/validation-malformed-review.stderr" >/dev/null \
+  || die "malformed review validation must expose the malformed error code"
+[[ ! -e "$VALIDATION_MALFORMED_REVIEW_MANIFEST" ]] \
+  || die "malformed review validation must produce no report or manifest"
 
 run_expected_validation_error validation-review-subject-kind \
   validate \

@@ -114,6 +114,10 @@ for required in \
   'VALIDATION_EMPTY_REVIEW_ID_MANIFEST' \
   'run_expected_validation_error validation-empty-review-id' \
   'source validation error:8' \
+  'VALIDATION_MALFORMED_REVIEW_SOURCE' \
+  'VALIDATION_MALFORMED_REVIEW_MANIFEST' \
+  'run_expected_validation_error validation-malformed-review' \
+  'source validation error:1' \
   'VALIDATION_REVIEW_SUBJECT_KIND_SOURCE' \
   'VALIDATION_REVIEW_SUBJECT_KIND_MANIFEST' \
   'run_expected_validation_error validation-review-subject-kind' \
