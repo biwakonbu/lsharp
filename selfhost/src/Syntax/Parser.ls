@@ -677,12 +677,13 @@
     (if (string-eq name "claim") 1
       (if (string-eq name "assumption") 1
         (if (string-eq name "open-question") 1
-          (if (string-eq name "motivates") 1
+          (if (string-eq name "review") 1
+            (if (string-eq name "motivates") 1
             (if (string-eq name "constrained-by") 1
               (if (string-eq name "tested-by") 1
                 (if (string-eq name "supports") 1
                 (if (string-eq name "contradicts") 1
-                  (if (string-eq name "evidence") 1 0)))))))))))
+                  (if (string-eq name "evidence") 1 0))))))))))))
 
 (defn directive-symbol-v3 [name]
   (if (string-eq name "where") 1
@@ -888,7 +889,9 @@
                               (if (> source-kind 0)
                                 (if (= source-kind 15)
                                   (parse-defn-meta-evidence-v3 spans pos-ref src meta)
-                                  (parse-defn-meta-source-pair-v3 spans pos-ref src meta source-kind))
+                                  (if (= source-kind 16)
+                                    (parse-defn-meta-source-triple-v3 spans pos-ref src meta source-kind)
+                                    (parse-defn-meta-source-pair-v3 spans pos-ref src meta source-kind)))
                                 (do
                                   (skip-directive-payload-v3 spans pos-ref)
                                   (parse-defn-metadata-loop-rooted-v3 spans pos-ref src meta))))))))))))]
@@ -1353,7 +1356,8 @@
               (if (string-eq name "tested-by") 12
                 (if (string-eq name "supports") 13
                 (if (string-eq name "contradicts") 14
-                  (if (string-eq name "evidence") 15 0)))))))))))
+                  (if (string-eq name "evidence") 15
+                    (if (string-eq name "review") 16 0))))))))))))
 
 (defn parse-source-metadata-string-v3 [spans pos-ref src]
   (if (== (p-current spans pos-ref) 12)
@@ -1377,6 +1381,23 @@
               (root_pop)
               (root_pop)
               result)))))))
+
+(defn parse-source-metadata-triple-v3 [spans pos-ref src]
+  (let [first (parse-source-metadata-string-v3 spans pos-ref src)]
+    (do
+      (root_push first)
+      (let [second (parse-source-metadata-string-v3 spans pos-ref src)]
+        (do
+          (root_push second)
+          (let [third (parse-source-metadata-string-v3 spans pos-ref src)]
+            (do
+              (root_push third)
+              (let [result (vector-push-triple-rooted-v3 (vector-new 3) first second third)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  result)))))))))
 
 (defn parse-source-evidence-int-v3 [spans pos-ref src]
   (if (== (p-current spans pos-ref) 10)
@@ -1590,6 +1611,22 @@
 (defn parse-defn-meta-source-pair-v3 [spans pos-ref src meta form-kind]
   (let [directive-start (metadata-directive-start-v3 spans pos-ref)
     payload (parse-source-metadata-pair-v3 spans pos-ref src)
+    directive-end (metadata-directive-end-v3 spans pos-ref)]
+    (do
+      (root_push payload)
+      (let [updated (append-defn-metadata-form-v3
+          meta
+          form-kind
+          payload
+          directive-start
+          directive-end)]
+        (do
+          (root_pop)
+          (parse-defn-metadata-loop-v3 spans pos-ref src updated))))))
+
+(defn parse-defn-meta-source-triple-v3 [spans pos-ref src meta form-kind]
+  (let [directive-start (metadata-directive-start-v3 spans pos-ref)
+    payload (parse-source-metadata-triple-v3 spans pos-ref src)
     directive-end (metadata-directive-end-v3 spans pos-ref)]
     (do
       (root_push payload)

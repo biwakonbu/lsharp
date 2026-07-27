@@ -37,7 +37,9 @@
   Rust MCP の review registry input/output schema と inline manifest projection、
   `public` / `redacted` privacy boundary は verified。実行 trace と generator policy、
   review provenance authentication、review/evaluates/invalidates lifecycle、外部 provenance と
-  selfhost/native parity を閉じる。
+  selfhost/native parity を閉じる。selfhost parser の `:review` kind 16 triple payload と
+  `IntentSource` の opaque review registry projection は Rust-host actual Wasm の verified slice
+  として追加済みだが、native stage0 producer/runtime parity は残る。
 - [~] `EC-M2-03` `lsharp validate` — version 1 manifest parser、source adapter、
   `--emit-manifest` の atomic/durable file boundary、deterministic text/JSON report、
   optional `reviews` registry の Rust CLI roundtrip と未登録 review edge の non-zero/

@@ -498,3 +498,100 @@ fn test_e2e_selfhost_source_adapter_reports_error_spans() {
         "selfhost source adapter は現在の directive span と duplicate の first span を保持するべき"
     );
 }
+
+/// EC-M2-02: source の opaque review registry を graph の node/edge と分離して保持する。
+#[test]
+fn test_e2e_selfhost_source_adapter_projects_review_registry() {
+    let harness = r#"
+(defn main []
+  (let [result (source-graph-from-program
+                 (parse-program "(defn review [] :review \"review:checkout/reviewer-001\" \"sha256:review-provenance-001\" \"redacted\" true)"))
+        graph (source-graph-result-value result)
+        nodes (source-graph-nodes graph)
+        edges (source-graph-edges graph)
+        reviews (source-graph-reviews graph)
+        review (vector-get reviews 0)]
+    (do
+      (print (source-graph-result-status result))
+      (print (vector-length nodes))
+      (print (vector-length edges))
+      (print (vector-length reviews))
+      (print-string (source-review-id review))
+      (print-string "\n")
+      (print-string (source-review-provenance-digest review))
+      (print-string "\n")
+      (print-string (source-review-visibility review))
+      (print-string "\n")
+      0)))
+"#;
+
+    let output = run_source_adapter_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        [
+            "1",
+            "0",
+            "0",
+            "1",
+            "review:checkout/reviewer-001",
+            "sha256:review-provenance-001",
+            "redacted",
+        ],
+        "selfhost source adapter は review registry を node/edge と混ぜず opaque field のまま保持するべき"
+    );
+}
+
+/// EC-M2-02: review ID の重複は後勝ちにせず source span 付きで拒否する。
+#[test]
+fn test_e2e_selfhost_source_adapter_rejects_duplicate_reviews() {
+    let harness = r#"
+(defn main []
+  (let [result (source-graph-from-program
+                 (parse-program "(defn duplicate [] :review \"review:checkout/reviewer-001\" \"sha256:first\" \"public\" :review \"review:checkout/reviewer-001\" \"sha256:second\" \"redacted\" true)"))
+        error (source-graph-result-error result)]
+    (do
+      (print (source-graph-result-status result))
+      (print (source-graph-error-code error))
+      (print-string (source-graph-error-id error))
+      (print-string "\n")
+      (print (source-graph-error-related-start error))
+      (print (source-graph-error-related-end error))
+      0)))
+"#;
+
+    let output = run_source_adapter_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "7", "review:checkout/reviewer-001", "19", "81"],
+        "review registry の duplicate ID は first declaration の span を関連情報として保持するべき"
+    );
+}
+
+/// EC-M2-02: review の provenance digest と visibility は fail-closed に検証する。
+#[test]
+fn test_e2e_selfhost_source_adapter_rejects_invalid_review_fields() {
+    let harness = r#"
+(defn main []
+  (let [result (source-graph-from-program
+                 (parse-program "(defn invalid [] :review \"review:checkout/reviewer-001\" \"   \" \"public\" true)"))
+        error (source-graph-result-error result)]
+    (do
+      (print (source-graph-result-status result))
+      (print (source-graph-error-code error))
+      (print-string (source-graph-error-id error))
+      0)))
+"#;
+
+    let output = run_source_adapter_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "8", "review:checkout/reviewer-001"],
+        "空 digest や未知 visibility の review は source graph に登録しないべき"
+    );
+}

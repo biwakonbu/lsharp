@@ -7,7 +7,8 @@
 ;; record の wire shape は Rust の source adapter と同じ意味を持つ。
 ;; node: [kind, stable-id, text, span-start, span-end]
 ;; edge: [relation, left-id, right-id, span-start, span-end]
-;; graph: [nodes, edges]
+;; graph: [nodes, edges] または [nodes, edges, reviews]
+;; review: [stable-id, provenance-digest, visibility, span-start, span-end]
 ;; result: [status, graph-or-error] (1=success, 0=fail)
 ;; error: [code, form-kind, offending-id, span-start, span-end,
 ;;         related-span-start, related-span-end]
@@ -21,6 +22,7 @@
 (defn source-edge-tested-by [] 12)
 (defn source-edge-supports [] 13)
 (defn source-edge-contradicts [] 14)
+(defn source-review [] 16)
 
 (defn source-error-malformed [] 1)
 (defn source-error-invalid-id [] 2)
@@ -28,6 +30,8 @@
 (defn source-error-duplicate-node [] 4)
 (defn source-error-missing-node [] 5)
 (defn source-error-evidence-registry-required [] 6)
+(defn source-error-duplicate-review [] 7)
+(defn source-error-invalid-review [] 8)
 
 (defn source-result [status value]
   (vector-push-pair-rooted-v3 (vector-new 2) status value))
@@ -43,8 +47,15 @@
 (defn source-graph [nodes edges]
   (vector-push-pair-rooted-v3 (vector-new 2) nodes edges))
 
+(defn source-graph-with-reviews [nodes edges reviews]
+  (vector-push-triple-rooted-v3 (vector-new 3) nodes edges reviews))
+
 (defn source-graph-nodes [graph] (vector-get graph 0))
 (defn source-graph-edges [graph] (vector-get graph 1))
+(defn source-graph-reviews [graph]
+  (if (> (vector-length graph) 2)
+    (vector-get graph 2)
+    (vector-new 0)))
 
 (defn source-graph-error-record [code kind id start end related-start related-end]
   (let [base (vector-push-quad-rooted-v3 (vector-new 1) code kind id start)
@@ -116,6 +127,21 @@
 (defn source-edge-start [edge] (vector-get edge 3))
 (defn source-edge-end [edge] (vector-get edge 4))
 
+(defn source-review-record [id provenance-digest visibility start end]
+  (let [base (vector-push-quad-rooted-v3
+      (vector-new 1)
+      id
+      provenance-digest
+      visibility
+      start)]
+    (vector-push-single-rooted-v3 base end)))
+
+(defn source-review-id [review] (vector-get review 0))
+(defn source-review-provenance-digest [review] (vector-get review 1))
+(defn source-review-visibility [review] (vector-get review 2))
+(defn source-review-start [review] (vector-get review 3))
+(defn source-review-end [review] (vector-get review 4))
+
 (defn source-node-kind? [kind]
   (and (>= kind (source-node-intent)) (<= kind (source-node-open-question))))
 
@@ -130,7 +156,7 @@
           (if (= kind (source-edge-tested-by)) "contract"
             (if (or (= kind (source-edge-supports)) (= kind (source-edge-contradicts)))
               "evidence"
-              "")))))))
+              (if (= kind (source-review)) "review" ""))))))))
 
 (defn source-find-char [text target idx len]
   (if (>= idx len)
@@ -263,6 +289,97 @@
                   (source-result 0 (source-graph-error-at (source-error-invalid-id) kind id start end)))
                 (source-result 1 (source-node-record kind id text start end))))))))))
 
+(defn source-review-id-exists-loop [reviews id idx len]
+  (if (>= idx len)
+    0
+    (if (string-eq (source-review-id (vector-get reviews idx)) id)
+      1
+      (source-review-id-exists-loop reviews id (+ idx 1) len))))
+
+(defn source-review-id-exists? [reviews id]
+  (source-review-id-exists-loop reviews id 0 (vector-length reviews)))
+
+(defn source-review-find-loop [reviews id idx len]
+  (if (>= idx len)
+    0
+    (let [review (vector-get reviews idx)]
+      (if (string-eq (source-review-id review) id)
+        review
+        (source-review-find-loop reviews id (+ idx 1) len)))))
+
+(defn source-review-find [reviews id]
+  (source-review-find-loop reviews id 0 (vector-length reviews)))
+
+(defn source-review-visibility-valid? [visibility]
+  (or (string-eq visibility "public") (string-eq visibility "redacted")))
+
+(defn source-review-whitespace? [char]
+  (or
+    (or (= char 32) (= char 9))
+    (or (= char 10) (= char 13))))
+
+(defn source-review-nonblank-loop [value idx len]
+  (if (>= idx len)
+    0
+    (if (source-review-whitespace? (string-char-at value idx))
+      (source-review-nonblank-loop value (+ idx 1) len)
+      1)))
+
+(defn source-review-nonblank? [value]
+  (source-review-nonblank-loop value 0 (string-length value)))
+
+(defn source-review-form-result [form]
+  (if (< (vector-length form) 4)
+    (source-result 0 (source-form-malformed-error form))
+    (let [kind (vector-get form 0)
+      payload (vector-get form 1)
+      start (vector-get form 2)
+      end (vector-get form 3)]
+      (if (!= (vector-length form) 4)
+        (source-result 0 (source-graph-error-at (source-error-malformed) kind "" start end))
+        (if (!= (vector-length payload) 3)
+          (source-result 0 (source-graph-error-at (source-error-malformed) kind "" start end))
+          (let [id (vector-get payload 0)
+            provenance-digest (vector-get payload 1)
+            visibility (vector-get payload 2)]
+            (if (or
+                  (= (string-length id) 0)
+                  (= (source-review-nonblank? provenance-digest) 0))
+              (source-result 0 (source-graph-error-at (source-error-invalid-review) kind id start end))
+              (if (= (source-wire-valid? id kind) 0)
+                (source-result 0 (source-graph-error-at (source-error-invalid-id) kind id start end))
+                (if (source-review-visibility-valid? visibility)
+                  (source-result 1
+                    (source-review-record id provenance-digest visibility start end))
+                  (source-result 0
+                    (source-graph-error-at (source-error-invalid-review) kind id start end)))))))))))
+
+(defn source-append-review-forms [forms idx len reviews]
+  (if (>= idx len)
+    (source-result 1 reviews)
+    (let [form (vector-get forms idx)
+      kind (vector-get form 0)]
+      (if (= kind (source-review))
+        (let [parsed (source-review-form-result form)]
+          (if (= (source-result-status parsed) 0)
+            parsed
+            (let [review (source-result-value parsed)
+              id (source-review-id review)
+              existing (source-review-find reviews id)]
+              (if (= (source-review-id-exists? reviews id) 1)
+                (source-result 0
+                  (source-graph-error-related
+                    (source-error-duplicate-review)
+                    kind
+                    id
+                    (source-review-start review)
+                    (source-review-end review)
+                    (source-review-start existing)
+                    (source-review-end existing)))
+                (let [next-reviews (vector-push-single-rooted-v3 reviews review)]
+                  (source-append-review-forms forms (+ idx 1) len next-reviews))))))
+        (source-append-review-forms forms (+ idx 1) len reviews)))))
+
 (defn source-append-node-forms [forms idx len nodes]
   (if (>= idx len)
     (source-result 1 nodes)
@@ -330,6 +447,50 @@
 
 (defn source-collect-nodes [program]
   (source-collect-nodes-program-loop program 0 (vector-length program) (vector-new 0)))
+
+(defn source-collect-review-children [decl idx len reviews]
+  (if (>= idx len)
+    (source-result 1 reviews)
+    (let [child (vector-get decl idx)
+      parsed (source-collect-reviews-decl child reviews)]
+      (if (= (source-result-status parsed) 0)
+        parsed
+        (source-collect-review-children
+          decl
+          (+ idx 1)
+          len
+          (source-result-value parsed))))))
+
+(defn source-collect-reviews-decl [decl reviews]
+  (let [tag (vector-get decl 0)]
+    (if (= tag (ast-defn))
+      (let [forms (source-ordered-forms decl)]
+        (source-append-review-forms forms 0 (vector-length forms) reviews))
+      (if (= tag (ast-private))
+        (source-collect-reviews-decl (vector-get decl 1) reviews)
+        (if (= tag (ast-module-decl))
+          (source-collect-review-children decl 5 (vector-length decl) reviews)
+          (if (= tag (ast-impldef))
+            (source-collect-review-children decl 4 (vector-length decl) reviews)
+            (if (or (= tag (ast-typedef)) (= tag (ast-recorddef)))
+              (let [forms (source-type-ordered-forms decl)]
+                (source-append-review-forms forms 0 (vector-length forms) reviews))
+              (source-result 1 reviews))))))))
+
+(defn source-collect-reviews-program-loop [program idx len reviews]
+  (if (>= idx len)
+    (source-result 1 reviews)
+    (let [parsed (source-collect-reviews-decl (vector-get program idx) reviews)]
+      (if (= (source-result-status parsed) 0)
+        parsed
+        (source-collect-reviews-program-loop
+          program
+          (+ idx 1)
+          len
+          (source-result-value parsed))))))
+
+(defn source-collect-reviews [program]
+  (source-collect-reviews-program-loop program 0 (vector-length program) (vector-new 0)))
 
 (defn source-edge-endpoint-kind [relation side]
   (if (= relation (source-edge-motivates))
@@ -440,7 +601,16 @@
     (if (= (source-result-status nodes-result) 0)
       nodes-result
       (let [nodes (source-result-value nodes-result)
-        edges-result (source-collect-edges program nodes)]
-        (if (= (source-result-status edges-result) 0)
-          edges-result
-          (source-result 1 (source-graph nodes (source-result-value edges-result))))))))
+        reviews-result (source-collect-reviews program)]
+        (if (= (source-result-status reviews-result) 0)
+          reviews-result
+          (let [reviews (source-result-value reviews-result)
+            edges-result (source-collect-edges program nodes)]
+            (if (= (source-result-status edges-result) 0)
+              edges-result
+              (source-result
+                1
+                (source-graph-with-reviews
+                  nodes
+                  (source-result-value edges-result)
+                  reviews)))))))))

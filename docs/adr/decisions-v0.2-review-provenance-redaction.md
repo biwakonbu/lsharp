@@ -2,7 +2,7 @@
 
 - Status: Accepted (verified partial slice)
 - Date: 2026-07-27
-- Scope: `lsharp-types` version 1 manifest model/input/output
+- Scope: `lsharp-types` version 1 manifest model/input/output と selfhost source producer
 - Related: `EC-M2-02` / `EC-M2-03`、`docs/adr/decisions-v0.2-source-review-invalidation-edges.md`
 
 ## Context
@@ -46,12 +46,18 @@ identity なのか、認証済み record なのかを区別できなかった。
   付きで fail-closed に拒否することを確認した。`cargo test -p lsharp-driver --test
   validate_source_review_edges -- --nocapture`（2 passed）は `validate --source --emit-manifest`
   の review registry output と `evaluates` edge の同一 manifest projection を確認する。
+- Selfhost producer boundary: `cargo test -p lsharp-wasm --test e2e selfhost_source_adapter_ -- --nocapture`
+  （17 passed）で、selfhost parser の `:review` triple payload（kind 16）を node/edge と分離した
+  opaque registry へ投影し、nested declaration の走査、duplicate ID、空白だけの provenance digest、
+  未知 visibility の fail-closed と directive span を確認した。既存の evidence registry（17 passed）と
+  parser metadata forms（28 passed）も回帰していない。これは Rust-host actual Wasm の verified slice
+  であり、native stage0 の producer/runtime parity はまだ実行していない。
 
 ## Boundary
 
-これは Rust canonical manifest、公開 CLI、Rust MCP の schema／inline artifact 入出力における
-opaque review registry／privacy field boundary と Rust source `:review` producer の verified slice
-である。selfhost/native parity、provider/署名による provenance authentication、暗号学的 digest format、
-review lifecycle/stale propagation、selfhost/native MCP、Mac Apple Silicon / Linux x86_64
+これは Rust canonical manifest、公開 CLI、Rust MCP の schema／inline artifact 入出力と、selfhost
+source `:review` producer の Rust-host actual Wasm における opaque review registry／privacy field
+boundary の verified slice である。native stage0 parity、provider/署名による provenance authentication、
+暗号学的 digest format、review lifecycle/stale propagation、selfhost/native MCP、Mac Apple Silicon / Linux x86_64
 artifact/runtime parity、EC-M2-02/03 aggregate completion は未完了である。
 未接続境界は TODO の `[~]` として維持する。
