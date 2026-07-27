@@ -30,12 +30,15 @@
 - [~] `EC-M2-02` evidence graph — required provenance を持つ evidence record、
   `supports` / `contradicts` の registry closure、source の `shrinks` / `coverage`、
   `evaluates` / `invalidates` の Rust source typed-edge projection、Rust CLI の source→report/manifest
-  projection、canonical manifest projection、optional review provenance registry と
+  projection、canonical manifest projection、optional review provenance registry の Rust CLI
+  input/output roundtrip と未登録 review edge の fail-closed 検査、
   `public` / `redacted` privacy boundary は verified。実行 trace と generator policy、
   review provenance authentication、review/evaluates/invalidates lifecycle、外部 provenance と
   selfhost/native parity を閉じる。
 - [~] `EC-M2-03` `lsharp validate` — version 1 manifest parser、source adapter、
   `--emit-manifest` の atomic/durable file boundary、deterministic text/JSON report、
+  optional `reviews` registry の Rust CLI roundtrip と未登録 review edge の non-zero/
+  no-output contract、
   `pass=0` / `fail=1` / `unknown=2` の Rust CLI は verified。selfhost `App.Cli` と
   `EmbeddedCli` の source/report/pass-fail-unknown/exit と未移行 manifest filesystem の
   external-boundary slice は actual Wasm で verified。EC-M3-01 の Rust canonical source/

@@ -33,11 +33,15 @@ identity なのか、認証済み record なのかを区別できなかった。
 - GREEN: `cargo test -p lsharp-types --test review_provenance -- --nocapture`（4 passed）。
 - Regression: `cargo test -p lsharp-types --test validation_input -- --nocapture`（16 passed）、
   `validation_output`（5 passed）、`validation_schema`（2 passed）、`intent_validation`（6 passed）。
+- CLI boundary: `cargo test -p lsharp-driver --test validate_review_registry -- --nocapture`
+  （2 passed）で、`lsharp validate --format json --emit-manifest` の redacted registry
+  roundtrip（private field を投影しない）と、未登録 review edge の non-zero/no-output を確認した。
 
 ## Boundary
 
-これは Rust canonical manifest の opaque review registry と privacy field boundary の verified
-slice である。source `:review` producer、selfhost/native parity、provider/署名による provenance
-authentication、暗号学的 digest format、review lifecycle/stale propagation、MCP、Mac Apple Silicon /
-Linux x86_64 artifact/runtime parity、EC-M2-02/03 aggregate completion は未完了である。
+これは Rust canonical manifest と公開 CLI 入出力の opaque review registry／privacy field boundary
+の verified slice である。source `:review` producer、selfhost/native parity、provider/署名による
+provenance authentication、暗号学的 digest format、review lifecycle/stale propagation、MCP、Mac
+Apple Silicon / Linux x86_64 artifact/runtime parity、EC-M2-02/03 aggregate completion は未完了で
+ある。
 未接続境界は TODO の `[~]` として維持する。

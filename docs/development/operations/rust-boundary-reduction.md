@@ -644,6 +644,19 @@ provider/署名による provenance authentication、digest format、source `:re
 selfhost/native parity、review lifecycle/stale propagation、MCP、Mac Apple Silicon / Linux x86_64
 current-source artifact/runtime parity、EC-M2-02/03 aggregate は未完了である。
 
+### EC-M2-03 Rust CLI manifest review registry projection (2026-07-27)
+
+`lsharp validate <manifest> --format json --emit-manifest <output>` の公開 Rust CLI 入出力で、
+optional `reviews` registry の `namespace` / `key` / `provenance_digest` / `visibility` を
+登録順のまま roundtrip し、author/email/body のような private field を出力しない契約を確認した。
+`invalidates.subject(kind=review)` が registry にない場合は non-zero を返し、manifest output を
+生成しない fail-closed boundary も同じ CLI fixture で固定した。
+
+Evidence: `cargo test -p lsharp-driver --test validate_review_registry -- --nocapture`（2 passed）。
+これは Rust host の manifest input/output boundary の verified slice であり、selfhost/native stage0、
+provider/署名 authentication、review lifecycle、MCP、Mac Apple Silicon / Linux x86_64
+current-source artifact/runtime parity、EC-M2-02/03 aggregate は未完了である。
+
 ### EC-M2-03 selfhost `validate --source` initial CLI slice (2026-07-25)
 
 `selfhost/src/App/Cli.ls` に `validate` command、`--source <file> --format json` option、top-level
