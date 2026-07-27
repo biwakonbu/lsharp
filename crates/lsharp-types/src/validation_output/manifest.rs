@@ -2,7 +2,7 @@
 
 use crate::evidence::{
     Edge, Evidence, EvidenceMethod, EvidenceOutcome, EvidenceSubject, Independence,
-    InvalidationSubject, ReviewSubject,
+    InvalidationSubject, ReviewRecord, ReviewSubject,
 };
 use crate::intent::{IntentNode, StableId};
 use crate::validation::IntentGraph;
@@ -24,6 +24,8 @@ struct ManifestWire<'a> {
     schema_version: u32,
     nodes: Vec<NodeWire<'a>>,
     evidence: Vec<EvidenceWire<'a>>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    reviews: Vec<ReviewWire<'a>>,
     edges: Vec<EdgeWire<'a>>,
 }
 
@@ -36,6 +38,11 @@ impl<'a> ManifestWire<'a> {
                 .evidence()
                 .iter()
                 .map(EvidenceWire::from_evidence)
+                .collect(),
+            reviews: graph
+                .reviews()
+                .iter()
+                .map(ReviewWire::from_review)
                 .collect(),
             edges: graph.edges().iter().map(EdgeWire::from_edge).collect(),
         }
@@ -116,6 +123,26 @@ struct EvidenceWire<'a> {
     execution: ExecutionWire<'a>,
     provenance: ProvenanceWire<'a>,
     independence: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+struct ReviewWire<'a> {
+    namespace: &'a str,
+    key: &'a str,
+    provenance_digest: &'a str,
+    visibility: &'static str,
+}
+
+impl<'a> ReviewWire<'a> {
+    fn from_review(review: &'a ReviewRecord) -> Self {
+        let id = review.id();
+        Self {
+            namespace: id.namespace(),
+            key: id.key(),
+            provenance_digest: review.provenance_digest(),
+            visibility: review.visibility().as_str(),
+        }
+    }
 }
 
 impl<'a> EvidenceWire<'a> {

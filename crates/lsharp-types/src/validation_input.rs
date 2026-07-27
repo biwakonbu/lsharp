@@ -7,7 +7,7 @@
 
 use crate::evidence::{
     Edge, Evidence, EvidenceSubject, ExecutionContext, ExecutionIdentity, InvalidationSubject,
-    Provenance, ReviewSubject, SamplingPlan,
+    Provenance, ReviewRecord, ReviewSubject, SamplingPlan,
 };
 use crate::intent::{
     Assumption, AssumptionId, Claim, ClaimId, ContractId, EvidenceId, Intent, IntentId, IntentNode,
@@ -20,8 +20,8 @@ mod manifest;
 mod references;
 
 use manifest::{
-    EdgeInput, EvidenceInput, IdInput, Manifest, NodeInput, NodeKindInput, SpanInput, SubjectInput,
-    SubjectKindInput, SUPPORTED_SCHEMA_VERSION,
+    EdgeInput, EvidenceInput, IdInput, Manifest, NodeInput, NodeKindInput, ReviewInput,
+    SUPPORTED_SCHEMA_VERSION, SpanInput, SubjectInput, SubjectKindInput,
 };
 use references::{validate_edge_references, validate_evidence_subject};
 
@@ -57,6 +57,9 @@ pub fn parse_intent_graph_json(source: &str) -> Result<IntentGraph, ValidationIn
     for node in document.nodes {
         graph.add_node(build_node(node)?)?;
     }
+    for review in document.reviews {
+        graph.add_review(build_review(review)?)?;
+    }
     for evidence in document.evidence {
         let evidence = build_evidence(evidence)?;
         validate_evidence_subject(&graph, evidence.subject())?;
@@ -69,6 +72,14 @@ pub fn parse_intent_graph_json(source: &str) -> Result<IntentGraph, ValidationIn
     }
 
     Ok(graph)
+}
+
+fn build_review(input: ReviewInput) -> Result<ReviewRecord, ValidationInputError> {
+    Ok(ReviewRecord::new(
+        ReviewId::new(input.namespace, input.key)?,
+        input.provenance_digest,
+        input.visibility.into(),
+    ))
 }
 
 fn build_node(input: NodeInput) -> Result<IntentNode, ValidationInputError> {

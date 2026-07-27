@@ -8,6 +8,7 @@
   "properties": {
     "schema_version": {"const": 1},
     "nodes": {"type": "array", "items": {"$ref": "#/$defs/node"}},
+    "reviews": {"type": "array", "items": {"$ref": "#/$defs/review"}},
     "evidence": {"type": "array", "items": {"$ref": "#/$defs/evidence"}},
     "edges": {
       "type": "array",
@@ -115,6 +116,17 @@
             "end": {"type": "integer", "minimum": 0}
           }
         }
+      }
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["namespace", "key", "provenance_digest", "visibility"],
+      "properties": {
+        "namespace": {"type": "string", "pattern": "^[A-Za-z0-9_.-]+$"},
+        "key": {"type": "string", "pattern": "^[A-Za-z0-9_.-]+$"},
+        "provenance_digest": {"type": "string", "minLength": 1},
+        "visibility": {"enum": ["public", "redacted"]}
       }
     },
     "evidence": {

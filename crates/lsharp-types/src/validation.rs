@@ -4,7 +4,9 @@
 //! graph の observable facts を report へ写像する。`Unknown` は欠落を成功扱いにせず、
 //! `Fail` は contradiction が観測された場合に限定する。
 
-use crate::evidence::{Edge, Evidence, EvidenceGraph, EvidenceMethod, EvidenceOutcome, GraphError};
+use crate::evidence::{
+    Edge, Evidence, EvidenceGraph, EvidenceMethod, EvidenceOutcome, GraphError, ReviewRecord,
+};
 use crate::intent::{ClaimId, IntentId, IntentNode, StableId};
 use serde::Serialize;
 
@@ -170,6 +172,7 @@ impl TraceGap {
 pub struct IntentGraph {
     nodes: Vec<IntentNode>,
     evidence: EvidenceGraph,
+    reviews: Vec<ReviewRecord>,
 }
 
 impl IntentGraph {
@@ -191,6 +194,24 @@ impl IntentGraph {
         self.evidence.add_evidence(evidence)
     }
 
+    /// 明示された review registry record を graph へ追加する。
+    pub fn add_review(&mut self, review: ReviewRecord) -> Result<(), GraphError> {
+        review
+            .validate_required_fields()
+            .map_err(|source| GraphError::InvalidReview { source })?;
+        if self
+            .reviews
+            .iter()
+            .any(|existing| existing.id() == review.id())
+        {
+            return Err(GraphError::DuplicateReview {
+                id: review.id().clone(),
+            });
+        }
+        self.reviews.push(review);
+        Ok(())
+    }
+
     pub fn add_edge(&mut self, edge: Edge) -> Result<(), GraphError> {
         self.validate_edge_node_endpoints(&edge)?;
         self.evidence.add_edge(edge)
@@ -206,6 +227,10 @@ impl IntentGraph {
 
     pub fn edges(&self) -> &[Edge] {
         self.evidence.edges()
+    }
+
+    pub fn reviews(&self) -> &[ReviewRecord] {
+        &self.reviews
     }
 
     pub fn validate(&self) -> ValidationReport {
@@ -227,18 +252,36 @@ impl IntentGraph {
             | Edge::Contradicts { claim, .. } => {
                 self.require_node(claim.stable_id())?;
             }
-            Edge::Evaluates { subject, .. } => match subject {
-                crate::evidence::ReviewSubject::Intent(intent) => {
-                    self.require_node(intent.stable_id())?;
+            Edge::Evaluates { review, subject } => {
+                self.require_review_if_registry_is_explicit(review)?;
+                match subject {
+                    crate::evidence::ReviewSubject::Intent(intent) => {
+                        self.require_node(intent.stable_id())?;
+                    }
+                    crate::evidence::ReviewSubject::Claim(claim) => {
+                        self.require_node(claim.stable_id())?;
+                    }
+                    crate::evidence::ReviewSubject::Evidence(_) => {}
                 }
-                crate::evidence::ReviewSubject::Claim(claim) => {
-                    self.require_node(claim.stable_id())?;
+            }
+            Edge::Invalidates { subject, .. } => {
+                if let crate::evidence::InvalidationSubject::Review(review) = subject {
+                    self.require_review_if_registry_is_explicit(review)?;
                 }
-                crate::evidence::ReviewSubject::Evidence(_) => {}
-            },
-            Edge::Invalidates { .. } => {}
+            }
         }
         Ok(())
+    }
+
+    fn require_review_if_registry_is_explicit(
+        &self,
+        id: &crate::intent::ReviewId,
+    ) -> Result<(), GraphError> {
+        if self.reviews.is_empty() || self.reviews.iter().any(|review| review.id() == id) {
+            Ok(())
+        } else {
+            Err(GraphError::MissingReview { id: id.clone() })
+        }
     }
 
     fn require_node(&self, id: &StableId) -> Result<(), GraphError> {

@@ -236,6 +236,67 @@ pub struct Provenance {
     timestamp: String,
 }
 
+/// review identity の公開範囲。
+///
+/// review の本文や author/contact は graph manifest に保持せず、外部 registry の
+/// provenance digest とこの redaction policy だけを共有する。`Redacted` は consumer が
+/// reviewer の個人情報を復元できない公開境界を意味する。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReviewVisibility {
+    Public,
+    Redacted,
+}
+
+impl ReviewVisibility {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Public => "public",
+            Self::Redacted => "redacted",
+        }
+    }
+}
+
+/// 外部 review の opaque registry record。
+///
+/// `ReviewId` は edge の endpoint として既存の source compatibility を保ち、registry が
+/// 明示された manifest だけが review provenance の closure を要求する。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReviewRecord {
+    id: ReviewId,
+    provenance_digest: String,
+    visibility: ReviewVisibility,
+}
+
+impl ReviewRecord {
+    pub fn new(
+        id: ReviewId,
+        provenance_digest: impl Into<String>,
+        visibility: ReviewVisibility,
+    ) -> Self {
+        Self {
+            id,
+            provenance_digest: provenance_digest.into(),
+            visibility,
+        }
+    }
+
+    pub fn id(&self) -> &ReviewId {
+        &self.id
+    }
+
+    pub fn provenance_digest(&self) -> &str {
+        &self.provenance_digest
+    }
+
+    pub fn visibility(&self) -> ReviewVisibility {
+        self.visibility
+    }
+
+    pub fn validate_required_fields(&self) -> Result<(), EvidenceValidationError> {
+        validate_required_field("review_provenance_digest", &self.provenance_digest)
+    }
+}
+
 impl Provenance {
     pub fn new(
         producer: impl Into<String>,
@@ -415,6 +476,15 @@ pub enum GraphError {
     DuplicateEvidence { id: EvidenceId },
     #[error("edge が参照する evidence ID が graph にありません: {id:?}")]
     MissingEvidence { id: EvidenceId },
+    #[error("review の required field が不正です: {source}")]
+    InvalidReview {
+        #[source]
+        source: EvidenceValidationError,
+    },
+    #[error("review ID が重複しています: {id:?}")]
+    DuplicateReview { id: ReviewId },
+    #[error("edge が参照する review ID が registry にありません: {id:?}")]
+    MissingReview { id: ReviewId },
 }
 
 /// evidence と ordered edge を保持する最小 graph。

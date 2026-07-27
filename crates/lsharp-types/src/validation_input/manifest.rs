@@ -13,6 +13,8 @@ pub(super) const SUPPORTED_SCHEMA_VERSION: u32 = 1;
 pub(super) struct Manifest {
     pub(super) schema_version: u32,
     pub(super) nodes: Vec<NodeInput>,
+    #[serde(default)]
+    pub(super) reviews: Vec<ReviewInput>,
     pub(super) evidence: Vec<EvidenceInput>,
     pub(super) edges: Vec<EdgeInput>,
 }
@@ -77,6 +79,13 @@ pub(super) enum IndependenceInput {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "kebab-case")]
+pub(super) enum ReviewVisibilityInput {
+    Public,
+    Redacted,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub(super) enum SubjectKindInput {
     Intent,
     Claim,
@@ -98,6 +107,15 @@ pub(super) struct SubjectInput {
     pub(super) kind: SubjectKindInput,
     pub(super) namespace: String,
     pub(super) key: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct ReviewInput {
+    pub(super) namespace: String,
+    pub(super) key: String,
+    pub(super) provenance_digest: String,
+    pub(super) visibility: ReviewVisibilityInput,
 }
 
 #[derive(Debug, Deserialize)]
@@ -221,6 +239,15 @@ impl From<IndependenceInput> for crate::evidence::Independence {
             IndependenceInput::SameAuthor => Self::SameAuthor,
             IndependenceInput::IndependentReview => Self::IndependentReview,
             IndependenceInput::ExternalObservation => Self::ExternalObservation,
+        }
+    }
+}
+
+impl From<ReviewVisibilityInput> for crate::evidence::ReviewVisibility {
+    fn from(value: ReviewVisibilityInput) -> Self {
+        match value {
+            ReviewVisibilityInput::Public => Self::Public,
+            ReviewVisibilityInput::Redacted => Self::Redacted,
         }
     }
 }

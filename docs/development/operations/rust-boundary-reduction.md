@@ -629,6 +629,21 @@ selfhost/native stage0、durable atomic write の全条件、review provenance/p
 Mac Apple Silicon / Linux x86_64 current-source artifact/runtime parity、EC-M2-02/03 aggregate は
 未完了である。
 
+### EC-M2-02 review provenance registry and redaction boundary (2026-07-27)
+
+version 1 manifest に optional な `reviews` registry を追加し、review ID、opaque
+`provenance_digest`、`public` / `redacted` の visibility だけを保持するようにした。registry が
+明示された manifest では `evaluates` / `invalidates` の review endpoint を登録済み ID に限定し、
+未登録 review は `MissingReview` で fail-closed に拒否する。author、email、本文、URL、token は
+schema に存在せず、既存の registry を持たない source graph の external `ReviewId` 互換性は維持する。
+
+Evidence: `cargo test -p lsharp-types --test review_provenance -- --nocapture`（4 passed）、
+`validation_input` 16件、`validation_output` 5件、`validation_schema` 2件、
+`intent_validation` 6件。これは Rust canonical manifest の privacy/registry verified slice であり、
+provider/署名による provenance authentication、digest format、source `:review` producer、
+selfhost/native parity、review lifecycle/stale propagation、MCP、Mac Apple Silicon / Linux x86_64
+current-source artifact/runtime parity、EC-M2-02/03 aggregate は未完了である。
+
 ### EC-M2-03 selfhost `validate --source` initial CLI slice (2026-07-25)
 
 `selfhost/src/App/Cli.ls` に `validate` command、`--source <file> --format json` option、top-level
