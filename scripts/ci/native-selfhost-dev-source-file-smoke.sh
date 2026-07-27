@@ -357,6 +357,11 @@ if report.get("trace_gaps") != [] or report.get("contradicting_observations") !=
     raise SystemExit(f"validation trace/contradiction metrics are invalid: {report!r}")
 PY
 
+run_expected_failure validation-text-unknown 0 validate \
+  --source "$VALIDATION_SOURCE" \
+  --format text
+require_exact_output validation-text-unknown $'status: unknown\nopen-questions: 1\nindependent-reviews: 0\ncontradicting-observations: 0\nstale-reviews: 0\nstale-evidence: 0\n'
+
 run_expected_validation_error validation-duplicate-node \
   validate \
   --source "$VALIDATION_INVALID_SOURCE" \

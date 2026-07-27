@@ -3,11 +3,19 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SMOKE="$ROOT/scripts/ci/native-linux-x86-native-stage0-source-file-smoke.sh"
+SOURCE_SMOKE="$ROOT/scripts/ci/native-selfhost-dev-source-file-smoke.sh"
 SOURCE_COMMIT="$(git rev-parse --verify HEAD)"
 
 fail() {
   echo "FAIL: $*" >&2
   exit 1
+}
+
+assert_script_contains() {
+  local path="$1"
+  local expected="$2"
+  grep -F -- "$expected" "$path" >/dev/null \
+    || fail "$path does not contain: $expected"
 }
 
 expect_reject() {
@@ -25,6 +33,21 @@ expect_reject() {
 }
 
 [[ -x "$SMOKE" ]] || fail "Linux native stage0 source-file smoke is missing: $SMOKE"
+[[ -x "$SOURCE_SMOKE" ]] || fail "native selfhost source-file smoke is missing: $SOURCE_SMOKE"
+
+for required in \
+  'run_expected_failure validation-text-unknown' \
+  '--source "$VALIDATION_SOURCE"' \
+  '--format text' \
+  'require_exact_output validation-text-unknown' \
+  'status: unknown' \
+  'open-questions: 1' \
+  'independent-reviews: 0' \
+  'contradicting-observations: 0' \
+  'stale-reviews: 0' \
+  'stale-evidence: 0'; do
+  assert_script_contains "$SOURCE_SMOKE" "$required"
+done
 
 TMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/lsharp-linux-stage0-source-smoke-test.XXXXXX")"
 trap 'rm -rf "$TMP_ROOT"' EXIT
