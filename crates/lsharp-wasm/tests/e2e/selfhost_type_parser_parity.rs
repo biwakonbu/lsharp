@@ -1372,3 +1372,23 @@ fn test_e2e_selfhost_parser_source_metadata_pair_uses_flat_root_bindings() {
         "source evidence integer helper は advance を flat binding で保持するべき"
     );
 }
+
+#[test]
+fn test_e2e_selfhost_parser_do_expr_collection_uses_bounded_chunks() {
+    let source = selfhost_module("Parser.ls");
+    let rooted_body = source
+        .split("(defn parse-do-exprs-rooted-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn parse-do-exprs-v3").next())
+        .expect("Parser.ls に do expression rooted loop が存在すること");
+
+    assert!(
+        source.contains("(defn parse-do-expr-step-64-loop-bounded")
+            && source.contains("(defn parse-do-expr-step-64")
+            && rooted_body.contains("parse-do-expr-step-64")
+            && !rooted_body.contains(
+                "(parse-do-exprs-rooted-v3 spans pos-ref src next-result (+ count 1))"
+            ),
+        "do expression parser は Linux x86 native stack の深い再帰を避けるため bounded chunk へ委譲するべき"
+    );
+}

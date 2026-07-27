@@ -2389,29 +2389,68 @@
         (root_pop)
         parsed))))
 
-;; do 内の式を収集
-(defn parse-do-exprs-rooted-v3 [spans pos-ref src result count]
+;; do 内の式を一つ処理する。
+(defn parse-do-expr-step-v3 [spans pos-ref src result]
   (if (== (p-current spans pos-ref) 1) ;; ) で終了
     (do
       (p-advance pos-ref) ;; ) を消費
-      ;; count を更新 (index 1)
-      result)
+      (make-parse-loop-state 1 result))
     (if (== (p-current spans pos-ref) 99)
-      result
+      (make-parse-loop-state 1 result)
       (do
-        (root_push result)
-        (let [expr (parse-expr-v3 spans pos-ref src)]
+        (let [result-slot (root_push result)
+          expr (parse-expr-v3 spans pos-ref src)]
           (do
             (root_push expr)
-            (let [next-result (vector-push result expr)]
+            (let [next-result (vector-push result expr)
+              state (do
+                (root_set result-slot next-result)
+                (make-parse-loop-state 0 next-result))]
               (do
-                (root_push next-result)
-                (let [parsed (parse-do-exprs-rooted-v3 spans pos-ref src next-result (+ count 1))]
-                  (do
-                    (root_pop)
-                    (root_pop)
-                    (root_pop)
-                    parsed))))))))))
+                (root_pop)
+                (root_pop)
+                state))))))))
+
+(defn parse-do-expr-step-64-loop-bounded [spans pos-ref src result remaining]
+  (do
+    (root_push result)
+    (let [step (parse-do-expr-step-v3 spans pos-ref src result)
+      done (vector-get step 0)
+      next-result (vector-get step 1)]
+      (do
+        (root_push step)
+        (root_push next-result)
+        (let [parsed
+          (if (= done 1)
+            step
+            (if (<= remaining 1)
+              step
+              (parse-do-expr-step-64-loop-bounded spans pos-ref src next-result (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn parse-do-expr-step-64 [spans pos-ref src result]
+  (parse-do-expr-step-64-loop-bounded spans pos-ref src result 64))
+
+;; do 内の式を 64 個ずつ収集し、chunk 境界で handoff する。
+(defn parse-do-exprs-rooted-v3 [spans pos-ref src result count]
+  (let [step (parse-do-expr-step-64 spans pos-ref src result)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 1)
+      (do
+        (root_push step)
+        (let [next-result (vector-get step 1)]
+          (do
+            (root_push next-result)
+            (let [parsed (parse-do-exprs-rooted-v3 spans pos-ref src next-result count)]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                parsed)))))))
 
 (defn parse-do-exprs-v3 [spans pos-ref src result count]
   (do
