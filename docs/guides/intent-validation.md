@@ -176,4 +176,4 @@ canonical manifest を inline で返します（filesystem write は行いませ
 emission の native stage0 parity、native MCP、Mac/Linux の artifact/runtime evidence は後続の
 M2-03 task として残ります。`--format text` の deterministic report（trace gap、status、件数、
 stale facts）と JSON mode の exit parity は両 selfhost surface で Rust-host actual Wasm まで
-確認済みです。
+確認済みです。独立 review で trace が閉じた Cli source は `status: pass` / exit `0` を返します。

@@ -14696,6 +14696,70 @@ stale-evidence: 0",
     assert!(!output.stdout.contains("verified"));
 }
 
+/// EC-M2-03: selfhost Cli は trace が閉じた独立 review graph を pass にする。
+#[test]
+fn test_e2e_selfhost_cli_validate_source_text_reports_pass() {
+    let dir = std::env::temp_dir().join(format!(
+        "lsharp_test_cli_validate_source_text_pass_{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("input.ls"),
+        r#"
+(defn verify []
+  :intent "intent:checkout/safe-cancel" "Users can cancel an order"
+  :claim "claim:checkout/rejects" "Shipped orders are rejected"
+  :motivates "intent:checkout/safe-cancel" "claim:checkout/rejects"
+  :tested-by "claim:checkout/rejects" "contract:checkout/review"
+  :evidence "evidence:checkout/review"
+    :subject "claim:checkout/rejects"
+    :method "review"
+    :outcome "pass"
+    :runner "reviewer"
+    :target "aarch64-apple-darwin"
+    :source-commit "deadbeef"
+    :artifact-digest "sha256:abc"
+    :cases 1
+    :seed 42
+    :generator "checkout-review"
+    :producer "lsharp-test"
+    :tool-version "0.2"
+    :timestamp "2026-07-25T00:00:00Z"
+    :independence "independent-review"
+  :supports "evidence:checkout/review" "claim:checkout/rejects"
+  true)
+"#,
+    )
+    .unwrap();
+
+    let wasm = selfhost_cli_validation_wasm();
+    let output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_args_and_stdin_capture(
+        wasm,
+        Some(&dir),
+        &["validate", "--source", "input.ls", "--format", "text"],
+        "",
+    )
+    .unwrap();
+    let _ = std::fs::remove_dir_all(&dir);
+
+    assert_eq!(
+        output.exit_code, 0,
+        "complete graph with independent review は pass exit 0 であるべき"
+    );
+    assert_eq!(
+        output.stdout.trim_end(),
+        "status: pass\n\
+open-questions: 0\n\
+independent-reviews: 1\n\
+contradicting-observations: 0\n\
+stale-reviews: 0\n\
+stale-evidence: 0",
+        "selfhost Cli の pass report は Rust ValidationReport::to_text と一致するべき"
+    );
+    assert!(!output.stdout.contains("verified"));
+}
+
 /// EC-M2-02: selfhost validate は registered contradictory evidence を fail report へ投影する。
 #[test]
 fn test_e2e_selfhost_cli_validate_source_json_reports_contradicting_evidence() {

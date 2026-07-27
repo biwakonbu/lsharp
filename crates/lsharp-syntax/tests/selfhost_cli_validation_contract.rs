@@ -36,6 +36,10 @@ fn selfhost_cli_validation_surface_is_registered() {
         "selfhost source validation は claim の未接続を明示するべき"
     );
     assert!(
+        source.contains("(defn validation-source-status-code"),
+        "App.Cli は Rust validation model と同じ pass/fail/unknown 判定関数を持つべき"
+    );
+    assert!(
         source.contains("(defn parse-validate-cli-option"),
         "App.Cli は validate の source/json option 契約を検査するべき"
     );

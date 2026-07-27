@@ -276,9 +276,55 @@
     metrics2 (push-int-vector-local metrics1 (vector-length ids2))
     metrics3 (push-int-vector-local metrics2 (vector-get stale-metrics 0))]
     (push-int-vector-local metrics3 (vector-get stale-metrics 1))))
+(defn validation-intent-gap-count-loop [intents motives idx count]
+  (if (>= idx (vector-length intents))
+    count
+    (validation-intent-gap-count-loop
+      intents
+      motives
+      (+ idx 1)
+      (if (= (validation-edge-links-id? motives 0 (vector-get intents idx)) 1)
+        count
+        (+ count 1)))))
+(defn validation-claim-gap-count-loop [claims tested-by idx count]
+  (if (>= idx (vector-length claims))
+    count
+    (validation-claim-gap-count-loop
+      claims
+      tested-by
+      (+ idx 1)
+      (if (= (validation-edge-links-id? tested-by 0 (vector-get claims idx)) 1)
+        count
+        (+ count 1)))))
+(defn validation-trace-gap-count [state]
+  (let [intents (ref-get (vector-get state 0))
+    claims (ref-get (vector-get state 1))
+    motives (ref-get (vector-get state 2))
+    tested-by (ref-get (vector-get state 3))
+    intent-count (validation-intent-gap-count-loop intents motives 0 0)]
+    (validation-claim-gap-count-loop claims tested-by 0 intent-count)))
+(defn validation-source-status-code
+  [state independent-reviews contradicting-observations stale-reviews stale-evidence]
+  (if (> contradicting-observations 0)
+    1
+    (if (> stale-reviews 0)
+      2
+      (if (> stale-evidence 0)
+        2
+        (if (> (validation-trace-gap-count state) 0)
+          2
+          (if (> (ref-get (vector-get state 4)) 0)
+            2
+            (if (= independent-reviews 0) 2 0)))))))
 (defn validation-source-report-json [state independent-reviews contradicting-observations stale-reviews stale-evidence]
   (let [fields0 ""
-    status (if (> contradicting-observations 0) "fail" "unknown")
+    status-code (validation-source-status-code
+      state
+      independent-reviews
+      contradicting-observations
+      stale-reviews
+      stale-evidence)
+    status (if (= status-code 1) "fail" (if (= status-code 0) "pass" "unknown"))
     fields1 (docjson-append fields0 (docjson-string-field "status" status))
     fields2 (docjson-append fields1 (docjson-array-field "trace_gaps" (validation-trace-gaps-json state)))
     fields3 (docjson-append fields2 (docjson-int-field "open_questions" (ref-get (vector-get state 4))))
@@ -326,7 +372,13 @@
     (validation-claim-gaps-text-loop claims tested-by 0 intent-gaps)))
 (defn validation-source-report-text
   [state independent-reviews contradicting-observations stale-reviews stale-evidence]
-  (let [status (if (> contradicting-observations 0) "fail" "unknown")
+  (let [status-code (validation-source-status-code
+      state
+      independent-reviews
+      contradicting-observations
+      stale-reviews
+      stale-evidence)
+    status (if (= status-code 1) "fail" (if (= status-code 0) "pass" "unknown"))
     trace-gaps (validation-trace-gaps-text state)
     line0 (validation-report-text-line "status" status)
     with-gaps
@@ -399,9 +451,17 @@
           (do
             (print-string report)
             (print-string "\n")
-            (if (> contradicting-observations 0)
-              (exit-code-compile-error)
-              (exit-code-runtime-error))))))))
+            (let [status-code (validation-source-status-code
+                state
+                independent-reviews
+                contradicting-observations
+                stale-reviews
+                stale-evidence)]
+              (if (= status-code 1)
+                (exit-code-compile-error)
+                (if (= status-code 0)
+                  (exit-success)
+                  (exit-code-runtime-error)))))))))
 (defn run-validate [file-path opts]
   (if (file-exists? file-path)
     (run-validate-source (read-file file-path) opts)
