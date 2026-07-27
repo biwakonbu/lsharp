@@ -689,51 +689,55 @@
       open-flag
       env)))
 
-(defn typeinfer-qualify-import-source-loop
+(defn typeinfer-qualify-import-source-step-state [done next-idx next-module env]
+  (push-object-vector-local
+    (push-int-vector-local
+      (push-int-vector-local
+        (push-int-vector-local (vector-new 4) done)
+        next-idx)
+      next-module)
+    env))
+
+;; source qualification の一要素だけを処理し、次の cursor を state で返す。
+(defn typeinfer-qualify-import-source-step
   [program idx limit current-module target-module alias-hash only-hashes open-flag env record-env]
   (if (>= idx limit)
-    env
+    (typeinfer-qualify-import-source-step-state 1 idx current-module env)
     (let [decl (vector-get program idx)
       tag (vector-get decl 0)]
       (if (= tag (ast-module-decl))
-        (typeinfer-qualify-import-source-loop
-          program
+        (typeinfer-qualify-import-source-step-state
+          0
           (+ idx 1)
-          limit
           (vector-get decl 1)
-          target-module
-          alias-hash
-          only-hashes
-          open-flag
-          env
-          record-env)
+          env)
         (if (and
               (= tag (ast-type-decl))
               (= current-module target-module))
           (let [variants (typeinfer-adt-decl-variants decl)]
             (if (= variants 0)
-              (typeinfer-qualify-import-source-loop
-                program
-                (+ idx 1)
-                limit
-                current-module
-                target-module
-                alias-hash
-                only-hashes
-                open-flag
-                env
-                record-env)
-              (typeinfer-qualify-import-adt-variants-loop
-                variants
+              (typeinfer-qualify-import-source-step-state
                 0
-                (vector-length variants)
-                alias-hash
-                only-hashes
-                open-flag
-                env)))
+                (+ idx 1)
+                current-module
+                env)
+              (let [qualified-env
+                      (typeinfer-qualify-import-adt-variants-loop
+                        variants
+                        0
+                        (vector-length variants)
+                        alias-hash
+                        only-hashes
+                        open-flag
+                        env)]
+                (typeinfer-qualify-import-source-step-state
+                  1
+                  limit
+                  current-module
+                  qualified-env))))
           (if (and
-              (= tag (ast-recorddef))
-              (= current-module target-module))
+                (= tag (ast-recorddef))
+                (= current-module target-module))
             (let [registered-env
                     (typeinfer-register-record-def decl env record-env)
               constructor-env
@@ -756,57 +760,121 @@
                           only-hashes
                           open-flag
                           next-env)]
-                  (typeinfer-qualify-import-source-loop
-                    program
+                  (typeinfer-qualify-import-source-step-state
+                    0
                     (+ idx 1)
-                    limit
                     current-module
-                    target-module
-                    alias-hash
-                    only-hashes
-                    open-flag
-                    clean-env
-                    record-env))))
+                    clean-env))))
             (if (and
-              (= tag (ast-defn))
-              (and
-                (= current-module target-module)
-                (= (typeinfer-import-only-allows? only-hashes (vector-get decl 1)) 1)))
-          (let [name-hash (vector-get decl 1)
-            qualified-key (ast-qualified-name-hash alias-hash name-hash)
-            raw-scheme (type-env-lookup env name-hash)
-            scheme (if (= raw-scheme 0) (type-env-lookup env qualified-key) raw-scheme)]
-            (if (= scheme 0)
-              (typeinfer-qualify-import-source-loop
-                program
+                  (= tag (ast-defn))
+                  (and
+                    (= current-module target-module)
+                    (= (typeinfer-import-only-allows?
+                        only-hashes
+                        (vector-get decl 1))
+                      1)))
+              (let [name-hash (vector-get decl 1)
+                qualified-key (ast-qualified-name-hash alias-hash name-hash)
+                raw-scheme (type-env-lookup env name-hash)
+                scheme
+                  (if (= raw-scheme 0)
+                    (type-env-lookup env qualified-key)
+                    raw-scheme)]
+                (if (= scheme 0)
+                  (typeinfer-qualify-import-source-step-state
+                    0
+                    (+ idx 1)
+                    current-module
+                    env)
+                  (let [qualified-env (type-env-insert env qualified-key scheme)
+                    next-env
+                      (if (= open-flag 1)
+                        (type-env-insert qualified-env name-hash scheme)
+                        qualified-env)]
+                    (typeinfer-qualify-import-source-step-state
+                      0
+                      (+ idx 1)
+                      current-module
+                      next-env))))
+              (typeinfer-qualify-import-source-step-state
+                0
                 (+ idx 1)
-                limit
                 current-module
-                target-module
-                alias-hash
-                only-hashes
-                open-flag
-                env
-                record-env)
-              (let [qualified-env (type-env-insert env qualified-key scheme)
-                next-env
-                  (if (= open-flag 1)
-                    (type-env-insert qualified-env name-hash scheme)
-                    qualified-env)]
-                (typeinfer-qualify-import-source-loop
-                  program
-                  (+ idx 1)
-                  limit
-                  current-module
-                  target-module
-                  alias-hash
-                  only-hashes
-                  open-flag
-                  next-env
-                  record-env))))
-          (typeinfer-qualify-import-source-loop
+                env))))))))
+
+(defn typeinfer-qualify-import-source-loop-bounded
+  [program idx limit current-module target-module alias-hash only-hashes open-flag env record-env remaining]
+  (do
+    (root_push program)
+    (root_push only-hashes)
+    (root_push env)
+    (root_push record-env)
+    (let [step
+            (typeinfer-qualify-import-source-step
+              program
+              idx
+              limit
+              current-module
+              target-module
+              alias-hash
+              only-hashes
+              open-flag
+              env
+              record-env)
+      done (vector-get step 0)
+      next-idx (vector-get step 1)
+      next-module (vector-get step 2)
+      next-env (vector-get step 3)]
+      (do
+        (root_push step)
+        (root_push next-env)
+        (let [result
+                (if (= done 1)
+                  step
+                  (if (<= remaining 1)
+                    step
+                    (typeinfer-qualify-import-source-loop-bounded
+                      program
+                      next-idx
+                      limit
+                      next-module
+                      target-module
+                      alias-hash
+                      only-hashes
+                      open-flag
+                      next-env
+                      record-env
+                      (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            result))))))
+
+(defn typeinfer-qualify-import-source-loop-64
+  [program idx limit current-module target-module alias-hash only-hashes open-flag env record-env]
+  (typeinfer-qualify-import-source-loop-bounded
+    program
+    idx
+    limit
+    current-module
+    target-module
+    alias-hash
+    only-hashes
+    open-flag
+    env
+    record-env
+    64))
+
+(defn typeinfer-qualify-import-source-loop
+  [program idx limit current-module target-module alias-hash only-hashes open-flag env record-env]
+  (let [step
+          (typeinfer-qualify-import-source-loop-64
             program
-            (+ idx 1)
+            idx
             limit
             current-module
             target-module
@@ -814,12 +882,46 @@
             only-hashes
             open-flag
             env
-            record-env))))))))
+            record-env)
+    done (vector-get step 0)]
+    (if (= done 1)
+      (vector-get step 3)
+      (do
+        (root_push program)
+        (root_push only-hashes)
+        (root_push record-env)
+        (root_push step)
+        (let [result
+                (typeinfer-qualify-import-source-loop
+                  program
+                  (vector-get step 1)
+                  limit
+                  (vector-get step 2)
+                  target-module
+                  alias-hash
+                  only-hashes
+                  open-flag
+                  (vector-get step 3)
+                  record-env)]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            result))))))
 
-(defn typeinfer-qualify-imports-loop-with-open
+(defn typeinfer-qualify-imports-loop-with-open-step-state [done next-idx env]
+  (push-object-vector-local
+    (push-int-vector-local
+      (push-int-vector-local (vector-new 3) done)
+      next-idx)
+    env))
+
+;; import declaration の一要素だけを処理し、次の cursor を state で返す。
+(defn typeinfer-qualify-imports-loop-with-open-step
   [program idx len env allow-open record-env]
   (if (>= idx len)
-    env
+    (typeinfer-qualify-imports-loop-with-open-step-state 1 idx env)
     (let [decl (vector-get program idx)
       tag (vector-get decl 0)]
       (if (= tag (ast-import-decl))
@@ -838,20 +940,97 @@
               open-flag
               env
               record-env)]
-          (typeinfer-qualify-imports-loop-with-open
-            program
+          (typeinfer-qualify-imports-loop-with-open-step-state
+            0
             (+ idx 1)
-            len
-            qualified-env
-            allow-open
-            record-env))
-        (typeinfer-qualify-imports-loop-with-open
-          program
+            qualified-env))
+        (typeinfer-qualify-imports-loop-with-open-step-state
+          0
           (+ idx 1)
-          len
-          env
-          allow-open
-          record-env)))))
+          env)))))
+
+(defn typeinfer-qualify-imports-loop-with-open-bounded
+  [program idx len env allow-open record-env remaining]
+  (do
+    (root_push program)
+    (root_push env)
+    (root_push record-env)
+    (let [step
+            (typeinfer-qualify-imports-loop-with-open-step
+              program
+              idx
+              len
+              env
+              allow-open
+              record-env)
+      done (vector-get step 0)
+      next-idx (vector-get step 1)
+      next-env (vector-get step 2)]
+      (do
+        (root_push step)
+        (root_push next-env)
+        (let [result
+                (if (= done 1)
+                  step
+                  (if (<= remaining 1)
+                    step
+                    (typeinfer-qualify-imports-loop-with-open-bounded
+                      program
+                      next-idx
+                      len
+                      next-env
+                      allow-open
+                      record-env
+                      (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            result))))))
+
+(defn typeinfer-qualify-imports-loop-with-open-64
+  [program idx len env allow-open record-env]
+  (typeinfer-qualify-imports-loop-with-open-bounded
+    program
+    idx
+    len
+    env
+    allow-open
+    record-env
+    64))
+
+(defn typeinfer-qualify-imports-loop-with-open
+  [program idx len env allow-open record-env]
+  (let [step
+          (typeinfer-qualify-imports-loop-with-open-64
+            program
+            idx
+            len
+            env
+            allow-open
+            record-env)
+    done (vector-get step 0)]
+    (if (= done 1)
+      (vector-get step 2)
+      (do
+        (root_push program)
+        (root_push record-env)
+        (root_push step)
+        (let [result
+                (typeinfer-qualify-imports-loop-with-open
+                  program
+                  (vector-get step 1)
+                  len
+                  (vector-get step 2)
+                  allow-open
+                  record-env)]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            result))))))
 
 (defn typeinfer-predeclare-qualified-imports [program env record-env]
   (typeinfer-qualify-imports-loop-with-open

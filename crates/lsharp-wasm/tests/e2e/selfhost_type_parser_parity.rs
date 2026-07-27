@@ -1319,3 +1319,41 @@ fn test_e2e_selfhost_check_flatten_recursive_handoff_roots_live_values() {
         }
     }
 }
+
+/// qualified import の source scan は、program 全体を一つの native recursion にしない。
+#[test]
+fn test_e2e_selfhost_typeinfer_import_source_scan_uses_bounded_chunks() {
+    let source = selfhost_module("TypeInfer.ls");
+    assert!(
+        source.contains("(defn typeinfer-qualify-import-source-step"),
+        "TypeInfer.ls は source qualification の一要素 step を持つべき"
+    );
+    assert!(
+        source.contains("(defn typeinfer-qualify-import-source-loop-bounded"),
+        "TypeInfer.ls は source qualification の bounded loop を持つべき"
+    );
+    assert!(
+        source.contains("typeinfer-qualify-import-source-loop-bounded")
+            && source.contains(" 64))"),
+        "source qualification の公開 loop は bounded chunk size 64 を使うべき"
+    );
+}
+
+/// import declaration の scan も program 全体を一つの native recursion にしない。
+#[test]
+fn test_e2e_selfhost_typeinfer_import_decl_scan_uses_bounded_chunks() {
+    let source = selfhost_module("TypeInfer.ls");
+    assert!(
+        source.contains("(defn typeinfer-qualify-imports-loop-with-open-step"),
+        "TypeInfer.ls は import scan の一要素 step を持つべき"
+    );
+    assert!(
+        source.contains("(defn typeinfer-qualify-imports-loop-with-open-bounded"),
+        "TypeInfer.ls は import scan の bounded loop を持つべき"
+    );
+    assert!(
+        source.contains("typeinfer-qualify-imports-loop-with-open-64")
+            && source.contains(" 64))"),
+        "import scan の公開 loop は bounded chunk size 64 を使うべき"
+    );
+}
