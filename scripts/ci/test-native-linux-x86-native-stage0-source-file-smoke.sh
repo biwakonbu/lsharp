@@ -97,7 +97,11 @@ for required in \
   'VALIDATION_DUPLICATE_REVIEW_SOURCE' \
   'VALIDATION_DUPLICATE_REVIEW_MANIFEST' \
   'run_expected_validation_error validation-duplicate-review' \
-  'source validation error:7'; do
+  'source validation error:7' \
+  'VALIDATION_INVALID_REVIEW_SOURCE' \
+  'VALIDATION_INVALID_REVIEW_MANIFEST' \
+  'run_expected_validation_error validation-invalid-review' \
+  'source validation error:8'; do
   assert_script_contains "$SOURCE_SMOKE" "$required"
 done
 

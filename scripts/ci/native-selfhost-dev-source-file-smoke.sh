@@ -105,6 +105,7 @@ VALIDATION_KIND_MISMATCH_MANIFEST="$WORK_DIR/ec-m3-kind-mismatch-manifest.json"
 VALIDATION_EVIDENCE_REGISTRY_MANIFEST="$WORK_DIR/ec-m3-evidence-registry-manifest.json"
 VALIDATION_MISSING_REVIEW_MANIFEST="$WORK_DIR/ec-m3-missing-review-manifest.json"
 VALIDATION_DUPLICATE_REVIEW_MANIFEST="$WORK_DIR/ec-m3-duplicate-review-manifest.json"
+VALIDATION_INVALID_REVIEW_MANIFEST="$WORK_DIR/ec-m3-invalid-review-manifest.json"
 VALIDATION_WRITE_FAILURE_MANIFEST="$WORK_DIR/missing-parent/intent-graph.json"
 VALIDATION_PASS_SOURCE="$WORK_DIR/ec-m3-complete-source.ls"
 VALIDATION_FAIL_SOURCE="$WORK_DIR/ec-m3-contradiction-source.ls"
@@ -116,6 +117,7 @@ VALIDATION_KIND_MISMATCH_SOURCE="$WORK_DIR/ec-m3-kind-mismatch-source.ls"
 VALIDATION_EVIDENCE_REGISTRY_SOURCE="$WORK_DIR/ec-m3-evidence-registry-source.ls"
 VALIDATION_MISSING_REVIEW_SOURCE="$WORK_DIR/ec-m3-missing-review-source.ls"
 VALIDATION_DUPLICATE_REVIEW_SOURCE="$WORK_DIR/ec-m3-duplicate-review-source.ls"
+VALIDATION_INVALID_REVIEW_SOURCE="$WORK_DIR/ec-m3-invalid-review-source.ls"
 
 printf '%s\n' '(defn main [] 42)' >"$INPUT"
 cat >"$METADATA" <<'LSHARP'
@@ -251,6 +253,12 @@ cat >"$VALIDATION_DUPLICATE_REVIEW_SOURCE" <<'LSHARP'
   :claim "claim:checkout/rejects" "The API rejects shipped orders"
   :review "review:checkout/duplicate" "sha256:review-one" "redacted"
   :review "review:checkout/duplicate" "sha256:review-two" "redacted"
+  true)
+LSHARP
+cat >"$VALIDATION_INVALID_REVIEW_SOURCE" <<'LSHARP'
+(defn invalid-review []
+  :claim "claim:checkout/rejects" "The API rejects shipped orders"
+  :review "review:checkout/invalid" "sha256:review-provenance" "private"
   true)
 LSHARP
 
@@ -693,6 +701,16 @@ grep -F "source validation error:7" "$WORK_DIR/validation-duplicate-review.stder
   || die "duplicate review validation must expose the duplicate-review error code"
 [[ ! -e "$VALIDATION_DUPLICATE_REVIEW_MANIFEST" ]] \
   || die "duplicate review validation must produce no report or manifest"
+
+run_expected_validation_error validation-invalid-review \
+  validate \
+  --source "$VALIDATION_INVALID_REVIEW_SOURCE" \
+  --format json \
+  --emit-manifest "$VALIDATION_INVALID_REVIEW_MANIFEST"
+grep -F "source validation error:8" "$WORK_DIR/validation-invalid-review.stderr" >/dev/null \
+  || die "invalid review validation must expose the invalid-review error code"
+[[ ! -e "$VALIDATION_INVALID_REVIEW_MANIFEST" ]] \
+  || die "invalid review validation must produce no report or manifest"
 
 run_expected_validation_error validation-orphan \
   validate \
