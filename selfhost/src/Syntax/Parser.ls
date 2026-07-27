@@ -2566,7 +2566,6 @@
               (do
                 (root_pop)
                 (root_pop)
-                (root_pop)
                 parsed))))))))
 
 (defn parse-do-exprs-v3 [spans pos-ref src result count]
@@ -2590,23 +2589,68 @@
         0))
     0))
 
-(defn parse-constructor-pattern-args-rooted-v3 [spans pos-ref src result count]
+(defn parse-constructor-pattern-args-step-v3 [spans pos-ref src result]
   (if (== (p-current spans pos-ref) 1) ;; ) で終了
-    (do (p-advance pos-ref) result)
     (do
-      (root_push result)
-      (let [pat (parse-pattern-v3 spans pos-ref src)]
-        (do
-          (root_push pat)
-          (let [next-result (vector-push result pat)]
-            (do
-              (root_push next-result)
-              (let [parsed (parse-constructor-pattern-args-rooted-v3 spans pos-ref src next-result (+ count 1))]
-                (do
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  parsed)))))))))
+      (p-advance pos-ref)
+      (make-parse-loop-state 1 result))
+    (if (== (p-current spans pos-ref) 99)
+      (make-parse-loop-state 1 result)
+      (do
+        (let [result-slot (root_push result)
+          pat (parse-pattern-v3 spans pos-ref src)]
+          (do
+            (root_push pat)
+            (let [next-result (vector-push result pat)
+              state (do
+                (root_set result-slot next-result)
+                (make-parse-loop-state 0 next-result))]
+              (do
+                (root_pop)
+                (root_pop)
+                state))))))))
+
+(defn parse-constructor-pattern-args-step-64-loop-bounded [spans pos-ref src result remaining]
+  (do
+    (root_push result)
+    (let [step (parse-constructor-pattern-args-step-v3 spans pos-ref src result)
+      done (vector-get step 0)
+      next-result (vector-get step 1)]
+      (do
+        (root_push step)
+        (root_push next-result)
+        (let [parsed
+          (if (= done 1)
+            step
+            (if (<= remaining 1)
+              step
+              (parse-constructor-pattern-args-step-64-loop-bounded
+                spans pos-ref src next-result (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn parse-constructor-pattern-args-step-64 [spans pos-ref src result]
+  (parse-constructor-pattern-args-step-64-loop-bounded spans pos-ref src result 64))
+
+(defn parse-constructor-pattern-args-rooted-v3 [spans pos-ref src result count]
+  (let [step (parse-constructor-pattern-args-step-64 spans pos-ref src result)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 1)
+      (do
+        (root_push step)
+        (let [next-result (vector-get step 1)]
+          (do
+            (root_push next-result)
+            (let [parsed
+              (parse-constructor-pattern-args-rooted-v3
+                spans pos-ref src next-result (+ count 1))]
+              (do
+                (root_pop)
+                (root_pop)
+                parsed))))))))
 
 (defn parse-constructor-pattern-args-v3 [spans pos-ref src result count]
   (do
