@@ -595,3 +595,124 @@ fn test_e2e_selfhost_source_adapter_rejects_invalid_review_fields() {
         "空 digest や未知 visibility の review は source graph に登録しないべき"
     );
 }
+
+/// EC-M2-02: review/change edge metadata は typed edge record へ投影する。
+#[test]
+fn test_e2e_selfhost_source_adapter_projects_review_change_edges() {
+    let harness = r#"
+(defn main []
+  (let [result (source-graph-from-program
+                 (parse-program "(defn review [] :review \"review:checkout/reviewer-001\" \"sha256:review-provenance-001\" \"redacted\" :claim \"claim:checkout/cancel-rejects-shipped\" \"The API rejects shipped orders\" :evaluates \"review:checkout/reviewer-001\" \"claim:checkout/cancel-rejects-shipped\" :invalidates \"change:checkout/api-v2\" \"review:checkout/reviewer-001\" true)"))
+        graph (source-graph-result-value result)
+        edges (source-graph-edges graph)
+        evaluates (vector-get edges 0)
+        invalidates (vector-get edges 1)]
+    (do
+      (print (source-graph-result-status result))
+      (print (vector-length edges))
+      (print (source-edge-kind evaluates))
+      (print-string (source-edge-left evaluates))
+      (print-string "\n")
+      (print-string (source-edge-right evaluates))
+      (print-string "\n")
+      (print (source-edge-kind invalidates))
+      (print-string (source-edge-left invalidates))
+      (print-string "\n")
+      (print-string (source-edge-right invalidates))
+      (print-string "\n")
+      0)))
+"#;
+
+    let output = run_source_adapter_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        [
+            "1",
+            "2",
+            "17",
+            "review:checkout/reviewer-001",
+            "claim:checkout/cancel-rejects-shipped",
+            "18",
+            "change:checkout/api-v2",
+            "review:checkout/reviewer-001",
+        ],
+        "evaluates/invalidates は relation と endpoint の stable ID を保持するべき"
+    );
+}
+
+/// EC-M2-02: review registry が明示されている場合、未登録 review endpoint は拒否する。
+#[test]
+fn test_e2e_selfhost_source_adapter_rejects_missing_review_edge_endpoint() {
+    let harness = r#"
+(defn main []
+  (let [result (source-graph-from-program
+                 (parse-program "(defn review [] :review \"review:checkout/reviewer-001\" \"sha256:review-provenance-001\" \"redacted\" :claim \"claim:checkout/cancel-rejects-shipped\" \"The API rejects shipped orders\" :evaluates \"review:checkout/missing\" \"claim:checkout/cancel-rejects-shipped\" true)"))
+        error (source-graph-result-error result)]
+    (do
+      (print (source-graph-result-status result))
+      (print (source-graph-error-code error))
+      (print-string (source-graph-error-id error))
+      0)))
+"#;
+
+    let output = run_source_adapter_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "10", "review:checkout/missing"],
+        "明示 review registry にない evaluates review は graph closure error にするべき"
+    );
+}
+
+/// EC-M2-02: invalidates の subject は review/evidence に限定する。
+#[test]
+fn test_e2e_selfhost_source_adapter_rejects_invalid_invalidation_subject_kind() {
+    let harness = r#"
+(defn main []
+  (let [result (source-graph-from-program
+                 (parse-program "(defn review [] :claim \"claim:checkout/cancel-rejects-shipped\" \"The API rejects shipped orders\" :invalidates \"change:checkout/api-v2\" \"claim:checkout/cancel-rejects-shipped\" true)"))
+        error (source-graph-result-error result)]
+    (do
+      (print (source-graph-result-status result))
+      (print (source-graph-error-code error))
+      (print-string (source-graph-error-id error))
+      0)))
+"#;
+
+    let output = run_source_adapter_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "9", "claim:checkout/cancel-rejects-shipped"],
+        "invalidates の claim subject は typed kind mismatch として拒否するべき"
+    );
+}
+
+/// EC-M2-02 boundary: selfhost IntentSource が evidence registry を未接続のまま扱う間は fail-closed にする。
+#[test]
+fn test_e2e_selfhost_source_adapter_rejects_unregistered_review_evidence_subject() {
+    let harness = r#"
+(defn main []
+  (let [result (source-graph-from-program
+                 (parse-program "(defn review [] :review \"review:checkout/reviewer-001\" \"sha256:review-provenance-001\" \"redacted\" :evaluates \"review:checkout/reviewer-001\" \"evidence:checkout/review-001\" true)"))
+        error (source-graph-result-error result)]
+    (do
+      (print (source-graph-result-status result))
+      (print (source-graph-error-code error))
+      (print-string (source-graph-error-id error))
+      0)))
+"#;
+
+    let output = run_source_adapter_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "6", "evidence:checkout/review-001"],
+        "evidence registry 未接続の evaluates subject は明示 boundary error にするべき"
+    );
+}

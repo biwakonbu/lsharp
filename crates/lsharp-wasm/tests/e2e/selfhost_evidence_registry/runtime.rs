@@ -213,6 +213,31 @@ fn test_e2e_selfhost_evidence_registry_rejects_unregistered_source_edge() {
     );
 }
 
+/// EC-M2-02 boundary: review/change edge は IntentSource producer と manifest consumer の接続まで拒否する。
+#[test]
+fn test_e2e_selfhost_evidence_registry_rejects_unwired_review_change_edge() {
+    let harness = r#"
+(defn main []
+  (let [result (source-evidence-graph-from-program
+                 (parse-program "(defn review [] :review \"review:checkout/reviewer-001\" \"sha256:review-provenance-001\" \"redacted\" :claim \"claim:checkout/rejects\" \"Shipped orders are rejected\" :evaluates \"review:checkout/reviewer-001\" \"claim:checkout/rejects\" true)"))
+        error (source-result-error result)]
+    (do
+      (print (source-result-status result))
+      (print (source-graph-error-code error))
+      (print (source-graph-error-kind error))
+      0)))
+"#;
+
+    let output = run_evidence_registry_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "11", "17"],
+        "review/change edge は manifest consumer 未接続時に誤った evidence edge として扱わず明示拒否するべき"
+    );
+}
+
 /// EC-M2-02: required field 欠落は evidence registry に登録しない。
 #[test]
 fn test_e2e_selfhost_evidence_registry_rejects_empty_required_field() {

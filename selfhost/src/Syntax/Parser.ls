@@ -683,7 +683,9 @@
               (if (string-eq name "tested-by") 1
                 (if (string-eq name "supports") 1
                 (if (string-eq name "contradicts") 1
-                  (if (string-eq name "evidence") 1 0))))))))))))
+                  (if (string-eq name "evidence") 1
+                    (if (string-eq name "evaluates") 1
+                      (if (string-eq name "invalidates") 1 0))))))))))))))
 
 (defn directive-symbol-v3 [name]
   (if (string-eq name "where") 1
@@ -1357,7 +1359,9 @@
                 (if (string-eq name "supports") 13
                 (if (string-eq name "contradicts") 14
                   (if (string-eq name "evidence") 15
-                    (if (string-eq name "review") 16 0))))))))))))
+                    (if (string-eq name "review") 16
+                      (if (string-eq name "evaluates") 17
+                        (if (string-eq name "invalidates") 18 0))))))))))))))
 
 (defn parse-source-metadata-string-v3 [spans pos-ref src]
   (if (== (p-current spans pos-ref) 12)

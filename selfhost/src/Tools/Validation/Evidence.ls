@@ -636,9 +636,17 @@
       payload (vector-get form 1)
       start (vector-get form 2)
       end (vector-get form 3)]
-      (if (or (< (vector-length payload) 2)
-          (and (!= relation (source-edge-supports)) (!= relation (source-edge-contradicts))))
-        (source-edge-form-result form nodes)
+      (if (or (= relation (source-edge-evaluates)) (= relation (source-edge-invalidates)))
+        (source-result 0
+          (source-graph-error-at
+            (source-error-review-edge-consumer-required)
+            relation
+            ""
+            start
+            end))
+        (if (or (< (vector-length payload) 2)
+            (and (!= relation (source-edge-supports)) (!= relation (source-edge-contradicts))))
+          (source-edge-form-result form nodes)
         (let [evidence-id (vector-get payload 0)
           claim-id (vector-get payload 1)]
           (if (or (= (string-length evidence-id) 0) (= (string-length claim-id) 0))
@@ -651,7 +659,7 @@
                   (source-result 0 (source-graph-error-at (source-error-missing-node) relation claim-id start end))
                   (if (= (source-evidence-id-exists? registry evidence-id) 0)
                     (source-result 0 (source-graph-error-at (source-error-evidence-registry-required) relation evidence-id start end))
-                    (source-result 1 (source-edge-record relation evidence-id claim-id start end))))))))))))
+                    (source-result 1 (source-edge-record relation evidence-id claim-id start end)))))))))))))
 
 (defn source-evidence-append-edge-forms [forms idx len registry nodes edges]
   (if (>= idx len)

@@ -23,6 +23,9 @@
 (defn source-edge-supports [] 13)
 (defn source-edge-contradicts [] 14)
 (defn source-review [] 16)
+(defn source-edge-evaluates [] 17)
+(defn source-edge-invalidates [] 18)
+(defn source-change [] 19)
 
 (defn source-error-malformed [] 1)
 (defn source-error-invalid-id [] 2)
@@ -32,6 +35,9 @@
 (defn source-error-evidence-registry-required [] 6)
 (defn source-error-duplicate-review [] 7)
 (defn source-error-invalid-review [] 8)
+(defn source-error-edge-subject-kind-mismatch [] 9)
+(defn source-error-missing-review [] 10)
+(defn source-error-review-edge-consumer-required [] 11)
 
 (defn source-result [status value]
   (vector-push-pair-rooted-v3 (vector-new 2) status value))
@@ -146,7 +152,9 @@
   (and (>= kind (source-node-intent)) (<= kind (source-node-open-question))))
 
 (defn source-edge-kind? [kind]
-  (and (>= kind (source-edge-motivates)) (<= kind (source-edge-contradicts))))
+  (or
+    (and (>= kind (source-edge-motivates)) (<= kind (source-edge-contradicts)))
+    (or (= kind (source-edge-evaluates)) (= kind (source-edge-invalidates)))))
 
 (defn source-kind-prefix [kind]
   (if (= kind (source-node-intent)) "intent"
@@ -154,9 +162,10 @@
       (if (= kind (source-node-assumption)) "assumption"
         (if (= kind (source-node-open-question)) "open-question"
           (if (= kind (source-edge-tested-by)) "contract"
-            (if (or (= kind (source-edge-supports)) (= kind (source-edge-contradicts)))
+              (if (or (= kind (source-edge-supports)) (= kind (source-edge-contradicts)))
               "evidence"
-              (if (= kind (source-review)) "review" ""))))))))
+              (if (= kind (source-review)) "review"
+                (if (= kind (source-change)) "change" "")))))))))
 
 (defn source-find-char [text target idx len]
   (if (>= idx len)
@@ -196,6 +205,35 @@
           1
           0)
         0))))
+
+;; prefix の意味は後段で判定する edge subject 向けに、wire の構文だけを検証する。
+(defn source-wire-shape-valid? [wire]
+  (let [len (string-length wire)
+    colon (source-find-char wire 58 0 len)
+    slash (if (>= colon 0) (source-find-char wire 47 (+ colon 1) len) -1)]
+    (if (or (or (<= colon 0) (<= slash (+ colon 1))) (>= (+ slash 1) len))
+      0
+      (if (and
+            (= (source-id-segment-valid-loop wire (+ colon 1) slash) 1)
+            (= (source-id-segment-valid-loop wire (+ slash 1) len) 1))
+        1
+        0))))
+
+(defn source-review-subject-kind [wire]
+  (if (= (source-wire-valid? wire (source-node-intent)) 1)
+    (source-node-intent)
+    (if (= (source-wire-valid? wire (source-node-claim)) 1)
+      (source-node-claim)
+      (if (= (source-wire-valid? wire (source-edge-supports)) 1)
+        (source-edge-supports)
+        0))))
+
+(defn source-invalidation-subject-kind [wire]
+  (if (= (source-wire-valid? wire (source-review)) 1)
+    (source-review)
+    (if (= (source-wire-valid? wire (source-edge-supports)) 1)
+      (source-edge-supports)
+      0)))
 
 (defn source-wire-valid-node? [wire]
   (or
@@ -538,63 +576,209 @@
                         (source-result 0 (source-graph-error-at (source-error-missing-node) relation right start end))
                         (source-result 1 (source-edge-record relation left right start end))))))))))))))
 
-(defn source-append-edge-forms [forms idx len nodes edges]
+(defn source-review-edge-form-result [form nodes reviews]
+  (if (< (vector-length form) 4)
+    (source-result 0 (source-form-malformed-error form))
+    (let [relation (vector-get form 0)
+      payload (vector-get form 1)
+      start (vector-get form 2)
+      end (vector-get form 3)]
+      (if (or
+            (!= (vector-length form) 4)
+            (or
+              (!= (vector-length payload) 2)
+              (and (!= relation (source-edge-evaluates)) (!= relation (source-edge-invalidates)))))
+        (source-result 0 (source-graph-error-at (source-error-malformed) relation "" start end))
+        (let [left (vector-get payload 0)
+          right (vector-get payload 1)]
+          (if (or (= (string-length left) 0) (= (string-length right) 0))
+            (source-result 0 (source-graph-error-at (source-error-malformed) relation left start end))
+            (if (= relation (source-edge-evaluates))
+              (if (= (source-wire-shape-valid? left) 0)
+                (source-result 0 (source-graph-error-at (source-error-invalid-id) relation left start end))
+                (if (= (source-wire-valid? left (source-review)) 0)
+                  (source-result 0 (source-graph-error-at (source-error-kind-mismatch) relation left start end))
+                  (if (and
+                        (> (vector-length reviews) 0)
+                        (= (source-review-id-exists? reviews left) 0))
+                    (source-result 0 (source-graph-error-at (source-error-missing-review) relation left start end))
+                    (if (= (source-wire-shape-valid? right) 0)
+                      (source-result 0 (source-graph-error-at (source-error-invalid-id) relation right start end))
+                      (let [subject-kind (source-review-subject-kind right)]
+                        (if (= subject-kind 0)
+                          (source-result 0
+                            (source-graph-error-at
+                              (source-error-edge-subject-kind-mismatch)
+                              relation
+                              right
+                              start
+                              end))
+                          (if (= subject-kind (source-edge-supports))
+                            (source-result 0
+                              (source-graph-error-at
+                                (source-error-evidence-registry-required)
+                                relation
+                                right
+                                start
+                                end))
+                            (if (= (source-node-id-exists? nodes right) 0)
+                              (source-result 0 (source-graph-error-at (source-error-missing-node) relation right start end))
+                              (source-result 1 (source-edge-record relation left right start end))))))))))
+              (if (= (source-wire-shape-valid? left) 0)
+                (source-result 0 (source-graph-error-at (source-error-invalid-id) relation left start end))
+                (if (= (source-wire-valid? left (source-change)) 0)
+                  (source-result 0 (source-graph-error-at (source-error-kind-mismatch) relation left start end))
+                  (if (= (source-wire-shape-valid? right) 0)
+                    (source-result 0 (source-graph-error-at (source-error-invalid-id) relation right start end))
+                    (let [subject-kind (source-invalidation-subject-kind right)]
+                      (if (= subject-kind 0)
+                        (source-result 0
+                          (source-graph-error-at
+                            (source-error-edge-subject-kind-mismatch)
+                            relation
+                            right
+                            start
+                            end))
+                        (if (= subject-kind (source-edge-supports))
+                          (source-result 0
+                            (source-graph-error-at
+                              (source-error-evidence-registry-required)
+                              relation
+                              right
+                              start
+                              end))
+                          (if (and
+                                (> (vector-length reviews) 0)
+                                (= (source-review-id-exists? reviews right) 0))
+                            (source-result 0 (source-graph-error-at (source-error-missing-review) relation right start end))
+                            (source-result 1 (source-edge-record relation left right start end))))))))))))))))
+
+(defn source-edge-form-result-with-reviews [form nodes reviews]
+  (let [relation (if (> (vector-length form) 0) (vector-get form 0) 0)]
+    (if (or (= relation (source-edge-evaluates)) (= relation (source-edge-invalidates)))
+      (source-review-edge-form-result form nodes reviews)
+      (source-edge-form-result form nodes))))
+
+(defn source-append-edge-forms-with-reviews [forms idx len nodes reviews edges]
   (if (>= idx len)
     (source-result 1 edges)
     (let [form (vector-get forms idx)
       kind (vector-get form 0)]
       (if (source-edge-kind? kind)
-        (let [parsed (source-edge-form-result form nodes)]
+        (let [parsed (source-edge-form-result-with-reviews form nodes reviews)]
           (if (= (source-result-status parsed) 0)
             parsed
-            (source-append-edge-forms
+            (source-append-edge-forms-with-reviews
               forms
               (+ idx 1)
               len
               nodes
+              reviews
               (vector-push-single-rooted-v3 edges (source-result-value parsed)))))
-        (source-append-edge-forms forms (+ idx 1) len nodes edges)))))
+        (source-append-edge-forms-with-reviews forms (+ idx 1) len nodes reviews edges)))))
 
-(defn source-collect-edge-children [decl idx len nodes edges]
+(defn source-append-edge-forms [forms idx len nodes edges]
+  (source-append-edge-forms-with-reviews forms idx len nodes (vector-new 0) edges))
+
+(defn source-collect-edge-children-with-reviews [decl idx len nodes reviews edges]
   (if (>= idx len)
     (source-result 1 edges)
     (let [child (vector-get decl idx)
-      parsed (source-collect-edges-decl child nodes edges)]
+      parsed (source-collect-edges-decl-with-reviews child nodes reviews edges)]
       (if (= (source-result-status parsed) 0)
         parsed
-        (source-collect-edge-children decl (+ idx 1) len nodes (source-result-value parsed))))))
+        (source-collect-edge-children-with-reviews
+          decl
+          (+ idx 1)
+          len
+          nodes
+          reviews
+          (source-result-value parsed))))))
 
-(defn source-collect-edges-decl [decl nodes edges]
+(defn source-collect-edges-decl-with-reviews [decl nodes reviews edges]
   (let [tag (vector-get decl 0)]
     (if (= tag (ast-defn))
       (let [forms (source-ordered-forms decl)]
-        (source-append-edge-forms forms 0 (vector-length forms) nodes edges))
+        (source-append-edge-forms-with-reviews
+          forms
+          0
+          (vector-length forms)
+          nodes
+          reviews
+          edges))
       (if (= tag (ast-private))
-        (source-collect-edges-decl (vector-get decl 1) nodes edges)
+        (source-collect-edges-decl-with-reviews (vector-get decl 1) nodes reviews edges)
         (if (= tag (ast-module-decl))
-          (source-collect-edge-children decl 5 (vector-length decl) nodes edges)
+          (source-collect-edge-children-with-reviews
+            decl
+            5
+            (vector-length decl)
+            nodes
+            reviews
+            edges)
           (if (= tag (ast-impldef))
-            (source-collect-edge-children decl 4 (vector-length decl) nodes edges)
+            (source-collect-edge-children-with-reviews
+              decl
+              4
+              (vector-length decl)
+              nodes
+              reviews
+              edges)
             (if (or (= tag (ast-typedef)) (= tag (ast-recorddef)))
               (let [forms (source-type-ordered-forms decl)]
-                (source-append-edge-forms forms 0 (vector-length forms) nodes edges))
+                (source-append-edge-forms-with-reviews
+                  forms
+                  0
+                  (vector-length forms)
+                  nodes
+                  reviews
+                  edges))
               (source-result 1 edges))))))))
 
-(defn source-collect-edges-program-loop [program idx len nodes edges]
+(defn source-collect-edges-program-loop-with-reviews [program idx len nodes reviews edges]
   (if (>= idx len)
     (source-result 1 edges)
-    (let [parsed (source-collect-edges-decl (vector-get program idx) nodes edges)]
+    (let [parsed (source-collect-edges-decl-with-reviews
+        (vector-get program idx)
+        nodes
+        reviews
+        edges)]
       (if (= (source-result-status parsed) 0)
         parsed
-        (source-collect-edges-program-loop
+        (source-collect-edges-program-loop-with-reviews
           program
           (+ idx 1)
           len
           nodes
+          reviews
           (source-result-value parsed))))))
 
+(defn source-collect-edges-with-reviews [program nodes reviews]
+  (source-collect-edges-program-loop-with-reviews
+    program
+    0
+    (vector-length program)
+    nodes
+    reviews
+    (vector-new 0)))
+
+(defn source-collect-edges-program-loop [program idx len nodes edges]
+  (source-collect-edges-program-loop-with-reviews
+    program
+    idx
+    len
+    nodes
+    (vector-new 0)
+    edges))
+
+(defn source-collect-edges-decl [decl nodes edges]
+  (source-collect-edges-decl-with-reviews decl nodes (vector-new 0) edges))
+
+(defn source-collect-edge-children [decl idx len nodes edges]
+  (source-collect-edge-children-with-reviews decl idx len nodes (vector-new 0) edges))
+
 (defn source-collect-edges [program nodes]
-  (source-collect-edges-program-loop program 0 (vector-length program) nodes (vector-new 0)))
+  (source-collect-edges-with-reviews program nodes (vector-new 0)))
 
 (defn source-graph-from-program [program]
   (let [nodes-result (source-collect-nodes program)]
@@ -605,7 +789,7 @@
         (if (= (source-result-status reviews-result) 0)
           reviews-result
           (let [reviews (source-result-value reviews-result)
-            edges-result (source-collect-edges program nodes)]
+            edges-result (source-collect-edges-with-reviews program nodes reviews)]
             (if (= (source-result-status edges-result) 0)
               edges-result
               (source-result

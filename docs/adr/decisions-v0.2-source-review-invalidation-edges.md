@@ -2,7 +2,8 @@
 
 - Status: Accepted (verified partial slice)
 - Date: 2026-07-27
-- Scope: `crates/lsharp-syntax` metadata parser、`crates/lsharp-types` source adapter
+- Scope: `crates/lsharp-syntax` metadata parser、`crates/lsharp-types` source adapter、selfhost
+  `Syntax.Parser` / `Tools.Validation.IntentSource` producer boundary
 - Related: `EC-M2-02` / `EC-M2-03`、`docs/development/planning/v0.2-evidence-graph.md`
 
 ## Context
@@ -41,11 +42,18 @@ Rust の canonical graph model には ReviewId/ChangeId と
   report と manifest へ投影するケース、review subject kind mismatch を manifest 未生成で拒否する
   ケースの2件が pass。
 - Regression: `cargo test -p lsharp-types --test metadata_contract -- --nocapture` は4件が pass。
+- Selfhost producer: `cargo test -p lsharp-wasm --test e2e selfhost_source_adapter_ -- --nocapture`
+  （21 passed）は parser の `:evaluates` / `:invalidates` pair（kind 17/18）を review registry と
+  node registry へ接続し、review/change edge の stable ID、明示 registry の missing review、
+  subject kind mismatch、evidence registry 未接続の fail-closed boundary を actual Wasm で確認する。
+- Selfhost regression: `selfhost_evidence_`（18 passed）と `selfhost_parser_metadata_forms`
+  （28 passed）は回帰していない。native stage0 の producer/runtime parity はまだ未実行である。
 
 ## Boundary
 
-これは Rust-host の source parser → typed graph adapter → `validate --source` report/manifest の
-verified slice である。selfhost Parser/IntentSource、native stage0、selfhost manifest/CLI/MCP、
-Mac Apple Silicon / Linux x86_64 artifact/runtime parity、review provenance/privacy、EC-M2-02/03
-aggregate completion は意味しない。
+これは Rust-host の source parser → typed graph adapter → `validate --source` report/manifest と、
+selfhost Parser → IntentSource の review/change edge producer を含む verified partial slice である。
+selfhost の evidence registry との統合、manifest/CLI/MCP、native stage0、Mac Apple Silicon /
+Linux x86_64 artifact/runtime parity、review provenance/privacy、EC-M2-02/03 aggregate completion
+は意味しない。evidence subject は registry 未接続のため selfhost では明示的に拒否する。
 未接続境界は TODO の `[~]` として維持する。

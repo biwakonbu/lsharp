@@ -47,11 +47,13 @@ identity なのか、認証済み record なのかを区別できなかった。
   validate_source_review_edges -- --nocapture`（2 passed）は `validate --source --emit-manifest`
   の review registry output と `evaluates` edge の同一 manifest projection を確認する。
 - Selfhost producer boundary: `cargo test -p lsharp-wasm --test e2e selfhost_source_adapter_ -- --nocapture`
-  （17 passed）で、selfhost parser の `:review` triple payload（kind 16）を node/edge と分離した
-  opaque registry へ投影し、nested declaration の走査、duplicate ID、空白だけの provenance digest、
-  未知 visibility の fail-closed と directive span を確認した。既存の evidence registry（17 passed）と
-  parser metadata forms（28 passed）も回帰していない。これは Rust-host actual Wasm の verified slice
-  であり、native stage0 の producer/runtime parity はまだ実行していない。
+  （21 passed）で、selfhost parser の `:review` triple payload（kind 16）を node/edge と分離した
+  opaque registry へ投影し、kind 17/18 の `evaluates` / `invalidates` edge、nested declaration の
+  走査、duplicate ID、空白だけの provenance digest、未知 visibility、明示 registry の missing
+  review、subject kind mismatch を fail-closed と directive span 付きで確認した。既存の evidence
+  registry（18 passed）と parser metadata forms（28 passed）も回帰していない。これは Rust-host
+  actual Wasm の verified slice であり、evidence registry 統合と native stage0 の producer/runtime
+  parity はまだ実行していない。
 
 ## Boundary
 
