@@ -40,12 +40,18 @@ identity なのか、認証済み record なのかを区別できなかった。
   `lsharp_validate` の manifest input/output schema が `reviews` の必須4 fieldと
   `public` / `redacted` enumを宣言し、`include_manifest` の inline artifact が同じ registry を
   private field なしで roundtrip することを確認した。
+- Source producer boundary: `cargo test -p lsharp-types --test validation_source -- --nocapture`
+  （31 passed）で、source `:review` の stable ID、opaque provenance digest、visibility を
+  `ReviewRecord` へ投影し、未知 visibility・空 digest・不正 ID・duplicate ID を directive span
+  付きで fail-closed に拒否することを確認した。`cargo test -p lsharp-driver --test
+  validate_source_review_edges -- --nocapture`（2 passed）は `validate --source --emit-manifest`
+  の review registry output と `evaluates` edge の同一 manifest projection を確認する。
 
 ## Boundary
 
 これは Rust canonical manifest、公開 CLI、Rust MCP の schema／inline artifact 入出力における
-opaque review registry／privacy field boundary の verified slice である。source `:review` producer、
-selfhost/native parity、provider/署名による provenance authentication、暗号学的 digest format、
+opaque review registry／privacy field boundary と Rust source `:review` producer の verified slice
+である。selfhost/native parity、provider/署名による provenance authentication、暗号学的 digest format、
 review lifecycle/stale propagation、selfhost/native MCP、Mac Apple Silicon / Linux x86_64
 artifact/runtime parity、EC-M2-02/03 aggregate completion は未完了である。
 未接続境界は TODO の `[~]` として維持する。

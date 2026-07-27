@@ -39,6 +39,7 @@ fn validate_source_projects_review_and_change_edges_into_manifest() {
             :tool-version "0.2.0"
             :timestamp "2026-07-27T00:00:00Z"
             :independence "independent-review"
+          :review "review:checkout/reviewer-001" "sha256:review-provenance-001" "redacted"
           :evaluates "review:checkout/reviewer-001" "claim:checkout/cancel-rejects-shipped"
           :invalidates "change:checkout/api-v2" "evidence:checkout/review-001"
           true)
@@ -69,6 +70,14 @@ fn validate_source_projects_review_and_change_edges_into_manifest() {
     assert_eq!(output.status.code(), Some(0));
     assert!(output.stderr.is_empty());
     assert_eq!(report["status"], "pass");
+    assert_eq!(manifest_value["reviews"].as_array().unwrap().len(), 1);
+    assert_eq!(manifest_value["reviews"][0]["namespace"], "checkout");
+    assert_eq!(manifest_value["reviews"][0]["key"], "reviewer-001");
+    assert_eq!(
+        manifest_value["reviews"][0]["provenance_digest"],
+        "sha256:review-provenance-001"
+    );
+    assert_eq!(manifest_value["reviews"][0]["visibility"], "redacted");
     assert_eq!(manifest_value["edges"].as_array().unwrap().len(), 4);
     assert_eq!(manifest_value["edges"][2]["relation"], "evaluates");
     assert_eq!(

@@ -1,10 +1,16 @@
 use super::SourceGraphError;
-use crate::intent::{IntentNode, NodeKind};
+use crate::evidence::{ReviewRecord, ReviewVisibility};
+use crate::intent::{IntentNode, NodeKind, ReviewId};
 use crate::validation::IntentGraph;
 use lsharp_syntax::ast::{Decl, Metadata};
 use lsharp_syntax::metadata::MetadataFormKind;
+use lsharp_syntax::span::Span;
 
-pub(super) fn add_decl_nodes(decl: &Decl, graph: &mut IntentGraph) -> Result<(), SourceGraphError> {
+pub(super) fn add_decl_nodes(
+    decl: &Decl,
+    graph: &mut IntentGraph,
+    review_spans: &mut Vec<(String, Span)>,
+) -> Result<(), SourceGraphError> {
     match decl {
         Decl::Defn {
             metadata: Some(metadata),
@@ -17,14 +23,14 @@ pub(super) fn add_decl_nodes(decl: &Decl, graph: &mut IntentGraph) -> Result<(),
         | Decl::RecordDef {
             metadata: Some(metadata),
             ..
-        } => add_metadata_nodes(metadata, graph),
+        } => add_metadata_nodes(metadata, graph, review_spans),
         Decl::ModuleDecl { body, .. } | Decl::ImplDef { methods: body, .. } => {
             for nested in body {
-                add_decl_nodes(nested, graph)?;
+                add_decl_nodes(nested, graph, review_spans)?;
             }
             Ok(())
         }
-        Decl::Private { inner, .. } => add_decl_nodes(inner, graph),
+        Decl::Private { inner, .. } => add_decl_nodes(inner, graph, review_spans),
         _ => Ok(()),
     }
 }
@@ -32,8 +38,48 @@ pub(super) fn add_decl_nodes(decl: &Decl, graph: &mut IntentGraph) -> Result<(),
 fn add_metadata_nodes(
     metadata: &Metadata,
     graph: &mut IntentGraph,
+    review_spans: &mut Vec<(String, Span)>,
 ) -> Result<(), SourceGraphError> {
     for form in &metadata.forms {
+        if let MetadataFormKind::Review {
+            id,
+            provenance_digest,
+            visibility,
+        } = &form.kind
+        {
+            let review_id =
+                ReviewId::parse(id.clone()).map_err(|source| SourceGraphError::ReviewIdAt {
+                    span: form.span(),
+                    source,
+                })?;
+            let visibility = ReviewVisibility::parse(visibility).ok_or_else(|| {
+                SourceGraphError::InvalidReviewField {
+                    field: "visibility",
+                    value: visibility.clone(),
+                    span: form.span(),
+                }
+            })?;
+            if provenance_digest.trim().is_empty() {
+                return Err(SourceGraphError::InvalidReviewField {
+                    field: "provenance_digest",
+                    value: provenance_digest.clone(),
+                    span: form.span(),
+                });
+            }
+            let review = ReviewRecord::new(review_id, provenance_digest.clone(), visibility);
+            let id = review.id().as_str().to_string();
+            if let Some((_, first_span)) = review_spans.iter().find(|(existing, _)| existing == &id)
+            {
+                return Err(SourceGraphError::DuplicateReview {
+                    id,
+                    first_span: *first_span,
+                    duplicate_span: form.span(),
+                });
+            }
+            graph.add_review(review)?;
+            review_spans.push((id, form.span()));
+            continue;
+        }
         let (expected_kind, wire_id, text) = match &form.kind {
             MetadataFormKind::Intent { id, text } => (NodeKind::Intent, id, text),
             MetadataFormKind::Claim { id, text } => (NodeKind::Claim, id, text),

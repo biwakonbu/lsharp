@@ -130,6 +130,25 @@ impl Parser {
                             ));
                             found = true;
                         }
+                        "review" => {
+                            let form_start = self.peek_span();
+                            self.advance(); // :
+                            self.advance(); // review
+                            let (id, _) = self.expect_metadata_string("review stable ID")?;
+                            let (provenance_digest, _) =
+                                self.expect_metadata_string("review provenance digest")?;
+                            let (visibility, visibility_span) =
+                                self.expect_metadata_string("review visibility")?;
+                            metadata.forms.push(MetadataForm::new(
+                                form_start.merge(visibility_span),
+                                MetadataFormKind::Review {
+                                    id,
+                                    provenance_digest,
+                                    visibility,
+                                },
+                            ));
+                            found = true;
+                        }
                         "motivates" => {
                             let form_start = self.peek_span();
                             self.advance(); // :

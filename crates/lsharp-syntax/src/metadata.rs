@@ -292,6 +292,15 @@ pub enum MetadataFormKind {
     Assumption { id: String, text: String },
     /// source から明示した open-question node。ID は `open-question:namespace/key` wire 形式。
     OpenQuestion { id: String, text: String },
+    /// source から opaque review registry として明示した review。
+    ///
+    /// 本文や reviewer の個人情報は保持せず、外部 provenance digest と公開範囲だけを
+    /// canonical review registry へ投影する。
+    Review {
+        id: String,
+        provenance_digest: String,
+        visibility: String,
+    },
     /// source から intent と claim を接続する typed edge。
     Motivates { intent: String, claim: String },
     /// source から claim と assumption を接続する typed edge。

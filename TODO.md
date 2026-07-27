@@ -32,6 +32,8 @@
   `evaluates` / `invalidates` の Rust source typed-edge projection、Rust CLI の source→report/manifest
   projection、canonical manifest projection、optional review provenance registry の Rust CLI
   input/output roundtrip と未登録 review edge の fail-closed 検査、
+  source `:review` の opaque registry producer と `validate --source --emit-manifest` の review
+  registry projection、未知 visibility/空 digest/duplicate ID の span 付き fail-closed 検査、
   Rust MCP の review registry input/output schema と inline manifest projection、
   `public` / `redacted` privacy boundary は verified。実行 trace と generator policy、
   review provenance authentication、review/evaluates/invalidates lifecycle、外部 provenance と

@@ -254,6 +254,15 @@ impl ReviewVisibility {
             Self::Redacted => "redacted",
         }
     }
+
+    /// source/manifest の公開範囲を canonical enum へ変換する。
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "public" => Some(Self::Public),
+            "redacted" => Some(Self::Redacted),
+            _ => None,
+        }
+    }
 }
 
 /// 外部 review の opaque registry record。

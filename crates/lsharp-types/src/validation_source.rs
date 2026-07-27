@@ -34,6 +34,14 @@ pub enum SourceGraphError {
         first_span: Span,
         duplicate_span: Span,
     },
+    #[error(
+        "source review の stable ID が重複しています (id={id}, first_span={first_span}, duplicate_span={duplicate_span})"
+    )]
+    DuplicateReview {
+        id: String,
+        first_span: Span,
+        duplicate_span: Span,
+    },
     #[error("source intent graph の登録に失敗しました: {0}")]
     Graph(#[from] crate::evidence::GraphError),
     #[error("source intent edge の ID 解析に失敗しました: {0}")]
@@ -43,6 +51,12 @@ pub enum SourceGraphError {
     )]
     EdgeIdAt {
         relation: &'static str,
+        span: Span,
+        #[source]
+        source: StableIdError,
+    },
+    #[error("source review の ID 解析に失敗しました (span={span}): {source}")]
+    ReviewIdAt {
         span: Span,
         #[source]
         source: StableIdError,
@@ -65,6 +79,12 @@ pub enum SourceGraphError {
     },
     #[error("source evidence の {field} が不正です (span={span}): {value}")]
     InvalidEvidenceField {
+        field: &'static str,
+        value: String,
+        span: Span,
+    },
+    #[error("source review の {field} が不正です (span={span}): {value}")]
+    InvalidReviewField {
         field: &'static str,
         value: String,
         span: Span,
@@ -97,11 +117,14 @@ impl SourceGraphError {
     pub fn source_span(&self) -> Option<Span> {
         match self {
             Self::DuplicateNode { duplicate_span, .. }
-            | Self::DuplicateEvidence { duplicate_span, .. } => Some(*duplicate_span),
+            | Self::DuplicateEvidence { duplicate_span, .. }
+            | Self::DuplicateReview { duplicate_span, .. } => Some(*duplicate_span),
             Self::EdgeIdAt { span, .. }
+            | Self::ReviewIdAt { span, .. }
             | Self::MissingNodeReference { span, .. }
             | Self::EvidenceRegistryRequired { span, .. }
-            | Self::InvalidEvidenceField { span, .. } => Some(*span),
+            | Self::InvalidEvidenceField { span, .. }
+            | Self::InvalidReviewField { span, .. } => Some(*span),
             Self::Node(_) | Self::Graph(_) | Self::EdgeId(_) | Self::KindMismatch { .. } => None,
             Self::EdgeSubjectKindMismatch { span, .. } => Some(*span),
         }
@@ -110,16 +133,18 @@ impl SourceGraphError {
 
 /// source の明示 node metadata と typed edge を version 1 graph へ投影する。
 ///
-/// `:intent` / `:claim` / `:assumption` / `:open-question` 以外の metadata は
-/// presentation または executable contract として別の adapter が扱うため、node registry
-/// では無視する。source の `:evidence` record は required provenance/sampling fields を
-/// canonical `Evidence` へ投影し、source edge は endpoint を registry へ解決できる
-/// `:motivates`、`:constrained-by`、`:tested-by`、`:supports`、`:contradicts` を生成する。
-/// evidence record がない supports/contradicts は明示的な registry-required error とする。
+/// `:intent` / `:claim` / `:assumption` / `:open-question` と opaque `:review` registry を
+/// canonical graph へ投影する。その他の metadata は presentation または executable
+/// contract として別の adapter が扱うため、node registry では無視する。source の
+/// `:evidence` record は required provenance/sampling fields を canonical `Evidence` へ
+/// 投影し、source edge は endpoint を registry へ解決できる `:motivates`、
+/// `:constrained-by`、`:tested-by`、`:supports`、`:contradicts` を生成する。evidence
+/// record がない supports/contradicts は明示的な registry-required error とする。
 pub fn source_program_to_intent_graph(program: &Program) -> Result<IntentGraph, SourceGraphError> {
     let mut graph = IntentGraph::default();
+    let mut review_spans = Vec::new();
     for decl in &program.decls {
-        source_nodes::add_decl_nodes(decl, &mut graph)?;
+        source_nodes::add_decl_nodes(decl, &mut graph, &mut review_spans)?;
     }
     let mut evidence_spans = Vec::new();
     for decl in &program.decls {

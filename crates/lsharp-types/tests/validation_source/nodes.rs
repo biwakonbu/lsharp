@@ -1,6 +1,7 @@
 //! source metadata の node registry 投影を検証する contract tests。
 
 use lsharp_syntax::parse;
+use lsharp_types::evidence::ReviewVisibility;
 use lsharp_types::intent::NodeKind;
 use lsharp_types::metadata_contract::inventory_contract_suites;
 use lsharp_types::validation_source::{SourceGraphError, source_program_to_intent_graph};
@@ -258,6 +259,78 @@ fn source_adapter_reports_duplicate_node_with_both_source_spans() {
     assert!(first_span.end <= duplicate_span.start);
     assert!(SOURCE[first_span.start..first_span.end].contains("first declaration"));
     assert!(SOURCE[duplicate_span.start..duplicate_span.end].contains("second declaration"));
+}
+
+#[test]
+fn source_adapter_projects_review_registry_forms_and_rejects_unknown_visibility() {
+    let program = parse(
+        r#"
+        (defn checkout-review []
+          :review "review:checkout/reviewer-001" "sha256:review-provenance-001" "redacted"
+          true)
+        "#,
+    )
+    .expect("source review registry fixture は parse できるべき");
+
+    let graph = source_program_to_intent_graph(&program)
+        .expect("source review registry が graph へ投影できるべき");
+    assert_eq!(graph.reviews().len(), 1);
+    assert_eq!(
+        graph.reviews()[0].id().as_str(),
+        "review:checkout/reviewer-001"
+    );
+    assert_eq!(
+        graph.reviews()[0].provenance_digest(),
+        "sha256:review-provenance-001"
+    );
+    assert_eq!(graph.reviews()[0].visibility(), ReviewVisibility::Redacted);
+
+    let invalid = parse(
+        r#"
+        (defn checkout-review []
+          :review "review:checkout/reviewer-001" "sha256:review-provenance-001" "private"
+          true)
+        "#,
+    )
+    .expect("invalid visibility fixture は parse できるべき");
+    assert!(matches!(
+        source_program_to_intent_graph(&invalid),
+        Err(SourceGraphError::InvalidReviewField {
+            field: "visibility",
+            value,
+            ..
+        }) if value == "private"
+    ));
+}
+
+#[test]
+fn source_adapter_reports_duplicate_reviews_with_both_source_spans() {
+    const SOURCE: &str = r#"
+        (defn first []
+          :review "review:checkout/reviewer-001" "sha256:review-provenance-001" "public"
+          true)
+        (defn second []
+          :review "review:checkout/reviewer-001" "sha256:review-provenance-002" "redacted"
+          true)
+        "#;
+    let program = parse(SOURCE).expect("duplicate review fixture は parse できるべき");
+
+    let error = source_program_to_intent_graph(&program)
+        .expect_err("duplicate source review は span 付きで拒否するべき");
+    let SourceGraphError::DuplicateReview {
+        id,
+        first_span,
+        duplicate_span,
+    } = error
+    else {
+        panic!("duplicate review の source diagnostic を期待しました: {error:?}");
+    };
+
+    assert_eq!(id, "review:checkout/reviewer-001");
+    assert!(first_span.start < duplicate_span.start);
+    assert!(first_span.end <= duplicate_span.start);
+    assert!(SOURCE[first_span.start..first_span.end].contains("review-provenance-001"));
+    assert!(SOURCE[duplicate_span.start..duplicate_span.end].contains("review-provenance-002"));
 }
 
 #[test]

@@ -674,6 +674,7 @@ impl Parser {
                     | "claim"
                     | "assumption"
                     | "open-question"
+                    | "review"
                     | "motivates"
                     | "constrained-by"
                     | "tested-by"
