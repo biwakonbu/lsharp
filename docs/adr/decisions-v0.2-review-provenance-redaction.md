@@ -50,16 +50,18 @@ identity なのか、認証済み record なのかを区別できなかった。
   （21 passed）で、selfhost parser の `:review` triple payload（kind 16）を node/edge と分離した
   opaque registry へ投影し、kind 17/18 の `evaluates` / `invalidates` edge、nested declaration の
   走査、duplicate ID、空白だけの provenance digest、未知 visibility、明示 registry の missing
-  review、subject kind mismatch を fail-closed と directive span 付きで確認した。既存の evidence
-  registry（18 passed）と parser metadata forms（28 passed）も回帰していない。これは Rust-host
-  actual Wasm の verified slice であり、evidence registry 統合と native stage0 の producer/runtime
-  parity はまだ実行していない。
+  review、subject kind mismatch を fail-closed と directive span 付きで確認した。`selfhost_evidence_`
+  （21 passed）は同じ review registry と typed edge を Evidence graph/manifest consumer へ接続し、
+  登録済み Evidence subject の closure、optional `reviews` registry、typed edge JSON projection と
+  未登録 subject の registry-required 拒否を確認する。parser metadata forms（28 passed）も回帰して
+  いない。これは Rust-host actual Wasm の producer/consumer verified slice であり、native stage0
+  の producer/runtime parity はまだ実行していない。
 
 ## Boundary
 
 これは Rust canonical manifest、公開 CLI、Rust MCP の schema／inline artifact 入出力と、selfhost
-source `:review` producer の Rust-host actual Wasm における opaque review registry／privacy field
-boundary の verified slice である。native stage0 parity、provider/署名による provenance authentication、
-暗号学的 digest format、review lifecycle/stale propagation、selfhost/native MCP、Mac Apple Silicon / Linux x86_64
-artifact/runtime parity、EC-M2-02/03 aggregate completion は未完了である。
+source `:review` producer → Evidence graph/manifest consumer の Rust-host actual Wasm における opaque
+review registry／privacy field boundary の verified slice である。native stage0 parity、provider/署名による
+provenance authentication、暗号学的 digest format、review lifecycle/stale propagation、selfhost/native MCP、
+Mac Apple Silicon / Linux x86_64 artifact/runtime parity、EC-M2-02/03 aggregate completion は未完了である。
 未接続境界は TODO の `[~]` として維持する。

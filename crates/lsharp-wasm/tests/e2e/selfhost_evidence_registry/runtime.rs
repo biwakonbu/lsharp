@@ -213,13 +213,13 @@ fn test_e2e_selfhost_evidence_registry_rejects_unregistered_source_edge() {
     );
 }
 
-/// EC-M2-02 boundary: review/change edge は IntentSource producer と manifest consumer の接続まで拒否する。
+/// EC-M2-02: review/change edge の Evidence subject は未登録なら fail-closed にする。
 #[test]
-fn test_e2e_selfhost_evidence_registry_rejects_unwired_review_change_edge() {
+fn test_e2e_selfhost_evidence_registry_rejects_unregistered_review_change_evidence_subject() {
     let harness = r#"
 (defn main []
   (let [result (source-evidence-graph-from-program
-                 (parse-program "(defn review [] :review \"review:checkout/reviewer-001\" \"sha256:review-provenance-001\" \"redacted\" :claim \"claim:checkout/rejects\" \"Shipped orders are rejected\" :evaluates \"review:checkout/reviewer-001\" \"claim:checkout/rejects\" true)"))
+                 (parse-program "(defn review [] :review \"review:checkout/reviewer-001\" \"sha256:review-provenance-001\" \"redacted\" :claim \"claim:checkout/rejects\" \"Shipped orders are rejected\" :evaluates \"review:checkout/reviewer-001\" \"evidence:checkout/missing\" true)"))
         error (source-result-error result)]
     (do
       (print (source-result-status result))
@@ -233,8 +233,124 @@ fn test_e2e_selfhost_evidence_registry_rejects_unwired_review_change_edge() {
 
     assert_eq!(
         lines,
-        ["0", "11", "17"],
-        "review/change edge は manifest consumer 未接続時に誤った evidence edge として扱わず明示拒否するべき"
+        ["0", "6", "17"],
+        "review/change edge の未登録 evidence subject は registry required として拒否するべき"
+    );
+}
+
+/// EC-M2-02: review registry と review/change edge を selfhost manifest graph へ接続する。
+#[test]
+fn test_e2e_selfhost_evidence_registry_projects_review_change_edges() {
+    let harness = r#"
+(defn main []
+  (let [result (source-evidence-graph-from-program
+                 (parse-program "(defn review [] :review \"review:checkout/reviewer-001\" \"sha256:review-provenance-001\" \"redacted\" :claim \"claim:checkout/rejects\" \"Shipped orders are rejected\" :evaluates \"review:checkout/reviewer-001\" \"claim:checkout/rejects\" :invalidates \"change:checkout/api-v2\" \"review:checkout/reviewer-001\" true)"))
+        graph (source-result-value result)
+        edges (source-graph-edges graph)
+        reviews (source-evidence-graph-reviews graph)
+        evaluates (vector-get edges 0)
+        invalidates (vector-get edges 1)
+        review (vector-get reviews 0)]
+    (do
+      (print (source-result-status result))
+      (print (vector-length reviews))
+      (print-string (source-review-id review))
+      (print-string "\n")
+      (print (vector-length edges))
+      (print (source-edge-kind evaluates))
+      (print-string (source-edge-left evaluates))
+      (print-string "\n")
+      (print-string (source-edge-right evaluates))
+      (print-string "\n")
+      (print (source-edge-kind invalidates))
+      (print-string (source-edge-left invalidates))
+      (print-string "\n")
+      (print-string (source-edge-right invalidates))
+      (print-string "\n")
+      0)))
+"#;
+
+    let output = run_evidence_registry_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        [
+            "1",
+            "1",
+            "review:checkout/reviewer-001",
+            "2",
+            "17",
+            "review:checkout/reviewer-001",
+            "claim:checkout/rejects",
+            "18",
+            "change:checkout/api-v2",
+            "review:checkout/reviewer-001",
+        ],
+        "manifest consumer は review registry と evaluates/invalidates endpoint を保持するべき"
+    );
+}
+
+/// EC-M2-02: optional reviews registry と typed review/change edge を version 1 manifest JSON へ投影する。
+#[test]
+fn test_e2e_selfhost_evidence_registry_serializes_review_change_edges() {
+    let harness = r#"
+(defn main []
+  (let [graph (source-result-value
+                (source-evidence-graph-from-program
+                  (parse-program "(defn review [] :review \"review:checkout/reviewer-001\" \"sha256:review-provenance-001\" \"redacted\" :claim \"claim:checkout/rejects\" \"Shipped orders are rejected\" :evaluates \"review:checkout/reviewer-001\" \"claim:checkout/rejects\" :invalidates \"change:checkout/api-v2\" \"review:checkout/reviewer-001\" true)")))]
+    (do
+      (print-string (validation-source-manifest-json graph))
+      0)))
+"#;
+
+    let output = run_evidence_registry_runtime(harness);
+    let manifest: serde_json::Value =
+        serde_json::from_str(output.trim()).expect("selfhost manifest should be JSON");
+
+    assert_eq!(manifest["schema_version"], 1);
+    assert_eq!(manifest["reviews"].as_array().unwrap().len(), 1);
+    assert_eq!(manifest["reviews"][0]["namespace"], "checkout");
+    assert_eq!(manifest["reviews"][0]["key"], "reviewer-001");
+    assert_eq!(
+        manifest["reviews"][0]["provenance_digest"],
+        "sha256:review-provenance-001"
+    );
+    assert_eq!(manifest["reviews"][0]["visibility"], "redacted");
+    assert_eq!(manifest["edges"].as_array().unwrap().len(), 2);
+    assert_eq!(manifest["edges"][0]["relation"], "evaluates");
+    assert_eq!(manifest["edges"][0]["review"]["key"], "reviewer-001");
+    assert_eq!(manifest["edges"][0]["subject"]["kind"], "claim");
+    assert_eq!(manifest["edges"][1]["relation"], "invalidates");
+    assert_eq!(manifest["edges"][1]["change"]["key"], "api-v2");
+    assert_eq!(manifest["edges"][1]["subject"]["kind"], "review");
+}
+
+/// EC-M2-02: evaluates/invalidates の Evidence subject は登録済み evidence にだけ閉じる。
+#[test]
+fn test_e2e_selfhost_evidence_registry_closes_review_change_evidence_subjects() {
+    let harness = r#"
+(defn main []
+  (let [result (source-evidence-graph-from-program
+                 (parse-program "(defn review [] :claim \"claim:checkout/rejects\" \"Shipped orders are rejected\" :review \"review:checkout/reviewer-001\" \"sha256:review-provenance-001\" \"redacted\" :evidence \"evidence:checkout/review-001\" :subject \"claim:checkout/rejects\" :method \"review\" :outcome \"pass\" :runner \"review-tool\" :target \"aarch64-apple-darwin\" :source-commit \"commit-review-1\" :artifact-digest \"sha256:review-1\" :cases 1 :seed 42 :generator \"review-fixture\" :producer \"review-tool\" :tool-version \"0.2.0\" :timestamp \"2026-07-27T00:00:00Z\" :independence \"independent-review\" :evaluates \"review:checkout/reviewer-001\" \"evidence:checkout/review-001\" :invalidates \"change:checkout/api-v2\" \"evidence:checkout/review-001\" true)"))
+        graph (source-result-value result)
+        edges (source-graph-edges graph)]
+    (do
+      (print (source-result-status result))
+      (print (vector-length (source-evidence-graph-registry graph)))
+      (print (vector-length edges))
+      (print (source-edge-kind (vector-get edges 0)))
+      (print (source-edge-kind (vector-get edges 1)))
+      0)))
+"#;
+
+    let output = run_evidence_registry_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["1", "1", "2", "17", "18"],
+        "evidence subject の review/change edge は evidence registry に閉じて保持するべき"
     );
 }
 

@@ -3,7 +3,8 @@
 - Status: Accepted (verified partial slice)
 - Date: 2026-07-27
 - Scope: `crates/lsharp-syntax` metadata parser、`crates/lsharp-types` source adapter、selfhost
-  `Syntax.Parser` / `Tools.Validation.IntentSource` producer boundary
+  `Syntax.Parser` / `Tools.Validation.IntentSource` producer と `Tools.Validation.Evidence`
+  graph/manifest consumer boundary
 - Related: `EC-M2-02` / `EC-M2-03`、`docs/development/planning/v0.2-evidence-graph.md`
 
 ## Context
@@ -46,14 +47,22 @@ Rust の canonical graph model には ReviewId/ChangeId と
   （21 passed）は parser の `:evaluates` / `:invalidates` pair（kind 17/18）を review registry と
   node registry へ接続し、review/change edge の stable ID、明示 registry の missing review、
   subject kind mismatch、evidence registry 未接続の fail-closed boundary を actual Wasm で確認する。
-- Selfhost regression: `selfhost_evidence_`（18 passed）と `selfhost_parser_metadata_forms`
-  （28 passed）は回帰していない。native stage0 の producer/runtime parity はまだ未実行である。
+- Selfhost consumer: `cargo test -p lsharp-wasm --test e2e selfhost_evidence_ -- --nocapture`
+  （21 passed）は review registry、typed `evaluates` / `invalidates` edge、登録済み Evidence
+  subject の closure、optional `reviews` registry と typed edge JSON の manifest projection を
+  同じ graph に接続し、未登録 Evidence subject を kind 17/18 + registry-required error で
+  fail-closed にすることを actual Wasm で確認する。
+- Selfhost regression: `selfhost_source_adapter_`（21 passed）と
+  `selfhost_parser_metadata_forms`（28 passed）は回帰していない。これは Rust-host actual Wasm
+  の producer/consumer verified slice であり、native stage0 の producer/runtime parity はまだ
+  未実行である。
 
 ## Boundary
 
 これは Rust-host の source parser → typed graph adapter → `validate --source` report/manifest と、
-selfhost Parser → IntentSource の review/change edge producer を含む verified partial slice である。
-selfhost の evidence registry との統合、manifest/CLI/MCP、native stage0、Mac Apple Silicon /
-Linux x86_64 artifact/runtime parity、review provenance/privacy、EC-M2-02/03 aggregate completion
-は意味しない。evidence subject は registry 未接続のため selfhost では明示的に拒否する。
+selfhost Parser → IntentSource → Evidence graph/manifest consumer の review/change edge 経路を
+含む verified partial slice である。selfhost は登録済み Evidence subject の closure と optional
+`reviews`/typed edge JSON まで Rust-host actual Wasm で確認済みだが、manifest/CLI/MCP の全 surface、
+native stage0、Mac Apple Silicon / Linux x86_64 artifact/runtime parity、review provenance/privacy、
+EC-M2-02/03 aggregate completion は意味しない。未登録 Evidence subject は引き続き明示的に拒否する。
 未接続境界は TODO の `[~]` として維持する。

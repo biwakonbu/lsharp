@@ -360,8 +360,18 @@
   (let [base (source-graph nodes edges)]
     (vector-push-single-rooted-v3 base registry)))
 
+(defn source-evidence-graph-with-reviews [nodes edges registry reviews]
+  (vector-push-single-rooted-v3 (source-evidence-graph nodes edges registry) reviews))
 (defn source-evidence-graph-registry [graph]
   (vector-get graph 2))
+(defn source-evidence-graph-reviews [graph]
+  (if (> (vector-length graph) 3) (vector-get graph 3) (vector-new 0)))
+(defn source-evidence-id-vector-loop [registry idx len ids]
+  (if (>= idx len) ids
+    (source-evidence-id-vector-loop registry (+ idx 1) len
+      (vector-push-single-rooted-v3 ids (source-evidence-record-id (vector-get registry idx))))))
+(defn source-evidence-id-vector [registry]
+  (source-evidence-id-vector-loop registry 0 (vector-length registry) (vector-new 0)))
 
 (defn validation-json-object-wrap [body]
   (string-concat "{" (string-concat body "}")))
@@ -397,7 +407,9 @@
   (if (= relation (source-edge-motivates)) "motivates"
     (if (= relation (source-edge-constrained-by)) "constrained-by"
       (if (= relation (source-edge-tested-by)) "tested-by"
-        (if (= relation (source-edge-supports)) "supports" "contradicts")))))
+        (if (= relation (source-edge-supports)) "supports"
+          (if (= relation (source-edge-contradicts)) "contradicts"
+            (if (= relation (source-edge-evaluates)) "evaluates" "invalidates")))))))
 
 (defn validation-source-id-json [wire-id]
   (let [len (string-length wire-id)
@@ -410,6 +422,22 @@
     fields2 (validation-json-append fields1 (validation-json-string-field "key" key-text))]
     (validation-json-object-wrap fields2)))
 
+(defn validation-source-review-json [review]
+  (let [id (source-review-id review)
+    fields0 (validation-json-string-field "namespace"
+      (let [colon (source-find-char id 58 0 (string-length id))
+        slash (source-find-char id 47 (+ colon 1) (string-length id))]
+        (substring id (+ colon 1) slash)))
+    fields1 (validation-json-append fields0
+      (validation-json-string-field "key"
+        (let [colon (source-find-char id 58 0 (string-length id))
+          slash (source-find-char id 47 (+ colon 1) (string-length id))]
+          (substring id (+ slash 1) (string-length id)))))
+    fields2 (validation-json-append fields1
+      (validation-json-string-field "provenance_digest" (source-review-provenance-digest review)))
+    fields3 (validation-json-append fields2
+      (validation-json-string-field "visibility" (source-review-visibility review)))]
+    (validation-json-object-wrap fields3)))
 (defn validation-source-span-json [start end]
   (let [fields0 ""
     fields1 (validation-json-append fields0 (validation-json-int-field "start" start))
@@ -488,8 +516,8 @@
     (if (= kind (source-node-intent)) "intent"
       (if (= kind (source-node-claim)) "claim" "contract"))))
 
-(defn validation-source-subject-json [subject]
-  (let [fields0 (validation-json-string-field "kind" (validation-source-subject-kind-text subject))
+(defn validation-source-subject-json-with-kind [subject kind-text]
+  (let [fields0 (validation-json-string-field "kind" kind-text)
     id-object-fields (string-concat
       (validation-json-string-field "namespace"
         (let [wire-id subject
@@ -504,6 +532,17 @@
             (substring wire-id (+ slash 1) (string-length wire-id))))))]
     (validation-json-object-wrap (string-concat fields0 (string-concat "," id-object-fields)))))
 
+(defn validation-source-subject-json [subject]
+  (validation-source-subject-json-with-kind
+    subject
+    (validation-source-subject-kind-text subject)))
+(defn validation-source-review-subject-kind-text [subject]
+  (if (= (source-wire-valid? subject (source-node-intent)) 1)
+    "intent"
+    (if (= (source-wire-valid? subject (source-node-claim)) 1) "claim" "evidence")))
+
+(defn validation-source-invalidation-subject-kind-text [subject]
+  (if (= (source-wire-valid? subject (source-review)) 1) "review" "evidence"))
 (defn validation-source-evidence-json [evidence-record]
   (let [id (source-evidence-record-id evidence-record)
     fields0 ""
@@ -570,6 +609,19 @@
           len
           (validation-json-append out (validation-source-evidence-json (vector-get registry idx))))))))
 
+(defn validation-source-reviews-json-state-loop [state]
+  (let [reviews (vector-get state 0)
+    idx (vector-get state 1)
+    len (vector-get state 2)
+    out (vector-get state 3)]
+    (if (>= idx len)
+      out
+      (validation-source-reviews-json-state-loop
+        (validation-source-manifest-json-state
+          reviews
+          (+ idx 1)
+          len
+          (validation-json-append out (validation-source-review-json (vector-get reviews idx))))))))
 (defn validation-source-edge-json [edge]
   (let [relation (source-edge-kind edge)
     left (source-edge-left edge)
@@ -582,7 +634,11 @@
           (validation-json-append fields0 (validation-json-object-field "claim" (validation-source-id-json left)))
           (if (= relation (source-edge-tested-by))
             (validation-json-append fields0 (validation-json-object-field "claim" (validation-source-id-json left)))
-            (validation-json-append fields0 (validation-json-object-field "observation" (validation-source-id-json left))))))
+            (if (= relation (source-edge-evaluates))
+              (validation-json-append fields0 (validation-json-object-field "review" (validation-source-id-json left)))
+              (if (= relation (source-edge-invalidates))
+                (validation-json-append fields0 (validation-json-object-field "change" (validation-source-id-json left)))
+                (validation-json-append fields0 (validation-json-object-field "observation" (validation-source-id-json left))))))))
     fields2
       (if (= relation (source-edge-motivates))
         (validation-json-append fields1 (validation-json-object-field "claim" (validation-source-id-json right)))
@@ -590,7 +646,19 @@
           (validation-json-append fields1 (validation-json-object-field "assumption" (validation-source-id-json right)))
           (if (= relation (source-edge-tested-by))
             (validation-json-append fields1 (validation-json-object-field "contract" (validation-source-id-json right)))
-            (validation-json-append fields1 (validation-json-object-field "claim" (validation-source-id-json right))))))]
+            (if (= relation (source-edge-evaluates))
+              (validation-json-append fields1
+                (validation-json-object-field "subject"
+                  (validation-source-subject-json-with-kind
+                    right
+                    (validation-source-review-subject-kind-text right))))
+              (if (= relation (source-edge-invalidates))
+                (validation-json-append fields1
+                  (validation-json-object-field "subject"
+                    (validation-source-subject-json-with-kind
+                      right
+                      (validation-source-invalidation-subject-kind-text right))))
+                (validation-json-append fields1 (validation-json-object-field "claim" (validation-source-id-json right))))))))]
     (validation-json-object-wrap fields2)))
 
 (defn validation-source-edges-json-state-loop [state]
@@ -611,11 +679,14 @@
   (let [nodes (source-graph-nodes graph)
     edges (source-graph-edges graph)
     registry (source-evidence-graph-registry graph)
+    reviews (source-evidence-graph-reviews graph)
     nodes-state (validation-source-manifest-json-state nodes 0 (vector-length nodes) "")
     evidence-state (validation-source-manifest-json-state registry 0 (vector-length registry) "")
+    reviews-state (validation-source-manifest-json-state reviews 0 (vector-length reviews) "")
     edges-state (validation-source-manifest-json-state edges 0 (vector-length edges) "")
     nodes-json (validation-source-nodes-json-state-loop nodes-state)
     evidence-json (validation-source-evidence-json-state-loop evidence-state)
+    reviews-json (validation-source-reviews-json-state-loop reviews-state)
     edges-json (validation-source-edges-json-state-loop edges-state)
     fields0 (validation-json-int-field "schema_version" 1)
     fields1 (validation-json-append fields0
@@ -624,31 +695,27 @@
     fields2 (validation-json-append fields1
       (validation-json-array-field "evidence"
         (validation-json-array-wrap evidence-json)))
-    fields3 (validation-json-append fields2
+    fields3
+      (if (> (vector-length reviews) 0)
+        (validation-json-append fields2
+          (validation-json-array-field "reviews"
+            (validation-json-array-wrap reviews-json)))
+        fields2)
+    fields4 (validation-json-append fields3
       (validation-json-array-field "edges"
         (validation-json-array-wrap edges-json)))]
-    (validation-json-object-wrap fields3)))
+    (validation-json-object-wrap fields4)))
 
-(defn source-evidence-edge-form-result [form registry nodes]
+(defn source-evidence-edge-form-result-with-reviews [form registry nodes reviews evidence-ids]
   (if (< (vector-length form) 4)
     (source-result 0 (source-graph-error (source-error-malformed) 0 ""))
-    (let [relation (vector-get form 0)
-      payload (vector-get form 1)
-      start (vector-get form 2)
-      end (vector-get form 3)]
+    (let [relation (vector-get form 0) payload (vector-get form 1) start (vector-get form 2) end (vector-get form 3)]
       (if (or (= relation (source-edge-evaluates)) (= relation (source-edge-invalidates)))
-        (source-result 0
-          (source-graph-error-at
-            (source-error-review-edge-consumer-required)
-            relation
-            ""
-            start
-            end))
+        (source-edge-form-result-with-reviews-and-evidence form nodes reviews evidence-ids)
         (if (or (< (vector-length payload) 2)
             (and (!= relation (source-edge-supports)) (!= relation (source-edge-contradicts))))
           (source-edge-form-result form nodes)
-        (let [evidence-id (vector-get payload 0)
-          claim-id (vector-get payload 1)]
+          (let [evidence-id (vector-get payload 0) claim-id (vector-get payload 1)]
           (if (or (= (string-length evidence-id) 0) (= (string-length claim-id) 0))
             (source-result 0 (source-graph-error-at (source-error-malformed) relation evidence-id start end))
             (if (= (source-wire-valid? evidence-id (source-edge-supports)) 0)
@@ -661,100 +728,69 @@
                     (source-result 0 (source-graph-error-at (source-error-evidence-registry-required) relation evidence-id start end))
                     (source-result 1 (source-edge-record relation evidence-id claim-id start end)))))))))))))
 
-(defn source-evidence-append-edge-forms [forms idx len registry nodes edges]
+(defn source-evidence-append-edge-forms [forms idx len registry nodes reviews evidence-ids edges]
   (if (>= idx len)
     (source-result 1 edges)
-    (let [form (vector-get forms idx)
-      kind (vector-get form 0)]
+    (let [form (vector-get forms idx) kind (vector-get form 0)]
       (if (source-edge-kind? kind)
-        (let [parsed (source-evidence-edge-form-result form registry nodes)]
+        (let [parsed (source-evidence-edge-form-result-with-reviews form registry nodes reviews evidence-ids)]
           (if (= (source-result-status parsed) 0)
             parsed
-            (source-evidence-append-edge-forms
-              forms
-              (+ idx 1)
-              len
-              registry
-              nodes
+            (source-evidence-append-edge-forms forms (+ idx 1) len registry nodes reviews evidence-ids
               (vector-push-single-rooted-v3 edges (source-result-value parsed)))))
-        (source-evidence-append-edge-forms forms (+ idx 1) len registry nodes edges)))))
+        (source-evidence-append-edge-forms forms (+ idx 1) len registry nodes reviews evidence-ids edges)))))
 
-(defn source-evidence-collect-edge-children [decl idx len registry nodes edges]
+(defn source-evidence-collect-edge-children [decl idx len registry nodes reviews evidence-ids edges]
   (if (>= idx len)
     (source-result 1 edges)
     (let [child (vector-get decl idx)
-      parsed (source-evidence-collect-edges-decl child registry nodes edges)]
+      parsed (source-evidence-collect-edges-decl child registry nodes reviews evidence-ids edges)]
       (if (= (source-result-status parsed) 0)
         parsed
-        (source-evidence-collect-edge-children
-          decl
-          (+ idx 1)
-          len
-          registry
-          nodes
+        (source-evidence-collect-edge-children decl (+ idx 1) len registry nodes reviews evidence-ids
           (source-result-value parsed))))))
 
-(defn source-evidence-collect-edges-decl [decl registry nodes edges]
+(defn source-evidence-collect-edges-decl [decl registry nodes reviews evidence-ids edges]
   (let [tag (vector-get decl 0)]
     (if (= tag (ast-defn))
       (let [forms (source-ordered-forms decl)]
-        (source-evidence-append-edge-forms
-          forms
-          0
-          (vector-length forms)
-          registry
-          nodes
-          edges))
+        (source-evidence-append-edge-forms forms 0 (vector-length forms) registry nodes reviews evidence-ids edges))
       (if (= tag (ast-private))
-        (source-evidence-collect-edges-decl (vector-get decl 1) registry nodes edges)
+        (source-evidence-collect-edges-decl (vector-get decl 1) registry nodes reviews evidence-ids edges)
         (if (= tag (ast-module-decl))
-          (source-evidence-collect-edge-children decl 5 (vector-length decl) registry nodes edges)
+          (source-evidence-collect-edge-children decl 5 (vector-length decl) registry nodes reviews evidence-ids edges)
           (if (= tag (ast-impldef))
-            (source-evidence-collect-edge-children decl 4 (vector-length decl) registry nodes edges)
+            (source-evidence-collect-edge-children decl 4 (vector-length decl) registry nodes reviews evidence-ids edges)
             (source-result 1 edges)))))))
 
-(defn source-evidence-collect-edges-program-loop [program idx len registry nodes edges]
+(defn source-evidence-collect-edges-program-loop [program idx len registry nodes reviews evidence-ids edges]
   (if (>= idx len)
     (source-result 1 edges)
-    (let [parsed (source-evidence-collect-edges-decl
-        (vector-get program idx)
-        registry
-        nodes
-        edges)]
+    (let [parsed (source-evidence-collect-edges-decl (vector-get program idx) registry nodes reviews evidence-ids edges)]
       (if (= (source-result-status parsed) 0)
         parsed
-        (source-evidence-collect-edges-program-loop
-          program
-          (+ idx 1)
-          len
-          registry
-          nodes
+        (source-evidence-collect-edges-program-loop program (+ idx 1) len registry nodes reviews evidence-ids
           (source-result-value parsed))))))
 
-(defn source-evidence-collect-edges [program registry nodes]
-  (source-evidence-collect-edges-program-loop
-    program
-    0
-    (vector-length program)
-    registry
-    nodes
-    (vector-new 0)))
+(defn source-evidence-collect-edges [program registry nodes reviews]
+  (source-evidence-collect-edges-program-loop program 0 (vector-length program) registry nodes reviews
+    (source-evidence-id-vector registry) (vector-new 0)))
 
 (defn source-evidence-graph-from-program [program]
   (let [nodes-result (source-collect-nodes program)]
     (if (= (source-result-status nodes-result) 0)
       nodes-result
       (let [nodes (source-result-value nodes-result)
-        registry-result (source-evidence-registry-from-program program)]
-        (if (= (source-result-status registry-result) 0)
-          registry-result
-          (let [registry (source-result-value registry-result)
-            edges-result (source-evidence-collect-edges program registry nodes)]
-            (if (= (source-result-status edges-result) 0)
-              edges-result
-              (source-result
-                1
-                (source-evidence-graph
-                  nodes
-                  (source-result-value edges-result)
-                  registry)))))))))
+        reviews-result (source-collect-reviews program)]
+        (if (= (source-result-status reviews-result) 0)
+          reviews-result
+          (let [reviews (source-result-value reviews-result)
+            registry-result (source-evidence-registry-from-program program)]
+            (if (= (source-result-status registry-result) 0)
+              registry-result
+              (let [registry (source-result-value registry-result)
+                edges-result (source-evidence-collect-edges program registry nodes reviews)]
+                (if (= (source-result-status edges-result) 0)
+                  edges-result
+                  (source-result 1 (source-evidence-graph-with-reviews nodes (source-result-value edges-result)
+                    registry reviews)))))))))))

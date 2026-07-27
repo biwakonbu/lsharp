@@ -40,8 +40,10 @@
   selfhost/native parity を閉じる。selfhost parser の `:review` kind 16 triple payload と
   `IntentSource` の opaque review registry projection は Rust-host actual Wasm の verified slice
   として追加済みであり、kind 17/18 の `evaluates` / `invalidates` edge projection と review
-  registry closure/error boundary も verified slice として追加した。ただし evidence registry との
-  統合、native stage0 producer/runtime parity は残る。
+  registry closure/error boundary も verified slice として追加した。selfhost Evidence consumer の
+  review registry、typed review/change edge、登録済み Evidence subject closure、optional `reviews`
+  registry と manifest JSON projection も Rust-host actual Wasm で verified slice として追加した。
+  ただし review lifecycle/authentication、native stage0 producer/runtime parity は残る。
 - [~] `EC-M2-03` `lsharp validate` — version 1 manifest parser、source adapter、
   `--emit-manifest` の atomic/durable file boundary、deterministic text/JSON report、
   optional `reviews` registry の Rust CLI roundtrip と未登録 review edge の non-zero/

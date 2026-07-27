@@ -337,6 +337,11 @@
 (defn source-review-id-exists? [reviews id]
   (source-review-id-exists-loop reviews id 0 (vector-length reviews)))
 
+(defn source-string-id-exists-loop [ids id idx len]
+  (if (>= idx len) 0 (if (string-eq (vector-get ids idx) id) 1
+    (source-string-id-exists-loop ids id (+ idx 1) len))))
+
+(defn source-string-id-exists? [ids id] (source-string-id-exists-loop ids id 0 (vector-length ids)))
 (defn source-review-find-loop [reviews id idx len]
   (if (>= idx len)
     0
@@ -653,27 +658,27 @@
                             (source-result 0 (source-graph-error-at (source-error-missing-review) relation right start end))
                             (source-result 1 (source-edge-record relation left right start end))))))))))))))))
 
-(defn source-edge-form-result-with-reviews [form nodes reviews]
+(defn source-review-edge-form-result-with-evidence [form nodes reviews evidence-ids]
+  (let [payload (if (> (vector-length form) 1) (vector-get form 1) (vector-new 0)) relation (if (> (vector-length form) 0) (vector-get form 0) 0) left (if (> (vector-length payload) 0) (vector-get payload 0) "") right (if (> (vector-length payload) 1) (vector-get payload 1) "") parsed (source-review-edge-form-result form nodes reviews)]
+    (if (= (source-result-status parsed) 1) parsed
+      (let [error (source-result-error parsed)]
+        (if (and (= (source-graph-error-code error) (source-error-evidence-registry-required)) (= (source-string-id-exists? evidence-ids right) 1))
+          (source-result 1 (source-edge-record relation left right (source-graph-error-start error) (source-graph-error-end error)))
+          parsed)))))
+(defn source-edge-form-result-with-reviews-and-evidence [form nodes reviews evidence-ids]
   (let [relation (if (> (vector-length form) 0) (vector-get form 0) 0)]
     (if (or (= relation (source-edge-evaluates)) (= relation (source-edge-invalidates)))
-      (source-review-edge-form-result form nodes reviews)
+      (source-review-edge-form-result-with-evidence form nodes reviews evidence-ids)
       (source-edge-form-result form nodes))))
-
 (defn source-append-edge-forms-with-reviews [forms idx len nodes reviews edges]
   (if (>= idx len)
     (source-result 1 edges)
-    (let [form (vector-get forms idx)
-      kind (vector-get form 0)]
+    (let [form (vector-get forms idx) kind (vector-get form 0)]
       (if (source-edge-kind? kind)
-        (let [parsed (source-edge-form-result-with-reviews form nodes reviews)]
+        (let [parsed (source-edge-form-result-with-reviews-and-evidence form nodes reviews (vector-new 0))]
           (if (= (source-result-status parsed) 0)
             parsed
-            (source-append-edge-forms-with-reviews
-              forms
-              (+ idx 1)
-              len
-              nodes
-              reviews
+            (source-append-edge-forms-with-reviews forms (+ idx 1) len nodes reviews
               (vector-push-single-rooted-v3 edges (source-result-value parsed)))))
         (source-append-edge-forms-with-reviews forms (+ idx 1) len nodes reviews edges)))))
 
@@ -687,12 +692,7 @@
       parsed (source-collect-edges-decl-with-reviews child nodes reviews edges)]
       (if (= (source-result-status parsed) 0)
         parsed
-        (source-collect-edge-children-with-reviews
-          decl
-          (+ idx 1)
-          len
-          nodes
-          reviews
+        (source-collect-edge-children-with-reviews decl (+ idx 1) len nodes reviews
           (source-result-value parsed))))))
 
 (defn source-collect-edges-decl-with-reviews [decl nodes reviews edges]
