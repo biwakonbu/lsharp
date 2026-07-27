@@ -106,6 +106,10 @@ for required in \
   'VALIDATION_INVALID_REVIEW_DIGEST_MANIFEST' \
   'run_expected_validation_error validation-invalid-review-digest' \
   'source validation error:8' \
+  'VALIDATION_INVALID_REVIEW_ID_SOURCE' \
+  'VALIDATION_INVALID_REVIEW_ID_MANIFEST' \
+  'run_expected_validation_error validation-invalid-review-id' \
+  'source validation error:2' \
   'VALIDATION_REVIEW_SUBJECT_KIND_SOURCE' \
   'VALIDATION_REVIEW_SUBJECT_KIND_MANIFEST' \
   'run_expected_validation_error validation-review-subject-kind' \
