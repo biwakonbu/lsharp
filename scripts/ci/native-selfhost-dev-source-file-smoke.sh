@@ -99,6 +99,7 @@ BUILD_OUTPUT="$WORK_DIR/build.wasm"
 VALIDATION_MANIFEST="$WORK_DIR/ec-m3-canonical-manifest.json"
 VALIDATION_INVALID_MANIFEST="$WORK_DIR/ec-m3-duplicate-node-manifest.json"
 VALIDATION_WRITE_FAILURE_MANIFEST="$WORK_DIR/missing-parent/intent-graph.json"
+VALIDATION_PASS_SOURCE="$WORK_DIR/ec-m3-complete-source.ls"
 
 printf '%s\n' '(defn main [] 42)' >"$INPUT"
 cat >"$METADATA" <<'LSHARP'
@@ -121,6 +122,30 @@ cat >"$DYNAMIC_COMPLEMENT_PROPERTY" <<'LSHARP'
 (defn identity [x]
   :property [(for-all [value Int] :cases 1 :postcondition (or (= value 0) (not (= value 0))))]
   x)
+LSHARP
+cat >"$VALIDATION_PASS_SOURCE" <<'LSHARP'
+(defn verify []
+  :intent "intent:checkout/safe-cancel" "Users can cancel an order"
+  :claim "claim:checkout/rejects" "Shipped orders are rejected"
+  :motivates "intent:checkout/safe-cancel" "claim:checkout/rejects"
+  :tested-by "claim:checkout/rejects" "contract:checkout/review"
+  :evidence "evidence:checkout/review"
+    :subject "claim:checkout/rejects"
+    :method "review"
+    :outcome "pass"
+    :runner "reviewer"
+    :target "aarch64-apple-darwin"
+    :source-commit "deadbeef"
+    :artifact-digest "sha256:abc"
+    :cases 1
+    :seed 42
+    :generator "checkout-review"
+    :producer "lsharp-test"
+    :tool-version "0.2"
+    :timestamp "2026-07-25T00:00:00Z"
+    :independence "independent-review"
+  :supports "evidence:checkout/review" "claim:checkout/rejects"
+  true)
 LSHARP
 
 run_command() {
@@ -373,6 +398,35 @@ grep -F "source validation manifest write failed" \
   || die "manifest write failure must expose the stable diagnostic"
 [[ ! -e "$VALIDATION_WRITE_FAILURE_MANIFEST" ]] \
   || die "manifest write failure must produce no manifest artifact"
+
+run_command validation-pass-json 0 validate \
+  --source "$VALIDATION_PASS_SOURCE" \
+  --format json
+python3 - "$WORK_DIR/validation-pass-json.stdout" <<'PY'
+import json
+import pathlib
+import sys
+
+lines = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8").splitlines()
+if len(lines) != 1:
+    raise SystemExit(f"validation pass JSON must contain one report line: {lines!r}")
+report = json.loads(lines[0])
+if report.get("status") != "pass":
+    raise SystemExit(f"validation pass status is invalid: {report!r}")
+if report.get("trace_gaps") != [] or report.get("open_questions") != 0:
+    raise SystemExit(f"validation pass graph metrics are invalid: {report!r}")
+if report.get("independent_reviews") != 1:
+    raise SystemExit(f"validation pass review metric is invalid: {report!r}")
+if report.get("contradicting_observations") != 0:
+    raise SystemExit(f"validation pass contradiction metric is invalid: {report!r}")
+if report.get("stale_reviews") != 0 or report.get("stale_evidence") != 0:
+    raise SystemExit(f"validation pass stale metrics are invalid: {report!r}")
+PY
+
+run_command validation-pass-text 0 validate \
+  --source "$VALIDATION_PASS_SOURCE" \
+  --format text
+require_exact_output validation-pass-text $'status: pass\nopen-questions: 0\nindependent-reviews: 1\ncontradicting-observations: 0\nstale-reviews: 0\nstale-evidence: 0\n'
 
 run_expected_validation_error validation-duplicate-node \
   validate \

@@ -82,7 +82,9 @@
   current source-commit に一致する実 stage0 artifact/runtime の証拠ではない。さらに native
   source-file smoke は `--emit-manifest` の親ディレクトリ欠落を stable write failure、exit `1`、
   no-report/no-file として要求する contract を持つが、atomic/durable writer と実 stage0 runtime
-  の証拠ではない。
+  の証拠ではない。さらに independent review を含む complete graph fixtureの JSON `status: pass` /
+  exit `0` と text 6行 projection を native smoke contract に追加したが、current source-commit に
+  一致する stage0 artifact/runtime での実行 evidence は未取得である。
 
 次の実装は `EC-M2-01`〜`EC-M2-03` の未接続入力を一つの RED に絞る。current plan の
 acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展開しない。

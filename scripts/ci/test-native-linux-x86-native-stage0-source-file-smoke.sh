@@ -51,7 +51,12 @@ for required in \
   'missing-parent' \
   '--emit-manifest "$VALIDATION_WRITE_FAILURE_MANIFEST"' \
   'source validation manifest write failed' \
-  '[[ ! -e "$VALIDATION_WRITE_FAILURE_MANIFEST" ]]'; do
+  '[[ ! -e "$VALIDATION_WRITE_FAILURE_MANIFEST" ]]' \
+  'VALIDATION_PASS_SOURCE' \
+  'validation-pass-json' \
+  'validation-pass-text' \
+  'status: pass' \
+  'independent-reviews: 1'; do
   assert_script_contains "$SOURCE_SMOKE" "$required"
 done
 
