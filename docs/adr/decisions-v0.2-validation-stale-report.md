@@ -3,7 +3,8 @@
 - Status: Accepted (verified partial slice)
 - Date: 2026-07-27
 - Scope: `lsharp-types::validation::ValidationReport`
-- Related: `EC-M2-02` / `EC-M2-03`、`docs/adr/decisions-v0.2-review-stale-propagation.md`
+- Related: `EC-M2-02` / `EC-M2-03`、`docs/adr/decisions-v0.2-review-stale-propagation.md`、
+  `docs/adr/decisions-v0.2-selfhost-validation-stale-report.md`
 
 ## Context
 
@@ -33,7 +34,7 @@ contradiction がなく stale facts が一つでもある場合は `unknown` を
 
 ## Boundary
 
-これは Rust canonical validation model と schema/text/JSON projection の verified slice である。
-公開 CLI、MCP、selfhost/native stage0、Mac Apple Silicon / Linux x86_64 artifact/runtime、
-provider authentication と外部 review lifecycle の実証は未完了であり、EC-M2 aggregate は TODO の
-`[~]` を維持する。
+これは Rust canonical validation model と schema/text/JSON projection の ADR である。
+selfhost の report parity は別 ADR の Rust-host actual Wasm verified slice として接続する。
+native stage0、Mac Apple Silicon / Linux x86_64 artifact/runtime、provider authentication と
+外部 review lifecycle の実証は未完了であり、EC-M2 aggregate は TODO の `[~]` を維持する。

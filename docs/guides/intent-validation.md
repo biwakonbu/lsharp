@@ -170,5 +170,7 @@ report までを Rust CLI で実行できます。required-field evidence record
 evidence registry 未接続の source edge は明示的に拒否します。Rust MCP の `lsharp_validate` は
 `source` / `file` に加えて `manifest`（JSON object/string）/ `manifest_file` を受け取り、同じ
 version 1 parser と fact-oriented report を返します。`include_manifest: true` を指定すると、同じ graph から
-canonical manifest を inline で返します（filesystem write は行いません）。manifest emission、selfhost/native の report
-parity、EmbeddedCli、Mac/Linux の artifact/runtime evidence は後続の M2-03 task として残ります。
+canonical manifest を inline で返します（filesystem write は行いません）。selfhost `App.Cli` /
+`EmbeddedCli` の stale report/unknown parity は Rust-host actual Wasm で確認済みですが、manifest
+emission の native stage0 parity、native MCP、Mac/Linux の artifact/runtime evidence は後続の
+M2-03 task として残ります。

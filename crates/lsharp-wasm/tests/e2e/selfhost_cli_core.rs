@@ -14704,6 +14704,63 @@ fn test_e2e_selfhost_cli_validate_source_json_reports_contradicting_evidence() {
     assert_eq!(value["contradicting_observations"], 1);
 }
 
+/// EC-M2-03: selfhost validate は invalidated review/evidence を stale facts として unknown にする。
+#[test]
+fn test_e2e_selfhost_cli_validate_source_json_reports_stale_review_and_evidence() {
+    let dir = std::env::temp_dir().join(format!(
+        "lsharp_test_cli_validate_source_stale_{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("input.ls"),
+        r#"
+(defn stale-review []
+  :intent "intent:checkout/safe-cancel" "Users can cancel an order"
+  :claim "claim:checkout/cancel-rejects-shipped" "The API rejects shipped orders"
+  :motivates "intent:checkout/safe-cancel" "claim:checkout/cancel-rejects-shipped"
+  :tested-by "claim:checkout/cancel-rejects-shipped" "contract:checkout/cancel-case"
+  :evidence "evidence:checkout/review-001"
+    :subject "claim:checkout/cancel-rejects-shipped"
+    :method "review"
+    :outcome "pass"
+    :runner "review-tool"
+    :target "aarch64-apple-darwin"
+    :source-commit "commit-review-1"
+    :artifact-digest "sha256:review-1"
+    :cases 1
+    :seed 42
+    :generator "review-fixture"
+    :producer "review-tool"
+    :tool-version "0.2.0"
+    :timestamp "2026-07-27T00:00:00Z"
+    :independence "independent-review"
+  :review "review:checkout/reviewer-001" "sha256:review-provenance-001" "redacted"
+  :evaluates "review:checkout/reviewer-001" "evidence:checkout/review-001"
+  :invalidates "change:checkout/api-v2" "review:checkout/reviewer-001"
+  true)
+"#,
+    )
+    .unwrap();
+
+    let wasm = selfhost_cli_validation_wasm();
+    let output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_args_and_stdin_capture(
+        wasm,
+        Some(&dir),
+        &["validate", "--source", "input.ls", "--format", "json"],
+        "",
+    )
+    .unwrap();
+    let _ = std::fs::remove_dir_all(&dir);
+
+    assert_eq!(output.exit_code, 2, "stale validation は unknown exit 2 を返すべき");
+    let value: Value = serde_json::from_str(output.stdout.trim())
+        .expect("selfhost stale report は JSON であるべき");
+    assert_eq!(value["status"], "unknown");
+    assert_eq!(value["stale_reviews"], 1);
+    assert_eq!(value["stale_evidence"], 1);
+}
+
 /// EC-M2-03: selfhost validate は report stdout と source manifest file を分離して出力する。
 #[test]
 fn test_e2e_selfhost_cli_validate_source_emits_manifest() {

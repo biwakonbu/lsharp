@@ -27,6 +27,7 @@
 (import Backend.Wasm.CompilerBase)
 (import Tools.Validation.IntentSource)
 (import Tools.Validation.Evidence)
+(import Tools.Validation.Stale)
 (defn push-int-vector-local [dst value] (do (root_push dst) (let [next-dst (vector-push dst value)] (do (root_pop) next-dst))))
 (defn push-object-vector-local [dst value] (do (root_push dst) (root_push value) (let [next-dst (vector-push dst value)] (do (root_pop) (root_pop) next-dst))))
 (defn exit-success [] 0)
@@ -269,18 +270,23 @@
     ids0 (vector-new 0)
     ids1 (validation-contradictory-records-loop registry 0 (vector-length registry) ids0)
     ids2 (validation-contradictory-edges-loop edges 0 (vector-length edges) ids1)
+    stale-metrics (source-evidence-stale-metrics graph)
     metrics0 (vector-new 0)
-    metrics1 (push-int-vector-local metrics0 independent-reviews)]
-    (push-int-vector-local metrics1 (vector-length ids2))))
-(defn validation-source-report-json [state independent-reviews contradicting-observations]
+    metrics1 (push-int-vector-local metrics0 independent-reviews)
+    metrics2 (push-int-vector-local metrics1 (vector-length ids2))
+    metrics3 (push-int-vector-local metrics2 (vector-get stale-metrics 0))]
+    (push-int-vector-local metrics3 (vector-get stale-metrics 1))))
+(defn validation-source-report-json [state independent-reviews contradicting-observations stale-reviews stale-evidence]
   (let [fields0 ""
     status (if (> contradicting-observations 0) "fail" "unknown")
     fields1 (docjson-append fields0 (docjson-string-field "status" status))
     fields2 (docjson-append fields1 (docjson-array-field "trace_gaps" (validation-trace-gaps-json state)))
     fields3 (docjson-append fields2 (docjson-int-field "open_questions" (ref-get (vector-get state 4))))
     fields4 (docjson-append fields3 (docjson-int-field "independent_reviews" independent-reviews))
-    fields5 (docjson-append fields4 (docjson-int-field "contradicting_observations" contradicting-observations))]
-    (docjson-object-wrap fields5)))
+    fields5 (docjson-append fields4 (docjson-int-field "contradicting_observations" contradicting-observations))
+    fields6 (docjson-append fields5 (docjson-int-field "stale_reviews" stale-reviews))
+    fields7 (docjson-append fields6 (docjson-int-field "stale_evidence" stale-evidence))]
+    (docjson-object-wrap fields7)))
 (defn validation-option-manifest-path [opts] (vector-get opts 1))
 (defn validation-source-write-manifest [graph manifest-path]
   (if (> (string-length manifest-path) 0)
@@ -303,7 +309,14 @@
         metrics (validation-evidence-metrics graph)
         independent-reviews (vector-get metrics 0)
         contradicting-observations (vector-get metrics 1)
-        report (validation-source-report-json state independent-reviews contradicting-observations)]
+        stale-reviews (vector-get metrics 2)
+        stale-evidence (vector-get metrics 3)
+        report (validation-source-report-json
+          state
+          independent-reviews
+          contradicting-observations
+          stale-reviews
+          stale-evidence)]
         (if (and (> (string-length manifest-path) 0)
             (< (validation-source-write-manifest graph manifest-path) 0))
           (do

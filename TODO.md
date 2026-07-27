@@ -49,6 +49,9 @@
   auth/selfhost-native parity は未完了である。さらに `ValidationReport` が stale review/evidence
   件数を JSON/text facts として投影し、stale が残る場合に `unknown` へ fail-closed する Rust
   canonical report slice を追加した。公開 CLI/MCP、selfhost/native parity は未完了である。
+  selfhost `Tools.Validation.Stale` の source graph projection と `App.Cli` /
+  `EmbeddedCli` の stale report/unknown wiring は Rust-host actual Wasm で verified したが、
+  native stage0 parity は未完了である。
 - [~] `EC-M2-03` `lsharp validate` — version 1 manifest parser、source adapter、
   `--emit-manifest` の atomic/durable file boundary、deterministic text/JSON report、
   optional `reviews` registry の Rust CLI roundtrip と未登録 review edge の non-zero/
@@ -66,8 +69,9 @@
   atomic/durable emission、native stage0 の write/provenance failure、release-level
   provenance、両 supported target の runtime evidence を閉じる。Rust canonical report の
   `stale_reviews` / `stale_evidence` facts と stale→`unknown` policy、Rust MCP schema/output
-  も verified slice として追加したが、selfhost/native report parity、native MCP、両 supported
-  target の runtime evidence は未完了である。
+  も verified slice として追加した。selfhost `App.Cli` / `EmbeddedCli` の stale report/exit
+  parity は Rust-host actual Wasm で verified したが、native stage0 report parity、native MCP、
+  両 supported target の runtime evidence は未完了である。
 
 次の実装は `EC-M2-01`〜`EC-M2-03` の未接続入力を一つの RED に絞る。current plan の
 acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展開しない。

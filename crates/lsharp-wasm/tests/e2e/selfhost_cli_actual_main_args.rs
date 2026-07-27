@@ -670,6 +670,56 @@ fn test_e2e_selfhost_embedded_cli_validate_source_reports_pass() {
     assert_eq!(report["contradicting_observations"], 0);
 }
 
+/// EC-M2-03: EmbeddedCli の invalidated review/evidence は stale facts と unknown を返す。
+#[test]
+fn test_e2e_selfhost_embedded_cli_validate_source_reports_stale_review_and_evidence() {
+    let source = r#"
+(defn stale-review []
+  :intent "intent:checkout/safe-cancel" "Users can cancel an order"
+  :claim "claim:checkout/rejects" "Shipped orders are rejected"
+  :motivates "intent:checkout/safe-cancel" "claim:checkout/rejects"
+  :tested-by "claim:checkout/rejects" "contract:checkout/review"
+  :evidence "evidence:checkout/review-001"
+    :subject "claim:checkout/rejects"
+    :method "review"
+    :outcome "pass"
+    :runner "reviewer"
+    :target "aarch64-apple-darwin"
+    :source-commit "deadbeef"
+    :artifact-digest "sha256:abc"
+    :cases 1
+    :seed 42
+    :generator "checkout-review"
+    :producer "lsharp-test"
+    :tool-version "0.2"
+    :timestamp "2026-07-27T00:00:00Z"
+    :independence "independent-review"
+  :review "review:checkout/reviewer-001" "sha256:review-provenance-001" "redacted"
+  :evaluates "review:checkout/reviewer-001" "evidence:checkout/review-001"
+  :invalidates "change:checkout/api-v2" "review:checkout/reviewer-001"
+  true)
+"#;
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, || {
+        run_main_with_input_file_capture(
+            selfhost_embedded_cli_runtime_bundle(),
+            "embedded_validate_stale_review",
+            source,
+            &["validate", "--source", "input.ls", "--format", "json"],
+        )
+    });
+
+    assert_eq!(
+        output.exit_code, 2,
+        "EmbeddedCli の stale validation は unknown exit 2 を返すべき: stdout={:?}",
+        output.stdout
+    );
+    let report: Value = serde_json::from_str(output.stdout.trim())
+        .expect("EmbeddedCli stale report は valid JSON であるべき");
+    assert_eq!(report["status"], "unknown");
+    assert_eq!(report["stale_reviews"], 1);
+    assert_eq!(report["stale_evidence"], 1);
+}
+
 /// EC-M3-03: EmbeddedCli の contradiction は fail report と exit 1 になること
 #[test]
 fn test_e2e_selfhost_embedded_cli_validate_source_reports_fail() {

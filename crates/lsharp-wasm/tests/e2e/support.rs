@@ -784,6 +784,7 @@ pub(crate) fn selfhost_source_path(name: &str) -> std::path::PathBuf {
         "TestRunner.ls" => "selfhost/src/Tools/Test/TestRunner.ls",
         "IntentSource.ls" => "selfhost/src/Tools/Validation/IntentSource.ls",
         "Evidence.ls" => "selfhost/src/Tools/Validation/Evidence.ls",
+        "Stale.ls" => "selfhost/src/Tools/Validation/Stale.ls",
         "GC.ls" => "selfhost/src/Runtime/GC.ls",
         other => panic!("不明な selfhost canonical module path: {other}"),
     })
@@ -1589,6 +1590,7 @@ pub(crate) fn selfhost_cli_runtime_bundle() -> &'static str {
             "LspServer.ls",
             "IntentSource.ls",
             "Evidence.ls",
+            "Stale.ls",
             "Cli.ls",
         ],
     )
@@ -1636,6 +1638,7 @@ pub(crate) fn selfhost_embedded_cli_runtime_bundle() -> &'static str {
             "LspServer.ls",
             "IntentSource.ls",
             "Evidence.ls",
+            "Stale.ls",
             "EmbeddedCli.ls",
         ],
     )
