@@ -103,6 +103,7 @@ VALIDATION_MALFORMED_MANIFEST="$WORK_DIR/ec-m3-malformed-edge-manifest.json"
 VALIDATION_INVALID_ID_MANIFEST="$WORK_DIR/ec-m3-invalid-id-manifest.json"
 VALIDATION_KIND_MISMATCH_MANIFEST="$WORK_DIR/ec-m3-kind-mismatch-manifest.json"
 VALIDATION_EVIDENCE_REGISTRY_MANIFEST="$WORK_DIR/ec-m3-evidence-registry-manifest.json"
+VALIDATION_MISSING_REVIEW_MANIFEST="$WORK_DIR/ec-m3-missing-review-manifest.json"
 VALIDATION_WRITE_FAILURE_MANIFEST="$WORK_DIR/missing-parent/intent-graph.json"
 VALIDATION_PASS_SOURCE="$WORK_DIR/ec-m3-complete-source.ls"
 VALIDATION_FAIL_SOURCE="$WORK_DIR/ec-m3-contradiction-source.ls"
@@ -112,6 +113,7 @@ VALIDATION_MALFORMED_SOURCE="$WORK_DIR/ec-m3-malformed-edge-source.ls"
 VALIDATION_INVALID_ID_SOURCE="$WORK_DIR/ec-m3-invalid-id-source.ls"
 VALIDATION_KIND_MISMATCH_SOURCE="$WORK_DIR/ec-m3-kind-mismatch-source.ls"
 VALIDATION_EVIDENCE_REGISTRY_SOURCE="$WORK_DIR/ec-m3-evidence-registry-source.ls"
+VALIDATION_MISSING_REVIEW_SOURCE="$WORK_DIR/ec-m3-missing-review-source.ls"
 
 printf '%s\n' '(defn main [] 42)' >"$INPUT"
 cat >"$METADATA" <<'LSHARP'
@@ -233,6 +235,13 @@ cat >"$VALIDATION_EVIDENCE_REGISTRY_SOURCE" <<'LSHARP'
 (defn missing-evidence-edge []
   :claim "claim:checkout/rejects" "The API rejects shipped orders"
   :supports "evidence:checkout/missing" "claim:checkout/rejects"
+  true)
+LSHARP
+cat >"$VALIDATION_MISSING_REVIEW_SOURCE" <<'LSHARP'
+(defn missing-review-edge []
+  :claim "claim:checkout/rejects" "The API rejects shipped orders"
+  :review "review:checkout/registered" "sha256:review-provenance" "redacted"
+  :evaluates "review:checkout/missing" "claim:checkout/rejects"
   true)
 LSHARP
 
@@ -655,6 +664,16 @@ grep -F "source validation error:6" "$WORK_DIR/validation-evidence-registry.stde
   || die "unregistered evidence validation must expose the registry-required error code"
 [[ ! -e "$VALIDATION_EVIDENCE_REGISTRY_MANIFEST" ]] \
   || die "unregistered evidence validation must produce no report or manifest"
+
+run_expected_validation_error validation-missing-review \
+  validate \
+  --source "$VALIDATION_MISSING_REVIEW_SOURCE" \
+  --format json \
+  --emit-manifest "$VALIDATION_MISSING_REVIEW_MANIFEST"
+grep -F "source validation error:10" "$WORK_DIR/validation-missing-review.stderr" >/dev/null \
+  || die "missing review validation must expose the missing-review error code"
+[[ ! -e "$VALIDATION_MISSING_REVIEW_MANIFEST" ]] \
+  || die "missing review validation must produce no report or manifest"
 
 run_expected_validation_error validation-orphan \
   validate \

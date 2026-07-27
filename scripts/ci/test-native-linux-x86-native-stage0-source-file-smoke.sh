@@ -89,7 +89,11 @@ for required in \
   'VALIDATION_EVIDENCE_REGISTRY_SOURCE' \
   'VALIDATION_EVIDENCE_REGISTRY_MANIFEST' \
   'run_expected_validation_error validation-evidence-registry' \
-  'source validation error:6'; do
+  'source validation error:6' \
+  'VALIDATION_MISSING_REVIEW_SOURCE' \
+  'VALIDATION_MISSING_REVIEW_MANIFEST' \
+  'run_expected_validation_error validation-missing-review' \
+  'source validation error:10'; do
   assert_script_contains "$SOURCE_SMOKE" "$required"
 done
 
