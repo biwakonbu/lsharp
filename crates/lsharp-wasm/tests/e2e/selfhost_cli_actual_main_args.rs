@@ -568,10 +568,11 @@ fn test_e2e_selfhost_embedded_cli_main_with_args_validate_source_json_trace_gap(
     assert!(report.get("verified").is_none());
 }
 
-/// EC-M3-03: EmbeddedCli の manifest filesystem write は外部境界として明示拒否すること
+/// EC-M3-03: EmbeddedCli は validate source の report と manifest を同時に出力すること
 #[test]
-fn test_e2e_selfhost_embedded_cli_validate_source_rejects_manifest_boundary() {
-    let source = r#"(defn verify [] :claim "claim:checkout/rejects" "Shipped orders are rejected" true)"#;
+fn test_e2e_selfhost_embedded_cli_validate_source_emits_manifest() {
+    let source =
+        r#"(defn verify [] :claim "claim:checkout/rejects" "Shipped orders are rejected" true)"#;
     let (output, dir) = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, || {
         run_main_with_input_file_capture_preserve_dir(
             selfhost_embedded_cli_runtime_bundle(),
@@ -588,19 +589,35 @@ fn test_e2e_selfhost_embedded_cli_validate_source_rejects_manifest_boundary() {
             ],
         )
     });
-    let manifest_exists = dir.join("intent-graph.json").exists();
+    let manifest = std::fs::read_to_string(dir.join("intent-graph.json"))
+        .expect("EmbeddedCli は manifest を出力するべき");
     let _ = std::fs::remove_dir_all(&dir);
 
-    assert_eq!(output.exit_code, 1, "EmbeddedCli の filesystem 境界は exit 1 で拒否するべき");
-    assert!(
-        output
-            .stdout
-            .contains("external-boundary:embedded-cli-manifest-output"),
-        "EmbeddedCli の manifest 境界診断は stable code を返すべき: {}",
-        output.stdout
+    assert_eq!(
+        output.exit_code, 2,
+        "manifest 出力後も unknown は exit 2 を返すべき"
     );
-    assert!(!output.stdout.contains("\"status\""));
-    assert!(!manifest_exists, "EmbeddedCli は external boundary で manifest を作らないべき");
+    let lines: Vec<&str> = output.stdout.trim().lines().collect();
+    assert_eq!(
+        lines.len(),
+        1,
+        "validate report は stdout 1 行の JSON であるべき"
+    );
+    let report: Value = serde_json::from_str(lines[0]).expect("validate report は valid JSON");
+    assert_eq!(report["status"], "unknown");
+    assert!(
+        !output
+            .stdout
+            .contains("external-boundary:embedded-cli-manifest-output")
+    );
+
+    let manifest: Value = serde_json::from_str(&manifest).expect("manifest は valid JSON");
+    assert_eq!(manifest["schema_version"], 1);
+    assert_eq!(manifest["nodes"][0]["kind"], "claim");
+    assert_eq!(manifest["nodes"][0]["namespace"], "checkout");
+    assert_eq!(manifest["nodes"][0]["key"], "rejects");
+    assert!(manifest["evidence"].as_array().unwrap().is_empty());
+    assert!(manifest["edges"].as_array().unwrap().is_empty());
 }
 
 /// EC-M3-03: EmbeddedCli の validation は独立 review を含む complete graph を pass にすること

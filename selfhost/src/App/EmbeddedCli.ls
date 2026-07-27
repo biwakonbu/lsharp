@@ -467,6 +467,10 @@
     fields5 (docjson-append fields4 (docjson-int-field "contradicting_observations" contradicting-observations))]
     (docjson-object-wrap fields5)))
 (defn validation-option-manifest-path [opts] (vector-get opts 1))
+(defn validation-source-write-manifest [graph manifest-path]
+  (if (> (string-length manifest-path) 0)
+    (write-file manifest-path (validation-source-manifest-json graph))
+    0))
 (defn run-validate-source [src opts]
   (let [program (parse-program src)
     graph-result (source-evidence-graph-from-program program)]
@@ -486,18 +490,15 @@
         contradicting-observations (vector-get metrics 1)
         status-code (validation-source-status-code state independent-reviews contradicting-observations)
         report (validation-source-report-json state independent-reviews contradicting-observations)]
-        (if (> (string-length manifest-path) 0)
-          (do
-            (cli-stderr "external-boundary:embedded-cli-manifest-output")
-            (exit-compile-error))
-          (do
-            (print-string report)
-            (print-string "\n")
-            (if (= status-code 1)
-              (exit-compile-error)
-              (if (= status-code 0)
-                (exit-success)
-                (exit-runtime-error)))))))))
+        (do
+          (validation-source-write-manifest graph manifest-path)
+          (print-string report)
+          (print-string "\n")
+          (if (= status-code 1)
+            (exit-compile-error)
+            (if (= status-code 0)
+              (exit-success)
+              (exit-runtime-error))))))))
 (defn run-check-source [src opts] (run-check-program (make-check-program-context (parse-program src) (vector-new 0)) opts))
 (defn test-examples-text [count] (string-concat "examples:" (int-to-string count)))
 (defn test-invariants-text [count] (string-concat "invariants:" (int-to-string count)))

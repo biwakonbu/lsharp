@@ -1,8 +1,9 @@
 # ADR: EC-M3 EmbeddedCli validation status and external boundary
 
-- Status: Accepted (verified Rust-host slice)
+- Status: Superseded (status/exit decision retained; manifest filesystem boundary superseded)
 - Date: 2026-07-27
 - Scope: `selfhost/src/App/EmbeddedCli.ls` and actual EmbeddedCli argv E2E
+- Superseded by: `docs/adr/decisions-ec-m3-embedded-manifest-emission.md`
 
 ## Context
 
@@ -44,3 +45,8 @@ EmbeddedCli's Rust-host actual Wasm surface now agrees with the Rust validation 
 does not turn an un-migrated filesystem operation into an ambiguous success. Native stage0,
 atomic/durable manifest emission, MCP, provenance, and Mac/Linux artifact evidence remain open
 follow-up boundaries in M3.
+
+The status/exit decision remains current. The `--emit-manifest` external-boundary decision in this
+ADR is historical and was superseded on 2026-07-27 when EmbeddedCli was connected to the canonical
+version 1 manifest serializer and direct file output; native atomic/durable and provenance gates
+remain open.

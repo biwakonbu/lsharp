@@ -42,13 +42,14 @@
   no-output contract、
   Rust MCP `lsharp_validate` の `reviews` input/output schema と `include_manifest` projection、
   `pass=0` / `fail=1` / `unknown=2` の Rust CLI は verified。selfhost `App.Cli` と
-  `EmbeddedCli` の source/report/pass-fail-unknown/exit と未移行 manifest filesystem の
-  external-boundary slice は actual Wasm で verified。EC-M3-01 の Rust canonical source/
-  manifest fixture、native source-file smoke の report/exit/bytes 契約、duplicate node の
-  exit `1` / diagnostic-only fail-closed 契約、Cargo/Rust/host lsharp を成功経路から遮断する
-  harness contract も verified。selfhost/native の manifest
-  producer/parser、native canonical parity、atomic/durable emission、release-level provenance、
-  MCP、両 supported target の runtime evidence を閉じる。
+  `EmbeddedCli` の source/report/pass-fail-unknown/exit、EmbeddedCli の
+  `--emit-manifest` による report と version 1 manifest file の分離出力は Rust-host
+  actual Wasm で verified。EC-M3-01 の Rust canonical source/manifest fixture、native
+  source-file smoke の report/exit/bytes 契約、duplicate node の exit `1` /
+  diagnostic-only fail-closed 契約、Cargo/Rust/host lsharp を成功経路から遮断する harness
+  contract も verified。selfhost/native の manifest producer/parser、native canonical parity、
+  atomic/durable emission、write/provenance failure、release-level provenance、MCP、両
+  supported target の runtime evidence を閉じる。
 
 次の実装は `EC-M2-01`〜`EC-M2-03` の未接続入力を一つの RED に絞る。current plan の
 acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展開しない。

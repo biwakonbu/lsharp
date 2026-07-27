@@ -2421,3 +2421,21 @@ source commit `f3e63270fb70d5a47a4e4ec4fe0ed60422950cf2` を checkoutした専�
 このstage3 compilerを `scripts/ci/package-native-stage0.sh` で `aarch64-apple-darwin` stage0へ包み、`NATIVE_STAGE0_DIR=... NATIVE_SELFHOST_STAGE_DIR=... bash scripts/ci/native-selfhost-dev-source-file-smoke.sh` を実行した。smokeは `cargo`、`rustc`、host `lsharp` をPATH上で遮断し、`parse`、`check`、`fmt`、`test`、metadata/property test、`compile`、`build`、および明示的拒否ケースを通過して `aarch64-apple-darwin native selfhost source-file smoke passed` となった。source fingerprintとstage0 fingerprintも生成され、current sourceからの再生成と package入力の一致を確認した。
 
 最初に `App.Cli` release programをstage0 compilerとして渡した packageは、`src/App/Cli.ls` を command名として解釈して exit 127 (`unknown command`) になった。これは実装失敗ではなく成果物の役割を取り違えたためである。以後、App.Cli配布 binaryと、source pathを直接受け付けるactual stage3 compilerを別の成果物として扱う。この検証はMac Apple Siliconのcurrent-source daily sliceだけを閉じるもので、Linux x86_64のcurrent-source stage0、Wasm artifact/runtimeの二 target parity、全公開surface、EC-M1-01 aggregateの完了を意味しない。
+
+### EC-M3-03 EmbeddedCli manifest output wiring (2026-07-27)
+
+`App.EmbeddedCli` の `validate --source --format json --emit-manifest` を、`App.Cli` と同じ
+`validation-source-manifest-json` serializer と `write-file` builtinへ接続した。reportは stdout の
+1 JSON lineを保ち、version 1 manifestの nodes/evidence/edges を指定 pathへ出力し、trace gap
+を含む fixtureでは `unknown` / exit `2` を維持する。旧 `external-boundary:embedded-cli-manifest-output`
+診断はこの output wiringで superseded された。
+
+Evidence: RED `test_e2e_selfhost_embedded_cli_validate_source_emits_manifest` は実装前に
+manifest fileが存在せず失敗した。GREEN は同じ test が `1 passed`（255.11s）。さらに既存の
+`test_e2e_selfhost_embedded_cli_validate_source_reports_fail` / `...reports_pass` を直列で実行し、
+2 passed（509.38s）で status/exit regression がないことを確認した。`bash scripts/audit_docs.sh`
+は error/warning 0件、`git diff --check` も passした。
+
+これは Rust-host actual Wasm の EmbeddedCli writer/output boundaryだけを閉じる verified sliceで
+あり、native stage0 parity、atomic/durable replacement、write/provenance failure、MCP parity、
+Mac Apple Silicon / Linux x86_64 artifact/runtime matrix、EC-M3 aggregateの完了を意味しない。

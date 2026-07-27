@@ -35,6 +35,7 @@ diagnostic が CLI と乖離する。
 
 ## Boundary and follow-up
 
-これは Rust MCP の manifest input/report wiring に限定した verified slice である。manifest emission、
-EmbeddedCli、selfhost/native report parity、Mac Apple Silicon / Linux x86_64 artifact/runtime evidence は
+これは Rust MCP の manifest input/report wiring に限定した verified slice である。EmbeddedCli の
+Rust-host actual Wasm manifest output wiringは別ADRで接続済みだが、native manifest emission、
+selfhost/native report parity、Mac Apple Silicon / Linux x86_64 artifact/runtime evidence は
 未完了のため、`TODO.md` の `EC-M2-03` は `[~]` のまま維持する。
