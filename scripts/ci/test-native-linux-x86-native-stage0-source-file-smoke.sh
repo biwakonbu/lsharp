@@ -69,7 +69,11 @@ for required in \
   'run_expected_failure validation-stale-text' \
   'validation-stale-text' \
   'stale-reviews: 1' \
-  'stale-evidence: 1'; do
+  'stale-evidence: 1' \
+  'VALIDATION_ORPHAN_SOURCE' \
+  'VALIDATION_ORPHAN_MANIFEST' \
+  'run_expected_validation_error validation-orphan' \
+  'source validation error:5'; do
   assert_script_contains "$SOURCE_SMOKE" "$required"
 done
 

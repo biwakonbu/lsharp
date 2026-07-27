@@ -93,7 +93,12 @@
   `evaluates` する evidence の stale propagation fixture を native smoke に追加し、JSON/text の
   `status: unknown` / exit `2`、`stale_reviews: 1`、`stale_evidence: 1`、stderr 空を要求した。
   これは Rust-host/selfhost source projection と native contract を揃える verified sliceだが、
-  current source-commit に一致する実 stage0 artifact/runtime の evidence ではない。
+  current source-commit に一致する実 stage0 artifact/runtime の evidence ではない。さらに
+  orphan edge が存在しない node を参照する source fixture を native smoke に追加し、stable な
+  `source validation error:5`、exit `1`、report/manifestなしの fail-closed 境界を要求した。
+  これは既存 Rust source adapter の `MissingNodeReference` と同じ observable error code を
+  native contract へ接続する verified sliceだが、current source-commit に一致する実 stage0
+  artifact/runtime の evidence ではない。
 
 次の実装は `EC-M2-01`〜`EC-M2-03` の未接続入力を一つの RED に絞る。current plan の
 acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展開しない。
