@@ -5,9 +5,10 @@
 //! `Fail` は contradiction が観測された場合に限定する。
 
 use crate::evidence::{
-    Edge, Evidence, EvidenceGraph, EvidenceMethod, EvidenceOutcome, GraphError, ReviewRecord,
+    Edge, Evidence, EvidenceGraph, EvidenceMethod, EvidenceOutcome, GraphError,
+    InvalidationSubject, ReviewRecord, ReviewSubject,
 };
-use crate::intent::{ClaimId, IntentId, IntentNode, StableId};
+use crate::intent::{ClaimId, EvidenceId, IntentId, IntentNode, ReviewId, StableId};
 use serde::Serialize;
 
 /// node の trace が欠けている箇所。
@@ -22,6 +23,35 @@ impl TraceGap {
         match self {
             Self::IntentWithoutClaim { .. } => "trace-gap.intent-without-claim",
             Self::ClaimWithoutTest { .. } => "trace-gap.claim-without-test",
+        }
+    }
+}
+
+/// invalidation を反映した stale subject の deterministic な projection。
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct StaleSubjects {
+    stale_reviews: Vec<ReviewId>,
+    stale_evidence: Vec<EvidenceId>,
+}
+
+impl StaleSubjects {
+    pub fn reviews(&self) -> &[ReviewId] {
+        &self.stale_reviews
+    }
+
+    pub fn evidence(&self) -> &[EvidenceId] {
+        &self.stale_evidence
+    }
+
+    fn push_review(&mut self, id: ReviewId) {
+        if !self.stale_reviews.contains(&id) {
+            self.stale_reviews.push(id);
+        }
+    }
+
+    fn push_evidence(&mut self, id: EvidenceId) {
+        if !self.stale_evidence.contains(&id) {
+            self.stale_evidence.push(id);
         }
     }
 }
@@ -231,6 +261,48 @@ impl IntentGraph {
 
     pub fn reviews(&self) -> &[ReviewRecord] {
         &self.reviews
+    }
+
+    /// 既知の stale outcome と invalidation edge を review/evidence へ投影する。
+    ///
+    /// review の stale は、その review が `evaluates` する evidence だけへ伝播する。
+    /// Intent/Claim は node subject のため対象にせず、複数の宣言は追加順を保って重複を除く。
+    pub fn stale_subjects(&self) -> StaleSubjects {
+        let mut stale = StaleSubjects::default();
+
+        for evidence in self.evidence() {
+            if evidence.outcome() == EvidenceOutcome::Stale {
+                stale.push_evidence(evidence.id().clone());
+            }
+        }
+        for edge in self.edges() {
+            if let Edge::Invalidates { subject, .. } = edge {
+                match subject {
+                    InvalidationSubject::Review(review) => stale.push_review(review.clone()),
+                    InvalidationSubject::Evidence(evidence) => {
+                        stale.push_evidence(evidence.clone())
+                    }
+                }
+            }
+        }
+
+        let mut review_index = 0;
+        while review_index < stale.stale_reviews.len() {
+            let review = stale.stale_reviews[review_index].clone();
+            for edge in self.edges() {
+                if let Edge::Evaluates {
+                    review: linked,
+                    subject: ReviewSubject::Evidence(evidence),
+                } = edge
+                    && linked == &review
+                {
+                    stale.push_evidence(evidence.clone());
+                }
+            }
+            review_index += 1;
+        }
+
+        stale
     }
 
     pub fn validate(&self) -> ValidationReport {

@@ -46,6 +46,10 @@ identity なのか、認証済み record なのかを区別できなかった。
   付きで fail-closed に拒否することを確認した。`cargo test -p lsharp-driver --test
   validate_source_review_edges -- --nocapture`（2 passed）は `validate --source --emit-manifest`
   の review registry output と `evaluates` edge の同一 manifest projection を確認する。
+- Lifecycle slice: `cargo test -p lsharp-types --test review_stale_propagation -- --nocapture`
+  （3 passed）で、既知の stale evidence、invalidated review/evidence、review が evaluates する
+  evidence の deterministic な順序と重複除去を確認する。これは Rust canonical model の
+  projection だけで、provider/署名 authentication や外部 lifecycle の証拠ではない。
 - Selfhost producer boundary: `cargo test -p lsharp-wasm --test e2e selfhost_source_adapter_ -- --nocapture`
   （21 passed）で、selfhost parser の `:review` triple payload（kind 16）を node/edge と分離した
   opaque registry へ投影し、kind 17/18 の `evaluates` / `invalidates` edge、nested declaration の
@@ -61,7 +65,8 @@ identity なのか、認証済み record なのかを区別できなかった。
 
 これは Rust canonical manifest、公開 CLI、Rust MCP の schema／inline artifact 入出力と、selfhost
 source `:review` producer → Evidence graph/manifest consumer の Rust-host actual Wasm における opaque
-review registry／privacy field boundary の verified slice である。native stage0 parity、provider/署名による
-provenance authentication、暗号学的 digest format、review lifecycle/stale propagation、selfhost/native MCP、
+review registry／privacy field boundary、および Rust canonical stale propagation の verified slice である。
+native stage0 parity、provider/署名による
+provenance authentication、暗号学的 digest format、外部 review lifecycle の統合、selfhost/native MCP、
 Mac Apple Silicon / Linux x86_64 artifact/runtime parity、EC-M2-02/03 aggregate completion は未完了である。
 未接続境界は TODO の `[~]` として維持する。

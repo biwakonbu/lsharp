@@ -43,7 +43,10 @@
   registry closure/error boundary も verified slice として追加した。selfhost Evidence consumer の
   review registry、typed review/change edge、登録済み Evidence subject closure、optional `reviews`
   registry と manifest JSON projection も Rust-host actual Wasm で verified slice として追加した。
-  ただし review lifecycle/authentication、native stage0 producer/runtime parity は残る。
+  ただし review lifecycle/authentication、native stage0 producer/runtime parity は残る。Rust
+  canonical `IntentGraph::stale_subjects` による invalidated review → evaluated evidence の
+  deterministic stale propagation も verified slice として追加したが、外部 lifecycle/provider
+  auth/selfhost-native parity は未完了である。
 - [~] `EC-M2-03` `lsharp validate` — version 1 manifest parser、source adapter、
   `--emit-manifest` の atomic/durable file boundary、deterministic text/JSON report、
   optional `reviews` registry の Rust CLI roundtrip と未登録 review edge の non-zero/
