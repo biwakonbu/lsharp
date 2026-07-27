@@ -73,7 +73,11 @@ for required in \
   'VALIDATION_ORPHAN_SOURCE' \
   'VALIDATION_ORPHAN_MANIFEST' \
   'run_expected_validation_error validation-orphan' \
-  'source validation error:5'; do
+  'source validation error:5' \
+  'VALIDATION_MALFORMED_SOURCE' \
+  'VALIDATION_MALFORMED_MANIFEST' \
+  'run_expected_validation_error validation-malformed-edge' \
+  'source validation error:1'; do
   assert_script_contains "$SOURCE_SMOKE" "$required"
 done
 

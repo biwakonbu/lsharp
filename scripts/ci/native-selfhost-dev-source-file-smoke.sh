@@ -99,11 +99,13 @@ BUILD_OUTPUT="$WORK_DIR/build.wasm"
 VALIDATION_MANIFEST="$WORK_DIR/ec-m3-canonical-manifest.json"
 VALIDATION_INVALID_MANIFEST="$WORK_DIR/ec-m3-duplicate-node-manifest.json"
 VALIDATION_ORPHAN_MANIFEST="$WORK_DIR/ec-m3-orphan-node-manifest.json"
+VALIDATION_MALFORMED_MANIFEST="$WORK_DIR/ec-m3-malformed-edge-manifest.json"
 VALIDATION_WRITE_FAILURE_MANIFEST="$WORK_DIR/missing-parent/intent-graph.json"
 VALIDATION_PASS_SOURCE="$WORK_DIR/ec-m3-complete-source.ls"
 VALIDATION_FAIL_SOURCE="$WORK_DIR/ec-m3-contradiction-source.ls"
 VALIDATION_STALE_SOURCE="$WORK_DIR/ec-m3-stale-source.ls"
 VALIDATION_ORPHAN_SOURCE="$WORK_DIR/ec-m3-orphan-node-source.ls"
+VALIDATION_MALFORMED_SOURCE="$WORK_DIR/ec-m3-malformed-edge-source.ls"
 
 printf '%s\n' '(defn main [] 42)' >"$INPUT"
 cat >"$METADATA" <<'LSHARP'
@@ -204,6 +206,11 @@ LSHARP
 cat >"$VALIDATION_ORPHAN_SOURCE" <<'LSHARP'
 (defn orphan-edge []
   :motivates "intent:checkout/missing" "claim:checkout/rejects"
+  true)
+LSHARP
+cat >"$VALIDATION_MALFORMED_SOURCE" <<'LSHARP'
+(defn malformed-edge []
+  :motivates "intent:checkout/safe-cancel"
   true)
 LSHARP
 
@@ -586,6 +593,16 @@ run_expected_failure validation-stale-text 0 validate \
   --source "$VALIDATION_STALE_SOURCE" \
   --format text
 require_exact_output validation-stale-text $'status: unknown\nopen-questions: 0\nindependent-reviews: 1\ncontradicting-observations: 0\nstale-reviews: 1\nstale-evidence: 1\n'
+
+run_expected_validation_error validation-malformed-edge \
+  validate \
+  --source "$VALIDATION_MALFORMED_SOURCE" \
+  --format json \
+  --emit-manifest "$VALIDATION_MALFORMED_MANIFEST"
+grep -F "source validation error:1" "$WORK_DIR/validation-malformed-edge.stderr" >/dev/null \
+  || die "malformed edge validation must expose the malformed-source error code"
+[[ ! -e "$VALIDATION_MALFORMED_MANIFEST" ]] \
+  || die "malformed edge validation must produce no report or manifest"
 
 run_expected_validation_error validation-orphan \
   validate \

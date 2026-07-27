@@ -99,6 +99,11 @@
   これは既存 Rust source adapter の `MissingNodeReference` と同じ observable error code を
   native contract へ接続する verified sliceだが、current source-commit に一致する実 stage0
   artifact/runtime の evidence ではない。
+  さらに edge payload が不足する malformed source fixture を native smoke に追加し、stable な
+  `source validation error:1`、exit `1`、report/manifestなしの fail-closed 境界を要求した。
+  既存 Rust source adapter の malformed edge/span 診断と同じ入力拒否境界を native contract
+  へ接続する verified sliceだが、current source-commit に一致する実 stage0 artifact/runtime
+  の evidence ではない。
 
 次の実装は `EC-M2-01`〜`EC-M2-03` の未接続入力を一つの RED に絞る。current plan の
 acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展開しない。
