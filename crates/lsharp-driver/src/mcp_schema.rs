@@ -131,7 +131,9 @@ fn tool_output_schema(name: &str) -> Value {
                 "trace_gaps",
                 "open_questions",
                 "independent_reviews",
-                "contradicting_observations"
+                "contradicting_observations",
+                "stale_reviews",
+                "stale_evidence"
             ],
             "properties": {
                 "status": {
@@ -152,6 +154,8 @@ fn tool_output_schema(name: &str) -> Value {
                 "open_questions": { "type": "integer", "minimum": 0 },
                 "independent_reviews": { "type": "integer", "minimum": 0 },
                 "contradicting_observations": { "type": "integer", "minimum": 0 },
+                "stale_reviews": { "type": "integer", "minimum": 0 },
+                "stale_evidence": { "type": "integer", "minimum": 0 },
                 "manifest": {
                     "type": "object",
                     "required": ["schema_version", "nodes", "evidence", "edges"],

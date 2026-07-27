@@ -21,8 +21,9 @@ implementation conformance と intent validation を混同する。CLI と同じ
   `IntentGraph::validate()` の順に処理し、`ValidationReport::to_json_value()` を
   `structuredContent` として返す。
 - output schema は `status` (`pass` / `fail` / `unknown`)、`trace_gaps`、
-  `open_questions`、`independent_reviews`、`contradicting_observations` を必須とする。
-  CLI と同じく top-level `verified` は生成しない。
+  `open_questions`、`independent_reviews`、`contradicting_observations`、
+  `stale_reviews`、`stale_evidence` を必須とする。stale facts が残る場合は status を
+  `unknown` とし、CLI と同じく top-level `verified` は生成しない。
 - parse または source graph adapter の失敗は `isError: true` の MCP tool error とし、
   不完全な report や成功値へ変換しない。
 

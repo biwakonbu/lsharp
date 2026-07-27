@@ -82,6 +82,8 @@ pub struct ValidationReport {
     open_questions: usize,
     independent_reviews: usize,
     contradicting_observations: usize,
+    stale_reviews: usize,
+    stale_evidence: usize,
 }
 
 impl ValidationReport {
@@ -103,6 +105,14 @@ impl ValidationReport {
 
     pub fn contradicting_observations(&self) -> usize {
         self.contradicting_observations
+    }
+
+    pub fn stale_reviews(&self) -> usize {
+        self.stale_reviews
+    }
+
+    pub fn stale_evidence(&self) -> usize {
+        self.stale_evidence
     }
 
     /// planned `lsharp validate --format json` projection。
@@ -144,6 +154,9 @@ impl ValidationReport {
             self.contradicting_observations
         )
         .expect("String は write 可能");
+        writeln!(&mut text, "stale-reviews: {}", self.stale_reviews).expect("String は write 可能");
+        writeln!(&mut text, "stale-evidence: {}", self.stale_evidence)
+            .expect("String は write 可能");
         text
     }
 
@@ -154,6 +167,8 @@ impl ValidationReport {
             open_questions: self.open_questions,
             independent_reviews: self.independent_reviews,
             contradicting_observations: self.contradicting_observations,
+            stale_reviews: self.stale_reviews,
+            stale_evidence: self.stale_evidence,
         }
     }
 }
@@ -165,6 +180,8 @@ struct ValidationReportWire {
     open_questions: usize,
     independent_reviews: usize,
     contradicting_observations: usize,
+    stale_reviews: usize,
+    stale_evidence: usize,
 }
 
 #[derive(Debug, Serialize)]
@@ -408,9 +425,15 @@ fn validate_graph(graph: &IntentGraph) -> ValidationReport {
         })
         .count();
     let contradictory_ids = contradictory_evidence_ids(graph);
+    let stale_subjects = graph.stale_subjects();
     let status = if !contradictory_ids.is_empty() {
         ValidationStatus::Fail
-    } else if !trace_gaps.is_empty() || open_questions > 0 || independent_reviews == 0 {
+    } else if !trace_gaps.is_empty()
+        || open_questions > 0
+        || independent_reviews == 0
+        || !stale_subjects.reviews().is_empty()
+        || !stale_subjects.evidence().is_empty()
+    {
         ValidationStatus::Unknown
     } else {
         ValidationStatus::Pass
@@ -422,6 +445,8 @@ fn validate_graph(graph: &IntentGraph) -> ValidationReport {
         open_questions,
         independent_reviews,
         contradicting_observations: contradictory_ids.len(),
+        stale_reviews: stale_subjects.reviews().len(),
+        stale_evidence: stale_subjects.evidence().len(),
     }
 }
 

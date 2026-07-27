@@ -107,7 +107,9 @@ mod tests {
                 "trace_gaps",
                 "open_questions",
                 "independent_reviews",
-                "contradicting_observations"
+                "contradicting_observations",
+                "stale_reviews",
+                "stale_evidence"
             ])
         );
         assert_eq!(
@@ -140,6 +142,8 @@ mod tests {
         assert_eq!(result["open_questions"], 0);
         assert_eq!(result["independent_reviews"], 0);
         assert_eq!(result["contradicting_observations"], 0);
+        assert_eq!(result["stale_reviews"], 0);
+        assert_eq!(result["stale_evidence"], 0);
         assert!(result.get("verified").is_none());
     }
 

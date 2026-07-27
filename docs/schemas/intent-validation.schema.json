@@ -9,7 +9,9 @@
     "trace_gaps",
     "open_questions",
     "independent_reviews",
-    "contradicting_observations"
+    "contradicting_observations",
+    "stale_reviews",
+    "stale_evidence"
   ],
   "properties": {
     "status": {
@@ -44,6 +46,14 @@
       "minimum": 0
     },
     "contradicting_observations": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "stale_reviews": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "stale_evidence": {
       "type": "integer",
       "minimum": 0
     },

@@ -33,6 +33,8 @@ fn validate_json_reports_unknown_without_verified_shortcut() {
     );
     let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("valid JSON");
     assert_eq!(value["status"], "unknown");
+    assert_eq!(value["stale_reviews"], 0);
+    assert_eq!(value["stale_evidence"], 0);
     assert!(value.get("verified").is_none());
 }
 
@@ -106,6 +108,8 @@ fn validate_fail_has_distinct_exit_code_for_contradiction() {
     let text = String::from_utf8_lossy(&output.stdout);
     assert!(text.starts_with("status: fail\n"));
     assert!(text.contains("contradicting-observations: 1"));
+    assert!(text.contains("stale-reviews: 0"));
+    assert!(text.contains("stale-evidence: 0"));
     assert!(!text.contains("verified"));
 }
 

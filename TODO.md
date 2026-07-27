@@ -46,7 +46,9 @@
   ただし review lifecycle/authentication、native stage0 producer/runtime parity は残る。Rust
   canonical `IntentGraph::stale_subjects` による invalidated review → evaluated evidence の
   deterministic stale propagation も verified slice として追加したが、外部 lifecycle/provider
-  auth/selfhost-native parity は未完了である。
+  auth/selfhost-native parity は未完了である。さらに `ValidationReport` が stale review/evidence
+  件数を JSON/text facts として投影し、stale が残る場合に `unknown` へ fail-closed する Rust
+  canonical report slice を追加した。公開 CLI/MCP、selfhost/native parity は未完了である。
 - [~] `EC-M2-03` `lsharp validate` — version 1 manifest parser、source adapter、
   `--emit-manifest` の atomic/durable file boundary、deterministic text/JSON report、
   optional `reviews` registry の Rust CLI roundtrip と未登録 review edge の non-zero/
@@ -62,7 +64,10 @@
   diagnostic-only fail-closed 契約、Cargo/Rust/host lsharp を成功経路から遮断する harness
   contract も verified。selfhost/native の manifest producer/parser、native canonical parity、
   atomic/durable emission、native stage0 の write/provenance failure、release-level
-  provenance、MCP、両 supported target の runtime evidence を閉じる。
+  provenance、両 supported target の runtime evidence を閉じる。Rust canonical report の
+  `stale_reviews` / `stale_evidence` facts と stale→`unknown` policy、Rust MCP schema/output
+  も verified slice として追加したが、selfhost/native report parity、native MCP、両 supported
+  target の runtime evidence は未完了である。
 
 次の実装は `EC-M2-01`〜`EC-M2-03` の未接続入力を一つの RED に絞る。current plan の
 acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展開しない。

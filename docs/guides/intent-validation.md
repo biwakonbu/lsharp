@@ -137,7 +137,8 @@ manifest は [`intent-graph.schema.json`](../schemas/intent-graph.schema.json) �
 }
 ```
 
-成功時の `structuredContent` は従来の report fields に加えて、次の optional property を持ちます。
+成功時の `structuredContent` は report fields（stale facts を含む）に加えて、
+`include_manifest` 指定時だけ optional な `manifest` property を持ちます。
 
 ```json
 {
@@ -146,6 +147,8 @@ manifest は [`intent-graph.schema.json`](../schemas/intent-graph.schema.json) �
   "open_questions": 0,
   "independent_reviews": 0,
   "contradicting_observations": 0,
+  "stale_reviews": 0,
+  "stale_evidence": 0,
   "manifest": {
     "schema_version": 1,
     "nodes": [],

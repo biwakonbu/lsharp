@@ -33,7 +33,9 @@ fn validation_report_text_matches_json_facts_without_verified_shortcut() {
 trace-gap.claim-without-test: claim:checkout/cancel-rejects-shipped\n\
 open-questions: 0\n\
 independent-reviews: 0\n\
-contradicting-observations: 0\n"
+contradicting-observations: 0\n\
+stale-reviews: 0\n\
+stale-evidence: 0\n"
     );
     assert!(!text.contains("verified"));
 }

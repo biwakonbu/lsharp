@@ -47,6 +47,8 @@ fn validation_report_json_is_strict_fact_oriented_and_has_no_verified_flag() {
             "contradicting_observations",
             "independent_reviews",
             "open_questions",
+            "stale_evidence",
+            "stale_reviews",
             "status",
             "trace_gaps",
         ]
