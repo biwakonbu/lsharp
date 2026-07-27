@@ -45,7 +45,13 @@ for required in \
   'independent-reviews: 0' \
   'contradicting-observations: 0' \
   'stale-reviews: 0' \
-  'stale-evidence: 0'; do
+  'stale-evidence: 0' \
+  'run_expected_validation_error validation-manifest-write-failure' \
+  'VALIDATION_WRITE_FAILURE_MANIFEST' \
+  'missing-parent' \
+  '--emit-manifest "$VALIDATION_WRITE_FAILURE_MANIFEST"' \
+  'source validation manifest write failed' \
+  '[[ ! -e "$VALIDATION_WRITE_FAILURE_MANIFEST" ]]'; do
   assert_script_contains "$SOURCE_SMOKE" "$required"
 done
 

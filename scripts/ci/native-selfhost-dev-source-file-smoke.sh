@@ -98,6 +98,7 @@ COMPILE_OUTPUT="$WORK_DIR/compile.wasm"
 BUILD_OUTPUT="$WORK_DIR/build.wasm"
 VALIDATION_MANIFEST="$WORK_DIR/ec-m3-canonical-manifest.json"
 VALIDATION_INVALID_MANIFEST="$WORK_DIR/ec-m3-duplicate-node-manifest.json"
+VALIDATION_WRITE_FAILURE_MANIFEST="$WORK_DIR/missing-parent/intent-graph.json"
 
 printf '%s\n' '(defn main [] 42)' >"$INPUT"
 cat >"$METADATA" <<'LSHARP'
@@ -361,6 +362,17 @@ run_expected_failure validation-text-unknown 0 validate \
   --source "$VALIDATION_SOURCE" \
   --format text
 require_exact_output validation-text-unknown $'status: unknown\nopen-questions: 1\nindependent-reviews: 0\ncontradicting-observations: 0\nstale-reviews: 0\nstale-evidence: 0\n'
+
+run_expected_validation_error validation-manifest-write-failure \
+  validate \
+  --source "$VALIDATION_SOURCE" \
+  --format json \
+  --emit-manifest "$VALIDATION_WRITE_FAILURE_MANIFEST"
+grep -F "source validation manifest write failed" \
+  "$WORK_DIR/validation-manifest-write-failure.stderr" >/dev/null \
+  || die "manifest write failure must expose the stable diagnostic"
+[[ ! -e "$VALIDATION_WRITE_FAILURE_MANIFEST" ]] \
+  || die "manifest write failure must produce no manifest artifact"
 
 run_expected_validation_error validation-duplicate-node \
   validate \

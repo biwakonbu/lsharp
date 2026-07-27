@@ -79,7 +79,10 @@
   exit `0` と同じ deterministic line projection を verified した。native source-file smoke の
   inner runnerにも canonical fixtureの `--format text` unknown report（6行の固定順、exit `2`）を
   要求する contract を追加したが、これは fake Lima/provenance harness の verified sliceであり、
-  current source-commit に一致する実 stage0 artifact/runtime の証拠ではない。
+  current source-commit に一致する実 stage0 artifact/runtime の証拠ではない。さらに native
+  source-file smoke は `--emit-manifest` の親ディレクトリ欠落を stable write failure、exit `1`、
+  no-report/no-file として要求する contract を持つが、atomic/durable writer と実 stage0 runtime
+  の証拠ではない。
 
 次の実装は `EC-M2-01`〜`EC-M2-03` の未接続入力を一つの RED に絞る。current plan の
 acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展開しない。
