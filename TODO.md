@@ -132,6 +132,11 @@
   既存 Rust source adapter の `DuplicateReview` 診断と同じ registry uniqueness 境界を native
   contract へ接続する verified sliceだが、current source-commit に一致する実 stage0 artifact/runtime
   の evidence ではない。
+  さらに review edge が review 自体を `evaluates` の subject に指定する source fixture を native
+  smoke に追加し、stable な `source validation error:9`、exit `1`、report/manifestなしの fail-closed
+  境界を要求した。既存 Rust source adapter の `EdgeSubjectKindMismatch` 診断と同じ review edge
+  subject-kind 境界を native contract へ接続する verified sliceだが、current source-commit に一致する
+  実 stage0 artifact/runtime の evidence ではない。
 
 次の実装は `EC-M2-01`〜`EC-M2-03` の未接続入力を一つの RED に絞る。current plan の
 acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展開しない。
