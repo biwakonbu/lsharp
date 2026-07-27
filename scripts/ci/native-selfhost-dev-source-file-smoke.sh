@@ -102,6 +102,7 @@ VALIDATION_ORPHAN_MANIFEST="$WORK_DIR/ec-m3-orphan-node-manifest.json"
 VALIDATION_MALFORMED_MANIFEST="$WORK_DIR/ec-m3-malformed-edge-manifest.json"
 VALIDATION_INVALID_ID_MANIFEST="$WORK_DIR/ec-m3-invalid-id-manifest.json"
 VALIDATION_KIND_MISMATCH_MANIFEST="$WORK_DIR/ec-m3-kind-mismatch-manifest.json"
+VALIDATION_EVIDENCE_REGISTRY_MANIFEST="$WORK_DIR/ec-m3-evidence-registry-manifest.json"
 VALIDATION_WRITE_FAILURE_MANIFEST="$WORK_DIR/missing-parent/intent-graph.json"
 VALIDATION_PASS_SOURCE="$WORK_DIR/ec-m3-complete-source.ls"
 VALIDATION_FAIL_SOURCE="$WORK_DIR/ec-m3-contradiction-source.ls"
@@ -110,6 +111,7 @@ VALIDATION_ORPHAN_SOURCE="$WORK_DIR/ec-m3-orphan-node-source.ls"
 VALIDATION_MALFORMED_SOURCE="$WORK_DIR/ec-m3-malformed-edge-source.ls"
 VALIDATION_INVALID_ID_SOURCE="$WORK_DIR/ec-m3-invalid-id-source.ls"
 VALIDATION_KIND_MISMATCH_SOURCE="$WORK_DIR/ec-m3-kind-mismatch-source.ls"
+VALIDATION_EVIDENCE_REGISTRY_SOURCE="$WORK_DIR/ec-m3-evidence-registry-source.ls"
 
 printf '%s\n' '(defn main [] 42)' >"$INPUT"
 cat >"$METADATA" <<'LSHARP'
@@ -225,6 +227,12 @@ LSHARP
 cat >"$VALIDATION_KIND_MISMATCH_SOURCE" <<'LSHARP'
 (defn kind-mismatch-node []
   :claim "intent:checkout/wrong-kind" "Claim metadata must use a claim ID"
+  true)
+LSHARP
+cat >"$VALIDATION_EVIDENCE_REGISTRY_SOURCE" <<'LSHARP'
+(defn missing-evidence-edge []
+  :claim "claim:checkout/rejects" "The API rejects shipped orders"
+  :supports "evidence:checkout/missing" "claim:checkout/rejects"
   true)
 LSHARP
 
@@ -637,6 +645,16 @@ grep -F "source validation error:3" "$WORK_DIR/validation-kind-mismatch.stderr" 
   || die "kind mismatch validation must expose the node-kind error code"
 [[ ! -e "$VALIDATION_KIND_MISMATCH_MANIFEST" ]] \
   || die "kind mismatch validation must produce no report or manifest"
+
+run_expected_validation_error validation-evidence-registry \
+  validate \
+  --source "$VALIDATION_EVIDENCE_REGISTRY_SOURCE" \
+  --format json \
+  --emit-manifest "$VALIDATION_EVIDENCE_REGISTRY_MANIFEST"
+grep -F "source validation error:6" "$WORK_DIR/validation-evidence-registry.stderr" >/dev/null \
+  || die "unregistered evidence validation must expose the registry-required error code"
+[[ ! -e "$VALIDATION_EVIDENCE_REGISTRY_MANIFEST" ]] \
+  || die "unregistered evidence validation must produce no report or manifest"
 
 run_expected_validation_error validation-orphan \
   validate \

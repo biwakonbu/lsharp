@@ -85,7 +85,11 @@ for required in \
   'VALIDATION_KIND_MISMATCH_SOURCE' \
   'VALIDATION_KIND_MISMATCH_MANIFEST' \
   'run_expected_validation_error validation-kind-mismatch' \
-  'source validation error:3'; do
+  'source validation error:3' \
+  'VALIDATION_EVIDENCE_REGISTRY_SOURCE' \
+  'VALIDATION_EVIDENCE_REGISTRY_MANIFEST' \
+  'run_expected_validation_error validation-evidence-registry' \
+  'source validation error:6'; do
   assert_script_contains "$SOURCE_SMOKE" "$required"
 done
 
