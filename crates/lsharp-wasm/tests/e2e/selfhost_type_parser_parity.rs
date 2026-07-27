@@ -1451,3 +1451,23 @@ fn test_e2e_selfhost_parser_constructor_pattern_args_use_bounded_chunks() {
         "constructor pattern args parser は Linux x86 native stack の深い再帰を避けるため bounded chunk へ委譲するべき"
     );
 }
+
+#[test]
+fn test_e2e_selfhost_parser_match_arms_use_bounded_chunks() {
+    let source = selfhost_module("Parser.ls");
+    let rooted_body = source
+        .split("(defn parse-match-arms-rooted-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn parse-match-arms-v3").next())
+        .expect("Parser.ls に match arms rooted loop が存在すること");
+
+    assert!(
+        source.contains("(defn parse-match-arm-step-64-loop-bounded")
+            && source.contains("(defn parse-match-arm-step-64")
+            && rooted_body.contains("parse-match-arm-step-64")
+            && !rooted_body.contains(
+                "(parse-match-arms-rooted-v3 spans pos-ref src next-result (+ count 1))"
+            ),
+        "match arms parser は Linux x86 native stack の深い再帰を避けるため bounded chunk へ委譲するべき"
+    );
+}

@@ -2828,35 +2828,81 @@
         (make-match-guard guard body)))
     (parse-expr-v3 spans pos-ref src)))
 
-;; match の腕を収集
-(defn parse-match-arms-rooted-v3 [spans pos-ref src result count]
+;; match の腕を一つ処理する。
+(defn parse-match-arm-step-v3 [spans pos-ref src result]
   (if (== (p-current spans pos-ref) 1) ;; ) で終了
-    (do (p-advance pos-ref) result)
+    (do
+      (p-advance pos-ref)
+      (make-parse-loop-state 1 result))
     (if (== (p-current spans pos-ref) 99) ;; EOF ガード: 無限ループ防止
-      result
+      (make-parse-loop-state 1 result)
       (if (== (p-current spans pos-ref) 2) ;; [ -> arm
         (do
-          (root_push result)
-          (p-advance pos-ref) ;; [ を消費
-          (let [pat (parse-pattern-v3 spans pos-ref src)
-            body (parse-match-arm-body-v3 spans pos-ref src)]
+          (let [result-slot (root_push result)]
             (do
-              (root_push pat)
-              (root_push body)
-              (p-expect spans pos-ref 3) ;; ] を消費
-              (let [next-result (vector-push-pair-rooted-v3 result pat body)]
+              (p-advance pos-ref) ;; [ を消費
+              (let [pat (parse-pattern-v3 spans pos-ref src)
+                body (parse-match-arm-body-v3 spans pos-ref src)]
                 (do
-                  (root_push next-result)
-                  (let [parsed (parse-match-arms-rooted-v3 spans pos-ref src next-result (+ count 1))]
+                  (root_push pat)
+                  (root_push body)
+                  (p-expect spans pos-ref 3) ;; ] を消費
+                  (let [next-result (vector-push-pair-rooted-v3 result pat body)
+                    state (do
+                      (root_set result-slot next-result)
+                      (make-parse-loop-state 0 next-result))]
                     (do
                       (root_pop)
                       (root_pop)
                       (root_pop)
-                      (root_pop)
-                      parsed)))))))
-        ;; 不正なトークン -> スキップ
-        (do (p-advance pos-ref)
-          (parse-match-arms-rooted-v3 spans pos-ref src result count))))))
+                      state)))))))
+        ;; 不正なトークン -> 一つ進めて継続
+        (do
+          (p-advance pos-ref)
+          (make-parse-loop-state 0 result))))))
+
+(defn parse-match-arm-step-64-loop-bounded [spans pos-ref src result remaining]
+  (do
+    (root_push result)
+    (let [step (parse-match-arm-step-v3 spans pos-ref src result)
+      done (vector-get step 0)
+      next-result (vector-get step 1)]
+      (do
+        (root_push step)
+        (root_push next-result)
+        (let [parsed
+          (if (= done 1)
+            step
+            (if (<= remaining 1)
+              step
+              (parse-match-arm-step-64-loop-bounded
+                spans pos-ref src next-result (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn parse-match-arm-step-64 [spans pos-ref src result]
+  (parse-match-arm-step-64-loop-bounded spans pos-ref src result 64))
+
+;; match の腕を 64 個ずつ収集し、chunk 境界で handoff する。
+(defn parse-match-arms-rooted-v3 [spans pos-ref src result count]
+  (let [step (parse-match-arm-step-64 spans pos-ref src result)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 1)
+      (do
+        (root_push step)
+        (let [next-result (vector-get step 1)]
+          (do
+            (root_push next-result)
+            (let [parsed
+              (parse-match-arms-rooted-v3
+                spans pos-ref src next-result (+ count 1))]
+              (do
+                (root_pop)
+                (root_pop)
+                parsed))))))))
 
 (defn parse-match-arms-v3 [spans pos-ref src result count]
   (do
