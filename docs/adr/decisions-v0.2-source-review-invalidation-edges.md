@@ -36,11 +36,16 @@ Rust の canonical graph model には ReviewId/ChangeId と
 - Source adapter: `cargo test -p lsharp-types --test validation_source edges:: -- --nocapture`
   は review/claim/evidence subject、external review invalidation、orphan/mismatch/registry-required
   failure を含む12件が pass。
+- CLI integration: `cargo test -p lsharp-driver --test validate_source_review_edges -- --nocapture`
+  は `validate --source --format json --emit-manifest` の成功経路で evaluates/invalidates を
+  report と manifest へ投影するケース、review subject kind mismatch を manifest 未生成で拒否する
+  ケースの2件が pass。
 - Regression: `cargo test -p lsharp-types --test metadata_contract -- --nocapture` は4件が pass。
 
 ## Boundary
 
-これは Rust-host の source parser → typed graph adapter の verified slice である。
-selfhost Parser/IntentSource、native stage0、manifest/CLI/MCP、Mac Apple Silicon / Linux x86_64
-artifact/runtime parity、review provenance/privacy、EC-M2-02/03 aggregate completion は意味しない。
+これは Rust-host の source parser → typed graph adapter → `validate --source` report/manifest の
+verified slice である。selfhost Parser/IntentSource、native stage0、selfhost manifest/CLI/MCP、
+Mac Apple Silicon / Linux x86_64 artifact/runtime parity、review provenance/privacy、EC-M2-02/03
+aggregate completion は意味しない。
 未接続境界は TODO の `[~]` として維持する。

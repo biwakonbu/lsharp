@@ -29,7 +29,8 @@
   の verified slice として ADR に記録したが、native stage0 parity は残る。
 - [~] `EC-M2-02` evidence graph — required provenance を持つ evidence record、
   `supports` / `contradicts` の registry closure、source の `shrinks` / `coverage`、
-  `evaluates` / `invalidates` の Rust source typed-edge projection、canonical manifest projection は verified。実行 trace と generator policy、
+  `evaluates` / `invalidates` の Rust source typed-edge projection、Rust CLI の source→report/manifest
+  projection、canonical manifest projection は verified。実行 trace と generator policy、
   review/evaluates/invalidates、外部 provenance と privacy policy、selfhost/native parity を閉じる。
 - [~] `EC-M2-03` `lsharp validate` — version 1 manifest parser、source adapter、
   `--emit-manifest` の atomic/durable file boundary、deterministic text/JSON report、

@@ -616,6 +616,19 @@ wire ID、review subject、change invalidation、orphan/mismatch/registry-requir
 これは Rust-host source→graph の verified sliceであり、selfhost parser/IntentSource、manifest/CLI、
 native stage0、Mac Apple Silicon / Linux x86_64 parity、review provenance/privacy policy は未完了である。
 
+### EC-M2-03 Rust CLI source review/invalidation projection (2026-07-27)
+
+Rust の公開 `lsharp validate --source --format json --emit-manifest` を同一 source fixture で実行し、
+`:evaluates` / `:invalidates` の typed edge が JSON report と version 1 manifest の両方へ source order
+を保って射影されることを確認した。review subject kind mismatch は non-zero exit と `subject kind`
+診断を返し、manifest を生成しない fail-closed 境界も固定した。
+
+Evidence: `cargo test -p lsharp-driver --test validate_source_review_edges -- --nocapture`（2 passed）。
+これは Rust-host source adapter と公開 CLI の report/manifest projection の verified slice であり、
+selfhost/native stage0、durable atomic write の全条件、review provenance/privacy policy、MCP、
+Mac Apple Silicon / Linux x86_64 current-source artifact/runtime parity、EC-M2-02/03 aggregate は
+未完了である。
+
 ### EC-M2-03 selfhost `validate --source` initial CLI slice (2026-07-25)
 
 `selfhost/src/App/Cli.ls` に `validate` command、`--source <file> --format json` option、top-level
