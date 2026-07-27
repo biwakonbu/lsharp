@@ -110,6 +110,10 @@ for required in \
   'VALIDATION_INVALID_REVIEW_ID_MANIFEST' \
   'run_expected_validation_error validation-invalid-review-id' \
   'source validation error:2' \
+  'VALIDATION_EMPTY_REVIEW_ID_SOURCE' \
+  'VALIDATION_EMPTY_REVIEW_ID_MANIFEST' \
+  'run_expected_validation_error validation-empty-review-id' \
+  'source validation error:8' \
   'VALIDATION_REVIEW_SUBJECT_KIND_SOURCE' \
   'VALIDATION_REVIEW_SUBJECT_KIND_MANIFEST' \
   'run_expected_validation_error validation-review-subject-kind' \

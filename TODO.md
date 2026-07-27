@@ -65,6 +65,10 @@
   `source validation error:2`、exit `1`、report/manifestなしの fail-closed 境界を要求した。既存 Rust
   source adapter の review ID parse 診断と同じ stable-ID validation を native contractへ接続する
   verified sliceだが、実 stage0 artifact/runtime の evidence ではない。
+  さらに review ID が空文字となる source fixtureも native smokeへ追加し、stable な
+  `source validation error:8`、exit `1`、report/manifestなしの fail-closed 境界を要求した。これは
+  Rust source adapter の必須 review field 検査と同じ invalid-review metadata boundary を native
+  contractへ接続する verified sliceだが、実 stage0 artifact/runtime の evidence ではない。
 - [~] `EC-M2-03` `lsharp validate` — version 1 manifest parser、source adapter、
   `--emit-manifest` の atomic/durable file boundary、deterministic text/JSON report、
   optional `reviews` registry の Rust CLI roundtrip と未登録 review edge の non-zero/
