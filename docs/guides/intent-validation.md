@@ -50,6 +50,7 @@ source metadata を直接 graph へ投影する場合は、明示的に `--sourc
 ```bash
 lsharp validate --source src/Checkout.ls
 lsharp validate --source src/Checkout.ls --format json
+lsharp validate --source src/Checkout.ls --format text
 lsharp validate --source src/Checkout.ls \
   --emit-manifest target/intent-graph.json --format json
 ```
@@ -173,4 +174,6 @@ version 1 parser と fact-oriented report を返します。`include_manifest: t
 canonical manifest を inline で返します（filesystem write は行いません）。selfhost `App.Cli` /
 `EmbeddedCli` の stale report/unknown parity は Rust-host actual Wasm で確認済みですが、manifest
 emission の native stage0 parity、native MCP、Mac/Linux の artifact/runtime evidence は後続の
-M2-03 task として残ります。
+M2-03 task として残ります。`--format text` の deterministic report（trace gap、status、件数、
+stale facts）と JSON mode の exit parity は両 selfhost surface で Rust-host actual Wasm まで
+確認済みです。

@@ -568,6 +568,40 @@ fn test_e2e_selfhost_embedded_cli_main_with_args_validate_source_json_trace_gap(
     assert!(report.get("verified").is_none());
 }
 
+/// EC-M2-03: EmbeddedCli の text report は Rust oracle と同じ deterministic projection を返す。
+#[test]
+fn test_e2e_selfhost_embedded_cli_main_with_args_validate_source_text_trace_gap() {
+    let source =
+        "(defn cancel [] :intent \"intent:checkout/safe-cancel\" \"Users can cancel\" true)";
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, || {
+        run_main_with_input_file_capture(
+            selfhost_embedded_cli_runtime_bundle(),
+            "validate_source_text_trace_gap_embedded",
+            source,
+            &["validate", "--source", "input.ls", "--format", "text"],
+        )
+    });
+
+    assert_eq!(
+        output.exit_code, 2,
+        "EmbeddedCli の未接続 intent は unknown exit 2 で返すべき: stdout={:?}",
+        output.stdout
+    );
+    assert_eq!(
+        output.stdout.trim_end(),
+        "status: unknown\n\
+trace-gap.intent-without-claim: intent:checkout/safe-cancel\n\
+open-questions: 0\n\
+independent-reviews: 0\n\
+contradicting-observations: 0\n\
+stale-reviews: 0\n\
+stale-evidence: 0",
+        "EmbeddedCli validate --source --format text は deterministic report を返すべき"
+    );
+    assert!(!output.stdout.contains("{"));
+    assert!(!output.stdout.contains("verified"));
+}
+
 /// EC-M3-03: EmbeddedCli は validate source の report と manifest を同時に出力すること
 #[test]
 fn test_e2e_selfhost_embedded_cli_validate_source_emits_manifest() {

@@ -14650,6 +14650,52 @@ fn test_e2e_selfhost_cli_validate_source_json_reports_trace_gap() {
     assert!(value.get("verified").is_none());
 }
 
+/// EC-M2-03: selfhost Cli の text report は Rust oracle と同じ deterministic projection を返す。
+#[test]
+fn test_e2e_selfhost_cli_validate_source_text_reports_trace_gap() {
+    let dir = std::env::temp_dir().join(format!(
+        "lsharp_test_cli_validate_source_text_{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("input.ls"),
+        r#"
+(defn cancel []
+  :intent "intent:checkout/safe-cancel" "Users can cancel an order"
+  :claim "claim:checkout/cancel-rejects-shipped" "The API rejects shipped orders"
+  :motivates "intent:checkout/safe-cancel" "claim:checkout/cancel-rejects-shipped"
+  true)
+"#,
+    )
+    .unwrap();
+
+    let wasm = selfhost_cli_validation_wasm();
+    let output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_args_and_stdin_capture(
+        wasm,
+        Some(&dir),
+        &["validate", "--source", "input.ls", "--format", "text"],
+        "",
+    )
+    .unwrap();
+    let _ = std::fs::remove_dir_all(&dir);
+
+    assert_eq!(output.exit_code, 2, "unknown validation は exit code 2 を返すべき");
+    assert_eq!(
+        output.stdout.trim_end(),
+        "status: unknown\n\
+trace-gap.claim-without-test: claim:checkout/cancel-rejects-shipped\n\
+open-questions: 0\n\
+independent-reviews: 0\n\
+contradicting-observations: 0\n\
+stale-reviews: 0\n\
+stale-evidence: 0",
+        "selfhost validate --source --format text は deterministic report を返すべき"
+    );
+    assert!(!output.stdout.contains("{"));
+    assert!(!output.stdout.contains("verified"));
+}
+
 /// EC-M2-02: selfhost validate は registered contradictory evidence を fail report へ投影する。
 #[test]
 fn test_e2e_selfhost_cli_validate_source_json_reports_contradicting_evidence() {

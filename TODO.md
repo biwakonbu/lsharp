@@ -71,7 +71,9 @@
   `stale_reviews` / `stale_evidence` facts と stale→`unknown` policy、Rust MCP schema/output
   も verified slice として追加した。selfhost `App.Cli` / `EmbeddedCli` の stale report/exit
   parity は Rust-host actual Wasm で verified したが、native stage0 report parity、native MCP、
-  両 supported target の runtime evidence は未完了である。
+  両 supported target の runtime evidence は未完了である。さらに `--format text` の
+  deterministic source report（trace gap、status、件数、stale facts）と `--format json` の
+  option/exit parity を両 selfhost surface の Rust-host actual Wasm で verified した。
 
 次の実装は `EC-M2-01`〜`EC-M2-03` の未接続入力を一つの RED に絞る。current plan の
 acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展開しない。

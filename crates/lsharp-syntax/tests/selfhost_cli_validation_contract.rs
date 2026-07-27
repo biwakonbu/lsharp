@@ -52,6 +52,14 @@ fn selfhost_cli_validation_surface_is_registered() {
         "App.Cli は validate の format option を必須として追跡するべき"
     );
     assert!(
+        source.contains("(defn validate-option-text [] 2)"),
+        "App.Cli は validate --format text を明示的な option として受理するべき"
+    );
+    assert!(
+        source.contains("--format text|json"),
+        "App.Cli の validate option error は text/json の選択肢を明示するべき"
+    );
+    assert!(
         source.contains("validate-options-source-path"),
         "App.Cli は option の並び順に依存せず source path を保持するべき"
     );

@@ -287,6 +287,72 @@
     fields6 (docjson-append fields5 (docjson-int-field "stale_reviews" stale-reviews))
     fields7 (docjson-append fields6 (docjson-int-field "stale_evidence" stale-evidence))]
     (docjson-object-wrap fields7)))
+(defn validation-report-text-line [key value]
+  (string-concat key (string-concat ": " value)))
+(defn validation-report-text-append [out line]
+  (if (= (string-length out) 0)
+    line
+    (string-concat out (string-concat "\n" line))))
+(defn validation-gap-text [code subject]
+  (validation-report-text-line code subject))
+(defn validation-intent-gaps-text-loop [intents motives idx out]
+  (if (>= idx (vector-length intents))
+    out
+    (let [intent (vector-get intents idx)
+      next-out
+        (if (= (validation-edge-links-id? motives 0 intent) 1)
+          out
+          (validation-report-text-append
+            out
+            (validation-gap-text "trace-gap.intent-without-claim" intent)))]
+      (validation-intent-gaps-text-loop intents motives (+ idx 1) next-out))))
+(defn validation-claim-gaps-text-loop [claims tested-by idx out]
+  (if (>= idx (vector-length claims))
+    out
+    (let [claim (vector-get claims idx)
+      next-out
+        (if (= (validation-edge-links-id? tested-by 0 claim) 1)
+          out
+          (validation-report-text-append
+            out
+            (validation-gap-text "trace-gap.claim-without-test" claim)))]
+      (validation-claim-gaps-text-loop claims tested-by (+ idx 1) next-out))))
+(defn validation-trace-gaps-text [state]
+  (let [intents (ref-get (vector-get state 0))
+    claims (ref-get (vector-get state 1))
+    motives (ref-get (vector-get state 2))
+    tested-by (ref-get (vector-get state 3))
+    intent-gaps (validation-intent-gaps-text-loop intents motives 0 "")]
+    (validation-claim-gaps-text-loop claims tested-by 0 intent-gaps)))
+(defn validation-source-report-text
+  [state independent-reviews contradicting-observations stale-reviews stale-evidence]
+  (let [status (if (> contradicting-observations 0) "fail" "unknown")
+    trace-gaps (validation-trace-gaps-text state)
+    line0 (validation-report-text-line "status" status)
+    with-gaps
+      (if (> (string-length trace-gaps) 0)
+        (validation-report-text-append line0 trace-gaps)
+        line0)
+    line1 (validation-report-text-append
+      with-gaps
+      (validation-report-text-line
+        "open-questions"
+        (int-to-string (ref-get (vector-get state 4)))))
+    line2 (validation-report-text-append
+      line1
+      (validation-report-text-line "independent-reviews" (int-to-string independent-reviews)))
+    line3 (validation-report-text-append
+      line2
+      (validation-report-text-line
+        "contradicting-observations"
+        (int-to-string contradicting-observations)))
+    line4 (validation-report-text-append
+      line3
+      (validation-report-text-line "stale-reviews" (int-to-string stale-reviews)))
+    line5 (validation-report-text-append
+      line4
+      (validation-report-text-line "stale-evidence" (int-to-string stale-evidence)))]
+    line5))
 (defn validation-option-manifest-path [opts] (vector-get opts 1))
 (defn validation-source-write-manifest [graph manifest-path]
   (if (> (string-length manifest-path) 0)
@@ -311,12 +377,20 @@
         contradicting-observations (vector-get metrics 1)
         stale-reviews (vector-get metrics 2)
         stale-evidence (vector-get metrics 3)
-        report (validation-source-report-json
-          state
-          independent-reviews
-          contradicting-observations
-          stale-reviews
-          stale-evidence)]
+        report
+          (if (= (validate-options-status opts) (validate-option-text))
+            (validation-source-report-text
+              state
+              independent-reviews
+              contradicting-observations
+              stale-reviews
+              stale-evidence)
+            (validation-source-report-json
+              state
+              independent-reviews
+              contradicting-observations
+              stale-reviews
+              stale-evidence))]
         (if (and (> (string-length manifest-path) 0)
             (< (validation-source-write-manifest graph manifest-path) 0))
           (do
@@ -1489,7 +1563,7 @@
                   (exit-unknown-command))))))))))
 (defn dispatch-command [cmd-id file-path opts] (if (= cmd-id (cmd-parse)) (run-parse file-path opts) (if (= cmd-id (cmd-check)) (run-check file-path opts) (if (= cmd-id (cmd-compile)) (run-compile file-path opts) (if (= cmd-id (cmd-build)) (run-build file-path opts) (if (= cmd-id (cmd-test)) (run-test file-path opts) (if (= cmd-id (cmd-review)) (run-review file-path opts) (dispatch-command-tail cmd-id file-path opts))))))))
 (defn help-text [] "Usage: lsharp <command> [options] Commands: parse check compile build test review doc-ack doc-check install repl lsp fmt doc validate")
-(defn validate-help-text [] "validate --source <file> --format json [--emit-manifest <output.json>] - Validate source intent graph")
+(defn validate-help-text [] "validate --source <file> --format <text|json> [--emit-manifest <output.json>] - Validate source intent graph")
 (defn version-text [] "lsharp 0.1.0")
 (defn show-help [] (do (print-string (help-text)) (exit-success)))
 (defn show-version [] (do (print-string (version-text)) (exit-success)))
@@ -1519,6 +1593,7 @@
 (defn cli-option-error-message [result] (let [status (cli-option-result-status result) detail (cli-option-result-detail result)] (if (= status (cli-option-status-invalid-target)) (string-concat "unsupported target: " detail) (if (= status (cli-option-status-missing-value)) (string-concat "missing value for option: " detail) (string-concat "unsupported option: " detail)))))
 (defn run-command-with-cli-options [cmd-name file-path result] (let [target (cli-option-result-target result) output-path (cli-option-result-output-path result)] (if (> (string-length output-path) 0) (if (string-eq cmd-name "compile") (run-compile-output file-path output-path target) (if (string-eq cmd-name "build") (run-build-output file-path output-path target) (run-command cmd-name file-path target))) (run-command cmd-name file-path target))))
 (defn validate-option-json [] 1)
+(defn validate-option-text [] 2)
 (defn validate-option-invalid [] (- 0 1))
 (defn validate-options-result [status manifest-path detail source-path]
   (let [result (vector-new 4)
@@ -1532,12 +1607,12 @@
 (defn validate-options-source-path [result] (vector-get result 3))
 (defn parse-validate-cli-options-loop [idx argc source-path manifest-path source-seen format-seen]
   (if (>= idx argc)
-    (if (and (= source-seen 1) (= format-seen 1))
-      (validate-options-result (validate-option-json) manifest-path "" source-path)
+    (if (and (= source-seen 1) (> format-seen 0))
+      (validate-options-result format-seen manifest-path "" source-path)
       (validate-options-result
         (validate-option-invalid)
         manifest-path
-        "validate requires --source <file> --format json"
+        "validate requires --source <file> --format text|json"
         source-path))
     (let [flag (command-line-arg idx)]
       (if (or
@@ -1565,7 +1640,15 @@
                     manifest-path
                     source-seen
                     1)
-                  (validate-options-result (validate-option-invalid) manifest-path value source-path))
+                  (if (string-eq value "text")
+                    (parse-validate-cli-options-loop
+                      (+ idx 2)
+                      argc
+                      source-path
+                      manifest-path
+                      source-seen
+                      2)
+                    (validate-options-result (validate-option-invalid) manifest-path value source-path)))
                 (if (> (string-length value) 0)
                   (parse-validate-cli-options-loop
                     (+ idx 2)
@@ -1580,12 +1663,16 @@
   (parse-validate-cli-options-loop 1 argc "" "" 0 0))
 (defn parse-validate-cli-option [argc]
   (let [result (parse-validate-cli-options argc)]
-    (if (= (validate-options-status result) (validate-option-json))
-      (validate-option-json)
+    (if (or
+          (= (validate-options-status result) (validate-option-json))
+          (= (validate-options-status result) (validate-option-text)))
+      (validate-options-status result)
       (validate-option-invalid))))
 (defn run-validate-command [argc]
   (let [options (parse-validate-cli-options argc)]
-    (if (= (validate-options-status options) (validate-option-json))
+    (if (or
+          (= (validate-options-status options) (validate-option-json))
+          (= (validate-options-status options) (validate-option-text)))
       (run-validate (validate-options-source-path options) options)
       (do
         (cli-stderr (string-concat "validate option error: " (validate-options-detail options)))
