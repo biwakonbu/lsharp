@@ -9216,29 +9216,16 @@ fn test_selfhost_parser_parse_let_roots_result_across_closing_paren_expect() {
         .and_then(|tail| tail.split("(defn parse-let-v3").next())
         .expect("Parser.ls に parse-let-after-first-binding-v3 が存在すること");
 
-    let single_branch = after_first_body
-        .split(";; 複数バインディング")
-        .next()
-        .expect("parse-let-after-first-binding-v3 の single binding branch を取り出せること");
-    let single_result_pos = single_branch
-        .find("result (vector-push-quad-rooted-v3 (vector-new 8) 7 nh init body)")
-        .expect("single binding branch は result let を作ること");
-    let single_finish_pos = single_branch[single_result_pos..]
+    let rest_body_pos = after_first_body
+        .find("rest-body (parse-let-rest-v3 spans pos-ref src)")
+        .expect("parse-let-after-first-binding-v3 は rest body helper を呼ぶこと");
+    let result_pos = after_first_body
+        .find("result (vector-push-quad-rooted-v3 (vector-new 8) 7 nh init rest-body)")
+        .expect("parse-let-after-first-binding-v3 は outer let result を作ること");
+    let finish_pos = after_first_body[result_pos..]
         .find("(finish-parse-let-result-after-expect-v3 spans pos-ref result)")
-        .expect("single binding branch は result を finish helper へ渡すこと")
-        + single_result_pos;
-
-    let multi_branch = after_first_body
-        .split(";; 複数バインディング")
-        .nth(1)
-        .expect("parse-let-after-first-binding-v3 の multi binding branch を取り出せること");
-    let multi_result_pos = multi_branch
-        .find("result (vector-push-quad-rooted-v3 (vector-new 8) 7 nh init inner)")
-        .expect("multi binding branch は outer let result を作ること");
-    let multi_finish_pos = multi_branch[multi_result_pos..]
-        .find("(finish-parse-let-result-after-expect-v3 spans pos-ref result)")
-        .expect("multi binding branch は outer result を finish helper へ渡すこと")
-        + multi_result_pos;
+        .expect("parse-let-after-first-binding-v3 は result を finish helper へ渡すこと")
+        + result_pos;
     let finish_root_pos = finish_body
         .find("(root_push result)")
         .expect("finish helper は result を p-expect 前に root すること");
@@ -9247,10 +9234,10 @@ fn test_selfhost_parser_parse_let_roots_result_across_closing_paren_expect() {
         .expect("finish helper は closing paren を消費すること");
 
     assert!(
-        single_result_pos < single_finish_pos
-            && multi_result_pos < multi_finish_pos
+        rest_body_pos < result_pos
+            && result_pos < finish_pos
             && finish_root_pos < finish_expect_pos,
-        "parse-let-v3 は Linux x86 stage2 native で p-expect call 境界を跨いで final let vector が壊れないよう、closing paren 消費前に result を root するべき"
+        "parse-let-v3 は Linux x86 stage2 native で p-expect call 境界を跨いで final let vector が壊れないよう、rest body と result を finish helper へ渡すべき"
     );
 }
 
@@ -10425,55 +10412,36 @@ fn test_selfhost_parser_parse_let_reads_final_result_from_ref_after_expect() {
         .and_then(|tail| tail.split("(defn parse-let-v3").next())
         .expect("Parser.ls に parse-let-after-first-binding-v3 が存在すること");
 
-    for (branch_name, result_text) in [
-        (
-            "single binding",
-            "result (vector-push-quad-rooted-v3 (vector-new 8) 7 nh init body)",
-        ),
-        (
-            "multi binding",
-            "result (vector-push-quad-rooted-v3 (vector-new 8) 7 nh init inner)",
-        ),
-    ] {
-        let result_pos = after_first_body
-            .find(result_text)
-            .unwrap_or_else(|| panic!("parse-let {branch_name} は final result を作ること"));
-        let finish_call_pos = after_first_body[result_pos..]
-            .find("(finish-parse-let-result-after-expect-v3 spans pos-ref result)")
-            .unwrap_or_else(|| {
-                panic!("parse-let {branch_name} は final result を finish helper へ渡すこと")
-            })
-            + result_pos;
-        let result_ref_pos = finish_body
-            .find("result-ref (ref-new result)")
-            .unwrap_or_else(|| {
-                panic!("finish helper は p-expect 前に final result を ref に退避すること")
-            });
-        let result_ref_root_pos = finish_body[result_ref_pos..]
-            .find("(root_push result-ref)")
-            .unwrap_or_else(|| {
-                panic!("finish helper は p-expect 前に result-ref を root すること")
-            })
-            + result_ref_pos;
-        let expect_pos = finish_body[result_ref_pos..]
-            .find("(p-expect spans pos-ref 1)")
-            .unwrap_or_else(|| panic!("finish helper は closing paren を消費すること"))
-            + result_ref_pos;
-        let final_result_pos = finish_body[expect_pos..]
-            .find("final-result (ref-get result-ref)")
-            .unwrap_or_else(|| {
-                panic!("finish helper は p-expect 後に ref から final result を読み戻すこと")
-            })
-            + expect_pos;
+    let result_pos = after_first_body
+        .find("result (vector-push-quad-rooted-v3 (vector-new 8) 7 nh init rest-body)")
+        .expect("parse-let は final result を作ること");
+    let finish_call_pos = after_first_body[result_pos..]
+        .find("(finish-parse-let-result-after-expect-v3 spans pos-ref result)")
+        .expect("parse-let は final result を finish helper へ渡すこと")
+        + result_pos;
+    let result_ref_pos = finish_body
+        .find("result-ref (ref-new result)")
+        .expect("finish helper は p-expect 前に final result を ref に退避すること");
+    let result_ref_root_pos = finish_body[result_ref_pos..]
+        .find("(root_push result-ref)")
+        .expect("finish helper は p-expect 前に result-ref を root すること")
+        + result_ref_pos;
+    let expect_pos = finish_body[result_ref_pos..]
+        .find("(p-expect spans pos-ref 1)")
+        .expect("finish helper は closing paren を消費すること")
+        + result_ref_pos;
+    let final_result_pos = finish_body[expect_pos..]
+        .find("final-result (ref-get result-ref)")
+        .expect("finish helper は p-expect 後に ref から result を読み戻すこと")
+        + expect_pos;
 
-        assert!(
-            result_pos < finish_call_pos
-                && result_ref_pos < result_ref_root_pos
-                && result_ref_root_pos < expect_pos
-                && expect_pos < final_result_pos,
-            "parse-let {branch_name} は Linux x86 native call 境界で result local が clobber されても AST を返せるよう、ref 経由で final result を読み戻すべき"
-        );
-    }
+    assert!(
+        result_pos < finish_call_pos
+            && result_ref_pos < result_ref_root_pos
+            && result_ref_root_pos < expect_pos
+            && expect_pos < final_result_pos,
+        "parse-let は Linux x86 native call 境界で result local が clobber されても AST を返せるよう、ref 経由で final result を読み戻すべき"
+    );
 }
 
 #[test]
@@ -10493,44 +10461,33 @@ fn test_selfhost_parser_parse_let_roots_returned_result_before_unwinding_binding
     let init_slot_pos = after_first_body
         .find("init-slot (root_push init)")
         .expect("parse-let-after-first-binding は init root slot を保持すること");
-    for (branch_name, result_text) in [
-        (
-            "single binding",
-            "final-result (finish-parse-let-result-after-expect-v3 spans pos-ref result)",
-        ),
-        (
-            "multi binding",
-            "final-result (finish-parse-let-result-after-expect-v3 spans pos-ref result)",
-        ),
-    ] {
-        let result_pos = after_first_body.find(result_text).unwrap_or_else(|| {
-            panic!("parse-let {branch_name} は final-result を local 化すること")
-        });
-        let result_root_pos = after_first_body[result_pos..]
-            .find("(root_push final-result)")
-            .map(|offset| offset + result_pos)
-            .unwrap_or_else(|| {
-                panic!("parse-let {branch_name} は final-result を unwind 前に root すること")
-            });
-        let root_set_pos = after_first_body[result_pos..]
-            .find("(root_set init-slot final-result)")
-            .map(|offset| offset + result_pos)
-            .unwrap_or_else(|| {
-                panic!("parse-let {branch_name} は final-result を init slot に退避すること")
-            });
-        let first_pop_after_result = after_first_body[result_pos..]
-            .find("(root_pop)")
-            .map(|offset| offset + result_pos)
-            .unwrap_or_else(|| panic!("parse-let {branch_name} は roots を unwind すること"));
+    let rest_body_pos = after_first_body
+        .find("rest-body (parse-let-rest-v3 spans pos-ref src)")
+        .expect("parse-let-after-first-binding は rest body helper を呼ぶこと");
+    let result_pos = after_first_body
+        .find("result (vector-push-quad-rooted-v3 (vector-new 8) 7 nh init rest-body)")
+        .expect("parse-let は result を構築すること");
+    let finish_pos = after_first_body[result_pos..]
+        .find("(finish-parse-let-result-after-expect-v3 spans pos-ref result)")
+        .expect("parse-let は result を finish helper へ渡すこと")
+        + result_pos;
+    let root_set_pos = after_first_body[finish_pos..]
+        .find("(root_set init-slot final-result)")
+        .expect("parse-let は final-result を init slot に退避すること")
+        + finish_pos;
+    let first_pop_after_result = after_first_body[root_set_pos..]
+        .find("(root_pop)")
+        .map(|offset| offset + root_set_pos)
+        .expect("parse-let は roots を unwind すること");
 
-        assert!(
-            init_slot_pos < result_pos
-                && result_pos < result_root_pos
-                && result_root_pos < root_set_pos
-                && root_set_pos < first_pop_after_result,
-            "parse-let {branch_name} は final-result を root slot に退避してから binding roots を unwind するべき"
-        );
-    }
+    assert!(
+        init_slot_pos < rest_body_pos
+            && rest_body_pos < result_pos
+            && result_pos < finish_pos
+            && finish_pos < root_set_pos
+            && root_set_pos < first_pop_after_result,
+        "parse-let は finish helper が ref から復元した final-result を init slot に退避してから binding roots を unwind するべき"
+    );
 
     let first_init_slot_pos = first_binding_body
         .find("init-slot (root_push init)")

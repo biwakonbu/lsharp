@@ -1392,3 +1392,24 @@ fn test_e2e_selfhost_parser_do_expr_collection_uses_bounded_chunks() {
         "do expression parser は Linux x86 native stack の深い再帰を避けるため bounded chunk へ委譲するべき"
     );
 }
+
+#[test]
+fn test_e2e_selfhost_parser_let_bindings_use_bounded_collection_and_fold() {
+    let source = selfhost_module("Parser.ls");
+    let rooted_body = source
+        .split("(defn parse-let-rest-rooted-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn parse-let-rest-v3").next())
+        .expect("Parser.ls に let rest helper が存在すること");
+
+    assert!(
+        source.contains("(defn parse-let-binding-step-64-loop-bounded")
+            && source.contains("(defn parse-let-fold-step-64-loop-bounded")
+            && rooted_body.contains("parse-let-bindings-v3")
+            && rooted_body.contains("parse-let-fold-bindings-v3")
+            && !rooted_body.contains(
+                "(parse-let-rest-rooted-v3 spans pos-ref src)"
+            ),
+        "let binding parser は collection/fold の bounded chunk へ委譲するべき"
+    );
+}
