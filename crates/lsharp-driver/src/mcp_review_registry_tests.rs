@@ -1,0 +1,126 @@
+mod review_registry_tests {
+    use super::*;
+
+    #[test]
+    fn test_validate_tool_manifest_schema_declares_redacted_review_registry() {
+        let response = handle_jsonrpc_message(&json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/list"
+        }));
+        let tool = response["result"]["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|tool| tool["name"] == "lsharp_validate")
+            .expect("lsharp_validate が tools/list に必要");
+        let review_schema =
+            &tool["outputSchema"]["properties"]["manifest"]["properties"]["reviews"];
+        let input_review_schema =
+            &tool["inputSchema"]["properties"]["manifest"]["oneOf"][0]["properties"]["reviews"];
+
+        assert_eq!(review_schema["type"], "array");
+        assert_eq!(input_review_schema["type"], "array");
+        assert_eq!(
+            review_schema["items"]["required"],
+            json!(["namespace", "key", "provenance_digest", "visibility"])
+        );
+        assert_eq!(
+            input_review_schema["items"]["required"],
+            json!(["namespace", "key", "provenance_digest", "visibility"])
+        );
+        assert_eq!(review_schema["items"]["additionalProperties"], false);
+        assert_eq!(input_review_schema["items"]["additionalProperties"], false);
+        assert_eq!(
+            review_schema["items"]["properties"]["visibility"]["enum"],
+            json!(["public", "redacted"])
+        );
+        assert!(review_schema["items"]["properties"].get("author").is_none());
+        assert!(review_schema["items"]["properties"].get("email").is_none());
+        assert!(review_schema["items"]["properties"].get("body").is_none());
+        assert!(
+            input_review_schema["items"]["properties"]
+                .get("author")
+                .is_none()
+        );
+        assert!(
+            input_review_schema["items"]["properties"]
+                .get("email")
+                .is_none()
+        );
+        assert!(
+            input_review_schema["items"]["properties"]
+                .get("body")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn test_validate_tool_includes_redacted_review_registry_without_private_fields() {
+        let result = call_tool(
+            "lsharp_validate",
+            &json!({
+                "manifest": {
+                    "schema_version": 1,
+                    "nodes": [],
+                    "reviews": [{
+                        "namespace": "checkout",
+                        "key": "reviewer-001",
+                        "provenance_digest": "sha256:review-provenance-001",
+                        "visibility": "redacted"
+                    }],
+                    "evidence": [],
+                    "edges": []
+                },
+                "include_manifest": true
+            }),
+        )
+        .expect("MCP validation は redacted review registry を返すべき");
+
+        let review = &result["manifest"]["reviews"][0];
+        assert_eq!(review["namespace"], "checkout");
+        assert_eq!(review["key"], "reviewer-001");
+        assert_eq!(review["provenance_digest"], "sha256:review-provenance-001");
+        assert_eq!(review["visibility"], "redacted");
+        assert!(review.get("author").is_none());
+        assert!(review.get("email").is_none());
+        assert!(review.get("body").is_none());
+    }
+
+    #[test]
+    fn test_validate_tool_rejects_unregistered_review_edge() {
+        let error = call_tool(
+            "lsharp_validate",
+            &json!({
+                "manifest": {
+                    "schema_version": 1,
+                    "nodes": [],
+                    "reviews": [{
+                        "namespace": "checkout",
+                        "key": "reviewer-001",
+                        "provenance_digest": "sha256:review-provenance-001",
+                        "visibility": "redacted"
+                    }],
+                    "evidence": [],
+                    "edges": [{
+                        "relation": "invalidates",
+                        "change": {"namespace": "checkout", "key": "api-v2"},
+                        "subject": {
+                            "kind": "review",
+                            "namespace": "checkout",
+                            "key": "missing-review"
+                        }
+                    }]
+                },
+                "include_manifest": true
+            }),
+        )
+        .expect_err("未登録 review edge は MCP で拒否するべき");
+
+        assert!(error.contains("review ID"), "unexpected error: {error}");
+        assert!(
+            error.contains("missing-review"),
+            "unexpected error: {error}"
+        );
+    }
+}

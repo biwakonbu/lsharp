@@ -694,4 +694,6 @@ description = "context fixture"
         assert_eq!(response["id"], 7);
         assert_eq!(response["result"]["ok"], true);
     }
+
+    include!("mcp_review_registry_tests.rs");
 }

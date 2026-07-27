@@ -641,7 +641,7 @@ Evidence: `cargo test -p lsharp-types --test review_provenance -- --nocapture`�
 `validation_input` 16件、`validation_output` 5件、`validation_schema` 2件、
 `intent_validation` 6件。これは Rust canonical manifest の privacy/registry verified slice であり、
 provider/署名による provenance authentication、digest format、source `:review` producer、
-selfhost/native parity、review lifecycle/stale propagation、MCP、Mac Apple Silicon / Linux x86_64
+selfhost/native parity、review lifecycle/stale propagation、selfhost/native MCP、Mac Apple Silicon / Linux x86_64
 current-source artifact/runtime parity、EC-M2-02/03 aggregate は未完了である。
 
 ### EC-M2-03 Rust CLI manifest review registry projection (2026-07-27)
@@ -654,8 +654,22 @@ optional `reviews` registry の `namespace` / `key` / `provenance_digest` / `vis
 
 Evidence: `cargo test -p lsharp-driver --test validate_review_registry -- --nocapture`（2 passed）。
 これは Rust host の manifest input/output boundary の verified slice であり、selfhost/native stage0、
-provider/署名 authentication、review lifecycle、MCP、Mac Apple Silicon / Linux x86_64
+provider/署名 authentication、review lifecycle、selfhost/native MCP、Mac Apple Silicon / Linux x86_64
 current-source artifact/runtime parity、EC-M2-02/03 aggregate は未完了である。
+
+### EC-M2-03 Rust MCP review registry schema and inline artifact (2026-07-27)
+
+Rust MCP `lsharp_validate` の `tools/list` schema に、manifest input と output の optional
+`reviews` registry を同じ wire shape で公開した。各 record は `namespace`、`key`、
+`provenance_digest`、`visibility` (`public` / `redacted`) だけを許し、additional property と
+author/email/body を受け付けない。`include_manifest` の inline artifact は、manifest input の
+redacted registry を登録順のまま同じ privacy boundary で返し、未登録 review edge は既存の
+fail-closed error へ到達する。
+
+Evidence: `cargo test -p lsharp-driver mcp_server::tests -- --nocapture`（40 passed）。
+これは Rust MCP の schema／inline artifact verified slice であり、selfhost/native MCP server、
+provider/署名 authentication、review lifecycle、Mac Apple Silicon / Linux x86_64 current-source
+artifact/runtime parity、EC-M2-02/03 aggregate は未完了である。
 
 ### EC-M2-03 selfhost `validate --source` initial CLI slice (2026-07-25)
 

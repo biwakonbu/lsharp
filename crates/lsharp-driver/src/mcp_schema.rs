@@ -158,6 +158,7 @@ fn tool_output_schema(name: &str) -> Value {
                     "properties": {
                         "schema_version": { "type": "integer", "const": 1 },
                         "nodes": { "type": "array" },
+                        "reviews": review_registry_schema(),
                         "evidence": { "type": "array" },
                         "edges": { "type": "array" }
                     }
@@ -195,7 +196,12 @@ fn validate_input_schema() -> Value {
             "file": { "type": "string" },
             "manifest": {
                 "oneOf": [
-                    { "type": "object" },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "reviews": review_registry_schema()
+                        }
+                    },
                     { "type": "string" }
                 ]
             },
@@ -208,5 +214,39 @@ fn validate_input_schema() -> Value {
             { "required": ["manifest"] },
             { "required": ["manifest_file"] }
         ]
+    })
+}
+
+fn review_registry_schema() -> Value {
+    json!({
+        "type": "array",
+        "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "namespace",
+                "key",
+                "provenance_digest",
+                "visibility"
+            ],
+            "properties": {
+                "namespace": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_.-]+$"
+                },
+                "key": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_.-]+$"
+                },
+                "provenance_digest": {
+                    "type": "string",
+                    "minLength": 1
+                },
+                "visibility": {
+                    "type": "string",
+                    "enum": ["public", "redacted"]
+                }
+            }
+        }
     })
 }
