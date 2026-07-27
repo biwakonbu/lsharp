@@ -109,7 +109,11 @@ for required in \
   'VALIDATION_INVALIDATION_SUBJECT_KIND_SOURCE' \
   'VALIDATION_INVALIDATION_SUBJECT_KIND_MANIFEST' \
   'run_expected_validation_error validation-invalidation-subject-kind' \
-  'source validation error:9'; do
+  'source validation error:9' \
+  'VALIDATION_INVALIDATION_MISSING_REVIEW_SOURCE' \
+  'VALIDATION_INVALIDATION_MISSING_REVIEW_MANIFEST' \
+  'run_expected_validation_error validation-invalidation-missing-review' \
+  'source validation error:10'; do
   assert_script_contains "$SOURCE_SMOKE" "$required"
 done
 

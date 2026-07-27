@@ -141,6 +141,10 @@
   同じ stable code `9`、exit `1`、report/manifestなしの fail-closed を要求した。`evaluates` と
   `invalidates` の typed review-edge subject boundary を双方の native contractへ接続する verified
   sliceだが、current source-commit に一致する実 stage0 artifact/runtime の evidence ではない。
+  さらに登録済み review と未登録 review を同じ source に置き、`invalidates` が未登録 review を参照
+  する fixtureも native smokeへ追加した。stable な `source validation error:10`、exit `1`、
+  report/manifestなしの fail-closed を要求し、review registry closure の両 edge relation を native
+  contractへ接続する verified sliceとしたが、実 stage0 artifact/runtime の evidence ではない。
 
 次の実装は `EC-M2-01`〜`EC-M2-03` の未接続入力を一つの RED に絞る。current plan の
 acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展開しない。
