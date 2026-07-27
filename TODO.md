@@ -84,7 +84,12 @@
   no-report/no-file として要求する contract を持つが、atomic/durable writer と実 stage0 runtime
   の証拠ではない。さらに independent review を含む complete graph fixtureの JSON `status: pass` /
   exit `0` と text 6行 projection を native smoke contract に追加したが、current source-commit に
-  一致する stage0 artifact/runtime での実行 evidence は未取得である。
+  一致する stage0 artifact/runtime での実行 evidence は未取得である。さらに contradiction
+  fixture の JSON `status: fail` / exit `1`（`independent_reviews: 1`、
+  `contradicting_observations: 1`）と同じ text 6行 projectionを native smoke contract に追加した。
+  これは report を保持する判定 failure と parse/graph/write の diagnostic-only failure を分離する
+  fake Lima/provenance harness の verified sliceであり、current source-commit に一致する実 stage0
+  artifact/runtime の evidence ではない。
 
 次の実装は `EC-M2-01`〜`EC-M2-03` の未接続入力を一つの RED に絞る。current plan の
 acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展開しない。

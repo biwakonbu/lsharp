@@ -56,7 +56,13 @@ for required in \
   'validation-pass-json' \
   'validation-pass-text' \
   'status: pass' \
-  'independent-reviews: 1'; do
+  'independent-reviews: 1' \
+  'VALIDATION_FAIL_SOURCE' \
+  'validation-fail-json' \
+  'validation-fail-text' \
+  'run_report_failure' \
+  'status: fail' \
+  'contradicting-observations: 1'; do
   assert_script_contains "$SOURCE_SMOKE" "$required"
 done
 

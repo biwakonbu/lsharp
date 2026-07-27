@@ -100,6 +100,7 @@ VALIDATION_MANIFEST="$WORK_DIR/ec-m3-canonical-manifest.json"
 VALIDATION_INVALID_MANIFEST="$WORK_DIR/ec-m3-duplicate-node-manifest.json"
 VALIDATION_WRITE_FAILURE_MANIFEST="$WORK_DIR/missing-parent/intent-graph.json"
 VALIDATION_PASS_SOURCE="$WORK_DIR/ec-m3-complete-source.ls"
+VALIDATION_FAIL_SOURCE="$WORK_DIR/ec-m3-contradiction-source.ls"
 
 printf '%s\n' '(defn main [] 42)' >"$INPUT"
 cat >"$METADATA" <<'LSHARP'
@@ -145,6 +146,30 @@ cat >"$VALIDATION_PASS_SOURCE" <<'LSHARP'
     :timestamp "2026-07-25T00:00:00Z"
     :independence "independent-review"
   :supports "evidence:checkout/review" "claim:checkout/rejects"
+  true)
+LSHARP
+cat >"$VALIDATION_FAIL_SOURCE" <<'LSHARP'
+(defn verify []
+  :intent "intent:checkout/safe-cancel" "Users can cancel an order"
+  :claim "claim:checkout/rejects" "Shipped orders are rejected"
+  :motivates "intent:checkout/safe-cancel" "claim:checkout/rejects"
+  :tested-by "claim:checkout/rejects" "contract:checkout/review"
+  :evidence "evidence:checkout/review"
+    :subject "claim:checkout/rejects"
+    :method "review"
+    :outcome "contradicted"
+    :runner "reviewer"
+    :target "aarch64-apple-darwin"
+    :source-commit "deadbeef"
+    :artifact-digest "sha256:abc"
+    :cases 1
+    :seed 42
+    :generator "checkout-review"
+    :producer "lsharp-test"
+    :tool-version "0.2"
+    :timestamp "2026-07-25T00:00:00Z"
+    :independence "independent-review"
+  :contradicts "evidence:checkout/review" "claim:checkout/rejects"
   true)
 LSHARP
 
@@ -276,6 +301,50 @@ run_expected_validation_error() {
   }
   [[ -s "$WORK_DIR/$label.stderr" ]] || {
     echo "ERROR: $label must emit a diagnostic on validation error" >&2
+    exit 1
+  }
+}
+
+run_report_failure() {
+  local label="$1"
+  local bootstrap="$2"
+  shift 2
+
+  local status=0
+  set +e
+  if [[ "$bootstrap" == "1" ]]; then
+    PATH="$BLOCKED_TOOL_DIR:$PATH" \
+      "$RUNNER" \
+        --stage0-dir "$STAGE0_DIR" \
+        --source-root "$SOURCE_ROOT" \
+        --stage-dir "$STAGE_DIR" \
+        --bootstrap \
+        "$@" >"$WORK_DIR/$label.stdout" 2>"$WORK_DIR/$label.stderr"
+    status=$?
+  else
+    PATH="$BLOCKED_TOOL_DIR:$PATH" \
+      "$RUNNER" \
+        --stage0-dir "$STAGE0_DIR" \
+        --source-root "$SOURCE_ROOT" \
+        --stage-dir "$STAGE_DIR" \
+        "$@" >"$WORK_DIR/$label.stdout" 2>"$WORK_DIR/$label.stderr"
+    status=$?
+  fi
+  set -e
+
+  [[ "$status" -eq 1 ]] || {
+    echo "ERROR: $label expected exit 1, got $status" >&2
+    cat "$WORK_DIR/$label.stdout" >&2
+    cat "$WORK_DIR/$label.stderr" >&2
+    exit 1
+  }
+  [[ -s "$WORK_DIR/$label.stdout" ]] || {
+    echo "ERROR: $label must emit a failure report" >&2
+    exit 1
+  }
+  [[ ! -s "$WORK_DIR/$label.stderr" ]] || {
+    echo "ERROR: $label emitted stderr" >&2
+    cat "$WORK_DIR/$label.stderr" >&2
     exit 1
   }
 }
@@ -427,6 +496,35 @@ run_command validation-pass-text 0 validate \
   --source "$VALIDATION_PASS_SOURCE" \
   --format text
 require_exact_output validation-pass-text $'status: pass\nopen-questions: 0\nindependent-reviews: 1\ncontradicting-observations: 0\nstale-reviews: 0\nstale-evidence: 0\n'
+
+run_report_failure validation-fail-json 0 validate \
+  --source "$VALIDATION_FAIL_SOURCE" \
+  --format json
+python3 - "$WORK_DIR/validation-fail-json.stdout" <<'PY'
+import json
+import pathlib
+import sys
+
+lines = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8").splitlines()
+if len(lines) != 1:
+    raise SystemExit(f"validation fail JSON must contain one report line: {lines!r}")
+report = json.loads(lines[0])
+if report.get("status") != "fail":
+    raise SystemExit(f"validation fail status is invalid: {report!r}")
+if report.get("trace_gaps") != [] or report.get("open_questions") != 0:
+    raise SystemExit(f"validation fail graph metrics are invalid: {report!r}")
+if report.get("independent_reviews") != 1:
+    raise SystemExit(f"validation fail review metric is invalid: {report!r}")
+if report.get("contradicting_observations") != 1:
+    raise SystemExit(f"validation fail contradiction metric is invalid: {report!r}")
+if report.get("stale_reviews") != 0 or report.get("stale_evidence") != 0:
+    raise SystemExit(f"validation fail stale metrics are invalid: {report!r}")
+PY
+
+run_report_failure validation-fail-text 0 validate \
+  --source "$VALIDATION_FAIL_SOURCE" \
+  --format text
+require_exact_output validation-fail-text $'status: fail\nopen-questions: 0\nindependent-reviews: 1\ncontradicting-observations: 1\nstale-reviews: 0\nstale-evidence: 0\n'
 
 run_expected_validation_error validation-duplicate-node \
   validate \
