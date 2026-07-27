@@ -62,7 +62,14 @@ for required in \
   'validation-fail-text' \
   'run_report_failure' \
   'status: fail' \
-  'contradicting-observations: 1'; do
+  'contradicting-observations: 1' \
+  'VALIDATION_STALE_SOURCE' \
+  'run_expected_failure validation-stale-json' \
+  'validation-stale-json' \
+  'run_expected_failure validation-stale-text' \
+  'validation-stale-text' \
+  'stale-reviews: 1' \
+  'stale-evidence: 1'; do
   assert_script_contains "$SOURCE_SMOKE" "$required"
 done
 

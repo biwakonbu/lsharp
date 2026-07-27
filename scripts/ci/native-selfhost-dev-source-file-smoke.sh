@@ -101,6 +101,7 @@ VALIDATION_INVALID_MANIFEST="$WORK_DIR/ec-m3-duplicate-node-manifest.json"
 VALIDATION_WRITE_FAILURE_MANIFEST="$WORK_DIR/missing-parent/intent-graph.json"
 VALIDATION_PASS_SOURCE="$WORK_DIR/ec-m3-complete-source.ls"
 VALIDATION_FAIL_SOURCE="$WORK_DIR/ec-m3-contradiction-source.ls"
+VALIDATION_STALE_SOURCE="$WORK_DIR/ec-m3-stale-source.ls"
 
 printf '%s\n' '(defn main [] 42)' >"$INPUT"
 cat >"$METADATA" <<'LSHARP'
@@ -170,6 +171,32 @@ cat >"$VALIDATION_FAIL_SOURCE" <<'LSHARP'
     :timestamp "2026-07-25T00:00:00Z"
     :independence "independent-review"
   :contradicts "evidence:checkout/review" "claim:checkout/rejects"
+  true)
+LSHARP
+cat >"$VALIDATION_STALE_SOURCE" <<'LSHARP'
+(defn stale-review []
+  :intent "intent:checkout/safe-cancel" "Users can cancel an order"
+  :claim "claim:checkout/rejects" "Shipped orders are rejected"
+  :motivates "intent:checkout/safe-cancel" "claim:checkout/rejects"
+  :tested-by "claim:checkout/rejects" "contract:checkout/review"
+  :evidence "evidence:checkout/review-001"
+    :subject "claim:checkout/rejects"
+    :method "review"
+    :outcome "pass"
+    :runner "reviewer"
+    :target "aarch64-apple-darwin"
+    :source-commit "deadbeef"
+    :artifact-digest "sha256:abc"
+    :cases 1
+    :seed 42
+    :generator "checkout-review"
+    :producer "lsharp-test"
+    :tool-version "0.2"
+    :timestamp "2026-07-27T00:00:00Z"
+    :independence "independent-review"
+  :review "review:checkout/reviewer-001" "sha256:review-provenance-001" "redacted"
+  :evaluates "review:checkout/reviewer-001" "evidence:checkout/review-001"
+  :invalidates "change:checkout/api-v2" "review:checkout/reviewer-001"
   true)
 LSHARP
 
@@ -525,6 +552,33 @@ run_report_failure validation-fail-text 0 validate \
   --source "$VALIDATION_FAIL_SOURCE" \
   --format text
 require_exact_output validation-fail-text $'status: fail\nopen-questions: 0\nindependent-reviews: 1\ncontradicting-observations: 1\nstale-reviews: 0\nstale-evidence: 0\n'
+
+run_expected_failure validation-stale-json 0 validate \
+  --source "$VALIDATION_STALE_SOURCE" \
+  --format json
+python3 - "$WORK_DIR/validation-stale-json.stdout" <<'PY'
+import json
+import pathlib
+import sys
+
+lines = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8").splitlines()
+if len(lines) != 1:
+    raise SystemExit(f"validation stale JSON must contain one report line: {lines!r}")
+report = json.loads(lines[0])
+if report.get("status") != "unknown":
+    raise SystemExit(f"validation stale status is invalid: {report!r}")
+if report.get("trace_gaps") != [] or report.get("open_questions") != 0:
+    raise SystemExit(f"validation stale graph metrics are invalid: {report!r}")
+if report.get("independent_reviews") != 1 or report.get("contradicting_observations") != 0:
+    raise SystemExit(f"validation stale review metrics are invalid: {report!r}")
+if report.get("stale_reviews") != 1 or report.get("stale_evidence") != 1:
+    raise SystemExit(f"validation stale propagation metrics are invalid: {report!r}")
+PY
+
+run_expected_failure validation-stale-text 0 validate \
+  --source "$VALIDATION_STALE_SOURCE" \
+  --format text
+require_exact_output validation-stale-text $'status: unknown\nopen-questions: 0\nindependent-reviews: 1\ncontradicting-observations: 0\nstale-reviews: 1\nstale-evidence: 1\n'
 
 run_expected_validation_error validation-duplicate-node \
   validate \
