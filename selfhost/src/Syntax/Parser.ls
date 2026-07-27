@@ -1366,26 +1366,23 @@
     ""))
 
 (defn parse-source-metadata-pair-v3 [spans pos-ref src]
-  (let [first (parse-source-metadata-string-v3 spans pos-ref src)]
+  (let [first (parse-source-metadata-string-v3 spans pos-ref src)
+    first-root (root_push first)
+    second (parse-source-metadata-string-v3 spans pos-ref src)
+    second-root (root_push second)
+    result (vector-push-pair-rooted-v3 (vector-new 2) first second)]
     (do
-      (root_push first)
-      (let [second (parse-source-metadata-string-v3 spans pos-ref src)]
-        (do
-          (root_push second)
-          (let [result (vector-push-pair-rooted-v3 (vector-new 2) first second)]
-            (do
-              (root_pop)
-              (root_pop)
-              result)))))))
+      (root_pop)
+      (root_pop)
+      result)))
 
 (defn parse-source-evidence-int-v3 [spans pos-ref src]
   (if (== (p-current spans pos-ref) 10)
     (let [start (p-start spans pos-ref)
       end (p-end spans pos-ref)
-      value (parse-int-from-str src start end 0)]
-      (do
-        (p-advance pos-ref)
-        value))
+      value (parse-int-from-str src start end 0)
+      advanced (p-advance pos-ref)]
+      value)
     -1))
 
 (defn advance-if-token-v3 [spans pos-ref token]

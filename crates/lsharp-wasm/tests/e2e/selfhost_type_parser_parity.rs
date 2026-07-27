@@ -1338,3 +1338,37 @@ fn test_e2e_selfhost_typeinfer_import_source_scan_uses_bounded_chunks() {
         "source qualification の公開 loop は bounded chunk size 64 を使うべき"
     );
 }
+
+/// source metadata pair の二つの文字列は、深い nested let/do を作らず保持する。
+#[test]
+fn test_e2e_selfhost_parser_source_metadata_pair_uses_flat_root_bindings() {
+    let source = selfhost_module("Parser.ls");
+    let body = source
+        .split("(defn parse-source-metadata-pair-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn parse-source-evidence-int-v3").next())
+        .expect("Parser.ls に source metadata pair helper が存在すること");
+
+    assert!(
+        body.contains("first-root (root_push first)")
+            && body.contains("second-root (root_push second)")
+            && body.contains("result (vector-push-pair-rooted-v3"),
+        "source metadata pair は first/second root handoff を flat binding で保持するべき"
+    );
+    assert!(
+        !body.contains("(root_push first)\n      (let [second")
+            && !body.contains("(root_push second)\n          (let [result"),
+        "source metadata pair は native parser の深い nested root handoff を作らないべき"
+    );
+
+    let int_body = source
+        .split("(defn parse-source-evidence-int-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn advance-if-token-v3").next())
+        .expect("Parser.ls に source evidence integer helper が存在すること");
+    assert!(
+        int_body.contains("advanced (p-advance pos-ref)")
+            && !int_body.contains("(do\n        (p-advance pos-ref)"),
+        "source evidence integer helper は advance を flat binding で保持するべき"
+    );
+}
