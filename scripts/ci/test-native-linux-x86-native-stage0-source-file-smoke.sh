@@ -93,7 +93,11 @@ for required in \
   'VALIDATION_MISSING_REVIEW_SOURCE' \
   'VALIDATION_MISSING_REVIEW_MANIFEST' \
   'run_expected_validation_error validation-missing-review' \
-  'source validation error:10'; do
+  'source validation error:10' \
+  'VALIDATION_DUPLICATE_REVIEW_SOURCE' \
+  'VALIDATION_DUPLICATE_REVIEW_MANIFEST' \
+  'run_expected_validation_error validation-duplicate-review' \
+  'source validation error:7'; do
   assert_script_contains "$SOURCE_SMOKE" "$required"
 done
 
