@@ -602,6 +602,60 @@ stale-evidence: 0",
     assert!(!output.stdout.contains("verified"));
 }
 
+/// EC-M2-03: EmbeddedCli の complete validation graph は text でも pass を返す。
+#[test]
+fn test_e2e_selfhost_embedded_cli_main_with_args_validate_source_text_pass() {
+    let source = r#"
+(defn verify []
+  :intent "intent:checkout/safe-cancel" "Users can cancel an order"
+  :claim "claim:checkout/rejects" "Shipped orders are rejected"
+  :motivates "intent:checkout/safe-cancel" "claim:checkout/rejects"
+  :tested-by "claim:checkout/rejects" "contract:checkout/review"
+  :evidence "evidence:checkout/review"
+    :subject "claim:checkout/rejects"
+    :method "review"
+    :outcome "pass"
+    :runner "reviewer"
+    :target "aarch64-apple-darwin"
+    :source-commit "deadbeef"
+    :artifact-digest "sha256:abc"
+    :cases 1
+    :seed 42
+    :generator "checkout-review"
+    :producer "lsharp-test"
+    :tool-version "0.2"
+    :timestamp "2026-07-25T00:00:00Z"
+    :independence "independent-review"
+  :supports "evidence:checkout/review" "claim:checkout/rejects"
+  true)
+"#;
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, || {
+        run_main_with_input_file_capture(
+            selfhost_embedded_cli_runtime_bundle(),
+            "validate_source_text_pass_embedded",
+            source,
+            &["validate", "--source", "input.ls", "--format", "text"],
+        )
+    });
+
+    assert_eq!(
+        output.exit_code, 0,
+        "complete graph with independent review は pass exit 0 であるべき: stdout={:?}",
+        output.stdout
+    );
+    assert_eq!(
+        output.stdout.trim_end(),
+        "status: pass\n\
+open-questions: 0\n\
+independent-reviews: 1\n\
+contradicting-observations: 0\n\
+stale-reviews: 0\n\
+stale-evidence: 0",
+        "EmbeddedCli の pass text report は Rust ValidationReport::to_text と一致するべき"
+    );
+    assert!(!output.stdout.contains("verified"));
+}
+
 /// EC-M3-03: EmbeddedCli は validate source の report と manifest を同時に出力すること
 #[test]
 fn test_e2e_selfhost_embedded_cli_validate_source_emits_manifest() {
