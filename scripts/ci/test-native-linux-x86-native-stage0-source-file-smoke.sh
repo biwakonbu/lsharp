@@ -77,7 +77,11 @@ for required in \
   'VALIDATION_MALFORMED_SOURCE' \
   'VALIDATION_MALFORMED_MANIFEST' \
   'run_expected_validation_error validation-malformed-edge' \
-  'source validation error:1'; do
+  'source validation error:1' \
+  'VALIDATION_INVALID_ID_SOURCE' \
+  'VALIDATION_INVALID_ID_MANIFEST' \
+  'run_expected_validation_error validation-invalid-id' \
+  'source validation error:2'; do
   assert_script_contains "$SOURCE_SMOKE" "$required"
 done
 

@@ -100,12 +100,14 @@ VALIDATION_MANIFEST="$WORK_DIR/ec-m3-canonical-manifest.json"
 VALIDATION_INVALID_MANIFEST="$WORK_DIR/ec-m3-duplicate-node-manifest.json"
 VALIDATION_ORPHAN_MANIFEST="$WORK_DIR/ec-m3-orphan-node-manifest.json"
 VALIDATION_MALFORMED_MANIFEST="$WORK_DIR/ec-m3-malformed-edge-manifest.json"
+VALIDATION_INVALID_ID_MANIFEST="$WORK_DIR/ec-m3-invalid-id-manifest.json"
 VALIDATION_WRITE_FAILURE_MANIFEST="$WORK_DIR/missing-parent/intent-graph.json"
 VALIDATION_PASS_SOURCE="$WORK_DIR/ec-m3-complete-source.ls"
 VALIDATION_FAIL_SOURCE="$WORK_DIR/ec-m3-contradiction-source.ls"
 VALIDATION_STALE_SOURCE="$WORK_DIR/ec-m3-stale-source.ls"
 VALIDATION_ORPHAN_SOURCE="$WORK_DIR/ec-m3-orphan-node-source.ls"
 VALIDATION_MALFORMED_SOURCE="$WORK_DIR/ec-m3-malformed-edge-source.ls"
+VALIDATION_INVALID_ID_SOURCE="$WORK_DIR/ec-m3-invalid-id-source.ls"
 
 printf '%s\n' '(defn main [] 42)' >"$INPUT"
 cat >"$METADATA" <<'LSHARP'
@@ -211,6 +213,11 @@ LSHARP
 cat >"$VALIDATION_MALFORMED_SOURCE" <<'LSHARP'
 (defn malformed-edge []
   :motivates "intent:checkout/safe-cancel"
+  true)
+LSHARP
+cat >"$VALIDATION_INVALID_ID_SOURCE" <<'LSHARP'
+(defn invalid-id-edge []
+  :motivates "intent:checkout/safe-cancel" "claim:checkout"
   true)
 LSHARP
 
@@ -603,6 +610,16 @@ grep -F "source validation error:1" "$WORK_DIR/validation-malformed-edge.stderr"
   || die "malformed edge validation must expose the malformed-source error code"
 [[ ! -e "$VALIDATION_MALFORMED_MANIFEST" ]] \
   || die "malformed edge validation must produce no report or manifest"
+
+run_expected_validation_error validation-invalid-id \
+  validate \
+  --source "$VALIDATION_INVALID_ID_SOURCE" \
+  --format json \
+  --emit-manifest "$VALIDATION_INVALID_ID_MANIFEST"
+grep -F "source validation error:2" "$WORK_DIR/validation-invalid-id.stderr" >/dev/null \
+  || die "invalid ID validation must expose the invalid-wire error code"
+[[ ! -e "$VALIDATION_INVALID_ID_MANIFEST" ]] \
+  || die "invalid ID validation must produce no report or manifest"
 
 run_expected_validation_error validation-orphan \
   validate \
