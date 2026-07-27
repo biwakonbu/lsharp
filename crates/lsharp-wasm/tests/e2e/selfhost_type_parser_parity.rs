@@ -1269,3 +1269,48 @@ fn test_e2e_selfhost_parser_record_literal() {
     assert_eq!(lines[5], "1", "field y の name-hash が一致すべき");
     assert_eq!(lines[6], "1", "field y の値は int literal であるべき");
 }
+
+/// check 用 flatten の再帰 handoff で、次の step と累積 vector を GC root に保持する。
+///
+/// 大きな current-source graph では loader と compile probe が完走した後、
+/// `load-check-program` の flatten 境界だけで native stage0 が落ちるため、
+/// 再帰呼び出しの root 契約をソース上で固定する。
+#[test]
+fn test_e2e_selfhost_check_flatten_recursive_handoff_roots_live_values() {
+    let source = selfhost_module("CompilerMode.ls");
+
+    let function_body = |name: &str| {
+        let marker = format!("(defn {name} [");
+        let start = source
+            .find(&marker)
+            .unwrap_or_else(|| panic!("CompilerMode.ls に {name} が存在しない"));
+        let tail = &source[start..];
+        let end = tail.find("\n(defn ").unwrap_or(tail.len());
+        &tail[..end]
+    };
+
+    for (name, recursive_call, roots) in [
+        (
+            "append-check-decls",
+            "(append-check-decls decls (vector-get step 1) n (vector-get step 2))",
+            ["(root_push decls)", "(root_push program)", "(root_push step)"],
+        ),
+        (
+            "append-check-pairs",
+            "(append-check-pairs pairs (vector-get step 1) n (vector-get step 2))",
+            ["(root_push pairs)", "(root_push program)", "(root_push step)"],
+        ),
+    ] {
+        let body = function_body(name);
+        let call_offset = body
+            .find(recursive_call)
+            .unwrap_or_else(|| panic!("{name} の再帰 handoff が存在しない"));
+        let handoff = &body[..call_offset];
+        for root in roots {
+            assert!(
+                handoff.contains(root),
+                "{name} は再帰 handoff 前に {root} を root 化するべき"
+            );
+        }
+    }
+}

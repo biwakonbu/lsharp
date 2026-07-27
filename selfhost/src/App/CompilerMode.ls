@@ -1103,7 +1103,17 @@
   (let [step (append-check-decls-step-4096 decls idx n program)]
     (if (= (vector-get step 0) 1)
       (vector-get step 2)
-      (append-check-decls decls (vector-get step 1) n (vector-get step 2)))))
+      (do
+        (root_push decls)
+        (root_push program)
+        (root_push step)
+        (let [result
+                (append-check-decls decls (vector-get step 1) n (vector-get step 2))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            result))))))
 (defn append-check-pairs-step [pairs idx n program]
   (if (>= idx n)
     (make-pairs-step-state 1 idx program)
@@ -1209,7 +1219,17 @@
   (let [step (append-check-pairs-step-4096 pairs idx n program)]
     (if (= (vector-get step 0) 1)
       (vector-get step 2)
-      (append-check-pairs pairs (vector-get step 1) n (vector-get step 2)))))
+      (do
+        (root_push pairs)
+        (root_push program)
+        (root_push step)
+        (let [result
+                (append-check-pairs pairs (vector-get step 1) n (vector-get step 2))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            result))))))
 
 ;; check の flatten と同じ declaration 順で、各 declaration の module owner を保持する。
 (defn make-check-module-owner [module-hash module-name module-path]
