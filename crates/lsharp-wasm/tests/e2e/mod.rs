@@ -12,6 +12,7 @@ mod selfhost_bootstrap_contracts;
 mod selfhost_bootstrap_four_layer;
 mod selfhost_bootstrap_four_layer_file_size;
 mod selfhost_cli_actual_main_args;
+mod selfhost_cli_manifest_output;
 mod selfhost_cli_core;
 mod selfhost_doctools_cli_diagnostics;
 mod selfhost_formatter_source_roundtrip;

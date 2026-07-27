@@ -490,15 +490,19 @@
         contradicting-observations (vector-get metrics 1)
         status-code (validation-source-status-code state independent-reviews contradicting-observations)
         report (validation-source-report-json state independent-reviews contradicting-observations)]
-        (do
-          (validation-source-write-manifest graph manifest-path)
-          (print-string report)
-          (print-string "\n")
-          (if (= status-code 1)
-            (exit-compile-error)
-            (if (= status-code 0)
-              (exit-success)
-              (exit-runtime-error))))))))
+        (if (and (> (string-length manifest-path) 0)
+            (< (validation-source-write-manifest graph manifest-path) 0))
+          (do
+            (cli-stderr "source validation manifest write failed")
+            (exit-compile-error))
+          (do
+            (print-string report)
+            (print-string "\n")
+            (if (= status-code 1)
+              (exit-compile-error)
+              (if (= status-code 0)
+                (exit-success)
+                (exit-runtime-error)))))))))
 (defn run-check-source [src opts] (run-check-program (make-check-program-context (parse-program src) (vector-new 0)) opts))
 (defn test-examples-text [count] (string-concat "examples:" (int-to-string count)))
 (defn test-invariants-text [count] (string-concat "invariants:" (int-to-string count)))

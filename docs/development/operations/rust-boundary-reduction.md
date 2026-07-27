@@ -2439,3 +2439,20 @@ manifest fileが存在せず失敗した。GREEN は同じ test が `1 passed`�
 これは Rust-host actual Wasm の EmbeddedCli writer/output boundaryだけを閉じる verified sliceで
 あり、native stage0 parity、atomic/durable replacement、write/provenance failure、MCP parity、
 Mac Apple Silicon / Linux x86_64 artifact/runtime matrix、EC-M3 aggregateの完了を意味しない。
+
+### EC-M3-03 EmbeddedCli manifest write failure boundary (2026-07-27)
+
+`EmbeddedCli` の `validate --source --format json --emit-manifest` は、manifest の親ディレクトリ
+など filesystem write が失敗した場合に report を出力せず、`source validation manifest write
+failed` と exit `1` を返す fail-closed 契約へ揃えた。成功した write の後だけ report を stdoutへ
+出すため、validation status と artifact write failure を混同しない。
+
+Evidence: RED `cargo test -p lsharp-wasm --test e2e
+selfhost_cli_manifest_output::test_e2e_selfhost_embedded_cli_validate_source_rejects_manifest_write_failure
+-- --nocapture` は実装前に exit `2` と report outputを返して失敗した（`0 passed; 1 failed`,
+252.02s）。GREEN は同じ実 Wasm fixtureで `1 passed`（254.32s）となり、diagnostic、exit `1`、
+`"status"` の不在、manifest file の不在を確認した。
+
+これは Rust-host actual Wasm の write-error boundaryだけを閉じる verified sliceであり、native
+stage0 の atomic/durable replacement、source/release provenance、MCP parity、Mac Apple Silicon /
+Linux x86_64 artifact/runtime matrix、EC-M3 aggregateの完了を意味しない。

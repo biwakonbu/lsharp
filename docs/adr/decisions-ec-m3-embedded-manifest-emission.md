@@ -21,8 +21,8 @@ contracts.
 - Keep report stdout as exactly one JSON line and derive the process exit from the same validation
   status: `pass=0`, `fail=1`, `unknown=2`.
 - Do not add private review fields or a second manifest schema. Atomic/durable replacement,
-  write-error cleanup, source provenance, and native-stage0 behavior remain separate follow-up
-  boundaries.
+  source provenance, and native-stage0 behavior remain separate follow-up boundaries. The
+  EmbeddedCli write-error path is fail-closed as recorded below.
 
 ## Evidence
 
@@ -40,3 +40,18 @@ EmbeddedCli and App.Cli now share the Rust-host actual Wasm source/report/manife
 slice. This does not close native stage0 producer/parser parity, atomic/durable output semantics,
 write/provenance failure handling, MCP server parity, or the Mac Apple Silicon / Linux x86_64
 artifact/runtime matrix. `TODO.md` therefore keeps `EC-M2-03` and `EC-M3` aggregate work as `[~]`.
+
+## Follow-up decision: manifest write failure
+
+When `write-file` returns a negative result for `--emit-manifest`, `EmbeddedCli` now emits the
+stable diagnostic `source validation manifest write failed`, exits `1`, and skips both the
+validation report and manifest artifact. The report is rendered only after the manifest write
+has succeeded, so a filesystem failure cannot be mistaken for a validation result.
+
+Evidence: RED `test_e2e_selfhost_embedded_cli_validate_source_rejects_manifest_write_failure`
+failed against the previous implementation (`exit 2` and report output, `0 passed; 1 failed`,
+252.02s). GREEN with the fail-closed branch passed (`1 passed`, 254.32s), asserting the diagnostic,
+exit `1`, absence of `"status"`, and absence of `missing/intent-graph.json`.
+
+This is a Rust-host actual Wasm EmbeddedCli boundary only. Native stage0 atomic/durable
+replacement, source/release provenance, and the two-target artifact/runtime matrix remain open.
