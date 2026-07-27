@@ -113,7 +113,15 @@ for required in \
   'VALIDATION_INVALIDATION_MISSING_REVIEW_SOURCE' \
   'VALIDATION_INVALIDATION_MISSING_REVIEW_MANIFEST' \
   'run_expected_validation_error validation-invalidation-missing-review' \
-  'source validation error:10'; do
+  'source validation error:10' \
+  'VALIDATION_REVIEW_EDGE_EVIDENCE_SOURCE' \
+  'VALIDATION_REVIEW_EDGE_EVIDENCE_MANIFEST' \
+  'run_expected_validation_error validation-review-edge-evidence' \
+  'source validation error:6' \
+  'VALIDATION_INVALIDATION_EDGE_EVIDENCE_SOURCE' \
+  'VALIDATION_INVALIDATION_EDGE_EVIDENCE_MANIFEST' \
+  'run_expected_validation_error validation-invalidation-edge-evidence' \
+  'source validation error:6'; do
   assert_script_contains "$SOURCE_SMOKE" "$required"
 done
 

@@ -109,6 +109,8 @@ VALIDATION_INVALID_REVIEW_MANIFEST="$WORK_DIR/ec-m3-invalid-review-manifest.json
 VALIDATION_REVIEW_SUBJECT_KIND_MANIFEST="$WORK_DIR/ec-m3-review-subject-kind-manifest.json"
 VALIDATION_INVALIDATION_SUBJECT_KIND_MANIFEST="$WORK_DIR/ec-m3-invalidation-subject-kind-manifest.json"
 VALIDATION_INVALIDATION_MISSING_REVIEW_MANIFEST="$WORK_DIR/ec-m3-invalidation-missing-review-manifest.json"
+VALIDATION_REVIEW_EDGE_EVIDENCE_MANIFEST="$WORK_DIR/ec-m3-review-edge-evidence-manifest.json"
+VALIDATION_INVALIDATION_EDGE_EVIDENCE_MANIFEST="$WORK_DIR/ec-m3-invalidation-edge-evidence-manifest.json"
 VALIDATION_WRITE_FAILURE_MANIFEST="$WORK_DIR/missing-parent/intent-graph.json"
 VALIDATION_PASS_SOURCE="$WORK_DIR/ec-m3-complete-source.ls"
 VALIDATION_FAIL_SOURCE="$WORK_DIR/ec-m3-contradiction-source.ls"
@@ -124,6 +126,8 @@ VALIDATION_INVALID_REVIEW_SOURCE="$WORK_DIR/ec-m3-invalid-review-source.ls"
 VALIDATION_REVIEW_SUBJECT_KIND_SOURCE="$WORK_DIR/ec-m3-review-subject-kind-source.ls"
 VALIDATION_INVALIDATION_SUBJECT_KIND_SOURCE="$WORK_DIR/ec-m3-invalidation-subject-kind-source.ls"
 VALIDATION_INVALIDATION_MISSING_REVIEW_SOURCE="$WORK_DIR/ec-m3-invalidation-missing-review-source.ls"
+VALIDATION_REVIEW_EDGE_EVIDENCE_SOURCE="$WORK_DIR/ec-m3-review-edge-evidence-source.ls"
+VALIDATION_INVALIDATION_EDGE_EVIDENCE_SOURCE="$WORK_DIR/ec-m3-invalidation-edge-evidence-source.ls"
 
 printf '%s\n' '(defn main [] 42)' >"$INPUT"
 cat >"$METADATA" <<'LSHARP'
@@ -284,6 +288,18 @@ cat >"$VALIDATION_INVALIDATION_MISSING_REVIEW_SOURCE" <<'LSHARP'
 (defn invalidation-missing-review []
   :review "review:checkout/registered" "sha256:review-provenance" "redacted"
   :invalidates "change:checkout/api-v2" "review:checkout/missing"
+  true)
+LSHARP
+cat >"$VALIDATION_REVIEW_EDGE_EVIDENCE_SOURCE" <<'LSHARP'
+(defn review-edge-evidence-registry []
+  :review "review:checkout/registered" "sha256:review-provenance" "redacted"
+  :evaluates "review:checkout/registered" "evidence:checkout/missing"
+  true)
+LSHARP
+cat >"$VALIDATION_INVALIDATION_EDGE_EVIDENCE_SOURCE" <<'LSHARP'
+(defn invalidation-edge-evidence-registry []
+  :review "review:checkout/registered" "sha256:review-provenance" "redacted"
+  :invalidates "change:checkout/api-v2" "evidence:checkout/missing"
   true)
 LSHARP
 
@@ -766,6 +782,26 @@ grep -F "source validation error:10" "$WORK_DIR/validation-invalidation-missing-
   || die "invalidation missing review validation must expose the missing-review error code"
 [[ ! -e "$VALIDATION_INVALIDATION_MISSING_REVIEW_MANIFEST" ]] \
   || die "invalidation missing review validation must produce no report or manifest"
+
+run_expected_validation_error validation-review-edge-evidence \
+  validate \
+  --source "$VALIDATION_REVIEW_EDGE_EVIDENCE_SOURCE" \
+  --format json \
+  --emit-manifest "$VALIDATION_REVIEW_EDGE_EVIDENCE_MANIFEST"
+grep -F "source validation error:6" "$WORK_DIR/validation-review-edge-evidence.stderr" >/dev/null \
+  || die "review edge evidence validation must expose the registry-required error code"
+[[ ! -e "$VALIDATION_REVIEW_EDGE_EVIDENCE_MANIFEST" ]] \
+  || die "review edge evidence validation must produce no report or manifest"
+
+run_expected_validation_error validation-invalidation-edge-evidence \
+  validate \
+  --source "$VALIDATION_INVALIDATION_EDGE_EVIDENCE_SOURCE" \
+  --format json \
+  --emit-manifest "$VALIDATION_INVALIDATION_EDGE_EVIDENCE_MANIFEST"
+grep -F "source validation error:6" "$WORK_DIR/validation-invalidation-edge-evidence.stderr" >/dev/null \
+  || die "invalidation edge evidence validation must expose the registry-required error code"
+[[ ! -e "$VALIDATION_INVALIDATION_EDGE_EVIDENCE_MANIFEST" ]] \
+  || die "invalidation edge evidence validation must produce no report or manifest"
 
 run_expected_validation_error validation-orphan \
   validate \
