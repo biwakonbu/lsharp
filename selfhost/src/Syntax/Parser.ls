@@ -2450,7 +2450,7 @@
                 (root_pop)
                 (root_pop)
                 (root_pop)
-                parsed)))))))
+                parsed))))))))
 
 (defn parse-do-exprs-v3 [spans pos-ref src result count]
   (do
