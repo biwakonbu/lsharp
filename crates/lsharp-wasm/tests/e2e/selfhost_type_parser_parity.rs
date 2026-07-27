@@ -1300,6 +1300,11 @@ fn test_e2e_selfhost_check_flatten_recursive_handoff_roots_live_values() {
             "(append-check-pairs pairs (vector-get step 1) n (vector-get step 2))",
             ["(root_push pairs)", "(root_push program)", "(root_push step)"],
         ),
+        (
+            "append-check-owner-decls-step-64-loop-bounded",
+            "(append-check-owner-decls-step-64-loop-bounded\n",
+            ["(root_push owners)", "(root_push owner)", "(root_push step)"],
+        ),
     ] {
         let body = function_body(name);
         let call_offset = body

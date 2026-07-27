@@ -1291,12 +1291,22 @@
       step
       (if (<= remaining 1)
         step
-        (append-check-owner-decls-step-64-loop-bounded
-          (vector-get step 1)
-          n
-          (vector-get step 2)
-          owner
-          (- remaining 1))))))
+        (do
+          (root_push owners)
+          (root_push owner)
+          (root_push step)
+          (let [result
+                  (append-check-owner-decls-step-64-loop-bounded
+                    (vector-get step 1)
+                    n
+                    (vector-get step 2)
+                    owner
+                    (- remaining 1))]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              result)))))))
 (defn append-check-owner-decls-step-64 [idx n owners owner]
   (append-check-owner-decls-step-64-loop-bounded idx n owners owner 64))
 (defn append-check-owner-decls [idx n owners owner]
