@@ -101,6 +101,7 @@ VALIDATION_INVALID_MANIFEST="$WORK_DIR/ec-m3-duplicate-node-manifest.json"
 VALIDATION_ORPHAN_MANIFEST="$WORK_DIR/ec-m3-orphan-node-manifest.json"
 VALIDATION_MALFORMED_MANIFEST="$WORK_DIR/ec-m3-malformed-edge-manifest.json"
 VALIDATION_INVALID_ID_MANIFEST="$WORK_DIR/ec-m3-invalid-id-manifest.json"
+VALIDATION_KIND_MISMATCH_MANIFEST="$WORK_DIR/ec-m3-kind-mismatch-manifest.json"
 VALIDATION_WRITE_FAILURE_MANIFEST="$WORK_DIR/missing-parent/intent-graph.json"
 VALIDATION_PASS_SOURCE="$WORK_DIR/ec-m3-complete-source.ls"
 VALIDATION_FAIL_SOURCE="$WORK_DIR/ec-m3-contradiction-source.ls"
@@ -108,6 +109,7 @@ VALIDATION_STALE_SOURCE="$WORK_DIR/ec-m3-stale-source.ls"
 VALIDATION_ORPHAN_SOURCE="$WORK_DIR/ec-m3-orphan-node-source.ls"
 VALIDATION_MALFORMED_SOURCE="$WORK_DIR/ec-m3-malformed-edge-source.ls"
 VALIDATION_INVALID_ID_SOURCE="$WORK_DIR/ec-m3-invalid-id-source.ls"
+VALIDATION_KIND_MISMATCH_SOURCE="$WORK_DIR/ec-m3-kind-mismatch-source.ls"
 
 printf '%s\n' '(defn main [] 42)' >"$INPUT"
 cat >"$METADATA" <<'LSHARP'
@@ -218,6 +220,11 @@ LSHARP
 cat >"$VALIDATION_INVALID_ID_SOURCE" <<'LSHARP'
 (defn invalid-id-edge []
   :motivates "intent:checkout/safe-cancel" "claim:checkout"
+  true)
+LSHARP
+cat >"$VALIDATION_KIND_MISMATCH_SOURCE" <<'LSHARP'
+(defn kind-mismatch-node []
+  :claim "intent:checkout/wrong-kind" "Claim metadata must use a claim ID"
   true)
 LSHARP
 
@@ -620,6 +627,16 @@ grep -F "source validation error:2" "$WORK_DIR/validation-invalid-id.stderr" >/d
   || die "invalid ID validation must expose the invalid-wire error code"
 [[ ! -e "$VALIDATION_INVALID_ID_MANIFEST" ]] \
   || die "invalid ID validation must produce no report or manifest"
+
+run_expected_validation_error validation-kind-mismatch \
+  validate \
+  --source "$VALIDATION_KIND_MISMATCH_SOURCE" \
+  --format json \
+  --emit-manifest "$VALIDATION_KIND_MISMATCH_MANIFEST"
+grep -F "source validation error:3" "$WORK_DIR/validation-kind-mismatch.stderr" >/dev/null \
+  || die "kind mismatch validation must expose the node-kind error code"
+[[ ! -e "$VALIDATION_KIND_MISMATCH_MANIFEST" ]] \
+  || die "kind mismatch validation must produce no report or manifest"
 
 run_expected_validation_error validation-orphan \
   validate \

@@ -81,7 +81,11 @@ for required in \
   'VALIDATION_INVALID_ID_SOURCE' \
   'VALIDATION_INVALID_ID_MANIFEST' \
   'run_expected_validation_error validation-invalid-id' \
-  'source validation error:2'; do
+  'source validation error:2' \
+  'VALIDATION_KIND_MISMATCH_SOURCE' \
+  'VALIDATION_KIND_MISMATCH_MANIFEST' \
+  'run_expected_validation_error validation-kind-mismatch' \
+  'source validation error:3'; do
   assert_script_contains "$SOURCE_SMOKE" "$required"
 done
 
