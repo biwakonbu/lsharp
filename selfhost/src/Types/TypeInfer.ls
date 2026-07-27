@@ -910,18 +910,10 @@
             (root_pop)
             result))))))
 
-(defn typeinfer-qualify-imports-loop-with-open-step-state [done next-idx env]
-  (push-object-vector-local
-    (push-int-vector-local
-      (push-int-vector-local (vector-new 3) done)
-      next-idx)
-    env))
-
-;; import declaration の一要素だけを処理し、次の cursor を state で返す。
-(defn typeinfer-qualify-imports-loop-with-open-step
+(defn typeinfer-qualify-imports-loop-with-open
   [program idx len env allow-open record-env]
   (if (>= idx len)
-    (typeinfer-qualify-imports-loop-with-open-step-state 1 idx env)
+    env
     (let [decl (vector-get program idx)
       tag (vector-get decl 0)]
       (if (= tag (ast-import-decl))
@@ -940,97 +932,20 @@
               open-flag
               env
               record-env)]
-          (typeinfer-qualify-imports-loop-with-open-step-state
-            0
-            (+ idx 1)
-            qualified-env))
-        (typeinfer-qualify-imports-loop-with-open-step-state
-          0
-          (+ idx 1)
-          env)))))
-
-(defn typeinfer-qualify-imports-loop-with-open-bounded
-  [program idx len env allow-open record-env remaining]
-  (do
-    (root_push program)
-    (root_push env)
-    (root_push record-env)
-    (let [step
-            (typeinfer-qualify-imports-loop-with-open-step
-              program
-              idx
-              len
-              env
-              allow-open
-              record-env)
-      done (vector-get step 0)
-      next-idx (vector-get step 1)
-      next-env (vector-get step 2)]
-      (do
-        (root_push step)
-        (root_push next-env)
-        (let [result
-                (if (= done 1)
-                  step
-                  (if (<= remaining 1)
-                    step
-                    (typeinfer-qualify-imports-loop-with-open-bounded
-                      program
-                      next-idx
-                      len
-                      next-env
-                      allow-open
-                      record-env
-                      (- remaining 1))))]
-          (do
-            (root_pop)
-            (root_pop)
-            (root_pop)
-            (root_pop)
-            (root_pop)
-            result))))))
-
-(defn typeinfer-qualify-imports-loop-with-open-64
-  [program idx len env allow-open record-env]
-  (typeinfer-qualify-imports-loop-with-open-bounded
-    program
-    idx
-    len
-    env
-    allow-open
-    record-env
-    64))
-
-(defn typeinfer-qualify-imports-loop-with-open
-  [program idx len env allow-open record-env]
-  (let [step
-          (typeinfer-qualify-imports-loop-with-open-64
+          (typeinfer-qualify-imports-loop-with-open
             program
-            idx
+            (+ idx 1)
             len
-            env
+            qualified-env
             allow-open
-            record-env)
-    done (vector-get step 0)]
-    (if (= done 1)
-      (vector-get step 2)
-      (do
-        (root_push program)
-        (root_push record-env)
-        (root_push step)
-        (let [result
-                (typeinfer-qualify-imports-loop-with-open
-                  program
-                  (vector-get step 1)
-                  len
-                  (vector-get step 2)
-                  allow-open
-                  record-env)]
-          (do
-            (root_pop)
-            (root_pop)
-            (root_pop)
-            result))))))
+            record-env))
+        (typeinfer-qualify-imports-loop-with-open
+          program
+          (+ idx 1)
+          len
+          env
+          allow-open
+          record-env)))))
 
 (defn typeinfer-predeclare-qualified-imports [program env record-env]
   (typeinfer-qualify-imports-loop-with-open
