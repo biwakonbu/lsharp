@@ -644,3 +644,11 @@ EC-M2-02/EC-M2-03/EC-M3 aggregate は残件。Evidence:
 manifest parser、CLI/MCP parity、current-source artifact/runtime、supported 2 targets、review lifecycle/
 authentication、EC-M2-02/EC-M2-03/EC-M3 aggregate は残件。Evidence:
 `docs/adr/decisions-v0.2-validation-manifest-null-review-registry.md`。
+
+2026-07-29 に version 1 manifest の subject kind schema parity を追加した。evidence、`evaluates`、
+`invalidates` の subject を relation ごとの JSON Schema 定義へ分離し、Rust parser と同じ
+`intent`/`claim`/`contract`、`intent`/`claim`/`evidence`、`evidence`/`review` の kind enum を固定した。
+これは schema consumer が Rust parser より広い subject を受理しないための static verified partial sliceで
+あり、JSON Schema 実 validator、selfhost/native manifest parser、current-source artifact/runtime、
+supported 2 targets、EC-M2-02/EC-M3 aggregate は残件。Evidence:
+`docs/adr/decisions-v0.2-validation-manifest-typed-subject-schema.md`。

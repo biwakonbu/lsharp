@@ -26,9 +26,10 @@ fn intent_graph_schema_requires_non_empty_execution_and_provenance_strings() {
 
     for pointer in required_non_empty {
         assert_eq!(
-            schema.pointer(pointer).and_then(Value::as_object).and_then(|property| {
-                property.get("minLength").and_then(Value::as_u64)
-            }),
+            schema
+                .pointer(pointer)
+                .and_then(Value::as_object)
+                .and_then(|property| { property.get("minLength").and_then(Value::as_u64) }),
             Some(1),
             "{pointer} は空文字を許可してはいけない"
         );
@@ -45,9 +46,83 @@ fn intent_validation_schema_declares_optional_canonical_manifest() {
 
     assert_eq!(manifest["$ref"], "intent-graph.schema.json");
     assert_eq!(schema["additionalProperties"], false);
-    assert!(!schema["required"]
-        .as_array()
-        .expect("report required は array であるべき")
+    assert!(
+        !schema["required"]
+            .as_array()
+            .expect("report required は array であるべき")
+            .iter()
+            .any(|field| field == "manifest")
+    );
+}
+
+#[test]
+fn intent_graph_schema_declares_typed_subjects_for_each_consumer() {
+    let schema: Value =
+        serde_json::from_str(INTENT_GRAPH_SCHEMA).expect("intent graph schema は JSON であるべき");
+
+    let evidence_subject = schema
+        .pointer("/$defs/evidence/properties/subject/$ref")
+        .expect("evidence subject の ref が必要");
+    assert_eq!(evidence_subject, "#/$defs/evidence-subject");
+
+    let variants = schema
+        .pointer("/properties/edges/items/oneOf")
+        .and_then(Value::as_array)
+        .expect("edge relation variants は array であるべき");
+
+    let evaluates = variants
         .iter()
-        .any(|field| field == "manifest"));
+        .find(|variant| {
+            variant["required"]
+                .as_array()
+                .is_some_and(|required| required.iter().any(|field| field == "review"))
+        })
+        .expect("evaluates relation variant が必要");
+    assert_eq!(
+        evaluates["properties"]["subject"]["$ref"],
+        "#/$defs/review-subject"
+    );
+
+    let invalidates = variants
+        .iter()
+        .find(|variant| {
+            variant["required"]
+                .as_array()
+                .is_some_and(|required| required.iter().any(|field| field == "change"))
+        })
+        .expect("invalidates relation variant が必要");
+    assert_eq!(
+        invalidates["properties"]["subject"]["$ref"],
+        "#/$defs/invalidation-subject"
+    );
+
+    let review_subject_kinds = schema
+        .pointer("/$defs/review-subject/properties/kind/enum")
+        .and_then(Value::as_array)
+        .expect("review subject の kind enum が必要");
+    let expected_review_subject_kinds = serde_json::json!(["intent", "claim", "evidence"]);
+    assert_eq!(
+        review_subject_kinds,
+        expected_review_subject_kinds.as_array().unwrap()
+    );
+
+    let invalidation_subject_kinds = schema
+        .pointer("/$defs/invalidation-subject/properties/kind/enum")
+        .and_then(Value::as_array)
+        .expect("invalidation subject の kind enum が必要");
+    let expected_invalidation_subject_kinds = serde_json::json!(["evidence", "review"]);
+    assert_eq!(
+        invalidation_subject_kinds,
+        expected_invalidation_subject_kinds.as_array().unwrap()
+    );
+
+    let evidence_subject_kinds = schema
+        .pointer("/$defs/evidence-subject/properties/kind/enum")
+        .and_then(Value::as_array)
+        .expect("evidence subject の kind enum が必要");
+    let expected_evidence_subject_kinds = serde_json::json!(["intent", "claim", "contract"]);
+    assert_eq!(
+        evidence_subject_kinds,
+        expected_evidence_subject_kinds.as_array().unwrap()
+    );
 }

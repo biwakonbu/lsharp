@@ -61,7 +61,7 @@
             "properties": {
               "relation": {"const": "evaluates"},
               "review": {"$ref": "#/$defs/id"},
-              "subject": {"$ref": "#/$defs/subject"}
+              "subject": {"$ref": "#/$defs/review-subject"}
             }
           },
           {
@@ -71,7 +71,7 @@
             "properties": {
               "relation": {"const": "invalidates"},
               "change": {"$ref": "#/$defs/id"},
-              "subject": {"$ref": "#/$defs/subject"}
+              "subject": {"$ref": "#/$defs/invalidation-subject"}
             }
           }
         ]
@@ -94,6 +94,36 @@
       "required": ["kind", "namespace", "key"],
       "properties": {
         "kind": {"enum": ["intent", "claim", "contract", "evidence", "review"]},
+        "namespace": {"type": "string", "pattern": "^[A-Za-z0-9_.-]+$"},
+        "key": {"type": "string", "pattern": "^[A-Za-z0-9_.-]+$"}
+      }
+    },
+    "review-subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "namespace", "key"],
+      "properties": {
+        "kind": {"enum": ["intent", "claim", "evidence"]},
+        "namespace": {"type": "string", "pattern": "^[A-Za-z0-9_.-]+$"},
+        "key": {"type": "string", "pattern": "^[A-Za-z0-9_.-]+$"}
+      }
+    },
+    "invalidation-subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "namespace", "key"],
+      "properties": {
+        "kind": {"enum": ["evidence", "review"]},
+        "namespace": {"type": "string", "pattern": "^[A-Za-z0-9_.-]+$"},
+        "key": {"type": "string", "pattern": "^[A-Za-z0-9_.-]+$"}
+      }
+    },
+    "evidence-subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "namespace", "key"],
+      "properties": {
+        "kind": {"enum": ["intent", "claim", "contract"]},
         "namespace": {"type": "string", "pattern": "^[A-Za-z0-9_.-]+$"},
         "key": {"type": "string", "pattern": "^[A-Za-z0-9_.-]+$"}
       }
@@ -137,7 +167,7 @@
         "namespace": {"type": "string", "pattern": "^[A-Za-z0-9_.-]+$"},
         "key": {"type": "string", "pattern": "^[A-Za-z0-9_.-]+$"},
         "method": {"enum": ["example", "case", "assert", "property", "production", "reference", "proof", "review"]},
-        "subject": {"$ref": "#/$defs/subject"},
+        "subject": {"$ref": "#/$defs/evidence-subject"},
         "outcome": {"enum": ["pass", "fail", "contradicted", "unknown", "stale"]},
         "execution": {
           "type": "object",
