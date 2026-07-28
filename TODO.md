@@ -354,6 +354,14 @@ span E2E と native source-file smoke の no-report/no-manifest boundary に対�
 driver の EmbeddedCli build、実 stage0 artifact/runtime、Mac/Linux matrix、native fallback exclusion
 の evidence ではない。
 
+さらに evidence の `:coverage` に空 bucket が含まれる場合を Rust source adapter の
+`InvalidEvidenceField`（field/value/directive span）として拒否し、selfhost Evidence consumer の
+empty-field code `4` と malformed／empty／negative／duplicate coverage の directive span を揃えた。
+Rust source suite 54件、selfhost evidence registry 39件、source adapter 30件、Linux x86_64 native
+stage0 source-file smoke/provenance gate を通過した verified partial sliceである。whitespace-only
+bucket policy、coverage count、parser/manifest/validate CLI 全体、current-source artifact/runtime、
+Mac/Linux matrix、EC-M2-02 aggregate は残件。ADR: `docs/adr/decisions-v0.2-native-validation-evidence-coverage-bucket.md`。
+
 次の実装は `EC-M2-01`〜`EC-M2-03` の未接続入力を一つの RED に絞る。current plan の
 acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展開しない。
 

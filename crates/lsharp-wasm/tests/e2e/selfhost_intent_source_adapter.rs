@@ -653,6 +653,36 @@ fn test_e2e_selfhost_source_evidence_reports_empty_runner_before_invalid_id() {
     );
 }
 
+/// EC-M2-02: empty coverage bucket は deterministic sampling の empty-field code 4 で拒否する。
+#[test]
+fn test_e2e_selfhost_source_evidence_rejects_empty_coverage_bucket() {
+    let harness = r#"
+(defn main []
+  (let [result (source-evidence-graph-from-program
+                 (parse-program "(defn cancel [] :claim \"claim:checkout/cancel\" \"The API rejects shipped orders\" :evidence \"evidence:checkout/empty-coverage\" :subject \"claim:checkout/cancel\" :method \"property\" :outcome \"pass\" :runner \"source-empty-coverage\" :target \"aarch64-apple-darwin\" :source-commit \"source-empty-coverage-commit\" :artifact-digest \"sha256:source-empty-coverage\" :cases 1 :seed 0 :generator \"source-empty-coverage-generator\" :coverage [(\"\" 1)] :producer \"source-empty-coverage-producer\" :tool-version \"0.2.0-dev\" :timestamp \"2026-07-29T00:00:00Z\" :independence \"same-author\" true)"))
+        error (source-result-error result)]
+    (do
+      (print (source-result-status result))
+      (print (source-evidence-error-code error))
+      (print-string (source-evidence-error-field error))
+      (print-string "\n")
+      (print-string (source-evidence-error-value error))
+      (print-string "\n")
+      (print (source-evidence-error-start error))
+      (print (source-evidence-error-end error))
+      0)))
+"#;
+
+    let output = run_source_evidence_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "4", "coverage", "", "80", "124"],
+        "empty coverage bucket は source evidence の empty-field code 4 と directive span で拒否するべき"
+    );
+}
+
 /// EC-M2-02: evidence record の不正 ID は code 2 と directive span を返す。
 #[test]
 fn test_e2e_selfhost_source_evidence_preserves_invalid_id_span() {

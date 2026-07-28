@@ -349,6 +349,43 @@ fn source_adapter_rejects_empty_required_sampling_generator() {
 }
 
 #[test]
+fn source_adapter_rejects_empty_sampling_coverage_bucket_with_directive_span() {
+    const SOURCE: &str = r#"
+        (defn cancel []
+          :claim "claim:checkout/cancel" "The API rejects shipped orders"
+          :evidence "evidence:checkout/empty-coverage-bucket"
+            :subject "claim:checkout/cancel"
+            :method "property"
+            :outcome "pass"
+            :runner "source-empty-coverage"
+            :target "aarch64-apple-darwin"
+            :source-commit "source-empty-coverage-commit"
+            :artifact-digest "sha256:source-empty-coverage"
+            :cases 1
+            :seed 0
+            :generator "source-empty-coverage-generator"
+            :coverage [("" 1)]
+            :producer "source-empty-coverage-producer"
+            :tool-version "0.2.0-dev"
+            :timestamp "2026-07-29T00:00:00Z"
+            :independence "same-author"
+          true)
+        "#;
+    let program = parse(SOURCE).expect("empty coverage bucket fixture は parse できるべき");
+
+    let error = source_program_to_intent_graph(&program)
+        .expect_err("empty coverage bucket は source graph 登録時に拒否するべき");
+    let SourceGraphError::InvalidEvidenceField { field, value, span } = error else {
+        panic!("empty coverage bucket の source diagnostic を期待しました: {error:?}");
+    };
+    assert_eq!(field, "coverage");
+    assert_eq!(value, "");
+    assert!(span.start < span.end);
+    assert!(SOURCE[span.start..span.end].contains(":evidence"));
+    assert!(SOURCE[span.start..span.end].contains(":coverage"));
+}
+
+#[test]
 fn source_adapter_reports_empty_runner_before_invalid_evidence_id() {
     const SOURCE: &str = r#"
         (defn cancel []

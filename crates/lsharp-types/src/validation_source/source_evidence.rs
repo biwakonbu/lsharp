@@ -74,6 +74,7 @@ fn build_source_evidence(
     let method = parse_evidence_method(record.method(), span)?;
     let outcome = parse_evidence_outcome(record.outcome(), span)?;
     let independence = parse_independence(record.independence(), span)?;
+    validate_sampling_coverage(record, span)?;
     let execution = ExecutionContext::new(
         ExecutionIdentity::new(
             record.runner().to_string(),
@@ -102,6 +103,22 @@ fn build_source_evidence(
         ),
         independence,
     ))
+}
+
+fn validate_sampling_coverage(
+    record: &lsharp_syntax::metadata::EvidenceForm,
+    span: Span,
+) -> Result<(), SourceGraphError> {
+    for (bucket, _) in record.coverage() {
+        if bucket.is_empty() {
+            return Err(SourceGraphError::InvalidEvidenceField {
+                field: "coverage",
+                value: bucket.clone(),
+                span,
+            });
+        }
+    }
+    Ok(())
 }
 
 fn validate_required_source_evidence_fields(

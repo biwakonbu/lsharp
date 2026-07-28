@@ -640,8 +640,8 @@ fn test_e2e_selfhost_evidence_registry_rejects_malformed_coverage_entry() {
 
     assert_eq!(
         lines,
-        ["0", "11", "coverage", "", "-1", "-1"],
-        "malformed coverage entry は invalid-sampling として fail-closed にするべき"
+        ["0", "11", "coverage", "", "10", "20"],
+        "malformed coverage entry は invalid-sampling と directive span 付きで fail-closed にするべき"
     );
 }
 

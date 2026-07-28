@@ -178,21 +178,21 @@
         1
         (source-evidence-coverage-has-bucket-loop coverage bucket (+ idx 1) len)))))
 
-(defn source-evidence-coverage-valid-loop [coverage idx len]
+(defn source-evidence-coverage-valid-loop [coverage idx len start end]
   (if (>= idx len)
     (source-result 1 0)
     (let [entry (vector-get coverage idx)]
       (if (!= (vector-length entry) 2)
-        (source-result 0 (source-evidence-error (source-evidence-error-invalid-sampling) "coverage" "" -1 -1))
+        (source-result 0 (source-evidence-error (source-evidence-error-invalid-sampling) "coverage" "" start end))
         (let [bucket (vector-get entry 0)
           count (vector-get entry 1)]
           (if (= (string-length bucket) 0)
-            (source-result 0 (source-evidence-error (source-evidence-error-empty-field) "coverage" "" -1 -1))
+            (source-result 0 (source-evidence-error (source-evidence-error-empty-field) "coverage" "" start end))
             (if (< count 0)
-              (source-result 0 (source-evidence-error (source-evidence-error-invalid-sampling) "coverage" bucket -1 -1))
+              (source-result 0 (source-evidence-error (source-evidence-error-invalid-sampling) "coverage" bucket start end))
               (if (= (source-evidence-coverage-has-bucket-loop coverage bucket 0 idx) 1)
-                (source-result 0 (source-evidence-error (source-evidence-error-duplicate-coverage) "coverage" bucket -1 -1))
-                (source-evidence-coverage-valid-loop coverage (+ idx 1) len)))))))))
+                (source-result 0 (source-evidence-error (source-evidence-error-duplicate-coverage) "coverage" bucket start end))
+                (source-evidence-coverage-valid-loop coverage (+ idx 1) len start end)))))))))
 
 (defn source-evidence-form-result [form nodes]
   (if (< (vector-length form) 4)
@@ -233,7 +233,7 @@
                               (source-result 0 (source-evidence-error (source-evidence-error-invalid-sampling) "seed" "" start end))
                               (if (= (source-evidence-shrinks-valid-loop (vector-get payload 11) 0 (vector-length (vector-get payload 11))) 0)
                                 (source-result 0 (source-evidence-error (source-evidence-error-invalid-sampling) "shrinks" "" start end))
-                                (let [coverage-result (source-evidence-coverage-valid-loop (vector-get payload 12) 0 (vector-length (vector-get payload 12)))]
+                                (let [coverage-result (source-evidence-coverage-valid-loop (vector-get payload 12) 0 (vector-length (vector-get payload 12)) start end)]
                                   (if (= (source-result-status coverage-result) 0)
                                     coverage-result
                                     (source-result 1 form)))))))))))))))))))
