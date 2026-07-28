@@ -95,9 +95,9 @@
   `invalidates` の双方で要求した。Rust syntax oracle の `LS0101` arity rejection と同じ parser
   boundary を native contractへ接続する verified sliceだが、実 stage0 artifact/runtime の evidence
   ではない。
-  さらに `validate --source` の negative sampling を `App.Cli` の Rust-host actual Wasm へ接続し、
-  `source validation error:11`、exit `1`、report/manifestなしの fail-closed boundary を固定した。
-  EmbeddedCli、current-source stage0、sampling の実行意味論は残る。
+  さらに `validate --source` の negative sampling を `App.Cli` / `EmbeddedCli` の Rust-host actual
+  Wasm へ接続し、`source validation error:11`、exit `1`、report/manifestなしの fail-closed boundary
+  を両 surface で固定した。current-source stage0、sampling の実行意味論は残る。
 - [~] `EC-M2-03` `lsharp validate` — version 1 manifest parser、source adapter、
   `--emit-manifest` の atomic/durable file boundary、deterministic text/JSON report、
   optional `reviews` registry の Rust CLI roundtrip と未登録 review edge の non-zero/
@@ -557,3 +557,10 @@ source-file smoke には `source validation error:11`、exit `1`、report/manife
 追加し、provenance gate と `bash -n` を通過した verified partial sliceである。generator/shrink の実行
 意味論、manifest/validate、current-source artifact/runtime、Mac/Linux matrix、EC-M2-02 aggregate は残件。
 ADR: `docs/adr/decisions-v0.2-native-validation-evidence-negative-shrinks.md`。
+
+2026-07-29 に `validate --source` の negative sampling CLI boundary を `EmbeddedCli` へ拡張した。
+`App.Cli` と同じ `:cases -1` fixtureを EmbeddedCli の Rust-host actual Wasm で実行し、
+`source validation error:11`、exit `1`、validation reportなし、`--emit-manifest` の出力なしを固定した。
+これで両 selfhost CLI surface の source/report fail-closed boundary が verified partial slice となったが、
+current-source stage0 artifact/runtime、sampling の実行意味論、supported 2 targets、EC-M2-02/03 aggregate
+は残件。ADR: `docs/adr/decisions-v0.2-native-validation-cli-negative-sampling.md`。

@@ -656,6 +656,66 @@ stale-evidence: 0",
     assert!(!output.stdout.contains("verified"));
 }
 
+/// EC-M2-02/EC-M3-03: EmbeddedCli の source sampling error は report/manifest を残さず fail-closed にする。
+#[test]
+fn test_e2e_selfhost_embedded_cli_validate_source_rejects_negative_sampling_without_report_or_manifest() {
+    let source = r#"
+(defn invalid []
+  :claim "claim:checkout/cancel-rejects-shipped" "The API rejects shipped orders"
+  :evidence "evidence:checkout/negative-cases"
+    :subject "claim:checkout/cancel-rejects-shipped"
+    :method "property"
+    :outcome "pass"
+    :runner "source-negative-cases"
+    :target "aarch64-apple-darwin"
+    :source-commit "source-negative-cases-commit"
+    :artifact-digest "sha256:source-negative-cases"
+    :cases -1
+    :seed 0
+    :generator "source-negative-cases-generator"
+    :producer "source-negative-cases-producer"
+    :tool-version "0.2.0-dev"
+    :timestamp "2026-07-29T00:00:00Z"
+    :independence "same-author"
+  true)
+"#;
+    let (output, dir) = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, || {
+        run_main_with_input_file_capture_preserve_dir(
+            selfhost_embedded_cli_runtime_bundle(),
+            "embedded_validate_negative_sampling",
+            source,
+            &[
+                "validate",
+                "--source",
+                "input.ls",
+                "--format",
+                "json",
+                "--emit-manifest",
+                "intent-graph.json",
+            ],
+        )
+    });
+    let manifest_exists = dir.join("intent-graph.json").exists();
+    let _ = std::fs::remove_dir_all(&dir);
+
+    assert_eq!(
+        output.exit_code, 1,
+        "EmbeddedCli の invalid sampling は exit code 1 で拒否するべき: stdout={:?}",
+        output.stdout
+    );
+    assert!(
+        output.stdout.contains("source validation error:11"),
+        "EmbeddedCli は invalid sampling の入力診断を出すべき: {}",
+        output.stdout
+    );
+    assert!(
+        !output.stdout.contains("\"status\""),
+        "EmbeddedCli は invalid sampling の report を出力しないべき: {}",
+        output.stdout
+    );
+    assert!(!manifest_exists, "EmbeddedCli は invalid sampling で manifest を残さないべき");
+}
+
 /// EC-M3-03: EmbeddedCli は validate source の report と manifest を同時に出力すること
 #[test]
 fn test_e2e_selfhost_embedded_cli_validate_source_emits_manifest() {
