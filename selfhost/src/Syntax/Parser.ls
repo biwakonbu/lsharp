@@ -3482,66 +3482,148 @@
             parsed))))))
 
 ;; `(record (: field Type) ...)` の field 名、Type.field accessor 名、raw TypeExpr を保持する。
-(defn parse-record-decl-fields-rooted-v3 [spans pos-ref src record-name-hash fields]
+(defn parse-record-decl-field-symbol-step-v3
+  [spans pos-ref src record-name-hash fields]
+  (if (== (p-current spans pos-ref) 20)
+    (do
+      (let [fields-slot (root_push fields)
+        field-start (p-start spans pos-ref)
+        field-end (p-end spans pos-ref)
+        field-hash (name-hash src field-start field-end)
+        accessor-hash
+          (name-hash-loop
+            src
+            field-start
+            field-end
+            (+ 46 (* record-name-hash 31)))]
+        (do
+          (p-advance pos-ref)
+          (let [type-expr (parse-type-expr-v3 spans pos-ref src)]
+            (do
+              (root_push type-expr)
+              (p-expect spans pos-ref 1)
+                (let [next-fields
+                        (vector-push-triple-rooted-v3
+                          fields
+                          field-hash
+                          accessor-hash
+                          type-expr)]
+                  (do
+                    (root_push next-fields)
+                    (let [state (make-parse-loop-state 0 next-fields)]
+                      (do
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        state)))))))))
+    (do
+      (parse-skip-to-close-v3 spans pos-ref 1)
+      (make-parse-loop-state 0 fields))))
+
+(defn parse-record-decl-field-form-step-v3
+  [spans pos-ref src record-name-hash fields]
+  (if (== (p-current spans pos-ref) 50)
+    (do
+      (p-advance pos-ref)
+      (parse-record-decl-field-symbol-step-v3
+        spans
+        pos-ref
+        src
+        record-name-hash
+        fields))
+    (do
+      (parse-skip-to-close-v3 spans pos-ref 1)
+      (make-parse-loop-state 0 fields))))
+
+(defn parse-record-decl-fields-step-v3 [spans pos-ref src record-name-hash fields]
   (if (== (p-current spans pos-ref) 1)
     (do
       (p-advance pos-ref)
-      fields)
+      (make-parse-loop-state 1 fields))
     (if (== (p-current spans pos-ref) 99)
-      fields
+      (make-parse-loop-state 1 fields)
       (if (== (p-current spans pos-ref) 0)
         (do
-          (p-advance pos-ref) ;; field form の ( を消費
-          (if (== (p-current spans pos-ref) 50)
-            (do
-              (p-advance pos-ref) ;; : を消費
-              (if (== (p-current spans pos-ref) 20)
-                (do
-                  (root_push fields)
-                  (let [field-start (p-start spans pos-ref)
-                    field-end (p-end spans pos-ref)
-                    field-hash (name-hash src field-start field-end)
-                    accessor-hash
-                      (name-hash-loop
-                        src
-                        field-start
-                        field-end
-                        (+ 46 (* record-name-hash 31)))]
-                    (do
-                      (p-advance pos-ref)
-                      (let [type-expr (parse-type-expr-v3 spans pos-ref src)]
-                        (do
-                          (root_push type-expr)
-                          (p-expect spans pos-ref 1)
-                          (let [next-fields
-                                  (vector-push-triple-rooted-v3
-                                    fields
-                                    field-hash
-                                    accessor-hash
-                                    type-expr)]
-                            (do
-                              (root_push next-fields)
-                              (let [parsed
-                                      (parse-record-decl-fields-rooted-v3
-                                        spans
-                                        pos-ref
-                                        src
-                                        record-name-hash
-                                        next-fields)]
-                                (do
-                                  (root_pop)
-                                  (root_pop)
-                                  (root_pop)
-                                  parsed)))))))))
-                (do
-                  (parse-skip-to-close-v3 spans pos-ref 1)
-                  (parse-record-decl-fields-rooted-v3 spans pos-ref src record-name-hash fields))))
-            (do
-              (parse-skip-to-close-v3 spans pos-ref 1)
-              (parse-record-decl-fields-rooted-v3 spans pos-ref src record-name-hash fields))))
+          (p-advance pos-ref)
+          (parse-record-decl-field-form-step-v3
+            spans
+            pos-ref
+            src
+            record-name-hash
+            fields))
         (do
           (p-advance pos-ref)
-          (parse-record-decl-fields-rooted-v3 spans pos-ref src record-name-hash fields))))))
+          (make-parse-loop-state 0 fields))))))
+
+(defn parse-record-decl-fields-step-64-loop-bounded
+  [spans pos-ref src record-name-hash fields remaining]
+  (do
+    (root_push fields)
+    (let [step
+            (parse-record-decl-fields-step-v3
+              spans
+              pos-ref
+              src
+              record-name-hash
+              fields)
+      done (vector-get step 0)
+      next-fields (vector-get step 1)]
+      (do
+        (root_push step)
+        (root_push next-fields)
+        (let [parsed
+          (if (= done 1)
+            step
+            (if (<= remaining 1)
+              step
+              (parse-record-decl-fields-step-64-loop-bounded
+                spans
+                pos-ref
+                src
+                record-name-hash
+                next-fields
+                (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn parse-record-decl-fields-step-64 [spans pos-ref src record-name-hash fields]
+  (parse-record-decl-fields-step-64-loop-bounded
+    spans
+    pos-ref
+    src
+    record-name-hash
+    fields
+    64))
+
+(defn parse-record-decl-fields-rooted-v3 [spans pos-ref src record-name-hash fields]
+  (let [step
+          (parse-record-decl-fields-step-64
+            spans
+            pos-ref
+            src
+            record-name-hash
+            fields)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 1)
+      (do
+        (root_push step)
+        (let [next-fields (vector-get step 1)]
+          (do
+            (root_push next-fields)
+            (let [parsed
+                    (parse-record-decl-fields-rooted-v3
+                      spans
+                      pos-ref
+                      src
+                      record-name-hash
+                      next-fields)]
+              (do
+                (root_pop)
+                (root_pop)
+                parsed))))))))
 
 (defn parse-record-decl-fields-v3 [spans pos-ref src record-name-hash]
   (do
@@ -4445,17 +4527,18 @@
 (defn parse-program [src]
   (do
     (root_push src)
-    (let [spans (tokenize-with-spans src)
-      pos-ref (ref-new 0)]
+    (let [spans (tokenize-with-spans src)]
       (do
         (root_push spans)
-        (root_push pos-ref)
-        (let [program (parse-program-v3 spans pos-ref src)]
+        (let [pos-ref (ref-new 0)]
           (do
-            (root_pop)
-            (root_pop)
-            (root_pop)
-            program))))))
+            (root_push pos-ref)
+            (let [program (parse-program-v3 spans pos-ref src)]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                program))))))))
 
 ;; === 旧 API (後方互換) ===
 

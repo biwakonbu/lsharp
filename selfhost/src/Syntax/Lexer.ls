@@ -249,7 +249,8 @@
                                             20))))))))))))))))))))))
 
 (defn classify-symbol-span [src start end]
-  (classify-symbol-hash (symbol-hash src start end)))
+  ;; hash だけでは `f1` と `do` のような keyword collision を区別できない。
+  (classify-symbol (substring src start end)))
 
 ;; === 数値読み取り ===
 

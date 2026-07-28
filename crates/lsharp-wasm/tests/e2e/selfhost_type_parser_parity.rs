@@ -1711,6 +1711,74 @@ fn test_e2e_selfhost_parser_record_literal_fields_use_bounded_chunks() {
 }
 
 #[test]
+fn test_e2e_selfhost_parser_record_decl_fields_use_bounded_chunks() {
+    let source = selfhost_module("Parser.ls");
+    let rooted_body = source
+        .split("(defn parse-record-decl-fields-rooted-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn parse-record-decl-fields-v3").next())
+        .expect("Parser.ls に record declaration fields rooted loop が存在すること");
+    let step_body = source
+        .split("(defn parse-record-decl-fields-step-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn parse-record-decl-fields-step-64-loop-bounded").next())
+        .expect("Parser.ls に record declaration fields step が存在すること");
+
+    assert!(
+        source.contains("(defn parse-record-decl-fields-step-64-loop-bounded")
+            && source.contains("(defn parse-record-decl-fields-step-64")
+            && rooted_body.contains("parse-record-decl-fields-step-64")
+            && !step_body.contains(
+                "(parse-record-decl-fields-rooted-v3 spans pos-ref src record-name-hash"
+            ),
+        "record declaration field parser は Linux x86 native stack の深い再帰を避けるため bounded chunk へ委譲するべき"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_parser_record_decl_fields_cross_chunk_boundary() {
+    let (token_ls, ast_ls, lexer_ls, parser_ls) = parser_runtime_modules();
+    let fields = (0..65)
+        .map(|index| format!("(: f{} Int)", index))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let source = format!("(type Wide (record {}))", fields);
+    let harness = format!(
+        r#"
+(defn main []
+  (let [node (vector-get (parse-program "{}") 0)
+        fields (vector-get node 2)
+        first-type (vector-get fields 2)
+        last-field (vector-get fields 192)
+        last-accessor (vector-get fields 193)
+        last-type (vector-get fields 194)]
+    (do
+      (print (vector-get node 0))
+      (print (vector-length fields))
+      (print (if (= (vector-get fields 0) (name-hash "f0" 0 2)) 1 0))
+      (print (vector-get first-type 0))
+      (print (if (= last-field (name-hash "f64" 0 3)) 1 0))
+      (print (if (= last-accessor (name-hash "Wide.f64" 0 8)) 1 0))
+      (print (vector-get last-type 0))
+      0)))
+"#,
+        source
+    );
+
+    let output = compile_and_run(&format!(
+        "{}\n{}\n{}\n{}\n{}",
+        token_ls, ast_ls, lexer_ls, parser_ls, harness
+    ));
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["22", "195", "1", "60", "1", "1", "60"],
+        "record declaration parser は 64 要素を跨いでも field/accessor/type layout を保持するべき"
+    );
+}
+
+#[test]
 fn test_e2e_selfhost_parser_type_expr_list_use_bounded_chunks() {
     let source = selfhost_module("Parser.ls");
     let rooted_body = source
