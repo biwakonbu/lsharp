@@ -1,6 +1,6 @@
-use lsharp_types::evidence::GraphError;
+use lsharp_types::evidence::{EvidenceValidationError, GraphError};
 use lsharp_types::validation::{IntentGraph, ValidationStatus};
-use lsharp_types::validation_input::{parse_intent_graph_json, ValidationInputError};
+use lsharp_types::validation_input::{ValidationInputError, parse_intent_graph_json};
 
 fn complete_manifest() -> &'static str {
     r#"
@@ -370,6 +370,19 @@ fn parse_manifest_rejects_empty_required_evidence_fields() {
     assert!(matches!(
         parse_intent_graph_json(&empty_runner),
         Err(ValidationInputError::Graph(_))
+    ));
+}
+
+#[test]
+fn parse_manifest_rejects_whitespace_only_coverage_bucket_before_registration() {
+    let manifest =
+        complete_manifest().replace("\"coverage\": {\"all\": 1}", "\"coverage\": {\"  \": 1}");
+
+    assert!(matches!(
+        parse_intent_graph_json(&manifest),
+        Err(ValidationInputError::Graph(GraphError::InvalidEvidence {
+            source: EvidenceValidationError::EmptyField { field: "coverage" }
+        }))
     ));
 }
 

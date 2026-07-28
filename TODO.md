@@ -385,7 +385,14 @@ Rust parser は `LS0101`、selfhost direct Evidence registry は code `10` で�
  の責務を維持した verified partial sliceである。canonical map が duplicate を表現できない点、
  coverage count/cases、Unicode whitespace、manifest/validate、current-source artifact/runtime、
  Mac/Linux matrix、EC-M2-02 aggregate は残件。ADR:
- `docs/adr/decisions-v0.2-native-validation-evidence-duplicate-coverage-parser.md`。
+`docs/adr/decisions-v0.2-native-validation-evidence-duplicate-coverage-parser.md`。
+
+version 1 JSON manifest input でも whitespace-only coverage bucket を canonical graph 登録前に
+`GraphError::InvalidEvidence { source: EvidenceValidationError::EmptyField { field: "coverage" } }`
+として拒否する回帰テストを追加した。`validation_input` 17件、rustfmt、diff checkを通過した
+verified partial sliceである。manifest の native source/runtime parity、report/atomic writer、
+coverage count/cases、Unicode whitespace、Mac/Linux matrix、EC-M2-03 aggregate は残件。ADR:
+`docs/adr/decisions-v0.2-native-validation-manifest-coverage-whitespace.md`。
 
 次の実装は `EC-M2-01`〜`EC-M2-03` の未接続入力を一つの RED に絞る。current plan の
 acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展開しない。
