@@ -25,9 +25,11 @@ stderr と non-zero exit になることは回帰テストで固定されてい�
 
 ## Evidence
 
-- RED: `validate_rejects_invalid_subject_kind_without_report_or_manifest_output` は CLI の
+- RED: `validate_rejects_invalid_subject_kind_without_report_or_manifest_output` と
+  `validate_rejects_invalid_invalidates_subject_kind_without_report_or_manifest_output` は CLI の
   入力エラー出力契約が未固定の状態で追加した。
-- GREEN: 同 fixture は exit `1`、空 stdout、manifest file なし、relation/kind/stable ID を含む stderr で拒否される。
+- GREEN: `evaluates` / `invalidates` の両 fixture が exit `1`、空 stdout、manifest file なし、
+  relation/kind/stable ID を含む stderr で拒否される。
 - `LSHARP_EMBED_COMPONENT_PATH=<既存の Rust-host component>` を指定した focused driver test
   は pass した。今回の fixture は manifest input 経路のため、EmbeddedCli の実行結果には依存しない。
 - default EmbeddedCli build は `origin/main` の既存 selfhost source にある未定義名

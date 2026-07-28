@@ -121,6 +121,70 @@ fn validate_rejects_invalid_subject_kind_without_report_or_manifest_output() {
 }
 
 #[test]
+fn validate_rejects_invalid_invalidates_subject_kind_without_report_or_manifest_output() {
+    let path = manifest_path(
+        "invalid-invalidates-subject-kind",
+        r#"
+        {
+          "schema_version": 1,
+          "nodes": [],
+          "evidence": [],
+          "edges": [
+            {
+              "relation": "invalidates",
+              "change": {"namespace": "checkout", "key": "api-v2"},
+              "subject": {"kind": "claim", "namespace": "checkout", "key": "cancel-rejects-shipped"}
+            }
+          ]
+        }
+        "#,
+    );
+    let output_dir = project_dir("invalid-invalidates-subject-kind-output");
+    fs::create_dir_all(&output_dir).expect("manifest output directory should be writable");
+    let output_manifest = output_dir.join("intent-graph.json");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+        .args([
+            "validate",
+            path.to_str().unwrap(),
+            "--format",
+            "json",
+            "--emit-manifest",
+            output_manifest.to_str().unwrap(),
+        ])
+        .output()
+        .expect("lsharp validate should run");
+    let manifest_exists = output_manifest.exists();
+    fs::remove_file(&path).ok();
+    fs::remove_dir_all(&output_dir).ok();
+
+    assert_eq!(output.status.code(), Some(1));
+    assert!(
+        output.stdout.is_empty(),
+        "input errors must not be serialized as a validation report or manifest: {:?}",
+        output.stdout
+    );
+    assert!(!manifest_exists, "input error must not emit a manifest");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("invalidates.subject"),
+        "diagnostic missing relation: {stderr}"
+    );
+    assert!(
+        stderr.contains("subject kind"),
+        "diagnostic missing kind label: {stderr}"
+    );
+    assert!(
+        stderr.contains("claim"),
+        "diagnostic missing kind value: {stderr}"
+    );
+    assert!(
+        stderr.contains("claim:checkout/cancel-rejects-shipped"),
+        "diagnostic missing stable ID: {stderr}"
+    );
+}
+
+#[test]
 fn validate_rejects_manifest_missing_required_field_without_report_stdout() {
     let path = manifest_path(
         "missing-required-field",

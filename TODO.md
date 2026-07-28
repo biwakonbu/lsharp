@@ -661,8 +661,9 @@ artifact/runtime、supported 2 targets、EC-M2-02/EC-M3 aggregate は残件。Ev
 `docs/adr/decisions-v0.2-validation-manifest-subject-kind-diagnostic.md`。
 
 2026-07-29 に `lsharp validate <manifest> --format json` の typed subject input error boundary を追加した。
-`InvalidSubjectKind` は exit `1`、空 stdout、manifest file なし、relation path/kind/stable ID を含む stderr の
-diagnostic-only 結果となり、report JSON と混ざらないことを Rust driver CLI test で固定した。default EmbeddedCli build
+`evaluates.subject` / `invalidates.subject` の `InvalidSubjectKind` は exit `1`、空 stdout、manifest file なし、
+relation path/kind/stable ID を含む stderr の diagnostic-only 結果となり、report JSON と混ざらないことを
+Rust driver CLI test で固定した。default EmbeddedCli build
 は origin/main の既存 selfhost source に残る `vector-push-single-rooted-v3` 未定義で停止したため、
 既存 component artifact を指定した focused test で manifest input 経路だけを検証した。source/native CLI
 の同一診断、MCP、current-source artifact/runtime、supported 2 targets、EC-M2-02/EC-M3 aggregate は残件。
