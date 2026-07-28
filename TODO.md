@@ -645,6 +645,13 @@ manifest parser、CLI/MCP parity、current-source artifact/runtime、supported 2
 authentication、EC-M2-02/EC-M2-03/EC-M3 aggregate は残件。Evidence:
 `docs/adr/decisions-v0.2-validation-manifest-null-review-registry.md`。
 
+2026-07-29 に明示 `reviews: []` の unregistered review edge closure を公開 `lsharp validate` へ接続した。
+未登録 `evaluates` review は exit `1`、空 stdout、manifest file なし、review/missing/identity 診断の
+diagnostic-only 結果となることを `manifest_input_cli` と既存 CLI の全30テストで固定した。review lifecycle/
+authentication、selfhost/native parser、MCP、current-source artifact/runtime、supported 2 targets、
+EC-M2-02/EC-M3 aggregate は残件。Evidence:
+`docs/adr/decisions-v0.2-validation-manifest-explicit-empty-review-registry.md`。
+
 2026-07-29 に公開 `lsharp validate` の manifest input matrix を拡張した。duplicate review identity は
 exit `1`、空 stdout、manifest file なし、review ID/重複診断となり、unknown edge field は同じ
 diagnostic-only boundary で unknown field/edge 診断を返すことを新規 `manifest_input_cli` test で固定した。

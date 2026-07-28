@@ -112,3 +112,28 @@ fn validate_rejects_unknown_edge_field_without_report_or_manifest_output() {
         &["unexpected", "edge"],
     );
 }
+
+#[test]
+fn validate_rejects_unregistered_review_edge_with_explicit_empty_registry() {
+    assert_manifest_input_error(
+        "missing-review",
+        r#"
+        {
+          "schema_version": 1,
+          "nodes": [
+            {"kind": "intent", "namespace": "checkout", "key": "safe-cancel", "text": "Users can cancel"}
+          ],
+          "evidence": [],
+          "reviews": [],
+          "edges": [
+            {
+              "relation": "evaluates",
+              "review": {"namespace": "checkout", "key": "reviewer-001"},
+              "subject": {"kind": "intent", "namespace": "checkout", "key": "safe-cancel"}
+            }
+          ]
+        }
+        "#,
+        &["review", "missing", "checkout", "reviewer-001"],
+    );
+}

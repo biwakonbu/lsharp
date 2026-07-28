@@ -30,10 +30,14 @@ opaque endpoint として扱える。一方、`reviews: []` を明示した mani
 - `explicit_empty_review_registry_round_trips_as_an_empty_array` で empty registry の wire presence と
   parse/emit roundtrip を固定した。
 - focused `review_provenance`、`validation_output`、`validation_source` tests が pass。
+- 公開 `lsharp validate` の `validate_rejects_unregistered_review_edge_with_explicit_empty_registry`
+  で exit `1`、空 stdout、manifest file なし、review/missing/identity 診断を固定した。
+- `cargo test -p lsharp-driver --test validate_cli --test manifest_input_cli`（30 tests）。
+- `cargo clippy -p lsharp-driver --test manifest_input_cli -- -D warnings`。
 
 ## Boundary and follow-up
 
-これは Rust canonical graph/manifest input-output の review registry presence boundary に限定した
-verified partial slice である。review lifecycle/authentication、selfhost/native manifest parser、
-CLI/MCP parity、current-source stage0 artifact/runtime、Mac Apple Silicon / Linux x86_64 matrix、
+これは Rust canonical graph/manifest input-output と公開 Rust CLI の review registry presence boundary に
+限定した verified partial slice である。review lifecycle/authentication、selfhost/native manifest parser、
+MCP parity、current-source stage0 artifact/runtime、Mac Apple Silicon / Linux x86_64 matrix、
 EC-M2-02 / EC-M2-03 / EC-M3 aggregate は未完了であり、TODO の `[~]` を維持する。
