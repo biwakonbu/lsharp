@@ -109,6 +109,8 @@ VALIDATION_INVALID_EVIDENCE_OUTCOME_MANIFEST="$WORK_DIR/ec-m3-invalid-evidence-o
 VALIDATION_INVALID_EVIDENCE_INDEPENDENCE_MANIFEST="$WORK_DIR/ec-m3-invalid-evidence-independence-manifest.json"
 VALIDATION_INVALID_EVIDENCE_SUBJECT_MANIFEST="$WORK_DIR/ec-m3-invalid-evidence-subject-manifest.json"
 VALIDATION_DUPLICATE_EVIDENCE_MANIFEST="$WORK_DIR/ec-m3-duplicate-evidence-manifest.json"
+VALIDATION_MISSING_NODE_ID_MANIFEST="$WORK_DIR/ec-m2-missing-node-id-manifest.json"
+VALIDATION_MISSING_NODE_TEXT_MANIFEST="$WORK_DIR/ec-m2-missing-node-text-manifest.json"
 VALIDATION_MISSING_REVIEW_MANIFEST="$WORK_DIR/ec-m3-missing-review-manifest.json"
 VALIDATION_DUPLICATE_REVIEW_MANIFEST="$WORK_DIR/ec-m3-duplicate-review-manifest.json"
 VALIDATION_INVALID_REVIEW_MANIFEST="$WORK_DIR/ec-m3-invalid-review-manifest.json"
@@ -141,6 +143,8 @@ VALIDATION_INVALID_EVIDENCE_OUTCOME_SOURCE="$WORK_DIR/ec-m3-invalid-evidence-out
 VALIDATION_INVALID_EVIDENCE_INDEPENDENCE_SOURCE="$WORK_DIR/ec-m3-invalid-evidence-independence-source.ls"
 VALIDATION_INVALID_EVIDENCE_SUBJECT_SOURCE="$WORK_DIR/ec-m3-invalid-evidence-subject-source.ls"
 VALIDATION_DUPLICATE_EVIDENCE_SOURCE="$WORK_DIR/ec-m3-duplicate-evidence-source.ls"
+VALIDATION_MISSING_NODE_ID_SOURCE="$WORK_DIR/ec-m2-missing-node-id-source.ls"
+VALIDATION_MISSING_NODE_TEXT_SOURCE="$WORK_DIR/ec-m2-missing-node-text-source.ls"
 VALIDATION_MISSING_REVIEW_SOURCE="$WORK_DIR/ec-m3-missing-review-source.ls"
 VALIDATION_DUPLICATE_REVIEW_SOURCE="$WORK_DIR/ec-m3-duplicate-review-source.ls"
 VALIDATION_INVALID_REVIEW_SOURCE="$WORK_DIR/ec-m3-invalid-review-source.ls"
@@ -400,6 +404,16 @@ cat >"$VALIDATION_DUPLICATE_EVIDENCE_SOURCE" <<'LSHARP'
     :tool-version "0.2.0-dev"
     :timestamp "2026-07-28T00:00:00Z"
     :independence "same-author"
+  true)
+LSHARP
+cat >"$VALIDATION_MISSING_NODE_ID_SOURCE" <<'LSHARP'
+(defn missing-node-id []
+  :intent "Users can cancel an order"
+  true)
+LSHARP
+cat >"$VALIDATION_MISSING_NODE_TEXT_SOURCE" <<'LSHARP'
+(defn missing-node-text []
+  :claim "claim:checkout/missing-text"
   true)
 LSHARP
 cat >"$VALIDATION_MISSING_REVIEW_SOURCE" <<'LSHARP'
@@ -987,6 +1001,26 @@ grep -F "source validation error:3" "$WORK_DIR/validation-duplicate-evidence.std
   || die "duplicate evidence validation must expose the duplicate-ID error code"
 [[ ! -e "$VALIDATION_DUPLICATE_EVIDENCE_MANIFEST" ]] \
   || die "duplicate evidence validation must produce no report or manifest"
+
+run_expected_validation_error validation-missing-node-id \
+  validate \
+  --source "$VALIDATION_MISSING_NODE_ID_SOURCE" \
+  --format json \
+  --emit-manifest "$VALIDATION_MISSING_NODE_ID_MANIFEST"
+grep -F "source validation error:1" "$WORK_DIR/validation-missing-node-id.stderr" >/dev/null \
+  || die "missing node ID validation must expose the malformed parser error code"
+[[ ! -e "$VALIDATION_MISSING_NODE_ID_MANIFEST" ]] \
+  || die "missing node ID validation must produce no report or manifest"
+
+run_expected_validation_error validation-missing-node-text \
+  validate \
+  --source "$VALIDATION_MISSING_NODE_TEXT_SOURCE" \
+  --format json \
+  --emit-manifest "$VALIDATION_MISSING_NODE_TEXT_MANIFEST"
+grep -F "source validation error:1" "$WORK_DIR/validation-missing-node-text.stderr" >/dev/null \
+  || die "missing node text validation must expose the malformed parser error code"
+[[ ! -e "$VALIDATION_MISSING_NODE_TEXT_MANIFEST" ]] \
+  || die "missing node text validation must produce no report or manifest"
 
 run_expected_validation_error validation-missing-review \
   validate \

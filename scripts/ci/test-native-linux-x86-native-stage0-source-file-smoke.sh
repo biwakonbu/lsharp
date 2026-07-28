@@ -111,6 +111,14 @@ for required in \
   'VALIDATION_DUPLICATE_EVIDENCE_MANIFEST' \
   'run_expected_validation_error validation-duplicate-evidence' \
   'source validation error:3' \
+  'VALIDATION_MISSING_NODE_ID_SOURCE' \
+  'VALIDATION_MISSING_NODE_ID_MANIFEST' \
+  'run_expected_validation_error validation-missing-node-id' \
+  'source validation error:1' \
+  'VALIDATION_MISSING_NODE_TEXT_SOURCE' \
+  'VALIDATION_MISSING_NODE_TEXT_MANIFEST' \
+  'run_expected_validation_error validation-missing-node-text' \
+  'source validation error:1' \
   'VALIDATION_MISSING_REVIEW_SOURCE' \
   'VALIDATION_MISSING_REVIEW_MANIFEST' \
   'run_expected_validation_error validation-missing-review' \
