@@ -118,6 +118,101 @@ mod review_registry_tests {
     }
 
     #[test]
+    fn test_validate_tool_rejects_unsigned_numeric_manifest_boundaries() {
+        let fields = [
+            ("span.start", "__SPAN_START__"),
+            ("span.end", "__SPAN_END__"),
+            ("sampling.cases", "__SAMPLING_CASES__"),
+            ("sampling.seed", "__SAMPLING_SEED__"),
+            ("sampling.shrinks[0]", "__SAMPLING_SHRINK__"),
+            ("sampling.coverage.ok", "__SAMPLING_COVERAGE__"),
+        ];
+        let values = [
+            ("fractional", "0.5"),
+            ("null", "null"),
+            ("overflow", "18446744073709551616"),
+        ];
+
+        for (field, marker) in fields {
+            for (label, literal) in values {
+                let manifest = numeric_manifest_with_literal(marker, literal);
+                let response = handle_jsonrpc_message(&json!({
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "lsharp_validate",
+                        "arguments": { "manifest": manifest }
+                    }
+                }));
+                let error = response["result"]["content"][0]["text"]
+                    .as_str()
+                    .expect("MCP numeric boundary は text error を返すべき");
+
+                assert_eq!(response["result"]["isError"], true);
+                assert!(response["result"].get("structuredContent").is_none());
+                assert!(
+                    error.contains("validation manifest の parse に失敗しました:"),
+                    "{field}={label}: unexpected error: {error}"
+                );
+            }
+        }
+    }
+
+    fn numeric_manifest_with_literal(marker: &str, literal: &str) -> String {
+        let template = r#"{
+            "schema_version": 1,
+            "nodes": [{
+                "kind": "intent",
+                "namespace": "checkout",
+                "key": "safe-cancel",
+                "text": "Users can cancel",
+                "span": {"start": "__SPAN_START__", "end": "__SPAN_END__"}
+            }],
+            "evidence": [{
+                "namespace": "checkout",
+                "key": "cancel-example",
+                "method": "example",
+                "subject": {"kind": "intent", "namespace": "checkout", "key": "safe-cancel"},
+                "outcome": "pass",
+                "execution": {
+                    "runner": "mcp-test",
+                    "target": "aarch64-apple-darwin",
+                    "source_commit": "source-commit",
+                    "artifact_digest": "sha256:artifact",
+                    "sampling": {
+                        "cases": "__SAMPLING_CASES__",
+                        "seed": "__SAMPLING_SEED__",
+                        "generator": "fixed",
+                        "shrinks": ["__SAMPLING_SHRINK__"],
+                        "coverage": {"ok": "__SAMPLING_COVERAGE__"}
+                    }
+                },
+                "provenance": {
+                    "producer": "mcp-test",
+                    "tool_version": "0.1.0",
+                    "timestamp": "2026-07-29T00:00:00Z"
+                },
+                "independence": "same-author"
+            }],
+            "edges": []
+        }"#;
+        [
+            "__SPAN_START__",
+            "__SPAN_END__",
+            "__SAMPLING_CASES__",
+            "__SAMPLING_SEED__",
+            "__SAMPLING_SHRINK__",
+            "__SAMPLING_COVERAGE__",
+        ]
+        .into_iter()
+        .fold(template.to_string(), |manifest, candidate| {
+            let replacement = if candidate == marker { literal } else { "0" };
+            manifest.replace(&format!("\"{candidate}\""), replacement)
+        })
+    }
+
+    #[test]
     fn test_validate_tool_includes_redacted_review_registry_without_private_fields() {
         let result = call_tool(
             "lsharp_validate",

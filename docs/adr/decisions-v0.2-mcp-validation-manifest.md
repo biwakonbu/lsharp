@@ -50,6 +50,13 @@ diagnostic が CLI と乖離する。
   serde 契約と同期する。
 - Numeric schema gate: 新規 schema boundary test と既存 `mcp_server::tests` 44 tests、対象 binary
   の `cargo clippy --tests -- -D warnings`、rustfmt、`git diff --check` を pass した。
+- Numeric runtime follow-up: MCP の direct `manifest` string input でも、`span.start/end` と
+  `sampling.cases/seed/shrinks[]/coverage.*` の fractional、`null`、`u64::MAX + 1` を全6 fieldで
+  `validation manifest の parse` error として fail-closed にする回帰 matrix（18 cases）を追加した。
+  MCP は report JSON や canonical manifest を返さず、`isError: true` の tool result に留める。
+- Numeric runtime gate: `mcp_server::tests` 45 tests と対象 binary の `cargo clippy --tests -- -D warnings`
+  を pass。既存 typed serde parser の境界を MCP tool まで接続した Rust-host verified sliceであり、
+  production code の変更はない。
 
 ## Boundary and follow-up
 
@@ -59,3 +66,4 @@ selfhost/native report parity、Mac Apple Silicon / Linux x86_64 artifact/runtim
 未完了のため、`TODO.md` の `EC-M2-03` は `[~]` のまま維持する。今回の numeric schema は static
 `tools/list` 契約と Rust MCP lane に限定され、JSON Schema validator 実行、selfhost/native MCP、
 current-source artifact/runtime、supported 2 targets の完了証拠には数えない。
+MCP runtime matrixも同じく Rust-host lane に限られ、native/selfhost の診断・target parity は未検証である。

@@ -758,3 +758,11 @@ Mac/Linux matrix、EC-M2-02/EC-M3 aggregate は残件。Evidence:
 sliceであり、JSON Schema 実 validator、selfhost/native MCP、current-source stage0 artifact/runtime、
 Mac/Linux matrix、EC-M3 aggregate は未完了である。Evidence:
 `docs/adr/decisions-v0.2-mcp-validation-manifest.md`。
+
+2026-07-29 に EC-M3-01 の MCP manifest runtime numeric boundary を追加した。direct `manifest` string
+input の span / sampling 全6 fieldで fractional、`null`、`u64::MAX + 1` を `isError: true` の
+`validation manifest の parse` error として拒否し、report/canonical manifestを成功値として返さない
+18ケースを `mcp_server::tests` 45件で固定した。既存 Rust typed serde parser を MCP toolまで接続した
+verified partial sliceであり、selfhost/native MCP、current-source stage0 artifact/runtime、Mac/Linux
+matrix、JSON Schema実 validator、EC-M3 aggregate は未完了である。Evidence:
+`docs/adr/decisions-v0.2-mcp-validation-manifest.md`。
