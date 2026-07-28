@@ -123,6 +123,7 @@ VALIDATION_UNICODE_WHITESPACE_EVIDENCE_COVERAGE_MANIFEST="$WORK_DIR/ec-m2-unicod
 VALIDATION_NEGATIVE_EVIDENCE_COVERAGE_MANIFEST="$WORK_DIR/ec-m2-negative-evidence-coverage-manifest.json"
 VALIDATION_NEGATIVE_EVIDENCE_CASES_MANIFEST="$WORK_DIR/ec-m2-negative-evidence-cases-manifest.json"
 VALIDATION_NEGATIVE_EVIDENCE_SEED_MANIFEST="$WORK_DIR/ec-m2-negative-evidence-seed-manifest.json"
+VALIDATION_NEGATIVE_EVIDENCE_SHRINKS_MANIFEST="$WORK_DIR/ec-m2-negative-evidence-shrinks-manifest.json"
 VALIDATION_EMPTY_EVIDENCE_RUNNER_MANIFEST="$WORK_DIR/ec-m2-empty-evidence-runner-manifest.json"
 VALIDATION_EMPTY_EVIDENCE_TARGET_MANIFEST="$WORK_DIR/ec-m2-empty-evidence-target-manifest.json"
 VALIDATION_EMPTY_EVIDENCE_SOURCE_COMMIT_MANIFEST="$WORK_DIR/ec-m2-empty-evidence-source-commit-manifest.json"
@@ -189,6 +190,7 @@ VALIDATION_UNICODE_WHITESPACE_EVIDENCE_COVERAGE_SOURCE="$WORK_DIR/ec-m2-unicode-
 VALIDATION_NEGATIVE_EVIDENCE_COVERAGE_SOURCE="$WORK_DIR/ec-m2-negative-evidence-coverage-source.ls"
 VALIDATION_NEGATIVE_EVIDENCE_CASES_SOURCE="$WORK_DIR/ec-m2-negative-evidence-cases-source.ls"
 VALIDATION_NEGATIVE_EVIDENCE_SEED_SOURCE="$WORK_DIR/ec-m2-negative-evidence-seed-source.ls"
+VALIDATION_NEGATIVE_EVIDENCE_SHRINKS_SOURCE="$WORK_DIR/ec-m2-negative-evidence-shrinks-source.ls"
 VALIDATION_EMPTY_EVIDENCE_RUNNER_SOURCE="$WORK_DIR/ec-m2-empty-evidence-runner-source.ls"
 VALIDATION_EMPTY_EVIDENCE_TARGET_SOURCE="$WORK_DIR/ec-m2-empty-evidence-target-source.ls"
 VALIDATION_EMPTY_EVIDENCE_SOURCE_COMMIT_SOURCE="$WORK_DIR/ec-m2-empty-evidence-source-commit-source.ls"
@@ -722,6 +724,27 @@ cat >"$VALIDATION_NEGATIVE_EVIDENCE_SEED_SOURCE" <<'LSHARP'
     :seed -1
     :generator "negative-evidence-seed-generator"
     :producer "negative-evidence-seed-producer"
+    :tool-version "0.2.0-dev"
+    :timestamp "2026-07-29T00:00:00Z"
+    :independence "same-author"
+  true)
+LSHARP
+cat >"$VALIDATION_NEGATIVE_EVIDENCE_SHRINKS_SOURCE" <<'LSHARP'
+(defn negative-evidence-shrinks []
+  :claim "claim:checkout/rejects" "The API rejects shipped orders"
+  :evidence "evidence:checkout/negative-shrinks"
+    :subject "claim:checkout/rejects"
+    :method "property"
+    :outcome "pass"
+    :runner "negative-evidence-shrinks-runner"
+    :target "aarch64-apple-darwin"
+    :source-commit "source-negative-evidence-shrinks"
+    :artifact-digest "sha256:negative-evidence-shrinks"
+    :cases 1
+    :seed 0
+    :generator "negative-evidence-shrinks-generator"
+    :shrinks [-1]
+    :producer "negative-evidence-shrinks-producer"
     :tool-version "0.2.0-dev"
     :timestamp "2026-07-29T00:00:00Z"
     :independence "same-author"
@@ -1735,6 +1758,16 @@ grep -F "source validation error:11" "$WORK_DIR/validation-negative-evidence-see
   || die "negative evidence seed validation must expose the invalid-sampling error code"
 [[ ! -e "$VALIDATION_NEGATIVE_EVIDENCE_SEED_MANIFEST" ]] \
   || die "negative evidence seed validation must produce no report or manifest"
+
+run_expected_validation_error validation-negative-evidence-shrinks \
+  validate \
+  --source "$VALIDATION_NEGATIVE_EVIDENCE_SHRINKS_SOURCE" \
+  --format json \
+  --emit-manifest "$VALIDATION_NEGATIVE_EVIDENCE_SHRINKS_MANIFEST"
+grep -F "source validation error:11" "$WORK_DIR/validation-negative-evidence-shrinks.stderr" >/dev/null \
+  || die "negative evidence shrinks validation must expose the invalid-sampling error code"
+[[ ! -e "$VALIDATION_NEGATIVE_EVIDENCE_SHRINKS_MANIFEST" ]] \
+  || die "negative evidence shrinks validation must produce no report or manifest"
 
 run_expected_validation_error validation-empty-evidence-runner \
   validate \

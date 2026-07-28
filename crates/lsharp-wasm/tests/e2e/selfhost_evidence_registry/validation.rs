@@ -1018,6 +1018,48 @@ fn test_e2e_selfhost_evidence_registry_rejects_negative_shrink() {
     );
 }
 
+/// EC-M2-02: source parser 経由の負の shrink は invalid-sampling で拒否する。
+#[test]
+fn test_e2e_selfhost_source_evidence_rejects_negative_shrink() {
+    let harness = r#"
+(defn main []
+  (let [result (source-evidence-graph-from-program
+                 (parse-program "(defn cancel [] :claim \"claim:checkout/cancel\" \"The API rejects shipped orders\" :evidence \"evidence:checkout/negative-shrink\" :subject \"claim:checkout/cancel\" :method \"property\" :outcome \"pass\" :runner \"source-negative-shrink\" :target \"aarch64-apple-darwin\" :source-commit \"source-negative-shrink-commit\" :artifact-digest \"sha256:source-negative-shrink\" :cases 1 :seed 0 :generator \"source-negative-shrink-generator\" :shrinks [-1] :producer \"source-negative-shrink-producer\" :tool-version \"0.2.0-dev\" :timestamp \"2026-07-29T00:00:00Z\" :independence \"same-author\" true)"))
+        error (source-result-error result)]
+    (do
+      (print (source-result-status result))
+      (print (source-evidence-error-code error))
+      (print-string (source-evidence-error-field error))
+      (print-string "\n")
+      (print-string "[")
+      (print-string (source-evidence-error-value error))
+      (print-string "]\n")
+      (print (source-evidence-error-start error))
+      (print (source-evidence-error-end error))
+      0)))
+"#;
+
+    let output = run_evidence_registry_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 6,
+        "負の shrink の diagnostic output が不足しています: {lines:?}"
+    );
+    assert_eq!(
+        &lines[..4],
+        ["0", "11", "shrinks", "[]"],
+        "負の shrink は invalid-sampling error と empty raw value で拒否するべき"
+    );
+    let start = lines[4]
+        .parse::<usize>()
+        .expect("shrinks diagnostic start は usize であるべき");
+    let end = lines[5]
+        .parse::<usize>()
+        .expect("shrinks diagnostic end は usize であるべき");
+    assert!(start < end, "shrinks diagnostic span は空でないべき");
+}
+
 /// EC-M2-02: seed は canonical `u64` sampling と同じ fail-closed code で拒否する。
 #[test]
 fn test_e2e_selfhost_evidence_registry_rejects_negative_seed() {

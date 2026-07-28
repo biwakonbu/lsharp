@@ -185,6 +185,10 @@ for required in \
   'VALIDATION_NEGATIVE_EVIDENCE_SEED_MANIFEST' \
   'run_expected_validation_error validation-negative-evidence-seed' \
   'source validation error:11' \
+  'VALIDATION_NEGATIVE_EVIDENCE_SHRINKS_SOURCE' \
+  'VALIDATION_NEGATIVE_EVIDENCE_SHRINKS_MANIFEST' \
+  'run_expected_validation_error validation-negative-evidence-shrinks' \
+  'source validation error:11' \
   'VALIDATION_WHITESPACE_EVIDENCE_SUBJECT_SOURCE' \
   'VALIDATION_WHITESPACE_EVIDENCE_SUBJECT_MANIFEST' \
   'run_expected_validation_error validation-whitespace-evidence-subject' \
