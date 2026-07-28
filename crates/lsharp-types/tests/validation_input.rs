@@ -390,6 +390,37 @@ fn parse_manifest_rejects_empty_required_evidence_fields() {
 }
 
 #[test]
+fn parse_manifest_rejects_unicode_whitespace_only_required_evidence_fields() {
+    let cases = [
+        ("runner", "validator-test"),
+        ("target", "host"),
+        ("source_commit", "commit-1"),
+        ("artifact_digest", "sha256:artifact"),
+        ("generator", "fixture"),
+        ("producer", "validator-test"),
+        ("tool_version", "0.2"),
+        ("timestamp", "2026-07-23T00:00:00Z"),
+    ];
+
+    for (field, original_value) in cases {
+        let manifest = complete_manifest().replace(
+            &format!("\"{field}\": \"{original_value}\""),
+            &format!("\"{field}\": \"\u{00A0}\""),
+        );
+
+        assert!(
+            matches!(
+                parse_intent_graph_json(&manifest),
+                Err(ValidationInputError::Graph(GraphError::InvalidEvidence {
+                    source: EvidenceValidationError::EmptyField { field: actual }
+                })) if actual == field
+            ),
+            "manifest field {field} must reject Unicode whitespace-only values"
+        );
+    }
+}
+
+#[test]
 fn parse_manifest_rejects_whitespace_only_coverage_bucket_before_registration() {
     let manifest =
         complete_manifest().replace("\"coverage\": {\"all\": 1}", "\"coverage\": {\"  \": 1}");

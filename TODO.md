@@ -575,3 +575,13 @@ ADR: `docs/adr/decisions-v0.2-native-validation-cli-negative-sampling.md`。
 拒否し、後続値への黙った上書きを防ぐ Rust canonical input boundary を verified slice として追加した。
 selfhost/native manifest parity、coverage count/cases の意味論、current-source artifact/runtime は残る。
 ADR: `docs/adr/decisions-v0.2-validation-manifest-duplicate-coverage.md`。
+
+2026-07-29 に version 1 JSON manifest の evidence required-field Unicode whitespace boundary を追加した。
+execution の `runner` / `target` / `source_commit` / `artifact_digest` と sampling/provenance の
+`generator` / `producer` / `tool_version` / `timestamp` を NBSP-only に変異させ、canonical graph 登録前に
+`GraphError::InvalidEvidence` / `EvidenceValidationError::EmptyField` として field名を保持して拒否する
+ことを `parse_manifest_rejects_unicode_whitespace_only_required_evidence_fields` で固定した。既存の
+`str::trim()` policyを manifest inputにも適用する Rust verified partial sliceであり、manifest の
+node/review/coverage Unicode parity、selfhost/native manifest parser、current-source artifact/runtime、
+supported 2 targets、EC-M2-02/EC-M3 aggregate は残件。Evidence:
+`docs/adr/decisions-v0.2-validation-manifest-evidence-unicode-whitespace.md`。
