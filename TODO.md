@@ -722,3 +722,11 @@ current-source artifact/runtime、supported 2 targets、EC-M2-02/EC-M3 aggregate
 decode により production code の変更は不要だった。selfhost/native manifest parser、source producer、
 current-source stage0 artifact/runtime、Mac/Linux matrix、EC-M2-02/EC-M3 aggregate は残件。Evidence:
 `docs/adr/decisions-v0.2-validation-input-numeric-boundaries.md`。
+
+2026-07-29 に EC-M3-01 version 1 manifest の fractional unsigned numeric boundary を追加した。
+`0.5` / `1.5` を span と sampling の全 unsigned fieldへ入力し、Rust canonical parser が graph 構築前に
+`ValidationInputError::Json` として reject することを
+`parse_manifest_rejects_fractional_unsigned_numeric_fields` で固定した。typed serde decode に委譲し、
+小数の丸め・切り捨てによる sampling semantics の変質を許可しない。selfhost/native manifest parser、
+source producer、current-source stage0 artifact/runtime、Mac/Linux matrix、EC-M2-02/EC-M3 aggregate は残件。
+Evidence: `docs/adr/decisions-v0.2-validation-input-numeric-boundaries.md`。

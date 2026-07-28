@@ -460,6 +460,47 @@ fn parse_manifest_rejects_unsigned_numeric_overflow() {
 }
 
 #[test]
+fn parse_manifest_rejects_fractional_unsigned_numeric_fields() {
+    let cases = [
+        (
+            "span.start",
+            complete_manifest().replace("\"start\": 0", "\"start\": 0.5"),
+        ),
+        (
+            "span.end",
+            complete_manifest().replace("\"end\": 10", "\"end\": 10.5"),
+        ),
+        (
+            "sampling.cases",
+            complete_manifest().replace("\"cases\": 1", "\"cases\": 1.5"),
+        ),
+        (
+            "sampling.seed",
+            complete_manifest().replace("\"seed\": 0", "\"seed\": 0.5"),
+        ),
+        (
+            "sampling.shrinks",
+            complete_manifest().replace("\"shrinks\": []", "\"shrinks\": [0.5]"),
+        ),
+        (
+            "sampling.coverage",
+            complete_manifest()
+                .replace("\"coverage\": {\"all\": 1}", "\"coverage\": {\"all\": 1.5}"),
+        ),
+    ];
+
+    for (field, manifest) in cases {
+        assert!(
+            matches!(
+                parse_intent_graph_json(&manifest),
+                Err(ValidationInputError::Json(_))
+            ),
+            "fractional {field} must fail during JSON decoding"
+        );
+    }
+}
+
+#[test]
 fn parse_manifest_rejects_duplicate_coverage_bucket_keys() {
     let manifest = complete_manifest().replace(
         "\"coverage\": {\"all\": 1}",

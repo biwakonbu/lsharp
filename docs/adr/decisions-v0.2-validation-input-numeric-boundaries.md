@@ -42,6 +42,17 @@ code の変更は不要だった。
 - Test: `parse_manifest_rejects_unsigned_numeric_overflow`
 - Evidence: `cargo test -p lsharp-types --test validation_input parse_manifest_rejects_unsigned_numeric_overflow -- --nocapture`
 
+## Follow-up: fractional unsigned numbers (2026-07-29)
+
+JSON の小数値も unsigned integer field へ暗黙変換しない契約を追加した。`0.5` / `1.5` を
+`span.start` / `span.end`、`sampling.cases` / `sampling.seed` / `sampling.shrinks[*]` /
+`sampling.coverage[*]` の全 field に入力し、全て graph 構築前の `ValidationInputError::Json` として
+reject されることを確認した。既存の typed serde decode に委譲し、切り捨てや丸めによる sampling
+semantics の変質を許可しない。
+
+- Test: `parse_manifest_rejects_fractional_unsigned_numeric_fields`
+- Evidence: `cargo test -p lsharp-types --test validation_input parse_manifest_rejects_fractional_unsigned_numeric_fields -- --nocapture`
+
 ## Boundary
 
 これは Rust manifest input decoder の数値型境界に限定した verified slice である。source syntax
