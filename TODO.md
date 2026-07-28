@@ -95,6 +95,9 @@
   `invalidates` の双方で要求した。Rust syntax oracle の `LS0101` arity rejection と同じ parser
   boundary を native contractへ接続する verified sliceだが、実 stage0 artifact/runtime の evidence
   ではない。
+  さらに `validate --source` の negative sampling を `App.Cli` の Rust-host actual Wasm へ接続し、
+  `source validation error:11`、exit `1`、report/manifestなしの fail-closed boundary を固定した。
+  EmbeddedCli、current-source stage0、sampling の実行意味論は残る。
 - [~] `EC-M2-03` `lsharp validate` — version 1 manifest parser、source adapter、
   `--emit-manifest` の atomic/durable file boundary、deterministic text/JSON report、
   optional `reviews` registry の Rust CLI roundtrip と未登録 review edge の non-zero/

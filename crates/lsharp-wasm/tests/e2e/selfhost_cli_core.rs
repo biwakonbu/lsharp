@@ -15040,6 +15040,72 @@ fn test_e2e_selfhost_cli_validate_source_rejects_manifest_write_failure() {
     assert!(!manifest_exists, "write failure では manifest を残さないべき");
 }
 
+/// EC-M2-02/EC-M2-03: source validation の sampling error は report/manifest を漏らさず fail-closed にする。
+#[test]
+fn test_e2e_selfhost_cli_validate_source_rejects_negative_sampling_without_report_or_manifest() {
+    let dir = std::env::temp_dir().join(format!(
+        "lsharp_test_cli_validate_source_negative_sampling_{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("input.ls"),
+        r#"
+(defn invalid []
+  :claim "claim:checkout/cancel-rejects-shipped" "The API rejects shipped orders"
+  :evidence "evidence:checkout/negative-cases"
+    :subject "claim:checkout/cancel-rejects-shipped"
+    :method "property"
+    :outcome "pass"
+    :runner "source-negative-cases"
+    :target "aarch64-apple-darwin"
+    :source-commit "source-negative-cases-commit"
+    :artifact-digest "sha256:source-negative-cases"
+    :cases -1
+    :seed 0
+    :generator "source-negative-cases-generator"
+    :producer "source-negative-cases-producer"
+    :tool-version "0.2.0-dev"
+    :timestamp "2026-07-29T00:00:00Z"
+    :independence "same-author"
+  true)
+"#,
+    )
+    .unwrap();
+
+    let wasm = selfhost_cli_validation_wasm();
+    let output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_args_and_stdin_capture(
+        wasm,
+        Some(&dir),
+        &[
+            "validate",
+            "--source",
+            "input.ls",
+            "--format",
+            "json",
+            "--emit-manifest",
+            "intent-graph.json",
+        ],
+        "",
+    )
+    .unwrap();
+    let manifest_exists = dir.join("intent-graph.json").exists();
+    let _ = std::fs::remove_dir_all(&dir);
+
+    assert_eq!(output.exit_code, 1, "invalid sampling は exit code 1 で拒否するべき");
+    assert!(
+        output.stdout.contains("source validation error:11"),
+        "invalid sampling の入力診断を出すべき: {}",
+        output.stdout
+    );
+    assert!(
+        !output.stdout.contains("\"status\""),
+        "invalid sampling では report を出力しないべき: {}",
+        output.stdout
+    );
+    assert!(!manifest_exists, "invalid sampling では manifest を残さないべき");
+}
+
 /// TEST-CLI-02-AF2: actual Cli main は argv 経由で compile file command を処理できること
 #[test]
 #[ignore]
