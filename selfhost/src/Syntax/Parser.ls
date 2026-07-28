@@ -2970,25 +2970,69 @@
         (p-advance pos-ref)
         h))))
 
-(defn parse-params-rooted-v3 [spans pos-ref src result count]
+(defn parse-params-step-v3 [spans pos-ref src result]
   (if (== (p-current spans pos-ref) 3) ;; ] で終了
-    (do (p-advance pos-ref) result)
+    (do
+      (p-advance pos-ref)
+      (make-parse-loop-state 1 result))
     (if (== (p-current spans pos-ref) 99) ;; EOF ガード: 無限ループ防止
-      result
+      (make-parse-loop-state 1 result)
       (do
         (root_push result)
         (let [h (parse-param-hash-v3 spans pos-ref src)]
           (do
             (root_push h)
-            (let [next-result (vector-push result h)]
-              (do
+            (let [next-result (vector-push result h)
+              state (do
                 (root_push next-result)
-                (let [parsed (parse-params-rooted-v3 spans pos-ref src next-result (+ count 1))]
-                  (do
-                    (root_pop)
-                    (root_pop)
-                    (root_pop)
-                    parsed))))))))))
+                (make-parse-loop-state 0 next-result))]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                state))))))))
+
+(defn parse-params-step-64-loop-bounded [spans pos-ref src result remaining]
+  (do
+    (root_push result)
+    (let [step (parse-params-step-v3 spans pos-ref src result)
+      done (vector-get step 0)
+      next-result (vector-get step 1)]
+      (do
+        (root_push step)
+        (root_push next-result)
+        (let [parsed
+          (if (= done 1)
+            step
+            (if (<= remaining 1)
+              step
+              (parse-params-step-64-loop-bounded
+                spans pos-ref src next-result (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn parse-params-step-64 [spans pos-ref src result]
+  (parse-params-step-64-loop-bounded spans pos-ref src result 64))
+
+(defn parse-params-rooted-v3 [spans pos-ref src result count]
+  (let [step (parse-params-step-64 spans pos-ref src result)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 1)
+      (do
+        (root_push step)
+        (let [next-result (vector-get step 1)]
+          (do
+            (root_push next-result)
+            (let [parsed
+              (parse-params-rooted-v3
+                spans pos-ref src next-result (+ count 1))]
+              (do
+                (root_pop)
+                (root_pop)
+                parsed))))))))
 
 (defn parse-params-v3 [spans pos-ref src result count]
   (do

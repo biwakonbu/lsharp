@@ -490,6 +490,30 @@ fn test_e2e_selfhost_parser_count_fields() {
     assert_eq!(lines[4], "2", "defn の param-count は 2 であるべき");
 }
 
+#[test]
+fn test_e2e_selfhost_parser_params_cross_chunk_boundary() {
+    let (token_ls, ast_ls, lexer_ls, parser_ls) = parser_runtime_modules();
+    let params = std::iter::repeat("p").take(65).collect::<Vec<_>>().join(" ");
+    let source = format!("(fn [{}] p)", params);
+    let harness = format!(
+        r#"
+(defn main []
+  (let [node (vector-get (parse-program "{}") 0)]
+    (do
+      (print (vector-get node 1))
+      0)))
+"#,
+        source
+    );
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        token_ls, ast_ls, lexer_ls, parser_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    assert_eq!(output.trim(), "65", "64 件を超える params も全件保持すべき");
+}
+
 /// TEST-SYNTAX-02c2: nested module を body 付きでパースできる
 #[test]
 fn test_e2e_selfhost_parser_nested_module_decl() {
@@ -1469,5 +1493,25 @@ fn test_e2e_selfhost_parser_match_arms_use_bounded_chunks() {
                 "(parse-match-arms-rooted-v3 spans pos-ref src next-result (+ count 1))"
             ),
         "match arms parser は Linux x86 native stack の深い再帰を避けるため bounded chunk へ委譲するべき"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_parser_params_use_bounded_chunks() {
+    let source = selfhost_module("Parser.ls");
+    let rooted_body = source
+        .split("(defn parse-params-rooted-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn parse-params-v3").next())
+        .expect("Parser.ls に params rooted loop が存在すること");
+
+    assert!(
+        source.contains("(defn parse-params-step-64-loop-bounded")
+            && source.contains("(defn parse-params-step-64")
+            && rooted_body.contains("parse-params-step-64")
+            && !rooted_body.contains(
+                "(parse-params-rooted-v3 spans pos-ref src next-result (+ count 1))"
+            ),
+        "params parser は Linux x86 native stack の深い再帰を避けるため bounded chunk へ委譲するべき"
     );
 }
