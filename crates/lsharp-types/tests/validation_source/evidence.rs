@@ -683,8 +683,7 @@ fn source_adapter_rejects_whitespace_only_required_execution_runner() {
 
 #[test]
 fn source_adapter_rejects_whitespace_only_evidence_subject_as_invalid_id() {
-    let program = parse(
-        r#"
+    const SOURCE: &str = r#"
         (defn cancel []
           :claim "claim:checkout/cancel" "The API rejects shipped orders"
           :evidence "evidence:checkout/whitespace-subject"
@@ -703,15 +702,21 @@ fn source_adapter_rejects_whitespace_only_evidence_subject_as_invalid_id() {
             :timestamp "2026-07-28T00:00:00Z"
             :independence "same-author"
           true)
-        "#,
-    )
-    .expect("whitespace subject fixture は parse できるべき");
+        "#;
+    let program = parse(SOURCE).expect("whitespace subject fixture は parse できるべき");
 
+    let error = source_program_to_intent_graph(&program)
+        .expect_err("whitespace evidence subject は source span 付きで拒否するべき");
+    let SourceGraphError::EvidenceSubjectIdAt { span, source } = error else {
+        panic!("whitespace evidence subject の source diagnostic を期待しました: {error:?}");
+    };
     assert!(matches!(
-        source_program_to_intent_graph(&program),
-        Err(SourceGraphError::EdgeId(StableIdError::InvalidWireFormat { value }))
-            if value == "  "
+        source,
+        StableIdError::InvalidWireFormat { value } if value == "  "
     ));
+    assert!(span.start < span.end);
+    assert!(SOURCE[span.start..span.end].contains(":evidence"));
+    assert!(SOURCE[span.start..span.end].contains(":subject"));
 }
 
 #[test]

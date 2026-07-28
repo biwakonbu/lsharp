@@ -348,6 +348,12 @@ span E2E と native source-file smoke の no-report/no-manifest boundary に対�
 driver の EmbeddedCli build、実 stage0 artifact/runtime、Mac/Linux matrix、native fallback exclusion
 の evidence ではない。
 
+さらに evidence の `subject` ID wire format／segment が不正な場合を `EvidenceSubjectIdAt` として
+directive span 付きで返すようにした。selfhost Evidence consumer の stable code `2`、field/value、
+span E2E と native source-file smoke の no-report/no-manifest boundary に対応する verified sliceだが、
+driver の EmbeddedCli build、実 stage0 artifact/runtime、Mac/Linux matrix、native fallback exclusion
+の evidence ではない。
+
 次の実装は `EC-M2-01`〜`EC-M2-03` の未接続入力を一つの RED に絞る。current plan の
 acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展開しない。
 

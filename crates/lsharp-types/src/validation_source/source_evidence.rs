@@ -134,21 +134,26 @@ fn parse_evidence_subject(
     graph: &IntentGraph,
     span: Span,
 ) -> Result<EvidenceSubject, SourceGraphError> {
-    let stable_id = StableId::parse(wire_id.to_string())?;
+    let stable_id = StableId::parse(wire_id.to_string())
+        .map_err(|source| SourceGraphError::EvidenceSubjectIdAt { span, source })?;
     match stable_id.kind() {
         NodeKind::Intent => {
-            let id = IntentId::parse(wire_id.to_string())?;
+            let id = IntentId::parse(wire_id.to_string())
+                .map_err(|source| SourceGraphError::EvidenceSubjectIdAt { span, source })?;
             require_node(graph, "evidence.subject", id.stable_id(), span)?;
             Ok(EvidenceSubject::Intent(id))
         }
         NodeKind::Claim => {
-            let id = ClaimId::parse(wire_id.to_string())?;
+            let id = ClaimId::parse(wire_id.to_string())
+                .map_err(|source| SourceGraphError::EvidenceSubjectIdAt { span, source })?;
             require_node(graph, "evidence.subject", id.stable_id(), span)?;
             Ok(EvidenceSubject::Claim(id))
         }
-        NodeKind::Contract => Ok(EvidenceSubject::Contract(ContractId::parse(
-            wire_id.to_string(),
-        )?)),
+        NodeKind::Contract => {
+            let id = ContractId::parse(wire_id.to_string())
+                .map_err(|source| SourceGraphError::EvidenceSubjectIdAt { span, source })?;
+            Ok(EvidenceSubject::Contract(id))
+        }
         _ => Err(SourceGraphError::InvalidEvidenceField {
             field: "subject",
             value: wire_id.to_string(),
