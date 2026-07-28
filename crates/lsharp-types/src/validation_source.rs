@@ -4,7 +4,7 @@
 //! 明示的に受け取る。ID の省略や kind の推測は行わず、同じ ID の重複と typed kind mismatch
 //! を既存の canonical model のエラーとして返す。
 
-use crate::intent::{EvidenceId, IntentNodeError, NodeKind, StableIdError};
+use crate::intent::{EvidenceId, IntentNodeError, NodeKind, ReviewId, StableIdError};
 use crate::validation::IntentGraph;
 use lsharp_syntax::ast::Program;
 use lsharp_syntax::span::Span;
@@ -187,5 +187,15 @@ fn require_evidence(
             evidence_id: id.as_str().to_string(),
             span,
         })
+    }
+}
+
+fn require_review(graph: &IntentGraph, id: &ReviewId) -> Result<(), SourceGraphError> {
+    if graph.reviews().is_empty() || graph.reviews().iter().any(|review| review.id() == id) {
+        Ok(())
+    } else {
+        Err(SourceGraphError::Graph(
+            crate::evidence::GraphError::MissingReview { id: id.clone() },
+        ))
     }
 }

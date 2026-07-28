@@ -1,4 +1,4 @@
-use super::{SourceGraphError, require_evidence, require_node};
+use super::{require_evidence, require_node, require_review, SourceGraphError};
 use crate::evidence::{Edge, InvalidationSubject, ReviewSubject};
 use crate::intent::{
     AssumptionId, ChangeId, ClaimId, ContractId, EvidenceId, IntentId, NodeKind, ReviewId,
@@ -111,6 +111,7 @@ fn add_metadata_edges(
             MetadataFormKind::Evaluates { review, subject } => {
                 let review =
                     parse_edge_id(review, "evaluates.review", form.span(), ReviewId::parse)?;
+                require_review(graph, &review)?;
                 let subject = parse_review_subject(subject, "evaluates.subject", form.span())?;
                 match &subject {
                     ReviewSubject::Intent(intent) => {

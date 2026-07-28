@@ -370,3 +370,22 @@ fn source_adapter_rejects_review_and_invalidation_kind_mismatches() {
         })
     ));
 }
+
+#[test]
+fn source_adapter_reports_missing_review_before_invalid_evaluates_subject() {
+    let program = parse(
+        r#"
+        (defn review []
+          :review "review:checkout/registered" "sha256:review-provenance-001" "public"
+          :evaluates "review:checkout/missing" "review:checkout/registered"
+          true)
+        "#,
+    )
+    .expect("missing review precedence fixture は parse できるべき");
+
+    assert!(matches!(
+        source_program_to_intent_graph(&program),
+        Err(SourceGraphError::Graph(lsharp_types::evidence::GraphError::MissingReview { id }))
+            if id.as_str() == "review:checkout/missing"
+    ));
+}

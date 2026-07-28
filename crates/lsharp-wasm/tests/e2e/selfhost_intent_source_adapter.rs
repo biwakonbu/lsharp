@@ -882,6 +882,31 @@ fn test_e2e_selfhost_source_adapter_rejects_missing_review_edge_endpoint() {
     );
 }
 
+/// EC-M2-02: 未登録 review は不正な evaluates subject kind より先に code 10 を返す。
+#[test]
+fn test_e2e_selfhost_source_adapter_reports_missing_review_before_invalid_evaluates_subject() {
+    let harness = r#"
+(defn main []
+  (let [result (source-graph-from-program
+                 (parse-program "(defn review [] :review \"review:checkout/registered\" \"sha256:review-provenance-001\" \"public\" :evaluates \"review:checkout/missing\" \"review:checkout/registered\" true)"))
+        error (source-graph-result-error result)]
+    (do
+      (print (source-graph-result-status result))
+      (print (source-graph-error-code error))
+      (print-string (source-graph-error-id error))
+      0)))
+"#;
+
+    let output = run_source_adapter_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "10", "review:checkout/missing"],
+        "未登録 evaluates review は不正な subject kind より先に missing-review になるべき"
+    );
+}
+
 /// EC-M2-02: invalidates の subject は review/evidence に限定する。
 #[test]
 fn test_e2e_selfhost_source_adapter_rejects_invalid_invalidation_subject_kind() {

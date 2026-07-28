@@ -197,6 +197,10 @@ for required in \
   'VALIDATION_MISSING_REVIEW_MANIFEST' \
   'run_expected_validation_error validation-missing-review' \
   'source validation error:10' \
+  'VALIDATION_MISSING_REVIEW_SUBJECT_KIND_SOURCE' \
+  'VALIDATION_MISSING_REVIEW_SUBJECT_KIND_MANIFEST' \
+  'run_expected_validation_error validation-missing-review-before-subject-kind' \
+  'missing review must win over invalid evaluates subject kind' \
   'VALIDATION_DUPLICATE_REVIEW_SOURCE' \
   'VALIDATION_DUPLICATE_REVIEW_MANIFEST' \
   'run_expected_validation_error validation-duplicate-review' \

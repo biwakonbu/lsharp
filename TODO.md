@@ -302,6 +302,10 @@
   する fixtureも native smokeへ追加した。stable な `source validation error:10`、exit `1`、
   report/manifestなしの fail-closed を要求し、review registry closure の両 edge relation を native
   contractへ接続する verified sliceとしたが、実 stage0 artifact/runtime の evidence ではない。
+  さらに明示 review registry の未登録 `evaluates` review と不正な review subject kind を同時に
+  持つ fixtureを追加し、subject-kind code `9` より先に missing-review code `10` を返す precedence を
+  Rust source adapter、selfhost、native smoke で統一した verified sliceだが、current source-commit に
+  一致する実 stage0 artifact/runtime の evidence ではない。
   さらに review の `evaluates` / `invalidates` が未登録 evidence を subject にする source fixtureも
   native smokeへ追加し、stable な `source validation error:6`、exit `1`、report/manifestなしの
   fail-closed を双方の relation で要求した。既存 Rust source adapter の `EvidenceRegistryRequired`

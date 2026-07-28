@@ -133,6 +133,7 @@ VALIDATION_MISSING_NODE_TEXT_MANIFEST="$WORK_DIR/ec-m2-missing-node-text-manifes
 VALIDATION_WHITESPACE_NODE_TEXT_MANIFEST="$WORK_DIR/ec-m2-whitespace-node-text-manifest.json"
 VALIDATION_NODE_TEXT_PRECEDENCE_MANIFEST="$WORK_DIR/ec-m2-node-text-precedence-manifest.json"
 VALIDATION_MISSING_REVIEW_MANIFEST="$WORK_DIR/ec-m3-missing-review-manifest.json"
+VALIDATION_MISSING_REVIEW_SUBJECT_KIND_MANIFEST="$WORK_DIR/ec-m3-missing-review-subject-kind-manifest.json"
 VALIDATION_DUPLICATE_REVIEW_MANIFEST="$WORK_DIR/ec-m3-duplicate-review-manifest.json"
 VALIDATION_INVALID_REVIEW_MANIFEST="$WORK_DIR/ec-m3-invalid-review-manifest.json"
 VALIDATION_INVALID_REVIEW_DIGEST_MANIFEST="$WORK_DIR/ec-m3-invalid-review-digest-manifest.json"
@@ -189,6 +190,7 @@ VALIDATION_MISSING_NODE_TEXT_SOURCE="$WORK_DIR/ec-m2-missing-node-text-source.ls
 VALIDATION_WHITESPACE_NODE_TEXT_SOURCE="$WORK_DIR/ec-m2-whitespace-node-text-source.ls"
 VALIDATION_NODE_TEXT_PRECEDENCE_SOURCE="$WORK_DIR/ec-m2-node-text-precedence-source.ls"
 VALIDATION_MISSING_REVIEW_SOURCE="$WORK_DIR/ec-m3-missing-review-source.ls"
+VALIDATION_MISSING_REVIEW_SUBJECT_KIND_SOURCE="$WORK_DIR/ec-m3-missing-review-subject-kind-source.ls"
 VALIDATION_DUPLICATE_REVIEW_SOURCE="$WORK_DIR/ec-m3-duplicate-review-source.ls"
 VALIDATION_INVALID_REVIEW_SOURCE="$WORK_DIR/ec-m3-invalid-review-source.ls"
 VALIDATION_INVALID_REVIEW_DIGEST_SOURCE="$WORK_DIR/ec-m3-invalid-review-digest-source.ls"
@@ -828,6 +830,12 @@ cat >"$VALIDATION_MISSING_REVIEW_SOURCE" <<'LSHARP'
   :claim "claim:checkout/rejects" "The API rejects shipped orders"
   :review "review:checkout/registered" "sha256:review-provenance" "redacted"
   :evaluates "review:checkout/missing" "claim:checkout/rejects"
+  true)
+LSHARP
+cat >"$VALIDATION_MISSING_REVIEW_SUBJECT_KIND_SOURCE" <<'LSHARP'
+(defn missing-review-before-subject-kind []
+  :review "review:checkout/registered" "sha256:review-provenance" "public"
+  :evaluates "review:checkout/missing" "review:checkout/registered"
   true)
 LSHARP
 cat >"$VALIDATION_DUPLICATE_REVIEW_SOURCE" <<'LSHARP'
@@ -1654,6 +1662,16 @@ grep -F "source validation error:10" "$WORK_DIR/validation-missing-review.stderr
   || die "missing review validation must expose the missing-review error code"
 [[ ! -e "$VALIDATION_MISSING_REVIEW_MANIFEST" ]] \
   || die "missing review validation must produce no report or manifest"
+
+run_expected_validation_error validation-missing-review-before-subject-kind \
+  validate \
+  --source "$VALIDATION_MISSING_REVIEW_SUBJECT_KIND_SOURCE" \
+  --format json \
+  --emit-manifest "$VALIDATION_MISSING_REVIEW_SUBJECT_KIND_MANIFEST"
+grep -F "source validation error:10" "$WORK_DIR/validation-missing-review-before-subject-kind.stderr" >/dev/null \
+  || die "missing review must win over invalid evaluates subject kind"
+[[ ! -e "$VALIDATION_MISSING_REVIEW_SUBJECT_KIND_MANIFEST" ]] \
+  || die "missing review subject precedence validation must produce no report or manifest"
 
 run_expected_validation_error validation-duplicate-review \
   validate \
