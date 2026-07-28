@@ -2764,32 +2764,72 @@
         (parse-skip-to-close-v3 spans pos-ref 1)
         (vector-push-triple-rooted-v3 (vector-new 3) (ast-pat-constructor) 0 0)))))
 
-(defn parse-recordpat-fields-rooted-v3 [spans pos-ref src result count]
+(defn parse-recordpat-fields-step-v3 [spans pos-ref src result]
   (if (== (p-current spans pos-ref) 5) ;; } で終了
-    (do (p-advance pos-ref) result)
+    (do
+      (p-advance pos-ref)
+      (make-parse-loop-state 1 result))
     (if (== (p-current spans pos-ref) 99) ;; EOF ガード: 無限ループ防止
-      result
+      (make-parse-loop-state 1 result)
       (if (== (p-current spans pos-ref) 20)
         (do
-          (root_push result)
-          (let [field-hash (current-symbol-hash-v3 spans pos-ref src)]
+          (let [result-slot (root_push result)
+            field-hash (current-symbol-hash-v3 spans pos-ref src)]
             (do
               (p-advance pos-ref)
               (let [pat (parse-pattern-v3 spans pos-ref src)]
                 (do
                   (root_push pat)
-                  (let [next-result (vector-push-pair-rooted-v3 result field-hash pat)]
+                  (let [next-result (vector-push-pair-rooted-v3 result field-hash pat)
+                    state (do
+                      (root_set result-slot next-result)
+                      (make-parse-loop-state 0 next-result))]
                     (do
-                      (root_push next-result)
-                      (let [parsed (parse-recordpat-fields-rooted-v3 spans pos-ref src next-result (+ count 1))]
-                        (do
-                          (root_pop)
-                          (root_pop)
-                          (root_pop)
-                          parsed)))))))))
+                      (root_pop)
+                      (root_pop)
+                      state)))))))
         (do
           (p-advance pos-ref)
-          (parse-recordpat-fields-rooted-v3 spans pos-ref src result count))))))
+          (make-parse-loop-state 0 result))))))
+
+(defn parse-recordpat-fields-step-64-loop-bounded [spans pos-ref src result remaining]
+  (do
+    (root_push result)
+    (let [step (parse-recordpat-fields-step-v3 spans pos-ref src result)
+      done (vector-get step 0)
+      next-result (vector-get step 1)]
+      (do
+        (root_push step)
+        (root_push next-result)
+        (let [parsed
+          (if (= done 1)
+            step
+            (if (<= remaining 1)
+              step
+              (parse-recordpat-fields-step-64-loop-bounded spans pos-ref src next-result (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn parse-recordpat-fields-step-64 [spans pos-ref src result]
+  (parse-recordpat-fields-step-64-loop-bounded spans pos-ref src result 64))
+
+(defn parse-recordpat-fields-rooted-v3 [spans pos-ref src result count]
+  (let [step (parse-recordpat-fields-step-64 spans pos-ref src result)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 1)
+      (do
+        (root_push step)
+        (let [next-result (vector-get step 1)]
+          (do
+            (root_push next-result)
+            (let [parsed (parse-recordpat-fields-rooted-v3 spans pos-ref src next-result count)]
+              (do
+                (root_pop)
+                (root_pop)
+                parsed))))))))
 
 (defn parse-recordpat-fields-v3 [spans pos-ref src result count]
   (do

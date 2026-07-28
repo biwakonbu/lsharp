@@ -1381,6 +1381,73 @@ fn test_e2e_selfhost_parser_type_fun_cross_chunk_boundary() {
     );
 }
 
+#[test]
+fn test_e2e_selfhost_parser_record_pattern_fields_use_bounded_chunks() {
+    let source = selfhost_module("Parser.ls");
+    let rooted_body = source
+        .split("(defn parse-recordpat-fields-rooted-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn parse-recordpat-fields-v3").next())
+        .expect("Parser.ls に record pattern fields rooted loop が存在すること");
+    let step_body = source
+        .split("(defn parse-recordpat-fields-step-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn parse-recordpat-fields-step-64-loop-bounded").next())
+        .expect("Parser.ls に record pattern fields step が存在すること");
+
+    assert!(
+        source.contains("(defn parse-recordpat-fields-step-64-loop-bounded")
+            && source.contains("(defn parse-recordpat-fields-step-64")
+            && rooted_body.contains("parse-recordpat-fields-step-64")
+            && !step_body.contains(
+                "(parse-recordpat-fields-rooted-v3 spans pos-ref src next-result"
+            ),
+        "record pattern field parser は Linux x86 native stack の深い再帰を避けるため bounded chunk へ委譲するべき"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_parser_record_pattern_fields_cross_chunk_boundary() {
+    let (token_ls, ast_ls, lexer_ls, parser_ls) = parser_runtime_modules();
+    let fields = (0..65)
+        .map(|index| format!("x{} v{}", index, index))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let source = format!("(match value [{{Point {}}} value])", fields);
+    let harness = format!(
+        r#"
+(defn main []
+  (let [match-node (vector-get (parse-program "{}") 0)
+        pattern-node (vector-get match-node 3)
+        first-child (vector-get pattern-node 3)
+        last-field (vector-get pattern-node 130)
+        last-child (vector-get pattern-node 131)]
+    (do
+      (print (vector-get pattern-node 0))
+      (print (vector-get pattern-node 1))
+      (print (vector-length pattern-node))
+      (print (if (= (vector-get pattern-node 2) (name-hash "x0" 0 2)) 1 0))
+      (print (vector-get first-child 0))
+      (print (if (= last-field (name-hash "x64" 0 3)) 1 0))
+      (print (vector-get last-child 0))
+      0)))
+"#,
+        source
+    );
+
+    let output = compile_and_run(&format!(
+        "{}\n{}\n{}\n{}\n{}",
+        token_ls, ast_ls, lexer_ls, parser_ls, harness
+    ));
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["44", "65", "134", "1", "41", "1", "41"],
+        "record pattern parser は 64 要素を跨いでも field/pattern layout を保持するべき"
+    );
+}
+
 /// check 用 flatten の再帰 handoff で、次の step と累積 vector を GC root に保持する。
 ///
 /// 大きな current-source graph では loader と compile probe が完走した後、
