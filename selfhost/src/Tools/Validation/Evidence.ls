@@ -97,32 +97,47 @@
         (source-edge-tested-by)
         0))))
 
+(defn source-evidence-whitespace? [char]
+  (or
+    (or (= char 32) (= char 9))
+    (or (= char 10) (= char 13))))
+
+(defn source-evidence-nonblank-loop [value idx len]
+  (if (>= idx len)
+    0
+    (if (source-evidence-whitespace? (string-char-at value idx))
+      (source-evidence-nonblank-loop value (+ idx 1) len)
+      1)))
+
+(defn source-evidence-nonblank? [value]
+  (source-evidence-nonblank-loop value 0 (string-length value)))
+
 (defn source-evidence-empty-field [payload]
-  (if (= (string-length (vector-get payload 0)) 0)
+  (if (= (source-evidence-nonblank? (vector-get payload 0)) 0)
     "id"
-    (if (= (string-length (vector-get payload 1)) 0)
+    (if (= (source-evidence-nonblank? (vector-get payload 1)) 0)
       "subject"
-      (if (= (string-length (vector-get payload 2)) 0)
+      (if (= (source-evidence-nonblank? (vector-get payload 2)) 0)
         "method"
-        (if (= (string-length (vector-get payload 3)) 0)
+        (if (= (source-evidence-nonblank? (vector-get payload 3)) 0)
           "outcome"
-          (if (= (string-length (vector-get payload 4)) 0)
+          (if (= (source-evidence-nonblank? (vector-get payload 4)) 0)
             "runner"
-            (if (= (string-length (vector-get payload 5)) 0)
+            (if (= (source-evidence-nonblank? (vector-get payload 5)) 0)
               "target"
-              (if (= (string-length (vector-get payload 6)) 0)
+              (if (= (source-evidence-nonblank? (vector-get payload 6)) 0)
                 "source-commit"
-                (if (= (string-length (vector-get payload 7)) 0)
+                (if (= (source-evidence-nonblank? (vector-get payload 7)) 0)
                   "artifact-digest"
-                  (if (= (string-length (vector-get payload 10)) 0)
+                  (if (= (source-evidence-nonblank? (vector-get payload 10)) 0)
                     "generator"
-                    (if (= (string-length (vector-get payload 13)) 0)
+                    (if (= (source-evidence-nonblank? (vector-get payload 13)) 0)
                       "producer"
-                      (if (= (string-length (vector-get payload 14)) 0)
+                      (if (= (source-evidence-nonblank? (vector-get payload 14)) 0)
                         "tool-version"
-                        (if (= (string-length (vector-get payload 15)) 0)
+                        (if (= (source-evidence-nonblank? (vector-get payload 15)) 0)
                           "timestamp"
-                          (if (= (string-length (vector-get payload 16)) 0)
+                          (if (= (source-evidence-nonblank? (vector-get payload 16)) 0)
                             "independence"
                             ""))))))))))))))
 

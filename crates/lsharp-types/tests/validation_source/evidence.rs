@@ -548,6 +548,42 @@ fn source_adapter_rejects_empty_required_provenance_timestamp() {
 }
 
 #[test]
+fn source_adapter_rejects_whitespace_only_required_execution_runner() {
+    let program = parse(
+        r#"
+        (defn cancel []
+          :claim "claim:checkout/cancel" "The API rejects shipped orders"
+          :evidence "evidence:checkout/whitespace-runner"
+            :subject "claim:checkout/cancel"
+            :method "case"
+            :outcome "pass"
+            :runner "  "
+            :target "aarch64-apple-darwin"
+            :source-commit "source-whitespace-evidence-runner"
+            :artifact-digest "sha256:whitespace-evidence-runner"
+            :cases 1
+            :seed 0
+            :generator "whitespace-evidence-runner-generator"
+            :producer "whitespace-evidence-runner-producer"
+            :tool-version "0.2.0-dev"
+            :timestamp "2026-07-28T00:00:00Z"
+            :independence "same-author"
+          true)
+        "#,
+    )
+    .expect("whitespace runner fixture は parse できるべき");
+
+    let error = source_program_to_intent_graph(&program)
+        .expect_err("whitespace runner は source graph 登録時に拒否するべき");
+    assert!(matches!(
+        error,
+        SourceGraphError::Graph(GraphError::InvalidEvidence {
+            source: EvidenceValidationError::EmptyField { field: "runner" }
+        })
+    ));
+}
+
+#[test]
 fn source_adapter_registers_evidence_records_before_support_edges() {
     let program = parse(
         r#"

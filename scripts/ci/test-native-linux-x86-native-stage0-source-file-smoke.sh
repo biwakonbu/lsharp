@@ -147,6 +147,10 @@ for required in \
   'VALIDATION_EMPTY_EVIDENCE_TIMESTAMP_MANIFEST' \
   'run_expected_validation_error validation-empty-evidence-timestamp' \
   'source validation error:4' \
+  'VALIDATION_WHITESPACE_EVIDENCE_RUNNER_SOURCE' \
+  'VALIDATION_WHITESPACE_EVIDENCE_RUNNER_MANIFEST' \
+  'run_expected_validation_error validation-whitespace-evidence-runner' \
+  'source validation error:4' \
   'VALIDATION_MISSING_NODE_ID_SOURCE' \
   'VALIDATION_MISSING_NODE_ID_MANIFEST' \
   'run_expected_validation_error validation-missing-node-id' \
