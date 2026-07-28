@@ -127,6 +127,10 @@ for required in \
   'VALIDATION_EMPTY_EVIDENCE_TARGET_MANIFEST' \
   'run_expected_validation_error validation-empty-evidence-target' \
   'source validation error:4' \
+  'VALIDATION_EMPTY_EVIDENCE_SOURCE_COMMIT_SOURCE' \
+  'VALIDATION_EMPTY_EVIDENCE_SOURCE_COMMIT_MANIFEST' \
+  'run_expected_validation_error validation-empty-evidence-source-commit' \
+  'source validation error:4' \
   'VALIDATION_MISSING_NODE_ID_SOURCE' \
   'VALIDATION_MISSING_NODE_ID_MANIFEST' \
   'run_expected_validation_error validation-missing-node-id' \

@@ -362,6 +362,44 @@ fn source_adapter_rejects_empty_required_execution_target() {
 }
 
 #[test]
+fn source_adapter_rejects_empty_required_execution_source_commit() {
+    let program = parse(
+        r#"
+        (defn cancel []
+          :claim "claim:checkout/cancel" "The API rejects shipped orders"
+          :evidence "evidence:checkout/empty-source-commit"
+            :subject "claim:checkout/cancel"
+            :method "case"
+            :outcome "pass"
+            :runner "source-empty-source-commit-runner"
+            :target "aarch64-apple-darwin"
+            :source-commit ""
+            :artifact-digest "sha256:source-empty-source-commit"
+            :cases 1
+            :seed 0
+            :generator "source-empty-source-commit-generator"
+            :producer "source-empty-source-commit-producer"
+            :tool-version "0.2.0-dev"
+            :timestamp "2026-07-28T00:00:00Z"
+            :independence "same-author"
+          true)
+        "#,
+    )
+    .expect("empty source commit fixture は parse できるべき");
+
+    let error = source_program_to_intent_graph(&program)
+        .expect_err("empty source commit は source graph 登録時に拒否するべき");
+    assert!(matches!(
+        error,
+        SourceGraphError::Graph(GraphError::InvalidEvidence {
+            source: EvidenceValidationError::EmptyField {
+                field: "source_commit"
+            }
+        })
+    ));
+}
+
+#[test]
 fn source_adapter_registers_evidence_records_before_support_edges() {
     let program = parse(
         r#"

@@ -113,6 +113,7 @@ VALIDATION_DUPLICATE_EVIDENCE_FIELD_MANIFEST="$WORK_DIR/ec-m3-duplicate-evidence
 VALIDATION_EMPTY_EVIDENCE_GENERATOR_MANIFEST="$WORK_DIR/ec-m2-empty-evidence-generator-manifest.json"
 VALIDATION_EMPTY_EVIDENCE_RUNNER_MANIFEST="$WORK_DIR/ec-m2-empty-evidence-runner-manifest.json"
 VALIDATION_EMPTY_EVIDENCE_TARGET_MANIFEST="$WORK_DIR/ec-m2-empty-evidence-target-manifest.json"
+VALIDATION_EMPTY_EVIDENCE_SOURCE_COMMIT_MANIFEST="$WORK_DIR/ec-m2-empty-evidence-source-commit-manifest.json"
 VALIDATION_MISSING_NODE_ID_MANIFEST="$WORK_DIR/ec-m2-missing-node-id-manifest.json"
 VALIDATION_MISSING_NODE_TEXT_MANIFEST="$WORK_DIR/ec-m2-missing-node-text-manifest.json"
 VALIDATION_MISSING_REVIEW_MANIFEST="$WORK_DIR/ec-m3-missing-review-manifest.json"
@@ -151,6 +152,7 @@ VALIDATION_DUPLICATE_EVIDENCE_FIELD_SOURCE="$WORK_DIR/ec-m3-duplicate-evidence-f
 VALIDATION_EMPTY_EVIDENCE_GENERATOR_SOURCE="$WORK_DIR/ec-m2-empty-evidence-generator-source.ls"
 VALIDATION_EMPTY_EVIDENCE_RUNNER_SOURCE="$WORK_DIR/ec-m2-empty-evidence-runner-source.ls"
 VALIDATION_EMPTY_EVIDENCE_TARGET_SOURCE="$WORK_DIR/ec-m2-empty-evidence-target-source.ls"
+VALIDATION_EMPTY_EVIDENCE_SOURCE_COMMIT_SOURCE="$WORK_DIR/ec-m2-empty-evidence-source-commit-source.ls"
 VALIDATION_MISSING_NODE_ID_SOURCE="$WORK_DIR/ec-m2-missing-node-id-source.ls"
 VALIDATION_MISSING_NODE_TEXT_SOURCE="$WORK_DIR/ec-m2-missing-node-text-source.ls"
 VALIDATION_MISSING_REVIEW_SOURCE="$WORK_DIR/ec-m3-missing-review-source.ls"
@@ -490,6 +492,26 @@ cat >"$VALIDATION_EMPTY_EVIDENCE_TARGET_SOURCE" <<'LSHARP'
     :seed 0
     :generator "empty-evidence-target-generator"
     :producer "empty-evidence-target-producer"
+    :tool-version "0.2.0-dev"
+    :timestamp "2026-07-28T00:00:00Z"
+    :independence "same-author"
+  true)
+LSHARP
+cat >"$VALIDATION_EMPTY_EVIDENCE_SOURCE_COMMIT_SOURCE" <<'LSHARP'
+(defn empty-evidence-source-commit []
+  :claim "claim:checkout/rejects" "The API rejects shipped orders"
+  :evidence "evidence:checkout/empty-source-commit"
+    :subject "claim:checkout/rejects"
+    :method "case"
+    :outcome "pass"
+    :runner "empty-evidence-source-commit-runner"
+    :target "aarch64-apple-darwin"
+    :source-commit ""
+    :artifact-digest "sha256:empty-evidence-source-commit"
+    :cases 1
+    :seed 0
+    :generator "empty-evidence-source-commit-generator"
+    :producer "empty-evidence-source-commit-producer"
     :tool-version "0.2.0-dev"
     :timestamp "2026-07-28T00:00:00Z"
     :independence "same-author"
@@ -1130,6 +1152,16 @@ grep -F "source validation error:4" "$WORK_DIR/validation-empty-evidence-target.
   || die "empty evidence target validation must expose the required-field error code"
 [[ ! -e "$VALIDATION_EMPTY_EVIDENCE_TARGET_MANIFEST" ]] \
   || die "empty evidence target validation must produce no report or manifest"
+
+run_expected_validation_error validation-empty-evidence-source-commit \
+  validate \
+  --source "$VALIDATION_EMPTY_EVIDENCE_SOURCE_COMMIT_SOURCE" \
+  --format json \
+  --emit-manifest "$VALIDATION_EMPTY_EVIDENCE_SOURCE_COMMIT_MANIFEST"
+grep -F "source validation error:4" "$WORK_DIR/validation-empty-evidence-source-commit.stderr" >/dev/null \
+  || die "empty evidence source commit validation must expose the required-field error code"
+[[ ! -e "$VALIDATION_EMPTY_EVIDENCE_SOURCE_COMMIT_MANIFEST" ]] \
+  || die "empty evidence source commit validation must produce no report or manifest"
 
 run_expected_validation_error validation-missing-node-id \
   validate \
