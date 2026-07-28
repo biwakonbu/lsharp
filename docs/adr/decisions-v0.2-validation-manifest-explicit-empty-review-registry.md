@@ -34,6 +34,10 @@ opaque endpoint として扱える。一方、`reviews: []` を明示した mani
   で exit `1`、空 stdout、manifest file なし、review/missing/identity 診断を固定した。
 - `cargo test -p lsharp-driver --test validate_cli --test manifest_input_cli`（30 tests）。
 - `cargo clippy -p lsharp-driver --test manifest_input_cli -- -D warnings`。
+- 公開 `lsharp validate` で `reviews: []` の未登録 `evaluates` edge は diagnostic-only に拒否し、
+  `reviews` を省略した同じ edge は opaque endpoint として受理して `status: unknown` / exit `2`
+  を返す対照契約を固定した。
+- `cargo test -p lsharp-driver --test validate_cli --test manifest_input_cli`（31 tests）。
 
 ## Boundary and follow-up
 

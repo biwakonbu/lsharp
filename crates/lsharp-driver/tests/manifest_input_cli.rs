@@ -57,6 +57,26 @@ fn assert_manifest_input_error(name: &str, body: &str, expected_fragments: &[&st
     }
 }
 
+fn assert_manifest_unknown_without_explicit_review_registry(name: &str, body: &str) {
+    let path = manifest_path(name, body);
+    let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+        .args(["validate", path.to_str().unwrap(), "--format", "json"])
+        .output()
+        .expect("lsharp validate should run");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap_or_else(|err| {
+        panic!("unknown report should be valid JSON: {err}; stderr={stderr}")
+    });
+    fs::remove_file(&path).ok();
+
+    assert_eq!(output.status.code(), Some(2), "unexpected exit: {stderr}");
+    assert!(
+        stderr.is_empty(),
+        "unknown report should not write stderr: {stderr}"
+    );
+    assert_eq!(value["status"], "unknown");
+}
+
 #[test]
 fn validate_rejects_duplicate_review_identity_without_report_or_manifest_output() {
     assert_manifest_input_error(
@@ -135,5 +155,28 @@ fn validate_rejects_unregistered_review_edge_with_explicit_empty_registry() {
         }
         "#,
         &["review", "missing", "checkout", "reviewer-001"],
+    );
+}
+
+#[test]
+fn validate_allows_opaque_review_edge_when_registry_is_omitted() {
+    assert_manifest_unknown_without_explicit_review_registry(
+        "omitted-review-registry",
+        r#"
+        {
+          "schema_version": 1,
+          "nodes": [
+            {"kind": "intent", "namespace": "checkout", "key": "safe-cancel", "text": "Users can cancel"}
+          ],
+          "evidence": [],
+          "edges": [
+            {
+              "relation": "evaluates",
+              "review": {"namespace": "checkout", "key": "reviewer-001"},
+              "subject": {"kind": "intent", "namespace": "checkout", "key": "safe-cancel"}
+            }
+          ]
+        }
+        "#,
     );
 }
