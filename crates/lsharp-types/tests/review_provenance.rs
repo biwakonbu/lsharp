@@ -83,6 +83,54 @@ fn review_registry_rejects_edges_to_unregistered_review() {
 }
 
 #[test]
+fn explicit_empty_review_registry_rejects_unregistered_review_edges() {
+    let manifest = r#"
+    {
+      "schema_version": 1,
+      "nodes": [
+        {"kind": "intent", "namespace": "checkout", "key": "safe-cancel", "text": "Users can cancel"}
+      ],
+      "reviews": [],
+      "evidence": [],
+      "edges": [
+        {
+          "relation": "evaluates",
+          "review": {"namespace": "checkout", "key": "missing-review"},
+          "subject": {"kind": "intent", "namespace": "checkout", "key": "safe-cancel"}
+        }
+      ]
+    }
+    "#;
+
+    assert!(matches!(
+        parse_intent_graph_json(manifest),
+        Err(ValidationInputError::Graph(GraphError::MissingReview { id }))
+            if id.as_str() == "review:checkout/missing-review"
+    ));
+}
+
+#[test]
+fn explicit_empty_review_registry_round_trips_as_an_empty_array() {
+    let manifest = r#"
+    {
+      "schema_version": 1,
+      "nodes": [],
+      "reviews": [],
+      "evidence": [],
+      "edges": []
+    }
+    "#;
+
+    let graph = parse_intent_graph_json(manifest).expect("explicit empty registry should parse");
+    let output = graph.to_manifest_json_value();
+    assert_eq!(output["reviews"], serde_json::json!([]));
+
+    let decoded = parse_intent_graph_json(&graph.to_manifest_json_string().unwrap())
+        .expect("explicit empty registry output should parse");
+    assert_eq!(decoded, graph);
+}
+
+#[test]
 fn review_registry_rejects_empty_provenance_digest() {
     let mut graph = IntentGraph::default();
     assert!(matches!(

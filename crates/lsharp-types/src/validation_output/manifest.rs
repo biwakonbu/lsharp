@@ -24,8 +24,8 @@ struct ManifestWire<'a> {
     schema_version: u32,
     nodes: Vec<NodeWire<'a>>,
     evidence: Vec<EvidenceWire<'a>>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    reviews: Vec<ReviewWire<'a>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reviews: Option<Vec<ReviewWire<'a>>>,
     edges: Vec<EdgeWire<'a>>,
 }
 
@@ -39,11 +39,13 @@ impl<'a> ManifestWire<'a> {
                 .iter()
                 .map(EvidenceWire::from_evidence)
                 .collect(),
-            reviews: graph
-                .reviews()
-                .iter()
-                .map(ReviewWire::from_review)
-                .collect(),
+            reviews: graph.review_registry_is_explicit().then(|| {
+                graph
+                    .reviews()
+                    .iter()
+                    .map(ReviewWire::from_review)
+                    .collect()
+            }),
             edges: graph.edges().iter().map(EdgeWire::from_edge).collect(),
         }
     }

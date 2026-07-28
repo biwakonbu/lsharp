@@ -629,3 +629,11 @@ field を graph 登録前の `ValidationInputError::Json` として拒否する�
 Rust canonical manifest input の verified partial sliceであり、selfhost/native manifest parser、source
 producer、current-source artifact/runtime、supported 2 targets、EC-M2-02/EC-M2-03/EC-M3 aggregate は残件。
 Evidence: `docs/adr/decisions-v0.2-validation-manifest-edge-unknown-fields.md`。
+
+2026-07-29 に明示 `reviews: []` の review registry presence boundary を追加した。manifest の
+省略 (`None`) と empty (`Some([])`) を区別し、空でも `evaluates` / `invalidates` の未登録 review を
+`GraphError::MissingReview` として拒否する。canonical output は明示 empty registry を `reviews: []` として
+保持し、parse/emit/parse で closure policy を失わない Rust verified partial sliceである。review lifecycle/
+authentication、selfhost/native manifest parser、current-source artifact/runtime、supported 2 targets、
+EC-M2-02/EC-M2-03/EC-M3 aggregate は残件。Evidence:
+`docs/adr/decisions-v0.2-validation-manifest-explicit-empty-review-registry.md`。

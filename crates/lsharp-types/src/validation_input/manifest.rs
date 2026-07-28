@@ -15,8 +15,7 @@ pub(super) const SUPPORTED_SCHEMA_VERSION: u32 = 1;
 pub(super) struct Manifest {
     pub(super) schema_version: u32,
     pub(super) nodes: Vec<NodeInput>,
-    #[serde(default)]
-    pub(super) reviews: Vec<ReviewInput>,
+    pub(super) reviews: Option<Vec<ReviewInput>>,
     pub(super) evidence: Vec<EvidenceInput>,
     pub(super) edges: Vec<EdgeInput>,
 }

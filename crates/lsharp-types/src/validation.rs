@@ -220,6 +220,7 @@ pub struct IntentGraph {
     nodes: Vec<IntentNode>,
     evidence: EvidenceGraph,
     reviews: Vec<ReviewRecord>,
+    review_registry_explicit: bool,
 }
 
 impl IntentGraph {
@@ -256,7 +257,17 @@ impl IntentGraph {
             });
         }
         self.reviews.push(review);
+        self.review_registry_explicit = true;
         Ok(())
+    }
+
+    /// manifest/source input が review registry を明示したことを記録する。
+    pub(crate) fn mark_review_registry_explicit(&mut self) {
+        self.review_registry_explicit = true;
+    }
+
+    pub(crate) fn review_registry_is_explicit(&self) -> bool {
+        self.review_registry_explicit
     }
 
     pub fn add_edge(&mut self, edge: Edge) -> Result<(), GraphError> {
@@ -366,7 +377,7 @@ impl IntentGraph {
         &self,
         id: &crate::intent::ReviewId,
     ) -> Result<(), GraphError> {
-        if self.reviews.is_empty() || self.reviews.iter().any(|review| review.id() == id) {
+        if !self.review_registry_explicit || self.reviews.iter().any(|review| review.id() == id) {
             Ok(())
         } else {
             Err(GraphError::MissingReview { id: id.clone() })

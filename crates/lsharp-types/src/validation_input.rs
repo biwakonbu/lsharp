@@ -57,8 +57,11 @@ pub fn parse_intent_graph_json(source: &str) -> Result<IntentGraph, ValidationIn
     for node in document.nodes {
         graph.add_node(build_node(node)?)?;
     }
-    for review in document.reviews {
-        graph.add_review(build_review(review)?)?;
+    if let Some(reviews) = document.reviews {
+        graph.mark_review_registry_explicit();
+        for review in reviews {
+            graph.add_review(build_review(review)?)?;
+        }
     }
     for evidence in document.evidence {
         let evidence = build_evidence(evidence)?;
