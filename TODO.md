@@ -369,6 +369,15 @@ stage0 source-file smoke/provenance gate を通過した verified partial slice�
 whitespace policy、coverage count/cases、manifest/validate CLI、current-source artifact/runtime、
 Mac/Linux matrix、EC-M2-02 aggregate は残件。ADR: `docs/adr/decisions-v0.2-native-validation-evidence-canonical-sampling.md`。
 
+続く coverage whitespace policy では、canonical `SamplingPlan` / `EvidenceGraph`、Rust source
+adapter、selfhost Evidence consumer の whitespace-only bucket を共通の empty-field policy へ揃えた。
+元の bucket value と directive/form span を保持し、selfhost/native の stable code `4`、exit `1`、
+report/manifestなしを固定した。evidence required fields 8件、evidence graph 5件、source suite 55件、
+selfhost evidence registry 40件、source adapter 31件、Linux x86_64 native source-file smoke/provenance
+gateを通過した verified partial sliceである。Unicode whitespace、duplicate/count/cases、manifest/
+validate、current-source artifact/runtime、Mac/Linux matrix、EC-M2-02 aggregate は残件。ADR:
+`docs/adr/decisions-v0.2-native-validation-evidence-coverage-whitespace.md`。
+
 次の実装は `EC-M2-01`〜`EC-M2-03` の未接続入力を一つの RED に絞る。current plan の
 acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展開しない。
 

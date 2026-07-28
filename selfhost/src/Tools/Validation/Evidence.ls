@@ -186,8 +186,8 @@
         (source-result 0 (source-evidence-error (source-evidence-error-invalid-sampling) "coverage" "" start end))
         (let [bucket (vector-get entry 0)
           count (vector-get entry 1)]
-          (if (= (string-length bucket) 0)
-            (source-result 0 (source-evidence-error (source-evidence-error-empty-field) "coverage" "" start end))
+          (if (= (source-evidence-nonblank? bucket) 0)
+            (source-result 0 (source-evidence-error (source-evidence-error-empty-field) "coverage" bucket start end))
             (if (< count 0)
               (source-result 0 (source-evidence-error (source-evidence-error-invalid-sampling) "coverage" bucket start end))
               (if (= (source-evidence-coverage-has-bucket-loop coverage bucket 0 idx) 1)

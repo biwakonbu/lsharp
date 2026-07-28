@@ -1,4 +1,4 @@
-use super::{require_node, SourceGraphError};
+use super::{SourceGraphError, require_node};
 use crate::evidence::{
     Evidence, EvidenceMethod, EvidenceOutcome, EvidenceSubject, ExecutionContext,
     ExecutionIdentity, Independence, Provenance, SamplingPlan,
@@ -110,7 +110,7 @@ fn validate_sampling_coverage(
     span: Span,
 ) -> Result<(), SourceGraphError> {
     for (bucket, _) in record.coverage() {
-        if bucket.is_empty() {
+        if bucket.trim().is_empty() {
             return Err(SourceGraphError::InvalidEvidenceField {
                 field: "coverage",
                 value: bucket.clone(),

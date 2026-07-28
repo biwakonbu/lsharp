@@ -170,7 +170,7 @@ impl SamplingPlan {
     /// sampling metadata の required generator と coverage bucket が欠落していないことを検査する。
     pub fn validate_required_fields(&self) -> Result<(), EvidenceValidationError> {
         validate_required_field("generator", &self.generator)?;
-        if self.coverage.keys().any(String::is_empty) {
+        if self.coverage.keys().any(|bucket| bucket.trim().is_empty()) {
             return Err(EvidenceValidationError::EmptyField { field: "coverage" });
         }
         Ok(())

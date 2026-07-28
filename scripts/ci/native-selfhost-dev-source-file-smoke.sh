@@ -117,6 +117,7 @@ VALIDATION_EVIDENCE_REQUIRED_PRECEDENCE_MANIFEST="$WORK_DIR/ec-m2-evidence-requi
 VALIDATION_DUPLICATE_EVIDENCE_MANIFEST="$WORK_DIR/ec-m3-duplicate-evidence-manifest.json"
 VALIDATION_DUPLICATE_EVIDENCE_FIELD_MANIFEST="$WORK_DIR/ec-m3-duplicate-evidence-field-manifest.json"
 VALIDATION_EMPTY_EVIDENCE_GENERATOR_MANIFEST="$WORK_DIR/ec-m2-empty-evidence-generator-manifest.json"
+VALIDATION_WHITESPACE_EVIDENCE_COVERAGE_MANIFEST="$WORK_DIR/ec-m2-whitespace-evidence-coverage-manifest.json"
 VALIDATION_EMPTY_EVIDENCE_RUNNER_MANIFEST="$WORK_DIR/ec-m2-empty-evidence-runner-manifest.json"
 VALIDATION_EMPTY_EVIDENCE_TARGET_MANIFEST="$WORK_DIR/ec-m2-empty-evidence-target-manifest.json"
 VALIDATION_EMPTY_EVIDENCE_SOURCE_COMMIT_MANIFEST="$WORK_DIR/ec-m2-empty-evidence-source-commit-manifest.json"
@@ -174,6 +175,7 @@ VALIDATION_EVIDENCE_REQUIRED_PRECEDENCE_SOURCE="$WORK_DIR/ec-m2-evidence-require
 VALIDATION_DUPLICATE_EVIDENCE_SOURCE="$WORK_DIR/ec-m3-duplicate-evidence-source.ls"
 VALIDATION_DUPLICATE_EVIDENCE_FIELD_SOURCE="$WORK_DIR/ec-m3-duplicate-evidence-field-source.ls"
 VALIDATION_EMPTY_EVIDENCE_GENERATOR_SOURCE="$WORK_DIR/ec-m2-empty-evidence-generator-source.ls"
+VALIDATION_WHITESPACE_EVIDENCE_COVERAGE_SOURCE="$WORK_DIR/ec-m2-whitespace-evidence-coverage-source.ls"
 VALIDATION_EMPTY_EVIDENCE_RUNNER_SOURCE="$WORK_DIR/ec-m2-empty-evidence-runner-source.ls"
 VALIDATION_EMPTY_EVIDENCE_TARGET_SOURCE="$WORK_DIR/ec-m2-empty-evidence-target-source.ls"
 VALIDATION_EMPTY_EVIDENCE_SOURCE_COMMIT_SOURCE="$WORK_DIR/ec-m2-empty-evidence-source-commit-source.ls"
@@ -582,6 +584,27 @@ cat >"$VALIDATION_EMPTY_EVIDENCE_GENERATOR_SOURCE" <<'LSHARP'
     :producer "empty-evidence-generator-producer"
     :tool-version "0.2.0-dev"
     :timestamp "2026-07-28T00:00:00Z"
+    :independence "same-author"
+  true)
+LSHARP
+cat >"$VALIDATION_WHITESPACE_EVIDENCE_COVERAGE_SOURCE" <<'LSHARP'
+(defn whitespace-evidence-coverage []
+  :claim "claim:checkout/rejects" "The API rejects shipped orders"
+  :evidence "evidence:checkout/whitespace-coverage"
+    :subject "claim:checkout/rejects"
+    :method "property"
+    :outcome "pass"
+    :runner "whitespace-evidence-coverage-runner"
+    :target "aarch64-apple-darwin"
+    :source-commit "source-whitespace-evidence-coverage"
+    :artifact-digest "sha256:whitespace-evidence-coverage"
+    :cases 1
+    :seed 0
+    :generator "whitespace-evidence-coverage-generator"
+    :coverage [("  " 1)]
+    :producer "whitespace-evidence-coverage-producer"
+    :tool-version "0.2.0-dev"
+    :timestamp "2026-07-29T00:00:00Z"
     :independence "same-author"
   true)
 LSHARP
@@ -1502,6 +1525,16 @@ grep -F "source validation error:4" "$WORK_DIR/validation-empty-evidence-generat
   || die "empty evidence generator validation must expose the required-field error code"
 [[ ! -e "$VALIDATION_EMPTY_EVIDENCE_GENERATOR_MANIFEST" ]] \
   || die "empty evidence generator validation must produce no report or manifest"
+
+run_expected_validation_error validation-whitespace-evidence-coverage \
+  validate \
+  --source "$VALIDATION_WHITESPACE_EVIDENCE_COVERAGE_SOURCE" \
+  --format json \
+  --emit-manifest "$VALIDATION_WHITESPACE_EVIDENCE_COVERAGE_MANIFEST"
+grep -F "source validation error:4" "$WORK_DIR/validation-whitespace-evidence-coverage.stderr" >/dev/null \
+  || die "whitespace evidence coverage validation must expose the empty-field error code"
+[[ ! -e "$VALIDATION_WHITESPACE_EVIDENCE_COVERAGE_MANIFEST" ]] \
+  || die "whitespace evidence coverage validation must produce no report or manifest"
 
 run_expected_validation_error validation-empty-evidence-runner \
   validate \

@@ -4,7 +4,7 @@ use lsharp_syntax::parse;
 use lsharp_types::evidence::{EvidenceMethod, EvidenceOutcome, Independence};
 use lsharp_types::intent::StableIdError;
 use lsharp_types::validation_input::parse_intent_graph_json;
-use lsharp_types::validation_source::{source_program_to_intent_graph, SourceGraphError};
+use lsharp_types::validation_source::{SourceGraphError, source_program_to_intent_graph};
 
 fn source_evidence_form(key: &str, method: &str, outcome: &str, independence: &str) -> String {
     format!(
@@ -380,6 +380,44 @@ fn source_adapter_rejects_empty_sampling_coverage_bucket_with_directive_span() {
     };
     assert_eq!(field, "coverage");
     assert_eq!(value, "");
+    assert!(span.start < span.end);
+    assert!(SOURCE[span.start..span.end].contains(":evidence"));
+    assert!(SOURCE[span.start..span.end].contains(":coverage"));
+}
+
+#[test]
+fn source_adapter_rejects_whitespace_only_sampling_coverage_bucket_with_directive_span() {
+    const SOURCE: &str = r#"
+        (defn cancel []
+          :claim "claim:checkout/cancel" "The API rejects shipped orders"
+          :evidence "evidence:checkout/whitespace-coverage-bucket"
+            :subject "claim:checkout/cancel"
+            :method "property"
+            :outcome "pass"
+            :runner "source-whitespace-coverage"
+            :target "aarch64-apple-darwin"
+            :source-commit "source-whitespace-coverage-commit"
+            :artifact-digest "sha256:source-whitespace-coverage"
+            :cases 1
+            :seed 0
+            :generator "source-whitespace-coverage-generator"
+            :coverage [("  " 1)]
+            :producer "source-whitespace-coverage-producer"
+            :tool-version "0.2.0-dev"
+            :timestamp "2026-07-29T00:00:00Z"
+            :independence "same-author"
+          true)
+        "#;
+    let program =
+        parse(SOURCE).expect("whitespace-only coverage bucket fixture は parse できるべき");
+
+    let error = source_program_to_intent_graph(&program)
+        .expect_err("whitespace-only coverage bucket は source graph 登録時に拒否するべき");
+    let SourceGraphError::InvalidEvidenceField { field, value, span } = error else {
+        panic!("whitespace-only coverage bucket の source diagnostic を期待しました: {error:?}");
+    };
+    assert_eq!(field, "coverage");
+    assert_eq!(value, "  ");
     assert!(span.start < span.end);
     assert!(SOURCE[span.start..span.end].contains(":evidence"));
     assert!(SOURCE[span.start..span.end].contains(":coverage"));

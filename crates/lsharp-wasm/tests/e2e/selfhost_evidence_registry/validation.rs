@@ -585,6 +585,67 @@ fn test_e2e_selfhost_evidence_registry_rejects_duplicate_coverage_bucket() {
     );
 }
 
+/// EC-M2-02: whitespace-only coverage bucket は empty-field code 4 として拒否する。
+#[test]
+fn test_e2e_selfhost_evidence_registry_rejects_whitespace_only_coverage_bucket() {
+    let harness = r#"
+(defn main []
+  (let [nodes (vector-push-single-rooted-v3
+                (vector-new 0)
+                (source-node-record
+                  (source-node-claim)
+                  "claim:checkout/rejects"
+                  "rejects shipped orders"
+                  1
+                  2))
+        coverage-entry (vector-push-pair-rooted-v3 (vector-new 0) "  " 1)
+        coverage (vector-push-single-rooted-v3 (vector-new 0) coverage-entry)
+        payload (source-evidence-payload
+          "evidence:checkout/whitespace-coverage"
+          "claim:checkout/rejects"
+          "property"
+          "pass"
+          "runner"
+          "aarch64-apple-darwin"
+          "deadbeef"
+          "sha256:abc"
+          1
+          0
+          "generator"
+          (vector-new 0)
+          coverage
+          "producer"
+          "0.2"
+          "2026-07-25T00:00:00Z"
+          "same-author")
+        result (source-evidence-register-form
+          (source-evidence-registry-new)
+          nodes
+          (source-evidence-form payload 10 20))
+        error (source-result-error result)]
+    (do
+      (print (source-result-status result))
+      (print (source-evidence-error-code error))
+      (print-string (source-evidence-error-field error))
+      (print-string "\n")
+      (print-string "[")
+      (print-string (source-evidence-error-value error))
+      (print-string "]\n")
+      (print (source-evidence-error-start error))
+      (print (source-evidence-error-end error))
+      0)))
+"#;
+
+    let output = run_evidence_registry_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "4", "coverage", "[  ]", "10", "20"],
+        "whitespace-only coverage bucket は empty-field code 4 と raw value/span で拒否するべき"
+    );
+}
+
 /// EC-M2-02: coverage entry は bucket/count の2要素だけを受理する。
 #[test]
 fn test_e2e_selfhost_evidence_registry_rejects_malformed_coverage_entry() {
