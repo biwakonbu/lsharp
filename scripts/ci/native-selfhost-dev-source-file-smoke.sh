@@ -121,6 +121,7 @@ VALIDATION_EMPTY_EVIDENCE_TIMESTAMP_MANIFEST="$WORK_DIR/ec-m2-empty-evidence-tim
 VALIDATION_WHITESPACE_EVIDENCE_RUNNER_MANIFEST="$WORK_DIR/ec-m2-whitespace-evidence-runner-manifest.json"
 VALIDATION_WHITESPACE_EVIDENCE_SUBJECT_MANIFEST="$WORK_DIR/ec-m2-whitespace-evidence-subject-manifest.json"
 VALIDATION_WHITESPACE_EVIDENCE_ID_MANIFEST="$WORK_DIR/ec-m2-whitespace-evidence-id-manifest.json"
+VALIDATION_EMPTY_EVIDENCE_ID_MANIFEST="$WORK_DIR/ec-m2-empty-evidence-id-manifest.json"
 VALIDATION_MISSING_NODE_ID_MANIFEST="$WORK_DIR/ec-m2-missing-node-id-manifest.json"
 VALIDATION_MISSING_NODE_TEXT_MANIFEST="$WORK_DIR/ec-m2-missing-node-text-manifest.json"
 VALIDATION_WHITESPACE_NODE_TEXT_MANIFEST="$WORK_DIR/ec-m2-whitespace-node-text-manifest.json"
@@ -168,6 +169,7 @@ VALIDATION_EMPTY_EVIDENCE_TIMESTAMP_SOURCE="$WORK_DIR/ec-m2-empty-evidence-times
 VALIDATION_WHITESPACE_EVIDENCE_RUNNER_SOURCE="$WORK_DIR/ec-m2-whitespace-evidence-runner-source.ls"
 VALIDATION_WHITESPACE_EVIDENCE_SUBJECT_SOURCE="$WORK_DIR/ec-m2-whitespace-evidence-subject-source.ls"
 VALIDATION_WHITESPACE_EVIDENCE_ID_SOURCE="$WORK_DIR/ec-m2-whitespace-evidence-id-source.ls"
+VALIDATION_EMPTY_EVIDENCE_ID_SOURCE="$WORK_DIR/ec-m2-empty-evidence-id-source.ls"
 VALIDATION_MISSING_NODE_ID_SOURCE="$WORK_DIR/ec-m2-missing-node-id-source.ls"
 VALIDATION_MISSING_NODE_TEXT_SOURCE="$WORK_DIR/ec-m2-missing-node-text-source.ls"
 VALIDATION_WHITESPACE_NODE_TEXT_SOURCE="$WORK_DIR/ec-m2-whitespace-node-text-source.ls"
@@ -668,6 +670,26 @@ cat >"$VALIDATION_WHITESPACE_EVIDENCE_ID_SOURCE" <<'LSHARP'
     :seed 0
     :generator "whitespace-id-generator"
     :producer "whitespace-id-producer"
+    :tool-version "0.2.0-dev"
+    :timestamp "2026-07-28T00:00:00Z"
+    :independence "same-author"
+  true)
+LSHARP
+cat >"$VALIDATION_EMPTY_EVIDENCE_ID_SOURCE" <<'LSHARP'
+(defn empty-evidence-id []
+  :claim "claim:checkout/rejects" "The API rejects shipped orders"
+  :evidence ""
+    :subject "claim:checkout/rejects"
+    :method "case"
+    :outcome "pass"
+    :runner "empty-id-runner"
+    :target "aarch64-apple-darwin"
+    :source-commit "source-empty-id"
+    :artifact-digest "sha256:empty-id"
+    :cases 1
+    :seed 0
+    :generator "empty-id-generator"
+    :producer "empty-id-producer"
     :tool-version "0.2.0-dev"
     :timestamp "2026-07-28T00:00:00Z"
     :independence "same-author"
@@ -1393,6 +1415,16 @@ grep -F "source validation error:2" "$WORK_DIR/validation-whitespace-evidence-id
   || die "whitespace evidence ID validation must expose the invalid-id error code"
 [[ ! -e "$VALIDATION_WHITESPACE_EVIDENCE_ID_MANIFEST" ]] \
   || die "whitespace evidence ID validation must produce no report or manifest"
+
+run_expected_validation_error validation-empty-evidence-id \
+  validate \
+  --source "$VALIDATION_EMPTY_EVIDENCE_ID_SOURCE" \
+  --format json \
+  --emit-manifest "$VALIDATION_EMPTY_EVIDENCE_ID_MANIFEST"
+grep -F "source validation error:2" "$WORK_DIR/validation-empty-evidence-id.stderr" >/dev/null \
+  || die "empty evidence ID validation must expose the invalid-id error code"
+[[ ! -e "$VALIDATION_EMPTY_EVIDENCE_ID_MANIFEST" ]] \
+  || die "empty evidence ID validation must produce no report or manifest"
 
 run_expected_validation_error validation-missing-node-id \
   validate \

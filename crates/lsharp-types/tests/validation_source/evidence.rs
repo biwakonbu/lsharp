@@ -651,6 +651,39 @@ fn source_adapter_rejects_whitespace_only_evidence_id_as_invalid_id() {
 }
 
 #[test]
+fn source_adapter_rejects_empty_evidence_id_as_invalid_id() {
+    let program = parse(
+        r#"
+        (defn cancel []
+          :claim "claim:checkout/cancel" "The API rejects shipped orders"
+          :evidence ""
+            :subject "claim:checkout/cancel"
+            :method "case"
+            :outcome "pass"
+            :runner "empty-id-runner"
+            :target "aarch64-apple-darwin"
+            :source-commit "source-empty-id"
+            :artifact-digest "sha256:empty-id"
+            :cases 1
+            :seed 0
+            :generator "empty-id-generator"
+            :producer "empty-id-producer"
+            :tool-version "0.2.0-dev"
+            :timestamp "2026-07-28T00:00:00Z"
+            :independence "same-author"
+          true)
+        "#,
+    )
+    .expect("empty evidence ID fixture は parse できるべき");
+
+    assert!(matches!(
+        source_program_to_intent_graph(&program),
+        Err(SourceGraphError::EdgeId(StableIdError::InvalidWireFormat { value }))
+            if value.is_empty()
+    ));
+}
+
+#[test]
 fn source_adapter_registers_evidence_records_before_support_edges() {
     let program = parse(
         r#"

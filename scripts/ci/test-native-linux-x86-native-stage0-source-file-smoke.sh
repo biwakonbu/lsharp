@@ -159,6 +159,10 @@ for required in \
   'VALIDATION_WHITESPACE_EVIDENCE_ID_MANIFEST' \
   'run_expected_validation_error validation-whitespace-evidence-id' \
   'source validation error:2' \
+  'VALIDATION_EMPTY_EVIDENCE_ID_SOURCE' \
+  'VALIDATION_EMPTY_EVIDENCE_ID_MANIFEST' \
+  'run_expected_validation_error validation-empty-evidence-id' \
+  'source validation error:2' \
   'VALIDATION_MISSING_NODE_ID_SOURCE' \
   'VALIDATION_MISSING_NODE_ID_MANIFEST' \
   'run_expected_validation_error validation-missing-node-id' \
