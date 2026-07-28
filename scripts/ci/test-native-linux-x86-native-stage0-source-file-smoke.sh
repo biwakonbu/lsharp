@@ -126,6 +126,14 @@ for required in \
   'VALIDATION_MALFORMED_INVALIDATION_EDGE_MANIFEST' \
   'run_expected_validation_error validation-malformed-invalidation-edge' \
   'source validation error:1' \
+  'VALIDATION_MALFORMED_REVIEW_EDGE_EXTRA_SOURCE' \
+  'VALIDATION_MALFORMED_REVIEW_EDGE_EXTRA_MANIFEST' \
+  'run_expected_validation_error validation-malformed-review-edge-extra' \
+  'source validation error:1' \
+  'VALIDATION_MALFORMED_INVALIDATION_EDGE_EXTRA_SOURCE' \
+  'VALIDATION_MALFORMED_INVALIDATION_EDGE_EXTRA_MANIFEST' \
+  'run_expected_validation_error validation-malformed-invalidation-edge-extra' \
+  'source validation error:1' \
   'VALIDATION_REVIEW_SUBJECT_KIND_SOURCE' \
   'VALIDATION_REVIEW_SUBJECT_KIND_MANIFEST' \
   'run_expected_validation_error validation-review-subject-kind' \

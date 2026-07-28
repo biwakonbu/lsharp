@@ -138,6 +138,23 @@ fn review_and_change_edges_preserve_typed_wire_ids_and_source_order() {
 }
 
 #[test]
+fn review_and_change_edge_metadata_reject_extra_wire_ids() {
+    for (label, source) in [
+        (
+            "evaluates",
+            r#"(defn review [] :evaluates "review:checkout/reviewer-001" "claim:checkout/rejects" "extra" true)"#,
+        ),
+        (
+            "invalidates",
+            r#"(defn change [] :invalidates "change:checkout/api-v2" "evidence:checkout/review-001" "extra" true)"#,
+        ),
+    ] {
+        let error = parse(source).expect_err("review edge の余分な endpoint は拒否するべき");
+        assert_eq!(error.code(), "LS0101", "{label} の arity 診断が変わっている");
+    }
+}
+
+#[test]
 fn evidence_record_metadata_preserves_required_fields_and_source_span() {
     let program = parse(
         r#"
