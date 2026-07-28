@@ -302,6 +302,58 @@ fn parse_manifest_rejects_unknown_fields_and_reversed_spans() {
 }
 
 #[test]
+fn parse_manifest_rejects_unknown_fields_in_edge_payloads() {
+    let extra_edges = [
+        serde_json::json!({
+            "relation": "constrained-by",
+            "claim": {"namespace": "checkout", "key": "cancel-rejects-shipped"},
+            "assumption": {"namespace": "checkout", "key": "state-authoritative"}
+        }),
+        serde_json::json!({
+            "relation": "supports",
+            "observation": {"namespace": "checkout", "key": "review-001"},
+            "claim": {"namespace": "checkout", "key": "cancel-rejects-shipped"}
+        }),
+        serde_json::json!({
+            "relation": "contradicts",
+            "observation": {"namespace": "checkout", "key": "review-001"},
+            "claim": {"namespace": "checkout", "key": "cancel-rejects-shipped"}
+        }),
+        serde_json::json!({
+            "relation": "invalidates",
+            "change": {"namespace": "checkout", "key": "api-v2"},
+            "subject": {"kind": "evidence", "namespace": "checkout", "key": "review-001"}
+        }),
+    ];
+
+    for edge_index in 0..7 {
+        let mut value: serde_json::Value =
+            serde_json::from_str(complete_manifest()).expect("complete fixture should be JSON");
+        if let Some(nodes) = value["nodes"].as_array_mut() {
+            nodes.push(serde_json::json!({
+                "kind": "assumption",
+                "namespace": "checkout",
+                "key": "state-authoritative",
+                "text": "Shipment state is authoritative"
+            }));
+        }
+        if let Some(edges) = value["edges"].as_array_mut() {
+            edges.extend(extra_edges.iter().cloned());
+        }
+        value["edges"][edge_index]["unexpected"] = serde_json::json!(true);
+        let manifest = serde_json::to_string(&value).expect("manifest mutation should serialize");
+
+        assert!(
+            matches!(
+                parse_intent_graph_json(&manifest),
+                Err(ValidationInputError::Json(_))
+            ),
+            "unknown fields must be rejected for edge index {edge_index}"
+        );
+    }
+}
+
+#[test]
 fn parse_manifest_rejects_missing_top_level_required_fields() {
     for field in ["schema_version", "nodes", "evidence", "edges"] {
         let mut value: serde_json::Value =

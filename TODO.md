@@ -621,3 +621,11 @@ identity policyを manifest inputへ拡張した Rust verified partial sliceで�
 other duplicate keys、selfhost/native manifest parser、current-source artifact/runtime、supported 2 targets、
 EC-M2-02/EC-M3 aggregate は残件。Evidence:
 `docs/adr/decisions-v0.2-validation-manifest-duplicate-review.md`。
+
+2026-07-29 に version 1 JSON manifest の edge payload unknown-field boundary を追加した。tagged
+`EdgeInput` の relation variant ごとに許可 field を検査し、`motivates` / `constrained-by` /
+`tested-by` / `supports` / `contradicts` / `evaluates` / `invalidates` の未知 field と duplicate
+field を graph 登録前の `ValidationInputError::Json` として拒否することを全 variant fixture で固定した。
+Rust canonical manifest input の verified partial sliceであり、selfhost/native manifest parser、source
+producer、current-source artifact/runtime、supported 2 targets、EC-M2-02/EC-M2-03/EC-M3 aggregate は残件。
+Evidence: `docs/adr/decisions-v0.2-validation-manifest-edge-unknown-fields.md`。

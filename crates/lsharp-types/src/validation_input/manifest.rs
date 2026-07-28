@@ -207,6 +207,41 @@ pub(super) struct ProvenanceInput {
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "relation", rename_all = "kebab-case")]
+enum EdgeInputWire {
+    Motivates {
+        intent: IdInput,
+        claim: IdInput,
+    },
+    ConstrainedBy {
+        claim: IdInput,
+        assumption: IdInput,
+    },
+    TestedBy {
+        claim: IdInput,
+        contract: IdInput,
+    },
+    Supports {
+        observation: IdInput,
+        claim: IdInput,
+    },
+    Contradicts {
+        observation: IdInput,
+        claim: IdInput,
+    },
+    Evaluates {
+        review: IdInput,
+        subject: SubjectInput,
+    },
+    Invalidates {
+        change: IdInput,
+        subject: SubjectInput,
+    },
+}
+
+/// edge variant は internally tagged enum のため、serde の通常の enum derive だけでは
+/// payload の未知 field を無視してしまう。入力 manifest は versioned wire contract なので、
+/// variant ごとの許可 field を先に検査して fail-closed にする。
+#[derive(Debug)]
 pub(super) enum EdgeInput {
     Motivates {
         intent: IdInput,
@@ -236,6 +271,80 @@ pub(super) enum EdgeInput {
         change: IdInput,
         subject: SubjectInput,
     },
+}
+
+impl<'de> Deserialize<'de> for EdgeInput {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct EdgeInputVisitor;
+
+        impl<'de> Visitor<'de> for EdgeInputVisitor {
+            type Value = EdgeInput;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str("an intent graph edge object")
+            }
+
+            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+            where
+                A: MapAccess<'de>,
+            {
+                let mut fields = BTreeMap::new();
+                while let Some((key, value)) = map.next_entry::<String, serde_json::Value>()? {
+                    if fields.insert(key.clone(), value).is_some() {
+                        return Err(A::Error::custom(format!("duplicate edge field: {key:?}")));
+                    }
+                }
+
+                let relation = fields
+                    .get("relation")
+                    .and_then(serde_json::Value::as_str)
+                    .ok_or_else(|| A::Error::custom("edge relation is required"))?;
+                let allowed = match relation {
+                    "motivates" => &["relation", "intent", "claim"][..],
+                    "constrained-by" => &["relation", "claim", "assumption"][..],
+                    "tested-by" => &["relation", "claim", "contract"][..],
+                    "supports" | "contradicts" => &["relation", "observation", "claim"][..],
+                    "evaluates" => &["relation", "review", "subject"][..],
+                    "invalidates" => &["relation", "change", "subject"][..],
+                    _ => &["relation"][..],
+                };
+                if let Some(unexpected) = fields.keys().find(|key| !allowed.contains(&key.as_str()))
+                {
+                    return Err(A::Error::custom(format!(
+                        "unknown field in {relation} edge: {unexpected:?}"
+                    )));
+                }
+
+                let value = serde_json::Value::Object(fields.into_iter().collect());
+                let wire =
+                    serde_json::from_value::<EdgeInputWire>(value).map_err(A::Error::custom)?;
+                Ok(wire.into())
+            }
+        }
+
+        deserializer.deserialize_map(EdgeInputVisitor)
+    }
+}
+
+impl From<EdgeInputWire> for EdgeInput {
+    fn from(value: EdgeInputWire) -> Self {
+        match value {
+            EdgeInputWire::Motivates { intent, claim } => Self::Motivates { intent, claim },
+            EdgeInputWire::ConstrainedBy { claim, assumption } => {
+                Self::ConstrainedBy { claim, assumption }
+            }
+            EdgeInputWire::TestedBy { claim, contract } => Self::TestedBy { claim, contract },
+            EdgeInputWire::Supports { observation, claim } => Self::Supports { observation, claim },
+            EdgeInputWire::Contradicts { observation, claim } => {
+                Self::Contradicts { observation, claim }
+            }
+            EdgeInputWire::Evaluates { review, subject } => Self::Evaluates { review, subject },
+            EdgeInputWire::Invalidates { change, subject } => Self::Invalidates { change, subject },
+        }
+    }
 }
 
 impl SubjectKindInput {
