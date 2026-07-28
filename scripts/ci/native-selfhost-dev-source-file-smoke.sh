@@ -134,6 +134,7 @@ VALIDATION_EMPTY_EVIDENCE_ID_MANIFEST="$WORK_DIR/ec-m2-empty-evidence-id-manifes
 VALIDATION_MISSING_NODE_ID_MANIFEST="$WORK_DIR/ec-m2-missing-node-id-manifest.json"
 VALIDATION_MISSING_NODE_TEXT_MANIFEST="$WORK_DIR/ec-m2-missing-node-text-manifest.json"
 VALIDATION_WHITESPACE_NODE_TEXT_MANIFEST="$WORK_DIR/ec-m2-whitespace-node-text-manifest.json"
+VALIDATION_UNICODE_WHITESPACE_NODE_TEXT_MANIFEST="$WORK_DIR/ec-m2-unicode-whitespace-node-text-manifest.json"
 VALIDATION_NODE_TEXT_PRECEDENCE_MANIFEST="$WORK_DIR/ec-m2-node-text-precedence-manifest.json"
 VALIDATION_MISSING_REVIEW_MANIFEST="$WORK_DIR/ec-m3-missing-review-manifest.json"
 VALIDATION_MISSING_REVIEW_SUBJECT_KIND_MANIFEST="$WORK_DIR/ec-m3-missing-review-subject-kind-manifest.json"
@@ -195,6 +196,7 @@ VALIDATION_EMPTY_EVIDENCE_ID_SOURCE="$WORK_DIR/ec-m2-empty-evidence-id-source.ls
 VALIDATION_MISSING_NODE_ID_SOURCE="$WORK_DIR/ec-m2-missing-node-id-source.ls"
 VALIDATION_MISSING_NODE_TEXT_SOURCE="$WORK_DIR/ec-m2-missing-node-text-source.ls"
 VALIDATION_WHITESPACE_NODE_TEXT_SOURCE="$WORK_DIR/ec-m2-whitespace-node-text-source.ls"
+VALIDATION_UNICODE_WHITESPACE_NODE_TEXT_SOURCE="$WORK_DIR/ec-m2-unicode-whitespace-node-text-source.ls"
 VALIDATION_NODE_TEXT_PRECEDENCE_SOURCE="$WORK_DIR/ec-m2-node-text-precedence-source.ls"
 VALIDATION_MISSING_REVIEW_SOURCE="$WORK_DIR/ec-m3-missing-review-source.ls"
 VALIDATION_MISSING_REVIEW_SUBJECT_KIND_SOURCE="$WORK_DIR/ec-m3-missing-review-subject-kind-source.ls"
@@ -888,6 +890,11 @@ LSHARP
 cat >"$VALIDATION_WHITESPACE_NODE_TEXT_SOURCE" <<'LSHARP'
 (defn whitespace-node-text []
   :claim "claim:checkout/whitespace-text" "  "
+  true)
+LSHARP
+cat >"$VALIDATION_UNICODE_WHITESPACE_NODE_TEXT_SOURCE" <<'LSHARP'
+(defn unicode-whitespace-node-text []
+  :claim "claim:checkout/unicode-whitespace-text" " "
   true)
 LSHARP
 cat >"$VALIDATION_NODE_TEXT_PRECEDENCE_SOURCE" <<'LSHARP'
@@ -1748,6 +1755,16 @@ grep -F "source validation error:1" "$WORK_DIR/validation-whitespace-node-text.s
   || die "whitespace node text validation must expose the malformed parser error code"
 [[ ! -e "$VALIDATION_WHITESPACE_NODE_TEXT_MANIFEST" ]] \
   || die "whitespace node text validation must produce no report or manifest"
+
+run_expected_validation_error validation-unicode-whitespace-node-text \
+  validate \
+  --source "$VALIDATION_UNICODE_WHITESPACE_NODE_TEXT_SOURCE" \
+  --format json \
+  --emit-manifest "$VALIDATION_UNICODE_WHITESPACE_NODE_TEXT_MANIFEST"
+grep -F "source validation error:1" "$WORK_DIR/validation-unicode-whitespace-node-text.stderr" >/dev/null \
+  || die "Unicode whitespace node text validation must expose the malformed parser error code"
+[[ ! -e "$VALIDATION_UNICODE_WHITESPACE_NODE_TEXT_MANIFEST" ]] \
+  || die "Unicode whitespace node text validation must produce no report or manifest"
 
 run_expected_validation_error validation-node-text-precedence \
   validate \

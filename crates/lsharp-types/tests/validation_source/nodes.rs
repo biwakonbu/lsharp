@@ -271,6 +271,22 @@ fn source_adapter_rejects_whitespace_only_node_text() {
 }
 
 #[test]
+fn source_adapter_rejects_unicode_whitespace_only_node_text() {
+    const SOURCE: &str = r#"(defn cancel [] :claim "claim:checkout/unicode-whitespace-text" " " true)"#;
+    let program = parse(SOURCE).expect("Unicode whitespace node text fixture は parse できるべき");
+
+    let error = source_program_to_intent_graph(&program)
+        .expect_err("Unicode whitespace node text は source span 付きで拒否するべき");
+    let SourceGraphError::InvalidNodeField { field, value, span } = error else {
+        panic!("Unicode whitespace node text の source diagnostic を期待しました: {error:?}");
+    };
+    assert_eq!(field, "text");
+    assert_eq!(value, " ");
+    assert!(span.start < span.end);
+    assert!(SOURCE[span.start..span.end].contains(":claim"));
+}
+
+#[test]
 fn source_adapter_reports_empty_node_text_before_invalid_stable_id() {
     const SOURCE: &str = r#"(defn cancel [] :claim "claim:checkout/bad/key" "  " true)"#;
     let program =

@@ -276,6 +276,10 @@ fn test_e2e_selfhost_source_adapter_rejects_whitespace_only_node_text() {
     let output = run_source_adapter_runtime(harness);
     let lines: Vec<&str> = output.trim().lines().collect();
 
+    assert!(
+        lines.len() >= 6,
+        "Unicode whitespace node text の diagnostic output が不足しています: {lines:?}"
+    );
     assert_eq!(
         &lines[..4],
         ["0", "1", "7", "claim:checkout/whitespace-text"],
@@ -287,6 +291,55 @@ fn test_e2e_selfhost_source_adapter_rejects_whitespace_only_node_text() {
     let end = lines[5]
         .parse::<usize>()
         .expect("whitespace node text の end span は整数であるべき");
+    assert!(start < end);
+    assert!(SOURCE[start..end].starts_with(":claim"));
+}
+
+/// EC-M2-01: Unicode whitespace-only node 本文は Rust canonical と同じく拒否する。
+#[test]
+fn test_e2e_selfhost_source_adapter_rejects_unicode_whitespace_only_node_text() {
+    const SOURCE: &str =
+        r#"(defn bad [] :claim "claim:checkout/unicode-whitespace-text" " " true)"#;
+    let harness = r#"
+(defn main []
+  (let [result (source-graph-from-program
+                 (parse-program "(defn bad [] :claim \"claim:checkout/unicode-whitespace-text\" \" \" true)"))]
+    (if (= (source-graph-result-status result) 0)
+      (let [error (source-graph-result-error result)]
+        (do
+          (print (source-graph-result-status result))
+          (print (source-graph-error-code error))
+          (print (source-graph-error-kind error))
+          (print-string (source-graph-error-id error))
+          (print-string "\n")
+          (print (source-graph-error-start error))
+          (print (source-graph-error-end error))
+          (print-string "\n")
+          0))
+      (do
+        (print (source-graph-result-status result))
+        (print-string "accepted\n")
+        0))))
+"#;
+
+    let output = run_source_adapter_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 6,
+        "Unicode whitespace node text の diagnostic output が不足しています: {lines:?}"
+    );
+    assert_eq!(
+        &lines[..4],
+        ["0", "1", "7", "claim:checkout/unicode-whitespace-text"],
+        "selfhost source node の Unicode whitespace-only text は malformed として拒否するべき"
+    );
+    let start = lines[4]
+        .parse::<usize>()
+        .expect("Unicode whitespace node text の start span は整数であるべき");
+    let end = lines[5]
+        .parse::<usize>()
+        .expect("Unicode whitespace node text の end span は整数であるべき");
     assert!(start < end);
     assert!(SOURCE[start..end].starts_with(":claim"));
 }

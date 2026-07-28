@@ -307,20 +307,8 @@
       (vector-new 0)
       (vector-get metadata 5))))
 
-(defn source-node-whitespace? [char]
-  (or
-    (or (= char 32) (= char 9))
-    (or (= char 10) (= char 13))))
-
-(defn source-node-nonblank-loop [value idx len]
-  (if (>= idx len)
-    0
-    (if (source-node-whitespace? (string-char-at value idx))
-      (source-node-nonblank-loop value (+ idx 1) len)
-      1)))
-
 (defn source-node-nonblank? [value]
-  (source-node-nonblank-loop value 0 (string-length value)))
+  (validation-nonblank? value))
 
 (defn source-node-form-result [form]
   (if (< (vector-length form) 4)
