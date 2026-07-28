@@ -585,3 +585,12 @@ execution の `runner` / `target` / `source_commit` / `artifact_digest` と samp
 node/review/coverage Unicode parity、selfhost/native manifest parser、current-source artifact/runtime、
 supported 2 targets、EC-M2-02/EC-M3 aggregate は残件。Evidence:
 `docs/adr/decisions-v0.2-validation-manifest-evidence-unicode-whitespace.md`。
+
+2026-07-29 に version 1 JSON manifest の node text Unicode whitespace boundary を追加した。complete
+manifest の intent node text を NBSP-only に変異させ、canonical `IntentNode` の登録前に
+`ValidationInputError::Node(NodeTextError::EmptyText)` として拒否することを
+`parse_manifest_rejects_unicode_whitespace_only_node_text` で固定した。Rust source adapter と同じ
+`str::trim()` policyを manifest inputへ拡張した verified partial sliceであり、manifest の review/
+coverage Unicode parity、selfhost/native manifest parser、current-source artifact/runtime、supported
+2 targets、EC-M2-01/EC-M3 aggregate は残件。Evidence:
+`docs/adr/decisions-v0.2-validation-manifest-node-text-unicode-whitespace.md`。

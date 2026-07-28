@@ -1,4 +1,5 @@
 use lsharp_types::evidence::{EvidenceValidationError, GraphError};
+use lsharp_types::intent::NodeTextError;
 use lsharp_types::validation::{IntentGraph, ValidationStatus};
 use lsharp_types::validation_input::{ValidationInputError, parse_intent_graph_json};
 
@@ -418,6 +419,19 @@ fn parse_manifest_rejects_unicode_whitespace_only_required_evidence_fields() {
             "manifest field {field} must reject Unicode whitespace-only values"
         );
     }
+}
+
+#[test]
+fn parse_manifest_rejects_unicode_whitespace_only_node_text() {
+    let manifest = complete_manifest().replace(
+        "\"text\": \"Users can cancel before shipment\"",
+        "\"text\": \"\u{00A0}\"",
+    );
+
+    assert!(matches!(
+        parse_intent_graph_json(&manifest),
+        Err(ValidationInputError::Node(NodeTextError::EmptyText))
+    ));
 }
 
 #[test]
