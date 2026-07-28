@@ -236,6 +236,35 @@ fn test_e2e_selfhost_source_evidence_rejects_whitespace_only_runner() {
     );
 }
 
+/// EC-M2-02: whitespace-only subject は required-field ではなく invalid stable ID として拒否する。
+#[test]
+fn test_e2e_selfhost_source_evidence_rejects_whitespace_only_subject_as_invalid_id() {
+    let harness = r#"
+(defn main []
+  (let [result (source-evidence-graph-from-program
+                 (parse-program "(defn cancel [] :claim \"claim:checkout/cancel\" \"The API rejects shipped orders\" :evidence \"evidence:checkout/whitespace-subject\" :subject \"  \" :method \"case\" :outcome \"pass\" :runner \"whitespace-subject-runner\" :target \"aarch64-apple-darwin\" :source-commit \"source-whitespace-subject\" :artifact-digest \"sha256:whitespace-subject\" :cases 1 :seed 0 :generator \"whitespace-subject-generator\" :producer \"whitespace-subject-producer\" :tool-version \"0.2.0-dev\" :timestamp \"2026-07-28T00:00:00Z\" :independence \"same-author\" true)"))
+        error (source-result-error result)]
+    (do
+      (print (source-result-status result))
+      (print (source-evidence-error-code error))
+      (print-string (source-evidence-error-field error))
+      (print-string "\n")
+      (print-string "[")
+      (print-string (source-evidence-error-value error))
+      (print-string "]\n")
+      0)))
+"#;
+
+    let output = run_evidence_registry_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "2", "subject", "[  ]"],
+        "source evidence の whitespace-only subject は invalid stable ID として拒否するべき"
+    );
+}
+
 /// EC-M2-02: coverage bucket の重複は deterministic sampling plan を壊すため拒否する。
 #[test]
 fn test_e2e_selfhost_evidence_registry_rejects_duplicate_coverage_bucket() {

@@ -115,31 +115,29 @@
 (defn source-evidence-empty-field [payload]
   (if (= (source-evidence-nonblank? (vector-get payload 0)) 0)
     "id"
-    (if (= (source-evidence-nonblank? (vector-get payload 1)) 0)
-      "subject"
-      (if (= (source-evidence-nonblank? (vector-get payload 2)) 0)
-        "method"
-        (if (= (source-evidence-nonblank? (vector-get payload 3)) 0)
-          "outcome"
-          (if (= (source-evidence-nonblank? (vector-get payload 4)) 0)
-            "runner"
-            (if (= (source-evidence-nonblank? (vector-get payload 5)) 0)
-              "target"
-              (if (= (source-evidence-nonblank? (vector-get payload 6)) 0)
-                "source-commit"
-                (if (= (source-evidence-nonblank? (vector-get payload 7)) 0)
-                  "artifact-digest"
-                  (if (= (source-evidence-nonblank? (vector-get payload 10)) 0)
-                    "generator"
-                    (if (= (source-evidence-nonblank? (vector-get payload 13)) 0)
-                      "producer"
-                      (if (= (source-evidence-nonblank? (vector-get payload 14)) 0)
-                        "tool-version"
-                        (if (= (source-evidence-nonblank? (vector-get payload 15)) 0)
-                          "timestamp"
-                          (if (= (source-evidence-nonblank? (vector-get payload 16)) 0)
-                            "independence"
-                            ""))))))))))))))
+    (if (= (source-evidence-nonblank? (vector-get payload 2)) 0)
+      "method"
+      (if (= (source-evidence-nonblank? (vector-get payload 3)) 0)
+        "outcome"
+        (if (= (source-evidence-nonblank? (vector-get payload 4)) 0)
+          "runner"
+          (if (= (source-evidence-nonblank? (vector-get payload 5)) 0)
+            "target"
+            (if (= (source-evidence-nonblank? (vector-get payload 6)) 0)
+              "source-commit"
+              (if (= (source-evidence-nonblank? (vector-get payload 7)) 0)
+                "artifact-digest"
+                (if (= (source-evidence-nonblank? (vector-get payload 10)) 0)
+                  "generator"
+                  (if (= (source-evidence-nonblank? (vector-get payload 13)) 0)
+                    "producer"
+                    (if (= (source-evidence-nonblank? (vector-get payload 14)) 0)
+                      "tool-version"
+                      (if (= (source-evidence-nonblank? (vector-get payload 15)) 0)
+                        "timestamp"
+                        (if (= (source-evidence-nonblank? (vector-get payload 16)) 0)
+                          "independence"
+                          "")))))))))))))
 
 (defn source-evidence-method-valid? [value]
   (if
@@ -223,28 +221,30 @@
             (source-result 0 (source-evidence-error (source-evidence-error-empty-field) empty-field "" start end))
             (if (= (source-wire-valid? id (source-edge-supports)) 0)
               (source-result 0 (source-evidence-error (source-evidence-error-invalid-id) "id" id start end))
-              (if (= subject-kind 0)
-                (source-result 0 (source-evidence-error (source-evidence-error-invalid-subject) "subject" subject start end))
-                (if (and
-                      (or (= subject-kind (source-node-intent)) (= subject-kind (source-node-claim)))
-                      (= (source-node-id-exists? nodes subject) 0))
-                  (source-result 0 (source-evidence-error (source-evidence-error-missing-subject) "subject" subject start end))
-                  (if (= (source-evidence-method-valid? method) 0)
-                    (source-result 0 (source-evidence-error (source-evidence-error-invalid-method) "method" method start end))
-                    (if (= (source-evidence-outcome-valid? outcome) 0)
-                      (source-result 0 (source-evidence-error (source-evidence-error-invalid-outcome) "outcome" outcome start end))
-                      (if (= (source-evidence-independence-valid? (vector-get payload 16)) 0)
-                        (source-result 0 (source-evidence-error (source-evidence-error-invalid-independence) "independence" (vector-get payload 16) start end))
-                        (if (< (vector-get payload 8) 0)
-                          (source-result 0 (source-evidence-error (source-evidence-error-invalid-sampling) "cases" "" start end))
-                          (if (< (vector-get payload 9) 0)
-                            (source-result 0 (source-evidence-error (source-evidence-error-invalid-sampling) "seed" "" start end))
-                            (if (= (source-evidence-shrinks-valid-loop (vector-get payload 11) 0 (vector-length (vector-get payload 11))) 0)
-                              (source-result 0 (source-evidence-error (source-evidence-error-invalid-sampling) "shrinks" "" start end))
-                              (let [coverage-result (source-evidence-coverage-valid-loop (vector-get payload 12) 0 (vector-length (vector-get payload 12)))]
-                                (if (= (source-result-status coverage-result) 0)
-                                  coverage-result
-                                  (source-result 1 form))))))))))))))))))
+              (if (= (source-wire-shape-valid? subject) 0)
+                (source-result 0 (source-evidence-error (source-evidence-error-invalid-id) "subject" subject start end))
+                (if (= subject-kind 0)
+                  (source-result 0 (source-evidence-error (source-evidence-error-invalid-subject) "subject" subject start end))
+                  (if (and
+                        (or (= subject-kind (source-node-intent)) (= subject-kind (source-node-claim)))
+                        (= (source-node-id-exists? nodes subject) 0))
+                    (source-result 0 (source-evidence-error (source-evidence-error-missing-subject) "subject" subject start end))
+                    (if (= (source-evidence-method-valid? method) 0)
+                      (source-result 0 (source-evidence-error (source-evidence-error-invalid-method) "method" method start end))
+                      (if (= (source-evidence-outcome-valid? outcome) 0)
+                        (source-result 0 (source-evidence-error (source-evidence-error-invalid-outcome) "outcome" outcome start end))
+                        (if (= (source-evidence-independence-valid? (vector-get payload 16)) 0)
+                          (source-result 0 (source-evidence-error (source-evidence-error-invalid-independence) "independence" (vector-get payload 16) start end))
+                          (if (< (vector-get payload 8) 0)
+                            (source-result 0 (source-evidence-error (source-evidence-error-invalid-sampling) "cases" "" start end))
+                            (if (< (vector-get payload 9) 0)
+                              (source-result 0 (source-evidence-error (source-evidence-error-invalid-sampling) "seed" "" start end))
+                              (if (= (source-evidence-shrinks-valid-loop (vector-get payload 11) 0 (vector-length (vector-get payload 11))) 0)
+                                (source-result 0 (source-evidence-error (source-evidence-error-invalid-sampling) "shrinks" "" start end))
+                                (let [coverage-result (source-evidence-coverage-valid-loop (vector-get payload 12) 0 (vector-length (vector-get payload 12)))]
+                                  (if (= (source-result-status coverage-result) 0)
+                                    coverage-result
+                                    (source-result 1 form)))))))))))))))))))
 
 (defn source-evidence-registry-new [] (vector-new 0))
 (defn source-evidence-registry-length [registry] (vector-length registry))

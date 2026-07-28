@@ -4,6 +4,7 @@ use lsharp_syntax::parse;
 use lsharp_types::evidence::{
     EvidenceMethod, EvidenceOutcome, EvidenceValidationError, GraphError, Independence,
 };
+use lsharp_types::intent::StableIdError;
 use lsharp_types::validation_input::parse_intent_graph_json;
 use lsharp_types::validation_source::{source_program_to_intent_graph, SourceGraphError};
 
@@ -580,6 +581,39 @@ fn source_adapter_rejects_whitespace_only_required_execution_runner() {
         SourceGraphError::Graph(GraphError::InvalidEvidence {
             source: EvidenceValidationError::EmptyField { field: "runner" }
         })
+    ));
+}
+
+#[test]
+fn source_adapter_rejects_whitespace_only_evidence_subject_as_invalid_id() {
+    let program = parse(
+        r#"
+        (defn cancel []
+          :claim "claim:checkout/cancel" "The API rejects shipped orders"
+          :evidence "evidence:checkout/whitespace-subject"
+            :subject "  "
+            :method "case"
+            :outcome "pass"
+            :runner "whitespace-subject-runner"
+            :target "aarch64-apple-darwin"
+            :source-commit "source-whitespace-subject"
+            :artifact-digest "sha256:whitespace-subject"
+            :cases 1
+            :seed 0
+            :generator "whitespace-subject-generator"
+            :producer "whitespace-subject-producer"
+            :tool-version "0.2.0-dev"
+            :timestamp "2026-07-28T00:00:00Z"
+            :independence "same-author"
+          true)
+        "#,
+    )
+    .expect("whitespace subject fixture は parse できるべき");
+
+    assert!(matches!(
+        source_program_to_intent_graph(&program),
+        Err(SourceGraphError::EdgeId(StableIdError::InvalidWireFormat { value }))
+            if value == "  "
     ));
 }
 

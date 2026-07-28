@@ -119,6 +119,7 @@ VALIDATION_EMPTY_EVIDENCE_PRODUCER_MANIFEST="$WORK_DIR/ec-m2-empty-evidence-prod
 VALIDATION_EMPTY_EVIDENCE_TOOL_VERSION_MANIFEST="$WORK_DIR/ec-m2-empty-evidence-tool-version-manifest.json"
 VALIDATION_EMPTY_EVIDENCE_TIMESTAMP_MANIFEST="$WORK_DIR/ec-m2-empty-evidence-timestamp-manifest.json"
 VALIDATION_WHITESPACE_EVIDENCE_RUNNER_MANIFEST="$WORK_DIR/ec-m2-whitespace-evidence-runner-manifest.json"
+VALIDATION_WHITESPACE_EVIDENCE_SUBJECT_MANIFEST="$WORK_DIR/ec-m2-whitespace-evidence-subject-manifest.json"
 VALIDATION_MISSING_NODE_ID_MANIFEST="$WORK_DIR/ec-m2-missing-node-id-manifest.json"
 VALIDATION_MISSING_NODE_TEXT_MANIFEST="$WORK_DIR/ec-m2-missing-node-text-manifest.json"
 VALIDATION_WHITESPACE_NODE_TEXT_MANIFEST="$WORK_DIR/ec-m2-whitespace-node-text-manifest.json"
@@ -164,6 +165,7 @@ VALIDATION_EMPTY_EVIDENCE_PRODUCER_SOURCE="$WORK_DIR/ec-m2-empty-evidence-produc
 VALIDATION_EMPTY_EVIDENCE_TOOL_VERSION_SOURCE="$WORK_DIR/ec-m2-empty-evidence-tool-version-source.ls"
 VALIDATION_EMPTY_EVIDENCE_TIMESTAMP_SOURCE="$WORK_DIR/ec-m2-empty-evidence-timestamp-source.ls"
 VALIDATION_WHITESPACE_EVIDENCE_RUNNER_SOURCE="$WORK_DIR/ec-m2-whitespace-evidence-runner-source.ls"
+VALIDATION_WHITESPACE_EVIDENCE_SUBJECT_SOURCE="$WORK_DIR/ec-m2-whitespace-evidence-subject-source.ls"
 VALIDATION_MISSING_NODE_ID_SOURCE="$WORK_DIR/ec-m2-missing-node-id-source.ls"
 VALIDATION_MISSING_NODE_TEXT_SOURCE="$WORK_DIR/ec-m2-missing-node-text-source.ls"
 VALIDATION_WHITESPACE_NODE_TEXT_SOURCE="$WORK_DIR/ec-m2-whitespace-node-text-source.ls"
@@ -624,6 +626,26 @@ cat >"$VALIDATION_WHITESPACE_EVIDENCE_RUNNER_SOURCE" <<'LSHARP'
     :seed 0
     :generator "whitespace-evidence-runner-generator"
     :producer "whitespace-evidence-runner-producer"
+    :tool-version "0.2.0-dev"
+    :timestamp "2026-07-28T00:00:00Z"
+    :independence "same-author"
+  true)
+LSHARP
+cat >"$VALIDATION_WHITESPACE_EVIDENCE_SUBJECT_SOURCE" <<'LSHARP'
+(defn whitespace-evidence-subject []
+  :claim "claim:checkout/rejects" "The API rejects shipped orders"
+  :evidence "evidence:checkout/whitespace-subject"
+    :subject "  "
+    :method "case"
+    :outcome "pass"
+    :runner "whitespace-subject-runner"
+    :target "aarch64-apple-darwin"
+    :source-commit "source-whitespace-subject"
+    :artifact-digest "sha256:whitespace-subject"
+    :cases 1
+    :seed 0
+    :generator "whitespace-subject-generator"
+    :producer "whitespace-subject-producer"
     :tool-version "0.2.0-dev"
     :timestamp "2026-07-28T00:00:00Z"
     :independence "same-author"
@@ -1329,6 +1351,16 @@ grep -F "source validation error:4" "$WORK_DIR/validation-whitespace-evidence-ru
   || die "whitespace evidence runner validation must expose the required-field error code"
 [[ ! -e "$VALIDATION_WHITESPACE_EVIDENCE_RUNNER_MANIFEST" ]] \
   || die "whitespace evidence runner validation must produce no report or manifest"
+
+run_expected_validation_error validation-whitespace-evidence-subject \
+  validate \
+  --source "$VALIDATION_WHITESPACE_EVIDENCE_SUBJECT_SOURCE" \
+  --format json \
+  --emit-manifest "$VALIDATION_WHITESPACE_EVIDENCE_SUBJECT_MANIFEST"
+grep -F "source validation error:2" "$WORK_DIR/validation-whitespace-evidence-subject.stderr" >/dev/null \
+  || die "whitespace evidence subject validation must expose the invalid-id error code"
+[[ ! -e "$VALIDATION_WHITESPACE_EVIDENCE_SUBJECT_MANIFEST" ]] \
+  || die "whitespace evidence subject validation must produce no report or manifest"
 
 run_expected_validation_error validation-missing-node-id \
   validate \
