@@ -94,6 +94,10 @@ for required in \
   'VALIDATION_MALFORMED_EVIDENCE_MANIFEST' \
   'run_expected_validation_error validation-malformed-evidence' \
   'source validation error:1' \
+  'VALIDATION_INVALID_EVIDENCE_SOURCE' \
+  'VALIDATION_INVALID_EVIDENCE_MANIFEST' \
+  'run_expected_validation_error validation-invalid-evidence' \
+  'source validation error:8' \
   'VALIDATION_MISSING_REVIEW_SOURCE' \
   'VALIDATION_MISSING_REVIEW_MANIFEST' \
   'run_expected_validation_error validation-missing-review' \

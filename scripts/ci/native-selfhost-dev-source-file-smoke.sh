@@ -104,6 +104,7 @@ VALIDATION_INVALID_ID_MANIFEST="$WORK_DIR/ec-m3-invalid-id-manifest.json"
 VALIDATION_KIND_MISMATCH_MANIFEST="$WORK_DIR/ec-m3-kind-mismatch-manifest.json"
 VALIDATION_EVIDENCE_REGISTRY_MANIFEST="$WORK_DIR/ec-m3-evidence-registry-manifest.json"
 VALIDATION_MALFORMED_EVIDENCE_MANIFEST="$WORK_DIR/ec-m3-malformed-evidence-manifest.json"
+VALIDATION_INVALID_EVIDENCE_MANIFEST="$WORK_DIR/ec-m3-invalid-evidence-manifest.json"
 VALIDATION_MISSING_REVIEW_MANIFEST="$WORK_DIR/ec-m3-missing-review-manifest.json"
 VALIDATION_DUPLICATE_REVIEW_MANIFEST="$WORK_DIR/ec-m3-duplicate-review-manifest.json"
 VALIDATION_INVALID_REVIEW_MANIFEST="$WORK_DIR/ec-m3-invalid-review-manifest.json"
@@ -131,6 +132,7 @@ VALIDATION_INVALID_ID_SOURCE="$WORK_DIR/ec-m3-invalid-id-source.ls"
 VALIDATION_KIND_MISMATCH_SOURCE="$WORK_DIR/ec-m3-kind-mismatch-source.ls"
 VALIDATION_EVIDENCE_REGISTRY_SOURCE="$WORK_DIR/ec-m3-evidence-registry-source.ls"
 VALIDATION_MALFORMED_EVIDENCE_SOURCE="$WORK_DIR/ec-m3-malformed-evidence-source.ls"
+VALIDATION_INVALID_EVIDENCE_SOURCE="$WORK_DIR/ec-m3-invalid-evidence-source.ls"
 VALIDATION_MISSING_REVIEW_SOURCE="$WORK_DIR/ec-m3-missing-review-source.ls"
 VALIDATION_DUPLICATE_REVIEW_SOURCE="$WORK_DIR/ec-m3-duplicate-review-source.ls"
 VALIDATION_INVALID_REVIEW_SOURCE="$WORK_DIR/ec-m3-invalid-review-source.ls"
@@ -275,6 +277,26 @@ cat >"$VALIDATION_MALFORMED_EVIDENCE_SOURCE" <<'LSHARP'
 (defn malformed-evidence []
   :evidence "evidence:checkout/malformed"
     :subject "claim:checkout/rejects"
+  true)
+LSHARP
+cat >"$VALIDATION_INVALID_EVIDENCE_SOURCE" <<'LSHARP'
+(defn invalid-evidence-method []
+  :claim "claim:checkout/rejects" "The API rejects shipped orders"
+  :evidence "evidence:checkout/invalid-method"
+    :subject "claim:checkout/rejects"
+    :method "not-a-method"
+    :outcome "pass"
+    :runner "invalid-evidence-method-runner"
+    :target "aarch64-apple-darwin"
+    :source-commit "source-invalid-evidence-method"
+    :artifact-digest "sha256:invalid-evidence-method"
+    :cases 1
+    :seed 0
+    :generator "invalid-evidence-method-generator"
+    :producer "invalid-evidence-method-producer"
+    :tool-version "0.2.0-dev"
+    :timestamp "2026-07-28T00:00:00Z"
+    :independence "same-author"
   true)
 LSHARP
 cat >"$VALIDATION_MISSING_REVIEW_SOURCE" <<'LSHARP'
@@ -812,6 +834,16 @@ grep -F "source validation error:1" "$WORK_DIR/validation-malformed-evidence.std
   || die "malformed evidence validation must expose the malformed error code"
 [[ ! -e "$VALIDATION_MALFORMED_EVIDENCE_MANIFEST" ]] \
   || die "malformed evidence validation must produce no report or manifest"
+
+run_expected_validation_error validation-invalid-evidence \
+  validate \
+  --source "$VALIDATION_INVALID_EVIDENCE_SOURCE" \
+  --format json \
+  --emit-manifest "$VALIDATION_INVALID_EVIDENCE_MANIFEST"
+grep -F "source validation error:8" "$WORK_DIR/validation-invalid-evidence.stderr" >/dev/null \
+  || die "invalid evidence validation must expose the invalid-field error code"
+[[ ! -e "$VALIDATION_INVALID_EVIDENCE_MANIFEST" ]] \
+  || die "invalid evidence validation must produce no report or manifest"
 
 run_expected_validation_error validation-missing-review \
   validate \

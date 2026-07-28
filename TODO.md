@@ -157,6 +157,11 @@
   syntax oracle の evidence metadata required-field `LS0101` 診断と同じ parser boundary を native
   contractへ接続する verified sliceだが、current source-commit に一致する実 stage0 artifact/runtime
   の evidence ではない。
+  さらに evidence の method enum が未定義となる source fixture を native smoke に追加し、stable な
+  `source validation error:8`、exit `1`、report/manifestなしの fail-closed 境界を要求した。Rust
+  source adapter の `InvalidEvidenceField` 診断と同じ typed evidence field boundary を native
+  contractへ接続する verified sliceだが、current source-commit に一致する実 stage0 artifact/runtime
+  の evidence ではない。
   さらに review registry が存在する状態で未登録 review を `evaluates` する source fixture を native
   smoke に追加し、stable な `source validation error:10`、exit `1`、report/manifestなしの fail-closed
   境界を要求した。既存 Rust source adapter の `MissingReview` 診断と同じ review registry closure
