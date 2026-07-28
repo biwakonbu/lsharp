@@ -565,6 +565,12 @@ ADR: `docs/adr/decisions-v0.2-native-validation-evidence-negative-shrinks.md`。
 current-source stage0 artifact/runtime、sampling の実行意味論、supported 2 targets、EC-M2-02/03 aggregate
 は残件。ADR: `docs/adr/decisions-v0.2-native-validation-cli-negative-sampling.md`。
 
+さらに `validate --source` の `seed` / `shrinks` 負値 boundary を EmbeddedCli の Rust-host actual Wasm
+へ拡張した。`:seed -1` と `:shrinks [-1]` の両 fixtureで `source validation error:11`、exit `1`、
+validation reportなし、`--emit-manifest` の出力なしを同一 bundle の実行で固定した。current-source
+stage0 artifact/runtime、sampling の実行意味論、supported 2 targets、EC-M2-02/03 aggregate は残件。
+ADR: `docs/adr/decisions-v0.2-native-validation-cli-negative-sampling.md`。
+
 さらに version 1 JSON manifest の `sampling.coverage` duplicate key を map 化前の serde visitor で
 拒否し、後続値への黙った上書きを防ぐ Rust canonical input boundary を verified slice として追加した。
 selfhost/native manifest parity、coverage count/cases の意味論、current-source artifact/runtime は残る。

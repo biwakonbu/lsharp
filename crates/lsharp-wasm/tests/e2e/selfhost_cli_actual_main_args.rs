@@ -92,6 +92,30 @@ fn run_main_with_input_file_capture(
     output
 }
 
+fn run_compiled_embedded_cli_with_input_file_capture(
+    wasm: &[u8],
+    prefix: &str,
+    source: &str,
+    args: &[&str],
+) -> (lsharp_wasm::wasi_runner::ExecutionOutput, bool) {
+    let dir = cli_main_args_fixture_dir(prefix);
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("EmbeddedCli fixture directory の作成に失敗");
+    std::fs::write(dir.join("input.ls"), source)
+        .expect("EmbeddedCli fixture input.ls の書き込みに失敗");
+
+    let output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_args_and_stdin_capture(
+        wasm,
+        Some(&dir),
+        args,
+        "",
+    )
+    .expect("EmbeddedCli compiled wasm の実行に失敗");
+    let manifest_exists = dir.join("intent-graph.json").exists();
+    let _ = std::fs::remove_dir_all(&dir);
+    (output, manifest_exists)
+}
+
 fn run_main_with_input_file_capture_preserve_dir(
     bundle: &str,
     prefix: &str,
@@ -714,6 +738,99 @@ fn test_e2e_selfhost_embedded_cli_validate_source_rejects_negative_sampling_with
         output.stdout
     );
     assert!(!manifest_exists, "EmbeddedCli は invalid sampling で manifest を残さないべき");
+}
+
+/// EC-M2-02/EC-M3-03: EmbeddedCli の seed/shrinks sampling error も report/manifest を残さず fail-closed にする。
+#[test]
+fn test_e2e_selfhost_embedded_cli_validate_source_rejects_negative_seed_and_shrinks_without_report_or_manifest() {
+    let sources = [
+        (
+            "negative_seed",
+            r#"
+(defn invalid []
+  :claim "claim:checkout/negative-seed" "The API rejects negative seed"
+  :evidence "evidence:checkout/negative-seed"
+    :subject "claim:checkout/negative-seed"
+    :method "property"
+    :outcome "pass"
+    :runner "source-negative-seed"
+    :target "aarch64-apple-darwin"
+    :source-commit "source-negative-seed-commit"
+    :artifact-digest "sha256:source-negative-seed"
+    :cases 1
+    :seed -1
+    :generator "source-negative-seed-generator"
+    :producer "source-negative-seed-producer"
+    :tool-version "0.2.0-dev"
+    :timestamp "2026-07-29T00:00:00Z"
+    :independence "same-author"
+  true)
+"#,
+        ),
+        (
+            "negative_shrinks",
+            r#"
+(defn invalid []
+  :claim "claim:checkout/negative-shrinks" "The API rejects negative shrinks"
+  :evidence "evidence:checkout/negative-shrinks"
+    :subject "claim:checkout/negative-shrinks"
+    :method "property"
+    :outcome "pass"
+    :runner "source-negative-shrinks"
+    :target "aarch64-apple-darwin"
+    :source-commit "source-negative-shrinks-commit"
+    :artifact-digest "sha256:source-negative-shrinks"
+    :cases 1
+    :seed 0
+    :generator "source-negative-shrinks-generator"
+    :shrinks [-1]
+    :producer "source-negative-shrinks-producer"
+    :tool-version "0.2.0-dev"
+    :timestamp "2026-07-29T00:00:00Z"
+    :independence "same-author"
+  true)
+"#,
+        ),
+    ];
+
+    run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        let wasm = compile_only(selfhost_embedded_cli_runtime_bundle());
+        for (field, source) in sources {
+            let (output, manifest_exists) = run_compiled_embedded_cli_with_input_file_capture(
+                &wasm,
+                &format!("validate_negative_{field}"),
+                source,
+                &[
+                    "validate",
+                    "--source",
+                    "input.ls",
+                    "--format",
+                    "json",
+                    "--emit-manifest",
+                    "intent-graph.json",
+                ],
+            );
+            assert_eq!(
+                output.exit_code, 1,
+                "EmbeddedCli の negative {field} は exit code 1 で拒否するべき: stdout={:?}",
+                output.stdout
+            );
+            assert!(
+                output.stdout.contains("source validation error:11"),
+                "EmbeddedCli は negative {field} の入力診断を出すべき: {}",
+                output.stdout
+            );
+            assert!(
+                !output.stdout.contains("\"status\""),
+                "EmbeddedCli は negative {field} の report を出力しないべき: {}",
+                output.stdout
+            );
+            assert!(
+                !manifest_exists,
+                "EmbeddedCli は negative {field} で manifest を残さないべき"
+            );
+        }
+    });
 }
 
 /// EC-M3-03: EmbeddedCli は validate source の report と manifest を同時に出力すること
