@@ -531,6 +531,60 @@ fn parse_manifest_rejects_invalid_evidence_subject_kind() {
 }
 
 #[test]
+fn parse_manifest_reports_invalid_evaluates_subject_kind() {
+    let manifest = r#"
+    {
+      "schema_version": 1,
+      "nodes": [],
+      "evidence": [],
+      "edges": [
+        {
+          "relation": "evaluates",
+          "review": {"namespace": "checkout", "key": "reviewer-001"},
+          "subject": {"kind": "contract", "namespace": "checkout", "key": "cancel-case"}
+        }
+      ]
+    }
+    "#;
+
+    assert!(matches!(
+        parse_intent_graph_json(manifest),
+        Err(ValidationInputError::InvalidSubjectKind {
+            relation: "evaluates.subject",
+            kind: "contract",
+            id,
+        }) if id == "contract:checkout/cancel-case"
+    ));
+}
+
+#[test]
+fn parse_manifest_reports_invalid_invalidates_subject_kind() {
+    let manifest = r#"
+    {
+      "schema_version": 1,
+      "nodes": [],
+      "evidence": [],
+      "edges": [
+        {
+          "relation": "invalidates",
+          "change": {"namespace": "checkout", "key": "api-v2"},
+          "subject": {"kind": "claim", "namespace": "checkout", "key": "cancel-rejects-shipped"}
+        }
+      ]
+    }
+    "#;
+
+    assert!(matches!(
+        parse_intent_graph_json(manifest),
+        Err(ValidationInputError::InvalidSubjectKind {
+            relation: "invalidates.subject",
+            kind: "claim",
+            id,
+        }) if id == "claim:checkout/cancel-rejects-shipped"
+    ));
+}
+
+#[test]
 fn manifest_output_round_trips_through_input_parser() {
     let graph = parse_intent_graph_json(complete_manifest()).expect("manifest should parse");
     let output = graph

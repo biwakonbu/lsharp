@@ -40,6 +40,12 @@ pub enum ValidationInputError {
     Graph(#[from] crate::evidence::GraphError),
     #[error("{relation} が存在しない node を参照しています: {id}")]
     MissingNodeReference { relation: &'static str, id: String },
+    #[error("{relation} の subject kind {kind} は不正です: {id}")]
+    InvalidSubjectKind {
+        relation: &'static str,
+        kind: &'static str,
+        id: String,
+    },
     #[error("span の範囲が不正です: {start}..{end}")]
     InvalidSpan { start: usize, end: usize },
 }
@@ -241,8 +247,9 @@ fn review_subject(input: SubjectInput) -> Result<ReviewSubject, ValidationInputE
             ReviewSubject::Evidence(EvidenceId::new(input.namespace, input.key)?)
         }
         SubjectKindInput::Contract | SubjectKindInput::Review => {
-            return Err(ValidationInputError::MissingNodeReference {
+            return Err(ValidationInputError::InvalidSubjectKind {
                 relation: "evaluates.subject",
+                kind: input.kind.as_str(),
                 id: format!("{}:{}/{}", input.kind.as_str(), input.namespace, input.key),
             });
         }
@@ -258,8 +265,9 @@ fn invalidation_subject(input: SubjectInput) -> Result<InvalidationSubject, Vali
             InvalidationSubject::Review(ReviewId::new(input.namespace, input.key)?)
         }
         SubjectKindInput::Intent | SubjectKindInput::Claim | SubjectKindInput::Contract => {
-            return Err(ValidationInputError::MissingNodeReference {
+            return Err(ValidationInputError::InvalidSubjectKind {
                 relation: "invalidates.subject",
+                kind: input.kind.as_str(),
                 id: format!("{}:{}/{}", input.kind.as_str(), input.namespace, input.key),
             });
         }

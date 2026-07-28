@@ -652,3 +652,10 @@ authentication、EC-M2-02/EC-M2-03/EC-M3 aggregate は残件。Evidence:
 あり、JSON Schema 実 validator、selfhost/native manifest parser、current-source artifact/runtime、
 supported 2 targets、EC-M2-02/EC-M3 aggregate は残件。Evidence:
 `docs/adr/decisions-v0.2-validation-manifest-typed-subject-schema.md`。
+
+2026-07-29 に version 1 manifest の typed subject 診断を追加した。`evaluates.subject` / `invalidates.subject`
+の不正 kind を、欠落 node と同じ `MissingNodeReference` にせず relation/kind/stable ID を保持する
+`ValidationInputError::InvalidSubjectKind` として fail-closed にする Rust canonical parser verified partial
+sliceである。source/native diagnostic parity、selfhost/native manifest parser、CLI/MCP、current-source
+artifact/runtime、supported 2 targets、EC-M2-02/EC-M3 aggregate は残件。Evidence:
+`docs/adr/decisions-v0.2-validation-manifest-subject-kind-diagnostic.md`。
