@@ -38,21 +38,42 @@ mod review_registry_tests {
         assert!(review_schema["items"]["properties"].get("author").is_none());
         assert!(review_schema["items"]["properties"].get("email").is_none());
         assert!(review_schema["items"]["properties"].get("body").is_none());
-        assert!(
-            input_review_schema["items"]["properties"]
-                .get("author")
-                .is_none()
+        assert!(input_review_schema["items"]["properties"]
+            .get("author")
+            .is_none());
+        assert!(input_review_schema["items"]["properties"]
+            .get("email")
+            .is_none());
+        assert!(input_review_schema["items"]["properties"]
+            .get("body")
+            .is_none());
+    }
+
+    #[test]
+    fn test_validate_tool_manifest_input_schema_declares_versioned_graph_fields() {
+        let response = handle_jsonrpc_message(&json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/list"
+        }));
+        let tool = response["result"]["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|tool| tool["name"] == "lsharp_validate")
+            .expect("lsharp_validate が tools/list に必要");
+        let manifest_schema = &tool["inputSchema"]["properties"]["manifest"]["oneOf"][0];
+
+        assert_eq!(
+            manifest_schema["required"],
+            json!(["schema_version", "nodes", "evidence", "edges"])
         );
-        assert!(
-            input_review_schema["items"]["properties"]
-                .get("email")
-                .is_none()
-        );
-        assert!(
-            input_review_schema["items"]["properties"]
-                .get("body")
-                .is_none()
-        );
+        assert_eq!(manifest_schema["additionalProperties"], false);
+        assert_eq!(manifest_schema["properties"]["schema_version"]["const"], 1);
+        assert_eq!(manifest_schema["properties"]["nodes"]["type"], "array");
+        assert_eq!(manifest_schema["properties"]["evidence"]["type"], "array");
+        assert_eq!(manifest_schema["properties"]["edges"]["type"], "array");
+        assert_eq!(manifest_schema["properties"]["reviews"]["type"], "array");
     }
 
     #[test]

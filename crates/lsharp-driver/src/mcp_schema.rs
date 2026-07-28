@@ -156,17 +156,7 @@ fn tool_output_schema(name: &str) -> Value {
                 "contradicting_observations": { "type": "integer", "minimum": 0 },
                 "stale_reviews": { "type": "integer", "minimum": 0 },
                 "stale_evidence": { "type": "integer", "minimum": 0 },
-                "manifest": {
-                    "type": "object",
-                    "required": ["schema_version", "nodes", "evidence", "edges"],
-                    "properties": {
-                        "schema_version": { "type": "integer", "const": 1 },
-                        "nodes": { "type": "array" },
-                        "reviews": review_registry_schema(),
-                        "evidence": { "type": "array" },
-                        "edges": { "type": "array" }
-                    }
-                }
+                "manifest": intent_graph_manifest_schema()
             }
         }),
         _ => json!({
@@ -200,12 +190,7 @@ fn validate_input_schema() -> Value {
             "file": { "type": "string" },
             "manifest": {
                 "oneOf": [
-                    {
-                        "type": "object",
-                        "properties": {
-                            "reviews": review_registry_schema()
-                        }
-                    },
+                    intent_graph_manifest_schema(),
                     { "type": "string" }
                 ]
             },
@@ -218,6 +203,21 @@ fn validate_input_schema() -> Value {
             { "required": ["manifest"] },
             { "required": ["manifest_file"] }
         ]
+    })
+}
+
+fn intent_graph_manifest_schema() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["schema_version", "nodes", "evidence", "edges"],
+        "properties": {
+            "schema_version": { "type": "integer", "const": 1 },
+            "nodes": { "type": "array" },
+            "reviews": review_registry_schema(),
+            "evidence": { "type": "array" },
+            "edges": { "type": "array" }
+        }
     })
 }
 

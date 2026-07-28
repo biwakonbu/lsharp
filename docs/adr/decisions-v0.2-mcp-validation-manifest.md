@@ -30,8 +30,13 @@ diagnostic が CLI と乖離する。
 - RED: manifest 未対応時に direct object/file、schema、error boundary の 4 tests が失敗することを確認。
 - GREEN: source/file 回帰を含む `mcp_server::tests` 27 tests が pass。direct object/string、
   `manifest_file`、JSON-RPC、複数 input rejection、schema version error を固定した。
-- Gate: `cargo test -p lsharp-driver mcp_server::tests -- --nocapture`、対象 file の rustfmt、
-  `git diff --check`。
+- Follow-up GREEN: `tools/list` の `manifest` object schema が version 1 の required envelope
+  (`schema_version` / `nodes` / `evidence` / `edges`)、optional `reviews`、unknown top-level field
+  rejection を公開することを `test_validate_tool_manifest_input_schema_declares_versioned_graph_fields`
+  で固定した。input/output schema は同じ helper を共有し、MCP consumer が parser の必須境界を
+  schema だけで欠落させない。
+- Gate: `cargo test -p lsharp-driver --bin lsharp mcp_server::tests -- --nocapture`（41 tests）、
+  対象ファイルの rustfmt、`git diff --check`。
 
 ## Boundary and follow-up
 

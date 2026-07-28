@@ -645,6 +645,13 @@ manifest parser、CLI/MCP parity、current-source artifact/runtime、supported 2
 authentication、EC-M2-02/EC-M2-03/EC-M3 aggregate は残件。Evidence:
 `docs/adr/decisions-v0.2-validation-manifest-null-review-registry.md`。
 
+2026-07-29 に MCP `lsharp_validate` の manifest input schema を version 1 envelope と同期した。
+`tools/list` が `schema_version` / `nodes` / `evidence` / `edges` を required、`reviews` を optional として
+公開し、unknown top-level field を schema 上で拒否することを `mcp_server::tests` 41件で固定した。
+Rust parser と MCP input/output schema の必須境界を揃えた verified partial sliceであり、selfhost/native
+MCP、current-source artifact/runtime、supported 2 targets、EC-M2-03/EC-M3 aggregate は残件。Evidence:
+`docs/adr/decisions-v0.2-mcp-validation-manifest.md`。
+
 2026-07-29 に review registry の presence semantics を公開 `lsharp validate` で対照固定した。
 `reviews: []` の未登録 `evaluates` edge は exit `1`・空 stdout・manifest なしで拒否し、`reviews` 省略時の
 同じ edge は opaque endpoint として `status: unknown`・exit `2` を返す。selfhost/native parser、MCP、
