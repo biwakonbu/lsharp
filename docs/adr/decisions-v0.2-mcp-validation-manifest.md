@@ -35,8 +35,14 @@ diagnostic が CLI と乖離する。
   rejection を公開することを `test_validate_tool_manifest_input_schema_declares_versioned_graph_fields`
   で固定した。input/output schema は同じ helper を共有し、MCP consumer が parser の必須境界を
   schema だけで欠落させない。
+- Presence follow-up GREEN: `reviews` を省略した `evaluates` edge は opaque endpoint として
+  `status: unknown` を返し、`reviews: []` を明示した同じ未登録 edge は tool error として拒否する
+  対照を `mcp_server::tests` へ追加した。CLI の presence semantics と MCP の report/error boundary
+  を同じ parser policyで固定する。
 - Gate: `cargo test -p lsharp-driver --bin lsharp mcp_server::tests -- --nocapture`（41 tests）、
   対象ファイルの rustfmt、`git diff --check`。
+- Presence gate: 同 focused suite 43 tests（review registry 6 tests）と `cargo clippy -p lsharp-driver
+  --bin lsharp --tests -- -D warnings`。
 
 ## Boundary and follow-up
 

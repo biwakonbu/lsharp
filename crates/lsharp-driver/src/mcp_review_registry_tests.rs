@@ -144,4 +144,70 @@ mod review_registry_tests {
             "unexpected error: {error}"
         );
     }
+
+    #[test]
+    fn test_validate_tool_rejects_unregistered_review_edge_with_explicit_empty_registry() {
+        let error = call_tool(
+            "lsharp_validate",
+            &json!({
+                "manifest": {
+                    "schema_version": 1,
+                    "nodes": [{
+                        "kind": "intent",
+                        "namespace": "checkout",
+                        "key": "safe-cancel",
+                        "text": "Users can cancel"
+                    }],
+                    "reviews": [],
+                    "evidence": [],
+                    "edges": [{
+                        "relation": "evaluates",
+                        "review": {"namespace": "checkout", "key": "reviewer-001"},
+                        "subject": {
+                            "kind": "intent",
+                            "namespace": "checkout",
+                            "key": "safe-cancel"
+                        }
+                    }]
+                }
+            }),
+        )
+        .expect_err("明示 empty review registry は未登録 edge を MCP で拒否するべき");
+
+        assert!(error.contains("review ID"), "unexpected error: {error}");
+        assert!(error.contains("reviewer-001"), "unexpected error: {error}");
+    }
+
+    #[test]
+    fn test_validate_tool_allows_opaque_review_edge_when_registry_is_omitted() {
+        let result = call_tool(
+            "lsharp_validate",
+            &json!({
+                "manifest": {
+                    "schema_version": 1,
+                    "nodes": [{
+                        "kind": "intent",
+                        "namespace": "checkout",
+                        "key": "safe-cancel",
+                        "text": "Users can cancel"
+                    }],
+                    "evidence": [],
+                    "edges": [{
+                        "relation": "evaluates",
+                        "review": {"namespace": "checkout", "key": "reviewer-001"},
+                        "subject": {
+                            "kind": "intent",
+                            "namespace": "checkout",
+                            "key": "safe-cancel"
+                        }
+                    }]
+                },
+                "include_manifest": true
+            }),
+        )
+        .expect("registry 省略時は opaque review endpoint を MCP で受理するべき");
+
+        assert_eq!(result["status"], "unknown");
+        assert!(result["manifest"].get("reviews").is_none());
+    }
 }

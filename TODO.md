@@ -652,6 +652,13 @@ Rust parser と MCP input/output schema の必須境界を揃えた verified par
 MCP、current-source artifact/runtime、supported 2 targets、EC-M2-03/EC-M3 aggregate は残件。Evidence:
 `docs/adr/decisions-v0.2-mcp-validation-manifest.md`。
 
+2026-07-29 に MCP `lsharp_validate` でも review registry の presence semantics を対照固定した。
+`reviews` 省略時の未登録 `evaluates` edge は opaque endpoint として `status: unknown` を返し、明示
+`reviews: []` の同じ edge は review ID error として拒否することを review registry 6件・MCP suite 43件で確認した。
+CLI と MCP の parser policy を揃えた verified partial sliceであり、selfhost/native MCP、current-source
+artifact/runtime、supported 2 targets、EC-M2-03/EC-M3 aggregate は残件。Evidence:
+`docs/adr/decisions-v0.2-mcp-validation-manifest.md`。
+
 2026-07-29 に review registry の presence semantics を公開 `lsharp validate` で対照固定した。
 `reviews: []` の未登録 `evaluates` edge は exit `1`・空 stdout・manifest なしで拒否し、`reviews` 省略時の
 同じ edge は opaque endpoint として `status: unknown`・exit `2` を返す。selfhost/native parser、MCP、
