@@ -167,6 +167,9 @@
   fail-closed 境界を要求した。Rust source adapter の `InvalidEvidenceField` 診断と同じ typed
   evidence enum matrix を native contractへ接続する verified sliceだが、current source-commit に
   一致する実 stage0 artifact/runtime の evidence ではない。
+  さらに selfhost Evidence consumer の invalid `:method` が native source contract と同じ code `8` を
+  返し、field/value を保持する Rust-host E2E を追加した。native stage0 artifact/runtime parity は未完了の
+  ままだが、selfhost direct consumer の typed-field code drift を閉じる verified sliceである。
   さらに同じ evidence ID を二度宣言する source fixtureも native smoke に追加し、stable な
   `source validation error:3`、exit `1`、report/manifestなしの fail-closed 境界を要求した。Rust
   source adapter / selfhost registry の duplicate evidence rejection と同じ identity boundary を

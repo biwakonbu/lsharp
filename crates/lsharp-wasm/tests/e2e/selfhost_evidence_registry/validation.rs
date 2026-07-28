@@ -323,6 +323,35 @@ fn test_e2e_selfhost_source_evidence_rejects_empty_id_as_invalid_id() {
     );
 }
 
+/// EC-M2-02: invalid evidence method は source validation の typed-field code 8 に揃える。
+#[test]
+fn test_e2e_selfhost_source_evidence_rejects_invalid_method_as_typed_field_error() {
+    let harness = r#"
+(defn main []
+  (let [result (source-evidence-graph-from-program
+                 (parse-program "(defn cancel [] :claim \"claim:checkout/cancel\" \"The API rejects shipped orders\" :evidence \"evidence:checkout/invalid-method\" :subject \"claim:checkout/cancel\" :method \"not-a-method\" :outcome \"pass\" :runner \"invalid-method-runner\" :target \"aarch64-apple-darwin\" :source-commit \"source-invalid-method\" :artifact-digest \"sha256:invalid-method\" :cases 1 :seed 0 :generator \"invalid-method-generator\" :producer \"invalid-method-producer\" :tool-version \"0.2.0-dev\" :timestamp \"2026-07-28T00:00:00Z\" :independence \"same-author\" true)"))
+        error (source-result-error result)]
+    (do
+      (print (source-result-status result))
+      (print (source-evidence-error-code error))
+      (print-string (source-evidence-error-field error))
+      (print-string "\n")
+      (print-string "[")
+      (print-string (source-evidence-error-value error))
+      (print-string "]\n")
+      0)))
+"#;
+
+    let output = run_evidence_registry_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "8", "method", "[not-a-method]"],
+        "invalid evidence method は typed-field code 8 と値を保持して拒否するべき"
+    );
+}
+
 /// EC-M2-02: coverage bucket の重複は deterministic sampling plan を壊すため拒否する。
 #[test]
 fn test_e2e_selfhost_evidence_registry_rejects_duplicate_coverage_bucket() {
