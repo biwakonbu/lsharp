@@ -114,6 +114,7 @@ VALIDATION_EMPTY_EVIDENCE_GENERATOR_MANIFEST="$WORK_DIR/ec-m2-empty-evidence-gen
 VALIDATION_EMPTY_EVIDENCE_RUNNER_MANIFEST="$WORK_DIR/ec-m2-empty-evidence-runner-manifest.json"
 VALIDATION_EMPTY_EVIDENCE_TARGET_MANIFEST="$WORK_DIR/ec-m2-empty-evidence-target-manifest.json"
 VALIDATION_EMPTY_EVIDENCE_SOURCE_COMMIT_MANIFEST="$WORK_DIR/ec-m2-empty-evidence-source-commit-manifest.json"
+VALIDATION_EMPTY_EVIDENCE_ARTIFACT_DIGEST_MANIFEST="$WORK_DIR/ec-m2-empty-evidence-artifact-digest-manifest.json"
 VALIDATION_MISSING_NODE_ID_MANIFEST="$WORK_DIR/ec-m2-missing-node-id-manifest.json"
 VALIDATION_MISSING_NODE_TEXT_MANIFEST="$WORK_DIR/ec-m2-missing-node-text-manifest.json"
 VALIDATION_MISSING_REVIEW_MANIFEST="$WORK_DIR/ec-m3-missing-review-manifest.json"
@@ -153,6 +154,7 @@ VALIDATION_EMPTY_EVIDENCE_GENERATOR_SOURCE="$WORK_DIR/ec-m2-empty-evidence-gener
 VALIDATION_EMPTY_EVIDENCE_RUNNER_SOURCE="$WORK_DIR/ec-m2-empty-evidence-runner-source.ls"
 VALIDATION_EMPTY_EVIDENCE_TARGET_SOURCE="$WORK_DIR/ec-m2-empty-evidence-target-source.ls"
 VALIDATION_EMPTY_EVIDENCE_SOURCE_COMMIT_SOURCE="$WORK_DIR/ec-m2-empty-evidence-source-commit-source.ls"
+VALIDATION_EMPTY_EVIDENCE_ARTIFACT_DIGEST_SOURCE="$WORK_DIR/ec-m2-empty-evidence-artifact-digest-source.ls"
 VALIDATION_MISSING_NODE_ID_SOURCE="$WORK_DIR/ec-m2-missing-node-id-source.ls"
 VALIDATION_MISSING_NODE_TEXT_SOURCE="$WORK_DIR/ec-m2-missing-node-text-source.ls"
 VALIDATION_MISSING_REVIEW_SOURCE="$WORK_DIR/ec-m3-missing-review-source.ls"
@@ -512,6 +514,26 @@ cat >"$VALIDATION_EMPTY_EVIDENCE_SOURCE_COMMIT_SOURCE" <<'LSHARP'
     :seed 0
     :generator "empty-evidence-source-commit-generator"
     :producer "empty-evidence-source-commit-producer"
+    :tool-version "0.2.0-dev"
+    :timestamp "2026-07-28T00:00:00Z"
+    :independence "same-author"
+  true)
+LSHARP
+cat >"$VALIDATION_EMPTY_EVIDENCE_ARTIFACT_DIGEST_SOURCE" <<'LSHARP'
+(defn empty-evidence-artifact-digest []
+  :claim "claim:checkout/rejects" "The API rejects shipped orders"
+  :evidence "evidence:checkout/empty-artifact-digest"
+    :subject "claim:checkout/rejects"
+    :method "case"
+    :outcome "pass"
+    :runner "empty-evidence-artifact-digest-runner"
+    :target "aarch64-apple-darwin"
+    :source-commit "source-empty-evidence-artifact-digest"
+    :artifact-digest ""
+    :cases 1
+    :seed 0
+    :generator "empty-evidence-artifact-digest-generator"
+    :producer "empty-evidence-artifact-digest-producer"
     :tool-version "0.2.0-dev"
     :timestamp "2026-07-28T00:00:00Z"
     :independence "same-author"
@@ -1162,6 +1184,16 @@ grep -F "source validation error:4" "$WORK_DIR/validation-empty-evidence-source-
   || die "empty evidence source commit validation must expose the required-field error code"
 [[ ! -e "$VALIDATION_EMPTY_EVIDENCE_SOURCE_COMMIT_MANIFEST" ]] \
   || die "empty evidence source commit validation must produce no report or manifest"
+
+run_expected_validation_error validation-empty-evidence-artifact-digest \
+  validate \
+  --source "$VALIDATION_EMPTY_EVIDENCE_ARTIFACT_DIGEST_SOURCE" \
+  --format json \
+  --emit-manifest "$VALIDATION_EMPTY_EVIDENCE_ARTIFACT_DIGEST_MANIFEST"
+grep -F "source validation error:4" "$WORK_DIR/validation-empty-evidence-artifact-digest.stderr" >/dev/null \
+  || die "empty evidence artifact digest validation must expose the required-field error code"
+[[ ! -e "$VALIDATION_EMPTY_EVIDENCE_ARTIFACT_DIGEST_MANIFEST" ]] \
+  || die "empty evidence artifact digest validation must produce no report or manifest"
 
 run_expected_validation_error validation-missing-node-id \
   validate \
