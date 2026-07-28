@@ -4191,13 +4191,13 @@
                 parsed))))))))
 
 ;; === import 宣言 ===
-(defn parse-import-only-symbols-rooted-v3 [spans pos-ref src result]
+(defn parse-import-only-symbols-step-v3 [spans pos-ref src result]
   (if (== (p-current spans pos-ref) 3)
     (do
       (p-advance pos-ref)
-      result)
+      (make-parse-loop-state 1 result))
     (if (== (p-current spans pos-ref) 99)
-      result
+      (make-parse-loop-state 1 result)
       (if (== (p-current spans pos-ref) 20)
         (do
           (root_push result)
@@ -4208,15 +4208,65 @@
               (let [next-result (vector-push-single-rooted-v3 result item)]
                 (do
                   (root_push next-result)
-                  (let [parsed (parse-import-only-symbols-rooted-v3 spans pos-ref src next-result)]
+                  (let [state (make-parse-loop-state 0 next-result)]
                     (do
                       (root_pop)
                       (root_pop)
                       (root_pop)
-                      parsed)))))))
+                      state)))))))
         (do
           (p-advance pos-ref)
-          (parse-import-only-symbols-rooted-v3 spans pos-ref src result))))))
+          (make-parse-loop-state 0 result))))))
+
+(defn parse-import-only-symbols-step-64-loop-bounded
+  [spans pos-ref src result remaining]
+  (do
+    (root_push result)
+    (let [step (parse-import-only-symbols-step-v3 spans pos-ref src result)
+      done (vector-get step 0)
+      next-result (vector-get step 1)]
+      (do
+        (root_push step)
+        (root_push next-result)
+        (let [parsed
+          (if (= done 1)
+            step
+            (if (<= remaining 1)
+              step
+              (parse-import-only-symbols-step-64-loop-bounded
+                spans
+                pos-ref
+                src
+                next-result
+                (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn parse-import-only-symbols-step-64 [spans pos-ref src result]
+  (parse-import-only-symbols-step-64-loop-bounded spans pos-ref src result 64))
+
+(defn parse-import-only-symbols-rooted-v3 [spans pos-ref src result]
+  (let [step (parse-import-only-symbols-step-64 spans pos-ref src result)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 1)
+      (do
+        (root_push step)
+        (let [next-result (vector-get step 1)]
+          (do
+            (root_push next-result)
+            (let [parsed
+                    (parse-import-only-symbols-rooted-v3
+                      spans
+                      pos-ref
+                      src
+                      next-result)]
+              (do
+                (root_pop)
+                (root_pop)
+                parsed))))))))
 
 (defn parse-import-only-symbols-v3 [spans pos-ref src result]
   (do

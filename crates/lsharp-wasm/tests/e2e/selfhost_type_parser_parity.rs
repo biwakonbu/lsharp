@@ -1995,6 +1995,80 @@ fn test_e2e_selfhost_parser_computation_steps_cross_chunk_boundary() {
 }
 
 #[test]
+fn test_e2e_selfhost_parser_import_only_symbols_use_bounded_chunks() {
+    let source = selfhost_module("Parser.ls");
+    let rooted_body = source
+        .split("(defn parse-import-only-symbols-rooted-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn parse-import-only-symbols-v3").next())
+        .expect("Parser.ls に import :only symbols rooted loop が存在すること");
+    let step_body = source
+        .split("(defn parse-import-only-symbols-step-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn parse-import-only-symbols-rooted-v3").next())
+        .expect("Parser.ls に import :only symbols step helper が存在すること");
+
+    assert!(
+        source.contains("(defn parse-import-only-symbols-step-64-loop-bounded")
+            && source.contains("(defn parse-import-only-symbols-step-64")
+            && rooted_body.contains("parse-import-only-symbols-step-64")
+            && !step_body.contains(
+                "(parse-import-only-symbols-rooted-v3 spans pos-ref src next-result",
+            ),
+        "import :only symbol parser は Linux x86 native stack の深い再帰を避けるため bounded chunk へ委譲するべき"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_parser_import_only_symbols_cross_chunk_boundary() {
+    let (token_ls, ast_ls, lexer_ls, parser_ls) = parser_runtime_modules();
+    let symbols = (0..65)
+        .map(|index| format!("selected{}", index))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let source = format!("(import Lib :only [{}])", symbols);
+    let rust_program =
+        lsharp_syntax::parse(&source).expect("Rust oracle は 65 symbols の import :only を parse できるべき");
+    match &rust_program.decls[0] {
+        lsharp_syntax::ast::Decl::ImportDecl { only, .. } => {
+            assert_eq!(only.as_ref().map(Vec::len), Some(65));
+        }
+        decl => panic!("Rust oracle の import decl が不正: {decl:?}"),
+    }
+
+    let harness = format!(
+        r#"
+(defn main []
+  (let [program (parse-program "{}")
+        node (vector-get program 0)
+        only (vector-get node 5)]
+    (do
+      (print (vector-length program))
+      (print (vector-get node 0))
+      (print (if (= (vector-get node 1) (name-hash "Lib" 0 3)) 1 0))
+      (print (vector-length node))
+      (print (vector-length only))
+      (print (if (= (vector-get only 0) (name-hash "selected0" 0 9)) 1 0))
+      (print (if (= (vector-get only 64) (name-hash "selected64" 0 10)) 1 0))
+      0)))
+"#,
+        source
+    );
+
+    let output = compile_and_run(&format!(
+        "{}\n{}\n{}\n{}\n{}",
+        token_ls, ast_ls, lexer_ls, parser_ls, harness
+    ));
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["1", "26", "1", "6", "65", "1", "1"],
+        "import :only parser は 64 要素境界を跨いでも symbol hash vector と AST layout を保持するべき"
+    );
+}
+
+#[test]
 fn test_e2e_selfhost_parser_type_expr_list_use_bounded_chunks() {
     let source = selfhost_module("Parser.ls");
     let rooted_body = source
