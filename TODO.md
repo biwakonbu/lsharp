@@ -172,6 +172,11 @@
   source adapter / selfhost registry の duplicate evidence rejection と同じ identity boundary を
   native contractへ接続する verified sliceだが、current source-commit に一致する実 stage0
   artifact/runtime の evidence ではない。
+  さらに evidence named field を同じ record 内で二度宣言する malformed source fixtureも native
+  smoke に追加し、stable な `source validation error:1`、exit `1`、report/manifestなしの
+  fail-closed 境界を要求した。Rust syntax oracle の duplicate named field `LS0101` 診断と同じ
+  parser boundary を native contractへ接続する verified sliceだが、current source-commit に一致する
+  実 stage0 artifact/runtime の evidence ではない。
   さらに source node の stable ID 欠落と本文欠落の fixtureを native smoke に追加し、stable な
   `source validation error:1`、exit `1`、report/manifestなしの fail-closed 境界を要求した。Rust
   syntax oracle の `LS0101` required-operand 診断と同じ ID 明示 / non-empty text policy を native
