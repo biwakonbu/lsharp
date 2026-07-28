@@ -132,6 +132,32 @@ fn test_e2e_selfhost_source_evidence_rejects_empty_artifact_digest() {
     );
 }
 
+/// EC-M2-02: source evidence の required producer は空値のまま registry へ登録しない。
+#[test]
+fn test_e2e_selfhost_source_evidence_rejects_empty_producer() {
+    let harness = r#"
+(defn main []
+  (let [result (source-evidence-graph-from-program
+                 (parse-program "(defn cancel [] :claim \"claim:checkout/cancel\" \"The API rejects shipped orders\" :evidence \"evidence:checkout/empty-producer\" :subject \"claim:checkout/cancel\" :method \"case\" :outcome \"pass\" :runner \"source-empty-producer-runner\" :target \"aarch64-apple-darwin\" :source-commit \"source-empty-producer-commit\" :artifact-digest \"sha256:source-empty-producer\" :cases 1 :seed 0 :generator \"source-empty-producer-generator\" :producer \"\" :tool-version \"0.2.0-dev\" :timestamp \"2026-07-28T00:00:00Z\" :independence \"same-author\" true)"))
+        error (source-result-error result)]
+    (do
+      (print (source-result-status result))
+      (print (source-evidence-error-code error))
+      (print-string (source-evidence-error-field error))
+      (print-string "\n")
+      0)))
+"#;
+
+    let output = run_evidence_registry_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "4", "producer"],
+        "source evidence の empty producer は required-field error として拒否するべき"
+    );
+}
+
 /// EC-M2-02: coverage bucket の重複は deterministic sampling plan を壊すため拒否する。
 #[test]
 fn test_e2e_selfhost_evidence_registry_rejects_duplicate_coverage_bucket() {

@@ -202,6 +202,11 @@
   Rust `EvidenceValidationError::EmptyField { field: "artifact_digest" }` と selfhost Evidence registry の
   wire field `artifact-digest` / required-field code `4` を source contractへ接続する verified sliceだが、
   current source-commit に一致する実 stage0 artifact/runtime の evidence ではない。
+  さらに evidence の required provenance producer が空文字となる source fixtureも native smoke に追加し、
+  stable な `source validation error:4`、exit `1`、report/manifestなしの fail-closed 境界を要求した。
+  Rust `EvidenceValidationError::EmptyField { field: "producer" }` と selfhost Evidence registry の
+  required-field code `4` を source contractへ接続する verified sliceだが、current source-commit に
+  一致する実 stage0 artifact/runtime の evidence ではない。
   さらに source node の stable ID 欠落と本文欠落の fixtureを native smoke に追加し、stable な
   `source validation error:1`、exit `1`、report/manifestなしの fail-closed 境界を要求した。Rust
   syntax oracle の `LS0101` required-operand 診断と同じ ID 明示 / non-empty text policy を native

@@ -135,6 +135,10 @@ for required in \
   'VALIDATION_EMPTY_EVIDENCE_ARTIFACT_DIGEST_MANIFEST' \
   'run_expected_validation_error validation-empty-evidence-artifact-digest' \
   'source validation error:4' \
+  'VALIDATION_EMPTY_EVIDENCE_PRODUCER_SOURCE' \
+  'VALIDATION_EMPTY_EVIDENCE_PRODUCER_MANIFEST' \
+  'run_expected_validation_error validation-empty-evidence-producer' \
+  'source validation error:4' \
   'VALIDATION_MISSING_NODE_ID_SOURCE' \
   'VALIDATION_MISSING_NODE_ID_MANIFEST' \
   'run_expected_validation_error validation-missing-node-id' \
