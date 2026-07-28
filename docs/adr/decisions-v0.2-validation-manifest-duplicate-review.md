@@ -30,10 +30,14 @@ canonical `IntentGraph::add_review` は review ID を registry identity とし�
   ことを focused test で確認した。
 - 実行: `rustfmt --edition 2024 --check crates/lsharp-types/tests/review_provenance.rs`
 - 実行: `cargo test -p lsharp-types --test review_provenance review_registry_rejects_duplicate_review_ids_in_manifest_input -- --nocapture`
+- 公開 `lsharp validate` の `validate_rejects_duplicate_review_identity_without_report_or_manifest_output`
+  で exit `1`、空 stdout、manifest file なし、review ID/重複診断を固定した。
+- `cargo test -p lsharp-driver --test manifest_input_cli`（2 tests）
+- `cargo clippy -p lsharp-driver --test manifest_input_cli -- -D warnings`
 
 ## Boundary and follow-up
 
-これは Rust canonical manifest review identity の duplicate rejection に限定した verified partial slice
-である。review provenance authentication/lifecycle、manifest の other duplicate keys、selfhost/native
-manifest parser、CLI/MCP report parity、current-source stage0 artifact/runtime、Mac Apple Silicon /
+これは Rust canonical manifest review identity と公開 Rust CLI の duplicate rejection に限定した verified
+partial sliceである。review provenance authentication/lifecycle、manifest の other duplicate keys、selfhost/native
+manifest parser、MCP report parity、current-source stage0 artifact/runtime、Mac Apple Silicon /
 Linux x86_64 artifact matrix、EC-M2-02/EC-M3 aggregate は未完了であり、TODO の `[~]` を維持する。

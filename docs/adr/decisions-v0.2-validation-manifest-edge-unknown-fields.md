@@ -32,10 +32,14 @@ payload に追加された未知 field を黙って無視していた。これ�
 - `cargo test -p lsharp-types`
 - `cargo clippy -p lsharp-types --all-targets -- -D warnings`
 - 変更対象ファイルの `rustfmt --edition 2024 --check` と `git diff --check`
+- 公開 `lsharp validate` の `validate_rejects_unknown_edge_field_without_report_or_manifest_output`
+  で exit `1`、空 stdout、manifest file なし、unknown field/edge 診断を固定した。
+- `cargo test -p lsharp-driver --test manifest_input_cli`（2 tests）
+- `cargo clippy -p lsharp-driver --test manifest_input_cli -- -D warnings`
 
 ## Boundary and follow-up
 
-これは Rust canonical manifest input の edge schema boundary に限定した verified partial
-slice である。selfhost/native manifest parser、source producer、atomic/durable writer、
+これは Rust canonical manifest input と公開 Rust CLI の edge schema boundary に限定した verified partial
+slice である。selfhost/native manifest parser、source producer、MCP、atomic/durable writer、
 current-source stage0 artifact/runtime、Mac Apple Silicon / Linux x86_64 matrix、
 EC-M2-02 / EC-M2-03 / EC-M3 aggregate は未完了であり、TODO の `[~]` を維持する。
