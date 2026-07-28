@@ -68,7 +68,8 @@ fn build_source_evidence(
     span: Span,
 ) -> Result<Evidence, SourceGraphError> {
     validate_required_source_evidence_fields(record, span)?;
-    let id = EvidenceId::parse(record.id().to_string())?;
+    let id = EvidenceId::parse(record.id().to_string())
+        .map_err(|source| SourceGraphError::EvidenceIdAt { span, source })?;
     let subject = parse_evidence_subject(record.subject(), graph, span)?;
     let method = parse_evidence_method(record.method(), span)?;
     let outcome = parse_evidence_outcome(record.outcome(), span)?;

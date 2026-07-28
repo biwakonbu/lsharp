@@ -653,6 +653,57 @@ fn test_e2e_selfhost_source_evidence_reports_empty_runner_before_invalid_id() {
     );
 }
 
+/// EC-M2-02: evidence record の不正 ID は code 2 と directive span を返す。
+#[test]
+fn test_e2e_selfhost_source_evidence_preserves_invalid_id_span() {
+    let harness = r#"
+(defn main []
+  (let [nodes (vector-push-single-rooted-v3
+                (vector-new 0)
+                (source-node-record (source-node-claim) "claim:checkout/cancel" "The API rejects shipped orders" 1 2))
+        payload (source-evidence-payload
+                  "evidence:checkout/bad/key"
+                  "claim:checkout/cancel"
+                  "case"
+                  "pass"
+                  "evidence-id-runner"
+                  "aarch64-apple-darwin"
+                  "source-evidence-id"
+                  "sha256:evidence-id"
+                  1
+                  0
+                  "evidence-id-generator"
+                  (vector-new 0)
+                  (vector-new 0)
+                  "evidence-id-producer"
+                  "0.2.0-dev"
+                  "2026-07-28T00:00:00Z"
+                  "same-author")
+        form (source-evidence-form payload 10 20)
+        result (source-evidence-form-result form nodes)
+        error (source-result-error result)]
+    (do
+      (print (source-result-status result))
+      (print (source-evidence-error-code error))
+      (print-string (source-evidence-error-field error))
+      (print-string "\n")
+      (print-string (source-evidence-error-value error))
+      (print-string "\n")
+      (print (source-evidence-error-start error))
+      (print (source-evidence-error-end error))
+      0)))
+"#;
+
+    let output = run_source_evidence_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "2", "id", "evidence:checkout/bad/key", "10", "20"],
+        "invalid evidence ID は code 2 と directive span を保持するべき"
+    );
+}
+
 /// EC-M2-01: fail-closed error は現在の directive span と関連する最初の span を返す。
 #[test]
 fn test_e2e_selfhost_source_adapter_reports_error_spans() {

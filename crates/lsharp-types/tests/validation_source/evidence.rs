@@ -716,8 +716,7 @@ fn source_adapter_rejects_whitespace_only_evidence_subject_as_invalid_id() {
 
 #[test]
 fn source_adapter_rejects_whitespace_only_evidence_id_as_invalid_id() {
-    let program = parse(
-        r#"
+    const SOURCE: &str = r#"
         (defn cancel []
           :claim "claim:checkout/cancel" "The API rejects shipped orders"
           :evidence "  "
@@ -736,21 +735,25 @@ fn source_adapter_rejects_whitespace_only_evidence_id_as_invalid_id() {
             :timestamp "2026-07-28T00:00:00Z"
             :independence "same-author"
           true)
-        "#,
-    )
-    .expect("whitespace evidence ID fixture は parse できるべき");
+        "#;
+    let program = parse(SOURCE).expect("whitespace evidence ID fixture は parse できるべき");
 
+    let error = source_program_to_intent_graph(&program)
+        .expect_err("whitespace evidence ID は source span 付きで拒否するべき");
+    let SourceGraphError::EvidenceIdAt { span, source } = error else {
+        panic!("whitespace evidence ID の source diagnostic を期待しました: {error:?}");
+    };
     assert!(matches!(
-        source_program_to_intent_graph(&program),
-        Err(SourceGraphError::EdgeId(StableIdError::InvalidWireFormat { value }))
-            if value == "  "
+        source,
+        StableIdError::InvalidWireFormat { value } if value == "  "
     ));
+    assert!(span.start < span.end);
+    assert!(SOURCE[span.start..span.end].contains(":evidence"));
 }
 
 #[test]
 fn source_adapter_rejects_empty_evidence_id_as_invalid_id() {
-    let program = parse(
-        r#"
+    const SOURCE: &str = r#"
         (defn cancel []
           :claim "claim:checkout/cancel" "The API rejects shipped orders"
           :evidence ""
@@ -769,15 +772,20 @@ fn source_adapter_rejects_empty_evidence_id_as_invalid_id() {
             :timestamp "2026-07-28T00:00:00Z"
             :independence "same-author"
           true)
-        "#,
-    )
-    .expect("empty evidence ID fixture は parse できるべき");
+        "#;
+    let program = parse(SOURCE).expect("empty evidence ID fixture は parse できるべき");
 
+    let error = source_program_to_intent_graph(&program)
+        .expect_err("empty evidence ID は source span 付きで拒否するべき");
+    let SourceGraphError::EvidenceIdAt { span, source } = error else {
+        panic!("empty evidence ID の source diagnostic を期待しました: {error:?}");
+    };
     assert!(matches!(
-        source_program_to_intent_graph(&program),
-        Err(SourceGraphError::EdgeId(StableIdError::InvalidWireFormat { value }))
-            if value.is_empty()
+        source,
+        StableIdError::InvalidWireFormat { value } if value.is_empty()
     ));
+    assert!(span.start < span.end);
+    assert!(SOURCE[span.start..span.end].contains(":evidence"));
 }
 
 #[test]
