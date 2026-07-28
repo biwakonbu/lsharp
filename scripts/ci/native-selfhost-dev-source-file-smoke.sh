@@ -110,6 +110,7 @@ VALIDATION_INVALID_EVIDENCE_INDEPENDENCE_MANIFEST="$WORK_DIR/ec-m3-invalid-evide
 VALIDATION_INVALID_EVIDENCE_SUBJECT_MANIFEST="$WORK_DIR/ec-m3-invalid-evidence-subject-manifest.json"
 VALIDATION_DUPLICATE_EVIDENCE_MANIFEST="$WORK_DIR/ec-m3-duplicate-evidence-manifest.json"
 VALIDATION_DUPLICATE_EVIDENCE_FIELD_MANIFEST="$WORK_DIR/ec-m3-duplicate-evidence-field-manifest.json"
+VALIDATION_EMPTY_EVIDENCE_GENERATOR_MANIFEST="$WORK_DIR/ec-m2-empty-evidence-generator-manifest.json"
 VALIDATION_MISSING_NODE_ID_MANIFEST="$WORK_DIR/ec-m2-missing-node-id-manifest.json"
 VALIDATION_MISSING_NODE_TEXT_MANIFEST="$WORK_DIR/ec-m2-missing-node-text-manifest.json"
 VALIDATION_MISSING_REVIEW_MANIFEST="$WORK_DIR/ec-m3-missing-review-manifest.json"
@@ -145,6 +146,7 @@ VALIDATION_INVALID_EVIDENCE_INDEPENDENCE_SOURCE="$WORK_DIR/ec-m3-invalid-evidenc
 VALIDATION_INVALID_EVIDENCE_SUBJECT_SOURCE="$WORK_DIR/ec-m3-invalid-evidence-subject-source.ls"
 VALIDATION_DUPLICATE_EVIDENCE_SOURCE="$WORK_DIR/ec-m3-duplicate-evidence-source.ls"
 VALIDATION_DUPLICATE_EVIDENCE_FIELD_SOURCE="$WORK_DIR/ec-m3-duplicate-evidence-field-source.ls"
+VALIDATION_EMPTY_EVIDENCE_GENERATOR_SOURCE="$WORK_DIR/ec-m2-empty-evidence-generator-source.ls"
 VALIDATION_MISSING_NODE_ID_SOURCE="$WORK_DIR/ec-m2-missing-node-id-source.ls"
 VALIDATION_MISSING_NODE_TEXT_SOURCE="$WORK_DIR/ec-m2-missing-node-text-source.ls"
 VALIDATION_MISSING_REVIEW_SOURCE="$WORK_DIR/ec-m3-missing-review-source.ls"
@@ -424,6 +426,26 @@ cat >"$VALIDATION_DUPLICATE_EVIDENCE_FIELD_SOURCE" <<'LSHARP'
     :seed 0
     :generator "duplicate-evidence-field-generator"
     :producer "duplicate-evidence-field-producer"
+    :tool-version "0.2.0-dev"
+    :timestamp "2026-07-28T00:00:00Z"
+    :independence "same-author"
+  true)
+LSHARP
+cat >"$VALIDATION_EMPTY_EVIDENCE_GENERATOR_SOURCE" <<'LSHARP'
+(defn empty-evidence-generator []
+  :claim "claim:checkout/rejects" "The API rejects shipped orders"
+  :evidence "evidence:checkout/empty-generator"
+    :subject "claim:checkout/rejects"
+    :method "case"
+    :outcome "pass"
+    :runner "empty-evidence-generator-runner"
+    :target "aarch64-apple-darwin"
+    :source-commit "source-empty-evidence-generator"
+    :artifact-digest "sha256:empty-evidence-generator"
+    :cases 1
+    :seed 0
+    :generator ""
+    :producer "empty-evidence-generator-producer"
     :tool-version "0.2.0-dev"
     :timestamp "2026-07-28T00:00:00Z"
     :independence "same-author"
@@ -1034,6 +1056,16 @@ grep -F "source validation error:1" "$WORK_DIR/validation-duplicate-evidence-fie
   || die "duplicate evidence field validation must expose the malformed parser error code"
 [[ ! -e "$VALIDATION_DUPLICATE_EVIDENCE_FIELD_MANIFEST" ]] \
   || die "duplicate evidence field validation must produce no report or manifest"
+
+run_expected_validation_error validation-empty-evidence-generator \
+  validate \
+  --source "$VALIDATION_EMPTY_EVIDENCE_GENERATOR_SOURCE" \
+  --format json \
+  --emit-manifest "$VALIDATION_EMPTY_EVIDENCE_GENERATOR_MANIFEST"
+grep -F "source validation error:4" "$WORK_DIR/validation-empty-evidence-generator.stderr" >/dev/null \
+  || die "empty evidence generator validation must expose the required-field error code"
+[[ ! -e "$VALIDATION_EMPTY_EVIDENCE_GENERATOR_MANIFEST" ]] \
+  || die "empty evidence generator validation must produce no report or manifest"
 
 run_expected_validation_error validation-missing-node-id \
   validate \

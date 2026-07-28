@@ -1,9 +1,11 @@
 //! source evidence record、sampling、registry closure の contract tests。
 
 use lsharp_syntax::parse;
-use lsharp_types::evidence::{EvidenceMethod, EvidenceOutcome, Independence};
+use lsharp_types::evidence::{
+    EvidenceMethod, EvidenceOutcome, EvidenceValidationError, GraphError, Independence,
+};
 use lsharp_types::validation_input::parse_intent_graph_json;
-use lsharp_types::validation_source::{SourceGraphError, source_program_to_intent_graph};
+use lsharp_types::validation_source::{source_program_to_intent_graph, SourceGraphError};
 
 fn source_evidence_form(key: &str, method: &str, outcome: &str, independence: &str) -> String {
     format!(
@@ -249,6 +251,42 @@ fn source_adapter_reports_invalid_evidence_enum_with_directive_span() {
         assert!(diagnostic_source.contains(":evidence"));
         assert!(diagnostic_source.contains(&format!(":{field}")));
     }
+}
+
+#[test]
+fn source_adapter_rejects_empty_required_sampling_generator() {
+    let program = parse(
+        r#"
+        (defn cancel []
+          :claim "claim:checkout/cancel" "The API rejects shipped orders"
+          :evidence "evidence:checkout/empty-generator"
+            :subject "claim:checkout/cancel"
+            :method "case"
+            :outcome "pass"
+            :runner "source-empty-generator"
+            :target "aarch64-apple-darwin"
+            :source-commit "source-empty-generator-commit"
+            :artifact-digest "sha256:source-empty-generator"
+            :cases 1
+            :seed 0
+            :generator ""
+            :producer "source-empty-generator-producer"
+            :tool-version "0.2.0-dev"
+            :timestamp "2026-07-28T00:00:00Z"
+            :independence "same-author"
+          true)
+        "#,
+    )
+    .expect("empty generator fixture は parse できるべき");
+
+    let error = source_program_to_intent_graph(&program)
+        .expect_err("empty generator は source graph 登録時に拒否するべき");
+    assert!(matches!(
+        error,
+        SourceGraphError::Graph(GraphError::InvalidEvidence {
+            source: EvidenceValidationError::EmptyField { field: "generator" }
+        })
+    ));
 }
 
 #[test]

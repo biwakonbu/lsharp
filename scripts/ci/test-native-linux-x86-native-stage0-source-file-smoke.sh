@@ -115,6 +115,10 @@ for required in \
   'VALIDATION_DUPLICATE_EVIDENCE_FIELD_MANIFEST' \
   'run_expected_validation_error validation-duplicate-evidence-field' \
   'source validation error:1' \
+  'VALIDATION_EMPTY_EVIDENCE_GENERATOR_SOURCE' \
+  'VALIDATION_EMPTY_EVIDENCE_GENERATOR_MANIFEST' \
+  'run_expected_validation_error validation-empty-evidence-generator' \
+  'source validation error:4' \
   'VALIDATION_MISSING_NODE_ID_SOURCE' \
   'VALIDATION_MISSING_NODE_ID_MANIFEST' \
   'run_expected_validation_error validation-missing-node-id' \
