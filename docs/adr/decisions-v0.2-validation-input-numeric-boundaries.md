@@ -30,6 +30,18 @@ sampling 契約と manifest input 契約の境界がずれる。
   `usize` / `u64` serde decode が負数を受理しないことを確認する契約固定である。
 - 実行: `cargo test -p lsharp-types --test validation_input parse_manifest_rejects_negative_unsigned_numeric_fields -- --nocapture`
 
+## Follow-up: unsigned numeric overflow (2026-07-29)
+
+負数に加えて、`u64::MAX + 1` (`18446744073709551616`) を
+`span.start` / `span.end`、`sampling.cases` / `sampling.seed` /
+`sampling.shrinks[*]` / `sampling.coverage[*]` の全 unsigned field に入力する回帰テストを追加した。
+全て graph 構築前の `ValidationInputError::Json` となり、値の丸め、切り詰め、部分 manifest の生成を
+行わない。既存の `usize` / `u64` typed serde decode が上限超過を fail-closed にするため production
+code の変更は不要だった。
+
+- Test: `parse_manifest_rejects_unsigned_numeric_overflow`
+- Evidence: `cargo test -p lsharp-types --test validation_input parse_manifest_rejects_unsigned_numeric_overflow -- --nocapture`
+
 ## Boundary
 
 これは Rust manifest input decoder の数値型境界に限定した verified slice である。source syntax

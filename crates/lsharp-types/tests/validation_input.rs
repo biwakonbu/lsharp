@@ -1,7 +1,7 @@
 use lsharp_types::evidence::{EvidenceValidationError, GraphError};
 use lsharp_types::intent::NodeTextError;
 use lsharp_types::validation::{IntentGraph, ValidationStatus};
-use lsharp_types::validation_input::{ValidationInputError, parse_intent_graph_json};
+use lsharp_types::validation_input::{parse_intent_graph_json, ValidationInputError};
 
 fn complete_manifest() -> &'static str {
     r#"
@@ -411,6 +411,50 @@ fn parse_manifest_rejects_negative_unsigned_numeric_fields() {
                 Err(ValidationInputError::Json(_))
             ),
             "negative {field} must fail during JSON decoding"
+        );
+    }
+}
+
+#[test]
+fn parse_manifest_rejects_unsigned_numeric_overflow() {
+    let overflow = "18446744073709551616";
+    let cases = [
+        (
+            "span.start",
+            complete_manifest().replace("\"start\": 0", &format!("\"start\": {overflow}")),
+        ),
+        (
+            "span.end",
+            complete_manifest().replace("\"end\": 10", &format!("\"end\": {overflow}")),
+        ),
+        (
+            "sampling.cases",
+            complete_manifest().replace("\"cases\": 1", &format!("\"cases\": {overflow}")),
+        ),
+        (
+            "sampling.seed",
+            complete_manifest().replace("\"seed\": 0", &format!("\"seed\": {overflow}")),
+        ),
+        (
+            "sampling.shrinks",
+            complete_manifest().replace("\"shrinks\": []", &format!("\"shrinks\": [{overflow}]")),
+        ),
+        (
+            "sampling.coverage",
+            complete_manifest().replace(
+                "\"coverage\": {\"all\": 1}",
+                &format!("\"coverage\": {{\"all\": {overflow}}}"),
+            ),
+        ),
+    ];
+
+    for (field, manifest) in cases {
+        assert!(
+            matches!(
+                parse_intent_graph_json(&manifest),
+                Err(ValidationInputError::Json(_))
+            ),
+            "overflow {field} must fail during JSON decoding"
         );
     }
 }

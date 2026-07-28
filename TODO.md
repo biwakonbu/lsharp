@@ -714,3 +714,11 @@ manifest input error は exit `1`、空 stdout、manifest file なし、`reviews
 diagnostic-only 結果となることを Rust driver CLI 全26件で固定した。selfhost/native parser、MCP parity、
 current-source artifact/runtime、supported 2 targets、EC-M2-02/EC-M3 aggregate は残件。Evidence:
 `docs/adr/decisions-v0.2-validation-manifest-null-review-registry.md`。
+
+2026-07-29 に EC-M3-01 version 1 manifest の unsigned numeric overflow boundary を追加した。
+`u64::MAX + 1` を span と sampling の全 unsigned fieldへ入力し、Rust canonical parser が graph 構築前に
+`ValidationInputError::Json` として fail-closed にすることを
+`parse_manifest_rejects_unsigned_numeric_overflow` で固定した。既存の `usize` / `u64` typed serde
+decode により production code の変更は不要だった。selfhost/native manifest parser、source producer、
+current-source stage0 artifact/runtime、Mac/Linux matrix、EC-M2-02/EC-M3 aggregate は残件。Evidence:
+`docs/adr/decisions-v0.2-validation-input-numeric-boundaries.md`。
