@@ -2,7 +2,8 @@
 
 - Status: Accepted (verified partial slice)
 - Date: 2026-07-26
-- Scope: `crates/lsharp-types/src/validation_input.rs` の JSON manifest decoder
+- Scope: `crates/lsharp-types/src/validation_input.rs` の JSON manifest decoder と
+  `lsharp validate` の manifest input boundary
 - Related: `EC-M2-02`, `EC-M2-03`, `docs/adr/decisions-v0.2-validation-input-parser.md`
 
 ## Context
@@ -52,6 +53,12 @@ semantics の変質を許可しない。
 
 - Test: `parse_manifest_rejects_fractional_unsigned_numeric_fields`
 - Evidence: `cargo test -p lsharp-types --test validation_input parse_manifest_rejects_fractional_unsigned_numeric_fields -- --nocapture`
+
+公開 CLI でも同じ6 fieldを `validate --format json --emit-manifest` へ渡し、入力エラー時に exit `1`、
+空 stdout、manifest file 未生成、`manifest` / `floating point` を含む stderr となることを
+`validate_rejects_fractional_unsigned_numeric_fields_without_report_or_manifest_output` で固定した。
+default EmbeddedCli の build は既存 selfhost source の `vector-push-single-rooted-v3` 未定義で停止するため、
+既存の component artifact を `LSHARP_EMBED_COMPONENT_PATH` に指定した Rust driver CLI lane で検証した。
 
 ## Boundary
 

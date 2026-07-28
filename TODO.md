@@ -730,3 +730,10 @@ current-source stage0 artifact/runtime、Mac/Linux matrix、EC-M2-02/EC-M3 aggre
 小数の丸め・切り捨てによる sampling semantics の変質を許可しない。selfhost/native manifest parser、
 source producer、current-source stage0 artifact/runtime、Mac/Linux matrix、EC-M2-02/EC-M3 aggregate は残件。
 Evidence: `docs/adr/decisions-v0.2-validation-input-numeric-boundaries.md`。
+
+さらに公開 `lsharp validate <manifest> --format json --emit-manifest` へ fractional unsigned numeric
+boundary を接続した。span と sampling の全6 fieldで exit `1`、空 stdout、manifest file 未生成、
+`manifest` / `floating point` を含む stderr を固定した。default EmbeddedCli は既存 selfhost source の
+`vector-push-single-rooted-v3` 未定義で停止するため、既存 component artifact を指定した Rust driver CLI
+laneで検証した。selfhost/native CLI、MCP、current-source stage0 artifact/runtime、Mac/Linux matrix、
+EC-M2-03/EC-M3 aggregate は残件。Evidence: `docs/adr/decisions-v0.2-validation-input-numeric-boundaries.md`。

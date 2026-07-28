@@ -20,6 +20,52 @@ fn output_dir(name: &str) -> std::path::PathBuf {
     std::env::temp_dir().join(format!("lsharp-manifest-cli-{name}-{nonce}"))
 }
 
+fn complete_manifest() -> &'static str {
+    r#"
+    {
+      "schema_version": 1,
+      "nodes": [
+        {
+          "kind": "intent",
+          "namespace": "checkout",
+          "key": "safe-cancel",
+          "text": "Users can cancel before shipment",
+          "span": {"start": 0, "end": 10}
+        }
+      ],
+      "evidence": [
+        {
+          "namespace": "checkout",
+          "key": "case-001",
+          "method": "case",
+          "subject": {"kind": "intent", "namespace": "checkout", "key": "safe-cancel"},
+          "outcome": "pass",
+          "execution": {
+            "runner": "validator-test",
+            "target": "host",
+            "source_commit": "commit-1",
+            "artifact_digest": "sha256:artifact",
+            "sampling": {
+              "cases": 1,
+              "seed": 0,
+              "generator": "fixture",
+              "shrinks": [],
+              "coverage": {"all": 1}
+            }
+          },
+          "provenance": {
+            "producer": "validator-test",
+            "tool_version": "0.2",
+            "timestamp": "2026-07-23T00:00:00Z"
+          },
+          "independence": "independent-review"
+        }
+      ],
+      "edges": []
+    }
+    "#
+}
+
 fn assert_manifest_input_error(name: &str, body: &str, expected_fragments: &[&str]) {
     let path = manifest_path(name, body);
     let dir = output_dir(name);
@@ -131,6 +177,41 @@ fn validate_rejects_unknown_edge_field_without_report_or_manifest_output() {
         "#,
         &["unexpected", "edge"],
     );
+}
+
+#[test]
+fn validate_rejects_fractional_unsigned_numeric_fields_without_report_or_manifest_output() {
+    let cases = [
+        (
+            "fractional-span-start",
+            complete_manifest().replace("\"start\": 0", "\"start\": 0.5"),
+        ),
+        (
+            "fractional-span-end",
+            complete_manifest().replace("\"end\": 10", "\"end\": 10.5"),
+        ),
+        (
+            "fractional-sampling-cases",
+            complete_manifest().replace("\"cases\": 1", "\"cases\": 1.5"),
+        ),
+        (
+            "fractional-sampling-seed",
+            complete_manifest().replace("\"seed\": 0", "\"seed\": 0.5"),
+        ),
+        (
+            "fractional-sampling-shrinks",
+            complete_manifest().replace("\"shrinks\": []", "\"shrinks\": [0.5]"),
+        ),
+        (
+            "fractional-sampling-coverage",
+            complete_manifest()
+                .replace("\"coverage\": {\"all\": 1}", "\"coverage\": {\"all\": 1.5}"),
+        ),
+    ];
+
+    for (name, manifest) in cases {
+        assert_manifest_input_error(name, &manifest, &["manifest", "floating point"]);
+    }
 }
 
 #[test]
