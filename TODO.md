@@ -69,6 +69,10 @@
   `source validation error:8`、exit `1`、report/manifestなしの fail-closed 境界を要求した。これは
   Rust source adapter の必須 review field 検査と同じ invalid-review metadata boundary を native
   contractへ接続する verified sliceだが、実 stage0 artifact/runtime の evidence ではない。
+  さらに Rust source adapter が空 review ID を wire-format error へ落とさず `InvalidReviewField` の
+  code `8` として返すよう修正し、selfhost actual Wasm E2E でも同じ review metadata boundary を固定した。
+  native source-file smoke の既存 empty-review-ID fixtureと Rust/selfhost direct consumer を揃えた verified
+  sliceだが、current source-commit に一致する packaged stage0 artifact/runtime の evidence ではない。
   さらに review payload の引数不足となる malformed source fixtureも native smokeへ追加し、stable な
   `source validation error:1`、exit `1`、report/manifestなしの fail-closed 境界を要求した。既存 Rust
   source adapter の malformed review metadata 診断と同じ parser boundary を native contractへ接続する

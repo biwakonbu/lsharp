@@ -47,6 +47,13 @@ fn add_metadata_nodes(
             visibility,
         } = &form.kind
         {
+            if id.is_empty() {
+                return Err(SourceGraphError::InvalidReviewField {
+                    field: "id",
+                    value: id.clone(),
+                    span: form.span(),
+                });
+            }
             let review_id =
                 ReviewId::parse(id.clone()).map_err(|source| SourceGraphError::ReviewIdAt {
                     span: form.span(),

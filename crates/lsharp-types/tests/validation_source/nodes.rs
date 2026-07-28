@@ -317,6 +317,27 @@ fn source_adapter_projects_review_registry_forms_and_rejects_unknown_visibility(
 }
 
 #[test]
+fn source_adapter_rejects_empty_review_id_as_invalid_review_field() {
+    let program = parse(
+        r#"
+        (defn checkout-review []
+          :review "" "sha256:review-provenance-001" "public"
+          true)
+        "#,
+    )
+    .expect("empty review ID fixture は parse できるべき");
+
+    assert!(matches!(
+        source_program_to_intent_graph(&program),
+        Err(SourceGraphError::InvalidReviewField {
+            field: "id",
+            value,
+            ..
+        }) if value.is_empty()
+    ));
+}
+
+#[test]
 fn source_adapter_reports_duplicate_reviews_with_both_source_spans() {
     const SOURCE: &str = r#"
         (defn first []

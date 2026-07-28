@@ -631,6 +631,31 @@ fn test_e2e_selfhost_source_adapter_rejects_invalid_review_fields() {
     );
 }
 
+/// EC-M2-02: empty review ID は required review metadata code 8 として拒否する。
+#[test]
+fn test_e2e_selfhost_source_adapter_rejects_empty_review_id_as_invalid_review_field() {
+    let harness = r#"
+(defn main []
+  (let [result (source-graph-from-program
+                 (parse-program "(defn invalid [] :review \"\" \"sha256:review-provenance-001\" \"public\" true)"))
+        error (source-graph-result-error result)]
+    (do
+      (print (source-graph-result-status result))
+      (print (source-graph-error-code error))
+      (print-string (source-graph-error-id error))
+      0)))
+"#;
+
+    let output = run_source_adapter_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "8"],
+        "empty review ID は required review metadata code 8 として拒否するべき"
+    );
+}
+
 /// EC-M2-02: review/change edge metadata は typed edge record へ投影する。
 #[test]
 fn test_e2e_selfhost_source_adapter_projects_review_change_edges() {
