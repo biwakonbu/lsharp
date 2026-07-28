@@ -1658,25 +1658,95 @@
       (parse-source-evidence-shrinks-loop-v3 spans pos-ref src (vector-new 0)))
     (vector-new 0)))
 
-(defn parse-source-evidence-coverage-loop-v3 [spans pos-ref src values]
+(defn parse-source-evidence-coverage-step-v3 [spans pos-ref src values]
   (if (or (== (p-current spans pos-ref) 3) (== (p-current spans pos-ref) 99))
     (do
       (advance-if-token-v3 spans pos-ref 3)
-      values)
+      (make-parse-loop-state 1 values))
     (if (== (p-current spans pos-ref) 0)
       (do
         (p-advance pos-ref)
-        (let [bucket (parse-source-metadata-string-v3 spans pos-ref src)
-          count (parse-source-evidence-int-v3 spans pos-ref src)]
+        (root_push values)
+        (let [bucket (parse-source-metadata-string-v3 spans pos-ref src)]
           (do
-            (advance-if-token-v3 spans pos-ref 1)
-            (let [entry (vector-push-pair-rooted-v3 (vector-new 0) bucket count)]
-              (parse-source-evidence-coverage-loop-v3
+            (root_push bucket)
+            (let [count (parse-source-evidence-int-v3 spans pos-ref src)]
+              (do
+                (root_push count)
+                (advance-if-token-v3 spans pos-ref 1)
+                (let [entry (vector-push-pair-rooted-v3 (vector-new 0) bucket count)]
+                  (do
+                    (root_push entry)
+                    (let [next-values (vector-push-single-rooted-v3 values entry)]
+                      (do
+                        (root_push next-values)
+                        (let [state (make-parse-loop-state 0 next-values)]
+                          (do
+                            (root_pop)
+                            (root_pop)
+                            (root_pop)
+                            (root_pop)
+                            (root_pop)
+                            state)))))))))))
+      (make-parse-loop-state 1 values))))
+
+(defn parse-source-evidence-coverage-step-64-loop-bounded
+  [spans pos-ref src values remaining]
+  (do
+    (root_push values)
+    (let [step (parse-source-evidence-coverage-step-v3 spans pos-ref src values)
+      done (vector-get step 0)
+      next-values (vector-get step 1)]
+      (do
+        (root_push step)
+        (root_push next-values)
+        (let [parsed
+          (if (= done 1)
+            step
+            (if (<= remaining 1)
+              step
+              (parse-source-evidence-coverage-step-64-loop-bounded
                 spans
                 pos-ref
                 src
-                (vector-push-single-rooted-v3 values entry))))))
-      values)))
+                next-values
+                (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn parse-source-evidence-coverage-step-64 [spans pos-ref src values]
+  (parse-source-evidence-coverage-step-64-loop-bounded spans pos-ref src values 64))
+
+(defn parse-source-evidence-coverage-rooted-v3 [spans pos-ref src values]
+  (let [step (parse-source-evidence-coverage-step-64 spans pos-ref src values)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 1)
+      (do
+        (root_push step)
+        (let [next-values (vector-get step 1)]
+          (do
+            (root_push next-values)
+            (let [parsed (parse-source-evidence-coverage-rooted-v3
+              spans pos-ref src next-values)]
+              (do
+                (root_pop)
+                (root_pop)
+                parsed))))))))
+
+(defn parse-source-evidence-coverage-loop-v3 [spans pos-ref src values]
+  (do
+    (root_push spans)
+    (root_push pos-ref)
+    (root_push src)
+    (let [parsed (parse-source-evidence-coverage-rooted-v3 spans pos-ref src values)]
+      (do
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        parsed))))
 
 (defn parse-source-evidence-coverage-v3 [spans pos-ref src]
   (if (== (p-current spans pos-ref) 2)

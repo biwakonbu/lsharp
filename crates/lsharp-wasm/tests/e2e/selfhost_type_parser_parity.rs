@@ -2439,6 +2439,120 @@ fn test_e2e_selfhost_parser_source_evidence_shrinks_cross_chunk_boundary() {
 }
 
 #[test]
+fn test_e2e_selfhost_parser_source_evidence_coverage_use_bounded_chunks() {
+    let source = selfhost_module("Parser.ls");
+    let rooted_body = source
+        .split("(defn parse-source-evidence-coverage-rooted-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn parse-source-evidence-coverage-loop-v3").next())
+        .expect("Parser.ls に source evidence coverage rooted loop が存在すること");
+    let step_body = source
+        .split("(defn parse-source-evidence-coverage-step-v3")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn parse-source-evidence-coverage-step-64-loop-bounded")
+                .next()
+        })
+        .expect("Parser.ls に source evidence coverage step helper が存在すること");
+
+    assert!(
+        source.contains("(defn parse-source-evidence-coverage-step-64-loop-bounded")
+            && source.contains("(defn parse-source-evidence-coverage-step-64")
+            && rooted_body.contains("parse-source-evidence-coverage-step-64")
+            && !step_body.contains(
+                "(parse-source-evidence-coverage-rooted-v3 spans pos-ref src next-values",
+            ),
+        "source evidence coverage parser は Linux x86 native stack の深い再帰を避けるため bounded chunk へ委譲するべき"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_parser_source_evidence_coverage_cross_chunk_boundary() {
+    let (token_ls, ast_ls, lexer_ls, parser_ls) = parser_runtime_modules();
+    let coverage = (0..65)
+        .map(|value| format!("(\"bucket-{}\" {})", value, value))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let source = format!(
+        r#"(defn verify []
+  :evidence "evidence:bulk"
+    :subject "claim:bulk"
+    :method "property"
+    :outcome "pass"
+    :runner "selfhost"
+    :target "x86_64-unknown-linux-gnu"
+    :source-commit "commit"
+    :artifact-digest "sha256:digest"
+    :cases 1
+    :seed 42
+    :generator "bulk"
+    :coverage [{}]
+    :producer "lsharp"
+    :tool-version "0.2"
+    :timestamp "2026-07-28T00:00:00Z"
+    :independence "same-author"
+  true)"#,
+        coverage
+    );
+    let rust_program = lsharp_syntax::parse(&source)
+        .expect("Rust oracle は 65 source evidence coverage buckets を parse できるべき");
+    match &rust_program.decls[0] {
+        Decl::Defn {
+            metadata: Some(metadata),
+            ..
+        } => match &metadata.forms[0].kind {
+            MetadataFormKind::Evidence { record } => {
+                assert_eq!(record.coverage().len(), 65);
+                assert_eq!(record.coverage().first(), Some(&("bucket-0".to_string(), 0)));
+                assert_eq!(record.coverage().last(), Some(&("bucket-64".to_string(), 64)));
+            }
+            form => panic!("Rust oracle の :evidence form が不正: {form:?}"),
+        },
+        decl => panic!("Rust oracle の defn metadata が不正: {decl:?}"),
+    }
+
+    let source_literal = source.replace('"', "\\\"");
+    let harness = format!(
+        r#"
+(defn main []
+  (let [node (vector-get (parse-program "{}") 0)
+        meta (vector-get node (- (vector-length node) 1))
+        forms (vector-get meta 5)
+        evidence (vector-get forms 0)
+        payload (vector-get evidence 1)
+        coverage (vector-get payload 12)
+        first (vector-get coverage 0)
+        last (vector-get coverage 64)]
+    (do
+      (print (vector-length node))
+      (print (vector-length forms))
+      (print (vector-get evidence 0))
+      (print (vector-length coverage))
+      (print-string (vector-get first 0))
+      (print-string "\n")
+      (print (vector-get first 1))
+      (print-string (vector-get last 0))
+      (print-string "\n")
+      (print (vector-get last 1))
+      0)))
+"#,
+        source_literal
+    );
+
+    let output = compile_and_run(&format!(
+        "{}\n{}\n{}\n{}\n{}",
+        token_ls, ast_ls, lexer_ls, parser_ls, harness
+    ));
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["5", "1", "15", "65", "bucket-0", "0", "bucket-64", "64"],
+        "source evidence coverage parser は 64 要素境界を跨いでも bucket/count layout を保持するべき"
+    );
+}
+
+#[test]
 fn test_e2e_selfhost_parser_type_expr_list_use_bounded_chunks() {
     let source = selfhost_module("Parser.ls");
     let rooted_body = source
