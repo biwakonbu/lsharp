@@ -656,6 +656,31 @@ fn test_e2e_selfhost_source_adapter_rejects_empty_review_id_as_invalid_review_fi
     );
 }
 
+/// EC-M2-02: blank review provenance は invalid review code 8 を invalid ID より先に返す。
+#[test]
+fn test_e2e_selfhost_source_adapter_reports_blank_review_digest_before_invalid_review_id() {
+    let harness = r#"
+(defn main []
+  (let [result (source-graph-from-program
+                 (parse-program "(defn invalid [] :review \\\"review:checkout\\\" \\\"  \\\" \\\"public\\\" true)"))
+        error (source-graph-result-error result)]
+    (do
+      (print (source-graph-result-status result))
+      (print (source-graph-error-code error))
+      (print-string (source-graph-error-id error))
+      0)))
+"#;
+
+    let output = run_source_adapter_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "8"],
+        "blank review digest は invalid review code 8 を invalid ID より先に返すべき"
+    );
+}
+
 /// EC-M2-02: review/change edge metadata は typed edge record へ投影する。
 #[test]
 fn test_e2e_selfhost_source_adapter_projects_review_change_edges() {

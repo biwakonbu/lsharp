@@ -338,6 +338,27 @@ fn source_adapter_rejects_empty_review_id_as_invalid_review_field() {
 }
 
 #[test]
+fn source_adapter_reports_blank_review_digest_before_invalid_review_id() {
+    let program = parse(
+        r#"
+        (defn checkout-review []
+          :review "review:checkout" "  " "public"
+          true)
+        "#,
+    )
+    .expect("blank review digest and invalid ID fixture は parse できるべき");
+
+    assert!(matches!(
+        source_program_to_intent_graph(&program),
+        Err(SourceGraphError::InvalidReviewField {
+            field: "provenance_digest",
+            value,
+            ..
+        }) if value == "  "
+    ));
+}
+
+#[test]
 fn source_adapter_reports_duplicate_reviews_with_both_source_spans() {
     const SOURCE: &str = r#"
         (defn first []

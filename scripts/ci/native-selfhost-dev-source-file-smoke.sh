@@ -132,6 +132,7 @@ VALIDATION_MISSING_REVIEW_MANIFEST="$WORK_DIR/ec-m3-missing-review-manifest.json
 VALIDATION_DUPLICATE_REVIEW_MANIFEST="$WORK_DIR/ec-m3-duplicate-review-manifest.json"
 VALIDATION_INVALID_REVIEW_MANIFEST="$WORK_DIR/ec-m3-invalid-review-manifest.json"
 VALIDATION_INVALID_REVIEW_DIGEST_MANIFEST="$WORK_DIR/ec-m3-invalid-review-digest-manifest.json"
+VALIDATION_REVIEW_REQUIRED_PRECEDENCE_MANIFEST="$WORK_DIR/ec-m3-review-required-precedence-manifest.json"
 VALIDATION_INVALID_REVIEW_ID_MANIFEST="$WORK_DIR/ec-m3-invalid-review-id-manifest.json"
 VALIDATION_EMPTY_REVIEW_ID_MANIFEST="$WORK_DIR/ec-m3-empty-review-id-manifest.json"
 VALIDATION_MALFORMED_REVIEW_MANIFEST="$WORK_DIR/ec-m3-malformed-review-manifest.json"
@@ -183,6 +184,7 @@ VALIDATION_MISSING_REVIEW_SOURCE="$WORK_DIR/ec-m3-missing-review-source.ls"
 VALIDATION_DUPLICATE_REVIEW_SOURCE="$WORK_DIR/ec-m3-duplicate-review-source.ls"
 VALIDATION_INVALID_REVIEW_SOURCE="$WORK_DIR/ec-m3-invalid-review-source.ls"
 VALIDATION_INVALID_REVIEW_DIGEST_SOURCE="$WORK_DIR/ec-m3-invalid-review-digest-source.ls"
+VALIDATION_REVIEW_REQUIRED_PRECEDENCE_SOURCE="$WORK_DIR/ec-m3-review-required-precedence-source.ls"
 VALIDATION_INVALID_REVIEW_ID_SOURCE="$WORK_DIR/ec-m3-invalid-review-id-source.ls"
 VALIDATION_EMPTY_REVIEW_ID_SOURCE="$WORK_DIR/ec-m3-empty-review-id-source.ls"
 VALIDATION_MALFORMED_REVIEW_SOURCE="$WORK_DIR/ec-m3-malformed-review-source.ls"
@@ -800,6 +802,12 @@ cat >"$VALIDATION_INVALID_REVIEW_DIGEST_SOURCE" <<'LSHARP'
 (defn invalid-review-digest []
   :claim "claim:checkout/rejects" "The API rejects shipped orders"
   :review "review:checkout/blank-digest" "   " "redacted"
+  true)
+LSHARP
+cat >"$VALIDATION_REVIEW_REQUIRED_PRECEDENCE_SOURCE" <<'LSHARP'
+(defn review-required-precedence []
+  :claim "claim:checkout/rejects" "The API rejects shipped orders"
+  :review "review:checkout" "   " "redacted"
   true)
 LSHARP
 cat >"$VALIDATION_INVALID_REVIEW_ID_SOURCE" <<'LSHARP'
@@ -1591,6 +1599,16 @@ grep -F "source validation error:8" "$WORK_DIR/validation-invalid-review-digest.
   || die "blank review digest validation must expose the invalid-review error code"
 [[ ! -e "$VALIDATION_INVALID_REVIEW_DIGEST_MANIFEST" ]] \
   || die "blank review digest validation must produce no report or manifest"
+
+run_expected_validation_error validation-review-required-precedence \
+  validate \
+  --source "$VALIDATION_REVIEW_REQUIRED_PRECEDENCE_SOURCE" \
+  --format json \
+  --emit-manifest "$VALIDATION_REVIEW_REQUIRED_PRECEDENCE_MANIFEST"
+grep -F "source validation error:8" "$WORK_DIR/validation-review-required-precedence.stderr" >/dev/null \
+  || die "blank review digest must win over invalid review ID with the invalid-review error code"
+[[ ! -e "$VALIDATION_REVIEW_REQUIRED_PRECEDENCE_MANIFEST" ]] \
+  || die "review required-field precedence validation must produce no report or manifest"
 
 run_expected_validation_error validation-invalid-review-id \
   validate \

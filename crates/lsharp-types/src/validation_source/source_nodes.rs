@@ -54,6 +54,13 @@ fn add_metadata_nodes(
                     span: form.span(),
                 });
             }
+            if provenance_digest.trim().is_empty() {
+                return Err(SourceGraphError::InvalidReviewField {
+                    field: "provenance_digest",
+                    value: provenance_digest.clone(),
+                    span: form.span(),
+                });
+            }
             let review_id =
                 ReviewId::parse(id.clone()).map_err(|source| SourceGraphError::ReviewIdAt {
                     span: form.span(),
@@ -66,13 +73,6 @@ fn add_metadata_nodes(
                     span: form.span(),
                 }
             })?;
-            if provenance_digest.trim().is_empty() {
-                return Err(SourceGraphError::InvalidReviewField {
-                    field: "provenance_digest",
-                    value: provenance_digest.clone(),
-                    span: form.span(),
-                });
-            }
             let review = ReviewRecord::new(review_id, provenance_digest.clone(), visibility);
             let id = review.id().as_str().to_string();
             if let Some((_, first_span)) = review_spans.iter().find(|(existing, _)| existing == &id)
