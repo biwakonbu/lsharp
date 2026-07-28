@@ -1927,6 +1927,74 @@ fn test_e2e_selfhost_parser_type_alias_params_cross_chunk_boundary() {
 }
 
 #[test]
+fn test_e2e_selfhost_parser_computation_steps_use_bounded_chunks() {
+    let source = selfhost_module("Parser.ls");
+    let rooted_body = source
+        .split("(defn parse-computation-steps-rooted-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn parse-computation-steps-v3").next())
+        .expect("Parser.ls に computation steps rooted loop が存在すること");
+    let step_body = source
+        .split("(defn parse-computation-step-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn parse-computation-steps-rooted-v3").next())
+        .expect("Parser.ls に computation step helper が存在すること");
+
+    assert!(
+        source.contains("(defn parse-computation-step-64-loop-bounded")
+            && source.contains("(defn parse-computation-step-64")
+            && rooted_body.contains("parse-computation-step-64")
+            && !step_body.contains(
+                "(parse-computation-steps-rooted-v3 spans pos-ref src next-result",
+            ),
+        "computation step parser は Linux x86 native stack の深い再帰を避けるため bounded chunk へ委譲するべき"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_parser_computation_steps_cross_chunk_boundary() {
+    let (token_ls, ast_ls, lexer_ls, parser_ls) = parser_runtime_modules();
+    let steps = (0..65)
+        .map(|index| format!("value{}", index))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let source = format!("(computation maybe-builder {})", steps);
+    let harness = format!(
+        r#"
+(defn main []
+  (let [node (vector-get (parse-program "{}") 0)
+        first-expr (vector-get node 5)
+        last-kind (vector-get node 195)
+        last-expr (vector-get node 197)]
+    (do
+      (print (if (= (vector-get node 0) (ast-computation)) 1 0))
+      (print (vector-get node 2))
+      (print (vector-length node))
+      (print (if (= (vector-get node 3) (computation-step-expr)) 1 0))
+      (print (if (= (vector-get first-expr 0) (ast-var)) 1 0))
+      (print (if (= (vector-get first-expr 1) (name-hash "value0" 0 6)) 1 0))
+      (print (if (= last-kind (computation-step-expr)) 1 0))
+      (print (if (= (vector-get last-expr 0) (ast-var)) 1 0))
+      (print (if (= (vector-get last-expr 1) (name-hash "value64" 0 7)) 1 0))
+      0)))
+"#,
+        source
+    );
+
+    let output = compile_and_run(&format!(
+        "{}\n{}\n{}\n{}\n{}",
+        token_ls, ast_ls, lexer_ls, parser_ls, harness
+    ));
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["1", "65", "198", "1", "1", "1", "1", "1", "1"],
+        "computation parser は 64 要素境界を跨いでも step/expr layout を保持するべき"
+    );
+}
+
+#[test]
 fn test_e2e_selfhost_parser_type_expr_list_use_bounded_chunks() {
     let source = selfhost_module("Parser.ls");
     let rooted_body = source

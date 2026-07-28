@@ -2165,25 +2165,61 @@
     (let [expr (parse-expr-v3 spans pos-ref src)]
       (make-computation-step-node (computation-step-expr) 0 expr))))
 
-(defn parse-computation-steps-rooted-v3 [spans pos-ref src result]
+(defn parse-computation-step-64-loop-bounded [spans pos-ref src result remaining]
   (if (== (p-current spans pos-ref) 1)
     (do
       (p-advance pos-ref)
-      result)
+      (make-parse-loop-state 1 result))
     (do
       (root_push result)
       (let [step (parse-computation-step-v3 spans pos-ref src)]
         (do
           (root_push step)
-          (let [next-result (computation-add-step result (vector-get step 0) (vector-get step 1) (vector-get step 2))]
+          (let [next-result
+                  (computation-add-step
+                    result
+                    (vector-get step 0)
+                    (vector-get step 1)
+                    (vector-get step 2))]
             (do
               (root_push next-result)
-              (let [parsed (parse-computation-steps-rooted-v3 spans pos-ref src next-result)]
+              (let [parsed
+                      (if (<= remaining 1)
+                        (make-parse-loop-state 0 next-result)
+                        (parse-computation-step-64-loop-bounded
+                          spans
+                          pos-ref
+                          src
+                          next-result
+                          (- remaining 1)))]
                 (do
                   (root_pop)
                   (root_pop)
                   (root_pop)
                   parsed)))))))))
+
+(defn parse-computation-step-64 [spans pos-ref src result]
+  (parse-computation-step-64-loop-bounded spans pos-ref src result 64))
+
+(defn parse-computation-steps-rooted-v3 [spans pos-ref src result]
+  (let [step (parse-computation-step-64 spans pos-ref src result)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 1)
+      (do
+        (root_push step)
+        (let [next-result (vector-get step 1)]
+          (do
+            (root_push next-result)
+            (let [parsed
+                    (parse-computation-steps-rooted-v3
+                      spans
+                      pos-ref
+                      src
+                      next-result)]
+              (do
+                (root_pop)
+                (root_pop)
+                parsed))))))))
 
 (defn parse-computation-steps-v3 [spans pos-ref src result]
   (do
