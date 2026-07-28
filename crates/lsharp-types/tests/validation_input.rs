@@ -501,6 +501,46 @@ fn parse_manifest_rejects_fractional_unsigned_numeric_fields() {
 }
 
 #[test]
+fn parse_manifest_rejects_null_unsigned_numeric_fields() {
+    let cases = [
+        (
+            "span.start",
+            complete_manifest().replace("\"start\": 0", "\"start\": null"),
+        ),
+        (
+            "span.end",
+            complete_manifest().replace("\"end\": 10", "\"end\": null"),
+        ),
+        (
+            "sampling.cases",
+            complete_manifest().replace("\"cases\": 1", "\"cases\": null"),
+        ),
+        (
+            "sampling.seed",
+            complete_manifest().replace("\"seed\": 0", "\"seed\": null"),
+        ),
+        (
+            "sampling.shrinks",
+            complete_manifest().replace("\"shrinks\": []", "\"shrinks\": null"),
+        ),
+        (
+            "sampling.coverage",
+            complete_manifest().replace("\"coverage\": {\"all\": 1}", "\"coverage\": null"),
+        ),
+    ];
+
+    for (field, manifest) in cases {
+        assert!(
+            matches!(
+                parse_intent_graph_json(&manifest),
+                Err(ValidationInputError::Json(_))
+            ),
+            "null {field} must fail during JSON decoding"
+        );
+    }
+}
+
+#[test]
 fn parse_manifest_rejects_duplicate_coverage_bucket_keys() {
     let manifest = complete_manifest().replace(
         "\"coverage\": {\"all\": 1}",

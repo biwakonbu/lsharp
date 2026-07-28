@@ -64,6 +64,11 @@ default EmbeddedCli の build は既存 selfhost source の `vector-push-single-
 manifest input error の stderr として拒否することを
 `validate_rejects_unsigned_numeric_overflow_without_report_or_manifest_output` で固定した。
 
+JSON `null` についても、unsigned fieldを 0 や省略へ変換せず、全6 fieldで graph 構築前の
+`ValidationInputError::Json` として拒否することを `parse_manifest_rejects_null_unsigned_numeric_fields`
+で固定した。`serde` の typed decode により wire shape の欠落と null を区別し、sampling semantics の
+暗黙補完を許可しない。
+
 ## Boundary
 
 これは Rust manifest input decoder の数値型境界に限定した verified slice である。source syntax

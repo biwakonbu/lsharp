@@ -743,3 +743,10 @@ exit `1`、空 stdout、manifest file 未生成、manifest input error の stder
 default EmbeddedCli blockerを避けた既存 component artifact 指定の Rust driver CLI evidenceであり、
 selfhost/native CLI、MCP、current-source stage0 artifact/runtime、Mac/Linux matrix、EC-M2-03/EC-M3 aggregate
 は残件。Evidence: `docs/adr/decisions-v0.2-validation-input-numeric-boundaries.md`。
+
+2026-07-29 に version 1 manifest の unsigned numeric `null` boundary を追加した。span / sampling の全6
+fieldで `null` を 0 や省略へ変換せず、Rust canonical parser が graph 構築前に
+`ValidationInputError::Json` として拒否することを `parse_manifest_rejects_null_unsigned_numeric_fields`
+で固定した。selfhost/native manifest parser、公開 CLI/MCP、current-source stage0 artifact/runtime、
+Mac/Linux matrix、EC-M2-02/EC-M3 aggregate は残件。Evidence:
+`docs/adr/decisions-v0.2-validation-input-numeric-boundaries.md`。
