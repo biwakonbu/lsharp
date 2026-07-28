@@ -617,27 +617,65 @@
       0)))
 
 ;; 型リストを読み、対応する ) までの raw TypeExpr を収集する。
-(defn parse-type-expr-list-rooted-v3 [spans pos-ref src result]
+(defn parse-type-expr-list-step-v3 [spans pos-ref src result]
   (if (== (p-current spans pos-ref) 1)
     (do
       (p-advance pos-ref)
-      result)
+      (make-parse-loop-state 1 result))
     (if (== (p-current spans pos-ref) 99)
-      result
+      (make-parse-loop-state 1 result)
       (do
-        (root_push result)
-        (let [item (parse-type-expr-v3 spans pos-ref src)]
+        (let [result-slot (root_push result)
+          item (parse-type-expr-v3 spans pos-ref src)]
           (do
             (root_push item)
             (let [next-result (vector-push-single-rooted-v3 result item)]
               (do
-                (root_push next-result)
-                (let [parsed (parse-type-expr-list-rooted-v3 spans pos-ref src next-result)]
+                (root_set result-slot next-result)
+                (let [state (make-parse-loop-state 0 next-result)]
                   (do
                     (root_pop)
                     (root_pop)
-                    (root_pop)
-                    parsed))))))))))
+                    state))))))))))
+
+(defn parse-type-expr-list-step-64-loop-bounded [spans pos-ref src result remaining]
+  (do
+    (root_push result)
+    (let [step (parse-type-expr-list-step-v3 spans pos-ref src result)
+      done (vector-get step 0)
+      next-result (vector-get step 1)]
+      (do
+        (root_push step)
+        (root_push next-result)
+        (let [parsed
+          (if (= done 1)
+            step
+            (if (<= remaining 1)
+              step
+              (parse-type-expr-list-step-64-loop-bounded spans pos-ref src next-result (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn parse-type-expr-list-step-64 [spans pos-ref src result]
+  (parse-type-expr-list-step-64-loop-bounded spans pos-ref src result 64))
+
+(defn parse-type-expr-list-rooted-v3 [spans pos-ref src result]
+  (let [step (parse-type-expr-list-step-64 spans pos-ref src result)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 1)
+      (do
+        (root_push step)
+        (let [next-result (vector-get step 1)]
+          (do
+            (root_push next-result)
+            (let [parsed (parse-type-expr-list-rooted-v3 spans pos-ref src next-result)]
+              (do
+                (root_pop)
+                (root_pop)
+                parsed))))))))
 
 (defn parse-type-expr-list-v3 [spans pos-ref src result]
   (do
