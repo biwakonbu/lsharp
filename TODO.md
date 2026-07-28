@@ -362,6 +362,13 @@ stage0 source-file smoke/provenance gate を通過した verified partial slice�
 bucket policy、coverage count、parser/manifest/validate CLI 全体、current-source artifact/runtime、
 Mac/Linux matrix、EC-M2-02 aggregate は残件。ADR: `docs/adr/decisions-v0.2-native-validation-evidence-coverage-bucket.md`。
 
+canonical `SamplingPlan` / `EvidenceGraph` でも空 coverage bucket を登録前に
+`EvidenceValidationError::EmptyField { field: "coverage" }` として拒否するよう揃えた。
+`evidence_required_fields` 6件、`evidence_graph` 5件、source suite 54件、Linux x86_64 native
+stage0 source-file smoke/provenance gate を通過した verified partial sliceである。duplicate/
+whitespace policy、coverage count/cases、manifest/validate CLI、current-source artifact/runtime、
+Mac/Linux matrix、EC-M2-02 aggregate は残件。ADR: `docs/adr/decisions-v0.2-native-validation-evidence-canonical-sampling.md`。
+
 次の実装は `EC-M2-01`〜`EC-M2-03` の未接続入力を一つの RED に絞る。current plan の
 acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展開しない。
 

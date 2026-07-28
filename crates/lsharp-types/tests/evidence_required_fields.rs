@@ -90,6 +90,43 @@ fn sampling_and_provenance_reject_empty_required_fields() {
 }
 
 #[test]
+fn sampling_rejects_empty_coverage_bucket_before_graph_registration() {
+    let sampling = SamplingPlan::new(1, 42, "fixed-v1", Vec::new(), [("", 1)]);
+
+    assert!(matches!(
+        sampling.validate_required_fields(),
+        Err(EvidenceValidationError::EmptyField { field }) if field == "coverage"
+    ));
+}
+
+#[test]
+fn graph_rejects_empty_coverage_bucket_before_registration() {
+    let invalid = Evidence::new(
+        EvidenceId::new("checkout", "empty-coverage").expect("valid evidence id"),
+        EvidenceMethod::Case,
+        EvidenceSubject::Claim(
+            ClaimId::new("checkout", "cancel-rejects-shipped").expect("valid claim id"),
+        ),
+        EvidenceOutcome::Pass,
+        ExecutionContext::new(
+            ExecutionIdentity::new("runner", "target", "commit", "digest"),
+            SamplingPlan::new(1, 42, "fixed-v1", Vec::new(), [("", 1)]),
+        ),
+        valid_provenance(),
+        Independence::SameAuthor,
+    );
+    let mut graph = EvidenceGraph::default();
+
+    assert!(matches!(
+        graph.add_evidence(invalid),
+        Err(GraphError::InvalidEvidence {
+            source: EvidenceValidationError::EmptyField { field: "coverage" }
+        })
+    ));
+    assert!(graph.evidence().is_empty());
+}
+
+#[test]
 fn graph_rejects_invalid_evidence_before_registration() {
     let mut invalid = valid_evidence();
     invalid = Evidence::new(
