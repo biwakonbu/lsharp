@@ -1261,28 +1261,74 @@
             (vector-new 0)))))
     (vector-new 0)))
 
-(defn parse-defn-meta-case-loop-rooted-v3 [spans pos-ref src expectations]
+(defn parse-defn-meta-case-step-v3 [spans pos-ref src expectations]
   (if (== (p-current spans pos-ref) 3)
     (do
       (p-advance pos-ref)
-      expectations)
+      (make-parse-loop-state 1 expectations))
     (if (== (p-current spans pos-ref) 99)
-      expectations
+      (make-parse-loop-state 1 expectations)
       (do
         (root_push expectations)
-        (let [pair (parse-defn-meta-case-expectation-v3 spans pos-ref src)]
+        (let [expectation (parse-defn-meta-case-expectation-v3 spans pos-ref src)]
           (do
-            (root_push pair)
-            (let [next-expectations (vector-push-single-rooted-v3 expectations pair)]
+            (root_push expectation)
+            (let [next-expectations
+              (vector-push-single-rooted-v3 expectations expectation)]
               (do
                 (root_push next-expectations)
-                (let [parsed (parse-defn-meta-case-loop-rooted-v3
-                  spans pos-ref src next-expectations)]
+                (let [state (make-parse-loop-state 0 next-expectations)]
                   (do
                     (root_pop)
                     (root_pop)
                     (root_pop)
-                    parsed))))))))))
+                    state))))))))))
+
+(defn parse-defn-meta-case-step-64-loop-bounded
+  [spans pos-ref src expectations remaining]
+  (do
+    (root_push expectations)
+    (let [step (parse-defn-meta-case-step-v3 spans pos-ref src expectations)
+      done (vector-get step 0)
+      next-expectations (vector-get step 1)]
+      (do
+        (root_push step)
+        (root_push next-expectations)
+        (let [parsed
+          (if (= done 1)
+            step
+            (if (<= remaining 1)
+              step
+              (parse-defn-meta-case-step-64-loop-bounded
+                spans
+                pos-ref
+                src
+                next-expectations
+                (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn parse-defn-meta-case-step-64 [spans pos-ref src expectations]
+  (parse-defn-meta-case-step-64-loop-bounded spans pos-ref src expectations 64))
+
+(defn parse-defn-meta-case-loop-rooted-v3 [spans pos-ref src expectations]
+  (let [step (parse-defn-meta-case-step-64 spans pos-ref src expectations)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 1)
+      (do
+        (root_push step)
+        (let [next-expectations (vector-get step 1)]
+          (do
+            (root_push next-expectations)
+            (let [parsed (parse-defn-meta-case-loop-rooted-v3
+              spans pos-ref src next-expectations)]
+              (do
+                (root_pop)
+                (root_pop)
+                parsed))))))))
 
 (defn parse-defn-meta-case-loop-v3 [spans pos-ref src expectations]
   (do

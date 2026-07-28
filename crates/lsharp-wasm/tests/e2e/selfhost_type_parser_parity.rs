@@ -2180,6 +2180,157 @@ fn test_e2e_selfhost_parser_defn_assert_predicates_cross_chunk_boundary() {
 }
 
 #[test]
+fn test_e2e_selfhost_parser_defn_case_expectations_use_bounded_chunks() {
+    let source = selfhost_module("Parser.ls");
+    let rooted_body = source
+        .split("(defn parse-defn-meta-case-loop-rooted-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn parse-defn-meta-case-loop-v3").next())
+        .expect("Parser.ls に defn :case metadata rooted loop が存在すること");
+    let step_body = source
+        .split("(defn parse-defn-meta-case-step-v3")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn parse-defn-meta-case-step-64-loop-bounded")
+                .next()
+        })
+        .expect("Parser.ls に defn :case metadata step helper が存在すること");
+
+    assert!(
+        source.contains("(defn parse-defn-meta-case-step-64-loop-bounded")
+            && source.contains("(defn parse-defn-meta-case-step-64")
+            && rooted_body.contains("parse-defn-meta-case-step-64")
+            && !step_body.contains(
+                "(parse-defn-meta-case-loop-rooted-v3 spans pos-ref src next-expectations",
+            ),
+        "defn :case metadata parser は Linux x86 native stack の深い再帰を避けるため bounded chunk へ委譲するべき"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_parser_defn_case_expectations_cross_chunk_boundary() {
+    let (token_ls, ast_ls, lexer_ls, parser_ls) = parser_runtime_modules();
+    let expectations = (0..65)
+        .map(|index| format!("(expect {index} {})", index + 1))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let source = format!("(defn identity [] :case [{}] 0)", expectations);
+    let first_start = source
+        .find("(expect 0 1)")
+        .expect("first case expectation が見つかる");
+    let first_end = first_start + "(expect 0 1)".len();
+    let first_actual_start = first_start + "(expect ".len();
+    let first_actual_end = first_actual_start + "0".len();
+    let first_expected_start = first_actual_end + 1;
+    let first_expected_end = first_expected_start + "1".len();
+    let last_start = source
+        .rfind("(expect 64 65)")
+        .expect("last case expectation が見つかる");
+    let last_end = last_start + "(expect 64 65)".len();
+    let last_actual_start = last_start + "(expect ".len();
+    let last_actual_end = last_actual_start + "64".len();
+    let last_expected_start = last_actual_end + 1;
+    let last_expected_end = last_expected_start + "65".len();
+    let rust_program = lsharp_syntax::parse(&source)
+        .expect("Rust oracle は 65 case expectations を parse できるべき");
+    match &rust_program.decls[0] {
+        Decl::Defn {
+            metadata: Some(metadata),
+            ..
+        } => match &metadata.forms[0].kind {
+            MetadataFormKind::Case { expectations } => {
+                assert_eq!(expectations.len(), 65);
+                assert_eq!(expectations[0].source_span().start, first_start);
+                assert_eq!(expectations[0].source_span().end, first_end);
+                assert_eq!(expectations[0].actual().span().start, first_actual_start);
+                assert_eq!(expectations[0].actual().span().end, first_actual_end);
+                assert_eq!(expectations[0].expected().span().start, first_expected_start);
+                assert_eq!(expectations[0].expected().span().end, first_expected_end);
+                assert_eq!(expectations[64].source_span().start, last_start);
+                assert_eq!(expectations[64].source_span().end, last_end);
+                assert_eq!(expectations[64].actual().span().start, last_actual_start);
+                assert_eq!(expectations[64].actual().span().end, last_actual_end);
+                assert_eq!(expectations[64].expected().span().start, last_expected_start);
+                assert_eq!(expectations[64].expected().span().end, last_expected_end);
+            }
+            form => panic!("Rust oracle の :case form が不正: {form:?}"),
+        },
+        decl => panic!("Rust oracle の defn metadata が不正: {decl:?}"),
+    }
+
+    let harness = format!(
+        r#"
+(defn main []
+  (let [node (vector-get (parse-program "{}") 0)
+        meta (vector-get node (- (vector-length node) 1))
+        forms (vector-get meta 5)
+        case-form (vector-get forms 0)
+        expectations (vector-get case-form 1)
+        first (vector-get expectations 0)
+        last (vector-get expectations 64)]
+    (do
+      (print (vector-length node))
+      (print (vector-length forms))
+      (print (vector-get case-form 0))
+      (print (vector-length expectations))
+      (print (vector-get (vector-get first 0) 0))
+      (print (vector-get (vector-get first 1) 1))
+      (print (vector-get (vector-get last 0) 1))
+      (print (vector-get (vector-get last 1) 1))
+      (print (vector-length first))
+      (print (vector-get first 2))
+      (print (vector-get first 3))
+      (print (vector-get first 4))
+      (print (vector-get first 5))
+      (print (vector-get first 6))
+      (print (vector-get first 7))
+      (print (vector-get last 2))
+      (print (vector-get last 3))
+      (print (vector-get last 4))
+      (print (vector-get last 5))
+      (print (vector-get last 6))
+      (print (vector-get last 7))
+      0)))
+"#,
+        source
+    );
+
+    let output = compile_and_run(&format!(
+        "{}\n{}\n{}\n{}\n{}",
+        token_ls, ast_ls, lexer_ls, parser_ls, harness
+    ));
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        [
+            "5",
+            "1",
+            "4",
+            "65",
+            "1",
+            "1",
+            "64",
+            "65",
+            "8",
+            &first_start.to_string(),
+            &first_end.to_string(),
+            &first_actual_start.to_string(),
+            &first_actual_end.to_string(),
+            &first_expected_start.to_string(),
+            &first_expected_end.to_string(),
+            &last_start.to_string(),
+            &last_end.to_string(),
+            &last_actual_start.to_string(),
+            &last_actual_end.to_string(),
+            &last_expected_start.to_string(),
+            &last_expected_end.to_string(),
+        ],
+        "defn :case parser は 64 要素境界を跨いでも expectation と source span layout を保持するべき"
+    );
+}
+
+#[test]
 fn test_e2e_selfhost_parser_type_expr_list_use_bounded_chunks() {
     let source = selfhost_module("Parser.ls");
     let rooted_body = source
