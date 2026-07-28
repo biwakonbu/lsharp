@@ -1,7 +1,7 @@
 use super::{require_node, SourceGraphError};
 use crate::evidence::{
-    Evidence, EvidenceMethod, EvidenceOutcome, EvidenceSubject, EvidenceValidationError,
-    ExecutionContext, ExecutionIdentity, GraphError, Independence, Provenance, SamplingPlan,
+    Evidence, EvidenceMethod, EvidenceOutcome, EvidenceSubject, ExecutionContext,
+    ExecutionIdentity, Independence, Provenance, SamplingPlan,
 };
 use crate::intent::{ClaimId, ContractId, EvidenceId, IntentId, NodeKind, StableId};
 use crate::validation::IntentGraph;
@@ -67,7 +67,7 @@ fn build_source_evidence(
     graph: &IntentGraph,
     span: Span,
 ) -> Result<Evidence, SourceGraphError> {
-    validate_required_source_evidence_fields(record)?;
+    validate_required_source_evidence_fields(record, span)?;
     let id = EvidenceId::parse(record.id().to_string())?;
     let subject = parse_evidence_subject(record.subject(), graph, span)?;
     let method = parse_evidence_method(record.method(), span)?;
@@ -105,6 +105,7 @@ fn build_source_evidence(
 
 fn validate_required_source_evidence_fields(
     record: &lsharp_syntax::metadata::EvidenceForm,
+    span: Span,
 ) -> Result<(), SourceGraphError> {
     for (field, value) in [
         ("runner", record.runner()),
@@ -117,9 +118,11 @@ fn validate_required_source_evidence_fields(
         ("timestamp", record.timestamp()),
     ] {
         if value.trim().is_empty() {
-            return Err(SourceGraphError::Graph(GraphError::InvalidEvidence {
-                source: EvidenceValidationError::EmptyField { field },
-            }));
+            return Err(SourceGraphError::InvalidEvidenceRequiredField {
+                field,
+                value: value.to_string(),
+                span,
+            });
         }
     }
     Ok(())

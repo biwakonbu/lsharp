@@ -323,6 +323,13 @@ diagnostic に残すようにした。selfhost の code `10` / span と native s
 no-report/no-manifest boundary に対応する verified sliceだが、driver の EmbeddedCli build、実
 stage0 artifact/runtime、Mac/Linux matrix、native fallback exclusion の evidence ではない。
 
+さらに evidence の required field (`runner` / `target` / `source-commit` / `artifact-digest` /
+`generator` / `producer` / `tool-version` / `timestamp`) が空または whitespace-only の場合を
+`InvalidEvidenceRequiredField` として field、value、directive span 付きで返すようにした。selfhost
+の stable code `4` / span と native source-file smoke の no-report/no-manifest boundary に対応する
+verified sliceだが、driver の EmbeddedCli build、実 stage0 artifact/runtime、Mac/Linux matrix、
+native fallback exclusion の evidence ではない。
+
 次の実装は `EC-M2-01`〜`EC-M2-03` の未接続入力を一つの RED に絞る。current plan の
 acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展開しない。
 

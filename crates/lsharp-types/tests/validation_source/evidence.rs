@@ -1,9 +1,7 @@
 //! source evidence record、sampling、registry closure の contract tests。
 
 use lsharp_syntax::parse;
-use lsharp_types::evidence::{
-    EvidenceMethod, EvidenceOutcome, EvidenceValidationError, GraphError, Independence,
-};
+use lsharp_types::evidence::{EvidenceMethod, EvidenceOutcome, Independence};
 use lsharp_types::intent::StableIdError;
 use lsharp_types::validation_input::parse_intent_graph_json;
 use lsharp_types::validation_source::{source_program_to_intent_graph, SourceGraphError};
@@ -343,16 +341,16 @@ fn source_adapter_rejects_empty_required_sampling_generator() {
         .expect_err("empty generator は source graph 登録時に拒否するべき");
     assert!(matches!(
         error,
-        SourceGraphError::Graph(GraphError::InvalidEvidence {
-            source: EvidenceValidationError::EmptyField { field: "generator" }
-        })
+        SourceGraphError::InvalidEvidenceRequiredField {
+            field: "generator",
+            ..
+        }
     ));
 }
 
 #[test]
 fn source_adapter_reports_empty_runner_before_invalid_evidence_id() {
-    let program = parse(
-        r#"
+    const SOURCE: &str = r#"
         (defn cancel []
           :claim "claim:checkout/cancel" "The API rejects shipped orders"
           :evidence "evidence:checkout"
@@ -371,16 +369,20 @@ fn source_adapter_reports_empty_runner_before_invalid_evidence_id() {
             :timestamp "2026-07-28T00:00:00Z"
             :independence "same-author"
           true)
-        "#,
-    )
-    .expect("empty runner and invalid evidence ID fixture は parse できるべき");
+        "#;
+    let program =
+        parse(SOURCE).expect("empty runner and invalid evidence ID fixture は parse できるべき");
 
-    assert!(matches!(
-        source_program_to_intent_graph(&program),
-        Err(SourceGraphError::Graph(GraphError::InvalidEvidence {
-            source: EvidenceValidationError::EmptyField { field: "runner" }
-        }))
-    ));
+    let error = source_program_to_intent_graph(&program)
+        .expect_err("empty runner は invalid evidence ID より先に source span 付きで拒否するべき");
+    let SourceGraphError::InvalidEvidenceRequiredField { field, value, span } = error else {
+        panic!("empty runner の required-field source diagnostic を期待しました: {error:?}");
+    };
+    assert_eq!(field, "runner");
+    assert_eq!(value, "");
+    assert!(span.start < span.end);
+    assert!(SOURCE[span.start..span.end].contains(":evidence"));
+    assert!(SOURCE[span.start..span.end].contains(":runner"));
 }
 
 #[test]
@@ -413,9 +415,10 @@ fn source_adapter_rejects_empty_required_execution_runner() {
         .expect_err("empty runner は source graph 登録時に拒否するべき");
     assert!(matches!(
         error,
-        SourceGraphError::Graph(GraphError::InvalidEvidence {
-            source: EvidenceValidationError::EmptyField { field: "runner" }
-        })
+        SourceGraphError::InvalidEvidenceRequiredField {
+            field: "runner",
+            ..
+        }
     ));
 }
 
@@ -449,9 +452,10 @@ fn source_adapter_rejects_empty_required_execution_target() {
         .expect_err("empty target は source graph 登録時に拒否するべき");
     assert!(matches!(
         error,
-        SourceGraphError::Graph(GraphError::InvalidEvidence {
-            source: EvidenceValidationError::EmptyField { field: "target" }
-        })
+        SourceGraphError::InvalidEvidenceRequiredField {
+            field: "target",
+            ..
+        }
     ));
 }
 
@@ -485,11 +489,10 @@ fn source_adapter_rejects_empty_required_execution_source_commit() {
         .expect_err("empty source commit は source graph 登録時に拒否するべき");
     assert!(matches!(
         error,
-        SourceGraphError::Graph(GraphError::InvalidEvidence {
-            source: EvidenceValidationError::EmptyField {
-                field: "source_commit"
-            }
-        })
+        SourceGraphError::InvalidEvidenceRequiredField {
+            field: "source_commit",
+            ..
+        }
     ));
 }
 
@@ -523,11 +526,10 @@ fn source_adapter_rejects_empty_required_execution_artifact_digest() {
         .expect_err("empty artifact digest は source graph 登録時に拒否するべき");
     assert!(matches!(
         error,
-        SourceGraphError::Graph(GraphError::InvalidEvidence {
-            source: EvidenceValidationError::EmptyField {
-                field: "artifact_digest"
-            }
-        })
+        SourceGraphError::InvalidEvidenceRequiredField {
+            field: "artifact_digest",
+            ..
+        }
     ));
 }
 
@@ -561,9 +563,10 @@ fn source_adapter_rejects_empty_required_provenance_producer() {
         .expect_err("empty producer は source graph 登録時に拒否するべき");
     assert!(matches!(
         error,
-        SourceGraphError::Graph(GraphError::InvalidEvidence {
-            source: EvidenceValidationError::EmptyField { field: "producer" }
-        })
+        SourceGraphError::InvalidEvidenceRequiredField {
+            field: "producer",
+            ..
+        }
     ));
 }
 
@@ -597,11 +600,10 @@ fn source_adapter_rejects_empty_required_provenance_tool_version() {
         .expect_err("empty tool version は source graph 登録時に拒否するべき");
     assert!(matches!(
         error,
-        SourceGraphError::Graph(GraphError::InvalidEvidence {
-            source: EvidenceValidationError::EmptyField {
-                field: "tool_version"
-            }
-        })
+        SourceGraphError::InvalidEvidenceRequiredField {
+            field: "tool_version",
+            ..
+        }
     ));
 }
 
@@ -635,9 +637,10 @@ fn source_adapter_rejects_empty_required_provenance_timestamp() {
         .expect_err("empty timestamp は source graph 登録時に拒否するべき");
     assert!(matches!(
         error,
-        SourceGraphError::Graph(GraphError::InvalidEvidence {
-            source: EvidenceValidationError::EmptyField { field: "timestamp" }
-        })
+        SourceGraphError::InvalidEvidenceRequiredField {
+            field: "timestamp",
+            ..
+        }
     ));
 }
 
@@ -671,9 +674,10 @@ fn source_adapter_rejects_whitespace_only_required_execution_runner() {
         .expect_err("whitespace runner は source graph 登録時に拒否するべき");
     assert!(matches!(
         error,
-        SourceGraphError::Graph(GraphError::InvalidEvidence {
-            source: EvidenceValidationError::EmptyField { field: "runner" }
-        })
+        SourceGraphError::InvalidEvidenceRequiredField {
+            field: "runner",
+            ..
+        }
     ));
 }
 

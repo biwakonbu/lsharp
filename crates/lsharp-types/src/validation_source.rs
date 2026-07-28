@@ -91,6 +91,12 @@ pub enum SourceGraphError {
         value: String,
         span: Span,
     },
+    #[error("source evidence の required field {field} が空または空白のみです (span={span})")]
+    InvalidEvidenceRequiredField {
+        field: &'static str,
+        value: String,
+        span: Span,
+    },
     #[error("source review の {field} が不正です (span={span}): {value}")]
     InvalidReviewField {
         field: &'static str,
@@ -133,6 +139,7 @@ impl SourceGraphError {
             | Self::MissingReviewReference { span, .. }
             | Self::EvidenceRegistryRequired { span, .. }
             | Self::InvalidEvidenceField { span, .. }
+            | Self::InvalidEvidenceRequiredField { span, .. }
             | Self::InvalidReviewField { span, .. } => Some(*span),
             Self::Node(_) | Self::Graph(_) | Self::EdgeId(_) | Self::KindMismatch { .. } => None,
             Self::EdgeSubjectKindMismatch { span, .. } => Some(*span),
