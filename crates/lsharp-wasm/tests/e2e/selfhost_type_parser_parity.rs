@@ -1,4 +1,6 @@
 use super::support::*;
+use lsharp_syntax::ast::Decl;
+use lsharp_syntax::metadata::MetadataFormKind;
 
 // =============================================================================
 // TEST-TYPE-07: error code/span/primary message の parity golden
@@ -2065,6 +2067,115 @@ fn test_e2e_selfhost_parser_import_only_symbols_cross_chunk_boundary() {
         lines,
         ["1", "26", "1", "6", "65", "1", "1"],
         "import :only parser は 64 要素境界を跨いでも symbol hash vector と AST layout を保持するべき"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_parser_defn_assert_predicates_use_bounded_chunks() {
+    let source = selfhost_module("Parser.ls");
+    let rooted_body = source
+        .split("(defn parse-defn-meta-assert-loop-rooted-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn parse-defn-meta-assert-loop-v3").next())
+        .expect("Parser.ls に defn :assert metadata rooted loop が存在すること");
+    let step_body = source
+        .split("(defn parse-defn-meta-assert-step-v3")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn parse-defn-meta-assert-step-64-loop-bounded")
+                .next()
+        })
+        .expect("Parser.ls に defn :assert metadata step helper が存在すること");
+
+    assert!(
+        source.contains("(defn parse-defn-meta-assert-step-64-loop-bounded")
+            && source.contains("(defn parse-defn-meta-assert-step-64")
+            && rooted_body.contains("parse-defn-meta-assert-step-64")
+            && !step_body.contains(
+                "(parse-defn-meta-assert-loop-rooted-v3 spans pos-ref src next-predicates",
+            ),
+        "defn :assert metadata parser は Linux x86 native stack の深い再帰を避けるため bounded chunk へ委譲するべき"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_parser_defn_assert_predicates_cross_chunk_boundary() {
+    let (token_ls, ast_ls, lexer_ls, parser_ls) = parser_runtime_modules();
+    let predicates = (0..65)
+        .map(|_| "true".to_string())
+        .collect::<Vec<_>>()
+        .join(" ");
+    let source = format!("(defn positive [] :assert [{}] true)", predicates);
+    let first_start = source.find("true").expect("first predicate が見つかる");
+    let first_end = first_start + "true".len();
+    let body_marker = source.rfind("] true").expect("defn body marker が見つかる");
+    let last_start = source[..body_marker]
+        .rfind("true")
+        .expect("last predicate が見つかる");
+    let last_end = last_start + "true".len();
+    let rust_program = lsharp_syntax::parse(&source)
+        .expect("Rust oracle は 65 assert predicates を parse できるべき");
+    match &rust_program.decls[0] {
+        Decl::Defn {
+            metadata: Some(metadata),
+            ..
+        } => match &metadata.forms[0].kind {
+            MetadataFormKind::Assertion { predicates } => {
+                assert_eq!(predicates.len(), 65);
+            }
+            form => panic!("Rust oracle の :assert form が不正: {form:?}"),
+        },
+        decl => panic!("Rust oracle の defn metadata が不正: {decl:?}"),
+    }
+
+    let harness = format!(
+        r#"
+(defn main []
+  (let [node (vector-get (parse-program "{}") 0)
+        meta (vector-get node (- (vector-length node) 1))
+        forms (vector-get meta 5)
+        assertion (vector-get forms 0)
+        predicates (vector-get assertion 1)
+        spans (vector-get assertion 4)]
+    (do
+      (print (vector-length node))
+      (print (vector-length forms))
+      (print (vector-get assertion 0))
+      (print (vector-length predicates))
+      (print (if (= (vector-get (vector-get predicates 0) 0) (ast-lit-bool)) 1 0))
+      (print (if (= (vector-get (vector-get predicates 64) 0) (ast-lit-bool)) 1 0))
+      (print (vector-length spans))
+      (print (vector-get spans 0))
+      (print (vector-get spans 1))
+      (print (vector-get spans 128))
+      (print (vector-get spans 129))
+      0)))
+"#,
+        source
+    );
+
+    let output = compile_and_run(&format!(
+        "{}\n{}\n{}\n{}\n{}",
+        token_ls, ast_ls, lexer_ls, parser_ls, harness
+    ));
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        [
+            "5",
+            "1",
+            "3",
+            "65",
+            "1",
+            "1",
+            "130",
+            &first_start.to_string(),
+            &first_end.to_string(),
+            &last_start.to_string(),
+            &last_end.to_string(),
+        ],
+        "defn :assert parser は 64 要素境界を跨いでも predicate と source span layout を保持するべき"
     );
 }
 
