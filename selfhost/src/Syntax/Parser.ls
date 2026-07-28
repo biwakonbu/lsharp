@@ -1840,11 +1840,11 @@
       0)))
 
 ;; parametric type-alias head の parameter 名を source order で保持する。
-(defn parse-type-alias-param-hashes-rooted-v3 [spans pos-ref src params]
+(defn parse-type-alias-param-hashes-step-v3 [spans pos-ref src params]
   (if (== (p-current spans pos-ref) 1)
     (do
       (p-advance pos-ref)
-      params)
+      (make-parse-loop-state 1 params))
     (if (== (p-current spans pos-ref) 20)
       (let [param-hash (current-symbol-hash-v3 spans pos-ref src)]
         (do
@@ -1853,14 +1853,69 @@
           (let [next-params (vector-push-single-rooted-v3 params param-hash)]
             (do
               (root_push next-params)
-              (let [parsed (parse-type-alias-param-hashes-rooted-v3 spans pos-ref src next-params)]
+              (let [state (make-parse-loop-state 0 next-params)]
                 (do
                   (root_pop)
                   (root_pop)
-                  parsed))))))
+                  state))))))
       (do
         (parse-skip-to-close-v3 spans pos-ref 1)
-        0))))
+        (make-parse-loop-state 1 0)))))
+
+(defn parse-type-alias-param-hashes-step-64-loop-bounded
+  [spans pos-ref src params remaining]
+  (do
+    (root_push params)
+    (let [step (parse-type-alias-param-hashes-step-v3 spans pos-ref src params)
+      done (vector-get step 0)
+      next-params (vector-get step 1)]
+      (do
+        (root_push step)
+        (root_push next-params)
+        (let [parsed
+          (if (= done 1)
+            step
+            (if (<= remaining 1)
+              step
+              (parse-type-alias-param-hashes-step-64-loop-bounded
+                spans
+                pos-ref
+                src
+                next-params
+                (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn parse-type-alias-param-hashes-step-64 [spans pos-ref src params]
+  (parse-type-alias-param-hashes-step-64-loop-bounded
+    spans
+    pos-ref
+    src
+    params
+    64))
+
+(defn parse-type-alias-param-hashes-rooted-v3 [spans pos-ref src params]
+  (let [step (parse-type-alias-param-hashes-step-64 spans pos-ref src params)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 1)
+      (do
+        (root_push step)
+        (let [next-params (vector-get step 1)]
+          (do
+            (root_push next-params)
+            (let [parsed
+                    (parse-type-alias-param-hashes-rooted-v3
+                      spans
+                      pos-ref
+                      src
+                      next-params)]
+              (do
+                (root_pop)
+                (root_pop)
+                parsed))))))))
 
 (defn parse-type-alias-param-hashes-v3 [spans pos-ref src]
   (do

@@ -1863,6 +1863,70 @@ fn test_e2e_selfhost_parser_type_variants_cross_chunk_boundary() {
 }
 
 #[test]
+fn test_e2e_selfhost_parser_type_alias_params_use_bounded_chunks() {
+    let source = selfhost_module("Parser.ls");
+    let rooted_body = source
+        .split("(defn parse-type-alias-param-hashes-rooted-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn parse-type-alias-param-hashes-v3").next())
+        .expect("Parser.ls に type-alias parameter rooted loop が存在すること");
+    let step_body = source
+        .split("(defn parse-type-alias-param-hashes-step-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn parse-type-alias-param-hashes-step-64-loop-bounded").next())
+        .expect("Parser.ls に type-alias parameter step が存在すること");
+
+    assert!(
+        source.contains("(defn parse-type-alias-param-hashes-step-64-loop-bounded")
+            && source.contains("(defn parse-type-alias-param-hashes-step-64")
+            && rooted_body.contains("parse-type-alias-param-hashes-step-64")
+            && !step_body.contains(
+                "(parse-type-alias-param-hashes-rooted-v3 spans pos-ref src next-params",
+            ),
+        "type-alias parameter parser は Linux x86 native stack の深い再帰を避けるため bounded chunk へ委譲するべき"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_parser_type_alias_params_cross_chunk_boundary() {
+    let (token_ls, ast_ls, lexer_ls, parser_ls) = parser_runtime_modules();
+    let params = (0..65)
+        .map(|index| format!("p{}", index))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let source = format!("(type-alias (Wide {}) p0)", params);
+    let harness = format!(
+        r#"
+(defn main []
+  (let [node (vector-get (parse-program "{}") 0)
+        params (vector-get node 2)
+        target (vector-get node 3)]
+    (do
+      (print (vector-length node))
+      (print (vector-length params))
+      (print (if (= (vector-get params 0) (name-hash "p0" 0 2)) 1 0))
+      (print (if (= (vector-get params 64) (name-hash "p64" 0 3)) 1 0))
+      (print (vector-get target 0))
+      (print (if (= (vector-get target 1) (name-hash "p0" 0 2)) 1 0))
+      0)))
+"#,
+        source
+    );
+
+    let output = compile_and_run(&format!(
+        "{}\n{}\n{}\n{}\n{}",
+        token_ls, ast_ls, lexer_ls, parser_ls, harness
+    ));
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["4", "65", "1", "1", "63", "1"],
+        "parametric type-alias parser は 64 要素境界を跨いでも parameter と target layout を保持するべき"
+    );
+}
+
+#[test]
 fn test_e2e_selfhost_parser_type_expr_list_use_bounded_chunks() {
     let source = selfhost_module("Parser.ls");
     let rooted_body = source
