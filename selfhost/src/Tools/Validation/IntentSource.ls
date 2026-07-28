@@ -1,6 +1,7 @@
 (module Tools.Validation.IntentSource)
 (import Syntax.AST)
 (import Syntax.Parser)
+(import Tools.Validation.Whitespace)
 
 ;; M2 source metadata を selfhost の tagged vector graph へ投影する。
 ;;
@@ -373,20 +374,8 @@
 (defn source-review-visibility-valid? [visibility]
   (or (string-eq visibility "public") (string-eq visibility "redacted")))
 
-(defn source-review-whitespace? [char]
-  (or
-    (or (= char 32) (= char 9))
-    (or (= char 10) (= char 13))))
-
-(defn source-review-nonblank-loop [value idx len]
-  (if (>= idx len)
-    0
-    (if (source-review-whitespace? (string-char-at value idx))
-      (source-review-nonblank-loop value (+ idx 1) len)
-      1)))
-
 (defn source-review-nonblank? [value]
-  (source-review-nonblank-loop value 0 (string-length value)))
+  (validation-nonblank? value))
 
 (defn source-review-form-result [form]
   (if (< (vector-length form) 4)

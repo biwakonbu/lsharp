@@ -5,9 +5,14 @@ fn run_source_adapter_runtime(harness: &str) -> String {
         selfhost_project_root().join("selfhost/src/Tools/Validation/IntentSource.ls"),
     )
     .expect("canonical IntentSource.ls が読み込めない");
+    let whitespace = std::fs::read_to_string(
+        selfhost_project_root().join("selfhost/src/Tools/Validation/Whitespace.ls"),
+    )
+    .expect("canonical Whitespace.ls が読み込めない");
     compile_and_run(&format!(
-        "{}\n{}\n{}",
+        "{}\n{}\n{}\n{}",
         selfhost_parser_runtime_bundle(),
+        whitespace,
         adapter,
         harness
     ))

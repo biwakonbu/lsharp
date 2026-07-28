@@ -140,6 +140,7 @@ VALIDATION_MISSING_REVIEW_SUBJECT_KIND_MANIFEST="$WORK_DIR/ec-m3-missing-review-
 VALIDATION_DUPLICATE_REVIEW_MANIFEST="$WORK_DIR/ec-m3-duplicate-review-manifest.json"
 VALIDATION_INVALID_REVIEW_MANIFEST="$WORK_DIR/ec-m3-invalid-review-manifest.json"
 VALIDATION_INVALID_REVIEW_DIGEST_MANIFEST="$WORK_DIR/ec-m3-invalid-review-digest-manifest.json"
+VALIDATION_UNICODE_WHITESPACE_REVIEW_DIGEST_MANIFEST="$WORK_DIR/ec-m3-unicode-whitespace-review-digest-manifest.json"
 VALIDATION_REVIEW_REQUIRED_PRECEDENCE_MANIFEST="$WORK_DIR/ec-m3-review-required-precedence-manifest.json"
 VALIDATION_INVALID_REVIEW_ID_MANIFEST="$WORK_DIR/ec-m3-invalid-review-id-manifest.json"
 VALIDATION_EMPTY_REVIEW_ID_MANIFEST="$WORK_DIR/ec-m3-empty-review-id-manifest.json"
@@ -200,6 +201,7 @@ VALIDATION_MISSING_REVIEW_SUBJECT_KIND_SOURCE="$WORK_DIR/ec-m3-missing-review-su
 VALIDATION_DUPLICATE_REVIEW_SOURCE="$WORK_DIR/ec-m3-duplicate-review-source.ls"
 VALIDATION_INVALID_REVIEW_SOURCE="$WORK_DIR/ec-m3-invalid-review-source.ls"
 VALIDATION_INVALID_REVIEW_DIGEST_SOURCE="$WORK_DIR/ec-m3-invalid-review-digest-source.ls"
+VALIDATION_UNICODE_WHITESPACE_REVIEW_DIGEST_SOURCE="$WORK_DIR/ec-m3-unicode-whitespace-review-digest-source.ls"
 VALIDATION_REVIEW_REQUIRED_PRECEDENCE_SOURCE="$WORK_DIR/ec-m3-review-required-precedence-source.ls"
 VALIDATION_INVALID_REVIEW_ID_SOURCE="$WORK_DIR/ec-m3-invalid-review-id-source.ls"
 VALIDATION_EMPTY_REVIEW_ID_SOURCE="$WORK_DIR/ec-m3-empty-review-id-source.ls"
@@ -923,6 +925,12 @@ cat >"$VALIDATION_INVALID_REVIEW_DIGEST_SOURCE" <<'LSHARP'
 (defn invalid-review-digest []
   :claim "claim:checkout/rejects" "The API rejects shipped orders"
   :review "review:checkout/blank-digest" "   " "redacted"
+  true)
+LSHARP
+cat >"$VALIDATION_UNICODE_WHITESPACE_REVIEW_DIGEST_SOURCE" <<'LSHARP'
+(defn unicode-whitespace-review-digest []
+  :claim "claim:checkout/rejects" "The API rejects shipped orders"
+  :review "review:checkout/unicode-whitespace-digest" " " "redacted"
   true)
 LSHARP
 cat >"$VALIDATION_REVIEW_REQUIRED_PRECEDENCE_SOURCE" <<'LSHARP'
@@ -1800,6 +1808,16 @@ grep -F "source validation error:8" "$WORK_DIR/validation-invalid-review-digest.
   || die "blank review digest validation must expose the invalid-review error code"
 [[ ! -e "$VALIDATION_INVALID_REVIEW_DIGEST_MANIFEST" ]] \
   || die "blank review digest validation must produce no report or manifest"
+
+run_expected_validation_error validation-unicode-whitespace-review-digest \
+  validate \
+  --source "$VALIDATION_UNICODE_WHITESPACE_REVIEW_DIGEST_SOURCE" \
+  --format json \
+  --emit-manifest "$VALIDATION_UNICODE_WHITESPACE_REVIEW_DIGEST_MANIFEST"
+grep -F "source validation error:8" "$WORK_DIR/validation-unicode-whitespace-review-digest.stderr" >/dev/null \
+  || die "Unicode whitespace review digest validation must expose the invalid-review error code"
+[[ ! -e "$VALIDATION_UNICODE_WHITESPACE_REVIEW_DIGEST_MANIFEST" ]] \
+  || die "Unicode whitespace review digest validation must produce no report or manifest"
 
 run_expected_validation_error validation-review-required-precedence \
   validate \

@@ -496,3 +496,11 @@ direct runtime、Linux x86_64 native source-file smoke/provenance gate を通過
 である。node text、review provenance、manifest input、coverage count/cases、current-source
 artifact/runtime、Mac/Linux matrix、EC-M2-02/EC-M3 aggregate は残件。ADR:
 `docs/adr/decisions-v0.2-native-validation-evidence-unicode-whitespace.md`。
+
+2026-07-29 に EC-M2-02 review provenance digest の Unicode whitespace boundary を追加した。Rust
+source adapter の `trim().is_empty()` と selfhost `IntentSource` の共有 UTF-8 byte helper を揃え、
+NBSP-only `provenance_digest` を stable code `8`、review ID、directive/form span 付きで拒否する。
+Rust source suite 57件、selfhost actual Wasm の同一 fixtureと既存 review precedence、Linux x86_64
+native source-file smoke/provenance gateを通過した verified partial sliceである。visibility、review
+lifecycle/authentication、manifest/MCP、current-source artifact/runtime、Mac/Linux matrix、EC-M2-02/
+EC-M3 aggregate は残件。ADR: `docs/adr/decisions-v0.2-native-validation-review-unicode-whitespace.md`。

@@ -5,9 +5,14 @@ fn run_source_adapter_runtime(harness: &str) -> String {
         selfhost_project_root().join("selfhost/src/Tools/Validation/IntentSource.ls"),
     )
     .expect("canonical IntentSource.ls が読み込めない");
+    let whitespace = std::fs::read_to_string(
+        selfhost_project_root().join("selfhost/src/Tools/Validation/Whitespace.ls"),
+    )
+    .expect("canonical Whitespace.ls が読み込めない");
     compile_and_run(&format!(
-        "{}\n{}\n{}",
+        "{}\n{}\n{}\n{}",
         selfhost_parser_runtime_bundle(),
+        whitespace,
         adapter,
         harness
     ))
@@ -1000,6 +1005,37 @@ fn test_e2e_selfhost_source_adapter_reports_blank_review_digest_before_invalid_r
         lines,
         ["0", "8"],
         "blank review digest は invalid review code 8 を invalid ID より先に返すべき"
+    );
+}
+
+/// EC-M2-02: Unicode whitespace-only review provenance は invalid review code 8 で拒否する。
+#[test]
+fn test_e2e_selfhost_source_adapter_rejects_unicode_whitespace_only_review_digest() {
+    let harness = r#"
+(defn main []
+  (let [result (source-graph-from-program
+                 (parse-program "(defn invalid [] :review \"review:checkout/unicode-whitespace\" \" \" \"public\" true)"))]
+    (if (= (source-graph-result-status result) 0)
+      (let [error (source-graph-result-error result)]
+        (do
+          (print (source-graph-result-status result))
+          (print (source-graph-error-code error))
+          (print-string (source-graph-error-id error))
+          (print-string "\n")
+          0))
+      (do
+        (print (source-graph-result-status result))
+        (print-string "accepted\n")
+        0))))
+"#;
+
+    let output = run_source_adapter_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "8", "review:checkout/unicode-whitespace"],
+        "Unicode whitespace-only review digest は invalid review として拒否するべき"
     );
 }
 
