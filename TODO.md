@@ -737,3 +737,9 @@ boundary を接続した。span と sampling の全6 fieldで exit `1`、空 std
 `vector-push-single-rooted-v3` 未定義で停止するため、既存 component artifact を指定した Rust driver CLI
 laneで検証した。selfhost/native CLI、MCP、current-source stage0 artifact/runtime、Mac/Linux matrix、
 EC-M2-03/EC-M3 aggregate は残件。Evidence: `docs/adr/decisions-v0.2-validation-input-numeric-boundaries.md`。
+
+同じ公開 CLI laneで `u64::MAX + 1` の unsigned numeric overflow も span / sampling の全6 fieldに対して
+exit `1`、空 stdout、manifest file 未生成、manifest input error の stderr となることを固定した。
+default EmbeddedCli blockerを避けた既存 component artifact 指定の Rust driver CLI evidenceであり、
+selfhost/native CLI、MCP、current-source stage0 artifact/runtime、Mac/Linux matrix、EC-M2-03/EC-M3 aggregate
+は残件。Evidence: `docs/adr/decisions-v0.2-validation-input-numeric-boundaries.md`。

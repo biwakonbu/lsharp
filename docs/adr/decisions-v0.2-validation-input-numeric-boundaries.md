@@ -60,6 +60,10 @@ semantics の変質を許可しない。
 default EmbeddedCli の build は既存 selfhost source の `vector-push-single-rooted-v3` 未定義で停止するため、
 既存の component artifact を `LSHARP_EMBED_COMPONENT_PATH` に指定した Rust driver CLI lane で検証した。
 
+同じ CLI lane で `u64::MAX + 1` の上限超過も全6 fieldについて exit `1`、空 stdout、manifest file 未生成、
+manifest input error の stderr として拒否することを
+`validate_rejects_unsigned_numeric_overflow_without_report_or_manifest_output` で固定した。
+
 ## Boundary
 
 これは Rust manifest input decoder の数値型境界に限定した verified slice である。source syntax

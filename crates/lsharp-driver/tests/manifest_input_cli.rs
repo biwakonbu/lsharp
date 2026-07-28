@@ -215,6 +215,44 @@ fn validate_rejects_fractional_unsigned_numeric_fields_without_report_or_manifes
 }
 
 #[test]
+fn validate_rejects_unsigned_numeric_overflow_without_report_or_manifest_output() {
+    let overflow = "18446744073709551616";
+    let cases = [
+        (
+            "overflow-span-start",
+            complete_manifest().replace("\"start\": 0", &format!("\"start\": {overflow}")),
+        ),
+        (
+            "overflow-span-end",
+            complete_manifest().replace("\"end\": 10", &format!("\"end\": {overflow}")),
+        ),
+        (
+            "overflow-sampling-cases",
+            complete_manifest().replace("\"cases\": 1", &format!("\"cases\": {overflow}")),
+        ),
+        (
+            "overflow-sampling-seed",
+            complete_manifest().replace("\"seed\": 0", &format!("\"seed\": {overflow}")),
+        ),
+        (
+            "overflow-sampling-shrinks",
+            complete_manifest().replace("\"shrinks\": []", &format!("\"shrinks\": [{overflow}]")),
+        ),
+        (
+            "overflow-sampling-coverage",
+            complete_manifest().replace(
+                "\"coverage\": {\"all\": 1}",
+                &format!("\"coverage\": {{\"all\": {overflow}}}"),
+            ),
+        ),
+    ];
+
+    for (name, manifest) in cases {
+        assert_manifest_input_error(name, &manifest, &["manifest"]);
+    }
+}
+
+#[test]
 fn validate_rejects_unregistered_review_edge_with_explicit_empty_registry() {
     assert_manifest_input_error(
         "missing-review",
