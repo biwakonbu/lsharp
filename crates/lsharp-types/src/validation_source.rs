@@ -70,6 +70,14 @@ pub enum SourceGraphError {
         span: Span,
     },
     #[error(
+        "source intent edge が参照する review が registry にありません (relation={relation}, id={id}, span={span})"
+    )]
+    MissingReviewReference {
+        relation: &'static str,
+        id: String,
+        span: Span,
+    },
+    #[error(
         "source evidence edge は evidence registry の登録を要求します (relation={relation}, evidence_id={evidence_id})"
     )]
     EvidenceRegistryRequired {
@@ -122,6 +130,7 @@ impl SourceGraphError {
             Self::EdgeIdAt { span, .. }
             | Self::ReviewIdAt { span, .. }
             | Self::MissingNodeReference { span, .. }
+            | Self::MissingReviewReference { span, .. }
             | Self::EvidenceRegistryRequired { span, .. }
             | Self::InvalidEvidenceField { span, .. }
             | Self::InvalidReviewField { span, .. } => Some(*span),
@@ -190,12 +199,19 @@ fn require_evidence(
     }
 }
 
-fn require_review(graph: &IntentGraph, id: &ReviewId) -> Result<(), SourceGraphError> {
+fn require_review(
+    graph: &IntentGraph,
+    relation: &'static str,
+    id: &ReviewId,
+    span: Span,
+) -> Result<(), SourceGraphError> {
     if graph.reviews().is_empty() || graph.reviews().iter().any(|review| review.id() == id) {
         Ok(())
     } else {
-        Err(SourceGraphError::Graph(
-            crate::evidence::GraphError::MissingReview { id: id.clone() },
-        ))
+        Err(SourceGraphError::MissingReviewReference {
+            relation,
+            id: id.as_str().to_string(),
+            span,
+        })
     }
 }

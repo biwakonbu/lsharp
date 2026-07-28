@@ -1,7 +1,7 @@
 //! intent graph の node-owned / evidence-owned edge closure を検証する contract tests。
 
 use lsharp_syntax::parse;
-use lsharp_types::validation_source::{SourceGraphError, source_program_to_intent_graph};
+use lsharp_types::validation_source::{source_program_to_intent_graph, SourceGraphError};
 
 #[test]
 fn source_adapter_registers_node_edges_after_collecting_all_declarations() {
@@ -373,19 +373,42 @@ fn source_adapter_rejects_review_and_invalidation_kind_mismatches() {
 
 #[test]
 fn source_adapter_reports_missing_review_before_invalid_evaluates_subject() {
-    let program = parse(
-        r#"
+    const SOURCE: &str = r#"
         (defn review []
           :review "review:checkout/registered" "sha256:review-provenance-001" "public"
           :evaluates "review:checkout/missing" "review:checkout/registered"
           true)
-        "#,
-    )
-    .expect("missing review precedence fixture は parse できるべき");
+        "#;
+    let program = parse(SOURCE).expect("missing review precedence fixture は parse できるべき");
 
-    assert!(matches!(
-        source_program_to_intent_graph(&program),
-        Err(SourceGraphError::Graph(lsharp_types::evidence::GraphError::MissingReview { id }))
-            if id.as_str() == "review:checkout/missing"
-    ));
+    let error = source_program_to_intent_graph(&program)
+        .expect_err("未登録 evaluates review は directive span 付きで拒否するべき");
+    let SourceGraphError::MissingReviewReference { relation, id, span } = error else {
+        panic!("missing review の source diagnostic を期待しました: {error:?}");
+    };
+    assert_eq!(relation, "evaluates.review");
+    assert_eq!(id, "review:checkout/missing");
+    assert!(span.start < span.end);
+    assert!(SOURCE[span.start..span.end].starts_with(":evaluates"));
+}
+
+#[test]
+fn source_adapter_reports_missing_review_for_invalidates_with_directive_span() {
+    const SOURCE: &str = r#"
+        (defn change []
+          :review "review:checkout/registered" "sha256:review-provenance-001" "public"
+          :invalidates "change:checkout/api-v2" "review:checkout/missing"
+          true)
+        "#;
+    let program = parse(SOURCE).expect("missing invalidates review fixture は parse できるべき");
+    let error = source_program_to_intent_graph(&program)
+        .expect_err("未登録 invalidates review は directive span 付きで拒否するべき");
+    let SourceGraphError::MissingReviewReference { relation, id, span } = error else {
+        panic!("missing invalidates review の source diagnostic を期待しました: {error:?}");
+    };
+
+    assert_eq!(relation, "invalidates.subject");
+    assert_eq!(id, "review:checkout/missing");
+    assert!(span.start < span.end);
+    assert!(SOURCE[span.start..span.end].starts_with(":invalidates"));
 }

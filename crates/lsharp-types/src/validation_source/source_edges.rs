@@ -111,7 +111,7 @@ fn add_metadata_edges(
             MetadataFormKind::Evaluates { review, subject } => {
                 let review =
                     parse_edge_id(review, "evaluates.review", form.span(), ReviewId::parse)?;
-                require_review(graph, &review)?;
+                require_review(graph, "evaluates.review", &review, form.span())?;
                 let subject = parse_review_subject(subject, "evaluates.subject", form.span())?;
                 match &subject {
                     ReviewSubject::Intent(intent) => {
@@ -131,8 +131,13 @@ fn add_metadata_edges(
                     parse_edge_id(change, "invalidates.change", form.span(), ChangeId::parse)?;
                 let subject =
                     parse_invalidation_subject(subject, "invalidates.subject", form.span())?;
-                if let InvalidationSubject::Evidence(evidence) = &subject {
-                    require_evidence(graph, "invalidates.subject", evidence, form.span())?;
+                match &subject {
+                    InvalidationSubject::Review(review) => {
+                        require_review(graph, "invalidates.subject", review, form.span())?
+                    }
+                    InvalidationSubject::Evidence(evidence) => {
+                        require_evidence(graph, "invalidates.subject", evidence, form.span())?
+                    }
                 }
                 graph.add_edge(Edge::Invalidates { change, subject })?;
             }

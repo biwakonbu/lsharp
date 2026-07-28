@@ -932,6 +932,42 @@ fn test_e2e_selfhost_source_adapter_rejects_invalid_invalidation_subject_kind() 
     );
 }
 
+/// EC-M2-02: invalidates の missing review は directive span を保持する。
+#[test]
+fn test_e2e_selfhost_source_adapter_preserves_missing_invalidates_review_span() {
+    const SOURCE: &str = "(defn review [] :review \"review:checkout/registered\" \"sha256:review-provenance-001\" \"public\" :invalidates \"change:checkout/api-v2\" \"review:checkout/missing\" true)";
+    let harness = r#"
+(defn main []
+  (let [result (source-graph-from-program
+                 (parse-program "(defn review [] :review \"review:checkout/registered\" \"sha256:review-provenance-001\" \"public\" :invalidates \"change:checkout/api-v2\" \"review:checkout/missing\" true)"))
+        error (source-graph-result-error result)]
+    (do
+      (print (source-graph-result-status result))
+      (print (source-graph-error-code error))
+      (print-string (source-graph-error-id error))
+      (print-string "\n")
+      (print (source-graph-error-start error))
+      (print (source-graph-error-end error))
+      0)))
+"#;
+
+    let output = run_source_adapter_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(
+        &lines[..3],
+        ["0", "10", "review:checkout/missing"],
+        "missing invalidates review は code 10 と ID を返すべき"
+    );
+    let start = lines[3]
+        .parse::<usize>()
+        .expect("missing invalidates review の start span は整数であるべき");
+    let end = lines[4]
+        .parse::<usize>()
+        .expect("missing invalidates review の end span は整数であるべき");
+    assert!(start < end);
+    assert!(SOURCE[start..end].starts_with(":invalidates"));
+}
+
 /// EC-M2-02 boundary: selfhost IntentSource が evidence registry を未接続のまま扱う間は fail-closed にする。
 #[test]
 fn test_e2e_selfhost_source_adapter_rejects_unregistered_review_evidence_subject() {
