@@ -122,6 +122,38 @@ fn review_registry_rejects_unicode_whitespace_only_provenance_digest_in_manifest
 }
 
 #[test]
+fn review_registry_rejects_duplicate_review_ids_in_manifest_input() {
+    let manifest = r#"
+    {
+      "schema_version": 1,
+      "nodes": [],
+      "reviews": [
+        {
+          "namespace": "checkout",
+          "key": "reviewer-001",
+          "provenance_digest": "sha256:review-provenance-001",
+          "visibility": "public"
+        },
+        {
+          "namespace": "checkout",
+          "key": "reviewer-001",
+          "provenance_digest": "sha256:review-provenance-002",
+          "visibility": "redacted"
+        }
+      ],
+      "evidence": [],
+      "edges": []
+    }
+    "#;
+
+    assert!(matches!(
+        parse_intent_graph_json(manifest),
+        Err(ValidationInputError::Graph(GraphError::DuplicateReview { id }))
+            if id.as_str() == "review:checkout/reviewer-001"
+    ));
+}
+
+#[test]
 fn review_registry_rejects_private_author_fields_in_manifest_input() {
     let manifest = r#"
     {

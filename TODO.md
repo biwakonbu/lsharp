@@ -612,3 +612,12 @@ adapter と同じ non-blank policyを manifest inputへ拡張した Rust verifie
 count/cases の意味論、selfhost/native manifest parser、current-source artifact/runtime、supported 2
 targets、EC-M2-02/EC-M3 aggregate は残件。Evidence:
 `docs/adr/decisions-v0.2-validation-manifest-coverage-unicode-whitespace.md`。
+
+2026-07-29 に version 1 JSON manifest の duplicate review identity boundary を追加した。同一の
+`review:checkout/reviewer-001` IDに異なる digest/visibilityを持つ2 recordsを入力し、registry 登録前に
+`ValidationInputError::Graph(GraphError::DuplicateReview)` として拒否することを
+`review_registry_rejects_duplicate_review_ids_in_manifest_input` で固定した。canonical review registryの
+identity policyを manifest inputへ拡張した Rust verified partial sliceであり、review lifecycle/authentication、
+other duplicate keys、selfhost/native manifest parser、current-source artifact/runtime、supported 2 targets、
+EC-M2-02/EC-M3 aggregate は残件。Evidence:
+`docs/adr/decisions-v0.2-validation-manifest-duplicate-review.md`。
