@@ -98,6 +98,15 @@ for required in \
   'VALIDATION_INVALID_EVIDENCE_MANIFEST' \
   'run_expected_validation_error validation-invalid-evidence' \
   'source validation error:8' \
+  'VALIDATION_INVALID_EVIDENCE_OUTCOME_SOURCE' \
+  'VALIDATION_INVALID_EVIDENCE_OUTCOME_MANIFEST' \
+  'run_expected_validation_error validation-invalid-evidence-outcome' \
+  'VALIDATION_INVALID_EVIDENCE_INDEPENDENCE_SOURCE' \
+  'VALIDATION_INVALID_EVIDENCE_INDEPENDENCE_MANIFEST' \
+  'run_expected_validation_error validation-invalid-evidence-independence' \
+  'VALIDATION_INVALID_EVIDENCE_SUBJECT_SOURCE' \
+  'VALIDATION_INVALID_EVIDENCE_SUBJECT_MANIFEST' \
+  'run_expected_validation_error validation-invalid-evidence-subject' \
   'VALIDATION_MISSING_REVIEW_SOURCE' \
   'VALIDATION_MISSING_REVIEW_MANIFEST' \
   'run_expected_validation_error validation-missing-review' \

@@ -105,6 +105,9 @@ VALIDATION_KIND_MISMATCH_MANIFEST="$WORK_DIR/ec-m3-kind-mismatch-manifest.json"
 VALIDATION_EVIDENCE_REGISTRY_MANIFEST="$WORK_DIR/ec-m3-evidence-registry-manifest.json"
 VALIDATION_MALFORMED_EVIDENCE_MANIFEST="$WORK_DIR/ec-m3-malformed-evidence-manifest.json"
 VALIDATION_INVALID_EVIDENCE_MANIFEST="$WORK_DIR/ec-m3-invalid-evidence-manifest.json"
+VALIDATION_INVALID_EVIDENCE_OUTCOME_MANIFEST="$WORK_DIR/ec-m3-invalid-evidence-outcome-manifest.json"
+VALIDATION_INVALID_EVIDENCE_INDEPENDENCE_MANIFEST="$WORK_DIR/ec-m3-invalid-evidence-independence-manifest.json"
+VALIDATION_INVALID_EVIDENCE_SUBJECT_MANIFEST="$WORK_DIR/ec-m3-invalid-evidence-subject-manifest.json"
 VALIDATION_MISSING_REVIEW_MANIFEST="$WORK_DIR/ec-m3-missing-review-manifest.json"
 VALIDATION_DUPLICATE_REVIEW_MANIFEST="$WORK_DIR/ec-m3-duplicate-review-manifest.json"
 VALIDATION_INVALID_REVIEW_MANIFEST="$WORK_DIR/ec-m3-invalid-review-manifest.json"
@@ -133,6 +136,9 @@ VALIDATION_KIND_MISMATCH_SOURCE="$WORK_DIR/ec-m3-kind-mismatch-source.ls"
 VALIDATION_EVIDENCE_REGISTRY_SOURCE="$WORK_DIR/ec-m3-evidence-registry-source.ls"
 VALIDATION_MALFORMED_EVIDENCE_SOURCE="$WORK_DIR/ec-m3-malformed-evidence-source.ls"
 VALIDATION_INVALID_EVIDENCE_SOURCE="$WORK_DIR/ec-m3-invalid-evidence-source.ls"
+VALIDATION_INVALID_EVIDENCE_OUTCOME_SOURCE="$WORK_DIR/ec-m3-invalid-evidence-outcome-source.ls"
+VALIDATION_INVALID_EVIDENCE_INDEPENDENCE_SOURCE="$WORK_DIR/ec-m3-invalid-evidence-independence-source.ls"
+VALIDATION_INVALID_EVIDENCE_SUBJECT_SOURCE="$WORK_DIR/ec-m3-invalid-evidence-subject-source.ls"
 VALIDATION_MISSING_REVIEW_SOURCE="$WORK_DIR/ec-m3-missing-review-source.ls"
 VALIDATION_DUPLICATE_REVIEW_SOURCE="$WORK_DIR/ec-m3-duplicate-review-source.ls"
 VALIDATION_INVALID_REVIEW_SOURCE="$WORK_DIR/ec-m3-invalid-review-source.ls"
@@ -294,6 +300,66 @@ cat >"$VALIDATION_INVALID_EVIDENCE_SOURCE" <<'LSHARP'
     :seed 0
     :generator "invalid-evidence-method-generator"
     :producer "invalid-evidence-method-producer"
+    :tool-version "0.2.0-dev"
+    :timestamp "2026-07-28T00:00:00Z"
+    :independence "same-author"
+  true)
+LSHARP
+cat >"$VALIDATION_INVALID_EVIDENCE_OUTCOME_SOURCE" <<'LSHARP'
+(defn invalid-evidence-outcome []
+  :claim "claim:checkout/rejects" "The API rejects shipped orders"
+  :evidence "evidence:checkout/invalid-outcome"
+    :subject "claim:checkout/rejects"
+    :method "case"
+    :outcome "not-an-outcome"
+    :runner "invalid-evidence-outcome-runner"
+    :target "aarch64-apple-darwin"
+    :source-commit "source-invalid-evidence-outcome"
+    :artifact-digest "sha256:invalid-evidence-outcome"
+    :cases 1
+    :seed 0
+    :generator "invalid-evidence-outcome-generator"
+    :producer "invalid-evidence-outcome-producer"
+    :tool-version "0.2.0-dev"
+    :timestamp "2026-07-28T00:00:00Z"
+    :independence "same-author"
+  true)
+LSHARP
+cat >"$VALIDATION_INVALID_EVIDENCE_INDEPENDENCE_SOURCE" <<'LSHARP'
+(defn invalid-evidence-independence []
+  :claim "claim:checkout/rejects" "The API rejects shipped orders"
+  :evidence "evidence:checkout/invalid-independence"
+    :subject "claim:checkout/rejects"
+    :method "case"
+    :outcome "pass"
+    :runner "invalid-evidence-independence-runner"
+    :target "aarch64-apple-darwin"
+    :source-commit "source-invalid-evidence-independence"
+    :artifact-digest "sha256:invalid-evidence-independence"
+    :cases 1
+    :seed 0
+    :generator "invalid-evidence-independence-generator"
+    :producer "invalid-evidence-independence-producer"
+    :tool-version "0.2.0-dev"
+    :timestamp "2026-07-28T00:00:00Z"
+    :independence "not-an-independence"
+  true)
+LSHARP
+cat >"$VALIDATION_INVALID_EVIDENCE_SUBJECT_SOURCE" <<'LSHARP'
+(defn invalid-evidence-subject []
+  :claim "claim:checkout/rejects" "The API rejects shipped orders"
+  :evidence "evidence:checkout/invalid-subject"
+    :subject "evidence:checkout/wrong-kind"
+    :method "case"
+    :outcome "pass"
+    :runner "invalid-evidence-subject-runner"
+    :target "aarch64-apple-darwin"
+    :source-commit "source-invalid-evidence-subject"
+    :artifact-digest "sha256:invalid-evidence-subject"
+    :cases 1
+    :seed 0
+    :generator "invalid-evidence-subject-generator"
+    :producer "invalid-evidence-subject-producer"
     :tool-version "0.2.0-dev"
     :timestamp "2026-07-28T00:00:00Z"
     :independence "same-author"
@@ -844,6 +910,36 @@ grep -F "source validation error:8" "$WORK_DIR/validation-invalid-evidence.stder
   || die "invalid evidence validation must expose the invalid-field error code"
 [[ ! -e "$VALIDATION_INVALID_EVIDENCE_MANIFEST" ]] \
   || die "invalid evidence validation must produce no report or manifest"
+
+run_expected_validation_error validation-invalid-evidence-outcome \
+  validate \
+  --source "$VALIDATION_INVALID_EVIDENCE_OUTCOME_SOURCE" \
+  --format json \
+  --emit-manifest "$VALIDATION_INVALID_EVIDENCE_OUTCOME_MANIFEST"
+grep -F "source validation error:8" "$WORK_DIR/validation-invalid-evidence-outcome.stderr" >/dev/null \
+  || die "invalid evidence outcome validation must expose the invalid-field error code"
+[[ ! -e "$VALIDATION_INVALID_EVIDENCE_OUTCOME_MANIFEST" ]] \
+  || die "invalid evidence outcome validation must produce no report or manifest"
+
+run_expected_validation_error validation-invalid-evidence-independence \
+  validate \
+  --source "$VALIDATION_INVALID_EVIDENCE_INDEPENDENCE_SOURCE" \
+  --format json \
+  --emit-manifest "$VALIDATION_INVALID_EVIDENCE_INDEPENDENCE_MANIFEST"
+grep -F "source validation error:8" "$WORK_DIR/validation-invalid-evidence-independence.stderr" >/dev/null \
+  || die "invalid evidence independence validation must expose the invalid-field error code"
+[[ ! -e "$VALIDATION_INVALID_EVIDENCE_INDEPENDENCE_MANIFEST" ]] \
+  || die "invalid evidence independence validation must produce no report or manifest"
+
+run_expected_validation_error validation-invalid-evidence-subject \
+  validate \
+  --source "$VALIDATION_INVALID_EVIDENCE_SUBJECT_SOURCE" \
+  --format json \
+  --emit-manifest "$VALIDATION_INVALID_EVIDENCE_SUBJECT_MANIFEST"
+grep -F "source validation error:8" "$WORK_DIR/validation-invalid-evidence-subject.stderr" >/dev/null \
+  || die "invalid evidence subject validation must expose the invalid-field error code"
+[[ ! -e "$VALIDATION_INVALID_EVIDENCE_SUBJECT_MANIFEST" ]] \
+  || die "invalid evidence subject validation must produce no report or manifest"
 
 run_expected_validation_error validation-missing-review \
   validate \
