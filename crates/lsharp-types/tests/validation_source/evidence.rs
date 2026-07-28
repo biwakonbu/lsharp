@@ -512,6 +512,42 @@ fn source_adapter_rejects_empty_required_provenance_tool_version() {
 }
 
 #[test]
+fn source_adapter_rejects_empty_required_provenance_timestamp() {
+    let program = parse(
+        r#"
+        (defn cancel []
+          :claim "claim:checkout/cancel" "The API rejects shipped orders"
+          :evidence "evidence:checkout/empty-timestamp"
+            :subject "claim:checkout/cancel"
+            :method "case"
+            :outcome "pass"
+            :runner "source-empty-timestamp-runner"
+            :target "aarch64-apple-darwin"
+            :source-commit "source-empty-timestamp-commit"
+            :artifact-digest "sha256:source-empty-timestamp"
+            :cases 1
+            :seed 0
+            :generator "source-empty-timestamp-generator"
+            :producer "source-empty-timestamp-producer"
+            :tool-version "0.2.0-dev"
+            :timestamp ""
+            :independence "same-author"
+          true)
+        "#,
+    )
+    .expect("empty timestamp fixture は parse できるべき");
+
+    let error = source_program_to_intent_graph(&program)
+        .expect_err("empty timestamp は source graph 登録時に拒否するべき");
+    assert!(matches!(
+        error,
+        SourceGraphError::Graph(GraphError::InvalidEvidence {
+            source: EvidenceValidationError::EmptyField { field: "timestamp" }
+        })
+    ));
+}
+
+#[test]
 fn source_adapter_registers_evidence_records_before_support_edges() {
     let program = parse(
         r#"

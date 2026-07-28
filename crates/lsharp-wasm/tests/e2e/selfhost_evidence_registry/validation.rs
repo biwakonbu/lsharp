@@ -184,6 +184,32 @@ fn test_e2e_selfhost_source_evidence_rejects_empty_tool_version() {
     );
 }
 
+/// EC-M2-02: source evidence の required timestamp は空値のまま registry へ登録しない。
+#[test]
+fn test_e2e_selfhost_source_evidence_rejects_empty_timestamp() {
+    let harness = r#"
+(defn main []
+  (let [result (source-evidence-graph-from-program
+                 (parse-program "(defn cancel [] :claim \"claim:checkout/cancel\" \"The API rejects shipped orders\" :evidence \"evidence:checkout/empty-timestamp\" :subject \"claim:checkout/cancel\" :method \"case\" :outcome \"pass\" :runner \"source-empty-timestamp-runner\" :target \"aarch64-apple-darwin\" :source-commit \"source-empty-timestamp-commit\" :artifact-digest \"sha256:source-empty-timestamp\" :cases 1 :seed 0 :generator \"source-empty-timestamp-generator\" :producer \"source-empty-timestamp-producer\" :tool-version \"0.2.0-dev\" :timestamp \"\" :independence \"same-author\" true)"))
+        error (source-result-error result)]
+    (do
+      (print (source-result-status result))
+      (print (source-evidence-error-code error))
+      (print-string (source-evidence-error-field error))
+      (print-string "\n")
+      0)))
+"#;
+
+    let output = run_evidence_registry_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "4", "timestamp"],
+        "source evidence の empty timestamp は required-field error として拒否するべき"
+    );
+}
+
 /// EC-M2-02: coverage bucket の重複は deterministic sampling plan を壊すため拒否する。
 #[test]
 fn test_e2e_selfhost_evidence_registry_rejects_duplicate_coverage_bucket() {

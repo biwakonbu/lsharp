@@ -117,6 +117,7 @@ VALIDATION_EMPTY_EVIDENCE_SOURCE_COMMIT_MANIFEST="$WORK_DIR/ec-m2-empty-evidence
 VALIDATION_EMPTY_EVIDENCE_ARTIFACT_DIGEST_MANIFEST="$WORK_DIR/ec-m2-empty-evidence-artifact-digest-manifest.json"
 VALIDATION_EMPTY_EVIDENCE_PRODUCER_MANIFEST="$WORK_DIR/ec-m2-empty-evidence-producer-manifest.json"
 VALIDATION_EMPTY_EVIDENCE_TOOL_VERSION_MANIFEST="$WORK_DIR/ec-m2-empty-evidence-tool-version-manifest.json"
+VALIDATION_EMPTY_EVIDENCE_TIMESTAMP_MANIFEST="$WORK_DIR/ec-m2-empty-evidence-timestamp-manifest.json"
 VALIDATION_MISSING_NODE_ID_MANIFEST="$WORK_DIR/ec-m2-missing-node-id-manifest.json"
 VALIDATION_MISSING_NODE_TEXT_MANIFEST="$WORK_DIR/ec-m2-missing-node-text-manifest.json"
 VALIDATION_MISSING_REVIEW_MANIFEST="$WORK_DIR/ec-m3-missing-review-manifest.json"
@@ -159,6 +160,7 @@ VALIDATION_EMPTY_EVIDENCE_SOURCE_COMMIT_SOURCE="$WORK_DIR/ec-m2-empty-evidence-s
 VALIDATION_EMPTY_EVIDENCE_ARTIFACT_DIGEST_SOURCE="$WORK_DIR/ec-m2-empty-evidence-artifact-digest-source.ls"
 VALIDATION_EMPTY_EVIDENCE_PRODUCER_SOURCE="$WORK_DIR/ec-m2-empty-evidence-producer-source.ls"
 VALIDATION_EMPTY_EVIDENCE_TOOL_VERSION_SOURCE="$WORK_DIR/ec-m2-empty-evidence-tool-version-source.ls"
+VALIDATION_EMPTY_EVIDENCE_TIMESTAMP_SOURCE="$WORK_DIR/ec-m2-empty-evidence-timestamp-source.ls"
 VALIDATION_MISSING_NODE_ID_SOURCE="$WORK_DIR/ec-m2-missing-node-id-source.ls"
 VALIDATION_MISSING_NODE_TEXT_SOURCE="$WORK_DIR/ec-m2-missing-node-text-source.ls"
 VALIDATION_MISSING_REVIEW_SOURCE="$WORK_DIR/ec-m3-missing-review-source.ls"
@@ -580,6 +582,26 @@ cat >"$VALIDATION_EMPTY_EVIDENCE_TOOL_VERSION_SOURCE" <<'LSHARP'
     :producer "empty-evidence-tool-version-producer"
     :tool-version ""
     :timestamp "2026-07-28T00:00:00Z"
+    :independence "same-author"
+  true)
+LSHARP
+cat >"$VALIDATION_EMPTY_EVIDENCE_TIMESTAMP_SOURCE" <<'LSHARP'
+(defn empty-evidence-timestamp []
+  :claim "claim:checkout/rejects" "The API rejects shipped orders"
+  :evidence "evidence:checkout/empty-timestamp"
+    :subject "claim:checkout/rejects"
+    :method "case"
+    :outcome "pass"
+    :runner "empty-evidence-timestamp-runner"
+    :target "aarch64-apple-darwin"
+    :source-commit "source-empty-evidence-timestamp"
+    :artifact-digest "sha256:empty-evidence-timestamp"
+    :cases 1
+    :seed 0
+    :generator "empty-evidence-timestamp-generator"
+    :producer "empty-evidence-timestamp-producer"
+    :tool-version "0.2.0-dev"
+    :timestamp ""
     :independence "same-author"
   true)
 LSHARP
@@ -1258,6 +1280,16 @@ grep -F "source validation error:4" "$WORK_DIR/validation-empty-evidence-tool-ve
   || die "empty evidence tool version validation must expose the required-field error code"
 [[ ! -e "$VALIDATION_EMPTY_EVIDENCE_TOOL_VERSION_MANIFEST" ]] \
   || die "empty evidence tool version validation must produce no report or manifest"
+
+run_expected_validation_error validation-empty-evidence-timestamp \
+  validate \
+  --source "$VALIDATION_EMPTY_EVIDENCE_TIMESTAMP_SOURCE" \
+  --format json \
+  --emit-manifest "$VALIDATION_EMPTY_EVIDENCE_TIMESTAMP_MANIFEST"
+grep -F "source validation error:4" "$WORK_DIR/validation-empty-evidence-timestamp.stderr" >/dev/null \
+  || die "empty evidence timestamp validation must expose the required-field error code"
+[[ ! -e "$VALIDATION_EMPTY_EVIDENCE_TIMESTAMP_MANIFEST" ]] \
+  || die "empty evidence timestamp validation must produce no report or manifest"
 
 run_expected_validation_error validation-missing-node-id \
   validate \
