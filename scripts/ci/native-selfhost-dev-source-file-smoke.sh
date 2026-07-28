@@ -103,6 +103,7 @@ VALIDATION_MALFORMED_MANIFEST="$WORK_DIR/ec-m3-malformed-edge-manifest.json"
 VALIDATION_INVALID_ID_MANIFEST="$WORK_DIR/ec-m3-invalid-id-manifest.json"
 VALIDATION_KIND_MISMATCH_MANIFEST="$WORK_DIR/ec-m3-kind-mismatch-manifest.json"
 VALIDATION_EVIDENCE_REGISTRY_MANIFEST="$WORK_DIR/ec-m3-evidence-registry-manifest.json"
+VALIDATION_MALFORMED_EVIDENCE_MANIFEST="$WORK_DIR/ec-m3-malformed-evidence-manifest.json"
 VALIDATION_MISSING_REVIEW_MANIFEST="$WORK_DIR/ec-m3-missing-review-manifest.json"
 VALIDATION_DUPLICATE_REVIEW_MANIFEST="$WORK_DIR/ec-m3-duplicate-review-manifest.json"
 VALIDATION_INVALID_REVIEW_MANIFEST="$WORK_DIR/ec-m3-invalid-review-manifest.json"
@@ -129,6 +130,7 @@ VALIDATION_MALFORMED_SOURCE="$WORK_DIR/ec-m3-malformed-edge-source.ls"
 VALIDATION_INVALID_ID_SOURCE="$WORK_DIR/ec-m3-invalid-id-source.ls"
 VALIDATION_KIND_MISMATCH_SOURCE="$WORK_DIR/ec-m3-kind-mismatch-source.ls"
 VALIDATION_EVIDENCE_REGISTRY_SOURCE="$WORK_DIR/ec-m3-evidence-registry-source.ls"
+VALIDATION_MALFORMED_EVIDENCE_SOURCE="$WORK_DIR/ec-m3-malformed-evidence-source.ls"
 VALIDATION_MISSING_REVIEW_SOURCE="$WORK_DIR/ec-m3-missing-review-source.ls"
 VALIDATION_DUPLICATE_REVIEW_SOURCE="$WORK_DIR/ec-m3-duplicate-review-source.ls"
 VALIDATION_INVALID_REVIEW_SOURCE="$WORK_DIR/ec-m3-invalid-review-source.ls"
@@ -267,6 +269,12 @@ cat >"$VALIDATION_EVIDENCE_REGISTRY_SOURCE" <<'LSHARP'
 (defn missing-evidence-edge []
   :claim "claim:checkout/rejects" "The API rejects shipped orders"
   :supports "evidence:checkout/missing" "claim:checkout/rejects"
+  true)
+LSHARP
+cat >"$VALIDATION_MALFORMED_EVIDENCE_SOURCE" <<'LSHARP'
+(defn malformed-evidence []
+  :evidence "evidence:checkout/malformed"
+    :subject "claim:checkout/rejects"
   true)
 LSHARP
 cat >"$VALIDATION_MISSING_REVIEW_SOURCE" <<'LSHARP'
@@ -794,6 +802,16 @@ grep -F "source validation error:6" "$WORK_DIR/validation-evidence-registry.stde
   || die "unregistered evidence validation must expose the registry-required error code"
 [[ ! -e "$VALIDATION_EVIDENCE_REGISTRY_MANIFEST" ]] \
   || die "unregistered evidence validation must produce no report or manifest"
+
+run_expected_validation_error validation-malformed-evidence \
+  validate \
+  --source "$VALIDATION_MALFORMED_EVIDENCE_SOURCE" \
+  --format json \
+  --emit-manifest "$VALIDATION_MALFORMED_EVIDENCE_MANIFEST"
+grep -F "source validation error:1" "$WORK_DIR/validation-malformed-evidence.stderr" >/dev/null \
+  || die "malformed evidence validation must expose the malformed error code"
+[[ ! -e "$VALIDATION_MALFORMED_EVIDENCE_MANIFEST" ]] \
+  || die "malformed evidence validation must produce no report or manifest"
 
 run_expected_validation_error validation-missing-review \
   validate \

@@ -90,6 +90,10 @@ for required in \
   'VALIDATION_EVIDENCE_REGISTRY_MANIFEST' \
   'run_expected_validation_error validation-evidence-registry' \
   'source validation error:6' \
+  'VALIDATION_MALFORMED_EVIDENCE_SOURCE' \
+  'VALIDATION_MALFORMED_EVIDENCE_MANIFEST' \
+  'run_expected_validation_error validation-malformed-evidence' \
+  'source validation error:1' \
   'VALIDATION_MISSING_REVIEW_SOURCE' \
   'VALIDATION_MISSING_REVIEW_MANIFEST' \
   'run_expected_validation_error validation-missing-review' \
