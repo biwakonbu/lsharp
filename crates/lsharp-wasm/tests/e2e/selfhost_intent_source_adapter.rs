@@ -199,6 +199,7 @@ fn test_e2e_selfhost_source_adapter_rejects_kind_mismatch() {
 /// EC-M2-01: stable ID の segment / wire format が不正なら拒否する。
 #[test]
 fn test_e2e_selfhost_source_adapter_rejects_invalid_stable_id() {
+    const SOURCE: &str = r#"(defn bad [] :claim "claim:checkout/bad/key" "invalid id" true)"#;
     let harness = r#"
 (defn main []
   (let [result (source-graph-from-program
@@ -209,6 +210,9 @@ fn test_e2e_selfhost_source_adapter_rejects_invalid_stable_id() {
       (print (source-graph-error-code error))
       (print-string (source-graph-error-id error))
       (print-string "\n")
+      (print (source-graph-error-start error))
+      (print (source-graph-error-end error))
+      (print-string "\n")
       0)))
 "#;
 
@@ -216,10 +220,18 @@ fn test_e2e_selfhost_source_adapter_rejects_invalid_stable_id() {
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert_eq!(
-        lines,
+        &lines[..3],
         ["0", "2", "claim:checkout/bad/key"],
         "stable ID の不正な segment は invalid-id として拒否するべき"
     );
+    let start = lines[3]
+        .parse::<usize>()
+        .expect("invalid node ID の start span は整数であるべき");
+    let end = lines[4]
+        .parse::<usize>()
+        .expect("invalid node ID の end span は整数であるべき");
+    assert!(start < end);
+    assert!(SOURCE[start..end].starts_with(":claim"));
 }
 
 /// EC-M2-01: node 本文が whitespace-only なら Rust canonical と同じく拒否する。

@@ -26,6 +26,12 @@ pub enum SourceGraphError {
         first_span: Span,
         duplicate_span: Span,
     },
+    #[error("source node の ID 解析に失敗しました (span={span}): {source}")]
+    NodeIdAt {
+        span: Span,
+        #[source]
+        source: StableIdError,
+    },
     #[error(
         "source evidence の stable ID が重複しています (id={id}, first_span={first_span}, duplicate_span={duplicate_span})"
     )]
@@ -140,6 +146,7 @@ impl SourceGraphError {
             | Self::DuplicateEvidence { duplicate_span, .. }
             | Self::DuplicateReview { duplicate_span, .. } => Some(*duplicate_span),
             Self::EdgeIdAt { span, .. }
+            | Self::NodeIdAt { span, .. }
             | Self::ReviewIdAt { span, .. }
             | Self::MissingNodeReference { span, .. }
             | Self::MissingReviewReference { span, .. }

@@ -2,7 +2,7 @@
 
 use lsharp_syntax::parse;
 use lsharp_types::evidence::ReviewVisibility;
-use lsharp_types::intent::NodeKind;
+use lsharp_types::intent::{NodeKind, StableIdError};
 use lsharp_types::metadata_contract::inventory_contract_suites;
 use lsharp_types::validation_source::{source_program_to_intent_graph, SourceGraphError};
 
@@ -231,6 +231,27 @@ fn source_adapter_rejects_duplicate_ids_and_typed_kind_mismatch() {
     assert_eq!(value, "");
     assert!(span.start < span.end);
     assert!(SOURCE[span.start..span.end].contains(":intent"));
+}
+
+#[test]
+fn source_adapter_reports_invalid_node_id_with_directive_span() {
+    const SOURCE: &str = r#"(defn cancel [] :claim "claim:checkout/bad/key" "invalid ID" true)"#;
+    let program = parse(SOURCE).expect("invalid node ID fixture は parse できるべき");
+
+    let error = source_program_to_intent_graph(&program)
+        .expect_err("invalid node ID は source span 付きで拒否するべき");
+    let SourceGraphError::NodeIdAt { span, source } = error else {
+        panic!("invalid node ID の source diagnostic を期待しました: {error:?}");
+    };
+    assert!(matches!(
+        source,
+        StableIdError::InvalidSegment {
+            field: "key",
+            value
+        } if value == "bad/key"
+    ));
+    assert!(span.start < span.end);
+    assert!(SOURCE[span.start..span.end].contains(":claim"));
 }
 
 #[test]

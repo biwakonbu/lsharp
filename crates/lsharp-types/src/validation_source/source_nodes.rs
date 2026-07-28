@@ -1,6 +1,6 @@
 use super::SourceGraphError;
 use crate::evidence::{ReviewRecord, ReviewVisibility};
-use crate::intent::{IntentNode, NodeKind, ReviewId};
+use crate::intent::{IntentNode, IntentNodeError, NodeKind, ReviewId};
 use crate::validation::IntentGraph;
 use lsharp_syntax::ast::{Decl, Metadata};
 use lsharp_syntax::metadata::MetadataFormKind;
@@ -101,7 +101,14 @@ fn add_metadata_nodes(
                 span: form.span(),
             });
         }
-        let node = IntentNode::from_wire_parts(wire_id.clone(), text.clone(), form.span())?;
+        let node = IntentNode::from_wire_parts(wire_id.clone(), text.clone(), form.span())
+            .map_err(|error| match error {
+                IntentNodeError::StableId(source) => SourceGraphError::NodeIdAt {
+                    span: form.span(),
+                    source,
+                },
+                error => SourceGraphError::Node(error),
+            })?;
         if node.kind() != expected_kind {
             return Err(SourceGraphError::KindMismatch {
                 expected: expected_kind,
