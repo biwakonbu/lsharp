@@ -90,6 +90,14 @@ for required in \
   'VALIDATION_EVIDENCE_REGISTRY_MANIFEST' \
   'run_expected_validation_error validation-evidence-registry' \
   'source validation error:6' \
+  'VALIDATION_SUPPORTS_EVIDENCE_PRECEDENCE_SOURCE' \
+  'VALIDATION_SUPPORTS_EVIDENCE_PRECEDENCE_MANIFEST' \
+  'run_expected_validation_error validation-supports-evidence-precedence' \
+  'unregistered supports evidence must win over its invalid wire ID' \
+  'VALIDATION_CONTRADICTS_EVIDENCE_PRECEDENCE_SOURCE' \
+  'VALIDATION_CONTRADICTS_EVIDENCE_PRECEDENCE_MANIFEST' \
+  'run_expected_validation_error validation-contradicts-evidence-precedence' \
+  'unregistered contradicts evidence must win over its invalid wire ID' \
   'VALIDATION_MALFORMED_EVIDENCE_SOURCE' \
   'VALIDATION_MALFORMED_EVIDENCE_MANIFEST' \
   'run_expected_validation_error validation-malformed-evidence' \

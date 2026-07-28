@@ -103,6 +103,8 @@ VALIDATION_MALFORMED_MANIFEST="$WORK_DIR/ec-m3-malformed-edge-manifest.json"
 VALIDATION_INVALID_ID_MANIFEST="$WORK_DIR/ec-m3-invalid-id-manifest.json"
 VALIDATION_KIND_MISMATCH_MANIFEST="$WORK_DIR/ec-m3-kind-mismatch-manifest.json"
 VALIDATION_EVIDENCE_REGISTRY_MANIFEST="$WORK_DIR/ec-m3-evidence-registry-manifest.json"
+VALIDATION_SUPPORTS_EVIDENCE_PRECEDENCE_MANIFEST="$WORK_DIR/ec-m2-supports-evidence-precedence-manifest.json"
+VALIDATION_CONTRADICTS_EVIDENCE_PRECEDENCE_MANIFEST="$WORK_DIR/ec-m2-contradicts-evidence-precedence-manifest.json"
 VALIDATION_MALFORMED_EVIDENCE_MANIFEST="$WORK_DIR/ec-m3-malformed-evidence-manifest.json"
 VALIDATION_INVALID_EVIDENCE_MANIFEST="$WORK_DIR/ec-m3-invalid-evidence-manifest.json"
 VALIDATION_INVALID_EVIDENCE_OUTCOME_MANIFEST="$WORK_DIR/ec-m3-invalid-evidence-outcome-manifest.json"
@@ -157,6 +159,8 @@ VALIDATION_MALFORMED_SOURCE="$WORK_DIR/ec-m3-malformed-edge-source.ls"
 VALIDATION_INVALID_ID_SOURCE="$WORK_DIR/ec-m3-invalid-id-source.ls"
 VALIDATION_KIND_MISMATCH_SOURCE="$WORK_DIR/ec-m3-kind-mismatch-source.ls"
 VALIDATION_EVIDENCE_REGISTRY_SOURCE="$WORK_DIR/ec-m3-evidence-registry-source.ls"
+VALIDATION_SUPPORTS_EVIDENCE_PRECEDENCE_SOURCE="$WORK_DIR/ec-m2-supports-evidence-precedence-source.ls"
+VALIDATION_CONTRADICTS_EVIDENCE_PRECEDENCE_SOURCE="$WORK_DIR/ec-m2-contradicts-evidence-precedence-source.ls"
 VALIDATION_MALFORMED_EVIDENCE_SOURCE="$WORK_DIR/ec-m3-malformed-evidence-source.ls"
 VALIDATION_INVALID_EVIDENCE_SOURCE="$WORK_DIR/ec-m3-invalid-evidence-source.ls"
 VALIDATION_INVALID_EVIDENCE_OUTCOME_SOURCE="$WORK_DIR/ec-m3-invalid-evidence-outcome-source.ls"
@@ -323,6 +327,18 @@ cat >"$VALIDATION_EVIDENCE_REGISTRY_SOURCE" <<'LSHARP'
 (defn missing-evidence-edge []
   :claim "claim:checkout/rejects" "The API rejects shipped orders"
   :supports "evidence:checkout/missing" "claim:checkout/rejects"
+  true)
+LSHARP
+cat >"$VALIDATION_SUPPORTS_EVIDENCE_PRECEDENCE_SOURCE" <<'LSHARP'
+(defn supports-invalid-evidence-id []
+  :claim "claim:checkout/rejects" "The API rejects shipped orders"
+  :supports "evidence:checkout" "claim:checkout/rejects"
+  true)
+LSHARP
+cat >"$VALIDATION_CONTRADICTS_EVIDENCE_PRECEDENCE_SOURCE" <<'LSHARP'
+(defn contradicts-invalid-evidence-id []
+  :claim "claim:checkout/rejects" "The API rejects shipped orders"
+  :contradicts "evidence:checkout" "claim:checkout/rejects"
   true)
 LSHARP
 cat >"$VALIDATION_MALFORMED_EVIDENCE_SOURCE" <<'LSHARP'
@@ -1338,6 +1354,26 @@ grep -F "source validation error:6" "$WORK_DIR/validation-evidence-registry.stde
   || die "unregistered evidence validation must expose the registry-required error code"
 [[ ! -e "$VALIDATION_EVIDENCE_REGISTRY_MANIFEST" ]] \
   || die "unregistered evidence validation must produce no report or manifest"
+
+run_expected_validation_error validation-supports-evidence-precedence \
+  validate \
+  --source "$VALIDATION_SUPPORTS_EVIDENCE_PRECEDENCE_SOURCE" \
+  --format json \
+  --emit-manifest "$VALIDATION_SUPPORTS_EVIDENCE_PRECEDENCE_MANIFEST"
+grep -F "source validation error:6" "$WORK_DIR/validation-supports-evidence-precedence.stderr" >/dev/null \
+  || die "unregistered supports evidence must win over its invalid wire ID"
+[[ ! -e "$VALIDATION_SUPPORTS_EVIDENCE_PRECEDENCE_MANIFEST" ]] \
+  || die "supports evidence precedence validation must produce no report or manifest"
+
+run_expected_validation_error validation-contradicts-evidence-precedence \
+  validate \
+  --source "$VALIDATION_CONTRADICTS_EVIDENCE_PRECEDENCE_SOURCE" \
+  --format json \
+  --emit-manifest "$VALIDATION_CONTRADICTS_EVIDENCE_PRECEDENCE_MANIFEST"
+grep -F "source validation error:6" "$WORK_DIR/validation-contradicts-evidence-precedence.stderr" >/dev/null \
+  || die "unregistered contradicts evidence must win over its invalid wire ID"
+[[ ! -e "$VALIDATION_CONTRADICTS_EVIDENCE_PRECEDENCE_MANIFEST" ]] \
+  || die "contradicts evidence precedence validation must produce no report or manifest"
 
 run_expected_validation_error validation-malformed-evidence \
   validate \

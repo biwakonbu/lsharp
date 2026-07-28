@@ -548,6 +548,38 @@ fn test_e2e_selfhost_source_adapter_rejects_unregistered_evidence_edge() {
     );
 }
 
+/// EC-M2-02: 未登録 evidence は壊れた evidence ID より先に registry-required code 6 を返す。
+#[test]
+fn test_e2e_selfhost_source_adapter_reports_evidence_registry_before_invalid_edge_id() {
+    let harness = r#"
+(defn main []
+  (let [supports (source-graph-from-program
+                   (parse-program "(defn supports [] :claim \"claim:checkout/rejects\" \"The API rejects shipped orders\" :supports \"evidence:checkout\" \"claim:checkout/rejects\" true)"))
+        contradicts (source-graph-from-program
+                      (parse-program "(defn contradicts [] :claim \"claim:checkout/rejects\" \"The API rejects shipped orders\" :contradicts \"evidence:checkout\" \"claim:checkout/rejects\" true)"))
+        supports-error (source-graph-result-error supports)
+        contradicts-error (source-graph-result-error contradicts)]
+    (do
+      (print (source-graph-result-status supports))
+      (print (source-graph-error-code supports-error))
+      (print-string (source-graph-error-id supports-error))
+      (print-string "\n")
+      (print (source-graph-result-status contradicts))
+      (print (source-graph-error-code contradicts-error))
+      (print-string (source-graph-error-id contradicts-error))
+      0)))
+"#;
+
+    let output = run_source_adapter_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "6", "evidence:checkout", "0", "6", "evidence:checkout",],
+        "未登録 supports/contradicts は壊れた evidence ID より先に registry-required になるべき"
+    );
+}
+
 /// EC-M2-02: evidence required field は invalid evidence ID より先に code 4 を返す。
 #[test]
 fn test_e2e_selfhost_source_evidence_reports_empty_runner_before_invalid_id() {

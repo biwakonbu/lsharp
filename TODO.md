@@ -307,6 +307,11 @@
   fail-closed を双方の relation で要求した。既存 Rust source adapter の `EvidenceRegistryRequired`
   と同じ review-edge evidence registry boundary を native contractへ接続する verified sliceだが、
   current source-commit に一致する実 stage0 artifact/runtime の evidence ではない。
+  さらに `supports` / `contradicts` が未登録で wire shape も不正な evidence を参照する fixtureを
+  追加し、stable な `source validation error:6`、exit `1`、report/manifestなしの fail-closed を
+  両 relation で要求した。Rust source adapter も stable-ID parse より先に registry closure を
+  判定するよう修正し、selfhost/native と同じ evidence-edge precedence を固定した verified sliceだが、
+  current source-commit に一致する実 stage0 artifact/runtime の evidence ではない。
 
 次の実装は `EC-M2-01`〜`EC-M2-03` の未接続入力を一つの RED に絞る。current plan の
 acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展開しない。

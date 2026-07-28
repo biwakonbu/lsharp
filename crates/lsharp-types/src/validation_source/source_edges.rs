@@ -83,6 +83,7 @@ fn add_metadata_edges(
                 graph.add_edge(Edge::TestedBy { claim, contract })?;
             }
             MetadataFormKind::Supports { observation, claim } => {
+                require_evidence_wire(graph, "supports", observation, form.span())?;
                 let observation = parse_edge_id(
                     observation,
                     "supports.observation",
@@ -95,6 +96,7 @@ fn add_metadata_edges(
                 graph.add_edge(Edge::Supports { observation, claim })?;
             }
             MetadataFormKind::Contradicts { observation, claim } => {
+                require_evidence_wire(graph, "contradicts", observation, form.span())?;
                 let observation = parse_edge_id(
                     observation,
                     "contradicts.observation",
@@ -150,6 +152,30 @@ fn parse_edge_id<T>(
         span,
         source,
     })
+}
+
+fn require_evidence_wire(
+    graph: &IntentGraph,
+    relation: &'static str,
+    wire: &str,
+    span: Span,
+) -> Result<(), SourceGraphError> {
+    if wire.is_empty() {
+        return Ok(());
+    }
+    if graph
+        .evidence()
+        .iter()
+        .any(|evidence| evidence.id().as_str() == wire)
+    {
+        Ok(())
+    } else {
+        Err(SourceGraphError::EvidenceRegistryRequired {
+            relation,
+            evidence_id: wire.to_string(),
+            span,
+        })
+    }
 }
 
 fn parse_review_subject(
