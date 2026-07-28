@@ -603,3 +603,12 @@ manifest の opaque review digest を NBSP-only に変異させ、registry 登�
 review lifecycle/authentication、manifest の coverage parity、selfhost/native manifest parser、current-source
 artifact/runtime、supported 2 targets、EC-M2-02/EC-M3 aggregate は残件。Evidence:
 `docs/adr/decisions-v0.2-validation-manifest-review-unicode-whitespace.md`。
+
+2026-07-29 に version 1 JSON manifest の `sampling.coverage` Unicode whitespace boundary を追加した。
+coverage key を NBSP-only に変異させ、canonical `SamplingPlan` の graph 登録前に
+`ValidationInputError::Graph(GraphError::InvalidEvidence)` / field `coverage` として拒否することを
+`parse_manifest_rejects_unicode_whitespace_only_coverage_bucket_before_registration` で固定した。source
+adapter と同じ non-blank policyを manifest inputへ拡張した Rust verified partial sliceであり、coverage
+count/cases の意味論、selfhost/native manifest parser、current-source artifact/runtime、supported 2
+targets、EC-M2-02/EC-M3 aggregate は残件。Evidence:
+`docs/adr/decisions-v0.2-validation-manifest-coverage-unicode-whitespace.md`。

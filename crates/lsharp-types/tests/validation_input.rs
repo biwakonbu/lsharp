@@ -448,6 +448,21 @@ fn parse_manifest_rejects_whitespace_only_coverage_bucket_before_registration() 
 }
 
 #[test]
+fn parse_manifest_rejects_unicode_whitespace_only_coverage_bucket_before_registration() {
+    let manifest = complete_manifest().replace(
+        "\"coverage\": {\"all\": 1}",
+        "\"coverage\": {\"\u{00A0}\": 1}",
+    );
+
+    assert!(matches!(
+        parse_intent_graph_json(&manifest),
+        Err(ValidationInputError::Graph(GraphError::InvalidEvidence {
+            source: EvidenceValidationError::EmptyField { field: "coverage" }
+        }))
+    ));
+}
+
+#[test]
 fn parse_manifest_rejects_invalid_evidence_subject_kind() {
     let invalid_subject = complete_manifest().replace(
         "\"subject\": {\"kind\": \"claim\", \"namespace\": \"checkout\", \"key\": \"cancel-rejects-shipped\"}",
