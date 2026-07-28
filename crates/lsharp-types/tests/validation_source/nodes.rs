@@ -2,7 +2,7 @@
 
 use lsharp_syntax::parse;
 use lsharp_types::evidence::ReviewVisibility;
-use lsharp_types::intent::{IntentNodeError, NodeKind, NodeTextError};
+use lsharp_types::intent::NodeKind;
 use lsharp_types::metadata_contract::inventory_contract_suites;
 use lsharp_types::validation_source::{source_program_to_intent_graph, SourceGraphError};
 
@@ -220,38 +220,50 @@ fn source_adapter_rejects_duplicate_ids_and_typed_kind_mismatch() {
         Err(SourceGraphError::KindMismatch { .. })
     ));
 
-    let empty = parse(r#"(defn cancel [] :intent "" "" true)"#)
-        .expect("empty node fixture は parse できるべき");
-    assert!(matches!(
-        source_program_to_intent_graph(&empty),
-        Err(SourceGraphError::Node(_))
-    ));
+    const SOURCE: &str = r#"(defn cancel [] :intent "" "" true)"#;
+    let empty = parse(SOURCE).expect("empty node fixture は parse できるべき");
+    let error = source_program_to_intent_graph(&empty)
+        .expect_err("empty node text は source span 付きで拒否するべき");
+    let SourceGraphError::InvalidNodeField { field, value, span } = error else {
+        panic!("empty node text の source diagnostic を期待しました: {error:?}");
+    };
+    assert_eq!(field, "text");
+    assert_eq!(value, "");
+    assert!(span.start < span.end);
+    assert!(SOURCE[span.start..span.end].contains(":intent"));
 }
 
 #[test]
 fn source_adapter_rejects_whitespace_only_node_text() {
-    let program = parse(r#"(defn cancel [] :claim "claim:checkout/whitespace-text" "  " true)"#)
-        .expect("whitespace node text fixture は parse できるべき");
+    const SOURCE: &str = r#"(defn cancel [] :claim "claim:checkout/whitespace-text" "  " true)"#;
+    let program = parse(SOURCE).expect("whitespace node text fixture は parse できるべき");
 
-    assert!(matches!(
-        source_program_to_intent_graph(&program),
-        Err(SourceGraphError::Node(IntentNodeError::NodeText(
-            NodeTextError::EmptyText
-        )))
-    ));
+    let error = source_program_to_intent_graph(&program)
+        .expect_err("whitespace node text は source span 付きで拒否するべき");
+    let SourceGraphError::InvalidNodeField { field, value, span } = error else {
+        panic!("whitespace node text の source diagnostic を期待しました: {error:?}");
+    };
+    assert_eq!(field, "text");
+    assert_eq!(value, "  ");
+    assert!(span.start < span.end);
+    assert!(SOURCE[span.start..span.end].contains(":claim"));
 }
 
 #[test]
 fn source_adapter_reports_empty_node_text_before_invalid_stable_id() {
-    let program = parse(r#"(defn cancel [] :claim "claim:checkout/bad/key" "  " true)"#)
-        .expect("empty node text and invalid stable ID fixture は parse できるべき");
+    const SOURCE: &str = r#"(defn cancel [] :claim "claim:checkout/bad/key" "  " true)"#;
+    let program =
+        parse(SOURCE).expect("empty node text and invalid stable ID fixture は parse できるべき");
 
-    assert!(matches!(
-        source_program_to_intent_graph(&program),
-        Err(SourceGraphError::Node(IntentNodeError::NodeText(
-            NodeTextError::EmptyText
-        )))
-    ));
+    let error = source_program_to_intent_graph(&program)
+        .expect_err("empty node text は invalid stable ID より先に source span 付きで拒否するべき");
+    let SourceGraphError::InvalidNodeField { field, value, span } = error else {
+        panic!("empty node text の precedence diagnostic を期待しました: {error:?}");
+    };
+    assert_eq!(field, "text");
+    assert_eq!(value, "  ");
+    assert!(span.start < span.end);
+    assert!(SOURCE[span.start..span.end].contains(":claim"));
 }
 
 #[test]

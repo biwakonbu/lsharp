@@ -225,6 +225,7 @@ fn test_e2e_selfhost_source_adapter_rejects_invalid_stable_id() {
 /// EC-M2-01: node 本文が whitespace-only なら Rust canonical と同じく拒否する。
 #[test]
 fn test_e2e_selfhost_source_adapter_rejects_whitespace_only_node_text() {
+    const SOURCE: &str = r#"(defn bad [] :claim "claim:checkout/whitespace-text" "  " true)"#;
     let harness = r#"
 (defn main []
   (let [result (source-graph-from-program
@@ -236,6 +237,9 @@ fn test_e2e_selfhost_source_adapter_rejects_whitespace_only_node_text() {
           (print (source-graph-error-code error))
           (print (source-graph-error-kind error))
           (print-string (source-graph-error-id error))
+          (print-string "\n")
+          (print (source-graph-error-start error))
+          (print (source-graph-error-end error))
           (print-string "\n")
           0))
       (let [graph (source-graph-result-value result)
@@ -251,10 +255,18 @@ fn test_e2e_selfhost_source_adapter_rejects_whitespace_only_node_text() {
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert_eq!(
-        lines,
+        &lines[..4],
         ["0", "1", "7", "claim:checkout/whitespace-text"],
         "selfhost source node の whitespace-only text は malformed として拒否するべき"
     );
+    let start = lines[4]
+        .parse::<usize>()
+        .expect("whitespace node text の start span は整数であるべき");
+    let end = lines[5]
+        .parse::<usize>()
+        .expect("whitespace node text の end span は整数であるべき");
+    assert!(start < end);
+    assert!(SOURCE[start..end].starts_with(":claim"));
 }
 
 /// EC-M2-01: whitespace-only node text は invalid stable ID より先に malformed code 1 を返す。
