@@ -668,3 +668,9 @@ Rust driver CLI test で固定した。default EmbeddedCli build
 既存 component artifact を指定した focused test で manifest input 経路だけを検証した。source/native CLI
 の同一診断、MCP、current-source artifact/runtime、supported 2 targets、EC-M2-02/EC-M3 aggregate は残件。
 Evidence: `docs/adr/decisions-v0.2-validation-cli-subject-kind-diagnostic.md`。
+
+2026-07-29 に `reviews: null` の optional registry type boundary を公開 `lsharp validate` へ接続した。
+manifest input error は exit `1`、空 stdout、manifest file なし、`reviews` / `null` を含む stderr の
+diagnostic-only 結果となることを Rust driver CLI 全26件で固定した。selfhost/native parser、MCP parity、
+current-source artifact/runtime、supported 2 targets、EC-M2-02/EC-M3 aggregate は残件。Evidence:
+`docs/adr/decisions-v0.2-validation-manifest-null-review-registry.md`。

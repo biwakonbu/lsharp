@@ -27,10 +27,14 @@ closure を有効にする。`Option<Vec<ReviewInput>>` の通常の serde deser
 - `cargo test -p lsharp-types --test review_provenance`
 - `cargo test -p lsharp-types`
 - `cargo clippy -p lsharp-types --all-targets -- -D warnings`
+- `validate_rejects_null_review_registry_without_report_or_manifest_output` は公開 `lsharp validate`
+  でも exit `1`、空 stdout、manifest file なし、`reviews` / `null` を含む stderr になることを固定した。
+- `cargo test -p lsharp-driver --test validate_cli` (26 tests)
+- `cargo clippy -p lsharp-driver --test validate_cli -- -D warnings`
 
 ## Boundary and follow-up
 
-これは Rust canonical manifest input の optional registry type boundary に限定した verified
-partial slice である。selfhost/native parser、CLI/MCP parity、current-source stage0
+これは Rust canonical manifest input と公開 Rust CLI の optional registry type boundary に限定した verified
+partial slice である。selfhost/native parser、MCP parity、current-source stage0
 artifact/runtime、Mac Apple Silicon / Linux x86_64 matrix、review lifecycle/authentication、
 EC-M2-02 / EC-M2-03 / EC-M3 aggregate は未完了であり、TODO の `[~]` を維持する。
