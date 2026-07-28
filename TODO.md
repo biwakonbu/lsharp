@@ -645,6 +645,12 @@ manifest parser、CLI/MCP parity、current-source artifact/runtime、supported 2
 authentication、EC-M2-02/EC-M2-03/EC-M3 aggregate は残件。Evidence:
 `docs/adr/decisions-v0.2-validation-manifest-null-review-registry.md`。
 
+2026-07-29 に `sampling.coverage` duplicate bucket key の wire boundary を公開 `lsharp validate` へ接続した。
+同一 `coverage` key を持つ manifest は exit `1`、空 stdout、manifest file なし、`coverage` と duplicate-key
+分類を含む stderr の diagnostic-only 結果となることを Rust driver CLI 全27件で固定した。selfhost/native
+manifest parity、report/atomic writer、current-source artifact/runtime、supported 2 targets、EC-M2-03
+aggregate は残件。Evidence: `docs/adr/decisions-v0.2-validation-manifest-duplicate-coverage.md`。
+
 2026-07-29 に version 1 manifest の subject kind schema parity を追加した。evidence、`evaluates`、
 `invalidates` の subject を relation ごとの JSON Schema 定義へ分離し、Rust parser と同じ
 `intent`/`claim`/`contract`、`intent`/`claim`/`evidence`、`evidence`/`review` の kind enum を固定した。

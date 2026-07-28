@@ -28,11 +28,16 @@ version 1 JSON manifest の `coverage` は `BTreeMap` へ直接 deserialize し�
 - `cargo test -p lsharp-types --test validation_input -- --nocapture`（18 passed）。
 - `cargo test -p lsharp-types`（unit 221件、integration/doc testsを含め全通過）。
 - 対象3ファイルの `rustfmt --edition 2024 --check` と `git diff --check` が通過した。
+- `validate_rejects_duplicate_coverage_bucket_without_report_or_manifest_output` は公開
+  `lsharp validate` でも exit `1`、空 stdout、manifest file なし、`coverage` と duplicate-key
+  分類を含む stderr になることを固定した。
+- `cargo test -p lsharp-driver --test validate_cli`（27 tests）。
+- `cargo clippy -p lsharp-driver --test validate_cli -- -D warnings`。
 
 ## Boundary and follow-up
 
-これは Rust canonical manifest input の duplicate coverage wire boundary に限定した verified partial
-sliceである。selfhost/native manifest parity、report/atomic writer、coverage count/cases の意味論、
+これは Rust canonical manifest input と公開 Rust CLI の duplicate coverage wire boundary に限定した verified
+partial sliceである。selfhost/native manifest parity、report/atomic writer、coverage count/cases の意味論、
 current-source artifact/runtime、Mac/Linux matrix、EC-M2-03 aggregate は未完了であり、TODO の `[~]` を
 維持する。
 

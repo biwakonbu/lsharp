@@ -236,6 +236,85 @@ fn validate_rejects_null_review_registry_without_report_or_manifest_output() {
 }
 
 #[test]
+fn validate_rejects_duplicate_coverage_bucket_without_report_or_manifest_output() {
+    let path = manifest_path(
+        "duplicate-coverage-bucket",
+        r#"
+        {
+          "schema_version": 1,
+          "nodes": [
+            {"kind": "claim", "namespace": "checkout", "key": "cancel", "text": "The API rejects shipped orders"}
+          ],
+          "evidence": [
+            {
+              "namespace": "checkout",
+              "key": "review-001",
+              "method": "review",
+              "subject": {"kind": "claim", "namespace": "checkout", "key": "cancel"},
+              "outcome": "pass",
+              "execution": {
+                "runner": "validator-test",
+                "target": "host",
+                "source_commit": "commit-1",
+                "artifact_digest": "sha256:artifact",
+                "sampling": {
+                  "cases": 1,
+                  "seed": 0,
+                  "generator": "fixture",
+                  "shrinks": [],
+                  "coverage": {"all": 1, "all": 2}
+                }
+              },
+              "provenance": {
+                "producer": "validator-test",
+                "tool_version": "0.2",
+                "timestamp": "2026-07-23T00:00:00Z"
+              },
+              "independence": "independent-review"
+            }
+          ],
+          "edges": []
+        }
+        "#,
+    );
+    let output_dir = project_dir("duplicate-coverage-bucket-output");
+    fs::create_dir_all(&output_dir).expect("manifest output directory should be writable");
+    let output_manifest = output_dir.join("intent-graph.json");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+        .args([
+            "validate",
+            path.to_str().unwrap(),
+            "--format",
+            "json",
+            "--emit-manifest",
+            output_manifest.to_str().unwrap(),
+        ])
+        .output()
+        .expect("lsharp validate should run");
+    let manifest_exists = output_manifest.exists();
+    fs::remove_file(&path).ok();
+    fs::remove_dir_all(&output_dir).ok();
+
+    assert_eq!(output.status.code(), Some(1));
+    assert!(
+        output.stdout.is_empty(),
+        "input errors must not be serialized as a validation report or manifest: {:?}",
+        output.stdout
+    );
+    assert!(!manifest_exists, "input error must not emit a manifest");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("coverage"),
+        "diagnostic missing coverage field: {stderr}"
+    );
+    assert!(
+        stderr.contains("duplicate") || stderr.contains("重複"),
+        "diagnostic missing duplicate-key classification: {stderr}"
+    );
+}
+
+#[test]
 fn validate_rejects_manifest_missing_required_field_without_report_stdout() {
     let path = manifest_path(
         "missing-required-field",
