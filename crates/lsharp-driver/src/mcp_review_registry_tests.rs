@@ -77,6 +77,47 @@ mod review_registry_tests {
     }
 
     #[test]
+    fn test_validate_tool_manifest_schema_declares_unsigned_integer_boundaries() {
+        let response = handle_jsonrpc_message(&json!({
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "tools/list"
+        }));
+        let tool = response["result"]["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|tool| tool["name"] == "lsharp_validate")
+            .expect("lsharp_validate が tools/list に必要");
+        let manifest_schema = &tool["inputSchema"]["properties"]["manifest"]["oneOf"][0];
+        let node_span = &manifest_schema["properties"]["nodes"]["items"]["properties"]["span"];
+        let sampling = &manifest_schema["properties"]["evidence"]["items"]["properties"]
+            ["execution"]["properties"]["sampling"];
+
+        for field in ["start", "end"] {
+            assert_eq!(node_span["properties"][field]["type"], "integer");
+            assert_eq!(node_span["properties"][field]["minimum"], 0);
+        }
+        for field in ["cases", "seed"] {
+            assert_eq!(sampling["properties"][field]["type"], "integer");
+            assert_eq!(sampling["properties"][field]["minimum"], 0);
+        }
+        assert_eq!(
+            sampling["properties"]["shrinks"]["items"]["type"],
+            "integer"
+        );
+        assert_eq!(sampling["properties"]["shrinks"]["items"]["minimum"], 0);
+        assert_eq!(
+            sampling["properties"]["coverage"]["additionalProperties"]["type"],
+            "integer"
+        );
+        assert_eq!(
+            sampling["properties"]["coverage"]["additionalProperties"]["minimum"],
+            0
+        );
+    }
+
+    #[test]
     fn test_validate_tool_includes_redacted_review_registry_without_private_fields() {
         let result = call_tool(
             "lsharp_validate",

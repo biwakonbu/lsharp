@@ -750,3 +750,11 @@ fieldで `null` を 0 や省略へ変換せず、Rust canonical parser が graph
 で固定した。selfhost/native manifest parser、公開 CLI/MCP、current-source stage0 artifact/runtime、
 Mac/Linux matrix、EC-M2-02/EC-M3 aggregate は残件。Evidence:
 `docs/adr/decisions-v0.2-validation-input-numeric-boundaries.md`。
+
+2026-07-29 に MCP `lsharp_validate` の manifest schema へ unsigned numeric boundary を反映した。
+`tools/list` が `nodes[].span.start/end` と `evidence[].execution.sampling.cases/seed/shrinks[]/coverage.*`
+を `type: integer`・`minimum: 0` として公開し、input/output で同じ schema helper を共有することを
+新規 schema test と MCP suite 44件で固定した。これは static schema と Rust MCP の verified partial
+sliceであり、JSON Schema 実 validator、selfhost/native MCP、current-source stage0 artifact/runtime、
+Mac/Linux matrix、EC-M3 aggregate は未完了である。Evidence:
+`docs/adr/decisions-v0.2-mcp-validation-manifest.md`。

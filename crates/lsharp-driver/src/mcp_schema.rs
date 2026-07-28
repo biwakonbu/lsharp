@@ -213,10 +213,134 @@ fn intent_graph_manifest_schema() -> Value {
         "required": ["schema_version", "nodes", "evidence", "edges"],
         "properties": {
             "schema_version": { "type": "integer", "const": 1 },
-            "nodes": { "type": "array" },
+            "nodes": {
+                "type": "array",
+                "items": node_schema()
+            },
             "reviews": review_registry_schema(),
-            "evidence": { "type": "array" },
+            "evidence": {
+                "type": "array",
+                "items": evidence_schema()
+            },
             "edges": { "type": "array" }
+        }
+    })
+}
+
+fn non_negative_integer_schema() -> Value {
+    json!({
+        "type": "integer",
+        "minimum": 0
+    })
+}
+
+fn node_schema() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "namespace", "key", "text"],
+        "properties": {
+            "kind": {
+                "type": "string",
+                "enum": ["intent", "claim", "assumption", "open-question"]
+            },
+            "namespace": { "type": "string" },
+            "key": { "type": "string" },
+            "text": { "type": "string" },
+            "span": span_schema()
+        }
+    })
+}
+
+fn span_schema() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["start", "end"],
+        "properties": {
+            "start": non_negative_integer_schema(),
+            "end": non_negative_integer_schema()
+        }
+    })
+}
+
+fn evidence_schema() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+            "namespace",
+            "key",
+            "method",
+            "subject",
+            "outcome",
+            "execution",
+            "provenance",
+            "independence"
+        ],
+        "properties": {
+            "namespace": { "type": "string" },
+            "key": { "type": "string" },
+            "method": {
+                "type": "string",
+                "enum": ["example", "case", "assert", "property", "production", "reference", "proof", "review"]
+            },
+            "subject": { "type": "object" },
+            "outcome": {
+                "type": "string",
+                "enum": ["pass", "fail", "contradicted", "unknown", "stale"]
+            },
+            "execution": execution_schema(),
+            "provenance": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["producer", "tool_version", "timestamp"],
+                "properties": {
+                    "producer": { "type": "string" },
+                    "tool_version": { "type": "string" },
+                    "timestamp": { "type": "string" }
+                }
+            },
+            "independence": {
+                "type": "string",
+                "enum": ["same-author", "independent-review", "external-observation"]
+            }
+        }
+    })
+}
+
+fn execution_schema() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["runner", "target", "source_commit", "artifact_digest", "sampling"],
+        "properties": {
+            "runner": { "type": "string" },
+            "target": { "type": "string" },
+            "source_commit": { "type": "string" },
+            "artifact_digest": { "type": "string" },
+            "sampling": sampling_schema()
+        }
+    })
+}
+
+fn sampling_schema() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["cases", "seed", "generator"],
+        "properties": {
+            "cases": non_negative_integer_schema(),
+            "seed": non_negative_integer_schema(),
+            "generator": { "type": "string" },
+            "shrinks": {
+                "type": "array",
+                "items": non_negative_integer_schema()
+            },
+            "coverage": {
+                "type": "object",
+                "additionalProperties": non_negative_integer_schema()
+            }
         }
     })
 }

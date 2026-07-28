@@ -43,10 +43,19 @@ diagnostic が CLI と乖離する。
   対象ファイルの rustfmt、`git diff --check`。
 - Presence gate: 同 focused suite 43 tests（review registry 6 tests）と `cargo clippy -p lsharp-driver
   --bin lsharp --tests -- -D warnings`。
+- Numeric schema follow-up: `tools/list` の manifest object schema に `nodes[].span` と
+  `evidence[].execution.sampling` の unsigned fields（`start` / `end` / `cases` / `seed` /
+  `shrinks[]` / `coverage.*`）を `type: integer` と `minimum: 0` で宣言した。入力と出力で同じ
+  helper を共有し、MCP consumer が小数や負数を静的契約上受け付けない境界を parser の typed
+  serde 契約と同期する。
+- Numeric schema gate: 新規 schema boundary test と既存 `mcp_server::tests` 44 tests、対象 binary
+  の `cargo clippy --tests -- -D warnings`、rustfmt、`git diff --check` を pass した。
 
 ## Boundary and follow-up
 
 これは Rust MCP の manifest input/report wiring に限定した verified slice である。EmbeddedCli の
 Rust-host actual Wasm manifest output wiringは別ADRで接続済みだが、native manifest emission、
 selfhost/native report parity、Mac Apple Silicon / Linux x86_64 artifact/runtime evidence は
-未完了のため、`TODO.md` の `EC-M2-03` は `[~]` のまま維持する。
+未完了のため、`TODO.md` の `EC-M2-03` は `[~]` のまま維持する。今回の numeric schema は static
+`tools/list` 契約と Rust MCP lane に限定され、JSON Schema validator 実行、selfhost/native MCP、
+current-source artifact/runtime、supported 2 targets の完了証拠には数えない。
