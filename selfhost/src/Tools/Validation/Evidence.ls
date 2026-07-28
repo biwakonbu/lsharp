@@ -1,5 +1,6 @@
 (module Tools.Validation.Evidence)
 (import Tools.Validation.IntentSource)
+(import Tools.Validation.Whitespace)
 (import Syntax.AST)
 (import Syntax.Parser)
 (import Tools.Lsp.JsonRpc)
@@ -97,20 +98,8 @@
         (source-edge-tested-by)
         0))))
 
-(defn source-evidence-whitespace? [char]
-  (or
-    (or (= char 32) (= char 9))
-    (or (= char 10) (= char 13))))
-
-(defn source-evidence-nonblank-loop [value idx len]
-  (if (>= idx len)
-    0
-    (if (source-evidence-whitespace? (string-char-at value idx))
-      (source-evidence-nonblank-loop value (+ idx 1) len)
-      1)))
-
 (defn source-evidence-nonblank? [value]
-  (source-evidence-nonblank-loop value 0 (string-length value)))
+  (validation-nonblank? value))
 
 (defn source-evidence-empty-field [payload]
   (if (= (source-evidence-nonblank? (vector-get payload 4)) 0)

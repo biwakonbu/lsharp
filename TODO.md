@@ -487,3 +487,12 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
 - Linux VM / stage regeneration は共有 lock と既存 artifact を使い、同じ heavy replay を重複起動しない。
 - Rust は bootstrap、oracle/differential、rollback、未移行 host integration の明示境界として保持する。
 - verified slice は `[~]` のまま残し、aggregate completion 後に evidence を ADR/仕様へ移して本ファイルから削除する。
+
+2026-07-29 に EC-M2-02 evidence required-field Unicode whitespace boundary を追加した。Rust
+source adapter の `str::trim()` と selfhost `Tools.Validation.Whitespace` の UTF-8 byte 判定を
+揃え、NBSP を含む Unicode White_Space-only `runner` を stable code `4`、directive/form span 付きで
+拒否する。Rust source test、selfhost actual Wasm の同一 fixture、主要 Unicode White_Space 10 種の
+direct runtime、Linux x86_64 native source-file smoke/provenance gate を通過した verified partial slice
+である。node text、review provenance、manifest input、coverage count/cases、current-source
+artifact/runtime、Mac/Linux matrix、EC-M2-02/EC-M3 aggregate は残件。ADR:
+`docs/adr/decisions-v0.2-native-validation-evidence-unicode-whitespace.md`。

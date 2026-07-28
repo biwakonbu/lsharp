@@ -323,6 +323,74 @@ fn test_e2e_selfhost_source_evidence_rejects_whitespace_only_runner() {
     );
 }
 
+/// EC-M2-02: Rust の Unicode White_Space と selfhost source evidence の runner policy を揃える。
+#[test]
+fn test_e2e_selfhost_source_evidence_rejects_unicode_whitespace_only_runner() {
+    let harness = r#"
+(defn main []
+  (let [result (source-evidence-graph-from-program
+                 (parse-program "(defn cancel [] :claim \"claim:checkout/cancel\" \"The API rejects shipped orders\" :evidence \"evidence:checkout/unicode-whitespace-runner\" :subject \"claim:checkout/cancel\" :method \"case\" :outcome \"pass\" :runner \" \" :target \"aarch64-apple-darwin\" :source-commit \"source-unicode-whitespace-runner\" :artifact-digest \"sha256:unicode-whitespace-runner\" :cases 1 :seed 0 :generator \"unicode-whitespace-runner-generator\" :producer \"unicode-whitespace-runner-producer\" :tool-version \"0.2.0-dev\" :timestamp \"2026-07-29T00:00:00Z\" :independence \"same-author\" true)"))
+        error (source-result-error result)]
+    (do
+      (print (source-result-status result))
+      (print (source-evidence-error-code error))
+      (print-string (source-evidence-error-field error))
+      (print-string "\n")
+      0)))
+"#;
+
+    let output = run_evidence_registry_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "4", "runner"],
+        "source evidence の Unicode whitespace-only runner は required-field error として拒否するべき"
+    );
+}
+
+/// EC-M2-02: UTF-8 byte 判定が Rust の Unicode White_Space 全体を空値として扱う。
+#[test]
+fn test_e2e_selfhost_validation_whitespace_matches_rust_unicode_policy() {
+    let whitespace = [
+        "\u{000b}", "\u{000c}", "\u{0085}", "\u{00a0}", "\u{1680}", "\u{2000}", "\u{2028}",
+        "\u{202f}", "\u{205f}", "\u{3000}",
+    ];
+    let harness = format!(
+        r#"
+(defn main []
+  (do
+    (print (validation-nonblank? "{0}"))
+    (print (validation-nonblank? "{1}"))
+    (print (validation-nonblank? "{2}"))
+    (print (validation-nonblank? "{3}"))
+    (print (validation-nonblank? "{4}"))
+    (print (validation-nonblank? "{5}"))
+    (print (validation-nonblank? "{6}"))
+    (print (validation-nonblank? "{7}"))
+    (print (validation-nonblank? "{8}"))
+    (print (validation-nonblank? "{9}"))
+    (print-string "\n")
+    0))
+"#,
+        whitespace[0],
+        whitespace[1],
+        whitespace[2],
+        whitespace[3],
+        whitespace[4],
+        whitespace[5],
+        whitespace[6],
+        whitespace[7],
+        whitespace[8],
+        whitespace[9],
+    );
+
+    assert_eq!(
+        run_evidence_registry_runtime(&harness).trim(),
+        "0\n0\n0\n0\n0\n0\n0\n0\n0\n0"
+    );
+}
+
 /// EC-M2-02: whitespace-only subject は required-field ではなく invalid stable ID として拒否する。
 #[test]
 fn test_e2e_selfhost_source_evidence_rejects_whitespace_only_subject_as_invalid_id() {

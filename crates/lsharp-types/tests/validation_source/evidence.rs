@@ -757,6 +757,41 @@ fn source_adapter_rejects_whitespace_only_required_execution_runner() {
 }
 
 #[test]
+fn source_adapter_rejects_unicode_whitespace_only_required_execution_runner() {
+    const SOURCE: &str = r#"
+        (defn cancel []
+          :claim "claim:checkout/cancel" "The API rejects shipped orders"
+          :evidence "evidence:checkout/unicode-whitespace-runner"
+            :subject "claim:checkout/cancel"
+            :method "case"
+            :outcome "pass"
+            :runner " "
+            :target "aarch64-apple-darwin"
+            :source-commit "source-unicode-whitespace-runner"
+            :artifact-digest "sha256:unicode-whitespace-runner"
+            :cases 1
+            :seed 0
+            :generator "unicode-whitespace-runner-generator"
+            :producer "unicode-whitespace-runner-producer"
+            :tool-version "0.2.0-dev"
+            :timestamp "2026-07-29T00:00:00Z"
+            :independence "same-author"
+          true)
+        "#;
+    let program = parse(SOURCE).expect("Unicode whitespace runner fixture は parse できるべき");
+
+    let error = source_program_to_intent_graph(&program)
+        .expect_err("Unicode whitespace runner は source graph 登録時に拒否するべき");
+    assert!(matches!(
+        error,
+        SourceGraphError::InvalidEvidenceRequiredField {
+            field: "runner",
+            ..
+        }
+    ));
+}
+
+#[test]
 fn source_adapter_rejects_whitespace_only_evidence_subject_as_invalid_id() {
     const SOURCE: &str = r#"
         (defn cancel []

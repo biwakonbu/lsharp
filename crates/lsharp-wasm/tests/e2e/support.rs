@@ -782,6 +782,7 @@ pub(crate) fn selfhost_source_path(name: &str) -> std::path::PathBuf {
         "HtmlTemplate.ls" => "selfhost/src/Tools/Doc/HtmlTemplate.ls",
         "PropertyRunner.ls" => "selfhost/src/Tools/Test/PropertyRunner.ls",
         "TestRunner.ls" => "selfhost/src/Tools/Test/TestRunner.ls",
+        "Whitespace.ls" => "selfhost/src/Tools/Validation/Whitespace.ls",
         "IntentSource.ls" => "selfhost/src/Tools/Validation/IntentSource.ls",
         "Evidence.ls" => "selfhost/src/Tools/Validation/Evidence.ls",
         "Stale.ls" => "selfhost/src/Tools/Validation/Stale.ls",
@@ -887,6 +888,9 @@ fn selfhost_module_raw(name: &str) -> &'static str {
         "LspServerCore.ls" => include_str!("../../../../selfhost/src/Tools/Lsp/LspServerCore.ls"),
         "LspServerNav.ls" => include_str!("../../../../selfhost/src/Tools/Lsp/LspServerNav.ls"),
         "LspServer.ls" => include_str!("../../../../selfhost/src/Tools/Lsp/LspServer.ls"),
+        "Whitespace.ls" => {
+            include_str!("../../../../selfhost/src/Tools/Validation/Whitespace.ls")
+        }
         "NativeTarget.ls" => {
             include_str!("../../../../selfhost/src/Backend/Native/NativeTarget.ls")
         }
@@ -1588,6 +1592,7 @@ pub(crate) fn selfhost_cli_runtime_bundle() -> &'static str {
             "LspServerCore.ls",
             "LspServerNav.ls",
             "LspServer.ls",
+            "Whitespace.ls",
             "IntentSource.ls",
             "Evidence.ls",
             "Stale.ls",
@@ -1636,6 +1641,7 @@ pub(crate) fn selfhost_embedded_cli_runtime_bundle() -> &'static str {
             "LspServerCore.ls",
             "LspServerNav.ls",
             "LspServer.ls",
+            "Whitespace.ls",
             "IntentSource.ls",
             "Evidence.ls",
             "Stale.ls",
