@@ -1779,6 +1779,90 @@ fn test_e2e_selfhost_parser_record_decl_fields_cross_chunk_boundary() {
 }
 
 #[test]
+fn test_e2e_selfhost_parser_type_variants_use_bounded_chunks() {
+    let source = selfhost_module("Parser.ls");
+    let field_rooted_body = source
+        .split("(defn parse-type-variant-fields-rooted-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn parse-type-variant-fields-v3").next())
+        .expect("Parser.ls に type variant field rooted loop が存在すること");
+    let field_step_body = source
+        .split("(defn parse-type-variant-fields-step-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn parse-type-variant-fields-step-64-loop-bounded").next())
+        .expect("Parser.ls に type variant field step が存在すること");
+    let variants_rooted_body = source
+        .split("(defn parse-type-variants-rooted-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn parse-type-variants-v3").next())
+        .expect("Parser.ls に type variants rooted loop が存在すること");
+    let variants_step_body = source
+        .split("(defn parse-type-variants-step-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn parse-type-variants-step-64-loop-bounded").next())
+        .expect("Parser.ls に type variants step が存在すること");
+
+    assert!(
+        source.contains("(defn parse-type-variant-fields-step-64-loop-bounded")
+            && source.contains("(defn parse-type-variant-fields-step-64")
+            && field_rooted_body.contains("parse-type-variant-fields-step-64")
+            && !field_step_body.contains(
+                "(parse-type-variant-fields-rooted-v3 spans pos-ref src next-fields",
+            )
+            && source.contains("(defn parse-type-variants-step-64-loop-bounded")
+            && source.contains("(defn parse-type-variants-step-64")
+            && variants_rooted_body.contains("parse-type-variants-step-64")
+            && !variants_step_body.contains(
+                "(parse-type-variants-rooted-v3 spans pos-ref src next-variants",
+            ),
+        "ADT variant/field parser は Linux x86 native stack の深い再帰を避けるため bounded chunk へ委譲するべき"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_parser_type_variants_cross_chunk_boundary() {
+    let (token_ls, ast_ls, lexer_ls, parser_ls) = parser_runtime_modules();
+    let fields = (0..65).map(|_| "Int").collect::<Vec<_>>().join(" ");
+    let variants = (1..65)
+        .map(|index| format!("V{}", index))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let source = format!("(type Wide (V0 {}) {})", fields, variants);
+    let harness = format!(
+        r#"
+(defn main []
+  (let [node (vector-get (parse-program "{}") 0)
+        variants (vector-get node 2)
+        first-variant (vector-get variants 0)
+        first-fields (vector-get first-variant 1)
+        last-variant (vector-get variants 64)]
+    (do
+      (print (vector-get node 0))
+      (print (vector-length variants))
+      (print (if (= (vector-get first-variant 0) (name-hash "V0" 0 2)) 1 0))
+      (print (vector-length first-fields))
+      (print (vector-get (vector-get first-fields 64) 0))
+      (print (if (= (vector-get last-variant 0) (name-hash "V64" 0 3)) 1 0))
+      (print (vector-length (vector-get last-variant 1)))
+      0)))
+"#,
+        source
+    );
+
+    let output = compile_and_run(&format!(
+        "{}\n{}\n{}\n{}\n{}",
+        token_ls, ast_ls, lexer_ls, parser_ls, harness
+    ));
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["21", "65", "1", "65", "60", "1", "0"],
+        "ADT variant/field parser は 64 要素境界を跨いでも variant と field type layout を保持するべき"
+    );
+}
+
+#[test]
 fn test_e2e_selfhost_parser_type_expr_list_use_bounded_chunks() {
     let source = selfhost_module("Parser.ls");
     let rooted_body = source

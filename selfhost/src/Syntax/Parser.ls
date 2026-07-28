@@ -3666,13 +3666,13 @@
             parsed))))))
 
 ;; ADT variant の field 型を左から保持する。末尾の ) はここで消費する。
-(defn parse-type-variant-fields-rooted-v3 [spans pos-ref src fields]
+(defn parse-type-variant-fields-step-v3 [spans pos-ref src fields]
   (if (== (p-current spans pos-ref) 1)
     (do
       (p-advance pos-ref)
-      fields)
+      (make-parse-loop-state 1 fields))
     (if (== (p-current spans pos-ref) 99)
-      fields
+      (make-parse-loop-state 1 fields)
       (do
         (root_push fields)
         (let [type-expr (parse-type-expr-v3 spans pos-ref src)]
@@ -3681,17 +3681,68 @@
             (let [next-fields (vector-push-single-rooted-v3 fields type-expr)]
               (do
                 (root_push next-fields)
-                (let [parsed
-                        (parse-type-variant-fields-rooted-v3
-                          spans
-                          pos-ref
-                          src
-                          next-fields)]
+                (let [state (make-parse-loop-state 0 next-fields)]
                   (do
                     (root_pop)
                     (root_pop)
                     (root_pop)
-                    parsed))))))))))
+                    state))))))))))
+
+(defn parse-type-variant-fields-step-64-loop-bounded
+  [spans pos-ref src fields remaining]
+  (do
+    (root_push fields)
+    (let [step
+            (parse-type-variant-fields-step-v3 spans pos-ref src fields)
+      done (vector-get step 0)
+      next-fields (vector-get step 1)]
+      (do
+        (root_push step)
+        (root_push next-fields)
+        (let [parsed
+          (if (= done 1)
+            step
+            (if (<= remaining 1)
+              step
+              (parse-type-variant-fields-step-64-loop-bounded
+                spans
+                pos-ref
+                src
+                next-fields
+                (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn parse-type-variant-fields-step-64 [spans pos-ref src fields]
+  (parse-type-variant-fields-step-64-loop-bounded
+    spans
+    pos-ref
+    src
+    fields
+    64))
+
+(defn parse-type-variant-fields-rooted-v3 [spans pos-ref src fields]
+  (let [step (parse-type-variant-fields-step-64 spans pos-ref src fields)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 1)
+      (do
+        (root_push step)
+        (let [next-fields (vector-get step 1)]
+          (do
+            (root_push next-fields)
+            (let [parsed
+                    (parse-type-variant-fields-rooted-v3
+                      spans
+                      pos-ref
+                      src
+                      next-fields)]
+              (do
+                (root_pop)
+                (root_pop)
+                parsed))))))))
 
 (defn parse-type-variant-fields-v3 [spans pos-ref src]
   (do
@@ -3790,36 +3841,86 @@
         0))))
 
 ;; type 宣言の outer ) まで ADT variant を収集する。
-(defn parse-type-variants-rooted-v3 [spans pos-ref src variants]
+(defn parse-type-variants-step-v3 [spans pos-ref src variants]
   (if (== (p-current spans pos-ref) 1)
     (do
       (p-advance pos-ref)
-      variants)
+      (make-parse-loop-state 1 variants))
     (if (== (p-current spans pos-ref) 99)
-      variants
+      (make-parse-loop-state 1 variants)
       (do
         (root_push variants)
         (let [variant (parse-type-variant-v3 spans pos-ref src)]
           (if (= variant 0)
             (do
               (root_pop)
-              (parse-type-variants-rooted-v3 spans pos-ref src variants))
+              (make-parse-loop-state 0 variants))
             (do
               (root_push variant)
               (let [next-variants (vector-push-single-rooted-v3 variants variant)]
                 (do
                   (root_push next-variants)
-                  (let [parsed
-                          (parse-type-variants-rooted-v3
-                            spans
-                            pos-ref
-                            src
-                            next-variants)]
+                  (let [state (make-parse-loop-state 0 next-variants)]
                     (do
                       (root_pop)
                       (root_pop)
                       (root_pop)
-                      parsed)))))))))))
+                      state)))))))))))
+
+(defn parse-type-variants-step-64-loop-bounded
+  [spans pos-ref src variants remaining]
+  (do
+    (root_push variants)
+    (let [step (parse-type-variants-step-v3 spans pos-ref src variants)
+      done (vector-get step 0)
+      next-variants (vector-get step 1)]
+      (do
+        (root_push step)
+        (root_push next-variants)
+        (let [parsed
+          (if (= done 1)
+            step
+            (if (<= remaining 1)
+              step
+              (parse-type-variants-step-64-loop-bounded
+                spans
+                pos-ref
+                src
+                next-variants
+                (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn parse-type-variants-step-64 [spans pos-ref src variants]
+  (parse-type-variants-step-64-loop-bounded
+    spans
+    pos-ref
+    src
+    variants
+    64))
+
+(defn parse-type-variants-rooted-v3 [spans pos-ref src variants]
+  (let [step (parse-type-variants-step-64 spans pos-ref src variants)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 1)
+      (do
+        (root_push step)
+        (let [next-variants (vector-get step 1)]
+          (do
+            (root_push next-variants)
+            (let [parsed
+                    (parse-type-variants-rooted-v3
+                      spans
+                      pos-ref
+                      src
+                      next-variants)]
+              (do
+                (root_pop)
+                (root_pop)
+                parsed))))))))
 
 (defn parse-type-variants-v3 [spans pos-ref src]
   (do
