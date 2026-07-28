@@ -2,9 +2,9 @@
 
 use lsharp_syntax::parse;
 use lsharp_types::evidence::ReviewVisibility;
-use lsharp_types::intent::NodeKind;
+use lsharp_types::intent::{IntentNodeError, NodeKind, NodeTextError};
 use lsharp_types::metadata_contract::inventory_contract_suites;
-use lsharp_types::validation_source::{SourceGraphError, source_program_to_intent_graph};
+use lsharp_types::validation_source::{source_program_to_intent_graph, SourceGraphError};
 
 #[test]
 fn source_adapter_registers_typed_nodes_without_deriving_ids_from_span_or_order() {
@@ -225,6 +225,19 @@ fn source_adapter_rejects_duplicate_ids_and_typed_kind_mismatch() {
     assert!(matches!(
         source_program_to_intent_graph(&empty),
         Err(SourceGraphError::Node(_))
+    ));
+}
+
+#[test]
+fn source_adapter_rejects_whitespace_only_node_text() {
+    let program = parse(r#"(defn cancel [] :claim "claim:checkout/whitespace-text" "  " true)"#)
+        .expect("whitespace node text fixture は parse できるべき");
+
+    assert!(matches!(
+        source_program_to_intent_graph(&program),
+        Err(SourceGraphError::Node(IntentNodeError::NodeText(
+            NodeTextError::EmptyText
+        )))
     ));
 }
 

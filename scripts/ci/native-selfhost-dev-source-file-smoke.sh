@@ -121,6 +121,7 @@ VALIDATION_EMPTY_EVIDENCE_TIMESTAMP_MANIFEST="$WORK_DIR/ec-m2-empty-evidence-tim
 VALIDATION_WHITESPACE_EVIDENCE_RUNNER_MANIFEST="$WORK_DIR/ec-m2-whitespace-evidence-runner-manifest.json"
 VALIDATION_MISSING_NODE_ID_MANIFEST="$WORK_DIR/ec-m2-missing-node-id-manifest.json"
 VALIDATION_MISSING_NODE_TEXT_MANIFEST="$WORK_DIR/ec-m2-missing-node-text-manifest.json"
+VALIDATION_WHITESPACE_NODE_TEXT_MANIFEST="$WORK_DIR/ec-m2-whitespace-node-text-manifest.json"
 VALIDATION_MISSING_REVIEW_MANIFEST="$WORK_DIR/ec-m3-missing-review-manifest.json"
 VALIDATION_DUPLICATE_REVIEW_MANIFEST="$WORK_DIR/ec-m3-duplicate-review-manifest.json"
 VALIDATION_INVALID_REVIEW_MANIFEST="$WORK_DIR/ec-m3-invalid-review-manifest.json"
@@ -165,6 +166,7 @@ VALIDATION_EMPTY_EVIDENCE_TIMESTAMP_SOURCE="$WORK_DIR/ec-m2-empty-evidence-times
 VALIDATION_WHITESPACE_EVIDENCE_RUNNER_SOURCE="$WORK_DIR/ec-m2-whitespace-evidence-runner-source.ls"
 VALIDATION_MISSING_NODE_ID_SOURCE="$WORK_DIR/ec-m2-missing-node-id-source.ls"
 VALIDATION_MISSING_NODE_TEXT_SOURCE="$WORK_DIR/ec-m2-missing-node-text-source.ls"
+VALIDATION_WHITESPACE_NODE_TEXT_SOURCE="$WORK_DIR/ec-m2-whitespace-node-text-source.ls"
 VALIDATION_MISSING_REVIEW_SOURCE="$WORK_DIR/ec-m3-missing-review-source.ls"
 VALIDATION_DUPLICATE_REVIEW_SOURCE="$WORK_DIR/ec-m3-duplicate-review-source.ls"
 VALIDATION_INVALID_REVIEW_SOURCE="$WORK_DIR/ec-m3-invalid-review-source.ls"
@@ -635,6 +637,11 @@ LSHARP
 cat >"$VALIDATION_MISSING_NODE_TEXT_SOURCE" <<'LSHARP'
 (defn missing-node-text []
   :claim "claim:checkout/missing-text"
+  true)
+LSHARP
+cat >"$VALIDATION_WHITESPACE_NODE_TEXT_SOURCE" <<'LSHARP'
+(defn whitespace-node-text []
+  :claim "claim:checkout/whitespace-text" "  "
   true)
 LSHARP
 cat >"$VALIDATION_MISSING_REVIEW_SOURCE" <<'LSHARP'
@@ -1342,6 +1349,16 @@ grep -F "source validation error:1" "$WORK_DIR/validation-missing-node-text.stde
   || die "missing node text validation must expose the malformed parser error code"
 [[ ! -e "$VALIDATION_MISSING_NODE_TEXT_MANIFEST" ]] \
   || die "missing node text validation must produce no report or manifest"
+
+run_expected_validation_error validation-whitespace-node-text \
+  validate \
+  --source "$VALIDATION_WHITESPACE_NODE_TEXT_SOURCE" \
+  --format json \
+  --emit-manifest "$VALIDATION_WHITESPACE_NODE_TEXT_MANIFEST"
+grep -F "source validation error:1" "$WORK_DIR/validation-whitespace-node-text.stderr" >/dev/null \
+  || die "whitespace node text validation must expose the malformed parser error code"
+[[ ! -e "$VALIDATION_WHITESPACE_NODE_TEXT_MANIFEST" ]] \
+  || die "whitespace node text validation must produce no report or manifest"
 
 run_expected_validation_error validation-missing-review \
   validate \

@@ -306,6 +306,21 @@
       (vector-new 0)
       (vector-get metadata 5))))
 
+(defn source-node-whitespace? [char]
+  (or
+    (or (= char 32) (= char 9))
+    (or (= char 10) (= char 13))))
+
+(defn source-node-nonblank-loop [value idx len]
+  (if (>= idx len)
+    0
+    (if (source-node-whitespace? (string-char-at value idx))
+      (source-node-nonblank-loop value (+ idx 1) len)
+      1)))
+
+(defn source-node-nonblank? [value]
+  (source-node-nonblank-loop value 0 (string-length value)))
+
 (defn source-node-form-result [form]
   (if (< (vector-length form) 4)
     (source-result 0 (source-form-malformed-error form))
@@ -319,7 +334,9 @@
           (source-result 0 (source-graph-error-at (source-error-malformed) kind "" start end))
           (let [id (vector-get payload 0)
             text (vector-get payload 1)]
-            (if (or (= (string-length id) 0) (= (string-length text) 0))
+            (if (or
+                  (= (string-length id) 0)
+                  (= (source-node-nonblank? text) 0))
               (source-result 0 (source-graph-error-at (source-error-malformed) kind id start end))
               (if (= (source-wire-valid? id kind) 0)
                 (if (source-wire-valid-node? id)

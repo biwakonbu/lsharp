@@ -159,6 +159,10 @@ for required in \
   'VALIDATION_MISSING_NODE_TEXT_MANIFEST' \
   'run_expected_validation_error validation-missing-node-text' \
   'source validation error:1' \
+  'VALIDATION_WHITESPACE_NODE_TEXT_SOURCE' \
+  'VALIDATION_WHITESPACE_NODE_TEXT_MANIFEST' \
+  'run_expected_validation_error validation-whitespace-node-text' \
+  'source validation error:1' \
   'VALIDATION_MISSING_REVIEW_SOURCE' \
   'VALIDATION_MISSING_REVIEW_MANIFEST' \
   'run_expected_validation_error validation-missing-review' \

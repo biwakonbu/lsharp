@@ -200,6 +200,41 @@ fn test_e2e_selfhost_source_adapter_rejects_invalid_stable_id() {
     );
 }
 
+/// EC-M2-01: node 本文が whitespace-only なら Rust canonical と同じく拒否する。
+#[test]
+fn test_e2e_selfhost_source_adapter_rejects_whitespace_only_node_text() {
+    let harness = r#"
+(defn main []
+  (let [result (source-graph-from-program
+                 (parse-program "(defn bad [] :claim \"claim:checkout/whitespace-text\" \"  \" true)"))]
+    (if (= (source-graph-result-status result) 0)
+      (let [error (source-graph-result-error result)]
+        (do
+          (print (source-graph-result-status result))
+          (print (source-graph-error-code error))
+          (print (source-graph-error-kind error))
+          (print-string (source-graph-error-id error))
+          (print-string "\n")
+          0))
+      (let [graph (source-graph-result-value result)
+        node (vector-get (source-graph-nodes graph) 0)]
+        (do
+          (print (source-graph-result-status result))
+          (print-string (source-node-text node))
+          (print-string "\n")
+          0)))))
+"#;
+
+    let output = run_source_adapter_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "1", "7", "claim:checkout/whitespace-text"],
+        "selfhost source node の whitespace-only text は malformed として拒否するべき"
+    );
+}
+
 /// EC-M2-01: 重複 node は後勝ちにせず拒否する。
 #[test]
 fn test_e2e_selfhost_source_adapter_rejects_duplicate_nodes() {
