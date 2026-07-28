@@ -433,6 +433,48 @@ fn test_e2e_selfhost_source_evidence_rejects_negative_coverage_count() {
     assert!(start < end, "coverage diagnostic span は空でないべき");
 }
 
+/// EC-M2-02: source parser 経由の負の cases は invalid-sampling で拒否する。
+#[test]
+fn test_e2e_selfhost_source_evidence_rejects_negative_cases() {
+    let harness = r#"
+(defn main []
+  (let [result (source-evidence-graph-from-program
+                 (parse-program "(defn cancel [] :claim \"claim:checkout/cancel\" \"The API rejects shipped orders\" :evidence \"evidence:checkout/negative-cases\" :subject \"claim:checkout/cancel\" :method \"property\" :outcome \"pass\" :runner \"source-negative-cases\" :target \"aarch64-apple-darwin\" :source-commit \"source-negative-cases-commit\" :artifact-digest \"sha256:source-negative-cases\" :cases -1 :seed 0 :generator \"source-negative-cases-generator\" :producer \"source-negative-cases-producer\" :tool-version \"0.2.0-dev\" :timestamp \"2026-07-29T00:00:00Z\" :independence \"same-author\" true)"))
+        error (source-result-error result)]
+    (do
+      (print (source-result-status result))
+      (print (source-evidence-error-code error))
+      (print-string (source-evidence-error-field error))
+      (print-string "\n")
+      (print-string "[")
+      (print-string (source-evidence-error-value error))
+      (print-string "]\n")
+      (print (source-evidence-error-start error))
+      (print (source-evidence-error-end error))
+      0)))
+"#;
+
+    let output = run_evidence_registry_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 6,
+        "負の cases の diagnostic output が不足しています: {lines:?}"
+    );
+    assert_eq!(
+        &lines[..4],
+        ["0", "11", "cases", "[]"],
+        "負の cases は invalid-sampling error と empty raw value で拒否するべき"
+    );
+    let start = lines[4]
+        .parse::<usize>()
+        .expect("cases diagnostic start は usize であるべき");
+    let end = lines[5]
+        .parse::<usize>()
+        .expect("cases diagnostic end は usize であるべき");
+    assert!(start < end, "cases diagnostic span は空でないべき");
+}
+
 /// EC-M2-02: UTF-8 byte 判定が Rust の Unicode White_Space 全体を空値として扱う。
 #[test]
 fn test_e2e_selfhost_validation_whitespace_matches_rust_unicode_policy() {

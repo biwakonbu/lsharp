@@ -177,6 +177,10 @@ for required in \
   'VALIDATION_NEGATIVE_EVIDENCE_COVERAGE_MANIFEST' \
   'run_expected_validation_error validation-negative-evidence-coverage' \
   'source validation error:11' \
+  'VALIDATION_NEGATIVE_EVIDENCE_CASES_SOURCE' \
+  'VALIDATION_NEGATIVE_EVIDENCE_CASES_MANIFEST' \
+  'run_expected_validation_error validation-negative-evidence-cases' \
+  'source validation error:11' \
   'VALIDATION_WHITESPACE_EVIDENCE_SUBJECT_SOURCE' \
   'VALIDATION_WHITESPACE_EVIDENCE_SUBJECT_MANIFEST' \
   'run_expected_validation_error validation-whitespace-evidence-subject' \

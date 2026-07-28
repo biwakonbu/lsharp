@@ -529,3 +529,12 @@ registry は invalid-sampling code `11`、field `coverage`、bucket value、dire
 `sum(coverage counts) == cases` の意味論、count 上限、manifest/validate、current-source artifact/runtime、
 Mac/Linux matrix、EC-M2-02 aggregate は残件。ADR:
 `docs/adr/decisions-v0.2-native-validation-evidence-negative-coverage-count.md`。
+
+2026-07-29 に EC-M2-02 evidence `cases` の負値 boundary を追加した。Rust source parser は
+`:cases -1` を stable code `LS0101`、selfhost actual Wasm の source parser→Evidence registry は
+invalid-sampling code `11`、field `cases`、empty raw value、directive/form span 付きで拒否する。native
+source-file smoke には `source validation error:11`、exit `1`、report/manifestなしの fixture/assertionを
+追加し、provenance gate と `bash -n` を通過した verified partial sliceである。`sum(coverage counts) ==
+cases` の意味論、非負値上限、manifest/validate、current-source artifact/runtime、Mac/Linux matrix、
+EC-M2-02 aggregate は残件。ADR:
+`docs/adr/decisions-v0.2-native-validation-evidence-negative-cases.md`。
