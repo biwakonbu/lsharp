@@ -123,6 +123,10 @@ for required in \
   'VALIDATION_EMPTY_EVIDENCE_RUNNER_MANIFEST' \
   'run_expected_validation_error validation-empty-evidence-runner' \
   'source validation error:4' \
+  'VALIDATION_EMPTY_EVIDENCE_TARGET_SOURCE' \
+  'VALIDATION_EMPTY_EVIDENCE_TARGET_MANIFEST' \
+  'run_expected_validation_error validation-empty-evidence-target' \
+  'source validation error:4' \
   'VALIDATION_MISSING_NODE_ID_SOURCE' \
   'VALIDATION_MISSING_NODE_ID_MANIFEST' \
   'run_expected_validation_error validation-missing-node-id' \

@@ -326,6 +326,42 @@ fn source_adapter_rejects_empty_required_execution_runner() {
 }
 
 #[test]
+fn source_adapter_rejects_empty_required_execution_target() {
+    let program = parse(
+        r#"
+        (defn cancel []
+          :claim "claim:checkout/cancel" "The API rejects shipped orders"
+          :evidence "evidence:checkout/empty-target"
+            :subject "claim:checkout/cancel"
+            :method "case"
+            :outcome "pass"
+            :runner "source-empty-target-runner"
+            :target ""
+            :source-commit "source-empty-target-commit"
+            :artifact-digest "sha256:source-empty-target"
+            :cases 1
+            :seed 0
+            :generator "source-empty-target-generator"
+            :producer "source-empty-target-producer"
+            :tool-version "0.2.0-dev"
+            :timestamp "2026-07-28T00:00:00Z"
+            :independence "same-author"
+          true)
+        "#,
+    )
+    .expect("empty target fixture は parse できるべき");
+
+    let error = source_program_to_intent_graph(&program)
+        .expect_err("empty target は source graph 登録時に拒否するべき");
+    assert!(matches!(
+        error,
+        SourceGraphError::Graph(GraphError::InvalidEvidence {
+            source: EvidenceValidationError::EmptyField { field: "target" }
+        })
+    ));
+}
+
+#[test]
 fn source_adapter_registers_evidence_records_before_support_edges() {
     let program = parse(
         r#"
