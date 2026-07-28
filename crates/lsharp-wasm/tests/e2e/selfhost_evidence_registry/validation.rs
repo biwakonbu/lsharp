@@ -1076,6 +1076,48 @@ fn test_e2e_selfhost_evidence_registry_rejects_negative_seed() {
     );
 }
 
+/// EC-M2-02: source parser 経由の負の seed は invalid-sampling で拒否する。
+#[test]
+fn test_e2e_selfhost_source_evidence_rejects_negative_seed() {
+    let harness = r#"
+(defn main []
+  (let [result (source-evidence-graph-from-program
+                 (parse-program "(defn cancel [] :claim \"claim:checkout/cancel\" \"The API rejects shipped orders\" :evidence \"evidence:checkout/negative-seed\" :subject \"claim:checkout/cancel\" :method \"property\" :outcome \"pass\" :runner \"source-negative-seed\" :target \"aarch64-apple-darwin\" :source-commit \"source-negative-seed-commit\" :artifact-digest \"sha256:source-negative-seed\" :cases 1 :seed -1 :generator \"source-negative-seed-generator\" :producer \"source-negative-seed-producer\" :tool-version \"0.2.0-dev\" :timestamp \"2026-07-29T00:00:00Z\" :independence \"same-author\" true)"))
+        error (source-result-error result)]
+    (do
+      (print (source-result-status result))
+      (print (source-evidence-error-code error))
+      (print-string (source-evidence-error-field error))
+      (print-string "\n")
+      (print-string "[")
+      (print-string (source-evidence-error-value error))
+      (print-string "]\n")
+      (print (source-evidence-error-start error))
+      (print (source-evidence-error-end error))
+      0)))
+"#;
+
+    let output = run_evidence_registry_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 6,
+        "負の seed の diagnostic output が不足しています: {lines:?}"
+    );
+    assert_eq!(
+        &lines[..4],
+        ["0", "11", "seed", "[]"],
+        "負の seed は invalid-sampling error と empty raw value で拒否するべき"
+    );
+    let start = lines[4]
+        .parse::<usize>()
+        .expect("seed diagnostic start は usize であるべき");
+    let end = lines[5]
+        .parse::<usize>()
+        .expect("seed diagnostic end は usize であるべき");
+    assert!(start < end, "seed diagnostic span は空でないべき");
+}
+
 /// EC-M2-02: evidence ID の重複は first/current span を保持して拒否する。
 #[test]
 fn test_e2e_selfhost_evidence_registry_rejects_duplicate_id() {

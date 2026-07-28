@@ -538,3 +538,11 @@ source-file smoke には `source validation error:11`、exit `1`、report/manife
 cases` の意味論、非負値上限、manifest/validate、current-source artifact/runtime、Mac/Linux matrix、
 EC-M2-02 aggregate は残件。ADR:
 `docs/adr/decisions-v0.2-native-validation-evidence-negative-cases.md`。
+
+2026-07-29 に EC-M2-02 evidence `seed` の負値 boundary を追加した。Rust source parser の既存
+negative-seed testは `LS0101`、selfhost actual Wasm の source parser→Evidence registry は
+invalid-sampling code `11`、field `seed`、empty raw value、directive/form span 付きで拒否する。native
+source-file smoke には `source validation error:11`、exit `1`、report/manifestなしの fixture/assertionを
+追加し、provenance gate と `bash -n` を通過した verified partial sliceである。generator/shrink/coverage
+の実行意味論、manifest/validate、current-source artifact/runtime、Mac/Linux matrix、EC-M2-02 aggregate
+は残件。ADR: `docs/adr/decisions-v0.2-native-validation-evidence-negative-seed.md`。
