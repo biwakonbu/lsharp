@@ -169,6 +169,10 @@ for required in \
   'VALIDATION_WHITESPACE_EVIDENCE_RUNNER_MANIFEST' \
   'run_expected_validation_error validation-whitespace-evidence-runner' \
   'source validation error:4' \
+  'VALIDATION_UNICODE_WHITESPACE_EVIDENCE_COVERAGE_SOURCE' \
+  'VALIDATION_UNICODE_WHITESPACE_EVIDENCE_COVERAGE_MANIFEST' \
+  'run_expected_validation_error validation-unicode-whitespace-evidence-coverage' \
+  'source validation error:4' \
   'VALIDATION_WHITESPACE_EVIDENCE_SUBJECT_SOURCE' \
   'VALIDATION_WHITESPACE_EVIDENCE_SUBJECT_MANIFEST' \
   'run_expected_validation_error validation-whitespace-evidence-subject' \

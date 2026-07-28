@@ -424,6 +424,47 @@ fn source_adapter_rejects_whitespace_only_sampling_coverage_bucket_with_directiv
 }
 
 #[test]
+fn source_adapter_rejects_unicode_whitespace_only_sampling_coverage_bucket_with_directive_span() {
+    const SOURCE: &str = r#"
+        (defn cancel []
+          :claim "claim:checkout/cancel" "The API rejects shipped orders"
+          :evidence "evidence:checkout/unicode-whitespace-coverage-bucket"
+            :subject "claim:checkout/cancel"
+            :method "property"
+            :outcome "pass"
+            :runner "source-unicode-whitespace-coverage"
+            :target "aarch64-apple-darwin"
+            :source-commit "source-unicode-whitespace-coverage-commit"
+            :artifact-digest "sha256:source-unicode-whitespace-coverage"
+            :cases 1
+            :seed 0
+            :generator "source-unicode-whitespace-coverage-generator"
+            :coverage [(" " 1)]
+            :producer "source-unicode-whitespace-coverage-producer"
+            :tool-version "0.2.0-dev"
+            :timestamp "2026-07-29T00:00:00Z"
+            :independence "same-author"
+          true)
+        "#;
+    let program = parse(SOURCE)
+        .expect("Unicode whitespace-only coverage bucket fixture は parse できるべき");
+
+    let error = source_program_to_intent_graph(&program).expect_err(
+        "Unicode whitespace-only coverage bucket は source graph 登録時に拒否するべき",
+    );
+    let SourceGraphError::InvalidEvidenceField { field, value, span } = error else {
+        panic!(
+            "Unicode whitespace-only coverage bucket の source diagnostic を期待しました: {error:?}"
+        );
+    };
+    assert_eq!(field, "coverage");
+    assert_eq!(value, " ");
+    assert!(span.start < span.end);
+    assert!(SOURCE[span.start..span.end].contains(":evidence"));
+    assert!(SOURCE[span.start..span.end].contains(":coverage"));
+}
+
+#[test]
 fn source_adapter_reports_empty_runner_before_invalid_evidence_id() {
     const SOURCE: &str = r#"
         (defn cancel []

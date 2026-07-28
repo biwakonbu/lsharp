@@ -512,3 +512,11 @@ Wasm の同一 fixtureと既存 whitespace/precedence/type-source 回帰、Linux
 smoke/provenance gateを通過した verified partial sliceである。manifest/MCP、current-source
 artifact/runtime、Mac/Linux matrix、EC-M2-01/EC-M3 aggregate は残件。ADR:
 `docs/adr/decisions-v0.2-native-validation-node-text-unicode-whitespace.md`。
+
+2026-07-29 に EC-M2-02 coverage bucket の Unicode whitespace boundary を追加した。Rust source
+adapter の `trim().is_empty()` と selfhost `Tools.Validation.Whitespace` の UTF-8 byte 判定を揃え、
+NBSP-only coverage bucket を stable code `4`、raw value、directive/form span 付きで拒否する。Rust
+source suite 59件、selfhost actual Wasm の parser→registry 同一 fixture、Linux x86_64 native source-file
+smoke/provenance gateを通過した verified partial sliceである。duplicate/count/cases、manifest/MCP、
+current-source artifact/runtime、Mac/Linux matrix、EC-M2-02/EC-M3 aggregate は残件。ADR:
+`docs/adr/decisions-v0.2-native-validation-evidence-coverage-unicode-whitespace.md`。

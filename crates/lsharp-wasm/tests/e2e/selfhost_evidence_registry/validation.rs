@@ -349,6 +349,48 @@ fn test_e2e_selfhost_source_evidence_rejects_unicode_whitespace_only_runner() {
     );
 }
 
+/// EC-M2-02: Rust の Unicode White_Space と selfhost source evidence の coverage policy を揃える。
+#[test]
+fn test_e2e_selfhost_source_evidence_rejects_unicode_whitespace_only_coverage_bucket() {
+    let harness = r#"
+(defn main []
+  (let [result (source-evidence-graph-from-program
+                 (parse-program "(defn cancel [] :claim \"claim:checkout/cancel\" \"The API rejects shipped orders\" :evidence \"evidence:checkout/unicode-whitespace-coverage-bucket\" :subject \"claim:checkout/cancel\" :method \"property\" :outcome \"pass\" :runner \"source-unicode-whitespace-coverage\" :target \"aarch64-apple-darwin\" :source-commit \"source-unicode-whitespace-coverage-commit\" :artifact-digest \"sha256:source-unicode-whitespace-coverage\" :cases 1 :seed 0 :generator \"source-unicode-whitespace-coverage-generator\" :coverage [(\" \" 1)] :producer \"source-unicode-whitespace-coverage-producer\" :tool-version \"0.2.0-dev\" :timestamp \"2026-07-29T00:00:00Z\" :independence \"same-author\" true)"))
+        error (source-result-error result)]
+    (do
+      (print (source-result-status result))
+      (print (source-evidence-error-code error))
+      (print-string (source-evidence-error-field error))
+      (print-string "\n")
+      (print-string "[")
+      (print-string (source-evidence-error-value error))
+      (print-string "]\n")
+      (print (source-evidence-error-start error))
+      (print (source-evidence-error-end error))
+      0)))
+"#;
+
+    let output = run_evidence_registry_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 6,
+        "Unicode whitespace-only coverage bucket の diagnostic output が不足しています: {lines:?}"
+    );
+    assert_eq!(
+        &lines[..4],
+        ["0", "4", "coverage", "[ ]"],
+        "source evidence の Unicode whitespace-only coverage bucket は empty-field error と raw value で拒否するべき"
+    );
+    let start = lines[4]
+        .parse::<usize>()
+        .expect("coverage diagnostic start は usize であるべき");
+    let end = lines[5]
+        .parse::<usize>()
+        .expect("coverage diagnostic end は usize であるべき");
+    assert!(start < end, "coverage diagnostic span は空でないべき");
+}
+
 /// EC-M2-02: UTF-8 byte 判定が Rust の Unicode White_Space 全体を空値として扱う。
 #[test]
 fn test_e2e_selfhost_validation_whitespace_matches_rust_unicode_policy() {
