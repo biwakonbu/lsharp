@@ -183,11 +183,27 @@ fn source_adapter_reports_invalid_evidence_enum_with_directive_span() {
             "same-author",
         ),
         (
+            "method",
+            "",
+            "claim:checkout/cancel",
+            "",
+            "pass",
+            "same-author",
+        ),
+        (
             "outcome",
             "not-an-outcome",
             "claim:checkout/cancel",
             "case",
             "not-an-outcome",
+            "same-author",
+        ),
+        (
+            "outcome",
+            "",
+            "claim:checkout/cancel",
+            "case",
+            "",
             "same-author",
         ),
         (
@@ -197,6 +213,14 @@ fn source_adapter_reports_invalid_evidence_enum_with_directive_span() {
             "case",
             "pass",
             "not-an-independence",
+        ),
+        (
+            "independence",
+            "",
+            "claim:checkout/cancel",
+            "case",
+            "pass",
+            "",
         ),
         (
             "subject",
@@ -252,6 +276,41 @@ fn source_adapter_reports_invalid_evidence_enum_with_directive_span() {
         assert!(diagnostic_source.contains(":evidence"));
         assert!(diagnostic_source.contains(&format!(":{field}")));
     }
+}
+
+#[test]
+fn source_adapter_reports_empty_evidence_method_as_invalid_field() {
+    let program = parse(
+        r#"
+        (defn cancel []
+          :claim "claim:checkout/cancel" "The API rejects shipped orders"
+          :evidence "evidence:checkout/empty-method"
+            :subject "claim:checkout/cancel"
+            :method ""
+            :outcome "pass"
+            :runner "empty-method-runner"
+            :target "aarch64-apple-darwin"
+            :source-commit "source-empty-method"
+            :artifact-digest "sha256:empty-method"
+            :cases 1
+            :seed 0
+            :generator "empty-method-generator"
+            :producer "empty-method-producer"
+            :tool-version "0.2.0-dev"
+            :timestamp "2026-07-28T00:00:00Z"
+            :independence "same-author"
+          true)
+        "#,
+    )
+    .expect("empty method fixture は parse できるべき");
+
+    let error = source_program_to_intent_graph(&program)
+        .expect_err("empty method は invalid evidence field として拒否するべき");
+    let SourceGraphError::InvalidEvidenceField { field, value, .. } = error else {
+        panic!("empty method の invalid evidence field 診断を期待しました: {error:?}");
+    };
+    assert_eq!(field, "method");
+    assert_eq!(value, "");
 }
 
 #[test]

@@ -107,6 +107,16 @@ for required in \
   'VALIDATION_INVALID_EVIDENCE_SUBJECT_SOURCE' \
   'VALIDATION_INVALID_EVIDENCE_SUBJECT_MANIFEST' \
   'run_expected_validation_error validation-invalid-evidence-subject' \
+  'VALIDATION_EMPTY_EVIDENCE_METHOD_SOURCE' \
+  'VALIDATION_EMPTY_EVIDENCE_METHOD_MANIFEST' \
+  'run_expected_validation_error validation-empty-evidence-method' \
+  'source validation error:8' \
+  'VALIDATION_EMPTY_EVIDENCE_OUTCOME_SOURCE' \
+  'VALIDATION_EMPTY_EVIDENCE_OUTCOME_MANIFEST' \
+  'run_expected_validation_error validation-empty-evidence-outcome' \
+  'VALIDATION_EMPTY_EVIDENCE_INDEPENDENCE_SOURCE' \
+  'VALIDATION_EMPTY_EVIDENCE_INDEPENDENCE_MANIFEST' \
+  'run_expected_validation_error validation-empty-evidence-independence' \
   'VALIDATION_DUPLICATE_EVIDENCE_SOURCE' \
   'VALIDATION_DUPLICATE_EVIDENCE_MANIFEST' \
   'run_expected_validation_error validation-duplicate-evidence' \

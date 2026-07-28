@@ -210,6 +210,93 @@ fn test_e2e_selfhost_source_evidence_rejects_empty_timestamp() {
     );
 }
 
+/// EC-M2-02: empty evidence method は enum typed-field code 8 として拒否する。
+#[test]
+fn test_e2e_selfhost_source_evidence_rejects_empty_method_as_typed_field_error() {
+    let harness = r#"
+(defn main []
+  (let [result (source-evidence-graph-from-program
+                 (parse-program "(defn cancel [] :claim \"claim:checkout/cancel\" \"The API rejects shipped orders\" :evidence \"evidence:checkout/empty-method\" :subject \"claim:checkout/cancel\" :method \"\" :outcome \"pass\" :runner \"empty-method-runner\" :target \"aarch64-apple-darwin\" :source-commit \"source-empty-method\" :artifact-digest \"sha256:empty-method\" :cases 1 :seed 0 :generator \"empty-method-generator\" :producer \"empty-method-producer\" :tool-version \"0.2.0-dev\" :timestamp \"2026-07-28T00:00:00Z\" :independence \"same-author\" true)"))
+        error (source-result-error result)]
+    (do
+      (print (source-result-status result))
+      (print (source-evidence-error-code error))
+      (print-string (source-evidence-error-field error))
+      (print-string "\n")
+      (print-string "[")
+      (print-string (source-evidence-error-value error))
+      (print-string "]\n")
+      0)))
+"#;
+
+    let output = run_evidence_registry_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "8", "method", "[]"],
+        "empty evidence method は enum typed-field code 8 として拒否するべき"
+    );
+}
+
+/// EC-M2-02: empty evidence outcome は enum typed-field code 8 として拒否する。
+#[test]
+fn test_e2e_selfhost_source_evidence_rejects_empty_outcome_as_typed_field_error() {
+    let harness = r#"
+(defn main []
+  (let [result (source-evidence-graph-from-program
+                 (parse-program "(defn cancel [] :claim \"claim:checkout/cancel\" \"The API rejects shipped orders\" :evidence \"evidence:checkout/empty-outcome\" :subject \"claim:checkout/cancel\" :method \"case\" :outcome \"\" :runner \"empty-outcome-runner\" :target \"aarch64-apple-darwin\" :source-commit \"source-empty-outcome\" :artifact-digest \"sha256:empty-outcome\" :cases 1 :seed 0 :generator \"empty-outcome-generator\" :producer \"empty-outcome-producer\" :tool-version \"0.2.0-dev\" :timestamp \"2026-07-28T00:00:00Z\" :independence \"same-author\" true)"))
+        error (source-result-error result)]
+    (do
+      (print (source-result-status result))
+      (print (source-evidence-error-code error))
+      (print-string (source-evidence-error-field error))
+      (print-string "\n")
+      (print-string "[")
+      (print-string (source-evidence-error-value error))
+      (print-string "]\n")
+      0)))
+"#;
+
+    let output = run_evidence_registry_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "8", "outcome", "[]"],
+        "empty evidence outcome は enum typed-field code 8 として拒否するべき"
+    );
+}
+
+/// EC-M2-02: empty evidence independence は enum typed-field code 8 として拒否する。
+#[test]
+fn test_e2e_selfhost_source_evidence_rejects_empty_independence_as_typed_field_error() {
+    let harness = r#"
+(defn main []
+  (let [result (source-evidence-graph-from-program
+                 (parse-program "(defn cancel [] :claim \"claim:checkout/cancel\" \"The API rejects shipped orders\" :evidence \"evidence:checkout/empty-independence\" :subject \"claim:checkout/cancel\" :method \"case\" :outcome \"pass\" :runner \"empty-independence-runner\" :target \"aarch64-apple-darwin\" :source-commit \"source-empty-independence\" :artifact-digest \"sha256:empty-independence\" :cases 1 :seed 0 :generator \"empty-independence-generator\" :producer \"empty-independence-producer\" :tool-version \"0.2.0-dev\" :timestamp \"2026-07-28T00:00:00Z\" :independence \"\" true)"))
+        error (source-result-error result)]
+    (do
+      (print (source-result-status result))
+      (print (source-evidence-error-code error))
+      (print-string (source-evidence-error-field error))
+      (print-string "\n")
+      (print-string "[")
+      (print-string (source-evidence-error-value error))
+      (print-string "]\n")
+      0)))
+"#;
+
+    let output = run_evidence_registry_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "8", "independence", "[]"],
+        "empty evidence independence は enum typed-field code 8 として拒否するべき"
+    );
+}
+
 /// EC-M2-02: source evidence の whitespace-only runner は空値と同じく registry へ登録しない。
 #[test]
 fn test_e2e_selfhost_source_evidence_rejects_whitespace_only_runner() {

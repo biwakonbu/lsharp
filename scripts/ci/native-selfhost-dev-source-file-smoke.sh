@@ -108,6 +108,9 @@ VALIDATION_INVALID_EVIDENCE_MANIFEST="$WORK_DIR/ec-m3-invalid-evidence-manifest.
 VALIDATION_INVALID_EVIDENCE_OUTCOME_MANIFEST="$WORK_DIR/ec-m3-invalid-evidence-outcome-manifest.json"
 VALIDATION_INVALID_EVIDENCE_INDEPENDENCE_MANIFEST="$WORK_DIR/ec-m3-invalid-evidence-independence-manifest.json"
 VALIDATION_INVALID_EVIDENCE_SUBJECT_MANIFEST="$WORK_DIR/ec-m3-invalid-evidence-subject-manifest.json"
+VALIDATION_EMPTY_EVIDENCE_METHOD_MANIFEST="$WORK_DIR/ec-m2-empty-evidence-method-manifest.json"
+VALIDATION_EMPTY_EVIDENCE_OUTCOME_MANIFEST="$WORK_DIR/ec-m2-empty-evidence-outcome-manifest.json"
+VALIDATION_EMPTY_EVIDENCE_INDEPENDENCE_MANIFEST="$WORK_DIR/ec-m2-empty-evidence-independence-manifest.json"
 VALIDATION_DUPLICATE_EVIDENCE_MANIFEST="$WORK_DIR/ec-m3-duplicate-evidence-manifest.json"
 VALIDATION_DUPLICATE_EVIDENCE_FIELD_MANIFEST="$WORK_DIR/ec-m3-duplicate-evidence-field-manifest.json"
 VALIDATION_EMPTY_EVIDENCE_GENERATOR_MANIFEST="$WORK_DIR/ec-m2-empty-evidence-generator-manifest.json"
@@ -156,6 +159,9 @@ VALIDATION_INVALID_EVIDENCE_SOURCE="$WORK_DIR/ec-m3-invalid-evidence-source.ls"
 VALIDATION_INVALID_EVIDENCE_OUTCOME_SOURCE="$WORK_DIR/ec-m3-invalid-evidence-outcome-source.ls"
 VALIDATION_INVALID_EVIDENCE_INDEPENDENCE_SOURCE="$WORK_DIR/ec-m3-invalid-evidence-independence-source.ls"
 VALIDATION_INVALID_EVIDENCE_SUBJECT_SOURCE="$WORK_DIR/ec-m3-invalid-evidence-subject-source.ls"
+VALIDATION_EMPTY_EVIDENCE_METHOD_SOURCE="$WORK_DIR/ec-m2-empty-evidence-method-source.ls"
+VALIDATION_EMPTY_EVIDENCE_OUTCOME_SOURCE="$WORK_DIR/ec-m2-empty-evidence-outcome-source.ls"
+VALIDATION_EMPTY_EVIDENCE_INDEPENDENCE_SOURCE="$WORK_DIR/ec-m2-empty-evidence-independence-source.ls"
 VALIDATION_DUPLICATE_EVIDENCE_SOURCE="$WORK_DIR/ec-m3-duplicate-evidence-source.ls"
 VALIDATION_DUPLICATE_EVIDENCE_FIELD_SOURCE="$WORK_DIR/ec-m3-duplicate-evidence-field-source.ls"
 VALIDATION_EMPTY_EVIDENCE_GENERATOR_SOURCE="$WORK_DIR/ec-m2-empty-evidence-generator-source.ls"
@@ -397,6 +403,66 @@ cat >"$VALIDATION_INVALID_EVIDENCE_SUBJECT_SOURCE" <<'LSHARP'
     :tool-version "0.2.0-dev"
     :timestamp "2026-07-28T00:00:00Z"
     :independence "same-author"
+  true)
+LSHARP
+cat >"$VALIDATION_EMPTY_EVIDENCE_METHOD_SOURCE" <<'LSHARP'
+(defn empty-evidence-method []
+  :claim "claim:checkout/rejects" "The API rejects shipped orders"
+  :evidence "evidence:checkout/empty-method"
+    :subject "claim:checkout/rejects"
+    :method ""
+    :outcome "pass"
+    :runner "empty-evidence-method-runner"
+    :target "aarch64-apple-darwin"
+    :source-commit "source-empty-evidence-method"
+    :artifact-digest "sha256:empty-evidence-method"
+    :cases 1
+    :seed 0
+    :generator "empty-evidence-method-generator"
+    :producer "empty-evidence-method-producer"
+    :tool-version "0.2.0-dev"
+    :timestamp "2026-07-28T00:00:00Z"
+    :independence "same-author"
+  true)
+LSHARP
+cat >"$VALIDATION_EMPTY_EVIDENCE_OUTCOME_SOURCE" <<'LSHARP'
+(defn empty-evidence-outcome []
+  :claim "claim:checkout/rejects" "The API rejects shipped orders"
+  :evidence "evidence:checkout/empty-outcome"
+    :subject "claim:checkout/rejects"
+    :method "case"
+    :outcome ""
+    :runner "empty-evidence-outcome-runner"
+    :target "aarch64-apple-darwin"
+    :source-commit "source-empty-evidence-outcome"
+    :artifact-digest "sha256:empty-evidence-outcome"
+    :cases 1
+    :seed 0
+    :generator "empty-evidence-outcome-generator"
+    :producer "empty-evidence-outcome-producer"
+    :tool-version "0.2.0-dev"
+    :timestamp "2026-07-28T00:00:00Z"
+    :independence "same-author"
+  true)
+LSHARP
+cat >"$VALIDATION_EMPTY_EVIDENCE_INDEPENDENCE_SOURCE" <<'LSHARP'
+(defn empty-evidence-independence []
+  :claim "claim:checkout/rejects" "The API rejects shipped orders"
+  :evidence "evidence:checkout/empty-independence"
+    :subject "claim:checkout/rejects"
+    :method "case"
+    :outcome "pass"
+    :runner "empty-evidence-independence-runner"
+    :target "aarch64-apple-darwin"
+    :source-commit "source-empty-evidence-independence"
+    :artifact-digest "sha256:empty-evidence-independence"
+    :cases 1
+    :seed 0
+    :generator "empty-evidence-independence-generator"
+    :producer "empty-evidence-independence-producer"
+    :tool-version "0.2.0-dev"
+    :timestamp "2026-07-28T00:00:00Z"
+    :independence ""
   true)
 LSHARP
 cat >"$VALIDATION_DUPLICATE_EVIDENCE_SOURCE" <<'LSHARP'
@@ -1285,6 +1351,36 @@ grep -F "source validation error:8" "$WORK_DIR/validation-invalid-evidence-subje
   || die "invalid evidence subject validation must expose the invalid-field error code"
 [[ ! -e "$VALIDATION_INVALID_EVIDENCE_SUBJECT_MANIFEST" ]] \
   || die "invalid evidence subject validation must produce no report or manifest"
+
+run_expected_validation_error validation-empty-evidence-method \
+  validate \
+  --source "$VALIDATION_EMPTY_EVIDENCE_METHOD_SOURCE" \
+  --format json \
+  --emit-manifest "$VALIDATION_EMPTY_EVIDENCE_METHOD_MANIFEST"
+grep -F "source validation error:8" "$WORK_DIR/validation-empty-evidence-method.stderr" >/dev/null \
+  || die "empty evidence method validation must expose the invalid-field error code"
+[[ ! -e "$VALIDATION_EMPTY_EVIDENCE_METHOD_MANIFEST" ]] \
+  || die "empty evidence method validation must produce no report or manifest"
+
+run_expected_validation_error validation-empty-evidence-outcome \
+  validate \
+  --source "$VALIDATION_EMPTY_EVIDENCE_OUTCOME_SOURCE" \
+  --format json \
+  --emit-manifest "$VALIDATION_EMPTY_EVIDENCE_OUTCOME_MANIFEST"
+grep -F "source validation error:8" "$WORK_DIR/validation-empty-evidence-outcome.stderr" >/dev/null \
+  || die "empty evidence outcome validation must expose the invalid-field error code"
+[[ ! -e "$VALIDATION_EMPTY_EVIDENCE_OUTCOME_MANIFEST" ]] \
+  || die "empty evidence outcome validation must produce no report or manifest"
+
+run_expected_validation_error validation-empty-evidence-independence \
+  validate \
+  --source "$VALIDATION_EMPTY_EVIDENCE_INDEPENDENCE_SOURCE" \
+  --format json \
+  --emit-manifest "$VALIDATION_EMPTY_EVIDENCE_INDEPENDENCE_MANIFEST"
+grep -F "source validation error:8" "$WORK_DIR/validation-empty-evidence-independence.stderr" >/dev/null \
+  || die "empty evidence independence validation must expose the invalid-field error code"
+[[ ! -e "$VALIDATION_EMPTY_EVIDENCE_INDEPENDENCE_MANIFEST" ]] \
+  || die "empty evidence independence validation must produce no report or manifest"
 
 run_expected_validation_error validation-duplicate-evidence \
   validate \

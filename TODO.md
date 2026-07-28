@@ -179,6 +179,10 @@
   さらに selfhost Evidence consumer の invalid `:outcome` も native source contract と同じ code `8` を返し、
   field/value を保持する Rust-host E2E を追加した。既存の selfhost enum 判定が native contract と一致する
   ことを直接固定する verified sliceであり、native stage0 artifact/runtime parity は未完了のままである。
+  さらに empty `:method` / `:outcome` / `:independence` を selfhost の required-field code `4` から
+  native enum-invalid code `8` へ揃え、3フィールドの Rust oracle、selfhost E2E、native source-file smoke を
+  追加した。enum は enum validator、runner/target/provenance は required-field validator が担当する
+  boundary を固定した verified sliceだが、native stage0 artifact/runtime parity は未完了のままである。
   さらに同じ evidence ID を二度宣言する source fixtureも native smoke に追加し、stable な
   `source validation error:3`、exit `1`、report/manifestなしの fail-closed 境界を要求した。Rust
   source adapter / selfhost registry の duplicate evidence rejection と同じ identity boundary を

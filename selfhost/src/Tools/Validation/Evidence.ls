@@ -113,29 +113,23 @@
   (source-evidence-nonblank-loop value 0 (string-length value)))
 
 (defn source-evidence-empty-field [payload]
-  (if (= (source-evidence-nonblank? (vector-get payload 2)) 0)
-    "method"
-    (if (= (source-evidence-nonblank? (vector-get payload 3)) 0)
-      "outcome"
-      (if (= (source-evidence-nonblank? (vector-get payload 4)) 0)
-        "runner"
-        (if (= (source-evidence-nonblank? (vector-get payload 5)) 0)
-          "target"
-          (if (= (source-evidence-nonblank? (vector-get payload 6)) 0)
-            "source-commit"
-            (if (= (source-evidence-nonblank? (vector-get payload 7)) 0)
-              "artifact-digest"
-              (if (= (source-evidence-nonblank? (vector-get payload 10)) 0)
-                "generator"
-                (if (= (source-evidence-nonblank? (vector-get payload 13)) 0)
-                  "producer"
-                  (if (= (source-evidence-nonblank? (vector-get payload 14)) 0)
-                    "tool-version"
-                    (if (= (source-evidence-nonblank? (vector-get payload 15)) 0)
-                      "timestamp"
-                      (if (= (source-evidence-nonblank? (vector-get payload 16)) 0)
-                        "independence"
-                        ""))))))))))))
+  (if (= (source-evidence-nonblank? (vector-get payload 4)) 0)
+    "runner"
+    (if (= (source-evidence-nonblank? (vector-get payload 5)) 0)
+      "target"
+      (if (= (source-evidence-nonblank? (vector-get payload 6)) 0)
+        "source-commit"
+        (if (= (source-evidence-nonblank? (vector-get payload 7)) 0)
+          "artifact-digest"
+          (if (= (source-evidence-nonblank? (vector-get payload 10)) 0)
+            "generator"
+            (if (= (source-evidence-nonblank? (vector-get payload 13)) 0)
+              "producer"
+              (if (= (source-evidence-nonblank? (vector-get payload 14)) 0)
+                "tool-version"
+                (if (= (source-evidence-nonblank? (vector-get payload 15)) 0)
+                  "timestamp"
+                  "")))))))))
 
 (defn source-evidence-method-valid? [value]
   (if
