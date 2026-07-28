@@ -158,6 +158,32 @@ fn test_e2e_selfhost_source_evidence_rejects_empty_producer() {
     );
 }
 
+/// EC-M2-02: source evidence の required tool version は空値のまま registry へ登録しない。
+#[test]
+fn test_e2e_selfhost_source_evidence_rejects_empty_tool_version() {
+    let harness = r#"
+(defn main []
+  (let [result (source-evidence-graph-from-program
+                 (parse-program "(defn cancel [] :claim \"claim:checkout/cancel\" \"The API rejects shipped orders\" :evidence \"evidence:checkout/empty-tool-version\" :subject \"claim:checkout/cancel\" :method \"case\" :outcome \"pass\" :runner \"source-empty-tool-version-runner\" :target \"aarch64-apple-darwin\" :source-commit \"source-empty-tool-version-commit\" :artifact-digest \"sha256:source-empty-tool-version\" :cases 1 :seed 0 :generator \"source-empty-tool-version-generator\" :producer \"source-empty-tool-version-producer\" :tool-version \"\" :timestamp \"2026-07-28T00:00:00Z\" :independence \"same-author\" true)"))
+        error (source-result-error result)]
+    (do
+      (print (source-result-status result))
+      (print (source-evidence-error-code error))
+      (print-string (source-evidence-error-field error))
+      (print-string "\n")
+      0)))
+"#;
+
+    let output = run_evidence_registry_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "4", "tool-version"],
+        "source evidence の empty tool version は required-field error として拒否するべき"
+    );
+}
+
 /// EC-M2-02: coverage bucket の重複は deterministic sampling plan を壊すため拒否する。
 #[test]
 fn test_e2e_selfhost_evidence_registry_rejects_duplicate_coverage_bucket() {

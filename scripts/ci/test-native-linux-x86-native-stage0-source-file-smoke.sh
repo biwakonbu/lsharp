@@ -139,6 +139,10 @@ for required in \
   'VALIDATION_EMPTY_EVIDENCE_PRODUCER_MANIFEST' \
   'run_expected_validation_error validation-empty-evidence-producer' \
   'source validation error:4' \
+  'VALIDATION_EMPTY_EVIDENCE_TOOL_VERSION_SOURCE' \
+  'VALIDATION_EMPTY_EVIDENCE_TOOL_VERSION_MANIFEST' \
+  'run_expected_validation_error validation-empty-evidence-tool-version' \
+  'source validation error:4' \
   'VALIDATION_MISSING_NODE_ID_SOURCE' \
   'VALIDATION_MISSING_NODE_ID_MANIFEST' \
   'run_expected_validation_error validation-missing-node-id' \

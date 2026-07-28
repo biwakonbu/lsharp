@@ -474,6 +474,44 @@ fn source_adapter_rejects_empty_required_provenance_producer() {
 }
 
 #[test]
+fn source_adapter_rejects_empty_required_provenance_tool_version() {
+    let program = parse(
+        r#"
+        (defn cancel []
+          :claim "claim:checkout/cancel" "The API rejects shipped orders"
+          :evidence "evidence:checkout/empty-tool-version"
+            :subject "claim:checkout/cancel"
+            :method "case"
+            :outcome "pass"
+            :runner "source-empty-tool-version-runner"
+            :target "aarch64-apple-darwin"
+            :source-commit "source-empty-tool-version-commit"
+            :artifact-digest "sha256:source-empty-tool-version"
+            :cases 1
+            :seed 0
+            :generator "source-empty-tool-version-generator"
+            :producer "source-empty-tool-version-producer"
+            :tool-version ""
+            :timestamp "2026-07-28T00:00:00Z"
+            :independence "same-author"
+          true)
+        "#,
+    )
+    .expect("empty tool version fixture は parse できるべき");
+
+    let error = source_program_to_intent_graph(&program)
+        .expect_err("empty tool version は source graph 登録時に拒否するべき");
+    assert!(matches!(
+        error,
+        SourceGraphError::Graph(GraphError::InvalidEvidence {
+            source: EvidenceValidationError::EmptyField {
+                field: "tool_version"
+            }
+        })
+    ));
+}
+
+#[test]
 fn source_adapter_registers_evidence_records_before_support_edges() {
     let program = parse(
         r#"
