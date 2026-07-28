@@ -3,8 +3,10 @@
 //! 入力境界の serde 型と wire enum の変換を parse/closure 実装から分離する。
 //! 型は親 module だけへ公開し、manifest の JSON shape を crate の公開 API にしない。
 
-use serde::Deserialize;
+use serde::de::{Error as DeError, MapAccess, Visitor};
+use serde::{Deserialize, Deserializer};
 use std::collections::BTreeMap;
+use std::fmt;
 
 pub(super) const SUPPORTED_SCHEMA_VERSION: u32 = 1;
 
@@ -150,7 +152,49 @@ pub(super) struct SamplingInput {
     #[serde(default)]
     pub(super) shrinks: Vec<u64>,
     #[serde(default)]
-    pub(super) coverage: BTreeMap<String, usize>,
+    pub(super) coverage: UniqueCoverage,
+}
+
+/// JSON object の duplicate key を最後の値で上書きせず、入力エラーとして保持する。
+///
+/// canonical `SamplingPlan` は `BTreeMap` で duplicate bucket を表現できないため、
+/// map へ変換する前の serde visitor で wire-level duplicate を拒否する。
+#[derive(Debug, Default)]
+pub(super) struct UniqueCoverage(pub(super) BTreeMap<String, usize>);
+
+impl<'de> Deserialize<'de> for UniqueCoverage {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct UniqueCoverageVisitor;
+
+        impl<'de> Visitor<'de> for UniqueCoverageVisitor {
+            type Value = UniqueCoverage;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str("a JSON object with unique coverage bucket keys")
+            }
+
+            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+            where
+                A: MapAccess<'de>,
+            {
+                let mut coverage = BTreeMap::new();
+                while let Some((bucket, count)) = map.next_entry::<String, usize>()? {
+                    if coverage.contains_key(&bucket) {
+                        return Err(A::Error::custom(format!(
+                            "duplicate coverage bucket key: {bucket:?}"
+                        )));
+                    }
+                    coverage.insert(bucket, count);
+                }
+                Ok(UniqueCoverage(coverage))
+            }
+        }
+
+        deserializer.deserialize_map(UniqueCoverageVisitor)
+    }
 }
 
 #[derive(Debug, Deserialize)]

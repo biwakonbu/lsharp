@@ -564,3 +564,8 @@ ADR: `docs/adr/decisions-v0.2-native-validation-evidence-negative-shrinks.md`。
 これで両 selfhost CLI surface の source/report fail-closed boundary が verified partial slice となったが、
 current-source stage0 artifact/runtime、sampling の実行意味論、supported 2 targets、EC-M2-02/03 aggregate
 は残件。ADR: `docs/adr/decisions-v0.2-native-validation-cli-negative-sampling.md`。
+
+さらに version 1 JSON manifest の `sampling.coverage` duplicate key を map 化前の serde visitor で
+拒否し、後続値への黙った上書きを防ぐ Rust canonical input boundary を verified slice として追加した。
+selfhost/native manifest parity、coverage count/cases の意味論、current-source artifact/runtime は残る。
+ADR: `docs/adr/decisions-v0.2-validation-manifest-duplicate-coverage.md`。

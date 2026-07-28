@@ -363,6 +363,22 @@ fn parse_manifest_rejects_negative_unsigned_numeric_fields() {
 }
 
 #[test]
+fn parse_manifest_rejects_duplicate_coverage_bucket_keys() {
+    let manifest = complete_manifest().replace(
+        "\"coverage\": {\"all\": 1}",
+        "\"coverage\": {\"all\": 1, \"all\": 2}",
+    );
+
+    assert!(
+        matches!(
+            parse_intent_graph_json(&manifest),
+            Err(ValidationInputError::Json(_))
+        ),
+        "duplicate coverage keys must fail during manifest decoding"
+    );
+}
+
+#[test]
 fn parse_manifest_rejects_empty_required_evidence_fields() {
     let empty_runner =
         complete_manifest().replace("\"runner\": \"validator-test\"", "\"runner\": \"\"");

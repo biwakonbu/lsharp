@@ -153,7 +153,7 @@ fn build_evidence(input: EvidenceInput) -> Result<Evidence, ValidationInputError
             input.execution.sampling.seed,
             input.execution.sampling.generator,
             input.execution.sampling.shrinks,
-            input.execution.sampling.coverage,
+            input.execution.sampling.coverage.0,
         ),
     );
     Ok(Evidence::new(
