@@ -118,6 +118,10 @@ for required in \
   'VALIDATION_MALFORMED_REVIEW_MANIFEST' \
   'run_expected_validation_error validation-malformed-review' \
   'source validation error:1' \
+  'VALIDATION_MALFORMED_REVIEW_EXTRA_SOURCE' \
+  'VALIDATION_MALFORMED_REVIEW_EXTRA_MANIFEST' \
+  'run_expected_validation_error validation-malformed-review-extra' \
+  'source validation error:1' \
   'VALIDATION_MALFORMED_REVIEW_EDGE_SOURCE' \
   'VALIDATION_MALFORMED_REVIEW_EDGE_MANIFEST' \
   'run_expected_validation_error validation-malformed-review-edge' \

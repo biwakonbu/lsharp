@@ -110,6 +110,7 @@ VALIDATION_INVALID_REVIEW_DIGEST_MANIFEST="$WORK_DIR/ec-m3-invalid-review-digest
 VALIDATION_INVALID_REVIEW_ID_MANIFEST="$WORK_DIR/ec-m3-invalid-review-id-manifest.json"
 VALIDATION_EMPTY_REVIEW_ID_MANIFEST="$WORK_DIR/ec-m3-empty-review-id-manifest.json"
 VALIDATION_MALFORMED_REVIEW_MANIFEST="$WORK_DIR/ec-m3-malformed-review-manifest.json"
+VALIDATION_MALFORMED_REVIEW_EXTRA_MANIFEST="$WORK_DIR/ec-m3-malformed-review-extra-manifest.json"
 VALIDATION_MALFORMED_REVIEW_EDGE_MANIFEST="$WORK_DIR/ec-m3-malformed-review-edge-manifest.json"
 VALIDATION_MALFORMED_INVALIDATION_EDGE_MANIFEST="$WORK_DIR/ec-m3-malformed-invalidation-edge-manifest.json"
 VALIDATION_MALFORMED_REVIEW_EDGE_EXTRA_MANIFEST="$WORK_DIR/ec-m3-malformed-review-edge-extra-manifest.json"
@@ -135,6 +136,7 @@ VALIDATION_INVALID_REVIEW_DIGEST_SOURCE="$WORK_DIR/ec-m3-invalid-review-digest-s
 VALIDATION_INVALID_REVIEW_ID_SOURCE="$WORK_DIR/ec-m3-invalid-review-id-source.ls"
 VALIDATION_EMPTY_REVIEW_ID_SOURCE="$WORK_DIR/ec-m3-empty-review-id-source.ls"
 VALIDATION_MALFORMED_REVIEW_SOURCE="$WORK_DIR/ec-m3-malformed-review-source.ls"
+VALIDATION_MALFORMED_REVIEW_EXTRA_SOURCE="$WORK_DIR/ec-m3-malformed-review-extra-source.ls"
 VALIDATION_MALFORMED_REVIEW_EDGE_SOURCE="$WORK_DIR/ec-m3-malformed-review-edge-source.ls"
 VALIDATION_MALFORMED_INVALIDATION_EDGE_SOURCE="$WORK_DIR/ec-m3-malformed-invalidation-edge-source.ls"
 VALIDATION_MALFORMED_REVIEW_EDGE_EXTRA_SOURCE="$WORK_DIR/ec-m3-malformed-review-edge-extra-source.ls"
@@ -309,6 +311,12 @@ cat >"$VALIDATION_MALFORMED_REVIEW_SOURCE" <<'LSHARP'
 (defn malformed-review []
   :claim "claim:checkout/rejects" "The API rejects shipped orders"
   :review "review:checkout/malformed" "sha256:review-provenance"
+  true)
+LSHARP
+cat >"$VALIDATION_MALFORMED_REVIEW_EXTRA_SOURCE" <<'LSHARP'
+(defn malformed-review-extra []
+  :claim "claim:checkout/rejects" "The API rejects shipped orders"
+  :review "review:checkout/malformed" "sha256:review-provenance" "redacted" "extra"
   true)
 LSHARP
 cat >"$VALIDATION_MALFORMED_REVIEW_EDGE_SOURCE" <<'LSHARP'
@@ -856,6 +864,16 @@ grep -F "source validation error:1" "$WORK_DIR/validation-malformed-review.stder
   || die "malformed review validation must expose the malformed error code"
 [[ ! -e "$VALIDATION_MALFORMED_REVIEW_MANIFEST" ]] \
   || die "malformed review validation must produce no report or manifest"
+
+run_expected_validation_error validation-malformed-review-extra \
+  validate \
+  --source "$VALIDATION_MALFORMED_REVIEW_EXTRA_SOURCE" \
+  --format json \
+  --emit-manifest "$VALIDATION_MALFORMED_REVIEW_EXTRA_MANIFEST"
+grep -F "source validation error:1" "$WORK_DIR/validation-malformed-review-extra.stderr" >/dev/null \
+  || die "malformed review extra validation must expose the malformed error code"
+[[ ! -e "$VALIDATION_MALFORMED_REVIEW_EXTRA_MANIFEST" ]] \
+  || die "malformed review extra validation must produce no report or manifest"
 
 run_expected_validation_error validation-malformed-review-edge \
   validate \

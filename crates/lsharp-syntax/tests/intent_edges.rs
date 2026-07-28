@@ -155,6 +155,15 @@ fn review_and_change_edge_metadata_reject_extra_wire_ids() {
 }
 
 #[test]
+fn review_metadata_rejects_extra_wire_ids() {
+    let error = parse(
+        r#"(defn review [] :review "review:checkout/reviewer-001" "sha256:review" "redacted" "extra" true)"#,
+    )
+    .expect_err("review metadata の余分な field は拒否するべき");
+    assert_eq!(error.code(), "LS0101");
+}
+
+#[test]
 fn evidence_record_metadata_preserves_required_fields_and_source_span() {
     let program = parse(
         r#"
