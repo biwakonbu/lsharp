@@ -3088,24 +3088,6 @@
 (defn collect-example-expression-spans-v3 [spans idx end]
   (collect-example-expression-spans-v3-loop spans idx end (vector-new 0)))
 
-(defn parse-defn-param-signature-append-v3 [spans idx end src signature type-expr next-idx]
-  (do
-    (root_push signature)
-    (root_push type-expr)
-    (let [next-signature (vector-push signature type-expr)]
-      (do
-        (root_push next-signature)
-        (let [parsed (parse-defn-param-signature-loop-v3 spans next-idx end src next-signature)]
-          (do
-            (root_pop)
-            (root_pop)
-            (root_pop)
-            parsed))))))
-
-(defn parse-defn-param-signature-skip-form-v3 [spans idx end src signature]
-  (let [next-idx (scan-defn-param-form-end-v3 spans (+ idx 1) end 1)]
-    (parse-defn-param-signature-append-v3 spans idx end src signature 0 next-idx)))
-
 (defn type-expr-invalid-v3 [type-expr]
   (if (= type-expr 0)
     1
@@ -3130,29 +3112,112 @@
           (root_pop)
           0)))))
 
-(defn parse-defn-param-signature-typed-form-v3 [spans idx end src signature]
-  (let [next-idx (scan-defn-param-form-end-v3 spans (+ idx 1) end 1)]
-    (if (< (+ idx 3) next-idx)
-      (let [type-expr (parse-type-expr-from-span-v3 spans (+ idx 3) (- next-idx 1) src)]
-        (parse-defn-param-signature-append-v3 spans idx end src signature type-expr next-idx))
-      (parse-defn-param-signature-append-v3 spans idx end src signature 0 next-idx))))
+(defn make-defn-param-signature-state-v3 [done next-idx signature]
+  (do
+    (root_push signature)
+    (let [state0 (vector-push (vector-new 4) done)]
+      (do
+        (root_push state0)
+        (let [state1 (vector-push state0 next-idx)]
+          (do
+            (root_push state1)
+            (let [state (vector-push state1 signature)]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                state))))))))
+
+(defn parse-defn-param-signature-step-state-v3 [signature type-expr next-idx]
+  (do
+    (root_push signature)
+    (root_push type-expr)
+    (let [next-signature (vector-push signature type-expr)]
+      (do
+        (root_push next-signature)
+        (let [state (make-defn-param-signature-state-v3
+          0 next-idx next-signature)]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            state))))))
 
 ;; parse-params-v3 のカーソル進行を維持したまま、typed parameter の raw type を span から再読する。
-(defn parse-defn-param-signature-loop-v3 [spans idx end src signature]
+(defn parse-defn-param-signature-step-v3 [spans idx end src signature]
   (if (>= idx end)
-    signature
+    (do
+      (let [state (make-defn-param-signature-state-v3 1 idx signature)]
+        (do
+          state)))
     (let [kind (span-kind spans idx)]
       (if (== kind 0)
         (if (< (+ idx 2) end)
           (if (== (span-kind spans (+ idx 1)) 50)
             (if (== (span-kind spans (+ idx 2)) 20)
-              (parse-defn-param-signature-typed-form-v3 spans idx end src signature)
-              (parse-defn-param-signature-skip-form-v3 spans idx end src signature))
-            (parse-defn-param-signature-skip-form-v3 spans idx end src signature))
-          (parse-defn-param-signature-skip-form-v3 spans idx end src signature))
+              (let [next-idx (scan-defn-param-form-end-v3 spans (+ idx 1) end 1)]
+                (if (< (+ idx 3) next-idx)
+                  (let [type-expr (parse-type-expr-from-span-v3
+                    spans (+ idx 3) (- next-idx 1) src)]
+                    (parse-defn-param-signature-step-state-v3
+                      signature type-expr next-idx))
+                  (parse-defn-param-signature-step-state-v3
+                    signature 0 next-idx)))
+              (parse-defn-param-signature-step-state-v3
+                signature 0 (scan-defn-param-form-end-v3 spans (+ idx 1) end 1)))
+            (parse-defn-param-signature-step-state-v3
+              signature 0 (scan-defn-param-form-end-v3 spans (+ idx 1) end 1)))
+          (parse-defn-param-signature-step-state-v3
+            signature 0 (scan-defn-param-form-end-v3 spans (+ idx 1) end 1)))
         (if (== kind 20)
-          (parse-defn-param-signature-append-v3 spans idx end src signature 0 (+ idx 1))
-          (parse-defn-param-signature-loop-v3 spans (+ idx 1) end src signature))))))
+          (parse-defn-param-signature-step-state-v3 signature 0 (+ idx 1))
+          (make-defn-param-signature-state-v3 0 (+ idx 1) signature))))))
+
+(defn parse-defn-param-signature-step-64-loop-bounded
+  [spans idx end src signature remaining]
+  (do
+    (root_push signature)
+    (let [step (parse-defn-param-signature-step-v3 spans idx end src signature)
+      done (vector-get step 0)
+      next-idx (vector-get step 1)
+      next-signature (vector-get step 2)]
+      (do
+        (root_push step)
+        (root_push next-signature)
+        (let [parsed
+          (if (= done 1)
+            step
+            (if (<= remaining 1)
+              step
+              (parse-defn-param-signature-step-64-loop-bounded
+                spans next-idx end src next-signature (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn parse-defn-param-signature-step-64 [spans idx end src signature]
+  (parse-defn-param-signature-step-64-loop-bounded
+    spans idx end src signature 64))
+
+(defn parse-defn-param-signature-loop-v3 [spans idx end src signature]
+  (let [step (parse-defn-param-signature-step-64 spans idx end src signature)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [next-idx (vector-get step 1)
+          next-signature (vector-get step 2)]
+          (do
+            (root_push next-signature)
+            (let [parsed
+              (parse-defn-param-signature-loop-v3
+                spans next-idx end src next-signature)]
+              (do
+                (root_pop)
+                (root_pop)
+                parsed))))))))
 
 (defn parse-defn-param-signature-v3 [spans start end src param-count]
   (let [signature (make-defn-signature param-count)]

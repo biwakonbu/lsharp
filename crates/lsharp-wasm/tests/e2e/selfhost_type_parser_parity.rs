@@ -1515,3 +1515,23 @@ fn test_e2e_selfhost_parser_params_use_bounded_chunks() {
         "params parser は Linux x86 native stack の深い再帰を避けるため bounded chunk へ委譲するべき"
     );
 }
+
+#[test]
+fn test_e2e_selfhost_parser_defn_signature_uses_bounded_chunks() {
+    let source = selfhost_module("Parser.ls");
+    let rooted_body = source
+        .split("(defn parse-defn-param-signature-loop-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn parse-defn-param-signature-v3").next())
+        .expect("Parser.ls に defn signature loop が存在すること");
+
+    assert!(
+        source.contains("(defn parse-defn-param-signature-step-64-loop-bounded")
+            && source.contains("(defn parse-defn-param-signature-step-64")
+            && rooted_body.contains("parse-defn-param-signature-step-64")
+            && !rooted_body.contains(
+                "(parse-defn-param-signature-loop-v3 spans (+ idx 1) end src signature)"
+            ),
+        "defn signature parser は Linux x86 native stack の深い再帰を避けるため bounded chunk へ委譲するべき"
+    );
+}

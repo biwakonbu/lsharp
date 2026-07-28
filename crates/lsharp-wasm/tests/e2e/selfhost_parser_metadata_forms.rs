@@ -572,6 +572,41 @@ fn test_e2e_selfhost_parser_typed_defn_signature_retains_nested_type_expr() {
     );
 }
 
+/// TEST-SYNTAX-02p3: typed parameter signature は 64 要素を越えても return type を保持する
+#[test]
+fn test_e2e_selfhost_parser_typed_defn_signature_cross_chunk_boundary() {
+    let params = (0..65).map(|_| "(: x Int)").collect::<Vec<_>>().join(" ");
+    let source = format!("(defn wide [{}] : Int x)", params);
+    let harness = format!(
+        r#"
+(defn main []
+  (let [node (vector-get (parse-program "{}") 0)
+        signature (vector-get node 69)
+        first-param-type (vector-get signature 2)
+        return-type (vector-get signature 67)]
+    (do
+      (print (vector-get signature 0))
+      (print (vector-get signature 1))
+      (print (vector-length signature))
+      (print (vector-get first-param-type 0))
+      (print (vector-get first-param-type 1))
+      (print (vector-get return-type 0))
+      (print (vector-get return-type 1))
+      0)))
+"#,
+        source
+    );
+
+    let output = run_parser_runtime(&harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["65", "65", "68", "60", "73679", "60", "73679"],
+        "typed defn signature は 64 要素を跨いでも param/return type を保持するべき"
+    );
+}
+
 /// TEST-SYNTAX-02q: defn の :where clause を最小 payload のままスキップできる
 #[test]
 fn test_e2e_selfhost_parser_defn_where_clause() {
