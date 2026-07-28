@@ -257,6 +257,33 @@ fn test_e2e_selfhost_source_adapter_rejects_whitespace_only_node_text() {
     );
 }
 
+/// EC-M2-01: whitespace-only node text は invalid stable ID より先に malformed code 1 を返す。
+#[test]
+fn test_e2e_selfhost_source_adapter_reports_empty_node_text_before_invalid_stable_id() {
+    let harness = r#"
+(defn main []
+  (let [result (source-graph-from-program
+                 (parse-program "(defn bad [] :claim \\\"claim:checkout/bad/key\\\" \\\"  \\\" true)"))
+        error (source-graph-result-error result)]
+    (do
+      (print (source-graph-result-status result))
+      (print (source-graph-error-code error))
+      (print (source-graph-error-kind error))
+      (print-string (source-graph-error-id error))
+      (print-string "\n")
+      0)))
+"#;
+
+    let output = run_source_adapter_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "1", "7"],
+        "empty node text は invalid stable ID より先に malformed code 1 を返すべき"
+    );
+}
+
 /// EC-M2-01: 重複 node は後勝ちにせず拒否する。
 #[test]
 fn test_e2e_selfhost_source_adapter_rejects_duplicate_nodes() {

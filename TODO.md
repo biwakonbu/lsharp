@@ -260,6 +260,10 @@
   canonical の `text.trim().is_empty()` と selfhost `IntentSource` の nonblank 判定を同じ node
   text policyへ接続する verified sliceだが、current source-commit に一致する実 stage0
   artifact/runtime の evidence ではない。
+  さらに invalid stable ID と whitespace-only node text が同時にある場合も、本文の
+  `NodeTextError::EmptyText` / malformed code `1` を stable-ID wire error より先に返すよう Rust source
+  adapter を修正し、selfhost actual Wasm と native source-file smoke の同じ precedence fixtureを追加した
+  verified sliceだが、current source-commit に一致する実 stage0 artifact/runtime の evidence ではない。
   さらに evidence の `:subject` が空白だけとなる source fixtureも native smoke に追加し、stable な
   `source validation error:2`、exit `1`、report/manifestなしの fail-closed 境界を要求した。Rust
   canonical の stable ID parser と selfhost `source-wire-shape-valid?` を同じ subject wire policyへ

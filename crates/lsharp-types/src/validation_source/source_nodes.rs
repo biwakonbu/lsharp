@@ -1,6 +1,6 @@
 use super::SourceGraphError;
 use crate::evidence::{ReviewRecord, ReviewVisibility};
-use crate::intent::{IntentNode, NodeKind, ReviewId};
+use crate::intent::{IntentNode, IntentNodeError, NodeKind, NodeTextError, ReviewId};
 use crate::validation::IntentGraph;
 use lsharp_syntax::ast::{Decl, Metadata};
 use lsharp_syntax::metadata::MetadataFormKind;
@@ -94,6 +94,11 @@ fn add_metadata_nodes(
             MetadataFormKind::OpenQuestion { id, text } => (NodeKind::OpenQuestion, id, text),
             _ => continue,
         };
+        if text.trim().is_empty() {
+            return Err(SourceGraphError::Node(IntentNodeError::NodeText(
+                NodeTextError::EmptyText,
+            )));
+        }
         let node = IntentNode::from_wire_parts(wire_id.clone(), text.clone(), form.span())?;
         if node.kind() != expected_kind {
             return Err(SourceGraphError::KindMismatch {

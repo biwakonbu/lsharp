@@ -242,6 +242,19 @@ fn source_adapter_rejects_whitespace_only_node_text() {
 }
 
 #[test]
+fn source_adapter_reports_empty_node_text_before_invalid_stable_id() {
+    let program = parse(r#"(defn cancel [] :claim "claim:checkout/bad/key" "  " true)"#)
+        .expect("empty node text and invalid stable ID fixture は parse できるべき");
+
+    assert!(matches!(
+        source_program_to_intent_graph(&program),
+        Err(SourceGraphError::Node(IntentNodeError::NodeText(
+            NodeTextError::EmptyText
+        )))
+    ));
+}
+
+#[test]
 fn source_adapter_reports_duplicate_node_with_both_source_spans() {
     const SOURCE: &str = r#"
         (module Checkout
