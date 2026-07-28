@@ -378,6 +378,15 @@ gateを通過した verified partial sliceである。Unicode whitespace、dupli
 validate、current-source artifact/runtime、Mac/Linux matrix、EC-M2-02 aggregate は残件。ADR:
 `docs/adr/decisions-v0.2-native-validation-evidence-coverage-whitespace.md`。
 
+さらに duplicate coverage bucket の parser-owned boundary を native source-file smokeへ接続した。
+Rust parser は `LS0101`、selfhost direct Evidence registry は code `10` で重複を拒否し、native stage0
+ source-file smoke は parser error code `1`、exit `1`、report/manifestなしを要求する。Rust source
+ adapter に後段の `BTreeMap` duplicate 再判定は追加せず、parser を通過した canonical source record
+ の責務を維持した verified partial sliceである。canonical map が duplicate を表現できない点、
+ coverage count/cases、Unicode whitespace、manifest/validate、current-source artifact/runtime、
+ Mac/Linux matrix、EC-M2-02 aggregate は残件。ADR:
+ `docs/adr/decisions-v0.2-native-validation-evidence-duplicate-coverage-parser.md`。
+
 次の実装は `EC-M2-01`〜`EC-M2-03` の未接続入力を一つの RED に絞る。current plan の
 acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展開しない。
 

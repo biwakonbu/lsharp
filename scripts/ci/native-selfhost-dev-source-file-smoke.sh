@@ -106,6 +106,7 @@ VALIDATION_EVIDENCE_REGISTRY_MANIFEST="$WORK_DIR/ec-m3-evidence-registry-manifes
 VALIDATION_SUPPORTS_EVIDENCE_PRECEDENCE_MANIFEST="$WORK_DIR/ec-m2-supports-evidence-precedence-manifest.json"
 VALIDATION_CONTRADICTS_EVIDENCE_PRECEDENCE_MANIFEST="$WORK_DIR/ec-m2-contradicts-evidence-precedence-manifest.json"
 VALIDATION_MALFORMED_EVIDENCE_MANIFEST="$WORK_DIR/ec-m3-malformed-evidence-manifest.json"
+VALIDATION_DUPLICATE_EVIDENCE_COVERAGE_MANIFEST="$WORK_DIR/ec-m2-duplicate-evidence-coverage-manifest.json"
 VALIDATION_INVALID_EVIDENCE_MANIFEST="$WORK_DIR/ec-m3-invalid-evidence-manifest.json"
 VALIDATION_INVALID_EVIDENCE_OUTCOME_MANIFEST="$WORK_DIR/ec-m3-invalid-evidence-outcome-manifest.json"
 VALIDATION_INVALID_EVIDENCE_INDEPENDENCE_MANIFEST="$WORK_DIR/ec-m3-invalid-evidence-independence-manifest.json"
@@ -164,6 +165,7 @@ VALIDATION_EVIDENCE_REGISTRY_SOURCE="$WORK_DIR/ec-m3-evidence-registry-source.ls
 VALIDATION_SUPPORTS_EVIDENCE_PRECEDENCE_SOURCE="$WORK_DIR/ec-m2-supports-evidence-precedence-source.ls"
 VALIDATION_CONTRADICTS_EVIDENCE_PRECEDENCE_SOURCE="$WORK_DIR/ec-m2-contradicts-evidence-precedence-source.ls"
 VALIDATION_MALFORMED_EVIDENCE_SOURCE="$WORK_DIR/ec-m3-malformed-evidence-source.ls"
+VALIDATION_DUPLICATE_EVIDENCE_COVERAGE_SOURCE="$WORK_DIR/ec-m2-duplicate-evidence-coverage-source.ls"
 VALIDATION_INVALID_EVIDENCE_SOURCE="$WORK_DIR/ec-m3-invalid-evidence-source.ls"
 VALIDATION_INVALID_EVIDENCE_OUTCOME_SOURCE="$WORK_DIR/ec-m3-invalid-evidence-outcome-source.ls"
 VALIDATION_INVALID_EVIDENCE_INDEPENDENCE_SOURCE="$WORK_DIR/ec-m3-invalid-evidence-independence-source.ls"
@@ -349,6 +351,27 @@ cat >"$VALIDATION_MALFORMED_EVIDENCE_SOURCE" <<'LSHARP'
 (defn malformed-evidence []
   :evidence "evidence:checkout/malformed"
     :subject "claim:checkout/rejects"
+  true)
+LSHARP
+cat >"$VALIDATION_DUPLICATE_EVIDENCE_COVERAGE_SOURCE" <<'LSHARP'
+(defn duplicate-evidence-coverage []
+  :claim "claim:checkout/rejects" "The API rejects shipped orders"
+  :evidence "evidence:checkout/duplicate-coverage"
+    :subject "claim:checkout/rejects"
+    :method "property"
+    :outcome "pass"
+    :runner "duplicate-evidence-coverage-runner"
+    :target "aarch64-apple-darwin"
+    :source-commit "source-duplicate-evidence-coverage"
+    :artifact-digest "sha256:duplicate-evidence-coverage"
+    :cases 1
+    :seed 0
+    :generator "duplicate-evidence-coverage-generator"
+    :coverage [("smoke" 2) ("smoke" 1)]
+    :producer "duplicate-evidence-coverage-producer"
+    :tool-version "0.2.0-dev"
+    :timestamp "2026-07-29T00:00:00Z"
+    :independence "same-author"
   true)
 LSHARP
 cat >"$VALIDATION_INVALID_EVIDENCE_SOURCE" <<'LSHARP'
@@ -1415,6 +1438,16 @@ grep -F "source validation error:1" "$WORK_DIR/validation-malformed-evidence.std
   || die "malformed evidence validation must expose the malformed error code"
 [[ ! -e "$VALIDATION_MALFORMED_EVIDENCE_MANIFEST" ]] \
   || die "malformed evidence validation must produce no report or manifest"
+
+run_expected_validation_error validation-duplicate-evidence-coverage \
+  validate \
+  --source "$VALIDATION_DUPLICATE_EVIDENCE_COVERAGE_SOURCE" \
+  --format json \
+  --emit-manifest "$VALIDATION_DUPLICATE_EVIDENCE_COVERAGE_MANIFEST"
+grep -F "source validation error:1" "$WORK_DIR/validation-duplicate-evidence-coverage.stderr" >/dev/null \
+  || die "duplicate evidence coverage validation must expose the parser error code"
+[[ ! -e "$VALIDATION_DUPLICATE_EVIDENCE_COVERAGE_MANIFEST" ]] \
+  || die "duplicate evidence coverage validation must produce no report or manifest"
 
 run_expected_validation_error validation-invalid-evidence \
   validate \
