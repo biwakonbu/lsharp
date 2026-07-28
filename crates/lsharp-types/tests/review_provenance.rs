@@ -1,7 +1,9 @@
-use lsharp_types::evidence::{Edge, GraphError, ReviewRecord, ReviewVisibility};
+use lsharp_types::evidence::{
+    Edge, EvidenceValidationError, GraphError, ReviewRecord, ReviewVisibility,
+};
 use lsharp_types::intent::{ChangeId, ReviewId};
 use lsharp_types::validation::IntentGraph;
-use lsharp_types::validation_input::parse_intent_graph_json;
+use lsharp_types::validation_input::{ValidationInputError, parse_intent_graph_json};
 
 fn review(id: &str, digest: &str, visibility: ReviewVisibility) -> ReviewRecord {
     ReviewRecord::new(
@@ -86,6 +88,36 @@ fn review_registry_rejects_empty_provenance_digest() {
     assert!(matches!(
         graph.add_review(review("reviewer-001", "  ", ReviewVisibility::Public)),
         Err(GraphError::InvalidReview { .. })
+    ));
+}
+
+#[test]
+fn review_registry_rejects_unicode_whitespace_only_provenance_digest_in_manifest_input() {
+    let manifest = r#"
+    {
+      "schema_version": 1,
+      "nodes": [],
+      "reviews": [
+        {
+          "namespace": "checkout",
+          "key": "reviewer-001",
+          "provenance_digest": "sha256:review-provenance-001",
+          "visibility": "public"
+        }
+      ],
+      "evidence": [],
+      "edges": []
+    }
+    "#
+    .replace("sha256:review-provenance-001", "\u{00A0}");
+
+    assert!(matches!(
+        parse_intent_graph_json(&manifest),
+        Err(ValidationInputError::Graph(GraphError::InvalidReview {
+            source: EvidenceValidationError::EmptyField {
+                field: "review_provenance_digest"
+            }
+        }))
     ));
 }
 

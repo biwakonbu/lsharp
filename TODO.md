@@ -594,3 +594,12 @@ manifest の intent node text を NBSP-only に変異させ、canonical `IntentN
 coverage Unicode parity、selfhost/native manifest parser、current-source artifact/runtime、supported
 2 targets、EC-M2-01/EC-M3 aggregate は残件。Evidence:
 `docs/adr/decisions-v0.2-validation-manifest-node-text-unicode-whitespace.md`。
+
+2026-07-29 に version 1 JSON manifest の `reviews[].provenance_digest` Unicode whitespace boundary を追加した。
+manifest の opaque review digest を NBSP-only に変異させ、registry 登録前に
+`ValidationInputError::Graph(GraphError::InvalidReview)` / field `review_provenance_digest` として拒否する
+ことを `review_registry_rejects_unicode_whitespace_only_provenance_digest_in_manifest_input` で固定した。
+既存の canonical `str::trim()` policy を manifest review registry へ拡張した Rust verified partial sliceであり、
+review lifecycle/authentication、manifest の coverage parity、selfhost/native manifest parser、current-source
+artifact/runtime、supported 2 targets、EC-M2-02/EC-M3 aggregate は残件。Evidence:
+`docs/adr/decisions-v0.2-validation-manifest-review-unicode-whitespace.md`。
