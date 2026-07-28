@@ -1572,19 +1572,84 @@
       0)
     0))
 
-(defn parse-source-evidence-shrinks-loop-v3 [spans pos-ref src values]
+(defn parse-source-evidence-shrinks-step-v3 [spans pos-ref src values]
   (if (or (== (p-current spans pos-ref) 3) (== (p-current spans pos-ref) 99))
     (do
       (advance-if-token-v3 spans pos-ref 3)
-      values)
+      (make-parse-loop-state 1 values))
     (if (== (p-current spans pos-ref) 10)
-      (let [value (parse-source-evidence-int-v3 spans pos-ref src)]
-        (parse-source-evidence-shrinks-loop-v3
-          spans
-          pos-ref
-          src
-          (vector-push-single-rooted-v3 values value)))
-      values)))
+      (do
+        (root_push values)
+        (let [value (parse-source-evidence-int-v3 spans pos-ref src)]
+          (do
+            (root_push value)
+            (let [next-values (vector-push-single-rooted-v3 values value)]
+              (do
+                (root_push next-values)
+                (let [state (make-parse-loop-state 0 next-values)]
+                  (do
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    state)))))))
+      (make-parse-loop-state 1 values))))
+
+(defn parse-source-evidence-shrinks-step-64-loop-bounded [spans pos-ref src values remaining]
+  (do
+    (root_push values)
+    (let [step (parse-source-evidence-shrinks-step-v3 spans pos-ref src values)
+      done (vector-get step 0)
+      next-values (vector-get step 1)]
+      (do
+        (root_push step)
+        (root_push next-values)
+        (let [parsed
+          (if (= done 1)
+            step
+            (if (<= remaining 1)
+              step
+              (parse-source-evidence-shrinks-step-64-loop-bounded
+                spans
+                pos-ref
+                src
+                next-values
+                (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn parse-source-evidence-shrinks-step-64 [spans pos-ref src values]
+  (parse-source-evidence-shrinks-step-64-loop-bounded spans pos-ref src values 64))
+
+(defn parse-source-evidence-shrinks-rooted-v3 [spans pos-ref src values]
+  (let [step (parse-source-evidence-shrinks-step-64 spans pos-ref src values)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 1)
+      (do
+        (root_push step)
+        (let [next-values (vector-get step 1)]
+          (do
+            (root_push next-values)
+            (let [parsed (parse-source-evidence-shrinks-rooted-v3
+              spans pos-ref src next-values)]
+              (do
+                (root_pop)
+                (root_pop)
+                parsed))))))))
+
+(defn parse-source-evidence-shrinks-loop-v3 [spans pos-ref src values]
+  (do
+    (root_push spans)
+    (root_push pos-ref)
+    (root_push src)
+    (let [parsed (parse-source-evidence-shrinks-rooted-v3 spans pos-ref src values)]
+      (do
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        parsed))))
 
 (defn parse-source-evidence-shrinks-v3 [spans pos-ref src]
   (if (== (p-current spans pos-ref) 2)

@@ -2331,6 +2331,114 @@ fn test_e2e_selfhost_parser_defn_case_expectations_cross_chunk_boundary() {
 }
 
 #[test]
+fn test_e2e_selfhost_parser_source_evidence_shrinks_use_bounded_chunks() {
+    let source = selfhost_module("Parser.ls");
+    let rooted_body = source
+        .split("(defn parse-source-evidence-shrinks-rooted-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn parse-source-evidence-shrinks-loop-v3").next())
+        .expect("Parser.ls に source evidence shrinks rooted loop が存在すること");
+    let step_body = source
+        .split("(defn parse-source-evidence-shrinks-step-v3")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn parse-source-evidence-shrinks-step-64-loop-bounded")
+                .next()
+        })
+        .expect("Parser.ls に source evidence shrinks step helper が存在すること");
+
+    assert!(
+        source.contains("(defn parse-source-evidence-shrinks-step-64-loop-bounded")
+            && source.contains("(defn parse-source-evidence-shrinks-step-64")
+            && rooted_body.contains("parse-source-evidence-shrinks-step-64")
+            && !step_body.contains(
+                "(parse-source-evidence-shrinks-rooted-v3 spans pos-ref src next-values",
+            ),
+        "source evidence shrinks parser は Linux x86 native stack の深い再帰を避けるため bounded chunk へ委譲するべき"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_parser_source_evidence_shrinks_cross_chunk_boundary() {
+    let (token_ls, ast_ls, lexer_ls, parser_ls) = parser_runtime_modules();
+    let shrinks = (0..65)
+        .map(|value| value.to_string())
+        .collect::<Vec<_>>()
+        .join(" ");
+    let source = format!(
+        r#"(defn verify []
+  :evidence "evidence:bulk"
+    :subject "claim:bulk"
+    :method "property"
+    :outcome "pass"
+    :runner "selfhost"
+    :target "x86_64-unknown-linux-gnu"
+    :source-commit "commit"
+    :artifact-digest "sha256:digest"
+    :cases 1
+    :seed 42
+    :generator "bulk"
+    :shrinks [{}]
+    :producer "lsharp"
+    :tool-version "0.2"
+    :timestamp "2026-07-28T00:00:00Z"
+    :independence "same-author"
+  true)"#,
+        shrinks
+    );
+    let rust_program = lsharp_syntax::parse(&source)
+        .expect("Rust oracle は 65 source evidence shrinks を parse できるべき");
+    match &rust_program.decls[0] {
+        Decl::Defn {
+            metadata: Some(metadata),
+            ..
+        } => match &metadata.forms[0].kind {
+            MetadataFormKind::Evidence { record } => {
+                assert_eq!(record.shrinks().len(), 65);
+                assert_eq!(record.shrinks().first(), Some(&0));
+                assert_eq!(record.shrinks().last(), Some(&64));
+            }
+            form => panic!("Rust oracle の :evidence form が不正: {form:?}"),
+        },
+        decl => panic!("Rust oracle の defn metadata が不正: {decl:?}"),
+    }
+
+    let source_literal = source.replace('"', "\\\"");
+    let harness = format!(
+        r#"
+(defn main []
+  (let [node (vector-get (parse-program "{}") 0)
+        meta (vector-get node (- (vector-length node) 1))
+        forms (vector-get meta 5)
+        evidence (vector-get forms 0)
+        payload (vector-get evidence 1)
+        shrinks (vector-get payload 11)]
+    (do
+      (print (vector-length node))
+      (print (vector-length forms))
+      (print (vector-get evidence 0))
+      (print (vector-length shrinks))
+      (print (vector-get shrinks 0))
+      (print (vector-get shrinks 64))
+      0)))
+"#,
+        source_literal
+    );
+
+    let output = compile_and_run(&format!(
+        "{}\n{}\n{}\n{}\n{}",
+        token_ls, ast_ls, lexer_ls, parser_ls, harness
+    ));
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["5", "1", "15", "65", "0", "64"],
+        "source evidence shrinks parser は 64 要素境界を跨いでも sampling vector を保持するべき"
+    );
+}
+
+#[test]
 fn test_e2e_selfhost_parser_type_expr_list_use_bounded_chunks() {
     let source = selfhost_module("Parser.ls");
     let rooted_body = source
