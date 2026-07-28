@@ -173,6 +173,10 @@ for required in \
   'VALIDATION_UNICODE_WHITESPACE_EVIDENCE_COVERAGE_MANIFEST' \
   'run_expected_validation_error validation-unicode-whitespace-evidence-coverage' \
   'source validation error:4' \
+  'VALIDATION_NEGATIVE_EVIDENCE_COVERAGE_SOURCE' \
+  'VALIDATION_NEGATIVE_EVIDENCE_COVERAGE_MANIFEST' \
+  'run_expected_validation_error validation-negative-evidence-coverage' \
+  'source validation error:11' \
   'VALIDATION_WHITESPACE_EVIDENCE_SUBJECT_SOURCE' \
   'VALIDATION_WHITESPACE_EVIDENCE_SUBJECT_MANIFEST' \
   'run_expected_validation_error validation-whitespace-evidence-subject' \

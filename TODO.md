@@ -520,3 +520,12 @@ source suite 59件、selfhost actual Wasm の parser→registry 同一 fixture�
 smoke/provenance gateを通過した verified partial sliceである。duplicate/count/cases、manifest/MCP、
 current-source artifact/runtime、Mac/Linux matrix、EC-M2-02/EC-M3 aggregate は残件。ADR:
 `docs/adr/decisions-v0.2-native-validation-evidence-coverage-unicode-whitespace.md`。
+
+2026-07-29 に EC-M2-02 coverage count の負値 boundary を追加した。Rust source parser は負の
+coverage count を parse error 集約 code `LS0104` で拒否し、selfhost actual Wasm の parser→Evidence
+registry は invalid-sampling code `11`、field `coverage`、bucket value、directive/form span を保持
+して拒否する。native source-file smoke には `source validation error:11`、exit `1`、report/manifestなし
+の fixture/assertion を追加し、provenance gate と `bash -n` を通過した verified partial sliceである。
+`sum(coverage counts) == cases` の意味論、count 上限、manifest/validate、current-source artifact/runtime、
+Mac/Linux matrix、EC-M2-02 aggregate は残件。ADR:
+`docs/adr/decisions-v0.2-native-validation-evidence-negative-coverage-count.md`。

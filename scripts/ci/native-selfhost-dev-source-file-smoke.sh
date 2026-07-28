@@ -120,6 +120,7 @@ VALIDATION_DUPLICATE_EVIDENCE_FIELD_MANIFEST="$WORK_DIR/ec-m3-duplicate-evidence
 VALIDATION_EMPTY_EVIDENCE_GENERATOR_MANIFEST="$WORK_DIR/ec-m2-empty-evidence-generator-manifest.json"
 VALIDATION_WHITESPACE_EVIDENCE_COVERAGE_MANIFEST="$WORK_DIR/ec-m2-whitespace-evidence-coverage-manifest.json"
 VALIDATION_UNICODE_WHITESPACE_EVIDENCE_COVERAGE_MANIFEST="$WORK_DIR/ec-m2-unicode-whitespace-evidence-coverage-manifest.json"
+VALIDATION_NEGATIVE_EVIDENCE_COVERAGE_MANIFEST="$WORK_DIR/ec-m2-negative-evidence-coverage-manifest.json"
 VALIDATION_EMPTY_EVIDENCE_RUNNER_MANIFEST="$WORK_DIR/ec-m2-empty-evidence-runner-manifest.json"
 VALIDATION_EMPTY_EVIDENCE_TARGET_MANIFEST="$WORK_DIR/ec-m2-empty-evidence-target-manifest.json"
 VALIDATION_EMPTY_EVIDENCE_SOURCE_COMMIT_MANIFEST="$WORK_DIR/ec-m2-empty-evidence-source-commit-manifest.json"
@@ -183,6 +184,7 @@ VALIDATION_DUPLICATE_EVIDENCE_FIELD_SOURCE="$WORK_DIR/ec-m3-duplicate-evidence-f
 VALIDATION_EMPTY_EVIDENCE_GENERATOR_SOURCE="$WORK_DIR/ec-m2-empty-evidence-generator-source.ls"
 VALIDATION_WHITESPACE_EVIDENCE_COVERAGE_SOURCE="$WORK_DIR/ec-m2-whitespace-evidence-coverage-source.ls"
 VALIDATION_UNICODE_WHITESPACE_EVIDENCE_COVERAGE_SOURCE="$WORK_DIR/ec-m2-unicode-whitespace-evidence-coverage-source.ls"
+VALIDATION_NEGATIVE_EVIDENCE_COVERAGE_SOURCE="$WORK_DIR/ec-m2-negative-evidence-coverage-source.ls"
 VALIDATION_EMPTY_EVIDENCE_RUNNER_SOURCE="$WORK_DIR/ec-m2-empty-evidence-runner-source.ls"
 VALIDATION_EMPTY_EVIDENCE_TARGET_SOURCE="$WORK_DIR/ec-m2-empty-evidence-target-source.ls"
 VALIDATION_EMPTY_EVIDENCE_SOURCE_COMMIT_SOURCE="$WORK_DIR/ec-m2-empty-evidence-source-commit-source.ls"
@@ -655,6 +657,27 @@ cat >"$VALIDATION_UNICODE_WHITESPACE_EVIDENCE_COVERAGE_SOURCE" <<'LSHARP'
     :generator "unicode-whitespace-evidence-coverage-generator"
     :coverage [(" " 1)]
     :producer "unicode-whitespace-evidence-coverage-producer"
+    :tool-version "0.2.0-dev"
+    :timestamp "2026-07-29T00:00:00Z"
+    :independence "same-author"
+  true)
+LSHARP
+cat >"$VALIDATION_NEGATIVE_EVIDENCE_COVERAGE_SOURCE" <<'LSHARP'
+(defn negative-evidence-coverage-count []
+  :claim "claim:checkout/rejects" "The API rejects shipped orders"
+  :evidence "evidence:checkout/negative-coverage-count"
+    :subject "claim:checkout/rejects"
+    :method "property"
+    :outcome "pass"
+    :runner "negative-evidence-coverage-count-runner"
+    :target "aarch64-apple-darwin"
+    :source-commit "source-negative-evidence-coverage-count"
+    :artifact-digest "sha256:negative-evidence-coverage-count"
+    :cases 1
+    :seed 0
+    :generator "negative-evidence-coverage-count-generator"
+    :coverage [("negative" -1)]
+    :producer "negative-evidence-coverage-count-producer"
     :tool-version "0.2.0-dev"
     :timestamp "2026-07-29T00:00:00Z"
     :independence "same-author"
@@ -1638,6 +1661,16 @@ grep -F "source validation error:4" "$WORK_DIR/validation-unicode-whitespace-evi
   || die "Unicode whitespace evidence coverage validation must expose the empty-field error code"
 [[ ! -e "$VALIDATION_UNICODE_WHITESPACE_EVIDENCE_COVERAGE_MANIFEST" ]] \
   || die "Unicode whitespace evidence coverage validation must produce no report or manifest"
+
+run_expected_validation_error validation-negative-evidence-coverage \
+  validate \
+  --source "$VALIDATION_NEGATIVE_EVIDENCE_COVERAGE_SOURCE" \
+  --format json \
+  --emit-manifest "$VALIDATION_NEGATIVE_EVIDENCE_COVERAGE_MANIFEST"
+grep -F "source validation error:11" "$WORK_DIR/validation-negative-evidence-coverage.stderr" >/dev/null \
+  || die "negative evidence coverage count validation must expose the invalid-sampling error code"
+[[ ! -e "$VALIDATION_NEGATIVE_EVIDENCE_COVERAGE_MANIFEST" ]] \
+  || die "negative evidence coverage count validation must produce no report or manifest"
 
 run_expected_validation_error validation-empty-evidence-runner \
   validate \
