@@ -107,6 +107,10 @@ for required in \
   'VALIDATION_INVALID_EVIDENCE_SUBJECT_SOURCE' \
   'VALIDATION_INVALID_EVIDENCE_SUBJECT_MANIFEST' \
   'run_expected_validation_error validation-invalid-evidence-subject' \
+  'VALIDATION_DUPLICATE_EVIDENCE_SOURCE' \
+  'VALIDATION_DUPLICATE_EVIDENCE_MANIFEST' \
+  'run_expected_validation_error validation-duplicate-evidence' \
+  'source validation error:3' \
   'VALIDATION_MISSING_REVIEW_SOURCE' \
   'VALIDATION_MISSING_REVIEW_MANIFEST' \
   'run_expected_validation_error validation-missing-review' \

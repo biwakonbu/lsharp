@@ -108,6 +108,7 @@ VALIDATION_INVALID_EVIDENCE_MANIFEST="$WORK_DIR/ec-m3-invalid-evidence-manifest.
 VALIDATION_INVALID_EVIDENCE_OUTCOME_MANIFEST="$WORK_DIR/ec-m3-invalid-evidence-outcome-manifest.json"
 VALIDATION_INVALID_EVIDENCE_INDEPENDENCE_MANIFEST="$WORK_DIR/ec-m3-invalid-evidence-independence-manifest.json"
 VALIDATION_INVALID_EVIDENCE_SUBJECT_MANIFEST="$WORK_DIR/ec-m3-invalid-evidence-subject-manifest.json"
+VALIDATION_DUPLICATE_EVIDENCE_MANIFEST="$WORK_DIR/ec-m3-duplicate-evidence-manifest.json"
 VALIDATION_MISSING_REVIEW_MANIFEST="$WORK_DIR/ec-m3-missing-review-manifest.json"
 VALIDATION_DUPLICATE_REVIEW_MANIFEST="$WORK_DIR/ec-m3-duplicate-review-manifest.json"
 VALIDATION_INVALID_REVIEW_MANIFEST="$WORK_DIR/ec-m3-invalid-review-manifest.json"
@@ -139,6 +140,7 @@ VALIDATION_INVALID_EVIDENCE_SOURCE="$WORK_DIR/ec-m3-invalid-evidence-source.ls"
 VALIDATION_INVALID_EVIDENCE_OUTCOME_SOURCE="$WORK_DIR/ec-m3-invalid-evidence-outcome-source.ls"
 VALIDATION_INVALID_EVIDENCE_INDEPENDENCE_SOURCE="$WORK_DIR/ec-m3-invalid-evidence-independence-source.ls"
 VALIDATION_INVALID_EVIDENCE_SUBJECT_SOURCE="$WORK_DIR/ec-m3-invalid-evidence-subject-source.ls"
+VALIDATION_DUPLICATE_EVIDENCE_SOURCE="$WORK_DIR/ec-m3-duplicate-evidence-source.ls"
 VALIDATION_MISSING_REVIEW_SOURCE="$WORK_DIR/ec-m3-missing-review-source.ls"
 VALIDATION_DUPLICATE_REVIEW_SOURCE="$WORK_DIR/ec-m3-duplicate-review-source.ls"
 VALIDATION_INVALID_REVIEW_SOURCE="$WORK_DIR/ec-m3-invalid-review-source.ls"
@@ -360,6 +362,41 @@ cat >"$VALIDATION_INVALID_EVIDENCE_SUBJECT_SOURCE" <<'LSHARP'
     :seed 0
     :generator "invalid-evidence-subject-generator"
     :producer "invalid-evidence-subject-producer"
+    :tool-version "0.2.0-dev"
+    :timestamp "2026-07-28T00:00:00Z"
+    :independence "same-author"
+  true)
+LSHARP
+cat >"$VALIDATION_DUPLICATE_EVIDENCE_SOURCE" <<'LSHARP'
+(defn duplicate-evidence []
+  :claim "claim:checkout/rejects" "The API rejects shipped orders"
+  :evidence "evidence:checkout/duplicate"
+    :subject "claim:checkout/rejects"
+    :method "case"
+    :outcome "pass"
+    :runner "duplicate-evidence-first-runner"
+    :target "aarch64-apple-darwin"
+    :source-commit "source-duplicate-evidence"
+    :artifact-digest "sha256:duplicate-evidence-first"
+    :cases 1
+    :seed 0
+    :generator "duplicate-evidence-generator"
+    :producer "duplicate-evidence-producer"
+    :tool-version "0.2.0-dev"
+    :timestamp "2026-07-28T00:00:00Z"
+    :independence "same-author"
+  :evidence "evidence:checkout/duplicate"
+    :subject "claim:checkout/rejects"
+    :method "case"
+    :outcome "pass"
+    :runner "duplicate-evidence-second-runner"
+    :target "aarch64-apple-darwin"
+    :source-commit "source-duplicate-evidence"
+    :artifact-digest "sha256:duplicate-evidence-second"
+    :cases 1
+    :seed 0
+    :generator "duplicate-evidence-generator"
+    :producer "duplicate-evidence-producer"
     :tool-version "0.2.0-dev"
     :timestamp "2026-07-28T00:00:00Z"
     :independence "same-author"
@@ -940,6 +977,16 @@ grep -F "source validation error:8" "$WORK_DIR/validation-invalid-evidence-subje
   || die "invalid evidence subject validation must expose the invalid-field error code"
 [[ ! -e "$VALIDATION_INVALID_EVIDENCE_SUBJECT_MANIFEST" ]] \
   || die "invalid evidence subject validation must produce no report or manifest"
+
+run_expected_validation_error validation-duplicate-evidence \
+  validate \
+  --source "$VALIDATION_DUPLICATE_EVIDENCE_SOURCE" \
+  --format json \
+  --emit-manifest "$VALIDATION_DUPLICATE_EVIDENCE_MANIFEST"
+grep -F "source validation error:3" "$WORK_DIR/validation-duplicate-evidence.stderr" >/dev/null \
+  || die "duplicate evidence validation must expose the duplicate-ID error code"
+[[ ! -e "$VALIDATION_DUPLICATE_EVIDENCE_MANIFEST" ]] \
+  || die "duplicate evidence validation must produce no report or manifest"
 
 run_expected_validation_error validation-missing-review \
   validate \
