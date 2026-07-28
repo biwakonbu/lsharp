@@ -211,6 +211,10 @@
   境界を要求した。Rust `EvidenceValidationError::EmptyField { field: "runner" }` と selfhost Evidence
   registry の required-field code `4` を source contractへ接続する verified sliceだが、current
   source-commit に一致する実 stage0 artifact/runtime の evidence ではない。
+  さらに invalid evidence ID と空の required runner が同時にある場合も、runner の
+  `EvidenceValidationError::EmptyField` code `4` を stable-ID wire error より先に返すよう Rust source
+  adapter を修正し、selfhost actual Wasm と native source-file smoke の同じ precedence fixtureを追加した
+  verified sliceだが、current source-commit に一致する実 stage0 artifact/runtime の evidence ではない。
   さらに evidence の required execution target が空文字となる source fixtureも native smoke に追加し、
   stable な `source validation error:4`、exit `1`、report/manifestなしの fail-closed 境界を要求した。
   Rust `EvidenceValidationError::EmptyField { field: "target" }` と selfhost Evidence registry の

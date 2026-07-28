@@ -350,6 +350,40 @@ fn source_adapter_rejects_empty_required_sampling_generator() {
 }
 
 #[test]
+fn source_adapter_reports_empty_runner_before_invalid_evidence_id() {
+    let program = parse(
+        r#"
+        (defn cancel []
+          :claim "claim:checkout/cancel" "The API rejects shipped orders"
+          :evidence "evidence:checkout"
+            :subject "claim:checkout/cancel"
+            :method "case"
+            :outcome "pass"
+            :runner ""
+            :target "aarch64-apple-darwin"
+            :source-commit "source-required-precedence"
+            :artifact-digest "sha256:required-precedence"
+            :cases 1
+            :seed 0
+            :generator "required-precedence-generator"
+            :producer "required-precedence-producer"
+            :tool-version "0.2.0-dev"
+            :timestamp "2026-07-28T00:00:00Z"
+            :independence "same-author"
+          true)
+        "#,
+    )
+    .expect("empty runner and invalid evidence ID fixture は parse できるべき");
+
+    assert!(matches!(
+        source_program_to_intent_graph(&program),
+        Err(SourceGraphError::Graph(GraphError::InvalidEvidence {
+            source: EvidenceValidationError::EmptyField { field: "runner" }
+        }))
+    ));
+}
+
+#[test]
 fn source_adapter_rejects_empty_required_execution_runner() {
     let program = parse(
         r#"

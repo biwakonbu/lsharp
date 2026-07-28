@@ -13,6 +13,28 @@ fn run_source_adapter_runtime(harness: &str) -> String {
     ))
 }
 
+fn run_source_evidence_runtime(harness: &str) -> String {
+    let intent_source = std::fs::read_to_string(
+        selfhost_project_root().join("selfhost/src/Tools/Validation/IntentSource.ls"),
+    )
+    .expect("canonical IntentSource.ls が読み込めない");
+    let evidence_source = std::fs::read_to_string(
+        selfhost_project_root().join("selfhost/src/Tools/Validation/Evidence.ls"),
+    )
+    .expect("canonical Evidence.ls が読み込めない");
+    let json_rpc_source =
+        std::fs::read_to_string(selfhost_project_root().join("selfhost/src/Tools/Lsp/JsonRpc.ls"))
+            .expect("canonical JsonRpc.ls が読み込めない");
+    compile_and_run(&format!(
+        "{}\n{}\n{}\n{}\n{}",
+        selfhost_parser_runtime_bundle(),
+        intent_source,
+        json_rpc_source,
+        evidence_source,
+        harness
+    ))
+}
+
 /// EC-M2-01: parser-owned source metadata を node/edge record へ投影する。
 #[test]
 fn test_e2e_selfhost_source_adapter_projects_nodes_and_edges() {
@@ -496,6 +518,55 @@ fn test_e2e_selfhost_source_adapter_rejects_unregistered_evidence_edge() {
         lines,
         ["0", "6", "evidence:checkout/counterexample"],
         "evidence registry 未接続の contradicts は明示 boundary error にするべき"
+    );
+}
+
+/// EC-M2-02: evidence required field は invalid evidence ID より先に code 4 を返す。
+#[test]
+fn test_e2e_selfhost_source_evidence_reports_empty_runner_before_invalid_id() {
+    let harness = r#"
+(defn main []
+  (let [nodes (vector-push-single-rooted-v3
+                (vector-new 0)
+                (source-node-record (source-node-claim) "claim:checkout/cancel" "The API rejects shipped orders" 1 2))
+        payload (source-evidence-payload
+                  "evidence:checkout"
+                  "claim:checkout/cancel"
+                  "case"
+                  "pass"
+                  ""
+                  "aarch64-apple-darwin"
+                  "source-required-precedence"
+                  "sha256:required-precedence"
+                  1
+                  0
+                  "required-precedence-generator"
+                  (vector-new 0)
+                  (vector-new 0)
+                  "required-precedence-producer"
+                  "0.2.0-dev"
+                  "2026-07-28T00:00:00Z"
+                  "same-author")
+        form (source-evidence-form payload 10 20)
+        result (source-evidence-form-result form nodes)
+        error (source-result-error result)]
+    (do
+      (print (source-result-status result))
+      (print (source-evidence-error-code error))
+      (print-string (source-evidence-error-field error))
+      (print-string "\n")
+      (print (source-evidence-error-start error))
+      (print (source-evidence-error-end error))
+      0)))
+"#;
+
+    let output = run_source_evidence_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "4", "runner", "10", "20"],
+        "empty runner は invalid evidence ID より先に required-field code 4 を返すべき"
     );
 }
 
