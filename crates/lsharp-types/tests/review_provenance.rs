@@ -131,6 +131,24 @@ fn explicit_empty_review_registry_round_trips_as_an_empty_array() {
 }
 
 #[test]
+fn manifest_rejects_null_review_registry_instead_of_treating_it_as_absent() {
+    let manifest = r#"
+    {
+      "schema_version": 1,
+      "nodes": [],
+      "reviews": null,
+      "evidence": [],
+      "edges": []
+    }
+    "#;
+
+    assert!(matches!(
+        parse_intent_graph_json(manifest),
+        Err(ValidationInputError::Json(_))
+    ));
+}
+
+#[test]
 fn review_registry_rejects_empty_provenance_digest() {
     let mut graph = IntentGraph::default();
     assert!(matches!(

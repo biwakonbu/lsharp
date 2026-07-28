@@ -15,9 +15,24 @@ pub(super) const SUPPORTED_SCHEMA_VERSION: u32 = 1;
 pub(super) struct Manifest {
     pub(super) schema_version: u32,
     pub(super) nodes: Vec<NodeInput>,
+    #[serde(default, deserialize_with = "deserialize_optional_review_registry")]
     pub(super) reviews: Option<Vec<ReviewInput>>,
     pub(super) evidence: Vec<EvidenceInput>,
     pub(super) edges: Vec<EdgeInput>,
+}
+
+/// `reviews` は省略なら registry なし、配列なら明示 registry とする。
+/// 明示された `null` は schema 上の配列ではないため、`Option` の通常の null→None
+/// 変換に任せず入力エラーにする。
+fn deserialize_optional_review_registry<'de, D>(
+    deserializer: D,
+) -> Result<Option<Vec<ReviewInput>>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    Option::<Vec<ReviewInput>>::deserialize(deserializer)?
+        .map(Some)
+        .ok_or_else(|| D::Error::custom("reviews must be an array when present"))
 }
 
 #[derive(Debug, Deserialize)]

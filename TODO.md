@@ -637,3 +637,10 @@ Evidence: `docs/adr/decisions-v0.2-validation-manifest-edge-unknown-fields.md`�
 authentication、selfhost/native manifest parser、current-source artifact/runtime、supported 2 targets、
 EC-M2-02/EC-M2-03/EC-M3 aggregate は残件。Evidence:
 `docs/adr/decisions-v0.2-validation-manifest-explicit-empty-review-registry.md`。
+
+2026-07-29 に version 1 manifest の明示 `reviews: null` boundary を追加した。省略 (`None`) と
+配列 (`Some`) だけを受理し、schema 外の null が registry なしへ変換されないよう custom deserializer で
+`ValidationInputError::Json` にする Rust canonical input verified partial sliceである。selfhost/native
+manifest parser、CLI/MCP parity、current-source artifact/runtime、supported 2 targets、review lifecycle/
+authentication、EC-M2-02/EC-M2-03/EC-M3 aggregate は残件。Evidence:
+`docs/adr/decisions-v0.2-validation-manifest-null-review-registry.md`。
