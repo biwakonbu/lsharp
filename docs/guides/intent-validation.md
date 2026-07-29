@@ -126,6 +126,9 @@ MCP の `lsharp_validate` は `source` / `file` / `manifest` / `manifest_file` �
 受け取り、`include_manifest: true` を指定したときだけ report に canonical manifest を追加します。
 manifest は [`intent-graph.schema.json`](../schemas/intent-graph.schema.json) の version 1 wire shape
 で、report は [`intent-validation.schema.json`](../schemas/intent-validation.schema.json) に従います。
+manifest の `sampling.coverage` を指定した場合は、Rust canonical parser と同じく bucket 合計と
+`cases` の不一致を MCP input error として拒否します。object、JSON string、`manifest_file` の各
+manifest route は `isError: true` とし、検証 report や canonical manifest を成功値として返しません。
 
 ```json
 {

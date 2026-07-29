@@ -563,6 +563,64 @@ mod review_registry_tests {
     }
 
     #[test]
+    fn test_validate_tool_rejects_coverage_count_mismatch_for_manifest_routes() {
+        let mut manifest: Value = serde_json::from_str(include_str!(
+            "../../../tests/fixtures/validation/ec-m3-canonical-manifest.json"
+        ))
+        .expect("canonical manifest は JSON として読めるべき");
+        manifest["evidence"][0]["execution"]["sampling"]["coverage"]["smoke"] = json!(2);
+        let manifest_text = serde_json::to_string(&manifest)
+            .expect("coverage mismatch manifest は JSON string 化できるべき");
+
+        let assert_error = |arguments: Value, route: &str| {
+            let response = handle_jsonrpc_message(&json!({
+                "jsonrpc": "2.0",
+                "id": 6,
+                "method": "tools/call",
+                "params": { "name": "lsharp_validate", "arguments": arguments }
+            }));
+            assert_eq!(response["result"]["isError"], true, "{route}");
+            assert!(response["result"].get("structuredContent").is_none());
+            let error = response["result"]["content"][0]["text"]
+                .as_str()
+                .expect("coverage count mismatch は MCP text error を返すべき");
+            assert!(
+                error.contains("coverage"),
+                "{route}: unexpected error: {error}"
+            );
+            assert!(
+                error.contains("cases=3"),
+                "{route}: unexpected error: {error}"
+            );
+            assert!(
+                error.contains("covered=2"),
+                "{route}: unexpected error: {error}"
+            );
+        };
+
+        assert_error(json!({ "manifest": manifest.clone() }), "manifest-object");
+        assert_error(
+            json!({ "manifest": manifest_text.clone() }),
+            "manifest-string",
+        );
+
+        let path = std::env::temp_dir().join(format!(
+            "lsharp_mcp_coverage_count_{}_{}.json",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock は epoch より後であるべき")
+                .as_nanos()
+        ));
+        std::fs::write(&path, manifest_text).expect("coverage mismatch manifest_file を書けるべき");
+        assert_error(
+            json!({ "manifest_file": path.display().to_string() }),
+            "manifest-file",
+        );
+        std::fs::remove_file(&path).expect("coverage mismatch manifest_file を削除できるべき");
+    }
+
+    #[test]
     fn test_validate_tool_rejects_blank_manifest_provenance_fields() {
         let fixture: Value = serde_json::from_str(include_str!(
             "../../../tests/fixtures/validation/ec-m3-canonical-manifest.json"
