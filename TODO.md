@@ -852,3 +852,10 @@ Mac/Linux matrix、EC-M2/EC-M3 aggregate は残件。Evidence:
 `schema_version` を含む text errorを2ケースで固定した。Rust-host MCP verified partial sliceであり、
 selfhost/native MCP producer、current-source stage0 artifact/runtime、Mac/Linux matrix、EC-M3 aggregate は
 残件。Evidence: `docs/adr/decisions-v0.2-mcp-validation-manifest.md`。
+
+2026-07-29 に project config 由来の manifest path safety を公開 `lsharp validate` へ接続した。
+`[validation].manifest` の absolute path と project root外を指す symlink を、`..` と同じく
+non-zero exit・空 stdout・path boundary診断で拒否する2ケースを追加し、`validate_cli` 全29件で
+root/nested discovery、missing config、relative/absolute/traversal/symlink boundaryを固定した。
+Rust-host CLI verified partial sliceであり、selfhost/native、current-source stage0 artifact/runtime、
+Mac/Linux matrix、EC-M2-03 aggregate は残件。Evidence: `docs/adr/decisions-v0.2-validation-config.md`。

@@ -991,6 +991,78 @@ fn validate_rejects_project_config_path_traversal() {
     assert!(stderr.contains("project root") || stderr.contains(".."));
 }
 
+#[test]
+fn validate_rejects_project_config_absolute_manifest_path() {
+    let project = project_dir("config-absolute");
+    fs::create_dir_all(&project).expect("project should be writable");
+    let manifest = project.join("intent-graph.json");
+    fs::write(&manifest, include_str!("fixtures/intent-graph-pass.json"))
+        .expect("manifest should be writable");
+    fs::write(
+        project.join("lsharp.toml"),
+        format!("[validation]\nmanifest = \"{}\"\n", manifest.display()),
+    )
+    .expect("project config should be writable");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+        .current_dir(&project)
+        .args(["validate"])
+        .output()
+        .expect("lsharp validate should run");
+    fs::remove_dir_all(&project).ok();
+
+    assert_ne!(output.status.code(), Some(0));
+    assert!(
+        output.stdout.is_empty(),
+        "path error must not emit a report"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("project-relative") || stderr.contains("absolute"),
+        "unexpected absolute path diagnostic: {stderr}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn validate_rejects_project_config_manifest_symlink_outside_root() {
+    use std::os::unix::fs::symlink;
+
+    let project = project_dir("config-symlink");
+    let outside = project_dir("config-symlink-outside");
+    fs::create_dir_all(project.join("docs")).expect("project docs should be writable");
+    fs::create_dir_all(&outside).expect("outside directory should be writable");
+    let target = outside.join("intent-graph.json");
+    let link = project.join("docs/intent-graph.json");
+    fs::write(&target, include_str!("fixtures/intent-graph-pass.json"))
+        .expect("outside manifest should be writable");
+    symlink(&target, &link).expect("manifest symlink should be writable");
+    fs::write(
+        project.join("lsharp.toml"),
+        "[validation]\nmanifest = \"docs/intent-graph.json\"\n",
+    )
+    .expect("project config should be writable");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+        .current_dir(&project)
+        .args(["validate"])
+        .output()
+        .expect("lsharp validate should run");
+    fs::remove_dir_all(&project).ok();
+    fs::remove_dir_all(&outside).ok();
+
+    assert_ne!(output.status.code(), Some(0));
+    assert!(
+        output.stdout.is_empty(),
+        "path error must not emit a report"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("project root") || stderr.contains("root 外"),
+        "unexpected symlink diagnostic: {stderr}"
+    );
+}
+
 fn project_dir(name: &str) -> std::path::PathBuf {
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)

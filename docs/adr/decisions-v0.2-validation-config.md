@@ -29,9 +29,16 @@ command から毎回 path を渡す必要があった。入力を暗黙の `docs
   失敗し、CLI の config discovery、missing config、path traversal tests が失敗。
 - GREEN: config parse、project-relative resolution、absolute/parent/empty/missing rejection、
   outside-root symlink rejection、root/nested-directory CLI discoveryを固定。
+- CLI boundary follow-up: `validate` の project-config discoveryでも、absolute manifest path と
+  project root外を指す manifest symlink を report生成前に拒否し、non-zero exit、空 stdout、path
+  boundary診断を返すことを `validate_cli` に追加した。既存の `..` rejection と合わせ、設定由来の
+  path safetyが resolver単体だけでなく公開 command surfaceへ伝播することを固定した。
 - `cargo test -p lsharp-driver --bin lsharp config::tests`、
   `cargo test -p lsharp-driver --test validate_cli`、driver clippy、workspace check、targeted
   Rustfmt、`git diff --check`、`bash scripts/audit_docs.sh` をこの slice の gate とする。
+- CLI follow-up gate: `validate_cli` 29 tests、driver clippy、対象Rustfmt、`git diff --check`、
+  `bash scripts/audit_docs.sh`（0 errors/warnings）を passした。これは Rust-host CLI verified
+  partial sliceであり、selfhost/native、current-source stage0、Mac/Linux target parityの証拠ではない。
 
 ## Consequences
 
