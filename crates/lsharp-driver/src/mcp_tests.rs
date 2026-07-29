@@ -117,6 +117,11 @@ mod tests {
             json!(["pass", "fail", "unknown"])
         );
         assert_eq!(
+            tool["outputSchema"]["properties"]["review_verifications"]["items"]["properties"]["state"]
+                ["enum"],
+            json!(["verified", "unverified", "stale", "revoked"])
+        );
+        assert_eq!(
             tool["outputSchema"]["properties"]["manifest"]["type"],
             "object"
         );

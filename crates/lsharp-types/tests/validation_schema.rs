@@ -56,6 +56,28 @@ fn intent_validation_schema_declares_optional_canonical_manifest() {
 }
 
 #[test]
+fn intent_validation_schema_declares_optional_review_verification_facts() {
+    let schema: Value = serde_json::from_str(INTENT_VALIDATION_SCHEMA)
+        .expect("intent validation schema は JSON であるべき");
+    let verification = schema
+        .pointer("/properties/review_verifications")
+        .expect("review verification facts は optional array を宣言するべき");
+
+    assert_eq!(verification["type"], "array");
+    assert_eq!(
+        verification["items"]["properties"]["state"]["enum"],
+        serde_json::json!(["verified", "unverified", "stale", "revoked"])
+    );
+    assert!(
+        !schema["required"]
+            .as_array()
+            .expect("report required は array であるべき")
+            .iter()
+            .any(|field| field == "review_verifications")
+    );
+}
+
+#[test]
 fn intent_graph_schema_declares_typed_subjects_for_each_consumer() {
     let schema: Value =
         serde_json::from_str(INTENT_GRAPH_SCHEMA).expect("intent graph schema は JSON であるべき");

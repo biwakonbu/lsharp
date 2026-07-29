@@ -167,6 +167,24 @@ fn tool_output_schema(name: &str) -> Value {
                 },
                 "stale_reviews": { "type": "integer", "minimum": 0, "maximum": u64::MAX },
                 "stale_evidence": { "type": "integer", "minimum": 0, "maximum": u64::MAX },
+                "review_verifications": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["review_id", "state"],
+                        "properties": {
+                            "review_id": {
+                                "type": "string",
+                                "pattern": "^review:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+                            },
+                            "state": {
+                                "type": "string",
+                                "enum": ["verified", "unverified", "stale", "revoked"]
+                            }
+                        }
+                    }
+                },
                 "manifest": intent_graph_manifest_schema()
             }
         }),

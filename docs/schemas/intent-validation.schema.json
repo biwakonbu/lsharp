@@ -62,6 +62,23 @@
       "minimum": 0,
       "maximum": 18446744073709551615
     },
+    "review_verifications": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["review_id", "state"],
+        "properties": {
+          "review_id": {
+            "type": "string",
+            "pattern": "^review:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+          },
+          "state": {
+            "enum": ["verified", "unverified", "stale", "revoked"]
+          }
+        }
+      }
+    },
     "manifest": {
       "$ref": "intent-graph.schema.json"
     }
