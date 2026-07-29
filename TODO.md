@@ -821,3 +821,11 @@ focused `review_registry_tests` 14件、clippy、rustfmt、diff check、docs aud
 partial sliceであり、全 MCP suite は既存 compile-run artifact `Invalid argument (os error 22)` 1件を含むため
 今回の gateから除外した。selfhost/native MCP、current-source stage0 artifact/runtime、Mac/Linux matrix、
 EC-M3 aggregate は残件。Evidence: `docs/adr/decisions-v0.2-mcp-validation-manifest.md`。
+
+2026-07-29 に MCP `lsharp_compile_run` の共有 temp directory race を閉じた。固定名の directory を呼び出しごとに
+削除していたため、別 process / test の同時実行で `Main.ls` / `Main.wasm` が相互に消え、`[LS5001] Invalid argument
+(os error 22)` になり得た。呼び出しごとに PID・時刻・sequence を含む専用 directory を作り、RAII cleanupで
+成功・失敗を問わず回収する。unique path / cleanup の RED→GREEN と実 MCP compile/run を含む `mcp_server::tests`
+52件、clippy、rustfmt、diff check、docs auditを通過した Rust-host verified partial sliceである。selfhost/native
+MCP、current-source artifact/runtime、Mac/Linux matrix、EC-M3 aggregate は残件。Evidence:
+`docs/adr/decisions-v0.2-mcp-validation-manifest.md`。

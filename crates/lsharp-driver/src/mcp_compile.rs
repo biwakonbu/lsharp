@@ -1,9 +1,41 @@
+use std::{
+    sync::atomic::{AtomicU64, Ordering},
+    time::{SystemTime, UNIX_EPOCH},
+};
+
+static COMPILE_RUN_TEMP_DIR_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+struct CompileRunTempDir {
+    path: PathBuf,
+}
+
+impl Drop for CompileRunTempDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.path);
+    }
+}
+
+fn new_compile_run_temp_dir() -> Result<CompileRunTempDir, String> {
+    let sequence = COMPILE_RUN_TEMP_DIR_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or_default();
+    let path = std::env::temp_dir().join(format!(
+        "lsharp_mcp_compile_run_{}_{}_{}",
+        std::process::id(),
+        timestamp,
+        sequence
+    ));
+
+    std::fs::create_dir(&path).map_err(|error| mcp_io_error(path.display(), error))?;
+    Ok(CompileRunTempDir { path })
+}
+
 fn compile_run_tool(arguments: &Value) -> Result<Value, String> {
-    let temp_dir = std::env::temp_dir().join("lsharp_mcp_compile_run");
-    let _ = std::fs::remove_dir_all(&temp_dir);
-    std::fs::create_dir_all(&temp_dir).map_err(|e| mcp_io_error(temp_dir.display(), e))?;
-    let input_path = temp_dir.join("Main.ls");
-    let output_path = temp_dir.join("Main.wasm");
+    let temp_dir = new_compile_run_temp_dir()?;
+    let input_path = temp_dir.path.join("Main.ls");
+    let output_path = temp_dir.path.join("Main.wasm");
 
     if let Some(source) = arguments.get("source").and_then(Value::as_str) {
         std::fs::write(&input_path, source).map_err(|e| mcp_io_error(input_path.display(), e))?;

@@ -674,6 +674,22 @@ description = "context fixture"
     }
 
     #[test]
+    fn test_compile_run_temp_dirs_are_unique_and_cleaned_up() {
+        let first =
+            new_compile_run_temp_dir().expect("最初の compile_run 一時ディレクトリを作れる");
+        let first_path = first.path.clone();
+        let second =
+            new_compile_run_temp_dir().expect("2つ目の compile_run 一時ディレクトリを作れる");
+
+        assert_ne!(first.path, second.path);
+        assert!(first.path.is_dir());
+        assert!(second.path.is_dir());
+
+        drop(first);
+        assert!(!first_path.exists());
+    }
+
+    #[test]
     fn test_compile_run_tool_uses_wasi_default_for_wasm_output() {
         let result = compile_run_tool(&json!({
             "source": "(defn main [] (print 42))\n",

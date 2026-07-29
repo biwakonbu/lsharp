@@ -121,6 +121,15 @@ diagnostic が CLI と乖離する。
   が embedded artifact の `Invalid argument (os error 22)` で失敗したため、今回の MCP schema/runtime gate には
   focused suite を採用した。native/selfhost MCP、current-source artifact/runtime、対応2 target、EC-M3 全体
   の完了証拠ではない。
+- Compile-run isolation follow-up: `lsharp_compile_run` が固定の共有 temp directory を毎回削除していたため、
+  別 process / test の同時呼び出しが入力・Wasm artifact を相互に消し、`[LS5001] Invalid argument (os error 22)`
+  を返し得る境界を修正した。呼び出しごとに PID・時刻・単調 sequence を含む専用 directory を作り、RAII の
+  `Drop` で成功・失敗を問わず削除する。unique path と cleanup を `test_compile_run_temp_dirs_are_unique_and_cleaned_up`
+  で先に RED、実装後 GREEN として固定した。
+- Compile-run isolation gate: `mcp_server::tests` 52 tests（compile-run 3 tests を含む）、対象 binary の
+  `cargo clippy --tests -- -D warnings`、rustfmt、`git diff --check`、docs audit（0 errors/warnings）を passした。
+  `LSHARP_EMBED_COMPONENT_PATH` で既存 component artifact を明示した Rust-host laneであり、selfhost/native
+  MCP producer、current-source stage0 artifact/runtime、対応2 target、EC-M3 全体の完了証拠には数えない。
 
 ## Boundary and follow-up
 
@@ -150,3 +159,6 @@ Rust-host で同期したが、selfhost/native producer、current-source stage0 
 parity、EC-M3 全体の完了証拠には数えない。
 今回の provenance runtime matrix は Rust-host の direct/file MCP route に限定され、selfhost/native MCP
 producer、current-source stage0 artifact/runtime、Mac/Linux target parity、EC-M3 全体の完了証拠には数えない。
+今回の compile-run isolation は Rust MCP の temp directory ownership / cleanup 境界に限定され、Wasm
+compiler の target parity、selfhost/native MCP producer、current-source stage0 artifact/runtime、Mac/Linux
+target parity、EC-M3 全体の完了証拠には数えない。
