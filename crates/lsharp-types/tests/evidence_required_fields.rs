@@ -110,6 +110,48 @@ fn sampling_rejects_whitespace_only_coverage_bucket_before_graph_registration() 
 }
 
 #[test]
+fn sampling_rejects_coverage_total_that_does_not_match_cases() {
+    let sampling = SamplingPlan::new(2, 42, "fixed-v1", Vec::new(), [("all", 1)]);
+
+    assert!(matches!(
+        sampling.validate_required_fields(),
+        Err(EvidenceValidationError::CoverageCountMismatch {
+            cases: 2,
+            covered: 1
+        })
+    ));
+}
+
+#[test]
+fn sampling_accepts_partitioned_coverage_when_total_matches_cases() {
+    let sampling = SamplingPlan::new(
+        3,
+        42,
+        "fixed-v1",
+        Vec::new(),
+        [("positive", 2), ("negative", 1)],
+    );
+
+    assert!(sampling.validate_required_fields().is_ok());
+}
+
+#[test]
+fn sampling_rejects_coverage_total_overflow_before_comparing_cases() {
+    let sampling = SamplingPlan::new(
+        1,
+        42,
+        "fixed-v1",
+        Vec::new(),
+        [("max", usize::MAX), ("one", 1)],
+    );
+
+    assert!(matches!(
+        sampling.validate_required_fields(),
+        Err(EvidenceValidationError::CoverageCountOverflow)
+    ));
+}
+
+#[test]
 fn graph_rejects_empty_coverage_bucket_before_registration() {
     let invalid = Evidence::new(
         EvidenceId::new("checkout", "empty-coverage").expect("valid evidence id"),

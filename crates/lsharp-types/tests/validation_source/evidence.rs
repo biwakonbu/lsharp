@@ -465,6 +465,84 @@ fn source_adapter_rejects_unicode_whitespace_only_sampling_coverage_bucket_with_
 }
 
 #[test]
+fn source_adapter_rejects_coverage_total_that_does_not_match_cases_with_directive_span() {
+    const SOURCE: &str = r#"
+        (defn cancel []
+          :claim "claim:checkout/cancel" "The API rejects shipped orders"
+          :evidence "evidence:checkout/coverage-count-mismatch"
+            :subject "claim:checkout/cancel"
+            :method "property"
+            :outcome "pass"
+            :runner "source-coverage-count"
+            :target "aarch64-apple-darwin"
+            :source-commit "source-coverage-count-commit"
+            :artifact-digest "sha256:source-coverage-count"
+            :cases 2
+            :seed 0
+            :generator "source-coverage-count-generator"
+            :coverage [("positive" 1)]
+            :producer "source-coverage-count-producer"
+            :tool-version "0.2.0-dev"
+            :timestamp "2026-07-29T00:00:00Z"
+            :independence "same-author"
+          true)
+        "#;
+    let program = parse(SOURCE).expect("coverage count mismatch fixture は parse できるべき");
+
+    let error = source_program_to_intent_graph(&program)
+        .expect_err("coverage total が cases と不一致なら source graph 登録を拒否するべき");
+    let SourceGraphError::InvalidEvidenceField { field, value, span } = error else {
+        panic!("coverage count mismatch の source diagnostic を期待しました: {error:?}");
+    };
+    assert_eq!(field, "coverage");
+    assert_eq!(value, "sum=1,cases=2");
+    assert!(span.start < span.end);
+    assert!(SOURCE[span.start..span.end].contains(":evidence"));
+    assert!(SOURCE[span.start..span.end].contains(":coverage"));
+}
+
+#[test]
+fn source_adapter_rejects_coverage_total_overflow_with_directive_span() {
+    let count = i64::MAX;
+    let source = format!(
+        r#"
+        (defn cancel []
+          :claim "claim:checkout/cancel" "The API rejects shipped orders"
+          :evidence "evidence:checkout/coverage-count-overflow"
+            :subject "claim:checkout/cancel"
+            :method "property"
+            :outcome "pass"
+            :runner "source-coverage-count"
+            :target "aarch64-apple-darwin"
+            :source-commit "source-coverage-count-commit"
+            :artifact-digest "sha256:source-coverage-count"
+            :cases 1
+            :seed 0
+            :generator "source-coverage-count-generator"
+            :coverage [("left" {}) ("right" {}) ("two" 2)]
+            :producer "source-coverage-count-producer"
+            :tool-version "0.2.0-dev"
+            :timestamp "2026-07-29T00:00:00Z"
+            :independence "same-author"
+          true)
+        "#,
+        count, count
+    );
+    let program = parse(&source).expect("coverage overflow fixture は parse できるべき");
+
+    let error = source_program_to_intent_graph(&program)
+        .expect_err("coverage total overflow は source graph 登録時に拒否するべき");
+    let SourceGraphError::InvalidEvidenceField { field, value, span } = error else {
+        panic!("coverage overflow の source diagnostic を期待しました: {error:?}");
+    };
+    assert_eq!(field, "coverage");
+    assert_eq!(value, "sum-overflow");
+    assert!(span.start < span.end);
+    assert!(source[span.start..span.end].contains(":evidence"));
+    assert!(source[span.start..span.end].contains(":coverage"));
+}
+
+#[test]
 fn source_adapter_reports_empty_runner_before_invalid_evidence_id() {
     const SOURCE: &str = r#"
         (defn cancel []

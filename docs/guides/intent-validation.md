@@ -110,8 +110,10 @@ kind と存在を検査してから graph edge を追加します。`tested-by` 
 edge として claim trace gap を閉じます。`evidence` record は全 required fields を canonical
 `Evidence` へ投影し、`supports` / `contradicts` は evidence registry closure を検査します。
 未登録 evidence は `EvidenceRegistryRequired` として返し、黙って無視しません。source の optional
-shrinks/coverage は canonical `SamplingPlan` と manifest へ投影されますが、selfhost/native 実行と
-generator/shrink policy の parity は後続境界です。
+shrinks/coverage は canonical `SamplingPlan` と manifest へ投影されます。`:coverage` を指定した
+evidence は bucket count の合計が `:cases` と一致する必要があり、欠落した bucket や overflow は
+入力エラーとして拒否されます。`:coverage` 自体を省略する既存 observational evidence は互換性の
+ため受理されます。selfhost/native 実行と generator/shrink policy の parity は後続境界です。
 
 `--emit-manifest <output.json>` を指定すると、graph 構築後の version 1 manifest を明示 path へ atomic/durable に保存します。
 report は従来どおり stdout へ出し、`unknown` (exit code `2`) でも graph が構築できれば manifest を残します。

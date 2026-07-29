@@ -44,6 +44,10 @@ pub enum Independence {
 pub enum EvidenceValidationError {
     #[error("evidence の必須 field が空です: {field}")]
     EmptyField { field: &'static str },
+    #[error("evidence の coverage 件数が cases と一致しません: cases={cases}, covered={covered}")]
+    CoverageCountMismatch { cases: usize, covered: usize },
+    #[error("evidence の coverage 件数の合計が表現可能な範囲を超えています")]
+    CoverageCountOverflow,
 }
 
 fn validate_required_field(
@@ -172,6 +176,22 @@ impl SamplingPlan {
         validate_required_field("generator", &self.generator)?;
         if self.coverage.keys().any(|bucket| bucket.trim().is_empty()) {
             return Err(EvidenceValidationError::EmptyField { field: "coverage" });
+        }
+        // coverage は互換性のため省略可能。宣言された bucket がある場合だけ、
+        // その合計を実行 cases と照合して欠落・水増しを fail-closed にする。
+        if self.coverage.is_empty() {
+            return Ok(());
+        }
+        let covered = self
+            .coverage
+            .values()
+            .try_fold(0usize, |total, count| total.checked_add(*count))
+            .ok_or(EvidenceValidationError::CoverageCountOverflow)?;
+        if covered != self.cases {
+            return Err(EvidenceValidationError::CoverageCountMismatch {
+                cases: self.cases,
+                covered,
+            });
         }
         Ok(())
     }

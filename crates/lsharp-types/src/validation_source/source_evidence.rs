@@ -118,6 +118,27 @@ fn validate_sampling_coverage(
             });
         }
     }
+    if record.coverage().is_empty() {
+        return Ok(());
+    }
+    let covered = record
+        .coverage()
+        .iter()
+        .try_fold(0usize, |total, (_, count)| total.checked_add(*count));
+    let Some(covered) = covered else {
+        return Err(SourceGraphError::InvalidEvidenceField {
+            field: "coverage",
+            value: "sum-overflow".to_string(),
+            span,
+        });
+    };
+    if covered != record.cases() {
+        return Err(SourceGraphError::InvalidEvidenceField {
+            field: "coverage",
+            value: format!("sum={covered},cases={}", record.cases()),
+            span,
+        });
+    }
     Ok(())
 }
 

@@ -652,6 +652,15 @@ Rust parser と MCP input/output schema の必須境界を揃えた verified par
 MCP、current-source artifact/runtime、supported 2 targets、EC-M2-03/EC-M3 aggregate は残件。Evidence:
 `docs/adr/decisions-v0.2-mcp-validation-manifest.md`。
 
+2026-07-29 に EC-M2-02/03 の evidence coverage count invariant を追加した。`coverage` を宣言した
+evidence は bucket count の合計を `cases` と完全一致させ、checked-add overflow と不一致を canonical
+`SamplingPlan`、Rust source adapter（directive/form span 付き）、version 1 manifest input、公開
+`lsharp validate` の全入力境界で fail-closed にする。coverage を省略する既存 observational evidence
+は互換性のため受理する。canonical partition、不一致、overflow、source span、manifest/CLI の exit `1`・
+空 stdout・manifestなしを focused test で固定した Rust-host verified partial sliceである。coverage の
+実行生成/generator policy、MCP/selfhost/native parity、current-source artifact/runtime、Mac/Linux matrix、
+EC-M2-02/03 aggregate は残件。Evidence: `docs/adr/decisions-v0.2-validation-evidence-coverage-count.md`。
+
 2026-07-29 に MCP `lsharp_validate` でも review registry の presence semantics を対照固定した。
 `reviews` 省略時の未登録 `evaluates` edge は opaque endpoint として `status: unknown` を返し、明示
 `reviews: []` の同じ edge は review ID error として拒否することを review registry 6件・MCP suite 43件で確認した。

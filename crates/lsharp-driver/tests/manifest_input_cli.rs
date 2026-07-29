@@ -171,6 +171,17 @@ fn validate_rejects_duplicate_top_level_fields_without_report_or_manifest_output
 }
 
 #[test]
+fn validate_rejects_coverage_total_that_does_not_match_cases_without_output() {
+    let manifest = complete_manifest().replace("\"cases\": 1", "\"cases\": 2");
+
+    assert_manifest_input_error(
+        "coverage-count-mismatch",
+        &manifest,
+        &["coverage", "cases=2", "covered=1"],
+    );
+}
+
+#[test]
 fn validate_rejects_unknown_edge_field_without_report_or_manifest_output() {
     assert_manifest_input_error(
         "unknown-edge-field",

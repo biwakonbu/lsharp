@@ -83,6 +83,21 @@ fn parse_manifest_builds_complete_graph_and_passes_validation() {
 }
 
 #[test]
+fn parse_manifest_rejects_coverage_total_that_does_not_match_cases() {
+    let manifest = complete_manifest().replace("\"cases\": 1", "\"cases\": 2");
+
+    assert!(matches!(
+        parse_intent_graph_json(&manifest),
+        Err(ValidationInputError::Graph(GraphError::InvalidEvidence {
+            source: EvidenceValidationError::CoverageCountMismatch {
+                cases: 2,
+                covered: 1
+            }
+        }))
+    ));
+}
+
+#[test]
 fn parse_manifest_rejects_duplicate_top_level_fields() {
     let cases = [
         (
