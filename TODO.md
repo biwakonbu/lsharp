@@ -122,7 +122,12 @@
   option/exit parity を両 selfhost surface の Rust-host actual Wasm で verified した。Cli の
   complete graph（独立 review 付き）`pass=0` / `status: pass` も同じ text/json status projection
   として verified した。EmbeddedCli の complete graph でも `--format text` の `status: pass` /
-  exit `0` と同じ deterministic line projection を verified した。native source-file smoke の
+  exit `0` と同じ deterministic line projection を verified した。
+  独立 review gate は `EvidenceOutcome::Pass` かつ `IndependentReview` の evidence だけを数える。
+  failed/unknown/stale/contradicted review evidence を独立 review として扱わない Rust canonical
+  report boundary を追加し、failed review の complete graph が `unknown` になる RED→GREEN を固定した。
+  これは Rust-host canonical report の verified partial sliceであり、selfhost/native parity、MCP、
+  current-source artifact/runtime、supported 2 targets は残件である。native source-file smoke の
   inner runnerにも canonical fixtureの `--format text` unknown report（6行の固定順、exit `2`）を
   要求する contract を追加したが、これは fake Lima/provenance harness の verified sliceであり、
   current source-commit に一致する実 stage0 artifact/runtime の証拠ではない。さらに native

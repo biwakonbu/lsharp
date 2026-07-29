@@ -432,6 +432,7 @@ fn validate_graph(graph: &IntentGraph) -> ValidationReport {
         .iter()
         .filter(|evidence| {
             evidence.method() == EvidenceMethod::Review
+                && evidence.outcome() == EvidenceOutcome::Pass
                 && evidence.independence() == crate::evidence::Independence::IndependentReview
         })
         .count();

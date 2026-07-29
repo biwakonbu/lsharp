@@ -208,6 +208,60 @@ fn complete_graph_passes_without_open_questions_or_contradictions() {
 }
 
 #[test]
+fn failed_independent_review_does_not_satisfy_review_gate() {
+    for (suffix, outcome, expected_status) in [
+        ("failed", EvidenceOutcome::Fail, ValidationStatus::Unknown),
+        (
+            "unknown",
+            EvidenceOutcome::Unknown,
+            ValidationStatus::Unknown,
+        ),
+        ("stale", EvidenceOutcome::Stale, ValidationStatus::Unknown),
+        (
+            "contradicted",
+            EvidenceOutcome::Contradicted,
+            ValidationStatus::Fail,
+        ),
+    ] {
+        let (mut graph, intent_id, claim_id) = intent_graph();
+        graph
+            .add_edge(Edge::Motivates {
+                intent: intent_id,
+                claim: claim_id.clone(),
+            })
+            .unwrap();
+        graph
+            .add_edge(Edge::TestedBy {
+                claim: claim_id.clone(),
+                contract: ContractId::new("checkout", "cancel-case").unwrap(),
+            })
+            .unwrap();
+
+        let evidence_id = format!("review-{suffix}");
+        let review = evidence(
+            &evidence_id,
+            EvidenceMethod::Review,
+            EvidenceSubject::Claim(claim_id),
+            outcome,
+            Independence::IndependentReview,
+        );
+        let review_id = review.id().clone();
+        graph.add_evidence(review).unwrap();
+        graph
+            .add_edge(Edge::Evaluates {
+                review: ReviewId::new("checkout", format!("reviewer-{suffix}")).unwrap(),
+                subject: lsharp_types::evidence::ReviewSubject::Evidence(review_id),
+            })
+            .unwrap();
+
+        let report = graph.validate();
+
+        assert_eq!(report.status(), expected_status, "outcome={outcome:?}");
+        assert_eq!(report.independent_reviews(), 0, "outcome={outcome:?}");
+    }
+}
+
+#[test]
 fn graph_rejects_duplicate_intent_node_ids() {
     let id = IntentId::new("checkout", "safe-cancel").unwrap();
     let mut graph = IntentGraph::default();
