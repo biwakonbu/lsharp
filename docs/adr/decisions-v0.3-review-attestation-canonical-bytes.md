@@ -45,7 +45,11 @@ boundary を壊す。
 ## Boundary
 
 これは canonical input model と署名対象 bytes の verified partial slice である。
-signature の decode/verify、trusted key distribution、clock/expiry 判定、append-only lifecycle、
-manifest schema、CLI/MCP、selfhost/native producer、Mac Apple Silicon/Linux x86_64 runtime evidence
+signature の decode/verify、trusted key distribution、append-only lifecycle、manifest schema、
+CLI/MCP、selfhost/native producer、Mac Apple Silicon/Linux x86_64 runtime evidence
 は未完了であり、`EC-M3-01`〜`EC-M3-05` の後続タスクとして設計文書に残す。M2 の opaque registry、
 privacy field、既存 manifest bytes はこの sliceだけでは変更しない。
+
+attestation の strict timestamp と明示 clock は
+[`decisions-v0.3-review-attestation-expiry-clock.md`](decisions-v0.3-review-attestation-expiry-clock.md)
+で別の verified partial slice として追加済みである。

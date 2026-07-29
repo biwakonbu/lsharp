@@ -2,8 +2,8 @@
 //!
 //! M2 の opaque `ReviewRecord` を置き換えず、review が何に対して発行されたかを
 //! cross-target で再現可能な bytes へ固定する。provider からの lifecycle 取得や
-//! expiry/subject の current snapshot 判定は外部 boundary の責務だが、明示された
-//! lifecycle snapshot と署名の canonical gate はこの model で共有する。
+//! provider からの lifecycle 取得や暗黙の clock 取得は外部 boundary の責務だが、明示された
+//! lifecycle snapshot、clock、署名の canonical gate はこの model で共有する。
 
 use super::review_lifecycle::{ReviewLifecycleRegistry, ReviewLifecycleState};
 use super::review_trust_store::ReviewTrustStore;
@@ -47,6 +47,15 @@ pub enum AttestationError {
     InvalidReviewId(#[from] StableIdError),
     #[error("review attestation の algorithm が未対応です: {value:?}")]
     UnsupportedAlgorithm { value: String },
+    #[error("review attestation の timestamp が canonical UTC 形式ではありません: field={field}, value={value:?}")]
+    InvalidTimestamp { field: &'static str, value: String },
+    #[error(
+        "review attestation の expires_at は issued_at より後でなければなりません: issued_at={issued_at:?}, expires_at={expires_at:?}"
+    )]
+    InvalidTimeWindow {
+        issued_at: String,
+        expires_at: String,
+    },
 }
 
 /// trusted key に対する signature verification error。
@@ -60,6 +69,10 @@ pub enum AttestationVerificationError {
     InvalidSignatureEncoding,
     #[error("review attestation の signature が canonical bytes と一致しません")]
     SignatureMismatch,
+    #[error(
+        "review attestation の明示 clock が canonical UTC 形式ではありません: value={value:?}"
+    )]
+    InvalidTimestamp { field: &'static str, value: String },
 }
 
 /// review attestation の検証状態。
@@ -134,8 +147,16 @@ impl ReviewAttestation {
         validate_required("provider", &provider)?;
         validate_required("key_id", &key_id)?;
         validate_required("issued_at", &issued_at)?;
+        let issued_timestamp = parse_timestamp("issued_at", &issued_at)?;
         if let Some(expires_at) = &expires_at {
             validate_required("expires_at", expires_at)?;
+            let expires_timestamp = parse_timestamp("expires_at", expires_at)?;
+            if expires_timestamp <= issued_timestamp {
+                return Err(AttestationError::InvalidTimeWindow {
+                    issued_at,
+                    expires_at: expires_at.clone(),
+                });
+            }
         }
         if signature.is_empty() {
             return Err(AttestationError::EmptySignature);
@@ -246,6 +267,9 @@ impl ReviewAttestation {
         if signature_state != ReviewVerificationState::Verified {
             return Ok(signature_state);
         }
+        if self.expires_at.is_some() {
+            return Ok(ReviewVerificationState::Unverified);
+        }
         Ok(self.lifecycle_state(lifecycle))
     }
 
@@ -264,6 +288,64 @@ impl ReviewAttestation {
         let signature_state = self.verify(trust_store)?;
         if signature_state != ReviewVerificationState::Verified {
             return Ok(signature_state);
+        }
+        if self.subject_digest() != subject_digest
+            || self.source_commit() != source_commit
+            || self.provenance_digest() != provenance_digest
+        {
+            return Ok(ReviewVerificationState::Stale);
+        }
+        // 期限付き attestation は、明示 clock を受け取る API を使わない限り
+        // `verified` に昇格させない。期限なしの既存 fixture だけは後方互換で検証する。
+        if self.expires_at.is_some() {
+            return Ok(ReviewVerificationState::Unverified);
+        }
+        Ok(self.lifecycle_state(lifecycle))
+    }
+
+    /// signature、lifecycle、current identity、明示 clock を同時に検証する。
+    ///
+    /// `now` は caller が snapshot と一緒に渡す deterministic な UTC timestamp であり、
+    /// system clock、環境変数、network から暗黙に取得しない。時刻の半開区間は
+    /// `issued_at <= now < expires_at`（`expires_at` がない場合は上限なし）とする。
+    pub fn verify_against_at(
+        &self,
+        trust_store: &ReviewTrustStore,
+        lifecycle: &ReviewLifecycleRegistry,
+        subject_digest: &str,
+        source_commit: &str,
+        provenance_digest: &str,
+        now: &str,
+    ) -> Result<ReviewVerificationState, AttestationVerificationError> {
+        let signature_state = self.verify(trust_store)?;
+        if signature_state != ReviewVerificationState::Verified {
+            return Ok(signature_state);
+        }
+        let now = parse_timestamp_value("now", now).map_err(|error| {
+            AttestationVerificationError::InvalidTimestamp {
+                field: error.field,
+                value: error.value,
+            }
+        })?;
+        let issued_at = parse_timestamp_value("issued_at", self.issued_at()).map_err(|error| {
+            AttestationVerificationError::InvalidTimestamp {
+                field: error.field,
+                value: error.value,
+            }
+        })?;
+        if now < issued_at {
+            return Ok(ReviewVerificationState::Stale);
+        }
+        if let Some(expires_at) = self.expires_at() {
+            let expires_at = parse_timestamp_value("expires_at", expires_at).map_err(|error| {
+                AttestationVerificationError::InvalidTimestamp {
+                    field: error.field,
+                    value: error.value,
+                }
+            })?;
+            if now >= expires_at {
+                return Ok(ReviewVerificationState::Stale);
+            }
         }
         if self.subject_digest() != subject_digest
             || self.source_commit() != source_commit
@@ -305,6 +387,14 @@ impl ReviewAttestation {
     pub fn set_expires_at(&mut self, expires_at: Option<String>) -> Result<(), AttestationError> {
         if let Some(value) = &expires_at {
             validate_required("expires_at", value)?;
+            let issued_at = parse_timestamp("issued_at", self.issued_at())?;
+            let expires_at_timestamp = parse_timestamp("expires_at", value)?;
+            if expires_at_timestamp <= issued_at {
+                return Err(AttestationError::InvalidTimeWindow {
+                    issued_at: self.issued_at.clone(),
+                    expires_at: value.clone(),
+                });
+            }
         }
         self.expires_at = expires_at;
         Ok(())
@@ -337,6 +427,100 @@ fn validate_required(field: &'static str, value: &str) -> Result<(), Attestation
         return Err(AttestationError::EmptyField { field });
     }
     Ok(())
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct CanonicalTimestamp {
+    year: u16,
+    month: u8,
+    day: u8,
+    hour: u8,
+    minute: u8,
+    second: u8,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TimestampError {
+    field: &'static str,
+    value: String,
+}
+
+fn parse_timestamp(
+    field: &'static str,
+    value: &str,
+) -> Result<CanonicalTimestamp, AttestationError> {
+    parse_timestamp_value(field, value).map_err(|error| AttestationError::InvalidTimestamp {
+        field: error.field,
+        value: error.value,
+    })
+}
+
+fn parse_timestamp_value(
+    field: &'static str,
+    value: &str,
+) -> Result<CanonicalTimestamp, TimestampError> {
+    let bytes = value.as_bytes();
+    if bytes.len() != 20
+        || bytes[4] != b'-'
+        || bytes[7] != b'-'
+        || bytes[10] != b'T'
+        || bytes[13] != b':'
+        || bytes[16] != b':'
+        || bytes[19] != b'Z'
+    {
+        return Err(timestamp_error(field, value));
+    }
+    let year = parse_digits(&bytes[0..4]).ok_or_else(|| timestamp_error(field, value))? as u16;
+    let month = parse_digits(&bytes[5..7]).ok_or_else(|| timestamp_error(field, value))? as u8;
+    let day = parse_digits(&bytes[8..10]).ok_or_else(|| timestamp_error(field, value))? as u8;
+    let hour = parse_digits(&bytes[11..13]).ok_or_else(|| timestamp_error(field, value))? as u8;
+    let minute = parse_digits(&bytes[14..16]).ok_or_else(|| timestamp_error(field, value))? as u8;
+    let second = parse_digits(&bytes[17..19]).ok_or_else(|| timestamp_error(field, value))? as u8;
+    if year == 0
+        || !(1..=12).contains(&month)
+        || day == 0
+        || day > days_in_month(year, month)
+        || hour > 23
+        || minute > 59
+        || second > 59
+    {
+        return Err(timestamp_error(field, value));
+    }
+    Ok(CanonicalTimestamp {
+        year,
+        month,
+        day,
+        hour,
+        minute,
+        second,
+    })
+}
+
+fn timestamp_error(field: &'static str, value: &str) -> TimestampError {
+    TimestampError {
+        field,
+        value: value.to_string(),
+    }
+}
+
+fn parse_digits(bytes: &[u8]) -> Option<u32> {
+    bytes.iter().try_fold(0_u32, |value, byte| {
+        byte.is_ascii_digit()
+            .then_some(value * 10 + u32::from(byte - b'0'))
+    })
+}
+
+fn days_in_month(year: u16, month: u8) -> u8 {
+    match month {
+        2 if is_leap_year(year) => 29,
+        2 => 28,
+        4 | 6 | 9 | 11 => 30,
+        _ => 31,
+    }
+}
+
+fn is_leap_year(year: u16) -> bool {
+    year.is_multiple_of(4) && (!year.is_multiple_of(100) || year.is_multiple_of(400))
 }
 
 fn append_field(bytes: &mut Vec<u8>, value: &str) {

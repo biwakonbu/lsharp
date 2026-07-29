@@ -37,6 +37,7 @@ review の signature が検証できても、後から supersede/revoke され�
 ## Boundary
 
 これは in-memory canonical reducer の verified partial slice である。event の JSON/manifest
-schema、snapshot file path policy、signature/key verification、expiry clock、M2 report の
+schema、snapshot file path policy、signature/key verification、attestation expiry clock の
+report 接続、M2 report の
 `stale_reviews` / `unknown` 投影、CLI/MCP/source/selfhost/native parity、Mac Apple Silicon /
 Linux x86_64 artifact/runtime evidence は未完了であり、v0.3 設計文書の後続タスクへ残す。

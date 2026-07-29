@@ -26,7 +26,7 @@ JSON wire を先に fail-closed に固定し、後続の verification/report pro
 - 明示 input がない場合、trust store/lifecycle を環境変数、current manifest、network、implicit
   default から補わない。
 - path または wire の error は report/manifest を生成せず non-zero とする。読み込んだ snapshot は
-  この slice では preflight として検証するだけで、attestation の graph projection・expiry・
+  この slice では preflight として検証するだけで、attestation の graph projection・expiry state・
   lifecycle state と report の `verified/stale/revoked` 集計は後続 task の責務とする。
 
 ## Evidence
@@ -43,5 +43,5 @@ JSON wire を先に fail-closed に固定し、後続の verification/report pro
 
 これは EC-M3-03 の explicit input/preflight verified partial slice である。attestation と
 manifest review record の subject/source digest binding、署名検証結果の JSON/text/MCP 投影、
-expiry clock、lifecycle/revocation report、selfhost/native producer parity、Mac Apple Silicon/
-Linux x86_64 artifact/runtime evidence は未完了であり、後続 EC-M3-03〜05 に残す。
+expiry clock の report 接続、lifecycle/revocation report、selfhost/native producer parity、Mac
+Apple Silicon/Linux x86_64 artifact/runtime evidence は未完了であり、後続 EC-M3-03〜05 に残す。

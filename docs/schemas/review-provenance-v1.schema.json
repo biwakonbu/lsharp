@@ -37,6 +37,10 @@
       "type": "string",
       "minLength": 1
     },
+    "canonical_utc_timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+    },
     "attestation": {
       "type": "object",
       "additionalProperties": false,
@@ -80,11 +84,17 @@
           "minLength": 1
         },
         "issued_at": {
-          "$ref": "#/$defs/non_empty_string"
+          "$ref": "#/$defs/canonical_utc_timestamp"
         },
         "expires_at": {
-          "type": ["string", "null"],
-          "minLength": 1
+          "anyOf": [
+            {
+              "$ref": "#/$defs/canonical_utc_timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "sequence": {
           "type": "integer",

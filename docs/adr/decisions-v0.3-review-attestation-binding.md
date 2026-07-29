@@ -38,6 +38,7 @@ identity を caller が渡し、attestation の三つの digest/commit と一致
 
 ## Boundary
 
-これは current identity binding の verified partial slice である。expiry clock、manifest review
-record との実 projection、CLI/MCP JSON/text report、source/selfhost/native parity、Mac Apple Silicon/
-Linux x86_64 artifact/runtime evidence は未完了であり、EC-M3-03〜05 に残す。
+これは current identity binding の verified partial slice である。strict expiry clock は別 ADR の
+canonical partial slice として追加済みだが、manifest review record との実 projection、CLI/MCP
+JSON/text report、source/selfhost/native parity、Mac Apple Silicon/Linux x86_64 artifact/runtime
+evidence は未完了であり、EC-M3-03〜05 に残す。

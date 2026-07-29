@@ -1,6 +1,7 @@
 use ed25519_dalek::{Signer, SigningKey};
 use lsharp_types::intent::review_attestation::{
-    AttestationAlgorithm, AttestationVerificationError, ReviewAttestation, ReviewVerificationState,
+    AttestationAlgorithm, AttestationError, AttestationVerificationError, ReviewAttestation,
+    ReviewVerificationState,
 };
 use lsharp_types::intent::review_lifecycle::{
     ReviewLifecycleEvent, ReviewLifecycleRegistry, ReviewLifecycleState,
@@ -26,6 +27,32 @@ fn unsigned_attestation() -> ReviewAttestation {
 
 fn signed_attestation(signing_key: &SigningKey) -> ReviewAttestation {
     let mut attestation = unsigned_attestation();
+    let signature = signing_key.sign(&attestation.canonical_bytes());
+    attestation
+        .set_signature(signature.to_bytes().to_vec())
+        .expect("signature is non-empty");
+    attestation
+}
+
+fn signed_expiring_attestation(
+    signing_key: &SigningKey,
+    issued_at: &str,
+    expires_at: &str,
+) -> ReviewAttestation {
+    let mut attestation = ReviewAttestation::new(
+        "review:orders/reviewer-001",
+        "sha256:graph-001",
+        "0123456789abcdef0123456789abcdef01234567",
+        "sha256:review-001",
+        "github",
+        "org/reviews-2026",
+        AttestationAlgorithm::Ed25519,
+        issued_at,
+        Some(expires_at.to_string()),
+        1,
+        vec![0; 64],
+    )
+    .expect("valid expiring attestation");
     let signature = signing_key.sign(&attestation.canonical_bytes());
     attestation
         .set_signature(signature.to_bytes().to_vec())
@@ -234,4 +261,127 @@ fn subject_source_or_provenance_mismatch_is_stale() {
             Ok(ReviewVerificationState::Stale)
         );
     }
+}
+
+#[test]
+fn explicit_clock_enforces_issue_and_expiry_window() {
+    let signing_key = SigningKey::from_bytes(&[7; 32]);
+    let attestation =
+        signed_expiring_attestation(&signing_key, "2026-08-01T00:00:00Z", "2026-09-01T00:00:00Z");
+    let store = trust_store(&signing_key);
+    let lifecycle = lifecycle(ReviewLifecycleState::Active, 1);
+
+    assert_eq!(
+        attestation.verify_against_at(
+            &store,
+            &lifecycle,
+            "sha256:graph-001",
+            "0123456789abcdef0123456789abcdef01234567",
+            "sha256:review-001",
+            "2026-08-31T23:59:59Z",
+        ),
+        Ok(ReviewVerificationState::Verified)
+    );
+    for now in [
+        "2026-07-31T23:59:59Z",
+        "2026-09-01T00:00:00Z",
+        "2026-09-01T00:00:01Z",
+    ] {
+        assert_eq!(
+            attestation.verify_against_at(
+                &store,
+                &lifecycle,
+                "sha256:graph-001",
+                "0123456789abcdef0123456789abcdef01234567",
+                "sha256:review-001",
+                now,
+            ),
+            Ok(ReviewVerificationState::Stale),
+            "now={now}"
+        );
+    }
+}
+
+#[test]
+fn malformed_timestamp_and_invalid_window_fail_at_input_boundary() {
+    let invalid_format = ReviewAttestation::new(
+        "review:orders/reviewer-001",
+        "sha256:graph-001",
+        "0123456789abcdef0123456789abcdef01234567",
+        "sha256:review-001",
+        "github",
+        "org/reviews-2026",
+        AttestationAlgorithm::Ed25519,
+        "2026-08-01T00:00:00+00:00",
+        None,
+        1,
+        vec![0; 64],
+    );
+    assert!(matches!(
+        invalid_format,
+        Err(AttestationError::InvalidTimestamp {
+            field: "issued_at",
+            ..
+        })
+    ));
+
+    let invalid_window = ReviewAttestation::new(
+        "review:orders/reviewer-001",
+        "sha256:graph-001",
+        "0123456789abcdef0123456789abcdef01234567",
+        "sha256:review-001",
+        "github",
+        "org/reviews-2026",
+        AttestationAlgorithm::Ed25519,
+        "2026-09-01T00:00:00Z",
+        Some("2026-09-01T00:00:00Z".to_string()),
+        1,
+        vec![0; 64],
+    );
+    assert!(matches!(
+        invalid_window,
+        Err(AttestationError::InvalidTimeWindow { .. })
+    ));
+}
+
+#[test]
+fn malformed_explicit_clock_is_a_verification_error() {
+    let signing_key = SigningKey::from_bytes(&[7; 32]);
+    let attestation =
+        signed_expiring_attestation(&signing_key, "2026-08-01T00:00:00Z", "2026-09-01T00:00:00Z");
+    assert!(matches!(
+        attestation.verify_against_at(
+            &trust_store(&signing_key),
+            &lifecycle(ReviewLifecycleState::Active, 1),
+            "sha256:graph-001",
+            "0123456789abcdef0123456789abcdef01234567",
+            "sha256:review-001",
+            "2026-08-01T00:00:00+00:00",
+        ),
+        Err(AttestationVerificationError::InvalidTimestamp { field: "now", .. })
+    ));
+}
+
+#[test]
+fn legacy_binding_api_does_not_verify_expiring_attestation_without_clock() {
+    let signing_key = SigningKey::from_bytes(&[7; 32]);
+    let attestation =
+        signed_expiring_attestation(&signing_key, "2026-08-01T00:00:00Z", "2026-09-01T00:00:00Z");
+    assert_eq!(
+        attestation.verify_with_lifecycle(
+            &trust_store(&signing_key),
+            &lifecycle(ReviewLifecycleState::Active, 1),
+        ),
+        Ok(ReviewVerificationState::Unverified)
+    );
+    assert_eq!(
+        attestation.verify_against(
+            &trust_store(&signing_key),
+            &lifecycle(ReviewLifecycleState::Active, 1),
+            "sha256:graph-001",
+            "0123456789abcdef0123456789abcdef01234567",
+            "sha256:review-001",
+        ),
+        Ok(ReviewVerificationState::Unverified)
+    );
 }

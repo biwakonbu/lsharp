@@ -405,6 +405,26 @@ coverage count/cases、Unicode whitespace、Mac/Linux matrix、EC-M2-03 aggregat
 次の実装は `EC-M2-01`〜`EC-M2-03` の未接続入力を一つの RED に絞る。current plan の
 acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展開しない。
 
+## Next milestone — v0.3 Review provenance lifecycle
+
+正本: [`v0.3-review-provenance-lifecycle.md`](docs/development/planning/v0.3-review-provenance-lifecycle.md)
+
+- [~] `EC-M3-01` attestation の canonical bytes、strict UTC timestamp、Ed25519 signature、
+  current subject/source/provenance binding を Rust canonical model で検証する。manifest/report
+  projection、selfhost/native parity、両 supported target の artifact/runtime evidence を閉じる。
+- [~] `EC-M3-02` append-only lifecycle を deterministic に reduce し、active sequence、superseded、
+  revoked、stale を report の事実へ接続する。provider snapshot の取得と report projection は残る。
+- [~] `EC-M3-03` CLI/MCP の trust store/lifecycle explicit input と project-root boundary を維持し、
+  attestation verification state、expiry clock、no-report/no-manifest の失敗境界を接続する。
+- [ ] `EC-M3-04` source と selfhost/native producer の attestation named-field、canonical bytes、
+  state、span、exit code を同一 fixture で byte-for-byte parity にする。
+- [ ] `EC-M3-05` keyset/lifecycle/source/artifact digest を evidence identity へ投影し、
+  verified/unverified/stale/revoked/invalid を JSON/text/MCP と release gate で同じ順序にする。
+
+この milestone の verified slice は ADR に残すが、項目全体の completion boundary を満たすまで
+`[~]` を維持する。次の RED は `EC-M3-01` の manifest/report projection とし、現在の
+`lsharp-types` clock contract を CLI/MCP へ暗黙に拡張しない。
+
 ## v0.2 Milestone 1 closure
 
 個別 slice の履歴と current boundary は
