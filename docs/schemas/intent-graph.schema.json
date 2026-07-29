@@ -142,8 +142,8 @@
           "additionalProperties": false,
           "required": ["start", "end"],
           "properties": {
-            "start": {"type": "integer", "minimum": 0},
-            "end": {"type": "integer", "minimum": 0}
+            "start": {"type": "integer", "minimum": 0, "maximum": 18446744073709551615},
+            "end": {"type": "integer", "minimum": 0, "maximum": 18446744073709551615}
           }
         }
       }
@@ -183,11 +183,11 @@
               "additionalProperties": false,
               "required": ["cases", "seed", "generator"],
               "properties": {
-                "cases": {"type": "integer", "minimum": 0},
-                "seed": {"type": "integer", "minimum": 0},
+                "cases": {"type": "integer", "minimum": 0, "maximum": 18446744073709551615},
+                "seed": {"type": "integer", "minimum": 0, "maximum": 18446744073709551615},
                 "generator": {"type": "string", "minLength": 1},
-                "shrinks": {"type": "array", "items": {"type": "integer", "minimum": 0}},
-                "coverage": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}}
+                "shrinks": {"type": "array", "items": {"type": "integer", "minimum": 0, "maximum": 18446744073709551615}},
+                "coverage": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0, "maximum": 18446744073709551615}}
               }
             }
           }

@@ -74,6 +74,16 @@ diagnostic が CLI と乖離する。
   `cargo clippy --tests -- -D warnings`、rustfmt、`git diff --check`、docs audit（0 errors/warnings）を
   passした。既存 typed serde parser の `manifest_file` route まで接続した Rust-host verified sliceであり、
   production code の変更はない。
+- Draft 2020-12 validator follow-up: canonical `docs/schemas/intent-graph.schema.json` と MCP の
+  `lsharp_validate` input/output schema を実 validator で compile し、canonical fixture の valid
+  roundtrip と fractional、`null`、`u64::MAX + 1`、typed subject kind mismatch の reject を input/output
+  両面で固定した。Rust `u64` と JSON Schema の整数境界を一致させるため、manifest の unsigned 6 fields に
+  `maximum: 18446744073709551615` を canonical schema と MCP schema helper の双方へ追加した。
+- Draft 2020-12 validator gate: `jsonschema` dev dependency、meta-schema validation、valid 1 case と
+  invalid 4 cases を含む `mcp_server::tests` 48 tests、対象 binary の `cargo clippy --tests -- -D warnings`、
+  rustfmt、`git diff --check`、docs audit（0 errors/warnings）を passした。これは Rust-host の schema
+  contract verified sliceであり、native/selfhost MCP producer、current-source artifact/runtime、対応2 target
+  の完了証拠ではない。
 
 ## Boundary and follow-up
 
@@ -89,3 +99,6 @@ validator、selfhost/native MCP producer、Mac/Linux artifact/runtime の完了�
 今回の `manifest_file` numeric matrix も Rust-host JSON-RPC input boundary に限定され、selfhost/native
 MCP、current-source artifact/runtime、JSON Schema 実 validator、Mac/Linux の target parity の完了証拠には
 数えない。
+今回の Draft 2020-12 validator は canonical/MCP schema の構文・valid fixture・主要 reject matrix を
+ Rust-host で実行したが、selfhost/native producer、current-source stage0 artifact/runtime、Mac/Linux
+ target parity、EC-M3 全体の完了証拠には数えない。

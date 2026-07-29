@@ -782,3 +782,11 @@ canonical manifestを返さない18ケースを `mcp_server::tests` 47件で固�
 parser を `manifest_file` routeまで接続した verified partial sliceであり、selfhost/native MCP、
 current-source stage0 artifact/runtime、JSON Schema実 validator、Mac/Linux matrix、EC-M3 aggregate は
 未完了である。Evidence: `docs/adr/decisions-v0.2-mcp-validation-manifest.md`。
+
+2026-07-29 に EC-M3-01 の JSON Schema 実 validator boundary を追加した。canonical intent graph schema と
+MCP `lsharp_validate` input/output schemaを Draft 2020-12 validatorで実行し、canonical fixtureの valid
+roundtrip、fractional、`null`、`u64::MAX + 1`、typed subject kind mismatch の4 rejectを固定した。
+Rust `u64` と schemaの整数上限を揃えるため、unsigned 6 fieldへ `maximum: 18446744073709551615` を追加した。
+`mcp_server::tests` 48件で verifiedした Rust-host schema sliceであり、selfhost/native MCP、current-source
+stage0 artifact/runtime、Mac/Linux matrix、EC-M3 aggregate は未完了である。Evidence:
+`docs/adr/decisions-v0.2-mcp-validation-manifest.md`。

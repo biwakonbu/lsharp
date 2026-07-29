@@ -149,6 +149,115 @@ mod review_registry_tests {
     }
 
     #[test]
+    fn test_manifest_schemas_use_draft202012_validator_for_valid_and_invalid_fixtures() {
+        let response = handle_jsonrpc_message(&json!({
+            "jsonrpc": "2.0",
+            "id": 5,
+            "method": "tools/list"
+        }));
+        let tool = response["result"]["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|tool| tool["name"] == "lsharp_validate")
+            .expect("lsharp_validate が tools/list に必要");
+        let input_schema = &tool["inputSchema"];
+        let output_schema = &tool["outputSchema"];
+        let canonical_schema: Value = serde_json::from_str(include_str!(
+            "../../../docs/schemas/intent-graph.schema.json"
+        ))
+        .expect("canonical intent graph schema は JSON として読めるべき");
+        let fixture: Value = serde_json::from_str(include_str!(
+            "../../../tests/fixtures/validation/ec-m3-canonical-manifest.json"
+        ))
+        .expect("canonical manifest fixture は JSON として読めるべき");
+
+        jsonschema::draft202012::meta::validate(&canonical_schema)
+            .expect("canonical schema は Draft 2020-12 meta-schema に適合するべき");
+        let canonical_validator = jsonschema::draft202012::new(&canonical_schema)
+            .expect("canonical schema の validator を構築できるべき");
+        let input_validator = jsonschema::draft202012::new(input_schema)
+            .expect("MCP input schema の validator を構築できるべき");
+        let output_validator = jsonschema::draft202012::new(output_schema)
+            .expect("MCP output schema の validator を構築できるべき");
+
+        assert!(
+            canonical_validator.is_valid(&fixture),
+            "canonical fixture は canonical schema に適合するべき"
+        );
+        let valid_input = json!({ "manifest": fixture.clone() });
+        let valid_output = json!({
+            "status": "pass",
+            "trace_gaps": [],
+            "open_questions": 0,
+            "independent_reviews": 1,
+            "contradicting_observations": 0,
+            "stale_reviews": 0,
+            "stale_evidence": 0,
+            "manifest": fixture.clone()
+        });
+        assert!(
+            input_validator.is_valid(&valid_input),
+            "canonical fixture は MCP input schema に適合するべき"
+        );
+        assert!(
+            output_validator.is_valid(&valid_output),
+            "canonical fixture は MCP output schema に適合するべき"
+        );
+
+        let mut fractional = fixture.clone();
+        fractional["nodes"][0]["span"]["start"] = json!(0.5);
+        let mut null = fixture.clone();
+        null["evidence"][0]["execution"]["sampling"]["seed"] = Value::Null;
+        let mut overflow = fixture.clone();
+        overflow["evidence"][0]["execution"]["sampling"]["cases"] =
+            serde_json::from_str("18446744073709551616")
+                .expect("overflow number は JSON として読めるべき");
+        let mut invalid_subject = fixture.clone();
+        invalid_subject["edges"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!({
+                "relation": "evaluates",
+                "review": { "namespace": "checkout", "key": "reviewer-001" },
+                "subject": {
+                    "kind": "review",
+                    "namespace": "checkout",
+                    "key": "reviewer-001"
+                }
+            }));
+
+        for (label, manifest) in [
+            ("fractional", fractional),
+            ("null", null),
+            ("overflow", overflow),
+            ("invalid-subject-kind", invalid_subject),
+        ] {
+            assert!(
+                !canonical_validator.is_valid(&manifest),
+                "{label}: canonical schema は不正 manifest を拒否するべき"
+            );
+            assert!(
+                !input_validator.is_valid(&json!({ "manifest": manifest.clone() })),
+                "{label}: MCP input schema は不正 manifest を拒否するべき"
+            );
+            assert!(
+                !output_validator.is_valid(&json!({
+                    "status": "pass",
+                    "trace_gaps": [],
+                    "open_questions": 0,
+                    "independent_reviews": 1,
+                    "contradicting_observations": 0,
+                    "stale_reviews": 0,
+                    "stale_evidence": 0,
+                    "manifest": manifest
+                })),
+                "{label}: MCP output schema は不正 manifest を拒否するべき"
+            );
+        }
+    }
+
+    #[test]
     fn test_validate_tool_manifest_schema_declares_unsigned_integer_boundaries() {
         let response = handle_jsonrpc_message(&json!({
             "jsonrpc": "2.0",
@@ -169,10 +278,12 @@ mod review_registry_tests {
         for field in ["start", "end"] {
             assert_eq!(node_span["properties"][field]["type"], "integer");
             assert_eq!(node_span["properties"][field]["minimum"], 0);
+            assert_eq!(node_span["properties"][field]["maximum"], u64::MAX);
         }
         for field in ["cases", "seed"] {
             assert_eq!(sampling["properties"][field]["type"], "integer");
             assert_eq!(sampling["properties"][field]["minimum"], 0);
+            assert_eq!(sampling["properties"][field]["maximum"], u64::MAX);
         }
         assert_eq!(
             sampling["properties"]["shrinks"]["items"]["type"],
@@ -180,12 +291,20 @@ mod review_registry_tests {
         );
         assert_eq!(sampling["properties"]["shrinks"]["items"]["minimum"], 0);
         assert_eq!(
+            sampling["properties"]["shrinks"]["items"]["maximum"],
+            u64::MAX
+        );
+        assert_eq!(
             sampling["properties"]["coverage"]["additionalProperties"]["type"],
             "integer"
         );
         assert_eq!(
             sampling["properties"]["coverage"]["additionalProperties"]["minimum"],
             0
+        );
+        assert_eq!(
+            sampling["properties"]["coverage"]["additionalProperties"]["maximum"],
+            u64::MAX
         );
     }
 

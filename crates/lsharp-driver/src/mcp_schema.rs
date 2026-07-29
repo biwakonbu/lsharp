@@ -233,7 +233,8 @@ fn intent_graph_manifest_schema() -> Value {
 fn non_negative_integer_schema() -> Value {
     json!({
         "type": "integer",
-        "minimum": 0
+        "minimum": 0,
+        "maximum": u64::MAX
     })
 }
 

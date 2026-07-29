@@ -30,6 +30,7 @@ lsharp-syntax = { path = "../lsharp-syntax" }
 lsharp-types = { path = "../lsharp-types" }
 lsharp-ir = { path = "../lsharp-ir" }
 wat = "1"
+jsonschema = { version = "0.33", default-features = false }
 
 [build-dependencies]
 lsharp-ir = { path = "../lsharp-ir" }
