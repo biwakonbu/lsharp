@@ -1,5 +1,5 @@
 use super::support::*;
-use lsharp_syntax::ast::Decl;
+use lsharp_syntax::ast::{Decl, Expr, Literal};
 use lsharp_syntax::metadata::MetadataFormKind;
 
 // =============================================================================
@@ -2549,6 +2549,116 @@ fn test_e2e_selfhost_parser_source_evidence_coverage_cross_chunk_boundary() {
         lines,
         ["5", "1", "15", "65", "bucket-0", "0", "bucket-64", "64"],
         "source evidence coverage parser は 64 要素境界を跨いでも bucket/count layout を保持するべき"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_parser_example_expression_spans_use_bounded_chunks() {
+    let source = selfhost_module("Parser.ls");
+    let rooted_body = source
+        .split("(defn collect-example-expression-spans-rooted-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn collect-example-expression-spans-v3").next())
+        .expect("Parser.ls に example expression spans rooted loop が存在すること");
+    let step_body = source
+        .split("(defn collect-example-expression-spans-step-v3")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn collect-example-expression-spans-step-64-loop-bounded")
+                .next()
+        })
+        .expect("Parser.ls に example expression spans step helper が存在すること");
+
+    assert!(
+        source.contains("(defn collect-example-expression-spans-step-64-loop-bounded")
+            && source.contains("(defn collect-example-expression-spans-step-64")
+            && rooted_body.contains("collect-example-expression-spans-step-64")
+            && !step_body.contains(
+                "(collect-example-expression-spans-rooted-v3 spans next-idx end next-result",
+            ),
+        "example expression spans parser は Linux x86 native stack の深い再帰を避けるため bounded chunk へ委譲するべき"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_parser_example_expression_spans_cross_chunk_boundary() {
+    let (token_ls, ast_ls, lexer_ls, parser_ls) = parser_runtime_modules();
+    let expressions = (0..65)
+        .map(|value| value.to_string())
+        .collect::<Vec<_>>()
+        .join(" ");
+    let source = format!("(defn verify [] :example [{}] true)", expressions);
+    let example_prefix = ":example [";
+    let first_start = source.find(example_prefix).unwrap() + example_prefix.len();
+    let first_end = first_start + 1;
+    let last_start = source.rfind("64").unwrap();
+    let last_end = last_start + 2;
+
+    let rust_program = lsharp_syntax::parse(&source)
+        .expect("Rust oracle は 65 example expressions を parse できるべき");
+    match &rust_program.decls[0] {
+        Decl::Defn {
+            metadata: Some(metadata),
+            ..
+        } => match &metadata.forms[0].kind {
+            MetadataFormKind::LegacyExample { expressions } => {
+                assert_eq!(expressions.len(), 65);
+                assert!(matches!(
+                    expressions.first(),
+                    Some(Expr::Lit(_, Literal::Int(0)))
+                ));
+                assert!(matches!(
+                    expressions.last(),
+                    Some(Expr::Lit(_, Literal::Int(64)))
+                ));
+            }
+            form => panic!("Rust oracle の :example form が不正: {form:?}"),
+        },
+        decl => panic!("Rust oracle の defn metadata が不正: {decl:?}"),
+    }
+
+    let source_literal = source.replace('"', "\\\"");
+    let harness = format!(
+        r#"
+(defn main []
+  (let [node (vector-get (parse-program "{}") 0)
+        meta (vector-get node (- (vector-length node) 1))
+        forms (vector-get meta 5)
+        form (vector-get forms 0)
+        spans (vector-get form 4)]
+    (do
+      (print (vector-length forms))
+      (print (vector-get form 0))
+      (print (vector-length form))
+      (print (vector-length spans))
+      (print (vector-get spans 0))
+      (print (vector-get spans 1))
+      (print (vector-get spans 128))
+      (print (vector-get spans 129))
+      0)))
+"#,
+        source_literal
+    );
+
+    let output = compile_and_run(&format!(
+        "{}\n{}\n{}\n{}\n{}",
+        token_ls, ast_ls, lexer_ls, parser_ls, harness
+    ));
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        [
+            "1",
+            "1",
+            "5",
+            "130",
+            &first_start.to_string(),
+            &first_end.to_string(),
+            &last_start.to_string(),
+            &last_end.to_string(),
+        ],
+        "example expression spans parser は 64 要素境界を跨いでも expression count と source span layout を保持するべき"
     );
 }
 
