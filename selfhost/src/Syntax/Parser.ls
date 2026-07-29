@@ -930,14 +930,47 @@
             (p-advance pos-ref)
             0))))))
 
-(defn skip-optional-metadata-rooted-v3 [spans pos-ref src]
+(defn skip-optional-metadata-step-v3 [spans pos-ref src]
   (if (== (colon-directive-v3 spans pos-ref src) 1)
     (do
       (p-advance pos-ref)
       (p-advance pos-ref)
       (skip-directive-payload-v3 spans pos-ref)
-      (skip-optional-metadata-rooted-v3 spans pos-ref src))
-    0))
+      (make-parse-loop-state 0 0))
+    (make-parse-loop-state 1 0)))
+
+(defn skip-optional-metadata-step-64-loop-bounded [spans pos-ref src remaining]
+  (let [step (skip-optional-metadata-step-v3 spans pos-ref src)
+    done (vector-get step 0)]
+    (do
+      (root_push step)
+      (let [parsed
+        (if (= done 1)
+          step
+          (if (<= remaining 1)
+            step
+            (skip-optional-metadata-step-64-loop-bounded
+              spans
+              pos-ref
+              src
+              (- remaining 1))))]
+        (do
+          (root_pop)
+          parsed)))))
+
+(defn skip-optional-metadata-step-64 [spans pos-ref src]
+  (skip-optional-metadata-step-64-loop-bounded spans pos-ref src 64))
+
+(defn skip-optional-metadata-rooted-v3 [spans pos-ref src]
+  (let [step (skip-optional-metadata-step-64 spans pos-ref src)]
+    (if (= (vector-get step 0) 1)
+      0
+      (do
+        (root_push step)
+        (let [parsed (skip-optional-metadata-rooted-v3 spans pos-ref src)]
+          (do
+            (root_pop)
+            parsed))))))
 
 (defn skip-optional-metadata-v3 [spans pos-ref src]
   (do

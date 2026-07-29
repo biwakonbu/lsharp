@@ -1992,6 +1992,67 @@ fn test_e2e_selfhost_parser_skip_to_close_cross_chunk_boundary() {
 }
 
 #[test]
+fn test_e2e_selfhost_parser_skip_optional_metadata_uses_bounded_chunks() {
+    let source = selfhost_module("Parser.ls");
+    let rooted_body = source
+        .split("(defn skip-optional-metadata-rooted-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn skip-optional-metadata-v3").next())
+        .expect("Parser.ls に optional metadata rooted loop が存在すること");
+    let step_body = source
+        .split("(defn skip-optional-metadata-step-v3")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn skip-optional-metadata-step-64-loop-bounded")
+                .next()
+        })
+        .expect("Parser.ls に optional metadata step helper が存在すること");
+
+    assert!(
+        source.contains("(defn skip-optional-metadata-step-64-loop-bounded")
+            && source.contains("(defn skip-optional-metadata-step-64")
+            && rooted_body.contains("skip-optional-metadata-step-64")
+            && !step_body.contains("skip-optional-metadata-rooted-v3"),
+        "optional metadata parser は Linux x86 native stack の長い directive 列を bounded chunk へ委譲するべき"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_parser_skip_optional_metadata_cross_chunk_boundary() {
+    let token_source = format!("0 {}99", ":doc \"0\" ".repeat(65));
+    let trailing_start = token_source.rfind("99").unwrap();
+    let trailing_end = trailing_start + 2;
+    let source_literal = token_source.replace('"', "\\\"");
+    let (token_ls, ast_ls, lexer_ls, parser_ls) = parser_runtime_modules();
+    let harness = format!(
+        r#"
+(defn main []
+  (let [source "{}"
+        spans (tokenize-with-spans source)
+        pos-ref (ref-new 1)]
+    (do
+      (skip-optional-metadata-v3 spans pos-ref source)
+      (print (ref-get pos-ref))
+      (print (p-start spans pos-ref))
+      (print (p-end spans pos-ref))
+      0)))
+"#,
+        source_literal
+    );
+    let output = compile_and_run(&format!(
+        "{}\n{}\n{}\n{}\n{}",
+        token_ls, ast_ls, lexer_ls, parser_ls, harness
+    ));
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["196", &trailing_start.to_string(), &trailing_end.to_string()],
+        "optional metadata parser は 64 directive 境界を跨いでも trailing token へ着地するべき"
+    );
+}
+
+#[test]
 fn test_e2e_selfhost_parser_record_literal_fields_use_bounded_chunks() {
     let source = selfhost_module("Parser.ls");
     let rooted_body = source
