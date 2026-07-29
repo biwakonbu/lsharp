@@ -852,16 +852,67 @@
         (root_pop)
         parsed))))
 
-(defn parse-skip-brace-v3 [spans pos-ref depth]
-  (if (<= depth 0) 0
+(defn parse-skip-brace-step-v3 [spans pos-ref depth]
+  (if (<= depth 0)
+    (make-parse-loop-state 1 depth)
     (let [kind (p-current spans pos-ref)]
+      (if (== kind 99)
+        (make-parse-loop-state 1 depth)
+        (do
+          (p-advance pos-ref)
+          (if (== kind 4)
+            (make-parse-loop-state 0 (+ depth 1))
+            (if (== kind 5)
+              (let [next-depth (- depth 1)]
+                (if (<= next-depth 0)
+                  (make-parse-loop-state 1 next-depth)
+                  (make-parse-loop-state 0 next-depth)))
+              (make-parse-loop-state 0 depth))))))))
+
+(defn parse-skip-brace-step-64-loop-bounded [spans pos-ref depth remaining]
+  (let [step (parse-skip-brace-step-v3 spans pos-ref depth)
+    done (vector-get step 0)
+    next-depth (vector-get step 1)]
+    (do
+      (root_push step)
+      (let [parsed
+        (if (= done 1)
+          step
+          (if (<= remaining 1)
+            step
+            (parse-skip-brace-step-64-loop-bounded
+              spans
+              pos-ref
+              next-depth
+              (- remaining 1))))]
+        (do
+          (root_pop)
+          parsed)))))
+
+(defn parse-skip-brace-step-64 [spans pos-ref depth]
+  (parse-skip-brace-step-64-loop-bounded spans pos-ref depth 64))
+
+(defn parse-skip-brace-rooted-v3 [spans pos-ref depth]
+  (let [step (parse-skip-brace-step-64 spans pos-ref depth)]
+    (if (= (vector-get step 0) 1)
+      0
       (do
-        (p-advance pos-ref)
-        (if (== kind 4)
-          (parse-skip-brace-v3 spans pos-ref (+ depth 1))
-          (if (== kind 5)
-            (parse-skip-brace-v3 spans pos-ref (- depth 1))
-            (parse-skip-brace-v3 spans pos-ref depth)))))))
+        (root_push step)
+        (let [next-depth (vector-get step 1)
+          parsed (parse-skip-brace-rooted-v3 spans pos-ref next-depth)]
+          (do
+            (root_pop)
+            parsed))))))
+
+(defn parse-skip-brace-v3 [spans pos-ref depth]
+  (do
+    (root_push spans)
+    (root_push pos-ref)
+    (let [parsed (parse-skip-brace-rooted-v3 spans pos-ref depth)]
+      (do
+        (root_pop)
+        (root_pop)
+        parsed))))
 
 (defn skip-directive-payload-v3 [spans pos-ref]
   (let [kind (p-current spans pos-ref)]

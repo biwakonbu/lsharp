@@ -1874,6 +1874,65 @@ fn test_e2e_selfhost_parser_skip_bracket_cross_chunk_boundary() {
 }
 
 #[test]
+fn test_e2e_selfhost_parser_skip_brace_uses_bounded_chunks() {
+    let source = selfhost_module("Parser.ls");
+    let rooted_body = source
+        .split("(defn parse-skip-brace-rooted-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn parse-skip-brace-v3").next())
+        .expect("Parser.ls に brace skip rooted loop が存在すること");
+    let step_body = source
+        .split("(defn parse-skip-brace-step-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn parse-skip-brace-step-64-loop-bounded").next())
+        .expect("Parser.ls に brace skip step helper が存在すること");
+
+    assert!(
+        source.contains("(defn parse-skip-brace-step-64-loop-bounded")
+            && source.contains("(defn parse-skip-brace-step-64")
+            && rooted_body.contains("parse-skip-brace-step-64")
+            && step_body.contains("(== kind 99)")
+            && !step_body.contains("parse-skip-brace-rooted-v3"),
+        "brace skip parser は Linux x86 native stack の長い brace payload を bounded chunk と EOF guard へ委譲するべき"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_parser_skip_brace_cross_chunk_boundary() {
+    let token_source = format!("{}0{} 99", "{".repeat(65), "}".repeat(65));
+    let trailing_start = token_source.rfind("99").unwrap();
+    let trailing_end = trailing_start + 2;
+    let source_literal = token_source.replace('"', "\\\"");
+    let (token_ls, ast_ls, lexer_ls, parser_ls) = parser_runtime_modules();
+    let harness = format!(
+        r#"
+(defn main []
+  (let [source "{}"
+        spans (tokenize-with-spans source)
+        pos-ref (ref-new 1)]
+    (do
+      (parse-skip-brace-v3 spans pos-ref 1)
+      (print (ref-get pos-ref))
+      (print (p-start spans pos-ref))
+      (print (p-end spans pos-ref))
+      0)))
+"#,
+        source_literal
+    );
+    let output = compile_and_run(&format!(
+        "{}\n{}\n{}\n{}\n{}",
+        token_ls, ast_ls, lexer_ls, parser_ls, harness
+    ));
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["131", &trailing_start.to_string(), &trailing_end.to_string()],
+        "brace skip parser は 64 token 境界を跨いでも nested depth を保持し trailing token へ着地するべき"
+    );
+}
+
+#[test]
 fn test_e2e_selfhost_parser_record_literal_fields_use_bounded_chunks() {
     let source = selfhost_module("Parser.ls");
     let rooted_body = source
