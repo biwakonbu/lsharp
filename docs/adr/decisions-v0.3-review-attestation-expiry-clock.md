@@ -45,7 +45,7 @@
 
 ## Boundary
 
-これは canonical Rust model の expiry/clock verified partial slice である。report の explicit
-verification fact projection は別 ADR で追加済みだが、manifest への state projection、CLI/MCP の
-clock/wire wiring、source/selfhost/native producer parity、Mac Apple Silicon/Linux x86_64 artifact/
-runtime evidence は未完了であり、EC-M3-03〜05 に残す。
+これは canonical Rust model の expiry/clock verified partial slice である。report と manifest の
+explicit verification state projection は別 ADR で追加済みだが、CLI/MCP の clock/wire wiring、
+source/selfhost/native producer parity、Mac Apple Silicon/Linux x86_64 artifact/runtime evidence は
+未完了であり、EC-M3-03〜05 に残す。

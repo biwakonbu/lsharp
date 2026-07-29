@@ -37,6 +37,27 @@ fn intent_graph_schema_requires_non_empty_execution_and_provenance_strings() {
 }
 
 #[test]
+fn intent_graph_schema_declares_optional_review_verification_state() {
+    let schema: Value =
+        serde_json::from_str(INTENT_GRAPH_SCHEMA).expect("intent graph schema は JSON であるべき");
+    let review = schema
+        .pointer("/$defs/review")
+        .expect("review registry schema が必要");
+
+    assert_eq!(
+        review["properties"]["verification_state"]["enum"],
+        serde_json::json!(["verified", "unverified", "stale", "revoked"])
+    );
+    assert!(
+        !review["required"]
+            .as_array()
+            .expect("review required は array であるべき")
+            .iter()
+            .any(|field| field == "verification_state")
+    );
+}
+
+#[test]
 fn intent_validation_schema_declares_optional_canonical_manifest() {
     let schema: Value = serde_json::from_str(INTENT_VALIDATION_SCHEMA)
         .expect("intent validation schema は JSON であるべき");

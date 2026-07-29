@@ -102,6 +102,15 @@ pub(super) enum ReviewVisibilityInput {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "kebab-case")]
+pub(super) enum ReviewVerificationStateInput {
+    Verified,
+    Unverified,
+    Stale,
+    Revoked,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub(super) enum SubjectKindInput {
     Intent,
     Claim,
@@ -132,6 +141,22 @@ pub(super) struct ReviewInput {
     pub(super) key: String,
     pub(super) provenance_digest: String,
     pub(super) visibility: ReviewVisibilityInput,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_optional_review_verification_state"
+    )]
+    pub(super) verification_state: Option<ReviewVerificationStateInput>,
+}
+
+fn deserialize_optional_review_verification_state<'de, D>(
+    deserializer: D,
+) -> Result<Option<ReviewVerificationStateInput>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    Option::<ReviewVerificationStateInput>::deserialize(deserializer)?
+        .map(Some)
+        .ok_or_else(|| D::Error::custom("verification_state must be a string when present"))
 }
 
 #[derive(Debug, Deserialize)]
@@ -415,6 +440,19 @@ impl From<ReviewVisibilityInput> for crate::evidence::ReviewVisibility {
         match value {
             ReviewVisibilityInput::Public => Self::Public,
             ReviewVisibilityInput::Redacted => Self::Redacted,
+        }
+    }
+}
+
+impl From<ReviewVerificationStateInput>
+    for crate::intent::review_attestation::ReviewVerificationState
+{
+    fn from(value: ReviewVerificationStateInput) -> Self {
+        match value {
+            ReviewVerificationStateInput::Verified => Self::Verified,
+            ReviewVerificationStateInput::Unverified => Self::Unverified,
+            ReviewVerificationStateInput::Stale => Self::Stale,
+            ReviewVerificationStateInput::Revoked => Self::Revoked,
         }
     }
 }

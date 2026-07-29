@@ -125,6 +125,11 @@ mod tests {
             tool["outputSchema"]["properties"]["manifest"]["type"],
             "object"
         );
+        assert_eq!(
+            tool["outputSchema"]["properties"]["manifest"]["properties"]["reviews"]["items"]["properties"]
+                ["verification_state"]["enum"],
+            json!(["verified", "unverified", "stale", "revoked"])
+        );
     }
 
     #[test]

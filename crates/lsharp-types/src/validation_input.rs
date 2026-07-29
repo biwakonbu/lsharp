@@ -38,6 +38,8 @@ pub enum ValidationInputError {
     Node(#[from] crate::intent::NodeTextError),
     #[error("intent graph の登録に失敗しました: {0}")]
     Graph(#[from] crate::evidence::GraphError),
+    #[error("review verification state の登録に失敗しました: {0}")]
+    ReviewVerificationState(#[from] crate::evidence::ReviewVerificationStateError),
     #[error("{relation} が存在しない node を参照しています: {id}")]
     MissingNodeReference { relation: &'static str, id: String },
     #[error("{relation} の subject kind {kind} は不正です: {id}")]
@@ -84,11 +86,15 @@ pub fn parse_intent_graph_json(source: &str) -> Result<IntentGraph, ValidationIn
 }
 
 fn build_review(input: ReviewInput) -> Result<ReviewRecord, ValidationInputError> {
-    Ok(ReviewRecord::new(
+    let review = ReviewRecord::new(
         ReviewId::new(input.namespace, input.key)?,
         input.provenance_digest,
         input.visibility.into(),
-    ))
+    );
+    match input.verification_state {
+        Some(state) => Ok(review.with_verification_state(state.into())?),
+        None => Ok(review),
+    }
 }
 
 fn build_node(input: NodeInput) -> Result<IntentNode, ValidationInputError> {

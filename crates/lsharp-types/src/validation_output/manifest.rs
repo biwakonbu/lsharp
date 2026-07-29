@@ -133,6 +133,8 @@ struct ReviewWire<'a> {
     key: &'a str,
     provenance_digest: &'a str,
     visibility: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    verification_state: Option<&'static str>,
 }
 
 impl<'a> ReviewWire<'a> {
@@ -143,6 +145,7 @@ impl<'a> ReviewWire<'a> {
             key: id.key(),
             provenance_digest: review.provenance_digest(),
             visibility: review.visibility().as_str(),
+            verification_state: review.verification_state().map(|state| state.as_str()),
         }
     }
 }

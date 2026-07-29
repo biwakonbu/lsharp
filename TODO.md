@@ -410,9 +410,10 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
 正本: [`v0.3-review-provenance-lifecycle.md`](docs/development/planning/v0.3-review-provenance-lifecycle.md)
 
 - [~] `EC-M3-01` attestation の canonical bytes、strict UTC timestamp、Ed25519 signature、
-  current subject/source/provenance binding と explicit report verification fact projection を
-  Rust canonical model で検証する。version 1 manifest projection、selfhost/native parity、両
-  supported target の artifact/runtime evidence を閉じる。
+  current subject/source/provenance binding と explicit report、および
+  `reviews[].verification_state` manifest projection を Rust canonical model で検証する。
+  attestation input wiring、selfhost/native parity、両 supported target の artifact/runtime evidence
+  を閉じる。
 - [~] `EC-M3-02` append-only lifecycle を deterministic に reduce し、active sequence、superseded、
   revoked、stale を report の事実へ接続する。provider snapshot の取得と report projection は残る。
 - [~] `EC-M3-03` CLI/MCP の trust store/lifecycle explicit input と project-root boundary を維持し、
@@ -423,8 +424,9 @@ acceptance と依存順を確認し、完了 slice の履歴を TODO へ再展�
   verified/unverified/stale/revoked/invalid を JSON/text/MCP と release gate で同じ順序にする。
 
 この milestone の verified slice は ADR に残すが、項目全体の completion boundary を満たすまで
-`[~]` を維持する。report projection の次の RED は `EC-M3-01` の version 1 manifest projection
-とし、現在の `lsharp-types` clock contract を CLI/MCP へ暗黙に拡張しない。
+`[~]` を維持する。report と manifest state projection の次の RED は `EC-M3-03` の explicit
+attestation/trust/lifecycle input から state を生成する CLI/MCP wiring とし、現在の
+`lsharp-types` clock contract を暗黙に拡張しない。
 
 ## v0.2 Milestone 1 closure
 

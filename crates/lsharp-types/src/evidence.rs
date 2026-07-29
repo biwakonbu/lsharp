@@ -3,6 +3,7 @@
 //! edge の向きを typed ID で表し、異なる node kind を文字列で暗黙に結び付けない。
 //! graph の referential closure や欠落検査は M2-03 `validate` の責務として残す。
 
+use crate::intent::review_attestation::ReviewVerificationState;
 use crate::intent::{
     AssumptionId, ChangeId, ClaimId, ContractId, EvidenceId, IntentId, ReviewId, StableId,
 };
@@ -48,6 +49,13 @@ pub enum EvidenceValidationError {
     CoverageCountMismatch { cases: usize, covered: usize },
     #[error("evidence の coverage 件数の合計が表現可能な範囲を超えています")]
     CoverageCountOverflow,
+}
+
+/// review registry へ verification state を投影できない理由。
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum ReviewVerificationStateError {
+    #[error("review verification state invalid は manifest に投影できません")]
+    InvalidState,
 }
 
 fn validate_required_field(
@@ -298,6 +306,7 @@ pub struct ReviewRecord {
     id: ReviewId,
     provenance_digest: String,
     visibility: ReviewVisibility,
+    verification_state: Option<ReviewVerificationState>,
 }
 
 impl ReviewRecord {
@@ -310,7 +319,30 @@ impl ReviewRecord {
             id,
             provenance_digest: provenance_digest.into(),
             visibility,
+            verification_state: None,
         }
+    }
+
+    /// verifier が明示した state を registry record へ付与する。
+    ///
+    /// `invalid` は parse/verification error のため、manifest の state fact として保存しない。
+    pub fn with_verification_state(
+        mut self,
+        state: ReviewVerificationState,
+    ) -> Result<Self, ReviewVerificationStateError> {
+        self.set_verification_state(state)?;
+        Ok(self)
+    }
+
+    pub fn set_verification_state(
+        &mut self,
+        state: ReviewVerificationState,
+    ) -> Result<(), ReviewVerificationStateError> {
+        if state == ReviewVerificationState::Invalid {
+            return Err(ReviewVerificationStateError::InvalidState);
+        }
+        self.verification_state = Some(state);
+        Ok(())
     }
 
     pub fn id(&self) -> &ReviewId {
@@ -323,6 +355,10 @@ impl ReviewRecord {
 
     pub fn visibility(&self) -> ReviewVisibility {
         self.visibility
+    }
+
+    pub const fn verification_state(&self) -> Option<ReviewVerificationState> {
+        self.verification_state
     }
 
     pub fn validate_required_fields(&self) -> Result<(), EvidenceValidationError> {

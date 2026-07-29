@@ -44,7 +44,7 @@ canonical projection を利用できる境界が必要だった。
 
 ## Boundary
 
-これは canonical Rust report projection の verified partial slice である。version 1 manifest への
-attestation/lifecycle input projection、CLI の explicit wire wiring、MCP runtime facts、source/
-selfhost/native parity、Mac Apple Silicon/Linux x86_64 artifact/runtime evidence は未完了であり、
-EC-M3-01〜05 に残す。
+これは canonical Rust report projection の verified partial slice である。version 1 manifest の
+optional `reviews[].verification_state` projection は別 ADR で追加済みだが、attestation/lifecycle
+input projection、CLI の explicit wire wiring、MCP runtime facts、source/selfhost/native parity、
+Mac Apple Silicon/Linux x86_64 artifact/runtime evidence は未完了であり、EC-M3-01〜05 に残す。

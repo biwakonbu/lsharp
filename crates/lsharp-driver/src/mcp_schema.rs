@@ -528,6 +528,10 @@ fn review_registry_schema() -> Value {
                 "visibility": {
                     "type": "string",
                     "enum": ["public", "redacted"]
+                },
+                "verification_state": {
+                    "type": "string",
+                    "enum": ["verified", "unverified", "stale", "revoked"]
                 }
             }
         }
