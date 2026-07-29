@@ -1,4 +1,6 @@
 fn validate_tool(arguments: &Value) -> Result<Value, String> {
+    let review_inputs = review_input_arguments(arguments)?;
+    let _ = review_inputs.explicit_count();
     let graph = validation_graph(arguments)?;
     let include_manifest = include_manifest_argument(arguments)?;
     let mut report = graph.validate().to_json_value();
@@ -6,6 +8,55 @@ fn validate_tool(arguments: &Value) -> Result<Value, String> {
         report["manifest"] = graph.to_manifest_json_value();
     }
     Ok(report)
+}
+
+fn review_input_arguments(arguments: &Value) -> Result<crate::review_input::ReviewInputs, String> {
+    let trust_store = path_argument(arguments, "trust_store")?;
+    let lifecycle = path_argument(arguments, "review_lifecycle")?;
+    let project_root = review_input_project_root(arguments)?;
+    crate::review_input::load_review_inputs(
+        &project_root,
+        trust_store.as_deref(),
+        lifecycle.as_deref(),
+    )
+    .map_err(|error| error.to_string())
+}
+
+fn path_argument(arguments: &Value, name: &str) -> Result<Option<std::path::PathBuf>, String> {
+    match arguments.get(name) {
+        None => Ok(None),
+        Some(Value::String(path)) if !path.trim().is_empty() => Ok(Some(path.into())),
+        Some(Value::String(_)) => Err(format!("{name} は空にできません")),
+        Some(_) => Err(format!("{name} は文字列 path が必要です")),
+    }
+}
+
+fn review_input_project_root(arguments: &Value) -> Result<std::path::PathBuf, String> {
+    let start = ["manifest_file", "file"]
+        .into_iter()
+        .find_map(|name| arguments.get(name).and_then(Value::as_str))
+        .map(|path| {
+            let path = std::path::Path::new(path);
+            if path.is_dir() {
+                path.to_path_buf()
+            } else {
+                path.parent().unwrap_or(path).to_path_buf()
+            }
+        })
+        .unwrap_or(std::env::current_dir().map_err(|error| error.to_string())?);
+    let mut current = start;
+    loop {
+        if current.join("lsharp.toml").is_file() {
+            return Ok(current);
+        }
+        let Some(parent) = current.parent() else {
+            return Ok(current);
+        };
+        if parent == current {
+            return Ok(current);
+        }
+        current = parent.to_path_buf();
+    }
 }
 
 fn validation_graph(arguments: &Value) -> Result<lsharp_types::validation::IntentGraph, String> {

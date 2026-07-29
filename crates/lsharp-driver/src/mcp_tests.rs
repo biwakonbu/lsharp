@@ -226,6 +226,34 @@ mod tests {
             tool["inputSchema"]["properties"]["include_manifest"]["type"],
             "boolean"
         );
+        assert_eq!(
+            tool["inputSchema"]["properties"]["trust_store"]["type"],
+            "string"
+        );
+        assert_eq!(
+            tool["inputSchema"]["properties"]["review_lifecycle"]["type"],
+            "string"
+        );
+    }
+
+    #[test]
+    fn test_validate_tool_rejects_review_input_outside_project_root() {
+        let error = call_tool(
+            "lsharp_validate",
+            &json!({
+                "manifest": {
+                    "schema_version": 1,
+                    "nodes": [],
+                    "evidence": [],
+                    "edges": []
+                },
+                "trust_store": "../outside-review-wire.json"
+            }),
+        )
+        .expect_err("project root 外の trust store は拒否するべき");
+
+        assert!(error.contains("project root"), "unexpected error: {error}");
+        assert!(error.contains("trust store"), "unexpected error: {error}");
     }
 
     #[test]

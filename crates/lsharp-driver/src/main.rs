@@ -16,6 +16,7 @@ mod error_codes;
 mod lockfile;
 mod mcp_server;
 mod resolver;
+mod review_input;
 #[cfg(test)]
 #[path = "main_tests.rs"]
 mod tests;
@@ -206,6 +207,14 @@ enum Command {
         /// 構築した graph を versioned JSON manifest として出力
         #[arg(long, value_name = "OUTPUT")]
         emit_manifest: Option<PathBuf>,
+
+        /// 明示した project-relative review trust store wire
+        #[arg(long, value_name = "FILE")]
+        trust_store: Option<PathBuf>,
+
+        /// 明示した project-relative review lifecycle wire
+        #[arg(long, value_name = "FILE")]
+        review_lifecycle: Option<PathBuf>,
     },
 
     /// ドキュメントレビュー (YAML チェックポイント出力)
@@ -393,7 +402,19 @@ fn main() -> miette::Result<()> {
             source,
             format,
             emit_manifest,
+            trust_store,
+            review_lifecycle,
         } => {
+            let current_dir = std::env::current_dir()
+                .map_err(|error| miette::miette!("current dir の取得に失敗しました: {error}"))?;
+            let project_root = find_project_root(&current_dir);
+            let review_inputs = review_input::load_review_inputs(
+                &project_root,
+                trust_store.as_deref(),
+                review_lifecycle.as_deref(),
+            )
+            .map_err(|error| miette::miette!("{error}"))?;
+            let _ = review_inputs.explicit_count();
             let exit_code = if let Some(source) = source {
                 cmd_validate_source(&source, format, emit_manifest.as_deref())?
             } else {

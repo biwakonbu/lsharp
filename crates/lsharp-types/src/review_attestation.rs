@@ -124,7 +124,6 @@ impl ReviewAttestation {
         let provider = provider.into();
         let key_id = key_id.into();
         let issued_at = issued_at.into();
-        let expires_at = expires_at;
         let signature = signature.into();
 
         validate_required("review_id", &review_id)?;

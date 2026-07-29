@@ -206,7 +206,9 @@ fn validate_input_schema() -> Value {
                 ]
             },
             "manifest_file": { "type": "string" },
-            "include_manifest": { "type": "boolean" }
+            "include_manifest": { "type": "boolean" },
+            "trust_store": { "type": "string" },
+            "review_lifecycle": { "type": "string" }
         },
         "oneOf": [
             { "required": ["source"] },
