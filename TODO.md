@@ -838,3 +838,10 @@ behaviorを回帰テストと ADR に昇格した Rust canonical verified partia
 変更はない。selfhost/native manifest parser、CLI/MCP parity、current-source artifact/runtime、Mac/Linux
 matrix、EC-M2/EC-M3 aggregate は残件。Evidence:
 `docs/adr/decisions-v0.2-validation-manifest-duplicate-top-level.md`。
+
+2026-07-29 に同じ duplicate top-level key boundary を公開 `lsharp validate` へ接続した。
+`manifest_input_cli` の fixture が exit `1`、空 stdout、`--emit-manifest` file 未生成、stderr の
+`duplicate` / `schema_version` 診断を返すことを固定した。Rust-host CLI verified partial sliceであり、
+selfhost/native manifest parser、MCP report/exit parity、current-source stage0 artifact/runtime、
+Mac/Linux matrix、EC-M2/EC-M3 aggregate は残件。Evidence:
+`docs/adr/decisions-v0.2-validation-manifest-duplicate-top-level.md`。

@@ -154,6 +154,23 @@ fn validate_rejects_duplicate_review_identity_without_report_or_manifest_output(
 }
 
 #[test]
+fn validate_rejects_duplicate_top_level_fields_without_report_or_manifest_output() {
+    assert_manifest_input_error(
+        "duplicate-top-level-field",
+        r#"
+        {
+          "schema_version": 1,
+          "schema_version": 1,
+          "nodes": [],
+          "evidence": [],
+          "edges": []
+        }
+        "#,
+        &["duplicate", "schema_version"],
+    );
+}
+
+#[test]
 fn validate_rejects_unknown_edge_field_without_report_or_manifest_output() {
     assert_manifest_input_error(
         "unknown-edge-field",

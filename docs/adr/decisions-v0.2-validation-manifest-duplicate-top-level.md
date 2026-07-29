@@ -29,11 +29,16 @@ manifest の意味が変わり得る。version 1 envelope は `schema_version`�
   となることを固定した。
 - focused `cargo test -p lsharp-types --test validation_input` 28件が pass。既存の explicit empty
   graph、required-field、unknown-field、nested duplicate coverage の契約と共存することを確認した。
+- 公開 `lsharp validate` の `manifest_input_cli` fixture でも同じ `schema_version` duplicate を入力し、
+  exit code `1`、空 stdout、`--emit-manifest` file 未生成、stderr の `duplicate` / `schema_version`
+  診断を固定した。canonical parser の fail-closed contract が Rust-host CLI surface まで伝播することを
+  確認した。
 - production code の変更は不要だった。これは serde decode の既存 fail-closed behavior を回帰テストと
   ADRへ昇格した verified partial sliceである。
 
 ## Boundary
 
-これは Rust version 1 manifest envelope の duplicate-key input boundary に限定される。source
-adapter、selfhost/native manifest parser、CLI/MCP report/exit parity、current-source stage0、
-Mac Apple Silicon / Linux x86_64 artifact/runtime、EC-M2/EC-M3 aggregate の完了を意味しない。
+これは Rust version 1 manifest envelope の duplicate-key input boundary と、Rust-host 公開
+`lsharp validate` の入力エラー surface に限定される。source adapter、selfhost/native manifest parser、
+MCP report/exit parity、current-source stage0、Mac Apple Silicon / Linux x86_64 artifact/runtime、
+EC-M2/EC-M3 aggregate の完了を意味しない。
