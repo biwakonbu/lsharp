@@ -654,6 +654,59 @@ mod review_registry_tests {
         std::fs::remove_file(&path).expect("duplicate manifest_file fixtureを削除できるべき");
     }
 
+    #[test]
+    fn test_validate_tool_rejects_unknown_top_level_manifest_fields() {
+        let object = json!({
+            "schema_version": 1,
+            "nodes": [],
+            "evidence": [],
+            "edges": [],
+            "unexpected": true
+        });
+        let string = r#"{
+            "schema_version": 1,
+            "nodes": [],
+            "evidence": [],
+            "edges": [],
+            "unexpected": true
+        }"#;
+        let assert_error = |arguments: Value, route: &str| {
+            let response = handle_jsonrpc_message(&json!({
+                "jsonrpc": "2.0",
+                "id": 5,
+                "method": "tools/call",
+                "params": { "name": "lsharp_validate", "arguments": arguments }
+            }));
+            let error = response["result"]["content"][0]["text"]
+                .as_str()
+                .expect("unknown manifest field error は text を返すべき");
+            assert_eq!(response["result"]["isError"], true, "{route}");
+            assert!(response["result"].get("structuredContent").is_none());
+            assert!(
+                error.contains("validation manifest の parse に失敗しました:"),
+                "{route}: unexpected error: {error}"
+            );
+            assert!(
+                error.contains("unexpected"),
+                "{route}: unexpected error: {error}"
+            );
+        };
+
+        assert_error(json!({ "manifest": object }), "manifest-object");
+        assert_error(json!({ "manifest": string }), "manifest-string");
+
+        let path = std::env::temp_dir().join(format!(
+            "lsharp_mcp_unknown_top_level_{}.json",
+            std::process::id()
+        ));
+        std::fs::write(&path, string).expect("unknown manifest_file fixtureを書き込めるべき");
+        assert_error(
+            json!({ "manifest_file": path.display().to_string() }),
+            "manifest-file",
+        );
+        std::fs::remove_file(&path).expect("unknown manifest_file fixtureを削除できるべき");
+    }
+
     fn numeric_manifest_with_literal(marker: &str, literal: &str) -> String {
         let template = r#"{
             "schema_version": 1,

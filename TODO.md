@@ -865,3 +865,10 @@ directory targetを report生成前に non-zero exit・空 stdout・個別診断
 `validate_cli` 全32件で project-relative、`..`、absolute、empty、missing、regular-file、外部symlinkを
 固定した。Rust-host CLI verified partial sliceであり、selfhost/native、current-source stage0 artifact/runtime、
 Mac/Linux matrix、EC-M2-03 aggregate は残件。Evidence: `docs/adr/decisions-v0.2-validation-config.md`。
+
+2026-07-29 に MCP `lsharp_validate` の manifest unknown top-level field runtime boundaryを追加した。
+`unexpected` fieldを direct object、JSON string、`manifest_file` の3 routeへ入力し、`isError: true`、
+`structuredContent` なし、parse errorとfield名を返す fail-closed contractを固定した。MCP
+`review_registry_tests` 16件のRust-host verified partial sliceであり、selfhost/native MCP producer、
+current-source stage0 artifact/runtime、Mac/Linux matrix、EC-M3 aggregate は残件。Evidence:
+`docs/adr/decisions-v0.2-mcp-validation-manifest.md`。

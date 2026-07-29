@@ -140,6 +140,15 @@ diagnostic が CLI と乖離する。
   同じ既存差分で失敗するため、追加ブロックは rustfmt 出力へ合わせ、ベースライン差分を広げていない。
   これは Rust-host verified partial sliceであり、selfhost/native MCP producer、current-source stage0
   artifact/runtime、対応2 target、EC-M3 全体の完了証拠ではない。
+- Unknown top-level field runtime follow-up: version 1 manifest の `unexpected` fieldを direct object、
+  JSON string、`manifest_file` の3 routeへ入力し、canonical parserの unknown-field rejection が
+  `isError: true`、`structuredContent` なし、`validation manifest の parse` と field名付き text errorへ
+  伝播することを固定した。static schemaの `additionalProperties: false` だけでなく、実MCP transportの
+  object serializationとstring/file parser routeを同じ fail-closed contractへ揃えた。
+- Unknown top-level field runtime gate: `mcp_server::tests::review_registry_tests` 16 tests、対象 binaryの
+  clippy、追加ブロックを含む対象rustfmt確認、`git diff --check`、docs auditを通過した。Rust-host
+  verified partial sliceであり、selfhost/native MCP producer、current-source stage0 artifact/runtime、
+  対応2 target、EC-M3 全体の完了証拠ではない。
 
 ## Boundary and follow-up
 
