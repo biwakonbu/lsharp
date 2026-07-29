@@ -895,3 +895,11 @@ Mac/Linux matrix、EC-M2-03 aggregate は残件。Evidence: `docs/adr/decisions-
 `review_registry_tests` 16件のRust-host verified partial sliceであり、selfhost/native MCP producer、
 current-source stage0 artifact/runtime、Mac/Linux matrix、EC-M3 aggregate は残件。Evidence:
 `docs/adr/decisions-v0.2-mcp-validation-manifest.md`。
+
+2026-07-29 に failed independent review の complete graph source fixture を native smoke に追加した。
+`method=review`、`outcome=fail`、`independence=independent-review` は JSON/text とも `status: unknown`、
+exit `2`、`independent_reviews: 0`、stderr 空となることを固定した。Rust canonical の
+RED→GREEN を native source-file contract へ接続する fake Lima/provenance harness の verified partial
+sliceであり、current source-commit に一致する実 stage0 artifact/runtime、selfhost/native/MCP parity、
+Mac/Linux matrix、EC-M2-03 aggregate は残件。Evidence:
+`docs/adr/decisions-v0.2-native-validation-failed-independent-review.md`。

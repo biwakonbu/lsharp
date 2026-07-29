@@ -57,6 +57,11 @@ for required in \
   'validation-pass-text' \
   'status: pass' \
   'independent-reviews: 1' \
+  'VALIDATION_FAILED_REVIEW_SOURCE' \
+  'validation-failed-review-json' \
+  'validation-failed-review-text' \
+  'failed independent review must leave validation unknown' \
+  'independent-reviews: 0' \
   'VALIDATION_FAIL_SOURCE' \
   'validation-fail-json' \
   'validation-fail-text' \
