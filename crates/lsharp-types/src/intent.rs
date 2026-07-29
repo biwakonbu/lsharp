@@ -7,6 +7,9 @@
 
 use lsharp_syntax::span::Span;
 
+#[path = "review_attestation.rs"]
+pub mod review_attestation;
+
 /// intent/evidence graph の node 種別。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum NodeKind {
