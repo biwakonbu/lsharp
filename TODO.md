@@ -766,3 +766,11 @@ input の span / sampling 全6 fieldで fractional、`null`、`u64::MAX + 1` を
 verified partial sliceであり、selfhost/native MCP、current-source stage0 artifact/runtime、Mac/Linux
 matrix、JSON Schema実 validator、EC-M3 aggregate は未完了である。Evidence:
 `docs/adr/decisions-v0.2-mcp-validation-manifest.md`。
+
+2026-07-29 に EC-M3-01 の MCP typed edge schema boundary を追加した。`tools/list` の manifest
+`edges[]` が公開 intent-graph schema と同じ6 relation variantを `oneOf` で宣言し、stable IDの
+namespace/key pattern と evidence/review/invalidation subject kind enum を input/output 共通 schema
+へ反映することを新規 parity test と MCP suite 46件で固定した。static schema と Rust MCP の verified
+partial sliceであり、JSON Schema 実 validator、selfhost/native MCP、current-source stage0 artifact/runtime、
+Mac/Linux matrix、EC-M3 aggregate は未完了である。Evidence:
+`docs/adr/decisions-v0.2-mcp-validation-manifest.md`。

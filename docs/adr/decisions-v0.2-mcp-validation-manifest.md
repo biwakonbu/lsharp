@@ -57,6 +57,14 @@ diagnostic が CLI と乖離する。
 - Numeric runtime gate: `mcp_server::tests` 45 tests と対象 binary の `cargo clippy --tests -- -D warnings`
   を pass。既存 typed serde parser の境界を MCP tool まで接続した Rust-host verified sliceであり、
   production code の変更はない。
+- Typed edge schema follow-up: 公開 `docs/schemas/intent-graph.schema.json` と同じ6 relation variant
+  （`motivates` / `constrained-by` / `tested-by` / `supports|contradicts` / `evaluates` /
+  `invalidates`）を `edges[].oneOf` へ追加し、stable ID の namespace/key pattern と、evidence /
+  review / invalidation subject の kind enum を MCP input/output schema に反映した。input/output は
+  同じ manifest helper を共有する。
+- Typed edge schema gate: 新規 schema parity test と `mcp_server::tests` 46 tests、対象 binary の
+  `cargo clippy --tests -- -D warnings`、rustfmt、`git diff --check`、docs audit（0 errors/warnings）を
+  passした。
 
 ## Boundary and follow-up
 
@@ -67,3 +75,5 @@ selfhost/native report parity、Mac Apple Silicon / Linux x86_64 artifact/runtim
 `tools/list` 契約と Rust MCP lane に限定され、JSON Schema validator 実行、selfhost/native MCP、
 current-source artifact/runtime、supported 2 targets の完了証拠には数えない。
 MCP runtime matrixも同じく Rust-host lane に限られ、native/selfhost の診断・target parity は未検証である。
+今回の typed edge schema も static `tools/list` contract と Rust MCP lane に限定され、JSON Schema 実
+validator、selfhost/native MCP producer、Mac/Linux artifact/runtime の完了証拠には数えない。

@@ -77,6 +77,78 @@ mod review_registry_tests {
     }
 
     #[test]
+    fn test_validate_tool_manifest_schema_declares_typed_edges_and_subjects() {
+        let response = handle_jsonrpc_message(&json!({
+            "jsonrpc": "2.0",
+            "id": 4,
+            "method": "tools/list"
+        }));
+        let tool = response["result"]["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|tool| tool["name"] == "lsharp_validate")
+            .expect("lsharp_validate が tools/list に必要");
+        let input_manifest = &tool["inputSchema"]["properties"]["manifest"]["oneOf"][0];
+        let output_manifest = &tool["outputSchema"]["properties"]["manifest"];
+
+        assert_eq!(input_manifest, output_manifest);
+        let edge_variants = input_manifest["properties"]["edges"]["items"]["oneOf"]
+            .as_array()
+            .expect("edges は relation-specific oneOf を公開するべき");
+        assert_eq!(edge_variants.len(), 6);
+        assert_eq!(
+            edge_variants[0]["properties"]["relation"]["const"],
+            "motivates"
+        );
+        assert_eq!(
+            edge_variants[1]["properties"]["relation"]["const"],
+            "constrained-by"
+        );
+        assert_eq!(
+            edge_variants[2]["properties"]["relation"]["const"],
+            "tested-by"
+        );
+        assert_eq!(
+            edge_variants[3]["properties"]["relation"]["enum"],
+            json!(["supports", "contradicts"])
+        );
+        assert_eq!(
+            edge_variants[4]["properties"]["relation"]["const"],
+            "evaluates"
+        );
+        assert_eq!(
+            edge_variants[5]["properties"]["relation"]["const"],
+            "invalidates"
+        );
+
+        let id_schema = &edge_variants[0]["properties"]["intent"];
+        assert_eq!(id_schema["required"], json!(["namespace", "key"]));
+        assert_eq!(
+            id_schema["properties"]["namespace"]["pattern"],
+            "^[A-Za-z0-9_.-]+$"
+        );
+        assert_eq!(
+            id_schema["properties"]["key"]["pattern"],
+            "^[A-Za-z0-9_.-]+$"
+        );
+
+        assert_eq!(
+            input_manifest["properties"]["evidence"]["items"]["properties"]["subject"]
+                ["properties"]["kind"]["enum"],
+            json!(["intent", "claim", "contract"])
+        );
+        assert_eq!(
+            edge_variants[4]["properties"]["subject"]["properties"]["kind"]["enum"],
+            json!(["intent", "claim", "evidence"])
+        );
+        assert_eq!(
+            edge_variants[5]["properties"]["subject"]["properties"]["kind"]["enum"],
+            json!(["evidence", "review"])
+        );
+    }
+
+    #[test]
     fn test_validate_tool_manifest_schema_declares_unsigned_integer_boundaries() {
         let response = handle_jsonrpc_message(&json!({
             "jsonrpc": "2.0",

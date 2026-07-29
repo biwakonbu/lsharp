@@ -222,7 +222,10 @@ fn intent_graph_manifest_schema() -> Value {
                 "type": "array",
                 "items": evidence_schema()
             },
-            "edges": { "type": "array" }
+            "edges": {
+                "type": "array",
+                "items": edge_schema()
+            }
         }
     })
 }
@@ -244,9 +247,15 @@ fn node_schema() -> Value {
                 "type": "string",
                 "enum": ["intent", "claim", "assumption", "open-question"]
             },
-            "namespace": { "type": "string" },
-            "key": { "type": "string" },
-            "text": { "type": "string" },
+            "namespace": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_.-]+$"
+            },
+            "key": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_.-]+$"
+            },
+            "text": { "type": "string", "minLength": 1 },
             "span": span_schema()
         }
     })
@@ -279,13 +288,19 @@ fn evidence_schema() -> Value {
             "independence"
         ],
         "properties": {
-            "namespace": { "type": "string" },
-            "key": { "type": "string" },
+            "namespace": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_.-]+$"
+            },
+            "key": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_.-]+$"
+            },
             "method": {
                 "type": "string",
                 "enum": ["example", "case", "assert", "property", "production", "reference", "proof", "review"]
             },
-            "subject": { "type": "object" },
+            "subject": subject_schema(&["intent", "claim", "contract"]),
             "outcome": {
                 "type": "string",
                 "enum": ["pass", "fail", "contradicted", "unknown", "stale"]
@@ -315,10 +330,10 @@ fn execution_schema() -> Value {
         "additionalProperties": false,
         "required": ["runner", "target", "source_commit", "artifact_digest", "sampling"],
         "properties": {
-            "runner": { "type": "string" },
-            "target": { "type": "string" },
-            "source_commit": { "type": "string" },
-            "artifact_digest": { "type": "string" },
+            "runner": { "type": "string", "minLength": 1 },
+            "target": { "type": "string", "minLength": 1 },
+            "source_commit": { "type": "string", "minLength": 1 },
+            "artifact_digest": { "type": "string", "minLength": 1 },
             "sampling": sampling_schema()
         }
     })
@@ -332,7 +347,7 @@ fn sampling_schema() -> Value {
         "properties": {
             "cases": non_negative_integer_schema(),
             "seed": non_negative_integer_schema(),
-            "generator": { "type": "string" },
+            "generator": { "type": "string", "minLength": 1 },
             "shrinks": {
                 "type": "array",
                 "items": non_negative_integer_schema()
@@ -342,6 +357,114 @@ fn sampling_schema() -> Value {
                 "additionalProperties": non_negative_integer_schema()
             }
         }
+    })
+}
+
+fn id_schema() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["namespace", "key"],
+        "properties": {
+            "namespace": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_.-]+$"
+            },
+            "key": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_.-]+$"
+            }
+        }
+    })
+}
+
+fn subject_schema(kinds: &[&str]) -> Value {
+    let kind_values = kinds
+        .iter()
+        .map(|kind| Value::String((*kind).to_string()))
+        .collect::<Vec<_>>();
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "namespace", "key"],
+        "properties": {
+            "kind": { "type": "string", "enum": kind_values },
+            "namespace": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_.-]+$"
+            },
+            "key": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_.-]+$"
+            }
+        }
+    })
+}
+
+fn edge_schema() -> Value {
+    json!({
+        "oneOf": [
+            {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["relation", "intent", "claim"],
+                "properties": {
+                    "relation": { "const": "motivates" },
+                    "intent": id_schema(),
+                    "claim": id_schema()
+                }
+            },
+            {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["relation", "claim", "assumption"],
+                "properties": {
+                    "relation": { "const": "constrained-by" },
+                    "claim": id_schema(),
+                    "assumption": id_schema()
+                }
+            },
+            {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["relation", "claim", "contract"],
+                "properties": {
+                    "relation": { "const": "tested-by" },
+                    "claim": id_schema(),
+                    "contract": id_schema()
+                }
+            },
+            {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["relation", "observation", "claim"],
+                "properties": {
+                    "relation": { "enum": ["supports", "contradicts"] },
+                    "observation": id_schema(),
+                    "claim": id_schema()
+                }
+            },
+            {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["relation", "review", "subject"],
+                "properties": {
+                    "relation": { "const": "evaluates" },
+                    "review": id_schema(),
+                    "subject": subject_schema(&["intent", "claim", "evidence"])
+                }
+            },
+            {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["relation", "change", "subject"],
+                "properties": {
+                    "relation": { "const": "invalidates" },
+                    "change": id_schema(),
+                    "subject": subject_schema(&["evidence", "review"])
+                }
+            }
+        ]
     })
 }
 
