@@ -790,3 +790,11 @@ Rust `u64` と schemaの整数上限を揃えるため、unsigned 6 fieldへ `ma
 `mcp_server::tests` 48件で verifiedした Rust-host schema sliceであり、selfhost/native MCP、current-source
 stage0 artifact/runtime、Mac/Linux matrix、EC-M3 aggregate は未完了である。Evidence:
 `docs/adr/decisions-v0.2-mcp-validation-manifest.md`。
+
+2026-07-29 に EC-M3-01 の MCP validation report schema boundary を追加した。`intent-validation.schema.json`
+の external `$ref` を canonical intent graph schema resource として解決し、実際の
+`lsharp_validate` `include_manifest: true` output（report と inline manifest）を Draft 2020-12 validator
+で検証する valid roundtrip と、未知 `status` の reject を固定した。MCP suite 49件、clippy、rustfmt、
+diff check、docs auditを通過した Rust-host verified partial sliceであり、native/selfhost MCP producer、
+current-source stage0 artifact/runtime、Mac/Linux matrix、EC-M3 aggregate は残件である。Evidence:
+`docs/adr/decisions-v0.2-mcp-validation-manifest.md`。

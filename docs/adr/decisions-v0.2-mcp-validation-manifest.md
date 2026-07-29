@@ -84,6 +84,15 @@ diagnostic が CLI と乖離する。
   rustfmt、`git diff --check`、docs audit（0 errors/warnings）を passした。これは Rust-host の schema
   contract verified sliceであり、native/selfhost MCP producer、current-source artifact/runtime、対応2 target
   の完了証拠ではない。
+- Validation report follow-up: `intent-validation.schema.json` の external `$ref` を canonical
+  `intent-graph.schema.json` resource として登録し、実際の `call_tool("lsharp_validate", include_manifest: true)`
+  が返す report と inline manifest を Draft 2020-12 validator で検証した。valid canonical fixture の
+  roundtrip と未知の `status` の reject を固定し、schema の report envelope が static schema だけでなく
+  MCP の actual output も覆うことを確認した。
+- Validation report gate: `$ref` 解決付き validator test と `mcp_server::tests` 49 tests、対象 binary の
+  `cargo clippy --tests -- -D warnings`、rustfmt、`git diff --check`、docs audit（0 errors/warnings）を
+  passした。これは Rust-host の report schema verified sliceであり、native/selfhost MCP producer、
+  current-source artifact/runtime、対応2 target、EC-M3 全体の完了証拠ではない。
 
 ## Boundary and follow-up
 
@@ -102,3 +111,6 @@ MCP、current-source artifact/runtime、JSON Schema 実 validator、Mac/Linux �
 今回の Draft 2020-12 validator は canonical/MCP schema の構文・valid fixture・主要 reject matrix を
  Rust-host で実行したが、selfhost/native producer、current-source stage0 artifact/runtime、Mac/Linux
  target parity、EC-M3 全体の完了証拠には数えない。
+今回の validation report validator は `intent-validation.schema.json` の `$ref` と actual MCP report の
+接続を Rust-host で検証したが、native/selfhost report producer、current-source stage0 artifact/runtime、
+Mac/Linux target parity、EC-M3 全体の完了証拠には数えない。

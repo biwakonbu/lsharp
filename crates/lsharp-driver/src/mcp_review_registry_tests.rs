@@ -258,6 +258,52 @@ mod review_registry_tests {
     }
 
     #[test]
+    fn test_mcp_validation_report_conforms_to_ref_resolved_intent_validation_schema() {
+        let report_schema: Value = serde_json::from_str(include_str!(
+            "../../../docs/schemas/intent-validation.schema.json"
+        ))
+        .expect("intent validation schema は JSON として読めるべき");
+        let manifest_schema: Value = serde_json::from_str(include_str!(
+            "../../../docs/schemas/intent-graph.schema.json"
+        ))
+        .expect("intent graph schema は JSON として読めるべき");
+        let fixture: Value = serde_json::from_str(include_str!(
+            "../../../tests/fixtures/validation/ec-m3-canonical-manifest.json"
+        ))
+        .expect("canonical manifest fixture は JSON として読めるべき");
+        jsonschema::draft202012::meta::validate(&report_schema)
+            .expect("intent validation schema は Draft 2020-12 meta-schema に適合するべき");
+
+        let manifest_resource = jsonschema::Resource::from_contents(manifest_schema)
+            .expect("intent graph schema を resource として登録できるべき");
+        let validator = jsonschema::draft202012::options()
+            .with_resource(
+                "https://lsharp.dev/schemas/intent-graph.schema.json",
+                manifest_resource,
+            )
+            .build(&report_schema)
+            .expect("intent validation schema の $ref を解決できるべき");
+        let report = call_tool(
+            "lsharp_validate",
+            &json!({
+                "manifest": fixture,
+                "include_manifest": true
+            }),
+        )
+        .expect("MCP validation report を生成できるべき");
+
+        validator.validate(&report).unwrap_or_else(|error| {
+            panic!("MCP validation report が schema に適合しない: {error}")
+        });
+        let mut invalid_report = report;
+        invalid_report["status"] = json!("invalid-status");
+        assert!(
+            !validator.is_valid(&invalid_report),
+            "未知の report status は schema validator で拒否するべき"
+        );
+    }
+
+    #[test]
     fn test_validate_tool_manifest_schema_declares_unsigned_integer_boundaries() {
         let response = handle_jsonrpc_message(&json!({
             "jsonrpc": "2.0",
