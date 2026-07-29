@@ -798,3 +798,11 @@ stage0 artifact/runtime、Mac/Linux matrix、EC-M3 aggregate は未完了であ�
 diff check、docs auditを通過した Rust-host verified partial sliceであり、native/selfhost MCP producer、
 current-source stage0 artifact/runtime、Mac/Linux matrix、EC-M3 aggregate は残件である。Evidence:
 `docs/adr/decisions-v0.2-mcp-validation-manifest.md`。
+
+2026-07-29 に EC-M3-01 の MCP output schema parity boundary を追加した。canonical report schema と
+`tools/list` の output schema を同期し、unknown top-level field、trace gap の未知 code / 空 subject ID、
+64-bit counter 上限超過を両 validator が reject することを新規 matrix で固定した。report counter 5項目の
+`maximum`、trace gap の code enum / non-empty ID、strict object boundary を canonical/MCP に反映し、MCP
+suite 50件、clippy、rustfmt、diff check、docs auditを通過した Rust-host verified partial sliceである。
+selfhost/native MCP producer、current-source stage0 artifact/runtime、Mac/Linux matrix、EC-M3 aggregate は
+残件。Evidence: `docs/adr/decisions-v0.2-mcp-validation-manifest.md`。

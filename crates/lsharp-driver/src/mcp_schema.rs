@@ -126,6 +126,7 @@ fn tool_output_schema(name: &str) -> Value {
         "lsharp_validate" => json!({
             "$schema": "https://json-schema.org/draft/2020-12/schema",
             "type": "object",
+            "additionalProperties": false,
             "required": [
                 "status",
                 "trace_gaps",
@@ -144,18 +145,28 @@ fn tool_output_schema(name: &str) -> Value {
                     "type": "array",
                     "items": {
                         "type": "object",
+                        "additionalProperties": false,
                         "required": ["code", "subject_id"],
                         "properties": {
-                            "code": { "type": "string" },
-                            "subject_id": { "type": "string" }
+                            "code": {
+                                "enum": [
+                                    "trace-gap.intent-without-claim",
+                                    "trace-gap.claim-without-test"
+                                ]
+                            },
+                            "subject_id": { "type": "string", "minLength": 1 }
                         }
                     }
                 },
-                "open_questions": { "type": "integer", "minimum": 0 },
-                "independent_reviews": { "type": "integer", "minimum": 0 },
-                "contradicting_observations": { "type": "integer", "minimum": 0 },
-                "stale_reviews": { "type": "integer", "minimum": 0 },
-                "stale_evidence": { "type": "integer", "minimum": 0 },
+                "open_questions": { "type": "integer", "minimum": 0, "maximum": u64::MAX },
+                "independent_reviews": { "type": "integer", "minimum": 0, "maximum": u64::MAX },
+                "contradicting_observations": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": u64::MAX
+                },
+                "stale_reviews": { "type": "integer", "minimum": 0, "maximum": u64::MAX },
+                "stale_evidence": { "type": "integer", "minimum": 0, "maximum": u64::MAX },
                 "manifest": intent_graph_manifest_schema()
             }
         }),

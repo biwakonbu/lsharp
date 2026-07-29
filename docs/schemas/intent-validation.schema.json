@@ -39,23 +39,28 @@
     },
     "open_questions": {
       "type": "integer",
-      "minimum": 0
+      "minimum": 0,
+      "maximum": 18446744073709551615
     },
     "independent_reviews": {
       "type": "integer",
-      "minimum": 0
+      "minimum": 0,
+      "maximum": 18446744073709551615
     },
     "contradicting_observations": {
       "type": "integer",
-      "minimum": 0
+      "minimum": 0,
+      "maximum": 18446744073709551615
     },
     "stale_reviews": {
       "type": "integer",
-      "minimum": 0
+      "minimum": 0,
+      "maximum": 18446744073709551615
     },
     "stale_evidence": {
       "type": "integer",
-      "minimum": 0
+      "minimum": 0,
+      "maximum": 18446744073709551615
     },
     "manifest": {
       "$ref": "intent-graph.schema.json"

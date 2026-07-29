@@ -304,6 +304,96 @@ mod review_registry_tests {
     }
 
     #[test]
+    fn test_mcp_validation_output_schema_matches_report_boundaries() {
+        let report_schema: Value = serde_json::from_str(include_str!(
+            "../../../docs/schemas/intent-validation.schema.json"
+        ))
+        .expect("intent validation schema は JSON として読めるべき");
+        let manifest_schema: Value = serde_json::from_str(include_str!(
+            "../../../docs/schemas/intent-graph.schema.json"
+        ))
+        .expect("intent graph schema は JSON として読めるべき");
+        let manifest_resource =
+            jsonschema::Resource::from_contents(manifest_schema).expect("manifest schema");
+        let canonical_validator = jsonschema::draft202012::options()
+            .with_resource(
+                "https://lsharp.dev/schemas/intent-graph.schema.json",
+                manifest_resource,
+            )
+            .build(&report_schema)
+            .expect("intent validation schema の $ref を解決できるべき");
+        let response = handle_jsonrpc_message(&json!({
+            "jsonrpc": "2.0",
+            "id": 4,
+            "method": "tools/list"
+        }));
+        let output_schema = response["result"]["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|tool| tool["name"] == "lsharp_validate")
+            .expect("lsharp_validate が tools/list に必要")["outputSchema"]
+            .clone();
+        jsonschema::draft202012::meta::validate(&output_schema)
+            .expect("MCP output schema は Draft 2020-12 meta-schema に適合するべき");
+        let output_validator = jsonschema::draft202012::new(&output_schema)
+            .expect("MCP output schema の validator を構築できるべき");
+        let report = call_tool(
+            "lsharp_validate",
+            &json!({
+                "manifest": {
+                    "schema_version": 1,
+                    "nodes": [],
+                    "evidence": [],
+                    "edges": []
+                },
+                "include_manifest": true
+            }),
+        )
+        .expect("MCP validation report を生成できるべき");
+        assert!(
+            canonical_validator.is_valid(&report),
+            "canonical report schema は valid report を受理するべき"
+        );
+        assert!(
+            output_validator.is_valid(&report),
+            "MCP output schema は valid report を受理するべき"
+        );
+
+        let mut unknown_field = report.clone();
+        unknown_field["unexpected"] = json!(true);
+        let mut invalid_gap_code = report.clone();
+        invalid_gap_code["trace_gaps"] = json!([{
+            "code": "trace-gap.unknown",
+            "subject_id": "intent:checkout/payments"
+        }]);
+        let mut empty_gap_subject = report.clone();
+        empty_gap_subject["trace_gaps"] = json!([{
+            "code": "trace-gap.intent-without-claim",
+            "subject_id": ""
+        }]);
+        let mut overflow_count = report.clone();
+        overflow_count["open_questions"] = serde_json::from_str("18446744073709551616")
+            .expect("overflow report count は JSON として読めるべき");
+
+        for (label, invalid_report) in [
+            ("unknown-field", unknown_field),
+            ("invalid-gap-code", invalid_gap_code),
+            ("empty-gap-subject", empty_gap_subject),
+            ("overflow-count", overflow_count),
+        ] {
+            assert!(
+                !canonical_validator.is_valid(&invalid_report),
+                "{label}: canonical report schema は不正 report を拒否するべき"
+            );
+            assert!(
+                !output_validator.is_valid(&invalid_report),
+                "{label}: MCP output schema は canonical report boundary と同じ reject をするべき"
+            );
+        }
+    }
+
+    #[test]
     fn test_validate_tool_manifest_schema_declares_unsigned_integer_boundaries() {
         let response = handle_jsonrpc_message(&json!({
             "jsonrpc": "2.0",

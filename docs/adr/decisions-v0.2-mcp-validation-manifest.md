@@ -93,6 +93,16 @@ diagnostic が CLI と乖離する。
   `cargo clippy --tests -- -D warnings`、rustfmt、`git diff --check`、docs audit（0 errors/warnings）を
   passした。これは Rust-host の report schema verified sliceであり、native/selfhost MCP producer、
   current-source artifact/runtime、対応2 target、EC-M3 全体の完了証拠ではない。
+- Output schema parity follow-up: MCP `tools/list` の validation output schema を canonical
+  `intent-validation.schema.json` と同期し、unknown top-level field、trace gap の未知 code / 空
+  `subject_id`、64-bit `usize` counter 上限超過を reject する boundary を追加した。report counter 5項目に
+  `maximum: 18446744073709551615`、trace gap の code enum / `minLength: 1`、object の
+  `additionalProperties: false` を canonical/MCP 両方へ反映した。
+- Output schema parity gate: canonical report validator と MCP output validator の valid report / 4 reject
+  matrix を新規テストで固定し、`mcp_server::tests` 50 tests、対象 binary の `cargo clippy --tests -- -D warnings`、
+  rustfmt、`git diff --check`、docs audit（0 errors/warnings）を passした。Rust-host schema contract の
+  verified sliceであり、native/selfhost MCP producer、current-source artifact/runtime、対応2 target、
+  EC-M3 全体の完了証拠ではない。
 
 ## Boundary and follow-up
 
@@ -114,3 +124,6 @@ MCP、current-source artifact/runtime、JSON Schema 実 validator、Mac/Linux �
 今回の validation report validator は `intent-validation.schema.json` の `$ref` と actual MCP report の
 接続を Rust-host で検証したが、native/selfhost report producer、current-source stage0 artifact/runtime、
 Mac/Linux target parity、EC-M3 全体の完了証拠には数えない。
+今回の output schema parity は canonical report の strict boundary と MCP `tools/list` の静的 contract を
+Rust-host で同期したが、native/selfhost producer、current-source stage0 artifact/runtime、Mac/Linux target
+parity、EC-M3 全体の完了証拠には数えない。
