@@ -829,3 +829,12 @@ EC-M3 aggregate は残件。Evidence: `docs/adr/decisions-v0.2-mcp-validation-ma
 52件、clippy、rustfmt、diff check、docs auditを通過した Rust-host verified partial sliceである。selfhost/native
 MCP、current-source artifact/runtime、Mac/Linux matrix、EC-M3 aggregate は残件。Evidence:
 `docs/adr/decisions-v0.2-mcp-validation-manifest.md`。
+
+2026-07-29 に version 1 manifest envelope の duplicate top-level key boundary を追加した。
+`schema_version` / `nodes` / `reviews` / `evidence` / `edges` の同名 JSON key を最後の値や空配列へ
+上書きせず、parser 入口の `ValidationInputError::Json` として拒否する5ケースを
+`parse_manifest_rejects_duplicate_top_level_fields` で固定した。既存 serde decode の fail-closed
+behaviorを回帰テストと ADR に昇格した Rust canonical verified partial sliceであり、production codeの
+変更はない。selfhost/native manifest parser、CLI/MCP parity、current-source artifact/runtime、Mac/Linux
+matrix、EC-M2/EC-M3 aggregate は残件。Evidence:
+`docs/adr/decisions-v0.2-validation-manifest-duplicate-top-level.md`。

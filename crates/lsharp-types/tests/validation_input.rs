@@ -1,7 +1,7 @@
 use lsharp_types::evidence::{EvidenceValidationError, GraphError};
 use lsharp_types::intent::NodeTextError;
 use lsharp_types::validation::{IntentGraph, ValidationStatus};
-use lsharp_types::validation_input::{parse_intent_graph_json, ValidationInputError};
+use lsharp_types::validation_input::{ValidationInputError, parse_intent_graph_json};
 
 fn complete_manifest() -> &'static str {
     r#"
@@ -80,6 +80,42 @@ fn parse_manifest_builds_complete_graph_and_passes_validation() {
     assert_eq!(graph.evidence().len(), 1);
     assert_eq!(graph.edges().len(), 3);
     assert_eq!(graph.validate().status(), ValidationStatus::Pass);
+}
+
+#[test]
+fn parse_manifest_rejects_duplicate_top_level_fields() {
+    let cases = [
+        (
+            "schema_version",
+            r#"{"schema_version":1,"schema_version":1,"nodes":[],"evidence":[],"edges":[]}"#,
+        ),
+        (
+            "nodes",
+            r#"{"schema_version":1,"nodes":[],"nodes":[],"evidence":[],"edges":[]}"#,
+        ),
+        (
+            "reviews",
+            r#"{"schema_version":1,"nodes":[],"reviews":[],"reviews":[],"evidence":[],"edges":[]}"#,
+        ),
+        (
+            "evidence",
+            r#"{"schema_version":1,"nodes":[],"evidence":[],"evidence":[],"edges":[]}"#,
+        ),
+        (
+            "edges",
+            r#"{"schema_version":1,"nodes":[],"evidence":[],"edges":[],"edges":[]}"#,
+        ),
+    ];
+
+    for (field, manifest) in cases {
+        assert!(
+            matches!(
+                parse_intent_graph_json(manifest),
+                Err(ValidationInputError::Json(_))
+            ),
+            "duplicate top-level field must fail closed: {field}"
+        );
+    }
 }
 
 #[test]
