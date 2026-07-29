@@ -42,5 +42,6 @@ attestation の signature bytes を保持するだけでは、review の独立�
 
 これは Rust canonical signature verification の verified partial slice である。CLI/MCP の
 `--trust-store` path/root replacement protection と lifecycle state gate は別 ADR で部分実装済み。
-expiry clock、subject/source binding、source/selfhost/native parity、Mac Apple Silicon/Linux x86_64
-artifact/runtime evidence は未完了であり、EC-M3-03〜05 の残件として維持する。
+expiry clock、manifest projection、source/selfhost/native parity、Mac Apple Silicon/Linux x86_64
+artifact/runtime evidence は未完了であり、subject/source binding は別 ADR の canonical partial
+slice として維持する。EC-M3-03〜05 の残件として扱う。

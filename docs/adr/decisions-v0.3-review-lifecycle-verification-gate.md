@@ -36,6 +36,7 @@ attestation ではないことは証明できない。lifecycle を省略して 
 
 ## Boundary
 
-これは canonical lifecycle gate の verified partial slice である。expiry clock、subject/source
-digest の current snapshot binding、CLI/MCP report の state projection、selfhost/native parity、
-Mac Apple Silicon/Linux x86_64 artifact/runtime evidence は未完了であり、EC-M3-03〜05 に残す。
+これは canonical lifecycle gate の verified partial slice である。subject/source/provenance digest
+binding は別 ADR の canonical partial slice として追加済みだが、expiry clock、manifest projection、
+CLI/MCP report の state projection、selfhost/native parity、Mac Apple Silicon/Linux x86_64
+artifact/runtime evidence は未完了であり、EC-M3-03〜05 に残す。

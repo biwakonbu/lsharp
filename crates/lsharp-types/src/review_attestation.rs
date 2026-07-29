@@ -246,10 +246,39 @@ impl ReviewAttestation {
         if signature_state != ReviewVerificationState::Verified {
             return Ok(signature_state);
         }
+        Ok(self.lifecycle_state(lifecycle))
+    }
+
+    /// signature、lifecycle、current subject/source/provenance の三つを同時に検証する。
+    ///
+    /// 署名が valid でも対象 snapshot のいずれかが異なれば `stale` とし、別 manifest や
+    /// source commit の review を `verified` として再利用できないようにする。
+    pub fn verify_against(
+        &self,
+        trust_store: &ReviewTrustStore,
+        lifecycle: &ReviewLifecycleRegistry,
+        subject_digest: &str,
+        source_commit: &str,
+        provenance_digest: &str,
+    ) -> Result<ReviewVerificationState, AttestationVerificationError> {
+        let signature_state = self.verify(trust_store)?;
+        if signature_state != ReviewVerificationState::Verified {
+            return Ok(signature_state);
+        }
+        if self.subject_digest() != subject_digest
+            || self.source_commit() != source_commit
+            || self.provenance_digest() != provenance_digest
+        {
+            return Ok(ReviewVerificationState::Stale);
+        }
+        Ok(self.lifecycle_state(lifecycle))
+    }
+
+    fn lifecycle_state(&self, lifecycle: &ReviewLifecycleRegistry) -> ReviewVerificationState {
         let Some(event) = lifecycle.current_event_for(self.review_id().as_str()) else {
-            return Ok(ReviewVerificationState::Unverified);
+            return ReviewVerificationState::Unverified;
         };
-        Ok(match event.state() {
+        match event.state() {
             ReviewLifecycleState::Proposed => ReviewVerificationState::Unverified,
             ReviewLifecycleState::Superseded => ReviewVerificationState::Stale,
             ReviewLifecycleState::Revoked => ReviewVerificationState::Revoked,
@@ -257,7 +286,7 @@ impl ReviewAttestation {
                 ReviewVerificationState::Verified
             }
             ReviewLifecycleState::Active => ReviewVerificationState::Stale,
-        })
+        }
     }
 
     /// provider が持つ署名 bytes を差し替える。

@@ -189,3 +189,49 @@ fn active_lifecycle_sequence_mismatch_is_stale() {
         Ok(ReviewVerificationState::Stale)
     );
 }
+
+#[test]
+fn matching_subject_source_and_provenance_stay_verified() {
+    let signing_key = SigningKey::from_bytes(&[7; 32]);
+    let attestation = signed_attestation(&signing_key);
+    assert_eq!(
+        attestation.verify_against(
+            &trust_store(&signing_key),
+            &lifecycle(ReviewLifecycleState::Active, 1),
+            "sha256:graph-001",
+            "0123456789abcdef0123456789abcdef01234567",
+            "sha256:review-001",
+        ),
+        Ok(ReviewVerificationState::Verified)
+    );
+}
+
+#[test]
+fn subject_source_or_provenance_mismatch_is_stale() {
+    let signing_key = SigningKey::from_bytes(&[7; 32]);
+    let attestation = signed_attestation(&signing_key);
+    let store = trust_store(&signing_key);
+    let lifecycle = lifecycle(ReviewLifecycleState::Active, 1);
+    for (subject, source_commit, provenance) in [
+        (
+            "sha256:graph-other",
+            "0123456789abcdef0123456789abcdef01234567",
+            "sha256:review-001",
+        ),
+        (
+            "sha256:graph-001",
+            "fedcba9876543210fedcba9876543210fedcba98",
+            "sha256:review-001",
+        ),
+        (
+            "sha256:graph-001",
+            "0123456789abcdef0123456789abcdef01234567",
+            "sha256:review-other",
+        ),
+    ] {
+        assert_eq!(
+            attestation.verify_against(&store, &lifecycle, subject, source_commit, provenance,),
+            Ok(ReviewVerificationState::Stale)
+        );
+    }
+}
