@@ -4835,35 +4835,150 @@
   (vector-push diagnostics diag))
 
 ;; parse recovery より先に delimiter の未閉鎖を検出し、深い parser 再帰を EOF で止める。
-(defn parse-delimiter-balance-loop [spans idx count paren-depth bracket-depth first-code]
+(defn make-delimiter-balance-state
+  [done code next-idx next-paren-depth next-bracket-depth next-first-code]
+  (let [cursor
+    (vector-push-quad-rooted-v3
+      (vector-new 4)
+      next-idx
+      next-paren-depth
+      next-bracket-depth
+      next-first-code)]
+    (do
+      (root_push cursor)
+      (let [state (vector-push-triple-rooted-v3 (vector-new 3) done code cursor)]
+        (do
+          (root_pop)
+          state)))))
+
+(defn parse-delimiter-balance-step-v3 [spans idx count paren-depth bracket-depth first-code]
   (if (>= idx count)
-    (if (> first-code 0)
-      first-code
-      (if (> bracket-depth 0) 1002 (if (> paren-depth 0) 1001 0)))
+    (make-delimiter-balance-state
+      1
+      (if (> first-code 0)
+        first-code
+        (if (> bracket-depth 0) 1002 (if (> paren-depth 0) 1001 0)))
+      idx
+      paren-depth
+      bracket-depth
+      first-code)
     (let [kind (span-kind spans idx)]
       (if (== kind 0)
-        (parse-delimiter-balance-loop spans (+ idx 1) count (+ paren-depth 1) bracket-depth first-code)
+        (make-delimiter-balance-state
+          0
+          0
+          (+ idx 1)
+          (+ paren-depth 1)
+          bracket-depth
+          first-code)
         (if (== kind 1)
-          (parse-delimiter-balance-loop
-            spans
+          (make-delimiter-balance-state
+            0
+            0
             (+ idx 1)
-            count
             (if (> paren-depth 0) (- paren-depth 1) paren-depth)
             bracket-depth
             (if (and (= paren-depth 0) (= first-code 0)) 1001 first-code))
           (if (== kind 2)
-            (parse-delimiter-balance-loop spans (+ idx 1) count paren-depth (+ bracket-depth 1) first-code)
+            (make-delimiter-balance-state
+              0
+              0
+              (+ idx 1)
+              paren-depth
+              (+ bracket-depth 1)
+              first-code)
             (if (== kind 3)
-              (parse-delimiter-balance-loop
-                spans
+              (make-delimiter-balance-state
+                0
+                0
                 (+ idx 1)
-                count
                 paren-depth
                 (if (> bracket-depth 0) (- bracket-depth 1) bracket-depth)
                 (if (and (= bracket-depth 0) (= first-code 0)) 1002 first-code))
-              (parse-delimiter-balance-loop spans (+ idx 1) count paren-depth bracket-depth first-code))))))))
+              (make-delimiter-balance-state
+                0
+                0
+                (+ idx 1)
+                paren-depth
+                bracket-depth
+                first-code))))))))
+
+(defn parse-delimiter-balance-step-64-loop-bounded
+  [spans idx count paren-depth bracket-depth first-code remaining]
+  (do
+    (root_push spans)
+    (let [step (parse-delimiter-balance-step-v3 spans idx count paren-depth bracket-depth first-code)]
+      (do
+        (root_push step)
+        (let [done (vector-get step 0)
+          next-state (vector-get step 2)]
+          (do
+            (root_push next-state)
+            (let [next-idx (vector-get next-state 0)
+              next-paren-depth (vector-get next-state 1)
+              next-bracket-depth (vector-get next-state 2)
+              next-first-code (vector-get next-state 3)
+              parsed
+              (if (= done 1)
+                step
+                (if (<= remaining 1)
+                  step
+                  (parse-delimiter-balance-step-64-loop-bounded
+                    spans
+                    next-idx
+                    count
+                    next-paren-depth
+                    next-bracket-depth
+                    next-first-code
+                    (- remaining 1))))]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                parsed))))))))
+
+(defn parse-delimiter-balance-step-64 [spans idx count paren-depth bracket-depth first-code]
+  (parse-delimiter-balance-step-64-loop-bounded
+    spans
+    idx
+    count
+    paren-depth
+    bracket-depth
+    first-code
+    64))
+
+(defn parse-delimiter-balance-rooted-v3
+  [spans idx count paren-depth bracket-depth first-code]
+  (let [step
+    (parse-delimiter-balance-step-64 spans idx count paren-depth bracket-depth first-code)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 1)
+      (do
+        (root_push step)
+        (let [next-state (vector-get step 2)]
+          (do
+            (root_push next-state)
+            (let [parsed
+              (parse-delimiter-balance-rooted-v3
+                spans
+                (vector-get next-state 0)
+                count
+                (vector-get next-state 1)
+                (vector-get next-state 2)
+                (vector-get next-state 3))]
+              (do
+                (root_pop)
+                (root_pop)
+                parsed))))))))
+
 (defn parse-delimiter-diagnostic-code [spans]
-  (parse-delimiter-balance-loop spans 0 (/ (vector-length spans) 3) 0 0 0))
+  (do
+    (root_push spans)
+    (let [code
+      (parse-delimiter-balance-rooted-v3 spans 0 (/ (vector-length spans) 3) 0 0 0)]
+      (do
+        (root_pop)
+        code))))
 (defn parse-delimiter-diagnostics [spans src]
   (let [code (parse-delimiter-diagnostic-code spans)]
     (if (= code 0)

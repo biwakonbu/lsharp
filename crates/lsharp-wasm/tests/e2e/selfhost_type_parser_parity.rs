@@ -2663,6 +2663,83 @@ fn test_e2e_selfhost_parser_example_expression_spans_cross_chunk_boundary() {
 }
 
 #[test]
+fn test_e2e_selfhost_parser_delimiter_balance_uses_bounded_chunks() {
+    let source = selfhost_module("Parser.ls");
+    let rooted_body = source
+        .split("(defn parse-delimiter-balance-rooted-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn parse-delimiter-diagnostic-code").next())
+        .expect("Parser.ls に delimiter balance rooted loop が存在すること");
+    let step_body = source
+        .split("(defn parse-delimiter-balance-step-v3")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn parse-delimiter-balance-step-64-loop-bounded")
+                .next()
+        })
+        .expect("Parser.ls に delimiter balance step helper が存在すること");
+
+    assert!(
+        source.contains("(defn parse-delimiter-balance-step-64-loop-bounded")
+            && source.contains("(defn parse-delimiter-balance-step-64")
+            && rooted_body.contains("parse-delimiter-balance-step-64")
+            && !step_body.contains(
+                "(parse-delimiter-balance-rooted-v3 spans next-idx next-paren-depth",
+            ),
+        "delimiter balance parser は Linux x86 native stack の長い token 列を bounded chunk へ委譲するべき"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_parser_delimiter_balance_cross_chunk_boundary() {
+    let (token_ls, ast_ls, lexer_ls, parser_ls) = parser_runtime_modules();
+    let values = (0..65).map(|_| "true").collect::<Vec<_>>().join(" ");
+    let balanced = format!("(defn main [] (do {}))", values);
+    let unclosed_paren = format!("(defn main [] (do {})", values);
+    let unclosed_bracket = format!("(defn main [] [{}", values);
+    let unexpected_then_unclosed = format!(") [ {}", values);
+
+    assert!(
+        lsharp_syntax::parse(&balanced).is_ok(),
+        "Rust oracle は balanced delimiter fixture を parse できるべき"
+    );
+    assert!(
+        lsharp_syntax::parse(&unclosed_paren).is_err()
+            && lsharp_syntax::parse(&unclosed_bracket).is_err()
+            && lsharp_syntax::parse(&unexpected_then_unclosed).is_err(),
+        "Rust oracle は delimiter failure fixtures を reject するべき"
+    );
+
+    let harness = format!(
+        r#"
+(defn delimiter-code [source]
+  (parse-delimiter-diagnostic-code (tokenize-with-spans source)))
+
+(defn main []
+  (do
+    (print (delimiter-code "{}"))
+    (print (delimiter-code "{}"))
+    (print (delimiter-code "{}"))
+    (print (delimiter-code "{}"))
+    0))
+"#,
+        balanced, unclosed_paren, unclosed_bracket, unexpected_then_unclosed
+    );
+
+    let output = compile_and_run(&format!(
+        "{}\n{}\n{}\n{}\n{}",
+        token_ls, ast_ls, lexer_ls, parser_ls, harness
+    ));
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "1001", "1002", "1001"],
+        "delimiter balance parser は 64 token 境界を跨いでも balanced/unclosed/first-error code を保持するべき"
+    );
+}
+
+#[test]
 fn test_e2e_selfhost_parser_type_expr_list_use_bounded_chunks() {
     let source = selfhost_module("Parser.ls");
     let rooted_body = source
