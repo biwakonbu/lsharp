@@ -182,6 +182,11 @@ impl ReviewLifecycleRegistry {
             .map(ReviewLifecycleEvent::state)
     }
 
+    /// review ID の現在 event を返す。state と sequence の組を同時に検証する caller 向け。
+    pub fn current_event_for(&self, review_id: &str) -> Option<&ReviewLifecycleEvent> {
+        self.events.get(review_id).and_then(|events| events.last())
+    }
+
     /// review ID、sequence の順に flatten した deterministic view を返す。
     pub fn events(&self) -> Vec<&ReviewLifecycleEvent> {
         self.events

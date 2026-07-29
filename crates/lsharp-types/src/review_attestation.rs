@@ -1,10 +1,11 @@
 //! v0.3 review provenance attestation の canonical input model。
 //!
 //! M2 の opaque `ReviewRecord` を置き換えず、review が何に対して発行されたかを
-//! cross-target で再現可能な bytes へ固定する。署名の暗号学的検証と provider
-//! lifecycle の外部接続は後続タスクの責務であり、この slice は入力境界と署名対象
-//! bytes だけを提供する。
+//! cross-target で再現可能な bytes へ固定する。provider からの lifecycle 取得や
+//! expiry/subject の current snapshot 判定は外部 boundary の責務だが、明示された
+//! lifecycle snapshot と署名の canonical gate はこの model で共有する。
 
+use super::review_lifecycle::{ReviewLifecycleRegistry, ReviewLifecycleState};
 use super::review_trust_store::ReviewTrustStore;
 use super::{ReviewId, StableIdError};
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
@@ -229,6 +230,34 @@ impl ReviewAttestation {
             .verify(&self.canonical_bytes(), &signature)
             .map_err(|_| AttestationVerificationError::SignatureMismatch)?;
         Ok(ReviewVerificationState::Verified)
+    }
+
+    /// signature と explicit lifecycle snapshot の両方を満たした場合だけ verified にする。
+    ///
+    /// lifecycle がない、active でない、または attestation sequence と一致しない場合は
+    /// 暗黙の成功にせず、report fact として保持できる状態へ降格する。wire/signature の
+    /// 破損は `verify` と同じく error のまま返す。
+    pub fn verify_with_lifecycle(
+        &self,
+        trust_store: &ReviewTrustStore,
+        lifecycle: &ReviewLifecycleRegistry,
+    ) -> Result<ReviewVerificationState, AttestationVerificationError> {
+        let signature_state = self.verify(trust_store)?;
+        if signature_state != ReviewVerificationState::Verified {
+            return Ok(signature_state);
+        }
+        let Some(event) = lifecycle.current_event_for(self.review_id().as_str()) else {
+            return Ok(ReviewVerificationState::Unverified);
+        };
+        Ok(match event.state() {
+            ReviewLifecycleState::Proposed => ReviewVerificationState::Unverified,
+            ReviewLifecycleState::Superseded => ReviewVerificationState::Stale,
+            ReviewLifecycleState::Revoked => ReviewVerificationState::Revoked,
+            ReviewLifecycleState::Active if event.sequence() == self.sequence() => {
+                ReviewVerificationState::Verified
+            }
+            ReviewLifecycleState::Active => ReviewVerificationState::Stale,
+        })
     }
 
     /// provider が持つ署名 bytes を差し替える。

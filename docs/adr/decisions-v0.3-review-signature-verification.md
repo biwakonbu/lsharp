@@ -22,8 +22,10 @@ attestation の signature bytes を保持するだけでは、review の独立�
   length/encoding/mismatch は `AttestationVerificationError` として fail-closed に返す。
 - 検証対象 bytes は `ReviewAttestation::canonical_bytes()` のみとし、provider JSON、署名自身、
   network response の順序には依存しない。
-- 期限、lifecycle state、subject/source digest の current snapshot 一致はこの sliceでは判定せず、
-  後続の lifecycle/report boundaryへ残す。
+- 期限、subject/source digest の current snapshot 一致はこの sliceでは判定せず、後続の
+  lifecycle/report boundaryへ残す。lifecycle state と attestation sequence の canonical gate は
+  [`decisions-v0.3-review-lifecycle-verification-gate.md`](decisions-v0.3-review-lifecycle-verification-gate.md)
+  で別の fact として接続する。
 
 ## Evidence
 
@@ -39,6 +41,6 @@ attestation の signature bytes を保持するだけでは、review の独立�
 ## Boundary
 
 これは Rust canonical signature verification の verified partial slice である。CLI/MCP の
-`--trust-store` path/root replacement protection、expiry clock、lifecycle/revocation、source/
-selfhost/native parity、Mac Apple Silicon/Linux x86_64 artifact/runtime evidence は未完了であり、
-EC-M3-04/05 の残件として維持する。
+`--trust-store` path/root replacement protection と lifecycle state gate は別 ADR で部分実装済み。
+expiry clock、subject/source binding、source/selfhost/native parity、Mac Apple Silicon/Linux x86_64
+artifact/runtime evidence は未完了であり、EC-M3-03〜05 の残件として維持する。
