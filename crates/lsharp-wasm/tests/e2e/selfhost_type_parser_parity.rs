@@ -1,5 +1,5 @@
 use super::support::*;
-use lsharp_syntax::ast::{Decl, Expr, Literal};
+use lsharp_syntax::ast::{Decl, Expr, Literal, TypeExpr};
 use lsharp_syntax::metadata::MetadataFormKind;
 
 // =============================================================================
@@ -1689,6 +1689,106 @@ fn test_e2e_selfhost_parser_defn_signature_uses_bounded_chunks() {
                 "(parse-defn-param-signature-loop-v3 spans (+ idx 1) end src signature)"
             ),
         "defn signature parser は Linux x86 native stack の深い再帰を避けるため bounded chunk へ委譲するべき"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_parser_defn_param_form_end_uses_bounded_chunks() {
+    let source = selfhost_module("Parser.ls");
+    let rooted_body = source
+        .split("(defn scan-defn-param-form-end-rooted-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn scan-defn-param-form-end-v3").next())
+        .expect("Parser.ls に defn param form end rooted loop が存在すること");
+    let step_body = source
+        .split("(defn scan-defn-param-form-end-step-v3")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn scan-defn-param-form-end-step-64-loop-bounded")
+                .next()
+        })
+        .expect("Parser.ls に defn param form end step helper が存在すること");
+
+    assert!(
+        source.contains("(defn scan-defn-param-form-end-step-64-loop-bounded")
+            && source.contains("(defn scan-defn-param-form-end-step-64")
+            && rooted_body.contains("scan-defn-param-form-end-step-64")
+            && !step_body.contains("scan-defn-param-form-end-rooted-v3"),
+        "defn parameter form end scan は Linux x86 native stack の深い再帰を bounded chunk へ委譲するべき"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_parser_defn_param_form_end_cross_chunk_boundary() {
+    let nested_type = (0..33).fold("Int".to_string(), |type_expr, _| {
+        format!("(Ref {})", type_expr)
+    });
+    let typed_params = std::iter::once(format!("(: deep {})", nested_type))
+        .chain((1..65).map(|index| format!("(: p{} Int)", index)))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let source = format!("(defn wide [{}] : Int deep)", typed_params);
+
+    let program = lsharp_syntax::parse(&source).expect("Rust oracle は nested typed parameter を parse できるべき");
+    let Decl::Defn {
+        params,
+        return_ty: Some(return_ty),
+        ..
+    } = &program.decls[0]
+    else {
+        panic!("Rust oracle の先頭 declaration は typed defn であるべき");
+    };
+    assert_eq!(params.len(), 65);
+    assert!(params.iter().all(|param| param.ty.is_some()));
+
+    let mut nested = params[0].ty.as_ref().expect("先頭 param の型が存在するべき");
+    for depth in 0..33 {
+        let TypeExpr::App(_, head, args) = nested else {
+            panic!("nested Ref の {} 層目が TypeApp であるべき", depth);
+        };
+        assert!(matches!(head.as_ref(), TypeExpr::Named(_, name) if name == "Ref"));
+        assert_eq!(args.len(), 1);
+        nested = &args[0];
+    }
+    assert!(matches!(nested, TypeExpr::Named(_, name) if name == "Int"));
+    assert!(matches!(return_ty, TypeExpr::Named(_, name) if name == "Int"));
+
+    let (token_ls, ast_ls, lexer_ls, parser_ls) = parser_runtime_modules();
+    let harness = format!(
+        r#"
+(defn type-depth [type-expr]
+  (if (= (vector-get type-expr 0) (ast-type-app))
+    (+ 1 (type-depth (vector-get type-expr 3)))
+    0))
+
+(defn main []
+  (let [node (vector-get (parse-program "{}") 0)
+        signature (vector-get node 69)
+        first-param-type (vector-get signature 2)
+        return-type (vector-get signature 67)]
+    (do
+      (print (vector-get node 2))
+      (print (vector-get signature 0))
+      (print (vector-get signature 1))
+      (print (vector-length signature))
+      (print (type-depth first-param-type))
+      (print (vector-get first-param-type 1))
+      (print (vector-get return-type 0))
+      (print (vector-get return-type 1))
+      0)))
+"#,
+        source
+    );
+    let output = compile_and_run(&format!(
+        "{}\n{}\n{}\n{}\n{}",
+        token_ls, ast_ls, lexer_ls, parser_ls, harness
+    ));
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["65", "65", "65", "68", "33", "82035", "60", "73679"],
+        "defn parameter form end scan は 64 token 境界を跨いでも typed signature と nested TypeApp を保持するべき"
     );
 }
 

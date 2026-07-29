@@ -3492,17 +3492,73 @@
         (root_pop)
         parsed))))
 
-(defn scan-defn-param-form-end-v3 [spans idx end depth]
+(defn make-scan-defn-param-form-end-state [done next-idx next-depth]
+  (vector-push-triple-rooted-v3 (vector-new 3) done next-idx next-depth))
+
+(defn scan-defn-param-form-end-step-v3 [spans idx end depth]
   (if (>= idx end)
-    idx
+    (make-scan-defn-param-form-end-state 1 idx depth)
     (let [kind (span-kind spans idx)]
       (if (== kind 0)
-        (scan-defn-param-form-end-v3 spans (+ idx 1) end (+ depth 1))
+        (make-scan-defn-param-form-end-state 0 (+ idx 1) (+ depth 1))
         (if (== kind 1)
           (if (= depth 1)
-            (+ idx 1)
-            (scan-defn-param-form-end-v3 spans (+ idx 1) end (- depth 1)))
-          (scan-defn-param-form-end-v3 spans (+ idx 1) end depth))))))
+            (make-scan-defn-param-form-end-state 1 (+ idx 1) depth)
+            (make-scan-defn-param-form-end-state 0 (+ idx 1) (- depth 1)))
+          (make-scan-defn-param-form-end-state 0 (+ idx 1) depth))))))
+
+(defn scan-defn-param-form-end-step-64-loop-bounded
+  [spans idx end depth remaining]
+  (do
+    (root_push spans)
+    (let [step (scan-defn-param-form-end-step-v3 spans idx end depth)
+      done (vector-get step 0)
+      next-idx (vector-get step 1)
+      next-depth (vector-get step 2)]
+      (do
+        (root_push step)
+        (let [parsed
+          (if (= done 1)
+            step
+            (if (<= remaining 1)
+              step
+              (scan-defn-param-form-end-step-64-loop-bounded
+                spans
+                next-idx
+                end
+                next-depth
+                (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn scan-defn-param-form-end-step-64 [spans idx end depth]
+  (scan-defn-param-form-end-step-64-loop-bounded spans idx end depth 64))
+
+(defn scan-defn-param-form-end-rooted-v3 [spans idx end depth]
+  (let [step (scan-defn-param-form-end-step-64 spans idx end depth)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 1)
+      (do
+        (root_push step)
+        (let [parsed
+          (scan-defn-param-form-end-rooted-v3
+            spans
+            (vector-get step 1)
+            end
+            (vector-get step 2))]
+          (do
+            (root_pop)
+            parsed))))))
+
+(defn scan-defn-param-form-end-v3 [spans idx end depth]
+  (do
+    (root_push spans)
+    (let [parsed (scan-defn-param-form-end-rooted-v3 spans idx end depth)]
+      (do
+        (root_pop)
+        parsed))))
 
 (defn collect-example-expression-spans-step-v3 [spans idx end result]
   (if (>= idx end)
