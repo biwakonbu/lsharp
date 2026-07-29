@@ -39,6 +39,13 @@ command から毎回 path を渡す必要があった。入力を暗黙の `docs
 - CLI follow-up gate: `validate_cli` 29 tests、driver clippy、対象Rustfmt、`git diff --check`、
   `bash scripts/audit_docs.sh`（0 errors/warnings）を passした。これは Rust-host CLI verified
   partial sliceであり、selfhost/native、current-source stage0、Mac/Linux target parityの証拠ではない。
+- CLI completeness follow-up: project config の empty path、missing file、directory target も
+  report生成前に拒否し、non-zero exit、空 stdout、個別の path boundary 診断を返す3ケースを追加した。
+  resolver unit testに留まっていた non-empty/project-relative/regular-file 契約を公開 command surfaceへ
+  接続し、mietteの行折返しを含む診断を安定して検証する。
+- CLI completeness gate: `validate_cli` 32 tests、driver clippy、対象Rustfmt、`git diff --check`、
+  `bash scripts/audit_docs.sh`（0 errors/warnings）を passした。これは Rust-host CLI verified
+  partial sliceであり、selfhost/native、current-source stage0、Mac/Linux target parityの証拠ではない。
 
 ## Consequences
 

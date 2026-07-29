@@ -859,3 +859,9 @@ non-zero exit・空 stdout・path boundary診断で拒否する2ケースを追�
 root/nested discovery、missing config、relative/absolute/traversal/symlink boundaryを固定した。
 Rust-host CLI verified partial sliceであり、selfhost/native、current-source stage0 artifact/runtime、
 Mac/Linux matrix、EC-M2-03 aggregate は残件。Evidence: `docs/adr/decisions-v0.2-validation-config.md`。
+
+2026-07-29 に project config manifest path safety の残るCLI境界も接続した。empty path、missing file、
+directory targetを report生成前に non-zero exit・空 stdout・個別診断で拒否する3ケースを追加し、
+`validate_cli` 全32件で project-relative、`..`、absolute、empty、missing、regular-file、外部symlinkを
+固定した。Rust-host CLI verified partial sliceであり、selfhost/native、current-source stage0 artifact/runtime、
+Mac/Linux matrix、EC-M2-03 aggregate は残件。Evidence: `docs/adr/decisions-v0.2-validation-config.md`。

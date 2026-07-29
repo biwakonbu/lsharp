@@ -1063,6 +1063,95 @@ fn validate_rejects_project_config_manifest_symlink_outside_root() {
     );
 }
 
+#[test]
+fn validate_rejects_project_config_empty_manifest_path() {
+    let project = project_dir("config-empty");
+    fs::create_dir_all(&project).expect("project should be writable");
+    fs::write(
+        project.join("lsharp.toml"),
+        "[validation]\nmanifest = \"\"\n",
+    )
+    .expect("project config should be writable");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+        .current_dir(&project)
+        .args(["validate"])
+        .output()
+        .expect("lsharp validate should run");
+    fs::remove_dir_all(&project).ok();
+
+    assert_ne!(output.status.code(), Some(0));
+    assert!(
+        output.stdout.is_empty(),
+        "path error must not emit a report"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("空") || stderr.contains("empty"),
+        "unexpected empty path diagnostic: {stderr}"
+    );
+}
+
+#[test]
+fn validate_rejects_project_config_missing_manifest_file() {
+    let project = project_dir("config-missing-file");
+    fs::create_dir_all(&project).expect("project should be writable");
+    fs::write(
+        project.join("lsharp.toml"),
+        "[validation]\nmanifest = \"docs/missing.json\"\n",
+    )
+    .expect("project config should be writable");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+        .current_dir(&project)
+        .args(["validate"])
+        .output()
+        .expect("lsharp validate should run");
+    fs::remove_dir_all(&project).ok();
+
+    assert_ne!(output.status.code(), Some(0));
+    assert!(
+        output.stdout.is_empty(),
+        "path error must not emit a report"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        (stderr.contains("見つかり") && stderr.contains("ません")) || stderr.contains("not found"),
+        "unexpected missing path diagnostic: {stderr}"
+    );
+}
+
+#[test]
+fn validate_rejects_project_config_directory_manifest_target() {
+    let project = project_dir("config-directory");
+    let target = project.join("docs/manifest-dir");
+    fs::create_dir_all(&target).expect("manifest directory should be writable");
+    fs::write(
+        project.join("lsharp.toml"),
+        "[validation]\nmanifest = \"docs/manifest-dir\"\n",
+    )
+    .expect("project config should be writable");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+        .current_dir(&project)
+        .args(["validate"])
+        .output()
+        .expect("lsharp validate should run");
+    fs::remove_dir_all(&project).ok();
+
+    assert_ne!(output.status.code(), Some(0));
+    assert!(
+        output.stdout.is_empty(),
+        "path error must not emit a report"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        (stderr.contains("通常の") && stderr.contains("ファイル"))
+            || stderr.contains("regular file"),
+        "unexpected directory target diagnostic: {stderr}"
+    );
+}
+
 fn project_dir(name: &str) -> std::path::PathBuf {
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
