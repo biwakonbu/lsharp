@@ -562,6 +562,49 @@ mod review_registry_tests {
         }
     }
 
+    #[test]
+    fn test_validate_tool_rejects_blank_manifest_provenance_fields() {
+        let fixture: Value = serde_json::from_str(include_str!(
+            "../../../tests/fixtures/validation/ec-m3-canonical-manifest.json"
+        ))
+        .expect("canonical manifest fixture は JSON として読めるべき");
+        let assert_error = |arguments: Value, route: &str, field: &str| {
+            let response = handle_jsonrpc_message(&json!({
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "tools/call",
+                "params": { "name": "lsharp_validate", "arguments": arguments }
+            }));
+            let error = response["result"]["content"][0]["text"]
+                .as_str()
+                .expect("manifest error は text を返すべき");
+            assert_eq!(response["result"]["isError"], true, "{route}");
+            assert!(response["result"].get("structuredContent").is_none());
+            assert!(
+                error.contains(field),
+                "{route}/{field}: unexpected error: {error}"
+            );
+        };
+        for field in ["producer", "tool_version", "timestamp"] {
+            let mut manifest = fixture.clone();
+            manifest["evidence"][0]["provenance"][field] = json!("");
+            assert_error(json!({ "manifest": manifest.clone() }), "manifest", field);
+            let path = std::env::temp_dir().join(format!(
+                "lsharp_mcp_blank_provenance_{}_{}.json",
+                std::process::id(),
+                field
+            ));
+            std::fs::write(&path, serde_json::to_string(&manifest).unwrap())
+                .expect("manifest_file fixtureを書き込めるべき");
+            assert_error(
+                json!({ "manifest_file": path.display().to_string() }),
+                "manifest_file",
+                field,
+            );
+            std::fs::remove_file(&path).expect("manifest_file fixtureを削除できるべき");
+        }
+    }
+
     fn numeric_manifest_with_literal(marker: &str, literal: &str) -> String {
         let template = r#"{
             "schema_version": 1,

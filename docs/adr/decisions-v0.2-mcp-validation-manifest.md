@@ -111,6 +111,16 @@ diagnostic が CLI と乖離する。
   `mcp_server::tests` 50 tests、対象 binary の `cargo clippy --tests -- -D warnings`、rustfmt、
   `git diff --check`、docs audit（0 errors/warnings）を passした。Rust-host manifest schema verified slice
   であり、selfhost/native MCP、current-source artifact/runtime、対応2 target、EC-M3 全体の完了証拠ではない。
+- Provenance runtime follow-up: canonical fixture の `producer` / `tool_version` / `timestamp` を空文字へ
+  変異させ、direct `manifest` と `manifest_file` の MCP route がいずれも `isError: true`、
+  `structuredContent` なし、field名付き text error で fail-closed になる6ケースを追加した。schema static
+  parityだけでなく、実際の Rust MCP parser route が required provenance contract を保持することを固定した。
+- Provenance runtime gate: `mcp_server::tests::review_registry_tests` 14 tests、対象 binary の
+  `cargo clippy --tests -- -D warnings`、rustfmt、`git diff --check`、docs audit（0 errors/warnings）を
+  passした。全 `mcp_server::tests` では既存の `test_compile_run_tool_uses_wasi_default_for_wasm_output`
+  が embedded artifact の `Invalid argument (os error 22)` で失敗したため、今回の MCP schema/runtime gate には
+  focused suite を採用した。native/selfhost MCP、current-source artifact/runtime、対応2 target、EC-M3 全体
+  の完了証拠ではない。
 
 ## Boundary and follow-up
 
@@ -138,3 +148,5 @@ parity、EC-M3 全体の完了証拠には数えない。
 今回の provenance schema parity は canonical manifest の required non-empty fields と MCP static schema を
 Rust-host で同期したが、selfhost/native producer、current-source stage0 artifact/runtime、Mac/Linux target
 parity、EC-M3 全体の完了証拠には数えない。
+今回の provenance runtime matrix は Rust-host の direct/file MCP route に限定され、selfhost/native MCP
+producer、current-source stage0 artifact/runtime、Mac/Linux target parity、EC-M3 全体の完了証拠には数えない。

@@ -813,3 +813,11 @@ evidence provenance の `producer` / `tool_version` / `timestamp` を MCP input/
 MCP suite 50件、clippy、rustfmt、diff check、docs auditを通過した Rust-host verified partial sliceであり、
 selfhost/native MCP producer、current-source stage0 artifact/runtime、Mac/Linux matrix、EC-M3 aggregate は
 残件。Evidence: `docs/adr/decisions-v0.2-mcp-validation-manifest.md`。
+
+2026-07-29 に EC-M3-01 の MCP provenance runtime boundary を追加した。`producer` / `tool_version` /
+`timestamp` を空文字へ変異させた canonical fixtureを direct `manifest` と `manifest_file` の両 routeへ入力し、
+6ケースすべてで `isError: true`、`structuredContent` なし、field名付き text error の fail-closed を固定した。
+focused `review_registry_tests` 14件、clippy、rustfmt、diff check、docs auditを通過した Rust-host verified
+partial sliceであり、全 MCP suite は既存 compile-run artifact `Invalid argument (os error 22)` 1件を含むため
+今回の gateから除外した。selfhost/native MCP、current-source stage0 artifact/runtime、Mac/Linux matrix、
+EC-M3 aggregate は残件。Evidence: `docs/adr/decisions-v0.2-mcp-validation-manifest.md`。
