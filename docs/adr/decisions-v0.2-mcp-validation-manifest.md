@@ -103,6 +103,14 @@ diagnostic が CLI と乖離する。
   rustfmt、`git diff --check`、docs audit（0 errors/warnings）を passした。Rust-host schema contract の
   verified sliceであり、native/selfhost MCP producer、current-source artifact/runtime、対応2 target、
   EC-M3 全体の完了証拠ではない。
+- Provenance schema parity follow-up: canonical `intent-graph.schema.json` が要求する evidence provenance
+  の `producer` / `tool_version` / `timestamp` 非空境界を MCP input/output manifest schema に同期した。
+  3 fields の空文字を canonical、MCP input、MCP output の Draft 2020-12 validator matrix で reject し、
+  Rust parser の required provenance contract を schema consumer が弱めないことを固定した。
+- Provenance schema parity gate: valid fixture と既存 numeric/typed subject matrixを含む
+  `mcp_server::tests` 50 tests、対象 binary の `cargo clippy --tests -- -D warnings`、rustfmt、
+  `git diff --check`、docs audit（0 errors/warnings）を passした。Rust-host manifest schema verified slice
+  であり、selfhost/native MCP、current-source artifact/runtime、対応2 target、EC-M3 全体の完了証拠ではない。
 
 ## Boundary and follow-up
 
@@ -126,4 +134,7 @@ MCP、current-source artifact/runtime、JSON Schema 実 validator、Mac/Linux �
 Mac/Linux target parity、EC-M3 全体の完了証拠には数えない。
 今回の output schema parity は canonical report の strict boundary と MCP `tools/list` の静的 contract を
 Rust-host で同期したが、native/selfhost producer、current-source stage0 artifact/runtime、Mac/Linux target
+parity、EC-M3 全体の完了証拠には数えない。
+今回の provenance schema parity は canonical manifest の required non-empty fields と MCP static schema を
+Rust-host で同期したが、selfhost/native producer、current-source stage0 artifact/runtime、Mac/Linux target
 parity、EC-M3 全体の完了証拠には数えない。

@@ -255,6 +255,32 @@ mod review_registry_tests {
                 "{label}: MCP output schema は不正 manifest を拒否するべき"
             );
         }
+
+        for field in ["producer", "tool_version", "timestamp"] {
+            let mut blank_provenance = fixture.clone();
+            blank_provenance["evidence"][0]["provenance"][field] = json!("");
+            assert!(
+                !canonical_validator.is_valid(&blank_provenance),
+                "blank {field}: canonical schema は空 provenance field を拒否するべき"
+            );
+            assert!(
+                !input_validator.is_valid(&json!({ "manifest": blank_provenance.clone() })),
+                "blank {field}: MCP input schema は空 provenance field を拒否するべき"
+            );
+            assert!(
+                !output_validator.is_valid(&json!({
+                    "status": "pass",
+                    "trace_gaps": [],
+                    "open_questions": 0,
+                    "independent_reviews": 1,
+                    "contradicting_observations": 0,
+                    "stale_reviews": 0,
+                    "stale_evidence": 0,
+                    "manifest": blank_provenance
+                })),
+                "blank {field}: MCP output schema は空 provenance field を拒否するべき"
+            );
+        }
     }
 
     #[test]

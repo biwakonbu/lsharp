@@ -323,9 +323,9 @@ fn evidence_schema() -> Value {
                 "additionalProperties": false,
                 "required": ["producer", "tool_version", "timestamp"],
                 "properties": {
-                    "producer": { "type": "string" },
-                    "tool_version": { "type": "string" },
-                    "timestamp": { "type": "string" }
+                    "producer": { "type": "string", "minLength": 1 },
+                    "tool_version": { "type": "string", "minLength": 1 },
+                    "timestamp": { "type": "string", "minLength": 1 }
                 }
             },
             "independence": {

@@ -806,3 +806,10 @@ current-source stage0 artifact/runtime、Mac/Linux matrix、EC-M3 aggregate は�
 suite 50件、clippy、rustfmt、diff check、docs auditを通過した Rust-host verified partial sliceである。
 selfhost/native MCP producer、current-source stage0 artifact/runtime、Mac/Linux matrix、EC-M3 aggregate は
 残件。Evidence: `docs/adr/decisions-v0.2-mcp-validation-manifest.md`。
+
+2026-07-29 に EC-M3-01 の MCP provenance schema parity boundary を追加した。canonical manifest が要求する
+evidence provenance の `producer` / `tool_version` / `timestamp` を MCP input/output schema でも
+`minLength: 1` とし、3 fields の空文字を canonical/MCP 両 validator が reject する matrix を固定した。
+MCP suite 50件、clippy、rustfmt、diff check、docs auditを通過した Rust-host verified partial sliceであり、
+selfhost/native MCP producer、current-source stage0 artifact/runtime、Mac/Linux matrix、EC-M3 aggregate は
+残件。Evidence: `docs/adr/decisions-v0.2-mcp-validation-manifest.md`。
