@@ -5,7 +5,9 @@
 //! lifecycle の外部接続は後続タスクの責務であり、この slice は入力境界と署名対象
 //! bytes だけを提供する。
 
+use super::review_trust_store::ReviewTrustStore;
 use super::{ReviewId, StableIdError};
+use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 
 /// 署名対象の domain separator。
 pub const ATTESTATION_DOMAIN_SEPARATOR: &[u8] = b"lsharp.review-attestation.v1\0";
@@ -44,6 +46,19 @@ pub enum AttestationError {
     InvalidReviewId(#[from] StableIdError),
     #[error("review attestation の algorithm が未対応です: {value:?}")]
     UnsupportedAlgorithm { value: String },
+}
+
+/// trusted key に対する signature verification error。
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum AttestationVerificationError {
+    #[error("review attestation の signature length が不正です: actual={actual}")]
+    InvalidSignatureLength { actual: usize },
+    #[error("review attestation の trusted public key が不正です")]
+    InvalidPublicKey,
+    #[error("review attestation の signature encoding が不正です")]
+    InvalidSignatureEncoding,
+    #[error("review attestation の signature が canonical bytes と一致しません")]
+    SignatureMismatch,
 }
 
 /// review attestation の検証状態。
@@ -184,6 +199,37 @@ impl ReviewAttestation {
 
     pub fn signature(&self) -> &[u8] {
         &self.signature
+    }
+
+    /// 明示された trust store にある Ed25519 key だけで signature を検証する。
+    ///
+    /// key が存在しない場合は暗黙に成功させず `Unverified` を返す。存在する key の
+    /// signature mismatch/破損は入力境界として error にし、caller が report を成功扱い
+    /// しないようにする。
+    pub fn verify(
+        &self,
+        trust_store: &ReviewTrustStore,
+    ) -> Result<ReviewVerificationState, AttestationVerificationError> {
+        let Some(key) = trust_store.get(self.provider(), self.key_id(), self.algorithm()) else {
+            return Ok(ReviewVerificationState::Unverified);
+        };
+        if self.signature.len() != 64 {
+            return Err(AttestationVerificationError::InvalidSignatureLength {
+                actual: self.signature.len(),
+            });
+        }
+        let public_key: [u8; 32] = key
+            .public_key()
+            .try_into()
+            .map_err(|_| AttestationVerificationError::InvalidPublicKey)?;
+        let verifying_key = VerifyingKey::from_bytes(&public_key)
+            .map_err(|_| AttestationVerificationError::InvalidPublicKey)?;
+        let signature = Signature::from_slice(&self.signature)
+            .map_err(|_| AttestationVerificationError::InvalidSignatureEncoding)?;
+        verifying_key
+            .verify(&self.canonical_bytes(), &signature)
+            .map_err(|_| AttestationVerificationError::SignatureMismatch)?;
+        Ok(ReviewVerificationState::Verified)
     }
 
     /// provider が持つ署名 bytes を差し替える。
