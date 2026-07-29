@@ -1443,6 +1443,13 @@ if report.get("trace_gaps") != [] or report.get("contradicting_observations") !=
     raise SystemExit(f"validation trace/contradiction metrics are invalid: {report!r}")
 PY
 
+run_expected_failure validation-manifest-roundtrip-json 0 validate \
+  "$VALIDATION_MANIFEST" \
+  --format json
+cmp -s "$WORK_DIR/validation-manifest-unknown.stdout" \
+  "$WORK_DIR/validation-manifest-roundtrip-json.stdout" \
+  || die "validation manifest roundtrip must preserve source report"
+
 run_expected_failure validation-text-unknown 0 validate \
   --source "$VALIDATION_SOURCE" \
   --format text

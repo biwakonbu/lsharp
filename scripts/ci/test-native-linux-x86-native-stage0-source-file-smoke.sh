@@ -62,6 +62,8 @@ for required in \
   'validation-failed-review-text' \
   'failed independent review must leave validation unknown' \
   'independent-reviews: 0' \
+  'validation-manifest-roundtrip-json' \
+  'validation manifest roundtrip must preserve source report' \
   'VALIDATION_FAIL_SOURCE' \
   'validation-fail-json' \
   'validation-fail-text' \

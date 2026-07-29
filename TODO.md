@@ -903,3 +903,13 @@ RED→GREEN を native source-file contract へ接続する fake Lima/provenance
 sliceであり、current source-commit に一致する実 stage0 artifact/runtime、selfhost/native/MCP parity、
 Mac/Linux matrix、EC-M2-03 aggregate は残件。Evidence:
 `docs/adr/decisions-v0.2-native-validation-failed-independent-review.md`。
+
+2026-07-29 に native source-file smoke の manifest roundtrip boundary を追加した。source fixtureから
+`--emit-manifest` した version 1 manifestを positional `validate <manifest> --format json` へ再入力し、
+source report と manifest report の byte-for-byte 一致、`unknown` / exit `2`、stderr 空を要求する。
+これは Rust CLI の source/emitted-manifest parity を native contract へ接続する fake Lima/provenance
+harness の verified partial sliceであり、current source-commit に一致する実 stage0 artifact/runtime、
+selfhost/native/MCP parity、Mac/Linux matrix、EC-M2-03 aggregate は残件。Evidence:
+`docs/adr/decisions-v0.2-native-validation-manifest-roundtrip.md`。Rust oracle focused test は
+default EmbeddedCli build の既存 `vector-push-single-rooted-v3` 未定義で停止し、GREEN evidence には
+算入していない。
