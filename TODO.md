@@ -774,3 +774,11 @@ namespace/key pattern と evidence/review/invalidation subject kind enum を inp
 partial sliceであり、JSON Schema 実 validator、selfhost/native MCP、current-source stage0 artifact/runtime、
 Mac/Linux matrix、EC-M3 aggregate は未完了である。Evidence:
 `docs/adr/decisions-v0.2-mcp-validation-manifest.md`。
+
+2026-07-29 に EC-M3-01 の MCP `manifest_file` runtime numeric boundary を追加した。file input の
+`span.start/end` と `sampling.cases/seed/shrinks[]/coverage.*` 全6 fieldで fractional、`null`、
+`u64::MAX + 1` を `isError: true` の `validation manifest の parse` error として拒否し、report/
+canonical manifestを返さない18ケースを `mcp_server::tests` 47件で固定した。既存 Rust typed serde
+parser を `manifest_file` routeまで接続した verified partial sliceであり、selfhost/native MCP、
+current-source stage0 artifact/runtime、JSON Schema実 validator、Mac/Linux matrix、EC-M3 aggregate は
+未完了である。Evidence: `docs/adr/decisions-v0.2-mcp-validation-manifest.md`。

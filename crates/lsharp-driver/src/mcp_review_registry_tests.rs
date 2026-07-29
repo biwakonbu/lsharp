@@ -231,6 +231,56 @@ mod review_registry_tests {
         }
     }
 
+    #[test]
+    fn test_validate_tool_rejects_unsigned_numeric_manifest_file_boundaries() {
+        let fields = [
+            ("span.start", "__SPAN_START__"),
+            ("span.end", "__SPAN_END__"),
+            ("sampling.cases", "__SAMPLING_CASES__"),
+            ("sampling.seed", "__SAMPLING_SEED__"),
+            ("sampling.shrinks[0]", "__SAMPLING_SHRINK__"),
+            ("sampling.coverage.ok", "__SAMPLING_COVERAGE__"),
+        ];
+        let values = [
+            ("fractional", "0.5"),
+            ("null", "null"),
+            ("overflow", "18446744073709551616"),
+        ];
+
+        for (field, marker) in fields {
+            for (label, literal) in values {
+                let manifest = numeric_manifest_with_literal(marker, literal);
+                let path = std::env::temp_dir().join(format!(
+                    "lsharp_mcp_manifest_file_numeric_{}_{}_{}.json",
+                    std::process::id(),
+                    field.replace(['.', '[', ']'], "-"),
+                    label
+                ));
+                std::fs::write(&path, manifest).expect("manifest_file fixtureを書き込めるべき");
+                let response = handle_jsonrpc_message(&json!({
+                    "jsonrpc": "2.0",
+                    "id": 2,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "lsharp_validate",
+                        "arguments": { "manifest_file": path.display().to_string() }
+                    }
+                }));
+                std::fs::remove_file(&path).expect("manifest_file fixtureを削除できるべき");
+
+                let error = response["result"]["content"][0]["text"]
+                    .as_str()
+                    .expect("MCP manifest_file numeric boundary は text error を返すべき");
+                assert_eq!(response["result"]["isError"], true);
+                assert!(response["result"].get("structuredContent").is_none());
+                assert!(
+                    error.contains("validation manifest の parse に失敗しました:"),
+                    "{field}={label}: unexpected error: {error}"
+                );
+            }
+        }
+    }
+
     fn numeric_manifest_with_literal(marker: &str, literal: &str) -> String {
         let template = r#"{
             "schema_version": 1,

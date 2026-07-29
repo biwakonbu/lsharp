@@ -65,6 +65,15 @@ diagnostic が CLI と乖離する。
 - Typed edge schema gate: 新規 schema parity test と `mcp_server::tests` 46 tests、対象 binary の
   `cargo clippy --tests -- -D warnings`、rustfmt、`git diff --check`、docs audit（0 errors/warnings）を
   passした。
+- Manifest-file numeric runtime follow-up: MCP の `manifest_file` input でも、`span.start/end` と
+  `sampling.cases/seed/shrinks[]/coverage.*` の fractional、`null`、`u64::MAX + 1` を全6 fieldで
+  `validation manifest の parse` error として fail-closed にする回帰 matrix（18 cases）を追加した。
+  JSON-RPC は report/canonical manifest を返さず、`isError: true` かつ `structuredContent` なしの
+  text tool error に留める。
+- Manifest-file numeric runtime gate: `mcp_server::tests` 47 tests、対象 binary の
+  `cargo clippy --tests -- -D warnings`、rustfmt、`git diff --check`、docs audit（0 errors/warnings）を
+  passした。既存 typed serde parser の `manifest_file` route まで接続した Rust-host verified sliceであり、
+  production code の変更はない。
 
 ## Boundary and follow-up
 
@@ -77,3 +86,6 @@ current-source artifact/runtime、supported 2 targets の完了証拠には数�
 MCP runtime matrixも同じく Rust-host lane に限られ、native/selfhost の診断・target parity は未検証である。
 今回の typed edge schema も static `tools/list` contract と Rust MCP lane に限定され、JSON Schema 実
 validator、selfhost/native MCP producer、Mac/Linux artifact/runtime の完了証拠には数えない。
+今回の `manifest_file` numeric matrix も Rust-host JSON-RPC input boundary に限定され、selfhost/native
+MCP、current-source artifact/runtime、JSON Schema 実 validator、Mac/Linux の target parity の完了証拠には
+数えない。
