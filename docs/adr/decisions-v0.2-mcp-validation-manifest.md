@@ -130,6 +130,16 @@ diagnostic が CLI と乖離する。
   `cargo clippy --tests -- -D warnings`、rustfmt、`git diff --check`、docs audit（0 errors/warnings）を passした。
   `LSHARP_EMBED_COMPONENT_PATH` で既存 component artifact を明示した Rust-host laneであり、selfhost/native
   MCP producer、current-source stage0 artifact/runtime、対応2 target、EC-M3 全体の完了証拠には数えない。
+- Duplicate top-level key runtime follow-up: version 1 manifest の `schema_version` を重複させた同一 JSON
+  string を direct `manifest` と `manifest_file` の両 routeへ入力し、parser の duplicate-field rejection
+  が `isError: true`、`structuredContent` なし、`validation manifest の parse` / `duplicate` /
+  `schema_version` を含む text error へ伝播する2ケースを追加した。JSON object inputではなく string/file
+  routeを使い、MCP transport前の `serde_json::Value` 上書きで duplicate key が消えないことも固定する。
+- Duplicate top-level key runtime gate: `mcp_server::tests::review_registry_tests` 15 tests、対象 binary の
+  clippy、`git diff --check`、docs auditを passした。対象テストファイル全体の rustfmt check は変更前から
+  同じ既存差分で失敗するため、追加ブロックは rustfmt 出力へ合わせ、ベースライン差分を広げていない。
+  これは Rust-host verified partial sliceであり、selfhost/native MCP producer、current-source stage0
+  artifact/runtime、対応2 target、EC-M3 全体の完了証拠ではない。
 
 ## Boundary and follow-up
 
@@ -162,3 +172,6 @@ producer、current-source stage0 artifact/runtime、Mac/Linux target parity、EC
 今回の compile-run isolation は Rust MCP の temp directory ownership / cleanup 境界に限定され、Wasm
 compiler の target parity、selfhost/native MCP producer、current-source stage0 artifact/runtime、Mac/Linux
 target parity、EC-M3 全体の完了証拠には数えない。
+今回の duplicate top-level key runtime matrix は JSON string/file の Rust MCP input route に限定され、JSON
+object transport、selfhost/native MCP producer、current-source stage0 artifact/runtime、対応2 target、EC-M3
+全体の完了証拠には数えない。

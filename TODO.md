@@ -845,3 +845,10 @@ matrix、EC-M2/EC-M3 aggregate は残件。Evidence:
 selfhost/native manifest parser、MCP report/exit parity、current-source stage0 artifact/runtime、
 Mac/Linux matrix、EC-M2/EC-M3 aggregate は残件。Evidence:
 `docs/adr/decisions-v0.2-validation-manifest-duplicate-top-level.md`。
+
+2026-07-29 に同じ duplicate top-level key boundary を Rust MCP `lsharp_validate` へ接続した。
+`schema_version` の duplicate JSON string を direct `manifest` と `manifest_file` の両 routeへ入力し、
+`isError: true`、`structuredContent` なし、`validation manifest の parse` / `duplicate` /
+`schema_version` を含む text errorを2ケースで固定した。Rust-host MCP verified partial sliceであり、
+selfhost/native MCP producer、current-source stage0 artifact/runtime、Mac/Linux matrix、EC-M3 aggregate は
+残件。Evidence: `docs/adr/decisions-v0.2-mcp-validation-manifest.md`。
