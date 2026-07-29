@@ -5198,30 +5198,67 @@
 ;; === ユーティリティ ===
 
 ;; 対応する閉じ括弧まで読み飛ばし (ネスト対応)
-(defn parse-skip-to-close-rooted-v3 [spans pos-ref depth]
-  (if (<= depth 0) 0
+(defn parse-skip-to-close-step-v3 [spans pos-ref depth]
+  (if (<= depth 0)
+    (make-parse-loop-state 1 depth)
+    (let [kind (p-current spans pos-ref)]
+      (if (== kind 99)
+        (make-parse-loop-state 1 depth)
+        (do
+          (p-advance pos-ref)
+          (if (== kind 0)
+            (make-parse-loop-state 0 (+ depth 1))
+            (if (== kind 1)
+              (let [next-depth (- depth 1)]
+                (if (<= next-depth 0)
+                  (make-parse-loop-state 1 next-depth)
+                  (make-parse-loop-state 0 next-depth)))
+              (make-parse-loop-state 0 depth))))))))
+
+(defn parse-skip-to-close-step-64-loop-bounded [spans pos-ref depth remaining]
+  (let [step (parse-skip-to-close-step-v3 spans pos-ref depth)
+    done (vector-get step 0)
+    next-depth (vector-get step 1)]
     (do
-      (let [kind (p-current spans pos-ref)
-        result
-        (if (== kind 99) 0 ;; EOF ガード: 無限ループ防止
+      (root_push step)
+      (let [parsed
+        (if (= done 1)
+          step
+          (if (<= remaining 1)
+            step
+            (parse-skip-to-close-step-64-loop-bounded
+              spans
+              pos-ref
+              next-depth
+              (- remaining 1))))]
+        (do
+          (root_pop)
+          parsed)))))
+
+(defn parse-skip-to-close-step-64 [spans pos-ref depth]
+  (parse-skip-to-close-step-64-loop-bounded spans pos-ref depth 64))
+
+(defn parse-skip-to-close-rooted-v3 [spans pos-ref depth]
+  (let [step (parse-skip-to-close-step-64 spans pos-ref depth)]
+    (if (= (vector-get step 0) 1)
+      0
+      (do
+        (root_push step)
+        (let [next-depth (vector-get step 1)
+          parsed (parse-skip-to-close-rooted-v3 spans pos-ref next-depth)]
           (do
-            (p-advance pos-ref)
-            (if (== kind 0) ;; ( でネスト深くなる
-              (parse-skip-to-close-rooted-v3 spans pos-ref (+ depth 1))
-              (if (== kind 1) ;; ) でネスト浅くなる
-                (parse-skip-to-close-rooted-v3 spans pos-ref (- depth 1))
-                (parse-skip-to-close-rooted-v3 spans pos-ref depth)))))]
-        result))))
+            (root_pop)
+            parsed))))))
 
 (defn parse-skip-to-close-v3 [spans pos-ref depth]
   (do
     (root_push spans)
     (root_push pos-ref)
-    (let [result (parse-skip-to-close-rooted-v3 spans pos-ref depth)]
+    (let [parsed (parse-skip-to-close-rooted-v3 spans pos-ref depth)]
       (do
         (root_pop)
         (root_pop)
-        result))))
+        parsed))))
 
 ;; === トップレベルパース ===
 
