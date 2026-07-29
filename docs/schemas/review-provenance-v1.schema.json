@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lsharp.dev/schemas/review-provenance-v1.schema.json",
+  "title": "L# review provenance wire v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "attestations", "lifecycle"],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "attestations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/attestation"
+      }
+    },
+    "lifecycle": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/lifecycle"
+      }
+    }
+  },
+  "$defs": {
+    "stable_review_id": {
+      "type": "string",
+      "pattern": "^review:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+    },
+    "non_empty_string": {
+      "type": "string",
+      "minLength": 1
+    },
+    "attestation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "review_id",
+        "subject_digest",
+        "source_commit",
+        "provenance_digest",
+        "provider",
+        "key_id",
+        "algorithm",
+        "signature",
+        "issued_at",
+        "sequence"
+      ],
+      "properties": {
+        "review_id": {
+          "$ref": "#/$defs/stable_review_id"
+        },
+        "subject_digest": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "source_commit": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "provenance_digest": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "provider": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "key_id": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "algorithm": {
+          "const": "ed25519"
+        },
+        "signature": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "minLength": 1
+        },
+        "issued_at": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "expires_at": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "lifecycle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["review_id", "sequence", "state", "effective_at"],
+      "properties": {
+        "review_id": {
+          "$ref": "#/$defs/stable_review_id"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "state": {
+          "enum": ["proposed", "active", "superseded", "revoked"]
+        },
+        "effective_at": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "reason_digest": {
+          "type": ["string", "null"],
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

@@ -13,6 +13,9 @@ pub mod review_attestation;
 #[path = "review_lifecycle.rs"]
 pub mod review_lifecycle;
 
+#[path = "review_wire.rs"]
+pub mod review_wire;
+
 /// intent/evidence graph の node 種別。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum NodeKind {
