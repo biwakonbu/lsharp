@@ -1,6 +1,7 @@
 (module Tools.Validation.Stale)
 (import Tools.Validation.IntentSource)
 (import Tools.Validation.Evidence)
+(import Syntax.Parser)
 
 ;; Rust の IntentGraph::stale_subjects と同じ順序で、source graph の stale subject を
 ;; review/evidence の wire ID へ投影する。Cli と EmbeddedCli が同じ projection を使う。

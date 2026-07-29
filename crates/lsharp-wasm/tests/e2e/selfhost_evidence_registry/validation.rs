@@ -1,6 +1,42 @@
 //! malformed sampling、payload、duplicate registry の fail-closed tests。
 
-use super::harness::run_evidence_registry_runtime;
+use super::harness::{run_evidence_registry_runtime, run_stale_validation_runtime};
+
+/// EC-M2-03: stale validation module は rooted vector helper の直接 import で compile できる。
+#[test]
+fn test_e2e_selfhost_stale_validation_module_compiles() {
+    let stale_source = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../selfhost/src/Tools/Validation/Stale.ls"),
+    )
+    .expect("canonical Stale.ls が読み込めない");
+    assert!(
+        stale_source
+            .lines()
+            .any(|line| line.trim() == "(import Syntax.Parser)"),
+        "Stale.ls は rooted vector helper の owner である Syntax.Parser を直接 import するべき"
+    );
+
+    let harness = r#"
+(defn main []
+  (let [graph (source-evidence-graph
+                (vector-new 0)
+                (vector-new 0)
+                (source-evidence-registry-new))
+    metrics (source-evidence-stale-metrics graph)]
+    (do
+      (print (vector-get metrics 0))
+      (print (vector-get metrics 1))
+      0)))
+"#;
+
+    let output = run_stale_validation_runtime(harness);
+    assert_eq!(
+        output.trim(),
+        "0\n0",
+        "空の stale validation graph は review/evidence とも 0 件で実行できるべき"
+    );
+}
 
 /// EC-M2-02: source evidence の required generator は空値のまま registry へ登録しない。
 #[test]

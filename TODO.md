@@ -913,3 +913,10 @@ selfhost/native/MCP parity、Mac/Linux matrix、EC-M2-03 aggregate は残件。E
 `docs/adr/decisions-v0.2-native-validation-manifest-roundtrip.md`。Rust oracle focused test は
 default EmbeddedCli build の既存 `vector-push-single-rooted-v3` 未定義で停止し、GREEN evidence には
 算入していない。
+
+2026-07-29 に `selfhost/src/Tools/Validation/Stale.ls` の rooted vector helper owner importを修正した。
+`Syntax.Parser` の直接 import を追加し、default EmbeddedCli build が `vector-push-single-rooted-v3`
+undefinedで停止する既存 blockerを解消した。RED→GREEN の selfhost stale validation test、Rust driver
+の `validate_cli` 32件、`validate_review_registry` 2件、`manifest_input_cli` 8件が passした verified
+sliceである。native stage0 current-source/runtime、MCP、Mac/Linux matrix、EC-M2-03 aggregate は残件。
+Evidence: `docs/adr/decisions-v0.2-selfhost-stale-parser-import.md`。
