@@ -1793,6 +1793,87 @@ fn test_e2e_selfhost_parser_defn_param_form_end_cross_chunk_boundary() {
 }
 
 #[test]
+fn test_e2e_selfhost_parser_skip_bracket_uses_bounded_chunks() {
+    let source = selfhost_module("Parser.ls");
+    let rooted_body = source
+        .split("(defn parse-skip-bracket-rooted-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn parse-skip-bracket-v3").next())
+        .expect("Parser.ls に bracket skip rooted loop が存在すること");
+    let step_body = source
+        .split("(defn parse-skip-bracket-step-v3")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn parse-skip-bracket-step-64-loop-bounded")
+                .next()
+        })
+        .expect("Parser.ls に bracket skip step helper が存在すること");
+
+    assert!(
+        source.contains("(defn parse-skip-bracket-step-64-loop-bounded")
+            && source.contains("(defn parse-skip-bracket-step-64")
+            && rooted_body.contains("parse-skip-bracket-step-64")
+            && !step_body.contains("parse-skip-bracket-rooted-v3"),
+        "bracket skip parser は Linux x86 native stack の長い bracket payload を bounded chunk へ委譲するべき"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_parser_skip_bracket_cross_chunk_boundary() {
+    let expressions = (0..65)
+        .map(|value| value.to_string())
+        .collect::<Vec<_>>()
+        .join(" ");
+    let source = format!("(defn verify [] :example [{}] true)", expressions);
+    let rust_program = lsharp_syntax::parse(&source)
+        .expect("Rust oracle は nested bracket example fixture を parse できるべき");
+    match &rust_program.decls[0] {
+        Decl::Defn {
+            metadata: Some(metadata),
+            ..
+        } => match &metadata.forms[0].kind {
+            MetadataFormKind::LegacyExample { expressions } => {
+                assert_eq!(expressions.len(), 65);
+            }
+            form => panic!("Rust oracle の :example form が不正: {form:?}"),
+        },
+        decl => panic!("Rust oracle の defn metadata が不正: {decl:?}"),
+    }
+
+    let token_source = format!("{}0{} 99", "[".repeat(65), "]".repeat(65));
+    let trailing_start = token_source.rfind("99").unwrap();
+    let trailing_end = trailing_start + 2;
+    let source_literal = token_source.replace('"', "\\\"");
+    let (token_ls, ast_ls, lexer_ls, parser_ls) = parser_runtime_modules();
+    let harness = format!(
+        r#"
+(defn main []
+  (let [source "{}"
+        spans (tokenize-with-spans source)
+        pos-ref (ref-new 1)]
+    (do
+      (parse-skip-bracket-v3 spans pos-ref 1)
+      (print (ref-get pos-ref))
+      (print (p-start spans pos-ref))
+      (print (p-end spans pos-ref))
+      0)))
+"#,
+        source_literal
+    );
+    let output = compile_and_run(&format!(
+        "{}\n{}\n{}\n{}\n{}",
+        token_ls, ast_ls, lexer_ls, parser_ls, harness
+    ));
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["131", &trailing_start.to_string(), &trailing_end.to_string()],
+        "bracket skip parser は 64 token 境界を跨いでも nested depth を保持し trailing token へ着地するべき"
+    );
+}
+
+#[test]
 fn test_e2e_selfhost_parser_record_literal_fields_use_bounded_chunks() {
     let source = selfhost_module("Parser.ls");
     let rooted_body = source
