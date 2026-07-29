@@ -664,8 +664,10 @@ EC-M2-02/03 aggregate は残件。Evidence: `docs/adr/decisions-v0.2-validation-
 さらに同じ coverage count invariant を Rust MCP `lsharp_validate` の `manifest` object、JSON string、
 `manifest_file` routeへ接続した。`cases=3` に対する `coverage.smoke=2` を direct JSON-RPC に入力すると、
 3 routeすべてが `isError: true`、`structuredContent` なし、coverage/cases/covered 付き text error を返す
-ことを固定した。Rust-host MCP manifest-route verified partial sliceであり、source/file route、selfhost/
-native MCP producer、current-source artifact/runtime、Mac/Linux matrix、EC-M2-02/03 aggregate は残件。
+ことを固定した。さらに source/file route も `sum=1,cases=2` の source adapter diagnostic を同じ
+`isError` / no-structured-content boundaryへ投影することを固定した。Rust-host MCP 全 input-route verified
+partial sliceであり、selfhost/native MCP producer、current-source artifact/runtime、Mac/Linux matrix、
+EC-M2-02/03 aggregate は残件。
 Evidence: `docs/adr/decisions-v0.2-validation-evidence-coverage-count.md`。
 
 2026-07-29 に MCP `lsharp_validate` でも review registry の presence semantics を対照固定した。

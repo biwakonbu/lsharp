@@ -129,6 +129,8 @@ manifest は [`intent-graph.schema.json`](../schemas/intent-graph.schema.json) �
 manifest の `sampling.coverage` を指定した場合は、Rust canonical parser と同じく bucket 合計と
 `cases` の不一致を MCP input error として拒否します。object、JSON string、`manifest_file` の各
 manifest route は `isError: true` とし、検証 report や canonical manifest を成功値として返しません。
+`source` / `file` route も source adapter の `sum=<covered>,cases=<cases>` diagnostic を同じ MCP
+error boundary へ投影します。
 
 ```json
 {

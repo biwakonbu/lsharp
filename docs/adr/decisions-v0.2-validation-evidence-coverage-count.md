@@ -26,8 +26,11 @@
   exit `1`、stdout と `--emit-manifest` の成果物を空にする。Rust MCP `lsharp_validate` の
   `manifest` object、JSON string、`manifest_file` route は同じ parser error を `isError: true`、
   `structuredContent` なし、coverage/cases/covered を含む text error として返す。
-- selfhost/native producer/runtime と MCP の source/file route の current-source parity はこの sliceでは
-  新たな完了とは扱わない。
+- Rust MCP `lsharp_validate` の `source` / `file` route は source adapter の
+  `sum=<covered>,cases=<cases>` diagnostic を `isError: true`、`structuredContent` なし、text error
+  として返す。すべて Rust-host input route を同じ fail-closed invariant に揃える。
+- selfhost/native producer/runtime と MCP route の current-source parity はこの sliceでは新たな完了とは
+  扱わない。
 - coverage の実行生成、generator policy、runtime trace の意味論、未検証 target の artifact/runtime は
   この invariant と分離し、EC-M2-02/03 の未完了境界に残す。
 
@@ -42,10 +45,11 @@
 - `cargo test -p lsharp-types --test validation_input -- --nocapture`
 - `LSHARP_EMBED_COMPONENT_PATH=... cargo test -p lsharp-driver --test manifest_input_cli validate_rejects_coverage_total_that_does_not_match_cases_without_output -- --nocapture`
 - `LSHARP_EMBED_COMPONENT_PATH=... cargo test -p lsharp-driver coverage_count_mismatch -- --nocapture`
+- `LSHARP_EMBED_COMPONENT_PATH=... cargo test -p lsharp-driver source_routes -- --nocapture`
 
 ## Boundary and follow-up
 
-これは Rust canonical/source/manifest/CLI/MCP manifest routes の coverage count invariant に限定した
-verified partial sliceである。coverage 省略を拒否する契約、generator/trace の実行証跡、MCP source/file
-route、selfhost/native stage0 parity、current-source artifact/runtime、Mac Apple Silicon と Linux
-x86_64 の matrix、EC-M2-02/03 aggregate は未完了であり、TODO の `[~]` を維持する。
+これは Rust canonical/source/manifest/CLI/MCP の全 input route における coverage count invariant に限定
+した verified partial sliceである。coverage 省略を拒否する契約、generator/trace の実行証跡、selfhost/
+native stage0 parity、current-source artifact/runtime、Mac Apple Silicon と Linux x86_64 の matrix、
+EC-M2-02/03 aggregate は未完了であり、TODO の `[~]` を維持する。

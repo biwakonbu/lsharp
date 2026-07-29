@@ -621,6 +621,67 @@ mod review_registry_tests {
     }
 
     #[test]
+    fn test_validate_tool_rejects_coverage_count_mismatch_for_source_routes() {
+        const SOURCE: &str = r#"
+            (defn cancel []
+              :claim "claim:checkout/cancel" "The API rejects shipped orders"
+              :evidence "evidence:checkout/coverage-count-mismatch"
+                :subject "claim:checkout/cancel"
+                :method "property"
+                :outcome "pass"
+                :runner "mcp-source-coverage-count"
+                :target "aarch64-apple-darwin"
+                :source-commit "mcp-source-coverage-count-commit"
+                :artifact-digest "sha256:mcp-source-coverage-count"
+                :cases 2
+                :seed 0
+                :generator "mcp-source-coverage-count-generator"
+                :coverage [("positive" 1)]
+                :producer "mcp-source-coverage-count-producer"
+                :tool-version "0.2.0-dev"
+                :timestamp "2026-07-29T00:00:00Z"
+                :independence "same-author"
+              true)
+            "#;
+
+        let assert_error = |arguments: Value, route: &str| {
+            let response = handle_jsonrpc_message(&json!({
+                "jsonrpc": "2.0",
+                "id": 7,
+                "method": "tools/call",
+                "params": { "name": "lsharp_validate", "arguments": arguments }
+            }));
+            assert_eq!(response["result"]["isError"], true, "{route}");
+            assert!(response["result"].get("structuredContent").is_none());
+            let error = response["result"]["content"][0]["text"]
+                .as_str()
+                .expect("source coverage mismatch は MCP text error を返すべき");
+            assert!(
+                error.contains("coverage"),
+                "{route}: unexpected error: {error}"
+            );
+            assert!(
+                error.contains("sum=1,cases=2"),
+                "{route}: unexpected error: {error}"
+            );
+        };
+
+        assert_error(json!({ "source": SOURCE }), "source");
+
+        let path = std::env::temp_dir().join(format!(
+            "lsharp_mcp_source_coverage_count_{}_{}.ls",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock は epoch より後であるべき")
+                .as_nanos()
+        ));
+        std::fs::write(&path, SOURCE).expect("source coverage mismatch file を書けるべき");
+        assert_error(json!({ "file": path.display().to_string() }), "file");
+        std::fs::remove_file(&path).expect("source coverage mismatch file を削除できるべき");
+    }
+
+    #[test]
     fn test_validate_tool_rejects_blank_manifest_provenance_fields() {
         let fixture: Value = serde_json::from_str(include_str!(
             "../../../tests/fixtures/validation/ec-m3-canonical-manifest.json"
