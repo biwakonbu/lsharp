@@ -9,6 +9,7 @@ use super::review_attestation::{AttestationAlgorithm, AttestationError, ReviewAt
 use super::review_lifecycle::{
     LifecycleError, ReviewLifecycleEvent, ReviewLifecycleRegistry, ReviewLifecycleState,
 };
+use super::review_trust_store::{ReviewTrustKey, ReviewTrustStore, TrustStoreError};
 use serde::de::{self, Deserialize, Deserializer, MapAccess, Visitor};
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
@@ -27,8 +28,12 @@ pub enum ReviewWireError {
     Attestation(#[from] AttestationError),
     #[error("review lifecycle の wire 変換に失敗しました: {0}")]
     Lifecycle(#[from] LifecycleError),
+    #[error("review trust store の wire 変換に失敗しました: {0}")]
+    TrustStore(#[from] TrustStoreError),
     #[error("review attestation の signature encoding が不正です: {value:?}")]
     InvalidSignatureEncoding { value: String },
+    #[error("review trust store の public key encoding が不正です: {value:?}")]
+    InvalidPublicKeyEncoding { value: String },
     #[error("review lifecycle の state が不正です: {value:?}")]
     InvalidLifecycleState { value: String },
     #[error("review wire の JSON projection に失敗しました: {message}")]
@@ -41,6 +46,7 @@ pub struct ReviewWireDocument {
     schema_version: u64,
     attestations: Vec<ReviewAttestation>,
     lifecycle: ReviewLifecycleRegistry,
+    trust_store: Option<ReviewTrustStore>,
 }
 
 impl ReviewWireDocument {
@@ -54,6 +60,10 @@ impl ReviewWireDocument {
 
     pub fn lifecycle(&self) -> &ReviewLifecycleRegistry {
         &self.lifecycle
+    }
+
+    pub fn trust_store(&self) -> Option<&ReviewTrustStore> {
+        self.trust_store.as_ref()
     }
 
     /// deterministic な object/array projection。
@@ -98,11 +108,26 @@ impl ReviewWireDocument {
             })
             .collect::<Vec<_>>();
 
-        json!({
-            "attestations": attestation_values,
-            "lifecycle": lifecycle_values,
-            "schema_version": self.schema_version,
-        })
+        let mut root = serde_json::Map::new();
+        root.insert("attestations".to_string(), json!(attestation_values));
+        root.insert("lifecycle".to_string(), json!(lifecycle_values));
+        root.insert("schema_version".to_string(), json!(self.schema_version));
+        if let Some(trust_store) = &self.trust_store {
+            let keys = trust_store
+                .entries()
+                .into_iter()
+                .map(|key| {
+                    json!({
+                        "algorithm": key.algorithm().as_str(),
+                        "key_id": key.key_id(),
+                        "provider": key.provider(),
+                        "public_key": encode_base64url(key.public_key()),
+                    })
+                })
+                .collect::<Vec<_>>();
+            root.insert("trust_store".to_string(), json!(keys));
+        }
+        Value::Object(root)
     }
 
     pub fn to_json_string(&self) -> Result<String, ReviewWireError> {
@@ -135,11 +160,22 @@ pub fn parse_review_wire(input: &str) -> Result<ReviewWireDocument, ReviewWireEr
     for event in wire.lifecycle {
         lifecycle.add_event(event.try_into()?)?;
     }
+    let trust_store = match wire.trust_store {
+        Some(keys) => {
+            let mut store = ReviewTrustStore::default();
+            for key in keys {
+                store.add_key(key.try_into()?)?;
+            }
+            Some(store)
+        }
+        None => None,
+    };
 
     Ok(ReviewWireDocument {
         schema_version: wire.schema_version,
         attestations,
         lifecycle,
+        trust_store,
     })
 }
 
@@ -148,6 +184,7 @@ struct WireDocument {
     schema_version: u64,
     attestations: Vec<AttestationWire>,
     lifecycle: Vec<LifecycleWire>,
+    trust_store: Option<Vec<TrustKeyWire>>,
 }
 
 impl<'de> Deserialize<'de> for WireDocument {
@@ -176,6 +213,7 @@ impl<'de> Visitor<'de> for DocumentVisitor {
         let mut schema_version = None;
         let mut attestations = None;
         let mut lifecycle = None;
+        let mut trust_store = None;
         while let Some(key) = map.next_key::<String>()? {
             if !seen.insert(key.clone()) {
                 return Err(de::Error::custom(format!("duplicate field document.{key}")));
@@ -184,6 +222,7 @@ impl<'de> Visitor<'de> for DocumentVisitor {
                 "schema_version" => schema_version = Some(map.next_value::<u64>()?),
                 "attestations" => attestations = Some(map.next_value::<Vec<AttestationWire>>()?),
                 "lifecycle" => lifecycle = Some(map.next_value::<Vec<LifecycleWire>>()?),
+                "trust_store" => trust_store = Some(map.next_value::<Vec<TrustKeyWire>>()?),
                 _ => return Err(de::Error::custom(format!("unknown field document.{key}"))),
             }
         }
@@ -191,6 +230,7 @@ impl<'de> Visitor<'de> for DocumentVisitor {
             schema_version: required(schema_version, "document.schema_version")?,
             attestations: required(attestations, "document.attestations")?,
             lifecycle: required(lifecycle, "document.lifecycle")?,
+            trust_store,
         })
     }
 }
@@ -386,6 +426,83 @@ impl<'de> Visitor<'de> for LifecycleVisitor {
             state: required(state, "lifecycle.state")?,
             effective_at: required(effective_at, "lifecycle.effective_at")?,
             reason_digest: reason_digest.unwrap_or(None),
+        })
+    }
+}
+
+#[derive(Debug)]
+struct TrustKeyWire {
+    provider: String,
+    key_id: String,
+    algorithm: String,
+    public_key: String,
+}
+
+impl TryFrom<TrustKeyWire> for ReviewTrustKey {
+    type Error = ReviewWireError;
+
+    fn try_from(value: TrustKeyWire) -> Result<Self, Self::Error> {
+        let encoded = value.public_key;
+        let public_key =
+            decode_base64url(&encoded).map_err(|_| ReviewWireError::InvalidPublicKeyEncoding {
+                value: encoded.clone(),
+            })?;
+        let algorithm = AttestationAlgorithm::parse(value.algorithm)?;
+        Ok(ReviewTrustKey::new(
+            value.provider,
+            value.key_id,
+            algorithm,
+            public_key,
+        )?)
+    }
+}
+
+impl<'de> Deserialize<'de> for TrustKeyWire {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_map(TrustKeyVisitor)
+    }
+}
+
+struct TrustKeyVisitor;
+
+impl<'de> Visitor<'de> for TrustKeyVisitor {
+    type Value = TrustKeyWire;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("review trust key object")
+    }
+
+    fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+    where
+        A: MapAccess<'de>,
+    {
+        let mut seen = BTreeSet::new();
+        let mut provider = None;
+        let mut key_id = None;
+        let mut algorithm = None;
+        let mut public_key = None;
+        while let Some(key) = map.next_key::<String>()? {
+            if !seen.insert(key.clone()) {
+                return Err(de::Error::custom(format!(
+                    "duplicate field trust_key.{key}"
+                )));
+            }
+            match key.as_str() {
+                "provider" => provider = Some(map.next_value::<String>()?),
+                "key_id" => key_id = Some(map.next_value::<String>()?),
+                "algorithm" => algorithm = Some(map.next_value::<String>()?),
+                "public_key" => public_key = Some(map.next_value::<String>()?),
+                _ => return Err(de::Error::custom(format!("unknown field trust_key.{key}"))),
+            }
+        }
+        Ok(TrustKeyWire {
+            provider: required(provider, "trust_key.provider")?,
+            key_id: required(key_id, "trust_key.key_id")?,
+            algorithm: required(algorithm, "trust_key.algorithm")?,
+            public_key: required(public_key, "trust_key.public_key")?,
         })
     }
 }

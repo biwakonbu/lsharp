@@ -20,6 +20,12 @@
       "items": {
         "$ref": "#/$defs/lifecycle"
       }
+    },
+    "trust_store": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/trust_key"
+      }
     }
   },
   "$defs": {
@@ -107,6 +113,28 @@
         "reason_digest": {
           "type": ["string", "null"],
           "minLength": 1
+        }
+      }
+    },
+    "trust_key": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "key_id", "algorithm", "public_key"],
+      "properties": {
+        "provider": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "key_id": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "algorithm": {
+          "const": "ed25519"
+        },
+        "public_key": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "minLength": 43,
+          "maxLength": 43
         }
       }
     }
