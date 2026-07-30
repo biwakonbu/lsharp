@@ -24,18 +24,20 @@ record として取り出す契約は未検証だった。parser の AST 保持�
 - producer 層は signature/trust/lifecycle を暗黙に解決せず、verification state を常に
   `unverified` として保持する。canonical bytes は Rust の length-prefixed UTF-8 contract と
   同じ field values から生成する。
-- unknown algorithm などの invalid field は source graph error code `8`、kind `20`、review ID、
-  directive span を保持して fail-closed に返す。provider network や trust store はこの層へ
-  埋め込まない。
+- unknown algorithm、invalid signature encoding、invalid timestamp、non-forward expiry などの
+  invalid field は source graph error code `8`、kind `20`、review ID、directive span を保持して
+  fail-closed に返す。provider network や trust store はこの層へ埋め込まない。
 
 ## Evidence
 
 - RED: 新規 source consumer E2E を実装前に追加し、named-field source を selfhost parser と
   `IntentSource` reducer へ通す契約を固定した。
-- GREEN: `CARGO_TARGET_DIR=/Users/biwakonbu/github/tmp/lsharp-m3-selfhost-attestation-source/target cargo test -q -p lsharp-wasm --test e2e 'e2e::selfhost_evidence_registry::source_attestation::' -- --nocapture`（2 passed）。
+- GREEN: `CARGO_TARGET_DIR=/Users/biwakonbu/github/tmp/lsharp-m3-selfhost-attestation-errors/target cargo test -q -p lsharp-wasm --test e2e 'e2e::selfhost_evidence_registry::source_attestation::' -- --nocapture`（5 passed）。
   valid fixture は全 field、`unverified`、span、Rust canonical bytes と一致し、unknown
-  algorithm は code `8` / kind `20` / ID / span を返す。
-- Rust oracle: `CARGO_TARGET_DIR=/Users/biwakonbu/github/tmp/lsharp-m3-selfhost-attestation-source/target cargo test -q -p lsharp-types --test review_attestation_source`（6 passed）。
+  algorithm、invalid signature encoding、invalid issued-at date、non-forward expiry は
+  code `8` / kind `20` / ID / span を返す。
+- Rust oracle: `CARGO_TARGET_DIR=/Users/biwakonbu/github/tmp/lsharp-m3-selfhost-attestation-errors/target cargo test -q -p lsharp-types --test review_attestation_source`（6 passed）。
+- Full registry: `CARGO_TARGET_DIR=/Users/biwakonbu/github/tmp/lsharp-m3-selfhost-attestation-errors/target cargo test -q -p lsharp-wasm --test e2e 'e2e::selfhost_evidence_registry::' -- --nocapture`（56 passed）。
 - Contract: 対象 Rust files の `rustfmt --edition 2024 --check`、`git diff --check`、
   `bash scripts/audit_docs.sh`（0 errors, 0 warnings）を通す。
 

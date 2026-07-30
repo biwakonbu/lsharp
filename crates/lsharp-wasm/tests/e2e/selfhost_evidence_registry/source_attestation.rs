@@ -27,6 +27,33 @@ fn parse_bytes<'a>(lines: &mut impl Iterator<Item = &'a str>) -> Vec<u8> {
         .collect()
 }
 
+fn assert_source_attestation_error(source: &str) {
+    let source = quote_source(source);
+    let harness = format!(
+        r#"
+(defn main []
+  (let [program (parse-program "{source}")
+        result (source-review-attestations-from-program program)
+        error (source-result-error result)]
+    (do
+      (print (source-result-status result))
+      (print (source-graph-error-code error))
+      (print (source-graph-error-kind error))
+      (print-string (source-graph-error-id error))
+      (print-string "\n")
+      (print (if (< (source-graph-error-start error) (source-graph-error-end error)) 1 0))
+      0)))
+"#,
+        source = source
+    );
+
+    let output = run_evidence_registry_runtime(&harness);
+    assert_eq!(
+        output.trim().lines().collect::<Vec<_>>(),
+        ["0", "8", "20", "review:checkout/reviewer-001", "1"]
+    );
+}
+
 #[test]
 fn selfhost_source_attestation_projects_named_fields_and_unverified_state() {
     let source = quote_source(VALID_SOURCE);
@@ -117,28 +144,24 @@ fn selfhost_source_attestation_projects_named_fields_and_unverified_state() {
 
 #[test]
 fn selfhost_source_attestation_rejects_invalid_algorithm_and_preserves_span() {
-    let source = quote_source(&VALID_SOURCE.replace("ed25519", "rsa-sha256"));
-    let harness = format!(
-        r#"
-(defn main []
-  (let [program (parse-program "{source}")
-        result (source-review-attestations-from-program program)
-        error (source-result-error result)]
-    (do
-      (print (source-result-status result))
-      (print (source-graph-error-code error))
-      (print (source-graph-error-kind error))
-      (print-string (source-graph-error-id error))
-      (print-string "\n")
-      (print (if (< (source-graph-error-start error) (source-graph-error-end error)) 1 0))
-      0)))
-"#,
-        source = source
-    );
+    assert_source_attestation_error(&VALID_SOURCE.replace("ed25519", "rsa-sha256"));
+}
 
-    let output = run_evidence_registry_runtime(&harness);
-    assert_eq!(
-        output.trim().lines().collect::<Vec<_>>(),
-        ["0", "8", "20", "review:checkout/reviewer-001", "1"]
+#[test]
+fn selfhost_source_attestation_rejects_invalid_signature_encoding_and_preserves_span() {
+    assert_source_attestation_error(&VALID_SOURCE.replace("AAECAw", "A==="));
+}
+
+#[test]
+fn selfhost_source_attestation_rejects_invalid_issued_at_date_and_preserves_span() {
+    assert_source_attestation_error(
+        &VALID_SOURCE.replace("2026-08-01T00:00:00Z", "2026-02-30T00:00:00Z"),
+    );
+}
+
+#[test]
+fn selfhost_source_attestation_rejects_non_forward_expiry_and_preserves_span() {
+    assert_source_attestation_error(
+        &VALID_SOURCE.replace("2026-09-01T00:00:00Z", "2026-07-01T00:00:00Z"),
     );
 }
