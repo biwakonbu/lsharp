@@ -1405,7 +1405,7 @@ fn cmd_validate(
     let graph = lsharp_types::validation_input::parse_intent_graph_json(&source)
         .map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
     let (graph, review_verifications, review_identity) =
-        project_review_verifications(graph, review_inputs, review_context)?;
+        project_review_verifications(graph, &[], review_inputs, review_context)?;
     emit_validation_manifest(&graph, emit_manifest)?;
     emit_validation_report(
         &graph,
@@ -1430,10 +1430,11 @@ fn cmd_validate_source(
         std::fs::read_to_string(file).map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
     let program = lsharp_syntax::parse(&source)
         .map_err(|e| miette::miette!("[{}] {}: {}", e.code(), file.display(), e))?;
-    let graph = lsharp_types::validation_source::source_program_to_intent_graph(&program)
-        .map_err(|e| source_graph_error(file, &source, e))?;
+    let (graph, source_attestations) =
+        lsharp_types::validation_source::source_program_to_intent_graph_with_attestations(&program)
+            .map_err(|e| source_graph_error(file, &source, e))?;
     let (graph, review_verifications, review_identity) =
-        project_review_verifications(graph, review_inputs, review_context)?;
+        project_review_verifications(graph, &source_attestations, review_inputs, review_context)?;
     emit_validation_manifest(&graph, emit_manifest)?;
     emit_validation_report(
         &graph,
@@ -1445,6 +1446,7 @@ fn cmd_validate_source(
 
 fn project_review_verifications(
     mut graph: lsharp_types::validation::IntentGraph,
+    source_attestations: &[lsharp_types::validation_source::SourceReviewAttestation],
     review_inputs: &review_input::ReviewInputs,
     review_context: Option<&review_input::ReviewVerificationContext>,
 ) -> miette::Result<(
@@ -1462,7 +1464,7 @@ fn project_review_verifications(
             )
         })
         .collect::<BTreeMap<_, _>>();
-    let review_verifications = match review_context {
+    let external_verifications = match review_context {
         Some(context) => review_inputs
             .verification_facts_with_context(context, &provenance_digests)
             .map_err(|error| miette::miette!("{error}"))?,
@@ -1470,6 +1472,24 @@ fn project_review_verifications(
             .verification_facts()
             .map_err(|error| miette::miette!("{error}"))?,
     };
+    let external_ids = external_verifications
+        .iter()
+        .map(|fact| fact.review_id().as_str().to_string())
+        .collect::<BTreeSet<_>>();
+    let mut review_verifications = source_attestations
+        .iter()
+        .filter(|attestation| {
+            !external_ids.contains(attestation.attestation().review_id().as_str())
+        })
+        .map(|attestation| {
+            lsharp_types::validation::ReviewVerificationFact::new(
+                attestation.attestation().review_id().clone(),
+                attestation.verification_state(),
+            )
+            .map_err(|error| miette::miette!("{error}"))
+        })
+        .collect::<miette::Result<Vec<_>>>()?;
+    review_verifications.extend(external_verifications);
     let review_verifications = review_inputs.complete_verification_facts(
         review_verifications,
         graph.reviews().iter().map(|review| review.id()),

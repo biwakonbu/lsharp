@@ -219,9 +219,18 @@ impl SourceGraphError {
 /// `:constrained-by`、`:tested-by`、`:supports`、`:contradicts` を生成する。evidence
 /// record がない supports/contradicts は明示的な registry-required error とする。
 pub fn source_program_to_intent_graph(program: &Program) -> Result<IntentGraph, SourceGraphError> {
-    // attestation は graph manifest へまだ投影しないが、source に埋め込まれた named
-    // fields の malformed/unknown algorithm/signature encoding を成功扱いにしない。
-    source_program_to_review_attestations(program)?;
+    source_program_to_intent_graph_with_attestations(program).map(|(graph, _)| graph)
+}
+
+/// source graph と、同じ source に埋め込まれた review attestation を同時に返す。
+///
+/// attestation は graph の node registry ではなく、CLI の report/manifest projection が
+/// `unverified` fact を作るための source-owned input として保持する。trust store、lifecycle、
+/// 明示 clock は driver 側で後から適用する。
+pub fn source_program_to_intent_graph_with_attestations(
+    program: &Program,
+) -> Result<(IntentGraph, Vec<SourceReviewAttestation>), SourceGraphError> {
+    let attestations = source_program_to_review_attestations(program)?;
     let mut graph = IntentGraph::default();
     let mut review_spans = Vec::new();
     for decl in &program.decls {
@@ -234,7 +243,7 @@ pub fn source_program_to_intent_graph(program: &Program) -> Result<IntentGraph, 
     for decl in &program.decls {
         source_edges::add_decl_edges(decl, &mut graph)?;
     }
-    Ok(graph)
+    Ok((graph, attestations))
 }
 
 /// source の `:review-attestation` named fields を canonical attestation へ投影する。

@@ -28,8 +28,11 @@ positional な既存 `:review` と混ざると、named-field の順序・欠落�
   canonical bytes（domain separator と big-endian u64 length prefix）を作り、record に source
   span と `unverified` state を保持する。
 - `source-graph-from-program` は attestation producer の validation を先に実行する。valid record
-  は現段階では既存 graph/manifest の `reviews` registry へ投影せず、malformed/unsupported
-  algorithm/invalid signature は source validation error として fail-closed にする。
+  は graph の `reviews` registry へは直接追加せず、Rust CLI の report/manifest projection へ
+  source-owned `unverified` fact として渡す（詳細は
+  [`decisions-v0.3-source-attestation-report-projection.md`](decisions-v0.3-source-attestation-report-projection.md)）。
+  malformed/unsupported algorithm/invalid signature は source validation error として fail-closed
+  にする。
 - trust store、lifecycle、current-source identity、clock、manifest-side verification は source
   に埋め込まず、後続の EC-M3-04/05 boundary とする。
 
@@ -50,8 +53,9 @@ positional な既存 `:review` と混ざると、named-field の順序・欠落�
 
 ## Boundary and follow-up
 
-これは source parser と producer の verified partial sliceである。attestation はまだ graph の
-manifest/report JSON、`Evidence` consumer、native source-file smoke、current-source と packaged
-stage0 の provenance、Mac Apple Silicon / Linux x86_64 runtime へ接続していない。signature の
+これは source parser と producer の verified partial sliceである。Rust CLI の source
+report/manifest projection は別 ADR の verified partial sliceとして接続済みだが、`Evidence`
+consumer、selfhost/native producer parity、native source-file smoke、current-source と packaged
+stage0 の provenance、Mac Apple Silicon / Linux x86_64 runtime へは未接続である。signature の
 暗号学的 verification、trust/lifecycle、EC-M3-05 evidence identity は未完了であり、`TODO.md` の
-`EC-M3-04` / `EC-M3-05` を `[~]` / `[ ]` のまま維持する。
+`EC-M3-04` / `EC-M3-05` を `[~]` のまま維持する。
