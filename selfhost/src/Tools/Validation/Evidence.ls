@@ -746,8 +746,15 @@
         fields2)
     fields4 (validation-json-append fields3
       (validation-json-array-field "edges"
-        (validation-json-array-wrap edges-json)))]
-    (validation-json-object-wrap fields4)))
+        (validation-json-array-wrap edges-json)))
+    fields5 (if (> (vector-length graph) 5)
+      (validation-json-append fields4
+        (validation-json-object-field
+          "review_evidence_identity"
+          (source-review-evidence-identity-json
+            (source-evidence-graph-review-identity graph))))
+      fields4)]
+    (validation-json-object-wrap fields5)))
 
 (defn source-evidence-edge-form-result-with-reviews [form registry nodes reviews evidence-ids]
   (if (< (vector-length form) 4)

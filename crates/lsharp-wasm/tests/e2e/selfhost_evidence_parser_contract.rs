@@ -15,15 +15,20 @@ fn run_evidence_parser_runtime(harness: &str) -> String {
         selfhost_project_root().join("selfhost/src/Tools/Validation/Whitespace.ls"),
     )
     .expect("canonical Whitespace.ls が読み込めない");
+    let review_identity = std::fs::read_to_string(
+        selfhost_project_root().join("selfhost/src/Tools/Validation/ReviewIdentity.ls"),
+    )
+    .expect("canonical ReviewIdentity.ls が読み込めない");
     let json_rpc =
         std::fs::read_to_string(selfhost_project_root().join("selfhost/src/Tools/Lsp/JsonRpc.ls"))
             .expect("canonical JsonRpc.ls が読み込めない");
     compile_and_run(&format!(
-        "{}\n{}\n{}\n{}\n{}\n{}",
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}",
         selfhost_parser_runtime_bundle(),
         json_rpc,
         whitespace,
         intent_source,
+        review_identity,
         evidence,
         harness
     ))

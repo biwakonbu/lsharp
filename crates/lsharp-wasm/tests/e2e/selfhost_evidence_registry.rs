@@ -18,6 +18,8 @@ fn selfhost_evidence_registry_root_stays_within_the_test_file_budget() {
 
 #[path = "selfhost_evidence_registry/harness.rs"]
 mod harness;
+#[path = "selfhost_evidence_registry/identity.rs"]
+mod identity;
 #[path = "selfhost_evidence_registry/runtime.rs"]
 mod runtime;
 #[path = "selfhost_evidence_registry/validation.rs"]
