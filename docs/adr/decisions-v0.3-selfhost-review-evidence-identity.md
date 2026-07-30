@@ -32,6 +32,9 @@ caller が明示的に渡した値だけを採用し、検証できない trust/
 - manifest JSON は Rust wire と同じ固定順
   `subject_digest` → `source_commit` → `artifact_digest` → `trust_store_digest` →
   `lifecycle_digest` → `now` で出力する。空の optional digest は省略せず `null` を出力する。
+- manifest の top-level field も Rust wire と同じ
+  `schema_version` → `nodes` → `evidence` → `reviews?` → `review_evidence_identity?` → `edges`
+  の順に出力し、非空の lifecycle digest は文字列のまま保持する。
 - この slice は identity の保持・wire projection のみを扱い、trust store/lifecycle による
   `verified` / `stale` / `revoked` 判定、CLI/MCP の option/context wiring、artifact/release gate
   は別タスクとして残す。
@@ -42,7 +45,11 @@ caller が明示的に渡した値だけを採用し、検証できない trust/
   identity API 未実装の `origin/main` で実行し、`UndefinedVar`（identity constructor）を確認した。
 - GREEN: 同テストで valid identity の attach、同値再 attach、競合拒否、不正 timestamp 拒否を
   selfhost Wasm runtime で確認し、manifest の raw JSON field order と nullable `null` を固定した。
-- Regression: selfhost evidence registry runtime 13 tests、source attestation manifest projection
+- Lifecycle parity: `test_e2e_selfhost_evidence_registry_projects_non_null_identity_in_rust_manifest_order`
+  を追加し、trust/lifecycle digest の非NULL projection、同値再 attach、Rust と同じ top-level field
+  順を selfhost Wasm runtime で固定した。identity module は 2 tests passed。
+- Rust oracle: `cargo test -q -p lsharp-types --test validation_manifest_review_identity`（5 passed）。
+- Regression: selfhost evidence registry runtime（57 passed）、source attestation manifest projection
   test、evidence parser duplicate-field contract が通過した。
 
 ## Boundary

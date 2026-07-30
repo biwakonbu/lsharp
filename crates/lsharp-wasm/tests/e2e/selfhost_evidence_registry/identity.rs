@@ -76,7 +76,7 @@ fn test_e2e_selfhost_evidence_registry_projects_review_identity_and_rejects_conf
     let raw_manifest = lines.next().expect("manifest JSON が必要");
     assert_eq!(
         raw_manifest,
-        r#"{"schema_version":1,"nodes":[],"evidence":[],"edges":[],"review_evidence_identity":{"subject_digest":"sha256:graph","source_commit":"commit-1","artifact_digest":"sha256:artifact","trust_store_digest":"sha256:trust","lifecycle_digest":null,"now":"2026-08-15T00:00:00Z"}}"#
+        r#"{"schema_version":1,"nodes":[],"evidence":[],"review_evidence_identity":{"subject_digest":"sha256:graph","source_commit":"commit-1","artifact_digest":"sha256:artifact","trust_store_digest":"sha256:trust","lifecycle_digest":null,"now":"2026-08-15T00:00:00Z"},"edges":[]}"#
     );
     let manifest: Value =
         serde_json::from_str(raw_manifest).expect("manifest JSON は parse 可能であるべき");
@@ -91,4 +91,54 @@ fn test_e2e_selfhost_evidence_registry_projects_review_identity_and_rejects_conf
             "now": "2026-08-15T00:00:00Z"
         })
     );
+}
+
+#[test]
+fn test_e2e_selfhost_evidence_registry_projects_non_null_identity_in_rust_manifest_order() {
+    let harness = r#"
+(defn main []
+  (let [identity-result (source-review-evidence-identity-result
+                          "sha256:graph"
+                          "commit-1"
+                          "sha256:artifact"
+                          "sha256:trust"
+                          "sha256:lifecycle"
+                          "2026-08-15T00:00:00Z")
+        identity (source-result-value identity-result)
+        graph (source-evidence-graph-with-reviews-and-attestations
+                (vector-new 0)
+                (vector-new 0)
+                (vector-new 0)
+                (vector-new 0)
+                (vector-new 0))
+        attached (source-evidence-graph-attach-review-identity graph identity)
+        same (source-evidence-graph-attach-review-identity
+              (source-result-value attached)
+              identity)]
+    (do
+      (print (source-result-status identity-result))
+      (print (source-result-status attached))
+      (print (source-result-status same))
+      (print-string (validation-source-manifest-json (source-result-value same)))
+      (print-string "\n")
+      0)))
+"#;
+
+    let output = run_evidence_registry_runtime(harness);
+    let mut lines = output.trim().lines();
+    assert_eq!(lines.next(), Some("1"));
+    assert_eq!(lines.next(), Some("1"));
+    assert_eq!(lines.next(), Some("1"));
+    let raw_manifest = lines.next().expect("manifest JSON が必要");
+    assert_eq!(
+        raw_manifest,
+        r#"{"schema_version":1,"nodes":[],"evidence":[],"review_evidence_identity":{"subject_digest":"sha256:graph","source_commit":"commit-1","artifact_digest":"sha256:artifact","trust_store_digest":"sha256:trust","lifecycle_digest":"sha256:lifecycle","now":"2026-08-15T00:00:00Z"},"edges":[]}"#
+    );
+    let manifest: Value =
+        serde_json::from_str(raw_manifest).expect("manifest JSON は parse 可能であるべき");
+    assert_eq!(
+        manifest["review_evidence_identity"]["lifecycle_digest"],
+        "sha256:lifecycle"
+    );
+    assert!(lines.next().is_none(), "unexpected extra selfhost output");
 }
