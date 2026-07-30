@@ -171,6 +171,23 @@ fn validate_rejects_duplicate_top_level_fields_without_report_or_manifest_output
 }
 
 #[test]
+fn validate_rejects_null_review_evidence_identity_without_outputs() {
+    assert_manifest_input_error(
+        "null-review-evidence-identity",
+        r#"
+        {
+          "schema_version": 1,
+          "nodes": [],
+          "evidence": [],
+          "edges": [],
+          "review_evidence_identity": null
+        }
+        "#,
+        &["review_evidence_identity", "object"],
+    );
+}
+
+#[test]
 fn validate_rejects_coverage_total_that_does_not_match_cases_without_output() {
     let manifest = complete_manifest().replace("\"cases\": 1", "\"cases\": 2");
 

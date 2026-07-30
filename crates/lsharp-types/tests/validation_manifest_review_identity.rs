@@ -128,3 +128,18 @@ fn manifest_identity_rejects_malformed_now() {
         .expect_err("manifest identity now must use strict UTC timestamp");
     assert!(error.to_string().contains("timestamp"));
 }
+
+#[test]
+fn manifest_identity_rejects_explicit_null() {
+    let source = serde_json::json!({
+        "schema_version": 1,
+        "nodes": [],
+        "evidence": [],
+        "edges": [],
+        "review_evidence_identity": null
+    });
+
+    let error = parse_intent_graph_json(&source.to_string())
+        .expect_err("identity must be an object when present, not explicit null");
+    assert!(error.to_string().contains("review_evidence_identity"));
+}

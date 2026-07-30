@@ -17,6 +17,10 @@ pub(super) struct Manifest {
     pub(super) nodes: Vec<NodeInput>,
     #[serde(default, deserialize_with = "deserialize_optional_review_registry")]
     pub(super) reviews: Option<Vec<ReviewInput>>,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_optional_review_evidence_identity"
+    )]
     pub(super) review_evidence_identity: Option<ReviewEvidenceIdentityInput>,
     pub(super) evidence: Vec<EvidenceInput>,
     pub(super) edges: Vec<EdgeInput>,
@@ -34,6 +38,19 @@ where
     Option::<Vec<ReviewInput>>::deserialize(deserializer)?
         .map(Some)
         .ok_or_else(|| D::Error::custom("reviews must be an array when present"))
+}
+
+/// `review_evidence_identity` は省略なら identity なし、存在する場合は object とする。
+/// 明示された `null` は schema 上の object ではないため、identity なしへ黙って畳み込まない。
+fn deserialize_optional_review_evidence_identity<'de, D>(
+    deserializer: D,
+) -> Result<Option<ReviewEvidenceIdentityInput>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    Option::<ReviewEvidenceIdentityInput>::deserialize(deserializer)?
+        .map(Some)
+        .ok_or_else(|| D::Error::custom("review_evidence_identity must be an object when present"))
 }
 
 #[derive(Debug, Deserialize)]
