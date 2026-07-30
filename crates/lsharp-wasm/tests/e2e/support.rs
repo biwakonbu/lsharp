@@ -54,6 +54,7 @@ pub(crate) const SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES: &[&str] = &[
     "TypeScheme.ls",
     "TypeInferCore.ls",
     "TypeInferFunctions.ls",
+    "TypeInferSignature.ls",
     "TypeInferBuiltins.ls",
     "TypeInfer.ls",
     "TypeInferApply.ls",
@@ -742,6 +743,7 @@ pub(crate) fn selfhost_source_path(name: &str) -> std::path::PathBuf {
         "TypeScheme.ls" => "selfhost/src/Types/TypeScheme.ls",
         "TypeInferCore.ls" => "selfhost/src/Types/TypeInferCore.ls",
         "TypeInferFunctions.ls" => "selfhost/src/Types/TypeInferFunctions.ls",
+        "TypeInferSignature.ls" => "selfhost/src/Types/TypeInferSignature.ls",
         "TypeInferBuiltins.ls" => "selfhost/src/Types/TypeInferBuiltins.ls",
         "TypeInferApply.ls" => "selfhost/src/Types/TypeInferApply.ls",
         "TypeInferBlock.ls" => "selfhost/src/Types/TypeInferBlock.ls",
@@ -842,6 +844,9 @@ fn selfhost_module_raw(name: &str) -> &'static str {
         "TypeInferCore.ls" => include_str!("../../../../selfhost/src/Types/TypeInferCore.ls"),
         "TypeInferFunctions.ls" => {
             include_str!("../../../../selfhost/src/Types/TypeInferFunctions.ls")
+        }
+        "TypeInferSignature.ls" => {
+            include_str!("../../../../selfhost/src/Types/TypeInferSignature.ls")
         }
         "TypeInferBuiltins.ls" => {
             include_str!("../../../../selfhost/src/Types/TypeInferBuiltins.ls")
@@ -1465,6 +1470,7 @@ pub(crate) fn selfhost_parser_typeinfer_runtime_bundle() -> &'static str {
             "TypeScheme.ls",
             "TypeInferCore.ls",
             "TypeInferFunctions.ls",
+            "TypeInferSignature.ls",
             "TypeInferBuiltins.ls",
             "TypeInfer.ls",
             "TypeInferApply.ls",
@@ -1492,6 +1498,7 @@ pub(crate) fn selfhost_typeinfer_runtime_bundle() -> &'static str {
             "TypeScheme.ls",
             "TypeInferCore.ls",
             "TypeInferFunctions.ls",
+            "TypeInferSignature.ls",
             "TypeInferBuiltins.ls",
             "TypeInfer.ls",
             "TypeInferApply.ls",
@@ -1535,6 +1542,7 @@ pub(crate) fn selfhost_migration_runtime_bundle() -> &'static str {
             "TypeScheme.ls",
             "TypeInferCore.ls",
             "TypeInferFunctions.ls",
+            "TypeInferSignature.ls",
             "TypeInferBuiltins.ls",
             "TypeInfer.ls",
             "TypeInferApply.ls",
@@ -1565,6 +1573,7 @@ pub(crate) fn selfhost_cli_runtime_bundle() -> &'static str {
             "TypeScheme.ls",
             "TypeInferCore.ls",
             "TypeInferFunctions.ls",
+            "TypeInferSignature.ls",
             "TypeInferBuiltins.ls",
             "TypeInfer.ls",
             "TypeInferApply.ls",
@@ -1612,6 +1621,7 @@ pub(crate) fn selfhost_embedded_cli_runtime_bundle() -> &'static str {
             "TypeScheme.ls",
             "TypeInferCore.ls",
             "TypeInferFunctions.ls",
+            "TypeInferSignature.ls",
             "TypeInferBuiltins.ls",
             "TypeInfer.ls",
             "TypeInferApply.ls",
@@ -1824,6 +1834,10 @@ mod tests {
             selfhost_module("TypeInferFunctions.ls").contains("(module Types.TypeInferFunctions)")
         );
         assert!(
+            selfhost_module("TypeInferSignature.ls")
+                .contains("(module Types.TypeInferSignature)")
+        );
+        assert!(
             selfhost_module("TypeInferBuiltins.ls").contains("(module Types.TypeInferBuiltins)")
         );
         assert!(selfhost_module("TypeInferSmoke.ls").contains("(module Types.TypeInferSmoke)"));
@@ -1836,7 +1850,8 @@ mod tests {
         let second = selfhost_cli_runtime_bundle();
         assert_eq!(first, second);
         assert_eq!(first.as_ptr(), second.as_ptr());
-        assert!(first.contains(selfhost_module("Cli.ls").trim()));
+        let expected_cli = selfhost_module("Cli.ls").replace("(import Types.TypeInfer)\n", "");
+        assert!(first.contains(expected_cli.trim()));
         assert!(first.contains(selfhost_module("CompilerSplit.ls").trim()));
     }
 
@@ -1844,11 +1859,17 @@ mod tests {
     fn test_support_selfhost_typeinfer_runtime_bundle_cached() {
         let bundle = selfhost_typeinfer_runtime_bundle();
         assert!(bundle.contains(selfhost_module("TypeInferFunctions.ls").trim()));
+        assert!(bundle.contains(selfhost_module("TypeInferSignature.ls").trim()));
         assert!(bundle.contains(selfhost_module("TypeInferBuiltins.ls").trim()));
-        assert!(bundle.contains(selfhost_module("TypeInferApply.ls").trim()));
-        assert!(bundle.contains(selfhost_module("TypeInferBlock.ls").trim()));
-        assert!(bundle.contains(selfhost_module("TypeInferPattern.ls").trim()));
-        assert!(bundle.contains(selfhost_module("TypeInferRecord.ls").trim()));
+        for module in [
+            "TypeInferApply.ls",
+            "TypeInferBlock.ls",
+            "TypeInferPattern.ls",
+            "TypeInferRecord.ls",
+        ] {
+            let expected = selfhost_module(module).replace("(import Types.TypeInfer)\n", "");
+            assert!(bundle.contains(expected.trim()), "{module} が bundle にない");
+        }
         assert!(bundle.contains(selfhost_module("TypeInferRecordDecl.ls").trim()));
         assert!(bundle.contains(selfhost_module("TypeInferAdt.ls").trim()));
         assert!(bundle.contains(selfhost_module("TypeInfer.ls").trim()));

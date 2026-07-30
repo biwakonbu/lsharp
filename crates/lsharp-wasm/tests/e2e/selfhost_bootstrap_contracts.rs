@@ -859,6 +859,9 @@ fn test_e2e_selfhost_type_hm_core_golden() {
     let type_infer_functions_ls =
         std::fs::read_to_string(selfhost_source_path("TypeInferFunctions.ls"))
             .expect("canonical TypeInferFunctions.ls が読み込めない");
+    let type_infer_signature_ls =
+        std::fs::read_to_string(selfhost_source_path("TypeInferSignature.ls"))
+            .expect("canonical TypeInferSignature.ls が読み込めない");
     let type_infer_builtins_ls =
         std::fs::read_to_string(selfhost_source_path("TypeInferBuiltins.ls"))
             .expect("canonical TypeInferBuiltins.ls が読み込めない");
@@ -883,13 +886,14 @@ fn test_e2e_selfhost_type_hm_core_golden() {
 
     // モジュール連結 (依存順: TypeInfer.ls を先に、サブモジュールが上書き)
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
         token_ls,
         ast_ls,
         type_ls,
         type_scheme_ls,
         type_infer_core_ls,
         type_infer_functions_ls,
+        type_infer_signature_ls,
         type_infer_builtins_ls,
         type_infer_ls,
         type_infer_apply_ls,

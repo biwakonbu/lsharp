@@ -4,6 +4,7 @@
 (import Types.TypeScheme)
 (import Types.TypeInferCore)
 (import Types.TypeInferFunctions)
+(import Types.TypeInferSignature)
 (import Types.TypeInferBuiltins)
 (import Types.TypeInferAdt)
 (import Types.TypeInferRecordDecl)

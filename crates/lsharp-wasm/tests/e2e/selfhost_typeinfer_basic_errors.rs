@@ -3031,3 +3031,94 @@ fn test_e2e_selfhost_typeinfer_large_curried_fun_preserves_shape() {
         "65 parameter の curried function shape を保持するべき"
     );
 }
+
+#[test]
+fn test_e2e_selfhost_typeinfer_signature_collection_and_annotations_use_bounded_chunks() {
+    let functions = selfhost_module("TypeInferSignature.ls");
+
+    assert!(
+        functions.contains("typeinfer-collect-signature-type-expr-list-step-64-loop-bounded")
+            && functions.contains("typeinfer-unify-defn-param-annotations-step-64-loop-bounded"),
+        "signature collection と parameter annotation unify は bounded helper へ分離するべき"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_typeinfer_large_signature_collection_and_annotations_preserve_bindings() {
+    let mut type_var_signature_expr = "(vector-push (vector-push (vector-new 2) 65) 65)".to_string();
+    let mut int_signature_expr = "(vector-push (vector-push (vector-new 2) 65) 65)".to_string();
+    let mut param_types_expr = "(vector-new 0)".to_string();
+    for idx in 0..65 {
+        type_var_signature_expr = format!(
+            "(vector-push {} (raw-type-var {}))",
+            type_var_signature_expr,
+            9000 + idx
+        );
+        int_signature_expr = format!(
+            "(vector-push {} (raw-type-named 73679))",
+            int_signature_expr
+        );
+        param_types_expr = format!(
+            "(vector-push {} (fresh-type-var counter))",
+            param_types_expr
+        );
+    }
+
+    let harness = format!(
+        r#"
+(defn raw-type-var [name-hash]
+  (vector-push (vector-push (vector-new 2) 63) name-hash))
+
+(defn raw-type-named [name-hash]
+  (vector-push (vector-push (vector-new 2) 60) name-hash))
+
+(defn main []
+  (let [counter (make-var-counter)
+        collected
+          (typeinfer-collect-signature-type-expr-list
+            {}
+            0
+            65
+            counter
+            (map-new))
+        params {}
+        env (init-builtin-env counter)
+        subst
+          (typeinfer-unify-defn-param-annotations-loop
+            {}
+            params
+            0
+            65
+            (subst-new)
+            (var-counter-alias-env counter)
+            collected
+            env
+            counter)
+        first-collected (map-get-safe collected 9000)
+        last-collected (map-get-safe collected 9064)
+        first-param (apply-subst subst (vector-get params 0))
+        last-param (apply-subst subst (vector-get params 64))]
+    (do
+      (print (if (= first-collected 0) 1 0))
+      (print (if (= last-collected 0) 1 0))
+      (print (unify-failed subst))
+      (print (ty-tag first-param))
+      (print (ty-tag last-param))
+      0)))
+"#,
+        type_var_signature_expr,
+        param_types_expr,
+        int_signature_expr
+    );
+    let combined = format!("{}\n{}", selfhost_typeinfer_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["0", "0", "0", "1", "1"],
+        "65 parameter の signature collection と annotation unify を最後まで処理するべき"
+    );
+}

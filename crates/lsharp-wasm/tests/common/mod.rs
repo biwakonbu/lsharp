@@ -182,6 +182,7 @@ pub(crate) fn selfhost_source_path(name: &str) -> std::path::PathBuf {
         "TypeScheme.ls" => "selfhost/src/Types/TypeScheme.ls",
         "TypeInferCore.ls" => "selfhost/src/Types/TypeInferCore.ls",
         "TypeInferFunctions.ls" => "selfhost/src/Types/TypeInferFunctions.ls",
+        "TypeInferSignature.ls" => "selfhost/src/Types/TypeInferSignature.ls",
         "TypeInferBuiltins.ls" => "selfhost/src/Types/TypeInferBuiltins.ls",
         "TypeInferApply.ls" => "selfhost/src/Types/TypeInferApply.ls",
         "TypeInferBlock.ls" => "selfhost/src/Types/TypeInferBlock.ls",
@@ -256,6 +257,9 @@ pub(crate) fn selfhost_cli_runtime_bundle() -> String {
     let type_infer_functions_ls =
         std::fs::read_to_string(selfhost_source_path("TypeInferFunctions.ls"))
             .expect("canonical TypeInferFunctions.ls が読み込めない");
+    let type_infer_signature_ls =
+        std::fs::read_to_string(selfhost_source_path("TypeInferSignature.ls"))
+            .expect("canonical TypeInferSignature.ls が読み込めない");
     let type_infer_builtins_ls =
         std::fs::read_to_string(selfhost_source_path("TypeInferBuiltins.ls"))
             .expect("canonical TypeInferBuiltins.ls が読み込めない");
@@ -306,6 +310,7 @@ pub(crate) fn selfhost_cli_runtime_bundle() -> String {
         type_scheme_ls,
         type_infer_core_ls,
         type_infer_functions_ls,
+        type_infer_signature_ls,
         type_infer_builtins_ls,
         type_infer_ls,
         type_infer_apply_ls,
