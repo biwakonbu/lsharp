@@ -1,9 +1,21 @@
 fn validate_tool(arguments: &Value) -> Result<Value, String> {
     let review_inputs = review_input_arguments(arguments)?;
-    let _ = review_inputs.explicit_count();
-    let graph = validation_graph(arguments)?;
+    let mut graph = validation_graph(arguments)?;
+    let review_verifications = review_inputs
+        .verification_facts()
+        .map_err(|error| error.to_string())?;
+    graph
+        .attach_review_verifications(&review_verifications)
+        .map_err(|error| error.to_string())?;
     let include_manifest = include_manifest_argument(arguments)?;
-    let mut report = graph.validate().to_json_value();
+    let mut report = if review_verifications.is_empty() {
+        graph.validate().to_json_value()
+    } else {
+        graph
+            .validate_with_review_verifications(&review_verifications)
+            .map_err(|error| error.to_string())?
+            .to_json_value()
+    };
     if include_manifest {
         report["manifest"] = graph.to_manifest_json_value();
     }

@@ -432,17 +432,35 @@ impl IntentGraph {
         &self,
         verifications: &[ReviewVerificationFact],
     ) -> Result<ValidationReport, ReviewVerificationProjectionError> {
-        let mut verifications = verifications.to_vec();
-        verifications
-            .sort_by(|left, right| left.review_id().as_str().cmp(right.review_id().as_str()));
-        for pair in verifications.windows(2) {
-            if pair[0].review_id() == pair[1].review_id() {
-                return Err(ReviewVerificationProjectionError::DuplicateReview {
-                    id: pair[1].review_id().clone(),
-                });
-            }
-        }
+        let verifications = normalize_review_verifications(verifications)?;
         Ok(validate_graph(self, Some(&verifications)))
+    }
+
+    /// explicit verification fact を registry record へ付与する。
+    ///
+    /// report にだけ現れる外部 review ID は保持し、manifest へ投影できる同名 record
+    /// だけを更新する。入力順は report と同じ canonical sort/dedup policy で検証する。
+    pub fn attach_review_verifications(
+        &mut self,
+        verifications: &[ReviewVerificationFact],
+    ) -> Result<(), ReviewVerificationProjectionError> {
+        let verifications = normalize_review_verifications(verifications)?;
+        for fact in verifications {
+            let Some(review) = self
+                .reviews
+                .iter_mut()
+                .find(|review| review.id() == fact.review_id())
+            else {
+                continue;
+            };
+            review.set_verification_state(fact.state()).map_err(|_| {
+                ReviewVerificationProjectionError::InvalidState {
+                    id: fact.review_id().clone(),
+                    state: fact.state(),
+                }
+            })?;
+        }
+        Ok(())
     }
 
     fn validate_edge_node_endpoints(&self, edge: &Edge) -> Result<(), GraphError> {
@@ -499,6 +517,21 @@ impl IntentGraph {
             Err(GraphError::MissingNode { id: id.clone() })
         }
     }
+}
+
+fn normalize_review_verifications(
+    verifications: &[ReviewVerificationFact],
+) -> Result<Vec<ReviewVerificationFact>, ReviewVerificationProjectionError> {
+    let mut verifications = verifications.to_vec();
+    verifications.sort_by(|left, right| left.review_id().as_str().cmp(right.review_id().as_str()));
+    for pair in verifications.windows(2) {
+        if pair[0].review_id() == pair[1].review_id() {
+            return Err(ReviewVerificationProjectionError::DuplicateReview {
+                id: pair[1].review_id().clone(),
+            });
+        }
+    }
+    Ok(verifications)
 }
 
 fn validate_graph(

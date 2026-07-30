@@ -414,12 +414,11 @@ fn main() -> miette::Result<()> {
                 review_lifecycle.as_deref(),
             )
             .map_err(|error| miette::miette!("{error}"))?;
-            let _ = review_inputs.explicit_count();
             let exit_code = if let Some(source) = source {
-                cmd_validate_source(&source, format, emit_manifest.as_deref())?
+                cmd_validate_source(&source, format, emit_manifest.as_deref(), &review_inputs)?
             } else {
                 let file = resolve_validate_manifest(file)?;
-                cmd_validate(&file, format, emit_manifest.as_deref())?
+                cmd_validate(&file, format, emit_manifest.as_deref(), &review_inputs)?
             };
             if exit_code != 0 {
                 std::process::exit(exit_code);
@@ -1351,13 +1350,15 @@ fn cmd_validate(
     file: &Path,
     format: CliValidationFormat,
     emit_manifest: Option<&Path>,
+    review_inputs: &review_input::ReviewInputs,
 ) -> miette::Result<i32> {
     let source =
         std::fs::read_to_string(file).map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
     let graph = lsharp_types::validation_input::parse_intent_graph_json(&source)
         .map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
+    let (graph, review_verifications) = project_review_verifications(graph, review_inputs)?;
     emit_validation_manifest(&graph, emit_manifest)?;
-    emit_validation_report(&graph, format)
+    emit_validation_report(&graph, format, &review_verifications)
 }
 
 /// source metadata を intent graph へ投影して fact-oriented validation を実行する。
@@ -1368,6 +1369,7 @@ fn cmd_validate_source(
     file: &Path,
     format: CliValidationFormat,
     emit_manifest: Option<&Path>,
+    review_inputs: &review_input::ReviewInputs,
 ) -> miette::Result<i32> {
     let source =
         std::fs::read_to_string(file).map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
@@ -1375,8 +1377,25 @@ fn cmd_validate_source(
         .map_err(|e| miette::miette!("[{}] {}: {}", e.code(), file.display(), e))?;
     let graph = lsharp_types::validation_source::source_program_to_intent_graph(&program)
         .map_err(|e| source_graph_error(file, &source, e))?;
+    let (graph, review_verifications) = project_review_verifications(graph, review_inputs)?;
     emit_validation_manifest(&graph, emit_manifest)?;
-    emit_validation_report(&graph, format)
+    emit_validation_report(&graph, format, &review_verifications)
+}
+
+fn project_review_verifications(
+    mut graph: lsharp_types::validation::IntentGraph,
+    review_inputs: &review_input::ReviewInputs,
+) -> miette::Result<(
+    lsharp_types::validation::IntentGraph,
+    Vec<lsharp_types::validation::ReviewVerificationFact>,
+)> {
+    let review_verifications = review_inputs
+        .verification_facts()
+        .map_err(|error| miette::miette!("{error}"))?;
+    graph
+        .attach_review_verifications(&review_verifications)
+        .map_err(|error| miette::miette!("{error}"))?;
+    Ok((graph, review_verifications))
 }
 
 /// source adapter の directive span を CLI の miette 診断へ接続する。
@@ -1419,8 +1438,15 @@ fn emit_validation_manifest(
 fn emit_validation_report(
     graph: &lsharp_types::validation::IntentGraph,
     format: CliValidationFormat,
+    review_verifications: &[lsharp_types::validation::ReviewVerificationFact],
 ) -> miette::Result<i32> {
-    let report = graph.validate();
+    let report = if review_verifications.is_empty() {
+        graph.validate()
+    } else {
+        graph
+            .validate_with_review_verifications(review_verifications)
+            .map_err(|error| miette::miette!("{error}"))?
+    };
 
     match format {
         CliValidationFormat::Text => print!("{}", report.to_text()),

@@ -25,9 +25,10 @@ JSON wire を先に fail-closed に固定し、後続の verification/report pro
 - JSON の unknown field と duplicate field は `parse_review_wire` の schema boundary で拒否する。
 - 明示 input がない場合、trust store/lifecycle を環境変数、current manifest、network、implicit
   default から補わない。
-- path または wire の error は report/manifest を生成せず non-zero とする。読み込んだ snapshot は
-  この slice では preflight として検証するだけで、attestation の graph projection・expiry state・
-  lifecycle state と report の `verified/stale/revoked` 集計は後続 task の責務とする。
+- path または wire の error は report/manifest を生成せず non-zero とする。trust wire の
+  attestation は後続の共通 `ReviewInputs` projectionへ渡し、known-key signature errorも同じ
+  no-report/no-manifest boundaryで停止する。expiry clock と current identity binding は後続 task
+  の責務とする。
 
 ## Evidence
 
@@ -41,7 +42,8 @@ JSON wire を先に fail-closed に固定し、後続の verification/report pro
 
 ## Boundary
 
-これは EC-M3-03 の explicit input/preflight verified partial slice である。attestation と
-manifest review record の subject/source digest binding、署名検証結果の JSON/text/MCP 投影、
-expiry clock の report 接続、lifecycle/revocation report、selfhost/native producer parity、Mac
-Apple Silicon/Linux x86_64 artifact/runtime evidence は未完了であり、後続 EC-M3-03〜05 に残す。
+これは EC-M3-03 の explicit input boundary verified partial slice である。attestation state の
+CLI/MCP/report/manifest 共通 projectionは [`decisions-v0.3-review-explicit-state-wiring.md`](decisions-v0.3-review-explicit-state-wiring.md)
+へ移した。manifest review record の subject/source digest binding、expiry clock の report 接続、
+lifecycle/revocation の valid signature fixture、selfhost/native producer parity、Mac Apple
+Silicon/Linux x86_64 artifact/runtime evidence は未完了であり、後続 EC-M3-03〜05 に残す。

@@ -158,6 +158,84 @@ mod tests {
     }
 
     #[test]
+    fn test_validate_tool_projects_explicit_attestation_state_to_report_and_manifest() {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock should be after epoch")
+            .as_nanos();
+        let project = std::env::temp_dir().join(format!("lsharp-mcp-review-state-{nonce}"));
+        std::fs::create_dir_all(&project).expect("project directory should be writable");
+        std::fs::write(
+            project.join("lsharp.toml"),
+            "[project]\nname = \"mcp-review-state\"\n",
+        )
+        .expect("project config should be writable");
+        let manifest = project.join("manifest.json");
+        std::fs::write(
+            &manifest,
+            r#"{
+              "schema_version": 1,
+              "nodes": [],
+              "reviews": [{
+                "namespace": "checkout",
+                "key": "reviewer-001",
+                "provenance_digest": "sha256:review",
+                "visibility": "public"
+              }],
+              "evidence": [],
+              "edges": []
+            }"#,
+        )
+        .expect("manifest should be writable");
+        std::fs::write(
+            project.join("trust.json"),
+            r#"{
+              "schema_version": 1,
+              "attestations": [{
+                "review_id": "review:checkout/reviewer-001",
+                "subject_digest": "sha256:graph",
+                "source_commit": "commit-1",
+                "provenance_digest": "sha256:review",
+                "provider": "github",
+                "key_id": "org/reviews-2026",
+                "algorithm": "ed25519",
+                "signature": "AQID",
+                "issued_at": "2026-07-29T00:00:00Z",
+                "sequence": 1
+              }],
+              "lifecycle": [],
+              "trust_store": []
+            }"#,
+        )
+        .expect("attestation wire should be writable");
+
+        let result = call_tool(
+            "lsharp_validate",
+            &json!({
+                "manifest_file": manifest.display().to_string(),
+                "trust_store": "trust.json",
+                "include_manifest": true
+            }),
+        )
+        .expect("explicit attestation state should project through MCP");
+
+        assert_eq!(result["status"], "unknown");
+        assert_eq!(
+            result["review_verifications"],
+            json!([{
+                "review_id": "review:checkout/reviewer-001",
+                "state": "unverified"
+            }])
+        );
+        assert_eq!(
+            result["manifest"]["reviews"][0]["verification_state"],
+            "unverified"
+        );
+
+        std::fs::remove_dir_all(project).ok();
+    }
+
+    #[test]
     fn test_validate_tool_is_available_through_jsonrpc_tools_call() {
         let response = handle_jsonrpc_message(&json!({
             "jsonrpc": "2.0",
