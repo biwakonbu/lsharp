@@ -183,6 +183,19 @@ Linux VM の fixed-point replay は一つの micro-change ごとに起動しな�
 
 これにより、micro-change ごとの重複 build を避けながら、各 slice の TDD 証拠と batch 全体の native fixed-point evidence を失わない。
 
+### 今後の実行単位（ユーザー決定）
+
+進捗を優先しつつ完璧な L# 実装の境界を崩さないため、以後の作業は次の単位で進める。
+
+- `TODO.md` の同じ parser/type/runtime boundary に属する未完 sliceを2〜5件選び、意味論・root ownership・失敗境界が説明できる範囲で一つの implementation batchにまとめる。異なる公開 surfaceやABIを時間短縮だけの理由で混ぜない。
+- batch開始時に各sliceのstatic/runtime RED、失敗値、対象target、再現commandを先に揃える。実装後は一つのfocused build/test laneでまとめてGREENを確認し、slice別の回帰証拠は個別に残す。
+- focused laneが通った後にのみ、batchのtask-relevant filesをcommit/pushする。Linux x86_64 fixed-point replayやMac Apple Silicon native gateは、pushしたbatch commitをsource provenanceとして一回だけ実行する。
+- heavy gateの待機中は、同じ仮説の再build・再replay・source editを起動せず、別boundaryのread-only監査、診断、fixture、contract test、docs整備を進める。gate終了後に結果を統合する。
+- gate成功後はsummary、manifest、stage2/stage3 byte比較、stderr、runtime/Wasm結果、artifact容量、VM/process/lock/workdirを確認し、不要なdebug bundleと一時領域を回収してからdocs/TODOを更新する。
+- gate失敗時は全体を最初からやり直さず、failure boundaryを一つに絞ったmetadata-onlyまたはreplay-only識別実験を追加する。仮説が棄却された場合は実装を残さず、次のREDと残るevidenceを記録する。
+- 他セッションのdirty fileやroot checkoutのconflictは無断で混ぜない。必要ならtask-owned worktreeで隔離し、push後は`HEAD`、対応remote SHA、worktree、TODO、mainの統合可否を再監査する。
+- すべての対応言語機能・公開command・runtime/artifact boundary・Mac/Linux target・stage0 provenance/rollbackのevidenceが揃うまで、verified sliceを「完璧な実装」や「Rust完全撤去」と呼ばない。
+
 ### CI と手動 release の境界
 
 - 当面の supported target build/release は GitHub Actions の CI で実行せず、Mac Apple Silicon 上の native stage0、必要な Linux x86_64 Lima VM gate、ローカルの focused test を正本とする。CI の green、workflow の存在、または CI が生成した stale artifact だけを Rust-free 完了や release readiness の証拠にしない。
