@@ -43,6 +43,8 @@ trust/lifecycle input がある場合は、canonical verifier の結果を sourc
 ## Boundary
 
 これは Rust CLI の source report/manifest projection に限定した verified partial sliceである。
-selfhost/native producer、source-file smoke、canonical bytes の byte-for-byte target parity、
-current-source と packaged stage0 の provenance、MCP source input、Mac Apple Silicon / Linux
-x86_64 runtime/release gate は未完了であり、`TODO.md` の `EC-M3-04` は `[~]` のまま維持する。
+MCP source/file route の report/manifest projection は
+[`decisions-v0.3-mcp-source-attestation-report-projection.md`](decisions-v0.3-mcp-source-attestation-report-projection.md)
+で接続した。一方、selfhost/native producer、source-file smoke、canonical bytes の byte-for-byte
+target parity、current-source と packaged stage0 の provenance、Mac Apple Silicon / Linux x86_64
+runtime/release gate は未完了であり、`TODO.md` の `EC-M3-04` は `[~]` のまま維持する。

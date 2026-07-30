@@ -26,6 +26,24 @@ fn base64url_no_padding(bytes: &[u8]) -> String {
     output
 }
 
+const SOURCE_REVIEW_ATTESTATION: &str = r#"
+(defn review []
+  :review "review:checkout/reviewer-001" "sha256:review" "redacted"
+  :review-attestation
+    :review-id "review:checkout/reviewer-001"
+    :subject-digest "sha256:graph"
+    :source-commit "commit-1"
+    :provenance-digest "sha256:review"
+    :provider "github"
+    :key-id "org/reviews-2026"
+    :algorithm "ed25519"
+    :signature "AAECAw"
+    :issued-at "2026-07-29T00:00:00Z"
+    :expires-at "2026-08-01T00:00:00Z"
+    :sequence 1
+  true)
+"#;
+
 fn signed_review_fields() -> (String, String) {
     let signing_key = SigningKey::from_bytes(&[7; 32]);
     let attestation = ReviewAttestation::new(
@@ -152,6 +170,84 @@ fn mcp_review_arguments_with_artifact(
         arguments["review_artifact_digest"] = json!(artifact_digest);
     }
     arguments
+}
+
+#[test]
+fn test_validate_tool_projects_source_attestation_as_unverified() {
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("clock should be after epoch")
+        .as_nanos();
+    let project = std::env::temp_dir().join(format!("lsharp-mcp-source-attestation-{nonce}"));
+    std::fs::create_dir_all(&project).expect("project directory should be writable");
+    std::fs::write(
+        project.join("lsharp.toml"),
+        "[project]\nname = \"mcp-source-attestation\"\n",
+    )
+    .expect("project config should be writable");
+    let source = project.join("review.ls");
+    std::fs::write(&source, SOURCE_REVIEW_ATTESTATION).expect("source should be writable");
+
+    let result = call_tool(
+        "lsharp_validate",
+        &json!({
+            "file": source.display().to_string(),
+            "include_manifest": true
+        }),
+    )
+    .expect("source attestation should project through MCP");
+
+    assert_eq!(result["status"], "unknown");
+    assert_eq!(
+        result["review_verifications"],
+        json!([{
+            "review_id": "review:checkout/reviewer-001",
+            "state": "unverified"
+        }])
+    );
+    assert_eq!(
+        result["manifest"]["reviews"][0]["verification_state"],
+        "unverified"
+    );
+
+    std::fs::remove_dir_all(project).ok();
+}
+
+#[test]
+fn test_validate_tool_external_verification_overrides_source_unverified() {
+    let (signature, public_key) = signed_review_fields();
+    let (project, _manifest) = mcp_review_project("source-verified", &signature, &public_key);
+    let source = project.join("review.ls");
+    std::fs::write(&source, SOURCE_REVIEW_ATTESTATION).expect("source should be writable");
+
+    let result = call_tool(
+        "lsharp_validate",
+        &json!({
+            "file": source.display().to_string(),
+            "trust_store": "trust.json",
+            "review_lifecycle": "lifecycle.json",
+            "review_subject_digest": "sha256:graph",
+            "review_source_commit": "commit-1",
+            "review_now": "2026-07-30T00:00:00Z",
+            "include_manifest": true
+        }),
+    )
+    .expect("explicit source verification should project through MCP");
+
+    assert_eq!(result["status"], "unknown");
+    assert_eq!(
+        result["review_verifications"],
+        json!([{
+            "review_id": "review:checkout/reviewer-001",
+            "state": "verified"
+        }])
+    );
+    assert_eq!(
+        result["manifest"]["reviews"][0]["verification_state"],
+        "verified"
+    );
+
+    std::fs::remove_dir_all(project).ok();
 }
 
 #[test]

@@ -1,7 +1,7 @@
 fn validate_tool(arguments: &Value) -> Result<Value, String> {
     let review_inputs = review_input_arguments(arguments)?;
     let review_context = review_verification_context(arguments)?;
-    let mut graph = validation_graph(arguments)?;
+    let (mut graph, source_attestations) = validation_graph(arguments)?;
     let provenance_digests = graph
         .reviews()
         .iter()
@@ -12,7 +12,7 @@ fn validate_tool(arguments: &Value) -> Result<Value, String> {
             )
         })
         .collect::<std::collections::BTreeMap<_, _>>();
-    let review_verifications = match review_context.as_ref() {
+    let external_verifications = match review_context.as_ref() {
         Some(context) => review_inputs
             .verification_facts_with_context(context, &provenance_digests)
             .map_err(|error| error.to_string())?,
@@ -20,6 +20,24 @@ fn validate_tool(arguments: &Value) -> Result<Value, String> {
             .verification_facts()
             .map_err(|error| error.to_string())?,
     };
+    let external_ids = external_verifications
+        .iter()
+        .map(|fact| fact.review_id().as_str().to_string())
+        .collect::<std::collections::BTreeSet<_>>();
+    let mut review_verifications = source_attestations
+        .iter()
+        .filter(|attestation| {
+            !external_ids.contains(attestation.attestation().review_id().as_str())
+        })
+        .map(|attestation| {
+            lsharp_types::validation::ReviewVerificationFact::new(
+                attestation.attestation().review_id().clone(),
+                attestation.verification_state(),
+            )
+            .map_err(|error| error.to_string())
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    review_verifications.extend(external_verifications);
     let review_verifications = review_inputs.complete_verification_facts(
         review_verifications,
         graph.reviews().iter().map(|review| review.id()),
@@ -139,7 +157,15 @@ fn review_input_project_root(arguments: &Value) -> Result<std::path::PathBuf, St
     }
 }
 
-fn validation_graph(arguments: &Value) -> Result<lsharp_types::validation::IntentGraph, String> {
+fn validation_graph(
+    arguments: &Value,
+) -> Result<
+    (
+        lsharp_types::validation::IntentGraph,
+        Vec<lsharp_types::validation_source::SourceReviewAttestation>,
+    ),
+    String,
+> {
     let input_names = ["source", "file", "manifest", "manifest_file"]
         .into_iter()
         .filter(|name| arguments.get(*name).is_some())
@@ -159,7 +185,7 @@ fn validation_graph(arguments: &Value) -> Result<lsharp_types::validation::Inten
                     .get("manifest")
                     .expect("manifest input name was collected"),
             )?;
-            manifest_graph_input(&manifest)
+            manifest_graph_input(&manifest).map(|graph| (graph, Vec::new()))
         }
         "manifest_file" => {
             let file = arguments
@@ -168,18 +194,27 @@ fn validation_graph(arguments: &Value) -> Result<lsharp_types::validation::Inten
                 .ok_or_else(|| "manifest_file は文字列 path が必要です".to_string())?;
             let manifest =
                 std::fs::read_to_string(file).map_err(|error| mcp_io_error(file, error))?;
-            manifest_graph_input(&manifest)
+            manifest_graph_input(&manifest).map(|graph| (graph, Vec::new()))
         }
         _ => unreachable!("input name is restricted to the validation schema"),
     }
 }
 
-fn source_graph_input(arguments: &Value) -> Result<lsharp_types::validation::IntentGraph, String> {
+fn source_graph_input(
+    arguments: &Value,
+) -> Result<
+    (
+        lsharp_types::validation::IntentGraph,
+        Vec<lsharp_types::validation_source::SourceReviewAttestation>,
+    ),
+    String,
+> {
     let source = source_argument(arguments)?;
     let program = lsharp_syntax::parse(&source)
         .map_err(|error| format!("validation source の parse に失敗しました: {error}"))?;
-    let graph = lsharp_types::validation_source::source_program_to_intent_graph(&program)
-        .map_err(|error| format!("validation source graph の構築に失敗しました: {error}"))?;
+    let graph =
+        lsharp_types::validation_source::source_program_to_intent_graph_with_attestations(&program)
+            .map_err(|error| format!("validation source graph の構築に失敗しました: {error}"))?;
     Ok(graph)
 }
 
