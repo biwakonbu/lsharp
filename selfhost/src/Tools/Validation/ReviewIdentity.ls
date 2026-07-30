@@ -1,6 +1,8 @@
 (module Tools.Validation.ReviewIdentity)
 (import Tools.Validation.IntentSource)
+(import Syntax.Parser)
 (import Tools.Validation.Whitespace)
+(import Tools.Lsp.JsonRpc)
 
 ;; caller が明示した review evidence identity。
 ;; identity: [subject-digest, source-commit, artifact-digest,

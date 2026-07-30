@@ -1,5 +1,6 @@
 (module Tools.Validation.Evidence)
 (import Tools.Validation.IntentSource)
+(import Tools.Validation.ReviewIdentity)
 (import Tools.Validation.Whitespace)
 (import Syntax.AST)
 (import Syntax.Parser)
