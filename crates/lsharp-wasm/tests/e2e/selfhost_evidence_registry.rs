@@ -16,6 +16,8 @@ fn selfhost_evidence_registry_root_stays_within_the_test_file_budget() {
     );
 }
 
+#[path = "selfhost_evidence_registry/attestation.rs"]
+mod attestation;
 #[path = "selfhost_evidence_registry/harness.rs"]
 mod harness;
 #[path = "selfhost_evidence_registry/identity.rs"]
