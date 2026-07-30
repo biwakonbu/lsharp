@@ -22,6 +22,8 @@ mod attestation;
 mod harness;
 #[path = "selfhost_evidence_registry/identity.rs"]
 mod identity;
+#[path = "selfhost_evidence_registry/lifecycle.rs"]
+mod lifecycle;
 #[path = "selfhost_evidence_registry/runtime.rs"]
 mod runtime;
 #[path = "selfhost_evidence_registry/validation.rs"]
