@@ -23,15 +23,24 @@ fn validate_tool(arguments: &Value) -> Result<Value, String> {
     graph
         .attach_review_verifications(&review_verifications)
         .map_err(|error| error.to_string())?;
+    let review_identity = review_context
+        .as_ref()
+        .map(|context| review_inputs.review_evidence_identity(context))
+        .transpose()
+        .map_err(|error| error.to_string())?
+        .flatten();
     let include_manifest = include_manifest_argument(arguments)?;
     let mut report = if review_verifications.is_empty() {
-        graph.validate().to_json_value()
+        graph.validate()
     } else {
         graph
             .validate_with_review_verifications(&review_verifications)
             .map_err(|error| error.to_string())?
-            .to_json_value()
     };
+    if let Some(identity) = review_identity {
+        report = report.with_review_evidence_identity(identity);
+    }
+    let mut report = report.to_json_value();
     if include_manifest {
         report["manifest"] = graph.to_manifest_json_value();
     }
@@ -55,13 +64,23 @@ fn review_verification_context(
 ) -> Result<Option<crate::review_input::ReviewVerificationContext>, String> {
     let subject_digest = optional_string_argument(arguments, "review_subject_digest")?;
     let source_commit = optional_string_argument(arguments, "review_source_commit")?;
+    let artifact_digest = optional_string_argument(arguments, "review_artifact_digest")?;
     let now = optional_string_argument(arguments, "review_now")?;
-    crate::review_input::ReviewVerificationContext::from_options(
-        subject_digest.as_deref(),
-        source_commit.as_deref(),
-        now.as_deref(),
-    )
-    .map_err(|error| error.to_string())
+    let context = if artifact_digest.is_some() {
+        crate::review_input::ReviewVerificationContext::from_options_with_artifact(
+            subject_digest.as_deref(),
+            source_commit.as_deref(),
+            artifact_digest.as_deref(),
+            now.as_deref(),
+        )
+    } else {
+        crate::review_input::ReviewVerificationContext::from_options(
+            subject_digest.as_deref(),
+            source_commit.as_deref(),
+            now.as_deref(),
+        )
+    };
+    context.map_err(|error| error.to_string())
 }
 
 fn optional_string_argument(arguments: &Value, name: &str) -> Result<Option<String>, String> {

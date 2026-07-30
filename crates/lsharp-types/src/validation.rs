@@ -122,6 +122,95 @@ pub enum ReviewVerificationProjectionError {
     DuplicateReview { id: ReviewId },
 }
 
+/// review verification を再現するために caller が明示した evidence identity。
+///
+/// source/manifest の内容から暗黙に artifact や trust root を推測せず、実行時に渡された
+/// digest だけを report の fact として残す。trust/lifecycle が省略された場合も `None` を
+/// wire へ明示し、未検証の入力を verified と誤認させない。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReviewEvidenceIdentity {
+    subject_digest: String,
+    source_commit: String,
+    artifact_digest: String,
+    now: String,
+    trust_store_digest: Option<String>,
+    lifecycle_digest: Option<String>,
+}
+
+impl ReviewEvidenceIdentity {
+    pub fn new(
+        subject_digest: impl Into<String>,
+        source_commit: impl Into<String>,
+        artifact_digest: impl Into<String>,
+        now: impl Into<String>,
+        trust_store_digest: Option<String>,
+        lifecycle_digest: Option<String>,
+    ) -> Result<Self, ReviewEvidenceIdentityError> {
+        let subject_digest = subject_digest.into();
+        let source_commit = source_commit.into();
+        let artifact_digest = artifact_digest.into();
+        let now = now.into();
+        validate_identity_field("subject_digest", &subject_digest)?;
+        validate_identity_field("source_commit", &source_commit)?;
+        validate_identity_field("artifact_digest", &artifact_digest)?;
+        validate_identity_field("now", &now)?;
+        if let Some(value) = &trust_store_digest {
+            validate_identity_field("trust_store_digest", value)?;
+        }
+        if let Some(value) = &lifecycle_digest {
+            validate_identity_field("lifecycle_digest", value)?;
+        }
+        Ok(Self {
+            subject_digest,
+            source_commit,
+            artifact_digest,
+            now,
+            trust_store_digest,
+            lifecycle_digest,
+        })
+    }
+
+    pub fn subject_digest(&self) -> &str {
+        &self.subject_digest
+    }
+
+    pub fn source_commit(&self) -> &str {
+        &self.source_commit
+    }
+
+    pub fn artifact_digest(&self) -> &str {
+        &self.artifact_digest
+    }
+
+    pub fn now(&self) -> &str {
+        &self.now
+    }
+
+    pub fn trust_store_digest(&self) -> Option<&str> {
+        self.trust_store_digest.as_deref()
+    }
+
+    pub fn lifecycle_digest(&self) -> Option<&str> {
+        self.lifecycle_digest.as_deref()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum ReviewEvidenceIdentityError {
+    #[error("review evidence identity の必須 field が空です: {field}")]
+    EmptyField { field: &'static str },
+}
+
+fn validate_identity_field(
+    field: &'static str,
+    value: &str,
+) -> Result<(), ReviewEvidenceIdentityError> {
+    if value.trim().is_empty() {
+        return Err(ReviewEvidenceIdentityError::EmptyField { field });
+    }
+    Ok(())
+}
+
 /// `validate` が返す fact-oriented report。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ValidationReport {
@@ -132,6 +221,7 @@ pub struct ValidationReport {
     contradicting_observations: usize,
     stale_reviews: usize,
     stale_evidence: usize,
+    review_evidence_identity: Option<ReviewEvidenceIdentity>,
     review_verifications: Option<Vec<ReviewVerificationFact>>,
 }
 
@@ -166,6 +256,16 @@ impl ValidationReport {
 
     pub fn review_verifications(&self) -> Option<&[ReviewVerificationFact]> {
         self.review_verifications.as_deref()
+    }
+
+    pub fn review_evidence_identity(&self) -> Option<&ReviewEvidenceIdentity> {
+        self.review_evidence_identity.as_ref()
+    }
+
+    /// explicit review input identity を report に追加する。
+    pub fn with_review_evidence_identity(mut self, identity: ReviewEvidenceIdentity) -> Self {
+        self.review_evidence_identity = Some(identity);
+        self
     }
 
     /// planned `lsharp validate --format json` projection。
@@ -210,6 +310,19 @@ impl ValidationReport {
         writeln!(&mut text, "stale-reviews: {}", self.stale_reviews).expect("String は write 可能");
         writeln!(&mut text, "stale-evidence: {}", self.stale_evidence)
             .expect("String は write 可能");
+        if let Some(identity) = &self.review_evidence_identity {
+            writeln!(
+                &mut text,
+                "review-evidence-identity: subject={} source={} artifact={} trust-store={} lifecycle={} now={}",
+                identity.subject_digest(),
+                identity.source_commit(),
+                identity.artifact_digest(),
+                identity.trust_store_digest().unwrap_or("-"),
+                identity.lifecycle_digest().unwrap_or("-"),
+                identity.now(),
+            )
+            .expect("String は write 可能");
+        }
         if let Some(verifications) = &self.review_verifications {
             for verification in verifications {
                 writeln!(
@@ -233,6 +346,10 @@ impl ValidationReport {
             contradicting_observations: self.contradicting_observations,
             stale_reviews: self.stale_reviews,
             stale_evidence: self.stale_evidence,
+            review_evidence_identity: self
+                .review_evidence_identity
+                .as_ref()
+                .map(ReviewEvidenceIdentityWire::from_identity),
             review_verifications: self.review_verifications.as_ref().map(|verifications| {
                 verifications
                     .iter()
@@ -253,7 +370,32 @@ struct ValidationReportWire {
     stale_reviews: usize,
     stale_evidence: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
+    review_evidence_identity: Option<ReviewEvidenceIdentityWire>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     review_verifications: Option<Vec<ReviewVerificationWire>>,
+}
+
+#[derive(Debug, Serialize)]
+struct ReviewEvidenceIdentityWire {
+    subject_digest: String,
+    source_commit: String,
+    artifact_digest: String,
+    trust_store_digest: Option<String>,
+    lifecycle_digest: Option<String>,
+    now: String,
+}
+
+impl ReviewEvidenceIdentityWire {
+    fn from_identity(identity: &ReviewEvidenceIdentity) -> Self {
+        Self {
+            subject_digest: identity.subject_digest().to_string(),
+            source_commit: identity.source_commit().to_string(),
+            artifact_digest: identity.artifact_digest().to_string(),
+            trust_store_digest: identity.trust_store_digest().map(ToOwned::to_owned),
+            lifecycle_digest: identity.lifecycle_digest().map(ToOwned::to_owned),
+            now: identity.now().to_string(),
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -625,6 +767,7 @@ fn validate_graph(
         contradicting_observations: contradictory_ids.len(),
         stale_reviews: stale_subjects.reviews().len(),
         stale_evidence: stale_subjects.evidence().len(),
+        review_evidence_identity: None,
         review_verifications: review_verifications.map(ToOwned::to_owned),
     }
 }

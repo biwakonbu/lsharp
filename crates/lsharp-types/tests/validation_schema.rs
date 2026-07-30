@@ -99,6 +99,42 @@ fn intent_validation_schema_declares_optional_review_verification_facts() {
 }
 
 #[test]
+fn intent_validation_schema_declares_optional_review_evidence_identity() {
+    let schema: Value = serde_json::from_str(INTENT_VALIDATION_SCHEMA)
+        .expect("intent validation schema は JSON であるべき");
+    let identity = schema
+        .pointer("/properties/review_evidence_identity")
+        .expect("review evidence identity は optional object を宣言するべき");
+
+    assert_eq!(
+        identity["required"],
+        serde_json::json!([
+            "subject_digest",
+            "source_commit",
+            "artifact_digest",
+            "trust_store_digest",
+            "lifecycle_digest",
+            "now"
+        ])
+    );
+    assert_eq!(
+        identity["properties"]["trust_store_digest"]["type"],
+        serde_json::json!(["string", "null"])
+    );
+    assert_eq!(
+        identity["properties"]["lifecycle_digest"]["type"],
+        serde_json::json!(["string", "null"])
+    );
+    assert!(
+        !schema["required"]
+            .as_array()
+            .expect("report required は array であるべき")
+            .iter()
+            .any(|field| field == "review_evidence_identity")
+    );
+}
+
+#[test]
 fn intent_graph_schema_declares_typed_subjects_for_each_consumer() {
     let schema: Value =
         serde_json::from_str(INTENT_GRAPH_SCHEMA).expect("intent graph schema は JSON であるべき");

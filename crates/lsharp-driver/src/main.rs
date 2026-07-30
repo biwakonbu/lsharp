@@ -224,6 +224,10 @@ enum Command {
         #[arg(long, value_name = "COMMIT")]
         review_source_commit: Option<String>,
 
+        /// evidence artifact の明示 digest（review evidence identity へ記録）
+        #[arg(long, value_name = "DIGEST")]
+        review_artifact_digest: Option<String>,
+
         /// expiry/binding 判定に使う canonical UTC timestamp
         #[arg(long, value_name = "TIMESTAMP")]
         review_now: Option<String>,
@@ -418,6 +422,7 @@ fn main() -> miette::Result<()> {
             review_lifecycle,
             review_subject_digest,
             review_source_commit,
+            review_artifact_digest,
             review_now,
         } => {
             let current_dir = std::env::current_dir()
@@ -429,11 +434,20 @@ fn main() -> miette::Result<()> {
                 review_lifecycle.as_deref(),
             )
             .map_err(|error| miette::miette!("{error}"))?;
-            let review_context = review_input::ReviewVerificationContext::from_options(
-                review_subject_digest.as_deref(),
-                review_source_commit.as_deref(),
-                review_now.as_deref(),
-            )
+            let review_context = if review_artifact_digest.is_some() {
+                review_input::ReviewVerificationContext::from_options_with_artifact(
+                    review_subject_digest.as_deref(),
+                    review_source_commit.as_deref(),
+                    review_artifact_digest.as_deref(),
+                    review_now.as_deref(),
+                )
+            } else {
+                review_input::ReviewVerificationContext::from_options(
+                    review_subject_digest.as_deref(),
+                    review_source_commit.as_deref(),
+                    review_now.as_deref(),
+                )
+            }
             .map_err(|error| miette::miette!("{error}"))?;
             let exit_code = if let Some(source) = source {
                 cmd_validate_source(
@@ -1390,10 +1404,15 @@ fn cmd_validate(
         std::fs::read_to_string(file).map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
     let graph = lsharp_types::validation_input::parse_intent_graph_json(&source)
         .map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
-    let (graph, review_verifications) =
+    let (graph, review_verifications, review_identity) =
         project_review_verifications(graph, review_inputs, review_context)?;
     emit_validation_manifest(&graph, emit_manifest)?;
-    emit_validation_report(&graph, format, &review_verifications)
+    emit_validation_report(
+        &graph,
+        format,
+        &review_verifications,
+        review_identity.as_ref(),
+    )
 }
 
 /// source metadata を intent graph へ投影して fact-oriented validation を実行する。
@@ -1413,10 +1432,15 @@ fn cmd_validate_source(
         .map_err(|e| miette::miette!("[{}] {}: {}", e.code(), file.display(), e))?;
     let graph = lsharp_types::validation_source::source_program_to_intent_graph(&program)
         .map_err(|e| source_graph_error(file, &source, e))?;
-    let (graph, review_verifications) =
+    let (graph, review_verifications, review_identity) =
         project_review_verifications(graph, review_inputs, review_context)?;
     emit_validation_manifest(&graph, emit_manifest)?;
-    emit_validation_report(&graph, format, &review_verifications)
+    emit_validation_report(
+        &graph,
+        format,
+        &review_verifications,
+        review_identity.as_ref(),
+    )
 }
 
 fn project_review_verifications(
@@ -1426,6 +1450,7 @@ fn project_review_verifications(
 ) -> miette::Result<(
     lsharp_types::validation::IntentGraph,
     Vec<lsharp_types::validation::ReviewVerificationFact>,
+    Option<lsharp_types::validation::ReviewEvidenceIdentity>,
 )> {
     let provenance_digests = graph
         .reviews()
@@ -1448,7 +1473,12 @@ fn project_review_verifications(
     graph
         .attach_review_verifications(&review_verifications)
         .map_err(|error| miette::miette!("{error}"))?;
-    Ok((graph, review_verifications))
+    let review_identity = review_context
+        .map(|context| review_inputs.review_evidence_identity(context))
+        .transpose()
+        .map_err(|error| miette::miette!("{error}"))?
+        .flatten();
+    Ok((graph, review_verifications, review_identity))
 }
 
 /// source adapter の directive span を CLI の miette 診断へ接続する。
@@ -1492,14 +1522,18 @@ fn emit_validation_report(
     graph: &lsharp_types::validation::IntentGraph,
     format: CliValidationFormat,
     review_verifications: &[lsharp_types::validation::ReviewVerificationFact],
+    review_identity: Option<&lsharp_types::validation::ReviewEvidenceIdentity>,
 ) -> miette::Result<i32> {
-    let report = if review_verifications.is_empty() {
+    let mut report = if review_verifications.is_empty() {
         graph.validate()
     } else {
         graph
             .validate_with_review_verifications(review_verifications)
             .map_err(|error| miette::miette!("{error}"))?
     };
+    if let Some(identity) = review_identity {
+        report = report.with_review_evidence_identity(identity.clone());
+    }
 
     match format {
         CliValidationFormat::Text => print!("{}", report.to_text()),

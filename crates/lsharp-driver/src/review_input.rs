@@ -10,7 +10,12 @@ use lsharp_types::intent::review_attestation::{
 use lsharp_types::intent::review_lifecycle::ReviewLifecycleRegistry;
 use lsharp_types::intent::review_trust_store::ReviewTrustStore;
 use lsharp_types::intent::review_wire::parse_review_wire;
-use lsharp_types::validation::{ReviewVerificationFact, ReviewVerificationProjectionError};
+use lsharp_types::validation::{
+    ReviewEvidenceIdentity, ReviewEvidenceIdentityError, ReviewVerificationFact,
+    ReviewVerificationProjectionError,
+};
+use serde_json::Value;
+use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::path::{Component, Path, PathBuf};
 
@@ -19,6 +24,7 @@ use std::path::{Component, Path, PathBuf};
 pub struct ReviewVerificationContext {
     subject_digest: String,
     source_commit: String,
+    artifact_digest: Option<String>,
     now: String,
 }
 
@@ -29,10 +35,36 @@ impl ReviewVerificationContext {
         source_commit: Option<&str>,
         now: Option<&str>,
     ) -> Result<Option<Self>, ReviewInputError> {
+        Self::from_options_internal(subject_digest, source_commit, None, now, false)
+    }
+
+    /// artifact identity を含む release/evidence gate 用の explicit context を作る。
+    pub fn from_options_with_artifact(
+        subject_digest: Option<&str>,
+        source_commit: Option<&str>,
+        artifact_digest: Option<&str>,
+        now: Option<&str>,
+    ) -> Result<Option<Self>, ReviewInputError> {
+        Self::from_options_internal(subject_digest, source_commit, artifact_digest, now, true)
+    }
+
+    fn from_options_internal(
+        subject_digest: Option<&str>,
+        source_commit: Option<&str>,
+        artifact_digest: Option<&str>,
+        now: Option<&str>,
+        require_artifact: bool,
+    ) -> Result<Option<Self>, ReviewInputError> {
         if subject_digest.is_none() && source_commit.is_none() && now.is_none() {
+            if artifact_digest.is_some() {
+                return Err(ReviewInputError::Context {
+                    message: "不足している field: review_subject_digest, review_source_commit, review_now"
+                        .to_string(),
+                });
+            }
             return Ok(None);
         }
-        let missing = [
+        let mut missing = [
             ("review_subject_digest", subject_digest),
             ("review_source_commit", source_commit),
             ("review_now", now),
@@ -41,8 +73,17 @@ impl ReviewVerificationContext {
         .filter_map(|(name, value)| value.is_none().then_some(name))
         .collect::<Vec<_>>();
         if !missing.is_empty() {
+            if require_artifact && artifact_digest.is_none() {
+                missing.push("review_artifact_digest");
+            }
             return Err(ReviewInputError::Context {
                 message: format!("不足している field: {}", missing.join(", ")),
+            });
+        }
+
+        if require_artifact && artifact_digest.is_none() {
+            return Err(ReviewInputError::Context {
+                message: "不足している field: review_artifact_digest".to_string(),
             });
         }
 
@@ -60,10 +101,18 @@ impl ReviewVerificationContext {
                 });
             }
         }
+        if let Some(value) = artifact_digest {
+            if value.trim().is_empty() {
+                return Err(ReviewInputError::Context {
+                    message: "review_artifact_digest は空にできません".to_string(),
+                });
+            }
+        }
 
         Ok(Some(Self {
             subject_digest: subject_digest.to_string(),
             source_commit: source_commit.to_string(),
+            artifact_digest: artifact_digest.map(str::to_string),
             now: now.to_string(),
         }))
     }
@@ -74,6 +123,10 @@ impl ReviewVerificationContext {
 
     pub fn source_commit(&self) -> &str {
         &self.source_commit
+    }
+
+    pub fn artifact_digest(&self) -> Option<&str> {
+        self.artifact_digest.as_deref()
     }
 
     pub fn now(&self) -> &str {
@@ -90,9 +143,39 @@ pub struct ReviewInputs {
     /// trust root と同じ project-relative input から読み取るが、検証 state の生成は
     /// current graph/source/clock を持つ後続 caller の責務とする。
     pub attestations: Vec<ReviewAttestation>,
+    trust_store_digest: Option<String>,
+    lifecycle_digest: Option<String>,
 }
 
 impl ReviewInputs {
+    pub fn trust_store_digest(&self) -> Option<&str> {
+        self.trust_store_digest.as_deref()
+    }
+
+    pub fn lifecycle_digest(&self) -> Option<&str> {
+        self.lifecycle_digest.as_deref()
+    }
+
+    /// artifact を含む explicit context と parsed input digest を report identity へ束ねる。
+    pub fn review_evidence_identity(
+        &self,
+        context: &ReviewVerificationContext,
+    ) -> Result<Option<ReviewEvidenceIdentity>, ReviewInputError> {
+        let Some(artifact_digest) = context.artifact_digest() else {
+            return Ok(None);
+        };
+        ReviewEvidenceIdentity::new(
+            context.subject_digest(),
+            context.source_commit(),
+            artifact_digest,
+            context.now(),
+            self.trust_store_digest().map(str::to_string),
+            self.lifecycle_digest().map(str::to_string),
+        )
+        .map(Some)
+        .map_err(ReviewInputError::Identity)
+    }
+
     /// 明示 input から report/manifest 共通の verification fact を生成する。
     ///
     /// trust store または lifecycle snapshot が欠ける場合は、署名を暗黙に成功扱いせず
@@ -225,6 +308,8 @@ pub enum ReviewInputError {
     },
     #[error("review verification fact の projection に失敗しました: {0}")]
     Projection(#[from] ReviewVerificationProjectionError),
+    #[error("review evidence identity の生成に失敗しました: {0}")]
+    Identity(#[from] ReviewEvidenceIdentityError),
     #[error("review verification context が不完全です: {message}")]
     Context { message: String },
 }
@@ -235,29 +320,36 @@ pub fn load_review_inputs(
     trust_store_path: Option<&Path>,
     lifecycle_path: Option<&Path>,
 ) -> Result<ReviewInputs, ReviewInputError> {
-    let (trust_store, attestations) = match trust_store_path {
+    let (trust_store, attestations, trust_store_digest) = match trust_store_path {
         Some(path) => {
-            let (trust_store, attestations) = load_trust_store(project_root, path)?;
-            (Some(trust_store), attestations)
+            let (trust_store, attestations, digest) = load_trust_store(project_root, path)?;
+            (Some(trust_store), attestations, Some(digest))
         }
-        None => (None, Vec::new()),
+        None => (None, Vec::new(), None),
     };
-    let lifecycle = lifecycle_path
-        .map(|path| load_lifecycle(project_root, path))
-        .transpose()?;
+    let (lifecycle, lifecycle_digest) = match lifecycle_path {
+        Some(path) => {
+            let (lifecycle, digest) = load_lifecycle(project_root, path)?;
+            (Some(lifecycle), Some(digest))
+        }
+        None => (None, None),
+    };
     Ok(ReviewInputs {
         trust_store,
         lifecycle,
         attestations,
+        trust_store_digest,
+        lifecycle_digest,
     })
 }
 
 fn load_trust_store(
     project_root: &Path,
     configured: &Path,
-) -> Result<(ReviewTrustStore, Vec<ReviewAttestation>), ReviewInputError> {
+) -> Result<(ReviewTrustStore, Vec<ReviewAttestation>, String), ReviewInputError> {
     let resolved = resolve_review_input_path(project_root, configured, "trust store")?;
     let document = read_wire(&resolved, "trust store")?;
+    let digest = wire_component_digest(&document, "trust_store");
     let trust_store =
         document
             .trust_store()
@@ -265,15 +357,40 @@ fn load_trust_store(
             .ok_or_else(|| ReviewInputError::MissingTrustStore {
                 path: resolved.display().to_string(),
             })?;
-    Ok((trust_store, document.attestations().to_vec()))
+    Ok((trust_store, document.attestations().to_vec(), digest))
 }
 
 fn load_lifecycle(
     project_root: &Path,
     configured: &Path,
-) -> Result<ReviewLifecycleRegistry, ReviewInputError> {
+) -> Result<(ReviewLifecycleRegistry, String), ReviewInputError> {
     let resolved = resolve_review_input_path(project_root, configured, "lifecycle")?;
-    Ok(read_wire(&resolved, "lifecycle")?.lifecycle().clone())
+    let document = read_wire(&resolved, "lifecycle")?;
+    let digest = wire_component_digest(&document, "lifecycle");
+    Ok((document.lifecycle().clone(), digest))
+}
+
+fn wire_component_digest(
+    document: &lsharp_types::intent::review_wire::ReviewWireDocument,
+    component: &str,
+) -> String {
+    let wire = document.to_json_value();
+    let component_value = wire.get(component).cloned().unwrap_or(Value::Null);
+    let mut canonical = serde_json::Map::new();
+    canonical.insert(
+        "schema_version".to_string(),
+        serde_json::json!(document.schema_version()),
+    );
+    canonical.insert(component.to_string(), component_value);
+    let bytes = serde_json::to_vec(&Value::Object(canonical))
+        .expect("review wire component は serializable");
+    let digest = Sha256::digest(bytes);
+    let mut hex = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        use std::fmt::Write;
+        write!(&mut hex, "{byte:02x}").expect("String は write 可能");
+    }
+    format!("sha256:{hex}")
 }
 
 fn read_wire(
@@ -405,5 +522,98 @@ mod tests {
         );
 
         std::fs::remove_dir_all(project_root).ok();
+    }
+
+    #[test]
+    fn explicit_review_input_digests_are_stable_and_identity_is_complete_when_artifact_is_given() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock should be after epoch")
+            .as_nanos();
+        let project_root =
+            std::env::temp_dir().join(format!("lsharp-review-identity-test-{nonce}"));
+        std::fs::create_dir_all(&project_root).expect("project root should be writable");
+        let first = project_root.join("trust-first.json");
+        let second = project_root.join("trust-second.json");
+        let lifecycle = project_root.join("lifecycle.json");
+        std::fs::write(&first, wire_with_attestation()).expect("first wire should be writable");
+        std::fs::write(
+            &second,
+            r#"{
+              "trust_store": [{
+                "public_key": "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc",
+                "algorithm": "ed25519",
+                "key_id": "org/reviews-2026",
+                "provider": "github"
+              }],
+              "lifecycle": [],
+              "attestations": [],
+              "schema_version": 1
+            }"#,
+        )
+        .expect("reordered wire should be writable");
+        std::fs::write(
+            &lifecycle,
+            r#"{
+              "schema_version": 1,
+              "attestations": [],
+              "lifecycle": [{
+                "review_id": "review:checkout/reviewer-001",
+                "sequence": 1,
+                "state": "proposed",
+                "effective_at": "2026-07-29T00:00:00Z"
+              }]
+            }"#,
+        )
+        .expect("lifecycle wire should be writable");
+
+        let first_inputs = load_review_inputs(
+            &project_root,
+            Some(Path::new("trust-first.json")),
+            Some(Path::new("lifecycle.json")),
+        )
+        .expect("first explicit inputs should load");
+        let second_inputs =
+            load_review_inputs(&project_root, Some(Path::new("trust-second.json")), None)
+                .expect("reordered explicit input should load");
+        assert_eq!(
+            first_inputs.trust_store_digest(),
+            second_inputs.trust_store_digest(),
+            "trust-store digest must ignore JSON object/array input order"
+        );
+        assert!(first_inputs.lifecycle_digest().is_some());
+
+        let context = ReviewVerificationContext::from_options_with_artifact(
+            Some("sha256:graph"),
+            Some("commit-1"),
+            Some("sha256:artifact"),
+            Some("2026-08-15T00:00:00Z"),
+        )
+        .expect("complete review context should load")
+        .expect("complete review context should be present");
+        let identity = first_inputs
+            .review_evidence_identity(&context)
+            .expect("identity projection should succeed")
+            .expect("artifact-bearing context should produce identity");
+        assert_eq!(identity.subject_digest(), "sha256:graph");
+        assert_eq!(identity.source_commit(), "commit-1");
+        assert_eq!(identity.artifact_digest(), "sha256:artifact");
+        assert_eq!(identity.now(), "2026-08-15T00:00:00Z");
+        assert!(identity.trust_store_digest().is_some());
+        assert!(identity.lifecycle_digest().is_some());
+
+        std::fs::remove_dir_all(project_root).ok();
+    }
+
+    #[test]
+    fn artifact_identity_context_rejects_missing_required_context() {
+        let error = ReviewVerificationContext::from_options_with_artifact(
+            Some("sha256:graph"),
+            Some("commit-1"),
+            None,
+            Some("2026-08-15T00:00:00Z"),
+        )
+        .expect_err("artifact identity requires an explicit artifact digest");
+        assert!(error.to_string().contains("review_artifact_digest"));
     }
 }

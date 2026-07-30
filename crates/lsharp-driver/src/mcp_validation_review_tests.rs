@@ -129,7 +129,17 @@ fn mcp_review_arguments(
     source_commit: &str,
     now: &str,
 ) -> serde_json::Value {
-    json!({
+    mcp_review_arguments_with_artifact(manifest, subject_digest, source_commit, None, now)
+}
+
+fn mcp_review_arguments_with_artifact(
+    manifest: &Path,
+    subject_digest: &str,
+    source_commit: &str,
+    artifact_digest: Option<&str>,
+    now: &str,
+) -> serde_json::Value {
+    let mut arguments = json!({
         "manifest_file": manifest.display().to_string(),
         "trust_store": "trust.json",
         "review_lifecycle": "lifecycle.json",
@@ -137,7 +147,11 @@ fn mcp_review_arguments(
         "review_source_commit": source_commit,
         "review_now": now,
         "include_manifest": true
-    })
+    });
+    if let Some(artifact_digest) = artifact_digest {
+        arguments["review_artifact_digest"] = json!(artifact_digest);
+    }
+    arguments
 }
 
 #[test]
@@ -165,6 +179,48 @@ fn test_validate_tool_projects_valid_attestation_context_to_report_and_manifest(
     assert_eq!(
         result["manifest"]["reviews"][0]["verification_state"],
         "verified"
+    );
+
+    std::fs::remove_dir_all(project).ok();
+}
+
+#[test]
+fn test_validate_tool_projects_review_evidence_identity_with_explicit_artifact() {
+    let (signature, public_key) = signed_review_fields();
+    let (project, manifest) = mcp_review_project("evidence-identity", &signature, &public_key);
+    let result = call_tool(
+        "lsharp_validate",
+        &mcp_review_arguments_with_artifact(
+            &manifest,
+            "sha256:graph",
+            "commit-1",
+            Some("sha256:artifact"),
+            "2026-07-30T00:00:00Z",
+        ),
+    )
+    .expect("MCP evidence identity should project through report");
+
+    assert_eq!(
+        result["review_evidence_identity"]["subject_digest"],
+        "sha256:graph"
+    );
+    assert_eq!(
+        result["review_evidence_identity"]["source_commit"],
+        "commit-1"
+    );
+    assert_eq!(
+        result["review_evidence_identity"]["artifact_digest"],
+        "sha256:artifact"
+    );
+    assert!(
+        result["review_evidence_identity"]["trust_store_digest"]
+            .as_str()
+            .is_some_and(|value| value.starts_with("sha256:"))
+    );
+    assert!(
+        result["review_evidence_identity"]["lifecycle_digest"]
+            .as_str()
+            .is_some_and(|value| value.starts_with("sha256:"))
     );
 
     std::fs::remove_dir_all(project).ok();

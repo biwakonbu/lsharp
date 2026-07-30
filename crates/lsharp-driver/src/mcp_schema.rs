@@ -167,6 +167,32 @@ fn tool_output_schema(name: &str) -> Value {
                 },
                 "stale_reviews": { "type": "integer", "minimum": 0, "maximum": u64::MAX },
                 "stale_evidence": { "type": "integer", "minimum": 0, "maximum": u64::MAX },
+                "review_evidence_identity": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                        "subject_digest",
+                        "source_commit",
+                        "artifact_digest",
+                        "trust_store_digest",
+                        "lifecycle_digest",
+                        "now"
+                    ],
+                    "properties": {
+                        "subject_digest": { "type": "string", "minLength": 1 },
+                        "source_commit": { "type": "string", "minLength": 1 },
+                        "artifact_digest": { "type": "string", "minLength": 1 },
+                        "trust_store_digest": {
+                            "type": ["string", "null"],
+                            "minLength": 1
+                        },
+                        "lifecycle_digest": {
+                            "type": ["string", "null"],
+                            "minLength": 1
+                        },
+                        "now": { "type": "string", "minLength": 1 }
+                    }
+                },
                 "review_verifications": {
                     "type": "array",
                     "items": {
@@ -229,6 +255,7 @@ fn validate_input_schema() -> Value {
             "review_lifecycle": { "type": "string" },
             "review_subject_digest": { "type": "string", "minLength": 1 },
             "review_source_commit": { "type": "string", "minLength": 1 },
+            "review_artifact_digest": { "type": "string", "minLength": 1 },
             "review_now": { "type": "string", "minLength": 1 }
         },
         "oneOf": [

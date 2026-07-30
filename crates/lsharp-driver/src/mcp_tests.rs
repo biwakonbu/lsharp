@@ -113,6 +113,17 @@ mod tests {
             ])
         );
         assert_eq!(
+            tool["outputSchema"]["properties"]["review_evidence_identity"]["required"],
+            json!([
+                "subject_digest",
+                "source_commit",
+                "artifact_digest",
+                "trust_store_digest",
+                "lifecycle_digest",
+                "now"
+            ])
+        );
+        assert_eq!(
             tool["outputSchema"]["properties"]["status"]["enum"],
             json!(["pass", "fail", "unknown"])
         );
@@ -332,6 +343,10 @@ mod tests {
         );
         assert_eq!(
             tool["inputSchema"]["properties"]["review_now"]["type"],
+            "string"
+        );
+        assert_eq!(
+            tool["inputSchema"]["properties"]["review_artifact_digest"]["type"],
             "string"
         );
     }

@@ -338,6 +338,83 @@ fn validate_rejects_partial_review_verification_context_before_report() {
 }
 
 #[test]
+fn validate_projects_review_evidence_identity_for_explicit_artifact_context() {
+    let project = project_dir("evidence-identity");
+    fs::write(
+        project.join("trust.json"),
+        review_wire(Some(trust_key()), false),
+    )
+    .expect("trust wire should be writable");
+
+    let mut command = Command::new(env!("CARGO_BIN_EXE_lsharp"));
+    command.current_dir(&project).args([
+        "validate",
+        "manifest.json",
+        "--format",
+        "json",
+        "--trust-store",
+        "trust.json",
+        "--review-subject-digest",
+        "sha256:graph",
+        "--review-source-commit",
+        "commit-1",
+        "--review-artifact-digest",
+        "sha256:artifact",
+        "--review-now",
+        "2026-08-15T00:00:00Z",
+    ]);
+    let output = command.output().expect("lsharp validate should run");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(2), "unexpected exit: {stderr}");
+    assert!(stderr.is_empty(), "unexpected stderr: {stderr}");
+    let report: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("report should be JSON");
+    assert_eq!(
+        report["review_evidence_identity"]["subject_digest"],
+        "sha256:graph"
+    );
+    assert_eq!(
+        report["review_evidence_identity"]["source_commit"],
+        "commit-1"
+    );
+    assert_eq!(
+        report["review_evidence_identity"]["artifact_digest"],
+        "sha256:artifact"
+    );
+    assert!(
+        report["review_evidence_identity"]["trust_store_digest"]
+            .as_str()
+            .is_some_and(|value| value.starts_with("sha256:"))
+    );
+    assert!(report["review_evidence_identity"]["lifecycle_digest"].is_null());
+
+    let mut text_command = Command::new(env!("CARGO_BIN_EXE_lsharp"));
+    text_command.current_dir(&project).args([
+        "validate",
+        "manifest.json",
+        "--format",
+        "text",
+        "--review-subject-digest",
+        "sha256:graph",
+        "--review-source-commit",
+        "commit-1",
+        "--review-artifact-digest",
+        "sha256:artifact",
+        "--review-now",
+        "2026-08-15T00:00:00Z",
+    ]);
+    let text_output = text_command.output().expect("text validate should run");
+    let text = String::from_utf8_lossy(&text_output.stdout);
+    assert_eq!(text_output.status.code(), Some(2));
+    assert!(text.contains(
+        "review-evidence-identity: subject=sha256:graph source=commit-1 artifact=sha256:artifact trust-store=- lifecycle=- now=2026-08-15T00:00:00Z"
+    ));
+
+    fs::remove_dir_all(project).ok();
+}
+
+#[test]
 fn validate_projects_expiry_and_identity_context_to_state() {
     let project = project_dir("expiry-context");
     fs::write(

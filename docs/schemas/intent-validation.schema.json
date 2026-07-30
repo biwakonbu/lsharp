@@ -62,6 +62,26 @@
       "minimum": 0,
       "maximum": 18446744073709551615
     },
+    "review_evidence_identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "subject_digest",
+        "source_commit",
+        "artifact_digest",
+        "trust_store_digest",
+        "lifecycle_digest",
+        "now"
+      ],
+      "properties": {
+        "subject_digest": { "type": "string", "minLength": 1 },
+        "source_commit": { "type": "string", "minLength": 1 },
+        "artifact_digest": { "type": "string", "minLength": 1 },
+        "trust_store_digest": { "type": ["string", "null"] },
+        "lifecycle_digest": { "type": ["string", "null"] },
+        "now": { "type": "string", "minLength": 1 }
+      }
+    },
     "review_verifications": {
       "type": "array",
       "items": {
