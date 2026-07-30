@@ -7,6 +7,7 @@ mod evidence;
 mod expr;
 mod metadata;
 mod pattern;
+mod review_attestation;
 mod type_expr;
 
 /// パースエラー

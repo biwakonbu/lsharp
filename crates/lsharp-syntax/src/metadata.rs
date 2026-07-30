@@ -48,6 +48,100 @@ pub struct EvidenceForm {
     independence: String,
 }
 
+/// source から lossless に保持する review attestation の named-field form。
+///
+/// trust store、lifecycle、署名検証は source syntax の責務に含めず、ここでは wire の
+/// field 順と source payload を保持する。typed model への投影は types adapter が行う。
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReviewAttestationForm {
+    review_id: String,
+    subject_digest: String,
+    source_commit: String,
+    provenance_digest: String,
+    provider: String,
+    key_id: String,
+    algorithm: String,
+    signature: String,
+    issued_at: String,
+    expires_at: Option<String>,
+    sequence: u64,
+}
+
+impl ReviewAttestationForm {
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn new(
+        review_id: String,
+        subject_digest: String,
+        source_commit: String,
+        provenance_digest: String,
+        provider: String,
+        key_id: String,
+        algorithm: String,
+        signature: String,
+        issued_at: String,
+        expires_at: Option<String>,
+        sequence: u64,
+    ) -> Self {
+        Self {
+            review_id,
+            subject_digest,
+            source_commit,
+            provenance_digest,
+            provider,
+            key_id,
+            algorithm,
+            signature,
+            issued_at,
+            expires_at,
+            sequence,
+        }
+    }
+
+    pub fn review_id(&self) -> &str {
+        &self.review_id
+    }
+
+    pub fn subject_digest(&self) -> &str {
+        &self.subject_digest
+    }
+
+    pub fn source_commit(&self) -> &str {
+        &self.source_commit
+    }
+
+    pub fn provenance_digest(&self) -> &str {
+        &self.provenance_digest
+    }
+
+    pub fn provider(&self) -> &str {
+        &self.provider
+    }
+
+    pub fn key_id(&self) -> &str {
+        &self.key_id
+    }
+
+    pub fn algorithm(&self) -> &str {
+        &self.algorithm
+    }
+
+    pub fn signature(&self) -> &str {
+        &self.signature
+    }
+
+    pub fn issued_at(&self) -> &str {
+        &self.issued_at
+    }
+
+    pub fn expires_at(&self) -> Option<&str> {
+        self.expires_at.as_deref()
+    }
+
+    pub const fn sequence(&self) -> u64 {
+        self.sequence
+    }
+}
+
 impl EvidenceForm {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
@@ -300,6 +394,10 @@ pub enum MetadataFormKind {
         id: String,
         provenance_digest: String,
         visibility: String,
+    },
+    /// source から明示した review attestation の named-field form。
+    ReviewAttestation {
+        attestation: Box<ReviewAttestationForm>,
     },
     /// source から intent と claim を接続する typed edge。
     Motivates { intent: String, claim: String },

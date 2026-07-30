@@ -12,6 +12,24 @@
 `[x]` は使わない。日付別の進捗ログ、個別 test 名、artifact hash、完了済み phase はここへ蓄積せず、
 設計、ADR、test、artifact、運用記録を参照する。
 
+## Next milestone — v0.3 review provenance / lifecycle
+
+正本: [`v0.3-review-provenance-lifecycle.md`](docs/development/planning/v0.3-review-provenance-lifecycle.md)
+
+- [~] `EC-M3-01` attestation model / canonical bytes — Rust model、strict timestamp、明示 clock、
+  canonical bytes、signature encoding boundary は verified partial slice。source/native producer、
+  trust store、署名検証、両対応 target の runtime evidence は残る。
+- [~] `EC-M3-02` lifecycle transition — append-only registry と stale/revoked 境界の Rust verified
+  slice。source/selfhost/native report parity と release evidence は残る。
+- [~] `EC-M3-03` CLI/MCP explicit inputs — explicit context、clock、trust/lifecycle input の Rust
+  CLI/MCP boundary は verified partial slice。selfhost/native MCP と target artifact parity は残る。
+- [~] `EC-M3-04` source / selfhost / native producer parity — `:review` 互換を維持した named-field
+  `:review-attestation` の Rust parser/source adapter、selfhost kind 20、`unverified` state、span、
+  canonical bytes parity、invalid algorithm/signature/timestamp/time-window の fail-closed contract を verified。native
+  source-file smoke、Evidence/manifest projection、current-source と packaged stage0 の provenance は残る。
+- [ ] `EC-M3-05` release / evidence gate — keyset/lifecycle/source/artifact identity、状態の JSON/text/MCP
+  順序、Mac Apple Silicon / Linux x86_64 の release gate を実 artifact/runtime で閉じる。
+
 ## Current priority — v0.2 Milestone 2
 
 正本:

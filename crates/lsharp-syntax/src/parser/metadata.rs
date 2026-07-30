@@ -149,6 +149,20 @@ impl Parser {
                             ));
                             found = true;
                         }
+                        "review-attestation" => {
+                            let form_start = self.peek_span();
+                            self.advance(); // :
+                            self.advance(); // review-attestation
+                            let (attestation, end_span) =
+                                self.parse_review_attestation_form()?;
+                            metadata.forms.push(MetadataForm::new(
+                                form_start.merge(end_span),
+                                MetadataFormKind::ReviewAttestation {
+                                    attestation: Box::new(attestation),
+                                },
+                            ));
+                            found = true;
+                        }
                         "motivates" => {
                             let form_start = self.peek_span();
                             self.advance(); // :

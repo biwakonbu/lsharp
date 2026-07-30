@@ -24,6 +24,8 @@
 (defn source-edge-supports [] 13)
 (defn source-edge-contradicts [] 14)
 (defn source-review [] 16)
+(defn source-review-attestation [] 20)
+(defn source-review-attestation-state-unverified [] "unverified")
 (defn source-edge-evaluates [] 17)
 (defn source-edge-invalidates [] 18)
 (defn source-change [] 19)
@@ -148,6 +150,127 @@
 (defn source-review-visibility [review] (vector-get review 2))
 (defn source-review-start [review] (vector-get review 3))
 (defn source-review-end [review] (vector-get review 4))
+
+;; v0.3 source attestation は署名の trust/lifecycle を解決せず、
+;; named-field の値・span・unverified state を保持するだけの producer record。
+;; [review-id, subject-digest, source-commit, provenance-digest,
+;;  provider, key-id, algorithm, signature, issued-at, expires-at,
+;;  sequence, span-start, span-end]
+(defn source-review-attestation-record
+  [id subject-digest source-commit provenance-digest provider key-id algorithm signature issued-at expires-at sequence start end]
+  (let [first (vector-push-quad-rooted-v3
+      (vector-new 1)
+      id
+      subject-digest
+      source-commit
+      provenance-digest)
+    second (vector-push-quad-rooted-v3
+      first
+      provider
+      key-id
+      algorithm
+      signature)
+    third (vector-push-quad-rooted-v3
+      second
+      issued-at
+      expires-at
+      sequence
+      start)
+    fourth (vector-push-single-rooted-v3 third end)]
+    fourth))
+
+(defn source-review-attestation-id [attestation] (vector-get attestation 0))
+(defn source-review-attestation-subject-digest [attestation] (vector-get attestation 1))
+(defn source-review-attestation-source-commit [attestation] (vector-get attestation 2))
+(defn source-review-attestation-provenance-digest [attestation] (vector-get attestation 3))
+(defn source-review-attestation-provider [attestation] (vector-get attestation 4))
+(defn source-review-attestation-key-id [attestation] (vector-get attestation 5))
+(defn source-review-attestation-algorithm [attestation] (vector-get attestation 6))
+(defn source-review-attestation-signature [attestation] (vector-get attestation 7))
+(defn source-review-attestation-issued-at [attestation] (vector-get attestation 8))
+(defn source-review-attestation-expires-at [attestation] (vector-get attestation 9))
+(defn source-review-attestation-sequence [attestation] (vector-get attestation 10))
+(defn source-review-attestation-start [attestation] (vector-get attestation 11))
+(defn source-review-attestation-end [attestation] (vector-get attestation 12))
+(defn source-review-attestation-state [attestation] (source-review-attestation-state-unverified))
+
+;; Rust の canonical_bytes と同じ domain separator + big-endian u64 length prefix。
+;; `string-char-at` は selfhost の UTF-8 byte accessor なので、raw field の byte 列も
+;; Rust の `str::as_bytes()` と一致する。
+(defn source-review-attestation-append-raw-string-loop [bytes value idx len]
+  (if (>= idx len)
+    bytes
+    (source-review-attestation-append-raw-string-loop
+      (vector-push bytes (string-char-at value idx))
+      value
+      (+ idx 1)
+      len)))
+
+(defn source-review-attestation-append-raw-string [bytes value]
+  (source-review-attestation-append-raw-string-loop
+    bytes
+    value
+    0
+    (string-length value)))
+
+(defn source-review-attestation-append-u64-be [bytes value]
+  (let [b0 (% (/ value 72057594037927936) 256)
+    b1 (% (/ value 281474976710656) 256)
+    b2 (% (/ value 1099511627776) 256)
+    b3 (% (/ value 4294967296) 256)
+    b4 (% (/ value 16777216) 256)
+    b5 (% (/ value 65536) 256)
+    b6 (% (/ value 256) 256)
+    b7 (% value 256)
+    first (vector-push bytes b0)
+    second (vector-push first b1)
+    third (vector-push second b2)
+    fourth (vector-push third b3)
+    fifth (vector-push fourth b4)
+    sixth (vector-push fifth b5)
+    seventh (vector-push sixth b6)]
+    (vector-push seventh b7)))
+
+(defn source-review-attestation-append-field [bytes value]
+  (source-review-attestation-append-raw-string
+    (source-review-attestation-append-u64-be bytes (string-length value))
+    value))
+
+(defn source-review-attestation-canonical-bytes [attestation]
+  (let [domain-text (source-review-attestation-append-raw-string
+      (vector-new 32)
+      "lsharp.review-attestation.v1")
+    domain (vector-push domain-text 0)
+    with-id (source-review-attestation-append-field
+      domain
+      (source-review-attestation-id attestation))
+    with-subject (source-review-attestation-append-field
+      with-id
+      (source-review-attestation-subject-digest attestation))
+    with-source (source-review-attestation-append-field
+      with-subject
+      (source-review-attestation-source-commit attestation))
+    with-provenance (source-review-attestation-append-field
+      with-source
+      (source-review-attestation-provenance-digest attestation))
+    with-provider (source-review-attestation-append-field
+      with-provenance
+      (source-review-attestation-provider attestation))
+    with-key (source-review-attestation-append-field
+      with-provider
+      (source-review-attestation-key-id attestation))
+    with-algorithm (source-review-attestation-append-field
+      with-key
+      (source-review-attestation-algorithm attestation))
+    with-issued-at (source-review-attestation-append-field
+      with-algorithm
+      (source-review-attestation-issued-at attestation))
+    with-expires-at (source-review-attestation-append-field
+      with-issued-at
+      (source-review-attestation-expires-at attestation))]
+    (source-review-attestation-append-field
+      with-expires-at
+      (int-to-string (source-review-attestation-sequence attestation)))))
 
 (defn source-node-kind? [kind]
   (and (>= kind (source-node-intent)) (<= kind (source-node-open-question))))
@@ -391,6 +514,289 @@
                   (source-result 0
                     (source-graph-error-at (source-error-invalid-review) kind id start end)))))))))))
 
+(defn source-review-attestation-signature-char? [char]
+  (or
+    (or
+      (or
+        (and (>= char 48) (<= char 57))
+        (and (>= char 65) (<= char 90)))
+      (and (>= char 97) (<= char 122)))
+    (or (= char 45) (= char 95))))
+
+(defn source-review-attestation-signature-value [char]
+  (if (and (>= char 65) (<= char 90))
+    (- char 65)
+    (if (and (>= char 97) (<= char 122))
+      (+ (- char 97) 26)
+      (if (and (>= char 48) (<= char 57))
+        (+ (- char 48) 52)
+        (if (= char 45) 62 63)))))
+
+(defn source-review-attestation-signature-valid-loop [signature idx len]
+  (if (>= idx len)
+    1
+    (if (source-review-attestation-signature-char? (string-char-at signature idx))
+      (source-review-attestation-signature-valid-loop signature (+ idx 1) len)
+      0)))
+
+(defn source-review-attestation-signature-tail-valid? [signature len]
+  (let [remainder (% len 4)
+    last (source-review-attestation-signature-value
+      (string-char-at signature (- len 1)))]
+    (if (= remainder 2)
+      (= (% last 16) 0)
+      (if (= remainder 3)
+        (= (% last 4) 0)
+        true))))
+
+;; Rust の base64url (padding なし) decoder と同じ syntactic boundary を先に守る。
+;; 署名の暗号学的検証はこの producer 層の責務外であり、state は unverified のまま。
+(defn source-review-attestation-signature-valid? [signature]
+  (let [len (string-length signature)]
+    (if (or (= len 0) (= (% len 4) 1))
+      0
+      (if (= (source-review-attestation-signature-valid-loop signature 0 len) 1)
+        (if (source-review-attestation-signature-tail-valid? signature len) 1 0)
+        0))))
+
+(defn source-review-attestation-digit? [char]
+  (and (>= char 48) (<= char 57)))
+
+(defn source-review-attestation-digits-valid-loop [value idx end]
+  (if (>= idx end)
+    1
+    (if (source-review-attestation-digit? (string-char-at value idx))
+      (source-review-attestation-digits-valid-loop value (+ idx 1) end)
+      0)))
+
+(defn source-review-attestation-leap-year? [year]
+  (and
+    (= (% year 4) 0)
+    (or
+      (!= (% year 100) 0)
+      (= (% year 400) 0))))
+
+(defn source-review-attestation-days-in-month [year month]
+  (if (= month 2)
+    (if (source-review-attestation-leap-year? year) 29 28)
+    (if
+      (or
+        (or (= month 4) (= month 6))
+        (or (= month 9) (= month 11)))
+      30
+      31)))
+
+(defn source-review-attestation-timestamp-separators-valid? [value]
+  (and
+    (= (string-char-at value 4) 45)
+    (and
+      (= (string-char-at value 7) 45)
+      (and
+        (= (string-char-at value 10) 84)
+        (and
+          (= (string-char-at value 13) 58)
+          (and (= (string-char-at value 16) 58) (= (string-char-at value 19) 90)))))))
+
+(defn source-review-attestation-timestamp-digits-valid? [value]
+  (and
+    (= (source-review-attestation-digits-valid-loop value 0 4) 1)
+    (and
+      (= (source-review-attestation-digits-valid-loop value 5 7) 1)
+      (and
+        (= (source-review-attestation-digits-valid-loop value 8 10) 1)
+        (and
+          (= (source-review-attestation-digits-valid-loop value 11 13) 1)
+          (and
+            (= (source-review-attestation-digits-valid-loop value 14 16) 1)
+            (= (source-review-attestation-digits-valid-loop value 17 19) 1)))))))
+
+(defn source-review-attestation-timestamp-shape-valid? [value]
+  (let [len (string-length value)]
+    (if (!= len 20)
+      0
+      (if (source-review-attestation-timestamp-separators-valid? value)
+        (if (source-review-attestation-timestamp-digits-valid? value) 1 0)
+        0))))
+
+(defn source-review-attestation-timestamp-year [value]
+  (+
+    (* (- (string-char-at value 0) 48) 1000)
+    (+
+      (* (- (string-char-at value 1) 48) 100)
+      (+
+        (* (- (string-char-at value 2) 48) 10)
+        (- (string-char-at value 3) 48)))))
+
+(defn source-review-attestation-timestamp-month [value]
+  (+ (* (- (string-char-at value 5) 48) 10) (- (string-char-at value 6) 48)))
+
+(defn source-review-attestation-timestamp-day [value]
+  (+ (* (- (string-char-at value 8) 48) 10) (- (string-char-at value 9) 48)))
+
+(defn source-review-attestation-timestamp-hour [value]
+  (+ (* (- (string-char-at value 11) 48) 10) (- (string-char-at value 12) 48)))
+
+(defn source-review-attestation-timestamp-minute [value]
+  (+ (* (- (string-char-at value 14) 48) 10) (- (string-char-at value 15) 48)))
+
+(defn source-review-attestation-timestamp-second [value]
+  (+ (* (- (string-char-at value 17) 48) 10) (- (string-char-at value 18) 48)))
+
+(defn source-review-attestation-timestamp-key [value]
+  (let [year (source-review-attestation-timestamp-year value)
+    month (source-review-attestation-timestamp-month value)
+    day (source-review-attestation-timestamp-day value)
+    hour (source-review-attestation-timestamp-hour value)
+    minute (source-review-attestation-timestamp-minute value)
+    second (source-review-attestation-timestamp-second value)]
+    (+
+      second
+      (* 60
+        (+
+          minute
+          (* 60
+            (+
+              hour
+              (* 24
+                (+
+                  day
+                  (* 32 (+ month (* 13 year))))))))))))
+
+(defn source-review-attestation-timestamp-valid? [value]
+  (if (= (source-review-attestation-timestamp-shape-valid? value) 0)
+    0
+    (let [year (source-review-attestation-timestamp-year value)
+      month (source-review-attestation-timestamp-month value)
+      day (source-review-attestation-timestamp-day value)
+      hour (source-review-attestation-timestamp-hour value)
+      minute (source-review-attestation-timestamp-minute value)
+      second (source-review-attestation-timestamp-second value)]
+      (if (= year 0)
+        0
+        (if (or (< month 1) (> month 12))
+          0
+          (if (or (< day 1) (> day (source-review-attestation-days-in-month year month)))
+            0
+            (if (> hour 23)
+              0
+              (if (> minute 59)
+                0
+                (if (> second 59) 0 1)))))))))
+
+(defn source-review-attestation-fields-valid?
+  [id subject-digest source-commit provenance-digest provider key-id algorithm signature issued-at expires-at sequence]
+  (if (= (source-review-nonblank? id) 0)
+    0
+    (if (= (source-review-nonblank? subject-digest) 0)
+      0
+      (if (= (source-review-nonblank? source-commit) 0)
+        0
+        (if (= (source-review-nonblank? provenance-digest) 0)
+          0
+          (if (= (source-review-nonblank? provider) 0)
+            0
+            (if (= (source-review-nonblank? key-id) 0)
+              0
+              (if (= (source-review-nonblank? algorithm) 0)
+                0
+                (if (= (source-review-nonblank? signature) 0)
+                  0
+                  (if (= (source-review-nonblank? issued-at) 0)
+                    0
+                    (if (= (source-review-attestation-timestamp-valid? issued-at) 0)
+                      0
+                      (if (= (string-length expires-at) 0)
+                        (if (< sequence 0)
+                          0
+                          (if (not (string-eq algorithm "ed25519"))
+                            0
+                            (if (!= (source-review-attestation-signature-valid? signature) 1)
+                              0
+                              1)))
+                        (if (= (source-review-attestation-timestamp-valid? expires-at) 0)
+                          0
+                          (if (<=
+                                (source-review-attestation-timestamp-key expires-at)
+                                (source-review-attestation-timestamp-key issued-at))
+                            0
+                            (if (< sequence 0)
+                              0
+                              (if (not (string-eq algorithm "ed25519"))
+                                0
+                                (if (!= (source-review-attestation-signature-valid? signature) 1)
+                                  0
+                                  1)))))))))))))))))
+
+(defn source-review-attestation-form-result [form]
+  (if (< (vector-length form) 4)
+    (source-result 0 (source-form-malformed-error form))
+    (let [kind (vector-get form 0)
+      payload (vector-get form 1)
+      start (vector-get form 2)
+      end (vector-get form 3)]
+      (if (!= (vector-length form) 4)
+        (source-result 0 (source-graph-error-at (source-error-malformed) kind "" start end))
+        (if (!= (vector-length payload) 11)
+          (source-result 0 (source-graph-error-at (source-error-malformed) kind "" start end))
+          (let [id (vector-get payload 0)
+            subject-digest (vector-get payload 1)
+            source-commit (vector-get payload 2)
+            provenance-digest (vector-get payload 3)
+            provider (vector-get payload 4)
+            key-id (vector-get payload 5)
+            algorithm (vector-get payload 6)
+            signature (vector-get payload 7)
+            issued-at (vector-get payload 8)
+            expires-at (vector-get payload 9)
+            sequence (vector-get payload 10)]
+            (if (= (source-review-attestation-fields-valid?
+                      id
+                      subject-digest
+                      source-commit
+                      provenance-digest
+                      provider
+                      key-id
+                      algorithm
+                      signature
+                      issued-at
+                      expires-at
+                      sequence)
+                    0)
+              (source-result 0 (source-graph-error-at (source-error-invalid-review) kind id start end))
+              (if (= (source-wire-valid? id (source-review)) 0)
+                (source-result 0 (source-graph-error-at (source-error-invalid-id) kind id start end))
+                (source-result 1
+                  (source-review-attestation-record
+                    id
+                    subject-digest
+                    source-commit
+                    provenance-digest
+                    provider
+                    key-id
+                    algorithm
+                    signature
+                    issued-at
+                    expires-at
+                    sequence
+                    start
+                    end))))))))))
+
+(defn source-append-review-attestation-forms [forms idx len attestations]
+  (if (>= idx len)
+    (source-result 1 attestations)
+    (let [form (vector-get forms idx)
+      kind (vector-get form 0)]
+      (if (= kind (source-review-attestation))
+        (let [parsed (source-review-attestation-form-result form)]
+          (if (= (source-result-status parsed) 0)
+            parsed
+            (source-append-review-attestation-forms
+              forms
+              (+ idx 1)
+              len
+              (vector-push-single-rooted-v3 attestations (source-result-value parsed)))))
+        (source-append-review-attestation-forms forms (+ idx 1) len attestations)))))
+
 (defn source-append-review-forms [forms idx len reviews]
   (if (>= idx len)
     (source-result 1 reviews)
@@ -528,6 +934,65 @@
 
 (defn source-collect-reviews [program]
   (source-collect-reviews-program-loop program 0 (vector-length program) (vector-new 0)))
+
+(defn source-collect-review-attestation-children [decl idx len attestations]
+  (if (>= idx len)
+    (source-result 1 attestations)
+    (let [child (vector-get decl idx)
+      parsed (source-collect-review-attestations-decl child attestations)]
+      (if (= (source-result-status parsed) 0)
+        parsed
+        (source-collect-review-attestation-children
+          decl
+          (+ idx 1)
+          len
+          (source-result-value parsed))))))
+
+(defn source-collect-review-attestations-decl [decl attestations]
+  (let [tag (vector-get decl 0)]
+    (if (= tag (ast-defn))
+      (let [forms (source-ordered-forms decl)]
+        (source-append-review-attestation-forms
+          forms
+          0
+          (vector-length forms)
+          attestations))
+      (if (= tag (ast-private))
+        (source-collect-review-attestations-decl (vector-get decl 1) attestations)
+        (if (= tag (ast-module-decl))
+          (source-collect-review-attestation-children decl 5 (vector-length decl) attestations)
+          (if (= tag (ast-impldef))
+            (source-collect-review-attestation-children decl 4 (vector-length decl) attestations)
+            (if (or (= tag (ast-typedef)) (= tag (ast-recorddef)))
+              (let [forms (source-type-ordered-forms decl)]
+                (source-append-review-attestation-forms
+                  forms
+                  0
+                  (vector-length forms)
+                  attestations))
+              (source-result 1 attestations))))))))
+
+(defn source-collect-review-attestations-program-loop [program idx len attestations]
+  (if (>= idx len)
+    (source-result 1 attestations)
+    (let [parsed
+      (source-collect-review-attestations-decl
+        (vector-get program idx)
+        attestations)]
+      (if (= (source-result-status parsed) 0)
+        parsed
+        (source-collect-review-attestations-program-loop
+          program
+          (+ idx 1)
+          len
+          (source-result-value parsed))))))
+
+(defn source-review-attestations-from-program [program]
+  (source-collect-review-attestations-program-loop
+    program
+    0
+    (vector-length program)
+    (vector-new 0)))
 
 (defn source-edge-endpoint-kind [relation side]
   (if (= relation (source-edge-motivates))
@@ -775,20 +1240,23 @@
   (source-collect-edges-with-reviews program nodes (vector-new 0)))
 
 (defn source-graph-from-program [program]
-  (let [nodes-result (source-collect-nodes program)]
-    (if (= (source-result-status nodes-result) 0)
-      nodes-result
-      (let [nodes (source-result-value nodes-result)
-        reviews-result (source-collect-reviews program)]
-        (if (= (source-result-status reviews-result) 0)
-          reviews-result
-          (let [reviews (source-result-value reviews-result)
-            edges-result (source-collect-edges-with-reviews program nodes reviews)]
-            (if (= (source-result-status edges-result) 0)
-              edges-result
-              (source-result
-                1
-                (source-graph-with-reviews
-                  nodes
-                  (source-result-value edges-result)
-                  reviews)))))))))
+  (let [attestations-result (source-review-attestations-from-program program)]
+    (if (= (source-result-status attestations-result) 0)
+      attestations-result
+      (let [nodes-result (source-collect-nodes program)]
+        (if (= (source-result-status nodes-result) 0)
+          nodes-result
+          (let [nodes (source-result-value nodes-result)
+            reviews-result (source-collect-reviews program)]
+            (if (= (source-result-status reviews-result) 0)
+              reviews-result
+              (let [reviews (source-result-value reviews-result)
+                edges-result (source-collect-edges-with-reviews program nodes reviews)]
+                (if (= (source-result-status edges-result) 0)
+                  edges-result
+                  (source-result
+                    1
+                    (source-graph-with-reviews
+                      nodes
+                      (source-result-value edges-result)
+                      reviews)))))))))))

@@ -677,7 +677,7 @@
     (if (string-eq name "claim") 1
       (if (string-eq name "assumption") 1
         (if (string-eq name "open-question") 1
-          (if (string-eq name "review") 1
+          (if (or (string-eq name "review") (string-eq name "review-attestation")) 1
             (if (string-eq name "motivates") 1
             (if (string-eq name "constrained-by") 1
               (if (string-eq name "tested-by") 1
@@ -891,9 +891,11 @@
                               (if (> source-kind 0)
                                 (if (= source-kind 15)
                                   (parse-defn-meta-evidence-v3 spans pos-ref src meta)
+                                  (if (= source-kind 20)
+                                    (parse-defn-meta-review-attestation-v3 spans pos-ref src meta)
                                   (if (= source-kind 16)
                                     (parse-defn-meta-source-triple-v3 spans pos-ref src meta source-kind)
-                                    (parse-defn-meta-source-pair-v3 spans pos-ref src meta source-kind)))
+                                    (parse-defn-meta-source-pair-v3 spans pos-ref src meta source-kind))))
                                 (do
                                   (skip-directive-payload-v3 spans pos-ref)
                                   (parse-defn-metadata-loop-rooted-v3 spans pos-ref src meta))))))))))))]
@@ -1360,8 +1362,9 @@
                 (if (string-eq name "contradicts") 14
                   (if (string-eq name "evidence") 15
                     (if (string-eq name "review") 16
-                      (if (string-eq name "evaluates") 17
-                        (if (string-eq name "invalidates") 18 0))))))))))))))
+                      (if (string-eq name "review-attestation") 20
+                        (if (string-eq name "evaluates") 17
+                          (if (string-eq name "invalidates") 18 0)))))))))))))))
 
 (defn parse-source-metadata-string-v3 [spans pos-ref src]
   (if (== (p-current spans pos-ref) 12)
@@ -1604,6 +1607,125 @@
           (let [updated (append-defn-metadata-form-v3
               meta
               15
+              payload
+              directive-start
+              directive-end)]
+            (do
+              (root_pop)
+              (root_pop)
+              (parse-defn-metadata-loop-v3 spans pos-ref src updated))))))))
+
+;; v0.3 review attestation の named-field payload。
+;; payload: [review-id, subject-digest, source-commit, provenance-digest,
+;;           provider, key-id, algorithm, signature, issued-at, expires-at, sequence]
+(defn source-review-attestation-field-kind-v3 [name]
+  (if (string-eq name "review-id") 1
+    (if (string-eq name "subject-digest") 2
+      (if (string-eq name "source-commit") 3
+        (if (string-eq name "provenance-digest") 4
+          (if (string-eq name "provider") 5
+            (if (string-eq name "key-id") 6
+              (if (string-eq name "algorithm") 7
+                (if (string-eq name "signature") 8
+                  (if (string-eq name "issued-at") 9
+                    (if (string-eq name "expires-at") 10
+                      (if (string-eq name "sequence") 11 0))))))))))))
+
+(defn source-review-attestation-seen-new-loop-v3 [idx seen]
+  (if (>= idx 12)
+    seen
+    (source-review-attestation-seen-new-loop-v3
+      (+ idx 1)
+      (vector-push-single-rooted-v3 seen 0))))
+
+(defn source-review-attestation-seen-new-v3 []
+  (source-review-attestation-seen-new-loop-v3 0 (vector-new 12)))
+
+(defn make-empty-source-review-attestation-payload-v3 []
+  (let [first (vector-push-quad-rooted-v3 (vector-new 0) "" "" "" "")
+    second (vector-push-quad-rooted-v3 first "" "" "" "")
+    third (vector-push-triple-rooted-v3 second "" "" "")]
+    (vector-set-at-rooted-v3 third 10 -1)))
+
+(defn parse-source-review-attestation-string-field-v3
+  [spans pos-ref src payload field-kind seen-ref]
+  (do
+    (root_push payload)
+    (let [value (parse-source-metadata-string-v3 spans pos-ref src)]
+      (do
+        (root_push value)
+        (let [updated (vector-set-at-rooted-v3 payload (- field-kind 1) value)]
+          (do
+            (root_pop)
+            (root_pop)
+            (parse-source-review-attestation-fields-loop-v3
+              spans pos-ref src updated seen-ref)))))))
+
+(defn parse-source-review-attestation-sequence-field-v3
+  [spans pos-ref src payload seen-ref]
+  (do
+    (root_push payload)
+    (let [value (parse-source-evidence-int-v3 spans pos-ref src)
+      updated (vector-set-at-rooted-v3 payload 10 value)]
+      (do
+        (root_pop)
+        (parse-source-review-attestation-fields-loop-v3 spans pos-ref src updated seen-ref)))))
+
+(defn parse-source-review-attestation-fields-loop-v3 [spans pos-ref src payload seen-ref]
+  (if (== (p-current spans pos-ref) 50)
+    (do
+      (root_push seen-ref)
+      (root_push payload)
+      (let [field-name-idx (+ (ref-get pos-ref) 1)
+        field-name (substring src (span-start spans field-name-idx) (span-end spans field-name-idx))
+        field-kind (source-review-attestation-field-kind-v3 field-name)]
+        (do
+          (root_push field-name)
+          (let [seen (ref-get seen-ref)
+            duplicate (if (> field-kind 0) (vector-get seen field-kind) 0)
+            updated-seen (if (> field-kind 0)
+              (vector-set-at-rooted-v3 seen field-kind 1)
+              seen)]
+            (do
+              (if (> field-kind 0) (do (ref-set seen-ref updated-seen) 0) 0)
+              (if (> field-kind 0)
+                (do
+                  (p-advance pos-ref)
+                  (p-advance pos-ref)
+                  (let [parsed (if (= field-kind 11)
+                    (parse-source-review-attestation-sequence-field-v3
+                      spans pos-ref src payload seen-ref)
+                    (parse-source-review-attestation-string-field-v3
+                      spans pos-ref src payload field-kind seen-ref))
+                    result (if (= duplicate 1)
+                      (vector-push-single-rooted-v3 parsed -1)
+                      parsed)]
+                    (do
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      result)))
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  payload)))))))
+    payload))
+
+(defn parse-defn-meta-review-attestation-v3 [spans pos-ref src meta]
+  (let [directive-start (metadata-directive-start-v3 spans pos-ref)
+    payload0 (make-empty-source-review-attestation-payload-v3)
+    seen-ref (ref-new (source-review-attestation-seen-new-v3))
+    directive-end (metadata-directive-end-v3 spans pos-ref)]
+    (do
+      (root_push seen-ref)
+      (let [payload (parse-source-review-attestation-fields-loop-v3
+          spans pos-ref src payload0 seen-ref)]
+        (do
+          (root_push payload)
+          (let [updated (append-defn-metadata-form-v3
+              meta
+              20
               payload
               directive-start
               directive-end)]

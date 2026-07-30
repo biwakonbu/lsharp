@@ -1,4 +1,5 @@
 use super::support::*;
+use lsharp_types::intent::review_attestation::{AttestationAlgorithm, ReviewAttestation};
 
 fn run_source_adapter_runtime(harness: &str) -> String {
     let adapter = std::fs::read_to_string(
@@ -955,6 +956,161 @@ fn test_e2e_selfhost_source_adapter_projects_review_registry() {
             "redacted",
         ],
         "selfhost source adapter は review registry を node/edge と混ぜず opaque field のまま保持するべき"
+    );
+}
+
+/// EC-M3-04: selfhost IntentSource は source attestation を trust/lifecycle なしの
+/// deterministic `unverified` record として保持する。
+#[test]
+fn test_e2e_selfhost_source_adapter_projects_review_attestation() {
+    let harness = r#"
+(defn main []
+  (let [result (source-review-attestations-from-program
+                 (parse-program "(defn review [] :review-attestation :review-id \"review:checkout/reviewer-001\" :subject-digest \"sha256:subject-001\" :source-commit \"0123456789abcdef\" :provenance-digest \"sha256:review-001\" :provider \"github\" :key-id \"org/reviews-2026\" :algorithm \"ed25519\" :signature \"AAECAw\" :issued-at \"2026-08-01T00:00:00Z\" :expires-at \"2026-09-01T00:00:00Z\" :sequence 3 true)"))
+        records (source-result-value result)
+        attestation (vector-get records 0)]
+    (do
+      (print (source-result-status result))
+      (print (vector-length records))
+      (print-string (source-review-attestation-id attestation))
+      (print-string "\n")
+      (print-string (source-review-attestation-subject-digest attestation))
+      (print-string "\n")
+      (print-string (source-review-attestation-source-commit attestation))
+      (print-string "\n")
+      (print-string (source-review-attestation-provenance-digest attestation))
+      (print-string "\n")
+      (print-string (source-review-attestation-provider attestation))
+      (print-string "\n")
+      (print-string (source-review-attestation-key-id attestation))
+      (print-string "\n")
+      (print-string (source-review-attestation-algorithm attestation))
+      (print-string "\n")
+      (print-string (source-review-attestation-signature attestation))
+      (print-string "\n")
+      (print-string (source-review-attestation-issued-at attestation))
+      (print-string "\n")
+      (print-string (source-review-attestation-expires-at attestation))
+      (print-string "\n")
+      (print (source-review-attestation-sequence attestation))
+      (print-string (source-review-attestation-state attestation))
+      (print-string "\n")
+      (print (if (< (source-review-attestation-start attestation) (source-review-attestation-end attestation)) 1 0))
+      0)))
+"#;
+
+    let output = run_source_adapter_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        [
+            "1",
+            "1",
+            "review:checkout/reviewer-001",
+            "sha256:subject-001",
+            "0123456789abcdef",
+            "sha256:review-001",
+            "github",
+            "org/reviews-2026",
+            "ed25519",
+            "AAECAw",
+            "2026-08-01T00:00:00Z",
+            "2026-09-01T00:00:00Z",
+            "3",
+            "unverified",
+            "1",
+        ],
+        "selfhost IntentSource は named-field attestation の payload/state/span を保持するべき"
+    );
+}
+
+/// EC-M3-04: Rust canonical model と selfhost producer の canonical bytes を同じ fixture で
+/// byte-for-byte に固定する。signature 自体は canonical input に含めない。
+#[test]
+fn test_e2e_selfhost_source_adapter_canonical_bytes_match_rust() {
+    let harness = r#"
+(defn emit-bytes [bytes idx]
+  (if (>= idx (vector-length bytes))
+    0
+    (do
+      (print (vector-get bytes idx))
+      (emit-bytes bytes (+ idx 1)))))
+
+(defn main []
+  (let [result (source-review-attestations-from-program
+                 (parse-program "(defn review [] :review-attestation :review-id \"review:checkout/reviewer-001\" :subject-digest \"sha256:subject-001\" :source-commit \"0123456789abcdef\" :provenance-digest \"sha256:review-001\" :provider \"github\" :key-id \"org/reviews-2026\" :algorithm \"ed25519\" :signature \"AAECAw\" :issued-at \"2026-08-01T00:00:00Z\" :expires-at \"2026-09-01T00:00:00Z\" :sequence 3 true)"))
+        records (source-result-value result)
+        attestation (vector-get records 0)
+        bytes (source-review-attestation-canonical-bytes attestation)]
+    (do
+      (print (vector-length bytes))
+      (emit-bytes bytes 0)
+      0)))
+"#;
+
+    let output = run_source_adapter_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    let expected = ReviewAttestation::new(
+        "review:checkout/reviewer-001".to_string(),
+        "sha256:subject-001".to_string(),
+        "0123456789abcdef".to_string(),
+        "sha256:review-001".to_string(),
+        "github".to_string(),
+        "org/reviews-2026".to_string(),
+        AttestationAlgorithm::Ed25519,
+        "2026-08-01T00:00:00Z".to_string(),
+        Some("2026-09-01T00:00:00Z".to_string()),
+        3,
+        vec![0, 1, 2],
+    )
+    .expect("Rust canonical fixture は valid であるべき")
+    .canonical_bytes();
+    assert_eq!(lines.len(), expected.len() + 1);
+    assert_eq!(lines[0], expected.len().to_string());
+    for (line, byte) in lines[1..].iter().zip(expected.iter()) {
+        assert_eq!(line.parse::<u8>().expect("selfhost canonical byte"), *byte);
+    }
+}
+
+/// EC-M3-04: selfhost producer も algorithm/signature wire boundary を成功扱いにしない。
+#[test]
+fn test_e2e_selfhost_source_adapter_rejects_invalid_attestation_fields() {
+    let harness = r#"
+(defn main []
+  (let [algorithm-result (source-graph-from-program
+                           (parse-program "(defn review [] :review-attestation :review-id \"review:checkout/reviewer-001\" :subject-digest \"sha256:subject-001\" :source-commit \"0123456789abcdef\" :provenance-digest \"sha256:review-001\" :provider \"github\" :key-id \"org/reviews-2026\" :algorithm \"rsa-sha256\" :signature \"AAECAw\" :issued-at \"2026-08-01T00:00:00Z\" :expires-at \"2026-09-01T00:00:00Z\" :sequence 3 true)"))
+        signature-result (source-graph-from-program
+                           (parse-program "(defn review [] :review-attestation :review-id \"review:checkout/reviewer-001\" :subject-digest \"sha256:subject-001\" :source-commit \"0123456789abcdef\" :provenance-digest \"sha256:review-001\" :provider \"github\" :key-id \"org/reviews-2026\" :algorithm \"ed25519\" :signature \"A===\" :issued-at \"2026-08-01T00:00:00Z\" :expires-at \"2026-09-01T00:00:00Z\" :sequence 3 true)"))
+        timestamp-result (source-graph-from-program
+                           (parse-program "(defn review [] :review-attestation :review-id \"review:checkout/reviewer-001\" :subject-digest \"sha256:subject-001\" :source-commit \"0123456789abcdef\" :provenance-digest \"sha256:review-001\" :provider \"github\" :key-id \"org/reviews-2026\" :algorithm \"ed25519\" :signature \"AAECAw\" :issued-at \"2026-02-30T00:00:00Z\" :expires-at \"2026-09-01T00:00:00Z\" :sequence 3 true)"))
+        window-result (source-graph-from-program
+                       (parse-program "(defn review [] :review-attestation :review-id \"review:checkout/reviewer-001\" :subject-digest \"sha256:subject-001\" :source-commit \"0123456789abcdef\" :provenance-digest \"sha256:review-001\" :provider \"github\" :key-id \"org/reviews-2026\" :algorithm \"ed25519\" :signature \"AAECAw\" :issued-at \"2026-08-01T00:00:00Z\" :expires-at \"2026-07-01T00:00:00Z\" :sequence 3 true)"))
+        algorithm-error (source-graph-result-error algorithm-result)
+        signature-error (source-graph-result-error signature-result)
+        timestamp-error (source-graph-result-error timestamp-result)
+        window-error (source-graph-result-error window-result)]
+    (do
+      (print (source-graph-result-status algorithm-result))
+      (print (source-graph-error-code algorithm-error))
+      (print (if (< (source-graph-error-start algorithm-error) (source-graph-error-end algorithm-error)) 1 0))
+      (print (source-graph-result-status signature-result))
+      (print (source-graph-error-code signature-error))
+      (print (if (< (source-graph-error-start signature-error) (source-graph-error-end signature-error)) 1 0))
+      (print (source-graph-result-status timestamp-result))
+      (print (source-graph-error-code timestamp-error))
+      (print (if (< (source-graph-error-start timestamp-error) (source-graph-error-end timestamp-error)) 1 0))
+      (print (source-graph-result-status window-result))
+      (print (source-graph-error-code window-error))
+      (print (if (< (source-graph-error-start window-error) (source-graph-error-end window-error)) 1 0))
+      0)))
+"#;
+
+    let output = run_source_adapter_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(
+        lines,
+        ["0", "8", "1", "0", "8", "1", "0", "8", "1", "0", "8", "1"]
     );
 }
 

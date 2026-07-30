@@ -5,13 +5,40 @@
 //! を既存の canonical model のエラーとして返す。
 
 use crate::intent::{EvidenceId, IntentNodeError, NodeKind, ReviewId, StableIdError};
+use crate::intent::review_attestation::{
+    decode_signature_base64url, AttestationAlgorithm, AttestationError, ReviewAttestation,
+    ReviewVerificationState,
+};
 use crate::validation::IntentGraph;
 use lsharp_syntax::ast::Program;
 use lsharp_syntax::span::Span;
 
 mod source_edges;
+mod source_attestations;
 mod source_evidence;
 mod source_nodes;
+
+/// source metadata から復元した review attestation と、その directive span。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SourceReviewAttestation {
+    attestation: ReviewAttestation,
+    span: Span,
+}
+
+impl SourceReviewAttestation {
+    pub fn attestation(&self) -> &ReviewAttestation {
+        &self.attestation
+    }
+
+    pub fn span(&self) -> Span {
+        self.span
+    }
+
+    /// source だけでは trust store/lifecycle を持たないため、暗黙に verified へ昇格しない。
+    pub const fn verification_state(&self) -> ReviewVerificationState {
+        ReviewVerificationState::Unverified
+    }
+}
 
 /// source node adapter が入力を graph へ投影できない理由。
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -127,6 +154,12 @@ pub enum SourceGraphError {
         value: String,
         span: Span,
     },
+    #[error("source review attestation の検証に失敗しました (span={span}): {source}")]
+    ReviewAttestationAt {
+        span: Span,
+        #[source]
+        source: AttestationError,
+    },
     #[error(
         "source metadata の node kind と stable ID が不一致です (expected={expected:?}, actual={actual:?}, id={wire_id})"
     )]
@@ -168,7 +201,8 @@ impl SourceGraphError {
             | Self::InvalidEvidenceField { span, .. }
             | Self::InvalidEvidenceRequiredField { span, .. }
             | Self::InvalidNodeField { span, .. }
-            | Self::InvalidReviewField { span, .. } => Some(*span),
+            | Self::InvalidReviewField { span, .. }
+            | Self::ReviewAttestationAt { span, .. } => Some(*span),
             Self::Node(_) | Self::Graph(_) | Self::EdgeId(_) | Self::KindMismatch { .. } => None,
             Self::EdgeSubjectKindMismatch { span, .. } => Some(*span),
         }
@@ -185,6 +219,9 @@ impl SourceGraphError {
 /// `:constrained-by`、`:tested-by`、`:supports`、`:contradicts` を生成する。evidence
 /// record がない supports/contradicts は明示的な registry-required error とする。
 pub fn source_program_to_intent_graph(program: &Program) -> Result<IntentGraph, SourceGraphError> {
+    // attestation は graph manifest へまだ投影しないが、source に埋め込まれた named
+    // fields の malformed/unknown algorithm/signature encoding を成功扱いにしない。
+    source_program_to_review_attestations(program)?;
     let mut graph = IntentGraph::default();
     let mut review_spans = Vec::new();
     for decl in &program.decls {
@@ -198,6 +235,46 @@ pub fn source_program_to_intent_graph(program: &Program) -> Result<IntentGraph, 
         source_edges::add_decl_edges(decl, &mut graph)?;
     }
     Ok(graph)
+}
+
+/// source の `:review-attestation` named fields を canonical attestation へ投影する。
+///
+/// trust store/lifecycle は manifest-side input の責務なので、返却 record は常に
+/// `unverified` とする。既存の `:review` opaque registry との互換性は変更しない。
+pub fn source_program_to_review_attestations(
+    program: &Program,
+) -> Result<Vec<SourceReviewAttestation>, SourceGraphError> {
+    let mut attestations = Vec::new();
+    for decl in &program.decls {
+        source_attestations::add_decl_attestations(decl, &mut attestations)?;
+    }
+    Ok(attestations)
+}
+
+pub(super) fn review_attestation_from_form(
+    form: &lsharp_syntax::metadata::ReviewAttestationForm,
+    span: Span,
+) -> Result<SourceReviewAttestation, SourceGraphError> {
+    let algorithm = AttestationAlgorithm::parse(form.algorithm().to_string()).map_err(|source| {
+        SourceGraphError::ReviewAttestationAt { span, source }
+    })?;
+    let signature = decode_signature_base64url(form.signature())
+        .map_err(|source| SourceGraphError::ReviewAttestationAt { span, source })?;
+    let attestation = ReviewAttestation::new(
+        form.review_id().to_string(),
+        form.subject_digest().to_string(),
+        form.source_commit().to_string(),
+        form.provenance_digest().to_string(),
+        form.provider().to_string(),
+        form.key_id().to_string(),
+        algorithm,
+        form.issued_at().to_string(),
+        form.expires_at().map(str::to_string),
+        form.sequence(),
+        signature,
+    )
+    .map_err(|source| SourceGraphError::ReviewAttestationAt { span, source })?;
+    Ok(SourceReviewAttestation { attestation, span })
 }
 
 fn require_node(

@@ -47,6 +47,8 @@ pub enum AttestationError {
     InvalidReviewId(#[from] StableIdError),
     #[error("review attestation の algorithm が未対応です: {value:?}")]
     UnsupportedAlgorithm { value: String },
+    #[error("review attestation の signature encoding が不正です: {value:?}")]
+    InvalidSignatureEncoding { value: String },
     #[error("review attestation の timestamp が canonical UTC 形式ではありません: field={field}, value={value:?}")]
     InvalidTimestamp { field: &'static str, value: String },
     #[error(
@@ -419,6 +421,79 @@ impl ReviewAttestation {
         append_field(&mut bytes, self.expires_at.as_deref().unwrap_or(""));
         append_field(&mut bytes, &self.sequence.to_string());
         bytes
+    }
+}
+
+/// source/manifest の named-field から受け取る base64url (padding なし) signature を bytes
+/// へ変換する。JSON wire と source adapter が同じ encoding 境界を共有するための helper。
+pub fn decode_signature_base64url(value: &str) -> Result<Vec<u8>, AttestationError> {
+    if value.is_empty() || value.contains('=') || value.len() % 4 == 1 {
+        return Err(AttestationError::InvalidSignatureEncoding {
+            value: value.to_string(),
+        });
+    }
+    let bytes = value.as_bytes();
+    let mut output = Vec::with_capacity((bytes.len() * 3) / 4);
+    let mut index = 0;
+    while index < bytes.len() {
+        let remaining = bytes.len() - index;
+        let a = decode_base64url_char(bytes[index]).ok_or_else(|| {
+            AttestationError::InvalidSignatureEncoding {
+                value: value.to_string(),
+            }
+        })?;
+        let b = decode_base64url_char(bytes[index + 1]).ok_or_else(|| {
+            AttestationError::InvalidSignatureEncoding {
+                value: value.to_string(),
+            }
+        })?;
+        let c = if remaining >= 3 {
+            Some(decode_base64url_char(bytes[index + 2]).ok_or_else(|| {
+                AttestationError::InvalidSignatureEncoding {
+                    value: value.to_string(),
+                }
+            })?)
+        } else {
+            None
+        };
+        let d = if remaining >= 4 {
+            Some(decode_base64url_char(bytes[index + 3]).ok_or_else(|| {
+                AttestationError::InvalidSignatureEncoding {
+                    value: value.to_string(),
+                }
+            })?)
+        } else {
+            None
+        };
+        output.push((a << 2) | (b >> 4));
+        if let Some(c) = c {
+            if d.is_none() && c & 0x03 != 0 {
+                return Err(AttestationError::InvalidSignatureEncoding {
+                    value: value.to_string(),
+                });
+            }
+            output.push((b << 4) | (c >> 2));
+            if let Some(d) = d {
+                output.push((c << 6) | d);
+            }
+        } else if b & 0x0f != 0 {
+            return Err(AttestationError::InvalidSignatureEncoding {
+                value: value.to_string(),
+            });
+        }
+        index += remaining.min(4);
+    }
+    Ok(output)
+}
+
+fn decode_base64url_char(byte: u8) -> Option<u8> {
+    match byte {
+        b'A'..=b'Z' => Some(byte - b'A'),
+        b'a'..=b'z' => Some(byte - b'a' + 26),
+        b'0'..=b'9' => Some(byte - b'0' + 52),
+        b'-' => Some(62),
+        b'_' => Some(63),
+        _ => None,
     }
 }
 

@@ -972,6 +972,72 @@ fn test_e2e_selfhost_parser_preserves_source_intent_metadata_forms() {
     );
 }
 
+/// EC-M3-04: review attestation は positional payload ではなく named fields を保持する
+/// parser-owned form として Rust source syntax と同じ field order/value を渡す。
+#[test]
+fn test_e2e_selfhost_parser_preserves_review_attestation_named_fields() {
+    let harness = r#"
+(defn main []
+  (let [node (vector-get (parse-program "(defn review [] :review-attestation :review-id \"review:checkout/reviewer-001\" :subject-digest \"sha256:subject-001\" :source-commit \"0123456789abcdef\" :provenance-digest \"sha256:review-001\" :provider \"github\" :key-id \"org/reviews-2026\" :algorithm \"ed25519\" :signature \"AAECAw\" :issued-at \"2026-08-01T00:00:00Z\" :expires-at \"2026-09-01T00:00:00Z\" :sequence 3 true)") 0)
+        meta (vector-get node (- (vector-length node) 1))
+        forms (vector-get meta 5)
+        form (vector-get forms 0)
+        payload (vector-get form 1)]
+    (do
+      (print (vector-length forms))
+      (print (vector-get form 0))
+      (print (vector-length payload))
+      (print-string (vector-get payload 0))
+      (print-string "\n")
+      (print-string (vector-get payload 1))
+      (print-string "\n")
+      (print-string (vector-get payload 2))
+      (print-string "\n")
+      (print-string (vector-get payload 3))
+      (print-string "\n")
+      (print-string (vector-get payload 4))
+      (print-string "\n")
+      (print-string (vector-get payload 5))
+      (print-string "\n")
+      (print-string (vector-get payload 6))
+      (print-string "\n")
+      (print-string (vector-get payload 7))
+      (print-string "\n")
+      (print-string (vector-get payload 8))
+      (print-string "\n")
+      (print-string (vector-get payload 9))
+      (print-string "\n")
+      (print (vector-get payload 10))
+      (print (if (< (vector-get form 2) (vector-get form 3)) 1 0))
+      0)))
+"#;
+
+    let output = run_parser_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        [
+            "1",
+            "20",
+            "11",
+            "review:checkout/reviewer-001",
+            "sha256:subject-001",
+            "0123456789abcdef",
+            "sha256:review-001",
+            "github",
+            "org/reviews-2026",
+            "ed25519",
+            "AAECAw",
+            "2026-08-01T00:00:00Z",
+            "2026-09-01T00:00:00Z",
+            "3",
+            "1",
+        ],
+        "selfhost parser は review attestation の named fields と span を保持するべき"
+    );
+}
+
 /// TEST-SYNTAX-04: Hygiene.ls gensym/scope-id/expansion trace
 ///
 /// selfhost/src/Syntax/Hygiene.ls が存在し、gensym, scope-id, expansion-trace 関数を公開していることを検証。
