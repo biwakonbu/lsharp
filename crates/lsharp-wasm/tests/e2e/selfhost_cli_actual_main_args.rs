@@ -1048,6 +1048,74 @@ fn test_e2e_selfhost_embedded_cli_validate_source_projects_review_attestation() 
     );
 }
 
+/// EC-M3-05: EmbeddedCli は明示した review evidence identity を report/manifest へ投影する。
+#[test]
+fn test_e2e_selfhost_embedded_cli_validate_projects_explicit_review_evidence_identity() {
+    let source = r#"
+(defn review []
+  :review "review:checkout/reviewer-001" "sha256:review-001" "redacted"
+  true)
+"#;
+    let args = [
+        "validate",
+        "--source",
+        "input.ls",
+        "--format",
+        "json",
+        "--emit-manifest",
+        "intent-graph.json",
+        "--review-subject-digest",
+        "sha256:graph",
+        "--review-source-commit",
+        "commit-1",
+        "--review-artifact-digest",
+        "sha256:artifact",
+        "--review-trust-store-digest",
+        "sha256:trust",
+        "--review-lifecycle-digest",
+        "sha256:lifecycle",
+        "--review-now",
+        "2026-08-15T00:00:00Z",
+    ];
+    let (output, dir) = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        run_main_with_input_file_capture_preserve_dir(
+            selfhost_embedded_cli_runtime_bundle(),
+            "embedded_validate_review_evidence_identity",
+            source,
+            &args,
+        )
+    });
+    let manifest = std::fs::read_to_string(dir.join("intent-graph.json"));
+    let _ = std::fs::remove_dir_all(&dir);
+
+    assert_eq!(
+        output.exit_code, 2,
+        "identity を付けた未検証 review は unknown のままにするべき: stdout={:?}",
+        output.stdout
+    );
+    let report: Value = serde_json::from_str(output.stdout.trim())
+        .expect("explicit identity report は valid JSON であるべき");
+    assert_eq!(
+        report["review_evidence_identity"],
+        serde_json::json!({
+            "subject_digest": "sha256:graph",
+            "source_commit": "commit-1",
+            "artifact_digest": "sha256:artifact",
+            "trust_store_digest": "sha256:trust",
+            "lifecycle_digest": "sha256:lifecycle",
+            "now": "2026-08-15T00:00:00Z"
+        })
+    );
+    let manifest: Value = serde_json::from_str(
+        &manifest.expect("explicit identity manifest は出力されるべき"),
+    )
+    .expect("explicit identity manifest は valid JSON であるべき");
+    assert_eq!(
+        manifest["review_evidence_identity"],
+        report["review_evidence_identity"]
+    );
+}
+
 /// EC-M2-03: EmbeddedCli の invalidated review/evidence は stale facts と unknown を返す。
 #[test]
 fn test_e2e_selfhost_embedded_cli_validate_source_reports_stale_review_and_evidence() {
