@@ -233,6 +233,116 @@ fn validate_projects_explicit_attestation_state_to_report_and_manifest() {
 }
 
 #[test]
+fn validate_projects_manifest_only_review_as_unverified_for_explicit_context() {
+    let project = project_dir("manifest-only-review");
+    fs::write(
+        project.join("manifest.json"),
+        r#"{
+          "schema_version": 1,
+          "nodes": [],
+          "reviews": [{
+            "namespace": "checkout",
+            "key": "reviewer-001",
+            "provenance_digest": "sha256:review",
+            "visibility": "public"
+          }],
+          "evidence": [],
+          "edges": []
+        }"#,
+    )
+    .expect("manifest should be writable");
+    let emitted_manifest = project.join("manifest-only-output.json");
+    let mut command = Command::new(env!("CARGO_BIN_EXE_lsharp"));
+    command.current_dir(&project).args([
+        "validate",
+        "manifest.json",
+        "--format",
+        "json",
+        "--review-subject-digest",
+        "sha256:graph",
+        "--review-source-commit",
+        "commit-1",
+        "--review-now",
+        "2026-07-30T00:00:00Z",
+        "--emit-manifest",
+        "manifest-only-output.json",
+    ]);
+    let output = command.output().expect("lsharp validate should run");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(2), "unexpected exit: {stderr}");
+    assert!(stderr.is_empty(), "unexpected stderr: {stderr}");
+    let report: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("report should be JSON");
+    assert_eq!(
+        report["review_verifications"],
+        serde_json::json!([{
+            "review_id": "review:checkout/reviewer-001",
+            "state": "unverified"
+        }])
+    );
+    let manifest: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(emitted_manifest).expect("projected manifest should be written"),
+    )
+    .expect("projected manifest should be JSON");
+    assert_eq!(manifest["reviews"][0]["verification_state"], "unverified");
+
+    fs::remove_dir_all(project).ok();
+}
+
+#[test]
+fn validate_keeps_manifest_only_review_legacy_shape_without_explicit_input() {
+    let project = project_dir("manifest-only-legacy");
+    fs::write(
+        project.join("manifest.json"),
+        r#"{
+          "schema_version": 1,
+          "nodes": [],
+          "reviews": [{
+            "namespace": "checkout",
+            "key": "reviewer-001",
+            "provenance_digest": "sha256:review",
+            "visibility": "public"
+          }],
+          "evidence": [],
+          "edges": []
+        }"#,
+    )
+    .expect("manifest should be writable");
+    let emitted_manifest = project.join("manifest-only-legacy-output.json");
+    let mut command = Command::new(env!("CARGO_BIN_EXE_lsharp"));
+    command.current_dir(&project).args([
+        "validate",
+        "manifest.json",
+        "--format",
+        "json",
+        "--emit-manifest",
+        "manifest-only-legacy-output.json",
+    ]);
+    let output = command.output().expect("lsharp validate should run");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(2), "unexpected exit: {stderr}");
+    assert!(stderr.is_empty(), "unexpected stderr: {stderr}");
+    let report: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("report should be JSON");
+    assert!(
+        report.get("review_verifications").is_none(),
+        "legacy invocation must not synthesize verification facts"
+    );
+    let manifest: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(emitted_manifest).expect("projected manifest should be written"),
+    )
+    .expect("projected manifest should be JSON");
+    assert!(
+        manifest["reviews"][0].get("verification_state").is_none(),
+        "legacy manifest shape must omit verification_state"
+    );
+
+    fs::remove_dir_all(project).ok();
+}
+
+#[test]
 fn validate_rejects_explicit_signature_error_without_report_or_manifest() {
     let project = project_dir("invalid-signature");
     fs::write(

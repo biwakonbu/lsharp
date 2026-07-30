@@ -185,6 +185,56 @@ fn test_validate_tool_projects_valid_attestation_context_to_report_and_manifest(
 }
 
 #[test]
+fn test_validate_tool_projects_manifest_only_review_as_unverified() {
+    let (signature, public_key) = signed_review_fields();
+    let (project, manifest) = mcp_review_project("manifest-only-review", &signature, &public_key);
+    std::fs::write(
+        project.join("trust.json"),
+        r#"{
+          "schema_version": 1,
+          "attestations": [],
+          "lifecycle": [],
+          "trust_store": []
+        }"#,
+    )
+    .expect("empty trust wire should be writable");
+    std::fs::write(
+        project.join("lifecycle.json"),
+        r#"{
+          "schema_version": 1,
+          "attestations": [],
+          "lifecycle": []
+        }"#,
+    )
+    .expect("empty lifecycle wire should be writable");
+
+    let result = call_tool(
+        "lsharp_validate",
+        &mcp_review_arguments(
+            &manifest,
+            "sha256:graph",
+            "commit-1",
+            "2026-07-30T00:00:00Z",
+        ),
+    )
+    .expect("manifest-only review should remain explicitly unverified");
+
+    assert_eq!(
+        result["review_verifications"],
+        json!([{
+            "review_id": "review:checkout/reviewer-001",
+            "state": "unverified"
+        }])
+    );
+    assert_eq!(
+        result["manifest"]["reviews"][0]["verification_state"],
+        "unverified"
+    );
+
+    std::fs::remove_dir_all(project).ok();
+}
+
+#[test]
 fn test_validate_tool_projects_review_evidence_identity_with_explicit_artifact() {
     let (signature, public_key) = signed_review_fields();
     let (project, manifest) = mcp_review_project("evidence-identity", &signature, &public_key);

@@ -16,8 +16,10 @@ use lsharp_types::validation::{
 };
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Component, Path, PathBuf};
+
+use lsharp_types::intent::ReviewId;
 
 /// attestation を current graph/source snapshot と明示 clock に結び付ける context。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -154,6 +156,41 @@ impl ReviewInputs {
 
     pub fn lifecycle_digest(&self) -> Option<&str> {
         self.lifecycle_digest.as_deref()
+    }
+
+    /// 明示的な review verification 入力が存在するかを返す。
+    pub fn has_explicit_verification_input(&self) -> bool {
+        self.trust_store.is_some() || self.lifecycle.is_some()
+    }
+
+    /// registry にだけ存在する review を `unverified` fact として補完する。
+    ///
+    /// M2 の既存入力（review input/context がない場合）は後方互換のため変更せず、
+    /// 明示的な verification input がある場合だけ attestation 欠落を成功扱いにしない。
+    pub fn complete_verification_facts<'a>(
+        &self,
+        mut facts: Vec<ReviewVerificationFact>,
+        review_ids: impl IntoIterator<Item = &'a ReviewId>,
+        explicit_context: bool,
+    ) -> Vec<ReviewVerificationFact> {
+        if !explicit_context && !self.has_explicit_verification_input() {
+            return facts;
+        }
+
+        let known = facts
+            .iter()
+            .map(|fact| fact.review_id().as_str().to_string())
+            .collect::<BTreeSet<_>>();
+        for review_id in review_ids {
+            if known.contains(review_id.as_str()) {
+                continue;
+            }
+            facts.push(
+                ReviewVerificationFact::new(review_id.clone(), ReviewVerificationState::Unverified)
+                    .expect("unverified review fact は常に projection 可能"),
+            );
+        }
+        facts
     }
 
     /// artifact を含む explicit context と parsed input digest を report identity へ束ねる。

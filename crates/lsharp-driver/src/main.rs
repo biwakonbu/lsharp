@@ -1470,6 +1470,11 @@ fn project_review_verifications(
             .verification_facts()
             .map_err(|error| miette::miette!("{error}"))?,
     };
+    let review_verifications = review_inputs.complete_verification_facts(
+        review_verifications,
+        graph.reviews().iter().map(|review| review.id()),
+        review_context.is_some(),
+    );
     graph
         .attach_review_verifications(&review_verifications)
         .map_err(|error| miette::miette!("{error}"))?;
