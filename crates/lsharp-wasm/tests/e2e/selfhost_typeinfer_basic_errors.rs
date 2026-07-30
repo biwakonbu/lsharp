@@ -3122,3 +3122,75 @@ fn test_e2e_selfhost_typeinfer_large_signature_collection_and_annotations_preser
         "65 parameter の signature collection と annotation unify を最後まで処理するべき"
     );
 }
+
+#[test]
+fn test_e2e_selfhost_typeinfer_param_fresh_and_env_extension_use_bounded_chunks() {
+    let functions = selfhost_module("TypeInferFunctions.ls");
+
+    assert!(
+        functions.contains("typeinfer-fresh-param-types-step-64-loop-bounded")
+            && functions.contains("typeinfer-extend-env-with-node-params-step-64-loop-bounded"),
+        "parameter fresh と env extension は bounded helper へ分離するべき"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_typeinfer_large_param_fresh_and_env_extension_preserve_bindings() {
+    let mut node_expr = "(vector-new 0)".to_string();
+    node_expr = format!("(vector-push {} 8)", node_expr);
+    node_expr = format!("(vector-push {} 65)", node_expr);
+    let mut param_types_expr = "(vector-new 0)".to_string();
+    for idx in 0..65 {
+        node_expr = format!(
+            "(vector-push {} {})",
+            node_expr,
+            12000 + idx
+        );
+        param_types_expr = format!(
+            "(vector-push {} (make-type-var {}))",
+            param_types_expr,
+            12000 + idx
+        );
+    }
+
+    let harness = format!(
+        r#"
+(defn main []
+  (let [counter (make-var-counter)
+        fresh (typeinfer-fresh-param-types 65 counter)
+        env
+          (typeinfer-extend-env-with-node-params
+            (type-env-new)
+            {}
+            65
+            2
+            {})
+        first-fresh (vector-get fresh 0)
+        last-fresh (vector-get fresh 64)
+        first-env (scheme-type (type-env-lookup env 12000))
+        last-env (scheme-type (type-env-lookup env 12064))]
+    (do
+      (print (vector-length fresh))
+      (print (ty-name first-fresh))
+      (print (ty-name last-fresh))
+      (print (ty-tag first-env))
+      (print (ty-name first-env))
+      (print (ty-tag last-env))
+      (print (ty-name last-env))
+      0)))
+"#,
+        node_expr,
+        param_types_expr
+    );
+    let combined = format!("{}\n{}", selfhost_typeinfer_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["65", "1000", "1064", "2", "12000", "2", "12064"],
+        "65 parameter の fresh type と env binding を最後まで保持するべき"
+    );
+}

@@ -6,34 +6,192 @@
 
 ;; lambda / defn の arity 依存処理を共有 helper へ集約する
 
-(defn typeinfer-fresh-param-types-loop [count counter idx acc]
+(defn typeinfer-fresh-param-types-state [done next-idx result]
+  (vector-push-triple-rooted (vector-new 3) done next-idx result))
+
+(defn typeinfer-fresh-param-types-step-v3 [count counter idx acc]
   (if (>= idx count)
-    acc
-    (typeinfer-fresh-param-types-loop
-      count
-      counter
-      (+ idx 1)
-      (vector-push-single-rooted acc (fresh-type-var counter)))))
+    (typeinfer-fresh-param-types-state 1 idx acc)
+    (do
+      (root_push counter)
+      (root_push acc)
+      (let [next-acc (vector-push-single-rooted acc (fresh-type-var counter))]
+        (do
+          (root_push next-acc)
+          (let [state (typeinfer-fresh-param-types-state 0 (+ idx 1) next-acc)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              state)))))))
+
+(defn typeinfer-fresh-param-types-step-64-loop-bounded
+  [count counter idx acc remaining]
+  (do
+    (root_push counter)
+    (root_push acc)
+    (let [step (typeinfer-fresh-param-types-step-v3 count counter idx acc)
+      done (vector-get step 0)
+      next-idx (vector-get step 1)
+      next-acc (vector-get step 2)]
+      (do
+        (root_push step)
+        (root_push next-acc)
+        (let [parsed
+          (if (= done 1)
+            step
+            (if (<= remaining 1)
+              step
+              (typeinfer-fresh-param-types-step-64-loop-bounded
+                count counter next-idx next-acc (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn typeinfer-fresh-param-types-step-64 [count counter idx acc]
+  (typeinfer-fresh-param-types-step-64-loop-bounded
+    count counter idx acc 64))
+
+(defn typeinfer-fresh-param-types-rooted-v3 [count counter idx acc]
+  (let [step (typeinfer-fresh-param-types-step-64 count counter idx acc)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [next-idx (vector-get step 1)
+          next-acc (vector-get step 2)]
+          (do
+            (root_push next-acc)
+            (let [resolved
+              (typeinfer-fresh-param-types-rooted-v3
+                count counter next-idx next-acc)]
+              (do
+                (root_pop)
+                (root_pop)
+                resolved))))))))
 
 (defn typeinfer-fresh-param-types [count counter]
-  (typeinfer-fresh-param-types-loop count counter 0 (vector-new count)))
+  (do
+    (root_push counter)
+    (let [result
+      (typeinfer-fresh-param-types-rooted-v3
+        count counter 0 (vector-new count))]
+      (do
+        (root_pop)
+        result))))
 
-(defn typeinfer-extend-env-with-node-params-loop [env node count node-offset idx param-types]
-  (if (>= idx count)
+(defn typeinfer-extend-env-with-node-params-step-v3
+  [env node count node-offset idx-ref param-types]
+  (if (>= (ref-get idx-ref) count)
     env
-    (let [param-hash (vector-get node (+ node-offset idx))
-      param-ty (vector-get param-types idx)
-      next-env (type-env-insert env param-hash (mono param-ty))]
-      (typeinfer-extend-env-with-node-params-loop
-        next-env
-        node
-        count
-        node-offset
-        (+ idx 1)
-        param-types))))
+    (do
+      (root_push env)
+      (root_push node)
+      (root_push idx-ref)
+      (root_push param-types)
+      (let [idx (ref-get idx-ref)
+        param-hash (vector-get node (+ node-offset idx))
+        param-ty (vector-get param-types idx)
+        scheme (mono param-ty)]
+        (do
+          (root_push scheme)
+          (let [next-env (type-env-insert env param-hash scheme)]
+            (do
+              (root_push next-env)
+              (ref-set idx-ref (+ idx 1))
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                next-env))))))))
+
+(defn typeinfer-extend-env-with-node-params-step-64-loop-bounded
+  [env node count node-offset idx-ref param-types remaining]
+  (if (>= (ref-get idx-ref) count)
+    env
+    (if (<= remaining 0)
+      env
+      (do
+        (root_push env)
+        (root_push node)
+        (root_push idx-ref)
+        (root_push param-types)
+        (let [next-env
+          (typeinfer-extend-env-with-node-params-step-v3
+            env node count node-offset idx-ref param-types)]
+          (do
+            (root_push next-env)
+            (let [parsed
+              (if (>= (ref-get idx-ref) count)
+                next-env
+                (if (<= remaining 1)
+                  next-env
+                  (typeinfer-extend-env-with-node-params-step-64-loop-bounded
+                    next-env
+                    node
+                    count
+                    node-offset
+                    idx-ref
+                    param-types
+                    (- remaining 1))))]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                parsed))))))))
+
+(defn typeinfer-extend-env-with-node-params-step-64
+  [env node count node-offset idx-ref param-types]
+  (typeinfer-extend-env-with-node-params-step-64-loop-bounded
+    env node count node-offset idx-ref param-types 64))
+
+(defn typeinfer-extend-env-with-node-params-rooted-v3
+  [env node count node-offset idx-ref param-types]
+  (let [next-env
+    (typeinfer-extend-env-with-node-params-step-64
+      env node count node-offset idx-ref param-types)]
+    (if (>= (ref-get idx-ref) count)
+      next-env
+      (do
+        (root_push next-env)
+        (root_push node)
+        (root_push idx-ref)
+        (root_push param-types)
+        (let [resolved
+          (typeinfer-extend-env-with-node-params-rooted-v3
+            next-env node count node-offset idx-ref param-types)]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            resolved))))))
 
 (defn typeinfer-extend-env-with-node-params [env node count node-offset param-types]
-  (typeinfer-extend-env-with-node-params-loop env node count node-offset 0 param-types))
+  (do
+    (root_push env)
+    (root_push node)
+    (root_push param-types)
+    (let [idx-ref (ref-new 0)]
+      (do
+        (root_push idx-ref)
+        (let [result
+          (typeinfer-extend-env-with-node-params-rooted-v3
+            env node count node-offset idx-ref param-types)]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            result))))))
 
 ;; defn signature は [65, param-count, param-type-expr..., return-type-expr]。
 ;; body の直後だけを参照し、後続の metadata とは区別する。
@@ -81,12 +239,12 @@
       (root_push env)
       (root_push counter)
       (let [arg-type
-              (typeinfer-resolve-signature-type-expr
-                (vector-get type-expr (+ idx 3))
-                alias-env
-                type-param-env
-                env
-                counter)]
+        (typeinfer-resolve-signature-type-expr
+          (vector-get type-expr (+ idx 3))
+          alias-env
+          type-param-env
+          env
+          counter)]
         (do
           (root_push arg-type)
           (let [next-args (push-object-vector-local args arg-type)]
@@ -109,8 +267,8 @@
     (root_push env)
     (root_push counter)
     (let [step
-            (typeinfer-resolve-signature-app-args-step-v3
-              type-expr idx count args alias-env type-param-env env counter)
+      (typeinfer-resolve-signature-app-args-step-v3
+        type-expr idx count args alias-env type-param-env env counter)
       done (vector-get step 0)
       next-idx (vector-get step 1)
       next-args (vector-get step 2)]
@@ -150,8 +308,8 @@
 (defn typeinfer-resolve-signature-app-args-rooted-v3
   [type-expr idx count args alias-env type-param-env env counter]
   (let [step
-          (typeinfer-resolve-signature-app-args-step-64
-            type-expr idx count args alias-env type-param-env env counter)]
+    (typeinfer-resolve-signature-app-args-step-64
+      type-expr idx count args alias-env type-param-env env counter)]
     (if (= (vector-get step 0) 1)
       (vector-get step 2)
       (do
@@ -182,15 +340,15 @@
     (let [name-hash (vector-get type-expr 1)
       arg-count (vector-get type-expr 2)
       args
-        (typeinfer-resolve-signature-app-args-loop
-          type-expr
-          0
-          arg-count
-          (vector-new arg-count)
-          alias-env
-          type-param-env
-          env
-          counter)]
+      (typeinfer-resolve-signature-app-args-loop
+        type-expr
+        0
+        arg-count
+        (vector-new arg-count)
+        alias-env
+        type-param-env
+        env
+        counter)]
       (do
         (root_push args)
         (let [parametric-aliases (type-alias-env-parametric alias-env)]
@@ -198,19 +356,19 @@
             (root_push parametric-aliases)
             (let [entry (map-get-safe parametric-aliases name-hash)
               result
-                (if (= entry 0)
-                  (mk-app (typeinfer-resolve-app-name name-hash) args)
-                  (do
-                    (root_push entry)
-                    (let [expanded
-                            (typeinfer-resolve-parametric-alias-application
-                              entry
-                              args)]
-                      (do
-                        (root_pop)
-                        (if (= expanded 0)
-                          (mk-app (typeinfer-resolve-app-name name-hash) args)
-                          expanded)))))]
+              (if (= entry 0)
+                (mk-app (typeinfer-resolve-app-name name-hash) args)
+                (do
+                  (root_push entry)
+                  (let [expanded
+                    (typeinfer-resolve-parametric-alias-application
+                      entry
+                      args)]
+                    (do
+                      (root_pop)
+                      (if (= expanded 0)
+                        (mk-app (typeinfer-resolve-app-name name-hash) args)
+                        expanded)))))]
               (do
                 (root_pop)
                 (root_pop)
@@ -233,12 +391,12 @@
       (root_push env)
       (root_push counter)
       (let [param-type
-              (typeinfer-resolve-signature-type-expr
-                (vector-get type-expr (+ idx 1))
-                alias-env
-                type-param-env
-                env
-                counter)]
+        (typeinfer-resolve-signature-type-expr
+          (vector-get type-expr (+ idx 1))
+          alias-env
+          type-param-env
+          env
+          counter)]
         (do
           (root_push param-type)
           (let [next-result (mk-fun param-type return-type)]
@@ -261,8 +419,8 @@
     (root_push env)
     (root_push counter)
     (let [step
-            (typeinfer-resolve-signature-fun-params-step-v3
-              type-expr idx return-type alias-env type-param-env env counter)
+      (typeinfer-resolve-signature-fun-params-step-v3
+        type-expr idx return-type alias-env type-param-env env counter)
       done (vector-get step 0)
       next-idx (vector-get step 1)
       next-result (vector-get step 2)]
@@ -301,8 +459,8 @@
 (defn typeinfer-resolve-signature-fun-params-rooted-v3
   [type-expr idx return-type alias-env type-param-env env counter]
   (let [step
-          (typeinfer-resolve-signature-fun-params-step-64
-            type-expr idx return-type alias-env type-param-env env counter)]
+    (typeinfer-resolve-signature-fun-params-step-64
+      type-expr idx return-type alias-env type-param-env env counter)]
     (if (= (vector-get step 0) 1)
       (vector-get step 2)
       (do
@@ -333,24 +491,24 @@
     (let [param-count (vector-get type-expr 1)
       return-type-expr (vector-get type-expr (+ param-count 2))
       return-type
-        (typeinfer-resolve-signature-type-expr
-          return-type-expr
-          alias-env
-          type-param-env
-          env
-          counter)]
+      (typeinfer-resolve-signature-type-expr
+        return-type-expr
+        alias-env
+        type-param-env
+        env
+        counter)]
       (do
         (root_push return-type)
         (let [result
-                (typeinfer-resolve-signature-fun-params-loop
-                  type-expr
-                  0
-                  param-count
-                  return-type
-                  alias-env
-                  type-param-env
-                  env
-                  counter)]
+          (typeinfer-resolve-signature-fun-params-loop
+            type-expr
+            0
+            param-count
+            return-type
+            alias-env
+            type-param-env
+            env
+            counter)]
           (do
             (root_pop)
             (root_pop)
@@ -446,8 +604,8 @@
     (root_push subst)
     (root_push result)
     (let [step
-            (typeinfer-build-curried-fun-step-v3
-              param-types subst idx lower result)
+      (typeinfer-build-curried-fun-step-v3
+        param-types subst idx lower result)
       done (vector-get step 0)
       next-idx (vector-get step 1)
       next-result (vector-get step 2)]
@@ -482,8 +640,8 @@
 (defn typeinfer-build-curried-fun-rooted-v3
   [param-types subst idx lower result]
   (let [step
-          (typeinfer-build-curried-fun-step-64
-            param-types subst idx lower result)]
+    (typeinfer-build-curried-fun-step-64
+      param-types subst idx lower result)]
     (if (= (vector-get step 0) 1)
       (vector-get step 2)
       (do
@@ -510,12 +668,12 @@
     (root_push subst)
     (root_push body-ty)
     (let [result
-            (typeinfer-build-curried-fun-loop
-              param-types
-              subst
-              0
-              (vector-length param-types)
-              body-ty)]
+      (typeinfer-build-curried-fun-loop
+        param-types
+        subst
+        0
+        (vector-length param-types)
+        body-ty)]
       (do
         (root_pop)
         (root_pop)
@@ -542,13 +700,13 @@
                 ;; native backend でも result/env の戻り値 shape を壊さないよう、
                 ;; make-result へ後付けせず rooted helper で4要素を構築する。
                 (let [result
-                        (push-object-vector-local
-                          (push-int-vector-local
-                            (push-object-vector-local
-                              (push-object-vector-local (vector-new 4) subst)
-                              resolved-ty)
-                            0)
-                          new-env)]
+                  (push-object-vector-local
+                    (push-int-vector-local
+                      (push-object-vector-local
+                        (push-object-vector-local (vector-new 4) subst)
+                        resolved-ty)
+                      0)
+                    new-env)]
                   (do
                     (root_pop)
                     (root_pop)
