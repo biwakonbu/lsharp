@@ -63,6 +63,9 @@ Evidence:
 
 - Heavy gate の実行 cadence を `AGENTS.md` に追加した。同じ parser/type/runtime boundary の独立した bounded-loop slice は各 RED を個別に保持したまま一つの implementation batchへまとめ、Parser source parse・focused GREEN・Rust differential・local native smoke を batch 単位で実行してから Linux x86_64 fixed-point gate を一回だけ回す。これにより micro-change ごとの重複 build を避けつつ、slice ごとの EOF/unknown/GC ownership と batch 全体の native evidence を分離して保持する。
 
+- RED/GREEN: `test_e2e_selfhost_parser_source_evidence_fields_use_bounded_chunks` / `test_e2e_selfhost_parser_source_evidence_fields_cross_chunk_boundary` は source `:evidence` fields を一 field step、64 field bounded loop、rooted continuationへ移行する契約を固定した。65 個の `:subject` field を selfhost direct helper で走査し、unknown colon の未消費位置 `196`、payload の last value `subject-64`、EOF fixture の位置 `4` と payload `subject-eof` を確認した。同一 fixture の Rust lexer は `201` tokens を返し、lone colon/unknown/EOF の境界を保持する。`test_e2e_selfhost_parser_import_options_use_bounded_chunks` / `test_e2e_selfhost_parser_import_options_cross_chunk_boundary` は import option scan を option state vector と 64 option bounded loopへ移行し、65 個の `:open` について Rust oracle の `open=true` と selfhost AST slot `6=1` を比較した。4 focused tests は passし、既存 `selfhost_parser_` regression は `150 passed / 2 baseline failures` で新規 failure なし。
+- この batch は current-source stage0 package が worktree/root に存在せず、provenance 欠落の既存 Linux artifact を採用しないため local native stage0 smoke を未実行とした。push 後に Linux x86_64 fixed-point gate を一回だけ実施し、summary/manifest/SHA と cleanup を次の evidence commit へ追記する。
+
 これは Linux x86_64 parser の verified slice であり、V2-16 全体の Rust-free 完了を意味しない。Mac Apple Silicon の current-source gate、全 parser/type/runtime/public command の parity、full native source-file smoke、stage0 provenance の再生成は別の残件として維持する。
 
 ### EC-M1-01 invariant parameter scope parity (2026-07-17)

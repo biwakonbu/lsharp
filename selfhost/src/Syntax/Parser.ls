@@ -1913,7 +1913,7 @@
       updated (vector-set-at-rooted-v3 payload field-kind value)]
       (do
         (root_pop)
-        (parse-source-evidence-fields-loop-v3 spans pos-ref src updated)))))
+        updated))))
 
 (defn parse-source-evidence-string-field-v3 [spans pos-ref src payload field-kind]
   (do
@@ -1925,7 +1925,7 @@
           (do
             (root_pop)
             (root_pop)
-            (parse-source-evidence-fields-loop-v3 spans pos-ref src updated)))))))
+            updated))))))
 
 (defn parse-source-evidence-vector-field-v3 [spans pos-ref src payload field-kind]
   (do
@@ -1939,33 +1939,102 @@
           (do
             (root_pop)
             (root_pop)
-            (parse-source-evidence-fields-loop-v3 spans pos-ref src updated)))))))
+            updated))))))
 
-(defn parse-source-evidence-fields-loop-v3 [spans pos-ref src payload]
+(defn parse-source-evidence-fields-step-v3 [spans pos-ref src payload]
   (if (== (p-current spans pos-ref) 50)
     (do
       (root_push payload)
       (let [field-name-idx (+ (ref-get pos-ref) 1)
-        field-name (substring src (span-start spans field-name-idx) (span-end spans field-name-idx))
+        field-name-kind (if (>= (* field-name-idx 3) (vector-length spans))
+          99
+          (span-kind spans field-name-idx))
+        field-name (if (or (= field-name-kind 20) (= field-name-kind 49))
+          (substring src (span-start spans field-name-idx) (span-end spans field-name-idx))
+          "")
         field-kind (source-evidence-field-kind-v3 field-name)]
-        (do
-          (root_push field-name)
-          (if (> field-kind 0)
+        (if (> field-kind 0)
+          (do
+            (p-advance pos-ref)
+            (p-advance pos-ref)
+            (let [updated (if (or (= field-kind 8) (= field-kind 9))
+              (parse-source-evidence-int-field-v3 spans pos-ref src payload field-kind)
+              (if (or (= field-kind 11) (= field-kind 12))
+                (parse-source-evidence-vector-field-v3 spans pos-ref src payload field-kind)
+                (parse-source-evidence-string-field-v3 spans pos-ref src payload field-kind)))]
+              (let [state (make-parse-loop-state 0 updated)]
+                (do
+                  (root_pop)
+                  state))))
+          (let [state (make-parse-loop-state 1 payload)]
             (do
-              (p-advance pos-ref)
-              (p-advance pos-ref)
               (root_pop)
-              (root_pop)
-              (if (or (= field-kind 8) (= field-kind 9))
-                (parse-source-evidence-int-field-v3 spans pos-ref src payload field-kind)
-                (if (or (= field-kind 11) (= field-kind 12))
-                  (parse-source-evidence-vector-field-v3 spans pos-ref src payload field-kind)
-                  (parse-source-evidence-string-field-v3 spans pos-ref src payload field-kind))))
-            (do
-              (root_pop)
-              (root_pop)
-              payload)))))
-    payload))
+              state)))))
+    (make-parse-loop-state 1 payload)))
+
+(defn parse-source-evidence-fields-step-64-loop-bounded
+  [spans pos-ref src payload remaining]
+  (do
+    (root_push payload)
+    (let [step (parse-source-evidence-fields-step-v3 spans pos-ref src payload)
+      done (vector-get step 0)
+      next-payload (vector-get step 1)]
+      (do
+        (root_push step)
+        (root_push next-payload)
+        (let [parsed
+          (if (= done 1)
+            step
+            (if (<= remaining 1)
+              step
+              (parse-source-evidence-fields-step-64-loop-bounded
+                spans
+                pos-ref
+                src
+                next-payload
+                (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn parse-source-evidence-fields-step-64 [spans pos-ref src payload]
+  (parse-source-evidence-fields-step-64-loop-bounded spans pos-ref src payload 64))
+
+(defn parse-source-evidence-fields-rooted-v3 [spans pos-ref src payload]
+  (let [step (parse-source-evidence-fields-step-64 spans pos-ref src payload)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 1)
+      (do
+        (root_push step)
+        (let [next-payload (vector-get step 1)]
+          (do
+            (root_push next-payload)
+            (let [parsed
+                    (parse-source-evidence-fields-rooted-v3
+                      spans
+                      pos-ref
+                      src
+                      next-payload)]
+              (do
+                (root_pop)
+                (root_pop)
+                parsed))))))))
+
+(defn parse-source-evidence-fields-loop-v3 [spans pos-ref src payload]
+  (do
+    (root_push spans)
+    (root_push pos-ref)
+    (root_push src)
+    (root_push payload)
+    (let [parsed (parse-source-evidence-fields-rooted-v3 spans pos-ref src payload)]
+      (do
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        parsed))))
 
 (defn make-empty-source-evidence-payload-v3 [id]
   (do
@@ -4766,123 +4835,237 @@
         (root_pop)
         parsed))))
 
-(defn parse-import-options-v3
-  [spans pos-ref src name-h name-start name-end alias-hash only-present only-hashes open-present]
-  (if (== (p-current spans pos-ref) 1)
-    (do
-      (p-advance pos-ref) ;; ) を消費
-      (make-import-decl-from-options
-        name-h
-        name-start
-        name-end
-        alias-hash
-        only-present
-        only-hashes
-        open-present))
-    (if (== (p-current spans pos-ref) 50)
+(defn make-import-options-state-v3
+  [alias-hash only-present only-hashes open-present]
+  (vector-push-quad-rooted-v3
+    (vector-new 4)
+    alias-hash
+    only-present
+    only-hashes
+    open-present))
+
+(defn import-options-state-set-alias-v3 [state alias-hash]
+  (do
+    (root_push state)
+    (let [updated (vector-set-at-rooted-v3 state 0 alias-hash)]
       (do
-        (p-advance pos-ref) ;; : を消費
-        (if (or (= (p-current spans pos-ref) 20)
-            (= (p-current spans pos-ref) 49))
-          (let [option-name (current-symbol-text-v3 spans pos-ref src)]
-            (if (string-eq option-name "as")
-              (do
-                (p-advance pos-ref) ;; as を消費
-                (let [alias-start (p-start spans pos-ref)
-                  alias-end (p-end spans pos-ref)
-                  next-alias-hash (name-hash src alias-start alias-end)]
-                  (do
-                    (p-advance pos-ref) ;; alias を消費
-                    (root_push only-hashes)
-                    (let [parsed
-                            (parse-import-options-v3
-                              spans
-                              pos-ref
-                              src
-                              name-h
-                              name-start
-                              name-end
-                              next-alias-hash
-                              only-present
-                              only-hashes
-                              open-present)]
-                      (do
-                        (root_pop)
-                        parsed)))))
-              (if (string-eq option-name "only")
-                (do
-                  (p-advance pos-ref) ;; only を消費
-                  (p-expect spans pos-ref 2) ;; [ を消費
-                  (let [parsed-only
-                          (parse-import-only-symbols-v3
-                            spans
-                            pos-ref
-                            src
-                            (vector-new 0))]
-                    (do
-                      (root_push parsed-only)
-                      (let [parsed
-                              (parse-import-options-v3
-                                spans
-                                pos-ref
-                                src
-                                name-h
-                                name-start
-                                name-end
-                                alias-hash
-                                1
-                                parsed-only
-                                open-present)]
-                        (do
-                          (root_pop)
-                          parsed)))))
-                (if (string-eq option-name "open")
-                  (do
-                    (p-advance pos-ref) ;; open を消費
-                    (parse-import-options-v3
-                      spans
-                      pos-ref
-                      src
-                      name-h
-                      name-start
-                      name-end
-                      alias-hash
-                      only-present
-                      only-hashes
-                      1))
-                  (do
-                    (p-advance pos-ref) ;; 未知 option を消費
-                    (parse-import-options-v3
-                      spans
-                      pos-ref
-                      src
-                      name-h
-                      name-start
-                      name-end
-                      alias-hash
-                      only-present
-                      only-hashes
-                      open-present))))))
+        (root_pop)
+        updated))))
+
+(defn import-options-state-set-only-v3 [state only-hashes]
+  (do
+    (root_push state)
+    (root_push only-hashes)
+    (let [with-present (vector-set-at-rooted-v3 state 1 1)]
+      (do
+        (root_push with-present)
+        (let [updated (vector-set-at-rooted-v3 with-present 2 only-hashes)]
           (do
-            (p-expect spans pos-ref 1)
-            (make-import-decl-from-options
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            updated))))))
+
+(defn import-options-state-set-open-v3 [state]
+  (do
+    (root_push state)
+    (let [updated (vector-set-at-rooted-v3 state 3 1)]
+      (do
+        (root_pop)
+        updated))))
+
+(defn parse-import-options-step-v3
+  [spans pos-ref src name-h name-start name-end state]
+  (do
+    (root_push state)
+    (let [result
+      (if (== (p-current spans pos-ref) 1)
+        (do
+          (p-advance pos-ref)
+          (make-parse-loop-state 1 state))
+        (if (== (p-current spans pos-ref) 99)
+          (make-parse-loop-state 1 state)
+          (if (== (p-current spans pos-ref) 50)
+            (do
+              (p-advance pos-ref) ;; : を消費
+              (if (or (= (p-current spans pos-ref) 20)
+                  (= (p-current spans pos-ref) 49))
+                (let [option-name (current-symbol-text-v3 spans pos-ref src)]
+                  (if (string-eq option-name "as")
+                    (do
+                      (p-advance pos-ref) ;; as を消費
+                      (let [alias-start (p-start spans pos-ref)
+                        alias-end (p-end spans pos-ref)
+                        next-alias-hash (name-hash src alias-start alias-end)]
+                        (do
+                          (p-advance pos-ref) ;; alias を消費
+                          (let [next-state
+                                  (import-options-state-set-alias-v3 state next-alias-hash)]
+                            (make-parse-loop-state 0 next-state)))))
+                    (if (string-eq option-name "only")
+                      (do
+                        (p-advance pos-ref) ;; only を消費
+                        (p-expect spans pos-ref 2) ;; [ を消費
+                        (let [parsed-only
+                                (parse-import-only-symbols-v3
+                                  spans
+                                  pos-ref
+                                  src
+                                  (vector-new 0))]
+                          (do
+                            (root_push parsed-only)
+                            (let [next-state
+                                    (import-options-state-set-only-v3 state parsed-only)]
+                              (do
+                                (root_pop)
+                                (make-parse-loop-state 0 next-state))))))
+                      (if (string-eq option-name "open")
+                        (do
+                          (p-advance pos-ref) ;; open を消費
+                          (let [next-state (import-options-state-set-open-v3 state)]
+                            (make-parse-loop-state 0 next-state)))
+                        (do
+                          (p-advance pos-ref) ;; 未知 option を消費
+                          (make-parse-loop-state 0 state))))))
+                (do
+                  (p-expect spans pos-ref 1)
+                  (make-parse-loop-state 1 state))))
+            (do
+              (p-expect spans pos-ref 1)
+              (make-parse-loop-state 1 state)))))]
+      (do
+        (root_push result)
+        (root_pop)
+        (root_pop)
+        result))))
+
+(defn parse-import-options-step-64-loop-bounded
+  [spans pos-ref src name-h name-start name-end state remaining]
+  (do
+    (root_push state)
+    (let [step
+            (parse-import-options-step-v3
+              spans
+              pos-ref
+              src
               name-h
               name-start
               name-end
+              state)
+      done (vector-get step 0)
+      next-state (vector-get step 1)]
+      (do
+        (root_push step)
+        (root_push next-state)
+        (let [parsed
+          (if (= done 1)
+            step
+            (if (<= remaining 1)
+              step
+              (parse-import-options-step-64-loop-bounded
+                spans
+                pos-ref
+                src
+                name-h
+                name-start
+                name-end
+                next-state
+                (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
+
+(defn parse-import-options-step-64
+  [spans pos-ref src name-h name-start name-end state]
+  (parse-import-options-step-64-loop-bounded
+    spans
+    pos-ref
+    src
+    name-h
+    name-start
+    name-end
+    state
+    64))
+
+(defn parse-import-options-rooted-v3
+  [spans pos-ref src name-h name-start name-end state]
+  (let [step
+          (parse-import-options-step-64
+            spans
+            pos-ref
+            src
+            name-h
+            name-start
+            name-end
+            state)]
+    (if (= (vector-get step 0) 1)
+      (let [final-state (vector-get step 1)]
+        (do
+          (root_push final-state)
+          (let [decl
+                  (make-import-decl-from-options
+                    name-h
+                    name-start
+                    name-end
+                    (vector-get final-state 0)
+                    (vector-get final-state 1)
+                    (vector-get final-state 2)
+                    (vector-get final-state 3))]
+            (do
+              (root_pop)
+              decl))))
+      (do
+        (root_push step)
+        (let [next-state (vector-get step 1)]
+          (do
+            (root_push next-state)
+            (let [parsed
+                    (parse-import-options-rooted-v3
+                      spans
+                      pos-ref
+                      src
+                      name-h
+                      name-start
+                      name-end
+                      next-state)]
+              (do
+                (root_pop)
+                (root_pop)
+                parsed))))))))
+
+(defn parse-import-options-v3
+  [spans pos-ref src name-h name-start name-end alias-hash only-present only-hashes open-present]
+  (do
+    (root_push spans)
+    (root_push pos-ref)
+    (root_push src)
+    (root_push only-hashes)
+    (let [state
+            (make-import-options-state-v3
               alias-hash
               only-present
               only-hashes
-              open-present))))
+              open-present)]
       (do
-        (p-expect spans pos-ref 1)
-        (make-import-decl-from-options
-          name-h
-          name-start
-          name-end
-          alias-hash
-          only-present
-          only-hashes
-          open-present)))))
+        (root_push state)
+        (let [parsed
+                (parse-import-options-rooted-v3
+                  spans
+                  pos-ref
+                  src
+                  name-h
+                  name-start
+                  name-end
+                  state)]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            parsed))))))
 
 (defn parse-import-v3 [spans pos-ref src]
   (do

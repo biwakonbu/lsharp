@@ -1,5 +1,6 @@
 use super::support::*;
 use lsharp_syntax::ast::{Decl, Expr, Literal, TypeExpr};
+use lsharp_syntax::lexer::Lexer;
 use lsharp_syntax::metadata::MetadataFormKind;
 
 // =============================================================================
@@ -2431,6 +2432,74 @@ fn test_e2e_selfhost_parser_import_only_symbols_cross_chunk_boundary() {
 }
 
 #[test]
+fn test_e2e_selfhost_parser_import_options_use_bounded_chunks() {
+    let source = selfhost_module("Parser.ls");
+    let rooted_body = source
+        .split("(defn parse-import-options-rooted-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn parse-import-options-v3").next())
+        .unwrap_or("");
+    let step_body = source
+        .split("(defn parse-import-options-step-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn parse-import-options-step-64-loop-bounded").next())
+        .unwrap_or("");
+
+    assert!(
+        source.contains("(defn parse-import-options-step-64-loop-bounded")
+            && source.contains("(defn parse-import-options-step-64")
+            && rooted_body.contains("parse-import-options-step-64")
+            && !step_body.contains("parse-import-options-rooted-v3"),
+        "import options parser は Linux x86 native stack の長い option 列を bounded chunk へ委譲するべき"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_parser_import_options_cross_chunk_boundary() {
+    let options = (0..65).map(|_| ":open").collect::<Vec<_>>().join(" ");
+    let source = format!("(import Lib {})", options);
+    let rust_program = lsharp_syntax::parse(&source)
+        .expect("Rust oracle は 65 個の import :open option を parse できるべき");
+    match &rust_program.decls[0] {
+        lsharp_syntax::ast::Decl::ImportDecl { module, alias, only, open, .. } => {
+            assert_eq!(module, "Lib");
+            assert_eq!(*alias, None);
+            assert_eq!(*only, None);
+            assert!(*open);
+        }
+        decl => panic!("Rust oracle の import options decl が不正: {decl:?}"),
+    }
+
+    let (token_ls, ast_ls, lexer_ls, parser_ls) = parser_runtime_modules();
+    let harness = format!(
+        r#"
+(defn main []
+  (let [node (vector-get (parse-program "{}") 0)]
+    (do
+      (print (vector-length node))
+      (print (vector-get node 0))
+      (print (if (= (vector-get node 1) (name-hash "Lib" 0 3)) 1 0))
+      (print (vector-get node 4))
+      (print (vector-get node 5))
+      (print (vector-get node 6))
+      0)))
+"#,
+        source
+    );
+    let output = compile_and_run(&format!(
+        "{}\n{}\n{}\n{}\n{}",
+        token_ls, ast_ls, lexer_ls, parser_ls, harness
+    ));
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["7", "26", "1", "0", "0", "1"],
+        "import options parser は 64 option 境界を跨いでも import AST layout と open flag を保持するべき"
+    );
+}
+
+#[test]
 fn test_e2e_selfhost_parser_defn_assert_predicates_use_bounded_chunks() {
     let source = selfhost_module("Parser.ls");
     let rooted_body = source
@@ -2795,6 +2864,94 @@ fn test_e2e_selfhost_parser_source_evidence_shrinks_cross_chunk_boundary() {
         lines,
         ["5", "1", "15", "65", "0", "64"],
         "source evidence shrinks parser は 64 要素境界を跨いでも sampling vector を保持するべき"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_parser_source_evidence_fields_use_bounded_chunks() {
+    let source = selfhost_module("Parser.ls");
+    let rooted_body = source
+        .split("(defn parse-source-evidence-fields-rooted-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn parse-source-evidence-fields-loop-v3").next())
+        .unwrap_or("");
+    let step_body = source
+        .split("(defn parse-source-evidence-fields-step-v3")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn parse-source-evidence-fields-step-64-loop-bounded")
+                .next()
+        })
+        .unwrap_or("");
+
+    assert!(
+        source.contains("(defn parse-source-evidence-fields-step-64-loop-bounded")
+            && source.contains("(defn parse-source-evidence-fields-step-64")
+            && rooted_body.contains("parse-source-evidence-fields-step-64")
+            && !step_body.contains("parse-source-evidence-fields-rooted-v3"),
+        "source evidence fields parser は Linux x86 native stack の長い field 列を bounded chunk へ委譲するべき"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_parser_source_evidence_fields_cross_chunk_boundary() {
+    let (token_ls, ast_ls, lexer_ls, parser_ls) = parser_runtime_modules();
+    let fields = (0..65)
+        .map(|index| format!(":subject \"subject-{}\" ", index))
+        .collect::<String>();
+    let source = format!("0 {}:unknown \"ignored\" 99", fields);
+    let mut rust_lexer = Lexer::new(&source);
+    let rust_tokens = rust_lexer
+        .tokenize()
+        .expect("Rust lexer は evidence fields boundary fixture を tokenize できるべき");
+    assert_eq!(
+        rust_tokens.len(),
+        201,
+        "Rust lexer の同一 fixture token 数は 65 field と unknown tail を保持するべき"
+    );
+
+    let eof_source = "0 :subject \"subject-eof\"";
+    let source_literal = source.replace('"', "\\\"");
+    let eof_source_literal = eof_source.replace('"', "\\\"");
+    let harness = format!(
+        r#"
+(defn main []
+  (let [source "{}"
+        spans (tokenize-with-spans source)
+        pos-ref (ref-new 1)
+        payload (parse-source-evidence-fields-loop-v3
+          spans pos-ref source (make-empty-source-evidence-payload-v3 "")
+        )
+        eof-source "{}"
+        eof-spans (tokenize-with-spans eof-source)
+        eof-pos-ref (ref-new 1)
+        eof-payload (parse-source-evidence-fields-loop-v3
+          eof-spans eof-pos-ref eof-source
+          (make-empty-source-evidence-payload-v3 "")
+        )]
+    (do
+      (print (ref-get pos-ref))
+      (print (p-current spans pos-ref))
+      (print-string (vector-get payload 1))
+      (print-string "\n")
+      (print (ref-get eof-pos-ref))
+      (print (p-current eof-spans eof-pos-ref))
+      (print-string (vector-get eof-payload 1))
+      (print-string "\n")
+      0)))
+"#,
+        source_literal, eof_source_literal
+    );
+    let output = compile_and_run(&format!(
+        "{}\n{}\n{}\n{}\n{}",
+        token_ls, ast_ls, lexer_ls, parser_ls, harness
+    ));
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["196", "50", "subject-64", "4", "99", "subject-eof"],
+        "source evidence fields parser は 64 field 境界、unknown field 未消費、EOF 停止、payload 更新を保持するべき"
     );
 }
 
