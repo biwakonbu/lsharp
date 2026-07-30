@@ -3300,3 +3300,93 @@ fn test_e2e_selfhost_typeinfer_large_adt_parameter_constructor_variant_loops_pre
         "65 要素の ADT parameter/constructor/variant loop は chunk 境界を越えて shape を保持するべき"
     );
 }
+
+#[test]
+fn test_e2e_selfhost_typeinfer_record_decl_loops_use_bounded_chunks() {
+    let record_decl = selfhost_module("TypeInferRecordDecl.ls");
+
+    assert!(
+        record_decl.contains("typeinfer-record-build-param-state-step-64-loop-bounded")
+            && record_decl.contains("typeinfer-record-resolve-field-types-step-64-loop-bounded")
+            && record_decl.contains("typeinfer-record-build-type-step-64-loop-bounded")
+            && record_decl.contains("typeinfer-record-constructor-type-step-64-loop-bounded")
+            && record_decl.contains("typeinfer-record-build-param-state-rooted-v3")
+            && record_decl.contains("typeinfer-record-resolve-field-types-rooted-v3")
+            && record_decl.contains("typeinfer-record-build-type-rooted-v3")
+            && record_decl.contains("typeinfer-record-constructor-type-rooted-v3"),
+        "record declaration の parameter/field/schema/constructor loop は bounded helper へ分離するべき"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_typeinfer_large_record_decl_loops_preserve_bindings() {
+    let mut params_expr = "(vector-new 0)".to_string();
+    let mut raw_fields_expr = "(vector-new 0)".to_string();
+    for idx in 0..65 {
+        params_expr = format!("(vector-push {} {})", params_expr, 17000 + idx);
+        raw_fields_expr = format!(
+            "(vector-push (vector-push (vector-push {} {}) {}) (raw-type-named {}))",
+            raw_fields_expr,
+            18000 + idx,
+            19000 + idx,
+            30000 + idx
+        );
+    }
+
+    let harness = format!(
+        r#"
+(defn raw-type-named [name-hash]
+  (vector-push (vector-push (vector-new 2) 60) name-hash))
+
+(defn fun-depth [ty]
+  (if (= (ty-tag ty) 3)
+    (+ 1 (fun-depth (ty-fr ty)))
+    0))
+
+(defn fun-last-param [ty]
+  (if (= (ty-tag (ty-fr ty)) 3)
+    (fun-last-param (ty-fr ty))
+    (ty-fp ty)))
+
+(defn main []
+  (let [counter (make-var-counter)
+        param-state
+          (typeinfer-record-build-param-state {0} counter)
+        param-env (vector-get param-state 0)
+        field-types
+          (typeinfer-record-resolve-field-types
+            {1}
+            (map-new)
+            param-env)
+        record-type (typeinfer-record-build-type 999 field-types)
+        constructor-type (typeinfer-record-constructor-type record-type)
+        first-param (map-get-safe param-env 17000)
+        last-param (map-get-safe param-env 17064)
+        first-field (type-record-field-type record-type 18000)
+        last-field (type-record-field-type record-type 18064)]
+    (do
+      (print (vector-length (vector-get param-state 1)))
+      (print (ty-name first-param))
+      (print (ty-name last-param))
+      (print (fun-depth constructor-type))
+      (print (ty-name (ty-fp constructor-type)))
+      (print (ty-name (fun-last-param constructor-type)))
+      (print (ty-name first-field))
+      (print (ty-name last-field))
+      0)))
+"#,
+        params_expr,
+        raw_fields_expr
+    );
+    let combined = format!("{}\n{}", selfhost_typeinfer_runtime_bundle(), harness);
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        compile_and_run(&combined)
+    });
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["65", "1000", "1064", "65", "30000", "30064", "30000", "30064"],
+        "65 要素の record schema/constructor/field loop は chunk 境界を越えて binding を保持するべき"
+    );
+}

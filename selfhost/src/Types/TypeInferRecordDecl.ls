@@ -3,13 +3,11 @@
 (import Types.Type)
 (import Types.TypeScheme)
 (import Types.TypeInferCore)
-
 ;; TypeInferRecordDecl.ls - record 宣言の schema / constructor 登録
 ;;
 ;; record schema は TypeScheme として record-env に保持する。
 ;; parametric record では field 型 template と bound variable を同じ scheme に入れ、
 ;; literal ごとに instantiate して field 間の型変数共有を維持する。
-
 ;; nonparametric: [22, name, fields]
 ;; parametric:    [22, name, params, fields]
 ;; fields: [field-hash, accessor-hash, raw-TypeExpr, ...]
@@ -17,21 +15,18 @@
   (if (>= (vector-length decl) 4)
     (vector-get decl 2)
     (vector-new 0)))
-
 (defn typeinfer-record-decl-field-exprs [decl]
   (if (>= (vector-length decl) 4)
     (vector-get decl 3)
     (if (> (vector-length decl) 2)
       (vector-get decl 2)
       0)))
-
 ;; private wrapper 内の record も宣言元 module の schema 登録対象にする。
 ;; import traversal は wrapper を開かないため、公開 export には追加されない。
 (defn typeinfer-record-decl-unprivate [decl]
   (if (= (vector-get decl 0) (ast-private))
     (typeinfer-record-decl-unprivate (vector-get decl 1))
     decl))
-
 (defn typeinfer-record-remove-accessors-loop [raw-fields idx len env]
   (if (>= idx len)
     env
@@ -40,7 +35,6 @@
       (+ idx 3)
       len
       (type-env-remove env (vector-get raw-fields (+ idx 1))))))
-
 (defn typeinfer-remove-record-def [decl env]
   (let [raw-fields (typeinfer-record-decl-field-exprs decl)
     constructor-env (type-env-remove env (vector-get decl 1))]
@@ -51,7 +45,6 @@
         0
         (vector-length raw-fields)
         constructor-env))))
-
 (defn typeinfer-remove-record-defs-before-module-loop [program env idx limit]
   (if (>= idx limit)
     env
@@ -68,10 +61,8 @@
           env
           (+ idx 1)
           limit)))))
-
 (defn typeinfer-remove-record-defs-before-module [program env limit]
   (typeinfer-remove-record-defs-before-module-loop program env 0 limit))
-
 (defn typeinfer-record-only-contains-loop [only-hashes idx len name-hash]
   (if (>= idx len)
     0
@@ -82,7 +73,6 @@
         (+ idx 1)
         len
         name-hash))))
-
 (defn typeinfer-record-export-allowed? [only-hashes name-hash]
   (if (= only-hashes 0)
     1
@@ -90,7 +80,6 @@
       (if (= only-count 0)
         1
         (typeinfer-record-only-contains-loop only-hashes 0 only-count name-hash)))))
-
 (defn typeinfer-record-remove-unallowed-accessors-loop
   [raw-fields idx len only-hashes env]
   (if (>= idx len)
@@ -106,7 +95,6 @@
         len
         only-hashes
         next-env))))
-
 (defn typeinfer-clean-record-import-export [decl only-hashes open-flag env]
   (if (= open-flag 1)
     (let [raw-fields (typeinfer-record-decl-field-exprs decl)
@@ -123,26 +111,106 @@
           only-hashes
           constructor-env)))
     (typeinfer-remove-record-def decl env)))
-
 (defn typeinfer-record-make-param-state [param-env bound-vars]
   (vector-push-pair-rooted (vector-new 2) param-env bound-vars))
-
 ;; declaration parameter 名を fresh type variable と scheme bound variable に対応付ける。
 (defn typeinfer-record-build-param-state-loop [params idx len counter param-env bound-vars]
+  (typeinfer-record-build-param-state-rooted-v3
+    params idx len counter param-env bound-vars))
+(defn typeinfer-record-build-param-state-step-state [done next-idx result]
+  (vector-push-triple-rooted (vector-new 3) done next-idx result))
+(defn typeinfer-record-build-param-state-step-v3
+  [params idx len counter param-env bound-vars]
   (if (>= idx len)
-    (typeinfer-record-make-param-state param-env bound-vars)
-    (let [param-hash (vector-get params idx)
-      param-type (fresh-type-var counter)
-      next-param-env (map-insert-object-safe param-env param-hash param-type)
-      next-bound-vars (push-int-vector-local bound-vars (ty-name param-type))]
-      (typeinfer-record-build-param-state-loop
-        params
-        (+ idx 1)
-        len
-        counter
-        next-param-env
-        next-bound-vars))))
-
+    (typeinfer-record-build-param-state-step-state
+      1 idx (typeinfer-record-make-param-state param-env bound-vars))
+    (do
+      (root_push params)
+      (root_push counter)
+      (root_push param-env)
+      (root_push bound-vars)
+      (let [param-hash (vector-get params idx)
+        param-type (fresh-type-var counter)
+        next-param-env (map-insert-object-safe param-env param-hash param-type)
+        next-bound-vars (push-int-vector-local bound-vars (ty-name param-type))]
+        (do
+          (root_push param-type)
+          (root_push next-param-env)
+          (root_push next-bound-vars)
+            (let [next-state
+                  (typeinfer-record-make-param-state
+                    next-param-env next-bound-vars)
+            state
+              (typeinfer-record-build-param-state-step-state
+                0 (+ idx 1) next-state)]
+            (do
+              (root_pop) (root_pop) (root_pop) (root_pop)
+              (root_pop) (root_pop) (root_pop)
+              state)))))))
+(defn typeinfer-record-build-param-state-step-64-loop-bounded
+  [params idx len counter param-env bound-vars remaining]
+  (do
+    (root_push params)
+    (root_push counter)
+    (root_push param-env)
+    (root_push bound-vars)
+    (let [step
+      (typeinfer-record-build-param-state-step-v3
+        params idx len counter param-env bound-vars)
+      done (vector-get step 0)
+      next-idx (vector-get step 1)
+      next-state (vector-get step 2)]
+      (do
+        (root_push step)
+        (root_push next-state)
+        (let [next-param-env (vector-get next-state 0)
+          next-bound-vars (vector-get next-state 1)
+          parsed
+            (if (= done 1)
+              step
+              (if (<= remaining 1)
+                step
+                (typeinfer-record-build-param-state-step-64-loop-bounded
+                  params
+                  next-idx
+                  len
+                  counter
+                  next-param-env
+                  next-bound-vars
+                  (- remaining 1))))]
+          (do
+            (root_pop) (root_pop) (root_pop)
+            (root_pop) (root_pop) (root_pop)
+            parsed))))))
+(defn typeinfer-record-build-param-state-step-64
+  [params idx len counter param-env bound-vars]
+  (typeinfer-record-build-param-state-step-64-loop-bounded
+    params idx len counter param-env bound-vars 64))
+(defn typeinfer-record-build-param-state-rooted-v3
+  [params idx len counter param-env bound-vars]
+  (let [step
+    (typeinfer-record-build-param-state-step-64
+      params idx len counter param-env bound-vars)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [next-state (vector-get step 2)
+          next-param-env (vector-get next-state 0)
+          next-bound-vars (vector-get next-state 1)]
+          (do
+            (root_push next-state)
+            (let [resolved
+              (typeinfer-record-build-param-state-rooted-v3
+                params
+                (vector-get step 1)
+                len
+                counter
+                next-param-env
+                next-bound-vars)]
+              (do
+                (root_pop) (root_pop)
+                resolved))))))))
 (defn typeinfer-record-build-param-state [params counter]
   (typeinfer-record-build-param-state-loop
     params
@@ -151,15 +219,19 @@
     counter
     (map-new)
     (vector-new (vector-length params))))
-
 (defn typeinfer-record-fields-append [out field-hash field-ty]
   (let [with-name (push-int-vector-local out field-hash)]
     (push-object-vector-local with-name field-ty)))
-
 ;; raw field TypeExpr を alias と declaration parameter を解決した field 型列へ変換する。
 (defn typeinfer-record-resolve-field-types-loop [raw-fields idx len alias-env param-env out]
+  (typeinfer-record-resolve-field-types-rooted-v3
+    raw-fields idx len alias-env param-env out))
+(defn typeinfer-record-resolve-field-types-step-state [done next-idx result]
+  (vector-push-triple-rooted (vector-new 3) done next-idx result))
+(defn typeinfer-record-resolve-field-types-step-v3
+  [raw-fields idx len alias-env param-env out]
   (if (>= idx len)
-    out
+    (typeinfer-record-resolve-field-types-step-state 1 idx out)
     (do
       (root_push raw-fields)
       (root_push alias-env)
@@ -171,32 +243,76 @@
           (root_push raw-type-expr)
           (let [field-ty
                   (typeinfer-resolve-type-expr-with-aliases-and-params
-                    raw-type-expr
-                    alias-env
-                    param-env)]
+                    raw-type-expr alias-env param-env)]
             (do
               (root_push field-ty)
-              (let [next-out (typeinfer-record-fields-append out field-hash field-ty)]
+              (let [next-out
+                      (typeinfer-record-fields-append out field-hash field-ty)]
                 (do
                   (root_push next-out)
-                  (let [parsed
-                          (typeinfer-record-resolve-field-types-loop
-                            raw-fields
-                            (+ idx 3)
-                            len
-                            alias-env
-                            param-env
-                            next-out)]
+                  (let [state
+                    (typeinfer-record-resolve-field-types-step-state
+                      0 (+ idx 3) next-out)]
                     (do
-                      (root_pop)
-                      (root_pop)
-                      (root_pop)
-                      (root_pop)
-                      (root_pop)
-                      (root_pop)
-                      (root_pop)
-                      parsed)))))))))))
-
+                      (root_pop) (root_pop) (root_pop) (root_pop)
+                      (root_pop) (root_pop) (root_pop)
+                      state)))))))))))
+(defn typeinfer-record-resolve-field-types-step-64-loop-bounded
+  [raw-fields idx len alias-env param-env out remaining]
+  (do
+    (root_push raw-fields)
+    (root_push alias-env)
+    (root_push param-env)
+    (root_push out)
+    (let [step
+      (typeinfer-record-resolve-field-types-step-v3
+        raw-fields idx len alias-env param-env out)
+      done (vector-get step 0)
+      next-idx (vector-get step 1)
+      next-out (vector-get step 2)]
+      (do
+        (root_push step)
+        (root_push next-out)
+        (let [parsed
+          (if (= done 1)
+            step
+            (if (<= remaining 1)
+              step
+              (typeinfer-record-resolve-field-types-step-64-loop-bounded
+                raw-fields
+                next-idx
+                len
+                alias-env
+                param-env
+                next-out
+                (- remaining 1))))]
+          (do
+            (root_pop) (root_pop) (root_pop)
+            (root_pop) (root_pop) (root_pop)
+            parsed))))))
+(defn typeinfer-record-resolve-field-types-step-64
+  [raw-fields idx len alias-env param-env out]
+  (typeinfer-record-resolve-field-types-step-64-loop-bounded
+    raw-fields idx len alias-env param-env out 64))
+(defn typeinfer-record-resolve-field-types-rooted-v3
+  [raw-fields idx len alias-env param-env out]
+  (let [step
+    (typeinfer-record-resolve-field-types-step-64
+      raw-fields idx len alias-env param-env out)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [next-idx (vector-get step 1)
+          next-out (vector-get step 2)]
+          (do
+            (root_push next-out)
+            (let [resolved
+              (typeinfer-record-resolve-field-types-rooted-v3
+                raw-fields next-idx len alias-env param-env next-out)]
+              (do
+                (root_pop) (root_pop)
+                resolved))))))))
 (defn typeinfer-record-resolve-field-types [raw-fields alias-env param-env]
   (do
     (root_push raw-fields)
@@ -219,11 +335,15 @@
           (root_pop)
           (root_pop)
           parsed)))))
-
 ;; [field-hash, field-type, ...] を structural record type へ変換する。
 (defn typeinfer-record-build-type-loop [record-ty field-types idx len]
+  (typeinfer-record-build-type-rooted-v3 record-ty field-types idx len))
+(defn typeinfer-record-build-type-step-state [done next-idx result]
+  (vector-push-triple-rooted (vector-new 3) done next-idx result))
+(defn typeinfer-record-build-type-step-v3
+  [record-ty field-types idx len]
   (if (>= idx len)
-    record-ty
+    (typeinfer-record-build-type-step-state 1 idx record-ty)
     (do
       (root_push record-ty)
       (root_push field-types)
@@ -231,22 +351,67 @@
         field-ty (vector-get field-types (+ idx 1))]
         (do
           (root_push field-ty)
-          (let [next-record-ty (type-record-add-field record-ty field-hash field-ty)]
+          (let [next-record-ty
+                  (type-record-add-field record-ty field-hash field-ty)]
             (do
               (root_push next-record-ty)
-              (let [result
-                      (typeinfer-record-build-type-loop
-                        next-record-ty
-                        field-types
-                        (+ idx 2)
-                        len)]
+              (let [state
+                (typeinfer-record-build-type-step-state
+                  0 (+ idx 2) next-record-ty)]
                 (do
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  result)))))))))
-
+                  (root_pop) (root_pop) (root_pop) (root_pop)
+                  state)))))))))
+(defn typeinfer-record-build-type-step-64-loop-bounded
+  [record-ty field-types idx len remaining]
+  (do
+    (root_push record-ty)
+    (root_push field-types)
+    (let [step
+      (typeinfer-record-build-type-step-v3
+        record-ty field-types idx len)
+      done (vector-get step 0)
+      next-idx (vector-get step 1)
+      next-record-ty (vector-get step 2)]
+      (do
+        (root_push step)
+        (root_push next-record-ty)
+        (let [parsed
+          (if (= done 1)
+            step
+            (if (<= remaining 1)
+              step
+              (typeinfer-record-build-type-step-64-loop-bounded
+                next-record-ty
+                field-types
+                next-idx
+                len
+                (- remaining 1))))]
+          (do
+            (root_pop) (root_pop) (root_pop) (root_pop)
+            parsed))))))
+(defn typeinfer-record-build-type-step-64
+  [record-ty field-types idx len]
+  (typeinfer-record-build-type-step-64-loop-bounded
+    record-ty field-types idx len 64))
+(defn typeinfer-record-build-type-rooted-v3
+  [record-ty field-types idx len]
+  (let [step
+    (typeinfer-record-build-type-step-64
+      record-ty field-types idx len)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [next-idx (vector-get step 1)
+          next-record-ty (vector-get step 2)]
+          (do
+            (root_push next-record-ty)
+            (let [resolved
+              (typeinfer-record-build-type-rooted-v3
+                next-record-ty field-types next-idx len)]
+              (do
+                (root_pop) (root_pop)
+                resolved))))))))
 (defn typeinfer-record-build-type [record-name-hash field-types]
   (do
     (root_push field-types)
@@ -263,7 +428,6 @@
             (root_pop)
             (root_pop)
             result))))))
-
 ;; schema は record type template と bound variable を併せた TypeScheme で表す。
 (defn typeinfer-record-decl-schema [decl alias-env counter]
   (let [raw-fields (typeinfer-record-decl-field-exprs decl)]
@@ -305,7 +469,6 @@
                                 (root_pop)
                                 (root_pop)
                                 schema))))))))))))))))
-
 ;; source order で作成済み schema を registry に登録して次の宣言へ進む。
 (defn typeinfer-predeclare-record-env-with-schema [program idx len alias-env record-env counter decl schema]
   (do
@@ -328,7 +491,6 @@
             (root_pop)
             (root_pop)
             parsed))))))
-
 ;; source order で record schema を registry に登録する。
 (defn typeinfer-predeclare-record-env-loop [program idx len alias-env record-env counter]
   (if (>= idx len)
@@ -361,7 +523,6 @@
           alias-env
           record-env
           counter)))))
-
 (defn typeinfer-predeclare-record-env [program alias-env counter]
   (do
     (root_push program)
@@ -382,33 +543,81 @@
           (root_pop)
           (root_pop)
           parsed)))))
-
 ;; record type template の field 型列から curried constructor type を組み立てる。
 (defn typeinfer-record-constructor-type-loop [record-ty idx len result]
-  (if (>= idx len)
-    result
+  (typeinfer-record-constructor-type-rooted-v3 record-ty len idx result))
+(defn typeinfer-record-constructor-type-step-state [done next-idx result]
+  (vector-push-triple-rooted (vector-new 3) done next-idx result))
+(defn typeinfer-record-constructor-type-step-v3
+  [record-ty idx lower result]
+  (if (<= idx lower)
+    (typeinfer-record-constructor-type-step-state 1 idx result)
     (do
       (root_push record-ty)
       (root_push result)
-      (let [field-ty (vector-get record-ty (+ idx 1))]
+      (let [field-ty (vector-get record-ty (- idx 1))]
         (do
           (root_push field-ty)
-          (let [rest
-                  (typeinfer-record-constructor-type-loop
-                    record-ty
-                    (+ idx 2)
-                    len
-                    result)]
+          (let [next-result (mk-fun field-ty result)]
             (do
-              (root_push rest)
-              (let [constructed (mk-fun field-ty rest)]
+              (root_push next-result)
+              (let [state
+                (typeinfer-record-constructor-type-step-state
+                  0 (- idx 2) next-result)]
                 (do
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  constructed)))))))))
-
+                  (root_pop) (root_pop) (root_pop) (root_pop)
+                  state)))))))))
+(defn typeinfer-record-constructor-type-step-64-loop-bounded
+  [record-ty idx lower result remaining]
+  (do
+    (root_push record-ty)
+    (root_push result)
+    (let [step
+      (typeinfer-record-constructor-type-step-v3
+        record-ty idx lower result)
+      done (vector-get step 0)
+      next-idx (vector-get step 1)
+      next-result (vector-get step 2)]
+      (do
+        (root_push step)
+        (root_push next-result)
+        (let [parsed
+          (if (= done 1)
+            step
+            (if (<= remaining 1)
+              step
+              (typeinfer-record-constructor-type-step-64-loop-bounded
+                record-ty
+                next-idx
+                lower
+                next-result
+                (- remaining 1))))]
+          (do
+            (root_pop) (root_pop) (root_pop) (root_pop)
+            parsed))))))
+(defn typeinfer-record-constructor-type-step-64
+  [record-ty idx lower result]
+  (typeinfer-record-constructor-type-step-64-loop-bounded
+    record-ty idx lower result 64))
+(defn typeinfer-record-constructor-type-rooted-v3
+  [record-ty idx lower result]
+  (let [step
+    (typeinfer-record-constructor-type-step-64
+      record-ty idx lower result)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push step)
+        (let [next-idx (vector-get step 1)
+          next-result (vector-get step 2)]
+          (do
+            (root_push next-result)
+            (let [resolved
+              (typeinfer-record-constructor-type-rooted-v3
+                record-ty next-idx lower next-result)]
+              (do
+                (root_pop) (root_pop)
+                resolved))))))))
 (defn typeinfer-record-constructor-type [record-ty]
   (do
     (root_push record-ty)
@@ -421,7 +630,6 @@
       (do
         (root_pop)
         result))))
-
 ;; Type.field accessor を record schema と同じ bound variable で値環境へ登録する。
 ;; raw field は [field-hash, accessor-hash, raw-TypeExpr] の triple で保持されるが、
 ;; schema の record-ty は [field-hash, field-ty] の pair だけを持つ。
@@ -466,7 +674,6 @@
                           (root_pop)
                           (root_pop)
                           result)))))))))))))
-
 (defn typeinfer-register-record-accessors [raw-fields env record-ty bound-vars]
   (if (= raw-fields 0)
     env
@@ -489,7 +696,6 @@
           (root_pop)
           (root_pop)
           result)))))
-
 ;; record constructor と Type.field accessor を schema と同じ bound variable で値環境へ登録する。
 (defn typeinfer-register-record-def [decl env record-env]
   (let [record-name-hash (vector-get decl 1)
@@ -535,7 +741,6 @@
                             (root_pop)
                             (root_pop)
                             result))))))))))))))
-
 (defn typeinfer-register-record-defs-loop [program idx len env record-env]
   (if (>= idx len)
     env
@@ -556,7 +761,6 @@
                 (root_pop)
                 parsed))))
         (typeinfer-register-record-defs-loop program (+ idx 1) len env record-env)))))
-
 (defn typeinfer-register-record-defs [program env counter]
   (let [record-env (var-counter-record-env counter)]
     (do
