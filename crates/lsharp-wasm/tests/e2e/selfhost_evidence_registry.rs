@@ -26,5 +26,7 @@ mod identity;
 mod lifecycle;
 #[path = "selfhost_evidence_registry/runtime.rs"]
 mod runtime;
+#[path = "selfhost_evidence_registry/source_attestation.rs"]
+mod source_attestation;
 #[path = "selfhost_evidence_registry/validation.rs"]
 mod validation;
