@@ -17,6 +17,7 @@ pub(super) struct Manifest {
     pub(super) nodes: Vec<NodeInput>,
     #[serde(default, deserialize_with = "deserialize_optional_review_registry")]
     pub(super) reviews: Option<Vec<ReviewInput>>,
+    pub(super) review_evidence_identity: Option<ReviewEvidenceIdentityInput>,
     pub(super) evidence: Vec<EvidenceInput>,
     pub(super) edges: Vec<EdgeInput>,
 }
@@ -146,6 +147,30 @@ pub(super) struct ReviewInput {
         deserialize_with = "deserialize_optional_review_verification_state"
     )]
     pub(super) verification_state: Option<ReviewVerificationStateInput>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct ReviewEvidenceIdentityInput {
+    pub(super) subject_digest: String,
+    pub(super) source_commit: String,
+    pub(super) artifact_digest: String,
+    pub(super) trust_store_digest: RequiredNullableString,
+    pub(super) lifecycle_digest: RequiredNullableString,
+    pub(super) now: String,
+}
+
+/// identity object では nullable field も省略せず、`null` を明示させる。
+#[derive(Debug)]
+pub(super) struct RequiredNullableString(pub(super) Option<String>);
+
+impl<'de> Deserialize<'de> for RequiredNullableString {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Option::<String>::deserialize(deserializer).map(Self)
+    }
 }
 
 fn deserialize_optional_review_verification_state<'de, D>(

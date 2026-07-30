@@ -9,6 +9,26 @@
     "schema_version": {"const": 1},
     "nodes": {"type": "array", "items": {"$ref": "#/$defs/node"}},
     "reviews": {"type": "array", "items": {"$ref": "#/$defs/review"}},
+    "review_evidence_identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "subject_digest",
+        "source_commit",
+        "artifact_digest",
+        "trust_store_digest",
+        "lifecycle_digest",
+        "now"
+      ],
+      "properties": {
+        "subject_digest": {"type": "string", "minLength": 1},
+        "source_commit": {"type": "string", "minLength": 1},
+        "artifact_digest": {"type": "string", "minLength": 1},
+        "trust_store_digest": {"type": ["string", "null"], "minLength": 1},
+        "lifecycle_digest": {"type": ["string", "null"], "minLength": 1},
+        "now": {"type": "string", "minLength": 1}
+      }
+    },
     "evidence": {"type": "array", "items": {"$ref": "#/$defs/evidence"}},
     "edges": {
       "type": "array",

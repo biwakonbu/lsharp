@@ -415,6 +415,115 @@ fn validate_projects_review_evidence_identity_for_explicit_artifact_context() {
 }
 
 #[test]
+fn validate_emits_review_evidence_identity_in_manifest_for_explicit_artifact_context() {
+    let project = project_dir("evidence-identity-manifest");
+    fs::write(
+        project.join("trust.json"),
+        review_wire(Some(trust_key()), false),
+    )
+    .expect("trust wire should be writable");
+
+    let mut command = Command::new(env!("CARGO_BIN_EXE_lsharp"));
+    command.current_dir(&project).args([
+        "validate",
+        "manifest.json",
+        "--format",
+        "json",
+        "--trust-store",
+        "trust.json",
+        "--review-subject-digest",
+        "sha256:graph",
+        "--review-source-commit",
+        "commit-1",
+        "--review-artifact-digest",
+        "sha256:artifact",
+        "--review-now",
+        "2026-08-15T00:00:00Z",
+        "--emit-manifest",
+        "evidence-identity-manifest.json",
+    ]);
+    let output = command.output().expect("lsharp validate should run");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(2), "unexpected exit: {stderr}");
+    assert!(stderr.is_empty(), "unexpected stderr: {stderr}");
+    let manifest: serde_json::Value = serde_json::from_slice(
+        &fs::read(project.join("evidence-identity-manifest.json"))
+            .expect("manifest output should exist"),
+    )
+    .expect("manifest output should be JSON");
+    assert_eq!(
+        manifest["review_evidence_identity"]["subject_digest"],
+        "sha256:graph"
+    );
+    assert_eq!(
+        manifest["review_evidence_identity"]["source_commit"],
+        "commit-1"
+    );
+    assert_eq!(
+        manifest["review_evidence_identity"]["artifact_digest"],
+        "sha256:artifact"
+    );
+    assert!(
+        manifest["review_evidence_identity"]["trust_store_digest"]
+            .as_str()
+            .is_some_and(|value| value.starts_with("sha256:"))
+    );
+    assert!(manifest["review_evidence_identity"]["lifecycle_digest"].is_null());
+
+    fs::remove_dir_all(project).ok();
+}
+
+#[test]
+fn validate_rejects_conflicting_manifest_identity_before_outputs() {
+    let project = project_dir("conflicting-evidence-identity");
+    fs::write(
+        project.join("manifest.json"),
+        r#"{
+          "schema_version": 1,
+          "nodes": [],
+          "evidence": [],
+          "edges": [],
+          "review_evidence_identity": {
+            "subject_digest": "sha256:graph",
+            "source_commit": "commit-1",
+            "artifact_digest": "sha256:artifact",
+            "trust_store_digest": null,
+            "lifecycle_digest": null,
+            "now": "2026-08-15T00:00:00Z"
+          }
+        }"#,
+    )
+    .expect("manifest should be writable");
+
+    let mut command = Command::new(env!("CARGO_BIN_EXE_lsharp"));
+    command.current_dir(&project).args([
+        "validate",
+        "manifest.json",
+        "--format",
+        "json",
+        "--review-subject-digest",
+        "sha256:graph",
+        "--review-source-commit",
+        "commit-2",
+        "--review-artifact-digest",
+        "sha256:artifact",
+        "--review-now",
+        "2026-08-15T00:00:00Z",
+        "--emit-manifest",
+        "conflicting-output.json",
+    ]);
+    let output = command.output().expect("lsharp validate should run");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(1), "unexpected exit: {stderr}");
+    assert!(output.stdout.is_empty(), "conflict must not emit a report");
+    assert!(stderr.contains("既存 manifest と一致しません"));
+    assert!(!project.join("conflicting-output.json").exists());
+
+    fs::remove_dir_all(project).ok();
+}
+
+#[test]
 fn validate_projects_expiry_and_identity_context_to_state() {
     let project = project_dir("expiry-context");
     fs::write(

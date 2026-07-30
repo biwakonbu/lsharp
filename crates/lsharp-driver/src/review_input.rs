@@ -101,12 +101,12 @@ impl ReviewVerificationContext {
                 });
             }
         }
-        if let Some(value) = artifact_digest {
-            if value.trim().is_empty() {
-                return Err(ReviewInputError::Context {
-                    message: "review_artifact_digest は空にできません".to_string(),
-                });
-            }
+        if let Some(value) = artifact_digest
+            && value.trim().is_empty()
+        {
+            return Err(ReviewInputError::Context {
+                message: "review_artifact_digest は空にできません".to_string(),
+            });
         }
 
         Ok(Some(Self {

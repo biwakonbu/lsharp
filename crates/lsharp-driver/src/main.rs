@@ -1478,6 +1478,11 @@ fn project_review_verifications(
         .transpose()
         .map_err(|error| miette::miette!("{error}"))?
         .flatten();
+    if let Some(identity) = &review_identity {
+        graph
+            .attach_review_evidence_identity(identity.clone())
+            .map_err(|error| miette::miette!("{error}"))?;
+    }
     Ok((graph, review_verifications, review_identity))
 }
 

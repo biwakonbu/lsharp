@@ -29,6 +29,11 @@ fn validate_tool(arguments: &Value) -> Result<Value, String> {
         .transpose()
         .map_err(|error| error.to_string())?
         .flatten();
+    if let Some(identity) = &review_identity {
+        graph
+            .attach_review_evidence_identity(identity.clone())
+            .map_err(|error| error.to_string())?;
+    }
     let include_manifest = include_manifest_argument(arguments)?;
     let mut report = if review_verifications.is_empty() {
         graph.validate()

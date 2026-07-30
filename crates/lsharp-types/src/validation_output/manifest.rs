@@ -5,7 +5,7 @@ use crate::evidence::{
     InvalidationSubject, ReviewRecord, ReviewSubject,
 };
 use crate::intent::{IntentNode, StableId};
-use crate::validation::IntentGraph;
+use crate::validation::{IntentGraph, ReviewEvidenceIdentityWire};
 use serde::Serialize;
 
 const SCHEMA_VERSION: u32 = 1;
@@ -26,6 +26,8 @@ struct ManifestWire<'a> {
     evidence: Vec<EvidenceWire<'a>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     reviews: Option<Vec<ReviewWire<'a>>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    review_evidence_identity: Option<ReviewEvidenceIdentityWire>,
     edges: Vec<EdgeWire<'a>>,
 }
 
@@ -46,6 +48,9 @@ impl<'a> ManifestWire<'a> {
                     .map(ReviewWire::from_review)
                     .collect()
             }),
+            review_evidence_identity: graph
+                .review_evidence_identity()
+                .map(ReviewEvidenceIdentityWire::from_identity),
             edges: graph.edges().iter().map(EdgeWire::from_edge).collect(),
         }
     }

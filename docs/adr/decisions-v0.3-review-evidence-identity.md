@@ -41,7 +41,8 @@ host の状態を report の identity へ混ぜてしまう。
 
 ## Boundary and follow-up
 
-これは Rust CLI/MCP report の verified partial sliceである。manifest-side identity、selfhost/native
-report parity、native source-file smoke、current-source と packaged stage0 artifact の provenance、
-Mac Apple Silicon / Linux x86_64 release/runtime gate は未完了であり、`TODO.md` の `EC-M3-05` を
-`[~]` のまま維持する。
+これは Rust CLI/MCP report identity の verified partial sliceである。manifest-side identity の
+入出力 roundtrip は [`decisions-v0.3-review-evidence-manifest-identity.md`](decisions-v0.3-review-evidence-manifest-identity.md)
+で追加した。selfhost/native report parity、native source-file smoke、current-source と packaged
+stage0 artifact の provenance、Mac Apple Silicon / Linux x86_64 release/runtime gate は未完了であり、
+`TODO.md` の `EC-M3-05` を `[~]` のまま維持する。

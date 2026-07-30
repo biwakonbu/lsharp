@@ -141,6 +141,18 @@ mod tests {
                 ["verification_state"]["enum"],
             json!(["verified", "unverified", "stale", "revoked"])
         );
+        assert_eq!(
+            tool["outputSchema"]["properties"]["manifest"]["properties"]["review_evidence_identity"]
+                ["required"],
+            json!([
+                "subject_digest",
+                "source_commit",
+                "artifact_digest",
+                "trust_store_digest",
+                "lifecycle_digest",
+                "now"
+            ])
+        );
     }
 
     #[test]

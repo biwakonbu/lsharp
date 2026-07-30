@@ -13,15 +13,18 @@ use crate::intent::{
     Assumption, AssumptionId, Claim, ClaimId, ContractId, EvidenceId, Intent, IntentId, IntentNode,
     OpenQuestion, OpenQuestionId, ReviewId, StableIdError,
 };
-use crate::validation::IntentGraph;
+use crate::validation::{
+    IntentGraph, ReviewEvidenceIdentity, ReviewEvidenceIdentityProjectionError,
+};
 use lsharp_syntax::span::Span;
 
 mod manifest;
 mod references;
 
 use manifest::{
-    EdgeInput, EvidenceInput, IdInput, Manifest, NodeInput, NodeKindInput, ReviewInput,
-    SUPPORTED_SCHEMA_VERSION, SpanInput, SubjectInput, SubjectKindInput,
+    EdgeInput, EvidenceInput, IdInput, Manifest, NodeInput, NodeKindInput,
+    ReviewEvidenceIdentityInput, ReviewInput, SUPPORTED_SCHEMA_VERSION, SpanInput, SubjectInput,
+    SubjectKindInput,
 };
 use references::{validate_edge_references, validate_evidence_subject};
 
@@ -40,6 +43,10 @@ pub enum ValidationInputError {
     Graph(#[from] crate::evidence::GraphError),
     #[error("review verification state の登録に失敗しました: {0}")]
     ReviewVerificationState(#[from] crate::evidence::ReviewVerificationStateError),
+    #[error("review evidence identity の登録に失敗しました: {0}")]
+    ReviewEvidenceIdentity(#[from] ReviewEvidenceIdentityProjectionError),
+    #[error("review evidence identity の生成に失敗しました: {0}")]
+    ReviewEvidenceIdentityValue(#[from] crate::validation::ReviewEvidenceIdentityError),
     #[error("{relation} が存在しない node を参照しています: {id}")]
     MissingNodeReference { relation: &'static str, id: String },
     #[error("{relation} の subject kind {kind} は不正です: {id}")]
@@ -81,8 +88,25 @@ pub fn parse_intent_graph_json(source: &str) -> Result<IntentGraph, ValidationIn
         validate_edge_references(&graph, &edge)?;
         graph.add_edge(edge)?;
     }
+    if let Some(identity) = document.review_evidence_identity {
+        graph.attach_review_evidence_identity(build_review_evidence_identity(identity)?)?;
+    }
 
     Ok(graph)
+}
+
+fn build_review_evidence_identity(
+    input: ReviewEvidenceIdentityInput,
+) -> Result<ReviewEvidenceIdentity, ValidationInputError> {
+    ReviewEvidenceIdentity::new(
+        input.subject_digest,
+        input.source_commit,
+        input.artifact_digest,
+        input.now,
+        input.trust_store_digest.0,
+        input.lifecycle_digest.0,
+    )
+    .map_err(ValidationInputError::ReviewEvidenceIdentityValue)
 }
 
 fn build_review(input: ReviewInput) -> Result<ReviewRecord, ValidationInputError> {

@@ -9,6 +9,7 @@ pub mod metadata_migration;
 pub(crate) mod regex;
 pub mod types;
 pub mod validation;
+mod validation_identity;
 pub mod validation_input;
 pub mod validation_output;
 pub mod validation_source;

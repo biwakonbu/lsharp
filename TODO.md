@@ -27,10 +27,11 @@
   `:review-attestation` の Rust parser/source adapter、selfhost kind 20、`unverified` state、span、
   canonical bytes parity、invalid algorithm/signature/timestamp/time-window の fail-closed contract を verified。native
   source-file smoke、Evidence/manifest projection、current-source と packaged stage0 の provenance は残る。
-- [~] `EC-M3-05` release / evidence gate — Rust CLI/MCP が明示した subject/source/artifact/clock と
-  trust-store/lifecycle component digest を `review_evidence_identity` として deterministic JSON/text/MCP
-  へ投影する verified partial slice。manifest-side identity、selfhost/native parity、current-source と
-  packaged stage0 の provenance、Mac Apple Silicon / Linux x86_64 の release artifact/runtime gate は残る。
+- [~] `EC-M3-05` release / evidence gate — Rust CLI/MCP と manifest の入出力 roundtrip が、明示した
+  subject/source/artifact/clock と trust-store/lifecycle component digest を `review_evidence_identity`
+  として deterministic JSON/text/MCP/manifest へ投影し、競合を fail-closed に拒否する verified partial
+  slice。selfhost/native parity、current-source と packaged stage0 の provenance、Mac Apple Silicon /
+  Linux x86_64 の release artifact/runtime gate は残る。
 
 ## Current priority — v0.2 Milestone 2
 

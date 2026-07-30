@@ -222,6 +222,10 @@ fn test_validate_tool_projects_review_evidence_identity_with_explicit_artifact()
             .as_str()
             .is_some_and(|value| value.starts_with("sha256:"))
     );
+    assert_eq!(
+        result["manifest"]["review_evidence_identity"]["artifact_digest"],
+        "sha256:artifact"
+    );
 
     std::fs::remove_dir_all(project).ok();
 }

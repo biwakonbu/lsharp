@@ -279,6 +279,7 @@ fn intent_graph_manifest_schema() -> Value {
                 "items": node_schema()
             },
             "reviews": review_registry_schema(),
+            "review_evidence_identity": review_evidence_identity_schema(),
             "evidence": {
                 "type": "array",
                 "items": evidence_schema()
@@ -287,6 +288,29 @@ fn intent_graph_manifest_schema() -> Value {
                 "type": "array",
                 "items": edge_schema()
             }
+        }
+    })
+}
+
+fn review_evidence_identity_schema() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+            "subject_digest",
+            "source_commit",
+            "artifact_digest",
+            "trust_store_digest",
+            "lifecycle_digest",
+            "now"
+        ],
+        "properties": {
+            "subject_digest": { "type": "string", "minLength": 1 },
+            "source_commit": { "type": "string", "minLength": 1 },
+            "artifact_digest": { "type": "string", "minLength": 1 },
+            "trust_store_digest": { "type": ["string", "null"], "minLength": 1 },
+            "lifecycle_digest": { "type": ["string", "null"], "minLength": 1 },
+            "now": { "type": "string", "minLength": 1 }
         }
     })
 }
