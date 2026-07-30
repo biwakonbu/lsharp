@@ -1025,6 +1025,61 @@ fn test_e2e_selfhost_source_adapter_projects_review_attestation() {
     );
 }
 
+/// EC-M3-04: source graph producer は attestation record を graph 経路でも保持する。
+#[test]
+fn test_e2e_selfhost_source_evidence_graph_retains_review_attestation() {
+    let harness = r#"
+(defn main []
+  (let [result (source-evidence-graph-from-program
+                 (parse-program "(defn review [] :review-attestation :review-id \"review:checkout/reviewer-001\" :subject-digest \"sha256:subject-001\" :source-commit \"0123456789abcdef\" :provenance-digest \"sha256:review-001\" :provider \"github\" :key-id \"org/reviews-2026\" :algorithm \"ed25519\" :signature \"AAECAw\" :issued-at \"2026-08-01T00:00:00Z\" :expires-at \"2026-09-01T00:00:00Z\" :sequence 3 true)"))
+        graph (source-result-value result)
+        attestations (source-evidence-graph-attestations graph)
+        attestation (vector-get attestations 0)]
+    (do
+      (print (source-result-status result))
+      (print (vector-length attestations))
+      (print-string (source-review-attestation-id attestation))
+      (print-string "\n")
+      (print-string (source-review-attestation-state attestation))
+      (print-string "\n")
+      0)))
+"#;
+
+    let output = run_source_evidence_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        ["1", "1", "review:checkout/reviewer-001", "unverified",],
+        "selfhost source evidence graph は attestation を producer record として保持するべき"
+    );
+}
+
+/// EC-M3-04: graph に保持した source attestation は manifest の review state へ投影する。
+#[test]
+fn test_e2e_selfhost_source_manifest_projects_review_attestation_state() {
+    let harness = r#"
+(defn main []
+  (let [result (source-evidence-graph-from-program
+                 (parse-program "(defn review [] :review \"review:checkout/reviewer-001\" \"sha256:review-001\" \"public\" :review-attestation :review-id \"review:checkout/reviewer-001\" :subject-digest \"sha256:subject-001\" :source-commit \"0123456789abcdef\" :provenance-digest \"sha256:review-001\" :provider \"github\" :key-id \"org/reviews-2026\" :algorithm \"ed25519\" :signature \"AAECAw\" :issued-at \"2026-08-01T00:00:00Z\" :expires-at \"2026-09-01T00:00:00Z\" :sequence 3 true)"))
+        graph (source-result-value result)]
+    (do
+      (print (source-result-status result))
+      (print-string (validation-source-manifest-json graph))
+      (print-string "\n")
+      0)))
+"#;
+
+    let output = run_source_evidence_runtime(harness);
+    let mut lines = output.trim().lines();
+    assert_eq!(lines.next(), Some("1"));
+    let manifest: serde_json::Value =
+        serde_json::from_str(lines.next().expect("manifest JSON が出力されるべき"))
+            .expect("selfhost manifest JSON は parse 可能であるべき");
+
+    assert_eq!(manifest["reviews"][0]["verification_state"], "unverified");
+}
+
 /// EC-M3-04: Rust canonical model と selfhost producer の canonical bytes を同じ fixture で
 /// byte-for-byte に固定する。signature 自体は canonical input に含めない。
 #[test]

@@ -358,10 +358,16 @@
 
 (defn source-evidence-graph-with-reviews [nodes edges registry reviews]
   (vector-push-single-rooted-v3 (source-evidence-graph nodes edges registry) reviews))
+(defn source-evidence-graph-with-reviews-and-attestations [nodes edges registry reviews attestations]
+  (vector-push-single-rooted-v3
+    (source-evidence-graph-with-reviews nodes edges registry reviews)
+    attestations))
 (defn source-evidence-graph-registry [graph]
   (vector-get graph 2))
 (defn source-evidence-graph-reviews [graph]
   (if (> (vector-length graph) 3) (vector-get graph 3) (vector-new 0)))
+(defn source-evidence-graph-attestations [graph]
+  (if (> (vector-length graph) 4) (vector-get graph 4) (vector-new 0)))
 (defn source-evidence-id-vector-loop [registry idx len ids]
   (if (>= idx len) ids
     (source-evidence-id-vector-loop registry (+ idx 1) len
@@ -418,7 +424,25 @@
     fields2 (validation-json-append fields1 (validation-json-string-field "key" key-text))]
     (validation-json-object-wrap fields2)))
 
-(defn validation-source-review-json [review]
+(defn validation-source-review-attestation-state-loop [review-id attestations idx len]
+  (if (>= idx len)
+    ""
+    (let [attestation (vector-get attestations idx)]
+      (if (string-eq review-id (source-review-attestation-id attestation))
+        (source-review-attestation-state attestation)
+        (validation-source-review-attestation-state-loop
+          review-id
+          attestations
+          (+ idx 1)
+          len)))))
+(defn validation-source-review-attestation-state [review attestations]
+  (validation-source-review-attestation-state-loop
+    (source-review-id review)
+    attestations
+    0
+    (vector-length attestations)))
+
+(defn validation-source-review-json [review attestations]
   (let [id (source-review-id review)
     fields0 (validation-json-string-field "namespace"
       (let [colon (source-find-char id 58 0 (string-length id))
@@ -432,8 +456,13 @@
     fields2 (validation-json-append fields1
       (validation-json-string-field "provenance_digest" (source-review-provenance-digest review)))
     fields3 (validation-json-append fields2
-      (validation-json-string-field "visibility" (source-review-visibility review)))]
-    (validation-json-object-wrap fields3)))
+      (validation-json-string-field "visibility" (source-review-visibility review)))
+    verification-state (validation-source-review-attestation-state review attestations)
+    fields4 (if (> (string-length verification-state) 0)
+      (validation-json-append fields3
+        (validation-json-string-field "verification_state" verification-state))
+      fields3)]
+    (validation-json-object-wrap fields4)))
 (defn validation-source-span-json [start end]
   (let [fields0 ""
     fields1 (validation-json-append fields0 (validation-json-int-field "start" start))
@@ -605,19 +634,31 @@
           len
           (validation-json-append out (validation-source-evidence-json (vector-get registry idx))))))))
 
+(defn validation-source-reviews-json-state [reviews attestations idx len out]
+  (let [base (vector-push-quad-rooted-v3
+      (vector-new 5)
+      reviews
+      attestations
+      idx
+      len)]
+    (vector-push-single-rooted-v3 base out)))
 (defn validation-source-reviews-json-state-loop [state]
   (let [reviews (vector-get state 0)
-    idx (vector-get state 1)
-    len (vector-get state 2)
-    out (vector-get state 3)]
+    attestations (vector-get state 1)
+    idx (vector-get state 2)
+    len (vector-get state 3)
+    out (vector-get state 4)]
     (if (>= idx len)
       out
       (validation-source-reviews-json-state-loop
-        (validation-source-manifest-json-state
+        (validation-source-reviews-json-state
           reviews
+          attestations
           (+ idx 1)
           len
-          (validation-json-append out (validation-source-review-json (vector-get reviews idx))))))))
+          (validation-json-append
+            out
+            (validation-source-review-json (vector-get reviews idx) attestations)))))))
 (defn validation-source-edge-json [edge]
   (let [relation (source-edge-kind edge)
     left (source-edge-left edge)
@@ -678,7 +719,13 @@
     reviews (source-evidence-graph-reviews graph)
     nodes-state (validation-source-manifest-json-state nodes 0 (vector-length nodes) "")
     evidence-state (validation-source-manifest-json-state registry 0 (vector-length registry) "")
-    reviews-state (validation-source-manifest-json-state reviews 0 (vector-length reviews) "")
+    attestations (source-evidence-graph-attestations graph)
+    reviews-state (validation-source-reviews-json-state
+      reviews
+      attestations
+      0
+      (vector-length reviews)
+      "")
     edges-state (validation-source-manifest-json-state edges 0 (vector-length edges) "")
     nodes-json (validation-source-nodes-json-state-loop nodes-state)
     evidence-json (validation-source-evidence-json-state-loop evidence-state)
@@ -781,12 +828,22 @@
         (if (= (source-result-status reviews-result) 0)
           reviews-result
           (let [reviews (source-result-value reviews-result)
-            registry-result (source-evidence-registry-from-program program)]
-            (if (= (source-result-status registry-result) 0)
-              registry-result
-              (let [registry (source-result-value registry-result)
-                edges-result (source-evidence-collect-edges program registry nodes reviews)]
-                (if (= (source-result-status edges-result) 0)
-                  edges-result
-                  (source-result 1 (source-evidence-graph-with-reviews nodes (source-result-value edges-result)
-                    registry reviews)))))))))))
+            attestations-result (source-review-attestations-from-program program)]
+            (if (= (source-result-status attestations-result) 0)
+              attestations-result
+              (let [attestations (source-result-value attestations-result)
+                registry-result (source-evidence-registry-from-program program)]
+                (if (= (source-result-status registry-result) 0)
+                  registry-result
+                  (let [registry (source-result-value registry-result)
+                    edges-result (source-evidence-collect-edges program registry nodes reviews)]
+                    (if (= (source-result-status edges-result) 0)
+                      edges-result
+                      (source-result
+                        1
+                        (source-evidence-graph-with-reviews-and-attestations
+                          nodes
+                          (source-result-value edges-result)
+                          registry
+                          reviews
+                          attestations)))))))))))))
