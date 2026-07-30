@@ -77,6 +77,13 @@ for required in \
   'validation-stale-text' \
   'stale-reviews: 1' \
   'stale-evidence: 1' \
+  'VALIDATION_ATTESTATION_SOURCE' \
+  'VALIDATION_ATTESTATION_MANIFEST' \
+  'run_expected_failure validation-attestation-json' \
+  'report.get("review_verifications")' \
+  'review.get("verification_state") != "unverified"' \
+  'run_expected_failure validation-attestation-text' \
+  'review-verification: review:checkout/reviewer-001=unverified' \
   'VALIDATION_ORPHAN_SOURCE' \
   'VALIDATION_ORPHAN_MANIFEST' \
   'run_expected_validation_error validation-orphan' \

@@ -162,10 +162,12 @@ VALIDATION_INVALIDATION_MISSING_REVIEW_MANIFEST="$WORK_DIR/ec-m3-invalidation-mi
 VALIDATION_REVIEW_EDGE_EVIDENCE_MANIFEST="$WORK_DIR/ec-m3-review-edge-evidence-manifest.json"
 VALIDATION_INVALIDATION_EDGE_EVIDENCE_MANIFEST="$WORK_DIR/ec-m3-invalidation-edge-evidence-manifest.json"
 VALIDATION_WRITE_FAILURE_MANIFEST="$WORK_DIR/missing-parent/intent-graph.json"
+VALIDATION_ATTESTATION_MANIFEST="$WORK_DIR/ec-m3-review-attestation-manifest.json"
 VALIDATION_PASS_SOURCE="$WORK_DIR/ec-m3-complete-source.ls"
 VALIDATION_FAILED_REVIEW_SOURCE="$WORK_DIR/ec-m3-failed-review-source.ls"
 VALIDATION_FAIL_SOURCE="$WORK_DIR/ec-m3-contradiction-source.ls"
 VALIDATION_STALE_SOURCE="$WORK_DIR/ec-m3-stale-source.ls"
+VALIDATION_ATTESTATION_SOURCE="$WORK_DIR/ec-m3-review-attestation-source.ls"
 VALIDATION_ORPHAN_SOURCE="$WORK_DIR/ec-m3-orphan-node-source.ls"
 VALIDATION_MALFORMED_SOURCE="$WORK_DIR/ec-m3-malformed-edge-source.ls"
 VALIDATION_INVALID_ID_SOURCE="$WORK_DIR/ec-m3-invalid-id-source.ls"
@@ -348,6 +350,23 @@ cat >"$VALIDATION_STALE_SOURCE" <<'LSHARP'
   :review "review:checkout/reviewer-001" "sha256:review-provenance-001" "redacted"
   :evaluates "review:checkout/reviewer-001" "evidence:checkout/review-001"
   :invalidates "change:checkout/api-v2" "review:checkout/reviewer-001"
+  true)
+LSHARP
+cat >"$VALIDATION_ATTESTATION_SOURCE" <<'LSHARP'
+(defn source-review-attestation []
+  :review "review:checkout/reviewer-001" "sha256:review-001" "redacted"
+  :review-attestation
+    :review-id "review:checkout/reviewer-001"
+    :subject-digest "sha256:subject-001"
+    :source-commit "0123456789abcdef"
+    :provenance-digest "sha256:review-001"
+    :provider "github"
+    :key-id "org/reviews-2026"
+    :algorithm "ed25519"
+    :signature "AAECAw"
+    :issued-at "2026-08-01T00:00:00Z"
+    :expires-at "2026-09-01T00:00:00Z"
+    :sequence 3
   true)
 LSHARP
 cat >"$VALIDATION_ORPHAN_SOURCE" <<'LSHARP'
@@ -1579,6 +1598,33 @@ run_expected_failure validation-stale-text 0 validate \
   --source "$VALIDATION_STALE_SOURCE" \
   --format text
 require_exact_output validation-stale-text $'status: unknown\nopen-questions: 0\nindependent-reviews: 1\ncontradicting-observations: 0\nstale-reviews: 1\nstale-evidence: 1\n'
+
+run_expected_failure validation-attestation-json 0 validate \
+  --source "$VALIDATION_ATTESTATION_SOURCE" \
+  --format json \
+  --emit-manifest "$VALIDATION_ATTESTATION_MANIFEST"
+python3 - "$WORK_DIR/validation-attestation-json.stdout" "$VALIDATION_ATTESTATION_MANIFEST" <<'PY'
+import json
+import pathlib
+import sys
+
+report = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+if report.get("review_verifications") != [
+    {"review_id": "review:checkout/reviewer-001", "state": "unverified"}
+]:
+    raise SystemExit(f"native source attestation report is invalid: {report!r}")
+reviews = json.loads(pathlib.Path(sys.argv[2]).read_text(encoding="utf-8")).get("reviews")
+if not isinstance(reviews, list) or len(reviews) != 1:
+    raise SystemExit(f"native source attestation manifest reviews are invalid: {reviews!r}")
+for review in reviews:
+    if review.get("verification_state") != "unverified":
+        raise SystemExit(f"native source attestation manifest state is invalid: {review!r}")
+PY
+
+run_expected_failure validation-attestation-text 0 validate \
+  --source "$VALIDATION_ATTESTATION_SOURCE" \
+  --format text
+require_exact_output validation-attestation-text $'status: unknown\nopen-questions: 0\nindependent-reviews: 0\ncontradicting-observations: 0\nstale-reviews: 0\nstale-evidence: 0\nreview-verification: review:checkout/reviewer-001=unverified\n'
 
 run_expected_validation_error validation-malformed-edge \
   validate \
