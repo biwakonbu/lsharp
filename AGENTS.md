@@ -171,6 +171,18 @@ L# の最終目標は、Rust 実装を正本として残したまま一部のコ
 
 長時間の stage regeneration / Linux VM gate は仮説ごとに一つだけ実行し、VM-side lock と既存 artifact を再利用する。待機中は同じ replay を重複起動せず、共有しない parser/type/runtime、診断、fixture、contract test、docs を進める。停止する場合は、次の RED、再現 command、blocker、対象 artifact/target、必要な evidence を current docs に残し、次の run は必ず status refresh から再開する。VM の一時 workdir と巨大 artifact は gate 後に回収し、disk 使用量も確認する。
 
+### Heavy gate の batch cadence
+
+Linux VM の fixed-point replay は一つの micro-change ごとに起動しない。同じ parser/type/runtime boundary に属し、互いの observable contract が独立している bounded-loop 移行は、各 fixture と RED を個別に保ったまま一つの implementation batch にまとめる。batch の中では次を守る。
+
+- 各 slice は先に static/runtime RED を追加し、failure value、EOF/unknown semantics、GC ownership、対象 target を個別に固定する。テストを一つの曖昧な大 fixtureへ統合して coverage を隠さない。
+- batch 内の実装後は Parser source parse、focused GREEN、Rust oracle/differential、必要な local native stage0 smoke をまとめて実行する。既知 baseline failure は新規 failure と分離して記録する。
+- batch の task-relevant files を一つの commit として push してから、Linux x86_64 fixed-point gate を一回だけ実行する。Mac Apple Silicon gate も同じ batch cadence で必要範囲をまとめる。
+- gate 中は別 boundary の read-only audit、docs、diagnostic、fixture 候補の整理だけを進め、同じ仮説の replay や source edit を重複させない。失敗時だけ metadata-only/replay-only を追加し、全 replay を最初からやり直さない。
+- batch の大きさは、意味論・root ownership・rollback を一回の review で説明できる範囲に制限する。単なる時間短縮のために異なる failure boundary を混ぜない。
+
+これにより、micro-change ごとの重複 build を避けながら、各 slice の TDD 証拠と batch 全体の native fixed-point evidence を失わない。
+
 ### CI と手動 release の境界
 
 - 当面の supported target build/release は GitHub Actions の CI で実行せず、Mac Apple Silicon 上の native stage0、必要な Linux x86_64 Lima VM gate、ローカルの focused test を正本とする。CI の green、workflow の存在、または CI が生成した stale artifact だけを Rust-free 完了や release readiness の証拠にしない。
