@@ -29,6 +29,9 @@ native stage0 は trust store、lifecycle、current subject/source identity を�
   - external trust/lifecycle input がないため exit は `2`、stderr は空である。
 - `--format text` は同じ fixtureを
   `review-verification: review:checkout/reviewer-001=unverified` の固定行へ投影する。
+- named-field attestation の `algorithm`、`signature`、`issued-at`、`expires-at` を壊した
+  4 variant は、すべて stable な `source validation error:8`、exit `1`、stdout 空、
+  no-report/no-manifest で fail-closed に拒否する。
 - Linux stage0 wrapper は source smoke script 自体を転送するため、fixtureは smoke script 内で
   生成し、別の stale fixture copy 経路を増やさない。
 
@@ -38,6 +41,9 @@ native stage0 は trust store、lifecycle、current subject/source identity を�
   marker を先に要求し、実装前に `VALIDATION_ATTESTATION_SOURCE` 欠落で失敗することを確認した。
 - GREEN: fixture、JSON/text assertions、manifest state assertionsを source smokeへ追加し、同じ
   static/provenance harness が `Linux native stage0 source-file provenance tests: OK` で通過した。
+- Negative GREEN: valid fixtureから4つの invalid attestation variantを生成し、共通 helperで
+  code `8`、exit `1`、stderr diagnostic、stdout/manifestなしを要求する static/provenance
+  harness が通過した。
 - Rust syntax source suite: `cargo test -p lsharp-syntax --test review_attestation_source`
   （3 tests）。
 - Rust source adapter suite: `cargo test -p lsharp-types --test review_attestation_source`

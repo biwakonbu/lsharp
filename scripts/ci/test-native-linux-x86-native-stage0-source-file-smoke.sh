@@ -84,6 +84,15 @@ for required in \
   'review.get("verification_state") != "unverified"' \
   'run_expected_failure validation-attestation-text' \
   'review-verification: review:checkout/reviewer-001=unverified' \
+  'VALIDATION_INVALID_ATTESTATION_ALGORITHM_SOURCE' \
+  'VALIDATION_INVALID_ATTESTATION_SIGNATURE_SOURCE' \
+  'VALIDATION_INVALID_ATTESTATION_TIMESTAMP_SOURCE' \
+  'VALIDATION_INVALID_ATTESTATION_WINDOW_SOURCE' \
+  'run_invalid_attestation()' \
+  'validation-invalid-attestation-algorithm' \
+  'validation-invalid-attestation-signature' \
+  'validation-invalid-attestation-timestamp' \
+  'validation-invalid-attestation-window' \
   'VALIDATION_ORPHAN_SOURCE' \
   'VALIDATION_ORPHAN_MANIFEST' \
   'run_expected_validation_error validation-orphan' \

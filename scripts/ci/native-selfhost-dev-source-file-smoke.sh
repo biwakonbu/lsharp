@@ -163,11 +163,19 @@ VALIDATION_REVIEW_EDGE_EVIDENCE_MANIFEST="$WORK_DIR/ec-m3-review-edge-evidence-m
 VALIDATION_INVALIDATION_EDGE_EVIDENCE_MANIFEST="$WORK_DIR/ec-m3-invalidation-edge-evidence-manifest.json"
 VALIDATION_WRITE_FAILURE_MANIFEST="$WORK_DIR/missing-parent/intent-graph.json"
 VALIDATION_ATTESTATION_MANIFEST="$WORK_DIR/ec-m3-review-attestation-manifest.json"
+VALIDATION_INVALID_ATTESTATION_ALGORITHM_MANIFEST="$WORK_DIR/ec-m3-invalid-attestation-algorithm-manifest.json"
+VALIDATION_INVALID_ATTESTATION_SIGNATURE_MANIFEST="$WORK_DIR/ec-m3-invalid-attestation-signature-manifest.json"
+VALIDATION_INVALID_ATTESTATION_TIMESTAMP_MANIFEST="$WORK_DIR/ec-m3-invalid-attestation-timestamp-manifest.json"
+VALIDATION_INVALID_ATTESTATION_WINDOW_MANIFEST="$WORK_DIR/ec-m3-invalid-attestation-window-manifest.json"
 VALIDATION_PASS_SOURCE="$WORK_DIR/ec-m3-complete-source.ls"
 VALIDATION_FAILED_REVIEW_SOURCE="$WORK_DIR/ec-m3-failed-review-source.ls"
 VALIDATION_FAIL_SOURCE="$WORK_DIR/ec-m3-contradiction-source.ls"
 VALIDATION_STALE_SOURCE="$WORK_DIR/ec-m3-stale-source.ls"
 VALIDATION_ATTESTATION_SOURCE="$WORK_DIR/ec-m3-review-attestation-source.ls"
+VALIDATION_INVALID_ATTESTATION_ALGORITHM_SOURCE="$WORK_DIR/ec-m3-invalid-attestation-algorithm-source.ls"
+VALIDATION_INVALID_ATTESTATION_SIGNATURE_SOURCE="$WORK_DIR/ec-m3-invalid-attestation-signature-source.ls"
+VALIDATION_INVALID_ATTESTATION_TIMESTAMP_SOURCE="$WORK_DIR/ec-m3-invalid-attestation-timestamp-source.ls"
+VALIDATION_INVALID_ATTESTATION_WINDOW_SOURCE="$WORK_DIR/ec-m3-invalid-attestation-window-source.ls"
 VALIDATION_ORPHAN_SOURCE="$WORK_DIR/ec-m3-orphan-node-source.ls"
 VALIDATION_MALFORMED_SOURCE="$WORK_DIR/ec-m3-malformed-edge-source.ls"
 VALIDATION_INVALID_ID_SOURCE="$WORK_DIR/ec-m3-invalid-id-source.ls"
@@ -369,6 +377,35 @@ cat >"$VALIDATION_ATTESTATION_SOURCE" <<'LSHARP'
     :sequence 3
   true)
 LSHARP
+python3 \
+  "$VALIDATION_ATTESTATION_SOURCE" \
+  "$VALIDATION_INVALID_ATTESTATION_ALGORITHM_SOURCE" \
+  "$VALIDATION_INVALID_ATTESTATION_SIGNATURE_SOURCE" \
+  "$VALIDATION_INVALID_ATTESTATION_TIMESTAMP_SOURCE" \
+  "$VALIDATION_INVALID_ATTESTATION_WINDOW_SOURCE" <<'PY'
+import pathlib
+import sys
+
+source = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
+variants = [
+    (sys.argv[2], ':algorithm "ed25519"', ':algorithm "rsa-sha256"'),
+    (sys.argv[3], ':signature "AAECAw"', ':signature "A==="'),
+    (
+        sys.argv[4],
+        ':issued-at "2026-08-01T00:00:00Z"',
+        ':issued-at "2026-02-30T00:00:00Z"',
+    ),
+    (
+        sys.argv[5],
+        ':expires-at "2026-09-01T00:00:00Z"',
+        ':expires-at "2026-07-01T00:00:00Z"',
+    ),
+]
+for output, old, new in variants:
+    if old not in source:
+        raise SystemExit(f"attestation fixture replacement is missing: {old}")
+    pathlib.Path(output).write_text(source.replace(old, new), encoding="utf-8")
+PY
 cat >"$VALIDATION_ORPHAN_SOURCE" <<'LSHARP'
 (defn orphan-edge []
   :motivates "intent:checkout/missing" "claim:checkout/rejects"
@@ -1625,6 +1662,38 @@ run_expected_failure validation-attestation-text 0 validate \
   --source "$VALIDATION_ATTESTATION_SOURCE" \
   --format text
 require_exact_output validation-attestation-text $'status: unknown\nopen-questions: 0\nindependent-reviews: 0\ncontradicting-observations: 0\nstale-reviews: 0\nstale-evidence: 0\nreview-verification: review:checkout/reviewer-001=unverified\n'
+
+run_invalid_attestation() {
+  local label="$1"
+  local source="$2"
+  local manifest="$3"
+
+  run_expected_validation_error "$label" \
+    validate \
+    --source "$source" \
+    --format json \
+    --emit-manifest "$manifest"
+  grep -F "source validation error:8" "$WORK_DIR/$label.stderr" >/dev/null \
+    || die "$label must expose the invalid attestation error code"
+  [[ ! -e "$manifest" ]] || die "$label must produce no report or manifest"
+}
+
+run_invalid_attestation \
+  validation-invalid-attestation-algorithm \
+  "$VALIDATION_INVALID_ATTESTATION_ALGORITHM_SOURCE" \
+  "$VALIDATION_INVALID_ATTESTATION_ALGORITHM_MANIFEST"
+run_invalid_attestation \
+  validation-invalid-attestation-signature \
+  "$VALIDATION_INVALID_ATTESTATION_SIGNATURE_SOURCE" \
+  "$VALIDATION_INVALID_ATTESTATION_SIGNATURE_MANIFEST"
+run_invalid_attestation \
+  validation-invalid-attestation-timestamp \
+  "$VALIDATION_INVALID_ATTESTATION_TIMESTAMP_SOURCE" \
+  "$VALIDATION_INVALID_ATTESTATION_TIMESTAMP_MANIFEST"
+run_invalid_attestation \
+  validation-invalid-attestation-window \
+  "$VALIDATION_INVALID_ATTESTATION_WINDOW_SOURCE" \
+  "$VALIDATION_INVALID_ATTESTATION_WINDOW_MANIFEST"
 
 run_expected_validation_error validation-malformed-edge \
   validate \
